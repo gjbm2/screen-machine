@@ -8,7 +8,8 @@
 // fold, Music's Mine, a header or dock pill), every 1 s while recording and every 5 s otherwise, only while the page is
 // visible. The take just stopped ("fresh") is shared too, so Keep in one place clears it everywhere.
 //   <PianoRecorder>   Record / Stop with its line (the dot flashes on each key), then the new take: Play it · Score ·
-//                     Keep · Discard, with its name. `extra` sits beside Record (Mine's Upload a MIDI file).
+//                     Keep · Discard, with its name. `extra` sits beside Record (Mine's Upload a MIDI file), `end` at
+//                     the right of that row (the Room page's "All recordings ›").
 //   <RecordPill>      a compact Record, or "● 1:23 Stop" while recording, for a header or the dock; Stop opens the new
 //                     take in a sheet.
 //   <NewTakePanel>    the new take on its own (PianoRecorder's and the pill's sheet).
@@ -500,6 +501,7 @@ export function PianoRecorder({
   connected = true,
   hint = "Record what's played on the piano, then keep it or play it back.",
   extra,
+  end,
   onLog,
   onError,
 }: {
@@ -510,6 +512,8 @@ export function PianoRecorder({
   hint?: ReactNode;
   /** Beside Record, always shown (Mine's Upload a MIDI file). */
   extra?: ReactNode;
+  /** At the right of Record's row, always shown (e.g. links). */
+  end?: ReactNode;
   onLog?: (what: string) => void;
   onError?: (msg: string) => void;
 }) {
@@ -522,7 +526,7 @@ export function PianoRecorder({
   const show = !r.missing && r.ready;
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-2 sm:gap-x-3">
         {show && (
           <RecordButton
             recording={r.recording}
@@ -542,6 +546,7 @@ export function PianoRecorder({
         ) : show && hint && !extra ? (
           <p className="min-w-0 flex-1 text-sm text-muted-foreground">{hint}</p>
         ) : null}
+        {end && <div className="ml-auto flex shrink-0 items-center gap-1">{end}</div>}
       </div>
       {show && r.note && !r.recording && <p className="text-base text-muted-foreground">{r.note}</p>}
       {show && <NewTakePanel baseUrl={baseUrl} onLog={onLog} />}

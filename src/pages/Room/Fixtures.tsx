@@ -2,19 +2,22 @@
 // (Art-Net, streamed to the bridge) or is under house control. DMX lights (show_service's rig, registered on
 // the Lights setup page, read through room_service's /show pass-through): each follows the music, holds a steady
 // colour, or is off. Both are set through the room state model (PUT /api/v1/room/targets: hue.<id>, light.<id>), so a
-// mode change and a hand change go through the same coordinator. Each row is the Lights setup page's own (LightShell:
-// the same name, kind, where it is, Identify always at the right, the same colour block) and ends with
-// "Set up this light ›" (/lights?light=<id>). Names drop their room's name (rooms.json); where a light is comes from
-// the Room map once it's placed there.
+// mode change and a hand change go through the same coordinator. Each light uses the Lights setup page's words and
+// parts (the same name, kind, where it is, the same colour block); its controls end with "Set up this light ›"
+// (/lights?light=<id>). Names drop their room's name (rooms.json); where a light is comes from the Room map once it's
+// placed there.
+// Laid out as tiles (owner, 25 Oct: "vertical space is at a HIGH PREMIUM on a mobile"): four across when the fold is
+// 500 px wide or more, else two, each its colour, name and state; a tap opens that light's controls under the tiles (one at a time), with
+// what it is and where, and Identify. The room's name heads the tiles only when more than one room has lights.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Lightbulb, Moon, Palette, Radio } from "lucide-react";
 import { AppLink } from "@/components/nav/AppLink";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { LightsApi } from "@/pages/Lights/api";
-import { useIdentify } from "@/pages/Lights/Identify";
-import { ColourBlock, LightShell, summaryLine } from "@/pages/Lights/LightItem";
+import { IdentifyButton, useIdentify, type Identify } from "@/pages/Lights/Identify";
+import { ColourBlock, summaryLine, Swatch } from "@/pages/Lights/LightItem";
 import {
   COLOUR_PRESETS,
   fixtureStatus,
@@ -24,11 +27,11 @@ import {
   whereWords,
   type RoomSpace,
   type ScreenSpot,
+  type StatusWords,
 } from "@/pages/Lights/lib";
 import { useRoomFacts, useSpace } from "@/pages/Lights/useRig";
 import { explainError, RoomApiError, type RoomApi } from "./api";
-import { Pill, Spinner } from "./bits";
-import { DeviceList, DeviceSection } from "./Devices";
+import { Dot, Pill, Spinner } from "./bits";
 import type { Tone } from "./tones";
 import type { Fixture, HueValue } from "./types";
 import { type FixturesState, useFixtures } from "./useFixtures";
@@ -69,6 +72,98 @@ function SetupLink({ id }: { id: string }) {
   );
 }
 
+/** One light (or room effect) as a tile: its colour or icon, its name and what it's doing. A tap opens its controls
+ *  (LightPanel) under the tiles. */
+export function LightTile({
+  testId,
+  visual,
+  name,
+  status,
+  hint,
+  open,
+  controls,
+  onToggle,
+  className,
+}: {
+  testId?: string;
+  /** The colour disc (Swatch) or an icon disc, about 28 px. */
+  visual: ReactNode;
+  name: string;
+  status?: StatusWords | null;
+  /** What it is and where, as a tooltip (it shows in the open panel too). */
+  hint?: string | null;
+  open: boolean;
+  /** The panel's id. */
+  controls: string;
+  onToggle: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-expanded={open}
+      aria-controls={controls}
+      onClick={onToggle}
+      title={hint ?? undefined}
+      data-testid={testId}
+      className={cn(
+        "flex min-h-[52px] min-w-0 items-center gap-2.5 rounded-xl border px-2.5 py-1.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        open ? "border-teal-300 bg-teal-50/70" : "border-stone-200 bg-white hover:bg-stone-50",
+        className,
+      )}
+    >
+      {visual}
+      <span className="min-w-0 flex-1 leading-tight">
+        <span className="block truncate text-[15px] font-semibold text-stone-900">{name}</span>
+        {status?.text && (
+          <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[13px] text-muted-foreground">
+            <Dot tone={status.tone} pulse={status.pulse} className="h-1.5 w-1.5" />
+            <span className="truncate">{status.text}</span>
+          </span>
+        )}
+      </span>
+    </button>
+  );
+}
+
+/** A tile's controls, across the full width under the tiles: its name, what it is and where (and `badge`), Identify
+ *  at the right, then the controls. */
+export function LightPanel({
+  id,
+  name,
+  summary,
+  badge,
+  identify,
+  children,
+}: {
+  id: string;
+  name: string;
+  summary?: ReactNode;
+  badge?: ReactNode;
+  identify?: Identify | null;
+  children: ReactNode;
+}) {
+  return (
+    <div id={id} role="group" aria-label={name} className="order-last col-span-full space-y-3 rounded-xl border border-teal-200 bg-white p-3">
+      <div className="flex min-h-11 items-center gap-2">
+        <p className="min-w-0 flex-1 text-sm leading-snug text-muted-foreground">
+          <span className="text-base font-semibold text-stone-900">{name}</span>
+          {summary && <> · {summary}</>}
+        </p>
+        {badge}
+        {identify && <IdentifyButton state={identify.state} onClick={() => void identify.run()} label={name} />}
+      </div>
+      {identify?.why && <p className="text-sm text-rose-700">{identify.why}</p>}
+      {children}
+    </div>
+  );
+}
+
+/** The colour disc on a light's tile. */
+function TileSwatch({ hex, dim }: { hex: string | null; dim?: number }) {
+  return <Swatch hex={hex} dim={dim} className="h-7 w-7" />;
+}
+
 /** One choice of what a light does (a radio tile). */
 function Choice({
   on,
@@ -94,18 +189,17 @@ function Choice({
       aria-checked={on}
       disabled={disabled || on}
       onClick={onPick}
+      title={sub}
       className={cn(
-        "min-h-14 rounded-xl border px-3 py-2 text-left transition-colors disabled:cursor-default",
+        "flex min-h-11 min-w-0 items-center gap-1.5 rounded-xl border px-3 py-1.5 text-left transition-colors disabled:cursor-default",
         on ? "border-teal-300 bg-teal-50 text-teal-900" : "border-stone-200 bg-white hover:bg-stone-50",
         !on && disabled && "opacity-60",
       )}
     >
-      <span className="flex items-center gap-1.5 text-base font-semibold">
-        {icon}
-        {title}
-        {busy && <Spinner className="ml-auto" />}
-      </span>
-      <span className="block text-sm text-muted-foreground">{sub}</span>
+      {icon}
+      <span className="shrink-0 text-base font-semibold">{title}</span>
+      <span className="min-w-0 truncate text-sm text-muted-foreground max-sm:sr-only">· {sub}</span>
+      {busy && <Spinner className="ml-auto" />}
     </button>
   );
 }
@@ -120,6 +214,9 @@ function LampRow({
   addLog,
   reportError,
   onChanged,
+  open,
+  onToggle,
+  badge,
 }: {
   f: Fixture;
   api: RoomApi;
@@ -130,7 +227,12 @@ function LampRow({
   addLog: (e: NewLogEntry) => void;
   reportError: (e: unknown) => void;
   onChanged: () => void;
+  open: boolean;
+  onToggle: () => void;
+  /** Whether the show is sending, in the panel (when no room heading carries it). */
+  badge?: ReactNode;
 }) {
+  const panelId = useId();
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const ident = useIdentify(lights, f.id, true);
@@ -163,76 +265,85 @@ function LampRow({
     return hv && typeof hv === "object" ? hv : { on: true, bri: 60, xy: [0.4573, 0.41] };
   };
 
+  const sw = fixtureSwatch(f);
+  const summary = summaryLine("Hue lamp", where);
   return (
-    <LightShell
-      testId={`fixture-${f.id}`}
-      swatch={fixtureSwatch(f)}
-      name={name}
-      status={fixtureStatus(f)}
-      summary={summaryLine("Hue lamp", where)}
-      identify={ident}
-    >
-      {/* Who drives it */}
-      <div role="radiogroup" aria-label={`${name}: who controls it`} className="grid grid-cols-2 gap-2">
-        <Choice
-          on={!following}
-          disabled={disabled}
-          busy={!!busy && following}
-          icon={<Lightbulb className="h-4 w-4" aria-hidden />}
-          title="House"
-          sub="Normal lighting"
-          onPick={() => void send("house lighting", house())}
-        />
-        <Choice
-          on={following}
-          disabled={disabled}
-          busy={!!busy && !following}
-          icon={<Radio className="h-4 w-4" aria-hidden />}
-          title="Follows the music"
-          sub="Colours from the show"
-          onPick={() => void send("follows the music", "dmx")}
-        />
-      </div>
-
-      {following ? (
-        <p className="text-base text-muted-foreground">
-          {f.status === "following"
-            ? "Colouring with the music now."
-            : f.status === "armed"
-              ? "It follows as soon as the show sends colours."
-              : f.status_text}
-        </p>
-      ) : (
-        <div className="space-y-3">
-          <div className="flex min-h-11 items-center justify-between gap-3">
-            <span className="text-base font-medium">On</span>
-            <Switch
-              aria-label={`${name} on`}
-              checked={st.on}
+    <>
+      <LightTile
+        testId={`fixture-${f.id}`}
+        visual={<TileSwatch hex={sw.hex} dim={sw.dim} />}
+        name={name}
+        status={fixtureStatus(f)}
+        hint={summary}
+        open={open}
+        controls={panelId}
+        onToggle={onToggle}
+      />
+      {open && (
+        <LightPanel id={panelId} name={name} summary={summary} badge={badge} identify={ident}>
+          {/* Who drives it */}
+          <div role="radiogroup" aria-label={`${name}: who controls it`} className="grid grid-cols-2 gap-2">
+            <Choice
+              on={!following}
               disabled={disabled}
-              onCheckedChange={(on) =>
-                void send(on ? "on" : "off", on ? ({ ...(house() as object), on: true } as HueValue) : "off")
-              }
+              busy={!!busy && following}
+              icon={<Lightbulb className="h-4 w-4" aria-hidden />}
+              title="House"
+              sub="Normal lighting"
+              onPick={() => void send("house lighting", house())}
+            />
+            <Choice
+              on={following}
+              disabled={disabled}
+              busy={!!busy && !following}
+              icon={<Radio className="h-4 w-4" aria-hidden />}
+              title="Follows the music"
+              sub="Colours from the show"
+              onPick={() => void send("follows the music", "dmx")}
             />
           </div>
-          <ColourBlock
-            label={name}
-            hex={st.hex}
-            bri={st.bri}
-            disabled={disabled}
-            onBrightness={(v) => {
-              const base = house();
-              void send(`brightness ${v}%`, { ...(typeof base === "object" ? base : {}), on: true, bri: v } as HueValue);
-            }}
-            onColour={(hex, bri) => void send(colourName(hex), { on: true, bri, hex })}
-          />
-        </div>
-      )}
 
-      {err && <p className="text-sm text-rose-700">{err}</p>}
-      {!f.writable && <p className="text-sm text-muted-foreground">Can't change this lamp right now.</p>}
-      <SetupLink id={f.id} />
-    </LightShell>
+          {following ? (
+            <p className="text-base text-muted-foreground">
+              {f.status === "following"
+                ? "Colouring with the music now."
+                : f.status === "armed"
+                  ? "It follows as soon as the show sends colours."
+                  : f.status_text}
+            </p>
+          ) : (
+            <div className="space-y-3">
+              <div className="flex min-h-11 items-center justify-between gap-3">
+                <span className="text-base font-medium">On</span>
+                <Switch
+                  aria-label={`${name} on`}
+                  checked={st.on}
+                  disabled={disabled}
+                  onCheckedChange={(on) =>
+                    void send(on ? "on" : "off", on ? ({ ...(house() as object), on: true } as HueValue) : "off")
+                  }
+                />
+              </div>
+              <ColourBlock
+                label={name}
+                hex={st.hex}
+                bri={st.bri}
+                disabled={disabled}
+                onBrightness={(v) => {
+                  const base = house();
+                  void send(`brightness ${v}%`, { ...(typeof base === "object" ? base : {}), on: true, bri: v } as HueValue);
+                }}
+                onColour={(hex, bri) => void send(colourName(hex), { on: true, bri, hex })}
+              />
+            </div>
+          )}
+
+          {err && <p className="text-sm text-rose-700">{err}</p>}
+          {!f.writable && <p className="text-sm text-muted-foreground">Can't change this lamp right now.</p>}
+          <SetupLink id={f.id} />
+        </LightPanel>
+      )}
+    </>
   );
 }
 
@@ -393,6 +504,8 @@ function DmxRow({
   addLog,
   reportError,
   onChanged,
+  open,
+  onToggle,
 }: {
   l: RigLight;
   api: RoomApi;
@@ -404,7 +517,10 @@ function DmxRow({
   addLog: (e: NewLogEntry) => void;
   reportError: (e: unknown) => void;
   onChanged: () => void;
+  open: boolean;
+  onToggle: () => void;
 }) {
+  const panelId = useId();
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const ident = useIdentify(lights, l.id, false);
@@ -434,62 +550,70 @@ function DmxRow({
   // A steady colour starts where the room's own form does (room_service adapters/lights.py): full white.
   const startSteady = steady ?? { hex: "#ffffff", bri: 100 };
   const hex = steady ? steady.hex : rgbHex(l.last_rgb);
+  const summary = summaryLine("DMX light", where);
   return (
-    <LightShell
-      testId={`light-${l.id}`}
-      swatch={{ hex, dim: steady ? Math.max(0.25, steady.bri / 100) : 1 }}
-      name={name}
-      status={lightStatus(l, unreachable)}
-      summary={summaryLine("DMX light", where)}
-      identify={ident}
-    >
-      <div role="radiogroup" aria-label={`${name}: what it does`} className="grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <Choice
-          on={!!steady}
-          disabled={disabled}
-          busy={busy === "steady"}
-          icon={<Palette className="h-4 w-4" aria-hidden />}
-          title="Steady colour"
-          sub="One colour, as set below"
-          onPick={() => void send("steady", startSteady, `steady colour ${startSteady.hex}`)}
-        />
-        <Choice
-          on={now === "dmx"}
-          disabled={disabled}
-          busy={busy === "dmx"}
-          icon={<Radio className="h-4 w-4" aria-hidden />}
-          title="Follows the music"
-          sub="Colours from the show"
-          onPick={() => void send("dmx", "dmx", "follows the music")}
-        />
-        <Choice
-          on={now === "off"}
-          disabled={disabled}
-          busy={busy === "off"}
-          icon={<Moon className="h-4 w-4" aria-hidden />}
-          title="Off"
-          sub="Dark"
-          onPick={() => void send("off", "off", "off")}
-        />
-      </div>
-      {steady && (
-        <ColourBlock
-          label={name}
-          hex={steady.hex}
-          bri={steady.bri}
-          disabled={disabled}
-          onBrightness={(v) => void send("bri", { hex: steady.hex, bri: v }, `brightness ${v}%`)}
-          onColour={(c, bri) => void send("colour", { hex: c, bri }, colourName(c))}
-        />
+    <>
+      <LightTile
+        testId={`light-${l.id}`}
+        visual={<TileSwatch hex={hex} dim={steady ? Math.max(0.25, steady.bri / 100) : 1} />}
+        name={name}
+        status={lightStatus(l, unreachable)}
+        hint={summary}
+        open={open}
+        controls={panelId}
+        onToggle={onToggle}
+      />
+      {open && (
+        <LightPanel id={panelId} name={name} summary={summary} identify={ident}>
+          <div role="radiogroup" aria-label={`${name}: what it does`} className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <Choice
+              on={!!steady}
+              disabled={disabled}
+              busy={busy === "steady"}
+              icon={<Palette className="h-4 w-4" aria-hidden />}
+              title="Steady colour"
+              sub="One colour, as set below"
+              onPick={() => void send("steady", startSteady, `steady colour ${startSteady.hex}`)}
+            />
+            <Choice
+              on={now === "dmx"}
+              disabled={disabled}
+              busy={busy === "dmx"}
+              icon={<Radio className="h-4 w-4" aria-hidden />}
+              title="Follows the music"
+              sub="Colours from the show"
+              onPick={() => void send("dmx", "dmx", "follows the music")}
+            />
+            <Choice
+              on={now === "off"}
+              disabled={disabled}
+              busy={busy === "off"}
+              icon={<Moon className="h-4 w-4" aria-hidden />}
+              title="Off"
+              sub="Dark"
+              onPick={() => void send("off", "off", "off")}
+            />
+          </div>
+          {steady && (
+            <ColourBlock
+              label={name}
+              hex={steady.hex}
+              bri={steady.bri}
+              disabled={disabled}
+              onBrightness={(v) => void send("bri", { hex: steady.hex, bri: v }, `brightness ${v}%`)}
+              onColour={(c, bri) => void send("colour", { hex: c, bri }, colourName(c))}
+            />
+          )}
+          {l.online === false && (
+            <p className="text-base text-muted-foreground">
+              It isn't answering. Check it is plugged in and powered.
+            </p>
+          )}
+          {err && <p className="text-sm text-rose-700">{err}</p>}
+          <SetupLink id={l.id} />
+        </LightPanel>
       )}
-      {l.online === false && (
-        <p className="text-base text-muted-foreground">
-          It isn't answering. Check it is plugged in and powered.
-        </p>
-      )}
-      {err && <p className="text-sm text-rose-700">{err}</p>}
-      <SetupLink id={l.id} />
-    </LightShell>
+    </>
   );
 }
 
@@ -528,12 +652,13 @@ export function LightsSection({
   /** Only these lights (a room's lights from rooms.json: Hue lamps by fixture id such as "hue.ne", "light" for every
    *  DMX light, or "light.<id>" for one); nothing renders if none of them exist. */
   only?: string[];
-  /** Inside a room's section: a smaller "Lights" heading under the room name. */
+  /** Inside a room's section: a smaller heading. */
   sub?: boolean;
-  /** The heading (inside the page's Lights fold: "Lamps", or the room's name when several rooms have lights). */
+  /** The heading (the room's name), shown only when more than one room has lights. */
   title?: string;
 }) {
   const own = useFixtures(api, !fixtures);
+  const [openId, setOpenId] = useState<string | null>(null);
   const { view, missing, error, refresh } = fixtures ?? own;
   const wantsDmx = !only || only.some((id) => id === "light" || id.startsWith("light."));
   const rig = useRigLights(api, wantsDmx);
@@ -553,12 +678,24 @@ export function LightsSection({
       ? { tone: "warn" as Tone, text: "Show stopped sending" }
       : { tone: "muted" as Tone, text: "Waiting for the show" };
 
+  const pill = hueOn && view && lamps.length > 0 ? <Pill tone={feed.tone} pulse={!!a?.online}>{feed.text}</Pill> : null;
+  // the room's name over the tiles only when more than one room has lights (else the fold's title says it)
+  const heading = rooms.filter((r) => (r.lights?.length ?? 0) > 0 || (r.effects?.length ?? 0) > 0).length > 1;
+  const toggle = (id: string) => setOpenId((o) => (o === id ? null : id));
+
   return (
-    <DeviceSection
-      title={title}
-      sub={sub}
-      badge={hueOn && view && lamps.length > 0 && <Pill tone={feed.tone} pulse={!!a?.online}>{feed.text}</Pill>}
-    >
+    // tiles by the space the fold has (a column of a two-column page is narrower than the screen's breakpoints say)
+    <section aria-label={title} data-testid="room-lamps" className="[container-type:inline-size]">
+      {heading && (
+        <div className="mb-2 flex items-center justify-between gap-2">
+          {sub ? (
+            <h3 className="text-base font-semibold text-stone-700">{title}</h3>
+          ) : (
+            <h2 className="text-lg font-semibold text-stone-800">{title}</h2>
+          )}
+          {pill}
+        </div>
+      )}
       {hueOn && !view && (
         <p className="flex items-center gap-2 py-3 text-base text-muted-foreground">
           {error ? error : (<><Spinner /> Finding the lights…</>)}
@@ -568,7 +705,7 @@ export function LightsSection({
         <p className="py-2 text-base text-rose-700">Can't reach the lamps right now.</p>
       )}
       {(view || dmx.length > 0) && (
-        <DeviceList>
+        <div className="grid grid-cols-2 gap-2 [@container(min-width:500px)]:grid-cols-4">
           {lamps.map((f) => (
             <LampRow
               key={f.id}
@@ -583,6 +720,9 @@ export function LightsSection({
               addLog={addLog}
               reportError={reportError}
               onChanged={refresh}
+              open={openId === f.id}
+              onToggle={() => toggle(f.id)}
+              badge={heading ? null : pill}
             />
           ))}
           {dmx.map((l) => (
@@ -598,10 +738,12 @@ export function LightsSection({
               addLog={addLog}
               reportError={reportError}
               onChanged={rig.refresh}
+              open={openId === `light.${l.id}`}
+              onToggle={() => toggle(`light.${l.id}`)}
             />
           ))}
-        </DeviceList>
+        </div>
       )}
-    </DeviceSection>
+    </section>
   );
 }

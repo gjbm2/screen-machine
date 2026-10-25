@@ -7,7 +7,8 @@
 //   - every key and pedal as it arrives: WS /show/v1/show with want music.note + music.pedal (silent while nobody
 //     plays). The dot lights on each key; the line names the last key, its velocity and how long ago.
 // What Auto makes of it (its rule and countdown) is under the Auto switch's "How Auto picks ›" (MusicCard.tsx AutoRow).
-// The row sits at the top of the Room page's Piano fold, above the recorder.
+// The row sits at the top of the Room page's Piano fold, above the recorder: one line (owner, 25 Oct: "vertical space is
+// at a HIGH PREMIUM"): the dot, what's coming in ("Relay on · …", or the last key), and the pedals at the right.
 // Nothing to set here: the row only reports.
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -149,30 +150,31 @@ export function PianoRow({
       keys > 1 ? ` · ${keys} keys in 10 s` : ""
     }`;
 
+  // "Relay on/off" leads the line except after a key, when the dot's colour says it (so it isn't said twice)
+  const relay = connected ? "Relay on" : "Relay off";
   return (
-    <div className={cn("space-y-1", className)} data-testid="music-piano">
-      <div className="flex min-h-11 items-center gap-3">
-        <p className="min-w-0 flex-1 text-base font-semibold leading-snug">Keys and pedals</p>
-        <span className={cn("shrink-0 text-sm", connected ? "text-teal-800" : "text-amber-800")}>
-          {connected ? "Relay on" : "Relay off"}
-        </span>
-      </div>
-      <div className="flex items-center gap-2">
-        <span
-          aria-hidden
-          className={cn(
-            "h-2.5 w-2.5 shrink-0 rounded-full transition-colors duration-150",
-            flash ? "scale-125 bg-teal-400" : connected ? "bg-teal-700" : "bg-stone-300",
-          )}
-        />
-        <p className="min-w-0 flex-1 text-sm leading-snug text-stone-700" data-testid="music-piano-line">
-          {line}
-        </p>
-      </div>
-      {/* always there while connected, so the card doesn't jump with every pedal (owner, 23 Oct: "glitchy ui which
+    <div
+      role="group"
+      aria-label="Keys and pedals"
+      className={cn("flex min-h-8 items-center gap-2.5", className, "py-1")}
+      data-testid="music-piano"
+    >
+      <span
+        aria-hidden
+        title={relay}
+        className={cn(
+          "h-2.5 w-2.5 shrink-0 rounded-full transition-colors duration-150",
+          flash ? "scale-125 bg-teal-400" : connected ? "bg-teal-700" : "bg-amber-500",
+        )}
+      />
+      <p className={cn("min-w-0 flex-1 text-sm leading-snug", connected ? "text-stone-700" : "text-amber-800")} data-testid="music-piano-line">
+        {last && <span className="sr-only">{relay} · </span>}
+        {line}
+      </p>
+      {/* always there while connected, so the row doesn't change with every pedal (owner, 23 Oct: "glitchy ui which
           vertical height of component changes rapidly when sustain pressed & released") */}
       {connected && (
-        <p className="text-sm leading-snug text-stone-600">{down.length > 0 ? `Pedal down: ${down.join(", ")}` : "Pedals up"}</p>
+        <span className="shrink-0 text-sm text-stone-600">{down.length > 0 ? `Pedal down: ${down.join(", ")}` : "Pedals up"}</span>
       )}
     </div>
   );

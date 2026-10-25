@@ -1,21 +1,22 @@
 // The Piano fold (owner, 22 Oct; 24 Oct: one recorder, one list of recordings): Record what's played on the piano
 // (PianoRecorder.tsx, the same recorder as Music › Mine: Record / Stop, then the new recording's Play it · Score · Keep ·
-// Discard), then the newest three recordings as Music's rows (tap = play through the app's music player, so the dock
-// and Now playing show it; the score button; ⋯ for Play next, Add to a playlist…, Edit details, Download, Delete), and
-// "All recordings ›" (Music › Mine). The rows need the Music page's parts, so the card gives them a MusicProvider of
+// Discard), with "All recordings ›" (Music › Mine) and Piano settings at the right of Record's row, then the newest
+// recordings as one-line rows, two to a row when the card is 640 px wide (owner, 25 Oct: "vertical space is at a HIGH
+// PREMIUM"; four there, else three): tap = play through the app's music player, so the dock and Now playing show it; the score
+// button; ⋯ for Play next, Add to a playlist…, Edit details, Download, Delete (Music's sheet). The rows need the Music page's parts, so the card gives them a MusicProvider of
 // its own: the app's player (the dock's), the library client, and a short message line in the card.
 // Also here, shared with the Music page and Test music: SoundChoice (the piano's sound) and PlayStatus (the test
 // piano's progress). Everything goes through room_service's /show pass-through to show_service. The whole card stays
 // hidden until show_service has the recorder. Words only: no ids, files or numbers a person doesn't need.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Check, ChevronRight } from "lucide-react";
+import { Check, ChevronRight, FileMusic, MoreHorizontal, Pin, Settings2 } from "lucide-react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAppPlayer } from "@/components/player/appPlayer";
 import { cn } from "@/lib/utils";
 import { MusicApi } from "@/pages/Music/api";
-import { isDefaultTake, PieceRow, PieceSheet, type PieceRef } from "@/pages/Music/bits";
-import { MusicProvider, useFlash, usePlaylists, type MusicCtx, type MusicTab } from "@/pages/Music/context";
+import { hasScore, isDefaultTake, PieceSheet, playGuess, useNowOn, useOpenScore, type PieceRef } from "@/pages/Music/bits";
+import { MusicProvider, useFlash, useMusic, usePlaylists, type MusicCtx, type MusicTab } from "@/pages/Music/context";
 import { PLAYER_BUSY, usePlayer } from "@/pages/Music/usePlayer";
 import { Spinner, Unroll } from "./bits";
 import { PianoRecorder, recPiece, REC_PREFIX, useRecorder } from "./PianoRecorder";
@@ -25,8 +26,9 @@ import type { PianoRecording, ShowTestState } from "./types";
 import { type PianoSound } from "./usePianoSound";
 import type { NewLogEntry } from "./useRoomConnection";
 
-/** Recordings shown in the fold before "All recordings ›". */
-const SHOW_FIRST = 3;
+/** Recordings shown in the fold before "All recordings ›" (the last one only when the card is 640 px wide, two to a
+ *  row there). */
+const SHOW_FIRST = 4;
 
 /** "Today 22:15", "Yesterday 09:03", "Tue 14 Oct, 18:40" (local time). */
 function when(iso: string): string {
@@ -189,6 +191,49 @@ function takeLine(t: PianoRecording): string {
   return [t.composer, clock(t.duration_s), isDefaultTake(t.title) ? null : when(t.recorded_at)].filter(Boolean).join(" · ");
 }
 
+const ICON_BUTTON =
+  "grid h-11 w-11 shrink-0 place-items-center rounded-xl text-stone-600 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+
+/** A recording in one line: its name, then "0:29 · Yesterday 09:21" (muted); tap plays it (as Music's rows do), the
+ *  score button, ⋯ for the rest. */
+function TakeRow({ piece, line, onMore, className }: { piece: PieceRef; line: string; onMore: () => void; className?: string }) {
+  const { player, flash, pinnedOf } = useMusic();
+  const openScore = useOpenScore();
+  const on = useNowOn(piece.id);
+  const pinned = pinnedOf(piece.id, !!piece.pinned);
+  const play = () => {
+    void player.act({ action: "play", piece: piece.id }, playGuess(piece)).then((r) => flash(r.ok ? `Playing ${piece.title}` : r.words));
+  };
+  return (
+    <li className={cn("flex min-w-0 items-center rounded-xl", on && "bg-teal-50/70", className)}>
+      <button
+        type="button"
+        onClick={play}
+        title={line ? `${piece.title} · ${line}` : piece.title}
+        className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-xl px-2 text-left hover:bg-stone-100/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {on &&
+          (on === "preparing" ? (
+            <Spinner className="h-3.5 w-3.5" />
+          ) : (
+            <span aria-label="Playing" className="h-2 w-2 shrink-0 rounded-full bg-teal-600 motion-safe:animate-pulse" />
+          ))}
+        <span className="min-w-0 truncate text-[15px] font-medium">{piece.title}</span>
+        {pinned && <Pin className="h-3.5 w-3.5 shrink-0 fill-teal-700 text-teal-700" aria-label="Pinned" />}
+        {line && <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{line}</span>}
+      </button>
+      {hasScore(piece) && (
+        <button type="button" onClick={() => openScore(piece.id)} aria-label={`Score of ${piece.title}`} title="Score" className={ICON_BUTTON}>
+          <FileMusic className="h-5 w-5" aria-hidden />
+        </button>
+      )}
+      <button type="button" onClick={onMore} aria-label={`More for ${piece.title}`} className={ICON_BUTTON}>
+        <MoreHorizontal className="h-5 w-5" aria-hidden />
+      </button>
+    </li>
+  );
+}
+
 /** The Music page's shared parts for the rows here: the app's player (the dock's), the library, a message line. */
 function useRoomMusic(baseUrl: string, onLibrary: () => void): { ctx: MusicCtx; msg: string | null } {
   const navigate = useNavigate();
@@ -237,7 +282,7 @@ export function PianoCard({
   reportError?: (e: unknown) => void;
   /** Inside a fold that already says "Piano": no heading of its own. */
   bare?: boolean;
-  /** Told the card in one line ("Record · last recording Today 14:05", "Recording · 1:23"), or null while the
+  /** Told the card in one line ("Last recording Today 14:05", "Recording · 12 notes"), or null while the
    *  recorder isn't there (the card is hidden), e.g. for a fold's closed summary. */
   onSummary?: (line: string | null) => void;
 }) {
@@ -254,10 +299,11 @@ export function PianoCard({
   const summaryLine = (() => {
     if (r.missing) return null;
     if (!r.ready) return undefined;
-    if (r.recording) return `Recording · ${clock(r.elapsed)}`;
+    // the heading's Record pill sits beside this line (with the time while recording), so neither is said here again
+    if (r.recording) return `Recording · ${r.notes} note${r.notes === 1 ? "" : "s"}`;
     if (playingRec) return `Playing · ${playingRec.title}`;
     const newest = r.takes.reduce<PianoRecording | null>((a, t) => (!a || t.recorded_at > a.recorded_at ? t : a), null);
-    return newest ? `Record · last recording ${when(newest.recorded_at) || newest.title}` : "Record · no recordings yet";
+    return newest ? `Last recording ${when(newest.recorded_at) || newest.title}` : "No recordings yet";
   })();
   useEffect(() => {
     if (summaryLine !== undefined) sumRef.current?.(summaryLine);
@@ -281,37 +327,51 @@ export function PianoCard({
             Piano
           </h2>
         )}
-        <div className={cn(CARD_CLASS, "space-y-4 px-3 py-3 sm:px-4")}>
-          <PianoRecorder baseUrl={api.baseUrl} connected={connected} onLog={log} />
+        <div className={cn(CARD_CLASS, "space-y-1 px-2 py-1 [container-type:inline-size] sm:px-3")}>
+          <div className="px-1">
+            <PianoRecorder
+              baseUrl={api.baseUrl}
+              connected={connected}
+              onLog={log}
+              hint={null}
+              end={
+                <>
+                  {rows.length > 0 && (
+                    <Link to={musicHref({ tab: "mine" })} className={link}>
+                      {rows.length > SHOW_FIRST ? `All ${rows.length} recordings` : "All recordings"}{" "}
+                      <ChevronRight className="h-4 w-4" aria-hidden />
+                    </Link>
+                  )}
+                  {bare && (
+                    <Link to="/settings#music" aria-label="Piano settings" title="Piano settings" className={ICON_BUTTON}>
+                      <Settings2 className="h-5 w-5" aria-hidden />
+                    </Link>
+                  )}
+                </>
+              }
+            />
+          </div>
 
           {rows.length > 0 ? (
-            <section aria-labelledby="room-piano-recs" className="space-y-2">
-              <h3 id="room-piano-recs" className="text-[15px] font-semibold">
-                Recordings
-              </h3>
-              <ul className="space-y-2" aria-label="Recordings">
-                {shown.map((t) => (
-                  <PieceRow key={t.id} piece={pieceOf(t)} line={takeLine(t)} onMore={() => setSheet(pieceOf(t))} />
-                ))}
-              </ul>
-              <Link to={musicHref({ tab: "mine" })} className={link}>
-                {rows.length > SHOW_FIRST ? `All ${rows.length} recordings` : "All recordings"} <ChevronRight className="h-4 w-4" aria-hidden />
-              </Link>
-            </section>
+            <ul className="grid gap-x-3 border-t border-stone-100 [@container(min-width:640px)]:grid-cols-2" aria-label="Recordings">
+              {shown.map((t, i) => (
+                <TakeRow
+                  key={t.id}
+                  piece={pieceOf(t)}
+                  line={takeLine(t)}
+                  onMore={() => setSheet(pieceOf(t))}
+                  className={i === SHOW_FIRST - 1 ? "[@container(max-width:639px)]:hidden" : undefined}
+                />
+              ))}
+            </ul>
           ) : (
-            !r.fresh && !r.recording && <p className="text-base text-muted-foreground">No recordings yet. Press Record and play.</p>
+            !r.fresh && !r.recording && <p className="px-1 text-base text-muted-foreground">No recordings yet. Press Record and play.</p>
           )}
 
           {msg && (
-            <p className="text-[15px] text-teal-900" role="status">
+            <p className="px-1 text-[15px] text-teal-900" role="status">
               {msg}
             </p>
-          )}
-
-          {bare && (
-            <Link to="/settings#music" className={cn(link, "text-stone-600")}>
-              Piano settings <ChevronRight className="h-4 w-4" aria-hidden />
-            </Link>
           )}
         </div>
         <PieceSheet piece={sheet} onClose={() => setSheet(null)} />

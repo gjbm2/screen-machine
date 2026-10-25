@@ -1,6 +1,7 @@
 // The top of the Room page's Lights fold (ia, 24 Oct): the two switches that change every lamp at once, House lights
 // and Lights low (show_service's actions, through room_service's /show pass-through; they used to sit in Look, where
-// someone dimming the lamps couldn't find them). Each appears once, here, next to the lamps they change.
+// someone dimming the lamps couldn't find them). Each appears once, here, next to the lamps they change: side by side
+// in one row (owner, 25 Oct: "vertical space is at a HIGH PREMIUM"), what each does in its tooltip.
 //
 // lightsWords(): the fold's closed summary from the lights' real states (owner, 24 Oct: it said "4 lamps follow the
 // music" while all four were off): the Hue lamps from room_service's fixtures view (status per lamp), the DMX lights
@@ -9,7 +10,6 @@
 
 import { useEffect, useState } from "react";
 import { Switch } from "@/components/ui/switch";
-import { cn } from "@/lib/utils";
 import type { RoomApi } from "./api";
 import { Spinner } from "./bits";
 import { NoteLine, useSend, useShowState, type ShowFeed } from "./MusicCard";
@@ -112,10 +112,10 @@ export function RoomLightsRow({ api, feed, addLog }: { api: RoomApi; feed: ShowF
   const lowOn = pendingLow ?? !!card?.low;
 
   const row = (key: "house" | "low", label: string, sub: string, on: boolean, set: (v: boolean) => void) => (
-    <label className="flex min-h-14 items-center justify-between gap-3 px-3 py-2 sm:px-4">
-      <span className="min-w-0">
-        <span className="block text-base font-medium">{label}</span>
-        <span className="block text-sm leading-snug text-muted-foreground">{sub}</span>
+    <label title={sub} className="flex min-h-11 min-w-0 cursor-pointer items-center justify-between gap-2 px-3 sm:px-4">
+      <span className="min-w-0 truncate text-base font-medium">
+        {label}
+        <span className="sr-only">: {sub}</span>
       </span>
       <span className="flex shrink-0 items-center gap-2">
         {busy(key) && <Spinner />}
@@ -125,10 +125,12 @@ export function RoomLightsRow({ api, feed, addLog }: { api: RoomApi; feed: ShowF
   );
 
   return (
-    <div className={cn(CARD_CLASS, "divide-y divide-stone-100")} data-testid="room-lights-row">
-      {row("house", "House lights", "The lamps light the room as usual instead of following the music.", houseOn, setHouse)}
-      {row("low", "Lights low", "Dims the lamps. The screens stay as they are.", lowOn, setLow)}
-      {main.note && <NoteLine note={main.note} className="px-3 py-2 sm:px-4" />}
+    <div className={CARD_CLASS} data-testid="room-lights-row">
+      <div className="grid grid-cols-2 divide-x divide-stone-100">
+        {row("house", "House lights", "The lamps light the room as usual instead of following the music.", houseOn, setHouse)}
+        {row("low", "Lights low", "Dims the lamps. The screens stay as they are.", lowOn, setLow)}
+      </div>
+      {main.note && <NoteLine note={main.note} className="border-t border-stone-100 px-3 py-2 sm:px-4" />}
     </div>
   );
 }
