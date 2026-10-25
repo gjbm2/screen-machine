@@ -5,13 +5,14 @@
 // Reads GET /show/api/v1/inputs (a few hundred bytes) every 2 s while the page is visible; nothing else polls here.
 
 import { useEffect, useState } from "react";
-import { ExternalLink } from "lucide-react";
+import { ChevronDown, ExternalLink } from "lucide-react";
 import { displayUrl } from "@/components/nav/appNav";
 import { cn } from "@/lib/utils";
 import { openFold } from "./Section";
 import type { RoomApi } from "./api";
 
 const POLL_MS = 2000;
+const OPEN_KEY = "sm_room_inout_open";
 
 interface InputsBody {
   inputs?: { stream: string; label?: string; state?: string; device?: string | null; rms_dbfs?: number | null; silent?: boolean | null }[];
@@ -59,6 +60,23 @@ export function InOutPanel({
 }) {
   const [body, setBody] = useState<InputsBody | null>(null);
   const [down, setDown] = useState(false);
+  // closed by default: one line of dots; open shows the words (owner, 25 Oct: "on mobile it takes up MOST OF A SCREEN
+  // HEIGHT"). Remembered on this device.
+  const [open, setOpenState] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(OPEN_KEY) === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setOpen = (v: boolean) => {
+    setOpenState(v);
+    try {
+      localStorage.setItem(OPEN_KEY, v ? "1" : "0");
+    } catch {
+      /* not remembered */
+    }
+  };
 
   useEffect(() => {
     let stop = false;
@@ -113,8 +131,47 @@ export function InOutPanel({
   });
 
   const row = "flex min-w-0 items-start gap-2 text-[15px] leading-snug";
+  const chip = (tone: "on" | "idle" | "off" | "bad", label: string, key: string) => (
+    <span key={key} className="inline-flex items-center gap-1 whitespace-nowrap">
+      <span
+        aria-hidden
+        className={cn(
+          "h-2 w-2 rounded-full",
+          tone === "on" ? "bg-teal-500" : tone === "idle" ? "bg-teal-800/50" : tone === "bad" ? "bg-rose-600" : "bg-stone-300",
+        )}
+      />
+      {label}
+    </span>
+  );
+  const head = (
+    <button
+      type="button"
+      onClick={() => setOpen(!open)}
+      aria-expanded={open}
+      className="flex min-h-11 w-full items-center gap-2 text-left text-sm text-stone-700"
+      data-testid="in-out-toggle"
+    >
+      <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-0.5">
+        <span className="font-semibold text-stone-500">In</span>
+        {chip(pianoTone, "Piano", "p")}
+        {mics.filter((m) => m.tone !== "off").map((m) => chip(m.tone, "Mic", m.key))}
+        <span className="font-semibold text-stone-500">Out</span>
+        {screens.map((sc) => chip(sc.live ? "on" : "idle", sc.name, sc.id))}
+      </span>
+      <ChevronDown aria-hidden className={cn("h-5 w-5 shrink-0 text-stone-500 transition-transform", open && "rotate-180")} />
+    </button>
+  );
+  if (!open) {
+    return (
+      <div className="rounded-2xl border border-stone-200 bg-white/70 px-3" data-testid="in-out">
+        {head}
+      </div>
+    );
+  }
   return (
-    <div className="grid gap-3 rounded-2xl border border-stone-200 bg-white/70 px-4 py-3 sm:grid-cols-2" data-testid="in-out">
+    <div className="rounded-2xl border border-stone-200 bg-white/70 px-3 pb-3" data-testid="in-out">
+      {head}
+    <div className="grid gap-3 px-1 sm:grid-cols-2">
       <button
         type="button"
         onClick={() => openFold("listening")}
@@ -122,7 +179,6 @@ export function InOutPanel({
         title="Details: Listening"
         data-testid="in-line"
       >
-        <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">In</p>
         <p className={row}>
           <Dot tone={pianoTone} />
           <span className="min-w-0">
@@ -139,7 +195,6 @@ export function InOutPanel({
         ))}
       </button>
       <div className="min-w-0 space-y-1">
-        <p className="text-xs font-semibold uppercase tracking-wide text-stone-500">Out</p>
         {screens.map((s) => (
           <a
             key={s.id}
@@ -170,6 +225,7 @@ export function InOutPanel({
           </span>
         </p>
       </div>
+    </div>
     </div>
   );
 }
