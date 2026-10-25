@@ -130,8 +130,10 @@ export function Section({
       aria-labelledby={hid}
       data-testid={`fold-${id}`}
       hidden={hidden}
-      className={cn("scroll-mt-[calc(var(--app-top,0px)+0.5rem)] py-1.5", className)}
+      className={cn("scroll-mt-[calc(var(--app-top,0px)+0.5rem)]", className)}
     >
+      {/* closed: one line, 52 px (owner, 25 Oct: "vertical space is at a HIGH PREMIUM"): the title and its summary
+          side by side from 640 px; on a phone the summary sits under the title, one truncated line */}
       <div className="flex items-center gap-2">
         <h2 className="m-0 min-w-0 flex-1">
           <button
@@ -140,12 +142,15 @@ export function Section({
             aria-expanded={open}
             aria-controls={cid}
             onClick={toggle}
-            className="flex min-h-14 w-full items-center gap-3 rounded-xl px-1 py-2 text-left hover:bg-stone-100/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="flex min-h-[52px] w-full items-center gap-3 rounded-xl px-1 py-1 text-left hover:bg-stone-100/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <span className="min-w-0 flex-1">
-              <span className="block text-lg font-semibold leading-snug text-stone-800">{title}</span>
+            <span className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-baseline sm:gap-3">
+              <span className="block shrink-0 text-[17px] font-semibold leading-tight text-stone-800 sm:text-lg">{title}</span>
               {!open && summary && (
-                <span className="block truncate text-[15px] font-normal leading-snug text-muted-foreground" data-testid={`fold-${id}-summary`}>
+                <span
+                  className="block min-w-0 truncate text-sm font-normal leading-tight text-muted-foreground sm:text-[15px]"
+                  data-testid={`fold-${id}-summary`}
+                >
                   {summary}
                 </span>
               )}

@@ -1,25 +1,28 @@
 // Every page's header (owner, 24 Oct: "you just haven't really worked the interface ui through properly throughout"):
 // one header for the Room page, Music, Lights setup, Settings, the generator and Schedules, so they read as one app.
+// Two rows at most (owner, 25 Oct: "vertical space is at a HIGH PREMIUM on a mobile"), nothing said twice:
 //
-//   Row 1  [‹ back]  Title  · state pills ·  [Mic] [AI]  · status ·  ☰
-//            - back: only on a sub-page (BackLink.tsx: a score, Lights setup, Settings, Schedules);
-//            - state pills: "Live · Party" while a live mode runs (a tap goes to the modes), "● Recording 2:13" while
-//              the piano records, on every page (a tap: a sheet with Stop), "PC busy" (a tap says what it costs), and any the page
-//              adds;
+//   Row 1  A place (Room · Music · Lights · Generator): its tabs, this page highlighted (the highlighted tab is the
+//          title; Room, Music and Lights only while the room answers, as in the menu; a place's back link would name
+//          another tab, so that tab takes its address). A sub-page (Settings, Schedules; a score draws its own): "‹ back"
+//          and its title, no tabs ("‹ Room" beside a Room tab said it twice; the menu has every place).
+//          Then the state pills, the Mic and AI switches, the link's status and the menu:
+//            - state pills: "Live · Party" while a live mode runs (not where the page's line already says it),
+//              "● Recording 2:13" while the piano records (a tap: a sheet with Stop), "PC busy" (a tap says what it
+//              costs), and any the page adds;
 //            - Mic and AI: the room's two switches (TopToggles.tsx), on every page that can reach the room;
 //            - status: nothing while all is well; an amber or red pill when the page's link is down (a tap opens the
 //              menu, which says it in full);
 //            - the menu button (the app's one menu, AppMenu.tsx).
-//   Row 2  The switches in words: "Mic in use · AI off  Listening details ›" (at phone width the state pills sit
-//          here too, so row 1 never wraps).
-//   Row 3  The places: Room · Music · Lights · Generator, this page highlighted (Room, Music and Lights only while the
-//          room answers, as in the menu).
+//   Row 2  One status line: the page's own words (the Room page: "Normal · art on all 3 screens · lights off ·
+//          nothing playing") and what the switches add beyond on/off ("mic in use for Auto"); a tap opens the Listening
+//          details. On a phone the pills and switches end this row (the tabs, or back and title, fill row 1).
 //
 // Links are AppLinks (no reload). The TV pages (/display) never use this.
 
 import { useMemo, useState, type ReactNode } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { Menu, Square } from "lucide-react";
+import { ChevronRight, Menu, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { roomApi, useRoomLink } from "@/components/room/roomLink";
 import { cn } from "@/lib/utils";
@@ -29,13 +32,13 @@ import { ActionSheet } from "@/pages/Room/overlays";
 import { NewTakePanel, useRecorder, type Recorder } from "@/pages/Room/PianoRecorder";
 import { clock } from "@/pages/Room/RecordButton";
 import { RoomThemeStyle } from "@/pages/Room/theme";
-import { useShowFeed } from "@/pages/Room/MusicCard";
 import { TONE_CLASSES, type Tone } from "@/pages/Room/tones";
-import { TopToggleButtons, TopToggleLine, useTopToggles, type TopToggles } from "@/pages/Room/TopToggles";
+import { NoteLine, useShowFeed } from "@/pages/Room/MusicCard";
+import { TopToggleButtons, topToggleWords, useTopToggles, type TopToggles } from "@/pages/Room/TopToggles";
 import type { PcLoad } from "@/pages/Room/usePcLoad";
 import { AppLink } from "./AppLink";
 import { PLACES, roomPageUrl, type AppPage } from "./appNav";
-import { BackLink } from "./BackLink";
+import { BackLink, placeName } from "./BackLink";
 import { useRoomGlance } from "./useRoomGlance";
 
 /** The page's link to what it talks to, as Room's connection.ts words it. */
@@ -57,8 +60,10 @@ export interface PageHeaderProps {
   /** The Mic and AI switches: the page's own (it already has the show feed), "auto" (the header runs its own while
    *  the room answers), or none. */
   toggles?: TopToggles | "auto" | null;
-  /** Where "Listening details ›" (and a long press on a switch) goes; by default /room#listening. */
+  /** Where the status line (and a long press on a switch) goes: the Listening details; by default /room#listening. */
   onDetails?: () => void;
+  /** The page's own words for row 2, before the switches' (the Room page: "Normal · art on all 3 screens · …"). */
+  line?: string | null;
   /** The page's link; shown only when it isn't fine. */
   status?: HeaderStatus | null;
   /** "PC busy" (the Room page reads it). */
@@ -69,7 +74,7 @@ export interface PageHeaderProps {
   actions?: ReactNode;
   /** A sub-page's one back control: where it goes when there is no history (BackLink's `to`), and its words. */
   back?: { to: string; label?: string } | null;
-  /** The places row (default on). */
+  /** The places tabs (default on). */
   places?: boolean;
   /** Smaller title, for the desktop power pages (the generator, Schedules). */
   compact?: boolean;
@@ -199,6 +204,7 @@ function HeaderBody({
   onMenu,
   toggles,
   onDetails,
+  line,
   status,
   pc,
   pills,
@@ -221,9 +227,21 @@ function HeaderBody({
   const pcBusy = !!pc?.busy;
   const statusShown = !!status && status.tone !== "ok";
 
+  const visiblePlaces = places ? PLACES.filter((p) => !p.lan || glance.onLan || p.page === current) : [];
+  // the tabs are on the places themselves, where this page's highlighted tab is the title (no second "Room" beside
+  // the Room tab); a sub-page has its back link and title instead ("‹ Room" beside a Room tab said it twice), and the
+  // menu has every place
+  const isPlace = visiblePlaces.length > 1 && visiblePlaces.some((p) => p.page === current);
+  const showPlaces = isPlace;
+  // a place's back link would name another tab ("‹ Room" beside the Room tab): that tab takes the back link's address
+  const backPlace = isPlace && back ? visiblePlaces.find((p) => p.page !== current && placeName(back.to) === p.label)?.page : undefined;
+  const showBack = !!back && !isPlace;
+  // the page's line already names a live mode ("Party · live on all 3 screens"): no "Live · Party" pill beside it
+  const liveShown = !!glance.liveMode && !line;
+
   const statePills = (
     <>
-      {glance.liveMode && <LivePill mode={glance.liveMode} current={current} />}
+      {liveShown && glance.liveMode && <LivePill mode={glance.liveMode} current={current} />}
       <RecordingPill r={rec} onOpen={() => setRecOpen(true)} />
       {pcBusy && (
         <button
@@ -243,30 +261,71 @@ function HeaderBody({
       {pills}
     </>
   );
-  const anyPill = !!glance.liveMode || rec.recording || pcBusy || !!pills;
+  const anyPill = liveShown || rec.recording || pcBusy || !!pills;
 
-  const visiblePlaces = PLACES.filter((p) => !p.lan || glance.onLan || p.page === current);
+  // Row 2's words: the page's line, then what the switches add beyond on/off ("mic in use for Auto"); a tap opens
+  // the Listening details. A failed or retrying switch tap's words take the switches' part.
+  const toggleWords = toggles && !toggles.note ? topToggleWords(toggles) : null;
+  const words = [line, toggleWords].filter(Boolean).join(" · ");
+  const hasLine = !!words || !!toggles?.note;
+
+  const placesNav = showPlaces && (
+    <nav aria-label="Places" data-testid="places" className="-ml-1 flex min-w-0 shrink items-center overflow-x-auto text-sm [scrollbar-width:none] sm:gap-0.5 sm:text-[15px]">
+      {visiblePlaces.map((p) => {
+        const here = p.page === current;
+        const href = p.page === backPlace && back ? back.to : p.href();
+        return (
+          <AppLink
+            key={p.page}
+            href={href}
+            aria-current={here ? "page" : undefined}
+            data-testid={`place-${p.page}`}
+            onClick={(e) => {
+              // the page itself: back to its top (and out of a sub-view like a score)
+              if (here && pathname === href.split(/[?#]/)[0] && !window.location.search) {
+                e.preventDefault();
+                window.scrollTo({ top: 0, behavior: "smooth" });
+              }
+            }}
+            className={cn(
+              "inline-flex h-11 shrink-0 items-center rounded-full focus-visible:outline-none sm:px-0.5 [&:focus-visible>span]:ring-2 [&:focus-visible>span]:ring-ring",
+            )}
+          >
+            <span
+              className={cn(
+                "inline-flex h-9 items-center rounded-full px-2 font-medium sm:px-3",
+                here ? "bg-teal-700 font-semibold text-white" : "text-stone-700 hover:bg-stone-200/60",
+              )}
+            >
+              {p.label}
+            </span>
+          </AppLink>
+        );
+      })}
+    </nav>
+  );
+
+  const switches = toggles && <TopToggleButtons t={toggles} onDetails={details} />;
 
   return (
-    <header className={cn("pb-1 pt-3", className)} data-testid="page-header">
-      {/* a back link and the switches leave a phone no room for the title on the same line (it shrank to "S…"):
-          there the title takes the line under them, in full */}
-      <div className={cn("flex min-w-0 items-center gap-x-1", back && toggles && "max-sm:flex-wrap")}>
-        {back && <BackLink to={back.to} label={back.label} />}
-        {back && toggles && <span aria-hidden className="flex-1 sm:hidden" />}
+    <header className={cn("pt-2", className)} data-testid="page-header">
+      {/* Row 1: a place: its tabs; a sub-page: back and title. The pills and switches sit here from 640 px (on a phone
+          they end row 2, so this row never wraps). */}
+      <div className="flex min-w-0 items-center gap-x-1">
+        {showBack && back && <BackLink to={back.to} label={back.label} className="max-sm:pr-1" />}
         <h1
           className={cn(
-            "mr-auto min-w-0 truncate font-semibold leading-tight tracking-tight",
-            compact ? "text-[22px]" : "text-[28px]",
-            back && "text-[22px]",
-            back && toggles && "max-sm:order-last max-sm:mr-0 max-sm:basis-full",
+            "min-w-0 truncate font-semibold leading-tight tracking-tight",
+            isPlace ? "sr-only" : compact || showBack ? "text-[22px]" : "text-[28px]",
+            !isPlace && "mr-2",
           )}
         >
           {title}
         </h1>
-        {/* with the switches, phone width has no room for the pills here: they sit on the line under */}
-        {anyPill && <span className={cn("flex shrink-0 items-center", toggles && "max-sm:hidden")}>{statePills}</span>}
-        {toggles && <TopToggleButtons t={toggles} onDetails={details} />}
+        {showPlaces && <div className="min-w-0">{placesNav}</div>}
+        <span aria-hidden className="flex-1" />
+        {anyPill && <span className="flex shrink-0 items-center max-sm:hidden">{statePills}</span>}
+        {switches && <span className="shrink-0 max-sm:hidden">{switches}</span>}
         {statusShown && status && (
           <button
             type="button"
@@ -297,10 +356,34 @@ function HeaderBody({
         </Button>
       </div>
 
-      {toggles && (
-        <div className="flex min-w-0 flex-wrap items-center gap-x-2">
+      {/* Row 2: one status line (tap = Listening details); on a phone the pills and switches end it */}
+      {(hasLine || anyPill || switches) && (
+        <div className="flex min-w-0 items-center gap-x-1">
+          {toggles?.note ? (
+            <NoteLine note={toggles.note} className="min-w-0 flex-1 py-1 text-sm" />
+          ) : words && toggles ? (
+            <button
+              type="button"
+              onClick={details}
+              data-testid="header-line"
+              title="Listening details"
+              className="group flex min-h-11 min-w-0 flex-1 items-center gap-0.5 rounded-lg text-left text-[15px] leading-snug text-stone-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring max-sm:text-sm"
+            >
+              <span data-testid="room-line" role="status" className="min-w-0 group-hover:underline max-sm:line-clamp-2 sm:truncate">
+                {words}
+              </span>
+              <ChevronRight aria-hidden className="h-4 w-4 shrink-0 text-teal-800" />
+              <span className="sr-only">Listening details</span>
+            </button>
+          ) : words ? (
+            <p data-testid="room-line" role="status" className="min-w-0 flex-1 py-1 text-[15px] leading-snug text-stone-700 max-sm:text-sm sm:truncate">
+              {words}
+            </p>
+          ) : (
+            <span className="flex-1" />
+          )}
           {anyPill && <span className="flex shrink-0 items-center sm:hidden">{statePills}</span>}
-          <TopToggleLine t={toggles} onDetails={details} className="min-w-[15rem] flex-1" />
+          {switches && <span className="shrink-0 sm:hidden">{switches}</span>}
         </div>
       )}
 
@@ -313,36 +396,6 @@ function HeaderBody({
       {children}
 
       <RecordingSheet r={rec} baseUrl={recBase} open={recOpen} onClose={() => setRecOpen(false)} />
-
-      {places && visiblePlaces.length > 1 && (
-        <nav aria-label="Places" data-testid="places" className="-mx-1 flex flex-wrap items-center gap-1 pt-1 text-[15px]">
-          {visiblePlaces.map((p) => {
-            const here = p.page === current;
-            const href = p.href();
-            return (
-              <AppLink
-                key={p.page}
-                href={href}
-                aria-current={here ? "page" : undefined}
-                data-testid={`place-${p.page}`}
-                onClick={(e) => {
-                  // the page itself: back to its top (and out of a sub-view like a score)
-                  if (here && pathname === href.split(/[?#]/)[0] && !window.location.search) {
-                    e.preventDefault();
-                    window.scrollTo({ top: 0, behavior: "smooth" });
-                  }
-                }}
-                className={cn(
-                  "inline-flex h-9 items-center rounded-full px-3 font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                  here ? "bg-teal-700 text-white" : "text-stone-700 hover:bg-stone-200/60",
-                )}
-              >
-                {p.label}
-              </AppLink>
-            );
-          })}
-        </nav>
-      )}
     </header>
   );
 }
