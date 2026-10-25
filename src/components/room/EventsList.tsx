@@ -6,9 +6,12 @@
 // a room (read through the shared useRoomSchedule) or the events themselves. Labels are friendly (the schedule's label,
 // else the event name in words), "_" names and room:false triggers are left out here too, an optional lead-in line sits
 // above the chips, and with `describe` each event's description (when the schedule gives one) shows under its button.
+// `inline` puts everything in one row instead (owner, 25 Oct: "vertical space is at a HIGH PREMIUM"): the chips scroll
+// sideways where they don't fit, the lead-in is the row's label for screen readers, each description is in its
+// button's tooltip, and `end` (e.g. "Schedules ›") sits at the row's end.
 // No frame or page styling: the caller places it (a card, a disclosure).
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Check, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -31,6 +34,10 @@ export interface EventsListProps {
   lead?: string;
   /** Show each event's description under its button, when it has one. */
   describe?: boolean;
+  /** One row: the lead-in as its label, descriptions as tooltips, `end` at the row's end. */
+  inline?: boolean;
+  /** With `inline`: at the end of the row (e.g. a link). */
+  end?: ReactNode;
 }
 
 /** "Develop_theme" -> "Develop theme"; "toggleAnimation" -> "Toggle animation". */
@@ -61,7 +68,18 @@ export function useRoomEvents(room: string | null | undefined, destination?: str
   return visibleEvents(destination ? data.screens?.[destination] ?? [] : data.actions ?? []);
 }
 
-export function EventsList({ room, events: given, destination, empty, className, onSent, lead, describe = false }: EventsListProps) {
+export function EventsList({
+  room,
+  events: given,
+  destination,
+  empty,
+  className,
+  onSent,
+  lead,
+  describe = false,
+  inline = false,
+  end,
+}: EventsListProps) {
   const read = useRoomEvents(given ? null : room, destination);
   const events = given ? visibleEvents(given) : read;
   const [state, setState] = useState<Record<string, "sending" | "sent">>({});
@@ -120,6 +138,25 @@ export function EventsList({ room, events: given, destination, empty, className,
     );
   };
   const described = describe && events.some((ev) => ev.description?.trim());
+
+  if (inline) {
+    return (
+      <div className={className}>
+        <div role="group" aria-label={lead} className="flex min-h-11 items-center gap-x-2">
+          {/* the chips scroll sideways in one line where they don't fit, so the row stays one row and `end` in view */}
+          <div className="-my-1 flex min-w-0 flex-1 gap-2 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            {events.map(button)}
+          </div>
+          {end && <span className="shrink-0">{end}</span>}
+        </div>
+        {error && (
+          <p role="alert" className="mt-2 text-sm text-destructive">
+            {error}
+          </p>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={className}>

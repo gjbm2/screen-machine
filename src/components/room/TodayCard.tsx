@@ -2,13 +2,15 @@
 // scheduler group (routes/scheduler_room.py: names starting with "_" and exports with "room": false never show), in the
 // order a schedule run sets them, under its friendly name: the value (long text clamped, tap to read it all), who set
 // it and when, and which screens use it. Edit changes it through the exported-vars API; the screens pick it up on their
-// next run. Each value shows on one line with "Show all" when there is more (24 Oct walkthrough: five long prompts filled
-// the fold). Under them, the room's actions (EventsList: e.g. "Get inspiration", "Develop theme") after a lead-in line,
-// each with its description when the schedule gives one, then the caller's footer (the Room page: "Schedules ›").
+// next run. Each variable is one line, "Style · Color Field painting…", two to a row when the card is 640 px wide
+// (owner, 25 Oct: "vertical space is at a HIGH PREMIUM"); a tap opens it across the row: the whole value, who set it
+// and when, which screens use it, and Edit. Under them, the room's actions (EventsList: e.g. "Get inspiration",
+// "Develop theme") as one row of chips, each one's description in its tooltip, with the caller's footer (the Room
+// page: "Schedules ›") at the end of that row.
 // No variable or event name is written here. No frame: the caller passes the card's classes.
 
-import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import { Pencil } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { ChevronDown, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -26,23 +28,6 @@ export interface TodayCardProps {
   onChange?: (what: string) => void;
   /** Shown at the foot while the card shows (e.g. a link to the schedules). */
   footer?: ReactNode;
-}
-
-/** True when the one-line text is cut off (re-checked as the width changes). */
-function useOverflows(text: string) {
-  const ref = useRef<HTMLSpanElement>(null);
-  const [over, setOver] = useState(false);
-  useLayoutEffect(() => {
-    const el = ref.current;
-    if (!el) return;
-    const check = () => setOver(el.scrollHeight > el.clientHeight + 1 || el.scrollWidth > el.clientWidth + 1);
-    check();
-    if (typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(check);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, [text]);
-  return { ref, over };
 }
 
 /** "06:00" today, "Fri 06:00" this week, else "23 Oct". */
@@ -82,10 +67,9 @@ function VariableRow({ v, room, onChange }: { v: RoomVariable; room: string; onC
   const [draft, setDraft] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const fit = useOverflows(open ? "" : text);
-  const long = open || fit.over;
   const when = whenWords(v.set_at);
   const users = shortNames(v.used_by.map((u) => u.name).sort((a, b) => a.localeCompare(b)));
+  const expanded = open || draft !== null;
 
   const save = async () => {
     if (draft === null) return;
@@ -104,74 +88,80 @@ function VariableRow({ v, room, onChange }: { v: RoomVariable; room: string; onC
   };
 
   return (
-    <li className="py-3 first:pt-0 last:pb-0">
-      <div className="flex items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="text-[15px] font-semibold leading-snug">{v.label}</p>
-          {v.description && <p className="text-sm text-muted-foreground">{v.description}</p>}
-        </div>
-        {v.editable && draft === null && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            className="-mr-2 -mt-1 h-9 shrink-0 px-2 text-muted-foreground"
-            aria-label={`Change ${v.label}`}
-            onClick={() => {
-              setDraft(typeof v.value === "string" ? v.value : text);
-            }}
-          >
-            <Pencil aria-hidden /> Edit
-          </Button>
-        )}
-      </div>
+    <li className={cn("min-w-0", expanded && "col-span-full")}>
+      {/* closed: one line, "Style · Color Field painting…"; a tap shows it all, who set it, which screens use it, Edit */}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={expanded}
+        disabled={draft !== null}
+        className="flex min-h-11 w-full min-w-0 items-center gap-2 rounded-lg px-2 text-left hover:bg-stone-100/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default disabled:hover:bg-transparent"
+      >
+        <span className="min-w-0 flex-1 truncate text-[15px] leading-snug">
+          <span className="font-semibold">{v.label}</span>
+          {!expanded && (
+            <span className={text ? "text-stone-700" : "text-muted-foreground"}> · {text || "Not set yet"}</span>
+          )}
+        </span>
+        <ChevronDown
+          aria-hidden
+          className={cn("h-4 w-4 shrink-0 text-muted-foreground transition-transform motion-reduce:transition-none", expanded && "rotate-180")}
+        />
+      </button>
 
-      {draft !== null ? (
-        <div className="mt-2 space-y-2">
-          <Textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            rows={Math.min(8, Math.max(3, Math.ceil(draft.length / 60)))}
-            className="bg-card text-base"
-            aria-label={v.label}
-            autoFocus
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            <Button type="button" size="sm" disabled={busy} onClick={() => void save()}>
-              {busy ? "Saving…" : "Save"}
-            </Button>
-            <Button type="button" size="sm" variant="outline" className="bg-card" disabled={busy} onClick={() => setDraft(null)}>
-              Cancel
-            </Button>
-            <span className="text-sm text-muted-foreground">The screens use it on their next run.</span>
-          </div>
-          {error && (
-            <p role="alert" className="text-sm text-destructive">
-              {error}
+      {expanded && (
+        <div className="space-y-2 px-2 pb-3">
+          {v.description && <p className="text-sm text-muted-foreground">{v.description}</p>}
+          {draft !== null ? (
+            <div className="space-y-2">
+              <Textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                rows={Math.min(8, Math.max(3, Math.ceil(draft.length / 60)))}
+                className="bg-card text-base"
+                aria-label={v.label}
+                autoFocus
+              />
+              <div className="flex flex-wrap items-center gap-2">
+                <Button type="button" size="sm" disabled={busy} onClick={() => void save()}>
+                  {busy ? "Saving…" : "Save"}
+                </Button>
+                <Button type="button" size="sm" variant="outline" className="bg-card" disabled={busy} onClick={() => setDraft(null)}>
+                  Cancel
+                </Button>
+                <span className="text-sm text-muted-foreground">The screens use it on their next run.</span>
+              </div>
+              {error && (
+                <p role="alert" className="text-sm text-destructive">
+                  {error}
+                </p>
+              )}
+            </div>
+          ) : (
+            <p className={cn("whitespace-pre-wrap break-words text-base leading-relaxed", !text && "text-muted-foreground")}>
+              {text || "Not set yet"}
             </p>
           )}
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <p className="min-w-0 flex-1 text-sm text-muted-foreground">
+              {when ? `Set ${when} by ${v.set_by}` : `From ${v.owner_name}`}
+              {users.length > 0 && ` · Used by ${users.join(" · ")}`}
+            </p>
+            {v.editable && draft === null && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="h-9 shrink-0 bg-card px-3"
+                aria-label={`Change ${v.label}`}
+                onClick={() => setDraft(typeof v.value === "string" ? v.value : text)}
+              >
+                <Pencil aria-hidden /> Edit
+              </Button>
+            )}
+          </div>
         </div>
-      ) : text ? (
-        <button
-          type="button"
-          disabled={!long}
-          onClick={() => setOpen((o) => !o)}
-          aria-expanded={long ? open : undefined}
-          className="mt-1 block w-full rounded-md text-left text-base leading-relaxed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-default"
-        >
-          <span ref={fit.ref} className={cn("block break-words", open ? "whitespace-pre-wrap" : "line-clamp-1")}>
-            {text}
-          </span>
-          {long && <span className="text-sm font-medium text-primary">{open ? "Show less" : "Show all"}</span>}
-        </button>
-      ) : (
-        <p className="mt-1 text-base text-muted-foreground">Not set yet</p>
       )}
-
-      <p className="mt-1 text-sm text-muted-foreground">
-        {when ? `Set ${when} by ${v.set_by}` : `From ${v.owner_name}`}
-        {users.length > 0 && ` · Used by ${users.join(" · ")}`}
-      </p>
     </li>
   );
 }
@@ -184,25 +174,28 @@ export function TodayCard({ room, title = "Today", className, onChange, footer }
   const sent = (ev: RoomEvent) => onChange?.(`${ev.label} sent`);
 
   return (
-    <section aria-label={title} className={cn("p-4", className)}>
-      {title && <h3 className="mb-3 text-[17px] font-semibold">{title}</h3>}
+    <section aria-label={title ?? "Today"} className={cn("p-2 [container-type:inline-size] sm:px-3", className)}>
+      {title && <h3 className="mb-1 px-2 pt-1 text-[17px] font-semibold">{title}</h3>}
       {variables.length > 0 && (
-        <ul className="divide-y divide-border">
+        <ul className="grid gap-x-4 [@container(min-width:640px)]:grid-cols-2">
           {variables.map((v) => (
             <VariableRow key={`${v.owner}|${v.name}`} v={v} room={room} onChange={onChange} />
           ))}
         </ul>
       )}
-      {actions.length > 0 && (
+      {/* the actions as one row of chips (what each does in its tooltip), the footer at its end */}
+      {actions.length > 0 ? (
         <EventsList
           room={room}
           onSent={sent}
           lead="Ask the schedule for new ideas:"
-          describe
-          className={cn(variables.length > 0 && "mt-4 border-t border-border pt-4")}
+          inline
+          end={footer}
+          className={cn("px-2", variables.length > 0 && "mt-1 border-t border-border pt-2")}
         />
+      ) : (
+        footer && <div className="mt-1 px-1">{footer}</div>
       )}
-      {footer && <div className="mt-3">{footer}</div>}
       {error && <p className="mt-3 text-sm text-muted-foreground">Couldn't refresh just now; showing the last read.</p>}
     </section>
   );

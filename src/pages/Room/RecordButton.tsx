@@ -120,7 +120,7 @@ export function RecordButton({
       onClick={onClick}
       className={cn(
         TAP_BUTTON_CLASS,
-        "inline-flex h-12 min-w-[9.5rem] items-center justify-center gap-2 text-[17px] font-semibold disabled:opacity-60",
+        "inline-flex h-11 items-center sm:min-w-[8.5rem] justify-center gap-2 text-[17px] font-semibold disabled:opacity-60",
         recording ? SECONDARY : "bg-rose-700 text-white hover:bg-rose-800",
       )}
     >
