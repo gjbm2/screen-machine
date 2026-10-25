@@ -1,10 +1,10 @@
-// One screen, compact: what's on it (the art's thumbnail, or the live scene), a friendly name and what
-// it's doing in plain words, the way to its tab in the generator, and its schedule ("Schedule" pill and what it is
-// doing: "New art every 2 h · next 20:04"). While showing art, the face has the scene chip and "Go live"; while
-// live, its core controls sit inline (scene, the basic settings, Back to art) with "Details on the screen".
-// Everything else unrolls under "More": the scene and picture (settings, transitions and quality), every live
-// setting, snapshots, the schedule's events, the technical details (where "Details on the screen" sits while the
-// screen shows art), and links to its settings and its TV page.
+// One screen, compact (space pass, owner 25 Oct: "vertical space is at a HIGH PREMIUM"): the picture of what's on it
+// (the art's thumbnail, or the live scene), which opens its live page; its name; what it's doing in one line
+// ("Showing art", "Live · Gallery"); and one action (Go live / Back to art / Cancel) beside More. Everything else
+// unrolls under More: the scene (picked for going live, or changed while live) and its settings, the look controls,
+// "Details on the screen", snapshots, the schedule's events, the technical details, and the links to its tab in the
+// generator (with the art's prompt), its schedule (with what it's doing) and its settings.
+// The Screens fold lays the cards out in a grid (2-3 across on an iPad, one per row on a phone).
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
@@ -16,7 +16,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { cn } from "@/lib/utils";
 import { RoomApi } from "./api";
 import { Dot, Notice, Unroll } from "./bits";
-import { CoreControls, GoLiveRow, LiveSettingsPanel, ScenePanel, type LiveBits } from "./LiveControls";
+import { GoLiveNotices, LiveSettingsPanel, PrimaryAction, ScenePanel, type LiveBits } from "./LiveControls";
 import { hasFeature, LOOK_SCOPE_FEATURE, sceneInfo, type LookScope } from "./liveLib";
 import { ScreenDetails } from "./ScreenDetails";
 import { DetailsSwitch, LiveDetails, TransitionDetails } from "./LiveDetails";
@@ -134,7 +134,7 @@ export const ScreenCard = memo(function ScreenCard({
     }
   }, [phase]);
 
-  // Inline: the live controls; or a way back to art after a failure, or out of a go-live under
+  // The face's action: Back to art while live; or a way back to art after a failure, or out of a go-live under
   // way, a mode change's included (audit S12: Cancel stays visible; a hand change during the
   // switch wins and the mode's row reads "set by hand during the switch").
   const canStop = sc.canBackToArt || sc.busy === "back to art";
@@ -157,10 +157,10 @@ export const ScreenCard = memo(function ScreenCard({
       )}
     >
       <Collapsible open={open} onOpenChange={setOpen}>
-        {/* The picture opens the screen's own live page (/display/<screen>, the viewer role: it only watches), what the
-            TV shows right now, in a new tab (owner, 25 Oct: "you have a TRIVIAL way to show user current live view
-            -- the ACTUAL LIVE HTML PAGE ... should be easily retrievable"); the rest of the row opens More. */}
-        <div className="flex items-center gap-1 pr-2">
+        <div className="flex gap-3 p-3">
+          {/* The picture opens the screen's own live page (/display/<screen>, the viewer role: it only watches), what
+              the TV shows right now, in a new tab (owner, 25 Oct: "you have a TRIVIAL way to show user current live
+              view -- the ACTUAL LIVE HTML PAGE ... should be easily retrievable"). */}
           <a
             href={displayUrl(screenId)}
             target="_blank"
@@ -168,61 +168,61 @@ export const ScreenCard = memo(function ScreenCard({
             title={`Open what ${name} is showing, live`}
             aria-label={`Open what ${name} is showing, live`}
             data-testid={`live-page-${screenId}`}
-            className="group relative ml-4 shrink-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            className="group relative shrink-0 self-start rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <ArtThumb
               src={summary.live ? onGlass?.thumb : art?.thumb}
               live={summary.live}
               problem={summary.problem}
-              className={cn("h-14 w-[5.25rem]", summary.busy && "ring-2 ring-amber-300")}
+              className={cn("aspect-video h-auto w-40", summary.busy && "ring-2 ring-amber-300")}
             />
-            <span className="absolute bottom-1 right-1 grid h-6 w-6 place-items-center rounded-full bg-white/90 text-stone-700 shadow-sm group-hover:bg-white">
+            <span className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-white/90 text-stone-700 shadow-sm group-hover:bg-white">
               <ExternalLink className="h-3.5 w-3.5" aria-hidden />
             </span>
           </a>
-          <CollapsibleTrigger
-            data-testid={`more-${screenId}`}
-            className="flex min-h-[4.5rem] min-w-0 flex-1 items-center gap-3 rounded-2xl px-2 py-3 text-left hover:bg-stone-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-          >
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[17px] font-semibold leading-snug">{name}</span>
-              {/* The status wraps rather than truncates, so it stays readable on a narrow phone. */}
-              <span className="mt-0.5 flex min-w-0 items-start gap-2 text-base leading-snug">
-                <Dot tone={summary.tone} pulse={summary.busy} className="mt-[7px]" />
-                <span className="line-clamp-2 min-w-0">
+          <div className="flex min-w-0 flex-1 flex-col justify-between gap-1">
+            <div className="min-w-0">
+              <p className="truncate text-base font-semibold leading-snug">{name}</p>
+              <p
+                className="flex min-w-0 items-center gap-1.5 text-[15px] leading-snug"
+                title={summary.hint ? `${summary.text} · ${summary.hint}` : summary.text}
+              >
+                <Dot tone={summary.tone} pulse={summary.busy} />
+                <span className="min-w-0 truncate">
                   <span className={TEXT_CLASSES[summary.tone]} data-testid={`status-${screenId}`}>
                     {summary.text}
                   </span>
                   {summary.hint && <span className="text-muted-foreground"> · {summary.hint}</span>}
                 </span>
-              </span>
-            </span>
-            <span className="flex shrink-0 items-center gap-1 text-[15px] text-muted-foreground">
-              <span>{open ? "Less" : "More"}</span>
-              <ChevronDown
-                aria-hidden
-                className={cn("h-5 w-5 transition-transform motion-reduce:transition-none", open && "rotate-180")}
-              />
-            </span>
-          </CollapsibleTrigger>
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {showCore && <PrimaryAction screenId={screenId} sc={sc} kind="stop" />}
+              {showGoLive && <PrimaryAction screenId={screenId} sc={sc} kind="golive" />}
+              <CollapsibleTrigger
+                data-testid={`more-${screenId}`}
+                aria-label={open ? `Less about ${name}` : `More about ${name}`}
+                title={open ? "Less" : "More: scene, settings, snapshots, schedule"}
+                className={cn(
+                  "grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-stone-200 bg-white text-stone-600 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  open && "bg-stone-100",
+                )}
+              >
+                <ChevronDown aria-hidden className={cn("h-5 w-5 transition-transform motion-reduce:transition-none", open && "rotate-180")} />
+              </CollapsibleTrigger>
+            </div>
+          </div>
         </div>
 
-        <GeneratorLink screenId={screenId} prompt={summary.live ? null : art?.prompt} />
-        <ScheduleLink screenId={screenId} />
-        {sc.liveNow && <DetailsSwitch api={api} screenId={screenId} screen={screen} />}
-
-        {showCore && <CoreControls screenId={screenId} sc={sc} live={sc.liveNow ? live : undefined} />}
-        {showGoLive && (
-          <GoLiveRow screenId={screenId} sc={sc} streamReachable={streamReachable} live={library ? { lib: library, api } : undefined} />
-        )}
+        {showGoLive && <GoLiveNotices sc={sc} streamReachable={streamReachable} />}
         {sc.actionError && (
-          <div className="px-4 pb-4">
+          <div className="px-3 pb-3">
             <Notice tone="bad">{sc.actionError}</Notice>
           </div>
         )}
 
         <CollapsibleContent>
-          <div className="space-y-5 border-t border-stone-200/80 px-4 pb-5 pt-4">
+          <div className="space-y-3 border-t border-stone-200/80 px-3 pb-3 pt-3">
             {(phase === "failed" || screen.last_error) && (
               <Notice tone="bad">
                 {/* One sentence; the raw error is under Technical details. */}
@@ -250,26 +250,26 @@ export const ScreenCard = memo(function ScreenCard({
             ) : sc.alreadyLive ? (
               <Notice tone="muted">This screen is on its way to live. Its settings appear here once it's live.</Notice>
             ) : (
-              <ScenePanel screenId={screenId} sc={sc} />
+              <ScenePanel screenId={screenId} sc={sc} live={library ? { lib: library, api, scope } : undefined} />
             )}
+
+            <DetailsSwitch api={api} screenId={screenId} screen={screen} />
 
             <Snapshots api={api} screenId={screenId} revs={snapRevs} exists={screen.snapshots} onError={reportError} />
 
             {room && <ScreenEvents room={room} screenId={screenId} addLog={addLog} />}
 
             <Unroll title="Technical details" testId={`details-${screenId}`}>
-              {!sc.liveNow && <DetailsSwitch api={api} screenId={screenId} screen={screen} className="pb-3" />}
               <LiveDetails api={api} screenId={screenId} screen={screen} />
               <TransitionDetails screenId={screenId} inSpec={sc.form.inSpec} outSpec={sc.form.outSpec} choices={sc.transitions} />
               <ScreenDetails screenId={screenId} screen={screen} scenes={sc.scenes} transitions={sc.transitions} />
             </Unroll>
 
-            <div className="flex flex-wrap gap-x-4">
+            <div>
+              <GeneratorLink screenId={screenId} prompt={summary.live ? null : art?.prompt} />
+              <ScheduleLink screenId={screenId} />
               <AppLink href={settingsUrl(`screen-${screenId}`)} state={{ from: "Room" }} className={cn(FOOT_LINK, "text-stone-600")}>
                 Screen settings <ChevronRight className="h-4 w-4" aria-hidden />
-              </AppLink>
-              <AppLink href={displayUrl(screenId)} newTab className={cn(FOOT_LINK, "text-stone-600")}>
-                TV page <ChevronRight className="h-4 w-4" aria-hidden />
               </AppLink>
             </div>
           </div>

@@ -1,14 +1,14 @@
 // Live diagnostics for one screen (docs/LIVE_DIAGNOSTICS.md, owner-approved 17 Oct): the renderer burns a small panel
 // into the stream itself (D-B unchanged: nothing is drawn over the TV's video).
-//   * DetailsSwitch: on the screen card itself, always in sight (owner 18 Oct: under More → Technical details it
-//     wasn't findable): the diag.<screen> room target, written through PUT /api/v1/room/targets, and where it
-//     stands.  Never disabled.
+//   * DetailsSwitch: first under the screen card's More, outside Technical details (owner 18 Oct: under More →
+//     Technical details it wasn't findable): the diag.<screen> room target, written through PUT
+//     /api/v1/room/targets, and where it stands.  Never disabled.
 //   * LiveDetails (under More → Technical details): the same lines as text, read once a second while that section
 //     is open, so they work with the TV panel off too (the per-viewer view).
 //   * TransitionDetails (under Technical details): the chosen transitions with their parameters; the pickers show
 //     the label only (24 Oct walkthrough).
-// Where the switch sits (24 Oct walkthrough): on the card's face while the screen is live, and at the top of
-// Technical details while it shows art, so it is in one place at a time.
+// Where the switch sits (space pass, 25 Oct: the card's face is the picture, name, status and one action): in one
+// place, the top of the card's More, live or not.
 
 import { useEffect, useState } from "react";
 import { Switch } from "@/components/ui/switch";
@@ -30,7 +30,7 @@ export function DetailsSwitch({
   api,
   screenId,
   screen,
-  className = "px-4 pb-3",
+  className = "",
 }: {
   api: RoomApi;
   screenId: string;
