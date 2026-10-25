@@ -42,6 +42,7 @@ import { LightsSection } from "./Fixtures";
 import { buildTagIndex } from "./sceneTags";
 import { useDescribe } from "./useDescribe";
 import { useFixtures } from "./useFixtures";
+import { InOutPanel } from "./InOutPanel";
 import { NowPlayingRow } from "./NowPlayingRow";
 import { Header } from "./Header";
 import { MenuSheet } from "./MenuSheet";
@@ -501,6 +502,21 @@ export default function RoomPage() {
               <p className="px-1 text-base leading-snug text-stone-700" data-testid="room-line" role="status">
                 {roomLine}
               </p>
+
+              <InOutPanel
+                api={room.api}
+                screens={orderedScreens.map((id, i) => {
+                  const sc = status?.screens?.[id];
+                  return {
+                    id,
+                    name: shortScreenNames[i] ?? friendlyName(id),
+                    text: sc ? summariseScreen(sc, scenes, status?.stream_service?.reachable).text : "not known",
+                    live: liveIds.includes(id),
+                  };
+                })}
+                lights={lightsSummary}
+                music={musicWord}
+              />
 
               <section aria-labelledby="room-modes">
                 <h2 id="room-modes" className={H2}>
