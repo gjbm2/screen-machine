@@ -7,7 +7,7 @@
 // screen shows art), and links to its settings and its TV page.
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight } from "lucide-react";
+import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import { AppLink } from "@/components/nav/AppLink";
 import { displayUrl, schedulerUrl, settingsUrl } from "@/components/nav/appNav";
 import { ArtThumb, GeneratorLink, ScheduleLink, usePublishedArt } from "@/components/room/ScreenArt";
@@ -157,37 +157,55 @@ export const ScreenCard = memo(function ScreenCard({
       )}
     >
       <Collapsible open={open} onOpenChange={setOpen}>
-        <CollapsibleTrigger
-          data-testid={`more-${screenId}`}
-          className="flex min-h-[4.5rem] w-full items-center gap-3 rounded-2xl px-4 py-3 text-left hover:bg-stone-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
-        >
-          <ArtThumb
-            src={summary.live ? onGlass?.thumb : art?.thumb}
-            live={summary.live}
-            problem={summary.problem}
-            className={cn(summary.busy && "ring-2 ring-amber-300")}
-          />
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-[17px] font-semibold leading-snug">{name}</span>
-            {/* The status wraps rather than truncates, so it stays readable on a narrow phone. */}
-            <span className="mt-0.5 flex min-w-0 items-start gap-2 text-base leading-snug">
-              <Dot tone={summary.tone} pulse={summary.busy} className="mt-[7px]" />
-              <span className="line-clamp-2 min-w-0">
-                <span className={TEXT_CLASSES[summary.tone]} data-testid={`status-${screenId}`}>
-                  {summary.text}
+        {/* The picture opens the screen's own live page (/display/<screen>, the viewer role: it only watches), what the
+            TV shows right now, in a new tab (owner, 25 Oct: "you have a TRIVIAL way to show user current live view
+            -- the ACTUAL LIVE HTML PAGE ... should be easily retrievable"); the rest of the row opens More. */}
+        <div className="flex items-center gap-1 pr-2">
+          <a
+            href={displayUrl(screenId)}
+            target="_blank"
+            rel="noreferrer"
+            title={`Open what ${name} is showing, live`}
+            aria-label={`Open what ${name} is showing, live`}
+            data-testid={`live-page-${screenId}`}
+            className="group relative ml-4 shrink-0 rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ArtThumb
+              src={summary.live ? onGlass?.thumb : art?.thumb}
+              live={summary.live}
+              problem={summary.problem}
+              className={cn("h-14 w-[5.25rem]", summary.busy && "ring-2 ring-amber-300")}
+            />
+            <span className="absolute bottom-1 right-1 grid h-6 w-6 place-items-center rounded-full bg-white/90 text-stone-700 shadow-sm group-hover:bg-white">
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+            </span>
+          </a>
+          <CollapsibleTrigger
+            data-testid={`more-${screenId}`}
+            className="flex min-h-[4.5rem] min-w-0 flex-1 items-center gap-3 rounded-2xl px-2 py-3 text-left hover:bg-stone-50/80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+          >
+            <span className="min-w-0 flex-1">
+              <span className="block truncate text-[17px] font-semibold leading-snug">{name}</span>
+              {/* The status wraps rather than truncates, so it stays readable on a narrow phone. */}
+              <span className="mt-0.5 flex min-w-0 items-start gap-2 text-base leading-snug">
+                <Dot tone={summary.tone} pulse={summary.busy} className="mt-[7px]" />
+                <span className="line-clamp-2 min-w-0">
+                  <span className={TEXT_CLASSES[summary.tone]} data-testid={`status-${screenId}`}>
+                    {summary.text}
+                  </span>
+                  {summary.hint && <span className="text-muted-foreground"> · {summary.hint}</span>}
                 </span>
-                {summary.hint && <span className="text-muted-foreground"> · {summary.hint}</span>}
               </span>
             </span>
-          </span>
-          <span className="flex shrink-0 items-center gap-1 text-[15px] text-muted-foreground">
-            <span>{open ? "Less" : "More"}</span>
-            <ChevronDown
-              aria-hidden
-              className={cn("h-5 w-5 transition-transform motion-reduce:transition-none", open && "rotate-180")}
-            />
-          </span>
-        </CollapsibleTrigger>
+            <span className="flex shrink-0 items-center gap-1 text-[15px] text-muted-foreground">
+              <span>{open ? "Less" : "More"}</span>
+              <ChevronDown
+                aria-hidden
+                className={cn("h-5 w-5 transition-transform motion-reduce:transition-none", open && "rotate-180")}
+              />
+            </span>
+          </CollapsibleTrigger>
+        </div>
 
         <GeneratorLink screenId={screenId} prompt={summary.live ? null : art?.prompt} />
         <ScheduleLink screenId={screenId} />

@@ -244,6 +244,7 @@ class Show:
         from . import inputs as inputs_mod             # the Room page's Mic choice, GET/PUT /api/v1/input(s)
         self.inputs = inputs_mod.Inputs(self.health, show_file=self.opts.show_file,
                                         state_file=pathlib.Path(self.opts.state_dir) / "input.json")
+        self.inputs.set_piano(self._piano_view)     # GET /api/v1/inputs: is the piano sending (owner, 25 Oct)
         self.mic: Any = None                           # the mic on demand, GET/PUT /api/v1/mic (README S5.16)
         mic_mod = self._import("mic")
         if mic_mod is not None:

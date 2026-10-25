@@ -49,6 +49,8 @@ export function PianoRow({
   className?: string;
 }) {
   const [pianos, setPianos] = useState<Piano[] | null>(null);
+  // the music side's own clock of the last note (not just since this page opened)
+  const [lastAge, setLastAge] = useState<{ s: number; at: number } | null>(null);
   const [last, setLast] = useState<Key | null>(null);
   const [recent, setRecent] = useState<number[]>([]);
   const [pedals, setPedals] = useState<Record<string, number>>({});
@@ -57,8 +59,10 @@ export function PianoRow({
 
   const load = useCallback(async () => {
     try {
-      const body = (await api.showInputs()) as { pianos?: Piano[] };
+      const body = (await api.showInputs()) as { pianos?: Piano[]; piano?: { last_note_age_s?: number | null } | null };
       setPianos(Array.isArray(body.pianos) ? body.pianos : null);
+      const a = body.piano?.last_note_age_s;
+      setLastAge(typeof a === "number" ? { s: a, at: Date.now() } : null);
     } catch {
       /* show_service not answering: the row keeps what it had */
     }
@@ -132,9 +136,14 @@ export function PianoRow({
     .filter(([, v]) => v > 0.1)
     .map(([k]) => PEDAL_WORDS[k] ?? k);
 
+  // "Relay on" is all that the sender's heartbeat proves: the mini-PC's MIDI relay is running. Whether the piano is
+  // sending shows only in its notes (owner, 25 Oct: '"Connected" but clearly they are NOT connected ... highly
+  // misleading'): a dead USB link and an idle piano look the same until a key is played.
+  const sinceNote = lastAge ? lastAge.s + (now - lastAge.at) / 1000 : null;
   let line: string;
-  if (!connected) line = `Not connected: nothing is coming from ${piano?.label || "the mini-PC"}`;
-  else if (!last) line = "Connected · play a key to check it";
+  if (!connected) line = `Relay off: nothing is coming from ${piano?.label || "the mini-PC"}`;
+  else if (!last && sinceNote === null) line = "Relay on · no notes received yet · play a key to check the piano";
+  else if (!last && sinceNote !== null) line = `Relay on · no notes for ${ago(sinceNote * 1000).replace(" ago", "")} · if the piano is being played, its USB MIDI isn't sending`;
   else
     line = `Last key ${last.name}, velocity ${last.vel}${last.test ? " (test piano)" : ""} · ${ago(now - last.at)}${
       keys > 1 ? ` · ${keys} keys in 10 s` : ""
@@ -145,7 +154,7 @@ export function PianoRow({
       <div className="flex min-h-11 items-center gap-3">
         <p className="min-w-0 flex-1 text-base font-semibold leading-snug">Keys and pedals</p>
         <span className={cn("shrink-0 text-sm", connected ? "text-teal-800" : "text-amber-800")}>
-          {connected ? "Connected" : "Not connected"}
+          {connected ? "Relay on" : "Relay off"}
         </span>
       </div>
       <div className="flex items-center gap-2">

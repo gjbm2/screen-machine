@@ -59,7 +59,13 @@ class Inputs:
         self._devices: dict[str, str] = {}
         self._show: tuple[Optional[tuple[int, int]], dict] = (None, {})
         self.error: Optional[str] = None
+        self._piano_fn: Optional[Callable[[], Any]] = None
         self._load()
+
+    def set_piano(self, fn: Optional[Callable[[], Any]]) -> None:
+        """The voice piano's view (__main__'s PianoView), so GET /api/v1/inputs says whether notes are arriving (owner,
+        25 Oct: the Room page must show at a glance what inputs are coming in)."""
+        self._piano_fn = fn
 
     # -- the receiver ------------------------------------------------------------------------------------------------
     def attach(self, rx: Any) -> None:
@@ -153,8 +159,22 @@ class Inputs:
 
     def body(self) -> dict:
         h = self._h()
-        return {"active": h.get("active_audio"), "choice": self.choice(), "inputs": self.inputs(h),
-                "pianos": self.pianos(h)}
+        ins = self.inputs(h)
+        streams = _d(h.get("streams"))
+        for i in ins:                                    # the live level of each mic, for the Room page's In line
+            a = _d(_d(streams.get(i.get("stream"))).get("audio"))
+            i["rms_dbfs"] = a.get("rms_dbfs") if isinstance(a.get("rms_dbfs"), (int, float)) else None
+            i["silent"] = a.get("silent") if isinstance(a.get("silent"), bool) else None
+        piano = None
+        if self._piano_fn is not None:
+            try:
+                pv = _d(self._piano_fn())
+                piano = {k: pv.get(k) for k in ("present", "stream", "source", "keys_down", "damper",
+                                                "last_note_age_s", "notes_per_s")}
+            except Exception:                            # noqa: BLE001  the In line just lacks it
+                piano = None
+        return {"active": h.get("active_audio"), "choice": self.choice(), "inputs": ins,
+                "pianos": self.pianos(h), "piano": piano}
 
     def mic(self, h: Optional[dict] = None) -> Optional[dict]:
         """The card's hearing.mic: the active stream and the device its sender says it uses; ``chosen`` when that is
