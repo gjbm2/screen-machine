@@ -1,8 +1,9 @@
 // /room: the room's control panel (AV_PROGRAMME §5), used mostly from a phone on
-// the house Wi-Fi. Layout A (owner, 24 Oct: "too much going on today and not enough folded away"): the header, one
-// line saying what the room is doing ("Normal · art on all 3 screens · lights off · nothing playing"), the modes with
-// Auto above them, then one scroll of the same folds (Section.tsx), each with a one-line summary while closed, so the
-// closed page reads as an overview:
+// the house Wi-Fi. Layout A (owner, 24 Oct: "too much going on today and not enough folded away"): the header (its
+// status line says what the room is doing: "Normal · art on all 3 screens · lights off · nothing playing"), the modes
+// with Auto above them, then the folds (Section.tsx), each one line with its summary while closed, so the closed page
+// reads as an overview. From 1024 px two columns (owner, 25 Oct: space pass): the modes and Look on the left, the rest
+// on the right, the player under both:
 //   Look         who is choosing; Calmer · Wilder, Describe it, the palette (MusicCard.tsx DirectorControls) and, while
 //                a room's screens are live, that room's scene and effect picking (RoomLive.tsx)
 //   Screens      each screen's card, under its room's name (status.rooms, from routes/data/rooms.json; "Other" last)
@@ -89,7 +90,6 @@ function useNow(ms: number): number {
   return now;
 }
 
-const H2 = "mb-2 text-lg font-semibold text-stone-800";
 const H3 = "mb-2 text-base font-semibold text-stone-700";
 /** While the music side's card was read over HTTP this recently it still counts as answering (as MusicCard). */
 const SHOW_FRESH_MS = 12_000;
@@ -320,14 +320,16 @@ export default function RoomPage() {
   const todayRooms = sections.filter((sec) => sec.key !== "_other").map((sec) => ({ id: sec.key, name: sec.title }));
   const orderedScreens = sections.length > 0 ? screenGroups.flatMap((sec) => sec.screens) : screens.map(([id]) => id);
   const shortScreenNames = shortNames(orderedScreens.map((id) => status?.screens?.[id]?.name || friendlyName(id)));
-  const screensSummary =
-    orderedScreens
-      .map((id, i) => {
-        const sc = status?.screens?.[id];
-        return sc ? `${shortScreenNames[i]}: ${summariseScreen(sc, scenes, status?.stream_service?.reachable).text}` : null;
-      })
-      .filter(Boolean)
-      .join(", ") || "No screens set up";
+  const screenTexts = orderedScreens.flatMap((id, i) => {
+    const sc = status?.screens?.[id];
+    return sc ? [{ name: shortScreenNames[i], text: summariseScreen(sc, scenes, status?.stream_service?.reachable).text }] : [];
+  });
+  // every screen saying the same thing says it once ("North, South, Dev test: Showing art")
+  const screensSummary = !screenTexts.length
+    ? "No screens set up"
+    : screenTexts.length > 1 && screenTexts.every((x) => x.text === screenTexts[0].text)
+      ? `${screenTexts.map((x) => x.name).join(", ")}: ${screenTexts[0].text}`
+      : screenTexts.map((x) => `${x.name}: ${x.text}`).join(", ");
   const pianoSummary =
     [pianoLinked === false ? "Not connected" : null, pianoLine].filter(Boolean).join(" · ") || (pianoLinked ? "Connected" : "Piano");
   // From the lights' real states (owner's walk, 24 Oct: it said "4 lamps follow the music" while all four were off).
@@ -355,9 +357,9 @@ export default function RoomPage() {
   const sonosPlaying = Object.entries(
     ((status?.subsystems as Record<string, { believed?: unknown }> | undefined)?.sonos?.believed as Record<string, unknown> | undefined) ?? {},
   ).some(([k, v]) => k.endsWith(".playback") && v === "playing");
-  const musicWord = recorder.recording
-    ? "recording the piano"
-    : pv?.current && PLAYER_BUSY.includes(pv.state)
+  // (a recording is the header's "● Recording" pill, not said again here)
+  const musicWord =
+    pv?.current && PLAYER_BUSY.includes(pv.state)
       ? `playing ${pv.current.title}`
       : pv?.current && pv.state === "paused"
         ? `paused: ${pv.current.title}`
@@ -454,7 +456,7 @@ export default function RoomPage() {
   return (
     <div className={cn(THEME_CLASS, "min-h-screen bg-background text-base text-foreground antialiased")}>
       <RoomThemeStyle />
-      <div className="mx-auto w-full max-w-3xl px-4 pb-16 sm:px-6">
+      <div className="mx-auto w-full max-w-3xl px-4 pb-16 sm:px-6 lg:max-w-6xl">
         <Header
           link={link}
           onMenu={openMenu}
@@ -462,6 +464,7 @@ export default function RoomPage() {
           toggles={status ? toggles : undefined}
           onDetails={openListening}
           pc={pc}
+          line={status ? roomLine : null}
         />
 
         <main className="space-y-5 pt-1">
@@ -498,237 +501,234 @@ export default function RoomPage() {
 
           {status ? (
             <>
-              <p className="px-1 text-base leading-snug text-stone-700" data-testid="room-line" role="status">
-                {roomLine}
-              </p>
+              {/* one column up to 1024 px; from there two (owner, 25 Oct: "REASON THROUGH USE OF SPACE"): the modes and
+                  Look on the left, everything else on the right, the player under both */}
+              <RoomLives
+                specs={liveSpecs}
+                api={room.api}
+                lib={room.library}
+                subscribe={room.subscribeStream}
+                addLog={room.addLog}
+                reportError={room.reportError}
+              >
+                {(slots) => {
+                  const cards = liveSpecs.map((sp) => slots[sp.room.id]?.card).filter(Boolean);
+                  const byHand = liveSpecs.some((sp) => slots[sp.room.id]?.scenesByItself === false);
+                  return (
+                    <div className="lg:grid lg:grid-cols-2 lg:items-start lg:gap-x-8">
+                      <div data-testid="room-col-modes">
+                        <section id="modes" aria-label="Modes" className="scroll-mt-[calc(var(--app-top,0px)+0.5rem)]">
+                          {/* Auto above the modes (owner, 24 Oct: "why wouldn't auto switch be ABOVE the various modes? it
+                              determines them after all") */}
+                          <div className="mb-3">
+                            <AutoRow api={room.api} feed={show} addLog={room.addLog} onEdit={editRule} current={status.mode?.current} />
+                          </div>
+                          <ModeSwitcher
+                            api={room.api}
+                            modes={room.modes}
+                            modesError={room.modesError}
+                            mode={status.mode}
+                            transition={room.transition}
+                            catalog={room.catalog}
+                            connected={connected}
+                            now={now}
+                            addLog={room.addLog}
+                            reportError={room.reportError}
+                            onEdit={editMode}
+                            describe={describe}
+                            subsystems={status.subsystems}
+                            names={screenNames}
+                            onChanged={() => {
+                              void room.refreshMeta();
+                              refreshDescribe();
+                            }}
+                          />
+                        </section>
+                        <div className="mt-5 border-t border-stone-200/80 lg:border-b">
+                          <Section
+                            id="look"
+                            title="Look"
+                            summary={
+                              nothingFollows
+                                ? "Nothing follows the look right now"
+                                : [director.summary, byHand ? "scenes picked by you" : null].filter(Boolean).join(" · ")
+                            }
+                            defaultOpen={anyLive}
+                            foot={
+                              <>
+                                <Link to={settingsUrl("look")} className={FOOT_LINK}>
+                                  Look settings <ChevronRight className="h-4 w-4" aria-hidden />
+                                </Link>
+                                <a href={rendererConsoleUrl()} target="_blank" rel="noopener noreferrer" className={FOOT_LINK}>
+                                  Scene library <ChevronRight className="h-4 w-4" aria-hidden />
+                                </a>
+                              </>
+                            }
+                          >
+                            {/* the controls stay usable while nothing shows the look: a pick is kept for later */}
+                            <p className="px-1 text-base font-semibold leading-snug" data-testid="look-who">
+                              {nothingFollows ? nothingLine : director.line}
+                            </p>
+                            <DirectorControls api={room.api} feed={show} addLog={room.addLog} />
+                            {cards}
+                          </Section>
+                        </div>
+                      </div>
 
-
-              <section aria-labelledby="room-modes">
-                <h2 id="room-modes" className={H2}>
-                  Mode
-                </h2>
-                {/* Auto above the modes (owner, 24 Oct: "why wouldn't auto switch be ABOVE the various modes? it
-                    determines them after all") */}
-                <div className="mb-3">
-                  <AutoRow api={room.api} feed={show} addLog={room.addLog} onEdit={editRule} current={status.mode?.current} />
-                </div>
-                <ModeSwitcher
-                  api={room.api}
-                  modes={room.modes}
-                  modesError={room.modesError}
-                  mode={status.mode}
-                  transition={room.transition}
-                  catalog={room.catalog}
-                  connected={connected}
-                  now={now}
-                  addLog={room.addLog}
-                  reportError={room.reportError}
-                  onEdit={editMode}
-                  describe={describe}
-                  subsystems={status.subsystems}
-                  names={screenNames}
-                  onChanged={() => {
-                    void room.refreshMeta();
-                    refreshDescribe();
-                  }}
-                />
-              </section>
-
-              <div className="divide-y divide-stone-200/80 border-y border-stone-200/80">
-                <RoomLives
-                  specs={liveSpecs}
-                  api={room.api}
-                  lib={room.library}
-                  subscribe={room.subscribeStream}
-                  addLog={room.addLog}
-                  reportError={room.reportError}
-                >
-                  {(slots) => {
-                    const cards = liveSpecs.map((sp) => slots[sp.room.id]?.card).filter(Boolean);
-                    const byHand = liveSpecs.some((sp) => slots[sp.room.id]?.scenesByItself === false);
-                    return (
-                      <>
-                        <Section
-                          id="look"
-                          title="Look"
-                          summary={
-                            nothingFollows
-                              ? "Nothing follows the look right now"
-                              : [director.summary, byHand ? "scenes picked by you" : null].filter(Boolean).join(" · ")
-                          }
-                          defaultOpen={anyLive}
-                          foot={
-                            <>
-                              <Link to={settingsUrl("look")} className={FOOT_LINK}>
-                                Look settings <ChevronRight className="h-4 w-4" aria-hidden />
+                      <div className="divide-y divide-stone-200/80 border-y border-stone-200/80" data-testid="room-col-folds">
+                          <Section
+                            id="screens"
+                            title="Screens"
+                            summary={screensSummary}
+                            forceOpen={focusScreen}
+                            foot={
+                              <Link to={settingsUrl("screens")} className={FOOT_LINK}>
+                                Screen settings <ChevronRight className="h-4 w-4" aria-hidden />
                               </Link>
-                              <a href={rendererConsoleUrl()} target="_blank" rel="noopener noreferrer" className={FOOT_LINK}>
-                                Scene library <ChevronRight className="h-4 w-4" aria-hidden />
-                              </a>
-                            </>
-                          }
-                        >
-                          {/* the controls stay usable while nothing shows the look: a pick is kept for later */}
-                          <p className="px-1 text-base font-semibold leading-snug" data-testid="look-who">
-                            {nothingFollows ? nothingLine : director.line}
-                          </p>
-                          <DirectorControls api={room.api} feed={show} addLog={room.addLog} />
-                          {cards}
-                        </Section>
+                            }
+                          >
+                            {focusScreen && !unknownFocus && (
+                              <p className="px-1 text-[15px] leading-snug text-stone-700" data-testid="screens-opened-for">
+                                Opened for {status.screens?.[focusScreen]?.name || friendlyName(focusScreen)} ·{" "}
+                                <Link to={wholeRoomHref} className="font-medium text-teal-800 underline-offset-4 hover:underline">
+                                  Whole room ›
+                                </Link>
+                              </p>
+                            )}
+                            {unknownFocus && (
+                              <Notice tone="muted" className="text-base">
+                                There's no screen called “{focusScreen}” in the room. Here are the ones it has.
+                              </Notice>
+                            )}
+                            {sections.length > 0 ? (
+                              screenGroups.map((sec) => (
+                                <div key={sec.key} aria-labelledby={`room-sec-${sec.key}`} role="group">
+                                  {screenGroups.length > 1 && (
+                                    <h3 id={`room-sec-${sec.key}`} className={H3}>
+                                      {sec.title}
+                                    </h3>
+                                  )}
+                                  <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-1">
+                                    {sec.screens.map((id) =>
+                                      screenCard(id, slots[sec.key]?.scopeFor(id) ?? null, sec.key === "_other" ? undefined : sec.key),
+                                    )}
+                                  </div>
+                                </div>
+                              ))
+                            ) : screens.length === 0 ? (
+                              <p className="text-base text-muted-foreground">The room has no screens set up.</p>
+                            ) : (
+                              <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-1">{screens.map(([id]) => screenCard(id))}</div>
+                            )}
+                          </Section>
+
+                        <TodayFold
+                          rooms={todayRooms}
+                          onChange={(what) => room.addLog({ type: "schedule", level: "info", summary: what })}
+                        />
 
                         <Section
-                          id="screens"
-                          title="Screens"
-                          summary={screensSummary}
-                          forceOpen={focusScreen}
+                          id="listening"
+                          title="Listening"
+                          summary={listeningWords(showCard, pianoLinked)}
                           foot={
-                            <Link to={settingsUrl("screens")} className={FOOT_LINK}>
-                              Screen settings <ChevronRight className="h-4 w-4" aria-hidden />
+                            <Link to={settingsUrl("listening")} className={FOOT_LINK}>
+                              Listening settings <ChevronRight className="h-4 w-4" aria-hidden />
                             </Link>
                           }
                         >
-                          {focusScreen && !unknownFocus && (
-                            <p className="px-1 text-[15px] leading-snug text-stone-700" data-testid="screens-opened-for">
-                              Opened for {status.screens?.[focusScreen]?.name || friendlyName(focusScreen)} ·{" "}
-                              <Link to={wholeRoomHref} className="font-medium text-teal-800 underline-offset-4 hover:underline">
-                                Whole room ›
-                              </Link>
-                            </p>
-                          )}
-                          {unknownFocus && (
-                            <Notice tone="muted" className="text-base">
-                              There's no screen called “{focusScreen}” in the room. Here are the ones it has.
-                            </Notice>
-                          )}
+                          <ListeningPanel api={room.api} feed={show} now={now} addLog={room.addLog} />
+                        </Section>
+
+                        <Section
+                          id="lights"
+                          title="Lights"
+                          summary={lightsSummary}
+                          hidden={sections.length > 0 && lightGroups.length === 0}
+                          action={
+                            // the setup page from the heading, not ~2,000 px down under the rows (owner, 24 Oct)
+                            <Link
+                              to="/lights"
+                              className="inline-flex min-h-11 items-center gap-0.5 rounded-xl px-2 text-[15px] font-medium text-teal-800 hover:bg-stone-100/70 hover:underline"
+                            >
+                              Set up lights <ChevronRight className="h-4 w-4" aria-hidden />
+                            </Link>
+                          }
+                          foot={
+                            <Link to={settingsUrl("lights")} className={FOOT_LINK}>
+                              Light settings <ChevronRight className="h-4 w-4" aria-hidden />
+                            </Link>
+                          }
+                        >
+                          {(lampIds === null || lampIds.length > 0) && <RoomLightsRow api={room.api} feed={show} addLog={room.addLog} />}
                           {sections.length > 0 ? (
-                            screenGroups.map((sec) => (
-                              <div key={sec.key} aria-labelledby={`room-sec-${sec.key}`} role="group">
-                                {screenGroups.length > 1 && (
-                                  <h3 id={`room-sec-${sec.key}`} className={H3}>
-                                    {sec.title}
-                                  </h3>
+                            lightGroups.map((sec) => (
+                              <div key={sec.key} className="space-y-3">
+                                {sec.lights && (
+                                  <LightsSection
+                                    api={room.api}
+                                    connected={connected}
+                                    addLog={room.addLog}
+                                    reportError={room.reportError}
+                                    fixtures={fixtures}
+                                    only={sec.lights}
+                                    title={sec.title}
+                                    sub
+                                  />
                                 )}
-                                <div className="space-y-3">
-                                  {sec.screens.map((id) =>
-                                    screenCard(id, slots[sec.key]?.scopeFor(id) ?? null, sec.key === "_other" ? undefined : sec.key),
-                                  )}
-                                </div>
+                                {sec.effects.length > 0 && (
+                                  <EffectsSection
+                                    effects={sec.effects}
+                                    status={status}
+                                    describe={describe}
+                                    api={room.api}
+                                    connected={connected}
+                                    addLog={room.addLog}
+                                    reportError={room.reportError}
+                                  />
+                                )}
                               </div>
                             ))
-                          ) : screens.length === 0 ? (
-                            <p className="text-base text-muted-foreground">The room has no screens set up.</p>
                           ) : (
-                            <div className="space-y-3">{screens.map(([id]) => screenCard(id))}</div>
+                            <LightsSection
+                              api={room.api}
+                              connected={connected}
+                              addLog={room.addLog}
+                              reportError={room.reportError}
+                              fixtures={fixtures}
+                              title="Lights"
+                              sub
+                            />
                           )}
                         </Section>
-                      </>
-                    );
-                  }}
-                </RoomLives>
 
-                <TodayFold
-                  rooms={todayRooms}
-                  onChange={(what) => room.addLog({ type: "schedule", level: "info", summary: what })}
-                />
-
-                <Section
-                  id="listening"
-                  title="Listening"
-                  summary={listeningWords(showCard, pianoLinked)}
-                  foot={
-                    <Link to={settingsUrl("listening")} className={FOOT_LINK}>
-                      Listening settings <ChevronRight className="h-4 w-4" aria-hidden />
-                    </Link>
-                  }
-                >
-                  <ListeningPanel api={room.api} feed={show} now={now} addLog={room.addLog} />
-                </Section>
-
-                <Section
-                  id="lights"
-                  title="Lights"
-                  summary={lightsSummary}
-                  hidden={sections.length > 0 && lightGroups.length === 0}
-                  action={
-                    // the setup page from the heading, not ~2,000 px down under the rows (owner, 24 Oct)
-                    <Link
-                      to="/lights"
-                      className="inline-flex min-h-11 items-center gap-0.5 rounded-xl px-2 text-[15px] font-medium text-teal-800 hover:bg-stone-100/70 hover:underline"
-                    >
-                      Set up lights <ChevronRight className="h-4 w-4" aria-hidden />
-                    </Link>
-                  }
-                  foot={
-                    <Link to={settingsUrl("lights")} className={FOOT_LINK}>
-                      Light settings <ChevronRight className="h-4 w-4" aria-hidden />
-                    </Link>
-                  }
-                >
-                  {(lampIds === null || lampIds.length > 0) && <RoomLightsRow api={room.api} feed={show} addLog={room.addLog} />}
-                  {sections.length > 0 ? (
-                    lightGroups.map((sec) => (
-                      <div key={sec.key} className="space-y-3">
-                        {sec.lights && (
-                          <LightsSection
+                        {/* one Piano fold, always there (so /room#piano works): its keys and pedals, then Record and the
+                            recordings; Record is in its heading too, one tap with the fold closed */}
+                        <Section
+                          id="piano"
+                          title="Piano"
+                          summary={pianoSummary}
+                          defaultOpen={recorder.recording}
+                          action={(open) => <RecordPill baseUrl={room.api.baseUrl} idle={!open} />}
+                        >
+                          <PianoRow api={room.api} onConnected={setPianoLinked} className={cn(CARD_CLASS, "px-3 py-2 sm:px-4")} />
+                          {pianoLine === null && pianoLinked === null && (
+                            <p className="px-1 text-base text-muted-foreground">Nothing has come from the piano yet.</p>
+                          )}
+                          <PianoCard
                             api={room.api}
                             connected={connected}
                             addLog={room.addLog}
                             reportError={room.reportError}
-                            fixtures={fixtures}
-                            only={sec.lights}
-                            title={sec.title}
-                            sub
+                            bare
+                            onSummary={setPianoLine}
                           />
-                        )}
-                        {sec.effects.length > 0 && (
-                          <EffectsSection
-                            effects={sec.effects}
-                            status={status}
-                            describe={describe}
-                            api={room.api}
-                            connected={connected}
-                            addLog={room.addLog}
-                            reportError={room.reportError}
-                          />
-                        )}
+                        </Section>
                       </div>
-                    ))
-                  ) : (
-                    <LightsSection
-                      api={room.api}
-                      connected={connected}
-                      addLog={room.addLog}
-                      reportError={room.reportError}
-                      fixtures={fixtures}
-                      title="Lights"
-                      sub
-                    />
-                  )}
-                </Section>
-
-                {/* one Piano fold, always there (so /room#piano works): its keys and pedals, then Record and the
-                    recordings; Record is in its heading too, one tap with the fold closed */}
-                <Section
-                  id="piano"
-                  title="Piano"
-                  summary={pianoSummary}
-                  defaultOpen={recorder.recording}
-                  action={(open) => <RecordPill baseUrl={room.api.baseUrl} idle={!open} />}
-                >
-                  <PianoRow api={room.api} onConnected={setPianoLinked} className={cn(CARD_CLASS, "px-3 py-2 sm:px-4")} />
-                  {pianoLine === null && pianoLinked === null && (
-                    <p className="px-1 text-base text-muted-foreground">Nothing has come from the piano yet.</p>
-                  )}
-                  <PianoCard
-                    api={room.api}
-                    connected={connected}
-                    addLog={room.addLog}
-                    reportError={room.reportError}
-                    bare
-                    onSummary={setPianoLine}
-                  />
-                </Section>
-              </div>
+                    </div>
+                  );
+                }}
+              </RoomLives>
 
               <NowPlayingRow api={room.api} addLog={room.addLog} />
             </>

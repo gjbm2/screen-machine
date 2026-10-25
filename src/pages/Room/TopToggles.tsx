@@ -4,17 +4,16 @@
 //     red pulsing dot while it is in use right now.
 //   - AI: AI listening (PUT /show/api/v1/listening {on}); on = it sends short clips to an online AI. A teal dot while
 //     it is sending.
-// Under the bar, one small line in words ("Mic in use · for Auto · AI on") ending in "Listening details ›"; that link,
+// The header's status line carries what they add in words ("mic in use for Auto"; topToggleWords); a tap on that line,
 // or a long press on a switch, opens the details (each page says where: the Room page's Listening fold, which also
 // has what the AI costs; elsewhere /room#listening). Both read the show
 // card the page already has (no new polling); a tap shows at once and is sent with the card's own retry pattern.
 
 import { useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent as ReactPointerEvent } from "react";
-import { ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { RoomApi } from "./api";
 import { Spinner } from "./bits";
-import { aiWords, micWords, NoteLine, useSend, useShowState, type Note, type ShowFeed } from "./MusicCard";
+import { aiWords, micWords, useSend, useShowState, type Note, type ShowFeed } from "./MusicCard";
 import type { ShowMicState } from "./types";
 import type { NewLogEntry } from "./useRoomConnection";
 
@@ -204,29 +203,21 @@ export function TopToggleButtons({ t, onDetails }: { t: TopToggles; onDetails?: 
   );
 }
 
-/** The switches in words, one line under the title row ("Mic in use · AI off"; what the AI costs is in the Listening
- *  details), ending in "Listening details ›" when the page has them: on /room that opens the Listening fold, elsewhere
- *  it goes to /room#listening. A failed or retrying tap's words take its place. */
-export function TopToggleLine({ t, onDetails, className }: { t: TopToggles; onDetails?: () => void; className?: string }) {
-  if (t.note) return <NoteLine note={t.note} className={cn("pb-1", className)} />;
-  const mic = !t.known ? null : t.mic.allowed ? (t.mic.line ? `Mic ${t.mic.line.charAt(0).toLowerCase()}${t.mic.line.slice(1)}` : "Mic on") : "Mic off";
-  const ai = !t.known ? null : t.ai.on ? (t.ai.state && t.ai.state !== "Listening" ? `AI on · ${t.ai.state}` : "AI on") : "AI off";
-  const words = t.known ? [mic, ai].filter(Boolean).join(" · ") : "The music side isn't answering yet";
-  const cls = cn("flex min-h-8 min-w-0 items-center gap-2 text-sm leading-snug text-muted-foreground", className);
-  return (
-    <div className={cls} data-testid="top-toggles-line">
-      <span className="min-w-0 truncate">{words}</span>
-      {onDetails && (
-        <button
-          type="button"
-          onClick={onDetails}
-          data-testid="top-toggles-details"
-          className="inline-flex shrink-0 items-center gap-0.5 rounded-md font-medium text-teal-800 underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          Listening details
-          <ChevronRight aria-hidden className="h-4 w-4" />
-        </button>
-      )}
-    </div>
-  );
+/** What the switches say beyond on and off, for the header's status line (PageHeader.tsx): "mic in use for Auto",
+ *  "mic not in use", "AI on · <why it isn't sending>"; plain "Mic off" or "AI on" would only repeat the switch, so they
+ *  say nothing. Before the music side's card arrives, that it hasn't. */
+export function topToggleWords(t: TopToggles): string | null {
+  if (!t.known) return "the music side isn't answering yet";
+  const line = t.mic.line;
+  const mic = !t.mic.allowed || !line
+    ? null
+    : line.startsWith("In use · ")
+      ? `mic in use ${line.slice("In use · ".length)}`
+      : line.startsWith("Not in use · waiting")
+        ? "mic waiting to start"
+        : line.startsWith("Not in use")
+          ? "mic not in use"
+          : `mic ${line.charAt(0).toLowerCase()}${line.slice(1)}`;
+  const ai = t.ai.on && t.ai.state && t.ai.state !== "Listening" ? `AI ${t.ai.state.charAt(0).toLowerCase()}${t.ai.state.slice(1)}` : null;
+  return [mic, ai].filter(Boolean).join(" · ") || null;
 }
