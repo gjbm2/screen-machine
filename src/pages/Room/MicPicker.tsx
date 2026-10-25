@@ -25,7 +25,8 @@ function stateWords(state?: string | null): string {
   return " (not sending)";
 }
 
-export function MicPicker({ api }: { api: RoomApi }) {
+/** `className`: where it sits (the Room page puts it beside the mic's line); a block under it by default. */
+export function MicPicker({ api, className }: { api: RoomApi; className?: string }) {
   const [inputs, setInputs] = useState<ShowInputs | null>(null);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -72,11 +73,11 @@ export function MicPicker({ api }: { api: RoomApi }) {
   };
 
   return (
-    <div className="mt-2">
+    <div className={className ?? "mt-2"}>
       <label className="flex items-center gap-2 text-sm text-muted-foreground">
         <span className="shrink-0">Using</span>
         <select
-          className="h-10 min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-2 text-[15px] text-stone-900"
+          className="h-11 min-w-0 flex-1 rounded-lg border border-stone-200 bg-white px-2 text-[15px] text-stone-900"
           value={value}
           onChange={(e) => void pick(e.currentTarget.value)}
         >

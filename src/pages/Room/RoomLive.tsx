@@ -188,12 +188,15 @@ function RoomLiveCard({
   });
 
   return (
-    <section aria-label={`${room.name}: live`} data-testid={`roomlive-${room.id}`} className={cn(CARD_CLASS, "space-y-3 border-teal-200 px-4 pb-4 pt-3")}>
+    <section aria-label={`${room.name}: live`} data-testid={`roomlive-${room.id}`} className={cn(CARD_CLASS, "space-y-2 border-teal-200 px-3 py-2.5 sm:px-3.5")}>
+      {/* the title and what a change here reaches, in one line (owner, 25 Oct space pass) */}
       <div>
-        <div className="text-[17px] font-semibold leading-snug">{title}</div>
-        {sub && <p className="text-[15px] leading-snug text-muted-foreground">{sub}</p>}
+        <p className="text-[15px] leading-snug">
+          <span className="font-semibold">{title}</span>
+          {sub && <span className="text-muted-foreground"> · {sub}</span>}
+        </p>
         {ownLines.map((l) => (
-          <p key={l} className="text-[15px] leading-snug text-muted-foreground">
+          <p key={l} className="text-sm leading-snug text-muted-foreground">
             {l}
           </p>
         ))}
@@ -222,7 +225,7 @@ function RoomLiveCard({
             testId={`roomscene-${room.id}`}
           />
 
-          <div className="space-y-3 border-t border-stone-200/80 pt-3">
+          <div className="space-y-1.5 border-t border-stone-200/80 pt-1.5">
             <PickingRows
               id={room.id}
               look={look}
@@ -248,7 +251,7 @@ function RoomLiveCard({
                     type="button"
                     onClick={() => setFxPick(true)}
                     data-testid={`roomfx-${room.id}`}
-                    className="inline-flex h-11 items-center gap-1.5 rounded-full border border-dashed border-stone-400 bg-white px-4 text-base hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    className="inline-flex h-11 items-center gap-1.5 rounded-full border border-dashed border-stone-400 bg-white px-3.5 text-[15px] hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                   >
                     <Sparkles className="h-4 w-4" aria-hidden /> Change effect
                   </button>

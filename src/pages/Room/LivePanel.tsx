@@ -53,7 +53,7 @@ const FX_ON_TOP_KEY = "sm_room_fx_add";
 const DEFAULT_VIA = "__default";
 
 const BUTTON =
-  "inline-flex h-11 items-center gap-1.5 rounded-xl border border-stone-300 bg-white px-3.5 text-base hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
+  "inline-flex h-11 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-xl border border-stone-300 bg-white px-3 text-[15px] hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 const ADD_BUTTON =
   "inline-flex h-11 items-center gap-1.5 rounded-full border border-dashed border-stone-400 bg-white px-4 text-base hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring";
 
@@ -78,12 +78,12 @@ export function SceneButton({
       onClick={onClick}
       disabled={disabled}
       data-testid={testId}
-      className="flex min-h-[3.75rem] w-full min-w-0 items-center gap-3 rounded-xl border border-stone-300 bg-white p-1.5 pr-3 text-left hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
+      className="flex min-h-12 w-full min-w-0 items-center gap-2.5 rounded-xl border border-stone-300 bg-white p-1 pr-3 text-left hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50"
     >
-      <Thumb src={info?.thumb} className="aspect-video w-[5.5rem] shrink-0 rounded-lg" />
+      <Thumb src={info?.thumb} className="aspect-video w-[4.5rem] shrink-0 rounded-lg" />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-base font-semibold leading-snug">{info?.label ?? "Choose a scene"}</span>
-        <span className="flex items-center gap-1.5 truncate whitespace-nowrap text-[15px] leading-snug text-muted-foreground">
+        <span className="block truncate text-[15px] font-semibold leading-snug">{info?.label ?? "Choose a scene"}</span>
+        <span className="flex items-center gap-1.5 truncate whitespace-nowrap text-sm leading-snug text-muted-foreground">
           {busy && <Spinner className="h-3.5 w-3.5" />}
           {caption}
         </span>
@@ -211,12 +211,13 @@ const HOW_MANY: Array<{ label: string; n: number }> = [
   { label: "Three", n: 3 },
 ];
 
-function Row({ label, hint, children, className }: { label: ReactNode; hint?: ReactNode; children: ReactNode; className?: string }) {
+function Row({ label, hint, children, className }: { label: ReactNode; hint?: string; children: ReactNode; className?: string }) {
+  // One line (owner, 25 Oct space pass): the label, then the hint, cut short with its full words in the tooltip.
   return (
-    <div className={cn("flex min-h-11 items-center gap-3", className)}>
-      <div className="min-w-0 flex-1">
-        <div className="text-base font-medium leading-snug">{label}</div>
-        {hint && <div className="line-clamp-2 text-[15px] leading-snug text-muted-foreground">{hint}</div>}
+    <div className={cn("flex min-h-11 items-center gap-2", className)}>
+      <div className="min-w-0 flex-1 truncate text-[15px] leading-snug" title={hint}>
+        <span className="font-medium">{label}</span>
+        {hint && <span className="text-muted-foreground"> · {hint}</span>}
       </div>
       {children}
     </div>
@@ -285,7 +286,7 @@ function FxStatus({
   }
   if (look.current_scene_effects?.length) parts.push("the scene has its own as well");
   return (
-    <p className="text-[15px] leading-snug text-muted-foreground" data-testid={testId}>
+    <p className="truncate text-sm leading-snug text-muted-foreground" title={parts.join(" · ")} data-testid={testId}>
       {parts.join(" · ")}
     </p>
   );
@@ -293,9 +294,38 @@ function FxStatus({
 
 function SwitchSlot({ label, checked, onChange, testId }: { label: string; checked: boolean; onChange: (c: boolean) => void; testId?: string }) {
   return (
-    <span className="grid h-11 w-14 shrink-0 place-items-center">
+    <span className="grid h-11 w-12 shrink-0 place-items-center">
       <Switch aria-label={label} data-testid={testId} checked={checked} onCheckedChange={onChange} />
     </span>
+  );
+}
+
+/** A compact segmented control: a small label, then one 44 px bar of choices. */
+function Segmented({ label, aria, children }: { label: string; aria: string; children: ReactNode }) {
+  return (
+    <div className="flex min-w-[16rem] flex-1 items-center gap-2">
+      <span className="shrink-0 text-sm text-muted-foreground">{label}</span>
+      <div role="group" aria-label={aria} className="flex h-11 flex-1 items-stretch gap-0.5 rounded-xl border border-stone-300 bg-white p-0.5">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Segment({ active, onClick, testId, children }: { active: boolean; onClick: () => void; testId?: string; children: ReactNode }) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      onClick={onClick}
+      data-testid={testId}
+      className={cn(
+        "min-w-0 flex-1 truncate rounded-lg px-1.5 text-[15px] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        active ? "bg-teal-700 font-medium text-white" : "text-foreground hover:bg-stone-100",
+      )}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -379,44 +409,40 @@ export function PickingRows({
         {children}
       </div>
 
-      {fxOn && (
-        <div className="flex items-center gap-3">
-          <span className="w-[4.75rem] shrink-0 text-[15px] text-muted-foreground">How many</span>
-          <div className="grid flex-1 grid-cols-4 gap-2" role="group" aria-label="How many effects">
-            {HOW_MANY.map((h) => (
-              <Chip
-                key={h.n}
-                active={h.n === 0 ? !fxFixed(dir.fx?.density) : fxFixed(dir.fx?.density) && lo === h.n}
-                testId={`howmany-${id}-${h.label.toLowerCase()}`}
-                className="w-full justify-center px-2"
-                onClick={() => onHowMany(h.n)}
-              >
-                {h.label}
-              </Chip>
-            ))}
-          </div>
-        </div>
-      )}
-
       {(sceneOn || fxOn) && (
-        <div className="grid grid-cols-4 gap-2" role="group" aria-label="Energy">
-          {ENERGY.map((e) => (
-            <Chip
-              key={e.label}
-              active={nearest === e && (dir.source === "panel" || Math.abs(e.energy - energyNow) < 0.08)}
-              testId={`energy-${id}-${e.label.toLowerCase()}`}
-              className="w-full justify-center px-2"
-              onClick={() =>
-                onDirection(`energy ${e.label}`, {
-                  energy: e.energy,
-                  transition_style: e.style && styles.includes(e.style) ? e.style : null,
-                  source: "panel",
-                })
-              }
-            >
-              {e.label}
-            </Chip>
-          ))}
+        <div className="flex flex-wrap gap-x-4 gap-y-2">
+          {fxOn && (
+            <Segmented label="How many" aria="How many effects">
+              {HOW_MANY.map((h) => (
+                <Segment
+                  key={h.n}
+                  active={h.n === 0 ? !fxFixed(dir.fx?.density) : fxFixed(dir.fx?.density) && lo === h.n}
+                  testId={`howmany-${id}-${h.label.toLowerCase()}`}
+                  onClick={() => onHowMany(h.n)}
+                >
+                  {h.label}
+                </Segment>
+              ))}
+            </Segmented>
+          )}
+          <Segmented label="Energy" aria="Energy">
+            {ENERGY.map((e) => (
+              <Segment
+                key={e.label}
+                active={nearest === e && (dir.source === "panel" || Math.abs(e.energy - energyNow) < 0.08)}
+                testId={`energy-${id}-${e.label.toLowerCase()}`}
+                onClick={() =>
+                  onDirection(`energy ${e.label}`, {
+                    energy: e.energy,
+                    transition_style: e.style && styles.includes(e.style) ? e.style : null,
+                    source: "panel",
+                  })
+                }
+              >
+                {e.label}
+              </Segment>
+            ))}
+          </Segmented>
         </div>
       )}
     </>
@@ -440,7 +466,7 @@ export function EffectChips({
   trailing?: ReactNode;
 }) {
   return (
-    <div className="mt-2 flex flex-wrap gap-2">
+    <div className="mt-1.5 flex flex-wrap gap-1.5">
       {chips.map((c) => {
         const paused = c.kind === "yours" && !!c.entry?.bypass;
         const title =
@@ -457,7 +483,7 @@ export function EffectChips({
             title={title}
             data-testid={`fxchip-${id}`}
             className={cn(
-              "inline-flex h-11 max-w-full items-center gap-1.5 rounded-full border pl-4 pr-3 text-base focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+              "inline-flex h-11 max-w-full items-center gap-1.5 rounded-full border pl-3.5 pr-3 text-[15px] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               c.kind === "scene"
                 ? "border-stone-300 bg-stone-100 text-stone-700 hover:bg-stone-200/70"
                 : paused
