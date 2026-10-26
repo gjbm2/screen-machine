@@ -73,9 +73,12 @@ Streams (start's first argument not a path: piano_render.stream.Streamer, a call
     calibrate.py measures the true delay after it with the room mic and moves the MIDI clock by that, so it is
     not kept here.
   * The watch: as for files, with these differences. Our URI is matched on TrackURI, mp3radio:// and http:// alike,
-    else on GetMediaInfo's CurrentURI (read-only). RelTime edges are only recorded (done "rel_start_ms": what they
-    say of MIDI time 0, against t_audio0), not rebased on (STREAM_REBASE), until a radio stream's RelTime is checked
-    against the mic. The end is known once the stream has ended: STOPPED near it is "played"; still PLAYING our URI
+    else on GetMediaInfo's CurrentURI (read-only). RelTime edges say when MIDI time 0 left the Sonos's position
+    counter (done "rel_start_ms", against t_audio0); the room hears it STREAM_HEARD_AFTER_REL_MS later. With
+    STREAM_REBASE, once the edges pin it within STREAM_REL_WIDTH_S, the play emits ``{"ev": "heard", "t"}`` (and
+    again if it moves by STREAM_REL_MOVE_S): calibrate.py's sink_emit moves the MIDI clock there unless its mic has
+    measured this play. Checked against the mic on 26 Oct (timing clicks, 3 plays): the start estimate alone was off
+    by -230..-10 ms from one play to the next (heard 834-1050 ms after it), RelTime + 66 ms within +-31 ms. The end is known once the stream has ended: STOPPED near it is "played"; still PLAYING our URI
     STREAM_END_SLACK_S after it, the play is over (done "by": "stream") and the Sonos is paused (once), so it never
     sits on, or re-fetches, a finished stream. A stream that failed (the source raised, ffmpeg died) ends there and
     the play's error says so. done also has "seen_ms" (PUT -> our URI PLAYING) for calibration.
@@ -144,7 +147,10 @@ STREAM_READY_TIMEOUT_S = 20.0
 STREAM_START_MS_DEFAULT = 1500.0                    # PUT -> stream t=0 heard: a guess until the room mic measures it
 STREAM_START_GRACE_S = 10.0
 STREAM_END_SLACK_S = 4.0
-STREAM_REBASE = False                               # RelTime edges of a radio stream: recorded, not rebased on
+STREAM_REBASE = True                                # a radio stream's RelTime edges place the heard start ("heard")
+STREAM_HEARD_AFTER_REL_MS = 66.0                    # the room hears MIDI time 0 this long after RelTime puts it (26 Oct)
+STREAM_REL_WIDTH_S = 0.08                           # ... once the edges' bracket is this narrow
+STREAM_REL_MOVE_S = 0.025                           # ... and again when the estimate moves by more than this
 STREAM_RATE = 48000
 MP3_BITRATE = "320k"
 MP3_DELAY_FRAMES = 1105                             # LAME's 576 + the decoder's 529 (ffmpeg 6.1, measured 23 Oct)
@@ -560,6 +566,7 @@ class _Play:
         self.track_uri: Optional[str] = None             # a stream's TrackURI when the Sonos reports another one
         self.t_seen: Optional[float] = None              # our URI first seen PLAYING
         self.rel_est: Optional[float] = None             # MIDI time 0 from the RelTime edges (a stream: recorded)
+        self.heard_sent: Optional[float] = None          # the last "heard" this play emitted (a stream)
 
 
 class SonosOutput:
@@ -951,9 +958,12 @@ class SonosOutput:
             est = (lo + hi) / 2.0 + p.pad_s              # MIDI time 0: the file's start plus the pad
             if p.stream is not None:
                 p.rel_est = est + MP3_DELAY_FRAMES / p.stream.sr
-                if not STREAM_REBASE:
-                    return edges
-                est = p.rel_est
+                heard = p.rel_est + STREAM_HEARD_AFTER_REL_MS / 1000.0
+                if STREAM_REBASE and hi - lo <= STREAM_REL_WIDTH_S and (
+                        p.heard_sent is None or abs(heard - p.heard_sent) > STREAM_REL_MOVE_S):
+                    p.heard_sent = heard
+                    self.emit({"ev": "heard", "t": heard, "width_ms": round((hi - lo) * 1000)})
+                return edges
             if abs(est - p.t_audio0) > REBASE_S:
                 was, p.t_audio0 = p.t_audio0, est
                 p.rebased += 1

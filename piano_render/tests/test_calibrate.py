@@ -781,3 +781,27 @@ def test_cli_measure(tmp_path, piece, heard, capsys):
     assert out[-1].startswith("clear ")
     med = float(out[-1].split("lag median ")[1].split(" ms")[0])
     assert abs(med - 1000 * (d - 0.3)) < 5.0
+
+
+def test_sink_heard_moves_the_clock_until_the_mic_measures(tmp_path, piece, heard):
+    rec, d = heard
+    now, ev = [0.0], []
+    cal = make_cal(tmp_path, now, ev, persist=False)
+    cal.begin(d - 0.3, C.ArrayReference(piece))             # the start estimate 0.3 s early (a Sonos stream's spread)
+    sink = cal.sink_emit(ev.append)
+    sink({"ev": "heard", "t": d + 0.01})                    # RelTime + its offset: within 10 ms
+    r = rebases(ev)[-1]
+    assert r["by"] == "sink" and r["t_audio0"] == pytest.approx(d + 0.01)
+    n = len(rebases(ev))
+    sink({"ev": "heard", "t": d + 0.02})                    # closer than HEARD_MIN_S to the clock: left be
+    assert len(rebases(ev)) == n
+    for t, f in Feed(rec, 0.0).frames():                    # the mic measures: from then on it wins
+        now[0] = t
+        cal.feed_frame(f, t)
+        cal.step(t)
+        if cal.last_accept_t is not None:
+            break
+    assert cal.last_accept_t is not None
+    n = len(rebases(ev))
+    sink({"ev": "heard", "t": d + 0.5})
+    assert len(rebases(ev)) == n

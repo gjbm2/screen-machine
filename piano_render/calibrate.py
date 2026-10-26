@@ -133,6 +133,7 @@ DEFAULT_LAT_FILE = Path("~/.local/state/screen-machine/piano/latency.json").expa
 ROOM_LATENCY_FILE = REPO / "config" / "room" / "latency.json"    # screen-machine-10's: read only
 MIC_ENV = "PIANO_CALIBRATE_MIC"
 MIC_FOR = {"pc22": "pc22-mic", "sonos": "room-mic"}
+HEARD_MIN_S = 0.025                 # a sink's "heard" closer than this to the MIDI clock's leaves it be
 KEEP_N = 9                          # measurements kept per output; the prior is their median
 DELAY_LIMIT_S = 15.0                # a persisted delay beyond this is ignored (a Sonos radio stream: seconds)
 
@@ -1098,11 +1099,25 @@ class Calibrator:
                         "delay_ms": round(self.delay * 1000, 1)})
             return self.announced
 
+    def sink_heard(self, t_heard: float) -> Optional[float]:
+        """The sink's own estimate of when MIDI time 0 is heard (a Sonos stream's RelTime, sonos.py "heard"): the MIDI
+        clock goes there (the delay stays, the sink's report moves) unless the mic has measured this play, or it is
+        within HEARD_MIN_S of where the clock is."""
+        with self.lock:
+            if self.last_accept_t is not None or not self.playing:
+                return None
+            if abs(t_heard - self.announced) < HEARD_MIN_S:
+                return None
+            return self.sink_rebased(t_heard - self.delay)
+
     def sink_emit(self, emit: Callable[[dict], Any]) -> Callable[[dict], Any]:
-        """Wrap a sink's emit (sonos.SonosOutput's): its rebases go through ``sink_rebased``, the rest through."""
+        """Wrap a sink's emit (sonos.SonosOutput's): its rebases go through ``sink_rebased``, its "heard" through
+        ``sink_heard``, the rest through."""
         def f(msg: dict) -> Any:
             if isinstance(msg, dict) and msg.get("ev") == "rebase" and isinstance(msg.get("t_audio0"), (int, float)):
                 return self.sink_rebased(float(msg["t_audio0"]))
+            if isinstance(msg, dict) and msg.get("ev") == "heard" and isinstance(msg.get("t"), (int, float)):
+                return self.sink_heard(float(msg["t"]))
             return emit(msg)
         return f
 
