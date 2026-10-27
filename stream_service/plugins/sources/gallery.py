@@ -11,12 +11,23 @@ greg-mobile, the-beast and the like never are; anything else, fxtest and Library
 first TV screen. The art directory is the renderer's own ``--art-dir``.  Pictures: DATE-HEX stills (``yyyymmdd-
 hhmmss-<8 hex>.jpg|png``) with a sidecar holding a prompt and a workflow, at least 1920 wide, 16:9 within 10 %.  No
 mp4s.  The prompt text is never read into this process, shown or logged
-(the decode worker checks the sidecar and answers yes or no).  Never masks, never publishes, takes no palette (a tint).
+(the decode worker checks the sidecar and answers yes or no; of the sidecar only the art tags, ``tags`` and
+``tagging`` minus the AI's ``look``, ever leave it).  Never masks, never publishes, takes no palette (a tint).
 
 * Deck (module level, per screen, survives the 20 s rescan reload and the director's rebuilds): the worker indexes
-  bucket.json (the last good index is kept: the file is rewritten in place), pools favourites / 30-day / 7-day
-  recents, and draws from shuffled bags per category with a shown-memory, so pictures don't repeat until most
-  have been seen.  Missing or filtered-out files are skipped and remembered.
+  bucket.json (the last good index is kept: the file is rewritten in place) and the sidecars' art tags (cached by
+  sidecar mtime, sent only when they changed), pools favourites / 30-day / 7-day recents / the whole library, and
+  draws from shuffled bags per category with a shown-memory, so pictures don't repeat until most have been seen.
+  Missing or filtered-out files are skipped and remembered; a picture the tagger judged not show art (auto_ok
+  false) is never drawn unless it is a favourite.
+* Matching (``match: music``, owner 27 Oct: in Ambient, jazz -> abstract / painterly / nocturnal, lyrical classical
+  -> landscapes, seascapes, still life, pop -> urban, fun, peopled): each candidate is weighted by its tags against
+  the room's music (``runtime.extra["music_dir"]``, the session's effective direction): genre fit (the image's 10
+  music groups spread to the 31 genre words as tagpass does, scored like tags.py's scene scorer), moods, valence /
+  organic, energy, quality and favourite; then by continuity with the picture before it (a shared subject or mood),
+  so runs read as a curated set that moves on when the music does.  Untagged pictures stay in at a neutral weight;
+  if nothing scores, the plain pool.  Config/art_tags.yaml (mtime cached) says which hand-added words are subjects
+  or moods.
 * Decoder (module level, one per screen; its worker stops after IDLE_KILL_S with no gallery on that screen): a worker SUBPROCESS (``python -I -c <inline source>``, nice 19 inside,
   its own GIL) decodes with PIL (JPEG draft to the size needed, so 1080 drafts at rush pace) and sends raw RGB down a
   length-prefixed pipe; a daemon thread reads it with readinto straight into one pinned host block (no tobytes or
@@ -33,7 +44,8 @@ mp4s.  The prompt text is never read into this process, shown or logged
 * Timing: show_service's beat clock read directly from the session runtime (``self.modulation.runtime``), at
   photon time (rt.now + sampler.lead), usable only on the session's own test (gate beat, state locked or holding,
   follow extrapolate).  Lines come from beat numbers: phrase lines, bar lines counted down an energy ladder
-  (4 -> 2 -> 1 bars) or beat lines (every 2 beats, every beat at peak); a dissolve is centred on its line; a clock
+  (``ladder``: 4 -> 2 -> 1 bars by default, 16 -> 8 -> 4 for Ambient's calm) or beat lines (every 2 beats, every
+  beat at peak); a dissolve is centred on its line; a clock
   re-anchor (epoch, bar anchor, metre or phrase length) re-baselines with no change until the next whole beat.  If
   the next picture isn't ready the current one holds to the next line.  Without a usable clock (fxtest, gate dmx,
   silence) a timer scaled by energy runs.  The ladder reads the session's raw energy_slow when it has one.
@@ -72,6 +84,7 @@ from stream_service.gpu import raw_module
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.params import enum, flag, num, standard_scene_params
 from stream_service.plugins.base import Source
+from stream_service.tags import GENRE_FLOOR, GENRE_GAMMA, genre_fit
 
 log = logging.getLogger("stream_service.plugins.gallery")
 
@@ -88,16 +101,42 @@ IO_TIMEOUT_S = 10.0             # a worker reply slower than this = a hung worke
 HANDOVER_S = 1.5                # a decoded block nobody takes within this goes back to the decoder
 RESTART_S = 10.0                # worker restarts at most this often
 INDEX_S = 60.0                  # re-index a bucket at most this often
+OPEN_ON_ART_GAP_S = 300.0       # open_on_art only after this long without a gallery picture on the screen
 RETRY_S = 1.0                   # an instance re-requests a failed picture after this
 PULSE_LIFT = 0.12
-LADDER_BAR = ((0.55, 2), (0.80, 1))   # energy_slow edges for the bar ladder (4 bars below the first)
+LADDER_BAR = ((0.55, 2), (0.80, 1))   # energy_slow edges for the bar ladder (its calm rung below the first)
 BEAT_PEAK = 0.80                # beat pace: every beat at or above, every 2 beats below
 RUSH_CUT = 0.95                 # rush transitions: a plain cut at or above
 HYST = 0.04
+LADDERS = {"4-2-1": (4, 2, 1), "8-4-2": (8, 4, 2), "16-8-4": (16, 8, 4)}   # bar pace: bars per change, calm..peak
+SHOWN_MAX = 60                  # the shown-memory: the library avoids up to this many (half its size at most) ...
+SHOWN_POOL = 24                 # ... the other pools this many, as before
+# Music matching (match: music).  The 10 music groups the tagger scores, spread onto the vocab's 31 genre words the
+# same way the scene tags are (stream_service/tools/tagpass.py GROUP_WORDS; a test keeps the two equal).
+GROUP_WORDS = {
+    "ambient": ["ambient", "downtempo"],
+    "classical": ["classical", "piano", "soundtrack"],
+    "jazz": ["jazz", "blues"],
+    "soul": ["soul", "rnb", "funk", "gospel", "disco"],
+    "pop": ["pop", "indie", "singer-songwriter", "folk", "country"],
+    "rock": ["rock", "metal", "punk"],
+    "house": ["house", "disco", "trance", "electronic"],
+    "techno": ["techno", "trance", "drum-and-bass", "dubstep", "electronic"],
+    "hiphop": ["hip-hop"],
+    "world": ["world", "latin", "afrobeat", "reggae"],
+}
+UNTAGGED = 0.35                 # an untagged picture's genre factor (a ~0.7 fit): under a good fit, over a jarring one
+MOOD_MISS = 0.55                # no mood in common with the music's
+AXIS_SLOPE = 0.6                # valence / organic: 1 - slope x |music - picture| (tags.py's)
+ENERGY_SLOPE = 0.5
+FAV_BOOST = 1.4
+SAME_SUBJECT = 1.6              # continuity with the picture before: a shared subject ...
+SAME_MOOD = 1.2                 # ... and a shared mood
+SHARPEN = 2.0                   # weights are raised to this before the draw: good fits lead, the rest still appear
 
 # ----------------------------------------------------------------------------- the decode worker (own process)
 _WORKER = r'''
-import json, os, re, struct, sys
+import json, os, re, struct, sys, zlib
 try:
     os.nice(max(0, 19 - os.nice(0)))
 except Exception:
@@ -106,6 +145,9 @@ from PIL import Image, ImageOps
 Image.MAX_IMAGE_PIXELS = 64000000
 fin, fout = sys.stdin.buffer, sys.stdout.buffer
 SIDE = {}
+TAGS = {}       # path -> (sidecar mtime_ns, art tags or None): a re-index only stats unchanged sidecars
+AI_KEYS = ("subject", "medium", "moods", "palette", "energy", "valence", "organic", "density", "quality", "music",
+           "auto_ok", "confidence")
 
 def rd(n):
     b = b""
@@ -135,6 +177,32 @@ def sidecar_ok(path):
         SIDE[path] = v
     return v
 
+def art_tags(path):
+    """The sidecar's art tags only (tags + tagging, never the prompt or the AI's look), cached by mtime."""
+    try:
+        m = os.stat(path + ".json").st_mtime_ns
+    except OSError:
+        return 0, None
+    c = TAGS.get(path)
+    if c is not None and c[0] == m:
+        return c
+    v = None
+    try:
+        with open(path + ".json", "rb") as f:
+            d = json.load(f)
+        tg = d.get("tagging") if isinstance(d, dict) else None
+        tg = tg if isinstance(tg, dict) else {}
+        ai = tg.get("ai") if isinstance(tg.get("ai"), dict) else {}
+        strs = lambda x: [t for t in x if isinstance(t, str)][:24] if isinstance(x, list) else []
+        v = {"tags": strs(d.get("tags")), "ai": {k: ai[k] for k in AI_KEYS if k in ai},
+             "added": strs(tg.get("added")), "removed": strs(tg.get("removed"))}
+        if not (v["tags"] or v["ai"] or v["added"]):
+            v = None
+    except Exception:
+        v = None
+    TAGS[path] = (m, v)
+    return m, v
+
 def index(req):
     d = req["dir"]
     with open(os.path.join(d, "bucket.json"), "rb") as f:
@@ -144,7 +212,18 @@ def index(req):
     fav = list(b.get("favorites") or [])
     def keep(xs):
         return [x for x in xs if isinstance(x, str) and pat.match(x) and os.path.isfile(os.path.join(d, x))]
-    return {"ok": True, "fav": keep(fav), "seq": keep(seq)}, b""
+    out = {"ok": True, "fav": keep(fav), "seq": keep(seq)}
+    if req.get("tags"):
+        tags, sig = {}, []
+        for x in dict.fromkeys(out["fav"] + out["seq"]):
+            m, v = art_tags(os.path.join(d, x))
+            sig.append("%s:%d" % (x, m))
+            if v is not None:
+                tags[x] = v
+        out["tsig"] = "%08x" % zlib.crc32("|".join(sig).encode())
+        if out["tsig"] != req.get("tsig"):
+            out["tags"] = tags
+    return out, b""
 
 def decode(req):
     path, tw, th = req["path"], int(req["w"]), int(req["h"])
@@ -214,6 +293,17 @@ def output_dir() -> Path:
     return _repo() / "output"
 
 
+def index_once(d, tsig: str | None = None, timeout: float = 120.0) -> dict:
+    """One index (with art tags) of a bucket directory by a fresh decode worker: the same code the TVs use, for the
+    tools and tests (tools/gallery_match_eval.py).  Never called on the render path."""
+    req = json.dumps({"op": "index", "dir": str(d), "pattern": DATE_HEX, "tags": True,
+                      "tsig": tsig}).encode()
+    p = subprocess.run([sys.executable, "-I", "-c", _WORKER], input=struct.pack(">I", len(req)) + req,
+                       capture_output=True, timeout=timeout)
+    n = struct.unpack(">I", p.stdout[:4])[0]
+    return json.loads(p.stdout[4:4 + n])
+
+
 _SCREENS_CACHE: dict = {"mtime": None, "ids": ()}
 
 
@@ -240,12 +330,15 @@ QUEUED, READY, TAKEN, FAILED, DONE = range(5)
 
 
 class _Ticket:
-    """One picture asked of a decoder: a pool pick (deck + pool) or a path (the wall art)."""
+    """One picture asked of a decoder: a pool pick (deck + pool, and the music to match when asked) or a path (the
+    wall art)."""
     __slots__ = ("deck", "pool", "path", "w", "h", "state", "name", "pw", "ph", "event", "dev", "t_ready",
-                 "t_taken", "abandoned", "done")
+                 "t_taken", "abandoned", "done", "match", "music")
 
-    def __init__(self, w: int, h: int, deck=None, pool: str = "", path: str = ""):
+    def __init__(self, w: int, h: int, deck=None, pool: str = "", path: str = "", match: str = "off",
+                 music: dict | None = None):
         self.deck, self.pool, self.path, self.w, self.h = deck, pool, path, w, h
+        self.match, self.music = match, music
         self.state, self.name, self.pw, self.ph = QUEUED, "", 0, 0
         self.event, self.dev, self.t_ready, self.t_taken = None, 0, 0.0, 0.0
         self.abandoned = False
@@ -281,8 +374,115 @@ def _block(cp, screen: str) -> "_Block":
         return b
 
 
+_LEX: dict = {"mtime": None, "subject": frozenset(), "moods": frozenset()}
+
+
+def _lexicon() -> tuple[frozenset, frozenset]:
+    """config/art_tags.yaml's subject and mood words (mtime cached; the last good kept): which hand-added tags count
+    as a subject or a mood."""
+    path = Path(os.environ.get("SM_ART_TAGS") or _repo() / "config" / "art_tags.yaml")
+    try:
+        m = path.stat().st_mtime_ns
+        if m != _LEX["mtime"]:
+            import yaml
+            f = (yaml.safe_load(path.read_text()) or {}).get("facets") or {}
+            _LEX.update(mtime=m, subject=frozenset(f.get("subject") or ()), moods=frozenset(f.get("moods") or ()))
+    except Exception as e:
+        if _LEX["mtime"] != "failed":
+            log.info("gallery: art tag lexicon %s unavailable (%s)", path.name, type(e).__name__)
+            _LEX["mtime"] = "failed"
+    return _LEX["subject"], _LEX["moods"]
+
+
+def _num01(v) -> float | None:
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+        return None
+    return min(1.0, max(0.0, float(v)))
+
+
+def _words(xs) -> list[str]:
+    return [str(x).strip().lower() for x in xs if isinstance(x, str) and x.strip()] if isinstance(xs, list) else []
+
+
+def facets(raw, lex: tuple | None = None) -> dict | None:
+    """A picture's art tags (the worker's sidecar extract) as the matching reads them (docs: the art tags contract
+    §3): subject / moods = the AI's minus what a person removed, plus added words the lexicon calls a subject /
+    mood; the 10 music groups spread to genre words; the numbers as given; auto_ok.  None = untagged."""
+    if not isinstance(raw, dict):
+        return None
+    subj_w, mood_w = lex if lex is not None else _lexicon()
+    ai = raw.get("ai") if isinstance(raw.get("ai"), dict) else {}
+    removed = set(_words(raw.get("removed")))
+    added = [w for w in _words(raw.get("added")) if w not in removed]
+
+    def eff(given, lexw):
+        return frozenset([w for w in _words(given) if w not in removed] + [w for w in added if w in lexw])
+
+    music = ai.get("music") if isinstance(ai.get("music"), dict) else {}
+    fit: dict[str, float] = {}
+    for g, ws in GROUP_WORDS.items():
+        a = _num01(music.get(g))
+        if a is not None:
+            for w in ws:
+                fit[w] = max(fit.get(w, 0.0), a)
+    return {"subject": eff(ai.get("subject"), subj_w), "moods": eff(ai.get("moods"), mood_w),
+            "genre_fit": fit or None, "energy": _num01(ai.get("energy")), "valence": _num01(ai.get("valence")),
+            "organic": _num01(ai.get("organic")), "quality": _num01(ai.get("quality")),
+            "auto_ok": ai.get("auto_ok") is not False, "ai": bool(ai)}
+
+
+def _music_moods(md: dict) -> set:
+    return set(_words(md.get("moods"))) | set(_words(md.get("music_moods")))
+
+
+def music_key(md: dict | None):
+    """What the matching weights depend on, rounded: they are recomputed only when this changes."""
+    if not md:
+        return None
+    g = md.get("genres") if isinstance(md.get("genres"), dict) else {}
+    r1 = lambda v: None if _num01(v) is None else round(_num01(v), 1)        # noqa: E731
+    return (tuple(sorted((str(w), r1(p)) for w, p in g.items() if r1(p))), None if g else md.get("genre"),
+            tuple(sorted(_music_moods(md))), r1(md.get("valence")), r1(md.get("organic")), r1(md.get("energy_slow")))
+
+
+def music_weight(f: dict | None, md: dict | None, fav: bool) -> float:
+    """A picture's weight for the music (before continuity and sharpening); 0 = never drawn automatically."""
+    if f is not None and not f["auto_ok"] and not fav:
+        return 0.0                                   # the tagger: not show art (text, a logo, a screenshot)
+    want = (md.get("genres") or md.get("genre")) if md else None
+    if f is None or not f["ai"]:                     # a middling picture whose music fit is a neutral UNTAGGED
+        w = (0.15 + 0.85 * 0.5) * (UNTAGGED if want else 1.0)
+    else:
+        q = f["quality"]
+        w = 0.15 + 0.85 * (0.5 if q is None else q)
+        if md:
+            if want and f["genre_fit"]:
+                fit = genre_fit(want, {"genre_fit": f["genre_fit"]})
+                if fit is not None:
+                    w *= GENRE_FLOOR + (1.0 - GENRE_FLOOR) * fit ** GENRE_GAMMA
+            mm = _music_moods(md)
+            if mm and f["moods"]:
+                w *= 1.0 if mm & f["moods"] else MOOD_MISS
+            for k in ("valence", "organic"):
+                a, b = _num01(md.get(k)), f[k]
+                if a is not None and b is not None:
+                    w *= 1.0 - AXIS_SLOPE * abs(a - b)
+            e = _num01(md.get("energy_slow"))
+            if e is not None and f["energy"] is not None:
+                w *= 1.0 - ENERGY_SLOPE * abs(e - f["energy"])
+    return w * (FAV_BOOST if fav else 1.0)
+
+
+def continuity(prev: dict | None, f: dict | None) -> float:
+    """Sequencing: a picture sharing a subject (and a mood) with the one before follows it more often."""
+    if prev is None or f is None:
+        return 1.0
+    return ((SAME_SUBJECT if prev["subject"] & f["subject"] else 1.0)
+            * (SAME_MOOD if prev["moods"] & f["moods"] else 1.0))
+
+
 class _Deck:
-    """A screen's pictures: the index (last good kept), pools and shuffled bags with a shown-memory."""
+    """A screen's pictures: the index (last good kept), its art tags, pools and shuffled bags with a shown-memory."""
 
     def __init__(self, screen: str):
         self.screen = screen
@@ -292,26 +492,56 @@ class _Deck:
         self.seq: list[str] = []
         self.bad: set[str] = set()
         self.bags: dict[str, list[str]] = {}
-        self.shown: deque = deque(maxlen=24)
+        self.shown: deque = deque(maxlen=SHOWN_MAX)
         self.t_index = -1e9
         self.indexed = False
         self.rng = random.Random()
+        self.upgrade()
+
+    def upgrade(self) -> None:
+        """Fields a deck made by an older copy of this module lacks (decks survive the 20 s rescan's re-import)."""
+        for k, v in (("raw", {}), ("facets", {}), ("tsig", None), ("lex_m", None), ("gen", 0), ("wkey", None),
+                     ("wbase", {}), ("t_drawn", -1e9)):
+            if not hasattr(self, k):
+                setattr(self, k, v)
+        if self.shown.maxlen != SHOWN_MAX:
+            self.shown = deque(self.shown, maxlen=SHOWN_MAX)
 
     def stale(self) -> bool:
         return time.monotonic() - self.t_index > INDEX_S
 
-    def set_index(self, fav: list, seq: list) -> None:
+    def set_index(self, fav: list, seq: list, tags: dict | None = None, tsig: str | None = None) -> None:
+        """A new index; ``tags`` (name -> the worker's art tags) only when they changed (None keeps the last)."""
+        lex = _lexicon()
         with self.lock:
             if fav != self.fav or seq != self.seq:
                 self.fav, self.seq = list(fav), list(seq)
                 self.bags.clear()
+                self.gen += 1
+            if tags is not None or (self.lex_m != _LEX["mtime"] and self.facets):
+                if tags is not None:
+                    self.raw, self.tsig = dict(tags), tsig
+                self.facets = {n: f for n, f in ((n, facets(v, lex)) for n, v in self.raw.items())
+                               if f is not None}
+                self.bags.clear()                  # (auto_ok can change a pool)
+                self.gen += 1
+            self.lex_m = _LEX["mtime"]
             self.indexed = True
+
+    def apply_index(self, meta: dict) -> None:
+        """The worker's index reply (an older worker sends no tags: the last ones are kept)."""
+        self.set_index(meta.get("fav") or [], meta.get("seq") or [],
+                       meta["tags"] if isinstance(meta.get("tags"), dict) else None, meta.get("tsig"))
 
     def _cats(self) -> dict[str, list[str]]:
         now = time.time()
         favs = set(self.fav)
+        blocked = {n for n, f in self.facets.items() if not f["auto_ok"]} - favs
+        seq = [n for n in self.seq if n not in blocked] if blocked else self.seq
+        if not seq and not self.fav:
+            seq = self.seq                         # never a blank screen
         r7, r30 = [], []
-        for n in self.seq:
+        for n in seq:
             if n in favs:
                 continue
             try:
@@ -322,14 +552,64 @@ class _Deck:
                 r7.append(n)
             elif age <= 30.0:
                 r30.append(n)
-        return {"fav": list(self.fav), "r7": r7, "r30": r30}
+        # the library: every eligible picture, favourites first, no age cut (the bucket's purge already bounds it)
+        lib = list(dict.fromkeys([*self.fav, *(n for n in seq if n not in favs)]))
+        return {"fav": list(self.fav), "r7": r7, "r30": r30, "lib": lib}
 
-    def draw(self, pool: str):
-        """The next name for a pool (decoder thread), or None when nothing is left."""
+    @staticmethod
+    def _mem(pool: str, n: int) -> int:
+        """How many recent picks a draw avoids: up to SHOWN_MAX for the library, SHOWN_POOL otherwise, at most half."""
+        return min(SHOWN_MAX if pool == "library" else SHOWN_POOL, n // 2)
+
+    def _draw_matched(self, cats: dict, pool: str, music: dict | None):
+        """A weighted pick for the music (lock held), or None when nothing scores (then the plain pool)."""
+        if pool == "library":
+            names = cats["lib"]
+        elif pool == "favourites":
+            names = cats["fav"]
+        else:
+            names = list(dict.fromkeys(cats["fav"] + cats["r7"] + cats["r30"]))
+        live = [n for n in names if n not in self.bad]
+        if not live:
+            return None
+        key = (self.gen, pool, music_key(music))
+        if key != self.wkey:                       # the music moved or the index changed: re-weight (~600 names)
+            favs = set(self.fav)
+            self.wbase = {n: music_weight(self.facets.get(n), music, n in favs) for n in names}
+            self.wkey = key
+        k = min(len(self.shown), self._mem(pool, len(live)))
+        avoid = set(list(self.shown)[len(self.shown) - k:]) if k > 0 else set()
+        prev = self.facets.get(self.shown[-1]) if self.shown else None
+        for cand in ([n for n in live if n not in avoid], live):
+            ws = [(self.wbase.get(n, 0.0) * continuity(prev, self.facets.get(n))) ** SHARPEN for n in cand]
+            tot = sum(ws)
+            if tot > 0.0:
+                r, pick = self.rng.random() * tot, None
+                for n, w in zip(cand, ws):
+                    if w <= 0.0:
+                        continue
+                    pick = n
+                    if r < w:
+                        break
+                    r -= w
+                self.shown.append(pick)
+                return pick
+        return None
+
+    def draw(self, pool: str, match: str = "off", music: dict | None = None):
+        """The next name for a pool (decoder thread), or None when nothing is left.  ``match`` "music": weighted by
+        the pictures' art tags against ``music`` (the room's, from the ticket), else the plain pool."""
+        self.t_drawn = time.monotonic()
         with self.lock:
             cats = self._cats()
+            if match == "music":
+                n = self._draw_matched(cats, pool, music)
+                if n is not None:
+                    return n
             if pool == "favourites":
                 w = {"fav": 1.0}
+            elif pool == "library":
+                w = {"lib": 1.0}
             elif pool == "mixed":
                 w = {"fav": 3.0, "r7": 1.0, "r30": 1.0}
             else:  # fresh: newest week x3
@@ -356,7 +636,7 @@ class _Deck:
                         self.shown.append(n)
                         return n
                 live = [n for n in cats[cat] if n not in self.bad]
-                k = min(len(self.shown), len(live) // 2)
+                k = min(len(self.shown), self._mem(pool, len(live)))
                 avoid = set(list(self.shown)[len(self.shown) - k:]) if k > 0 else set()
                 bag = [n for n in live if n not in avoid] or live
                 self.rng.shuffle(bag)
@@ -460,16 +740,17 @@ class _Decoder:
                 if d.stale() or not d.indexed:
                     d.t_index = time.monotonic()
                     try:
-                        meta, _ = self._call({"op": "index", "dir": str(d.dir), "pattern": DATE_HEX}, None)
+                        meta, _ = self._call({"op": "index", "dir": str(d.dir), "pattern": DATE_HEX, "tags": True,
+                                              "tsig": d.tsig}, None)
                         if meta.get("ok"):
-                            d.set_index(meta.get("fav") or [], meta.get("seq") or [])
+                            d.apply_index(meta)
                         else:
                             log.info("gallery %s: bucket index failed (%s); keeping the last good one",
                                      self.screen, meta.get("error"))
                     except Exception as e:
                         log.info("gallery %s: bucket index failed (%s)", self.screen, type(e).__name__)
                 for _ in range(8):
-                    name = d.draw(t.pool)
+                    name = d.draw(t.pool, getattr(t, "match", "off"), getattr(t, "music", None))
                     if name is None:
                         break
                     meta, n = self._call({"op": "decode", "path": str(d.dir / name), "w": t.w, "h": t.h,
@@ -503,12 +784,13 @@ class _Decoder:
 
     # -- the pipe
     def _ensure(self) -> None:
-        if self.proc is not None and self.proc.poll() is None:
+        if self.proc is not None and self.proc.poll() is None and getattr(self, "src", None) == _WORKER:
             return
-        self._kill()
+        self._kill()                   # (gone, or started by an older copy of this module: the new worker source)
         if time.monotonic() - self.started_at < RESTART_S:
             raise RuntimeError("worker restarting")
         self.started_at = time.monotonic()
+        self.src = _WORKER
         self.proc = subprocess.Popen([sys.executable, "-I", "-c", _WORKER], stdin=subprocess.PIPE,
                                      stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, bufsize=0,
                                      start_new_session=True, close_fds=True)
@@ -582,6 +864,9 @@ def _deck(screen: str) -> _Deck:
         d = _DECKS.get(screen)
         if d is None:
             d = _DECKS[screen] = _Deck(screen)
+        elif type(d) is not _Deck:      # made by the module before a re-import: this code, its index and memory kept
+            d.__class__ = _Deck
+            d.upgrade()
         return d
 
 
@@ -591,6 +876,8 @@ def _decoder(screen: str, cp) -> _Decoder:
         d = _DECODERS.get(screen)
         if d is None or not d.thread.is_alive():
             d = _DECODERS[screen] = _Decoder(screen, block)
+        elif type(d) is not _Decoder:   # its thread runs on, calling this code from now on (one decoder per block)
+            d.__class__ = _Decoder
         d.users += 1
         return d
 
@@ -747,7 +1034,9 @@ class Gallery(Source):
     tags = {"family": "light", "dims": "2d", "technique": ["projection"], "moods": ["elegant", "dreamy"]}
     params = {
         "pace": enum(["phrase", "bar", "beat"], "phrase", "Changes on"),
-        "pool": enum(["favourites", "mixed", "fresh"], "favourites", "Pictures"),
+        "pool": enum(["favourites", "mixed", "fresh", "library"], "favourites", "Pictures"),
+        "match": enum(["off", "music"], "off", "Fit the music"),
+        "ladder": enum(list(LADDERS), "4-2-1", "Bars per change (calm, mid, peak)"),
         "style": enum(["soft", "lively", "rush"], "soft", "Transitions"),
         "quality": enum(["full", "draft"], "full", "Decode"),
         "open_on_art": {**flag(False, "Open on the wall's art"), "x-tier": "structural"},
@@ -872,7 +1161,9 @@ class Gallery(Source):
                     log.warning("gallery: transition %s unavailable (%s)", key, type(e).__name__)
         # the opening pictures: the wall's art (if asked and it is the current art), then pool picks
         tickets = []
-        if params.get("open_on_art"):
+        # only when this screen's gallery is starting afresh: a re-pick mid-show (gallery-ambient after
+        # gallery-ambient-lively) carries on with the music's pictures instead of going back to the wall's
+        if params.get("open_on_art") and time.monotonic() - self.deck.t_drawn > OPEN_ON_ART_GAP_S:
             art = _wall_art(self.screen)
             if art:
                 tickets.append(self.dec.submit(_Ticket(self.box[0], self.box[1], path=art)))
@@ -898,7 +1189,24 @@ class Gallery(Source):
                 s.state, s.ticket, s.t_fail = EMPTY, None, -1e9
 
     def _pick_ticket(self) -> _Ticket:
-        return _Ticket(self.box[0], self.box[1], deck=self.deck, pool=self.params0.get("pool", "favourites"))
+        match = self.params0.get("match", "off")
+        return _Ticket(self.box[0], self.box[1], deck=self.deck, pool=self.params0.get("pool", "favourites"),
+                       match=match, music=self._music() if match == "music" else None)
+
+    def _music(self) -> dict | None:
+        """The room's music as the matching reads it: the session's effective direction (runtime.extra music_dir,
+        sessions.py) and its slow energy.  None = nothing known (quality, favourites and continuity only)."""
+        m = self.modulation
+        rt = getattr(m, "runtime", None) if m is not None else None
+        ex = getattr(rt, "extra", None) if rt is not None else None
+        if not isinstance(ex, dict):
+            return None
+        md = ex.get("music_dir")
+        out = dict(md) if isinstance(md, dict) else {}
+        es = _num01(ex.get("energy_slow"))
+        if es is not None:
+            out["energy_slow"] = es
+        return out or None
 
     # ------------------------------------------------------------------ slots
     def _poll_slot(self, s: _Slot, cp) -> None:
@@ -989,15 +1297,16 @@ class Gallery(Source):
             return bpb * pb
         r = self.rung
         if pace == "bar":
+            calm, mid, peak = LADDERS.get(self.params0.get("ladder"), LADDERS["4-2-1"])
             lo, hi = LADDER_BAR[0][0], LADDER_BAR[1][0]
-            if r not in (4, 2, 1):
-                r = 4 if e < lo else (2 if e < hi else 1)
-            elif r == 4:
-                r = 1 if e >= hi + HYST else (2 if e >= lo + HYST else 4)
-            elif r == 2:
-                r = 1 if e >= hi + HYST else (4 if e < lo - HYST else 2)
+            if r not in (calm, mid, peak):
+                r = calm if e < lo else (mid if e < hi else peak)
+            elif r == calm:
+                r = peak if e >= hi + HYST else (mid if e >= lo + HYST else calm)
+            elif r == mid:
+                r = peak if e >= hi + HYST else (calm if e < lo - HYST else mid)
             else:
-                r = 1 if e >= hi - HYST else (2 if e >= lo - HYST else 4)
+                r = peak if e >= hi - HYST else (mid if e >= lo - HYST else calm)
             self.rung = r
             return r * bpb
         if r not in (2, 1):
