@@ -28,6 +28,16 @@ from . import render as R
 WINDOWS_FONTS = Path("/mnt/c/Windows/Fonts")
 WINDOWS_BITMAP = ["sserife.fon", "sseriff.fon", "serife.fon", "seriff.fon", "smalle.fon", "vgasys.fon",
                   "8514sys.fon", "courf.fon"]
+# Windows' screen fonts, outlines with hand-made hinting for small sizes (best from about 13-14 px): regular -> bold
+WINDOWS_OUTLINE = {"arial.ttf": "arialbd.ttf", "verdana.ttf": "verdanab.ttf", "tahoma.ttf": "tahomabd.ttf",
+                   "segoeui.ttf": "segoeuib.ttf", "calibri.ttf": "calibrib.ttf", "trebuc.ttf": "trebucbd.ttf",
+                   "georgia.ttf": "georgiab.ttf", "times.ttf": "timesbd.ttf", "micross.ttf": None,
+                   "cour.ttf": "courbd.ttf"}
+# bold cuts beside regular ones in the tag's fonts and the library (X11 faces: R -> B at the same size)
+TWINS = {"Galmuri11.ttf": "Galmuri11-Bold.ttf", "PixelOperator.ttf": "PixelOperator-Bold.ttf",
+         "PixelOperator8.ttf": "PixelOperator8-Bold.ttf", "PixelOperatorSC.ttf": "PixelOperatorSC-Bold.ttf",
+         "PixelOperatorMono.ttf": "PixelOperatorMono-Bold.ttf", "Pixeloid.Sans.ttf": "Pixeloid.Sans-Bold.ttf",
+         "Silkscreen-Regular.ttf": "Silkscreen-Bold.ttf", "TerminusTTF-4.49.3.ttf": "TerminusTTF-Bold-4.49.3.ttf"}
 SAMPLES = {
     "art": dict(mode="Normal", auto=True, mic=True, theme="The Turning of the Hour",
                 style="Long-exposure, motion-blur photography in the style of Harry Callahan, using high-contrast "
@@ -71,15 +81,31 @@ def library() -> list[dict]:
     out = []
     for where, folder in (("tag", R.FONTS), ("library", R.LIBRARY)):
         for p in sorted(folder.glob("*")) if folder.exists() else []:
-            if p.suffix.lower() not in (".ttf", ".otf", ".otb", ".fon"):
+            if p.suffix.lower() not in (".ttf", ".otf", ".otb", ".fon", ".pcf"):
                 continue
             try:
                 f = freetype.Face(str(p))
             except freetype.FT_Exception:
                 continue
-            out.append({"id": p.name, "name": f"{f.family_name.decode(errors='replace')} "
+            name = f"{f.family_name.decode(errors='replace')} {f.style_name.decode(errors='replace')}"
+            bold = TWINS.get(p.name)
+            if p.suffix.lower() == ".pcf":        # the X11 bitmap faces: one size each, say which
+                name += f" ({p.stem.split('-')[1]})"
+                stem = p.stem.split("-")[2] if p.stem.count("-") >= 2 else ""
+                twin = p.name.replace(stem, stem.replace("R", "B", 1)) if "R" in stem else ""
+                bold = twin if twin and (folder / twin).exists() else None
+            out.append({"id": p.name, "name": name.replace(" Regular", ""), "where": where, "sizes": _native(f),
+                        "bold": bold})
+    for name, bold in WINDOWS_OUTLINE.items():
+        for fn in (name, bold):
+            p = WINDOWS_FONTS / fn if fn else None
+            if p is None or not p.exists():
+                continue
+            f = freetype.Face(str(p))
+            out.append({"id": str(p), "name": f"{f.family_name.decode(errors='replace')} "
                         f"{f.style_name.decode(errors='replace')}".replace(" Regular", ""),
-                        "where": where, "sizes": _native(f)})
+                        "where": "outline", "sizes": [],
+                        "bold": str(WINDOWS_FONTS / bold) if fn == name and bold else None})
     for name in WINDOWS_BITMAP:
         p = WINDOWS_FONTS / name
         if not p.exists():
@@ -237,16 +263,18 @@ const ROLES={head:"Headline",text:"Text, labels, switches",ui:"Mode & bottom lin
 let FONTS=[],TYPES={},timer=null;
 const $=id=>document.getElementById(id);
 function opt(f){const s=f.sizes.length?` [${f.sizes.join(", ")} px]`:"";return `<option value="${f.id}">${f.name}${s} — ${f.where}</option>`}
-function fontOptions(){const g={tag:"On the tag now",library:"Library",windows:"Windows bitmap fonts (this PC only)"};
+function fontOptions(){const g={tag:"On the tag now",library:"Library (bitmap)",windows:"Windows bitmap fonts (this PC only)",outline:"Windows screen fonts, with bold (outlines; best 13 px and up; this PC only)"};
  return Object.keys(g).map(w=>{const fs=FONTS.filter(f=>f.where===w);return fs.length?`<optgroup label="${g[w]}">${fs.map(opt).join("")}</optgroup>`:""}).join("")}
 function build(){$("roles").innerHTML=Object.entries(ROLES).map(([r,label])=>`<section><h2>${label}</h2>
 <label>Font</label><select id="${r}-font">${fontOptions()}</select>
 <div class="row"><div><label>Size px</label><input id="${r}-px" type="number" min="5" max="64"></div>
 <div><label>Line px</label><input id="${r}-line" type="number" min="0" max="80" placeholder="auto"></div>
 <div><label>Scale</label><select id="${r}-scale"><option>1</option><option>2</option><option>3</option></select></div></div>
-<label>Bold</label><select id="${r}-bold"><option value="double">Pixel-doubled</option><option value="none">None (regular)</option><optgroup label="A bold cut">${FONTS.map(f=>`<option value="${f.id}">${f.name}</option>`).join("")}</optgroup></select>
+<label>Bold</label><select id="${r}-bold"><option value="double">Pixel-doubled</option><option value="none">None (regular)</option><optgroup label="A bold cut">${FONTS.filter(f=>/bold/i.test(f.name)).map(f=>`<option value="${f.id}">${f.name}${f.sizes.length?` [${f.sizes.join(", ")} px]`:""}</option>`).join("")}</optgroup></select>
 <label class="check"><input type="checkbox" id="${r}-serif_i"> Serifed capital I (“AI” not “Al”)</label></section>`).join("");
- Object.keys(ROLES).forEach(r=>{$(r+"-font").onchange=()=>{const f=FONTS.find(x=>x.id===$(r+"-font").value);if(f&&f.sizes.length)$(r+"-px").value=f.sizes[0];$(r+"-line").value="";go()};
+ Object.keys(ROLES).forEach(r=>{$(r+"-font").onchange=()=>{const f=FONTS.find(x=>x.id===$(r+"-font").value);if(f&&f.sizes.length)$(r+"-px").value=f.sizes[0];
+  else if(f&&f.where==="outline"&&+$(r+"-px").value<13)$(r+"-px").value=14;
+  if(f)$(r+"-bold").value=f.bold||(/bold/i.test(f.name)?"none":"double");$(r+"-line").value="";go()};
   ["px","line","scale","bold","serif_i"].forEach(k=>$(r+"-"+k).oninput=go)})}
 function setTypes(t){Object.entries(t).forEach(([r,s])=>{if(!$(r+"-font"))return;$(r+"-font").value=s.font;$(r+"-px").value=s.px;$(r+"-line").value=s.line||"";
  $(r+"-scale").value=s.scale||1;$(r+"-bold").value=s.bold||"double";$(r+"-serif_i").checked=!!s.serif_i})}
