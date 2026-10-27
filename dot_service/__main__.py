@@ -214,7 +214,7 @@ class DotService:
                     left, progress = f"{mmss(du - el)} left", el / du
 
         # Live: the scene on the room's screens and the room's feel.
-        scene = feel = hearing = ""
+        scene = feel = hearing = ai_heard = ""
         if live:
             names = await self.scene_labels()
             sessions = ((await self.soft(f"{STREAM}/api/sessions", {})) or {}).get("sessions", [])
@@ -241,6 +241,7 @@ class DotService:
                     bits.append(str(b))
             feel = " · ".join(bits)
             hearing = (((card or {}).get("hearing") or {}).get("text")) or ""
+            ai_heard = str((listening or {}).get("character") or "") if ai_on else ""
 
         # Today's art, from the room's scheduler variables.
         theme = style = ""
@@ -256,8 +257,8 @@ class DotService:
         qr = tag.spec.get("qr") or {}
         return Card(room=room.get("name") or room_id, mode=shown, auto=bool(auto.get("on")), mic=mic_on, ai=ai_on,
                     live=live, changing_from=changing_from, title=title, by=by, left=left, progress=progress,
-                    paused=paused, hearing=hearing, scene=scene, feel=feel, theme=theme.strip(),
-                    style=style.strip(), hint="" if live else (tag.spec.get("hint") or ""),
+                    paused=paused, hearing=hearing, scene=scene, feel=feel, ai_heard=ai_heard, theme=theme.strip(),
+                    style=style.strip(), hint=tag.spec.get("hint") or "",
                     qr=qr.get("url", ""), qr_px=int(qr.get("module_px", 2)))
 
     # ---- send

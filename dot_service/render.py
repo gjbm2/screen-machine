@@ -13,7 +13,7 @@ advances. Sent with ditherType NONE so the pixels arrive as drawn.
     high-contrast silhouettes and light      ▫■ AI       and overhang the column (Lights / only)
     trails to suggest the movement of time   ┌────┐      the site, for any phone camera (no app)
                                              └────┘
-    ██████ Say 'Computer, use AI' to interact █████    art mode: how to use the room
+    ██████ Say 'Computer, use AI' to interact █████    how to use the room (every mode)
 """
 
 from __future__ import annotations
@@ -54,9 +54,10 @@ class Card:
     hearing: str = ""               # live, nothing playing: what the room hears ("Piano", "Quiet")
     scene: str = ""                 # live: "Apollonian foam" or "A / B"
     feel: str = ""                  # live: "Dusk · mellow, warm · 86 bpm"
+    ai_heard: str = ""              # live: the AI listener's words for the music (at most 12)
     theme: str = ""                 # today's art theme
     style: str = ""                 # today's art style
-    hint: str = ""                  # bottom line, art mode: "Say 'Computer, use AI' to interact"
+    hint: str = ""                  # bottom line: "Say 'Computer, use AI' to interact"
     qr: str = ""                    # bottom-right QR code: this URL ("" = none)
     qr_px: int = 2                  # pixels per QR module
     stamp: str = field(default="", compare=False)   # "19:42"; not part of what changed
@@ -206,15 +207,17 @@ class _Flow:
             n += 1
 
     def bar(self, frac: float) -> None:
+        """Progress: a hairline track, the part played a 3-px bar."""
         if self.y + 6 > self.bottom:
             return
         x0, x1 = PAD, self.right(6)
-        y = self.y + 1
-        self.d.rectangle((x0, y, x1, y + 3), outline=0, fill=1)
+        y = self.y + 2
+        self.d.line((x0, y + 1, x1, y + 1), fill=0)
         fx = x0 + round((x1 - x0) * max(0.0, min(1.0, frac)))
         if fx > x0:
-            self.d.rectangle((x0, y, fx, y + 3), fill=0)
-        self.y += 9
+            self.d.rectangle((x0, y, fx, y + 2), fill=0)
+        self.d.line((x1, y - 1, x1, y + 3), fill=0)      # the end of the piece
+        self.y += 8
 
     def space(self, px: int) -> None:
         self.y += px
@@ -288,12 +291,12 @@ def _centred(img: Image.Image, f: _Face, text: str, box: tuple[int, int, int, in
 
 def render(card: Card) -> Image.Image:
     """Left: what matters now. Right-hand bar: the mode, when this was drawn, Auto / Mic / AI, the QR code.
-    Bottom (art mode): how to use the room, across the tag."""
+    Bottom: how to use the room, across the tag (the tag lies loose under the screens, in every mode)."""
     img = Image.new("1", (W, H), 1)
     d = ImageDraw.Draw(img)
     small, body, head = _fonts()
 
-    # Bottom line (art mode): white on black, centred.
+    # Bottom line: how to use the room, white on black, centred.
     bottom = H
     if card.hint:
         bottom = H - 18
@@ -340,29 +343,33 @@ def render(card: Card) -> Image.Image:
         small.draw(img, (tx + len(_SWITCH_ON[0]) + 4, y), label)
         y += 13
 
-    # What matters now, left of the bar.
+    # What matters now, left of the bar, in one pattern whatever the mode: screen/machine | what this is, a
+    # dotted rule, the headline, then the detail.
     flow = _Flow(img, bottom=bottom - 4, narrow_until=H, narrow_right=cx0 - 15)
-    if card.title:
+    if card.title:                          # music playing (the player or the room's Sonos), any mode
+        flow.brand("Paused" if card.paused else "Now playing")
+        flow.rule()
         flow.text(card.title, "head", lines=2)
-        flow.text(" · ".join(x for x in (card.by, "paused" if card.paused else card.left) if x))
+        flow.text(" · ".join(x for x in (card.by, card.left) if x))
         if card.progress is not None:
             flow.bar(card.progress)
         flow.space(3)
-        if card.live:
+        if card.live:                       # the screens are live: what they show and the room's feel
             flow.text(f"Scene: {card.scene}" if card.scene else "")
             flow.text(card.feel, lines=2)
-            flow.text(f"Art: {card.theme}" if card.theme else "")
-        else:
+            flow.text(f"AI: {card.ai_heard}" if card.ai_heard else "", lines=2)
+        else:                               # the screens show the art
             flow.text(f"Today's art: {card.theme}" if card.theme else "")
-            flow.text(card.style, lines=4)
-    elif card.live:
+            flow.text(card.style, lines=3)
+    elif card.live:                         # live, nothing playing: what the room hears
         flow.brand("Hearing")
+        flow.rule()
         flow.text(card.hearing or "—", "head")
-        flow.space(2)
+        flow.space(3)
         flow.text(f"Scene: {card.scene}" if card.scene else "")
         flow.text(card.feel, lines=2)
-        flow.text(f"Art: {card.theme}" if card.theme else "")
-    else:
+        flow.text(f"AI: {card.ai_heard}" if card.ai_heard else "", lines=3)
+    else:                                   # the art
         flow.brand("Today's art")
         flow.rule()
         flow.text(card.theme, "head", lines=2)
