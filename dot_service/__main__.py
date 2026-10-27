@@ -41,6 +41,7 @@ from .render import Card, render
 REPO = Path(__file__).resolve().parent.parent
 CONFIG = REPO / "config" / "room" / "dot.json"
 KEY_FILE = Path.home() / ".config" / "screen-machine" / "dot.json"
+BATTERY_LOG = Path.home() / ".local" / "state" / "screen-machine" / "logs" / "dot_battery.jsonl"   # every DEVICE_STATUS_S
 DOT_API = "https://dot.mindreset.tech/api/authV2/open"
 ROOM = os.environ.get("DOT_ROOM_URL", "http://127.0.0.1:8700")
 SHOW = os.environ.get("DOT_SHOW_URL", "http://127.0.0.1:8703")
@@ -329,6 +330,18 @@ class DotService:
                 tag.device_status = (await r.json()).get("status")
         except Exception as e:
             log.debug("device status %s: %s", tag.device, e)
+            return
+        st = tag.device_status or {}
+        row = {"t": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "device": tag.device, "battery": st.get("battery"),
+               "state": st.get("current"), "wifi": st.get("wifi"), "fw": st.get("version"),
+               "interval_ms": ((tag.settings_sent or {}).get("interval") or {}).get("batteryMs"),
+               "live": bool(tag.card and tag.card.live), "sent_age_s": round(time.time() - tag.sent_at) if tag.sent_at else None}
+        try:   # a quiet side log: how fast the battery runs down at these settings (owner, 27 Oct)
+            BATTERY_LOG.parent.mkdir(parents=True, exist_ok=True)
+            with BATTERY_LOG.open("a") as fh:
+                fh.write(json.dumps(row) + "\n")
+        except OSError as e:
+            log.debug("battery log: %s", e)
 
     # ---- loop
     async def tick(self) -> None:
