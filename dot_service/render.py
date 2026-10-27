@@ -18,6 +18,7 @@ advances. Sent with ditherType NONE so the pixels arrive as drawn.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -29,10 +30,17 @@ from PIL import Image, ImageChops, ImageDraw
 W, H = 296, 152
 PAD = 8
 FONTS = Path(__file__).resolve().parent / "fonts"
-SMALL = (str(FONTS / "Galmuri9.ttf"), 10, 12)          # path, px, line height: text
-BODY = (str(FONTS / "Galmuri11.ttf"), 12, 13)          # the bar, the bottom line (serifed I: "AI" reads right)
-BODY_BOLD = (str(FONTS / "Galmuri11-Bold.ttf"), 12, 13)
-HEAD = (str(FONTS / "Galmuri14.ttf"), 15, 19)          # headlines, drawn bold (each stroke doubled)
+LIBRARY = Path.home() / ".local" / "share" / "screen-machine" / "dot-fonts"   # fonts to try (the type lab)
+# The type: three roles. font = a file in dot_service/fonts or the library, or an absolute path ("#n" = face n);
+# px = the size drawn (a bitmap font's design size); line = line height (default: from the font's ink);
+# bold = how the role's bold is made: "double" (each stroke drawn twice, a pixel apart), "none", or the bold
+# cut's font; scale = each font pixel drawn as scale x scale; serif_i = a serifed capital I ("AI", not "Al").
+DEFAULT_TYPES = {
+    "head": {"font": "Galmuri14.ttf", "px": 15, "line": 19, "bold": "double"},     # headlines (always bold)
+    "text": {"font": "Galmuri9.ttf", "px": 10, "line": 12, "serif_i": True},       # text, labels, switches
+    "ui": {"font": "Galmuri11.ttf", "px": 12, "line": 13, "bold": "Galmuri11-Bold.ttf"},  # mode, bottom line
+}
+FALLBACK = {"font": "Galmuri11.ttf", "px": 12, "line": 13}   # glyphs a chosen font lacks (·, →, …)
 COL_W = 50                                 # the right-hand column's width when there is no QR code
 EDGE = 4                                   # the QR's white margin to the glass edge (the white bezel adds more)
 
@@ -69,12 +77,19 @@ class _Face:
 
     FLAGS = freetype.FT_LOAD_RENDER | freetype.FT_LOAD_TARGET_MONO
 
-    def __init__(self, path: str, px: int, line: int, fallback: Optional["_Face"] = None, scale: int = 1,
-                 bold: Optional["_Face"] = None, glyphs: Optional[dict] = None) -> None:
-        self.bold = bold                          # the bold cut; without one, bold = pixel-doubled
-        self.face = freetype.Face(path)
-        self.face.set_pixel_sizes(0, px)
-        self.px, self.line, self.fallback, self.scale = px * scale, line, fallback, scale
+    def __init__(self, path: str, px: int, line: Optional[int] = None, fallback: Optional["_Face"] = None,
+                 scale: int = 1, bold: Optional["_Face"] = None, glyphs: Optional[dict] = None, index: int = 0,
+                 double: bool = True) -> None:
+        self.bold = bold                          # the bold cut; without one, bold = pixel-doubled (if double)
+        self.double = double
+        self.face = freetype.Face(path, index)
+        if self.face.is_scalable:
+            self.face.set_pixel_sizes(0, px)
+        else:                                     # a bitmap-only font: its nearest strike
+            sizes = [s.y_ppem >> 6 or s.height for s in self.face.available_sizes]
+            self.face.select_size(min(range(len(sizes)), key=lambda i: abs(sizes[i] - px)))
+        self.fallback, self.scale = fallback, scale
+        self.px = px * scale
         self.ascender = (self.face.size.ascender >> 6) * scale
         self.glyphs: dict = {}
         for ch, (rows, adv) in (glyphs or {}).items():   # hand-drawn replacements: (rows, advance), top = cap top
@@ -84,7 +99,14 @@ class _Face:
                     if c == "x":
                         mask.putpixel((x, y), 1)
             self.glyphs[ch] = (self, self.face.get_char_index(ch), adv, 0, len(rows), mask)
+        self.line = line or self._natural_line()
 
+    def _natural_line(self) -> int:
+        """Cap top to descender bottom, plus 2."""
+        top = self._glyph("H")[4]
+        g = self._glyph("g")
+        desc = (g[5].height - g[4]) if g[5] is not None else 0
+        return max(top + desc + 2, 6)
     def _glyph(self, ch: str):
         """(face, glyph index, advance, left, top, mask or None); top is relative to this face's ascender."""
         g = self.glyphs.get(ch)
@@ -114,6 +136,7 @@ class _Face:
     def length(self, text: str, bold: bool = False) -> int:
         if bold and self.bold is not None:
             return self.bold.length(text)
+        bold = bold and self.double
         x, prev = 0, None
         for ch in text:
             g = self._glyph(ch)
@@ -125,6 +148,7 @@ class _Face:
         """Text with its ascender line at y."""
         if bold and self.bold is not None:
             return self.bold.draw(img, xy, text, fill)
+        bold = bold and self.double
         x, y = int(xy[0]), int(xy[1])
         prev = None
         for ch in text:
@@ -138,16 +162,50 @@ class _Face:
             prev = g
 
 
-_faces: dict = {}
+def font_path(font: str) -> tuple[str, int]:
+    """(path, face index) for a font name: dot_service/fonts, then the library, or an absolute path; "#n" = face n."""
+    name, _, idx = font.partition("#")
+    for p in ([Path(name)] if Path(name).is_absolute() else [FONTS / name, LIBRARY / name]):
+        if p.exists():
+            return str(p), int(idx or 0)
+    raise FileNotFoundError(font)
 
 
-def _fonts() -> tuple[_Face, _Face, _Face]:
-    """(small, body, head)."""
-    if not _faces:
-        _faces["body"] = _Face(*BODY, bold=_Face(*BODY_BOLD))
-        _faces["small"] = _Face(*SMALL, fallback=_faces["body"], glyphs={"I": (_SERIF_I9, 4)})
-        _faces["head"] = _Face(*HEAD, fallback=_faces["body"])
-    return _faces["small"], _faces["body"], _faces["head"]
+def _serif_i(f: "_Face") -> dict:
+    """A serifed capital I as tall as the font's H (3 px wide)."""
+    h = f._glyph("H")[4] // f.scale
+    return {"I": (["xxx"] + [".x."] * max(h - 2, 1) + ["xxx"], 4)}
+
+
+_cache: dict = {}
+
+
+def _role(spec: dict, fallback: Optional["_Face"]) -> "_Face":
+    path, idx = font_path(spec["font"])
+    bold = spec.get("bold", "double")
+    twin = None
+    if bold not in ("double", "none", None):
+        bpath, bidx = font_path(bold)
+        twin = _Face(bpath, int(spec["px"]), spec.get("line"), fallback, int(spec.get("scale", 1)), index=bidx)
+    f = _Face(path, int(spec["px"]), spec.get("line"), fallback, int(spec.get("scale", 1)), bold=twin, index=idx,
+              double=bold == "double")
+    if spec.get("serif_i"):
+        f = _Face(path, int(spec["px"]), spec.get("line"), fallback, int(spec.get("scale", 1)), bold=twin,
+                  index=idx, double=bold == "double", glyphs=_serif_i(f))
+    return f
+
+
+def _fonts(types: Optional[dict] = None) -> tuple["_Face", "_Face", "_Face"]:
+    """(text, ui, head) for a type spec (DEFAULT_TYPES when None); built once per spec."""
+    t = {**DEFAULT_TYPES, **(types or {})}
+    key = json.dumps(t, sort_keys=True)
+    if key not in _cache:
+        fb = _Face(font_path(FALLBACK["font"])[0], FALLBACK["px"], FALLBACK["line"])
+        ui = _role(t["ui"], fb)
+        _cache[key] = (_role(t["text"], ui), ui, _role(t["head"], ui))
+        if len(_cache) > 32:
+            _cache.pop(next(iter(_cache)))
+    return _cache[key]
 
 
 def _ellipsis(f: _Face, text: str, width: int, bold: bool = False) -> str:
@@ -170,8 +228,6 @@ _SWITCH_ON = [".xxxxxxxxxxxxx.", "xxxxxxxxxx...xx", "xxxxxxxxx.....x", "xxxxxxxx
               "xxxxxxxxx.....x", "xxxxxxxxx.....x", "xxxxxxxxxx...xx", ".xxxxxxxxxxxxx."]   # black, knob right
 _SWITCH_OFF = [".xxxxxxxxxxxxx.", "x.xxx.........x", "xx...x........x", "xx...x........x", "xx...x........x",
                "xx...x........x", "xx...x........x", "x.xxx.........x", ".xxxxxxxxxxxxx."]  # hollow, knob left
-# Galmuri 9's capital I is a bare stroke ("AI" reads "Al"); Galmuri 11's has serifs, so this one does too.
-_SERIF_I9 = ["xxx", ".x.", ".x.", ".x.", ".x.", ".x.", ".x.", ".x.", "xxx"]
 _CLOCK_S = [".xxxxx.", "x..x..x", "x..x..x", "x..xx.x", "x.....x", "x.....x", ".xxxxx."]
 
 
@@ -179,9 +235,9 @@ class _Flow:
     """Lines stacked down from the top, flowing round the QR code (top right): a line in its rows stops left of
     it. What doesn't fit above `bottom` is cut, the last line ellipsised."""
 
-    def __init__(self, img: Image.Image, bottom: int, narrow_until: int, narrow_right: int) -> None:
+    def __init__(self, img: Image.Image, faces: tuple, bottom: int, narrow_until: int, narrow_right: int) -> None:
         self.img, self.d, self.y, self.bottom = img, ImageDraw.Draw(img), 4, bottom
-        self.narrow_until, self.narrow_right = narrow_until, narrow_right
+        self.faces, self.narrow_until, self.narrow_right = faces, narrow_until, narrow_right
 
     def right(self, h: int) -> int:
         return self.narrow_right if self.y < self.narrow_until else W - PAD
@@ -189,7 +245,7 @@ class _Flow:
     def text(self, text: str, kind: str = "small", lines: int = 1, bold: bool = False) -> None:
         if not text:
             return
-        small, body, head = _fonts()
+        small, body, head = self.faces
         f = {"small": small, "body": body, "head": head}[kind]
         bold = bold or kind == "head"
         words = text.split()
@@ -234,15 +290,17 @@ class _Flow:
     def brand(self, label: str) -> None:
         """The app's name, styled like its logo (screen and machine bold, the slash light), a thin divider, then
         label (e.g. "Today's art")."""
-        small, body, _ = _fonts()
+        small, body, _ = self.faces
         x, y = PAD, self.y
+        base = y - 1 + body.ascender                   # one baseline for the name and the label
         for part, bold in (("screen", True), ("/", False), ("machine", True)):
-            body.draw(self.img, (x, y - 1), part, bold=bold)
+            body.draw(self.img, (x, base - body.ascender), part, bold=bold)
             x += body.length(part, bold)
         x += 6
-        self.d.line((x, y + 1, x, y + 10), fill=0)
-        small.draw(self.img, (x + 6, y), _ellipsis(small, label, self.right(12) - x - 6))
-        self.y += 14
+        cap = body._glyph("H")[4]
+        self.d.line((x, base - cap + 1, x, base), fill=0)
+        small.draw(self.img, (x + 6, base - small.ascender), _ellipsis(small, label, self.right(12) - x - 6))
+        self.y += body.line + 1
 
 
 def _qr(url: str, px: int) -> Image.Image:
@@ -280,22 +338,24 @@ def _fit_lines(text: str, faces: list, width: int, max_lines: int) -> tuple:
 
 
 def _centred(img: Image.Image, f: _Face, text: str, box: tuple[int, int, int, int], fill: int = 0,
-             bold: bool = False) -> None:
-    """text centred in box (x0, y0, x1, y1): across by its ink, down by the capitals (descenders hang below)."""
+             bold: bool = False, left: bool = False) -> None:
+    """text centred in box (x0, y0, x1, y1): across by its ink (or from x0, left), down by the capitals
+    (descenders hang below)."""
     x0, _, x1, _ = _ink(f, text, bold)
     _, c0, _, c1 = _ink(f, "H", bold)
     bx0, by0, bx1, by1 = box
-    x = bx0 + (bx1 - bx0 + 1 - (x1 - x0)) // 2 - x0
+    x = bx0 - x0 if left else bx0 + (bx1 - bx0 + 1 - (x1 - x0)) // 2 - x0
     y = by0 + (by1 - by0 + 1 - (c1 - c0)) // 2 - (c0 - 10)
     f.draw(img, (x, y), text, fill=fill, bold=bold)
 
 
-def render(card: Card) -> Image.Image:
+def render(card: Card, types: Optional[dict] = None) -> Image.Image:
     """Left: what matters now. Right-hand bar: the mode, when this was drawn, Auto / Mic / AI, the QR code.
     Bottom: how to use the room, across the tag (the tag lies loose under the screens, in every mode)."""
     img = Image.new("1", (W, H), 1)
     d = ImageDraw.Draw(img)
-    small, body, head = _fonts()
+    faces = _fonts(types)
+    small, body, head = faces
 
     # Bottom line: how to use the room, white on black, centred.
     bottom = H
@@ -323,30 +383,32 @@ def render(card: Card) -> Image.Image:
     if card.changing_from and len(lines) == 1 and mf.length("→" + lines[0], mbold) <= mw:
         lines = ["→" + lines[0]]           # switching: the arrow if it fits
     toggles = [("Auto", card.auto), ("Mic", card.mic), ("AI", card.ai)]
-    show_time = bool(card.stamp) and 2 + 13 * len(lines) + 12 + 3 + 13 * len(toggles) <= qy - 4
+    step = max(13, small.line + 1)         # a switch row
+    show_time = bool(card.stamp) and 2 + mf.line * len(lines) + small.line + 3 + step * len(toggles) <= qy - 4
     y = 2
     for ln in lines:   # centred on the column; a wider line overhangs left only (never off the glass)
         lx0, _, lx1, _ = _ink(mf, ln, mbold)
         x = min(cx0 + (cw - (lx1 - lx0)) // 2, cx1 + 1 - (lx1 - lx0)) - lx0
         mf.draw(img, (x, y), ln, bold=mbold)
-        y += 13 if mf is body else 11
+        y += mf.line
     if show_time:   # a small clock and the time it was drawn
         tw = 10 + small.length(card.stamp)
         tx = cx0 + (cw - tw) // 2
         _pixels(img, tx, y + 2, _CLOCK_S)
-        _centred(img, small, card.stamp, (tx + 10, y + 1, tx + tw, y + 9))
-        y += 12
+        _centred(img, small, card.stamp, (tx + 10, y + 2, tx + tw, y + 8))
+        y += small.line
     y += 3
     lw = max(small.length(label) for label, _ in toggles)
     tx = cx0 + (cw - (len(_SWITCH_ON[0]) + 4 + lw)) // 2
     for label, on in toggles:   # a switch drawing (knob right on black = on) and its name, as a left-aligned block
         _pixels(img, tx, y + 1, _SWITCH_ON if on else _SWITCH_OFF)
-        small.draw(img, (tx + len(_SWITCH_ON[0]) + 4, y), label)
-        y += 13
+        _centred(img, small, label, (tx + len(_SWITCH_ON[0]) + 4, y + 1, tx + len(_SWITCH_ON[0]) + 4, y + 9),
+                 left=True)
+        y += step
 
     # What matters now, left of the bar, in one pattern whatever the mode: screen/machine | what this is, a
     # dotted rule, the headline, then the detail.
-    flow = _Flow(img, bottom=bottom - 4, narrow_until=H, narrow_right=cx0 - 15)
+    flow = _Flow(img, faces, bottom=bottom - 4, narrow_until=H, narrow_right=cx0 - 15)
     if card.title:                          # music playing (the player or the room's Sonos), any mode
         flow.brand("Paused" if card.paused else "Now playing")
         flow.rule()
