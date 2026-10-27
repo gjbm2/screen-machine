@@ -552,7 +552,7 @@ export function listeningWords(card: ShowCard | null, piano: boolean | null): st
 
 /** What Auto is doing, in quiet words after its name ("Auto · listening to pick the mode"), from show_service's state and line
  *  ("Auto · watching", "Auto paused · quiet hours", "Auto → Piano…", "Auto is off"); paused for your pick is "paused". */
-function autoWords(state: string | null, on: boolean, line: string): string {
+export function autoWords(state: string | null, on: boolean, line: string): string {
   if (!on) return "picks the mode by listening";
   if (state === "watching") return "listening to pick the mode";
   // the tile already says which mode you chose

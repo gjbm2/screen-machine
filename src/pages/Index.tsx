@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import ImageDisplay from '@/components/image-display/ImageDisplay';
 import PromptForm from '@/components/prompt-form/PromptForm';
-import IntroText from '@/components/IntroText';
 import MainLayout from '@/components/layout/MainLayout';
 import AdvancedOptionsContainer from '@/components/advanced/AdvancedOptionsContainer';
 import { useImageGeneration } from '@/hooks/image-generation/use-image-generation';
@@ -1255,8 +1254,6 @@ const Index = () => {
         onClearConsole={clearConsole}
         isFirstRun={isFirstRun}
       >
-        {isFirstRun && <IntroText />}
-        
         <DndContext 
           sensors={sensors} 
           collisionDetection={closestCenter}
