@@ -446,7 +446,7 @@ def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict
     
     if not cross_bucket_mode:
         raw_url = f"/output/{bucket}/{filename}"
-        thumbnail_url = f"/output/{bucket}/thumbnails/{filename}"
+        thumbnail_url = f"/output/{bucket}/thumbnails/{filename}.jpg"  # thumbnails are <file>.jpg
     else:
         raw_url = f"/output/{bucket}{extension}"
         
