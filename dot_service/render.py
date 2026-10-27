@@ -438,7 +438,7 @@ def render(card: Card, types: Optional[dict] = None) -> Image.Image:
         flow.brand("Today's art")
         flow.rule()
         flow.text(card.theme, "head", lines=2)
-        flow.space(3)
+        flow.space(6)
         flow.text(card.style, lines=6 if not paused else 4)
         if paused:
             flow.space(3)

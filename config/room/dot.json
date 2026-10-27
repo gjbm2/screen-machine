@@ -5,11 +5,47 @@
       "device": "8856A6E9DD28",
       "room": "drawing-room",
       "link": "https://screen.finsburybankforsavings.com/room",
-      "refresh_s": {"live": 60, "normal": 900},
-      "sleep": {"start": "00:00", "end": "08:00"},
+      "refresh_s": {
+        "live": 60,
+        "normal": 900
+      },
+      "sleep": {
+        "start": "00:00",
+        "end": "08:00"
+      },
       "hint": "Say 'Computer, use AI' to interact",
-      "qr": {"url": "https://screen.finsburybankforsavings.com", "module_px": 2},
-      "art": {"theme": {"variable": "inspiration", "quoted": true, "else": "a_theme"}, "style": "style"}
+      "qr": {
+        "url": "https://screen.finsburybankforsavings.com",
+        "module_px": 2
+      },
+      "art": {
+        "theme": {
+          "variable": "inspiration",
+          "quoted": true,
+          "else": "a_theme"
+        },
+        "style": "style"
+      }
     }
-  ]
+  ],
+  "types": {
+    "head": {
+      "font": "/mnt/c/Windows/Fonts/arial.ttf",
+      "px": 17,
+      "bold": "/mnt/c/Windows/Fonts/arialbd.ttf"
+    },
+    "text": {
+      "font": "Galmuri9.ttf",
+      "px": 10,
+      "bold": "double",
+      "line": 12,
+      "serif_i": true
+    },
+    "ui": {
+      "font": "Galmuri11.ttf",
+      "px": 12,
+      "bold": "Galmuri11-Bold.ttf",
+      "line": 13
+    }
+  }
 }
