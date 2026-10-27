@@ -70,6 +70,30 @@
       ]
     },
     {
+      "name": "ai_on",
+      "slots": [],
+      "samples": [
+        "turn on AI listening",
+        "turn AI listening on",
+        "switch on AI listening",
+        "AI listening on",
+        "start AI listening",
+        "let the AI listen"
+      ]
+    },
+    {
+      "name": "ai_off",
+      "slots": [],
+      "samples": [
+        "turn off AI listening",
+        "turn AI listening off",
+        "switch off AI listening",
+        "AI listening off",
+        "stop AI listening",
+        "stop the AI listening"
+      ]
+    },
+    {
       "name": "which_mode",
       "slots": [],
       "samples": [

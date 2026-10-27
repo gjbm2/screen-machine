@@ -22,6 +22,9 @@ Your job is to:
      which modes exist.
    - "set_auto": the user wants Auto (the room listening to the music and choosing modes by itself) on or off
      (e.g. "turn auto on", "stop listening", "auto off"). data.on is true or false.
+   - "set_listening": the user wants AI listening (an online AI that hears the room's music and foresees what's
+     coming) on or off (e.g. "turn on AI listening", "AI listening off", "let the AI listen", "stop the AI
+     listening"). data.on is true or false. Not the same as Auto: plain "stop listening" / "start listening" is Auto.
    - "cue_scene": the user wants a different scene on the live screens. A scene by name is one of these voice names
      only: {{ROOM_SCENES}}. Put that voice name in data.query (the closest-sounding one). For "change the scene",
      "next scene" or "something else", leave data.query empty. If they name a scene that isn't in the list, use

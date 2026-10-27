@@ -116,6 +116,11 @@ def listening_state() -> dict:
     }
 
 
+def set_listening(on: bool) -> tuple[bool, str]:
+    """Turn AI listening on or off, as the Room page's AI switch does (show_service, through room's /show proxy)."""
+    return _send("PUT", "/show/api/v1/listening", {"on": bool(on)}, timeout=15.0)
+
+
 def set_auto(on: bool) -> tuple[bool, str]:
     """Turn Auto on or off, the same way the Room page does (show_service, through room's /show proxy)."""
     return _send("PUT", "/show/api/v1/autopilot", {"on": bool(on)}, timeout=15.0)
