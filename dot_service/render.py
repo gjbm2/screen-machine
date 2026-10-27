@@ -2,17 +2,18 @@
 
 Type is bitmap-native: fonts drawn on a pixel grid at the one size they are used at, so every glyph is the designer's
 pixels, not an outline rasterised and hinted into 1 bit (that left lopsided o's and 0's): Ark Pixel proportional
-(OFL, Latin subsets in dot_service/fonts) at 10 px (text), 12 px (status, bottom line) and 16 px (headlines); 12 px
-bold = the same glyphs drawn twice a pixel apart (the classic bitmap bold). Glyphs are laid out with FreeType directly (freetype-py)
-at whole-pixel advances. Sent with ditherType NONE so the pixels arrive as drawn.
+(OFL, Latin subsets in dot_service/fonts) at 10 px (text; headlines at 2x, each font pixel a 2x2 block) and 12 px
+(the bar, the bottom line); 12 px bold = the same glyphs drawn twice a pixel apart (the classic bitmap bold).
+Glyphs are laid out with FreeType directly (freetype-py) at whole-pixel advances. Sent with ditherType NONE so the pixels arrive as drawn.
 
-    Today's art                           ┌────┐ what matters now, flowing round the room page's QR code
-    The Turning of the Hour               │ QR │ (any phone camera, no app): what's playing, else what the
-    Long-exposure, motion-blur photo-     └────┘ room hears (live: scene, feel), else today's art
-    graphy in the style of Harry Callahan, using high-contrast silhouettes and light trails to suggest the
-    ──────────────────────────────────────────────
-    Normal ◷20:58           ● Auto  ● Mic  ○ AI     the mode, when drawn; ● = on
-    ███████ Say 'Computer, use AI' to interact ███  art mode: how to use the room
+    Today's art                          │ Normal        the right-hand bar: the mode,
+    The Turning of                       │ ◷ 20:58       when this was drawn,
+    the Hour                             │ ● Auto        Auto / Mic / AI (● = on)
+    Long-exposure, motion-blur photo-    │ ● Mic
+    graphy in the style of Harry         │ ○ AI
+    Callahan, using high-contrast        │ ┌────┐        the site, for any phone camera (no app)
+    silhouettes and light trails to...   │ └────┘
+    ██████ Say 'Computer, use AI' to interact █████    art mode: how to use the room
 """
 
 from __future__ import annotations
@@ -30,7 +31,8 @@ PAD = 8
 FONTS = Path(__file__).resolve().parent / "fonts"
 SMALL = (str(FONTS / "ark-pixel-10px-proportional-latin.ttf"), 10, 12)  # path, px, line height: text
 BODY = (str(FONTS / "ark-pixel-12px-proportional-latin.ttf"), 12, 14)   # the status row, the bottom line
-HEAD = (str(FONTS / "ark-pixel-16px-proportional-latin.ttf"), 16, 19)   # headlines (regular: doubling fills its M, B, s)
+HEAD = (str(FONTS / "ark-pixel-10px-proportional-latin.ttf"), 10, 22)   # headlines: the 10 px font at 2x (20 px)
+SIDE_X = 234                               # the right-hand bar: a rule here, then mode, time, switches, QR
 EDGE = 4                                   # the QR's white margin to the glass edge (the white bezel adds more)
 
 
@@ -61,15 +63,15 @@ class Card:
 
 class _Face:
     """A bitmap-grid font at its design size: glyph masks at whole-pixel advances, with kerning; `fallback`
-    supplies glyphs the font lacks."""
+    supplies glyphs the font lacks. scale > 1 draws every font pixel as a scale x scale block (still exact)."""
 
     FLAGS = freetype.FT_LOAD_RENDER | freetype.FT_LOAD_TARGET_MONO
 
-    def __init__(self, path: str, px: int, line: int, fallback: Optional["_Face"] = None) -> None:
+    def __init__(self, path: str, px: int, line: int, fallback: Optional["_Face"] = None, scale: int = 1) -> None:
         self.face = freetype.Face(path)
         self.face.set_pixel_sizes(0, px)
-        self.px, self.line, self.fallback = px, line, fallback
-        self.ascender = self.face.size.ascender >> 6
+        self.px, self.line, self.fallback, self.scale = px * scale, line, fallback, scale
+        self.ascender = (self.face.size.ascender >> 6) * scale
         self.glyphs: dict = {}
 
     def _glyph(self, ch: str):
@@ -84,16 +86,19 @@ class _Face:
                 self.face.load_glyph(gi, self.FLAGS)
                 slot = self.face.glyph
                 bm = slot.bitmap
+                k = self.scale
                 mask = (Image.frombytes("1", (bm.width, bm.rows), bytes(bm.buffer), "raw", "1", bm.pitch, 1)
                         if bm.width and bm.rows else None)
-                g = (self, gi, (slot.advance.x + 32) >> 6, slot.bitmap_left, slot.bitmap_top, mask)
+                if mask is not None and k > 1:
+                    mask = mask.resize((mask.width * k, mask.height * k), Image.NEAREST)
+                g = (self, gi, ((slot.advance.x + 32) >> 6) * k, slot.bitmap_left * k, slot.bitmap_top * k, mask)
             self.glyphs[ch] = g
         return g
 
     def _kern(self, prev, cur) -> int:
         if prev is None or prev[0] is not cur[0] or not cur[0].face.has_kerning:
             return 0
-        return (cur[0].face.get_kerning(prev[1], cur[1], freetype.FT_KERNING_DEFAULT).x + 32) >> 6
+        return ((cur[0].face.get_kerning(prev[1], cur[1], freetype.FT_KERNING_DEFAULT).x + 32) >> 6) * cur[0].scale
 
     def length(self, text: str, bold: bool = False) -> int:
         x, prev = 0, None
@@ -126,7 +131,7 @@ def _fonts() -> tuple[_Face, _Face, _Face]:
     if not _faces:
         _faces["body"] = _Face(*BODY)
         _faces["small"] = _Face(*SMALL, fallback=_faces["body"])
-        _faces["head"] = _Face(*HEAD, fallback=_faces["body"])
+        _faces["head"] = _Face(*HEAD, fallback=_faces["body"], scale=2)
     return _faces["small"], _faces["body"], _faces["head"]
 
 
@@ -218,49 +223,40 @@ def _strip_text(img: Image.Image, f: _Face, text: str, top: int, bottom: int) ->
 
 
 def render(card: Card) -> Image.Image:
-    """Top to bottom: what matters now (flowing round the room page's QR code, top right), the room's status,
-    then (art mode) how to use the room."""
+    """Left: what matters now. Right-hand bar: the mode, when this was drawn, Auto / Mic / AI, the QR code.
+    Bottom (art mode): how to use the room, across the tag."""
     img = Image.new("1", (W, H), 1)
     d = ImageDraw.Draw(img)
     small, body, head = _fonts()
 
-    # The QR code, top right against the glass edge (the white bezel is the rest of its quiet zone).
-    right, qr_until = W - PAD, 0
-    if card.qr:
-        q = _qr(card.qr, card.qr_px)
-        qx = W - EDGE - q.width
-        img.paste(q, (qx, EDGE))
-        right = qx - 4 * card.qr_px                  # a 4-module quiet zone on its text side
-        qr_until = EDGE + q.height + 4 * card.qr_px  # and below it
-
-    # Bottom line (art mode): how to use the room, white on black, centred.
-    y = H
+    # Bottom line (art mode): white on black, centred.
+    bottom = H
     if card.hint:
-        y = H - 18
-        d.rectangle((0, y, W - 1, H - 1), fill=0)
-        t = _ellipsis(body, card.hint, W - 2 * PAD, True)
-        _strip_text(img, body, t, y, H - 1)
+        bottom = H - 18
+        d.rectangle((0, bottom, W - 1, H - 1), fill=0)
+        _strip_text(img, body, _ellipsis(body, card.hint, W - 2 * PAD, True), bottom, H - 1)
 
-    # Status row, under a rule: the mode, when this was drawn, Auto / Mic / AI.
-    row = y - 18 if card.hint else H - 17          # descenders end above the band / on the last row
-    d.line((PAD, row - 3, W - PAD, row - 3), fill=0)
-    x = W - PAD
-    for label, on in reversed([("Auto", card.auto), ("Mic", card.mic), ("AI", card.ai)]):
-        x0 = x - body.length(label, on) - 10
-        _pixels(img, x0, row + 4, _DOT_ON if on else _DOT_OFF)
-        body.draw(img, (x0 + 10, row), label, bold=on)
-        x = x0 - 8
-    stamp_w = body.length(card.stamp) + 12 if card.stamp else 0
-    mode = f"→ {card.mode}" if card.changing_from else card.mode
-    mode = _ellipsis(body, mode, x - PAD - stamp_w - 6, True)
-    body.draw(img, (PAD, row), mode, bold=True)
+    # The right-hand bar.
+    d.line((SIDE_X, 4, SIDE_X, bottom - 5), fill=0)
+    sx, sw = SIDE_X + 6, W - EDGE - SIDE_X - 6
+    mode = card.mode
+    if card.changing_from and body.length(f"→{mode}", True) <= sw:   # switching: the arrow if it fits
+        mode = f"→{mode}"
+    body.draw(img, (sx, 2), _ellipsis(body, mode, sw, True), bold=True)
     if card.stamp:   # a small clock and the time it was drawn
-        sx = PAD + body.length(mode, True) + 7
-        _pixels(img, sx, row + 3, _CLOCK)
-        body.draw(img, (sx + 12, row), card.stamp)
+        _pixels(img, sx, 19, _CLOCK)
+        body.draw(img, (sx + 12, 16), card.stamp)
+    for i, (label, on) in enumerate([("Auto", card.auto), ("Mic", card.mic), ("AI", card.ai)]):
+        y = 30 + 13 * i
+        _pixels(img, sx, y + 4, _DOT_ON if on else _DOT_OFF)
+        body.draw(img, (sx + 10, y), _ellipsis(body, label, sw - 10, on), bold=on)
+    if card.qr:   # bottom of the bar, against the glass edge (the white bezel is the rest of its quiet zone)
+        q = _qr(card.qr, card.qr_px)
+        qy = (bottom - 3 * card.qr_px - q.height) if card.hint else H - EDGE - q.height
+        img.paste(q, (W - EDGE - q.width, qy))
 
-    # What matters now, from the top.
-    flow = _Flow(img, bottom=row - 5, narrow_until=qr_until, narrow_right=right)
+    # What matters now, left of the bar.
+    flow = _Flow(img, bottom=bottom - 4, narrow_until=H, narrow_right=SIDE_X - 6)
     if card.title:
         flow.text(card.title, "head", lines=2)
         flow.text(" · ".join(x for x in (card.by, "paused" if card.paused else card.left) if x))
@@ -269,7 +265,7 @@ def render(card: Card) -> Image.Image:
         flow.space(3)
         if card.live:
             flow.text(f"Scene: {card.scene}" if card.scene else "")
-            flow.text(card.feel)
+            flow.text(card.feel, lines=2)
             flow.text(f"Art: {card.theme}" if card.theme else "")
         else:
             flow.text(f"Today's art: {card.theme}" if card.theme else "")
@@ -279,12 +275,12 @@ def render(card: Card) -> Image.Image:
         flow.text(card.hearing or "—", "head")
         flow.space(2)
         flow.text(f"Scene: {card.scene}" if card.scene else "")
-        flow.text(card.feel)
+        flow.text(card.feel, lines=2)
         flow.text(f"Art: {card.theme}" if card.theme else "")
     else:
         flow.text("Today's art")
         flow.text(card.theme, "head", lines=2)
-        flow.space(2)
+        flow.space(3)
         flow.text(card.style, lines=6)
 
     return img
