@@ -2,17 +2,17 @@
 
 Type is bitmap-native: fonts drawn on a pixel grid at the one size they are used at, so every glyph is the designer's
 pixels, not an outline rasterised and hinted into 1 bit (that left lopsided o's and 0's). OFL fonts, Latin subsets
-in dot_service/fonts: Galmuri 9 at 10 px (text), Galmuri 11 and 11 Bold at 12 px (the bar, the bottom line),
-Jersey 20 at 20 px (headlines).
-Glyphs are laid out with FreeType directly (freetype-py) at whole-pixel advances. Sent with ditherType NONE so the pixels arrive as drawn.
+in dot_service/fonts: Galmuri 9 at 10 px (text, lozenges), Galmuri 11 and 11 Bold at 12 px (the mode, the bottom
+line), Jersey 20 at 20 px (headlines). Glyphs are laid out with FreeType directly (freetype-py) at whole-pixel
+advances. Sent with ditherType NONE so the pixels arrive as drawn.
 
-    Today's art                          │ Normal        the right-hand bar: the mode,
-    The Turning of                       │ ◷ 20:58       when this was drawn,
-    the Hour                             │ ● Auto        Auto / Mic / AI (● = on)
-    Long-exposure, motion-blur photo-    │ ● Mic
-    graphy in the style of Harry         │ ○ AI
-    Callahan, using high-contrast        │ ┌────┐        the site, for any phone camera (no app)
-    silhouettes and light trails to...   │ └────┘
+    Today's art                              Normal      the right-hand column, the QR code's width, all
+    The Turning of the Hour                 ◷ 20:58      centred: the mode, when this was drawn,
+    Long-exposure, motion-blur photography  (██Auto██)   Auto / Mic / AI as lozenges (filled = on),
+    in the style of Harry Callahan, using   (██Mic███)
+    high-contrast silhouettes and light     (   AI   )
+    trails to suggest the movement of time   ┌────┐      the site, for any phone camera (no app)
+                                             └────┘
     ██████ Say 'Computer, use AI' to interact █████    art mode: how to use the room
 """
 
@@ -33,7 +33,7 @@ SMALL = (str(FONTS / "Galmuri9.ttf"), 10, 12)          # path, px, line height: 
 BODY = (str(FONTS / "Galmuri11.ttf"), 12, 13)          # the bar, the bottom line (serifed I: "AI" reads right)
 BODY_BOLD = (str(FONTS / "Galmuri11-Bold.ttf"), 12, 13)
 HEAD = (str(FONTS / "Jersey20-Regular.ttf"), 20, 21)   # headlines
-SIDE_X = 234                               # the right-hand bar: a rule here, then mode, time, switches, QR
+COL_W = 50                                 # the right-hand column's width when there is no QR code
 EDGE = 4                                   # the QR's white margin to the glass edge (the white bezel adds more)
 
 
@@ -69,13 +69,20 @@ class _Face:
     FLAGS = freetype.FT_LOAD_RENDER | freetype.FT_LOAD_TARGET_MONO
 
     def __init__(self, path: str, px: int, line: int, fallback: Optional["_Face"] = None, scale: int = 1,
-                 bold: Optional["_Face"] = None) -> None:
+                 bold: Optional["_Face"] = None, glyphs: Optional[dict] = None) -> None:
         self.bold = bold                          # the bold cut; without one, bold = pixel-doubled
         self.face = freetype.Face(path)
         self.face.set_pixel_sizes(0, px)
         self.px, self.line, self.fallback, self.scale = px * scale, line, fallback, scale
         self.ascender = (self.face.size.ascender >> 6) * scale
         self.glyphs: dict = {}
+        for ch, (rows, adv) in (glyphs or {}).items():   # hand-drawn replacements: (rows, advance), top = cap top
+            mask = Image.new("1", (len(rows[0]), len(rows)), 0)
+            for y, row in enumerate(rows):
+                for x, c in enumerate(row):
+                    if c == "x":
+                        mask.putpixel((x, y), 1)
+            self.glyphs[ch] = (self, self.face.get_char_index(ch), adv, 0, len(rows), mask)
 
     def _glyph(self, ch: str):
         """(face, glyph index, advance, left, top, mask or None); top is relative to this face's ascender."""
@@ -137,7 +144,7 @@ def _fonts() -> tuple[_Face, _Face, _Face]:
     """(small, body, head)."""
     if not _faces:
         _faces["body"] = _Face(*BODY, bold=_Face(*BODY_BOLD))
-        _faces["small"] = _Face(*SMALL, fallback=_faces["body"])
+        _faces["small"] = _Face(*SMALL, fallback=_faces["body"], glyphs={"I": (_SERIF_I9, 4)})
         _faces["head"] = _Face(*HEAD, fallback=_faces["body"])
     return _faces["small"], _faces["body"], _faces["head"]
 
@@ -158,10 +165,9 @@ def _pixels(img: Image.Image, x: int, y: int, rows: list[str]) -> None:
                 img.putpixel((x + c, y + r), 0)
 
 
-_DOT_ON = ["..xxx..", ".xxxxx.", "xxxxxxx", "xxxxxxx", "xxxxxxx", ".xxxxx.", "..xxx.."]
-_DOT_OFF = ["..xxx..", ".x...x.", "x.....x", "x.....x", "x.....x", ".x...x.", "..xxx.."]
-_CLOCK = ["..xxxxx..", ".x.....x.", "x...x...x", "x...x...x", "x...xxx.x", "x.......x", "x.......x", ".x.....x.",
-          "..xxxxx.."]
+# Galmuri 9's capital I is a bare stroke ("AI" reads "Al"); Galmuri 11's has serifs, so this one does too.
+_SERIF_I9 = ["xxx", ".x.", ".x.", ".x.", ".x.", ".x.", ".x.", ".x.", "xxx"]
+_CLOCK_S = [".xxxxx.", "x..x..x", "x..x..x", "x..xx.x", "x.....x", "x.....x", ".xxxxx."]
 
 
 class _Flow:
@@ -220,13 +226,22 @@ def _qr(url: str, px: int) -> Image.Image:
     return q.make_image(fill_color="black", back_color="white").get_image().convert("1")
 
 
-def _strip_text(img: Image.Image, f: _Face, text: str, top: int, bottom: int) -> None:
-    """White bold text centred, by its ink, in the black band top..bottom."""
-    probe = Image.new("1", (W, 40), 1)
-    f.draw(probe, (0, 10), text, bold=True)
-    x0, y0, x1, y1 = ImageChops.invert(probe.convert("L")).getbbox() or (0, 10, 0, 10)
-    y = top + (bottom - top + 1 - (y1 - y0)) // 2 - (y0 - 10)
-    f.draw(img, ((W - (x1 - x0)) // 2 - x0, y), text, fill=1, bold=True)
+def _ink(f: _Face, text: str, bold: bool) -> tuple[int, int, int, int]:
+    """The ink box of text drawn at (0, 10)."""
+    probe = Image.new("1", (f.length(text, bold) + 20, 60), 1)
+    f.draw(probe, (0, 10), text, bold=bold)
+    return ImageChops.invert(probe.convert("L")).getbbox() or (0, 10, 0, 10)
+
+
+def _centred(img: Image.Image, f: _Face, text: str, box: tuple[int, int, int, int], fill: int = 0,
+             bold: bool = False) -> None:
+    """text centred in box (x0, y0, x1, y1): across by its ink, down by the capitals (descenders hang below)."""
+    x0, _, x1, _ = _ink(f, text, bold)
+    _, c0, _, c1 = _ink(f, "H", bold)
+    bx0, by0, bx1, by1 = box
+    x = bx0 + (bx1 - bx0 + 1 - (x1 - x0)) // 2 - x0
+    y = by0 + (by1 - by0 + 1 - (c1 - c0)) // 2 - (c0 - 10)
+    f.draw(img, (x, y), text, fill=fill, bold=bold)
 
 
 def render(card: Card) -> Image.Image:
@@ -241,29 +256,37 @@ def render(card: Card) -> Image.Image:
     if card.hint:
         bottom = H - 18
         d.rectangle((0, bottom, W - 1, H - 1), fill=0)
-        _strip_text(img, body, _ellipsis(body, card.hint, W - 2 * PAD, True), bottom, H - 1)
+        _centred(img, body, _ellipsis(body, card.hint, W - 2 * PAD, True), (0, bottom + 3, W - 1, H - 4), fill=1,
+                 bold=True)
 
-    # The right-hand bar.
-    d.line((SIDE_X, 4, SIDE_X, bottom - 5), fill=0)
-    sx, sw = SIDE_X + 6, W - EDGE - SIDE_X - 6
+    # The right-hand column, one width (the QR code's), everything centred in it: the mode, when this was
+    # drawn, Auto / Mic / AI as lozenges (filled = on), the QR code at its foot.
+    q = _qr(card.qr, card.qr_px) if card.qr else None
+    cw = q.width if q is not None else COL_W
+    cx0, cx1 = W - EDGE - cw, W - EDGE - 1
     mode = card.mode
-    if card.changing_from and body.length(f"→{mode}", True) <= sw:   # switching: the arrow if it fits
+    if card.changing_from and body.length(f"→{mode}", True) <= cw:   # switching: the arrow if it fits
         mode = f"→{mode}"
-    body.draw(img, (sx, 2), _ellipsis(body, mode, sw, True), bold=True)
+    _centred(img, body, _ellipsis(body, mode, cw, True), (cx0, 3, cx1, 14), bold=True)
     if card.stamp:   # a small clock and the time it was drawn
-        _pixels(img, sx, 18, _CLOCK)
-        body.draw(img, (sx + 12, 16), card.stamp)
+        tw = 10 + small.length(card.stamp)
+        tx = cx0 + (cw - tw) // 2
+        _pixels(img, tx, 20, _CLOCK_S)
+        _centred(img, small, card.stamp, (tx + 10, 19, tx + tw, 26))
     for i, (label, on) in enumerate([("Auto", card.auto), ("Mic", card.mic), ("AI", card.ai)]):
-        y = 32 + 13 * i
-        _pixels(img, sx, y + 4, _DOT_ON if on else _DOT_OFF)
-        body.draw(img, (sx + 10, y), _ellipsis(body, label, sw - 10, on), bold=on)
-    if card.qr:   # bottom of the bar, against the glass edge (the white bezel is the rest of its quiet zone)
-        q = _qr(card.qr, card.qr_px)
+        y0 = 30 + 15 * i
+        box = (cx0, y0, cx1, y0 + 12)
+        if on:
+            d.rounded_rectangle(box, radius=6, fill=0)
+        else:
+            d.rounded_rectangle(box, radius=6, outline=0, fill=1)
+        _centred(img, small, label, (cx0, y0 + 2, cx1, y0 + 10), fill=1 if on else 0)
+    if q is not None:   # the foot of the column, against the glass edge (the white bezel is more quiet zone)
         qy = (bottom - 3 * card.qr_px - q.height) if card.hint else H - EDGE - q.height
-        img.paste(q, (W - EDGE - q.width, qy))
+        img.paste(q, (cx0, qy))
 
     # What matters now, left of the bar.
-    flow = _Flow(img, bottom=bottom - 4, narrow_until=H, narrow_right=SIDE_X - 6)
+    flow = _Flow(img, bottom=bottom - 4, narrow_until=H, narrow_right=cx0 - 10)
     if card.title:
         flow.text(card.title, "head", lines=2)
         flow.text(" · ".join(x for x in (card.by, "paused" if card.paused else card.left) if x))
