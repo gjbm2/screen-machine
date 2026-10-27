@@ -62,8 +62,6 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
     const touchStartY = useRef<number | null>(null);
     const [showHint, setShowHint] = useState(true);
     const [dynamicTitle, setDynamicTitle] = useState<string | null>(null);
-    // "Show on another screen…": a flat list (not a submenu)
-    const [showOnOpen, setShowOnOpen] = useState(false);
     
     // Track when we're about to loop around to ensure images are still displayed
     const [hasLooped, setHasLooped] = useState(false);
@@ -73,8 +71,6 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
     
     // Get publish destinations for actions
     const { destinations, nonHeadlessDestinations, loading: destinationsLoading } = usePublishDestinations();
-    /** A destination's name, never its id when the name is known. */
-    const nameOf = (id: string) => destinations.find(d => d.id === id)?.name || id;
 
     // Add new state for mobile detection
     const [isMobile, setIsMobile] = useState(false);
@@ -283,7 +279,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
         if (success) {
           // Update the state in context
           img.isFavourite = !currentState;
-          toast.success(img.isFavourite ? 'Added to favourites' : 'Removed from favourites');
+          toast.success(img.isFavourite ? 'Added to favorites' : 'Removed from favorites');
         } else {
           toast.error('Failed to toggle favorite status');
         }
@@ -359,7 +355,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
         
         // Call API to copy
         await bucketsApi.copyImageToBucket(sourceBucketId, destinationId, img.id, true);
-        toast.success(`Copied to ${nameOf(destinationId)}`);
+        toast.success(`Copied to ${destinationId}`);
       } catch (error) {
         console.error('Error copying image:', error);
         toast.error('Failed to copy image');
@@ -400,7 +396,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
         
         // Call API to move (copy with delete)
         await bucketsApi.copyImageToBucket(sourceBucketId, destinationId, img.id, false);
-        toast.success(`Moved to ${nameOf(destinationId)}`);
+        toast.success(`Moved to ${destinationId}`);
         
         // Close modal as the current image is gone
         close();
@@ -449,10 +445,10 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
           filename: img.id
         });
         
-        toast.success(`Showing on ${nameOf(destinationId)}`);
+        toast.success(`Published to ${destinationId}`);
       } catch (error) {
         console.error('Error publishing image:', error);
-        toast.error(`Couldn't show it on ${nameOf(destinationId)}`);
+        toast.error('Failed to publish image');
       }
     };
     
@@ -462,7 +458,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
     const handleDelete = async (img: any) => {
       if (!img || !img.id) return;
       
-      if (!confirm(`Delete this picture${img.isFavourite ? ' (a favourite)' : ''}?`)) {
+      if (!confirm(`Are you sure you want to delete this image${img.isFavourite ? ' (favorite)' : ''}?`)) {
         return;
       }
       
@@ -840,7 +836,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
         // Check if this is a published image with destination info
         if (currentImage?.isPublished && currentImage.destinationName) {
           // Create dynamic title for published images
-          setDynamicTitle(`On the screen now · ${currentImage.destinationName} (${currentIndex + 1}/${images.length})`);
+          setDynamicTitle(`Currently published - ${currentImage.destinationName} (${currentIndex + 1}/${images.length})`);
         } else {
           // For non-published images, use the provided title
           setDynamicTitle(null);
@@ -1061,10 +1057,6 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
     
     // Disable favorite button for published images
     const showFavoriteButton = !(currentImage?.disableFavorite === true);
-    // Opened from a screen's tab: showing the picture on that screen is the main action.
-    const homeScreen = currentImage && !currentImage.isPublished && currentImage.bucketId
-      ? nonHeadlessDestinations.find(d => d.id === currentImage.bucketId)
-      : undefined;
 
     return (
       <Dialog 
@@ -1425,18 +1417,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
 
           {/* Action bar */}
           {!zoomSrc && (
-            <div className="border-t border-white/10 bg-gradient-to-t from-black/70 to-transparent w-full px-4 py-2 flex flex-wrap gap-1 justify-center items-center">
-              {homeScreen && (
-                <Button
-                  size="sm"
-                  className="mr-1 h-9 rounded-full bg-teal-600 px-4 text-sm font-semibold text-white hover:bg-teal-500"
-                  onClick={() => handlePublish(currentImage, homeScreen.id)}
-                  data-testid="loope-show-on-home"
-                >
-                  <Share className="h-4 w-4" />
-                  Show on {homeScreen.name || homeScreen.id}
-                </Button>
-              )}
+            <div className="border-t border-white/10 bg-gradient-to-t from-black/70 to-transparent w-full px-4 py-2 flex flex-wrap gap-1 justify-center">
               {/* Info button */}
               <Button 
                 variant="ghost" 
@@ -1460,7 +1441,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                   onClick={() => handleToggleFavorite(currentImage)}
                 >
                   <Star className={`h-4 w-4 ${currentImage?.isFavourite ? 'fill-yellow-400' : ''}`} />
-                  <span className="hidden sm:inline">Favourite</span>
+                  <span className="hidden sm:inline">Favorite</span>
                 </Button>
               )}
 
@@ -1472,7 +1453,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                 onClick={() => handleUseAsPrompt(currentImage)}
               >
                 <RefreshCcw className="h-4 w-4" />
-                <span className="hidden sm:inline">Use in prompt</span>
+                <span className="hidden sm:inline">Use as prompt</span>
               </Button>
 
               {/* Raw URL */}
@@ -1508,12 +1489,24 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
-                  {/* Show on: a flat list in a sheet */}
+                  {/* Publish to submenu */}
                   {nonHeadlessDestinations && nonHeadlessDestinations.length > 0 && (
-                    <DropdownMenuItem onClick={() => setShowOnOpen(true)}>
-                      <Share className="mr-2 h-4 w-4" />
-                      <span>{homeScreen ? 'Show on another screen…' : 'Show on a screen…'}</span>
-                    </DropdownMenuItem>
+                    <DropdownMenuSub>
+                      <DropdownMenuSubTrigger>
+                        <Share className="mr-2 h-4 w-4" />
+                        <span>Publish to...</span>
+                      </DropdownMenuSubTrigger>
+                      <DropdownMenuSubContent>
+                        {nonHeadlessDestinations.map(dest => (
+                          <DropdownMenuItem 
+                            key={`publish-${dest.id}`}
+                            onClick={() => handlePublish(currentImage, dest.id)}
+                          >
+                            {dest.name || dest.id}
+                          </DropdownMenuItem>
+                        ))}
+                      </DropdownMenuSubContent>
+                    </DropdownMenuSub>
                   )}
                   
                   {/* Copy to submenu */}
@@ -1521,7 +1514,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                     <DropdownMenuSub>
                       <DropdownMenuSubTrigger>
                         <Copy className="mr-2 h-4 w-4" />
-                        <span>Copy to…</span>
+                        <span>Copy to...</span>
                       </DropdownMenuSubTrigger>
                       <DropdownMenuSubContent>
                         {destinations.map(dest => (
@@ -1541,7 +1534,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                     <DropdownMenuSub>
                       <DropdownMenuSubTrigger>
                         <Move className="mr-2 h-4 w-4" />
-                        <span>Move to…</span>
+                        <span>Move to...</span>
                       </DropdownMenuSubTrigger>
                       <DropdownMenuSubContent>
                         {destinations.map(dest => (
@@ -1561,7 +1554,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                   {/* Start Again option */}
                   <DropdownMenuItem onClick={() => handleStartAgain(currentImage)}>
                     <RefreshCw className="mr-2 h-4 w-4" />
-                    <span>Make another</span>
+                    <span>Start Again</span>
                   </DropdownMenuItem>
                   
                   {/* Delete option */}
@@ -1574,28 +1567,6 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
             </div>
           )}
         </DialogContent>
-
-        <Dialog open={showOnOpen} onOpenChange={setShowOnOpen}>
-          <DialogContent className="room-theme max-w-sm rounded-2xl p-4" data-testid="loope-show-on-sheet">
-            <DialogTitle>{homeScreen ? 'Show on another screen' : 'Show on a screen'}</DialogTitle>
-            <ul className="mt-2 space-y-1">
-              {nonHeadlessDestinations.filter(d => d.id !== homeScreen?.id).map(d => (
-                <li key={d.id}>
-                  <button
-                    type="button"
-                    className="flex min-h-11 w-full items-center rounded-xl px-3 text-left text-[15px] font-medium hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                    onClick={() => {
-                      setShowOnOpen(false);
-                      void handlePublish(currentImage, d.id);
-                    }}
-                  >
-                    {d.name || d.id}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </DialogContent>
-        </Dialog>
 
         {/* Full viewport zoom overlay - COMPLETE REWRITE OF PROBLEM AREAS */}
         {zoomSrc && ReactDOM.createPortal(

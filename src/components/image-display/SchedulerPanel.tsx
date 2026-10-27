@@ -1,14 +1,56 @@
-// A screen tab's schedule row: "Schedule: Running · nothing queued" with Pause / Stop (or Start / Resume) in words,
-// and, opened, the real status (the next action), "Open North screen's schedule ›" and "Unload top script".
-// Runs the full width of the screen's header.
-
 import { useState } from 'react';
-import { ChevronDown, ChevronUp, CircleStop, Pause, Play, RefreshCw, Square, X } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { RefreshCw, Pause, CircleStop, Play, Square, ChevronUp, ChevronDown, Plus, X, Settings } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
 import { schedulerApi } from '@/shared/api';
-import { schedulerUrl } from '@/components/nav/appNav';
-import { cn } from '@/lib/utils';
+
+// Action icons component
+interface ActionIconButtonProps {
+  action: 'start' | 'pause' | 'unpause' | 'stop';
+  onAction: (action: 'start' | 'stop' | 'pause' | 'unpause') => Promise<void>;
+}
+
+const ActionIconButton = ({ action, onAction }: ActionIconButtonProps) => {
+  if (action === 'start') {
+    return (
+      <Button variant="ghost" size="icon" onClick={() => onAction('start')} className="h-6 w-6">
+        <Play className="h-3 w-3" />
+      </Button>
+    );
+  }
+  if (action === 'pause') {
+    return (
+      <Button variant="ghost" size="icon" onClick={() => onAction('pause')} className="h-6 w-6">
+        <Pause className="h-3 w-3" />
+      </Button>
+    );
+  }
+  if (action === 'unpause') {
+    return (
+      <Button variant="ghost" size="icon" onClick={() => onAction('unpause')} className="h-6 w-6">
+        <Play className="h-3 w-3" />
+      </Button>
+    );
+  }
+  // stop
+  return (
+    <Button variant="ghost" size="icon" onClick={() => onAction('stop')} className="h-6 w-6">
+      <Square className="h-3 w-3" />
+    </Button>
+  );
+};
+
+// Status icon component
+const SchedulerStateIcon = ({ isRunning, isPaused }: { isRunning?: boolean; isPaused?: boolean }) => {
+  if (isRunning) {
+    if (isPaused) {
+      return <Pause className="h-4 w-4 text-amber-500" />;
+    }
+    return <RefreshCw className="h-4 w-4 text-green-500 animate-[spin_5s_linear_infinite]" />;
+  }
+  return <CircleStop className="h-4 w-4 text-red-500" />;
+};
 
 // Next Action interface
 interface NextAction {
@@ -20,33 +62,41 @@ interface NextAction {
   time_until_display?: string;
 }
 
-const inWords = (m: number) => (m < 60 ? `${Math.round(m)} minutes from now` : `${Math.floor(m / 60)}h ${Math.round(m % 60)}m from now`);
+// Format next scheduled action component
+const FormatNextAction = ({ nextAction }: { nextAction: NextAction | null }) => {
+  if (!nextAction || !nextAction.has_next_action) {
+    return (
+      <div className="border-l-2 border-muted-foreground pl-3 py-1 text-sm">
+        <div className="font-medium">No upcoming actions</div>
+        <div className="text-muted-foreground">
+          Schedule is empty or waiting for configuration
+        </div>
+      </div>
+    );
+  }
 
-/** "Running · nothing queued", "Running · next 14:00", "Paused", "Stopped". */
-function statusWords(isRunning: boolean, isPaused: boolean, next: NextAction | null): string {
-  if (!isRunning) return 'Stopped';
-  if (isPaused) return 'Paused';
-  if (!next || !next.has_next_action) return 'Running · nothing queued';
-  return next.next_time ? `Running · next ${next.next_time}` : 'Running';
-}
-
-const StateIcon = ({ isRunning, isPaused }: { isRunning: boolean; isPaused: boolean }) =>
-  !isRunning ? (
-    <CircleStop className="h-4 w-4 shrink-0 text-rose-600" aria-hidden />
-  ) : isPaused ? (
-    <Pause className="h-4 w-4 shrink-0 text-amber-600" aria-hidden />
-  ) : (
-    <RefreshCw className="h-4 w-4 shrink-0 text-emerald-600 motion-safe:animate-[spin_5s_linear_infinite]" aria-hidden />
+  return (
+    <div className="border-l-2 border-primary pl-3 py-1 text-sm">
+      <div className="font-medium">Next action: {nextAction.next_time}</div>
+      <div className="text-muted-foreground">
+        {nextAction.description}
+      </div>
+      {nextAction.minutes_until_next !== null && (
+        <div className="text-muted-foreground mt-1">
+          {nextAction.time_until_display || 
+            (nextAction.minutes_until_next < 60 
+              ? `${Math.round(nextAction.minutes_until_next)} minutes from now`
+              : `${Math.floor(nextAction.minutes_until_next / 60)}h ${Math.round(nextAction.minutes_until_next % 60)}m from now`)
+          }
+        </div>
+      )}
+    </div>
   );
-
-const WORD_BUTTON =
-  'inline-flex h-9 items-center gap-1.5 rounded-full border border-stone-300 bg-card px-3 text-[14px] font-medium hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-60';
+};
 
 // Main scheduler control component props
 interface SchedulerControlProps {
   destination: string;
-  /** The screen's name, for "Open North screen's schedule ›". */
-  destinationName?: string;
   isRunning?: boolean;
   isPaused?: boolean;
   nextAction?: NextAction | null;
@@ -55,128 +105,151 @@ interface SchedulerControlProps {
 
 export const SchedulerControl = ({
   destination,
-  destinationName,
   isRunning = false,
   isPaused = false,
   nextAction = null,
-  refreshScheduler,
+  refreshScheduler
 }: SchedulerControlProps) => {
-  const [open, setOpen] = useState(false);
-  const [busy, setBusy] = useState<string | null>(null);
-  const name = destinationName || destination;
+  const [schedulerPanelOpen, setSchedulerPanelOpen] = useState<boolean>(false);
 
-  const PAST: Record<string, string> = { start: 'started', stop: 'stopped', pause: 'paused', unpause: 'resumed' };
+  // Handle scheduler actions
   const handleAction = async (action: 'start' | 'stop' | 'pause' | 'unpause') => {
-    setBusy(action);
     try {
+      let result;
       switch (action) {
         case 'start':
-          await schedulerApi.startScheduler(destination, {});
+          result = await schedulerApi.startScheduler(destination, {});
           break;
         case 'stop':
-          await schedulerApi.stopScheduler(destination);
+          result = await schedulerApi.stopScheduler(destination);
           break;
         case 'pause':
-          await schedulerApi.pauseScheduler(destination);
+          result = await schedulerApi.pauseScheduler(destination);
           break;
         case 'unpause':
-          await schedulerApi.unpauseScheduler(destination);
+          result = await schedulerApi.unpauseScheduler(destination);
           break;
       }
-      toast.success(`${name}'s schedule ${PAST[action]}`);
+      
+      toast.success(`Scheduler ${action}ed successfully`);
       refreshScheduler(destination);
     } catch (error) {
       console.error(`Error ${action}ing scheduler:`, error);
-      toast.error(`Couldn't change ${name}'s schedule`);
-    } finally {
-      setBusy(null);
+      toast.error(`Failed to ${action} scheduler`);
     }
   };
 
+  // Handle unload top script action
   const handleUnloadTopScript = async () => {
-    setBusy('unload');
     try {
       const success = await schedulerApi.unloadSchedule(destination);
       if (success) {
-        toast.success('Top script unloaded');
+        toast.success('Top script unloaded successfully');
         refreshScheduler(destination);
       }
     } catch (error) {
       console.error('Error unloading top script:', error);
-      toast.error("Couldn't unload the top script");
-    } finally {
-      setBusy(null);
+      toast.error('Failed to unload top script');
     }
   };
 
-  return (
-    <div className="w-full" data-testid="schedule-row">
-      <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
-        <button
-          type="button"
-          onClick={() => setOpen((o) => !o)}
-          aria-expanded={open}
-          className="inline-flex min-h-9 min-w-0 items-center gap-2 rounded-full px-1 text-left text-[15px] hover:bg-stone-200/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-        >
-          <StateIcon isRunning={isRunning} isPaused={isPaused} />
-          <span className="min-w-0">
-            <span className="text-muted-foreground">Schedule: </span>
-            <span className="font-medium">{statusWords(isRunning, isPaused, nextAction)}</span>
-          </span>
-          {open ? <ChevronUp className="h-4 w-4 shrink-0" aria-hidden /> : <ChevronDown className="h-4 w-4 shrink-0" aria-hidden />}
-        </button>
-        <span className="flex flex-wrap items-center gap-1.5">
-          {!isRunning && (
-            <button type="button" className={WORD_BUTTON} disabled={!!busy} onClick={() => void handleAction('start')}>
-              <Play className="h-3.5 w-3.5" aria-hidden /> Start
-            </button>
-          )}
-          {isRunning && !isPaused && (
-            <button type="button" className={WORD_BUTTON} disabled={!!busy} onClick={() => void handleAction('pause')}>
-              <Pause className="h-3.5 w-3.5" aria-hidden /> Pause
-            </button>
-          )}
-          {isRunning && isPaused && (
-            <button type="button" className={WORD_BUTTON} disabled={!!busy} onClick={() => void handleAction('unpause')}>
-              <Play className="h-3.5 w-3.5" aria-hidden /> Resume
-            </button>
-          )}
-          {isRunning && (
-            <button type="button" className={WORD_BUTTON} disabled={!!busy} onClick={() => void handleAction('stop')}>
-              <Square className="h-3 w-3 fill-current" aria-hidden /> Stop
-            </button>
-          )}
-        </span>
-      </div>
+  // Handle navigation to scheduler page
+  const handleOpenSchedulerPage = () => {
+    window.location.href = `/scheduler?destination=${destination}`;
+  };
 
-      {open && (
-        <div className={cn('mt-2 w-full space-y-3 rounded-xl border border-stone-200/80 bg-card p-3')}>
-          {nextAction && nextAction.has_next_action ? (
-            <div className="border-l-2 border-teal-600 pl-3 text-[15px]">
-              <div className="font-medium">Next: {nextAction.next_time}</div>
-              {nextAction.description && <div className="text-muted-foreground">{nextAction.description}</div>}
-              {nextAction.minutes_until_next !== null && (
-                <div className="mt-0.5 text-muted-foreground">{nextAction.time_until_display || inWords(nextAction.minutes_until_next)}</div>
-              )}
+  return (
+    <>
+      {/* Scheduler controls */}
+      <div className="flex justify-end pt-2">
+        <div className="bg-muted-foreground/10 border border-border/70 rounded-md px-3 py-1 flex items-center gap-1 shadow-sm">
+          <span className="text-sm mr-2">Scheduler:</span>
+          <SchedulerStateIcon isRunning={isRunning} isPaused={isPaused} />
+          <div className="flex items-center space-x-1">
+            {!isRunning && <ActionIconButton action="start" onAction={handleAction} />}
+            {isRunning && !isPaused && <ActionIconButton action="pause" onAction={handleAction} />}
+            {isRunning && isPaused && <ActionIconButton action="unpause" onAction={handleAction} />}
+            {isRunning && <ActionIconButton action="stop" onAction={handleAction} />}
+          </div>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={() => setSchedulerPanelOpen(!schedulerPanelOpen)} 
+            className="h-6 w-6 ml-1"
+          >
+            {schedulerPanelOpen ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          </Button>
+        </div>
+      </div>
+      
+      {/* Expanded scheduler panel */}
+      {schedulerPanelOpen && (
+        <div className="w-full -mt-0 bg-muted-foreground/10 border-t border-x border-b border-border/70 rounded-b-md shadow-inner p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="font-medium">Scheduler status</span>
+            <Badge variant={isRunning ? 
+              (isPaused ? "outline" : "default") : 
+              "secondary"} 
+              className={`capitalize ${isPaused ? "bg-amber-100" : ""}`}>
+              {isPaused ? 'paused' : isRunning ? 'running' : 'stopped'}
+            </Badge>
+          </div>
+
+          <FormatNextAction nextAction={nextAction} />
+
+          <div className="flex mt-2 gap-2">
+            <Button size="sm" variant="default" className="gap-1" onClick={handleOpenSchedulerPage}>
+              <Plus className="h-4 w-4" /> Create new script
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1" onClick={handleUnloadTopScript}>
+              <X className="h-4 w-4" /> Unload top script
+            </Button>
+          </div>
+
+          {/* Collapsible layer info - simplified from scheduler.tsx */}
+          <div className="mt-3 border rounded-md">
+            <div className="flex justify-between items-center p-2 bg-background/60">
+              <div className="font-medium">Layer 2</div>
+              <ChevronUp className="h-4 w-4" />
             </div>
-          ) : (
-            <p className="border-l-2 border-stone-300 pl-3 text-[15px] text-muted-foreground">
-              {isRunning ? 'Nothing queued.' : 'The schedule is stopped.'}
-            </p>
-          )}
-          <div className="flex flex-wrap items-center gap-2">
-            <Link
-              to={schedulerUrl(destination)}
-              className="inline-flex h-9 items-center rounded-full px-2 text-[15px] font-medium text-teal-800 hover:bg-teal-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              Open {name}'s schedule ›
-            </Link>
-            <button type="button" className={WORD_BUTTON} disabled={!!busy} onClick={() => void handleUnloadTopScript()}>
-              <X className="h-3.5 w-3.5" aria-hidden /> Unload top script
-            </button>
+            <div className="p-3">
+              <div className="flex border-b">
+                <Button size="sm" variant="ghost" className="rounded-none border-b-2 border-primary">Context</Button>
+                <Button size="sm" variant="ghost" className="rounded-none text-muted-foreground">Script</Button>
+              </div>
+              <div className="mt-3">
+                <div className="font-medium">Variables:</div>
+                <div className="flex flex-col mt-1 text-sm">
+                  <div className="flex justify-between">
+                    <span>Last generated:</span>
+                    <span>15 May 2024</span>
+                  </div>
+                </div>
+                <div className="flex justify-end mt-3">
+                  <Button size="sm" variant="outline" className="gap-1" onClick={handleOpenSchedulerPage}>
+                    <Settings className="h-4 w-4" /> Set variables
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Collapsed layers as examples */}
+          <div className="border rounded-md">
+            <div className="flex justify-between items-center p-2 bg-background/60">
+              <div className="font-medium">Layer 1</div>
+              <ChevronDown className="h-4 w-4" />
+            </div>
+          </div>
+
+          <div className="border rounded-md">
+            <div className="flex justify-between items-center p-2 bg-background/60">
+              <div className="font-medium">Logs</div>
+              <ChevronDown className="h-4 w-4" />
+            </div>
           </div>
         </div>
       )}
-    </div>
+    </>
   );
-};
+}; 

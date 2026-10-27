@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { Settings, ArrowUp } from 'lucide-react';
+import { Settings, ArrowUp, Image } from 'lucide-react';
 import ImageUploader from '@/components/prompt/ImageUploader';
 import WorkflowIconSelector from '@/components/prompt/WorkflowIconSelector';
 import RefinerSelector from '@/components/prompt/RefinerSelector';
@@ -48,65 +48,68 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
   // The button should be enabled if there's a prompt OR uploaded images
   const shouldDisableButton = isLoading || (!prompt.trim() && !hasUploadedImages);
   
+  // Common style for all toolbar buttons to ensure consistency
+  const toolbarButtonClass = "h-[28px] text-muted-foreground bg-white";
   
-  // Labelled chips that wrap (two rows on a phone) instead of bare icons: Add picture and "Show on" up front (where a
-  // new picture goes is the main choice), then the style engine and the finish, then Advanced; Go on the right.
   return (
-    <div className="flex items-end gap-2 pt-2">
-      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-        <ImageUploader
-          isLoading={isLoading}
-          onImageUpload={onImageUpload}
-          hideLabel={false}
-          currentFormState={currentFormState}
-          onRestoreFormState={onRestoreFormState}
+    <div className="flex items-center justify-between overflow-x-auto py-1">
+      <div className="flex flex-nowrap items-center gap-1 sm:gap-2">
+		<ImageUploader
+		  isLoading={isLoading}
+		  onImageUpload={onImageUpload}
+		  hideLabel={isMobile}
+		  currentFormState={currentFormState}
+		  onRestoreFormState={onRestoreFormState}
+		/>
+        
+        <WorkflowIconSelector
+          workflows={workflows}
+          selectedWorkflow={selectedWorkflow}
+          onWorkflowChange={onWorkflowChange}
+          hideWorkflowName={isMobile}
         />
-
-        <PublishSelector
+        
+        <RefinerSelector
+          selectedRefiner={selectedRefiner}
+          onRefinerChange={onRefinerChange}
+        />
+        
+        <PublishSelector 
           selectedPublish={selectedPublish || 'none'}
           onPublishChange={onPublishChange}
           isCompact={isMobile}
         />
 
-        <WorkflowIconSelector
-          workflows={workflows}
-          selectedWorkflow={selectedWorkflow}
-          onWorkflowChange={onWorkflowChange}
-        />
-
-        <RefinerSelector
-          selectedRefiner={selectedRefiner}
-          onRefinerChange={onRefinerChange}
-        />
-
-        <Button
-          type="button"
-          variant="outline"
-          onClick={toggleAdvancedOptions}
-          className="h-9 shrink-0 gap-1.5 rounded-full border-input bg-card px-3 text-sm font-normal"
-          aria-label="Advanced"
-        >
-          <Settings className="h-4 w-4" />
-          <span>Advanced</span>
-        </Button>
+		<Button 
+		  type="button"
+		  variant="outline"
+		  onClick={toggleAdvancedOptions}
+		  className="h-[36px] border border-input hover:bg-purple-500/10 text-purple-700 flex items-center px-3 text-sm shrink-0"
+		  aria-label="Advanced Settings"
+		>
+		  <Settings className="h-5 w-5" />
+		  {!isMobile && (
+			<span className="ml-2 text-sm">Advanced</span>
+		  )}
+		</Button>
       </div>
 
-      <Button
-        type="button"
-        aria-label="Make it"
-        title="Make it"
-        className={`h-12 w-12 shrink-0 rounded-full transition-all hover:shadow-md flex items-center justify-center ${
-          shouldDisableButton && isCompact ? 'bg-muted text-muted-foreground' : 'bg-primary text-primary-foreground'
-        }`}
-        disabled={shouldDisableButton}
-        onClick={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          handleSubmit();
-        }}
-      >
-        <ArrowUp className="h-6 w-6" />
-      </Button>
+      <div className="ml-auto">
+        <Button 
+          type="button" 
+          className={`h-12 w-12 rounded-full transition-all hover:shadow-md flex items-center justify-center btn-shine ${
+            shouldDisableButton && isCompact ? 'bg-gray-300 text-gray-600' : 'bg-primary text-primary-foreground'
+          }`}
+          disabled={shouldDisableButton}
+          onClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            handleSubmit(e);
+          }}
+        >
+          <ArrowUp className="h-6 w-6" />
+        </Button>
+      </div>
     </div>
   );
 };

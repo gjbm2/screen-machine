@@ -223,9 +223,7 @@ const ImageCard: React.FC<ImageCardProps> = ({
             <Button
               variant="ghost" 
               size="icon" 
-              aria-label="More for this picture"
-              // always there on touch (no hover to reveal it); on a mouse it shows on hover
-              className="absolute bottom-1.5 right-1.5 z-40 h-8 w-8 rounded-full bg-black/40 hover:bg-black/60 text-white opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
+              className={`absolute bottom-2 right-2 z-40 h-6 w-6 bg-black/30 hover:bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity ${isMobile ? 'hidden' : ''}`}
               onClick={(e) => e.stopPropagation()}
             >
               <MoreVertical className="h-4 w-4" />
@@ -243,7 +241,7 @@ const ImageCard: React.FC<ImageCardProps> = ({
                 className="flex items-center"
               >
                 <Sparkles className="h-4 w-4 mr-2" />
-                Use in prompt
+                Use as prompt
               </DropdownMenuItem>
             )}
             
@@ -258,7 +256,7 @@ const ImageCard: React.FC<ImageCardProps> = ({
                 className="flex items-center"
               >
                 <RefreshCw className="h-4 w-4 mr-2" />
-                Make another
+                Start Again
               </DropdownMenuItem>
             )}
             
@@ -271,7 +269,7 @@ const ImageCard: React.FC<ImageCardProps> = ({
                     className="flex items-center"
                   >
                     <Copy className="h-4 w-4 mr-2" />
-                    Copy to…
+                    Copy to...
                   </DropdownMenuItem>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="right">
@@ -299,7 +297,7 @@ const ImageCard: React.FC<ImageCardProps> = ({
                     className="flex items-center"
                   >
                     <Share className="h-4 w-4 mr-2" />
-                    Show on…
+                    Publish to...
                   </DropdownMenuItem>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="right">
@@ -361,7 +359,7 @@ const ImageCard: React.FC<ImageCardProps> = ({
                 onClick={(e) => {
                   e.stopPropagation();
                   if (image.isFavourite) {
-                    if (!confirm('Delete this favourite picture?')) {
+                    if (!confirm('Are you sure you want to delete this favorite image?')) {
                       return;
                     }
                   }

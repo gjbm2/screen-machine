@@ -2,9 +2,8 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { toast } from 'sonner';
 import ImageDisplay from '@/components/image-display/ImageDisplay';
 import PromptForm from '@/components/prompt-form/PromptForm';
+import IntroText from '@/components/IntroText';
 import MainLayout from '@/components/layout/MainLayout';
-import { JobsStrip } from '@/components/main/JobsStrip';
-import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 import AdvancedOptionsContainer from '@/components/advanced/AdvancedOptionsContainer';
 import { useImageGeneration } from '@/hooks/image-generation/use-image-generation';
 import { useConsoleManagement } from '@/hooks/use-console-management';
@@ -73,8 +72,6 @@ interface JobStatus {
   currentStage?: string;
   allStages?: string[];
   startTime: number;
-  /** The screens the status went to (its destination). */
-  screens?: string[];
 }
 
 // Parse the backend message format: "destination: progress% - message"
@@ -214,8 +211,8 @@ const Index = () => {
   const [overlays, setOverlays] = useState<Overlay[]>([]);
   const [jobStatuses, setJobStatuses] = useState<Record<string, JobStatus>>({});
   const [wsConnected, setWsConnected] = useState(false);
+  const [statusPanelExpanded, setStatusPanelExpanded] = useState(true);
   const [publishDestinations, setPublishDestinations] = useState<PublishDestination[]>([]);
-  const { destinations: knownDestinations } = usePublishDestinations();
   const wsRef = React.useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   
@@ -342,8 +339,7 @@ const Index = () => {
         message: messageText,
         currentStage,
         allStages,
-        startTime: prev[jobId]?.startTime || Date.now(),
-        screens: Array.isArray(message.screens) ? message.screens : message.screens ? [message.screens] : undefined
+        startTime: prev[jobId]?.startTime || Date.now()
       };
       
       // Set timeout to hide this message - use shorter duration for completion messages
@@ -1090,10 +1086,94 @@ const Index = () => {
     };
   }, [jobStatuses]);
 
-  // Running jobs: an in-flow strip under the prompt (JobsStrip.tsx). Hide hides the strip; the jobs keep going.
+  // Progress indicator - show active job messages
   const activeJobs = Object.values(jobStatuses).filter(status => status.visible);
-  const hideAllJobs = () => activeJobs.forEach(j => handleCloseJobStatus(j.id));
-  const destinationName = (id: string) => knownDestinations.find(d => d.id === id)?.name;
+  const progressIndicator = activeJobs.length > 0 ? (
+    <div className="fixed bottom-[calc(var(--dock-h,0px)_+_1rem)] left-4 z-50">
+      <div className="bg-gray-900/90 text-white rounded-lg p-3 max-w-md">
+        {/* Header with expand/collapse control */}
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-medium">Active Jobs ({activeJobs.length})</span>
+            <button
+              onClick={() => setStatusPanelExpanded(!statusPanelExpanded)}
+              className="text-gray-400 hover:text-white text-xs p-1"
+              title={statusPanelExpanded ? "Collapse" : "Expand"}
+            >
+              {statusPanelExpanded ? "−" : "+"}
+            </button>
+          </div>
+        </div>
+        
+        {/* Job list - only show if expanded */}
+        {statusPanelExpanded && (
+          <div className="space-y-2">
+            {activeJobs.map((job, index) => {
+              // Extract pub_dest from message format: "pub_dest: message"
+              const pubDestMatch = job.message.match(/^([^:]+):/);
+              const pubDest = pubDestMatch ? pubDestMatch[1].trim() : null;
+              
+              // Use the progress from the job object (already correctly extracted)
+              const progressPercent = job.progress;
+              
+              // Strip HTML and get clean status text
+              const tempDiv = document.createElement('div');
+              tempDiv.innerHTML = job.message;
+              const cleanText = tempDiv.textContent || tempDiv.innerText || job.message;
+              
+              // Remove pub_dest prefix and percentage from status text
+              let statusText = cleanText;
+              if (pubDest) {
+                statusText = statusText.replace(new RegExp(`^${pubDest}:\\s*`), '');
+              }
+              if (progressPercent !== null) {
+                statusText = statusText.replace(/^\d+%\s*-\s*/, '');
+              }
+              
+              // For completion messages, just show "Done"
+              if (job.message === 'Done') {
+                statusText = 'Done';
+              } else {
+                // Underline the current stage if available
+                if (job.currentStage && job.allStages && job.allStages.length > 0) {
+                  // Replace the current stage with an underlined version
+                  const stageRegex = new RegExp(`\\b${job.currentStage}\\b`, 'g');
+                  statusText = statusText.replace(stageRegex, `<u>${job.currentStage}</u>`);
+                }
+              }
+              
+              return (
+                <div key={job.id} className="text-sm border-l-2 border-gray-700 pl-2">
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="flex items-center gap-2">
+                      <span className="text-yellow-300 font-mono text-xs">Job {index + 1}</span>
+                                            {pubDest && (
+                        <span className="text-blue-300 text-xs">{pubDest}</span>
+                      )}
+                      {progressPercent !== null && (
+                        <span className="text-green-300 text-xs font-mono">{progressPercent}%</span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() => handleCloseJobStatus(job.id)}
+                      className="text-gray-400 hover:text-red-400 text-xs p-1"
+                      title="Remove job"
+                    >
+                      ×
+                    </button>
+                  </div>
+                  
+
+                  
+                  <div className="text-gray-200 text-xs" dangerouslySetInnerHTML={{ __html: statusText }} />
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  ) : null;
 
   // Add DnD sensors
   const sensors = useSensors(
@@ -1174,8 +1254,9 @@ const Index = () => {
         consoleLogs={consoleLogs}
         onClearConsole={clearConsole}
         isFirstRun={isFirstRun}
-        wsConnected={wsConnected}
       >
+        {isFirstRun && <IntroText />}
+        
         <DndContext 
           sensors={sensors} 
           collisionDetection={closestCenter}
@@ -1197,8 +1278,6 @@ const Index = () => {
           onRefinerChange={handleRefinerChange}
           onPublishChange={handlePublishChange}
         />
-
-        <JobsStrip jobs={activeJobs} nameOf={destinationName} onHide={hideAllJobs} />
         
         <ImageDisplay 
           imageUrl={imageUrl}
@@ -1217,9 +1296,7 @@ const Index = () => {
           onDeleteImage={handleDeleteImage}
           onDeleteContainer={handleDeleteContainer}
           fullscreenRefreshTrigger={fullscreenRefreshTrigger}
-          publishDestinations={publishDestinations.map(dest => dest.id)}
-          selectedPublish={selectedPublish}
-          onPublishChange={handlePublishChange}
+                     publishDestinations={publishDestinations.map(dest => dest.id)}
         />
         </DndContext>
       </MainLayout>
@@ -1245,6 +1322,22 @@ const Index = () => {
         onRefinerParamChange={handleRefinerParamChange}
       />
       
+      {wsConnected && (
+        <div className="fixed bottom-[calc(var(--dock-h,0px)_+_1rem)] right-4 p-1 px-2 bg-green-100 text-green-800 text-xs rounded-full border border-green-300 opacity-60">
+          <span className="inline-block w-2 h-2 rounded-full bg-green-500 mr-1"></span>
+          Connected
+        </div>
+      )}
+      
+      {/* OLD OVERLAY SYSTEM REMOVED - this was the red blob */}
+      
+      {/* Debug panel - shows job status info */}
+      {/* Debug panel to show job statuses (always visible in development) */}
+      {/* Debug mode: always show progress indicator with fake data in development */}
+      {/* Debug jobs are now handled by the new progress indicator */}
+      
+      {/* New progress indicator */}
+      {progressIndicator}
       
       {(window.location.hostname === 'localhost' || window.location.hostname.includes('lovable')) && (
         <div className="fixed bottom-0 left-0 right-0 bg-gray-100 p-4 border-t flex items-center space-x-2 z-50">

@@ -1,7 +1,12 @@
 import React, { useRef, useState, useEffect } from 'react';
 import * as LucideIcons from 'lucide-react';
-import { XCircle, Wand2 } from 'lucide-react';
+import { XCircle, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from '@/components/ui/hover-card';
 import {
   Popover,
   PopoverTrigger,
@@ -32,7 +37,7 @@ const RefinerSelector: React.FC<RefinerSelectorProps> = ({
   const autoOption = {
     id: 'auto',
     name: 'Auto',
-    description: 'Picks the best finish for your prompt and style engine',
+    description: 'Automatically select the best refiner based on your workflow and prompt',
     icon: 'Zap'
   };
 
@@ -43,7 +48,7 @@ const RefinerSelector: React.FC<RefinerSelectorProps> = ({
 
   const getRefinerIcon = (iconName?: string) => {
     if (!iconName) return <XCircle className="h-5 w-5" />;
-    if (iconName === 'Zap') return <Wand2 className="h-4 w-4" />;
+    if (iconName === 'Zap') return <Zap className="h-5 w-5" />;
     const IconComponent = (LucideIcons as any)[iconName];
     return IconComponent ? <IconComponent className="h-5 w-5" /> : <XCircle className="h-5 w-5" />;
   };
@@ -55,7 +60,7 @@ const RefinerSelector: React.FC<RefinerSelectorProps> = ({
 
   const renderRefinerMenu = () => (
     <div className="space-y-2">
-      <h4 className="text-sm font-semibold">Finish</h4>
+      <h4 className="text-sm font-semibold">Refiners</h4>
       <div className="grid grid-cols-1 gap-1">
         {/* Auto option first */}
         <Button
@@ -67,11 +72,11 @@ const RefinerSelector: React.FC<RefinerSelectorProps> = ({
           type="button"
         >
           <div className="mr-2 flex-shrink-0">
-            <Wand2 className="h-5 w-5" />
+            <Zap className="h-5 w-5" />
           </div>
           <div className="flex flex-col items-start overflow-hidden">
             <span className="truncate w-full text-left text-sm font-medium">Auto</span>
-            <span className="text-xs text-muted-foreground w-full text-left whitespace-normal">Picks the best finish for your prompt and style engine</span>
+            <span className="text-xs text-muted-foreground w-full text-left whitespace-normal">Automatically select the best refiner based on your workflow and prompt</span>
           </div>
         </Button>
         
@@ -110,35 +115,68 @@ const RefinerSelector: React.FC<RefinerSelectorProps> = ({
     }
   }, [isOpen, isMobile, viewportHeight]);
 
-  // One tap-opened popover at every width (a hover card ignores touch); the chip says what it is in words.
   return (
-    <div className="flex items-center">
-      <Popover open={isOpen} onOpenChange={setIsOpen}>
-        <PopoverTrigger asChild>
-          <Button
-            ref={buttonRef}
-            variant="outline"
-            className={`h-9 shrink-0 gap-1.5 rounded-full border-input bg-card px-3 text-sm font-normal [&_svg]:size-4 [&_svg]:shrink-0 ${isOpen ? 'bg-accent' : ''}`}
-            type="button"
-            aria-label={`Finish: ${selectedRefinerObj?.name || 'None'}. Choose`}
+    <div className="flex items-center h-[48px]">
+      {isMobile ? (
+        <Popover open={isOpen} onOpenChange={setIsOpen}>
+          <PopoverTrigger asChild>
+            <Button
+              ref={buttonRef}
+              variant="outline"
+              className="h-[36px] border border-input hover:bg-purple-500/10 text-purple-700 flex items-center px-3 text-sm"
+              type="button"
+              onClick={() => setIsOpen(prev => !prev)}
+            >
+              {getRefinerIcon(selectedRefinerObj?.icon)}
+              {!isNarrow && (
+                <span className="ml-2 text-sm truncate max-w-[80px]">
+                  {selectedRefinerObj?.name || 'No Refiner'}
+                </span>
+              )}
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="start"
+            side="bottom"
+            sideOffset={8}
+            collisionPadding={8}
+            avoidCollisions
+            className="w-64 p-2 overflow-y-auto"
+            style={{ maxHeight: maxContentHeight }}
           >
-            {getRefinerIcon(selectedRefinerObj?.icon)}
-            <span className="text-muted-foreground">Finish:</span>
-            <span className="min-w-0 max-w-[9rem] truncate font-medium">{selectedRefinerObj?.name || 'None'}</span>
-          </Button>
-        </PopoverTrigger>
-        <PopoverContent
-          align="start"
-          side="bottom"
-          sideOffset={6}
-          collisionPadding={8}
-          avoidCollisions
-          className="w-72 p-2 overflow-y-auto max-h-[70vh]"
-          style={{ maxHeight: maxContentHeight }}
-        >
-          {renderRefinerMenu()}
-        </PopoverContent>
-      </Popover>
+            {renderRefinerMenu()}
+          </PopoverContent>
+        </Popover>
+      ) : (
+        <HoverCard open={isOpen} onOpenChange={setIsOpen} openDelay={100} closeDelay={100}>
+          <HoverCardTrigger asChild>
+            <Button
+              ref={buttonRef}
+              variant="outline"
+              className="h-[36px] border border-input hover:bg-purple-500/10 text-purple-700 flex items-center px-3 text-sm"
+              type="button"
+              onClick={() => setIsOpen(prev => !prev)}
+            >
+              {getRefinerIcon(selectedRefinerObj?.icon)}
+              {!isNarrow && (
+                <span className="ml-2 text-sm truncate max-w-[80px]">
+                  {selectedRefinerObj?.name || 'No Refiner'}
+                </span>
+              )}
+            </Button>
+          </HoverCardTrigger>
+          <HoverCardContent
+            align="start"
+            side="bottom"
+            sideOffset={4}
+            collisionPadding={8}
+            avoidCollisions
+            className="w-64 p-2 overflow-y-auto max-h-[60vh]"
+          >
+            {renderRefinerMenu()}
+          </HoverCardContent>
+        </HoverCard>
+      )}
     </div>
   );
 };
