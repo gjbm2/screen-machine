@@ -253,11 +253,12 @@ class DotService:
                 theme = first_quoted(theme) or str(values.get(t.get("else")) or "")
             style = str(values.get(art.get("style")) or "")
 
-        hint = {} if live else (tag.spec.get("hint") or {})
+        qr = tag.spec.get("qr") or {}
         return Card(room=room.get("name") or room_id, mode=shown, auto=bool(auto.get("on")), mic=mic_on, ai=ai_on,
                     live=live, changing_from=changing_from, title=title, by=by, left=left, progress=progress,
                     paused=paused, hearing=hearing, scene=scene, feel=feel, theme=theme.strip(),
-                    style=style.strip(), say=hint.get("say", ""), tap=hint.get("tap", ""))
+                    style=style.strip(), hint="" if live else (tag.spec.get("hint") or ""),
+                    qr=qr.get("url", ""), qr_px=int(qr.get("module_px", 2)))
 
     # ---- send
     async def send(self, tag: Tag, card: Card) -> None:
