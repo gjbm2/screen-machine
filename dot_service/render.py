@@ -19,6 +19,7 @@ advances. Sent with ditherType NONE so the pixels arrive as drawn.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -35,8 +36,12 @@ LIBRARY = Path.home() / ".local" / "share" / "screen-machine" / "dot-fonts"   # 
 # px = the size drawn (a bitmap font's design size); line = line height (default: from the font's ink);
 # bold = how the role's bold is made: "double" (each stroke drawn twice, a pixel apart), "none", or the bold
 # cut's font; scale = each font pixel drawn as scale x scale; serif_i = a serifed capital I ("AI", not "Al").
+_ARIAL = "/mnt/c/Windows/Fonts/arial.ttf"   # Windows', used in place (never copied into the repo)
 DEFAULT_TYPES = {
-    "head": {"font": "Galmuri14.ttf", "px": 15, "line": 19, "bold": "double"},     # headlines (always bold)
+    # headlines (always bold): Arial Bold 17 is the standard (owner, 27 Oct: legibility over one family);
+    # Galmuri 14, pixel-doubled, where Windows' fonts aren't mounted
+    "head": ({"font": _ARIAL, "px": 17, "bold": _ARIAL.replace("arial.ttf", "arialbd.ttf")} if os.path.exists(_ARIAL)
+             else {"font": "Galmuri14.ttf", "px": 15, "line": 19, "bold": "double"}),
     "text": {"font": "Galmuri9.ttf", "px": 10, "line": 12, "serif_i": True},       # text, labels, switches
     "ui": {"font": "Galmuri11.ttf", "px": 12, "line": 13, "bold": "Galmuri11-Bold.ttf"},  # mode, bottom line
 }
