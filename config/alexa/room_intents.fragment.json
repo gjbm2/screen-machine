@@ -73,24 +73,24 @@
       "name": "ai_on",
       "slots": [],
       "samples": [
-        "turn on AI listening",
-        "turn AI listening on",
-        "switch on AI listening",
-        "AI listening on",
-        "start AI listening",
-        "let the AI listen"
+        "turn on a. i. listening",
+        "turn a. i. listening on",
+        "switch on a. i. listening",
+        "a. i. listening on",
+        "start a. i. listening",
+        "let the a. i. listen"
       ]
     },
     {
       "name": "ai_off",
       "slots": [],
       "samples": [
-        "turn off AI listening",
-        "turn AI listening off",
-        "switch off AI listening",
-        "AI listening off",
-        "stop AI listening",
-        "stop the AI listening"
+        "turn off a. i. listening",
+        "turn a. i. listening off",
+        "switch off a. i. listening",
+        "a. i. listening off",
+        "stop a. i. listening",
+        "stop the a. i. listening"
       ]
     },
     {
