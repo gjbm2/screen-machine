@@ -765,7 +765,8 @@ def find_destination_by_alexaclosest(alexa_id: str) -> str:
     return None
 
 def get_qr(publish=None, run=False, refiner=None, prompt=None):
-    base_url = os.getenv("VITE_URL")
+    # The friendly HTTPS name (Caddy; works on the LAN and off it), else the public http address.
+    base_url = (os.getenv("VITE_APP_LAN_URL") or os.getenv("VITE_URL") or "").rstrip("/") + "/"
 
     # Build query parameters
     params = {}
