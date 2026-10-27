@@ -490,13 +490,13 @@ class Show:
         kw.update(extra)
         return kw
 
-    def _piano_output(self) -> Optional[str]:
-        """Where the piano is heard now (piano_live's gate): the test piano's output while it plays, else the music
     def _player_output(self) -> Optional[str]:
         """The music player's chosen output (sources' default for a start that names none), or None."""
         out = getattr(self._component("player"), "output", None)
         return out if isinstance(out, str) and out else None
 
+    def _piano_output(self) -> Optional[str]:
+        """Where the piano is heard now (piano_live's gate): the test piano's output while it plays, else the music
         player's chosen one (PC22 when it has none)."""
         src = self._component("sources")
         try:
