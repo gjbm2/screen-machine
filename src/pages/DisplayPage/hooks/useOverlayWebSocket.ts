@@ -78,9 +78,11 @@ export default function useOverlayWebSocket(
       };
 
       socket.onmessage = (event) => {
-        console.log("📬 WS message received:", event.data);
         try {
           const msg: OverlayMessage = JSON.parse(event.data);
+          // Only overlays carry html; the socket's other frames (lux, transcription, relayed comfy) are not for us.
+          if (typeof msg.html !== "string" || !msg.html) return;
+          console.log("📬 WS message received:", event.data);
           if (msg.screens && msg.screens.length > 0 && !msg.screens.includes(screenId)) {
             console.log(`🛑 Message not for this screen: ${screenId}`);
             return;

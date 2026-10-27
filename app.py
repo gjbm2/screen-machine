@@ -42,6 +42,8 @@ from routes.lightsensor import lightsensor_bp
 from routes.audio_utils import audio_bp
 from routes.audio_api import audio_api
 from routes.admin_api import admin_api, admin_token_ok
+from routes.jobs.api import jobs_api
+import routes.jobs
 
 # Load environment variables
 load_dotenv()
@@ -69,6 +71,7 @@ app.register_blueprint(lightsensor_bp, url_prefix=API_PREFIX)
 app.register_blueprint(audio_bp)
 app.register_blueprint(audio_api, url_prefix=API_PREFIX)
 app.register_blueprint(admin_api, url_prefix=API_PREFIX)
+app.register_blueprint(jobs_api, url_prefix=API_PREFIX)  # generation jobs + SSE (docs/JOBS.md)
 
 # Register test blueprints (no prefix needed for test routes)
 app.register_blueprint(test_buckets_bp)
@@ -220,6 +223,10 @@ if __name__ == '__main__':
     ws_thread = Thread(target=_run_ws_server_supervised, daemon=True, name="ws-server")
     ws_thread.start()
     alerts_health.register_ws_thread(ws_thread)
+
+    # Generation jobs: prune old history, fail jobs the last stop orphaned (their RunPod jobs are
+    # cancelled in the background). Never blocks or breaks start-up.
+    routes.jobs.startup()
 
     # Room control: room_service runs in this process on its own thread, event loop and LAN port
     # (ROOM_PORT, default 8700); this :5000 door has no room routes. Never blocks or breaks start-up:

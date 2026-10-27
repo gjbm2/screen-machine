@@ -176,7 +176,8 @@ def process_generate_image_request(data, uploaded_images=None):
             "workflow": workflow,  # Pass through as-is, let handler resolve defaults
             "refiner": refiner,    # Pass through as-is, let handler resolve defaults
             "targets": publish_destination,
-            "batch_id": batch_id
+            "batch_id": batch_id,
+            "placeholders": data.get('placeholders') or []
         }
     }
     
@@ -190,15 +191,18 @@ def process_generate_image_request(data, uploaded_images=None):
     call_args = {
         k: safe_cast(v, main_params[k].annotation if main_params[k].annotation is not inspect._empty else str)
         for k, v in params.items()
-        if k in main_params
+        if k in main_params and k not in ("job_id", "batch_id")
     }
     
     # Call handler for image generation
+    job_ids = []
     try:   
         from routes.generate_handler import handle_image_generation
         response = handle_image_generation(
             input_obj=send_obj,
             wait=True,
+            source="generator",
+            job_ids_out=job_ids,
             **call_args
         )
     except Exception as e:
@@ -206,8 +210,9 @@ def process_generate_image_request(data, uploaded_images=None):
         raise
         
     if not response:
-        error("Image generation returned no results.")
-        raise ValueError("Image generation returned no results.")
+        reason = _failed_jobs_reason(job_ids)
+        error(f"Image generation failed: {reason}")
+        raise ValueError(reason)
     
     # Generate the requested number of images (based on batch_size)
     result_images = []
@@ -233,6 +238,7 @@ def process_generate_image_request(data, uploaded_images=None):
         
         image_data = {
             "id": image_id,
+            "job_id": r.get("job_id"),
             "url": r.get("message", None),
             "seed": r["seed"],
             "original_prompt": prompt,
@@ -301,7 +307,20 @@ def process_generate_image_request(data, uploaded_images=None):
         "success": True,
         "images": result_images,
         "batch_id": batch_id,
+        "job_ids": job_ids,
         "prompt": prompt,
         "workflow": workflow,
         "recent_files": recent_files
-    } 
+    }
+
+
+def _failed_jobs_reason(job_ids):
+    """The failed jobs' errors (from the job tracker) as one line for the HTTP error."""
+    from routes.jobs import get_tracker
+    reasons = []
+    for job_id in job_ids:
+        job = get_tracker().get(job_id) or {}
+        reason = job.get("error") or ("Cancelled" if job.get("status") == "cancelled" else None)
+        if reason and reason not in reasons:
+            reasons.append(reason)
+    return "; ".join(reasons) or "Image generation returned no results." 

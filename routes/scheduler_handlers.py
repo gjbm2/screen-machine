@@ -256,13 +256,15 @@ def handle_generate(instruction, context, now, output, publish_destination):
             # It's a mock service object - used in tests
             response = generation_service.handle_image_generation(
                 input_obj=send_obj,
-                wait=True
+                wait=True,
+                source="scheduler"
             )
         else:
             # It's a function - used in production
             response = generation_service(
                 input_obj=send_obj,
-                wait=True            
+                wait=True,
+                source="scheduler"
             )
 
         debug(f"Response from image generation: '{response}'")
@@ -432,13 +434,15 @@ def handle_animate(instruction, context, now, output, publish_destination):
             # It's a mock service object - used in tests
             result = animation_service.animate(
                 targets=[publish_destination], 
-                obj=obj
+                obj=obj,
+                source="scheduler"
             )
         else:
             # It's a function - used in production
             result = animation_service(
                 targets=[publish_destination], 
-                obj=obj
+                obj=obj,
+                source="scheduler"
             )
         
         # Handle history tracking if specified

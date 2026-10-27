@@ -4,6 +4,7 @@ import useBaseFileName from "./hooks/useBaseFileName";
 import useFilePolling from "./hooks/useFilePolling";
 import { MediaDisplay } from "./MediaDisplay";
 import { OverlayContainer } from "./OverlayContainer";
+import { JobIndicator } from "./JobIndicator";
 import useOverlayWebSocket from "./hooks/useOverlayWebSocket";
 import { useMask } from "./hooks/useMask";
 import { useBlackBody } from "./hooks/useBlackBody";
@@ -245,6 +246,9 @@ function DisplayPage() {
     }
   }, [isMobile]);
 
+  // Server overlays' inline scripts don't run from innerHTML, so they are re-run here. Still needed by
+  // overlay_spinner (the countdown ring in the prompt/schedule/explain/guidance panels); job progress
+  // no longer comes as overlays (JobIndicator).
   useEffect(() => {
     if (containerRef.current) {
       const scripts = containerRef.current.querySelectorAll("script");
@@ -547,6 +551,13 @@ function DisplayPage() {
       {!(ctl && liveOnGlass) && (
         <LayerBoundary name="overlays">
           <OverlayContainer overlays={overlays} />
+        </LayerBoundary>
+      )}
+
+      {/* Generation jobs for this screen: always subscribed, hidden while quiet (not part of settle). */}
+      {screenId && (
+        <LayerBoundary name="jobs">
+          <JobIndicator screenId={screenId} hidden={quiet} />
         </LayerBoundary>
       )}
     </div>

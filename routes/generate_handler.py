@@ -272,24 +272,28 @@ def jpg_from_mp4_handler(mp4_path):
     
     # The temp file cleanup is handled by the endpoint function 
 
-def handle_image_generation(input_obj, wait=False, **kwargs):
+def handle_image_generation(input_obj, wait=False, source="api", job_ids_out=None, **kwargs):
     """
     Core image generation logic that performs actual generation.
     
     This is a lower-level function that:
-    1. Handles prompt refinement via OpenAI
-    2. Manages image generation workflows
-    3. Creates and manages generation threads
+    1. Creates one tracker job per (target x batch image) (routes/jobs, docs/JOBS.md)
+    2. Handles prompt refinement via OpenAI
+    3. Manages image generation workflows
+    4. Creates and manages generation threads
     
     Called by both API handlers and internal components.
     
     Args:
         input_obj: Dictionary containing data for generation
         wait: Whether to wait for generation threads to complete
+        source: Who asked: generator | scheduler | alexa | api
+        job_ids_out: Optional list; the ids of the jobs made are appended to it
         **kwargs: Additional keyword arguments to pass to routes.generate.start
         
     Returns:
-        List of results if wait=True, otherwise None
+        If wait=True, the successful results (each carries its job_id); failed jobs' reasons are on
+        the tracker under the batch_id. Otherwise None.
     """
     # Import necessary modules
     import threading
@@ -300,6 +304,8 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
     import routes.generate
     import utils.logger
     from utils.logger import info, error, warning, debug
+    from routes.jobs import get_tracker
+    from routes.jobs.workflows import workflow_meta, workflow_kind, target_name
     
     subs = build_schema_subs()
        
@@ -343,6 +349,7 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
     user_workflow = data.get("workflow")  # User-specified workflow (may be None)
     images = data.get("images", [])
     batch_id = data.get("batch_id") or str(uuid.uuid4())  # Generate a batch_id if not provided
+    placeholders = data.get("placeholders") if isinstance(data.get("placeholders"), list) else []
 
     # ------------------------------------------------------------------
     # Implement proper default resolution hierarchy:
@@ -473,7 +480,148 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
         prepared_images = []  # none required
        
     utils.logger.info(f"> Using refiner: '{refiner}' -> '{corrected_refiner}'")
+
+    # ------------------------------------------------------------------
+    # One tracker job per image (publish_target x batch), made now so the
+    # refining below is already tracked. The generator page's placeholders
+    # map onto the batch images in order.
+    # ------------------------------------------------------------------
+    tracker = get_tracker()
+    destinations = [resolve_runtime_value("destination", t) if t is not None else None
+                    for t in publish_targets]
+    jobs = []  # (job_id, destination)
+    for destination in destinations:
+        for i in range(batch_size):
+            placeholder = placeholders[i] if i < len(placeholders) and isinstance(placeholders[i], dict) else {}
+            batch_index = placeholder.get("batch_index")
+            job = tracker.create(
+                prompt=prompt or "", source=source, target=destination,
+                target_name=target_name(destination), batch_id=batch_id,
+                batch_index=batch_index if isinstance(batch_index, int) else i,
+                placeholder_id=placeholder.get("placeholder_id"),
+                workflow=workflow, refiner=refiner,
+                kind=workflow_kind(workflow_meta(workflow)) if workflow else "image",
+                message="Refining the prompt" if corrected_refiner is not None else "Preparing")
+            jobs.append((job["id"], destination))
+            if job_ids_out is not None:
+                job_ids_out.append(job["id"])
+
+    try:
+        corrected_workflow, refined_prompt, final_prompt = _refine(
+            data, prompt, workflow, images, corrected_refiner, images_required, prepared_images,
+            input_dict, subs)
+    except Exception as e:
+        reason = str(e).strip().splitlines()[0][:300] if str(e).strip() else type(e).__name__
+        for job_id, _ in jobs:
+            tracker.fail(job_id, f"Refining the prompt failed: {reason}")
+        raise
+
+    for job_id, _ in jobs:
+        tracker.update(job_id, refined_prompt=final_prompt, workflow=corrected_workflow,
+                       kind=workflow_kind(workflow_meta(corrected_workflow)), message="Preparing")
+
+    # ------------------------------------------------------------------
+    # Extract workflow-specific parameters from data and add to base_kwargs
+    # ------------------------------------------------------------------
+    # Extract skip-upscaling parameter if present
+    skip_upscaling = data.get("skip-upscaling")
+    if skip_upscaling is not None:
+        utils.logger.info(f"Found skip-upscaling parameter: {skip_upscaling}")
+
+    # ------------------------------------------------------------------
+    # Prepare common kwargs that will be sent to each generator invocation
+    # ------------------------------------------------------------------
+    base_kwargs = kwargs.copy()
+    base_kwargs.pop("publish_destination", None)  # Do not allow callers to override this here
+    base_kwargs.pop("job_id", None)                   # Each thread gets its own
+    base_kwargs["images"] = images                    # ensure images list is passed downstream
+    base_kwargs["batch_id"] = batch_id
     
+    # Add workflow-specific parameters
+    if skip_upscaling is not None:
+        base_kwargs["skip-upscaling"] = skip_upscaling
+
+    # Add maxwidth/maxheight from data if present (for DOWNSCALER template replacement)
+    if "maxwidth" in data:
+        base_kwargs["maxwidth"] = data["maxwidth"]
+    if "maxheight" in data:
+        base_kwargs["maxheight"] = data["maxheight"]
+
+    # Add silent parameter from data if present
+    if "silent" in data:
+        base_kwargs["silent"] = data["silent"]
+
+    # ✨ Remove the seed if batch_size > 1 so that each run gets its own
+    #     random seed (generate.start will assign a random default).
+    if batch_size > 1:
+        base_kwargs.pop("seed", None)
+
+    # One thread per job
+    threads = []
+    results = [None] * len(jobs)  # Pre-size so we can keep ordering stable
+
+    for index, (job_id, destination) in enumerate(jobs):
+        if destination:
+            utils.logger.info(f"> For destination: {destination}")
+
+        def thread_fn(index=index, job_id=job_id, destination=destination):
+            try:
+                result = routes.generate.start(
+                    prompt=final_prompt,
+                    workflow=corrected_workflow,
+                    publish_destination=destination,
+                    job_id=job_id,
+                    **base_kwargs
+                )
+                
+                # Add the resolved refiner information to the result
+                if result and isinstance(result, dict):
+                    result["actual_refiner"] = refiner  # Original refiner request
+                    result["actual_corrected_refiner"] = corrected_refiner  # Resolved refiner
+                    result["actual_refined_prompt"] = refined_prompt  # The refined prompt
+                    result["actual_final_prompt"] = final_prompt  # The final prompt used
+                
+                results[index] = result  # Store result in shared list
+            except Exception as e:
+                utils.logger.error(f"Generation job failed: {e}")
+                # start() has already ended the job as failed; this is a backstop
+                tracker.fail(job_id, str(e) or type(e).__name__)
+                # This catch swallows the exception (results[index]=None is
+                # silently filtered later), so alert before it vanishes
+                from utils.alerts import alert
+                alert("generation.job_failed", f"Generation job failed: {e}",
+                      exc=e,
+                      context={"destination": destination,
+                               "workflow": corrected_workflow,
+                               "job_id": job_id})
+                results[index] = None
+
+        thread = threading.Thread(target=thread_fn, name=f"gen-{job_id}")
+        thread.start()
+        threads.append(thread)
+
+    utils.logger.info(f" * Spawned {len(threads)} generator threads.")
+
+    # if we need to wait until the end, do so
+    if wait:
+        for t in threads:
+            t.join()
+        utils.logger.info(" * All generator threads completed.")
+        # Filter out any failed runs (None) just in case
+        return [r for r in results if r is not None]
+    else:
+        return None
+
+
+def _refine(data, prompt, workflow, images, corrected_refiner, images_required, prepared_images,
+            input_dict, subs):
+    """Refine (OpenAI), choose the workflow and translate if asked. Returns
+    (corrected_workflow, refined_prompt, final_prompt)."""
+    import json
+    import routes.openai
+    import utils.logger
+    from routes.utils import resolve_runtime_value, dict_substitute, _load_json_once
+
     # Refine if needed
     if corrected_refiner is not None:
         openai_args = {
@@ -579,108 +727,9 @@ def handle_image_generation(input_obj, wait=False, **kwargs):
     else:
         final_prompt = refined_prompt
 
-    # We don't want to force publication if no target was specified
-    no_targets = publish_targets == [None]
+    return corrected_workflow, refined_prompt, final_prompt
 
-    # ------------------------------------------------------------------
-    # Extract workflow-specific parameters from data and add to base_kwargs
-    # ------------------------------------------------------------------
-    # Extract skip-upscaling parameter if present
-    skip_upscaling = data.get("skip-upscaling")
-    if skip_upscaling is not None:
-        utils.logger.info(f"Found skip-upscaling parameter: {skip_upscaling}")
-
-    # ------------------------------------------------------------------
-    # Prepare common kwargs that will be sent to each generator invocation
-    # ------------------------------------------------------------------
-    base_kwargs = kwargs.copy()
-    base_kwargs.pop("publish_destination", None)  # Do not allow callers to override this here
-    base_kwargs["images"] = images                    # ensure images list is passed downstream
-    base_kwargs.pop("batch_id", None)                 # Already handled higher up
-    
-    # Add workflow-specific parameters
-    if skip_upscaling is not None:
-        base_kwargs["skip-upscaling"] = skip_upscaling
-
-    # Add maxwidth/maxheight from data if present (for DOWNSCALER template replacement)
-    if "maxwidth" in data:
-        base_kwargs["maxwidth"] = data["maxwidth"]
-    if "maxheight" in data:
-        base_kwargs["maxheight"] = data["maxheight"]
-
-    # Add silent parameter from data if present
-    if "silent" in data:
-        base_kwargs["silent"] = data["silent"]
-
-    # ✨ Remove the seed if batch_size > 1 so that each run gets its own
-    #     random seed (generate.start will assign a random default).
-    if batch_size > 1:
-        base_kwargs.pop("seed", None)
-
-    # One thread per *image* (publish_target × batch)
-    total_jobs = len(publish_targets) * batch_size
-    threads = []
-    results = [None] * total_jobs  # Pre-size so we can keep ordering stable
-
-    job_index = 0  # Global index for results list
-
-    for publish_destination in publish_targets:
-        if no_targets:
-            corrected_publish_destination = None
-        else:
-            utils.logger.info(f"> For destination: {publish_destination}")
-            corrected_publish_destination = resolve_runtime_value("destination", publish_destination)
-
-        for _ in range(batch_size):
-            current_index = job_index  # Capture for closure
-
-            def thread_fn(index=current_index, destination=corrected_publish_destination):
-                try:
-                    result = routes.generate.start(
-                        prompt=final_prompt,
-                        workflow=corrected_workflow,
-                        publish_destination=destination,
-                        **base_kwargs
-                    )
-                    
-                    # Add the resolved refiner information to the result
-                    if result and isinstance(result, dict):
-                        result["actual_refiner"] = refiner  # Original refiner request
-                        result["actual_corrected_refiner"] = corrected_refiner  # Resolved refiner
-                        result["actual_refined_prompt"] = refined_prompt  # The refined prompt
-                        result["actual_final_prompt"] = final_prompt  # The final prompt used
-                    
-                    results[index] = result  # Store result in shared list
-                except Exception as e:
-                    utils.logger.error(f"Generation job failed: {e}")
-                    # This catch swallows the exception (results[index]=None is
-                    # silently filtered later), so alert before it vanishes
-                    from utils.alerts import alert
-                    alert("generation.job_failed", f"Generation job failed: {e}",
-                          exc=e,
-                          context={"destination": destination,
-                                   "workflow": corrected_workflow})
-                    results[index] = None
-
-            thread = threading.Thread(target=thread_fn)
-            thread.start()
-            threads.append(thread)
-
-            job_index += 1
-
-    utils.logger.info(f" * Spawned {len(threads)} generator threads.")
-
-    # if we need to wait until the end, do so
-    if wait:
-        for t in threads:
-            t.join()
-        utils.logger.info(" * All generator threads completed.")
-        # Filter out any failed runs (None) just in case
-        return [r for r in results if r is not None]
-    else:
-        return None 
-
-def async_combine(targets, obj = {}):
+def async_combine(targets, obj = {}, source="api"):
     """
     Process combination for exactly two targets.
     This function combines images from two targets by:
@@ -691,6 +740,7 @@ def async_combine(targets, obj = {}):
     Args:
         targets: List of target IDs (should contain exactly 2 targets)
         obj: Optional dictionary with additional configuration
+        source: Who asked, for the job tracker (alexa | scheduler | api)
         
     Returns:
         None
@@ -769,21 +819,23 @@ def async_combine(targets, obj = {}):
     threading.Thread(
         target=handle_image_generation,
         kwargs={
-            "input_obj": target_a_result
+            "input_obj": target_a_result,
+            "source": source
         }
     ).start()
     
     threading.Thread(
         target=handle_image_generation,
         kwargs={
-            "input_obj": target_b_result
+            "input_obj": target_b_result,
+            "source": source
         }
     ).start()
     
     info(f"Combine: started parallel combination threads for {target_a} and {target_b}")
     return None
 
-def async_amimate(targets, obj = {}):
+def async_amimate(targets, obj = {}, source="api"):
     """
     Process animation for the specified targets.
     For animation, each target needs its own image retrieved from that specific target.
@@ -791,6 +843,7 @@ def async_amimate(targets, obj = {}):
     Args:
         targets: List of target IDs or single target ID
         obj: Optional dictionary with additional configuration
+        source: Who asked, for the job tracker (alexa | scheduler | api)
         
     Returns:
         None
@@ -841,7 +894,8 @@ def async_amimate(targets, obj = {}):
             threading.Thread(
                 target=handle_image_generation,
                 kwargs={
-                    "input_obj": target_result
+                    "input_obj": target_result,
+                    "source": source
                 }
             ).start()
     else:
@@ -849,7 +903,7 @@ def async_amimate(targets, obj = {}):
     
     return None
 
-def async_adapt(targets, obj = {}):
+def async_adapt(targets, obj = {}, source="api"):
     """
     Process adaptation for the specified targets.
     For adapt, each target needs its own image retrieved from that specific target.
@@ -857,6 +911,7 @@ def async_adapt(targets, obj = {}):
     Args:
         targets: List of target IDs or single target ID
         obj: Optional dictionary with additional configuration
+        source: Who asked, for the job tracker (alexa | scheduler | api)
         
     Returns:
         None
@@ -908,7 +963,8 @@ def async_adapt(targets, obj = {}):
             threading.Thread(
                 target=handle_image_generation,
                 kwargs={
-                    "input_obj": target_result
+                    "input_obj": target_result,
+                    "source": source
                 }
             ).start()
             
