@@ -1,3 +1,5 @@
+import type { TaggedMetadata } from '@/shared/api/types';
+
 export type GroupVariant = 'generated' | 'favourites' | 'dated';
 
 export interface ImageMeta {
@@ -32,6 +34,8 @@ export interface ImageItem extends ImageMeta {
   bucketId?: string;
   /** Reference images used for this generation */
   reference_images?: any[];
+  /** The bucket item's sidecar metadata; `tags`/`tagging` are the art tagger's (docs/ART_TAGS.md). */
+  metadata?: Record<string, any> & TaggedMetadata;
 }
 
 export interface ImageGroup {

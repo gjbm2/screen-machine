@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { toast } from 'sonner';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { format, formatDistance } from 'date-fns';
-import { audioApi, bucketsApi, generationApi, lightApi, publishApi } from '@/shared/api';
+import { audioApi, bucketsApi, generationApi, lightApi, publishApi, tagsApi } from '@/shared/api';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import type { BucketItem as ApiBucketItem, Bucket as ApiBucket } from '@/shared/api';
+import type { BucketItem as ApiBucketItem, Bucket as ApiBucket, TagLexicon } from '@/shared/api';
 import { Image as ImageIcon, RefreshCw, AlertCircle, Star, StarOff, Upload, MoreVertical, Trash, Share, Plus, ChevronsUpDown, Settings, ExternalLink, Send, Trash2, Copy, Info, Filter, Film, Camera, Link, CirclePause, CirclePlay, CircleStop, Maximize2, ArrowUp, ArrowDown, Pause, Square, ChevronUp, ChevronDown, Play, X, Mic, Moon } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -55,6 +55,32 @@ import { Switch } from "@/components/ui/switch";
 import { Download } from 'lucide-react';
 import { ReferenceImageService } from '@/services/reference-image-service';
 import { usePublishDestinations } from '@/hooks/usePublishDestinations';
+import { Tag as TagIcon } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { TagFilterBar } from '@/components/tags/TagFilterBar';
+import { ITEM_UPDATED_EVENT, type ItemUpdatedDetail } from '@/components/tags/events';
+import {
+  awaitingTagger,
+  buildChips,
+  facetIndex,
+  favouritesThenNewest,
+  matchesChips,
+  sectionsBySubject,
+} from '@/components/tags/tagIndex';
+
+/** Date or Tags view, remembered per viewer (owner, 27 Oct: browse a screen's images by tag as well as by date). */
+type BucketViewMode = 'date' | 'tags';
+const VIEW_MODE_KEY = 'screenmachine_bucket_view';
+/** While the Tags view shows images the tagger hasn't reached, re-read the bucket this often. */
+const TAG_POLL_MS = 30_000;
+
+function readViewMode(): BucketViewMode {
+  try {
+    return localStorage.getItem(VIEW_MODE_KEY) === 'tags' ? 'tags' : 'date';
+  } catch {
+    return 'date';
+  }
+}
 
 // Define the expected types based on the API response
 interface BucketItem extends ApiBucketItem {
@@ -350,6 +376,9 @@ export const BucketGridView = ({
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
   const [sectionSortMap, setSectionSortMap] = useState<Record<string, 'desc' | 'asc'>>({});
   const [hasBucket, setHasBucket] = useState<boolean>(true);
+  const [viewMode, setViewMode] = useState<BucketViewMode>(readViewMode);
+  const [chosenChips, setChosenChips] = useState<string[]>([]);
+  const [lexicon, setLexicon] = useState<TagLexicon | null>(null);
   
   // Add state for the delete confirmation dialog
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
@@ -432,9 +461,12 @@ export const BucketGridView = ({
     }
   };
 
-  const fetchBucketDetails = async () => {
-    setLoading(true);
-    setError(null);
+  // quiet: a background re-read (the Tags view waiting on the tagger) with no spinner and no error toast.
+  const fetchBucketDetails = async (quiet: boolean = false) => {
+    if (!quiet) {
+      setLoading(true);
+      setError(null);
+    }
     try {
       // Check if the current destination has a bucket
       const currentDest = await publishApi.getPublishDestinations();
@@ -551,10 +583,12 @@ export const BucketGridView = ({
       }
     } catch (error) {
       console.error('Error fetching bucket details:', error);
-      toast.error('Failed to fetch bucket details');
-      setError('Failed to fetch bucket details');
+      if (!quiet) {
+        toast.error('Failed to fetch bucket details');
+        setError('Failed to fetch bucket details');
+      }
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   };
 
@@ -966,8 +1000,10 @@ export const BucketGridView = ({
   interface Section {
     id: string;
     label: string;
-    variant: 'favourites' | 'dated';
+    variant: 'favourites' | 'dated' | 'tagged';
     images: BucketImage[];
+    /** Tags view: folded until opened (date sections keep their own first-load rule below). */
+    defaultCollapsed?: boolean;
   }
 
   const sections: Section[] = [];
@@ -980,6 +1016,44 @@ export const BucketGridView = ({
       sections.push({ id: lbl.toLowerCase().replace(/\s+/g, '-'), label: `${lbl} (${dateGroupsMap[lbl].length})`, variant: 'dated', images: dateGroupsMap[lbl] });
     }
   });
+
+  // ----------  Tags view: chips + sections (owner, 27 Oct) ---------- //
+  // Each image sits in exactly one section (its first subject word), so no #dup clones are needed here.
+  const facets = useMemo(() => facetIndex(lexicon), [lexicon]);
+  const tagChips = useMemo(
+    () => (viewMode === 'tags' ? buildChips(bucketImages, facets) : []),
+    [viewMode, bucketImages, facets],
+  );
+  const tagSections: Section[] = useMemo(() => {
+    if (viewMode !== 'tags') return [];
+    if (chosenChips.length) {
+      const label = chosenChips
+        .map((c) => tagChips.find((t) => t.key === c)?.label ?? tagsApi.tagLabel(c))
+        .join(' + ');
+      const matching = bucketImages.filter((img) => matchesChips(img, chosenChips)).sort(favouritesThenNewest);
+      return [{ id: 'tag-filter', label: `${label} (${matching.length})`, variant: 'tagged' as const, images: matching }];
+    }
+    return sectionsBySubject(bucketImages, facets).map((g, i) => ({
+      id: `tag-${g.key}`,
+      label: `${g.label} (${g.images.length})`,
+      variant: 'tagged' as const,
+      images: g.images,
+      defaultCollapsed: i > 0,
+    }));
+  }, [viewMode, chosenChips, bucketImages, facets, tagChips]);
+  const shownSections: Section[] = viewMode === 'tags' ? tagSections : sections;
+
+  const chooseViewMode = (mode: BucketViewMode) => {
+    setViewMode(mode);
+    try {
+      localStorage.setItem(VIEW_MODE_KEY, mode);
+    } catch {
+      /* private window: just not remembered */
+    }
+  };
+
+  const toggleChip = (key: string) =>
+    setChosenChips((prev) => (prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]));
 
   // Helper to map a duplicate id back to its original image id
   const getOriginalId = (id: string) => id.includes('#dup') ? id.split('#dup')[0] : id;
@@ -1121,6 +1195,14 @@ export const BucketGridView = ({
         }
       }
       // Reset drag state
+      setActiveId(null);
+      setActiveDraggedImage(null);
+      setActiveDropTarget(null);
+      setDropTargetType(null);
+      document.body.style.touchAction = 'auto';
+      return;
+    } else if (viewMode === 'tags') {
+      // Tags view: sections are tags, not favourites/dates, so a drop between them means nothing (no reorder either).
       setActiveId(null);
       setActiveDraggedImage(null);
       setActiveDropTarget(null);
@@ -1413,6 +1495,13 @@ export const BucketGridView = ({
       }
       return;
     }
+
+    // Tags view: only the publish area and screen tabs take drops
+    if (viewMode === 'tags') {
+      if (activeDropTarget !== null) setActiveDropTarget(null);
+      if (dropTargetType !== null) setDropTargetType(null);
+      return;
+    }
     
     // Check if we're over an empty favorites container
     if (typeof over.id === 'string' && (over.id as string).startsWith('empty-favorites-')) {
@@ -1569,7 +1658,8 @@ export const BucketGridView = ({
         type: 'content-area',
         sectionId: section.id,
         variant: section.variant
-      }
+      },
+      disabled: section.variant === 'tagged'
     });
     
     // Create a dedicated droppable for the empty favorites container
@@ -1643,7 +1733,7 @@ export const BucketGridView = ({
         label={section.label}
         variant="section"
         iconPos="left"
-        collapsed={collapsedSections[section.id] ?? false}
+        collapsed={collapsedSections[section.id] ?? section.defaultCollapsed ?? false}
         onToggle={toggleSection}
         className=""
         headerExtras={headerExtras}
@@ -1761,7 +1851,7 @@ export const BucketGridView = ({
                   headless: false // Already filtered out headless ones
                 }))}
               bucketId={destination}
-              sectionVariant={section.variant}
+              sectionVariant={section.variant === 'tagged' ? 'dated' : section.variant}
               onFullscreenClick={(img) => {
                 const originalId = getOriginalId(img.id);
                 const originalImage = bucketImages.find(i => i.id === originalId);
@@ -2068,6 +2158,28 @@ export const BucketGridView = ({
       );
     }
     
+    // Tags view: the chip bar, then the tag sections
+    if (viewMode === 'tags') {
+      const noMatch = chosenChips.length > 0 && (tagSections[0]?.images.length ?? 0) === 0;
+      return (
+        <div className="flex flex-col gap-2 overflow-y-auto items-start">
+          <div className="w-full min-w-0 [contain:inline-size] pt-2">
+            <TagFilterBar
+              chips={tagChips}
+              chosen={chosenChips}
+              onToggle={toggleChip}
+              onClear={() => setChosenChips([])}
+            />
+          </div>
+          {noMatch ? (
+            <p className="px-1 py-6 text-sm text-muted-foreground">No image has all of these tags.</p>
+          ) : (
+            tagSections.map((section) => <SectionDroppable key={section.id} section={section} />)
+          )}
+        </div>
+      );
+    }
+
     // For destinations with buckets and images
     return (
       <div className="flex flex-col gap-2 overflow-y-auto items-start">
@@ -2227,6 +2339,49 @@ export const BucketGridView = ({
     }
   };
 
+  // The loupe changed an image's tags or star: patch our copy in place, no refetch (owner, 27 Oct: grid went stale).
+  useEffect(() => {
+    const onItemUpdated = (e: Event) => {
+      const d = (e as CustomEvent<ItemUpdatedDetail>).detail;
+      if (!d || d.bucket !== destination) return;
+      setBucketImages((prev) =>
+        prev.map((img) => {
+          if (img.id !== d.filename) return img;
+          return 'favorite' in d.patch
+            ? { ...img, metadata: { ...img.metadata, favorite: d.patch.favorite } }
+            : { ...img, metadata: { ...img.metadata, tags: d.patch.tags, tagging: d.patch.tagging } };
+        }),
+      );
+    };
+    window.addEventListener(ITEM_UPDATED_EVENT, onItemUpdated);
+    return () => window.removeEventListener(ITEM_UPDATED_EVENT, onItemUpdated);
+  }, [destination]);
+
+  // Tags view: the lexicon groups the chips (subject, medium, moods); without it words still show, by count.
+  useEffect(() => {
+    if (viewMode !== 'tags' || lexicon) return;
+    let live = true;
+    tagsApi
+      .getLexicon()
+      .then((l) => live && setLexicon(l))
+      .catch((err) => console.warn('Tag lexicon unavailable:', err));
+    return () => {
+      live = false;
+    };
+  }, [viewMode, lexicon]);
+
+  // Tags view: while the tagger hasn't reached some images, re-read the bucket quietly so their tags appear.
+  const fetchRef = useRef(fetchBucketDetails);
+  fetchRef.current = fetchBucketDetails;
+  const awaitingTags = viewMode === 'tags' && hasBucket && bucketImages.some((img) => awaitingTagger(img, isVideo));
+  useEffect(() => {
+    if (!awaitingTags) return;
+    const t = setInterval(() => {
+      if (!document.hidden) fetchRef.current(true);
+    }, TAG_POLL_MS);
+    return () => clearInterval(t);
+  }, [awaitingTags]);
+
   // Listen for new images event to automatically refresh when images are generated
   useEffect(() => {
     const handleRecentAdd = (e: any) => {
@@ -2327,6 +2482,39 @@ export const BucketGridView = ({
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
+                        {/* Date | Tags. On a phone one small Tags toggle, so this row never wraps (the generator's mobile
+                            layout is pixel-set, owner 27 Oct); labelled segments from sm up. */}
+                        <Button
+                          size="sm"
+                          variant={viewMode === 'tags' ? 'secondary' : 'ghost'}
+                          aria-pressed={viewMode === 'tags'}
+                          aria-label={viewMode === 'tags' ? 'Browse by date' : 'Browse by tag'}
+                          title={viewMode === 'tags' ? 'Browse by date' : 'Browse by tag'}
+                          onClick={() => chooseViewMode(viewMode === 'tags' ? 'date' : 'tags')}
+                          className="flex-nowrap h-8 px-2.5 sm:hidden"
+                        >
+                          <TagIcon className="h-4 w-4" />
+                        </Button>
+                        <div
+                          role="group"
+                          aria-label="Browse by"
+                          className="hidden sm:inline-flex h-8 items-center rounded-md border border-border bg-background/60 p-0.5"
+                        >
+                          {(['date', 'tags'] as const).map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              aria-pressed={viewMode === m}
+                              onClick={() => chooseViewMode(m)}
+                              className={cn(
+                                'h-7 rounded px-2.5 text-xs font-medium transition-colors',
+                                viewMode === m ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
+                              )}
+                            >
+                              {m === 'date' ? 'Date' : 'Tags'}
+                            </button>
+                          ))}
+                        </div>
                       </>
                     )}
                   </div>

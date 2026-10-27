@@ -12,13 +12,80 @@ export interface ReferenceImageInfo {
   source_type: string;
 }
 
+/** The AI tagger's reading of one image (sidecar `tagging.ai`); never shown as lozenges except subject/medium/moods. */
+export interface TaggingAi {
+  subject?: string[];
+  medium?: string;
+  moods?: string[];
+  palette?: string;
+  look?: string;
+  energy?: number;
+  valence?: number;
+  organic?: number;
+  density?: number;
+  quality?: number;
+  music?: Record<string, number>;
+  auto_ok?: boolean;
+  confidence?: number;
+}
+
+/** Sidecar `tagging` (docs/ART_TAGS.md §1). No `status` yet = the AI has not tagged it (a person may have). */
+export interface TaggingInfo {
+  v?: number;
+  status?: 'done' | 'failed';
+  at?: string;
+  model?: string;
+  cost_usd?: number;
+  lexicon?: number;
+  ai?: TaggingAi;
+  added?: string[];
+  removed?: string[];
+  error?: string;
+  attempts?: number;
+}
+
+/** The sidecar keys the tagger adds; every other sidecar key is carried as before. */
+export interface TaggedMetadata {
+  /** Effective tags, in order: AI subject, medium, moods, then hand-added words. */
+  tags?: string[];
+  tagging?: TaggingInfo;
+}
+
+export interface TagWord {
+  word: string;
+  desc?: string;
+}
+
+export interface TagLexicon {
+  version: number;
+  facets: {
+    subject: TagWord[];
+    medium: TagWord[];
+    moods: TagWord[];
+    palette: TagWord[];
+  };
+}
+
+export interface TagStatus {
+  running: boolean;
+  queued: number;
+  current: string | null;
+  done_session: number;
+  failed_session: number;
+  paused_until: string | null;
+  pause_reason: string | null;
+  spend_today_usd: number;
+  model: string;
+  coverage: Record<string, { total: number; tagged: number; failed: number }>;
+}
+
 export interface BucketItem {
   filename: string;
   url?: string;
   thumbnail_url?: string;
   thumbnail_embedded?: string;
   favorite: boolean;
-  metadata?: Record<string, any>;
+  metadata?: Record<string, any> & TaggedMetadata;
   created_at?: number;
   reference_images?: ReferenceImageInfo[];
 }
@@ -72,7 +139,7 @@ export interface BucketDetails {
     thumbnail_url: string;
     thumbnail_embedded?: string;
     favorite: boolean;
-    metadata: Record<string, any>;
+    metadata: Record<string, any> & TaggedMetadata;
     created_at: number;
     reference_images?: ReferenceImageInfo[];
   }>;
