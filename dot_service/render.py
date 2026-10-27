@@ -7,8 +7,8 @@ line), Jersey 20 at 20 px (headlines). Glyphs are laid out with FreeType directl
 advances. Sent with ditherType NONE so the pixels arrive as drawn.
 
     screen/machine | Today's art          │  Normal      the right-hand column, the QR code's width, all
-    The Turning of the Hour               │ ◷ 20:58      centred, behind a rule: the mode, when this was drawn,
-    · · · · · · · · · · · · · · · · · · · │  ■▫ Auto     Auto / Mic / AI as small switches (knob right
+    · · · · · · · · · · · · · · · · · · · │ ◷ 20:58      centred, behind a rule: the mode, when this was drawn,
+    The Turning of the Hour               │  ■▫ Auto     Auto / Mic / AI as small switches (knob right
     in the style of Harry Callahan, using    ■▫ Mic      on black = on); the mode may wrap to two lines
     high-contrast silhouettes and light      ▫■ AI       and overhang the column (Lights / only)
     trails to suggest the movement of time   ┌────┐      the site, for any phone camera (no app)
@@ -364,8 +364,9 @@ def render(card: Card) -> Image.Image:
         flow.text(f"Art: {card.theme}" if card.theme else "")
     else:
         flow.brand("Today's art")
-        flow.text(card.theme, "head", lines=2)
         flow.rule()
+        flow.text(card.theme, "head", lines=2)
+        flow.space(3)
         flow.text(card.style, lines=6)
 
     return img
