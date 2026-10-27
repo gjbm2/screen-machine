@@ -155,11 +155,11 @@ The Hugging Face `2kpr` "x4plus" upscaler file is mislabelled; it is really `rea
 ## Migration plan (each step ships on its own)
 
 **Phase 0 (quick wins on the current models):** one Flask restart via Spectre (ping 2f first) and one frontend deploy.
-1. Hide the Kontext, Wan and Upscale catalogue entries, and delete the `_auto_upscale` triggers.
-2. Cancel the RunPod job on timeout.
+1. Hide the Wan catalogue entries. Kontext is now at workersMax 1 (d6, 27 Oct), so its Adapt, Combine and Upscale entries work again.
+2. ~~Cancel the RunPod job on timeout~~: done by d6 (5acd8949).
 3. Fix the `maxwidth` `locals()` bug.
 4. Accept both `{{NEGATIVE-PROMPT}}` and `{{NEGATIVE_PROMPT}}`.
-5. Turn off the progress relay to the old IP: set `BACKEND_WS_URL` to empty in the templates.
+5. ~~Progress relay to the old IP~~: done by d6. All 7 templates now set `BACKEND_WS_URL` to the current WAN IP, and the job tracker (docs/JOBS.md) takes the frames.
 6. Route "painting" to SD3.5, not SDXL.
 7. JPEG at quality 95 with no chroma subsampling (`publisher.py:318`).
 8. Vision checks at 1536 px instead of 512 px "low".
@@ -176,8 +176,8 @@ The Hugging Face `2kpr` "x4plus" upscaler file is mislabelled; it is really `rea
 **Phase 2 (app adapter):**
 - `output.images[]` parsing, per-workflow timeouts, `sampler_name`;
 - catalogue params reach the backend;
-- cost from `executionTime`; delete the GraphQL price lookup;
-- prune the job registry;
+- cost from `executionTime`/`delayTime` × the serverless rate (d6 fixed the HTTP 400, but the lookup still uses the pod price);
+- ~~prune the job registry~~: done by d6 (`runpod_jobs.log` removed, and cancel-all covers only active jobs);
 - `prompt_chain` written to sidecars.
 
 **Phase 3 (bake-off on `sm-eval`):** see the protocol below.
