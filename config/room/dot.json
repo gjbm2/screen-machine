@@ -37,8 +37,8 @@
     "text": {
       "font": "Galmuri9.ttf",
       "px": 10,
-      "line": 12,
       "bold": "double",
+      "line": 12,
       "serif_i": true
     },
     "ui": {
@@ -47,16 +47,16 @@
       "bold": "Galmuri11-Bold.ttf",
       "line": 13
     },
+    "side": {
+      "font": "Pixeloid.Sans.ttf",
+      "px": 9,
+      "bold": "Pixeloid.Sans-Bold.ttf",
+      "line": 12
+    },
     "space": {
       "above_rule": 0,
       "above_head": 1,
       "below_head": 4
-    },
-    "side": {
-      "font": "Pixeloid.Sans.ttf",
-      "px": 9,
-      "line": 12,
-      "bold": "Pixeloid.Sans-Bold.ttf"
     }
   }
 }

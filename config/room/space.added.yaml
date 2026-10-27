@@ -4,8 +4,38 @@
 # on a clash (a problem line), and re-reads both when they change. appliances.<id>.teach are a mover's taught places
 # and .pose its solved mounting (space.solve_pose).
 version: 1
-room: {}
-appliances: {}
-points: {}
-regions: {}
+room:
+  size: [5.0, 10.0, 5.0]
+appliances:
+  screen.north:
+    at: [0.0, 7.17, 2.11]
+    plane:
+      normal: [1.0, 0.0, 0.0]
+      up: [0.0, 0.0, 1.0]
+      size: [2.0, 1.0]
+  screen.south:
+    at: [0.0, 3.19, 2.03]
+    plane:
+      normal: [1.0, 0.0, 0.0]
+      up: [0.0, 0.0, 1.0]
+      size: [2.0, 1.0]
+  hue.ne:
+    at: [5.0, 7.23, 3.53]
+  hue.nw:
+    at: [0.0, 7.18, 3.5]
+  hue.se:
+    at: [4.89, 2.92, 3.58]
+  hue.sw:
+    at: [0.0, 3.18, 3.89]
+points:
+  mirror-ball:
+    label: Mirror ball
+    at: [2.5, 5.0, 2.5]
+    from: page
+regions:
+  piano:
+    label: The piano
+    surface: floor
+    centre: [2.88, 1.12, 0.0]
+    size: [3.0, 2.0]
 surfaces: {}
