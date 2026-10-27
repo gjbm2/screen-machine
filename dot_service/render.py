@@ -40,7 +40,10 @@ DEFAULT_TYPES = {
     "text": {"font": "Galmuri9.ttf", "px": 10, "line": 12, "serif_i": True},       # text, labels, switches
     "ui": {"font": "Galmuri11.ttf", "px": 12, "line": 13, "bold": "Galmuri11-Bold.ttf"},  # mode, bottom line
 }
-FALLBACK = {"font": "Galmuri11.ttf", "px": 12, "line": 13}   # glyphs a chosen font lacks (·, →, …)
+FALLBACK = {"font": "Galmuri11.ttf", "px": 12, "line": 13}
+# The left column's gaps (px), also set in the type lab: above the dotted rule, between it and the headline,
+# and under the headline (the art card) / under the progress bar (music).
+DEFAULT_SPACE = {"above_rule": 0, "above_head": 3, "below_head": 3}   # glyphs a chosen font lacks (·, →, …)
 COL_W = 50                                 # the right-hand column's width when there is no QR code
 EDGE = 4                                   # the QR's white margin to the glass edge (the white bezel adds more)
 
@@ -197,7 +200,7 @@ def _role(spec: dict, fallback: Optional["_Face"]) -> "_Face":
 
 def _fonts(types: Optional[dict] = None) -> tuple["_Face", "_Face", "_Face"]:
     """(text, ui, head) for a type spec (DEFAULT_TYPES when None); built once per spec."""
-    t = {**DEFAULT_TYPES, **(types or {})}
+    t = {**DEFAULT_TYPES, **{k: v for k, v in (types or {}).items() if k in DEFAULT_TYPES}}
     key = json.dumps(t, sort_keys=True)
     if key not in _cache:
         fb = _Face(font_path(FALLBACK["font"])[0], FALLBACK["px"], FALLBACK["line"])
@@ -410,14 +413,21 @@ def render(card: Card, types: Optional[dict] = None) -> Image.Image:
     # dotted rule, the headline, then the detail.
     flow = _Flow(img, faces, bottom=bottom - 4, narrow_until=H, narrow_right=cx0 - 15)
     paused = f"Paused: {card.title}" + (f" · {card.by}" if card.by else "") if card.title and card.paused else ""
+    sp = {**DEFAULT_SPACE, **((types or {}).get("space") or {})}
+
+    def rule() -> None:
+        flow.space(int(sp["above_rule"]))
+        flow.rule()
+        flow.space(int(sp["above_head"]))
+
     if card.title and not card.paused:      # music playing (the player or the room's Sonos), any mode
         flow.brand("Now playing")
-        flow.rule()
+        rule()
         flow.text(card.title, "head", lines=2)
         flow.text(" · ".join(x for x in (card.by, card.left) if x))
         if card.progress is not None:
             flow.bar(card.progress)
-        flow.space(3)
+        flow.space(int(sp["below_head"]))
         if card.live:                       # the screens are live: what they show and the room's feel
             flow.text(f"Scene: {card.scene}" if card.scene else "")
             flow.text(card.feel, lines=2)
@@ -427,18 +437,18 @@ def render(card: Card, types: Optional[dict] = None) -> Image.Image:
             flow.text(card.style, lines=3)
     elif card.live:                         # live, nothing playing (a paused piece is a line, not the headline)
         flow.brand("Hearing")
-        flow.rule()
+        rule()
         flow.text(card.hearing or "—", "head")
-        flow.space(3)
+        flow.space(int(sp["below_head"]))
         flow.text(f"Scene: {card.scene}" if card.scene else "")
         flow.text(card.feel, lines=2)
         flow.text(paused)
         flow.text(f"AI: {card.ai_heard}" if card.ai_heard else "", lines=3)
     else:                                   # the art
         flow.brand("Today's art")
-        flow.rule()
+        rule()
         flow.text(card.theme, "head", lines=2)
-        flow.space(6)
+        flow.space(int(sp["below_head"]))
         flow.text(card.style, lines=6 if not paused else 4)
         if paused:
             flow.space(3)
