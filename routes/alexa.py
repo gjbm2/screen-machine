@@ -351,7 +351,9 @@ def process(data):
                 substitutions={
                     'SCREEN_NAME': screen_name,
                     'QR_BASE64': get_qr(publish=closest_screen),
-                    'DURATION': duration
+                    'DURATION': duration,
+                    # Auto, the mic and AI listening, as they are now (owner, 27 Oct)
+                    'LISTEN': room_client.listening_state(),
                 },
                 duration=duration * 1000,
                 clear=True

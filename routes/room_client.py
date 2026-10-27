@@ -102,6 +102,20 @@ def auto() -> Optional[bool]:
     return d.get("on") if isinstance(d, dict) and isinstance(d.get("on"), bool) else None
 
 
+def listening_state() -> dict:
+    """What the room listens with now, for the 'Computer, use AI' overlay (owner, 27 Oct): {auto: bool|None,
+    mic: {"on": bool|None, "allowed": bool|None, "why": str|None}, ai: bool|None}. Unknown parts are None."""
+    mic = _get("/show/api/v1/mic") or {}
+    lis = _get("/show/api/v1/listening") or {}
+    return {
+        "auto": auto(),
+        "mic": {"on": mic.get("on") if isinstance(mic.get("on"), bool) else None,
+                "allowed": (not mic["muted"]) if isinstance(mic.get("muted"), bool) else None,
+                "why": mic.get("why") if isinstance(mic.get("why"), str) else None},
+        "ai": lis.get("on") if isinstance(lis.get("on"), bool) else None,
+    }
+
+
 def set_auto(on: bool) -> tuple[bool, str]:
     """Turn Auto on or off, the same way the Room page does (show_service, through room's /show proxy)."""
     return _send("PUT", "/show/api/v1/autopilot", {"on": bool(on)}, timeout=15.0)

@@ -13,6 +13,32 @@
       </div>
     </div>
 
+    {# What the room listens with right now, and how to change it (owner, 27 Oct). Filled dot = on. #}
+    {% if LISTEN %}
+    {% macro row(label, on, words, how) -%}
+      <div style="display: flex; align-items: baseline; gap: 10px; margin-top: 8px;">
+        <span style="display: inline-block; width: 0.6em; height: 0.6em; border-radius: 50%; flex-shrink: 0;
+                     {% if on %}background: currentColor;{% else %}border: 2px solid currentColor; opacity: 0.6;{% endif %}"></span>
+        <span>
+          <span style="font-weight: 400;">{{ label }}</span>
+          <span style="opacity: 0.85;">{{ words }}</span>
+          {% if how %}<div style="font-size: 0.75em; opacity: 0.6; margin-top: 2px;">{{ how }}</div>{% endif %}
+        </span>
+      </div>
+    {%- endmacro %}
+    <div style="margin-top: 36px; font-size: 0.85em; animation: fadeIn 1.6s ease 0.6s forwards; opacity: 0;">
+      <div style="font-style: italic; opacity: 0.85;">Right now:</div>
+      {{ row("Auto", LISTEN.auto, "on" if LISTEN.auto else ("off" if LISTEN.auto == false else "unknown"),
+             "computer, use AI to turn auto off" if LISTEN.auto else ("computer, use AI to follow the music" if LISTEN.auto == false else "")) }}
+      {{ row("Microphone",
+             LISTEN.mic.on,
+             ("listening" ~ (" · " ~ LISTEN.mic.why.split(": ")[-1].replace("Listening for ", "for ") if LISTEN.mic.why else "")) if LISTEN.mic.on
+               else ("off" if LISTEN.mic.allowed == false else ("not in use" if LISTEN.mic.allowed else "unknown")),
+             "on the Room page" if LISTEN.mic.allowed == false else "") }}
+      {{ row("AI listening", LISTEN.ai, "on" if LISTEN.ai else ("off" if LISTEN.ai == false else "unknown"), "on the Room page") }}
+    </div>
+    {% endif %}
+
     <div style="margin-top: auto;">
       <div style="font-style: italic; font-size: 1em; margin-top: 48px; margin-bottom: 10px;">
         Want more control?
