@@ -49,7 +49,7 @@ DEFAULT_TYPES = {
 FALLBACK = {"font": "Galmuri11.ttf", "px": 12, "line": 13}
 # The left column's gaps (px), also set in the type lab: above the dotted rule, between it and the headline,
 # and under the headline (the art card) / under the progress bar (music).
-DEFAULT_SPACE = {"above_rule": 0, "above_head": 3, "below_head": 3}   # glyphs a chosen font lacks (·, →, …)
+DEFAULT_SPACE = {"above_rule": 0, "above_head": 1, "below_head": 4}   # glyphs a chosen font lacks (·, →, …)
 COL_W = 50                                 # the right-hand column's width when there is no QR code
 EDGE = 4                                   # the QR's white margin to the glass edge (the white bezel adds more)
 

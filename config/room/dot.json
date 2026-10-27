@@ -49,8 +49,8 @@
     },
     "space": {
       "above_rule": 0,
-      "above_head": 3,
-      "below_head": 3
+      "above_head": 1,
+      "below_head": 4
     },
     "side": {
       "font": "Pixeloid.Sans.ttf",
