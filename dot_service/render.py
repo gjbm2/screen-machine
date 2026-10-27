@@ -1,9 +1,9 @@
 """The tag's card: exactly 296x152, black and white (Dot. Quote/0), drawn 1:1 at that size.
 
 Type is bitmap-native: fonts drawn on a pixel grid at the one size they are used at, so every glyph is the designer's
-pixels, not an outline rasterised and hinted into 1 bit (that left lopsided o's and 0's): Ark Pixel proportional
-(OFL, Latin subsets in dot_service/fonts) at 10 px (text; headlines at 2x, each font pixel a 2x2 block) and 12 px
-(the bar, the bottom line); 12 px bold = the same glyphs drawn twice a pixel apart (the classic bitmap bold).
+pixels, not an outline rasterised and hinted into 1 bit (that left lopsided o's and 0's). OFL fonts, Latin subsets
+in dot_service/fonts: Galmuri 9 at 10 px (text), Galmuri 11 and 11 Bold at 12 px (the bar, the bottom line),
+Jersey 20 at 20 px (headlines).
 Glyphs are laid out with FreeType directly (freetype-py) at whole-pixel advances. Sent with ditherType NONE so the pixels arrive as drawn.
 
     Today's art                          │ Normal        the right-hand bar: the mode,
@@ -29,9 +29,10 @@ from PIL import Image, ImageChops, ImageDraw
 W, H = 296, 152
 PAD = 8
 FONTS = Path(__file__).resolve().parent / "fonts"
-SMALL = (str(FONTS / "ark-pixel-10px-proportional-latin.ttf"), 10, 12)  # path, px, line height: text
-BODY = (str(FONTS / "ark-pixel-12px-proportional-latin.ttf"), 12, 14)   # the status row, the bottom line
-HEAD = (str(FONTS / "ark-pixel-10px-proportional-latin.ttf"), 10, 22)   # headlines: the 10 px font at 2x (20 px)
+SMALL = (str(FONTS / "Galmuri9.ttf"), 10, 12)          # path, px, line height: text
+BODY = (str(FONTS / "Galmuri11.ttf"), 12, 13)          # the bar, the bottom line (serifed I: "AI" reads right)
+BODY_BOLD = (str(FONTS / "Galmuri11-Bold.ttf"), 12, 13)
+HEAD = (str(FONTS / "Jersey20-Regular.ttf"), 20, 21)   # headlines
 SIDE_X = 234                               # the right-hand bar: a rule here, then mode, time, switches, QR
 EDGE = 4                                   # the QR's white margin to the glass edge (the white bezel adds more)
 
@@ -67,7 +68,9 @@ class _Face:
 
     FLAGS = freetype.FT_LOAD_RENDER | freetype.FT_LOAD_TARGET_MONO
 
-    def __init__(self, path: str, px: int, line: int, fallback: Optional["_Face"] = None, scale: int = 1) -> None:
+    def __init__(self, path: str, px: int, line: int, fallback: Optional["_Face"] = None, scale: int = 1,
+                 bold: Optional["_Face"] = None) -> None:
+        self.bold = bold                          # the bold cut; without one, bold = pixel-doubled
         self.face = freetype.Face(path)
         self.face.set_pixel_sizes(0, px)
         self.px, self.line, self.fallback, self.scale = px * scale, line, fallback, scale
@@ -101,6 +104,8 @@ class _Face:
         return ((cur[0].face.get_kerning(prev[1], cur[1], freetype.FT_KERNING_DEFAULT).x + 32) >> 6) * cur[0].scale
 
     def length(self, text: str, bold: bool = False) -> int:
+        if bold and self.bold is not None:
+            return self.bold.length(text)
         x, prev = 0, None
         for ch in text:
             g = self._glyph(ch)
@@ -110,6 +115,8 @@ class _Face:
 
     def draw(self, img: Image.Image, xy: tuple[float, float], text: str, fill: int = 0, bold: bool = False) -> None:
         """Text with its ascender line at y."""
+        if bold and self.bold is not None:
+            return self.bold.draw(img, xy, text, fill)
         x, y = int(xy[0]), int(xy[1])
         prev = None
         for ch in text:
@@ -129,9 +136,9 @@ _faces: dict = {}
 def _fonts() -> tuple[_Face, _Face, _Face]:
     """(small, body, head)."""
     if not _faces:
-        _faces["body"] = _Face(*BODY)
+        _faces["body"] = _Face(*BODY, bold=_Face(*BODY_BOLD))
         _faces["small"] = _Face(*SMALL, fallback=_faces["body"])
-        _faces["head"] = _Face(*HEAD, fallback=_faces["body"], scale=2)
+        _faces["head"] = _Face(*HEAD, fallback=_faces["body"])
     return _faces["small"], _faces["body"], _faces["head"]
 
 
@@ -244,10 +251,10 @@ def render(card: Card) -> Image.Image:
         mode = f"→{mode}"
     body.draw(img, (sx, 2), _ellipsis(body, mode, sw, True), bold=True)
     if card.stamp:   # a small clock and the time it was drawn
-        _pixels(img, sx, 19, _CLOCK)
+        _pixels(img, sx, 18, _CLOCK)
         body.draw(img, (sx + 12, 16), card.stamp)
     for i, (label, on) in enumerate([("Auto", card.auto), ("Mic", card.mic), ("AI", card.ai)]):
-        y = 30 + 13 * i
+        y = 32 + 13 * i
         _pixels(img, sx, y + 4, _DOT_ON if on else _DOT_OFF)
         body.draw(img, (sx + 10, y), _ellipsis(body, label, sw - 10, on), bold=on)
     if card.qr:   # bottom of the bar, against the glass edge (the white bezel is the rest of its quiet zone)
