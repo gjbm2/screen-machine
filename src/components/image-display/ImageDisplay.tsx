@@ -294,13 +294,16 @@ export function ImageDisplay(props: ImageDisplayProps) {
     const sentinel = sentinelRef.current;
     if (!sentinel) return;
 
-    // Observe when the sentinel (placed just above the tab bar) leaves the viewport
+    // Observe when the sentinel (placed just above the tab bar) goes under the bars at the top of the page (the app's
+    // tab bar on an iPad, the iPad's own top clearance), which is where the pinned tab bar sits
+    const css = getComputedStyle(document.documentElement);
+    const offset = (parseFloat(css.getPropertyValue('--app-top')) || 0) + (parseFloat(css.getPropertyValue('--app-nav-top')) || 0);
     const observer = new IntersectionObserver(
       ([entry]) => {
         // When the sentinel is NOT intersecting, we have scrolled past the tab bar
         setIsTabBarFixed(!entry.isIntersecting);
       },
-      { root: null, threshold: 0 }
+      { root: null, threshold: 0, rootMargin: `-${Math.round(offset)}px 0px 0px 0px` }
     );
 
     observer.observe(sentinel);
@@ -773,13 +776,15 @@ export function ImageDisplay(props: ImageDisplayProps) {
 
   return (
     <div className="bg-background h-full overflow-y-auto">
-      {/* Sentinel element: its presence tells us when we've scrolled past the tab bar */}
-      <div ref={sentinelRef} style={{ height: TAB_BAR_HEIGHT }} />
+      {/* Sentinel element: its presence tells us when we've scrolled past the tab bar. It takes no room (owner, 27 Oct:
+          "there's huge gap on mobile underneath the generator box"); while the bar is pinned, a spacer keeps its place. */}
+      <div ref={sentinelRef} style={{ height: 1, marginBottom: -1 }} />
+      {isTabBarFixed && <div style={{ height: TAB_BAR_HEIGHT }} />}
 
       {/* Tabs for switching between Generated view and Destinations - frameless design */}
       <div
         className={`border-b w-full bg-background ${
-          isTabBarFixed ? 'fixed top-[var(--app-top)] left-0 right-0 z-[100]' : ''
+          isTabBarFixed ? 'fixed top-[calc(var(--app-top,0px)+var(--app-nav-top,0px))] left-0 right-0 z-[30]' : ''
         }`}
         style={{ height: TAB_BAR_HEIGHT }}
       >

@@ -2271,7 +2271,7 @@ export const BucketGridView = ({
             destination={destination}
             onActionComplete={debouncedFetchBucketDetails}
           />
-          <div className={`flex flex-col mb-0 p-2 sm:p-4 bg-muted rounded-md w-full [contain:inline-size] ${headerPinned ? 'sticky top-12 z-40' : ''}`}>
+          <div className={`flex flex-col mb-0 p-2 sm:p-4 bg-muted rounded-md w-full [contain:inline-size] ${headerPinned ? 'sticky top-[calc(var(--app-top,0px)+var(--app-nav-top,0px)+3rem)] z-[29]' : ''}`}>
             <div className="flex items-start gap-3">
               {/* Left side with droppable published image area */}
               <PublishedImageDroppable currentImage={currentPublishedImage} />
