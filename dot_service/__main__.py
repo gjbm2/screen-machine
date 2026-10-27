@@ -13,7 +13,8 @@ The tag's own wake interval follows the same period (Dot. Settings API), and its
 Sends are at least MIN_GAP_S apart.
 
 Config: config/room/dot.json (hot-reloaded). API key: ~/.config/screen-machine/dot.json {"api_key"}.
-HTTP on 127.0.0.1 (DOT_PORT): /healthz, /api/v1/status, /preview/<device>.png, POST /api/v1/push (send now).
+HTTP on 127.0.0.1 (DOT_PORT): /healthz, /api/v1/status, /preview/<device>.png, POST /api/v1/push (send now),
+/dev/type (the type lab, typelab.py).
 Run by scripts/ctl (screen session sm-dot, deploy/sm-dot.env).
 """
 
@@ -34,6 +35,7 @@ from typing import Any, Optional
 import aiohttp
 from aiohttp import web
 
+from . import typelab
 from .render import Card, render
 
 REPO = Path(__file__).resolve().parent.parent
@@ -130,6 +132,7 @@ class DotService:
         self.sched: dict[str, tuple[float, dict]] = {}
         self.source_error = ""
         self.started = time.time()
+        self.types: Optional[dict] = None       # config "types" (the type lab's choice); None = render's default
 
     # ---- config
     def load_config(self) -> None:
@@ -141,7 +144,12 @@ class DotService:
         if m == self.cfg_mtime:
             return
         self.cfg_mtime = m
-        specs = json.loads(CONFIG.read_text()).get("tags", [])
+        cfg = json.loads(CONFIG.read_text())
+        specs = cfg.get("tags", [])
+        if cfg.get("types") != self.types:
+            self.types = cfg.get("types")
+            for t in self.tags.values():
+                t.sent = None                    # new type: send again
         old = self.tags
         self.tags = {}
         for s in specs:
@@ -280,7 +288,7 @@ class DotService:
         assert self.http
         card = dataclasses.replace(card, stamp=time.strftime("%H:%M"))
         buf = io.BytesIO()
-        render(card).save(buf, "PNG")
+        render(card, self.types).save(buf, "PNG")
         png = buf.getvalue()
         body = {"refreshNow": True, "image": base64.b64encode(png).decode(), "border": 0,
                 "ditherType": "NONE", "taskAlias": card.room}
@@ -344,7 +352,7 @@ class DotService:
                     tag.card_since = now
             if not tag.png:
                 buf = io.BytesIO()
-                render(card).save(buf, "PNG")
+                render(card, self.types).save(buf, "PNG")
                 tag.png = buf.getvalue()
             try:
                 await self.apply_settings(tag, card.live)
@@ -423,6 +431,7 @@ def make_app(svc: DotService) -> web.Application:
     app.router.add_get("/api/v1/status", status)
     app.router.add_get("/preview/{device}.png", preview)
     app.router.add_post("/api/v1/push", push)
+    typelab.routes(app, svc, CONFIG)
     return app
 
 
