@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
@@ -359,6 +360,21 @@ def _centred(img: Image.Image, f: _Face, text: str, box: tuple[int, int, int, in
     f.draw(img, (x, y), text, fill=fill, bold=bold)
 
 
+def _hint(img: Image.Image, f: _Face, hint: str, top: int, bottom: int) -> None:
+    """The bottom line, white, centred: what's in quotes bold and unquoted ("Say 'Computer, use AI' to interact" ->
+    Say **Computer, use AI** to interact), the rest regular."""
+    parts = [(t, i % 2 == 1) for i, t in enumerate(re.split(r"['‘’\"“”]", hint)) if t]
+    if len(parts) == 1:
+        parts = [(hint, True)]
+    width = sum(f.length(t, b) for t, b in parts)
+    _, c0, _, c1 = _ink(f, "H", False)
+    x = (W - width) // 2
+    y = top + (bottom - top + 1 - (c1 - c0)) // 2 - (c0 - 10)
+    for t, b in parts:
+        f.draw(img, (x, y), t, fill=1, bold=b)
+        x += f.length(t, b)
+
+
 def render(card: Card, types: Optional[dict] = None) -> Image.Image:
     """Left: what matters now. Right-hand bar: the mode, when this was drawn, Auto / Mic / AI, the QR code.
     Bottom: how to use the room, across the tag (the tag lies loose under the screens, in every mode)."""
@@ -372,8 +388,7 @@ def render(card: Card, types: Optional[dict] = None) -> Image.Image:
     if card.hint:
         bottom = H - 18
         d.rectangle((0, bottom, W - 1, H - 1), fill=0)
-        _centred(img, body, _ellipsis(body, card.hint, W - 2 * PAD, True), (0, bottom + 3, W - 1, H - 4), fill=1,
-                 bold=True)
+        _hint(img, body, card.hint, bottom + 3, H - 4)
 
     # The right-hand column, one width (the QR code's), centred on one axis: the mode, when this was drawn,
     # Auto / Mic / AI as small switches, the QR code at its foot.
