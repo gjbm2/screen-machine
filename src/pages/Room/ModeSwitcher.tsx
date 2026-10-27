@@ -1,22 +1,17 @@
-// The modes (GET /api/v1/modes) as one row of chips that scrolls sideways (icon and name; the one the room is in filled
-// teal); tapping one switches the room (PUT /api/v1/mode). Under the row, one full line says what the current mode
-// changes in the room (modeWords.modeLine, from describe). Chips never go dead: a tap while a switch runs simply wins
-// (room_service: the last request wins), and a tap while the room is out of reach keeps trying for a minute.
-//   - Each chip's "⋯" edits, copies, makes it the start mode ("Start here"), moves or deletes that mode (owner, 15 Oct:
-//     "modes editable via ⋯"). The pencil at the end of the row opens EditModesSheet: the same, for every mode, and
-//     "Add a mode".
+// The modes (GET /api/v1/modes) as a grid of tiles, icon over name (the one the room is in filled teal); tapping one
+// switches the room (PUT /api/v1/mode). Tiles never go dead: a tap while a switch runs simply wins (room_service: the
+// last request wins), and a tap while the room is out of reach keeps trying for a minute.
+//   - The last tile is "More" (⋯): the modes with "on_room_page": "more" (a plain per-mode field, set in the editor),
+//     unless the room is in one, and "Edit modes". With no such modes it is "Edit". Edit modes (EditModesSheet) edits,
+//     copies, makes the start mode ("Start here"), moves or deletes any mode, and adds one (owner, 15 Oct: "modes
+//     editable via ⋯").
 //   - A mode's icon is its modes.json "icon" (picked in the editor), else a guess from its name.
-//   - Modes with "on_room_page": "more" (a plain per-mode field, set in the editor) sit behind a "More modes" chip at
-//     the end of the row, unless the room is in one.
 //   - While a switch runs, after a problem, or after Auto switched (with its reason), one plain line says so
 //     ("Switching to Disco · glitterball starting"), with the steps behind "Details". A clean switch by hand needs no
-//     line: the chip says it.
+//     line: the tile says it.
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
-  Check,
-  ChevronLeft,
-  ChevronRight,
   CircleAlert,
   CircleCheck,
   CircleDashed,
@@ -53,14 +48,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import { explainError, RoomApi, RoomApiError } from "./api";
@@ -309,6 +297,31 @@ function saveError(e: unknown): string {
   return explainError(e);
 }
 
+const TILE_CLASS =
+  "flex min-h-[4.25rem] min-w-0 flex-col items-center justify-center gap-1 rounded-2xl border px-1 py-2 text-center text-[13px] font-semibold leading-tight shadow-sm transition-colors motion-reduce:transition-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background";
+/** A tile is never narrower than this ("Lights only" fits on one line). */
+const TILE_MIN_PX = 72;
+const TILE_GAP_PX = 8;
+
+/** Columns for `n` tiles in the grid's width: as few rows as fit, then the tiles shared evenly across them (8 tiles
+ *  on a phone = 4 + 4, never 5 + 3). */
+function useTileColumns(ref: RefObject<HTMLElement | null>, n: number): number {
+  const [cols, setCols] = useState(4);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el || n < 1) return;
+    const set = () => {
+      const fit = Math.max(1, Math.floor((el.clientWidth + TILE_GAP_PX) / (TILE_MIN_PX + TILE_GAP_PX)));
+      setCols(Math.ceil(n / Math.ceil(n / fit)));
+    };
+    set();
+    const ro = new ResizeObserver(set);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref, n]);
+  return cols;
+}
+
 interface Toast {
   id: number;
   text: string;
@@ -454,29 +467,50 @@ export function ModeSwitcher({
     if (addFrom) void duplicate(addFrom, true);
   };
 
-  // The row: modes marked "more" (on_room_page) wait behind "More modes", unless the room is in or going to one.
+  // The grid: modes marked "more" (on_room_page) wait behind the last tile, unless the room is in or going to one.
   const [editAll, setEditAll] = useState(false);
   const [showMore, setShowMore] = useState(false);
   const isMore = (def: ModeDef) => (def as ModeDef & { on_room_page?: unknown }).on_room_page === "more";
   const pinned = (name: string) => name === current || name === target || name === busy;
   const main = entries.filter(([n, d]) => !isMore(d) || pinned(n));
   const extra = entries.filter(([n, d]) => isMore(d) && !pinned(n));
-  const chips = showMore ? [...main, ...extra] : main;
   const shownLine = describe && current ? modeLine(describe, current, wordsOpts) : "";
   const currentDesc = current && modes?.[current] ? modeDescription(modes[current]) : undefined;
   const lineText = shownLine || currentDesc || "";
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  const cols = useTileColumns(gridRef, main.length + (extra.length || onEdit ? 1 : 0));
 
-  // Keep the current chip in view in the sideways row (only the row scrolls, never the page).
-  const rowRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const row = rowRef.current;
-    const el = row?.querySelector<HTMLElement>('[aria-pressed="true"]')?.parentElement;
-    if (!row || !el) return;
-    const left = el.offsetLeft - row.offsetLeft;
-    if (left < row.scrollLeft || left + el.offsetWidth > row.scrollLeft + row.clientWidth) {
-      row.scrollTo({ left: Math.max(0, left - 16), behavior: "smooth" });
-    }
-  }, [current, chips.length]);
+  const tile = ([name, def]: [string, ModeDef]) => {
+    const isCurrent = name === current;
+    const isTarget = name === target && target !== current;
+    const label = def.label || modeLabel(name, modes);
+    const Icon = modeIcon(name, def as ModeDef & { icon?: unknown });
+    const switching = !isCurrent && (isTarget || busy === name);
+    return (
+      <button
+        key={name}
+        type="button"
+        data-mode={name}
+        aria-pressed={isCurrent}
+        title={isCurrent ? `${label} (on now)${lineText ? `: ${lineText}` : ""}` : `Switch to ${label}`}
+        onClick={() => {
+          setShowMore(false);
+          void choose(name);
+        }}
+        className={cn(
+          TILE_CLASS,
+          isCurrent
+            ? "border-teal-700 bg-teal-700 text-white"
+            : isTarget || switching
+              ? "border-amber-300 bg-amber-50 text-amber-900"
+              : "border-stone-200/80 bg-card text-stone-800 hover:border-stone-300 hover:bg-stone-50",
+        )}
+      >
+        {switching ? <Spinner className="h-6 w-6" /> : <Icon className="h-6 w-6 shrink-0" strokeWidth={isCurrent ? 2.25 : 1.75} aria-hidden />}
+        <span className="line-clamp-2 [overflow-wrap:anywhere]">{label}</span>
+      </button>
+    );
+  };
 
   const sheetRows: EditModesRow[] = entries.map(([name, def]) => ({
     name,
@@ -611,129 +645,58 @@ export function ModeSwitcher({
         <p className="text-base text-muted-foreground">No modes are set up yet.</p>
       ) : (
         <>
-          <div className="flex items-center gap-1">
-            <div
-              ref={rowRef}
-              role="group"
-              aria-label="Modes"
-              data-testid="mode-strip"
-              className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5 px-0.5 py-0.5"
-            >
-              {chips.map(([name, def]) => {
-                const i = entries.findIndex(([k]) => k === name);
-                const isCurrent = name === current;
-                const isTarget = name === target && target !== current;
-                const label = def.label || modeLabel(name, modes);
-                const Icon = modeIcon(name, def as ModeDef & { icon?: unknown });
-                const switching = !isCurrent && (isTarget || busy === name);
-                return (
-                  <div
-                    key={name}
-                    className={cn(
-                      "flex shrink-0 snap-start items-center rounded-full border shadow-sm transition-colors motion-reduce:transition-none",
-                      isCurrent
-                        ? "border-teal-700 bg-teal-700 text-white"
-                        : isTarget
-                          ? "border-amber-300 bg-amber-50 text-amber-900"
-                          : "border-stone-200/80 bg-card text-stone-800 hover:border-stone-300 hover:bg-stone-50",
-                    )}
-                  >
+          {/* A grid of tiles, icon over name (owner, 27 Oct: "a grid of icons with labels underneath them would be
+              tidier"), in balanced rows (useTileColumns): 4 + 4 on a phone, one row on an iPad. The last tile is "More"
+              (the modes kept off the page, and Edit modes) or, with none kept off, "Edit". */}
+          <div
+            ref={gridRef}
+            role="group"
+            aria-label="Modes"
+            data-testid="mode-strip"
+            className="grid gap-2"
+            style={{ gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}
+          >
+            {main.map(tile)}
+            {extra.length > 0 ? (
+              <Popover open={showMore} onOpenChange={setShowMore}>
+                <PopoverTrigger
+                  aria-label="More modes"
+                  title="More modes, and Edit modes"
+                  className={cn(TILE_CLASS, "border-dashed border-stone-300 bg-transparent text-stone-700 shadow-none hover:bg-stone-50")}
+                >
+                  <MoreHorizontal className="h-6 w-6 shrink-0" strokeWidth={1.75} aria-hidden />
+                  <span>More</span>
+                </PopoverTrigger>
+                <PopoverContent align="end" className={cn(THEME_CLASS, "w-[min(20rem,calc(100vw-2rem))] rounded-2xl p-3")}>
+                  <div className="grid grid-cols-3 gap-2">{extra.map(tile)}</div>
+                  {onEdit && (
                     <button
                       type="button"
-                      data-mode={name}
-                      aria-pressed={isCurrent}
-                      title={isCurrent ? `${label} (on now)${lineText ? `: ${lineText}` : ""}` : `Switch to ${label}`}
-                      onClick={() => void choose(name)}
-                      className={cn(
-                        "flex min-h-11 items-center gap-1.5 whitespace-nowrap rounded-full pl-3 text-sm font-semibold sm:text-[15px]",
-                        onEdit ? "pr-0.5" : "pr-3.5",
-                        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                      )}
+                      onClick={() => {
+                        setShowMore(false);
+                        setEditAll(true);
+                      }}
+                      className="mt-2 flex min-h-11 w-full items-center gap-2 rounded-xl px-3 text-base text-stone-700 hover:bg-stone-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                     >
-                      {switching ? <Spinner className="h-[18px] w-[18px]" /> : <Icon className="h-[18px] w-[18px] shrink-0 max-sm:hidden lg:hidden" aria-hidden />}
-                      <span>{label}</span>
-                      {isCurrent && <Check className="h-4 w-4 shrink-0" aria-label="on now" />}
+                      <Pencil className="h-[18px] w-[18px]" aria-hidden /> Edit modes
                     </button>
-                    {onEdit && (
-                      <DropdownMenu>
-                        <DropdownMenuTrigger
-                          aria-label={`${label}: edit, copy, start here, move or delete`}
-                          title={`Edit, copy, start here, move or delete ${label}`}
-                          className={cn(
-                            "grid h-11 w-7 shrink-0 place-items-center rounded-full sm:w-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-                            isCurrent ? "text-white/80 hover:text-white" : "text-stone-500 hover:text-stone-800",
-                          )}
-                        >
-                          <MoreHorizontal className="h-[18px] w-[18px]" aria-hidden />
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className={cn(THEME_CLASS, "min-w-[11rem]")}>
-                          <DropdownMenuItem className="min-h-11 text-base" onSelect={() => onEdit(name)}>
-                            Edit
-                          </DropdownMenuItem>
-                          <DropdownMenuItem className="min-h-11 text-base" onSelect={() => void duplicate(name)}>
-                            Duplicate
-                          </DropdownMenuItem>
-                          {name === defaultMode ? (
-                            <DropdownMenuLabel className="flex min-h-11 items-center gap-1.5 text-base font-normal text-muted-foreground">
-                              <Check className="h-4 w-4" aria-hidden /> The room starts here
-                            </DropdownMenuLabel>
-                          ) : (
-                            <DropdownMenuItem className="min-h-11 text-base" onSelect={() => void startHere(name)}>
-                              Start here
-                            </DropdownMenuItem>
-                          )}
-                          {i > 0 && (
-                            <DropdownMenuItem className="min-h-11 text-base" onSelect={() => move(name, -1)}>
-                              Move earlier
-                            </DropdownMenuItem>
-                          )}
-                          {i < entries.length - 1 && (
-                            <DropdownMenuItem className="min-h-11 text-base" onSelect={() => move(name, 1)}>
-                              Move later
-                            </DropdownMenuItem>
-                          )}
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem className="min-h-11 text-base text-rose-700 focus:text-rose-800" onSelect={() => askDelete(name)}>
-                            Delete…
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
-                    )}
-                  </div>
-                );
-              })}
-              {extra.length > 0 && (
-                <button
-                  type="button"
-                  aria-expanded={showMore}
-                  aria-label={showMore ? "Fewer modes" : "More modes"}
-                  onClick={() => setShowMore((v) => !v)}
-                  className="flex min-h-11 shrink-0 snap-start items-center gap-1 whitespace-nowrap rounded-full border border-dashed border-stone-300 px-3 text-sm sm:text-[15px] text-stone-700 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  {showMore ? (
-                    <>
-                      <ChevronLeft className="h-4 w-4" aria-hidden /> Fewer<span className="max-sm:hidden"> modes</span>
-                    </>
-                  ) : (
-                    <>
-                      More<span className="max-sm:hidden"> modes</span> <ChevronRight className="h-4 w-4" aria-hidden />
-                    </>
                   )}
-                </button>
-              )}
-              {/* Edit modes: inline at the end of the chips (owner, 25 Oct space pass) */}
-              {onEdit && (
+                </PopoverContent>
+              </Popover>
+            ) : (
+              onEdit && (
                 <button
                   type="button"
                   onClick={() => setEditAll(true)}
                   aria-label="Edit modes"
                   title="Edit modes: change, copy, order, delete or add"
-                  className="grid h-11 w-11 shrink-0 place-items-center rounded-full text-stone-600 hover:bg-stone-200/60 hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className={cn(TILE_CLASS, "border-dashed border-stone-300 bg-transparent text-stone-700 shadow-none hover:bg-stone-50")}
                 >
-                  <Pencil className="h-[18px] w-[18px]" aria-hidden />
+                  <Pencil className="h-6 w-6 shrink-0" strokeWidth={1.75} aria-hidden />
+                  <span>Edit</span>
                 </button>
-              )}
-            </div>
+              )
+            )}
           </div>
         </>
       )}
