@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import Header from '@/components/Header';
 import { Button } from '@/components/ui/button';
-import { Terminal, Menu, Info, StopCircle, SlidersHorizontal } from 'lucide-react';
+import { Terminal, Info, StopCircle } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { toast } from 'sonner';
 import { generationApi } from '@/shared/api';
-import { useRoomLink, liveStateOf, roomPageUrl } from '@/components/room/roomLink';
 import { AppMenu } from '@/components/nav/AppMenu';
+import { PageHeader } from '@/components/nav/PageHeader';
+import { RoomThemeStyle, THEME_CLASS } from '@/pages/Room/theme';
 
 interface HeaderSectionProps {
   onToggleConsole: () => void;
@@ -29,8 +29,6 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   const [menuOpen, setMenuOpen] = useState(false);
   // This header is shared by the generator (/) and the scheduler (/scheduler).
   const current = useLocation().pathname.startsWith('/scheduler') ? 'scheduler' : 'generator';
-  const room = useRoomLink();
-  const liveCount = Object.values(room.status?.screens ?? {}).filter(s => liveStateOf(s) === 'live').length;
 
   const handleCancelAllJobs = async () => {
     toast.loading("Cancelling all jobs...");
@@ -47,78 +45,49 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
     }
   };
 
+  // The app's own header (PageHeader), as on Room, Music and Lights (owner, 27 Oct: "shouldn't generator also show the
+  // same top nav apparatus?"): the room's mode, Mic and AI, and the menu; on an iPad or wider they sit in the app's top
+  // bar, on a phone beside the page's title. The tab bar has Room, so no Room button here.
   return (
-    <div className="flex justify-between items-center">
-      <Header onOpenAboutDialog={onOpenAboutDialog} />
-      
-      <div className="flex items-center space-x-1">
-        {/* Room console: up front whenever the room's LAN door answers */}
-        {room.onLan && (
-          <Button
-            asChild
-            size="sm"
-            className="h-10 rounded-full px-3 sm:px-4 mr-1 bg-teal-700 text-white hover:bg-teal-800"
-          >
-            <a href={roomPageUrl()} data-testid="home-room-button">
-              <SlidersHorizontal className="h-4 w-4" />
-              <span className="ml-1.5">Room</span>
-              {liveCount > 0 && (
-                <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-red-600 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide">
-                  <span className="h-1.5 w-1.5 rounded-full bg-white motion-safe:animate-pulse" />
-                  {liveCount} live
-                </span>
-              )}
-            </a>
-          </Button>
-        )}
-
-        {/* Only show console button outside the menu if visible */}
-        {isConsoleVisible && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button 
-                variant="ghost" 
-                size="icon" 
-                onClick={onToggleConsole}
-                className="h-10 w-10 bg-background/80 backdrop-blur-sm z-50 mr-2"
-              >
-                <Terminal className="h-5 w-5 text-primary" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>
-              <p>Toggle Command Console</p>
-            </TooltipContent>
-          </Tooltip>
-        )}
-        
-        {/* The shared menu (same as the Room console's): Go to, Screens, this page, Developer */}
-        <Button 
-          variant="ghost" 
-          size="icon" 
-          onClick={() => setMenuOpen(true)}
-          aria-label="Menu"
-          data-testid="menu-button"
-          className="h-10 w-10 bg-background/80 backdrop-blur-sm z-50"
-        >
-          <Menu className="h-5 w-5" />
-        </Button>
-        <AppMenu open={menuOpen} onOpenChange={setMenuOpen} current={current} pageTitle="On this page">
-          <div className="space-y-1">
-            <button type="button" className={PAGE_ACTION} onClick={() => { setMenuOpen(false); void handleCancelAllJobs(); }}>
-              <span className={PAGE_ICON}><StopCircle className="h-5 w-5" /></span>
-              Cancel all jobs
-            </button>
-            <button type="button" className={PAGE_ACTION} onClick={() => { setMenuOpen(false); onToggleConsole(); }}>
-              <span className={PAGE_ICON}><Terminal className="h-5 w-5" /></span>
-              {isConsoleVisible ? 'Hide the console' : 'Show the console'}
-            </button>
-            <button type="button" className={PAGE_ACTION} onClick={() => { setMenuOpen(false); onOpenAboutDialog?.(); }}>
-              <span className={PAGE_ICON}><Info className="h-5 w-5" /></span>
-              About
-            </button>
-          </div>
-        </AppMenu>
-      </div>
+    <div className={THEME_CLASS}>
+      <RoomThemeStyle />
+      <PageHeader
+        title="Generator"
+        quiet
+        current={current}
+        onMenu={() => setMenuOpen(true)}
+        toggles="auto"
+        actions={
+          isConsoleVisible && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={onToggleConsole} aria-label="Toggle Command Console" className="h-11 w-11 shrink-0 rounded-full">
+                  <Terminal className="h-5 w-5 text-primary" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Toggle Command Console</p>
+              </TooltipContent>
+            </Tooltip>
+          )
+        }
+      />
+      <AppMenu open={menuOpen} onOpenChange={setMenuOpen} current={current} pageTitle="On this page">
+        <div className="space-y-1">
+          <button type="button" className={PAGE_ACTION} onClick={() => { setMenuOpen(false); void handleCancelAllJobs(); }}>
+            <span className={PAGE_ICON}><StopCircle className="h-5 w-5" /></span>
+            Cancel all jobs
+          </button>
+          <button type="button" className={PAGE_ACTION} onClick={() => { setMenuOpen(false); onToggleConsole(); }}>
+            <span className={PAGE_ICON}><Terminal className="h-5 w-5" /></span>
+            {isConsoleVisible ? 'Hide the console' : 'Show the console'}
+          </button>
+          <button type="button" className={PAGE_ACTION} onClick={() => { setMenuOpen(false); onOpenAboutDialog?.(); }}>
+            <span className={PAGE_ICON}><Info className="h-5 w-5" /></span>
+            About
+          </button>
+        </div>
+      </AppMenu>
     </div>
   );
 };
