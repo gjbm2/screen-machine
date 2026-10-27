@@ -1,4 +1,4 @@
-// Image generation and job control.
+// Image generation. Jobs and their progress are the job tracker's (./jobs.ts, docs/JOBS.md).
 import { send } from '@/shared/http/client';
 import type { GenerateImageParams } from './types';
 
@@ -95,23 +95,5 @@ export async function generateImage(params: GenerateImageParams) {
   return result;
 }
 
-export async function cancelAllJobs(): Promise<{ success: boolean; cancelled?: number; error?: string }> {
-  try {
-    const response = await send('/cancel_all_jobs', { method: 'POST' });
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      return { success: false, error: errorData.error || 'Failed to cancel jobs' };
-    }
-
-    const result = await response.json();
-    return {
-      success: true,
-      cancelled: result.cancelled,
-    };
-  } catch (error) {
-    // Never rejects: network errors and non-JSON error bodies both report 'Network error'
-    console.error('Error cancelling jobs:', error);
-    return { success: false, error: 'Network error' };
-  }
-}
+// Job control (cancel one, cancel all) is the job tracker's: ./jobs.ts. Re-exported for the old Api facade.
+export { cancelAllJobs } from './jobs';

@@ -7,7 +7,7 @@
 
 import { rendererConsoleUrl, roomApi, roomPageUrl, roomStatusUrl } from "@/components/room/roomLink";
 
-export type AppPage = "generator" | "room" | "music" | "lights" | "settings" | "scheduler" | "other";
+export type AppPage = "generator" | "room" | "music" | "lights" | "settings" | "scheduler" | "jobs" | "other";
 
 /** The generator (home page), opened on a screen's tab with ?publish=<id>. */
 export function generatorUrl(screen?: string | null): string {
@@ -16,6 +16,11 @@ export function generatorUrl(screen?: string | null): string {
 
 export function schedulerUrl(screen?: string | null): string {
   return screen ? `/scheduler?destination=${encodeURIComponent(screen)}` : "/scheduler";
+}
+
+/** Jobs: what's being made now, and every job made before (docs/JOBS.md). */
+export function jobsUrl(): string {
+  return "/jobs";
 }
 
 /** What the TV itself loads (a phone joins as a viewer, so it doesn't take over the TV). */

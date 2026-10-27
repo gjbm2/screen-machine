@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
-import { Terminal, Info, StopCircle } from 'lucide-react';
+import { Terminal, Info, StopCircle, ListChecks } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { toast } from 'sonner';
-import { generationApi } from '@/shared/api';
+import { cancelEveryJob } from '@/components/jobs/jobWords';
+import { AppLink } from '@/components/nav/AppLink';
+import { jobsUrl } from '@/components/nav/appNav';
 import { AppMenu } from '@/components/nav/AppMenu';
 import { PageHeader } from '@/components/nav/PageHeader';
 import { RoomThemeStyle, THEME_CLASS } from '@/pages/Room/theme';
@@ -29,21 +30,6 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
   const [menuOpen, setMenuOpen] = useState(false);
   // This header is shared by the generator (/) and the scheduler (/scheduler).
   const current = useLocation().pathname.startsWith('/scheduler') ? 'scheduler' : 'generator';
-
-  const handleCancelAllJobs = async () => {
-    toast.loading("Cancelling all jobs...");
-    try {
-      const result = await generationApi.cancelAllJobs();
-      if (result.success) {
-        toast.success(`Cancelled ${result.cancelled} jobs`);
-      } else {
-        toast.error(`Failed to cancel jobs: ${result.error}`);
-      }
-    } catch (error) {
-      console.error("Error cancelling jobs:", error);
-      toast.error("Failed to cancel jobs due to an unexpected error");
-    }
-  };
 
   // The app's own header (PageHeader), as on Room, Music and Lights (owner, 27 Oct: "shouldn't generator also show the
   // same top nav apparatus?"): the room's mode, Mic and AI, and the menu; on an iPad or wider they sit in the app's top
@@ -74,7 +60,11 @@ const HeaderSection: React.FC<HeaderSectionProps> = ({
       />
       <AppMenu open={menuOpen} onOpenChange={setMenuOpen} current={current} pageTitle="On this page">
         <div className="space-y-1">
-          <button type="button" className={PAGE_ACTION} onClick={() => { setMenuOpen(false); void handleCancelAllJobs(); }}>
+          <AppLink href={jobsUrl()} className={PAGE_ACTION} onClick={() => setMenuOpen(false)}>
+            <span className={PAGE_ICON}><ListChecks className="h-5 w-5" /></span>
+            Jobs
+          </AppLink>
+          <button type="button" className={PAGE_ACTION} onClick={() => { setMenuOpen(false); void cancelEveryJob(); }}>
             <span className={PAGE_ICON}><StopCircle className="h-5 w-5" /></span>
             Cancel all jobs
           </button>

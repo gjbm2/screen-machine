@@ -40,10 +40,12 @@ The only changes to the default mode are the approved hygiene fixes:
 index.tsx              route: picks the mode; the page itself (default + controlled branches)
 MediaDisplay.tsx       today's still/clip layer (default mode only, untouched)
 OverlayContainer.tsx   overlays (both modes)
+JobIndicator.tsx       generation-job pill, top-left (both modes; job tracker stream, docs/JOBS.md;
+                       hidden while live/frozen, not part of settle)
 ControlsPanel.tsx      hover/tap panel (both modes; moved out of index.tsx unchanged)
 LegacyMaskLayers.tsx   today's brightness/warm layers (default mode)
 hooks/                 useFilePolling, useBaseFileName, useMask (fail-hold fix), useOverlayWebSocket
-                       (optional accept gate), useBlackBody
+                       (optional accept gate; html frames only), useScreenJobs, useBlackBody
 common/LayerBoundary   per-layer error boundary
 control/               protocol types, ControlClient (socket), store (reducer), MaskPoller, caps,
                        DisplayController (the controlled page's brain, outside React render)

@@ -5,6 +5,7 @@ export * as bucketsApi from './buckets';
 export * as eventsApi from './events';
 export * as filesApi from './files';
 export * as generationApi from './generation';
+export * as jobsApi from './jobs';
 export * as lightApi from './light';
 export * as logsApi from './logs';
 export * as publishApi from './publish';

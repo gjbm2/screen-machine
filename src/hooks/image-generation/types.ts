@@ -32,15 +32,3 @@ export interface GeneratedImage {
   generation_time_seconds?: number; // Generation time in seconds
   generation_cost_gbp?: number; // Generation cost in GBP
 }
-
-export interface AsyncGenerationUpdate {
-  type: 'generation_update';
-  batch_id: string;
-  status: 'progress' | 'completed' | 'error';
-  progress?: number;
-  message?: string;
-  images?: string[];
-  error?: string;
-}
-
-export type WebSocketMessage = AsyncGenerationUpdate;

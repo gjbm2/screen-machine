@@ -6,6 +6,9 @@ from datetime import datetime
 # Alerting must never send real emails from test runs; utils/alerts honors
 # this env override before config.ALERTING_ENABLED (see utils/alerts/dispatcher.py)
 os.environ.setdefault("ALERTING_ENABLED", "0")
+# The generation job tracker (routes/jobs) must never write the live jobs.db from tests
+import tempfile as _tempfile
+os.environ.setdefault("JOBS_DB", os.path.join(_tempfile.mkdtemp(prefix="jobs_tests_"), "jobs.db"))
 from routes.scheduler_utils import scheduler_contexts_stacks, scheduler_schedule_stacks, scheduler_states, scheduler_logs
 from routes.scheduler_utils import VARS_REGISTRY_PATH
 from flask import Flask, g

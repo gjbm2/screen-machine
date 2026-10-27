@@ -7,7 +7,6 @@ import os
 import json
 from urllib.parse import unquote
 
-from routes.manage_jobs import cancel_all_jobs as cancel_jobs
 from utils.logger import log_to_console, info, error, warning, debug
 from routes.generate_handler import jpg_from_mp4_handler, process_generate_image_request
 from routes.utils import encode_image_uploads, encode_reference_urls
@@ -15,22 +14,6 @@ from routes.utils import encode_image_uploads, encode_reference_urls
 # Use the existing Blueprint
 generate_api = Blueprint('generate_api', __name__)
 
-
-@generate_api.route('/cancel_all_jobs', methods=['GET', 'POST'])
-def cancel_all_jobs():
-    try:
-        cancelled = cancel_jobs()
-        return jsonify({
-            "success": True,
-            "cancelled": cancelled,
-            "message": f"Cancelled {cancelled} jobs"
-        })
-    except Exception as e:
-        error(f"Error cancelling jobs: {e}")
-        return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
 
 @generate_api.route('/generate/jpg_from_mp4', methods=['GET'])
 def jpg_from_mp4():

@@ -125,9 +125,9 @@ export const generateImage = async (
   // Keep track of this generation
   setActiveGenerations(prev => [...prev, currentBatchId]);
   
-  // IMPORTANT: For async workflows, show toast immediately rather than waiting for API response
+  // Async workflows: say so at once; its progress and result are in the jobs dock (bottom left) and on /jobs
   if (isAsync) {
-    toast.success("Async generation started, you'll be notified when it completes");
+    toast.success("Started. Follow it in Jobs, bottom left.");
   }
   
   try {
@@ -331,10 +331,10 @@ export const generateImage = async (
             );
           }
         } else {
-          // For async workflows, we'll handle the results through WebSocket messages
+          // Async workflows: the job tracker reports the result (the jobs dock, /jobs; docs/JOBS.md)
           addConsoleLog({
             type: 'info',
-            message: `Async generation started for batch ${currentBatchId}. Results will be delivered via WebSocket.`
+            message: `Async generation started for batch ${currentBatchId}. Follow it in Jobs.`
           });
         }
         

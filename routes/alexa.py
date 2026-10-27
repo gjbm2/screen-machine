@@ -34,7 +34,7 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError
 from flask import current_app
 # Import logger module rather than individual functions
 import utils.logger 
-from routes.manage_jobs import cancel_all_jobs
+from routes.jobs import get_tracker
 from typing import Dict, Any
 import uuid
 from routes.generate_handler import throw_user_interacting_event, handle_image_generation, async_amimate, async_adapt, async_combine
@@ -500,7 +500,7 @@ def process(data):
             case "select_refiner":
                 use_system_prompt="alexa-refiner.txt.j2"
             case "cancel":
-                total_cancelled = cancel_all_jobs()
+                total_cancelled = get_tracker().cancel_all()
                 if total_cancelled:
                     response_ssml = Brianize(f"{total_cancelled} jobs cancelled.")
                 else:
@@ -840,7 +840,7 @@ def process(data):
                 targets = result.get("data", {}).get("targets", []) if isinstance(result.get("data", {}).get("targets"), list) else []
                 # Expand groups to individual destinations
                 expanded_targets = expand_alexa_targets_to_destinations(targets) if targets else []
-                async_amimate(targets = expanded_targets, obj = result)
+                async_amimate(targets = expanded_targets, obj = result, source = "alexa")
             
                 # Throw a user_interacting event for animation with 30m wait
                 for dest in expanded_targets:
@@ -855,7 +855,7 @@ def process(data):
                     targets = [closest_screen] if closest_screen else []
                 # Expand groups to individual destinations
                 expanded_targets = expand_alexa_targets_to_destinations(targets) if targets else []
-                async_adapt(targets=expanded_targets, obj=result)
+                async_adapt(targets=expanded_targets, obj=result, source="alexa")
                 
                 # Throw user_interacting event for adaptation on all targets
                 for target in expanded_targets:
@@ -883,7 +883,7 @@ def process(data):
                 
                 # Validate we have exactly 2 targets
                 if len(combine_targets) >= 2:
-                    async_combine(targets=combine_targets, obj=result)
+                    async_combine(targets=combine_targets, obj=result, source="alexa")
                     
                     # Throw user_interacting event for combination on both targets
                     for target in combine_targets:
@@ -917,7 +917,8 @@ def process(data):
                 threading.Thread(
                     target=handle_image_generation,
                     kwargs={
-                        "input_obj": result
+                        "input_obj": result,
+                        "source": "alexa"
                     }
                 ).start()
             # Handle sleep command in background

@@ -10,6 +10,7 @@ import NotFound from "./pages/NotFound";
 import SchemaEdit from './pages/SchemaEdit';
 import SchemaDynamicForm from './pages/SchemaDynamicForm';
 import Scheduler from './pages/scheduler.tsx';
+import JobsPage from './pages/Jobs';
 import { ReferenceImagesProvider } from "./contexts/ReferenceImagesContext";
 import { LoopeViewProvider } from "@/contexts/LoopeViewContext";
 import LightSense from './pages/LightSense';
@@ -45,6 +46,7 @@ const App = () => (
             <Route path="/schema-edit" element={<SchemaEdit />} />
             <Route path="/schema-dynamic-form" element={<SchemaDynamicForm />} />
             <Route path="/scheduler" element={<Scheduler />} />
+            <Route path="/jobs" element={<JobsPage />} />
             <Route path="/lightsense" element={<LightSense />} />
             <Route path="/androidapp" element={<AndroidApp />} />
             <Route path="/app" element={<AndroidApp />} />

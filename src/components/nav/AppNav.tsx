@@ -22,7 +22,7 @@ import { RoomThemeStyle, THEME_CLASS } from "@/pages/Room/theme";
 import { PLACES, type AppPage } from "./appNav";
 import { ModeMenu } from "./ModeMenu";
 
-const NAV_PATHS = /^\/(room|music|lights|settings|scheduler)?\/?$/;
+const NAV_PATHS = /^\/(room|music|lights|settings|scheduler|jobs)?\/?$/;
 const ICONS: Partial<Record<AppPage, LucideIcon>> = {
   room: SlidersHorizontal,
   music: Music2,
@@ -33,7 +33,7 @@ const ICONS: Partial<Record<AppPage, LucideIcon>> = {
 function currentPage(pathname: string): AppPage {
   const top = pathname.split("/")[1] ?? "";
   if (top === "") return "generator";
-  if (top === "room" || top === "music" || top === "lights" || top === "settings" || top === "scheduler") return top;
+  if (top === "room" || top === "music" || top === "lights" || top === "settings" || top === "scheduler" || top === "jobs") return top;
   return "other";
 }
 

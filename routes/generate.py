@@ -17,18 +17,14 @@ from routes.utils import (
     save_video_with_metadata,
     save_jpeg_with_metadata
 )
-import routes.display
 from time import sleep, time
 import uuid
 from utils.alerts import alert
 from utils.alerts import health as alerts_health
-from overlay_ws_server import job_progress_listeners_latest
-from routes.manage_jobs import add_job
 from routes.publisher import publish_to_destination
-
-# Runpod
-import runpod
-import requests
+from routes.jobs import get_tracker, runpod_api
+from routes.jobs.runpod_api import RunPodError
+from routes.jobs.workflows import workflow_kind, target_name
 
 from io import BytesIO
 
@@ -290,6 +286,21 @@ def apply_workflow_mutations(workflow_data, workflow_config, args_namespace):
     
     return workflow_data
 
+RUNPOD_TIMEOUT_S = 1200  # 20 minutes: enough for WAN2 video jobs
+
+
+class JobCancelled(Exception):
+    """The job was cancelled through the tracker; it is already marked cancelled."""
+
+
+def _plain_error(e):
+    """An exception -> the one-line reason shown on the job."""
+    if isinstance(e, (RunPodError, JobCancelled)):
+        return str(e)
+    text = str(e).strip().splitlines()[0] if str(e).strip() else ""
+    return text[:300] or type(e).__name__
+
+
 def start(
         prompt: str | None = None, 
         width: int | None = None,
@@ -317,15 +328,39 @@ def start(
         publish_destination: str | None = None,
         batch_id: str | None = None,
         silent: bool | None = None,
+        job_id: str | None = None,
         **kwargs
         ):
+    """Run one generation job on RunPod and publish it. Every step is reported to the job tracker
+    (docs/JOBS.md); job_id is the tracker job made by handle_image_generation (a new one when called
+    directly). Any failure ends the job as failed and raises ValueError."""
 
     # Basic init
     info("Generator starting.")
-    SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+    tracker = get_tracker()
+    if not job_id:
+        job_id = tracker.create(prompt=prompt or "", source="api", target=publish_destination,
+                                target_name=target_name(publish_destination), batch_id=batch_id)["id"]
+    try:
+        return _run(tracker, job_id, provided_args=dict(
+            prompt=prompt, width=width, height=height, steps=steps, cfg=cfg, batch=batch, pod=pod,
+            scale=scale, setwallpaper=setwallpaper, refine=refine, workflow=workflow, seed=seed,
+            timeout=timeout, suppress=suppress, metaprompt=metaprompt, images=images,
+            negativeprompt=negativeprompt, interpolate_frames=interpolate_frames, upscaler=upscaler,
+            lora=lora, video_length=video_length, lora_strength=lora_strength),
+            cli_args=cli_args, publish_destination=publish_destination, batch_id=batch_id,
+            silent=silent, kwargs=kwargs)
+    except JobCancelled as e:
+        raise ValueError(str(e))
+    except Exception as e:
+        tracker.fail(job_id, _plain_error(e))
+        raise ValueError(str(e))
+
+
+def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id, silent, kwargs):
     missing_vars = [var for var in ["OPENAI_API_KEY", "RUNPOD_API_KEY", "RUNPOD_ID"] if not os.getenv(var)]
     if missing_vars:
-        raise ValueError(f"X Missing environment variables: {', '.join(missing_vars)}. Fatal.")
+        raise ValueError(f"Missing environment variables: {', '.join(missing_vars)}")
     
     # Track generation start time
     generation_start_time = time()
@@ -336,49 +371,18 @@ def start(
         args_namespace = parser.parse_args(cli_args)
     else:                                       # called as  a function
         defaults = vars(parser.parse_args([]))  # extract defaults
-        
-        provided_args = {
-            "prompt": prompt,
-            "width": width,
-            "height": height,
-            "steps": steps,
-            "batch": batch,
-            "pod": pod,
-            "cfg": cfg,
-            "scale": scale,
-            "setwallpaper": setwallpaper,
-            "refine": refine,
-            "workflow": workflow,
-            "seed": seed,
-            "timeout": timeout,
-            "negativeprompt": negativeprompt,
-            "upscaler": upscaler,
-            "lora": lora,
-            "interpolate_frames": interpolate_frames,
-            "lora_strength": lora_strength,
-            "suppress": suppress,
-            "video_length" : video_length,
-            "metaprompt": metaprompt
-        }
-        provided_args["images"] = images        # include images if any
 
         # Merge defaults with provided arguments (use provided if not None, else default)
         final_args = {**defaults}
         final_args.update({k: v for k, v in provided_args.items() if v is not None})
         info(f"Kwags: {kwargs}")
         final_args.update(kwargs)
-        
-        #final_args = {k: v if v is not None else defaults.get(k, None) for k, v in provided_args.items()}
         args_namespace = argparse.Namespace(**final_args)
-        
-        #info(f"Args_namespace: {args_namespace}")
+    vars(args_namespace).setdefault("images", None)  # absent when the caller passed none
 
     # Validation steps
     if not args_namespace.prompt and not args_namespace.images: 
         raise ValueError("A prompt or image must be provided.")
-    
-    # Initialize publish_destinations variable to avoid scope issues
-    publish_destinations = []
     
     # Get destinations data and see if we have a size constraint
     if publish_destination:
@@ -397,18 +401,9 @@ def start(
         maxheight = target_config.get("maxheight", None)
         targetfile=target_config.get('file')
         info(f"Target config: {targetfile}")
-        
-        # Let the screen know we're generating
-        routes.display.send_overlay(
-            html = "overlay_generating.html.j2",
-            screens = [publish_destination] if isinstance(publish_destination, str) else publish_destination, 
-            substitutions = {'MESSAGE': 'Initialising...'},
-            duration = 30000,
-            position = "top-left"
-        )
     
-    #info("Image parameters: " + ", ".join(f"{k}={v}" for k, v in vars(args_namespace).items()))
-    
+    tracker.update(job_id, workflow=args_namespace.workflow, refined_prompt=args_namespace.prompt,
+                   message="Loading the workflow")
     info(f"Trying to load: {args_namespace.workflow}")
     with open(findfile(args_namespace.workflow), "r") as file:
         workflow_data = json.load(file)
@@ -522,357 +517,189 @@ def start(
 
     info(f"Workflow: {args_namespace.workflow}")
     info(f"RunPod ID: {runpod_id}")
-    runpod.api_key = os.getenv("RUNPOD_API_KEY")
-    endpoint = runpod.Endpoint(runpod_id)
+    tracker.set_stages(job_id, workflow_config.get("processing_stages"))
+    tracker.update(job_id, kind=workflow_kind(workflow_config), endpoint_id=runpod_id,
+                   message="Sending to RunPod")
 
-    #debug(f"Workflow object: {json.dumps(truncate_element(input_payload, 5000), indent=2)}")
-    #return 
+    if tracker.is_cancelled(job_id):
+        raise JobCancelled("Cancelled before it was sent to RunPod")
 
-    try:
-        # Let's go...
-        run_request = endpoint.run(input_payload)
-        job_id = run_request.job_id
-        add_job(job_id, endpoint.endpoint_id)  # track all jobs centrally
+    # Let's go...
+    runpod_job_id = runpod_api.submit(runpod_id, input_payload)
+    info(f"RunPod job {runpod_job_id} submitted for {job_id}")
+    tracker.update(job_id, status="queued", runpod_job_id=runpod_job_id, endpoint_id=runpod_id,
+                   message="Waiting for a GPU")
 
-        status = run_request.status()
-        info(f"Initial status: '{status}'")
-
-        timeout = 1200  # 20 minutes – enough for WAN2 video jobs
-        poll_interval = getattr(args_namespace, "poll_interval", 0.5)
-        info(f"> Polling RunPod every {poll_interval}s for up to {timeout}s...")
-
-        start_time = time()
+    poll_interval = getattr(args_namespace, "poll_interval", 0.5)
+    info(f"> Polling RunPod every {poll_interval}s for up to {RUNPOD_TIMEOUT_S}s...")
+    alert_context = {"job_id": runpod_job_id, "endpoint": runpod_id,
+                     "workflow": args_namespace.workflow, "destination": publish_destination}
+    start_time = time()
+    output = None
+    while True:
+        if tracker.is_cancelled(job_id):
+            # The tracker cancelled the RunPod job when it was cancelled; cancel again in case the
+            # cancel landed between submit and the queued update above
+            runpod_api.cancel(runpod_id, runpod_job_id, timeout=10)
+            raise JobCancelled("Cancelled")
 
         try:
-            workflow_entry = next(item for item in workflow_config_list if item["id"] == args_namespace.workflow)
-            raw_stages = workflow_entry.get("processing_stages", [{"name": "Rendering", "weight": 100}])
-            if isinstance(raw_stages[0], str):
-                stage_weight = 100 // len(raw_stages)
-                processing_stages = [{"name": name, "weight": stage_weight} for name in raw_stages]
-            else:
-                processing_stages = raw_stages
-        except Exception:
-            processing_stages = [{"name": "Rendering", "weight": 100}]
+            state = runpod_api.status(runpod_id, runpod_job_id)
+        except RunPodError as e:
+            # A missed poll isn't fatal; the local timeout below still bounds the job
+            warning(f"RunPod status for {runpod_job_id} failed: {e}")
+            state = {}
+        status = state.get("status")
 
-        stage_weights = [s["weight"] for s in processing_stages]
-        stage_names = [s["name"] for s in processing_stages]
-        total_weight = sum(stage_weights)
-        cumulative_weights = [sum(stage_weights[:i]) for i in range(len(stage_weights))]
+        if status == "IN_QUEUE":
+            tracker.update(job_id, status="queued", message="Waiting for a GPU")
 
-        last_status = None
-        last_update_message = ""
-        last_update_percentage = ""
-        last_max_val = None
-        last_value = None
-        stage_index = 1
+        elif status == "IN_PROGRESS":
+            # Step progress arrives separately, from the worker's ComfyUI relay (overlay_ws_server)
+            if tracker.get(job_id)["status"] == "queued":
+                tracker.update(job_id, status="running", message="Starting the workflow")
 
-        last_kind = None
-        last_details_serialized = None
+        elif status == "COMPLETED":
+            output = state.get("output")
+            break
 
-        while True:
-            status = run_request.status()
-            progress = job_progress_listeners_latest.get(job_id)
+        elif status in ("FAILED", "TIMED_OUT"):
+            alert_key = "runpod.job_failed" if status == "FAILED" else "runpod.timeout"
+            alert(alert_key,
+                  f"RunPod job {status}: workflow '{args_namespace.workflow}' on endpoint {runpod_id}",
+                  context=alert_context, dedup_key=f"{alert_key}:{args_namespace.workflow}")
+            if status == "TIMED_OUT":
+                raise RunPodError("RunPod timed the job out")
+            detail = state.get("error")
+            if isinstance(detail, (dict, list)):
+                detail = json.dumps(detail)
+            detail = str(detail or "").strip().splitlines()[0][:200] if detail else ""
+            raise RunPodError("The job failed on RunPod" + (f": {detail}" if detail else ""))
 
-            value = None
-            max_val = None
-            new_message = last_update_message
-            new_percentage = last_update_percentage
-            new_stage_index = stage_index
-            should_update_overlay = False
+        elif status == "CANCELLED":
+            tracker.update(job_id, status="cancelled", message="Cancelled on RunPod")
+            raise JobCancelled("Cancelled on RunPod")
 
-            if status != last_status:
-                last_status = status
-                should_update_overlay = True
+        if time() - start_time > RUNPOD_TIMEOUT_S:
+            alert("runpod.timeout",
+                  f"RunPod job timed out after {RUNPOD_TIMEOUT_S}s — if it never left "
+                  f"IN_QUEUE, check RunPod credit",
+                  context=alert_context, dedup_key=f"runpod.timeout:{args_namespace.workflow}")
+            runpod_api.cancel(runpod_id, runpod_job_id, timeout=10)
+            raise TimeoutError(f"Timed out after {RUNPOD_TIMEOUT_S // 60} minutes; the RunPod job was cancelled")
 
-            if status == "IN_QUEUE":
-                new_message = "Queued..."
-                new_percentage = ""
-                should_update_overlay = (new_message != last_update_message)
+        # A wait=True generation blocks its scheduler loop thread in
+        # join() for up to 20 min; tick from here so a busy destination
+        # doesn't read as wedged (HEARTBEAT_STALE_S is only 10 min)
+        for _dest in ([publish_destination]
+                      if isinstance(publish_destination, str)
+                      else (publish_destination or [])):
+            alerts_health.tick(_dest)
+        sleep(poll_interval)
 
-            elif status == "IN_PROGRESS":
-                if progress:
-                    kind = progress.get("comfy", {}).get("type")
-                    details = progress.get("comfy", {}).get("data", {})
-                    current_details_serialized = json.dumps(details, sort_keys=True)
+    if not isinstance(output, dict) or output.get("status") != "success":
+        detail = output.get("message") if isinstance(output, dict) else output
+        detail = str(detail or "").strip()[:200]
+        raise RuntimeError("The worker sent no result" + (f": {detail}" if detail else ""))
 
-                    if kind != last_kind or current_details_serialized != last_details_serialized:
-                        last_kind = kind
-                        last_details_serialized = current_details_serialized
-
-                    if kind == "progress":
-                        max_val = int(details.get("max", 1))
-                        value = int(details.get("value", 0))
-
-                        if value != last_value or max_val != last_max_val:
-                            if last_value is not None and (value < last_value or max_val != last_max_val):
-                                new_stage_index = min(stage_index + 1, len(processing_stages))
-
-                            # ✨ NEW: weighted global progress calculation
-                            completed_weight = cumulative_weights[new_stage_index - 1]
-                            stage_weight = stage_weights[new_stage_index - 1]
-                            fraction_within_stage = value / max_val if max_val else 0
-                            weighted_progress = completed_weight + (stage_weight * fraction_within_stage)
-                            new_percentage = int(100 * weighted_progress / total_weight)
-
-                            # ✨ NEW: bold current stage in status message
-                            stage_status_parts = []
-                            for i, name in enumerate(stage_names):
-                                if i == new_stage_index - 1:
-                                    stage_status_parts.append(f"<span class='pulsing-stage'>{name}</span>")
-                                else:
-                                    stage_status_parts.append(name)
-                            stage_status_string = " › ".join(stage_status_parts)
-
-                            new_message = f"{stage_status_string}"
-                            should_update_overlay = True
-
-                    elif kind == "status":
-                        queue_remaining = details.get("status", {}).get("exec_info", {}).get("queue_remaining")
-                        new_message = "Finalising..." if queue_remaining == 0 else "Queued..."
-                        new_percentage = ""
-                        should_update_overlay = True
-
-                else:
-                    new_message = "Working..."
-                    new_percentage = ""
-                    should_update_overlay = True
-
-            elif status in {"FAILED", "CANCELLED"}:
-                error_text = "Generation cancelled." if status == "CANCELLED" else "❌ Generation failed."
-                alert("runpod.job_failed",
-                      f"RunPod job {status}: workflow '{args_namespace.workflow}' on endpoint {runpod_id}",
-                      context={"job_id": job_id, "endpoint": runpod_id,
-                               "workflow": args_namespace.workflow,
-                               "destination": publish_destination},
-                      dedup_key=f"runpod.job_failed:{args_namespace.workflow}")
-                routes.display.send_overlay(
-                    html="overlay_generating.html.j2",
-                    screens=["index"],
-                    substitutions={'MESSAGE': error_text, 'BACKGROUND':'none', 'TYPE':'alert'},
-                    duration=5000,
-                    job_id=job_id
-                )
-                if publish_destination:
-                    routes.display.send_overlay(
-                        html="overlay_generating.html.j2",
-                        screens=[publish_destination] if isinstance(publish_destination, str) else publish_destination,
-                        substitutions={'ALERT_TEXT': error_text, 'TYPE': 'alert'},
-                        duration=5000,
-                        position="top-left",
-                        clear=True,
-                        job_id=job_id
-                    )
-                raise RuntimeError(error_text)
-
-            elif status == "COMPLETED":
-                output = run_request.output()
-                break
-
-            if should_update_overlay and (
-                new_message != last_update_message or new_percentage != last_update_percentage
-            ):
-                display_index_message = (
-                    f"{publish_destination}: "
-                    f"{f'{new_percentage}% - ' if new_percentage != "" else ''}"
-                    f"{new_message}"
-                )
-                routes.display.send_overlay(
-                    html="overlay_generating.html.j2",
-                    screens=["index"],
-                    duration=120000,
-                    substitutions={
-                        'MESSAGE': display_index_message,
-                        'PROGRESS_PERCENT': new_percentage,
-                        'BACKGROUND':'none'
-                    },
-                    job_id=job_id
-                )
-                if publish_destination:
-                    routes.display.send_overlay(
-                        html="overlay_generating.html.j2",
-                        screens=[publish_destination] if isinstance(publish_destination, str) else publish_destination,
-                        duration=120000,
-                        substitutions={
-                            'MESSAGE': new_message,
-                            'PROGRESS_PERCENT': new_percentage
-                        },
-                        position="top-left",
-                        fadein=0,
-                        clear=True,
-                        job_id=job_id
-                    )
-                last_update_message = new_message
-                last_update_percentage = new_percentage
-                stage_index = new_stage_index
-                last_max_val = max_val
-                last_value = value
-
-            if time() - start_time > timeout:
-                alert("runpod.timeout",
-                      f"RunPod job timed out after {timeout}s — if it never left "
-                      f"IN_QUEUE, check RunPod credit",
-                      context={"job_id": job_id, "endpoint": runpod_id,
-                               "workflow": args_namespace.workflow,
-                               "destination": publish_destination},
-                      dedup_key=f"runpod.timeout:{args_namespace.workflow}")
-                raise TimeoutError(f"⏰ RunPod job timed out after {timeout} seconds.")
-
-            # A wait=True generation blocks its scheduler loop thread in
-            # join() for up to 20 min; tick from here so a busy destination
-            # doesn't read as wedged (HEARTBEAT_STALE_S is only 10 min)
-            for _dest in ([publish_destination]
-                          if isinstance(publish_destination, str)
-                          else (publish_destination or [])):
-                alerts_health.tick(_dest)
-            sleep(poll_interval)
-
-        
-        #run_request = endpoint.run_sync(
-        #    input_payload,
-        #    timeout=args_namespace.timeout,  # Timeout in seconds.
-        #)
-                    
-        # Success 
-        if output["status"]=="success":
-            info(f"> Successfully generated image")
-            output["seed"] = args_namespace.seed
-            output["prompt"] = args_namespace.prompt
-            output["negative_prompt"] = vars(args_namespace).get("negativeprompt", None)
-            
-            # Store the actual resolved parameters that were used during generation
-            output["actual_workflow_id"] = args_namespace.workflow
-            output["actual_params"] = {
-                "width": args_namespace.width,
-                "height": args_namespace.height,
-                "steps": args_namespace.steps,
-                "cfg": getattr(args_namespace, 'cfg', None),
-                "scale": args_namespace.scale,
-                "upscaler": getattr(args_namespace, 'upscaler', None),
-                "lora": getattr(args_namespace, 'lora', None),
-                "lora_strength": getattr(args_namespace, 'lora_strength', None),
-                "negativeprompt": getattr(args_namespace, 'negativeprompt', None),
-                "interpolate_frames": getattr(args_namespace, 'interpolate_frames', None),
-                "video_length": getattr(args_namespace, 'video_length', None),
-                "publish_destination": publish_destination,
-            }
-            output["actual_global_params"] = {
-                "batch_size": args_namespace.batch or 1,
-            }
-            
-            # Calculate generation time and cost
-            generation_end_time = time()
-            generation_time_seconds = round(generation_end_time - generation_start_time, 2)
-            
-            # Import the function from generate_handler
-            from routes.generate_handler import calculate_generation_cost
-            generation_cost = calculate_generation_cost(
-                generation_time_seconds, 
-                workflow_id=args_namespace.workflow,
-                runpod_id=runpod_id
-            )
-            
-            # Add time and cost to output metadata
-            output["generation_time_seconds"] = generation_time_seconds
-            output["generation_cost_gbp"] = generation_cost
-            
-            info(f"Generation completed in {generation_time_seconds} seconds, estimated cost: £{generation_cost}")
-            info("\n".join(f"  - {key}: {value}" for key, value in output.items()))
-            
-            output.update(input_payload)
-            
-            # We're done with the base-64 image data now--discard it so we aren't carrying it around
-            if "images" in input_payload["input"]:
-                input_payload["input"]["images"] = [
-                    {"name": img.get("name")} for img in input_payload["input"]["images"]
-                ]
-            if hasattr(args_namespace, "images") and args_namespace.images:
-                args_namespace.images = [
-                    {"name": img.get("name")} for img in args_namespace.images
-                ]
+    info(f"> Successfully generated image")
+    tracker.update(job_id, status="publishing", message="Publishing" if publish_destination else "Finishing")
+    output["seed"] = args_namespace.seed
+    output["prompt"] = args_namespace.prompt
+    output["negative_prompt"] = vars(args_namespace).get("negativeprompt", None)
     
-            # Add generation time and cost to args_namespace for metadata
-            vars(args_namespace)["generation_time_seconds"] = generation_time_seconds
-            vars(args_namespace)["generation_cost_gbp"] = generation_cost
-        
-            # Include batch_id in metadata if provided
-            if batch_id is not None:
-                vars(args_namespace)["batch_id"] = batch_id
-        
-            if publish_destination:
-                # Clear any "Finalising..." overlay before publishing
-                routes.display.send_overlay(
-                    html="overlay_generating.html.j2",
-                    screens=[publish_destination] if isinstance(publish_destination, str) else publish_destination,
-                    duration=2000,
-                    substitutions={'MESSAGE': 'Published'},
-                    clear=True,
-                    job_id=job_id
-                )
-                
-                # Actually publish into your screen's bucket
-                pub_res = publish_to_destination(
-                    source = output["message"],
-                    publish_destination_id = publish_destination,
-                    metadata = vars(args_namespace),
-                    batch_id = batch_id,
-                    silent = silent,
-                )
-                if not pub_res["success"]:
-                    raise RuntimeError(f"Publish failed: {pub_res.get('error')}")
+    # Store the actual resolved parameters that were used during generation
+    output["actual_workflow_id"] = args_namespace.workflow
+    output["actual_params"] = {
+        "width": args_namespace.width,
+        "height": args_namespace.height,
+        "steps": args_namespace.steps,
+        "cfg": getattr(args_namespace, 'cfg', None),
+        "scale": args_namespace.scale,
+        "upscaler": getattr(args_namespace, 'upscaler', None),
+        "lora": getattr(args_namespace, 'lora', None),
+        "lora_strength": getattr(args_namespace, 'lora_strength', None),
+        "negativeprompt": getattr(args_namespace, 'negativeprompt', None),
+        "interpolate_frames": getattr(args_namespace, 'interpolate_frames', None),
+        "video_length": getattr(args_namespace, 'video_length', None),
+        "publish_destination": publish_destination,
+    }
+    output["actual_global_params"] = {
+        "batch_size": args_namespace.batch or 1,
+    }
+    
+    # Calculate generation time and cost
+    generation_end_time = time()
+    generation_time_seconds = round(generation_end_time - generation_start_time, 2)
+    
+    # Import the function from generate_handler
+    from routes.generate_handler import calculate_generation_cost
+    generation_cost = calculate_generation_cost(
+        generation_time_seconds, 
+        workflow_id=args_namespace.workflow,
+        runpod_id=runpod_id
+    )
+    
+    # Add time and cost to output metadata
+    output["generation_time_seconds"] = generation_time_seconds
+    output["generation_cost_gbp"] = generation_cost
+    output["job_id"] = job_id
+    
+    info(f"Generation completed in {generation_time_seconds} seconds, estimated cost: £{generation_cost}")
+    info("\n".join(f"  - {key}: {value}" for key, value in output.items()))
+    
+    output.update(input_payload)
+    
+    # We're done with the base-64 image data now--discard it so we aren't carrying it around
+    if "images" in input_payload["input"]:
+        input_payload["input"]["images"] = [
+            {"name": img.get("name")} for img in input_payload["input"]["images"]
+        ]
+    if hasattr(args_namespace, "images") and args_namespace.images:
+        args_namespace.images = [
+            {"name": img.get("name")} for img in args_namespace.images
+        ]
 
-                # Only access meta data if publish was successful
-                if "meta" in pub_res and "filename" in pub_res["meta"]:
-                    info(f"✅ Published to {pub_res['meta']['filename']}")
-                    dest_info = pub_res["meta"]
-                    output["published_path"] = pub_res["meta"]["filename"]
-                    output["published_meta"] = pub_res.get("meta", {})
-                    output["destination"] = dest_info
-                else:
-                    info("✅ Published successfully")
-                    output["published_path"] = output["message"]
-                    output["published_meta"] = {}
-                    output["destination"] = {}
-           
+    # Add generation time and cost to args_namespace for metadata
+    vars(args_namespace)["generation_time_seconds"] = generation_time_seconds
+    vars(args_namespace)["generation_cost_gbp"] = generation_cost
 
+    # Include batch_id in metadata if provided
+    if batch_id is not None:
+        vars(args_namespace)["batch_id"] = batch_id
 
-            display_final_file = f'<a href="{output["message"]}" target="_blank">Done</a>'
-            routes.display.send_overlay(
-                html = "overlay_generating.html.j2",
-                screens = ["index"],
-                substitutions = {
-                    'MESSAGE':  display_final_file,
-                    'BACKGROUND':'none'                    
-                },
-                duration = 600000,
-                job_id = job_id
-            )
-            
-            return output
-        
+    if publish_destination:
+        if tracker.is_cancelled(job_id):
+            raise JobCancelled("Cancelled before it was published")
+
+        # Actually publish into your screen's bucket
+        pub_res = publish_to_destination(
+            source = output["message"],
+            publish_destination_id = publish_destination,
+            metadata = vars(args_namespace),
+            batch_id = batch_id,
+            silent = silent,
+        )
+        if not pub_res["success"]:
+            raise RuntimeError(f"Publish failed: {pub_res.get('error')}")
+
+        # Only access meta data if publish was successful
+        if "meta" in pub_res and "filename" in pub_res["meta"]:
+            info(f"✅ Published to {pub_res['meta']['filename']}")
+            dest_info = pub_res["meta"]
+            output["published_path"] = pub_res["meta"]["filename"]
+            output["published_meta"] = pub_res.get("meta", {})
+            output["destination"] = dest_info
         else:
-            # Let the screen know we're generating
-            if publish_destinations:
-                routes.display.send_overlay(
-                    html = "overlay_generating.html.j2",
-                    screens = [publish_destination] if isinstance(publish_destination, str) else publish_destination,
-                    substitutions = {'ALERT_TEXT': '❌ Generation failed.', 'TYPE': 'alert'},
-                    duration = 5000,
-                    position = "top-left",
-                    clear = True,
-                    job_id = job_id
-                )
-            routes.display.send_overlay(
-                html = "overlay_generating.html.j2",
-                screens = ["index"],
-                substitutions = {'ALERT_TEXT': '❌ Generation failed.', 'TYPE': 'alert'},
-                duration = 30000,
-                job_id = job_id
-            )
-            raise ValueError(output)
-    
-    except Exception as e:
-        raise ValueError(str(e))
+            info("✅ Published successfully")
+            output["published_path"] = output["message"]
+            output["published_meta"] = {}
+            output["destination"] = {}
 
+    tracker.complete(job_id, result_url=output.get("message"), seed=args_namespace.seed,
+                     cost_gbp=generation_cost, published_path=output.get("published_path"),
+                     refined_prompt=args_namespace.prompt)
+    return output
 
 # Handle if called from command line
 def get_parser():

@@ -8,6 +8,7 @@ from utils.logger import debug, warning, error, info
 from routes.lightsensor import broadcast_lux_level
 from routes.audio_utils import get_audio_transcriber
 from connection_registry import registry  # NEW central registry
+from routes.jobs import get_tracker
 
 DEBUGGING = False  # Keep original debugging off
 
@@ -38,13 +39,6 @@ class _WebsocketsHandshakeNoiseFilter(logging.Filter):
 
 _WS_LOGGER.addFilter(_WebsocketsHandshakeNoiseFilter())
 
-# Registry for job progress listeners (used by generator.py)
-job_progress_listeners = {}  # job_id: list of asyncio.Queue
-job_progress_listeners_latest = {}  # job_id -> most recent update
-# Generators only read the entry for their own in-flight job, so keep the most
-# recently updated jobs and evict the oldest (previously grew without bound).
-MAX_TRACKED_JOBS = 500
-
 # Clients render these fields as HTML. External senders (RunPod worker sends
 # {job_id, comfy}; light relay sends {lux, sensor_name}) never set them, so
 # stripping them from relayed frames stops anyone who can reach this port from
@@ -69,16 +63,25 @@ def _sanitize_relayed(data):
     return data
 
 
-def _record_job_progress(job_id, data):
-    # Assign in place (never pop first): generator threads read this dict
-    # concurrently and must not see the key briefly missing
-    job_progress_listeners_latest[job_id] = data
-    while len(job_progress_listeners_latest) > MAX_TRACKED_JOBS:
-        job_progress_listeners_latest.pop(next(iter(job_progress_listeners_latest)), None)
-
-# No per-client audio set needed (handled by registry)
-
-# OLD globals replaced by registry in connection_registry.py
+async def _handle_sender_frame(data):
+    """One JSON frame from a sending socket (light relay, RunPod worker, manual tools)."""
+    if not isinstance(data, dict):
+        return
+    data = _sanitize_relayed(data)
+    # Handle lux sensor data if present
+    if "lux" in data:
+        sensor_name = data.get("sensor_name", "default")  # Use default if no name provided
+        await broadcast_lux_level(sensor_name, data["lux"])
+    # The RunPod worker's ComfyUI relay ({job_id: <RunPod id>, comfy}) is job progress: it goes to the
+    # job tracker (docs/JOBS.md), which pages subscribe to; screens no longer get it
+    if data.get("job_id") and "comfy" in data:
+        try:
+            get_tracker().on_worker_frame(data["job_id"], data["comfy"])
+        except Exception as e:
+            error(f"Job tracker rejected a worker frame: {e}")
+        return
+    # Relay to overlay clients
+    await send_overlay_to_clients(data)
 
 # Ping configuration
 PING_INTERVAL = 30  # seconds
@@ -168,22 +171,8 @@ async def handler(websocket):
                     # Start passive keep-alive so we respond to client pings
                     keepalive_task = asyncio.create_task(passive_keepalive(websocket))
 
-                data = _sanitize_relayed(data)
-                # Handle lux sensor data if present
-                if "lux" in data:
-                    sensor_name = data.get("sensor_name", "default")  # Use default if no name provided
-                    await broadcast_lux_level(sensor_name, data["lux"])
-                # Relay to overlay clients
-                await send_overlay_to_clients(data)
-
-                # 🔁 Also notify any job-specific listeners (e.g. generator.py)
-                job_id = data.get("job_id")
-                if job_id:
-                    _record_job_progress(job_id, data)  # 🧠 Store latest update
-                    if job_id in job_progress_listeners:
-                        for queue in job_progress_listeners[job_id]:
-                            await queue.put(data)
-                if DEBUGGING: debug(f"✅ Broadcasted single message from {websocket.remote_address}")
+                await _handle_sender_frame(data)
+                if DEBUGGING: debug(f"✅ Handled first message from {websocket.remote_address}")
 
             except json.JSONDecodeError:
                 if is_audio_client:
@@ -195,14 +184,11 @@ async def handler(websocket):
                     return
 
         except asyncio.TimeoutError:
-            # No message received within timeout - this is a persistent overlay listener
+            # Nothing within the window: a viewer (screen, operator page), so it gets broadcasts. Its
+            # later frames are still read below as sender frames, because a relay that is slow to
+            # send its first frame (the RunPod worker often is) must not be ignored
             if DEBUGGING: debug(f"🖥️ Registered overlay client: {websocket.remote_address}")
             registry.add_overlay(websocket)
-            try:
-                await websocket.wait_closed()
-            except websockets.exceptions.ConnectionClosed:
-                pass
-            return
 
         # Now listen for more messages
         async for msg in websocket:
@@ -243,20 +229,9 @@ async def handler(websocket):
             else:
                 if DEBUGGING: debug(f"📥 Message from {websocket.remote_address}: {msg}")
                 try:
-                    data = _sanitize_relayed(json.loads(msg))
-                    # Handle lux sensor data if present
-                    if "lux" in data:
-                        sensor_name = data.get("sensor_name", "default")
-                        await broadcast_lux_level(sensor_name, data["lux"])
-                    job_id = data.get("job_id")
-                    if job_id:
-                        _record_job_progress(job_id, data)
-                    if job_id in job_progress_listeners:
-                        for queue in job_progress_listeners[job_id]:
-                            await queue.put(data)
-                    await send_overlay_to_clients(data)
-                except json.JSONDecodeError:
-                    debug(f"⚠️ Invalid JSON from {websocket.remote_address}: {msg}")
+                    await _handle_sender_frame(json.loads(msg))
+                except (json.JSONDecodeError, UnicodeDecodeError):
+                    debug(f"⚠️ Invalid JSON from {websocket.remote_address}")
 
     except websockets.exceptions.ConnectionClosed as e:
         info(f"🔌 Connection closed (code={e.code} reason={e.reason})")
