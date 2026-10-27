@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useState, useRef } from 'react';
+import React, { useEffect, useCallback, useState, useRef, useReducer } from 'react';
 import ReactDOM from 'react-dom';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useLoopeView } from '@/contexts/LoopeViewContext';
@@ -20,6 +20,8 @@ import { toast } from 'sonner';
 import { bucketsApi, publishApi } from '@/shared/api';
 import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 import { ReferenceImageService } from '@/services/reference-image-service';
+import { TagLozenges } from '@/components/tags/TagLozenges';
+import { notifyItemUpdated } from '@/components/tags/events';
 
 interface LoopeModalProps {
   title?: string;
@@ -34,6 +36,24 @@ interface ZoomPosition {
   imageHeight?: number;
   imageLeft?: number;
   imageTop?: number;
+}
+
+/** The bucket an image lives in: its bucketId, else parsed from /output/<bucket>/ in its URLs. */
+function bucketOf(img: any): string | null {
+  if (!img) return null;
+  if (typeof img.bucketId === 'string' && img.bucketId) return img.bucketId;
+  const m = (typeof img.raw_url === 'string' && img.raw_url.match(/\/output\/([^\/]+)\/(.+)/))
+    || (typeof img.urlThumb === 'string' && img.urlThumb.match(/\/output\/([^\/]+)\/thumbnails\/(.+)/));
+  return m ? m[1] : null;
+}
+
+/** Music groups the tagger scored a good fit (0.7+), best first (docs/ART_TAGS.md). */
+function suitedGroups(music: Record<string, number> | undefined): string[] {
+  if (!music || typeof music !== 'object') return [];
+  return Object.entries(music)
+    .filter(([, v]) => typeof v === 'number' && v >= 0.7)
+    .sort((a, b) => b[1] - a[1])
+    .map(([k]) => k);
 }
 
 /**
@@ -68,6 +88,9 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
     
     // Add loading state for images
     const [loadingImages, setLoadingImages] = useState<{[key: string]: boolean}>({});
+
+    // Items are the opener's objects, patched in place (star, tags); this re-renders after a patch.
+    const [, bumpItems] = useReducer((n: number) => n + 1, 0);
     
     // Get publish destinations for actions
     const { destinations, nonHeadlessDestinations, loading: destinationsLoading } = usePublishDestinations();
@@ -151,6 +174,9 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
     /* ------------------------------------------------------------------ */
     const handleKey = useCallback((e: KeyboardEvent) => {
       if (!isOpen) return;
+      // Typing in a field (the tag search) is not navigation: arrows, "i" and Escape belong to it.
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
       
       if (zoomSrc && e.key === 'Escape') {
         e.preventDefault();
@@ -279,6 +305,9 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
         if (success) {
           // Update the state in context
           img.isFavourite = !currentState;
+          bumpItems();
+          // The grid holds its own copy: tell it, so it isn't stale until a refresh.
+          notifyItemUpdated({ bucket: bucketId, filename: img.id, patch: { favorite: img.isFavourite } });
           toast.success(img.isFavourite ? 'Added to favorites' : 'Removed from favorites');
         } else {
           toast.error('Failed to toggle favorite status');
@@ -1058,6 +1087,13 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
     // Disable favorite button for published images
     const showFavoriteButton = !(currentImage?.disableFavorite === true);
 
+    // Tag lozenges: saved bucket images only (the _recent scratch area isn't tagged; a published copy's id isn't a file).
+    const tagBucket = bucketOf(currentImage);
+    const showTags = !!currentImage && !!tagBucket && tagBucket !== '_recent'
+      && currentImage.disableFavorite !== true && currentImage.isPublished !== true;
+    const tagMeta = (currentImage?.metadata || {}) as Record<string, any>;
+    const tagAi = tagMeta.tagging?.ai as Record<string, any> | undefined;
+
     return (
       <Dialog 
         open={isOpen} 
@@ -1280,6 +1316,30 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                         </div>
                       )}
                       
+                      {/* Tags: what the AI tagger saw (the lozenges themselves are under the picture) */}
+                      {tagAi && (
+                        <div>
+                          <h4 className="font-medium text-xs text-neutral-400 mb-2">Tags</h4>
+                          <div className="bg-neutral-800 p-2 rounded-md text-white space-y-1">
+                            {tagAi.look && <div className="break-words">{String(tagAi.look)}</div>}
+                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-neutral-300">
+                              {tagAi.palette && <span>Palette: <span className="text-white">{String(tagAi.palette)}</span></span>}
+                              {suitedGroups(tagAi.music).length > 0 && (
+                                <span>Suits: <span className="text-white">{suitedGroups(tagAi.music).join(', ')}</span></span>
+                              )}
+                              {typeof tagAi.quality === 'number' && (
+                                <span>Quality <span className="text-white tabular-nums">{tagAi.quality.toFixed(2)}</span></span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      {tagMeta.tagging?.status === 'failed' && (
+                        <div className="text-neutral-400">
+                          Not tagged{tagMeta.tagging.error ? `: ${String(tagMeta.tagging.error)}` : ''}
+                        </div>
+                      )}
+
                       {/* Other properties section (excluding already shown and metadata) */}
                       {Object.entries(currentImage).some(([key, value]) => 
                         !['id', 'promptKey', 'metadata', 'raw_url', 'urlFull', 'urlThumb', 'bucketId', 'mediaType', 'createdAt', 'isFavourite'].includes(key) &&
@@ -1320,6 +1380,8 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                                 !(key === 'prompt' && currentImage.promptKey) &&
                                 // Skip favorite since it's shown in basic info
                                 key !== 'favorite' &&
+                                // Tags have their own block and lozenges
+                                key !== 'tags' && key !== 'tagging' &&
                                 value !== null &&
                                 value !== undefined
                               )
@@ -1409,9 +1471,34 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
 
           {/* Flip hint */}
           {!isFlipped && !zoomSrc && showHint && (
-            <div className="absolute bottom-16 left-1/2 -translate-x-1/2 text-white/80 flex flex-col items-center text-xs pointer-events-none md:hidden">
+            <div className={`absolute ${showTags ? 'bottom-28' : 'bottom-16'} left-1/2 -translate-x-1/2 text-white/80 flex flex-col items-center text-xs pointer-events-none md:hidden`}>
               <ChevronUp className="h-4 w-4 animate-bounce mb-1" />
               <span>Info</span>
+            </div>
+          )}
+
+          {/* Tag lozenges, just above the action bar: visible without flipping, phone and desktop (owner, 27 Oct) */}
+          {!zoomSrc && showTags && (
+            <div className="w-full px-4 pt-2 flex justify-center">
+              <TagLozenges
+                key={`${tagBucket}/${currentImage.id}`}
+                variant="dark"
+                className="justify-center"
+                bucket={tagBucket as string}
+                filename={currentImage.id}
+                tags={tagMeta.tags}
+                tagging={tagMeta.tagging}
+                favorite={!!currentImage.isFavourite}
+                isVideo={isVideo}
+                onTagsChange={(patch) => {
+                  currentImage.metadata = { ...(currentImage.metadata || {}), ...patch };
+                  bumpItems();
+                }}
+                onFavoriteChange={(fav) => {
+                  currentImage.isFavourite = fav;
+                  bumpItems();
+                }}
+              />
             </div>
           )}
 
