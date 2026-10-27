@@ -38,6 +38,9 @@ sharing a `batch_id`.
 | `error` | string \| null | plain-text reason when failed |
 | `runpod_job_id`, `endpoint_id` | string \| null | RunPod identifiers once submitted |
 | `created_at`, `submitted_at`, `started_at`, `finished_at`, `updated_at` | number \| null | epoch seconds |
+| `generating_at` | number \| null | first ComfyUI step frame from the worker relay (models loaded, sampling begun); null if the worker never sent one |
+| `publishing_at` | number \| null | when the status became `publishing` |
+| `estimate` | object \| null | expected phase lengths, see "Phases and the time estimate" |
 | `duration_s` | number \| null | created → finished |
 | `cost_gbp` | number \| null | GPU cost |
 | `seed` | number \| null | |
@@ -50,6 +53,35 @@ worker) → `running` → `publishing` (output back; publishing, costing) → on
 `cancelled`. Active = the first four. A RunPod timeout or a 20-minute local timeout is `failed` (and the
 RunPod job is cancelled). Jobs still active when Flask stops are marked `failed` ("Server restarted")
 at the next start, and their RunPod jobs are cancelled.
+
+## Phases and the time estimate
+
+| phase | from → to | learned? |
+|---|---|---|
+| preparing ("Imagining") | `created_at` → `submitted_at` | yes: `prepare_s` |
+| getting ready | `submitted_at` → `generating_at` (GPU queue, cold boot, model load) | **never** |
+| generating | `generating_at` → `publishing_at` | yes: `generate_s` |
+| publishing | `publishing_at` → `finished_at` | yes: `publish_s` |
+
+`started_at` is RunPod's IN_PROGRESS (or the first relay frame). `generating_at` is stamped by the tracker on
+the first ComfyUI `progress` frame for the job (`on_worker_frame`), and published and saved at once.
+
+Cold starts vary from seconds to minutes, so the "getting ready" phase is deliberately left out: it is not
+learned, not exposed, and fills only a small fixed slice of the ring. Generation on a warm worker is steady
+per workflow, and that is what the estimate and the ring measure.
+
+`estimate` = `{prepare_s, generate_s, publish_s, samples, basis}` (routes/jobs/estimate.py). Each phase is the
+median over the last 30 completed jobs of the same workflow that have `created_at`, `submitted_at`,
+`generating_at`, `publishing_at` and `finished_at` (`basis: "workflow"`, needs ≥ 3), else over the last 30
+of any workflow (`"all"`, ≥ 3), else defaults 4 / 30 / 3 s (`"default"`). A job without `generating_at`
+(a worker without the relay) is not a sample. A phase that is negative or over 30 min is ignored. Results
+are cached per workflow for 60 s. The estimate is set when the job is made and redone once when its workflow
+becomes known; it doesn't change after that.
+
+Clients turn it into the ring and the words: `src/shared/jobs/estimate.ts` (`jobProgress`, `useJobProgress`:
+fraction, remaining seconds, phase; generating is corrected upward by `percent`; never backwards, never full
+before done) and `src/shared/jobs/words.ts` (the stage labels and "About 30 seconds"-style text, in one place).
+If `generating_at` is null the client takes generation to start at `started_at`.
 
 ## HTTP API (Flask, `/api`)
 

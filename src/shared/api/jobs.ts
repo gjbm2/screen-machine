@@ -4,6 +4,19 @@ import { apiUrl, jsonInit, requestJson } from '@/shared/http/client';
 export type JobStatus = 'preparing' | 'queued' | 'running' | 'publishing' | 'completed' | 'failed' | 'cancelled';
 export type JobSource = 'generator' | 'scheduler' | 'alexa' | 'api';
 
+/**
+ * Usual seconds for the predictable phases, learned from recent jobs (docs/JOBS.md). Waiting for a GPU (queue, cold
+ * boot, model load) varies too much and is never estimated.
+ */
+export interface JobEstimate {
+  prepare_s: number;
+  /** generating_at -> publishing_at on a warm GPU */
+  generate_s: number;
+  publish_s: number;
+  samples: number;
+  basis: 'workflow' | 'all' | 'default';
+}
+
 export interface Job {
   id: string;
   batch_id: string | null;
@@ -28,6 +41,10 @@ export interface Job {
   created_at: number;
   submitted_at: number | null;
   started_at: number | null;
+  /** First real progress frame from the worker (models loaded, sampling begun); null without the relay. */
+  generating_at?: number | null;
+  /** When it began publishing. Both optional: absent on jobs from before the fields existed. */
+  publishing_at?: number | null;
   finished_at: number | null;
   updated_at: number;
   duration_s: number | null;
@@ -36,6 +53,8 @@ export interface Job {
   result_url: string | null;
   published_path: string | null;
   cancel_requested: boolean;
+  /** How long each phase usually takes; null (or absent, from an older server) when not known. */
+  estimate?: JobEstimate | null;
 }
 
 export const ACTIVE_STATUSES: readonly JobStatus[] = ['preparing', 'queued', 'running', 'publishing'];
