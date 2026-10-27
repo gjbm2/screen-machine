@@ -27,7 +27,6 @@ import io
 import json
 import logging
 import os
-import re
 import time
 from pathlib import Path
 from typing import Any, Optional
@@ -60,10 +59,23 @@ DEFAULT_REFRESH = {"live": 60, "normal": 900}
 log = logging.getLogger("dot_service")
 
 
+_OPEN, _CLOSE = "'\"‘“", "'\"’”"
+
+
 def first_quoted(text: str) -> str:
-    """The first 'quoted' phrase in text ("" if none), without trailing punctuation inside the quotes."""
-    m = re.search(r"[‘'\"“]([^'’\"”]{3,80}?)[,.;:]?[’'\"”]", text)
-    return m.group(1).strip() if m else ""
+    """The first 'quoted' phrase in text ("" if none), without trailing punctuation inside the quotes. A quote
+    mark between letters is an apostrophe ("Today's", "Luke’s"), not a quote."""
+    def letter(i: int) -> bool:
+        return 0 <= i < len(text) and text[i].isalnum()
+    for i, c in enumerate(text):
+        if c in _OPEN and not letter(i - 1) and letter(i + 1):
+            for j in range(i + 2, min(len(text), i + 100)):
+                if text[j] in _CLOSE and not (letter(j - 1) and letter(j + 1)):
+                    phrase = text[i + 1:j].rstrip(" ,.;:")
+                    if len(phrase) >= 3:
+                        return phrase
+                    break
+    return ""
 
 
 def mmss(s: float) -> str:
@@ -251,7 +263,9 @@ class DotService:
             t = art.get("theme") or {}
             theme = str(values.get(t.get("variable")) or "")
             if theme and t.get("quoted"):
-                theme = first_quoted(theme) or str(values.get(t.get("else")) or "")
+                # the quoted title, else a short inspiration is its own title, else the fallback variable
+                theme = first_quoted(theme) or (theme.strip(" \"'") if len(theme) <= 60 else
+                                                str(values.get(t.get("else")) or ""))
             style = str(values.get(art.get("style")) or "")
 
         qr = tag.spec.get("qr") or {}
