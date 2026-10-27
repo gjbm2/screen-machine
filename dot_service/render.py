@@ -385,7 +385,8 @@ def render(card: Card, types: Optional[dict] = None) -> Image.Image:
         qy = (bottom - 3 * card.qr_px - q.height) if card.hint else H - EDGE - q.height
         img.paste(q, (cx0, qy))
 
-    d.line((cx0 - 8, 3, cx0 - 8, (bottom - 5) if card.hint else H - 4), fill=0)   # the column's rule
+    for ry in range(3, ((bottom - 5) if card.hint else H - 4) + 1, 3):   # the column's rule, dotted like the other
+        img.putpixel((cx0 - 8, ry), 0)
 
     # The mode may overhang the column into the gutter, and wraps to two lines (Lights / only), else smaller.
     mw = cw + 6                            # the column's rule is 8 px to its left
