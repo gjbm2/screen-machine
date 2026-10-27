@@ -14,6 +14,7 @@ thresholded. Sent with ditherType NONE so the pixels arrive as drawn.
       Scene: Apollonian foam                     live: the screens' scene and the room's feel
       Dusk · mellow, warm · 86 bpm
     Mic: listening for Auto              19:42   why the mic is on (else the room); when this was drawn
+    ███ Say “Computer, use AI”   Tap phone ▶ ███   art mode: how to use the room (the tap area is right of the screen)
 """
 
 from __future__ import annotations
@@ -29,6 +30,7 @@ PAD = 8
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
 BODY_TOP, BODY_BOTTOM = 27, 136
+STRIP_TOP = 134                     # the art-mode instruction strip: 134..151
 
 
 @dataclass(frozen=True)
@@ -51,6 +53,8 @@ class Card:
     theme: str = ""                 # today's art theme
     style: str = ""                 # today's art style
     note: str = ""                  # footer: why the mic is on ("Mic: listening for Auto"), else the room
+    say: str = ""                   # bottom strip, art mode: the voice command ('Computer, use AI')
+    tap: str = ""                   # bottom strip: the NFC hint, pointing right to the tag's tap area
     stamp: str = field(default="", compare=False)   # "19:42"; not part of what changed
 
 
@@ -139,10 +143,10 @@ def _wrap(d: ImageDraw.ImageDraw, text: str, font: _Face, width: int, lines: int
 
 
 class _Flow:
-    """Lines stacked down the body; a line that would cross BODY_BOTTOM is dropped."""
+    """Lines stacked down the body; what doesn't fit above `bottom` is cut, the last line kept ellipsised."""
 
-    def __init__(self, img: Image.Image) -> None:
-        self.img, self.d, self.y = img, ImageDraw.Draw(img), BODY_TOP
+    def __init__(self, img: Image.Image, bottom: int = BODY_BOTTOM) -> None:
+        self.img, self.d, self.y, self.bottom = img, ImageDraw.Draw(img), BODY_TOP, bottom
 
     def text(self, text: str, bold: bool, size: int, lines: int = 1, indent: int = 0, gap: int = 2,
              lead: str = "") -> None:
@@ -150,16 +154,17 @@ class _Flow:
             return
         f = _font(bold, size)
         x = PAD + indent
+        lines = min(lines, (self.bottom - self.y + gap) // (size + gap))
+        if lines < 1:
+            return
         for i, ln in enumerate(_wrap(self.d, text, f, W - PAD - x, lines)):
-            if self.y + size > BODY_BOTTOM:
-                return
             if lead and i == 0:
                 f.draw(self.img, (PAD, self.y), lead)
             f.draw(self.img, (x, self.y), ln)
             self.y += size + gap
 
     def bar(self, frac: float, indent: int = 0) -> None:
-        if self.y + 6 > BODY_BOTTOM:
+        if self.y + 6 > self.bottom:
             return
         x0, x1 = PAD + indent, W - PAD
         y = self.y + 2
@@ -199,7 +204,19 @@ def render(card: Card) -> Image.Image:
     _font(True, 13).draw(img, (PAD, 3), _ellipsis(d, mode, _font(True, 13), left - PAD - 6))
     d.line((PAD, 21, W - PAD, 21), fill=0)
 
-    flow = _Flow(img)
+    # Bottom strip (art mode): how to use the room, for whoever picks the tag up.
+    strip = bool(card.say or card.tap)
+    if strip:
+        d.rectangle((0, STRIP_TOP, W - 1, H - 1), fill=0)
+        f = _font(True, 11)
+        if card.say:
+            f.draw(img, (PAD, STRIP_TOP + 3), _ellipsis(d, f"Say “{card.say}”", f, 180), fill=1)
+        if card.tap:
+            t = f"{card.tap} ▶"
+            f.draw(img, (W - PAD - f.length(t), STRIP_TOP + 3), t, fill=1)
+    foot_y = STRIP_TOP - 15 if strip else 139
+
+    flow = _Flow(img, bottom=foot_y - 3)
     if card.title:
         lead = "‖" if card.paused else "♪"
         flow.text(card.title, True, 16, lines=2, indent=16, lead=lead)
@@ -226,7 +243,7 @@ def render(card: Card) -> Image.Image:
 
     # Footer: why the mic is on (else whose tag), and when it was drawn.
     small = _font(False, 11)
-    small.draw(img, (PAD, 139), _ellipsis(d, card.note or card.room, small, W - 2 * PAD - 40))
+    small.draw(img, (PAD, foot_y), _ellipsis(d, card.note or card.room, small, W - 2 * PAD - 40))
     if card.stamp:
-        small.draw(img, (W - PAD - small.length(card.stamp), 139), card.stamp)
+        small.draw(img, (W - PAD - small.length(card.stamp), foot_y), card.stamp)
     return img

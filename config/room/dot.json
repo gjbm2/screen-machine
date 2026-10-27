@@ -1,5 +1,5 @@
 {
-  "_comment": "E-ink tags (MindReset Dot. Quote/0, 296x152 black and white), drawn and sent by dot_service (scripts/ctl dot). Hot-reloaded. Each tag shows its room's mode with Auto, Mic and AI (filled = on), then what is playing, else (live) what the room hears, the scene and the feel, else today's art: art.theme is a scheduler variable of the room's group (quoted: true takes its first 'quoted' phrase, else the 'else' variable), art.style another. refresh_s: how often it is redrawn while a screen of the room is live / otherwise (status changes go at once); the tag's wake interval follows it. sleep: the tag's nightly sleep window (local time). link = where a phone tap goes (via the Dot. App / App Clip). The Dot. API key is in ~/.config/screen-machine/dot.json, never here.",
+  "_comment": "E-ink tags (MindReset Dot. Quote/0, 296x152 black and white), drawn and sent by dot_service (scripts/ctl dot). Hot-reloaded. Each tag shows its room's mode with Auto, Mic and AI (filled = on), then what is playing, else (live) what the room hears, the scene and the feel, else today's art: art.theme is a scheduler variable of the room's group (quoted: true takes its first 'quoted' phrase, else the 'else' variable), art.style another. refresh_s: how often it is redrawn while a screen of the room is live / otherwise (status changes go at once); the tag's wake interval follows it. sleep: the tag's nightly sleep window (local time). hint: the strip along the bottom while no screen of the room is live, telling whoever picks the tag up how to use the room (say = the Alexa phrase, tap = the NFC hint, pointing right at the tag's tap area). link = where a phone tap goes (via the Dot. App / App Clip). The Dot. API key is in ~/.config/screen-machine/dot.json, never here.",
   "tags": [
     {
       "device": "8856A6E9DD28",
@@ -7,6 +7,7 @@
       "link": "https://screen.finsburybankforsavings.com/room",
       "refresh_s": {"live": 60, "normal": 900},
       "sleep": {"start": "00:00", "end": "08:00"},
+      "hint": {"say": "Computer, use AI", "tap": "Tap phone"},
       "art": {"theme": {"variable": "inspiration", "quoted": true, "else": "a_theme"}, "style": "style"}
     }
   ]
