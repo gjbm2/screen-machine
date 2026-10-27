@@ -6,7 +6,8 @@
 //                      it; nothing at the top, so each page keeps its own short header. The docked player sits on it.
 //   iPad and desktop   a slim bar at the top: the wordmark, the places as one segmented control in the middle, and a
 //                      slot on the right (#app-nav-actions) where the page's header puts its Mic / AI switches,
-//                      pills and menu, so the page's own header is just its status line.
+//                      pills and menu, so the page's own header is just its status line. Before the slot, on every
+//                      page but Room, the room's mode as a menu (ModeMenu.tsx).
 //
 // Its height is --app-nav-top / --app-nav-bottom on <html> (index.css: body padding; the docked player sits above
 // the bottom bar). Not on the TVs' pages or the kiosk/tool pages.
@@ -17,7 +18,9 @@ import { Lamp, Music2, SlidersHorizontal, Sparkles, type LucideIcon } from "luci
 import { cn } from "@/lib/utils";
 import { useRoomGlance } from "./useRoomGlance";
 import { AppLink } from "./AppLink";
+import { RoomThemeStyle, THEME_CLASS } from "@/pages/Room/theme";
 import { PLACES, type AppPage } from "./appNav";
+import { ModeMenu } from "./ModeMenu";
 
 const NAV_PATHS = /^\/(room|music|lights|settings|scheduler)?\/?$/;
 const ICONS: Partial<Record<AppPage, LucideIcon>> = {
@@ -134,7 +137,17 @@ export function AppNav() {
           <nav aria-label="Places" className="flex items-center gap-0.5 rounded-full bg-stone-200/70 p-1">
             {places.map((p) => tab(p, "top"))}
           </nav>
-          <div id={APP_NAV_ACTIONS_ID} className="ml-auto flex min-w-0 items-center justify-end gap-1 xl:ml-0" />
+          {/* the room's mode (a menu to change it) on every page but Room, which has the mode tiles; then the page's own
+              switches and menu (the slot) */}
+          <div className="ml-auto flex min-w-0 items-center justify-end gap-1 xl:ml-0">
+            {here !== "room" && (
+              <span className={cn(THEME_CLASS, "flex shrink-0 items-center")}>
+                <RoomThemeStyle />
+                <ModeMenu />
+              </span>
+            )}
+            <div id={APP_NAV_ACTIONS_ID} className="flex min-w-0 items-center justify-end gap-1" />
+          </div>
         </div>
       </div>
 

@@ -7,7 +7,8 @@
 //          another tab, so that tab takes its address). A sub-page (Settings, Schedules; a score draws its own): "‹ back"
 //          and its title, no tabs ("‹ Room" beside a Room tab said it twice; the menu has every place).
 //          Then the state pills, the Mic and AI switches, the link's status and the menu:
-//            - state pills: "Live · Party" while a live mode runs (not where the page's line already says it),
+//            - the room's mode, a menu to change it (ModeMenu.tsx), on every page but Room; red while live;
+//            - state pills: "Live · Party" on the Room page while a live mode runs (not where its line says it),
 //              "● Recording 2:13" while the piano records (a tap: a sheet with Stop), "PC busy" (a tap says what it
 //              costs), and any the page adds;
 //            - Mic and AI: the room's two switches (TopToggles.tsx), on every page that can reach the room;
@@ -41,6 +42,7 @@ import { AppLink } from "./AppLink";
 import { PLACES, roomPageUrl, type AppPage } from "./appNav";
 import { APP_NAV_ACTIONS_ID, useAppNavShown } from "./AppNav";
 import { BackLink, placeName } from "./BackLink";
+import { ModeMenu } from "./ModeMenu";
 import { useRoomGlance } from "./useRoomGlance";
 
 /** The page's link to what it talks to, as Room's connection.ts words it. */
@@ -259,7 +261,8 @@ function HeaderBody({
   const backPlace = isPlace && back ? visiblePlaces.find((p) => p.page !== current && placeName(back.to) === p.label)?.page : undefined;
   const showBack = !!back && !isPlace;
   // the page's line already names a live mode ("Party · live on all 3 screens"): no "Live · Party" pill beside it
-  const liveShown = !!glance.liveMode && !line;
+  // (other pages: the mode menu shows the mode, red while live)
+  const liveShown = !!glance.liveMode && !line && current === "room";
 
   const statePills = (
     <>
@@ -332,6 +335,8 @@ function HeaderBody({
   const rightCluster = (
     <>
       {anyPill && <span className={cn("flex shrink-0 items-center", !slot && !navShown && "max-sm:hidden")}>{statePills}</span>}
+      {/* the room's mode as a menu (the icon alone): on a phone; wider, it's in the app's top bar (AppNav) */}
+      {!slot && current !== "room" && <ModeMenu iconOnly className={cn(!navShown && "max-sm:hidden")} />}
       {switches && <span className={cn("shrink-0", !slot && !navShown && "max-sm:hidden")}>{switches}</span>}
       {statusShown && status && (
         <button

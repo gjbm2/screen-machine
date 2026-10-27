@@ -16,7 +16,11 @@ import { Unroll } from "@/pages/Room/bits";
 import { SidePanel } from "@/pages/Room/overlays";
 import { RoomThemeStyle } from "@/pages/Room/theme";
 import { liveStateOf, useRoomLink } from "@/components/room/roomLink";
+import { modeIcon } from "@/pages/Room/modeIcons";
+import type { ModeDef } from "@/pages/Room/types";
+import { modeLabel } from "@/pages/Room/words";
 import { AppLink } from "./AppLink";
+import { useRoomGlance } from "./useRoomGlance";
 import {
   DEV_LINKS,
   displayUrl,
@@ -43,7 +47,7 @@ function NavRow({
   href: string;
   icon?: ReactNode;
   label: string;
-  hint?: string;
+  hint?: ReactNode;
   current?: boolean;
   newTab?: boolean;
   onGo: () => void;
@@ -68,7 +72,7 @@ function NavRow({
       )}
       <span className="min-w-0 flex-1">
         <span className="block text-base font-semibold leading-snug">{label}</span>
-        {hint && <span className="block text-sm leading-snug text-muted-foreground">{hint}</span>}
+        {hint && <span className="flex min-w-0 items-center gap-1 text-sm leading-snug text-muted-foreground">{hint}</span>}
       </span>
       {current ? (
         <span className="shrink-0 rounded-full bg-teal-700 px-2 py-0.5 text-xs font-semibold text-white">Here</span>
@@ -98,6 +102,24 @@ function Chip({ href, children, newTab, small, onGo }: { href: string; children:
 
 function Heading({ children }: { children: ReactNode }) {
   return <h3 className="px-1 text-sm font-semibold text-muted-foreground">{children}</h3>;
+}
+
+/** The Room row's words: the mode the room is in, with its icon ("Party · live"), else what the page is for. Read-only
+ *  (the menu is navigation and status; the mode is changed in the header's mode menu or on the Room page). */
+function RoomHint() {
+  const g = useRoomGlance();
+  if (!g.current) return <>Modes, screens, lights and music</>;
+  const def = g.modes?.[g.current] as (ModeDef & { icon?: unknown }) | undefined;
+  const Icon = modeIcon(g.current, def);
+  return (
+    <>
+      <Icon className="h-4 w-4 shrink-0" aria-hidden />
+      <span className="truncate">
+        {def?.label || modeLabel(g.current, g.modes)}
+        {g.target ? ` · switching to ${modeLabel(g.target, g.modes)}` : g.liveMode ? " · live" : ""}
+      </span>
+    </>
+  );
 }
 
 export function AppMenu({
@@ -154,7 +176,7 @@ function MenuBody({
       <nav aria-label="Go to" className="space-y-1 border-b border-stone-200/80 pb-4">
         <Heading>Go to</Heading>
         {(room.onLan || current === "room") && (
-          <NavRow href={roomPageUrl()} icon={<SlidersHorizontal className="h-5 w-5" />} label="Room" hint="Modes, screens, lights and music" current={current === "room"} onGo={close} />
+          <NavRow href={roomPageUrl()} icon={<SlidersHorizontal className="h-5 w-5" />} label="Room" hint={<RoomHint />} current={current === "room"} onGo={close} />
         )}
         {(room.onLan || current === "music") && (
           <NavRow href={musicPageUrl()} icon={<Music className="h-5 w-5" />} label="Music" hint="Pieces, playlists, recordings" current={current === "music"} onGo={close} />
