@@ -550,8 +550,18 @@ export function listeningWords(card: ShowCard | null, piano: boolean | null): st
   return [hears, piano ? "piano connected" : null].filter(Boolean).join(" · ") || "Room mic, AI listening and what it hears";
 }
 
-/** Auto's line while it watches, in plain words (show_service says "Auto · watching"). */
-const AUTO_WATCHING = "Auto · picks the mode from what it hears";
+/** What Auto is doing, in quiet words after its name ("Auto · listening to pick the mode"), from show_service's state and line
+ *  ("Auto · watching", "Auto paused · quiet hours", "Auto → Piano…", "Auto is off"); paused for your pick is "paused". */
+function autoWords(state: string | null, on: boolean, line: string): string {
+  if (!on) return "picks the mode by listening";
+  if (state === "watching") return "listening to pick the mode";
+  // the tile already says which mode you chose
+  if (state === "holding") return "paused";
+  const arrow = /^Auto\s*→\s*(.+)$/.exec(line);
+  if (arrow) return `switching to ${arrow[1]}`;
+  const rest = line.replace(/^Auto\b\s*(·\s*|is\s+)?/, "").trim();
+  return rest || "on";
+}
 
 /**
  * Auto, the room-level one: it picks the mode by itself. Its switch, its line, Resume, its chip and suggestion, and
@@ -578,7 +588,7 @@ export function AutoRow({
   const autoOn = pendingAuto ?? auto?.on === true;
   const rawLine = auto?.line?.trim() || (card ? "Auto" : "Auto · waiting for the music side");
   const resumable = /\s·\s*Resume$/.test(rawLine);
-  const autoLine = auto?.state === "watching" && autoOn ? AUTO_WATCHING : rawLine.replace(/\s·\s*Resume$/, "");
+  const autoLine = rawLine.replace(/\s·\s*Resume$/, "");
   const setAuto = (on: boolean) => {
     setPendingAuto(on);
     void autoSend
@@ -603,28 +613,25 @@ export function AutoRow({
   const resume = () => void autoSend.send("resume", "Resume Auto", () => api.showAutoResume());
   const switchTo = (mode: string, what: string) => void autoSend.send("mode", what, () => api.setMode(mode, "auto-suggestion"));
 
-  // One row (owner, 25 Oct: vertical space is at a premium): the line (with Resume in it), "How Auto picks" behind the
-  // ⓘ, and the switch. While off, what it does is in the line itself, not a second line.
-  const offWords = !autoOn && !/\s·\s/.test(autoLine) ? " · on, it picks the mode from what it hears" : "";
+  // One plain row over the mode tiles, not a card (owner, 27 Oct: the bold two-line card was "ugly" and fought the
+  // tiles): "Auto" as the switch's name, then what it's doing in quiet words on one line, "How Auto picks" behind the
+  // ⓘ, and the switch at the end, as a settings row reads. Resume is its own link, so it never truncates away.
   return (
-    <div className={cn(CARD_CLASS, "py-0.5 pl-3 pr-2 sm:pl-4")} data-testid="music-auto">
-      <div className="flex min-h-11 items-center gap-1">
-        <p className="line-clamp-2 min-w-0 flex-1 py-1 text-[15px] leading-snug" data-testid="music-auto-line">
-          <span className="font-semibold">{autoLine}</span>
-          {offWords && <span className="text-muted-foreground">{offWords}</span>}
-          {resumable && (
-            <>
-              {" · "}
-              <button
-                type="button"
-                onClick={resume}
-                className="-my-2 inline-flex min-h-11 items-center gap-1 px-0.5 align-middle font-semibold text-teal-800 underline underline-offset-2 hover:text-teal-900"
-              >
-                {autoSend.busy("resume") && <Spinner />}Resume
-              </button>
-            </>
-          )}
+    <div data-testid="music-auto">
+      <div className="flex min-h-11 items-center gap-1 pl-1">
+        <p className="min-w-0 flex-1 truncate text-[15px] leading-snug" data-testid="music-auto-line" title={autoLine}>
+          <span className="font-semibold">Auto</span>
+          <span className="text-muted-foreground"> · {autoWords(auto?.state ?? null, autoOn, autoLine)}</span>
         </p>
+        {resumable && (
+          <button
+            type="button"
+            onClick={resume}
+            className="inline-flex min-h-11 shrink-0 items-center gap-1 px-1.5 text-[15px] font-semibold text-teal-800 underline underline-offset-2 hover:text-teal-900"
+          >
+            {autoSend.busy("resume") && <Spinner />}Resume
+          </button>
+        )}
         <Popover>
           <PopoverTrigger
             aria-label="How Auto picks"
@@ -645,7 +652,7 @@ export function AutoRow({
         </span>
       </div>
       {(auto?.chip?.text || (auto?.suggest?.text && auto.suggest.mode) || autoSend.note) && (
-        <div className="space-y-1.5 pb-2 pr-1">
+        <div className="space-y-1.5 pb-2">
       {auto?.chip?.text && <AutoChip chip={auto.chip} busy={autoSend.busy("undo")} onUndo={undo} />}
       {auto?.suggest?.text && auto.suggest.mode && (
         <button

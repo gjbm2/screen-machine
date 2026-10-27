@@ -519,7 +519,7 @@ export default function RoomPage() {
                         <section id="modes" aria-label="Modes" className="scroll-mt-[calc(var(--app-top,0px)+0.5rem)]">
                           {/* Auto above the modes (owner, 24 Oct: "why wouldn't auto switch be ABOVE the various modes? it
                               determines them after all") */}
-                          <div className="mb-2">
+                          <div className="mb-1">
                             <AutoRow api={room.api} feed={show} addLog={room.addLog} onEdit={editRule} current={status.mode?.current} />
                           </div>
                           <ModeSwitcher

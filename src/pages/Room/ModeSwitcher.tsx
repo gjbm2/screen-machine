@@ -16,24 +16,9 @@ import {
   CircleCheck,
   CircleDashed,
   CircleHelp,
-  Clapperboard,
-  Disc3,
-  FlaskConical,
-  House,
-  Image as ImageIcon,
-  Lamp,
-  LayoutGrid,
   Minus,
-  Moon,
   MoreHorizontal,
-  Music,
-  PartyPopper,
   Pencil,
-  Piano,
-  Power,
-  Sparkles,
-  Sun,
-  Waves,
   X,
   type LucideIcon,
 } from "lucide-react";
@@ -55,6 +40,8 @@ import { explainError, RoomApi, RoomApiError } from "./api";
 import { Notice, Spinner } from "./bits";
 import { sceneChoices, type SceneChoice } from "./catalog";
 import { EditModesSheet, type EditModesRow } from "./EditModesSheet";
+import { modeIcon } from "./modeIcons";
+export { MODE_ICONS, modeIcon } from "./modeIcons";
 import { THEME_CLASS } from "./theme";
 import { TEXT_CLASSES, TONE_CLASSES, stepTone, type Tone } from "./tones";
 import type {
@@ -250,43 +237,6 @@ function removeMode(
   out.push(...unpair(modes, name, describe, label, nameOf));
   cfg.modes = modes;
   return out;
-}
-
-/** The room's mode icons by their modes.json name (room_service's ICONS; the editor's picker draws these). */
-export const MODE_ICONS: Record<string, LucideIcon> = {
-  home: House,
-  music: Music,
-  piano: Piano,
-  party: PartyPopper,
-  disco: Disc3,
-  film: Clapperboard,
-  moon: Moon,
-  sun: Sun,
-  sparkles: Sparkles,
-  power: Power,
-  lamp: Lamp,
-  image: ImageIcon,
-  waves: Waves,
-  grid: LayoutGrid,
-  flask: FlaskConical,
-};
-
-/** A mode's icon: its own ("icon" in modes.json), else a fitting one guessed from its name and label. */
-export function modeIcon(name: string, def?: { label?: string; icon?: unknown } | null): LucideIcon {
-  const own = typeof def?.icon === "string" ? MODE_ICONS[def.icon] : undefined;
-  return own ?? guessIcon(name, def?.label);
-}
-
-/** The guess, from words in the mode's name and label, else a neutral one. */
-function guessIcon(name: string, label?: string): LucideIcon {
-  const s = `${name} ${label ?? ""}`.toLowerCase().replace(/[-_]/g, " ");
-  if (/\b(disco|party|dance|club)\b/.test(s)) return PartyPopper;
-  if (/\b(music|sonos|piano|tracks?|songs?|listen|radio)\b/.test(s)) return Music;
-  if (/\b(night|sleep|off|rest|quiet|bed)\b/.test(s)) return Moon;
-  if (/\b(movies?|films?|cinema|watch)\b/.test(s)) return Clapperboard;
-  if (/\b(gallery|art|frames?|pictures?|photos?)\b/.test(s)) return ImageIcon;
-  if (/\b(live|show|perform|set|visuals?)\b/.test(s)) return Sparkles;
-  return LayoutGrid;
 }
 
 /** A save the room turned down, in words (the server's own list goes to the activity log). */

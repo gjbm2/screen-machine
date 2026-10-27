@@ -1,6 +1,7 @@
-// The room at a glance, for every page's header (PageHeader.tsx): is a live mode running, and which. Read from the
-// shared room link (roomLink.ts: one probe and one events socket for the page, started by any user), so it costs no
-// polling. The modes' own labels ("Party", "Piano") are read once from room_service and again when modes.json changes.
+// The room at a glance, for every page's header (PageHeader.tsx, AppNav's mode menu, the app menu): the mode it is in
+// (and going to), and whether a screen is live. Read from the shared room link (roomLink.ts: one probe and one events
+// socket for the page, started by any user), so it costs no polling. The modes themselves (labels, icons) are read once
+// from room_service and again when modes.json changes.
 
 import { useEffect, useState } from "react";
 import { liveStateOf, roomApi, useRoomLink } from "@/components/room/roomLink";
@@ -37,6 +38,13 @@ export interface RoomGlance {
   onLan: boolean | null;
   /** A screen is live (or going live): the running mode's label, e.g. "Party". Null when every screen shows art. */
   liveMode: string | null;
+  /** The mode the room is in, and the one it's switching to (null when not switching). Null without the room. */
+  current: string | null;
+  target: string | null;
+  /** The modes, in the file's order (null until read). */
+  modes: Record<string, ModeDef> | null;
+  /** This page may switch the room. */
+  canControl: boolean;
 }
 
 export function useRoomGlance(): RoomGlance {
@@ -52,13 +60,17 @@ export function useRoomGlance(): RoomGlance {
   useEffect(() => {
     const fn = () => bump((n) => n + 1);
     subs.add(fn);
-    if (live && current && room.canControl) loadModes(rev);
+    if (current && room.canControl) loadModes(rev);
     return () => {
       subs.delete(fn);
     };
-  }, [live, current, rev, room.canControl]);
+  }, [current, rev, room.canControl]);
   return {
     onLan: room.onLan,
     liveMode: live ? (current ? modeLabel(current, modes) : "Live") : null,
+    current,
+    target: status?.mode?.target && status.mode.target !== current ? status.mode.target : null,
+    modes,
+    canControl: room.canControl,
   };
 }
