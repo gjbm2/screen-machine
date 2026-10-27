@@ -3,7 +3,7 @@
 Type is bitmap-native: fonts drawn on a pixel grid at the one size they are used at, so every glyph is the designer's
 pixels, not an outline rasterised and hinted into 1 bit (that left lopsided o's and 0's). OFL fonts, Latin subsets
 in dot_service/fonts: Galmuri 9 at 10 px (text, switches), Galmuri 11 and 11 Bold at 12 px (the mode, the bottom
-line), Jersey 25 at 21 px (headlines). Glyphs are laid out with FreeType directly (freetype-py) at whole-pixel
+line), Galmuri 14 at 15 px, pixel-doubled bold (headlines). Glyphs are laid out with FreeType directly (freetype-py) at whole-pixel
 advances. Sent with ditherType NONE so the pixels arrive as drawn.
 
     screen/machine | Today's art          │  Normal      the right-hand column, the QR code's width, all
@@ -32,7 +32,7 @@ FONTS = Path(__file__).resolve().parent / "fonts"
 SMALL = (str(FONTS / "Galmuri9.ttf"), 10, 12)          # path, px, line height: text
 BODY = (str(FONTS / "Galmuri11.ttf"), 12, 13)          # the bar, the bottom line (serifed I: "AI" reads right)
 BODY_BOLD = (str(FONTS / "Galmuri11-Bold.ttf"), 12, 13)
-HEAD = (str(FONTS / "Jersey25-Regular.ttf"), 21, 22)   # headlines (Jersey 25 is cleaner at 21 px than 20 is)
+HEAD = (str(FONTS / "Galmuri14.ttf"), 15, 19)          # headlines, drawn bold (each stroke doubled)
 COL_W = 50                                 # the right-hand column's width when there is no QR code
 EDGE = 4                                   # the QR's white margin to the glass edge (the white bezel adds more)
 
@@ -191,6 +191,7 @@ class _Flow:
             return
         small, body, head = _fonts()
         f = {"small": small, "body": body, "head": head}[kind]
+        bold = bold or kind == "head"
         words = text.split()
         n = 0
         while words and n < lines and self.y + f.px <= self.bottom:
