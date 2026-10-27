@@ -35,7 +35,8 @@
              ("listening" ~ (" · " ~ LISTEN.mic.why.split(": ")[-1].replace("Listening for ", "for ") if LISTEN.mic.why else "")) if LISTEN.mic.on
                else ("off" if LISTEN.mic.allowed == false else ("not in use" if LISTEN.mic.allowed else "unknown")),
              "on the Room page" if LISTEN.mic.allowed == false else "") }}
-      {{ row("AI listening", LISTEN.ai, "on" if LISTEN.ai else ("off" if LISTEN.ai == false else "unknown"), "on the Room page") }}
+      {{ row("AI listening", LISTEN.ai, "on" if LISTEN.ai else ("off" if LISTEN.ai == false else "unknown"),
+             "computer, use AI to stop AI listening" if LISTEN.ai else ("computer, use AI to turn on AI listening" if LISTEN.ai == false else "")) }}
     </div>
     {% endif %}
 
@@ -52,7 +53,7 @@
           This is <span style="font-weight: 400;">{{ SCREEN_NAME }}</span>.
         </div>
         <div style="font-size: 0.6em; opacity: 0.6; margin-top: 1em;">
-          screen-machine@gregmarsh.co.uk
+          screen.finsburybankforsavings.com
         </div>
       {% endif %}
     </div>

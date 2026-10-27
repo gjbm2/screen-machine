@@ -524,7 +524,7 @@ def process(data):
                 use_system_prompt="alexa-load-schedule.txt.j2"
             case "unload_schedule":
                 use_system_prompt="alexa-unload-schedule.txt.j2"
-            case "mode" | "scene" | "effect" | "add_effect" | "auto" | "room":
+            case "mode" | "scene" | "effect" | "add_effect" | "auto" | "listening" | "room":
                 use_system_prompt="alexa-room.txt.j2"
             # The room's fixed phrases (no free text to read): straight to the room intents, no triage
             case "next_scene":
@@ -535,6 +535,11 @@ def process(data):
                 on = alexa_intent == "auto_on"
                 result = {"intent": "set_auto", "data": {"on": on}}
                 response_ssml = Brianize("Auto on. I'm listening. I'm always listening." if on else "Auto off. I've stopped listening.")
+            case "ai_on" | "ai_off":
+                on = alexa_intent == "ai_on"
+                result = {"intent": "set_listening", "data": {"on": on}}
+                response_ssml = Brianize("AI listening on. Now something cleverer than you is listening." if on
+                                         else "AI listening off. I'll just listen myself, then.")
             case "which_mode":
                 response_ssml = Brianize(f"We're in {subs['ROOM_MODE_CURRENT']} mode, and Auto is {subs['ROOM_AUTO']}.")
             case "sleep":
@@ -784,6 +789,14 @@ def process(data):
                         response_ssml = Brianize(f"Auto didn't change. {detail}.")
                 else:
                     response_ssml = Brianize("Auto on, or auto off? I can't do both.")
+            case "set_listening":
+                on = (result.get("data") or {}).get("on")
+                if isinstance(on, bool):
+                    ok, detail = room_client.set_listening(on)
+                    if not ok:
+                        response_ssml = Brianize(f"AI listening didn't change. {detail}.")
+                else:
+                    response_ssml = Brianize("AI listening on, or off? Make up your mind.")
             case "cue_scene":
                 # By voice name only (config/live/voice_names.yaml); a named pick pauses the director's own scene
                 # changes on those screens until "change the scene" or a mode change (owner 18 Oct).
