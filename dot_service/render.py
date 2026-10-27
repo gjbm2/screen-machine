@@ -229,7 +229,7 @@ def _pixels(img: Image.Image, x: int, y: int, rows: list[str]) -> None:
     """A small icon drawn pixel by pixel (Pillow's small shapes come out lumpy at 1 bit)."""
     for r, row in enumerate(rows):
         for c, ch in enumerate(row):
-            if ch == "x":
+            if ch == "x" and 0 <= x + c < img.width and 0 <= y + r < img.height:   # big type can push it off
                 img.putpixel((x + c, y + r), 0)
 
 
@@ -293,7 +293,8 @@ class _Flow:
         if self.y + 6 > self.bottom:
             return
         for x in range(PAD, self.right(4) + 1, 3):
-            self.img.putpixel((x, self.y + 2), 0)
+            if 0 <= self.y + 2 < self.img.height:
+                self.img.putpixel((x, self.y + 2), 0)
         self.y += 6
 
     def brand(self, label: str) -> None:
