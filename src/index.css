@@ -110,7 +110,8 @@
     padding-left: env(safe-area-inset-left);
     padding-right: env(safe-area-inset-right);
     /* the docked player's height while it shows (components/player/DockedPlayer.tsx), so it never covers the page's end */
-    padding-bottom: var(--dock-h, 0px);
+    /* and the phone's bottom tab bar under it (components/nav/AppNav.tsx) */
+    padding-bottom: calc(var(--dock-h, 0px) + var(--app-nav-bottom, 0px));
   }
 }
 

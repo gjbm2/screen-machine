@@ -20,7 +20,8 @@
 //
 // Links are AppLinks (no reload). The TV pages (/display) never use this.
 
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ChevronRight, Menu, Square } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -31,13 +32,14 @@ import { Dot, Spinner } from "@/pages/Room/bits";
 import { ActionSheet } from "@/pages/Room/overlays";
 import { NewTakePanel, useRecorder, type Recorder } from "@/pages/Room/PianoRecorder";
 import { clock } from "@/pages/Room/RecordButton";
-import { RoomThemeStyle } from "@/pages/Room/theme";
+import { RoomThemeStyle, THEME_CLASS } from "@/pages/Room/theme";
 import { TONE_CLASSES, type Tone } from "@/pages/Room/tones";
 import { NoteLine, useShowFeed } from "@/pages/Room/MusicCard";
 import { TopToggleButtons, topToggleWords, useTopToggles, type TopToggles } from "@/pages/Room/TopToggles";
 import type { PcLoad } from "@/pages/Room/usePcLoad";
 import { AppLink } from "./AppLink";
 import { PLACES, roomPageUrl, type AppPage } from "./appNav";
+import { APP_NAV_ACTIONS_ID, useAppNavShown } from "./AppNav";
 import { BackLink, placeName } from "./BackLink";
 import { useRoomGlance } from "./useRoomGlance";
 
@@ -198,6 +200,23 @@ function RecordingSheet({ r, baseUrl, open, onClose }: { r: Recorder; baseUrl: s
   );
 }
 
+/** The top bar's action slot (AppNav, >= 640 px), once it's in the page; null on a phone or without the bar. */
+function useNavActionsSlot(): HTMLElement | null {
+  const navShown = useAppNavShown();
+  const [wide, setWide] = useState(() => typeof window !== "undefined" && window.matchMedia("(min-width: 640px)").matches);
+  const [slot, setSlot] = useState<HTMLElement | null>(null);
+  useEffect(() => {
+    const mq = window.matchMedia("(min-width: 640px)");
+    const on = () => setWide(mq.matches);
+    mq.addEventListener("change", on);
+    return () => mq.removeEventListener("change", on);
+  }, []);
+  useEffect(() => {
+    setSlot(navShown && wide ? document.getElementById(APP_NAV_ACTIONS_ID) : null);
+  }, [navShown, wide]);
+  return slot;
+}
+
 function HeaderBody({
   title,
   current,
@@ -231,8 +250,11 @@ function HeaderBody({
   // the tabs are on the places themselves, where this page's highlighted tab is the title (no second "Room" beside
   // the Room tab); a sub-page has its back link and title instead ("‹ Room" beside a Room tab said it twice), and the
   // menu has every place
+  const navShown = useAppNavShown();
+  const slot = useNavActionsSlot();
   const isPlace = visiblePlaces.length > 1 && visiblePlaces.some((p) => p.page === current);
-  const showPlaces = isPlace;
+  // the app's tab bar (AppNav) carries the places on every page that has it; this header only without it
+  const showPlaces = isPlace && !navShown;
   // a place's back link would name another tab ("‹ Room" beside the Room tab): that tab takes the back link's address
   const backPlace = isPlace && back ? visiblePlaces.find((p) => p.page !== current && placeName(back.to) === p.label)?.page : undefined;
   const showBack = !!back && !isPlace;
@@ -306,58 +328,75 @@ function HeaderBody({
   );
 
   const switches = toggles && <TopToggleButtons t={toggles} onDetails={details} />;
+  // pills, switches, connection, the page's actions and the menu: row 1's right half (or the top bar's slot)
+  const rightCluster = (
+    <>
+      {anyPill && <span className={cn("flex shrink-0 items-center", !slot && !navShown && "max-sm:hidden")}>{statePills}</span>}
+      {switches && <span className={cn("shrink-0", !slot && !navShown && "max-sm:hidden")}>{switches}</span>}
+      {statusShown && status && (
+        <button
+          type="button"
+          onClick={onMenu}
+          aria-label={`${status.word}${status.sentence ? `: ${status.sentence}` : ""} Open the menu.`}
+          title={status.sentence}
+          data-testid="conn-pill"
+          className="group grid h-11 shrink-0 place-items-center rounded-full px-0.5 focus-visible:outline-none"
+        >
+          <span className={cn(PILL, TONE_PILL[status.tone])}>
+            <Dot tone={status.tone} pulse={status.pulse} className="h-2.5 w-2.5" />
+            <span data-testid="conn-state" className="max-sm:sr-only">
+              {status.word}
+            </span>
+          </span>
+        </button>
+      )}
+      {actions}
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={onMenu}
+        aria-label="Menu"
+        data-testid="menu-button"
+        className="-mr-2 h-11 w-11 shrink-0 rounded-full hover:bg-stone-200/60 [&_svg]:size-6"
+      >
+        <Menu />
+      </Button>
+    </>
+  );
 
   return (
     <header className={cn("pt-2", className)} data-testid="page-header">
-      {/* Row 1: a place: its tabs; a sub-page: back and title. The pills and switches sit here from 640 px (on a phone
-          they end row 2, so this row never wraps). */}
+      {/* Row 1. With the app's tab bar on a wide screen its right half (pills, switches, menu) is in the bar's slot,
+          and a place has no row 1 at all (its tab is its title); a sub-page keeps back and title here. On a phone the
+          page's title and the switches share this row (the tabs are at the bottom). */}
+      {slot &&
+        createPortal(
+          <div className={cn(THEME_CLASS, "flex min-w-0 items-center gap-x-1")}>
+            <RoomThemeStyle />
+            {rightCluster}
+          </div>,
+          slot,
+        )}
+      {!(slot && isPlace) && (
       <div className="flex min-w-0 items-center gap-x-1">
         {showBack && back && <BackLink to={back.to} label={back.label} className="max-sm:pr-1" />}
         <h1
           className={cn(
             "min-w-0 truncate font-semibold leading-tight tracking-tight",
-            isPlace ? "sr-only" : compact || showBack ? "text-[22px]" : "text-[28px]",
-            !isPlace && "mr-2",
+            isPlace && showPlaces ? "sr-only" : compact || showBack || navShown ? "text-[22px]" : "text-[28px]",
+            !(isPlace && showPlaces) && "mr-2",
           )}
         >
           {title}
         </h1>
         {showPlaces && <div className="min-w-0">{placesNav}</div>}
         <span aria-hidden className="flex-1" />
-        {anyPill && <span className="flex shrink-0 items-center max-sm:hidden">{statePills}</span>}
-        {switches && <span className="shrink-0 max-sm:hidden">{switches}</span>}
-        {statusShown && status && (
-          <button
-            type="button"
-            onClick={onMenu}
-            aria-label={`${status.word}${status.sentence ? `: ${status.sentence}` : ""} Open the menu.`}
-            title={status.sentence}
-            data-testid="conn-pill"
-            className="group grid h-11 shrink-0 place-items-center rounded-full px-0.5 focus-visible:outline-none"
-          >
-            <span className={cn(PILL, TONE_PILL[status.tone])}>
-              <Dot tone={status.tone} pulse={status.pulse} className="h-2.5 w-2.5" />
-              <span data-testid="conn-state" className="max-sm:sr-only">
-                {status.word}
-              </span>
-            </span>
-          </button>
-        )}
-        {actions}
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onMenu}
-          aria-label="Menu"
-          data-testid="menu-button"
-          className="-mr-2 h-11 w-11 shrink-0 rounded-full hover:bg-stone-200/60 [&_svg]:size-6"
-        >
-          <Menu />
-        </Button>
+        {!slot && rightCluster}
       </div>
+      )}
 
       {/* Row 2: one status line (tap = Listening details); on a phone the pills and switches end it */}
-      {(hasLine || anyPill || switches) && (
+      {(hasLine || (!navShown && (anyPill || switches))) && (
         <div className="flex min-w-0 items-center gap-x-1">
           {toggles?.note ? (
             <NoteLine note={toggles.note} className="min-w-0 flex-1 py-1 text-sm" />
@@ -382,8 +421,8 @@ function HeaderBody({
           ) : (
             <span className="flex-1" />
           )}
-          {anyPill && <span className="flex shrink-0 items-center sm:hidden">{statePills}</span>}
-          {switches && <span className="shrink-0 sm:hidden">{switches}</span>}
+          {anyPill && !navShown && <span className="flex shrink-0 items-center sm:hidden">{statePills}</span>}
+          {switches && !navShown && <span className="shrink-0 sm:hidden">{switches}</span>}
         </div>
       )}
 

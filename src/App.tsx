@@ -23,6 +23,7 @@ import StartPage from './pages/Settings/Start';
 import { DarkMode } from './darkMode';
 import { AppPlayerProvider } from "@/components/player/appPlayer";
 import { DockedPlayer } from "@/components/player/DockedPlayer";
+import { AppNav } from "@/components/nav/AppNav";
 
 const queryClient = new QueryClient();
 
@@ -35,6 +36,8 @@ const App = () => (
           <Toaster />
           <Sonner />
           <AppPlayerProvider>
+          {/* the app's places: a top bar on iPad and desktop, a bottom tab bar on a phone */}
+          <AppNav />
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/display/:screenId" element={<DisplayPage />} />

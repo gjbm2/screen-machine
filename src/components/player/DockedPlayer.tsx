@@ -117,7 +117,9 @@ export function DockedPlayer() {
           ref={ref}
           className={cn(
             THEME_CLASS,
-            "pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] text-base antialiased",
+            // on a phone it sits on the app's bottom tab bar (which keeps the safe area), else at the screen's foot
+            "pointer-events-none fixed inset-x-0 bottom-[var(--app-nav-bottom,0px)] z-40 px-3 text-base antialiased",
+            "pb-[max(0.5rem,env(safe-area-inset-bottom))] [.has-app-nav_&]:max-sm:pb-2",
           )}
           data-testid="docked-player"
         >
