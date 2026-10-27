@@ -37,8 +37,8 @@
     "text": {
       "font": "Galmuri9.ttf",
       "px": 10,
-      "bold": "double",
       "line": 12,
+      "bold": "double",
       "serif_i": true
     },
     "ui": {
@@ -51,6 +51,12 @@
       "above_rule": 0,
       "above_head": 3,
       "below_head": 3
+    },
+    "side": {
+      "font": "Pixeloid.Sans.ttf",
+      "px": 9,
+      "line": 12,
+      "bold": "Pixeloid.Sans-Bold.ttf"
     }
   }
 }
