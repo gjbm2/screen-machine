@@ -149,7 +149,7 @@ def _card(base: Optional[R.Card], body: dict) -> R.Card:
 
 def specimen(spec: dict) -> Image.Image:
     """The role's font: the alphabet, figures and a sample, regular and bold."""
-    f = R._role(spec, R._fonts()[1])
+    f = R._role(spec, R._fonts()[1])   # (text, ui, head, side): ui is the fallback
     lines = ["ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz", "0123456789 · → … ' \" & ( ) / : , .",
              "The Turning of the Hour  AI Il1|"]
     h = (f.line + 2) * (len(lines) * 2) + 6
@@ -264,10 +264,10 @@ button.ghost{background:transparent;color:var(--accent)}
 </section>
 <div id="roles"></div>
 </div>
-<section class="spec"><h2>Specimen <select id="specrole" style="width:auto;display:inline-block;margin-left:8px"><option value="head">Headline</option><option value="text">Text</option><option value="ui">Mode &amp; bottom line</option></select></h2><img id="spec" alt="Specimen"></section>
+<section class="spec"><h2>Specimen <select id="specrole" style="width:auto;display:inline-block;margin-left:8px"><option value="head">Headline</option><option value="text">Text</option><option value="ui">Name, mode &amp; bottom line</option><option value="side">Clock &amp; switches</option></select></h2><img id="spec" alt="Specimen"></section>
 </main>
 <script>
-const ROLES={head:"Headline",text:"Text, labels, switches",ui:"Mode & bottom line"};
+const ROLES={head:"Headline",text:"Text",ui:"Name, mode & bottom line",side:"Clock & switches"};
 let FONTS=[],TYPES={},timer=null;
 const $=id=>document.getElementById(id);
 function opt(f){const s=f.sizes.length?` [${f.sizes.join(", ")} px]`:"";return `<option value="${f.id}">${f.name}${s} — ${f.where}</option>`}

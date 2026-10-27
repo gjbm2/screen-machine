@@ -43,7 +43,8 @@ DEFAULT_TYPES = {
     "head": ({"font": _ARIAL, "px": 17, "bold": _ARIAL.replace("arial.ttf", "arialbd.ttf")} if os.path.exists(_ARIAL)
              else {"font": "Galmuri14.ttf", "px": 15, "line": 19, "bold": "double"}),
     "text": {"font": "Galmuri9.ttf", "px": 10, "line": 12, "serif_i": True},       # text, labels, switches
-    "ui": {"font": "Galmuri11.ttf", "px": 12, "line": 13, "bold": "Galmuri11-Bold.ttf"},  # mode, bottom line
+    "ui": {"font": "Galmuri11.ttf", "px": 12, "line": 13, "bold": "Galmuri11-Bold.ttf"},  # brand, mode, bottom line
+    "side": {"font": "Pixeloid.Sans.ttf", "px": 9, "line": 12, "bold": "Pixeloid.Sans-Bold.ttf"},  # clock, switches
 }
 FALLBACK = {"font": "Galmuri11.ttf", "px": 12, "line": 13}
 # The left column's gaps (px), also set in the type lab: above the dotted rule, between it and the headline,
@@ -203,14 +204,14 @@ def _role(spec: dict, fallback: Optional["_Face"]) -> "_Face":
     return f
 
 
-def _fonts(types: Optional[dict] = None) -> tuple["_Face", "_Face", "_Face"]:
-    """(text, ui, head) for a type spec (DEFAULT_TYPES when None); built once per spec."""
+def _fonts(types: Optional[dict] = None) -> tuple["_Face", "_Face", "_Face", "_Face"]:
+    """(text, ui, head, side) for a type spec (DEFAULT_TYPES when None); built once per spec."""
     t = {**DEFAULT_TYPES, **{k: v for k, v in (types or {}).items() if k in DEFAULT_TYPES}}
     key = json.dumps(t, sort_keys=True)
     if key not in _cache:
         fb = _Face(font_path(FALLBACK["font"])[0], FALLBACK["px"], FALLBACK["line"])
         ui = _role(t["ui"], fb)
-        _cache[key] = (_role(t["text"], ui), ui, _role(t["head"], ui))
+        _cache[key] = (_role(t["text"], ui), ui, _role(t["head"], ui), _role(t["side"], ui))
         if len(_cache) > 32:
             _cache.pop(next(iter(_cache)))
     return _cache[key]
@@ -253,7 +254,7 @@ class _Flow:
     def text(self, text: str, kind: str = "small", lines: int = 1, bold: bool = False) -> None:
         if not text:
             return
-        small, body, head = self.faces
+        small, body, head = self.faces[:3]
         f = {"small": small, "body": body, "head": head}[kind]
         bold = bold or kind == "head"
         words = text.split()
@@ -298,7 +299,7 @@ class _Flow:
     def brand(self, label: str) -> None:
         """The app's name, styled like its logo (screen and machine bold, the slash light), a thin divider, then
         label (e.g. "Today's art")."""
-        small, body, _ = self.faces
+        small, body = self.faces[:2]
         x, y = PAD, self.y
         base = y - 1 + body.ascender                   # one baseline for the name and the label
         for part, bold in (("screen", True), ("/", False), ("machine", True)):
@@ -363,7 +364,7 @@ def render(card: Card, types: Optional[dict] = None) -> Image.Image:
     img = Image.new("1", (W, H), 1)
     d = ImageDraw.Draw(img)
     faces = _fonts(types)
-    small, body, head = faces
+    small, body, head, side = faces
 
     # Bottom line: how to use the room, white on black, centred.
     bottom = H
@@ -387,12 +388,12 @@ def render(card: Card, types: Optional[dict] = None) -> Image.Image:
 
     # The mode may overhang the column into the gutter, and wraps to two lines (Lights / only), else smaller.
     mw = cw + 6                            # the column's rule is 8 px to its left
-    mf, mbold, lines = _fit_lines(card.mode, [(body, True), (small, False)], mw, 2)
+    mf, mbold, lines = _fit_lines(card.mode, [(body, True), (side, True)], mw, 2)
     if card.changing_from and len(lines) == 1 and mf.length("→" + lines[0], mbold) <= mw:
         lines = ["→" + lines[0]]           # switching: the arrow if it fits
     toggles = [("Auto", card.auto), ("Mic", card.mic), ("AI", card.ai)]
-    step = max(13, small.line + 1)         # a switch row
-    show_time = bool(card.stamp) and 2 + mf.line * len(lines) + small.line + 3 + step * len(toggles) <= qy - 4
+    step = max(13, side.line + 1)          # a switch row
+    show_time = bool(card.stamp) and 2 + mf.line * len(lines) + side.line + 3 + step * len(toggles) <= qy - 4
     y = 2
     for ln in lines:   # centred on the column; a wider line overhangs left only (never off the glass)
         lx0, _, lx1, _ = _ink(mf, ln, mbold)
@@ -400,17 +401,17 @@ def render(card: Card, types: Optional[dict] = None) -> Image.Image:
         mf.draw(img, (x, y), ln, bold=mbold)
         y += mf.line
     if show_time:   # a small clock and the time it was drawn
-        tw = 10 + small.length(card.stamp)
+        tw = 10 + side.length(card.stamp)
         tx = cx0 + (cw - tw) // 2
         _pixels(img, tx, y + 2, _CLOCK_S)
-        _centred(img, small, card.stamp, (tx + 10, y + 2, tx + tw, y + 8))
-        y += small.line
+        _centred(img, side, card.stamp, (tx + 10, y + 2, tx + tw, y + 8))
+        y += side.line
     y += 3
-    lw = max(small.length(label) for label, _ in toggles)
+    lw = max(side.length(label) for label, _ in toggles)
     tx = cx0 + (cw - (len(_SWITCH_ON[0]) + 4 + lw)) // 2
     for label, on in toggles:   # a switch drawing (knob right on black = on) and its name, as a left-aligned block
         _pixels(img, tx, y + 1, _SWITCH_ON if on else _SWITCH_OFF)
-        _centred(img, small, label, (tx + len(_SWITCH_ON[0]) + 4, y + 1, tx + len(_SWITCH_ON[0]) + 4, y + 9),
+        _centred(img, side, label, (tx + len(_SWITCH_ON[0]) + 4, y + 1, tx + len(_SWITCH_ON[0]) + 4, y + 9),
                  left=True)
         y += step
 
