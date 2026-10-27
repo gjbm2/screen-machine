@@ -6,9 +6,9 @@ in dot_service/fonts: Galmuri 9 at 10 px (text, switches), Galmuri 11 and 11 Bol
 line), Jersey 20 at 20 px (headlines). Glyphs are laid out with FreeType directly (freetype-py) at whole-pixel
 advances. Sent with ditherType NONE so the pixels arrive as drawn.
 
-    Today's art                              Normal      the right-hand column, the QR code's width, all
-    The Turning of the Hour                 ◷ 20:58      centred: the mode, when this was drawn,
-    ──────────────────────────────────────   ■▫ Auto     Auto / Mic / AI as small switches (knob right
+    screen/machine | Today's art          │  Normal      the right-hand column, the QR code's width, all
+    The Turning of the Hour               │ ◷ 20:58      centred, behind a rule: the mode, when this was drawn,
+    · · · · · · · · · · · · · · · · · · · │  ■▫ Auto     Auto / Mic / AI as small switches (knob right
     in the style of Harry Callahan, using    ■▫ Mic      on black = on); the mode may wrap to two lines
     high-contrast silhouettes and light      ▫■ AI       and overhang the column (Lights / only)
     trails to suggest the movement of time   ┌────┐      the site, for any phone camera (no app)
@@ -220,10 +220,25 @@ class _Flow:
         self.y += px
 
     def rule(self) -> None:
+        """A light dotted rule (every third pixel)."""
         if self.y + 6 > self.bottom:
             return
-        self.d.line((PAD, self.y + 2, self.right(4), self.y + 2), fill=0)
+        for x in range(PAD, self.right(4) + 1, 3):
+            self.img.putpixel((x, self.y + 2), 0)
         self.y += 6
+
+    def brand(self, label: str) -> None:
+        """The app's name, styled like its logo (screen and machine bold, the slash light), a thin divider, then
+        label (e.g. "Today's art")."""
+        small, body, _ = _fonts()
+        x, y = PAD, self.y
+        for part, bold in (("screen", True), ("/", False), ("machine", True)):
+            body.draw(self.img, (x, y - 1), part, bold=bold)
+            x += body.length(part, bold)
+        x += 6
+        self.d.line((x, y + 1, x, y + 10), fill=0)
+        small.draw(self.img, (x + 6, y), _ellipsis(small, label, self.right(12) - x - 6))
+        self.y += 14
 
 
 def _qr(url: str, px: int) -> Image.Image:
@@ -296,8 +311,10 @@ def render(card: Card) -> Image.Image:
         qy = (bottom - 3 * card.qr_px - q.height) if card.hint else H - EDGE - q.height
         img.paste(q, (cx0, qy))
 
+    d.line((cx0 - 8, 3, cx0 - 8, (bottom - 5) if card.hint else H - 4), fill=0)   # the column's rule
+
     # The mode may overhang the column into the gutter, and wraps to two lines (Lights / only), else smaller.
-    mw = cw + 12
+    mw = cw + 6                            # the column's rule is 8 px to its left
     mf, mbold, lines = _fit_lines(card.mode, [(body, True), (small, False)], mw, 2)
     if card.changing_from and len(lines) == 1 and mf.length("→" + lines[0], mbold) <= mw:
         lines = ["→" + lines[0]]           # switching: the arrow if it fits
@@ -324,7 +341,7 @@ def render(card: Card) -> Image.Image:
         y += 13
 
     # What matters now, left of the bar.
-    flow = _Flow(img, bottom=bottom - 4, narrow_until=H, narrow_right=cx0 - 10)
+    flow = _Flow(img, bottom=bottom - 4, narrow_until=H, narrow_right=cx0 - 15)
     if card.title:
         flow.text(card.title, "head", lines=2)
         flow.text(" · ".join(x for x in (card.by, "paused" if card.paused else card.left) if x))
@@ -339,14 +356,14 @@ def render(card: Card) -> Image.Image:
             flow.text(f"Today's art: {card.theme}" if card.theme else "")
             flow.text(card.style, lines=4)
     elif card.live:
-        flow.text("Hearing")
+        flow.brand("Hearing")
         flow.text(card.hearing or "—", "head")
         flow.space(2)
         flow.text(f"Scene: {card.scene}" if card.scene else "")
         flow.text(card.feel, lines=2)
         flow.text(f"Art: {card.theme}" if card.theme else "")
     else:
-        flow.text("Today's art")
+        flow.brand("Today's art")
         flow.text(card.theme, "head", lines=2)
         flow.rule()
         flow.text(card.style, lines=6)
