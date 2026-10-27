@@ -46,6 +46,11 @@
       "px": 12,
       "bold": "Galmuri11-Bold.ttf",
       "line": 13
+    },
+    "space": {
+      "above_rule": 0,
+      "above_head": 3,
+      "below_head": 3
     }
   }
 }

@@ -164,7 +164,9 @@ def specimen(spec: dict) -> Image.Image:
 
 def save_types(types: dict, config: Path) -> dict:
     """Put types in config (top-level "types"); library fonts used are copied into dot_service/fonts."""
-    for spec in types.values():
+    for role, spec in types.items():
+        if role not in R.DEFAULT_TYPES:
+            continue
         for key in ("font", "bold"):
             name = spec.get(key)
             if not name or name in ("double", "none") or Path(name.partition("#")[0]).is_absolute():
@@ -183,7 +185,7 @@ def routes(app: web.Application, svc: Any, config: Path) -> None:
 
     async def fonts(_: web.Request) -> web.Response:
         return web.json_response({"fonts": library(), "defaults": R.DEFAULT_TYPES, "current": svc.types or {},
-                                  "samples": list(SAMPLES)})
+                                  "space": R.DEFAULT_SPACE, "samples": list(SAMPLES)})
 
     async def preview(request: web.Request) -> web.Response:
         body = await request.json()
@@ -205,6 +207,7 @@ def routes(app: web.Application, svc: Any, config: Path) -> None:
         types = body.get("types") or {}
         try:
             R._fonts(types)                       # it must build before it goes in config
+            R.render(_card(None, {"sample": "art"}), types)
         except (FileNotFoundError, freetype.FT_Exception, KeyError, ValueError) as e:
             return web.json_response({"error": str(e)}, status=400)
         save_types(types, config)
@@ -254,6 +257,11 @@ button.ghost{background:transparent;color:var(--accent)}
 <label>Headline text</label><input id="headline" placeholder="(from the content)">
 <label>Mode</label><input id="mode" placeholder="(from the content)">
 </section>
+<section><h2>Spacing (px)</h2>
+<div class="row"><div><label>Above the rule</label><input id="sp-above_rule" type="number" min="0" max="20"></div>
+<div><label>Rule to headline</label><input id="sp-above_head" type="number" min="0" max="20"></div>
+<div><label>Under headline</label><input id="sp-below_head" type="number" min="0" max="20"></div></div>
+</section>
 <div id="roles"></div>
 </div>
 <section class="spec"><h2>Specimen <select id="specrole" style="width:auto;display:inline-block;margin-left:8px"><option value="head">Headline</option><option value="text">Text</option><option value="ui">Mode &amp; bottom line</option></select></h2><img id="spec" alt="Specimen"></section>
@@ -276,10 +284,13 @@ function build(){$("roles").innerHTML=Object.entries(ROLES).map(([r,label])=>`<s
   else if(f&&f.where==="outline"&&+$(r+"-px").value<13)$(r+"-px").value=14;
   if(f)$(r+"-bold").value=f.bold||(/bold/i.test(f.name)?"none":"double");$(r+"-line").value="";go()};
   ["px","line","scale","bold","serif_i"].forEach(k=>$(r+"-"+k).oninput=go)})}
-function setTypes(t){Object.entries(t).forEach(([r,s])=>{if(!$(r+"-font"))return;$(r+"-font").value=s.font;$(r+"-px").value=s.px;$(r+"-line").value=s.line||"";
+const SPACE=["above_rule","above_head","below_head"];
+function setTypes(t){const sp={...window.DEFSPACE,...(t.space||{})};SPACE.forEach(k=>$("sp-"+k).value=sp[k]);
+ Object.entries(t).forEach(([r,s])=>{if(!$(r+"-font"))return;$(r+"-font").value=s.font;$(r+"-px").value=s.px;$(r+"-line").value=s.line||"";
  $(r+"-scale").value=s.scale||1;$(r+"-bold").value=s.bold||"double";$(r+"-serif_i").checked=!!s.serif_i})}
 function types(){const t={};Object.keys(ROLES).forEach(r=>{const s={font:$(r+"-font").value,px:+$(r+"-px").value,bold:$(r+"-bold").value};
- if($(r+"-line").value)s.line=+$(r+"-line").value;if(+$(r+"-scale").value>1)s.scale=+$(r+"-scale").value;if($(r+"-serif_i").checked)s.serif_i=true;t[r]=s});return t}
+ if($(r+"-line").value)s.line=+$(r+"-line").value;if(+$(r+"-scale").value>1)s.scale=+$(r+"-scale").value;if($(r+"-serif_i").checked)s.serif_i=true;t[r]=s});
+ t.space={};SPACE.forEach(k=>t.space[k]=+$("sp-"+k).value||0);return t}
 function cardEdits(){const c={},h=$("headline").value,m=$("mode").value,s=$("sample").value;
  if(h)c[{art:"theme",live:"theme",playing:"title",hearing:"hearing"}[s]]=h;if(m)c.mode=m;return c}
 function go(){clearTimeout(timer);timer=setTimeout(draw,120)}
@@ -295,8 +306,8 @@ async function draw(){$("status").textContent="";const t=types();
  await img("/api/v1/specimen",{spec:t[$("specrole").value]},$("spec"))}
 async function init(){const d=await (await fetch("/api/v1/fonts")).json();FONTS=d.fonts;build();
  $("sample").innerHTML=`<option value="live">What the tag shows now</option>`+d.samples.map(s=>`<option>${s}</option>`).join("");
- const cur={...d.defaults,...d.current};setTypes(cur);window.TAG=cur;
- ["sample","zoom","headline","mode","specrole"].forEach(id=>$(id).oninput=go);
+ window.DEFSPACE=d.space;const cur={...d.defaults,...d.current};setTypes(cur);window.TAG=cur;
+ ["sample","zoom","headline","mode","specrole",...SPACE.map(k=>"sp-"+k)].forEach(id=>$(id).oninput=go);
  $("reset").onclick=()=>{setTypes(window.TAG);go()};
  $("apply").onclick=async()=>{const r=await fetch("/api/v1/types",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({types:types()})});
   const j=await r.json();$("saved").textContent=r.ok?"Saved — the tag updates within a few seconds.":j.error;if(r.ok)window.TAG=types()};draw()}
