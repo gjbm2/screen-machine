@@ -12,8 +12,9 @@ thresholded. Sent with ditherType NONE so the pixels arrive as drawn.
       Scene: Apollonian foam                     live: the screens' scene and the room's feel
       Dusk · mellow, warm · 86 bpm
     ────────────────────────────────────────────
-    Normal updated 19:42         (Auto)(Mic)(AI)     the mode, when this was drawn; filled = on, outlined = off
-    ███ Say "Computer, use AI"   Tap phone ▶ ███   art mode: how to use the room (the tap area is right of the screen)
+    Normal updated 19:42       ● Auto  ● Mic  ○ AI    the mode (→ Party while switching), when drawn; ● = on
+    ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    Say "Computer, use AI"         Tap phone ▶     art mode: how to use the room (the tap area is right of the screen)
 """
 
 from __future__ import annotations
@@ -29,10 +30,12 @@ W, H = 296, 152
 PAD = 8
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-# White-on-black labels (the strip, the pills): Verdana Bold, drawn for small sizes on screens (wide spacing, open
-# counters, so it survives e-ink bleed); DejaVu Bold if Windows' fonts aren't mounted.
+# Small labels (the strip, the status switches): Verdana, drawn for small sizes on screens (wide spacing, open
+# counters, so it survives e-ink bleed); DejaVu if Windows' fonts aren't mounted.
 _VERDANA_BOLD = "/mnt/c/Windows/Fonts/verdanab.ttf"
+_VERDANA = "/mnt/c/Windows/Fonts/verdana.ttf"
 FONT_LABEL = _VERDANA_BOLD if os.path.exists(_VERDANA_BOLD) else FONT_BOLD
+FONT_LABEL_REGULAR = _VERDANA if os.path.exists(_VERDANA) else FONT
 BODY_TOP, BODY_BOTTOM = 5, H - 3
 STRIP_TOP = 131                     # the art-mode instruction strip: 131..151
 
@@ -182,19 +185,30 @@ class _Flow:
         self.y += px
 
 
+_DOT_ON = ["..xxxxx..", ".xxxxxxx.", "xxxxxxxxx", "xxxxxxxxx", "xxxxxxxxx", "xxxxxxxxx", "xxxxxxxxx",
+           ".xxxxxxx.", "..xxxxx.."]
+_DOT_OFF = ["..xxxxx..", ".xx...xx.", "xx.....xx", "x.......x", "x.......x", "x.......x", "xx.....xx",
+            ".xx...xx.", "..xxxxx.."]
+
+
+def _dot(img: Image.Image, x: int, y: int, on: bool) -> None:
+    """A 9-px dot drawn pixel by pixel (Pillow's small ellipses come out lumpy at 1 bit)."""
+    for r, row in enumerate(_DOT_ON if on else _DOT_OFF):
+        for c, ch in enumerate(row):
+            if ch == "x":
+                img.putpixel((x + c, y + r), 0)
+
+
 def _pills(img: Image.Image, items: list[tuple[str, bool]], top: int) -> int:
-    """Right-aligned status pills: filled = on, outlined = off. Returns their left edge."""
-    d, f = ImageDraw.Draw(img), _font(True, 10, FONT_LABEL)
+    """Right-aligned status switches, black on white (white-on-black small text bleeds shut on e-ink): on = a
+    filled dot and bold label, off = a hollow dot and plain label. Returns their left edge."""
     x = W - PAD
     for label, on in reversed(items):
-        w = f.length(label) + 11
-        box = (x - w, top, x, top + 14)
-        if on:
-            d.rounded_rectangle(box, radius=7, fill=0)
-        else:
-            d.rounded_rectangle(box, radius=7, outline=0, fill=1)
-        f.draw(img, (x - w + 6, top + 1), label, fill=1 if on else 0)
-        x -= w + 4
+        f = _font(on, 11, FONT_LABEL if on else FONT_LABEL_REGULAR)
+        x0 = x - f.length(label) - 13
+        _dot(img, x0, top + 4, on)
+        f.draw(img, (x0 + 13, top + 1), label)
+        x = x0 - 10
     return x
 
 
@@ -205,22 +219,22 @@ def render(card: Card) -> Image.Image:
 
     # Bottom strip (art mode): how to use the room, for whoever picks the tag up.
     strip = bool(card.say or card.tap)
-    if strip:
-        d.rectangle((0, STRIP_TOP, W - 1, H - 1), fill=0)
+    if strip:   # black on white under a heavy rule: reversed small text bleeds shut on e-ink
+        d.rectangle((0, STRIP_TOP, W - 1, STRIP_TOP + 2), fill=0)
         f = _font(True, 12, FONT_LABEL)
-        ty = STRIP_TOP + 4
+        ty = STRIP_TOP + 5
         if card.say:
-            f.draw(img, (PAD, ty), _ellipsis(d, f'Say "{card.say}"', f, 185), fill=1)
+            f.draw(img, (PAD, ty), _ellipsis(d, f'Say "{card.say}"', f, 185))
         if card.tap:   # an arrow at the right edge, at the tag's NFC area
             ax = W - PAD
-            d.polygon([(ax - 6, ty + 2), (ax, ty + 6), (ax - 6, ty + 10)], fill=1)
-            f.draw(img, (ax - 11 - f.length(card.tap), ty), card.tap, fill=1)
+            d.polygon([(ax - 6, ty + 2), (ax, ty + 6), (ax - 6, ty + 10)], fill=0)
+            f.draw(img, (ax - 11 - f.length(card.tap), ty), card.tap)
 
     # Status row, under a rule: the mode, when this was drawn, and Auto / Mic / AI.
-    row = (STRIP_TOP if strip else H) - 18
+    row = (STRIP_TOP if strip else H) - 19
     d.line((PAD, row - 4, W - PAD, row - 4), fill=0)
     left = _pills(img, [("Auto", card.auto), ("Mic", card.mic), ("AI", card.ai)], row)
-    mode = f"{card.changing_from} → {card.mode}" if card.changing_from else card.mode
+    mode = f"→ {card.mode}" if card.changing_from else card.mode
     mf, tf = _font(True, 13), _font(False, 11)
     stamp = f"updated {card.stamp}" if card.stamp else ""
     if stamp and mf.length(mode) + 6 + tf.length(stamp) > left - PAD - 6:
