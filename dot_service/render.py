@@ -409,8 +409,9 @@ def render(card: Card, types: Optional[dict] = None) -> Image.Image:
     # What matters now, left of the bar, in one pattern whatever the mode: screen/machine | what this is, a
     # dotted rule, the headline, then the detail.
     flow = _Flow(img, faces, bottom=bottom - 4, narrow_until=H, narrow_right=cx0 - 15)
-    if card.title:                          # music playing (the player or the room's Sonos), any mode
-        flow.brand("Paused" if card.paused else "Now playing")
+    paused = f"Paused: {card.title}" + (f" · {card.by}" if card.by else "") if card.title and card.paused else ""
+    if card.title and not card.paused:      # music playing (the player or the room's Sonos), any mode
+        flow.brand("Now playing")
         flow.rule()
         flow.text(card.title, "head", lines=2)
         flow.text(" · ".join(x for x in (card.by, card.left) if x))
@@ -424,19 +425,23 @@ def render(card: Card, types: Optional[dict] = None) -> Image.Image:
         else:                               # the screens show the art
             flow.text(f"Today's art: {card.theme}" if card.theme else "")
             flow.text(card.style, lines=3)
-    elif card.live:                         # live, nothing playing: what the room hears
+    elif card.live:                         # live, nothing playing (a paused piece is a line, not the headline)
         flow.brand("Hearing")
         flow.rule()
         flow.text(card.hearing or "—", "head")
         flow.space(3)
         flow.text(f"Scene: {card.scene}" if card.scene else "")
         flow.text(card.feel, lines=2)
+        flow.text(paused)
         flow.text(f"AI: {card.ai_heard}" if card.ai_heard else "", lines=3)
     else:                                   # the art
         flow.brand("Today's art")
         flow.rule()
         flow.text(card.theme, "head", lines=2)
         flow.space(3)
-        flow.text(card.style, lines=6)
+        flow.text(card.style, lines=6 if not paused else 4)
+        if paused:
+            flow.space(3)
+            flow.text(paused)
 
     return img

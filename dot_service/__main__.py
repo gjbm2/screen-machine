@@ -6,7 +6,7 @@ scheduler variables (Flask :5000: today's art), draws each tag's card (render.py
 Image API (the device has no LAN API).
 
 When it sends:
-- status (mode, Auto, mic, AI, live) changed: as soon as it has held SETTLE_S;
+- status (mode, Auto, mic, AI, live, the piece playing or paused) changed: as soon as it has held SETTLE_S;
 - anything else: once per refresh period, refresh_s.live while a screen of the room is live, else
   refresh_s.normal; the card is redrawn then even if nothing changed, so its clock says how fresh it is.
 The tag's own wake interval follows the same period (Dot. Settings API), and its sleep window is the config's.
@@ -117,7 +117,8 @@ class Tag:
 
 
 def status_of(c: Card) -> tuple:
-    return (c.mode, c.changing_from, c.auto, c.mic, c.ai, c.live)
+    """What goes out at once when it changes: the mode, the switches, live, and which piece plays or is paused."""
+    return (c.mode, c.changing_from, c.auto, c.mic, c.ai, c.live, c.title, c.paused)
 
 
 class DotService:
