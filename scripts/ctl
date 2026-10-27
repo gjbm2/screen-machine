@@ -6,7 +6,7 @@
 # screen-machine-04). Room management runs inside the Flask process (since 14 Oct), not here.
 #
 # Usage:
-#   scripts/ctl start|stop|restart <stream|all> [--force]
+#   scripts/ctl start|stop|restart <stream|show|dot|all> [--force]
 #   scripts/ctl status [stream|all]          exit 0 running+healthy, 3 stopped, 1 unhealthy
 #   scripts/ctl health stream                GET /healthz
 #   scripts/ctl logs stream [N]              last N log lines (default 200)
@@ -31,8 +31,11 @@ svc_def() {
     show)
       SESSION="sm-show$SUFFIX"; MODULE=show_service; PY="$HOME/.venvs/sm-show/bin/python"
       ENVF="$ENV_DIR/sm-show.env"; KEY=SHOW; LOG="$LOG_DIR/show_service.log"; WAIT=45 ;;
+    dot)
+      SESSION="sm-dot$SUFFIX"; MODULE=dot_service; PY="$HOME/.venvs/sm-show/bin/python"
+      ENVF="$ENV_DIR/sm-dot.env"; KEY=DOT; LOG="$LOG_DIR/dot_service.log"; WAIT=15 ;;
     room) echo "ctl: room management now runs inside the Flask process (./start.sh ... flask); not managed here" >&2; exit 64 ;;
-    *) echo "ctl: unknown service '$1' (stream|show|all)" >&2; exit 64 ;;
+    *) echo "ctl: unknown service '$1' (stream|show|dot|all)" >&2; exit 64 ;;
   esac
   PIDF="$RUN_DIR/$SESSION.pid"
 }
@@ -131,10 +134,10 @@ for_each() {   # for_each <fn> <stream|all> [args...] — aggregates exit codes 
   local fn="$1" target="$2"; shift 2
   local list rc=0 r
   case "$target" in
-    all) list="stream show" ;;
-    stream|show) list="$target" ;;
+    all) list="stream show dot" ;;
+    stream|show|dot) list="$target" ;;
     room) echo "ctl: room management now runs inside the Flask process (./start.sh ... flask); not managed here" >&2; exit 64 ;;
-    *) echo "ctl: unknown service '$target' (stream|show|all)" >&2; exit 64 ;;
+    *) echo "ctl: unknown service '$target' (stream|show|dot|all)" >&2; exit 64 ;;
   esac
   for s in $list; do
     r=0; "$fn" "$s" "$@" || r=$?
