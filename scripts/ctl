@@ -32,7 +32,7 @@ svc_def() {
       SESSION="sm-show$SUFFIX"; MODULE=show_service; PY="$HOME/.venvs/sm-show/bin/python"
       ENVF="$ENV_DIR/sm-show.env"; KEY=SHOW; LOG="$LOG_DIR/show_service.log"; WAIT=45 ;;
     dot)
-      SESSION="sm-dot$SUFFIX"; MODULE=dot_service; PY="$HOME/.venvs/sm-show/bin/python"
+      SESSION="sm-dot$SUFFIX"; MODULE=dot_service; PY="$HOME/.venvs/sm-dot/bin/python"
       ENVF="$ENV_DIR/sm-dot.env"; KEY=DOT; LOG="$LOG_DIR/dot_service.log"; WAIT=15 ;;
     room) echo "ctl: room management now runs inside the Flask process (./start.sh ... flask); not managed here" >&2; exit 64 ;;
     *) echo "ctl: unknown service '$1' (stream|show|dot|all)" >&2; exit 64 ;;
