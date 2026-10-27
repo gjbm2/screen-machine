@@ -132,7 +132,7 @@ export function AppNav() {
         {/* iPad: the places left, the page's switches right; desktop (>= 1280): the wordmark left, places centred */}
         <div className="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 xl:grid xl:grid-cols-[1fr_auto_1fr]">
           <span className="hidden truncate text-[15px] font-semibold tracking-tight text-stone-700 xl:block">
-            {here === "generator" ? "" : "screen/machine"}
+            screen/machine
           </span>
           <nav aria-label="Places" className="flex items-center gap-0.5 rounded-full bg-stone-200/70 p-1">
             {places.map((p) => tab(p, "top"))}

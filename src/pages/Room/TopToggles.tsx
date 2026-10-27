@@ -140,19 +140,19 @@ function TopSwitch({
       aria-label={name}
       title={`${name}: ${checked ? "on" : "off"}${onDetails ? " (hold for details)" : ""}`}
       data-testid={testId}
-      className="group grid h-11 shrink-0 touch-manipulation select-none place-items-center rounded-full px-0.5 focus-visible:outline-none [-webkit-touch-callout:none]"
+      className="group grid h-11 shrink-0 touch-manipulation select-none place-items-center rounded-full px-0.5 focus-visible:outline-none max-sm:px-0 [-webkit-touch-callout:none]"
       {...press}
     >
       <span
         className={cn(
-          "inline-flex h-9 items-center gap-1.5 rounded-full border px-2.5 text-[15px] font-semibold shadow-sm group-focus-visible:ring-2 group-focus-visible:ring-ring",
+          "inline-flex h-9 items-center gap-1.5 rounded-full border px-2.5 text-[15px] font-semibold shadow-sm max-sm:gap-1 max-sm:px-2 group-focus-visible:ring-2 group-focus-visible:ring-ring",
           active ? activeClass : "border-stone-200/80 bg-card text-stone-700 group-hover:bg-stone-50",
         )}
       >
         {busy ? (
           <Spinner className="h-3.5 w-3.5" />
         ) : (
-          active && <span aria-hidden className={cn("h-2 w-2 shrink-0 rounded-full motion-safe:animate-pulse", dotClass)} />
+          active && <span aria-hidden className={cn("h-2 w-2 shrink-0 rounded-full motion-safe:animate-pulse max-sm:hidden", dotClass)} />
         )}
         {label}
         <span

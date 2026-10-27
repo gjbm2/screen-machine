@@ -88,7 +88,7 @@ export function ModeMenu({ iconOnly = false, className }: { iconOnly?: boolean; 
         data-testid="header-mode"
         aria-label={`Mode: ${label}${going ? " (switching)" : live ? " (live)" : ""}. Change mode`}
         title={err ?? (going ? `Switching to ${label}` : `${label}${live ? " · live" : ""}: change mode`)}
-        className={cn("group grid h-11 shrink-0 place-items-center rounded-full px-0.5 focus-visible:outline-none", className)}
+        className={cn("group grid h-11 shrink-0 place-items-center rounded-full px-0.5 focus-visible:outline-none max-sm:px-0", className)}
       >
         <span
           className={cn(

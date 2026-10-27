@@ -82,6 +82,8 @@ export interface PageHeaderProps {
   places?: boolean;
   /** Smaller title, for the desktop power pages (the generator, Schedules). */
   compact?: boolean;
+  /** No status line from the switches' words ("mic in use for Auto"): a page where height matters more (the generator). */
+  quiet?: boolean;
   /** Under the rows (e.g. the Room page's "PC busy" sentence). */
   children?: ReactNode;
   className?: string;
@@ -233,6 +235,7 @@ function HeaderBody({
   back,
   places = true,
   compact = false,
+  quiet = false,
   children,
   className,
 }: Omit<PageHeaderProps, "toggles"> & { toggles: TopToggles | null }) {
@@ -290,7 +293,7 @@ function HeaderBody({
 
   // Row 2's words: the page's line, then what the switches add beyond on/off ("mic in use for Auto"); a tap opens
   // the Listening details. A failed or retrying switch tap's words take the switches' part.
-  const toggleWords = toggles && !toggles.note ? topToggleWords(toggles) : null;
+  const toggleWords = toggles && !toggles.note && !quiet ? topToggleWords(toggles) : null;
   const words = [line, toggleWords].filter(Boolean).join(" · ");
   const hasLine = !!words || !!toggles?.note;
 
@@ -388,8 +391,8 @@ function HeaderBody({
         <h1
           className={cn(
             "min-w-0 truncate font-semibold leading-tight tracking-tight",
-            isPlace && showPlaces ? "sr-only" : compact || showBack || navShown ? "text-[22px]" : "text-[28px]",
-            !(isPlace && showPlaces) && "mr-2",
+            isPlace && showPlaces ? "sr-only" : compact || showBack || navShown ? "text-[22px] max-sm:text-[20px]" : "text-[28px]",
+            !(isPlace && showPlaces) && "mr-2 max-sm:mr-0.5",
           )}
         >
           {title}
