@@ -203,6 +203,29 @@ def test_audio_goes_as_input_audio_with_text_modality(server, layer):
     assert base64.b64decode(parts[2]["input_audio"]["data"]) == b"ID3fake-mp3"
 
 
+def test_an_image_part_reaches_the_server_unchanged(server, layer):
+    img = {"type": "image_url", "image_url": {"url": "data:image/jpeg;base64,/9j/4AAQSkZJRg==", "detail": "low"}}
+    res = llm.call_json("t", system="s", user=["the prompt", img], tool=TOOL)
+    assert res.ok
+    req = server.requests[-1]
+    assert req["messages"][1]["content"] == [{"type": "text", "text": "the prompt"}, img]
+    assert "modalities" not in req
+
+
+def test_a_model_override_calls_only_that_model(server, layer):
+    layer.cfg.write_text(layer.cfg.read_text().replace(
+        "tasks:\n", "tasks:\n  u:\n    models:\n      - {provider: openai, model: m3, options: {temperature: 0.5}}\n"))
+    llm.reload(force=True)
+    res = llm.call_json("t", system="s", user="u", tool=TOOL, model="m3")
+    assert res.ok and res.model == "m3" and res.attempts == [{"model": "m3", "error": None}]
+    assert server.requests[-1]["temperature"] == 0.5                  # borrows the options llm.yaml gives m3
+    assert server.requests[-1]["max_completion_tokens"] == 50          # the task's own settings otherwise
+    server.behaviour["m2"] = "500"
+    res = llm.call_json("t", system="s", user="u", tool=TOOL, model="openai/m2")
+    assert not res.ok and [a["model"] for a in res.attempts] == ["m2"]  # no fallback to the task's list
+    assert _ledger(layer.ledger)[-1]["task"] == "t"
+
+
 @pytest.mark.parametrize("bad", ["invalid", "bad_json", "no_tool", "500"])
 def test_a_failure_moves_to_the_next_model(server, layer, bad):
     server.behaviour["m1"] = bad

@@ -81,6 +81,13 @@ tasks:
       - {provider: openai, model: gpt-4o}
     timeout_s: 3.5
     max_output_tokens: 1024
+  tag:                                      # art tags (routes/art_tags; docs/ART_TAGS.md; owner, 27 Oct): one saved
+    models:                                 # picture (a 768 px JPEG) + its prompt -> a few lexicon words and scores
+      - {provider: gemini, model: gemini-3.1-flash-lite}   # the prompt task's proven vision model; no thinking.
+      # No OpenAI fallback, on purpose: a backfill of thousands of pictures must never send images to gpt-4o (about
+      # 10x the price) during a Gemini 429. The queue backs off and retries instead.
+    timeout_s: 30                           # per call; the queue retries a timeout later
+    max_output_tokens: 800                  # the answer is ~250 tokens of JSON
 
 # USD per 1M tokens. text_in, text_out, and optionally audio_in and cached_in (each defaults to text_in when left out).
 # A key may be a glob (gemini-*-flash): an exact id wins; a glob prices an id the listener discovered.
@@ -106,3 +113,6 @@ budgets:
   listen: 15.00                             # starting point, the owner's call. At one call every 20 s for 4 h the
                                             # estimate is about $3 on Gemini 3.8 Flash and about $10 on gpt-audio-1.5
                                             # (GET /api/v1/listening "estimate" shows the live figure)
+  tag: 3.00                                 # art tags: $0.00125 a picture (measured 27 Oct), so the ~2,000-picture
+                                            # backfill is ~$2.50; reaching it pauses the tagging queue until local
+                                            # midnight (the backfill may spill into a second day)

@@ -44,6 +44,8 @@ from routes.audio_api import audio_api
 from routes.admin_api import admin_api, admin_token_ok
 from routes.jobs.api import jobs_api
 import routes.jobs
+from routes.art_tags.api import art_tags_api
+import routes.art_tags
 
 # Load environment variables
 load_dotenv()
@@ -72,6 +74,7 @@ app.register_blueprint(audio_bp)
 app.register_blueprint(audio_api, url_prefix=API_PREFIX)
 app.register_blueprint(admin_api, url_prefix=API_PREFIX)
 app.register_blueprint(jobs_api, url_prefix=API_PREFIX)  # generation jobs + SSE (docs/JOBS.md)
+app.register_blueprint(art_tags_api, url_prefix=API_PREFIX)  # AI art tags + tag edits (docs/ART_TAGS.md)
 
 # Register test blueprints (no prefix needed for test routes)
 app.register_blueprint(test_buckets_bp)
@@ -227,6 +230,13 @@ if __name__ == '__main__':
     # Generation jobs: prune old history, fail jobs the last stop orphaned (their RunPod jobs are
     # cancelled in the background). Never blocks or breaks start-up.
     routes.jobs.startup()
+
+    # Art tags: the low-priority tagging queue (docs/ART_TAGS.md); its first sweep (the historic backfill too) runs
+    # 60 s after start. Never blocks or breaks start-up.
+    try:
+        routes.art_tags.startup()
+    except Exception as e:
+        error(f"art tags could not be started: {e}")
 
     # Room control: room_service runs in this process on its own thread, event loop and LAN port
     # (ROOM_PORT, default 8700); this :5000 door has no room routes. Never blocks or breaks start-up:

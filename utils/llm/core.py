@@ -932,14 +932,31 @@ def _probe_sync(L: _Layer, prov: str) -> None:
 NO_LIST = "models.list() couldn't be read, so no id was picked"
 
 
+def _only_model(L: _Layer, tcfg: Optional[dict], model: str) -> dict:
+    """The task's settings with its model list replaced by just ``model`` ("provider/id", or an id on the task's first
+    provider): a calibration run (routes/art_tags/cli.py --model). The entry borrows the ``options`` of any llm.yaml
+    entry naming the same id (3.x Flash's reasoning settings), so it is called the way its own task calls it."""
+    prov, _, mid = model.rpartition("/")
+    base = tcfg or {"models": [], "timeout_s": DEFAULT_TIMEOUT_S, "max_output_tokens": DEFAULT_MAX_OUTPUT_TOKENS,
+                    "audio": False}
+    prov = prov or (base["models"][0]["provider"] if base["models"] else "openai")
+    opts = next((dict(m["options"]) for t in [base] + list(L.cfg["tasks"].values()) for m in t["models"]
+                 if m["provider"] == prov and m["model"] == mid), {})
+    return dict(base, models=[{"provider": prov, "model": mid, "discover": None, "options": opts, "typical": None}])
+
+
 def call_json(task: str, *, system: str, user: Union[str, list], tool: dict, audio: Optional[bytes] = None,
-              audio_format: str = "mp3", timeout_s: Optional[float] = None, lenient: bool = False) -> LLMResult:
-    """One forced-tool call for ``task`` (sync; Flask threads, tools). Never raises."""
+              audio_format: str = "mp3", timeout_s: Optional[float] = None, lenient: bool = False,
+              model: Optional[str] = None) -> LLMResult:
+    """One forced-tool call for ``task`` (sync; Flask threads, tools). Never raises. ``model``: call only that model
+    ("provider/id" or an id; calibration), still billed and budgeted to ``task``."""
     t0 = time.perf_counter()
     attempts: list[dict] = []
     total = 0.0
     try:
         L, tcfg, tmo = _start(task, timeout_s)
+        if model:
+            tcfg = _only_model(L, tcfg, model)
         if not tcfg or not tcfg["models"]:
             return _fail_result(task, t0, "no model configured", attempts)
         messages = _messages(system, user, audio, audio_format)
