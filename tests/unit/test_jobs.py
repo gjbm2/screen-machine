@@ -7,6 +7,7 @@ import pytest
 
 from routes.jobs import runpod_api, set_tracker
 from routes.jobs.progress import ComfyProgress, normalise_stages
+from routes.jobs.estimate import Estimator
 from routes.jobs.store import JobStore
 from routes.jobs.tracker import JobTracker, RESTART_ERROR
 
@@ -52,8 +53,9 @@ def test_job_has_every_contract_field(tracker):
     expected = {"id", "batch_id", "batch_index", "placeholder_id", "source", "kind", "target",
                 "target_name", "prompt", "refined_prompt", "workflow", "refiner", "status", "message",
                 "stages", "stage_index", "percent", "error", "runpod_job_id", "endpoint_id",
-                "created_at", "submitted_at", "started_at", "finished_at", "updated_at", "duration_s",
-                "cost_gbp", "seed", "result_url", "published_path", "cancel_requested"}
+                "created_at", "submitted_at", "started_at", "generating_at", "publishing_at",
+                "finished_at", "updated_at", "duration_s", "cost_gbp", "seed", "result_url",
+                "published_path", "cancel_requested", "estimate"}
     assert set(job) == expected
     assert job["id"].startswith("job_") and len(job["id"]) == 16
     assert job["status"] == "preparing" and job["stages"] == [] and job["cancel_requested"] is False
@@ -342,6 +344,166 @@ def test_worker_frames_drive_the_job(tracker):
     assert tracker.on_worker_frame("someone-else", frame(1, 2)) is False
 
 
+def test_phase_timestamps(tracker):
+    job_id = tracker.create(prompt="x")["id"]
+    tracker.set_stages(job_id, [{"name": "Rendering", "weight": 100}])
+    tracker.update(job_id, status="queued", runpod_job_id="rp-p", endpoint_id="ep")
+    status_frame = {"type": "status", "data": {"status": {"exec_info": {"queue_remaining": 1}}}}
+    with tracker.subscribe() as sub:
+        tracker.on_worker_frame("rp-p", status_frame)    # worker up, models still loading
+        job = tracker.get(job_id)
+        assert job["status"] == "running" and job["started_at"] and job["generating_at"] is None
+        tracker.on_worker_frame("rp-p", frame(1, 20))    # first step: generating begins
+        first = tracker.get(job_id)["generating_at"]
+        assert first and first >= job["started_at"]
+        events = []
+        while (e := sub.get(timeout=0.05)) is not None:
+            events.append(e)
+        # published at once (not throttled away) and persisted, so history can learn from it
+        assert events[-1]["generating_at"] == first and events[-1]["percent"] == 5
+        assert tracker.store.get(job_id)["generating_at"] == first
+    tracker.on_worker_frame("rp-p", frame(2, 20))
+    assert tracker.get(job_id)["generating_at"] == first
+    assert tracker.update(job_id, status="publishing")["publishing_at"]
+    done = tracker.complete(job_id)
+    assert done["generating_at"] == first and done["publishing_at"] <= done["finished_at"]
+
+
+def test_phase_timestamps_are_tracker_owned(tracker):
+    job_id = tracker.create(prompt="x", generating_at=1.0, publishing_at=2.0, estimate={})["id"]
+    tracker.update(job_id, generating_at=5.0, publishing_at=6.0, estimate={"x": 1})
+    job = tracker.get(job_id)
+    assert job["generating_at"] is None and job["publishing_at"] is None
+    assert job["estimate"]["basis"] == "default"
+
+
+def test_old_history_rows_get_new_fields(store, tracker):
+    store.upsert({"id": "job_old", "created_at": 1.0, "status": "completed", "prompt": "old"})
+    job = tracker.get("job_old")
+    assert job["generating_at"] is None and job["estimate"] is None and job["prompt"] == "old"
+    assert tracker.list()[0][0]["publishing_at"] is None
+
+
+# ------------------------------------------------------------------ learned time estimate
+
+_seq = iter(range(10_000))
+
+
+def past_job(store, workflow="wf-a", prepare=2.0, wait=10.0, generate=20.0, publish=1.0,
+             created=None, status="completed", generating=True):
+    """A finished job in the history with the given phase lengths (wait = queue + cold start)."""
+    n = next(_seq)
+    created = created if created is not None else 1_000_000.0 + n * 1000
+    job = {"id": f"job_hist{n:06d}", "status": status, "workflow": workflow, "prompt": "",
+           "created_at": created, "submitted_at": created + prepare,
+           "started_at": created + prepare + wait / 2,
+           "generating_at": created + prepare + wait if generating else None,
+           "publishing_at": created + prepare + wait + generate,
+           "finished_at": created + prepare + wait + generate + publish}
+    store.upsert(job)
+    return job
+
+
+def test_estimate_defaults_with_no_history(store):
+    est = Estimator(store).estimate("wf-a")
+    assert est == {"prepare_s": 4.0, "generate_s": 30.0, "publish_s": 3.0, "samples": 0,
+                   "basis": "default"}
+
+
+def test_estimate_learns_per_workflow_median(store):
+    for g in (10, 12, 50):
+        past_job(store, "wf-a", generate=g, prepare=3, publish=2)
+    past_job(store, "wf-b", generate=99)
+    est = Estimator(store).estimate("wf-a")
+    assert est == {"prepare_s": 3.0, "generate_s": 12.0, "publish_s": 2.0, "samples": 3,
+                   "basis": "workflow"}
+
+
+def test_estimate_falls_back_to_all_workflows(store):
+    for g in (10, 20, 30):
+        past_job(store, "wf-b", generate=g)
+    past_job(store, "wf-a", generate=100)
+    est = Estimator(store)
+    assert est.estimate("wf-a")["basis"] == "all" and est.estimate("wf-a")["generate_s"] == 25.0
+    assert est.estimate("wf-a")["samples"] == 4
+    assert est.estimate(None)["basis"] == "all"
+
+
+def test_cold_starts_do_not_move_the_estimate(store):
+    for _ in range(5):
+        past_job(store, "wf-a", wait=3, generate=20)
+    warm = Estimator(store).estimate("wf-a")
+    for _ in range(5):
+        past_job(store, "wf-a", wait=900, generate=20)   # 15-minute cold boots
+    cold = Estimator(store).estimate("wf-a")
+    assert warm["generate_s"] == cold["generate_s"] == 20.0
+    assert set(cold) == {"prepare_s", "generate_s", "publish_s", "samples", "basis"}  # no queue figure
+
+
+def test_jobs_without_generating_at_are_not_samples(store):
+    for _ in range(10):
+        past_job(store, "wf-a", generating=False)
+    past_job(store, "wf-a", status="failed")
+    past_job(store, "wf-a", status="cancelled")
+    assert Estimator(store).estimate("wf-a")["basis"] == "default"
+    for _ in range(3):
+        past_job(store, "wf-a", generate=7)
+    est = Estimator(store).estimate("wf-a")
+    assert est["basis"] == "workflow" and est["samples"] == 3 and est["generate_s"] == 7.0
+
+
+def test_estimate_ignores_outliers_and_old_jobs(store):
+    for _ in range(3):
+        past_job(store, "wf-a", generate=-5)
+        past_job(store, "wf-a", generate=31 * 60)
+    assert Estimator(store).estimate("wf-a")["basis"] == "default"
+    for _ in range(30):
+        past_job(store, "wf-a", generate=100)
+    for _ in range(30):
+        past_job(store, "wf-a", generate=10)              # newer: only these 30 count
+    est = Estimator(store).estimate("wf-a")
+    assert est["generate_s"] == 10.0 and est["samples"] == 30
+    for _ in range(3):
+        past_job(store, "wf-c", publish=-1, prepare=40 * 60, generate=8)
+    est = Estimator(store).estimate("wf-c")              # bad phases fall back phase by phase
+    assert est["generate_s"] == 8.0 and est["prepare_s"] == 4.0 and est["publish_s"] == 3.0
+
+
+def test_estimate_is_cached_per_workflow(store):
+    now = [0.0]
+    est = Estimator(store, cache_s=60, clock=lambda: now[0])
+    first = est.estimate("wf-a")
+    scans = est.scans
+    for _ in range(3):
+        past_job(store, "wf-a", generate=9)
+    assert est.estimate("wf-a") == first and est.scans == scans   # cached: no history scan
+    first["generate_s"] = -1                                       # callers get copies
+    assert est.estimate("wf-a")["generate_s"] == 30.0
+    now[0] = 61
+    assert est.estimate("wf-a")["generate_s"] == 9.0 and est.scans > scans
+
+
+def test_estimate_survives_a_store_error(store):
+    class Broken:
+        def recent_completed(self, *a, **k):
+            raise RuntimeError("db gone")
+    assert Estimator(Broken()).estimate("wf-a")["basis"] == "default"
+
+
+def test_tracker_sets_estimate_and_redoes_it_when_workflow_known(store, tracker):
+    for _ in range(3):
+        past_job(store, "wf-a", generate=11)
+    job = tracker.create(prompt="x")
+    assert job["estimate"]["basis"] == "all"
+    updated = tracker.update(job["id"], workflow="wf-a")
+    assert updated["estimate"] == {"prepare_s": 2.0, "generate_s": 11.0, "publish_s": 1.0,
+                                   "samples": 3, "basis": "workflow"}
+    assert tracker.create(prompt="y", workflow="wf-zz")["estimate"]["basis"] == "all"
+    scans = tracker.estimator.scans
+    tracker.update(job["id"], status="queued", message="Waiting")   # no workflow change: no lookup
+    assert tracker.estimator.scans == scans
+
+
 # ------------------------------------------------------------------ RunPod error text
 
 def test_paused_endpoint_error(monkeypatch):
@@ -379,6 +541,8 @@ def test_api_list_get_cancel(client, tracker):
     page = client.get("/api/jobs?limit=1").get_json()
     assert len(page["jobs"]) == 1 and page["next_before"] is not None
     assert client.get(f"/api/jobs/{a}").get_json()["prompt"] == "alpha"
+    assert client.get(f"/api/jobs/{a}").get_json()["estimate"]["basis"] == "default"
+    assert all("generating_at" in j and j["estimate"] for j in body["jobs"])
     assert client.get("/api/jobs/job_nope").status_code == 404
     assert client.post(f"/api/jobs/{a}/cancel").get_json()["status"] == "cancelled"
     assert client.post("/api/jobs/job_nope/cancel").status_code == 404
@@ -419,10 +583,12 @@ def test_event_stream_frames(tracker):
     assert next(gen) == "retry: 3000\n\n"
     name, snap = parse_sse(next(gen))[0]
     assert name == "snapshot" and [j["prompt"] for j in snap["jobs"]] == ["before"] and snap["server_time"]
+    assert snap["jobs"][0]["estimate"]["generate_s"] == 30.0 and "publishing_at" in snap["jobs"][0]
     tracker.create(prompt="other target", target="u")
     tracker.create(prompt="after", target="t")
     rest = parse_sse("".join(gen))   # runs to the 0.5 s end
     jobs = [d["prompt"] for n, d in rest if n == "job"]
+    assert all(d["estimate"]["basis"] == "default" for n, d in rest if n == "job")
     assert jobs == ["after"] and ("ping", None) in rest
     assert tracker._subs == set()    # closed at the end
 
@@ -491,7 +657,9 @@ def test_start_completes(gen, monkeypatch, tracker):
     assert job["runpod_job_id"] == "rp-123" and job["endpoint_id"] == "k98wg36ip597n0"
     assert job["stages"] == ["Rendering", "Upscaling"] and job["kind"] == "image"
     assert job["cost_gbp"] == 0.02 and job["seed"] is not None and job["refined_prompt"] == "a red fox"
-    assert job["started_at"] and job["submitted_at"]
+    assert job["started_at"] and job["submitted_at"] and job["publishing_at"]
+    assert job["generating_at"] is None          # no relay frames: not a learning sample
+    assert job["estimate"]["basis"] == "default"
     assert result["job_id"] == job["id"]
 
 

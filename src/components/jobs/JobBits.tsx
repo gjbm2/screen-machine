@@ -7,11 +7,24 @@ import { Pill } from "@/pages/Room/bits";
 import type { Job } from "@/shared/api/jobs";
 import { STATUS_TONES, STATUS_WORDS } from "./jobWords";
 
-/** A ring that fills with the job's percent; a pulsing dot while the percent isn't known. */
-export function ProgressRing({ percent, size = 32, className }: { percent: number | null; size?: number; className?: string }) {
+/**
+ * A ring that fills with the job's progress (0..1, from useJobProgress), easing smoothly between ticks. While
+ * `waiting` (getting a GPU ready) it breathes gently so the small held slice reads as alive, not stuck.
+ */
+export function ProgressRing({
+  fraction,
+  waiting = false,
+  size = 32,
+  className,
+}: {
+  fraction: number;
+  waiting?: boolean;
+  size?: number;
+  className?: string;
+}) {
   const r = 15;
   const c = 2 * Math.PI * r;
-  const p = percent === null ? null : Math.min(100, Math.max(0, percent));
+  const f = Number.isFinite(fraction) ? Math.min(1, Math.max(0, fraction)) : 0;
   return (
     <span
       className={cn("relative inline-grid shrink-0 place-items-center", className)}
@@ -19,30 +32,25 @@ export function ProgressRing({ percent, size = 32, className }: { percent: numbe
       role="progressbar"
       aria-valuemin={0}
       aria-valuemax={100}
-      aria-valuenow={p ?? undefined}
-      aria-label={p === null ? "Working" : `${Math.round(p)}%`}
+      aria-valuenow={Math.round(f * 100)}
     >
       <svg viewBox="0 0 36 36" className="absolute inset-0 h-full w-full -rotate-90" aria-hidden>
         <circle cx="18" cy="18" r={r} fill="none" strokeWidth="4" className="stroke-stone-200" />
-        {p !== null && (
-          <circle
-            cx="18"
-            cy="18"
-            r={r}
-            fill="none"
-            strokeWidth="4"
-            strokeLinecap="round"
-            strokeDasharray={c}
-            strokeDashoffset={c * (1 - p / 100)}
-            className="stroke-teal-600 transition-[stroke-dashoffset] duration-500 motion-reduce:transition-none"
-          />
-        )}
+        <circle
+          cx="18"
+          cy="18"
+          r={r}
+          fill="none"
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeDasharray={c}
+          strokeDashoffset={c * (1 - f)}
+          className={cn(
+            "stroke-teal-600 transition-[stroke-dashoffset] duration-[600ms] ease-linear motion-reduce:transition-none",
+            waiting && "motion-safe:animate-pulse",
+          )}
+        />
       </svg>
-      {p === null ? (
-        <span aria-hidden className="h-2 w-2 rounded-full bg-teal-600 motion-safe:animate-pulse" />
-      ) : (
-        size >= 32 && <span className="relative text-[10px] font-semibold tabular-nums text-stone-700">{Math.round(p)}</span>
-      )}
     </span>
   );
 }

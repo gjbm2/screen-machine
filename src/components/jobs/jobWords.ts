@@ -1,4 +1,5 @@
-// Plain words for a generation job (docs/JOBS.md), shared by the generator's jobs dock and the Jobs page.
+// Plain words for a generation job (docs/JOBS.md), shared by the generator's jobs dock and the Jobs page. The live
+// stage and time-left words are in src/shared/jobs/words.ts.
 
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -34,15 +35,6 @@ export const SOURCE_WORDS: Record<JobSource, string> = {
 
 export function screenName(job: Pick<Job, "target" | "target_name">): string {
   return job.target_name || job.target || "Not published";
-}
-
-/** One line: what it's doing now ("Sampling 12/28"), else the status in words, with "step 2 of 3" when staged. */
-export function jobLine(job: Job): string {
-  if (job.cancel_requested && job.status !== "cancelled" && job.status !== "completed" && job.status !== "failed") return "Cancelling…";
-  if (job.status === "failed") return job.error || "Failed";
-  const words = job.message || STATUS_WORDS[job.status];
-  const staged = job.stages.length > 1 && job.stage_index !== null && job.status === "running";
-  return staged ? `${words} · step ${job.stage_index! + 1} of ${job.stages.length}` : words;
 }
 
 export function formatDuration(seconds: number | null): string | null {

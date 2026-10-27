@@ -1,8 +1,8 @@
 // The generator's jobs dock, bottom left (docs/JOBS.md): every job being made right now, from any source, live
 // from the job tracker; a finished one stays a moment (Done ~10 s with its result, Cancelled ~5 s) and a failed one
 // stays, with its reason, until dismissed. Folded it's a small pill (owner, 27 Oct: "MUCH smaller ... only expand
-// if user engages"): the lead job's ring and one word; a tap opens the list and "All jobs". Hidden when there's
-// nothing to show.
+// if user engages"): the lead job's ring and a few friendly words (its stage, or its time left while it's being
+// made); a tap opens the list and "All jobs". Hidden when there's nothing to show.
 
 import { useState } from "react";
 import { ChevronDown } from "lucide-react";
@@ -11,7 +11,9 @@ import { jobsUrl } from "@/components/nav/appNav";
 import { cn } from "@/lib/utils";
 import { RoomThemeStyle, THEME_CLASS } from "@/pages/Room/theme";
 import { isActive, type Job } from "@/shared/api/jobs";
+import { jobProgress, useJobProgress } from "@/shared/jobs/estimate";
 import { useJobs } from "@/shared/jobs/store";
+import { remainingLabel, STAGE_WORDS, stageLabel } from "@/shared/jobs/words";
 import { ProgressRing } from "./JobBits";
 import { JobRow } from "./JobRow";
 import { useNow } from "./jobWords";
@@ -36,26 +38,26 @@ export function JobsDock() {
   const now = Date.now() / 1000 + clockOffset;
   const jobs = list.filter((j) => shown(j, now, dismissed));
   useNow(1000, jobs.some((j) => j.status === "completed" || j.status === "cancelled"));
+  const active = jobs.filter(isActive);
+  // the one furthest along leads the folded pill
+  let lead: Job | undefined;
+  let best = -1;
+  for (const j of active) {
+    const f = jobProgress(j, now).fraction;
+    if (f > best) [lead, best] = [j, f];
+  }
+  const leadProgress = useJobProgress(lead, clockOffset, !open);
   if (jobs.length === 0) return null;
 
-  const active = jobs.filter(isActive);
-  const lead = active.find((j) => j.percent !== null) ?? active[0]; // the one furthest along
   const dismiss = (id: string) => setDismissed((s) => new Set(s).add(id));
 
   const failed = jobs.filter((j) => j.status === "failed").length;
+  const leadTime = lead && leadProgress.phase === "generating" && !lead.cancel_requested ? remainingLabel(leadProgress.remainingS, leadProgress.overrunS) : "";
   const summary = lead
-    ? lead.percent !== null
-      ? `${Math.round(lead.percent)}%`
-      : lead.status === "queued"
-        ? "Queued"
-        : lead.status === "preparing"
-          ? "Preparing"
-          : "Working"
+    ? leadTime || stageLabel(lead, leadProgress.phase)
     : failed
-      ? "Failed"
-      : jobs[0].status === "completed"
-        ? "Done"
-        : "Cancelled";
+      ? STAGE_WORDS.failed
+      : stageLabel(jobs[0], "done");
   const count = active.length > 1 ? active.length : 0;
 
   if (!open) {
@@ -77,11 +79,11 @@ export function JobsDock() {
           )}
         >
           {lead ? (
-            <ProgressRing percent={lead.percent} size={22} />
+            <ProgressRing fraction={leadProgress.fraction} waiting={leadProgress.phase === "waiting"} size={22} />
           ) : (
             <span aria-hidden className={cn("ml-1 h-2.5 w-2.5 rounded-full", failed ? "bg-red-500" : "bg-teal-600")} />
           )}
-          <span className="tabular-nums">{summary}</span>
+          <span>{summary}</span>
           {count > 0 && <span className="text-muted-foreground">· {count}</span>}
         </button>
       </div>
@@ -122,7 +124,7 @@ export function JobsDock() {
         <ul className="max-h-[min(45vh,22rem)] divide-y divide-stone-200/70 overflow-y-auto border-t border-stone-200/80">
           {jobs.map((job) => (
             <li key={job.id} className="py-1.5 pl-3 pr-1">
-              <JobRow job={job} onDismiss={job.status === "failed" ? () => dismiss(job.id) : undefined} />
+              <JobRow job={job} clockOffset={clockOffset} onDismiss={job.status === "failed" ? () => dismiss(job.id) : undefined} />
             </li>
           ))}
         </ul>

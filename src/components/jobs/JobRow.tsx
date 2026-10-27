@@ -1,24 +1,47 @@
-// One live job (the generator's jobs dock, the Jobs page's "Running now"): the screen it's for, its prompt, what
-// it's doing in plain words and its progress ring, with Cancel while it runs. A finished one shows its result
-// (Done, with a thumbnail and a link), its error (Failed, dismissable) or that it was cancelled.
+// One live job (the generator's jobs dock, the Jobs page's "Running now"): the screen it's for, its prompt, its
+// progress ring and one friendly line ("Painting · About 30 seconds", src/shared/jobs/words.ts), with Cancel while
+// it runs. A finished one shows its result (Ready, with a thumbnail and a link), its real error (failed, dismissable;
+// these pages are the owner's) or that it was cancelled. With `details` (the Jobs page) the technical line sits in
+// a fold.
 
 import { Ban, ExternalLink, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isActive, type Job } from "@/shared/api/jobs";
+import { useJobProgress } from "@/shared/jobs/estimate";
+import { progressLine, STAGE_WORDS } from "@/shared/jobs/words";
 import { JobThumb, ProgressRing } from "./JobBits";
-import { cancelOneJob, jobLine, screenName, SOURCE_WORDS } from "./jobWords";
+import { cancelOneJob, screenName, SOURCE_WORDS } from "./jobWords";
 
 const ICON_BUTTON =
   "grid h-11 w-11 shrink-0 place-items-center rounded-full text-stone-500 hover:bg-stone-100 hover:text-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50";
 
-export function JobRow({ job, onDismiss, showSource = false, className }: { job: Job; onDismiss?: () => void; showSource?: boolean; className?: string }) {
+export function JobRow({
+  job,
+  clockOffset,
+  onDismiss,
+  showSource = false,
+  details = false,
+  className,
+}: {
+  job: Job;
+  /** server clock minus this device's (s), from useJobs() */
+  clockOffset: number;
+  onDismiss?: () => void;
+  showSource?: boolean;
+  /** a "Details" fold with the technical line (the Jobs page) */
+  details?: boolean;
+  className?: string;
+}) {
   const active = isActive(job);
   const done = job.status === "completed";
   const failed = job.status === "failed";
+  const progress = useJobProgress(job, clockOffset, active);
+  const line = failed ? job.error || STAGE_WORDS.failed : progressLine(job, progress);
+  const technical = [job.message, job.workflow, job.error].filter(Boolean).join(" · ");
   return (
     <div className={cn("flex min-w-0 items-center gap-3", className)} data-testid="job-row">
       {active ? (
-        <ProgressRing percent={job.percent} />
+        <ProgressRing fraction={progress.fraction} waiting={progress.phase === "waiting"} />
       ) : done ? (
         <JobThumb job={job} className="h-10 w-10" />
       ) : (
@@ -34,10 +57,13 @@ export function JobRow({ job, onDismiss, showSource = false, className }: { job:
         <p className="truncate text-sm text-muted-foreground" title={job.prompt}>
           {job.prompt || "No prompt"}
         </p>
-        <p className={cn("text-sm", failed ? "line-clamp-2 text-rose-700" : "truncate text-stone-700")}>
-          {done ? "Done" : jobLine(job)}
-          {active && job.percent !== null && <span className="tabular-nums text-muted-foreground"> · {Math.round(job.percent)}%</span>}
-        </p>
+        <p className={cn("text-sm", failed ? "line-clamp-2 text-rose-700" : "truncate text-stone-700")}>{line}</p>
+        {details && active && technical && (
+          <details className="text-xs text-muted-foreground">
+            <summary className="cursor-pointer select-none py-1">Details</summary>
+            <p className="break-words">{technical}</p>
+          </details>
+        )}
       </div>
       {active && (
         <button

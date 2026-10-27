@@ -9,6 +9,7 @@ from collections import deque
 from utils.logger import info, warning, error
 
 from routes.jobs import runpod_api
+from routes.jobs.estimate import Estimator
 from routes.jobs.progress import ComfyProgress
 from routes.jobs.store import JobStore
 
@@ -22,13 +23,14 @@ FIELDS = {
     "kind": "image", "target": None, "target_name": None, "prompt": "", "refined_prompt": None,
     "workflow": None, "refiner": None, "status": "preparing", "message": None, "stages": None,
     "stage_index": None, "percent": None, "error": None, "runpod_job_id": None, "endpoint_id": None,
-    "created_at": None, "submitted_at": None, "started_at": None, "finished_at": None,
-    "updated_at": None, "duration_s": None, "cost_gbp": None, "seed": None, "result_url": None,
-    "published_path": None, "cancel_requested": False,
+    "created_at": None, "submitted_at": None, "started_at": None, "generating_at": None,
+    "publishing_at": None, "finished_at": None, "updated_at": None, "estimate": None,
+    "duration_s": None, "cost_gbp": None, "seed": None, "result_url": None, "published_path": None,
+    "cancel_requested": False,
 }
 # Fields a caller may set through update(); the rest are kept by the tracker itself
-_SETTABLE = set(FIELDS) - {"id", "created_at", "updated_at", "finished_at", "duration_s",
-                           "cancel_requested"}
+_SETTABLE = set(FIELDS) - {"id", "created_at", "updated_at", "generating_at", "publishing_at",
+                           "finished_at", "duration_s", "cancel_requested", "estimate"}
 
 SNAPSHOT_FINISHED_S = 60     # finished jobs a (re)connecting stream still gets
 MEMORY_FINISHED_S = 600      # finished jobs kept in memory; older ones are read from the store
@@ -36,6 +38,13 @@ MEMORY_FINISHED_S = 600      # finished jobs kept in memory; older ones are read
 
 def new_job_id():
     return f"job_{uuid.uuid4().hex[:12]}"
+
+
+def with_all_fields(job):
+    """A stored job with every current field (older history rows lack the newer ones)."""
+    if job is None or all(k in job for k in FIELDS):
+        return job
+    return {**FIELDS, **job}
 
 
 def is_active(job):
@@ -85,8 +94,9 @@ class Subscription:
 
 class JobTracker:
     def __init__(self, store=None, progress_interval=0.25, persist_interval=5.0,
-                 cancel_remote=None):
+                 cancel_remote=None, estimator=None):
         self.store = store if store is not None else JobStore(":memory:")
+        self.estimator = estimator or Estimator(self.store)
         self.progress_interval = progress_interval
         self.persist_interval = persist_interval
         # RunPod cancel (endpoint_id, runpod_job_id) -> bool; swapped out by tests
@@ -109,6 +119,7 @@ class JobTracker:
         job.update(id=new_job_id(), prompt=prompt or "", created_at=now, updated_at=now,
                    source=source if source in SOURCES else "api")
         job["stages"] = list(job["stages"] or [])
+        job["estimate"] = self._estimate(job["workflow"])
         with self._lock:
             self._prune_memory(now)
             self._jobs[job["id"]] = job
@@ -120,14 +131,15 @@ class JobTracker:
             job = self._jobs.get(job_id)
             if job:
                 return dict(job)
-        return self.store.get(job_id)
+        return with_all_fields(self.store.get(job_id))
 
     def list(self, state="all", limit=50, before=None, target=None, source=None, q=None):
         """Newest first, from the store with in-memory (fresher) copies laid over it."""
         limit = max(1, min(int(limit or 50), 500))
         rows = self.store.query(state, limit, before, target, source, q)
         with self._lock:
-            jobs = [dict(self._jobs[r["id"]]) if r["id"] in self._jobs else r for r in rows]
+            jobs = [dict(self._jobs[r["id"]]) if r["id"] in self._jobs else with_all_fields(r)
+                    for r in rows]
         if state == "active":
             jobs = [j for j in jobs if is_active(j)]
         elif state == "finished":
@@ -158,7 +170,11 @@ class JobTracker:
 
     def update(self, job_id, **fields):
         """Change a job and publish it at once. A finished job never changes again (the first
-        terminal state wins), so a late update from a generator thread can't revive it."""
+        terminal state wins), so a late update from a generator thread can't revive it. When the
+        workflow is first set (or changes) the phase estimate is redone for it."""
+        workflow = fields.get("workflow")
+        # Looked up before taking the lock (it may read the history); used only if the workflow changes
+        estimate = self._estimate(workflow) if workflow else None
         with self._lock:
             job = self._jobs.get(job_id)
             if not job:
@@ -177,6 +193,10 @@ class JobTracker:
                 job["submitted_at"] = now
             if status == "running" and not job["started_at"]:
                 job["started_at"] = now
+            if status == "publishing" and not job["publishing_at"]:
+                job["publishing_at"] = now
+            if estimate and "workflow" in changes:
+                job["estimate"] = estimate
             if status in TERMINAL:
                 job["finished_at"] = now
                 job["duration_s"] = round(now - job["created_at"], 2)
@@ -225,7 +245,14 @@ class JobTracker:
             if tracker is None:
                 tracker = self._progress[job_id] = ComfyProgress()
             changes = tracker.feed(comfy)
-            if changes:
+            if (changes and comfy.get("type") == "progress" and not job["generating_at"]
+                    and job["status"] == "running"):
+                # The first step frame: models are loaded and sampling has begun. From here the
+                # time is steady per workflow (what the estimate learns); published at once.
+                job.update(changes)
+                job["generating_at"] = job["updated_at"] = time.time()
+                self._commit(job, persist=True)
+            elif changes:
                 self.progress(job_id, **changes)
             return True
 
@@ -295,6 +322,13 @@ class JobTracker:
         return len(orphans)
 
     # ---------------------------------------------------------------- internals
+
+    def _estimate(self, workflow):
+        try:
+            return self.estimator.estimate(workflow)
+        except Exception as e:
+            warning(f"[jobs] estimate for {workflow!r} failed: {e}")
+            return None
 
     def _commit(self, job, persist):
         """Publish (and maybe persist) the job's current state. Called under the lock, so subscribers

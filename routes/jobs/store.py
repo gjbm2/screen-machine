@@ -76,6 +76,21 @@ class JobStore:
             rows = self._db.execute(sql, args).fetchall()
         return [json.loads(r[0]) for r in rows]
 
+    def recent_completed(self, stamps, workflow=None, limit=30):
+        """The newest completed jobs that have every timestamp in stamps (for the estimator),
+        optionally of one workflow only."""
+        sql = ("SELECT data FROM jobs WHERE status = 'completed'"
+               + "".join(f" AND json_extract(data, '$.{k}') IS NOT NULL" for k in stamps))
+        args = []
+        if workflow:
+            sql += " AND json_extract(data, '$.workflow') = ?"
+            args.append(workflow)
+        sql += " ORDER BY created_at DESC LIMIT ?"
+        args.append(int(limit))
+        with self._lock:
+            rows = self._db.execute(sql, args).fetchall()
+        return [json.loads(r[0]) for r in rows]
+
     def active(self):
         return self.query(state="active", limit=10_000)
 

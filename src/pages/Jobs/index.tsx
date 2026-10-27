@@ -163,7 +163,7 @@ export default function JobsPage() {
             <ul className={cn(CARD_CLASS, "divide-y divide-stone-200/70")} data-testid="jobs-running">
               {running.map((job) => (
                 <li key={job.id} className="py-2 pl-4 pr-1">
-                  <JobRow job={job} showSource />
+                  <JobRow job={job} clockOffset={clockOffset} showSource details />
                 </li>
               ))}
             </ul>
