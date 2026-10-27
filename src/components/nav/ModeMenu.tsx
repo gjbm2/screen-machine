@@ -5,8 +5,11 @@
 //   - iPad and desktop: in the app's top bar (AppNav), icon and name. Phone: in the page's header, the icon alone.
 //   - Shown only while this page may switch the room (useRoomGlance: the shared room link).
 //   - Modes kept off the Room page (on_room_page "more") come last, under a line.
+//   - Auto (it picks the mode by itself) is the menu's first row, with its switch (owner, 27 Oct: "auto mode change
+//     toggle should be shown in the mode drop down menu"). Its state is read only while the menu is open.
 
 import { useEffect, useState } from "react";
+import { Switch } from "@/components/ui/switch";
 import { Check, ChevronDown, SlidersHorizontal } from "lucide-react";
 import { roomApi } from "@/components/room/roomLink";
 import {
@@ -22,13 +25,64 @@ import { explainError } from "@/pages/Room/api";
 import { Spinner } from "@/pages/Room/bits";
 import { modeIcon } from "@/pages/Room/modeIcons";
 import { THEME_CLASS } from "@/pages/Room/theme";
-import type { ModeDef } from "@/pages/Room/types";
 import { modeLabel } from "@/pages/Room/words";
+import { autoWords, NoteLine, useSend, useShowFeed, useShowState } from "@/pages/Room/MusicCard";
+import type { ModeDef, ShowCard } from "@/pages/Room/types";
 import { AppLink } from "./AppLink";
 import { roomPageUrl } from "./appNav";
 import { useRoomGlance } from "./useRoomGlance";
 
 let picks = 0;
+const noop = () => undefined;
+const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v);
+
+/** Auto's row: its name, what it's doing, and its switch; a tap anywhere on it flips it and keeps the menu open.
+ *  Mounted only while the menu is open, so its show feed runs only then. */
+function AutoItem() {
+  const api = roomApi();
+  const feed = useShowFeed(api, true, noop);
+  const { card } = useShowState(feed);
+  const { send, busy, note } = useSend(feed, noop);
+  const [pending, setPending] = useState<boolean | null>(null);
+  const auto = card?.auto;
+  const on = pending ?? auto?.on === true;
+  const line = (auto?.line?.trim() || "Auto").replace(/\s·\s*Resume$/, "");
+  const set = (v: boolean) => {
+    setPending(v);
+    void send("auto", v ? "Auto on" : "Auto off", () => api.showAutopilot(v), {
+      latest: true,
+      ok: (r) => {
+        if (isObj(r) && "line" in r) {
+          const { on: o, state, line: l, chip, suggest } = r as NonNullable<ShowCard["auto"]>;
+          feed.patch({ auto: { on: o ?? null, state: state ?? null, line: l ?? null, chip: chip ?? null, suggest: suggest ?? null } });
+        }
+      },
+    }).then((r) => r !== undefined && setPending(null));
+  };
+  return (
+    <>
+      <DropdownMenuItem
+        disabled={!card}
+        onSelect={(e) => {
+          e.preventDefault();
+          set(!on);
+        }}
+        className="min-h-12 gap-3 rounded-lg text-base"
+        data-testid="header-mode-auto"
+      >
+        <span className="min-w-0 flex-1 leading-snug">
+          <span className="block font-semibold">Auto</span>
+          <span className="block truncate text-sm text-muted-foreground">
+            {card ? autoWords(auto?.state ?? null, on, line) : "reading…"}
+          </span>
+        </span>
+        {busy("auto") && <Spinner />}
+        <Switch checked={on} tabIndex={-1} aria-hidden className="pointer-events-none" />
+      </DropdownMenuItem>
+      {note && <NoteLine note={note} className="px-2 pb-1 text-sm" />}
+    </>
+  );
+}
 
 export function ModeMenu({ iconOnly = false, className }: { iconOnly?: boolean; className?: string }) {
   const g = useRoomGlance();
@@ -113,6 +167,8 @@ export function ModeMenu({ iconOnly = false, className }: { iconOnly?: boolean; 
         <DropdownMenuLabel className="px-2 pb-1 pt-1.5 text-sm font-semibold text-muted-foreground">
           {live ? "Room mode · live" : "Room mode"}
         </DropdownMenuLabel>
+        <AutoItem />
+        <DropdownMenuSeparator />
         {err && <p className="px-2 pb-1.5 text-sm leading-snug text-rose-800">{err}</p>}
         {main.map(item)}
         {extra.length > 0 && <DropdownMenuSeparator />}
