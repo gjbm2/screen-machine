@@ -75,42 +75,29 @@ def calculate_generation_cost(seconds_taken, workflow_id=None, runpod_id=None, d
                         info(f"Fetching GPU info for RunPod endpoint ID: {runpod_id}")
                         
                         try:
-                            # 1. Get GPU type for this endpoint using GraphQL
-                            endpoint_query = """
-                            query($id:String!){
-                              myself { endpoints(filter:{id:$id}){ gpuIds name } }
-                            }"""
-                            
-                            info(f"Calling RunPod GraphQL for endpoint info: {gql_endpoint}")
-                            endpoint_response = requests.post(
-                                gql_endpoint,
-                                json={"query": endpoint_query, "variables": {"id": runpod_id}},
-                                headers=headers,
-                                timeout=5
-                            )
-                            
+                            # 1. Get GPU types for this endpoint from the REST API
+                            # (GraphQL's endpoints(filter:{id}) was removed, and its gpuIds are
+                            # pool names like AMPERE_80 that gpuTypes can't price)
+                            endpoint_url = f"https://rest.runpod.io/v1/endpoints/{runpod_id}"
+                            info(f"Calling RunPod REST for endpoint info: {endpoint_url}")
+                            endpoint_response = requests.get(endpoint_url, headers=headers, timeout=5)
+
                             info(f"Endpoint query response status: {endpoint_response.status_code}")
-                            
+
                             if endpoint_response.status_code != 200:
                                 warning(f"Failed to get endpoint data: HTTP {endpoint_response.status_code}")
                                 warning(f"Response content: {endpoint_response.text[:200]}")
                             else:
                                 try:
-                                    endpoint_data = endpoint_response.json()
-                                    # Log a shortened version to avoid flooding logs
-                                    response_excerpt = json.dumps(endpoint_data)[:200] + "..." if len(json.dumps(endpoint_data)) > 200 else json.dumps(endpoint_data)
-                                    info(f"Endpoint query response: {response_excerpt}")
-                                    
-                                    if not endpoint_data.get("data") or not endpoint_data["data"].get("myself") or \
-                                       not endpoint_data["data"]["myself"].get("endpoints") or \
-                                       len(endpoint_data["data"]["myself"]["endpoints"]) == 0:
-                                        warning(f"No endpoint data found in response: {response_excerpt}")
-                                        if "errors" in endpoint_data:
-                                            warning(f"GraphQL errors: {json.dumps(endpoint_data['errors'])}")
+                                    # Don't log the whole response: it carries the template's env (bucket keys)
+                                    endpoint_info = endpoint_response.json()
+                                    gpu_type_ids = endpoint_info.get("gpuTypeIds") or []
+
+                                    if not gpu_type_ids:
+                                        warning(f"No endpoint GPU types found for {runpod_id}")
                                     else:
-                                        # Extract GPU ID and endpoint name
-                                        endpoint_info = endpoint_data["data"]["myself"]["endpoints"][0]
-                                        gpu_id = endpoint_info.get("gpuIds")
+                                        # Price on the first (preferred) GPU type
+                                        gpu_id = gpu_type_ids[0]
                                         endpoint_name = endpoint_info.get("name", f"Endpoint {runpod_id}")
                                         
                                         if not gpu_id:

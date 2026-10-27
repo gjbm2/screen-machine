@@ -280,7 +280,8 @@ export const generateImage = async (
           refiner,
           refiner_params: refinerParams,
           imageFiles: uploadedFiles,
-          referenceUrls: uploadedImageUrls,
+          // blob: URLs are browser-only previews of the uploaded files; the server can't fetch them
+          referenceUrls: uploadedImageUrls.filter(url => !url.startsWith('blob:')),
           batch_id: currentBatchId,
           placeholders: placeholderIds // Send placeholder IDs to API
         };
