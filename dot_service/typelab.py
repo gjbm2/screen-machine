@@ -197,8 +197,9 @@ PAGE = r"""<!doctype html>
 <style>
 :root{--bg:#f7f3ec;--card:#fffdf9;--ink:#2b2620;--muted:#7a7066;--line:#e3dbcf;--accent:#8a5a2b}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.4 system-ui,sans-serif}
-main{max-width:1180px;margin:0 auto;padding:16px;display:grid;gap:16px;grid-template-columns:minmax(0,1fr)}
-@media(min-width:900px){main{grid-template-columns:360px minmax(0,1fr)}}
+main{max-width:1500px;margin:0 auto;padding:16px;display:grid;gap:16px;grid-template-columns:minmax(0,1fr)}
+.preview{position:sticky;top:0;z-index:2;box-shadow:0 6px 16px -10px rgba(60,40,20,.35)}
+.controls{display:grid;gap:16px;grid-template-columns:repeat(auto-fit,minmax(260px,1fr))}#roles{display:contents}
 h1{font-size:18px;margin:0 0 4px}p.sub{margin:0 0 12px;color:var(--muted)}
 section{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}
 h2{font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin:0 0 8px}
@@ -207,7 +208,7 @@ select,input{width:100%;padding:6px 8px;border:1px solid var(--line);border-radi
 .row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
 .check{display:flex;gap:6px;align-items:center;margin-top:8px;font-size:13px;color:var(--ink)}.check input{width:auto}
 .preview{display:flex;flex-direction:column;gap:12px;align-items:flex-start}
-.screen{background:#fff;border:10px solid #e9e6e1;border-radius:10px;box-shadow:0 1px 0 #d8d2c8;line-height:0;max-width:100%;overflow:auto}
+.screen{background:#fff;border:10px solid #e9e6e1;border-radius:10px;box-shadow:0 1px 0 #d8d2c8;line-height:0;display:inline-block;max-width:100%}
 .spec{overflow:auto}
 .screen img{image-rendering:pixelated;display:block}
 .bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
@@ -216,22 +217,20 @@ button.ghost{background:transparent;color:var(--accent)}
 .note{color:var(--muted);font-size:12px}.err{color:#a3311b;font-size:12px}
 .spec img{image-rendering:pixelated;display:block;max-width:100%}
 </style></head><body><main>
-<div>
-<h1>Tag type lab</h1><p class="sub">Pick fonts for the e-ink tag; the card re-renders with the tag's own renderer, pixel for pixel.</p>
+<div><h1>Tag type lab</h1><p class="sub">Pick fonts for the e-ink tag; the card re-renders with the tag's own renderer, pixel for pixel.</p></div>
+<section class="preview"><h2>The tag</h2><div class="screen"><img id="out" alt="The tag's card"></div>
+<div class="bar" style="margin-top:10px"><button id="apply">Use on the tag</button><button class="ghost" id="reset">Back to the tag's type</button>
+<span class="note" id="saved"></span><span class="note" id="status">Native size in brackets; other sizes are outlines forced onto the grid and rarely look right.</span></div></section>
+<div class="controls">
 <section><h2>Card</h2>
 <div class="row2"><div><label>Content</label><select id="sample"></select></div>
-<div><label>Zoom</label><select id="zoom"><option>1</option><option>2</option><option selected>3</option><option>4</option></select></div></div>
+<div><label>Zoom</label><select id="zoom"><option value="fit" selected>Fit</option><option>1</option><option>2</option><option>3</option><option>4</option></select></div></div>
 <label>Headline text</label><input id="headline" placeholder="(from the content)">
 <label>Mode</label><input id="mode" placeholder="(from the content)">
 </section>
 <div id="roles"></div>
 </div>
-<div class="preview">
-<section style="width:100%"><h2>The tag</h2><div class="screen"><img id="out" alt="The tag's card"></div>
-<div class="note" id="status">Native size shown in brackets; other sizes are outlines forced onto the grid and rarely look right.</div>
-<div class="bar" style="margin-top:10px"><button id="apply">Use on the tag</button><button class="ghost" id="reset">Back to the tag's type</button><span class="note" id="saved"></span></div></section>
-<section style="width:100%" class="spec"><h2>Specimen <select id="specrole" style="width:auto;display:inline-block;margin-left:8px"><option value="head">Headline</option><option value="text">Text</option><option value="ui">Mode &amp; bottom line</option></select></h2><img id="spec" alt="Specimen"></section>
-</div>
+<section class="spec"><h2>Specimen <select id="specrole" style="width:auto;display:inline-block;margin-left:8px"><option value="head">Headline</option><option value="text">Text</option><option value="ui">Mode &amp; bottom line</option></select></h2><img id="spec" alt="Specimen"></section>
 </main>
 <script>
 const ROLES={head:"Headline",text:"Text, labels, switches",ui:"Mode & bottom line"};
@@ -258,7 +257,11 @@ function cardEdits(){const c={},h=$("headline").value,m=$("mode").value,s=$("sam
 function go(){clearTimeout(timer);timer=setTimeout(draw,120)}
 async function img(url,body,el){const r=await fetch(url,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
  if(!r.ok){$("status").innerHTML=`<span class="err">${(await r.json()).error}</span>`;return}
- const b=await r.blob(),u=URL.createObjectURL(b);el.onload=()=>{const z=+$("zoom").value;el.style.width=el.naturalWidth*z+"px";URL.revokeObjectURL(u)};el.src=u}
+ const b=await r.blob(),u=URL.createObjectURL(b);el.onload=()=>{size(el);URL.revokeObjectURL(u)};el.src=u}
+function zoomFor(el){const v=$("zoom").value;if(v!=="fit")return +v;
+ const room=el.closest("section").clientWidth-44,w=el.naturalWidth||296,h=el.naturalHeight||152;
+ const tall=el.id==="out"?Math.floor(window.innerHeight*0.5/h):99;return Math.max(1,Math.min(Math.floor(room/w),tall))}
+function size(el){if(el.naturalWidth)el.style.width=el.naturalWidth*zoomFor(el)+"px"}
 async function draw(){$("status").textContent="";const t=types();
  await img("/api/v1/preview",{types:t,sample:$("sample").value,card:cardEdits()},$("out"));
  await img("/api/v1/specimen",{spec:t[$("specrole").value]},$("spec"))}
@@ -269,6 +272,7 @@ async function init(){const d=await (await fetch("/api/v1/fonts")).json();FONTS=
  $("reset").onclick=()=>{setTypes(window.TAG);go()};
  $("apply").onclick=async()=>{const r=await fetch("/api/v1/types",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({types:types()})});
   const j=await r.json();$("saved").textContent=r.ok?"Saved — the tag updates within a few seconds.":j.error;if(r.ok)window.TAG=types()};draw()}
+window.addEventListener("resize",()=>{size($("out"));size($("spec"))});
 init();
 </script></body></html>
 """
