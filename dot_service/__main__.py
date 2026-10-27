@@ -192,7 +192,6 @@ class DotService:
         mic = (show or {}).get("mic") or {}
         mic_on = bool(mic.get("on"))
         ai_on = bool((listening or {}).get("on"))
-        note = f"Mic: {mic['why'][:1].lower()}{mic['why'][1:]}" if mic_on and mic.get("why") else ""
 
         # What is playing: the music player, else the room's Sonos (unless it plays the player's own stream).
         title = by = left = ""
@@ -258,7 +257,7 @@ class DotService:
         return Card(room=room.get("name") or room_id, mode=shown, auto=bool(auto.get("on")), mic=mic_on, ai=ai_on,
                     live=live, changing_from=changing_from, title=title, by=by, left=left, progress=progress,
                     paused=paused, hearing=hearing, scene=scene, feel=feel, theme=theme.strip(),
-                    style=style.strip(), note=note, say=hint.get("say", ""), tap=hint.get("tap", ""))
+                    style=style.strip(), say=hint.get("say", ""), tap=hint.get("tap", ""))
 
     # ---- send
     async def send(self, tag: Tag, card: Card) -> None:

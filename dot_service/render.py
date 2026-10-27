@@ -6,19 +6,19 @@ font's hinting (DejaVu Sans is fully hinted) and placed by its hinted whole-pixe
 (uneven gaps: "m otion"), so it isn't used for text. Nothing is drawn larger and scaled, or anti-aliased and
 thresholded. Sent with ditherType NONE so the pixels arrive as drawn.
 
-    Normal                       (Auto)(Mic)(AI)     status: filled = on, outlined = off
-    ────────────────────────────────────────────
-    ♪ Etude in G-flat, Op. 10 No. 5              what's playing, else what the room hears (live),
-      Chopin · 1:12 left                         else today's art theme and style
+    Etude in G-flat, Op. 10 No. 5                what matters now: what's playing, else what the room
+      Chopin · 1:12 left                         hears (live), else today's art theme and style
       ▬▬▬▬▬▬▬▬────────────
       Scene: Apollonian foam                     live: the screens' scene and the room's feel
       Dusk · mellow, warm · 86 bpm
-    Mic: listening for Auto              19:42   why the mic is on (else the room); when this was drawn
-    ███ Say “Computer, use AI”   Tap phone ▶ ███   art mode: how to use the room (the tap area is right of the screen)
+    ────────────────────────────────────────────
+    Normal updated 19:42         (Auto)(Mic)(AI)     the mode, when this was drawn; filled = on, outlined = off
+    ███ Say "Computer, use AI"   Tap phone ▶ ███   art mode: how to use the room (the tap area is right of the screen)
 """
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -29,13 +29,17 @@ W, H = 296, 152
 PAD = 8
 FONT = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
 FONT_BOLD = "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
-BODY_TOP, BODY_BOTTOM = 27, 136
-STRIP_TOP = 134                     # the art-mode instruction strip: 134..151
+# White-on-black labels (the strip, the pills): Verdana Bold, drawn for small sizes on screens (wide spacing, open
+# counters, so it survives e-ink bleed); DejaVu Bold if Windows' fonts aren't mounted.
+_VERDANA_BOLD = "/mnt/c/Windows/Fonts/verdanab.ttf"
+FONT_LABEL = _VERDANA_BOLD if os.path.exists(_VERDANA_BOLD) else FONT_BOLD
+BODY_TOP, BODY_BOTTOM = 5, H - 3
+STRIP_TOP = 131                     # the art-mode instruction strip: 131..151
 
 
 @dataclass(frozen=True)
 class Card:
-    room: str                       # footer: "Drawing room"
+    room: str                       # "Drawing room" (the task name in the Dot. App)
     mode: str                       # "Normal"; the target while a switch runs
     auto: bool = False
     mic: bool = False               # the room mic is capturing
@@ -52,7 +56,6 @@ class Card:
     feel: str = ""                  # live: "Dusk · mellow, warm · 86 bpm"
     theme: str = ""                 # today's art theme
     style: str = ""                 # today's art style
-    note: str = ""                  # footer: why the mic is on ("Mic: listening for Auto"), else the room
     say: str = ""                   # bottom strip, art mode: the voice command ('Computer, use AI')
     tap: str = ""                   # bottom strip: the NFC hint, pointing right to the tag's tap area
     stamp: str = field(default="", compare=False)   # "19:42"; not part of what changed
@@ -113,10 +116,11 @@ class _Face:
 _fonts: dict = {}
 
 
-def _font(bold: bool, size: int) -> _Face:
-    k = (bold, size)
+def _font(bold: bool, size: int, path: str = "") -> _Face:
+    path = path or (FONT_BOLD if bold else FONT)
+    k = (path, size)
     if k not in _fonts:
-        _fonts[k] = _Face(FONT_BOLD if bold else FONT, size)
+        _fonts[k] = _Face(path, size)
     return _fonts[k]
 
 
@@ -178,56 +182,70 @@ class _Flow:
         self.y += px
 
 
-def _pills(img: Image.Image, items: list[tuple[str, bool]]) -> int:
-    """Right-aligned status pills in the header: filled = on, outlined = off. Returns their left edge."""
-    d, f = ImageDraw.Draw(img), _font(True, 10)
+def _pills(img: Image.Image, items: list[tuple[str, bool]], top: int) -> int:
+    """Right-aligned status pills: filled = on, outlined = off. Returns their left edge."""
+    d, f = ImageDraw.Draw(img), _font(True, 10, FONT_LABEL)
     x = W - PAD
     for label, on in reversed(items):
-        w = f.length(label) + 10
-        box = (x - w, 3, x, 17)
+        w = f.length(label) + 11
+        box = (x - w, top, x, top + 14)
         if on:
             d.rounded_rectangle(box, radius=7, fill=0)
         else:
             d.rounded_rectangle(box, radius=7, outline=0, fill=1)
-        f.draw(img, (x - w + 5, 4), label, fill=1 if on else 0)
+        f.draw(img, (x - w + 6, top + 1), label, fill=1 if on else 0)
         x -= w + 4
     return x
 
 
 def render(card: Card) -> Image.Image:
+    """Top to bottom: what matters now, then the room's status, then (art mode) how to use the room."""
     img = Image.new("1", (W, H), 1)
     d = ImageDraw.Draw(img)
-
-    # Header: the mode (small), and the status that matters in the room.
-    left = _pills(img, [("Auto", card.auto), ("Mic", card.mic), ("AI", card.ai)])
-    mode = f"{card.changing_from} → {card.mode}" if card.changing_from else card.mode
-    _font(True, 13).draw(img, (PAD, 3), _ellipsis(d, mode, _font(True, 13), left - PAD - 6))
-    d.line((PAD, 21, W - PAD, 21), fill=0)
 
     # Bottom strip (art mode): how to use the room, for whoever picks the tag up.
     strip = bool(card.say or card.tap)
     if strip:
         d.rectangle((0, STRIP_TOP, W - 1, H - 1), fill=0)
-        f = _font(True, 11)
+        f = _font(True, 12, FONT_LABEL)
+        ty = STRIP_TOP + 4
         if card.say:
-            f.draw(img, (PAD, STRIP_TOP + 3), _ellipsis(d, f"Say “{card.say}”", f, 180), fill=1)
-        if card.tap:
-            t = f"{card.tap} ▶"
-            f.draw(img, (W - PAD - f.length(t), STRIP_TOP + 3), t, fill=1)
-    foot_y = STRIP_TOP - 15 if strip else 139
+            f.draw(img, (PAD, ty), _ellipsis(d, f'Say "{card.say}"', f, 185), fill=1)
+        if card.tap:   # an arrow at the right edge, at the tag's NFC area
+            ax = W - PAD
+            d.polygon([(ax - 6, ty + 2), (ax, ty + 6), (ax - 6, ty + 10)], fill=1)
+            f.draw(img, (ax - 11 - f.length(card.tap), ty), card.tap, fill=1)
 
-    flow = _Flow(img, bottom=foot_y - 3)
+    # Status row, under a rule: the mode, when this was drawn, and Auto / Mic / AI.
+    row = (STRIP_TOP if strip else H) - 18
+    d.line((PAD, row - 4, W - PAD, row - 4), fill=0)
+    left = _pills(img, [("Auto", card.auto), ("Mic", card.mic), ("AI", card.ai)], row)
+    mode = f"{card.changing_from} → {card.mode}" if card.changing_from else card.mode
+    mf, tf = _font(True, 13), _font(False, 11)
+    stamp = f"updated {card.stamp}" if card.stamp else ""
+    if stamp and mf.length(mode) + 6 + tf.length(stamp) > left - PAD - 6:
+        stamp = card.stamp
+    room_for = left - PAD - 6 - (tf.length(stamp) + 6 if stamp else 0)
+    mode = _ellipsis(d, mode, mf, room_for)
+    mf.draw(img, (PAD, row), mode)
+    if stamp:
+        tf.draw(img, (PAD + mf.length(mode) + 6, row + 2), stamp)
+
+    # What matters now, from the top.
+    flow = _Flow(img, bottom=row - 8)
     if card.title:
-        lead = "‖" if card.paused else "♪"
-        flow.text(card.title, True, 16, lines=2, indent=16, lead=lead)
-        flow.text(" · ".join(x for x in (card.by, card.left) if x), False, 12, indent=16)
+        flow.text(card.title, True, 16, lines=2)
+        flow.text(" · ".join(x for x in (card.by, "paused" if card.paused else card.left) if x), False, 12)
         if card.progress is not None:
-            flow.bar(card.progress, indent=16)
-        flow.space(2)
+            flow.bar(card.progress)
+        flow.space(3)
         if card.live:
             flow.text(f"Scene: {card.scene}" if card.scene else "", False, 12)
             flow.text(card.feel, False, 12)
-        flow.text(f"Art: {card.theme}" if card.theme else "", False, 12)
+            flow.text(f"Art: {card.theme}" if card.theme else "", False, 12)
+        else:
+            flow.text(f"Today's art: {card.theme}" if card.theme else "", False, 12)
+            flow.text(card.style, False, 12, lines=3)
     elif card.live:
         flow.text("Hearing", False, 11)
         flow.text(card.hearing or "—", True, 16)
@@ -241,9 +259,4 @@ def render(card: Card) -> Image.Image:
         flow.space(2)
         flow.text(card.style, False, 12, lines=4)
 
-    # Footer: why the mic is on (else whose tag), and when it was drawn.
-    small = _font(False, 11)
-    small.draw(img, (PAD, foot_y), _ellipsis(d, card.note or card.room, small, W - 2 * PAD - 40))
-    if card.stamp:
-        small.draw(img, (W - PAD - small.length(card.stamp), foot_y), card.stamp)
     return img
