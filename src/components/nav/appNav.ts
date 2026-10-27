@@ -48,10 +48,10 @@ export function dspMonitorUrl(): string {
 /** The places row under every page's title (PageHeader.tsx), in this order. `lan`: shown only while the room
  *  answers (or on that page itself). */
 export const PLACES: Array<{ page: AppPage; label: string; href: () => string; lan?: boolean }> = [
+  { page: "generator", label: "Generator", href: () => generatorUrl() },
   { page: "room", label: "Room", href: () => roomPageUrl(), lan: true },
   { page: "music", label: "Music", href: () => musicPageUrl(), lan: true },
   { page: "lights", label: "Lights", href: () => lightsPageUrl(), lan: true },
-  { page: "generator", label: "Generator", href: () => generatorUrl() },
 ];
 
 /** Tools for the house PC, LAN only, each in a new tab. */
