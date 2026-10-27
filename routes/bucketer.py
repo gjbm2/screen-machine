@@ -147,6 +147,26 @@ def unique_name(original: str) -> str:
     uid = uuid.uuid4().hex[:8]
     return f"{ts}-{uid}{Path(original).suffix.lower()}"
 
+def _tag_later(bucket: str, filename: str) -> None:
+    """Queue the AI tagging pass for a file just saved to a bucket (routes/art_tags; owner, 27 Oct). The queue skips
+    _recent itself. Never raises into the save."""
+    try:
+        from routes.art_tags import enqueue
+        enqueue(bucket, filename, front=True)
+    except Exception as e:
+        warning(f"[art_tags] could not queue {bucket}/{filename}: {e}")
+
+def _keep_tags(sidecar_file: Path, inferred: dict) -> dict:
+    """A rebuilt sidecar keeps the art tags (tags, tagging) of the one it replaces: they cost an AI call each."""
+    try:
+        old = json.loads(sidecar_file.read_text("utf-8")) if sidecar_file.exists() else {}
+        for k in ("tags", "tagging"):
+            if isinstance(old, dict) and k in old:
+                inferred[k] = old[k]
+    except Exception:
+        pass
+    return inferred
+
 def extract_json(bucket_id: str) -> Dict[str, Any]:
     """
     Extract JSON metadata from all files in a bucket.
@@ -166,6 +186,7 @@ def extract_json(bucket_id: str) -> Dict[str, Any]:
                 inferred = infer_meta_from_file(f)
                 if inferred:
                     sidecar_file = sidecar_path(f)
+                    _keep_tags(sidecar_file, inferred)
                     sidecar_file.write_text(json.dumps(inferred, indent=2), encoding="utf-8")
                     extracted.append(f.name)
             except Exception as e:
@@ -388,6 +409,7 @@ def extract_metadata(file_path: Path, force_rebuild: bool = False) -> bool:
     try:
         inferred = infer_meta_from_file(file_path)
         if inferred:
+            _keep_tags(sidecar, inferred)
             sidecar.write_text(json.dumps(inferred, indent=2), encoding="utf-8")
             return True
     except Exception as e:
@@ -552,6 +574,7 @@ def _append_to_bucket(screen: str, published_path: Path, batch_id: str = None, m
         meta["sequence"] = [{"file": target_path.name, "batchId": batch_id}] if batch_id else [target_path.name]
         
     save_meta(screen, meta)
+    _tag_later(screen, target_path.name)
     
     # now generate the thumbnail for *that* bucket copy
     from routes.publisher import generate_thumbnail
@@ -748,6 +771,7 @@ def copy_image_from_bucket_to_bucket(source_publish_destination: str, target_pub
         })
         save_meta(target_publish_destination, dmeta)
         debug(f"[copy_image_from_bucket_to_bucket] Updated destination metadata: added {target_filename} to sequence")
+        _tag_later(target_publish_destination, target_filename)   # a copied sidecar's tags make the queue skip it
     except Exception as e:
         error(f"[copy_image_from_bucket_to_bucket] Failed to update destination metadata: {str(e)}")
         raise

@@ -1,0 +1,138 @@
+# Art tags: what the AI tagger may say about an image saved to a bucket (docs/ART_TAGS.md).
+# Owner, 27 Oct 2026: images are tagged by an AI pass iff they are saved to a bucket; a few tags each, from a
+# fixed lexicon so the library stays consistent; the tags let Ambient pick art that fits the music.
+# Hot-reloaded by mtime (Flask's tagger and the renderer's gallery both read it). Words a person adds by hand may
+# be anything; these lists only steer the AI and group the Tags view.
+#
+# Shown as lozenges: subject (1-2) + medium (1) + moods (1-3). Kept in the sidecar but not shown as lozenges:
+# palette, the 0..1 scores and the music fit, which the renderer scores against what the room hears.
+version: 1
+
+tagger:
+  task: tag                    # config/llm.yaml tasks.tag (Gemini only: a backfill must never fall back to OpenAI)
+  image_px: 768                # longest side of the JPEG sent; never the 4K original
+  prompt_chars: 700            # each prompt field sent as context is cut to this
+  min_interval_s: 1.0          # between calls
+  sweep_every_s: 900           # look for untagged images (also catches the historic backfill)
+  skip_buckets: [_recent]      # the generator's scratch area: not saved, so not tagged
+  max_attempts: 3              # then the file is marked failed and left alone
+
+facets:
+  subject:                     # 1-2, best first: what the picture is OF
+    landscape: land seen as a view - hills, mountains, fields, forests, deserts, countryside
+    seascape: the sea, coasts, lakes, rivers, waterfalls; water is the main subject
+    sky: clouds, sunsets, storms, auroras, weather fill most of the frame
+    cosmic: outer space - planets, stars, nebulae, galaxies, moons
+    urban: towns and cities - streets, skylines, rooftops, neon, traffic, city life
+    architecture: a building or structure is the subject - facades, halls, stairs, bridges, ruins, temples
+    interior: inside a room - cafés, bars, studios, libraries, bedrooms, salons
+    still-life: arranged objects - vessels, fruit, flowers in a vase, books, instruments on a table
+    botanical: plants, flowers, leaves, gardens, close up
+    animals: creatures as the subject - birds, beasts, fish, insects
+    people: people are a clear presence - figures, couples, crowds, dancers, musicians, a party
+    portrait: one face or figure close up, posed or looking out
+    abstract: no recognisable subject - colour, shape, texture, gesture, light
+    pattern: repeating or geometric ornament - tiles, grids, mandalas, textiles, tessellations
+    fantasy: imagined or surreal worlds - impossible scenes, myth, dreamlike places
+    machines: vehicles, robots, engines, industry, technology as the subject
+
+  medium:                      # exactly 1: how it looks made
+    photograph: looks like a camera photograph (realistic light, lens, depth of field)
+    painting: painted look - oil, acrylic, watercolour, gouache, visible brushwork
+    illustration: drawn or inked - line art, comic, storybook, poster illustration, print
+    render: 3D / CGI look - smooth digital materials, ray-traced light, game-engine scenes
+    graphic: flat design - bold flat shapes, vector, collage, op-art, minimal colour fields
+
+  moods:                       # 1-3, best first; the renderer's own visual mood words (config/live/vocab.yaml)
+    calm: still, quiet, unhurried, peaceful
+    mellow: soft, relaxed, gently warm, easy
+    dreamy: hazy, soft-focus, floating, otherworldly-gentle
+    warm: amber, gold, red, firelight, sunlit warmth
+    cool: blues, teals, silvery, crisp, night-blue
+    bright: high-key, luminous, sunny, lots of light
+    dark: low-key, night, shadowy, moody, sombre
+    euphoric: joyous, exuberant, celebratory, ecstatic
+    tense: uneasy, ominous, suspenseful, unsettling
+    playful: fun, whimsical, cheeky, toy-like, cartoonish
+    hypnotic: mesmerising - spirals, endless repetition, tunnels, trance-like symmetry
+    aggressive: violent, harsh, confrontational, explosive
+    cosmic: vast, starry, interstellar wonder
+    organic: natural, living, grown, hand-made, earthy textures
+    geometric: hard-edged shapes, grids, polyhedra, clean lines
+    retro: evokes a past era - vintage photo, 70s/80s, film grain, old posters, art deco
+    glitchy: digital corruption, broken pixels, datamosh
+    elegant: refined, graceful, restrained, tasteful, classical poise
+    liquid: fluid, flowing, wet, melting, ink in water
+    fiery: flames, embers, lava, burning heat
+    icy: frost, ice, snow, frozen, crystalline cold
+
+  palette:                     # exactly 1 (not shown as a lozenge); the renderer's palette_family words
+    warm: reds, oranges, golds, browns dominate
+    cool: blues, teals, greens, violets dominate
+    vivid: strong saturated colours of several hues
+    neutral: muted, pastel, monochrome, black-and-white or earth greys
+
+# The 10 music groups the tagger scores each image against (0..1), spread to the renderer's 31 genre words the
+# same way the scene tags are (stream_service/tools/tagpass.py GROUP_WORDS).
+music_groups:
+  ambient: ambient, downtempo, chill
+  classical: orchestral, chamber, opera, solo piano, film score
+  jazz: jazz, blues
+  soul: soul, R&B, funk, gospel, disco
+  pop: pop, indie, singer-songwriter, folk, country
+  rock: rock, metal, punk
+  house: house, disco, trance, melodic electronic
+  techno: techno, trance, drum-and-bass, dubstep, hard electronic
+  hiphop: hip-hop
+  world: latin, afrobeat, reggae, world
+
+# The system prompt. {facets} and {groups} are filled from the lists above.
+rubric: |
+  You tag pictures for a living-room art library. The pictures hang on two 4K TVs; while music plays, an art
+  director picks pictures that fit what is heard. Your tags must be consistent across thousands of pictures, so
+  use ONLY the words given, and judge what a viewer SEES and FEELS. You are also given the text prompt the picture
+  was generated from: use it to understand intent, but when the picture and the prompt disagree, the picture wins.
+
+  Give:
+  - subject: 1-2 words, best first. Add a second only when it is truly a second main subject.
+  - medium: exactly 1 word.
+  - moods: 1-3 words, best first. Do not pad: one exact word beats three vague ones.
+  - palette: exactly 1 word.
+  - look: a plain description in at most 18 words (what is shown, light, colour). No praise, no prompt jargon.
+  - energy 0..1: visual energy. 0 = utterly still and empty; 0.5 = lively but composed; 1 = explosive, chaotic.
+  - valence 0..1: 0 = sombre, menacing, sad; 0.5 = neutral; 1 = joyful, sunny, uplifting.
+  - organic 0..1: 0 = hard synthetic, digital, mathematical; 1 = natural, hand-made, of the earth.
+  - density 0..1: 0 = sparse, minimal, lots of empty space; 1 = busy, detail everywhere.
+  - quality 0..1: how good this is as show art on a big TV, for its own kind. 1 = gallery-grade; 0.7 = solid
+    and attractive; 0.5 = fine; 0.3 = plain, crude or flawed (mangled hands, smeared faces, AI artefacts);
+    0.1 = barely art.
+  - music: a 0..1 fit for EVERY one of these groups: how well this picture would sit on the wall while that kind
+    of music plays, as a thoughtful gallery curator / VJ would judge. 1 = a natural fit, 0.7 = good,
+    0.5 = acceptable, 0.3 = odd, 0 = would jar. Use the whole range; most pictures get 2-4 groups at 0.7 or
+    more and several at 0.3 or less. Judge subject, mood, era and colour together.
+    Calibration (the house's own taste):
+      - jazz suits abstraction, smoky low-light interiors and bars, night streets in the rain, expressive
+        painterly gesture, musicians, mid-century and art-deco looks: an abstract painterly canvas in deep blues
+        and ochre -> jazz 1, classical 0.6, ambient 0.6, pop 0.3, techno 0.2.
+      - classical, especially lyrical and romantic, suits landscapes, seascapes, still life, botanical studies,
+        grand architecture, old-master painting and quiet elegance: a misty lake at dawn in oils -> classical 1,
+        ambient 0.9, jazz 0.4, pop 0.3, techno 0.05. A still life of fruit and a jug -> classical 0.9, jazz 0.6.
+      - pop suits people, fun, cities, colour and play: a sunny crowded street festival photo -> pop 1, soul 0.8,
+        world 0.7, house 0.6, classical 0.2. A cartoonish bright graphic -> pop 0.9, hiphop 0.6, ambient 0.2.
+      - ambient suits sky, sea, space, mist, minimal colour fields and slow calm: an empty dune at dusk ->
+        ambient 1, classical 0.8, jazz 0.4, rock 0.1.
+      - electronic (house, techno) suits geometry, neon, pattern, machines, renders, the cosmic and the
+        hypnotic: a neon grid tunnel render -> techno 1, house 0.8, pop 0.4, classical 0.05.
+      - rock suits drama, storms, fire, grit, ruins, raw energy; soul suits warm people, retro interiors,
+        golden light; hip-hop suits street, graffiti, bold graphic portraits; world suits places, crafts,
+        festivals and patterns from a particular culture.
+  - auto_ok: false ONLY when this is not show art: readable text or slogans as the point, a real logo or
+    brand, a screenshot, a diagram, a blank or broken image. Otherwise true.
+  - confidence 0..1: how sure you are.
+
+  Words you may use:
+  {facets}
+
+  Music groups: {groups}
+
+  Be decisive and consistent. Do not give everything 0.5.
