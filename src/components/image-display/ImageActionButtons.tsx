@@ -104,10 +104,10 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
             variant="ghost" 
             className={`${actionButtonClass} ${buttonSizeClass} image-action-button`}
             onClick={onCreateAgain}
-            aria-label="Make another"
+            aria-label="Create Again"
           >
             <CopyPlus className="h-4 w-4" />
-            {showLabels && <span className="hidden sm:inline ml-1">Make another</span>}
+            {showLabels && <span className="hidden sm:inline ml-1">Create Again</span>}
           </Button>
         )}
         
@@ -122,10 +122,10 @@ const ImageActionButtons: React.FC<ImageActionButtonsProps> = ({
               // For non-normal view, always treat as event handler
               (onUseAsInput as (e: React.MouseEvent) => void)(e);
             }}
-            aria-label="Use in prompt"
+            aria-label="Use as Input"
           >
             <SquareArrowUpRight className="h-4 w-4" />
-            {showLabels && <span className="hidden sm:inline ml-1">Use in prompt</span>}
+            {showLabels && <span className="hidden sm:inline ml-1">Use as Input</span>}
           </Button>
         )}
         

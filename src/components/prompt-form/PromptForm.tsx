@@ -523,14 +523,12 @@ const PromptForm: React.FC<PromptFormProps> = ({
         console.log('📸 DETECTED: Direct upload scenario - uploading images to bucket and publishing');
         showDebugMessage('📸 Direct upload detected - uploading to bucket and publishing');
         
-        const where = selectedPublish.split(',').map(id => publishDestinations.find(d => d.id === id)?.name || id).join(' and ');
-        const howMany = allImages.length === 1 ? 'the picture' : `${allImages.length} pictures`;
-        toast.info(`Showing ${howMany} on ${where}…`);
+        toast.info(`Uploading ${allImages.length} image(s) to ${selectedPublish}...`);
         
         // Handle direct upload to bucket and publish
         await handleDirectUploadToPublish(allImages, selectedPublish);
         
-        toast.success(`Showing ${howMany} on ${where}`);
+        toast.success(`Successfully uploaded ${allImages.length} image(s) to ${selectedPublish}`);
         showDebugMessage('📸 Direct upload completed');
       } else {
         // Normal generation flow
@@ -799,7 +797,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
 
   return (
     <div 
-      className="w-full mb-4"
+      className="w-full mb-8"
       onSubmit={handleFormSubmit}
       // Add additional mobile-specific event prevention
       onTouchStart={isMobile ? (e) => e.stopPropagation() : undefined}
