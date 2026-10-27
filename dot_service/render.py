@@ -2,15 +2,15 @@
 
 Type is bitmap-native: fonts drawn on a pixel grid at the one size they are used at, so every glyph is the designer's
 pixels, not an outline rasterised and hinted into 1 bit (that left lopsided o's and 0's). OFL fonts, Latin subsets
-in dot_service/fonts: Galmuri 9 at 10 px (text, lozenges), Galmuri 11 and 11 Bold at 12 px (the mode, the bottom
+in dot_service/fonts: Galmuri 9 at 10 px (text, switches), Galmuri 11 and 11 Bold at 12 px (the mode, the bottom
 line), Jersey 20 at 20 px (headlines). Glyphs are laid out with FreeType directly (freetype-py) at whole-pixel
 advances. Sent with ditherType NONE so the pixels arrive as drawn.
 
     Today's art                              Normal      the right-hand column, the QR code's width, all
     The Turning of the Hour                 ◷ 20:58      centred: the mode, when this was drawn,
-    Long-exposure, motion-blur photography  (██Auto██)   Auto / Mic / AI as lozenges (filled = on),
-    in the style of Harry Callahan, using   (██Mic███)
-    high-contrast silhouettes and light     (   AI   )
+    ──────────────────────────────────────   ■▫ Auto     Auto / Mic / AI as small switches (knob right
+    in the style of Harry Callahan, using    ■▫ Mic      on black = on); the mode may wrap to two lines
+    high-contrast silhouettes and light      ▫■ AI       and overhang the column (Lights / only)
     trails to suggest the movement of time   ┌────┐      the site, for any phone camera (no app)
                                              └────┘
     ██████ Say 'Computer, use AI' to interact █████    art mode: how to use the room
@@ -165,6 +165,10 @@ def _pixels(img: Image.Image, x: int, y: int, rows: list[str]) -> None:
                 img.putpixel((x + c, y + r), 0)
 
 
+_SWITCH_ON = [".xxxxxxxxxxxxx.", "xxxxxxxxxx...xx", "xxxxxxxxx.....x", "xxxxxxxxx.....x", "xxxxxxxxx.....x",
+              "xxxxxxxxx.....x", "xxxxxxxxx.....x", "xxxxxxxxxx...xx", ".xxxxxxxxxxxxx."]   # black, knob right
+_SWITCH_OFF = [".xxxxxxxxxxxxx.", "x.xxx.........x", "xx...x........x", "xx...x........x", "xx...x........x",
+               "xx...x........x", "xx...x........x", "x.xxx.........x", ".xxxxxxxxxxxxx."]  # hollow, knob left
 # Galmuri 9's capital I is a bare stroke ("AI" reads "Al"); Galmuri 11's has serifs, so this one does too.
 _SERIF_I9 = ["xxx", ".x.", ".x.", ".x.", ".x.", ".x.", ".x.", ".x.", "xxx"]
 _CLOCK_S = [".xxxxx.", "x..x..x", "x..x..x", "x..xx.x", "x.....x", "x.....x", ".xxxxx."]
@@ -215,6 +219,12 @@ class _Flow:
     def space(self, px: int) -> None:
         self.y += px
 
+    def rule(self) -> None:
+        if self.y + 6 > self.bottom:
+            return
+        self.d.line((PAD, self.y + 2, self.right(4), self.y + 2), fill=0)
+        self.y += 6
+
 
 def _qr(url: str, px: int) -> Image.Image:
     """The smallest QR for url. A bare scheme + host is case-free, so it goes in upper case: QR's alphanumeric
@@ -231,6 +241,23 @@ def _ink(f: _Face, text: str, bold: bool) -> tuple[int, int, int, int]:
     probe = Image.new("1", (f.length(text, bold) + 20, 60), 1)
     f.draw(probe, (0, 10), text, bold=bold)
     return ImageChops.invert(probe.convert("L")).getbbox() or (0, 10, 0, 10)
+
+
+def _fit_lines(text: str, faces: list, width: int, max_lines: int) -> tuple:
+    """(face, bold, lines): text in the first face (with its weight) whose words wrap into max_lines lines of
+    width, else the last face's lines, the last ellipsised."""
+    for f, bold in faces:
+        lines: list[str] = []
+        for word in text.split():
+            if lines and f.length(lines[-1] + " " + word, bold) <= width:
+                lines[-1] += " " + word
+            else:
+                lines.append(word)
+        if len(lines) <= max_lines and all(f.length(ln, bold) <= width for ln in lines):
+            return f, bold, lines
+    f, bold = faces[-1]
+    return f, bold, [_ellipsis(f, ln, width, bold) for ln in lines[:max_lines - 1]] + \
+        [_ellipsis(f, " ".join(lines[max_lines - 1:]), width, bold)]
 
 
 def _centred(img: Image.Image, f: _Face, text: str, box: tuple[int, int, int, int], fill: int = 0,
@@ -259,31 +286,42 @@ def render(card: Card) -> Image.Image:
         _centred(img, body, _ellipsis(body, card.hint, W - 2 * PAD, True), (0, bottom + 3, W - 1, H - 4), fill=1,
                  bold=True)
 
-    # The right-hand column, one width (the QR code's), everything centred in it: the mode, when this was
-    # drawn, Auto / Mic / AI as lozenges (filled = on), the QR code at its foot.
+    # The right-hand column, one width (the QR code's), centred on one axis: the mode, when this was drawn,
+    # Auto / Mic / AI as small switches, the QR code at its foot.
     q = _qr(card.qr, card.qr_px) if card.qr else None
     cw = q.width if q is not None else COL_W
     cx0, cx1 = W - EDGE - cw, W - EDGE - 1
-    mode = card.mode
-    if card.changing_from and body.length(f"→{mode}", True) <= cw:   # switching: the arrow if it fits
-        mode = f"→{mode}"
-    _centred(img, body, _ellipsis(body, mode, cw, True), (cx0, 3, cx1, 14), bold=True)
-    if card.stamp:   # a small clock and the time it was drawn
-        tw = 10 + small.length(card.stamp)
-        tx = cx0 + (cw - tw) // 2
-        _pixels(img, tx, 20, _CLOCK_S)
-        _centred(img, small, card.stamp, (tx + 10, 19, tx + tw, 26))
-    for i, (label, on) in enumerate([("Auto", card.auto), ("Mic", card.mic), ("AI", card.ai)]):
-        y0 = 30 + 15 * i
-        box = (cx0, y0, cx1, y0 + 12)
-        if on:
-            d.rounded_rectangle(box, radius=6, fill=0)
-        else:
-            d.rounded_rectangle(box, radius=6, outline=0, fill=1)
-        _centred(img, small, label, (cx0, y0 + 2, cx1, y0 + 10), fill=1 if on else 0)
+    qy = H
     if q is not None:   # the foot of the column, against the glass edge (the white bezel is more quiet zone)
         qy = (bottom - 3 * card.qr_px - q.height) if card.hint else H - EDGE - q.height
         img.paste(q, (cx0, qy))
+
+    # The mode may overhang the column into the gutter, and wraps to two lines (Lights / only), else smaller.
+    mw = cw + 12
+    mf, mbold, lines = _fit_lines(card.mode, [(body, True), (small, False)], mw, 2)
+    if card.changing_from and len(lines) == 1 and mf.length("→" + lines[0], mbold) <= mw:
+        lines = ["→" + lines[0]]           # switching: the arrow if it fits
+    toggles = [("Auto", card.auto), ("Mic", card.mic), ("AI", card.ai)]
+    show_time = bool(card.stamp) and 2 + 13 * len(lines) + 12 + 3 + 13 * len(toggles) <= qy - 4
+    y = 2
+    for ln in lines:   # centred on the column; a wider line overhangs left only (never off the glass)
+        lx0, _, lx1, _ = _ink(mf, ln, mbold)
+        x = min(cx0 + (cw - (lx1 - lx0)) // 2, cx1 + 1 - (lx1 - lx0)) - lx0
+        mf.draw(img, (x, y), ln, bold=mbold)
+        y += 13 if mf is body else 11
+    if show_time:   # a small clock and the time it was drawn
+        tw = 10 + small.length(card.stamp)
+        tx = cx0 + (cw - tw) // 2
+        _pixels(img, tx, y + 2, _CLOCK_S)
+        _centred(img, small, card.stamp, (tx + 10, y + 1, tx + tw, y + 9))
+        y += 12
+    y += 3
+    lw = max(small.length(label) for label, _ in toggles)
+    tx = cx0 + (cw - (len(_SWITCH_ON[0]) + 4 + lw)) // 2
+    for label, on in toggles:   # a switch drawing (knob right on black = on) and its name, as a left-aligned block
+        _pixels(img, tx, y + 1, _SWITCH_ON if on else _SWITCH_OFF)
+        small.draw(img, (tx + len(_SWITCH_ON[0]) + 4, y), label)
+        y += 13
 
     # What matters now, left of the bar.
     flow = _Flow(img, bottom=bottom - 4, narrow_until=H, narrow_right=cx0 - 10)
@@ -310,7 +348,7 @@ def render(card: Card) -> Image.Image:
     else:
         flow.text("Today's art")
         flow.text(card.theme, "head", lines=2)
-        flow.space(3)
+        flow.rule()
         flow.text(card.style, lines=6)
 
     return img
