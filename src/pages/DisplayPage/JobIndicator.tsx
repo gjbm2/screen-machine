@@ -7,8 +7,8 @@ import { useScreenJobs } from "./hooks/useScreenJobs";
 
 const STATUS_TEXT: Record<string, string> = {
   preparing: "Preparing",
-  queued: "Waiting for a GPU",
-  running: "Rendering",
+  queued: "Queued",
+  running: "Working",
   publishing: "Publishing",
 };
 
@@ -57,8 +57,9 @@ const Dot = () => (
 );
 
 function activeText(job: Job): string {
-  const text = job.message || (job.stage_index != null ? job.stages[job.stage_index] : null) || STATUS_TEXT[job.status] || job.status;
-  return job.percent != null ? `${Math.round(job.percent)}% · ${text}` : text;
+  // One plain stage word beside the ring (owner, 27 Oct: step counts are too technical for the room's screens).
+  const stage = job.status === "running" && job.stage_index != null ? job.stages[job.stage_index] : null;
+  return stage || STATUS_TEXT[job.status] || job.status;
 }
 
 /** `hidden` (frozen or live) hides the pill at once but keeps the subscription; it takes no part in settle. */
