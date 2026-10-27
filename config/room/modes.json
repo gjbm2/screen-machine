@@ -232,7 +232,7 @@
       "label": "Ambient",
       "icon": "waves",
       "voice": "ambient",
-      "_note": "Effects ON the art, never other scenes: scene_tags [ambient] is a closed set, the presets tagged modes: [ambient] (just live-art, the screen's own art every second, with the Normal mask held). The director still picks effects.",
+      "_note": "Each screen shows pictures from its own library that suit the music heard (owner, 27 Oct), picked by the pictures' tags: jazz brings abstract, painterly and night pictures; gentle classical brings landscapes, seascapes and still life; pop brings cities, people and fun. Pictures change slowly with the music, every 16 bars when it is calm and every 4 when it is lively, with soft dissolves and a slow drift. Livelier music gets quicker changes. Pictures with a shared subject tend to follow each other, and the set moves on when the music changes. Untagged pictures can still appear. The director still picks the effects on top. (scene_tags modes:ambient = gallery-ambient and gallery-ambient-lively.)",
       "state": {
         "drawing-room:screens": {
           "live": {

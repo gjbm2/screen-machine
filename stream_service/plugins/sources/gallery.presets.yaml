@@ -73,3 +73,82 @@ gallery-rush:
     dims: 2d
     technique: [projection, glitch]
     weight: 1.0
+
+# Ambient's art (owner, 27 Oct: Ambient shows library art that fits the music heard, by the pictures' art tags:
+# jazz -> abstract / painterly / nocturnal, lyrical classical -> landscapes, seascapes, still life, pop -> urban,
+# fun, peopled).  modes: [ambient] makes these two Ambient's scene set; the director picks between them by energy
+# and genre and still picks the effects on top.
+gallery-ambient:
+  label: "Gallery: Fits the music, slowly"
+  source: gallery
+  params:
+    pace: bar
+    ladder: 16-8-4
+    pool: library
+    match: music
+    style: soft
+    quality: full
+    open_on_art: true
+    hold_s: 30.0
+    hold_fast_s: 12.0
+    transition_s: 4.0
+    transition_fast_s: 3.0
+    drift: 0.4
+    drift_rate: 0.6
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.3}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [calm, dreamy, elegant, mellow]
+    genre: [ambient, downtempo, classical, piano, soundtrack, jazz, blues, folk, singer-songwriter]
+    genre_fit: {ambient: 1.0, downtempo: 0.9, classical: 1.0, piano: 1.0, soundtrack: 0.9, jazz: 0.9, blues: 0.8,
+                folk: 0.7, singer-songwriter: 0.7, country: 0.5, indie: 0.5, soul: 0.5, rnb: 0.4, gospel: 0.5,
+                world: 0.6, latin: 0.5, reggae: 0.4, afrobeat: 0.4, pop: 0.4, funk: 0.3, disco: 0.2,
+                rock: 0.3, metal: 0.1, punk: 0.1, electronic: 0.4, house: 0.2, techno: 0.15, trance: 0.3,
+                drum-and-bass: 0.1, dubstep: 0.1, hip-hop: 0.2}
+    valence: 0.55
+    organic: 0.75
+    density: 0.4
+    family: light
+    dims: 2d
+    technique: [projection]
+    weight: 1.0
+    modes: [ambient]
+
+gallery-ambient-lively:
+  label: "Gallery: Fits the music, on the bar"
+  source: gallery
+  params:
+    pace: bar
+    ladder: 8-4-2
+    pool: library
+    match: music
+    style: lively
+    quality: full
+    hold_s: 12.0
+    hold_fast_s: 5.0
+    transition_s: 1.5
+    transition_fast_s: 1.0
+    drift: 0.6
+    drift_rate: 1.4
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: beat, amount: 0.6}
+  tags:
+    energy: [0.45, 1.0]
+    moods: [bright, playful, warm, euphoric]
+    genre: [pop, indie, soul, rnb, funk, disco, house, gospel, latin, afrobeat, hip-hop, rock, electronic]
+    genre_fit: {pop: 1.0, indie: 0.9, singer-songwriter: 0.7, folk: 0.6, country: 0.7, soul: 1.0, rnb: 0.9,
+                funk: 1.0, gospel: 0.8, disco: 1.0, house: 0.9, electronic: 0.7, trance: 0.6, techno: 0.6,
+                drum-and-bass: 0.5, dubstep: 0.4, hip-hop: 0.8, rock: 0.7, metal: 0.4, punk: 0.6, latin: 0.9,
+                afrobeat: 0.9, reggae: 0.8, world: 0.7, jazz: 0.5, blues: 0.5, ambient: 0.1, downtempo: 0.3,
+                classical: 0.1, piano: 0.15, soundtrack: 0.3}
+    valence: 0.75
+    organic: 0.5
+    density: 0.65
+    family: light
+    dims: 2d
+    technique: [projection]
+    weight: 1.0
+    modes: [ambient]

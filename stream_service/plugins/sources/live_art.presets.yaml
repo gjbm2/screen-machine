@@ -6,4 +6,3 @@ live-art:
     energy: [0.0, 0.5]
     moods: [calm, mellow, dreamy]
     weight: 1.0
-    modes: [ambient]

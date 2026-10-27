@@ -1751,8 +1751,16 @@ class Session(EngineListener):
         # they stop (the fast energy fades with it, no jump to idle), handing over to the desk's (None) at the end
         lw = feed.liveness(now)
         mw = lw if self.music.feeding else max(lw, self.sampler.w) if lw > 0.0 else None
-        self.runtime.extra = {**self.music.signals(now), "music_w": mw, **pn, **self._ens_tick(now)}
         ld = self.following()
+        # the music's genre, moods and feel (the effective direction, the leader's for a follower) for the plug-ins
+        # that pick by them: the gallery's art tags (owner, 27 Oct: Ambient's art fits the music heard)
+        eff = (ld or self).direction_effective or {}
+        gs = eff.get("genres") if isinstance(eff.get("genres"), dict) else {}
+        md = {"genres": {w: round(p, 2) for w, p in gs.items() if isinstance(p, (int, float))},
+              "genre": eff.get("genre"), "moods": list(eff.get("moods") or ()),
+              "music_moods": list(eff.get("music_moods") or ()),
+              **{k: eff.get(k) for k in ("valence", "organic", "density", "energy")}}
+        self.runtime.extra = {**self.music.signals(now), "music_w": mw, **pn, **self._ens_tick(now), "music_dir": md}
         if ld is not None:          # the room's leader directs this screen: its music, picks and effects
             self.upnext.clear()     # the leader's plan is the room's
             self._following = True
