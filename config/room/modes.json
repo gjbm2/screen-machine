@@ -232,7 +232,7 @@
       "label": "Ambient",
       "icon": "waves",
       "voice": "ambient",
-      "_note": "Each screen shows pictures from its own library that suit the music heard (owner, 27 Oct), picked by the pictures' tags: jazz brings abstract, painterly and night pictures; gentle classical brings landscapes, seascapes and still life; pop brings cities, people and fun. Pictures change slowly with the music, every 16 bars when it is calm and every 4 when it is lively, with soft dissolves and a slow drift. Livelier music gets quicker changes. Pictures with a shared subject tend to follow each other, and the set moves on when the music changes. Untagged pictures can still appear. The director still picks the effects on top. (scene_tags modes:ambient = gallery-ambient and gallery-ambient-lively.)",
+      "_note": "Each screen shows pictures from its own library that suit the music heard (owner, 27-28 Oct), picked by the pictures' tags and the art director's wish for this music (jazz: abstract, smoky rooms, night streets; gentle classical: landscapes, still life; pop: people, cities, fun). A set holds for a song and moves on with the next. Seven looks, the director picking the one that fits: plain, ghosts, contact sheet, colours, little planets, kaleidoscope and a livelier plain one; calm music changes picture every 16 bars, lively every 2-4, with the director's effects on top. Auto (owner, 28 Oct: 'we enter ambient mode (ideally automatically)'): music for 30 s in Normal -> Ambient; 2 min without music -> back. Like Piano, an automatic start leaves the blinds, the glitterball and TVs in standby alone. (scene_tags modes:ambient = the gallery-ambient* presets.)",
       "state": {
         "drawing-room:screens": {
           "live": {
@@ -275,6 +275,32 @@
           "set": true,
           "restore": true
         }
+      },
+      "autopilot": {
+        "enter_when": {
+          "music_audible": {
+            "for_s": 30
+          }
+        },
+        "from": [
+          "gallery"
+        ],
+        "leave_when": {
+          "not": {
+            "music_audible": {}
+          },
+          "for_s": 120
+        },
+        "leave_to": "previous",
+        "skip": [
+          "drawing-room:blinds",
+          "mirror_ball",
+          {
+            "drawing-room:tv": {
+              "from": "standby"
+            }
+          }
+        ]
       },
       "on_enter": [
         {
