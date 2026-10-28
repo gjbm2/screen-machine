@@ -9,7 +9,10 @@ One subsystem, so a mode's whole look is planned at once. Members, from the devi
   colour  its "colours", each its own button. "fade" (the remote's colour cycle) is one of them: the room can't know
           what it shows, so it's a colour of its own. Pressing the colour it already shows switches it off (owner,
           28 Oct), so the plan never presses the colour it has
-  level   0..steps      "up" and "down" move one step; 0 is black (the pinspot: 8 steps)
+  level   0..steps      "up" and "down" move one step; 0 is black (the pinspot: 8 steps). With "up_hold" and
+                        "down_hold" learned (the remote's + and − held down), all the way up or down is one hold,
+                        streamed for hold_s, like holding the remote's button (owner, 28 Oct: "the real utility here is
+                        dim to black and undim from black")
   <toggle> on | off     each of its "toggles" (the pinspot: flash, the strobe), one button each
 Changing colour goes through black (owner, 28 Oct: "reducing intensity of blue down to black, then changing to white,
 then increasing intensity up to 16"): down to 0, the colour, then up to the level wanted (else the level it had, else
@@ -31,11 +34,12 @@ from typing import Any
 
 from ..roomstate.contract import Adapter, Outcome, Placeholder, Reading
 from ..roomstate.schema import enum_schema, range_schema
-from .broadlink_rf import Remote, RFError
+from .broadlink_rf import Remote, RFError, clean_rf, rf_pulses
 
 log = logging.getLogger("room_service.rf_light")
 
 BASE = ("main", "colour", "level")
+HOLD_FRAMES = 10                                 # copies of the code a packet: ~0.7 s, ~700 bytes (the RM4 sends it)
 ON_OFF = ("on", "off")
 WHITE = "white"
 
@@ -71,6 +75,13 @@ def plan(now: dict, desired: dict, kept: dict, steps: int, codes: set[str], togg
         return presses, {m: v for m, v in want.items() if v != now.get(m)}
     if now.get("main") != "on":                  # off, or unknown (a toggle then assumes off)
         presses.append(("on" if absolute else "toggle", 1, {"main": "on"}))
+    hold = {"up_hold", "down_hold"} <= codes    # the remote's hold: all the way in one go
+
+    def to_black(cur: int | None) -> list[tuple[str, int, dict]]:
+        if cur == 0:
+            return []
+        return [("down_hold", 1, {"level": 0})] if hold else [("down", steps if cur is None else cur, {"level": 0})]
+
     cur = now.get("level")
     level = want.get("level")
     if level is not None:
@@ -79,15 +90,16 @@ def plan(now: dict, desired: dict, kept: dict, steps: int, codes: set[str], togg
     if colour is not None and colour != now.get("colour"):
         # through black: down to 0, the colour, then back up to the level wanted, else the one it had, else full
         back = level if level is not None else (cur if cur else steps)
-        if cur != 0:
-            presses.append(("down", steps if cur is None else cur, {"level": 0}))
+        presses += to_black(cur)
         presses.append((str(colour), 1, {"colour": colour}))
         cur, level = 0, back
-    if level is not None:
-        if cur is None:                          # unknown: from black up
-            presses.append(("down", steps, {"level": 0}))
+    if level is not None and level != cur:
+        if cur is None or level == 0:            # unknown, or black wanted: down all the way first
+            presses += to_black(cur)
             cur = 0
-        if level > cur:
+        if level == steps and hold and level > cur:
+            presses.append(("up_hold", 1, {"level": steps}))
+        elif level > cur:
             presses.append(("up", level - cur, {"level": level}))
         elif level < cur:
             presses.append(("down", cur - level, {"level": level}))
@@ -141,8 +153,12 @@ class RFLightAdapter(Adapter):
         return {str(k): str(v) for k, v in (self.file.fresh().get("colours") or {}).items()}
 
     @property
+    def hold_s(self) -> float:
+        return float(self.file.fresh().get("hold_s", 3.5))
+
+    @property
     def change_time_s(self) -> float:            # the longest plan: power, down to black, a colour, up, the toggles
-        return 8.0 + self.gap_s * (2 * self.steps + 4 + len(self.toggles))
+        return 8.0 + 2 * self.hold_s + self.gap_s * (2 * self.steps + 4 + len(self.toggles))
 
     @property
     def dry_run(self) -> bool:
@@ -191,7 +207,16 @@ class RFLightAdapter(Adapter):
     async def _run(self, presses: list[tuple[str, int, dict]]) -> None:
         """Send each press in order, the record following each one sent (a failure part way leaves the truth)."""
         first = True
+        held = set(self.file.held)
         for button, times, change in presses:
+            if button in held:
+                if not first:
+                    await asyncio.sleep(self.gap_s)
+                first = False
+                await self._hold(button)
+                self.now.update(change)
+                self._save()
+                continue
             packet = self.file.code(button)
             for _ in range(times):
                 if not first:
@@ -200,6 +225,20 @@ class RFLightAdapter(Adapter):
                 await self.remote.rm.send(packet)
             self.now.update(change)
             self._save()
+
+    async def _hold(self, button: str) -> None:
+        """The remote's button held down for hold_s: its code, HOLD_FRAMES copies a packet, each packet sent as the
+        last one ends (paced by its air time), so the light hears one unbroken hold."""
+        packet = clean_rf(self.file.raw_code(button), HOLD_FRAMES, gap_ms=0)
+        air = sum(rf_pulses(packet)) / 1e6 or 0.5
+        loop = asyncio.get_running_loop()
+        t0 = loop.time()
+        n = max(1, round(self.hold_s / air))
+        for i in range(n):
+            wait = t0 + i * air - 0.03 - loop.time()   # a little early: no gap between packets
+            if wait > 0:
+                await asyncio.sleep(wait)
+            await self.remote.rm.send(packet)
 
     async def apply(self, desired: dict[str, Any], opts: dict) -> Outcome:
         if self.dry_run:
