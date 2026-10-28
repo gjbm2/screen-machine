@@ -22,6 +22,7 @@ import type {
   RemoteDevice,
   RemoteLearn,
   RemoteLightState,
+  RemotesView,
   RoomDescribe,
   RoomStatus,
   SceneSpec,
@@ -467,14 +468,25 @@ export class RoomApi {
 
   // ── Remote-controlled devices on the RM4 Pro (room_service remotes_api.py) ──
 
-  /** Every device worked by a remote, its buttons learned or not; null when this room_service has no such route. */
-  async remotes(signal?: AbortSignal): Promise<RemoteDevice[] | null> {
+  /** Every appliance added (its buttons learned or not), what can be added, the RM4 Pros and rooms; null when this
+   *  room_service has no such route. */
+  async remotes(signal?: AbortSignal): Promise<RemotesView | null> {
     try {
-      return (await this.json<{ remotes: RemoteDevice[] }>("GET", "/api/v1/remotes", undefined, signal)).remotes;
+      return await this.json<RemotesView>("GET", "/api/v1/remotes", undefined, signal);
     } catch (e) {
       if (e instanceof RoomApiError && e.status === 404) return null;
       throw e;
     }
+  }
+
+  /** Add an appliance of a type to a room (host: the RM4 Pro, when the room doesn't know one yet). */
+  addRemote(model: string, label: string, room: string, host?: string) {
+    return this.json<RemoteDevice>("POST", "/api/v1/remotes", { model, label, room, ...(host ? { host } : {}) });
+  }
+
+  /** Remove an appliance: its learned buttons and its card go too. Refused (409) while a mode sets it. */
+  removeRemote(remote: string) {
+    return this.json<{ removed: string }>("DELETE", `/api/v1/remotes/${encodeURIComponent(remote)}`);
   }
 
   /** Start learning one button (the RM4 Pro listens for up to a minute); sweep finds an RF remote's frequency again. */

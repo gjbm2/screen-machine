@@ -358,7 +358,7 @@ function EffectCard({
               disabled={!connected || !!busy}
               onClick={() =>
                 void run("reset", async () => {
-                  const dev = (await api.remotes())?.find((r) => r.subsystems.includes(sub));
+                  const dev = (await api.remotes())?.remotes.find((r) => r.subsystems.includes(sub));
                   if (!dev) throw new Error("The room doesn't know this device's remote.");
                   await api.resetLight(dev.id);
                 })

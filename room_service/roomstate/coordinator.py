@@ -882,7 +882,7 @@ class Coordinator:
         by_sub: dict[str, list[str]] = defaultdict(list)
         for t in sorted(self._level(targets)):
             sub, m = t.split(".", 1)
-            if m in self.adapters[sub].members:
+            if sub in self.adapters and m in self.adapters[sub].members:   # a device removed mid-transition: gone
                 by_sub[sub].append(m)
         if not by_sub:
             return

@@ -212,6 +212,23 @@ class RoomService:
             self.coordinator.reload(modes, cause=f"{subsystem} members changed")
         self.events.mark_dirty()
 
+    def swap_adapters(self, added: list, removed: set[str], cause: str) -> None:
+        """Devices added or removed at runtime (a remote-controlled device in Settings › Lights): their subsystems join
+        or leave the room, and the room config is rebuilt from the same files. Nothing moves until the next switch."""
+        rc, co = self.room_config, self.coordinator
+        rc.adapters = [a for a in rc.adapters if a.subsystem not in removed] + list(added)
+        for sub in removed:
+            co.adapters.pop(sub, None)
+        for a in added:
+            co.adapters[a.subsystem] = a
+        modes = rc.load()
+        co.config_error = rc.error
+        if rc.error is None:
+            co.reload(modes, cause=cause)
+        else:
+            self.events.log_event("error", rc.error)
+        self.events.mark_dirty()
+
     def modes_view(self) -> dict:
         """GET /api/v1/modes: every requestable mode with its resolved state, nested the way the Room page reads it
         (screens per id, single-member subsystems flat), plus the per-target entries."""

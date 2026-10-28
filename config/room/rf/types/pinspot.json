@@ -1,0 +1,33 @@
+{
+  "_note": "A device type for Settings › Lights › Add a remote-controlled device: a new device file (config/room/rf/<id>.json) starts as a copy of this, with its own name, subsystem and RM4 Pro. A light on an RF remote (room_service/adapters/rf_light.py): the room keeps its own record and presses buttons in order to reach a wanted look (power, colour, brightness steps, then the pulse and flash toggles, gap_s apart). After power at the wall it comes on white at full: Reset (on, white, down x steps, off). Colour ids stay; their names are set when learning.",
+  "type_label": "Pinspot",
+  "description": "A colour light on a radio remote: on/off, white and six colours, 16 brightness steps, pulse and flash. Several on one remote work as one.",
+  "type": "light",
+  "label": "Pinspots",
+  "medium": "rf",
+  "steps": 16,
+  "gap_s": 0.3,
+  "colours": {
+    "white": "White",
+    "colour1": "Colour 1",
+    "colour2": "Colour 2",
+    "colour3": "Colour 3",
+    "colour4": "Colour 4",
+    "colour5": "Colour 5",
+    "colour6": "Colour 6"
+  },
+  "buttons": {
+    "Power": {
+      "on": "On",
+      "off": "Off"
+    },
+    "Brightness": {
+      "up": "Brighter",
+      "down": "Dimmer"
+    },
+    "Modes": {
+      "pulse": "Pulse",
+      "flash": "Flash (strobe)"
+    }
+  }
+}

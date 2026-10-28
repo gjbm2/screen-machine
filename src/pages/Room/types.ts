@@ -263,6 +263,10 @@ export interface RemoteLightState {
 export interface RemoteDevice {
   id: string;
   label: string;
+  /** Its device type (config/room/rf/types/<model>.json). */
+  model?: string | null;
+  /** The room whose card it is on (rooms.json). */
+  room?: string | null;
   medium: "rf" | "ir";
   host: string;
   freq_mhz: number | null;
@@ -272,6 +276,22 @@ export interface RemoteDevice {
   buttons: RemoteButton[];
   job: RemoteLearn | null;
   state: RemoteLightState | null;
+}
+
+/** A kind of appliance that can be added (a pinspot, a glitterball). */
+export interface RemoteType {
+  id: string;
+  label: string;
+  description?: string | null;
+  medium: "rf" | "ir";
+}
+
+/** GET /api/v1/remotes: the appliances added, what can be added, the RM4 Pros in use, and the rooms. */
+export interface RemotesView {
+  remotes: RemoteDevice[];
+  types: RemoteType[];
+  hosts: string[];
+  rooms: { id: string; name: string }[];
 }
 
 /** One room of the site (routes/data/rooms.json), in file order. Ids refer to screens, lamps, blinds, sensors;

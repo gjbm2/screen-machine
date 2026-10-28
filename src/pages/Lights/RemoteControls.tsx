@@ -1,18 +1,20 @@
-// Lights setup › Remote controls: the devices the RM4 Pro works by their own remotes (the pinspots, the glitterball;
-// room_service remotes_api.py). Each button is learned once here (the RM4 Pro listens; press that button on the
-// device's remote near it) and tested (it sends the code; watch the device). "Learn the rest" walks every button not
-// learned yet, one after another. A light also has Reset (after it lost power at the wall it comes on white at full:
-// dimmed to the floor and off, so the room knows what it is doing) and its colours' names. What a device does is
-// chosen on the Room page, not here.
+// Light setup (Settings) › Appliances worked by remote: the devices the RM4 Pro works by their own remotes (room_service
+// remotes_api.py). Config-driven: none until one is added here from a device type (a pinspot, a glitterball) into a
+// room; it then has a card on /lights and the Room page. Each appliance folds open to its buttons: each learned once
+// (the RM4 Pro listens; press that button on the appliance's remote near it) and tested (it sends the code; watch the
+// appliance). "Learn the rest" walks every button not learned yet, one after another. A light also has Reset (after it
+// lost power at the wall it comes on white at full: dimmed to the floor and off, so the room knows what it is doing)
+// and its colours' names. Remove takes it away (its learned buttons and card too). What an appliance does is chosen
+// on /lights and the Room page, not here.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Check, Pencil, Radio, Send } from "lucide-react";
+import { Check, ChevronDown, Pencil, Plus, Radio, Send, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { explainError, type RoomApi } from "@/pages/Room/api";
 import { Notice, Spinner } from "@/pages/Room/bits";
 import { CARD_CLASS } from "@/pages/Room/theme";
-import type { RemoteButton, RemoteDevice, RemoteLearn } from "@/pages/Room/types";
+import type { RemoteButton, RemoteDevice, RemoteLearn, RemotesView } from "@/pages/Room/types";
 
 const SMALL_BUTTON =
   "inline-flex min-h-10 items-center justify-center gap-1.5 rounded-xl border border-stone-200 bg-white px-3 text-[15px] hover:bg-stone-50 disabled:opacity-50";
@@ -135,7 +137,22 @@ function ButtonRow({
   );
 }
 
-function RemoteCard({ d, api, onChanged }: { d: RemoteDevice; api: RoomApi; onChanged: () => void }) {
+function RemoteCard({
+  d,
+  api,
+  roomName,
+  open,
+  onToggle,
+  onChanged,
+}: {
+  d: RemoteDevice;
+  api: RoomApi;
+  roomName: string | null;
+  open: boolean;
+  onToggle: () => void;
+  onChanged: () => void;
+}) {
+  const [removing, setRemoving] = useState(false);
   const [job, setJob] = useState<RemoteLearn | null>(d.job?.running ? d.job : null);
   const [last, setLast] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -229,13 +246,35 @@ function RemoteCard({ d, api, onChanged }: { d: RemoteDevice; api: RoomApi; onCh
   const now = d.light ? stateWords(d) : null;
   const disabled = running || !!busy;
 
+  const head = (
+    <button
+      type="button"
+      aria-expanded={open}
+      onClick={onToggle}
+      className="flex w-full items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <span className="min-w-0 flex-1">
+        <span className="block text-lg font-semibold text-stone-800">{d.label}</span>
+        <span className="block text-[15px] text-muted-foreground">
+          {[roomName, `${learnedCount} of ${d.buttons.length} buttons learned`].filter(Boolean).join(" · ")}
+        </span>
+      </span>
+      <ChevronDown aria-hidden className={cn("h-5 w-5 shrink-0 text-muted-foreground transition-transform", open && "rotate-180")} />
+    </button>
+  );
+  if (!open) {
+    return (
+      <div className={cn(CARD_CLASS, "px-3 py-3 sm:px-4")} data-testid={`remote-${d.id}`}>
+        {head}
+      </div>
+    );
+  }
+
   return (
     <div className={cn(CARD_CLASS, "space-y-3 px-3 py-3 sm:px-4")} data-testid={`remote-${d.id}`}>
       <div>
-        <h3 className="text-lg font-semibold text-stone-800">{d.label}</h3>
-        <p className="text-[15px] text-muted-foreground">
-          {learnedCount} of {d.buttons.length} buttons learned. {how}
-        </p>
+        {head}
+        <p className="mt-1 text-[15px] text-muted-foreground">{how}</p>
         {d.light && (
           <p className="text-[15px] text-stone-700">
             {now ? `Now: ${now}.` : "The room isn't sure what it's doing: Reset puts that right."}
@@ -319,35 +358,195 @@ function RemoteCard({ d, api, onChanged }: { d: RemoteDevice; api: RoomApi; onCh
           Find the frequency again for the next button (if a button won't learn)
         </label>
       )}
+
+      <div className="border-t border-stone-100 pt-2">
+        {removing ? (
+          <div className="space-y-2">
+            <p className="text-base">Remove {d.label}? Its learned buttons and its card on the Lights and Room pages go too.</p>
+            <div className="flex gap-2">
+              <Button
+                variant="destructive"
+                disabled={disabled}
+                className="h-11 rounded-xl"
+                onClick={() =>
+                  void act("remove", async () => {
+                    await api.removeRemote(d.id);
+                    return { status: "ok", detail: "" };
+                  })
+                }
+              >
+                {busy === "remove" && <Spinner />} Remove
+              </Button>
+              <Button variant="outline" className="h-11 rounded-xl" onClick={() => setRemoving(false)}>
+                Keep it
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            disabled={disabled}
+            onClick={() => setRemoving(true)}
+            className="inline-flex min-h-10 items-center gap-1.5 text-sm text-stone-600 hover:text-rose-700 disabled:opacity-50"
+          >
+            <Trash2 className="h-4 w-4" aria-hidden /> Remove this appliance
+          </button>
+        )}
+      </div>
     </div>
   );
 }
 
-/** Every remote-controlled device; nothing when room_service has none (or no such route yet). */
-export function RemoteControls({ api }: { api: RoomApi }) {
-  const [devices, setDevices] = useState<RemoteDevice[] | null>(null);
+/** Add an appliance: its kind, its name, its room (and the RM4 Pro, when the room doesn't know one yet). */
+function AddAppliance({ api, view, onAdded }: { api: RoomApi; view: RemotesView; onAdded: (id: string) => void }) {
+  const [open, setOpen] = useState(false);
+  const [model, setModel] = useState<string>(view.types[0]?.id ?? "");
+  const type = view.types.find((t) => t.id === model);
+  const [label, setLabel] = useState("");
+  const [room, setRoom] = useState<string>(view.rooms[0]?.id ?? "");
+  const [host, setHost] = useState("");
+  const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const needHost = view.hosts.length !== 1;
+  if (!view.types.length) return null;
+  if (!open) {
+    return (
+      <Button onClick={() => setOpen(true)} className="h-11 w-full rounded-xl px-5 text-base sm:w-auto" data-testid="add-appliance">
+        <Plus aria-hidden /> Add an appliance
+      </Button>
+    );
+  }
+  const field = "min-h-11 w-full rounded-xl border border-stone-300 bg-white px-3 text-base";
+  return (
+    <form
+      className={cn(CARD_CLASS, "space-y-3 px-3 py-3 sm:px-4")}
+      onSubmit={(e) => {
+        e.preventDefault();
+        setBusy(true);
+        setErr(null);
+        api
+          .addRemote(model, label.trim() || type?.label || model, room, needHost ? host.trim() : undefined)
+          .then((d) => {
+            setOpen(false);
+            setLabel("");
+            onAdded(d.id);
+          })
+          .catch((x) => setErr(explainError(x)))
+          .finally(() => setBusy(false));
+      }}
+    >
+      <h3 className="text-lg font-semibold text-stone-800">Add an appliance</h3>
+      <div role="radiogroup" aria-label="What is it?" className="grid gap-2 sm:grid-cols-2">
+        {view.types.map((t) => (
+          <button
+            key={t.id}
+            type="button"
+            role="radio"
+            aria-checked={model === t.id}
+            onClick={() => setModel(t.id)}
+            className={cn(
+              "rounded-xl border px-3 py-2 text-left",
+              model === t.id ? "border-teal-300 bg-teal-50" : "border-stone-200 bg-white hover:bg-stone-50",
+            )}
+          >
+            <span className="block text-base font-semibold">{t.label}</span>
+            {t.description && <span className="block text-sm text-muted-foreground">{t.description}</span>}
+          </button>
+        ))}
+      </div>
+      <label className="block space-y-1">
+        <span className="text-base font-medium">Name</span>
+        <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder={type?.label} maxLength={40} className={field} />
+      </label>
+      {view.rooms.length > 1 && (
+        <label className="block space-y-1">
+          <span className="text-base font-medium">Room</span>
+          <select value={room} onChange={(e) => setRoom(e.target.value)} className={field}>
+            {view.rooms.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
+      {needHost && (
+        <label className="block space-y-1">
+          <span className="text-base font-medium">RM4 Pro's address</span>
+          {view.hosts.length > 1 ? (
+            <select value={host} onChange={(e) => setHost(e.target.value)} className={field}>
+              <option value="">Choose…</option>
+              {view.hosts.map((h) => (
+                <option key={h} value={h}>
+                  {h}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input value={host} onChange={(e) => setHost(e.target.value)} inputMode="decimal" className={field} />
+          )}
+        </label>
+      )}
+      {err && <Notice tone="bad" className="text-base">{err}</Notice>}
+      <div className="flex gap-2">
+        <Button type="submit" disabled={busy || !model || !room || (needHost && !host.trim())} className="h-11 rounded-xl px-5">
+          {busy && <Spinner />} Add
+        </Button>
+        <Button type="button" variant="outline" onClick={() => setOpen(false)} className="h-11 rounded-xl">
+          Cancel
+        </Button>
+      </div>
+    </form>
+  );
+}
+
+/** The appliances worked by remote: each one added, and Add an appliance. Nothing without the route (an older room). */
+export function RemoteControls({ api }: { api: RoomApi }) {
+  const [view, setView] = useState<RemotesView | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const [openId, setOpenId] = useState<string | null>(null);
   const load = useCallback(() => {
     api
       .remotes()
       .then((v) => {
-        setDevices(v);
+        setView(v);
         setErr(null);
       })
       .catch((e) => setErr(explainError(e)));
   }, [api]);
   useEffect(load, [load]);
 
-  if (!devices?.length && !err) return null;
+  if (!view && !err) return null;
+  const roomName = (id?: string | null) => view?.rooms.find((r) => r.id === id)?.name ?? null;
   return (
-    <section aria-label="Remote controls" className="space-y-2" data-testid="remote-controls">
-      <h2 className="text-lg font-semibold text-stone-800">Remote controls</h2>
+    <section aria-label="Appliances worked by remote" className="space-y-2" data-testid="remote-controls">
+      <h2 className="text-lg font-semibold text-stone-800">Appliances worked by remote</h2>
       <p className="text-sm text-muted-foreground">
-        Lights and effects the room works with their own remotes, through the RM4 Pro. Learn each button once, then Test
-        it while watching the device.
+        Lights and effects with their own remote (a glitterball, pinspots), worked through the RM4 Pro. Add one, then
+        learn each of its buttons once and Test it while watching.
       </p>
       {err && <Notice tone="bad" className="text-base">{err}</Notice>}
-      {devices?.map((d) => <RemoteCard key={d.id} d={d} api={api} onChanged={load} />)}
+      {view?.remotes.map((d) => (
+        <RemoteCard
+          key={d.id}
+          d={d}
+          api={api}
+          roomName={roomName(d.room)}
+          open={openId === d.id}
+          onToggle={() => setOpenId((o) => (o === d.id ? null : d.id))}
+          onChanged={load}
+        />
+      ))}
+      {view && (
+        <AddAppliance
+          api={api}
+          view={view}
+          onAdded={(id) => {
+            setOpenId(id);
+            load();
+          }}
+        />
+      )}
     </section>
   );
 }

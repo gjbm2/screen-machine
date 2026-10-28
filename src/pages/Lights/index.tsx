@@ -1,20 +1,20 @@
-// /lights, Lights setup: add, place and identify the room's lights (contract D). A sub-page of the Room page: the
-// app's one header (PageHeader) with "‹ Room" back to the Room page's Lights fold, and a gear to the light settings.
+// /settings/lights, Light setup: add, place and identify the room's lights (contract D), and the appliances worked by
+// remote. A sub-page of Settings (setup lives in Settings; /lights works the lights, Control.tsx): the app's one header
+// (PageHeader) with "‹ Settings" back to Settings › Lights.
 // Every light show_service's rig knows (GET /show/api/v1/rig, polled every 2 s while the page is visible): the DMX
 // lights on Art-Net boxes, which are added, edited and removed here, and the Hue lamps from the Hue bridge, whose
 // status and colour come from room_service (it drives them). Lights are grouped by room (rooms.json), each row with its
 // kind; names drop their room's name; where a light is comes from the Room map once it's placed there. Each row has
 // Identify. Add a light is the page's main action (LightForm.tsx; Move it inside it).
 // "Lights | Room map" at the top (?tab=map, else remembered on this device) switches to the Room map (RoomMap.tsx).
-// ?light=<id> opens that light's row (from the Room page's "Set up this light ›"). What a light does is chosen on the
-// Room page, not here. Same light, warm skin as /room (its theme and pieces).
-// Under the lights, Remote controls (RemoteControls.tsx): the devices worked by their own remotes through the RM4 Pro
-// (the pinspots, the glitterball), each button learned and tested here.
+// ?light=<id> opens that light's row (from a light's "Set up this light ›"). What a light does is chosen on /lights and
+// the Room page, not here. Same light, warm skin as /room (its theme and pieces).
+// Under the lights, Appliances worked by remote (RemoteControls.tsx): added from a device type (glitterball, pinspot),
+// each button learned and tested through the RM4 Pro, removed.
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Plus, Settings } from "lucide-react";
-import { AppLink } from "@/components/nav/AppLink";
+import { Plus } from "lucide-react";
 import { AppMenu } from "@/components/nav/AppMenu";
 import { settingsUrl } from "@/components/nav/appNav";
 import { PageHeader, type HeaderStatus } from "@/components/nav/PageHeader";
@@ -82,7 +82,7 @@ interface Group {
 }
 
 export default function LightsPage() {
-  usePageTitle("Lights setup · screen/machine");
+  usePageTitle("Light setup · screen/machine");
   const [params, setParams] = useSearchParams();
   const api = useMemo(() => new LightsApi(), []);
   const roomApi = useMemo(() => new RoomApi(api.roomUrl, ""), [api]);
@@ -201,21 +201,11 @@ export default function LightsPage() {
       <RoomThemeStyle />
       <div className="mx-auto w-full max-w-3xl px-4 pb-16 sm:px-6">
         <PageHeader
-          title="Lights"
-          current="lights"
+          title="Light setup"
+          current="settings"
           onMenu={() => setMenuOpen(true)}
-          back={{ to: "/room#lights", label: "Room" }}
+          back={{ to: settingsUrl("lights"), label: "Settings" }}
           status={status}
-          actions={
-            <AppLink
-              href={settingsUrl("lights")}
-              aria-label="Light settings"
-              title="Light settings"
-              className="grid h-11 w-11 place-items-center rounded-full text-stone-700 hover:bg-stone-200/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            >
-              <Settings className="h-5 w-5" aria-hidden />
-            </AppLink>
-          }
         />
 
         <main className="space-y-5 pt-2">
@@ -341,7 +331,7 @@ export default function LightsPage() {
         }}
       />
 
-      <AppMenu open={menuOpen} onOpenChange={setMenuOpen} current="lights" />
+      <AppMenu open={menuOpen} onOpenChange={setMenuOpen} current="settings" />
     </div>
   );
 }

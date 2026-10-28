@@ -5,7 +5,7 @@
 
 import { useEffect, useState } from "react";
 import { Lightbulb } from "lucide-react";
-import { lightsPageUrl } from "@/components/nav/appNav";
+import { lightSetupUrl, lightsPageUrl } from "@/components/nav/appNav";
 import type { RoomApi } from "@/pages/Room/api";
 import type { FixturesView, RoomStatus } from "@/pages/Room/types";
 import { friendlyName } from "@/pages/Room/words";
@@ -42,8 +42,8 @@ function LightsBody({ api, status }: { api: RoomApi; status: RoomStatus | null }
 
   return (
     <>
-      <LinkRow href={lightsPageUrl()} state={{ from: "Settings" }}>
-        Set up lights: add a light, name it, place it on the map
+      <LinkRow href={lightSetupUrl()} state={{ from: "Settings" }}>
+        Light setup: add a light or an appliance, name it, place it, learn its remote
       </LinkRow>
 
       <Sub>Hue lamps</Sub>
@@ -76,11 +76,11 @@ function LightsBody({ api, status }: { api: RoomApi; status: RoomStatus | null }
           {blinds > 0 && (
             <ReadRow label="Blinds" value={`${blinds} · ${subs.blinds?.dry_run ? "practice run only" : subs.blinds?.available === false ? "not connected" : "connected"}`} />
           )}
-          <Hint>Their remote codes were learned once and are read only here.</Hint>
+          <Hint>Added, and their remote buttons learned, on the light setup page.</Hint>
         </>
       )}
 
-      <LinkRow href="/room#lights">Switch the lights on the Room page</LinkRow>
+      <LinkRow href={lightsPageUrl()}>Work the lights</LinkRow>
     </>
   );
 }

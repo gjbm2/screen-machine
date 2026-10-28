@@ -1,8 +1,12 @@
-"""Routes for the devices worked by the RM4 Pro's remotes (adapters/broadlink_rf.py, rf_light.py): learn and test their
-codes from the Lights setup page. Open, like the rest of the AV stack (owner, 14 Oct). Registered from api.py.
+"""Routes for the devices worked by the RM4 Pro's remotes (adapters/broadlink_rf.py, rf_light.py): add, remove, learn
+and test them in Settings › Lights (setup lives in Settings; the main pages operate). Config-driven: a device exists
+once it is added (its file in config/room/rf/, a card in its room in rooms.json), made from a device type
+(config/room/rf/types/). Open, like the rest of the AV stack (owner, 14 Oct). Registered from api.py.
 
-  GET    /api/v1/remotes                 every device file: its buttons (learned or not), the learn in progress, and a
-                                         light's record of what it is doing
+  GET    /api/v1/remotes                 every device added: its type, room, buttons (learned or not), the learn in
+                                         progress, and a light's record of what it is doing; plus the types and RM4 Pros
+  POST   /api/v1/remotes                 {"model", "label", "room", "host"?} add one (host: the RM4 Pro the others use)
+  DELETE /api/v1/remotes/{id}            remove it (its file, codes and card). 409 while a mode still sets it
   POST   /api/v1/remotes/{id}/learn      {"button", "sweep"?: true} learn one button (RF: the frequency found once is
                                          reused unless sweep). 409 while the RM4 Pro is learning something else
   GET    /api/v1/remotes/{id}/learn      that learn's progress: {phase, words, running, ...}
@@ -18,6 +22,10 @@ from typing import TYPE_CHECKING
 
 from aiohttp import web
 
+import json
+from pathlib import Path
+
+from .adapters import broadlink_rf
 from .adapters.broadlink_rf import LearnJob, Remote, RFError
 
 if TYPE_CHECKING:
@@ -47,9 +55,47 @@ def register(app: web.Application, svc: "RoomService") -> None:
         from .adapters.rf_light import RFLightAdapter
         return next((a for a in adapters if isinstance(a, RFLightAdapter)), None)
 
+    def rooms_path() -> Path | None:
+        return getattr(getattr(svc, "room_config", None), "rooms_path", None)
+
+    def rooms() -> dict:
+        p = rooms_path()
+        try:
+            return json.loads(p.read_text()) if p else {}
+        except (OSError, ValueError):
+            return {}
+
+    def edit_rooms(fn) -> None:
+        p = rooms_path()
+        if not p:
+            return
+        raw = json.loads(p.read_text())
+        fn(raw)
+        tmp = p.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(raw, indent=2, ensure_ascii=False) + "\n")
+        tmp.replace(p)
+
+    def card(adapters: list) -> dict:
+        """The device's card on the Room page: its power target, then every setting target."""
+        first, settings = adapters[0], []
+        power = f"{first.subsystem}.{first.members[0]}"
+        for a in adapters:
+            settings += [f"{a.subsystem}.{m}" for m in a.members if f"{a.subsystem}.{m}" != power]
+        return {"power": power, "settings": settings}
+
+    def room_of(adapters: list) -> str | None:
+        subs = {a.subsystem for a in adapters}
+        for rid, room in rooms().items():
+            for e in (room.get("effects") or []) if isinstance(room, dict) else []:
+                t = e.get("power") if isinstance(e, dict) else e
+                if isinstance(t, str) and t.split(".", 1)[0] in subs:
+                    return rid
+        return None
+
     def view(r: Remote, adapters: list) -> dict:
         f, light = r.file, light_of(adapters)
-        return {"id": r.id, "label": str(f.raw.get("label") or r.id), "medium": f.medium, "host": r.rm.host,
+        return {"id": r.id, "label": str(f.raw.get("label") or r.id), "model": f.raw.get("model"),
+                "room": room_of(adapters), "medium": f.medium, "host": r.rm.host,
                 "freq_mhz": f.freq_mhz, "subsystems": [a.subsystem for a in adapters],
                 "light": light is not None, "steps": light.steps if light else None,
                 "buttons": r.button_rows(), "job": r.job.view() if r.job else None,
@@ -63,7 +109,69 @@ def register(app: web.Application, svc: "RoomService") -> None:
         return b if isinstance(b, dict) else {}
 
     async def list_remotes(request: web.Request) -> web.Response:
-        return web.json_response({"remotes": [view(r, a) for r, a in remotes().values()]})
+        have = remotes()
+        types = [{"id": k, "label": str(t.get("type_label") or k), "description": t.get("description"),
+                  "medium": t.get("medium") or "rf"} for k, t in broadlink_rf.device_types().items()]
+        rooms_list = [{"id": k, "name": str(v.get("name") or k)} for k, v in rooms().items()
+                      if not k.startswith("_") and isinstance(v, dict)]
+        return web.json_response({"remotes": [view(r, a) for r, a in have.values()], "types": types,
+                                  "hosts": sorted({r.rm.host for r, _ in have.values() if r.rm.host}),
+                                  "rooms": rooms_list})
+
+    async def add(request: web.Request) -> web.Response:
+        b = await body(request)
+        model, label, room = str(b.get("model") or ""), str(b.get("label") or "").strip(), str(b.get("room") or "")
+        have = remotes()
+        hosts = sorted({r.rm.host for r, _ in have.values() if r.rm.host})
+        host = str(b.get("host") or (hosts[0] if len(hosts) == 1 else "")).strip()
+        if model not in broadlink_rf.device_types():
+            return _err(400, "bad_model", f"no device type {model!r}")
+        if not host:
+            return _err(400, "no_host", "which RM4 Pro sends its codes? (its address on the house network)")
+        r_all = rooms()
+        if room not in r_all or room.startswith("_"):
+            return _err(400, "bad_room", f"no room {room!r}")
+        path = broadlink_rf.new_device(model, label, host)
+        rms = {r.rm.host: r.rm for r, _ in have.values()}
+        state_dir = getattr(getattr(svc, "cfg", None), "state_dir", None)
+        added = broadlink_rf.from_config(path, state_dir=state_dir, rms=rms)
+        if not added:
+            path.unlink(missing_ok=True)
+            return _err(500, "not_loaded", f"{path.name} didn't load; see the room log")
+        taken = set(svc.coordinator.adapters)
+        clash = [a.subsystem for a in added if a.subsystem in taken]
+        if clash:
+            path.unlink(missing_ok=True)
+            return _err(409, "taken", f"the room already has {', '.join(clash)}")
+        edit_rooms(lambda raw: raw[room].setdefault("effects", []).append(card(added)))
+        svc.swap_adapters(added, set(), cause=f"{path.stem} added in Settings")
+        rid = path.stem
+        got = remotes().get(rid)
+        return web.json_response(view(*got) if got else {"id": rid}, status=201)
+
+    async def remove(request: web.Request) -> web.Response:
+        got = find(request)
+        if isinstance(got, web.Response):
+            return got
+        r, adapters = got
+        subs = {a.subsystem for a in adapters}
+        cfg = svc.coordinator.cfg
+        using = sorted({m.label or name for name, m in cfg.modes.items()
+                        if any(t.split(".", 1)[0] in subs for t in m.state)})
+        if using:
+            return _err(409, "in_modes", f"{', '.join(using)} still set it: take it out of those modes first")
+        if r.job and r.job.running:
+            r.job.stop()
+
+        def drop(raw: dict) -> None:
+            for room in raw.values():
+                if isinstance(room, dict) and isinstance(room.get("effects"), list):
+                    room["effects"] = [e for e in room["effects"]
+                                       if str(e.get("power") if isinstance(e, dict) else e).split(".", 1)[0] not in subs]
+        edit_rooms(drop)
+        svc.swap_adapters([], subs, cause=f"{r.id} removed in Settings")
+        r.file.path.unlink(missing_ok=True)
+        return web.json_response({"removed": r.id})
 
     async def learn(request: web.Request) -> web.Response:
         got = find(request)
@@ -152,6 +260,8 @@ def register(app: web.Application, svc: "RoomService") -> None:
 
     a = app.router
     a.add_get("/api/v1/remotes", list_remotes)
+    a.add_post("/api/v1/remotes", add)
+    a.add_delete("/api/v1/remotes/{id}", remove)
     a.add_post("/api/v1/remotes/{id}/learn", learn)
     a.add_get("/api/v1/remotes/{id}/learn", learn_status)
     a.add_delete("/api/v1/remotes/{id}/learn", learn_stop)

@@ -28,7 +28,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { ChevronRight, KeyRound, Settings2, WifiOff } from "lucide-react";
-import { rendererConsoleUrl, settingsUrl } from "@/components/nav/appNav";
+import { lightSetupUrl, rendererConsoleUrl, settingsUrl } from "@/components/nav/appNav";
 import { useAppPlayer } from "@/components/player/appPlayer";
 import { PLAYER_BUSY } from "@/pages/Music/usePlayer";
 import { Button } from "@/components/ui/button";
@@ -38,8 +38,7 @@ import { loadToken, resolveRoomUrl, saveToken, type RoomApi } from "./api";
 import { useAutoRules } from "./AutoTriggers";
 import { Notice, Spinner, Unroll } from "./bits";
 import { isConnected, linkState } from "./connection";
-import { EffectsSection } from "./Effects";
-import { LightsSection } from "./Fixtures";
+import { LightsControls } from "./LightsControls";
 import { buildTagIndex } from "./sceneTags";
 import { useDescribe } from "./useDescribe";
 import { useFixtures } from "./useFixtures";
@@ -53,11 +52,12 @@ import { ListenHere } from "./ListenHere";
 import { PianoCard } from "./PianoCard";
 import { RecordPill, useRecorder } from "./PianoRecorder";
 import { PianoRow } from "./PianoRow";
-import { lightsFollow, lightsWords, RoomLightsRow } from "./RoomLightsRow";
+import { lightsFollow, lightsWords } from "./RoomLightsRow";
 import type { LookScope } from "./liveLib";
 import type { LiveMember } from "./roomFx";
 import { RoomLives, type RoomLiveSpec } from "./RoomLive";
 import { ScreenCard } from "./ScreenCard";
+import { buildSections } from "./sections";
 import { sceneChoices } from "./catalog";
 import { FOOT_LINK, openFold, Section, setFold } from "./Section";
 import { useTopToggles } from "./TopToggles";
@@ -165,47 +165,6 @@ function lampsWord(view: FixturesView | null, status: RoomStatus | null): string
   if (!lamps.length) return null;
   if (lightsFollow(view, status)) return "lights follow the music";
   return lamps.some((f) => f.status === "house" || f.light?.on) ? "lights on" : "lights off";
-}
-
-/** One section of the page: a room (its screens, then its lights and effects), or "Other". */
-interface Section {
-  key: string;
-  title: string;
-  screens: string[];
-  /** The section's lamp ids, or null for none. */
-  lights: string[] | null;
-  /** Device cards (rooms.json "effects"), e.g. the glitterball. */
-  effects: SiteEffect[];
-}
-
-/**
- * The page's sections from status.rooms, in file order, then "Other" for screens and lamps in no room. A section
- * with nothing to show is left out. `lampIds` are the lamps the room has (null while still loading). Without
- * rooms (an older room_service) there are none: the page shows the flat list instead.
- */
-function buildSections(status: RoomStatus | null, lampIds: string[] | null): Section[] {
-  const screens = status?.screens ?? {};
-  const rooms = status?.rooms ?? [];
-  if (!rooms.length) return [];
-  const placed = new Set<string>();
-  const placedLamps = new Set<string>();
-  const out: Section[] = rooms.map((r) => {
-    const ids = (r.screens ?? []).filter((id) => id in screens && !placed.has(id));
-    ids.forEach((id) => placed.add(id));
-    (r.lights ?? []).forEach((id) => placedLamps.add(id));
-    return {
-      key: r.id,
-      title: r.name || r.id,
-      screens: ids,
-      lights: r.lights?.length ? r.lights : null,
-      effects: (r.effects ?? []).filter((e) => !!status?.subsystems?.[e.power.split(".")[0]]),
-    };
-  });
-  const otherScreens = Object.keys(screens).filter((id) => !placed.has(id));
-  const otherLamps = (lampIds ?? []).filter((id) => !placedLamps.has(id));
-  out.push({ key: "_other", title: "Other", screens: otherScreens, lights: otherLamps.length ? otherLamps : null, effects: [] });
-  const hasLamps = (ids: string[] | null) => !!ids && (lampIds === null || ids.some((id) => lampIds.includes(id)));
-  return out.filter((s) => s.screens.length > 0 || hasLamps(s.lights) || s.effects.length > 0);
 }
 
 export default function RoomPage() {
@@ -650,7 +609,7 @@ export default function RoomPage() {
                           action={
                             // the setup page from the heading, not ~2,000 px down under the rows (owner, 24 Oct)
                             <Link
-                              to="/lights"
+                              to={lightSetupUrl()}
                               className="inline-flex min-h-11 items-center gap-0.5 rounded-xl px-2 text-[15px] font-medium text-teal-800 hover:bg-stone-100/70 hover:underline"
                             >
                               Set up lights <ChevronRight className="h-4 w-4" aria-hidden />
@@ -662,46 +621,19 @@ export default function RoomPage() {
                             </Link>
                           }
                         >
-                          {(lampIds === null || lampIds.length > 0) && <RoomLightsRow api={room.api} feed={show} addLog={room.addLog} />}
-                          {sections.length > 0 ? (
-                            lightGroups.map((sec) => (
-                              <div key={sec.key} className="space-y-3">
-                                {sec.lights && (
-                                  <LightsSection
-                                    api={room.api}
-                                    connected={connected}
-                                    addLog={room.addLog}
-                                    reportError={room.reportError}
-                                    fixtures={fixtures}
-                                    only={sec.lights}
-                                    title={sec.title}
-                                    sub
-                                  />
-                                )}
-                                {sec.effects.length > 0 && (
-                                  <EffectsSection
-                                    effects={sec.effects}
-                                    status={status}
-                                    describe={describe}
-                                    api={room.api}
-                                    connected={connected}
-                                    addLog={room.addLog}
-                                    reportError={room.reportError}
-                                  />
-                                )}
-                              </div>
-                            ))
-                          ) : (
-                            <LightsSection
-                              api={room.api}
-                              connected={connected}
-                              addLog={room.addLog}
-                              reportError={room.reportError}
-                              fixtures={fixtures}
-                              title="Lights"
-                              sub
-                            />
-                          )}
+                          <LightsControls
+                            api={room.api}
+                            connected={connected}
+                            addLog={room.addLog}
+                            reportError={room.reportError}
+                            fixtures={fixtures}
+                            show={show}
+                            status={status}
+                            describe={describe}
+                            groups={lightGroups}
+                            lampIds={lampIds}
+                            flat={sections.length === 0}
+                          />
                         </Section>
 
                         {/* one Piano fold, always there (so /room#piano works): its keys and pedals, then Record and the
