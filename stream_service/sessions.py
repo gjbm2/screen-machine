@@ -1968,10 +1968,12 @@ class Session(EngineListener):
             return                                   # the owner's, or already picked (and warmed) for this song
         now = time.monotonic()
         name = None
+        cur = self.mgr.presets.scenes.get(self.current_name or "") or {}
+        src, d = cur.get("source"), self.director
+        if change == "small" and src and d._heard(src) <= 0.0:
+            change = "big"                           # a notes scene with no MIDI: no variant of it, a fresh pick
         if change == "small":
-            cur = self.mgr.presets.scenes.get(self.current_name or "") or {}
-            src = cur.get("source")
-            scenes, d = self.mgr.presets.scenes, self.director
+            scenes = self.mgr.presets.scenes
             sib = sorted(n for n, p in scenes.items()
                          if src and p.get("source") == src and n != self.current_name and n != DARK_SCENE
                          and (p.get("tags") or {}).get("auto", True) is not False and self.room_ok("source", src))
