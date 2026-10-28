@@ -1,5 +1,5 @@
 {
-  "_note": "A device type for Settings › Light setup › Add an appliance: a new device file (config/room/rf/<id>.json) starts as a copy of this, with its own name, subsystem and RM4 Pro. A colour light on an RF remote (room_service/adapters/rf_light.py). Its remote (owner's photo, 28 Oct): one power button, Fade, Jump, Flash, Pulse, R G B W Y P CYAN, + and -. Jump and Pulse aren't used (other buttons do the same). Fade cycles the colours, so it is a colour of its own. Brightness: 'steps' presses of +/- from black to full (owner, 28 Oct: 9 levels, 0-8; it may only dim white). 'repeat': buttons whose Test keeps sending while held, as the remote does. The room keeps its own record and presses buttons in order, gap_s apart; a colour change goes down to black, the colour, then back up. After power at the wall it comes on white at full: Reset (white, down x steps, power off). 'clean': each press is sent as a clean packet (one copy of the learned code, frames times, then gap_ms of silence) rather than the raw ~0.7 s capture, which the far pinspot missed when presses came quickly (28 Oct). 'held': buttons recorded held down (Hold +, Hold −), sent as recorded, to copy the remote's own hold (28 Oct: dim to black and back up is what matters).",
+  "_note": "A device type for Settings › Light setup › Add an appliance: a new device file (config/room/rf/<id>.json) starts as a copy of this, with its own name, subsystem and RM4 Pro. A colour light on an RF remote (room_service/adapters/rf_light.py). Its remote (owner's photo, 28 Oct): one power button, Fade, Jump, Flash, Pulse, R G B W Y P CYAN, + and -. Jump and Pulse aren't used (other buttons do the same). Fade cycles the colours, so it is a colour of its own. Brightness: 'steps' presses of +/- from black to full (owner, 28 Oct: 9 levels, 0-8; it may only dim white). 'repeat': buttons whose Test keeps sending while held, as the remote does. The room keeps its own record and presses buttons in order, gap_s apart; a colour change goes down to black, the colour, then back up. After power at the wall it comes on white at full: Reset (white, down x steps, power off). 'clean': each press is sent as a clean packet (one copy of the learned code, frames times, then gap_ms of silence) rather than the raw ~0.7 s capture, which the far pinspot missed when presses came quickly (28 Oct). 'held': buttons recorded held down (Hold +, Hold −), sent as the remote's own hold: the RM4 Pro records only ~1.5 s (too long to send back), the same code over and over, so the room streams that code for hold_s (28 Oct: dim to black and back up is what matters).",
   "type_label": "Pinspot",
   "description": "A colour light on a radio remote: power, seven colours and the colour cycle, brightness from black to full, and flash (strobe). Several on one remote work as one.",
   "type": "light",
@@ -14,6 +14,7 @@
     "up_hold",
     "down_hold"
   ],
+  "hold_s": 3.5,
   "gap_s": 0.3,
   "clean": {
     "frames": 6,

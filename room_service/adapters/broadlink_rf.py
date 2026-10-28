@@ -57,6 +57,7 @@ TYPES_DIR = RF_DIR / "types"
 DEFAULT_FILE = RF_DIR / "glitterball.json"
 STATE_BUTTONS = ("on", "off", "toggle")
 POWER_WORDS = {"on": "On", "off": "Off", "toggle": "On/off (one button)"}
+MAX_PACKET = 1000                                # bytes: 1204 failed (a held capture), ~700 sends (28 Oct)
 LOCKED_HINT = "the RM4 Pro is locked: BroadLink app > the device > ... > Properties > Lock device: off"
 
 
@@ -118,6 +119,8 @@ class RM4:
         return self.call(get)
 
     async def send(self, packet: bytes) -> None:
+        if len(packet) > MAX_PACKET:             # it times out on these (20 s of nothing), so refuse at once
+            raise RFError(f"a {len(packet)}-byte code is too long for the RM4 Pro to send (at most {MAX_PACKET})")
         await asyncio.to_thread(self.call, lambda dev: dev.send_data(packet))
 
 
@@ -206,10 +209,7 @@ class RemoteFile:
     def code(self, button: str) -> bytes:
         """The packet to send: the learned code, or with the file's "clean" ({"frames", "gap_ms"}) a clean packet made
         from it (clean_rf)."""
-        c = self.codes.get(button)
-        if not c:
-            raise RFError(f"no code learned for {button!r} ({self.path.name})")
-        packet = base64.b64decode(c)
+        packet = self.raw_code(button)
         clean = self.fresh().get("clean")
         if isinstance(clean, dict) and self.medium == "rf" and button not in self.held:
             return clean_rf(packet, int(clean.get("frames", 6)), float(clean.get("gap_ms", 120)))
@@ -226,8 +226,9 @@ class RemoteFile:
 
     @property
     def held(self) -> list[str]:
-        """Buttons learned held down (a pinspot's Hold + and Hold −): the press is recorded as long as the RM4 Pro
-        listens, and sent as recorded (never cleaned): the remote's own hold."""
+        """Buttons learned held down (a pinspot's Hold + and Hold −). The RM4 Pro records ~1.5 s of a hold (1.2 KB,
+        too long to send back): the same code over and over. A light sends a held button as that code streamed for
+        hold_s (rf_light.RFLightAdapter._hold), the remote's own hold."""
         return [str(b) for b in (self.fresh().get("held") or [])]
 
     @property
@@ -245,6 +246,13 @@ class RemoteFile:
         tmp = self.path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(raw, indent=2, ensure_ascii=False) + "\n")
         tmp.replace(self.path)
+
+    def raw_code(self, button: str) -> bytes:
+        """The code as learned."""
+        c = self.codes.get(button)
+        if not c:
+            raise RFError(f"no code learned for {button!r} ({self.path.name})")
+        return base64.b64decode(c)
 
     def save_code(self, button: str, code: bytes, meta: dict | None = None) -> None:
         def put(raw: dict) -> None:

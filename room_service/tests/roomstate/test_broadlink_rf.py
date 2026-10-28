@@ -264,3 +264,30 @@ def test_a_colour_pressed_again_switches_the_light_off(tmp_path):
     assert a.now["main"] == "on"
     a.note("white")
     assert a.now == {**a.now, "main": "on", "colour": "white"}
+
+
+HOLDS = ALL | {"up_hold", "down_hold"}
+
+
+def test_plan_with_the_remotes_hold_goes_all_the_way_in_one():
+    now = {"main": "on", "colour": "blue", "level": 6, "flash": "off"}
+    assert presses(plan(now, {"colour": "white", "level": 8}, {}, 8, HOLDS, T)) == \
+        [("down_hold", 1), ("white", 1), ("up_hold", 1)]
+    assert presses(plan(now, {"level": 0}, {}, 8, HOLDS, T)) == [("down_hold", 1)]
+    assert presses(plan(now, {"level": 4}, {}, 8, HOLDS, T)) == [("down", 2)]       # in between: steps
+    unknown = {**now, "level": None}
+    assert presses(plan(unknown, {"level": 3}, {}, 8, HOLDS, T)) == [("down_hold", 1), ("up", 3)]
+
+
+def test_a_held_button_streams_its_code_for_hold_s(tmp_path):
+    frame = [460, 1310, 1310, 460] * 4 + [460, 13000]
+    cap = _rf([5300, 5200, 340000] + frame * 17)                 # a hold as the RM4 Pro records it
+    codes = {**LCODE, "down_hold": base64.b64encode(cap).decode()}
+    a, rm = light(tmp_path, codes)
+    raw = json.loads(a.file.path.read_text())
+    a.file.path.write_text(json.dumps({**raw, "held": ["down_hold"], "hold_s": 0.2}))
+    os.utime(a.file.path, (3, 3))
+    a.now.update(main="on", colour="white", level=8)
+    assert asyncio.run(a.signal(None, "press", {"button": "down_hold"})).status == "ok"
+    assert rm.sent and all(len(broadlink_rf.rf_pulses(p)) == 10 * len(frame) for p in rm.sent)
+    assert a.now["level"] == 0
