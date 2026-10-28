@@ -40,6 +40,7 @@ log = logging.getLogger("room_service.rf_light")
 
 BASE = ("main", "colour", "level")
 HOLD_FRAMES = 10                                 # copies of the code a packet: ~0.7 s, ~700 bytes (the RM4 sends it)
+SAFE_PACKET = 700                                # bytes: the largest packet seen sent (clean x10, 684); 1204 wasn't
 ON_OFF = ("on", "off")
 WHITE = "white"
 
@@ -232,7 +233,7 @@ class RFLightAdapter(Adapter):
         packet is sent as the last one ends (paced by its air time), so the light hears one unbroken hold."""
         raw = self.file.raw_code(button)
         if self.hold_s <= 0:
-            packets = split_rf(raw, frames_only=True)
+            packets = split_rf(raw, SAFE_PACKET, frames_only=True)
         else:
             one = clean_rf(raw, HOLD_FRAMES, gap_ms=0)
             packets = [one] * max(1, round(self.hold_s / (sum(rf_pulses(one)) / 1e6 or 0.5)))
