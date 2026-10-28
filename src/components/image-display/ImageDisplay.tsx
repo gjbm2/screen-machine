@@ -23,7 +23,7 @@ import { DROP_ZONES } from '@/dnd/dropZones';
 import useFullscreen from './hooks/useFullscreen';
 import RecentView from '@/components/recent/RecentView';
 import { ScreenLivePanel } from '@/components/room/ScreenLivePanel';
-import { useRoomLink, liveStateOf } from '@/components/room/roomLink';
+import { useRoomLinkSelect, liveStateOf } from '@/components/room/roomLink';
 
 export type ViewMode = 'normal' | 'small' | 'table';
 export type SortField = 'index' | 'prompt' | 'batchSize' | 'timestamp';
@@ -88,7 +88,15 @@ const TAB_BAR_HEIGHT = 48;
 export function ImageDisplay(props: ImageDisplayProps) {
   const { destinationsWithBuckets, loading: destinationsLoading } = usePublishDestinations();
   const [selectedTab, setSelectedTab] = useState<string>('recent');
-  const room = useRoomLink();
+  // Only the screens' live states (the tab dots), so a room status frame that changes nothing else doesn't
+  // re-render the generator (it re-rendered every ~1 s and the grid lost its hover state, owner 28 Oct).
+  const liveKey = useRoomLinkSelect((s) =>
+    Object.entries(s.status?.screens ?? {}).map(([id, sc]) => `${id}=${liveStateOf(sc)}`).join('|'),
+  );
+  const liveStates = useMemo(
+    () => Object.fromEntries(liveKey ? liveKey.split('|').map((kv) => kv.split('=')) : []) as Record<string, string>,
+    [liveKey],
+  );
   const [bucketRefreshFlags, setBucketRefreshFlags] = useState<Record<string, number>>({});
   const [viewMode, setViewMode] = useState<ViewMode>('normal');
   const [sortField, setSortField] = useState<SortField>('timestamp');
@@ -724,7 +732,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
         <span className="truncate max-w-[60px] sm:max-w-[100px]">{tab.label}</span>
         {(() => {
           // Live screens are marked on their tab (red), and screens on the way in or out (amber).
-          const ls = liveStateOf(room.status?.screens?.[tab.id]);
+          const ls = liveStates[tab.id] ?? liveStateOf(undefined);
           if (ls === 'art') return null;
           const tone = ls === 'live' ? 'bg-red-600' : ls === 'failed' ? 'bg-rose-400' : 'bg-amber-500';
           return (
