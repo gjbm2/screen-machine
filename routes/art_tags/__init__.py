@@ -38,10 +38,18 @@ def enqueue(bucket, filename, front=False, retag=False):
 
 
 def startup():
-    """At Flask start: the worker thread (first sweep 60 s later, the historic backfill included). Never raises."""
+    """At Flask start: the worker thread (first sweep 60 s later, the historic backfill included), and the art
+    director's thread, which has new pictures made for a screen whose library is thin for the music in Ambient
+    (owner, 28 Oct; routes/art_tags/director.py). Never raises."""
     from utils.logger import info, error
     try:
         get_worker().start()
         info("[art_tags] tagging queue started")
     except Exception as e:                            # noqa: BLE001
         error(f"[art_tags] startup failed: {e}")
+    try:
+        from routes.art_tags.director import get_director
+        get_director().start()
+        info("[art_tags] art director started")
+    except Exception as e:                            # noqa: BLE001
+        error(f"[art_tags] art director startup failed: {e}")

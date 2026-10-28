@@ -4,6 +4,7 @@
     python -m routes.art_tags.cli tag north-screen 20261027-223029-613e3305.jpg --model gemini-3.8-flash
     python -m routes.art_tags.cli tag north-screen 20261027-223029-613e3305.jpg --write    # into the sidecar
     python -m routes.art_tags.cli sweep --dry                                               # counts per bucket
+    python -m routes.art_tags.cli director --dry           # what the art director would do now (live GETs only)
 
 One tag call is one paid Gemini call (about $0.001). The queue itself runs only inside Flask."""
 from __future__ import annotations
@@ -24,6 +25,9 @@ def main(argv=None) -> int:
     t.add_argument("--prompt", action="store_true", help="print the system prompt and the context text too")
     s = sub.add_parser("sweep", help="what a sweep would queue")
     s.add_argument("--dry", action="store_true", help="only count (the queue runs inside Flask)")
+    dr = sub.add_parser("director", help="the art director's decision now, from the live room and show")
+    dr.add_argument("--dry", action="store_true", help="decide only: no prompt call, no generation (the director "
+                                                       "itself runs inside Flask)")
     a = ap.parse_args(argv)
 
     from routes.art_tags import lexicon, sidecar
@@ -43,6 +47,15 @@ def main(argv=None) -> int:
                                                                 lexicon.load()["version"]))
             print(f"written: tags {d['tags']}", file=sys.stderr)
         return 0 if res.get("ok") else 1
+
+    if a.cmd == "director":
+        if not a.dry:
+            print("the art director runs inside Flask: GET /api/art-tags/director (this only decides: --dry)",
+                  file=sys.stderr)
+            return 2
+        from routes.art_tags.director import Director
+        print(json.dumps(Director().pass_once(dry=True), indent=2, ensure_ascii=False))
+        return 0
 
     if not a.dry:
         print("the sweep runs inside Flask: POST /api/art-tags/sweep (this only counts: --dry)", file=sys.stderr)

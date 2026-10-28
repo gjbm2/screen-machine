@@ -17,6 +17,17 @@ tagger:
   skip_buckets: [_recent]      # the generator's scratch area: not saved, so not tagged
   max_attempts: 3              # then the file is marked failed and left alone
 
+# The art director's picture maker (routes/art_tags/director.py; owner, 28 Oct: "connect listening AI with artistic
+# director with AI image generator"). In Ambient, a screen whose library has fewer than `thin` strong matches for the
+# room's art wish gets new pictures, made into its bucket only (never shown on the wall), tagged on save, and in
+# Ambient's pool within a minute. Each picture costs one generation (about £0.01) plus one prompt call (about $0.0006).
+director:
+  enabled: true
+  interval_s: 60               # one decision pass this often
+  thin: 24                     # fewer strong matches than this on a screen = thin
+  per_screen_min_gap_s: 600    # at most one picture per screen per 10 minutes
+  per_day: 12                  # pictures a day across all screens (local day)
+
 facets:
   subject:                     # 1-2, best first: what the picture is OF
     landscape: land seen as a view - hills, mountains, fields, forests, deserts, countryside
@@ -85,6 +96,32 @@ music_groups:
   techno: techno, trance, drum-and-bass, dubstep, hard electronic
   hiphop: hip-hop
   world: latin, afrobeat, reggae, world
+
+# What each kind of music wants on the wall: the art director's "art wish" when the AI listener hasn't given one
+# (AI listening off, or not sure yet), by music group. The listener's own wish, when confident, replaces it.
+# subjects/moods/media steer which tagged pictures Ambient shows; avoid keeps a subject off the wall; theme is the
+# plain words shown on the Room page and given to the image generator when the library is thin for this music.
+music_art:
+  ambient:   {subjects: [sky, seascape, landscape, abstract, cosmic], moods: [calm, dreamy, cool], media: [],
+              avoid: [people, machines], theme: "open skies, still water, soft colour fields"}
+  classical: {subjects: [landscape, seascape, still-life, botanical, architecture], moods: [calm, elegant, dreamy],
+              media: [painting, photograph], avoid: [machines], theme: "pastoral landscapes, still life, old-master light"}
+  jazz:      {subjects: [abstract, interior, urban, people], moods: [dark, elegant, warm], media: [painting, photograph],
+              avoid: [animals, sky], theme: "late-night city, smoky rooms, painterly abstraction"}
+  soul:      {subjects: [people, interior, urban, portrait], moods: [warm, mellow, retro], media: [photograph, painting],
+              avoid: [cosmic, machines], theme: "warm faces, golden-hour rooms, 70s colour"}
+  pop:       {subjects: [people, urban, portrait, animals], moods: [bright, playful, euphoric], media: [],
+              avoid: [], theme: "sunny streets, people having fun, bold colour"}
+  rock:      {subjects: [urban, landscape, sky, people], moods: [dark, fiery, tense], media: [photograph],
+              avoid: [botanical, still-life], theme: "storms, grit, raw city nights"}
+  house:     {subjects: [urban, people, abstract, pattern], moods: [euphoric, warm, hypnotic], media: [],
+              avoid: [still-life], theme: "neon nights, dancing crowds, pulsing colour"}
+  techno:    {subjects: [pattern, machines, abstract, architecture, cosmic], moods: [geometric, hypnotic, cool], media: [render, graphic],
+              avoid: [botanical, animals], theme: "geometry, machines, cold neon"}
+  hiphop:    {subjects: [urban, portrait, people], moods: [bright, retro, tense], media: [graphic, photograph],
+              avoid: [botanical], theme: "street life, bold graphic portraits, graffiti colour"}
+  world:     {subjects: [people, landscape, pattern, architecture], moods: [warm, bright, organic], media: [],
+              avoid: [machines], theme: "places and festivals, crafts and pattern"}
 
 # The system prompt. {facets} and {groups} are filled from the lists above.
 rubric: |
