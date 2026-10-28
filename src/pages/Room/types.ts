@@ -880,6 +880,8 @@ export interface ShowCard {
     mode?: boolean | null;
     /** README S5.22: what the AI makes of the music in a line ("soft late-night jazz trio"); null until it has said. */
     character?: string | null;
+    /** The art wish (owner, 28 Oct), when show_service puts it in the listening block: see ShowCard.art. */
+    art?: ShowArtWish | null;
     /** The AI's recommended approach (intensity 0..1, how often looks change, how lively the transitions). */
     approach?: { intensity?: number | null; change?: string | null; transitions?: string | null; conf?: number | null } | null;
     /** The cue sheet: what it's ready for, each in a plain line. */
@@ -898,6 +900,21 @@ export interface ShowCard {
   auto?: { on?: boolean | null; state?: string; line?: string; chip?: ShowAutoNote | null; suggest?: ShowAutoNote | null } | null;
   /** The room mic (owner, 16 Oct: it runs only while something needs it, and Mute always wins). */
   mic_state?: ShowMicState | null;
+  /** What pictures the art director is asking for (owner, 28 Oct: art tags → Ambient); absent until show_service
+   *  sends it. */
+  art?: ShowArtWish | null;
+}
+
+/** The art wish on room.direction (show_service; art-tags phase 2): words from config/art_tags.yaml's subject, moods
+ *  and medium facets, and `theme`, at most 10 plain words ("late-night city, smoky rooms, painterly abstraction").
+ *  via: listener = the AI listener's own wish; genre = the music kind's defaults (music_art); none = no music known. */
+export interface ShowArtWish {
+  subjects?: string[] | null;
+  moods?: string[] | null;
+  media?: string[] | null;
+  avoid?: string[] | null;
+  theme?: string | null;
+  via?: "listener" | "genre" | "none" | string | null;
 }
 
 /** POST /show/api/v1/step's answer (at a limit: steps.at_limit). */
@@ -958,6 +975,8 @@ export interface ShowListenRound {
   /** The clip's measured loudness before normalising, and the gain applied. */
   lufs?: number | null;
   gain_db?: number | null;
+  /** The pictures that call asked for (owner, 28 Oct), when the listener sent an art wish. */
+  art?: ShowArtWish | null;
 }
 
 /** One armed cue (show_service CueLine): words like "Big change at the chorus, likely in 10-25 s" or "Ready: slow fade if

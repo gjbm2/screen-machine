@@ -10,6 +10,7 @@
 //     top bar (TopToggles.tsx, owner 24 Oct: "those are pretty central"); the menu has no controls.
 //   - What it hears: "soul · relaxed" (or Quiet, Talking, No sound coming in) with a level bar;
 //     with AI listening, the AI's line ("soft late-night jazz trio") and what it's ready for (the cue sheet).
+//     "Pictures: late-night city, smoky rooms" (owner, 28 Oct): what pictures the art director asks for, read-only.
 //   - Calmer · Wilder, Describe it (one line), the palette, Next look · Keep this look.
 //   - The active nudges as chips, each with an ×, and Clear all.
 // House lights and Lights low change the lamps, so they sit in the Room page's Lights fold (RoomLightsRow.tsx).
@@ -33,7 +34,7 @@ import { MicPicker } from "./MicPicker";
 import { useAutoRules, type AutoRuleWords } from "./AutoTriggers";
 import { CARD_CLASS, TAP_BUTTON_CLASS, THEME_CLASS } from "./theme";
 import { TEXT_CLASSES, TONE_CLASSES, type Tone } from "./tones";
-import type { ShowAutoNote, ShowCard, ShowChip, ShowEvent, ShowListenRound, ShowMicState, ShowPaletteChoice } from "./types";
+import type { ShowArtWish, ShowAutoNote, ShowCard, ShowChip, ShowEvent, ShowListenRound, ShowMicState, ShowPaletteChoice } from "./types";
 import type { NewLogEntry } from "./useRoomConnection";
 
 const POLL_MS = 5_000;
@@ -1037,6 +1038,7 @@ export function ListeningPanel({
           {answering && vibeLabel && <Pill tone="live">Feel: {vibeLabel}</Pill>}
         </div>
         {answering && <AiHears listening={card?.listening} />}
+        {answering && <PicturesLine art={card?.art ?? card?.listening?.art} />}
         {!mic && <MicPicker api={api} />}
         {!answering && (
           <p className="text-sm text-muted-foreground">
@@ -1109,6 +1111,28 @@ function AiHears({ listening }: { listening: ShowCard["listening"] }) {
   );
 }
 
+/** The art wish in plain words: its theme, else its subjects. Empty when there is none (via none: no music known). */
+function pictureWords(art?: ShowArtWish | null): string {
+  if (!art || art.via === "none") return "";
+  const theme = art.theme?.trim();
+  if (theme) return theme;
+  return (art.subjects ?? []).filter((w) => typeof w === "string" && w.trim()).join(", ");
+}
+
+/** What pictures the art director is asking for (owner, 28 Oct: the listening AI and the music connect to the pictures
+ *  Ambient shows), one read-only line under what the AI hears. Nothing until show_service sends a wish. */
+function PicturesLine({ art }: { art?: ShowArtWish | null }) {
+  const words = pictureWords(art);
+  if (!words) return null;
+  const from = art?.via === "listener" ? "from what the AI hears" : "from the kind of music";
+  return (
+    <p className="mt-1 text-base leading-snug text-stone-700" data-testid="music-pictures" title={`The pictures the art director asks for, ${from}`}>
+      <span className="text-muted-foreground">Pictures: </span>
+      {words}
+    </p>
+  );
+}
+
 /** AI listening (§7.5, the card's listening block, under the room mic): what it's doing, what it costs, and each round
  *  trip. Its switch is the top bar's AI (with it off, no sound leaves the house; the buttons and Describe it carry on). */
 function AiListeningRow({ api, feed }: { api: RoomApi; feed: ShowFeed }) {
@@ -1174,6 +1198,7 @@ function ListenRounds({ rounds, base }: { rounds?: ShowListenRound[] | null; bas
       {list.map((r, i) => {
         const said = [r.character || r.content, genre(r.genre), moods(r.moods)].filter(Boolean).join(" · ");
         const next = coming(r.coming);
+        const pictures = pictureWords(r.art);
         const meta = [
           typeof r.lufs === "number" ? `heard ${Math.round(r.lufs)} LUFS${typeof r.gain_db === "number" ? ` +${Math.round(r.gain_db)} dB` : ""}` : null,
           r.gaps ? `${r.gaps} dropout${r.gaps === 1 ? "" : "s"} (${(r.gaps_s ?? 0).toFixed(1)} s)` : null,
@@ -1196,6 +1221,7 @@ function ListenRounds({ rounds, base }: { rounds?: ShowListenRound[] | null; bas
               <span className="text-stone-800">{said || "(no words)"}</span>
             )}
             {next && <span className="text-teal-800"> · expects {next}</span>}
+            {r.ok !== false && pictures && <span className="text-stone-700"> · pictures: {pictures}</span>}
             {meta && <span className="text-xs text-muted-foreground"> · {meta}</span>}
           </li>
         );
