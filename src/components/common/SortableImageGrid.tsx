@@ -219,6 +219,11 @@ const SortableImage: React.FC<ImageProps> = ({
       onClick={(e) => {
         if (isDragging) return;
         e.stopPropagation();
+        // An image still being made has nothing to open: selecting it shows its progress instead
+        if (image.metadata?.placeholder === true) {
+          onImageClick?.(image);
+          return;
+        }
         if (onFullscreenClick) {
           onFullscreenClick(image);
         } else if (onImageClick) {
