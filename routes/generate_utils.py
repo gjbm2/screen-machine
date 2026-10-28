@@ -156,6 +156,11 @@ def process_generate_image_request(data, uploaded_images=None):
     batch_size = data.get('batch_size', 1)
     has_reference_image = data.get('has_reference_image', False)
     publish_destination = params.get('publish_destination', None)
+    if publish_destination == "_recent":
+        # "Generate again" names _recent only so its reference images resolve (generate_api); the result is
+        # kept in _recent by save_to_recent below, so publishing there too made a second copy of every image.
+        publish_destination = None
+        params = {k: v for k, v in params.items() if k != "publish_destination"}
     
     info(f"========================================================")
     info(f"Generating images with prompt: {prompt}")

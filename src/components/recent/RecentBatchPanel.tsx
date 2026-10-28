@@ -13,6 +13,7 @@ import { Sparkles } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { ReferenceImageService } from '@/services/reference-image-service';
 import { toast } from 'sonner';
+import { JobPlaceholder, placeholderKeyOf } from '@/components/jobs/JobPlaceholder';
 
 // Add type declaration for window.generateImage
 declare global {
@@ -226,6 +227,8 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
     const byId = images.find(img => img.id === selectedId);
     return byId || images[selectedIndex] || images[0];
   }, [images, selectedId, selectedIndex]);
+  // An image still being made: its job's progress stands in for it, without the image's actions
+  const selectedIsPlaceholder = selectedImage?.metadata?.placeholder === true;
   
   // Handle touch events for mobile swipes
   const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -407,12 +410,20 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
               className={`${styles.selectedImageContainer} ${isDragging ? styles.dragging : ''} group`}
               style={{ opacity: isDragging ? 0.4 : 1, cursor: isDragging ? 'grabbing' : 'grab' }}
             >
-              <img 
-                src={selectedImage.urlFull || selectedImage.urlThumb} 
-                alt={selectedImage.promptKey || 'Selected image'} 
-                className={styles.selectedImage}
-                onClick={() => onImageClick && onImageClick(selectedImage)}
-              />
+              {selectedIsPlaceholder ? (
+                <JobPlaceholder
+                  placeholder={placeholderKeyOf(selectedImage)}
+                  aspectRatio={typeof selectedImage.metadata?.aspectRatio === 'number' ? selectedImage.metadata.aspectRatio : 16 / 9}
+                  large
+                />
+              ) : (
+                <img 
+                  src={selectedImage.urlFull || selectedImage.urlThumb} 
+                  alt={selectedImage.promptKey || 'Selected image'} 
+                  className={styles.selectedImage}
+                  onClick={() => onImageClick && onImageClick(selectedImage)}
+                />
+              )}
               <div className={styles.imageCounter}>
                 {selectedIndex + 1}/{images.length}
               </div>
@@ -460,6 +471,7 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
               )}
               
               {/* Add three-dot menu to selected image - identical to the one in ImageCard */}
+              {!selectedIsPlaceholder && (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button
@@ -651,9 +663,10 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>
+              )}
               
               {/* Fullscreen button */}
-              {onImageClick && (
+              {onImageClick && !selectedIsPlaceholder && (
                 <Button
                   variant="ghost" 
                   size="icon" 
