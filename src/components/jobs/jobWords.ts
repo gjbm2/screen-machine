@@ -30,6 +30,7 @@ export const SOURCE_WORDS: Record<JobSource, string> = {
   generator: "Generator",
   scheduler: "Schedule",
   alexa: "Alexa",
+  "art-director": "Art director",
   api: "API",
 };
 

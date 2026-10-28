@@ -2,7 +2,7 @@
 import { apiUrl, jsonInit, requestJson } from '@/shared/http/client';
 
 export type JobStatus = 'preparing' | 'queued' | 'running' | 'publishing' | 'completed' | 'failed' | 'cancelled';
-export type JobSource = 'generator' | 'scheduler' | 'alexa' | 'api';
+export type JobSource = 'generator' | 'scheduler' | 'alexa' | 'art-director' | 'api';
 
 /**
  * Usual seconds for the predictable phases, learned from recent jobs (docs/JOBS.md). Waiting for a GPU (queue, cold

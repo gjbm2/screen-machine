@@ -22,7 +22,7 @@ sharing a `batch_id`.
 | `batch_id` | string \| null | the request it belongs to (the generator page's batch id, or a new one) |
 | `batch_index` | number \| null | index within the request |
 | `placeholder_id` | string \| null | the generator page's placeholder for this image, if it sent one |
-| `source` | `generator` \| `scheduler` \| `alexa` \| `api` | who asked |
+| `source` | `generator` \| `scheduler` \| `alexa` \| `art-director` \| `api` | who asked (`art-director`: the show's art director, never for a screen, so no target) |
 | `kind` | `image` \| `video` | from the workflow |
 | `target` | string \| null | publish destination id (`north-screen`…); null = not published |
 | `target_name` | string \| null | its display name |
