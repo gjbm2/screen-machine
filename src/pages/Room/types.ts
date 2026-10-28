@@ -256,7 +256,8 @@ export interface RemoteLearn {
 
 /** A light's record of what it is doing (null: unknown) and settings kept for when it next comes on. */
 export interface RemoteLightState {
-  now: { main: string | null; colour: string | null; level: number | null; pulse: string | null; flash: string | null };
+  /** main, colour, level (0 = black), then each of its toggles (a pinspot's flash): on | off. */
+  now: { main: string | null; colour: string | null; level: number | null; [toggle: string]: string | number | null };
   kept: Record<string, unknown>;
 }
 
@@ -276,6 +277,13 @@ export interface RemoteDevice {
   buttons: RemoteButton[];
   job: RemoteLearn | null;
   state: RemoteLightState | null;
+  /** Every target with what the room believes it is doing now (null: unknown), to put right when out of step. */
+  state_rows?: {
+    target: string;
+    label: string;
+    schema: { enum?: string[]; minimum?: number; maximum?: number; "x-ui"?: { labels?: Record<string, string> } };
+    value: string | number | null;
+  }[];
 }
 
 /** A kind of appliance that can be added (a pinspot, a glitterball). */

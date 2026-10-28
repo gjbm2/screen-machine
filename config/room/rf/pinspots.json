@@ -1,0 +1,38 @@
+{
+  "model": "pinspot",
+  "type": "light",
+  "label": "Pinspots",
+  "medium": "rf",
+  "steps": 16,
+  "gap_s": 0.3,
+  "colours": {
+    "white": "White",
+    "red": "Red",
+    "green": "Green",
+    "blue": "Blue",
+    "yellow": "Yellow",
+    "purple": "Purple",
+    "cyan": "Cyan",
+    "fade": "Colour cycle (Fade)"
+  },
+  "toggles": {
+    "flash": "Flash"
+  },
+  "buttons": {
+    "Power": {
+      "toggle": "Power"
+    },
+    "Brightness": {
+      "up": "Brighter (+)",
+      "down": "Dimmer (−)"
+    },
+    "Modes": {
+      "flash": "Flash (strobe)"
+    }
+  },
+  "subsystem": "pinspots",
+  "device": {
+    "host": "192.168.1.178"
+  },
+  "codes": {}
+}

@@ -524,6 +524,11 @@ export class RoomApi {
     );
   }
 
+  /** Put the room's record of an appliance right ({target: value}): nothing is sent to it. */
+  setRemoteState(remote: string, values: Record<string, unknown>) {
+    return this.json<RemoteDevice>("PUT", `/api/v1/remotes/${encodeURIComponent(remote)}/state`, { values });
+  }
+
   /** Rename a light's colours ({colour id: name}); their ids stay, so modes keep working. */
   nameColours(remote: string, colours: Record<string, string>) {
     return this.json<RemoteDevice>("PUT", `/api/v1/remotes/${encodeURIComponent(remote)}/colours`, { colours });

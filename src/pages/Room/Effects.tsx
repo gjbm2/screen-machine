@@ -6,7 +6,7 @@
 // modes it describes. Changes go through the room state model (PUT /api/v1/room/targets), so a change by hand and a
 // mode change go through the same coordinator. Nothing reads a remote-controlled device back: the page shows what
 // was last sent, and an on/off toggle can be told what the device is doing (assume). A setting is drawn from its
-// schema: a switch (x-ui.switch: the pinspots' pulse, flash), a slider (a number range: their brightness), else a
+// schema: a switch (x-ui.switch: a pinspot's flash), a slider (a number range: their brightness), else a
 // button per value (wrapping past four; a value named after a colour gets its swatch). A device with a "reset" action
 // (the pinspots, after they lost power at the wall) offers it under its controls.
 

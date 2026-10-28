@@ -1,7 +1,7 @@
 {
-  "_note": "A device type for Settings › Lights › Add a remote-controlled device: a new device file (config/room/rf/<id>.json) starts as a copy of this, with its own name, subsystem and RM4 Pro. A light on an RF remote (room_service/adapters/rf_light.py): the room keeps its own record and presses buttons in order to reach a wanted look (power, colour, brightness steps, then the pulse and flash toggles, gap_s apart). After power at the wall it comes on white at full: Reset (on, white, down x steps, off). Colour ids stay; their names are set when learning.",
+  "_note": "A device type for Settings › Light setup › Add an appliance: a new device file (config/room/rf/<id>.json) starts as a copy of this, with its own name, subsystem and RM4 Pro. A colour light on an RF remote (room_service/adapters/rf_light.py). Its remote (owner's photo, 28 Oct): one power button, Fade, Jump, Flash, Pulse, R G B W Y P CYAN, + and -. Jump and Pulse aren't used (other buttons do the same). Fade cycles the colours, so it is a colour of its own. Brightness: 'steps' presses of +/- from black to full. The room keeps its own record and presses buttons in order, gap_s apart; a colour change goes down to black, the colour, then back up. After power at the wall it comes on white at full: Reset (white, down x steps, power off).",
   "type_label": "Pinspot",
-  "description": "A colour light on a radio remote: on/off, white and six colours, 16 brightness steps, pulse and flash. Several on one remote work as one.",
+  "description": "A colour light on a radio remote: power, seven colours and the colour cycle, brightness from black to full, and flash (strobe). Several on one remote work as one.",
   "type": "light",
   "label": "Pinspots",
   "medium": "rf",
@@ -9,24 +9,26 @@
   "gap_s": 0.3,
   "colours": {
     "white": "White",
-    "colour1": "Colour 1",
-    "colour2": "Colour 2",
-    "colour3": "Colour 3",
-    "colour4": "Colour 4",
-    "colour5": "Colour 5",
-    "colour6": "Colour 6"
+    "red": "Red",
+    "green": "Green",
+    "blue": "Blue",
+    "yellow": "Yellow",
+    "purple": "Purple",
+    "cyan": "Cyan",
+    "fade": "Colour cycle (Fade)"
+  },
+  "toggles": {
+    "flash": "Flash"
   },
   "buttons": {
     "Power": {
-      "on": "On",
-      "off": "Off"
+      "toggle": "Power"
     },
     "Brightness": {
-      "up": "Brighter",
-      "down": "Dimmer"
+      "up": "Brighter (+)",
+      "down": "Dimmer (−)"
     },
     "Modes": {
-      "pulse": "Pulse",
       "flash": "Flash (strobe)"
     }
   }

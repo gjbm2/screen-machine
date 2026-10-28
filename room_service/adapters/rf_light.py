@@ -1,21 +1,23 @@
-"""A light worked by its RF remote through the RM4 Pro (broadlink_rf.py): the pinspots, config/room/rf/pinspot.json.
-Two pinspots answer the same remote, so they are one device and always do the same.
+"""A light worked by its RF remote through the RM4 Pro (broadlink_rf.py): a pinspot (device type
+config/room/rf/types/pinspot.json, added in Settings › Light setup). Several pinspots on one remote are one device and
+always do the same.
 
 Nothing reads the light back. The room keeps its own record of what the light is doing (persisted in the state dir,
-so it survives a restart) and reaches any wanted state by pressing the remote's buttons in order, each spaced gap_s:
-power, colour, brightness steps, then the pulse and flash toggles. One subsystem, so a mode's whole look is planned at
-once. Members:
-  main    on | off      the "on" and "off" buttons (or one "toggle")
-  colour  the file's "colours", each its own button ("white" and the six others)
-  level   1..steps      "up" and "down" move one step; an unknown level goes via the floor first (down x steps)
-  pulse   on | off      one toggle button
-  flash   on | off      one toggle button (strobe)
-Settings asked for while it's off are kept and sent when it next comes on (it doesn't take the remote while off);
-the room reads them as the light's settings meanwhile.
+so it survives a restart) and reaches any wanted state by pressing the remote's buttons in order, each spaced gap_s.
+One subsystem, so a mode's whole look is planned at once. Members, from the device's file:
+  main    on | off      "on" and "off" buttons, or one "toggle" (the pinspot's remote has one power button)
+  colour  its "colours", each its own button. "fade" (the remote's colour cycle) is one of them: the room can't know
+          what it shows, so it's a colour of its own
+  level   0..steps      "up" and "down" move one step; 0 is black
+  <toggle> on | off     each of its "toggles" (the pinspot: flash, the strobe), one button each
+Changing colour goes through black (owner, 28 Oct: "reducing intensity of blue down to black, then changing to white,
+then increasing intensity up to 16"): down to 0, the colour, then up to the level wanted (else the level it had, else
+full). An unknown level goes down by every step first. Settings asked for while it's off are kept and sent when it
+next comes on (it doesn't take the remote while off); the room reads them as the light's settings meanwhile.
 
-Reset (action "reset", also on the Lights setup page and the Room page): for a light that lost power at the wall,
-which comes back on white at full with no pulse or flash: on, white, down x steps, off. The room then knows exactly
-what it is doing. A pulse or flash the room never sent counts as off.
+Reset (action "reset", on the light setup page and the Room page): for a light that lost power at the wall, which comes
+back on, white, at full, with no flash: white, down by every step, then power off. The room then knows exactly what it
+is doing. A toggle the room never sent counts as off.
 """
 
 from __future__ import annotations
@@ -32,23 +34,28 @@ from .broadlink_rf import Remote, RFError
 
 log = logging.getLogger("room_service.rf_light")
 
-MEMBERS = ("main", "colour", "level", "pulse", "flash")
-TOGGLES = ("pulse", "flash")
+BASE = ("main", "colour", "level")
 ON_OFF = ("on", "off")
 WHITE = "white"
+
+
+def toggles_of(raw: dict) -> dict[str, str]:
+    return {str(k): str(v) for k, v in (raw.get("toggles") or {}).items()}
 
 
 def placeholder(raw: dict) -> Placeholder:
     """The light without python-broadlink: its members and values from the file, nothing sent."""
     steps = int(raw.get("steps", 16))
-    p = Placeholder(str(raw.get("subsystem") or "pinspot"), list(MEMBERS),
+    toggles = toggles_of(raw)
+    p = Placeholder(str(raw.get("subsystem") or "pinspot"), [*BASE, *toggles],
                     {"main": list(ON_OFF), "colour": list(raw.get("colours") or {WHITE: "White"}),
-                     "level": list(range(1, steps + 1)), "pulse": list(ON_OFF), "flash": list(ON_OFF)})
+                     "level": list(range(0, steps + 1)), **{t: list(ON_OFF) for t in toggles}})
     p.subsystem_label = raw.get("label") or None
     return p
 
 
-def plan(now: dict, desired: dict, kept: dict, steps: int, codes: set[str]) -> tuple[list[tuple[str, int, dict]], dict]:
+def plan(now: dict, desired: dict, kept: dict, steps: int, codes: set[str], toggles: list[str]
+         ) -> tuple[list[tuple[str, int, dict]], dict]:
     """The presses that take the light from `now` (the record: a None value is unknown) to `desired` (some members),
     with `kept` (settings asked for while it was off). Returns ([(button, times, the record's change once sent)], the
     settings still kept afterwards). Pure: tested on its own."""
@@ -63,21 +70,27 @@ def plan(now: dict, desired: dict, kept: dict, steps: int, codes: set[str]) -> t
         return presses, {m: v for m, v in want.items() if v != now.get(m)}
     if now.get("main") != "on":                  # off, or unknown (a toggle then assumes off)
         presses.append(("on" if absolute else "toggle", 1, {"main": "on"}))
-    colour = want.get("colour")
-    if colour is not None and colour != now.get("colour"):
-        presses.append((str(colour), 1, {"colour": colour}))
+    cur = now.get("level")
     level = want.get("level")
     if level is not None:
-        level = max(1, min(steps, int(level)))
-        cur = now.get("level")
-        if cur is None:                          # unknown: from the floor up
-            presses.append(("down", steps, {"level": 1}))
-            cur = 1
+        level = max(0, min(steps, int(level)))
+    colour = want.get("colour")
+    if colour is not None and colour != now.get("colour"):
+        # through black: down to 0, the colour, then back up to the level wanted, else the one it had, else full
+        back = level if level is not None else (cur if cur else steps)
+        if cur != 0:
+            presses.append(("down", steps if cur is None else cur, {"level": 0}))
+        presses.append((str(colour), 1, {"colour": colour}))
+        cur, level = 0, back
+    if level is not None:
+        if cur is None:                          # unknown: from black up
+            presses.append(("down", steps, {"level": 0}))
+            cur = 0
         if level > cur:
             presses.append(("up", level - cur, {"level": level}))
         elif level < cur:
             presses.append(("down", cur - level, {"level": level}))
-    for t in TOGGLES:
+    for t in toggles:
         v = want.get(t)
         if v is not None and v != (now.get(t) or "off"):   # never sent: off, as after power at the wall
             presses.append((t, 1, {t: v}))
@@ -96,17 +109,18 @@ class RFLightAdapter(Adapter):
         raw = remote.file.raw
         self.remote, self.file = remote, remote.file
         self.subsystem = str(raw.get("subsystem") or "pinspot")
-        self.members = list(MEMBERS)
+        self.toggles = list(toggles_of(raw))
+        self.members = [*BASE, *self.toggles]
         self._label = str(raw.get("label") or self.subsystem)
         self.subsystem_label = self._label
         self.state_path = Path(state_dir) / f"rf-light-{remote.id}.json" if state_dir else None
-        self.now: dict[str, Any] = {m: None for m in MEMBERS}
+        self.now: dict[str, Any] = {m: None for m in self.members}
         self.kept: dict[str, Any] = {}
         if self.state_path and self.state_path.exists():
             try:
                 saved = json.loads(self.state_path.read_text())
-                self.now.update({m: saved.get(m) for m in MEMBERS})
-                self.kept = {m: v for m, v in (saved.get("kept") or {}).items() if m in MEMBERS}
+                self.now.update({m: saved.get(m) for m in self.members})
+                self.kept = {m: v for m, v in (saved.get("kept") or {}).items() if m in self.members}
             except (OSError, ValueError) as e:
                 log.warning("%s not read (%s); the light starts unknown", self.state_path, e)
 
@@ -124,8 +138,8 @@ class RFLightAdapter(Adapter):
         return {str(k): str(v) for k, v in (self.file.fresh().get("colours") or {}).items()}
 
     @property
-    def change_time_s(self) -> float:            # the longest plan: power, colour, the floor and back up, two toggles
-        return 8.0 + self.gap_s * (2 * self.steps + 6)
+    def change_time_s(self) -> float:            # the longest plan: power, down to black, a colour, up, the toggles
+        return 8.0 + self.gap_s * (2 * self.steps + 4 + len(self.toggles))
 
     @property
     def dry_run(self) -> bool:
@@ -139,19 +153,16 @@ class RFLightAdapter(Adapter):
                           "schema": {"type": "object", "properties": {"button": {"enum": sorted(self.file.codes)}}}}}
 
     def value_schema(self, member: str) -> dict:
-        if member == "main":
-            s = enum_schema(list(ON_OFF), self._label, {"on": "On", "off": "Off"}, default="off")
+        if member == "main" or member in self.toggles:
+            label = self._label if member == "main" else f"{self._label} {toggles_of(self.file.fresh())[member].lower()}"
+            s = enum_schema(list(ON_OFF), label, {"on": "On", "off": "Off"}, default="off")
             s["x-ui"]["switch"] = {"on": "on", "off": "off"}
             return s
         if member == "colour":
             c = self.colours or {WHITE: "White"}
             return enum_schema(list(c), f"{self._label} colour", c, default=WHITE if WHITE in c else next(iter(c)))
         if member == "level":
-            return range_schema(1, self.steps, f"{self._label} brightness", default=self.steps, ends=("Dim", "Full"))
-        if member in TOGGLES:
-            s = enum_schema(list(ON_OFF), f"{self._label} {member}", {"on": "On", "off": "Off"}, default="off")
-            s["x-ui"]["switch"] = {"on": "on", "off": "off"}
-            return s
+            return range_schema(0, self.steps, f"{self._label} brightness", default=self.steps, ends=("Black", "Full"))
         return {}
 
     def label(self, member: str) -> str:
@@ -189,12 +200,12 @@ class RFLightAdapter(Adapter):
 
     async def apply(self, desired: dict[str, Any], opts: dict) -> Outcome:
         if self.dry_run:
-            return Outcome("failed", f"no on/off codes learned yet ({self.file.path.name})", retry=False)
-        bad = [m for m in desired if m not in MEMBERS]
+            return Outcome("failed", f"its power button isn't learned yet ({self.file.path.name})", retry=False)
+        bad = [m for m in desired if m not in self.members]
         if bad:
             return Outcome("failed", f"no member {', '.join(bad)}", retry=False)
         async with self.remote.lock:
-            presses, kept = plan(self.now, desired, self.kept, self.steps, set(self.file.codes))
+            presses, kept = plan(self.now, desired, self.kept, self.steps, set(self.file.codes), self.toggles)
             missing = sorted({b for b, _, _ in presses if b not in self.file.codes})
             if missing:
                 return Outcome("failed", f"not learned yet: {', '.join(missing)}", retry=False)
@@ -209,13 +220,12 @@ class RFLightAdapter(Adapter):
         return Outcome("ok", words)
 
     async def reset(self) -> Outcome:
+        """After power at the wall it is on, white, at full: white, down to black, power off."""
         codes = self.file.codes
-        presses: list[tuple[str, int, dict]] = []
-        if "on" in codes:                        # a toggle-only remote: it is already on after power at the wall
-            presses.append(("on", 1, {"main": "on"}))
+        presses: list[tuple[str, int, dict]] = [("on", 1, {"main": "on"})] if "on" in codes else []
         if WHITE in codes:
             presses.append((WHITE, 1, {"colour": WHITE}))
-        presses.append(("down", self.steps, {"level": 1}))
+        presses.append(("down", self.steps, {"level": 0}))
         presses.append(("off" if "off" in codes else "toggle", 1, {"main": "off"}))
         missing = sorted({b for b, _, _ in presses if b not in codes})
         if missing:
@@ -225,26 +235,26 @@ class RFLightAdapter(Adapter):
                 await self._run(presses)
             except RFError as e:
                 return Outcome("failed", str(e))
-            self.now.update({"colour": WHITE if WHITE in codes else self.now.get("colour"), "pulse": "off",
-                             "flash": "off"})
+            self.now.update({"colour": WHITE if WHITE in codes else self.now.get("colour"),
+                             **{t: "off" for t in self.toggles}})
             self.kept = {}
             self._save()
         log.info("%s: reset (%s)", self._label, ", ".join(b for b, _, _ in presses))
-        return Outcome("ok", "reset: dimmed to the floor and off")
+        return Outcome("ok", "reset: down to black and off")
 
     def note(self, button: str) -> None:
         """A button pressed by hand (the setup page's Test): the record follows, as the light would."""
         n = self.now
         if button in ON_OFF:
             n["main"] = button
-        elif button == "toggle" and n["main"] is not None:
-            n["main"] = "off" if n["main"] == "on" else "on"
+        elif button == "toggle":
+            n["main"] = None if n["main"] is None else "off" if n["main"] == "on" else "on"
         elif n["main"] != "off":                 # it doesn't take the remote while off
             if button in self.colours:
                 n["colour"] = button
             elif button in ("up", "down") and n["level"] is not None:
-                n["level"] = max(1, min(self.steps, n["level"] + (1 if button == "up" else -1)))
-            elif button in TOGGLES:
+                n["level"] = max(0, min(self.steps, n["level"] + (1 if button == "up" else -1)))
+            elif button in self.toggles:
                 n[button] = "off" if n[button] == "on" else "on"
         self._save()
 
