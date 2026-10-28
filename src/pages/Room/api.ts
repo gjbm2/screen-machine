@@ -534,6 +534,11 @@ export class RoomApi {
     return this.json<RemoteDevice>("PUT", `/api/v1/remotes/${encodeURIComponent(remote)}/clean`, { clean });
   }
 
+  /** A light: fade through brightness, or single presses only (brightness left to the light). */
+  setRemoteFade(remote: string, fade: boolean) {
+    return this.json<RemoteDevice>("PUT", `/api/v1/remotes/${encodeURIComponent(remote)}/fade`, { fade });
+  }
+
   /** How long a held button (Hold +, Hold −) is held, in seconds. */
   setRemoteHold(remote: string, holdS: number) {
     return this.json<RemoteDevice>("PUT", `/api/v1/remotes/${encodeURIComponent(remote)}/hold`, { hold_s: holdS });

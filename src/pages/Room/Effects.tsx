@@ -8,7 +8,8 @@
 // was last sent, and an on/off toggle can be told what the device is doing (assume). A setting is drawn from its
 // schema: a switch (x-ui.switch: a pinspot's flash), a slider (a number range: their brightness), else a
 // button per value (wrapping past four; a value named after a colour gets its swatch). A device with a "reset" action
-// (the pinspots, after they lost power at the wall) offers it under its controls.
+// (the pinspots, after they lost power at the wall) offers it under its controls. A setting whose schema says
+// x-ui.hidden (a pinspot's brightness while its Fade is off) isn't offered.
 
 import { useEffect, useId, useState } from "react";
 import { RotateCcw, RotateCw, Sparkles } from "lucide-react";
@@ -196,7 +197,8 @@ function EffectCard({
   const isRange = (x: Target | undefined) => typeof x?.schema?.minimum === "number" && typeof x?.schema?.maximum === "number";
   const settings = effect.settings
     .map((t) => ({ t, d: describe.targets?.[t], s: status.subsystems?.[split(t)[0]] }))
-    .filter((x) => (x.d?.schema?.enum?.length || isRange(x.d)) && x.s && !x.s.dry_run && x.s.last_error !== "no adapter");
+    .filter((x) => (x.d?.schema?.enum?.length || isRange(x.d)) && !x.d?.schema?.["x-ui"]?.hidden)
+    .filter((x) => x.s && !x.s.dry_run && x.s.last_error !== "no adapter");
   const canReset = setUp && !!describe.subsystems?.[sub]?.actions?.reset;
 
   const summary = !setUp ? "Its remote codes aren't learned yet." : onIn ? `${onWord} in ${onIn}.` : `${offWord} unless you turn it on.`;

@@ -14,6 +14,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Pencil, Plus, Radio, Send, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { explainError, type RoomApi } from "@/pages/Room/api";
 import { Notice, Spinner } from "@/pages/Room/bits";
@@ -409,7 +410,31 @@ function RemoteCard({
 
       <StateRows d={d} api={api} onChanged={onChanged} />
 
-      {d.light && d.steps && (
+      {d.light && (
+        <div className="space-y-1">
+          <div className="flex min-h-11 items-center justify-between gap-3">
+            <span className="text-[15px] font-medium">Fade</span>
+            <Switch
+              aria-label={`${d.label} fade`}
+              checked={!!d.fade}
+              disabled={disabled}
+              onCheckedChange={(on) =>
+                void act("fade", async () => {
+                  await api.setRemoteFade(d.id, on);
+                  return { status: "ok", detail: on ? "fades through brightness" : "single presses only" };
+                })
+              }
+            />
+          </div>
+          <p className="text-sm text-muted-foreground">
+            {d.fade
+              ? "Coming on, going off and changing colour fade through black, and brightness can be set."
+              : "Off: on, off and each colour are a single press; brightness is left to the light. For when fades don't reach every light."}
+          </p>
+        </div>
+      )}
+
+      {d.light && d.steps && d.fade && (
         <div className="space-y-1">
           <p className="text-[15px] font-medium">Try a fade</p>
           <div className="flex flex-wrap gap-2">
@@ -513,7 +538,7 @@ function RemoteCard({
         </div>
       ))}
 
-      {!!d.held?.length && (
+      {!!d.held?.length && d.fade && (
         <div className="space-y-1">
           <p className="text-[15px] font-medium">A fade (Hold + and Hold −) holds the button for</p>
           <div className="flex flex-wrap gap-1.5">

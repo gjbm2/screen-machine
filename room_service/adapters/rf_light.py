@@ -19,6 +19,12 @@ then increasing intensity up to 16"): down to 0, the colour, then up to the leve
 full). An unknown level goes down by every step first. Settings asked for while it's off are kept and sent when it
 next comes on (it doesn't take the remote while off); the room reads them as the light's settings meanwhile.
 
+Fade (the file's "fade", a switch on Light setup; owner, 28 Oct: "controlled fading doesn't work ... when we want the
+pinspots to come on, we have to do it with a single signal"): off, brightness is left to the light, so nothing is
+pressed for it (the level asked for is noted, its slider hidden), a colour change is that colour's button alone (not
+through black), and on and off are the power button alone. Modes are unchanged: they ask for a look; this decides the
+presses.
+
 Reset (action "reset", on the light setup page and the Room page): for a light that lost power at the wall, which comes
 back on, white, at full, with no flash: white, down by every step, then power off. The room then knows exactly what it
 is doing. A toggle the room never sent counts as off.
@@ -59,11 +65,12 @@ def placeholder(raw: dict) -> Placeholder:
     return p
 
 
-def plan(now: dict, desired: dict, kept: dict, steps: int, codes: set[str], toggles: list[str]
+def plan(now: dict, desired: dict, kept: dict, steps: int, codes: set[str], toggles: list[str], fade: bool = True
          ) -> tuple[list[tuple[str, int, dict]], dict]:
     """The presses that take the light from `now` (the record: a None value is unknown) to `desired` (some members),
     with `kept` (settings asked for while it was off). Returns ([(button, times, the record's change once sent)], the
-    settings still kept afterwards). Pure: tested on its own."""
+    settings still kept afterwards); a button None presses nothing and only notes the change. fade False: brightness
+    is never pressed for and a colour is its button alone. Pure: tested on its own."""
     target = desired.get("main", now.get("main"))
     want = {**kept, **{m: v for m, v in desired.items() if m != "main"}}
     presses: list[tuple[str, int, dict]] = []
@@ -87,7 +94,13 @@ def plan(now: dict, desired: dict, kept: dict, steps: int, codes: set[str], togg
     if level is not None:
         level = max(0, min(steps, int(level)))
     colour = want.get("colour")
-    if colour is not None and colour != now.get("colour"):
+    if not fade:                                 # a single press each; brightness left to the light
+        if colour is not None and colour != now.get("colour"):
+            presses.append((str(colour), 1, {"colour": colour}))
+        if level is not None and level != cur:
+            presses.append((None, 0, {"level": level}))
+        level = None
+    elif colour is not None and colour != now.get("colour"):
         # through black: down to 0, the colour, then back up to the level wanted, else the one it had, else full
         back = level if level is not None else (cur if cur else steps)
         presses += to_black(cur)
@@ -153,6 +166,10 @@ class RFLightAdapter(Adapter):
         return {str(k): str(v) for k, v in (self.file.fresh().get("colours") or {}).items()}
 
     @property
+    def fade(self) -> bool:
+        return bool(self.file.fresh().get("fade", True))
+
+    @property
     def hold_s(self) -> float:
         return float(self.file.fresh().get("hold_s", 3.5))
 
@@ -181,7 +198,10 @@ class RFLightAdapter(Adapter):
             c = self.colours or {WHITE: "White"}
             return enum_schema(list(c), f"{self._label} colour", c, default=WHITE if WHITE in c else next(iter(c)))
         if member == "level":
-            return range_schema(0, self.steps, f"{self._label} brightness", default=self.steps, ends=("Black", "Full"))
+            s = range_schema(0, self.steps, f"{self._label} brightness", default=self.steps, ends=("Black", "Full"))
+            if not self.fade:                    # left to the light: pages don't offer it
+                s["x-ui"]["hidden"] = True
+            return s
         return {}
 
     def label(self, member: str) -> str:
@@ -209,6 +229,10 @@ class RFLightAdapter(Adapter):
         first = True
         held = set(self.file.held)
         for button, times, change in presses:
+            if button is None:                   # nothing to press (fade off): the record only
+                self.now.update(change)
+                self._save()
+                continue
             if button in held:
                 if not first:
                     await asyncio.sleep(self.gap_s)
@@ -249,8 +273,9 @@ class RFLightAdapter(Adapter):
         if bad:
             return Outcome("failed", f"no member {', '.join(bad)}", retry=False)
         async with self.remote.lock:
-            presses, kept = plan(self.now, desired, self.kept, self.steps, set(self.file.codes), self.toggles)
-            missing = sorted({b for b, _, _ in presses if b not in self.file.codes})
+            presses, kept = plan(self.now, desired, self.kept, self.steps, set(self.file.codes), self.toggles,
+                                 self.fade)
+            missing = sorted({b for b, _, _ in presses if b is not None and b not in self.file.codes})
             if missing:
                 return Outcome("failed", f"not learned yet: {', '.join(missing)}", retry=False)
             try:
@@ -259,7 +284,7 @@ class RFLightAdapter(Adapter):
                 return Outcome("failed", str(e))
             self.kept = kept
             self._save()
-        words = ", ".join(f"{b} x{n}" if n > 1 else b for b, n, _ in presses) or "nothing to send"
+        words = ", ".join(f"{b} x{n}" if n > 1 else b for b, n, _ in presses if b is not None) or "nothing to send"
         log.info("%s: %s -> %s", self._label, desired, words)
         return Outcome("ok", words)
 
@@ -269,7 +294,8 @@ class RFLightAdapter(Adapter):
         presses: list[tuple[str, int, dict]] = [("on", 1, {"main": "on"})] if "on" in codes else []
         if WHITE in codes:
             presses.append((WHITE, 1, {"colour": WHITE}))
-        presses.append(("down", self.steps, {"level": 0}))
+        if self.fade:
+            presses.append(("down", self.steps, {"level": 0}))
         presses.append(("off" if "off" in codes else "toggle", 1, {"main": "off"}))
         missing = sorted({b for b, _, _ in presses if b not in codes})
         if missing:

@@ -303,3 +303,23 @@ def test_an_rm4_pro_recording_keeps_its_frequency():
     assert out[:2] == b"\xb1\xc0" and out[4:8] == bytes.fromhex("a29d0600")                   # 433.57 MHz kept
     assert len(broadlink_rf.rf_pulses(out)) == 14 * 66 and len(out) <= 960
     assert broadlink_rf.max_frames(learned, 960) == 14
+
+
+def test_fade_off_is_single_presses_and_leaves_brightness_to_the_light():
+    now = {"main": "off", "colour": "blue", "level": 3, "flash": "off"}
+    got = plan(now, {"main": "on", "colour": "white", "level": 8}, {}, 8, HOLDS, T, fade=False)
+    assert [(b, n) for b, n, _ in got[0] if b] == [("toggle", 1), ("white", 1)]
+    assert (None, 0, {"level": 8}) in got[0]                      # noted, not pressed
+    on = {**now, "main": "on"}
+    assert [(b, n) for b, n, _ in plan(on, {"level": 0}, {}, 8, HOLDS, T, fade=False)[0] if b] == []
+
+
+def test_fade_off_light_never_presses_brightness(tmp_path):
+    a, rm = light(tmp_path)
+    raw = json.loads(a.file.path.read_text())
+    a.file.path.write_text(json.dumps({**raw, "fade": False}))
+    os.utime(a.file.path, (4, 4))
+    a.now.update(main="off", colour="blue", level=None, flash="off")
+    assert asyncio.run(a.apply({"main": "on", "colour": "white", "level": 16}, {})).status == "ok"
+    assert names(rm) == ["toggle", "white"] and a.now["level"] == 16
+    assert a.value_schema("level")["x-ui"]["hidden"] is True

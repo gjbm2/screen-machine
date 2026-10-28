@@ -279,6 +279,8 @@ export interface RemoteDevice {
   gap_s?: number;
   /** RF: each press sent as a clean packet of `frames` copies of the code; null: as learned. */
   clean?: { frames: number; gap_ms: number } | null;
+  /** A light: fades through brightness (true), or single presses only, brightness left to the light (false). */
+  fade?: boolean | null;
   /** Buttons learned held down (Hold +, Hold −) and how long the room holds them. */
   held?: string[];
   hold_s?: number | null;
@@ -354,6 +356,8 @@ export interface RoomDescribe {
           labels?: Record<string, string>;
           switch?: { on: string; off: string };
           ends?: { min?: string; max?: string };
+          /** Not offered on the pages (a pinspot's brightness while its Fade is off). */
+          hidden?: boolean;
         };
       };
     }

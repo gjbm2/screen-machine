@@ -4,6 +4,7 @@
   "label": "Pinspots",
   "medium": "rf",
   "steps": 8,
+  "fade": false,
   "repeat": [
     "up",
     "down"

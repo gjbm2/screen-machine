@@ -17,6 +17,7 @@ once it is added (its file in config/room/rf/, a card in its room in rooms.json)
   PUT    /api/v1/remotes/{id}/clean      {"clean": {"frames", "gap_ms"} | null} how each RF press is sent: a clean
                                          packet of `frames` copies of the code (broadlink_rf.clean_rf), or as learned
   PUT    /api/v1/remotes/{id}/hold       {"hold_s": seconds} how long a held button (Hold +, Hold −) is held
+  PUT    /api/v1/remotes/{id}/fade       {"fade": bool} a light: fade through brightness, or single presses only
   PUT    /api/v1/remotes/{id}/state      {"values": {target: value}} put the room's record right when it is out of step
                                          with the appliance (owner, 28 Oct): nothing is sent. Its view's "state" rows
                                          list every target with its schema and what the room believes now
@@ -120,6 +121,7 @@ def register(app: web.Application, svc: "RoomService") -> None:
                 "repeat": [str(b) for b in (f.raw.get("repeat") or [])], "gap_s": float(f.raw.get("gap_s", 0.3)),
                 "clean": f.raw.get("clean") if isinstance(f.raw.get("clean"), dict) else None,
                 "held": f.held, "hold_s": float(f.raw.get("hold_s", 3.5)) if f.held else None,
+                "fade": light.fade if light else None,
                 "buttons": r.button_rows(), "job": r.job.view() if r.job else None,
                 "state": light.state() if light else None, "state_rows": state_rows(adapters)}
 
@@ -349,8 +351,24 @@ def register(app: web.Application, svc: "RoomService") -> None:
         r.file.fresh()
         return web.json_response(view(r, adapters))
 
+    async def set_fade(request: web.Request) -> web.Response:
+        got = find(request)
+        if isinstance(got, web.Response):
+            return got
+        r, adapters = got
+        if light_of(adapters) is None:
+            return _err(400, "not_a_light", "only a light fades")
+        fade = (await body(request)).get("fade")
+        if not isinstance(fade, bool):
+            return _err(400, "bad_fade", '{"fade": true | false}')
+        r.file.update(lambda raw: raw.__setitem__("fade", fade))
+        r.file.fresh()
+        svc.events.mark_dirty()
+        return web.json_response(view(r, adapters))
+
     a = app.router
     a.add_put("/api/v1/remotes/{id}/state", set_state)
+    a.add_put("/api/v1/remotes/{id}/fade", set_fade)
     a.add_put("/api/v1/remotes/{id}/hold", set_hold)
     a.add_put("/api/v1/remotes/{id}/clean", set_clean)
     a.add_get("/api/v1/remotes", list_remotes)
