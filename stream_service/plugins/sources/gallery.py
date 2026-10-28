@@ -102,6 +102,8 @@ HANDOVER_S = 1.5                # a decoded block nobody takes within this goes 
 RESTART_S = 10.0                # worker restarts at most this often
 INDEX_S = 60.0                  # re-index a bucket at most this often
 OPEN_ON_ART_GAP_S = 300.0       # open_on_art only after this long without a gallery picture on the screen
+FIT_FLOOR = 0.4                 # a matched draw keeps to pictures weighing at least this share of the best
+FIT_MIN = 32                    # ...but never fewer than this many (variety, and the shown-memory needs room)
 RETRY_S = 1.0                   # an instance re-requests a failed picture after this
 PULSE_LIFT = 0.12
 LADDER_BAR = ((0.55, 2), (0.80, 1))   # energy_slow edges for the bar ladder (its calm rung below the first)
@@ -501,7 +503,7 @@ class _Deck:
     def upgrade(self) -> None:
         """Fields a deck made by an older copy of this module lacks (decks survive the 20 s rescan's re-import)."""
         for k, v in (("raw", {}), ("facets", {}), ("tsig", None), ("lex_m", None), ("gen", 0), ("wkey", None),
-                     ("wbase", {}), ("t_drawn", -1e9)):
+                     ("wbase", {}), ("wfit", []), ("t_drawn", -1e9)):
             if not hasattr(self, k):
                 setattr(self, k, v)
         if self.shown.maxlen != SHOWN_MAX:
@@ -576,11 +578,17 @@ class _Deck:
         if key != self.wkey:                       # the music moved or the index changed: re-weight (~600 names)
             favs = set(self.fav)
             self.wbase = {n: music_weight(self.facets.get(n), music, n in favs) for n in names}
+            # the pictures that really fit: the weak tail is hundreds strong and, summed, outdrew the few good
+            # matches (jazz drew greenhouses), so draws keep to those within FIT_FLOOR of the best (FIT_MIN at least)
+            ranked = sorted((n for n in names if self.wbase[n] > 0.0), key=lambda n: -self.wbase[n])
+            top = self.wbase[ranked[0]] if ranked else 0.0
+            self.wfit = [n for i, n in enumerate(ranked) if i < FIT_MIN or self.wbase[n] >= FIT_FLOOR * top]
             self.wkey = key
-        k = min(len(self.shown), self._mem(pool, len(live)))
+        fit = [n for n in self.wfit if n not in self.bad] or live
+        k = min(len(self.shown), self._mem(pool, len(fit)))
         avoid = set(list(self.shown)[len(self.shown) - k:]) if k > 0 else set()
         prev = self.facets.get(self.shown[-1]) if self.shown else None
-        for cand in ([n for n in live if n not in avoid], live):
+        for cand in ([n for n in fit if n not in avoid], fit, live):
             ws = [(self.wbase.get(n, 0.0) * continuity(prev, self.facets.get(n))) ** SHARPEN for n in cand]
             tot = sum(ws)
             if tot > 0.0:
