@@ -146,6 +146,40 @@ def rf_pulses(packet: bytes) -> list[int]:
     return out
 
 
+def _enc_pulse(us: int) -> bytes:
+    t = max(1, round(us / TICK_US))
+    return bytes([t]) if t < 256 else b"\x00" + min(t, 0xFFFF).to_bytes(2, "big")
+
+
+def split_rf(packet: bytes, max_bytes: int = 1000, frames_only: bool = False) -> list[bytes]:
+    """A recording too long to send in one (a held button: 1.2 KB), cut at the ends of frames into packets of at most
+    max_bytes, each with the recording's own header: sent one after another they play the whole recording back.
+    frames_only drops what the RM4 Pro heard before the first whole frame (noise and a 0.34 s silence): what is left
+    is what the remote sent."""
+    if packet[:1] not in (b"\xb1", b"\xb2", b"\xd7") or (len(packet) <= max_bytes and not frames_only):
+        return [packet]
+    pulses = rf_pulses(packet)
+    if frames_only:
+        ends = [i for i, us in enumerate(pulses) if us > FRAME_GAP_US]
+        sizes = [b - a for a, b in zip([-1, *ends], ends)]
+        full = max(sizes) if sizes else 0
+        first = next((a + 1 for a, b in zip([-1, *ends], ends) if b - a >= full - 2), 0)
+        pulses = pulses[first:]
+    out: list[bytes] = []
+    data, frame = b"", b""
+    for us in pulses:
+        frame += _enc_pulse(us)
+        if us > FRAME_GAP_US:                    # a frame ends: it goes in this packet, or starts the next
+            if data and 4 + len(data) + len(frame) > max_bytes:
+                out.append(packet[:2] + len(data).to_bytes(2, "little") + data)
+                data = b""
+            data, frame = data + frame, b""
+    data += frame
+    if data:
+        out.append(packet[:2] + len(data).to_bytes(2, "little") + data)
+    return out
+
+
 def clean_rf(packet: bytes, frames: int = 6, gap_ms: float = 120.0) -> bytes:
     """A clean packet from a learned RF capture (owner, 28 Oct: the far pinspot missed quick presses). A capture is
     ~0.7 s: noise, a 0.34 s silence, then 4-6 copies of the code. This keeps one copy of the code (a frame of the most

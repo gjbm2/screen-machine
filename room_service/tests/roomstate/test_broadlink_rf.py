@@ -291,3 +291,14 @@ def test_a_held_button_streams_its_code_for_hold_s(tmp_path):
     assert asyncio.run(a.signal(None, "press", {"button": "down_hold"})).status == "ok"
     assert rm.sent and all(len(broadlink_rf.rf_pulses(p)) == 10 * len(frame) for p in rm.sent)
     assert a.now["level"] == 0
+
+
+def test_split_rf_plays_a_long_recording_back_in_sendable_packets():
+    frame = [460, 1310, 1310, 460] * 16 + [460, 13000]               # 66 pulses, about 68 bytes
+    cap = _rf([5300, 5200, 340000] + frame * 17)
+    assert len(cap) > 1000
+    parts = broadlink_rf.split_rf(cap, 1000)
+    assert len(parts) == 2 and all(len(p) <= 1000 and p[:2] == cap[:2] for p in parts)
+    assert sum((broadlink_rf.rf_pulses(p) for p in parts), []) == broadlink_rf.rf_pulses(cap)   # nothing lost
+    only = broadlink_rf.split_rf(cap, 1000, frames_only=True)
+    assert sum((broadlink_rf.rf_pulses(p) for p in only), []) == broadlink_rf.rf_pulses(cap)[3:]   # the remote's part

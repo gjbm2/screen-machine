@@ -279,6 +279,9 @@ export interface RemoteDevice {
   gap_s?: number;
   /** RF: each press sent as a clean packet of `frames` copies of the code; null: as learned. */
   clean?: { frames: number; gap_ms: number } | null;
+  /** Buttons learned held down (Hold +, Hold −) and how long the room holds them. */
+  held?: string[];
+  hold_s?: number | null;
   buttons: RemoteButton[];
   job: RemoteLearn | null;
   state: RemoteLightState | null;

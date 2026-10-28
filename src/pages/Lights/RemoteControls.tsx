@@ -480,6 +480,37 @@ function RemoteCard({
         </div>
       ))}
 
+      {!!d.held?.length && (
+        <div className="space-y-1">
+          <p className="text-[15px] font-medium">Hold + and Hold − are sent</p>
+          <div className="flex flex-wrap gap-1.5">
+            {[0, 1, 1.5, 2, 3].map((secs) => (
+              <button
+                key={secs}
+                type="button"
+                disabled={disabled}
+                onClick={() =>
+                  void act("hold", async () => {
+                    await api.setRemoteHold(d.id, secs);
+                    return { status: "ok", detail: secs ? `hold + and − now held for ${secs} s` : "hold + and − now played as recorded" };
+                  })
+                }
+                className={cn(
+                  "min-h-9 rounded-lg border px-2.5 text-[14px] disabled:opacity-50",
+                  d.hold_s === secs ? "border-teal-300 bg-teal-50 font-semibold text-teal-900" : "border-stone-200 bg-white hover:bg-stone-50",
+                )}
+              >
+                {secs ? `${secs} s` : "As recorded"}
+              </button>
+            ))}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            As recorded plays back what the RM4 Pro heard (about 1.5 s; it can't record more). Or hold the button for a set
+            time. Pick one, then Test Hold + and Hold −.
+          </p>
+        </div>
+      )}
+
       {d.medium === "rf" && (
         <div className="space-y-1">
           <p className="text-[15px] font-medium">Each press is sent</p>
