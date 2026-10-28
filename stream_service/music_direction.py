@@ -28,8 +28,8 @@ a band change, a section re-seed or a change of ``m`` publish at once.
 The panel's direction is a TRIM around the music (``effective_direction``): numbers are
 ``clamp(panel + m * (music - neutral))`` (neutral = DIRECTION_DEFAULTS: 0.5, intensity 1.0), so a panel at its
 defaults means "follow the music" and panel energy 0.3 means "0.2 calmer than the music"; the music's words (moods,
-transition_style, fx.moods, genre / genres and the feel axes valence, organic, density) apply only where the panel
-left them empty, and only while m >= 0.5.  palette_family, fx.stages, source and note always come from the panel.  ``m = auto.music.weight x liveness``, in
+transition_style, fx.moods, genre / genres, the feel axes valence, organic, density and the art wish ``art``) apply
+only where the panel left them empty, and only while m >= 0.5.  palette_family, fx.stages, source and note always come from the panel.  ``m = auto.music.weight x liveness``, in
 0.25 steps: a stale bus holds 10 s then fades to 0 over 20 s; recovery needs 3 s of fresh frames then ramps up over
 10 s (from cold: 3 s then on at once).  m = 0 is exactly the panel's direction: the behaviour before this module.
 
@@ -131,10 +131,42 @@ def effective_direction(panel: dict, music: Optional[dict], m: float) -> dict:
         for k in DIRECTION_AXES:
             if panel.get(k) is None and music.get(k) is not None:
                 out[k] = music[k]
+        if panel.get("art") is None and music.get("art"):
+            out["art"] = music["art"]             # the art director's wish: the gallery's pictures (art tags)
         if not out["fx"].get("moods") or how == "replace":
             out["fx"]["moods"] = list((music.get("fx") or {}).get("moods") or []) or out["fx"].get("moods")
         if music.get("piano"):
             out["piano"] = dict(music["piano"])   # the piano's leans: fx_interplay's roles_by_piano
+    return out
+
+
+ART_LISTS = (("subjects", 5), ("moods", 3), ("media", 2), ("avoid", 3))
+
+
+def _art_word(x: Any) -> Optional[str]:
+    if not isinstance(x, str):
+        return None
+    w = "-".join(x.strip().lower().split())[:32]
+    return w or None
+
+
+def art_wish(v: Any) -> Optional[dict]:
+    """room.direction ``art``, the art director's wish for the pictures (show_service; docs/ART_TAGS.md phase 2):
+    {subjects, moods, media, avoid, theme, via}, words from config/art_tags.yaml.  Plain data to the renderer's
+    gallery (owner ff, 28 Oct: passed through as is, shape only checked here); None = no wish (absent, malformed or
+    empty: as before)."""
+    if not isinstance(v, dict):
+        return None
+    out: dict = {}
+    for k, n in ART_LISTS:
+        xs = v.get(k)
+        ws = [w for w in (_art_word(x) for x in xs) if w] if isinstance(xs, list) else []
+        out[k] = list(dict.fromkeys(ws))[:n]
+    th = v.get("theme")
+    out["theme"] = " ".join(th.split()[:10])[:120] if isinstance(th, str) and th.strip() else None
+    out["via"] = _art_word(v.get("via"))
+    if not any(out[k] for k, _ in ART_LISTS) and not out["theme"]:
+        return None
     return out
 
 
@@ -156,6 +188,8 @@ def music_fields(panel: dict, music: Optional[dict], m: float) -> list[str]:
         if panel.get("genre") is None and not panel.get("genres") and (music.get("genre") or music.get("genres")):
             out.append("genre")
         out += [k for k in DIRECTION_AXES if panel.get(k) is None and music.get(k) is not None]
+        if panel.get("art") is None and music.get("art"):
+            out.append("art")
         if not (panel.get("fx") or {}).get("moods"):
             out.append("fx.moods")
         if music.get("piano"):
@@ -303,6 +337,8 @@ class MusicDirection:
                       fx={"density": d["fx"]["density"], "rate": d["fx"]["rate"],
                           "moods": list(d["fx"].get("moods") or [])},
                       **{k: d.get(k) for k in DIRECTION_AXES})
+        if d.get("art"):
+            target["art"] = d["art"]          # the art director's wish (an older show_service sends none: as before)
         r = self.piano_reading = self.piano.reading()
         pc = self.piano.config.get()
         target = PD.lean(PD.apply(target, r, pc), r, pc)
@@ -321,7 +357,8 @@ class MusicDirection:
         elif any(abs(target[k] - p[k]) >= DEADBAND for k in NUMERIC) \
                 or any((target[k] is None) != (p.get(k) is None)
                        or (target[k] is not None and abs(target[k] - p[k]) >= DEADBAND) for k in DIRECTION_AXES) \
-                or any(abs(target["fx"][k] - p["fx"][k]) >= DEADBAND for k in FX_NUMERIC):
+                or any(abs(target["fx"][k] - p["fx"][k]) >= DEADBAND for k in FX_NUMERIC) \
+                or target.get("art") != p.get("art"):
             cause = "music"
         self.band = band
         if cause is not None:

@@ -4,7 +4,9 @@
       [--scenarios jazz,pop] [--dir output/<screen>] [--seed 1] --out DIR
 
 For each scenario (a realistic music direction, as show_service's ML / AI listener and the session's effective
-direction produce it: genres map, moods, valence, organic, slow energy) it runs the gallery's OWN selection code
+direction produce it: genres map, moods, valence, organic, slow energy, and the art director's wish ``art`` its music
+group would carry: config/art_tags.yaml music_art, the director's fallback when the AI listener gives none; --no-art
+leaves it out, as an older show_service would) it runs the gallery's OWN selection code
 (plugins/sources/gallery.py: the decode worker's index with the art tags, _Deck.draw with match "music", the
 library pool and its continuity) for N picks in a row, and writes:
   * <out>/<scenario>.png: the picks in order, each from output/<screen>/thumbnails/<file>.jpg, labelled with its
@@ -44,7 +46,22 @@ SCENARIOS = {
                "moods": ["hypnotic", "geometric", "cool"], "music_moods": [], "valence": 0.5, "organic": 0.1,
                "density": 0.8, "energy": 0.8, "energy_slow": 0.8},
 }
+GROUP = {"jazz": "jazz", "lyrical-classical": "classical", "pop": "pop", "ambient-calm": "ambient", "techno": "techno"}
 TW, TH, LABEL_H, COLS = 320, 180, 54, 4
+
+
+def music_art() -> dict:
+    """config/art_tags.yaml music_art: the art wish per music group."""
+    import yaml
+    return (yaml.safe_load((REPO / "config" / "art_tags.yaml").read_text()) or {}).get("music_art") or {}
+
+
+def with_art(scen: str, music: dict, table: dict) -> dict:
+    a = table.get(GROUP.get(scen, scen))
+    if not isinstance(a, dict):
+        return music
+    return dict(music, art={**{k: list(a.get(k) or []) for k in ("subjects", "moods", "media", "avoid")},
+                            "theme": a.get("theme"), "via": "genre"})
 
 
 def eligible(path: pathlib.Path) -> bool:
@@ -79,7 +96,8 @@ def label(f: dict | None, w: float) -> list[str]:
     if f is None:
         return ["untagged", f"w {w:.2f}"]
     return [" ".join(sorted(f["subject"])) or "-", " ".join(sorted(f["moods"])) or "-",
-            f"q {f['quality'] if f['quality'] is not None else '?'}  w {w:.2f}"]
+            f"{' '.join(sorted(f.get('medium') or ())) or '-'}  q {f['quality'] if f['quality'] is not None else '?'}"
+            f"  w {w:.2f}"]
 
 
 def sheet(deck: "g._Deck", names: list[str], music: dict, title: str, path: pathlib.Path) -> None:
@@ -138,8 +156,10 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--scenarios", default=",".join(SCENARIOS))
     ap.add_argument("--picks", type=int, default=16)
     ap.add_argument("--seed", type=int, default=1)
+    ap.add_argument("--no-art", action="store_true", help="scenarios without the art wish (as before 28 Oct)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args(argv)
+    table = {} if a.no_art else music_art()
     out = pathlib.Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
     bucket = pathlib.Path(a.dir) if a.dir else g.output_dir() / a.screen
@@ -151,13 +171,16 @@ def main(argv: list[str] | None = None) -> int:
     print(f"{bucket}: {len(meta['fav'])} favourites, {len(meta['seq'])} in sequence, {tagged} with art tags")
     text = []
     for scen in a.scenarios.split(","):
-        music = SCENARIOS[scen]
+        music = with_art(scen, SCENARIOS[scen], table)
         deck = g._Deck(a.screen)                  # a fresh deck per scenario: the same index, its own memory
         deck.dir, deck.rng = bucket, random.Random(a.seed)
         deck.apply_index(meta)
         names = picks(deck, music, a.picks)
-        sheet(deck, names, music, f"{a.screen} - {scen}: {', '.join(f'{w} {p}' for w, p in music['genres'].items())}",
-              out / f"{scen}.png")
+        wish = music.get("art")
+        title = f"{a.screen} - {scen}: {', '.join(f'{w} {p}' for w, p in music['genres'].items())}"
+        if wish:
+            title += f"  | pictures: {wish.get('theme') or ', '.join(wish['subjects'])}"
+        sheet(deck, names, music, title, out / f"{scen}.png")
         text.append(summary(deck, scen, names))
     (out / "summary.txt").write_text("".join(text))
     print("".join(text), end="")

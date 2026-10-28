@@ -1,6 +1,7 @@
 """Gallery: art-tag matching to the room's music (owner, 27 Oct: in Ambient, jazz -> abstract / painterly / nocturnal,
-lyrical classical -> landscapes, seascapes, still life, pop -> urban, fun, peopled).  Pure Python: synthetic decks,
-the decode worker's index on a temp bucket (no GPU, no images decoded)."""
+lyrical classical -> landscapes, seascapes, still life, pop -> urban, fun, peopled), the art director's wish (owner,
+28 Oct: room.direction ``art`` -> direction_effective -> music_dir -> the gallery's weights) and the cluster hold per
+song.  Pure Python: synthetic decks, the decode worker's index on a temp bucket (no GPU, no images decoded)."""
 from __future__ import annotations
 
 import collections
@@ -11,6 +12,8 @@ import random
 import pytest
 
 from stream_service.plugins.sources import gallery as g
+
+from .test_sessions import client  # noqa: F401 (fixture)
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 
@@ -119,8 +122,8 @@ def test_draws_follow_the_music(music, want):
 def test_the_cluster_moves_when_the_music_does():
     entries, kind_of = library()
     d = deck(entries)
-    jazz = collections.Counter(kind_of[d.draw("library", "music", JAZZ)] for _ in range(12))
-    pop = collections.Counter(kind_of[d.draw("library", "music", POP)] for _ in range(12))
+    jazz = collections.Counter(kind_of[d.draw("library", "music", dict(JAZZ, track=1))] for _ in range(12))
+    pop = collections.Counter(kind_of[d.draw("library", "music", dict(POP, track=2))] for _ in range(12))   # a new song
     assert jazz.most_common(1)[0][0] == "abstract" and pop.most_common(1)[0][0] == "urban", (jazz, pop)
 
 
@@ -196,7 +199,7 @@ def test_weights_are_cached_until_the_music_or_index_changes(monkeypatch):
     n = len(calls)
     d.draw("library", "music", dict(JAZZ, energy_slow=0.32))    # rounds to the same key
     assert len(calls) == n
-    d.draw("library", "music", POP)
+    d.draw("library", "music", dict(POP, track=1))              # a new song: its music is taken at once
     assert len(calls) == 2 * n
 
 
@@ -251,13 +254,208 @@ def test_worker_index_reads_tags_never_the_prompt(tmp_path):
     assert a in d.facets
 
 
+AMBIENT_LOOKS = ("gallery-ambient-ghosts", "gallery-ambient-contact-sheet", "gallery-ambient-show-colours",
+                 "gallery-ambient-little-planets", "gallery-ambient-kaleidoscope")
+
+
 def test_repo_presets_make_ambient_the_matched_gallery():
     from stream_service.plugins import default_registry
     from stream_service.presets import Presets
     p = Presets(REPO / "config" / "live", default_registry())
-    for n in ("gallery-ambient", "gallery-ambient-lively"):
+    for n in ("gallery-ambient", "gallery-ambient-lively", *AMBIENT_LOOKS):
         s = p.scenes[n]
         assert s["params"]["pool"] == "library" and s["params"]["match"] == "music", n
         assert "ambient" in s["tags"]["modes"], n
+    for n in AMBIENT_LOOKS:                                     # each keeps its look's effect
+        assert p.scenes[n]["effects"] == p.scenes[n.replace("gallery-ambient-", "gallery-")]["effects"], n
     assert p.scenes["gallery-ambient"]["params"]["ladder"] == "16-8-4"
     assert "ambient" not in (p.scenes["live-art"].get("tags") or {}).get("modes", [])
+
+
+# -- the art director's wish (owner, 28 Oct: the connective tissue between tagging and Ambient) ---------------------
+def art_table() -> dict:
+    import yaml
+    return yaml.safe_load((REPO / "config" / "art_tags.yaml").read_text())["music_art"]
+
+
+def wished(music: dict, group: str) -> dict:
+    a = art_table()[group]
+    return dict(music, art={k: list(a.get(k) or []) for k in ("subjects", "moods", "media", "avoid")})
+
+
+def test_music_art_words_are_lexicon_words():
+    import yaml
+    lex = yaml.safe_load((REPO / "config" / "art_tags.yaml").read_text())["facets"]
+    for group, a in art_table().items():
+        assert set(a["subjects"]) | set(a["avoid"]) <= set(lex["subject"]), group
+        assert set(a["moods"]) <= set(lex["moods"]) and set(a["media"]) <= set(lex["medium"]), group
+
+
+def test_the_wish_leads_over_a_flat_genre_fit():
+    # every picture fits jazz equally (the tagger can't tell them apart): the wish alone sorts them
+    flat = {"jazz": 0.8, "classical": 0.8, "pop": 0.8}
+    ws = {k: g.music_weight(g.facets(raw(k, music=flat)), wished(JAZZ, "jazz"), False) for k in KINDS}
+    assert max(ws, key=ws.get) == "abstract", ws
+    no_wish = {k: g.music_weight(g.facets(raw(k, music=flat)), JAZZ, False) for k in KINDS}
+    assert ws["abstract"] / ws["landscape"] > 2.0 * no_wish["abstract"] / no_wish["landscape"]
+
+
+def test_wish_factor_subject_mood_medium_and_avoid():
+    f = g.facets(raw("abstract"))                                # abstract, painting, dark + cool
+    assert f["medium"] == {"painting"}
+    w = lambda **a: g.art_factor(f, g.art_wish({"art": a}))      # noqa: E731
+    assert w(subjects=["abstract"]) == 1.0
+    assert w(subjects=["urban", "abstract"]) == pytest.approx(1.0 - g.ART_STEP)    # a later subject: a little less
+    assert w(subjects=["urban"]) == g.ART_SUBJECT_MISS
+    assert w(moods=["dark"]) == 1.0 and w(moods=["bright"]) == g.ART_MOOD_MISS
+    assert w(media=["painting"]) == 1.0 and w(media=["photograph"]) == g.ART_MEDIUM_MISS
+    assert w(media=[], avoid=["people"]) == 1.0                  # a facet the wish leaves empty: no factor
+    assert w(subjects=["abstract"], avoid=["abstract"]) == pytest.approx(g.ART_AVOID)
+    assert g.art_wish({"art": {"subjects": [], "moods": [], "media": [], "avoid": [], "theme": "x"}}) is None
+    assert g.art_factor(g.facets({"tags": [], "ai": {}, "added": [], "removed": []}),
+                        g.art_wish({"art": {"subjects": ["urban"]}})) == 1.0              # nothing known: neutral
+    assert g.music_weight(None, wished(JAZZ, "jazz"), False) == g.music_weight(None, JAZZ, False)   # untagged
+
+
+def test_avoided_subjects_stay_off_the_wall():
+    entries = {name(i): raw("abstract") for i in range(10)}
+    entries.update({name(100 + i): raw("abstract", subject=["animals"], quality=1.0) for i in range(10)})
+    jazz = wished(JAZZ, "jazz")
+    assert "animals" in jazz["art"]["avoid"]
+    animals = sum(int(deck(entries, seed=s).draw("library", "music", jazz)[-12:-4], 16) >= 100 for s in range(200))
+    assert animals < 0.1 * 200, animals
+
+
+@pytest.mark.parametrize("music,group,want", [(JAZZ, "jazz", ("abstract",)),
+                                              (CLASSICAL, "classical", ("landscape", "still-life")),
+                                              (POP, "pop", ("urban",))])
+def test_draws_follow_the_wish(music, group, want):
+    entries, _ = library()
+    c = first_picks(entries, wished(music, group))
+    assert sum(c[k] for k in want) > 0.6 * sum(c.values()), c
+
+
+def test_no_wish_is_the_weight_as_before():
+    entries, _ = library(per=1)
+    for r in entries.values():
+        f = g.facets(r)
+        for m in (JAZZ, POP, None):
+            base = g.music_weight(f, m, False)
+            if m is not None:
+                for art in (None, {}, {"subjects": [], "moods": [], "media": [], "avoid": []}, "junk"):
+                    assert g.music_weight(f, dict(m, art=art), False) == base
+    assert g.music_key(JAZZ) == g.music_key(dict(JAZZ, art=None))
+
+
+def test_cluster_holds_until_a_new_song_or_a_real_move_after_a_minute():
+    d = g._Deck("north-screen")
+    jazz, pop = dict(JAZZ, track=1), dict(POP, track=1)
+    assert d._held(jazz, now=0.0) is jazz
+    assert d._held(dict(jazz, energy_slow=0.6), now=5.0) is jazz          # the listener re-reads: held
+    assert d._held(pop, now=30.0) is jazz                                 # even a new genre, inside the minute ...
+    assert d._held(pop, now=61.0) is pop                                  # ... until it has passed
+    assert d._held(dict(pop, valence=0.85), now=200.0) is pop             # a small move never re-weights
+    new = dict(JAZZ, track=2)
+    assert d._held(new, now=201.0) is new                                 # a new song: at once
+    later = dict(new, genres={"blues": 1.0}, genre="blues")
+    assert d._held(later, now=215.0) is later                             # the listener's take on it, soon after
+    assert d._held(dict(later, genres={"soul": 1.0}), now=240.0) is later  # then held again
+    d2 = g._Deck("north-screen")
+    assert d2._held(None, now=0.0) is None and d2._held(jazz, now=1.0) is jazz   # music arriving: at once
+
+
+def test_continuity_still_shapes_runs_under_a_wish():
+    entries = {}
+    for i in range(5):
+        entries[name(i)] = raw("abstract")
+        entries[name(100 + i)] = raw("abstract", subject=["interior"], moods=["warm"])
+    jazz = wished(JAZZ, "jazz")
+    same = 0
+    for s in range(300):
+        d = deck(entries, seed=s)
+        d.shown.append(name(100))                               # an interior was just shown
+        same += d.draw("library", "music", jazz) in {name(100 + i) for i in range(1, 5)}
+    assert same / 300 > 0.3
+
+
+# -- the wish's path to the gallery: room.direction -> the proposal -> direction_effective ---------------------------
+def test_art_wish_is_plain_data_shape_checked():
+    from stream_service import music_direction as M
+    a = M.art_wish({"subjects": ["Abstract", "still life", 3, "urban", "people", "sky", "x"], "moods": ["dark"],
+                    "media": ["painting"], "avoid": ["animals"], "theme": "late-night city, smoky rooms",
+                    "via": "listener", "extra": 1})
+    assert a == {"subjects": ["abstract", "still-life", "urban", "people", "sky"], "moods": ["dark"],
+                 "media": ["painting"], "avoid": ["animals"], "theme": "late-night city, smoky rooms",
+                 "via": "listener"}
+    for bad in (None, "jazz", [], {}, {"subjects": "abstract"}, {"via": "none", "subjects": []}):
+        assert M.art_wish(bad) is None
+
+
+def test_room_wish_reaches_the_effective_direction():
+    from stream_service import music_direction as M
+    from stream_service.director import AUTO_MUSIC_DEFAULTS, validate_direction
+    from .test_music_direction import room_dir
+    wish = M.art_wish({"subjects": ["abstract"], "moods": ["dark"], "via": "genre"})
+    md = M.MusicDirection(dict(AUTO_MUSIC_DEFAULTS))
+
+    def rd(art):
+        r = room_dir()
+        if art is not None:
+            r["direction"]["art"] = art
+        return r
+    for t in range(40):
+        md.update(t / 10, None, False, (), True, room=rd(wish))
+    panel = validate_direction({})
+    assert md.proposal["art"] == wish and M.effective_direction(panel, md.proposal, md.m)["art"] == wish
+    assert "art" in M.music_fields(panel, md.proposal, md.m)
+    other = dict(wish, subjects=["urban"])
+    assert md.update(4.1, None, False, (), True, room=rd(other)) == "music" and md.proposal["art"] == other
+    assert md.update(4.2, None, False, (), True, room=rd(None)) == "music" and "art" not in md.proposal
+    assert "art" not in M.effective_direction(panel, md.proposal, md.m)     # no wish: the direction as before
+    assert "art" not in M.effective_direction(panel, md.proposal, 0.25)
+
+
+async def test_session_puts_the_wish_and_the_song_in_music_dir(client):  # noqa: F811 (the fixture)
+    import time
+    from .test_cue import AUTO, live
+    sid, s, eng = await live(client, auto=AUTO)
+    mgr = s.mgr
+    data = {"energy": 0.4, "pace": 0.4, "moods": ["mellow"], "genres": {"jazz": 1.0},
+            "art": {"subjects": ["abstract", "interior"], "moods": ["dark"], "media": [], "avoid": ["animals"],
+                    "theme": "smoky rooms", "via": "genre"}}
+    t0 = time.monotonic()
+    for i in range(50):
+        mgr.on_room_message({"type": "room.direction", "data": data})
+        mgr.room_direction["t"] = t0 + i / 10
+        s.tick(t0 + i / 10)
+    md = s.runtime.extra["music_dir"]
+    assert md["art"]["subjects"] == ["abstract", "interior"] and md["art"]["theme"] == "smoky rooms", md
+    n = md["track"]
+    mgr.on_room_message({"type": "room.event", "data": {"kind": "track_change", "id": "track_change:7",
+                                                        "at_ms": 1.0, "track_id": 7}})
+    mgr.on_room_message({"type": "room.event", "data": {"kind": "track_change", "id": "track_change:7",
+                                                        "at_ms": 1.0, "track_id": 7, "detail": "update"}})
+    s.tick(t0 + 5.1)
+    assert s.runtime.extra["music_dir"]["track"] == n + 1             # one song, however often it is re-sent
+    mgr.on_room_message({"type": "room.direction", "data": {k: v for k, v in data.items() if k != "art"}})
+    assert "art" not in mgr.room_direction["direction"]                # an older show_service: no wish, as before
+
+
+@pytest.mark.parametrize("music,want", [
+    ({"energy": 0.38, "moods": ["mellow", "elegant", "warm", "organic"], "genres": {"jazz": 1.0}, "valence": 0.45,
+      "organic": 0.8, "density": 0.4}, {"gallery-ambient-contact-sheet", "gallery-ambient-ghosts", "gallery-ambient"}),
+    ({"energy": 0.65, "moods": ["bright", "playful", "geometric", "hypnotic"], "genres": {"pop": 1.0},
+      "valence": 0.8, "organic": 0.45, "density": 0.6}, {"gallery-ambient-little-planets", "gallery-ambient-lively"}),
+    ({"energy": 0.85, "moods": ["euphoric", "hypnotic", "bright", "aggressive"], "genres": {"techno": 1.0},
+      "valence": 0.5, "organic": 0.1, "density": 0.8}, {"gallery-ambient-kaleidoscope"}),
+])
+def test_the_director_picks_a_fitting_ambient_look(music, want):
+    from stream_service.director import STYLE_POWER
+    from stream_service.plugins import default_registry
+    from stream_service.presets import Presets
+    from stream_service.tags import scene_weight
+    p = Presets(REPO / "config" / "live", default_registry())
+    pool = [n for n, s in p.scenes.items() if "ambient" in ((s.get("tags") or {}).get("modes") or [])]
+    assert set(AMBIENT_LOOKS) <= set(pool)
+    ws = {n: scene_weight(p.scenes[n]["tags"], music) ** STYLE_POWER for n in pool}
+    assert sum(ws[n] for n in want) > 0.8 * sum(ws.values()), ws

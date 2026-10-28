@@ -140,3 +140,119 @@ gallery-ghosts:
            energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 0.5]}}
   effects: [afterimage-ghost-dream]
   tags: {energy: [0.1, 0.6], moods: [dreamy, hypnotic, mellow], weight: 1.0}
+
+# Ambient's scene SET (owner, 28 Oct: "upgrade the ambient mode scene set to use tags in a smart insightful way"):
+# the gallery looks above as Ambient variants.  Each shows the screen's library pictures that fit the music (pool
+# library, match music: the art director's wish, the pictures' tags, held per song) with its own effect, pace and
+# ladder; with gallery-ambient and gallery-ambient-lively they are Ambient's closed set (modes: [ambient]), and the
+# director picks among them by energy, the music's band moods and genre: ghosts and the contact sheet for calm music
+# and jazz, show colours for soul and funk, little planets and the kaleidoscope for lively pop and electronic.
+gallery-ambient-ghosts:
+  label: "Ambient: ghosts"
+  source: gallery
+  params: {pace: bar, ladder: 16-8-4, pool: library, match: music, style: soft, quality: full, hold_s: 30.0,
+           hold_fast_s: 12.0, transition_s: 4.0, transition_fast_s: 3.0, drift: 0.4, drift_rate: 0.6,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 0.3]}}
+  effects: [afterimage-ghost-dream]
+  tags:
+    energy: [0.0, 0.5]
+    moods: [dreamy, mellow, calm, elegant]
+    genre: [ambient, downtempo, jazz, blues, classical, piano, soundtrack]
+    genre_fit: {ambient: 1.0, downtempo: 1.0, jazz: 0.9, blues: 0.8, classical: 0.8, piano: 0.9, soundtrack: 0.9,
+                folk: 0.5, singer-songwriter: 0.5, soul: 0.5, rnb: 0.4, gospel: 0.4, indie: 0.4, country: 0.3,
+                world: 0.4, latin: 0.3, reggae: 0.3, afrobeat: 0.2, pop: 0.3, funk: 0.2, disco: 0.15,
+                electronic: 0.4, house: 0.2, techno: 0.15, trance: 0.3, drum-and-bass: 0.1, dubstep: 0.1,
+                hip-hop: 0.2, rock: 0.15, metal: 0.05, punk: 0.05}
+    valence: 0.4
+    organic: 0.7
+    density: 0.3
+    weight: 1.0
+    modes: [ambient]
+
+gallery-ambient-contact-sheet:
+  label: "Ambient: moving contact sheet"
+  source: gallery
+  params: {pace: bar, ladder: 16-8-4, pool: library, match: music, style: soft, quality: full, hold_s: 24.0,
+           hold_fast_s: 10.0, transition_s: 3.0, transition_fast_s: 2.0, drift: 0.4, drift_rate: 0.8,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 0.4]}}
+  effects: [isf-video-snake]
+  tags:
+    energy: [0.2, 0.6]
+    moods: [mellow, elegant, warm, retro]
+    genre: [jazz, blues, soul, folk, singer-songwriter, indie]
+    genre_fit: {jazz: 1.0, blues: 0.9, soul: 0.7, rnb: 0.6, gospel: 0.6, funk: 0.6, folk: 0.7,
+                singer-songwriter: 0.7, indie: 0.7, country: 0.5, pop: 0.5, world: 0.5, latin: 0.5, reggae: 0.4,
+                afrobeat: 0.4, hip-hop: 0.4, disco: 0.4, classical: 0.4, piano: 0.5, soundtrack: 0.5, ambient: 0.4,
+                downtempo: 0.5, electronic: 0.3, house: 0.3, techno: 0.2, trance: 0.2, drum-and-bass: 0.2,
+                dubstep: 0.15, rock: 0.4, metal: 0.15, punk: 0.2}
+    valence: 0.5
+    organic: 0.7
+    density: 0.55
+    weight: 1.0
+    modes: [ambient]
+
+gallery-ambient-show-colours:
+  label: "Ambient: in the show's colours"
+  source: gallery
+  params: {pace: bar, ladder: 8-4-2, pool: library, match: music, style: lively, quality: full, hold_s: 12.0,
+           hold_fast_s: 5.0, transition_s: 1.5, transition_fast_s: 1.0, drift: 0.5, drift_rate: 1.2,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 0.6]}}
+  effects: [palette-map-duotone-glow]
+  tags:
+    energy: [0.35, 0.85]
+    moods: [warm, retro, organic, bright]
+    genre: [soul, funk, rnb, disco, gospel, hip-hop, latin, afrobeat, reggae]
+    genre_fit: {soul: 1.0, funk: 1.0, rnb: 0.9, disco: 0.9, gospel: 0.9, hip-hop: 0.7, latin: 0.8, afrobeat: 0.8,
+                reggae: 0.7, world: 0.7, blues: 0.7, jazz: 0.6, pop: 0.6, indie: 0.5, folk: 0.5,
+                singer-songwriter: 0.5, country: 0.5, house: 0.6, electronic: 0.4, techno: 0.3, trance: 0.3,
+                drum-and-bass: 0.3, dubstep: 0.3, rock: 0.5, metal: 0.3, punk: 0.4, ambient: 0.2, downtempo: 0.4,
+                classical: 0.1, piano: 0.2, soundtrack: 0.3}
+    valence: 0.65
+    organic: 0.6
+    density: 0.55
+    weight: 1.0
+    modes: [ambient]
+
+gallery-ambient-little-planets:
+  label: "Ambient: little planets"
+  source: gallery
+  params: {pace: bar, ladder: 8-4-2, pool: library, match: music, style: lively, quality: full, hold_s: 12.0,
+           hold_fast_s: 5.0, transition_s: 2.0, transition_fast_s: 1.2, drift: 0.4, drift_rate: 1.0,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 0.5]}}
+  effects: [polar-wrap-tiny-planet]
+  tags:
+    energy: [0.4, 0.85]
+    moods: [playful, dreamy, bright, hypnotic]
+    genre: [pop, indie, folk, singer-songwriter, country, electronic, house]
+    genre_fit: {pop: 1.0, indie: 1.0, folk: 0.8, singer-songwriter: 0.8, country: 0.7, electronic: 0.8, house: 0.7,
+                disco: 0.7, trance: 0.7, techno: 0.5, drum-and-bass: 0.4, dubstep: 0.3, funk: 0.6, soul: 0.5,
+                rnb: 0.5, gospel: 0.5, latin: 0.6, afrobeat: 0.6, reggae: 0.6, world: 0.6, hip-hop: 0.4,
+                rock: 0.4, metal: 0.2, punk: 0.3, jazz: 0.3, blues: 0.3, ambient: 0.5, downtempo: 0.6,
+                classical: 0.2, piano: 0.3, soundtrack: 0.5}
+    valence: 0.75
+    organic: 0.5
+    density: 0.5
+    weight: 1.0
+    modes: [ambient]
+
+gallery-ambient-kaleidoscope:
+  label: "Ambient: kaleidoscope"
+  source: gallery
+  params: {pace: bar, ladder: 4-2-1, pool: library, match: music, style: lively, quality: full, hold_s: 6.0,
+           hold_fast_s: 3.0, transition_s: 1.2, transition_fast_s: 0.6, drift: 0.6, drift_rate: 1.6,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 0.8]}}
+  effects: [isf-kaleidoscope]
+  tags:
+    energy: [0.55, 1.0]
+    moods: [hypnotic, geometric, euphoric, bright]
+    genre: [electronic, house, techno, trance, disco, drum-and-bass, dubstep, pop]
+    genre_fit: {electronic: 1.0, house: 1.0, techno: 1.0, trance: 1.0, disco: 0.9, drum-and-bass: 0.9,
+                dubstep: 0.8, pop: 0.7, indie: 0.5, funk: 0.6, soul: 0.4, rnb: 0.5, gospel: 0.3, hip-hop: 0.6,
+                latin: 0.6, afrobeat: 0.6, reggae: 0.4, world: 0.5, rock: 0.5, metal: 0.4, punk: 0.4,
+                folk: 0.2, singer-songwriter: 0.2, country: 0.2, jazz: 0.2, blues: 0.2, ambient: 0.3,
+                downtempo: 0.4, classical: 0.1, piano: 0.1, soundtrack: 0.3}
+    valence: 0.65
+    organic: 0.2
+    density: 0.75
+    weight: 1.0
+    modes: [ambient]
