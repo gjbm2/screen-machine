@@ -2177,8 +2177,8 @@ export const BucketGridView = ({
             onClick={() => chooseViewMode(m)}
             className={cn(
               'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3.5 text-[15px] transition-colors',
-              viewMode === m
-                ? 'border-teal-300 bg-teal-50 font-semibold text-teal-900'
+              viewMode === m   // solid when chosen, like the tag chips (owner, 28 Oct: pale on-states read as off)
+                ? 'border-teal-700 bg-teal-700 font-semibold text-white shadow-sm'
                 : 'border-stone-200 bg-white text-stone-700 hover:bg-stone-50',
             )}
           >
