@@ -238,13 +238,17 @@ class RFLightAdapter(Adapter):
             one = clean_rf(raw, HOLD_FRAMES, gap_ms=0)
             packets = [one] * max(1, round(self.hold_s / (sum(rf_pulses(one)) / 1e6 or 0.5)))
         loop = asyncio.get_running_loop()
-        at = loop.time()
+        at = t0 = loop.time()
+        sent = []
         for p in packets:
             wait = at - 0.03 - loop.time()       # a little early: no gap between packets
             if wait > 0:
                 await asyncio.sleep(wait)
             await self.remote.rm.send(p)
+            sent.append(f"{len(p)} B at {loop.time() - t0:.2f} s")
             at += sum(rf_pulses(p)) / 1e6
+        log.info("%s: held %s (%s): %s; %.2f s of air", self._label, button,
+                 "as recorded" if self.hold_s <= 0 else f"{self.hold_s:g} s", ", ".join(sent), at - t0)
 
     async def apply(self, desired: dict[str, Any], opts: dict) -> Outcome:
         if self.dry_run:
