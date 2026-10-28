@@ -506,7 +506,7 @@ class Worker:
 
     def _apply_rt(self, rt: dict) -> None:
         r = self.runtime
-        for k in ("speed_target", "depth_target", "palette", "palette_s", "ease_s", "extra"):
+        for k in ("speed_target", "depth_target", "palette", "palette_s", "ease_s", "extra", "level", "level_target"):
             if k in rt:
                 setattr(r, k, rt[k])
 

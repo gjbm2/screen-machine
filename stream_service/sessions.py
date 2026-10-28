@@ -90,7 +90,7 @@ SCREEN_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 LIVE_STATES = ("entering", "live")
 SEGMENT_HOLD_S = 20.0         # a screen counts in the room's segment this long after its session left: a TV re-entering
                               # after a fallback is live again in ~15 s (21 Oct), so a gap doesn't re-lay both twice
-LOOK_FIELDS = ("direction", "palette", "palette_transition_s", "auto", "beat_follow", "direction_ease_s")
+LOOK_FIELDS = ("direction", "palette", "palette_transition_s", "auto", "beat_follow", "direction_ease_s", "level")
 LOOK_SCOPES = ("room", "screen")    # owner 17 Oct: a control acts where it sits (a screen card: that screen only)
 MAX_SCENE_TRANSITIONS = 2     # in / scene transitions running at once; one more cue waits (R6)
 BEAT_MARGIN_S = 0.05          # a beat-snapped cue starts at least this far ahead of now
@@ -185,6 +185,13 @@ def parse_palette(v: Any) -> Optional[str]:
     return v
 
 
+def parse_level(v: Any) -> float:
+    """A picture brightness, 0-1 (1 = as rendered): a gain on the output's code values."""
+    if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
+        raise ParamError("bad_request", "level must be a number 0-1")
+    return min(1.0, max(0.0, float(v)))
+
+
 def parse_seconds(v: Any, field: str, lo: float, hi: float) -> float:
     if isinstance(v, bool) or not isinstance(v, (int, float)) or not math.isfinite(v):
         raise ParamError("bad_request", f"{field} must be a number of seconds")
@@ -196,7 +203,7 @@ class Session(EngineListener):
                  scene: SceneSpec, t_in: TransitionSpec, t_out: TransitionSpec, ttl_s: float,
                  idempotency_key: Optional[str], auto: Optional[dict] = None, direction: Optional[dict] = None,
                  palette: Optional[str] = None, palette_s: float = PALETTE_S_DEFAULT, fixture: Optional[str] = None,
-                 beat_follow: str = "extrapolate", direction_ease_s: float = 8.0):
+                 beat_follow: str = "extrapolate", direction_ease_s: float = 8.0, level: float = 1.0):
         self.mgr = mgr
         self.id = sid
         self.key = secrets.token_urlsafe(18)
@@ -252,6 +259,7 @@ class Session(EngineListener):
         self.palette = palette
         self.palette_s = palette_s
         self.runtime.palette, self.runtime.palette_s = palette, palette_s
+        self.level = self.runtime.level = self.runtime.level_target = level   # brightness 0-1 (no fade at start)
         # -- what scenes can hear (sound.py): the piano and the room mic, one view per session --
         self.sound = new_sound(feed=getattr(mgr, "scope_feed", None))   # + the fast scope / fft feed
         self.engine.sound = self.sound
@@ -1601,6 +1609,8 @@ class Session(EngineListener):
             out["beat_follow"] = body["beat_follow"]
         if "direction_ease_s" in body:
             out["direction_ease_s"] = parse_seconds(body["direction_ease_s"], "direction_ease_s", 0, 120)
+        if "level" in body:
+            out["level"] = parse_level(body["level"])
         return out
 
     def _apply_look(self, look: dict, scope: str = "room") -> None:
@@ -1630,6 +1640,8 @@ class Session(EngineListener):
             parts.add("palette")
         if "beat_follow" in look:
             parts.add("beat_follow")
+        if "level" in look:
+            parts.add("level")
         if look.get("auto") is not None and "fx" in look.get("auto_given", ()):
             parts.add("fx")
         return parts
@@ -1662,6 +1674,8 @@ class Session(EngineListener):
             self.palette = self.runtime.palette = look["palette"]
         if "beat_follow" in look:
             self.beat_follow = self.sampler.follow = look["beat_follow"]
+        if "level" in look:                              # eased on the render side (modulation.LEVEL_EASE_S)
+            self.level = self.runtime.level_target = look["level"]
 
     # The one place a direction takes effect: the panel's (self.direction), trimmed by the music's proposal.
     # A prepared pick is dropped when the pick-relevant part changes (energy decile, moods, style, genre,
@@ -2580,6 +2594,7 @@ class Session(EngineListener):
             "music_fields": music_fields(ds.direction, ds.music.proposal, ds.music.m),
             "room": self.room_status(),
             "masters": self.runtime.masters(), "fixture": self.fixture, "beat_follow": self.beat_follow,
+            "level": self.level,
             "lead_ms": None if self.lead_ms is None else round(self.lead_ms, 1),
             # effects layer (EFFECTS_LAYER_DESIGN D.2)
             "fx": self.fx.summary(),
@@ -3115,7 +3130,9 @@ class SessionManager:
         png, rgb = decode_still(body["anchor"], "anchor")
         # LIVE_V1 1.1: direction applies at once on create (R12); an absent auto block means no auto (R11)
         look = dict(auto=None, direction=None, palette=None, palette_s=PALETTE_S_DEFAULT, fixture=None,
-                    beat_follow="extrapolate", direction_ease_s=8.0)
+                    beat_follow="extrapolate", direction_ease_s=8.0, level=1.0)
+        if body.get("level") is not None:
+            look["level"] = parse_level(body["level"])
         if body.get("direction") is not None:
             look["direction"] = validate_direction(body["direction"], self.presets.vocab.words)
         if body.get("auto") is not None:

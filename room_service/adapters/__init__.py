@@ -32,7 +32,7 @@ def build_adapters(controllers: dict, mask: Any, log_sink: Callable[[str, str], 
     from .autopilot import AutopilotAdapter
     from .devices import placeholders
     from .lights import LightsAdapter
-    from .room import DiagAdapter, LogAdapter, PageAdapter, SensorMaskAdapter
+    from .room import BrightnessAdapter, DiagAdapter, LogAdapter, PageAdapter, SensorMaskAdapter
     from .screens import ScreensAdapter
     from .show import ShowAdapter
     if lights is None:                       # the real show_service only when show is the real one too
@@ -43,9 +43,11 @@ def build_adapters(controllers: dict, mask: Any, log_sink: Callable[[str, str], 
         lights = Placeholder("light", [])
     mask_adapter, page_adapter = SensorMaskAdapter(mask, state_dir), PageAdapter(controllers, state_dir, policy_ack_s)
     diag_adapter = DiagAdapter(controllers, state_dir)
+    brightness = BrightnessAdapter(controllers, getattr(hue, "output", None), state_dir)   # hue: the room's stream
     mask_adapter.restore()
     page_adapter.restore()
     diag_adapter.restore()
+    brightness.restore()
     if remotes is None:
         remotes = broadlink_rf.from_config(state_dir=state_dir)
     if sonos is None:
@@ -56,7 +58,7 @@ def build_adapters(controllers: dict, mask: Any, log_sink: Callable[[str, str], 
         show = ShowAdapter(cache_file=Path(state_dir) / "show_catalog.json")
     elif show is False:
         show = Placeholder("show", ["main"])
-    return [ScreensAdapter(controllers), page_adapter, diag_adapter, mask_adapter, LogAdapter(log_sink),
+    return [ScreensAdapter(controllers), page_adapter, diag_adapter, mask_adapter, brightness, LogAdapter(log_sink),
             blinds or (blinds_mod.from_config() if blinds_enabled else blinds_mod.placeholder_from_config()),
             *[p for p in placeholders() if p.subsystem not in taken], *extra,
             *([hue] if hue is not None else []), lights, show, autopilot or AutopilotAdapter(state_dir)]
