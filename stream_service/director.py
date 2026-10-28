@@ -66,7 +66,13 @@ NOTES_RECENT_S = (30.0, 120.0)
 # (0.3 x 4 = 1.2) beat an unrated perfect fit (1 x 0.35); in Party 57% of picks fitted poorly (<= 0.3) and 25% fitted
 # well (>= 0.7).  At 3: 7% poor, 73% good, still about 17 scenes in real rotation (catalog of 24 Oct, 415 auto presets).
 STYLE_POWER = 3.0
-NOTES_NONE = 0.05
+NOTES_NONE = 0.0     # owner, 28 Oct: score scenes "shouldn't really trigger if there's no midi" (was 0.05)
+# The fewest scenes an auto pick keeps in real rotation: the effective number ((sum w)^2 / sum w^2) of the weights,
+# at most MIN_ROTATION_SHARE of the scenes that fit at all.  With the music's words, genre and axes all multiplying
+# the fit before STYLE_POWER, a Disco pick had 2-6 (owner, 28 Oct: "frequently returns to a small number of
+# scenes"); below the floor the weights are flattened (w ** a, a < 1), which keeps their order.
+MIN_ROTATION = 16.0
+MIN_ROTATION_SHARE = 0.5
 # direction.music: how the music's words meet the mode's own (aa's Room page control "How the music changes it").
 # fill: only where the mode set none; blend (default): the mode's lead, the music's shade them (music_moods /
 # music_style); replace: the music's win; ignore: none of the music's words, genre or axes (the numbers still trim).
@@ -307,15 +313,41 @@ def resolve_pool(spec: Any, presets: dict[str, dict]) -> list[str]:
             and matches_filter(p["tags"], spec["tags"])]
 
 
+def effective_n(w: list[float]) -> float:
+    s2 = sum(x * x for x in w)
+    return sum(w) ** 2 / s2 if s2 > 0 else 0.0
+
+
+def spread(w: list[float], target: float) -> list[float]:
+    """The weights flattened (w ** a, the largest a in (0, 1]) until their effective number reaches ``target``;
+    zeros stay zero."""
+    if effective_n(w) >= target:
+        return w
+    lo, hi = 0.0, 1.0
+    for _ in range(20):
+        mid = (lo + hi) / 2
+        if effective_n([x ** mid if x > 0 else 0.0 for x in w]) >= target:
+            lo = mid
+        else:
+            hi = mid
+    return [x ** lo if x > 0 else 0.0 for x in w]
+
+
 def weighted_pick(names: list[str], weight: Callable[[str], float], rng: random.Random,
-                  avoid: Any = ()) -> Optional[tuple[str, float, int]]:
-    """Weighted-random choice among ``names`` minus ``avoid`` (all of them if that leaves none).
+                  avoid: Any = (), rotation: Optional[float] = None) -> Optional[tuple[str, float, int]]:
+    """Weighted-random choice among ``names`` minus ``avoid`` (all of them if that leaves none); a weight of 0 is
+    never picked while any other is above it.  ``rotation``: keep at least that many in real rotation (spread).
     -> (name, probability, candidates) or None for an empty pool."""
     avoid = set(avoid)
     cands = [n for n in names if n not in avoid] or list(names)
     if not cands:
         return None
-    w = [max(1e-6, weight(n)) for n in cands]
+    w = [max(0.0, weight(n)) for n in cands]
+    live = sum(1 for x in w if x > 0)
+    if not live:
+        w = [1.0] * len(cands)
+    elif rotation:
+        w = spread(w, min(rotation, MIN_ROTATION_SHARE * live))
     name = rng.choices(cands, weights=w)[0]
     return name, w[cands.index(name)] / sum(w), len(cands)
 
@@ -349,7 +381,7 @@ class Director:
         self.notes_age: Optional[Callable[[], Optional[float]]] = None     # s since the piano last played (None: never)
 
     def _heard(self, plugin: Optional[str]) -> float:
-        """x a scene's weight by whether there is what it draws: a notes scene with no MIDI is nearly never picked."""
+        """x a scene's weight by whether there is what it draws: a notes scene with no MIDI is not picked."""
         if self.listens is None or self.notes_age is None:
             return 1.0
         try:
@@ -509,7 +541,7 @@ class Director:
             avoid = {prev} if prev else set()
         got = weighted_pick(names, lambda n: scene_weight(scenes[n].get("tags") or {}, self.direction) ** STYLE_POWER
                             * self._rated("source", scenes[n].get("source"))
-                            * self._heard(scenes[n].get("source")), self.rng_scene, avoid)
+                            * self._heard(scenes[n].get("source")), self.rng_scene, avoid, MIN_ROTATION)
         if got is None:
             return None
         name, p, n = got

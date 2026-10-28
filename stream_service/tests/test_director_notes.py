@@ -18,3 +18,20 @@ def test_notes_scene_rare_without_midi():
 
 def test_notes_scene_as_usual_while_playing():
     assert 0.35 < _share(5.0) < 0.65
+
+
+def test_notes_scene_never_without_midi():
+    assert _share(None) == 0.0
+
+
+def test_rotation_floor_keeps_order_and_spreads():
+    import random
+
+    from stream_service.director import effective_n, spread, weighted_pick
+    w = [8.0] + [0.01] * 99 + [0.0]
+    s = spread(w, 16.0)
+    assert effective_n(s) >= 16.0 - 1e-6 and s[0] > s[1] > 0 and s[-1] == 0.0
+    names = [f"s{i}" for i in range(len(w))]
+    rng = random.Random(3)
+    picks = [weighted_pick(names, lambda n: w[int(n[1:])], rng, (), 16.0)[0] for _ in range(2000)]
+    assert len(set(picks)) > 40 and "s100" not in picks and picks.count("s0") > picks.count("s1")
