@@ -8,10 +8,14 @@
     "up",
     "down"
   ],
+  "held": [
+    "up_hold",
+    "down_hold"
+  ],
   "gap_s": 0.3,
   "clean": {
-    "frames": 6,
-    "gap_ms": 120
+    "frames": 10,
+    "gap_ms": 120.0
   },
   "colours": {
     "white": "White",
@@ -36,6 +40,10 @@
     },
     "Modes": {
       "flash": "Flash (strobe)"
+    },
+    "Held down": {
+      "up_hold": "Hold + (brighten all the way)",
+      "down_hold": "Hold − (dim all the way)"
     }
   },
   "subsystem": "pinspots",
