@@ -5,7 +5,10 @@
 // the ring holds a small slice and creeps very slowly while it waits, and no time left is given.
 //   preparing   0    -> 0.08  over estimate.prepare_s
 //   waiting     0.08 -> 0.12  an extremely slow creep (submitted, no generation frame yet)
-//   generating  0.12 -> 0.95  by elapsed / estimate.generate_s, pulled ahead by the job's real percent
+//   generating  0.12 -> 0.95  by elapsed / estimate.generate_s, pulled ahead by the job's real percent; real steps
+//                             drive at most REAL_SHARE of this span, since after the last step the worker still saves
+//                             and uploads (owner, 28 Oct: the ring looked done while ~5-8 s remained). That tail
+//                             fills by time (estimate.generate_s is learned up to publishing_at, so it includes it).
 //   publishing  0.95 -> 0.99  over estimate.publish_s
 //   done        1 when completed
 // A phase that runs long approaches its end ever more slowly: it never stalls dead, never jumps, never reaches the
@@ -34,6 +37,10 @@ const GENERATE_END = 0.95;
 const PUBLISH_END = 0.99;
 /** Seconds of waiting to cover half the waiting slice (0.08 -> 0.10 after a minute, ~0.11 after three). */
 const WAIT_HALF_S = 60;
+/** The share of the generating span real step progress can fill; the rest is the worker's save + upload tail. */
+const REAL_SHARE = 0.85;
+/** The tail is at least this long (s): saving and uploading the output after the last step. */
+const TAIL_MIN_S = 3;
 
 /** Linear up to the knee, then a hyperbolic tail toward 1 with the same slope: smooth, slow, never quite 1. */
 const KNEE = 0.8;
@@ -103,15 +110,32 @@ export function jobProgress(job: Job, nowServerS: number): JobProgress {
 
   if (phase === 'generating') {
     // generating_at is set for this phase; started_at only as a fallback (a worker without the progress relay)
-    const elapsed = since(stamp(job.generating_at) ?? stamp(job.started_at) ?? stamp(job.submitted_at));
+    const genStart = stamp(job.generating_at) ?? stamp(job.started_at) ?? stamp(job.submitted_at);
+    const elapsed = since(genStart);
     const timeBased = soft(elapsed / est.generate_s);
     const real = job.percent != null && Number.isFinite(job.percent) ? Math.min(1, Math.max(0, job.percent / 100)) : 0;
-    const g = Math.max(timeBased, real);
+    // what's usually left after the last step: the worker saving and uploading the output
+    const tailS = Math.max(TAIL_MIN_S, est.generate_s * (1 - REAL_SHARE));
+    let stepsBased = REAL_SHARE * real;
+    let stepsLeftS: number;
+    let stepsOverrunS = 0;
+    if (real >= 1) {
+      // all steps done: the tail fills by time from the last progress update (when the final step landed)
+      const sampledAt = Math.max(stamp(job.updated_at) ?? 0, genStart ?? 0);
+      const tailElapsed = sampledAt > 0 ? Math.max(0, nowServerS - sampledAt) : 0;
+      stepsBased += (1 - REAL_SHARE) * soft(tailElapsed / tailS);
+      stepsLeftS = Math.max(0, tailS - tailElapsed);
+      stepsOverrunS = Math.max(0, tailElapsed - tailS);
+    } else {
+      // go by the steps' own rate once there's enough of it to trust, else by the usual time
+      stepsLeftS = (real >= 0.15 ? (elapsed * (1 - real)) / real : est.generate_s * REAL_SHARE * (1 - real)) + tailS;
+    }
+    const g = Math.max(timeBased, stepsBased);
     let remainingGen: number;
     let overrunS = 0;
-    if (real > timeBased) {
-      // real steps lead: go by their rate once there's enough of it to trust, else by the usual time
-      remainingGen = real >= 0.15 ? (elapsed * (1 - real)) / real : est.generate_s * (1 - real);
+    if (stepsBased > timeBased) {
+      remainingGen = stepsLeftS;
+      overrunS = stepsOverrunS;
     } else {
       remainingGen = Math.max(0, est.generate_s - elapsed);
       overrunS = Math.max(0, elapsed - est.generate_s);

@@ -259,7 +259,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
             ...item.metadata,
             favorite: item.favorite
           },
-          created_at: item.created_at || item.metadata?.timestamp || 0,
+          created_at: toEpochSeconds(item.created_at || item.metadata?.timestamp),
           raw_url: item.raw_url,
           // Extract batchId from filename (e.g., "2024-05-14T12-30-00_batch-42_0.png")
           batchId: extractBatchId(item.filename),
@@ -328,6 +328,13 @@ export const RecentView: React.FC<RecentViewProps> = ({
     }
   };
   
+  // Bucket timestamps come in seconds (file times) or milliseconds (the generator's sidecar `timestamp`); seconds here
+  const toEpochSeconds = (value: unknown): number => {
+    const n = Number(value);
+    if (!Number.isFinite(n) || n <= 0) return 0;
+    return n > 1e11 ? n / 1000 : n;
+  };
+
   // Helper to extract batchId from filename
   const extractBatchId = (filename: string): string => {
     // Extract "batch-XYZ" pattern from the filename - capture everything after "batch-" until the next file extension
@@ -353,17 +360,13 @@ export const RecentView: React.FC<RecentViewProps> = ({
       groupMap.get(batchId)!.push(img);
     });
     
-    // Sort images within each batch by index/timestamp
-    groupMap.forEach((images, batchId) => {
+    // Sort images within each batch oldest -> newest (a new image lands at the end), images still being made last.
+    // (Filenames carry no usable sequence number: "<date>-<time>-<hash>.jpg_batch-<batch id>.jpg".)
+    groupMap.forEach((images) => {
       images.sort((a, b) => {
-        // Extract sequence number from filename if possible
-        const aSeq = extractSequenceNumber(a.id) || 0;
-        const bSeq = extractSequenceNumber(b.id) || 0;
-        
-        // Primary sort by sequence number
-        if (aSeq !== bSeq) return aSeq - bSeq;
-        
-        // Secondary sort by timestamp
+        const aPending = a.metadata?.placeholder === true ? 1 : 0;
+        const bPending = b.metadata?.placeholder === true ? 1 : 0;
+        if (aPending !== bPending) return aPending - bPending;
         return (a.created_at || 0) - (b.created_at || 0);
       });
     });
@@ -416,20 +419,6 @@ export const RecentView: React.FC<RecentViewProps> = ({
       groups.forEach(g => { initialCollapse[g.batchId] = true; });
       setCollapsedPanels(initialCollapse);
     }
-  };
-  
-  // Helper to extract sequence number from filename (e.g., "2024-05-14T12-30-00_batch-42_0.png" → 0)
-  const extractSequenceNumber = (filename: string): number | null => {
-    const parts = filename.split('_');
-    if (parts.length >= 3) {
-      const lastPart = parts[parts.length - 1];
-      // Extract number before file extension
-      const numMatch = lastPart.match(/^(\d+)/);
-      if (numMatch) {
-        return parseInt(numMatch[1], 10);
-      }
-    }
-    return null;
   };
   
   // Convert BucketImage to ImageItem for components
@@ -608,14 +597,28 @@ export const RecentView: React.FC<RecentViewProps> = ({
     );
   };
   
-  // Handle "Generate Again" from a batch
+  // Take a placeholder (an image still being made) out of the list, e.g. when its job failed
+  const removePlaceholder = (batchId: string, placeholderId: string) => {
+    setBucketImages(prev => prev.filter(img => img.id !== placeholderId));
+    setPlaceholders(prev => prev.filter(p => p.id !== placeholderId));
+    setSelectedImageByBatch(prev => {
+      if (prev[batchId] !== placeholderId) return prev;
+      const next = { ...prev };
+      delete next[batchId];
+      return next;
+    });
+  };
+
+  // Handle "Generate Again" from a batch: one more image for the same batch. Its placeholder goes at the end of the
+  // batch (where the image will land), the batch moves to the top, opens and shows the placeholder, which follows
+  // that image's own job (the request carries its placeholder id). The image replaces it when it arrives (recent:add).
   const handleGenerateAgain = (batchId: string) => {
     // Find the batch
     const batch = batchGroups.find(b => b.batchId === batchId);
     if (!batch || batch.images.length === 0) return;
     
-    // Extract the prompt and settings from the first image
-    const firstImage = batch.images[0];
+    // Extract the prompt and settings from the first real image (placeholders carry fewer settings)
+    const firstImage = batch.images.find(img => img.metadata?.placeholder !== true) || batch.images[0];
     const imageMetadata = firstImage.metadata as {
       prompt?: string;
       workflow?: string;
@@ -630,7 +633,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
     const bucketId = firstImage.bucketId || '_recent';
     const referenceUrls = ReferenceImageService.getReferenceImageUrls(bucketId, referenceImages);
 
-    // Create a single placeholder for this batch
+    // Create a single placeholder for this batch, last in it
     const placeholderThumb = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs='; 
     const placeholderId = `placeholder-${batchId}-${Date.now()}`;
     const placeholder: BucketImage = {
@@ -639,16 +642,23 @@ export const RecentView: React.FC<RecentViewProps> = ({
       thumbnail_url: placeholderThumb,
       batchId,
       created_at: Date.now()/1000,
+      prompt: firstImage.promptKey,
       metadata: {
         placeholder: true,
-        aspectRatio: 16/9
+        aspectRatio: 16/9,
+        batchId,
+        batchIndex: 0, // the only image of this request (the job's batch_index)
       }
     };
-    setBucketImages(prev => [placeholder, ...prev]);
+    setBucketImages(prev => [...prev, placeholder]);
     setPlaceholders(prev => [...prev, {
       id: placeholderId,
       timestamp: Date.now()
     }]);
+    // Move the batch to the top, open it and show the placeholder (its progress)
+    setBatchOrder(prev => [batchId, ...prev.filter(id => id !== batchId)]);
+    setCollapsedPanels(prev => ({ ...prev, [batchId]: false }));
+    setSelectedImageByBatch(prev => ({ ...prev, [batchId]: placeholderId }));
 
     // Create parameters for generation
     // For "Generate Again", we want to use the exact same refined prompt and settings
@@ -671,20 +681,22 @@ export const RecentView: React.FC<RecentViewProps> = ({
         ...actualGlobalParams,  // Use the actual global parameters that were used
         batch_size: 1, // Override batch size for Generate Again
       },
-      placeholders: [], // Required by the API type
+      // the job carries this placeholder's id, so the placeholder shows that job's progress (docs/JOBS.md)
+      placeholders: [{ batch_index: 0, placeholder_id: placeholderId }],
       referenceUrls,
       refiner: "none", // Explicitly disable refiner - we want to use the already-refined prompt
     };
     params.__skipPlaceholder = true;
-    toast.loading('Generating image...', { id: 'generate-toast' });
     generationApi.generateImage(params)
       .then(() => {
-        toast.dismiss('generate-toast');
-        toast.success('Image generated');
+        // The image has replaced the placeholder (recent:add, sent before this resolves); if none came back
+        // (not saved to Recent), don't leave the placeholder spinning.
+        removePlaceholder(batchId, placeholderId);
       })
-      .catch((error: any) => {
-        toast.dismiss('generate-toast');
-        toast.error('Failed to generate image');
+      .catch((error: unknown) => {
+        removePlaceholder(batchId, placeholderId);
+        // the job's own reason (the API returns the tracker's error text)
+        toast.error(error instanceof Error && error.message ? error.message : 'Failed to generate image');
         console.error('Error generating image:', error);
       });
   };
@@ -732,6 +744,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
               workflow,
               params,
               global_params: globalParams,
+              batchId,
               batchIndex
             },
             prompt,
@@ -847,16 +860,18 @@ export const RecentView: React.FC<RecentViewProps> = ({
   useEffect(() => {
     const handleRecentAdd = (e: any) => {
       try {
-        const { batchId, files, imagesWithMetadata } = e.detail || {};
+        const { batchId, files, imagesWithMetadata, placeholderIds } = e.detail || {};
         if (!files || files.length === 0) return;
         // If no metadata provided, ignore this event to prevent overwriting existing metadata
         if (!imagesWithMetadata) {
           console.warn('[recent:add] Event without metadata ignored to preserve existing data');
           return;
         }
+        // The request's placeholder ids, in the order of its images (files[i] <- placeholderIds[i])
+        const sentIds: string[] = Array.isArray(placeholderIds) ? placeholderIds.filter((id: unknown) => typeof id === 'string') : [];
         
         // Create new image objects using the metadata directly from the API
-        const newImgs: BucketImage[] = files.map((fname: string, index: number) => {
+        const newImgs: BucketImage[] = files.map((fname: string) => {
           // Find matching metadata for this file
           const fileMetadata = imagesWithMetadata && imagesWithMetadata.find((img: any) => 
             img.fileName === fname
@@ -867,74 +882,38 @@ export const RecentView: React.FC<RecentViewProps> = ({
             url: `/output/_recent/${fname}`,
             thumbnail_url: `/output/_recent/thumbnails/${fname}.jpg`,
             batchId,
-            created_at: fileMetadata?.metadata?.timestamp 
-              ? fileMetadata.metadata.timestamp / 1000  // Convert from ms to seconds
-              : Date.now() / 1000,
+            created_at: toEpochSeconds(fileMetadata?.metadata?.timestamp) || Date.now() / 1000,
             metadata: fileMetadata?.metadata || {},
             prompt: fileMetadata?.metadata?.prompt || "",
             bucketId: '_recent' // This function specifically handles _recent bucket additions
           };
         });
         
-
-        
-        // For each real image that arrived, find one placeholder to remove
+        // Each new image replaces its own placeholder in place: the one whose id the request sent for it, else
+        // (a request without ids) the batch's oldest placeholder no request has claimed. It keeps the batch and the
+        // end position (newest real image; placeholders sort after real images).
         setBucketImages(prev => {
-          // Find placeholders with matching batch ID (detect via metadata.placeholder flag)
-          const matchingPlaceholders = prev.filter(img => 
-            img.batchId === batchId && img.metadata?.placeholder === true
-          );
-          
-          // If there are placeholders, remove exactly one for each new image
-          if (matchingPlaceholders.length > 0) {
-            // Keep track of placeholders we'll remove
-            const placeholdersToRemove = matchingPlaceholders.slice(0, Math.min(matchingPlaceholders.length, newImgs.length));
-            const placeholderIds = placeholdersToRemove.map(p => p.id);
-            
-            // Also update our placeholder tracking state
-            // Temporarily disabled to fix setState during render warning
-            // setPlaceholders(prevPlaceholders => 
-            //   prevPlaceholders.filter(p => !placeholderIds.includes(p.id))
-            // );
-            
-            // Filter out the placeholders we're removing, keep everything else
-            const remainingImages = prev.filter(img => !placeholderIds.includes(img.id));
-            
-            // Add the new images ensuring no duplicates by id
-            // Create a Map using a combination of id and batchId to ensure true uniqueness
-            const uniqueMap = new Map<string, BucketImage>();
-            
-            // First add all remaining images to the map
-            remainingImages.forEach(img => {
-              const uniqueKey = `${img.id}_${img.batchId || 'unknown'}`;
-              uniqueMap.set(uniqueKey, img);
-            });
-            
-            // Then add new images, potentially overwriting older ones with same id
-            newImgs.forEach(img => {
-              const uniqueKey = `${img.id}_${img.batchId || 'unknown'}`;
-              uniqueMap.set(uniqueKey, img);
-            });
-            
-            return Array.from(uniqueMap.values());
-          }
-          
-          // If no placeholders found, just add the new images with deduplication
-          const uniqueMap = new Map<string, BucketImage>();
-          
-          // First add all existing images
+          const batchPlaceholders = prev
+            .filter(img => img.batchId === batchId && img.metadata?.placeholder === true)
+            .sort((a, b) => (a.created_at || 0) - (b.created_at || 0));
+          const replaced = new Map<string, BucketImage>(); // placeholder id -> the image taking its place
+          const unplaced: BucketImage[] = [];
+          newImgs.forEach((img, i) => {
+            const wanted = sentIds[i];
+            const target = wanted
+              ? batchPlaceholders.find(p => p.id === wanted)
+              : batchPlaceholders.find(p => !replaced.has(p.id) && !sentIds.includes(p.id));
+            if (target && !replaced.has(target.id)) replaced.set(target.id, img);
+            else unplaced.push(img);
+          });
+          const newKeys = new Set(newImgs.map(img => `${img.id}_${img.batchId || 'unknown'}`));
+          const next: BucketImage[] = [];
           prev.forEach(img => {
-            const uniqueKey = `${img.id}_${img.batchId || 'unknown'}`;
-            uniqueMap.set(uniqueKey, img);
+            const replacement = replaced.get(img.id);
+            if (replacement) next.push(replacement);
+            else if (!newKeys.has(`${img.id}_${img.batchId || 'unknown'}`)) next.push(img); // drop stale copies
           });
-          
-          // Then add new images, overwriting any with the same id+batchId combination
-          newImgs.forEach(img => {
-            const uniqueKey = `${img.id}_${img.batchId || 'unknown'}`;
-            uniqueMap.set(uniqueKey, img);
-          });
-          
-          return Array.from(uniqueMap.values());
+          return [...next, ...unplaced];
         });
         
         // Move batch to top and update UI states
@@ -949,12 +928,10 @@ export const RecentView: React.FC<RecentViewProps> = ({
           [batchId]: false,
         }));
         
-        // Force select the newest image (assume first of newImgs array)
+        // Select the new image (the first, for a batch of several). At once, in the same update as the swap, so the
+        // panel goes straight from the placeholder to its image (the event comes from an async request, never a render).
         if (newImgs.length > 0) {
-          // Defer this state update to avoid setState during render warning
-          setTimeout(() => {
-            setSelectedImageByBatch(prev => ({ ...prev, [batchId]: newImgs[0].id }));
-          }, 0);
+          setSelectedImageByBatch(prev => ({ ...prev, [batchId]: newImgs[0].id }));
         }
       } catch (err) {
         console.warn('recent:add handler error', err);

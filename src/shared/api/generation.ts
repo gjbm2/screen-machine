@@ -87,6 +87,8 @@ export async function generateImage(params: GenerateImageParams) {
       batchId: result.batch_id,
       files: result.recent_files,
       imagesWithMetadata: imagesWithMetadata,
+      // the placeholders sent, in image order, so the Recent view replaces each one with its own image
+      placeholderIds: (placeholders || []).map(p => p.placeholder_id),
     };
 
     window.dispatchEvent(new CustomEvent('recent:add', { detail: eventDetail }));

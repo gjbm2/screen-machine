@@ -355,3 +355,7 @@
   pointer-events: none;
   z-index: 100;
 } 
+/* A placeholder's job progress ring stays put on hover (the rule above hides every .absolute in a thumbnail) */
+:global(.recent-thumbnail-grid) :global(.drag-grid > div:hover [data-job-placeholder] .absolute) {
+  display: block !important;
+}

@@ -9,7 +9,7 @@ import {
   DropdownMenuItem, 
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
-import { PlaceholderImage } from '@/components/recent/PlaceholderImage';
+import { JobPlaceholder, placeholderKeyOf } from '@/components/jobs/JobPlaceholder';
 
 // Temporary stub until HoverActionBar is implemented
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
@@ -141,7 +141,8 @@ const ImageCard: React.FC<ImageCardProps> = ({
       {image.customComponent ? (
         image.customComponent
       ) : isPlaceholder ? (
-        <PlaceholderImage aspectRatio={aspectRatio} />
+        // that image's own job progress (docs/JOBS.md), or the plain spinner until the job shows up
+        <JobPlaceholder placeholder={placeholderKeyOf(image)} aspectRatio={aspectRatio} />
       ) : isRecentThumbnail ? (
         // Recent view thumbnails: clicking selects, expand icon for Loope
         <div className="relative w-full h-full">

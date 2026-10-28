@@ -79,8 +79,9 @@ are cached per workflow for 60 s. The estimate is set when the job is made and r
 becomes known; it doesn't change after that.
 
 Clients turn it into the ring and the words: `src/shared/jobs/estimate.ts` (`jobProgress`, `useJobProgress`:
-fraction, remaining seconds, phase; generating is corrected upward by `percent`; never backwards, never full
-before done) and `src/shared/jobs/words.ts` (the stage labels and "About 30 seconds"-style text, in one place).
+fraction, remaining seconds, phase; generating is corrected upward by `percent`, which fills at most 85% of the
+generating span: after the last step the worker still saves and uploads, and that tail fills by time; never
+backwards, never full before done) and `src/shared/jobs/words.ts` (the stage labels and "About 30 seconds"-style text, in one place).
 If `generating_at` is null the client takes generation to start at `started_at`.
 
 ## HTTP API (Flask, `/api`)
