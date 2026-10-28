@@ -1,10 +1,10 @@
 // The room's lights. Hue lamps (room_service dmx/api.py): each one device that either follows the music
 // (Art-Net, streamed to the bridge) or is under house control. DMX lights (show_service's rig, registered on
-// the Lights setup page, read through room_service's /show pass-through): each follows the music, holds a steady
+// the light setup page, read through room_service's /show pass-through): each follows the music, holds a steady
 // colour, or is off. Both are set through the room state model (PUT /api/v1/room/targets: hue.<id>, light.<id>), so a
 // mode change and a hand change go through the same coordinator. Each light uses the Lights setup page's words and
 // parts (the same name, kind, where it is, the same colour block); its controls end with "Set up this light ›"
-// (/lights?light=<id>). Names drop their room's name (rooms.json); where a light is comes from the Room map once it's
+// (the light setup page in Settings, /settings/lights?light=<id>). Names drop their room's name (rooms.json); where a light is comes from the Room map once it's
 // placed there.
 // Laid out as tiles (owner, 25 Oct: "vertical space is at a HIGH PREMIUM on a mobile"): four across when the fold is
 // 500 px wide or more, else two, each its colour, name and state; a tap opens that light's controls under the tiles (one at a time), with
@@ -13,6 +13,7 @@
 import { useCallback, useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import { Lightbulb, Moon, Palette, Radio } from "lucide-react";
 import { AppLink } from "@/components/nav/AppLink";
+import { lightSetupUrl } from "@/components/nav/appNav";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { LightsApi } from "@/pages/Lights/api";
@@ -62,7 +63,7 @@ function stateOf(f: Fixture): { on: boolean; bri: number; hex: string | null } {
 function SetupLink({ id }: { id: string }) {
   return (
     <AppLink
-      href={`/lights?light=${encodeURIComponent(id)}`}
+      href={lightSetupUrl({ light: id })}
       state={{ from: "Room" }}
       className="inline-flex min-h-11 items-center text-[15px] font-medium text-teal-800 underline-offset-4 hover:underline"
       data-testid={`setup-${id}`}

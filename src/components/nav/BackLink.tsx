@@ -19,6 +19,7 @@ export function placeName(path: string): string {
   if (p.startsWith("/room")) return "Room";
   if (p.startsWith("/music")) return path.includes("score=") ? "Score" : "Music";
   if (p.startsWith("/lights")) return "Lights";
+  if (p.startsWith("/settings/lights")) return "Light setup";
   if (p.startsWith("/settings")) return "Settings";
   if (p.startsWith("/scheduler")) return "Schedules";
   if (p === "/" || p === "") return "Generator";

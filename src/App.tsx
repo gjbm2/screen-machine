@@ -18,6 +18,7 @@ import AndroidApp from './pages/AndroidApp';
 import AdminPanel from './pages/AdminPanel';
 import RoomPage from './pages/Room';
 import LightsPage from './pages/Lights';
+import LightsControlPage from './pages/Lights/Control';
 import MusicPage from './pages/Music';
 import SettingsPage from './pages/Settings';
 import StartPage from './pages/Settings/Start';
@@ -52,7 +53,8 @@ const App = () => (
             <Route path="/app" element={<AndroidApp />} />
             <Route path="/adminadmin" element={<AdminPanel />} />
             <Route path="/room" element={<RoomPage />} />
-            <Route path="/lights" element={<LightsPage />} />
+            <Route path="/lights" element={<LightsControlPage />} />
+            <Route path="/settings/lights" element={<LightsPage />} />
             <Route path="/music" element={<MusicPage />} />
             <Route path="/settings" element={<SettingsPage />} />
             {/* where the app opens: this device's choice in Settings (Room or Music) */}

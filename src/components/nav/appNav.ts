@@ -35,9 +35,19 @@ export function musicPageUrl(tab?: "browse" | "playlists" | "mine" | "web" | nul
   return `${roomPageUrl().replace(/\/room$/, "/music")}${tab ? `?tab=${tab}` : ""}`;
 }
 
-/** Lights setup: add, name and find lights. */
-export function lightsPageUrl(tab?: "map" | null): string {
-  return tab ? `/lights?tab=${tab}` : "/lights";
+/** Lights: work the room's lamps and appliances (glitterball, pinspots). Operating, not setup. */
+export function lightsPageUrl(): string {
+  return "/lights";
+}
+
+/** Light setup, inside Settings: add, name and place lights, add and learn remote-controlled appliances. `light`
+ *  opens that light's row. */
+export function lightSetupUrl(opts: { tab?: "map" | null; light?: string | null } = {}): string {
+  const q = new URLSearchParams();
+  if (opts.tab) q.set("tab", opts.tab);
+  if (opts.light) q.set("light", opts.light);
+  const s = q.toString();
+  return `/settings/lights${s ? `?${s}` : ""}`;
 }
 
 /** Settings, opened on one group (/settings#<group>, e.g. "modes", "screen-north", "listening"). */

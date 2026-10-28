@@ -182,7 +182,7 @@ function MenuBody({
           <NavRow href={musicPageUrl()} icon={<Music className="h-5 w-5" />} label="Music" hint="Pieces, playlists, recordings" current={current === "music"} onGo={close} />
         )}
         {(room.onLan || current === "lights") && (
-          <NavRow href={lightsPageUrl()} icon={<Lightbulb className="h-5 w-5" />} label="Lights setup" hint="Add, name and find lights" current={current === "lights"} onGo={close} testId="menu-lights" />
+          <NavRow href={lightsPageUrl()} icon={<Lightbulb className="h-5 w-5" />} label="Lights" hint="Lamps, glitterball, pinspots" current={current === "lights"} onGo={close} testId="menu-lights" />
         )}
         <NavRow href={generatorUrl()} icon={<Sparkles className="h-5 w-5" />} label="Generator" hint="Make art for each screen" current={current === "generator"} onGo={close} />
         <NavRow href={schedulerUrl()} icon={<CalendarClock className="h-5 w-5" />} label="Schedules" hint="What each screen does through the day" current={current === "scheduler"} onGo={close} />

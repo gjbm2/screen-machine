@@ -1,8 +1,10 @@
 """RF/IR remotes sent by the BroadLink RM4 Pro (python-broadlink, local UDP; no cloud).
 
 One JSON file per remote-controlled device under config/room/rf/ (every file with a "device" block: the glitterball,
-glitterball.json; the pinspots, pinspot.json) says which subsystem it is, the RM4 Pro's address, and the learned codes
-(base64 python-broadlink packets, Home Assistant's format). Devices on the same RM4 Pro share one connection.
+glitterball.json) says which subsystem it is, the RM4 Pro's address, and the learned codes (base64 python-broadlink
+packets, Home Assistant's format). Devices on the same RM4 Pro share one connection. Devices are added and removed in
+Settings › Lights (remotes_api.py): a new one starts as a copy of a device type, config/room/rf/types/<model>.json
+(new_device()), and its "model" names that type.
 A file with "type": "light" is a light worked by its remote (rf_light.py: colour, brightness steps, pulse, flash).
 Otherwise the kind follows the codes, read live from the file:
   - "on" and "off"  -> edge_discrete (a latched receiver): each code sets the state, safe to re-send.
@@ -51,6 +53,7 @@ log = logging.getLogger("room_service.broadlink")
 
 REPO = Path(__file__).resolve().parents[2]
 RF_DIR = REPO / "config" / "room" / "rf"
+TYPES_DIR = RF_DIR / "types"
 DEFAULT_FILE = RF_DIR / "glitterball.json"
 STATE_BUTTONS = ("on", "off", "toggle")
 POWER_WORDS = {"on": "On", "off": "Off", "toggle": "On/off (one button)"}
@@ -434,13 +437,53 @@ class RemoteSettingsAdapter(Adapter):
         return Outcome(worst, "; ".join(f"{m}: {o.detail}" for m, o in out.items()), members=out)
 
 
-def from_config(path: str | Path | None = None, state_dir: str | Path | None = None) -> list[Adapter]:
+def device_types(types_dir: Path | None = None) -> dict[str, dict]:
+    """model -> the type's file (config/room/rf/types/<model>.json), for Settings' "Add a remote-controlled device"."""
+    out = {}
+    for p in sorted((types_dir or TYPES_DIR).glob("*.json")):
+        try:
+            raw = json.loads(p.read_text())
+        except (OSError, ValueError) as e:
+            log.error("%s not read: %s", p, e)
+            continue
+        if isinstance(raw, dict):
+            out[p.stem] = raw
+    return out
+
+
+def new_device(model: str, label: str, host: str, rf_dir: Path | None = None, types_dir: Path | None = None) -> Path:
+    """Write a new device file from its type: its own id (from the name, unique), subsystem (= the id), name and RM4 Pro.
+    The type's own words (_note, type_label, description) stay in the type."""
+    t = device_types(types_dir).get(model)
+    if t is None:
+        raise ValueError(f"no device type {model!r}")
+    rf_dir = rf_dir or RF_DIR
+    base = "".join(c if c.isalnum() else "_" for c in label.strip().lower()).strip("_") or model
+    base = base if base[0].isalpha() else f"{model}_{base}"
+    taken = {p.stem for p in rf_dir.glob("*.json")}
+    rid, n = base, 2
+    while rid in taken:
+        rid, n = f"{base}_{n}", n + 1
+    raw = {"model": model, **{k: v for k, v in t.items() if k not in ("_note", "type_label", "description")},
+           "label": label.strip() or str(t.get("label") or model), "subsystem": rid, "device": {"host": host}, "codes": {}}
+    if raw.get("settings"):
+        raw["settings_subsystem"] = f"{rid}_settings"
+    path = rf_dir / f"{rid}.json"
+    tmp = path.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(raw, indent=2, ensure_ascii=False) + "\n")
+    tmp.replace(path)
+    return path
+
+
+def from_config(path: str | Path | None = None, state_dir: str | Path | None = None,
+                rms: dict[str, RM4] | None = None) -> list[Adapter]:
     """Every device file in config/room/rf/ with a "device" block (or just `path`), in name order; devices on the same
     RM4 Pro share one connection. Each file gives its power adapter (dry_run until it has codes) and, with a
     "settings" block, a settings adapter ("settings_subsystem", e.g. mirror_ball_motor); a "type": "light" file gives
     one light adapter (rf_light.py). Placeholders with their values without python-broadlink; nothing for a file that
-    is missing or unreadable (the glitterball's built-in placeholder stays)."""
-    rms: dict[str, RM4] = {}
+    is missing or unreadable (the glitterball's built-in placeholder stays). `rms` (host -> RM4) shares connections
+    with devices already running (one added in Settings)."""
+    rms = {} if rms is None else rms
     if path:
         return _from_file(Path(path), state_dir, rms)
     out: list[Adapter] = []
