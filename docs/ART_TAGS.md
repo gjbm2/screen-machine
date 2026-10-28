@@ -97,6 +97,44 @@ reads the prompt.
 - **`auto_ok: false`** is never picked automatically unless the picture is a favourite.
 - **Untagged pictures** are still eligible, at a neutral score.
 
+## The art director makes pictures when the library is thin
+
+Owner, 28 Oct: "connect listening AI with artistic director with AI image generator". Code:
+`routes/art_tags/director.py`, a daemon thread inside Flask started next to the tag queue. Settings: the `director:`
+block in `config/art_tags.yaml` (read each pass).
+
+Every `interval_s` (60 s), one decision:
+
+1. **Is the drawing room in Ambient?** It reads room_service `GET :8700/api/v1/status` `mode.current`. Any other
+   mode: nothing.
+2. **Is there an art wish?** It reads show_service `GET :8703/api/v1/look` `direction.art`. If there is none, or it
+   is `via: none`: nothing.
+3. **Is a screen thin?** For each of the room's screens (`routes/data/rooms.json`) it counts the **strong matches**
+   among the gallery's pictures in the screen's bucket (DATE-HEX stills whose sidecar has a prompt and a workflow).
+   A strong match is tagged (`status: done`, `auto_ok: true`), has a wished subject and no avoided one, and has a
+   wished mood **or** a music fit of 0.7 or more for the genre heard. Fewer than `thin` (24) means thin.
+4. **One picture** for one thin screen, if the caps allow:
+   - caps: `enabled`, `per_day` (12 tries a local day; a restart reads them back from the log), and
+     `per_screen_min_gap_s` (10 min); two thin screens take turns;
+   - one `utils.llm` call (task `prompt`) writes the image prompt from the wish's theme, subjects, moods and media, plus
+     the listener's `character` (`GET :8703/api/v1/listening`). House style: 16:9 wall art, no text or logos;
+   - the generation goes through the scheduler's `publish: false` path: the generation service with no target (a
+     tracker job with source `art-director` and no screen, so the TV shows no job indicator), then
+     `publish_to_destination(..., update_published=False)`. The refiner and workflow are the ones the screen's own
+     schedule uses (`routes/scheduler/<screen>.json`, today `enrich`);
+   - the picture lands in `output/<screen>/` only. It is **never shown on the wall**. The save queues its tagging,
+     and the renderer's gallery re-indexes within a minute, so it joins Ambient's pool;
+   - a failure backs off 10 min, doubling to an hour.
+
+Cost: each picture is one generation (about £0.01) plus one prompt call (about $0.0006).
+
+- **Status:** `GET /api/art-tags/director` returns `{enabled, running, mode, wish, genre, action, per_screen: {<screen>:
+  {strong, pool, tagged, thin, last_at}}, making, today_count, per_day, backoff_until, last_prompt, last_error}`.
+- **Log:** one JSON line per decision in `~/.local/state/screen-machine/logs/art_director.jsonl`. `action` is one of
+  `off`, `not-ambient`, `no-wish`, `enough`, `waiting`, `generated` or `failed`.
+- **Dry run** (the live GETs only; no prompt call, no generation):
+  `.venv/bin/python -m routes.art_tags.cli director --dry`.
+
 ## Tests
 
 ```

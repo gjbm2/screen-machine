@@ -54,6 +54,12 @@ def get_status():
     return jsonify(art_tags.get_worker().snapshot())
 
 
+@art_tags_api.route("/art-tags/director", methods=["GET"])
+def get_director_status():
+    from routes.art_tags.director import get_director
+    return jsonify(get_director().snapshot())
+
+
 @art_tags_api.route("/art-tags/sweep", methods=["POST"])
 def post_sweep():
     return jsonify({"queued": art_tags.get_worker().sweep()})
