@@ -6,6 +6,8 @@
 //   14:30", "Live · Gallery"); one action (Go live / Back to art); and More (⋯).
 // Row 2: small labelled controls: Look (while live), the schedule (its state, pause/resume, and its details), the
 //   picture before / after among the favourites, the light mask, Talk (voice to prompt) and Upload.
+//   Narrower than its labels need (a phone, a Room card in the iPad grid), it goes compact on one line: icons, the
+//   schedule's state in a word, and Upload moves into More when even that won't fit (useRowFit).
 // More: choose a scene, the schedule's events and variables, refresh, the bucket's maintenance, every screen's
 //   picture, and the links (the screen's page, Room, its schedule, its settings).
 // The schedule chip's fold: what the schedule does next, and its events (tap to send one) and variables (view, and
@@ -21,7 +23,7 @@
 // when the page gives it (the Generator's voice prompt). Components here are module-level (one defined in another's
 // body remounts on every render).
 
-import { useRef, useState, type ReactNode, type Ref } from "react";
+import { useLayoutEffect, useRef, useState, type ReactNode, type Ref } from "react";
 import { format, isSameDay, differenceInCalendarDays } from "date-fns";
 import {
   CalendarClock,
@@ -30,6 +32,7 @@ import {
   ChevronRight,
   Copy,
   ExternalLink,
+  Image as ImageIcon,
   Images,
   ListChecks,
   Mic,
@@ -129,6 +132,29 @@ const CHIP =
   "inline-flex h-9 shrink-0 items-center gap-1 whitespace-nowrap rounded-xl border border-stone-300 bg-white px-2 text-[13px] font-medium sm:gap-1.5 sm:px-2.5 sm:text-[14px] text-stone-800 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
 const CHIP_ON = "border-teal-700 bg-teal-700 text-white hover:bg-teal-800";
 const ITEM = "min-h-10 gap-2 rounded-lg text-[15px]";
+/** A chip that shows its icon only (the compact row). */
+const ICON_CHIP = "w-9 justify-center px-0 sm:px-0";
+
+/** Row 2's own width decides its labels (owner, 28 Oct: "lots of large labels taking up space so buttons line
+ *  wrap"): below what the labelled row needs it goes compact (icons, the schedule's state in a word), and when even
+ *  that won't fit, Upload moves into More, so a phone or a Room card in a 2-3 column grid keeps it on one line.
+ *  Measured before paint, so no flash. */
+function useRowFit({ talk, look, moreInRow }: { talk: boolean; look: boolean; moreInRow: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setWidth(el.clientWidth);
+    const ro = new ResizeObserver(([e]) => setWidth(Math.round(e.contentRect.width)));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  // labelled: schedule, picture, light mask, Upload and More; compact: the same as icons (More counted when in the row)
+  const wide = width >= 520 + (talk ? 80 : 0) + (look ? 90 : 0);
+  const uploadInRow = wide || width >= 296 + (talk ? 40 : 0) + (look ? 56 : 0) + (moreInRow ? 40 : 0);
+  return { ref, wide, uploadInRow };
+}
 
 /** The picture of what the screen shows; opens its page in a new tab. Exported for BucketGridView's drop target. */
 export function ScreenPicture({
@@ -264,7 +290,18 @@ function PrimaryButton({ live }: { live: ScreenLive }) {
 }
 
 /** More: with `live` (the full strip) the scene and the links too; without (the Room cards) the strip's own extras. */
-function MoreMenu({ p, live, onEvents }: { p: ScreenStripProps; live: ScreenLive | null; onEvents: () => void }) {
+function MoreMenu({
+  p,
+  live,
+  onEvents,
+  uploadHere,
+}: {
+  p: ScreenStripProps;
+  live: ScreenLive | null;
+  onEvents: () => void;
+  /** Upload is here, not in the row (a narrow row). */
+  uploadHere: boolean;
+}) {
   const canChoose = !!live && live.shown && (live.ls === "art" || live.ls === "failed" || live.liveNow);
   return (
     <DropdownMenu>
@@ -272,7 +309,7 @@ function MoreMenu({ p, live, onEvents }: { p: ScreenStripProps; live: ScreenLive
         aria-label={`More for ${p.name}`}
         title="More"
         data-testid={`strip-more-${p.screenId}`}
-        className="grid h-9 w-10 shrink-0 place-items-center rounded-xl border border-stone-300 bg-white text-stone-700 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-stone-100"
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-stone-300 bg-white text-stone-700 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[state=open]:bg-stone-100"
       >
         <MoreHorizontal className="h-5 w-5" aria-hidden />
       </DropdownMenuTrigger>
@@ -288,6 +325,11 @@ function MoreMenu({ p, live, onEvents }: { p: ScreenStripProps; live: ScreenLive
           >
             <Sparkles className="h-4 w-4 text-teal-700" aria-hidden />
             {live.liveNow ? "Change scene…" : "Go live with a scene…"}
+          </DropdownMenuItem>
+        )}
+        {uploadHere && p.hasBucket && (
+          <DropdownMenuItem className={ITEM} onSelect={p.onUpload}>
+            <Upload className="h-4 w-4" aria-hidden /> Upload pictures…
           </DropdownMenuItem>
         )}
         <DropdownMenuItem className={ITEM} onSelect={onEvents} data-testid={`strip-events-${p.screenId}`}>
@@ -356,14 +398,19 @@ function ScheduleChip({
   open,
   onToggle,
   actions,
+  wide,
 }: {
   p: ScreenStripProps;
   open: boolean;
   onToggle: () => void;
   actions: ReturnType<typeof useSchedulerActions>;
+  wide: boolean;
 }) {
   const state = scheduleState(p.scheduler.isRunning, p.scheduler.isPaused);
   const words = state === "on" ? "Schedule on" : state === "paused" ? "Schedule paused" : "Schedule off";
+  // compact: the calendar says "schedule", its colour and the word say the state
+  const short = state === "on" ? "On" : state === "paused" ? "Paused" : "Off";
+  const tint = state === "on" ? "text-teal-700" : state === "paused" ? "text-amber-600" : "text-stone-500";
   const act = state === "on" ? "pause" : state === "paused" ? "unpause" : "start";
   const actWords = act === "pause" ? "Pause the schedule" : act === "unpause" ? "Resume the schedule" : "Start the schedule";
   return (
@@ -372,15 +419,16 @@ function ScheduleChip({
         type="button"
         onClick={onToggle}
         aria-expanded={open}
-        title={open ? "Hide the schedule's details" : "The schedule's details"}
+        title={open ? "Hide the schedule's details" : `${words}: tap for its details`}
+        aria-label={wide ? undefined : `${words}: its details`}
         data-testid={`strip-schedule-${p.screenId}`}
         className={cn(
           "inline-flex h-9 items-center gap-1 whitespace-nowrap pl-2 pr-1 text-[13px] font-medium text-stone-800 sm:gap-1.5 sm:pl-2.5 sm:pr-1.5 sm:text-[14px] hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring",
           open && "bg-stone-100",
         )}
       >
-        <SchedulerStateIcon state={state} />
-        {words}
+        {wide ? <SchedulerStateIcon state={state} /> : <CalendarClock className={cn("h-4 w-4", tint)} aria-hidden />}
+        {wide ? words : short}
         <ChevronDown aria-hidden className={cn("h-3.5 w-3.5 text-stone-500 transition-transform motion-reduce:transition-none", open && "rotate-180")} />
       </button>
       <button
@@ -397,12 +445,14 @@ function ScheduleChip({
 }
 
 /** The picture before / after this one among the bucket's favourites. */
-function PictureStepper({ p }: { p: ScreenStripProps }) {
+function PictureStepper({ p, wide }: { p: ScreenStripProps; wide: boolean }) {
   // favourites null: not known (the Room cards), so they stay on and the server says when there's nothing to step to
   const off = p.favourites === 0 || p.stepping;
   const why = p.favourites === 0 ? "No favourites to step through" : null;
-  const btn =
-    "grid h-9 w-8 place-items-center text-stone-700 hover:bg-stone-50 sm:w-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40";
+  const btn = cn(
+    "grid h-9 place-items-center text-stone-700 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-40",
+    wide ? "w-8 sm:w-9" : "w-7",
+  );
   return (
     <span
       className="inline-flex shrink-0 items-center overflow-hidden rounded-xl border border-stone-300 bg-white"
@@ -413,7 +463,15 @@ function PictureStepper({ p }: { p: ScreenStripProps }) {
       <button type="button" className={btn} disabled={off} onClick={() => p.stepPicture("Previous")} aria-label="Previous favourite" title="Previous favourite">
         <ChevronLeft className="h-5 w-5" aria-hidden />
       </button>
-      <span className="text-[13px] font-medium text-stone-600 sm:px-0.5 sm:text-[14px]">{p.stepping ? <Spinner className="mx-3 h-3.5 w-3.5" /> : "Picture"}</span>
+      <span className="text-[13px] font-medium text-stone-600 sm:px-0.5 sm:text-[14px]">
+        {p.stepping ? (
+          <Spinner className={cn("h-3.5 w-3.5", wide ? "mx-3" : "mx-0.5")} />
+        ) : wide ? (
+          "Picture"
+        ) : (
+          <ImageIcon className="h-4 w-4 text-stone-500" aria-hidden />
+        )}
+      </span>
       <button type="button" className={btn} disabled={off} onClick={() => p.stepPicture("Next")} aria-label="Next favourite" title="Next favourite">
         <ChevronRight className="h-5 w-5" aria-hidden />
       </button>
@@ -433,6 +491,9 @@ function StripControls({
   actions,
   maskBlocked,
   end,
+  rowRef,
+  wide,
+  uploadInRow,
 }: {
   p: ScreenStripProps;
   className?: string;
@@ -443,6 +504,10 @@ function StripControls({
   maskBlocked: boolean;
   /** At the row's end (the Room cards' More). */
   end?: ReactNode;
+  rowRef: Ref<HTMLDivElement>;
+  /** Labels on, and Upload in the row (see useRowFit). */
+  wide: boolean;
+  uploadInRow: boolean;
 }) {
   const maskTip = maskBlocked
     ? "Live runs at full brightness; the light mask is for art"
@@ -450,10 +515,10 @@ function StripControls({
       ? "Light mask on: the screen dims and warms with the room's light. Tap to turn it off"
       : "Light mask off: tap to dim and warm the screen with the room's light";
   return (
-    <div className={cn("flex min-w-0 flex-wrap items-center gap-1.5", className)}>
+    <div ref={rowRef} className={cn("flex min-w-0 flex-wrap items-center", wide ? "gap-1.5" : "gap-1", className)}>
       {look}
-      <ScheduleChip p={p} open={scheduleOpen} onToggle={toggleSchedule} actions={actions} />
-      {p.hasBucket && !p.headless && <PictureStepper p={p} />}
+      <ScheduleChip p={p} open={scheduleOpen} onToggle={toggleSchedule} actions={actions} wide={wide} />
+      {p.hasBucket && !p.headless && <PictureStepper p={p} wide={wide} />}
       <Tip tip={maskTip} disabled={maskBlocked}>
         <button
           type="button"
@@ -461,9 +526,11 @@ function StripControls({
           disabled={maskBlocked}
           onClick={() => p.setMask(!p.maskOn)}
           data-testid={`strip-mask-${p.screenId}`}
-          className={cn(CHIP, p.maskOn && !maskBlocked && CHIP_ON)}
+          aria-label={wide ? undefined : "Light mask"}
+          className={cn(CHIP, !wide && ICON_CHIP, p.maskOn && !maskBlocked && CHIP_ON)}
         >
-          <Moon className="h-4 w-4" aria-hidden /> Light mask
+          <Moon className="h-4 w-4" aria-hidden />
+          {wide && " Light mask"}
         </button>
       </Tip>
       {p.toggleTalk && (
@@ -472,16 +539,25 @@ function StripControls({
             type="button"
             aria-pressed={!!p.talking}
             onClick={p.toggleTalk}
-            className={cn(CHIP, p.talking && "border-red-600 bg-red-600 text-white hover:bg-red-700")}
+            aria-label={wide ? undefined : p.talking ? "Stop talking" : "Talk"}
+            className={cn(CHIP, !wide && ICON_CHIP, p.talking && "border-red-600 bg-red-600 text-white hover:bg-red-700")}
           >
             <Mic className={cn("h-4 w-4", p.talking && "motion-safe:animate-pulse")} aria-hidden />
-            {p.talking ? "Stop talking" : "Talk"}
+            {wide && (p.talking ? "Stop talking" : "Talk")}
           </button>
         </Tip>
       )}
-      {p.hasBucket && (
-        <button type="button" onClick={p.onUpload} className={CHIP} title="Upload pictures to this screen's bucket">
-          <Upload className="h-4 w-4" aria-hidden /> Upload
+      {/* too narrow even for icons: Upload is in More */}
+      {p.hasBucket && uploadInRow && (
+        <button
+          type="button"
+          onClick={p.onUpload}
+          aria-label={wide ? undefined : "Upload"}
+          className={cn(CHIP, !wide && ICON_CHIP)}
+          title="Upload pictures to this screen's bucket"
+        >
+          <Upload className="h-4 w-4" aria-hidden />
+          {wide && " Upload"}
         </button>
       )}
       {end}
@@ -534,6 +610,7 @@ function ControlsStrip({ p }: { p: ScreenStripProps }) {
   const fold = useScheduleFold();
   // Live runs at full brightness: the light mask is for art.
   const maskBlocked = useRoomLinkSelect((s) => liveStateOf(s.status?.screens?.[p.screenId]) === "live");
+  const row = useRowFit({ talk: !!p.toggleTalk, look: false, moreInRow: true });
   return (
     <div className={THEME_CLASS} data-testid={`screen-strip-${p.screenId}`}>
       <RoomThemeStyle />
@@ -543,7 +620,10 @@ function ControlsStrip({ p }: { p: ScreenStripProps }) {
         toggleSchedule={fold.toggle}
         actions={actions}
         maskBlocked={maskBlocked}
-        end={<MoreMenu p={p} live={null} onEvents={fold.showEvents} />}
+        rowRef={row.ref}
+        wide={row.wide}
+        uploadInRow={row.uploadInRow}
+        end={<MoreMenu p={p} live={null} onEvents={fold.showEvents} uploadHere={!row.uploadInRow} />}
       />
       {fold.open && (
         <div ref={fold.ref} className="mt-3 scroll-mt-3 border-t border-stone-200/80 pt-3">
@@ -580,6 +660,7 @@ function FullStrip({ p }: { p: ScreenStripProps }) {
   };
   const folded = scheduleOpen || lookOpen;
   const maskBlocked = live.shown && live.liveNow;
+  const row = useRowFit({ talk: !!p.toggleTalk, look: liveShown, moreInRow: false });
 
   return (
     // contain:inline-size: the home page sits in a Radix ScrollArea (display:table), which otherwise grows to the
@@ -620,15 +701,16 @@ function FullStrip({ p }: { p: ScreenStripProps }) {
                 <span className="font-semibold">{status.text}</span>
                 {status.hint && (
                   <span className="text-[13px] text-muted-foreground sm:text-[15px]">
-                    {" · "}
-                    <span className={cn(status.hint.length < 24 && "whitespace-nowrap")}>{status.hint}</span>
+                    {" "}
+                    {/* the dot goes with the hint, so a wrap never leaves it dangling */}
+                    <span className={cn(status.hint.length < 24 && "whitespace-nowrap")}>· {status.hint}</span>
                   </span>
                 )}
                 {live.shown && !live.connected && <span className="text-muted-foreground"> · reconnecting…</span>}
               </p>
               <div className="flex items-center gap-2">
                 {live.shown && <PrimaryButton live={live} />}
-                <MoreMenu p={p} live={live} onEvents={fold.showEvents} />
+                <MoreMenu p={p} live={live} onEvents={fold.showEvents} uploadHere={!row.uploadInRow} />
               </div>
             </div>
 
@@ -639,6 +721,9 @@ function FullStrip({ p }: { p: ScreenStripProps }) {
               toggleSchedule={fold.toggle}
               actions={actions}
               maskBlocked={maskBlocked}
+              rowRef={row.ref}
+              wide={row.wide}
+              uploadInRow={row.uploadInRow}
               look={
                 liveShown && (
                   <button
@@ -647,9 +732,11 @@ function FullStrip({ p }: { p: ScreenStripProps }) {
                     aria-expanded={lookOpen}
                     title={lookOpen ? "Hide the live look" : "The live look: scene, Auto, energy, colours, effects"}
                     data-testid={`strip-look-${screenId}`}
+                    aria-label={row.wide ? undefined : "Look"}
                     className={cn(CHIP, lookOpen && "bg-stone-100")}
                   >
-                    <SlidersHorizontal className="h-4 w-4" aria-hidden /> Look
+                    <SlidersHorizontal className="h-4 w-4" aria-hidden />
+                    {row.wide && " Look"}
                     <ChevronDown aria-hidden className={cn("h-3.5 w-3.5 text-stone-500 transition-transform motion-reduce:transition-none", lookOpen && "rotate-180")} />
                   </button>
                 )
