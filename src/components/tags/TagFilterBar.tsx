@@ -33,12 +33,6 @@ export function TagFilterBar({
   const hidden = chips.length - shown.length;
   return (
     <div className="-mx-1 flex gap-1.5 overflow-x-auto px-1 py-1 sm:flex-wrap sm:overflow-visible [scrollbar-width:none]">
-      {chosen.length > 0 && (
-        <button type="button" onClick={onClear} className={cn(CHIP, CHIP_OFF, 'text-stone-600')} aria-label="Show all tags">
-          <X className="h-3.5 w-3.5" aria-hidden />
-          All
-        </button>
-      )}
       {shown.map((c) => {
         const on = chosen.includes(c.key);
         return (
@@ -67,6 +61,14 @@ export function TagFilterBar({
       {(hidden > 0 || all) && (
         <button type="button" onClick={() => setAll(!all)} className={cn(CHIP, CHIP_OFF, 'text-stone-600')}>
           {all ? 'Fewer' : `More (${hidden})`}
+        </button>
+      )}
+      {/* last, so nothing moves under the pointer when a chip is chosen (owner, 28 Oct: "x All" appearing on the
+          left pushed the chip just tapped away) */}
+      {chosen.length > 0 && (
+        <button type="button" onClick={onClear} className={cn(CHIP, CHIP_OFF, 'text-stone-600')} aria-label="Clear chosen tags">
+          <X className="h-3.5 w-3.5" aria-hidden />
+          Clear
         </button>
       )}
     </div>
