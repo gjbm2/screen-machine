@@ -58,13 +58,14 @@ def preset_tags(p: dict) -> set[tuple[str, str]]:
     return out
 
 
-def scene_tag_list(catalog: dict) -> list[dict]:
-    """Every tag word on the scene presets: [{tag, facet, count}], the renderer's catalog.scene_tags when it has one."""
-    given = (catalog or {}).get("scene_tags")
+def scene_tag_list(catalog: dict, kind: str = "scenes") -> list[dict]:
+    """Every tag word on the scene (or `kind`) presets: [{tag, facet, count}], the renderer's catalog.scene_tags for
+    scenes when it has one."""
+    given = (catalog or {}).get("scene_tags") if kind == "scenes" else None
     if isinstance(given, list) and given:
         return [t for t in given if isinstance(t, dict) and isinstance(t.get("tag"), str)]
     counts: dict[tuple[str, str], int] = {}
-    for p in (((catalog or {}).get("presets") or {}).get("scenes") or {}).values():
+    for p in (((catalog or {}).get("presets") or {}).get(kind) or {}).values():
         for ft in preset_tags(p):
             counts[ft] = counts.get(ft, 0) + 1
     return [{"tag": w, "facet": f, "count": n} for (f, w), n in sorted(counts.items(), key=lambda x: (x[0][0], x[0][1]))]

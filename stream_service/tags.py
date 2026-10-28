@@ -222,6 +222,25 @@ def transition_weight(tags: dict, direction: dict) -> float:
     return match_weight(tags, direction, TRANSITION_DESCRIPTORS, TRANSITION_MISMATCH)
 
 
+def tag_words(tags: dict) -> set[tuple[str, str]]:
+    """A preset's tag words as (facet, word): every facet holding a word or a list of words (modes, moods, family,
+    technique...). Numbers (energy, weight) are not tag words."""
+    out: set[tuple[str, str]] = set()
+    for facet, v in (tags or {}).items():
+        for w in [v] if isinstance(v, str) else v if isinstance(v, list) else []:
+            if isinstance(w, str) and w:
+                out.add((facet, w))
+    return out
+
+
+def tag_matches(have: set[tuple[str, str]], tag: str) -> bool:
+    """`word` matches that word in any facet; `facet:word` only in that facet (room's scene_tags rule)."""
+    if ":" in tag:
+        facet, word = tag.split(":", 1)
+        return (facet, word) in have
+    return any(w == tag for _, w in have)
+
+
 def matches_filter(tags: dict, flt: dict) -> bool:
     """A pool filter ``{"tags": {...}}``: scalars by equality, lists by overlap, untagged keys match."""
     for key, want in flt.items():

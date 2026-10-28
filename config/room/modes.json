@@ -411,7 +411,15 @@
                 "euphoric",
                 "geometric"
               ],
-              "transition_style": "lively"
+              "transition_style": "lively",
+              "fx": {
+                "favour": {
+                  "tags": [
+                    "modes:disco"
+                  ],
+                  "share": 0.3
+                }
+              }
             },
             "transitions": {
               "in": "crossfade-3s",

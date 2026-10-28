@@ -11,6 +11,7 @@ mirror-ball-party:
     family: projection
     dims: 3d
     technique: [projection, light, optical]
+    modes: [disco]      # Disco's own effect: its direction.fx.favour makes it likely there (owner, 28 Oct)
     weight: 1.0
 
 mirror-ball-glitter:
@@ -28,4 +29,5 @@ mirror-ball-glitter:
     family: projection
     dims: 3d
     technique: [projection, light, optical]
+    modes: [disco]
     weight: 0.8

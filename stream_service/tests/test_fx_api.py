@@ -266,7 +266,7 @@ async def test_scene_effect_prepare_failure_is_prepare_failed(client, monkeypatc
 async def test_direction_fx_and_auto_fx(client):
     sid, s, eng = await live(client, auto=AUTO)
     assert s.summary()["direction"]["fx"] == {"density": 0.5, "rate": 0.5, "stages": None, "moods": None,
-                                              "follow": None}
+                                              "follow": None, "favour": None}
     assert s.summary()["auto"]["fx"]["enabled"] is False                       # off by default
     r = await client.patch(f"/api/sessions/{sid}", json={"direction": {"energy": 0.8, "fx": {"density": 1.0,
                                                                                               "stages": ["colour"],
@@ -274,7 +274,8 @@ async def test_direction_fx_and_auto_fx(client):
                                                          "auto": {"fx": {"enabled": True, "max": 3}}}, headers=AUTH)
     assert r.status == 200, await r.text()
     sm = await r.json()
-    assert sm["direction"]["fx"] == {"density": 1.0, "rate": 0.5, "stages": ["colour"], "moods": None, "follow": 0.3}
+    assert sm["direction"]["fx"] == {"density": 1.0, "rate": 0.5, "stages": ["colour"], "moods": None, "follow": 0.3,
+                                    "favour": None}
     assert sm["auto"]["fx"]["enabled"] is True and sm["auto"]["fx"]["max"] == 3 and sm["auto"]["enabled"] is True
     assert s.fx_director.enabled and s.fx_director.fxd["density"] == 1.0 and s.fx_director.follow == 0.3
     for body in ({"direction": {"fx": {"stages": ["nope"]}}}, {"direction": {"fx": {"density": "x"}}},

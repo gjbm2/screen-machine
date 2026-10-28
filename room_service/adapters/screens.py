@@ -36,6 +36,7 @@ class ScreensAdapter(Adapter):
         vocab: dict = {}
         vocab_labels: dict = {}
         tag_list: list[dict] = []
+        fx_tag_list: list[dict] = []
         transitions: list[tuple[str, str]] = []
         c = next(iter(self.c.values()), None)
         cat = c.mgr.stream.cached_catalog() if c is not None else None
@@ -43,6 +44,7 @@ class ScreensAdapter(Adapter):
             vocab = cat.get("vocab") or {}
             vocab_labels = cat.get("vocab_labels") or {}
             tag_list = scene_tag_list(cat)
+            fx_tag_list = scene_tag_list(cat, "effects")
             tp = ((cat.get("presets") or {}).get("transitions")) or {}
             transitions = sorted(((n, str((p or {}).get("label") or n)) for n, p in tp.items()), key=lambda x: x[1].lower())
         unit = lambda label: {"type": ["number", "null"], "minimum": 0, "maximum": 1,      # noqa: E731
@@ -61,7 +63,17 @@ class ScreensAdapter(Adapter):
                 "genre": choice("Genre", "genre"), "transition_style": choice("Transitions", "transition_style"),
                 "palette_family": choice("Palette", "palette_family"),
                 "fx": {"type": "object", "x-ui": {"label": "Effects"},
-                       "properties": {"density": unit("How many"), "rate": unit("How often")}},
+                       "properties": {"density": unit("How many"), "rate": unit("How often"),
+                                      # a mode's own effects made likely (Disco: modes:disco, the mirror balls)
+                                      "favour": {"type": ["object", "null"], "x-ui": {"label": "Favour these effects"},
+                                                 "properties": {
+                                                     "tags": {"type": "array", "uniqueItems": True,
+                                                              "items": {"type": "string"},
+                                                              "x-ui": {"label": "Effects tagged", "widget": "tags",
+                                                                       "tags": fx_tag_list}},
+                                                     "share": {**unit("How often (share of effect picks)"),
+                                                               "x-ui": {"label": "How often", "widget": "slider",
+                                                                        "ends": {"min": "Rarely", "max": "Mostly"}}}}}}},
             },
         }
         if vocab.get("music"):                    # how the heard music combines with this look: the renderer's words

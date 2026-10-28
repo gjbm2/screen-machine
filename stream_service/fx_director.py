@@ -40,7 +40,7 @@ from .director import AUTO_FX_DEFAULTS, AUTO_FX_MAX, FX_DIRECTION_DEFAULTS, reso
 from .effects import MAX_BUS_SLOTS
 from .fx_interplay import Fit
 from .plugins.base import STAGES
-from .tags import match_weight
+from .tags import match_weight, tag_matches, tag_words
 
 FX_INTERVAL_AT_0, FX_INTERVAL_AT_1 = 90.0, 15.0
 FX_FADE_AT_0, FX_FADE_AT_1 = 6.0, 2.0
@@ -60,6 +60,22 @@ FX_EVENT_GAP_S = 8.0           # no event move this soon after the last move
 FX_THIN_S = 90.0               # a breakdown's thinning lasts at most this long
 FX_DROP_FADE_S = 0.5           # a drop's fade-in with no clock
 SECTION_WAIT_S = 4.0           # a section change: the scene director moves first; if it did, only re-check the bus
+
+
+def favoured(w: list[float], tags: list[dict], favour: Optional[dict]) -> list[float]:
+    """direction.fx.favour {tags, share}: the effects tagged with any of ``tags`` (a word in any facet, or
+    facet:word) together get at least ``share`` of the pick (a mode's own effects made likely, e.g. Disco's mirror
+    balls tagged modes: [disco]); the rest keep their order. Never lowers them; no match, or nothing else: as is."""
+    if not favour or not favour.get("tags"):
+        return w
+    hit = [any(tag_matches(tag_words(t), f) for f in favour["tags"]) for t in tags]
+    a = sum(x for x, h in zip(w, hit) if h)
+    b = sum(x for x, h in zip(w, hit) if not h)
+    share = min(0.99, max(0.0, float(favour.get("share", 0.3))))
+    if a <= 0 or b <= 0 or a / (a + b) >= share:
+        return w
+    k = share * b / ((1.0 - share) * a)
+    return [x * k if h else x for x, h in zip(w, hit)]
 
 
 @dataclass
@@ -354,8 +370,9 @@ class FxDirector:
         ctx = self._ctx(stack, freed)
         fits = [self.fit(n, presets, ctx=ctx) for n in names]
         w = [max(1e-6, self.weight(presets[n].get("tags") or {}) ** prior * f.mult
-                 * (NOVELTY_WEIGHT if n in recent else 1.0) * self._rated(presets[n].get("effect")))
-             for n, f in zip(names, fits)]
+                 * self._rated(presets[n].get("effect"))) for n, f in zip(names, fits)]
+        w = favoured(w, [presets[n].get("tags") or {} for n in names], self.fxd.get("favour"))
+        w = [x * (NOVELTY_WEIGHT if n in recent else 1.0) for n, x in zip(names, w)]
         i = names.index(self.rng.choices(names, weights=w)[0])
         name, f = names[i], fits[i]
         return name, f"{name} (p {w[i] / sum(w):.2f} of {len(names)}, {presets[name].get('stage')}; {f.why()})", f

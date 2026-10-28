@@ -40,7 +40,9 @@ from .plugins.base import STAGES, ParamError
 from .tags import matches_filter, scene_weight, transition_weight
 
 FX_DIRECTION_DEFAULTS: dict[str, Any] = {"density": 0.5, "rate": 0.5, "stages": None, "moods": None,
-                                         "follow": None}     # follow: how much room.events move the bus (fx_director)
+                                         "follow": None,     # follow: how much room.events move the bus (fx_director)
+                                         "favour": None}     # {tags, share}: fx_director.favoured
+FAVOUR_SHARE_DEFAULT = 0.3
 AUTO_FX_DEFAULTS: dict[str, Any] = {"enabled": False, "pool": "all", "max": 2}
 AUTO_FX_MAX = 4
 AUTO_MUSIC_DEFAULTS: dict[str, Any] = {"enabled": True, "weight": 1.0, "activity": [0.0, 1.0]}
@@ -170,6 +172,14 @@ def validate_direction_fx(body: Any) -> dict:
         if not (isinstance(m, list) and all(isinstance(x, str) for x in m)):
             raise ParamError("bad_request", "direction.fx.moods must be null or a list of words")
         out["moods"] = list(dict.fromkeys(m))
+    fav = body.get("favour")
+    if fav is not None:
+        tags = fav.get("tags") if isinstance(fav, dict) else None
+        if not (isinstance(tags, list) and tags and all(isinstance(x, str) and x for x in tags)) \
+                or set(fav) - {"tags", "share"}:
+            raise ParamError("bad_request", 'direction.fx.favour must be null or {"tags": [words], "share": 0-1}')
+        out["favour"] = {"tags": list(dict.fromkeys(tags)),
+                         "share": _unit(fav.get("share", FAVOUR_SHARE_DEFAULT), "direction.fx.favour.share")}
     return out
 
 
