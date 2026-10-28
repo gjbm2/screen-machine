@@ -234,3 +234,33 @@ def test_from_config_reads_every_rm4_file_and_shares_the_rm4(tmp_path, monkeypat
     assert got[0].remote.rm is got[2].remote.rm
     rows = {r["id"]: r["group"] for r in got[2].remote.button_rows()}
     assert rows["toggle"] == "Power" and rows["blue"] == "Colour"
+
+
+def _rf(pulses_us: list[int], band: int = 0xb1, repeat: int = 0xc0) -> bytes:
+    def enc(us):
+        t = max(1, round(us / broadlink_rf.TICK_US))
+        return bytes([t]) if t < 256 else b"\x00" + t.to_bytes(2, "big")
+    data = b"".join(enc(u) for u in pulses_us)
+    return bytes([band, repeat]) + len(data).to_bytes(2, "little") + data
+
+
+def test_clean_rf_keeps_one_frame_of_the_code_repeated():
+    frame = [460, 1310, 1310, 460] * 4 + [460, 13000]               # 18 pulses, its own short gap at the end
+    raw = _rf([5300, 5200, 340000] + frame * 5 + [460, 49000])     # noise, a long silence, five copies
+    out = broadlink_rf.clean_rf(raw, frames=3, gap_ms=120)
+    assert out[0] == 0xb2 and out[1] == 0                          # the 433 band, no device repeats
+    p = broadlink_rf.rf_pulses(out)
+    assert len(p) == 3 * len(frame) and p[-1] >= 119000            # three copies, ending in the pause
+    assert abs(p[len(frame) - 1] - 13000) < 40 and abs(p[0] - 460) < 40
+    assert broadlink_rf.clean_rf(b"\x26\x00\x02\x00\x10\x20") == b"\x26\x00\x02\x00\x10\x20"   # IR: unchanged
+
+
+def test_a_colour_pressed_again_switches_the_light_off(tmp_path):
+    a, _ = light(tmp_path)
+    a.now.update(main="on", colour="blue", level=4)
+    a.note("blue")
+    assert a.now["main"] == "off" and a.now["colour"] == "blue"
+    a.note("blue")
+    assert a.now["main"] == "on"
+    a.note("white")
+    assert a.now == {**a.now, "main": "on", "colour": "white"}

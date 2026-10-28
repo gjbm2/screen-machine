@@ -14,6 +14,8 @@ once it is added (its file in config/room/rf/, a card in its room in rooms.json)
   POST   /api/v1/remotes/{id}/send       {"button", "times"?} transmit a learned code (a light's record follows it)
   POST   /api/v1/remotes/{id}/reset      a light's reset: on, white, down to the floor, off
   PUT    /api/v1/remotes/{id}/colours    {"colours": {id: name}} rename a light's colours (their ids stay)
+  PUT    /api/v1/remotes/{id}/clean      {"clean": {"frames", "gap_ms"} | null} how each RF press is sent: a clean
+                                         packet of `frames` copies of the code (broadlink_rf.clean_rf), or as learned
   PUT    /api/v1/remotes/{id}/state      {"values": {target: value}} put the room's record right when it is out of step
                                          with the appliance (owner, 28 Oct): nothing is sent. Its view's "state" rows
                                          list every target with its schema and what the room believes now
@@ -115,6 +117,7 @@ def register(app: web.Application, svc: "RoomService") -> None:
                 "freq_mhz": f.freq_mhz, "subsystems": [a.subsystem for a in adapters],
                 "light": light is not None, "steps": light.steps if light else None,
                 "repeat": [str(b) for b in (f.raw.get("repeat") or [])], "gap_s": float(f.raw.get("gap_s", 0.3)),
+                "clean": f.raw.get("clean") if isinstance(f.raw.get("clean"), dict) else None,
                 "buttons": r.button_rows(), "job": r.job.view() if r.job else None,
                 "state": light.state() if light else None, "state_rows": state_rows(adapters)}
 
@@ -311,8 +314,27 @@ def register(app: web.Application, svc: "RoomService") -> None:
         svc.events.mark_dirty()
         return web.json_response(view(r, adapters))
 
+    async def set_clean(request: web.Request) -> web.Response:
+        got = find(request)
+        if isinstance(got, web.Response):
+            return got
+        r, adapters = got
+        c = (await body(request)).get("clean")
+        if c is not None and not (isinstance(c, dict) and 1 <= int(c.get("frames", 0)) <= 30):
+            return _err(400, "bad_clean", '{"clean": {"frames": 1-30, "gap_ms"?: 120} | null}')
+
+        def put(raw: dict) -> None:
+            if c is None:
+                raw.pop("clean", None)
+            else:
+                raw["clean"] = {"frames": int(c["frames"]), "gap_ms": float(c.get("gap_ms", 120))}
+        r.file.update(put)
+        r.file.fresh()
+        return web.json_response(view(r, adapters))
+
     a = app.router
     a.add_put("/api/v1/remotes/{id}/state", set_state)
+    a.add_put("/api/v1/remotes/{id}/clean", set_clean)
     a.add_get("/api/v1/remotes", list_remotes)
     a.add_post("/api/v1/remotes", add)
     a.add_delete("/api/v1/remotes/{id}", remove)

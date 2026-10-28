@@ -121,6 +121,58 @@ class RM4:
         await asyncio.to_thread(self.call, lambda dev: dev.send_data(packet))
 
 
+TICK_US = 269 / 8192 * 1000                     # a BroadLink pulse unit, about 32.84 us
+FRAME_GAP_US = 3000                              # a silence longer than this ends a frame
+BAND = {0xb1: 0xb2, 0xb2: 0xb2, 0xd7: 0xd7}      # an RM4 Pro learns 433 MHz as 0xb1; 0xb2 is the 433 band it sends
+
+
+def rf_pulses(packet: bytes) -> list[int]:
+    """A BroadLink RF packet's pulses in microseconds: header (band, repeat, length LE), then one byte per pulse in
+    TICK_US units, or 0x00 and two bytes big-endian for a long one."""
+    n = int.from_bytes(packet[2:4], "little")
+    body, out, i = packet[4:4 + n], [], 0
+    while i < len(body):
+        if body[i] == 0:
+            if i + 2 >= len(body):
+                break
+            out.append(round(int.from_bytes(body[i + 1:i + 3], "big") * TICK_US))
+            i += 3
+        else:
+            out.append(round(body[i] * TICK_US))
+            i += 1
+    return out
+
+
+def clean_rf(packet: bytes, frames: int = 6, gap_ms: float = 120.0) -> bytes:
+    """A clean packet from a learned RF capture (owner, 28 Oct: the far pinspot missed quick presses). A capture is
+    ~0.7 s: noise, a 0.34 s silence, then 4-6 copies of the code. This keeps one copy of the code (a frame of the most
+    common length, ending in its own short gap), sends it `frames` times and ends with gap_ms of silence, so each press
+    is short, strong and separate (as rf2broadlink makes them). The learned packet unchanged when it has no frames."""
+    if packet[:1] not in (b"\xb1", b"\xb2", b"\xd7"):
+        return packet
+    split: list[list[int]] = []
+    cur: list[int] = []
+    for us in rf_pulses(packet):
+        cur.append(us)
+        if us > FRAME_GAP_US:
+            split.append(cur)
+            cur = []
+    sizes = [len(f) for f in split if len(f) > 8]
+    if not sizes:
+        return packet
+    size = max(set(sizes), key=sizes.count)
+    good = [f for f in split if len(f) == size]
+    frame = good[1] if len(good) > 2 else good[0]  # not the first: it can follow the capture's noise
+    pulses = frame * max(1, frames)
+    pulses[-1] = max(pulses[-1], round(gap_ms * 1000))
+
+    def enc(us: int) -> bytes:
+        t = max(1, round(us / TICK_US))
+        return bytes([t]) if t < 256 else b"\x00" + min(t, 0xFFFF).to_bytes(2, "big")
+    data = b"".join(enc(us) for us in pulses)
+    return bytes([BAND[packet[0]], 0]) + len(data).to_bytes(2, "little") + data
+
+
 class RemoteFile:
     """The device file, re-read when it changes on disk (a code learned while room_service runs)."""
 
@@ -152,10 +204,16 @@ class RemoteFile:
         return {k: v for k, v in (self.fresh().get("codes") or {}).items() if isinstance(v, str) and v}
 
     def code(self, button: str) -> bytes:
+        """The packet to send: the learned code, or with the file's "clean" ({"frames", "gap_ms"}) a clean packet made
+        from it (clean_rf)."""
         c = self.codes.get(button)
         if not c:
             raise RFError(f"no code learned for {button!r} ({self.path.name})")
-        return base64.b64decode(c)
+        packet = base64.b64decode(c)
+        clean = self.fresh().get("clean")
+        if isinstance(clean, dict) and self.medium == "rf":
+            return clean_rf(packet, int(clean.get("frames", 6)), float(clean.get("gap_ms", 120)))
+        return packet
 
     @property
     def medium(self) -> str:

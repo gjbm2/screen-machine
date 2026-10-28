@@ -529,6 +529,11 @@ export class RoomApi {
     return this.json<RemoteDevice>("PUT", `/api/v1/remotes/${encodeURIComponent(remote)}/state`, { values });
   }
 
+  /** How each RF press is sent: a clean packet of `frames` copies of the code, or as learned (null). */
+  setRemoteClean(remote: string, clean: { frames: number; gap_ms?: number } | null) {
+    return this.json<RemoteDevice>("PUT", `/api/v1/remotes/${encodeURIComponent(remote)}/clean`, { clean });
+  }
+
   /** Rename a light's colours ({colour id: name}); their ids stay, so modes keep working. */
   nameColours(remote: string, colours: Record<string, string>) {
     return this.json<RemoteDevice>("PUT", `/api/v1/remotes/${encodeURIComponent(remote)}/colours`, { colours });

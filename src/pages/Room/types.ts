@@ -277,6 +277,8 @@ export interface RemoteDevice {
   /** Buttons whose Test keeps sending while held (a pinspot's + and −), gap_s apart. */
   repeat?: string[];
   gap_s?: number;
+  /** RF: each press sent as a clean packet of `frames` copies of the code; null: as learned. */
+  clean?: { frames: number; gap_ms: number } | null;
   buttons: RemoteButton[];
   job: RemoteLearn | null;
   state: RemoteLightState | null;
