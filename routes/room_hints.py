@@ -137,7 +137,8 @@ def _send(hint: Optional[dict], screens: list[str], show_s: float) -> None:
     url, qr = _room_page()
     send_overlay(html=TEMPLATE, screens=screens, duration=int(show_s * 1000), clear=True,
                  substitutions={"TITLE": hint.get("title") or "", "LINE": hint.get("line") or "", "MODES": modes,
-                                "ROOM_URL": url.split("://", 1)[-1], "ROOM_QR": qr})
+                                "ROOM_URL": url.split("://", 1)[-1], "ROOM_QR": qr,
+                                "DURATION": int(show_s)})
 
 
 def _tick(state: Hints) -> float:
