@@ -8,7 +8,7 @@ One subsystem, so a mode's whole look is planned at once. Members, from the devi
   main    on | off      "on" and "off" buttons, or one "toggle" (the pinspot's remote has one power button)
   colour  its "colours", each its own button. "fade" (the remote's colour cycle) is one of them: the room can't know
           what it shows, so it's a colour of its own
-  level   0..steps      "up" and "down" move one step; 0 is black
+  level   0..steps      "up" and "down" move one step; 0 is black (the pinspot: 8 steps)
   <toggle> on | off     each of its "toggles" (the pinspot: flash, the strobe), one button each
 Changing colour goes through black (owner, 28 Oct: "reducing intensity of blue down to black, then changing to white,
 then increasing intensity up to 16"): down to 0, the colour, then up to the level wanted (else the level it had, else
@@ -120,6 +120,8 @@ class RFLightAdapter(Adapter):
             try:
                 saved = json.loads(self.state_path.read_text())
                 self.now.update({m: saved.get(m) for m in self.members})
+                if isinstance(self.now["level"], int) and self.now["level"] > self.steps:   # the file has fewer steps now
+                    self.now["level"] = None
                 self.kept = {m: v for m, v in (saved.get("kept") or {}).items() if m in self.members}
             except (OSError, ValueError) as e:
                 log.warning("%s not read (%s); the light starts unknown", self.state_path, e)
