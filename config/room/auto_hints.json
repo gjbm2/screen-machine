@@ -1,0 +1,27 @@
+{
+  "_comment": "Hints on a room's screens while Auto is off (routes/room_hints.py; owner, 28 Oct). Each hint names one show_service situations word (GET /show/api/v1/situations, its default params), how long it must hold (for_s), the modes the room may be in for it (from; absent = any mode it doesn't offer) and the modes it offers. The first hint that holds wins. It shows for show_s when it starts holding, again after again_after_s while it still holds, and goes at once when it stops (Auto on, a mode picked, the music stopped). Re-read when this file changes.",
+  "room": "drawing-room",
+  "check_s": 3,
+  "show_s": 60,
+  "again_after_s": 1800,
+  "hints": [
+    {
+      "id": "piano",
+      "word": "piano_playing",
+      "for_s": 5,
+      "from": ["gallery", "lights-only"],
+      "modes": ["piano"],
+      "title": "Playing the piano?",
+      "line": "Auto is off, so the screens and lights aren't playing along."
+    },
+    {
+      "id": "music",
+      "word": "sonos_playing",
+      "for_s": 20,
+      "from": ["gallery", "lights-only"],
+      "modes": ["party", "disco", "ambient"],
+      "title": "Music is playing",
+      "line": "Auto is off, so the screens and lights aren't following it."
+    }
+  ]
+}

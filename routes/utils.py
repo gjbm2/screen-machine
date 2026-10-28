@@ -788,15 +788,18 @@ def get_qr(publish=None, run=False, refiner=None, prompt=None):
         query_string += "&run" if query_string else "run"
 
     full_url = f"{base_url}?{query_string}" if query_string else base_url
+    return qr_data_url(full_url)
 
-    # Generate QR code image and encode as base64
+
+def qr_data_url(url: str) -> str:
+    """A QR code for ``url`` as a PNG data URL (overlays)."""
     qr = qrcode.QRCode(
         version=None,
         error_correction=qrcode.constants.ERROR_CORRECT_M,
         box_size=10,
         border=3
     )
-    qr.add_data(full_url)
+    qr.add_data(url)
     qr.make(fit=True)
 
     img = qr.make_image(fill_color="black", back_color="white")

@@ -255,6 +255,13 @@ if __name__ == '__main__':
     except Exception as e:
         error(f"room events bridge could not be started: {e}")
 
+    # Auto off + music or the piano: the room's screens say how to turn Auto on or pick a mode (routes/room_hints.py)
+    try:
+        from routes.room_hints import start as start_room_hints
+        start_room_hints()
+    except Exception as e:
+        error(f"room hints could not be started: {e}")
+
     if DEBUG:
         info(f"Starting Flask dev server on port {PORT} (DEBUG)")
         app.run(host=HOST, debug=True, port=PORT, use_reloader=False)
