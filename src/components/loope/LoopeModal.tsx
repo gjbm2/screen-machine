@@ -1470,8 +1470,9 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
           )}
 
           {/* Flip hint */}
-          {!isFlipped && !zoomSrc && showHint && (
-            <div className={`absolute ${showTags ? 'bottom-28' : 'bottom-16'} left-1/2 -translate-x-1/2 text-white/80 flex flex-col items-center text-xs pointer-events-none md:hidden`}>
+          {/* not with the tag row: its height varies and the hint landed on the lozenges; the Info button stays */}
+          {!isFlipped && !zoomSrc && showHint && !showTags && (
+            <div className={`absolute bottom-16 left-1/2 -translate-x-1/2 text-white/80 flex flex-col items-center text-xs pointer-events-none md:hidden`}>
               <ChevronUp className="h-4 w-4 animate-bounce mb-1" />
               <span>Info</span>
             </div>
@@ -1483,6 +1484,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
               <TagLozenges
                 key={`${tagBucket}/${currentImage.id}`}
                 variant="dark"
+                compact
                 className="justify-center"
                 bucket={tagBucket as string}
                 filename={currentImage.id}
