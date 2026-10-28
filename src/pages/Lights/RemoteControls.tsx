@@ -409,6 +409,39 @@ function RemoteCard({
 
       <StateRows d={d} api={api} onChanged={onChanged} />
 
+      {d.light && d.steps && (
+        <div className="space-y-1">
+          <p className="text-[15px] font-medium">Try a fade</p>
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                ["Fade to black", 0],
+                ["Fade up to full", d.steps],
+              ] as [string, number][]
+            ).map(([words, level]) => (
+              <Button
+                key={words}
+                variant="outline"
+                disabled={disabled}
+                className="h-11 rounded-xl"
+                onClick={() =>
+                  void act(words, async () => {
+                    await api.setTargets({ [`${d.subsystems[0]}.level`]: level });
+                    return { status: "ok", detail: `${words.toLowerCase()}: sent` };
+                  })
+                }
+              >
+                {busy === words && <Spinner />} {words}
+              </Button>
+            ))}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            What the room does when a mode or the brightness slider asks for black or full: it plays the fade recordings
+            below (or steps, if they aren't learned). The lights must be on.
+          </p>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2">
         {missing.length > 0 && (
           <Button
