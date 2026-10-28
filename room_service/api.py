@@ -276,6 +276,7 @@ def build_app(svc: "RoomService") -> web.Application:
     room_api.register(app, svc, lambda r: token_valid(presented_token(r)))   # /api/v1/room/* (ROOM_STATE_MODEL §7.3)
     from . import live_api; live_api.register(app, svc)   # noqa: E702  live controls: library, cue, look, fx
     from . import live_art; live_art.register(app, svc)   # noqa: E702  /api/v1/screens/{id}/art.png (live_art scene)
+    from . import remotes_api; remotes_api.register(app, svc)   # noqa: E702  RM4 Pro remotes: learn, test, reset
     from . import renderer_proxy; renderer_proxy.register(app, svc)   # noqa: E702  /renderer/* -> stream_service (HTTP+WS)
     from .dmx import api as dmx_api; dmx_api.register(app, svc, lambda r: token_valid(presented_token(r)))  # noqa: E702
     return app

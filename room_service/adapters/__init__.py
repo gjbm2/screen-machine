@@ -16,8 +16,9 @@ def build_adapters(controllers: dict, mask: Any, log_sink: Callable[[str, str], 
     """Every subsystem the room config can name. `blinds` defaults to the hub blinds from config/room/rf/blinds.json
     (dry_run until writes are enabled there), or a placeholder with blinds_enabled=False; pass one in for tests.
     `hue` is the patch's hue.* devices (room_service.dmx.DmxStack.adapter(), or a placeholder).
-    `remotes` default to the RM4 Pro devices: the glitterball from config/room/rf/glitterball.json when that file
-    exists (mirror_ball = power, mirror_ball_motor = speed and direction); pass [] to keep the placeholder (tests).
+    `remotes` default to the RM4 Pro devices, one file each in config/room/rf/: the glitterball (mirror_ball = power,
+    mirror_ball_motor = speed and direction), the pinspots (pinspot: on, colour, level, pulse, flash); pass [] to keep
+    the placeholder (tests).
     `sonos` defaults to the zones in config/room/sonos.json (SoCo); False keeps the placeholder (tests: no LAN).
     `autopilot` (Auto on/off) defaults to one kept in state_dir, seeded from modes.json.
     `show` (the Feel: show_service's vibe, over loopback) defaults to ShowAdapter, its catalog cached in state_dir;

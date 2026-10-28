@@ -19,6 +19,9 @@ import type {
   ModeDef,
   Params,
   RawRoomConfig,
+  RemoteDevice,
+  RemoteLearn,
+  RemoteLightState,
   RoomDescribe,
   RoomStatus,
   SceneSpec,
@@ -460,6 +463,58 @@ export class RoomApi {
       value,
       cause: "said on the Room page",
     });
+  }
+
+  // ── Remote-controlled devices on the RM4 Pro (room_service remotes_api.py) ──
+
+  /** Every device worked by a remote, its buttons learned or not; null when this room_service has no such route. */
+  async remotes(signal?: AbortSignal): Promise<RemoteDevice[] | null> {
+    try {
+      return (await this.json<{ remotes: RemoteDevice[] }>("GET", "/api/v1/remotes", undefined, signal)).remotes;
+    } catch (e) {
+      if (e instanceof RoomApiError && e.status === 404) return null;
+      throw e;
+    }
+  }
+
+  /** Start learning one button (the RM4 Pro listens for up to a minute); sweep finds an RF remote's frequency again. */
+  learnButton(remote: string, button: string, sweep = false) {
+    return this.json<RemoteLearn>("POST", `/api/v1/remotes/${encodeURIComponent(remote)}/learn`, { button, sweep });
+  }
+
+  learnProgress(remote: string, signal?: AbortSignal) {
+    return this.json<RemoteLearn>("GET", `/api/v1/remotes/${encodeURIComponent(remote)}/learn`, undefined, signal);
+  }
+
+  stopLearning(remote: string) {
+    return this.json<RemoteLearn>("DELETE", `/api/v1/remotes/${encodeURIComponent(remote)}/learn`);
+  }
+
+  /** Transmit a learned button (a light's record follows it). */
+  sendButton(remote: string, button: string, times = 1) {
+    return this.json<{ status: string; detail: string; state?: RemoteLightState }>(
+      "POST",
+      `/api/v1/remotes/${encodeURIComponent(remote)}/send`,
+      { button, times },
+      undefined,
+      30_000,
+    );
+  }
+
+  /** A light's reset after it lost power at the wall: on, white, dimmed to the floor, off. */
+  resetLight(remote: string) {
+    return this.json<{ status: string; detail: string; state?: RemoteLightState }>(
+      "POST",
+      `/api/v1/remotes/${encodeURIComponent(remote)}/reset`,
+      {},
+      undefined,
+      30_000,
+    );
+  }
+
+  /** Rename a light's colours ({colour id: name}); their ids stay, so modes keep working. */
+  nameColours(remote: string, colours: Record<string, string>) {
+    return this.json<RemoteDevice>("PUT", `/api/v1/remotes/${encodeURIComponent(remote)}/colours`, { colours });
   }
 
   identify(fixture: string) {
