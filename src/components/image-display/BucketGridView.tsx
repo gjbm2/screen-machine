@@ -38,7 +38,7 @@ import { ImageItem } from '@/types/image-types';
 
 // Import the new SchedulerControl component
 import { SchedulerControl } from './SchedulerPanel';
-import { useRoomLink, liveStateOf } from '@/components/room/roomLink';
+import { useRoomLinkSelect, liveStateOf } from '@/components/room/roomLink';
 
 // Import the new DROP_ZONES
 import { DROP_ZONES } from '@/dnd/dropZones';
@@ -341,6 +341,14 @@ const MaintenanceModal = ({ isOpen, onClose, destination, onActionComplete }: {
   );
 };
 
+/** Renders a component defined inside BucketGridView (SectionDroppable, PublishedImageDroppable) through one stable
+ *  component type. Defined inline they were a new type on every render, so React threw the cards away and rebuilt
+ *  them each time (every room status frame): thumbnails reloaded and the hover stars flashed and vanished (owner,
+ *  28 Oct). Their hooks run here, the same ones each render. */
+function StableHost<P extends object>({ render, ...props }: { render: (p: P) => React.ReactNode } & P) {
+  return <>{render(props as unknown as P)}</>;
+}
+
 export const BucketGridView = ({
   destination,
   destinationName,
@@ -386,8 +394,7 @@ export const BucketGridView = ({
   const [deleteImagesCount, setDeleteImagesCount] = useState(0);
   const [maskEnabled, setMaskEnabled] = useState(true);
   // Live mode is the GPU renderer at full intensity: the light mask applies to art only.
-  const roomLink = useRoomLink();
-  const screenLive = liveStateOf(roomLink.status?.screens?.[destination]) === 'live';
+  const screenLive = useRoomLinkSelect((s) => liveStateOf(s.status?.screens?.[destination]) === 'live');
   
   const hasCamera = 'mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices;
   const [showAppDownloadModal, setShowAppDownloadModal] = useState(false);
@@ -2158,12 +2165,37 @@ export const BucketGridView = ({
       );
     }
     
+    // By date | By tag, right above the pictures and labelled on every screen (owner, 28 Oct: a toolbar toggle went
+    // unnoticed - "not exposed whatsoever on the generator page")
+    const browseBar = (
+      <div role="group" aria-label="Browse pictures" className="flex items-center gap-1.5 pt-2">
+        {(['date', 'tags'] as const).map((m) => (
+          <button
+            key={m}
+            type="button"
+            aria-pressed={viewMode === m}
+            onClick={() => chooseViewMode(m)}
+            className={cn(
+              'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3.5 text-[15px] transition-colors',
+              viewMode === m
+                ? 'border-teal-300 bg-teal-50 font-semibold text-teal-900'
+                : 'border-stone-200 bg-white text-stone-700 hover:bg-stone-50',
+            )}
+          >
+            {m === 'tags' && <TagIcon className="h-4 w-4" aria-hidden />}
+            {m === 'date' ? 'By date' : 'By tag'}
+          </button>
+        ))}
+      </div>
+    );
+
     // Tags view: the chip bar, then the tag sections
     if (viewMode === 'tags') {
       const noMatch = chosenChips.length > 0 && (tagSections[0]?.images.length ?? 0) === 0;
       return (
         <div className="flex flex-col gap-2 overflow-y-auto items-start">
-          <div className="w-full min-w-0 [contain:inline-size] pt-2">
+          {browseBar}
+          <div className="w-full min-w-0 [contain:inline-size]">
             <TagFilterBar
               chips={tagChips}
               chosen={chosenChips}
@@ -2174,7 +2206,7 @@ export const BucketGridView = ({
           {noMatch ? (
             <p className="px-1 py-6 text-sm text-muted-foreground">No image has all of these tags.</p>
           ) : (
-            tagSections.map((section) => <SectionDroppable key={section.id} section={section} />)
+            tagSections.map((section) => <StableHost key={section.id} render={SectionDroppable} section={section} />)
           )}
         </div>
       );
@@ -2183,8 +2215,9 @@ export const BucketGridView = ({
     // For destinations with buckets and images
     return (
       <div className="flex flex-col gap-2 overflow-y-auto items-start">
+        {browseBar}
         {sections.map((section) => (
-          <SectionDroppable key={section.id} section={section} />
+          <StableHost key={section.id} render={SectionDroppable} section={section} />
         ))}
       </div>
     );
@@ -2429,7 +2462,7 @@ export const BucketGridView = ({
           <div className={`flex flex-col mb-0 p-2 sm:p-4 bg-muted rounded-md w-full [contain:inline-size] ${headerPinned ? 'sticky top-[calc(var(--app-top,0px)+var(--app-nav-top,0px)+3rem)] z-[29]' : ''}`}>
             <div className="flex items-start gap-3">
               {/* Left side with droppable published image area */}
-              <PublishedImageDroppable currentImage={currentPublishedImage} />
+              <StableHost render={PublishedImageDroppable} currentImage={currentPublishedImage} />
               
               {/* Controls area */}
               <div className="flex-1 flex flex-col min-w-0 h-full">
@@ -2482,39 +2515,6 @@ export const BucketGridView = ({
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
-                        {/* Date | Tags. On a phone one small Tags toggle, so this row never wraps (the generator's mobile
-                            layout is pixel-set, owner 27 Oct); labelled segments from sm up. */}
-                        <Button
-                          size="sm"
-                          variant={viewMode === 'tags' ? 'secondary' : 'ghost'}
-                          aria-pressed={viewMode === 'tags'}
-                          aria-label={viewMode === 'tags' ? 'Browse by date' : 'Browse by tag'}
-                          title={viewMode === 'tags' ? 'Browse by date' : 'Browse by tag'}
-                          onClick={() => chooseViewMode(viewMode === 'tags' ? 'date' : 'tags')}
-                          className="flex-nowrap h-8 px-2.5 sm:hidden"
-                        >
-                          <TagIcon className="h-4 w-4" />
-                        </Button>
-                        <div
-                          role="group"
-                          aria-label="Browse by"
-                          className="hidden sm:inline-flex h-8 items-center rounded-md border border-border bg-background/60 p-0.5"
-                        >
-                          {(['date', 'tags'] as const).map((m) => (
-                            <button
-                              key={m}
-                              type="button"
-                              aria-pressed={viewMode === m}
-                              onClick={() => chooseViewMode(m)}
-                              className={cn(
-                                'h-7 rounded px-2.5 text-xs font-medium transition-colors',
-                                viewMode === m ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground',
-                              )}
-                            >
-                              {m === 'date' ? 'Date' : 'Tags'}
-                            </button>
-                          ))}
-                        </div>
                       </>
                     )}
                   </div>

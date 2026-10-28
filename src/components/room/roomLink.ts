@@ -150,6 +150,13 @@ export function useRoomLink(): RoomLinkState {
   return useSyncExternalStore(subscribe, () => state);
 }
 
+/** One value from the room link, re-rendering only when it changes: every room status frame (~1 s) re-rendered
+ *  the whole generator grid through useRoomLink, which threw away its cards and their hover state (owner, 28 Oct:
+ *  the stars flashed and vanished). `select` must return a primitive (or the same object) for unchanged input. */
+export function useRoomLinkSelect<T>(select: (s: RoomLinkState) => T): T {
+  return useSyncExternalStore(subscribe, () => select(state));
+}
+
 // ── Addresses ─────────────────────────────────────────────────────────────────
 
 const APP_LAN_URL = ((import.meta.env.VITE_APP_LAN_URL as string | undefined) ?? "").replace(/\/+$/, "");
