@@ -1,0 +1,39 @@
+# config/room/accents.yaml: light moments. Short, occasional changes the show makes to the room's remote-worked
+# lights at a big moment in the music (owner, 28 Oct: "in disco mode, we might want to allow faster spinning and/or
+# pinspot strobe effects ... also acceptable occasional lighting moods within Party mode").
+#
+# A mode allows each moment with its row accents.<id>: 0 = never (the default) .. 100 = at every chance it gets.
+# Read by show_service (show_service/accents.py, re-read when it changes) and by room_service for the rows (a new id
+# needs a Flask restart to become a row). Every value here is a starting point, to be tuned by eye.
+#
+#   label    the row's words on the Room page
+#   needs    {room target: value}: only while the room believes these (e.g. the ball is already spinning)
+#   set      {room target: value}: what the moment changes; each goes back to what it was when the moment ends
+#            (unless the mode changed meanwhile: then the new mode's own values stand)
+#   on       the music's moments that may start it: drop, build, section_change, track_change
+#   hold_s   [shortest, longest]: how long it lasts (a random length in between)
+#   gap_s    at least this long from its end to its next start
+#
+# A moment whose `set` the room already shows is skipped (Disco's ball is on anyway).
+
+accents:
+  ball_fast:
+    label: Glitterball spins fast
+    needs: {mirror_ball.main: spinning}
+    set: {mirror_ball_motor.speed: high}
+    on: [drop, build]
+    hold_s: [30, 60]
+    gap_s: 180
+  pinspot_strobe:
+    label: Pinspots strobe
+    needs: {pinspots.main: "on"}
+    set: {pinspots.flash: "on"}
+    on: [drop]
+    hold_s: [4, 10]
+    gap_s: 90
+  ball_moment:
+    label: Glitterball and pinspots come on
+    set: {mirror_ball.main: spinning, pinspots.main: "on"}
+    on: [drop, track_change]
+    hold_s: [60, 150]
+    gap_s: 600
