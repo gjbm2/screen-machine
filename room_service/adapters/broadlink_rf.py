@@ -242,10 +242,11 @@ class RemoteFile:
 
     def code(self, button: str) -> bytes:
         """The packet to send: the learned code, or with the file's "clean" ({"frames", "gap_ms"}) a clean packet made
-        from it (clean_rf)."""
+        from it (clean_rf); a button listed in "as_learned" is always sent exactly as stored."""
         packet = self.raw_code(button)
         clean = self.fresh().get("clean")
-        if isinstance(clean, dict) and self.medium == "rf" and button not in self.held:
+        if (isinstance(clean, dict) and self.medium == "rf" and button not in self.held
+                and button not in (self.fresh().get("as_learned") or [])):
             return clean_rf(packet, int(clean.get("frames", 6)), float(clean.get("gap_ms", 120)))
         return packet
 
