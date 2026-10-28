@@ -126,14 +126,36 @@ class RM4:
 
 TICK_US = 269 / 8192 * 1000                     # a BroadLink pulse unit, about 32.84 us
 FRAME_GAP_US = 3000                              # a silence longer than this ends a frame
-BAND = {0xb1: 0xb2, 0xb2: 0xb2, 0xd7: 0xd7}      # an RM4 Pro learns 433 MHz as 0xb1; 0xb2 is the 433 band it sends
+RF_TYPES = (0xb1, 0xb2, 0xd7)
+
+
+def rf_parts(packet: bytes) -> tuple[bytes, bytes]:
+    """(the packet's head, its pulse bytes). 0xb2 (433 MHz) and 0xd7 (315 MHz): type, repeat, length (2, LE), pulses.
+    0xb1 (what an RM4 Pro learns, 28 Oct): type, 0xc0, length (2, LE: counts the frequency too), the frequency in kHz
+    (4, LE: a2 9d 06 00 = 433570, the remote's own 433.57 MHz), pulses."""
+    n = int.from_bytes(packet[2:4], "little")
+    if packet[0] == 0xb1:
+        return packet[:8], packet[8:4 + n]
+    return packet[:4], packet[4:4 + n]
+
+
+def rf_packet(like: bytes, pulses: list[int]) -> bytes:
+    """A packet of these pulses in the same form as `like` (an 0xb1 keeps its frequency)."""
+    data = b"".join(_enc_pulse(us) for us in pulses)
+    if like[0] == 0xb1:
+        return like[:2] + (len(data) + 4).to_bytes(2, "little") + like[4:8] + data
+    return bytes([like[0], 0]) + len(data).to_bytes(2, "little") + data
+
+
+def _enc_pulse(us: int) -> bytes:
+    t = max(1, round(us / TICK_US))
+    return bytes([t]) if t < 256 else b"\x00" + min(t, 0xFFFF).to_bytes(2, "big")
 
 
 def rf_pulses(packet: bytes) -> list[int]:
-    """A BroadLink RF packet's pulses in microseconds: header (band, repeat, length LE), then one byte per pulse in
-    TICK_US units, or 0x00 and two bytes big-endian for a long one."""
-    n = int.from_bytes(packet[2:4], "little")
-    body, out, i = packet[4:4 + n], [], 0
+    """A BroadLink RF packet's pulses in microseconds (rf_parts): one byte per pulse in TICK_US units, or 0x00 and two
+    bytes big-endian for a long one."""
+    body, out, i = rf_parts(packet)[1], [], 0
     while i < len(body):
         if body[i] == 0:
             if i + 2 >= len(body):
@@ -146,47 +168,9 @@ def rf_pulses(packet: bytes) -> list[int]:
     return out
 
 
-def _enc_pulse(us: int) -> bytes:
-    t = max(1, round(us / TICK_US))
-    return bytes([t]) if t < 256 else b"\x00" + min(t, 0xFFFF).to_bytes(2, "big")
-
-
-def split_rf(packet: bytes, max_bytes: int = 1000, frames_only: bool = False) -> list[bytes]:
-    """A recording too long to send in one (a held button: 1.2 KB), cut at the ends of frames into packets of at most
-    max_bytes, each with the recording's own header: sent one after another they play the whole recording back.
-    frames_only drops what the RM4 Pro heard before the first whole frame (noise and a 0.34 s silence): what is left
-    is what the remote sent."""
-    if packet[:1] not in (b"\xb1", b"\xb2", b"\xd7") or (len(packet) <= max_bytes and not frames_only):
-        return [packet]
-    pulses = rf_pulses(packet)
-    if frames_only:
-        ends = [i for i, us in enumerate(pulses) if us > FRAME_GAP_US]
-        sizes = [b - a for a, b in zip([-1, *ends], ends)]
-        full = max(sizes) if sizes else 0
-        first = next((a + 1 for a, b in zip([-1, *ends], ends) if b - a >= full - 2), 0)
-        pulses = pulses[first:]
-    out: list[bytes] = []
-    data, frame = b"", b""
-    for us in pulses:
-        frame += _enc_pulse(us)
-        if us > FRAME_GAP_US:                    # a frame ends: it goes in this packet, or starts the next
-            if data and 4 + len(data) + len(frame) > max_bytes:
-                out.append(packet[:2] + len(data).to_bytes(2, "little") + data)
-                data = b""
-            data, frame = data + frame, b""
-    data += frame
-    if data:
-        out.append(packet[:2] + len(data).to_bytes(2, "little") + data)
-    return out
-
-
-def clean_rf(packet: bytes, frames: int = 6, gap_ms: float = 120.0) -> bytes:
-    """A clean packet from a learned RF capture (owner, 28 Oct: the far pinspot missed quick presses). A capture is
-    ~0.7 s: noise, a 0.34 s silence, then 4-6 copies of the code. This keeps one copy of the code (a frame of the most
-    common length, ending in its own short gap), sends it `frames` times and ends with gap_ms of silence, so each press
-    is short, strong and separate (as rf2broadlink makes them). The learned packet unchanged when it has no frames."""
-    if packet[:1] not in (b"\xb1", b"\xb2", b"\xd7"):
-        return packet
+def rf_frame(packet: bytes) -> list[int] | None:
+    """One whole copy of the code in a learned RF packet (a frame of the most common length, ending in its own short
+    gap); not the first or last (they can be cut short). None when it has no frames."""
     split: list[list[int]] = []
     cur: list[int] = []
     for us in rf_pulses(packet):
@@ -196,18 +180,34 @@ def clean_rf(packet: bytes, frames: int = 6, gap_ms: float = 120.0) -> bytes:
             cur = []
     sizes = [len(f) for f in split if len(f) > 8]
     if not sizes:
-        return packet
+        return None
     size = max(set(sizes), key=sizes.count)
     good = [f for f in split if len(f) == size]
-    frame = good[1] if len(good) > 2 else good[0]  # not the first: it can follow the capture's noise
+    return good[1] if len(good) > 2 else good[0]
+
+
+def max_frames(packet: bytes, max_bytes: int) -> int:
+    """How many copies of the code fit in one packet of at most max_bytes."""
+    frame = rf_frame(packet)
+    if not frame:
+        return 1
+    one = len(b"".join(_enc_pulse(us) for us in frame))
+    return max(1, (max_bytes - 8) // one)
+
+
+def clean_rf(packet: bytes, frames: int = 6, gap_ms: float = 120.0) -> bytes:
+    """A clean packet from a learned RF code: one copy of the code sent `frames` times without a break, then gap_ms of
+    silence (gap_ms 0: its own short gap), in the learned packet's own form and frequency. A learned packet is a few
+    copies already; this sets how many, and makes many copies one unbroken transmission, like the remote's button
+    held down. The learned packet unchanged when it has no frames (IR)."""
+    if packet[:1] not in (bytes([t]) for t in RF_TYPES):
+        return packet
+    frame = rf_frame(packet)
+    if not frame:
+        return packet
     pulses = frame * max(1, frames)
     pulses[-1] = max(pulses[-1], round(gap_ms * 1000))
-
-    def enc(us: int) -> bytes:
-        t = max(1, round(us / TICK_US))
-        return bytes([t]) if t < 256 else b"\x00" + min(t, 0xFFFF).to_bytes(2, "big")
-    data = b"".join(enc(us) for us in pulses)
-    return bytes([BAND[packet[0]], 0]) + len(data).to_bytes(2, "little") + data
+    return rf_packet(packet, pulses)
 
 
 class RemoteFile:

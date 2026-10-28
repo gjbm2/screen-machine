@@ -34,13 +34,13 @@ from typing import Any
 
 from ..roomstate.contract import Adapter, Outcome, Placeholder, Reading
 from ..roomstate.schema import enum_schema, range_schema
-from .broadlink_rf import Remote, RFError, clean_rf, rf_pulses, split_rf
+from .broadlink_rf import Remote, RFError, clean_rf, max_frames, rf_pulses
 
 log = logging.getLogger("room_service.rf_light")
 
 BASE = ("main", "colour", "level")
-HOLD_FRAMES = 10                                 # copies of the code a packet: ~0.7 s, ~700 bytes (the RM4 sends it)
-SAFE_PACKET = 700                                # bytes: the largest packet seen sent (clean x10, 684); 1204 wasn't
+FADE_BYTES = 960                                 # one held press: as many copies as fit (14, ~0.95 s unbroken); the
+                                                 # RM4 Pro took 954 bytes and timed out on 1204 (28 Oct)
 ON_OFF = ("on", "off")
 WHITE = "white"
 
@@ -228,27 +228,26 @@ class RFLightAdapter(Adapter):
             self._save()
 
     async def _hold(self, button: str) -> None:
-        """The remote's button held down. hold_s 0: the recording itself, played back as recorded (cut into packets
-        the RM4 Pro can send, split_rf). Else held for hold_s: its code, HOLD_FRAMES copies a packet. Either way each
-        packet is sent as the last one ends (paced by its air time), so the light hears one unbroken hold."""
+        """The remote's button held down: its code sent over and over without a break, the way the remote does it
+        (owner, 28 Oct: the light steps about ten times a second while the code keeps coming). One packet holds as
+        many copies as the RM4 Pro takes (FADE_BYTES: ~0.95 s, unbroken) at the learned frequency. hold_s 0: that one
+        packet. Longer: more packets, each sent as the last ends (the RM4 leaves ~0.2 s between them)."""
         raw = self.file.raw_code(button)
-        if self.hold_s <= 0:
-            packets = split_rf(raw, SAFE_PACKET, frames_only=True)
-        else:
-            one = clean_rf(raw, HOLD_FRAMES, gap_ms=0)
-            packets = [one] * max(1, round(self.hold_s / (sum(rf_pulses(one)) / 1e6 or 0.5)))
+        one = clean_rf(raw, max_frames(raw, FADE_BYTES), gap_ms=0)
+        air = sum(rf_pulses(one)) / 1e6 or 0.5
+        n = 1 if self.hold_s <= air else round(self.hold_s / air)
         loop = asyncio.get_running_loop()
         at = t0 = loop.time()
         sent = []
-        for p in packets:
-            wait = at - 0.03 - loop.time()       # a little early: no gap between packets
+        for _ in range(n):
+            wait = at - 0.03 - loop.time()       # a little early: as small a gap as it allows
             if wait > 0:
                 await asyncio.sleep(wait)
-            await self.remote.rm.send(p)
-            sent.append(f"{len(p)} B at {loop.time() - t0:.2f} s")
-            at += sum(rf_pulses(p)) / 1e6
+            await self.remote.rm.send(one)
+            sent.append(f"{len(one)} B at {loop.time() - t0:.2f} s")
+            at += air
         log.info("%s: held %s (%s): %s; %.2f s of air", self._label, button,
-                 "as recorded" if self.hold_s <= 0 else f"{self.hold_s:g} s", ", ".join(sent), at - t0)
+                 "one press" if n == 1 else f"{self.hold_s:g} s", ", ".join(sent), n * air)
 
     async def apply(self, desired: dict[str, Any], opts: dict) -> Outcome:
         if self.dry_run:
