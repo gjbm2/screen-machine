@@ -12,7 +12,7 @@
     "up_hold",
     "down_hold"
   ],
-  "hold_s": 3.5,
+  "hold_s": 0,
   "gap_s": 0.3,
   "clean": {
     "frames": 10,

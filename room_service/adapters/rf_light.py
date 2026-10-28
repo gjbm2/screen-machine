@@ -34,7 +34,7 @@ from typing import Any
 
 from ..roomstate.contract import Adapter, Outcome, Placeholder, Reading
 from ..roomstate.schema import enum_schema, range_schema
-from .broadlink_rf import Remote, RFError, clean_rf, rf_pulses
+from .broadlink_rf import Remote, RFError, clean_rf, rf_pulses, split_rf
 
 log = logging.getLogger("room_service.rf_light")
 
@@ -227,18 +227,23 @@ class RFLightAdapter(Adapter):
             self._save()
 
     async def _hold(self, button: str) -> None:
-        """The remote's button held down for hold_s: its code, HOLD_FRAMES copies a packet, each packet sent as the
-        last one ends (paced by its air time), so the light hears one unbroken hold."""
-        packet = clean_rf(self.file.raw_code(button), HOLD_FRAMES, gap_ms=0)
-        air = sum(rf_pulses(packet)) / 1e6 or 0.5
+        """The remote's button held down. hold_s 0: the recording itself, played back as recorded (cut into packets
+        the RM4 Pro can send, split_rf). Else held for hold_s: its code, HOLD_FRAMES copies a packet. Either way each
+        packet is sent as the last one ends (paced by its air time), so the light hears one unbroken hold."""
+        raw = self.file.raw_code(button)
+        if self.hold_s <= 0:
+            packets = split_rf(raw, frames_only=True)
+        else:
+            one = clean_rf(raw, HOLD_FRAMES, gap_ms=0)
+            packets = [one] * max(1, round(self.hold_s / (sum(rf_pulses(one)) / 1e6 or 0.5)))
         loop = asyncio.get_running_loop()
-        t0 = loop.time()
-        n = max(1, round(self.hold_s / air))
-        for i in range(n):
-            wait = t0 + i * air - 0.03 - loop.time()   # a little early: no gap between packets
+        at = loop.time()
+        for p in packets:
+            wait = at - 0.03 - loop.time()       # a little early: no gap between packets
             if wait > 0:
                 await asyncio.sleep(wait)
-            await self.remote.rm.send(packet)
+            await self.remote.rm.send(p)
+            at += sum(rf_pulses(p)) / 1e6
 
     async def apply(self, desired: dict[str, Any], opts: dict) -> Outcome:
         if self.dry_run:

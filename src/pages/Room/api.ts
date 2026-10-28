@@ -534,6 +534,11 @@ export class RoomApi {
     return this.json<RemoteDevice>("PUT", `/api/v1/remotes/${encodeURIComponent(remote)}/clean`, { clean });
   }
 
+  /** How long a held button (Hold +, Hold −) is held, in seconds. */
+  setRemoteHold(remote: string, holdS: number) {
+    return this.json<RemoteDevice>("PUT", `/api/v1/remotes/${encodeURIComponent(remote)}/hold`, { hold_s: holdS });
+  }
+
   /** Rename a light's colours ({colour id: name}); their ids stay, so modes keep working. */
   nameColours(remote: string, colours: Record<string, string>) {
     return this.json<RemoteDevice>("PUT", `/api/v1/remotes/${encodeURIComponent(remote)}/colours`, { colours });

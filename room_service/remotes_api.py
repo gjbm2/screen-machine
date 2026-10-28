@@ -16,6 +16,7 @@ once it is added (its file in config/room/rf/, a card in its room in rooms.json)
   PUT    /api/v1/remotes/{id}/colours    {"colours": {id: name}} rename a light's colours (their ids stay)
   PUT    /api/v1/remotes/{id}/clean      {"clean": {"frames", "gap_ms"} | null} how each RF press is sent: a clean
                                          packet of `frames` copies of the code (broadlink_rf.clean_rf), or as learned
+  PUT    /api/v1/remotes/{id}/hold       {"hold_s": seconds} how long a held button (Hold +, Hold −) is held
   PUT    /api/v1/remotes/{id}/state      {"values": {target: value}} put the room's record right when it is out of step
                                          with the appliance (owner, 28 Oct): nothing is sent. Its view's "state" rows
                                          list every target with its schema and what the room believes now
@@ -118,6 +119,7 @@ def register(app: web.Application, svc: "RoomService") -> None:
                 "light": light is not None, "steps": light.steps if light else None,
                 "repeat": [str(b) for b in (f.raw.get("repeat") or [])], "gap_s": float(f.raw.get("gap_s", 0.3)),
                 "clean": f.raw.get("clean") if isinstance(f.raw.get("clean"), dict) else None,
+                "held": f.held, "hold_s": float(f.raw.get("hold_s", 3.5)) if f.held else None,
                 "buttons": r.button_rows(), "job": r.job.view() if r.job else None,
                 "state": light.state() if light else None, "state_rows": state_rows(adapters)}
 
@@ -332,8 +334,24 @@ def register(app: web.Application, svc: "RoomService") -> None:
         r.file.fresh()
         return web.json_response(view(r, adapters))
 
+    async def set_hold(request: web.Request) -> web.Response:
+        got = find(request)
+        if isinstance(got, web.Response):
+            return got
+        r, adapters = got
+        try:
+            hold_s = float((await body(request)).get("hold_s"))
+        except (TypeError, ValueError):
+            hold_s = 0.0
+        if not (hold_s == 0 or 0.3 <= hold_s <= 10):
+            return _err(400, "bad_hold", '{"hold_s": 0 (as recorded) or 0.3-10}')
+        r.file.update(lambda raw: raw.__setitem__("hold_s", hold_s))
+        r.file.fresh()
+        return web.json_response(view(r, adapters))
+
     a = app.router
     a.add_put("/api/v1/remotes/{id}/state", set_state)
+    a.add_put("/api/v1/remotes/{id}/hold", set_hold)
     a.add_put("/api/v1/remotes/{id}/clean", set_clean)
     a.add_get("/api/v1/remotes", list_remotes)
     a.add_post("/api/v1/remotes", add)
