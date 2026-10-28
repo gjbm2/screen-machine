@@ -289,8 +289,8 @@ def test_a_held_button_streams_its_code_for_hold_s(tmp_path):
     os.utime(a.file.path, (3, 3))
     a.now.update(main="on", colour="white", level=8)
     assert asyncio.run(a.signal(None, "press", {"button": "down_hold"})).status == "ok"
-    k = broadlink_rf.max_frames(cap, 960)                         # one unbroken packet, as long as it takes
-    assert len(rm.sent) == 1 and len(broadlink_rf.rf_pulses(rm.sent[0])) == k * len(frame) and len(rm.sent[0]) <= 960
+    assert len(rm.sent) == 1 and rm.sent[0][0] == 0xb2                # one copy, the RM4 Pro repeats it itself
+    assert len(broadlink_rf.rf_pulses(rm.sent[0])) == len(frame) and rm.sent[0][1] >= 1
     assert a.now["level"] == 0
 
 

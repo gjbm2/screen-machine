@@ -343,8 +343,8 @@ def register(app: web.Application, svc: "RoomService") -> None:
             hold_s = float((await body(request)).get("hold_s"))
         except (TypeError, ValueError):
             hold_s = 0.0
-        if not (hold_s == 0 or 0.3 <= hold_s <= 10):
-            return _err(400, "bad_hold", '{"hold_s": 0 (as recorded) or 0.3-10}')
+        if not 0.3 <= hold_s <= 10:
+            return _err(400, "bad_hold", '{"hold_s": 0.3-10}')
         r.file.update(lambda raw: raw.__setitem__("hold_s", hold_s))
         r.file.fresh()
         return web.json_response(view(r, adapters))

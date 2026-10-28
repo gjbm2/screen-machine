@@ -515,9 +515,9 @@ function RemoteCard({
 
       {!!d.held?.length && (
         <div className="space-y-1">
-          <p className="text-[15px] font-medium">Hold + and Hold − are sent</p>
+          <p className="text-[15px] font-medium">A fade (Hold + and Hold −) holds the button for</p>
           <div className="flex flex-wrap gap-1.5">
-            {[0, 2, 3].map((secs) => (
+            {[1, 1.5, 2, 3].map((secs) => (
               <button
                 key={secs}
                 type="button"
@@ -525,7 +525,7 @@ function RemoteCard({
                 onClick={() =>
                   void act("hold", async () => {
                     await api.setRemoteHold(d.id, secs);
-                    return { status: "ok", detail: secs ? `hold + and − now held for ${secs} s` : "hold + and − now one unbroken second" };
+                    return { status: "ok", detail: `a fade now holds the button for ${secs} s` };
                   })
                 }
                 className={cn(
@@ -533,13 +533,13 @@ function RemoteCard({
                   d.hold_s === secs ? "border-teal-300 bg-teal-50 font-semibold text-teal-900" : "border-stone-200 bg-white hover:bg-stone-50",
                 )}
               >
-                {secs ? `${secs} s (with breaks)` : "1 s unbroken"}
+                {secs} s
               </button>
             ))}
           </div>
           <p className="text-sm text-muted-foreground">
-            Like holding the remote's button: its code over and over without a break, as long as the RM4 Pro can send
-            in one go (about 1 s). Longer holds need more than one send, with short breaks between.
+            Like holding the remote's button: the RM4 Pro repeats its code without a break for this long. Long enough
+            to reach black or full; a little longer does no harm.
           </p>
         </div>
       )}

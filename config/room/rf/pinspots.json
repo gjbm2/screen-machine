@@ -12,7 +12,7 @@
     "up_hold",
     "down_hold"
   ],
-  "hold_s": 0.0,
+  "hold_s": 2,
   "gap_s": 0.3,
   "colours": {
     "white": "White",
