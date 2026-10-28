@@ -45,8 +45,8 @@
       "flash": "Flash (strobe)"
     },
     "Held down": {
-      "up_hold": "Hold + (brighten all the way)",
-      "down_hold": "Hold − (dim all the way)"
+      "up_hold": "Fade up recording (hold +)",
+      "down_hold": "Fade to black recording (hold −)"
     }
   }
 }
