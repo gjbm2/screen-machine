@@ -7,7 +7,8 @@ so it survives a restart) and reaches any wanted state by pressing the remote's 
 One subsystem, so a mode's whole look is planned at once. Members, from the device's file:
   main    on | off      "on" and "off" buttons, or one "toggle" (the pinspot's remote has one power button)
   colour  its "colours", each its own button. "fade" (the remote's colour cycle) is one of them: the room can't know
-          what it shows, so it's a colour of its own
+          what it shows, so it's a colour of its own. Pressing the colour it already shows switches it off (owner,
+          28 Oct), so the plan never presses the colour it has
   level   0..steps      "up" and "down" move one step; 0 is black (the pinspot: 8 steps)
   <toggle> on | off     each of its "toggles" (the pinspot: flash, the strobe), one button each
 Changing colour goes through black (owner, 28 Oct: "reducing intensity of blue down to black, then changing to white,
@@ -251,10 +252,13 @@ class RFLightAdapter(Adapter):
             n["main"] = button
         elif button == "toggle":
             n["main"] = None if n["main"] is None else "off" if n["main"] == "on" else "on"
+        elif button in self.colours:             # its own colour again switches it off; another (or off) turns it on
+            if n["main"] == "on" and n["colour"] == button:
+                n["main"] = "off"
+            else:
+                n["main"], n["colour"] = "on", button
         elif n["main"] != "off":                 # it doesn't take the remote while off
-            if button in self.colours:
-                n["colour"] = button
-            elif button in ("up", "down") and n["level"] is not None:
+            if button in ("up", "down") and n["level"] is not None:
                 n["level"] = max(0, min(self.steps, n["level"] + (1 if button == "up" else -1)))
             elif button in self.toggles:
                 n[button] = "off" if n[button] == "on" else "on"

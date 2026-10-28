@@ -3,7 +3,8 @@
 // room; it then has a card on /lights and the Room page. Each appliance folds open to its buttons: each learned once
 // (the RM4 Pro listens; press that button on the appliance's remote near it) and tested (it sends the code; watch the
 // appliance). A button the file lists under "repeat" (a pinspot's + and −) keeps sending while its Test is held, as the
-// remote does. "Learn the rest" walks every button not learned yet, one after another. A light also has Reset (after it
+// remote does. "Each press is sent" (RF) picks a clean packet of 4, 6 or 10 copies of the code, or the code as learned
+// (owner, 28 Oct: the far pinspot missed quick presses), to try while watching. "Learn the rest" walks every button not learned yet, one after another. A light also has Reset (after it
 // lost power at the wall it comes on white at full: dimmed to the floor and off, so the room knows what it is doing)
 // and its colours' names. "What it's doing now" puts the room's record right when it's out of step with the appliance
 // (its power is one toggle button, so the room must know; owner, 28 Oct): a tap tells the room, nothing is sent.
@@ -478,6 +479,45 @@ function RemoteCard({
           </ul>
         </div>
       ))}
+
+      {d.medium === "rf" && (
+        <div className="space-y-1">
+          <p className="text-[15px] font-medium">Each press is sent</p>
+          <div className="flex flex-wrap gap-1.5">
+            {([
+              ["As learned", null],
+              ["Clean ×4", 4],
+              ["Clean ×6", 6],
+              ["Clean ×10", 10],
+            ] as [string, number | null][]).map(([words, frames]) => {
+              const sel = frames === null ? !d.clean : d.clean?.frames === frames;
+              return (
+                <button
+                  key={words}
+                  type="button"
+                  disabled={disabled}
+                  onClick={() =>
+                    void act("clean", async () => {
+                      await api.setRemoteClean(d.id, frames === null ? null : { frames });
+                      return { status: "ok", detail: `each press now sent ${frames === null ? "as learned" : `as ${frames} clean copies`}` };
+                    })
+                  }
+                  className={cn(
+                    "min-h-9 rounded-lg border px-2.5 text-[14px] disabled:opacity-50",
+                    sel ? "border-teal-300 bg-teal-50 font-semibold text-teal-900" : "border-stone-200 bg-white hover:bg-stone-50",
+                  )}
+                >
+                  {words}
+                </button>
+              );
+            })}
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Clean sends just the code, several times over, then a pause, so quick presses stay separate. More copies
+            carry further but take longer.
+          </p>
+        </div>
+      )}
 
       {d.medium === "rf" && d.freq_mhz && (
         <label className="flex items-center gap-2 text-sm text-stone-600">
