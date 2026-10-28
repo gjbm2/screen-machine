@@ -50,6 +50,7 @@ export function TagLozenges({
   onTagsChange,
   onFavoriteChange,
   className,
+  compact = false,
 }: {
   bucket: string;
   filename: string;
@@ -64,6 +65,8 @@ export function TagLozenges({
   onTagsChange?: (patch: { tags: string[]; tagging: TaggingInfo }) => void;
   onFavoriteChange?: (favorite: boolean) => void;
   className?: string;
+  /** Smaller lozenges (the loupe, where a phone has little room under the picture). */
+  compact?: boolean;
 }) {
   const s = LOZENGE[variant];
   // Optimistic values while a write is in flight; null = show what the parent holds.
@@ -127,7 +130,10 @@ export function TagLozenges({
     }
   };
 
-  const chip = 'inline-flex min-h-8 items-center gap-1 rounded-full border pl-3 pr-0.5 text-sm font-semibold';
+  const chip = compact
+    ? 'inline-flex min-h-7 items-center gap-0.5 rounded-full border pl-2.5 pr-0.5 text-[13px] font-medium'
+    : 'inline-flex min-h-8 items-center gap-1 rounded-full border pl-3 pr-0.5 text-sm font-semibold';
+  const xBtn = compact ? 'h-6 w-6' : 'h-7 w-7';
 
   return (
     <div className={cn('flex flex-wrap items-center gap-1.5', className)}>
@@ -139,7 +145,7 @@ export function TagLozenges({
             type="button"
             aria-label="Take out of favourites"
             onClick={() => setFavourite(false)}
-            className={cn('grid h-7 w-7 place-items-center rounded-full', s.x)}
+            className={cn('grid place-items-center rounded-full', xBtn, s.x)}
           >
             <X className="h-3.5 w-3.5" aria-hidden />
           </button>
@@ -152,7 +158,7 @@ export function TagLozenges({
             type="button"
             aria-label={`Take out ${tagsApi.tagLabel(t)}`}
             onClick={() => editTags({ remove: [t] })}
-            className={cn('grid h-7 w-7 place-items-center rounded-full', s.x)}
+            className={cn('grid place-items-center rounded-full', xBtn, s.x)}
           >
             <X className="h-3.5 w-3.5" aria-hidden />
           </button>
