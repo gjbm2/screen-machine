@@ -1,12 +1,9 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { toast } from 'sonner';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { format, formatDistance } from 'date-fns';
-import { audioApi, bucketsApi, generationApi, lightApi, publishApi, tagsApi } from '@/shared/api';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
+import { audioApi, bucketsApi, generationApi, publishApi, tagsApi } from '@/shared/api';
 import type { BucketItem as ApiBucketItem, Bucket as ApiBucket, TagLexicon } from '@/shared/api';
-import { Image as ImageIcon, RefreshCw, AlertCircle, Star, StarOff, Upload, MoreVertical, Trash, Share, Plus, ChevronsUpDown, ExternalLink, Send, Info, Filter, Film, Camera, Link, CirclePause, CirclePlay, CircleStop, ArrowUp, ArrowDown, Pause, Square, ChevronUp, ChevronDown, Play, X } from 'lucide-react';
+import { Image as ImageIcon, RefreshCw, AlertCircle, Star, StarOff, Upload, MoreVertical, Trash, Share, Plus, ChevronsUpDown, ExternalLink, Send, Info, Filter, Film, CirclePause, CirclePlay, CircleStop, ArrowUp, ArrowDown, Pause, Square, ChevronUp, ChevronDown, Play, X } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -35,7 +32,9 @@ import SortableImageGrid from '@/components/common/SortableImageGrid';
 import { ImageItem } from '@/types/image-types';
 
 import { ScreenPicture, ScreenStrip, type StripPicture } from '@/components/room/ScreenStrip';
-import { jsonInit, readErrorBody, send } from '@/shared/http/client';
+import { useScreenStripActions } from '@/components/room/useScreenStripState';
+import { BucketMaintenanceDialog } from './BucketMaintenanceDialog';
+import { BucketUploadDialog } from './BucketUploadDialog';
 import { useRoomLinkSelect, liveStateOf } from '@/components/room/roomLink';
 
 // Import the new DROP_ZONES
@@ -216,128 +215,6 @@ const UploadModal = ({ isOpen, onClose, destination, onUploadComplete }: {
   );
 };
 
-const MaintenanceModal = ({ isOpen, onClose, destination, onActionComplete }: { 
-  isOpen: boolean;
-  onClose: () => void;
-  destination: string;
-  onActionComplete: () => void;
-}) => {
-  const [days, setDays] = useState<number | undefined>();
-  const [isLoading, setIsLoading] = useState(false);
-
-  const handlePurge = async () => {
-    setIsLoading(true);
-    try {
-      const result = await bucketsApi.purgeBucket(destination, days);
-      if (result.status === 'purged') {
-        const message = result.removed.length > 0 
-          ? `Purged ${result.removed.length} files successfully`
-          : 'No files were purged';
-        toast.success(message);
-        onActionComplete();
-        onClose();
-      } else {
-        toast.error(result.error || 'Failed to purge files');
-      }
-    } catch (error) {
-      console.error('Error purging files:', error);
-      toast.error(error instanceof Error ? error.message : 'Failed to purge files');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleReindex = async () => {
-    setIsLoading(true);
-    try {
-      const success = await bucketsApi.performBucketMaintenance(destination, 'reindex');
-      if (success) {
-        toast.success('Bucket reindexed successfully');
-        onActionComplete();
-        onClose();
-      }
-    } catch (error) {
-      console.error('Error reindexing bucket:', error);
-      toast.error('Failed to reindex bucket');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const handleExtractJson = async () => {
-    setIsLoading(true);
-    try {
-      const success = await bucketsApi.performBucketMaintenance(destination, 'extract');
-      if (success) {
-        toast.success('JSON extracted successfully');
-        onActionComplete();
-        onClose();
-      }
-    } catch (error) {
-      console.error('Error extracting JSON:', error);
-      toast.error('Failed to extract JSON');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Bucket Maintenance</DialogTitle>
-          <DialogDescription>
-            Perform maintenance operations on this bucket
-          </DialogDescription>
-        </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label>Purge Non-Favorites</Label>
-            <div className="flex items-center space-x-2">
-              <Input
-                type="number"
-                placeholder="Days (optional)"
-                value={days || ''}
-                onChange={(e) => setDays(e.target.value ? parseInt(e.target.value) : undefined)}
-                min={1}
-              />
-              <Button 
-                onClick={handlePurge} 
-                disabled={isLoading}
-                variant="destructive"
-              >
-                Purge
-              </Button>
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {days ? `Will remove non-favorite files older than ${days} days` : 'Will remove all non-favorite files'}
-            </p>
-          </div>
-          <div className="space-y-2">
-            <Label>Reindex Bucket</Label>
-            <Button 
-              onClick={handleReindex} 
-              disabled={isLoading}
-              variant="outline"
-            >
-              Reindex
-            </Button>
-          </div>
-          <div className="space-y-2">
-            <Label>Extract JSON</Label>
-            <Button 
-              onClick={handleExtractJson} 
-              disabled={isLoading}
-              variant="outline"
-            >
-              Extract
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-};
 
 /** Renders a component defined inside BucketGridView (SectionDroppable, PublishedImageDroppable) through one stable
  *  component type. Defined inline they were a new type on every render, so React threw the cards away and rebuilt
@@ -362,14 +239,11 @@ export const BucketGridView = ({
   const [bucketDetails, setBucketDetails] = useState<LocalBucketDetails | null>(null);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  const [uploadUrl, setUploadUrl] = useState('');
   const [currentPublishedImage, setCurrentPublishedImage] = useState<BucketImage | null>(null);
   const [destinations, setDestinations] = useState<{id: string, name: string, headless?: boolean, has_bucket: boolean}[]>([]);
   const [showFavoritesFirst, setShowFavoritesFirst] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [uploadTab, setUploadTab] = useState<'file' | 'url'>('file');
   const [selectedImage, setSelectedImage] = useState<BucketImage | null>(null);
   const [showImageDetail, setShowImageDetail] = useState(false);
   const [refreshTimeout, setRefreshTimeout] = useState<NodeJS.Timeout | null>(null);
@@ -390,16 +264,12 @@ export const BucketGridView = ({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [sectionToDelete, setSectionToDelete] = useState<string | null>(null);
   const [deleteImagesCount, setDeleteImagesCount] = useState(0);
-  const [maskEnabled, setMaskEnabled] = useState(true);
   // Live mode is the GPU renderer at full intensity: the light mask applies to art only.
   const screenLive = useRoomLinkSelect((s) => liveStateOf(s.status?.screens?.[destination]) === 'live');
   
-  const hasCamera = 'mediaDevices' in navigator && 'getUserMedia' in navigator.mediaDevices;
   const [showAppDownloadModal, setShowAppDownloadModal] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
-  const [isLoadingPublished, setIsLoadingPublished] = useState(false);
-  const [stepping, setStepping] = useState(false);
   const [isNewVersion, setIsNewVersion] = useState(false);
 
   const debouncedFetchBucketDetails = useCallback(() => {
@@ -420,25 +290,17 @@ export const BucketGridView = ({
     };
   }, [refreshTimeout]);
 
+  // The strip's shared actions (the light mask, Previous / Next, re-index, extract, every screen's picture), the same
+  // ones the Room page's screen cards use (src/components/room/useScreenStripState.ts); after each, re-read as before.
+  const strip = useScreenStripActions(destination, (what) => {
+    if (what === 'picture') void fetchBucketDetails(true);
+    else if (what === 'reindex') debouncedFetchBucketDetails();
+    else refreshBucket(destination);
+  });
+
   useEffect(() => {
     fetchBucketDetails();
     fetchDestinations();
-  }, [destination]);
-
-  // Fetch mask state on mount
-  useEffect(() => {
-    const fetchMaskState = async () => {
-      try {
-        const result = await lightApi.getMaskState(destination);
-        setMaskEnabled(result.enabled);
-      } catch (error) {
-        console.error('Error fetching mask state:', error);
-        // Default to true if there's an error
-        setMaskEnabled(true);
-      }
-    };
-    
-    fetchMaskState();
   }, [destination]);
 
   useEffect(() => {
@@ -766,55 +628,6 @@ export const BucketGridView = ({
     setShowMaintenanceModal(true);
   };
 
-  const handleReindex = async () => {
-    try {
-      const success = await bucketsApi.performBucketMaintenance(destination, 'reindex');
-      if (success) {
-        toast.success('Bucket reindexed successfully');
-        debouncedFetchBucketDetails();
-      }
-    } catch (error) {
-      console.error('Error reindexing bucket:', error);
-      toast.error('Failed to reindex bucket');
-    }
-  };
-
-  const handleExtractJson = async () => {
-    try {
-      const success = await bucketsApi.performBucketMaintenance(destination, 'extract');
-      if (success) {
-        toast.success('JSON extracted successfully');
-        refreshBucket(destination);
-      } else {
-        toast.error('Failed to extract JSON');
-      }
-    } catch (error) {
-      console.error('Error extracting JSON:', error);
-      toast.error('Failed to extract JSON');
-    }
-  };
-
-  // The strip's Previous / Next: the favourite before / after the one on the screen (the scheduler's "display" action,
-  // POST /api/publish/<id>/display). The picture and its time update from a quiet re-read.
-  const handleStepPicture = async (mode: 'Previous' | 'Next') => {
-    if (stepping) return;
-    setStepping(true);
-    try {
-      const res = await send(`/publish/${encodeURIComponent(destination)}/display`, jsonInit('POST', { mode }));
-      if (!res.ok) {
-        const body = await readErrorBody(res, `Couldn't show the ${mode.toLowerCase()} picture`);
-        toast.error(body.error || `Couldn't show the ${mode.toLowerCase()} picture`);
-        return;
-      }
-      await fetchBucketDetails(true);
-    } catch (error) {
-      console.error(`Error showing the ${mode} picture:`, error);
-      toast.error(`Couldn't show the ${mode.toLowerCase()} picture`);
-    } finally {
-      setStepping(false);
-    }
-  };
-
   // Handle "Generate Again" from an image with reference images
   const handleGenerateAgain = (image: BucketImage) => {
     // Extract the prompt and settings from the image
@@ -911,34 +724,6 @@ export const BucketGridView = ({
       }
       return a.metadata?.favorite ? -1 : 1;
     });
-  };
-
-  const handleUploadTabChange = (value: 'file' | 'url') => {
-    setUploadTab(value);
-  };
-
-  const handleUpload = async () => {
-    if (!uploadFile && !uploadUrl) {
-      toast.error('Please select a file or enter a URL');
-      return;
-    }
-
-    try {
-      if (uploadFile) {
-        await bucketsApi.uploadToBucket(destination, uploadFile);
-      } else if (uploadUrl) {
-        await bucketsApi.uploadUrlToBucket(destination, uploadUrl);
-      }
-      
-      setShowUploadModal(false);
-      setUploadFile(null);
-      setUploadUrl('');
-      fetchBucketDetails();
-      toast.success('Image uploaded successfully');
-    } catch (error) {
-      console.error('Error uploading image:', error);
-      toast.error('Failed to upload image');
-    }
   };
 
   // Utility to check video files – shares logic with getReferenceUrl helper
@@ -2006,82 +1791,6 @@ export const BucketGridView = ({
     onDragOver: handleDragOver,
   });
 
-  // Every screen's published picture in the loupe, starting at this one (the strip's More menu; it was the old
-  // header thumbnail's click).
-  const openAllPictures = async () => {
-    if (isLoadingPublished) return; // Prevent multiple clicks
-    
-    setIsLoadingPublished(true);
-    try {
-      // Get all destinations first
-      const allDestinations = await publishApi.getPublishDestinations();
-      
-      // Filter out headless destinations - they should not be part of published view
-      const visibleDestinations = allDestinations.filter(dest => !dest.headless);
-      
-      const publishedImages: ImageItem[] = [];
-      
-      // Fetch published content for each destination sequentially
-      for (const dest of visibleDestinations) {
-        try {
-          // Use direct API call to get full metadata
-          const response = await publishApi.getPublishedContentForDestination(dest.id);
-          if (!response.published) continue;
-          
-          publishedImages.push({
-            id: `${dest.id}:${response.published}`,
-            urlFull: response.raw_url || '',
-            urlThumb: response.thumbnail_url || response.raw_url || '',
-            promptKey: response.meta?.prompt || '',
-            seed: response.meta?.seed || 0,
-            createdAt: response.publishedAt || new Date().toISOString(),
-            isFavourite: false,
-            mediaType: (response.raw_url || '').toLowerCase().match(/\.mp4|\.webm/) ? 'video' : 'image',
-            bucketId: dest.id,
-            destinationName: dest.name || dest.id,
-            metadata: response.meta || {},
-            isPublished: true,
-            disableFavorite: true
-          });
-        } catch (error) {
-          console.error(`Error fetching published content for ${dest.id}:`, error);
-        }
-      }
-      
-      // If we found any published images, open the Loope view
-      if (publishedImages.length > 0) {
-        // Find the index of the current destination
-        const currentIndex = publishedImages.findIndex(img => img.bucketId === destination);
-        const validIndex = currentIndex >= 0 ? currentIndex : 0;
-        
-        // Create title generator function for dynamic titles when swiping
-        const getTitleForPublishedImage = (img: ImageItem, idx: number, total: number) => {
-          return `Currently published - ${img.destinationName} (${idx + 1}/${total})`;
-        };
-        
-        // Open Loope view with the initial title
-        const initialTitle = getTitleForPublishedImage(
-          publishedImages[validIndex], 
-          validIndex, 
-          publishedImages.length
-        );
-        
-        // Now we can keep looping since we fixed the core issue
-        const options = { loop: true };
-        
-        // Open the Loope view with the published images
-        openLoope(publishedImages, validIndex, initialTitle, options);
-      } else {
-        toast.error('No published images found');
-      }
-    } catch (error) {
-      console.error('Error fetching published images:', error);
-      toast.error('Failed to load published images');
-    } finally {
-      setIsLoadingPublished(false);
-    }
-  };
-
   // The strip's picture, as the publish drop target: drop a picture on it to put it up (handleDragEnd, PUBLISHED).
   const PublishedImageDroppable = ({ pic }: { pic: StripPicture }) => {
     const { setNodeRef, isOver } = useDroppable({
@@ -2183,21 +1892,6 @@ export const BucketGridView = ({
         ))}
       </div>
     );
-  };
-
-  // Add mask toggle handler
-  const handleMaskToggle = async (enabled: boolean) => {
-    try {
-      if (enabled) {
-        await lightApi.enableMask(destination);
-      } else {
-        await lightApi.disableMask(destination);
-      }
-      setMaskEnabled(enabled);
-    } catch (error) {
-      console.error('Error toggling mask:', error);
-      toast.error('Failed to toggle mask');
-    }
   };
 
   const checkAppVersion = async () => {
@@ -2414,7 +2108,7 @@ export const BucketGridView = ({
     <div className="h-full flex flex-col">
       {/* DnD interactions handled by global context; monitor via hooks */}
       {bucketDetails && (
-        <MaintenanceModal
+        <BucketMaintenanceDialog
           isOpen={showMaintenanceModal}
           onClose={() => setShowMaintenanceModal(false)}
           destination={destination}
@@ -2439,20 +2133,20 @@ export const BucketGridView = ({
         }}
         refreshScheduler={refreshBucket}
         favourites={bucketDetails?.favorites_count ?? 0}
-        stepPicture={(mode) => void handleStepPicture(mode)}
-        stepping={stepping}
-        maskOn={maskEnabled}
-        setMask={(on) => void handleMaskToggle(on)}
+        stepPicture={(mode) => void strip.stepPicture(mode)}
+        stepping={strip.stepping}
+        maskOn={strip.maskOn}
+        setMask={(on) => void strip.setMask(on)}
         talking={isTranscribing}
         toggleTalk={() => void handleRecordClick()}
         onUpload={() => setShowUploadModal(true)}
         onRefresh={handleRefresh}
         refreshing={loading || externalLoading}
         onPurge={handlePurgeNonFavorites}
-        onReindex={() => void handleReindex()}
-        onExtract={() => void handleExtractJson()}
-        onAllPictures={() => void openAllPictures()}
-        loadingAllPictures={isLoadingPublished}
+        onReindex={() => void strip.reindex()}
+        onExtract={() => void strip.extract()}
+        onAllPictures={() => void strip.openAllPictures()}
+        loadingAllPictures={strip.loadingAllPictures}
       />
       
       {/* Error message */}
@@ -2467,84 +2161,14 @@ export const BucketGridView = ({
       {/* Content area with proper separation of concerns */}
       {renderContent()}
       
-      {/* Tabbed upload modal */}
-      <Dialog open={showUploadModal} onOpenChange={setShowUploadModal}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle>Upload to {destinationName || destination}</DialogTitle>
-          </DialogHeader>
-          
-          <Tabs defaultValue="file" value={uploadTab} onValueChange={handleUploadTabChange}>
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="file" className="flex items-center justify-center">
-                <Upload className="h-4 w-4 mr-2" />
-                <span>File</span>
-              </TabsTrigger>
-              <TabsTrigger value="url" className="flex items-center justify-center">
-                <Link className="h-4 w-4 mr-2" />
-                <span>URL</span>
-              </TabsTrigger>
-              <TabsTrigger value="camera" disabled={!hasCamera} className="flex items-center justify-center">
-                <Camera className="h-4 w-4 mr-2" />
-                <span>Camera</span>
-              </TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="file" className="pt-4">
-              <div className="grid gap-4">
-                <Input
-                  id="file-upload"
-                  type="file"
-                  className="w-full"
-                  onChange={(e) => {
-                    if (e.target.files && e.target.files[0]) {
-                      setUploadFile(e.target.files[0]);
-                    }
-                  }}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Select a file from your device to upload.
-                </p>
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="url" className="pt-4">
-              <div className="grid gap-4">
-                <Input
-                  id="url-upload"
-                  type="url"
-                  placeholder="https://example.com/image.jpg"
-                  value={uploadUrl}
-                  onChange={(e) => setUploadUrl(e.target.value)}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Enter the URL of an image to upload from the web.
-                </p>
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="camera" className="pt-4">
-              <div className="grid gap-4">
-                <div className="bg-black aspect-video rounded-md flex items-center justify-center">
-                  <p className="text-white">Camera access coming soon</p>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Take a photo using your device's camera.
-                </p>
-              </div>
-            </TabsContent>
-          </Tabs>
-          
-          <DialogFooter className="mt-4">
-            <Button variant="outline" onClick={() => setShowUploadModal(false)}>
-              Cancel
-            </Button>
-            <Button type="submit" onClick={handleUpload}>
-              Upload
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Tabbed upload modal (BucketUploadDialog.tsx, shared with the Room page's screen cards) */}
+      <BucketUploadDialog
+        open={showUploadModal}
+        onOpenChange={setShowUploadModal}
+        destination={destination}
+        name={destinationName}
+        onUploaded={() => void fetchBucketDetails()}
+      />
       
       {/* Image detail dialog */}
       <Dialog open={showImageDetail} onOpenChange={setShowImageDetail}>

@@ -1,17 +1,24 @@
 // One screen, compact (space pass, owner 25 Oct: "vertical space is at a HIGH PREMIUM"): the picture of what's on it
 // (the art's thumbnail, or the live scene), which opens its live page; its name; what it's doing in one line
-// ("Showing art", "Live · Gallery"); and one action (Go live / Back to art / Cancel) beside More. Everything else
-// unrolls under More: the scene (picked for going live, or changed while live) and its settings, the look controls,
-// "Details on the screen", snapshots, the schedule's events, the technical details, and the links to its tab in the
-// generator (with the art's prompt), its schedule (with what it's doing) and its settings.
+// ("Showing art", "Live · Gallery"); and one action (Go live / Back to art / Cancel) beside More. Under them, the
+// Generator's picture controls (owner, 28 Oct: "the same sort of image control stuff as I can on Generator page --
+// prob. using same component"): its screen strip's controls row (ScreenStrip variant "controls"): the schedule (its
+// fold has what it does next, its events and its variables), the picture before / after, the light mask, Upload, and
+// a small More (events and variables, refresh, every screen's picture, maintenance). Everything else unrolls under
+// More: the scene (picked for going live, or changed while live) and its settings, the look controls, "Details on the
+// screen", snapshots, the technical details, and the links to its tab in the generator (with the art's prompt), its
+// schedule (with what it's doing) and its settings.
 // The Screens fold lays the cards out in a grid (2-3 across on an iPad, one per row on a phone).
 
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, ExternalLink } from "lucide-react";
 import { AppLink } from "@/components/nav/AppLink";
-import { displayUrl, schedulerUrl, settingsUrl } from "@/components/nav/appNav";
+import { displayUrl, settingsUrl } from "@/components/nav/appNav";
+import { BucketMaintenanceDialog } from "@/components/image-display/BucketMaintenanceDialog";
+import { BucketUploadDialog } from "@/components/image-display/BucketUploadDialog";
 import { ArtThumb, GeneratorLink, ScheduleLink, usePublishedArt } from "@/components/room/ScreenArt";
-import { EventsList, useRoomEvents } from "@/components/room/EventsList";
+import { ScreenStrip } from "@/components/room/ScreenStrip";
+import { useScreenStripState } from "@/components/room/useScreenStripState";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { cn } from "@/lib/utils";
 import { RoomApi } from "./api";
@@ -46,7 +53,7 @@ export interface ScreenCardProps {
   focused?: boolean;
   /** Its room's live card (RoomLive.tsx), when the room has one: the room-wide controls live there, not here. */
   scope?: LookScope | null;
-  /** Its room (rooms.json id): its schedule's events unroll under More. */
+  /** Its room (rooms.json id): the room's shared variables this screen uses show in its schedule's fold. */
   room?: string;
   addLog: (e: NewLogEntry) => void;
   reportError: (e: unknown) => void;
@@ -214,6 +221,10 @@ export const ScreenCard = memo(function ScreenCard({
           </div>
         </div>
 
+        <div className="-mt-1 px-3 pb-3">
+          <ScreenImageControls screenId={screenId} name={name} room={room} />
+        </div>
+
         {showGoLive && <GoLiveNotices sc={sc} streamReachable={streamReachable} />}
         {sc.actionError && (
           <div className="px-3 pb-3">
@@ -257,8 +268,6 @@ export const ScreenCard = memo(function ScreenCard({
 
             <Snapshots api={api} screenId={screenId} revs={snapRevs} exists={screen.snapshots} onError={reportError} />
 
-            {room && <ScreenEvents room={room} screenId={screenId} addLog={addLog} />}
-
             <Unroll title="Technical details" testId={`details-${screenId}`}>
               <LiveDetails api={api} screenId={screenId} screen={screen} />
               <TransitionDetails screenId={screenId} inSpec={sc.form.inSpec} outSpec={sc.form.outSpec} choices={sc.transitions} />
@@ -281,21 +290,47 @@ export const ScreenCard = memo(function ScreenCard({
 
 const FOOT_LINK = "inline-flex min-h-11 items-center gap-1 rounded-xl px-1 text-[15px] font-medium text-teal-800 hover:underline";
 
-/** The screen's schedule events (from its schedule, none named here), unrolled on request, and its schedule. */
-function ScreenEvents({ room, screenId, addLog }: { room: string; screenId: string; addLog: (e: NewLogEntry) => void }) {
-  const events = useRoomEvents(room, screenId);
-  if (!events?.length) return null;
+/** The Generator's picture controls for this screen: its strip's controls row, with what it reads and does
+ *  (useScreenStripState), and the same Upload and Maintenance dialogs. Talk (the generator's voice prompt) is left out. */
+function ScreenImageControls({ screenId, name, room }: { screenId: string; name: string; room?: string }) {
+  const st = useScreenStripState(screenId);
+  const { actions } = st;
   return (
-    <Unroll title="Events" hint={`${events.length}`} testId={`events-${screenId}`}>
-      <EventsList
+    <>
+      <ScreenStrip
+        variant="controls"
+        screenId={screenId}
+        name={name}
         room={room}
-        destination={screenId}
-        className="px-1 pb-1"
-        onSent={(ev) => addLog({ type: "schedule", screen: screenId, level: "info", summary: `${ev.label} sent to ${screenId}` })}
+        headless={st.headless}
+        hasBucket={st.hasBucket}
+        scheduler={st.scheduler}
+        refreshScheduler={st.refreshScheduler}
+        favourites={null}
+        stepPicture={(mode) => void actions.stepPicture(mode)}
+        stepping={actions.stepping}
+        maskOn={actions.maskOn}
+        setMask={(on) => void actions.setMask(on)}
+        onUpload={() => st.setUploadOpen(true)}
+        onRefresh={() => void st.refresh()}
+        refreshing={st.refreshing}
+        onPurge={() => st.setMaintenanceOpen(true)}
+        onReindex={() => void actions.reindex()}
+        onExtract={() => void actions.extract()}
+        onAllPictures={() => void actions.openAllPictures()}
+        loadingAllPictures={actions.loadingAllPictures}
       />
-      <AppLink href={schedulerUrl(screenId)} state={{ from: "Room" }} className={FOOT_LINK}>
-        Edit this schedule <ChevronRight className="h-4 w-4" aria-hidden />
-      </AppLink>
-    </Unroll>
+      {st.hasBucket && (
+        <>
+          <BucketUploadDialog open={st.uploadOpen} onOpenChange={st.setUploadOpen} destination={screenId} name={name} />
+          <BucketMaintenanceDialog
+            isOpen={st.maintenanceOpen}
+            onClose={() => st.setMaintenanceOpen(false)}
+            destination={screenId}
+            onActionComplete={() => void st.refresh()}
+          />
+        </>
+      )}
+    </>
   );
 }

@@ -61,7 +61,7 @@ function valueText(v: unknown): string {
   return String(v);
 }
 
-function VariableRow({ v, room, onChange }: { v: RoomVariable; room: string; onChange?: (what: string) => void }) {
+export function VariableRow({ v, room, onChange }: { v: RoomVariable; room: string; onChange?: (what: string) => void }) {
   const text = valueText(v.value);
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<string | null>(null);

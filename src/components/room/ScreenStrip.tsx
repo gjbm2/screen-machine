@@ -6,14 +6,22 @@
 //   14:30", "Live · Gallery"); one action (Go live / Back to art); and More (⋯).
 // Row 2: small labelled controls: Look (while live), the schedule (its state, pause/resume, and its details), the
 //   picture before / after among the favourites, the light mask, Talk (voice to prompt) and Upload.
-// More: choose a scene, refresh, the bucket's maintenance, every screen's picture, and the links (the screen's page,
-//   Room, its schedule, its settings).
+// More: choose a scene, the schedule's events and variables, refresh, the bucket's maintenance, every screen's
+//   picture, and the links (the screen's page, Room, its schedule, its settings).
+// The schedule chip's fold: what the schedule does next, and its events (tap to send one) and variables (view, and
+//   change) (ScreenEventsValues.tsx; owner, 28 Oct: "events & variables exposed ... in both places").
 //
-// The bucket's actions stay BucketGridView's (it passes them in); the live parts come from useScreenLive. Off the LAN,
-// or on a screen that can't go live, the strip shows without them. Components here are module-level (one defined in
-// another's body remounts on every render).
+// variant "controls" (the Room page's screen cards, owner 28 Oct: "the same sort of image control stuff as I can on
+// Generator page"): row 2 only, with a smaller More (events and variables, refresh, every screen's picture,
+// maintenance). The card already has the picture, the status, Go live / Back to art, the look and the links.
+//
+// The actions come in as props: BucketGridView passes its own (it has the bucket read for the grid), the Room cards
+// pass useScreenStripState's; the shared ones are one implementation (useScreenStripState.ts). The live parts come
+// from useScreenLive. Off the LAN, or on a screen that can't go live, the strip shows without them. Talk shows only
+// when the page gives it (the Generator's voice prompt). Components here are module-level (one defined in another's
+// body remounts on every render).
 
-import { useState, type ReactNode, type Ref } from "react";
+import { useRef, useState, type ReactNode, type Ref } from "react";
 import { format, isSameDay, differenceInCalendarDays } from "date-fns";
 import {
   CalendarClock,
@@ -23,6 +31,7 @@ import {
   Copy,
   ExternalLink,
   Images,
+  ListChecks,
   Mic,
   Moon,
   MoreHorizontal,
@@ -58,7 +67,9 @@ import {
   useSchedulerActions,
   type NextAction,
 } from "@/components/image-display/SchedulerPanel";
+import { liveStateOf, useRoomLinkSelect } from "./roomLink";
 import { ArtThumb } from "./ScreenArt";
+import { ScreenEventsValues } from "./ScreenEventsValues";
 import { LiveLookPanel, LiveScenePicker, useScreenLive, type ScreenLive } from "./ScreenLivePanel";
 
 const LOOK_OPEN_KEY = "sm_strip_look_open";
@@ -77,26 +88,31 @@ export interface StripPicture {
 export interface ScreenStripProps {
   screenId: string;
   name: string;
+  /** "full" (the Generator): the whole strip; "controls" (the Room page's cards): row 2 and a smaller More. */
+  variant?: "full" | "controls";
+  /** Its room (rooms.json id), for the room's shared variables; default: the room link's. */
+  room?: string | null;
   /** A destination with no screen (no picture, no screen page). */
   headless?: boolean;
   hasBucket: boolean;
-  /** The published art's thumbnail and when it went up (ISO). */
-  artThumb: string | null;
-  publishedAt: string | null;
+  /** The published art's thumbnail and when it went up (ISO); the full strip only. */
+  artThumb?: string | null;
+  publishedAt?: string | null;
   /** Draws the picture (BucketGridView wraps it as its publish drop target); default: the plain picture. */
   renderPicture?: (pic: StripPicture) => ReactNode;
   /** Put on the head (rows 1-2) while the tab bar is pinned, so it stays in view; the folds scroll under it. */
   stickyClassName?: string;
   scheduler: { isRunning?: boolean; isPaused?: boolean; nextAction?: NextAction | null };
   refreshScheduler: (destination: string) => void;
-  /** Favourites to step through (0: Previous / Next are off). */
-  favourites: number;
+  /** Favourites to step through (0: Previous / Next are off; null: not known, so they stay on). */
+  favourites: number | null;
   stepPicture: (mode: "Previous" | "Next") => void;
   stepping: boolean;
   maskOn: boolean;
   setMask: (on: boolean) => void;
-  talking: boolean;
-  toggleTalk: () => void;
+  /** Talk (voice to the generator's prompt): shown only when given. */
+  talking?: boolean;
+  toggleTalk?: () => void;
   onUpload: () => void;
   onRefresh: () => void;
   refreshing: boolean;
@@ -247,8 +263,9 @@ function PrimaryButton({ live }: { live: ScreenLive }) {
   );
 }
 
-function MoreMenu({ p, live }: { p: ScreenStripProps; live: ScreenLive }) {
-  const canChoose = live.shown && (live.ls === "art" || live.ls === "failed" || live.liveNow);
+/** More: with `live` (the full strip) the scene and the links too; without (the Room cards) the strip's own extras. */
+function MoreMenu({ p, live, onEvents }: { p: ScreenStripProps; live: ScreenLive | null; onEvents: () => void }) {
+  const canChoose = !!live && live.shown && (live.ls === "art" || live.ls === "failed" || live.liveNow);
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
@@ -263,7 +280,7 @@ function MoreMenu({ p, live }: { p: ScreenStripProps; live: ScreenLive }) {
           THEME_CLASS,
           "max-h-[var(--radix-dropdown-menu-content-available-height)] w-64 overflow-y-auto rounded-xl p-1.5",
         )}>
-        {canChoose && (
+        {canChoose && live && (
           <DropdownMenuItem
             className={ITEM}
             disabled={!live.lib || (!live.liveNow && live.pageMissing)}
@@ -273,6 +290,9 @@ function MoreMenu({ p, live }: { p: ScreenStripProps; live: ScreenLive }) {
             {live.liveNow ? "Change scene…" : "Go live with a scene…"}
           </DropdownMenuItem>
         )}
+        <DropdownMenuItem className={ITEM} onSelect={onEvents} data-testid={`strip-events-${p.screenId}`}>
+          <ListChecks className="h-4 w-4" aria-hidden /> Events &amp; variables
+        </DropdownMenuItem>
         <DropdownMenuItem className={ITEM} disabled={p.refreshing} onSelect={p.onRefresh}>
           <RefreshCw className={cn("h-4 w-4", p.refreshing && "animate-spin")} aria-hidden /> Refresh
         </DropdownMenuItem>
@@ -296,27 +316,29 @@ function MoreMenu({ p, live }: { p: ScreenStripProps; live: ScreenLive }) {
             </DropdownMenuItem>
           </>
         )}
-        <DropdownMenuSeparator />
-        {!p.headless && (
+        {live && <DropdownMenuSeparator />}
+        {live && !p.headless && (
           <DropdownMenuItem asChild className={ITEM}>
             <a href={displayUrl(p.screenId)} target="_blank" rel="noreferrer">
               <ExternalLink className="h-4 w-4" aria-hidden /> Open the screen's page
             </a>
           </DropdownMenuItem>
         )}
-        {live.onLan && live.inRoom && (
+        {live?.onLan && live.inRoom && (
           <DropdownMenuItem asChild className={ITEM}>
             <AppLink href={roomPageUrl(p.screenId)} state={{ from: "Generator" }}>
               <SlidersHorizontal className="h-4 w-4" aria-hidden /> Open in Room
             </AppLink>
           </DropdownMenuItem>
         )}
-        <DropdownMenuItem asChild className={ITEM}>
-          <AppLink href={schedulerUrl(p.screenId)} state={{ from: "Generator" }}>
-            <CalendarClock className="h-4 w-4" aria-hidden /> Schedule page
-          </AppLink>
-        </DropdownMenuItem>
-        {live.inRoom && (
+        {live && (
+          <DropdownMenuItem asChild className={ITEM}>
+            <AppLink href={schedulerUrl(p.screenId)} state={{ from: "Generator" }}>
+              <CalendarClock className="h-4 w-4" aria-hidden /> Schedule page
+            </AppLink>
+          </DropdownMenuItem>
+        )}
+        {live?.inRoom && (
           <DropdownMenuItem asChild className={ITEM}>
             <AppLink href={settingsUrl(`screen-${p.screenId}`)} state={{ from: "Generator" }}>
               <Settings className="h-4 w-4" aria-hidden /> Screen settings
@@ -376,6 +398,7 @@ function ScheduleChip({
 
 /** The picture before / after this one among the bucket's favourites. */
 function PictureStepper({ p }: { p: ScreenStripProps }) {
+  // favourites null: not known (the Room cards), so they stay on and the server says when there's nothing to step to
   const off = p.favourites === 0 || p.stepping;
   const why = p.favourites === 0 ? "No favourites to step through" : null;
   const btn =
@@ -400,13 +423,143 @@ function PictureStepper({ p }: { p: ScreenStripProps }) {
 
 const FOLD = "rounded-b-2xl border border-t-0 border-stone-200 bg-card px-3 pb-3 pt-3";
 
+/** Row 2's controls: Look (while live, full strip only), the schedule, Previous / Next, the light mask, Talk, Upload. */
+function StripControls({
+  p,
+  className,
+  look,
+  scheduleOpen,
+  toggleSchedule,
+  actions,
+  maskBlocked,
+  end,
+}: {
+  p: ScreenStripProps;
+  className?: string;
+  look?: ReactNode;
+  scheduleOpen: boolean;
+  toggleSchedule: () => void;
+  actions: ReturnType<typeof useSchedulerActions>;
+  maskBlocked: boolean;
+  /** At the row's end (the Room cards' More). */
+  end?: ReactNode;
+}) {
+  const maskTip = maskBlocked
+    ? "Live runs at full brightness; the light mask is for art"
+    : p.maskOn
+      ? "Light mask on: the screen dims and warms with the room's light. Tap to turn it off"
+      : "Light mask off: tap to dim and warm the screen with the room's light";
+  return (
+    <div className={cn("flex min-w-0 flex-wrap items-center gap-1.5", className)}>
+      {look}
+      <ScheduleChip p={p} open={scheduleOpen} onToggle={toggleSchedule} actions={actions} />
+      {p.hasBucket && !p.headless && <PictureStepper p={p} />}
+      <Tip tip={maskTip} disabled={maskBlocked}>
+        <button
+          type="button"
+          aria-pressed={p.maskOn && !maskBlocked}
+          disabled={maskBlocked}
+          onClick={() => p.setMask(!p.maskOn)}
+          data-testid={`strip-mask-${p.screenId}`}
+          className={cn(CHIP, p.maskOn && !maskBlocked && CHIP_ON)}
+        >
+          <Moon className="h-4 w-4" aria-hidden /> Light mask
+        </button>
+      </Tip>
+      {p.toggleTalk && (
+        <Tip tip={p.talking ? "Stop recording" : "Talk: say what to make, by voice"}>
+          <button
+            type="button"
+            aria-pressed={!!p.talking}
+            onClick={p.toggleTalk}
+            className={cn(CHIP, p.talking && "border-red-600 bg-red-600 text-white hover:bg-red-700")}
+          >
+            <Mic className={cn("h-4 w-4", p.talking && "motion-safe:animate-pulse")} aria-hidden />
+            {p.talking ? "Stop talking" : "Talk"}
+          </button>
+        </Tip>
+      )}
+      {p.hasBucket && (
+        <button type="button" onClick={p.onUpload} className={CHIP} title="Upload pictures to this screen's bucket">
+          <Upload className="h-4 w-4" aria-hidden /> Upload
+        </button>
+      )}
+      {end}
+    </div>
+  );
+}
+
+/** The schedule chip's fold: what it does next, then its events and variables. */
+function ScheduleFold({ p, actions }: { p: ScreenStripProps; actions: ReturnType<typeof useSchedulerActions> }) {
+  return (
+    <>
+      <SchedulerDetails
+        destination={p.screenId}
+        isRunning={p.scheduler.isRunning}
+        isPaused={p.scheduler.isPaused}
+        nextAction={p.scheduler.nextAction}
+        actions={actions}
+      />
+      <div className="mt-3 border-t border-stone-200 pt-3">
+        <ScreenEventsValues screenId={p.screenId} room={p.room} />
+      </div>
+    </>
+  );
+}
+
+/** The schedule fold's open state; "Events & variables" (More) opens it and brings it into view. */
+function useScheduleFold() {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  const showEvents = () => {
+    setOpen(true);
+    // after the menu closes and the fold renders
+    setTimeout(() => {
+      const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+      ref.current?.scrollIntoView({ block: "nearest", behavior: reduce ? "auto" : "smooth" });
+    }, 80);
+  };
+  return { open, toggle: () => setOpen((o) => !o), showEvents, ref };
+}
+
 // ── The strip ─────────────────────────────────────────────────────────────────
 
 export function ScreenStrip(p: ScreenStripProps) {
+  return p.variant === "controls" ? <ControlsStrip p={p} /> : <FullStrip p={p} />;
+}
+
+/** The Room cards' strip: row 2 with a smaller More, and the schedule's fold under it (no frame: the card is one). */
+function ControlsStrip({ p }: { p: ScreenStripProps }) {
+  const actions = useSchedulerActions(p.screenId, p.refreshScheduler);
+  const fold = useScheduleFold();
+  // Live runs at full brightness: the light mask is for art.
+  const maskBlocked = useRoomLinkSelect((s) => liveStateOf(s.status?.screens?.[p.screenId]) === "live");
+  return (
+    <div className={THEME_CLASS} data-testid={`screen-strip-${p.screenId}`}>
+      <RoomThemeStyle />
+      <StripControls
+        p={p}
+        scheduleOpen={fold.open}
+        toggleSchedule={fold.toggle}
+        actions={actions}
+        maskBlocked={maskBlocked}
+        end={<MoreMenu p={p} live={null} onEvents={fold.showEvents} />}
+      />
+      {fold.open && (
+        <div ref={fold.ref} className="mt-3 scroll-mt-3 border-t border-stone-200/80 pt-3">
+          <ScheduleFold p={p} actions={actions} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FullStrip({ p }: { p: ScreenStripProps }) {
   const { screenId, name, headless = false } = p;
   const live = useScreenLive(screenId);
   const actions = useSchedulerActions(screenId, p.refreshScheduler);
-  const [scheduleOpen, setScheduleOpen] = useState(false);
+  const fold = useScheduleFold();
+  const scheduleOpen = fold.open;
   const [lookWanted, setLookWanted] = useState(() => storageGet(LOOK_OPEN_KEY) === "1");
   const lookOpen = live.shown && live.liveNow && lookWanted;
   const toggleLook = () =>
@@ -415,10 +568,10 @@ export function ScreenStrip(p: ScreenStripProps) {
       return !o;
     });
 
-  const status = statusOf(live, sinceWords(p.publishedAt));
+  const status = statusOf(live, sinceWords(p.publishedAt ?? null));
   const liveShown = live.shown && live.liveNow;
   const pic: StripPicture = {
-    src: liveShown ? live.nowInfo?.thumb ?? null : p.artThumb,
+    src: liveShown ? live.nowInfo?.thumb ?? null : p.artThumb ?? null,
     live: liveShown,
     problem: live.shown && live.ls === "failed",
     busy: live.shown && (live.ls === "entering" || live.ls === "leaving"),
@@ -427,11 +580,6 @@ export function ScreenStrip(p: ScreenStripProps) {
   };
   const folded = scheduleOpen || lookOpen;
   const maskBlocked = live.shown && live.liveNow;
-  const maskTip = maskBlocked
-    ? "Live runs at full brightness; the light mask is for art"
-    : p.maskOn
-      ? "Light mask on: the screen dims and warms with the room's light. Tap to turn it off"
-      : "Light mask off: tap to dim and warm the screen with the room's light";
 
   return (
     // contain:inline-size: the home page sits in a Radix ScrollArea (display:table), which otherwise grows to the
@@ -480,69 +628,41 @@ export function ScreenStrip(p: ScreenStripProps) {
               </p>
               <div className="flex items-center gap-2">
                 {live.shown && <PrimaryButton live={live} />}
-                <MoreMenu p={p} live={live} />
+                <MoreMenu p={p} live={live} onEvents={fold.showEvents} />
               </div>
             </div>
 
-            <div className={cn("flex min-w-0 flex-wrap items-center gap-1.5", !headless && "col-span-2 sm:col-span-1 sm:col-start-2")}>
-              {liveShown && (
-                <button
-                  type="button"
-                  onClick={toggleLook}
-                  aria-expanded={lookOpen}
-                  title={lookOpen ? "Hide the live look" : "The live look: scene, Auto, energy, colours, effects"}
-                  data-testid={`strip-look-${screenId}`}
-                  className={cn(CHIP, lookOpen && "bg-stone-100")}
-                >
-                  <SlidersHorizontal className="h-4 w-4" aria-hidden /> Look
-                  <ChevronDown aria-hidden className={cn("h-3.5 w-3.5 text-stone-500 transition-transform motion-reduce:transition-none", lookOpen && "rotate-180")} />
-                </button>
-              )}
-              <ScheduleChip p={p} open={scheduleOpen} onToggle={() => setScheduleOpen((o) => !o)} actions={actions} />
-              {p.hasBucket && !headless && <PictureStepper p={p} />}
-              <Tip tip={maskTip} disabled={maskBlocked}>
-                <button
-                  type="button"
-                  aria-pressed={p.maskOn && !maskBlocked}
-                  disabled={maskBlocked}
-                  onClick={() => p.setMask(!p.maskOn)}
-                  data-testid={`strip-mask-${screenId}`}
-                  className={cn(CHIP, p.maskOn && !maskBlocked && CHIP_ON)}
-                >
-                  <Moon className="h-4 w-4" aria-hidden /> Light mask
-                </button>
-              </Tip>
-              <Tip tip={p.talking ? "Stop recording" : "Talk: say what to make, by voice"}>
-                <button
-                  type="button"
-                  aria-pressed={p.talking}
-                  onClick={p.toggleTalk}
-                  className={cn(CHIP, p.talking && "border-red-600 bg-red-600 text-white hover:bg-red-700")}
-                >
-                  <Mic className={cn("h-4 w-4", p.talking && "motion-safe:animate-pulse")} aria-hidden />
-                  {p.talking ? "Stop talking" : "Talk"}
-                </button>
-              </Tip>
-              {p.hasBucket && (
-                <button type="button" onClick={p.onUpload} className={CHIP} title="Upload pictures to this screen's bucket">
-                  <Upload className="h-4 w-4" aria-hidden /> Upload
-                </button>
-              )}
-            </div>
+            <StripControls
+              p={p}
+              className={cn(!headless && "col-span-2 sm:col-span-1 sm:col-start-2")}
+              scheduleOpen={scheduleOpen}
+              toggleSchedule={fold.toggle}
+              actions={actions}
+              maskBlocked={maskBlocked}
+              look={
+                liveShown && (
+                  <button
+                    type="button"
+                    onClick={toggleLook}
+                    aria-expanded={lookOpen}
+                    title={lookOpen ? "Hide the live look" : "The live look: scene, Auto, energy, colours, effects"}
+                    data-testid={`strip-look-${screenId}`}
+                    className={cn(CHIP, lookOpen && "bg-stone-100")}
+                  >
+                    <SlidersHorizontal className="h-4 w-4" aria-hidden /> Look
+                    <ChevronDown aria-hidden className={cn("h-3.5 w-3.5 text-stone-500 transition-transform motion-reduce:transition-none", lookOpen && "rotate-180")} />
+                  </button>
+                )
+              }
+            />
           </div>
           {live.shown && live.error && <p className="mt-2 text-[14px] text-rose-700">{live.error}</p>}
         </section>
       </div>
 
       {scheduleOpen && (
-        <div className={cn(FOLD, lookOpen && "rounded-b-none")}>
-          <SchedulerDetails
-            destination={screenId}
-            isRunning={p.scheduler.isRunning}
-            isPaused={p.scheduler.isPaused}
-            nextAction={p.scheduler.nextAction}
-            actions={actions}
-          />
+        <div ref={fold.ref} className={cn(FOLD, "scroll-mt-28", lookOpen && "rounded-b-none")}>
+          <ScheduleFold p={p} actions={actions} />
         </div>
       )}
       {lookOpen && (
