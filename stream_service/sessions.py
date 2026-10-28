@@ -71,7 +71,7 @@ from .sound import new_sound
 from .modulation import Modulation, SessionRuntime, speed_for, split_bindings
 from .music_feed import MusicFeed, beat_at, clock_signals, blend as feed_blend, music_signals
 from .upnext import EFFECTS_AHEAD, KINDS as UPNEXT_KINDS, SCENES_AHEAD, UpNext, why_words
-from .music_direction import BANDS, ROOM_STALE_S, MusicDirection, effective_direction, music_fields, pick_key
+from .music_direction import BANDS, ROOM_STALE_S, MusicDirection, art_wish, effective_direction, music_fields, pick_key
 from .piano import PIANO_LEVELS, PianoSignals, envelopes as piano_envelopes
 from .plugins import Registry
 from .plugins.base import ParamError
@@ -1759,7 +1759,10 @@ class Session(EngineListener):
         md = {"genres": {w: round(p, 2) for w, p in gs.items() if isinstance(p, (int, float))},
               "genre": eff.get("genre"), "moods": list(eff.get("moods") or ()),
               "music_moods": list(eff.get("music_moods") or ()),
-              **{k: eff.get(k) for k in ("valence", "organic", "density", "energy")}}
+              **{k: eff.get(k) for k in ("valence", "organic", "density", "energy")},
+              "track": getattr(self.mgr, "track_n", 0)}
+        if isinstance(eff.get("art"), dict):    # the art director's wish (absent: as before); the gallery's pictures
+            md["art"] = eff["art"]              # and its set held per song (track: owner, 28 Oct)
         self.runtime.extra = {**self.music.signals(now), "music_w": mw, **pn, **self._ens_tick(now), "music_dir": md}
         if ld is not None:          # the room's leader directs this screen: its music, picks and effects
             self.upnext.clear()     # the leader's plan is the room's
@@ -2630,6 +2633,8 @@ class SessionManager:
         self.room_direction: Optional[dict] = None       # show_service's last room.direction (on_room_message)
         self.music_feed = MusicFeed(getattr(presets, "music_response", None))   # show_service's music.* (+ config)
         self.room_events_ring: collections.deque = collections.deque(maxlen=8)   # (wall s, kind, detail)
+        self.track_n = 0                                 # +1 per new song (room.event track_change): the gallery's
+        self._track_last: Any = None                     # picture set holds until the song changes (music_dir.track)
         self.room_why: Optional[tuple[dict, float]] = None    # show_service's room.why (data, arrival)
         self.room_leaders: dict[str, str] = {}           # room -> its leader's session id (kept while it is live)
         self.workers: Any = None                         # workers.WorkerPool (make_app); None: every screen in-process
@@ -2869,6 +2874,9 @@ class SessionManager:
             return
         data = msg["data"]
         d, dropped = lenient_direction(data, self.presets.vocab.words)
+        art = art_wish(data.get("art"))
+        if art is not None:
+            d["art"] = art                           # the art director's wish: plain data on to the gallery
         warned = self.__dict__.setdefault("_room_dir_warned", set())
         if set(dropped) - warned:
             log.warning("room.direction: bad field(s) %s took their defaults", sorted(set(dropped) - warned))
@@ -2904,6 +2912,11 @@ class SessionManager:
         if key in seen:
             return
         seen.append(key)
+        if kind == "track_change":                   # a new song (an update of one shares its track_id)
+            tid = data.get("track_id")
+            if tid is None or tid != getattr(self, "_track_last", None):
+                self.track_n = getattr(self, "track_n", 0) + 1
+            self._track_last = tid
         detail = str(data.get("detail") or "")[:80]
         self.room_events_ring.append((time.time(), kind, detail))
         for s in list(self.sessions.values()):

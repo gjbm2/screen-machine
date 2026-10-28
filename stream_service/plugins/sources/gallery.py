@@ -25,7 +25,11 @@ mp4s.  The prompt text is never read into this process, shown or logged
   the room's music (``runtime.extra["music_dir"]``, the session's effective direction): genre fit (the image's 10
   music groups spread to the 31 genre words as tagpass does, scored like tags.py's scene scorer), moods, valence /
   organic, energy, quality and favourite; then by continuity with the picture before it (a shared subject or mood),
-  so runs read as a curated set that moves on when the music does.  Untagged pictures stay in at a neutral weight;
+  so runs read as a curated set that moves on when the music does.  The art director's wish (music_dir ``art``:
+  subjects, moods, media, avoid; owner, 28 Oct) is the primary semantic steer when it comes: genre fit and the band's
+  moods then count more gently.  The music a deck is weighted for is held per screen until a new song (music_dir
+  ``track``) or until it has really moved and a minute has passed, so the set doesn't drift as the listener
+  re-reads.  Untagged pictures stay in at a neutral weight;
   if nothing scores, the plain pool.  Config/art_tags.yaml (mtime cached) says which hand-added words are subjects
   or moods.
 * Decoder (module level, one per screen; its worker stops after IDLE_KILL_S with no gallery on that screen): a worker SUBPROCESS (``python -I -c <inline source>``, nice 19 inside,
@@ -89,7 +93,7 @@ from stream_service.tags import GENRE_FLOOR, GENRE_GAMMA, genre_fit
 log = logging.getLogger("stream_service.plugins.gallery")
 
 IDLE_KILL_S = 60.0              # a screen's decode worker stops after this long with no gallery using it
-DATE_HEX = r"^\d{8}-\d{6}-[0-9a-f]{8}\.(jpg|png)$"
+DATE_HEX = r"^\d{8}-\d{6}-[0-9a-f]{8}\.(jpg|png)(_batch-[^/]+\.(jpg|png))?$"  # a batch save appends _batch-<id>.<ext>
 BLOCK_W, BLOCK_H = 3840, 2160
 BLOCK_BYTES = BLOCK_W * BLOCK_H * 3
 DRAFT_W, DRAFT_H = 1920, 1080
@@ -135,6 +139,25 @@ FAV_BOOST = 1.4
 SAME_SUBJECT = 1.6              # continuity with the picture before: a shared subject ...
 SAME_MOOD = 1.2                 # ... and a shared mood
 SHARPEN = 2.0                   # weights are raised to this before the draw: good fits lead, the rest still appear
+# The art wish (room.direction ``art`` via music_dir; config/art_tags.yaml music_art or the AI listener's own): the
+# primary semantic steer when present (owner, 28 Oct: jazz -> abstract / smoky / night / painterly, lyrical classical
+# -> landscapes / still life, pop -> urban / fun / peopled).  Absent = the factors above alone, as before.
+ART_SUBJECT_MISS = 0.35         # no subject in the wish's
+ART_MOOD_MISS = 0.7             # no mood in the wish's
+ART_MEDIUM_MISS = 0.8           # a medium outside the wish's (only when it names some)
+ART_STEP = 0.15                 # a hit on a later (less wished) word: 1 - step x its place, at least ART_LOW (the
+ART_LOW = 0.7                   # wish lists its words best first: jazz's abstract before its people)
+ART_AVOID = 0.1                 # a subject the wish keeps off the wall
+ART_GENRE_GAMMA = 2.0           # with a wish the genre fit still counts, more gently (the wish leads) ...
+ART_GENRE_FLOOR = 0.1
+ART_BAND_MOOD_MISS = 0.85       # ... and the energy band's scene moods only shade it
+# Cluster hold (sequencing, owner 28 Oct): the music a deck is weighted for holds per screen until a new song, or
+# until it has really moved (a new word, or a number by HOLD_MOVE) and HOLD_S has passed: the AI listener re-reads
+# every few seconds, and a deck re-weighted on each re-read drifts instead of reading as a set.  For TRACK_OPEN_S after
+# a new song a new reading is taken at once (the listener's take on the new song lands a few seconds after it starts).
+HOLD_S = 60.0
+HOLD_MOVE = 0.2
+TRACK_OPEN_S = 30.0
 
 # ----------------------------------------------------------------------------- the decode worker (own process)
 _WORKER = r'''
@@ -376,24 +399,25 @@ def _block(cp, screen: str) -> "_Block":
         return b
 
 
-_LEX: dict = {"mtime": None, "subject": frozenset(), "moods": frozenset()}
+_LEX: dict = {"mtime": None, "subject": frozenset(), "moods": frozenset(), "medium": frozenset()}
 
 
-def _lexicon() -> tuple[frozenset, frozenset]:
-    """config/art_tags.yaml's subject and mood words (mtime cached; the last good kept): which hand-added tags count
-    as a subject or a mood."""
+def _lexicon() -> tuple[frozenset, frozenset, frozenset]:
+    """config/art_tags.yaml's subject, mood and medium words (mtime cached; the last good kept): which hand-added
+    tags count as a subject, a mood or a medium."""
     path = Path(os.environ.get("SM_ART_TAGS") or _repo() / "config" / "art_tags.yaml")
     try:
         m = path.stat().st_mtime_ns
         if m != _LEX["mtime"]:
             import yaml
             f = (yaml.safe_load(path.read_text()) or {}).get("facets") or {}
-            _LEX.update(mtime=m, subject=frozenset(f.get("subject") or ()), moods=frozenset(f.get("moods") or ()))
+            _LEX.update(mtime=m, subject=frozenset(f.get("subject") or ()), moods=frozenset(f.get("moods") or ()),
+                        medium=frozenset(f.get("medium") or ()))
     except Exception as e:
         if _LEX["mtime"] != "failed":
             log.info("gallery: art tag lexicon %s unavailable (%s)", path.name, type(e).__name__)
             _LEX["mtime"] = "failed"
-    return _LEX["subject"], _LEX["moods"]
+    return _LEX["subject"], _LEX["moods"], _LEX["medium"]
 
 
 def _num01(v) -> float | None:
@@ -409,10 +433,13 @@ def _words(xs) -> list[str]:
 def facets(raw, lex: tuple | None = None) -> dict | None:
     """A picture's art tags (the worker's sidecar extract) as the matching reads them (docs: the art tags contract
     §3): subject / moods = the AI's minus what a person removed, plus added words the lexicon calls a subject /
-    mood; the 10 music groups spread to genre words; the numbers as given; auto_ok.  None = untagged."""
+    mood (the medium likewise); the 10 music groups spread to genre words; the numbers as given; auto_ok.  None =
+    untagged."""
     if not isinstance(raw, dict):
         return None
-    subj_w, mood_w = lex if lex is not None else _lexicon()
+    lex = lex if lex is not None else _lexicon()
+    subj_w, mood_w = lex[0], lex[1]
+    med_w = lex[2] if len(lex) > 2 else _LEX["medium"]
     ai = raw.get("ai") if isinstance(raw.get("ai"), dict) else {}
     removed = set(_words(raw.get("removed")))
     added = [w for w in _words(raw.get("added")) if w not in removed]
@@ -428,8 +455,8 @@ def facets(raw, lex: tuple | None = None) -> dict | None:
             for w in ws:
                 fit[w] = max(fit.get(w, 0.0), a)
     return {"subject": eff(ai.get("subject"), subj_w), "moods": eff(ai.get("moods"), mood_w),
-            "genre_fit": fit or None, "energy": _num01(ai.get("energy")), "valence": _num01(ai.get("valence")),
-            "organic": _num01(ai.get("organic")), "quality": _num01(ai.get("quality")),
+            "medium": eff([ai.get("medium")], med_w), "genre_fit": fit or None, "energy": _num01(ai.get("energy")),
+            "valence": _num01(ai.get("valence")), "organic": _num01(ai.get("organic")), "quality": _num01(ai.get("quality")),
             "auto_ok": ai.get("auto_ok") is not False, "ai": bool(ai)}
 
 
@@ -437,14 +464,48 @@ def _music_moods(md: dict) -> set:
     return set(_words(md.get("moods"))) | set(_words(md.get("music_moods")))
 
 
+def art_wish(md: dict | None) -> dict | None:
+    """music_dir's ``art`` (the art director's wish) as the matching reads it: subjects, moods, media best first;
+    None = no wish (absent, or no words: the weights as before)."""
+    a = md.get("art") if isinstance(md, dict) else None
+    if not isinstance(a, dict):
+        return None
+    w = {k: list(dict.fromkeys(_words(a.get(k)))) for k in ("subjects", "moods", "media")}
+    w["avoid"] = frozenset(_words(a.get("avoid")))
+    return w if any(w.values()) else None
+
+
+def _art_key(md: dict | None) -> tuple:
+    w = art_wish(md)
+    return () if w is None else (*(tuple(w[k]) for k in ("subjects", "moods", "media")), tuple(sorted(w["avoid"])))
+
+
 def music_key(md: dict | None):
-    """What the matching weights depend on, rounded: they are recomputed only when this changes."""
+    """What the matching weights depend on, rounded: they are recomputed only when this changes.  (words, numbers):
+    the cluster hold compares the two parts apart."""
     if not md:
         return None
     g = md.get("genres") if isinstance(md.get("genres"), dict) else {}
     r1 = lambda v: None if _num01(v) is None else round(_num01(v), 1)        # noqa: E731
-    return (tuple(sorted((str(w), r1(p)) for w, p in g.items() if r1(p))), None if g else md.get("genre"),
-            tuple(sorted(_music_moods(md))), r1(md.get("valence")), r1(md.get("organic")), r1(md.get("energy_slow")))
+    return ((tuple(sorted((str(w), r1(p)) for w, p in g.items() if r1(p))), None if g else md.get("genre"),
+             tuple(sorted(_music_moods(md))), _art_key(md)),
+            (r1(md.get("valence")), r1(md.get("organic")), r1(md.get("energy_slow"))))
+
+
+def _moved(a, b) -> bool:
+    """Has the music really moved between two music_keys: a new word (genre, mood, art wish), a genre share or a
+    number by HOLD_MOVE, or music arriving or going?"""
+    if a is None or b is None:
+        return a != b
+    (ga, ja, ma, aa), na = a
+    (gb, jb, mb, ab), nb = b
+    if (ja, ma, aa) != (jb, mb, ab) or {w for w, _ in ga} != {w for w, _ in gb}:
+        return True
+    sb = dict(gb)
+    if any(abs(p - sb[w]) >= HOLD_MOVE - 1e-9 for w, p in ga):
+        return True
+    return any((x is None) != (y is None) or (x is not None and abs(x - y) >= HOLD_MOVE - 1e-9)
+               for x, y in zip(na, nb))
 
 
 def music_weight(f: dict | None, md: dict | None, fav: bool) -> float:
@@ -458,13 +519,15 @@ def music_weight(f: dict | None, md: dict | None, fav: bool) -> float:
         q = f["quality"]
         w = 0.15 + 0.85 * (0.5 if q is None else q)
         if md:
+            wished = art_wish(md) is not None
             if want and f["genre_fit"]:
                 fit = genre_fit(want, {"genre_fit": f["genre_fit"]})
                 if fit is not None:
-                    w *= GENRE_FLOOR + (1.0 - GENRE_FLOOR) * fit ** GENRE_GAMMA
+                    fl, gm = (ART_GENRE_FLOOR, ART_GENRE_GAMMA) if wished else (GENRE_FLOOR, GENRE_GAMMA)
+                    w *= fl + (1.0 - fl) * fit ** gm
             mm = _music_moods(md)
             if mm and f["moods"]:
-                w *= 1.0 if mm & f["moods"] else MOOD_MISS
+                w *= 1.0 if mm & f["moods"] else ART_BAND_MOOD_MISS if wished else MOOD_MISS
             for k in ("valence", "organic"):
                 a, b = _num01(md.get(k)), f[k]
                 if a is not None and b is not None:
@@ -472,7 +535,31 @@ def music_weight(f: dict | None, md: dict | None, fav: bool) -> float:
             e = _num01(md.get("energy_slow"))
             if e is not None and f["energy"] is not None:
                 w *= 1.0 - ENERGY_SLOPE * abs(e - f["energy"])
+    if f is not None:
+        w *= art_factor(f, art_wish(md))
     return w * (FAV_BOOST if fav else 1.0)
+
+
+def art_factor(f: dict, wish: dict | None) -> float:
+    """A tagged picture against the art wish: subject (best first), mood, medium and avoid; a facet the picture
+    lacks (untagged, or a person's tags only) is neutral; no wish = 1."""
+    if wish is None:
+        return 1.0
+
+    def hit(words: list, have, miss: float) -> float:
+        i = next((i for i, w in enumerate(words) if w in have), None)
+        return miss if i is None else max(ART_LOW, 1.0 - ART_STEP * i)
+
+    x = 1.0
+    if wish["subjects"] and f["subject"]:
+        x *= hit(wish["subjects"], f["subject"], ART_SUBJECT_MISS)
+    if wish["moods"] and f["moods"]:
+        x *= hit(wish["moods"], f["moods"], ART_MOOD_MISS)
+    if wish["media"] and f.get("medium"):
+        x *= hit(wish["media"], f["medium"], ART_MEDIUM_MISS)
+    if wish["avoid"] & f["subject"]:
+        x *= ART_AVOID
+    return x
 
 
 def continuity(prev: dict | None, f: dict | None) -> float:
@@ -503,7 +590,7 @@ class _Deck:
     def upgrade(self) -> None:
         """Fields a deck made by an older copy of this module lacks (decks survive the 20 s rescan's re-import)."""
         for k, v in (("raw", {}), ("facets", {}), ("tsig", None), ("lex_m", None), ("gen", 0), ("wkey", None),
-                     ("wbase", {}), ("wfit", []), ("t_drawn", -1e9)):
+                     ("wbase", {}), ("wfit", []), ("t_drawn", -1e9), ("hold", None)):
             if not hasattr(self, k):
                 setattr(self, k, v)
         if self.shown.maxlen != SHOWN_MAX:
@@ -563,8 +650,33 @@ class _Deck:
         """How many recent picks a draw avoids: up to SHOWN_MAX for the library, SHOWN_POOL otherwise, at most half."""
         return min(SHOWN_MAX if pool == "library" else SHOWN_POOL, n // 2)
 
+    def _held(self, music: dict | None, now: float | None = None) -> dict | None:
+        """The music this screen's deck is weighted for (lock held): the cluster hold (HOLD_S, TRACK_OPEN_S above).
+        A new song is music_dir ``track`` (sessions.py: +1 per room.event track_change); without it, time alone."""
+        now = time.monotonic() if now is None else now
+        key = music_key(music)
+        track = music.get("track") if isinstance(music, dict) else None
+        h = self.hold
+        if h is None:
+            self.hold = {"music": music, "key": key, "t": now, "track": track, "t_track": -1e9}
+            return music
+        if track is not None and track != h["track"]:
+            h["track"], h["t_track"] = track, now           # a new song: its music is taken at once
+            take = key != h["key"]
+        elif key == h["key"]:
+            return h["music"]
+        elif h["key"] is None:
+            take = True                                     # music arrived
+        else:
+            moved = _moved(key, h["key"])
+            take = moved and (now - h["t_track"] < TRACK_OPEN_S or now - h["t"] >= HOLD_S)
+        if take:
+            h.update(music=music, key=key, t=now)
+        return h["music"]
+
     def _draw_matched(self, cats: dict, pool: str, music: dict | None):
         """A weighted pick for the music (lock held), or None when nothing scores (then the plain pool)."""
+        music = self._held(music)
         if pool == "library":
             names = cats["lib"]
         elif pool == "favourites":
