@@ -15,7 +15,7 @@ from routes.jobs.store import JobStore
 
 ACTIVE = ("preparing", "queued", "running", "publishing")
 TERMINAL = ("completed", "failed", "cancelled")
-SOURCES = ("generator", "scheduler", "alexa", "api")
+SOURCES = ("generator", "scheduler", "alexa", "art-director", "api")
 RESTART_ERROR = "Server restarted while this job was running"
 
 FIELDS = {
