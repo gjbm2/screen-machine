@@ -32,6 +32,11 @@ let inflight: Promise<void> | null = null;
 let timer: ReturnType<typeof setInterval> | null = null;
 const listeners = new Set<() => void>();
 
+/** Re-read every screen's schedule state now (after a start, pause or resume); every user of it updates. */
+export function refreshScreenSchedules(): Promise<void> {
+  return refresh();
+}
+
 function refresh(): Promise<void> {
   if (inflight) return inflight;
   inflight = Promise.resolve(getAllSchedulerStatuses())
