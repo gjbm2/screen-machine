@@ -28,7 +28,7 @@ __device__ __forceinline__ unsigned char u8(float v) {
 
 extern "C" __global__
 void rgba_to_nv12(const uchar4* __restrict__ rgba, unsigned char* __restrict__ Y,
-                  unsigned char* __restrict__ UV, const int W, const int H)
+                  unsigned char* __restrict__ UV, const int W, const int H, const float gain)
 {
     const int bx = blockIdx.x * blockDim.x + threadIdx.x;   // 2x2 block coordinates
     const int by = blockIdx.y * blockDim.y + threadIdx.y;
@@ -36,7 +36,7 @@ void rgba_to_nv12(const uchar4* __restrict__ rgba, unsigned char* __restrict__ Y
     const int x = bx << 1, y = by << 1;
     const uchar4 p00 = rgba[y * W + x],       p01 = rgba[y * W + x + 1];
     const uchar4 p10 = rgba[(y + 1) * W + x], p11 = rgba[(y + 1) * W + x + 1];
-    const float k = 219.f / 255.f;
+    const float k = gain * 219.f / 255.f;   // gain: the session's brightness (1 = as rendered), on the code values
     *reinterpret_cast<uchar2*>(Y + y * W + x) =
         make_uchar2(u8(16.f + k * luma709(p00.x, p00.y, p00.z)), u8(16.f + k * luma709(p01.x, p01.y, p01.z)));
     *reinterpret_cast<uchar2*>(Y + (y + 1) * W + x) =
@@ -44,7 +44,7 @@ void rgba_to_nv12(const uchar4* __restrict__ rgba, unsigned char* __restrict__ Y
     const float r = 0.25f * ((float)p00.x + p01.x + p10.x + p11.x);
     const float g = 0.25f * ((float)p00.y + p01.y + p10.y + p11.y);
     const float b = 0.25f * ((float)p00.z + p01.z + p10.z + p11.z);
-    const float c = 224.f / 255.f;
+    const float c = gain * 224.f / 255.f;
     const float cb = 128.f + c * (-0.114572f * r - 0.385428f * g + 0.5f * b);
     const float cr = 128.f + c * (0.5f * r - 0.454153f * g - 0.045847f * b);
     *reinterpret_cast<uchar2*>(UV + by * W + x) = make_uchar2(u8(cb), u8(cr));
@@ -168,12 +168,12 @@ class CoreKernels:
         self.k_rgb_to_rgba = mod.get_function("rgb_to_rgba")
         self.k_hud = mod.get_function("hud_nv12")
 
-    def rgba_to_nv12(self, rgba, nv12, w: int, h: int) -> None:
+    def rgba_to_nv12(self, rgba, nv12, w: int, h: int, gain: float = 1.0) -> None:
         y = nv12[: w * h]
         uv = nv12[w * h:]
         block = (32, 8, 1)
         grid = ((w // 2 + 31) // 32, (h // 2 + 7) // 8, 1)
-        self.k_nv12(grid, block, (rgba, y, uv, np.int32(w), np.int32(h)))
+        self.k_nv12(grid, block, (rgba, y, uv, np.int32(w), np.int32(h), np.float32(gain)))
 
     def crossfade(self, a, b, out, p: float) -> None:
         n2 = a.size // 8  # two RGBA pixels (8 bytes) per thread

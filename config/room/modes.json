@@ -396,7 +396,7 @@
       "label": "Disco",
       "icon": "disco",
       "voice": "disco",
-      "_note": "No scene named: the director steers by direction (energy 0.9, euphoric/geometric, lively transitions) over its whole pool. The glitterball spins fast. Sonos is left alone (owner, 16 Oct: no invented values; pick a favourite in the editor if Disco should start music).",
+      "_note": "No scene named: the director steers by direction (energy 0.9, euphoric/geometric, lively transitions) over its whole pool. The glitterball spins fast. Sonos is left alone (owner, 16 Oct: no invented values; pick a favourite in the editor if Disco should start music). The glitterball is the star (owner, 28 Oct): the pinspots light it, and the screens and lamps are dimmed (Brightness) so they don't compete.",
       "state": {
         "show.mic": {
           "set": true,
@@ -444,6 +444,30 @@
         },
         "show.ai": {
           "set": true,
+          "restore": true
+        },
+        "brightness.screens": {
+          "set": 55,
+          "restore": true
+        },
+        "brightness.lamps": {
+          "set": 35,
+          "restore": true
+        },
+        "pinspots.main": {
+          "set": "on",
+          "restore": true
+        },
+        "pinspots.colour": {
+          "set": "white",
+          "restore": true
+        },
+        "pinspots.level": {
+          "set": 8,
+          "restore": true
+        },
+        "pinspots.flash": {
+          "set": "off",
           "restore": true
         }
       },

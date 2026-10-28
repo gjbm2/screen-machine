@@ -270,6 +270,9 @@ class Pivots:
             self.off = {**self.off, **{k: [self.src[k], 0.0] for k in tgt if k not in self.off}}
 
 
+LEVEL_EASE_S = 2.0      # a brightness change (a mode's Brightness row) eases over this (~98 %)
+
+
 class SessionRuntime:
     """Per-session modulation state shared by the session's scene sources."""
 
@@ -282,9 +285,11 @@ class SessionRuntime:
         self.depth_target = depth
         self.palette: Optional[str] = None
         self.palette_s = 4.0
+        self.level_target = 1.0                   # the picture's brightness, 0-1 (the room's Brightness row)
         # render thread state
         self.speed = speed
         self.depth = depth
+        self.level = 1.0                          # eased to level_target over LEVEL_EASE_S
         self.signals: dict = {}
         self.palette_rows: Optional[np.ndarray] = None    # the eased session palette (4 x 3), or None
         self._pal_from: Optional[np.ndarray] = None
@@ -322,6 +327,8 @@ class SessionRuntime:
         a = 1.0 - math.exp(-dt / max(0.05, self.ease_s / 4.0)) if dt > 0 else 0.0   # ~98 % in ease_s
         self.speed += (self.speed_target - self.speed) * a
         self.depth += (self.depth_target - self.depth) * a
+        al = 1.0 - math.exp(-dt / (LEVEL_EASE_S / 4.0)) if dt > 0 else 0.0
+        self.level += (self.level_target - self.level) * al
         name = self.palette
         if name != self._pal_name:              # a new session palette: crossfade from what is showing
             self._pal_name = name

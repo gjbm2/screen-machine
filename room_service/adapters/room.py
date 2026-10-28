@@ -1,5 +1,5 @@
 """Adapters for state that lives in room_service itself: sensor_mask.main, page.<screen>.timed_reload,
-diag.<screen> (the live-details panel), and log signals.
+diag.<screen> (the live-details panel), brightness.screens / brightness.lamps, and log signals.
 
 Both level adapters persist what they applied in their own file under the state directory and restore it at start
 (ROOM_STATE_MODEL §5.2 rule 10), so read() stays truthful after a restart: without that, a restart mid-show would let
@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any, Callable
 
 from ..mask import parse_mask
 from ..roomstate.contract import Adapter, Outcome, Reading
-from ..roomstate.schema import enum_schema
+from ..roomstate.schema import enum_schema, range_schema
 from ..util import wait_until
 
 if TYPE_CHECKING:
@@ -233,6 +233,77 @@ class DiagAdapter(Adapter):
         _save(self.path, saved)
         worst = max((o.status for o in members.values()), key=["ok", "unconfirmed", "failed"].index, default="ok")
         return Outcome(worst, "", members)
+
+
+class BrightnessAdapter(Adapter):
+    """brightness.screens and brightness.lamps, 0-100 %: how bright the live screens and the lamps that follow the
+    music are, for a mode whose star is something else (Disco: the glitterball in the pinspots; owner, 28 Oct). A gain
+    on top of whatever the show does: screens through the renderer (ScreenController.set_level, a session's
+    `level`), lamps through the room's Hue stream (HueOutput.level). Both ease over ~2 s. Kept in the state dir, so
+    a restart keeps a dimmed room dimmed."""
+
+    subsystem = "brightness"
+    subsystem_label = "Brightness"
+    category = "setting"
+    kind = "level"
+    members = ["screens", "lamps"]
+    poll_s = 5.0
+    LABELS = {"screens": "Screens (live)", "lamps": "Lamps (following the music)"}
+
+    def __init__(self, controllers: dict[str, "ScreenController"], hue_output: Any, state_dir: str | Path) -> None:
+        self.c = controllers
+        self.hue = hue_output
+        self.path = Path(state_dir) / "brightness.json"
+        self.values = {m: 100 for m in self.members}
+
+    def restore(self) -> None:
+        saved = _load(self.path)
+        for m in self.members:
+            v = saved.get(m)
+            if isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 100:
+                self.values[m] = v
+        self._push([m for m in self.members if self.values[m] != 100])
+
+    def label(self, member: str) -> str:
+        return self.LABELS.get(member, member)
+
+    def value_schema(self, member: str) -> dict:
+        return range_schema(0, 100, self.label(member), "%", step=5, default=100, ends=("Dark", "Full"))
+
+    def normalize(self, member: str, value: Any) -> Any:
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 100:
+            raise ValueError(f"brightness is 0-100, got {value!r}")
+        return round(value)
+
+    def show(self, member: str, value: Any) -> str:
+        return f"{value}%"
+
+    def words(self, member: str, value: Any) -> str:
+        return "Full" if value == 100 else f"{value}%"
+
+    def _push(self, members: list[str]) -> None:
+        if "screens" in members:
+            for c in self.c.values():
+                c.set_level(self.values["screens"] / 100.0)
+        if "lamps" in members and self.hue is not None:
+            self.hue.level = self.values["lamps"] / 100.0
+
+    async def read(self, members: list[str]) -> dict[str, Reading]:
+        return {m: Reading(self.values[m]) for m in members if m in self.values}
+
+    async def apply(self, desired: dict[str, Any], opts: dict | None = None) -> Outcome:
+        ms = [m for m in desired if m in self.values]
+        for m in ms:
+            self.values[m] = desired[m]
+        _save(self.path, dict(self.values))
+        self._push(ms)
+        out = {m: Outcome("ok") for m in ms}
+        hue = getattr(self.hue, "patch", None)
+        if "lamps" in out and hue is not None and hue.hue.get("streamer", "room") == "show":
+            out["lamps"] = Outcome("unconfirmed", "show_service streams the lamps (hue.streamer: show): not dimmed",
+                                   retry=False)
+        worst = "unconfirmed" if any(o.status != "ok" for o in out.values()) else "ok"
+        return Outcome(worst, "", out, retry=False)
 
 
 class LogAdapter(Adapter):

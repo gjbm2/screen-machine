@@ -11,6 +11,8 @@ DTLS-PSK, via the pinned `hue-entertainment` package's streamer; r7 §4, §12).
 * **Brightness:** frames use HueStream's xy+brightness colour space, not RGB. In RGB the bridge takes brightness from
   the colour's luminance, so saturated colours (blue, red) came out dim. Here brightness = max(r, g, b) ** gamma
   (patch.yaml `hue.gamma`, default 0.6; below 1 lifts the mid-levels) and the colour is the xy of the full-level rgb.
+* **Level:** `level` (0-1, the room's brightness.lamps target) scales every lamp's brightness; a change eases over
+  LEVEL_EASE_S.
 * **hue.streamer (patch.yaml, hot-reloaded):** `room` (default) is this loop; `show` hands streaming to show_service
   (SHOW_ENGINE §9.4): this output then never starts the area (and stops it if it was streaming), state `show`.
 * **Takeover (r7 §5):** every 2 s while streaming, the area's status and active_streamer are read. If another app has
@@ -33,6 +35,7 @@ log = logging.getLogger("room_service.hue.output")
 
 RATE_HZ = 25.0
 STATUS_EVERY_S = 2.0
+LEVEL_EASE_S = 2.0          # a brightness change eases (linearly) over this
 
 
 class HueOutput:
@@ -48,6 +51,9 @@ class HueOutput:
         self.channels: dict[str, int] = {}      # light id -> entertainment channel id
         self.our_streamer: str | None = None
         self.frames = 0
+        self.level = 1.0                        # wanted brightness 0-1 (BrightnessAdapter)
+        self._lv = 1.0                          # what is sent now, eased to level
+        self._lv_t: float | None = None
         self._taken_wanted: frozenset[str] | None = None
         self._last_sent: tuple | None = None
         self._last_send_t = 0.0
@@ -165,17 +171,26 @@ class HueOutput:
             self.state, self.detail = "taken_over", "another app stopped or took the entertainment area"
             self._taken_wanted = frozenset(self.wanted)
 
+    def _ease_level(self, now: float) -> float:
+        dt = 0.0 if self._lv_t is None else now - self._lv_t
+        self._lv_t = now
+        step = dt / LEVEL_EASE_S
+        self._lv = min(self.level, self._lv + step) if self._lv < self.level else max(self.level, self._lv - step)
+        return self._lv
+
     def _send(self) -> None:
         fixtures, _ = self.patch.decode(self.rx.dmx)
         gamma = float(self.patch.hue.get("gamma", GAMMA))
+        now = time.monotonic()
+        lv = self._ease_level(now)
         cmds = []
         for dev in self.patch.of_kind("hue"):
             light = dev.extra.get("light")
             ch = self.channels.get(light) if light else None
             if ch is None or dev.id not in self.wanted:
                 continue
-            cmds.append((ch, *xy_bri(fixtures[dev.id].get("rgb", [0, 0, 0]), gamma)))
-        now = time.monotonic()
+            x, y, bri = xy_bri(fixtures[dev.id].get("rgb", [0, 0, 0]), gamma)
+            cmds.append((ch, x, y, round(bri * lv)))
         if cmds and (tuple(cmds) != self._last_sent or now - self._last_send_t >= 1.0):
             self.streamer.send_colors(cmds)
             self._last_sent, self._last_send_t = tuple(cmds), now
@@ -191,4 +206,5 @@ class HueOutput:
                 "channels": self.channels, "frames": self.frames, "dtls": self.streamer.is_connected,
                 # the last HueStream frame actually sent (xy + brightness, 0-1), for the outputs monitor
                 "sent": sent, "sent_age_ms": round((time.monotonic() - self._last_send_t) * 1000) if sent else None,
-                "gamma": float(self.patch.hue.get("gamma", GAMMA))}
+                "gamma": float(self.patch.hue.get("gamma", GAMMA)), "level": self.level,
+                "level_now": round(self._lv, 3)}

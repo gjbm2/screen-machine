@@ -107,7 +107,7 @@ def look_of(s: Any) -> dict:
     """A session's look as Session(...) keyword arguments (a new member takes the room's look)."""
     import copy
     return dict(auto=copy.deepcopy(s.director.auto), direction=copy.deepcopy(s.direction), palette=s.palette,
-                palette_s=s.palette_s, beat_follow=s.beat_follow, direction_ease_s=s.direction_ease_s)
+                palette_s=s.palette_s, beat_follow=s.beat_follow, direction_ease_s=s.direction_ease_s, level=s.level)
 
 
 def auto_fx(stack: list) -> list[tuple[str, Optional[str]]]:

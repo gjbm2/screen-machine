@@ -238,6 +238,9 @@ class ScreenController:
         self.hud_applied = False
         self.hud_failed: str | None = None
         self._hud_task: asyncio.Task | None = None
+        # The live picture's brightness, 0-1 (the brightness.screens target: BrightnessAdapter calls set_level),
+        # sent with each new session and PATCHed into a live one; the renderer eases to it.
+        self.level = 1.0
         self._art_sizes: dict[tuple[str, int], tuple[int, int] | None] = {}
         self.box = Mailbox()
         self.changed = Notifier()
@@ -657,6 +660,8 @@ class ScreenController:
                 scene = c.get("scene")
         if live.get("direction") is not None and not (c is not None and c.get("live") == live and "direction" in out):
             out["direction"] = copy.deepcopy(live["direction"])
+        if self.level != 1.0:
+            out["level"] = self.level
         if "auto" not in out:
             try:
                 auto = await auto_block(live, self.cfg.auto, self.mgr.stream)
@@ -1019,6 +1024,24 @@ class ScreenController:
         if self.hud and self._hud_task is None:
             self._hud_task = spawn(self._hud_watch(), f"hud-watch-{self.id}")
         self._changed()
+
+    def set_level(self, level: float) -> None:
+        """brightness.screens: the live picture's brightness (now if live, else on the next session). Never blocks."""
+        self.level = level
+        sess = self.session
+        if sess and sess.get("id"):
+            spawn(self._level_apply(sess["id"], level), f"level-{self.id}")
+
+    def _level_check(self, sid: str, sent: Any) -> None:
+        """A session made (or adopted) with another brightness than wanted now (set while it was being created)."""
+        if sent != self.level:
+            spawn(self._level_apply(sid, self.level), f"level-{self.id}")
+
+    async def _level_apply(self, sid: str, level: float) -> None:
+        try:
+            await self.mgr.stream.patch(sid, {"level": level, "scope": "screen"})
+        except StreamError as e:
+            self._log("warning", f"brightness not applied to {sid}: {e}")
 
     async def _hud_apply(self, sid: str, on: bool) -> None:
         try:
@@ -1459,6 +1482,7 @@ class ScreenController:
                                 "live": copy.deepcopy(live), "state": summ.get("state")}
             self.session["state"] = summ.get("state")
             self.layer = "live"
+            self._level_check(keep, summ.get("level", 1.0))
             if summ.get("state") in ("exiting", "held"):
                 # An exit was in flight when we stopped: finish it with a hard cut.
                 self._log("warning", f"adopted {keep} mid-exit; aborting it")
@@ -1880,6 +1904,7 @@ class ScreenController:
             self.session = {"id": sid, "attach": attach, "profile": profile, "live": live,
                             "state": resp.get("state"),
                             "created_out": (live.get("transitions") or {}).get("out")}
+            self._level_check(sid, body.get("level", 1.0))
             await self._restore_fx(sid, carried_fx)
             self._changed()
             if resp.get("state") not in ("holding",):
@@ -2063,6 +2088,7 @@ class ScreenController:
             self.session = {"id": sid, "attach": attach, "profile": profile, "live": live,
                             "state": resp.get("state"), "headless": True,
                             "created_out": (live.get("transitions") or {}).get("out")}
+            self._level_check(sid, body.get("level", 1.0))
             await self._restore_fx(sid, carried_fx)
             self._changed()
             if resp.get("state") not in ("holding",):

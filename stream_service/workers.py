@@ -747,7 +747,8 @@ class EngineProxy:
                             "sound": s.sound is not None, "hud": bool(getattr(s, "hud_wanted", False)),
                             "rt": {"speed": rt.speed, "depth": rt.depth, "speed_target": rt.speed_target,
                                    "depth_target": rt.depth_target, "ease_s": rt.ease_s, "palette": rt.palette,
-                                   "palette_s": rt.palette_s, "extra": dict(rt.extra or {})}})
+                                   "palette_s": rt.palette_s, "level": rt.level, "level_target": rt.level_target,
+                                   "extra": dict(rt.extra or {})}})
             if self._stopped:                        # ended while it bound: undo (bind and stop run in order there)
                 c.call("stop", {"sid": self.name}, STOP_S)
                 raise WorkerError("session stopped")
@@ -1019,6 +1020,7 @@ class EngineProxy:
         rt, sp = s.runtime, s.sampler
         cur = {"speed_target": rt.speed_target, "depth_target": rt.depth_target, "palette": rt.palette,
                "palette_s": rt.palette_s, "ease_s": rt.ease_s, "extra": rt.extra, "lead": sp.lead,
+               "level_target": rt.level_target,
                "follow": sp.follow}
         if self.room_degrade is not None:            # (never set outside a room: the sync is as before)
             cur["room_degrade"] = self.room_degrade

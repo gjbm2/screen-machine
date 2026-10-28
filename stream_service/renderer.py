@@ -1020,7 +1020,8 @@ class Engine:
             if retired and not self.stop_evt.is_set():
                 self.post(self.listener.on_fx, {"retired": retired})
         nv12 = slot.dev if slot.dev is not None else self.d_nv12   # GPU encoder: straight into the slot's surface
-        self.ctx.kernels.rgba_to_nv12(self.frame, nv12, self.w, self.h)
+        rt = self.bus.runtime                   # the session's brightness (a mode's Brightness row), eased there
+        self.ctx.kernels.rgba_to_nv12(self.frame, nv12, self.w, self.h, 1.0 if rt is None else rt.level)
         hud = self.hud
         if hud is not None and hud.failed is None and (hud.on or hud.fade > 0.0):
             try:                                # on the encoded copy only: self.frame (the frozen exit) stays clean
