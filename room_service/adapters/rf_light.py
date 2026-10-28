@@ -260,6 +260,8 @@ class RFLightAdapter(Adapter):
         elif n["main"] != "off":                 # it doesn't take the remote while off
             if button in ("up", "down") and n["level"] is not None:
                 n["level"] = max(0, min(self.steps, n["level"] + (1 if button == "up" else -1)))
+            elif button in ("up_hold", "down_hold"):     # the remote's hold, recorded: all the way
+                n["level"] = self.steps if button == "up_hold" else 0
             elif button in self.toggles:
                 n[button] = "off" if n[button] == "on" else "on"
         self._save()

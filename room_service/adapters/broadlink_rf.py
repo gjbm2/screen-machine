@@ -211,7 +211,7 @@ class RemoteFile:
             raise RFError(f"no code learned for {button!r} ({self.path.name})")
         packet = base64.b64decode(c)
         clean = self.fresh().get("clean")
-        if isinstance(clean, dict) and self.medium == "rf":
+        if isinstance(clean, dict) and self.medium == "rf" and button not in self.held:
             return clean_rf(packet, int(clean.get("frames", 6)), float(clean.get("gap_ms", 120)))
         return packet
 
@@ -223,6 +223,12 @@ class RemoteFile:
             return raw["medium"]
         sources = {str(m.get("source")) for m in (raw.get("learned") or {}).values() if isinstance(m, dict)}
         return "ir" if "ir" in sources and "rf" not in sources else "rf"
+
+    @property
+    def held(self) -> list[str]:
+        """Buttons learned held down (a pinspot's Hold + and Hold −): the press is recorded as long as the RM4 Pro
+        listens, and sent as recorded (never cleaned): the remote's own hold."""
+        return [str(b) for b in (self.fresh().get("held") or [])]
 
     @property
     def freq_mhz(self) -> float | None:
@@ -619,8 +625,11 @@ def _say(phase: str, words: str) -> None:
     print(words, flush=True)
 
 
-def _learn_rf(dev, freq: float | None, timeout_s: float, say=_say, stop: threading.Event | None = None
-              ) -> tuple[float, bytes]:
+HOLD_WORDS = "Now press the button and HOLD it down; keep holding until this says Learned ..."
+
+
+def _learn_rf(dev, freq: float | None, timeout_s: float, say=_say, stop: threading.Event | None = None,
+              held: bool = False) -> tuple[float, bytes]:
     from broadlink.exceptions import ReadError, StorageError
     stop = stop or threading.Event()
     if freq is None:
@@ -640,7 +649,7 @@ def _learn_rf(dev, freq: float | None, timeout_s: float, say=_say, stop: threadi
             raise RFError("no RF frequency found: hold the button closer to the RM4 Pro and try again")
         say("found", f"Found {freq:.2f} MHz. Let go.")
         time.sleep(1.5)
-    say("press", "Now press the button once, briefly (the RM4 Pro's light is on while it listens) ...")
+    say("press", HOLD_WORDS if held else "Now press the button once, briefly (the RM4 Pro's light is on while it listens) ...")
 
     def data():
         if stop.is_set():
@@ -661,10 +670,10 @@ def _learn_rf(dev, freq: float | None, timeout_s: float, say=_say, stop: threadi
     raise RFError("no code captured")
 
 
-def _learn_ir(dev, timeout_s: float, say=_say, stop: threading.Event | None = None) -> bytes:
+def _learn_ir(dev, timeout_s: float, say=_say, stop: threading.Event | None = None, held: bool = False) -> bytes:
     from broadlink.exceptions import ReadError, StorageError
     stop = stop or threading.Event()
-    say("press", "Point the remote at the RM4 Pro and press the button once ...")
+    say("press", HOLD_WORDS if held else "Point the remote at the RM4 Pro and press the button once ...")
 
     def data():
         if stop.is_set():
@@ -686,12 +695,13 @@ def _learn_ir(dev, timeout_s: float, say=_say, stop: threading.Event | None = No
 
 def learn(rm: RM4, f: RemoteFile, button: str, ir: bool, freq: float | None, timeout_s: float, say=_say,
           stop: threading.Event | None = None) -> int:
-    """Capture one button's code into the file; its size in bytes."""
+    """Capture one button's code into the file; its size in bytes. A "held" button is learned held down."""
+    held = button in f.held
     if ir:
-        packet = rm.call(lambda dev: _learn_ir(dev, timeout_s, say, stop), retry=False)
+        packet = rm.call(lambda dev: _learn_ir(dev, timeout_s, say, stop, held), retry=False)
         meta: dict = {"source": "ir"}
     else:
-        freq, packet = rm.call(lambda dev: _learn_rf(dev, freq, timeout_s, say, stop), retry=False)
+        freq, packet = rm.call(lambda dev: _learn_rf(dev, freq, timeout_s, say, stop, held), retry=False)
         meta = {"source": "rf", "freq_mhz": round(freq, 2)}
     meta["at"] = time.strftime("%Y-%m-%d %H:%M")
     f.save_code(button, packet, meta)
