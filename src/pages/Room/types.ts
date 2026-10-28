@@ -274,6 +274,9 @@ export interface RemoteDevice {
   subsystems: string[];
   light: boolean;
   steps: number | null;
+  /** Buttons whose Test keeps sending while held (a pinspot's + and −), gap_s apart. */
+  repeat?: string[];
+  gap_s?: number;
   buttons: RemoteButton[];
   job: RemoteLearn | null;
   state: RemoteLightState | null;

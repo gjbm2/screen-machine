@@ -114,6 +114,7 @@ def register(app: web.Application, svc: "RoomService") -> None:
                 "room": room_of(adapters), "medium": f.medium, "host": r.rm.host,
                 "freq_mhz": f.freq_mhz, "subsystems": [a.subsystem for a in adapters],
                 "light": light is not None, "steps": light.steps if light else None,
+                "repeat": [str(b) for b in (f.raw.get("repeat") or [])], "gap_s": float(f.raw.get("gap_s", 0.3)),
                 "buttons": r.button_rows(), "job": r.job.view() if r.job else None,
                 "state": light.state() if light else None, "state_rows": state_rows(adapters)}
 

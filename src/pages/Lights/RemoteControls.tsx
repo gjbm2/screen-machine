@@ -2,7 +2,8 @@
 // remotes_api.py). Config-driven: none until one is added here from a device type (a pinspot, a glitterball) into a
 // room; it then has a card on /lights and the Room page. Each appliance folds open to its buttons: each learned once
 // (the RM4 Pro listens; press that button on the appliance's remote near it) and tested (it sends the code; watch the
-// appliance). "Learn the rest" walks every button not learned yet, one after another. A light also has Reset (after it
+// appliance). A button the file lists under "repeat" (a pinspot's + and −) keeps sending while its Test is held, as the
+// remote does. "Learn the rest" walks every button not learned yet, one after another. A light also has Reset (after it
 // lost power at the wall it comes on white at full: dimmed to the floor and off, so the room knows what it is doing)
 // and its colours' names. "What it's doing now" puts the room's record right when it's out of step with the appliance
 // (its power is one toggle button, so the room must know; owner, 28 Oct): a tap tells the room, nothing is sent.
@@ -137,6 +138,7 @@ function ButtonRow({
   colour,
   onLearn,
   onTest,
+  onHold,
   onRename,
 }: {
   b: RemoteButton;
@@ -145,6 +147,8 @@ function ButtonRow({
   colour: boolean;
   onLearn: () => void;
   onTest: () => void;
+  /** A repeating button: start sending while held (true), stop on letting go (false). */
+  onHold?: (held: boolean) => void;
   onRename?: (name: string) => Promise<void>;
 }) {
   const [editing, setEditing] = useState(false);
@@ -206,9 +210,28 @@ function ButtonRow({
           <button type="button" disabled={disabled} onClick={onLearn} className={SMALL_BUTTON}>
             <Radio className="h-4 w-4" aria-hidden /> {b.learned ? "Again" : "Learn"}
           </button>
-          <button type="button" disabled={disabled || !b.learned} onClick={onTest} className={SMALL_BUTTON}>
-            {busy ? <Spinner /> : <Send className="h-4 w-4" aria-hidden />} Test
-          </button>
+          {onHold ? (
+            <button
+              type="button"
+              disabled={(disabled && !busy) || !b.learned}
+              onPointerDown={(e) => {
+                e.currentTarget.setPointerCapture(e.pointerId);
+                onHold(true);
+              }}
+              onPointerUp={() => onHold(false)}
+              onPointerCancel={() => onHold(false)}
+              onKeyDown={(e) => (e.key === " " || e.key === "Enter") && !e.repeat && onHold(true)}
+              onKeyUp={() => onHold(false)}
+              onContextMenu={(e) => e.preventDefault()}
+              className={cn(SMALL_BUTTON, "select-none touch-none", busy && "border-teal-300 bg-teal-50")}
+            >
+              {busy ? <Spinner /> : <Send className="h-4 w-4" aria-hidden />} Hold
+            </button>
+          ) : (
+            <button type="button" disabled={disabled || !b.learned} onClick={onTest} className={SMALL_BUTTON}>
+              {busy ? <Spinner /> : <Send className="h-4 w-4" aria-hidden />} Test
+            </button>
+          )}
         </div>
       )}
     </li>
@@ -237,6 +260,35 @@ function RemoteCard({
   const [busy, setBusy] = useState<string | null>(null);
   const [sweep, setSweep] = useState(false);
   const queue = useRef<string[]>([]);
+  const held = useRef(false);
+
+  /** Hold-to-repeat: one press at once, then one every gap_s until let go (each waits for the last to be sent). */
+  const hold = async (button: string, on: boolean) => {
+    if (!on) {
+      held.current = false;
+      return;
+    }
+    if (held.current) return;
+    held.current = true;
+    setBusy(button);
+    setErr(null);
+    setLast(null);
+    let n = 0;
+    try {
+      while (held.current) {
+        await api.sendButton(d.id, button);
+        n += 1;
+        if (held.current) await new Promise((r) => window.setTimeout(r, Math.max(100, (d.gap_s ?? 0.3) * 1000)));
+      }
+      setLast(`Sent “${button}” ${n} time${n === 1 ? "" : "s"}.`);
+    } catch (e) {
+      setErr(explainError(e));
+    } finally {
+      held.current = false;
+      setBusy(null);
+      onChanged();
+    }
+  };
 
   const learn = useCallback(
     async (button: string) => {
@@ -407,6 +459,7 @@ function RemoteCard({
                   void learn(b.id);
                 }}
                 onTest={() => void act(b.id, () => api.sendButton(d.id, b.id))}
+                onHold={(d.repeat ?? []).includes(b.id) ? (on) => void hold(b.id, on) : undefined}
                 onRename={
                   d.light && group === "Colour"
                     ? async (name) => {
