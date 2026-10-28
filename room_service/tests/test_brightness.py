@@ -47,15 +47,3 @@ def test_hue_output_scales_brightness():
     o.level, o._lv, o._lv_t = 0.5, 0.5, None
     o._send()
     assert sent[-1][0][3] == round(0xFFFF * 0.5)
-
-
-def test_accents_rows_from_file(tmp_path):
-    from room_service.adapters.room import AccentsAdapter
-    f = tmp_path / "accents.yaml"
-    f.write_text("accents:\n  fast: {label: Fast spin, set: {a.b: c}, on: [drop]}\n")
-    a = AccentsAdapter(tmp_path, f)
-    assert a.members == ["fast"] and a.label("fast") == "Fast spin" and a.values == {"fast": 0}
-    assert asyncio.run(a.apply({"fast": a.normalize("fast", 60)})).status == "ok"
-    b = AccentsAdapter(tmp_path, f)
-    b.restore()
-    assert b.values == {"fast": 60}

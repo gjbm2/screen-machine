@@ -180,7 +180,6 @@ from typing import Any, Callable, Optional
 from . import compose as comp
 from . import contract
 from . import flow as flowmod
-from .accents import Accents
 from . import light_scenes as lscenes
 from . import palette as pal
 from .vibes import Vibes
@@ -735,8 +734,6 @@ class Director:
         self._mb: dict[str, Any] = {"sent": None, "sent_s": None, "due_s": None, "sends": 0, "error": None,
                                     "busy": False}        # the glitterball's motor (docs/LIGHTS.md §4.4)
         self._blinds: dict[str, Any] = {"sent": None, "sends": 0, "error": None}
-        self.accents = Accents()                          # light moments (config/room/accents.yaml)
-        self._acc: dict[str, Any] = {"busy": False, "error": None}
         # the ensemble (docs/ENSEMBLE.md): players, interplay forms and gestures, all on show-brain
         self.ensemble = (ensmod.Ensemble(catalogue=ensmod.Catalogue(scorer=self.light_scenes),
                                          rng=random.Random(ENSEMBLE_SEED)) if ensmod is not None else None)
@@ -2497,7 +2494,6 @@ class Director:
             self._flow_tick(now_s, grid)
         self._flow_build(now_s, grid)
         self._mirror_ball(now_s, grid, room)
-        self._accents_tick(now_s, room)
         if self._lp_rev != self._lp_rev_pub:
             self._lp_rev_pub = self._lp_rev
             self._force_look = True                       # room.look goes at once with a new program or effect
@@ -2513,7 +2509,6 @@ class Director:
             self._fx_trigger(kind, at_s, now_s, grid, strength=_num(ev.get("strength")))
         if kind in contract.TRACK_EVENT_KINDS:
             self._blinds_follow(ev)
-        self._accents_put(self.accents.on_event(kind, now_s, ev.get("id") or f"{kind}@{ev.get('at_ms')}"))
 
     def _fx_trigger(self, trigger: str, at_s: float, now_s: float, grid: Grid, *, strength: Optional[float] = None,
                     bar: Optional[int] = None) -> None:
@@ -2815,8 +2810,6 @@ class Director:
         sw = self._ens_ball_speed(mb, sw, now_s)          # docs/ENSEMBLE.md §5.7: a leading ball turns a step faster
         if mb["speed_target"] and sw is not None:
             want[mb["speed_target"]] = sw
-        for t in self.accents.held():                     # a light moment holds it meanwhile (accents.py)
-            want.pop(t, None)
         if not want or want == st["sent"] or st["busy"]:
             st["due_s"] = None
             return
@@ -2831,16 +2824,6 @@ class Director:
             st["sent"], st["sent_s"] = want, now_s
             st["sends"] += 1
             self._log_event("mirror_ball", {"values": want, "flow": self._flow["dir"], "speed": self._flow["speed"]})
-
-    def _accents_tick(self, now_s: float, room: Any) -> None:
-        try:
-            self._accents_put(self.accents.tick(now_s, room))
-        except Exception:                                 # a bad moment never fails the tick
-            log.exception("accents: tick failed")
-
-    def _accents_put(self, values: dict) -> None:
-        if values and self._put_targets(values, self._acc):
-            self._log_event("accent", {"values": values, "recent": self.accents.log[-2:]})
 
     def _blinds_follow(self, ev: dict) -> None:
         """lights.flow.blinds (off by default): a big song change with the flow up or down moves them."""
@@ -3065,8 +3048,7 @@ class Director:
                                 "error": st["error"],
                                 "next_allowed_in_s": (round(max(0.0, st["sent_s"] + gap - now_s), 1)
                                                       if st["sent_s"] is not None else 0.0)},
-                "blinds": {"enabled": self.lights_cfg["flow"]["blinds"]["enabled"], **self._blinds},
-                "accents": {**self.accents.view(now_s), "error": self._acc["error"]}}
+                "blinds": {"enabled": self.lights_cfg["flow"]["blinds"]["enabled"], **self._blinds}}
 
     def _light_drop(self, ev: dict, at_s: float, now_s: float, grid: Grid) -> None:
         """Every drop the director hears (structure's, or a cue's forecast at its at_ms) goes to the look engine as

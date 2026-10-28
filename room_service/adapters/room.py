@@ -1,5 +1,5 @@
 """Adapters for state that lives in room_service itself: sensor_mask.main, page.<screen>.timed_reload,
-diag.<screen> (the live-details panel), brightness.screens / brightness.lamps, accents.<id>, and log signals.
+diag.<screen> (the live-details panel), brightness.screens / brightness.lamps, and log signals.
 
 Both level adapters persist what they applied in their own file under the state directory and restore it at start
 (ROOM_STATE_MODEL §5.2 rule 10), so read() stays truthful after a restart: without that, a restart mid-show would let
@@ -304,68 +304,6 @@ class BrightnessAdapter(Adapter):
                                    retry=False)
         worst = "unconfirmed" if any(o.status != "ok" for o in out.values()) else "ok"
         return Outcome(worst, "", out, retry=False)
-
-
-ACCENTS_FILE = Path(__file__).resolve().parents[2] / "config" / "room" / "accents.yaml"
-
-
-class AccentsAdapter(Adapter):
-    """accents.<id>, 0-100: how often the show may play each light moment of config/room/accents.yaml (a faster
-    glitterball, the pinspots' strobe...) at a big moment in the music; 0 = never (the default). A mode allows them
-    (owner, 28 Oct). The room only keeps the value (in the state dir); show_service reads it from the room's status
-    and plays the moment itself (show_service/accents.py). Members come from the file at start."""
-
-    subsystem = "accents"
-    subsystem_label = "Light moments"
-    category = "setting"
-    kind = "level"
-    poll_s = 5.0
-
-    def __init__(self, state_dir: str | Path, path: Path = ACCENTS_FILE) -> None:
-        self.path = Path(state_dir) / "accents.json"
-        self.labels = self._labels(path)
-        self.members = list(self.labels)
-        self.values = {m: 0 for m in self.members}
-
-    @staticmethod
-    def _labels(path: Path) -> dict[str, str]:
-        try:
-            import yaml
-            acc = (yaml.safe_load(path.read_text()) or {}).get("accents") or {}
-        except Exception:
-            return {}
-        return {str(k): str((v or {}).get("label") or k) for k, v in acc.items() if isinstance(v, dict)}
-
-    def restore(self) -> None:
-        saved = _load(self.path)
-        for m in self.members:
-            v = saved.get(m)
-            if isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 100:
-                self.values[m] = v
-
-    def label(self, member: str) -> str:
-        return self.labels.get(member, member)
-
-    def value_schema(self, member: str) -> dict:
-        return range_schema(0, 100, self.label(member), "%", step=10, default=0, ends=("Never", "Every chance"))
-
-    def normalize(self, member: str, value: Any) -> Any:
-        if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 100:
-            raise ValueError(f"how often is 0-100, got {value!r}")
-        return round(value)
-
-    def words(self, member: str, value: Any) -> str:
-        return "Never" if value == 0 else f"{value}% of chances"
-
-    async def read(self, members: list[str]) -> dict[str, Reading]:
-        return {m: Reading(self.values[m]) for m in members if m in self.values}
-
-    async def apply(self, desired: dict[str, Any], opts: dict | None = None) -> Outcome:
-        ms = [m for m in desired if m in self.values]
-        for m in ms:
-            self.values[m] = desired[m]
-        _save(self.path, dict(self.values))
-        return Outcome("ok", "", {m: Outcome("ok") for m in ms})
 
 
 class LogAdapter(Adapter):

@@ -373,18 +373,6 @@
         "show.ai": {
           "set": true,
           "restore": true
-        },
-        "accents.ball_moment": {
-          "set": 30,
-          "restore": true
-        },
-        "accents.ball_fast": {
-          "set": 30,
-          "restore": true
-        },
-        "accents.pinspot_strobe": {
-          "set": 40,
-          "restore": true
         }
       },
       "on_enter": [
@@ -488,14 +476,6 @@
         },
         "pinspots.flash": {
           "set": "off",
-          "restore": true
-        },
-        "accents.ball_fast": {
-          "set": 60,
-          "restore": true
-        },
-        "accents.pinspot_strobe": {
-          "set": 50,
           "restore": true
         }
       },
