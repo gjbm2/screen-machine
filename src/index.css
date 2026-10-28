@@ -209,7 +209,8 @@
   }
 }
 
-/* DND grid tweaks */
+/* DND grid tweaks. The grid clips sideways with overflow-x: clip, not hidden: hidden made it a scroll container, and with
+   this contain the mouse wheel over a picture never scrolled the page (owner, 28 Oct). */
 .drag-grid {
   overscroll-behavior-y: contain;
 }

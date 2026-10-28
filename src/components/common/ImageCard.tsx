@@ -16,6 +16,30 @@ import { JobPlaceholder, placeholderKeyOf } from '@/components/jobs/JobPlacehold
 // @ts-ignore
 import HoverActionBar from './HoverActionBar';
 
+/** A thumbnail that tries again when it fails to load (owner, 28 Oct: "a lot of snapshots now aren't loading"):
+ *  thumbnails asked for while Flask restarts fail, and since the cards stopped being rebuilt every room frame
+ *  nothing reloaded them. Up to 4 more tries, further apart each time; the same URL plus ?retry=n. */
+const RETRY_MS = [1500, 4000, 10000, 30000];
+function RetryImg({ src, ...rest }: React.ImgHTMLAttributes<HTMLImageElement>) {
+  const [attempt, setAttempt] = React.useState(0);
+  React.useEffect(() => setAttempt(0), [src]);
+  const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+  React.useEffect(() => () => { if (timer.current) clearTimeout(timer.current); }, []);
+  const url = !src || attempt === 0 ? src : `${src}${src.includes('?') ? '&' : '?'}retry=${attempt}`;
+  return (
+    <img
+      {...rest}
+      src={url}
+      onError={(e) => {
+        rest.onError?.(e);
+        if (attempt < RETRY_MS.length && !timer.current) {
+          timer.current = setTimeout(() => { timer.current = null; setAttempt((a) => a + 1); }, RETRY_MS[attempt]);
+        }
+      }}
+    />
+  );
+}
+
 export interface ImageCardProps {
   image: ImageItem;
   // Dragging handled by parent useSortable; no internal sensors.
@@ -146,7 +170,7 @@ const ImageCard: React.FC<ImageCardProps> = ({
       ) : isRecentThumbnail ? (
         // Recent view thumbnails: clicking selects, expand icon for Loope
         <div className="relative w-full h-full">
-          <img
+          <RetryImg
             src={image.urlThumb || image.urlFull}
             alt={image.promptKey}
             className="w-full h-auto object-cover rounded-md select-none cursor-pointer"
@@ -171,7 +195,7 @@ const ImageCard: React.FC<ImageCardProps> = ({
             }
           }}
         >
-          <img
+          <RetryImg
             src={image.urlThumb || image.urlFull}
             alt={image.promptKey}
             className="w-full h-auto object-cover rounded-md select-none"

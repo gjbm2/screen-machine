@@ -88,7 +88,7 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
 
   const gridContent = (
     <div
-      className={`drag-grid${disableDefaultGridCols ? ' recent-tab-grid' : ''} grid${!disableDefaultGridCols ? ' grid-cols-2 sm:grid-cols-3 md:grid-cols-4' : ''} gap-1 overflow-x-hidden ${className} ${itemExtraClass}`}
+      className={`drag-grid${disableDefaultGridCols ? ' recent-tab-grid' : ''} grid${!disableDefaultGridCols ? ' grid-cols-2 sm:grid-cols-3 md:grid-cols-4' : ''} gap-1 overflow-x-clip ${className} ${itemExtraClass}`}
       style={{ touchAction: active ? 'none' : 'pan-y' }}
     >
       {images.map((img, idx) => {
