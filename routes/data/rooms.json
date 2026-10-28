@@ -28,6 +28,14 @@
           "mirror_ball_motor.speed",
           "mirror_ball_motor.direction"
         ]
+      },
+      {
+        "power": "pinspots.main",
+        "settings": [
+          "pinspots.colour",
+          "pinspots.level",
+          "pinspots.flash"
+        ]
       }
     ]
   },

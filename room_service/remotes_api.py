@@ -14,6 +14,9 @@ once it is added (its file in config/room/rf/, a card in its room in rooms.json)
   POST   /api/v1/remotes/{id}/send       {"button", "times"?} transmit a learned code (a light's record follows it)
   POST   /api/v1/remotes/{id}/reset      a light's reset: on, white, down to the floor, off
   PUT    /api/v1/remotes/{id}/colours    {"colours": {id: name}} rename a light's colours (their ids stay)
+  PUT    /api/v1/remotes/{id}/state      {"values": {target: value}} put the room's record right when it is out of step
+                                         with the appliance (owner, 28 Oct): nothing is sent. Its view's "state" rows
+                                         list every target with its schema and what the room believes now
 """
 
 from __future__ import annotations
@@ -26,7 +29,8 @@ import json
 from pathlib import Path
 
 from .adapters import broadlink_rf
-from .adapters.broadlink_rf import LearnJob, Remote, RFError
+from .adapters.broadlink_rf import LearnJob, Remote, RemoteSettingsAdapter, RFError
+from .roomstate.coordinator import Refused
 
 if TYPE_CHECKING:
     from .service import RoomService
@@ -92,6 +96,18 @@ def register(app: web.Application, svc: "RoomService") -> None:
                     return rid
         return None
 
+    def believed(a, m: str):
+        """What the room holds for one member: a light's or a setting's own record, else the room's belief."""
+        if a is light_of([a]):
+            return a.now.get(m)
+        if isinstance(a, RemoteSettingsAdapter):
+            return a.remote.sent.get(m)
+        return ((svc.coordinator.s.get("believed") or {}).get(f"{a.subsystem}.{m}") or {}).get("value")
+
+    def state_rows(adapters: list) -> list[dict]:
+        return [{"target": f"{a.subsystem}.{m}", "label": a.label(m), "schema": a.value_schema(m), "value": believed(a, m)}
+                for a in adapters for m in a.members]
+
     def view(r: Remote, adapters: list) -> dict:
         f, light = r.file, light_of(adapters)
         return {"id": r.id, "label": str(f.raw.get("label") or r.id), "model": f.raw.get("model"),
@@ -99,7 +115,7 @@ def register(app: web.Application, svc: "RoomService") -> None:
                 "freq_mhz": f.freq_mhz, "subsystems": [a.subsystem for a in adapters],
                 "light": light is not None, "steps": light.steps if light else None,
                 "buttons": r.button_rows(), "job": r.job.view() if r.job else None,
-                "state": light.state() if light else None}
+                "state": light.state() if light else None, "state_rows": state_rows(adapters)}
 
     async def body(request: web.Request) -> dict:
         try:
@@ -258,7 +274,44 @@ def register(app: web.Application, svc: "RoomService") -> None:
         r.file.update(put)
         return web.json_response(view(r, adapters))
 
+    async def set_state(request: web.Request) -> web.Response:
+        got = find(request)
+        if isinstance(got, web.Response):
+            return got
+        r, adapters = got
+        values = (await body(request)).get("values")
+        if not isinstance(values, dict) or not values:
+            return _err(400, "bad_body", '{"values": {target: value}}')
+        by_sub = {a.subsystem: a for a in adapters}
+        touched = set()
+        try:
+            for t, v in values.items():
+                sub, _, m = str(t).partition(".")
+                a = by_sub.get(sub)
+                if a is None or m not in a.members:
+                    return _err(400, "bad_target", f"{t} isn't one of {r.id}'s")
+                v = a.normalize(m, v)
+                if a is light_of([a]):
+                    a.now[m] = v
+                    a.kept.pop(m, None)
+                    a._save()
+                elif isinstance(a, RemoteSettingsAdapter):
+                    r.remember(m, v)
+                else:
+                    svc.coordinator.assume(t, v, cause="put right on the light setup page")
+                touched.add(sub)
+        except ValueError as e:
+            return _err(400, "bad_value", str(e))
+        except Refused as e:
+            return _err(409, e.code, str(e))
+        for sub in touched:                      # the room reads the corrected record now, not in 5 s
+            if by_sub[sub].kind == "level":
+                await svc.coordinator.reconcile_tick(sub)
+        svc.events.mark_dirty()
+        return web.json_response(view(r, adapters))
+
     a = app.router
+    a.add_put("/api/v1/remotes/{id}/state", set_state)
     a.add_get("/api/v1/remotes", list_remotes)
     a.add_post("/api/v1/remotes", add)
     a.add_delete("/api/v1/remotes/{id}", remove)

@@ -4,7 +4,9 @@
 // (the RM4 Pro listens; press that button on the appliance's remote near it) and tested (it sends the code; watch the
 // appliance). "Learn the rest" walks every button not learned yet, one after another. A light also has Reset (after it
 // lost power at the wall it comes on white at full: dimmed to the floor and off, so the room knows what it is doing)
-// and its colours' names. Remove takes it away (its learned buttons and card too). What an appliance does is chosen
+// and its colours' names. "What it's doing now" puts the room's record right when it's out of step with the appliance
+// (its power is one toggle button, so the room must know; owner, 28 Oct): a tap tells the room, nothing is sent.
+// Remove takes it away (its learned buttons and card too). What an appliance does is chosen
 // on /lights and the Room page, not here.
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -25,16 +27,92 @@ function swatchOf(name: string): string | null {
   return w && typeof CSS !== "undefined" && CSS.supports("color", w) ? w : null;
 }
 
-/** "On · Red · 9 of 16 · pulse", or null when the room doesn't know. */
-function stateWords(d: RemoteDevice): string | null {
-  const n = d.state?.now;
-  if (!n || n.main == null) return null;
-  if (n.main === "off") return "Off";
-  const colour = n.colour ? d.buttons.find((b) => b.id === n.colour)?.label ?? n.colour : null;
-  const parts = ["On", colour, n.level != null ? `brightness ${n.level} of ${d.steps}` : null];
-  if (n.pulse === "on") parts.push("pulse");
-  if (n.flash === "on") parts.push("flash");
-  return parts.filter(Boolean).join(" · ");
+type StateRow = NonNullable<RemoteDevice["state_rows"]>[number];
+
+/** A row's heading without the appliance's name ("Pinspots colour" -> "Colour"; its power row -> "Power"). */
+function rowWords(row: StateRow, name: string): string {
+  const l = row.label.trim();
+  if (l === name) return "Power";
+  const rest = l.toLowerCase().startsWith(name.toLowerCase()) ? l.slice(name.length).trim() : l;
+  return rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : l;
+}
+
+/** What the room believes the appliance is doing, each value one tap to correct (nothing is sent). */
+function StateRows({ d, api, onChanged }: { d: RemoteDevice; api: RoomApi; onChanged: () => void }) {
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const rows = d.state_rows ?? [];
+  if (!rows.length) return null;
+  const put = async (t: string, v: unknown) => {
+    setBusy(t);
+    setErr(null);
+    try {
+      await api.setRemoteState(d.id, { [t]: v });
+      onChanged();
+    } catch (e) {
+      setErr(explainError(e));
+    } finally {
+      setBusy(null);
+    }
+  };
+  const chip = (sel: boolean) =>
+    cn(
+      "min-h-9 rounded-lg border px-2.5 text-[14px] disabled:opacity-50",
+      sel ? "border-teal-300 bg-teal-50 font-semibold text-teal-900" : "border-stone-200 bg-white hover:bg-stone-50",
+    );
+  return (
+    <div className="space-y-2 rounded-xl bg-stone-50 p-3" data-testid={`remote-state-${d.id}`}>
+      <p className="text-base font-medium">What it's doing now</p>
+      <p className="text-sm text-muted-foreground">
+        If the room has it wrong, tap what it's really doing. This only tells the room; nothing is sent.
+      </p>
+      {rows.map((row) => {
+        const words = row.schema["x-ui"]?.labels ?? {};
+        const lo = row.schema.minimum;
+        const hi = row.schema.maximum;
+        return (
+          <div key={row.target} className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="w-24 shrink-0 text-[15px] text-stone-700">{rowWords(row, d.label)}</span>
+            {row.schema.enum ? (
+              <div className="flex flex-1 flex-wrap gap-1.5">
+                {row.schema.enum.map((v) => (
+                  <button key={v} type="button" disabled={!!busy} onClick={() => void put(row.target, v)} className={chip(row.value === v)}>
+                    {words[v] ?? v}
+                  </button>
+                ))}
+              </div>
+            ) : typeof lo === "number" && typeof hi === "number" ? (
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  aria-label="Less"
+                  disabled={!!busy || row.value === lo}
+                  onClick={() => void put(row.target, typeof row.value === "number" ? row.value - 1 : lo)}
+                  className={chip(false)}
+                >
+                  −
+                </button>
+                <span className="w-16 text-center font-mono text-[15px] tabular-nums">
+                  {typeof row.value === "number" ? `${row.value} of ${hi}` : "?"}
+                </span>
+                <button
+                  type="button"
+                  aria-label="More"
+                  disabled={!!busy || row.value === hi}
+                  onClick={() => void put(row.target, typeof row.value === "number" ? row.value + 1 : hi)}
+                  className={chip(false)}
+                >
+                  +
+                </button>
+              </div>
+            ) : null}
+            {busy === row.target && <Spinner />}
+          </div>
+        );
+      })}
+      {err && <p className="text-sm text-rose-700">{err}</p>}
+    </div>
+  );
 }
 
 function LearnBox({ job, onStop }: { job: RemoteLearn; onStop: () => void }) {
@@ -243,7 +321,6 @@ function RemoteCard({
       : d.freq_mhz
         ? `Radio, ${d.freq_mhz.toFixed(2)} MHz: press each button near the RM4 Pro.`
         : "Radio: the first button finds the frequency (hold it down until asked to let go).";
-  const now = d.light ? stateWords(d) : null;
   const disabled = running || !!busy;
 
   const head = (
@@ -275,12 +352,9 @@ function RemoteCard({
       <div>
         {head}
         <p className="mt-1 text-[15px] text-muted-foreground">{how}</p>
-        {d.light && (
-          <p className="text-[15px] text-stone-700">
-            {now ? `Now: ${now}.` : "The room isn't sure what it's doing: Reset puts that right."}
-          </p>
-        )}
       </div>
+
+      <StateRows d={d} api={api} onChanged={onChanged} />
 
       <div className="flex flex-wrap gap-2">
         {missing.length > 0 && (
@@ -298,7 +372,7 @@ function RemoteCard({
         {d.light && (
           <Button
             variant="outline"
-            disabled={disabled || missing.some((m) => ["down", "off"].includes(m))}
+            disabled={disabled || missing.includes("down") || !d.buttons.some((b) => b.learned && ["off", "toggle"].includes(b.id))}
             onClick={() => void act("reset", () => api.resetLight(d.id))}
             className="h-11 rounded-xl"
           >
@@ -308,7 +382,7 @@ function RemoteCard({
       </div>
       {d.light && (
         <p className="text-sm text-muted-foreground">
-          Reset is for after it was off at the wall (it comes back white at full): it dims to the floor and switches off,
+          Reset is for after it was off at the wall (it comes back white at full): it dims to black and switches off,
           so the room knows exactly what it is doing.
         </p>
       )}

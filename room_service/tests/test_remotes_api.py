@@ -54,7 +54,7 @@ async def test_add_and_remove_a_device_live(rf_dir, make_harness):
                                                        "host": "192.0.2.1"})
     assert st == 201 and dev["id"] == "pinspots" and dev["room"] == "drawing-room" and dev["light"]
     assert json.loads(rooms.read_text())["drawing-room"]["effects"] == [
-        {"power": "pinspots.main", "settings": [f"pinspots.{m}" for m in ("colour", "level", "pulse", "flash")]}]
+        {"power": "pinspots.main", "settings": [f"pinspots.{m}" for m in ("colour", "level", "flash")]}]
     st, desc = await h.api("GET", "/api/v1/room/describe")
     assert "pinspots.colour" in desc["targets"] and "reset" in desc["subsystems"]["pinspots"]["actions"]
     st, out = await h.api("DELETE", "/api/v1/remotes/pinspots")
@@ -62,3 +62,23 @@ async def test_add_and_remove_a_device_live(rf_dir, make_harness):
     assert json.loads(rooms.read_text())["drawing-room"]["effects"] == []
     st, desc = await h.api("GET", "/api/v1/room/describe")
     assert "pinspots.main" not in desc["targets"]
+
+
+async def test_put_the_record_right_without_sending(rf_dir, make_harness):
+    d, rooms = rf_dir
+    h: Harness = await make_harness(service={"rooms_file": str(rooms)})
+    st, dev = await h.api("POST", "/api/v1/remotes", {"model": "pinspot", "label": "Pin", "room": "drawing-room",
+                                                       "host": "192.0.2.1"})
+    assert st == 201 and [r["target"] for r in dev["state_rows"]] == ["pin.main", "pin.colour", "pin.level", "pin.flash"]
+    st, v = await h.api("PUT", "/api/v1/remotes/pin/state", {"values": {"pin.main": "on", "pin.colour": "blue", "pin.level": 7}})
+    assert st == 200 and {r["target"]: r["value"] for r in v["state_rows"]}["pin.level"] == 7
+    assert v["state"]["now"]["colour"] == "blue" and v["state"]["now"]["main"] == "on"
+    st, _ = await h.api("PUT", "/api/v1/remotes/pin/state", {"values": {"pin.level": 99}})
+    assert st == 400
+    st, s = await h.api("GET", "/api/v1/status")
+    assert s["subsystems"]["pin"]["members"]["level"]["believed"] == 7
+    st, g = await h.api("POST", "/api/v1/remotes", {"model": "glitterball", "label": "Ball", "room": "drawing-room"})
+    assert st == 201                                  # one RM4 Pro known now: no host needed
+    st, v = await h.api("PUT", "/api/v1/remotes/ball/state", {"values": {"ball.main": "spinning", "ball_settings.speed": "high"}})
+    assert st == 200 and {r["target"]: r["value"] for r in v["state_rows"]} == \
+        {"ball.main": "spinning", "ball_settings.speed": "high", "ball_settings.direction": None}
