@@ -713,6 +713,8 @@ track_change
 why: ≤12 words
 ```
 
+**The art wish** *(owner, 28 Oct: "connect listening AI with artistic director with AI image generator")*. The tool has one optional field, `art {subjects ≤3, moods ≤3, media ≤2, avoid ≤3, theme ≤10 words}`: which pictures from the house library suit this music, in `config/art_tags.yaml`'s facet words (the prompt lists them; about the music only, never the room). It is cleaned to the lexicon; a missing or unusable one is simply no wish, never a failed call or a skip. The beliefs carry it as the genre (votes, half-life 120 s, the fade, cleared on a track change); the round trip's history row shows it. The director puts `art` on room.direction beside the genre: the listener's wish while it is confident (≥ 0.6, fresh or holding, `via: "listener"`), else `music_art[<group>]` for the effective genre's music group (tagpass GROUP_WORDS, a copy in `contract.ART_GROUP_WORDS`; `via: "genre"`), else `null` (no music known, or no row). The renderer's gallery scores tagged art against it (docs/ART_TAGS.md).
+
 `GET /api/v1/listening` and the card's listening block also carry `character`, `approach` {intensity, change, transitions, conf} and `armed`, the cue sheet: [{kind, words ("Big change at the chorus, likely in 10-25 s", "Ready: slow fade if the music fades"), window_s, size}] (README S5.22).
 
 `genre.detail` values ("bossa nova", "Afro house") are logged to grow the vocabulary.

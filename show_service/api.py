@@ -557,7 +557,10 @@ def card(brain_snapshot: Optional[dict], engine: Optional[dict], *, describe: Op
     return {"hearing": hearing, "vibe": vibe, "steps": steps, "palette": palette, "look": look_out,
             "house": bool(director.get("house")), "low": bool(director.get("low")), "chips": chips,
             "listening": listening, "describe": dict(describe) if isinstance(describe, dict) else dict(DESCRIBE_IDLE),
-            "auto": auto, "tests": tests, "mic_state": _plain(mic_state) if mic_state is not None else None}
+            "auto": auto, "tests": tests, "mic_state": _plain(mic_state) if mic_state is not None else None,
+            # the art wish the director sends with room.direction (listener's or the genre's; None without music):
+            # the Room page's "Pictures: <theme>" (owner, 28 Oct: listening AI -> art director -> the pictures)
+            "art": _plain(_d(director.get("direction")).get("art")) if isinstance(_d(director.get("direction")).get("art"), dict) else None}
 
 
 def _plain(o: Any) -> Any:

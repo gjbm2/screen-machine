@@ -683,9 +683,12 @@ class Director:
                  log_path: Optional[pathlib.Path] = contract.DIRECTOR_LOG,
                  wall: Callable[[], float] = time.time, mono: Callable[[], float] = time.monotonic,
                  vibes_path: Optional[pathlib.Path] = None, light_scenes: Optional[lscenes.Catalogue] = None,
-                 rng: Optional[random.Random] = None) -> None:
+                 rng: Optional[random.Random] = None, art_tags_path: pathlib.Path = contract.ART_TAGS_FILE) -> None:
         self.ctx = ctx
         self._mono = mono
+        # owner, 28 Oct: room.direction's art wish: the listener's (confident) else art_tags.yaml music_art by genre
+        self.art_tags = contract.ArtTags(art_tags_path)
+        self._art_llm: Optional[dict] = None
         # light scenes (README S5.24): the process's catalogue (the rig's look engine reads the same one)
         self.light_scenes = light_scenes if light_scenes is not None else lscenes.shared()
         self._ls_rng = rng if rng is not None else random.Random(LIGHT_SCENE_SEED)
@@ -1383,6 +1386,7 @@ class Director:
         self._t_prev = now_s
         if now_s >= self._reload_next:
             self._reload_next = now_s + contract.RELOAD_S
+            self.art_tags.poll(now_s)
             self.palettes.poll()
             self.vibes.poll()
             self._check_patch()
@@ -1543,6 +1547,7 @@ class Director:
         # L2: the listener's trajectory, slewed; and its style of approach (README S5.22)
         b = _call(self.ctx.beliefs)
         self._guide = self._llm_guide(b)
+        self._art_llm = self._llm_art(b)
         bias_want = 0.0
         if isinstance(b, dict) and b.get("state") in ("fresh", "holding"):
             tr = b.get("trajectory") if isinstance(b.get("trajectory"), dict) else {}
@@ -3406,6 +3411,16 @@ class Director:
             out["transitions"] = ap["transitions"]
         return out
 
+    def _llm_art(self, b: Any) -> Optional[dict]:
+        """Owner, 28 Oct: the listener's art wish (contract.ArtWish) while its beliefs are fresh or holding and it is
+        confident (LLM_CONF), as the genre in _llm_guide; else None."""
+        if not isinstance(b, dict) or b.get("state") not in ("fresh", "holding"):
+            return None
+        a = b.get("art")
+        if not isinstance(a, dict) or (_num(a.get("conf"), 0.0) or 0.0) < LLM_CONF:
+            return None
+        return {k: a.get(k) for k in contract.ArtWish.__annotations__}
+
     def _words(self, vs: dict) -> dict:
         b = self.music.get("beliefs")
         llm_moods: list[str] = []
@@ -3432,6 +3447,9 @@ class Director:
         genres = ({llm_genre: 1.0} if llm_genre
                   else {str(w): round(_c01(_num(p, 0.0) or 0.0), 3) for w, p in mw.items()} if mw
                   else {genre: 1.0} if genre else {})
+        # the art wish beside the genre (owner, 28 Oct): the listener's when confident, else music_art for the
+        # effective genre's group (art_tags.yaml), else None (no music known, or no row: nothing invented)
+        art = self._art_llm or self.art_tags.for_group(contract.art_group(genre, genres))
         band = self._band_words(self.music.get("band_energy", self.music.get("energy", vs["energy_centre"]))) \
             if self.music else None
         if self.moods:
@@ -3458,6 +3476,7 @@ class Director:
                        else ((band or {}).get("change_rate"), "bands") if (band or {}).get("change_rate") is not None
                        else (None, None))
         return {"moods": moods, "moods_from": src, "genre": genre, "genre_from": genre_from, "genres": genres,
+                "art": art,
                 "change_rate": cr, "change_from": cr_from, "transition_style": style, "style_from": style_from,
                 "fx_moods": list(band["fx_moods"]) if band and band["fx_moods"] else None,
                 "band": band["name"] if band else None}
@@ -3721,6 +3740,7 @@ class Director:
                           "hold": self._held(),
                           "valence": _r3((self._mc or {}).get("valence")),
                           "organic": _r3((self._mc or {}).get("acoustic")),
+                          "art": words.get("art"),
                           "groove": round(_c01(m["drive"] * (grid.conf if grid.gate != "none" else 0.0)), 3),
                           "beat_lock": beat_lock, "loose": bool(vs["beat_lock"]) and m["fresh"] and grid.gate != "beat",
                           "flow": self._flow}                    # docs/LIGHTS.md §4.1
