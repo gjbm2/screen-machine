@@ -73,3 +73,77 @@ def test_song_end_kinds_and_shapes():
     assert c.TRANSITION_STYLES == ("fade-dark", "crossfade", "cut") and c.TRANSITION_ON == ("downbeat", "now")
     assert c.CHANGE_SIZES == ("big", "small") and c.TRACK_VIA == ("sonos", "dsp", "player")
     assert c.BrainContext(publish=lambda m: None).track_transition is None
+
+
+# -- the art wish (owner, 28 Oct) ----------------------------------------------------------------------------------------
+ART_YAML = """facets:
+  subject: {landscape: x, still-life: x, abstract: x, urban: x, people: x, animals: x, sky: x}
+  medium: {painting: x, photograph: x, render: x}
+  moods: {calm: x, dark: x, elegant: x, warm: x}
+music_art:
+  jazz: {subjects: [abstract, urban, people, landscape, sky, still-life], moods: [dark, elegant, warm],
+         media: [painting], avoid: [animals], theme: "late-night city, smoky rooms, painterly abstraction"}
+"""
+
+
+def test_art_group_words_are_tagpass_group_words():
+    """A copy, read by file (tagpass sits in stream_service's tools and changes sys.path on import): they must agree."""
+    import ast
+    tree = ast.parse((c.REPO_ROOT / "stream_service" / "tools" / "tagpass.py").read_text())
+    node = next(n for n in tree.body if isinstance(n, ast.Assign) and getattr(n.targets[0], "id", "") == "GROUP_WORDS")
+    theirs = ast.literal_eval(node.value)
+    assert {g: tuple(ws) for g, ws in theirs.items()} == c.ART_GROUP_WORDS
+
+
+def test_art_group_takes_the_genre_then_the_top_share():
+    assert c.art_group("blues") == "jazz" and c.art_group("electronic") == "house"   # first group naming it
+    assert c.art_group(None, {"piano": 0.3, "pop": 0.7}) == "pop"
+    assert c.art_group("bebop", {"jazz": 1.0}) == "jazz"                            # unknown word: the shares
+    assert c.art_group(None) is None and c.art_group(None, {}) is None
+
+
+def test_clean_art_keeps_only_lexicon_words_within_the_limits():
+    facets = {"subject": ("landscape", "still-life", "abstract", "urban", "people"), "medium": ("painting",),
+              "moods": ("calm", "dark", "elegant", "warm")}
+    a = c.clean_art({"subjects": ["Still life", "abstract", "unicorns", "abstract", "urban", "people"],
+                     "moods": ["DARK", "sparkly", 3], "media": ["painting", "fresco"],
+                     "avoid": ["abstract", "people"],
+                     "theme": " late night   city smoky rooms painterly abstraction and some more words here "},
+                    facets, "listener")
+    assert a == {"subjects": ["still-life", "abstract", "urban"], "moods": ["dark"], "media": ["painting"],
+                 "avoid": ["people"], "theme": "late night city smoky rooms painterly abstraction and some more",
+                 "via": "listener"}
+    assert set(a) == set(c.ArtWish.__annotations__)
+    for bad in (None, "abstract", ["abstract"], {}, {"subjects": "abstract"}, {"subjects": ["nothing"]}):
+        assert c.clean_art(bad, facets, "listener") is None
+
+
+def test_art_tags_reads_the_lexicon_and_music_art(tmp_path):
+    p = tmp_path / "art_tags.yaml"
+    p.write_text(ART_YAML)
+    t = c.ArtTags(p)
+    t.poll(0.0)
+    assert t.error is None and t.words("medium") == ["painting", "photograph", "render"]
+    j = t.for_group("jazz")
+    assert j["via"] == "genre" and j["subjects"] == ["abstract", "urban", "people", "landscape", "sky"]   # <= 5
+    assert t.for_group("pop") is None and t.for_group(None) is None                   # no row: nothing invented
+    p.write_text("facets: [")                                                         # broken: the last good stays
+    t.poll(10.0)
+    assert t.error and t.for_group("jazz") == j
+    missing = c.ArtTags(tmp_path / "nope.yaml")
+    missing.poll(0.0)
+    assert missing.error and missing.for_group("jazz") is None
+
+
+def test_the_real_music_art_rows_are_all_lexicon_words():
+    t = c.ArtTags()
+    t.poll(0.0)
+    assert t.error is None
+    for g in c.ART_GROUP_WORDS:
+        row = t.rows.get(g)
+        if row is None:
+            continue
+        a = t.for_group(g)
+        assert a is not None
+        for k in ("subjects", "moods", "media", "avoid"):
+            assert a[k] == list(row.get(k) or [])[:len(a[k])] and len(a[k]) == len(row.get(k) or []), (g, k)

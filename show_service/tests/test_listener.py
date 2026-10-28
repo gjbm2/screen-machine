@@ -1255,3 +1255,85 @@ def test_music_moods_map_the_feel_to_visual_moods(tmp_path):
     assert out["moods"][1]["conf"] == 1.0 and out["moods"][2]["conf"] == 0.85
     b.clear()
     assert b.mood_map == v.music_moods
+
+
+# -- the art wish (owner, 28 Oct) ----------------------------------------------------------------------------------------
+ART_YAML = """facets:
+  subject: {landscape: x, still-life: x, abstract: x, urban: x, people: x, animals: x}
+  medium: {painting: x, photograph: x}
+  moods: {calm: x, dark: x, elegant: x, warm: x}
+"""
+JAZZ_ART = {"subjects": ["Abstract", "interior", "urban", "people"], "moods": ["dark", "elegant", "sparkly"],
+            "media": ["painting"], "avoid": ["animals"], "theme": "late-night city, smoky rooms, painterly abstraction"}
+
+
+def art_rig(tmp_path):
+    rig = Rig(tmp_path)
+    p = tmp_path / "art_tags.yaml"
+    p.write_text(ART_YAML)
+    rig.lis.art_tags = c.ArtTags(p)
+    rig.lis.art_tags.poll(0.0)
+    rig.lis.vocab.poll(0.0)
+    return rig
+
+
+def test_the_art_wish_is_cleaned_to_the_lexicon_and_shown_with_the_round_trip(tmp_path):
+    rig = art_rig(tmp_path)
+    rig.fill()
+    rig.llm.results = [ok(dict(verdict(), art=JAZZ_ART)), ok(dict(verdict(), art=JAZZ_ART))]
+
+    async def go():
+        await rig.tick()
+    run(go())
+    task, kw = rig.llm.calls[0]
+    assert "art (optional)" in kw["system"] and "still-life" in kw["system"] and "photograph" in kw["system"]
+    ins = rig.pub[0]["data"]
+    assert ins["art"] == {"subjects": ["abstract", "urban", "people"], "moods": ["dark", "elegant"],
+                          "media": ["painting"], "avoid": ["animals"],
+                          "theme": "late-night city, smoky rooms, painterly abstraction", "via": "listener"}
+    assert rig.lis.view()["history"][0]["art"] == ins["art"]                  # on the Room page with the rest
+    b = rig.lis.beliefs_state.view(rig.now)
+    assert b["art"]["subjects"] == ["abstract", "urban", "people"] and b["art"]["conf"] == 0.5   # one read: half
+    rig.lis.beliefs_state.add(ins, rig.now + 1.0)
+    assert rig.lis.beliefs_state.view(rig.now + 1.0)["art"]["conf"] == pytest.approx(1.0, abs=0.01)
+
+
+def test_a_bad_art_is_no_art_wish_never_a_failed_call(tmp_path):
+    from utils.llm import check
+    rig = art_rig(tmp_path)
+    for bad in ("abstract", ["abstract"], {}, {"subjects": "abstract"}, {"subjects": ["unicorns"], "theme": 7}, None):
+        ins = L.to_insight(dict(verdict(), art=bad), vocab=rig.lis.vocab, stream="s", model="m", latency_ms=1.0,
+                           window=(0.0, 1.0), t_ms=0.0, art=rig.lis.art_tags)
+        assert ins["art"] is None and ins["genre"]["label"] == "soul"
+    # too many or unknown words are soft (cleaned, never a second charge); no art at all is no problem
+    hard, soft = check(dict(verdict(), art={"subjects": ["a", "b", "c", "d"], "media": ["x", "y", "z"]}),
+                       L.LISTEN_TOOL["parameters"])
+    assert hard == [] and soft
+    assert "art" not in L.LISTEN_TOOL["parameters"]["required"]
+    rig.fill()
+    rig.llm.results = [ok(dict(verdict(), art={"subjects": ["unicorns"]}))]
+
+    async def go():
+        await rig.tick()
+    run(go())
+    assert rig.pub[0]["data"]["art"] is None and rig.lis.errors == 0 and rig.lis.view()["history"][0]["ok"]
+    assert rig.lis.beliefs_state.view(rig.now)["art"] is None
+    assert L.STATUS_WORDS == (L.LISTENING, L.WHY_STARTING, L.WHY_QUIET, L.WHY_TALKING, L.WHY_NO_SOUND, L.WHY_MIC_OFF,
+                              L.WHY_NO_MODEL, L.WHY_OFF)
+
+
+def test_the_art_wish_decays_as_the_genre_and_goes_on_a_track_change(tmp_path):
+    rig = art_rig(tmp_path)
+    b = L.BeliefState()
+    mk = lambda **kw: L.to_insight(dict(verdict(**kw), art=JAZZ_ART), vocab=rig.lis.vocab, stream="s",  # noqa: E731
+                                   model="m", latency_ms=1.0, window=(0.0, 0.0), t_ms=0.0, art=rig.lis.art_tags)
+    b.add(mk(), 0.0)
+    b.add(mk(), 10.0)
+    assert b.view(10.0)["art"]["conf"] > 0.9                                         # two reads: confident
+    assert b.view(10.0 + L.HOLD_S + L.FADE_S / 2)["art"]["conf"] < 0.6              # fading: below the director's bar
+    b.add(L.to_insight(verdict(track_change=True), vocab=rig.lis.vocab, stream="s", model="m", latency_ms=1.0,
+                       window=(0.0, 0.0), t_ms=0.0, art=rig.lis.art_tags), 200.0)
+    assert b.view(200.0)["art"] is None
+    rig.lis.art_tags = c.ArtTags(tmp_path / "missing.yaml")
+    rig.lis.art_tags.poll(0.0)
+    assert rig.lis._art_prompt() == ""                                               # no lexicon: no art line

@@ -3022,3 +3022,59 @@ def test_with_no_ensemble_block_nothing_new_goes_out_and_the_colours_are_as_befo
     assert a.colours() == b.colours()
     assert [x for x in a.calls if x[0] == "look"] == [x for x in b.calls if x[0] == "look"]   # set_look_out
     assert a.d.snapshot()["ensemble"]["line"] is None and a.d.ensemble.block()["form"] == "unison"
+
+
+# -- the art wish (owner, 28 Oct): room.direction's art beside the genre ------------------------------------------------
+ART_YAML = """facets:
+  subject: {landscape: x, still-life: x, abstract: x, urban: x, people: x, animals: x, interior: x}
+  medium: {painting: x, photograph: x}
+  moods: {calm: x, dark: x, elegant: x, warm: x}
+music_art:
+  jazz: {subjects: [abstract, interior, urban, people], moods: [dark, elegant, warm], media: [painting, photograph],
+         avoid: [animals], theme: "late-night city, smoky rooms, painterly abstraction"}
+"""
+LISTENER_ART = {"subjects": ["landscape", "still-life"], "moods": ["calm"], "media": ["painting"], "avoid": [],
+                "theme": "misty lakes and quiet rooms", "via": "listener"}
+
+
+def art_stage4_rig(tmp_path) -> Rig:
+    r = stage4_rig(tmp_path)
+    (tmp_path / "art_tags.yaml").write_text(ART_YAML)
+    r.d.art_tags = contract.ArtTags(tmp_path / "art_tags.yaml")
+    r.d.art_tags.poll(0.0)
+    return r
+
+
+def test_room_direction_art_falls_back_to_music_art_by_genre_group(tmp_path):
+    r = art_stage4_rig(tmp_path)
+    r.sec["genre"] = {"word": "blues", "conf": 0.8, "parent": "x", "parent_p": 0.8, "via": "ml"}   # blues -> jazz
+    r.run(1.0)
+    a = r.d.direction["art"]
+    assert a["via"] == "genre" and a["subjects"] == ["abstract", "interior", "urban", "people"]
+    assert a["theme"] == "late-night city, smoky rooms, painterly abstraction"
+    assert r.of(contract.ROOM_DIRECTION)[-1]["art"] == a
+    r.sec["genre"] = {"word": "pop", "conf": 0.8, "parent": "x", "parent_p": 0.8, "via": "ml"}     # no pop row
+    r.run(1.0)
+    assert r.d.direction["genre"] == "pop" and r.d.direction["art"] is None                    # nothing invented
+
+
+def test_room_direction_art_is_none_with_no_music_known(tmp_path):
+    r = art_stage4_rig(tmp_path)
+    r.run(1.0)
+    assert r.d.direction["genre"] is None and r.d.direction["art"] is None
+
+
+def test_a_confident_listener_art_wish_wins(tmp_path):
+    r = art_stage4_rig(tmp_path)
+    r.sec["genre"] = {"word": "jazz", "conf": 0.8, "parent": "x", "parent_p": 0.8, "via": "ml"}
+    b = guide_beliefs("jazz", 0.9)
+    b["art"] = dict(LISTENER_ART, conf=0.6)
+    r.ctx.beliefs = lambda: b
+    r.run(1.0)
+    assert r.d.direction["art"] == LISTENER_ART                                     # conf >= 0.6: the listener's
+    b["art"]["conf"] = 0.55                                                         # not sure: music_art by genre
+    r.run(1.0)
+    assert r.d.direction["art"]["via"] == "genre" and r.d.direction["art"]["subjects"][0] == "abstract"
+    b["art"]["conf"], b["state"] = 0.9, "fading"                                    # fading beliefs don't lead
+    r.run(1.0)
+    assert r.d.direction["art"]["via"] == "genre"

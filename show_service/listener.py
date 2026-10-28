@@ -229,6 +229,14 @@ LISTEN_TOOL: dict = {
                                  "required": ["kind", "eta_min_s", "eta_max_s", "signs", "size", "confidence"]}},
             "track_change": {"type": "boolean"},
             "why": {"type": "string", "description": "At most 12 words."},
+            # owner, 28 Oct: optional (never required): a missing or unusable art is no art wish, never a failed call
+            "art": {"type": "object",
+                    "description": "Optional. Pictures from the house library that suit this music.",
+                    "properties": {"subjects": {"type": "array", "items": {"type": "string"}, "maxItems": 3},
+                                   "moods": {"type": "array", "items": {"type": "string"}, "maxItems": 3},
+                                   "media": {"type": "array", "items": {"type": "string"}, "maxItems": 2},
+                                   "avoid": {"type": "array", "items": {"type": "string"}, "maxItems": 3},
+                                   "theme": {"type": "string", "description": "At most 10 plain words."}}},
         },
         "required": ["content", "character", "genre", "mood", "approach", "trajectory", "ending", "coming",
                      "track_change", "why"],
@@ -380,6 +388,11 @@ class BeliefState:
         self.mood_map: dict[str, list[str]] = {}  # vocab.yaml music_moods (the listener sets it from its Vocab)
         self.character: Optional[str] = None
         self.ending: Optional[tuple[str, float]] = None   # (word, the verdict's arrival)
+        # owner, 28 Oct: the art wish, carried as the genre is (votes per list, half-life genre, cleared on a track
+        # change); art_n: the decayed count of verdicts that gave one (REF_WEIGHT of them reads as full confidence)
+        self.art_votes: dict[str, dict[str, float]] = {k: {} for k in contract.ART_LIMITS}
+        self.art_n = 0.0
+        self.theme: Optional[str] = None
 
     def clear(self) -> None:
         mm = self.mood_map
@@ -402,6 +415,13 @@ class BeliefState:
                         del table[w]
             f = 0.5 ** (dt / HALF_LIFE_S["intensity"])
             self.intensity = [x * f for x in self.intensity]
+            f = 0.5 ** (dt / HALF_LIFE_S["genre"])
+            self.art_n *= f
+            for table in self.art_votes.values():
+                for w in list(table):
+                    table[w] *= f
+                    if table[w] < 1e-3:
+                        del table[w]
         self.t_votes = now_s
 
     def add(self, ins: dict, now_s: float) -> None:
@@ -413,6 +433,7 @@ class BeliefState:
                 table.clear()
             self.intensity = [0.0, 0.0, 0.0]
             self.character, self.ending = None, None
+            self.art_votes, self.art_n, self.theme = {k: {} for k in contract.ART_LIMITS}, 0.0, None
         newer = self.last is None or track_change or _t1_s(ins) >= _t1_s(self.last) - 1e-6
         if ins.get("content") in MUSICAL:
             g = (ins.get("genre") or {}).get("label")
@@ -428,6 +449,14 @@ class BeliefState:
             x = _f(ap.get("intensity"))
             if x is not None:
                 self.intensity = [self.intensity[0] + 1.0, self.intensity[1] + x, self.intensity[2] + x * x]
+            art = ins.get("art")
+            if isinstance(art, dict):
+                self.art_n += 1.0
+                for k, table in self.art_votes.items():
+                    for i, w in enumerate(art.get(k) or []):
+                        table[w] = table.get(w, 0.0) + 1.0 / (1.0 + 0.1 * i)   # best first: ties go to the first
+                if newer and art.get("theme"):
+                    self.theme = str(art["theme"])
             if newer:
                 if ins.get("character"):
                     self.character = str(ins["character"])
@@ -492,7 +521,7 @@ class BeliefState:
 
     def view(self, now_s: float) -> dict:
         none = {"state": "none", "age_s": None, "genre": None, "moods": [], "feel": [], "trajectory": None,
-                "content": None, "character": None, "approach": None, "ending": None, "coming": []}
+                "content": None, "character": None, "approach": None, "ending": None, "coming": [], "art": None}
         if self.last_s is None or self.last is None:
             return none
         age = max(0.0, now_s - self.last_s)
@@ -539,7 +568,18 @@ class BeliefState:
         return {"state": state, "age_s": round(age, 1), "genre": genre, "moods": moods, "feel": feel,
                 "trajectory": trajectory, "content": last.get("content"),
                 "character": self.character if musical else None, "approach": self._approach(fade),
-                "ending": ending, "coming": coming}
+                "ending": ending, "coming": coming, "art": self._art(fade)}
+
+    def _art(self, fade: float) -> Optional[dict]:
+        """The art wish the verdicts agree on (contract.ArtWish + conf): each list's leading words, the newest theme;
+        conf = min(1, verdicts / REF_WEIGHT) x the fade, as the genre's agreement over time."""
+        if self.art_n < 1e-3:
+            return None
+        out: dict = {k: [w for w, _ in sorted(t.items(), key=lambda kv: -kv[1])[:contract.ART_LIMITS[k]]]
+                     for k, t in self.art_votes.items()}
+        out["avoid"] = [w for w in out["avoid"] if w not in out["subjects"]]
+        return {**out, "theme": self.theme or "", "via": "listener",
+                "conf": round(min(1.0, self.art_n / REF_WEIGHT) * fade, 3)}
 
     def _visual(self, feel: list[dict]) -> list[dict]:
         """The listener's words for how the music feels -> the visual moods scenes carry (vocab.yaml music_moods: each
@@ -608,9 +648,10 @@ def _coming(items: Any) -> list[dict]:
 
 
 def to_insight(data: dict, *, vocab: Vocab, stream: str, model: str, latency_ms: float, window: tuple[float, float],
-               t_ms: float) -> dict:
+               t_ms: float, art: Optional[contract.ArtTags] = None) -> dict:
     """The model's tool arguments, checked against vocab.yaml and the fixed vocabularies (contract.InsightData). Any
-    word outside its list, a number out of range or too many items is cleaned here (the call is lenient)."""
+    word outside its list, a number out of range or too many items is cleaned here (the call is lenient). ``art``:
+    art_tags.yaml's words, which the optional art wish is cleaned to (None: no art wish)."""
     genres, moods_ok = set(vocab.genre), set(vocab.music_moods) or set(vocab.moods)
     data = _obj(data)
     g = _obj(data.get("genre"))
@@ -644,7 +685,8 @@ def to_insight(data: dict, *, vocab: Vocab, stream: str, model: str, latency_ms:
             "ending": word_of(data.get("ending"), contract.ENDINGS, "unknown"),
             "coming": _coming(data.get("coming")),
             "track_change": bool(data.get("track_change")),
-            "why": _words(data.get("why"), WHY_WORDS)}
+            "why": _words(data.get("why"), WHY_WORDS),
+            "art": contract.clean_art(data.get("art"), art.facets, "listener") if art is not None else None}
 
 
 # -- audio: loudness and encoding -----------------------------------------------------------------------------------------
@@ -849,7 +891,8 @@ class Listener:
     def __init__(self, ctx: contract.BrainContext, *, llm: Any = None, mono: Callable[[], float] = time.monotonic,
                  wall: Callable[[], float] = time.time, log_path: Optional[Path] = LISTENER_LOG,
                  vocab_path: Path = contract.VOCAB_FILE, encoder: Optional[Callable[..., Any]] = None,
-                 warm: bool = True, clips_dir: Optional[Path] = None) -> None:
+                 warm: bool = True, clips_dir: Optional[Path] = None,
+                 art_tags_path: Path = contract.ART_TAGS_FILE) -> None:
         self.ctx = ctx
         self.clips_dir = Path(clips_dir) if clips_dir else None
         self._on_listeners: list[Callable[[], None]] = []                # mic.py's wake: the switch claims the mic
@@ -861,6 +904,7 @@ class Listener:
         self._encode = encoder or encode
         self._warm = warm
         self.vocab = Vocab(vocab_path)
+        self.art_tags = contract.ArtTags(art_tags_path)   # owner, 28 Oct: the art wish's words (prompt and cleaning)
         self.cfg: dict = dict(DEFAULTS)
         self.ced_cfg: dict = dict(CED_DEFAULTS)
         self.speech_words: tuple[str, ...] = contract.SPEECH_WORDS   # listener.ced.speech_words
@@ -994,6 +1038,7 @@ class Listener:
 
     def tick(self, now_s: float) -> None:
         self.vocab.poll(now_s)
+        self.art_tags.poll(now_s)
         self.beliefs_state.mood_map = self.vocab.music_moods
         self._sample(now_s)
         m = self._llm_mod()
@@ -1630,7 +1675,7 @@ class Listener:
         self._errors_row = 0
         now = self._mono()
         ins = to_insight(res.data or {}, vocab=self.vocab, stream=stream, model=res.model or "",
-                         latency_ms=res.latency_ms, window=(clip.t0_s, t1), t_ms=now * 1000.0)
+                         latency_ms=res.latency_ms, window=(clip.t0_s, t1), t_ms=now * 1000.0, art=self.art_tags)
         ins["segment_id"] = self._segment_at(t1)  # README S4.8: the section at the clip's end (structure's id)
         self._agree_update(ins)
         if self._prev is None or _t1_s(ins) >= _t1_s(self._prev) - 1e-6:
@@ -1649,7 +1694,7 @@ class Listener:
         self._remember({"ok": True, "call": kind, "model": ins.get("model"), "latency_ms": _round(res.latency_ms),
                         "cost_usd": res.cost_usd, "content": ins.get("content"), "character": ins.get("character"),
                         "genre": ins.get("genre"), "moods": ins.get("mood") or ins.get("moods"),
-                        "coming": ins.get("coming"), "why": ins.get("why"), **meta})
+                        "coming": ins.get("coming"), "why": ins.get("why"), "art": ins.get("art"), **meta})
         self._log_event({"kind": "verdict", "insight": ins, "lufs": round(lufs, 1) if lufs is not None else None,
                          "gain_db": round(gain, 1), "format": fmt, "bytes": len(audio), "cost_usd": res.cost_usd,
                          "usage": res.usage, "call": kind, "segments": segs,
@@ -1708,7 +1753,8 @@ class Listener:
             "timbre_change, key_change, drums_in, drums_out, vocal_in, vocal_out, phrase_line. size: small, medium "
             "or big (how big a visual moment it deserves). confidence 0-1.\n"
             "- track_change: true if a different piece starts inside the clip.\n"
-            "- why: at most 12 words on what decided this.\n\n"
+            "- why: at most 12 words on what decided this.\n"
+            f"{self._art_prompt()}\n"
             "Rules:\n"
             "- Trust the measured numbers in the message (loudness, tempo, key, the timeline and the sections): they "
             "come from the room's own signal processing.\n"
@@ -1716,6 +1762,17 @@ class Listener:
             "- Never give tempo, key, BPM or beat numbers yourself. Never name the track, the artist or any lyrics.\n"
             "- Ignore what people say; describe only the sound.\n"
             "- A previous verdict, when given, is a hypothesis and may be wrong.")
+
+    def _art_prompt(self) -> str:
+        """Owner, 28 Oct: one short line asking which pictures suit the music, from art_tags.yaml's words ("" with
+        no lexicon: the field is then left out of the prompt)."""
+        a = self.art_tags
+        subj, moods, media = (", ".join(a.words(f)) for f in ("subject", "moods", "medium"))
+        if not subj:
+            return ""
+        return ("- art (optional): which pictures from the house library suit this music. subjects: up to 3 of "
+                f"{subj}; moods: up to 3 of {moods}; media: up to 2 of {media}; avoid: up to 3 subjects that would "
+                "jar; theme: at most 10 plain words. Judge from the music alone, not the room or anyone in it.\n")
 
     def _now_text(self, t_end: float) -> Optional[str]:
         """README S5.22: what structure knows at the clip's end, for the forecast (its phase, how far into the

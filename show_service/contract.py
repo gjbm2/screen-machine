@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import math
 import pathlib
+import re
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Literal, Optional, TypedDict, Union
 
@@ -277,6 +278,7 @@ SHOW_FILE = CONFIG_ROOM_DIR / "show.yaml"           # c8: show_service's own set
 PATCH_FILE = CONFIG_ROOM_DIR / "patch.yaml"         # 68's; read-only for us (lamp placement -> roles)
 LLM_FILE = REPO_ROOT / "config" / "llm.yaml"        # c8: task -> model list, prices, budgets (utils/llm)
 VOCAB_FILE = REPO_ROOT / "config" / "live" / "vocab.yaml"        # 04's; read-only (moods, genre, transition_style)
+ART_TAGS_FILE = REPO_ROOT / "config" / "art_tags.yaml"   # Flask's tagger's lexicon + music_art; read-only (ArtTags)
 PALETTES_FILE = REPO_ROOT / "stream_service" / "palettes.py"     # 04's catalog; read by file path, never imported as
                                                                  # a package (palette.py)
 TEST_PIANO_DIR = REPO_ROOT / "config" / "live" / "test-piano"    # the test piano's .mid library (98's)
@@ -677,7 +679,11 @@ class DirectionData(TypedDict):
                                    # the local ML's style shares (music.context genre.words), else {genre: 1.0}
     valence: Optional[float]       # 0 (sad, dark) .. 1 (happy): music.context valence (None without the ML)
     organic: Optional[float]       # 0 (synthetic) .. 1 (acoustic): music.context acoustic (None without the ML)
-    beat_lock: bool                # the vibe allows it and the clock's gate is "beat"
+    # owner, 28 Oct: the pictures that suit the music (the gallery scores tagged art against it): the listener's own
+    # wish while it is confident, else config/art_tags.yaml music_art for the genre's group, else None (no music
+    # known). Optional for readers: an older message has no key, so read it with .get("art")
+    art: NotRequired[Optional["ArtWish"]]
+    beat_lock: bool               # the vibe allows it and the clock's gate is "beat"
     loose: bool                    # the card's "following loosely": the vibe wants the beat, the clock is unsure
     flow: "FlowData"               # docs/LIGHTS.md §4: the room's direction of travel (still while neutral); published at
                                    # once on a new flow.id
@@ -950,6 +956,130 @@ COMING_SIGNS: tuple[str, ...] = ("louder", "low_in", "busier", "stop_return", "t
                                  "drums_in", "drums_out", "vocal_in", "vocal_out", "phrase_line")
 COMING_SIZES: tuple[str, ...] = ("small", "medium", "big")
 
+# -- the art wish (owner, 28 Oct: "connect listening AI with artistic director with AI image generator") ---------------
+#: config/art_tags.yaml's 10 music groups -> the vocab genre words each covers: a copy of
+#: stream_service/tools/tagpass.py GROUP_WORDS (read by file, never imported; test_contract checks they match). A word
+#: in two groups (disco, trance, electronic) takes the first.
+ART_GROUP_WORDS: dict[str, tuple[str, ...]] = {
+    "ambient": ("ambient", "downtempo"),
+    "classical": ("classical", "piano", "soundtrack"),
+    "jazz": ("jazz", "blues"),
+    "soul": ("soul", "rnb", "funk", "gospel", "disco"),
+    "pop": ("pop", "indie", "singer-songwriter", "folk", "country"),
+    "rock": ("rock", "metal", "punk"),
+    "house": ("house", "disco", "trance", "electronic"),
+    "techno": ("techno", "trance", "drum-and-bass", "dubstep", "electronic"),
+    "hiphop": ("hip-hop",),
+    "world": ("world", "latin", "afrobeat", "reggae"),
+}
+#: the most words each list keeps (a music_art default row may name ART_DEFAULT_SUBJECTS subjects)
+ART_LIMITS: dict[str, int] = {"subjects": 3, "moods": 3, "media": 2, "avoid": 3}
+ART_DEFAULT_SUBJECTS = 5
+ART_THEME_WORDS = 10
+ART_VIA: tuple[str, ...] = ("listener", "genre")
+#: each list's facet in art_tags.yaml (avoid names subjects)
+ART_FACETS: dict[str, str] = {"subjects": "subject", "moods": "moods", "media": "medium", "avoid": "subject"}
+
+
+class ArtWish(TypedDict):
+    """The pictures that suit the music (docs/ART_TAGS.md): words from art_tags.yaml's facets only."""
+    subjects: list[str]            # <= 3 subject words, best first (<= 5 from a music_art row)
+    moods: list[str]               # <= 3 mood words (the renderer's visual moods)
+    media: list[str]               # <= 2 medium words ([]: any)
+    avoid: list[str]               # <= 3 subject words that would jar
+    theme: str                     # <= 10 plain words ("" when none): the Room page line, the generator's brief
+    via: str                       # ART_VIA: the listener's own wish, or music_art for the genre's group
+
+
+def art_group(genre: Optional[str], genres: Optional[dict] = None) -> Optional[str]:
+    """The music group of ``genre`` (ART_GROUP_WORDS; the first group naming it), else of the top ``genres`` share."""
+    words = [genre] if isinstance(genre, str) and genre else []
+    if isinstance(genres, dict):
+        words += [w for w, _ in sorted(genres.items(), key=lambda kv: -(kv[1] if isinstance(kv[1], (int, float))
+                                                                        else 0.0)) if isinstance(w, str)][:1]
+    for w in words:
+        for g, ws in ART_GROUP_WORDS.items():
+            if w in ws:
+                return g
+    return None
+
+
+def _art_word(v: Any) -> str:
+    return re.sub(r"[\s_]+", "-", str(v).strip().lower())[:32] if isinstance(v, str) else ""
+
+
+def clean_art(raw: Any, facets: dict[str, tuple[str, ...]], via: str, subjects_max: int = ART_LIMITS["subjects"]
+              ) -> Optional[ArtWish]:
+    """A model's (or a music_art row's) art wish cleaned to the lexicon: each list keeps its facet's words only (case,
+    spaces and underscores don't matter: "Still life" -> "still-life"), de-duplicated, cut to its limit; avoid never
+    repeats a subject; theme is cut to ART_THEME_WORDS words. Not a mapping, or nothing usable left: None."""
+    if not isinstance(raw, dict):
+        return None
+    out: dict[str, Any] = {}
+    for key, facet in ART_FACETS.items():
+        ok = facets.get(facet) or ()
+        items = raw.get(key)
+        words: list[str] = []
+        for v in (items if isinstance(items, list) else []):
+            w = _art_word(v)
+            if w in ok and w not in words and not (key == "avoid" and w in out.get("subjects", ())):
+                words.append(w)
+        out[key] = words[:subjects_max if key == "subjects" else ART_LIMITS[key]]
+    theme = raw.get("theme")
+    out["theme"] = " ".join(theme.split()[:ART_THEME_WORDS])[:120] if isinstance(theme, str) else ""
+    if not (out["subjects"] or out["moods"] or out["media"] or out["theme"]):
+        return None
+    out["via"] = via
+    return out  # type: ignore[return-value]
+
+
+class ArtTags:
+    """config/art_tags.yaml, read-only and mtime-polled (RELOAD_S) by the listener and the director: the facets' words
+    and the music_art rows. A bad file keeps the last good words (``error`` says why); missing: no words, no rows."""
+
+    def __init__(self, path: pathlib.Path = ART_TAGS_FILE) -> None:
+        self.path = pathlib.Path(path)
+        self.facets: dict[str, tuple[str, ...]] = {}   # facet -> its words, in the file's order
+        self.rows: dict[str, Any] = {}             # music_art: group -> its raw row (cleaned when read)
+        self.error: Optional[str] = None
+        self._sig: Any = None
+        self._poll = -math.inf
+
+    def poll(self, now_s: float) -> None:
+        if now_s - self._poll < RELOAD_S:
+            return
+        self._poll = now_s
+        try:
+            st = self.path.stat()
+            sig: Any = (st.st_mtime_ns, st.st_size)
+        except OSError as e:
+            if self._sig != "missing":
+                self._sig, self.error = "missing", f"{self.path.name}: {e.strerror}"
+                self.facets, self.rows = {}, {}
+            return
+        if sig == self._sig:
+            return
+        self._sig = sig
+        try:
+            import yaml
+            raw = yaml.safe_load(self.path.read_text(encoding="utf-8")) or {}
+            fs = raw.get("facets") if isinstance(raw.get("facets"), dict) else {}
+            self.facets = {str(k): tuple(str(w) for w in v) for k, v in fs.items() if isinstance(v, dict)}
+            ma = raw.get("music_art")
+            self.rows = {str(k): v for k, v in ma.items()} if isinstance(ma, dict) else {}
+            self.error = None
+        except Exception as e:                    # noqa: BLE001 - keep the last good words
+            self.error = f"{self.path.name}: {type(e).__name__}: {e}"
+
+    def words(self, facet: str) -> list[str]:
+        return list(self.facets.get(facet) or ())
+
+    def for_group(self, group: Optional[str]) -> Optional[ArtWish]:
+        """music_art[group] cleaned (via "genre"); None with no group or no row (no invented values)."""
+        if not group:
+            return None
+        return clean_art(self.rows.get(group), self.facets, "genre", ART_DEFAULT_SUBJECTS)
+
 
 class InsightData(TypedDict):
     """music.insight: one listener verdict as validated (§7.3 output; README S5.22), with its window. The model's own
@@ -973,6 +1103,8 @@ class InsightData(TypedDict):
                                    #  "signs": [COMING_SIGNS], "size": COMING_SIZES, "confidence"}
     track_change: bool
     why: str                       # <= 12 words
+    art: NotRequired[Optional["ArtWish"]]   # owner, 28 Oct: the pictures that suit this music (via "listener"), or
+                                   # None (the model gave none, or nothing usable): never a failed call
 
 
 class Beliefs(TypedDict):
@@ -991,6 +1123,8 @@ class Beliefs(TypedDict):
     ending: Optional[str]          # ENDINGS less "unknown": the latest word that said something, for ENDING_HOLD_S
     coming: list[dict]             # the latest verdict's forecasts still ahead: {"id", "kind", "t0_s", "t1_s" (acoustic
                                    #  monotonic s), "in_s": [lo, hi] from now, "signs", "size", "conf"}
+    art: NotRequired[Optional[dict]]   # owner, 28 Oct: the verdicts' art wish ({ArtWish's keys, "conf"}): votes decayed
+                                   # as the genre's (half-life 120 s, fade), the newest theme; None with none
 
 
 class ListenerView(TypedDict):
@@ -1121,6 +1255,7 @@ class CardData(TypedDict):
     tests: dict[str, SourceStatus]   # by source (the console's; the card ignores it)
     mic_state: Optional[dict[str, Any]]   # README S5.16: GET /api/v1/mic's body ({on, muted, wanted, why, claims, mode,
                                           #  streams: {capturing, off}, error}); None without mic.py
+    art: Optional[ArtWish]               # room.direction's art wish (the Room page's "Pictures: <theme>"); None without music
 
 
 # -- the brain's wiring (fields only; brain.py and __main__ fill it; components read it) -------------------------------------
