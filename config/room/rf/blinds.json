@@ -1,5 +1,6 @@
 {
   "_note": "Bloc iQ Smart Hub (Dooya/Motion Connector protocol). Addresses only; the hub key lives in ~/.config/screen-machine/rf/bloc_hub.json (0600), never here. Positions: 0 = raised, 100 = lowered. Channel = last 4 hex digits of the blind's mac.",
+  "writes_enabled": true,
   "hub": {
     "ip": "192.168.1.136",
     "port": 32100,
@@ -97,5 +98,6 @@
     ]
   },
   "travel_time_s": {},
-  "_privacy_note": "Owner, 13 Oct ~23:32: the three blinds that matter are ch02, ch03, ch14 (raised then lowered by hand; the hub cache tracked all three both ways). Other blinds may move on their own Bloc timers."
+  "_privacy_note": "Owner, 13 Oct ~23:32: the three blinds that matter are ch02, ch03, ch14 (raised then lowered by hand; the hub cache tracked all three both ways). Other blinds may move on their own Bloc timers.",
+  "_writes_note": "Writes on since 28 Oct 23:25 (owner: 'switching from normal to disco should SAVE the blinds state on the way in, drop the blinds, and then RESTORE it on the way out')."
 }
