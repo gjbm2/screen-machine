@@ -1,8 +1,10 @@
 """RF/IR remotes sent by the BroadLink RM4 Pro (python-broadlink, local UDP; no cloud).
 
-One JSON file per remote-controlled device under config/room/rf/ (the glitterball: glitterball.json) says which
-subsystem it is, the RM4 Pro's address, and the learned codes (base64 python-broadlink packets, Home Assistant's
-format). The kind follows the codes, read live from the file:
+One JSON file per remote-controlled device under config/room/rf/ (every file with a "device" block: the glitterball,
+glitterball.json; the pinspots, pinspot.json) says which subsystem it is, the RM4 Pro's address, and the learned codes
+(base64 python-broadlink packets, Home Assistant's format). Devices on the same RM4 Pro share one connection.
+A file with "type": "light" is a light worked by its remote (rf_light.py: colour, brightness steps, pulse, flash).
+Otherwise the kind follows the codes, read live from the file:
   - "on" and "off"  -> edge_discrete (a latched receiver): each code sets the state, safe to re-send.
   - "toggle" only   -> edge_toggle: one code flips it; the coordinator never sends it blind.
   - neither         -> dry_run: the device is listed, its rows are skipped, nothing is sent.
@@ -21,6 +23,9 @@ The app keeps its own learned codes in its cloud; they can't be read back, so co
       # first (hold the button until "Found", then press once). --ir for an infrared remote.
   .venv/bin/python -m room_service.adapters.broadlink_rf send on          # transmits: someone watching the ball
   .venv/bin/python -m room_service.adapters.broadlink_rf set on <base64>  # a code from elsewhere
+
+Codes can also be learned and tested from the Lights setup page (remotes_api.py: LearnJob below, one at a time per
+RM4 Pro). An RF device's frequency is found once (the sweep: hold the button) and reused for its other buttons.
 
 The file is re-read when it changes, so a code learned (or re-learned) while room_service runs is used at once:
 no restart. A missing file, or no python-broadlink in the venv, leaves the built-in placeholder.
@@ -45,8 +50,10 @@ from ..roomstate.schema import enum_schema
 log = logging.getLogger("room_service.broadlink")
 
 REPO = Path(__file__).resolve().parents[2]
-DEFAULT_FILE = REPO / "config" / "room" / "rf" / "glitterball.json"
+RF_DIR = REPO / "config" / "room" / "rf"
+DEFAULT_FILE = RF_DIR / "glitterball.json"
 STATE_BUTTONS = ("on", "off", "toggle")
+POWER_WORDS = {"on": "On", "off": "Off", "toggle": "On/off (one button)"}
 LOCKED_HINT = "the RM4 Pro is locked: BroadLink app > the device > ... > Properties > Lock device: off"
 
 
@@ -147,14 +154,37 @@ class RemoteFile:
             raise RFError(f"no code learned for {button!r} ({self.path.name})")
         return base64.b64decode(c)
 
-    def save_code(self, button: str, code: bytes, meta: dict | None = None) -> None:
+    @property
+    def medium(self) -> str:
+        """"rf" or "ir": the file's own word, else how its codes were learned (RF unless they were IR)."""
+        raw = self.fresh()
+        if raw.get("medium") in ("rf", "ir"):
+            return raw["medium"]
+        sources = {str(m.get("source")) for m in (raw.get("learned") or {}).values() if isinstance(m, dict)}
+        return "ir" if "ir" in sources and "rf" not in sources else "rf"
+
+    @property
+    def freq_mhz(self) -> float | None:
+        """The RF frequency a button was learned on (one remote, one frequency), so the next needs no sweep."""
+        for m in (self.fresh().get("learned") or {}).values():
+            if isinstance(m, dict) and m.get("freq_mhz"):
+                return float(m["freq_mhz"])
+        return None
+
+    def update(self, fn) -> None:
+        """fn(raw) changes the file's dict in place; written whole and atomically."""
         raw = json.loads(self.path.read_text())
-        raw.setdefault("codes", {})[button] = base64.b64encode(code).decode()
-        if meta:
-            raw.setdefault("learned", {})[button] = meta
+        fn(raw)
         tmp = self.path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(raw, indent=2) + "\n")
+        tmp.write_text(json.dumps(raw, indent=2, ensure_ascii=False) + "\n")
         tmp.replace(self.path)
+
+    def save_code(self, button: str, code: bytes, meta: dict | None = None) -> None:
+        def put(raw: dict) -> None:
+            raw.setdefault("codes", {})[button] = base64.b64encode(code).decode()
+            if meta:
+                raw.setdefault("learned", {})[button] = meta
+        self.update(put)
 
 
 class Remote:
@@ -163,6 +193,8 @@ class Remote:
 
     def __init__(self, file: RemoteFile, rm: RM4, state_dir: str | Path | None = None) -> None:
         self.file, self.rm = file, rm
+        self.id = file.path.stem
+        self.job: LearnJob | None = None          # the last learn started from the Lights setup page
         self.lock = asyncio.Lock()                # one press at a time, power and settings alike
         self.state_path = Path(state_dir) / f"remote-{file.path.stem}.json" if state_dir else None
         self.sent: dict[str, str] = {}            # settings member -> value last sent
@@ -190,6 +222,37 @@ class Remote:
             if v in buttons:
                 out.append((m, str(v), buttons[v]))
         return out
+
+    def button_rows(self) -> list[dict]:
+        """Every button the device has, learned or not, for the Lights setup page: {id, label, group, learned, at}.
+        Power first, then the file's colours, its settings, its declared button groups ("buttons": {group: {id:
+        label}}), then any other learned code."""
+        raw, codes = self.file.fresh(), self.file.codes
+        learned = raw.get("learned") or {}
+        declared = {g: b for g, b in (raw.get("buttons") or {}).items() if isinstance(b, dict)}
+        rows: list[dict] = []
+
+        def add(group: str, bid: str, label: str) -> None:
+            if any(r["id"] == bid for r in rows):
+                return
+            meta = learned.get(bid) if isinstance(learned.get(bid), dict) else {}
+            rows.append({"id": bid, "label": label, "group": group, "learned": bid in codes, "at": meta.get("at")})
+
+        power = declared.get("Power") or {}
+        for bid in STATE_BUTTONS:
+            if bid in power or bid in codes:
+                add("Power", bid, str(power.get(bid) or POWER_WORDS[bid]))
+        for cid, w in (raw.get("colours") or {}).items():
+            add("Colour", str(cid), str(w))
+        for spec in self.settings.values():
+            for v, bid in (spec.get("buttons") or {}).items():
+                add(str(spec.get("label") or "Settings"), str(bid), str((spec.get("labels") or {}).get(v, v)))
+        for group, buttons in declared.items():
+            for bid, w in buttons.items():
+                add(group, str(bid), str(w))
+        for bid in codes:
+            add("Other", bid, bid)
+        return rows
 
     def remember(self, member: str, value: str) -> None:
         self.sent[member] = value
@@ -372,10 +435,26 @@ class RemoteSettingsAdapter(Adapter):
 
 
 def from_config(path: str | Path | None = None, state_dir: str | Path | None = None) -> list[Adapter]:
-    """The device in `path` (default config/room/rf/glitterball.json): its power adapter (dry_run until it has codes)
-    and, with a "settings" block, a settings adapter ("settings_subsystem", e.g. mirror_ball_motor). Placeholders with
-    their values without python-broadlink; [] if the file is missing or unreadable (the built-in placeholder stays)."""
-    p = Path(path) if path else DEFAULT_FILE
+    """Every device file in config/room/rf/ with a "device" block (or just `path`), in name order; devices on the same
+    RM4 Pro share one connection. Each file gives its power adapter (dry_run until it has codes) and, with a
+    "settings" block, a settings adapter ("settings_subsystem", e.g. mirror_ball_motor); a "type": "light" file gives
+    one light adapter (rf_light.py). Placeholders with their values without python-broadlink; nothing for a file that
+    is missing or unreadable (the glitterball's built-in placeholder stays)."""
+    rms: dict[str, RM4] = {}
+    if path:
+        return _from_file(Path(path), state_dir, rms)
+    out: list[Adapter] = []
+    for p in sorted(RF_DIR.glob("*.json")):
+        try:
+            if not isinstance(json.loads(p.read_text()).get("device"), dict):
+                continue                         # blinds.json: the Bloc hub, not the RM4 Pro
+        except (OSError, ValueError, AttributeError):
+            pass                                 # _from_file says what's wrong with it
+        out += _from_file(p, state_dir, rms)
+    return out
+
+
+def _from_file(p: Path, state_dir: str | Path | None, rms: dict[str, RM4]) -> list[Adapter]:
     if not p.exists():
         return []
     try:
@@ -387,10 +466,14 @@ def from_config(path: str | Path | None = None, state_dir: str | Path | None = N
     sub = str(raw.get("subsystem") or "mirror_ball")
     settings_sub = str(raw.get("settings_subsystem") or f"{sub}_motor")
     settings = {m: s for m, s in (raw.get("settings") or {}).items() if isinstance(s, dict)}
+    light = raw.get("type") == "light"
     try:
         import broadlink  # noqa: F401
     except ImportError:
         log.error("%s: python-broadlink isn't installed in this venv; placeholder", sub)
+        if light:
+            from .rf_light import placeholder
+            return [placeholder(raw)]
         v = raw.get("values") or {}
         out: list[Adapter] = [Placeholder(sub, [str(raw.get("member") or "main")],
                                           [str(v.get("on", "spinning")), str(v.get("off", "stopped"))])]
@@ -401,7 +484,11 @@ def from_config(path: str | Path | None = None, state_dir: str | Path | None = N
             p.subsystem_label = raw.get("label") or None
         return out
     host = str((raw.get("device") or {}).get("host") or "")
-    remote = Remote(f, RM4(host), state_dir)
+    rm = rms.setdefault(host, RM4(host))
+    remote = Remote(f, rm, state_dir)
+    if light:
+        from .rf_light import RFLightAdapter
+        return [RFLightAdapter(remote, state_dir)]
     out = [RFRemoteAdapter(remote)]
     if settings:
         out.append(RemoteSettingsAdapter(remote, settings_sub))
@@ -423,24 +510,40 @@ def _poll(fn, timeout_s: float, every_s: float = 1.0):
     return None
 
 
-def _learn_rf(dev, freq: float | None, timeout_s: float) -> tuple[float, bytes]:
+class Stopped(RFError):
+    pass
+
+
+def _say(phase: str, words: str) -> None:
+    print(words, flush=True)
+
+
+def _learn_rf(dev, freq: float | None, timeout_s: float, say=_say, stop: threading.Event | None = None
+              ) -> tuple[float, bytes]:
     from broadlink.exceptions import ReadError, StorageError
+    stop = stop or threading.Event()
     if freq is None:
         dev.sweep_frequency()
-        print("Hold the button down (keep holding) ...", flush=True)
+        say("sweep", "Hold the button down (keep holding) near the RM4 Pro ...")
 
         def found():
+            if stop.is_set():
+                return 0.0
             ok, f = dev.check_frequency()
             return f if ok else None
         freq = _poll(found, timeout_s)
-        if freq is None:
+        if not freq:
             dev.cancel_sweep_frequency()
+            if stop.is_set():
+                raise Stopped("stopped")
             raise RFError("no RF frequency found: hold the button closer to the RM4 Pro and try again")
-        print(f"Found {freq:.2f} MHz. Let go.", flush=True)
+        say("found", f"Found {freq:.2f} MHz. Let go.")
         time.sleep(1.5)
-    print("Now press the button once, briefly (the RM4 Pro's light is on while it listens) ...", flush=True)
+    say("press", "Now press the button once, briefly (the RM4 Pro's light is on while it listens) ...")
 
     def data():
+        if stop.is_set():
+            return b""
         try:
             return dev.check_data()
         except (ReadError, StorageError):
@@ -450,16 +553,21 @@ def _learn_rf(dev, freq: float | None, timeout_s: float) -> tuple[float, bytes]:
     while time.monotonic() < end:
         dev.find_rf_packet(freq)
         packet = _poll(data, min(REARM_S, end - time.monotonic()), every_s=0.5)
+        if packet == b"":
+            raise Stopped("stopped")
         if packet is not None:
             return freq, packet
     raise RFError("no code captured")
 
 
-def _learn_ir(dev, timeout_s: float) -> bytes:
+def _learn_ir(dev, timeout_s: float, say=_say, stop: threading.Event | None = None) -> bytes:
     from broadlink.exceptions import ReadError, StorageError
-    print("Point the remote at the RM4 Pro and press the button once ...", flush=True)
+    stop = stop or threading.Event()
+    say("press", "Point the remote at the RM4 Pro and press the button once ...")
 
     def data():
+        if stop.is_set():
+            return b""
         try:
             return dev.check_data()
         except (ReadError, StorageError):
@@ -468,9 +576,75 @@ def _learn_ir(dev, timeout_s: float) -> bytes:
     while time.monotonic() < end:
         dev.enter_learning()
         packet = _poll(data, min(REARM_S, end - time.monotonic()), every_s=0.25)
+        if packet == b"":
+            raise Stopped("stopped")
         if packet is not None:
             return packet
     raise RFError("no IR code captured")
+
+
+def learn(rm: RM4, f: RemoteFile, button: str, ir: bool, freq: float | None, timeout_s: float, say=_say,
+          stop: threading.Event | None = None) -> int:
+    """Capture one button's code into the file; its size in bytes."""
+    if ir:
+        packet = rm.call(lambda dev: _learn_ir(dev, timeout_s, say, stop), retry=False)
+        meta: dict = {"source": "ir"}
+    else:
+        freq, packet = rm.call(lambda dev: _learn_rf(dev, freq, timeout_s, say, stop), retry=False)
+        meta = {"source": "rf", "freq_mhz": round(freq, 2)}
+    meta["at"] = time.strftime("%Y-%m-%d %H:%M")
+    f.save_code(button, packet, meta)
+    return len(packet)
+
+
+class LearnJob:
+    """One button being learned for the Lights setup page, on its own thread (python-broadlink blocks). It holds the
+    RM4 Pro for up to timeout_s, so sends to its other devices wait. phase: starting | sweep | found | press | done |
+    failed | stopped; words say what to do now."""
+
+    def __init__(self, remote: "Remote", button: str, sweep: bool = False, timeout_s: float = 60.0) -> None:
+        self.remote, self.button, self.timeout_s = remote, button, timeout_s
+        f = remote.file
+        self.ir = f.medium == "ir"
+        self.freq = None if (sweep or self.ir) else f.freq_mhz
+        self.phase, self.words, self.started, self.ended = "starting", "Waking the RM4 Pro ...", time.time(), None
+        self.bytes = 0
+        self._stop = threading.Event()
+        self._thread = threading.Thread(target=self._run, name=f"learn-{remote.id}-{button}", daemon=True)
+
+    @property
+    def running(self) -> bool:
+        return self.ended is None
+
+    def start(self) -> "LearnJob":
+        self._thread.start()
+        return self
+
+    def stop(self) -> None:
+        self._stop.set()
+
+    def _say(self, phase: str, words: str) -> None:
+        self.phase, self.words = phase, words
+
+    def _run(self) -> None:
+        try:
+            self.bytes = learn(self.remote.rm, self.remote.file, self.button, self.ir, self.freq, self.timeout_s,
+                               self._say, self._stop)
+            self.phase, self.words = "done", "Learned."
+            log.info("%s: learned %s (%d bytes)", self.remote.id, self.button, self.bytes)
+        except Stopped:
+            self.phase, self.words = "stopped", "Stopped; nothing learned."
+        except RFError as e:
+            self.phase, self.words = "failed", str(e)
+        except Exception as e:                   # the device mid-learn: say it, never kill the thread silently
+            log.exception("%s: learning %s failed", self.remote.id, self.button)
+            self.phase, self.words = "failed", f"{type(e).__name__}: {e}"
+        self.ended = time.time()
+
+    def view(self) -> dict:
+        return {"button": self.button, "phase": self.phase, "words": self.words, "running": self.running,
+                "medium": "ir" if self.ir else "rf", "freq_mhz": self.freq, "started": self.started,
+                "ended": self.ended, "timeout_s": self.timeout_s}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -512,15 +686,8 @@ def main(argv: list[str] | None = None) -> int:
                 if i:
                     time.sleep(a.gap)            # a gap with the light off, so each press is clearly separate
                 print(f"[{i + 1}/{len(a.buttons)}] {button}", flush=True)
-                if a.ir:
-                    packet = rm.call(lambda dev: _learn_ir(dev, a.timeout), retry=False)
-                    meta = {"source": "ir"}
-                else:
-                    freq, packet = rm.call(lambda dev: _learn_rf(dev, a.freq, a.timeout), retry=False)
-                    meta = {"source": "rf", "freq_mhz": round(freq, 2)}
-                meta["at"] = time.strftime("%Y-%m-%d %H:%M")
-                f.save_code(button, packet, meta)
-                print(f"Learned {button!r}: {len(packet)} bytes -> {f.path}", flush=True)
+                n = learn(rm, f, button, a.ir, a.freq, a.timeout)
+                print(f"Learned {button!r}: {n} bytes -> {f.path}", flush=True)
         elif a.cmd == "send":
             packet = f.code(a.button)
             for i in range(max(1, a.times)):

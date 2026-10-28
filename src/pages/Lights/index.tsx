@@ -8,6 +8,8 @@
 // "Lights | Room map" at the top (?tab=map, else remembered on this device) switches to the Room map (RoomMap.tsx).
 // ?light=<id> opens that light's row (from the Room page's "Set up this light ›"). What a light does is chosen on the
 // Room page, not here. Same light, warm skin as /room (its theme and pieces).
+// Under the lights, Remote controls (RemoteControls.tsx): the devices worked by their own remotes through the RM4 Pro
+// (the pinspots, the glitterball), each button learned and tested here.
 
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
@@ -44,6 +46,7 @@ import {
   type ModeUse,
   type Placeable,
 } from "./lib";
+import { RemoteControls } from "./RemoteControls";
 import { RoomMap } from "./RoomMap";
 import { useLightTypes, useRig, useRoomFacts, useSpace } from "./useRig";
 
@@ -305,6 +308,8 @@ export default function LightsPage() {
                   </section>
                 ))
               )}
+
+              <RemoteControls api={roomApi} />
 
               {rig.problems.length > 0 && (
                 <Unroll title="Things to check" hint={`${rig.problems.length}`} testId="lights-problems">

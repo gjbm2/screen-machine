@@ -5,10 +5,14 @@
 // (GET /api/v1/room/describe: the device config and the modes.json labels), and "On in Party and Disco" from the
 // modes it describes. Changes go through the room state model (PUT /api/v1/room/targets), so a change by hand and a
 // mode change go through the same coordinator. Nothing reads a remote-controlled device back: the page shows what
-// was last sent, and an on/off toggle can be told what the device is doing (assume).
+// was last sent, and an on/off toggle can be told what the device is doing (assume). A setting is drawn from its
+// schema: a switch (x-ui.switch: the pinspots' pulse, flash), a slider (a number range: their brightness), else a
+// button per value (wrapping past four; a value named after a colour gets its swatch). A device with a "reset" action
+// (the pinspots, after they lost power at the wall) offers it under its controls.
 
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { RotateCcw, RotateCw, Sparkles } from "lucide-react";
+import { Slider } from "@/components/ui/slider";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { explainError, type RoomApi } from "./api";
@@ -40,7 +44,7 @@ function onOff(d: Target | undefined): { on: string; off: string } | null {
   if (sw) return sw;
   const e = d?.schema?.enum;
   if (!e || e.length !== 2) return null;
-  const off = d?.schema?.default ?? e[1];
+  const off = String(d?.schema?.default ?? e[1]);
   return { on: e.find((x) => x !== off) ?? e[0], off };
 }
 
@@ -52,6 +56,66 @@ function modesThatSet(describe: RoomDescribe, t: string, value: string): string 
     .map(([id, m]) => m.label || id);
   if (names.length <= 1) return names.join("");
   return `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/** A value named after a colour ("Red"), as a CSS colour for its swatch; null for any other word. */
+function swatch(word: string): string | null {
+  const w = word.trim().toLowerCase().replace(/\s+/g, "");
+  return w && typeof CSS !== "undefined" && CSS.supports("color", w) ? w : null;
+}
+
+/** A number range (a light's brightness steps): moves locally, sends once on letting go. */
+function RangeRow({
+  label,
+  name,
+  d,
+  value,
+  disabled,
+  busy,
+  onCommit,
+}: {
+  label: string;
+  name: string;
+  d: Target | undefined;
+  value: unknown;
+  disabled: boolean;
+  busy: boolean;
+  onCommit: (v: number) => void;
+}) {
+  const lo = d?.schema?.minimum ?? 0;
+  const hi = d?.schema?.maximum ?? 100;
+  const known = typeof value === "number";
+  const [n, setN] = useState<number>(known ? (value as number) : hi);
+  useEffect(() => {
+    if (typeof value === "number") setN(value);
+  }, [value]);
+  const ends = d?.schema?.["x-ui"]?.ends;
+  return (
+    <div>
+      <div className="flex items-center justify-between">
+        <span className="text-base font-medium">{label}</span>
+        <span className="flex items-center gap-2 font-mono text-[15px] tabular-nums text-stone-700">
+          {busy && <Spinner />}
+          {known || n !== hi ? `${n} of ${hi}` : "Not sure"}
+        </span>
+      </div>
+      <div className="mt-1 flex items-center gap-3">
+        {ends?.min && <span className="shrink-0 text-sm text-muted-foreground">{ends.min}</span>}
+        <Slider
+          aria-label={`${name} ${label.toLowerCase()}`}
+          className="flex-1 py-3 [&_[role=slider]]:h-6 [&_[role=slider]]:w-6"
+          min={lo}
+          max={hi}
+          step={1}
+          value={[n]}
+          disabled={disabled}
+          onValueChange={([v]) => setN(v)}
+          onValueCommit={([v]) => onCommit(v)}
+        />
+        {ends?.max && <span className="shrink-0 text-sm text-muted-foreground">{ends.max}</span>}
+      </div>
+    </div>
+  );
 }
 
 /** A setting's row heading: its label without the device's name ("Glitterball speed" -> "Speed"). */
@@ -129,9 +193,11 @@ function EffectCard({
   };
 
   const showQuestion = setUp && reachable && isToggle && (toggleUnknown || asking);   // inside the unrolled row
+  const isRange = (x: Target | undefined) => typeof x?.schema?.minimum === "number" && typeof x?.schema?.maximum === "number";
   const settings = effect.settings
     .map((t) => ({ t, d: describe.targets?.[t], s: status.subsystems?.[split(t)[0]] }))
-    .filter((x) => x.d?.schema?.enum?.length && x.s && !x.s.dry_run && x.s.last_error !== "no adapter");
+    .filter((x) => (x.d?.schema?.enum?.length || isRange(x.d)) && x.s && !x.s.dry_run && x.s.last_error !== "no adapter");
+  const canReset = setUp && !!describe.subsystems?.[sub]?.actions?.reset;
 
   const summary = !setUp ? "Its remote codes aren't learned yet." : onIn ? `${onWord} in ${onIn}.` : `${offWord} unless you turn it on.`;
   return (
@@ -198,6 +264,41 @@ function EffectCard({
             const label = rowLabel(sd?.label, name, split(t)[1]);
             const cur = ss?.members?.[split(t)[1]]?.believed;
             const options = sd?.schema?.enum ?? [];
+            const off = !connected || ss?.available === false || !!busy;
+            if (isRange(sd)) {
+              const what = label.toLowerCase();
+              return (
+                <RangeRow
+                  key={t}
+                  label={label}
+                  name={name}
+                  d={sd}
+                  value={cur}
+                  disabled={off}
+                  busy={busy === what}
+                  onCommit={(v) => void run(what, () => api.setTargets({ [t]: v }))}
+                />
+              );
+            }
+            const sw = sd?.schema?.["x-ui"]?.switch;
+            if (sw) {
+              const what = `${label.toLowerCase()} ${cur === sw.on ? "off" : "on"}`;
+              return (
+                <div key={t} className="flex min-h-11 items-center justify-between gap-3">
+                  <span className="text-base font-medium">{label}</span>
+                  {busy?.startsWith(`${label.toLowerCase()} `) ? (
+                    <Spinner className="shrink-0" />
+                  ) : (
+                    <Switch
+                      aria-label={`${name} ${label.toLowerCase()}`}
+                      checked={cur === sw.on}
+                      disabled={off}
+                      onCheckedChange={(v) => void run(what, () => api.setTargets({ [t]: v ? sw.on : sw.off }))}
+                    />
+                  )}
+                </div>
+              );
+            }
             return (
               <div key={t}>
                 <span className="text-base font-medium">{label}</span>
@@ -205,11 +306,12 @@ function EffectCard({
                   role="radiogroup"
                   aria-label={`${name} ${label.toLowerCase()}`}
                   className="mt-2 grid gap-2"
-                  style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+                  style={{ gridTemplateColumns: `repeat(${Math.min(options.length, 4)}, minmax(0, 1fr))` }}
                 >
                   {options.map((v) => {
                     const sel = cur === v;
                     const Icon = VALUE_ICONS[v];
+                    const hue = swatch(words(sd, v));
                     const what = `${label.toLowerCase()} ${words(sd, v).toLowerCase()}`;
                     return (
                       <button
@@ -224,7 +326,13 @@ function EffectCard({
                           sel ? "border-teal-300 bg-teal-50 font-semibold text-teal-900" : "border-stone-200 bg-white hover:bg-stone-50",
                         )}
                       >
-                        {busy === what ? <Spinner /> : Icon && <Icon className="h-4 w-4 shrink-0" aria-hidden />}
+                        {busy === what ? (
+                          <Spinner />
+                        ) : Icon ? (
+                          <Icon className="h-4 w-4 shrink-0" aria-hidden />
+                        ) : (
+                          hue && <span aria-hidden className="h-3.5 w-3.5 shrink-0 rounded-full border border-stone-300" style={{ background: hue }} />
+                        )}
                         <span className="truncate">{words(sd, v)}</span>
                       </button>
                     );
@@ -241,6 +349,23 @@ function EffectCard({
               className="min-h-9 text-sm text-stone-600 underline underline-offset-2 hover:text-stone-900"
             >
               Not what it's doing? Tell the room
+            </button>
+          )}
+
+          {canReset && (
+            <button
+              type="button"
+              disabled={!connected || !!busy}
+              onClick={() =>
+                void run("reset", async () => {
+                  const dev = (await api.remotes())?.find((r) => r.subsystems.includes(sub));
+                  if (!dev) throw new Error("The room doesn't know this device's remote.");
+                  await api.resetLight(dev.id);
+                })
+              }
+              className="flex min-h-9 items-center gap-2 text-sm text-stone-600 underline underline-offset-2 hover:text-stone-900 disabled:opacity-50"
+            >
+              {busy === "reset" && <Spinner />} Was it off at the wall? Reset it (dims right down, then off)
             </button>
           )}
 

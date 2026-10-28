@@ -232,6 +232,48 @@ export interface SiteEffect {
   settings: string[];
 }
 
+/** A device worked by the RM4 Pro's remote (room_service remotes_api.py): its buttons for learning and testing. */
+export interface RemoteButton {
+  id: string;
+  label: string;
+  /** "Power", "Colour", "Brightness", "Modes", a setting's name, or "Other". */
+  group: string;
+  learned: boolean;
+  /** When it was learned ("2026-10-28 14:02"). */
+  at?: string | null;
+}
+
+/** A learn in progress (or the last one): phase starting | sweep | found | press | done | failed | stopped. */
+export interface RemoteLearn {
+  button: string;
+  phase: string;
+  words: string;
+  running: boolean;
+  medium?: "rf" | "ir";
+  freq_mhz?: number | null;
+  timeout_s?: number;
+}
+
+/** A light's record of what it is doing (null: unknown) and settings kept for when it next comes on. */
+export interface RemoteLightState {
+  now: { main: string | null; colour: string | null; level: number | null; pulse: string | null; flash: string | null };
+  kept: Record<string, unknown>;
+}
+
+export interface RemoteDevice {
+  id: string;
+  label: string;
+  medium: "rf" | "ir";
+  host: string;
+  freq_mhz: number | null;
+  subsystems: string[];
+  light: boolean;
+  steps: number | null;
+  buttons: RemoteButton[];
+  job: RemoteLearn | null;
+  state: RemoteLightState | null;
+}
+
 /** One room of the site (routes/data/rooms.json), in file order. Ids refer to screens, lamps, blinds, sensors;
  *  effects are device cards. */
 export interface SiteRoom {
@@ -266,12 +308,22 @@ export interface RoomDescribe {
       label?: string;
       kind?: string;
       schema?: {
+        type?: string;
         enum?: string[];
-        default?: string;
-        "x-ui"?: { label?: string; labels?: Record<string, string>; switch?: { on: string; off: string } };
+        default?: string | number;
+        minimum?: number;
+        maximum?: number;
+        "x-ui"?: {
+          label?: string;
+          labels?: Record<string, string>;
+          switch?: { on: string; off: string };
+          ends?: { min?: string; max?: string };
+        };
       };
     }
   >;
+  /** Per subsystem: its one-shot actions ("reset" on a remote-controlled light), among others. */
+  subsystems?: Record<string, { label?: string; actions?: Record<string, { label?: string }> }>;
   modes: Record<
     string,
     {
