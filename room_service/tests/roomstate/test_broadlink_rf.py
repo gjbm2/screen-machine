@@ -246,9 +246,9 @@ def _rf(pulses_us: list[int], band: int = 0xb1, repeat: int = 0xc0) -> bytes:
 
 def test_clean_rf_keeps_one_frame_of_the_code_repeated():
     frame = [460, 1310, 1310, 460] * 4 + [460, 13000]               # 18 pulses, its own short gap at the end
-    raw = _rf([5300, 5200, 340000] + frame * 5 + [460, 49000])     # noise, a long silence, five copies
+    raw = _rf(frame * 5 + [460, 49000], band=0xb2)                 # five copies, then a cut-short one
     out = broadlink_rf.clean_rf(raw, frames=3, gap_ms=120)
-    assert out[0] == 0xb2 and out[1] == 0                          # the 433 band, no device repeats
+    assert out[0] == 0xb2 and out[1] == 0                          # its own form
     p = broadlink_rf.rf_pulses(out)
     assert len(p) == 3 * len(frame) and p[-1] >= 119000            # three copies, ending in the pause
     assert abs(p[len(frame) - 1] - 13000) < 40 and abs(p[0] - 460) < 40
@@ -281,7 +281,7 @@ def test_plan_with_the_remotes_hold_goes_all_the_way_in_one():
 
 def test_a_held_button_streams_its_code_for_hold_s(tmp_path):
     frame = [460, 1310, 1310, 460] * 4 + [460, 13000]
-    cap = _rf([5300, 5200, 340000] + frame * 17)                 # a hold as the RM4 Pro records it
+    cap = _rf(frame * 17, band=0xb2)                                # a hold (its code over and over)
     codes = {**LCODE, "down_hold": base64.b64encode(cap).decode()}
     a, rm = light(tmp_path, codes)
     raw = json.loads(a.file.path.read_text())
@@ -289,16 +289,17 @@ def test_a_held_button_streams_its_code_for_hold_s(tmp_path):
     os.utime(a.file.path, (3, 3))
     a.now.update(main="on", colour="white", level=8)
     assert asyncio.run(a.signal(None, "press", {"button": "down_hold"})).status == "ok"
-    assert rm.sent and all(len(broadlink_rf.rf_pulses(p)) == 10 * len(frame) for p in rm.sent)
+    k = broadlink_rf.max_frames(cap, 960)                         # one unbroken packet, as long as it takes
+    assert len(rm.sent) == 1 and len(broadlink_rf.rf_pulses(rm.sent[0])) == k * len(frame) and len(rm.sent[0]) <= 960
     assert a.now["level"] == 0
 
 
-def test_split_rf_plays_a_long_recording_back_in_sendable_packets():
-    frame = [460, 1310, 1310, 460] * 16 + [460, 13000]               # 66 pulses, about 68 bytes
-    cap = _rf([5300, 5200, 340000] + frame * 17)
-    assert len(cap) > 1000
-    parts = broadlink_rf.split_rf(cap, 1000)
-    assert len(parts) == 2 and all(len(p) <= 1000 and p[:2] == cap[:2] for p in parts)
-    assert sum((broadlink_rf.rf_pulses(p) for p in parts), []) == broadlink_rf.rf_pulses(cap)   # nothing lost
-    only = broadlink_rf.split_rf(cap, 1000, frames_only=True)
-    assert sum((broadlink_rf.rf_pulses(p) for p in only), []) == broadlink_rf.rf_pulses(cap)[3:]   # the remote's part
+def test_an_rm4_pro_recording_keeps_its_frequency():
+    frame = [460, 1310, 1310, 460] * 16 + [460, 13000]               # 66 pulses
+    data = b"".join(broadlink_rf._enc_pulse(u) for u in frame * 4)
+    learned = bytes([0xb1, 0xc0]) + (len(data) + 4).to_bytes(2, "little") + bytes.fromhex("a29d0600") + data
+    assert broadlink_rf.rf_pulses(learned)[:4] == broadlink_rf.rf_pulses(learned)[66:70]      # whole frames, no header
+    out = broadlink_rf.clean_rf(learned, 14, gap_ms=0)
+    assert out[:2] == b"\xb1\xc0" and out[4:8] == bytes.fromhex("a29d0600")                   # 433.57 MHz kept
+    assert len(broadlink_rf.rf_pulses(out)) == 14 * 66 and len(out) <= 960
+    assert broadlink_rf.max_frames(learned, 960) == 14
