@@ -6,14 +6,12 @@ import { audioApi, bucketsApi, generationApi, lightApi, publishApi, tagsApi } fr
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { BucketItem as ApiBucketItem, Bucket as ApiBucket, TagLexicon } from '@/shared/api';
-import { Image as ImageIcon, RefreshCw, AlertCircle, Star, StarOff, Upload, MoreVertical, Trash, Share, Plus, ChevronsUpDown, Settings, ExternalLink, Send, Trash2, Copy, Info, Filter, Film, Camera, Link, CirclePause, CirclePlay, CircleStop, Maximize2, ArrowUp, ArrowDown, Pause, Square, ChevronUp, ChevronDown, Play, X, Mic, Moon } from 'lucide-react';
+import { Image as ImageIcon, RefreshCw, AlertCircle, Star, StarOff, Upload, MoreVertical, Trash, Share, Plus, ChevronsUpDown, ExternalLink, Send, Info, Filter, Film, Camera, Link, CirclePause, CirclePlay, CircleStop, ArrowUp, ArrowDown, Pause, Square, ChevronUp, ChevronDown, Play, X } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from '@/components/ui/dialog';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
-import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import {
   DragStartEvent,
@@ -36,8 +34,8 @@ import { ExpandableContainer } from '@/components/common';
 import SortableImageGrid from '@/components/common/SortableImageGrid';
 import { ImageItem } from '@/types/image-types';
 
-// Import the new SchedulerControl component
-import { SchedulerControl } from './SchedulerPanel';
+import { ScreenPicture, ScreenStrip, type StripPicture } from '@/components/room/ScreenStrip';
+import { jsonInit, readErrorBody, send } from '@/shared/http/client';
 import { useRoomLinkSelect, liveStateOf } from '@/components/room/roomLink';
 
 // Import the new DROP_ZONES
@@ -400,6 +398,8 @@ export const BucketGridView = ({
   const [showAppDownloadModal, setShowAppDownloadModal] = useState(false);
   const [isIOS, setIsIOS] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
+  const [isLoadingPublished, setIsLoadingPublished] = useState(false);
+  const [stepping, setStepping] = useState(false);
   const [isNewVersion, setIsNewVersion] = useState(false);
 
   const debouncedFetchBucketDetails = useCallback(() => {
@@ -791,6 +791,27 @@ export const BucketGridView = ({
     } catch (error) {
       console.error('Error extracting JSON:', error);
       toast.error('Failed to extract JSON');
+    }
+  };
+
+  // The strip's Previous / Next: the favourite before / after the one on the screen (the scheduler's "display" action,
+  // POST /api/publish/<id>/display). The picture and its time update from a quiet re-read.
+  const handleStepPicture = async (mode: 'Previous' | 'Next') => {
+    if (stepping) return;
+    setStepping(true);
+    try {
+      const res = await send(`/publish/${encodeURIComponent(destination)}/display`, jsonInit('POST', { mode }));
+      if (!res.ok) {
+        const body = await readErrorBody(res, `Couldn't show the ${mode.toLowerCase()} picture`);
+        toast.error(body.error || `Couldn't show the ${mode.toLowerCase()} picture`);
+        return;
+      }
+      await fetchBucketDetails(true);
+    } catch (error) {
+      console.error(`Error showing the ${mode} picture:`, error);
+      toast.error(`Couldn't show the ${mode.toLowerCase()} picture`);
+    } finally {
+      setStepping(false);
     }
   };
 
@@ -1985,152 +2006,93 @@ export const BucketGridView = ({
     onDragOver: handleDragOver,
   });
 
-  // Create a PublishedImageDroppable component
-  const PublishedImageDroppable = ({ currentImage }: { currentImage: BucketImage | null }) => {
-    const { open: openLoope } = useLoopeView();
-    const [isLoadingPublished, setIsLoadingPublished] = useState(false);
+  // Every screen's published picture in the loupe, starting at this one (the strip's More menu; it was the old
+  // header thumbnail's click).
+  const openAllPictures = async () => {
+    if (isLoadingPublished) return; // Prevent multiple clicks
     
-    // Create a droppable area for publishing
+    setIsLoadingPublished(true);
+    try {
+      // Get all destinations first
+      const allDestinations = await publishApi.getPublishDestinations();
+      
+      // Filter out headless destinations - they should not be part of published view
+      const visibleDestinations = allDestinations.filter(dest => !dest.headless);
+      
+      const publishedImages: ImageItem[] = [];
+      
+      // Fetch published content for each destination sequentially
+      for (const dest of visibleDestinations) {
+        try {
+          // Use direct API call to get full metadata
+          const response = await publishApi.getPublishedContentForDestination(dest.id);
+          if (!response.published) continue;
+          
+          publishedImages.push({
+            id: `${dest.id}:${response.published}`,
+            urlFull: response.raw_url || '',
+            urlThumb: response.thumbnail_url || response.raw_url || '',
+            promptKey: response.meta?.prompt || '',
+            seed: response.meta?.seed || 0,
+            createdAt: response.publishedAt || new Date().toISOString(),
+            isFavourite: false,
+            mediaType: (response.raw_url || '').toLowerCase().match(/\.mp4|\.webm/) ? 'video' : 'image',
+            bucketId: dest.id,
+            destinationName: dest.name || dest.id,
+            metadata: response.meta || {},
+            isPublished: true,
+            disableFavorite: true
+          });
+        } catch (error) {
+          console.error(`Error fetching published content for ${dest.id}:`, error);
+        }
+      }
+      
+      // If we found any published images, open the Loope view
+      if (publishedImages.length > 0) {
+        // Find the index of the current destination
+        const currentIndex = publishedImages.findIndex(img => img.bucketId === destination);
+        const validIndex = currentIndex >= 0 ? currentIndex : 0;
+        
+        // Create title generator function for dynamic titles when swiping
+        const getTitleForPublishedImage = (img: ImageItem, idx: number, total: number) => {
+          return `Currently published - ${img.destinationName} (${idx + 1}/${total})`;
+        };
+        
+        // Open Loope view with the initial title
+        const initialTitle = getTitleForPublishedImage(
+          publishedImages[validIndex], 
+          validIndex, 
+          publishedImages.length
+        );
+        
+        // Now we can keep looping since we fixed the core issue
+        const options = { loop: true };
+        
+        // Open the Loope view with the published images
+        openLoope(publishedImages, validIndex, initialTitle, options);
+      } else {
+        toast.error('No published images found');
+      }
+    } catch (error) {
+      console.error('Error fetching published images:', error);
+      toast.error('Failed to load published images');
+    } finally {
+      setIsLoadingPublished(false);
+    }
+  };
+
+  // The strip's picture, as the publish drop target: drop a picture on it to put it up (handleDragEnd, PUBLISHED).
+  const PublishedImageDroppable = ({ pic }: { pic: StripPicture }) => {
     const { setNodeRef, isOver } = useDroppable({
       id: DROP_ZONES.PUBLISHED,
       data: {
         type: DropTargetType.PUBLISH
       }
     });
-
-    // Handle click to directly open Loope view with all published images
-    const handleOpenLoopeView = useCallback(async () => {
-      if (isLoadingPublished) return; // Prevent multiple clicks
-      
-      setIsLoadingPublished(true);
-      try {
-        // Get all destinations first
-        const allDestinations = await publishApi.getPublishDestinations();
-        
-        // Filter out headless destinations - they should not be part of published view
-        const visibleDestinations = allDestinations.filter(dest => !dest.headless);
-        
-        const publishedImages: ImageItem[] = [];
-        
-        // Fetch published content for each destination sequentially
-        for (const dest of visibleDestinations) {
-          try {
-            // Use direct API call to get full metadata
-            const response = await publishApi.getPublishedContentForDestination(dest.id);
-            if (!response.published) continue;
-            
-            publishedImages.push({
-              id: `${dest.id}:${response.published}`,
-              urlFull: response.raw_url || '',
-              urlThumb: response.thumbnail_url || response.raw_url || '',
-              promptKey: response.meta?.prompt || '',
-              seed: response.meta?.seed || 0,
-              createdAt: response.publishedAt || new Date().toISOString(),
-              isFavourite: false,
-              mediaType: (response.raw_url || '').toLowerCase().match(/\.mp4|\.webm/) ? 'video' : 'image',
-              bucketId: dest.id,
-              destinationName: dest.name || dest.id,
-              metadata: response.meta || {},
-              isPublished: true,
-              disableFavorite: true
-            });
-          } catch (error) {
-            console.error(`Error fetching published content for ${dest.id}:`, error);
-          }
-        }
-        
-        // If we found any published images, open the Loope view
-        if (publishedImages.length > 0) {
-          // Find the index of the current destination
-          const currentIndex = publishedImages.findIndex(img => img.bucketId === destination);
-          const validIndex = currentIndex >= 0 ? currentIndex : 0;
-          
-          // Create title generator function for dynamic titles when swiping
-          const getTitleForPublishedImage = (img: ImageItem, idx: number, total: number) => {
-            return `Currently published - ${img.destinationName} (${idx + 1}/${total})`;
-          };
-          
-          // Open Loope view with the initial title
-          const initialTitle = getTitleForPublishedImage(
-            publishedImages[validIndex], 
-            validIndex, 
-            publishedImages.length
-          );
-          
-          // Now we can keep looping since we fixed the core issue
-          const options = { loop: true };
-          
-          // Open the Loope view with the published images
-          openLoope(publishedImages, validIndex, initialTitle, options);
-        } else {
-          toast.error('No published images found');
-        }
-      } catch (error) {
-        console.error('Error fetching published images:', error);
-        toast.error('Failed to load published images');
-      } finally {
-        setIsLoadingPublished(false);
-      }
-    }, [destination, openLoope, isLoadingPublished]);
-
-    // If no current image, don't render a drop target
-    if (!currentImage || headless) return null;
-
-    // Just use the thumbnail_url directly
-    const imageUrl = currentImage.thumbnail_url || '';
-
-    return (
-      <div 
-        ref={setNodeRef}
-        className={`relative w-24 h-24 rounded-md overflow-hidden bg-black/10 flex-shrink-0 transition-all
-          ${isOver ? 'ring-2 ring-primary ring-offset-2 shadow-lg' : ''}
-          ${activeId ? 'cursor-copy' : 'cursor-pointer'}
-        `}
-        onClick={handleOpenLoopeView}
-        title="Click to view all published images"
-      >
-        {isLoadingPublished && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/30 z-10">
-            <RefreshCw className="h-5 w-5 text-white animate-spin" />
-          </div>
-        )}
-        
-        {imageUrl ? (
-          <img 
-            src={imageUrl} 
-            alt="Published" 
-            className={`w-full h-full object-cover ${isOver ? 'opacity-70' : ''}`}
-          />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-muted">
-            <ImageIcon className="h-10 w-10 text-muted-foreground" />
-          </div>
-        )}
-        
-        {/* Overlay that appears when dragging over */}
-        {isOver && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/50 text-white">
-            <Send className="h-6 w-6 mb-1" />
-            <span className="text-xs font-medium">Publish</span>
-          </div>
-        )}
-        
-        {/* Helper label that shows when dragging any item */}
-        {activeId && !isOver && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black/30 text-white text-opacity-70">
-            <span className="text-xs">Drop to publish</span>
-          </div>
-        )}
-        
-        {/* Small indicator to show it's clickable when not dragging */}
-        {!activeId && (
-          <div className="absolute bottom-1 right-1 bg-black/50 rounded-full p-0.5">
-            <Maximize2 className="h-3 w-3 text-white" />
-          </div>
-        )}
-      </div>
-    );
+    return <ScreenPicture pic={pic} nodeRef={setNodeRef} dropOver={isOver} dragging={!!activeId} />;
   };
+  const renderStripPicture = (pic: StripPicture) => <StableHost render={PublishedImageDroppable} pic={pic} />;
 
   // Properly handle different view states in the main content area based on bucket properties
   const renderContent = () => {
@@ -2452,135 +2414,46 @@ export const BucketGridView = ({
     <div className="h-full flex flex-col">
       {/* DnD interactions handled by global context; monitor via hooks */}
       {bucketDetails && (
-        <>
-          <MaintenanceModal
-            isOpen={showMaintenanceModal}
-            onClose={() => setShowMaintenanceModal(false)}
-            destination={destination}
-            onActionComplete={debouncedFetchBucketDetails}
-          />
-          <div className={`flex flex-col mb-0 p-2 sm:p-4 bg-muted rounded-md w-full [contain:inline-size] ${headerPinned ? 'sticky top-[calc(var(--app-top,0px)+var(--app-nav-top,0px)+3rem)] z-[29]' : ''}`}>
-            <div className="flex items-start gap-3">
-              {/* Left side with droppable published image area */}
-              <StableHost render={PublishedImageDroppable} currentImage={currentPublishedImage} />
-              
-              {/* Controls area */}
-              <div className="flex-1 flex flex-col min-w-0 h-full">
-                {/* All publish destinations use same layout */}
-                <div className="flex justify-between items-center">
-                  <div className="flex flex-wrap gap-1 items-center">
-                    <Button 
-                      size="sm" 
-                      variant="ghost" 
-                      onClick={handleRefresh} 
-                      disabled={loading || externalLoading}
-                      className="flex-nowrap h-8"
-                    >
-                      <RefreshCw 
-                        className={`h-4 w-4 ${(loading || externalLoading) ? 'animate-spin' : ''}`} 
-                      />
-                      <span className="ml-1 hidden sm:inline">Refresh</span>
-                    </Button>
-                    {/* Only show upload/maintenance for destinations with buckets */}
-                    {hasBucket && (
-                      <>
-                        <Button 
-                          size="sm" 
-                          variant="secondary"
-                          onClick={() => setShowUploadModal(true)}
-                          className="flex-nowrap h-8"
-                        >
-                          <Upload className="h-4 w-4" />
-                          <span className="ml-1 hidden sm:inline">Upload</span>
-                        </Button>
-                        <DropdownMenu>
-                          <DropdownMenuTrigger asChild>
-                            <Button size="sm" variant="outline" className="flex-nowrap h-8">
-                              <Settings className="h-4 w-4" />
-                              <span className="ml-1 hidden sm:inline">Maintenance</span>
-                            </Button>
-                          </DropdownMenuTrigger>
-                          <DropdownMenuContent>
-                            <DropdownMenuItem onClick={handlePurgeNonFavorites}>
-                              <Trash2 className="h-4 w-4 mr-2" />
-                              Purge Non-Favorites
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={handleReindex}>
-                              <RefreshCw className="h-4 w-4 mr-2" />
-                              Re-Index
-                            </DropdownMenuItem>
-                            <DropdownMenuItem onClick={handleExtractJson}>
-                              <Copy className="h-4 w-4 mr-2" />
-                              Extract JSON
-                            </DropdownMenuItem>
-                          </DropdownMenuContent>
-                        </DropdownMenu>
-                      </>
-                    )}
-                  </div>
-
-                  {/* Add mask toggle and record button */}
-                  <div className="flex items-center gap-2">
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        {/* span: a disabled button gets no hover, so the tooltip still explains why */}
-                        <span tabIndex={screenLive ? 0 : undefined}>
-                          <Button
-                            size="sm"
-                            variant={maskEnabled && !screenLive ? "default" : "outline"}
-                            onClick={() => handleMaskToggle(!maskEnabled)}
-                            disabled={screenLive}
-                            className="h-8 px-2 sm:px-3"
-                          >
-                            <Moon className="h-4 w-4" />
-                            <span className="ml-1 hidden sm:inline">Mask</span>
-                          </Button>
-                        </span>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        {screenLive
-                          ? "Live runs at full brightness; the mask is for art"
-                          : maskEnabled ? "Disable mask" : "Enable mask"}
-                      </TooltipContent>
-                    </Tooltip>
-
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Button
-                          size="sm"
-                          variant={isTranscribing ? "default" : "outline"}
-                          onClick={handleRecordClick}
-                          className="h-8 px-2 sm:px-3"
-                        >
-                          <Mic className={`h-4 w-4 ${isTranscribing ? 'animate-pulse' : ''}`} />
-                          <span className="ml-1 hidden sm:inline">
-                            {isTranscribing ? "Stop Recording" : "Start Recording"}
-                          </span>
-                        </Button>
-                      </TooltipTrigger>
-                      <TooltipContent side="bottom">
-                        {isTranscribing ? "Stop recording" : "Start recording"}
-                      </TooltipContent>
-                    </Tooltip>
-                  </div>
-                </div>
-                
-                {/* Create a flex spacer that pushes the controls to the bottom */}
-                <div className="flex-grow"></div>
-                
-                {/* Replace the inline scheduler controls with the SchedulerControl component */}
-                <SchedulerControl 
-                  destination={destination}
-                  isRunning={schedulerStatus?.is_running}
-                  isPaused={schedulerStatus?.is_paused}
-                  nextAction={schedulerStatus?.next_action}
-                  refreshScheduler={refreshBucket}
-                />
-              </div>
-            </div>
-          </div>
-        </>
+        <MaintenanceModal
+          isOpen={showMaintenanceModal}
+          onClose={() => setShowMaintenanceModal(false)}
+          destination={destination}
+          onActionComplete={debouncedFetchBucketDetails}
+        />
       )}
+      {/* The screen strip: what's on the screen, its one action, and its controls (src/components/room/ScreenStrip.tsx).
+          The bucket's actions stay here; while the tab bar is pinned its head stays in view (the publish drop target). */}
+      <ScreenStrip
+        screenId={destination}
+        name={destinationName || destination}
+        headless={headless}
+        hasBucket={hasBucket}
+        artThumb={currentPublishedImage?.thumbnail_url || null}
+        publishedAt={bucketDetails?.published_at ?? null}
+        renderPicture={renderStripPicture}
+        stickyClassName={headerPinned ? 'sticky top-[calc(var(--app-top,0px)+var(--app-nav-top,0px)+3rem)] z-[29]' : undefined}
+        scheduler={{
+          isRunning: schedulerStatus?.is_running,
+          isPaused: schedulerStatus?.is_paused,
+          nextAction: schedulerStatus?.next_action,
+        }}
+        refreshScheduler={refreshBucket}
+        favourites={bucketDetails?.favorites_count ?? 0}
+        stepPicture={(mode) => void handleStepPicture(mode)}
+        stepping={stepping}
+        maskOn={maskEnabled}
+        setMask={(on) => void handleMaskToggle(on)}
+        talking={isTranscribing}
+        toggleTalk={() => void handleRecordClick()}
+        onUpload={() => setShowUploadModal(true)}
+        onRefresh={handleRefresh}
+        refreshing={loading || externalLoading}
+        onPurge={handlePurgeNonFavorites}
+        onReindex={() => void handleReindex()}
+        onExtract={() => void handleExtractJson()}
+        onAllPictures={() => void openAllPictures()}
+        loadingAllPictures={isLoadingPublished}
+      />
       
       {/* Error message */}
       {error && (

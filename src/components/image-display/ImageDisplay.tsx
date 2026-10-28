@@ -26,7 +26,6 @@ import { Button } from '@/components/ui/button';
 import { DROP_ZONES } from '@/dnd/dropZones';
 import useFullscreen from './hooks/useFullscreen';
 import RecentView from '@/components/recent/RecentView';
-import { ScreenLivePanel } from '@/components/room/ScreenLivePanel';
 import { useRoomLinkSelect, liveStateOf } from '@/components/room/roomLink';
 
 export type ViewMode = 'normal' | 'small' | 'table';
@@ -904,7 +903,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
         ) : (
           selectedTab && selectedTab !== 'generated' && (
             <>
-            <ScreenLivePanel screenId={selectedTab} />
+            {/* BucketGridView draws the screen strip (what's on the screen, Go live, its controls) above its grid. */}
             <BucketGridView
               key={`${selectedTab}-${bucketRefreshFlags[selectedTab] || 0}`}
               destination={selectedTab}
