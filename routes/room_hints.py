@@ -28,6 +28,8 @@ CONFIG = ROOT / "config" / "room" / "auto_hints.json"
 ROOMS = ROOT / "routes" / "data" / "rooms.json"
 TEMPLATE = "overlay_auto_hint.html.j2"
 CLEAR_HTML = "<div></div>"
+#: when each hint last showed (wall clock), so a Flask restart doesn't bring a hint back before again_after_s
+STATE = Path(os.environ.get("ROOM_HINTS_STATE", Path.home() / ".local" / "state" / "screen-machine" / "room_hints.json"))
 
 _thread: Optional[threading.Thread] = None
 _cfg: dict = {"mtime": None, "cfg": {}}
@@ -85,12 +87,19 @@ def pick(cfg: dict, auto: Any, current: Any, readings: dict) -> Optional[dict]:
 
 
 class Hints:
-    """What is on the screens: one hint at a time, by id; ``now`` is monotonic seconds."""
+    """What is on the screens: one hint at a time, by id; ``now`` is wall-clock seconds. ``state`` (a path, or None
+    in tests) keeps last_shown across restarts."""
 
-    def __init__(self, send=None) -> None:
+    def __init__(self, send=None, state: Optional[Path] = None) -> None:
         self.send = send or _send
+        self.state = state
         self.showing: Optional[tuple[str, float]] = None      # (hint id, shown at)
         self.last_shown: dict[str, float] = {}
+        try:
+            d = json.loads(state.read_text(encoding="utf-8")) if state is not None else {}
+            self.last_shown = {k: float(v) for k, v in d.items() if isinstance(k, str) and _num(v, -1) >= 0}
+        except (OSError, ValueError, AttributeError):
+            pass
 
     def step(self, cfg: dict, hint: Optional[dict], screens: list[str], now: float) -> None:
         show_s, again_s = _num(cfg.get("show_s"), 60.0), _num(cfg.get("again_after_s"), 1800.0)
@@ -109,6 +118,12 @@ class Hints:
         self.showing = (hint["id"], now)
         self.last_shown[hint["id"]] = now
         info(f"[room hints] {hint['id']} on {', '.join(screens)}")
+        if self.state is not None:
+            try:
+                self.state.parent.mkdir(parents=True, exist_ok=True)
+                self.state.write_text(json.dumps(self.last_shown), encoding="utf-8")
+            except OSError as e:
+                debug(f"[room hints] {self.state}: {e}")
 
 
 _qr: dict = {}
@@ -151,7 +166,7 @@ def _tick(state: Hints) -> float:
     hint = None
     if isinstance(ap, dict) and isinstance(sit, dict):
         hint = pick(cfg, ap.get("on"), room.get("current"), sit.get("readings") or {})
-    state.step(cfg, hint, room_screens(str(cfg.get("room") or "")), time.monotonic())
+    state.step(cfg, hint, room_screens(str(cfg.get("room") or "")), time.time())
     return _num(cfg.get("check_s"), 3.0)
 
 
@@ -165,7 +180,7 @@ def start() -> None:
         return
 
     def main() -> None:
-        state = Hints()
+        state = Hints(state=STATE)
         time.sleep(20.0)                                        # room_service and show come up first
         while True:
             try:
