@@ -9,7 +9,11 @@ import * as LucideIcons from 'lucide-react';
 import { BucketGridView } from './BucketGridView';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import ViewModeSelector from './ViewModeSelector';
-import { CirclePause, CirclePlay, CircleStop, Settings, Image, ImagePlus, ChevronRight, ChevronLeft, Copy, Send, Share, ClockIcon } from 'lucide-react';
+import { CirclePause, CirclePlay, CircleStop, Settings, Image, ImagePlus, ChevronRight, ChevronLeft, Copy, Send, Share, ClockIcon, Layers } from 'lucide-react';
+import { AllBucketsView } from './AllBucketsView';
+
+/** The All buckets tab's id (a pseudo-bucket: no real bucket may have this name). */
+const ALL_BUCKETS_TAB = '__all';
 import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 import {
   useDroppable,
@@ -229,7 +233,16 @@ export function ImageDisplay(props: ImageDisplayProps) {
           file: dest.file || dest.id,
           headless: dest.headless || false
         };
-      })
+      }),
+      // every bucket's saved pictures together, browsed by tag (owner, 28 Oct); not a real bucket, so no drops
+      {
+        id: ALL_BUCKETS_TAB,
+        label: 'All buckets',
+        icon: <Layers className="h-4 w-4 mr-2" />,
+        highlight: false,
+        file: ALL_BUCKETS_TAB,
+        headless: true
+      } as DestinationTab,
     ];
   }, [destinationsWithBuckets]);
 
@@ -700,7 +713,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
   // ---------- Droppable Tab Button ---------- //
   const DroppableTabButton: React.FC<{ tab: DestinationTab }> = ({ tab }) => {
     // Allow droppable on 'recent'
-    const isDroppable = tab.id !== 'generated';
+    const isDroppable = tab.id !== 'generated' && tab.id !== ALL_BUCKETS_TAB;
     
     // Use a dummy ref for non-droppable tabs
     const dummyRef = useRef<HTMLButtonElement>(null);
@@ -883,6 +896,8 @@ export function ImageDisplay(props: ImageDisplayProps) {
               <p>No generated images found. Try generating some!</p>
             </div>
           )
+        ) : selectedTab === ALL_BUCKETS_TAB ? (
+          <AllBucketsView buckets={destinationsWithBuckets.map((d) => ({ id: d.id, label: d.name }))} />
         ) : selectedTab === 'recent' ? (
           /* Render the Recent tab view */
           <MemoRecentView refreshRecent={refreshRecent}/>
