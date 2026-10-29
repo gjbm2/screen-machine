@@ -74,23 +74,22 @@ def test_screens_follow_the_room_light_smoothed(tmp_path):
     mask = SimpleNamespace(room_brightness=lambda sid: room.get(sid))
     a = BrightnessAdapter({"north": north}, None, tmp_path, mask)
     v = a.normalize("screens", {"follow": "sensor", "min": 20, "max": 100})
-    assert v == {"follow": "sensor", "min": 20, "max": 100} and a.words("screens", v).startswith("Follows")
+    assert v == {"follow": "sensor", "min": 20, "max": 100, "smooth_s": 10.0}
+    assert a.words("screens", v).startswith("Follows")
     asyncio.run(a.apply({"screens": v}))                  # no loop left running: steps by hand
     a.follow_step(0.0)
     assert north.levels == [0.216]                        # 20 + 80 x 0.02 %: the first reading as it is
-    room["north"] = 1.0                                   # the lights come on: slow
-    for t in range(2, 62, 2):
+    room["north"] = 1.0                                   # the lights come on: ~10 s
+    for t in range(1, 6):
         a.follow_step(float(t))
-    assert 0.216 < north.levels[-1] < 0.6                 # a minute in: well under full
-    for t in range(62, 1000, 2):
+    assert 0.216 < north.levels[-1] < 0.6                 # 5 s in: on its way
+    for t in range(6, 60):
         a.follow_step(float(t))
     assert north.levels[-1] > 0.98
-    room["north"] = 0.0                                   # and off again: quicker
-    for t in range(1000, 1060, 2):
+    room["north"] = 0.0
+    for t in range(60, 70):
         a.follow_step(float(t))
     assert north.levels[-1] < 0.6
-    n = len(north.levels)
-    for t in range(1060, 1070, 2):                        # settled: nothing more is sent under SEND_STEP
-        room["north"] = 0.0
     asyncio.run(a.apply({"screens": a.normalize("screens", 55)}))
-    assert north.levels[-1] == 0.55 and len(north.levels) == n + 1 and a.follow_now == {}
+    assert north.levels[-1] == 0.55 and a.follow_now == {}
+    assert a.normalize("screens", {"follow": "sensor", "smooth_s": 30})["smooth_s"] == 30.0

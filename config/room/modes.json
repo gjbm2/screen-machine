@@ -279,7 +279,8 @@
           "set": {
             "follow": "sensor",
             "min": 20,
-            "max": 100
+            "max": 100,
+            "smooth_s": 10
           },
           "restore": true
         }

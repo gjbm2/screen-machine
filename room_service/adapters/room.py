@@ -245,11 +245,11 @@ class BrightnessAdapter(Adapter):
 
     brightness.screens may instead follow the room's light (owner, 29 Oct: "for ambient mode, we can take light sensor
     input as a dimming control for the screens ... smoothed because otherwise the screens own light intensity risk
-    causing weird feedback loops in a darkened room"): {"follow": "sensor", "min": %, "max": %}. Each screen's input is
-    the brightness the art's mask has from the room's light (MaskArbiter.room_brightness: the same sensor and mapping,
-    so live and art agree), mapped onto min..max and smoothed: an exponential ease with RISE_TAU_S going up and
-    FALL_TAU_S going down, sent when it has moved SEND_STEP. The first reading after it starts following is taken
-    as it is (the art showed that a moment ago, so there is no jump)."""
+    causing weird feedback loops in a darkened room"): {"follow": "sensor", "min": %, "max": %, "smooth_s": s}. Each
+    screen's input is the brightness the art's mask has from the room's light (MaskArbiter.room_brightness: the same
+    sensor and mapping, so live and art agree), mapped onto min..max and smoothed: an exponential ease with time
+    constant smooth_s (owner: "10s or so"), sent when it has moved SEND_STEP. The first reading after it starts
+    following is taken as it is (the art showed that a moment ago, so there is no jump)."""
 
     subsystem = "brightness"
     subsystem_label = "Brightness"
@@ -259,9 +259,8 @@ class BrightnessAdapter(Adapter):
     poll_s = 5.0
     LABELS = {"screens": "Screens (live)", "lamps": "Lamps (following the music)"}
     FOLLOW = "sensor"
-    FOLLOW_STEP_S = 2.0         # how often a following screen reads the room's light
-    RISE_TAU_S = 180.0          # starting points: brightening is slow (the screens' own light reaches the sensor) ...
-    FALL_TAU_S = 45.0           # ... dimming quicker (the room's lights going down)
+    FOLLOW_STEP_S = 1.0         # how often a following screen reads the room's light
+    SMOOTH_S = 10.0             # owner, 29 Oct: "3 mins is too smoothed. I was thinking 10s or so"
     SEND_STEP = 0.01            # a level change under this isn't sent
 
     def __init__(self, controllers: dict[str, "ScreenController"], hue_output: Any, state_dir: str | Path,
@@ -299,23 +298,30 @@ class BrightnessAdapter(Adapter):
         return {"x-ui": {"label": self.label(member)},
                 "oneOf": [{**fixed, "x-ui": {**fixed["x-ui"], "label": "Set"}},
                           {"type": "object", "required": ["follow"], "default": {"follow": self.FOLLOW, "min": 20,
-                                                                                 "max": 100},
+                                                                                 "max": 100, "smooth_s": self.SMOOTH_S},
                            "x-ui": {"label": "Follows the room's light",
                                     "help": "Dim in a dark room, full in daylight, as the art is; it changes slowly."},
                            "properties": {"follow": {"const": self.FOLLOW, "x-ui": {"hidden": True}},
-                                          "min": pct("In the dark", 20), "max": pct("In daylight", 100)}}]}
+                                          "min": pct("In the dark", 20), "max": pct("In daylight", 100),
+                                          "smooth_s": {"type": "number", "minimum": 1, "maximum": 600,
+                                                       "default": self.SMOOTH_S,
+                                                       "x-ui": {"label": "Smoothing", "unit": "s", "widget": "slider",
+                                                                "ends": {"min": "Quick", "max": "Slow"}}}}}]}
 
     def normalize(self, member: str, value: Any) -> Any:
         if member == "screens" and isinstance(value, dict):
-            if value.get("follow") != self.FOLLOW or set(value) - {"follow", "min", "max"}:
+            if value.get("follow") != self.FOLLOW or set(value) - {"follow", "min", "max", "smooth_s"}:
                 raise ValueError('brightness.screens follows the room\'s light as {"follow": "sensor", "min": %, '
-                                 '"max": %}')
+                                 '"max": %, "smooth_s": s}')
             lo, hi = value.get("min", 20), value.get("max", 100)
             for v in (lo, hi):
                 if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 100:
                     raise ValueError(f"brightness is 0-100, got {v!r}")
+            sm = value.get("smooth_s", self.SMOOTH_S)
+            if isinstance(sm, bool) or not isinstance(sm, (int, float)) or not 1 <= sm <= 600:
+                raise ValueError(f"smooth_s is 1-600 seconds, got {sm!r}")
             lo, hi = sorted((round(lo), round(hi)))
-            return {"follow": self.FOLLOW, "min": lo, "max": hi}
+            return {"follow": self.FOLLOW, "min": lo, "max": hi, "smooth_s": float(sm)}
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 100:
             raise ValueError(f"brightness is 0-100, got {value!r}")
         return round(value)
@@ -369,8 +375,7 @@ class BrightnessAdapter(Adapter):
             if cur is None:
                 cur = target                                    # as the art showed it a moment ago
             else:
-                tau = self.RISE_TAU_S if target > cur else self.FALL_TAU_S
-                cur += (target - cur) * (1.0 - math.exp(-dt / tau))
+                cur += (target - cur) * (1.0 - math.exp(-dt / cfg.get("smooth_s", self.SMOOTH_S)))
             self.follow_now[sid] = cur
             last = self._sent.get(sid)
             if last is None or abs(cur - last) >= self.SEND_STEP:
