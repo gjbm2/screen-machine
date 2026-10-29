@@ -16,6 +16,9 @@ from typing import Any, Optional
 
 import numpy as np
 
+# The NV12 conversion's debanding, 0-1 (see rgba_to_nv12 in _CORE_SRC); the ordered dither is always on.
+DEBAND = 1.0
+
 _CORE_SRC = r"""
 // BT.709, limited range.  Inputs are sRGB-encoded 8-bit values used directly as R'G'B' (no linearisation):
 // the stream is tagged so that the decoder's YCbCr -> R'G'B' gives back the same code values an <img> shows.
@@ -26,9 +29,84 @@ __device__ __forceinline__ unsigned char u8(float v) {
     return (unsigned char)fminf(fmaxf(v + 0.5f, 0.f), 255.f);
 }
 
+// Debanding (owner, 29 Oct: banding in the near-black regions).  Frames are 8-bit, so a smooth dark gradient arrives
+// as steps one code value apart, often hundreds of pixels wide, and near black (luma 16-35 of 16-235) each step shows
+// as a band.  Three passes rebuild the gradient the steps lost, in smooth areas only:
+//   1. deband_cells: per cell of DB_CELL px (16 at 4K), the mean and the range (max - min) of a 4x4 sample of its luma;
+//   2. deband_blur: per cell, a tent-weighted mean of the cells within DB_WIN cells (+-400 px at 4K) that are smooth
+//      (range <= DB_RANGE codes) and within DB_STEP codes of it: a bilateral blur, so it never mixes across an edge,
+//      a glyph or texture, and a staircase of 1-code bands becomes the ramp it came from;
+//   3. rgba_to_nv12: each pixel whose 4 surrounding cells are smooth and which lies within DB_TH codes of the blurred
+//      value (bilinear between cell centres) takes that value, sub-code precision included.
+// Then every Y/Cb/Cr value is rounded with a static 8x8 ordered dither (+-0.5 code): the rebuilt ramp leaves as a fine
+// pattern instead of bands, a flat area keeps its fractional level as a pattern of the two nearest codes (an integer
+// level stays exactly flat), and the pattern is the same every frame, so inter-coded frames carry it for nothing.
+__constant__ float BAYER8[64] = {
+     0, 32,  8, 40,  2, 34, 10, 42, 48, 16, 56, 24, 50, 18, 58, 26, 12, 44,  4, 36, 14, 46,  6, 38, 60, 28, 52, 20,
+    62, 30, 54, 22,  3, 35, 11, 43,  1, 33,  9, 41, 51, 19, 59, 27, 49, 17, 57, 25, 15, 47,  7, 39, 13, 45,  5, 37,
+    63, 31, 55, 23, 61, 29, 53, 21};
+__device__ __forceinline__ float dith(int x, int y) {
+    return (BAYER8[((y & 7) << 3) | (x & 7)] + 0.5f) * (1.f / 64.f) - 0.5f;
+}
+__device__ __forceinline__ unsigned char u8d(float v, float d) {
+    return (unsigned char)fminf(fmaxf(floorf(v + 0.5f + d), 0.f), 255.f);
+}
+#define DB_RANGE 2.5f       // codes: the most a smooth cell may vary
+#define DB_STEP 3.0f        // codes: how far a neighbouring cell may sit and still count as the same surface
+#define DB_TH 1.6f          // codes: how far a pixel may sit from the rebuilt value and still take it
+#define DB_WIN 12           // cells each side
+
+extern "C" __global__
+void deband_cells(const uchar4* __restrict__ rgba, float2* __restrict__ cells, const int W, const int H,
+                  const int C, const int CW, const int CH)
+{
+    const int cx = blockIdx.x * blockDim.x + threadIdx.x, cy = blockIdx.y * blockDim.y + threadIdx.y;
+    if (cx >= CW || cy >= CH) return;
+    const int x0 = cx * C, y0 = cy * C, st = max(C >> 2, 1);
+    float sum = 0.f, lo = 1e9f, hi = -1e9f;
+    #pragma unroll
+    for (int j = 0; j < 4; ++j) {
+        #pragma unroll
+        for (int i = 0; i < 4; ++i) {
+            const int x = min(x0 + i * st + (st >> 1), W - 1), y = min(y0 + j * st + (st >> 1), H - 1);
+            const uchar4 p = rgba[y * W + x];
+            const float l = luma709(p.x, p.y, p.z);
+            sum += l; lo = fminf(lo, l); hi = fmaxf(hi, l);
+        }
+    }
+    cells[cy * CW + cx] = make_float2(sum * (1.f / 16.f), hi - lo);
+}
+
+extern "C" __global__
+void deband_blur(const float2* __restrict__ cells, float* __restrict__ out, const int CW, const int CH, const float k)
+{
+    const int cx = blockIdx.x * blockDim.x + threadIdx.x, cy = blockIdx.y * blockDim.y + threadIdx.y;
+    if (cx >= CW || cy >= CH) return;
+    const float2 c = cells[cy * CW + cx];
+    const float rng = DB_RANGE / k, step = DB_STEP / k;
+    float sw = 0.f, sv = 0.f;
+    if (c.y <= rng) {
+        for (int dy = -DB_WIN; dy <= DB_WIN; ++dy) {
+            const int y = cy + dy;
+            if (y < 0 || y >= CH) continue;
+            for (int dx = -DB_WIN; dx <= DB_WIN; ++dx) {
+                const int x = cx + dx;
+                if (x < 0 || x >= CW) continue;
+                const float2 n = cells[y * CW + x];
+                if (n.y > rng || fabsf(n.x - c.x) > step) continue;
+                const float w = (float)(DB_WIN + 1 - abs(dx)) * (float)(DB_WIN + 1 - abs(dy));
+                sw += w; sv += w * n.x;
+            }
+        }
+    }
+    out[cy * CW + cx] = sw > 0.f ? sv / sw : c.x;
+}
+
 extern "C" __global__
 void rgba_to_nv12(const uchar4* __restrict__ rgba, unsigned char* __restrict__ Y,
-                  unsigned char* __restrict__ UV, const int W, const int H, const float gain)
+                  unsigned char* __restrict__ UV, const int W, const int H, const float gain,
+                  const float deband, const float2* __restrict__ cells, const float* __restrict__ smooth,
+                  const int C, const int CW, const int CH)
 {
     const int bx = blockIdx.x * blockDim.x + threadIdx.x;   // 2x2 block coordinates
     const int by = blockIdx.y * blockDim.y + threadIdx.y;
@@ -37,17 +115,38 @@ void rgba_to_nv12(const uchar4* __restrict__ rgba, unsigned char* __restrict__ Y
     const uchar4 p00 = rgba[y * W + x],       p01 = rgba[y * W + x + 1];
     const uchar4 p10 = rgba[(y + 1) * W + x], p11 = rgba[(y + 1) * W + x + 1];
     const float k = gain * 219.f / 255.f;   // gain: the session's brightness (1 = as rendered), on the code values
-    *reinterpret_cast<uchar2*>(Y + y * W + x) =
-        make_uchar2(u8(16.f + k * luma709(p00.x, p00.y, p00.z)), u8(16.f + k * luma709(p01.x, p01.y, p01.z)));
-    *reinterpret_cast<uchar2*>(Y + (y + 1) * W + x) =
-        make_uchar2(u8(16.f + k * luma709(p10.x, p10.y, p10.z)), u8(16.f + k * luma709(p11.x, p11.y, p11.z)));
+    float l[4] = {luma709(p00.x, p00.y, p00.z), luma709(p01.x, p01.y, p01.z),
+                  luma709(p10.x, p10.y, p10.z), luma709(p11.x, p11.y, p11.z)};
+    if (deband > 0.f && k > 1e-3f) {
+        // the block's position among the cell centres (bilinear), and the four cells around it
+        const float fx = ((float)x + 1.f) / (float)C - 0.5f, fy = ((float)y + 1.f) / (float)C - 0.5f;
+        const int ix = min(max((int)floorf(fx), 0), CW - 1), iy = min(max((int)floorf(fy), 0), CH - 1);
+        const int jx = min(ix + 1, CW - 1), jy = min(iy + 1, CH - 1);
+        const float tx = fminf(fmaxf(fx - (float)ix, 0.f), 1.f), ty = fminf(fmaxf(fy - (float)iy, 0.f), 1.f);
+        const float r = fmaxf(fmaxf(cells[iy * CW + ix].y, cells[iy * CW + jx].y),
+                              fmaxf(cells[jy * CW + ix].y, cells[jy * CW + jx].y));
+        const float s = (1.f - ty) * ((1.f - tx) * smooth[iy * CW + ix] + tx * smooth[iy * CW + jx])
+                      + ty * ((1.f - tx) * smooth[jy * CW + ix] + tx * smooth[jy * CW + jx]);
+        const float rng = DB_RANGE / k, th = DB_TH / k;
+        const float wr = 1.f - fminf(fmaxf((r - 0.6f * rng) / (0.4f * rng), 0.f), 1.f);
+        #pragma unroll
+        for (int j = 0; j < 4; ++j) {
+            const float d = fabsf(l[j] - s);
+            const float w = deband * wr * (1.f - fminf(fmaxf((d - 0.6f * th) / (0.4f * th), 0.f), 1.f));
+            l[j] += w * (s - l[j]);
+        }
+    }
+    const float d0 = dith(x, y), d1 = dith(x + 1, y), d2 = dith(x, y + 1), d3 = dith(x + 1, y + 1);
+    *reinterpret_cast<uchar2*>(Y + y * W + x) = make_uchar2(u8d(16.f + k * l[0], d0), u8d(16.f + k * l[1], d1));
+    *reinterpret_cast<uchar2*>(Y + (y + 1) * W + x) = make_uchar2(u8d(16.f + k * l[2], d2), u8d(16.f + k * l[3], d3));
     const float r = 0.25f * ((float)p00.x + p01.x + p10.x + p11.x);
     const float g = 0.25f * ((float)p00.y + p01.y + p10.y + p11.y);
     const float b = 0.25f * ((float)p00.z + p01.z + p10.z + p11.z);
     const float c = gain * 224.f / 255.f;
     const float cb = 128.f + c * (-0.114572f * r - 0.385428f * g + 0.5f * b);
     const float cr = 128.f + c * (0.5f * r - 0.454153f * g - 0.045847f * b);
-    *reinterpret_cast<uchar2*>(UV + by * W + x) = make_uchar2(u8(cb), u8(cr));
+    const float dc = dith(bx, by);                               // chroma is half-size: its own pattern position
+    *reinterpret_cast<uchar2*>(UV + by * W + x) = make_uchar2(u8d(cb, dc), u8d(cr, -dc));
 }
 
 // The live diagnostics panel (hud.py; docs/LIVE_DIAGNOSTICS.md): blended into the NV12 frame over a fixed, clamped
@@ -167,13 +266,37 @@ class CoreKernels:
         self.k_fill = mod.get_function("fill_u32")
         self.k_rgb_to_rgba = mod.get_function("rgb_to_rgba")
         self.k_hud = mod.get_function("hud_nv12")
+        self.k_db_cells = mod.get_function("deband_cells")
+        self.k_db_blur = mod.get_function("deband_blur")
+        self._db_size: Optional[tuple[int, int]] = None
+        self._db_grid = (0, 0, 0)
+        self._db_cells = self._db_smooth = None
 
-    def rgba_to_nv12(self, rgba, nv12, w: int, h: int, gain: float = 1.0) -> None:
+    def rgba_to_nv12(self, rgba, nv12, w: int, h: int, gain: float = 1.0, deband: float = DEBAND) -> None:
         y = nv12[: w * h]
         uv = nv12[w * h:]
+        c, cw, ch = self._deband_cells(w, h)
+        if deband > 0.0:
+            g = ((cw + 15) // 16, (ch + 7) // 8, 1)
+            self.k_db_cells(g, (16, 8, 1), (rgba, self._db_cells, np.int32(w), np.int32(h), np.int32(c), np.int32(cw),
+                                            np.int32(ch)))
+            self.k_db_blur(g, (16, 8, 1), (self._db_cells, self._db_smooth, np.int32(cw), np.int32(ch),
+                                           np.float32(max(gain, 1e-3) * 219.0 / 255.0)))
         block = (32, 8, 1)
         grid = ((w // 2 + 31) // 32, (h // 2 + 7) // 8, 1)
-        self.k_nv12(grid, block, (rgba, y, uv, np.int32(w), np.int32(h), np.float32(gain)))
+        self.k_nv12(grid, block, (rgba, y, uv, np.int32(w), np.int32(h), np.float32(gain), np.float32(deband),
+                                  self._db_cells, self._db_smooth, np.int32(c), np.int32(cw), np.int32(ch)))
+
+    def _deband_cells(self, w: int, h: int) -> tuple[int, int, int]:
+        """The debanding's cell grid for this frame size, its two small buffers made once per size."""
+        if self._db_size != (w, h):
+            import cupy as cp
+            c = max(4, int(round(16 * h / 2160)))
+            cw, ch = -(-w // c), -(-h // c)
+            self._db_cells = cp.zeros((ch * cw, 2), cp.float32)
+            self._db_smooth = cp.zeros(ch * cw, cp.float32)
+            self._db_size, self._db_grid = (w, h), (c, cw, ch)
+        return self._db_grid
 
     def crossfade(self, a, b, out, p: float) -> None:
         n2 = a.size // 8  # two RGBA pixels (8 bytes) per thread
