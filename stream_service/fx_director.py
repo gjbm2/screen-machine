@@ -93,6 +93,13 @@ def bus_slots(stack: list) -> list:
     return [s for s in stack if getattr(s, "origin", "manual") != "gesture"]
 
 
+def oldest(autos: list) -> Any:
+    """The auto effect that came in first (its ``seq``).  The bus is in stage order (fx_state), so ``autos[0]`` is
+    the earliest stage: 29 Oct, the director kept rotating the stylise / colour slot while an overlay (a note
+    stream) stayed 7-13 minutes."""
+    return min(autos, key=lambda s: getattr(s, "seq", 0)) if autos else None
+
+
 def interval_for(rate: float) -> float:
     return FX_INTERVAL_AT_0 * (FX_INTERVAL_AT_1 / FX_INTERVAL_AT_0) ** max(0.0, min(1.0, rate))
 
@@ -433,7 +440,7 @@ class FxDirector:
         not already queued.  None when nothing else fits."""
         stack = bus_slots(stack)
         autos = [s for s in stack if getattr(s, "origin", "manual") == "auto"]
-        freed = autos[0] if autos else None
+        freed = oldest(autos)
         names = [n for n in self.candidates(now, stack, presets, cost, pixels_ratio, freed=freed) if n not in queued]
         got = self._pick(names, presets, stack, freed)
         return None if got is None else (got[0], got[1])
@@ -459,7 +466,7 @@ class FxDirector:
             else:
                 self.thin_until = None
         if len(autos) > k:
-            old = autos[0]
+            old = oldest(autos)
             return FxMove("remove", None, old.id, f"remove {old.spec.name} (density: {len(autos)} > {k}){on}")
         if len(autos) < k:
             if len(stack) >= MAX_BUS_SLOTS:
@@ -467,7 +474,7 @@ class FxDirector:
             got = self._choose(self.candidates(now, stack, presets, cost, pixels_ratio), presets, prefer, stack)
             return None if got is None else self._move("add", got, None, f"add: {got[1]}{on}")
         if k > 0 and (ev in FX_LIFTS or self.rng.random() < SWAP_P):   # the music's events always change
-            old = autos[0]
+            old = oldest(autos)
             got = self._choose(self.candidates(now, stack, presets, cost, pixels_ratio, freed=old), presets, prefer,
                                stack, old)
             if got is not None:
@@ -482,7 +489,7 @@ class FxDirector:
         that is empty too, or the bus is full with no auto effect to swap."""
         stack = bus_slots(stack)
         autos = [s for s in stack if getattr(s, "origin", "manual") == "auto"]
-        old = autos[0] if autos else None
+        old = oldest(autos)
         if old is None and len(stack) >= MAX_BUS_SLOTS:
             return None
         got = None

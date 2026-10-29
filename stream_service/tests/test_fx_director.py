@@ -107,6 +107,19 @@ def test_add_until_density_then_remove_oldest_auto():
     assert m.op == "remove" and m.remove == "fx-1"
 
 
+def test_the_oldest_goes_first_not_the_earliest_stage():
+    # the bus is in stage order; the overlay (a note stream) came in first, so it is the one removed or swapped
+    # (29 Oct: overlays stayed 7-13 minutes while the colour slot rotated)
+    stack = [St("fx-2", "warm"), St("fx-1", "lab-unreviewed")]
+    stack[0].seq, stack[1].seq = 2, 1
+    m = director(density=0.0, mx=2).plan(0, stack, PRESETS, cost)
+    assert m.op == "remove" and m.remove == "fx-1"
+    d = director(density=1.0, mx=2, seed=3)
+    swaps = [m for m in (d.plan(0, stack, PRESETS, cost) for _ in range(50)) if m is not None]
+    assert swaps and all(m.op == "swap" and m.remove == "fx-1" for m in swaps)
+    assert d.next_move(0, stack, PRESETS, cost).remove == "fx-1"
+
+
 def test_one_effect_per_stage_and_untagged_or_auto_false_never():
     d = director(density=1.0, mx=4)
     stack = [St("fx-1", "warm"), St("fx-2", "kick"), St("fx-3", "split")]

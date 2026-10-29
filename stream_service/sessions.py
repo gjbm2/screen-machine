@@ -865,7 +865,9 @@ class Session(EngineListener):
         src = self.fx_source()
         if src is None:                             # its own effects (or the room's, from here): direct them
             self._fx_tick(now)
-        elif now - self._fx_check_t >= rooms.FX_SYNC_S and self._fx_task is None and src._fx_task is None:
+            return
+        self.fx_director.arm(False, now)            # mirroring: its own director rests (and re-arms when it leads)
+        if now - self._fx_check_t >= rooms.FX_SYNC_S and self._fx_task is None and src._fx_task is None:
             self._fx_check_t = now
             want = self._fx_mirror([p for _, p in rooms.auto_fx(src.fx.stack)])
             levels = rooms.auto_fx_levels(src.fx.stack)
@@ -877,7 +879,7 @@ class Session(EngineListener):
         return self.mgr.fit_scene(spec, self.gpu, self.pixels_ratio(), explicit)
 
     def fx_auto_status(self) -> dict:
-        return (self.following() or self).fx_director.status(time.monotonic())
+        return (self.fx_source() or self).fx_director.status(time.monotonic())    # the director choosing them
 
     def _pts_now(self) -> float:
         return getattr(self.engine, "frames", 0) / self.profile.fps
@@ -1987,9 +1989,14 @@ class Session(EngineListener):
         scene, on its own time when that is still ahead, else on the next bar (once min dwell is reached).  The
         song-end events with a ``transition`` are handled by _track_event (no min dwell: a song's end is the
         moment)."""
-        if self.following() is not None or self.state != "live" or self.exited:
+        if self.state != "live" or self.exited:
             return
-        self.fx_director.on_event(kind, time.monotonic())     # the bus follows the song too (fx_director.py)
+        # the bus follows the song too (fx_director.py), on the screen that directs it: a follower does while the
+        # ensemble makes it the lead (29 Oct: north led deaf to the song and its effects stayed; a mirroring
+        # screen's director is disarmed, so it ignores the event)
+        self.fx_director.on_event(kind, time.monotonic())
+        if self.following() is not None:
+            return
         data = data or {}
         if kind in TRACK_EVENTS and (data.get("transition") is not None or data.get("held")
                                      or kind != "track_change" or detail in ("disarmed", "sound_back")):
