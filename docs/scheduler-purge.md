@@ -91,9 +91,9 @@ This example shows how to set up an event-triggered purge that can be manually a
 You can trigger this with the scheduler event API:
 
 ```bash
-curl -X POST http://localhost:5000/api/scheduler/events \
+curl -X POST http://localhost:5000/api/schedulers/events/throw \
   -H "Content-Type: application/json" \
-  -d '{"scope": "your-bucket-id", "key": "maintenance_purge", "ttl": "60s"}'
+  -d '{"scope": "your-bucket-id", "event": "maintenance_purge", "ttl": "60s"}'
 ```
 
 ## Behavior

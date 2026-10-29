@@ -14,34 +14,21 @@ To ensure proper isolation between events and prevent overlap issues when multip
 
 When an event is matched in `resolve_schedule`:
 
-- The event payload is stored in a unique variable in the context with a name based on the event's unique ID:
-  ```
-  _event_{first_6_chars_of_unique_id}
-  ```
-  
-- For backward compatibility, this data is also copied to the standard `_event` variable.
+- The event (`key`, `payload`, `unique_id`, `created_at`, `display_name`) is written to `_event` (in `context["vars"]` and at the top level of the context).
 
-- Each instruction from the event trigger is tagged with its specific event variable name.
+- Each instruction from the event trigger gets its own copy of that event, stamped on the instruction as `_event_ctx` (since 17 Oct 2026; before that `_event` was one slot, overwritten by every event matched in the same tick).
 
 ### 2. Instruction Execution
 
 When each instruction is executed in `run_instruction`:
 
-- Before processing the instruction, the system checks if it's an event-triggered instruction.
-
-- If it is, the system copies the event data from the instruction's specific event variable back to the standard `_event` variable.
+- If the instruction carries `_event_ctx`, it is removed from the instruction and restored as `_event`.
 
 - This ensures that each instruction sees the correct event data for its trigger, even if multiple events are being processed in the same scheduler cycle.
 
 ### 3. Cleanup
 
-After all instructions in a scheduler cycle have been processed:
-
-- The system tracks which event variables were used during instruction execution.
-
-- After all instructions are processed, it removes all used event variables from the context.
-
-- This prevents event data from persisting unnecessarily in the context and avoids potential confusion in future cycles.
+There is no separate cleanup step: the event travels with its instructions, and `_event` is overwritten by the next event-triggered instruction.
 
 ## Example Usage
 
@@ -50,7 +37,7 @@ In a schedule script, you can access event data using the standard `_event` vari
 ```json
 {
   "action": "set_var",
-  "var_name": "last_received_message",
+  "var": "last_received_message",
   "value": "Received {{ _event.payload.message }} from {{ _event.key }}"
 }
 ```
@@ -61,22 +48,18 @@ The system automatically ensures that `_event` contains the correct data for eac
 
 This approach provides several benefits:
 
-1. **Data Isolation**: Each event's data is stored separately, preventing one event from overwriting another's data.
+1. **Data Isolation**: Each event's data travels with its own instructions, so one event can't overwrite another's.
 
 2. **Backward Compatibility**: Existing scripts can continue to use `_event` without modification.
 
-3. **Clean Context**: Event data is automatically removed after it's no longer needed, preventing context bloat.
-
-4. **Multiple Events in Same Cycle**: The system correctly handles multiple events being triggered in the same scheduler cycle, ensuring each instruction gets the correct event data.
+3. **Multiple Events in Same Cycle**: The system correctly handles multiple events being triggered in the same scheduler cycle, ensuring each instruction gets the correct event data.
 
 ## Implementation Details
 
-The event context handling is implemented in three main functions:
+The event context handling is implemented in two functions in `routes/scheduler.py`:
 
-1. `resolve_schedule`: Extracts events, stores them in unique variables, and tags instructions.
+1. `resolve_schedule`: Pops matched events, sets `_event`, and stamps each of the trigger's instructions with `_event_ctx`.
 
-2. `run_instruction`: Copies the specific event data to `_event` before processing each instruction.
-
-3. `run_scheduler_loop`: Cleans up all event variables after processing a batch of instructions.
+2. `run_instruction`: Restores an instruction's `_event_ctx` as `_event` before processing it.
 
 The implementation includes comprehensive unit and integration tests to ensure proper functionality in all scenarios. 

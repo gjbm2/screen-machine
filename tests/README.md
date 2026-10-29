@@ -27,7 +27,7 @@ Tests are organized into several categories:
 - **Snapshot Tests**:
   - `snapshot/test_scheduler_state.py`: Tests scheduler state persistence
 - **Mock Tests**:
-  - `mock/test_scheduler_events.py`: Tests scheduler event handling using mocks
+  - `mock/test_scheduler_event_triggers.py`: Tests scheduler event triggers using mocks
 
 ## Mock Services for Testing
 
@@ -58,7 +58,7 @@ The tests cover all instruction types defined in the schema:
 | `import_var`         | `integration/test_var_instruction_handlers.py` |
 | `export_var`         | `integration/test_var_instruction_handlers.py` |
 | `generate`           | `unit/test_instruction_handlers.py`, `integration/test_schedule_execution.py` |
-| `devise_prompt`      | `unit/test_instruction_handlers.py`        |
+| `reason` (was `devise_prompt`) | `unit/test_instruction_handlers.py` |
 | `display`            | `unit/test_instruction_handlers.py`        |
 | `random_choice`      | `unit/test_instruction_handlers.py`        |
 | `device-media-sync`  | `unit/test_instruction_handlers.py`        |

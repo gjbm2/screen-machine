@@ -1,5 +1,7 @@
 # Screen Machine — Cleanup & Re-engineering Plan
 
+> Status (29 Oct 2026): historical (July 2026). A1 is built (`routes/jobs/`, [JOBS.md](JOBS.md)); A3's auth layer is ruled out (no auth in the AV stack, `CLAUDE.md`); A4 is largely built (room_service pushes masks and live cutovers to `/display/<screen>`, `src/pages/DisplayPage/README.md`). Current code-health items: [REFACTOR_PLAN.md](REFACTOR_PLAN.md).
+
 ## Overview
 
 This document identifies the major structural issues in the Screen Machine codebase and proposes concrete plans for addressing them. Issues are grouped into three tiers:

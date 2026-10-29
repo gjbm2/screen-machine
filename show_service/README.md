@@ -2,8 +2,8 @@
 
 The room's own ears (docs/SHOW_ENGINE.md). Audio and the Steinway's MIDI arrive as VBAN over UDP from senders it
 subscribes to. They go onto one CLOCK_MONOTONIC timeline, become features, notes and harmony, and are published on
-the show bus as `music.*` (§11.1). Maintainer: **screen-machine-77** (from 18 Oct, after c8). Send contract
-changes to 77.
+the show bus as `music.*` (§11.1). Session names change; ask on the peer list who maintains show_service now
+(CLAUDE.md's Spectre section names the card's owner).
 
 - **Venv:** `~/.venvs/sm-show` (python3.12). Pins are in `requirements.txt`. Build and test niced and serialised:
   ```
@@ -62,7 +62,7 @@ changes to 77.
 | `structure.py` | `music.context` (1 Hz), sections, phases, track changes, structure's `room.event`s, GOBO on sections while no vibe plays | **done**, tested, wired |
 | director, situations, listener, api card, vibes | Stage 4's consumers (S4.8) | **done**, tested, wired |
 | `tests/test_e2e.py::test_stage4_end_to_end` | three real tracks back to back through the real worker, against a fake room | **done**, passing |
-| Stage 4 review fixes (S4.13) | the 24 review issues of 16 Oct: GOBO ownership, track changes, the CED speech words, hysteresis, the ML genre, the meter, tokens, freshness, the worker's guards, memory, hand-off, budget, the owner's 0.8 | **done**, tested (948 passed); not committed |
+| Stage 4 review fixes (S4.13) | the 24 review issues of 16 Oct: GOBO ownership, track changes, the CED speech words, hysteresis, the ML genre, the meter, tokens, freshness, the worker's guards, memory, hand-off, budget, the owner's 0.8 | **done**, tested (948 passed); committed 16 Oct (15d468ff) |
 | **Stage 5** (below) | every output **off** in config/room/fixtures.yaml: the restart that ships it changes nothing anyone can see | |
 | `fixtures.py`, `ofl.py`, `tools/show/add_fixture.py` | the fixture registry (fixtures.yaml, OFL types, selectors, groups, latency), hot-reloaded | **done**, tested, wired |
 | `looks.py`, `colour_mix.py` | the look engine (layers, hits, caps, latency per fixture, the screens rule) and colour to emitters | **done**, tested, wired |
@@ -72,7 +72,7 @@ changes to 77.
 | director, RoomLink | the screens' hand-pick hold, the `source` probe, room events, the lamps from the registry, `look_fn` | **done**, tested, wired |
 | `api.py` | `/api/v1/rig`, `/rig/frame`, `/rig/dmx`, `/rig/nodes/{id}/record-failsafe`, `/hue/stream`, `/hue/release`, `/hue/status` (68's contract: `state` is `idle`, `armed`, `streaming` or `taken_over`, with `lights` and `boot_id` for room's re-sync; S5.6b, S5.6c) | **done**, tested, wired |
 | `tests/test_e2e.py::test_stage5_end_to_end` | test music -> director -> engine -> DMX on the beat grid and Hue at 50 Hz (fakes and sinks), the screens rule, the hold | **done**, passing |
-| Stage 5 review fixes (S5.14) | the 20 review issues of 16 Oct: the drop hit per output's caps, the key light's white, no vibe on DMX, the wheel, House for DMX fixtures, Hue's rise limit and min period, the DMX confidence policy, House/Low/dip steady, the hold, measured emitters, the persisted Hue set, the grid's tolerance, the rate cap, the debounce, per-output hit wakes, the build-ahead, the CPU caveats | **done**, tested; two owner calls open (S5.14); not committed |
+| Stage 5 review fixes (S5.14) | the 20 review issues of 16 Oct: the drop hit per output's caps, the key light's white, no vibe on DMX, the wheel, House for DMX fixtures, Hue's rise limit and min period, the DMX confidence policy, House/Low/dip steady, the hold, measured emitters, the persisted Hue set, the grid's tolerance, the rate cap, the debounce, per-output hit wakes, the build-ahead, the CPU caveats | **done**, tested; two owner calls open (S5.14); committed 16 Oct (63061d54) |
 
 **Process split.** §2 has two processes: show_rt (hot, no aiohttp) and show_brain. For now everything runs in one
 process: the brain is a thread (`show-brain`), aiohttp stays on its own thread (`show-bus`), and the hot thread only
@@ -1110,16 +1110,19 @@ and never sources it:
 - `SHOW_HOLD` blocks start;
 - every other `KEY=VALUE` line becomes an environment variable.
 
-**Production**, once 98's kiosk sender (`tools/show_sender/`, `show-sender.service` on udp 6980) is deployed:
+**Production** (`deploy/sm-show.env`, 29 Oct):
 ```
 SHOW_PORT=8703
-SHOW_ARGS="--sender kiosk=screen-machine-drawingroom:6980/room-mic,room-piano --artnet-target 127.0.0.1:6454 --log-level INFO"
+SHOW_ARGS="--artnet-target 127.0.0.1:6454 --log-level INFO"
 PYTHONUNBUFFERED=1
 CUDA_VISIBLE_DEVICES=
+OMP_NUM_THREADS=1
+OPENBLAS_NUM_THREADS=1
+SHOW_BEAT_PROC=on
 ```
-- **`--sender`** names the kiosk by its DNS name, never an IP. It must resolve inside WSL
-  (`getent hosts screen-machine-drawingroom`). **On 16 Oct it doesn't** (the lookup times out). Until it does,
-  health shows `senders.kiosk.resolve_error`, the receiver retries every 5 s and nothing else breaks.
+- **Senders** come from show.yaml `senders`: the kiosk (udp 6980, room-mic and room-piano, by IP: powerline then
+  Wi-Fi), PC22's `pc22-mic` (udp 6984, Spectre's audio-agent card), and the test piano and test audio (6981/6982, on
+  demand). `--sender` / `SHOW_SENDERS` still work and only add extras (`contract.static_senders`).
 - **`--artnet-target 127.0.0.1:6454`** is the only target, and it is what turns the virtual Maestro on (P0: room's
   own Art-Net receiver, universe 0, patch.yaml's layout).
   - Without it (or with `off`), nothing is sent.
@@ -1134,11 +1137,8 @@ CUDA_VISIBLE_DEVICES=
     `status()["palette"]` says which (`fixed` | `director`).
   - It yields to another Art-Net sender: room's `:8700/api/v1/dmx` is polled every 5 s (its `last_from`; no
     packet-rate test since 09's audit F4).
-- **Before the kiosk sender exists:** `SHOW_ARGS="--log-level INFO"`. With no senders it listens and serves
-  `/healthz`, and Art-Net is off.
-- **PC22's test piano** (`tools/show_sender/show_sender.py --test-piano … --port 6981`) can be added as a second
-  `--sender pc22=<PC22's DNS name>:6981/test-piano`. Only one piano publishes at a time (the present one, the room's
-  before the test piano), so the renderer never sees two note sessions at once.
+- **The test piano** is show.yaml's `test-piano` sender (a child of show_service). Only one piano publishes at a time
+  (the present one, the room's before the test piano), so the renderer never sees two note sessions at once.
 - **Optional lines:**
   - `SHOW_STREAM_PRIORITY=a,b` (audio streams ranked first);
   - `SHOW_PALETTE=amber` (the P0 colour of screens and lamps, above);
@@ -1149,14 +1149,14 @@ CUDA_VISIBLE_DEVICES=
 - **Stage 3 lines** (all optional): `SHOW_BRAIN=off` (the rollback: no director, Auto, test sources, listener or
   Stage-3 routes; exactly P0), `SHOW_FILE`, `SHOW_VIBES_FILE`, `SHOW_STATE_DIR` (their defaults are the production
   paths). The exact going-live steps are S3.14.
-- **Stage 4 line** (optional): `SHOW_BEAT_THREAD=on` runs the clock's activation on its own thread (off by default:
-  S4.12). The ML worker needs no line: show.yaml's `ml` section drives it. The going-live steps are S4.11.
+- **Stage 4 lines** (optional): `SHOW_BEAT_PROC=on` (production) runs madmom's activation in its own child process
+  (beatproc.py) and wins over `SHOW_BEAT_THREAD=on` (its own thread). Both are off by default (S4.12). The ML worker needs no line: show.yaml's `ml` section drives it. The going-live steps are S4.11.
 
 **What ca's `scripts/ctl` `show` entry must contain** (the same pattern as `stream`):
 ```
     show)
       SESSION="sm-show$SUFFIX"; MODULE=show_service; PY="$HOME/.venvs/sm-show/bin/python"
-      ENVF="$ENV_DIR/sm-show.env"; KEY=SHOW; LOG="$LOG_DIR/show_service.log"; WAIT=30 ;;
+      ENVF="$ENV_DIR/sm-show.env"; KEY=SHOW; LOG="$LOG_DIR/show_service.log"; WAIT=45 ;;
 ```
 - **Names:** `show` is accepted by `for_each` and included in `all`. It is started at boot, with no hold line (§13.1).
   `ports` lists `show 8703 localhost (bus + API)` and `vban 6980/udp WSL socket, receiver-initiated`.

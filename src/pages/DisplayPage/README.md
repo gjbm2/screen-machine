@@ -8,7 +8,7 @@ additive changes only). Design: `docs/AV_PROGRAMME.md` §3.1–3.3, `docs/DISPLA
 
 | URL | Mode | What runs |
 |---|---|---|
-| `/display/<id>` | **controlled** (the default since 14 Oct; the TVs' kiosk URLs never change) | Connects by itself to room_service (`VITE_ROOM_URL`, http→ws, e.g. `ws://192.168.1.205:8700`) as `/v1/screen/<id>?role=kiosk`: mask push (no 3 s poll while pushed), freeze/unfreeze, the live layer, `kiosk.state` every 5 s (with `viewport`, which room uses for the live render's shape). Art until a live cutover, then the MP4 stream, and back. |
+| `/display/<id>` | **controlled** (the default since 14 Oct; the TVs' kiosk URLs never change) | Connects by itself to room_service (`VITE_ROOM_URL`, http→ws, e.g. `ws://192.168.1.205:8700`; over HTTPS same-origin `/rs`, `secureUrls.ts`) as `/v1/screen/<id>?role=kiosk`: mask push (no 3 s poll while pushed), freeze/unfreeze, the live layer, `kiosk.state` every 5 s (with `viewport`, which room uses for the live render's shape). Art until a live cutover, then the MP4 stream, and back. |
 | `/display/<id>?ctl=off` | **legacy** | Today's old page: 1 s file poll, 3 s mask poll, legacy overlay socket, controls panel, 4-hourly reloads. `?ctl=ws://host:port` points the socket elsewhere. |
 | `/display/<id>?artonly=1` | **art-only** (snapshotter) | Only the art stack (still/clip + brightness + warm) on black. No polling, sockets, overlays, controls or live layer. `window.__smArtReady`, `window.__smRenderArt(state)`. |
 
@@ -43,6 +43,7 @@ OverlayContainer.tsx   overlays (both modes)
 JobIndicator.tsx       generation-job pill, top-left (both modes; job tracker stream, docs/JOBS.md;
                        hidden while live/frozen, not part of settle)
 ControlsPanel.tsx      hover/tap panel (both modes; moved out of index.tsx unchanged)
+secureUrls.ts          over HTTPS (Caddy): room socket via /rs, media sockets via /rs/renderer; http URLs unchanged
 LegacyMaskLayers.tsx   today's brightness/warm layers (default mode)
 hooks/                 useFilePolling, useBaseFileName, useMask (fail-hold fix), useOverlayWebSocket
                        (optional accept gate; html frames only), useScreenJobs, useBlackBody

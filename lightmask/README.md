@@ -23,7 +23,7 @@ can compute masks itself and Flask can switch to the same code later.
 - **Config.** It reads the same files Flask reads, re-read when their mtime or size changes:
   - `INTENSITY_CFG`: `config.py` is executed in an isolated `config` namespace, as `compute_mask` does, and only `INTENSITY_CFG` is read. It is compiled by hand, so no `__pycache__` is written. TODO: move it to `config/light.json`.
   - `routes/data/intensity.json`.
-  - `publish-destinations.json`, found the way `routes.utils.findfile` finds it from the repo root. Today that is **`src/data/publish-destinations.json`**, not `routes/data/`.
+  - `publish-destinations.json`, found the way `routes.utils.findfile` finds it from the repo root. Today that is **`src/data/publish-destinations.json`**, a symlink to `routes/data/publish-destinations.json`.
 - **Targets.** sensor → `target_group` → destinations, exactly as in `get_destinations_for_group`:
   - `global` means every destination with `has_bucket`;
   - a destination id beats a group name;

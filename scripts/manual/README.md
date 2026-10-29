@@ -2,7 +2,7 @@
 
 One-off scripts moved out of the repo root on 2026-10-14. They are not tests: none of them is named `test_*.py`, so pytest never collects them.
 
-**Several of them touch prod.** `manual_overlay_instruction.py` and `manual_ws_overlay_client.py` send real overlays (the second goes through the relay on :8765), and `manual_reference_image_persistence.py` writes a `_test_reference` bucket under the live `output/`. Run them only on purpose, from the repo root with the Flask venv and the repo on the path (they import `routes`):
+**Several of them touch prod.** `manual_overlay_instruction.py` and `manual_ws_overlay_client.py` send real overlays (the second goes through the relay on :8765), and `manual_reference_image_persistence.py` writes a `_test_reference` bucket under the live `output/`. Agent sessions never send frames on Flask's :8765 (`CLAUDE.md`). Run them only on purpose, from the repo root with the Flask venv and the repo on the path (they import `routes`):
 
 ```bash
 PYTHONPATH=. .venv/bin/python scripts/manual/manual_scheduler_handlers.py

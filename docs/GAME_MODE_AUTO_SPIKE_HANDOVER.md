@@ -1,5 +1,7 @@
 # Handover: per-mode Game Mode switching on the Frame TVs (spike)
 
+> Status (29 Oct 2026): closed. The owner rejected Game Mode on 2026-10-13 (Game Bar overlay and flicker; §10): TV Game Mode is never used.
+
 2026-10-13, from the room-AV planning session (screen-machine-10). Scope: **this spike only.** The wider room-AV programme is being written separately and will consume this spike's result as one input.
 
 ## 1. The question

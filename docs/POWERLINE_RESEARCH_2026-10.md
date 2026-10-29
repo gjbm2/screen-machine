@@ -1,5 +1,7 @@
 # Powerline Ethernet for the kiosk mini-PC (research, 2026-10-11)
 
+> Status (29 Oct 2026): done. Powerline Ethernet has been the kiosk's primary link since 2026-10-13, measured at ~170-190 Mbit/s ([KIOSK_INFRASTRUCTURE_NOTES.md](KIOSK_INFRASTRUCTURE_NOTES.md#5-powerline-ethernet-primary-since-2026-10-13) §5).
+
 Why: the kiosk mini-PC's Wi-Fi tops out at ~15-20 Mbit/s (see [KIOSK_INFRASTRUCTURE_NOTES.md](KIOSK_INFRASTRUCTURE_NOTES.md#4-wi-fi)),
 running Ethernet cable to the drawing room is not possible, and the owner says powerline is the only wired option.
 Need: steady 25-60 Mbit/s (two 4K HEVC streams plus web traffic), low jitter, 24/7.

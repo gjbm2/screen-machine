@@ -3,6 +3,8 @@
 **Date:** 2026-03-02
 **Status:** Proposed
 
+> Status (29 Oct 2026): done. Images go as base64 `image_url` parts over chat completions (`routes/openai.py`, `_chat`; models now chosen by `config/llm.yaml`), no `.resized.jpg` is written, and scheduler logs are capped (`MAX_SCHEDULER_LOG_SIZE`).
+
 ---
 
 ## 1. Problem Summary

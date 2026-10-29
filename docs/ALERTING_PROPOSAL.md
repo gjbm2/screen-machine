@@ -1,6 +1,6 @@
 # Production Alerting for screen-machine — Proposal
 
-**Status:** IMPLEMENTED and live as of 2026-07-28 (Siren in `utils/alerts/`, Deadman deployed to the media server as `deadman.timer`). One manual step outstanding: create a free healthchecks.io check and set `HEALTHCHECK_PING_URL` in `.env`.
+**Status:** IMPLEMENTED and live as of 2026-07-28 (Siren in `utils/alerts/`, Deadman deployed to the media server as `deadman.timer`). One manual step outstanding: create a free healthchecks.io check and set `HEALTHCHECK_PING_URL` in `.env` (still unset on 29 Oct 2026). Of §11, items 1 and 2 are fixed: `~/wsl-autostart.sh` is a shim to `scripts/wsl-boot.sh` (14 Oct), and Spectre's lanWan re-points the portproxies after a WSL IP change.
 **Date:** 2026-07-28
 **Codename:** Siren (in-process) + Deadman (external watchdog)
 

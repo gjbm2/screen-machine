@@ -59,17 +59,12 @@ Each batch panel has two states:
 
 ### Housekeeping
 
-- `scripts/purge_recent.py` runs periodically to remove files older than 24h
+- `scripts/purge_recent.py` removes files older than 24h (`--hours N`, `--dry-run`). Nothing runs it on a schedule at present (29 Oct 2026: `output/_recent` still holds files from July 2025), so run it by hand
 - Handles cleanup of thumbnails, sidecars, and sequence.json entries
 
 ## Configuration
 
-By default, the Recent tab is enabled. It can be disabled by setting the
-environment variable:
-
-```
-RECENT_TAB_ENABLED=false
-```
+The Recent tab is always on (there is no `RECENT_TAB_ENABLED` switch in the code).
 
 ## Limitations
 

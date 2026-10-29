@@ -5,7 +5,7 @@
 The authoritative list of every port screen-machine uses or must avoid, on the workstation (Windows PC22 and its WSL2 Ubuntu), the kiosk mini-PC, the router and the LAN devices.
 
 - **Owner:** screen-machine-ca. Spectre mirrors this register in its service modules.
-- **Last updated:** 2026-10-14. The AV block was agreed with screen-machine-2f, -04 and -10 that day.
+- **Last updated:** 2026-10-29 (facts checked against the code, `netsh` and the firewall). The AV block was agreed with screen-machine-2f, -04 and -10 on 2026-10-14.
 
 ## Rules
 
@@ -36,17 +36,16 @@ The authoritative list of every port screen-machine uses or must avoid, on the w
 
 | Port | Service | Supervisor | Bind | Scope | Windows exposure | LAN RemoteAddress | Owner |
 |---|---|---|---|---|---|---|---|
-| **8700** | Room management's LAN door: aiohttp API/WS, room UI at `/`, and `/renderer/*` pass-through to the renderer. No passwords (owner ruling 14 Oct). Runs **inside the Flask process** since 14 Oct 22:52 (2f; rollback `ROOM_IN_APP=0` + Flask restart). | screen session `flask` (`./start.sh start flask`); logs `logs/room_service.log`; flags in `deploy/sm-room.env` | `0.0.0.0` | **LAN** (guest Wi-Fi included, by owner ruling); **never WAN** | Spectre lanWan (`screen-machine-room`): portproxy `0.0.0.0:8700 -> WSL:8700` plus rule `la-screen-machine-room-8700` | the default: `192.168.1.0/24, 192.168.2.0/24, 192.168.3.0/24, 192.168.4.0/24` (owner ruling: operable from the whole LAN, guest Wi-Fi included) | service: screen-machine-2f; ctl and port: screen-machine-ca |
-| **8701** | show bus (**built 14 Oct**): per-frame latest-value show state, published by room_service | inside room_service (screen session `sm-room`) | `127.0.0.1` | **localhost only** | none, ever | n/a | screen-machine-2f |
+| **8700** | Room management's LAN door: aiohttp API/WS, `/renderer/*` pass-through to the renderer and `/show/*` to show_service (the Room console is the app's `/room` page). No passwords (owner ruling 14 Oct). Runs **inside the Flask process** since 14 Oct 22:52 (2f; rollback `ROOM_IN_APP=0` + Flask restart). | screen session `flask` (`./start.sh start flask`); logs `logs/room_service.log`; config `config/room/room.prod.yaml`; env `ROOM_IN_APP`, `ROOM_PORT` (`room_in_app.py`) | `0.0.0.0` | **LAN** (guest Wi-Fi included, by owner ruling); **never WAN** | Spectre lanWan (`screen-machine-room`): portproxy `0.0.0.0:8700 -> WSL:8700` plus rule `la-screen-machine-room-8700` | the default: `192.168.1.0/24, 192.168.2.0/24, 192.168.3.0/24, 192.168.4.0/24` (owner ruling: operable from the whole LAN, guest Wi-Fi included) | service: screen-machine-2f; ctl and port: screen-machine-ca |
+| **8701** | show bus (**built 14 Oct**): per-frame latest-value show state, published by room_service | inside room_service (in the Flask process) | `127.0.0.1` | **localhost only** | none, ever | n/a | screen-machine-2f |
 | **6454/udp** | Art-Net in: Maestro's ArtDmx (unicast to 192.168.1.205) for room_service's virtual DMX devices (Hue lamps, show bus). ~40 pkt/s, ≤530 B, one way. | room_service binds `0.0.0.0:6454/udp` in WSL; on Windows the **Art-Net UDP relay** (Spectre `scripts/windows/artnet-relay.*`, owner-decided AV-D2) forwards `0.0.0.0:6454/udp -> WSL:6454` because portproxy is TCP-only | `0.0.0.0` | **LAN** (Maestro); **never WAN** | Windows firewall rule `la-artnet-relay-6454-udp` (UDP, Domain/Private) — **pending owner OK** | `192.168.1.0/24, 192.168.2.0/24, 192.168.3.0/24, 192.168.4.0/24` | service: screen-machine-68; relay and port: screen-machine-ca |
-| **8702** | stream_service, production: live 4K60 media WebSocket for the kiosks. `--public-base ws://192.168.1.205:8702`. No passwords (owner ruling 14 Oct). Control routes are going localhost-only (reached via the app's `/renderer/*`); media sockets for TVs and previews stay on the LAN. On-demand worker: stopped is normal. | screen session `sm-stream` via `scripts/ctl`; flags in `deploy/sm-stream.env` | `0.0.0.0` | **LAN** (kiosks); **never WAN** | Spectre lanWan (`screen-machine-stream`): portproxy `0.0.0.0:8702 -> WSL:8702` plus rule `la-screen-machine-stream-8702` | the default: `192.168.1.0/24, 192.168.2.0/24, 192.168.3.0/24, 192.168.4.0/24` (as in Spectre's `screen-machine-stream` module). Only the kiosk (main subnet, 192.168.1.10 and .92) needs it, so 04 and the owner may narrow it to `192.168.1.0/24`. That would change this cell and the Spectre module together. | service: screen-machine-04; ctl and port: screen-machine-ca |
-
-| **8703** | show_service (**production since 16 Oct**, docs/SHOW_ENGINE.md): the show bus v2 (`/v1/show`: music.*, show.state) and its API (`/healthz`, `/api/v1/*`). The renderer subscribes with `--music-bus ws://127.0.0.1:8703/v1/show`. Always on. No passwords. | screen session `sm-show` via `scripts/ctl`; flags in `deploy/sm-show.env` | `127.0.0.1` | **localhost only**; pages reach it through `:8700/show/*` (2f's pass-through, pending) | none | n/a | service: screen-machine-c8; ctl and port: screen-machine-ca (added by c8 16 Oct while ca was blocked) |
+| **8702** | stream_service, production: live 4K60 media WebSocket for the kiosks. `--public-base ws://192.168.1.205:8702`. No passwords (owner ruling 14 Oct). Control routes are localhost-only (`--local-control`; reached via `:8700/renderer/*`); media sockets for TVs and previews stay on the LAN. On-demand worker: stopped is normal. | screen session `sm-stream` via `scripts/ctl`; flags in `deploy/sm-stream.env` | `0.0.0.0` | **LAN** (kiosks); **never WAN** | Spectre lanWan (`screen-machine-stream`): portproxy `0.0.0.0:8702 -> WSL:8702` plus rule `la-screen-machine-stream-8702` | the default: `192.168.1.0/24, 192.168.2.0/24, 192.168.3.0/24, 192.168.4.0/24` (as in Spectre's `screen-machine-stream` module). Only the kiosk (main subnet, 192.168.1.10 and .92) needs it, so 04 and the owner may narrow it to `192.168.1.0/24`. That would change this cell and the Spectre module together. | service: screen-machine-04; ctl and port: screen-machine-ca |
+| **8703** | show_service (**production since 16 Oct**, docs/SHOW_ENGINE.md): the show bus v2 (`/v1/show`: music.*, show.state) and its API (`/healthz`, `/api/v1/*`). The renderer subscribes with `--music-bus ws://127.0.0.1:8703/v1/show`. Always on. No passwords. | screen session `sm-show` via `scripts/ctl`; flags in `deploy/sm-show.env` | `127.0.0.1` | **localhost only**; pages reach it through `:8700/show/*` (room_service's pass-through, `room_service/renderer_proxy.py`) | none | n/a | service: screen-machine-c8; ctl and port: screen-machine-ca (added by c8 16 Oct while ca was blocked) |
 | **6980/udp** | VBAN audio + MIDI into show_service (SHOW_ENGINE §3.1). **Receiver-initiated**: show_service sends SUBSCRIBE from this WSL socket to each sender (the kiosk's show-sender on its own udp 6980, the test piano on WSL udp 6981), and the senders reply to the NAT-observed address. | inside show_service | WSL `0.0.0.0:6980` | **LAN replies through WSL NAT only**; never WAN | **none needed** (no portproxy, no relay, no inbound rule) | n/a | service: screen-machine-c8 |
 | **6984/udp** | PC22 audio agent (Windows): a PC22 mic (chosen on the Room page; the Dell U3224KB's by default: the Insta360 Link lags it by 134-148 ms) as VBAN stream `pc22-mic` for show_service, until the kiosk mic exists. **Receiver-initiated**: show_service SUBSCRIBEs from WSL to 192.168.1.205:6984 (config/room/show.yaml `pc22`) and the agent replies to the WSL source address. | `tools/show_sender/pc22_agent.py`, Windows Python 3.12, a scheduled task at Greg's logon | Windows `0.0.0.0:6984` | **WSL only** in practice (no LAN client); never WAN | **none needed** (verified 16 Oct: SUBSCRIBE and replies flow without a rule) | n/a | agent: screen-machine-d4; Spectre card `screen-machine-audio-agent` |
 | **8704** | dot_service (27 Oct): the e-ink tags (MindReset Dot. Quote/0, config/room/dot.json). `/healthz`, `/api/v1/status`, `/preview/<device>.png`, `POST /api/v1/push`. Reaches the tags only through Dot.'s cloud API (outbound HTTPS). No passwords. | screen session `sm-dot` via `scripts/ctl`; flags in `deploy/sm-dot.env`; Spectre card `screen-machine-dot` | `127.0.0.1` | **localhost only** | none | n/a | screen-machine-18 |
 - **8705 and up are unallocated** for the AV block (8703 is show_service, 8704 dot_service), except the dev tools 8711 and 8712 (§2.3). A new AV port is added here first.
-- **Not yet production-ready.** Nothing in the AV block starts at boot until its owner says so: 2f for room_service, 04 for stream_service. Each env file carries a hold line (`ROOM_HOLD=`, `STREAM_HOLD=`) that makes `scripts/ctl` refuse start, restart and enable until the owner deletes it. See `docs/OPS_CONTROL.md` §4.
+- **At boot:** `scripts/wsl-boot.sh` starts Flask (with room_service inside it) and then `scripts/ctl start all` (stream, show, dot). A `*_HOLD=` line in a service's `deploy/sm-<svc>.env` makes `scripts/ctl` refuse start and restart until its owner deletes it; none is set on 29 Oct. See `docs/OPS_CONTROL.md`.
 
 ## 2. WSL: everything else
 
@@ -91,8 +90,9 @@ Dev ports outside these ranges must be registered first (Rule 1). The ranges wer
 | 4318 | Spectre WebSocket (status and logs) | LAN | Spectre |
 | 4320 | Spectre UI (Vite) | LAN | Spectre |
 | 80 | portproxy `0.0.0.0:80 -> 127.0.0.1:4320` (Spectre UI on port 80) | LAN | Spectre |
+| **443** | Caddy (Windows service `caddy`): `https://screen.finsburybankforsavings.com`. `/` -> 127.0.0.1:8080, `/rs/*` -> :8700, `/ws/*` -> :8765. Rule `la-screen-machine-caddy-443`. | **WAN** (router 443) | Spectre card `screen-machine-caddy` |
 
-**Portproxy listeners into WSL.** Each is `0.0.0.0:P -> <WSL eth0 IP>:P` unless noted. Read with `netsh interface portproxy show v4tov4` on 2026-10-14.
+**Portproxy listeners into WSL.** Each is `0.0.0.0:P -> <WSL eth0 IP>:P` unless noted. Read with `netsh interface portproxy show v4tov4` on 2026-10-29.
 
 | Listen | Connect | For | Exposure |
 |---|---|---|---|
@@ -102,8 +102,8 @@ Dev ports outside these ranges must be registered first (Rule 1). The ranges wer
 | 2222 | WSL:**22** | WSL sshd | WAN |
 | 3001 | WSL:3001 | exlib-server | LAN |
 | 8081 | WSL:8081 | exlib-mobile Metro | LAN |
-| **8700** | WSL:8700 | room_service | **new**, LAN only. Spectre creates it when room_service goes to production. |
-| **8702** | WSL:8702 | stream_service | **new**, LAN only. Spectre creates it when stream_service goes to production. |
+| **8700** | WSL:8700 | room_service | LAN only (rule `la-screen-machine-room-8700`) |
+| **8702** | WSL:8702 | stream_service | LAN only (rule `la-screen-machine-stream-8702`) |
 
 The legacy `fix-wsl-networking.ps1` rebuilds only 5000, 8765, 8080 and 2222. Spectre's lanWan reconcile is the supported way to re-point every WSL-targeted entry after a WSL IP change.
 
@@ -116,6 +116,7 @@ The legacy `fix-wsl-networking.ps1` rebuilds only 5000, 8765, 8080 and 2222. Spe
 | 5000 | PC22:5000 | Flask direct |
 | 2222 | PC22:2222 (-> WSL 22) | SSH into WSL |
 | 2223 | kiosk 192.168.1.92:22 | SSH into the kiosk |
+| 443 | PC22:443 | Caddy HTTPS (`https://screen.finsburybankforsavings.com`) |
 
 **No AV port (8700-8702) is ever WAN-forwarded.** The owner confirms this on the router (AV programme D4). Phones reach room_service only on the LAN, guest Wi-Fi included.
 
@@ -131,7 +132,7 @@ The legacy `fix-wsl-networking.ps1` rebuilds only 5000, 8765, 8080 and 2222. Spe
 **Outbound from the kiosk** (no listener needed):
 - `http://95.141.21.170:8000/display/<id>`
 - `ws://95.141.21.170:8765`
-- once the AV services are live: `ws://192.168.1.205:8700` (control) and `ws://192.168.1.205:8702` (media)
+- `ws://192.168.1.205:8700` (control) and `ws://192.168.1.205:8702` (media)
 
 ## 6. LAN devices (screen-machine is the client)
 

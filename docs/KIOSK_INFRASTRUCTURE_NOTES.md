@@ -2,7 +2,7 @@
 
 Measured facts, changes made and open items for the display chain. Started 2026-10-11 during the real-time
 streaming investigation (`experiments/stream-latency/`). For day-to-day operation of the mini-PC see
-[media-server/README.md](../media-server/README.md); for the streaming plan see [REFACTOR_PLAN.md](REFACTOR_PLAN.md).
+[media-server/README.md](../media-server/README.md); for the streaming plan see [AV_PROGRAMME.md](AV_PROGRAMME.md) (the older refactor plan is in [archive/REFACTOR_PLAN_2026-10-14.md](archive/REFACTOR_PLAN_2026-10-14.md)).
 
 **Times:** the mini-PC logs in UTC; workstation times are UK local (BST = UTC+1). Times below are marked.
 
@@ -22,7 +22,7 @@ really the only viable option in that location".
 | Wired network | **Powerline Ethernet live since 2026-10-13, primary route**: ~170-190 Mbit/s, loaded ping p99 ~40 ms; Wi-Fi fallback tested; 24 h soak running | [5](#5-powerline-ethernet-primary-since-2026-10-13) |
 | Workstation (WSL) clock | Ran fast for months (2 % when measured, +4.6 % average since the July boot, at times ±10 %); **fixed** | [6](#6-workstation-wsl-clock) |
 | Samsung TV picture settings | Source-checked list for the QE75LS03FW in [FRAME_PRO_SETTINGS_2026-10.md](FRAME_PRO_SETTINGS_2026-10.md). Now: both TVs report Filmmaker Mode with Game Mode on Auto (Samsung IP Control, 19:16 and 19:37 UTC); Auto engages only on an ALLM request, which the kiosk never sends. 4K60 does not depend on Game Mode: all the sway 4K60 measurements were taken in that state, and toggling Game Mode On and back at 19:36 UTC changed neither EDID nor the outputs. Owner, 2026-10-13: no Game Mode, ever (Game Bar overlay and flicker) | [3](#3-display-mode-and-smooth-motion) |
-| Git | **None of the 2026-10-11/13 work is committed yet** | [7](#7-open-items) |
+| Git | Committed on 2026-10-22 (bd234218 and the commits beside it) | [7](#7-open-items) |
 
 ## 1. Physical chain
 
@@ -38,16 +38,15 @@ Workstation (Windows + WSL2, Flask :5000)                    drawing room
 
 - Mini-PC: AZW/Beelink "MINI S", Intel N95 (Alder Lake-N, i915), 7.5 GiB, Ubuntu 24.04, hostname
   `screen-machine-drawingroom`, LAN IPs 192.168.1.10 (Ethernet, primary since 2026-10-13) and 192.168.1.92
-  (Wi-Fi; admin scripts still use this one, it stays reachable over Wi-Fi). Two kiosk Chromes, one per TV, side by side on one
-  7680x2160 X screen (`kiosk-loop.sh`).
+  (Wi-Fi; admin scripts still use this one, it stays reachable over Wi-Fi). Two kiosk Chromes, one per TV: under sway since 2026-10-13
+  (`kiosk-wayland.sh`, one output per TV); the X11 fallback is `kiosk-loop.sh` (§3).
 - Chrome is 136.0.7103.113. It is **not** apt-held: it stays at 136 only because the apt timers and
   unattended-upgrades are masked ([README §2](../media-server/README.md#2-disable-all-automatic-updates)). Since
   the 2026-10-11 `apt-get update`, a manual `apt upgrade` would install Chrome 155.x. The VA-API rules in §2 were
   verified for 136 only, so either `sudo apt-mark hold google-chrome-stable` or re-verify §2 after any upgrade.
-- Workstation LAN IP 192.168.1.205. The Windows port proxy forwards 8080 (to WSL 5000), 5000, 8765 and 2222 (to 22);
-  those are rebuilt by `fix-wsl-networking.ps1`. **8081 and 3001 are manual rules** (used by the streaming lab and
-  the throughput tests) that the script does not rebuild; after a WSL IP change re-add them with
-  `netsh interface portproxy add v4tov4 listenport=8081 listenaddress=0.0.0.0 connectport=8081 connectaddress=<WSL IP>`.
+- Workstation LAN IP 192.168.1.205. The Windows port proxy forwards 8080 (to WSL 5000), 5000, 8765 and 2222 (to 22),
+  plus 3001, 8081, 8700 and 8702. Spectre's lanWan layer owns them all and re-points them after a WSL IP change;
+  never add them by hand with `netsh` ([PORTS.md](PORTS.md)).
 - Both TVs are Samsung The Frame Pro **QE75LS03FWUXXU**. The panel's only HDMI input is a Micro-HDMI port; the
   normal input is its Wireless One Connect box, and the mini-PC plugs into one HDMI port on each box.
 
@@ -445,7 +444,7 @@ Undo: `wsl -d Ubuntu -u root -- sh -c "systemctl unmask systemd-timesyncd && sys
 - Wayland kiosk follow-ups: an anchor-frame check (Wayland screenshot tool `grim`, not installed) comparing the art
   still and the stream's first frame on glass; the lab tools `lab-chrome.sh` and `fb_probe.py` are X11-only.
 
-- **Commit the 2026-10-11/13 work.** What is deployed to the box is byte-identical to the working tree but not in git:
+- ~~**Commit the 2026-10-11/13 work.**~~ done 2026-10-22 (bd234218). What is deployed to the box is byte-identical to the working tree but not in git:
   `media-server/remote-scripts/{kiosk-loop.sh,wifi-prefer-ap.sh,wifi-prefer-ap.service}`,
   `media-server/local-scripts/{install-wifi-prefer-ap.sh,install-ethernet-primary.sh}`, `media-server/remote-scripts/network/`,
   `media-server/README.md`, `scripts/powerline_soak.sh`,
@@ -473,7 +472,7 @@ Undo: `wsl -d Ubuntu -u root -- sh -c "systemctl unmask systemd-timesyncd && sys
   harmless; drop them at the next X restart that is needed anyway.
 - ~~`check-status-compact.sh` false "No page load detected"~~ fixed 2026-10-13: the status scripts now read the
   open pages from Chrome's DevTools ports and work under sway and the X11 fallback.
-- `routes/samsung_utils.py` bugs found during TV research (owner decision, tracked in REFACTOR_PLAN T2/D17):
+- `routes/samsung_utils.py` bugs found during TV research (owner decision, tracked in archive/REFACTOR_PLAN_2026-10-14.md T2/D17):
   `device_sleep` sends KEY_POWER to a TV already in Art Mode (switches it to HDMI); `get_status` maps any
   art-channel error to `art_mode='off'`; the 04:10 `device-media-sync` crashes with `NameError: log_debug`.
 - Test leftovers on the mini-PC were removed on 2026-10-11 (the old `/tmp/lab` copies predated the lab fixes;

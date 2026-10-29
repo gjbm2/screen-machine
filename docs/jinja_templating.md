@@ -223,13 +223,13 @@ The scheduler checks for actions multiple times per second, making sub-minute ti
 
 ## Working with History Variables
 
-The scheduler system maintains history for three instruction types: `generate`, `animate`, and `devise_prompt`. Each of these instructions can optionally store their history in a variable that you specify with the `history_var` parameter.
+The scheduler system maintains history for three instruction types: `generate`, `animate`, and `reason` (which replaced `devise_prompt`). Each of these instructions can optionally store their history in a variable that you specify with the `history_var` parameter.
 
 ## History Format
 
 Each operation type stores a standardized history entry with these common fields:
 - `timestamp`: When the operation occurred (format: "YYYY-MM-DD HH:MM:SS")
-- `type`: The operation type ("generation", "animation", or "devise_prompt")
+- `type`: The operation type ("generation", "animation", or "reason")
 
 Plus operation-specific fields:
 
@@ -241,7 +241,8 @@ Plus operation-specific fields:
   "prompt": "a cat in a garden",
   "refiner": "photorealistic",
   "workflow": "standard",
-  "image_url": "images/123456.jpg"
+  "image_paths": ["images/123456.jpg"],
+  "published": true
 }
 ```
 
@@ -257,14 +258,15 @@ Plus operation-specific fields:
 }
 ```
 
-**Devise Prompt History**:
+**Reason History**:
 ```json
 {
   "timestamp": "2023-08-15 14:28:30",
-  "type": "devise_prompt",
-  "input": "raw input text",
-  "output": "processed output text",
-  "output_var": "result_var"
+  "type": "reason",
+  "reasoner": "default",
+  "text_input": "raw input text (first 50 characters)",
+  "outputs": {"result_var": "processed output text"},
+  "explanation": "optional, first 100 characters"
 }
 ```
 
@@ -288,9 +290,9 @@ You can access history data using Jinja expressions. Here are some examples:
 
 ```json
 {
-  "action": "devise_prompt",
-  "input": "Create a story about the last two images I generated: {{ generation_history[-1].prompt }} and {{ generation_history[-2].prompt }}",
-  "output_var": "story",
+  "action": "reason",
+  "text_input": "Create a story about the last two images I generated: {{ generation_history[-1].prompt }} and {{ generation_history[-2].prompt }}",
+  "output_vars": ["story"],
   "history_var": "prompt_history"
 }
 ```
@@ -299,9 +301,9 @@ You can access history data using Jinja expressions. Here are some examples:
 
 ```json
 {
-  "action": "devise_prompt",
-  "input": "Recent image themes: {% for entry in generation_history[-3:] %}{{ entry.prompt }}{% if not loop.last %}, {% endif %}{% endfor %}",
-  "output_var": "themes_summary",
+  "action": "reason",
+  "text_input": "Recent image themes: {% for entry in generation_history[-3:] %}{{ entry.prompt }}{% if not loop.last %}, {% endif %}{% endfor %}",
+  "output_vars": ["themes_summary"],
   "history_var": "prompt_history"
 }
 ```

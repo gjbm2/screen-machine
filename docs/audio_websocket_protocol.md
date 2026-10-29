@@ -5,9 +5,11 @@
 - Send initial message to identify as audio client:
 ```json
 {
-    "type": "audio"
+    "type": "audio",
+    "target": "optional_target_id"
 }
 ```
+`target` defaults to `"global"`. A reconnect within 2 s of a `stop_recording` for the same target is refused.
 
 ## Message Types
 
@@ -49,6 +51,5 @@ Send as JSON text messages:
 - Server will automatically stop recording if connection is closed
 
 ## Notes
-- Audio data should be sent in chunks of approximately 5 seconds for optimal transcription
-- Server will buffer audio and process it in 5-second segments
-- Transcription results will be broadcast to all connected clients 
+- The server streams the audio to AssemblyAI (v3 streaming) and broadcasts each finished turn as `{"type": "transcription", "text": "[<speaker>] ...", "raw_text", "target", "is_end_of_turn"}`
+- It also throws a `_transcription` scheduler event for the target, at most every 30 s (see `AUDIO_WS_PROTOCOL.md` §4) 

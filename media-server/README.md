@@ -16,7 +16,7 @@ This directory provides a complete maintenance and deployment system for the Scr
 │  ┌────────────────────────────────────────────────────────────┐ │
 │  │  Frontend: built dist/ via Flask :5000                                │ │
 │  │  - React UI for content management                          │ │
-│  │  - Proxies API requests to Flask                            │ │
+│  │  - Same origin as the API (no separate Vite server)         │ │
 │  └────────────────────────────────────────────────────────────┘ │
 │                                                                   │
 │  ┌────────────────────────────────────────────────────────────┐ │
@@ -82,7 +82,6 @@ media-server/
 │   ├── install-deadman.sh       # Install the Deadman watchdog
 │   ├── install-wifi-prefer-ap.sh  # Install the Wi-Fi access-point lock
 │   ├── install-ethernet-primary.sh  # Make powerline Ethernet the primary link (Wi-Fi fallback)
-│   ├── .env.example             # Configuration template
 │   └── .env                     # Your credentials (gitignored)
 │
 └── remote-scripts/         # Deployed to media server
@@ -345,8 +344,7 @@ These scripts automatically load credentials from `local-scripts/.env` and log a
 
 ```bash
 cd media-server/local-scripts/
-cp .env.example .env
-micro .env
+micro .env   # there is no .env.example: start from the minimal configuration below
 ```
 
 **Minimal .env configuration:**
@@ -1218,7 +1216,6 @@ sudo systemctl restart kiosk.service       # try restarting
     ├── reboot-server.sh                    # Reboot server
     ├── local-scripts/
     │   ├── .env                            # SSH credentials
-    │   ├── .env.example                    # Template
     │   ├── remote-maintenance.sh           # Main harness
     │   ├── diagnose-lightsensor.sh         # Diagnostic script
     │   └── deploy-kiosk.sh                 # Deployment automation
@@ -1268,8 +1265,10 @@ sudo systemctl restart kiosk.service       # try restarting
 
 ### Network Ports
 - **5000:** Flask API (TCP)
-- **8000:** Vite frontend (TCP)
+- **8000:** the app, `/display/*` (TCP; router → PC22:8080 → Flask :5000)
 - **8765:** WebSocket for light sensor (TCP)
+- **8700:** room_service control socket, LAN only (`ws://192.168.1.205:8700`)
+- **8702:** stream_service live media, LAN only (`ws://192.168.1.205:8702`)
 - **22:** SSH (TCP)
 
 ### Current Configuration

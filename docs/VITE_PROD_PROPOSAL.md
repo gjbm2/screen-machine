@@ -1,5 +1,7 @@
 # Proposal: Moving the Vite Frontend to Production
 
+> Status (29 Oct 2026): live since 2026-07-28. Flask serves the built `dist/` on :5000 (`config.py` `STATIC_FOLDER`), with no Vite server in production; deploy is the build-and-swap in `CLAUDE.md`. HTTPS is now Caddy (`https://screen.finsburybankforsavings.com`).
+
 > **Update 2026-10-14:** the frontend API layer was split. `src/utils/api.ts` is now a thin facade; the base URL lives in `src/shared/http/client.ts` and the calls in `src/shared/api/*`. **The mock-mode trap described below is gone** (mock mode was removed), so a relative `VITE_API_URL` no longer fakes the backend; the base URL itself is still resolved exactly as before. Line references to `api.ts` and `apiService.ts` below are historical.
 
 **Date:** 2026-07-28

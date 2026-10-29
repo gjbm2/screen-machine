@@ -1,22 +1,22 @@
 # Audio Streaming Protocol
 
+> Status (29 Oct 2026): the server (`overlay_ws_server.py`, `routes/audio_utils.py`) now streams to AssemblyAI's v3 streaming API and broadcasts each finished, formatted turn. It ignores `client_id`, sends no `client_ids`, and only processes audio between `start_recording` and `stop_recording` commands (see `audio_websocket_protocol.md`). Sentiment, entities, highlights and categories are no longer produced: the text is `[<speaker>] <turn>`.
+
 ## 1. Connection
 1.1. Client connects to WebSocket at `ws://${VITE_WS_HOST}`
 1.2. Client sends initial message:
 ```json
 {
     "type": "audio",
-    "target": "optional_target_id",  // If not provided, defaults to "global"
-    "client_id": "unique_client_identifier"  // Required unique identifier for this client
+    "target": "optional_target_id"  // If not provided, defaults to "global"
 }
 ```
 
 ## 2. Audio Streaming
 2.1. Client streams raw binary audio data (16-bit PCM, 16000Hz, mono)
 2.2. Target is inherited from initial connection message
-2.3. Server processes audio in 5-second chunks
-2.4. Server transcribes audio using AssemblyAI
-2.5. Multiple clients can stream to the same target - their client_ids will be associated with the transcription
+2.3. Audio is processed only after `{"type": "command", "command": "start_recording"}` and until `stop_recording`
+2.4. Server streams the audio to AssemblyAI (v3 streaming, 16 kHz, formatted turns)
 
 ## 3. Transcription Response
 3.1. Server sends transcription messages:
@@ -26,7 +26,7 @@
     "text": "formatted transcription with speaker labels and annotations",
     "raw_text": "plain transcription text",
     "target": "target_id",
-    "client_ids": ["client_a_id", "client_b_id"]
+    "is_end_of_turn": true
 }
 ```
 
@@ -66,7 +66,7 @@ Note: The formatting is based on AssemblyAI's real-time transcription features:
     "text": "formatted transcription with speaker labels and annotations",
     "raw_text": "full transcription history",
     "recent_text": "new words since last event",
-    "client_ids": ["client_a_id", "client_b_id"]
+    "history_size": 123
 }
 ```
 

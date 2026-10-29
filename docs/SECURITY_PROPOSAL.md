@@ -1,5 +1,7 @@
 # Screen Machine — Security Hardening Proposal
 
+> Status (29 Oct 2026): items 1 and 2 of §4 are done (Flask serves `dist/`; `DEBUG = False`), and the admin API now needs the `ADMIN_API_TOKEN` bearer token. ngrok still starts at boot. Current ports and forwards: `docs/PORTS.md`.
+
 **Status: PROPOSAL for your review. No code, config, or infrastructure changes have been made. Nothing here is actioned without your explicit go-ahead, item by item.**
 
 ---

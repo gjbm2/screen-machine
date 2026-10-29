@@ -56,9 +56,11 @@ End-to-end flow:
 4. Overlay clients (browsers/TVs) receive live overlays (progress bars, alerts).  
 5. On completion Flask saves assets to `output/`, updates buckets, and optionally publishes to the target screens via Samsung TV WebSockets.
 
+The room side runs beside this (ports in `docs/PORTS.md`): room_service inside the Flask process (`room_in_app.py`, LAN door :8700, show bus 127.0.0.1:8701), stream_service (the live GPU renderer, :8702), show_service (the room's ears and art director, 127.0.0.1:8703) and dot_service (the e-ink tags, 127.0.0.1:8704), the last three run by `scripts/ctl`. HTTPS is Caddy on Windows: `https://screen.finsburybankforsavings.com`.
+
 ## 3. Technology Stack
 ### Back-End
-* **Python 3.11**  
+* **Python 3.12**  
 * **Flask 3.x** – REST API & static file hosting
 * **Flask-CORS** – cross-origin resource sharing
 * **websockets** / **websocket-server** – overlay relay layer
@@ -85,7 +87,7 @@ End-to-end flow:
 ## 4. Backend (Flask / Python)
 ### Entry Point `app.py`
 * Sets up Flask, loads environment, and registers all **Blueprints** under a common `/api` prefix.
-* Serves the pre-built React bundle from `build/` in production.
+* Serves the pre-built React bundle from `dist/` (`STATIC_FOLDER` in `config.py`) under waitress on :5000.
 * Spawns the **overlay WebSocket server** on port `8765` (threaded).
 
 ### Blueprint Modules
@@ -100,7 +102,7 @@ End-to-end flow:
 1. **Scheduler Engine** (`routes/scheduler.py` + utils)
    * Cron-like but millisecond-precision tick (
 `SCHEDULER_TICK_INTERVAL = 2.0s`).
-   * Persists state to disk so jobs survive restarts (`routes/scheduler/_vars.json`).
+   * Persists state to disk so jobs survive restarts (exported variables in `scheduler/_vars.json`).
    * Supports complex triggers, conditions, and variable exports.
 2. **Generation Pipeline** (`routes/generate.py`)
    * Loads & mutates ComfyUI workflow JSONs with runtime parameters.
@@ -122,8 +124,9 @@ End-to-end flow:
 ## 5. Frontend (React / TypeScript)
 ### Key Pages (Router)
 * `/` (`Index.tsx`) – main prompt-driven generation UI (drag-and-drop, reference images, advanced options, live overlays).
+* `/room`, `/music`, `/lights` (control only; setup at `/settings/lights`), `/settings`, `/jobs` – the app's other places. Each page is lazy-loaded as its own chunk (`src/App.tsx`).
 * `/scheduler` – visual schedule builder & monitor.
-* `/display` & `/display/:screenId` – lightweight, full-screen HTML pages that show the latest artwork for a given screen.
+* `/display` & `/display/:screenId` – lightweight, full-screen HTML pages that show the latest artwork for a given screen (the TVs load `/display/<screen>`).
 * `/schema-edit` & `/schema-dynamic-form` – JSON-schema based editors for workflows and global settings.
 
 ### Context Providers
@@ -131,8 +134,8 @@ End-to-end flow:
 * `LoopeViewContext` – manages display-mode toggles & full-screen refresh triggers.
 
 ### State-Management & Data
-* **React-Query** for API calls (`src/api/`, `src/services/`).
-* WebSocket hook to `ws://<host>:8765` for live overlay & progress events.
+* **React-Query** for API calls (`src/shared/api/`, base URL in `src/shared/http/client.ts`; `src/services/`).
+* WebSocket hook to `ws://<host>:8765` (same-origin `/ws/` over HTTPS) for live overlay & progress events.
 * Drag-and-drop orchestration via `@dnd-kit/core` & sortable modifiers.
 
 ### UI Libraries
@@ -162,18 +165,19 @@ End-to-end flow:
 6. **Publishing** – result copied to `output/` and optionally pushed to buckets or TVs.
 
 ## 9. Storage, Buckets & File Management
-* Local assets live in `output/` with sub-folders by date.
-* S3 / Wasabi buckets can be configured via `publish-destinations.json` and managed through `routes/bucket_api.py`.
+* Local assets live in `output/`: one bucket folder per destination (`output/<destination>/`, plus `_recent`), with the published file beside it (`output/<destination>.jpg|mp4` and its `.json` sidecar).
+* Destinations are configured in `routes/data/publish-destinations.json` and buckets managed through `routes/bucket_api.py`.
 * EXIF/XMP metadata written so downstream apps retain prompt history.
 
 ## 10. Configuration & Environment Variables
 Important `.env` keys:
 * `OPENAI_API_KEY` – GPT prompt enrichment.
 * `RUNPOD_API_KEY` & `RUNPOD_ID` – default POD for generation.
-* `FLASK_DEBUG`, `PORT`, `WS_PORT` – server ports.
-* `S3_KEY`, `S3_SECRET`, `S3_REGION`, etc. if buckets enabled.
+* `GEMINI_API_KEY` – the AI listener and art tags.
+* `ADMIN_API_TOKEN` – bearer token for the WAN admin API (`routes/admin_api.py`).
+* `VITE_*`, `SM_LAN_HOST` – the addresses the app uses over plain http.
 
-Runtime constants reside in `config.py`.
+Runtime constants (`PORT` 5000, `WS_PORT` 8765, `DEBUG`, `STATIC_FOLDER`) reside in `config.py`.
 
 ## 11. Directory Structure Overview
 ```
@@ -190,7 +194,7 @@ Runtime constants reside in `config.py`.
 │   ├── pages/
 │   ├── components/
 │   └── ...
-├── build/                 # Production React bundle (served by Flask)
+├── dist/                  # Production React bundle (served by Flask; dist_prev/ is the rollback)
 ├── tests/                 # PyTest suites
 └── requirements.txt / package.json
 ```
@@ -199,12 +203,14 @@ Runtime constants reside in `config.py`.
 ### 12.1 Back-End Live Reload
 Use the provided helper:
 ```bash
-./restart-flask.sh  # sets FLASK_ENV and restarts on changes
+./start.sh start flask   # production Flask in the GNU screen session `flask`
 ```
+In production restart Flask through its Spectre card (it restarts room_service too). `restart-flask.sh` is an old helper that `pkill -f`s `app.py`; don't use it.
 ### 12.2 Front-End HMR
 ```bash
-npm run dev     # Vite dev-server on :8080 (proxy to :5000)
+npx vite --port 5174 --strictPort   # dev server (proxy /api to :5000); dev ports 5174-5199, see docs/PORTS.md
 ```
+There is no Vite server in production: Flask serves `dist/`. Deploy with the build-and-swap in `CLAUDE.md`.
 ### 12.3 Linting & Formatting
 * **ESLint** config in `eslint.config.js` (TypeScript rules).  
 * Python linting via `flake8` (not enforced by CI yet).
@@ -231,25 +237,24 @@ Visit `http://localhost:5000` for the UI.
 
 ## 14. Deployment & Production Considerations
 * **Docker** image not yet included – recommend multi-stage build (Python-slim + node:alpine).  
-* Terminate SSL at a reverse-proxy (Caddy / Nginx) and proxy WS `/` → `8765`.
-* Run Flask under **Gunicorn** or **Uvicorn** workers for better concurrency.
+* SSL ends at Caddy on Windows (`https://screen.finsburybankforsavings.com`): `/` → :8080, `/rs/*` → room_service :8700, `/ws/*` → overlay socket :8765.
+* Flask runs under **waitress** (64 threads) unless `DEBUG`.
 * Off-load long-running tasks to **RunPod** or internal GPU cluster.
 
 ## 15. Testing Strategy
 * `pytest` covers scheduler, generation utilities, and bucket interactions.
-* Behavioural tests under `tests/behavioral/` simulate real RunPod job lifecycles (using `responses` mocks).
+* Behavioural tests under `tests/behavioral/` cover the scheduler's stop behaviour.
 * **Coverage** target ≥ 80 % (run `pytest --cov`).
 * Front-end: TODO – integrate **Vitest** + **React-Testing-Library**.
 
 ## 16. Logging & Monitoring
-* Unified logger in `utils/logger.py` streams to console, in-memory buffer (served at `/api/logs`), and optional file handler (`runpod_jobs.log`).
+* Unified logger in `utils/logger.py` streams to console, in-memory buffer (served at `/api/logs`), and a rotating file (`logs/screen_machine.log`, INFO; `SM_LOG_LEVEL=DEBUG` to dig).
 * Front-end Console tab polls logs via React-Query.
 * Production: ship logs to ELK/Loki via a standard STDOUT sink.
 
 ## 17. Security Considerations
 * Secrets loaded via **dotenv**; never commit `.env`.
-* Overlay WS currently unauthenticated – restrict by firewall or add JWT handshake.
-* Bucket credentials encrypted at rest (see `routes/utils.py` for AES helpers).
+* Overlay WS is unauthenticated. There is no auth anywhere in the AV stack (room_service, stream_service, the display pages, `/room`) by owner ruling; only `/room` from off the premises asks for a password, at Caddy. The WAN-exposed Flask admin API keeps its token.
 
 ## 18. Roadmap & Future Improvements
 * Dockerised production image & CI pipeline.

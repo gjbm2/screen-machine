@@ -12,6 +12,7 @@ The primary configuration is stored in `.env` file in the project root:
 # --- Frontend (Vite) ---
 VITE_API_URL=http://YOUR_PUBLIC_IP:5000/api   # Backend API URL
 VITE_WS_HOST=ws://YOUR_PUBLIC_IP:8765         # WebSocket host
+VITE_APP_BASE_URL=http://YOUR_PUBLIC_IP:8000  # Android app deeplinks
 
 # --- Backend (Python) ---
 VITE_URL=http://YOUR_PUBLIC_IP:8000           # Frontend URL
@@ -24,8 +25,9 @@ VITE_URL=http://YOUR_PUBLIC_IP:8000           # Frontend URL
 
 ### 3. External Access
 - **Direct API Access**: `http://YOUR_PUBLIC_IP:5000/api/`
-- **Frontend Access**: `http://YOUR_PUBLIC_IP:8000/` (router forwards to Flask :5000)
-- **Ngrok Tunnel**: `http://YOUR_PUBLIC_IP:8000/` (if using ngrok)
+- **Frontend Access**: `http://YOUR_PUBLIC_IP:8000/` (router 8000 -> PC22:8080 -> WSL Flask :5000)
+- **HTTPS**: `https://screen.finsburybankforsavings.com` (Caddy on PC22, router 443). Its Cloudflare DNS record `screen` points at the public IP, so it needs updating too.
+- **Ngrok Tunnel**: `https://ngrok-domain.example` -> Flask :5000 (no public IP involved)
 
 ## When Your ISP Changes Your IP Address
 
@@ -41,28 +43,8 @@ sed -i 's/OLD_IP_ADDRESS/NEW_IP_ADDRESS/g' .env
 cat .env
 ```
 
-### Step 2: Restart All Services
-```bash
-# Stop all services
-bash ~/shutdown-webservers.sh
-
-# Start Flask (Terminal 1)
-cd /home/gjbm2/dev/screen-machine
-source .venv/bin/activate
-python3 app.py
-
-# Start Vite (Terminal 2)
-cd /home/gjbm2/dev/screen-machine
-npm run dev
-
-# Start Ngrok (Terminal 3)
-# IMPORTANT (WSL/Win11): tunnel the service that actually owns the webhook route.
-# Alexa webhook is served by Flask at /api/alexa (port 5000), so point ngrok at 5000.
-ngrok http --domain=ngrok-domain.example 5000
-
-# (Optional) If you want to expose the frontend separately, start a *second* tunnel
-# to Flask (port 5000 serves the frontend in prod) using a different ngrok domain/subdomain.
-```
+### Step 2: Rebuild the frontend and restart Flask
+The `VITE_*` values are baked into the build, so rebuild and swap `dist/` (the deploy command in `CLAUDE.md`), then restart Flask through its Spectre card (`screen-machine-flask`; it restarts room_service too). There is no Vite server in production, and ngrok (`./start.sh start ngrok`) tunnels to Flask :5000, where the Alexa webhook `/api/alexa` lives. Don't use `~/shutdown-webservers.sh`: it `pkill -f`s.
 
 ### Step 3: Update Media Server Scripts
 ```bash
@@ -103,8 +85,8 @@ find /home/gjbm2 -name "*.sh" -exec sed -i 's/OLD_IP_ADDRESS/NEW_IP_ADDRESS/g' {
 ## Troubleshooting
 
 ### Services Not Accessible Externally
-1. Check if services are running: `ps aux | grep -E "(flask|vite|ngrok)"`
-2. Verify ports are open: `netstat -tlnp | grep -E "(5000|8080|8765)"`
+1. Check if services are running: `./start.sh status`
+2. Verify ports are open: `ss -ltn | grep -E "(5000|8765)"` (8080 is the Windows portproxy to 5000)
 3. Test local access: `curl -I http://localhost:5000/api/logs`
 4. Check firewall settings on Windows/WSL
 
@@ -133,8 +115,7 @@ grep -r "185\.254\.136\.244" /home/gjbm2/
 # Update all references to old IP
 find /home/gjbm2 -type f -exec sed -i 's/185\.254\.136\.244/95.141.21.170/g' {} \;
 
-# Restart all services
-bash ~/shutdown-webservers.sh
+# Then rebuild the frontend and restart Flask (Step 2)
 ```
 
 ## Last Updated

@@ -12,9 +12,9 @@ The Scheduler Event System enables communication between schedulers through even
    - Event history tracking
 
 2. **Event API Endpoints**
-   - `/api/schedulers/events/throw` - Create new events
-   - `/api/schedulers/<dest_id>/events` - Get events for a destination
-   - `/api/schedulers/events/<event_key>` - Clear specific events
+   - `POST /api/schedulers/events/throw` - Create new events
+   - `GET /api/schedulers/events?destination=<dest_id>` - Get events (all, or for one destination)
+   - `DELETE /api/schedulers/events/<event_key>` - Clear specific events (also `DELETE /api/schedulers/events` and `/api/schedulers/events/by-id`)
 
 3. **Event Processing**
    - Event triggers in schedule definitions
@@ -33,18 +33,15 @@ The Scheduler Event System enables communication between schedulers through even
 
 | Property       | Description                               | Required |
 |----------------|-------------------------------------------|----------|
-| key            | Unique identifier for the event           | Yes      |
+| event          | The event key                             | Yes      |
 | display_name   | User-friendly name for UI/logs            | No       |
-| scope          | "dest", "group", or "global"              | Yes      |
-| dest_id        | Target destination (for scope="dest")     | Yes*     |
-| group_id       | Target group (for scope="group")          | Yes*     |
+| scope          | A destination id, a group name, or "global" (API default "global"; in a schedule, the current destination) | No |
 | ttl            | Time-to-live (e.g., "60s", "5m", "2h")    | No       |
 | delay          | Time to delay activation                  | No       |
 | future_time    | Specific activation time                  | No       |
 | payload        | Custom data object to pass with event     | No       |
 | single_consumer| If true, event removed after first trigger| No       |
 
-*Required based on scope selection
 
 ## Event Flow
 
@@ -82,9 +79,8 @@ Events can be created from within schedules with the `throw_event` action:
 ```json
 {
   "action": "throw_event",
-  "key": "image_generated",
-  "scope": "dest",
-  "dest_id": "drawing-room-display",
+  "event": "image_generated",
+  "scope": "north-screen",
   "payload": {"image": "{{ vars.generated_image }}"}
 }
 ```
