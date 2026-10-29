@@ -1,5 +1,5 @@
 """Adapters for state that lives in room_service itself: sensor_mask.main, page.<screen>.timed_reload,
-diag.<screen> (the live-details panel), brightness.screens / brightness.lamps, and log signals.
+diag.<screen> (the live-details panel), brightness.screens / brightness.lamps, director.*, and log signals.
 
 Both level adapters persist what they applied in their own file under the state directory and restore it at start
 (ROOM_STATE_MODEL §5.2 rule 10), so read() stays truthful after a restart: without that, a restart mid-show would let
@@ -304,6 +304,116 @@ class BrightnessAdapter(Adapter):
                                    retry=False)
         worst = "unconfirmed" if any(o.status != "ok" for o in out.values()) else "ok"
         return Outcome(worst, "", out, retry=False)
+
+
+SHOW_FILE = Path(__file__).resolve().parents[2] / "config" / "room" / "show.yaml"
+LIGHT_SCENES_FILE = Path(__file__).resolve().parents[2] / "config" / "live" / "light_scenes.yaml"
+
+
+class DirectorAdapter(Adapter):
+    """director.<appliance> and director.light_scenes: what a mode lets the art director do with the lights (owner,
+    28 Oct: "disco mode limits the available lighting scenes to being those involving the disco ball (much as e.g.
+    ambient limits the available screen scenes to those with tag 'ambient')").
+
+    - director.<appliance> (true | false): the director may use it (show.yaml lights.appliances: the glitterball,
+      the pinspots...); false (the default) leaves it to the room.
+    - director.light_scenes ({"scene_tags": [...]} | null): the light scenes it may pick from, by tag (a word in any
+      facet, or facet:word, as screens' scene_tags); a light group none of them suits keeps all its scenes. null: any.
+
+    The room only keeps the values (in the state dir); show_service reads them from the room's status and does the
+    rest (director.py, appliances.py). Members come from show.yaml at start."""
+
+    subsystem = "director"
+    subsystem_label = "Art director"
+    category = "setting"
+    kind = "level"
+    poll_s = 5.0
+    SCENES = "light_scenes"
+
+    def __init__(self, state_dir: str | Path, show_file: Path = SHOW_FILE,
+                 scenes_file: Path = LIGHT_SCENES_FILE) -> None:
+        self.path = Path(state_dir) / "director.json"
+        self.scenes_file = scenes_file
+        self.apps = self._appliances(show_file)
+        self.members = [self.SCENES, *self.apps]
+        self.values: dict[str, Any] = {self.SCENES: None, **{a: False for a in self.apps}}
+
+    @staticmethod
+    def _appliances(path: Path) -> dict[str, str]:
+        try:
+            import yaml
+            apps = ((yaml.safe_load(path.read_text()) or {}).get("lights") or {}).get("appliances") or {}
+        except Exception:
+            return {}
+        return {str(k): str((v or {}).get("label") or k) for k, v in apps.items() if isinstance(v, dict)}
+
+    def _tag_list(self) -> list[dict]:
+        """Every tag word on the light scenes ([{tag, facet, count}], as the screens' scene tag list)."""
+        try:
+            import yaml
+            scenes = (yaml.safe_load(self.scenes_file.read_text()) or {}).get("scenes") or {}
+        except Exception:
+            return []
+        counts: dict[tuple[str, str], int] = {}
+        for sc in scenes.values():
+            for facet, v in ((sc or {}).get("tags") or {}).items():
+                for w in [v] if isinstance(v, str) else v if isinstance(v, list) else []:
+                    if isinstance(w, str) and w:
+                        counts[(str(facet), w)] = counts.get((str(facet), w), 0) + 1
+        return [{"tag": w, "facet": f, "count": n} for (f, w), n in sorted(counts.items())]
+
+    def restore(self) -> None:
+        saved = _load(self.path)
+        for m in self.members:
+            if m in saved:
+                try:
+                    self.values[m] = self.normalize(m, saved[m])
+                except ValueError:
+                    pass
+
+    def label(self, member: str) -> str:
+        if member == self.SCENES:
+            return "Light scenes"
+        return f"Uses the {self.apps.get(member, member).lower()}"
+
+    def value_schema(self, member: str) -> dict:
+        if member == self.SCENES:
+            return {"type": ["object", "null"], "x-ui": {"label": "Light scenes", "unset_label": "Any light scene"},
+                    "properties": {"scene_tags": {
+                        "type": "array", "uniqueItems": True, "items": {"type": "string"},
+                        "x-ui": {"label": "Only use these light scenes", "widget": "tags", "tags": self._tag_list(),
+                                 "help": "The art director only picks light scenes with any of these tags, for the "
+                                         "lights that have some."}}}}
+        return {"type": "boolean", "default": False, "x-ui": {
+            "label": self.label(member), "labels": {"true": "The art director uses it", "false": "Left to the room"}}}
+
+    def normalize(self, member: str, value: Any) -> Any:
+        if member == self.SCENES:
+            if value is None or value == {}:
+                return None
+            tags = value.get("scene_tags") if isinstance(value, dict) else None
+            if not isinstance(tags, list) or not all(isinstance(t, str) and t for t in tags) or set(value) - {
+                    "scene_tags"}:
+                raise ValueError('light scenes: {"scene_tags": [tag, ...]} or null')
+            return {"scene_tags": list(dict.fromkeys(tags))} if tags else None
+        if not isinstance(value, bool):
+            raise ValueError(f"{member}: true or false, got {value!r}")
+        return value
+
+    def words(self, member: str, value: Any) -> str:
+        if member == self.SCENES:
+            return "Any light scene" if not value else "Only light scenes tagged " + ", ".join(value["scene_tags"])
+        return "The art director uses it" if value else "Left to the room"
+
+    async def read(self, members: list[str]) -> dict[str, Reading]:
+        return {m: Reading(self.values[m]) for m in members if m in self.values}
+
+    async def apply(self, desired: dict[str, Any], opts: dict | None = None) -> Outcome:
+        ms = [m for m in desired if m in self.values]
+        for m in ms:
+            self.values[m] = desired[m]
+        _save(self.path, dict(self.values))
+        return Outcome("ok", "", {m: Outcome("ok") for m in ms})
 
 
 class LogAdapter(Adapter):

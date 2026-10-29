@@ -441,3 +441,45 @@ scenes:
          order: flow, flow_dir: up, spread: 0.75}
     tags: {energy: [0.4, 0.9], moods: [tense, euphoric, bright], genre_fit: {trance: 0.85, house: 0.8, pop: 0.75,
            gospel: 0.7, "*": 0.4}, valence: 0.65, organic: 0.35, density: 0.55, flow: {dirs: [up], honours: false}}
+
+  # -- appliances: the room's remote-worked lights (show.yaml lights.appliances; show_service/appliances.py) ----------
+  # Owner, 28 Oct: one notion of scenes for screens, lamps and appliances. An ``appliances`` block says what the
+  # appliances do in the scene: pan_spin (the glitterball's motor: -1..1, or {speed: 0..1, dir: flow|cw|ccw}),
+  # intensity (0..1), colour_slot (the remote's colour word: white, red, green, blue, yellow, purple, cyan, fade) and
+  # shutter (strobe | open). A scene with only an appliances block runs on a group of appliances only; one with layers
+  # too runs on lamps as well. tags.modes is what a mode's light scene tags (room's director.light_scenes) pick out:
+  # Disco narrows the appliances to modes:disco, Party to modes:party. A remote is slow (each change is button
+  # presses), so these are steady looks; the effects bring the moments (a spin-up on a build, a strobe on a drop).
+  appliances-resting:
+    label: Glitterball and pinspots resting
+    appliances: {pan_spin: 0, intensity: 0}
+    tags: {modes: [party], energy: [0.0, 1.0], genre_fit: {"*": 0.6}, valence: 0.5, organic: 0.5, density: 0.2,
+           weight: 3.0}                       # Party mostly rests them: the disco scenes come when the music asks
+
+  glitter-slow:
+    label: Slow glitter
+    appliances: {pan_spin: {speed: 0.2, dir: flow}, intensity: 0.75, colour_slot: white, shutter: open}
+    tags: {modes: [disco, party], energy: [0.15, 0.6], moods: [dreamy, elegant, mellow, calm, cosmic, warm],
+           genre_fit: {disco: 0.9, soul: 0.85, funk: 0.8, jazz: 0.7, pop: 0.7, rnb: 0.75, "*": 0.5}, valence: 0.6,
+           organic: 0.5, density: 0.3, weight: 0.5}
+
+  disco-classic:
+    label: Classic disco
+    appliances: {pan_spin: {speed: 0.5, dir: flow}, intensity: 1.0, colour_slot: white, shutter: open}
+    tags: {modes: [disco, party], energy: [0.4, 0.85], moods: [euphoric, playful, bright, warm, retro],
+           genre_fit: {disco: 1.0, funk: 0.95, soul: 0.9, house: 0.9, pop: 0.85, rnb: 0.8, rock: 0.6, "*": 0.45},
+           valence: 0.8, organic: 0.5, density: 0.55, weight: 0.5}
+
+  disco-colour:
+    label: Colour disco
+    appliances: {pan_spin: {speed: 0.5, dir: flow}, intensity: 1.0, colour_slot: fade, shutter: open}
+    tags: {modes: [disco], energy: [0.45, 1.0], moods: [playful, retro, euphoric, bright, glitchy],
+           genre_fit: {disco: 0.95, pop: 0.9, house: 0.85, funk: 0.85, electronic: 0.8, techno: 0.7, "*": 0.45},
+           valence: 0.8, organic: 0.35, density: 0.65, weight: 0.4}
+
+  disco-wild:
+    label: Wild disco
+    appliances: {pan_spin: {speed: 1.0, dir: flow}, intensity: 1.0, colour_slot: white, shutter: open}
+    tags: {modes: [disco], energy: [0.7, 1.0], moods: [euphoric, aggressive, fiery, tense, glitchy],
+           genre_fit: {disco: 0.9, house: 0.9, techno: 0.9, electronic: 0.85, trance: 0.85, rock: 0.8, pop: 0.7,
+                       "*": 0.45}, valence: 0.7, organic: 0.3, density: 0.85, weight: 0.5}

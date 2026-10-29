@@ -47,3 +47,21 @@ def test_hue_output_scales_brightness():
     o.level, o._lv, o._lv_t = 0.5, 0.5, None
     o._send()
     assert sent[-1][0][3] == round(0xFFFF * 0.5)
+
+
+def test_director_rows_from_show_yaml_and_kept(tmp_path):
+    from room_service.adapters.room import DirectorAdapter
+    show = tmp_path / "show.yaml"
+    show.write_text("lights:\n  appliances:\n    ball: {label: Glitterball, controls: {}}\n")
+    scenes = tmp_path / "ls.yaml"
+    scenes.write_text("scenes:\n  a: {tags: {modes: [disco], moods: [calm]}}\n")
+    a = DirectorAdapter(tmp_path, show, scenes)
+    assert a.members == ["light_scenes", "ball"] and a.values == {"light_scenes": None, "ball": False}
+    assert {"tag": "disco", "facet": "modes", "count": 1} in a.value_schema("light_scenes")["properties"][
+        "scene_tags"]["x-ui"]["tags"]
+    v = a.normalize("light_scenes", {"scene_tags": ["modes:disco"]})
+    assert asyncio.run(a.apply({"light_scenes": v, "ball": a.normalize("ball", True)})).status == "ok"
+    b = DirectorAdapter(tmp_path, show, scenes)
+    b.restore()
+    assert b.values == {"light_scenes": {"scene_tags": ["modes:disco"]}, "ball": True}
+    assert a.normalize("light_scenes", {}) is None and a.words("ball", False) == "Left to the room"

@@ -969,7 +969,8 @@ def _names_from_config() -> set[str]:
 @pytest.mark.parametrize("module", ["director.py", "palette.py", "vibes.py", "api.py", "autopilot.py", "situations.py",
                                     "listener.py", "sources.py", "brain.py", "mllink.py", "structure.py",
                                     "fixtures.py", "ofl.py", "outputs.py", "looks.py", "colour_mix.py", "hue_out.py",
-                                    "artnet_lan.py", "cues.py", "light_scenes.py", "flow.py"])
+                                    "artnet_lan.py", "cues.py", "light_scenes.py", "flow.py",
+                                    "appliances.py"])
 def test_no_vibe_mode_device_or_role_names_in_code(module):
     if not (SRC / module).exists():                                  # Stage 4's parallel builders: not landed yet
         pytest.skip(f"{module} isn't there yet")

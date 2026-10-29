@@ -616,6 +616,9 @@ class GroupInfo(TypedDict):
     follows: Optional[str]         # runs that group's program
     dark_level: Any                # "floor" | 0..1: where fade_dark goes
     member_caps: NotRequired[dict[str, list[str]]]   # each member's attrs (an entry's needs: one member has them all)
+    appliances: NotRequired[list[str]]             # show.yaml lights.appliances in it (appliances.py), never members
+    appliance_caps: NotRequired[dict[str, list[str]]]   # each appliance's capabilities
+    repeat_weight: NotRequired[float]              # the scene it shows, at its next pick: x this (0: never twice)
 
 
 class ComposeView(TypedDict):

@@ -373,6 +373,30 @@
         "show.ai": {
           "set": true,
           "restore": true
+        },
+        "director.glitterball": {
+          "set": true,
+          "restore": true
+        },
+        "director.pinspots": {
+          "set": true,
+          "restore": true
+        },
+        "director.light_scenes": {
+          "set": {
+            "scene_tags": [
+              "modes:party"
+            ]
+          },
+          "restore": true
+        },
+        "pinspots.main": {
+          "set": "off",
+          "restore": true
+        },
+        "pinspots.flash": {
+          "set": "off",
+          "restore": true
         }
       },
       "on_enter": [
@@ -476,6 +500,22 @@
         },
         "pinspots.flash": {
           "set": "off",
+          "restore": true
+        },
+        "director.glitterball": {
+          "set": true,
+          "restore": true
+        },
+        "director.pinspots": {
+          "set": true,
+          "restore": true
+        },
+        "director.light_scenes": {
+          "set": {
+            "scene_tags": [
+              "modes:disco"
+            ]
+          },
           "restore": true
         }
       },

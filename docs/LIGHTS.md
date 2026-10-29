@@ -1251,6 +1251,26 @@ Validation adds these problem lines:
 - `flow.dirs` words outside FLOW_DIRS.
 The rest loads. When a file is missing, the parts it holds are empty, with no problem line beyond a view note.
 
+### 6.6 Appliances and a mode's light scene tags (owner, 28 Oct)
+
+"One notion of scenes which can apply to screens OR appliances": the room's remote-worked appliances (the glitterball's
+motor, the RF pinspots) are members of light groups, programmed by the director like lamps.
+
+- **Config.** show.yaml `lights.appliances.<id>.controls` names the room target for each capability (`pan_spin`,
+  `intensity`, `colour_slot`, `shutter`; show_service/appliances.py). A group lists them under `appliances: [...]`
+  (never in `members`, the engine's lamps). `repeat_weight` (0..1) lets a group keep its scene at the next pick at that
+  share of its weight (appliances may rest twice running); 0, the default, never repeats.
+- **Scenes and effects.** An `appliances` block ({pan_spin: n | {speed, dir: flow|cw|ccw}, intensity, colour_slot,
+  shutter}) says what the appliances do. An entry with only that block fits only appliance groups; one with layers
+  too fits lamps as well. A running effect's block overlays its group's scene; `shutter` rests at open.
+- **The room's say** (room's `director` subsystem, room_service/adapters/room.py `DirectorAdapter`, read from its
+  status each tick): `director.<appliance>` true lets the director use it (false: hands off); `director.light_scenes`
+  `{scene_tags: [...]}` narrows every group's pool to the scenes with any of those tags (`tags.modes`, as screens'
+  scene_tags), except a group none of them suits, which keeps its whole pool. A change re-picks the groups it touches.
+- **Sending.** One PUT /api/v1/room/targets (source show) with every target that is due: wanted differs from the
+  room's belief and from the last send, the control's `min_gap_s` passed, nothing in flight, the room not changing
+  mode. A device that is off has only its power sent. The old flow-only glitterball control (`flow.mirror_ball`) is off.
+
 ## 7. Programs per group (builder: catalogue; director.py lighting hunks, show.yaml, contract)
 
 ### 7.1 Light groups (show.yaml `lights.groups`, §12)

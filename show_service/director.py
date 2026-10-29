@@ -179,6 +179,7 @@ from typing import Any, Callable, Optional
 
 from . import compose as comp
 from . import contract
+from . import appliances as appmod
 from . import flow as flowmod
 from . import light_scenes as lscenes
 from . import palette as pal
@@ -222,7 +223,8 @@ LOOK_REASON_WORDS = {"phrase": "a new phrase", "section": "a new section", "repe
                      "novelty": "the music changed", "relax": "the room went quiet", "between_pieces": "between pieces",
                      "next": "someone pressed Next look", "palette": "someone picked a palette"}
 #: room.look's light_scene_why: the light scene's own reasons, beside LOOK_REASON_WORDS (README S5.24)
-LIGHT_REASON_WORDS = {"feel": "a new feel", "first": "the first light scene", "scenes": "the light scenes changed"}
+LIGHT_REASON_WORDS = {"feel": "a new feel", "first": "the first light scene", "scenes": "the light scenes changed",
+                      "room": "the mode changed what the lights may do"}
 LIGHT_SCENE_SEED = 0                # the light-scene draw's seed (a fixed seed, as palette.from_image's k-means)
 LIGHT_FX_SEED = 1                   # the effects' and transitions' draws (their own, so effects never shift the scenes')
 ENSEMBLE_SEED = 2                   # the interplay forms' draw (docs/ENSEMBLE.md §4.2: its own, beside the lights')
@@ -230,6 +232,8 @@ ENSEMBLE_LOG_S = 60.0               # the gestures' counts go to director.jsonl 
 LIGHT_FX_LOG = 10                   # effects fired, kept for the snapshot
 ROOM_TARGETS_PATH = "/api/v1/room/targets"   # room's PUT {values: {target: value}, source}: the glitterball, the blinds
 ROOM_TARGETS_SOURCE = "show"        # the source on those PUTs (docs/LIGHTS.md §4.4)
+ROOM_DIRECTOR = "director"          # room's rows over the lights: director.<appliance> (bool), director.light_scenes
+ROOM_LIGHT_SCENES = "light_scenes"
 #: a look's transition style -> the light transition kinds it may pick among (docs/LIGHTS.md §7.3); a song change's
 #: style (contract.TRANSITION_STYLES) maps the same way, fade-dark to fade_dark
 LIGHT_KINDS_FOR = {"cut": ("cut", "dark_move"), "crossfade": ("crossfade", "sweep"), "fade-dark": ("fade_dark",)}
@@ -708,6 +712,12 @@ class Director:
         self._groups_rig: Any = None                      # the registry view the groups were read from
         self._groups_problems: list[str] = []
         self._lp_tried: Optional[tuple] = None            # the last (catalogue, groups, look) a scene-less group tried
+        # the room's say over the lights (its director.* rows, read from its status each tick): the appliances the
+        # director may use, and the light scene tags a mode narrows the scenes to (appliances.py; owner, 28 Oct)
+        self._apps_on: frozenset = frozenset()
+        self._light_tags: tuple = ()
+        self._apx = appmod.Executor()
+        self._apx_st: dict[str, Any] = {"busy": False, "error": None, "sends": 0}
         self._lp: dict[str, dict] = {}                    # group -> its program (scene, why, transition, since, at)
         self._lp_next: Optional[dict] = None              # an announced look's programs, until it lands
         self._lp_rev = 0                                  # +1 per change a reader must see (room.look goes at once)
@@ -2284,7 +2294,8 @@ class Director:
                 continue
             try:
                 got = self.light_scenes.pick_for(g, self.direction, self._flow, self._ls_rng,
-                                                 avoid=old.get("scene") if old else None)
+                                                 avoid=old.get("scene") if old else None, tags=self._light_tags,
+                                                 hard_avoid=human)
             except Exception:                             # a broken catalogue never fails the tick
                 log.exception("light scenes: pick failed")
                 got = None
@@ -2420,7 +2431,7 @@ class Director:
         probs: list[str] = []
         try:
             groups = lscenes.group_members(self.lights_cfg["groups"], rig, lamps=self.lamps_cfg, spatial=spatial,
-                                           problems=probs)
+                                           problems=probs, appliances=self.lights_cfg.get("appliances"))
         except Exception as e:                            # never fail the tick: every light in "*"
             log.exception("light groups: group_members failed")
             probs.append(f"light groups: {type(e).__name__}: {e}")
@@ -2451,9 +2462,14 @@ class Director:
         g = self._groups.get(gid)
         if g is None:
             return False
-        if g["members"] or gid == self._scene_group():
+        if self._has_lights(g) or gid == self._scene_group():
             return True
-        return any(o["members"] and o.get("follows") and self._root(o["id"]) == gid for o in self._groups.values())
+        return any(self._has_lights(o) and o.get("follows") and self._root(o["id"]) == gid
+                   for o in self._groups.values())
+
+    def _has_lights(self, g: dict) -> bool:
+        """Lamps, or an appliance the room lets the director use now."""
+        return bool(g["members"]) or any(a in self._apps_on for a in g.get("appliances") or ())
 
     def _lead_s(self) -> float:
         return max(LOOK_MIN_LEAD_S, self._ev_lead)
@@ -2467,8 +2483,10 @@ class Director:
     # -- the lights' tick ------------------------------------------------------------------------------------------------
     def _lights_tick(self, now_s: float, grid: Grid, room: Any) -> None:
         """docs/LIGHTS.md §4, §7: the groups, a look change that never landed (its programs go), a group with no scene
-        yet (picked), the effects, the flow and the glitterball."""
+        yet (picked), the effects, the flow and the glitterball; the room's say over the lights (its director.* rows:
+        a change re-picks the groups it touches) and the appliances' sends."""
         self._groups_refresh()
+        self._room_lights(now_s, room)
         nxt = self._lp_next
         if nxt is not None and (self.pending is None or nxt["look_id"] != f"L{self.look_n + 1}"):
             self._lp_next = None
@@ -2492,6 +2510,7 @@ class Director:
                         self._commit_programs(got, now_s)
             self._fx_tick(now_s, grid)
             self._flow_tick(now_s, grid)
+            self._appliances_tick(now_s, room)
         self._flow_build(now_s, grid)
         self._mirror_ball(now_s, grid, room)
         if self._lp_rev != self._lp_rev_pub:
@@ -2825,6 +2844,72 @@ class Director:
             st["sends"] += 1
             self._log_event("mirror_ball", {"values": want, "flow": self._flow["dir"], "speed": self._flow["speed"]})
 
+    def _room_lights(self, now_s: float, room: Any) -> None:
+        """The room's director.<appliance> rows (true: the director may use it) and director.light_scenes
+        ({scene_tags: [...]}: a mode's narrowing of the light scenes). A change re-picks every group whose scene
+        isn't in its new pool (and an appliance group that just came on picks as a scene-less group)."""
+        members = (room.get("members") or {}) if isinstance(room, dict) else {}
+
+        def believed(t: str) -> Any:
+            m = members.get(t)
+            return m.get("believed") if isinstance(m, dict) else None
+        apps = self.lights_cfg.get("appliances") or {}
+        on = frozenset(a for a in apps if believed(f"{ROOM_DIRECTOR}.{a}") is True)
+        ls = believed(f"{ROOM_DIRECTOR}.{ROOM_LIGHT_SCENES}")
+        tags = tuple(t for t in (ls.get("scene_tags") or ()) if isinstance(t, str) and t) if isinstance(ls, dict) else ()
+        if on == self._apps_on and tags == self._light_tags:
+            return
+        gone = self._apps_on - on
+        self._apps_on, self._light_tags = on, tags
+        if gone:
+            self._apx.forget()                            # hands off: a later "on" sends afresh
+        self._log_event("room_lights", {"appliances": sorted(on), "scene_tags": list(tags)})
+        if not self.pal_on or not self.light_scenes.scenes:
+            return
+        stale = set()
+        for gid, g in self._groups.items():
+            p = self._lp.get(gid)
+            if g.get("follows") or not self._group_live(gid) or p is None or not p.get("scene"):
+                continue
+            if p["scene"] not in self.light_scenes.pool_for(g, tags):
+                stale.add(gid)
+        if stale:
+            got = self._pick_programs("room", now_s, only=stale)
+            if got is not None:
+                self._commit_programs(got, now_s)
+
+    def _appliances_tick(self, now_s: float, room: Any) -> None:
+        """What each appliance the room lets the director use should be doing now: its group's scene, with the
+        group's running effects over it (the latest wins), sent through room's targets (appliances.Executor)."""
+        if not self._apps_on:
+            return
+        apps = self.lights_cfg.get("appliances") or {}
+        now_ms = now_s * 1000.0
+        wants: dict[str, tuple[dict, dict]] = {}
+        for gid, g in self._groups.items():
+            ids = [a for a in g.get("appliances") or () if a in self._apps_on and a in apps]
+            if not ids:
+                continue
+            p = self._lp.get(self._root(gid)) or {}
+            sc = self.light_scenes.scenes.get(p.get("scene")) if p.get("scene") else None
+            state: dict[str, Any] = {**appmod.NEUTRAL, **((sc or {}).get("appliances") or {})}
+            for r in self._fx.get(self._root(gid), ()):
+                if r["at_ms"] <= now_ms and (r["until_ms"] is None or r["until_ms"] > now_ms):
+                    fx = self.light_scenes.effects.get(r["name"])
+                    state.update((fx or {}).get("appliances") or {})
+            if sc is None:
+                continue                                  # no scene yet: left as it is
+            for a in ids:
+                wants[a] = (apps[a], {k: v for k, v in state.items() if k in apps[a]["caps"]})
+        try:
+            due = self._apx.step(now_s, wants, self._flow.get("dir"), room, self._apx_st["busy"])
+        except Exception:                                 # a bad appliance never fails the tick
+            log.exception("appliances: step failed")
+            return
+        if due and self._put_targets(due, self._apx_st):
+            self._apx_st["sends"] += 1
+            self._log_event("appliances", {"values": due, "flow": self._flow.get("dir")})
+
     def _blinds_follow(self, ev: dict) -> None:
         """lights.flow.blinds (off by default): a big song change with the flow up or down moves them."""
         bc = self.lights_cfg["flow"]["blinds"]
@@ -3048,7 +3133,10 @@ class Director:
                                 "error": st["error"],
                                 "next_allowed_in_s": (round(max(0.0, st["sent_s"] + gap - now_s), 1)
                                                       if st["sent_s"] is not None else 0.0)},
-                "blinds": {"enabled": self.lights_cfg["flow"]["blinds"]["enabled"], **self._blinds}}
+                "blinds": {"enabled": self.lights_cfg["flow"]["blinds"]["enabled"], **self._blinds},
+                "appliances": {"allowed": sorted(self._apps_on), "scene_tags": list(self._light_tags),
+                               "wanted": self._apx.wanted, "sends": self._apx_st["sends"],
+                               "error": self._apx_st["error"]}}
 
     def _light_drop(self, ev: dict, at_s: float, now_s: float, grid: Grid) -> None:
         """Every drop the director hears (structure's, or a cue's forecast at its at_ms) goes to the look engine as

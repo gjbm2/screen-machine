@@ -59,6 +59,7 @@ from typing import Any, Callable, Mapping, Optional
 
 import yaml
 
+from . import appliances as appmod
 from . import contract
 from . import flow as flowmod
 
@@ -69,9 +70,9 @@ LIGHT_EFFECTS_FILE = LIGHT_SCENES_FILE.with_name("light_effects.yaml")          
 LIGHT_TRANSITIONS_FILE = LIGHT_SCENES_FILE.with_name("light_transitions.yaml")
 TAGS_FILE = contract.REPO_ROOT / "stream_service" / "tags.py"   # 04's: the matching rule, read by file path
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")    # a scene name (fixtures.py's id rule, without dots)
-SCENE_KEYS = frozenset({"label", "needs", "layers", "hits", "caps", "tags"})
+SCENE_KEYS = frozenset({"label", "needs", "layers", "hits", "caps", "tags", "appliances"})
 EFFECT_KEYS = frozenset({"label", "on", "every_bars", "chance", "length", "fade", "needs", "layers", "hits", "caps",
-                         "tags"})
+                         "tags", "appliances"})
 TRANSITION_KEYS = frozenset({"label", "kind", "beats", "seconds", "out_s", "in_s", "wave_beats", "dark_move", "tags"})
 TRANSITION_NUMBERS = ("beats", "seconds", "out_s", "in_s", "wave_beats")
 FLOW_TAG_KEYS = frozenset({"dirs", "honours"})
@@ -104,10 +105,10 @@ TRIGGER_WHY = {"drop": "the drop", "build": "the song builds", "breakdown": "a b
 # -- groups (show.yaml lights; docs/LIGHTS.md §7.1, §12) ----------------------------------------------------------------
 OTHER_GROUP = "*"                                # the lamps no group takes
 OTHER_LABEL = "Other lights"
-GROUP_KEYS = frozenset({"label", "select", "follows", "dark_level"})
+GROUP_KEYS = frozenset({"label", "select", "follows", "dark_level", "appliances", "repeat_weight"})
 DARK_FLOOR = "floor"                             # dark_level: the look's floor
 #: show.yaml ``lights`` keys: the catalogue builder's, and the other builders' (read where they are used)
-LIGHTS_KEYS = frozenset({"scene_group", "groups", "programs", "flow", "motion", "jog", "calibration"})
+LIGHTS_KEYS = frozenset({"scene_group", "groups", "programs", "flow", "motion", "jog", "calibration", "appliances"})
 #: lights.programs' starting points (docs/LIGHTS.md §12; the file's values win)
 PROGRAMS_FALLBACK = {"effects_max": 2, "effect_gap_bars": 4.0}
 
@@ -454,7 +455,9 @@ class Catalogue:
         t = self._tags_of(sc.get("tags"), tags, vocab, where, probs)
         if t is None:
             return None
-        e = {"label": label, "needs": needs, "layers": layers, "hits": hc[0], "caps": hc[1], "tags": t}
+        e = {"label": label, "needs": needs, "layers": layers, "hits": hc[0], "caps": hc[1], "tags": t,
+             "appliances": appmod.parse_states(sc.get("appliances"), where, probs)}
+        e["for_lights"] = e["appliances"] is None or "layers" in sc or hc[0] is not None
         e["drives"] = drives(e)
         return e
 
@@ -501,15 +504,17 @@ class Catalogue:
         needs = self._needs(sc.get("needs"), where, probs)
         if hc is None or needs is None:
             return None
-        if not layers and hc[0] is None:
-            probs.append(f"{where}: no layers and no hits: it would do nothing: left out")
+        states = appmod.parse_states(sc.get("appliances"), where, probs)
+        if not layers and hc[0] is None and states is None:
+            probs.append(f"{where}: no layers, hits or appliances: it would do nothing: left out")
             return None
         t = self._tags_of(sc.get("tags"), tags, vocab, where, probs)
         if t is None:
             return None
         e = {"label": self._label(sc, name, where, probs), "on": on, "every_bars": int(eb) if eb else None,
              "chance": float(ch), "length": length, "fade": fade, "needs": needs, "layers": layers, "hits": hc[0],
-             "caps": hc[1], "tags": t}
+             "caps": hc[1], "tags": t, "appliances": states}
+        e["for_lights"] = states is None or bool(layers) or hc[0] is not None
         e["drives"] = drives(e)
         return e
 
@@ -687,14 +692,30 @@ class Catalogue:
     # -- per group (docs/LIGHTS.md §6.1, §6.5) -------------------------------------------------------------------------
     @staticmethod
     def fits(entry: Mapping[str, Any], group: Mapping[str, Any]) -> bool:
-        """``needs`` (hard): one member of the group can show every attr listed. No needs: any group."""
+        """For a group's lamps (the entry has layers, hits, or no appliances block): ``needs`` (hard), one member can
+        show every attr listed (no needs: any group). For its appliances (appliances.py): the entry's appliances
+        block sets something one of them can do, and its needs are within one appliance's. A group with both takes
+        an entry that fits either."""
         needs = entry.get("needs") or []
+        apps = group.get("appliance_caps") if isinstance(group.get("appliance_caps"), Mapping) else {}
+        st = entry.get("appliances")
+        if apps and st and any(set(st) & set(c) and set(needs) <= set(c) | set(st) for c in apps.values()):
+            return True
+        if not entry.get("for_lights", True) or (apps and not group.get("members")):
+            return False
         if not needs:
             return True
         mc = group.get("member_caps")
         if isinstance(mc, Mapping) and mc:
             return any(set(needs) <= set(a or ()) for a in mc.values())
         return bool(group.get("members")) and set(needs) <= set(group.get("caps") or ())
+
+    @staticmethod
+    def tagged(entry: Mapping[str, Any], tags: Any) -> bool:
+        """The entry's tags hold any of ``tags`` (room's rule for a mode's scene_tags: a word in any facet, or
+        facet:word, e.g. modes:disco)."""
+        have = _tag_words(entry.get("tags") or {})
+        return any(_tag_matches(have, t) for t in tags if isinstance(t, str) and t)
 
     @staticmethod
     def cap_fit(entry: Mapping[str, Any], group: Optional[Mapping[str, Any]]) -> float:
@@ -720,16 +741,31 @@ class Catalogue:
         w = self._tag_weight(entry.get("tags") or {}, direction, transition=transition)
         return max(1e-6, w * self.cap_fit(entry, group) * self.flow_fit(entry, flow))
 
-    def pick_for(self, group: Mapping[str, Any], direction: Optional[Mapping[str, Any]], flow: Any, rng: Any, *,
-                 avoid: Optional[str] = None) -> Optional[tuple[str, str, dict[str, float]]]:
-        """A group's scene: a weighted draw over the scenes that fit it, never ``avoid`` (the one it shows) while
-        another fits. (name, why, {name: weight}), or None when none fits."""
+    def pool_for(self, group: Mapping[str, Any], tags: Any = None) -> list[str]:
+        """The scenes a group may show: those that fit it, and of those the ones tagged with any of ``tags`` (a mode's
+        light scene tags), unless none of them is (then every one that fits: the mode didn't mean this group)."""
         names = [n for n, sc in self.scenes.items() if self.fits(sc, group)]
+        if tags:
+            only = [n for n in names if self.tagged(self.scenes[n], tags)]
+            if only:
+                return only
+        return names
+
+    def pick_for(self, group: Mapping[str, Any], direction: Optional[Mapping[str, Any]], flow: Any, rng: Any, *,
+                 avoid: Optional[str] = None, tags: Any = None, hard_avoid: bool = False
+                 ) -> Optional[tuple[str, str, dict[str, float]]]:
+        """A group's scene: a weighted draw over its pool (``pool_for``: the scenes that fit it, within the mode's
+        ``tags``), never ``avoid`` (the one it shows) while another is there, unless the group's ``repeat_weight``
+        (show.yaml; e.g. appliances that may rest twice running) lets it stay at that share of its weight
+        (``hard_avoid``: a person's Next never repeats). (name, why, {name: weight}), or None when none fits."""
+        names = self.pool_for(group, tags)
         if not names:
             return None
-        if avoid in names and len(names) > 1:
+        rw = float(group.get("repeat_weight") or 0.0) if not hard_avoid else 0.0
+        if avoid in names and len(names) > 1 and rw <= 0.0:
             names.remove(avoid)
-        ws = {n: self.score(self.scenes[n], group, direction, flow) for n in names}
+        ws = {n: self.score(self.scenes[n], group, direction, flow) * (rw if n == avoid and len(names) > 1 else 1.0)
+              for n in names}
         got = _draw(ws, names, rng)
         return got, self.why(got, direction), ws
 
@@ -781,6 +817,23 @@ class Catalogue:
                 "problems": list(self.problems)}
 
 
+def _tag_words(tags: Mapping[str, Any]) -> set[tuple[str, str]]:
+    """An entry's tag words as (facet, word): every facet holding a word or a list of words (modes, moods, ...)."""
+    out: set[tuple[str, str]] = set()
+    for facet, v in tags.items():
+        for w in [v] if isinstance(v, str) else v if isinstance(v, list) else []:
+            if isinstance(w, str) and w:
+                out.add((str(facet), w))
+    return out
+
+
+def _tag_matches(have: set[tuple[str, str]], tag: str) -> bool:
+    if ":" in tag:
+        facet, word = tag.split(":", 1)
+        return (facet, word) in have
+    return any(w == tag for _, w in have)
+
+
 def _genre_word(direction: Mapping[str, Any]) -> Optional[str]:
     """room.direction's leading genre word: ``genre``, else the most likely of ``genres``."""
     g = direction.get("genre")
@@ -813,7 +866,8 @@ def parse_lights(raw: Any, probs: list[str]) -> dict:
     "programs": {effects_max, effect_gap_bars}, "flow": flow.parse_settings(...)}. A bad value falls back (no groups:
     every lamp is in "*", which is then the scene group) and is listed. ``motion``, ``jog`` and ``calibration`` are the
     other builders' (read where they are used)."""
-    out: dict[str, Any] = {"scene_group": OTHER_GROUP, "groups": {}, "programs": dict(PROGRAMS_FALLBACK)}
+    out: dict[str, Any] = {"scene_group": OTHER_GROUP, "groups": {}, "programs": dict(PROGRAMS_FALLBACK),
+                           "appliances": {}}
     if raw is not None and not isinstance(raw, dict):
         probs.append("lights: not a mapping: no light groups")
         raw = None
@@ -822,6 +876,7 @@ def parse_lights(raw: Any, probs: list[str]) -> dict:
         if k not in LIGHTS_KEYS:
             probs.append(f"lights.{k}: not a lights key: ignored")
     out["flow"] = flowmod.parse_settings(raw.get("flow"), probs)
+    out["appliances"] = appmod.parse(raw.get("appliances"), probs)
     gs = raw.get("groups")
     groups: dict[str, dict] = {}
     if gs is not None and not isinstance(gs, dict):
@@ -840,7 +895,8 @@ def parse_lights(raw: Any, probs: list[str]) -> dict:
                     probs.append(f"{w}.{k}: not a group key ({', '.join(sorted(GROUP_KEYS))}): ignored")
             sel = g.get("select")
             if not (isinstance(sel, str) and sel.strip()):
-                probs.append(f"{w}.select: none: it takes no lights")
+                if not g.get("appliances"):
+                    probs.append(f"{w}.select: none: it takes no lights")
                 sel = None
             label = g.get("label") if isinstance(g.get("label"), str) and g.get("label") \
                 else gid.replace("-", " ").replace("_", " ")
@@ -852,8 +908,20 @@ def parse_lights(raw: Any, probs: list[str]) -> dict:
             if fo is not None and not isinstance(fo, str):
                 probs.append(f"{w}.follows: {fo!r} isn't a group's name: ignored")
                 fo = None
+            ap = g.get("appliances") or []
+            if not isinstance(ap, list) or not all(isinstance(x, str) for x in ap):
+                probs.append(f"{w}.appliances: not a list of lights.appliances names: none")
+                ap = []
+            bad = [x for x in ap if x not in out["appliances"]]
+            if bad:
+                probs.append(f"{w}.appliances: {', '.join(bad)} isn't in lights.appliances: left out")
+            rw = g.get("repeat_weight", 0.0)
+            if _num01(rw) is None or not 0.0 <= rw <= 1.0:
+                probs.append(f"{w}.repeat_weight: {rw!r} isn't a number in 0..1: 0 (never twice running)")
+                rw = 0.0
             groups[gid] = {"label": label, "select": sel, "follows": fo,
-                           "dark_level": float(dl) if dl != DARK_FLOOR else DARK_FLOOR}
+                           "dark_level": float(dl) if dl != DARK_FLOOR else DARK_FLOOR,
+                           "appliances": [x for x in ap if x in out["appliances"]], "repeat_weight": float(rw)}
     for gid, g in groups.items():                    # follows: another group, and no loop
         fo, seen = g["follows"], {gid}
         while fo is not None:
@@ -943,13 +1011,18 @@ def _select(sel: str, rig: Mapping[str, Any], lamps: Optional[Mapping], spatial:
 
 def group_members(groups_cfg: Optional[Mapping[str, Any]], rig: Optional[Mapping[str, Any]], *,
                   lamps: Optional[Mapping[str, Any]] = None, spatial: Optional[Callable] = None,
-                  problems: Optional[list[str]] = None) -> dict[str, contract.GroupInfo]:
+                  problems: Optional[list[str]] = None,
+                  appliances: Optional[Mapping[str, Any]] = None) -> dict[str, contract.GroupInfo]:
     """Every light group's members (docs/LIGHTS.md §6.5): each lamp fixture goes to the FIRST group in file order whose
     selector takes it; the rest are in ``"*"`` ("Other lights", always last, maybe empty). Pure and deterministic.
     ``groups_cfg``: parse_lights' ``groups`` (show.yaml's raw mapping reads the same); ``lamps``: show.yaml lamps (for
     ``role:``); ``spatial``: space.spatial_fn(view) for ``side:`` / ``height:``. A selector that doesn't parse takes
-    no lights (a line in ``problems``)."""
+    no lights (a line in ``problems``). ``appliances``: parse_lights' (appliances.parse): a group's ``appliances``
+    (each in one group, the first) are its ``appliances`` with their capabilities in ``appliance_caps``, never in
+    ``members`` (the look engine's lamps)."""
     probs = problems if problems is not None else []
+    apps = appliances if isinstance(appliances, Mapping) else {}
+    app_taken: set[str] = set()
     cfg = groups_cfg if isinstance(groups_cfg, Mapping) else {}
     rig = rig if isinstance(rig, Mapping) else {}
     fx = rig.get("fixtures") or {}
@@ -971,7 +1044,8 @@ def group_members(groups_cfg: Optional[Mapping[str, Any]], rig: Optional[Mapping
             caps += [a for a in attrs.get(m, ()) if a not in caps]
         return {"id": gid, "label": label if isinstance(label, str) and label else gid, "members": members,
                 "caps": caps, "follows": follows, "dark_level": dark if dark is not None else DARK_FLOOR,
-                "member_caps": {m: list(attrs.get(m, ())) for m in members}}
+                "member_caps": {m: list(attrs.get(m, ())) for m in members}, "appliances": [],
+                "appliance_caps": {}}
 
     for gid, g in cfg.items():
         if not isinstance(g, Mapping) or gid == OTHER_GROUP:
@@ -988,5 +1062,11 @@ def group_members(groups_cfg: Optional[Mapping[str, Any]], rig: Optional[Mapping
         fo = g.get("follows")
         out[str(gid)] = info(str(gid), g.get("label"), members,
                              fo if isinstance(fo, str) and fo in cfg and fo != gid else None, g.get("dark_level"))
+        ga = [a for a in (g.get("appliances") or ()) if isinstance(a, str) and a in apps and a not in app_taken]
+        app_taken.update(ga)
+        out[str(gid)]["appliances"] = ga
+        out[str(gid)]["appliance_caps"] = {a: list(apps[a].get("caps") or ()) for a in ga}
+        rw = _num01(g.get("repeat_weight"))
+        out[str(gid)]["repeat_weight"] = rw if rw is not None else 0.0
     out[OTHER_GROUP] = info(OTHER_GROUP, OTHER_LABEL, [fid for fid in lamp_ids if fid not in taken], None, DARK_FLOOR)
     return out

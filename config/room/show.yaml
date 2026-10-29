@@ -1007,7 +1007,30 @@ lights:
       label: Lamps
       select: "kind:lamp"
       dark_level: floor
+    remote-lights:                          # owner, 28 Oct: the glitterball and the pinspots are appliances the art
+      label: Glitterball and pinspots       # director programs like any light group, with their own scenes (the
+      appliances: [glitterball, pinspots]   # light scenes with an appliances block; a mode's light scene tags narrow
+      repeat_weight: 0.5                    # them). repeat_weight: they may stay resting (or lit) twice running
     # movers-north: {label: North movers, select: "cap:pan side:north", follows: movers}   # put above movers
+  # The room's remote-worked appliances (show_service/appliances.py): which room target works each capability. The
+  # director sends a change only while the mode lets it use the appliance (room's director.<id> row), never while the
+  # room is changing mode, at most once per min_gap_s per target (default 2 s). YAML: on/off must be quoted.
+  appliances:
+    glitterball:
+      label: Glitterball
+      controls:
+        pan_spin:                           # the motor: off when the spin is 0, its size the speed, its sense the way
+          power: {target: mirror_ball.main, "on": spinning, "off": stopped}
+          speed: {target: mirror_ball_motor.speed, words: [[0.0, low], [0.4, medium], [0.75, high]]}
+          direction: {target: mirror_ball_motor.direction, cw: clockwise, ccw: anticlockwise, min_gap_s: 120}
+    pinspots:
+      label: Pinspots
+      controls:
+        intensity:
+          power: {target: pinspots.main, "on": "on", "off": "off"}
+          level: {target: pinspots.level, steps: 8}
+        colour_slot: {target: pinspots.colour}   # the scene's slot word is the remote's colour (white, red, fade, ...)
+        shutter: {target: pinspots.flash, strobe: "on", open: "off"}
   programs:
     effects_max: 2                          # effects running at once per group
     effect_gap_bars: 4                      # a new effect at most this often per group (a drop always may)
@@ -1034,7 +1057,8 @@ lights:
     coherence: {events: 1.0, floor: 0.3}
     symmetry: none                          # none | mirror
     mirror_ball:
-      enabled: true                         # it turns the glitterball with the flow; it never switches it on
+      enabled: false                        # owner, 28 Oct: the glitterball is an appliance in lights.groups now (its
+                                            # scenes' spin follows the flow); true: the old flow-only motor control
       power_member: mirror_ball.main
       power_on: spinning
       direction_target: mirror_ball_motor.direction

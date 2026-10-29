@@ -654,10 +654,11 @@ def test_parse_lights_falls_back_and_lists_problems():
     assert out["groups"]["a"]["follows"] is None and out["groups"]["b"]["follows"] == "a"
     assert out["groups"]["a"]["dark_level"] == "floor" and out["groups"]["c"]["select"] is None
     assert ls.parse_lights(None, []) == {"scene_group": "*", "groups": {}, "programs": ls.PROGRAMS_FALLBACK,
-                                         "flow": ls.flowmod.FLOW_FALLBACK}
+                                         "flow": ls.flowmod.FLOW_FALLBACK, "appliances": {}}
     real: list[str] = []
     got = ls.parse_lights(yaml.safe_load(contract.SHOW_FILE.read_text())["lights"], real)
-    assert real == [] and got["scene_group"] == "lamps" and list(got["groups"]) == ["movers", "lamps"]
+    assert real == [] and got["scene_group"] == "lamps" and list(got["groups"]) == ["movers", "lamps", "remote-lights"]
+    assert got["groups"]["remote-lights"]["appliances"] == ["glitterball", "pinspots"]
 
 
 # -- the director: programs per group (docs/LIGHTS.md §7.3) ----------------------------------------------------------------
