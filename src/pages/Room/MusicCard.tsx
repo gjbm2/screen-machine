@@ -1099,7 +1099,13 @@ export function MusicCard({
  *  trio") and the cues it has armed ("Big change at the chorus, likely in 10-25 s"). Nothing until it has said something. */
 function AiHears({ listening }: { listening: ShowCard["listening"] }) {
   const character = listening?.character?.trim();
-  const armed = (listening?.armed ?? []).filter((c) => c?.words?.trim());
+  const now = (listening?.armed ?? []).filter((c) => c?.words?.trim());
+  // Owner, 29 Oct: the panel jumped as show_service armed and disarmed its cues every few seconds (snap to dark and
+  // slow fade, 2 lines on and off). A cue seen here keeps its line; while it isn't armed it shows greyed out.
+  const seen = useRef<Map<string, string>>(new Map());
+  for (const c of now) seen.current.set(c.kind || c.words!, c.words!);
+  const armedNow = new Set(now.map((c) => c.kind || c.words!));
+  const armed = [...seen.current.entries()].map(([kind, words]) => ({ kind, words, on: armedNow.has(kind) }));
   if (!character && !armed.length) return null;
   return (
     <div className="mt-1 space-y-1" data-testid="music-ai-hears">
@@ -1112,8 +1118,12 @@ function AiHears({ listening }: { listening: ShowCard["listening"] }) {
       {armed.length > 0 && (
         <ul className="space-y-0.5" data-testid="music-armed">
           {armed.map((c, i) => (
-            <li key={`${c.kind}-${i}`} className="flex min-w-0 items-start gap-2 text-sm leading-snug text-teal-900" title={c.words}>
-              <span aria-hidden className="mt-[0.45rem] h-1.5 w-1.5 shrink-0 rounded-full bg-teal-600" />
+            <li
+              key={`${c.kind}-${i}`}
+              className={cn("flex min-w-0 items-start gap-2 text-sm leading-snug", c.on ? "text-teal-900" : "text-stone-400")}
+              title={c.on ? c.words : `${c.words} (not armed just now)`}
+            >
+              <span aria-hidden className={cn("mt-[0.45rem] h-1.5 w-1.5 shrink-0 rounded-full", c.on ? "bg-teal-600" : "bg-stone-300")} />
               <span className="min-w-0 truncate">{c.words}</span>
             </li>
           ))}
@@ -1134,14 +1144,20 @@ function pictureWords(art?: ShowArtWish | null): string {
 /** What pictures the art director is asking for (owner, 28 Oct: the listening AI and the music connect to the pictures
  *  Ambient shows), one read-only line under what the AI hears. Nothing until show_service sends a wish. */
 function PicturesLine({ art }: { art?: ShowArtWish | null }) {
-  const words = pictureWords(art);
-  if (!words) return null;
-  const from = art?.via === "listener" ? "from what the AI hears" : "from the kind of music";
+  // The last wish stays (greyed) while there is none for a moment (a quiet spell: "Quiet" has no pictures), so the
+  // line doesn't come and go (owner, 29 Oct)
+  const last = useRef<{ words: string; via?: string | null } | null>(null);
+  const fresh = pictureWords(art);
+  if (fresh) last.current = { words: fresh, via: art?.via };
+  const shown = last.current;
+  if (!shown) return null;
+  const words = shown.words;
+  const from = shown.via === "listener" ? "from what the AI hears" : "from the kind of music";
   return (
     <p
-      className="mt-1 truncate text-base leading-snug text-stone-700"
+      className={cn("mt-1 truncate text-base leading-snug", fresh ? "text-stone-700" : "text-stone-400")}
       data-testid="music-pictures"
-      title={`Pictures: ${words} (what the art director asks for, ${from})`}
+      title={`Pictures: ${words} (what the art director asks for, ${from})${fresh ? "" : "; none asked for just now"}`}
     >
       <span className="text-muted-foreground">Pictures: </span>
       {words}
