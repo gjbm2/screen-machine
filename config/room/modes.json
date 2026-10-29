@@ -522,7 +522,6 @@
           "restore": true
         },
         "mirror_ball": "spinning",
-        "mirror_ball_motor.speed": "high",
         "hue": {
           "set": "dmx",
           "restore": true
@@ -535,6 +534,7 @@
           "set": true,
           "restore": true
         },
+        "mirror_ball_motor.speed": "low",
         "brightness.screens": {
           "set": 55,
           "restore": true
