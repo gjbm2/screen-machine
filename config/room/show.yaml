@@ -416,6 +416,9 @@ cues:
     max_s: 12
     floor_above_db: 6                       # "the floor" = the stream's floor + this (none yet: floor_lufs)
     floor_lufs: -50
+    min_slope_db_s: 0.5                     # a fade needs lufs_s falling at least this fast (63, 29 Oct: one fired at
+                                            # -0.06 dB/s mid-song)...
+    above_target_db: 3                      # ...from at least this far over its floor target
     back_db: 3                              # sound back: lufs_s this far over where it was when the fade began...
     back_s: 1                               # ...for this long
     in_s: 2.0
@@ -444,6 +447,8 @@ cues:
     stop_return_max_s: 3                    # ...and at most, then back
     key_min_strength: 0.3                   # music.context's key at this strength, other than at arm time
     seen_s: 4                               # a sign counts this long after it is seen
+    weak: [louder, busier, low_in, phrase_line]   # these alone never fire a forecast: it needs one other sign, or two
+                                            # different weak ones (63, 29 Oct: 40 of 59 fires were "louder" alone)
 
 # ---- Stage 4 (README "Stage 4") ------------------------------------------------------------------------------------
 # The local ML worker (§6): a child of show_service in its own venv, fed the measured stream at 16 kHz over a pipe,
@@ -744,6 +749,8 @@ genre_map:
 # FastLED's own detector thresholds (per-frame relative-energy units) and they don't translate to these dB/s slopes, so
 # these stand; FastLED's own numbers are under fastled, where the port uses them as they are.
 structure:
+  forecast_boost: 0.8                       # while an AI forecast's window is open, the section boundary threshold x
+                                            # this: the AI raises the ears' sensitivity rather than firing itself
   gobo_on_sections: true                    # §9.5: GOBO steps once per section change (the screens' scene change)
                                             # while no vibe plays; with a vibe the director steps it when a look lands
   novelty:
@@ -882,8 +889,15 @@ structure:
   track:                                    # §6.1 track changes (Sonos now-playing is the truth when it plays)
     gap_s: 3                                # a silence this long...
     gap_gate: 0.05                          # ...(the loudness gate under this, or...
-    gap_lufs_m: -60                         # ...the momentary loudness at or under this: a line at rest. The gate
-                                            # follows the 3 s loudness, so alone it missed gaps under ~6 s)...
+    gap_lufs_m: null                        # ...the momentary loudness at or under a line relative to what plays (63,
+                                            # 29 Oct: -60 absolute read quiet music at -62..-64 as silence in Disco):
+                                            # max(the floor + gap_floor_db, the music - gap_drop_db), capped at the
+                                            # music - gap_floor_db; a number here is an absolute line it may raise to...
+    gap_drop_db: 18                         # ...a silence is this far under the music's level (median lufs_s over...
+    gap_ref_s: 30                           # ...the last gap_ref_s of sound)...
+    gap_floor_db: 6                         # ...and at most this close to the stream's floor (its 10th percentile)
+    long_gap_s: 12                          # Sonos or the player playing a song with no length: a mic silence ends
+                                            # the song only after this long (its title change is the boundary)
     window_s: 20                            # ...then a boundary this soon after the sound returns, with a jump in:
     tempo_jump: 0.04                        # tempo (over 4 %, not x2 or x0.5),
     key_min_conf: 0.3                       # key (at this strength both sides; the same, parallel or relative key is
