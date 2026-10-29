@@ -48,7 +48,7 @@ import { Transport as AppTransport } from "@/components/player/Transport";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
 import { AppMenu } from "@/components/nav/AppMenu";
-import { loadToken, RoomApi, RoomApiError, storageGet, storageSet } from "@/pages/Room/api";
+import { RoomApi, RoomApiError, storageGet, storageSet } from "@/pages/Room/api";
 import { useShowFeed } from "@/pages/Room/MusicCard";
 import { Spinner } from "@/pages/Room/bits";
 import { CARD_CLASS, TAP_BUTTON_CLASS, THEME_CLASS } from "@/pages/Room/theme";
@@ -1118,7 +1118,7 @@ const noop = () => undefined;
 
 /** Mic and AI when the page didn't pass its own: the score's own show feed (the room's two switches). */
 function OwnToggles({ baseUrl, render }: { baseUrl: string; render: (t: TopToggles) => ReactNode }) {
-  const api = useMemo(() => new RoomApi(baseUrl, loadToken(baseUrl).token), [baseUrl]);
+  const api = useMemo(() => new RoomApi(baseUrl), [baseUrl]);
   const feed = useShowFeed(api, true, noop);
   const t = useTopToggles(api, feed, noop);
   return <>{render(t)}</>;

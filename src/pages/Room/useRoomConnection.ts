@@ -1,5 +1,5 @@
 // The page's link to room_service (LIVE_V1 §3):
-//   - the events socket WS /api/v1/events?token=…, reconnected with full-jitter
+//   - the events socket WS /api/v1/events, reconnected with full-jitter
 //     backoff random(0, min(10 s, 0.5 s·2^n));
 //   - GET /api/v1/status every 2 s while that socket is down;
 //   - the modes, the catalog and /healthz, re-read whenever the socket (re)opens.
@@ -44,7 +44,6 @@ export interface ConnectionState {
   ws: WsState;
   /** True while the 2 s status poll is running (socket down). */
   polling: boolean;
-  authRequired: boolean;
   /** Local time of the last status received by either path. */
   lastStatusAt: number | null;
   /** The last failure to reach room_service, cleared by the next success. */
@@ -58,7 +57,6 @@ export interface ConnectionState {
 const INITIAL_CONN: ConnectionState = {
   ws: "idle",
   polling: false,
-  authRequired: false,
   lastStatusAt: null,
   lastError: null,
   reconnectAt: null,
@@ -90,8 +88,8 @@ function summariseStream(d: Record<string, unknown>): string {
   return parts.filter(Boolean).join(" ");
 }
 
-export function useRoomConnection(baseUrl: string, token: string) {
-  const api = useMemo(() => new RoomApi(baseUrl, token), [baseUrl, token]);
+export function useRoomConnection(baseUrl: string) {
+  const api = useMemo(() => new RoomApi(baseUrl), [baseUrl]);
 
   const [status, setStatus] = useState<RoomStatus | null>(null);
   const [modes, setModes] = useState<Record<string, ModeDef> | null>(null);
@@ -105,12 +103,10 @@ export function useRoomConnection(baseUrl: string, token: string) {
   const [log, setLog] = useState<LogEntry[]>([]);
   const [statusCount, setStatusCount] = useState(0);
   const [transition, setTransition] = useState<TrackedTransition | null>(null);
-  // Bumped to force a fresh connection (e.g. the same token saved again).
+  // Bumped to force a fresh connection.
   const [nonce, setNonce] = useState(0);
 
   const logId = useRef(0);
-  // Set by the connection effect: stops everything and shows the token prompt.
-  const onUnauthorizedRef = useRef<() => void>(() => {});
 
   const patchConn = useCallback((p: Partial<ConnectionState>) => setConn((c) => ({ ...c, ...p })), []);
 
@@ -144,10 +140,9 @@ export function useRoomConnection(baseUrl: string, token: string) {
 
   const clearLog = useCallback(() => setLog([]), []);
 
-  /** For action handlers: a 401 anywhere means the token is wrong. */
-  const reportError = useCallback((e: unknown) => {
-    if (e instanceof RoomApiError && e.status === 401) onUnauthorizedRef.current();
-  }, []);
+  /** For action handlers. A 401 used to bring up the room key prompt; room_service has no key (owner, 14 Oct), so
+   *  nothing is left to do here. Kept because the pages thread it through to every action. */
+  const reportError = useCallback((_e: unknown) => {}, []);
 
   const reconnect = useCallback(() => setNonce((n) => n + 1), []);
   // Set by the connection effect: re-reads modes, catalog and status through that effect, so a
@@ -155,7 +150,7 @@ export function useRoomConnection(baseUrl: string, token: string) {
   const manualRefreshRef = useRef<() => void>(() => {});
 
   useEffect(() => {
-    // A new server or token: nothing from the previous one is trustworthy.
+    // A new server: nothing from the previous one is trustworthy.
     setStatus(null);
     setModes(null);
     setCatalog(null);
@@ -164,8 +159,6 @@ export function useRoomConnection(baseUrl: string, token: string) {
     setModesError(null);
     setTransition(null);
     setStatusCount(0);
-    // No token is fine: operating the room is open on the LAN (LIVE_V1 §3). A 401 (setup edits,
-    // or a server that still requires one) brings up the token prompt.
     setConn(INITIAL_CONN);
 
     let alive = true;
@@ -255,13 +248,6 @@ export function useRoomConnection(baseUrl: string, token: string) {
       }
     };
 
-    onUnauthorizedRef.current = () => {
-      if (!alive) return;
-      stopAll();
-      setConn((c) => ({ ...c, ws: "closed", polling: false, authRequired: true, reconnectAt: null }));
-      addLog({ type: "conn", level: "error", summary: "room_service refused the token (401)" });
-    };
-
     /** Resolves to the failure, or null on success (or when a read is already running). */
     const refreshStatus = async (): Promise<RoomApiError | Error | null> => {
       if (statusInFlight) return null;
@@ -276,10 +262,6 @@ export function useRoomConnection(baseUrl: string, token: string) {
         return null;
       } catch (e) {
         if (!alive) return null;
-        if (e instanceof RoomApiError && e.status === 401) {
-          onUnauthorizedRef.current();
-          return e;
-        }
         patchConn({ lastError: explainError(e) });
         return e instanceof Error ? e : new Error(String(e));
       } finally {
@@ -608,10 +590,9 @@ export function useRoomConnection(baseUrl: string, token: string) {
       document.removeEventListener("visibilitychange", onVisibility);
       window.removeEventListener("online", wake);
       stopAll();
-      onUnauthorizedRef.current = () => {};
       manualRefreshRef.current = () => {};
     };
-  }, [api, token, nonce, addLog, patchConn, reportError]);
+  }, [api, nonce, addLog, patchConn, reportError]);
 
   /** Stream events (passed through by room_service) for the live cards; returns the unsubscribe. */
   const subscribeStream = useCallback((fn: (e: StreamEvent) => void) => {

@@ -1,7 +1,7 @@
 // The Music page's client: show_service's library, playlists and player (docs: the music SPEC, §2–§3), reached through
 // room_service's /show pass-through exactly as the Room page reaches show_service. The room's address is the Room
 // page's own (resolveRoomUrl: ?room=, then the remembered one, then same-origin /rs over HTTPS or this host's :8700).
-// No auth: a setup key is sent only when one was entered on the Room page for this server (loadToken), as RoomApi does.
+// No auth (owner, 14 Oct), as RoomApi.
 //
 //   GET    /show/api/v1/library?q=&genre=&composer=&kind=&pinned=&sort=&limit=&offset=   search, with facets
 //   GET    /show/api/v1/library/item/<id>         one piece
@@ -19,7 +19,7 @@
 //   GET    /show/api/v1/score/<id>/follow, …/page/<n>.json   follow-along: the timings, and a page's bar boxes and note heads
 //   GET    /show/api/v1/piano/recordings          the recorder; POST …/piano/record {on, piece?, section?}   Record on a score
 
-import { explainError, loadToken, RoomApiError } from "@/pages/Room/api";
+import { explainError, RoomApiError } from "@/pages/Room/api";
 import type { PianoRecordAsk, PianoRecordingsView } from "@/pages/Room/types";
 
 // ── Shapes (the spec's) ─────────────────────────────────────────────────────
@@ -268,11 +268,9 @@ function queryString(params: Record<string, string | number | boolean | null | u
 export class MusicApi {
   /** room_service's address (the Room page's). */
   readonly baseUrl: string;
-  private readonly token: string;
 
-  constructor(baseUrl: string, token: string = loadToken(baseUrl).token) {
+  constructor(baseUrl: string) {
     this.baseUrl = baseUrl.replace(/\/+$/, "");
-    this.token = token;
   }
 
   private async request<T>(
@@ -281,7 +279,7 @@ export class MusicApi {
     opts: { body?: unknown; raw?: Blob; signal?: AbortSignal; timeoutMs?: number } = {},
   ): Promise<T> {
     const { body, raw, signal, timeoutMs = REQUEST_TIMEOUT_MS } = opts;
-    const headers: Record<string, string> = this.token ? { Authorization: `Bearer ${this.token}` } : {};
+    const headers: Record<string, string> = {};
     if (raw) headers["Content-Type"] = "audio/midi";
     else if (body !== undefined) headers["Content-Type"] = "application/json";
     const ac = new AbortController();

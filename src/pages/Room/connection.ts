@@ -17,9 +17,6 @@ export interface LinkState {
 }
 
 export function linkState(conn: ConnectionState, now: number): LinkState {
-  if (conn.authRequired) {
-    return { tone: "warn", word: "Locked", sentence: "This room needs a key before you can control it from here.", pulse: false };
-  }
   const fresh = conn.lastStatusAt !== null && now - conn.lastStatusAt < STALE_MS;
   if (conn.ws === "open") return { tone: "ok", word: "Connected", sentence: "Connected, with live updates.", pulse: false };
   if (fresh && conn.polling) {
@@ -38,7 +35,7 @@ export function linkState(conn: ConnectionState, now: number): LinkState {
 
 /** True while the page has fresh status and may send commands. */
 export function isConnected(conn: ConnectionState, now: number): boolean {
-  return !conn.authRequired && conn.lastStatusAt !== null && (conn.ws === "open" || now - conn.lastStatusAt < STALE_MS);
+  return conn.lastStatusAt !== null && (conn.ws === "open" || now - conn.lastStatusAt < STALE_MS);
 }
 
 export function ago(now: number, t: number | null): string {

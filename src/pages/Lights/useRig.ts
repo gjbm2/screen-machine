@@ -228,7 +228,7 @@ export interface RoomFacts {
  *  and, when `withModes`, the modes (GET /api/v1/room/describe). Read once, and again when the page comes back into
  *  view. */
 export function useRoomFacts(roomUrl: string, withModes = false): RoomFacts {
-  const api = useMemo(() => new RoomApi(roomUrl, ""), [roomUrl]);
+  const api = useMemo(() => new RoomApi(roomUrl), [roomUrl]);
   const [facts, setFacts] = useState<RoomFacts>({ rooms: [], screenNames: {}, describe: null });
   const [tick, setTick] = useState(0);
   useEffect(() => {

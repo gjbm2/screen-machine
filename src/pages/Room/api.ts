@@ -1,5 +1,5 @@
-// room_service HTTP client (LIVE_V1 §3), plus where the page finds room_service
-// and its token.
+// room_service HTTP client (LIVE_V1 §3), plus where the page finds room_service.
+// No auth (owner, 14 Oct): nothing in the AV stack takes a key.
 
 import type {
   Catalog,
@@ -52,9 +52,6 @@ import type {
 } from "./types";
 
 export const URL_KEY = "sm_room_url";
-export const TOKEN_KEY = "sm_room_token";
-/** The room_service URL the saved token was entered for (see loadToken). */
-export const TOKEN_URL_KEY = "sm_room_token_url";
 
 // localStorage can throw (private mode, blocked storage); the page must still work.
 export function storageGet(key: string): string | null {
@@ -114,34 +111,6 @@ export function resolveRoomUrl(search: string): string {
   return n ?? defaultRoomUrl();
 }
 
-/**
- * The saved token, if it may be sent to `baseUrl`.
- *
- * ?room= comes from the address bar, so a crafted link could point the page at
- * another host. The token therefore goes only to the server it was entered for.
- * A token saved with no binding (e.g. seeded by a test) is used only for a
- * room_service on this page's own hostname. Otherwise the page asks again and
- * `foreign` says which server the saved token belongs to.
- */
-export function loadToken(baseUrl: string): { token: string; foreign: string | null } {
-  const token = storageGet(TOKEN_KEY) ?? "";
-  if (!token) return { token: "", foreign: null };
-  const boundTo = storageGet(TOKEN_URL_KEY);
-  let sameHost = false;
-  try {
-    sameHost = new URL(baseUrl).hostname === window.location.hostname;
-  } catch {
-    /* unusable URL */
-  }
-  if (boundTo ? boundTo === baseUrl : sameHost) return { token, foreign: null };
-  return { token: "", foreign: boundTo ?? "this page's own host" };
-}
-
-export function saveToken(baseUrl: string, token: string): void {
-  storageSet(TOKEN_KEY, token);
-  storageSet(TOKEN_URL_KEY, baseUrl);
-}
-
 export class RoomApiError extends Error {
   /** HTTP status, or 0 for a network failure. */
   status: number;
@@ -182,8 +151,6 @@ export function explainError(err: unknown): string {
       return "This screen can't pick by itself just now; use Change scene.";
     case "bad_state":
       return "The screen is changing over. Try again in a moment.";
-    case "unauthorized":
-      return "The room token was refused. Enter it again.";
     case "stream_unreachable":
       return `room_service can't reach stream_service${err.detail ? ` (${err.detail})` : ""}.`;
     case "network":
@@ -212,24 +179,16 @@ export interface LivePatch {
   transition?: TransitionSpec;
 }
 
-/**
- * Thin fetch wrapper. Operating the room is open on the LAN (LIVE_V1 §3, owner 13 Oct): the bearer
- * token is sent only when one has been entered, and is needed only for setup edits (a 401 asks for it).
- */
+/** Thin fetch wrapper. room_service is open (owner, 14 Oct: no auth anywhere in the AV stack). */
 export class RoomApi {
   readonly baseUrl: string;
-  private readonly token: string;
 
-  constructor(baseUrl: string, token: string) {
+  constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
-    this.token = token;
   }
 
-  /** The events socket can't send headers, so a token (if any) goes in ?token= (LIVE_V1 §3). */
   eventsUrl(): string {
-    const ws = this.baseUrl.replace(/^http/i, "ws");
-    const q = this.token ? `?token=${encodeURIComponent(this.token)}` : "";
-    return `${ws}/api/v1/events${q}`;
+    return `${this.baseUrl.replace(/^http/i, "ws")}/api/v1/events`;
   }
 
   /**
@@ -243,7 +202,7 @@ export class RoomApi {
     opts: { body?: unknown; signal?: AbortSignal; timeoutMs?: number } = {},
   ): Promise<T> {
     const { body, signal, timeoutMs = REQUEST_TIMEOUT_MS } = opts;
-    const headers: Record<string, string> = this.token ? { Authorization: `Bearer ${this.token}` } : {};
+    const headers: Record<string, string> = {};
     if (body !== undefined) headers["Content-Type"] = "application/json";
     // One controller for both the caller's abort and our timeout.
     const ac = new AbortController();
@@ -359,7 +318,7 @@ export class RoomApi {
     return this.json<{ key: string; entry: RatingEntry | null }>("POST", "/renderer/dev/rate", body);
   }
 
-  /** A thumbnail's URL (an <img> src; the route is open, so no token goes in it). */
+  /** A thumbnail's URL (an <img> src). */
   thumbUrl(path: string | null | undefined): string | null {
     return path && path.startsWith("/api/v1/thumb/") ? `${this.baseUrl}${path}` : null;
   }
@@ -633,14 +592,14 @@ export class RoomApi {
     return this.json<{ deleted: string }>("DELETE", `/show/api/v1/piano/recordings/${encodeURIComponent(id)}`);
   }
 
-  /** The take as a Standard MIDI File (an <a href>: the route is open, so no token goes in it). */
+  /** The take as a Standard MIDI File (an <a href>). */
   pianoRecordingUrl(id: string): string {
     return `${this.baseUrl}/show/api/v1/piano/recordings/${encodeURIComponent(id)}.mid`;
   }
 
   // ── The Music card: show_service through the /show pass-through (show_service/README.md S3.9). No auth. ──
 
-  /** The card's socket: a welcome with the whole card, then merge patches (no token: show_service is open). */
+  /** The card's socket: a welcome with the whole card, then merge patches. */
   showEventsUrl(): string {
     return `${this.baseUrl.replace(/^http/i, "ws")}/show/v1/events`;
   }

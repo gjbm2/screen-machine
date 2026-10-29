@@ -547,7 +547,10 @@ export function aiWords(l: ShowCard["listening"] | null | undefined, on: boolean
 export function listeningWords(card: ShowCard | null, piano: boolean | null): string {
   if (!card) return "The music side isn't answering yet";
   const heard = card.hearing?.text;
-  const hears = heard && heard !== "Listening" ? `Hears ${heard.charAt(0).toLowerCase()}${heard.slice(1)}` : null;
+  // "Mic off" is the mic on demand (no mode claims it), which the status line already says; "Hears mic off" read as
+  // the opposite of the Mic switch beside it
+  const quiet = !heard || heard === "Listening" || heard === "Mic off" || heard === "Room mic switched off";
+  const hears = quiet ? null : `Hears ${heard.charAt(0).toLowerCase()}${heard.slice(1)}`;
   return [hears, piano ? "piano connected" : null].filter(Boolean).join(" · ") || "Room mic, AI listening and what it hears";
 }
 

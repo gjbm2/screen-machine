@@ -175,14 +175,8 @@ export function MenuSheet({
   describe?: RoomDescribe | null;
   /** Names that beat a target's own label (the screens' names), by target. */
   names?: Record<string, string>;
-  /** @deprecated No keys on the AV stack (rule 5); ignored, and the Room page stops passing it. */
-  hasToken?: boolean;
-  /** @deprecated Ignored (see hasToken). */
-  foreignToken?: string | null;
   /** @deprecated The address is changed in Settings › Connection now; ignored. */
   onChangeUrl?: (url: string | null) => void;
-  /** @deprecated Ignored (see hasToken). */
-  onOpenToken?: () => void;
   onRefresh: () => void;
   log: LogEntry[];
   statusCount: number;
@@ -228,7 +222,7 @@ export function MenuSheet({
               <RefreshCw aria-hidden className="h-3.5 w-3.5" /> Refresh
             </button>
           </p>
-          {conn.lastError && link.tone !== "ok" && !conn.authRequired && <Notice tone="warn">{conn.lastError}</Notice>}
+          {conn.lastError && link.tone !== "ok" && <Notice tone="warn">{conn.lastError}</Notice>}
           <p className="flex items-center gap-2 pt-1 text-[15px]" data-testid="menu-stream">
             <Dot tone={stream ? (stream.reachable ? "ok" : "bad") : "muted"} />
             {stream

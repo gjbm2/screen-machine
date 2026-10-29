@@ -85,7 +85,7 @@ export default function LightsPage() {
   usePageTitle("Light setup · screen/machine");
   const [params, setParams] = useSearchParams();
   const api = useMemo(() => new LightsApi(), []);
-  const roomApi = useMemo(() => new RoomApi(api.roomUrl, ""), [api]);
+  const roomApi = useMemo(() => new RoomApi(api.roomUrl), [api]);
   const rig = useRig(api);
   const types = useLightTypes(api);
   const facts = useRoomFacts(api.roomUrl, true);

@@ -45,7 +45,7 @@ function set(patch: Partial<RoomLinkState>) {
 }
 
 export function roomApi(): RoomApi {
-  if (!api) api = new RoomApi(defaultRoomUrl(), "");
+  if (!api) api = new RoomApi(defaultRoomUrl());
   return api;
 }
 

@@ -32,7 +32,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { useMusicMaybe } from "@/pages/Music/context";
-import { explainError, loadToken, RoomApi, RoomApiError } from "./api";
+import { explainError, RoomApi, RoomApiError } from "./api";
 import { Spinner } from "./bits";
 import { ActionSheet } from "./overlays";
 import { clock, RecordButton, RecordingLine, scoreLink, showSocketUrl, useKeyFlash } from "./RecordButton";
@@ -98,7 +98,7 @@ function storeFor(baseUrl: string): Store {
   let s = stores.get(k);
   if (!s) {
     s = {
-      api: new RoomApi(k, loadToken(baseUrl).token),
+      api: new RoomApi(k),
       state: { view: null, at: 0, missing: false, fresh: null, draft: "", note: null, busy: null, err: null },
       listeners: new Set(),
       subs: 0,

@@ -29,7 +29,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
 import { MusicApi } from "@/pages/Music/api";
-import { explainError, loadToken, RoomApi } from "./api";
+import { explainError, RoomApi } from "./api";
 import { Spinner } from "./bits";
 import { ListenLine } from "./ListenHere";
 import {
@@ -81,7 +81,7 @@ export function shortOutputLabel(label: string): string {
 
 /** Where the piano plays: the choices, what's picked, and a pick. One per mount; each reads the room for itself. */
 function usePlayOn(baseUrl: string, addLog?: (e: NewLogEntry) => void) {
-  const room = useMemo(() => new RoomApi(baseUrl, loadToken(baseUrl).token), [baseUrl]);
+  const room = useMemo(() => new RoomApi(baseUrl), [baseUrl]);
   const music = useMemo(() => new MusicApi(baseUrl), [baseUrl]);
   const [view, setView] = useState<ShowTestView | null>(null);
   const [roomOutput, setRoomOutput] = useState<string | null>(null);

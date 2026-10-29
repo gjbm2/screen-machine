@@ -30,7 +30,7 @@ import { PageHeader, type HeaderStatus } from "@/components/nav/PageHeader";
 import { useAppPlayer } from "@/components/player/appPlayer";
 import { useRoomLink } from "@/components/room/roomLink";
 import { cn } from "@/lib/utils";
-import { loadToken, resolveRoomUrl, RoomApi, storageGet, storageSet } from "@/pages/Room/api";
+import { resolveRoomUrl, RoomApi, storageGet, storageSet } from "@/pages/Room/api";
 import { Dot } from "@/pages/Room/bits";
 import { ActionSheet } from "@/pages/Room/overlays";
 import { TestShowSection } from "@/pages/Room/TestShow";
@@ -100,7 +100,7 @@ export default function MusicPage() {
   usePageTitle("Music · screen/machine");
   const baseUrl = useMemo(() => resolveRoomUrl(window.location.search), []);
   const api = useMemo(() => new MusicApi(baseUrl), [baseUrl]);
-  const roomApi = useMemo(() => new RoomApi(baseUrl, loadToken(baseUrl).token), [baseUrl]);
+  const roomApi = useMemo(() => new RoomApi(baseUrl), [baseUrl]);
   // the app's player poll (shared with the docked player) when it's for this address, else the page's own
   const shared = useAppPlayer(baseUrl);
   const own = usePlayer(api, !shared);

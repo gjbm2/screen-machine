@@ -62,7 +62,7 @@ export default function SettingsPage() {
   usePageTitle("Settings · screen/machine");
   const [searchParams, setSearchParams] = useSearchParams();
   const [baseUrl, setBaseUrl] = useState(() => resolveRoomUrl(window.location.search));
-  const room = useRoomConnection(baseUrl, "");
+  const room = useRoomConnection(baseUrl);
   const { conn, status } = room;
   const now = useNow(1000);
   const connected = isConnected(conn, now);

@@ -422,12 +422,10 @@ def register(app: web.Application, svc: "RoomService") -> None:
 
     async def fetch_thumb(name: str) -> tuple[bytes, str] | None:
         stream = svc.stream
-        tok = stream._get_token()
-        if not tok:
-            raise _Fail(502, "stream_unreachable", "no stream_service token")
+        tok = stream._get_token()               # no auth (owner, 14 Oct): sent only if the file exists, never required
         try:
             async with stream.http.get(f"{stream.url}/dev/thumb/{name}.png",
-                                       headers={"Authorization": f"Bearer {tok}"},
+                                       headers={"Authorization": f"Bearer {tok}"} if tok else {},
                                        timeout=aiohttp.ClientTimeout(total=10.0)) as r:
                 if r.status == 404:
                     return None

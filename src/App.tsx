@@ -3,29 +3,54 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Routes, Route } from "react-router-dom";
-import DisplayPage from "./pages/DisplayPage";
-import Index from "./pages/Index";
-import Display from "./pages/Display";
-import NotFound from "./pages/NotFound";
-import SchemaEdit from './pages/SchemaEdit';
-import SchemaDynamicForm from './pages/SchemaDynamicForm';
-import Scheduler from './pages/scheduler.tsx';
-import JobsPage from './pages/Jobs';
+import { lazy, Suspense, type ComponentType } from "react";
 import { ReferenceImagesProvider } from "./contexts/ReferenceImagesContext";
 import { LoopeViewProvider } from "@/contexts/LoopeViewContext";
-import LightSense from './pages/LightSense';
-import AndroidApp from './pages/AndroidApp';
-import AdminPanel from './pages/AdminPanel';
-import RoomPage from './pages/Room';
-import LightsPage from './pages/Lights';
-import LightsControlPage from './pages/Lights/Control';
-import MusicPage from './pages/Music';
-import SettingsPage from './pages/Settings';
-import StartPage from './pages/Settings/Start';
 import { DarkMode } from './darkMode';
 import { AppPlayerProvider } from "@/components/player/appPlayer";
 import { DockedPlayer } from "@/components/player/DockedPlayer";
 import { AppNav } from "@/components/nav/AppNav";
+
+// Each page is its own chunk: the TVs' /display/<screen> no longer loads the generator, Room, Music and the rest.
+// A deploy replaces dist/, so a tab opened before it asks for chunks that are gone: reload once to pick up the new build.
+function page<P extends object>(load: () => Promise<{ default: ComponentType<P> }>) {
+  return lazy(() =>
+    load().catch((e) => {
+      if (reloadedJustNow()) throw e;
+      window.location.reload();
+      return new Promise<{ default: ComponentType<P> }>(() => {});
+    }),
+  );
+}
+
+function reloadedJustNow(): boolean {
+  try {
+    const t = Number(sessionStorage.getItem("sm_chunk_reload") ?? 0);
+    if (Date.now() - t < 30_000) return true;
+    sessionStorage.setItem("sm_chunk_reload", String(Date.now()));
+    return false;
+  } catch {
+    return true; // no storage: show the error rather than risk a reload loop
+  }
+}
+
+const DisplayPage = page(() => import("./pages/DisplayPage"));
+const Index = page(() => import("./pages/Index"));
+const Display = page(() => import("./pages/Display"));
+const NotFound = page(() => import("./pages/NotFound"));
+const SchemaEdit = page(() => import("./pages/SchemaEdit"));
+const SchemaDynamicForm = page(() => import("./pages/SchemaDynamicForm"));
+const Scheduler = page(() => import("./pages/scheduler.tsx"));
+const JobsPage = page(() => import("./pages/Jobs"));
+const LightSense = page(() => import("./pages/LightSense"));
+const AndroidApp = page(() => import("./pages/AndroidApp"));
+const AdminPanel = page(() => import("./pages/AdminPanel"));
+const RoomPage = page(() => import("./pages/Room"));
+const LightsPage = page(() => import("./pages/Lights"));
+const LightsControlPage = page(() => import("./pages/Lights/Control"));
+const MusicPage = page(() => import("./pages/Music"));
+const SettingsPage = page(() => import("./pages/Settings"));
+const StartPage = page(() => import("./pages/Settings/Start"));
 
 const queryClient = new QueryClient();
 
@@ -40,6 +65,7 @@ const App = () => (
           <AppPlayerProvider>
           {/* the app's places: a top bar on iPad and desktop, a bottom tab bar on a phone */}
           <AppNav />
+          <Suspense fallback={null}>
           <Routes>
             <Route path="/" element={<Index />} />
             <Route path="/display/:screenId" element={<DisplayPage />} />
@@ -62,6 +88,7 @@ const App = () => (
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
           </Routes>
+          </Suspense>
           {/* the music player, docked at the foot of the pages people use while music plays */}
           <DockedPlayer />
           </AppPlayerProvider>

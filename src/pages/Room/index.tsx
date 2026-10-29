@@ -27,14 +27,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { ChevronRight, KeyRound, Settings2, WifiOff } from "lucide-react";
+import { ChevronRight, Settings2, WifiOff } from "lucide-react";
 import { lightSetupUrl, rendererConsoleUrl, settingsUrl } from "@/components/nav/appNav";
 import { useAppPlayer } from "@/components/player/appPlayer";
 import { PLAYER_BUSY } from "@/pages/Music/usePlayer";
 import { Button } from "@/components/ui/button";
 import { shortNames } from "@/components/room/TodayCard";
 import { cn } from "@/lib/utils";
-import { loadToken, resolveRoomUrl, saveToken, type RoomApi } from "./api";
+import { resolveRoomUrl, type RoomApi } from "./api";
 import { useAutoRules } from "./AutoTriggers";
 import { Notice, Spinner, Unroll } from "./bits";
 import { isConnected, linkState } from "./connection";
@@ -63,7 +63,6 @@ import { FOOT_LINK, openFold, Section, setFold } from "./Section";
 import { useTopToggles } from "./TopToggles";
 import { TodayFold } from "./TodayFold";
 import { CARD_CLASS, RoomThemeStyle, TAP_BUTTON_CLASS, THEME_CLASS } from "./theme";
-import { TokenDialog } from "./TokenPrompt";
 import type { FixturesView, ModeDef, RoomStatus, SiteEffect, TrackedTransition } from "./types";
 import { usePcLoad } from "./usePcLoad";
 import { useRoomConnection } from "./useRoomConnection";
@@ -171,34 +170,13 @@ export default function RoomPage() {
   usePageTitle("Room · screen/machine");
   const [searchParams] = useSearchParams();
   const [baseUrl] = useState(() => resolveRoomUrl(window.location.search));
-  // The saved token only goes to the server it was entered for (see loadToken).
-  // URL and token always change together, in one render, so a token never reaches a server it wasn't meant for.
-  const [saved, setSaved] = useState(() => loadToken(baseUrl));
-  const token = saved.token;
-  const [tokenOpen, setTokenOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  const room = useRoomConnection(baseUrl, token);
+  const room = useRoomConnection(baseUrl);
   const { conn, status } = room;
   const now = useNow(1000);
 
   const connected = isConnected(conn, now);
   const link = linkState(conn, now);
-
-  // A 401 brings up the setup-key prompt (operating is open; the key is for setup edits).
-  useEffect(() => {
-    if (conn.authRequired) setTokenOpen(true);
-  }, [conn.authRequired]);
-
-  const { reconnect } = room;
-  const onSaveToken = useCallback(
-    (t: string) => {
-      saveToken(baseUrl, t);
-      setSaved({ token: t, foreign: null });
-      setTokenOpen(false);
-      reconnect(); // also covers saving the same token again
-    },
-    [baseUrl, reconnect],
-  );
 
   const openMenu = useCallback(() => setMenuOpen(true), []);
 
@@ -426,24 +404,7 @@ export default function RoomPage() {
         />
 
         <main className="space-y-5 pt-1">
-          {conn.authRequired && !tokenOpen && (
-            <div className={cn(CARD_CLASS, "space-y-3 p-5")}>
-              <p className="flex items-center gap-2 text-[17px] font-semibold">
-                <KeyRound className="h-5 w-5 text-amber-700" aria-hidden /> This room needs a key
-              </p>
-              <p className="text-base text-muted-foreground">Ask whoever runs the room, or enter it here.</p>
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={() => setTokenOpen(true)} className={TAP_BUTTON_CLASS}>
-                  Enter the key
-                </Button>
-                <Button variant="outline" onClick={openMenu} className={cn(TAP_BUTTON_CLASS, "bg-white")}>
-                  <Settings2 /> Settings
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {status && !connected && !conn.authRequired && (
+          {status && !connected && (
             <Notice tone="warn" className="px-4 py-3 text-base leading-snug">
               <p className="flex items-center gap-2 font-semibold">
                 <WifiOff className="h-4 w-4 shrink-0" aria-hidden /> Lost touch with the room
@@ -667,32 +628,30 @@ export default function RoomPage() {
               <NowPlayingRow api={room.api} addLog={room.addLog} />
             </>
           ) : (
-            !conn.authRequired && (
-              <div className={cn(CARD_CLASS, "space-y-3 p-6 text-center")} data-testid="room-waiting">
-                {conn.lastError ? (
-                  <>
-                    <WifiOff className="mx-auto h-8 w-8 text-stone-400" aria-hidden />
-                    <p className="text-[17px] font-semibold">Can't reach the room</p>
-                    <p className="text-base text-muted-foreground">
-                      Check you're on the house Wi-Fi. The page keeps trying by itself.
-                    </p>
-                    <div className="flex justify-center">
-                      <Button variant="outline" onClick={openMenu} className={cn(TAP_BUTTON_CLASS, "bg-white")}>
-                        <Settings2 /> Connection settings
-                      </Button>
-                    </div>
-                    <Unroll title={<span className="text-sm">Details</span>} className="mx-auto max-w-md text-left">
-                      <p className="pb-1 text-sm text-muted-foreground">{conn.lastError}</p>
-                      <p className="break-all pb-2 font-mono text-xs text-muted-foreground">{baseUrl}</p>
-                    </Unroll>
-                  </>
-                ) : (
-                  <p className="flex items-center justify-center gap-2 text-base text-muted-foreground">
-                    <Spinner /> Connecting to the room…
+            <div className={cn(CARD_CLASS, "space-y-3 p-6 text-center")} data-testid="room-waiting">
+              {conn.lastError ? (
+                <>
+                  <WifiOff className="mx-auto h-8 w-8 text-stone-400" aria-hidden />
+                  <p className="text-[17px] font-semibold">Can't reach the room</p>
+                  <p className="text-base text-muted-foreground">
+                    Check you're on the house Wi-Fi. The page keeps trying by itself.
                   </p>
-                )}
-              </div>
-            )
+                  <div className="flex justify-center">
+                    <Button variant="outline" onClick={openMenu} className={cn(TAP_BUTTON_CLASS, "bg-white")}>
+                      <Settings2 /> Connection settings
+                    </Button>
+                  </div>
+                  <Unroll title={<span className="text-sm">Details</span>} className="mx-auto max-w-md text-left">
+                    <p className="pb-1 text-sm text-muted-foreground">{conn.lastError}</p>
+                    <p className="break-all pb-2 font-mono text-xs text-muted-foreground">{baseUrl}</p>
+                  </Unroll>
+                </>
+              ) : (
+                <p className="flex items-center justify-center gap-2 text-base text-muted-foreground">
+                  <Spinner /> Connecting to the room…
+                </p>
+              )}
+            </div>
           )}
         </main>
         <ListenHere api={room.api} />
@@ -736,14 +695,6 @@ export default function RoomPage() {
         )}
       />
 
-      <TokenDialog
-        open={tokenOpen}
-        onOpenChange={setTokenOpen}
-        baseUrl={baseUrl}
-        required={conn.authRequired}
-        foreign={saved.foreign}
-        onSave={onSaveToken}
-      />
     </div>
   );
 }

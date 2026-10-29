@@ -18,7 +18,7 @@ import { Maximize2, Volume2, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDocked } from "@/components/player/dockState";
 import { MusicApi, type PlayerView } from "@/pages/Music/api";
-import { loadToken, RoomApi } from "./api";
+import { RoomApi } from "./api";
 import { Spinner } from "./bits";
 import { useDeviceLag } from "./deviceLag";
 import {
@@ -92,7 +92,7 @@ export interface WhatsOn {
  * /show/api/v1/card's hearing). Read every 5 s while `enabled` and the page is visible; null: nothing to say.
  */
 export function useWhatsOn(baseUrl: string, enabled: boolean): WhatsOn | null {
-  const api = useMemo(() => new RoomApi(baseUrl, loadToken(baseUrl).token), [baseUrl]);
+  const api = useMemo(() => new RoomApi(baseUrl), [baseUrl]);
   const [test, setTest] = useState<ShowTestView | null>(null);
   const [pianoLive, setPianoLive] = useState(false);
   const [hearing, setHearing] = useState<string | null>(null);

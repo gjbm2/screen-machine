@@ -10,7 +10,7 @@ import { AppMenu } from "@/components/nav/AppMenu";
 import { lightSetupUrl } from "@/components/nav/appNav";
 import { PageHeader, type HeaderStatus } from "@/components/nav/PageHeader";
 import { cn } from "@/lib/utils";
-import { loadToken, resolveRoomUrl } from "@/pages/Room/api";
+import { resolveRoomUrl } from "@/pages/Room/api";
 import { Spinner } from "@/pages/Room/bits";
 import { isConnected } from "@/pages/Room/connection";
 import { LightsControls } from "@/pages/Room/LightsControls";
@@ -39,8 +39,7 @@ export default function LightsControlPage() {
     };
   }, []);
   const [baseUrl] = useState(() => resolveRoomUrl(window.location.search));
-  const [token] = useState(() => loadToken(baseUrl).token);
-  const room = useRoomConnection(baseUrl, token);
+  const room = useRoomConnection(baseUrl);
   const { conn, status } = room;
   const now = useNow(1000);
   const connected = isConnected(conn, now);

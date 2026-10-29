@@ -60,7 +60,8 @@ file_handler = RotatingFileHandler(
     maxBytes=10*1024*1024,  # 10MB
     backupCount=5
 )
-file_handler.setLevel(logging.DEBUG)
+# INFO by default: at DEBUG the scheduler's per-tick chatter filled 10 MB every ~7 h (SM_LOG_LEVEL=DEBUG to dig)
+file_handler.setLevel(getattr(logging, os.environ.get("SM_LOG_LEVEL", "INFO").upper(), logging.INFO))
 
 # Create formatter
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')

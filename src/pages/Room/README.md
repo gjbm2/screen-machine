@@ -6,8 +6,7 @@ house Wi-Fi, by the owner and by guests. It talks only to **room_service**
 
 ## What's on the page
 
-Operating the room is open to anyone on the house Wi-Fi: the page connects and works
-with no key. Only setup edits need the admin token (see **Connection** below).
+The room is open to anyone on the house Wi-Fi: no key, no token (owner, 14 Oct: no auth anywhere in the AV stack).
 
 ### The main screen
 
@@ -15,7 +14,7 @@ It answers "what's the room doing, and change it", in plain words, with no phase
 URLs, JSON or ids:
 
 1. **Header**: "Room", a status pill with a dot and one word (Connected, Reconnecting,
-   Connecting, Offline, Locked), and the menu button. Tapping the pill opens the menu too,
+   Connecting, Offline), and the menu button. Tapping the pill opens the menu too,
    whose first section says the same thing in a full sentence.
 2. **Mode**: one big tile per mode from `GET /modes`, in the file's order, with its `label`, its
    `description` if it has one, and one line saying what it changes in the room, in words from
@@ -221,14 +220,9 @@ Use it from the LAN address. room_service is not exposed through ngrok.
 |---|---|
 | One screen | `?screen=<id>` (the TVs' QR codes: `http://192.168.1.205:8080/room?screen=<id>`, built by `get_qr` in `routes/utils.py`). That screen's card starts unrolled and highlighted (a teal ring), and the page scrolls to it once the modes above it have loaded. The header stays the page's own; the card itself has **In the generator** (`/?publish=<id>`) and **Schedule** (`/scheduler?destination=<id>`) under its name, and **Screen settings ›** and **TV page ›** at the foot of its More. An id the room doesn't have gets a short note above the screen cards. |
 | room_service URL | `?room=<url>` (remembered), else `localStorage.sm_room_url`, else `${location.protocol}//${location.hostname}:8700`. Change it in the menu under **Room service address**. **Use default** clears the stored URL. |
-| Token | None needed to operate the room: it is open on the LAN (LIVE_V1 §3), so the page connects and works without one. The admin token ("setup key" on the page) is only for setup edits. It is entered from the menu (**Setup access**), kept in `localStorage.sm_room_token` like the admin panel, and sent only once entered. If room_service ever answers 401, the page stops and brings up the key dialog ("This room needs a key… Ask whoever runs the room"); if that is dismissed, a "This room needs a key" card offers it again. The dialog's **Where's the key?** unroll names the file (`~/.config/screen-machine/room_service.token` on the workstation) and the server it is for. |
-| Token binding | `?room=` comes from the address bar, so a crafted link could aim the page at another host. The token is therefore saved together with the URL it was entered for (`localStorage.sm_room_token_url`) and sent only there. A token with no binding (e.g. seeded by a test harness) is used only for a room_service on the page's own hostname. Anything else gets the prompt, with a note saying which server the saved token belongs to. |
-| Events | `WS /api/v1/events` (with `?token=…` only when a key is saved). Reconnects with full-jitter backoff `random(0, min(10 s, 0.5 s·2^n))`; `n` resets once a message arrives. The page never sends anything on this socket. |
+| Events | `WS /api/v1/events`. Reconnects with full-jitter backoff `random(0, min(10 s, 0.5 s·2^n))`; `n` resets once a message arrives. The page never sends anything on this socket. |
 | Fallback | While the socket is down, `GET /api/v1/status` every 2 s. Every request times out after 10 s (snapshots after 30 s), so polls can't pile up. While it is up, a status read every 15 s acts as a liveness check (§3 has no heartbeat on this socket). If that read fails and the socket has also been silent for 15 s, the socket is closed and polling takes over. A socket that is still delivering is kept, because HTTP can fail on its own, for example on a CORS refusal. |
-| Header word | Connected (events socket open), Reconnecting (socket down, polling still fresh), Connecting, Offline, Locked (401). Tapping it opens the menu, which says it in a full sentence, with the last update, the next retry and the version. When there has been no fresh status for 6 s a "Lost touch with the room" banner says the page shows the last known state; the mode tiles still take taps (they keep trying). |
-
-Note: the browser logs a failed socket URL, including `?token=`, in the devtools
-console. That comes with the contract's `?token=` design; the page itself never logs the token.
+| Header word | Connected (events socket open), Reconnecting (socket down, polling still fresh), Connecting, Offline. Tapping it opens the menu, which says it in a full sentence, with the last update, the next retry and the version. When there has been no fresh status for 6 s a "Lost touch with the room" banner says the page shows the last known state; the mode tiles still take taps (they keep trying). |
 
 ## What it sends
 
@@ -245,7 +239,7 @@ console. That comes with the contract's `?token=` design; the page itself never 
 | Scene picking, energy, feel, colours | `PATCH /api/v1/screens/{id}/look` with `{auto: {enabled}}`, `{auto: {pool \| dwell_s \| snap \| fx}}`, `{direction: {…only the changed keys, source: "panel"}}` (room_service merges it), `{palette}` (`null` = the scene's own) or `{palette_transition_s}`. Shown at once, then replaced by the reply. **Next** is `POST …/cue {to: "auto"}`. Feel sliders send on release. |
 | Effects | Yours: read-change-write on `GET`/`PUT /api/v1/screens/{id}/fx`: the GET's entries are echoed back (same `id`, preset, params, bindings, level, bypass) with one added, removed or changed, `fade_s` kept (or the new one from **Fades**), `if_rev` set; a 409 `fx_conflict` is retried once. The strength slider sends `master: {amount}` at most every 200 ms with one request in flight. The room's picks (`roomFx.ts`): **Next effect** `POST /renderer/api/sessions/{sid}/fx/next`; **Swap it** the same with `{replace: <slot>}`; **Change effect** `{effect, only: true}` and **Take it off** / **No effects** `POST …/fx/clear {effect?}` (screen-machine-04, 17 Oct). Whether a renderer has those is asked once per session (`fx/clear {probe: true}`: 400 = yes, 404 = no); without them: Up next add + play, and a PUT per screen. |
 | Scope | Once the library's features list `look_scope`, a room's live card sends `scope: "room"` (look PATCH once per renderer room, and fx/next, fx/clear), which gives back to the room any part a screen had set for itself; a room's screen card sends `scope: "screen"` (its colours and feel; Swap it / Take it off on the room's pick change that screen only). Without the feature no scope is sent and the card's look controls say "Both screens". If room_service turns `scope` down (it predates it), the room's card resends without it and a screen card says so and stops sending it (never falls back to changing both). The session's `own` (`GET /renderer/api/sessions/{sid}`) says what a screen set for itself: "This screen's own" on its colours, "North screen keeps its own colours and feel" on the room's card. |
-| Snapshots | `GET /api/v1/screens/{id}/snapshots/{anchor,target}.png` (with the bearer token when a key is saved), shown through blob URLs. Only the kind a cut produced is re-fetched: the anchor after an entry's `snapshot` phase, the target after an exit's. If polling missed the `snapshot` phase, arriving at `live` or `idle` triggers the fetch instead. When status carries `screens.<id>.snapshots.{anchor,target}` (room_service adds it), a PNG marked absent isn't fetched, so there are no 404s, and it is fetched once it appears. A body that won't decode shows "Couldn't load". Click a thumbnail for full size. |
+| Snapshots | `GET /api/v1/screens/{id}/snapshots/{anchor,target}.png`, shown through blob URLs. Only the kind a cut produced is re-fetched: the anchor after an entry's `snapshot` phase, the target after an exit's. If polling missed the `snapshot` phase, arriving at `live` or `idle` triggers the fetch instead. When status carries `screens.<id>.snapshots.{anchor,target}` (room_service adds it), a PNG marked absent isn't fetched, so there are no 404s, and it is fetched once it appears. A body that won't decode shows "Couldn't load". Click a thumbnail for full size. |
 
 **Scene spec.** A preset with no changes goes as its bare name (`"fractal-zoom"`).
 Changed parameters go as `{"preset": name, "params": {only the changed keys}}`.
@@ -309,10 +303,10 @@ compact row each (label and value beside the control, no per-field reset; that i
 
 | File | Role |
 |---|---|
-| `index.tsx` | Page layout (the modes, then one section per room from `status.rooms`, then "Other"), URL and token wiring, connection banners |
+| `index.tsx` | Page layout (the modes, then one section per room from `status.rooms`, then "Other"), URL wiring, connection banners |
 | `Fixtures.tsx`, `useFixtures.ts` | A room's lights (`LightsSection`, filtered with `only`), and the one fixtures poll the page shares |
 | `useRoomConnection.ts` | Events socket, backoff, polling fallback, status and event reducer, log ring (200 lines; in a run of `screen.mask` lines each screen has one line with a count, even when several screens push interleaved; `status` pushes are counted rather than listed) |
-| `api.ts` | `RoomApi` fetch client, URL and token storage, error explanations |
+| `api.ts` | `RoomApi` fetch client, URL storage, error explanations |
 | `types.ts` | LIVE_V1 §1.1 and §3 types (tolerant of added fields) |
 | `catalog.ts` | Picker choices, schema defaults, spec building |
 | `ModeSwitcher.tsx` | Mode tiles, their ⋯ menu (duplicate, move, delete with undo), the progress line and its step list (also used by the menu) |
@@ -330,13 +324,13 @@ compact row each (label and value beside the control, no per-field reset; that i
 | `Snapshots.tsx` | Anchor and target thumbnails, full-size dialog |
 | `Header.tsx`, `MenuSheet.tsx` | The header, and the menu sheet (connection, address, stream service, last change, what each mode does, activity log) |
 | `EventLog.tsx` | Filterable log: type chips, level, text, pause |
-| `TokenPrompt.tsx` | The setup-key (admin token) dialog |
 | `connection.ts`, `words.ts` | The connection's word and sentence; plain-language wording for screens, steps (and failed steps) without describe, and modes |
 | `theme.tsx`, `tones.ts`, `overlays.tsx`, `bits.tsx` | The light theme, status colours, the side sheet and modal, small shared pieces |
 
 ## Tests
 
-These run outside the repo. The scratch harness used during the build was:
+These run outside the repo. The scratch harness used during the build was (the key prompt, its "Locked" card and the
+401 checks below went on 29 Oct, when the page stopped taking a key):
 
 - `mock_room.py`: an aiohttp mock of LIVE_V1 §3 on :3013. It has a canned catalog, three modes (one with a refused screen and an adapterless subsystem), the phase walk for entry and exit, PNG snapshots, a drifting mask, ticking kiosk stats, and test hooks `/_mock/requests`, `/_mock/state` and `/_mock/ws_outage?s=N`.
 - `test_room.py`: Python Playwright against Chrome for Testing at 1440×900 and 390×844. It covers the token prompt, a mode switch with live step statuses, live parameter edits (slider, number, select, checkbox, colour, and a typed number sent only on Enter), reset to preset, switching scene, a snapshot dialog, back to art, go live from the form, 409 `live_disabled`, a failed step and an unconfirmed step, a failed handshake with `last_error`, log filters, a socket outage leading to polling and then reconnect, a 401 re-prompt, a crafted `?room=` link that must not receive the token, the phone layout with no horizontal overflow, and a check that the page sends zero frames on the events socket.
@@ -389,6 +383,6 @@ npx eslint src/pages/Room src/App.tsx
 
 The app's home page (`src/components/room/`, HeaderSection, ImageDisplay, BucketGridView) imports from this folder.
 Keep these exports and signatures stable, or update the home page with them:
-`api.ts` (`defaultRoomUrl`, `RoomApi(base, "")`, `explainError`, `storageGet`, `storageSet`), `bits` (`Spinner`),
+`api.ts` (`defaultRoomUrl`, `RoomApi(base)`, `explainError`, `storageGet`, `storageSet`), `bits` (`Spinner`),
 `LivePanel` (`LookControls`, `SceneButton`, `ScenePicker`), `liveLib` (`sceneInfo`), `theme` (`RoomThemeStyle`,
 `THEME_CLASS`), `useLiveLook`, and `types`.
