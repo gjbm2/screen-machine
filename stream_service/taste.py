@@ -9,6 +9,10 @@ people make anyway on the Room page (screen-machine-63, 29 Oct).  Three signals,
   like  +1    a person cued a named scene by hand
   keep  +0.5  a scene the director picked stayed on screen while the room held the look (Keep this look) for
               KEEP_S in all; once per showing
+  good  +1.5  a person pressed "This is good" on the Room page (owner, 29 Oct: "right now, this is good", so it
+              comes up again): the scene's plug-in and its preset (scene_key), each effect on the bus (fx_key) and
+              each scene + effect pair (pair_key); the FX director multiplies an effect's weight by its own and its
+              pair's with the scene on screen (fx_multiplier, at most FX_MULT_MAX)
 
 Each lands on the scene's plug-in (its ``source``, the same key as the stars) twice: in the context it happened in
 (the effective direction's genre word, else "-") and in the plug-in's context-free total.  Every score halves every
@@ -45,19 +49,34 @@ STATE_DIR = pathlib.Path(os.environ.get("STREAM_STATE_DIR") or "~/.local/state/s
 FILE_NAME = "taste.json"
 
 # Starting points (screen-machine-63, 29 Oct): to be tuned from what the room does with them.
-SIGNALS = {"skip": -1.0, "like": 1.0, "keep": 0.5}
+SIGNALS = {"skip": -1.0, "like": 1.0, "keep": 0.5, "good": 1.5}
 SKIP_S = 60.0              # Next on a scene the director picked, sooner than this: a skip (later: it had its turn)
 KEEP_S = 120.0             # held (Keep this look) this long in all on one showing: a keep
 HALF_LIFE_DAYS = 14.0
 K = 0.35                   # exp(K * score): one skip in its own context x0.59 (with the total's half), one like x1.69
 TOTAL_SHARE = 0.5          # how much the context-free total adds to a context's own score
 MULT_MIN, MULT_MAX = 0.4, 2.5
+FX_MULT_MAX = 4.0          # an effect's own taste x its pair's with the scene on screen, at most this
 DEDUPE_S = 10.0            # the same signal for the same plug-in this soon again: one press on several screens
 RECENT_N = 30              # the last signals kept for GET /dev/taste
 PRUNE_BELOW = 0.01         # a score decayed below this is forgotten when the file is written
 NO_CONTEXT = "-"
 
 HALF_LIFE_S = HALF_LIFE_DAYS * 86400.0
+
+
+def scene_key(preset: str) -> str:
+    """The store's key for a scene preset (beside its plug-in's, which is the plug-in's name)."""
+    return f"scene:{preset}"
+
+
+def fx_key(preset: str) -> str:
+    return f"fx:{preset}"
+
+
+def pair_key(scene: str, fx: str) -> str:
+    """A scene preset and an effect preset liked together."""
+    return f"pair:{scene}|{fx}"
 
 
 def context_of(direction: Optional[dict]) -> str:

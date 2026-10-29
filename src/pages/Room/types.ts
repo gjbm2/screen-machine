@@ -501,6 +501,8 @@ export interface LibraryEffect {
   effect: string;
   stage?: string | null;
   tags?: { family?: string; moods?: string[] };
+  /** What it plays to: "piano" (the MIDI notes), "music" (the room's sound). */
+  hears?: string[];
   basic?: string[];
   thumb?: string | null;
 }
@@ -530,7 +532,7 @@ export interface Library {
   stages?: string[];
   facets?: {
     scenes?: { family?: Facet[]; moods?: Facet[] };
-    effects?: { stage?: Facet[] };
+    effects?: { stage?: Facet[]; hears?: Facet[] };
   };
   vocab?: { moods?: string[]; genre?: string[]; transition_style?: string[]; palette_family?: string[] };
   direction?: { defaults?: Direction };

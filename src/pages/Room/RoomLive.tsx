@@ -16,7 +16,7 @@ import type { RoomApi } from "./api";
 import { Notice, Spinner, Unroll } from "./bits";
 import { EffectChips, EffectPicker, EffectSheet, LookSettings, PickingRows, SceneButton, ScenePicker } from "./LivePanel";
 import { cap, droppedWords, fxChips, fxLabel, ownWords, sceneInfo, sceneRatingKey, type LookScope, type SceneInfo } from "./liveLib";
-import { RatingRow } from "./Rating";
+import { RatingRow, ThisIsGood } from "./Rating";
 import { effectSlots, type LiveMember } from "./roomFx";
 import { CARD_CLASS } from "./theme";
 import type { Library } from "./types";
@@ -228,6 +228,12 @@ function RoomLiveCard({
           {scenesNow.size <= 1 && (
             <RatingRow api={api} ratingKey={sceneRatingKey(lib, look.current_scene)} what="scene" className="-mt-1" testId={`roomrate-${room.id}`} />
           )}
+          <ThisIsGood
+            api={api}
+            session={rl.lead?.session}
+            effectNames={chips.filter((c) => c.kind !== "scene").map((c) => c.label)}
+            testId={`roomgood-${room.id}`}
+          />
 
           <div className="space-y-1.5 border-t border-stone-200/80 pt-1.5">
             <PickingRows

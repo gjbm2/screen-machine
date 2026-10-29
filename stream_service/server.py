@@ -21,7 +21,7 @@ from typing import Any, Optional, Sequence
 
 from aiohttp import web
 
-from . import __version__, binding, mappings as mappings_mod, palettes
+from . import __version__, binding, fx_interplay, mappings as mappings_mod, palettes
 from .bodies import parse_body
 from .director import MUSIC_WORD_LABELS, MUSIC_WORD_MODES
 from .events import EventHub
@@ -384,6 +384,13 @@ def _catalog_body(app: web.Application, slow: list) -> bytes:
     out = app[REGISTRY].catalog()
     out["profiles"] = {name: p.describe() for name, p in PROFILES.items()}
     out["presets"] = with_owner_sets(presets.catalog(), app[RATINGS].all())
+    # what each effect draws from the sound ("notes": the piano's MIDI, "fft" / "scope": the room's music), as the FX
+    # director reads it (fx_interplay.py): the Room page's "Plays to" filter (owner, 29 Oct)
+    ip = fx_interplay.shared(presets.dir)
+    for e in out["effects"]:
+        d = ip.draws(e.get("name"))
+        if d:
+            e["draws"] = list(d)
     out["scene_tags"] = scene_tag_index(out["presets"])
     # additive (LIVE_V1 1.1): feature discovery, vocabulary, palettes, bindable signals, tag problems
     out["api"] = {"contract": "LIVE_V1", "rev": "1.1", "features": list(FEATURES)}
@@ -657,6 +664,11 @@ async def fx_next(request: web.Request) -> web.Response:
     return web.json_response(await s.fx_next(body))
 
 
+async def good(request: web.Request) -> web.Response:
+    """POST /api/sessions/{sid}/good: "This is good" (taste.py): what is on screen now comes up more often."""
+    return web.json_response(_session(request).good())
+
+
 async def fx_clear(request: web.Request) -> web.Response:
     """POST /api/sessions/{sid}/fx/clear: take effects off the room's screens (all, or {"effect": preset | slot})."""
     s = _session(request)
@@ -865,6 +877,7 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
     r.add_put("/api/sessions/{sid}/fx", put_fx)
     r.add_post("/api/sessions/{sid}/fx/next", fx_next)
     r.add_post("/api/sessions/{sid}/fx/clear", fx_clear)
+    r.add_post("/api/sessions/{sid}/good", good)
     r.add_get("/api/sessions/{sid}/upnext", upnext_get)
     r.add_get("/api/sessions/{sid}/hud", hud_get)
     r.add_post("/api/sessions/{sid}/upnext", upnext_post)

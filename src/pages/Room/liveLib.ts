@@ -212,7 +212,10 @@ export function fxFixed(density: number | undefined): boolean {
 }
 
 /** The effect presets as picker tiles, with one chip per kind of effect (warp, trails, colour…). */
-export function useEffectItems(lib: Library | null, api: RoomApi): { items: PickItem[]; chips: PickChip[] } {
+const HEARS_WORDS: Record<string, string> = { piano: "The piano", music: "The music" };
+
+/** The effects for the pickers, filtered by what they play to (owner, 29 Oct: the MIDI-sensitive ones) and by kind. */
+export function useEffectItems(lib: Library | null, api: RoomApi): { items: PickItem[]; chips: PickChip[]; facets: PickFacet[] } {
   return useMemo(
     () => ({
       items: (lib?.effects ?? []).map((e) => ({
@@ -223,9 +226,16 @@ export function useEffectItems(lib: Library | null, api: RoomApi): { items: Pick
           .join(" · "),
         thumb: api.thumbUrl(e.thumb),
         tags: [e.stage ?? ""],
-        search: [e.label, e.name, e.effect, e.stage, e.tags?.family, ...(e.tags?.moods ?? [])].join(" ").toLowerCase(),
+        facets: { hears: e.hears ?? [], stage: e.stage ? [e.stage] : [] },
+        search: [e.label, e.name, e.effect, e.stage, e.tags?.family, ...(e.tags?.moods ?? []), ...(e.hears?.includes("piano") ? ["piano", "midi"] : [])]
+          .join(" ")
+          .toLowerCase(),
       })),
       chips: (lib?.facets?.effects?.stage ?? []).map((f) => ({ value: f.value, label: STAGE_WORDS[f.value] ?? cap(f.value) })),
+      facets: [
+        { key: "hears", label: "Plays to", values: (lib?.facets?.effects?.hears ?? []).map((f) => ({ value: f.value, label: HEARS_WORDS[f.value] ?? cap(f.value) })) },
+        { key: "stage", label: "Kind", values: (lib?.facets?.effects?.stage ?? []).map((f) => ({ value: f.value, label: STAGE_WORDS[f.value] ?? cap(f.value) })) },
+      ].filter((g) => g.values.length > 0),
     }),
     [lib, api],
   );

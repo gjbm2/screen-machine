@@ -123,7 +123,7 @@ export function UpNext({
   const [note, setNote] = useState<string | null>(null);
   const [pick, setPick] = useState<PickFor>(null);
   const { items: sceneItems, chips: sceneChips, tags: sceneTags, facets: sceneFacets } = useSceneItems(lib, api);
-  const { items: fxItems, chips: fxChips } = useEffectItems(lib, api);
+  const { items: fxItems, chips: fxChips, facets: fxFacets } = useEffectItems(lib, api);
 
   const read = un.read;
   const timed = !!read && [...read.plan.scenes, ...read.plan.effects].some((e) => e.eta_s !== null && e.eta_s !== undefined);
@@ -447,7 +447,7 @@ export function UpNext({
         description={pickWords}
         items={pickedItems}
         chips={pick?.kind === "effect" ? fxChips : sceneChips}
-        facets={pick?.kind === "effect" ? undefined : sceneFacets}
+        facets={pick?.kind === "effect" ? fxFacets : sceneFacets}
         tags={pick?.kind === "effect" ? undefined : sceneTags}
         selected={pickSelected}
         onPick={(it) => onPick(it.key, it.label)}

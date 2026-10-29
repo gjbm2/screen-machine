@@ -43,7 +43,7 @@ def test_store_records_decays_dedupes_and_persists(tmp_path):
     t.record("like", "fractal", "-", now=t0 + 20)
     t.record("keep", "fractal", "-", now=t0 + 40)
     assert t.multiplier("fractal", "-", t0 + 40) == pytest.approx(math.exp(0.35 * 1.5 * 1.5))
-    assert t.counts == {"skip": 1, "like": 1, "keep": 1}
+    assert t.counts == {"skip": 1, "like": 1, "keep": 1, "good": 0}
     v = t.view(t0 + 40)
     assert v["plugins"]["polyhedra"]["ctx"] == {"disco": -1.0} and v["recent"][0]["signal"] == "keep"
     t.save(now=t0 + 40)
@@ -108,7 +108,7 @@ async def test_skip_like_and_keep_from_the_room(client):  # noqa: F811 (the fixt
     s._taste_tick(now + 200)
     assert mgr.taste.counts["keep"] == 1
     st = await (await client.get(f"/api/sessions/{sid}")).json()
-    assert st["auto"]["taste"]["counts"] == {"skip": 1, "like": 1, "keep": 1}
+    assert st["auto"]["taste"]["counts"] == {"skip": 1, "like": 1, "keep": 1, "good": 0}
     v = await (await client.get("/dev/taste")).json()
     assert v["counts"]["keep"] == 1 and v["recent"][0]["signal"] == "keep"
 

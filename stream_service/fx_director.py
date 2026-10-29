@@ -115,6 +115,7 @@ class FxDirector:
         self.last: Optional[dict] = None
         self.vet: Optional[Callable[[str, Optional[str]], bool]] = None   # (kind, plug-in) -> auto may add it
         self.rate: Optional[Callable[[str, Optional[str]], float]] = None  # (kind, plug-in) -> owner-rating weight
+        self.taste: Optional[Callable[[str], float]] = None    # preset -> the room's "This is good" with this scene
         self.clock: Optional[Callable[[float], Any]] = None   # now -> (beat s, beats per bar) while sure, else None
         self.grid: Optional[tuple[float, int]] = None         # the clock at the last tick (arm)
         self.event: Optional[str] = None                      # the room.event the pending move answers
@@ -317,6 +318,14 @@ class FxDirector:
         except Exception:
             return 1.0
 
+    def _tasted(self, preset: str) -> float:
+        if self.taste is None:
+            return 1.0
+        try:
+            return float(self.taste(preset))
+        except Exception:
+            return 1.0
+
     def _vetted(self, plugin: Optional[str]) -> bool:
         try:
             return bool(self.vet("effect", plugin))
@@ -370,7 +379,7 @@ class FxDirector:
         ctx = self._ctx(stack, freed)
         fits = [self.fit(n, presets, ctx=ctx) for n in names]
         w = [max(1e-6, self.weight(presets[n].get("tags") or {}) ** prior * f.mult
-                 * self._rated(presets[n].get("effect"))) for n, f in zip(names, fits)]
+                 * self._rated(presets[n].get("effect")) * self._tasted(n)) for n, f in zip(names, fits)]
         w = favoured(w, [presets[n].get("tags") or {} for n in names], self.fxd.get("favour"))
         w = [x * (NOVELTY_WEIGHT if n in recent else 1.0) for n, x in zip(names, w)]
         i = names.index(self.rng.choices(names, weights=w)[0])

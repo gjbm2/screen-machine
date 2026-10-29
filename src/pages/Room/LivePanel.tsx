@@ -662,7 +662,7 @@ export function EffectPicker({
   onTopHint?: string;
   testId?: string;
 }) {
-  const { items, chips } = useEffectItems(lib, api);
+  const { items, chips, facets } = useEffectItems(lib, api);
   const [onTop, setOnTop] = useState(() => storageGet(FX_ON_TOP_KEY) === "1");
   const footer =
     mode === "change" ? (
@@ -689,6 +689,7 @@ export function EffectPicker({
       description={description}
       items={items}
       chips={chips}
+      facets={facets}
       selected={selected}
       lead={
         mode === "change" && onNone

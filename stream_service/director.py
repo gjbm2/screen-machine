@@ -35,7 +35,7 @@ director works with whatever it gets and does its best) steers by tags and timin
   * ``scene_avoid`` {tags, factor}: those scenes' weights x factor (soft: never removed);
   * ``dwell_s`` [min, max]: the dwell window when the auto block sets none (source "show"), instead of change_rate's.
 A pick also multiplies each scene by the room's taste for its plug-in (taste.py: Next, a scene cued by hand, Keep
-this look), beside the owner's stars.
+this look, This is good) and for the preset itself (This is good), beside the owner's stars.
 """
 from __future__ import annotations
 
@@ -48,6 +48,7 @@ from typing import Any, Callable, Optional
 from .inputs import FOLLOW_ATTRS, Snapshot
 from .plugins.base import STAGES, ParamError
 from .tags import matches_filter, scene_weight, tag_matches, tag_words, transition_weight
+from .taste import scene_key
 
 FX_DIRECTION_DEFAULTS: dict[str, Any] = {"density": 0.5, "rate": 0.5, "stages": None, "moods": None,
                                          "follow": None,     # follow: how much room.events move the bus (fx_director)
@@ -691,6 +692,7 @@ class Director:
 
         got = weighted_pick(names, lambda n: scene_weight(scenes[n].get("tags") or {}, self.direction) ** STYLE_POWER
                             * self._rated("source", scenes[n].get("source")) * tasted(scenes[n].get("source"))
+                            * tasted(scene_key(n))
                             * self._heard(scenes[n].get("source")), self.rng_scene, avoid, MIN_ROTATION,
                             adjust if favour or shun else None)
         if got is None:

@@ -423,3 +423,26 @@ async def test_a_swap_of_the_first_of_two_effects_keeps_both_slots_right(client)
     await s.fx.auto_move(FxMove("swap", c, first, "t"), 0.5)
     stack = [(st.spec.preset, st.id) for st in s.fx.stack]
     assert [p for p, _ in stack] == [b, c] and len({i for _, i in stack}) == 2
+
+
+async def test_this_is_good_favours_the_scene_its_effects_and_the_pair(client):
+    """"This is good" (owner, 29 Oct): the scene (plug-in and preset), each effect on the bus and the scene + effect
+    pair come up more often; nothing changes on screen."""
+    from stream_service import taste as T
+    sid, s, eng = await live(client)
+    r = await put(client, sid, stack=["hue-drift-slow"])
+    assert r.status == 200, await r.text()
+    n_cmds, scene = len(eng.cmds), s.current_name
+    r = await client.post(f"/api/sessions/{sid}/good", headers=AUTH)
+    assert r.status == 200, await r.text()
+    body = await r.json()
+    assert body["scene"] == scene and body["effects"] == ["hue-drift-slow"]
+    assert len(eng.cmds) == n_cmds                                       # nothing on screen changed
+    mgr, d = s.mgr, s.direction_effective
+    assert mgr.taste.counts["good"] == 4                                 # plug-in, preset, effect, pair
+    assert mgr.taste_weight(T.scene_key(scene), d) > 1.5 and mgr.taste_weight(s.scene_spec.source, d) > 1.5
+    with_pair = mgr.fx_taste_weight("hue-drift-slow", scene, d)
+    assert 1.0 < mgr.fx_taste_weight("hue-drift-slow", "another-scene", d) < with_pair <= T.FX_MULT_MAX
+    assert s.fx_director._tasted("hue-drift-slow") == with_pair and s.fx_director._tasted("shake") == 1.0
+    r = await client.post(f"/api/sessions/{sid}/good", headers=AUTH)       # again at once: one press
+    assert r.status == 200 and mgr.taste.counts["good"] == 4

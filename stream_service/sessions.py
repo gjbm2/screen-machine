@@ -60,10 +60,10 @@ from .bodies import PngData
 from .director import AUTO_DEFAULTS, AUTO_FX_DEFAULTS, DIRECTION_DEFAULTS, FX_DIRECTION_DEFAULTS, Director, \
     steer, validate_auto, validate_direction, weighted_pick, why_extra
 from .tags import scene_weight, tag_words
-from .taste import KEEP_S, SKIP_S, context_of
+from .taste import FX_MULT_MAX, KEEP_S, SKIP_S, context_of, fx_key, pair_key, scene_key
 from .effects import MAX_BUS_SLOTS, EffectChain, EffectSlot
 from .fx_director import FX_EVENT_P, FxDirector, FxMove
-from .fx_state import SessionFx
+from .fx_state import GESTURE, SessionFx
 from .gpu import out_of_memory
 from .guard import trip_budget_ms
 from .inputs import BEAT_FOLLOW, BIND_SIGNALS, Sampler, ShowInputs, default_fixture, load_photon
@@ -336,6 +336,8 @@ class Session(EngineListener):
         self.director.listens = self._source_listens      # a notes scene with no MIDI: nearly never picked
         self.director.notes_age = self._notes_age
         self.director.taste = getattr(self.mgr, "taste_weight", None)   # the room's Next / by-hand / Keep (taste.py)
+        self.fx_director.taste = lambda preset: self.mgr.fx_taste_weight(preset, self.current_name,
+                                                                         self.direction_effective)
         self._shown: Optional[dict] = None          # the scene on screen, for taste.py: {scene, plugin, cause, t, ...}
         self._variant_chain: Optional[dict] = None  # {plugin, songs, track}: songs running on one plug-in
         self.fx_director.clock = self._fx_clock     # FX cadence in phrases, fades in beats, while the clock is sure
@@ -1230,6 +1232,25 @@ class Session(EngineListener):
         if sh["held_s"] >= KEEP_S:
             sh["kept"] = True
             self.mgr.taste_signal("keep", sh["plugin"], self.direction_effective, sh["scene"])
+
+    def good(self) -> dict:
+        """POST /good, a person's "This is good" (taste.py; owner, 29 Oct): the scene on screen (its plug-in and its
+        preset), each effect on the bus and each scene + effect pair come up more often.  Nothing changes on screen."""
+        self._require("live")
+        spec = self.scene_spec
+        if spec is None or spec.name == DARK_SCENE:
+            raise SessionError(409, "nothing_on_screen", "no scene on screen just now")
+        d, sig = self.direction_effective, self.mgr.taste_signal
+        sig("good", spec.source, d, spec.name)
+        sig("good", scene_key(spec.name), d, spec.name)
+        effects = []
+        for st in self.fx.stack:
+            if st.bypass or st.origin == GESTURE:
+                continue
+            effects.append(st.spec.name)
+            sig("good", fx_key(st.spec.name), d, spec.name)
+            sig("good", pair_key(spec.name, st.spec.name), d, spec.name)
+        return {"session": self.id, "scene": spec.name, "effects": effects}
 
     def _taste_skip(self, source: Optional[str]) -> None:
         """A person's Next on a scene the director picked, under SKIP_S on screen: a skip for its plug-in."""
@@ -2820,6 +2841,18 @@ class SessionManager:
         context (its genre word); 1.0 with no signals."""
         t = getattr(self, "taste", None)
         return 1.0 if t is None else t.multiplier(plugin, context_of(direction))
+
+    def fx_taste_weight(self, preset: str, scene: Optional[str], direction: Optional[dict]) -> float:
+        """How much the FX director favours an effect preset by the room's "This is good": its own and its pair's
+        with the scene on screen (taste.py), at most FX_MULT_MAX; 1.0 with no signals."""
+        t = getattr(self, "taste", None)
+        if t is None or not preset:
+            return 1.0
+        ctx = context_of(direction)
+        m = t.multiplier(fx_key(preset), ctx)
+        if scene:
+            m *= t.multiplier(pair_key(scene, preset), ctx)
+        return min(FX_MULT_MAX, m)
 
     def taste_signal(self, signal: str, plugin: Optional[str], direction: Optional[dict],
                      scene: Optional[str] = None) -> None:

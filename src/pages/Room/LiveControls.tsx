@@ -27,7 +27,7 @@ import { bothWords, sceneInfo, sceneRatingKey, type LookScope } from "./liveLib"
 import { LookControls, LookSettings, SceneButton, ScenePicker } from "./LivePanel";
 import { profileLabel, transitionSpecKey, type TransitionChoice } from "./catalog";
 import { ParamForm } from "./ParamForm";
-import { RatingRow } from "./Rating";
+import { RatingRow, ThisIsGood } from "./Rating";
 import { THEME_CLASS } from "./theme";
 import type { Library, TransitionSpec } from "./types";
 import type { LiveLook } from "./useLiveLook";
@@ -104,6 +104,8 @@ function LiveScene({ screenId, sc, live }: { screenId: string; sc: ScreenControl
           className="-mt-2"
           testId={`rate-${screenId}`}
         />
+        {/* in a room, its live card has it (the room's look) */}
+        {!live.scope?.hosted && <ThisIsGood api={live.api} session={live.lv.session} testId={`good-${screenId}`} />}
         <ScenePicker
           open={pickOpen}
           onOpenChange={setPickOpen}

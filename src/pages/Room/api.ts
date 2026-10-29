@@ -352,6 +352,12 @@ export class RoomApi {
     return this.json<FxNextResult>("POST", `/renderer/api/sessions/${encodeURIComponent(session)}/fx/next`, body);
   }
 
+  /** "This is good" (owner, 29 Oct): the scene on screen, its effects and the two together come up more often
+   *  (stream_service taste.py). Nothing changes on screen. */
+  good(session: string) {
+    return this.json<{ scene?: string; effects?: string[] }>("POST", `/renderer/api/sessions/${encodeURIComponent(session)}/good`, {});
+  }
+
   /** Take effects off every screen in the session's room (screen-machine-04, 17 Oct): all, or {effect: a preset or a
    *  slot id}. A renderer without the route answers 404 (see roomFx.ts). */
   fxClear(session: string, body: Record<string, unknown> = {}) {

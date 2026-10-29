@@ -121,6 +121,34 @@ def _plain(v: Any) -> bool:
     return not (isinstance(v, dict) and ("bind" in v or "signal" in v))
 
 
+# What an effect plays to (owner, 29 Oct: "filter for effects which are midi-sensitive"): the piano when it draws the
+# notes (stream_service fx_interplay draws "notes") or a parameter follows a piano signal; the music when it draws
+# the room's sound ("fft", "scope").
+PIANO_BINDS = {"note_on", "chord_change", "note_rate", "velocity", "register", "spread", "pedal", "tension"}
+DRAWS_HEARS = {"notes": "piano", "fft": "music", "scope": "music"}
+
+
+def _binds(v: Any) -> set[str]:
+    out: set[str] = set()
+    if isinstance(v, dict):
+        for k in ("bind", "signal"):
+            if isinstance(v.get(k), str):
+                out.add(v[k])
+        for x in v.values():
+            out |= _binds(x)
+    elif isinstance(v, list):
+        for x in v:
+            out |= _binds(x)
+    return out
+
+
+def _hears(cls: dict, params: Any) -> list[str]:
+    h = {DRAWS_HEARS[d] for d in cls.get("draws") or [] if d in DRAWS_HEARS}
+    if _binds(params) & PIANO_BINDS:
+        h.add("piano")
+    return sorted(h)
+
+
 def build_library(cat: dict, thumbs: dict[str, str] | None) -> dict:
     """The catalog, cut down to what a phone picker needs. `thumbs`: plug-in -> room thumb URL (None: guess)."""
     def thumb(plugin: Any) -> str | None:
@@ -183,7 +211,7 @@ def build_library(cat: dict, thumbs: dict[str, str] | None) -> dict:
             continue
         tags = p.get("tags") or {}
         fx.append({"name": name, "label": p.get("label") or name, "effect": plugin,
-                   "stage": p.get("stage") or cls.get("stage"),
+                   "stage": p.get("stage") or cls.get("stage"), "hears": _hears(cls, p.get("params")),
                    "tags": {k: tags[k] for k in ("family", "moods", "energy", "style") if k in tags},
                    "in_auto": bool(tags) and tags.get("auto", True) is not False,
                    "origin": _origin(plugin), "basic": list(_basic_props(cls.get("schema"))), "thumb": thumb(plugin)})
@@ -218,7 +246,9 @@ def build_library(cat: dict, thumbs: dict[str, str] | None) -> dict:
         "stages": cat.get("stages") or [],
         "facets": {"scenes": {"family": facet(scenes, "family"), "moods": facet(scenes, "moods")},
                    "effects": {"stage": [{"value": k, "count": n} for k, n in
-                                         collections.Counter(e["stage"] for e in fx if e["stage"]).most_common()]},
+                                         collections.Counter(e["stage"] for e in fx if e["stage"]).most_common()],
+                               "hears": [{"value": k, "count": n} for k, n in
+                                         collections.Counter(h for e in fx for h in e["hears"]).most_common()]},
                    "transitions": {"transition_style": facet(trans, "transition_style")}},
         "vocab": cat.get("vocab") or {},
         "direction": DIRECTION,
