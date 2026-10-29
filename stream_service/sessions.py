@@ -64,6 +64,7 @@ from .taste import KEEP_S, SKIP_S, context_of
 from .effects import MAX_BUS_SLOTS, EffectChain, EffectSlot
 from .fx_director import FX_EVENT_P, FxDirector, FxMove
 from .fx_state import SessionFx
+from .gpu import out_of_memory
 from .guard import trip_budget_ms
 from .inputs import BEAT_FOLLOW, BIND_SIGNALS, Sampler, ShowInputs, default_fixture, load_photon
 from .library import Calibration, origin_of, vetting
@@ -116,6 +117,14 @@ class SessionError(Exception):
     def __init__(self, status: int, code: str, detail: str):
         super().__init__(detail)
         self.status, self.code, self.detail = status, code, detail
+        self.oom = False
+
+
+def _prepare_failed(name: str, exc: BaseException) -> SessionError:
+    """500 prepare_failed; ``oom``: the GPU was full (the plug-in is not at fault)."""
+    err = SessionError(500, "prepare_failed", f"{name}: {type(exc).__name__}")
+    err.oom = out_of_memory(exc)
+    return err
 
 
 def _iso(ts: float) -> str:
@@ -493,7 +502,7 @@ class Session(EngineListener):
                 raise
             except Exception as e:
                 self.note_prepare_failure("transition", spec.transition, spec.preset, e)
-                raise SessionError(500, "prepare_failed", f"{spec.name}: {type(e).__name__}") from None
+                raise _prepare_failed(spec.name, e) from None
         return t
 
     def _require(self, *states: str) -> None:
@@ -526,8 +535,9 @@ class Session(EngineListener):
             raise
         except Exception as e:         # C.3: a plug-in that fails to set up / prime
             self.note_prepare_failure("source", spec.source, spec.preset, e)
-            self.director.quarantine_preset(spec.name, time.monotonic(), session=True)   # never auto-picked again
-            raise SessionError(500, "prepare_failed", f"{spec.name}: {type(e).__name__}") from None
+            if not out_of_memory(e):                  # a full GPU is not the preset's fault
+                self.director.quarantine_preset(spec.name, time.monotonic(), session=True)   # never auto-picked again
+            raise _prepare_failed(spec.name, e) from None
         if spec.effects:
             self._scene_fx_n += 1
             slots: list[EffectSlot] = []
@@ -541,7 +551,7 @@ class Session(EngineListener):
                     for sl in slots:
                         self.retire(sl.effect)
                     self.retire(src)
-                    raise SessionError(500, "prepare_failed", f"{es.name}: {type(e).__name__}") from None
+                    raise _prepare_failed(es.name, e) from None
                 slots.append(EffectSlot(f"s{self._scene_fx_n}-{i}", eff, name=ecls.name, preset=es.preset,
                                         stage=getattr(ecls, "stage", "stylise"),
                                         modulation=Modulation(self.runtime, ecls.param_props(), elive,
@@ -1255,7 +1265,8 @@ class Session(EngineListener):
         """Up next's head (the director's pick, or the owner's), prepared off the lock.  A scene that fails to
         prepare (a shader that does not compile, a plug-in that raises in setup) is blacklisted for the session,
         leaves the queue and the next one is tried (up to PICK_TRIES); a failing transition falls back to the
-        session's in transition.  Raises SessionError."""
+        session's in transition.  A full GPU blames no preset: the pick stops there and the picture stays (29 Oct: one
+        out-of-memory moment on GPU 0 failed and banned 25 presets in a second).  Raises SessionError."""
         presets = self.mgr.presets
         src = spec = e = None
         for _ in range(self.PICK_TRIES):
@@ -1273,6 +1284,8 @@ class Session(EngineListener):
                 src = await self._make_scene(spec)
                 break
             except Exception as ex:
+                if getattr(ex, "oom", False):
+                    raise
                 self.director.quarantine_preset(e["scene"], now, session=True)
                 self.upnext.remove(e["id"])
                 log.warning("[%s] auto: preset %s failed to prepare (%s); skipped for this session", self.id,
@@ -1299,7 +1312,8 @@ class Session(EngineListener):
             if via is not None or trans_spec is self.t_in:
                 self._retire(src)
                 raise
-            self.director.blacklist_transition(trans_spec.name)
+            if not getattr(ex, "oom", False):
+                self.director.blacklist_transition(trans_spec.name)
             self.emit("session.warning", detail=f"auto: transition {trans_spec.name} failed to prepare "
                                                 f"({type(ex).__name__}); skipped for this session")
             try:
@@ -1611,7 +1625,8 @@ class Session(EngineListener):
                 if via is not None or trans_spec is self.t_in:
                     self._retire(src)
                     raise
-                self.director.blacklist_transition(trans_spec.name)     # the director's pick: fall back
+                if not getattr(e, "oom", False):
+                    self.director.blacklist_transition(trans_spec.name)     # the director's pick: fall back
                 self.emit("session.warning", detail=f"transition {trans_spec.name} failed to prepare "
                                                     f"({type(e).__name__}); skipped for this session")
                 trans_spec = self.t_in

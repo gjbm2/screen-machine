@@ -197,3 +197,25 @@ async def test_auto_pick_that_fails_to_prepare_is_skipped_for_the_session(client
     # once blacklisted, a warp preset is never picked again
     for _ in range(4):
         assert s.director.pick_scene(s.mgr.presets.scenes, None, time.monotonic())[0] not in bad
+
+
+async def test_a_full_gpu_blames_no_preset_and_keeps_the_picture(client, monkeypatch):
+    """29 Oct: GPU 0 (shared with the desktop) ran out of memory and one second's picks failed and banned 25 presets;
+    an out-of-memory failure stops the pick at once, bans nothing, and the scene on screen stays."""
+    from stream_service.gpu import out_of_memory
+    pool = ["warp-cells", "warp-smoke", "fractal-dendrite", "fractal-rabbit"]
+    sid, s, eng = await live(client, auto={**AUTO, "pool": pool, "avoid_repeat": 0})
+    before = s.scene_spec.name
+    calls = []
+
+    def prepare(self, source, params):
+        calls.append(getattr(source, "name", None))
+        raise RuntimeError("CUDARuntimeError: cudaErrorMemoryAllocation: out of memory")
+
+    monkeypatch.setattr(FakeEngine, "prepare", prepare)
+    r = await cue(client, sid, to="auto")
+    assert r.status == 500, await r.text()
+    assert len(calls) == 1                                    # stopped at the first: no thrash through the pool
+    assert not s.director.quarantine and s.state == "live" and s.scene_spec.name == before
+    assert out_of_memory(Exception("cupy.cuda.memory.OutOfMemoryError: Out of memory allocating"))
+    assert not out_of_memory(RuntimeError("nvrtc: compile error"))

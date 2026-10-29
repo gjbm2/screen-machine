@@ -252,6 +252,19 @@ def no_thp_stalls() -> None:
     _set_madvise_hugepage(False)
 
 
+def out_of_memory(exc: BaseException) -> bool:
+    """A full GPU, not a broken plug-in: cupy's pool error, or the driver's (a stream, module or array made outside
+    the pool; 29 Oct, GPU 0 shared with the desktop: "CUDARuntimeError: cudaErrorMemoryAllocation: out of memory")."""
+    s = f"{type(exc).__name__}: {exc}"
+    return "OutOfMemory" in s or "cudaErrorMemoryAllocation" in s or "out of memory" in s
+
+
+def release_cache(cp: Any) -> None:
+    """Give the blocks cupy's pools hold unused back to the driver (they are only a cache)."""
+    cp.get_default_memory_pool().free_all_blocks()
+    cp.get_default_pinned_memory_pool().free_all_blocks()
+
+
 def priority_stream(cp: Any, priority: int) -> Any:
     """A non-blocking stream at ``priority``; a plain one if priorities are unavailable (degrade, never refuse)."""
     try:

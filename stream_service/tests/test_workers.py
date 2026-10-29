@@ -667,3 +667,45 @@ def test_code_stamp_reads_the_files_a_worker_never_reloads():
     W._stamp[0] = -1e9
     s = W.code_stamp()
     assert s >= (W._PKG / "workers.py").stat().st_mtime_ns and W.code_stamp() == s
+
+
+def test_a_full_gpu_at_prepare_releases_the_pools_cache_and_tries_once_more(monkeypatch):
+    """29 Oct: GPU 0 (shared with the desktop) out of memory at prepare: the pools' unused blocks go back to the
+    driver and the prepare is tried once more on a fresh object; anything else fails as before."""
+    from stream_service import gpu
+    px, conn = _proxy()
+    w, socks = _worker()
+    src = TSource()
+    src.modulation = Modulation(SessionRuntime(None), TSource.param_props(), {}, key="scene/t-source")
+    px.prepare(src, {"speed": 2.0})
+    spec = conn.calls[-1][1]
+    released, tried = [], []
+    monkeypatch.setattr(gpu, "release_cache", lambda cp: released.append(cp))
+
+    class Dev:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+    eng = w.engine
+    eng.ctx = types.SimpleNamespace(device=Dev(), cp="cp")
+    fail = ["CUDARuntimeError: cudaErrorMemoryAllocation: out of memory"]
+
+    def prepare(obj, params):
+        tried.append(obj)
+        if fail:
+            raise RuntimeError(fail.pop())
+
+    eng.prepare = prepare
+    w._prepare(spec)
+    assert len(tried) == 2 and tried[0] is not tried[1] and released == ["cp"]
+    assert w.table.get(spec["hid"]) is tried[1]
+    fail.append("nvrtc: compile error")                       # not a full GPU: no second try
+    tried.clear()
+    with pytest.raises(RuntimeError, match="nvrtc"):
+        w._prepare({**spec, "hid": spec["hid"] + 1000})
+    assert len(tried) == 1 and released == ["cp"]
+    for s in socks:
+        s.close()

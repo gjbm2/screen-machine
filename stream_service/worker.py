@@ -367,14 +367,23 @@ class Worker:
         eng, sid = self.engine, d["sid"]
         if eng is None or self.sid != sid:
             raise RuntimeError(f"not serving {sid}")
+        from .gpu import out_of_memory, release_cache
         obj = self._make(d)
         kind = d["kind"]
-        if kind == "source":
-            eng.prepare(obj, d["params"])
-        elif kind == "effect":
-            eng.prepare_effect(obj, d["params"])
-        else:
-            eng.prepare_transition(obj)
+        try:
+            self._set_up(eng, kind, obj, d)
+        except Exception as e:
+            # a full GPU (29 Oct: GPU 0 shares its 8 GB with the desktop): give back what the pools hold unused and
+            # try once more on a fresh object; an image read from shared memory cannot be made twice
+            if not out_of_memory(e) or "shm" in (d.get("image") or {}):
+                raise
+            self._close([obj])
+            with eng.ctx.device:
+                release_cache(eng.ctx.cp)
+            log.warning("[%s] %s %s: GPU out of memory; the pools' cache released, trying once more", sid, kind,
+                        d.get("cls"))
+            obj = self._make(d)
+            self._set_up(eng, kind, obj, d)
         with self.lock:
             stale = self.engine is not eng or self.sid != sid or eng._released
             if not stale:
@@ -383,6 +392,15 @@ class Worker:
             self._close([obj])
             raise RuntimeError(f"{sid} ended while preparing")
         return {"duration_s": float(obj.duration_s)} if kind == "transition" else {}
+
+    @staticmethod
+    def _set_up(eng: Any, kind: str, obj: Any, d: dict) -> None:
+        if kind == "source":
+            eng.prepare(obj, d["params"])
+        elif kind == "effect":
+            eng.prepare_effect(obj, d["params"])
+        else:
+            eng.prepare_transition(obj)
 
     def _start(self, d: dict) -> dict:
         eng = self.engine
