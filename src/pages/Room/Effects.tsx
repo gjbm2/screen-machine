@@ -10,6 +10,11 @@
 // button per value (wrapping past four; a value named after a colour gets its swatch). A device with a "reset" action
 // (the pinspots, after they lost power at the wall) offers it under its controls. A setting whose schema says
 // x-ui.hidden (a pinspot's brightness while its Fade is off) isn't offered.
+// A change shows at once and holds until the room reports it (owner, 29 Oct: the pinspots' On "can't turn on using
+// touch ... weirdly jumpy": the switch snapped back to off between the send and the room's next report, and a second
+// tap then sent off); the control stays put while sending, with a spinner by its name. A setting of the device picked
+// while it's off turns it on with it (a colour tapped on an off pinspot lights it in that colour; before, the room only
+// kept the colour for later and nothing happened).
 
 import { useEffect, useId, useState } from "react";
 import { RotateCcw, RotateCw, Sparkles } from "lucide-react";
@@ -25,6 +30,9 @@ import type { NewLogEntry } from "./useRoomConnection";
 
 /** Icons for well-known value names (presentation only). */
 const VALUE_ICONS: Record<string, typeof RotateCw> = { clockwise: RotateCw, anticlockwise: RotateCcw };
+
+/** How long a value sent shows before the room has reported it (it reports within about a second). */
+const PENDING_MS = 8000;
 
 type Target = RoomDescribe["targets"][string];
 
@@ -151,6 +159,27 @@ function EffectCard({
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [asking, setAsking] = useState(false);
+  const [pending, setPending] = useState<Record<string, { v: unknown; at: number }>>({});
+  const believedOf = (t: string) => status.subsystems?.[split(t)[0]]?.members?.[split(t)[1]]?.believed;
+  // a value sent stays shown until the room reports it, or for PENDING_MS
+  useEffect(() => {
+    const keys = Object.keys(pending);
+    if (!keys.length) return;
+    const now = Date.now();
+    const live = keys.filter((t) => now - pending[t].at < PENDING_MS && believedOf(t) !== pending[t].v);
+    if (live.length < keys.length) {
+      setPending((p) => Object.fromEntries(Object.entries(p).filter(([t]) => live.includes(t))));
+      return;
+    }
+    const wait = Math.min(...live.map((t) => pending[t].at + PENDING_MS - now));
+    const id = window.setTimeout(() => setPending((p) => ({ ...p })), Math.max(50, wait));
+    return () => window.clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, pending]);
+  const shown = (t: string): unknown => {
+    const p = pending[t];
+    return p && Date.now() - p.at < PENDING_MS ? p.v : believedOf(t);
+  };
   const target = effect.power;
   const [sub, member] = split(target);
   const d = describe.targets?.[target];
@@ -166,7 +195,7 @@ function EffectCard({
   const setUp = !s.dry_run && s.last_error !== "no adapter";
   const reachable = s.available !== false;
   const known = !!m && m.confidence !== undefined && m.confidence !== "unknown";
-  const on = m?.believed === vals.on;
+  const on = shown(target) === vals.on;
   const isToggle = s.kind === "edge_toggle";
   const toggleUnknown = isToggle && !known;
   const disabled = !connected || !setUp || !reachable || !!busy;
@@ -179,11 +208,15 @@ function EffectCard({
   else if (!known && m?.believed == null) pill = { tone: "warn", text: "Not sure" };
   else pill = on ? { tone: "live", text: onWord } : { tone: "muted", text: offWord };
 
-  const run = async (what: string, fn: () => Promise<unknown>) => {
+  const run = async (what: string, fn: () => Promise<unknown>, values?: Record<string, unknown>) => {
     setBusy(what);
     setErr(null);
     try {
       await fn();
+      if (values) {
+        const at = Date.now();
+        setPending((p) => ({ ...p, ...Object.fromEntries(Object.entries(values).map(([t, v]) => [t, { v, at }])) }));
+      }
       addLog({ type: "effect", level: "info", summary: `${name}: ${what}` });
     } catch (e) {
       reportError(e);
@@ -192,6 +225,11 @@ function EffectCard({
       setBusy(null);
     }
   };
+
+  const send = (what: string, values: Record<string, unknown>) => void run(what, () => api.setTargets(values), values);
+  /** A setting of this device picked while it's off turns it on too. */
+  const withPower = (t: string, values: Record<string, unknown>) =>
+    !on && setUp && split(t)[0] === sub ? { [target]: vals.on, ...values } : values;
 
   const showQuestion = setUp && reachable && isToggle && (toggleUnknown || asking);   // inside the unrolled row
   const isRange = (x: Target | undefined) => typeof x?.schema?.minimum === "number" && typeof x?.schema?.maximum === "number";
@@ -221,17 +259,15 @@ function EffectCard({
       {open && (
         <LightPanel id={panelId} name={name} summary={summary}>
           <div className="flex min-h-11 items-center justify-between gap-3">
-            <span className="text-base font-medium">On</span>
-            {busy === "on" || busy === "off" ? (
-              <Spinner className="shrink-0" />
-            ) : (
-              <Switch
-                aria-label={`${name} on`}
-                checked={on}
-                disabled={disabled}
-                onCheckedChange={(v) => void run(v ? "on" : "off", () => api.setTargets({ [target]: v ? vals.on : vals.off }))}
-              />
-            )}
+            <span className="flex items-center gap-2 text-base font-medium">
+              On {(busy === "on" || busy === "off") && <Spinner />}
+            </span>
+            <Switch
+              aria-label={`${name} on`}
+              checked={on}
+              disabled={disabled}
+              onCheckedChange={(v) => send(v ? "on" : "off", { [target]: v ? vals.on : vals.off })}
+            />
           </div>
 
           {showQuestion && (
@@ -264,7 +300,7 @@ function EffectCard({
 
           {settings.map(({ t, d: sd, s: ss }) => {
             const label = rowLabel(sd?.label, name, split(t)[1]);
-            const cur = ss?.members?.[split(t)[1]]?.believed;
+            const cur = shown(t);
             const options = sd?.schema?.enum ?? [];
             const off = !connected || ss?.available === false || !!busy;
             if (isRange(sd)) {
@@ -278,7 +314,7 @@ function EffectCard({
                   value={cur}
                   disabled={off}
                   busy={busy === what}
-                  onCommit={(v) => void run(what, () => api.setTargets({ [t]: v }))}
+                  onCommit={(v) => send(what, withPower(t, { [t]: v }))}
                 />
               );
             }
@@ -287,17 +323,15 @@ function EffectCard({
               const what = `${label.toLowerCase()} ${cur === sw.on ? "off" : "on"}`;
               return (
                 <div key={t} className="flex min-h-11 items-center justify-between gap-3">
-                  <span className="text-base font-medium">{label}</span>
-                  {busy?.startsWith(`${label.toLowerCase()} `) ? (
-                    <Spinner className="shrink-0" />
-                  ) : (
-                    <Switch
-                      aria-label={`${name} ${label.toLowerCase()}`}
-                      checked={cur === sw.on}
-                      disabled={off}
-                      onCheckedChange={(v) => void run(what, () => api.setTargets({ [t]: v ? sw.on : sw.off }))}
-                    />
-                  )}
+                  <span className="flex items-center gap-2 text-base font-medium">
+                    {label} {busy?.startsWith(`${label.toLowerCase()} `) && <Spinner />}
+                  </span>
+                  <Switch
+                    aria-label={`${name} ${label.toLowerCase()}`}
+                    checked={cur === sw.on}
+                    disabled={off}
+                    onCheckedChange={(v) => send(what, withPower(t, { [t]: v ? sw.on : sw.off }))}
+                  />
                 </div>
               );
             }
@@ -322,7 +356,7 @@ function EffectCard({
                         role="radio"
                         aria-checked={sel}
                         disabled={!connected || ss?.available === false || !!busy}
-                        onClick={() => void run(what, () => api.setTargets({ [t]: v }))}
+                        onClick={() => send(what, withPower(t, { [t]: v }))}
                         className={cn(
                           "flex min-h-11 items-center justify-center gap-1.5 rounded-xl border px-2 text-[15px] transition-colors disabled:opacity-60",
                           sel ? "border-teal-300 bg-teal-50 font-semibold text-teal-900" : "border-stone-200 bg-white hover:bg-stone-50",
