@@ -28,8 +28,9 @@ a band change, a section re-seed or a change of ``m`` publish at once.
 The panel's direction is a TRIM around the music (``effective_direction``): numbers are
 ``clamp(panel + m * (music - neutral))`` (neutral = DIRECTION_DEFAULTS: 0.5, intensity 1.0), so a panel at its
 defaults means "follow the music" and panel energy 0.3 means "0.2 calmer than the music"; the music's words (moods,
-transition_style, fx.moods, genre / genres, the feel axes valence, organic, density and the art wish ``art``) apply
-only where the panel left them empty, and only while m >= 0.5.  palette_family, fx.stages, source and note always come from the panel.  ``m = auto.music.weight x liveness``, in
+transition_style, fx.moods, genre / genres, the feel axes valence, organic, density, the art wish ``art`` and the art
+director's treatment ``scene_favour`` / ``scene_avoid`` / ``dwell_s``) apply only where the panel left them empty, and
+only while m >= 0.5.  palette_family, fx.stages, source and note always come from the panel.  ``m = auto.music.weight x liveness``, in
 0.25 steps: a stale bus holds 10 s then fades to 0 over 20 s; recovery needs 3 s of fresh frames then ramps up over
 10 s (from cold: 3 s then on at once).  m = 0 is exactly the panel's direction: the behaviour before this module.
 
@@ -88,6 +89,9 @@ BANDS = {   # band -> (scene moods, fx moods, transition_style); words from conf
     "peak": (["euphoric", "hypnotic", "bright", "aggressive"], ["euphoric", "hypnotic", "glitchy", "bright"], "wild"),
 }
 ROOM_STALE_S = 12.0             # room.direction republishes every 5 s
+# The art director's per-song treatment (show_service, screen-machine-63, 29 Oct; director.py's module doc): passed
+# through from the room's direction like ``art`` (an older show_service sends none: as before).
+TREATMENT = ("scene_favour", "scene_avoid", "dwell_s")
 NUMERIC = ("energy", "pace", "intensity", "change_rate")
 FX_NUMERIC = ("density", "rate")
 
@@ -133,6 +137,9 @@ def effective_direction(panel: dict, music: Optional[dict], m: float) -> dict:
                 out[k] = music[k]
         if panel.get("art") is None and music.get("art"):
             out["art"] = music["art"]             # the art director's wish: the gallery's pictures (art tags)
+        for k in TREATMENT:                       # its per-song treatment: the scene picks' tags and dwell
+            if panel.get(k) is None and music.get(k) is not None:
+                out[k] = music[k]
         if not out["fx"].get("moods") or how == "replace":
             out["fx"]["moods"] = list((music.get("fx") or {}).get("moods") or []) or out["fx"].get("moods")
         if music.get("piano"):
@@ -190,6 +197,7 @@ def music_fields(panel: dict, music: Optional[dict], m: float) -> list[str]:
         out += [k for k in DIRECTION_AXES if panel.get(k) is None and music.get(k) is not None]
         if panel.get("art") is None and music.get("art"):
             out.append("art")
+        out += [k for k in TREATMENT if panel.get(k) is None and music.get(k) is not None]
         if not (panel.get("fx") or {}).get("moods"):
             out.append("fx.moods")
         if music.get("piano"):
@@ -220,7 +228,15 @@ def pick_key(d: dict) -> tuple:
     return (round(float(d.get("energy", 0.5)) * 10), tuple(d.get("moods") or ()), d.get("transition_style"),
             d.get("genre"), genres_key(d.get("genres")), d.get("palette_family"),
             tuple(_axis_key(d.get(k)) for k in DIRECTION_AXES), tuple(d.get("music_moods") or ()),
-            d.get("music_style"))
+            d.get("music_style"), _treatment_key(d.get("scene_favour")), _treatment_key(d.get("scene_avoid")))
+
+
+def _treatment_key(t: Any) -> tuple:
+    """scene_favour / scene_avoid as a pick depends on them: the tags and the share / factor in 0.1 steps."""
+    if not isinstance(t, dict):
+        return ()
+    k = t.get("share", t.get("factor"))
+    return (tuple(t.get("tags") or ()), round(float(k), 1) if isinstance(k, (int, float)) else None)
 
 
 class MusicDirection:
@@ -339,6 +355,9 @@ class MusicDirection:
                       **{k: d.get(k) for k in DIRECTION_AXES})
         if d.get("art"):
             target["art"] = d["art"]          # the art director's wish (an older show_service sends none: as before)
+        for k in TREATMENT:
+            if d.get(k) is not None:
+                target[k] = d[k]              # its treatment for this song: favour / avoid by tag, the dwell
         r = self.piano_reading = self.piano.reading()
         pc = self.piano.config.get()
         target = PD.lean(PD.apply(target, r, pc), r, pc)
@@ -358,7 +377,8 @@ class MusicDirection:
                 or any((target[k] is None) != (p.get(k) is None)
                        or (target[k] is not None and abs(target[k] - p[k]) >= DEADBAND) for k in DIRECTION_AXES) \
                 or any(abs(target["fx"][k] - p["fx"][k]) >= DEADBAND for k in FX_NUMERIC) \
-                or target.get("art") != p.get("art"):
+                or target.get("art") != p.get("art") \
+                or any(target.get(k) != p.get(k) for k in TREATMENT):
             cause = "music"
         self.band = band
         if cause is not None:

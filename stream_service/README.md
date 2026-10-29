@@ -172,6 +172,32 @@ v1 plug-ins: `image` (internal: anchors and targets; PNGs of any size are letter
   Library live through `/dev/preview`, rates and tags through `/dev/rate`, and drives room screens only through
   room's per-screen API (cue, look, fx, live, inputs); see static/console/app.js for the module map.
 
+### The art director's treatment and the room's taste (29 Oct)
+
+The scene director (`director.py`) works with whatever it gets (owner, 29 Oct). show_service's `room.direction`
+may carry a per-song treatment, passed through the music's proposal like `art` (where the panel / mode set none,
+while the music's weight is at least 0.5 and the mode's `music` is not `ignore`) and shown in
+`direction_effective` / `music_fields`:
+
+* `scene_favour` `{"tags": ["word" | "facet:word", ...], "share": 0-0.9}` (at most 12 tags; share default 0.3):
+  the scenes with any of the tags together get at least that share of each pick, within the vetted,
+  avoid-repeat, rotation-floored pool. No match: ignored.
+* `scene_avoid` `{"tags": [...], "factor": 0.05-1}` (default 0.3): those scenes' weights x factor (never removed);
+  also for a song's variant pick.
+* `dwell_s` `[min_s, max_s]` (1-900, min <= max): the dwell window when the auto block sets no `dwell_s`
+  (`dwell_from: "show"`).
+
+A bad field drops alone (the rest of the direction applies). The pick's `why` names what applied, e.g.
+`(p 0.31 of 198; favour family:cosmic 0.5; taste ×1.4)`. A small change at a new song ("a variant for the next
+song") keeps one plug-in on screen for at most `VARIANT_CHAIN_MAX` = 2 songs running; then a fresh pick.
+
+**Taste** (`taste.py`): the room's presses steer picks per plug-in, beside the stars. A person's Next on a scene
+the director put up under 60 s ago is a skip (-1), a scene cued by hand a like (+1), Keep this look on a picked
+scene for 120 s a keep (+0.5); each lands on (plug-in, the direction's genre) and on the plug-in's total, halves
+every 14 days, and multiplies the weight by `clamp(exp(0.35 (ctx + 0.5 total)), 0.4, 2.5)`. Kept in
+`~/.local/state/screen-machine/stream/taste.json` (`$STREAM_STATE_DIR`; not in git); `GET /dev/taste` shows it,
+`GET /api/sessions/{id}` has `auto.taste` (context, the scene's multiplier, songs on its plug-in, counts).
+
 ### fractal_zoom
 
 An endless zoom in float32 into a Julia set `f(z) = z^2 + c` at a repelling fixed point `z*`

@@ -451,6 +451,12 @@ async def dev_ratings(request: web.Request) -> web.Response:
     return web.json_response({"ratings": request.app[RATINGS].all()}, headers={"Cache-Control": "no-store"})
 
 
+async def dev_taste(request: web.Request) -> web.Response:
+    """The room's taste (taste.py): each plug-in's scores and multipliers, the signal counts, the last signals."""
+    t = request.app[MANAGER].taste
+    return web.json_response(t.view() if t is not None else {"plugins": {}}, headers={"Cache-Control": "no-store"})
+
+
 async def dev_rate(request: web.Request) -> web.Response:
     body = await read_json(request, allow_empty=False)
     return web.json_response(await asyncio.get_running_loop().run_in_executor(None, request.app[RATINGS].set, body))
@@ -815,6 +821,9 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
     app[LIBRARY] = mgr.library = Library(registry, presets, mgr)
     app[PREVIEWS] = Previews(mgr, presets)
     app[RATINGS] = mgr.ratings = Ratings(pathlib.Path(config_dir) / "ratings.json")
+    from . import taste as _taste
+
+    mgr.taste = _taste.default_store()                     # the room's Next / by-hand / Keep (state dir, not git)
     app[LOCAL_CONTROL] = local_control
     app[APP_URL] = app_url.rstrip("/")
     r = app.router
@@ -827,6 +836,7 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
     r.add_post("/dev/preview", dev_live_preview)
     r.add_delete("/dev/preview", dev_live_preview_stop)
     r.add_get("/dev/ratings", dev_ratings)
+    r.add_get("/dev/taste", dev_taste)
     r.add_post("/dev/rate", dev_rate)
     r.add_get("/dev/plugins", dev_plugin_status)
     r.add_post("/dev/rescan", dev_rescan)

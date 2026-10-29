@@ -26,6 +26,16 @@ The music proposes direction too (music_direction.py, owner 15 Oct): ``auto.musi
 turns the show bus (Maestro's ACTIVITY, DIMMER pulse and GOBO step) into a direction that the session applies under
 the panel's (a trim: a panel at its defaults follows the music).  ``follow_dmx`` defaults to ["effect"] (the GOBO
 step marks sections; PRISM ``variant`` is opt-in: Maestro and the fake show change it far more often).
+
+The art director's per-song treatment (show_service's room.direction, screen-machine-63, 29 Oct; the owner: the art
+director works with whatever it gets and does its best) steers by tags and timing, never by naming scenes:
+  * ``scene_favour`` {tags, share}: the scenes tagged with any of ``tags`` (tags.tag_matches: a word in any facet,
+    or facet:word) together get at least ``share`` of each pick, within the vetted, avoid-repeat, rotation-floored
+    pool (like direction.fx.favour); no match: ignored;
+  * ``scene_avoid`` {tags, factor}: those scenes' weights x factor (soft: never removed);
+  * ``dwell_s`` [min, max]: the dwell window when the auto block sets none (source "show"), instead of change_rate's.
+A pick also multiplies each scene by the room's taste for its plug-in (taste.py: Next, a scene cued by hand, Keep
+this look), beside the owner's stars.
 """
 from __future__ import annotations
 
@@ -37,7 +47,7 @@ from typing import Any, Callable, Optional
 
 from .inputs import FOLLOW_ATTRS, Snapshot
 from .plugins.base import STAGES, ParamError
-from .tags import matches_filter, scene_weight, transition_weight
+from .tags import matches_filter, scene_weight, tag_matches, tag_words, transition_weight
 
 FX_DIRECTION_DEFAULTS: dict[str, Any] = {"density": 0.5, "rate": 0.5, "stages": None, "moods": None,
                                          "follow": None,     # follow: how much room.events move the bus (fx_director)
@@ -49,11 +59,21 @@ AUTO_MUSIC_DEFAULTS: dict[str, Any] = {"enabled": True, "weight": 1.0, "activity
 DIRECTION_DEFAULTS: dict[str, Any] = {
     "energy": 0.5, "pace": 0.5, "intensity": 1.0, "change_rate": 0.5, "moods": [], "genre": None,
     "transition_style": None, "palette_family": None, "source": None, "note": None, "fx": FX_DIRECTION_DEFAULTS,
-    "genres": None, "valence": None, "organic": None, "density": None}
+    "genres": None, "valence": None, "organic": None, "density": None,
+    "scene_favour": None, "scene_avoid": None, "dwell_s": None}
 # genres: the music's genre as {word: p} (show_service, top few, normalised; genre is then its top word unless set);
 # valence / organic / density 0..1: the music's feel, scored against the presets' axes (tags.py).  null = unknown.
+# scene_favour {tags, share} / scene_avoid {tags, factor} / dwell_s [min, max]: the art director's per-song treatment
+# (show_service, screen-machine-63, 29 Oct; see the module doc).  null = none (as before).
 DIRECTION_AXES = ("valence", "organic", "density")
 GENRES_MAX = 6
+# Starting points for the treatment's bounds (screen-machine-63, 29 Oct): a favour never takes the whole pick (the
+# rest of the pool stays in play), an avoid never removes a scene, and the show's dwell stays within a song's scale.
+SCENE_TAGS_MAX = 12
+SCENE_TAG_LEN = 64
+SCENE_FAVOUR_SHARE_DEFAULT, SCENE_FAVOUR_SHARE_MAX = 0.3, 0.9
+SCENE_AVOID_FACTOR_DEFAULT, SCENE_AVOID_FACTOR_MIN = 0.3, 0.05
+SHOW_DWELL_S = (1.0, 900.0)
 AUTO_DEFAULTS: dict[str, Any] = {
     "enabled": True, "pool": "all", "transitions": "all", "dwell_s": None, "snap": "beat",
     "follow_dmx": ["effect"], "avoid_repeat": 2, "seed": None, "fx": AUTO_FX_DEFAULTS, "music": AUTO_MUSIC_DEFAULTS}
@@ -135,7 +155,44 @@ def validate_direction(body: Any, vocab: Optional[dict] = None) -> dict:
     for k in ("source", "note"):
         v = _word(body.get(k), f"direction.{k}")
         out[k] = v[:500] if v else None
+    out["scene_favour"] = _scene_tags(body.get("scene_favour"), "scene_favour", "share", SCENE_FAVOUR_SHARE_DEFAULT,
+                                      0.0, SCENE_FAVOUR_SHARE_MAX)
+    out["scene_avoid"] = _scene_tags(body.get("scene_avoid"), "scene_avoid", "factor", SCENE_AVOID_FACTOR_DEFAULT,
+                                     SCENE_AVOID_FACTOR_MIN, 1.0)
+    out["dwell_s"] = _show_dwell(body.get("dwell_s"))
     return out
+
+
+def _scene_tags(v: Any, field: str, knob: str, default: float, lo: float, hi: float) -> Optional[dict]:
+    """direction.scene_favour / scene_avoid: null, or {"tags": [word | facet:word], knob: number}.  The tags are
+    trimmed, lower-cased and de-duplicated, at most SCENE_TAGS_MAX kept; no tag left = null.  ``knob`` (share /
+    factor) defaults to ``default`` and is clamped to [lo, hi].  Any other shape: bad_request (room.direction's
+    lenient reading then drops just this field)."""
+    if v is None:
+        return None
+    tags = v.get("tags") if isinstance(v, dict) else None
+    if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags) or set(v) - {"tags", knob}:
+        raise ParamError("bad_request", f'direction.{field} must be null or {{"tags": [words], "{knob}": 0-1}}')
+    ws = [w for w in (t.strip().lower()[:SCENE_TAG_LEN] for t in tags) if w and w.strip(":")]
+    ws = list(dict.fromkeys(ws))[:SCENE_TAGS_MAX]
+    k = v.get(knob, default)
+    if isinstance(k, bool) or not isinstance(k, (int, float)) or not math.isfinite(k):
+        raise ParamError("bad_request", f"direction.{field}.{knob} must be a number 0-1")
+    return {"tags": ws, knob: round(min(hi, max(lo, float(k))), 3)} if ws else None
+
+
+def _show_dwell(v: Any) -> Optional[list]:
+    """direction.dwell_s: null, or [min_s, max_s] with SHOW_DWELL_S[0] <= min <= max <= SHOW_DWELL_S[1] (each end
+    clamped into that range; min above max: bad_request)."""
+    if v is None:
+        return None
+    if not (isinstance(v, list) and len(v) == 2 and all(
+            isinstance(x, (int, float)) and not isinstance(x, bool) and math.isfinite(x) for x in v)):
+        raise ParamError("bad_request", "direction.dwell_s must be null or [min, max] seconds")
+    lo, hi = (round(min(SHOW_DWELL_S[1], max(SHOW_DWELL_S[0], float(x))), 2) for x in v)
+    if lo > hi:
+        raise ParamError("bad_request", "direction.dwell_s: min > max")
+    return [lo, hi]
 
 
 def _genres(v: Any, words: Optional[list]) -> Optional[dict]:
@@ -304,10 +361,14 @@ def default_dwell(change_rate: float) -> tuple[float, float]:
 
 
 def dwell_window(auto: dict, direction: dict) -> tuple[float, float, str]:
-    """-> (min_s, max_s, where from)."""
+    """-> (min_s, max_s, where from): the auto block's own dwell_s, else the art director's (direction.dwell_s, "show"),
+    else change_rate's."""
     if auto.get("dwell_s"):
         lo, hi = auto["dwell_s"]
         return lo, hi, "dwell_s"
+    dw = direction.get("dwell_s")
+    if dw:
+        return float(dw[0]), float(dw[1]), "show"
     lo, hi = default_dwell(direction["change_rate"])
     return lo, hi, "change_rate"
 
@@ -343,10 +404,56 @@ def spread(w: list[float], target: float) -> list[float]:
     return [x ** lo if x > 0 else 0.0 for x in w]
 
 
+def favour_share(w: list[float], hit: list[bool], share: float) -> list[float]:
+    """The weights with the ``hit`` ones together lifted to at least ``share`` of the total (scaled alike, so their
+    order stays); never lowered.  No hit, nothing else, or already there: as is."""
+    a = sum(x for x, h in zip(w, hit) if h)
+    b = sum(x for x, h in zip(w, hit) if not h)
+    share = min(0.99, max(0.0, float(share)))
+    if a <= 0 or b <= 0 or a / (a + b) >= share:
+        return w
+    k = share * b / ((1.0 - share) * a)
+    return [x * k if h else x for x, h in zip(w, hit)]
+
+
+def _tags_short(tags: list[str]) -> str:
+    return ",".join(tags[:2]) + (f" +{len(tags) - 2}" if len(tags) > 2 else "")
+
+
+def steer(w: list[float], have: list[set], favour: Optional[dict], avoid: Optional[dict]) -> tuple[list[float], list[str]]:
+    """The art director's treatment on a pick's weights (after the rotation floor, so it holds exactly):
+    direction.scene_avoid's tagged scenes x factor, then scene_favour's together lifted to at least share.
+    ``have``: each candidate's tag words (tags.tag_words).  -> (weights, notes for the pick's why: only what
+    matched)."""
+    notes: list[str] = []
+    if avoid and avoid.get("tags"):
+        hit = [any(tag_matches(h, t) for t in avoid["tags"]) for h in have]
+        if any(hit):
+            f = float(avoid.get("factor", SCENE_AVOID_FACTOR_DEFAULT))
+            w = [x * f if h else x for x, h in zip(w, hit)]
+            notes.append(f"avoid {_tags_short(avoid['tags'])} ×{f:g}")
+    if favour and favour.get("tags"):
+        hit = [any(tag_matches(h, t) for t in favour["tags"]) for h in have]
+        if any(hit) and not all(hit):
+            share = float(favour.get("share", SCENE_FAVOUR_SHARE_DEFAULT))
+            w = favour_share(w, hit, share)
+            notes.append(f"favour {_tags_short(favour['tags'])} {share:g}")
+    return w, notes
+
+
+def why_extra(notes: list[str], taste: float = 1.0) -> str:
+    """The treatment notes and the picked scene's taste multiplier (when it isn't about 1) for a pick's why."""
+    parts = list(notes) + ([f"taste ×{taste:.1f}"] if abs(taste - 1.0) >= 0.05 else [])
+    return "; " + "; ".join(parts) if parts else ""
+
+
 def weighted_pick(names: list[str], weight: Callable[[str], float], rng: random.Random,
-                  avoid: Any = (), rotation: Optional[float] = None) -> Optional[tuple[str, float, int]]:
+                  avoid: Any = (), rotation: Optional[float] = None,
+                  adjust: Optional[Callable[[list[str], list[float]], list[float]]] = None
+                  ) -> Optional[tuple[str, float, int]]:
     """Weighted-random choice among ``names`` minus ``avoid`` (all of them if that leaves none); a weight of 0 is
     never picked while any other is above it.  ``rotation``: keep at least that many in real rotation (spread).
+    ``adjust(candidates, weights)``: last word on the weights (the art director's favour / avoid: steer).
     -> (name, probability, candidates) or None for an empty pool."""
     avoid = set(avoid)
     cands = [n for n in names if n not in avoid] or list(names)
@@ -358,6 +465,8 @@ def weighted_pick(names: list[str], weight: Callable[[str], float], rng: random.
         w = [1.0] * len(cands)
     elif rotation:
         w = spread(w, min(rotation, MIN_ROTATION_SHARE * live))
+    if adjust is not None:
+        w = adjust(cands, w)
     name = rng.choices(cands, weights=w)[0]
     return name, w[cands.index(name)] / sum(w), len(cands)
 
@@ -389,6 +498,8 @@ class Director:
         self.rate: Optional[Callable[[str, Optional[str]], float]] = None  # (kind, plug-in) -> owner-rating weight
         self.listens: Optional[Callable[[Optional[str]], tuple]] = None   # plug-in -> what it draws from the sound
         self.notes_age: Optional[Callable[[], Optional[float]]] = None     # s since the piano last played (None: never)
+        self.taste: Optional[Callable[[Optional[str], dict], float]] = None   # (plug-in, direction) -> the room's
+                                                                              # taste multiplier (taste.py)
 
     def _heard(self, plugin: Optional[str]) -> float:
         """x a scene's weight by whether there is what it draws: a notes scene with no MIDI is not picked."""
@@ -411,6 +522,20 @@ class Director:
             return float(self.rate(kind, plugin))
         except Exception:
             return 1.0
+
+    def tasted(self, plugin: Optional[str]) -> float:
+        """x a scene's weight by the room's taste for its plug-in in this direction's context (taste.py); 1.0 none."""
+        if self.taste is None or not plugin:
+            return 1.0
+        try:
+            return float(self.taste(plugin, self.direction))
+        except Exception:
+            return 1.0
+
+    def treatment(self) -> tuple[Optional[dict], Optional[dict]]:
+        """The art director's scene_favour and scene_avoid in this direction (None: none)."""
+        d = self.direction or {}
+        return d.get("scene_favour"), d.get("scene_avoid")
 
     def _vetted(self, kind: str, plugin: Optional[str]) -> bool:
         if self.vet is None:
@@ -549,13 +674,29 @@ class Director:
                 avoid = {prev} if prev else set()
         else:
             avoid = {prev} if prev else set()
+        taste: dict[Optional[str], float] = {}         # per plug-in, once per pick
+
+        def tasted(src: Optional[str]) -> float:
+            if src not in taste:
+                taste[src] = self.tasted(src)
+            return taste[src]
+
+        favour, shun = self.treatment()
+        notes: list[str] = []
+
+        def adjust(cands: list[str], w: list[float]) -> list[float]:
+            w, ns = steer(w, [tag_words(scenes[c].get("tags") or {}) for c in cands], favour, shun)
+            notes.extend(ns)
+            return w
+
         got = weighted_pick(names, lambda n: scene_weight(scenes[n].get("tags") or {}, self.direction) ** STYLE_POWER
-                            * self._rated("source", scenes[n].get("source"))
-                            * self._heard(scenes[n].get("source")), self.rng_scene, avoid, MIN_ROTATION)
+                            * self._rated("source", scenes[n].get("source")) * tasted(scenes[n].get("source"))
+                            * self._heard(scenes[n].get("source")), self.rng_scene, avoid, MIN_ROTATION,
+                            adjust if favour or shun else None)
         if got is None:
             return None
         name, p, n = got
-        return name, f"{name} (p {p:.2f} of {n})"
+        return name, f"{name} (p {p:.2f} of {n}{why_extra(notes, tasted(scenes[name].get('source')))})"
 
     def pick_transition(self, transitions: dict[str, dict], prev: Optional[str] = None) -> Optional[tuple[str, str]]:
         """``prev``: the transition queued just before this one (upnext.py), else the last one played."""

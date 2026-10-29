@@ -37,18 +37,19 @@ def pytest_collection_modifyitems(config, items):
 def _no_harness_data(monkeypatch, tmp_path_factory):
     """Hermetic vetted pool: no harness sheets / costs and no calibration from ~/.cache/sm-fxtest (they change
     nightly).  Tests that need them point stream_service.library at their own files."""
-    from stream_service import library
+    from stream_service import library, taste
 
     root = tmp_path_factory.mktemp("fxtest-empty")
     monkeypatch.setattr(library, "FXTEST_OUT", root / "out")
     monkeypatch.setattr(library, "CALIBRATION_FILE", root / "calibration.json")
+    monkeypatch.setattr(taste, "STATE_DIR", root / "state")      # the room's taste: never the live store
 
 
 @pytest.fixture(scope="session")
 def service(tmp_path_factory):
     tmp = tmp_path_factory.mktemp("svc")
     log = open(tmp / "service.log", "w")
-    env = {**os.environ, "CUDA_DEVICE_ORDER": "PCI_BUS_ID"}
+    env = {**os.environ, "CUDA_DEVICE_ORDER": "PCI_BUS_ID", "STREAM_STATE_DIR": str(tmp / "state")}
     proc = subprocess.Popen([sys.executable, "-m", "stream_service", "--host", "127.0.0.1", "--port", str(PORT)],
                             cwd=REPO, stdout=log, stderr=subprocess.STDOUT, env=env)
     try:

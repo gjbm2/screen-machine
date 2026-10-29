@@ -58,8 +58,9 @@ from typing import Any, Callable, Optional
 from . import binding, ensemble, fx_interplay, palettes, rooms
 from .bodies import PngData
 from .director import AUTO_DEFAULTS, AUTO_FX_DEFAULTS, DIRECTION_DEFAULTS, FX_DIRECTION_DEFAULTS, Director, \
-    validate_auto, validate_direction, weighted_pick
-from .tags import scene_weight
+    steer, validate_auto, validate_direction, weighted_pick, why_extra
+from .tags import scene_weight, tag_words
+from .taste import KEEP_S, SKIP_S, context_of
 from .effects import MAX_BUS_SLOTS, EffectChain, EffectSlot
 from .fx_director import FX_EVENT_P, FxDirector, FxMove
 from .fx_state import SessionFx
@@ -98,6 +99,11 @@ EVENT_MARGIN_S = 0.25         # a room.event's own time is used when it is at le
 CUT_EVENTS = ("section_change", "drop", "track_change")      # show_service's room.events that cue a scene change
 TRACK_EVENTS = ("track_end_armed", "track_end", "track_change")   # its song ends (c8, SHOW_ENGINE §8.5 "Song ends")
 DARK_SCENE = "black"          # fade-dark's dark: the scene preset shown across the gap between songs
+# A small change at a new song ("a variant for the next song": another preset of the plug-in on screen) may keep one
+# plug-in on screen for at most this many songs running; the next small change is a fresh pick (29 Oct: polyhedra-
+# morph variants ran three songs in a row in Disco).  Starting point (screen-machine-63).
+VARIANT_CHAIN_MAX = 2
+NOT_PEOPLE = ("mode", "director")   # cue sources that are not a person (taste.py counts only people's presses)
 DARK_MAX_S = 8.0              # never stay dark longer than this (or the event's dark_max_s)
 FX_BAR_MAX_S = 4.0            # an auto effect move waits for the next downbeat when one is this close
 CUE_SOURCES = ("panel", "director", "mode")
@@ -320,6 +326,9 @@ class Session(EngineListener):
         self.director.rate = self.fx_director.rate = self.mgr.rating_weight     # the owner's stars (ratings.py)
         self.director.listens = self._source_listens      # a notes scene with no MIDI: nearly never picked
         self.director.notes_age = self._notes_age
+        self.director.taste = getattr(self.mgr, "taste_weight", None)   # the room's Next / by-hand / Keep (taste.py)
+        self._shown: Optional[dict] = None          # the scene on screen, for taste.py: {scene, plugin, cause, t, ...}
+        self._variant_chain: Optional[dict] = None  # {plugin, songs, track}: songs running on one plug-in
         self.fx_director.clock = self._fx_clock     # FX cadence in phrases, fades in beats, while the clock is sure
         self.fx_director.looks = fx_interplay.shared(self.mgr.presets.dir)   # scenes and effects together
         self.fx_director.scene = lambda: (self.current_name, self.mgr.presets.scenes.get(self.current_name or ""))
@@ -1177,8 +1186,48 @@ class Session(EngineListener):
                                                  "fallback", "at_pts", "duration_s")}
         self.director.last = self.last_cue if cue["cause"] == "auto" else self.director.last
         self.scene_cause = cue["cause"]
+        self._note_shown(cue, now if at_mono is None else max(now, at_mono))
         if cue["cause"] == "auto" and cue.get("reason") != "room" and self.room_leader() is self:
             self._room_go(cue)
+
+    def _note_shown(self, cue: dict, t: float) -> None:
+        """The scene now going up, for the room's taste (taste.py: a quick Next is a skip, Keep this look a keep) and
+        the variant chain (VARIANT_CHAIN_MAX): songs running on one plug-in, counted when a scene the director put up
+        lands in a new song (mgr.track_n); a scene from another plug-in, or one a person or a mode put up, starts it
+        again.  fade-dark's black between songs is neither."""
+        if cue["scene"] == DARK_SCENE:
+            return
+        src = cue["spec"].source
+        self._shown = {"scene": cue["scene"], "plugin": src, "cause": cue["cause"], "t": t, "held_s": 0.0,
+                       "kept": False, "tick": None}
+        tn = getattr(self.mgr, "track_n", 0)
+        ch = self._variant_chain
+        if cue["cause"] == "auto" and ch is not None and ch["plugin"] == src:
+            if tn != ch["track"]:
+                ch["songs"], ch["track"] = ch["songs"] + 1, tn
+        else:
+            self._variant_chain = {"plugin": src, "songs": 1, "track": tn}
+
+    def _taste_tick(self, now: float) -> None:
+        """Keep this look (the room's hold) on a scene the director picked, KEEP_S in all on this showing: a keep."""
+        sh = self._shown
+        if sh is None or sh["cause"] != "auto" or sh["kept"]:
+            return
+        last, sh["tick"] = sh["tick"], now
+        if last is None or now < sh["t"] or not self.mgr.room_hold(now):
+            return
+        sh["held_s"] += min(1.0, max(0.0, now - last))
+        if sh["held_s"] >= KEEP_S:
+            sh["kept"] = True
+            self.mgr.taste_signal("keep", sh["plugin"], self.direction_effective, sh["scene"])
+
+    def _taste_skip(self, source: Optional[str]) -> None:
+        """A person's Next on a scene the director picked, under SKIP_S on screen: a skip for its plug-in."""
+        sh = self._shown
+        if source in NOT_PEOPLE or sh is None or sh["cause"] != "auto":
+            return
+        if time.monotonic() - sh["t"] < SKIP_S:
+            self.mgr.taste_signal("skip", sh["plugin"], self.direction_effective, sh["scene"])
 
     def _release_pending(self) -> None:
         if self.pending is None or len(self.inflight) >= MAX_SCENE_TRANSITIONS:
@@ -1528,6 +1577,7 @@ class Session(EngineListener):
             if ld is not None and cause == "manual":    # "next" on any screen in a room moves the room
                 return await ld.cue(body, cause=cause, reason=reason, detail=detail)
             if cause == "manual":
+                self._taste_skip(source)                 # a person's quick Next: the room's taste (taste.py)
                 cause, reason = "auto", "next"
             pk = self._take_prepared()
             if pk is not None and via is not None:      # the warmed scene, with the given way in
@@ -1581,6 +1631,9 @@ class Session(EngineListener):
             outcome = self._dispatch(cue)
             if outcome != "skipped":
                 self.scene_spec = spec
+        if to != "auto" and cause == "manual" and source not in NOT_PEOPLE and outcome != "skipped" \
+                and spec.name != DARK_SCENE:            # a person chose this scene by hand: the room's taste
+            self.mgr.taste_signal("like", spec.source, self.direction_effective, spec.name)
         resp = {"session": self.id, "state": self.state, "cue_id": cue["cue_id"], "at_pts": cue["at_pts"],
                 "duration_s": cue["duration_s"]}
         if outcome == "skipped":
@@ -1795,6 +1848,7 @@ class Session(EngineListener):
             self._build_tick(now)
             self._upnext_fill(now)
             self._upnext_emit()
+            self._taste_tick(now)
         if armed and self._auto_task is None and not self.inflight and self.pending is None:
             if self.prepared_pick is None and self._pick_task is None and d.prepare_due(now):
                 self._pick_task = asyncio.create_task(self._prepare_next())
@@ -1981,31 +2035,48 @@ class Session(EngineListener):
         if head is not None and (head.get("origin") == "you" or (change and head.get("for_song") == change)):
             return                                   # the owner's, or already picked (and warmed) for this song
         now = time.monotonic()
-        name = None
+        name, asked = None, change                   # asked: the song's own word (a re-send finds its pick made)
         cur = self.mgr.presets.scenes.get(self.current_name or "") or {}
         src, d = cur.get("source"), self.director
         if change == "small" and src and d._heard(src) <= 0.0:
             change = "big"                           # a notes scene with no MIDI: no variant of it, a fresh pick
+        ch = self._variant_chain
+        songs = ch["songs"] if ch is not None and ch["plugin"] == src else 1
+        chained = change == "small" and songs >= VARIANT_CHAIN_MAX
+        if chained:
+            change = "big"                           # this plug-in has had its songs running: a fresh pick
         if change == "small":
             scenes = self.mgr.presets.scenes
             sib = sorted(n for n, p in scenes.items()
                          if src and p.get("source") == src and n != self.current_name and n != DARK_SCENE
                          and (p.get("tags") or {}).get("auto", True) is not False and self.room_ok("source", src))
+            shun, notes = d.treatment()[1], []       # the art director's avoid holds for a variant too (soft)
+
+            def adjust(cands: list, w: list) -> list:
+                w, ns = steer(w, [tag_words(scenes[c].get("tags") or {}) for c in cands], None, shun)
+                notes.extend(ns)
+                return w
+
+            tw = d.tasted(src)
             got = weighted_pick(sib, lambda n: scene_weight(scenes[n].get("tags") or {}, d.direction)
-                                * self.mgr.rating_weight("source", src), d.rng_scene) if sib else None
+                                * self.mgr.rating_weight("source", src) * tw, d.rng_scene,
+                                adjust=adjust if shun else None) if sib else None
             if got is not None:
                 name = got[0]
-                why, words = f"{name} (a variant for the next song)", "A variant: the next song is close to this one"
+                why = f"{name} (a variant for the next song{why_extra(notes, tw)})"
+                words = "A variant: the next song is close to this one"
         elif change == "big":
             got = self.director.pick_scene(self.mgr.presets.scenes, self.current_name, now)
             if got is not None:
                 name, why, words = got[0], f"{got[1]} for the next song", "For the next song"
+                if chained:
+                    why += f" ({songs} songs on {src} already)"
         if name is None:
             return
         if head is not None:
             self.upnext.remove(head["id"])
         self.upnext.add("scene", {"scene": name, "transition": None, "origin": "auto", "transition_origin": None,
-                                  "why": why, "why_words": words, "for_song": change, "hold": True}, at=0)
+                                  "why": why, "why_words": words, "for_song": asked, "hold": True}, at=0)
         self._upnext_edited()
 
     def _end_dark(self) -> None:
@@ -2587,7 +2658,8 @@ class Session(EngineListener):
                 **self.director.auto, "armed": self.director.armed, "seed": self.director.seed,
                 "fx": {**(self.director.auto.get("fx") or AUTO_FX_DEFAULTS), "armed": ds.fx_director.armed},
                 "eligible_at_pts": self._in_pts(nx["eligible_in_s"]),
-                "dwell_s_effective": nx["dwell_s"], "dwell_from": nx["dwell_from"]},
+                "dwell_s_effective": nx["dwell_s"], "dwell_from": nx["dwell_from"],
+                "taste": self._taste_status(ds)},
             "upnext": self.upnext_view(), "own": sorted(self.own), "hud": self.hud_summary(),
             "direction": self.direction, "palette": self.palette, "palette_transition_s": self.palette_s,
             "direction_effective": self.direction_effective, "music": ds._music_status(time.monotonic()),
@@ -2610,6 +2682,17 @@ class Session(EngineListener):
             "segment": list(self.runtime.extra["segment"]) if isinstance((self.runtime.extra or {}).get("segment"),
                                                                          (list, tuple)) else None,
         }
+
+    def _taste_status(self, ds: "Session") -> dict:
+        """GET session auto.taste: the context the room's taste is read in, the scene on screen's multiplier, the
+        songs its plug-in has run (VARIANT_CHAIN_MAX) and the store's signal counts (GET /dev/taste: all of it)."""
+        t = getattr(self.mgr, "taste", None)
+        ctx = context_of(ds.direction_effective)
+        src = (self.mgr.presets.scenes.get(self.current_name or "") or {}).get("source")
+        ch = ds._variant_chain
+        return {"context": ctx, "scene": round(self.mgr.taste_weight(src, ds.direction_effective), 3) if src else None,
+                "songs_on_plugin": ch["songs"] if ch is not None and ch["plugin"] == src else None,
+                "counts": None if t is None else t.summary()["counts"]}
 
     def snapshot_events(self) -> list[dict]:
         base = {"session": self.id, "screen": self.screen}
@@ -2645,6 +2728,7 @@ class SessionManager:
         self.slow_trips = 0
         self.calibration = Calibration()                 # tools/calibrate.py's per-GPU costs (re-read on change)
         self.ratings: Any = None                         # the owner's Library ratings (ratings.Ratings; make_app)
+        self.taste: Any = None                           # the room's Next / by-hand / Keep (taste.Taste; make_app)
         self.rooms = rooms.RoomMap()                     # screen -> room (rooms.json): one director per room
         self.switches = StreamSwitches.in_dir(getattr(presets, "dir", None))   # stream_switches.json (change 2)
         self.room_direction: Optional[dict] = None       # show_service's last room.direction (on_room_message)
@@ -2716,6 +2800,23 @@ class SessionManager:
         """How much the auto-directors favour a plug-in by its Library rating (ratings.STAR_WEIGHT); 1.0 unrated."""
         return 1.0 if self.ratings is None else self.ratings.weight(kind, plugin)
 
+    def taste_weight(self, plugin: Optional[str], direction: Optional[dict]) -> float:
+        """How much the scene director favours a plug-in by what people did with it (taste.py), in the direction's
+        context (its genre word); 1.0 with no signals."""
+        t = getattr(self, "taste", None)
+        return 1.0 if t is None else t.multiplier(plugin, context_of(direction))
+
+    def taste_signal(self, signal: str, plugin: Optional[str], direction: Optional[dict],
+                     scene: Optional[str] = None) -> None:
+        """A person's skip / like / keep for the room's taste (one store for every session; never raises)."""
+        t = getattr(self, "taste", None)
+        if t is None or not plugin:
+            return
+        try:
+            t.record(signal, plugin, context_of(direction), scene=scene)
+        except Exception:
+            log.exception("taste: %s %s not recorded", signal, plugin)
+
     def auto_ok(self, kind: str, plugin: Optional[str], gpu: Optional[int] = None,
                 budget_4k: Optional[float] = None) -> bool:
         """The vetted pool: may a director pick this plug-in on its own?  Not rejected in the Library and not
@@ -2760,6 +2861,7 @@ class SessionManager:
                 d.rate = self.rating_weight
                 d.listens = self.source_listens      # no MIDI heard: notes scenes nearly never (d1543b06)
                 d.notes_age = self.notes_age
+                d.taste = self.taste_weight          # the room's taste (taste.py)
                 got = d.pick_scene(self.presets.scenes, None, time.monotonic())
                 if got is not None:
                     name = got[0]
