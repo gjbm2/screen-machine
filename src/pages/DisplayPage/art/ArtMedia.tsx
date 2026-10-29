@@ -268,7 +268,9 @@ export const ArtMedia = forwardRef<ArtMediaHandle, Props>(function ArtMedia(
     zIndex: 1,
   };
 
+  // Laid out as the video is (the same size and fit), so the cross-fade target and frame 0 under it match.
   const firstFrameStyle: React.CSSProperties = {
+    ...media,
     position: "fixed",
     top: 0,
     left: 0,

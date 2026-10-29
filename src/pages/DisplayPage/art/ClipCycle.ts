@@ -2,7 +2,11 @@
 //
 // Same timeline as today: seek to 0, primer at 0.065x for 1.5 s, ease to 0.6x over 2.5 s, play,
 // ease back to 0.065x over 2.5 s, pause on the last frame for 4 s, cross-fade to the extracted
-// first frame over 8 s, wait 2 s, restart. Unlike today's version every timer, rAF and listener
+// first frame over 8 s, wait 2 s, restart. The restart happens under the first-frame overlay: the
+// clip is seeked to frame 0 while the overlay still covers it, and the overlay only goes once that
+// frame is on screen (owner, 29 Oct: "after it cross fades back to the start it then jumps before
+// play begins again": the overlay used to fade off over the paused last frame, and play() on the
+// ended clip ran from 0 before begin() seeked it back to 0). Unlike today's version every timer, rAF and listener
 // belongs to one generation, so hold()/dispose() stop it completely (today's nested timers can't
 // be cancelled, so a paused clip would restart itself).
 //
@@ -50,6 +54,8 @@ export class ClipCycle {
   /** mediaTime of the frame last presented (what is on screen), from requestVideoFrameCallback. */
   private presentedTime: number | null = null;
   private rvfc: number | null = null;
+  /** The first-frame overlay is up (from the cross-fade until the restart has frame 0 on screen). */
+  private overlay = false;
 
   constructor(private video: HTMLVideoElement, private hooks: ClipCycleHooks) {
     this.watchFrames();
@@ -91,8 +97,9 @@ export class ClipCycle {
     v.pause();
     if (this.phase === "idle") return this.frameReady(g); // never started: still on its first frame
     let target: number;
-    if (this.phase === "crossfade" || this.phase === "restartDelay") {
-      // Mid cross-fade: show frame 0 itself, with no fade, so the held picture is clip_t = 0.
+    if (this.phase === "crossfade" || this.phase === "restartDelay" || this.overlay) {
+      // Mid cross-fade (or its restart): show frame 0 itself, with no fade, so the held picture is clip_t = 0.
+      this.overlay = false;
       this.hooks.snapFirstFrameOff();
       this.hooks.setPaused(false);
       target = 0;
@@ -125,6 +132,9 @@ export class ClipCycle {
       case "restartDelay":
         this.begin();
         break;
+      case "seeking":
+        this.begin();
+        break;
       default:
         this.resumeMotion(this.gen);
     }
@@ -132,6 +142,7 @@ export class ClipCycle {
 
   dispose(): void {
     this.disposed = true;
+    this.overlay = false;
     if (this.rvfc !== null) this.video.cancelVideoFrameCallback?.(this.rvfc);
     this.rvfc = null;
     this.next();
@@ -150,8 +161,13 @@ export class ClipCycle {
     this.presentedTime = null; // the next presented frame is frame 0
     v.currentTime = 0;
     this.once(g, "seeked", () => {
-      void this.frameReady(g).then(() => {
+      void this.frameReady(g).then(() => this.framePresented(g)).then(() => {
         if (g !== this.gen) return;
+        if (this.overlay) {
+          // Frame 0 is on screen under the overlay, which shows the same picture: it can go now.
+          this.overlay = false;
+          this.hooks.setShowFirstFrame(false);
+        }
         this.play(g, () => {
           this.phase = "primer";
           this.later(g, () => {
@@ -182,14 +198,11 @@ export class ClipCycle {
 
   private crossfadeStep(g: number): void {
     this.phase = "crossfade";
+    this.overlay = true;
     this.hooks.setShowFirstFrame(true);
     this.later(g, () => {
       this.phase = "restartDelay";
-      this.later(g, () => {
-        this.hooks.setShowFirstFrame(false);
-        this.hooks.setPaused(false);
-        this.play(g, () => this.begin());
-      }, LOOP_RESTART_DELAY);
+      this.later(g, () => this.begin(), LOOP_RESTART_DELAY); // under the overlay: it goes once frame 0 shows
     }, CROSSFADE_DURATION);
   }
 
@@ -263,6 +276,24 @@ export class ClipCycle {
         if (g !== this.gen) return resolve();
         if (this.video.readyState >= 2 && !this.video.seeking) resolve();
         else this.frame(g, check);
+      };
+      this.frame(g, check);
+    });
+  }
+
+  /** The seeked frame has been presented (requestVideoFrameCallback saw it), plus a frame for the compositor;
+   *  at most 500 ms (a browser without the callback, or one that doesn't call it for a paused seek). */
+  private framePresented(g: number): Promise<void> {
+    return new Promise((resolve) => {
+      const t0 = performance.now();
+      let extra = 1;
+      const check = (now: number) => {
+        if (g !== this.gen) return resolve();
+        const shown = this.presentedTime !== null && this.presentedTime < 0.05;
+        if (shown || now - t0 > 500) {
+          if (extra-- <= 0) return resolve();
+        }
+        this.frame(g, check);
       };
       this.frame(g, check);
     });

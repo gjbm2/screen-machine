@@ -206,6 +206,9 @@ export function MediaDisplay({
         async () => {
           log("Video seeked to frame 0.");
           await ensureFrameRendered();
+          // A restart under the first-frame overlay: frame 0 is on screen now, so the overlay can go (it used to
+          // fade off over the paused last frame first, and play() ran the ended clip from 0 before this seek).
+          setShowFirstFrame(false);
 
           video.play().then(() => {
             log(`Primer playback started (${PRIMER_PLAYBACK_DURATION}ms at 0.065x)`);
@@ -238,13 +241,10 @@ export function MediaDisplay({
 					  setTimeout(() => {
 						// ✅ Step 7: Hold fully visible frame
 						setTimeout(() => {
-						  // ✅ Restart
-						  setShowFirstFrame(false);
+						  // ✅ Restart, under the overlay (beginPlayback takes it off once frame 0 shows)
 						  setPaused(false);
 						  console.log("Go again...");
-						  video.play().then(() => {
-							beginPlayback();
-						  });
+						  beginPlayback();
 						}, LOOP_RESTART_DELAY);
 					  }, CROSSFADE_DURATION);
 					}, HOLD_FINAL_FRAME);
@@ -315,6 +315,7 @@ export function MediaDisplay({
   };
 
   const firstFrameStyle: React.CSSProperties = {
+    ...mediaStyle,                              // laid out as the video is, so frame 0 under it matches
     position: "fixed",
     top: 0,
     left: 0,
