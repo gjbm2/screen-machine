@@ -603,3 +603,25 @@ def test_the_weak_list_is_config(tmp_path):
     assert len(r.events("section_change")) == 1
     bad = Rig(tmp_path, settings={"cues": {"signs": {"weak": ["louder", "nonsense"]}}})
     assert bad.c.cfg["signs"]["weak"] == C.CUES_FALLBACK["signs"]["weak"] and len(bad.c.problems) == 1
+
+
+def test_the_sheet_holds_through_a_quiet_patch_and_says_when_the_piano_holds_the_cues(tmp_path):
+    """29 Oct: a quiet room mic put the 2 s median under the floor + collapse_db every few seconds and the Ready lines
+    came and went; they outlast a quiet patch by SHEET_HOLD_S.  While the piano's MIDI vouches for the piece neither
+    cue fires (piano_rest), so the lines say they are held, not Ready."""
+    r = Rig(tmp_path)
+    r.learn_floor()
+    r.run(5.0)
+    assert [x["kind"] for x in r.c.sheet()] == ["stop", "fade"]
+    r.level = -50.0                                                     # a quiet patch: 15 dB over the floor
+    r.run(4.0)
+    assert not r.c.snapshot()["standing"]["playing"]
+    assert [x["kind"] for x in r.c.sheet()] == ["stop", "fade"]         # still shown
+    r.run(C.SHEET_HOLD_S)
+    assert r.c.sheet() == []                                            # a long one: gone
+    r.level = -20.0
+    r.run(3.0)
+    assert [x["words"] for x in r.c.sheet()] == [C.READY_WORDS["stop"], C.READY_WORDS["fade"]]
+    r.ctx.piano = lambda: {"stream": "piano", "keys_down": 1, "damper": 0.0, "last_note_age_s": 0.1}
+    r.run(0.2)
+    assert [x["words"] for x in r.c.sheet()] == [C.HELD_WORDS["stop"], C.HELD_WORDS["fade"]]

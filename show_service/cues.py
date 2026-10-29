@@ -143,6 +143,9 @@ KIND_NOUN = {"chorus": "the chorus", "drop": "the drop", "climax": "the climax",
 FIRE_KIND = {"big": "drop", "medium": "section_change"}    # small: logged only
 READY_WORDS = {"stop": "Ready: snap to dark if the music stops", "fade": "Ready: slow fade if the music fades",
                "segue": "Ready: straight on into the next song"}
+HELD_WORDS = {"stop": "Held while the piano plays: no snap to dark", "fade": "Held while the piano plays: no slow fade"}
+SHEET_HOLD_S = 10.0     # the sheet's Ready lines outlast a quiet patch by this (display only: 29 Oct, a quiet room mic
+                        # put the 2 s median under the floor + collapse_db every few seconds, and the lines flickered)
 DARK_WORDS = {"stop": "Dark: the music stopped; back if it returns",
               "fade": "Fading out with the music; back if it comes up"}
 
@@ -260,6 +263,7 @@ class Cues:
         self._stop_on = True
         self._fade_on = True
         self._playing = False
+        self._played_at: Optional[float] = None         # the tick _playing was last true (the sheet's hold)
         self._grid = _Grid(None, 0.0)
         self._log: collections.deque = collections.deque(maxlen=LOG_N)
         self._tick_ms: collections.deque = collections.deque(maxlen=STAT_N)
@@ -485,6 +489,8 @@ class Cues:
         music = self._music_now()
         self._playing = bool(ref is not None and music
                              and ref - (floor if floor is not None else NO_FLOOR_DBFS) >= sc["collapse_db"])
+        if self._playing:
+            self._played_at = now_s
         d = self._dark
         if d is not None:
             self._dark_tick(now_s, t, floor)
@@ -902,12 +908,15 @@ class Cues:
         d = self._dark
         if d is not None and d.get("id"):
             out.append({"kind": d["kind"], "words": DARK_WORDS[d["kind"]], "window_s": None, "size": None})
-        elif self._playing:
+        elif self._played_at is not None and now_s - self._played_at < SHEET_HOLD_S:
             if self._ending == "segue":
                 out.append({"kind": "segue", "words": READY_WORDS["segue"], "window_s": None, "size": None})
+            # while the piano's MIDI vouches for the piece neither fires (piano_rest): say so, not Ready
+            held = piano_vouches(self.ctx, self._piano_rest_s)
             for k, on in (("stop", self._stop_on), ("fade", self._fade_on)):
                 if on and not self._repeat_now:       # this song came back once: neither goes dark again in it
-                    out.append({"kind": k, "words": READY_WORDS[k], "window_s": None, "size": None})
+                    out.append({"kind": k, "words": (HELD_WORDS if held else READY_WORDS)[k], "window_s": None,
+                                "size": None})
         self._sheet = out
 
     def _build_snapshot(self, now_s: float) -> None:
