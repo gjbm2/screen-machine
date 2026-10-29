@@ -15,7 +15,8 @@ import { cn } from "@/lib/utils";
 import type { RoomApi } from "./api";
 import { Notice, Spinner, Unroll } from "./bits";
 import { EffectChips, EffectPicker, EffectSheet, LookSettings, PickingRows, SceneButton, ScenePicker } from "./LivePanel";
-import { cap, droppedWords, fxChips, fxLabel, ownWords, sceneInfo, type LookScope, type SceneInfo } from "./liveLib";
+import { cap, droppedWords, fxChips, fxLabel, ownWords, sceneInfo, sceneRatingKey, type LookScope, type SceneInfo } from "./liveLib";
+import { RatingRow } from "./Rating";
 import { effectSlots, type LiveMember } from "./roomFx";
 import { CARD_CLASS } from "./theme";
 import type { Library } from "./types";
@@ -224,6 +225,9 @@ function RoomLiveCard({
             onClick={() => setScenePick(true)}
             testId={`roomscene-${room.id}`}
           />
+          {scenesNow.size <= 1 && (
+            <RatingRow api={api} ratingKey={sceneRatingKey(lib, look.current_scene)} what="scene" className="-mt-1" testId={`roomrate-${room.id}`} />
+          )}
 
           <div className="space-y-1.5 border-t border-stone-200/80 pt-1.5">
             <PickingRows
@@ -243,6 +247,7 @@ function RoomLiveCard({
             >
               <EffectChips
                 id={room.id}
+                api={api}
                 chips={chips}
                 where={both}
                 onOpen={(c) => setSheetKey(c.key)}
@@ -319,6 +324,7 @@ function RoomLiveCard({
             testId={`roomfxpicker-${room.id}`}
           />
           <EffectSheet
+            api={api}
             chip={sheetChip}
             onClose={() => setSheetKey(null)}
             fxOn={fxOn}

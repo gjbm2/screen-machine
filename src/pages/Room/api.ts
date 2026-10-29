@@ -42,6 +42,7 @@ import type {
   PianoRecording,
   PianoRecordAsk,
   PianoRecordingsView,
+  RatingEntry,
   TestPianoView,
   TestShowView,
   TransitionSpec,
@@ -346,6 +347,16 @@ export class RoomApi {
 
   library(signal?: AbortSignal) {
     return this.json<Library>("GET", "/api/v1/library", undefined, signal);
+  }
+
+  /** The Scene library's ratings (stream_service ratings.py), through the /renderer pass-through. */
+  ratings(signal?: AbortSignal) {
+    return this.json<{ ratings?: Record<string, RatingEntry> }>("GET", "/renderer/dev/ratings", undefined, signal);
+  }
+
+  /** Rate a Library item: stars 1-5 (0 clears) or reject; the reply's entry is null once nothing is left. */
+  rate(body: { key: string; stars?: number; reject?: boolean }) {
+    return this.json<{ key: string; entry: RatingEntry | null }>("POST", "/renderer/dev/rate", body);
   }
 
   /** A thumbnail's URL (an <img> src; the route is open, so no token goes in it). */

@@ -37,6 +37,7 @@ import {
   type SceneInfo,
 } from "./liveLib";
 import { ActionSheet } from "./overlays";
+import { RatingBadge, RatingRow } from "./Rating";
 import { Chip, Picker } from "./Picker";
 import { clearEffects, effectSlots, isPicked, ownStack, pickEffect, type LiveMember } from "./roomFx";
 import { THEME_CLASS } from "./theme";
@@ -453,12 +454,14 @@ export function PickingRows({
 
 export function EffectChips({
   id,
+  api,
   chips,
   where,
   onOpen,
   trailing,
 }: {
   id: string;
+  api: RoomApi;
   chips: FxChip[];
   /** "both screens" when the room's picks are on more than this one. */
   where?: string | null;
@@ -497,6 +500,7 @@ export function EffectChips({
               {c.label}
               {c.kind === "scene" ? " · with the scene" : paused ? " · paused" : ""}
             </span>
+            <RatingBadge api={api} ratingKey={`effect/${c.effect}`} />
             <SlidersHorizontal className="h-4 w-4 shrink-0 opacity-70" aria-hidden />
           </button>
         );
@@ -509,6 +513,7 @@ export function EffectChips({
 /** One effect's sheet: yours (Showing, Strength, Choose another, Take it off), the room's pick (Swap it, Take it
  *  off) or the scene's own (Next scene). Every button closes it; the card says how it went. */
 export function EffectSheet({
+  api,
   chip,
   onClose,
   fxOn,
@@ -522,6 +527,7 @@ export function EffectSheet({
   onSwap,
   onNextScene,
 }: {
+  api: RoomApi;
   chip: FxChip | null;
   onClose: () => void;
   /** Pick effects by itself is on. */
@@ -557,6 +563,7 @@ export function EffectSheet({
           : "Yours. It stays until you take it off.";
   return (
     <ActionSheet open={!!chip} onOpenChange={(o) => !o && onClose()} title={chip?.label ?? ""} description={line} testId={testId}>
+      <RatingRow api={api} ratingKey={chip ? `effect/${chip.effect}` : null} what="effect" className="-mt-1 mb-2" testId={testId ? `${testId}-rate` : undefined} />
       {chip?.kind === "yours" && (
         <div className="space-y-3">
           <label className="flex min-h-11 cursor-pointer items-center gap-3">
@@ -906,6 +913,7 @@ export function LookControls({
   const effectChips = (
     <EffectChips
       id={screenId}
+      api={api}
       chips={chips}
       where={both}
       onOpen={(c) => setSheetKey(c.key)}
@@ -1020,6 +1028,7 @@ export function LookControls({
         testId={`fxpicker-${screenId}`}
       />
       <EffectSheet
+        api={api}
         chip={sheetChip}
         onClose={() => setSheetKey(null)}
         fxOn={fxOn}

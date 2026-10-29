@@ -23,10 +23,11 @@ import {
 import { cn } from "@/lib/utils";
 import type { RoomApi } from "./api";
 import { Notice, Spinner, Unroll } from "./bits";
-import { bothWords, sceneInfo, type LookScope } from "./liveLib";
+import { bothWords, sceneInfo, sceneRatingKey, type LookScope } from "./liveLib";
 import { LookControls, LookSettings, SceneButton, ScenePicker } from "./LivePanel";
 import { profileLabel, transitionSpecKey, type TransitionChoice } from "./catalog";
 import { ParamForm } from "./ParamForm";
+import { RatingRow } from "./Rating";
 import { THEME_CLASS } from "./theme";
 import type { Library, TransitionSpec } from "./types";
 import type { LiveLook } from "./useLiveLook";
@@ -95,6 +96,13 @@ function LiveScene({ screenId, sc, live }: { screenId: string; sc: ScreenControl
           onClick={() => setPickOpen(true)}
           disabled={sc.pickersDisabled || !!sc.busy}
           testId={`scene-${screenId}`}
+        />
+        <RatingRow
+          api={live.api}
+          ratingKey={sceneRatingKey(live.lib, live.lv.look?.current_scene ?? sc.liveSceneKey)}
+          what="scene"
+          className="-mt-2"
+          testId={`rate-${screenId}`}
         />
         <ScenePicker
           open={pickOpen}

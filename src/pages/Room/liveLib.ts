@@ -45,6 +45,16 @@ export function sceneInfo(lib: Library | null, api: RoomApi, nameOrKey: string |
   return { key: nameOrKey.includes(":") ? nameOrKey : `preset:${name}`, label: cap(name), thumb: null };
 }
 
+/** A scene's rating key: ratings are per plug-in, so a preset rates its source ("scene/<source>"). */
+export function sceneRatingKey(lib: Library | null, nameOrKey: string | null | undefined): string | null {
+  if (!nameOrKey) return null;
+  const name = nameOrKey.replace(/^(preset|source):/, "");
+  const source = nameOrKey.startsWith("source:")
+    ? name
+    : (lib?.scenes.find((x) => x.name === name)?.source ?? (lib?.sources?.[name] ? name : null));
+  return source ? `scene/${source}` : null;
+}
+
 function sceneSub(s: LibraryScene): string {
   const bits = [...new Set([s.tags?.family, ...(s.tags?.moods ?? [])].filter(Boolean) as string[])].slice(0, 3);
   return bits.map(cap).join(" · ");
@@ -227,6 +237,8 @@ export interface FxChip {
   label: string;
   /** yours: put on this screen by hand · picked: the room's pick · scene: comes with the scene. */
   kind: "yours" | "picked" | "scene";
+  /** The effect plug-in (its rating is the plug-in's). */
+  effect: string;
   entry?: FxEntry;
   preset?: string | null;
 }
@@ -245,10 +257,10 @@ export function fxChips(look: Look | null | undefined, lib: Library | null, kind
   for (const e of ownStack(look?.fx?.stack)) {
     const picked = isPicked(e);
     if (picked ? !kinds.picked : !kinds.yours) continue;
-    out.push({ key: e.id, label: fxLabel(e, lib), kind: picked ? "picked" : "yours", entry: e, preset: e.preset ?? null });
+    out.push({ key: e.id, label: fxLabel(e, lib), kind: picked ? "picked" : "yours", effect: e.effect, entry: e, preset: e.preset ?? null });
   }
   (look?.current_scene_effects ?? []).forEach((s, i) =>
-    out.push({ key: `scene:${i}`, label: s.preset ? presetLabel(s.preset, lib) : cap(s.effect), kind: "scene", preset: s.preset ?? null }),
+    out.push({ key: `scene:${i}`, label: s.preset ? presetLabel(s.preset, lib) : cap(s.effect), kind: "scene", effect: s.effect, preset: s.preset ?? null }),
   );
   return out;
 }

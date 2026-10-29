@@ -9,7 +9,8 @@
 import { useEffect, useState } from "react";
 import { explainError, storageGet, storageSet } from "@/pages/Room/api";
 import { LookControls, SceneButton, ScenePicker } from "@/pages/Room/LivePanel";
-import { sceneInfo, type SceneInfo } from "@/pages/Room/liveLib";
+import { sceneInfo, sceneRatingKey, type SceneInfo } from "@/pages/Room/liveLib";
+import { RatingRow } from "@/pages/Room/Rating";
 import { useLiveLook } from "@/pages/Room/useLiveLook";
 import {
   isLiveCapable,
@@ -127,6 +128,7 @@ export function LiveLookPanel({ live }: { live: ScreenLive }) {
         disabled={!lib || !!lv.busy}
         testId={`home-scene-${screenId}`}
       />
+      <RatingRow api={api} ratingKey={sceneRatingKey(lib, lv.look?.current_scene)} what="scene" className="-mt-2" testId={`home-rate-${screenId}`} />
       <LookControls screenId={screenId} lv={lv} lib={lib} api={api} />
     </div>
   );

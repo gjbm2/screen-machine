@@ -569,6 +569,15 @@ export interface AutoBlock {
   fx?: { enabled?: boolean; pool?: Pool; max?: number; armed?: boolean };
 }
 
+/** The owner's rating of a Library item (stream_service ratings.py): per plug-in, keyed "scene/<source>" or
+ *  "effect/<effect>". A reject is never picked by itself; stars and reject never both. */
+export interface RatingEntry {
+  stars?: number;
+  reject?: boolean;
+  tags?: string[];
+  at?: string;
+}
+
 export interface FxEntry {
   id: string;
   effect: string;
