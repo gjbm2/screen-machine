@@ -17,9 +17,11 @@ nobody (``on_music_event`` skips via "cues").
             "stop", transition fade-dark, out_s 0.2, in_s 1.0}. Sound back before structure's own end takes over (its gap-based track_end with the
             same id) sends the same id with detail "sound_back". structure's later track_end is the same id: the
             renderer, already dark, ignores the second dark.
-  fade      structure's outro phase (loudness sliding down): track_end {detail "fade", fade-dark, out_s = the time
-            to reach the floor from lufs_s's slope over fade.slope_s, clamped fade.min_s..max_s (3..12)}; the music
-            coming back up (lufs_s fade.back_db over where it was) sends "sound_back".
+  fade      structure's outro phase (loudness sliding down) while lufs_s falls at least fade.min_slope_db_s (0.5) over
+            fade.slope_s and is still fade.above_target_db (3) over the floor's line (else it waits: 29 Oct, fades
+            fired at -0.06 dB/s and under their own target, mid-song): track_end {detail "fade", fade-dark, out_s =
+            the time to reach the floor from that slope, clamped fade.min_s..max_s (3..12)}; the music coming back up
+            (lufs_s fade.back_db over where it was) sends "sound_back".
   repeat    once a song has had a sound_back, neither fires again in that song (logged ``repeat``; 09's audit live-F8,
             21 Oct: track_end:9 fired 11 times in 3.5 min, the TVs dipping to black each time) until the next
             track_change; the sheet then drops their Ready lines. structure's own gap-based end still goes through.
@@ -29,17 +31,27 @@ nobody (``on_music_event`` skips via "cues").
             unknown or no listener: both.
   piano     neither fires while the piano's MIDI vouches for the piece (structure.piano_vouches: a key or the damper
             down, or a note within show.yaml structure.track.piano_rest_s): a lifted hand or a diminuendo is a rest,
-            not the song's end (owner, 21 Oct: practice kept flipping to black). Nor does a fade while lufs_s rises.
+            not the song's end (owner, 21 Oct: practice kept flipping to black). Logged ``piano_rest``.
+  vouched   nor while music.context's track.vouch is "sonos" or "player" (VOUCHED: the song's own source says it is
+            still going, structure's rule: a known length's end further than arm_s, or no length and no long gap):
+            a break inside a known song (owner, 29 Oct: "Sonos is ONE music source"; a fade went dark 3 min before
+            Sonos changed track). Logged ``vouched`` (once per collapse or outro), counted. Live music: as before.
   The existing drop, breakdown, track_change and track_end_armed (structure's) are untouched.
 
 **Forecast cues**, from the beliefs' ``coming`` (each window on the acoustic clock): armed with their window, size,
 signs and confidence; one per kind (a newer forecast replaces an older one); the window's end (+ forecast.slack_s)
-disarms it ("missed"). Firing:
+disarms it ("missed"). A forecast is a hint (owner, 29 Oct; 40 of 59 fires came on "louder" alone, and structure
+heard something in 6 of the 59 windows): it fires only on evidence, one of its strong signs (any sign not in
+cues.signs.weak: louder, busier, low_in, phrase_line) or two different weak ones within seen_s. Firing:
   * confidence >= forecast.min_conf, a phrase line of the beat clock (16 bars at phrase16_conf, else 8) inside the
-    window, and an early sign agreeing (structure's build, lufs_s rising at rise_db_s over rise_s, or one of the
-    cue's signs seen): scheduled AT that line, published lead_bars (>= min_lead_s) ahead;
-  * otherwise at the next downbeat (>= min_lead_s ahead; no bar grid: now + min_lead_s) once any of its signs is
-    seen inside the window (a ``phrase_line`` sign fires at that line itself).
+    window, and an early sign agreeing (structure's build, a strong sign since it was armed, or two weak ones, lufs_s
+    rising at rise_db_s over rise_s counting as "louder"): scheduled AT that line, published lead_bars (>= min_lead_s)
+    ahead;
+  * otherwise at the next downbeat (>= min_lead_s ahead; no bar grid: now + min_lead_s) once its evidence is seen
+    inside the window (structure's build counts as strong for a big one); with a ``phrase_line`` sign and that line
+    within the lead + a bar (itself a weak sign), at that line.
+  Meanwhile structure reads the sheet: while a forecast is inside its window its ears are keener
+  (structure.forecast_boost).
   big -> room.event "drop", medium -> "section_change" ({id "cue:<kind>:<n>", detail "forecast: <kind>", at_ms the
   line or downbeat, acoustic monotonic ms like structure's}); small: logged only. At most one fire per bar; nothing
   fires while a person holds the look (room.direction ``hold``: ctx.held). A track change disarms every forecast.
@@ -50,7 +62,8 @@ busier_rate and busier_ratio), stop_return (a dip of stop_return_db for stop_ret
 timbre_change (structure's confirmed section boundary or drop, as it arrives), key_change (music.context's key, at
 key_min_strength, other than at arm time), drums_in / drums_out (music.rhythm percussive_ratio up / down by
 perc_jump), vocal_in / vocal_out (the ML worker's voice_p crossing voice_on / voice_off within voice_window_s),
-phrase_line (the clock's next 8-bar line within one bar). A sign counts for seen_s after it is seen.
+phrase_line (the clock's next 8-bar line within one bar). A sign counts for seen_s after it is seen. ``weak`` (a
+list of sign words) says which are weak.
 
 **The sheet** (``sheet()``, any thread; ctx.cue_sheet): [contract.CueLine] for the card's listening block and
 GET /api/v1/listening ``armed``. **The log**: every arm, schedule, fire, hold, disarm, miss and standing fire, and
@@ -99,16 +112,25 @@ CUES_FALLBACK: dict = {
     "stop": {"collapse_db": 20.0, "fall_s": 0.3, "ref_s": 2.0, "loud_db": 6.0, "quiet_ticks": 2,
              "floor_margin_db": 12.0, "floor_gate": 0.05, "quiet_dbfs": -45.0, "back_db": 15.0, "back_ticks": 2,
              "watch_s": 15.0, "out_s": 0.2, "in_s": 1.0, "dark_max_s": 8.0},
+    # fade.min_slope_db_s / above_target_db (starting points, 29 Oct: two fades fired at -0.06 dB/s and under their
+    # own target, 3 min before the song changed): lufs_s falling at least this fast, and this far over the floor's line
     "fade": {"slope_s": 4.0, "min_s": 3.0, "max_s": 12.0, "floor_above_db": 6.0, "floor_lufs": -50.0,
-             "back_db": 3.0, "back_s": 1.0, "in_s": 2.0, "dark_max_s": 8.0, "watch_s": 30.0},
+             "back_db": 3.0, "back_s": 1.0, "in_s": 2.0, "dark_max_s": 8.0, "watch_s": 30.0,
+             "min_slope_db_s": 0.5, "above_target_db": 3.0},
     "forecast": {"min_conf": 0.6, "slack_s": 2.0, "min_lead_s": 1.1, "lead_bars": 1.0, "phrase16_conf": 0.5,
                  "grid_conf": 0.5, "rise_db_s": 0.15, "rise_s": 6.0},
+    # signs.weak: the signs that never fire a forecast alone (two different ones within seen_s do); every other sign
+    # is strong (29 Oct: 40 of 59 fires came on "louder" alone, and structure heard something in 6 of the 59 windows)
     "signs": {"louder_db": 4.0, "low_in_db": 6.0, "busier_rate": 0.75, "busier_ratio": 1.3, "perc_jump": 0.15,
               "voice_on": 0.6, "voice_off": 0.4, "voice_window_s": 6.0, "stop_return_db": 15.0,
-              "stop_return_min_s": 0.15, "stop_return_max_s": 3.0, "key_min_strength": 0.3, "seen_s": 4.0},
+              "stop_return_min_s": 0.15, "stop_return_max_s": 3.0, "key_min_strength": 0.3, "seen_s": 4.0,
+              "weak": ["louder", "busier", "low_in", "phrase_line"]},
 }
 _SIGNED = {"cues.stop.quiet_dbfs", "cues.fade.floor_lufs"}
 _INTS = {"cues.stop.quiet_ticks", "cues.stop.back_ticks"}
+#: music.context track.vouch words that hold the standing cues: the song's own source (Sonos, the Music page's player)
+#: says it is still going (structure._vouch). The piano's ("midi") is read here directly (piano_vouches), as before.
+VOUCHED = ("sonos", contract.TRACK_VIA_PLAYER)
 
 #: the sheet's words (the Room page shows them as they are)
 KIND_AT = {"chorus": "at the chorus", "drop": "at the drop", "climax": "at the climax",
@@ -152,6 +174,14 @@ def _resolve(fallback: dict, given: Any, path: str, probs: list[str]) -> dict:
             continue
         if isinstance(fv, dict):
             out[k] = _resolve(fv, g[k], p, probs)
+            continue
+        if isinstance(fv, list):                      # a list of sign words (signs.weak)
+            v = g[k]
+            if isinstance(v, list) and all(isinstance(s, str) and s in contract.COMING_SIGNS for s in v):
+                out[k] = list(v)
+            else:
+                out[k] = list(fv)
+                probs.append(f"{p}: {v!r} is not a list of signs ({', '.join(contract.COMING_SIGNS)}): {fv} used")
             continue
         x = _f(g[k])
         if x is None or (p not in _SIGNED and x < 0) or (p in _INTS and x < 1):
@@ -225,6 +255,7 @@ class Cues:
         self._last_fire: Optional[float] = None
         self._piano_rest_s = float(STRUCTURE_FALLBACK["track"]["piano_rest_s"])
         self._rest_at: Optional[float] = None           # the collapse a piano rest already excused (logged once)
+        self._vouch_at: Optional[float] = None          # the collapse a song's source already vouched for (logged once)
         self._ending: Optional[str] = None
         self._stop_on = True
         self._fade_on = True
@@ -425,6 +456,13 @@ class Cues:
     def _held(self) -> bool:
         return _call(getattr(self.ctx, "held", None)) is True
 
+    @staticmethod
+    def _vouched(mc: Optional[dict]) -> Optional[str]:
+        """music.context track.vouch when it is a song's own source (VOUCHED), else None."""
+        tr = mc.get("track") if mc is not None and isinstance(mc.get("track"), dict) else {}
+        v = tr.get("vouch")
+        return v if v in VOUCHED else None
+
     def _track_id(self, mc: Optional[dict]) -> int:
         tr = mc.get("track") if mc is not None and isinstance(mc.get("track"), dict) else {}
         tid = tr.get("id")
@@ -491,6 +529,14 @@ class Cues:
                 self._log_event({"kind": "piano_rest", "cue": "stop", "ref_dbfs": round(ref, 1),
                                  "level_dbfs": round(lv, 1)})
             return
+        v = self._vouched(mc)
+        if v is not None:                               # a break inside a song its source says is still going
+            if self._vouch_at != last_loud:             # once per collapse
+                self._vouch_at = last_loud
+                self.counts["vouched"] += 1
+                self._log_event({"kind": "vouched", "cue": "stop", "by": v, "ref_dbfs": round(ref, 1),
+                                 "level_dbfs": round(lv, 1)})
+            return
         if self._held():
             self.counts["held"] += 1
             self._log_event({"kind": "held", "cue": "stop"})
@@ -520,18 +566,26 @@ class Cues:
         fc = self.cfg["fade"]
         w = [r for r in self._rows if r[0] >= t - fc["slope_s"]]
         slope = _slope([r[0] for r in w], [r[3] for r in w])
-        if slope is not None and slope > 0:
-            return                                    # louder, not fading: wait (the outro may still fall)
+        lufs = self._rows[-1][3]
+        if lufs is None:
+            return
+        target = (floor + fc["floor_above_db"]) if floor is not None else fc["floor_lufs"]
+        # a fade: lufs_s falling at least min_slope_db_s and still above_target_db over the floor's line; else wait
+        # (the outro may still fall). 29 Oct: fades fired at -0.06 dB/s and under their own target, mid-song
+        if slope is None or slope > -fc["min_slope_db_s"] or lufs < target + fc["above_target_db"]:
+            return
         self._outro_done = True
         if piano_vouches(self.ctx, self._piano_rest_s):
             self.counts["piano_rest"] += 1
             self._log_event({"kind": "piano_rest", "cue": "fade"})
             return
-        lufs = self._rows[-1][3]
-        if lufs is None:
+        v = self._vouched(mc)
+        if v is not None:                             # the song's own source says it is still going (once an outro)
+            self.counts["vouched"] += 1
+            self._log_event({"kind": "vouched", "cue": "fade", "by": v, "slope_db_s": round(slope, 3),
+                             "lufs_s": round(lufs, 1)})
             return
-        target = (floor + fc["floor_above_db"]) if floor is not None else fc["floor_lufs"]
-        est = (lufs - target) / -slope if slope is not None and slope < -1e-3 else fc["max_s"]
+        est = (lufs - target) / -slope if slope < -1e-3 else fc["max_s"]
         out_s = round(max(fc["min_s"], min(fc["max_s"], est)), 1)
         if self._held():
             self.counts["held"] += 1
@@ -637,12 +691,12 @@ class Cues:
     def _bar_s(self) -> float:
         return self._grid.bar_s if self._grid.ok and self._grid.bar_s else NO_GRID_BAR_S
 
-    def _seen_sign(self, cue: dict, now_s: float, mc: Optional[dict],
-                   since: Optional[float] = None) -> Optional[str]:
-        """The first of the cue's signs seen inside its window (and within seen_s of now, or since ``since``)."""
+    def _seen_signs(self, cue: dict, now_s: float, mc: Optional[dict], since: Optional[float] = None) -> dict:
+        """The cue's signs seen inside its window (and within seen_s of now, or since ``since``): {sign: when}."""
         fc, sc = self.cfg["forecast"], self.cfg["signs"]
         lo = max(cue["t0"] - fc["slack_s"], now_s - sc["seen_s"] if since is None else since)
         hi = cue["t1"] + fc["slack_s"]
+        out: dict[str, float] = {}
         for s in cue["signs"]:
             if s == "key_change":
                 k = self._key_now(mc)
@@ -650,12 +704,28 @@ class Cues:
                     cue["key0"] = k
                 elif k is not None and k != cue["key0"] and lo <= now_s <= hi:
                     self._sign_t["key_change"] = now_s
-                    return s
+                    out[s] = now_s
                 continue
             ts = self._sign_t.get(s)
             if ts is not None and lo <= ts <= hi:
-                return s
-        return None
+                out[s] = ts
+        return out
+
+    def _evidence(self, cue: dict, now_s: float, mc: Optional[dict], *, since: Optional[float] = None,
+                  extra_weak: tuple = (), build: bool = False) -> Optional[str]:
+        """What lets a forecast fire (owner, 29 Oct: the AI's forecast is a hint, the ears decide): one of the cue's
+        strong signs (every sign not in signs.weak), structure's build when ``build``, or two different weak signs
+        within seen_s (the cue's own, plus ``extra_weak``: the phrase line near, the loudness rising). None: not yet."""
+        if build and ((mc or {}).get("section") or {}).get("phase") == "build":
+            return "a build"
+        sc = self.cfg["signs"]
+        weak = set(sc["weak"])
+        seen = self._seen_signs(cue, now_s, mc, since)
+        strong = [s for s in cue["signs"] if s in seen and s not in weak]
+        if strong:
+            return strong[0]
+        pair = {s for s, ts in seen.items() if s in weak and ts >= now_s - sc["seen_s"]} | set(extra_weak)
+        return " + ".join(sorted(pair)) if len(pair) >= 2 else None
 
     def _phrase_line(self, cue: dict, now_s: float) -> Optional[float]:
         """The phrase line (16 bars at phrase16_conf, else 8) inside the cue's window, at least the lead ahead."""
@@ -672,18 +742,17 @@ class Cues:
         return line if line <= hi else None
 
     def _early(self, cue: dict, now_s: float, mc: Optional[dict]) -> Optional[str]:
-        """An early sign that agrees with a scheduled line: structure's build, the loudness rising, or one of the
-        cue's own signs since it was armed."""
-        if ((mc or {}).get("section") or {}).get("phase") == "build":
-            return "a build"
+        """An early sign that agrees with a scheduled line: structure's build, one of the cue's strong signs since it
+        was armed, or two different weak ones (the loudness rising counts as "louder": alone it is weak, 29 Oct)."""
         fc = self.cfg["forecast"]
+        rising: tuple = ()
         if self._rows:
             t = self._rows[-1][0]
             w = [r for r in self._rows if r[0] >= t - fc["rise_s"]]
             sl = _slope([r[0] for r in w], [r[3] for r in w])
             if sl is not None and sl >= fc["rise_db_s"]:
-                return "the music getting louder"
-        return self._seen_sign(cue, now_s, mc, since=cue["armed_s"])
+                rising = ("louder",)
+        return self._evidence(cue, now_s, mc, since=cue["armed_s"], extra_weak=rising, build=True)
 
     def _cue_tick(self, cue: dict, now_s: float, mc: Optional[dict]) -> None:
         fc = self.cfg["forecast"]
@@ -711,17 +780,18 @@ class Cues:
         if now_s < cue["t0"] - fc["slack_s"]:
             return
         g = self._grid
-        at = None
-        via = None
+        line = None
         if "phrase_line" in cue["signs"] and g.ok:
-            line = g.line_after(now_s + self._lead(), 8)
-            if line - now_s <= self._lead() + self._bar_s() and line <= cue["t1"] + fc["slack_s"]:
-                at, via = line, "phrase_line"
-        if at is None:
-            s = self._seen_sign(cue, now_s, mc)
-            if s is None:
-                return
-            via = s
+            ln = g.line_after(now_s + self._lead(), 8)
+            if ln - now_s <= self._lead() + self._bar_s() and ln <= cue["t1"] + fc["slack_s"]:
+                line = ln                             # the phrase line is near: a weak sign of its own
+        via = self._evidence(cue, now_s, mc, extra_weak=("phrase_line",) if line is not None else (),
+                             build=cue["size"] == "big")
+        if via is None:
+            return
+        if line is not None:
+            at = line                                 # it fires AT the near phrase line
+        else:
             at = g.line_after(now_s + fc["min_lead_s"], 1) if g.ok else now_s + fc["min_lead_s"]
         if self._held():
             if not cue["held_logged"]:

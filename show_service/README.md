@@ -4234,7 +4234,7 @@ both at integration (S4.12).
 |---|---|---|
 | `ml` | mllink (the worker's keys go to it as the config frame: `cpu_max`, `silence_dbfs`, `fast_lane`, `tasks`, `ced_groups`) | `enabled`, `python`, `models_dir`, `nice`, `cpu_max`, `cpu_floor`, `silence_dbfs`, `results_stale_s`, `stale_periods`, `fast_lane {every_s, budget_ms}`, `tasks {ced, tags, key, beats}` (each `{every_s, window_s, model, budget_ms}`; `tags.heads {field: head}`, `key.profile`, `beats.interior_margin_s`), `ced_groups {word: [AudioSet class, ...]}`, `beat_votes {match_ms, octave_tol, min_conf, one_agree, agree_runs, bar_agree_runs, bar_lens, cooldown_s, local_s, octave_add_min, octave_drop_max, octave_prior_oct, run_max_s}` (the octave_* keys since 21 Oct: S4.15 "Octave evidence"; run_max_s since 21 Oct: S4.5 "The run"), `restart {backoff_s, healthy_s, stall_s}`. S4.13 removed `threads` (nothing read it: the worker has two lanes) and added `cpu_floor`, `stale_periods` and `beat_votes.bar_agree_runs`; `tasks.beats.budget_ms` is 5500 |
 | `genre_map` | structure (`genre_reading`) | `parents {Discogs parent: word, or {from_listener: [words]}}`, `tau_s`, `freeze_below_music`, `speech_scale_above`, `switch_margin`, `switch_dwell_s` |
-| `structure` | structure | `gobo_on_sections`, `novelty {recent_s, before_s, k_mad, history_s, min {ml, dsp}, peak_s}`, `dsp_weights {chroma, mfcc}`, `min_section_bars`, `min_section_s`, `identify_after_s`, `repeat_sim {ml, dsp}`, `max_sections`, `predict_lead_bars`, `grid_conf`, `same_bars`, `phase_dwell_s`, `tags_tau_s`, `tags_hold_s`, `ced_mean_s`, `listener_conf`, `key_min_strength`, `key_hold {strength_margin, hold_s}`, `events {min_lead_s}`, `track {gap_s, gap_gate, gap_lufs_m, window_s, tempo_jump, key_min_conf, parent_window_s, parent_margin, spike_k (null: off), spike_jumps}`, `build {window_s, min_slope {lufs_db_s, brightness_s, onset_rate_s}, low_max_slope_db_s, full_rise_db, phrase16_conf, arm_beats, foot_db}`, `drop {low_jump_db, lufs_jump_db, within_beats, hold_bars, snap_beats, disarm_bars}`, `breakdown {low_drop_db, perc_ratio_max, min_gate, for_s, leave_s}`, `peak {energy_min, for_s, leave_s}`, `outro {window_s, max_slope_db_s, energy_max, for_s, leave_s}`, `fastled {build_end, drop_weights, band_weights, drop_cooldown_s}` (S4.13 added every key after `predict_lead_bars` but `tags_tau_s` and `key_min_strength`, and the track, build, drop, breakdown, peak and outro keys after the first ones) |
+| `structure` | structure | `gobo_on_sections`, `novelty {recent_s, before_s, k_mad, history_s, min {ml, dsp}, peak_s}`, `dsp_weights {chroma, mfcc}`, `min_section_bars`, `min_section_s`, `identify_after_s`, `repeat_sim {ml, dsp}`, `max_sections`, `predict_lead_bars`, `grid_conf`, `same_bars`, `phase_dwell_s`, `tags_tau_s`, `tags_hold_s`, `ced_mean_s`, `listener_conf`, `key_min_strength`, `key_hold {strength_margin, hold_s}`, `events {min_lead_s}`, `track {gap_s, gap_gate, gap_lufs_m (null: relative only), window_s, tempo_jump, key_min_conf, parent_window_s, parent_margin, spike_k (null: off), spike_jumps, ..., gap_drop_db, gap_floor_db, gap_ref_s, long_gap_s}` (S5.17, 29 Oct), `forecast_boost` (S5.22, 29 Oct), `build {window_s, min_slope {lufs_db_s, brightness_s, onset_rate_s}, low_max_slope_db_s, full_rise_db, phrase16_conf, arm_beats, foot_db}`, `drop {low_jump_db, lufs_jump_db, within_beats, hold_bars, snap_beats, disarm_bars}`, `breakdown {low_drop_db, perc_ratio_max, min_gate, for_s, leave_s}`, `peak {energy_min, for_s, leave_s}`, `outro {window_s, max_slope_db_s, energy_max, for_s, leave_s}`, `fastled {build_end, drop_weights, band_weights, drop_cooldown_s}` (S4.13 added every key after `predict_lead_bars` but `tags_tau_s` and `key_min_strength`, and the track, build, drop, breakdown, peak and outro keys after the first ones) |
 | `situations.talking` (new; `speech_words` since S4.13, also read by structure); `situations.quiet` gains `music_below`, `speech_below` | situations | S4.8 |
 | `listener` gains `ced {music_min, speech_max, speech_words, speaks_s}`, `section_call_after_s` | listener | S4.8 |
 | `director` gains `sections {max_late_bars, express_gain, phase_hint_s}`, `peaks {after_build_s}`, `build {step_bars, step_bars_late, narrow, dip_level, dip_bars, hit_beats}`, `breakdown {floor_add, motion_scale, saturation_scale}` (it also reads `structure.events.min_lead_s`) | director | S4.8 |
@@ -6955,6 +6955,23 @@ transition) at those junctures." Plain words: docs/SHOW_ENGINE.md §8.5 "Song en
     with `at_ms` = the gap's start.
   - There is no dsp end while Sonos vouches for the song (playing, its end further than `arm_s`). There is one
     `track_end` per song: the first of the two vias wins.
+  - **29 Oct (the owner: "Sonos is ONE music source ... never assume Sonos; each source counts when it is
+    present").** Disco on 28 Oct: the room mic's music sat at -62..-64 LUFS over a -70 floor; `gap_lufs_m` -60 and
+    the gate (its bottom follows the floor: -64) read it as silence, so two dsp ends and two dsp track changes landed
+    inside Sonos tracks.
+    - **Silence is relative.** lufs_m at or under max(floor + `gap_floor_db` (6), music − `gap_drop_db` (18),
+      `gap_lufs_m` when set), never within `gap_floor_db` of the music; leaving a silence needs 3 dB more. Music =
+      the median lufs_s of the last `gap_ref_s` (30) of sound (music_audible not false; it counts once it fills a
+      quarter of that). Floor = the 10th percentile of lufs_m in gaps 18 dB under the music over 5 min, else the
+      meter's -70. `gap_lufs_m` defaults to null; show.yaml's old -60 can no longer reach into the music. The gate
+      counts only without lufs_m. Quiet music (-62) gets line -68; loud (-25) keeps -43.
+    - **The song's own source.** While the Music page's player plays a piece, or Sonos plays a named track
+      (sonos_playing true), the dsp track changes are held (`ends.player_held` / `sonos_held`; the piano's stays
+      `piano_held`), and so is the dsp end with no known length unless the silence lasts `track.long_gap_s` (12). A
+      known length keeps the `arm_s` rule. Held ends: `ends.end_held`, logged once a silence.
+    - **music.context `track.vouch`**: `"player"` | `"sonos"` | `"midi"` (the piano) | null: who says the song is
+      still going right now. cues holds its stop and fade by it (S5.22).
+    - The snapshot's `ends` gains `plays`, `vouch` and `silence` {line_lufs, floor_lufs, music_lufs, lufs_m, silent}.
   - **The sound back.** After a `track_end`, if sound returns with no track change (at once via dsp; via sonos
     after `end_slack_s`, so a gapless next id can still arrive), `track_end` is re-sent with `detail: "sound_back"`
     and `at_ms` = the first sound. A later silence after music sends `track_end` again (the same id).
@@ -7412,6 +7429,17 @@ SHOW_ENGINE §7.1-§7.5, §8.2, §8.5 ("Cues").
     is seen in the window (within 4 s). Big -> `drop`, medium -> `section_change` {id `cue:<kind>:<n>`, detail
     `forecast: <kind>`, at_ms, beat/bar/phrase, `cue` {kind, size, conf, sign, window_ms}}; small: logged only. One
     fire a bar (a second one moves to the next bar); nothing while `ctx.held()`.
+  - **29 Oct: forecasts are hints; the song's source holds the darks** (owner: "the art director must work with
+    whatever it gets ... and do its best"; tonight's cues.jsonl: 40 of 59 forecast fires on `louder` alone, structure
+    heard something in 6 of the 59 windows; a fade 3 min before Sonos changed track, another at -0.06 dB/s):
+    - a forecast fires only on one of its strong signs (any not in `cues.signs.weak`: louder, busier, low_in,
+      phrase_line), or two different weak ones within `seen_s`; structure's build counts as strong for a big one,
+      and for the phrase-line schedule's early sign (lufs_s rising counts as "louder"). A near phrase line is weak.
+    - while a forecast is inside its window, structure's novelty threshold × `structure.forecast_boost` (0.8), read
+      through `ctx.cue_sheet`: the AI makes the ears keener instead of firing on its own.
+    - stop and fade never fire while music.context's `track.vouch` is `sonos` or `player` (logged `vouched`,
+      `counts.vouched`); the piano as before.
+    - a fade also needs lufs_s falling `fade.min_slope_db_s` (0.5) and `fade.above_target_db` (3) over its target.
   - **Signs implemented:** louder (lufs_m, 0.3 s vs the 2 s before, +4 dB), low_in (rhythm low_db, +6 dB), busier
     (onset_rate +0.75/s and x1.3 on 3-4 s before), stop_return (a 15 dB dip of 0.15-3 s, then back), timbre_change
     (structure's confirmed section_change or drop, on arrival), key_change (music.context's key vs at arm time),

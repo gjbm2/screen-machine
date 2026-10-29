@@ -1770,6 +1770,10 @@ class TrackInfo(TypedDict):
     changed: bool                      # True only in the first music.context after a change (compare ids)
     age_s: Optional[float]             # since this track began
     via: Optional[str]                 # "sonos" | "dsp" | "player" | None (the first track)
+    vouch: Optional[str]               # who says the song is still going right now: "player" | "sonos" (their song
+                                       # plays: a known length's end over structure.track.arm_s away, or no length and
+                                       # no silence of track.long_gap_s) | "midi" (the piano: structure.piano_vouches)
+                                       # | None (the sound alone decides; README S5.17, owner 29 Oct)
 
 
 class MusicContext(TypedDict):

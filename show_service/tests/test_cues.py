@@ -26,6 +26,7 @@ class Rig:
         self.level, self.lufs, self.lufs_s, self.gate = -20.0, -20.0, -20.0, 0.8
         self.low, self.onsets, self.perc, self.voice = -20.0, 2.0, 0.3, None
         self.phase, self.key, self.track = "calm", None, 3
+        self.vouch = None                                # music.context track.vouch (structure)
         self.beliefs = None
         self.held = False
         self.music = True
@@ -39,7 +40,7 @@ class Rig:
         ctx.clock = lambda: clock_body(self.t, self.phrase_conf) if self.clock_on else None
         ctx.music_context = lambda: {"t_ms": self.t * 1000.0, "section": {"phase": self.phase}, "key": self.key,
                                      "mode": "major", "key_strength": 0.6 if self.key else 0.0,
-                                     "track": {"id": self.track}}
+                                     "track": {"id": self.track, "vouch": self.vouch}}
         ctx.beliefs = lambda: self.beliefs
         ctx.situations = lambda: {"music_audible": {"value": self.music}}
         ctx.held = lambda: self.held
@@ -293,18 +294,18 @@ def test_the_sign_detectors(tmp_path):
 def test_a_forecast_fires_on_the_downbeat_after_its_sign(tmp_path):
     r = Rig(tmp_path)
     r.run(3.0)
-    r.forecast(lo=5.0, hi=15.0, signs=("louder",), size="big", conf=0.5)
+    r.forecast(lo=5.0, hi=15.0, signs=("drums_in",), size="big", conf=0.5)
     r.run(0.1)
     sheet = [x for x in r.c.sheet() if x["kind"] == "chorus"]
     assert sheet == [{"kind": "chorus", "words": "Big change at the chorus, likely in 5-15 s", "window_s": [4.9, 14.9],
                       "size": "big"}]
-    r.lufs = -14.0                                                      # louder, but before the window (- slack)
+    r.perc = 0.7                                                        # drums in, but before the window (- slack)
     r.run(0.5)
-    r.lufs = -20.0
+    r.perc = 0.3
     r.run(3.0)
     assert r.events("drop") == []
     r.run(3.0)
-    r.lufs = -14.0                                                      # inside the window now
+    r.perc = 0.7                                                        # inside the window now
     r.run(0.3)
     drops = r.events("drop")
     assert len(drops) == 1
@@ -312,7 +313,7 @@ def test_a_forecast_fires_on_the_downbeat_after_its_sign(tmp_path):
     assert d["id"] == "cue:chorus:1" and d["detail"] == "forecast: chorus" and d["via"] == "cues"
     assert d["at_ms"] % 2000.0 == pytest.approx(0.0, abs=1.0) and d["at_ms"] >= (r.t + 1.1) * 1000.0 - 1.0
     assert d["at_ms"] <= (r.t + 1.1 + 2.0) * 1000.0                     # the next downbeat after the lead
-    assert d["cue"]["sign"] == "louder" and d["cue"]["size"] == "big"
+    assert d["cue"]["sign"] == "drums_in" and d["cue"]["size"] == "big"
     assert [x for x in r.c.sheet() if x["kind"] == "chorus"] == []      # fired: off the sheet
     assert {"arm", "fire"} <= set(r.kinds())
 
@@ -351,10 +352,10 @@ def test_medium_is_a_section_change_and_small_is_logged_only(tmp_path):
     assert len(sc) == 1 and sc[0]["detail"] == "forecast: band_in" and sc[0]["id"] == "cue:band_in:1"
     r.perc = 0.3
     r.run(5.0)
-    r.forecast(kind="vocal_in", lo=0.0, hi=10.0, signs=("louder",), size="small", fid="v2:0")
+    r.forecast(kind="vocal_in", lo=0.0, hi=10.0, signs=("louder", "low_in"), size="small", fid="v2:0")
     r.run(0.1)
     assert r.c.sheet()[0]["words"].startswith("Watching for the singing coming in")
-    r.lufs = -14.0
+    r.lufs, r.low = -14.0, -12.0                                        # two weak signs at once
     r.run(0.3)
     assert len(r.events()) == 1                                         # nothing published for a small one
     fire = [e for e in r.c.log(20) if e["kind"] == "fire" and e["cue"] == "vocal_in"]
@@ -393,9 +394,9 @@ def test_one_per_kind_a_newer_one_replaces_it_and_a_new_song_disarms(tmp_path):
 def test_nothing_fires_while_a_person_holds_the_look(tmp_path):
     r = Rig(tmp_path)
     r.run(3.0)
-    r.forecast(lo=0.0, hi=10.0, signs=("louder",))
+    r.forecast(lo=0.0, hi=10.0, signs=("drums_in",))
     r.held = True
-    r.lufs = -14.0
+    r.perc = 0.7
     r.run(0.5)
     assert r.events("drop") == [] and "held" in r.kinds()
     r.held = False
@@ -407,26 +408,32 @@ def test_at_most_one_fire_a_bar(tmp_path):
     r = Rig(tmp_path)
     r.run(3.0)
     r.beliefs = {"state": "fresh", "ending": None, "coming": [
-        {"id": "v1:0", "kind": "chorus", "t0_s": r.t, "t1_s": r.t + 10, "signs": ["louder"], "size": "big",
+        {"id": "v1:0", "kind": "chorus", "t0_s": r.t, "t1_s": r.t + 10, "signs": ["drums_in"], "size": "big",
          "conf": 0.5},
-        {"id": "v1:1", "kind": "breakdown", "t0_s": r.t, "t1_s": r.t + 10, "signs": ["louder"], "size": "medium",
+        {"id": "v1:1", "kind": "breakdown", "t0_s": r.t, "t1_s": r.t + 10, "signs": ["drums_in"], "size": "medium",
          "conf": 0.5}]}
     r.run(0.1)
-    r.lufs = -14.0
+    r.perc = 0.7
     r.run(0.3)
     ats = sorted(e["at_ms"] for e in r.events() if e["kind"] in ("drop", "section_change"))
     assert len(ats) == 2 and ats[1] - ats[0] == pytest.approx(2000.0)    # the second one, a bar later
 
 
 def test_a_phrase_line_sign_fires_at_the_line(tmp_path):
+    """phrase_line is weak (29 Oct): the line near is not enough alone; with a second weak sign it fires AT it."""
     r = Rig(tmp_path)
     r.run(3.0)                                                          # t = 1003
-    r.forecast(kind="new_section", lo=0.0, hi=12.0, signs=("phrase_line",), size="medium", conf=0.4)
-    r.run(0.5)
-    assert r.events() == []                                             # 1008 is more than the lead + a bar away
-    while not r.events():
+    r.forecast(kind="new_section", lo=0.0, hi=12.0, signs=("phrase_line", "louder"), size="medium", conf=0.4)
+    r.run(2.0)                                                          # 1008 is within the lead + a bar from 1004
+    assert r.events() == []                                             # the line alone fires nothing
+    r.lufs = -14.0                                                      # louder: the second weak sign
+    for _ in range(10):
+        if r.events():
+            break
         r.run(0.1)
-    assert r.events()[0]["at_ms"] == pytest.approx(1008000.0) and r.t == pytest.approx(1004.0)
+    ev = r.events()
+    assert len(ev) == 1 and ev[0]["at_ms"] == pytest.approx(1008000.0) and 1005.0 < r.t < 1006.0
+    assert ev[0]["cue"]["sign"] == "louder + phrase_line"
 
 
 def test_a_key_change_counts_against_the_key_at_arm_time(tmp_path):
@@ -483,3 +490,116 @@ def test_cue_events_reach_the_other_music_event_listeners_but_not_cues_itself(tm
     r.level = -20.0
     r.run(1.0)
     assert [e["detail"] for e in heard] == ["stop", "sound_back"]
+
+
+# -- 29 Oct (owner: "Sonos is ONE music source ... the art director must work with whatever it gets") ---------
+def test_a_song_its_source_vouches_for_never_goes_dark(tmp_path):
+    """While structure's music.context says Sonos or the Music page's player vouches for the song, a stop or a fade
+    is a break inside it: logged "vouched" (once per collapse, once per outro), nothing published."""
+    r = Rig(tmp_path)
+    r.learn_floor()
+    r.vouch = "sonos"
+    r.run(5.0)
+    r.level = -64.0                                                     # it stops dead
+    r.run(1.0)
+    assert r.events() == []
+    v = [e for e in r.c.log() if e["kind"] == "vouched"]
+    assert len(v) == 1 and v[0]["cue"] == "stop" and v[0]["by"] == "sonos"
+    r.level = -20.0
+    r.run(5.0)
+    t0 = r.t
+
+    def fall(rr):
+        rr.lufs_s = rr.lufs = rr.level = -20.0 - 3.0 * (rr.t - t0)
+        if rr.t - t0 >= 5.0:
+            rr.phase = "outro"
+    r.vouch = "player"
+    r.run(6.0, fall)
+    assert r.events() == []
+    assert [e["cue"] for e in r.c.log() if e["kind"] == "vouched"] == ["stop", "fade"]
+    assert r.c.snapshot()["counts"]["vouched"] == 2
+    r.phase, r.lufs_s, r.lufs, r.level = "calm", -20.0, -20.0, -20.0
+    r.vouch = "midi"                                                    # the piano's word: cues reads ctx.piano itself
+    r.run(5.0)
+    r.level = -64.0
+    r.run(0.3)
+    assert [e["detail"] for e in r.events("track_end")] == ["stop"]     # no piano here: the stop goes through
+
+
+def test_a_slow_or_spent_fade_waits(tmp_path):
+    """29 Oct: fades fired at -0.06 dB/s and under their own target. A fade needs lufs_s falling fade.min_slope_db_s
+    (0.5) and still fade.above_target_db (3) over the floor's line (here -65 + 6 = -59)."""
+    r = Rig(tmp_path)
+    r.learn_floor()
+    r.run(5.0)
+    t0 = r.t
+
+    def drift(rr):                                                      # an outro sliding 0.06 dB/s
+        rr.lufs_s = rr.lufs = rr.level = -20.0 - 0.06 * (rr.t - t0)
+        rr.phase = "outro" if rr.t - t0 >= 1.0 else "calm"
+    r.run(8.0, drift)
+    assert r.events() == []
+    r.phase = "calm"
+    r.lufs_s = r.lufs = -64.0                                           # quiet already: under the target + 3
+    r.run(5.0)
+    t1 = r.t
+
+    def steep_but_spent(rr):
+        rr.lufs_s = rr.lufs = -58.0 - 1.0 * (rr.t - t1)                 # (the fade reads lufs_s alone)
+        rr.phase = "outro"
+    r.run(4.0, steep_but_spent)
+    assert r.events() == []
+    r.phase = "calm"
+    r.lufs_s = r.lufs = r.level = -20.0
+    r.run(5.0)
+    t2 = r.t
+
+    def fade(rr):                                                       # a real fade-out
+        rr.lufs_s = rr.lufs = rr.level = -20.0 - 3.0 * (rr.t - t2)
+        rr.phase = "outro" if rr.t - t2 >= 5.0 else "calm"
+    r.run(5.3, fade)
+    assert [e["detail"] for e in r.events("track_end")] == ["fade"]
+
+
+def test_weak_signs_alone_never_fire_two_do_and_a_build_counts_for_big(tmp_path):
+    """29 Oct: 40 of 59 forecast fires came on "louder" alone. Weak signs (cues.signs.weak) fire nothing alone; two
+    different ones within seen_s do; structure's build counts as strong for a big change only."""
+    r = Rig(tmp_path)
+    r.run(3.0)
+    r.forecast(kind="chorus", lo=0.0, hi=10.0, signs=("louder", "low_in"), size="big", fid="w1:0")
+    r.run(0.1)
+    r.lufs = -14.0                                                      # louder alone
+    r.run(0.5)
+    r.lufs = -20.0
+    r.run(0.5)
+    assert r.events() == []
+    r.lufs, r.low = -14.0, -12.0                                        # louder and the bass in: two weak signs
+    r.run(0.3)
+    d = r.events("drop")
+    assert len(d) == 1 and d[0]["cue"]["sign"] == "louder + low_in"
+    r.lufs, r.low = -20.0, -20.0
+    r.run(3.0)
+    r.beliefs = {"state": "fresh", "ending": None, "coming": [
+        {"id": "w2:0", "kind": "band_in", "t0_s": r.t, "t1_s": r.t + 10, "signs": ["louder"], "size": "medium",
+         "conf": 0.5},
+        {"id": "w2:1", "kind": "climax", "t0_s": r.t, "t1_s": r.t + 10, "signs": ["louder"], "size": "big",
+         "conf": 0.5}]}
+    r.run(0.1)
+    r.phase = "build"                                                   # structure's build
+    r.run(0.3)
+    fired = [e for e in r.events() if e["id"].startswith("cue:")]
+    assert [e["detail"] for e in fired[1:]] == ["forecast: climax"]      # big only; the medium one waits
+    assert fired[-1]["cue"]["sign"] == "a build"
+
+
+def test_the_weak_list_is_config(tmp_path):
+    r = Rig(tmp_path, settings={"cues": {"signs": {"weak": ["louder"]}}})
+    assert r.c.cfg["signs"]["weak"] == ["louder"] and r.c.problems == []
+    r.run(3.0)
+    r.forecast(kind="chorus", lo=0.0, hi=10.0, signs=("low_in",), size="medium")
+    r.run(0.1)
+    r.low = -12.0                                                       # low_in is strong now
+    r.run(0.3)
+    assert len(r.events("section_change")) == 1
+    bad = Rig(tmp_path, settings={"cues": {"signs": {"weak": ["louder", "nonsense"]}}})
+    assert bad.c.cfg["signs"]["weak"] == C.CUES_FALLBACK["signs"]["weak"] and len(bad.c.problems) == 1

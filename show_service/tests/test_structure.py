@@ -354,7 +354,7 @@ def test_a_gap_then_a_boundary_with_a_tempo_jump_is_a_new_track():
         if t < 40:
             return {"vec": "A"}
         if t < 44.5:
-            return {"vec": None, "gate": 0.0}
+            return {"vec": None, "gate": 0.0, "lufs": -70.0}
         return {"vec": "C"}
     r = Rig(scene, clock=lambda t: clock_body(t, bpm=120.0 if t < 44 else 140.0))
     r.run(60.0)
@@ -389,7 +389,7 @@ def test_a_jump_that_shows_after_the_post_gap_boundary_adopts_its_section():
         if t < 40:
             return {"vec": "A"}
         if t < 44.5:
-            return {"vec": None, "gate": 0.0}
+            return {"vec": None, "gate": 0.0, "lufs": -70.0}
         return {"vec": "C"}
     r = Rig(scene, clock=lambda t: clock_body(t, bpm=120.0 if t < 52 else 140.0))
     r.run(60.0)
@@ -405,7 +405,7 @@ def test_a_jump_that_shows_after_the_post_gap_boundary_adopts_its_section():
 def test_a_gap_with_the_same_tempo_and_music_is_not_a_new_track():
     def scene(t: float) -> dict:
         if 40 <= t < 44.5:
-            return {"vec": None, "gate": 0.0}
+            return {"vec": None, "gate": 0.0, "lufs": -70.0}
         return {"vec": "A"}
     r = Rig(scene, clock=lambda t: clock_body(t, bpm=120.0))
     r.run(70.0)
@@ -1458,3 +1458,121 @@ def test_the_music_players_piece_end_is_armed_ends_and_changes_track_with_no_gap
     r.ctx.now_playing = lambda: None                                      # the player stopped
     r.run(35.0)
     json.dumps(r.s.snapshot(), allow_nan=False)
+
+
+# -- 29 Oct: silence relative to what plays; the song's own source holds identity and ends; the forecast hint --
+def _quiet_music(t: float) -> dict:
+    """The room mic on 28 Oct: Sonos low, music at -62..-64 LUFS over the mic's -70 floor, the dsp gate ~0 (its bottom
+    follows the floor: -70 + 6). A quieter bar (40-45 s, -66.5) and a real gap at the floor (60-66 s)."""
+    if 60.0 <= t < 66.0:
+        return {"vec": None, "gate": 0.0, "lufs": -70.0}
+    lufs = -66.5 if 40.0 <= t < 45.0 else -63.0 + 1.0 * math.sin(t * 2.1)
+    return {"vec": "A", "lufs": lufs, "gate": 0.02}
+
+
+@pytest.mark.parametrize("gap_lufs_m", [None, -60.0])
+def test_quiet_music_is_music_and_a_gap_at_the_floor_is_silence(gap_lufs_m):
+    """Owner, 29 Oct (Disco, 23:50-00:00): -60 (and the gate) read quiet music as silence, so songs "ended" and
+    "changed" in the middle. The line is relative: max(floor + 6, music - 18), never within 6 dB of the music;
+    show.yaml's old -60 can't put it there either."""
+    r = Rig(_quiet_music, settings={"structure": {"track": {"gap_lufs_m": gap_lufs_m}}})
+    r.run(59.0)
+    assert not r.kinds("track_end") and not r.kinds("track_change")
+    sil = r.s.snapshot()["ends"]["silence"]
+    assert sil["floor_lufs"] == -70.0 and sil["music_lufs"] == pytest.approx(-63.0, abs=0.6)
+    assert sil["line_lufs"] == pytest.approx(sil["music_lufs"] - 6.0, abs=0.01) and sil["silent"] is False
+    r.run(64.0)
+    te = r.kinds("track_end")
+    assert len(te) == 1 and te[0]["via"] == "dsp" and te[0]["at_ms"] / 1000.0 == pytest.approx(60.0, abs=0.15)
+    assert r.s.snapshot()["ends"]["silence"]["silent"] is True
+    json.dumps(r.s.snapshot(), allow_nan=False)
+
+
+def test_the_floor_is_learnt_in_the_gaps_of_louder_music():
+    """A noisy room (-50 between songs): learnt in a gap of loud music (18 dB under it), so later quieter music
+    (-40) still has its gaps (line -46); with the meter's floor alone (-70) the line would be -58 and miss it."""
+    def scene(t: float) -> dict:
+        if 30.0 <= t < 40.0 or 140.0 <= t < 146.0:
+            return {"vec": None, "gate": 0.0, "lufs": -50.0}
+        return {"vec": "A", "lufs": -25.0 if t < 70.0 else -40.0}
+    r = Rig(scene)
+    r.run(139.0)
+    sil = r.s.snapshot()["ends"]["silence"]
+    assert sil["floor_lufs"] == pytest.approx(-50.0) and sil["music_lufs"] == pytest.approx(-40.0)
+    assert sil["line_lufs"] == pytest.approx(-46.0)
+    r.run(145.0)
+    ends = [e for e in r.kinds("track_end") if e.get("detail") is None]
+    assert [round(e["at_ms"] / 1000.0) for e in ends] == [30, 140] and all(e["via"] == "dsp" for e in ends)
+
+
+def _gap_jump(t: float) -> dict:
+    """A 4.5 s gap at 40 s with another tempo after it (a dsp track change on its own), and a 15 s one at 80 s."""
+    if 40.0 <= t < 44.5 or 80.0 <= t < 95.0:
+        return {"vec": None, "gate": 0.0, "lufs": -70.0}
+    return {"vec": "A" if t < 40.0 else "C"}
+
+
+def test_while_sonos_plays_a_named_song_its_identity_and_short_breaks_are_its_own():
+    """Owner, 29 Oct: Sonos is one music source; while it plays a named song (sonos_playing true), structure's dsp
+    track changes are held (counted ends.sonos_held) and so is a dsp end with no known length, unless the silence
+    lasts track.long_gap_s (12): then it is an end at the gap's start."""
+    r = Rig(_gap_jump, settings=SON, clock=lambda t: clock_body(t, bpm=120.0 if t < 44.0 else 140.0))
+    FakeSonos(r, [(-10.0, 0.0, "radio:1", "a")])                          # a stream: no length
+    r.run(70.0)
+    assert not r.kinds("track_change") and not r.kinds("track_end")
+    assert r.s.ends["sonos_held"] >= 1 and r.s.ends["end_held"] == 1
+    assert r.s.context()["track"]["vouch"] == "sonos"
+    r.run(91.5)
+    assert not r.kinds("track_end")                                      # 11.5 s: still a break
+    r.run(93.0)
+    te = r.kinds("track_end")
+    assert len(te) == 1 and te[0]["via"] == "dsp" and te[0]["at_ms"] / 1000.0 == pytest.approx(80.0, abs=0.15)
+    assert te[0]["t_ms"] / 1000.0 == pytest.approx(92.0, abs=0.15)          # once the silence lasted 12 s
+    assert r.s.context()["track"]["vouch"] is None and r.s.ends["end_held"] == 2
+
+
+def test_the_music_players_piece_holds_identity_and_every_break_inside_it():
+    """The Music page's player: a known length, its end far away: no dsp track change (ends.player_held) and no dsp
+    end however long the break (_sonos_vouches, as since 23 Oct); vouch "player"."""
+    r = Rig(_gap_jump, clock=lambda t: clock_body(t, bpm=120.0 if t < 44.0 else 140.0))
+    r.ctx.now_playing = lambda: {"key": "lib:a", "state": "playing", "pos_s": r.t + 5.0, "dur_s": 600.0, "speed": 1.0}
+    r.run(97.0)
+    assert not r.kinds("track_change") and not r.kinds("track_end")
+    assert r.s.ends["player_held"] >= 1 and r.s.ends["sonos_held"] == 0
+    assert r.s.context()["track"]["vouch"] == "player"
+    assert set(r.s.context()["track"]) == set(c.TrackInfo.__annotations__)
+
+
+def test_no_source_is_assumed_live_music_alone_changes_and_the_piano_vouches_midi():
+    r = Rig(_gap_jump, clock=lambda t: clock_body(t, bpm=120.0 if t < 44.0 else 140.0))
+    r.run(70.0)                                                           # live music into the mic: as before
+    assert len(r.kinds("track_change")) == 1 and r.s.context()["track"]["vouch"] is None
+    p = Rig(lambda t: {"vec": "A"})
+    p.s.ctx.piano = lambda: {"present": True, "stream": "room-piano", "keys_down": 1, "damper": 0.0,
+                             "last_note_age_s": 0.2}
+    p.run(3.0)
+    assert p.s.context()["track"]["vouch"] == st.VOUCH_MIDI == "midi"
+
+
+def test_an_open_forecast_window_makes_the_ears_keener():
+    """Owner, 29 Oct: the AI's forecast is a hint. While one is inside its window (ctx.cue_sheet), the novelty
+    threshold x structure.forecast_boost (0.8): a change just under the plain threshold becomes a boundary."""
+    def run(sheet: Optional[Callable]) -> Rig:
+        r = Rig(lambda t: {"vec": "A" if t < 30.0 else "M"})
+        r.bases["M"] = unit(r.base("A") + 0.25 * r.base("B"))              # a subtle change: novelty ~0.045
+        r.ctx.cue_sheet = sheet
+        r.run(50.0)
+        return r
+
+    def confirmed(r: Rig) -> list:
+        return [b for b in r.s.snapshot()["boundaries"] if b["kind"] == "confirmed" and b.get("section_id") is not None]
+    plain = run(None)                                                     # not wired: no boost
+    assert plain.s.snapshot()["forecast_boost"] == 1.0 and confirmed(plain) == []
+    later = run(lambda: [{"kind": "chorus", "words": "", "window_s": [5.0, 15.0], "size": "big"},
+                         {"kind": "stop", "words": "", "window_s": None, "size": None}])
+    assert later.s.snapshot()["forecast_boost"] == 1.0 and confirmed(later) == []   # not open yet; standing cues
+    keen = run(lambda: [{"kind": "chorus", "words": "", "window_s": [0.0, 15.0], "size": "big"}])
+    b = confirmed(keen)
+    assert keen.s.snapshot()["forecast_boost"] == 0.8 and len(b) == 1 and b[0]["boost"] == 0.8
+    assert abs(b[0]["t_s"] - 30.0) <= 1.0 and b[0]["novelty"] < b[0]["threshold"]   # under the plain threshold
+    assert not keen.kinds("track_change")

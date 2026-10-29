@@ -31,22 +31,38 @@ One component, ``structure``, ticked at 10 Hz on show-brain (after ml, before th
                followed its model; the section starts on the line. A section started any other way first cancels a
                pending line (evidence wins). A predicted line no boundary confirms within same_bars is ``missed``.
   track        (a) the room's Sonos member (show.yaml situations.sonos.now_playing) changes its track_id (else title +
-               artist) while situations' sonos_playing doesn't read false: at once, via sonos. (b) a silence (gate <
-               gap_gate, or lufs_m <= gap_lufs_m: the gate's 3 s loudness alone notices silence only ~3 s in) of
-               gap_s, then a boundary within window_s of the return, with one jump: the clock's bpm off by
-               > tempo_jump (not x2 / x0.5); another key at strength >= track.key_min_conf both sides that isn't the
-               same, parallel or relative key (music.context's key, itself held by key_hold); or another leading
-               Discogs parent of the last parent_window_s of tags, leading by parent_margin (a near tie is no
-               evidence). A boundary with no jump yet keeps checking until return + window_s. (c) no gap: a peak >=
-               spike_k x the threshold (spike_k null: off) with spike_jumps independent jumps, the genre by
+               artist) while situations' sonos_playing doesn't read false: at once, via sonos. (b) a silence (the
+               silence line below) of gap_s, then a boundary within window_s of the return, with one jump: the
+               clock's bpm off by > tempo_jump (not x2 / x0.5); another key at strength >= track.key_min_conf both
+               sides that isn't the same, parallel or relative key (music.context's key, itself held by key_hold); or
+               another leading Discogs parent of the last parent_window_s of tags, leading by parent_margin (a near
+               tie is no evidence). A boundary with no jump yet keeps checking until return + window_s. (c) no gap: a
+               peak >= spike_k x the threshold (spike_k null: off) with spike_jumps independent jumps, the genre by
                genre_reading's smoothed leader: a section change inside a song moves the key or one window's parent,
                not two things at once. A change clears the section memory (letters restart at A), track.id + 1,
                track.changed in the next context only, and a new section (or the post-gap one is adopted).
+               (b) and (c) are held while the song's own source says it is one song (owner, 29 Oct: "Sonos is ONE
+               music source ... never assume Sonos; each source counts when it is present"): the Music page's player
+               plays a piece, or Sonos plays a named track with sonos_playing true (song identity is theirs; counted
+               ends["player_held"] / ["sonos_held"]), else the piano vouches (``piano_vouches``; ["piano_held"]);
+               logged once per hold. Live music into the mic has no metadata: the sound alone decides.
+  boost        while any forecast on the cue sheet (ctx.cue_sheet: the listener's, armed by cues) is inside its
+               window, the novelty threshold x structure.forecast_boost (0.8): the AI's hint makes the ears keener
+               (the boundary record gets "boost"); the track tests keep the plain threshold. Not wired: no boost.
+  silence      (10 Hz; README S5.17, owner 29 Oct) the track test's and the song end's silence: lufs_m at or under a
+               line relative to what plays, max(floor + track.gap_floor_db, music - track.gap_drop_db, gap_lufs_m when
+               set), never within gap_floor_db of the music; leaving a silence needs SIL_HYST_DB more. music = the
+               median lufs_s of the last track.gap_ref_s of sound (situations' music_audible not false); floor = the
+               10th percentile of lufs_m in gaps gap_drop_db under the music over 5 min, else the meter's -70. The
+               gate (the mode's expected loudness over 3 s) only without lufs_m: it and an absolute -60 read the room
+               mic's quiet music (-62..-64 LUFS over -70) as silence, and songs "ended" in the middle.
   context      ``genre_reading()`` (S4.8; speech = the max over situations.talking.speech_words), the tag numbers and
                the instruments (EMA tags_tau_s, frozen while CED music < genre_map.freeze_below_music; None once tags
                are tags_hold_s old), the key (the piano's midi harmony, else the worker's at key_min_strength, else
                music.harmony's; a sticky source, and another key shows only after key_hold.hold_s), ced (ced_mean_s
                mean), talking, then publish music.context. Another ML stream clears the genre, the numbers and the key.
+               Its track block carries ``vouch`` ("player" | "sonos" | "midi" | None: who says the song is still
+               going, as the dsp end below; refreshed at 10 Hz with the section): cues holds its stop and fade by it.
 
 **Every tick (10 Hz): the phases** (§6.2) from music.features + music.rhythm samples. Builds and drops need the clock
 gate beat|dmx (no grid, no build: §6.2's jazz and classical, by evidence). Ported from FastLED's audio detectors
@@ -90,14 +106,16 @@ are show.yaml structure.fastled):
              before the end. When the armed end passes (or the track id changes, or Sonos stops, within end_slack_s
              of it): track_end via sonos. The track change itself (step 6a below) then waits, while the room is
              silent, for the new song's first sound (at most track.first_sound_s).
-  dsp        a silence (the track test's gap_gate / gap_lufs_m) that lasts track.end_gap_s after music (situations'
-             music_audible; unknown: any sound) is a song's end: track_end via dsp at the gap's start, unless Sonos
-             vouches for the song (playing, its end more than arm_s away: a break inside the song) or the piano does
-             (``piano_vouches``: a key or the damper down, or a note within track.piano_rest_s: a rest inside the
-             piece; owner, 21 Oct: practice kept going dark). Once it stops vouching, the same gap ends the song.
-             The same vouch holds the dsp track change (after a gap, or a novelty spike: the tagger's genre flips
-             and the key moves inside one piece; 22 Oct, ff: both TVs re-cued twice in 30 s of practice), counted
-             ``ends["piano_held"]``.
+  dsp        a silence (the silence line above) that lasts track.end_gap_s after music (situations'
+             music_audible; unknown: any sound) is a song's end: track_end via dsp at the gap's start, unless someone
+             vouches for the song (``_vouch``, music.context track.vouch): the player or Sonos while its song plays,
+             with a known length whose end is more than arm_s away (a break inside the song), or with no known length
+             unless the silence lasts track.long_gap_s (12: a long silence with Sonos still "playing" is an end); else
+             the piano ("midi": ``piano_vouches``: a key or the damper down, or a note within track.piano_rest_s: a
+             rest inside the piece; owner, 21 Oct: practice kept going dark). Once it stops vouching, the same gap
+             ends the song. A held end is counted ``ends["end_held"]`` and logged, once per silence. The piano's vouch
+             (and the player's and Sonos's play) holds the dsp track change too (track, above; 22 Oct, ff: both TVs
+             re-cued twice in 30 s of practice).
   back       after a track_end, sound again with no track change (at once via dsp; via sonos after end_slack_s,
              the Sonos read's own lag): track_end re-sent with detail "sound_back", at_ms the first sound, so screens
              that went dark come back. A later silence after music sends track_end (the same id) again.
@@ -170,6 +188,20 @@ READ_JITTER_S = 0.15            # a read's own time: room's age_s is rounded to 
                                 # after Sonos sampled its position
 SONOS_PLAYING = "playing"       # room's Sonos adapter: now_playing.state, the transport state in lower case
 SONOS_STOPPED = ("paused_playback", "stopped")
+# the silence line (README S5.17, owner 29 Oct): relative to what plays, not one absolute number
+METER_FLOOR_LUFS = -70.0        # dsp.LUFS_FLOOR: lufs_m never reads lower; the stream's floor until one is measured
+SIL_FLOOR_S = 300.0             # the stream's floor: its floor samples over the last 5 min ("a few minutes")...
+SIL_FLOOR_PCT = 10.0            # ...their 10th percentile...
+SIL_MIN_N = 10                  # ...once 1 s of them is in (fewer: the meter's floor, so a stale one can't stick)
+SIL_REF_SHARE = 0.25            # the music level counts once its sound samples fill a quarter of gap_ref_s (7.5 s of
+                                # 30): a few loud ticks in a long gap's room noise never make a "music level"
+SIL_HYST_DB = 3.0               # a silence ends only with lufs_m this far over the line: a room's noise flickering at
+                                # the line is no sound back (the gate's 3 s loudness smoothed that before 29 Oct)
+SIL_KEEP = 6000                 # 10 Hz samples kept for each (10 min: more than SIL_FLOOR_S and any sane gap_ref_s)
+# music.context track.vouch: who says the song is still going. "sonos" and contract.TRACK_VIA_PLAYER (its song plays),
+# VOUCH_MIDI (the piano's MIDI: piano_vouches; the word key_via uses for it too)
+VOUCH_MIDI = "midi"
+HELD_COUNT = {"sonos": "sonos_held", contract.TRACK_VIA_PLAYER: "player_held", VOUCH_MIDI: "piano_held"}
 
 #: show.yaml ``structure`` (README S4.9): the starting points, the same numbers as the file. The file's values win.
 #: ``fastled`` holds FastLED's own audio-detector numbers (MIT; fl/audio/detector buildup.cpp.hpp, drop.cpp.hpp).
@@ -184,10 +216,18 @@ STRUCTURE_FALLBACK: dict = {
     "tags_tau_s": 20, "tags_hold_s": 30, "ced_mean_s": 3, "listener_conf": 0.6, "valence": {}, "mood_energy": {},
     "key_min_strength": 0.3, "key_hold": {"strength_margin": 0.05, "hold_s": 4},
     "events": {"min_lead_s": 1.1},
-    "track": {"gap_s": 3, "gap_gate": 0.05, "gap_lufs_m": -60, "window_s": 20, "tempo_jump": 0.04,
+    # forecast_boost: while a forecast the listener armed is inside its window (ctx.cue_sheet), the novelty
+    # threshold x this (0.8: starting point, owner 29 Oct): the AI's hint makes the ears keener, it fires nothing
+    "forecast_boost": 0.8,
+    # track.gap_lufs_m: an absolute silence line (null: the relative line alone; 29 Oct: -60 read quiet music as
+    # silence). gap_drop_db / gap_floor_db / gap_ref_s: the relative line (README S5.17): max(floor + gap_floor_db,
+    # music - gap_drop_db), never within gap_floor_db of the music (the median lufs_s of the last gap_ref_s of sound).
+    # long_gap_s: a silence this long is a song's end even while Sonos or the player still plays a song with no known
+    # length. 18 / 6 / 30 / 12: starting points (29 Oct: the room mic's music at -62..-64 LUFS over a -70 floor)
+    "track": {"gap_s": 3, "gap_gate": 0.05, "gap_lufs_m": None, "window_s": 20, "tempo_jump": 0.04,
               "key_min_conf": 0.3, "parent_window_s": 5, "parent_margin": 0.05, "spike_k": 2.0, "spike_jumps": 2,
               "end_gap_s": 3, "arm_s": 20, "rearm_s": 0.5, "end_slack_s": 3, "first_sound_s": 10,
-              "piano_rest_s": 15},
+              "piano_rest_s": 15, "gap_drop_db": 18, "gap_floor_db": 6, "gap_ref_s": 30, "long_gap_s": 12},
     "build": {"window_s": 12, "min_slope": {"lufs_db_s": 0.15, "brightness_s": 0.004, "onset_rate_s": 0.05},
               "low_max_slope_db_s": 0.05, "full_rise_db": 6, "phrase16_conf": 0.5, "arm_beats": 8, "foot_db": 0.5},
     "drop": {"low_jump_db": 6, "lufs_jump_db": 3, "within_beats": 1, "hold_bars": 8, "snap_beats": 0.25,
@@ -215,9 +255,11 @@ _POSITIVE = {"structure.novelty.recent_s", "structure.novelty.before_s", "struct
              "structure.outro.window_s", "structure.min_section_bars", "structure.min_section_s",
              "structure.same_bars", "structure.tags_hold_s", "structure.ced_mean_s", "structure.track.parent_window_s",
              "structure.track.spike_jumps", "structure.fastled.build_end", "genre_map.tau_s",
-             "structure.track.end_gap_s", "structure.track.arm_s"}
-#: paths that may be null (unset): track.spike_k null turns the no-gap track change off
-_NULLABLE = {"structure.track.spike_k"}
+             "structure.track.end_gap_s", "structure.track.arm_s", "structure.track.gap_ref_s",
+             "structure.forecast_boost"}
+#: paths that may be null (unset): track.spike_k null turns the no-gap track change off; track.gap_lufs_m null: no
+#: absolute silence line (the relative one alone)
+_NULLABLE = {"structure.track.spike_k", "structure.track.gap_lufs_m"}
 
 # 10 Hz sample columns
 T, LUFS_M, LUFS_S, BRIGHT, GATE, ENERGY, LOW, PERC, ONSET, HARM, B_LO, B_MID, B_HI = range(13)
@@ -260,7 +302,7 @@ def piano_vouches(ctx: Any, rest_s: float) -> bool:
     (structure's gap end, cues' stop and fade; owner, 21 Oct). rest_s 0: off. No piano: False (the mic decides)."""
     if not rest_s > 0:
         return False
-    pv = _call(getattr(ctx, "piano", None))
+    pv = _call(ctx.piano)                        # contract.BrainContext's slot (None: no piano)
     if not isinstance(pv, dict) or not pv.get("stream"):
         return False
     if (_f(pv.get("keys_down"), 0.0) or 0.0) > 0 or (_f(pv.get("damper"), 0.0) or 0.0) >= PIANO_DAMPER_DOWN:
@@ -739,7 +781,12 @@ class Structure:
         self._kind_n: collections.Counter = collections.Counter()   # per-track counts for event ids
         self.ends = {"armed": 0, "rearmed": 0, "disarmed": 0, "sonos": 0, "dsp": 0, contract.TRACK_VIA_PLAYER: 0, "sound_back": 0,
                      "waited": 0,
-                     "hook_errors": 0, "piano_held": 0}
+                     "hook_errors": 0, "piano_held": 0, "sonos_held": 0, "player_held": 0, "end_held": 0}
+        # whose song plays with its metadata (_sonos, each tick): "player" | "sonos" | None; who vouches for it now
+        self._plays: Optional[str] = None
+        self._vouch_now: Optional[str] = None
+        self._end_held_for: Optional[float] = None       # the silence (its start) whose dsp end a vouch held
+        self._boost = 1.0                                # structure.forecast_boost while a forecast's window is open
         self._ctx_parts: dict = {}
         self._build_snapshot(mono())
 
@@ -778,6 +825,11 @@ class Structure:
         self._silent_since: Optional[float] = None
         self._gap: Optional[dict] = None                 # {"from_s", "return_s", "sig"}
         self._sigs: collections.deque = collections.deque(maxlen=180)
+        # the silence line (README S5.17): floor samples (t, lufs_m), sound samples (t, lufs_s), refreshed each second
+        self._floor_vals: collections.deque = collections.deque(maxlen=SIL_KEEP)
+        self._ref_vals: collections.deque = collections.deque(maxlen=SIL_KEEP)
+        self._sil_sec: Optional[int] = None
+        self._sil: dict = {"line": None, "floor": METER_FLOOR_LUFS, "music": None, "lufs_m": None, "silent": None}
 
     def _reset_track_state(self) -> None:
         """Sections and phases (a track change, or start)."""
@@ -895,6 +947,7 @@ class Structure:
         self._sample(now_s)
         self._sonos(now_s)
         self._end_tick(now_s)
+        self._vouch_now = self._vouch(now_s)
         self._phases(now_s, grid)
         self._predict(now_s, grid)
         sec = math.floor(now_s)
@@ -916,9 +969,14 @@ class Structure:
         tr = self.cfg["track"]
         gate = (_f(f.get("gate"), 0.0) or 0.0) if fresh else 0.0
         lm = _f(f.get("lufs_m")) if fresh else None
-        # silence for the track test: the gate (3 s loudness: it notices silence only ~3 s in), or the momentary
-        # loudness (400 ms) at a line's rest, so a 4 s gap between songs reads as one
-        self._gap_state(now_s, gate >= tr["gap_gate"] and not (lm is not None and lm <= tr["gap_lufs_m"]))
+        st_ = f.get("stream") if fresh and isinstance(f.get("stream"), str) else None
+        if st_ is not None and self.stream is not None and st_ != self.stream:
+            self._sil_reset()                            # another stream: its own floor and level
+        # silence for the track test and the song's end: the momentary loudness (400 ms, so a 4 s gap between songs
+        # reads as one) at or under a line relative to what plays (_silence_line; owner, 29 Oct: an absolute -60 and
+        # the gate read the room mic's quiet music, -62..-64 LUFS over a -70 floor, as silence: songs "ended" in the
+        # middle). The gate (3 s loudness against the mode's expected level) only when there is no lufs_m.
+        self._gap_state(now_s, self._sil_tick(now_s, lm, _f(f.get("lufs_s")) if fresh else None, gate))
         if not fresh:
             return
         t = tf / 1000.0
@@ -952,6 +1010,74 @@ class Structure:
             self._energy = e if (self._energy is None or dt is None) else \
                 self._energy + (e - self._energy) * (1.0 - math.exp(-max(0.0, dt) / ENERGY_TAU_S))
 
+    # -- the silence line (README S5.17; owner, 29 Oct) ----------------------------------------------------------------
+    def _sil_reset(self) -> None:
+        self._floor_vals.clear()
+        self._ref_vals.clear()
+        self._sil_sec = None
+        self._sil = {"line": None, "floor": METER_FLOOR_LUFS, "music": None, "lufs_m": None, "silent": None}
+
+    def _sil_tick(self, now_s: float, lm: Optional[float], ls: Optional[float], gate: float) -> bool:
+        """Is there sound this tick (the track test's and the dsp end's silence is its opposite)? lufs_m over the
+        silence line; without lufs_m, the gate at gap_gate (as before 29 Oct). Each fresh tick also feeds the line:
+          floor samples  lufs_m while it is gap_drop_db under the music level (a gap in music, at the room's own
+                         noise). Never what the line itself calls silent: a floor learnt from that ratchets up into
+                         the music (an EDM breakdown, or quiet music before its level is known, read as the floor).
+          sound samples  lufs_s while situations' music_audible isn't false, and: with a music level, the tick reads
+                         sound (a gap's noise doesn't drag the level down onto itself); with none (start, or a long
+                         gap), lufs_m is over the floor's own line, floor + gap_floor_db (not the absolute line:
+                         show.yaml's old -60 over quiet music would keep its level from ever being known). The music
+                         level is their median over gap_ref_s, once they fill SIL_REF_SHARE of it."""
+        tr = self.cfg["track"]
+        sec = math.floor(now_s)
+        if self._sil_sec is None or sec != self._sil_sec:
+            self._sil_sec = sec
+            self._sil_update(now_s)
+        line, music = self._sil["line"], self._sil["music"]
+        sound = gate >= tr["gap_gate"] if lm is None else \
+            lm > line + (SIL_HYST_DB if self._silent_since is not None else 0.0)
+        self._sil["lufs_m"], self._sil["silent"] = _r(lm, 1), not sound
+        if lm is not None:
+            if music is not None and lm <= music - tr["gap_drop_db"]:
+                self._floor_vals.append((now_s, lm))
+            over = (sound and lm > METER_FLOOR_LUFS + tr["gap_floor_db"]) if music is not None \
+                else lm > self._sil["floor"] + tr["gap_floor_db"]
+            if over and ls is not None and self._music_now():
+                self._ref_vals.append((now_s, ls))
+        return sound
+
+    def _sil_update(self, now_s: float) -> None:
+        """Once a second: the stream's floor (SIL_FLOOR_PCT of its floor samples over SIL_FLOOR_S; fewer than SIL_MIN_N:
+        the meter's -70, never under it), the music level (the median lufs_s of the sound samples over gap_ref_s, once
+        they fill SIL_REF_SHARE of it; else None) and the line: max(floor + gap_floor_db, music - gap_drop_db,
+        gap_lufs_m when set), never within gap_floor_db of the music. Quiet music (-62 over a -70 floor: line -68) is
+        music; a gap at the floor is silence; loud music (-25) keeps the drop rule (-43)."""
+        tr = self.cfg["track"]
+        cut = now_s - SIL_FLOOR_S
+        fv = self._floor_vals
+        while fv and fv[0][0] < cut:
+            fv.popleft()
+        floor = METER_FLOOR_LUFS
+        if len(fv) >= SIL_MIN_N:
+            floor = max(METER_FLOOR_LUFS, float(np.percentile(np.fromiter((v for _, v in fv), float), SIL_FLOOR_PCT)))
+        cut = now_s - tr["gap_ref_s"]
+        rv = self._ref_vals
+        while rv and rv[0][0] < cut:
+            rv.popleft()
+        need = max(SIL_MIN_N, SIL_REF_SHARE * tr["gap_ref_s"] * contract.BRAIN_TICK_HZ)
+        music = float(np.median(np.fromiter((v for _, v in rv), float))) if len(rv) >= need else None
+        line = floor + tr["gap_floor_db"]
+        if tr["gap_lufs_m"] is not None:
+            line = max(line, tr["gap_lufs_m"])
+        if music is not None:
+            line = min(max(line, music - tr["gap_drop_db"]), music - tr["gap_floor_db"])
+        self._sil.update(line=line, floor=floor, music=music)
+
+    def _sil_view(self) -> dict:
+        s = self._sil
+        return {"line_lufs": _r(s["line"], 1), "floor_lufs": _r(s["floor"], 1), "music_lufs": _r(s["music"], 1),
+                "lufs_m": s["lufs_m"], "silent": s["silent"]}
+
     def _gap_state(self, now_s: float, sound: bool) -> None:
         tr = self.cfg["track"]
         if not sound:
@@ -977,6 +1103,7 @@ class Structure:
     # -- Sonos now-playing (README S4.7 step 6a; the song's end, S5.17) -------------------------------------------------
     def _sonos(self, now_s: float) -> None:
         self._first_sound_wait(now_s)
+        self._plays = None
         if self._player(now_s):
             return
         if not self.np_target:
@@ -1006,6 +1133,8 @@ class Structure:
             self._sonos_stopped(now_s)
         if playing is False:
             return                                       # paused or stopped: the next play decides
+        if playing is True and state not in SONOS_STOPPED:
+            self._plays = "sonos"                        # its song, named: song identity is Sonos's (29 Oct)
         artist = b.get("artist") if isinstance(b.get("artist"), str) and b.get("artist") else None
         if self._sonos_key is None:
             self._sonos_key, self._np_artist = key, artist
@@ -1045,6 +1174,7 @@ class Structure:
         elif key != self._sonos_key:
             self._sonos_key, self._np = key, None
             self._sonos_flip(now_s, None, None)
+        self._plays = contract.TRACK_VIA_PLAYER          # its piece: song identity is the player's (29 Oct)
         sp = _f(np_.get("speed"), 1.0) or 1.0
         dur, pos = _f(np_.get("dur_s"), None), _f(np_.get("pos_s"), None)
         if dur is not None and dur > 0.0 and pos is not None and 0.0 <= pos <= dur + 1.0:
@@ -1084,6 +1214,22 @@ class Structure:
         end = self._np_end()
         return (bool(self.np_target) or self._np_via == contract.TRACK_VIA_PLAYER) and end is not None \
             and end - now_s > self.cfg["track"]["arm_s"]
+
+    def _vouch(self, now_s: float) -> Optional[str]:
+        """Who says the song is still going right now (music.context track.vouch; owner, 29 Oct: each source counts
+        when it is present, none is assumed): "player" | "sonos" while its song plays with a known length whose end is
+        more than arm_s away (_sonos_vouches), or plays with no known length unless the room has been silent
+        track.long_gap_s (a long silence with Sonos still "playing" is an end); else "midi" (VOUCH_MIDI: the piano,
+        piano_vouches); else None (live music into the mic: the sound alone decides)."""
+        if self._sonos_vouches(now_s):
+            return self._np_via
+        if self._plays is not None and self._np_end() is None and not (
+                self._silent_since is not None
+                and now_s - self._silent_since >= self.cfg["track"]["long_gap_s"] - 1e-9):
+            return self._plays
+        if piano_vouches(self.ctx, self.cfg["track"]["piano_rest_s"]):
+            return VOUCH_MIDI
+        return None
 
     def _sonos_arm(self, now_s: float) -> None:
         tr = self.cfg["track"]
@@ -1195,8 +1341,14 @@ class Structure:
 
     def _dsp_end(self, now_s: float) -> None:
         e = self._end
-        if not self._heard or (e is not None and not e["back"]) or self._sonos_vouches(now_s) \
-                or piano_vouches(self.ctx, self.cfg["track"]["piano_rest_s"]):
+        if not self._heard or (e is not None and not e["back"]):
+            return
+        v = self._vouch(now_s)
+        if v is not None:                                # a break inside the song its source vouches for
+            if self._end_held_for != self._silent_since:
+                self._end_held_for = self._silent_since
+                self.ends["end_held"] += 1
+                log.info("structure: track %d: a silence, but %s vouches for the song: no dsp end", self.track_id, v)
             return
         self._track_end(now_s, "dsp", self._silent_since if self._silent_since is not None else now_s)
 
@@ -1602,7 +1754,22 @@ class Structure:
     # ================================================================================================================
     # every second
     # ================================================================================================================
+    def _forecast_boost(self) -> float:
+        """structure.forecast_boost while any forecast on the cue sheet (ctx.cue_sheet: cues ticks after us, so its
+        sheet is 100 ms old) is inside its window, else 1. Not wired, or it fails: 1 (no hint)."""
+        lines = _call(getattr(self.ctx, "cue_sheet", None))
+        if not isinstance(lines, list):
+            return 1.0
+        for ln in lines:
+            w = ln.get("window_s") if isinstance(ln, dict) else None
+            if isinstance(w, (list, tuple)) and len(w) == 2:
+                lo, hi = _f(w[0]), _f(w[1])
+                if lo is not None and hi is not None and lo <= 0.0 < hi:
+                    return float(self.cfg["forecast_boost"])
+        return 1.0
+
     def _second(self, now_s: float, grid: _Grid) -> None:
+        self._boost = self._forecast_boost()
         source, stream, new = self._descriptor(now_s)
         self.source_now = source
         if new and (source != self.source or stream != self.vec_stream):
@@ -1705,7 +1872,7 @@ class Structure:
         self.nov.append((stamp, v))
         self._nov_now = v
         self._masks = [m for m in self._masks if m[1] >= stamp - nv["history_s"]]
-        self._threshold = self._threshold_at(stamp)
+        self._threshold = self._threshold_at(stamp) * self._boost
         self._candidate(now_s, grid)
 
     def _threshold_at(self, ps: float) -> float:
@@ -1734,7 +1901,8 @@ class Structure:
         lo = max(0, p - int(round(nv["peak_s"])))
         if any(self.nov[j][1] > pv for j in range(lo, p)):
             return
-        thr = self._threshold_at(ps)
+        base = self._threshold_at(ps)
+        thr = base * self._boost                         # a forecast's window is open: keener ears (the AI's hint)
         if pv < thr:
             return
         if self._last_peak is not None and ps - self._last_peak <= nv["peak_s"] + 1e-6:
@@ -1745,7 +1913,7 @@ class Structure:
             return
         self._last_peak = ps
         tau = self._tau(ps, nv)
-        if self._boundary(now_s, tau, pv, thr, grid):
+        if self._boundary(now_s, tau, pv, base, grid):    # the track tests keep the plain threshold (no boost)
             self._masks.append((tau - 1e-6, tau + nv["recent_s"] + nv["before_s"]))
 
     def _local_contrast(self, ps: float) -> float:
@@ -1793,6 +1961,8 @@ class Structure:
         snapped, how = self._snap_time(tau, grid)
         rec = {"t_s": round(tau, 3), "novelty": round(nov_v, 4), "snapped": round(snapped, 3), "to": how,
                "kind": "confirmed", "missed": False, "section_id": None, "threshold": round(thr, 4)}
+        if self._boost != 1.0:
+            rec["boost"] = round(self._boost, 3)         # heard with a forecast's window open (threshold x boost)
         bar = grid.bar_s if grid.has_grid else NO_GRID_BAR_S
         for b in reversed(self.boundaries):              # the same as a predicted line, a drop or a track change
             if b["kind"] in ("predicted", "drop", "track") and abs(b["snapped"] - snapped) <= self.cfg["same_bars"] * bar + 1e-6:
@@ -2052,24 +2222,39 @@ class Structure:
             return g
         return None
 
+    def _identity_held(self, why: str) -> bool:
+        """A dsp track change (``why``) the song's own source overrules: while the player or Sonos plays a named song,
+        song identity is theirs (owner, 29 Oct: two dsp changes inside Sonos tracks re-cued the TVs); while the piano
+        vouches, it's one piece (22 Oct). Counted ends["sonos_held" | "player_held" | "piano_held"], logged once per
+        hold."""
+        src = self._plays
+        if src is None and piano_vouches(self.ctx, self.cfg["track"]["piano_rest_s"]):
+            src = VOUCH_MIDI
+        if src is None:
+            return False
+        self.ends[HELD_COUNT[src]] += 1
+        log.info("structure: track %d: %s says it's the same song: no dsp track change (%s)", self.track_id, src,
+                 why)
+        return True
+
     def _track_jump(self, now_s: float, tau: float, nov_v: float, thr: float, grid: _Grid) -> Optional[str]:
         tr = self.cfg["track"]
-        if piano_vouches(self.ctx, tr["piano_rest_s"]):  # the piano says it's one piece: no dsp track change
-            self.ends["piano_held"] += 1
-            return None
         now_sig = self._signature(now_s, grid)
         g = self._gap_for(now_s, tau)
+        why = None
         if g is not None:
             j = self._jump(g["sig"], now_sig)
             if j:
-                return f"after a gap: {j}"
-        if tr["spike_k"] is not None and nov_v >= tr["spike_k"] * thr:
+                why = f"after a gap: {j}"
+        if why is None and tr["spike_k"] is not None and nov_v >= tr["spike_k"] * thr:
             # no gap: a section change inside one song can move the key or the tags' leader, so it takes
             # track.spike_jumps independent jumps, the genre by its smoothed leader (README S4.7)
             js = self._jumps(self._sig_before(tau - 2.0), now_sig, "leader")
             if len(js) >= int(tr["spike_jumps"]):
-                return "novelty spike: " + ", ".join(js)
-        return None
+                why = "novelty spike: " + ", ".join(js)
+        if why is not None and self._identity_held(why):
+            return None
+        return why
 
     def _pending_gap_check(self, now_s: float, sig: Optional[dict], grid: _Grid) -> None:
         pg = self._pending_gap
@@ -2079,9 +2264,8 @@ class Structure:
             self._pending_gap = None
             return
         j = self._jump(pg["sig"], sig)
-        if j and piano_vouches(self.ctx, self.cfg["track"]["piano_rest_s"]):
-            self._pending_gap = None                      # a rest inside the piece (_track_jump's rule)
-            self.ends["piano_held"] += 1
+        if j and self._identity_held(f"after a gap: {j}"):
+            self._pending_gap = None                      # the same song (_track_jump's rule)
             return
         if j:
             self._pending_gap = None
@@ -2464,7 +2648,7 @@ class Structure:
                 "section": self._section_info(now_s, grid),
                 "track": {"id": self.track_id, "changed": bool(self._track_pending),
                           "age_s": _r(now_s - self.track_start, 1) if self.track_start is not None else None,
-                          "via": self.track_via},
+                          "via": self.track_via, "vouch": self._vouch_now},
                 "ml": p.get("ml") or {"state": None, "styles_top3": [], "moods_top5": [], "instruments_top5": [],
                                       "ages": {t: None for t in contract.ML_TASKS}}}
 
@@ -2476,8 +2660,8 @@ class Structure:
         sec = self._section_info(now_s, grid)
         trk = {"id": self.track_id, "changed": bool(self._track_pending) or last["track"]["changed"],
                "age_s": _r(now_s - self.track_start, 1) if self.track_start is not None else None,
-               "via": self.track_via}
-        if sec != last["section"] or trk["id"] != last["track"]["id"]:
+               "via": self.track_via, "vouch": self._vouch_now}
+        if sec != last["section"] or trk["id"] != last["track"]["id"] or trk["vouch"] != last["track"].get("vouch"):
             body = dict(last)
             body["section"] = sec
             body["track"] = trk
@@ -2495,7 +2679,8 @@ class Structure:
                            "track_id": a["track_id"]} if a is not None else None),
                 "end": ({"via": e["via"], "at_s": round(e["at_s"], 3), "back": e["back"], "track_id": e["track_id"]}
                         if e is not None else None),
-                "waiting_first_sound": self._np_wait is not None, "heard": self._heard, "counts": dict(self.ends)}
+                "waiting_first_sound": self._np_wait is not None, "heard": self._heard, "counts": dict(self.ends),
+                "plays": self._plays, "vouch": self._vouch_now, "silence": self._sil_view()}
 
     def _build_snapshot(self, now_s: float) -> None:
         def sec_view(s: dict) -> dict:
@@ -2509,7 +2694,7 @@ class Structure:
         self._snap = {
             "context": self._context, "source": self.source_now, "space": self.source, "stream": self.vec_stream,
             "sections": [sec_view(s) for s in self.sections],
-            "novelty": nv_keep, "threshold": round(self._threshold, 4),
+            "novelty": nv_keep, "threshold": round(self._threshold, 4), "forecast_boost": self._boost,
             "boundaries": [{k: v for k, v in b.items() if k != "missed_checked"} for b in self.boundaries],
             "build": {"active": self.building, "start_s": _r(self.build_start, 3), "progress": round(
                 self.build_progress, 3), "line_s": _r(self.drop_line, 3), "eta_beats": _r(self.drop_eta, 2),
