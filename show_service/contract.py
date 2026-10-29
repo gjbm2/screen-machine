@@ -692,6 +692,12 @@ class DirectionData(TypedDict):
                                    # once on a new flow.id
     ensemble: "EnsembleData"       # docs/ENSEMBLE.md: forms, roles, staggers per screen; published at once on a new
                                    # (id, rev)
+    # README S5.33 (owner, 29 Oct): the song's treatment. scene_favour {tags: ["family:<word>"], share}: those scenes
+    # get at least that share of the renderer's picks; scene_avoid {tags, factor}: their weights x factor (soft);
+    # dwell_s [min_s, max_s]: while a feel changes the looks, the renderer's own dwell window (else None: its own)
+    scene_favour: Optional[dict[str, Any]]
+    scene_avoid: Optional[dict[str, Any]]
+    dwell_s: Optional[list[float]]
     # README S5.18: only while show.yaml director.compose.mode is drive (observe leaves the message as it was)
     pulse_depth: NotRequired[float]   # the screens' beat-accent depth (neutral 1.0 = today; quiet passages soften it)
     peak: NotRequired[dict[str, Any]]  # the build/drop words: {energy, moods, transition_style} (the renderer's build
@@ -1259,6 +1265,8 @@ class CardData(TypedDict):
     mic_state: Optional[dict[str, Any]]   # README S5.16: GET /api/v1/mic's body ({on, muted, wanted, why, claims, mode,
                                           #  streams: {capturing, off}, error}); None without mic.py
     art: Optional[ArtWish]               # room.direction's art wish (the Room page's "Pictures: <theme>"); None without music
+    reasoning: Optional[dict]            # README S5.33: the director's reasoning in words (plan, sources, heard, feel,
+                                         # lights, ai_error, recent [{t, text}]); the Room page's "How it's deciding"
 
 
 # -- the brain's wiring (fields only; brain.py and __main__ fill it; components read it) -------------------------------------

@@ -319,7 +319,9 @@ director:
   # loudness, per dimension (picture, level, pace, pulse, depth, change), as a share of today's value. A feel's
   # compose block (vibes.yaml) sets its limits; these are the grammar. Starting points, all of them, to tune by ear.
   compose:
-    mode: observe                           # observe: the plan goes out on room.look (compose) and nothing else changes;
+    mode: drive                             # observe: the plan goes out on room.look (compose) and nothing else changes;
+                                            # (63, 29 Oct: drive, with the feels on; the owner's "make those
+                                            # improvements": the composer's plan now reaches the screens and lamps)
                                             # drive: room.direction's intensity, pulse_depth and peak, the tempo fold
                                             # and the lamps' beat ladder and no-beat swell take it (hot-reloaded)
     loud: {rise_s: 0.7, fall_s: 1.5, fade_fall_s: 0.35, music_only: true}   # the loudness (features.gate) rises fast,
@@ -339,6 +341,23 @@ director:
       q:                                    # the quiet end, as a share of today's value (1 = never changes)
         screens: {picture: 0.9, pace: 0.7, pulse: 0.7, depth: 0.7, change: 0.7}
         lamps: {level: 0.6, pulse: 0.7}
+
+# The song's treatment (show_service/treatment.py, README S5.33; owner, 29 Oct: "we need the a.d. to work with what it
+# gets (midi, mic, ai, sonos metadata, scene/effect ratings, live operator feedback) and do its best"). One plan per
+# song for the screens' scene families, the palette, the light scenes and the interplay, chosen together; the
+# director's own at once, the AI's (llm.yaml task treatment) when AI listening is on. Starting points, all of them.
+treatment:
+  enabled: true                             # false: no plans (every channel draws on its own, as before)
+  favour_share: 0.5                         # the favoured families' share of the renderer's scene picks
+  families_max: 2
+  avoid_factor: 0.3                         # a rested family's scenes x this (soft)
+  recent_songs: 2                           # a family the last 2 songs both favoured is rested
+  palette_songs_max: 3                      # a palette moves on after 3 songs, even across small changes
+  replan_s: 480                             # an unbroken stretch this long (a DJ mix, a long jam) gets a new plan
+  light_prefer: 8                           # the AI's light scene x this in its group's draw
+  form_prefer: 4                            # the AI's interplay form x this in the ensemble's draw
+  ai: {timeout_s: 10, refine_after_s: 12, min_gap_s: 20, max_per_song: 1}   # with no title, after 12 s of listening
+  taste: {half_life_days: 14, bias_per_step: 0.03, bias_max: 0.15}         # people's Next / Keep / steps / picks
 
 listener:                                   # §7.3, §7.5. Starting points, all of them.
   # README S5.22 (owner, 18 Oct: "24 s every 20 s is too long a round trip"): a 10 s clip every 15 s while the music

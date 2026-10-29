@@ -472,6 +472,7 @@ class Show:
             "mllink": {"log_path": pathlib.Path(self.opts.state_dir) / "ml-worker.log",
                        "child_pids": self._child_pids},
             "director": {"log_path": logs["director"], "vibes_path": pathlib.Path(self.opts.vibes_file),
+                         "taste_path": pathlib.Path(self.opts.state_dir) / "treatment_taste.json",   # README S5.33
                          **({"patch_path": pathlib.Path(patch_path)} if patch_path else {})},
         }.get(name, {})
         if name == "outputs":

@@ -834,6 +834,8 @@ class Ensemble:
                  rng: Optional[random.Random] = None) -> None:
         self.cfg: dict = cfg if cfg is not None else parse_settings(None, [])
         self.catalogue = catalogue if catalogue is not None else Catalogue()
+        self.prefer: Optional[str] = None                 # the song treatment's form (director; README S5.33) ...
+        self.prefer_k = 1.0                               # ... x this in the draw
         self.problems: list[str] = []
         self._rng = rng if rng is not None else random.Random(0)
         self._players: list[dict] = []
@@ -1271,6 +1273,9 @@ class Ensemble:
         cur = self.form
         if cur.name in ws:
             ws[cur.name] *= float(self.cfg["pick"]["stay"])
+        pref = getattr(self, "prefer", None)               # the song's treatment (director, README S5.33): its form
+        if pref in ws:
+            ws[pref] *= float(getattr(self, "prefer_k", 1.0))
         self._weights = {k: round(v, 4) for k, v in ws.items()}
         if ws:
             name = _draw(ws, self._rng)

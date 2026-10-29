@@ -8024,3 +8024,45 @@ virtual Maestro path (docs/ENSEMBLE.md §7.1).
     - byte-identical frames without an ensemble or with an all-even one; no `contract.gesture_weight` means no
       gestures.
   - test_looks: the stats shape gains `gestures`.
+
+### S5.33 The song's treatment, and the director's reasoning on the Room page (29 Oct; the owner's ask; 63)
+
+The owner, 28-29 Oct: light moods "should be up to the a.d. and in a more sophisticated way"; "we need the a.d. to
+work with what it gets (midi, mic, ai, sonos metadata, scene/effect ratings, live operator feedback) and do its best
+under most circumstances"; and "surface more of the art director's reasoning within the rooms page during live
+modes ... to inspect whether it's behaving sensibly or not". The appraisal behind it (29 Oct): every channel drew on
+its own (the renderer's scene, the palette, the light scene, the ensemble's form), nothing remembered the last song,
+and no mode set a feel, so the director's section / build / drop grammar never ran (4 days of logs: 75 look changes,
+74 "a new song").
+
+- **Feels on.** Each live mode now names its feel in modes.json (`show.main`, §8.1's table): Live test and Party ->
+  party, Disco -> disco, Ambient -> chill, Lights only -> dinner, Piano -> notes. Normal and Off have none.
+  director.compose.mode is `drive` (S5.18).
+- **treatment.py** (the module docstring is the spec): one plan per song, made together. The director's own plan is
+  made at once at every song change (structure's track change, which it plans inside `track_transition` so the
+  renderer's pick for the song already has it), a feel entering, the music starting, or `replan_s` of one stretch.
+  It favours the scene families that fit the music (tags.py's rule x the owner's stars, as the renderer scores),
+  rests the family the last two songs both used, and moves the palette on through the feel's list (a small change
+  keeps it for at most `palette_songs_max` songs; a person's pick is never touched). With AI listening on, one text
+  call per song (llm.yaml `treatment`, Flash-Lite; at once with a Sonos or player title, else after
+  `ai.refine_after_s`) chooses families, palette, a light scene per group (from `pool_for`: a mode's tags still
+  bind), an interplay form, moods, transition style and wildness from the options it is given; anything else is
+  dropped, and a failed call keeps the director's plan.
+- **Where it goes.** room.direction `scene_favour` {tags, share}, `scene_avoid` {tags, factor} and, while a feel
+  changes the looks, `dwell_s` [15, the feel's dwell max] (stream_service 27defa43 reads them; the show decides when,
+  the renderer's own timer is the fallback); the words (moods: a person's, then the plan's, then the listener's...;
+  transition style: the feel's, then the plan's...); the band base's genre term (the plan's wildness first); the
+  look's palette (with the song's look, or the next look for a later plan); light_scenes.pick_for(prefer=) and the
+  ensemble's `prefer` (x light_prefer / form_prefer in their draws).
+- **Taste** (treatment.Taste; `<state_dir>/treatment_taste.json`): Next look -1 for the plan's families and -0.5 for
+  its palette, Keep this look +1 / +0.5, a palette picked by hand +1, Calmer / Wilder move an energy bias
+  (bias_per_step, at most bias_max) for that mode and music group; half-life 14 days. stream_service keeps its own
+  scene-level taste (Next on a screen, a hand pick, a held scene).
+- **The reasoning** (snapshot `reasoning`, card `reasoning`): the plan (by whom, for which song, favoured and rested
+  families, palette, lights, form, wildness, taste), the sources it goes on ("Sonos: <title — artist>", "the piano's
+  MIDI", "the room mic", "AI listening", "the local music model"), what it hears (genre and moods with their
+  sources, band, energy, phase, tempo, the AI's line), the feel (how looks change, peaks left, the beat), the
+  lights' scene and why, the AI's last error, and the last WHY_LOG_N decisions in words (newest first), translated
+  from director.jsonl's own events (`_why_words`). The Room page shows it in the Look fold ("How it's deciding").
+- Config: show.yaml `treatment` (starting points; `enabled: false` turns plans off). Tests:
+  show_service/tests/test_treatment.py.

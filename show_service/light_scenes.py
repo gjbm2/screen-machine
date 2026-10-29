@@ -752,12 +752,14 @@ class Catalogue:
         return names
 
     def pick_for(self, group: Mapping[str, Any], direction: Optional[Mapping[str, Any]], flow: Any, rng: Any, *,
-                 avoid: Optional[str] = None, tags: Any = None, hard_avoid: bool = False
-                 ) -> Optional[tuple[str, str, dict[str, float]]]:
+                 avoid: Optional[str] = None, tags: Any = None, hard_avoid: bool = False,
+                 prefer: Optional[Mapping[str, float]] = None) -> Optional[tuple[str, str, dict[str, float]]]:
         """A group's scene: a weighted draw over its pool (``pool_for``: the scenes that fit it, within the mode's
         ``tags``), never ``avoid`` (the one it shows) while another is there, unless the group's ``repeat_weight``
         (show.yaml; e.g. appliances that may rest twice running) lets it stay at that share of its weight
-        (``hard_avoid``: a person's Next never repeats). (name, why, {name: weight}), or None when none fits."""
+        (``hard_avoid``: a person's Next never repeats). ``prefer``: {name: x} multiplies those scenes' weights (the
+        song's treatment, README S5.33; a name outside the pool does nothing). (name, why, {name: weight}), or None
+        when none fits."""
         names = self.pool_for(group, tags)
         if not names:
             return None
@@ -765,9 +767,10 @@ class Catalogue:
         if avoid in names and len(names) > 1 and rw <= 0.0:
             names.remove(avoid)
         ws = {n: self.score(self.scenes[n], group, direction, flow) * (rw if n == avoid and len(names) > 1 else 1.0)
-              for n in names}
+              * (float(prefer.get(n, 1.0)) if prefer else 1.0) for n in names}
         got = _draw(ws, names, rng)
-        return got, self.why(got, direction), ws
+        why = self.why(got, direction)
+        return got, (f"the plan's pick; {why}" if prefer and got in prefer else why), ws
 
     def pick_effect(self, group: Mapping[str, Any], trigger: str, direction: Optional[Mapping[str, Any]], flow: Any,
                     rng: Any, *, running: list[str], bar: Optional[int] = None) -> Optional[tuple[str, str]]:

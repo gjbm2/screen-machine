@@ -183,6 +183,7 @@ from . import appliances as appmod
 from . import flow as flowmod
 from . import light_scenes as lscenes
 from . import palette as pal
+from . import treatment as treatmod
 from .vibes import Vibes
 
 try:                                                  # docs/ENSEMBLE.md: without it the director runs as before
@@ -309,6 +310,21 @@ GATE_RANK = {"none": 0, "dmx": 1, "beat": 2}        # clock gates, weakest first
 TRACK_CUT = {"style": "cut", "beats": None, "seconds": 0.05}   # the director's own look at a song's cut
 # Composition and balance (README S5.18)
 END_FADE_S = 10.0                   # an armed song end cues the composer's fade until this long after its at_ms
+# The song's treatment (README S5.33) and the Room page's reasoning (owner, 29 Oct: "surface more of the art
+# director's reasoning within the rooms page during live modes too, so that it's possible to inspect whether it's
+# behaving sensibly or not")
+RATINGS_PATH = "/renderer/dev/ratings"          # the owner's stars per plug-in, through room's one front door
+TREAT_TICK_S = 1.0
+TREAT_MODE_WAIT_S = 2.0             # a mode's feel lands a moment after the mode: plan once it has
+WHY_LOG_N = 12                      # the reasoning's recent decisions kept for the card
+SCREENS_DWELL_MIN_S = 15.0          # while a feel changes the looks, the renderer's own dwell window starts here (its
+                                    # own fastest minimum, stream_service DWELL_AT_1) and ends at the feel's dwell max:
+                                    # the show decides when, the renderer's timer is only the fallback
+VIA_WORDS = {"sonos": "Sonos said so", "player": "the Music page", "dsp": "heard in the sound",
+             "cues": "heard it stop or fade", "sound": "heard in the sound"}
+TRANSITION_WORDS = {"cut": "a cut", "crossfade": "a crossfade", "fade-dark": "through dark"}
+CHANGE_LOOKS_WORDS = {"phrase": "on phrase lines", "time": "after a while, when the music changes",
+                      "between_pieces": "between pieces"}
 MIDDLE_DEPTH = 0.5                  # show.yaml looks.middle_depth's starting point (looks.py DEFAULT_MIDDLE_DEPTH)
 
 #: show.yaml ``director`` keys the code falls back to when the file leaves one out: the design's own numbers (§8.4,
@@ -687,8 +703,10 @@ class Director:
                  log_path: Optional[pathlib.Path] = contract.DIRECTOR_LOG,
                  wall: Callable[[], float] = time.time, mono: Callable[[], float] = time.monotonic,
                  vibes_path: Optional[pathlib.Path] = None, light_scenes: Optional[lscenes.Catalogue] = None,
-                 rng: Optional[random.Random] = None, art_tags_path: pathlib.Path = contract.ART_TAGS_FILE) -> None:
+                 rng: Optional[random.Random] = None, art_tags_path: pathlib.Path = contract.ART_TAGS_FILE,
+                 taste_path: Optional[pathlib.Path] = None) -> None:
         self.ctx = ctx
+        self._taste_path = taste_path                    # treatment.Taste's file (None: kept in memory only)
         self._mono = mono
         # owner, 28 Oct: room.direction's art wish: the listener's (confident) else art_tags.yaml music_art by genre
         self.art_tags = contract.ArtTags(art_tags_path)
@@ -946,6 +964,17 @@ class Director:
         self._resp_sig: Optional[tuple] = None
         self._resp_problem: Optional[str] = None
         self._middle_depth = MIDDLE_DEPTH
+        # the song's treatment (treatment.py, README S5.33; owner, 29 Oct): one plan per song, chosen together
+        self.treat = treatmod.Treatments(log_event=self._log_event, taste=treatmod.Taste(self._taste_path, wall),
+                                         mono=mono, wall=wall)
+        self._treat_rev = 0                              # the plan revision the director last applied
+        self._treat_next_s = 0.0                         # the next once-a-second treatment tick
+        self._treat_due: Optional[tuple[float, str]] = None   # (at, why): a plan to make (a mode or feel entered)
+        self._treat_pal: Optional[str] = None            # a later plan's palette, for the next look that lands
+        self._treat_n = 0                                # songs planned without a track id (a mode, a stretch)
+        self._np_target: Optional[str] = None            # show.yaml situations.sonos.now_playing (the room member)
+        self._ev_last: dict = {}                         # the last Evidence (the card's "what it goes on")
+        self._why_log: collections.deque = collections.deque(maxlen=WHY_LOG_N)   # (wall s, words): the Room page
         self._build_snapshot(mono())
 
     # ================================================================================================================
@@ -993,6 +1022,7 @@ class Director:
         self.ends_stats["chosen"][tr["style"]] = self.ends_stats["chosen"].get(tr["style"], 0) + 1
         if kind == "track_change":
             self._junction = None
+            self._plan_now(ev, tr)                        # README S5.33: the plan reaches the renderer first
         elif kind == "track_end":
             back = ev.get("detail") == "sound_back"
             self._junction = {"track_id": tid, "dark": tr["style"] == "fade-dark" and not back,
@@ -1249,6 +1279,10 @@ class Director:
             probs += ens_probs
         self._flow_dec.configure(self.lights_cfg["flow"])
         self._lights_gen += 1
+        self.treat.configure(s.get("treatment"), probs)   # README S5.33
+        sit = s.get("situations") if isinstance(s.get("situations"), dict) else {}
+        so = sit.get("sonos") if isinstance(sit.get("sonos"), dict) else {}
+        self._np_target = so.get("now_playing") if isinstance(so.get("now_playing"), str) else None
         self.settings_problems = probs
         self._roles_key = None
         self._cfg_gen += 1
@@ -1439,6 +1473,7 @@ class Director:
         self._music(now_s, dt, vs, grid)
         cutting = self._cutting(room)
         self._music_events(now_s, vs, grid)
+        self._treat_tick(now_s, room)                     # README S5.33: the song's treatment
         self._armed_tick(now_s, vs, grid)
         self._changes(now_s, vs, grid, cutting)
         self._phase_tick(now_s, vs, grid)
@@ -1569,14 +1604,15 @@ class Director:
         lo, hi = vs["energy"]
         centre = vs["energy_centre"]
         live = self.lv * (1.0 - self._relax)
-        e_out = centre + vs["follow_amount"] * conf * live * (music - 0.5) + self._llm_bias * live \
+        tb = _num((self.treat.plan or {}).get("bias"), 0.0) or 0.0    # taste: Calmer / Wilder before (S5.33)
+        e_out = centre + vs["follow_amount"] * conf * live * (music - 0.5) + (self._llm_bias + tb) * live \
             + self.steps * self._step_size(vs)
         e_out = min(hi, max(lo, e_out))
         # the band words' energy: the music as heard (full follow round the middle), within the feel's range; the
         # feel's centre while nothing is live (2b's audit, 17 Oct: with e_out, no feel never reached the peak band and
         # Party read mellow jazz as euphoric)
         heard_e = self._band_heard(music, conf, now_s)
-        heard = centre + live * (heard_e - centre) + self._llm_bias * live + self.steps * self._step_size(vs)
+        heard = centre + live * (heard_e - centre) + (self._llm_bias + tb) * live + self.steps * self._step_size(vs)
         band_e = min(hi, max(lo, heard))
         u = (e_out - lo) / (hi - lo) if hi > lo else 0.5
         bpm = grid.bpm
@@ -1635,6 +1671,7 @@ class Director:
         self._stage4_reset()
         self._log_event("vibe", {"from": old, "to": name})
         self._pick_light_scene("feel", now_s)              # a new feel is a new look: the lamps' scene too (S5.24)
+        self._treat_due = (now_s + TREAT_MODE_WAIT_S, "a new feel")   # README S5.33
 
     # -- when looks change (§8.5) ----------------------------------------------------------------------------------------
     def _min_bars(self, vs: dict) -> float:
@@ -1776,6 +1813,10 @@ class Director:
         self.look_bar = grid.bar_at(now_s + 1e-6) if grid.ok else None
         self._var_mark_bar, self._var_mark_s = self.look_bar, now_s
         rec = pd.get("recall")
+        if not pd.get("palette") and rec is None and self._treat_pal and pd["by"] == "director" \
+                and self.palette_pick == contract.PALETTE_AUTO and self._treat_pal in self._candidates(vs):
+            pd["palette"] = self._treat_pal              # a later plan's palette (README S5.33)
+        self._treat_pal = None if pd.get("palette") else self._treat_pal
         if pd.get("palette"):
             self.palette_name = pd["palette"]
         elif rec is not None and rec.get("palette") in self._candidates(vs):
@@ -1966,6 +2007,230 @@ class Director:
         self.ends_stats["dip_released"] += 1
         self._log_event("song_end", {"released": why, "track_id": d["track_id"]})
 
+    # -- the song's treatment (treatment.py, README S5.33; owner, 29 Oct) -------------------------------------------
+    def _song_words(self, room: Any) -> tuple[Optional[str], list[str]]:
+        """What names the song now (the Music page's piece, else Sonos's title and artist while it plays), and the
+        sources the plan goes on, in plain words: whatever the room offers, none of them assumed."""
+        based: list[str] = []
+        song = None
+        np_ = _call(getattr(self.ctx, "now_playing", None))
+        if isinstance(np_, dict) and np_.get("key") and np_.get("state") == "playing":
+            song = str(np_.get("title") or np_["key"])[:80]
+            based.append(f"the Music page: {song}")
+        sp = self._situation("sonos_playing")
+        if song is None and sp and isinstance(room, dict) and self._np_target:
+            m = (room.get("members") or {}).get(self._np_target)
+            b = m.get("believed") if isinstance(m, dict) else None
+            t = b.get("title") if isinstance(b, dict) else None
+            if isinstance(t, str) and t.strip():
+                a = b.get("artist") if isinstance(b.get("artist"), str) and b.get("artist") else None
+                song = t.strip()[:60] + (f" — {a[:40]}" if a else "")
+                based.append(f"Sonos: {song}")
+            else:
+                based.append("Sonos (no title)")
+        m = self.music or {}
+        if m.get("playing"):
+            based.append("the piano's MIDI")
+        if m.get("fresh"):
+            based.append("the room mic")
+        b = m.get("beliefs")
+        if isinstance(b, dict) and b.get("state") in ("fresh", "holding"):
+            based.append("AI listening")
+        mg = (self._mc or {}).get("genre") if isinstance((self._mc or {}).get("genre"), dict) else {}
+        if mg.get("via") in ("ml", "ml+listener"):
+            based.append("the local music model")
+        return song, based
+
+    def _evidence(self, now_s: float, room: Any = None, change: Optional[str] = None) -> dict:
+        """treatment.py's Evidence: what the room offers now (the module docstring lists it)."""
+        if room is None:
+            room = _call(self.ctx.room)
+        song, based = self._song_words(room)
+        d = self.direction or {}
+        vs = self.vs or {}
+        m = self.music or {}
+        b = m.get("beliefs")
+        ai_on = isinstance(b, dict) and b.get("state") in ("fresh", "holding")
+        pools: dict[str, list[str]] = {}
+        for gid, g in self._groups.items():
+            if g.get("follows") or not self._group_live(gid):
+                continue
+            try:
+                pools[gid] = list(self.light_scenes.pool_for(g, self._light_tags))
+            except Exception:                             # noqa: BLE001 - a broken catalogue: no light options
+                continue
+        forms: list[str] = []
+        if self.ensemble is not None:
+            try:
+                forms = sorted(self.ensemble.catalogue.entries)
+            except Exception:                             # noqa: BLE001
+                forms = []
+        live, members = comp.enabled(room)
+        apps = live + members + sorted(self._apps_on)
+        known = self.known and self._vibe_name is not None
+        ev = {"mode": self.mode, "mode_label": self.mode, "feel": self._vibe_name if known else None,
+              "feel_label": (vs.get("label") or self._vibe_name) if known else None,
+              "persona": vs.get("persona") if known else None,
+              "direction": {k: d.get(k) for k in ("genre", "genres", "moods", "energy", "valence", "organic",
+                                                    "density", "pace", "transition_style")},
+              "palettes": self._candidates(getattr(self, "vp", vs)) if getattr(self, "pal_on", False) else [],
+              "palette_now": self.palette_name, "palette_pick": self.palette_pick != contract.PALETTE_AUTO,
+              "change": change, "light_pools": pools, "forms": forms, "appliances": apps, "song_words": song,
+              "based_on": based, "ai_on": bool(ai_on),
+              "character": b.get("character") if ai_on and isinstance(b.get("character"), str) else None,
+              "piano_playing": bool(m.get("playing")),
+              "notes_recent": (isinstance(m.get("pv"), dict) and _num(m["pv"].get("last_note_age_s")) is not None
+                               and float(m["pv"]["last_note_age_s"]) <= treatmod.NOTES_RECENT_S),
+              "bpm": round(float(m["bpm"])) if m.get("clock_gate") in ("beat", "dmx") and _num(m.get("bpm")) else None}
+        self._ev_last = ev
+        return ev
+
+    def _plan_song(self, now_s: float, why: str, *, change: Optional[str] = None, room: Any = None,
+                   key: Optional[str] = None) -> Optional[dict]:
+        """A new song's treatment (the director's own, at once): applied now except its palette, which the caller
+        hands to the look it lands (or keeps for the next one)."""
+        if key is None:
+            self._treat_n += 1
+            key = f"{why}:{self._treat_n}"
+        plan = self.treat.song(now_s, key, why, self._evidence(now_s, room, change))
+        self._treat_rev = self.treat.rev
+        self._treat_pal = None
+        self._apply_plan(plan, now_s, landed=False)
+        return plan
+
+    def _plan_now(self, ev: dict, tr: dict) -> None:
+        """A track change being built (structure calls track_transition before it publishes): the new song's plan
+        now, and room.direction with its scene favour at once, so the renderer's pick for the song (it picks on the
+        event) already has it (stream_service's note, 29 Oct). _on_track then takes this plan rather than making
+        another."""
+        tid = ev.get("track_id")
+        if not isinstance(tid, int) or isinstance(tid, bool) or tid == self._track_id:
+            return
+        now_s = self._now()
+        plan = self._plan_song(now_s, "a new song", change=tr.get("change"), key=f"track:{tid}")
+        d = self.direction
+        if plan is None or not isinstance(d, dict):
+            return
+        d = {**d, "scene_favour": plan.get("favour"), "scene_avoid": plan.get("avoid")}
+        self._dir_seq += 1
+        d["seq"] = self._dir_seq
+        self.direction = d
+        self._publish(contract.ROOM_DIRECTION, d)
+        self._last_direction = d
+        self._dir_pub_s = now_s
+
+    def _apply_plan(self, plan: Optional[dict], now_s: float, *, landed: bool) -> None:
+        """The parts of a plan that apply at once: the ensemble's preferred form (its next pick). The words, the
+        renderer's favour and the light scenes' preference read the plan where they are made; the palette lands with
+        a look (``landed``: a later plan's palette waits for the next one, or joins a look still pending)."""
+        if self.ensemble is not None and hasattr(self.ensemble, "prefer"):
+            self.ensemble.prefer = (plan or {}).get("form")
+            self.ensemble.prefer_k = float(self.treat.cfg["form_prefer"])
+        if not landed or plan is None or not plan.get("palette") or self.palette_pick != contract.PALETTE_AUTO:
+            return
+        pd = self.pending
+        if pd is not None and pd["by"] == "director" and not pd.get("palette") and not pd.get("recall"):
+            pd["palette"] = plan["palette"]               # the song's look hasn't landed yet: it takes the plan's
+        elif plan["palette"] != self.palette_name:
+            self._treat_pal = plan["palette"]
+
+    def _treat_tick(self, now_s: float, room: Any) -> None:
+        """Once a second: a mode's plan once its feel has landed, the AI's call when due, and a plan that changed
+        (the AI's answer, a long stretch) applied."""
+        if now_s < self._treat_next_s:
+            return
+        self._treat_next_s = now_s + TREAT_TICK_S
+        due = self._treat_due
+        m = self.music or {}
+        sounding = bool(m.get("fresh") and (m.get("gate") or 0.0) >= SILENT_GATE) or bool(m.get("playing"))
+        if due is not None and now_s >= due[0]:
+            self._treat_due = None
+            if sounding:
+                self._plan_song(now_s, due[1], room=room)
+            return
+        if self.treat.plan is None:
+            if sounding and self.treat.cfg["enabled"]:
+                self._plan_song(now_s, "the music started", room=room)   # no song change has come yet
+            return
+        ev = self._evidence(now_s, room)
+        loop = self.ctx.loop
+        spawn = (lambda coro: self._spawn(loop, coro, busy="treatment")) if loop is not None else None
+        self.treat.tick(now_s, ev, spawn)
+        if self.treat.rev != self._treat_rev:
+            self._treat_rev = self.treat.rev
+            p = self.treat.plan
+            self._apply_plan(p, now_s, landed=True)
+
+    def _why_words(self, kind: str, d: dict) -> Optional[str]:
+        """A logged decision in the Room page's words (owner, 29 Oct: inspect whether it behaves sensibly), or None
+        for the ones that would only be noise there."""
+        if kind == "look_change":
+            words = LOOK_REASON_WORDS.get(d.get("reason"), str(d.get("reason") or "").replace("_", " "))
+            pal = d.get("palette")
+            tr = (d.get("transition") or {}).get("style") if isinstance(d.get("transition"), dict) else None
+            return "New look: " + " · ".join(x for x in (words, f"{self._pick_label(pal)} colours" if pal else None,
+                                                          TRANSITION_WORDS.get(tr)) if x)
+        if kind == "track":
+            if d.get("held"):
+                return "A new song: the look is held (someone is keeping it)"
+            tr = d.get("transition") if isinstance(d.get("transition"), dict) else {}
+            ch = {"big": "a big change", "small": "a small change"}.get(tr.get("change"))
+            return "A new song (" + VIA_WORDS.get(d.get("via"), "heard") + ")" + (f": {ch}" if ch else "")
+        if kind == "song_end":
+            if "dip" in d:
+                ev = d.get("event") if isinstance(d.get("event"), dict) else {}
+                return f"The song is ending ({VIA_WORDS.get(ev.get('via'), 'heard')}): the lamps sink, the screens fade"
+            if d.get("released"):
+                return f"Lights back up: {d['released']}"
+            return None
+        if kind == "token":
+            dec = d.get("decision")
+            if dec == "spent":
+                return "A drop after a build: a hard cut and a hit on the lamps"
+            if dec == "reserved":
+                return "A drop is coming: the lamps dip before it"
+            if dec == "refused":
+                return f"A drop, shown inside the look: {d.get('why')}"
+            return None
+        if kind == "section_kept":
+            return f"A new section, shown inside the look: {d.get('why')}" if d.get("why") else None
+        if kind == "light_program":
+            for gid, g in (d.get("groups") or {}).items():
+                if isinstance(g, dict) and g.get("scene"):
+                    lab = self.light_scenes.label(g["scene"]) or g["scene"]
+                    return f"Lights ({gid}): {lab}" + (f", {g['why']}" if g.get("why") else "")
+            return None
+        if kind == "nudge":
+            n = d.get("nudge")
+            if n == "keep":
+                return "You held the look" if d.get("keep_in_s") else "You stopped holding the look"
+            if n == "steps":
+                return f"You made it {'wilder' if d.get('dir') == contract.STEP_DIRS[1] else 'calmer'}"
+            if n == "palette":
+                return f"You picked {self._pick_label(d.get('palette'))} colours"
+            return "You pressed Next look" if n == "next" else None
+        if kind == "mode":
+            return f"Mode: {d.get('to')}"
+        if kind == "vibe":
+            if not d.get("to"):
+                return "No feel: the director picks the colours only"
+            vs = self.vs or {}
+            return (f"Feel: {vs.get('label') or d['to']}; looks change "
+                    f"{CHANGE_LOOKS_WORDS.get(vs.get('change_looks'), 'as the feel says')}")
+        if kind == "treatment":
+            pl = d.get("plan") if isinstance(d.get("plan"), dict) else {}
+            who = "The AI" if pl.get("by") == treatmod.BY_AI else "The director"
+            return f"{who} planned {pl.get('song_words') or 'this song'}: {pl.get('why')}"
+        if kind == "treatment_ai" and not d.get("ok"):
+            return f"The AI's plan didn't come ({d.get('error') or 'no answer'}): the director's stays"
+        if kind == "taste":
+            return f"Noted for next time: {d.get('words')}"
+        return None
+
+    def _why(self, words: str) -> None:
+        """One line for the Room page's reasoning (newest first there)."""
+        self._why_log.append((round(self._wall(), 1), str(words)[:200]))
+
     @staticmethod
     def _look_transition_for(tr: Optional[dict]) -> Optional[dict]:
         """The director's own look transition for a song change's transition (contract.TrackTransition): a cut, a
@@ -1994,6 +2259,11 @@ class Director:
         n = len(self._sec_mem)
         self._sec_mem.clear()
         self._song_change = (tr or {}).get("change") != "small"
+        tp = self.treat.plan
+        plan = tp if (tp is not None and tid is not None and tp.get("song") == f"track:{tid}") else \
+            self._plan_song(now_s, "a new song", change=(tr or {}).get("change"),
+                            key=f"track:{tid}" if tid is not None else None)   # README S5.33 (or track_transition's)
+        plan_pal = (plan or {}).get("palette") if self.palette_pick == contract.PALETTE_AUTO else None
         info = {"kind": "track_change", "track_id": tid, "via": via, "at_ms": round(at_s * 1000.0, 1),
                 "prev_track_id": ev.get("prev_track_id"), "transition": tr}
         self._log_event("track", {"track_id": tid, "via": via, "memory_cleared": n, "transition": tr,
@@ -2005,17 +2275,21 @@ class Director:
             if self._vibe_name is None:                   # no feel and no look lands: the lamps' light scene changes
                 self._pick_light_scene("track", now_s)    # with the song here (README S5.24); a look that lands picks
             self._release_dip(now_s, "the new song, with no look change")    # its own (09's audit F5: not twice)
+            if plan_pal:
+                self._treat_pal = plan_pal                # the plan's palette waits for the next look
             return                                        # the palette moves on at the next look change
         pd = self.pending
         if pd is not None and pd.get("recall"):
             pd["recall"] = None                           # the last track's look doesn't come back in this one
         if pd is not None and (pd["by"] == "human" or pd.get("structure")):
             self._release_dip(now_s, "a pending change lands instead")
+            if plan_pal and pd["by"] != "human" and not pd.get("palette"):
+                pd["palette"] = plan_pal
             return                                        # a pending change takes the song change's palette
         t0 = max(at_s, now_s + max(LOOK_MIN_LEAD_S, self._ev_lead))   # the screens' lead (§5.4)
         at, bar = grid.next_line(t0, 1) if grid.ok else (t0, None)
         self._announce(now_s, "track", "director", grid, at_s=at, bar=bar, section=info,
-                       transition=self._look_transition_for(tr))
+                       transition=self._look_transition_for(tr), palette=plan_pal)
 
     def _on_section(self, ev: dict, at_s: float, now_s: float, vs: dict, grid: Grid) -> None:
         """§8.5: a predicted section (a known repeat) lands on its line with that letter's look; a confirmed one lands
@@ -2293,9 +2567,11 @@ class Director:
                     new[gid] = old
                 continue
             try:
+                want = ((self.treat.plan or {}).get("lights") or {}).get(gid)   # README S5.33: the plan's
                 got = self.light_scenes.pick_for(g, self.direction, self._flow, self._ls_rng,
                                                  avoid=old.get("scene") if old else None, tags=self._light_tags,
-                                                 hard_avoid=human)
+                                                 hard_avoid=human,
+                                                 prefer={want: float(self.treat.cfg["light_prefer"])} if want else None)
             except Exception:                             # a broken catalogue never fails the tick
                 log.exception("light scenes: pick failed")
                 got = None
@@ -3400,7 +3676,9 @@ class Director:
         # README S5.22: the listener's confident approach.intensity is the genre term (the style's base wildness),
         # else its confident genre word's genre_energy; slewed from what the term was. The ML's words are the fallback
         gd = self._guide
-        want, src = ((gd["intensity"], "listener approach") if gd.get("intensity") is not None
+        tpi = _num((self.treat.plan or {}).get("intensity"))
+        want, src = ((tpi, "plan") if tpi is not None
+                     else (gd["intensity"], "listener approach") if gd.get("intensity") is not None
                      else (ge[gd["genre"]], "listener genre") if gd.get("genre") in ge else (None, None))
         if want is not None:
             was = self._gterm if self._gterm is not None else terms.get("genre", want)
@@ -3540,8 +3818,11 @@ class Director:
         art = self._art_llm or self.art_tags.for_group(contract.art_group(genre, genres))
         band = self._band_words(self.music.get("band_energy", self.music.get("energy", vs["energy_centre"]))) \
             if self.music else None
+        tp = self.treat.plan or {}
         if self.moods:
             moods, src = list(self.moods), "human"
+        elif tp.get("moods"):
+            moods, src = list(tp["moods"]), "plan"         # the song's treatment (README S5.33)
         elif llm_moods:
             moods, src = llm_moods, "listener"
         elif band and band["moods"]:
@@ -3553,6 +3834,8 @@ class Director:
         # feel's own change_rate always wins there)
         if vs["transition_style"]:
             style, style_from = vs["transition_style"], "feel"
+        elif tp.get("transition_style"):
+            style, style_from = tp["transition_style"], "plan"
         elif gd.get("transitions"):
             style, style_from = gd["transitions"], "listener"
         elif (band or {}).get("transition_style"):
@@ -3831,7 +4114,13 @@ class Director:
                           "art": words.get("art"),
                           "groove": round(_c01(m["drive"] * (grid.conf if grid.gate != "none" else 0.0)), 3),
                           "beat_lock": beat_lock, "loose": bool(vs["beat_lock"]) and m["fresh"] and grid.gate != "beat",
-                          "flow": self._flow}                    # docs/LIGHTS.md §4.1
+                          "flow": self._flow,                    # docs/LIGHTS.md §4.1
+                          # the song's treatment (README S5.33): the renderer's favoured and rested scene families,
+                          # and, while a feel changes the looks, its dwell window (the show decides when)
+                          "scene_favour": (self.treat.plan or {}).get("favour"),
+                          "scene_avoid": (self.treat.plan or {}).get("avoid"),
+                          "dwell_s": ([SCREENS_DWELL_MIN_S, max(SCREENS_DWELL_MIN_S, float(vs["dwell_s"][1]))]
+                                      if feel_on else None)}
         if self.ensemble is not None:
             self.direction["ensemble"] = self.ensemble.block()   # docs/ENSEMBLE.md §8: roles, staggers per screen
         if self.cfg["compose"]["mode"] == comp.DRIVE:
@@ -4199,7 +4488,7 @@ class Director:
                                     ("energy", "pace", "intensity", "pulse_depth", "change_rate", "arousal", "tension",
                                      "density", "groove", "fx.density", "fx.rate"),
                                     ("vibe", "moods", "genre", "transition_style", "palette_family", "beat_lock",
-                                     "loose", "peak")) or \
+                                     "loose", "peak", "scene_favour", "scene_avoid", "dwell_s")) or \
                 sec_a.get("id") != d["section"]["id"] or sec_a.get("label") != d["section"]["label"] or \
                 (self._last_direction or {}).get("fx", {}).get("moods") != d["fx"]["moods"] or \
                 self._flow_moved(self._last_direction, d) or \
@@ -4341,6 +4630,8 @@ class Director:
             coro.close()
             if busy == "screens":
                 self._scr["busy"] = False
+            elif busy == "treatment":
+                self.treat._ai_busy = False
             else:
                 self._cat_busy = self._art_busy = False
             return
@@ -4355,6 +4646,15 @@ class Director:
                 return
             loop = asyncio.get_running_loop()
             block = await loop.run_in_executor(None, pal.block_from_catalog, body)
+            try:                                          # the treatment's scene families (README S5.33)
+                self.treat.index.ingest(await loop.run_in_executor(None, json.loads, body))
+                rst, rbody = await self.ctx.room_get(RATINGS_PATH)
+                if rst == 200 and rbody:
+                    self.treat.index.ingest_ratings(json.loads(rbody))
+            except asyncio.CancelledError:
+                raise
+            except Exception as e:                        # noqa: BLE001 - the palettes still load
+                self.treat.index.error = f"{type(e).__name__}: {e}"
             if block is None:
                 self.palettes.api_failed("the renderer's catalog had no palettes block")
                 return
@@ -4479,6 +4779,7 @@ class Director:
         if moved:
             self.steps = want
             self._log_event("nudge", {"nudge": "steps", "dir": direction, "steps": self.steps})
+            self.treat.feedback("steps", steps=-1 if direction == contract.STEP_DIRS[0] else 1)   # S5.33: taste
             self._changed()
         view = self._steps_view()
         if not moved:
@@ -4494,6 +4795,8 @@ class Director:
             if name == contract.PALETTE_AUTO:
                 self.palette_name = None
             self._log_event("nudge", {"nudge": "palette", "palette": name})
+            if name != contract.PALETTE_AUTO:
+                self.treat.feedback("palette", palette=name)   # README S5.33: taste
             self._human_change("palette")
             self._changed()
         return {"palette": {"pick": self.palette_pick, "current": self._current_palette_name()},
@@ -4510,9 +4813,12 @@ class Director:
             raise ValueError(f"unknown_action: {do}")
         now = self._now()
         if do == "next":
+            self.treat.feedback("next")                   # README S5.33: taste (before the look moves on)
             self._human_change("next", advance=self.palette_pick == contract.PALETTE_AUTO)
         elif do == "keep":
             self.keep_until = None if self.keep_until is not None else now + float(self.cfg["keep_s"])
+            if self.keep_until is not None:
+                self.treat.feedback("keep")
         elif do == "house":
             self.house = (not self.house) if on is None else bool(on)
             if self.house:
@@ -4624,6 +4930,7 @@ class Director:
         self.mode = new
         if self.ensemble is not None:                     # docs/ENSEMBLE.md §5.2: a new mode starts all at once
             self.ensemble.reset(self._now(), "a new mode")
+        self._treat_due = (self._now() + TREAT_MODE_WAIT_S, "a new mode")   # README S5.33: once its feel lands
         self._dirty()
 
     def chips(self) -> list[contract.ChipData]:
@@ -4676,6 +4983,12 @@ class Director:
                            for k in ("energy", "arousal", "gate", "liveness", "bpm", "clock_gate", "relax")} if m
                  else None}
         self._log.append(entry)
+        try:
+            w = self._why_words(kind, detail)
+        except Exception:                                 # noqa: BLE001 - the words never stop the log
+            w = None
+        if w:
+            self._why(w)
         if self.log_path is None:
             return
         try:
@@ -4779,7 +5092,50 @@ class Director:
                             "drop": dict(self._ls_drop) if self._ls_drop else None, **self._ls_stats,
                             "catalogue": self.light_scenes.view()},
             "lights": self._lights_view(now_s),                  # docs/LIGHTS.md §7.3
-            "ensemble": self.ensemble.view(now_s) if self.ensemble is not None else None}   # docs/ENSEMBLE.md §5.6
+            "ensemble": self.ensemble.view(now_s) if self.ensemble is not None else None,   # docs/ENSEMBLE.md §5.6
+            "treatment": self.treat.view(now_s),                 # README S5.33
+            "reasoning": self._reasoning(now_s)}                 # the Room page's "How it's deciding"
+
+    def _reasoning(self, now_s: float) -> dict:
+        """The Room page's "How it's deciding" (owner, 29 Oct: "surface more of the art director's reasoning ... so
+        that it's possible to inspect whether it's behaving sensibly or not"): the song's plan, what it goes on, what
+        it hears, the feel and how its looks change, the lights' scene and why, and the latest decisions, in words."""
+        p = self.treat.plan
+        ev = self._ev_last or {}
+        w = self._words_now or {}
+        d = self.direction or {}
+        plan = None
+        if p is not None:
+            pu = p.get("palette_used")
+            plan = {"why": p.get("why"), "by": "the AI" if p.get("by") == treatmod.BY_AI else "the director",
+                    "song": p.get("song_words"), "at": p.get("at_wall"),
+                    "favour": list(p.get("families") or []), "rest": list(p.get("avoid_families") or []),
+                    "palette": self._pick_label(pu) if pu else None,
+                    "lights": {g: self.light_scenes.label(n) or n for g, n in (p.get("lights") or {}).items()},
+                    "together": p.get("form"),
+                    "wildness": None if p.get("intensity") is None else round(float(p["intensity"]), 2),
+                    "taste": p.get("bias") or 0.0}
+        feel = None
+        if self.known and self._vibe_name is not None:
+            vs = self.vs or {}
+            n, left = self._tokens_left(vs, now_s)
+            feel = {"label": vs.get("label") or self._vibe_name,
+                    "changes": CHANGE_LOOKS_WORDS.get(vs.get("change_looks"), vs.get("change_looks")),
+                    "peaks": f"{left} of {n} peaks left this hour" if n else None,
+                    "beat": ("locked to the beat" if d.get("beat_lock") else
+                             "following the beat loosely" if d.get("loose") else "not on the beat")}
+        mc = self._mc or {}
+        sec = mc.get("section") if isinstance(mc.get("section"), dict) else {}
+        heard = {"genre": w.get("genre"), "genre_from": w.get("genre_from"), "moods": list(w.get("moods") or []),
+                 "moods_from": w.get("moods_from"), "band": w.get("band"),
+                 "energy": round(float(_num(d.get("energy"), 0.0) or 0.0), 2),
+                 "phase": sec.get("phase") if isinstance(sec.get("phase"), str) else None,
+                 "tempo": ev.get("bpm"), "character": ev.get("character")}
+        return {"plan": plan, "sources": list(ev.get("based_on") or []), "heard": heard, "feel": feel,
+                "lights": {"scene": self.light_scenes.label(self.light_scene) if self.light_scene else None,
+                           "why": self.light_scene_why},
+                "ai_error": self.treat.ai_state.get("error"),
+                "recent": [{"t": t, "text": x} for t, x in reversed(self._why_log)]}
 
     def _compose_view(self) -> dict:
         """The snapshot's composer (README S5.18): the mode, whose limits, the problems (the limits' validator, the

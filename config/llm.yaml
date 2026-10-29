@@ -57,6 +57,12 @@ tasks:
       format: mp3
       sample_rate: 24000                    # §7.3
       bitrate: 64k                          # README S3.12 (§7.3 said 96k; 64k is plenty for a 24 kHz mono clip)
+  treatment:                                # the art director's plan for a song (show_service/treatment.py, README
+    models:                                 # S5.33; owner, 29 Oct): text only, one call per song, ~2,000 tokens in
+      - {provider: gemini, model: gemini-3.1-flash-lite}   # the prompt tasks' Gemini (17 Oct side-by-side: ~1.1 s)
+      - {provider: openai, model: gpt-4.1-mini}            # Describe it's model: fast, no reasoning tokens
+    timeout_s: 10                           # then the director's own plan stays for the song
+    max_output_tokens: 400
   describe:                                 # Describe it (§7.4): the guest's words -> the card's own settings
     models:
       - {provider: openai, model: gpt-4.1-mini}    # checked 16 Oct 2026: in models.list(); fast, no reasoning tokens.
@@ -113,6 +119,8 @@ budgets:
   listen: 15.00                             # starting point, the owner's call. At one call every 20 s for 4 h the
                                             # estimate is about $3 on Gemini 3.8 Flash and about $10 on gpt-audio-1.5
                                             # (GET /api/v1/listening "estimate" shows the live figure)
+  treatment: 1.00                           # README S5.33: ~$0.0007 a song (2,000 in, 300 out on Flash-Lite), so a
+                                            # long evening is cents; reaching it, the director's own plans carry on
   tag: 3.00                                 # art tags: $0.00125 a picture (measured 27 Oct), so the ~2,000-picture
                                             # backfill is ~$2.50; reaching it pauses the tagging queue until local
                                             # midnight (the backfill may spill into a second day)

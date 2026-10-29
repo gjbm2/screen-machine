@@ -560,7 +560,10 @@ def card(brain_snapshot: Optional[dict], engine: Optional[dict], *, describe: Op
             "auto": auto, "tests": tests, "mic_state": _plain(mic_state) if mic_state is not None else None,
             # the art wish the director sends with room.direction (listener's or the genre's; None without music):
             # the Room page's "Pictures: <theme>" (owner, 28 Oct: listening AI -> art director -> the pictures)
-            "art": _plain(_d(director.get("direction")).get("art")) if isinstance(_d(director.get("direction")).get("art"), dict) else None}
+            "art": _plain(_d(director.get("direction")).get("art")) if isinstance(_d(director.get("direction")).get("art"), dict) else None,
+            # the art director's reasoning in words (owner, 29 Oct; README S5.33): the song's plan, what it goes on,
+            # what it hears, the feel, the lights, the latest decisions. The Room page's Look fold shows it
+            "reasoning": _plain(director["reasoning"]) if isinstance(director.get("reasoning"), dict) else None}
 
 
 def _plain(o: Any) -> Any:

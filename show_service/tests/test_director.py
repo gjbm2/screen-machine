@@ -2721,10 +2721,10 @@ def test_compose_settings_and_bad_values(tmp_path):
     bad["lamps"]["roles"]["wash"]["dynamics"] = "lots"
     r.d.configure(bad)
     assert any("lamps.roles.wash.dynamics" in p for p in r.d.settings_problems)
-    sy = yaml.safe_load(contract.SHOW_FILE.read_text())               # the real show.yaml's compose: clean, observe
-    r.d.configure(sy)
+    sy = yaml.safe_load(contract.SHOW_FILE.read_text())               # the real show.yaml's compose: clean (drive
+    r.d.configure(sy)                                                 # since 29 Oct, with the feels on)
     assert not [p for p in r.d.settings_problems if "compose" in p or "dynamics" in p]
-    assert r.d.cfg["compose"]["mode"] == "observe"
+    assert r.d.cfg["compose"]["mode"] == sy["director"]["compose"]["mode"]
 
 
 def test_compose_tick_cost_with_every_appliance_enabled(tmp_path):

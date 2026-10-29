@@ -39,6 +39,14 @@
           "set": true,
           "restore": true
         },
+        "show.main": {
+          "set": {
+            "vibe": "party",
+            "listening": true
+          },
+          "restore": true,
+          "policy": "ignore"
+        },
         "page": true,
         "page.devtest.timed_reload": false,
         "sensor_mask": "follow",
@@ -134,6 +142,14 @@
           "set": true,
           "restore": true
         },
+        "show.main": {
+          "set": {
+            "vibe": "notes",
+            "listening": true
+          },
+          "restore": true,
+          "policy": "ignore"
+        },
         "show.ai": {
           "set": true,
           "restore": true
@@ -223,6 +239,14 @@
           "set": true,
           "restore": true
         },
+        "show.main": {
+          "set": {
+            "vibe": "dinner",
+            "listening": false
+          },
+          "restore": true,
+          "policy": "ignore"
+        },
         "show.ai": {
           "set": false
         }
@@ -270,6 +294,14 @@
         "show.mic": {
           "set": true,
           "restore": true
+        },
+        "show.main": {
+          "set": {
+            "vibe": "chill",
+            "listening": true
+          },
+          "restore": true,
+          "policy": "ignore"
         },
         "show.ai": {
           "set": true,
@@ -337,6 +369,14 @@
         "show.mic": {
           "set": true,
           "restore": true
+        },
+        "show.main": {
+          "set": {
+            "vibe": "party",
+            "listening": true
+          },
+          "restore": true,
+          "policy": "ignore"
         },
         "drawing-room:screens": {
           "live": {
@@ -434,6 +474,14 @@
         "show.mic": {
           "set": true,
           "restore": true
+        },
+        "show.main": {
+          "set": {
+            "vibe": "disco",
+            "listening": true
+          },
+          "restore": true,
+          "policy": "ignore"
         },
         "drawing-room:screens": {
           "live": {

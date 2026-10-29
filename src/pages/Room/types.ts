@@ -1004,6 +1004,44 @@ export interface ShowCard {
   /** What pictures the art director is asking for (owner, 28 Oct: art tags → Ambient); absent until show_service
    *  sends it. */
   art?: ShowArtWish | null;
+  /** How the art director is deciding, in words (owner, 29 Oct; show_service README S5.33): the Look fold's
+   *  DirectorWhy. Absent from an older show_service. */
+  reasoning?: ShowReasoning | null;
+}
+
+/** show_service's card `reasoning` (README S5.33): the song's plan, what it goes on, what it hears, the feel, the
+ *  lights, and the latest decisions (newest first; t is a wall epoch in seconds). Every string is page words. */
+export interface ShowReasoning {
+  plan?: {
+    why?: string | null;
+    by?: string | null;
+    song?: string | null;
+    /** When it was made (wall epoch, seconds). */
+    at?: number | null;
+    favour?: string[] | null;
+    rest?: string[] | null;
+    palette?: string | null;
+    lights?: Record<string, string> | null;
+    together?: string | null;
+    wildness?: number | null;
+    taste?: number | null;
+  } | null;
+  sources?: string[] | null;
+  heard?: {
+    genre?: string | null;
+    genre_from?: string | null;
+    moods?: string[] | null;
+    moods_from?: string | null;
+    band?: string | null;
+    energy?: number | null;
+    phase?: string | null;
+    tempo?: number | null;
+    character?: string | null;
+  } | null;
+  feel?: { label?: string | null; changes?: string | null; peaks?: string | null; beat?: string | null } | null;
+  lights?: { scene?: string | null; why?: string | null } | null;
+  ai_error?: string | null;
+  recent?: { t: number; text: string }[] | null;
 }
 
 /** The art wish on room.direction (show_service; art-tags phase 2): words from config/art_tags.yaml's subject, moods

@@ -48,6 +48,7 @@ import { MenuSheet } from "./MenuSheet";
 import { ModeEditor } from "./ModeEditor";
 import { ModeSwitcher } from "./ModeSwitcher";
 import { AutoRow, directorWords, DirectorControls, ListeningPanel, listeningWords, useShowFeed, useShowState } from "./MusicCard";
+import { DirectorWhy } from "./DirectorWhy";
 import { ListenHere } from "./ListenHere";
 import { PianoCard } from "./PianoCard";
 import { RecordPill, useRecorder } from "./PianoRecorder";
@@ -492,6 +493,8 @@ export default function RoomPage() {
                               </p>
                             )}
                             <DirectorControls api={room.api} feed={show} addLog={room.addLog} />
+                            {/* owner, 29 Oct: the art director's reasoning, to inspect it while live */}
+                            <DirectorWhy feed={show} />
                             {cards}
                           </Section>
                         </div>
