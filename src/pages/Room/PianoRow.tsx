@@ -167,7 +167,12 @@ export function PianoRow({
           flash ? "scale-125 bg-teal-400" : connected ? "bg-teal-700" : "bg-amber-500",
         )}
       />
-      <p className={cn("min-w-0 flex-1 text-sm leading-snug", connected ? "text-stone-700" : "text-amber-800")} data-testid="music-piano-line">
+      {/* one line (owner, 29 Oct: the line's length changes with every key; wrapping changed the panel's height) */}
+      <p
+        className={cn("min-w-0 flex-1 truncate text-sm leading-snug", connected ? "text-stone-700" : "text-amber-800")}
+        title={line}
+        data-testid="music-piano-line"
+      >
         {last && <span className="sr-only">{relay} · </span>}
         {line}
       </p>

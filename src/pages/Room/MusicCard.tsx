@@ -999,12 +999,17 @@ export function ListeningPanel({
         {mic && (
           <div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-              <p className="flex min-h-11 min-w-[13rem] flex-1 items-center gap-2 text-[15px] leading-snug" title="Switch it with Mic at the top">
+              {/* One line, cut short with the whole line as its tooltip (owner, 29 Oct: the panels changed height as
+                  live lines wrapped differently) */}
+              <p
+                className="flex min-h-11 min-w-[13rem] flex-1 items-center gap-2 text-[15px] leading-snug"
+                title={`Room mic${micLine ? ` · ${micLine}` : ""}. Switch it with Mic at the top.`}
+              >
                 <span
                   aria-hidden
                   className={cn("h-2.5 w-2.5 shrink-0 rounded-full", micListening ? "bg-rose-600 motion-safe:animate-pulse" : "bg-stone-300")}
                 />
-                <span className="min-w-0">
+                <span className="min-w-0 truncate">
                   <span className="font-semibold">Room mic</span>
                   {micLine && (
                     <span className="text-stone-700">
@@ -1024,8 +1029,8 @@ export function ListeningPanel({
 
       {/* What it hears */}
       <div>
-        <div className="flex min-h-11 flex-wrap items-center gap-x-2 gap-y-1">
-          <p className="min-w-0 flex-1 text-[15px] leading-snug">
+        <div className="flex min-h-11 items-center gap-x-2">
+          <p className="min-w-0 flex-1 truncate text-[15px] leading-snug">
             <span className="text-muted-foreground">Hears </span>
             <span
               className={cn("text-base font-semibold first-letter:uppercase", !answering && "text-stone-500")}
@@ -1038,7 +1043,11 @@ export function ListeningPanel({
               <span className="text-sm text-muted-foreground"> · from the test music</span>
             )}
           </p>
-          {answering && vibeLabel && <Pill tone="live">Feel: {vibeLabel}</Pill>}
+          {answering && vibeLabel && (
+            <Pill tone="live" className="max-w-[45%] shrink-0 overflow-hidden" title={`Feel: ${vibeLabel}`}>
+              <span className="truncate">Feel: {vibeLabel}</span>
+            </Pill>
+          )}
         </div>
         {answering && <AiHears listening={card?.listening} />}
         {answering && <PicturesLine art={card?.art ?? card?.listening?.art} />}
@@ -1095,7 +1104,7 @@ function AiHears({ listening }: { listening: ShowCard["listening"] }) {
   return (
     <div className="mt-1 space-y-1" data-testid="music-ai-hears">
       {character && (
-        <p className="text-base leading-snug text-stone-700" data-testid="music-character">
+        <p className="truncate text-base leading-snug text-stone-700" title={character} data-testid="music-character">
           <span className="text-muted-foreground">The AI hears </span>
           {character}
         </p>
@@ -1103,9 +1112,9 @@ function AiHears({ listening }: { listening: ShowCard["listening"] }) {
       {armed.length > 0 && (
         <ul className="space-y-0.5" data-testid="music-armed">
           {armed.map((c, i) => (
-            <li key={`${c.kind}-${i}`} className="flex items-start gap-2 text-sm leading-snug text-teal-900">
+            <li key={`${c.kind}-${i}`} className="flex min-w-0 items-start gap-2 text-sm leading-snug text-teal-900" title={c.words}>
               <span aria-hidden className="mt-[0.45rem] h-1.5 w-1.5 shrink-0 rounded-full bg-teal-600" />
-              <span className="min-w-0">{c.words}</span>
+              <span className="min-w-0 truncate">{c.words}</span>
             </li>
           ))}
         </ul>
@@ -1129,7 +1138,11 @@ function PicturesLine({ art }: { art?: ShowArtWish | null }) {
   if (!words) return null;
   const from = art?.via === "listener" ? "from what the AI hears" : "from the kind of music";
   return (
-    <p className="mt-1 text-base leading-snug text-stone-700" data-testid="music-pictures" title={`The pictures the art director asks for, ${from}`}>
+    <p
+      className="mt-1 truncate text-base leading-snug text-stone-700"
+      data-testid="music-pictures"
+      title={`Pictures: ${words} (what the art director asks for, ${from})`}
+    >
       <span className="text-muted-foreground">Pictures: </span>
       {words}
     </p>
@@ -1149,7 +1162,7 @@ function AiListeningRow({ api, feed }: { api: RoomApi; feed: ShowFeed }) {
   return (
     <div className="space-y-1" data-testid="music-identify">
       <p className="flex min-h-11 items-center text-[15px] leading-snug" title={`${about}. Switch it with AI at the top.`}>
-        <span className="min-w-0">
+        <span className="min-w-0 truncate">
           <span className="font-semibold">AI listening</span>
           <span className="text-stone-700"> · {st}</span>
           {cost && (
