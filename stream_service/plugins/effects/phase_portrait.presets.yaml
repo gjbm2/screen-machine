@@ -1,0 +1,50 @@
+phase-portrait-ratios:
+  label: Phase portrait (the chord's just ratios as a turning wire figure)
+  effect: phase_portrait
+  params: {amount: 0.9, reality: 0.2, persistence: 0.15, size: 0.5, spin: 0.35, palette: ice,
+           palette_period: 0.6, drift_speed: 0.02}
+  bindings:
+    pulse: {kick: note_on, amount: 0.5}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [elegant, geometric]
+    modes: [piano]
+    style: gentle
+    family: overlay
+    dims: 3d
+    technique: [wireframe, analytic]
+    weight: 1.0
+
+phase-portrait-room:
+  label: Phase portrait (the room's real sound in phase space, beside the chord)
+  effect: phase_portrait
+  params: {amount: 0.9, reality: 0.8, persistence: 0.3, spin: 0.6, size: 0.55, palette: dusk,
+           palette_period: 0.8, drift_speed: 0.03}
+  bindings:
+    pulse: {kick: note_on, amount: 0.6}
+  tags:
+    energy: [0.1, 0.9]
+    moods: [hypnotic, cosmic]
+    modes: [piano]
+    style: gentle
+    family: overlay
+    dims: 3d
+    technique: [wireframe, analytic]
+    weight: 0.9
+
+phase-portrait-bass-walk:
+  label: Phase portrait (small figures that walk with the bass, septimal sevenths)
+  effect: phase_portrait
+  params: {amount: 0.85, reality: 0.1, persistence: 0.35, size: 0.32, spin: 0.25, placement: 1.0,
+           septimal: true, palette: candy, palette_period: 0.5, drift_speed: 0.02}
+  bindings:
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [elegant, dreamy, geometric]
+    modes: [piano]
+    style: gentle
+    family: overlay
+    dims: 3d
+    technique: [wireframe, analytic]
+    weight: 0.7

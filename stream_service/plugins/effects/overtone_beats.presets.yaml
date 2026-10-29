@@ -1,0 +1,49 @@
+overtone-beats-spectroscope:
+  label: Spectroscope (overtone threads, bass to treble across the pair)
+  effect: overtone_beats
+  params: {amount: 0.8, layout: 0.0, threads: 0.8, wobble: 0.5, slow: 0.5, focus: 0.2, span: pair}
+  bindings:
+    pulse: {kick: beat, amount: 0.4}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [elegant, geometric]
+    style: gentle
+    family: overlay
+    dims: 2d
+    technique: [analytic, displacement]
+    modes: [piano]
+    weight: 1.0
+
+overtone-beats-rings:
+  label: Rings (overtones as circles, beats ripple round them)
+  effect: overtone_beats
+  params: {amount: 0.8, layout: 1.0, threads: 0.5, wobble: 0.7, slow: 0.4, focus: 0.4, palette: ice,
+           palette_period: 1.0}
+  bindings:
+    pulse: {kick: beat, amount: 0.3}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [hypnotic, dreamy]
+    style: gentle
+    family: overlay
+    dims: 2d
+    technique: [analytic, displacement]
+    modes: [piano]
+    weight: 0.9
+
+overtone-beats-focus-pull:
+  label: Focus pull (faint threads; dissonance blurs the picture)
+  effect: overtone_beats
+  params: {amount: 0.9, layout: 0.35, threads: 0.3, wobble: 0.4, slow: 0.6, focus: 0.9, stretch: 1.0,
+           palette: dusk}
+  bindings:
+    pulse: {kick: beat, amount: 0.3}
+  tags:
+    energy: [0.1, 0.8]
+    moods: [dreamy, tense]
+    style: gentle
+    family: overlay
+    dims: 2d
+    technique: [analytic, displacement, optical]
+    modes: [piano]
+    weight: 0.7

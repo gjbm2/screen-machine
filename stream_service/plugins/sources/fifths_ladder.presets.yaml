@@ -1,0 +1,43 @@
+fifths-ladder-analysis:
+  label: Fifths ladder (harmonic analysis)
+  source: fifths_ladder
+  params:
+    palette: ember
+    window_s: 14
+    labels: 1.0
+    satellites: 0.85
+    ghost: 0.9
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.3}
+  tags:
+    energy: [0.0, 0.8]
+    moods: [elegant, calm, warm]
+    modes: [piano]
+    style: gentle
+    family: geometric
+    dims: 2d
+    technique: [sdf, analytic]
+    weight: 1.0
+
+fifths-ladder-minimal:
+  label: Fifths ladder (quiet, long view)
+  source: fifths_ladder
+  params:
+    palette: mono
+    window_s: 30
+    labels: 0.4
+    satellites: 0.3
+    ghost: 0.7
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.3}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [elegant, calm, mellow]
+    modes: [piano]
+    style: gentle
+    family: geometric
+    dims: 2d
+    technique: [sdf, analytic]
+    weight: 0.8

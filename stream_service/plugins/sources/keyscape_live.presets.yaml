@@ -1,0 +1,60 @@
+keyscape-live-glass:
+  label: Keyscape live (stained glass)
+  source: keyscape_live
+  params:
+    log_rows: 1.0
+    wave_mix: 0.0
+    lead_lines: 1.0
+    labels: 1.0
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [elegant, calm]
+    modes: [piano]
+    family: abstract
+    dims: 2d
+    technique: [analytic, colour]
+    weight: 1.0
+
+keyscape-live-waves:
+  label: Keyscape live (wavescape colours)
+  source: keyscape_live
+  params:
+    log_rows: 0.6
+    wave_mix: 1.0
+    lead_lines: 0.3
+    labels: 0.6
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [elegant, calm, dreamy]
+    modes: [piano]
+    family: abstract
+    dims: 2d
+    technique: [analytic, colour]
+    weight: 1.0
+
+keyscape-live-triangle:
+  label: Keyscape live (Sapp's triangle)
+  source: keyscape_live
+  params:
+    log_rows: 0.0
+    wave_mix: 0.0
+    lead_lines: 0.8
+    labels: 1.0
+    hue_shift: 0.15
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [elegant, calm, geometric]
+    modes: [piano]
+    family: abstract
+    dims: 2d
+    technique: [analytic, colour]
+    weight: 0.8

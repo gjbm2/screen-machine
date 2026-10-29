@@ -1,0 +1,44 @@
+tonal-gravity-observatory:
+  label: Tonal gravity (observatory)
+  source: tonal_gravity
+  params:
+    well_depth: 0.9
+    tilt: 35
+    labels: 1.0
+    trail_s: 20
+    palette: dusk
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.8]
+    moods: [elegant, cosmic, calm]
+    modes: [piano]
+    style: gentle
+    family: geometric
+    dims: 3d
+    technique: [analytic, heightfield]
+    weight: 1.0
+
+tonal-gravity-deep:
+  label: Tonal gravity (deep well)
+  source: tonal_gravity
+  params:
+    well_depth: 1.4
+    tilt: 50
+    labels: 0.3
+    trail_s: 45
+    grid: 0.5
+    palette: ocean
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [dreamy, cosmic]
+    modes: [piano]
+    style: gentle
+    family: geometric
+    dims: 3d
+    technique: [analytic, heightfield]
+    weight: 1.0

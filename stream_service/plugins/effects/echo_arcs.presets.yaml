@@ -1,0 +1,31 @@
+echo-arcs-cathedral:
+  label: Cathedral (tall, slow arches of the piece's form)
+  effect: echo_arcs
+  params: {amount: 0.85, window_s: 120, memory_s: 180, arch_height: 1.0, labels: 0.3, voice: 0.0}
+  bindings:
+    pulse: {kick: beat, amount: 0.4}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [elegant, calm]
+    style: gentle
+    family: overlay
+    dims: 2d
+    technique: [analytic, light]
+    modes: [piano]
+    weight: 1.0
+
+echo-arcs-motif:
+  label: Motif (quick arches for figures and sequences, labelled)
+  effect: echo_arcs
+  params: {amount: 0.9, window_s: 45, memory_s: 40, arch_height: 0.75, labels: 1.0, voice: 1.0}
+  bindings:
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.2, 0.9]
+    moods: [playful, geometric]
+    style: lively
+    family: overlay
+    dims: 2d
+    technique: [analytic, light]
+    modes: [piano]
+    weight: 0.9

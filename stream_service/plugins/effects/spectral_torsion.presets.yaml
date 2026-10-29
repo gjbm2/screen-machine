@@ -1,0 +1,47 @@
+spectral-torsion-lock:
+  label: Combination lock (neighbouring rings turn against each other, sharp cuts)
+  effect: spectral_torsion
+  params: {amount: 0.75, counter: 1.0, springiness: 0.8, coupling: 0.3, trails: 0.0, rings: 0.9,
+           ring_edges: 0.85, lock_width: 3.0, midi_drive: 0.8, mic_drive: 0.6}
+  bindings:
+    pulse: {kick: beat, amount: 0.6}
+  tags:
+    energy: [0.3, 0.9]
+    moods: [geometric, playful]
+    style: lively
+    family: warp
+    dims: 2d
+    technique: [warp, displacement]
+    weight: 1.0
+
+spectral-torsion-vortex:
+  label: Vortex (every ring winds the same way, liquid, with light trails)
+  effect: spectral_torsion
+  params: {amount: 0.8, counter: 0.0, springiness: 0.5, coupling: 0.7, trails: 0.6, rings: 0.85,
+           ring_edges: 0.0, midi_drive: 0.7, mic_drive: 0.6}
+  bindings:
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.15, 0.8]
+    moods: [hypnotic, liquid]
+    style: lively
+    family: warp
+    dims: 2d
+    technique: [warp, displacement]
+    weight: 1.0
+
+spectral-torsion-ripple:
+  label: Ripple (loose, half-counter rings, twists travel in and out)
+  effect: spectral_torsion
+  params: {amount: 0.7, counter: 0.4, springiness: 1.0, coupling: 1.0, trails: 0.3, rings: 1.0,
+           ring_edges: 0.3, lock_width: 5.0, midi_drive: 0.6, mic_drive: 0.5}
+  bindings:
+    pulse: {kick: beat, amount: 0.5}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [elegant, dreamy, liquid]
+    style: gentle
+    family: warp
+    dims: 2d
+    technique: [warp, displacement]
+    weight: 0.8

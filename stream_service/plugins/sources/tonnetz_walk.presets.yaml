@@ -1,0 +1,44 @@
+tonnetz-walk-glass:
+  label: Tonnetz walk (glass floor)
+  source: tonnetz_walk
+  params:
+    tilt: 35.0
+    glass: 0.8
+    palette: ice
+    labels: 0.75
+    tile_size: 0.11
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.3}
+  tags:
+    energy: [0.0, 0.8]
+    moods: [elegant, icy, geometric]
+    style: gentle
+    modes: [piano]
+    family: geometric
+    dims: 3d
+    technique: [analytic, tiling]
+    weight: 1.0
+
+tonnetz-walk-map:
+  label: Tonnetz walk (map, with the comma)
+  source: tonnetz_walk
+  params:
+    tilt: 68.0
+    labels: 1.0
+    glass: 0.2
+    palette: mono
+    show_comma: true
+    tile_size: 0.1
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.3}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [calm, elegant]
+    style: gentle
+    modes: [piano]
+    family: geometric
+    dims: 3d
+    technique: [analytic, tiling]
+    weight: 1.0

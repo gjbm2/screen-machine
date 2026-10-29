@@ -1,0 +1,31 @@
+symmetry-lens-mandala:
+  label: Mandala (crisp pinwheel, turns with the key)
+  effect: symmetry_lens
+  params: {amount: 1.0, fold_radius: 1.4, style: 0.2, key_spin: 0.5, render_scale: 0.4}
+  bindings:
+    pulse: {kick: beat, amount: 0.6}
+  tags:
+    energy: [0.1, 0.8]
+    moods: [geometric, hypnotic]
+    style: lively
+    family: warp
+    dims: 2d
+    technique: [kaleido, analytic]
+    modes: [piano]
+    weight: 1.0
+
+symmetry-lens-halo:
+  label: Halo (soft orbit average, folds more easily)
+  effect: symmetry_lens
+  params: {amount: 0.9, fold_radius: 0.8, style: 1.0, sensitivity: 0.2, turn_speed: 3.0}
+  bindings:
+    pulse: {kick: beat, amount: 0.4}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [dreamy, elegant]
+    style: gentle
+    family: warp
+    dims: 2d
+    technique: [kaleido, analytic]
+    modes: [piano]
+    weight: 0.9

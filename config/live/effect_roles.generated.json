@@ -1462,6 +1462,53 @@
    "draws": [
     "fft"
    ]
+  },
+  "symmetry_lens": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Folds the picture into the piano chord's own symmetry (3-fold augmented, 4-fold diminished 7th, 6-fold whole-tone); passes plain triads through (42, 29 Oct)",
+   "draws": [
+    "notes"
+   ]
+  },
+  "overtone_beats": {
+   "role": "add",
+   "secondary": "reshape",
+   "changes_over_time": false,
+   "_why": "Draws the piano notes' overtones as fine threads, gold where they coincide; the picture shimmers at the real beat rates (42, 29 Oct)",
+   "draws": [
+    "notes"
+   ]
+  },
+  "echo_arcs": {
+   "role": "add",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "Draws arches joining each repeated piano phrase to its first appearance, like Shape of Song (42, 29 Oct)",
+   "draws": [
+    "notes"
+   ]
+  },
+  "phase_portrait": {
+   "role": "add",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Draws the held piano chord as its just-ratio Lissajous figure beside the room's waveform in phase space (42, 29 Oct)",
+   "draws": [
+    "notes",
+    "scope"
+   ]
+  },
+  "spectral_torsion": {
+   "role": "reshape",
+   "secondary": null,
+   "changes_over_time": false,
+   "_why": "Twists the picture ring by ring, each ring kicked by one FFT band and the piano notes at its pitch (42, 29 Oct)",
+   "draws": [
+    "fft",
+    "notes"
+   ]
   }
  }
 }
