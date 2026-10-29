@@ -446,3 +446,45 @@ async def test_this_is_good_favours_the_scene_its_effects_and_the_pair(client):
     assert s.fx_director._tasted("hue-drift-slow") == with_pair and s.fx_director._tasted("shake") == 1.0
     r = await client.post(f"/api/sessions/{sid}/good", headers=AUTH)       # again at once: one press
     assert r.status == 200 and mgr.taste.counts["good"] == 4
+
+
+async def test_a_songs_end_takes_its_auto_effects_with_it(client):
+    """Owner, 29 Oct: effects carry on within a song but not across one.  fade-dark: the auto effects fade out with
+    the song and nothing new comes in while dark; a big change straight in flushes them too; the owner's stay."""
+    import time
+    sid, s, eng = await live(client, auto={**AUTO, "fx": {"enabled": False}})
+    s.on_fx({"bus": "open"})
+    s.director.arm(True)
+    names = list(s.mgr.presets.effects)
+    for n in names[:2]:
+        assert (await client.post(f"/api/sessions/{sid}/fx/next", json={"effect": n, "replace": "none"},
+                                  headers=AUTH)).status == 200
+    res = await get(client, sid)
+    mine = {"preset": names[2], "level": 0.5}
+    await put(client, sid, stack=[*({"id": x["id"], "preset": x["preset"], "level": x["level"]} for x in res["stack"]),
+                                  mine])
+    now = time.monotonic()
+    s.mgr.on_room_message({"type": "room.event", "data": {
+        "kind": "track_end", "id": "track_end:0", "at_ms": now * 1000, "track_id": 0,
+        "transition": {"style": "fade-dark", "out_s": 1.0, "in_s": 1.0, "on": "now", "change": "big"}}})
+    for _ in range(40):
+        await asyncio.sleep(0.01)
+    res = await get(client, sid)
+    assert [x["origin"] for x in res["stack"]] == ["manual"] and s._dark is not None
+    assert s.fx_director.last["op"] == "flush"
+    fd = s.fx_director
+    fd.auto_fx, fd.next_at = {**fd.auto_fx, "enabled": True}, 0.0
+    s._fx_tick(time.monotonic())
+    assert s._fx_task is None                                     # dark: nothing new
+    # a big change straight in (no dark) flushes too
+    s._end_dark()
+    assert (await client.post(f"/api/sessions/{sid}/fx/next", json={"effect": names[0], "replace": "none"},
+                              headers=AUTH)).status == 200
+    fd.auto_fx = {**fd.auto_fx, "enabled": False}
+    s.mgr.on_room_message({"type": "room.event", "data": {
+        "kind": "track_change", "id": "track_change:1", "at_ms": now * 1000, "track_id": 1,
+        "transition": {"style": "crossfade", "seconds": 0.5, "on": "now", "change": "big"}}})
+    for _ in range(60):
+        await asyncio.sleep(0.01)
+    res = await get(client, sid)
+    assert [x["origin"] for x in res["stack"]] == ["manual"]

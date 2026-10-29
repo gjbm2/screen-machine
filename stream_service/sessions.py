@@ -1943,6 +1943,8 @@ class Session(EngineListener):
             return
         if self.inflight or self.pending is not None:     # never during a scene transition
             return
+        if self._dark is not None:                        # nothing new in the dark between songs (_fx_flush)
+            return
         self._fx_task = asyncio.create_task(self._fx_auto(now))
 
     async def _fx_auto(self, now: float) -> None:
@@ -2030,6 +2032,7 @@ class Session(EngineListener):
                 self._dark = {"since": now, "in_s": self._secs(tr.get("in_s"), 2.0), "prev": self.current_name,
                               "task": None}
                 self._spawn_track_cue(DARK_SCENE, self._xfade(out_s), None, "now", "the song ended: fading out")
+                self._spawn_fx_flush(out_s, "the song ended")
                 self._dark["task"] = asyncio.create_task(self._dark_timeout(out_s + cap))
             return
         # track_change: the new song.  Its own transition, landing on its first beat; change big = a fresh pick,
@@ -2047,6 +2050,8 @@ class Session(EngineListener):
             via = self._xfade(self._secs(tr.get("seconds"), 2.0))
         else:
             via = None
+        if self._dark is None and tr.get("change") == "big":   # a different song straight in: its own effects too
+            self._spawn_fx_flush(self._secs(tr.get("seconds"), 2.0) if via != "cut" else 0.5, "a new song")
         on_beat = tr.get("on", "downbeat") == "downbeat"
         ahead = at_s is not None and at_s >= now + self.sampler.lead + EVENT_MARGIN_S
         self._spawn_track_cue("auto", via, at_s if ahead and on_beat else None, "bar" if on_beat else "now",
@@ -2131,6 +2136,34 @@ class Session(EngineListener):
             return
         self._dark = None
         await self._track_cue("auto", self._xfade(dk["in_s"]), None, "now", "dark long enough")
+
+    def _spawn_fx_flush(self, fade_s: float, why: str) -> None:
+        asyncio.create_task(self._fx_flush(fade_s, why))
+
+    async def _fx_flush(self, fade_s: float, why: str) -> None:
+        """Between songs the auto effects go with the old song (owner, 29 Oct: "effect continuity is good within a
+        song, but across tracks (through a proper fade to black etc.) it's a bit clingy"): every auto effect on the
+        bus now fades out with the song's fade (fade-dark) or the new song's transition (a big change; a small one,
+        a variant, keeps them).  The owner's own effects stay.  Nothing new comes in while dark (_fx_tick); the new
+        song's track_change makes the director's next move due at once, so it starts with an effect of its own.
+        The screens mirroring this one follow (_room_fx)."""
+        try:
+            if self._fx_task is not None:            # the director is mid-move: let it land first
+                await asyncio.shield(self._fx_task)
+            old = {st.id for st in self.fx.stack if getattr(st, "origin", "manual") == "auto"}
+            if not old:
+                return
+            res = await self.fx.remove(lambda st: st.id not in old, max(0.2, fade_s), why)
+            if res is None:
+                return
+            self.upnext.drop_auto("effect")          # picked for the old song
+            self.fx_director.last = {"op": "flush", "preset": None, "removed": sorted(old), "why": why,
+                                     "at_pts": round(self._pts_now(), 3)}
+            self._room_fx()
+        except SessionError as e:
+            log.warning("[%s] song-end effects flush failed: %s", self.id, e.detail)
+        except Exception:
+            log.exception("[%s] song-end effects flush failed", self.id)
 
     def _spawn_track_cue(self, to: Any, via: Any, photon_at: Optional[float], at: str, why: str) -> None:
         asyncio.create_task(self._track_cue(to, via, photon_at, at, why))
