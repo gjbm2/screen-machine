@@ -5,6 +5,8 @@ two judges (24/7 robustness, delivery/risk); synthesis. Owner quotes: see the D-
 
 # Display control layer: final recommendation (2026-10-13)
 
+> Status (29 Oct 2026): superseded by `docs/av/DISPLAY_CONTROL_LAYER_V3.md` (v3.1), which keeps this design's protocol ideas but moves the host from Flask's :8765 to room_service.
+
 > **Revised 2026-10-13 (owner directives).** These owner directives are binding on everything below:
 > - **D-A** "art mode: all the compositing happens in chromium / DOM." The page composites the still or clip, the ambient brightness mask, overlays and any art-mode transitions.
 > - **D-B** "live mode: all the compositing happens in live renderer (local GPU) and then _all_ the display browser should do is stream mp4 4K at 60fps. our new display page architecture needs to reflect that." The page shows one full-viewport `<video>` (MSE, HEVC 3840×2160@60) and nothing over it. There is no mask ("live mode is full intensity — it's a lighting rig at that point, not a simulated artwork"), no overlays, HUD or controls, no CSS opacity, filter, transform or blend on the video, and no page-side fades. The workstation GPU renderer draws every effect, transition (crossfade, "screen melt"), text and fixture-level effect into the stream.

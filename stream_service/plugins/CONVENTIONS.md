@@ -15,11 +15,11 @@ This is a live-music visual system. One GPU renderer per TV renders scenes and c
 
 There are two control layers:
 - **Art director** (every 10–30 s; human or random now, an LLM later) picks scenes, transitions and **regional** settings: style, density, symmetry, palette family, pace.
-- **Real time** (every frame) comes from MaestroDMX (an autonomous lighting controller listening to the music) via a show bus.
+- **Real time** (every frame) comes from show_service's music bus (`--music-bus`, `stream_service/music_feed.py`; docs/SHOW_ENGINE.md: it hears the room mic and the piano's MIDI) and the DMX show bus, where MaestroDMX still sends while it is in (Maestro is coming out, owner 15 Oct).
   - Signals: `energy` (smoothed musical activity 0–1), `beat`/`pulse` (a decaying 0–1 envelope on each beat), `rgb` (Maestro's colour), and pan/tilt/zoom.
   - These drive **realtime** parameters.
 
-**We do no audio DSP.** Plug-ins just respond to their parameters, which the binding layer sets from these signals.
+**Plug-ins do no audio DSP.** They just respond to their parameters, which the binding layer sets from these signals, or read `self.sound` (§2b).
 
 Owner taste:
 - Visuals must feel alive for live music. Static looks are a failure.
@@ -214,7 +214,7 @@ Ported from GLSL by smfx (ideas/changes: ...)   (if ported)
     weight: 1.0
 ```
 
-**Mood vocabulary:** calm, mellow, dreamy, warm, dark, bright, euphoric, tense, aggressive, playful, hypnotic, cosmic, organic, geometric, retro, glitchy, elegant, liquid, fiery, icy.
+**Mood vocabulary** (`config/live/vocab.yaml`): calm, mellow, dreamy, warm, cool, dark, bright, euphoric, tense, aggressive, playful, hypnotic, cosmic, organic, geometric, retro, glitchy, elegant, liquid, fiery, icy.
 
 ## 7. Testing: crash check only (owner ruling, 14 Oct)
 

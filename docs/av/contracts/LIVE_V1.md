@@ -7,16 +7,17 @@
 - **Display-page signalling beyond v1:** the design is `docs/av/DISPLAY_CONTROL_LAYER_V3.md` v3.1, and its §8.6 lists the amendments. They are adopted as they get built, and room_service and the page code are the reference.
 - **Room state model:** `docs/av/ROOM_STATE_MODEL.md` v1.1. It extends §3 additively.
 **Design context:** `docs/AV_PROGRAMME.md` (v2), especially §2, §3, §4 and §5.
+**Rev 1.2 (29 Oct, facts brought up to date):** no auth anywhere in the AV stack (owner, 14 Oct): no tokens or keys are checked. room_service runs inside the Flask process (`room_in_app.py`). The display page connects to room_service by itself. Modes are `config/room/modes.json`. Superseded passages below are marked.
 
 ```
- web Room page (src/pages/Room, Vite dev :5174/5175)
-        │  HTTP + WS (Bearer room token)                        Flask :5000 (prod, READ-ONLY: GET /api/<id>/mask)
+ web Room page (the app's /room, src/pages/Room)
+        │  HTTP + WS (open, no auth)                            Flask :5000 (prod, READ-ONLY: GET /api/<id>/mask)
         ▼                                                       Flask WS :8765 (prod; room_service listens only)
- room_service :8700 ───────────────── HTTP + events WS (Bearer stream token) ──▶ stream_service :8082 dev / :8702 prod
+ room_service :8700 ───────────────── HTTP + events WS (no auth) ─────────────▶ stream_service :8082 dev / :8702 prod
    coordinator, screens, mask push, snapshotter (headless Chrome)        renderer + NVENC + media WS
         ▲  control WS /v1/screen/<id>                                       │ media WS /media/<session>
         │                                                                   ▼
- display page /display/<id>?ctl=ws://…:8700 ◀──────────────── fMP4 (MSE) ───┘
+ display page /display/<id> (connects itself) ◀────────────── fMP4 (MSE) ───┘
 ```
 
 ---
@@ -26,15 +27,15 @@
 | Item | Value |
 |---|---|
 | Screen ids | `north-screen`, `south-screen`, `devtest` (Flask destination ids; page route `/display/:screenId`) |
-| GPU per screen (default config) | north-screen → 0 (RTX 4060), south-screen → 1 (Quadro P4000), devtest → 0 |
+| GPU per screen (default config) | north-screen → 0 (RTX 4060), south-screen → 1 (Quadro P4000), devtest → 0. *(As built today, `publish-destinations.json` `live.gpu`: north-screen → 1 (Quadro P4000), south-screen → 0 (RTX 4060), devtest → 1.)* |
 | stream_service | `~/.venvs/sm-stream/bin/python -m stream_service --port 8082` (dev). **Production: 8702**, with `--public-base ws://192.168.1.205:8702`. 8081 belongs to exlib's Metro bundler and is bd's lab default. |
-| AV port block | **room_service 8700, show bus 8701 (reserved), stream_service 8702.** `docs/PORTS.md` is the register, kept by screen-machine-ca and mirrored in Spectre. Production instances run like Flask and ngrok: screen-machine-ca's `scripts/ctl` starts each in a GNU screen session (`sm-room`, `sm-stream`), with arguments in `deploy/sm-{room,stream}.env`. There are no systemd units. |
-| room_service | `python -m room_service` defaults to **:8700** (production, via `scripts/ctl`; the LAN portproxy and firewall are live). Dev instances use other ports with `--port`, but never 3001 (exlib-server's). The Room page defaults to `<its own host>:8700`. |
+| AV port block | **room_service 8700, show bus 8701 (both inside Flask), stream_service 8702.** `docs/PORTS.md` is the register, mirrored in Spectre. stream_service (and show_service, dot_service) run like Flask and ngrok: `scripts/ctl` starts each in a GNU screen session (`sm-stream`, `sm-show`, `sm-dot`), with arguments in `deploy/sm-*.env`. room_service runs inside the Flask process since 14 Oct (`room_in_app.py`); `scripts/ctl` no longer manages it. There are no systemd units. |
+| room_service | Production runs inside Flask on **:8700** (`room_in_app.py`, `config/room/room.prod.yaml`; the LAN portproxy and firewall are live); restarting Flask restarts it. `python -m room_service` is for dev instances on other ports with `--port`, but never 3001 (exlib-server's). The Room page uses `VITE_ROOM_URL` (over HTTPS, same-origin `/rs`), else `<its own host>:8700`. |
 | Vite dev server (never `npm run build`) | page work: `VITE_API_URL=http://127.0.0.1:5000 npx vite --port 5174 --strictPort`; Room page work: the same on `--port 5175` |
-| Tokens | `~/.config/screen-machine/stream_service.token` and `~/.config/screen-machine/room_service.token`. Each service creates its own on first start: 64 hex chars, mode 0600. Never print a token value in logs or reports. |
+| Tokens | `~/.config/screen-machine/stream_service.token` and `~/.config/screen-machine/room_service.token`. *(Superseded 14 Oct: no auth; nothing checks them.)* room_service still creates its own on first start (64 hex chars, mode 0600) and sends the stream token if the file exists. Never print a token value in logs or reports. |
 | State (outside the repo) | `~/.local/state/screen-machine/room/` (room_service) |
 | Presets | `config/live/scenes.yaml`, `config/live/transitions.yaml` (hot-reloaded) |
-| Modes | `config/room/modes.yaml` |
+| Modes | `config/room/modes.json` (hot-reloaded; flat, every mode complete) |
 | Time | All `*_pts` values are stream seconds: `frame_id / fps`, equal to the video's `mediaTime`. Wall-clock times never cross hosts. |
 | Errors | JSON `{"error": "<code>", "detail": "…"}` with a 4xx/5xx status |
 
@@ -42,7 +43,7 @@
 
 ## 1. stream_service API (consumer: room_service; the dev page in `stream_service/static/` too)
 
-All `/api/*` calls need `Authorization: Bearer <stream token>`. WebSockets can't send headers, so `/api/events` takes `?token=`. The media socket uses a per-session key instead.
+All `/api/*` calls need `Authorization: Bearer <stream token>`. WebSockets can't send headers, so `/api/events` takes `?token=`. The media socket uses a per-session key instead. *(Superseded 14 Oct: no password; a token is ignored. Production runs with `--local-control`: control routes answer only from this machine, i.e. through room_service's `:8700/renderer/*` pass-through. The media socket's `?k=` session key stays.)*
 
 ### 1.1 Catalog and presets
 
@@ -175,7 +176,7 @@ any ──error──▶ failed ; any ──DELETE/TTL──▶ ended
 
 `WS ws://<ctl-host>:8700/v1/screen/<screen_id>?role=kiosk|viewer|lab`
 
-**Where the page gets the address:** only from an explicit `?ctl=ws://host:port` URL parameter.
+**Where the page gets the address:** only from an explicit `?ctl=ws://host:port` URL parameter. *(Superseded 14 Oct: `/display/<id>` connects by default to `VITE_ROOM_URL` (e.g. `ws://192.168.1.205:8700`); `?ctl=` points elsewhere and `?ctl=off` gives the legacy page. The kiosk URLs never change.)*
 - **If it is absent, or `?ctl=off`, the page opens no control socket and behaves exactly as it does today.** So a frontend build that ships early can't change the production kiosks: their URLs carry no `ctl`.
 - Turning it on for a TV later means adding `?ctl=` to that kiosk's URL, an owner-approved launcher change.
 - While no socket is open, the page also behaves exactly as today.
@@ -288,7 +289,7 @@ The page's control channel must never depend on Flask's legacy :8765 server. The
 3. **One driven page per screen, any number of subscribers** *(pub/sub, owner 15 Oct; was "one glass client")*. One glass page (kiosk or lab) is *driven*: it does the freeze/ack/cut handshakes. Every other page on the screen (a standby glass page, any `viewer`) is a *subscriber* and shows whatever the screen shows: its `welcome` carries `live.attach` when a session is running; it gets `live.attach {rejoin: true}` at go, when a session is replaced and at the end of restart adoption; `live.leave` on exit; `live.abort` on abort, fallback or failure. A subscriber whose ack shows it lost the stream is re-offered `rejoin` (backoff 2, 4, 8, 15, 30 s; at most 10; never after unsupported codec, live disabled or session ended). No limit on subscribers (rate limits stay). The driven page is the TV's own device (its User-Agent, versions removed, kept across restarts): another device opening `/display/<id>` stays a subscriber, and the own device can reclaim. `screen.duplicate_glass` is still raised for two glass pages. Note: a stray second glass tab on the kiosk now plays the stream too (extra decode on the N95).
 4. **Inbound limits:** frames up to 64 KiB; 50 messages/s; only the types in §2.1 are accepted for the client's role.
 5. **Liveness:** `hb` after 2 s idle. A client silent for 15 s is dropped.
-6. **Process isolation:** room_service runs alone and does no blocking work on its event loop. HTTP calls, snapshots and file writes are async or run in executors.
+6. **Process isolation:** room_service runs alone *(since 14 Oct: on its own thread and asyncio loop inside the Flask process)* and does no blocking work on its event loop. HTTP calls, snapshots and file writes are async or run in executors.
 
 ### 2.2b Light-sensor ingest *(added 13 Oct late; next increment, not required in the current build)*
 
@@ -298,6 +299,7 @@ The sensor must not depend on Flask's legacy :8765 server or on Flask computing 
 - The relay sends `{"v":1,"type":"hello","data":{"role":"sensor","sensor":"living-room","key":"…"}}`.
   - **The key is required:** guests share the Wi-Fi, so an unauthenticated ingest would let anyone set the screens' brightness.
   - room_service checks it against a 0600 file of per-sensor keys and closes the socket with code 4401 on a mismatch.
+  - *(Superseded 14 Oct: no keys; any valid sensor id is accepted and a key is ignored. 4401 now only means ingest is off. Ingest is on by default, and room_service also feeds the readings Flask broadcasts on :8765 into it.)*
   - The relay reads its URL and key from `~/.config/light-relay/room.json` (mode 0600) on the kiosk, at start and on SIGHUP. With no file, the sink is off.
 - Then, on each new measurement: `{"v":1,"type":"ingest.lux","data":{"sensor":"living-room","lux":312.5,"seq":118233,"mono_ms":9912345,"held":false}}`.
   - Readings are event-driven (Yocto `registerValueCallback`), at up to ~10 Hz, the Yocto-Light-V5 limit; the sensor is now on firmware 70007.
@@ -344,6 +346,7 @@ The sensor must not depend on Flask's legacy :8765 server or on Flask computing 
 
 ## 3. room_service HTTP API (consumer: the web Room page)
 
+- *(Superseded 14 Oct, owner ruling: no auth anywhere in the AV stack. Every route is open, the editor routes included; a token sent is ignored. The text below is the 13 Oct ruling.)*
 - **Auth (owner ruling, 13 Oct late): operate open, edit gated.** Anyone on the Wi-Fi may operate the room; the owner's example is a visiting pianist switching from "live set" to "Sonos tracks". So there are no guest logins or pairing.
   - **Open on the LAN, no token:**
     - status, modes, catalog, snapshots;
@@ -358,15 +361,15 @@ The sensor must not depend on Flask's legacy :8765 server or on Flask computing 
     - anything that writes `config/room/*`.
   - **Machine channels always need keys:**
     - *(superseded 14 Oct: no auth anywhere in the AV stack, owner ruling)* the kiosk control socket needs no key; `role=viewer` pages are subscribers (rule 3 of §2.2a) and need none either;
-    - sensor ingest needs a per-sensor key (§2.2b).
+    - sensor ingest needs a per-sensor key (§2.2b). *(Superseded 14 Oct: no key.)*
   - **Browser protection:**
-    - **Host:** the `Host` header must be one of the allowed hosts (`192.168.1.205:<port>`, `pc22.local:<port>`, `localhost` and `127.0.0.1` for dev), which defends against DNS rebinding.
+    - **Host:** the `Host` header must be one of the allowed hosts, which defends against DNS rebinding. As built: `.env`'s `SM_LAN_HOST` (192.168.1.205), the host of `VITE_APP_LAN_URL` (screen.finsburybankforsavings.com), `localhost`, `127.0.0.1`, `::1`; port ignored.
     - **Origin:** a request carrying an `Origin` header must match the allowed origins, which is room_service's own origin plus the dev origins. That stops a random web page open on a phone from driving the room.
     - **No Origin:** non-browser LAN clients without one are allowed, since they could operate anyway.
   - **Never** on WAN, ngrok or Flask.
   - **Compatibility:** clients that already send the token keep working.
   - *(Changed 13 Oct late; the relaxation is backward-compatible.)*
-- **CORS:** allow the configured web origins (default: `http://localhost:5174`, `http://localhost:5175`, `http://127.0.0.1:5174`, `http://127.0.0.1:5175`, `http://192.168.1.205:8080`, `http://192.168.1.205:5000`). Handle `OPTIONS` preflight for the `Authorization` and `Content-Type` headers.
+- **CORS:** allow the configured web origins (as built, `room_service/config.py`: `http://<SM_LAN_HOST>:8080` and `:5000`, the origins of `.env`'s `VITE_URL` and `VITE_APP_LAN_URL`, and the localhost dev ports 5000, 8080, 5174, 5185). Handle `OPTIONS` preflight for the `Authorization` and `Content-Type` headers.
 
 | Call | Result |
 |---|---|
@@ -408,6 +411,8 @@ The sensor must not depend on Flask's legacy :8765 server or on Flask computing 
 
 ### 3.1 Service config
 
+*(As built: production uses `config/room/room.prod.yaml` with no `screens:` block. Screens are the destinations in `routes/data/publish-destinations.json` that carry a `live` block, rooms are `routes/data/rooms.json`, and origins come from `.env`. See `room_service/README.md`.)*
+
 ```yaml
 # config/room/room.yaml (not secret)
 stream_service: {url: "http://127.0.0.1:8082", token_file: "~/.config/screen-machine/stream_service.token"}
@@ -426,6 +431,8 @@ web_origins: ["http://localhost:5174", "http://localhost:5175", "http://127.0.0.
 - Modes can set `timed_reload` per screen as ordinary room state (target `page.<screen>.timed_reload`; see `docs/av/ROOM_STATE_MODEL.md`). room_service then sends a `policy` message and reads the applied value back from `kiosk.state`.
 
 ### 3.2 Modes file (v1: screens and sensor mask only)
+
+*(As built: `config/room/modes.json`, flat (every mode carries all its own settings), hot-reloaded and saved from the Room page; `docs/av/ROOM_STATE_MODEL.md` §2. The v1 sketch below is history.)*
 
 ```yaml
 # config/room/modes.yaml

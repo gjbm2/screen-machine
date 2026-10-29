@@ -80,8 +80,9 @@ compare like with like.
   flagged AUDIO_RESUME. The slow lane skips any window that holds a gap, as the worker does.
 - **Pre-roll**: `--preroll-s` (default 30 s with `--degrade`, else 0) of room tone before the music, as an open mic
   hears it: dsp's gate learns the input's noise floor over its first 30 s, and the slow lane needs 30 s.
-- madmom runs inline offline (the same frames as live's show-beat thread; identical flashes on house120, a quarter
-  less wall time); `--beat-thread on` runs the thread.
+- madmom runs inline offline (the same frames as live's show-beat, which production runs in its own child process,
+  `show_service/beatproc.py`, `SHOW_BEAT_PROC=on`; inline and the thread gave identical flashes on house120, inline in
+  a quarter less wall time); `--beat-thread on` runs the thread.
 - Bodies: only those whose line or labels changed are kept (`--all-bodies` keeps every 10 Hz heartbeat). The
   2 Hz `features` trace also carries the clock's AGC gain and quiet flag.
 

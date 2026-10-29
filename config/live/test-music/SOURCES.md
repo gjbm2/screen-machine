@@ -11,8 +11,8 @@ Every licence was checked by hand on the page linked below on 16 Oct 2026. Only 
 domain were taken: nothing NonCommercial or NoDerivatives, and nothing whose licence was unclear (for example,
 Internet Archive uploads marked "public domain" by someone other than the rights holder were skipped).
 
-How they are used: played in this house, and, only while AI listening is on and the mode listens, as 24 s clips sent
-to OpenAI for the listener's verdict (show_service/README.md S3.12; nothing is published). CC BY and CC BY-SA allow
+How they are used: played in this house, and, only while AI listening is on, as 10 s clips sent to Gemini (or
+OpenAI, the fallback) for the listener's verdict (show_service/README.md S3.12, S5.20; nothing is published). CC BY and CC BY-SA allow
 both. If any of it is ever redistributed or shown publicly, give the credit line as written.
 
 | Genre | Title | Artist | Licence | Source page | File |

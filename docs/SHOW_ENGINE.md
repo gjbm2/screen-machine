@@ -10,7 +10,7 @@
 
 **Maintainer:** screen-machine-c8. Send changes to c8.
 
-**Date:** Thu 15 Oct 2026. **Status:** design, researched and adversarially reviewed. P0 is ready to build (§13).
+**Date:** Thu 15 Oct 2026. **Status:** design, researched and adversarially reviewed. Built and in production; the phase status is §13 and the as-built detail is show_service/README.md.
 
 **Scope:** 2f has amended AV_PROGRAMME to match (15 Oct): §4.4a inputs come from show_service; §6.3 Maestro is optional; §11 gives c8 its ownership row and rule 3 now says "through room_service or show_service". PORTS.md changes go through ca. The renderer still does no audio analysis itself; it consumes ours.
 
@@ -735,11 +735,9 @@ A text box under More on the Music card, e.g. "smoky jazz club".
 ### 7.5 Privacy
 
 The room mic is the only music source (owner, 15 Oct), so clips would carry guests' conversation to a cloud API every 20 s.
-- Clips go only while CED says the audio is music-dominant and speech is below about 0.3. The clip is cut to the music-dominant seconds.
-- A vibe can turn the listener off (`listener: off`). For example, while the piano plays MIDI already gives the harmony and the dynamics.
-- **Owner, 17 Oct: nothing goes to any provider unless Auto is on AND the room's mic is on**, for cost and because it is intrusive. Unknown counts as off, and the gate runs again right before each upload, so a clip cut before Auto or the mic went off is never sent. The ring doesn't even record for the listener while the gate is shut. Config: show.yaml `listener.requires_auto` / `requires_mic` (both true).
-- **The gate, in full** (README S5.20): the AI listening switch ("AI listening"), Auto on, the mic on, the feel not saying `listener: off`, sound coming in, substantive music (below), the loudness floor, a usable model. **The mode's show.main `listening` no longer gates** (owner, 17 Oct); it stays in the API for readers.
-- **No substantive audio, no upload:** a clip needs the music/speech check (music-dominant, speech under ~0.3, over a continuous run) and the loudness floor (`listener.quiet_gate`) over the last 10 s. Without the classifier running, nothing goes.
+- **The switch decides** (owner, 21 Oct; show_service/listener.py): the Room page's AI listening switch is the only on/off. No mode, Auto or feel vetoes it, and switching it on claims the mic (mic.py), as Auto and a mode's `show.mic` do. The ring records for the listener only while the switch is on.
+- **Each clip is checked when it is due** (the last `clip_s` of the ring): it is skipped while its loudness is under `listener.quiet_gate` ("Paused: quiet"), or, for a room-sound stream, while any CED reading over it has speech at or over `listener.ced.speech_max` (0.3; the max of speech, conversation and crowd): "Paused: people talking". Otherwise it goes: there is no music requirement (the LLM judges the music), and a missing CED reading doesn't hold it back. A clip cut before the mic went off is never sent.
+- Until 21 Oct Auto and the mic had to be on too, a clip needed music-dominant audio, and a vibe could turn the listener off; `listener` is now a retired vibe field.
 - On the Music card (e1, 17 Oct, one listening block): the **Room mic** switch with its input picker, then **AI listening** (the switch, called "Identify the music" until 18 Oct: off stops all uploads), then **What it hears**. The menu has no switches. Describe it, the DSP and the local ML carry on whatever these say.
 - To date (17 Oct) one clip has ever been sent ($0.006). On 18 Oct, 8 clips of the test-music files (never room audio) validated the new answer (README S5.22).
 - Requests use `store: false` on OpenAI (Gemini's endpoint has no such field), and never a free tier.
@@ -1250,6 +1248,8 @@ This is shared plumbing, so it gets **real unit tests**: packet bytes, sequence 
 
 **The ball itself.** Its power stays with the modes: an IR toggle, never sent by the director. In Party and Disco only, the director may ask room_service for `mirror_ball_motor.speed` at section lines, at most once every 2 minutes.
 
+**As built (28 Oct):** the glitterball and the pinspots are RF/IR appliances worked through the BroadLink RM4 (config/room/rf/), not DMX. They are one light group the director programs with its own light scenes, in the modes that allow it (the room's `director.glitterball` and `director.pinspots` rows; show.yaml `lights.appliances`; show_service/appliances.py; docs/LIGHTS.md §6.6).
+
 **Previz.** A virtual node in the console, or BlenderDMX on another LAN PC.
 
 ### 9.4 Hue
@@ -1447,7 +1447,7 @@ GET    /show/healthz
 | `config/room/latency.json` v2 `outputs`, `sources` | 10 (schema, done 15 Oct), c8 (writes its own keys from the photodiode runner) | §5.5 |
 | `config/llm.yaml` | c8 | task → provider/model list, prices, budgets |
 | `config/room/modes.json` per-mode `autopilot` + top-level `autopilot` | 2f (file), aa (schema), c8 (semantics) | §8.9 |
-| `deploy/sm-show.env` | ca (wiring), c8 (flags) | Sender names, venv paths, `CUDA_VISIBLE_DEVICES=` |
+| `deploy/sm-show.env` | ca (wiring), c8 (flags) | Flags (the Art-Net target, the log level) and env lines (`CUDA_VISIBLE_DEVICES=`, `SHOW_BEAT_PROC=on`); the senders are in show.yaml's `senders` |
 
 ---
 
@@ -1488,8 +1488,8 @@ GET    /show/healthz
 | P1 hearing words | **Built, off.** LLM listener (Gemini Flash, then gpt-audio-1.5, via `utils/llm`) waits for the owner's AI-listening switch; the CED privacy gate is live |
 | P2 director + Music card | **Live.** Director, vibes, nudges, palettes (incl. from the art), room `show` adapter, `/show/*` pass-through, Music card on /room. Neutral until modes get `show` rows (owner) |
 | P3 understanding | **Live.** ML worker (CED, EffNet + heads, key, Beat This!), medium lane, structure (sections, repeats, track change, build/drop/breakdown), `music.context` |
-| P3b piano | **Built.** 98's kiosk sender + test piano; the kiosk deploy waits for the kit and the owner's OK (alsa-utils, audio group). Test piano runs through production |
-| P3c Auto | **Built, off.** Supervisor live; no mode has an `autopilot` block yet (owner) |
+| P3b piano | **Live.** 98's kiosk sender (live 18 Oct as a systemd `--user` unit, §3.2) + test piano. Test piano runs through production |
+| P3c Auto | **Built.** Supervisor live; Piano and Ambient have `autopilot` blocks in modes.json |
 | P4 native clock | **Partly.** 04 consumes `room.direction`; `music.clock` and `room.event` cueing next (04) |
 | P5 lights | **Built, outputs off.** Fixture registry (+ OFL import), look engine, Hue Entertainment driver (68's hand-over contract; flip `hue.streamer: show` + `outputs.hue.enabled` is the owner's go), Art-Net LAN sender + virtual node (no node bought; ArtPollReply needs ca's relay), screen-palette hand-pick hold |
 | P6 calibration | Waits for the photodiode kit |
@@ -1514,7 +1514,7 @@ GET    /show/healthz
   - **No mode has a light rule yet:** writing one is the owner's call, in modes.json or the editor.
 - **Listening** (owner, 17 Oct; §7; README S5.20). Built, not yet live (it loads at the next show_service restart).
   - **Provider:** Gemini Flash first (`gemini-3.8-flash`; a newer plain Flash is discovered from `models.list()` if it goes), gpt-audio-1.5 the fallback. Without `GEMINI_API_KEY` Gemini is skipped. The owner's key is in .env since 17 Oct; models.list and one text-only check worked.
-  - **Gate:** the switch, Auto, the mic, the feel, then substantive music and the loudness floor. The mode's show.main `listening` no longer gates.
+  - **Gate:** since 21 Oct the switch alone (§7.5); a clip is skipped only when quiet or when people are talking.
   - **Cost on the card:** today's spend, the evening's estimate and the provider, even while off; `/listening` carries the whole estimate.
   - **Sturdier answers:** the tool's words are plain strings and the call is lenient, so a stray word never fails an answer or charges the clip twice.
   - **Auto words:** `mood_in`, `building`, `track_changed`, and `genre_in`'s fallback to the listener (§8.9). No mode uses them yet: the owner's call.
@@ -1538,7 +1538,7 @@ GET    /show/healthz
   - **Routes:** `GET /api/v1/mic` → `{on, muted, wanted, why, claims, mode, streams: {capturing, off}, error}`; `PUT /api/v1/mic {muted?, mode?}`. Persisted in `mic.json`. The card carries it as `mic_state`, and `hearing.text` says "Mic muted" or "Mic off" when that is why no room sound comes in.
   - **Which mic:** with a Mic choice only the chosen stream captures; if it hasn't been live for 10 s, every room mic captures until it is (degrade, never refuse). The piano's MIDI and the test streams are never the mic.
   - **Privacy:** nothing captures before the decision exists (the receiver holds every possible mic off until a decision covers it). Audio of an off stream is dropped on arrival, the listener's ring forgets it, and a clip cut before the mic went off is never uploaded. Auto's audio words read unknown while the mic is off, so a rule on "quiet" never fires because the mic was switched off.
-- **madmom** runs inline on show-rx. A separate thread cost more than it saved under the GIL (`SHOW_BEAT_THREAD=on` re-enables it).
+- **madmom** runs in its own child process (`show_service/beatproc.py`; `SHOW_BEAT_PROC=on` in deploy/sm-show.env, 18 Oct), off show-rx and its GIL. A separate thread cost more than it saved under the GIL (`SHOW_BEAT_THREAD=on` re-enables it).
 
 
 **Phases are ordered by what the owner sees.** Each one ships to production when it works (CLAUDE.md). Sizes are for one session.

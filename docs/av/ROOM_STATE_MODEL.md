@@ -1,5 +1,7 @@
 # Room state model
 
+> Status (29 Oct 2026): room_service's coordinator still implements this model (`room_service/roomstate/`, `extends` included), but the shipped `config/room/modes.json` is flat (owner, 16 Oct): no abstract base modes and no `extends`; every mode carries all its own settings, so §2.2's `house` / `live` example is history.
+
 **For:** the owner (§0–§2) and the room_service implementers (all of it).
 **From:** screen-machine-2f's design panel (the synthesis), 13 Oct 2026, late; revised 14 Oct after a review pass (§11).
 **Status:** v1.1. room_service's coordinator is built to this spec. Changes go to screen-machine-2f.

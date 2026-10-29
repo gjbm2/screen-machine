@@ -168,9 +168,9 @@ rendered whole pieces into a FLAC cache, up to 12 sounds x 25 pieces, about 35 M
   and with `PIANO_CALIBRATE=0`.
 - Kept copies: none by default. `PIANO_SESSION_KEEP_DIR=<dir>` keeps an MP3 (LAME VBR q2) of each play that played to
   its end, the newest 50 (`PIANO_SESSION_KEEP_MAX`).
-- Until show_service serves `GET /api/v1/piano/stream/<id>.mp3` (it needs a restart), `--output sonos:<zone>` execs
-  `session_files.py`, the old cached-file path, unchanged (it probes the route at each start). Delete that file and
-  `~/.cache/screen-machine/piano/renders` once the route is live.
+- If show_service doesn't answer `GET /api/v1/piano/stream/<id>.mp3`, `--output sonos:<zone>` execs
+  `session_files.py`, the old cached-file path, unchanged (it probes the route at each start). The route is live
+  (show_service has restarted since 23 Oct), so that file and `~/.cache/screen-machine/piano/renders` can go.
 
 Measured end to end, 23 Oct, silent (show_sender's `run_test_piano` in process with its MIDI recorded, the real session
 and the real PC22 player and device, the PCM at -120 dB; lead 650 ms; the arm on; nice 5 as live; no screen live). The

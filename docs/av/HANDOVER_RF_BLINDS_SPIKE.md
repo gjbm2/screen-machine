@@ -1,5 +1,7 @@
 # Handover: RF and blinds spike (mirror ball + Bloc Blinds)
 
+> Status (29 Oct 2026): done. Both are room_service adapters: the blinds (`room_service/adapters/blinds.py`, writes on in `config/room/rf/blinds.json`) and the glitterball through the RM4 Pro (`room_service/adapters/broadlink_rf.py`, `config/room/rf/glitterball.json`).
+
 **For:** the agent session that picks up this spike, and the owner.
 **From:** screen-machine-2f, which maintains `docs/AV_PROGRAMME.md` (v2) and is building the room coordinator (`room_service`).
 **Date:** Tue 13 Oct 2026, late evening.

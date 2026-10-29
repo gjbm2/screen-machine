@@ -1,5 +1,7 @@
 # Handover: the real-time renderer (stream_service)
 
+> Status (29 Oct 2026): historical. stream_service runs in production on :8702 (`scripts/ctl restart stream`, `deploy/sm-stream.env`), with no token (owner, 14 Oct); see `stream_service/README.md`.
+
 **For:** the new agent session taking over the renderer, and the owner.
 **From:** screen-machine-2f, which owns `docs/AV_PROGRAMME.md`, the contracts in `docs/av/contracts/` and room_service.
 **Date:** Tue 13 Oct 2026, late evening.

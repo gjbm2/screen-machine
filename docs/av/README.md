@@ -1,6 +1,7 @@
 # Room AV: spec and evidence
 
 - `../AV_PROGRAMME.md` is the programme of work. Start there.
+- Also here: `contracts/LIVE_V1.md` (the live contracts, with `contracts/proposals/` and `reviews/`), `ROOM_STATE_MODEL.md`, `DISPLAY_CONTROL_LAYER_V3.md`, `AV_PROGRAMME_v1_2026-10-13.md` (the programme's v1), the renderer and RF-blinds handovers and spike report, and `reports/`.
 - `AV_SYSTEM_SPEC_v0.1.md` is the owner's system specification (v0.1, 11 Oct 2026), copied verbatim. Where the programme and the spec disagree, the programme's §2.3 records the correction and its evidence.
 - `evidence/` holds the research behind the programme. It was gathered read-only on 2026-10-13 by parallel research agents, with sources and a confidence label on each finding:
   - `r0_backend_integration.md`: Flask/WS process and port inventory, auth, scheduler and Alexa hooks, Siren in a second process, deploys.

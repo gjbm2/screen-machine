@@ -4,7 +4,7 @@ The build spec for the art director's next step: every appliance is a player in 
 they **interplay**, not only that they all do the same thing at once. Two builders implement it in parallel from this
 page alone: **show** (show_service/ensemble.py, the catalogue, the director's ensemble hunks, the contract, the bus)
 and **lights** (looks.py: gestures, roles and staggers on the rig's lights). §8 is the renderer's half, for ff (not
-built here). §12 has the files each builder owns and the exact interface between them.
+built here; ff built it on 22 Oct: stream_service/gestures.py, rooms.py). §12 has the files each builder owns and the exact interface between them.
 
 Every number marked *starting point* is a design default to tune by eye. Room facts are never invented: the one used
 here (south is left, north is right) is the owner's own words, and the Room map's positions replace it once the room
@@ -613,6 +613,9 @@ In `_mirror_ball`, once its speed word is chosen from `flow.speed`: when `part_o
 `lead`, take the next word in `mirror_ball.speeds` (if any). The existing `min_gap_s` still bounds every change: the
 motor's mechanics, not a gate. The ball never takes a gesture and is never powered.
 
+**Since 28 Oct** this path is off (show.yaml `lights.flow.mirror_ball.enabled: false`): the glitterball is an
+appliance in a light group, and the director powers and spins it with its group's scenes (docs/LIGHTS.md §6.6).
+
 ## 6. Bus and contract (show)
 
 ### 6.1 contract.py: a new block at the very end of the file (verbatim)
@@ -860,7 +863,7 @@ bytes are identical.
   `stagger_*`). KICK_M and GESTURE_RING are module constants marked *starting point*.
 - No refusal: an unknown player, kind or role is skipped and counted.
 
-## 8. The renderer contract (for ff; not built here)
+## 8. The renderer contract (for ff; not built here; built in stream_service on 22 Oct)
 
 What show_service sends, and what the renderer is asked to add. None of it is needed for the lights. With none of it
 built, the screens stay in unison exactly as today. Everything below extends rooms.py's leader and follower.

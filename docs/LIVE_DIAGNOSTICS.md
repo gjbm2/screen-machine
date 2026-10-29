@@ -1,5 +1,7 @@
 # Live diagnostics on the TV: build spec
 
+> Status (29 Oct 2026): built: `stream_service/hud.py`, `GET /api/sessions/{sid}/hud` (`stream_service/server.py`), room_service's `hud` in `screens.py` and the Room page's `LiveDetails.tsx`.
+
 **Status:** approved by the owner on 17 Oct 2026 ("yes, let's get on with it"). Coordinator: screen-machine-e1.
 **For:** the sessions building it: 04 (stream_service), aa (room adapters), 2f (room_service core, Room page, display page), c8 (show bus, v2).
 

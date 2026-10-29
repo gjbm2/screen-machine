@@ -5,20 +5,22 @@ handshakes, the near-real-time mask push and the headless-Chrome snapshotter.
 Contracts: `docs/av/contracts/LIVE_V1.md` §2–§3. Design: `docs/AV_PROGRAMME.md` §2–§3.
 
 ```
-web Room page ──HTTP+WS (open on the LAN)──▶ room_service :8700 ──REST+events (stream token)──▶ stream_service
+web Room page ──HTTP+WS (open on the LAN)──▶ room_service :8700 ──REST+events (no auth)──▶ stream_service :8702
 display page ◀──control WS /v1/screen/<id>──┘   │  ├─ GET /api/<id>/mask ─▶ Flask :5000   (read-only)
                                                  │  └─ WS :8765 (receive only) ◀─ lux frames
-light relay (calib-3) ──WS /v1/ingest/lux (key)──┘ lightmask → mask.set (Flask /mask fetch stops for that screen)
+light relay (calib-3) ──WS /v1/ingest/lux────────┘ lightmask → mask.set (Flask /mask fetch stops for that screen)
                                                  └─ headless Chrome: /display/<id>?artonly=1 → anchor/target PNGs
 ```
 
 ## Run
 
+Production runs inside Flask (see "Runs inside the app"). Standalone, for a dev or smoke instance on a spare port:
+
 ```bash
 python3.12 -m venv ~/.venvs/sm-room
 ~/.venvs/sm-room/bin/pip install aiohttp pyyaml playwright==1.58.0 pytest pytest-asyncio pillow astral==3.2 websockets pycryptodomex
 cd ~/dev/screen-machine
-~/.venvs/sm-room/bin/python -m room_service --port 8700            # binds 0.0.0.0 (kiosks reach it via the LAN)
+~/.venvs/sm-room/bin/python -m room_service --port 8799            # binds 0.0.0.0; :8700 is the in-app production one
 #   --host 127.0.0.1  --config config/room/room.prod.yaml  --state-dir …  --no-snapshots  --log-level DEBUG
 # A dev/smoke instance: a temp copy of room.prod.yaml with its own service.state_dir (and its own --port).
 ```
@@ -28,8 +30,8 @@ cd ~/dev/screen-machine
 * `playwright==1.58.0` matches the cached Chrome for Testing 145 (`~/.cache/ms-playwright/chromium-1208`);
   the browser is launched by `executable_path`, so nothing is downloaded. `pillow` is for the tests only.
 * Token: `~/.config/screen-machine/room_service.token`, created on first start (64 hex chars, 0600, `O_EXCL`).
-  It is the **admin** token (LIVE_V1 §3: "operate open, edit gated"; see Auth below). Tokens and page keys
-  never reach a log line or the UI: the access log drops query strings, and a log filter redacts them.
+  Nothing checks it (no auth in the AV stack, owner 14 Oct; see Auth below). Tokens never reach a log line or
+  the UI: the access log drops query strings, and a log filter redacts them.
 * State: `~/.local/state/screen-machine/room/` (atomic writes, done in a worker thread so the event loop
   never blocks on fsync or a 6 MB PNG, LIVE_V1 §2.2a.6): `screens.json` (desired state, believed
   layer, session + attach, open freeze, fallbacks), `state.json` (the room state model, docs/av/ROOM_STATE_MODEL.md
@@ -48,14 +50,13 @@ The GPU renderer (stream_service, :8702) stays a separate worker.
 * **Thread and port:** a daemon thread `room-service` runs room_service on its **own asyncio loop** and its own
   aiohttp server and ClientSession. It serves every HTTP and WebSocket route on `0.0.0.0:8700`, the port the
   separate service used, so the display pages, the Room page and the Windows LAN port-forward and firewall rule
-  need no change. Flask's public :5000 door (WAN, ngrok) has **no room routes**. room_service never imports Flask,
+  need no change. Flask's public :5000 door (WAN, ngrok) has **no room routes**; the HTTPS name (Caddy) passes `/rs/*` to :8700. room_service never imports Flask,
   and Flask only starts and stops it.
 * **Env:** `ROOM_IN_APP` (default `1`; `0` turns it off), `ROOM_PORT` (8700), `ROOM_HOST` (0.0.0.0),
   `ROOM_CONFIG` (`config/room/room.prod.yaml`), `ROOM_LOG` (`logs/room_service.log`, INFO; warnings also go to the
   Flask console).
 * **Never blocks Flask:** the port is bound before anything of room_service starts. A busy port, or the state
-  dir's `room.lock` held by the separate service, gives **one** warning and then a quiet retry every 10 s, so
-  `scripts/ctl stop room` alone hands over within 10 s. Any other failure (a missing package, the config, the loop
+  dir's `room.lock` held by another instance, gives **one** warning and then a quiet retry every 10 s. Any other failure (a missing package, the config, the loop
   dying) is logged, sent to Siren as `room.service_died`, and retried with backoff 2/5/15/30/60 s.
 * **Stop:** at exit (atexit) it shuts down cleanly. A SIGTERM or kill skips that, which is harmless: state is written
   atomically and live sessions are adopted by the next start.
@@ -68,50 +69,29 @@ The GPU renderer (stream_service, :8702) stays a separate worker.
   `python room_in_app.py --port 8799 --config <temp copy of room.prod.yaml> [--state-dir DIR] [--no-snapshots]`.
   Tests: `tests/test_in_app.py`.
 
-**Cutover** (once the packages above are in the Flask venv):
-1. `scripts/ctl stop room`
-2. Restart Flask in its `flask` screen session. Don't use `./start.sh restart`: its `pkill -f "python.*app\.py"`
-   also kills any other matching command line, including your own shell.
-   ```bash
-   cd ~/dev/screen-machine
-   FPID=$(ss -Hltnp 'sport = :5000' | sed -n 's/.*pid=\([0-9]*\).*/\1/p' | head -1)   # Flask's own pid only
-   kill -TERM "$FPID"; while kill -0 "$FPID" 2>/dev/null; do sleep 0.5; done
-   screen -S flask -X quit 2>/dev/null; screen -wipe >/dev/null
-   ./start.sh start flask      # = screen -dmS flask bash -c "… source .venv/bin/activate && python3 app.py"
-   ```
-3. Check that the Flask process serves :8700:
-   ```bash
-   ss -Hltnp 'sport = :8700'; ss -Hltnp 'sport = :5000'            # the same python3 pid on both
-   curl -s -m 3 http://127.0.0.1:8700/api/v1/status | python3 -c 'import json,sys; print(json.load(sys.stdin)["service"])'
-   tail -n 20 logs/room_service.log
-   ```
-   Doing step 2 before step 1 also works: the in-app room_service waits, then takes :8700 within 10 s of the stop.
-   Rollback: `ROOM_IN_APP=0` in `.env`, restart Flask as above, then `scripts/ctl start room`.
+**Restart** = restart Flask (tell the other sessions first; several edit room_service). The separate service is
+gone: `scripts/ctl start|stop room` refuses ("room management now runs inside the Flask process"). Check that the
+Flask process serves :8700:
+```bash
+ss -Hltnp 'sport = :8700'; ss -Hltnp 'sport = :5000'            # the same python3 pid on both
+curl -s -m 3 http://127.0.0.1:8700/api/v1/status | python3 -c 'import json,sys; print(json.load(sys.stdin)["service"])'
+tail -n 20 logs/room_service.log
+```
 
-After the cutover the `room` entry in `scripts/ctl` and Spectre's sm-room card are unnecessary. They belong to
-screen-machine-ca. `scripts/ctl start room` would then refuse anyway, because :8700 is taken.
+## Auth (none: owner ruling, 14 Oct)
 
-## Auth (LIVE_V1 §3, owner ruling 13 Oct late)
-
-* **Operating is open on the LAN, no token:** status, modes, catalog, snapshots, `PUT /api/v1/mode`,
-  `PUT /api/v1/screens/{id}`, `PATCH /api/v1/screens/{id}/live`, the events WS, `/healthz`.
-* **Admin token** (`Authorization: Bearer <room_service.token>`) for config edits; v1 has none yet
-  (`api.ADMIN_ROUTES`). Clients that send the token keep working; a token that is sent but **wrong** is a
-  401 (so a stale saved token is noticed). `?token=` is read only on the events WS and the snapshot PNGs.
-* **Host check** on every request (`allowed_hosts`, default `192.168.1.205`, `pc22.local`, `localhost`,
-  `127.0.0.1`, `::1`; port ignored): 403 `host_not_allowed` otherwise (DNS rebinding).
+* **Everything is open on the LAN, no token or key** (`api.token_valid` is always true): every route,
+  including the `/api/v1/room/*` editor routes (`api.ADMIN_ROUTES`), the events WS and `/healthz`. A token a
+  client still sends (header or `?token=`) is ignored.
+* **Page control keys are never loaded** (`pages.PageHub._load_keys`): `room_page_keys.json` and `&ctlkey=` /
+  `hello.key` are ignored, and status always shows `policy.page_key_required: false`.
+* **Host check** on every request (`allowed_hosts`, default `.env`'s `SM_LAN_HOST`, the host of
+  `VITE_APP_LAN_URL`, `localhost`, `127.0.0.1`, `::1`; port ignored): 403 `host_not_allowed` otherwise (DNS rebinding).
 * **Origin check** on `/api/*`: a request carrying `Origin` must come from `web_origins` or room_service's own
   origin (403 `origin_not_allowed`); no Origin (curl, scripts) is fine. The page control socket is
   origin-checked too (DCL v3 §7): its Origin must be in `web_origins`, `kiosk_origins` or be
-  `art_page_base`'s. **The TVs load the page from their kiosk URL's origin (today the WAN address), so
-  that origin must be added to `kiosk_origins` before a TV gets `?ctl=`.**
-* **Kiosk control keys:** put `{"<screen>": "<key ≥16 chars>"}` in `~/.config/screen-machine/room_page_keys.json`
-  (0600; reloaded on change). A screen listed there needs its key for `role=kiosk|lab` (`&ctlkey=` on the WS
-  URL or `hello.key`; wrong/missing → close 4401). Screens not listed accept unauthenticated glass clients
-  (warned once; status shows `policy.page_key_required` and `observed.page.authenticated`). Viewers never
-  need a key. **No key file ships**, so nothing changes until the owner creates one and the kiosk URL
-  carries `&ctlkey=`.
-* Caps: 64 events clients, 16 control sockets per screen.
+  `art_page_base`'s. The default `web_origins` include the origins of `.env`'s `VITE_URL` and `VITE_APP_LAN_URL`.
+* Caps: 64 events clients; no limit on pages per screen (owner, 15 Oct), each limited to 50 msg/s.
 
 ## Config
 
@@ -119,10 +99,11 @@ One site config (owner, 14 Oct): each thing is defined once.
 
 * **Screens** are the destinations in `routes/data/publish-destinations.json` (Flask's display config) that carry a
   `live` block: `{"enabled": true, "gpu": 0, "profile": "hevc-2160p30", "mask_push": true}` (optional
-  `timed_reload`; other keys such as `auto` are ignored here). The destination's `name` is `status.screens.<id>.name`,
-  and its `maxwidth` x `maxheight` is the render size (`POST /api/sessions {width, height}`, scaled down to the
-  profile's pixel count when bigger, even) and the snapshot page's viewport, so a portrait screen (devtest,
-  2160x3840) renders and anchors portrait. Read at start; a Flask restart (room_service runs inside it) picks up edits.
+  `timed_reload`, and `auto`: the director block every new session gets). The destination's `name` is
+  `status.screens.<id>.name`. The render size (`POST /api/sessions {width, height}`) is the art's own shape at the
+  profile's pixel count, so live sits where the art sat; with no art size known, the destination's `maxwidth` x
+  `maxheight`, scaled down to the profile when bigger. Read at start; a Flask restart (room_service runs inside it)
+  picks up edits.
 * **Rooms**: `routes/data/rooms.json` says which room holds which screens, lights, blinds and sensors. It gives the
   `<room>:<kind>` mode groups (`room_config.py`) and `status.rooms` (`[{id, name, screens, lights, blinds, sensors}]`,
   file order, re-read on change), from which the Room page builds one section per room.
@@ -138,12 +119,13 @@ Optional sections (additive; defaults in `config.py`):
 # mask: {min_fetch_interval_s: 1.0, max_requests_per_s: 10, fetch_timeout_s: 2.0}
 #   # min_fetch_interval_s: LIVE_V1 §2.2b, at most 1 GET /api/<id>/mask per second per screen: each GET
 #   # advances Flask's shared intensity EMA, so faster polling also speeds up the TVs' masks. Don't lower it.
-# allowed_hosts: ["192.168.1.205", "pc22.local", "localhost", "127.0.0.1", "::1"]   # Host check (port ignored)
+# allowed_hosts: [...]                      # Host check (port ignored); default: from .env (SM_LAN_HOST, VITE_APP_LAN_URL) + localhost
 # web_origins: [...]                        # default: from .env (SM_LAN_HOST, VITE_URL)
 # timeouts:                                 # AV_PROGRAMME §3.3
 #   freeze_ack_s: 5        snapshot_s: 3       session_ready_s: 7     live_visible_s: 10
 #   # production (room.prod.yaml): create_session_s 20, exit_session_s 20, snapshot_s 10, session_ready_s 15
-#   create_session_s: 5                       # POST session/exit HTTP timeout (inside the freeze)
+#   switch_to_art_s: 8     switch_to_live_s: 15                      # the switches' deadlines (owner, 23 Oct)
+#   create_session_s: 3    exit_session_s: 5                         # POST session / exit HTTP timeouts
 #   settle_before_go_s: 1.0                   # after ack live_visible, before go (decoder warm-up)
 #   held_extra_s: 5        art_visible_extra_s: 10                   # + the out transition's length
 #   backoff_s: [2, 5, 15, 30, 60]  fallback_window_s: 600   # retries; the last step repeats: never parked
@@ -169,11 +151,13 @@ Optional sections (additive; defaults in `config.py`):
 ```
 
 `config/room/modes.json` (docs/av/ROOM_STATE_MODEL.md §2; reloaded on change, and saved from the Room page through
-`PUT /api/v1/room/config`): `gallery` (label Normal, the default), `live-test` (devtest, `h264-720p30` so a headless
-Chrome can play it), `piano`, `off`, and the live modes `ambient` and `disco`, which store and lower the privacy blinds
-(ch02, ch03, ch14), store and set the TVs, and put everything back on the way out. Devices without a working adapter
-(`tv`, `mirror_ball`, `plug`, `sonos`) are placeholders: accepted, rows skipped, `available: false`. The blinds read the
-Bloc hub for real; their writes stay off (`dry_run`) until `config/room/rf/blinds.json` says `"writes_enabled": true`.
+`PUT /api/v1/room/config`): flat, every mode complete (owner, 16 Oct). Today `gallery` (label Normal, the default),
+`live-test` (devtest), `piano`, `off`, `lights-only`, `ambient`, `party` and `disco`; the live drawing-room modes store
+and lower the privacy blinds (ch02, ch03, ch14), store and set the TVs, and put everything back on the way out.
+Devices without a working adapter (`tv`, verify-only, and `plug`) are placeholders: accepted, rows skipped,
+`available: false`; `mirror_ball` (the RM4 Pro remote, `config/room/rf/glitterball.json`) and `sonos`
+(`config/room/sonos.json`) are placeholders only without their config. The blinds read the Bloc hub; they write only
+when `config/room/rf/blinds.json` says `"writes_enabled": true` (it does), else `dry_run`.
 `blinds: {enabled: false}` in the room config makes them a placeholder (tests).
 
 ## How it behaves
@@ -182,8 +166,8 @@ Bloc hub for real; their writes stay off (`dry_run`) until `config/room/rf/blind
 
 | Handshake | Steps [timeout] |
 |---|---|
-| entry | *(snapshotter page loaded)* → `freeze` → ack frozen [3 s] → snapshot [3 s] → `POST /api/sessions` (anchor PNG, scene, transitions, profile, gpu, width/height) → `session.ready` [7 s; 15 s in production] → `live.attach` → ack `live_visible` [10 s; the page gives up at 8 s with `live_failed`] → settle [`settle_before_go_s`, 1 s: the page holds the anchor while its decoder warms up] → `POST go` → `unfreeze` |
-| exit | *(snapshotter page loaded)* → `freeze` → ack frozen [3 s] → snapshot [3 s] → `POST exit` (target PNG) → `session.held` [out + 5 s] → `live.leave{hold_pts}` → ack `art_visible` [out + 10 s] → `DELETE` → `unfreeze` |
+| entry | *(snapshotter page loaded)* → `freeze` → ack frozen [2 s, then on without it: an unmatched cut] → snapshot [3 s] → `POST /api/sessions` (anchor PNG, scene, transitions, profile, gpu, width/height) → `session.ready` [7 s; 15 s in production] → `live.attach` → ack `live_visible` [10 s; the page gives up at 8 s with `live_failed`] → settle [`settle_before_go_s`, 1 s: the page holds the anchor while its decoder warms up] → `POST go` → `unfreeze` |
+| exit | *(snapshotter page loaded)* → `freeze` → ack frozen [5 s] → snapshot [3 s] → `POST exit` (target PNG) → `session.held` [out + 5 s] → `live.leave{hold_pts}` → ack `art_visible` [out + 10 s] → `DELETE` → `unfreeze` |
 
 * Any failure aborts cleanly: `live.abort` if attached, `DELETE`, `unfreeze`; the screen ends in art.
   An entry failure is retried with backoff 2/5/15/30/60 s; the last step repeats, so a screen never parks
@@ -231,8 +215,11 @@ Bloc hub for real; their writes stay off (`dry_run`) until `config/room/rf/blind
 * Snapshots: an ack whose ArtState is identical to the last one snapshotted (within 10 min) reuses that
   PNG (pure function of the state; common on exit with a held mask). A failed exit snapshot is retried once
   (after `ensure_ready`) before the hard cut.
-* `POST /api/sessions` and `/exit` are bounded by `timeouts.create_session_s` (8 s), so the worst-case entry
-  freeze (3+3+8+5+10 s) stays under the page's 30 s freeze safety. A create that timed out while
+* `POST /api/sessions` and `/exit` are bounded by `timeouts.create_session_s` / `exit_session_s` (3 s / 5 s;
+  20 s each in production). Both switches have a deadline (owner, 23 Oct): an exit hard-cuts to art at
+  `switch_to_art_s` (8 s); an entry unfreezes the page at `switch_to_live_s` (15 s) and carries on behind its art,
+  cutting to live unmatched when the renderer is ready, and a try not on glass by twice that is ended and retried
+  on the backoff. So the page is never held frozen past 15 s (its own freeze safety is 30 s). A create that timed out while
   stream_service's events socket is up counts as an entry failure (not "stream_service down").
 * Ownership (DCL v3 §4.7.6): room_service records the sessions it created (persisted in `screens.json`;
   stream_service has no owner field yet). Adoption, orphan deletion and the sweep touch only those; other
@@ -259,30 +246,32 @@ goes out as `mask.set`, except while the screen is frozen or the mode says `sens
 value is held). A failed fetch keeps the last mask.
 
 **Light-sensor ingest** (LIVE_V1 §2.2b; DCL v3.1 §4.4). The relay sends readings straight to room_service,
-which computes the mask itself with the shared `lightmask` package and pushes only final mask values. **Off
-until a sensor keys file exists**: with none, every screen's mask comes from Flask exactly as above.
+which computes the mask itself with the shared `lightmask` package and pushes only final mask values. **On by
+default, no keys** (owner, 14 Oct): any relay may send readings. The relay's readings that Flask broadcasts on
+`:8765` feed the same path (`MaskArbiter.on_lux_frame`) unless that sensor is connected straight to
+`/v1/ingest/lux`. `ingest.enabled: false` makes every screen's mask come from Flask exactly as above.
 
 | Module | Job |
 |---|---|
-| `ingest.py` | `WS /v1/ingest/lux`: `hello{role:"sensor", sensor, key}` checked in constant time against `~/.config/screen-machine/room_sensors.json` (`{sensor: key}`, 0600, re-read on change) → else close **4401** (also, logged once, when there is no keys file). Then `ingest.lux{sensor, lux, seq, mono_ms, held}`: finite numbers only, clamped 0–200 klx, `seq` strictly increasing (reset on each hello), `held` a bool. `lux.ack{seq}` with the newest seq, coalesced to ≤ 1 per 200 ms (every reading acked within 200 ms; calib-3 drops a link after 5 s without one). > 50 frames/s → **4029**; > 20 readings/s → dropped; no hello in 10 s → 4002; silent 60 s → 4001; a newer socket for the sensor → 4009 for the old one. Host check as everywhere; an `Origin`, if sent, must be one the page sockets accept (the relay sends none: allowed, the key is always required). |
+| `ingest.py` | `WS /v1/ingest/lux`: `hello{role:"sensor", sensor}`; any valid sensor id is accepted and a `key`, if sent, is ignored. Only ingest being off closes the socket, with **4401** and the reason (logged once). Then `ingest.lux{sensor, lux, seq, mono_ms, held}`: finite numbers only, clamped 0–200 klx, `seq` strictly increasing (reset on each hello), `held` a bool. `lux.ack{seq}` with the newest seq, coalesced to ≤ 1 per 200 ms (every reading acked within 200 ms; calib-3 drops a link after 5 s without one). > 50 frames/s → **4029**; > 20 readings/s → dropped; no hello in 10 s → 4002; silent 60 s → 4001; a newer socket for the sensor → 4009 for the old one. Host check as everywhere; an `Origin`, if sent, must be one the page sockets accept (the relay sends none: allowed). |
 | `sensors.py` | SensorService, wiring only: one `lightmask.LuxFilter` per sensor (snap 0.15 s / drift 2.5 s, spike guard, held, staleness, warm start from `<state_dir>/sensors.json`), `lightmask.ConfigWatcher` over Flask's own files (`config.py` INTENSITY_CFG, `routes/data/intensity.json`, `publish-destinations.json`; refreshed every 2 s in the executor, so the LightSense editor keeps working), `mask_for_dest` per screen, and the overrides read from Flask's `GET /api/<id>/maskstate` + `GET /api/<id>/brightness-override` every 2 s (only for screens on the sensor path). |
 | `mask_arbiter.py` | MaskArbiter, a `MaskPusher` subclass and the room's one mask writer per screen. Tiers: **sensor** (fresh sensor; the Flask `/mask` fetch for that screen **stops**, since every fetch advances Flask's shared EMA), **flask** (today's fetch), **sensor-stale** (auto only: the sensor is stale *and* Flask has failed for 10 s → lightmask's ramp to the solar curve over 30 s), **hold**. `ingest.mask_source` per screen: `auto` (default), `sensor` (lightmask only, DCL), `flask` (today). `mask.set` gains `source`: lightmask's strings (`sensor`, `astral`, `manual_override`, `maskoff`, `fixed`, `blend`) or `flask`. A relay `held: true` (calibration capture) pushes nothing until it ends; frozen/suspended screens hold and catch up after. |
-| `mask_shaper.py` | Per screen, after the arbiter: a filter snap or re-init, \|Δb\| ≥ 0.05, a source or override change → **at once, 200 ms**; a sensor↔Flask handover → 2000 ms; slow drift → **≤ 1 per 3 s, 1000 ms**, only beyond 0.015 brightness or the warm-alpha deadband; never > 10 mask.set/s per screen (2/s while live). |
+| `mask_shaper.py` | Per screen, after the arbiter: a filter snap or re-init, \|Δb\| ≥ 0.05, a source or override change → **at once, 200 ms**; a sensor↔Flask handover → 2000 ms; slow drift → **≤ 1 per 3 s, 1000 ms**, only beyond 0.015 brightness or the warm-alpha deadband; never > 10 mask.set/s per screen (2/s while live). Defaults; `room.prod.yaml` makes these faster (snap past 0.02, drift every 0.25 s, 300 ms). |
 | `mask_source.py` | Picks MaskArbiter or MaskPusher at start (MaskPusher if `ingest.enabled: false` or `lightmask`/`astral` is missing), fronts `/v1/ingest/lux`. |
 
 Status: `GET /api/v1/status` has a top-level `mask` section (`ingest` with connections/closes/rejects/relay
 lag, `latency_ms` = reading arrival → `mask.set` enqueue **p50/p95** (`immediate`; `deferred` = shaper-delayed
-sends), `tiers`, `sensors` (filtered lux, stale, held, solar weight, rejects), `config`, `overrides`). Once a
-keys file exists, each screen's `mask` also carries `source`, `tier`, `mask_source`, `sensor`, `held` and its
+sends), `tiers`, `sensors` (filtered lux, stale, held, solar weight, rejects), `config`, `overrides`). With
+ingest on, each screen's `mask` also carries `source`, `tier`, `mask_source`, `sensor`, `held` and its
 own `latency_ms`. Config: the `ingest:` section and the shaper keys under `mask:` (listed under Config above;
 all optional). `lightmask` needs `astral==3.2` in the venv (`~/.venvs/sm-room/bin/pip install astral==3.2`).
 
-**Owner steps to turn it on** (deploying to the kiosk is the owner's, LIVE_V1 Q11):
+**Pointing the relay straight at room_service** (optional; deploying to the kiosk is the owner's, LIVE_V1 Q11):
 1. `~/.venvs/sm-room/bin/python tools/room/ingest_keys/make_sensor_key.py living-room --url ws://192.168.1.205:8700/v1/ingest/lux`
-   (writes the key into `room_sensors.json` and the relay's `room.json` locally; prints only paths).
+   (writes a key into `room_sensors.json` and the relay's `room.json` locally; nothing checks the key now; prints only paths).
 2. Copy that `room.json` to the kiosk and SIGHUP the calib-3 relay: the one-liner in
    `tools/room/ingest_keys/README.md`. The relay keeps its legacy send to `:8765` in parallel.
-3. Screens follow the sensor once their page is on `?ctl=` with `mask_push: true`; legacy pages keep Flask's mask.
+3. Screens follow the sensor while their page is connected with `mask_push: true`; `?ctl=off` pages keep Flask's mask.
 
 **Snapshotter** (`snapshot.py`): Playwright with the cached Chrome for Testing, one persistent 3840×2160
 DPR 1 page per screen at `{art_page_base}/display/<id>?artonly=1`, warmed at start-up for live-enabled
@@ -307,15 +296,15 @@ transition; one-shot actions fire at most once per departure (a running one at t
 ## API extras (additive to LIVE_V1)
 
 * `status`: `mode.{last_transition, drift, default, modes_error}`; per screen `observed.{detail, frozen,
-  glass_clients, duplicate_glass, viewers, page (incl. authenticated), fallbacks_in_window, retry_in_s}`,
-  `policy` (+ `timed_reload_applied`, `page_key_required`), `snapshots`; `stream_service.last_error`;
+  glass_clients, duplicate_glass, viewers, page, fallbacks_in_window, retry_in_s}`,
+  `policy` (+ `timed_reload_applied`, `page_key_required`, always false), `snapshots`; `stream_service.last_error`;
   top-level `flask`, `mask` (sensor ingest, below), `snapshotter`, `service`; `subsystems` also lists
   `page.<screen>.timed_reload`.
 * Transition steps also carry `id, kind, group, after, started_at, finished_at`; transitions carry `warnings`.
 * `GET /api/v1/modes` also returns `default` and `error`. `PUT /api/v1/screens/<id>` returns `{screen, desired}` (+ `for_s, desired_expires_in_s, desired_expires_to` with for_s).
-* Snapshot PNGs also accept `?token=` (an `<img>` can't send a header; optional now that they're open).
+* Snapshot PNGs, like every route, ignore a `?token=`.
 * Optional config: `allowed_hosts`, `screens.<id>.timed_reload`, `mask.min_fetch_interval_s`,
-  `service.page_keys_file`, `service.sweep_orphans`, `timeouts.{create_session_s, page_behind_s,
+  `service.sweep_orphans`, `timeouts.{create_session_s, page_behind_s,
   page_behind_bytes, policy_ack_s, sweep_delay_s}`.
 * `desired` also accepts the programme's short form `{live: "fractal-zoom", in: …, out: …}`.
 * `/renderer/<path>` (`renderer_proxy.py`) passes everything through to stream_service's `/<path>` (any method; HTTP streamed both ways, and WebSocket relayed), so `/renderer/dev`, `/renderer/api/*` and `/renderer/api/events` work on room_service's origin. No auth; the Host check and CORS apply; the upstream's status is relayed; 502 `stream_unreachable` / 504 `stream_timeout`.
@@ -368,12 +357,12 @@ Chrome against `tests/fixtures/artonly.html`, a stand-in implementing `__smRende
 lands. Covered: full entry/exit; every entry and exit timeout; stall → re-entry with backoff; repeated fallbacks
 and entry failures keep retrying, never parked; stream errors; switching to art mid-entry; queued changes mid-exit; in-stream PATCH; page reload,
 socket blip and duplicates; restart adoption (live, orphan, mid-entry, no page); coordinator diff, sequence,
-`after:`, interruption and restart; mask trigger/deadbands/backstop/rate/suspend/freeze; API auth/CORS/
+`after:`, interruption and restart; mask trigger/deadbands/backstop/rate/suspend/freeze; API openness/CORS/
 rate-limited status; token files and redaction. Review additions (`test_hardening.py` and the "Review
-fixes" sections): open operate + wrong tokens refused, Host/Origin checks, page keys, outbox latest-value/
+fixes" sections): everything open + tokens ignored, Host/Origin checks, page keys ignored, outbox latest-value/
 order/256 KB/5 s, inbound flood code, hb only when idle, contract defaults, ffmpeg only http(s); the
 1 req/s/screen mask rate; welcome without attach + lost-stall-ack re-entry; lost unfreeze re-sent; PATCH
-race; orphan sweep and slow create; page timed_reload policy via a mode (and the shipped modes.yaml);
+race; orphan sweep and slow create; page timed_reload policy via a mode (and the shipped modes.json);
 snapshot reuse and exit-snapshot retry; one-shot actions on disk before they fire.
 
 Mask defaults in the harness are faster than production (`min_fetch_interval_s: 0.05`); one test runs the
@@ -381,7 +370,7 @@ production 1 s interval.
 
 Sensor ingest: `test_ingest_unit.py` (fake time: config, shaper timing and rate caps, keys, lightmask wiring,
 validation, held, stale → solar ramp, **golden parity** with Flask's `/api/<id>/mask` over lightmask's
-fixtures, arbiter tiers), `test_ingest.py` (in-process: auth and close codes, Host/Origin, validation and seq
+fixtures, arbiter tiers), `test_ingest.py` (in-process: open ingest and close codes, Host/Origin, validation and seq
 reset, ack cadence, 4029 flood, reading drop, Flask fetch stops/resumes, snap < 50 ms server-side and drift
 ≤ 1/3 s, held, overrides, config reload, warm start, and **calib-3's own `RoomSink` code** loaded from
 `tools/room/latency_cal/lightsense.py` against the server), `test_ingest_e2e.py` (`python -m room_service`

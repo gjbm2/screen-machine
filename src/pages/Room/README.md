@@ -46,7 +46,7 @@ URLs, JSON or ids:
    art", "Live · Fractal zoom", "Switching to live…", "Going back to art…", "Waiting to go
    live… · Can't go live yet", "Problem — tap for details". The state wraps rather than
    truncates on a narrow phone. An art screen shows just "Showing art", even when its page
-   isn't on room control or live is off for it: that only matters for going live, so it is
+   isn't open or live is off for it: that only matters for going live, so it is
    explained under **More**.
    - Under the name, every card has two pill rows: **In the generator** (the screen's tab, `/?publish=<id>`) with
      the art's prompt, and **Schedule** (`/scheduler?destination=<id>`) with what its schedule is doing in words:
@@ -133,9 +133,9 @@ URLs, JSON or ids:
   transitions and quality for next time. On a room's screen card it is **The feel and fades** (picking is on the
   room's live card).
 - The face's scene chip uses the same scene picker (choose mode: no transition footer).
-- Explanations when they apply: the last change failed (with the raw error), the screen's
-  page isn't on room control (`?ctl=`), the scene list won't load, the stream service is
-  down.
+- Explanations when they apply: the last change failed (with the raw error), the TV page
+  isn't open ("Live still starts; the TV joins it when its page opens"), the scene list won't load,
+  the stream service is down.
 - **Snapshots**: the anchor and target stills of the last cut, full size on tap.
 - **Events**: the screen's schedule events as buttons, and **Edit this schedule ›**.
 - **Technical details**: **Details on the screen** (at the top while the screen shows art; on the card's face
@@ -145,18 +145,17 @@ URLs, JSON or ids:
 
 ### Behind the menu
 
-A side sheet with: the connection in a sentence, last update, retry and version, and
-**Refresh**; the **room service address** (change / use default); the **stream service**; the
-**last mode change** with its steps in words; **what each mode does** (its name, "Starts here" on
-the start mode, its description, and what it changes in the room in the tiles' words, in full), then
-which devices aren't connected yet, in a sentence from describe's subsystems ("The TVs and the DMX
-power aren't connected yet, so modes skip them."; a dry run gets its own: "…modes set them, but
-nothing moves."); and the **Activity log**, which scrolls into view when opened.
+The app's one menu (`src/components/nav/AppMenu.tsx`) with this room's own section, read-only (no config on the
+Room console): the connection in a sentence, last update, retry and version, and **Refresh**; the **stream
+service**; the **last mode change** with its steps in words; and the **Activity log**, which scrolls into view when
+opened. The room service address is shown under Developer and changed in **Settings › Connection** (or with
+`?room=`); the modes as a list are in **Settings › Room & modes**.
 
 ### Edit, duplicate, delete
 
-The "⋯" in a tile's corner (a 44 px target) has **Edit**, **Duplicate**, **Move earlier**, **Move later** and
-**Delete…**. Every one saves the whole modes file through `PUT /api/v1/room/config` with the revision it read (a
+The last tile is **More** (⋯): the modes kept off the page (`"on_room_page": "more"`) and **Edit modes** (just
+**Edit** when no mode is kept off). Edit modes (`EditModesSheet.tsx`) lists every mode with **Edit**, **Duplicate**,
+**Start here**, **Move up** / **Move down** and **Delete…**, and **Add a mode** at the foot. Every one saves the whole modes file through `PUT /api/v1/room/config` with the revision it read (a
 409 says someone else saved just now; a 400 says the room's checks found a problem, with the list in the activity
 log). They stay available offline: a save the room doesn't answer says so.
 
@@ -165,8 +164,8 @@ log). They stay available offline: a save the room doesn't answer says so.
   after the original and opens it in the editor. The copy leaves out the mode's comments (`_` keys) and the triggers
   that switch it on by itself (`autopilot.enter_when`, `autopilot.otherwise_suggest_when`), so a copy never switches
   the room by itself; if it had one, a note says "Copied without its switch-by-itself trigger".
-- **Move earlier / later** swaps the mode with its neighbour in `modes` (the tiles follow the file's order). The first
-  tile has no "Move earlier", the last no "Move later".
+- **Move up / down** swaps the mode with its neighbour in `modes` (the tiles follow the file's order). The first
+  mode can't move up, the last can't move down.
 - **Delete…** is never refused. The dialog says "<Mode> goes for everyone. You can undo for a few seconds."
   - The mode the room is in: "Switch to <the start mode>, then delete" (`PUT /mode` first, then the save).
   - The start mode: "Start in [<mode> ▾] instead, then delete" sets the file's `default` to the one picked.
@@ -212,14 +211,15 @@ VITE_API_URL=http://127.0.0.1:5000 npx vite --port 5175 --strictPort
 # then open http://<host>:5175/room
 ```
 
-Use it from the LAN address. room_service is not exposed through ngrok.
+Use it from the LAN address. room_service is not exposed through ngrok. Over HTTPS (Caddy,
+`https://screen.finsburybankforsavings.com/room`) the page reaches room_service same-origin at `/rs`.
 
 ## Connection
 
 | What | How |
 |---|---|
-| One screen | `?screen=<id>` (the TVs' QR codes: `http://192.168.1.205:8080/room?screen=<id>`, built by `get_qr` in `routes/utils.py`). That screen's card starts unrolled and highlighted (a teal ring), and the page scrolls to it once the modes above it have loaded. The header stays the page's own; the card itself has **In the generator** (`/?publish=<id>`) and **Schedule** (`/scheduler?destination=<id>`) under its name, and **Screen settings ›** and **TV page ›** at the foot of its More. An id the room doesn't have gets a short note above the screen cards. |
-| room_service URL | `?room=<url>` (remembered), else `localStorage.sm_room_url`, else `${location.protocol}//${location.hostname}:8700`. Change it in the menu under **Room service address**. **Use default** clears the stored URL. |
+| One screen | `?screen=<id>` (linked from Settings › Screens, "On the Room page"). That screen's card starts unrolled and highlighted (a teal ring), and the page scrolls to it once the modes above it have loaded. The header stays the page's own; the card itself has **In the generator** (`/?publish=<id>`) and **Schedule** (`/scheduler?destination=<id>`) under its name, and **Screen settings ›** and **TV page ›** at the foot of its More. An id the room doesn't have gets a short note above the screen cards. |
+| room_service URL | `?room=<url>` (remembered), else `localStorage.sm_room_url`, else the default: over HTTPS `${location.origin}/rs`, else `VITE_ROOM_URL` from `.env`, else `${location.protocol}//${location.hostname}:8700`. Change it in **Settings › Connection**; **Use the usual address** clears the stored URL. |
 | Events | `WS /api/v1/events`. Reconnects with full-jitter backoff `random(0, min(10 s, 0.5 s·2^n))`; `n` resets once a message arrives. The page never sends anything on this socket. |
 | Fallback | While the socket is down, `GET /api/v1/status` every 2 s. Every request times out after 10 s (snapshots after 30 s), so polls can't pile up. While it is up, a status read every 15 s acts as a liveness check (§3 has no heartbeat on this socket). If that read fails and the socket has also been silent for 15 s, the socket is closed and polling takes over. A socket that is still delivering is kept, because HTTP can fail on its own, for example on a CORS refusal. |
 | Header word | Connected (events socket open), Reconnecting (socket down, polling still fresh), Connecting, Offline. Tapping it opens the menu, which says it in a full sentence, with the last update, the next retry and the version. When there has been no fresh status for 6 s a "Lost touch with the room" banner says the page shows the last known state; the mode tiles still take taps (they keep trying). |
@@ -309,7 +309,7 @@ compact row each (label and value beside the control, no per-field reset; that i
 | `api.ts` | `RoomApi` fetch client, URL storage, error explanations |
 | `types.ts` | LIVE_V1 §1.1 and §3 types (tolerant of added fields) |
 | `catalog.ts` | Picker choices, schema defaults, spec building |
-| `ModeSwitcher.tsx` | Mode tiles, their ⋯ menu (duplicate, move, delete with undo), the progress line and its step list (also used by the menu) |
+| `ModeSwitcher.tsx`, `EditModesSheet.tsx` | Mode tiles, the More tile and Edit modes (duplicate, move, delete with undo), the progress line and its step list (also used by the menu) |
 | `modeWords.ts` | What a mode changes in the room, in words from describe: the tiles' line, the progress line's "glitterball starting", the menu's "not connected yet" sentences, steps in words |
 | `ScreenCard.tsx` | One screen: status in words, inline core controls (hidden Cancel while a mode change owns the go-live), the "More" unroll |
 | `useScreenControls.ts` | A screen's live-control state: form, desired-state sync, Go live / Back to art / scene switch, batched live PATCH (kept in the always-mounted card, so it survives "More" closing) |
@@ -322,7 +322,7 @@ compact row each (label and value beside the control, no per-field reset; that i
 | `ScreenDetails.tsx` | Technical details: desired vs observed, phase, session, mask, playback stats |
 | `ParamForm.tsx` | Schema-driven form |
 | `Snapshots.tsx` | Anchor and target thumbnails, full-size dialog |
-| `Header.tsx`, `MenuSheet.tsx` | The header, and the menu sheet (connection, address, stream service, last change, what each mode does, activity log) |
+| `Header.tsx`, `MenuSheet.tsx` | The header, and the room's section of the menu (connection, stream service, last change, activity log) |
 | `EventLog.tsx` | Filterable log: type chips, level, text, pause |
 | `connection.ts`, `words.ts` | The connection's word and sentence; plain-language wording for screens, steps (and failed steps) without describe, and modes |
 | `theme.tsx`, `tones.ts`, `overlays.tsx`, `bits.tsx` | The light theme, status colours, the side sheet and modal, small shared pieces |

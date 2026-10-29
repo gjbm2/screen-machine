@@ -1,5 +1,8 @@
 # Light-sensor ingest keys
 
+> Status (29 Oct 2026): not needed. room_service accepts any valid sensor id and ignores `hello.key` (owner, 14 Oct:
+> no keys in the AV stack; `room_service/ingest.py`). The script and files below still work but nothing checks them.
+
 `make_sensor_key.py` creates (or rotates) the key a light relay uses on room_service's
 `WS /v1/ingest/lux` (LIVE_V1 §2.2b). The key never appears on screen, in chat or in a log:
 the script writes it to two 0600 files and prints only their paths.

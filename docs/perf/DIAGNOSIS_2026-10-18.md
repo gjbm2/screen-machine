@@ -1,5 +1,7 @@
 # What stops smooth 4K60 on PC22
 
+> Status (29 Oct 2026): the programme this fed is `docs/perf/PLAN.md` (there is no PROGRAMME.md); both TVs reached 4K60 on 20 Oct.
+
 _Diagnosis for the 4K60 programme (see docs/perf/PROGRAMME.md when it lands). Raw data was in the investigating session's scratch directory and is not kept in git._
 
 Read-only investigation, 18 Oct 2026.

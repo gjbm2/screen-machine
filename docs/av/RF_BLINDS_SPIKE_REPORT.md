@@ -1,5 +1,7 @@
 # RF and blinds spike: report (interim)
 
+> Status (29 Oct 2026): superseded by what was built: the blinds adapter writes (`config/room/rf/blinds.json` `writes_enabled: true`), and the glitterball runs from the RM4 Pro (`room_service/adapters/broadlink_rf.py`, `config/room/rf/glitterball.json`).
+
 **For:** the owner and screen-machine-2f. **From:** screen-machine-aa. **Date:** Tue 13 Oct 2026, late.
 **Status:** the blinds route is **proven read-only**. Moving blinds waits on the hub key and an owner session (§5). The mirror ball waits on the RM4 Pro, due later this week.
 

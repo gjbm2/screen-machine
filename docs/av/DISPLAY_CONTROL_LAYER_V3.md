@@ -1,5 +1,7 @@
 # Display control layer v3 — live control & signalling for display pages
 
+> Status (29 Oct 2026): adopted as it gets built (LIVE_V1 rev 1.1); room_service and the display page code are the reference. No keys or tokens anywhere (owner, 14 Oct), and `/display/<id>` connects to room_service by default.
+
 **For:** the owner (§0–§1) and the agents who build it (all sections).
 **Status:** design proposal **v3.1**. Drafted Tue 13 Oct 2026, late; revised Wed 14 Oct ~00:40 after a 45-item review (§11 logs each item as fixed or rejected, with the reason). **Additive to `docs/av/contracts/LIVE_V1.md` §2, except for the amendments listed in §8.6.** screen-machine-2f records those in LIVE_V1 before anyone builds against them. A v1.0 page and a v1.0 server keep working with a v1.x peer (§3.9).
 **File owner:** screen-machine-2f, which owns `docs/av/` (AV_PROGRAMME §11). Send changes there.

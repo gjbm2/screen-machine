@@ -1,5 +1,7 @@
 # Scenes and effects together: reasoning and framework
 
+> Status (29 Oct 2026): step 3 is built: `stream_service/fx_interplay.py`, with `config/live/fx_interplay.yaml` and `config/live/effect_roles.generated.json`.
+
 17–18 Oct 2026, by screen-machine-2b. This is steps 1–2 of the owner's order:
 1. reason it through on paper;
 2. design the config and data framework;

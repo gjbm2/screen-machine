@@ -644,7 +644,8 @@ class FlowDecider:
 
 ### 4.4 Mirror ball and blinds (catalogue, director.py)
 
-- **Mirror ball** (show.yaml `lights.flow.mirror_ball`). The flow turns it, never powers it.
+- **Mirror ball** (show.yaml `lights.flow.mirror_ball`). The flow turns it, never powers it. Off since 28 Oct
+  (`enabled: false`): the glitterball is an appliance in a light group (§6.6).
   - The director acts only while the room member `power_member` reads `power_on` (RoomView.members[...].believed) and
     the flow is cw or ccw.
   - At most once per `min_gap_s` (mechanical: the motor's reversal), at a bar line, it sends
@@ -1394,7 +1395,8 @@ class LiveView(TypedDict):
 
 ### 8.2 The page
 
-`/lights` keeps its list and Add a light as the primary action. A segmented control at the top, **Lights | Room map**,
+The setup page keeps its list and Add a light as the primary action. Since 28 Oct it is `/settings/lights`
+(src/pages/Lights/index.tsx); `/lights` itself is control only (src/pages/Lights/Control.tsx). A segmented control at the top, **Lights | Room map**,
 is remembered in localStorage (wrapped in try/catch).
 
 **Room map** (`RoomMap.tsx`, phone first):
