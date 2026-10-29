@@ -429,6 +429,9 @@ SHOW_FILE = Path(__file__).resolve().parents[2] / "config" / "room" / "show.yaml
 LIGHT_SCENES_FILE = Path(__file__).resolve().parents[2] / "config" / "live" / "light_scenes.yaml"
 
 
+ANY_SCENES = {"scene_tags": []}
+
+
 class DirectorAdapter(Adapter):
     """director.<appliance> and director.light_scenes: what a mode lets the art director do with the lights (owner,
     28 Oct: "disco mode limits the available lighting scenes to being those involving the disco ball (much as e.g.
@@ -436,8 +439,9 @@ class DirectorAdapter(Adapter):
 
     - director.<appliance> (true | false): the director may use it (show.yaml lights.appliances: the glitterball,
       the pinspots...); false (the default) leaves it to the room.
-    - director.light_scenes ({"scene_tags": [...]} | null): the light scenes it may pick from, by tag (a word in any
-      facet, or facet:word, as screens' scene_tags); a light group none of them suits keeps all its scenes. null: any.
+    - director.light_scenes ({"scene_tags": [...]}): the light scenes it may pick from, by tag (a word in any facet,
+      or facet:word, as screens' scene_tags); a light group none of them suits keeps all its scenes. No tags: any.
+      Never null, so a mode's put-back has a value to put back (null reads as nothing stored).
 
     The room only keeps the values (in the state dir); show_service reads them from the room's status and does the
     rest (director.py, appliances.py). Members come from show.yaml at start."""
@@ -455,7 +459,7 @@ class DirectorAdapter(Adapter):
         self.scenes_file = scenes_file
         self.apps = self._appliances(show_file)
         self.members = [self.SCENES, *self.apps]
-        self.values: dict[str, Any] = {self.SCENES: None, **{a: False for a in self.apps}}
+        self.values: dict[str, Any] = {self.SCENES: dict(ANY_SCENES), **{a: False for a in self.apps}}
 
     @staticmethod
     def _appliances(path: Path) -> dict[str, str]:
@@ -497,7 +501,8 @@ class DirectorAdapter(Adapter):
 
     def value_schema(self, member: str) -> dict:
         if member == self.SCENES:
-            return {"type": ["object", "null"], "x-ui": {"label": "Light scenes", "unset_label": "Any light scene"},
+            return {"type": "object", "default": dict(ANY_SCENES),
+                    "x-ui": {"label": "Light scenes", "unset_label": "Any light scene"},
                     "properties": {"scene_tags": {
                         "type": "array", "uniqueItems": True, "items": {"type": "string"},
                         "x-ui": {"label": "Only use these light scenes", "widget": "tags", "tags": self._tag_list(),
@@ -509,19 +514,20 @@ class DirectorAdapter(Adapter):
     def normalize(self, member: str, value: Any) -> Any:
         if member == self.SCENES:
             if value is None or value == {}:
-                return None
+                return dict(ANY_SCENES)
             tags = value.get("scene_tags") if isinstance(value, dict) else None
             if not isinstance(tags, list) or not all(isinstance(t, str) and t for t in tags) or set(value) - {
                     "scene_tags"}:
-                raise ValueError('light scenes: {"scene_tags": [tag, ...]} or null')
-            return {"scene_tags": list(dict.fromkeys(tags))} if tags else None
+                raise ValueError('light scenes: {"scene_tags": [tag, ...]}')
+            return {"scene_tags": list(dict.fromkeys(tags))}
         if not isinstance(value, bool):
             raise ValueError(f"{member}: true or false, got {value!r}")
         return value
 
     def words(self, member: str, value: Any) -> str:
         if member == self.SCENES:
-            return "Any light scene" if not value else "Only light scenes tagged " + ", ".join(value["scene_tags"])
+            tags = (value or {}).get("scene_tags") or []
+            return "Any light scene" if not tags else "Only light scenes tagged " + ", ".join(tags)
         return "The art director uses it" if value else "Left to the room"
 
     async def read(self, members: list[str]) -> dict[str, Reading]:

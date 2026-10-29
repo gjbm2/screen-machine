@@ -3144,11 +3144,11 @@ class Director:
             return
         stale = set()
         for gid, g in self._groups.items():
-            p = self._lp.get(gid)
-            if g.get("follows") or not self._group_live(gid) or p is None or not p.get("scene"):
+            if g.get("follows") or not self._group_live(gid):
                 continue
-            if p["scene"] not in self.light_scenes.pool_for(g, tags):
-                stale.add(gid)
+            p = self._lp.get(gid)
+            if p is None or not p.get("scene") or p["scene"] not in self.light_scenes.pool_for(g, tags):
+                stale.add(gid)                            # a group that just came on, or one out of its new pool
         if stale:
             got = self._pick_programs("room", now_s, only=stale)
             if got is not None:

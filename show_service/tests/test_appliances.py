@@ -137,8 +137,13 @@ def test_the_director_drives_allowed_appliances_with_their_groups_scene(tmp_path
         r.d.set_target("alpha")
         await run(2.0)
         assert "remote" not in r.d._lp and puts == []                    # not allowed: no program, hands off
+        await run(10.0)                                                  # settled: no look change pending
+        d = r.d                                                          # a scene-less pick already tried at this
+        d._lp_tried = (d.light_scenes.revision, d._groups_key, d.look_n, d._ls_reason)   # look (as in the room)
         r.room["members"].update({"director.ball": {"believed": True}, "director.spots": {"believed": True},
                                   "director.light_scenes": {"believed": {"scene_tags": ["modes:disco"]}}})
+        await run(0.3)
+        assert r.d._lp["remote"]["scene"] in ("classic", "wild")         # at once, not at the next look
         await run(2.0)
         scene = r.d._lp["remote"]["scene"]
         assert scene in ("classic", "wild")

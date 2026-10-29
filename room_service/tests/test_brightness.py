@@ -56,7 +56,7 @@ def test_director_rows_from_show_yaml_and_kept(tmp_path):
     scenes = tmp_path / "ls.yaml"
     scenes.write_text("scenes:\n  a: {tags: {modes: [disco], moods: [calm]}}\n")
     a = DirectorAdapter(tmp_path, show, scenes)
-    assert a.members == ["light_scenes", "ball"] and a.values == {"light_scenes": None, "ball": False}
+    assert a.members == ["light_scenes", "ball"] and a.values == {"light_scenes": {"scene_tags": []}, "ball": False}
     assert {"tag": "disco", "facet": "modes", "count": 1} in a.value_schema("light_scenes")["properties"][
         "scene_tags"]["x-ui"]["tags"]
     v = a.normalize("light_scenes", {"scene_tags": ["modes:disco"]})
@@ -64,7 +64,8 @@ def test_director_rows_from_show_yaml_and_kept(tmp_path):
     b = DirectorAdapter(tmp_path, show, scenes)
     b.restore()
     assert b.values == {"light_scenes": {"scene_tags": ["modes:disco"]}, "ball": True}
-    assert a.normalize("light_scenes", {}) is None and a.words("ball", False) == "Left to the room"
+    assert a.normalize("light_scenes", {}) == a.normalize("light_scenes", None) == {"scene_tags": []}
+    assert a.words("light_scenes", {"scene_tags": []}) == "Any light scene" and a.words("ball", False) == "Left to the room"
 
 
 def test_screens_follow_the_room_light_smoothed(tmp_path):
