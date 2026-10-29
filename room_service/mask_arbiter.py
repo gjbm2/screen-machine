@@ -281,6 +281,23 @@ class MaskArbiter(MaskPusher):
                   "held": v.held, "latency_ms": self.latency_by_screen[screen].status()})
         return d
 
+    def room_brightness(self, screen: str) -> float | None:
+        """The brightness (0..1) the art's mask has from the room's light now, pushed or not (``sensor_mask:
+        suspended`` holds what the page shows, not this): the sensor path's mask while the screen's tier is a sensor
+        one, else Flask's latest, else what was last pushed; None when nothing is known. Read-only (brightness.screens
+        following the room's light, adapters/room.py)."""
+        t = self._clock()
+        if not self._legacy(screen) and self.tier.get(screen) in SENSOR_TIERS and not self.sensors.view(screen, t).held:
+            try:
+                m = self.sensors.mask(screen, t, pure=self.tier.get(screen) == SENSOR)
+            except Exception:
+                m = None
+            m = clean_mask(m) if m else None
+            if m is not None:
+                return float(m["brightness"])
+        v = self.latest.get(screen) or self.pushed.get(screen)
+        return float(v.brightness) if v is not None else None
+
     # -- the sensor source -----------------------------------------------------------
     def on_reading(self, sensor: str, lux: Any, seq: Any, held: bool, t: float) -> lm.SampleResult:
         """One ingest.lux reading (t = its receive time on room_service's monotonic clock)."""

@@ -43,7 +43,7 @@ def build_adapters(controllers: dict, mask: Any, log_sink: Callable[[str, str], 
         lights = Placeholder("light", [])
     mask_adapter, page_adapter = SensorMaskAdapter(mask, state_dir), PageAdapter(controllers, state_dir, policy_ack_s)
     diag_adapter = DiagAdapter(controllers, state_dir)
-    brightness = BrightnessAdapter(controllers, getattr(hue, "output", None), state_dir)   # hue: the room's stream
+    brightness = BrightnessAdapter(controllers, getattr(hue, "output", None), state_dir, mask)   # hue: the room's
     mask_adapter.restore()
     page_adapter.restore()
     diag_adapter.restore()

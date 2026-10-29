@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import math
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
@@ -17,7 +18,7 @@ from typing import TYPE_CHECKING, Any, Callable
 from ..mask import parse_mask
 from ..roomstate.contract import Adapter, Outcome, Reading
 from ..roomstate.schema import enum_schema, range_schema
-from ..util import wait_until
+from ..util import spawn, wait_until
 
 if TYPE_CHECKING:
     from ..screens import ScreenController
@@ -240,7 +241,15 @@ class BrightnessAdapter(Adapter):
     music are, for a mode whose star is something else (Disco: the glitterball in the pinspots; owner, 28 Oct). A gain
     on top of whatever the show does: screens through the renderer (ScreenController.set_level, a session's
     `level`), lamps through the room's Hue stream (HueOutput.level). Both ease over ~2 s. Kept in the state dir, so
-    a restart keeps a dimmed room dimmed."""
+    a restart keeps a dimmed room dimmed.
+
+    brightness.screens may instead follow the room's light (owner, 29 Oct: "for ambient mode, we can take light sensor
+    input as a dimming control for the screens ... smoothed because otherwise the screens own light intensity risk
+    causing weird feedback loops in a darkened room"): {"follow": "sensor", "min": %, "max": %}. Each screen's input is
+    the brightness the art's mask has from the room's light (MaskArbiter.room_brightness: the same sensor and mapping,
+    so live and art agree), mapped onto min..max and smoothed: an exponential ease with RISE_TAU_S going up and
+    FALL_TAU_S going down, sent when it has moved SEND_STEP. The first reading after it starts following is taken
+    as it is (the art showed that a moment ago, so there is no jump)."""
 
     subsystem = "brightness"
     subsystem_label = "Brightness"
@@ -249,18 +258,33 @@ class BrightnessAdapter(Adapter):
     members = ["screens", "lamps"]
     poll_s = 5.0
     LABELS = {"screens": "Screens (live)", "lamps": "Lamps (following the music)"}
+    FOLLOW = "sensor"
+    FOLLOW_STEP_S = 2.0         # how often a following screen reads the room's light
+    RISE_TAU_S = 180.0          # starting points: brightening is slow (the screens' own light reaches the sensor) ...
+    FALL_TAU_S = 45.0           # ... dimming quicker (the room's lights going down)
+    SEND_STEP = 0.01            # a level change under this isn't sent
 
-    def __init__(self, controllers: dict[str, "ScreenController"], hue_output: Any, state_dir: str | Path) -> None:
+    def __init__(self, controllers: dict[str, "ScreenController"], hue_output: Any, state_dir: str | Path,
+                 mask: Any = None, clock: Callable[[], float] | None = None) -> None:
         self.c = controllers
         self.hue = hue_output
+        self.mask = mask
         self.path = Path(state_dir) / "brightness.json"
-        self.values = {m: 100 for m in self.members}
+        self.values: dict[str, Any] = {m: 100 for m in self.members}
+        self._clock = clock or (lambda: asyncio.get_running_loop().time())
+        self.follow_now: dict[str, float] = {}      # screen -> the smoothed level (0..1) it follows to
+        self._sent: dict[str, float] = {}
+        self._follow_t: float | None = None
+        self._task: asyncio.Task | None = None
 
     def restore(self) -> None:
         saved = _load(self.path)
         for m in self.members:
-            v = saved.get(m)
-            if isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 100:
+            try:
+                v = self.normalize(m, saved[m]) if m in saved else None
+            except ValueError:
+                v = None
+            if v is not None:
                 self.values[m] = v
         self._push([m for m in self.members if self.values[m] != 100])
 
@@ -268,35 +292,125 @@ class BrightnessAdapter(Adapter):
         return self.LABELS.get(member, member)
 
     def value_schema(self, member: str) -> dict:
-        return range_schema(0, 100, self.label(member), "%", step=5, default=100, ends=("Dark", "Full"))
+        fixed = range_schema(0, 100, self.label(member), "%", step=5, default=100, ends=("Dark", "Full"))
+        if member != "screens":
+            return fixed
+        pct = lambda label, d: {**range_schema(0, 100, label, "%", step=5, default=d)}   # noqa: E731
+        return {"x-ui": {"label": self.label(member)},
+                "oneOf": [{**fixed, "x-ui": {**fixed["x-ui"], "label": "Set"}},
+                          {"type": "object", "required": ["follow"], "default": {"follow": self.FOLLOW, "min": 20,
+                                                                                 "max": 100},
+                           "x-ui": {"label": "Follows the room's light",
+                                    "help": "Dim in a dark room, full in daylight, as the art is; it changes slowly."},
+                           "properties": {"follow": {"const": self.FOLLOW, "x-ui": {"hidden": True}},
+                                          "min": pct("In the dark", 20), "max": pct("In daylight", 100)}}]}
 
     def normalize(self, member: str, value: Any) -> Any:
+        if member == "screens" and isinstance(value, dict):
+            if value.get("follow") != self.FOLLOW or set(value) - {"follow", "min", "max"}:
+                raise ValueError('brightness.screens follows the room\'s light as {"follow": "sensor", "min": %, '
+                                 '"max": %}')
+            lo, hi = value.get("min", 20), value.get("max", 100)
+            for v in (lo, hi):
+                if isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 <= v <= 100:
+                    raise ValueError(f"brightness is 0-100, got {v!r}")
+            lo, hi = sorted((round(lo), round(hi)))
+            return {"follow": self.FOLLOW, "min": lo, "max": hi}
         if isinstance(value, bool) or not isinstance(value, (int, float)) or not 0 <= value <= 100:
             raise ValueError(f"brightness is 0-100, got {value!r}")
         return round(value)
 
     def show(self, member: str, value: Any) -> str:
+        if isinstance(value, dict):
+            return f"room light {value['min']}-{value['max']}%"
         return f"{value}%"
 
     def words(self, member: str, value: Any) -> str:
+        if isinstance(value, dict):
+            return f"Follows the room's light ({value['min']}-{value['max']}%)"
         return "Full" if value == 100 else f"{value}%"
+
+    def _following(self) -> bool:
+        return isinstance(self.values["screens"], dict)
 
     def _push(self, members: list[str]) -> None:
         if "screens" in members:
-            for c in self.c.values():
-                c.set_level(self.values["screens"] / 100.0)
+            if self._following():
+                self._start_follow()
+            else:
+                self._stop_follow()
+                for c in self.c.values():
+                    c.set_level(self.values["screens"] / 100.0)
         if "lamps" in members and self.hue is not None:
             self.hue.level = self.values["lamps"] / 100.0
+
+    # -- following the room's light ---------------------------------------------------------------------------------
+    def _room(self, sid: str) -> float | None:
+        fn = getattr(self.mask, "room_brightness", None)
+        if callable(fn):
+            return fn(sid)
+        v = (getattr(self.mask, "latest", None) or {}).get(sid) or (getattr(self.mask, "pushed", None) or {}).get(sid)
+        return float(v.brightness) if v is not None else None
+
+    def follow_step(self, now: float) -> None:
+        """One step for every screen (FOLLOW_STEP_S apart in the task; tests call it with their own clock)."""
+        cfg = self.values["screens"]
+        if not isinstance(cfg, dict):
+            return
+        dt = 0.0 if self._follow_t is None else max(0.0, now - self._follow_t)
+        self._follow_t = now
+        lo, hi = cfg["min"] / 100.0, cfg["max"] / 100.0
+        for sid, c in self.c.items():
+            b = self._room(sid)
+            if b is None:
+                continue
+            target = lo + (hi - lo) * max(0.0, min(1.0, b))
+            cur = self.follow_now.get(sid)
+            if cur is None:
+                cur = target                                    # as the art showed it a moment ago
+            else:
+                tau = self.RISE_TAU_S if target > cur else self.FALL_TAU_S
+                cur += (target - cur) * (1.0 - math.exp(-dt / tau))
+            self.follow_now[sid] = cur
+            last = self._sent.get(sid)
+            if last is None or abs(cur - last) >= self.SEND_STEP:
+                self._sent[sid] = cur
+                c.set_level(round(cur, 4))
+
+    async def _follow_loop(self) -> None:
+        while self._following():
+            self.follow_step(self._clock())
+            await asyncio.sleep(self.FOLLOW_STEP_S)
+
+    def _start_follow(self) -> None:
+        self.follow_now.clear()
+        self._sent.clear()
+        self._follow_t = None
+        if self._task is not None and not self._task.done():
+            return
+        try:
+            self._task = spawn(self._follow_loop(), "brightness-follow")
+        except RuntimeError:                              # no loop (tests): follow_step is called by hand
+            self._task = None
+
+    def _stop_follow(self) -> None:
+        if self._task is not None:
+            self._task.cancel()
+            self._task = None
+        self.follow_now.clear()
+        self._sent.clear()
 
     async def read(self, members: list[str]) -> dict[str, Reading]:
         return {m: Reading(self.values[m]) for m in members if m in self.values}
 
     async def apply(self, desired: dict[str, Any], opts: dict | None = None) -> Outcome:
         ms = [m for m in desired if m in self.values]
+        moved = [m for m in ms if self.values[m] != desired[m] or (m == "screens" and isinstance(desired[m], dict)
+                                                                  and self._task is None)]
         for m in ms:
             self.values[m] = desired[m]
         _save(self.path, dict(self.values))
-        self._push(ms)
+        self._push([m for m in ms if m in moved or not (m == "screens" and self._following())])
         out = {m: Outcome("ok") for m in ms}
         hue = getattr(self.hue, "patch", None)
         if "lamps" in out and hue is not None and hue.hue.get("streamer", "room") == "show":
