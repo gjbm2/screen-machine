@@ -488,3 +488,26 @@ async def test_a_songs_end_takes_its_auto_effects_with_it(client):
         await asyncio.sleep(0.01)
     res = await get(client, sid)
     assert [x["origin"] for x in res["stack"]] == ["manual"]
+
+
+async def test_the_next_songs_effects_come_up_out_of_the_dark(client):
+    """Owner, 30 Oct: the fade up out of black brings the new song's effects with its scene, not after."""
+    import time
+    sid, s, eng = await live(client, auto={**AUTO, "fx": {"enabled": True, "max": 2}})
+    s.on_fx({"bus": "open"})
+    s.director.arm(True)
+    fd = s.fx_director
+    fd.direction = {**fd.direction, "fx": {**(fd.direction.get("fx") or {}), "density": 1.0}}   # exactly max
+    now = time.monotonic()
+    s.mgr.on_room_message({"type": "room.event", "data": {
+        "kind": "track_end", "id": "track_end:0", "at_ms": now * 1000, "track_id": 0,
+        "transition": {"style": "fade-dark", "out_s": 0.3, "in_s": 0.3, "on": "now", "change": "big"}}})
+    for _ in range(30):
+        await asyncio.sleep(0.01)
+    assert s._dark is not None and [x for x in (await get(client, sid))["stack"] if x["origin"] == "auto"] == []
+    s.mgr.on_room_message({"type": "room.event", "data": {
+        "kind": "track_end", "id": "track_end:0", "at_ms": (now + 1) * 1000, "detail": "sound_back", "track_id": 0}})
+    for _ in range(60):
+        await asyncio.sleep(0.01)
+    autos = [x for x in (await get(client, sid))["stack"] if x["origin"] == "auto"]
+    assert s._dark is None and len(autos) == 2

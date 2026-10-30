@@ -57,8 +57,8 @@ from typing import Any, Callable, Optional
 
 from . import binding, ensemble, fx_interplay, palettes, rooms
 from .bodies import PngData
-from .director import AUTO_DEFAULTS, AUTO_FX_DEFAULTS, DIRECTION_DEFAULTS, FX_DIRECTION_DEFAULTS, Director, \
-    steer, validate_auto, validate_direction, weighted_pick, why_extra
+from .director import AUTO_DEFAULTS, AUTO_FX_DEFAULTS, AUTO_FX_MAX, DIRECTION_DEFAULTS, FX_DIRECTION_DEFAULTS, \
+    Director, steer, validate_auto, validate_direction, weighted_pick, why_extra
 from .tags import scene_weight, tag_words
 from .taste import FX_MULT_MAX, KEEP_S, SKIP_S, context_of, fx_key, pair_key, scene_key
 from .effects import MAX_BUS_SLOTS, EffectChain, EffectSlot
@@ -105,6 +105,7 @@ DARK_SCENE = "black"          # fade-dark's dark: the scene preset shown across 
 # morph variants ran three songs in a row in Disco).  Starting point (screen-machine-63).
 VARIANT_CHAIN_MAX = 2
 NOT_PEOPLE = ("mode", "director")   # cue sources that are not a person (taste.py counts only people's presses)
+FRESH_S = 20.0                # a track_change this soon after fading up from the dark: that song is dressed already
 DARK_MAX_S = 8.0              # never stay dark longer than this (or the event's dark_max_s)
 FX_BAR_MAX_S = 4.0            # an auto effect move waits for the next downbeat when one is this close
 CUE_SOURCES = ("panel", "director", "mode")
@@ -307,6 +308,7 @@ class Session(EngineListener):
         self.own: set[str] = set()                 # look parts this screen set for itself (scope "screen"): never
                                                    # mirrored from the room; a room-scope change of the part clears it
         self._track_arm: Optional[dict] = None     # track_end_armed: {id, at, transition}
+        self._fresh_at: Optional[float] = None     # when _dark_up dressed the next song (its track_change skips)
         self._inputs_state: Optional[tuple] = None
         self._inputs_t = -1e9
         self._palette_sent: Any = None
@@ -2026,12 +2028,10 @@ class Session(EngineListener):
                 self._pick_task = asyncio.create_task(self._prepare_next())
             return
         if kind == "track_end":
-            if detail == "sound_back":                # the music came back with no new song: back to the scene
-                dk = self._dark
+            if detail == "sound_back":                # the music came back: up out of the dark, on the next song's look
+                dk = self._dark                      # (the show names the new song seconds later: track_change)
                 if dk is not None:
-                    self._end_dark()
-                    self._spawn_track_cue(dk["prev"] or "auto", self._xfade(dk["in_s"]), None, "now",
-                                          "the music came back")
+                    self._dark_up(dk["in_s"], "the music came back")
                 return
             if tr.get("style") == "fade-dark" and self._dark is None:
                 out_s = self._secs(tr.get("out_s"), 2.5)
@@ -2041,23 +2041,32 @@ class Session(EngineListener):
                 self._spawn_track_cue(DARK_SCENE, self._xfade(out_s), None, "now", "the song ended: fading out")
                 self._spawn_fx_flush(out_s, "the song ended")
                 self._dark["task"] = asyncio.create_task(self._dark_timeout(out_s + cap))
+                self._track_head(tr.get("change") or "big")    # the next song's scene, prepared while dark
+                if self._pick_task is None and self.prepared_pick is None:
+                    self._pick_task = asyncio.create_task(self._prepare_next())
             return
         # track_change: the new song.  Its own transition, landing on its first beat; change big = a fresh pick,
         # small = a variant of what is on (the owner's queued scenes stay first either way)
         self._track_arm = None
+        if self._dark is not None:                   # still dark: up now, on the new song's look
+            if self.upnext.head("scene") is None:    # (else the pick made at the song's end, ready by now)
+                self._track_head("big")
+            self._dark_up(self._secs(tr.get("in_s"), self._dark["in_s"]), "a new song" +
+                          (f" ({tr.get('change')} change)" if tr.get("change") else ""))
+            return
+        if self._fresh_at is not None and now - self._fresh_at < FRESH_S:
+            self._fresh_at = None                    # the song this fade-up already dressed: leave it be
+            self.fx_director.done(now, None)
+            return
         self._track_head(tr.get("change"))
         style = tr.get("style")
-        if self._dark is not None:
-            in_s = self._secs(tr.get("in_s"), self._dark["in_s"])
-            self._end_dark()
-            via = self._xfade(in_s)
-        elif style == "cut":
+        if style == "cut":
             via = "cut"
         elif style == "crossfade" or style == "fade-dark":
             via = self._xfade(self._secs(tr.get("seconds"), 2.0))
         else:
             via = None
-        if self._dark is None and tr.get("change") == "big":   # a different song straight in: its own effects too
+        if tr.get("change") == "big":                # a different song straight in: its own effects too
             self._spawn_fx_flush(self._secs(tr.get("seconds"), 2.0) if via != "cut" else 0.5, "a new song")
         on_beat = tr.get("on", "downbeat") == "downbeat"
         ahead = at_s is not None and at_s >= now + self.sampler.lead + EVENT_MARGIN_S
@@ -2142,7 +2151,50 @@ class Session(EngineListener):
         if dk is None or self.state != "live":
             return
         self._dark = None
-        await self._track_cue("auto", self._xfade(dk["in_s"]), None, "now", "dark long enough")
+        self._dark_up(dk["in_s"], "dark long enough")
+
+    def _dark_up(self, in_s: float, why: str) -> None:
+        """Out of fade-dark's black (owner, 30 Oct: the change "needs to happen while we're in black, so the fade
+        up has new scenes & effects ready"): the scene prepared while dark (Up next's head, _track_head at the
+        song's end) and a fresh set of auto effects come up together over ``in_s``.  The music's return
+        (sound_back), the new song (track_change) or dark_max_s, whichever is first; a track_change soon after
+        (FRESH_S) finds the song already dressed and changes nothing."""
+        self._end_dark()
+        self._fresh_at = time.monotonic()
+        self._spawn_track_cue("auto", self._xfade(in_s), None, "now", why)
+        asyncio.create_task(self._fx_fresh(in_s, why))
+
+    async def _fx_fresh(self, fade_s: float, why: str) -> None:
+        """The new song's auto effects, as many as the director runs now, fading in over ``fade_s`` with the scene
+        (_dark_up).  Then a full interval before its own next move."""
+        fd = self.fx_director
+        if not fd.enabled or self.state != "live" or self.exited:
+            return
+        try:
+            if self._fx_task is not None:
+                await asyncio.shield(self._fx_task)
+            fd.event, move, now = "track_change", None, time.monotonic()
+            for _ in range(AUTO_FX_MAX):
+                m = fd.plan(now, self.fx.stack, self.mgr.presets.effects, lambda n: self.mgr.cost_ms("effect", n),
+                            self.pixels_ratio(), prefer=tuple(e["effect"] for e in self.upnext.effects))
+                if m is None or m.op != "add":
+                    break
+                res = await self.fx.auto_move(m, max(0.2, fade_s))
+                if res is None:
+                    break
+                move = m
+                self._upnext_took(m.add)
+                if res.get("rejected"):
+                    fd.quarantine(m.add, now, session=True)
+            if move is not None:
+                fd.last = {"op": "add", "preset": move.add, "removed": None, "why": f"{move.why} ({why})",
+                           "at_pts": round(self._pts_now(), 3)}
+                self._room_fx()
+            fd.done(time.monotonic(), move)
+        except (SessionError, ParamError) as e:
+            log.warning("[%s] the new song's effects failed: %s", self.id, e.detail)
+        except Exception:
+            log.exception("[%s] the new song's effects failed", self.id)
 
     def _spawn_fx_flush(self, fade_s: float, why: str) -> None:
         asyncio.create_task(self._fx_flush(fade_s, why))

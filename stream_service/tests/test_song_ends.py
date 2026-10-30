@@ -68,3 +68,26 @@ async def test_track_end_armed_warms_the_next_and_disarms(client):
     assert s._pick_task is not None or s.prepared_pick is not None
     ev(mgr, kind="track_end_armed", id="track_end_armed:0", at_ms=None, detail="disarmed", track_id=0)
     assert s._track_arm is None
+
+
+async def test_the_music_back_from_the_dark_comes_up_on_the_next_songs_look(client):
+    """Owner, 30 Oct: the change happens while black, so the fade up has the new scene ready.  The music's return
+    (sound_back) comes up on the pick prepared at the song's end, not the old scene; the track_change seconds later
+    finds the song dressed and cuts nothing more."""
+    sid, s, eng = await live(client, auto=AUTO)
+    s.director.arm(True)
+    mgr, now = s.mgr, time.monotonic()
+    first = s.current_name
+    ev(mgr, kind="track_end", id="track_end:0", at_ms=now * 1000, track_id=0,
+       transition={"style": "fade-dark", "out_s": 0.5, "in_s": 0.5, "on": "now", "change": "big", "dark_max_s": 8.0})
+    await settle(s, 40)
+    head = s.upnext.head("scene")
+    assert s.current_name == "black" and head is not None and head["for_song"] == "big"
+    ev(mgr, kind="track_end", id="track_end:0", at_ms=(now + 1) * 1000, detail="sound_back", track_id=0)
+    await settle(s, 40)
+    assert s._dark is None and s.current_name not in ("black", first) and s.last_cue["detail"].startswith("the music came back")
+    cue = s.last_cue["cue_id"]
+    ev(mgr, kind="track_change", id="track_change:1", at_ms=(now + 2) * 1000, track_id=1, prev_track_id=0,
+       transition={"style": "fade-dark", "in_s": 0.5, "on": "now", "change": "big"})
+    await settle(s, 40)
+    assert s.last_cue["cue_id"] == cue
