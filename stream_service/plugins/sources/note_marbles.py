@@ -53,8 +53,9 @@ How the music drives it
     about 225-450 onsets have fallen since the last full drain, every lift also opens it to 0.65 for 0.3 s (a gulp
     of the back row).  A rest (no note for 4.5 s, pedal up) empties the tray.
   * ``sound.register`` (the ensemble's register split): notes outside this screen's window drop dimmer marbles and
-    glow dimmer keys, never hidden.  ``sound.segment`` (k, n): the screens share one camera with a lens shift, so
-    one long tray runs across the room's TVs (bass on the left).  Its drift runs on the shared photon clock.
+    glow dimmer keys, never hidden.  ``sound.segment`` (k, n) with span: room: the screens share one camera with a
+    lens shift, so one long tray runs across the room's TVs (bass on the left).  The default, span: screen, gives
+    each TV its own camera, follow and depth of field.  Its drift runs on the shared photon clock.
   * No sound, or a pause of 3 s: an idle music box.  Soft marbles fall on a slow pentatonic random walk (``idle``),
     and the tray drains each time 45 of them have fallen.  The tray rocks gently, so the bed of marbles shifts like
     a slow tide.  The camera drifts and coloured bokeh float behind.  Alive with no notes at all.
@@ -116,7 +117,7 @@ import numpy as np
 from stream_service.gpu import raw_module
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.palettes import PALETTE_CUDA, PALETTES
-from stream_service.plugins._lib.params import num, standard_scene_params
+from stream_service.plugins._lib.params import enum, num, standard_scene_params
 from stream_service.plugins._lib.upsample import internal_size, present
 from stream_service.plugins.base import Source
 
@@ -1257,6 +1258,10 @@ def _segment(snd) -> tuple[int, int] | None:
     return (k, n) if n >= 2 and 0 <= k < n else None
 
 
+SPANS = ("screen", "room")    # screen: each TV the whole picture (default; owner, 30 Oct: the TVs aren't adjacent);
+                              # room: one picture across the room's screens (sound.segment)
+
+
 # ------------------------------------------------------------------------------------------------- the scene
 class NoteMarbles(Source):
     """Per frame: one arena upload, the spawn launch, 5 calls per physics substep (memset, hash, scan, scatter,
@@ -1280,12 +1285,14 @@ class NoteMarbles(Source):
             "lean": num(0.0, 1.0, 0.35, "Lean to the bass"),
             "opal": num(0.0, 1.0, 0.3, "Opal (clear to milky)"),
             "idle": num(0.0, 1.0, 0.5, "Idle drops"),
+            "span": enum(SPANS, "screen", "Span (this screen, or one picture across the room)"),
         }
 
     # -- setup ---------------------------------------------------------------------------------------------------
     def setup(self, ctx, params: dict) -> None:
         super().setup(ctx, params)
         cp = ctx.cp
+        self.span_room = params.get("span") == "room"
         self.w, self.h = internal_size(ctx, float(params["render_scale"]))
         self.gw, self.gh = max(4, self.w // 4), max(4, self.h // 4)
         self.seed = int(params["seed"]) & 0x7FFFFFFF
@@ -1562,7 +1569,7 @@ class NoteMarbles(Source):
                 or not notes.flags.c_contiguous):
             notes = self.silent
         regw = self._reg_weights(snd)
-        seg = _segment(snd)
+        seg = _segment(snd) if self.span_room else None
 
         spawns, damper = self._listen(snd, f)
         real = bool(spawns) or self._sounding(f)

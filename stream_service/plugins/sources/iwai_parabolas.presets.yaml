@@ -1,5 +1,5 @@
 iwai-parabolas-petals:
-  label: Across the room (petals at dusk)
+  label: Note arcs (petals at dusk)
   source: iwai_parabolas
   params:
     palette: dusk
@@ -27,7 +27,7 @@ iwai-parabolas-petals:
     weight: 1.0
 
 iwai-parabolas-comets:
-  label: Across the room (ice comets)
+  label: Note arcs (ice comets)
   source: iwai_parabolas
   params:
     palette: ice
@@ -56,7 +56,7 @@ iwai-parabolas-comets:
     weight: 1.0
 
 iwai-parabolas-rings:
-  label: Across the room (neon rings)
+  label: Note arcs (neon rings)
   source: iwai_parabolas
   params:
     palette: neon

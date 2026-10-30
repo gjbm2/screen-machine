@@ -27,7 +27,7 @@ How the music drives it
   * The camera (low view) stands at the arc's centre and frames the keys being played: it pans to them and zooms
     in down to ~3.5 octaves (sinking as it zooms, so the horizon stays a third down the frame), opens at once to
     take in a note outside the frame, closes in slowly, and opens to the whole keyboard after a rest.  The studio
-    turns and scales with it.  With the screens in one picture (``sound.segment``) it holds still.
+    turns and scales with it.  With the screens in one picture (``sound.segment``, span: room) it holds still.
   * Ripples: the volume a cluster draws up or lets go of is the source of a damped wave equation on the pool, so a
     strike sends a faint dip outward and a release a ring of ripples; dense playing fills the pool with interfering
     rings, rests let it settle to glass.
@@ -37,7 +37,8 @@ How the music drives it
     that races along the layout ahead of the notes and leaves a wake.
   * Damper pedal: resonance; ripples ring longer, clusters spread wider and shimmer faintly.  Soft pedal rounds the
     spikes.  The room ensemble's register window dims notes outside it (``sound.register``), and with the screens
-    in one picture (``sound.segment``) the line layout spans the TVs (this screen draws its slice of the keyboard).
+    in one picture (``sound.segment``, span: room) the line layout spans the TVs (this screen draws its slice of
+    the keyboard).  The default, span: screen, gives each TV the whole pool.
 
 Macros
   energy -> ripple agitation (swells, stray drops, ripple strength), the camera's slow drift, the lights'
@@ -74,7 +75,7 @@ from stream_service.gpu import raw_module
 from stream_service.plugins._lib import tonal as T
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.palettes import palette_coeffs
-from stream_service.plugins._lib.params import num, standard_scene_params
+from stream_service.plugins._lib.params import enum, num, standard_scene_params
 from stream_service.plugins._lib.upsample import internal_size, present
 from stream_service.plugins.base import Source
 
@@ -705,6 +706,10 @@ def _pal_rgb(rows: np.ndarray, t: float) -> np.ndarray:
     return col / max(float(col.max()), 0.25)
 
 
+SPANS = ("screen", "room")    # screen: each TV the whole picture (default; owner, 30 Oct: the TVs aren't adjacent);
+                              # room: one picture across the room's screens (sound.segment)
+
+
 class FerrofluidKeys(Source):
     """Per frame: host numpy over the 128 keys (springs, layout, chords, runs), one arena upload, 1-4 wave substeps,
     field + gradient + coarse max, one raymarch at render_scale, the upsample."""
@@ -726,12 +731,14 @@ class FerrofluidKeys(Source):
             "camera": num(0.0, 1.0, 0.05, "Camera (low, follows the playing .. overhead)", basic=True),
             "light_hue": num(0.0, 1.0, 0.0, "Rim light hue"),
             "hue_source": num(0.0, 1.0, 0.0, "Rim hue: key .. register"),
+            "span": enum(SPANS, "screen", "Span (this screen, or one picture across the room)"),
         }
 
     # -- setup --------------------------------------------------------------------------------------------------
     def setup(self, ctx, params: dict) -> None:
         super().setup(ctx, params)
         cp = ctx.cp
+        self.span_room = params.get("span") == "room"
         self.w, self.h = internal_size(ctx, float(params["render_scale"]))
         self.seed = int(params["seed"]) & 0x7FFFFFFF
         mod = raw_module(_SRC, _OPTS)
@@ -1017,7 +1024,8 @@ class FerrofluidKeys(Source):
         sft = _clamp01(ped[1]) if ped is not None and len(ped) > 1 else 0.0
         self.damper += (dmp - self.damper) * _alpha(dt, 0.15)
         self.soft += (sft - self.soft) * _alpha(dt, 0.15)
-        self._seg = ensemble.clean_segment(getattr(snd, "segment", None)) if snd is not None else None
+        self._seg = ensemble.clean_segment(getattr(snd, "segment", None)) \
+            if snd is not None and self.span_room else None
 
         lv = self._lv
         lv[:] = np.nan_to_num(notes[:, 0], nan=0.0, posinf=1.0, neginf=0.0)

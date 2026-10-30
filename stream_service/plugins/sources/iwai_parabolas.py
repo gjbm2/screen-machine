@@ -1,6 +1,7 @@
-"""Across the room: every note the piano plays throws a glowing shape from its key, high over the room in a luminous
-parabola, to land further along as a softer echo that ripples out across a dark floor.  Across both TVs it is one
-wide picture: low notes fly from the left TV over the gap to the right one, high notes from the right to the left.
+"""Note arcs: every note the piano plays throws a glowing shape from its key, high in a luminous parabola, to land
+further along as a softer echo that ripples out across a dark floor.  Each TV draws the whole keyboard (span:
+screen, the default; owner, 30 Oct: the TVs aren't adjacent, and spread over both the middle of the keyboard, where
+most playing is, rose in the gap).  span: room makes it one wide picture across both TVs.
 
 What you see.  A dark night stage: a faint haze breathing over the horizon, a dark reflective floor, and along the
 bottom a faint row of key marks, one per piano key (A0 on the left, C8 on the right; across both TVs the keyboard
@@ -23,10 +24,11 @@ hang as whole luminous parabolas, and their landing ripples and imprints linger;
 (they fade over a fraction of a second; pressing it later never relights an old trail).  Flights bloom in over
 ~0.1 s (the strike always lands late at the TV: no hard flash) and ease out.
 
-One picture across the room (``sound.segment``, ``(k, n)``): the world is n screens wide and this screen draws
-x in [k, k + 1] of it, so a note thrown on the south TV lands on the north one.  Every screen hears the same
-onsets at the same photon time, so a flight is a pure function of its onset: its shape, height, length, spin and
-depth come from a hash of (pitch, onset time in ms), and its position from its age on the shared photon clock.
+One picture across the room (span: room; ``sound.segment``, ``(k, n)``): the world is n screens wide and this
+screen draws x in [k, k + 1] of it, so a note thrown on the south TV lands on the north one.  Every screen hears
+the same onsets at the same photon time, so a flight is a pure function of its onset: its shape, height,
+length, spin and depth come from a hash of (pitch, onset time in ms), and its position from its age on the shared
+photon clock.
 No per-screen randomness.  The idle ghost melody is scheduled on the same clock.  With ``segment`` None the
 whole picture is on this screen, and the ensemble's register window (``sound.register``) dims notes outside it.
 
@@ -63,7 +65,7 @@ import numpy as np
 from stream_service.gpu import raw_module
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.palettes import PALETTE_CUDA, palette_coeffs
-from stream_service.plugins._lib.params import num, standard_scene_params
+from stream_service.plugins._lib.params import enum, num, standard_scene_params
 from stream_service.plugins._lib.upsample import internal_size, present
 from stream_service.plugins.base import Source
 
@@ -437,14 +439,18 @@ def _clip01(v) -> float:
     return min(max(v, 0.0), 1.0) if v == v else 0.0
 
 
+SPANS = ("screen", "room")    # screen: each TV the whole picture (default; owner, 30 Oct: the TVs aren't adjacent);
+                              # room: one picture across the room's screens (sound.segment)
+
+
 class IwaiParabolas(Source):
     """Per frame: the host steps a 160-record flight ring in numpy (launch, age, cull boxes, colours), uploads it
     with the globals in one copy, and issues one kernel launch plus the present."""
     name = "iwai_parabolas"
-    label = "Across the room"
+    label = "Note arcs"
     description = ("Every note throws a glowing shape from its key in a luminous parabola that lands further along "
-                   "as a rippling echo; across both TVs one picture, bass flying left to right and treble right to "
-                   "left over the gap.")
+                   "as a rippling echo; bass notes fly left to right and treble right to left, crossing in the "
+                   "middle.")
     listens = ("notes",)
 
     @classmethod
@@ -459,12 +465,14 @@ class IwaiParabolas(Source):
             "trail": num(0.0, 1.0, 0.5, "Trails", basic=True),
             "echo": num(0.0, 1.0, 0.6, "Echo"),
             "floor": num(0.0, 1.0, 0.6, "Floor reflection"),
+            "span": enum(SPANS, "screen", "Span (this screen, or one picture across the room)"),
         }
 
     # -- setup ----------------------------------------------------------------------------------------------------
     def setup(self, ctx, params: dict) -> None:
         super().setup(ctx, params)
         cp = ctx.cp
+        self.span_room = params.get("span") == "room"
         self.w, self.h = internal_size(ctx, float(params["render_scale"]))
         self.A = self.w / float(self.h)
         self.buf = cp.zeros((self.h, self.w, 4), cp.uint8)
@@ -733,7 +741,7 @@ class IwaiParabolas(Source):
                 self.last_slot = None
         self.last_now = now
 
-        k, n = _segment(snd)
+        k, n = _segment(snd) if self.span_room else (0, 1)
         self.Wd, self.kA = n * self.A, k * self.A
         w_reg = self._register_w(snd, n)
         ped_t = 0.0

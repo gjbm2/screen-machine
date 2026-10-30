@@ -51,7 +51,9 @@ while notes sound (in ~0.4 s) and come back over a few seconds once the piano re
 storm.  A burst of notes strikes at most 6 bolts a frame (neighbouring keys share one, at their mean place, with
 the loudest velocity), and 16 bolts at most are alive (a new one takes the dimmest ghost's slot).  The room
 ensemble's register window (sound.register) draws notes outside it dimmer, never hidden.  When the room's screens
-share one picture (sound.segment), the keyboard spans them: low notes on the left screen, high on the right.
+share one picture (sound.segment) and the preset asks for it (span: room), the keyboard spans them: low notes on
+the left screen, high on the right.  The default is span: screen (each screen the whole keyboard; owner, 30 Oct:
+the TVs aren't adjacent, so one picture stretched over both rarely coheres).
 """
 from __future__ import annotations
 
@@ -64,7 +66,7 @@ from stream_service.plugins.base import Source
 
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.palettes import PALETTE_CUDA, palette_coeffs
-from stream_service.plugins._lib.params import num, standard_scene_params
+from stream_service.plugins._lib.params import enum, num, standard_scene_params
 from stream_service.plugins._lib.upsample import internal_size, present
 
 MAXB = 16           # concurrent bolts (per-note ghosts need more than the beat storm's 8)
@@ -73,6 +75,8 @@ SEGF = 6            # floats per segment: x0, y0, x1, y1, weight, u (reveal orde
 CHUNK = 4           # segments per bounding-box chunk
 NCH = SEGS // CHUNK
 BSTRIDE = SEGS * SEGF + NCH * 4
+SPANS = ("screen", "room")  # screen: each TV the whole picture (default; owner, 30 Oct: the TVs aren't adjacent);
+                            # room: one picture across the room's screens (sound.segment)
 HDR = 8             # per-bolt header: intensity, reveal, nseg, hue, bbox x0, y0, x1, y1
 RING_R = 0.62       # ring radius (units of half the frame height)
 BAND_W = 0.30       # mask band half-width scale
@@ -358,11 +362,13 @@ class ElectricStorm(Source):
         "flash_kick": num(0.0, 1.0, 0.7, "Beat flash kick", tier="regional"),
         **standard_scene_params(palette="ice", render_scale=0.5, period=1.0, drift=0.02),
         "bolt_rate": num(0.0, 3.0, 0.7, "Ambient strikes", unit="/s", tier="realtime", bind="rate"),
+        "span": enum(SPANS, "screen", "Span (this screen, or one picture across the room)"),
     }
 
     def setup(self, ctx, params: dict) -> None:
         super().setup(ctx, params)
         cp = ctx.cp
+        self.span_room = params.get("span") == "room"
         self.w, self.h = internal_size(ctx, float(params["render_scale"]))
         self.aspect = ctx.width / ctx.height
         self.buf = cp.zeros((self.h, self.w, 4), cp.uint8)
@@ -621,11 +627,11 @@ class ElectricStorm(Source):
             self._reg_key, self._reg_w = reg, w
         return self._reg_w
 
-    @staticmethod
-    def _slice(snd) -> tuple:
+    def _slice(self, snd) -> tuple:
         """This screen's part of the keyboard as register (lo, hi) and whether it is the last (rightmost) part: the
-        whole keyboard, or 1/n of it when the room's screens share one picture (``sound.segment`` (k, n))."""
-        seg = getattr(snd, "segment", None) if snd is not None else None
+        whole keyboard, or 1/n of it when the room's screens share one picture (``sound.segment`` (k, n)) and
+        span is room."""
+        seg = getattr(snd, "segment", None) if snd is not None and self.span_room else None
         try:
             k, n = (int(seg[0]), int(seg[1])) if seg is not None else (0, 1)
         except Exception:

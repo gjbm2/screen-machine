@@ -54,7 +54,8 @@ How the music drives it
     slew-limited pull moves the cycle and the swing onto the grid and never runs them backwards.  Without a clock the
     cycle is ``cycle_s`` long (16 s), locked to the shared photon clock.
   * The room ensemble: ``sound.register`` dims the keys outside this screen's window but never hides them.
-    ``sound.segment`` (k, n) spreads one longer row across the screens: this screen draws its slice of a picture n
+    ``sound.segment`` (k, n) with span: room (the default, span: screen, gives each TV the whole row) spreads one
+    longer row across the screens: this screen draws its slice of a picture n
     screens wide, with the bass on the left TV.  The cycle and the camera are pulled onto shared clocks, so the
     slices meet at the seam.
 
@@ -86,7 +87,7 @@ import numpy as np
 from stream_service.gpu import raw_module
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.palettes import palette_coeffs
-from stream_service.plugins._lib.params import num, standard_scene_params
+from stream_service.plugins._lib.params import enum, num, standard_scene_params
 from stream_service.plugins._lib.sdf3d import SDF3D, SDF3D_OPTIONS
 from stream_service.plugins._lib.upsample import internal_size, present
 from stream_service.plugins.base import Source
@@ -415,6 +416,10 @@ def _wheel(turn: np.ndarray) -> np.ndarray:
                              -0.0041960863 * l - 0.7034186147 * m + 1.7076147010 * s], 1), 0.0, 1.0)
 
 
+SPANS = ("screen", "room")    # screen: each TV the whole picture (default; owner, 30 Oct: the TVs aren't adjacent);
+                              # room: one picture across the room's screens (sound.segment)
+
+
 def _fit(pts: np.ndarray, fwd: np.ndarray, right: np.ndarray, upv: np.ndarray, kx: float, ky: float):
     """The nearest eye (orientation fixed) that keeps every point of ``pts`` inside the frame, |x| <= kx z and
     |y| <= ky z (tangents), centred on the free axis: closed form.  Returns the eye and each point's depth."""
@@ -450,12 +455,14 @@ class PendulumWave(Source):
             "line": num(0.0, 1.0, 0.5, "Wave line"),
             "floor": num(0.0, 1.0, 0.6, "Floor reflections"),
             "halo": num(0.0, 1.5, 0.8, "Glow"),
+            "span": enum(SPANS, "screen", "Span (this screen, or one picture across the room)"),
         }
 
     # -- lifecycle --------------------------------------------------------------------------------------------------
     def setup(self, ctx, params: dict) -> None:
         super().setup(ctx, params)
         cp = ctx.cp
+        self.span_room = params.get("span") == "room"
         self.w, self.h = internal_size(ctx, float(params["render_scale"]))
         mod = raw_module(_SRC, _OPTS)
         self.k_render = mod.get_function("pw_render")
@@ -517,7 +524,7 @@ class PendulumWave(Source):
         return self._reg_w
 
     def _segment(self, snd):
-        seg = getattr(snd, "segment", None) if snd is not None else None
+        seg = getattr(snd, "segment", None) if snd is not None and self.span_room else None
         try:
             k, n = int(seg[0]), int(seg[1])
             if 1 <= n <= 4 and 0 <= k < n:

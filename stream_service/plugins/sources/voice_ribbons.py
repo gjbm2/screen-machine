@@ -29,8 +29,9 @@ How the music drives it
   note if it is near the recent top line (a skyline falling 24 semitones/s, tolerance 9), the bass the lowest
   held note near the recent bottom line (a floor rising at the same rate); a lone note goes to the nearer line,
   and the rest are the inner mass.  With the room's register split (sound.register) a pen outside this screen's
-  window dims to the window's ``outside`` level; with one picture across both TVs (sound.segment) the camera is
-  shifted by one frame width per screen, so the drawing runs on from one TV into the other.
+  window dims to the window's ``outside`` level; with one picture across both TVs (sound.segment, span: room) the
+  camera is shifted by one frame width per screen, so the drawing runs on from one TV into the other.  The
+  default, span: screen, gives each TV the whole drawing.
 * No notes: the pens keep travelling and draw faint ghost phrases on their own, the ribbons keep turning, the
   camera keeps orbiting and the dust drifts.  When the piano starts, the pens hand over to the playing at once.
 
@@ -69,7 +70,7 @@ import numpy as np
 from stream_service.gpu import raw_module
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.palettes import PALETTE_CUDA, PALETTES
-from stream_service.plugins._lib.params import num, standard_scene_params
+from stream_service.plugins._lib.params import enum, num, standard_scene_params
 from stream_service.plugins._lib.splat3d import Splat3D, look_at, orbit
 from stream_service.plugins._lib.upsample import internal_size
 from stream_service.plugins.base import Source
@@ -452,6 +453,10 @@ class _Pen:
         self.hue = 0.0
 
 
+SPANS = ("screen", "room")    # screen: each TV the whole picture (default; owner, 30 Oct: the TVs aren't adjacent);
+                              # room: one picture across the room's screens (sound.segment)
+
+
 # ------------------------------------------------------------------------------------------------- the scene
 class VoiceRibbons(Source):
     """Per frame: one arena upload (~450 bytes) and four small kernels (push, build, dust, background), then
@@ -475,12 +480,14 @@ class VoiceRibbons(Source):
         "stripes": num(0.0, 1.0, 0.6, "Colours across the stroke", tier="regional"),
         "bloom": num(0.0, 2.0, 0.9, "Bloom", tier="regional"),
         "dust": num(0.0, 2.0, 1.0, "Dust", tier="regional"),
+        "span": enum(SPANS, "screen", "Span (this screen, or one picture across the room)"),
     }
 
     # ------------------------------------------------------------------------------------------------ setup
     def setup(self, ctx, params: dict) -> None:
         super().setup(ctx, params)
         cp = ctx.cp
+        self.span_room = params.get("span") == "room"
         f32 = cp.float32
         self.seed = int(params["seed"]) & 0x7FFFFFFF
         self.w, self.h = internal_size(ctx, float(params["render_scale"]))
@@ -603,7 +610,8 @@ class VoiceRibbons(Source):
                     continue
                 if 0 <= q < 128 and math.isfinite(v):
                     ons[q] = max(ons.get(q, 0.0), min(max(v, 0.0), 1.0))
-        return (nn, damper, soft, ons, self._reg_weights(snd)), _segment(getattr(snd, "segment", None))
+        seg = getattr(snd, "segment", None) if self.span_room else None
+        return (nn, damper, soft, ons, self._reg_weights(snd)), _segment(seg)
 
     def _assign(self, n):
         """Melody and bass pitches this frame (None: that pen is lifted), with echo_arcs' skyline / floor."""

@@ -15,7 +15,9 @@ What the picture shows
   with a back-lit rim, the layers behind are coloured by the low sun and softened by the mist, and the flowers
   glow like lanterns in every layer.  The sky follows the room's energy slowly (about 20 s): quiet music brings
   dusk and night (deep blue, stars, a pale moon), lively music brings a golden dawn and then day.  Fireflies
-  drift over the garden whenever nothing is being played and fade back when the music returns.  Everything sways
+  drift over the garden whenever nothing is being played and fade back when the music returns.  Each TV grows
+  the whole garden (span: screen, the default); span: room makes it one landscape across the room's
+  screens.  Everything sways
   in the breeze; the camera drifts slowly sideways, so the near hills slide past the far ones.
 
   Each musical phrase grows one plant.  The garden keeps them: by the end of a piece it is the piece's portrait,
@@ -92,7 +94,7 @@ from stream_service.gpu import raw_module
 from stream_service.plugins._lib import tonal as T
 from stream_service.plugins._lib.cuda import HELPERS
 from stream_service.plugins._lib.palettes import PALETTE_CUDA, palette_coeffs
-from stream_service.plugins._lib.params import num, standard_scene_params
+from stream_service.plugins._lib.params import enum, num, standard_scene_params
 from stream_service.plugins._lib.upsample import internal_size, present
 from stream_service.plugins.base import Source
 
@@ -938,6 +940,10 @@ def _clamp(v, lo: float = 0.0, hi: float = 1.0) -> float:
     return lo if v < lo else hi if v > hi else v
 
 
+SPANS = ("screen", "room")    # screen: each TV the whole picture (default; owner, 30 Oct: the TVs aren't adjacent);
+                              # room: one picture across the room's screens (sound.segment)
+
+
 def _consonant(mask: int) -> bool:
     """A single pitch class, or a subset of a major or minor triad."""
     if mask <= 0:
@@ -965,12 +971,14 @@ class NoteGarden(Source):
             "depth": num(0.0, 1.0, 0.7, "Depth (layers and mist)"),
             "glow": num(0.0, 1.0, 0.6, "Glow (ink · light)"),
             "sky": num(0.0, 1.0, 0.45, "Sky (night · day)"),
+            "span": enum(SPANS, "screen", "Span (this screen, or one picture across the room)"),
         }
 
     # -- setup -------------------------------------------------------------------------------------------------
     def setup(self, ctx, params: dict) -> None:
         super().setup(ctx, params)
         cp = ctx.cp
+        self.span_room = params.get("span") == "room"
         self.w, self.h = internal_size(ctx, float(params["render_scale"]))
         self.seed = int(params["seed"]) & 0x7FFFFFFF
         mod = raw_module(_SRC, _OPTS)
@@ -1605,7 +1613,7 @@ class NoteGarden(Source):
         self.fly_amt = ease(self.fly_amt, fly_t, 2.0)
         # the room's picture: this screen's share of one garden across the ensemble's screens
         k, nseg = 0, 1
-        seg = getattr(getattr(self, "sound", None), "segment", None)
+        seg = getattr(getattr(self, "sound", None), "segment", None) if self.span_room else None
         try:
             if seg is not None and int(seg[1]) >= 2 and 0 <= int(seg[0]) < int(seg[1]):
                 k, nseg = int(seg[0]), int(seg[1])

@@ -46,7 +46,8 @@ How the music drives it (self.sound, notes; CONVENTIONS 2b)
     playing a smaller, finer filigree.  Loudness swells the dots and the brightness.  The main field's ground colour
     follows the bass's pitch class, the mirror field's the top voice's.
   * The ensemble (sound.register) dims notes outside this screen's register window to its ``outside`` level; with a
-    room segment (sound.segment) every other screen draws the figure mirror-imaged, so the pair reads as a diptych.
+    room segment (sound.segment) and span: mirror (the default) every other screen draws the figure mirror-imaged,
+    so the pair reads as a diptych; each TV still draws the whole figure.  span: screen draws it the same on both.
   * No sound (None or not present): the figure walks a slow cycle of consonant figures (every 11 s) and keeps
     breathing, sliding and orbiting.
 
@@ -72,7 +73,7 @@ import numpy as np
 from stream_service.gpu import raw_module
 from stream_service.plugins._lib.cuda import HELPERS
 from stream_service.plugins._lib.palettes import PALETTE_CUDA, palette_coeffs
-from stream_service.plugins._lib.params import num, standard_scene_params
+from stream_service.plugins._lib.params import enum, num, standard_scene_params
 from stream_service.plugins._lib.upsample import internal_size, present
 from stream_service.plugins.base import Source
 
@@ -462,6 +463,9 @@ def chord_shape(bass_pc: int, pcs) -> tuple[int, int]:
     return best
 
 
+SPANS = ("screen", "mirror")  # mirror: every other screen of the room draws the figure mirror-imaged
+
+
 class WhitneyArabesque(Source):
     name = "whitney_arabesque"
     label = "Whitney arabesque"
@@ -478,12 +482,14 @@ class WhitneyArabesque(Source):
         "counter": num(0.0, 1.0, 1.0, "Mirror field"),
         "tilt": num(0.0, 1.0, 0.3, "Tilt (3D bowl)"),
         "dot_size": num(0.4, 2.5, 1.0, "Dot size"),
+        "span": enum(SPANS, "mirror", "Pair (same on both TVs, or mirror-imaged)"),
     }
 
     # -- lifecycle -------------------------------------------------------------------------------------------------
     def setup(self, ctx, params: dict) -> None:
         super().setup(ctx, params)
         cp = ctx.cp
+        self.mirror = params.get("span", "mirror") == "mirror"
         self.w, self.h = internal_size(ctx, float(params["render_scale"]))
         self.gw, self.gh = (self.w + 3) // 4, (self.h + 3) // 4
         mod = raw_module(_SRC, _OPTS)
@@ -785,7 +791,7 @@ class WhitneyArabesque(Source):
         tilt = float(p["tilt"]) * (0.62 + 0.12 * math.sin(2.0 * math.pi * self.cam))
         if self.tilt_prev is None:
             self.tilt_prev = tilt
-        seg = getattr(snd, "segment", None) if snd is not None else None
+        seg = getattr(snd, "segment", None) if snd is not None and self.mirror else None
         flip_t = -1.0 if (seg and len(seg) == 2 and int(seg[1]) >= 2 and int(seg[0]) % 2 == 1) else 1.0
         self.flip += (flip_t - self.flip) * (a(0.4) if dt > 0 else 1.0)
 

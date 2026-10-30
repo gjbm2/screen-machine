@@ -43,7 +43,8 @@ the beat shells fade toward zero as note_drive -> 1 while notes sound (in ~0.4 s
 once the piano rests, so a silent room still has its show.  A burst of notes fires at most the 12 loudest per frame,
 and spark counts thin as the sky fills (from ~17k live sparks), so a fast run never overloads.  The room ensemble's
 register window (sound.register) draws notes outside it smaller and dimmer, never hidden.  When the room's screens
-share one picture (sound.segment), the keyboard spans them: low notes on the left screen, high on the right.
+share one picture (sound.segment) and the preset asks for it (span: room), the keyboard spans them: low notes on
+the left screen, high on the right.  The default is span: screen (each screen the whole keyboard).
 """
 from __future__ import annotations
 
@@ -56,7 +57,7 @@ from stream_service.plugins.base import Source
 
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.palettes import PALETTES
-from stream_service.plugins._lib.params import num, standard_scene_params
+from stream_service.plugins._lib.params import enum, num, standard_scene_params
 from stream_service.plugins._lib.splat3d import Splat3D, look_at
 from stream_service.plugins._lib.upsample import internal_size, present
 
@@ -444,6 +445,10 @@ def _sstep(e0, e1, x):
     return t * t * (3.0 - 2.0 * t)
 
 
+SPANS = ("screen", "room")    # screen: each TV the whole picture (default; owner, 30 Oct: the TVs aren't adjacent);
+                              # room: one picture across the room's screens (sound.segment)
+
+
 class FireworkShow(Source):
     name = "firework_show"
     label = "Firework Show"
@@ -462,6 +467,7 @@ class FireworkShow(Source):
         "launch_rate": num(0.2, 3.0, 1.0, "Auto-launch rate", unit="×", tier="regional"),
         "trails": num(0.2, 2.5, 1.0, "Trail length", unit="×", tier="regional"),
         "glitter": num(0.0, 1.0, 0.5, "Glitter", tier="regional"),
+        "span": enum(SPANS, "screen", "Span (this screen, or one picture across the room)"),
         **standard_scene_params(palette="rainbow", render_scale=0.5, period=1.0, drift=0.02),
     }
 
@@ -470,6 +476,7 @@ class FireworkShow(Source):
         super().setup(ctx, params)
         cp = ctx.cp
         f32 = cp.float32
+        self.span_room = params.get("span") == "room"
         seed = int(params["seed"])
         self.rng = np.random.default_rng(seed)
         self.kseed = float((seed * 2654435761) % (1 << 22))
@@ -709,11 +716,10 @@ class FireworkShow(Source):
             self._reg_key, self._reg_w = reg, w
         return self._reg_w
 
-    @staticmethod
-    def _slice(snd) -> tuple:
+    def _slice(self, snd) -> tuple:
         """This screen's part of the keyboard, as register (lo, hi), the x scale, and whether it is a slice: the
-        whole keyboard, or 1/n of it when the room's screens share one picture (``sound.segment`` (k, n))."""
-        seg = getattr(snd, "segment", None) if snd is not None else None
+        whole keyboard, or 1/n of it when the room's screens share one picture (``sound.segment``, span: room)."""
+        seg = getattr(snd, "segment", None) if snd is not None and self.span_room else None
         try:
             k, n = (int(seg[0]), int(seg[1])) if seg is not None else (0, 1)
         except Exception:

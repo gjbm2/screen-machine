@@ -12,8 +12,9 @@ shows two lights, as in the light part (luce) that Scriabin wrote into Prometheu
     - It arrives in soft folded veils that drift across the picture, like Thomas Wilfred's Lumia.
     - At every change of chord the new colour rolls out across the picture as a soft wave. The wave starts at the
       bottom edge under the bass, and its brighter crest fades as it travels.
-    - Over the two TVs the wave starts under the bass's place on the keyboard (low notes on the left screen) and
-      rolls on into the other screen.
+    - With span: room (one picture over the two TVs; the default, span: screen, gives each TV the whole keyboard)
+      the wave starts under the bass's place on the keyboard (low notes on the left screen) and rolls on into the
+      other screen.
   - The FOOTLIGHT is a soft glow rising from the bottom edge under each sounding key, in that note's colour: broad
     and strong for the bass, small and faint for the treble.  So the bass lights its side of the room from below.
 
@@ -79,7 +80,7 @@ from stream_service.gpu import raw_module
 from stream_service.plugins._lib import tonal as T
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.effect_base import Effect
-from stream_service.plugins._lib.params import num, standard_effect_params
+from stream_service.plugins._lib.params import enum, num, standard_effect_params
 
 NS = 256                      # footlight strip bins across the screen
 NF = 8                        # chord waves in flight
@@ -343,6 +344,10 @@ def _ar(x: float, tgt: float, dt: float, att: float, rel: float) -> float:
     return x + (tgt - x) * T.ema_alpha(dt, att if tgt > x else rel)
 
 
+SPANS = ("screen", "room")    # screen: each TV the whole picture (default; owner, 30 Oct: the TVs aren't adjacent);
+                              # room: one picture across the room's screens (sound.segment)
+
+
 class ColourOrgan(Effect):
     name = "colour_organ"
     stage = "colour"
@@ -361,12 +366,14 @@ class ColourOrgan(Effect):
         "saturation": num(0.2, 1.6, 1.0, "Light saturation", tier="regional"),
         "veils": num(0.0, 1.0, 0.6, "Veils (flat wash · folded lumia veils)", tier="regional"),
         "hue_shift": num(0.0, 1.0, 0.0, "Hue shift (0..1 = 0..180 degrees)", tier="regional"),
+        "span": enum(SPANS, "screen", "Span (this screen, or one picture across the room)"),
     }
     params["amount"] = {**params["amount"], "default": 0.7}
 
     def setup(self, ctx, params: dict) -> None:
         super().setup(ctx, params)
         cp = ctx.cp
+        self.span_room = params.get("span") == "room"
         mod = raw_module(_SRC, _OPTS)
         self._ks = mod.get_function("co_strip")
         self._kf = mod.get_function("co_field")
@@ -425,9 +432,8 @@ class ColourOrgan(Effect):
             self._reg_key = reg
         return self._reg_w
 
-    @staticmethod
-    def _segment(snd) -> tuple[int, int]:
-        seg = getattr(snd, "segment", None) if snd is not None else None
+    def _segment(self, snd) -> tuple[int, int]:
+        seg = getattr(snd, "segment", None) if snd is not None and self.span_room else None
         try:
             k, n = (int(seg[0]), int(seg[1])) if seg is not None else (0, 1)
         except Exception:  # noqa: BLE001
