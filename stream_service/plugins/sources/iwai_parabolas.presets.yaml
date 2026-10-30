@@ -1,0 +1,85 @@
+iwai-parabolas-petals:
+  label: Across the room (petals at dusk)
+  source: iwai_parabolas
+  params:
+    palette: dusk
+    palette_period: 0.9
+    shape: 1.75
+    arc_height: 0.95
+    reach: 0.85
+    flight: 1.8
+    size: 1.15
+    trail: 0.45
+    echo: 0.65
+    floor: 0.7
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.05, 0.7]
+    moods: [dreamy, elegant, warm, organic]
+    modes: [piano]
+    reads: [spectacle]
+    style: gentle
+    family: particles
+    dims: 2d
+    technique: [particles, analytic, light]
+    weight: 1.0
+
+iwai-parabolas-comets:
+  label: Across the room (ice comets)
+  source: iwai_parabolas
+  params:
+    palette: ice
+    palette_period: 0.7
+    drift_speed: 0.01
+    shape: 0.0
+    arc_height: 1.15
+    reach: 1.05
+    flight: 2.2
+    size: 0.8
+    trail: 0.85
+    echo: 0.4
+    floor: 0.5
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.8]
+    moods: [cosmic, cool, hypnotic, calm]
+    modes: [piano]
+    reads: [spectacle]
+    style: gentle
+    family: light
+    dims: 2d
+    technique: [particles, analytic, light]
+    weight: 1.0
+
+iwai-parabolas-rings:
+  label: Across the room (neon rings)
+  source: iwai_parabolas
+  params:
+    palette: neon
+    palette_period: 1.4
+    drift_speed: 0.05
+    shape: 1.0
+    arc_height: 0.8
+    reach: 0.7
+    flight: 1.2
+    size: 1.3
+    trail: 0.3
+    echo: 0.9
+    floor: 0.8
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.35, 1.0]
+    moods: [playful, bright, euphoric]
+    modes: [piano]
+    reads: [spectacle]
+    style: lively
+    family: particles
+    dims: 2d
+    technique: [particles, analytic, light]
+    weight: 1.0

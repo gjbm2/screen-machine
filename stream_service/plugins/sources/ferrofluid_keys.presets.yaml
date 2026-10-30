@@ -1,0 +1,79 @@
+ferrofluid-keys-studio:
+  label: Ferrofluid (studio, low and close)
+  source: ferrofluid_keys
+  params:
+    layout: 0.1
+    camera: 0.04
+    spike_sharpness: 0.75
+    spike_height: 1.0
+    ripple: 0.55
+    palette: rainbow
+    palette_period: 1.0
+    hue_source: 0.0
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.8]
+    moods: [hypnotic, elegant, dark, liquid]
+    modes: [piano]
+    reads: [spectacle]
+    style: lively
+    family: organic
+    dims: 3d
+    technique: [raymarch, heightfield, simulation]
+    weight: 1.0
+
+ferrofluid-keys-ember-spiral:
+  label: Ferrofluid (ember spiral, needles)
+  source: ferrofluid_keys
+  params:
+    layout: 0.95
+    camera: 0.42
+    spike_sharpness: 0.95
+    spike_height: 1.25
+    ripple: 0.45
+    palette: ember
+    palette_period: 0.6
+    light_hue: 0.05
+    hue_source: 0.3
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.3, 1.0]
+    moods: [fiery, dark, tense, hypnotic]
+    modes: [piano]
+    reads: [spectacle]
+    style: lively
+    family: organic
+    dims: 3d
+    technique: [raymarch, heightfield, simulation]
+    weight: 1.0
+
+ferrofluid-keys-overhead-ice:
+  label: Ferrofluid (overhead, icy ripples)
+  source: ferrofluid_keys
+  params:
+    layout: 0.6
+    camera: 0.95
+    spike_sharpness: 0.4
+    spike_height: 0.9
+    ripple: 0.9
+    palette: ice
+    palette_period: 0.8
+    hue_source: 0.8
+    drift_speed: 0.02
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [icy, calm, dreamy, liquid]
+    modes: [piano]
+    reads: [spectacle]
+    style: gentle
+    family: water
+    dims: 3d
+    technique: [raymarch, heightfield, simulation]
+    weight: 1.0

@@ -1,0 +1,80 @@
+whitney-arabesque-rose:
+  label: Whitney arabesque (rose)
+  source: whitney_arabesque
+  params:
+    palette: dusk
+    palette_period: 1.0
+    figure: 1.0
+    depth: 0.55
+    points: 0.5
+    trails: 0.45
+    symmetry: 0.65
+    counter: 1.0
+    tilt: 0.25
+    dot_size: 1.0
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.8]
+    moods: [elegant, hypnotic, dreamy, warm]
+    modes: [piano]
+    reads: [spectacle]
+    family: geometric
+    dims: 2d
+    technique: [points, analytic, feedback]
+    weight: 1.0
+
+whitney-arabesque-music-box:
+  label: Whitney arabesque (music box spiral)
+  source: whitney_arabesque
+  params:
+    palette: ice
+    palette_period: 0.8
+    figure: 0.0
+    depth: 0.95
+    points: 0.65
+    trails: 0.3
+    symmetry: 0.5
+    counter: 0.8
+    tilt: 0.0
+    dot_size: 0.85
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.1, 1.0]
+    moods: [geometric, hypnotic, cool, retro]
+    modes: [piano]
+    reads: [spectacle]
+    family: geometric
+    dims: 2d
+    technique: [points, analytic, feedback]
+    weight: 1.0
+
+whitney-arabesque-loops:
+  label: Whitney arabesque (glowing loops, 3D bowl)
+  source: whitney_arabesque
+  params:
+    palette: ember
+    palette_period: 1.2
+    figure: 2.0
+    depth: 0.25
+    points: 0.6
+    trails: 0.75
+    symmetry: 0.75
+    counter: 1.0
+    tilt: 0.6
+    dot_size: 1.2
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.2, 1.0]
+    moods: [cosmic, euphoric, fiery, liquid]
+    modes: [piano]
+    reads: [spectacle]
+    family: geometric
+    dims: 2d
+    technique: [points, analytic, feedback]
+    weight: 1.0

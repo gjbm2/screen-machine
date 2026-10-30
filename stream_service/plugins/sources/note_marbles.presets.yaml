@@ -1,0 +1,84 @@
+note-marbles-rainbow:
+  label: Note marbles (rainbow tray)
+  source: note_marbles
+  params:
+    palette: rainbow
+    palette_period: 1.0
+    drift_speed: 0.01
+    camera: 0.75
+    marble_size: 0.95
+    bounciness: 0.6
+    glow: 0.85
+    opal: 0.25
+    lean: 0.35
+    drain: 0.5
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.3, 1.0]
+    moods: [playful, bright, euphoric]
+    modes: [piano]
+    reads: [spectacle]
+    style: lively
+    family: particles
+    dims: 3d
+    technique: [simulation, particles, analytic]
+    weight: 1.0
+
+note-marbles-crystal:
+  label: Note marbles (crystal, night)
+  source: note_marbles
+  params:
+    palette: ocean
+    palette_period: 0.8
+    drift_speed: 0.005
+    camera: 0.92
+    marble_size: 0.8
+    bounciness: 0.35
+    glow: 0.95
+    opal: 0.0
+    lean: 0.2
+    drain: 0.7
+    idle: 0.4
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [elegant, icy, dreamy, calm]
+    modes: [piano]
+    reads: [spectacle]
+    style: gentle
+    family: particles
+    dims: 3d
+    technique: [simulation, particles, analytic]
+    weight: 1.0
+
+note-marbles-amber:
+  label: Note marbles (amber opals)
+  source: note_marbles
+  params:
+    palette: ember
+    palette_period: 0.8
+    drift_speed: 0.008
+    camera: 0.65
+    marble_size: 1.05
+    bounciness: 0.75
+    glow: 0.75
+    opal: 0.75
+    lean: 0.7
+    drain: 0.3
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.4, 1.0]
+    moods: [warm, playful, organic]
+    modes: [piano]
+    reads: [spectacle]
+    style: lively
+    family: particles
+    dims: 3d
+    technique: [simulation, particles, analytic]
+    weight: 1.0

@@ -1,0 +1,72 @@
+keyscape-flight-valley:
+  label: Key country (valley flight)
+  source: keyscape_flight
+  params:
+    altitude: 0.35
+    ridge_height: 1.0
+    lag: 14.0
+    meander: 0.5
+    mist: 0.5
+    log_rows: 1.0
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [elegant, dreamy, calm]
+    modes: [piano]
+    style: gentle
+    family: landscape
+    dims: 3d
+    technique: [heightfield, raymarch, analytic]
+    reads: [spectacle]
+    weight: 1.0
+
+keyscape-flight-high:
+  label: Key country (high over the ranges)
+  source: keyscape_flight
+  params:
+    altitude: 0.85
+    ridge_height: 1.5
+    lag: 28.0
+    meander: 0.3
+    mist: 0.35
+    log_rows: 0.8
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [elegant, calm, warm]
+    modes: [piano]
+    style: gentle
+    family: landscape
+    dims: 3d
+    technique: [heightfield, raymarch, analytic]
+    reads: [spectacle]
+    weight: 0.9
+
+keyscape-flight-mist:
+  label: Key country (low through the mist)
+  source: keyscape_flight
+  params:
+    altitude: 0.22
+    ridge_height: 1.0
+    lag: 10.0
+    meander: 0.8
+    mist: 0.85
+    log_rows: 1.0
+    hue_shift: 0.2
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.5]
+    moods: [dreamy, mellow, hypnotic]
+    modes: [piano]
+    style: gentle
+    family: landscape
+    dims: 3d
+    technique: [heightfield, raymarch, analytic]
+    reads: [spectacle]
+    weight: 0.8

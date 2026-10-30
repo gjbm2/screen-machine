@@ -1,0 +1,68 @@
+key-loom-twill:
+  label: Key loom (twill)
+  source: key_loom
+  params:
+    weave: 0.5
+    mirror: 0.0
+    motif: 0.7
+    log_rows: 0.85
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [warm, elegant, calm]
+    style: gentle
+    modes: [piano]
+    family: geometric
+    dims: 2d
+    technique: [analytic, tiling, displacement]
+    reads: [spectacle]
+    weight: 1.0
+
+key-loom-kilim:
+  label: Key loom (kilim rug)
+  source: key_loom
+  params:
+    weave: 0.1
+    mirror: 1.0
+    motif: 1.0
+    thread_size: 1.3
+    log_rows: 0.7
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.8]
+    moods: [warm, geometric, organic]
+    style: gentle
+    modes: [piano]
+    family: geometric
+    dims: 2d
+    technique: [analytic, tiling, colour]
+    reads: [spectacle]
+    weight: 1.0
+
+key-loom-satin:
+  label: Key loom (satin)
+  source: key_loom
+  params:
+    weave: 0.95
+    mirror: 0.4
+    motif: 0.35
+    thread_size: 0.7
+    log_rows: 1.0
+    hue_shift: 0.12
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [elegant, dreamy, mellow]
+    style: gentle
+    modes: [piano]
+    family: geometric
+    dims: 2d
+    technique: [analytic, tiling, light]
+    reads: [spectacle]
+    weight: 0.8

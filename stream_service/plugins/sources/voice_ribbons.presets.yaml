@@ -1,0 +1,86 @@
+voice-ribbons-light-painting:
+  label: Voice ribbons (light painting)
+  source: voice_ribbons
+  params:
+    palette: rainbow
+    palette_period: 0.8
+    drift_speed: 0.04
+    trail_length: 9.0
+    twist: 0.5
+    orbit: 0.5
+    pens: 3.0
+    stroke_width: 1.0
+    stripes: 0.6
+    bloom: 0.9
+    dust: 1.0
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.1, 0.85]
+    moods: [dreamy, elegant, hypnotic]
+    modes: [piano]
+    reads: [spectacle]
+    style: gentle
+    family: light
+    dims: 3d
+    technique: [light, wireframe]
+    weight: 1.0
+
+voice-ribbons-dull-care:
+  label: Voice ribbons (Begone Dull Care)
+  source: voice_ribbons
+  params:
+    palette: candy
+    palette_period: 1.4
+    drift_speed: 0.12
+    trail_length: 5.0
+    twist: 0.9
+    orbit: 0.25
+    pens: 3.0
+    stroke_width: 1.5
+    stripes: 1.0
+    bloom: 0.6
+    dust: 0.5
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.35, 1.0]
+    moods: [playful, bright, euphoric]
+    modes: [piano]
+    reads: [spectacle]
+    style: lively
+    family: light
+    dims: 3d
+    technique: [light, wireframe]
+    weight: 1.0
+
+voice-ribbons-night-exposure:
+  label: Voice ribbons (night exposure)
+  source: voice_ribbons
+  params:
+    palette: ember
+    palette_period: 0.6
+    drift_speed: 0.02
+    trail_length: 16.0
+    twist: 0.3
+    orbit: 0.85
+    pens: 2.5
+    stroke_width: 0.8
+    stripes: 0.2
+    bloom: 1.4
+    dust: 1.5
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [calm, warm, elegant, cosmic]
+    modes: [piano]
+    reads: [spectacle]
+    style: gentle
+    family: light
+    dims: 3d
+    technique: [light, wireframe]
+    weight: 1.0

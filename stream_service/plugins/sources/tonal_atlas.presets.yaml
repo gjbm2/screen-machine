@@ -1,0 +1,70 @@
+tonal-atlas-parchment:
+  label: Tonal atlas (hand-coloured parchment)
+  source: tonal_atlas
+  params:
+    warp: 0.55
+    wash: 0.7
+    ink: 0.6
+    zoom: 0.3
+    log_rows: 0.75
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [elegant, calm, warm]
+    modes: [piano]
+    reads: [analysis, spectacle]
+    style: gentle
+    family: landscape
+    dims: 2d
+    technique: [analytic, warp, field]
+    weight: 1.0
+
+tonal-atlas-sapp-coast:
+  label: Tonal atlas (Sapp's windows, close on the new coast)
+  source: tonal_atlas
+  params:
+    centred: 1.0
+    warp: 0.8
+    wash: 0.85
+    ink: 0.75
+    zoom: 0.65
+    log_rows: 0.9
+    hue_shift: 0.1
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.1, 0.8]
+    moods: [elegant, dreamy, warm]
+    modes: [piano]
+    reads: [analysis, spectacle]
+    style: gentle
+    family: landscape
+    dims: 2d
+    technique: [analytic, warp, field]
+    weight: 0.9
+
+tonal-atlas-survey:
+  label: Tonal atlas (pen-and-ink survey)
+  source: tonal_atlas
+  params:
+    wash: 0.3
+    ink: 0.95
+    warp: 0.35
+    zoom: 0.1
+    log_rows: 0.5
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [elegant, calm, retro]
+    modes: [piano]
+    reads: [analysis, spectacle]
+    style: gentle
+    family: landscape
+    dims: 2d
+    technique: [analytic, warp, field]
+    weight: 0.8

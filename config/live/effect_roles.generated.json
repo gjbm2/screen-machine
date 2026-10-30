@@ -1509,6 +1509,24 @@
     "fft",
     "notes"
    ]
+  },
+  "keyfield_warp": {
+   "role": "reshape",
+   "secondary": "grade",
+   "changes_over_time": true,
+   "_why": "The live key analysis as a current that moves any picture: it flows the way the key points on the circle of fifths, harder far from home; key boundaries are soft refracting seams (cf, 30 Oct)",
+   "draws": [
+    "notes"
+   ]
+  },
+  "colour_organ": {
+   "role": "grade",
+   "secondary": "light",
+   "changes_over_time": false,
+   "_why": "Scriabin's two light voices over any picture: the key as a slow ground hue, the chord root as a fast hue blooming on chord changes, detail and luminance kept (cf, 30 Oct)",
+   "draws": [
+    "notes"
+   ]
   }
  }
 }

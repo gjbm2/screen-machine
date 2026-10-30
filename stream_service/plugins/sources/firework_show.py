@@ -27,6 +27,23 @@ Macros: energy -> auto-launch rate (integrated counter), shell size and spark co
 chrysanthemums / palms / rings), haze glow, bloom and camera sway.  pulse -> a rising edge bursts a shell right on
 the beat (spawning, never a jump) plus a soft haze flash.  speed scales shell time and every rate; drift_speed moves
 the shell hues through the palette (palette_period = hue spread between shells); intensity is exposure.
+
+Per note (note_drive, listens "notes", CONVENTIONS §2b; the idea of a show fired to the music, after Finale 3D's
+choreographed shows, https://finale3d.com/documentation/prefire/ , written from scratch here).  At note_drive 0 the
+show is exactly the automatic one above.  Above 0, every piano note fires its own shell, which bursts as you hear the
+note (no rocket climb, so the burst lands on the note).  The key sets where it bursts across the sky (A0 at the left,
+C8 at the right; a run sweeps across, a chord opens as a row of flowers).  The register sets how high: bass bursts
+low over the water, treble high in the sky.  Velocity sets how big and bright: a soft note is a small, sparse, dim
+flower; a loud one a big full burst whose white core blooms in over ~50 ms and eases out.  The pitch class sets the
+colour: the circle of fifths around the palette, so a chord's notes share one arc of it and a modulation turns the
+colours.  Soft notes favour peonies, loud bass palms and willows, loud treble rings, and the pedal willows.  The
+damper pedal makes stars hang: a shell fired under it floats (less gravity), and every note shell's stars live up to
+twice as long while it is down; lifting it lets them fade within ~0.3 s, like dampers.  The automatic launches and
+the beat shells fade toward zero as note_drive -> 1 while notes sound (in ~0.4 s), and come back over a few seconds
+once the piano rests, so a silent room still has its show.  A burst of notes fires at most the 12 loudest per frame,
+and spark counts thin as the sky fills (from ~17k live sparks), so a fast run never overloads.  The room ensemble's
+register window (sound.register) draws notes outside it smaller and dimmer, never hidden.  When the room's screens
+share one picture (sound.segment), the keyboard spans them: low notes on the left screen, high on the right.
 """
 from __future__ import annotations
 
@@ -43,11 +60,11 @@ from stream_service.plugins._lib.params import num, standard_scene_params
 from stream_service.plugins._lib.splat3d import Splat3D, look_at
 from stream_service.plugins._lib.upsample import internal_size, present
 
-N_SLOTS = 64                 # shell ring buffer
+N_SLOTS = 128                # shell ring buffer (per-note shells need more than the automatic show's 64)
 MAX_SPARKS = 2048            # per shell
 ASC_N = 40                   # sparks drawn for a rising rocket (comet + shed glitter)
 NF = 32                      # floats per shell record
-NSPK = N_SLOTS * MAX_SPARKS
+NSPK = 64 * MAX_SPARKS       # spark buffer: the sparks drawn per frame (counts are clamped to it)
 NSEG = 4 * NSPK
 N_LIGHTS = 16
 N_FLASH = 128
@@ -65,6 +82,21 @@ TYPE_DEF = np.array([[1300, 1.30, 1.60, 1.7, 0.07, 3.0, 1.00],    # peony: crisp
 BARGES = np.array([[-7.5, 0.0, 2.5], [-3.5, 0.0, 0.5], [0.5, 0.0, 3.5], [4.5, 0.0, 1.0], [8.0, 0.0, 2.8]])
 MIRROR_RATES = (1.9, 0.5, 2.9, 1.4, 2.2)
 WAVE_RATES = (1.1, 1.6, 2.2, 2.9)
+
+# per note (note_drive > 0)
+NOTE_MAX = 12                # note shells fired per frame, at most (the loudest)
+SPARK_BUDGET = 28000.0       # live sparks beyond which new note shells thin out (to 0.2x at ~39k)
+NOTE_XS = 15.0               # the keyboard across the sky: A0 .. C8 -> screen left .. right (|x| <= XS)
+NOTE_XS_SEG = 16.0           # this screen's slice of it when the room's screens share one picture
+PED_HANG = 1.0               # damper down: note shells' stars live up to (1 + PED_HANG) x longer
+#                     peony chrys willow palm ring
+NOTE_SOFT = np.array([1.0, 0.0, 0.2, 0.0, 0.0])         # soft notes: small crisp peonies
+NOTE_LOUD = np.array([0.0, 0.6, 0.0, 0.0, 0.3])
+NOTE_BASS = np.array([0.0, 0.0, 0.8, 1.0, 0.0])         # x vel x (1 - register): loud bass palms and willows
+NOTE_TREB = np.array([0.3, 0.0, 0.0, 0.0, 0.9])         # x vel x register: loud treble rings
+NOTE_PED = np.array([0.0, 0.2, 0.9, 0.0, 0.0])          # x damper: willows hang under the pedal
+
+_OPTS = ("--std=c++14",)
 
 _SRC = HELPERS + r"""
 #define FW_NF 32
@@ -419,7 +451,9 @@ class FireworkShow(Source):
                    "lighting the smoke and mirrored in a rippling lake.")
     tags = {"family": "particles", "dims": "3d", "toolkit": "splat3d", "technique": ["particles", "points"],
             "moods": ["euphoric", "playful", "bright"], "style": "wild", "energy": [0.4, 1.0]}
+    listens = ("notes",)
     params = {
+        "note_drive": num(0.0, 1.0, 0.0, "Notes fire shells (0 = automatic show)", tier="regional", basic=True),
         "shell_mix": num(0.0, 1.0, 0.3, "Shell mix (peony → willow → ring)", tier="regional", basic=True),
         "burst_size": num(0.5, 1.6, 1.0, "Burst size", unit="×", tier="regional", basic=True),
         "droop": num(0.0, 1.0, 0.45, "Droop (gravity + drag)", tier="regional"),
@@ -441,7 +475,7 @@ class FireworkShow(Source):
         self.kseed = float((seed * 2654435761) % (1 << 22))
         self.w, self.h = internal_size(ctx, float(params["render_scale"]))
         self.sp = Splat3D(ctx, self.w, self.h, max_points=2 * NSPK, max_lines=1 << 14, pool=3 << 20)
-        mod = raw_module(_SRC, ("--std=c++14",))
+        mod = raw_module(_SRC, _OPTS)
         self.k_gen = mod.get_function("fw_gen")
         self.k_bg = mod.get_function("fw_bg")
         # device buffers (allocated once)
@@ -485,6 +519,11 @@ class FireworkShow(Source):
         # shell ring buffer (host, float64): column 0 = launch clock, 1 = ascent duration, then the S layout
         self.S = np.zeros((N_SLOTS, NF))
         self.valid = np.zeros(N_SLOTS, bool)
+        self.is_note = np.zeros(N_SLOTS)            # 1 for a note's shell (the pedal makes its stars hang)
+        self.ped_s = 0.0                            # damper pedal, slewed
+        self.note_act = 0.0                         # recent notes on this screen (decays ~2 s)
+        self.np_s = 0.0                             # notes present, eased: the automatic show yields to them
+        self._reg_key, self._reg_w = None, None     # the ensemble's register window, its weights
         self.next = 0
         self.clock = 0.0
         self.rt = 0.0
@@ -549,8 +588,8 @@ class FireworkShow(Source):
         hue = float(rng.uniform(0.0, 0.6))
         if mirror_of >= 0:
             hue = float(self.S[mirror_of, 9])
-        slot = self.next % N_SLOTS
-        self.next += 1
+        slot = self._slot()
+        self.is_note[slot] = 0.0
         r = self.S[slot]
         r[:] = 0.0
         r[0] = self.clock - ((tb + age_after_burst) if immediate else 0.0)
@@ -576,6 +615,166 @@ class FireworkShow(Source):
         self.valid[slot] = True
         self.smoke_acc += 1.0
         return slot
+
+    def _slot(self) -> int:
+        """The next ring slot; if its shell is still alive (a busy sky of note shells), a free slot, else the shell
+        nearest its end (never a fresh one)."""
+        slot = self.next % N_SLOTS
+        self.next += 1
+        if self.valid[slot]:
+            free = np.flatnonzero(~self.valid)
+            if len(free):
+                slot = int(free[0])
+            else:
+                S = self.S
+                tau = self.clock - S[:, 0] - S[:, 1]
+                slot = int(np.argmax(tau / (1.25 * S[:, 13] + S[:, 14] + 0.3)))
+        return slot
+
+    def _launch_note(self, p, e: float, pitch: int, vel: float, age: float, ped: float, wgt: float,
+                     ux: float, xs: float) -> int:
+        """One shell for one piano note, bursting now (``age`` s ago at photon time, so a late onset starts part
+        way): x by the key (``ux`` 0..1 across this screen's keyboard), height by register, size and brightness by
+        velocity, colour by pitch class (circle of fifths), type by velocity / register / pedal."""
+        rng = self.rng
+        reg = min(max((pitch - 21.0) / 87.0, 0.0), 1.0)
+        m = float(p["shell_mix"])
+        bias = (1.0 + NOTE_SOFT * (1.0 - vel) + NOTE_LOUD * vel + NOTE_BASS * vel * (1.0 - reg)
+                + NOTE_TREB * vel * reg + NOTE_PED * ped)
+        wts = (np.exp(-((m - TYPE_POS) / 0.2) ** 2) + 0.06) * bias
+        typ = int(rng.choice(5, p=wts / wts.sum()))
+        n0, k, g, life, trail, R0, gain = TYPE_DEF[typ]
+        lift = 0.45 + 0.55 * wgt                       # outside the register window: smaller and dimmer
+        size = (float(p["burst_size"]) * (0.42 + 0.78 * vel) * (1.12 - 0.3 * reg) * (0.85 + 0.3 * e) * lift
+                * float(rng.uniform(0.92, 1.08)))
+        R = R0 * size
+        live = float(self.S[self.valid, 17].sum())
+        load = min(1.0, max(0.2, 1.6 - live / SPARK_BUDGET))   # a full sky thins the new shells
+        n = int(np.clip(n0 * (0.4 + 0.6 * vel) * (0.75 + 0.35 * e) * (0.7 + 0.3 * size) * load, 40, MAX_SPARKS))
+        gain = gain * math.sqrt(1300.0 / n) * (0.35 + 0.75 * vel) * lift * float(rng.uniform(0.92, 1.08))
+        C = np.array([xs * (1.0 - 2.0 * ux) + rng.uniform(-0.5, 0.5),      # world +x is screen left: A0 left
+                      4.2 + 5.6 * reg + rng.uniform(-0.3, 0.3), rng.uniform(0.0, 5.0)])
+        O = np.array([C[0] + rng.uniform(-1.0, 1.0), 0.05, C[2] + rng.uniform(-0.3, 0.3)])
+        tb = float(rng.uniform(1.1, 1.6)) * math.sqrt(C[1] / 6.0)
+        gl = 2.0 * (C[1] - O[1]) / (tb * tb)
+        Vl = np.array([(C[0] - O[0]) / tb, gl * tb, (C[2] - O[2]) / tb])
+        Vc = np.array([0.35 * Vl[0], 0.0, 0.35 * Vl[2]])
+        nrm = np.array([rng.normal() * 0.8, rng.normal() * 0.8, -1.0])
+        nrm /= np.linalg.norm(nrm)
+        U = np.cross(nrm, (0.0, 1.0, 0.0))
+        U /= max(np.linalg.norm(U), 1e-6)
+        V = np.cross(nrm, U)
+        hue = ((pitch % 12) * 7 % 12) / 12.0 + 0.01 * (pitch // 12 - 5)   # fifths, a slight octave lift
+        slot = self._slot()
+        self.is_note[slot] = 1.0
+        r = self.S[slot]
+        r[:] = 0.0
+        r[0] = self.clock - (tb + age)                 # immediate: the burst is at the note
+        r[1] = tb
+        r[2:5] = C
+        r[5:8] = Vc
+        r[8] = typ
+        r[9] = hue
+        r[10] = R * k
+        r[11] = k
+        r[12] = g * (1.0 - 0.3 * ped)                  # under the pedal the stars float
+        r[13] = life
+        r[14] = trail
+        r[15] = gain
+        r[16] = float(rng.integers(1, 1 << 22))
+        r[17] = n
+        r[18:21] = U
+        r[21:24] = V
+        r[24:27] = O
+        r[27:30] = Vl
+        r[30] = gl
+        r[31] = float(rng.integers(6, 11))
+        self.valid[slot] = True
+        self.smoke_acc += 0.35 + 0.4 * vel
+        return slot
+
+    def _reg_weights(self, snd):
+        """Per-pitch weights (128) under the room ensemble's register window (``sound.register``), cached; None
+        without one (all at full)."""
+        reg = getattr(snd, "register", None) if snd is not None else None
+        if not reg:
+            return None
+        if self._reg_key != reg:
+            try:
+                from stream_service.ensemble import note_weights
+                w = note_weights(reg, np.arange(128))
+                w = None if w is None else np.nan_to_num(np.asarray(w, np.float64), nan=1.0).clip(0.0, 1.0)
+            except Exception:
+                w = None
+            self._reg_key, self._reg_w = reg, w
+        return self._reg_w
+
+    @staticmethod
+    def _slice(snd) -> tuple:
+        """This screen's part of the keyboard, as register (lo, hi), the x scale, and whether it is a slice: the
+        whole keyboard, or 1/n of it when the room's screens share one picture (``sound.segment`` (k, n))."""
+        seg = getattr(snd, "segment", None) if snd is not None else None
+        try:
+            k, n = (int(seg[0]), int(seg[1])) if seg is not None else (0, 1)
+        except Exception:
+            k, n = 0, 1
+        if n >= 2 and 0 <= k < n:
+            return k / n, (k + 1) / n, NOTE_XS_SEG, k == n - 1
+        return 0.0, 1.0, NOTE_XS, True
+
+    def _notes(self, p, es: float, dt: float, drive: float) -> float:
+        """The piano: one shell per onset (note_drive > 0) and the eased presence of notes on this screen, which the
+        automatic show yields to.  Returns the automatic show's gain, 1 - drive x presence."""
+        snd = getattr(self, "sound", None)
+        fr = getattr(snd, "frame", None) if snd is not None else None
+        heard = bool(fr is not None and getattr(snd, "present", False))
+        ped = 0.0
+        if heard:
+            try:
+                ped = float(fr.pedals[0])
+            except Exception:
+                ped = 0.0
+            ped = min(max(ped, 0.0), 1.0) if math.isfinite(ped) else 0.0
+        if dt > 0:
+            self.ped_s += (ped - self.ped_s) * (1.0 - math.exp(-dt / (0.15 if ped > self.ped_s else 0.35)))
+            self.note_act *= math.exp(-dt / 2.0)
+        lo, hi, xs, last = self._slice(snd)
+        lvl = 0.0
+        if heard:
+            if drive > 0.0:
+                try:
+                    ons = sorted(fr.onsets or (), key=lambda o: -float(o[1]))[:NOTE_MAX]
+                except Exception:
+                    ons = []
+                w = self._reg_weights(snd) if ons else None
+                loud = True
+                for o in ons:
+                    try:
+                        pitch, vel, age = int(o[0]), float(o[1]), float(o[2])
+                    except Exception:
+                        continue
+                    if not (0 <= pitch < 128 and math.isfinite(vel) and math.isfinite(age)):
+                        continue
+                    reg = min(max((pitch - 21.0) / 87.0, 0.0), 1.0)
+                    ux = (reg - lo) / (hi - lo)
+                    if ux < 0.0 or ux > 1.0 or (ux == 1.0 and not last):
+                        continue                       # another screen's part of the keyboard
+                    vel = min(max(vel, 0.0), 1.0)
+                    wgt = 1.0 if w is None else float(w[pitch])
+                    slot = self._launch_note(p, es, pitch, vel, min(max(age, 0.0), 0.12), self.ped_s, wgt, ux, xs)
+                    self.note_act += 0.5 + 0.5 * vel
+                    if loud:                           # the haze flash (pulse) takes the loudest note's colour
+                        self.flash_col = float(self.S[slot, 9])
+                        loud = False
+            try:
+                L = np.asarray(fr.notes)[21 + int(round(lo * 87.0)):22 + int(round(hi * 87.0)), 0]
+                lvl = float(np.nan_to_num(L, nan=0.0).max()) if L.size else 0.0
+            except Exception:
+                lvl = 0.0
+        target = min(1.0, self.note_act + 2.0 * max(lvl, 0.0)) if heard else 0.0
+        if dt > 0:
+            self.np_s += (target - self.np_s) * (1.0 - math.exp(-dt / (0.4 if target > self.np_s else 2.0)))
+        return 1.0 - drive * self.np_s
 
     # ------------------------------------------------------------------ frame
     def render(self, t_local: float, dt: float, out) -> None:
@@ -606,15 +805,20 @@ class FireworkShow(Source):
         self.smoke_acc *= math.exp(-dt / 25.0)
         self.flash *= math.exp(-dt / 0.3) if dt > 0 else 1.0
 
+        # ---- the piano: a shell per note (note_drive > 0); the automatic show yields to notes by auto_gain
+        drive = min(max(float(p["note_drive"]), 0.0), 1.0)
+        auto_gain = self._notes(p, es, dt, drive)
+
         # ---- launches: integrated auto counter + a burst right on each beat (rising edge, 120 ms refractory)
-        self._auto_launch(p, es, sdt)
+        self._auto_launch(p, es, sdt * auto_gain)
         if pulse > 0.2 and pulse - self.prev_pulse > 0.15 and self.rt - self.last_trig > 0.12:
             self.last_trig = self.rt
-            slot = self._launch(p, es, immediate=True, scale=0.75 + 0.35 * pulse)
-            if es > 0.65 and self.rng.random() < (es - 0.65) * 1.6:
-                self._launch(p, es, immediate=True, scale=0.75 + 0.35 * pulse, mirror_of=slot)
+            if drive <= 0.0 or self.rng.random() < auto_gain:
+                slot = self._launch(p, es, immediate=True, scale=0.75 + 0.35 * pulse)
+                if es > 0.65 and self.rng.random() < (es - 0.65) * 1.6:
+                    self._launch(p, es, immediate=True, scale=0.75 + 0.35 * pulse, mirror_of=slot)
+                self.flash_col = float(self.S[slot, 9])
             self.flash = max(self.flash, pulse)
-            self.flash_col = float(self.S[slot, 9])
         self.prev_pulse = pulse
 
         # ---- palette
@@ -635,7 +839,8 @@ class FireworkShow(Source):
         S = self.S
         age = self.clock - S[:, 0]
         tau = age - S[:, 1]
-        alive = self.valid & (age >= 0.0) & (tau < S[:, 13] * 1.25 + S[:, 14] * trails + 0.3)
+        life_eff = S[:, 13] * (1.0 + PED_HANG * self.ped_s * self.is_note)   # the pedal makes note stars hang
+        alive = self.valid & (age >= 0.0) & (tau < life_eff * 1.25 + S[:, 14] * trails + 0.3)
         self.valid[(age >= 0.0) & (tau > 0.0) & ~alive] = False
         idx = np.flatnonzero(alive)
         na = len(idx)
@@ -645,10 +850,15 @@ class FireworkShow(Source):
         if na:
             Sa = S[idx]
             ta, aa = tau[idx], age[idx]
+            note = self.is_note[idx] > 0.5
             self.S_h[:na] = Sa
             self.S_h[:na, 0] = ta
             self.S_h[:na, 1] = aa
+            self.S_h[:na, 13] = life_eff[idx]
             counts = np.where(ta < 0.0, ASC_N, Sa[:, 17]).astype(np.int64)
+            tot = int(counts.sum())
+            if tot > NSPK:                              # never beyond the spark buffer (a full sky of notes)
+                counts = counts * NSPK // tot
             self.off_h[0] = 0
             self.off_h[1:na + 1] = np.cumsum(counts)
             ntot = int(self.off_h[na])
@@ -665,9 +875,10 @@ class FireworkShow(Source):
             pa = Sa[:, 24:27] + Sa[:, 27:30] * aa[:, None]
             pa[:, 1] -= 0.5 * Sa[:, 30] * aa * aa
             pos = np.where(asc[:, None], pa, pb)
-            life = Sa[:, 13]
+            life = life_eff[idx]
             haze = (0.6 + 0.4 * es) * (1.0 + 1.2 * self.flash)
-            Ib = Sa[:, 15] * (0.55 * np.exp(-tt / 0.22) + 0.14 * (1.0 - _sstep(0.3 * life, 1.1 * life, tt)))
+            bloom = np.where(note, 1.0 - np.exp(-tt / 0.04), 1.0)          # a note's light blooms in
+            Ib = Sa[:, 15] * (0.55 * np.exp(-tt / 0.22) * bloom + 0.14 * (1.0 - _sstep(0.3 * life, 1.1 * life, tt)))
             I = np.where(asc, 0.03, Ib) * haze
             colr = _pal_lin(coeffs, Sa[:, 9] * period + self.drift)
             colr = np.where(asc[:, None], np.array([1.0, 0.55, 0.25]), colr)
@@ -685,7 +896,10 @@ class FireworkShow(Source):
             fb = np.flatnonzero((ta >= 0.0) & (ta < 0.35))
             fm = np.flatnonzero(asc & (aa < 0.3))
             fl_pos = np.concatenate([Sa[fb, 2:5], Sa[fm, 24:27] + np.array([0.0, 0.15, 0.0])])
-            fl_w = np.concatenate([3.0 * Sa[fb, 15] * np.exp(-ta[fb] / 0.07), 1.2 * np.exp(-aa[fm] / 0.07)])
+            tf = ta[fb]
+            w_b = np.where(note[fb], 2.6 * Sa[fb, 15] * (1.0 - np.exp(-tf / 0.03)) * np.exp(-tf / 0.1),   # bloom in
+                           3.0 * Sa[fb, 15] * np.exp(-tf / 0.07))
+            fl_w = np.concatenate([w_b, 1.2 * np.exp(-aa[fm] / 0.07)])
             fl_c = np.concatenate([0.3 * colr[fb] + 0.7 * np.array([1.0, 0.95, 0.85]),
                                    np.tile(np.array([1.0, 0.6, 0.3]), (len(fm), 1))])
             nf1 = min(len(fl_w), N_FLASH // 2)

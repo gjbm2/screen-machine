@@ -63,3 +63,32 @@ electric-storm-horizon:
     dims: 2d
     technique: [noise, warp, light]
     weight: 0.8
+
+electric-storm-piano:
+  label: Piano lightning
+  source: electric_storm
+  params:
+    note_drive: 1.0
+    mask: 1.0
+    palette: ice
+    palette_period: 1.0
+    drift_speed: 0.01
+    turbulence: 0.7
+    filament_sharpness: 0.75
+    bolt_branching: 0.5
+    writhe_kick: 1.5
+    flash_kick: 0.5
+    bolt_rate: 0.6
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.2, 1.0]
+    moods: [tense, dark, icy, hypnotic]
+    modes: [piano]
+    reads: [spectacle]
+    style: lively
+    family: light
+    dims: 2d
+    technique: [noise, warp, light]
+    weight: 1.0

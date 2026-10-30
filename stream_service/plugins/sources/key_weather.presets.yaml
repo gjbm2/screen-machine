@@ -1,0 +1,66 @@
+key-weather-ground:
+  label: Key weather (from the ground)
+  source: key_weather
+  params:
+    view: 0.0
+    deck_mix: 0.35
+    cover: 0.55
+    log_rows: 1.0
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [dreamy, calm, organic]
+    modes: [piano]
+    style: gentle
+    family: landscape
+    dims: 3d
+    technique: [volumetric, noise, analytic]
+    reads: [spectacle]
+    weight: 1.0
+
+key-weather-flight:
+  label: Key weather (between the decks)
+  source: key_weather
+  params:
+    view: 1.0
+    deck_mix: 0.2
+    cover: 0.62
+    log_rows: 0.9
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.2, 0.9]
+    moods: [dreamy, elegant, warm]
+    modes: [piano]
+    style: lively
+    family: landscape
+    dims: 3d
+    technique: [volumetric, noise, analytic]
+    reads: [spectacle]
+    weight: 1.0
+
+key-weather-high-sky:
+  label: Key weather (the whole piece)
+  source: key_weather
+  params:
+    view: 0.25
+    deck_mix: 0.85
+    cover: 0.45
+    log_rows: 0.6
+    hue_shift: 0.1
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.5]
+    moods: [calm, mellow, cosmic]
+    modes: [piano]
+    style: gentle
+    family: landscape
+    dims: 3d
+    technique: [volumetric, noise, analytic]
+    reads: [spectacle]
+    weight: 0.8

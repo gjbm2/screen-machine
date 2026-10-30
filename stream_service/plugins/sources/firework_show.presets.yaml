@@ -39,3 +39,32 @@ firework-show-golden-willows:
     dims: 3d
     technique: [particles, points]
     weight: 0.9
+
+firework-show-piano:
+  label: Piano fireworks
+  source: firework_show
+  params:
+    note_drive: 1.0
+    shell_mix: 0.3
+    burst_size: 1.05
+    droop: 0.4
+    trails: 1.3
+    glitter: 0.6
+    smoke: 0.55
+    launch_rate: 0.7
+    palette: rainbow
+    palette_period: 1.0
+    drift_speed: 0.005
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.1, 1.0]
+    moods: [playful, euphoric, elegant, bright]
+    modes: [piano]
+    reads: [spectacle]
+    style: lively
+    family: particles
+    dims: 3d
+    technique: [particles, points]
+    weight: 1.0

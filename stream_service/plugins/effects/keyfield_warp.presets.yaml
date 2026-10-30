@@ -1,0 +1,53 @@
+keyfield-warp-currents:
+  label: Key currents (the picture ripples along the harmony; modulations turn the current)
+  effect: keyfield_warp
+  params: {amount: 0.7, strength: 0.6, flow_speed: 0.4, scale_span: 90, polar: 0.0, grade: 0.3, seam: 0.5}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [liquid, dreamy, elegant]
+    style: gentle
+    family: warp
+    dims: 2d
+    technique: [displacement, analytic, field]
+    modes: [piano]
+    reads: [spectacle]
+    weight: 1.0
+
+keyfield-warp-whirlpool:
+  label: Key whirlpool (the home key turns the picture round the centre; other keys spiral in and out)
+  effect: keyfield_warp
+  params: {amount: 0.75, strength: 0.7, flow_speed: 0.5, scale_span: 120, polar: 1.0, grade: 0.4, seam: 0.6}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.1, 0.8]
+    moods: [hypnotic, liquid, cosmic]
+    style: lively
+    family: warp
+    dims: 2d
+    technique: [displacement, analytic, field]
+    modes: [piano]
+    reads: [spectacle]
+    weight: 0.9
+
+keyfield-warp-glass:
+  label: Key glass (slow currents, strong glass seams where keys meet, tinted by key)
+  effect: keyfield_warp
+  params: {amount: 0.85, strength: 0.3, flow_speed: 0.25, scale_span: 240, polar: 0.0, grade: 0.7, seam: 1.0}
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [elegant, calm, geometric]
+    style: gentle
+    family: warp
+    dims: 2d
+    technique: [displacement, optical, analytic]
+    modes: [piano]
+    reads: [spectacle]
+    weight: 0.8

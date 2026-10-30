@@ -1,0 +1,69 @@
+keyscape-rose-window:
+  label: Key rose (rose window)
+  source: keyscape_rose
+  params:
+    folds: 6
+    mirror: 1.0
+    centred: 0.0
+    revolution_s: 40
+    wave_mix: 0.0
+    lead_lines: 1.0
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.75]
+    moods: [elegant, hypnotic, calm]
+    modes: [piano]
+    family: geometric
+    dims: 2d
+    technique: [analytic, kaleido, colour]
+    weight: 1.0
+    reads: [analysis, spectacle]
+
+keyscape-rose-clock:
+  label: Key rose (clock face)
+  source: keyscape_rose
+  params:
+    folds: 1
+    mirror: 0.0
+    centred: 0.0
+    revolution_s: 90
+    wave_mix: 0.0
+    lead_lines: 1.0
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [elegant, calm]
+    modes: [piano]
+    family: abstract
+    dims: 2d
+    technique: [analytic, colour]
+    weight: 0.8
+    reads: [analysis, spectacle]
+
+keyscape-rose-wheel:
+  label: Key rose (Sapp's wheel, wavescape)
+  source: keyscape_rose
+  params:
+    folds: 6
+    mirror: 0.0
+    centred: 1.0
+    revolution_s: 45
+    wave_mix: 0.7
+    lead_lines: 0.6
+    hue_shift: 0.1
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.1, 0.8]
+    moods: [dreamy, hypnotic, cosmic]
+    modes: [piano]
+    family: geometric
+    dims: 2d
+    technique: [analytic, kaleido, colour]
+    weight: 0.8
+    reads: [analysis, spectacle]

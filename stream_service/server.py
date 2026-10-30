@@ -369,7 +369,9 @@ async def catalog(request: web.Request) -> web.Response:
         ratings._load()
         r_mtime = ratings.mtime
     slow = request.app[MANAGER].slow_list()
-    key = (id(request.app), reg.rev, presets.rev, presets.maps.rev, r_mtime, repr(slow))
+    ip = fx_interplay.shared(presets.dir)
+    ip.reload_if_changed()                     # effect_roles.generated.json: each effect's draws
+    key = (id(request.app), reg.rev, presets.rev, presets.maps.rev, r_mtime, repr(slow), repr(sorted(ip._mt.items())))
     if _catalog_cache["key"] != key:
         body = await asyncio.get_running_loop().run_in_executor(None, _catalog_body, request.app, slow)
         _catalog_cache.update(key=key, body=body)

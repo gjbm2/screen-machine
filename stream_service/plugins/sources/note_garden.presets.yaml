@@ -1,0 +1,77 @@
+note-garden-twilight:
+  label: Note garden (twilight willows)
+  source: note_garden
+  params:
+    palette: dusk
+    style: 0.95
+    density: 0.55
+    wind: 0.5
+    depth: 0.75
+    glow: 0.6
+    sky: 0.42
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.8]
+    moods: [dreamy, elegant, organic, calm]
+    style: gentle
+    modes: [piano]
+    reads: [spectacle]
+    family: organic
+    dims: 2d
+    technique: [sdf, particles, noise]
+    weight: 1.0
+
+note-garden-blossom-dawn:
+  label: Note garden (blossom at dawn)
+  source: note_garden
+  params:
+    palette: candy
+    palette_period: 0.8
+    style: 1.85
+    density: 0.7
+    wind: 0.35
+    depth: 0.6
+    glow: 0.2
+    sky: 0.78
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.2, 1.0]
+    moods: [warm, bright, playful, elegant]
+    style: lively
+    modes: [piano]
+    reads: [spectacle]
+    family: organic
+    dims: 2d
+    technique: [sdf, particles, noise]
+    weight: 1.0
+
+note-garden-fern-night:
+  label: Note garden (luminous ferns at night)
+  source: note_garden
+  params:
+    palette: ice
+    palette_period: 1.2
+    drift_speed: 0.02
+    style: 0.1
+    density: 0.65
+    wind: 0.65
+    depth: 0.9
+    glow: 1.0
+    sky: 0.08
+  bindings:
+    energy: {bind: energy}
+    pulse: {kick: note_on, amount: 0.4}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [cosmic, hypnotic, cool, mellow]
+    style: gentle
+    modes: [piano]
+    reads: [spectacle]
+    family: organic
+    dims: 2d
+    technique: [sdf, particles, noise]
+    weight: 1.0
