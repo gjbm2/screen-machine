@@ -22,6 +22,7 @@
 //     as the speakers. Screens only turns this device off too.
 // Turning This device on happens in the tap itself (mobile browsers start sound only from one).
 // The compact chip says the short name ("Sonos"); its sheet says the full one ("Playing on Sonos (Drawing Room)").
+// Sonos's volume (SonosVolume.tsx) sits under the choices while Sonos is picked, or while it plays music of its own.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Speaker } from "lucide-react";
@@ -44,6 +45,7 @@ import {
   setRoomOutput as setListenRoomOutput,
   useListenHere,
 } from "./listenStream";
+import { SonosVolume, sonosZone, useSonosZone } from "./SonosVolume";
 import { CARD_CLASS, THEME_CLASS } from "./theme";
 import type { ShowOutput, ShowTestView } from "./types";
 import { usePianoSound } from "./usePianoSound";
@@ -173,7 +175,15 @@ function usePlayOn(baseUrl: string, addLog?: (e: NewLogEntry) => void) {
   };
 
   const speakers = !!output && output !== SCREENS_ONLY && !output.startsWith("device:");
-  return { server, output, busy, err, pick, speakers, here };
+  // Sonos: its volume while it's where the music plays, or while it plays something of its own (SonosVolume.tsx)
+  const sonosOut = sonosZone(output) ? output : (server.find((o) => sonosZone(o.id))?.id ?? null);
+  const zone = sonosZone(sonosOut);
+  const [zoneView, refreshZone] = useSonosZone(baseUrl, zone);
+  const sonos =
+    zone && zoneView && (sonosOut === output || zoneView.playing)
+      ? { zone, view: zoneView, refresh: refreshZone, label: outputLabel(sonosOut, server) ?? "Sonos" }
+      : null;
+  return { server, output, busy, err, pick, speakers, here, sonos };
 }
 
 /**
@@ -220,6 +230,15 @@ export function PlayOn({
         })}
         {p.busy && <Spinner className="ml-1" />}
       </div>
+      {p.sonos && (
+        <SonosVolume
+          baseUrl={baseUrl}
+          zone={p.sonos.zone}
+          view={p.sonos.view}
+          refresh={p.sonos.refresh}
+          label={p.sonos.label}
+        />
+      )}
       {p.speakers && (
         <label className="flex min-h-9 cursor-pointer items-center gap-2">
           <span className="text-sm text-muted-foreground">Also play on this device</span>

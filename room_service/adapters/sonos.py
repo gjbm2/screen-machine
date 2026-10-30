@@ -176,9 +176,28 @@ class _Zone:
         co.add_to_queue(item)
         co.play_from_queue(0)
 
+    def _paused_on(self, co, v: dict) -> bool:
+        """Sonos is paused on what `v` plays (a mode paused it and now puts it back): it carries on from there instead
+        of starting the playlist or album again (owner, 29 Oct: Normal → Piano → Normal puts back what was playing)."""
+        if co.get_current_transport_info()["current_transport_state"] != "PAUSED_PLAYBACK":
+            return False
+        uri = _ctx(co.avTransport.GetMediaInfo([("InstanceID", 0)]).get("CurrentURI", ""))
+        if not uri:
+            return False
+        if "uri" in v:
+            return _ctx(v["uri"]) == uri
+        if "favourite" in v and any(f.title == v["favourite"] and _ctx(self.fav_uri(f)) == uri
+                                    for f in self.favourites()):
+            return True
+        bare = lambda d: {k: x for k, x in d.items() if k not in START_ONLY}
+        return bool(self.played) and self.played[0] == uri and bare(self.played[1]) == bare(v)
+
     def _play(self, v: dict) -> None:
         with self.lock:
             co = self.coordinator()
+            if self._paused_on(co, v):
+                co.play()
+                return
             if "favourite" in v:
                 f = next((f for f in self.favourites() if f.title == v["favourite"]), None)
                 if f is None:

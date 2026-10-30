@@ -103,6 +103,8 @@
           "restore": true,
           "store_if": [
             "favourite",
+            "sonos_playlist",
+            "spotify_link",
             "uri"
           ],
           "policy": "ignore",

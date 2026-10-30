@@ -39,6 +39,9 @@ class FakeSoCo:
     def pause(self):
         self.state = "PAUSED_PLAYBACK"
 
+    def play(self):
+        self.state, self.resumed = "PLAYING", getattr(self, "resumed", 0) + 1
+
     def stop(self):
         self.state = "STOPPED"
 
@@ -92,6 +95,31 @@ def test_sets_volume_and_playback_and_confirms():
         assert out.status == "ok" and dev.state == "PAUSED_PLAYBACK"
         out = await a.apply({"drawing-room.playback": {"favourite": "Nope"}})
         assert out.status == "failed" and out.retry is False
+    asyncio.run(body())
+
+
+def test_putting_back_what_a_mode_paused_carries_on_from_there():
+    """Normal → Piano (fade out, pause) → Normal: the stored music resumes where it paused, fading up to the stored
+    volume; a playlist isn't started again from its first track. Something else stored: played afresh."""
+    async def body():
+        a, dev = adapter()
+        await a.apply({"drawing-room.playback": {"sonos_playlist": "Dinner"}})
+        dev.uri = "x-rincon-queue:RINCON_1#0"                     # what a queue reads back as
+        a.zones["drawing-room"].played = ("x-rincon-queue:RINCON_1#0", {"sonos_playlist": "Dinner"})
+        stored = (await a.read(["drawing-room.playback"]))["drawing-room.playback"].value
+        assert stored == {"sonos_playlist": "Dinner"}
+        await a.apply({"drawing-room.volume": 0, "drawing-room.playback": "paused"})
+        assert dev.state == "PAUSED_PLAYBACK" and dev.volume == 0
+        dev.queue = ["kept"]
+        out = await a.apply({"drawing-room.volume": 30, "drawing-room.playback": stored})
+        assert out.status == "ok" and dev.state == "PLAYING" and dev.resumed == 1 and dev.queue == ["kept"]
+        assert dev.volume == 30
+        dev.state, dev.uri = "PAUSED_PLAYBACK", "x-rincon-mp3radio://example/stream"     # someone else's stream
+        await a.apply({"drawing-room.playback": {"uri": "x-rincon-mp3radio://example/stream"}})
+        assert dev.resumed == 2
+        dev.state = "PAUSED_PLAYBACK"
+        await a.apply({"drawing-room.playback": {"favourite": "BBC Radio 4"}})          # paused on another: play it
+        assert dev.resumed == 2 and dev.uri.startswith("x-sonosapi-hls")
     asyncio.run(body())
 
 
