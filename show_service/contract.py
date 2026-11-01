@@ -774,6 +774,9 @@ class PianoView(TypedDict):
     last_note_age_s: Optional[float]
     velocity: float                # 0..1: strike velocities /127, EMA tau 2 s (the "dynamics" follow input from MIDI)
     notes_per_s: float             # strikes per second over the last 4 s
+    practice: float                # 0..1: how much the playing sounds like practice: stops, restarts, the same passage
+                                   # again (practice.PracticeRead, smoothed). The piano vouches across longer rests and
+                                   # the screens change less often while it is high (structure.piano_rest, director)
 
 
 class NoteOn(TypedDict):

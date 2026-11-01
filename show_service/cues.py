@@ -30,8 +30,10 @@ nobody (``on_music_event`` skips via "cues").
             (and the stop, which a fade never trips); segue arms neither (the track_change's crossfade carries it);
             unknown or no listener: both.
   piano     neither fires while the piano's MIDI vouches for the piece (structure.piano_vouches: a key or the damper
-            down, or a note within show.yaml structure.track.piano_rest_s): a lifted hand or a diminuendo is a rest,
-            not the song's end (owner, 21 Oct: practice kept flipping to black). Logged ``piano_rest``.
+            down, or a note within show.yaml structure.track.piano_rest_s, lengthened toward track.practice_rest_s
+            as the playing sounds like practice): a lifted hand or a diminuendo is a rest, not the song's end (owner,
+            21 Oct: practice kept flipping to black; 1 Nov: practice's longer stops too). Logged ``piano_rest``
+            (``by`` "practice" when only practice's longer rest holds it).
   vouched   nor while music.context's track.vouch is "sonos" or "player" (VOUCHED: the song's own source says it is
             still going, structure's rule: a known length's end further than arm_s, or no length and no long gap):
             a break inside a known song (owner, 29 Oct: "Sonos is ONE music source"; a fade went dark 3 min before
@@ -87,7 +89,7 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 
 from . import contract
-from .structure import STRUCTURE_FALLBACK, _Grid, piano_vouches
+from .structure import STRUCTURE_FALLBACK, VOUCH_PRACTICE, _Grid, piano_vouch, piano_vouches
 
 log = logging.getLogger("show_service.cues")
 
@@ -257,6 +259,7 @@ class Cues:
         self._seq = 0
         self._last_fire: Optional[float] = None
         self._piano_rest_s = float(STRUCTURE_FALLBACK["track"]["piano_rest_s"])
+        self._practice_rest_s = float(STRUCTURE_FALLBACK["track"]["practice_rest_s"])
         self._rest_at: Optional[float] = None           # the collapse a piano rest already excused (logged once)
         self._vouch_at: Optional[float] = None          # the collapse a song's source already vouched for (logged once)
         self._ending: Optional[str] = None
@@ -283,6 +286,8 @@ class Cues:
         tr = (s.get("structure") or {}).get("track") if isinstance(s.get("structure"), dict) else None
         self._piano_rest_s = _f((tr or {}).get("piano_rest_s") if isinstance(tr, dict) else None,
                                 float(STRUCTURE_FALLBACK["track"]["piano_rest_s"]))
+        self._practice_rest_s = _f((tr or {}).get("practice_rest_s") if isinstance(tr, dict) else None,
+                                   float(STRUCTURE_FALLBACK["track"]["practice_rest_s"]))
         self.problems = probs
         for p in probs:
             log.warning("show.yaml %s", p)
@@ -528,12 +533,13 @@ class Cues:
         lv = after[-1][1]
         if lv > self._quiet_line(floor):
             return
-        if piano_vouches(self.ctx, self._piano_rest_s):
+        by = piano_vouch(self.ctx, self._piano_rest_s, self._practice_rest_s)
+        if by is not None:
             if self._rest_at != last_loud:              # once per collapse (it passes for ~1 s of ticks)
                 self._rest_at = last_loud
                 self.counts["piano_rest"] += 1
                 self._log_event({"kind": "piano_rest", "cue": "stop", "ref_dbfs": round(ref, 1),
-                                 "level_dbfs": round(lv, 1)})
+                                 "level_dbfs": round(lv, 1), **({"by": by} if by == VOUCH_PRACTICE else {})})
             return
         v = self._vouched(mc)
         if v is not None:                               # a break inside a song its source says is still going
@@ -581,9 +587,10 @@ class Cues:
         if slope is None or slope > -fc["min_slope_db_s"] or lufs < target + fc["above_target_db"]:
             return
         self._outro_done = True
-        if piano_vouches(self.ctx, self._piano_rest_s):
+        by = piano_vouch(self.ctx, self._piano_rest_s, self._practice_rest_s)
+        if by is not None:
             self.counts["piano_rest"] += 1
-            self._log_event({"kind": "piano_rest", "cue": "fade"})
+            self._log_event({"kind": "piano_rest", "cue": "fade", **({"by": by} if by == VOUCH_PRACTICE else {})})
             return
         v = self._vouched(mc)
         if v is not None:                             # the song's own source says it is still going (once an outro)
@@ -912,7 +919,7 @@ class Cues:
             if self._ending == "segue":
                 out.append({"kind": "segue", "words": READY_WORDS["segue"], "window_s": None, "size": None})
             # while the piano's MIDI vouches for the piece neither fires (piano_rest): say so, not Ready
-            held = piano_vouches(self.ctx, self._piano_rest_s)
+            held = piano_vouches(self.ctx, self._piano_rest_s, self._practice_rest_s)
             for k, on in (("stop", self._stop_on), ("fade", self._fade_on)):
                 if on and not self._repeat_now:       # this song came back once: neither goes dark again in it
                     out.append({"kind": k, "words": (HELD_WORDS if held else READY_WORDS)[k], "window_s": None,

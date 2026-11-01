@@ -571,6 +571,97 @@ def test_between_pieces_once_per_pause(tmp_path):
     assert len([e for e in r.of(contract.ROOM_EVENT) if e["kind"] == "look_change"]) == 2
 
 
+PRACTISING = {"present": True, "stream": "keys", "source": "live", "keys_down": 2, "damper": 0.5,
+              "last_note_age_s": 0.1, "velocity": 0.7, "notes_per_s": 3.0, "practice": 0.0}
+
+
+def _looks(r) -> int:
+    return len([e for e in r.of(contract.ROOM_EVENT) if e["kind"] == "look_change"])
+
+
+def test_between_pieces_waits_for_the_practice_rest(tmp_path):
+    """Owner, 1 Nov: practice's stops read as new pieces. While PianoView.practice is high a pause is between pieces
+    only once it outlasts piano_rest(pause_s 2, practice, structure.track.practice_rest_s 90): 81.2 s at 0.9."""
+    r = Rig(tmp_path)
+    r.piano = dict(PRACTISING, practice=0.9)
+    r.d.set_target("beta")                                            # between_pieces, dwell_s [20, 600]
+    r.run(25.0)
+    assert _looks(r) == 0
+    r.piano = dict(r.piano, keys_down=0, damper=0.0, last_note_age_s=30.0)
+    r.run(10.0)                                                       # a 30 s stop in practice: a rest, not a pause
+    assert _looks(r) == 0
+    r.piano = dict(r.piano, last_note_age_s=85.0)
+    r.run(5.0)                                                        # longer than the practice rest: one change
+    assert _looks(r) == 1
+    s = json.loads(json.dumps(SETTINGS))
+    s["structure"] = {"track": {"practice_rest_s": 20}}               # structure's key, read by the director too
+    (tmp_path / "b").mkdir()
+    r2 = Rig(tmp_path / "b", settings=s)
+    r2.piano = dict(PRACTISING, practice=1.0)
+    r2.d.set_target("beta")
+    r2.run(25.0)
+    r2.piano = dict(r2.piano, keys_down=0, damper=0.0, last_note_age_s=30.0)
+    r2.run(5.0)
+    assert _looks(r2) == 1
+
+
+def test_practice_raises_the_screens_dwell_min_in_steps(tmp_path):
+    """Owner, 1 Nov: practice's restarts read as sections and the renderer changed scene at its 15 s minimum. The
+    screens' dwell min (room.direction dwell_s[0]) rises with practice toward the feel's own min (here 120 s), in
+    whole seconds and in PRACTICE_STEP steps with hysteresis, so a wobble doesn't republish the direction."""
+    r = Rig(tmp_path, vibes_text=VIBES.replace("    dwell_s: [20, 600]", "    dwell_s: [120, 600]"))
+    r.piano = dict(PRACTISING)
+    r.d.set_target("beta")
+    r.run(2.0)
+    assert r.d.direction["dwell_s"] == [15.0, 600.0]
+    r.piano = dict(PRACTISING, practice=1.0)
+    r.run(1.0)
+    assert r.d.direction["dwell_s"] == [120.0, 600.0]
+    assert r.of(contract.ROOM_DIRECTION)[-1]["dwell_s"] == [120.0, 600.0]
+    r.piano = dict(PRACTISING, practice=0.55)                         # a step down: 0.5 -> 15 + 0.5 x 105 = 67.5 -> 68
+    r.run(1.0)
+    assert r.d.direction["dwell_s"] == [68.0, 600.0]
+    n = len(r.of(contract.ROOM_DIRECTION))
+    seen = set()
+    for x in (0.45, 0.6, 0.4, 0.62, 0.5):                              # wobbles inside the step's hysteresis
+        r.piano = dict(PRACTISING, practice=x)
+        r.run(0.5)
+        seen.add(tuple(r.d.direction["dwell_s"]))
+    assert seen == {(68.0, 600.0)} and len(r.of(contract.ROOM_DIRECTION)) - n <= 1   # the 5 s republish at most
+    r.piano = None                                                    # no piano: no practice
+    r.run(1.0)
+    assert r.d.direction["dwell_s"] == [15.0, 600.0] and r.d.practice == 0.0
+    r.d.set_target("gamma")                                           # dwell_s [30, 60]: the max never under the min
+    r.run(0.2)
+    assert r.d._screens_dwell(r.d.vs, 1.0) == [30.0, 60.0]
+
+
+def test_the_reasoning_says_practice_once_on_and_once_off(tmp_path):
+    """The Room page's "How it's deciding": one line when practice comes on (>= 0.6) and one when it goes off
+    (<= 0.35), not for each wobble between; the reasoning block carries practice (2 dp)."""
+    r = Rig(tmp_path, vibes_text=VIBES.replace("    dwell_s: [20, 600]", "    dwell_s: [120, 600]"))
+    r.piano = dict(PRACTISING)
+    r.d.set_target("beta")
+    r.run(1.0)
+
+    def lines(word):
+        return [x["text"] for x in r.d.snapshot()["reasoning"]["recent"] if x["text"].startswith(word)]
+    for x in (0.5, 0.62, 0.5, 0.7, 0.4, 0.65):
+        r.piano = dict(PRACTISING, practice=x)
+        r.run(0.5)
+    on = lines("Sounds like practice")
+    assert len(on) == 1 and "no fades to dark at the stops" in on[0] and "every 2 min" in on[0]
+    assert lines("Sounds like playing straight through") == []
+    assert r.d.snapshot()["reasoning"]["practice"] == 0.65
+    for x in (0.3, 0.5, 0.2):
+        r.piano = dict(PRACTISING, practice=x)
+        r.run(0.5)
+    assert len(lines("Sounds like playing straight through again")) == 1 and len(lines("Sounds like practice")) == 1
+    assert r.d.snapshot()["reasoning"]["practice"] == 0.2
+    logged = [json.loads(x) for x in r.log_path.read_text().splitlines()]
+    assert [(e["on"], e["practice"]) for e in logged if e["kind"] == "practice"] == [(True, 0.62), (False, 0.3)]
+
+
 def test_no_look_changes_while_a_screen_cuts(tmp_path):
     r = Rig(tmp_path, clock=True)
     r.room = {"current": "x", "screens": {"wall-left": {"layer": "art", "phase": "entering", "cutting": True}},

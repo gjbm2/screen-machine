@@ -27,7 +27,12 @@ Nothing here knows a mode, vibe, lamp or screen by name. Looks change by the vib
                 (32 / 16 / 8 at change_rate 0 / 0.5 / 1); the clock unsure: as ``time``;
   * ``time``    after dwell_s[0] at an energy-novelty point, and at dwell_s[1] regardless;
   * ``between_pieces``  once per pause: no strike for >= 2 s, no key down, damper < 0.1 (PianoView), after
-                dwell_s[0]; without any notes yet: as ``time``.
+                dwell_s[0]; without any notes yet: as ``time``. While the playing sounds like practice
+                (PianoView.practice) the pause must be longer, toward structure.track.practice_rest_s (90 s; owner,
+                1 Nov: practice's stops and restarts read as new pieces).
+Practice (PianoView.practice, 0..1; owner, 1 Nov: "it's a piano practice session, so lots of stopping and starting"):
+it also raises the screens' dwell min on room.direction toward the feel's own (Notes: 15 -> 120 s), so the
+renderer doesn't take each restart as a new section, and says so on the Room page once on and once off.
 Quiet or talking (with ``relax_on_talk``), and no audio at all (liveness run down after the 10 s hold and the 20 s
 fade, nobody playing): relax to the base look once, then no changes until the sound comes back (§8.5). The behaviour
 thresholds are show.yaml ``director`` keys (DIRECTOR_FALLBACK: the starting points).
@@ -184,6 +189,7 @@ from . import flow as flowmod
 from . import light_scenes as lscenes
 from . import palette as pal
 from . import treatment as treatmod
+from .structure import STRUCTURE_FALLBACK, piano_rest, practice_of
 from .vibes import Vibes
 
 try:                                                  # docs/ENSEMBLE.md: without it the director runs as before
@@ -320,6 +326,11 @@ WHY_LOG_N = 12                      # the reasoning's recent decisions kept for 
 SCREENS_DWELL_MIN_S = 15.0          # while a feel changes the looks, the renderer's own dwell window starts here (its
                                     # own fastest minimum, stream_service DWELL_AT_1) and ends at the feel's dwell max:
                                     # the show decides when, the renderer's timer is only the fallback
+# Practice (PianoView.practice 0..1; owner, 1 Nov). The Room page says "Sounds like practice" from PRACTICE_ON until it
+# falls to PRACTICE_OFF. The screens' dwell min follows it in PRACTICE_STEP steps, moving to a new step only once
+# practice is PRACTICE_HYST of a step away from the one it holds, so room.direction isn't republished for a wobble.
+PRACTICE_ON, PRACTICE_OFF = 0.6, 0.35
+PRACTICE_STEP, PRACTICE_HYST = 0.25, 0.6
 VIA_WORDS = {"sonos": "Sonos said so", "player": "the Music page", "dsp": "heard in the sound",
              "cues": "heard it stop or fade", "sound": "heard in the sound"}
 TRANSITION_WORDS = {"cut": "a cut", "crossfade": "a crossfade", "fade-dark": "through dark"}
@@ -382,6 +393,11 @@ def _r3(v: Any) -> Optional[float]:
     """A 0..1 number rounded for room.direction, or None when there is none."""
     x = _num(v)
     return None if x is None else round(_c01(x), 3)
+
+
+def _dur_words(s: float) -> str:
+    """Seconds in the Room page's words: "45 s" under 90 s, else whole minutes ("2 min")."""
+    return f"{int(round(s))} s" if s < 90 else f"{int(round(s / 60.0))} min"
 
 
 def _ema(prev: Optional[float], x: float, dt: float, tau: float) -> float:
@@ -975,6 +991,10 @@ class Director:
         self._np_target: Optional[str] = None            # show.yaml situations.sonos.now_playing (the room member)
         self._ev_last: dict = {}                         # the last Evidence (the card's "what it goes on")
         self._why_log: collections.deque = collections.deque(maxlen=WHY_LOG_N)   # (wall s, words): the Room page
+        self.practice = 0.0                              # PianoView.practice now (0: no piano)
+        self._practice_on = False                        # the Room page's "Sounds like practice" (hysteresis)
+        self._practice_q = 0.0                           # practice, stepped, for the screens' dwell min
+        self._practice_rest_s = float(STRUCTURE_FALLBACK["track"]["practice_rest_s"])
         self._build_snapshot(mono())
 
     # ================================================================================================================
@@ -1240,6 +1260,10 @@ class Director:
         evc = stc.get("events") if isinstance(stc.get("events"), dict) else {}
         lead = _num(evc.get("min_lead_s"))
         self._ev_lead = lead if lead is not None and lead > 0 else EVENTS_LEAD_S
+        trc = stc.get("track") if isinstance(stc.get("track"), dict) else {}
+        prs = _num(trc.get("practice_rest_s"))           # structure's key (it lists a bad one): between_pieces' pause
+        self._practice_rest_s = prs if prs is not None and prs >= 0 else float(
+            STRUCTURE_FALLBACK["track"]["practice_rest_s"])
         lam = s.get("lamps") if isinstance(s.get("lamps"), dict) else {}
         pr = lam.get("placement_roles") if isinstance(lam.get("placement_roles"), dict) else {}
         roles = lam.get("roles") if isinstance(lam.get("roles"), dict) else {}
@@ -1557,6 +1581,7 @@ class Director:
         p = _call(self.ctx.piano)
         playing = (isinstance(p, dict) and _num(p.get("last_note_age_s")) is not None
                    and p["last_note_age_s"] <= 4.0)
+        self._practice_tick(p)
         energy_in = self._e if self._e is not None else 0.5
         onsets_in = _c01(0.6 * drive + 0.4 * (self._onset or 0.0)) if fresh else None
         inputs: dict[str, tuple[float, float]] = {}       # follow input -> (value, conf)
@@ -1743,7 +1768,9 @@ class Director:
         if mode == "between_pieces":
             last = _num(p.get("last_note_age_s"))
             bp = self.cfg["between_pieces"]
-            in_pause = (last is not None and last >= bp["pause_s"] and int(_num(p.get("keys_down"), 0) or 0) == 0
+            # practice: a stop is a rest inside the piece until it outlasts practice's longer rest (structure's)
+            pause_s = piano_rest(bp["pause_s"], self.practice, self._practice_rest_s)
+            in_pause = (last is not None and last >= pause_s and int(_num(p.get("keys_down"), 0) or 0) == 0
                         and (_num(p.get("damper"), 0.0) or 0.0) < bp["damper_up"])
             if not in_pause:
                 self._pause_used = False
@@ -2225,7 +2252,41 @@ class Director:
             return f"The AI's plan didn't come ({d.get('error') or 'no answer'}): the director's stays"
         if kind == "taste":
             return f"Noted for next time: {d.get('words')}"
+        if kind == "practice":
+            if d.get("on"):
+                held = d.get("dwell_min_s")
+                return ("Sounds like practice (stops and repeats): one piece, so no fades to dark at the stops"
+                        + (f", and the screens change no more than every {_dur_words(held)}" if held else ""))
+            return ("Sounds like playing straight through again: a long pause ends the piece"
+                    + (", and the screens change as the feel says" if d.get("dwell_min_s") else ""))
         return None
+
+    def _practice_tick(self, p: Any) -> None:
+        """PianoView.practice (0..1, practice.py; 0 without a piano), for between_pieces and the screens' dwell min
+        (stepped, _practice_q). The reasoning says it once when it comes on (>= PRACTICE_ON) and once when it goes off
+        (<= PRACTICE_OFF), with the dwell min the screens get from it then (None: no feel changes the looks)."""
+        pr = round(practice_of(p) if isinstance(p, dict) and p.get("stream") else 0.0, 3)
+        self.practice = pr
+        if abs(pr - self._practice_q) >= PRACTICE_HYST * PRACTICE_STEP - 1e-9:
+            self._practice_q = round(pr / PRACTICE_STEP) * PRACTICE_STEP
+        flip = (True if not self._practice_on and pr >= PRACTICE_ON else
+                False if self._practice_on and pr <= PRACTICE_OFF else None)
+        if flip is None:
+            return
+        self._practice_on = flip
+        vs = self.vs if self.known and self._vibe_name is not None else None
+        dmin = self._screens_dwell(vs, 1.0 if flip else 0.0)[0] if vs else None
+        self._log_event("practice", {"on": flip, "practice": round(pr, 2), "dwell_min_s": dmin})
+
+    def _screens_dwell(self, vs: dict, q: Optional[float] = None) -> list[float]:
+        """room.direction dwell_s while a feel changes the looks: [min, max] seconds. The min starts at
+        SCREENS_DWELL_MIN_S (the renderer's own fastest) and rises with practice (``q``: _practice_q unless given)
+        toward the feel's own dwell min, in whole seconds (owner, 1 Nov: practice's restarts read as new sections and
+        the scene changed every 15 s; Notes: 15 -> 120 s). The max is the feel's (never under the min)."""
+        q = self._practice_q if q is None else q
+        fmin, fmax = float(vs["dwell_s"][0]), float(vs["dwell_s"][1])
+        lo = float(round(SCREENS_DWELL_MIN_S + _c01(q) * max(0.0, fmin - SCREENS_DWELL_MIN_S)))
+        return [lo, max(lo, SCREENS_DWELL_MIN_S, fmax)]
 
     def _why(self, words: str) -> None:
         """One line for the Room page's reasoning (newest first there)."""
@@ -4119,8 +4180,7 @@ class Director:
                           # and, while a feel changes the looks, its dwell window (the show decides when)
                           "scene_favour": (self.treat.plan or {}).get("favour"),
                           "scene_avoid": (self.treat.plan or {}).get("avoid"),
-                          "dwell_s": ([SCREENS_DWELL_MIN_S, max(SCREENS_DWELL_MIN_S, float(vs["dwell_s"][1]))]
-                                      if feel_on else None)}
+                          "dwell_s": self._screens_dwell(vs) if feel_on else None}
         if self.ensemble is not None:
             self.direction["ensemble"] = self.ensemble.block()   # docs/ENSEMBLE.md §8: roles, staggers per screen
         if self.cfg["compose"]["mode"] == comp.DRIVE:
@@ -5135,6 +5195,7 @@ class Director:
                 "lights": {"scene": self.light_scenes.label(self.light_scene) if self.light_scene else None,
                            "why": self.light_scene_why},
                 "ai_error": self.treat.ai_state.get("error"),
+                "practice": round(self.practice, 2),             # PianoView.practice: 0..1 (owner, 1 Nov)
                 "recent": [{"t": t, "text": x} for t, x in reversed(self._why_log)]}
 
     def _compose_view(self) -> dict:

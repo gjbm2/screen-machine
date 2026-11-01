@@ -81,10 +81,14 @@ situations:
     streams: [room-piano]                   # the MIDI streams that count. test-piano, phone-test and pc22-* never do
                                             # unless they are listed here or a rule sets include_test: true.
     channels: [1]                           # the adsilent: channel 1 is the keys; 2 is its own playback (ignored)
-    window_s: 10                            # starting point (§8.9)
-    min_notes: 12                           # starting point
-    min_span_s: 6                           # starting point
-    min_pitches: 4                          # starting point
+    window_s: 20                            # 1 Nov, the owner's stop-start practice (was 10, 12, 6, 4; replayed at
+    min_notes: 8                            # 1 Hz): true 96% of the seconds with a note in the last 2 s (was 86%;
+    min_span_s: 6                           # the slow playing before the recording, about 81%, was 35%), and
+    min_pitches: 3                          # Piano's for_s 10 holds 13-17 s after the playing starts. 20 s carries it
+                                            # over practice rests and slow passages (5-11 notes in 10 s). Still never
+                                            # true for one or two keys again and again, a 2-3 s burst of random keys
+                                            # (a cat) or 3-5 notes in 10 s; all 203 library pieces still hold within
+                                            # 17 s. Keep window_s under Piano's leave for_s (90 s).
     idle_note_s: 1.0                        # starting point: piano_idle needs no note-on for this long
   music:                                    # music_audible; no stream: it reads the mic the room listens through
     min_prob: 0.4                           # 8f's 20 Oct measurement, d94a58f2 (was 0.5). CED's music (the ML worker, Stage 4). Without the
@@ -924,6 +928,10 @@ structure:
                                             # or a note came this recently: no song end (this gap, cues' stop and
                                             # fade). Measured 21 Oct: practice rests 2.5-12.2 s; each one went dark
                                             # (owner: "flips to black regularly"). 0: off (the mic alone decides)
+    practice_rest_s: 90                     # while the playing sounds like practice (PianoView.practice 0..1:
+                                            # stops, restarts, the same passage again) the piano vouches across
+                                            # rests up to piano_rest_s + practice x (this - piano_rest_s). Owner,
+                                            # 1 Nov: practice's stops ended the song at 15 s (dark, a new scene)
   build:                                    # §6.2 (needs a clock grid: no builds or drops without one)
     window_s: 12                            # §6.2: over 8-16 s...
     min_slope: {lufs_db_s: 0.15, brightness_s: 0.004, onset_rate_s: 0.05}   # ...loudness, centroid, onsets rising...

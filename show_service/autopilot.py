@@ -25,6 +25,8 @@ Owner rules kept here:
   announced, entered, counted and undoable.
 - A leave sends the union of the left mode's and the destination's ``skip`` (what Auto entered with stays skipped);
   a person going straight back to the mode Auto left, within correction_s, is always a correction.
+- Leaving back to a mode Auto had entered itself (Ambient -> Piano -> Ambient: ``entered.outer``) restores Auto's entry
+  of it, so that mode's own leave rule runs again (1 Nov: Ambient stayed for good after Piano went back to it).
 - Put-back is the room's own per-row ``restore``; nothing here stores or restores device state.
 
 The empty shapes (README S5.19, §8.9), one reading everywhere (``rule_of``, ``from_of``, ``leave_to_of``): no
@@ -1219,11 +1221,18 @@ class Autopilot:
             self._note("cancelled", a["mode"], a["rule"], "someone else's choice took over")   # says agree/hold
         elif status in ("ok", "partial"):
             if a["kind"] == "enter":
+                before = a["entered_before"]
                 self.entered = {"mode": a["mode"], "previous": a["from"], "rule": a["rule"], "at": wall,
-                                "transition_id": a["transition_id"], "by": "auto"}
+                                "transition_id": a["transition_id"], "by": "auto",
+                                # entered from a mode Auto had entered itself (Ambient -> Piano): kept, so leaving
+                                # back to it there makes its own leave rule run again (1 Nov: it stayed for good)
+                                "outer": before if isinstance(before, dict) and before.get("mode") == a["from"]
+                                else None}
                 self._entered_seq = self.link.status_count()
             else:
-                self.entered = None
+                outer = (a["entered_before"] or {}).get("outer")
+                self.entered = outer if isinstance(outer, dict) and outer.get("mode") == a["mode"] else None
+                self._entered_seq = self.link.status_count()
             self._last_entered_before = a["entered_before"]
             self.switches = [t for t in self.switches if wall - t < 86400] + [wall]
             if self.last:

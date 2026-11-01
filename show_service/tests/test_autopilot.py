@@ -226,6 +226,7 @@ class H:
         self.pitch = 0
         self.playing = False
         self.features_on = True
+        self.gate = 0.0
         self.engaged = False
         self.local = local or datetime(2026, 10, 16, 12, 0)
         self.health = {"active_audio": "room-mic", "streams": {
@@ -294,7 +295,7 @@ class H:
                 self.tap.on_midi("room-piano", MidiBatch(seq=self.seq, ev=[(0, 0x90, 60 + self.pitch, 80)], prev=[],
                                                          sess="s1"), self.clock.t, lambda t: t)
             if self.features_on:
-                self.features = {"t_ms": self.clock.t * 1000.0, "stream": "room-mic", "gate": 0.0, "lufs_s": -70.0,
+                self.features = {"t_ms": self.clock.t * 1000.0, "stream": "room-mic", "gate": self.gate, "lufs_s": -70.0,
                                  "energy": 0.0}
             self.sit.tick(self.clock.t)
             self.ap.tick(self.clock.t)
@@ -379,6 +380,30 @@ def test_leave_to_previous_when_idle_even_while_someone_nudges(tmp_path):
         await h.settle()
         assert h.state()["entered"] is None and h.state()["chip"]["text"] == "Auto → Lights only · the piano has stopped"
     run(tmp_path, body)
+
+
+def test_leaving_back_to_a_mode_auto_entered_lets_its_own_leave_rule_run(tmp_path):
+    """1 Nov: Piano may start from Ambient (both Auto's). Piano going back there restores Auto's entry of Ambient, so
+    Ambient's own leave rule still takes the room home (it stayed for good: entered was None after the leave)."""
+    modes = json.loads(json.dumps(MODES))
+    modes["hush"] = {"label": "Hush", "autopilot": {
+        "enter_when": {"quiet": {"for_s": 2}}, "from": ["gallery"],
+        "leave_when": {"not": {"quiet": {}}, "for_s": 2}, "leave_to": "previous"}}
+    modes["piano"]["autopilot"]["from"] = ["gallery", "lights-only", "hush"]
+
+    async def body(h: H):
+        await h.step_until(lambda: h.room.current == "hush")
+        await h.settle()
+        await enter_piano(h)
+        assert h.state()["entered"]["previous"] == "hush"
+        h.playing = False
+        await h.step_until(lambda: h.room.current == "hush")
+        await h.settle()
+        assert h.state()["entered"]["mode"] == "hush" and h.state()["entered"]["previous"] == "gallery"
+        h.gate = 0.5                                     # the room isn't quiet any more: hush's own leave
+        await h.step_until(lambda: h.room.current == "gallery")
+        assert h.room.auto_puts()[-1]["reason"].endswith("(hush/leave_when)")
+    run(tmp_path, body, modes=modes)
 
 
 def test_auto_off_never_puts(tmp_path):

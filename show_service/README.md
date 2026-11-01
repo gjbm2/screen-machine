@@ -947,8 +947,10 @@ state.json), then Art-Net, rx, bus.
   receiver's), `static_senders=cfg.senders`, `notify=api.notify`.
 - **PianoView** (built on show-rx with the 0.5 s snapshot): the voice piano's `present`, `stream`, `source`,
   `keys_down`, `damper`, `last_note_age_s` (its table's newest T_ON, or the NoteTap's newest strike), `velocity` (EMA,
-  τ 2 s, of the strikes since the last view, from the NoteTap) and `notes_per_s` (the voice stream's NoteTap strikes in
-  the last 4 s, / 4).
+  τ 2 s, of the strikes since the last view, from the NoteTap), `notes_per_s` (the voice stream's NoteTap strikes in
+  the last 4 s, / 4) and `practice` (0..1, practice.py's PracticeRead of the voice stream's strikes: stops, restarts,
+  the same passage again; owner, 1 Nov: practice read as very choppy music). Structure and cues let the piano vouch
+  across rests up to `structure.track.practice_rest_s` by it, and the director raises the screens' dwell min with it.
 - **Guards** gain `ring.write`, `notetap` and `piano.view`.
 - **`GET /api/v1/state`** gains `brain`: `Brain.snapshot()` plus `ring` (`Rings.info()`), `notes` (`NoteTap.stats()`)
   and `piano_view`; null with `--no-brain`. It also gains `api` (`api.stats()`: the card socket's `clients`,
@@ -1391,6 +1393,7 @@ class Brain:
   - `last_note_age_s` from the table's newest T_ON;
   - `velocity`: EMA (τ 2 s) of VEL_ON/127 for strikes since the last snapshot;
   - `notes_per_s`: strikes with T_ON in the last 4 s, divided by 4.
+  - `practice`: `PracticeRead.update(strikes of the last 30 s)` (it keeps its own 180 s window).
 - `clock_action`: maps `tap` → `clock.tap(t)`, `half` → `half()`, `double` → `double()`, `one` → `one(t)`.
 - `section_change=vm.section_change`, `set_look_out=vm.set_look`,
   `set_gate_ref=lambda l: setattr(features, "gate_ref_lufs", float(l))`.

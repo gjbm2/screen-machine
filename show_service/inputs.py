@@ -170,7 +170,7 @@ class Inputs:
             try:
                 pv = _d(self._piano_fn())
                 piano = {k: pv.get(k) for k in ("present", "stream", "source", "keys_down", "damper",
-                                                "last_note_age_s", "notes_per_s")}
+                                                "last_note_age_s", "notes_per_s", "practice")}
             except Exception:                            # noqa: BLE001  the In line just lacks it
                 piano = None
         return {"active": h.get("active_audio"), "choice": self.choice(), "inputs": ins,

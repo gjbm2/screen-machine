@@ -92,6 +92,7 @@ import os
 for _var in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS", "NUMEXPR_NUM_THREADS"):
     os.environ.setdefault(_var, "1")    # BLAS at one thread (§2), before anything imports numpy
 
+import bisect  # noqa: E402
 import collections  # noqa: E402
 import gc  # noqa: E402
 import importlib  # noqa: E402
@@ -102,9 +103,10 @@ import signal  # noqa: E402
 import sys  # noqa: E402
 import threading  # noqa: E402
 import time  # noqa: E402
+from operator import itemgetter  # noqa: E402
 from typing import Any, Callable, Mapping, Optional  # noqa: E402
 
-from . import __version__, config, contract  # noqa: E402
+from . import __version__, config, contract, practice  # noqa: E402
 from .bus import Bus  # noqa: E402
 
 log = logging.getLogger("show_service")
@@ -117,6 +119,8 @@ SNAPSHOT_S = 0.5        # show-rx -> API snapshot
 GUARD_LOG_S = 30.0
 PIANO_VEL_TAU_S = 2.0         # PianoView.velocity: EMA of strike velocities (README S3.4)
 PIANO_RATE_WINDOW_S = 4.0     # PianoView.notes_per_s: strikes in the last 4 s / 4
+PRACTICE_FEED_S = 30.0        # PianoView.practice: the strikes handed to practice.PracticeRead each snapshot (it
+                              # takes only the ones newer than its last call and keeps its own window)
 RX_COST_N = 6000              # show-rx's own cost per on_audio block and per on_tick (the state's rx_ms; ~16 s)
 #: Brain component modules, in add order (README S3.2, S4.2, S5.4 and S5.22: room, situations, autopilot, sources, ml,
 #: structure, listener, cues, director, rig; autopilot.attach returns the first three, mllink.attach the ml component,
@@ -126,7 +130,8 @@ RX_COST_N = 6000              # show-rx's own cost per on_audio block and per on
 BRAIN_MODULES = ("autopilot", "sources", "recorder", "playlist", "mllink", "structure", "listener", "cues", "director",
                  "outputs")
 NEUTRAL_PIANO_VIEW: contract.PianoView = {"present": False, "stream": None, "source": None, "keys_down": 0,
-                                          "damper": 0.0, "last_note_age_s": None, "velocity": 0.0, "notes_per_s": 0.0}
+                                          "damper": 0.0, "last_note_age_s": None, "velocity": 0.0, "notes_per_s": 0.0,
+                                          "practice": 0.0}
 
 
 def _inputs(h: dict) -> dict:
@@ -231,6 +236,7 @@ class Show:
         self._vel_ema: Optional[float] = None
         self._vel_t: Optional[float] = None
         self._pv_last = 0.0
+        self._practice = practice.PracticeRead()      # PianoView.practice (owner, 1 Nov: practice read as choppy music)
         self._static_settings: dict = {}             # show.yaml read once, for --no-brain (the brain re-reads it)
         if not opts.brain:
             self._static_settings = self._read_show_file()
@@ -1004,7 +1010,9 @@ class Show:
         strikes: list = []
         if self.tap is not None and v is not None:
             stream = getattr(v, "stream", None)
-            strikes = [e for e in self.tap.raw_since(now_s - PIANO_RATE_WINDOW_S) if e[1] == stream]
+            fed = [e for e in self.tap.raw_since(now_s - PRACTICE_FEED_S) if e[1] == stream]
+            self._practice.update(fed, now_s)
+            strikes = fed[bisect.bisect_left(fed, now_s - PIANO_RATE_WINDOW_S, key=itemgetter(0)):]
         new = [e for e in strikes if e[0] > self._pv_last]
         self._pv_last = now_s
         if new:
@@ -1033,7 +1041,8 @@ class Show:
                 "source": getattr(v, "source", None), "keys_down": int(len(held)),
                 "damper": round(float(pedals.get("damper", 0.0)), 3), "last_note_age_s": last_age,
                 "velocity": round(self._vel_ema or 0.0, 3),
-                "notes_per_s": round(len(strikes) / PIANO_RATE_WINDOW_S, 3)}
+                "notes_per_s": round(len(strikes) / PIANO_RATE_WINDOW_S, 3),
+                "practice": round(self._practice.value, 3)}
 
     def _snapshot(self, now_s: float) -> dict:
         """Built on show-rx (it owns these objects), read by the API on show-bus."""

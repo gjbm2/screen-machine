@@ -526,6 +526,35 @@ def test_a_song_its_source_vouches_for_never_goes_dark(tmp_path):
     assert [e["detail"] for e in r.events("track_end")] == ["stop"]     # no piano here: the stop goes through
 
 
+def test_practice_holds_a_stop_beyond_the_piano_rest(tmp_path):
+    """Owner, 1 Nov: practice's stops went dark. While PianoView.practice is high the piano vouches across rests up
+    to structure.track.practice_rest_s (piano_rest): a collapse 30 s after the last note (over piano_rest_s 15) is a
+    rest at practice 0.9 (piano_rest logged once, by "practice"; the sheet says held) and a stop at practice 0."""
+    r = Rig(tmp_path)
+    r.learn_floor()
+    pv = {"present": True, "stream": "room-piano", "keys_down": 0, "damper": 0.0, "last_note_age_s": 30.0,
+          "practice": 0.9}
+    r.ctx.piano = lambda: pv
+    r.run(5.0)
+    assert [x["words"] for x in r.c.sheet()] == [C.HELD_WORDS["stop"], C.HELD_WORDS["fade"]]
+    r.level = -64.0                                                     # it stops dead
+    r.run(1.0)
+    assert r.events("track_end") == []
+    rests = [e for e in r.c.log() if e["kind"] == "piano_rest"]
+    assert len(rests) == 1 and rests[0]["cue"] == "stop" and rests[0]["by"] == "practice"
+    r.level = -20.0
+    r.run(5.0)
+    pv["practice"] = 0.0                                                # the same rest, played straight through
+    assert [x["words"] for x in r.c.sheet()] == [C.HELD_WORDS["stop"], C.HELD_WORDS["fade"]]   # until the next tick
+    r.run(0.2)
+    assert [x["words"] for x in r.c.sheet()] == [C.READY_WORDS["stop"], C.READY_WORDS["fade"]]
+    r.level = -64.0
+    r.run(0.3)
+    assert [e["detail"] for e in r.events("track_end")] == ["stop"]
+    cfg = Rig(tmp_path, settings={"structure": {"track": {"practice_rest_s": 20}}})
+    assert cfg.c._practice_rest_s == 20.0                               # read like piano_rest_s
+
+
 def test_a_slow_or_spent_fade_waits(tmp_path):
     """29 Oct: fades fired at -0.06 dB/s and under their own target. A fade needs lufs_s falling fade.min_slope_db_s
     (0.5) and still fade.above_target_db (3) over the floor's line (here -65 + 6 = -59)."""

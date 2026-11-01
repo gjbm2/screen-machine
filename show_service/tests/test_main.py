@@ -851,6 +851,7 @@ def test_piano_view_from_the_voice_piano_and_the_note_tap(monkeypatch, tmp_path)
         assert pv["present"] is True and pv["stream"] == "test-piano" and pv["source"] == "test"
         assert pv["keys_down"] == 8 and pv["damper"] == 1.0 and 0.2 <= pv["last_note_age_s"] <= 0.3
         assert pv["notes_per_s"] == 2.0 and 0.5 < pv["velocity"] <= 1.0
+        assert pv["practice"] == 0.0              # 8 notes at once: not practice (practice.py)
         assert show.tap.stats()["notes"] == 8
     finally:
         show.stop()

@@ -182,11 +182,12 @@
         },
         "from": [
           "gallery",
-          "lights-only"
+          "lights-only",
+          "ambient"
         ],
         "leave_when": {
           "piano_idle": {
-            "for_s": 30,
+            "for_s": 90,
             "include_test": true
           }
         },
@@ -321,9 +322,19 @@
       },
       "autopilot": {
         "enter_when": {
-          "music_audible": {
-            "for_s": 30
-          }
+          "all": [
+            {
+              "music_audible": {
+                "for_s": 30
+              }
+            },
+            {
+              "piano_idle": {
+                "for_s": 60,
+                "include_test": true
+              }
+            }
+          ]
         },
         "from": [
           "gallery"

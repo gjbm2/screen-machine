@@ -1554,6 +1554,47 @@ def test_no_source_is_assumed_live_music_alone_changes_and_the_piano_vouches_mid
     assert p.s.context()["track"]["vouch"] == st.VOUCH_MIDI == "midi"
 
 
+def test_practice_lets_the_piano_vouch_across_a_longer_rest():
+    """Owner, 1 Nov: a practice session (stops, restarts, the same passage again) ended the song at each stop longer
+    than track.piano_rest_s (15 s), and the TVs went dark and changed scene. While PianoView.practice is high the
+    piano vouches across rests up to piano_rest(15, practice, track.practice_rest_s 90): a 50 s stop at practice 0.9
+    (82.5 s) is a rest inside the piece (ends.practice_held, once); the same stop with no practice is a dsp end at
+    its start, once the piano stopped vouching (15 s)."""
+    assert st.piano_rest(15.0, 0.9, 90.0) == pytest.approx(82.5) and st.piano_rest(15.0, 0.0, 90.0) == 15.0
+    assert st.piano_rest(15.0, 1.0, 10.0) == 15.0                         # practice never shortens the rest
+    ctx = c.BrainContext(publish=lambda m: None)
+    for age, practice, want in ((10.0, 0.0, st.VOUCH_MIDI), (40.0, 0.9, st.VOUCH_PRACTICE), (40.0, 0.0, None),
+                                (85.0, 0.9, None), (40.0, None, None)):
+        pv = {"present": True, "stream": "room-piano", "keys_down": 0, "damper": 0.0, "last_note_age_s": age}
+        if practice is not None:
+            pv["practice"] = practice
+        ctx.piano = lambda pv=pv: pv
+        assert st.piano_vouch(ctx, 15.0, 90.0) == want, (age, practice)
+        assert st.piano_vouches(ctx, 15.0, 90.0) is (want is not None)
+    assert st.piano_vouches(ctx, 15.0) is False                            # no practice rest given: as before
+
+    def scene(t: float) -> dict:
+        if 40.0 <= t < 90.0:
+            return {"vec": None, "gate": 0.0, "lufs": -70.0}
+        return {"vec": "A"}
+
+    def run(practice: float) -> Rig:
+        r = Rig(scene)
+        r.s.ctx.piano = lambda: {"present": True, "stream": "room-piano", "keys_down": 0, "damper": 0.0,
+                                 "last_note_age_s": max(0.2, r.t - 40.0) if 40.0 <= r.t < 90.0 else 0.2,
+                                 "practice": practice}
+        r.run(100.0)
+        return r
+    held = run(0.9)
+    assert not held.kinds("track_end") and not held.kinds("track_change")
+    assert held.s.ends["end_held"] == 1 and held.s.ends["practice_held"] == 1
+    plain = run(0.0)
+    te = [e for e in plain.kinds("track_end") if e.get("detail") is None]
+    assert len(te) == 1 and te[0]["via"] == "dsp" and te[0]["at_ms"] / 1000.0 == pytest.approx(40.0, abs=0.15)
+    assert te[0]["t_ms"] / 1000.0 == pytest.approx(55.0, abs=0.25)        # once the piano stopped vouching
+    assert plain.s.ends["practice_held"] == 0
+
+
 def test_an_open_forecast_window_makes_the_ears_keener():
     """Owner, 29 Oct: the AI's forecast is a hint. While one is inside its window (ctx.cue_sheet), the novelty
     threshold x structure.forecast_boost (0.8): a change just under the plain threshold becomes a boundary."""

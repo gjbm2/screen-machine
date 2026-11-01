@@ -112,10 +112,13 @@ are show.yaml structure.fastled):
              with a known length whose end is more than arm_s away (a break inside the song), or with no known length
              unless the silence lasts track.long_gap_s (12: a long silence with Sonos still "playing" is an end); else
              the piano ("midi": ``piano_vouches``: a key or the damper down, or a note within track.piano_rest_s: a
-             rest inside the piece; owner, 21 Oct: practice kept going dark). Once it stops vouching, the same gap
-             ends the song. A held end is counted ``ends["end_held"]`` and logged, once per silence. The piano's vouch
-             (and the player's and Sonos's play) holds the dsp track change too (track, above; 22 Oct, ff: both TVs
-             re-cued twice in 30 s of practice).
+             rest inside the piece; owner, 21 Oct: practice kept going dark), a rest that lengthens toward
+             track.practice_rest_s as the playing sounds like practice (PianoView.practice, ``piano_rest``; owner,
+             1 Nov: practice's stops still ended the song after 15 s and the TVs went dark and changed scene). Once
+             it stops vouching, the same gap ends the song. A held end is counted ``ends["end_held"]`` and logged,
+             once per silence (and once more, ``ends["practice_held"]``, when practice is what holds it). The
+             piano's vouch (and the player's and Sonos's play) holds the dsp track change too (track, above; 22 Oct,
+             ff: both TVs re-cued twice in 30 s of practice).
   back       after a track_end, sound again with no track change (at once via dsp; via sonos after end_slack_s,
              the Sonos read's own lag): track_end re-sent with detail "sound_back", at_ms the first sound, so screens
              that went dark come back. A later silence after music sends track_end (the same id) again.
@@ -201,6 +204,8 @@ SIL_KEEP = 6000                 # 10 Hz samples kept for each (10 min: more than
 # music.context track.vouch: who says the song is still going. "sonos" and contract.TRACK_VIA_PLAYER (its song plays),
 # VOUCH_MIDI (the piano's MIDI: piano_vouches; the word key_via uses for it too)
 VOUCH_MIDI = "midi"
+VOUCH_PRACTICE = "practice"     # piano_vouch: only the longer rest of practice holds it (the logs' word; the
+                                # context's track.vouch still says VOUCH_MIDI)
 HELD_COUNT = {"sonos": "sonos_held", contract.TRACK_VIA_PLAYER: "player_held", VOUCH_MIDI: "piano_held"}
 
 #: show.yaml ``structure`` (README S4.9): the starting points, the same numbers as the file. The file's values win.
@@ -223,11 +228,15 @@ STRUCTURE_FALLBACK: dict = {
     # silence). gap_drop_db / gap_floor_db / gap_ref_s: the relative line (README S5.17): max(floor + gap_floor_db,
     # music - gap_drop_db), never within gap_floor_db of the music (the median lufs_s of the last gap_ref_s of sound).
     # long_gap_s: a silence this long is a song's end even while Sonos or the player still plays a song with no known
-    # length. 18 / 6 / 30 / 12: starting points (29 Oct: the room mic's music at -62..-64 LUFS over a -70 floor)
+    # length. 18 / 6 / 30 / 12: starting points (29 Oct: the room mic's music at -62..-64 LUFS over a -70 floor).
+    # practice_rest_s: the piano vouches across rests up to this long while the playing sounds like practice
+    # (piano_rest: piano_rest_s + practice x the difference; 90: starting point, owner 1 Nov: practice's stops ended
+    # the song at 15 s and the TVs went dark and changed scene at each one)
     "track": {"gap_s": 3, "gap_gate": 0.05, "gap_lufs_m": None, "window_s": 20, "tempo_jump": 0.04,
               "key_min_conf": 0.3, "parent_window_s": 5, "parent_margin": 0.05, "spike_k": 2.0, "spike_jumps": 2,
               "end_gap_s": 3, "arm_s": 20, "rearm_s": 0.5, "end_slack_s": 3, "first_sound_s": 10,
-              "piano_rest_s": 15, "gap_drop_db": 18, "gap_floor_db": 6, "gap_ref_s": 30, "long_gap_s": 12},
+              "piano_rest_s": 15, "practice_rest_s": 90, "gap_drop_db": 18, "gap_floor_db": 6, "gap_ref_s": 30,
+              "long_gap_s": 12},
     "build": {"window_s": 12, "min_slope": {"lufs_db_s": 0.15, "brightness_s": 0.004, "onset_rate_s": 0.05},
               "low_max_slope_db_s": 0.05, "full_rise_db": 6, "phrase16_conf": 0.5, "arm_beats": 8, "foot_db": 0.5},
     "drop": {"low_jump_db": 6, "lufs_jump_db": 3, "within_beats": 1, "hold_bars": 8, "snap_beats": 0.25,
@@ -296,19 +305,45 @@ def _call(fn: Optional[Callable], *a: Any) -> Any:
 PIANO_DAMPER_DOWN = 0.1      # situations.DAMPER_DOWN
 
 
-def piano_vouches(ctx: Any, rest_s: float) -> bool:
-    """The piano's MIDI (ctx.piano, the voice piano) says it is still being played: a key or the damper down, or a
-    note within ``rest_s``. A silence or a collapse in the room's level then is a rest inside the piece, not its end
-    (structure's gap end, cues' stop and fade; owner, 21 Oct). rest_s 0: off. No piano: False (the mic decides)."""
+def practice_of(pv: Any) -> float:
+    """PianoView.practice (0..1: how much the playing sounds like practice: stops, restarts, the same passage again);
+    0 for no piano, or a view without it."""
+    return _c01(_f(pv.get("practice"), 0.0) or 0.0) if isinstance(pv, dict) else 0.0
+
+
+def piano_rest(rest_s: float, practice: float, practice_rest_s: float) -> float:
+    """The rest the piano's MIDI vouches across: ``rest_s``, lengthened toward ``practice_rest_s`` as the playing
+    sounds like practice: rest_s + practice x max(0, practice_rest_s - rest_s) (owner, 1 Nov: a practice session's
+    stops and restarts went dark at each stop and changed scene every few seconds). The director's between_pieces
+    takes the same on its own pause_s."""
+    return rest_s + _c01(practice) * max(0.0, practice_rest_s - rest_s)
+
+
+def piano_vouch(ctx: Any, rest_s: float, practice_rest_s: float = 0.0) -> Optional[str]:
+    """Why the piano's MIDI (ctx.piano, the voice piano) says it is still being played, or None: "midi" (VOUCH_MIDI:
+    a key or the damper down, or a note within ``rest_s``), "practice" (VOUCH_PRACTICE: a note within the longer rest
+    practice gives, ``piano_rest``). rest_s 0: off. No piano: None (the mic decides)."""
     if not rest_s > 0:
-        return False
+        return None
     pv = _call(ctx.piano)                        # contract.BrainContext's slot (None: no piano)
     if not isinstance(pv, dict) or not pv.get("stream"):
-        return False
+        return None
     if (_f(pv.get("keys_down"), 0.0) or 0.0) > 0 or (_f(pv.get("damper"), 0.0) or 0.0) >= PIANO_DAMPER_DOWN:
-        return True
+        return VOUCH_MIDI
     age = _f(pv.get("last_note_age_s"))
-    return age is not None and age < rest_s
+    if age is None:
+        return None
+    if age < rest_s:
+        return VOUCH_MIDI
+    return VOUCH_PRACTICE if age < piano_rest(rest_s, practice_of(pv), practice_rest_s) else None
+
+
+def piano_vouches(ctx: Any, rest_s: float, practice_rest_s: float = 0.0) -> bool:
+    """The piano's MIDI says it is still being played (``piano_vouch``): a key or the damper down, or a note within
+    ``rest_s``, or within practice_rest_s as far as the playing sounds like practice. A silence or a collapse in the
+    room's level then is a rest inside the piece, not its end (structure's gap end, cues' stop and fade; owner,
+    21 Oct and 1 Nov). rest_s 0: off. No piano: False (the mic decides)."""
+    return piano_vouch(ctx, rest_s, practice_rest_s) is not None
 
 
 def _p95(values: Any) -> Optional[float]:
@@ -781,11 +816,13 @@ class Structure:
         self._kind_n: collections.Counter = collections.Counter()   # per-track counts for event ids
         self.ends = {"armed": 0, "rearmed": 0, "disarmed": 0, "sonos": 0, "dsp": 0, contract.TRACK_VIA_PLAYER: 0, "sound_back": 0,
                      "waited": 0,
-                     "hook_errors": 0, "piano_held": 0, "sonos_held": 0, "player_held": 0, "end_held": 0}
+                     "hook_errors": 0, "piano_held": 0, "sonos_held": 0, "player_held": 0, "end_held": 0,
+                     "practice_held": 0}
         # whose song plays with its metadata (_sonos, each tick): "player" | "sonos" | None; who vouches for it now
         self._plays: Optional[str] = None
         self._vouch_now: Optional[str] = None
         self._end_held_for: Optional[float] = None       # the silence (its start) whose dsp end a vouch held
+        self._end_held_by: Optional[str] = None          # ...and who held it last (logged once each: practice)
         self._boost = 1.0                                # structure.forecast_boost while a forecast's window is open
         self._ctx_parts: dict = {}
         self._build_snapshot(mono())
@@ -1227,7 +1264,7 @@ class Structure:
                 self._silent_since is not None
                 and now_s - self._silent_since >= self.cfg["track"]["long_gap_s"] - 1e-9):
             return self._plays
-        if piano_vouches(self.ctx, self.cfg["track"]["piano_rest_s"]):
+        if piano_vouches(self.ctx, self.cfg["track"]["piano_rest_s"], self.cfg["track"]["practice_rest_s"]):
             return VOUCH_MIDI
         return None
 
@@ -1345,10 +1382,25 @@ class Structure:
             return
         v = self._vouch(now_s)
         if v is not None:                                # a break inside the song its source vouches for
+            tr = self.cfg["track"]
+            by = v
+            if v == VOUCH_MIDI and piano_vouch(self.ctx, tr["piano_rest_s"], tr["practice_rest_s"]) == VOUCH_PRACTICE:
+                by = VOUCH_PRACTICE                      # past piano_rest_s: only practice's longer rest holds it
             if self._end_held_for != self._silent_since:
                 self._end_held_for = self._silent_since
+                self._end_held_by = None
                 self.ends["end_held"] += 1
-                log.info("structure: track %d: a silence, but %s vouches for the song: no dsp end", self.track_id, v)
+            if by != self._end_held_by:                  # once per silence, and once more when practice takes over
+                self._end_held_by = by
+                if by == VOUCH_PRACTICE:
+                    self.ends["practice_held"] += 1
+                    pr = practice_of(_call(self.ctx.piano))
+                    log.info("structure: track %d: a silence, but midi vouches for the song: it sounds like practice "
+                             "(%.2f), so a rest up to %.0f s is inside the piece: no dsp end", self.track_id, pr,
+                             piano_rest(tr["piano_rest_s"], pr, tr["practice_rest_s"]))
+                else:
+                    log.info("structure: track %d: a silence, but %s vouches for the song: no dsp end", self.track_id,
+                             v)
             return
         self._track_end(now_s, "dsp", self._silent_since if self._silent_since is not None else now_s)
 
@@ -2228,7 +2280,8 @@ class Structure:
         vouches, it's one piece (22 Oct). Counted ends["sonos_held" | "player_held" | "piano_held"], logged once per
         hold."""
         src = self._plays
-        if src is None and piano_vouches(self.ctx, self.cfg["track"]["piano_rest_s"]):
+        if src is None and piano_vouches(self.ctx, self.cfg["track"]["piano_rest_s"],
+                                         self.cfg["track"]["practice_rest_s"]):
             src = VOUCH_MIDI
         if src is None:
             return False
