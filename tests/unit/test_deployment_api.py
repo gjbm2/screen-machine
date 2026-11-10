@@ -181,6 +181,21 @@ def test_site_defaults_come_from_the_deployment():
         assert room_client.ROOM_URL == "http://127.0.0.1:8700"
 
 
+def test_overlays_print_the_site_address_only_when_the_site_has_one(monkeypatch):
+    """The Alexa overlays' line under the QR is manifest wording site_address (finsbury: its public hostname, as the
+    templates had it); a site without one gets no line."""
+    from routes import display
+    from routes.utils import dict_substitute
+    assert smconfig.load("finsbury").words("site_address", "") == "screen.finsburybankforsavings.com"
+    assert smconfig.load("example").words("site_address", "") == ""
+    assert display.site_address() == smconfig.deployment().words("site_address", "")
+    for name in ("overlay_explain.html.j2", "overlay_schedule.html.j2"):
+        on = dict_substitute(name, {"SCREEN_NAME": "Screen", "SITE_ADDRESS": "art.example.org"})
+        off = dict_substitute(name, {"SCREEN_NAME": "Screen", "SITE_ADDRESS": ""})
+        assert "\n          art.example.org\n        </div>\n" in on, name
+        assert "art.example.org" not in off and "This is <span" in off and "margin-top: 1em" not in off, name
+
+
 def test_samsung_token_is_a_secret(monkeypatch, tmp_path):
     monkeypatch.setattr(smconfig, "SECRETS_DIR", tmp_path)
     from routes import samsung_utils as su

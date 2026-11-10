@@ -42,6 +42,7 @@ WORDING_KEYS = {
     "artnet_no_replies": "show_service: the Art-Net 'no replies yet' hint",
     "ad_room": "show_service treatment prompt: the room the AI art-directs",
     "ad_rig": "show_service treatment prompt: what is in that room (screens, lights, appliances)",
+    "site_address": "Flask's Alexa overlays: the address under the QR (no line when unset)",
 }
 
 

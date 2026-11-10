@@ -51,10 +51,10 @@
       {% if SCREEN_NAME %}
         <div style="font-size: 0.8em; opacity: 0.6; margin-top: 18px;">
           This is <span style="font-weight: 400;">{{ SCREEN_NAME }}</span>.
-        </div>
+        </div>{% if SITE_ADDRESS %}
         <div style="font-size: 0.6em; opacity: 0.6; margin-top: 1em;">
-          screen.finsburybankforsavings.com
-        </div>
+          {{ SITE_ADDRESS }}
+        </div>{% endif %}
       {% endif %}
     </div>
   </div>

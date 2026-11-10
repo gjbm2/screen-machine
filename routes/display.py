@@ -189,6 +189,16 @@ def mask_latlon(icfg: dict) -> tuple[float, float]:
     return float(config.INTENSITY_CFG["default_lat"]), float(config.INTENSITY_CFG["default_lon"])
 
 
+def site_address() -> str:
+    """The address people reach the app at, printed under the QR on the Alexa overlays (manifest wording
+    site_address; finsbury: its public hostname). "" when the site sets none: the overlays leave the line out."""
+    try:
+        import smconfig
+        return smconfig.deployment().words("site_address", "")
+    except Exception:                                 # noqa: BLE001 - no deployment: no line
+        return ""
+
+
 def send_overlay(
     html: str,
     screens: list[str] = None,
@@ -216,6 +226,7 @@ def send_overlay(
                 # Automatically add common contextual substitutions
                 from routes.utils import build_schema_subs, get_qr
                 auto_subs = build_schema_subs()
+                auto_subs['SITE_ADDRESS'] = site_address()
                 
                 # Add screen-specific contextual substitutions
                 if screens and len(screens) > 0:
