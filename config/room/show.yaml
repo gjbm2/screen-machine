@@ -35,19 +35,7 @@ version: 1
 #   captures only while something needs it: Auto is on, the mode follows the music, or AI listening is on (it claims
 #   the mic itself). The Room page's mic switch wins. Otherwise its sender keeps it closed (README S5.16, mic.py).
 senders:
-  # LIVE 18 Oct (owner: "plug the MIDI cable / a mic into the mini-PC and it Just Works"): the kiosk's show-sender
-  # (a systemd --user unit, tools/show_sender/deploy.sh) sends the Steinway's USB MIDI and a USB mic whenever they are
-  # plugged in; with neither, its heartbeats say no_device. The mic still captures only on demand (mic.py).
-  kiosk:                                    # screen-machine-drawingroom, 98's show_sender.py
-    hosts: ["192.168.1.10", "192.168.1.92"] # Ethernet over powerline (primary since 13 Oct), then Wi-Fi (docs/PORTS.md)
-    port: 6980
-    streams: [room-mic, room-piano]
-    label: Drawing room                     # the Room page's Mic list groups this sender's inputs under it
-  pc22:                                     # a PC22 mic (the Dell monitor's: the Insta360 lags 134-148 ms) until the
-    hosts: ["192.168.1.205"]                # kiosk's arrives: tools/show_sender/pc22_agent.py on Windows, run by
-    port: 6984                              # Spectre's audio-agent card (d4, 16 Oct; SHOW_ENGINE §3.2 "PC22")
-    streams: [pc22-mic]
-    label: PC22                             # the Room page's Mic list groups this sender's inputs under it
+  # This site's senders (the kiosk, a PC22 mic) are in deployments/<id>/show.yaml; the test sources below are shared.
   test-piano:                               # 98's test piano (tools/show_sender --test-piano), a child of show_service
     hosts: [localhost]
     port: 6981
@@ -78,8 +66,8 @@ room:
 # override any of them for one rule, e.g. {"piano_playing": {"for_s": 10, "min_notes": 20}}.
 situations:
   midi:                                     # piano_playing, piano_idle; also the MIDI state channels (__main__)
-    streams: [room-piano]                   # the MIDI streams that count. test-piano, phone-test and pc22-* never do
-                                            # unless they are listed here or a rule sets include_test: true.
+    # streams: this site's MIDI streams that count (deployments/<id>/show.yaml). test-piano, phone-test and pc22-* never
+    # do unless they are listed there or a rule sets include_test: true.
     channels: [1]                           # the adsilent: channel 1 is the keys; 2 is its own playback (ignored)
     window_s: 10                            # starting point (§8.9)
     min_notes: 12                           # starting point
@@ -91,8 +79,7 @@ situations:
                                             # worker, a DSP guess: a steady beat or a clear key, over the gate.
     dsp_min_gate: 0.3                       # starting point
   sonos:                                    # sonos_playing; music_audible's Sonos path
-    now_playing: sonos.drawing-room.now_playing     # room targets (sonos.json zone "drawing-room")
-    volume: sonos.drawing-room.volume
+    # now_playing, volume: this site's Sonos room targets (deployments/<id>/show.yaml); none: no Sonos path
     own_change_s: 60                        # starting point: ignore Sonos this long after the room itself sent it
                                             # anything (sent_age_s)
   quiet:                                    # quiet; no stream: the mic the room listens through
@@ -112,7 +99,7 @@ situations:
   light:                                    # light_below, light_above (README S5.19): the room's light sensor
     url: "http://127.0.0.1:5000/api/lightsensor/lightsense"   # Flask's own light sensor route; null: the light
                                             # words read unknown
-    sensor: living-room                     # the sensor a rule reads when it names none (the route's only one today)
+    # sensor: the sensor a rule reads when it names none (deployments/<id>/show.yaml)
     poll_s: 10                              # starting point: one read of the route every 10 s (2 s timeout, async)
     smooth_s: 60                            # starting point: the median over the last minute, so someone walking past
                                             # the sensor doesn't flip it
@@ -1034,11 +1021,8 @@ lights:
     coherence: {events: 1.0, floor: 0.3}
     symmetry: none                          # none | mirror
     mirror_ball:
-      enabled: true                         # it turns the glitterball with the flow; it never switches it on
-      power_member: mirror_ball.main
+      # enabled, power_member, direction_target, speed_target: this site's glitterball (deployments/<id>/show.yaml)
       power_on: spinning
-      direction_target: mirror_ball_motor.direction
-      speed_target: mirror_ball_motor.speed
       directions: {cw: clockwise, ccw: anticlockwise}   # cw = clockwise seen from ABOVE: check by eye, swap if wrong
       speeds: [[0.0, low], [0.4, medium], [0.75, high]]   # flow.speed from -> the remote's speed word
       min_gap_s: 120                        # §9.3: one change at most this often (the motor reverses)
@@ -1068,8 +1052,7 @@ lights:
 # ---- The ensemble: how the room's screens and lights play together (docs/ENSEMBLE.md). Starting points unless marked.
 ensemble:
   players:
-    zones: {south: left, north: right}      # owner, 22 Oct: "south (left) ... north (right)". The Room map's positions
-                                            # win once the room is placed and its front set (facing west, south is left)
+    # zones: which side of the room each screen plays (deployments/<id>/show.yaml)
     split_groups: true                      # each light group plays as one player per side (Lamps, left / Lamps, right)
     min_spread_m: 0.5                       # placed players closer than this across the room: the zones decide instead
   pick:

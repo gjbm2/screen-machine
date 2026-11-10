@@ -1,0 +1,4 @@
+# deployments/example/room/room.yaml: room_service's settings for this deployment (the full key list is in
+# deployments/finsbury/room/room.yaml and room_service/config.py). Service addresses default to this machine's
+# ports (deployment.yaml); screens come from publish-destinations.json (a destination with a "live" block).
+dmx: {enabled: false}

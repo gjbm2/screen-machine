@@ -1,0 +1,49 @@
+# deployments/finsbury/deployment.yaml: the production deployment on PC22 (the drawing room). See deployments/README.md.
+# Everything here was code defaults or scattered constants before 10 Nov 2026; the values reproduce that behaviour.
+id: finsbury
+name: Drawing room (PC22)
+description: Production. Two Samsung Frames (north, south) on the drawing-room kiosk, Hue + DMX + RF, Sonos, e-ink tags.
+
+# The default for a screen's light curve when its intensity_cfg names no lat/lon (was config.py's London default).
+location: {lat: 51.5074, lon: -0.1278}
+
+# The room Flask's art director and the auto hints work on when they name none (was ROOM = "drawing-room").
+default_room: drawing-room
+
+capabilities:
+  generation: true
+  art_director: true
+  art_tags: true
+  alexa: true
+  tv_power: true
+  kiosk_admin: true
+  alerts: true
+  ngrok: true
+  room: true
+  live: true
+  show: true
+  dot: true
+  dmx: true
+  hue: true
+  rf: true
+  blinds: true
+  sonos: true
+
+# Ports on this machine (these are the defaults; docs/PORTS.md is the register, Spectre mirrors it).
+ports: {flask: 5000, overlay_ws: 8765, room: 8700, show_bus: 8701, stream: 8702, show: 8703, dot: 8704}
+
+# The kiosk mini-PC that drives the TVs (media-server/remote-scripts). SSH secrets stay in
+# media-server/local-scripts/.env (MEDIA_SERVER_*), which overrides host and user here.
+kiosk:
+  host: 192.168.1.92            # Wi-Fi address the admin scripts use (powerline is 192.168.1.10)
+  user: gjbm2
+  base_url: http://95.141.21.170:8000   # what the kiosk Chrome loads /display/<screen> from (WAN 8000 -> PC22 8080)
+  screens:
+    north-screen: {name: north, output: HDMI-A-1, cdp_port: 9222}
+    south-screen: {name: south, output: HDMI-A-2, cdp_port: 9223}
+
+# Machine paths the services use (WSL on PC22).
+host:
+  fonts_dir: /mnt/c/Windows/Fonts
+  windows_python: /mnt/c/Windows/py.exe
+  piano_audition_dir: "/mnt/c/Users/Greg/Music/Piano audition"

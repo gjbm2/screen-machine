@@ -1,0 +1,26 @@
+# deployments/example/deployment.yaml: the smallest working deployment, and the template for a new one
+# (deployments/README.md, "Setting up a new deployment"). One screen that can go live, one room, no devices,
+# no image generation. It boots with nothing connected; the tests check it stays valid.
+id: example
+name: Example (one screen, nothing connected)
+location: {lat: 51.5074, lon: -0.1278}
+default_room: studio
+capabilities:
+  generation: false
+  art_director: false
+  art_tags: false
+  alexa: false
+  tv_power: false
+  kiosk_admin: false
+  alerts: false
+  ngrok: false
+  room: true
+  live: true
+  show: true
+  dot: false
+  dmx: false
+  hue: false
+  rf: false
+  blinds: false
+  sonos: false
+ports: {flask: 5000, overlay_ws: 8765, room: 8700, show_bus: 8701, stream: 8702, show: 8703, dot: 8704}

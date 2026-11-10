@@ -1,0 +1,43 @@
+# deployments/finsbury/show.yaml: this site's layer of show_service's settings. show_service deep-merges it over the
+# shared config/room/show.yaml (smconfig.load_layered_yaml: mappings merge key by key, anything else replaces), and
+# re-reads both when either changes. Only facts about this room live here: its audio senders and their addresses, its
+# MIDI stream, its Sonos zone, its light sensor, its glitterball's room targets and which side each screen is on.
+# Tuning stays in the shared file. Moved here verbatim from config/room/show.yaml on 10 Nov 2026.
+
+senders:
+  # LIVE 18 Oct (owner: "plug the MIDI cable / a mic into the mini-PC and it Just Works"): the kiosk's show-sender
+  # (a systemd --user unit, tools/show_sender/deploy.sh) sends the Steinway's USB MIDI and a USB mic whenever they are
+  # plugged in; with neither, its heartbeats say no_device. The mic still captures only on demand (mic.py).
+  kiosk:                                    # screen-machine-drawingroom, 98's show_sender.py
+    hosts: ["192.168.1.10", "192.168.1.92"] # Ethernet over powerline (primary since 13 Oct), then Wi-Fi (docs/PORTS.md)
+    port: 6980
+    streams: [room-mic, room-piano]
+    label: Drawing room                     # the Room page's Mic list groups this sender's inputs under it
+  pc22:                                     # a PC22 mic (the Dell monitor's: the Insta360 lags 134-148 ms) until the
+    hosts: ["192.168.1.205"]                # kiosk's arrives: tools/show_sender/pc22_agent.py on Windows, run by
+    port: 6984                              # Spectre's audio-agent card (d4, 16 Oct; SHOW_ENGINE §3.2 "PC22")
+    streams: [pc22-mic]
+    label: PC22                             # the Room page's Mic list groups this sender's inputs under it
+
+situations:
+  midi:
+    streams: [room-piano]                   # the MIDI streams that count. test-piano, phone-test and pc22-* never do
+                                            # unless they are listed here or a rule sets include_test: true.
+  sonos:
+    now_playing: sonos.drawing-room.now_playing     # room targets (sonos.json zone "drawing-room")
+    volume: sonos.drawing-room.volume
+  light:
+    sensor: living-room                     # the sensor a rule reads when it names none (the route's only one today)
+
+lights:
+  flow:
+    mirror_ball:
+      enabled: true                         # it turns the glitterball with the flow; it never switches it on
+      power_member: mirror_ball.main
+      direction_target: mirror_ball_motor.direction
+      speed_target: mirror_ball_motor.speed
+
+ensemble:
+  players:
+    zones: {south: left, north: right}      # owner, 22 Oct: "south (left) ... north (right)". The Room map's positions
+                                            # win once the room is placed and its front set (facing west, south left).
