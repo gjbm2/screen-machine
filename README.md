@@ -1,5 +1,9 @@
 # Screen Machine
 
+> **PC22, start here:** this branch (`deployments-generalisation`) moves PC22 onto the deployments layout. Before you
+> change anything, read [docs/PICKUP_FROM_PC22.md](docs/PICKUP_FROM_PC22.md). It says what to commit first, how to
+> merge and migrate, what to test, and the order for the history purge.
+
 Screen Machine runs a room built around AI art. It generates pictures and short videos, puts them on wall
 screens, and can switch those screens to a live, music-driven GPU render and back. It also drives the room's lights,
 blinds and sound, and it listens to the room so it can follow whatever is playing.

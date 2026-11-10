@@ -12,6 +12,9 @@ order and each depends on the one before. `deployments/README.md` has the genera
   - every single-site assumption the topology audit found, fixed, plus Energy acting now and a picked palette
     beating colour-repainting effects;
   - multi-room: rooms with their own modes and rooms outside the show. It is inert until `rooms.json` opts a room in.
+    **It is still being finished on the laptop** and arrives as later commits on this branch. Don't wait for it: once
+    it lands, `git fetch origin && git merge origin/deployments-generalisation` brings it in as plain code. It needs no
+    second migration and changes nothing on finsbury.
   - the public-repo cleanup, the secrets tool, and the rewritten README.
 
   **Merge this branch on PC22, not just `main`.**
@@ -114,7 +117,8 @@ From here on, nobody pushes commits made before the purge (next step).
 
 ## 5. After the merge: purge, then public again
 
-Do this once step 4 is pushed and no machine has unpushed work.
+Do this once step 4 is pushed, **multi-room has landed on this branch and been merged and pushed too**, and no
+machine has unpushed work. Unpushed commits anywhere would be stranded on the old history.
 
 1. **Rotate first.** The purge doesn't un-publish anything someone already copied. Change these and re-pair the
    TVs:
@@ -142,9 +146,9 @@ Do this once step 4 is pushed and no machine has unpushed work.
 
 ## 6. Optional, later: the Lab gets its own modes
 
-Multi-room is in the code but finsbury doesn't use it. Opting the Lab in fixes "drawing-room modes also move
-devtest". It is a config change of three files, prepared and checked in `docs/multiroom/finsbury-lab/` with its own
-`APPLY.md` (exact steps, checks on PC22, two-file rollback). Do it once steps 1–5 have settled, while the site is not in
+Once multi-room has landed, it is in the code but finsbury doesn't use it. Opting the Lab in fixes "drawing-room modes
+also move devtest". It is a config change of three files, prepared and checked in `docs/multiroom/finsbury-lab/` with
+its own `APPLY.md` (exact steps, checks on PC22, two-file rollback). That folder arrives with multi-room. Do it once steps 1–5 have settled, while the site is not in
 Live test, and tell the other sessions first (it restarts Flask).
 
 ## Sharing API keys with the laptop (optional)
