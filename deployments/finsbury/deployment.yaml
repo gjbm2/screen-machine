@@ -27,6 +27,8 @@ wording:
   windows_host: PC22                        # show_service: the Windows host's name in piano/Sonos copy
   windows_speakers: PC22 speakers
   artnet_no_replies: "no replies yet: nodes answer on PC22's udp 6454, which ca's relay forwards to room_service (README S5.7)"
+  ad_room: a drawing room                   # treatment prompt: "the art director of <ad_room>: <ad_rig>"
+  ad_rig: two large TVs showing generative scenes, lamps, and on some modes a glitterball and pinspots
 
 capabilities:
   generation: true

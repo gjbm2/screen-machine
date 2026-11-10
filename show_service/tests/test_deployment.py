@@ -131,8 +131,10 @@ def test_expand_urls_takes_another_sites_ports_and_leaves_other_holes():
 def test_site_words_come_from_the_deployment_with_generic_defaults():
     """Audit SHOW-6/E10 (contract C3): every phrase that names a site's room or machine is deployment.yaml ``wording``
     with a generic default; the defaults name no site (finsbury's text is kept by its manifest's wording keys)."""
-    from show_service import artnet_lan, listener
+    from show_service import artnet_lan, listener, treatment
     words = {"listen_space": ("a room", listener.LISTEN_SPACE),
+             "ad_room": ("a room", treatment.AD_ROOM),
+             "ad_rig": ("screens showing generative scenes, and lights", treatment.AD_RIG),
              "artnet_no_replies": ("no replies yet: no ArtPollReply from this node so far (README S5.7)",
                                    artnet_lan.NO_REPLIES),
              "windows_host": ("this PC", sources.WINDOWS_HOST_WORDS),
@@ -140,6 +142,11 @@ def test_site_words_come_from_the_deployment_with_generic_defaults():
     for key, (generic, got) in words.items():
         assert got == DEP.words(key, generic), key
         assert not any(w in generic for w in ("PC22", "drawing", "ca's relay")), key
+    assert treatment.SYSTEM.startswith(f"You are the art director of {treatment.AD_ROOM}: {treatment.AD_RIG}. ")
+    if DEP.id == "finsbury":                       # PC22's prompt as it was before the wording keys (75decd72)
+        assert treatment.SYSTEM.startswith(
+            "You are the art director of a drawing room: two large TVs showing generative scenes, lamps, and on some "
+            "modes a glitterball and pinspots. For the song now playing choose ONE treatment ")
     assert sources.LIVE_ON_SONOS.startswith(f"The Windows synth plays on {sources.WINDOWS_HOST_WORDS} only")
     if sources.WINDOWS_SOUND:
         assert sources.OUTPUTS[0] == {"id": "pc22", "label": sources.WINDOWS_SPEAKERS_WORDS}

@@ -356,9 +356,14 @@ TOOL: dict = {
     },
 }
 
+#: the room the AI art-directs and what is in it, in its system prompt: deployment.yaml ``wording.ad_room`` and
+#: ``wording.ad_rig`` (finsbury: its drawing room, two TVs, lamps, the glitterball and pinspots), else generic phrases
+AD_ROOM = contract.DEPLOYMENT.words("ad_room", "a room")
+AD_RIG = contract.DEPLOYMENT.words("ad_rig", "screens showing generative scenes, and lights")
+
 SYSTEM = (
-    "You are the art director of a drawing room: two large TVs showing generative scenes, lamps, and on some modes "
-    "a glitterball and pinspots. For the song now playing choose ONE treatment that makes the room feel right for "
+    f"You are the art director of {AD_ROOM}: {AD_RIG}. "
+    "For the song now playing choose ONE treatment that makes the room feel right for "
     "this music, within the room's mode and its feel. Use only the names offered. Rules: pick 1-2 scene families "
     "that suit the music (fit and the owner's stars are given; stars matter); make this song look different from "
     "the last ones (avoid repeating their families or palette unless the music is a continuation); respect what "

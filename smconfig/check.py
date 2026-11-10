@@ -40,6 +40,8 @@ WORDING_KEYS = {
     "windows_host": "show_service: the Windows host's name in piano and Sonos copy",
     "windows_speakers": "show_service: the Windows host's speakers",
     "artnet_no_replies": "show_service: the Art-Net 'no replies yet' hint",
+    "ad_room": "show_service treatment prompt: the room the AI art-directs",
+    "ad_rig": "show_service treatment prompt: what is in that room (screens, lights, appliances)",
 }
 
 

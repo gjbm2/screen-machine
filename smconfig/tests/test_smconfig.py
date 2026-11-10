@@ -195,6 +195,14 @@ def test_check_wording_and_art_director(fake_deployments, monkeypatch):
     assert not any("wording.art_space" in p or "key 'art_space'" in p for p in problems)
 
 
+def test_readme_wording_table_lists_every_wording_key():
+    """deployments/README.md's "Site wording" table and check.WORDING_KEYS name the same keys (a new one goes in both)."""
+    import re
+    text = (REPO / "deployments" / "README.md").read_text()
+    section = text.split("### Site wording", 1)[1].split("\n#", 1)[0]
+    assert set(re.findall(r"^\| `([a-z_]+)` \|", section, re.M)) == set(smcheck.WORDING_KEYS)
+
+
 def test_check_kiosk_screens_must_be_a_mapping(fake_deployments, monkeypatch):
     problems, _ = _alpha_problems(fake_deployments, monkeypatch, "kiosk: {screens: [vj]}\n")
     assert any("kiosk.screens must be a mapping" in p for p in problems)
