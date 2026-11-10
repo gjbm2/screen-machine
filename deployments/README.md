@@ -269,27 +269,43 @@ kinds of secret:
 - **Keys in `.env`**: the API keys (OpenAI, Gemini, RunPod, AssemblyAI) and the Gmail alert sender. These work on any
   machine. Every process reads them from the repo's untracked `.env`, or from its environment.
 - **Files under `~/.config/screen-machine/`** (`smconfig.secret(...)`): the Hue bridge pairing, the Samsung TV tokens,
-  the Dot. key, the Cloudflare token and room_service's tokens. Each was made on one machine for its own devices, so
-  it stays on that machine. Pair again on a new machine; don't copy these.
+  the Dot. key, the Bloc hub key, the Cloudflare token and room_service's tokens. Each was made on one machine for
+  its own devices, so it stays on that machine. Pair again on a new machine; don't copy these.
+
+The kiosk's SSH login (`MEDIA_SERVER_HOST`, `_USER`, `_PASSWORD`) is in a third place,
+`media-server/local-scripts/.env`, which the admin page's kiosk actions and the `media-server/` scripts read.
+
+All of these are this user's only: `.env` and `media-server/local-scripts/.env` 0600, `~/.config/screen-machine/`
+0700, the files in it 0600. Nothing that reads them runs as another user. `scripts/migrate_deployment.py --apply`
+sets the first three.
 
 `python -m smconfig.secrets check` lists every secret the deployment's switched-on capabilities use, each as set or
-missing. It never prints a value. The list of what each capability uses is `NEEDS` in `smconfig/secrets.py`.
+missing. It never prints a value. It also warns, naming the path, about any of those files or the folder that other
+users on the machine can open. The list of what each capability uses is `NEEDS` in `smconfig/secrets.py`.
 
-**Sharing keys between machines.** Copy them once through a private file, never through git:
+**Sharing keys between machines.** Copy them once through a private file, never through git. A synced folder
+(OneDrive) keeps a copy in the cloud, and 0600 means nothing on a Windows drive, so only an encrypted copy goes
+there. Encrypt it with `gpg -c` (PC22 has gpg; on another Ubuntu, `sudo apt install gnupg`):
 
 ```
-# on the machine that has them (PC22):
-python -m smconfig.secrets export /mnt/c/Users/Greg/OneDrive/Private/screen-machine-keys.env
+# on the machine that has them (PC22): export locally, encrypt into the synced folder, delete the plain file
+python -m smconfig.secrets export ~/screen-machine-keys.env
+gpg -c -o /mnt/c/Users/Greg/OneDrive/Private/screen-machine-keys.env.gpg ~/screen-machine-keys.env   # a passphrase
+rm ~/screen-machine-keys.env
 # on the other machine, once the file has synced there:
-python -m smconfig.secrets import /mnt/c/Users/<you>/OneDrive/Private/screen-machine-keys.env
+(umask 077; gpg -d -o ~/screen-machine-keys.env /mnt/c/Users/<you>/OneDrive/Private/screen-machine-keys.env.gpg)
+python -m smconfig.secrets import ~/screen-machine-keys.env
+rm ~/screen-machine-keys.env /mnt/c/Users/<you>/OneDrive/Private/screen-machine-keys.env.gpg
 ```
 
-- `export` writes only the shareable keys this machine has, mode 0600, and refuses any path inside the repo.
+- `export` writes only the shareable keys this machine has, mode 0600, and refuses any path inside the repo. Pointed
+  at a Windows drive (`/mnt/c/...`), it still writes, but warns that 0600 isn't enforced there and the folder may sync
+  to the cloud.
 - `import` adds only the keys `.env` lacks; `--overwrite` replaces ones it has. It never prints values and leaves `.env`
   at 0600.
 - Restart the services that use the keys afterwards.
 - Each machine keeps its own copy, so nothing at run time depends on OneDrive.
-- Delete the private file when you're done if you don't want a standing copy.
+- Delete both copies (plain and encrypted) when you're done.
 
 The laptop rig has generation off, so it needs none of these today. The listener's "Describe it" uses an LLM key if
 one is set and works without one.
@@ -378,6 +394,8 @@ scripts/ctl start all
 - adds `SM_DEPLOYMENT=finsbury` to `.env`;
 - moves any file the app wrote into an old location since the last commit (for example, a new RF device);
 - moves the Samsung pairing tokens out of the repo root into `~/.config/screen-machine/samsung/`;
+- makes `.env` and `media-server/local-scripts/.env` 0600 and `~/.config/screen-machine/` 0700 (it says when one was
+  wider);
 - proves every moved file matches its pre-pull content (`ORIG_HEAD`);
 - runs `smconfig check`, and saves the effective config to `logs/`;
 - lists anything in Spectre or the boot script that still names an old path;

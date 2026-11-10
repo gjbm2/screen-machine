@@ -68,6 +68,8 @@ work, so PC22's edits count as the "before". It also does the following:
 - adds `SM_DEPLOYMENT=finsbury` to `.env`;
 - adds `NGROK_DOMAIN` to `.env`, recovered from the old `start.sh`;
 - moves the Samsung tokens to `~/.config/screen-machine/samsung/`;
+- makes the secrets this user's only: `.env` and `media-server/local-scripts/.env` 0600, `~/.config/screen-machine/`
+  0700 (both `.env` files are 0644 on PC22 today). Every reader runs as this user, Spectre and Caddy included;
 - runs `python -m smconfig check`.
 
 `deployments/README.md` › "Migrating PC22" explains each line of its report.
@@ -83,7 +85,7 @@ Then:
 npx vite build --outDir dist_next --emptyOutDir && rm -rf dist_prev && mv dist dist_prev && mv dist_next dist
 ./start.sh start flask; scripts/ctl start all
 .venv/bin/python scripts/migrate_deployment.py --deployment finsbury --verify-live
-python -m smconfig.secrets check          # every secret finsbury's capabilities use: should all say "set"
+python -m smconfig.secrets check          # every secret finsbury's capabilities use: should all say "set", no warning
 ```
 
 ## 3. Test
@@ -136,20 +138,36 @@ commits anywhere would be stranded on the old history.
 1. **Rotate first.** The purge doesn't un-publish anything someone already copied. Change these and re-pair the
    TVs:
    - the Wi-Fi passwords;
-   - the network controller's device SSH and admin passwords;
-   - the kiosk's login password, and make its SSH key-only.
+   - the network controller's device SSH and admin passwords, and its RADIUS profile's shared secret if the
+     network uses one;
+   - the kiosk's login password, and make its SSH key-only. Then put the new password in
+     `media-server/local-scripts/.env` (`MEDIA_SERVER_PASSWORD`; keep the file 0600) and restart Flask (tell the
+     other sessions first). The admin page's kiosk actions use it for sudo, so they fail until then.
 2. **Purge, on PC22, straight after its push.** Then nothing new can land on the old history in between. It needs
-   SSH push access to GitHub and `python3 -m venv`; the script installs `git-filter-repo` into a throwaway venv.
+   SSH push access to GitHub and `python3 -m venv`; the script installs `git-filter-repo` (pinned to 2.47.0, hash
+   checked) into a throwaway venv. By now the migration (section 2) has put `NGROK_DOMAIN` in `.env`.
    ```bash
-   scripts/purge_public_history.sh           # dry run: rewrites a temp mirror and shows what goes
+   scripts/purge_public_history.sh           # dry run: rewrites a temp mirror and shows what goes (counts only)
    scripts/purge_public_history.sh --push    # force-pushes the rewritten branches and tags
    ```
-   It removes `debug/`, `media-server/maintenance.log`, `wav/` and the TV token files from every commit.
+   It removes `debug/`, `media-server/maintenance.log`, `wav/` and the TV token files from every commit. In every
+   file and message it also replaces the values `.env` holds for `ALERT_EMAIL_TO` and `NGROK_DOMAIN` (the branch
+   took them out of the tree), their e-mail domain, and old VS Code connection tokens. It reads the values from
+   `.env` when it runs and never prints them. Each ref is pushed only if GitHub still has what the script cloned,
+   so if anyone pushed in between, the push fails and changes nothing: push that work, then run it again.
 3. **Re-sync every other clone**: the laptop, and anything else. PC22 needs it too, because the script rewrote a
-   temp mirror, not PC22's checkout. The old commits must never be pushed again. On each machine:
+   temp mirror, not PC22's checkout. The old commits must never be pushed again. On each machine, before anything
+   else, delete the tags and stashes made before the purge: they still hold the purged files.
+   ```bash
+   git for-each-ref refs/tags refs/stash    # what this clone has
+   git tag -d prod-hotfix-2026-10-11        # on PC22 (and any other tag listed that predates the purge)
+   git update-ref -d refs/stash             # a stash from before the purge (`git show refs/stash` first if you want it)
+   ```
+   Never run `git push --tags` or `git push --mirror` from a clone made before the purge: either one puts the old
+   commits back on GitHub. Then:
    ```bash
    git status                               # must be clean; commit and push anything first (before step 2!)
-   git fetch origin
+   git fetch --prune origin
    git reset --hard origin/main             # one-off, owner-approved exception to rule 9: the history changed under it
    git branch -D deployments-generalisation 2>/dev/null || true
    ```
@@ -169,11 +187,18 @@ Live test, and tell the other sessions first (it restarts Flask).
 
 ## Sharing API keys with the laptop (optional)
 
+OneDrive keeps a copy in the cloud of whatever is in the folder, and 0600 means nothing on a Windows drive. So
+export to a local file and put only an encrypted copy in OneDrive. PC22 has `gpg` (`command -v gpg`).
+
 ```bash
 # PC22:
-python -m smconfig.secrets export /mnt/c/Users/Greg/OneDrive/Private/screen-machine-keys.env
+python -m smconfig.secrets export ~/screen-machine-keys.env
+gpg -c -o /mnt/c/Users/Greg/OneDrive/Private/screen-machine-keys.env.gpg ~/screen-machine-keys.env   # a passphrase
+rm ~/screen-machine-keys.env
 # laptop, once it has synced:
-python -m smconfig.secrets import /mnt/c/Users/<you>/OneDrive/Private/screen-machine-keys.env
+(umask 077; gpg -d -o ~/screen-machine-keys.env /mnt/c/Users/<you>/OneDrive/Private/screen-machine-keys.env.gpg)
+python -m smconfig.secrets import ~/screen-machine-keys.env
+rm ~/screen-machine-keys.env /mnt/c/Users/<you>/OneDrive/Private/screen-machine-keys.env.gpg
 ```
 
 Only the shareable API keys travel. Pairings stay with their machine. See `deployments/README.md` › "Secrets".
