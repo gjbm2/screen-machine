@@ -128,6 +128,24 @@
    "confidence": "unknown",
    "sent_age_s": null
   },
+  "director.glitterball": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "director.light_scenes": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "director.pinspots": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
   "hue.ne": {
    "age_s": null,
    "believed": null,
@@ -306,7 +324,7 @@
  "modes": {},
  "order": [],
  "reachable": true,
- "revision": "684fe3c3e56f",
+ "revision": "1aeaa32cf075",
  "screens": {
   "devtest": {
    "cutting": false,

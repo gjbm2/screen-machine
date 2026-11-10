@@ -2,7 +2,7 @@
  "config": {
   "error": null,
   "pending_targets": [],
-  "revision": "684fe3c3e56f",
+  "revision": "1aeaa32cf075",
   "warnings": [
    {
     "code": "guard_inactive",
@@ -753,6 +753,59 @@
      "settled": null
     },
     "south-screen": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    }
+   }
+  },
+  "director": {
+   "available": true,
+   "believed": {
+    "glitterball": null,
+    "light_scenes": null,
+    "pinspots": null
+   },
+   "dry_run": false,
+   "kind": "level",
+   "last_error": null,
+   "last_ok_age_s": null,
+   "members": {
+    "glitterball": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "light_scenes": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "pinspots": {
      "age_s": null,
      "believed": null,
      "confidence": "unknown",

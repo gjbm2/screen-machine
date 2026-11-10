@@ -5,7 +5,7 @@
    "from": "gallery",
    "notes": {},
    "reapply": false,
-   "revision": "684fe3c3e56f",
+   "revision": "1aeaa32cf075",
    "steps": [
     {
      "action": "set suspended",
@@ -157,9 +157,25 @@
      "value": "stopped"
     },
     {
-     "action": "set dmx, put back afterwards",
+     "action": "set room light 20-100%, put back afterwards",
      "detail": "",
      "id": "i12",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "stored": 100,
+     "subsystem": "brightness.screens",
+     "value": {
+      "follow": "sensor",
+      "max": 100,
+      "min": 20,
+      "smooth_s": 10.0
+     }
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "",
+     "id": "i13",
      "kind": "set",
      "status": "pending",
      "step": 5,
@@ -169,7 +185,7 @@
     {
      "action": "set dmx, put back afterwards",
      "detail": "",
-     "id": "i13",
+     "id": "i14",
      "kind": "set",
      "status": "pending",
      "step": 5,
@@ -177,9 +193,22 @@
      "value": "dmx"
     },
     {
+     "action": "set Chill \u00b7 listening, put back afterwards",
+     "detail": "",
+     "id": "i15",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "subsystem": "show.main",
+     "value": {
+      "listening": true,
+      "vibe": "chill"
+     }
+    },
+    {
      "action": "set Mic listens, put back afterwards",
      "detail": "",
-     "id": "i14",
+     "id": "i16",
      "kind": "set",
      "status": "pending",
      "step": 5,
@@ -189,7 +218,7 @@
     {
      "action": "set AI listens, put back afterwards",
      "detail": "",
-     "id": "i15",
+     "id": "i17",
      "kind": "set",
      "status": "pending",
      "step": 5,
@@ -199,7 +228,7 @@
     {
      "action": "set dmx, put back afterwards",
      "detail": "no adapter",
-     "id": "i16",
+     "id": "i18",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -210,7 +239,7 @@
     {
      "action": "set dmx, put back afterwards",
      "detail": "no adapter",
-     "id": "i17",
+     "id": "i19",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -221,7 +250,7 @@
     {
      "action": "set dmx, put back afterwards",
      "detail": "no adapter",
-     "id": "i18",
+     "id": "i20",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -232,7 +261,7 @@
     {
      "action": "set dmx, put back afterwards",
      "detail": "no adapter",
-     "id": "i19",
+     "id": "i21",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -243,7 +272,7 @@
     {
      "action": "signal info",
      "detail": "",
-     "id": "i20",
+     "id": "i22",
      "kind": "signal",
      "status": "pending",
      "step": 6,
@@ -262,7 +291,7 @@
    "from": "gallery",
    "notes": {},
    "reapply": false,
-   "revision": "684fe3c3e56f",
+   "revision": "1aeaa32cf075",
    "steps": [
     {
      "action": "set suspended",
@@ -375,6 +404,14 @@
        "auto": true,
        "direction": {
         "energy": 0.9,
+        "fx": {
+         "favour": {
+          "share": 0.3,
+          "tags": [
+           "modes:disco"
+          ]
+         }
+        },
         "moods": [
          "euphoric",
          "geometric"
@@ -401,6 +438,14 @@
        "auto": true,
        "direction": {
         "energy": 0.9,
+        "fx": {
+         "favour": {
+          "share": 0.3,
+          "tags": [
+           "modes:disco"
+          ]
+         }
+        },
         "moods": [
          "euphoric",
          "geometric"
@@ -448,9 +493,48 @@
      "value": 35
     },
     {
-     "action": "set dmx, put back afterwards",
+     "action": "set {\"scene_tags\":[\"modes:disco\"]}, put back afterwards",
      "detail": "",
      "id": "i14",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "stored": {
+      "scene_tags": []
+     },
+     "subsystem": "director.light_scenes",
+     "value": {
+      "scene_tags": [
+       "modes:disco"
+      ]
+     }
+    },
+    {
+     "action": "set true, put back afterwards",
+     "detail": "",
+     "id": "i15",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "stored": false,
+     "subsystem": "director.glitterball",
+     "value": true
+    },
+    {
+     "action": "set true, put back afterwards",
+     "detail": "",
+     "id": "i16",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "stored": false,
+     "subsystem": "director.pinspots",
+     "value": true
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "",
+     "id": "i17",
      "kind": "set",
      "status": "pending",
      "step": 5,
@@ -460,7 +544,7 @@
     {
      "action": "set dmx, put back afterwards",
      "detail": "",
-     "id": "i15",
+     "id": "i18",
      "kind": "set",
      "status": "pending",
      "step": 5,
@@ -468,9 +552,22 @@
      "value": "dmx"
     },
     {
+     "action": "set Disco \u00b7 listening, put back afterwards",
+     "detail": "",
+     "id": "i19",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "subsystem": "show.main",
+     "value": {
+      "listening": true,
+      "vibe": "disco"
+     }
+    },
+    {
      "action": "set Mic listens, put back afterwards",
      "detail": "",
-     "id": "i16",
+     "id": "i20",
      "kind": "set",
      "status": "pending",
      "step": 5,
@@ -480,7 +577,7 @@
     {
      "action": "set AI listens, put back afterwards",
      "detail": "",
-     "id": "i17",
+     "id": "i21",
      "kind": "set",
      "status": "pending",
      "step": 5,
@@ -488,20 +585,20 @@
      "value": true
     },
     {
-     "action": "set high",
+     "action": "set low",
      "detail": "no adapter",
-     "id": "i18",
+     "id": "i22",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
      "step": 5,
      "subsystem": "mirror_ball_motor.speed",
-     "value": "high"
+     "value": "low"
     },
     {
      "action": "set on, put back afterwards",
      "detail": "no adapter",
-     "id": "i19",
+     "id": "i23",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -512,7 +609,7 @@
     {
      "action": "set white, put back afterwards",
      "detail": "no adapter",
-     "id": "i20",
+     "id": "i24",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -523,7 +620,7 @@
     {
      "action": "set 8, put back afterwards",
      "detail": "no adapter",
-     "id": "i21",
+     "id": "i25",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -534,7 +631,7 @@
     {
      "action": "set off, put back afterwards",
      "detail": "no adapter",
-     "id": "i22",
+     "id": "i26",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -545,7 +642,7 @@
     {
      "action": "set dmx, put back afterwards",
      "detail": "no adapter",
-     "id": "i23",
+     "id": "i27",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -556,7 +653,7 @@
     {
      "action": "set dmx, put back afterwards",
      "detail": "no adapter",
-     "id": "i24",
+     "id": "i28",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -567,7 +664,7 @@
     {
      "action": "set dmx, put back afterwards",
      "detail": "no adapter",
-     "id": "i25",
+     "id": "i29",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -578,7 +675,7 @@
     {
      "action": "set dmx, put back afterwards",
      "detail": "no adapter",
-     "id": "i26",
+     "id": "i30",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -589,7 +686,7 @@
     {
      "action": "signal info",
      "detail": "",
-     "id": "i27",
+     "id": "i31",
      "kind": "signal",
      "status": "pending",
      "step": 6,
@@ -608,7 +705,7 @@
    "from": "gallery",
    "notes": {},
    "reapply": true,
-   "revision": "684fe3c3e56f",
+   "revision": "1aeaa32cf075",
    "steps": [
     {
      "action": "set AI off",
@@ -644,7 +741,7 @@
    "from": "gallery",
    "notes": {},
    "reapply": false,
-   "revision": "684fe3c3e56f",
+   "revision": "1aeaa32cf075",
    "steps": [
     {
      "action": "set suspended",
@@ -677,9 +774,22 @@
      "value": "dmx"
     },
     {
-     "action": "set Mic listens, put back afterwards",
+     "action": "set Dinner, put back afterwards",
      "detail": "",
      "id": "i3",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "show.main",
+     "value": {
+      "listening": false,
+      "vibe": "dinner"
+     }
+    },
+    {
+     "action": "set Mic listens, put back afterwards",
+     "detail": "",
+     "id": "i4",
      "kind": "set",
      "status": "pending",
      "step": 1,
@@ -689,7 +799,7 @@
     {
      "action": "set AI off",
      "detail": "",
-     "id": "i4",
+     "id": "i5",
      "kind": "set",
      "status": "pending",
      "step": 1,
@@ -699,7 +809,7 @@
     {
      "action": "set stopped",
      "detail": "no adapter",
-     "id": "i5",
+     "id": "i6",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -710,7 +820,7 @@
     {
      "action": "set dmx, put back afterwards",
      "detail": "no adapter",
-     "id": "i6",
+     "id": "i7",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -721,7 +831,7 @@
     {
      "action": "set dmx, put back afterwards",
      "detail": "no adapter",
-     "id": "i7",
+     "id": "i8",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -732,7 +842,7 @@
     {
      "action": "set dmx, put back afterwards",
      "detail": "no adapter",
-     "id": "i8",
+     "id": "i9",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -743,7 +853,7 @@
     {
      "action": "set dmx, put back afterwards",
      "detail": "no adapter",
-     "id": "i9",
+     "id": "i10",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -764,7 +874,7 @@
    "from": "gallery",
    "notes": {},
    "reapply": false,
-   "revision": "684fe3c3e56f",
+   "revision": "1aeaa32cf075",
    "steps": [
     {
      "action": "set live:director",
@@ -795,9 +905,22 @@
      "value": false
     },
     {
-     "action": "set Mic listens, put back afterwards",
+     "action": "set Party \u00b7 listening, put back afterwards",
      "detail": "",
      "id": "i2",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "show.main",
+     "value": {
+      "listening": true,
+      "vibe": "party"
+     }
+    },
+    {
+     "action": "set Mic listens, put back afterwards",
+     "detail": "",
+     "id": "i3",
      "kind": "set",
      "status": "pending",
      "step": 1,
@@ -807,7 +930,7 @@
     {
      "action": "set AI listens, put back afterwards",
      "detail": "",
-     "id": "i3",
+     "id": "i4",
      "kind": "set",
      "status": "pending",
      "step": 1,
@@ -817,7 +940,7 @@
     {
      "action": "set stopped",
      "detail": "no adapter",
-     "id": "i4",
+     "id": "i5",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -838,7 +961,7 @@
    "from": "gallery",
    "notes": {},
    "reapply": false,
-   "revision": "684fe3c3e56f",
+   "revision": "1aeaa32cf075",
    "steps": [
     {
      "action": "set AI off",
@@ -907,7 +1030,7 @@
    "from": "gallery",
    "notes": {},
    "reapply": false,
-   "revision": "684fe3c3e56f",
+   "revision": "1aeaa32cf075",
    "steps": [
     {
      "action": "set suspended",
@@ -1073,9 +1196,48 @@
      "value": "stopped"
     },
     {
-     "action": "set dmx, put back afterwards",
+     "action": "set {\"scene_tags\":[\"modes:party\"]}, put back afterwards",
      "detail": "",
      "id": "i12",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "stored": {
+      "scene_tags": []
+     },
+     "subsystem": "director.light_scenes",
+     "value": {
+      "scene_tags": [
+       "modes:party"
+      ]
+     }
+    },
+    {
+     "action": "set true, put back afterwards",
+     "detail": "",
+     "id": "i13",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "stored": false,
+     "subsystem": "director.glitterball",
+     "value": true
+    },
+    {
+     "action": "set true, put back afterwards",
+     "detail": "",
+     "id": "i14",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "stored": false,
+     "subsystem": "director.pinspots",
+     "value": true
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "",
+     "id": "i15",
      "kind": "set",
      "status": "pending",
      "step": 5,
@@ -1085,7 +1247,7 @@
     {
      "action": "set dmx, put back afterwards",
      "detail": "",
-     "id": "i13",
+     "id": "i16",
      "kind": "set",
      "status": "pending",
      "step": 5,
@@ -1093,9 +1255,22 @@
      "value": "dmx"
     },
     {
+     "action": "set Party \u00b7 listening, put back afterwards",
+     "detail": "",
+     "id": "i17",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "subsystem": "show.main",
+     "value": {
+      "listening": true,
+      "vibe": "party"
+     }
+    },
+    {
      "action": "set Mic listens, put back afterwards",
      "detail": "",
-     "id": "i14",
+     "id": "i18",
      "kind": "set",
      "status": "pending",
      "step": 5,
@@ -1105,7 +1280,7 @@
     {
      "action": "set AI listens, put back afterwards",
      "detail": "",
-     "id": "i15",
+     "id": "i19",
      "kind": "set",
      "status": "pending",
      "step": 5,
@@ -1115,7 +1290,7 @@
     {
      "action": "set medium",
      "detail": "no adapter",
-     "id": "i16",
+     "id": "i20",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -1124,9 +1299,31 @@
      "value": "medium"
     },
     {
+     "action": "set off, put back afterwards",
+     "detail": "no adapter",
+     "id": "i21",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 5,
+     "subsystem": "pinspots.main",
+     "value": "off"
+    },
+    {
+     "action": "set off, put back afterwards",
+     "detail": "no adapter",
+     "id": "i22",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 5,
+     "subsystem": "pinspots.flash",
+     "value": "off"
+    },
+    {
      "action": "set dmx, put back afterwards",
      "detail": "no adapter",
-     "id": "i17",
+     "id": "i23",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -1137,7 +1334,7 @@
     {
      "action": "set dmx, put back afterwards",
      "detail": "no adapter",
-     "id": "i18",
+     "id": "i24",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -1148,7 +1345,7 @@
     {
      "action": "set dmx, put back afterwards",
      "detail": "no adapter",
-     "id": "i19",
+     "id": "i25",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -1159,7 +1356,7 @@
     {
      "action": "set dmx, put back afterwards",
      "detail": "no adapter",
-     "id": "i20",
+     "id": "i26",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -1170,7 +1367,7 @@
     {
      "action": "signal info",
      "detail": "",
-     "id": "i21",
+     "id": "i27",
      "kind": "signal",
      "status": "pending",
      "step": 6,
@@ -1189,7 +1386,7 @@
    "from": "gallery",
    "notes": {},
    "reapply": false,
-   "revision": "684fe3c3e56f",
+   "revision": "1aeaa32cf075",
    "steps": [
     {
      "action": "set suspended",
@@ -1312,9 +1509,22 @@
      }
     },
     {
-     "action": "set Mic listens, put back afterwards",
+     "action": "set Notes \u00b7 listening, put back afterwards",
      "detail": "",
      "id": "i8",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "subsystem": "show.main",
+     "value": {
+      "listening": true,
+      "vibe": "notes"
+     }
+    },
+    {
+     "action": "set Mic listens, put back afterwards",
+     "detail": "",
+     "id": "i9",
      "kind": "set",
      "status": "pending",
      "step": 5,
@@ -1324,7 +1534,7 @@
     {
      "action": "set AI listens, put back afterwards",
      "detail": "",
-     "id": "i9",
+     "id": "i10",
      "kind": "set",
      "status": "pending",
      "step": 5,
@@ -1334,7 +1544,7 @@
     {
      "action": "set 0, put back afterwards",
      "detail": "no adapter",
-     "id": "i10",
+     "id": "i11",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -1345,7 +1555,7 @@
     {
      "action": "set paused, put back afterwards",
      "detail": "no adapter",
-     "id": "i11",
+     "id": "i12",
      "kind": "set",
      "reason": "unavailable",
      "status": "skipped",
@@ -1356,7 +1566,7 @@
     {
      "action": "signal info",
      "detail": "",
-     "id": "i12",
+     "id": "i13",
      "kind": "signal",
      "status": "pending",
      "step": 6,

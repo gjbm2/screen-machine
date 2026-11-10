@@ -656,7 +656,9 @@ def test_parse_lights_falls_back_and_lists_problems():
     assert ls.parse_lights(None, []) == {"scene_group": "*", "groups": {}, "programs": ls.PROGRAMS_FALLBACK,
                                          "flow": ls.flowmod.FLOW_FALLBACK, "appliances": {}}
     real: list[str] = []
-    got = ls.parse_lights(yaml.safe_load(contract.SHOW_FILE.read_text())["lights"], real)
+    # show.yaml as show_service reads it: the shared file with the deployment's layer (the site's appliances) over it
+    from show_service import config as show_config
+    got = ls.parse_lights(show_config.read_show(contract.SHOW_FILE)["lights"], real)
     assert real == [] and got["scene_group"] == "lamps" and list(got["groups"]) == ["movers", "lamps", "remote-lights"]
     assert got["groups"]["remote-lights"]["appliances"] == ["glitterball", "pinspots"]
 

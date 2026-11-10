@@ -19,6 +19,14 @@
      "ch03": 100,
      "ch14": 100
     },
+    "brightness": {
+     "screens": {
+      "follow": "sensor",
+      "max": 100,
+      "min": 20,
+      "smooth_s": 10.0
+     }
+    },
     "hue": {
      "ne": "dmx",
      "nw": "dmx",
@@ -63,6 +71,10 @@
     "sensor_mask": "suspended",
     "show": {
      "ai": true,
+     "main": {
+      "listening": true,
+      "vibe": "chill"
+     },
      "mic": true
     },
     "tv": {
@@ -87,6 +99,17 @@
      "policy": "enforce",
      "restore": true,
      "value": 100,
+     "verb": "set+restore"
+    },
+    "brightness.screens": {
+     "policy": "respect",
+     "restore": true,
+     "value": {
+      "follow": "sensor",
+      "max": 100,
+      "min": 20,
+      "smooth_s": 10.0
+     },
      "verb": "set+restore"
     },
     "hue.ne": {
@@ -199,6 +222,15 @@
      "value": true,
      "verb": "set+restore"
     },
+    "show.main": {
+     "policy": "ignore",
+     "restore": true,
+     "value": {
+      "listening": true,
+      "vibe": "chill"
+     },
+     "verb": "set+restore"
+    },
     "show.mic": {
      "policy": "respect",
      "restore": true,
@@ -241,6 +273,15 @@
      "lamps": 35,
      "screens": 55
     },
+    "director": {
+     "glitterball": true,
+     "light_scenes": {
+      "scene_tags": [
+       "modes:disco"
+      ]
+     },
+     "pinspots": true
+    },
     "hue": {
      "ne": "dmx",
      "nw": "dmx",
@@ -253,7 +294,7 @@
     },
     "mirror_ball": "spinning",
     "mirror_ball_motor": {
-     "speed": "high"
+     "speed": "low"
     },
     "page": {
      "devtest.timed_reload": false,
@@ -273,6 +314,14 @@
        "auto": true,
        "direction": {
         "energy": 0.9,
+        "fx": {
+         "favour": {
+          "share": 0.3,
+          "tags": [
+           "modes:disco"
+          ]
+         }
+        },
         "moods": [
          "euphoric",
          "geometric"
@@ -290,6 +339,14 @@
        "auto": true,
        "direction": {
         "energy": 0.9,
+        "fx": {
+         "favour": {
+          "share": 0.3,
+          "tags": [
+           "modes:disco"
+          ]
+         }
+        },
         "moods": [
          "euphoric",
          "geometric"
@@ -306,6 +363,10 @@
     "sensor_mask": "suspended",
     "show": {
      "ai": true,
+     "main": {
+      "listening": true,
+      "vibe": "disco"
+     },
      "mic": true
     },
     "tv": {
@@ -342,6 +403,28 @@
      "policy": "respect",
      "restore": true,
      "value": 55,
+     "verb": "set+restore"
+    },
+    "director.glitterball": {
+     "policy": "respect",
+     "restore": true,
+     "value": true,
+     "verb": "set+restore"
+    },
+    "director.light_scenes": {
+     "policy": "respect",
+     "restore": true,
+     "value": {
+      "scene_tags": [
+       "modes:disco"
+      ]
+     },
+     "verb": "set+restore"
+    },
+    "director.pinspots": {
+     "policy": "respect",
+     "restore": true,
+     "value": true,
      "verb": "set+restore"
     },
     "hue.ne": {
@@ -389,7 +472,7 @@
     "mirror_ball_motor.speed": {
      "policy": "respect",
      "restore": false,
-     "value": "high",
+     "value": "low",
      "verb": "set"
     },
     "page.devtest.timed_reload": {
@@ -448,6 +531,14 @@
        "auto": true,
        "direction": {
         "energy": 0.9,
+        "fx": {
+         "favour": {
+          "share": 0.3,
+          "tags": [
+           "modes:disco"
+          ]
+         }
+        },
         "moods": [
          "euphoric",
          "geometric"
@@ -470,6 +561,14 @@
        "auto": true,
        "direction": {
         "energy": 0.9,
+        "fx": {
+         "favour": {
+          "share": 0.3,
+          "tags": [
+           "modes:disco"
+          ]
+         }
+        },
         "moods": [
          "euphoric",
          "geometric"
@@ -494,6 +593,15 @@
      "policy": "respect",
      "restore": true,
      "value": true,
+     "verb": "set+restore"
+    },
+    "show.main": {
+     "policy": "ignore",
+     "restore": true,
+     "value": {
+      "listening": true,
+      "vibe": "disco"
+     },
      "verb": "set+restore"
     },
     "show.mic": {
@@ -631,6 +739,10 @@
     "sensor_mask": "suspended",
     "show": {
      "ai": false,
+     "main": {
+      "listening": false,
+      "vibe": "dinner"
+     },
      "mic": true
     }
    },
@@ -725,6 +837,15 @@
      "value": false,
      "verb": "set"
     },
+    "show.main": {
+     "policy": "ignore",
+     "restore": true,
+     "value": {
+      "listening": false,
+      "vibe": "dinner"
+     },
+     "verb": "set+restore"
+    },
     "show.mic": {
      "policy": "respect",
      "restore": true,
@@ -762,6 +883,10 @@
     "sensor_mask": "follow",
     "show": {
      "ai": true,
+     "main": {
+      "listening": true,
+      "vibe": "party"
+     },
      "mic": true
     }
    },
@@ -814,6 +939,15 @@
      "policy": "respect",
      "restore": true,
      "value": true,
+     "verb": "set+restore"
+    },
+    "show.main": {
+     "policy": "ignore",
+     "restore": true,
+     "value": {
+      "listening": true,
+      "vibe": "party"
+     },
      "verb": "set+restore"
     },
     "show.mic": {
@@ -949,6 +1083,15 @@
      "ch03": 100,
      "ch14": 100
     },
+    "director": {
+     "glitterball": true,
+     "light_scenes": {
+      "scene_tags": [
+       "modes:party"
+      ]
+     },
+     "pinspots": true
+    },
     "hue": {
      "ne": "dmx",
      "nw": "dmx",
@@ -967,6 +1110,10 @@
      "devtest.timed_reload": false,
      "north-screen.timed_reload": false,
      "south-screen.timed_reload": false
+    },
+    "pinspots": {
+     "flash": "off",
+     "main": "off"
     },
     "screens": {
      "devtest": "art",
@@ -1010,6 +1157,10 @@
     "sensor_mask": "suspended",
     "show": {
      "ai": true,
+     "main": {
+      "listening": true,
+      "vibe": "party"
+     },
      "mic": true
     },
     "tv": {
@@ -1034,6 +1185,28 @@
      "policy": "enforce",
      "restore": true,
      "value": 100,
+     "verb": "set+restore"
+    },
+    "director.glitterball": {
+     "policy": "respect",
+     "restore": true,
+     "value": true,
+     "verb": "set+restore"
+    },
+    "director.light_scenes": {
+     "policy": "respect",
+     "restore": true,
+     "value": {
+      "scene_tags": [
+       "modes:party"
+      ]
+     },
+     "verb": "set+restore"
+    },
+    "director.pinspots": {
+     "policy": "respect",
+     "restore": true,
+     "value": true,
      "verb": "set+restore"
     },
     "hue.ne": {
@@ -1102,6 +1275,18 @@
      "value": false,
      "verb": "set"
     },
+    "pinspots.flash": {
+     "policy": "respect",
+     "restore": true,
+     "value": "off",
+     "verb": "set+restore"
+    },
+    "pinspots.main": {
+     "policy": "respect",
+     "restore": true,
+     "value": "off",
+     "verb": "set+restore"
+    },
     "screens.devtest": {
      "policy": "respect",
      "restore": false,
@@ -1164,6 +1349,15 @@
      "policy": "respect",
      "restore": true,
      "value": true,
+     "verb": "set+restore"
+    },
+    "show.main": {
+     "policy": "ignore",
+     "restore": true,
+     "value": {
+      "listening": true,
+      "vibe": "party"
+     },
      "verb": "set+restore"
     },
     "show.mic": {
@@ -1250,6 +1444,10 @@
     "sensor_mask": "suspended",
     "show": {
      "ai": true,
+     "main": {
+      "listening": true,
+      "vibe": "notes"
+     },
      "mic": true
     },
     "sonos": {
@@ -1348,6 +1546,15 @@
      "value": true,
      "verb": "set+restore"
     },
+    "show.main": {
+     "policy": "ignore",
+     "restore": true,
+     "value": {
+      "listening": true,
+      "vibe": "notes"
+     },
+     "verb": "set+restore"
+    },
     "show.mic": {
      "policy": "respect",
      "restore": true,
@@ -1382,5 +1589,5 @@
    "voice": "piano"
   }
  },
- "revision": "684fe3c3e56f"
+ "revision": "1aeaa32cf075"
 }

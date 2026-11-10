@@ -305,6 +305,29 @@
     }
    }
   },
+  "director": {
+   "available": true,
+   "believed": null,
+   "dry_run": false,
+   "kind": "level",
+   "last_error": null,
+   "last_ok_age_s": null,
+   "members": {
+    "light_scenes": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    }
+   }
+  },
   "light": {
    "available": true,
    "believed": {

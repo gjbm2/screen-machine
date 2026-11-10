@@ -1,5 +1,5 @@
 {
- "config/room/show.yaml": "f7f70cae75bdf27a74b1462e660c8ecd3a3cdeec",
+ "config/room/show.yaml": "63a7c0a020e2c4ebe209c0d8cf095d800e8adbb9",
  "lights/fixtures.added.yaml": "a049e8b28216ed11e233cdc97e09aa1c261c343f",
  "lights/fixtures.setup.yaml": "1e5773b57a30bb324ce8489ce709e78e48471aed",
  "lights/fixtures.yaml": "96fcfc5a5c5f7369618daf9ecb844656c7f73887",
@@ -7,5 +7,5 @@
  "lights/space.added.yaml": "a3c41116e248a9d86d7e85d4d1f62163cbfc95b9",
  "lights/space.yaml": "e8e65c3ad3d8cdfc89548152a11ba3117690d704",
  "rooms.json": "49b67bfb659061ad8b6ac7bfd6ef6441f9aa4d57",
- "show.yaml": "814a8bc34ad9f112d1adf35a567066daa693b307"
+ "show.yaml": "f99594da9a559a1c2e264ee018a0841189be6b2e"
 }

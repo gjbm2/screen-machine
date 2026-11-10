@@ -14,6 +14,11 @@
    "lamps",
    "screens"
   ],
+  "director.json": [
+   "glitterball",
+   "light_scenes",
+   "pinspots"
+  ],
   "lights_rig.json": [
    "lights",
    "revision"
@@ -130,7 +135,7 @@
   "config": {
    "error": null,
    "pending_targets": [],
-   "revision": "684fe3c3e56f",
+   "revision": "1aeaa32cf075",
    "warnings": [
     {
      "code": "guard_inactive",
@@ -657,16 +662,16 @@
   "subsystems": {
    "autopilot": {
     "available": true,
-    "believed": null,
+    "believed": "off",
     "dry_run": false,
     "kind": "level",
     "last_error": null,
-    "last_ok_age_s": null,
+    "last_ok_age_s": "<scrubbed>",
     "members": {
      "main": {
-      "age_s": null,
-      "believed": null,
-      "confidence": "unknown",
+      "age_s": "<scrubbed>",
+      "believed": "off",
+      "confidence": "confirmed",
       "desired": null,
       "drift": null,
       "inflight": null,
@@ -914,19 +919,19 @@
    "diag": {
     "available": true,
     "believed": {
-     "devtest": null,
-     "north-screen": null,
-     "south-screen": null
+     "devtest": false,
+     "north-screen": false,
+     "south-screen": false
     },
     "dry_run": false,
     "kind": "level",
     "last_error": null,
-    "last_ok_age_s": null,
+    "last_ok_age_s": "<scrubbed>",
     "members": {
      "devtest": {
-      "age_s": null,
-      "believed": null,
-      "confidence": "unknown",
+      "age_s": "<scrubbed>",
+      "believed": false,
+      "confidence": "confirmed",
       "desired": null,
       "drift": null,
       "inflight": null,
@@ -937,9 +942,9 @@
       "settled": null
      },
      "north-screen": {
-      "age_s": null,
-      "believed": null,
-      "confidence": "unknown",
+      "age_s": "<scrubbed>",
+      "believed": false,
+      "confidence": "confirmed",
       "desired": null,
       "drift": null,
       "inflight": null,
@@ -950,9 +955,9 @@
       "settled": null
      },
      "south-screen": {
-      "age_s": null,
-      "believed": null,
-      "confidence": "unknown",
+      "age_s": "<scrubbed>",
+      "believed": false,
+      "confidence": "confirmed",
       "desired": null,
       "drift": null,
       "inflight": null,
@@ -960,6 +965,63 @@
       "policy": null,
       "retry": null,
       "sent_age_s": null,
+      "settled": null
+     }
+    }
+   },
+   "director": {
+    "available": true,
+    "believed": {
+     "glitterball": false,
+     "light_scenes": {
+      "scene_tags": []
+     },
+     "pinspots": false
+    },
+    "dry_run": false,
+    "kind": "level",
+    "last_error": null,
+    "last_ok_age_s": "<scrubbed>",
+    "members": {
+     "glitterball": {
+      "age_s": "<scrubbed>",
+      "believed": false,
+      "confidence": "confirmed",
+      "desired": null,
+      "drift": null,
+      "inflight": null,
+      "moving": false,
+      "policy": null,
+      "retry": null,
+      "sent_age_s": "<scrubbed>",
+      "settled": null
+     },
+     "light_scenes": {
+      "age_s": "<scrubbed>",
+      "believed": {
+       "scene_tags": []
+      },
+      "confidence": "confirmed",
+      "desired": null,
+      "drift": null,
+      "inflight": null,
+      "moving": false,
+      "policy": null,
+      "retry": null,
+      "sent_age_s": "<scrubbed>",
+      "settled": null
+     },
+     "pinspots": {
+      "age_s": "<scrubbed>",
+      "believed": false,
+      "confidence": "confirmed",
+      "desired": null,
+      "drift": null,
+      "inflight": null,
+      "moving": false,
+      "policy": null,
+      "retry": null,
+      "sent_age_s": "<scrubbed>",
       "settled": null
      }
     }
@@ -1409,11 +1471,17 @@
       "confidence": "unknown",
       "desired": null,
       "drift": null,
-      "inflight": null,
+      "inflight": {
+       "until_s": "<scrubbed>",
+       "value": {
+        "listening": true,
+        "vibe": "notes"
+       }
+      },
       "moving": false,
       "policy": null,
       "retry": null,
-      "sent_age_s": null,
+      "sent_age_s": "<scrubbed>",
       "settled": null
      },
      "mic": {
@@ -1608,6 +1676,18 @@
      "phase": "step"
     },
     {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
      "phase": "done"
     }
    ],
@@ -1624,6 +1704,30 @@
      "source": "probe",
      "to": "disco",
      "via": []
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
     },
     {
      "phase": "step"
@@ -1764,6 +1868,24 @@
      "phase": "step"
     },
     {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
      "phase": "done"
     }
    ],
@@ -1812,6 +1934,12 @@
      "phase": "step"
     },
     {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
      "phase": "done"
     }
    ],
@@ -1828,6 +1956,12 @@
      "source": "probe",
      "to": "live-test",
      "via": []
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
     },
     {
      "phase": "step"
@@ -1980,6 +2114,30 @@
      "phase": "step"
     },
     {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
      "phase": "done"
     }
    ],
@@ -1996,6 +2154,30 @@
      "source": "probe",
      "to": "piano",
      "via": []
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
+    },
+    {
+     "phase": "step"
     },
     {
      "phase": "step"

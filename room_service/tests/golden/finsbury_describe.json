@@ -367,6 +367,23 @@
      "verb": "set+restore",
      "words": "100"
     },
+    "brightness.screens": {
+     "from": "ambient",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "brightness.screens",
+     "store_if": [],
+     "value": {
+      "follow": "sensor",
+      "max": 100,
+      "min": 20,
+      "smooth_s": 10.0
+     },
+     "verb": "set+restore",
+     "words": "Follows the room's light (20-100%)"
+    },
     "hue.ne": {
      "from": "ambient",
      "max_age_s": null,
@@ -567,6 +584,21 @@
      "verb": "set+restore",
      "words": "Listens in this mode"
     },
+    "show.main": {
+     "from": "ambient",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "ignore",
+     "restore": true,
+     "selector": "show.main",
+     "store_if": [],
+     "value": {
+      "listening": true,
+      "vibe": "chill"
+     },
+     "verb": "set+restore",
+     "words": "Chill \u00b7 listening"
+    },
     "show.mic": {
      "from": "ambient",
      "max_age_s": null,
@@ -679,6 +711,46 @@
      "verb": "set+restore",
      "words": "55%"
     },
+    "director.glitterball": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "director.glitterball",
+     "store_if": [],
+     "value": true,
+     "verb": "set+restore",
+     "words": "The art director uses it"
+    },
+    "director.light_scenes": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "director.light_scenes",
+     "store_if": [],
+     "value": {
+      "scene_tags": [
+       "modes:disco"
+      ]
+     },
+     "verb": "set+restore",
+     "words": "Only light scenes tagged modes:disco"
+    },
+    "director.pinspots": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "director.pinspots",
+     "store_if": [],
+     "value": true,
+     "verb": "set+restore",
+     "words": "The art director uses it"
+    },
     "hue.ne": {
      "from": "disco",
      "max_age_s": null,
@@ -771,9 +843,9 @@
      "restore": false,
      "selector": "mirror_ball_motor.speed",
      "store_if": [],
-     "value": "high",
+     "value": "low",
      "verb": "set",
-     "words": "high"
+     "words": "low"
     },
     "page.devtest.timed_reload": {
      "from": "disco",
@@ -884,6 +956,14 @@
        "auto": true,
        "direction": {
         "energy": 0.9,
+        "fx": {
+         "favour": {
+          "share": 0.3,
+          "tags": [
+           "modes:disco"
+          ]
+         }
+        },
         "moods": [
          "euphoric",
          "geometric"
@@ -912,6 +992,14 @@
        "auto": true,
        "direction": {
         "energy": 0.9,
+        "fx": {
+         "favour": {
+          "share": 0.3,
+          "tags": [
+           "modes:disco"
+          ]
+         }
+        },
         "moods": [
          "euphoric",
          "geometric"
@@ -950,6 +1038,21 @@
      "value": true,
      "verb": "set+restore",
      "words": "Listens in this mode"
+    },
+    "show.main": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "ignore",
+     "restore": true,
+     "selector": "show.main",
+     "store_if": [],
+     "value": {
+      "listening": true,
+      "vibe": "disco"
+     },
+     "verb": "set+restore",
+     "words": "Disco \u00b7 listening"
     },
     "show.mic": {
      "from": "disco",
@@ -1303,6 +1406,21 @@
      "verb": "set",
      "words": "Off"
     },
+    "show.main": {
+     "from": "lights-only",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "ignore",
+     "restore": true,
+     "selector": "show.main",
+     "store_if": [],
+     "value": {
+      "listening": false,
+      "vibe": "dinner"
+     },
+     "verb": "set+restore",
+     "words": "Dinner"
+    },
     "show.mic": {
      "from": "lights-only",
      "max_age_s": null,
@@ -1418,6 +1536,21 @@
      "value": true,
      "verb": "set+restore",
      "words": "Listens in this mode"
+    },
+    "show.main": {
+     "from": "live-test",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "ignore",
+     "restore": true,
+     "selector": "show.main",
+     "store_if": [],
+     "value": {
+      "listening": true,
+      "vibe": "party"
+     },
+     "verb": "set+restore",
+     "words": "Party \u00b7 listening"
     },
     "show.mic": {
      "from": "live-test",
@@ -1635,6 +1768,46 @@
      "verb": "set+restore",
      "words": "100"
     },
+    "director.glitterball": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "director.glitterball",
+     "store_if": [],
+     "value": true,
+     "verb": "set+restore",
+     "words": "The art director uses it"
+    },
+    "director.light_scenes": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "director.light_scenes",
+     "store_if": [],
+     "value": {
+      "scene_tags": [
+       "modes:party"
+      ]
+     },
+     "verb": "set+restore",
+     "words": "Only light scenes tagged modes:party"
+    },
+    "director.pinspots": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "director.pinspots",
+     "store_if": [],
+     "value": true,
+     "verb": "set+restore",
+     "words": "The art director uses it"
+    },
     "hue.ne": {
      "from": "party",
      "max_age_s": null,
@@ -1767,6 +1940,30 @@
      "verb": "set",
      "words": "Off"
     },
+    "pinspots.flash": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "pinspots.flash",
+     "store_if": [],
+     "value": "off",
+     "verb": "set+restore",
+     "words": "off"
+    },
+    "pinspots.main": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "pinspots.main",
+     "store_if": [],
+     "value": "off",
+     "verb": "set+restore",
+     "words": "off"
+    },
     "screens.devtest": {
      "from": "party",
      "max_age_s": null,
@@ -1860,6 +2057,21 @@
      "value": true,
      "verb": "set+restore",
      "words": "Listens in this mode"
+    },
+    "show.main": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "ignore",
+     "restore": true,
+     "selector": "show.main",
+     "store_if": [],
+     "value": {
+      "listening": true,
+      "vibe": "party"
+     },
+     "verb": "set+restore",
+     "words": "Party \u00b7 listening"
     },
     "show.mic": {
      "from": "party",
@@ -2047,6 +2259,21 @@
      "verb": "set+restore",
      "words": "Listens in this mode"
     },
+    "show.main": {
+     "from": "piano",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "ignore",
+     "restore": true,
+     "selector": "show.main",
+     "store_if": [],
+     "value": {
+      "listening": true,
+      "vibe": "notes"
+     },
+     "verb": "set+restore",
+     "words": "Notes \u00b7 listening"
+    },
     "show.mic": {
      "from": "piano",
      "max_age_s": null,
@@ -2081,6 +2308,8 @@
      },
      "store_if": [
       "favourite",
+      "sonos_playlist",
+      "spotify_link",
       "uri"
      ],
      "value": "paused",
@@ -2151,7 +2380,7 @@
   }
  },
  "put_back_max_age_s": null,
- "revision": "684fe3c3e56f",
+ "revision": "1aeaa32cf075",
  "room_schema": {
   "properties": {
    "autopilot": {
@@ -2567,6 +2796,7 @@
   "diag",
   "sensor_mask",
   "brightness",
+  "director",
   "show",
   "autopilot"
  ],
@@ -2582,7 +2812,7 @@
    "members": [
     "main"
    ],
-   "order": 16,
+   "order": 17,
    "placeholder": false,
    "poll_s": 5.0
   },
@@ -2643,6 +2873,23 @@
     "devtest"
    ],
    "order": 12,
+   "placeholder": false,
+   "poll_s": 5.0
+  },
+  "director": {
+   "actions": {},
+   "available": true,
+   "category": "setting",
+   "change_time_s": 0.0,
+   "dry_run": false,
+   "kind": "level",
+   "label": "Art director",
+   "members": [
+    "light_scenes",
+    "glitterball",
+    "pinspots"
+   ],
+   "order": 15,
    "placeholder": false,
    "poll_s": 5.0
   },
@@ -2883,7 +3130,7 @@
     "mic",
     "ai"
    ],
-   "order": 15,
+   "order": 16,
    "placeholder": false,
    "poll_s": 5.0,
    "situations": []
@@ -4402,19 +4649,89 @@
    "label": "Screens (live)",
    "member": "screens",
    "schema": {
-    "default": 100,
-    "maximum": 100,
-    "minimum": 0,
-    "type": "integer",
-    "x-ui": {
-     "ends": {
-      "max": "Full",
-      "min": "Dark"
+    "oneOf": [
+     {
+      "default": 100,
+      "maximum": 100,
+      "minimum": 0,
+      "type": "integer",
+      "x-ui": {
+       "ends": {
+        "max": "Full",
+        "min": "Dark"
+       },
+       "label": "Set",
+       "step": 5,
+       "unit": "%",
+       "widget": "slider"
+      }
      },
-     "label": "Screens (live)",
-     "step": 5,
-     "unit": "%",
-     "widget": "slider"
+     {
+      "default": {
+       "follow": "sensor",
+       "max": 100,
+       "min": 20,
+       "smooth_s": 10.0
+      },
+      "properties": {
+       "follow": {
+        "const": "sensor",
+        "x-ui": {
+         "hidden": true
+        }
+       },
+       "max": {
+        "default": 100,
+        "maximum": 100,
+        "minimum": 0,
+        "type": "integer",
+        "x-ui": {
+         "label": "In daylight",
+         "step": 5,
+         "unit": "%",
+         "widget": "slider"
+        }
+       },
+       "min": {
+        "default": 20,
+        "maximum": 100,
+        "minimum": 0,
+        "type": "integer",
+        "x-ui": {
+         "label": "In the dark",
+         "step": 5,
+         "unit": "%",
+         "widget": "slider"
+        }
+       },
+       "smooth_s": {
+        "default": 10.0,
+        "maximum": 600,
+        "minimum": 1,
+        "type": "number",
+        "x-ui": {
+         "ends": {
+          "max": "Slow",
+          "min": "Quick"
+         },
+         "label": "Smoothing",
+         "unit": "s",
+         "widget": "slider"
+        }
+       }
+      },
+      "required": [
+       "follow"
+      ],
+      "type": "object",
+      "x-ui": {
+       "help": "Dim in a dark room, full in daylight, as the art is; it changes slowly.",
+       "label": "Follows the room's light"
+      }
+     }
+    ],
+    "x-ui": {
+     "label": "Screens (live)"
     }
    },
    "subsystem": "brightness",
@@ -4722,6 +5039,428 @@
    },
    "subsystem": "diag",
    "subsystem_label": "Live details"
+  },
+  "director.glitterball": {
+   "category": "setting",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [],
+   "kind": "level",
+   "label": "Uses the glitterball",
+   "member": "glitterball",
+   "schema": {
+    "default": false,
+    "type": "boolean",
+    "x-ui": {
+     "label": "Uses the glitterball",
+     "labels": {
+      "false": "Left to the room",
+      "true": "The art director uses it"
+     }
+    }
+   },
+   "subsystem": "director",
+   "subsystem_label": "Art director"
+  },
+  "director.light_scenes": {
+   "category": "setting",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [],
+   "kind": "level",
+   "label": "Light scenes",
+   "member": "light_scenes",
+   "schema": {
+    "default": {
+     "scene_tags": []
+    },
+    "properties": {
+     "scene_tags": {
+      "items": {
+       "type": "string"
+      },
+      "type": "array",
+      "uniqueItems": true,
+      "x-ui": {
+       "help": "The art director only picks light scenes with any of these tags, for the lights that have some.",
+       "label": "Only use these light scenes",
+       "tags": [
+        {
+         "count": 4,
+         "facet": "modes",
+         "tag": "disco"
+        },
+        {
+         "count": 3,
+         "facet": "modes",
+         "tag": "party"
+        },
+        {
+         "count": 4,
+         "facet": "moods",
+         "tag": "aggressive"
+        },
+        {
+         "count": 11,
+         "facet": "moods",
+         "tag": "bright"
+        },
+        {
+         "count": 6,
+         "facet": "moods",
+         "tag": "calm"
+        },
+        {
+         "count": 5,
+         "facet": "moods",
+         "tag": "cosmic"
+        },
+        {
+         "count": 2,
+         "facet": "moods",
+         "tag": "dark"
+        },
+        {
+         "count": 8,
+         "facet": "moods",
+         "tag": "dreamy"
+        },
+        {
+         "count": 6,
+         "facet": "moods",
+         "tag": "elegant"
+        },
+        {
+         "count": 12,
+         "facet": "moods",
+         "tag": "euphoric"
+        },
+        {
+         "count": 4,
+         "facet": "moods",
+         "tag": "fiery"
+        },
+        {
+         "count": 4,
+         "facet": "moods",
+         "tag": "geometric"
+        },
+        {
+         "count": 5,
+         "facet": "moods",
+         "tag": "glitchy"
+        },
+        {
+         "count": 8,
+         "facet": "moods",
+         "tag": "hypnotic"
+        },
+        {
+         "count": 1,
+         "facet": "moods",
+         "tag": "icy"
+        },
+        {
+         "count": 6,
+         "facet": "moods",
+         "tag": "liquid"
+        },
+        {
+         "count": 5,
+         "facet": "moods",
+         "tag": "mellow"
+        },
+        {
+         "count": 1,
+         "facet": "moods",
+         "tag": "organic"
+        },
+        {
+         "count": 11,
+         "facet": "moods",
+         "tag": "playful"
+        },
+        {
+         "count": 6,
+         "facet": "moods",
+         "tag": "retro"
+        },
+        {
+         "count": 5,
+         "facet": "moods",
+         "tag": "tense"
+        },
+        {
+         "count": 7,
+         "facet": "moods",
+         "tag": "warm"
+        }
+       ],
+       "widget": "tags"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Light scenes",
+     "unset_label": "Any light scene"
+    }
+   },
+   "subsystem": "director",
+   "subsystem_label": "Art director"
+  },
+  "director.pinspots": {
+   "category": "setting",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [],
+   "kind": "level",
+   "label": "Uses the pinspots",
+   "member": "pinspots",
+   "schema": {
+    "default": false,
+    "type": "boolean",
+    "x-ui": {
+     "label": "Uses the pinspots",
+     "labels": {
+      "false": "Left to the room",
+      "true": "The art director uses it"
+     }
+    }
+   },
+   "subsystem": "director",
+   "subsystem_label": "Art director"
   },
   "hue.ne": {
    "category": "device",
@@ -6645,6 +7384,45 @@
                "widget": "slider"
               }
              },
+             "favour": {
+              "properties": {
+               "share": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": [
+                 "number",
+                 "null"
+                ],
+                "x-ui": {
+                 "ends": {
+                  "max": "Mostly",
+                  "min": "Rarely"
+                 },
+                 "label": "How often",
+                 "widget": "slider"
+                }
+               },
+               "tags": {
+                "items": {
+                 "type": "string"
+                },
+                "type": "array",
+                "uniqueItems": true,
+                "x-ui": {
+                 "label": "Effects tagged",
+                 "tags": [],
+                 "widget": "tags"
+                }
+               }
+              },
+              "type": [
+               "object",
+               "null"
+              ],
+              "x-ui": {
+               "label": "Favour these effects"
+              }
+             },
              "rate": {
               "maximum": 1,
               "minimum": 0,
@@ -7000,6 +7778,45 @@
                "widget": "slider"
               }
              },
+             "favour": {
+              "properties": {
+               "share": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": [
+                 "number",
+                 "null"
+                ],
+                "x-ui": {
+                 "ends": {
+                  "max": "Mostly",
+                  "min": "Rarely"
+                 },
+                 "label": "How often",
+                 "widget": "slider"
+                }
+               },
+               "tags": {
+                "items": {
+                 "type": "string"
+                },
+                "type": "array",
+                "uniqueItems": true,
+                "x-ui": {
+                 "label": "Effects tagged",
+                 "tags": [],
+                 "widget": "tags"
+                }
+               }
+              },
+              "type": [
+               "object",
+               "null"
+              ],
+              "x-ui": {
+               "label": "Favour these effects"
+              }
+             },
              "rate": {
               "maximum": 1,
               "minimum": 0,
@@ -7353,6 +8170,45 @@
                },
                "label": "How many",
                "widget": "slider"
+              }
+             },
+             "favour": {
+              "properties": {
+               "share": {
+                "maximum": 1,
+                "minimum": 0,
+                "type": [
+                 "number",
+                 "null"
+                ],
+                "x-ui": {
+                 "ends": {
+                  "max": "Mostly",
+                  "min": "Rarely"
+                 },
+                 "label": "How often",
+                 "widget": "slider"
+                }
+               },
+               "tags": {
+                "items": {
+                 "type": "string"
+                },
+                "type": "array",
+                "uniqueItems": true,
+                "x-ui": {
+                 "label": "Effects tagged",
+                 "tags": [],
+                 "widget": "tags"
+                }
+               }
+              },
+              "type": [
+               "object",
+               "null"
+              ],
+              "x-ui": {
+               "label": "Favour these effects"
               }
              },
              "rate": {

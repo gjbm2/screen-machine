@@ -33,19 +33,6 @@
   },
   {
    "group": null,
-   "id": "device:mirror_ball",
-   "kind": "device",
-   "label": "Mirror ball",
-   "members": [],
-   "on": true,
-   "order": 2,
-   "screen": null,
-   "side": "centre",
-   "via": "none",
-   "x": 0.0
-  },
-  {
-   "group": null,
    "id": "screen.north",
    "kind": "screen",
    "label": "North Frame",
@@ -53,7 +40,7 @@
     "screen.north"
    ],
    "on": true,
-   "order": 3,
+   "order": 2,
    "screen": "north-screen",
    "side": "right",
    "via": "space",
@@ -69,7 +56,7 @@
     "hue.nw"
    ],
    "on": true,
-   "order": 4,
+   "order": 3,
    "screen": null,
    "side": "right",
    "via": "space",
@@ -110,19 +97,6 @@
   },
   {
    "group": null,
-   "id": "device:mirror_ball",
-   "kind": "device",
-   "label": "Mirror ball",
-   "members": [],
-   "on": true,
-   "order": 2,
-   "screen": null,
-   "side": "centre",
-   "via": "none",
-   "x": 0.0
-  },
-  {
-   "group": null,
    "id": "screen.north",
    "kind": "screen",
    "label": "North Frame",
@@ -130,7 +104,7 @@
     "screen.north"
    ],
    "on": true,
-   "order": 3,
+   "order": 2,
    "screen": "north-screen",
    "side": "right",
    "via": "space",
@@ -146,7 +120,7 @@
     "hue.nw"
    ],
    "on": true,
-   "order": 4,
+   "order": 3,
    "screen": null,
    "side": "right",
    "via": "space",
@@ -187,19 +161,6 @@
   },
   {
    "group": null,
-   "id": "device:mirror_ball",
-   "kind": "device",
-   "label": "Mirror ball",
-   "members": [],
-   "on": true,
-   "order": 2,
-   "screen": null,
-   "side": "centre",
-   "via": "none",
-   "x": 0.0
-  },
-  {
-   "group": null,
    "id": "screen.north",
    "kind": "screen",
    "label": "North Frame",
@@ -207,7 +168,7 @@
     "screen.north"
    ],
    "on": false,
-   "order": 3,
+   "order": 2,
    "screen": "north-screen",
    "side": "right",
    "via": "space",
@@ -223,7 +184,7 @@
     "hue.nw"
    ],
    "on": true,
-   "order": 4,
+   "order": 3,
    "screen": null,
    "side": "right",
    "via": "space",
