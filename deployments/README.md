@@ -239,7 +239,8 @@ python -m smconfig enabled dot && ...   # exit 0 when a capability is on
 ```
 
 Run `check` after any edit to a deployment. The test suite runs it for every shipped deployment
-(`smconfig/tests`).
+(`smconfig/tests`). The same tests fail when code names one of finsbury's screens, rooms, lamps or addresses, or reads
+`config/room/show.yaml` without the site's layer (`test_no_site_values.py`): read such things through `smconfig`.
 
 ## Setting up a new deployment
 
