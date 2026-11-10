@@ -4,7 +4,7 @@ for (Sonos playing, the piano played over MIDI), the room's screens say how to t
 Config: the deployment's room/auto_hints.json (re-read when it changes). Each hint names one show_service situations
 word (GET /show/api/v1/situations readings, the word's default params), how long it must hold (``for_s``, from the
 reading's ``since_s``), the modes the room may be in for it (``from``) and the modes it offers; the first hint that
-holds wins. A hint shows for ``show_s`` when it starts holding, again after ``again_after_s`` while it still holds,
+holds wins. The hints show on the screens of its ``room`` (an id or a list), else of every room that has screens. A hint shows for ``show_s`` when it starts holding, again after ``again_after_s`` while it still holds,
 and is taken down at once when it stops (Auto on, a mode picked, the music stopped). The overlay is
 routes/overlays/overlay_auto_hint.html.j2 through routes.display.send_overlay. It only reads: nothing here changes the
 room. Bounded; never raises into Flask. AUTO_HINTS=0 turns it off.
@@ -66,6 +66,33 @@ def room_screens(room: str) -> list[str]:
         return []
     s = (d.get(room) or {}).get("screens") if isinstance(d, dict) else None
     return [x for x in s if isinstance(x, str)] if isinstance(s, list) else []
+
+
+_said_none: set = set()
+
+
+def hint_screens(cfg: dict) -> list[str]:
+    """The screens the hints show on: those of auto_hints.json's "room" (one id, or a list; finsbury: drawing-room),
+    else of every rooms.json room that has screens, each screen once. None found is logged once (not every tick)."""
+    named = cfg.get("room")
+    if isinstance(named, str) and named:
+        rooms = [named]
+    elif isinstance(named, list):
+        rooms = [r for r in named if isinstance(r, str) and r]
+    else:
+        try:
+            d = json.loads(ROOMS.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            d = {}
+        rooms = [k for k, v in d.items() if not k.startswith("_") and isinstance(v, dict)] if isinstance(d, dict) else []
+    out: list[str] = []
+    for r in rooms:
+        out += [s for s in room_screens(r) if s not in out]
+    key = ",".join(rooms)
+    if not out and key not in _said_none:
+        _said_none.add(key)
+        info(f"[room hints] no screens to show hints on (rooms: {key or 'none'})")
+    return out
 
 
 def pick(cfg: dict, auto: Any, current: Any, readings: dict) -> Optional[dict]:
@@ -167,7 +194,7 @@ def _tick(state: Hints) -> float:
     hint = None
     if isinstance(ap, dict) and isinstance(sit, dict):
         hint = pick(cfg, ap.get("on"), room.get("current"), sit.get("readings") or {})
-    state.step(cfg, hint, room_screens(str(cfg.get("room") or smconfig.default_room() or "")), time.time())
+    state.step(cfg, hint, hint_screens(cfg), time.time())
     return _num(cfg.get("check_s"), 3.0)
 
 

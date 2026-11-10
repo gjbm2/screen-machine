@@ -285,3 +285,55 @@ def test_next_relaxes_the_stage_rules_before_giving_up():
     assert d.next_move(0, full, PRESETS, cost) is None                              # full, nothing auto to swap
     move = d.next_move(0, [St("a1", "warm"), St("a2", "split", stage="glitch")], PRESETS, cost, prefer=("cool",))
     assert move.op == "swap" and move.remove == "a1"
+
+
+# -- contract C6: a PICKED palette wins over effects that repaint colour ----------------------------------------------
+RP = {**PRESETS,
+      "tint": {"effect": "hue_drift", "stage": "colour", "repaints_colour": True,
+               "tags": {"energy": [0.0, 1.0], "weight": 50.0}},
+      "glow": {"effect": "bloom", "stage": "light", "repaints_colour": False, "tags": {"energy": [0.0, 1.0],
+                                                                                       "weight": 1.0}}}
+
+
+def _st(sid, preset, origin="auto"):
+    p = RP[preset]
+    return type("S", (), {"id": sid, "origin": origin, "stage": p["stage"],
+                          "spec": EffectSpec(p["effect"], {}, preset, preset)})()
+
+
+def test_picked_palette_keeps_repainting_effects_out_and_takes_an_auto_one_off():
+    d = director()
+    assert "tint" in d.candidates(0.0, [], RP, cost, 1.0)                  # palette on auto: as before
+    picked = [True]
+    d.palette_locked = lambda: picked[0]
+    assert "tint" not in d.candidates(0.0, [], RP, cost, 1.0)
+    assert "tint" not in d.candidates(0.0, [], RP, cost, 1.0, relaxed=True)
+    # one already on (auto) goes at the next change: swapped for one that does not repaint, else removed
+    stack = [_st("a1", "tint"), _st("a2", "glow")]
+    mv = d.plan(10.0, stack, RP, cost)
+    assert mv is not None and mv.remove == "a1" and mv.op in ("swap", "remove")
+    assert mv.op == "remove" or not RP[mv.add].get("repaints_colour")
+    mv = d.next_move(10.0, stack, RP, cost)                                # the owner's Next takes it first too
+    assert mv.remove == "a1" and not RP[mv.add].get("repaints_colour")
+    # a hand-placed one stays
+    stack = [_st("m1", "tint", origin="manual")]
+    assert d.repainting(stack, RP) == []
+    mv = d.plan(10.0, stack, RP, cost)
+    assert mv is None or mv.remove != "m1"
+    # back on auto: nothing is taken off for its colour
+    picked[0] = False
+    assert d.repainting([_st("a1", "tint")], RP) == []
+
+
+def test_effect_catalog_tags_the_colour_repainting_families():
+    from stream_service.plugins.base import REPAINTS_COLOUR, repaints_colour
+
+    class Hue:
+        name = "hue_drift"
+
+    class Own:
+        name = "hue_drift"
+        repaints_colour = False
+
+    assert set(REPAINTS_COLOUR) == {"hue", "tint", "channel", "grade", "acid-tint"}
+    assert repaints_colour(Hue) and not repaints_colour(Own) and not repaints_colour(None)

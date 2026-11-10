@@ -90,13 +90,59 @@ def test_read_show_deep_merges_the_layer_and_an_absent_layer_is_none(tmp_path):
 
 def test_the_real_layered_settings_are_the_shared_file_with_this_sites_layer():
     got = config.read_show(c.SHOW_FILE)                          # the default: the deployment's layer
-    assert got == smconfig.load_layered_yaml(c.SHOW_FILE, c.SHOW_SITE_FILE)
+    assert got == config.expand_urls(smconfig.load_layered_yaml(c.SHOW_FILE, c.SHOW_SITE_FILE))
     base = yaml.safe_load(c.SHOW_FILE.read_text())
     for key in ("kiosk", "pc22"):
         assert key not in base["senders"]                        # site facts are never in the shared file
     if DEP.id == "finsbury":
         assert got["senders"]["kiosk"]["streams"] == ["room-mic", "room-piano"]
         assert got["situations"]["sonos"]["now_playing"] == "sonos.drawing-room.now_playing"
+
+
+def test_the_shared_show_yaml_names_no_loopback_port_and_expands_to_the_deployments(tmp_path):
+    """Contract C4 (audit SHOW-4): the shared file writes {room}/{flask}/{show}, never a literal loopback address, and
+    every reader gets this deployment's URLs (finsbury: exactly the ones it had)."""
+    text = c.SHOW_FILE.read_text()
+    assert "127.0.0.1:" not in text and "localhost:" not in text
+    for reader in (lambda: config.read_show(c.SHOW_FILE),
+                   lambda: Brain(c.BrainContext(publish=lambda m: None), show_file=c.SHOW_FILE,
+                                 state_file=tmp_path / "s.json")._read_settings(first=True)):
+        got = reader()
+        assert got["room"]["url"] == smconfig.url("room")
+        assert got["situations"]["light"]["url"] == smconfig.url("flask") + "/api/lightsensor/lightsense"
+        assert got["director"]["art"]["sources"][0] == smconfig.url("flask") + "/output/{id}.jpg"
+        if DEP.id == "finsbury":                                 # the values the file had before the placeholders
+            assert got["room"]["url"] == "http://127.0.0.1:8700"
+            assert got["situations"]["light"]["url"] == "http://127.0.0.1:5000/api/lightsensor/lightsense"
+            assert got["director"]["art"]["sources"] == ["http://127.0.0.1:5000/output/{id}.jpg",
+                                                         "/api/v1/screens/{id}/art",
+                                                         "/api/v1/screens/{id}/snapshots/anchor.png"]
+
+
+def test_expand_urls_takes_another_sites_ports_and_leaves_other_holes():
+    doc = {"a": "{room}/x", "b": ["{flask}/output/{id}.jpg", 3, None], "c": {"d": "{show}", "e": "{nope}"}}
+    got = config.expand_urls(doc, {"room": "http://127.0.0.1:9700", "flask": "http://127.0.0.1:6000/",
+                                   "show": "http://127.0.0.1:9703"})
+    assert got == {"a": "http://127.0.0.1:9700/x", "b": ["http://127.0.0.1:6000/output/{id}.jpg", 3, None],
+                   "c": {"d": "http://127.0.0.1:9703", "e": "{nope}"}}
+    assert doc["a"] == "{room}/x"                                # the input is left as it was
+
+
+def test_site_words_come_from_the_deployment_with_generic_defaults():
+    """Audit SHOW-6/E10 (contract C3): every phrase that names a site's room or machine is deployment.yaml ``wording``
+    with a generic default; the defaults name no site (finsbury's text is kept by its manifest's wording keys)."""
+    from show_service import artnet_lan, listener
+    words = {"listen_space": ("a room", listener.LISTEN_SPACE),
+             "artnet_no_replies": ("no replies yet: no ArtPollReply from this node so far (README S5.7)",
+                                   artnet_lan.NO_REPLIES),
+             "windows_host": ("this PC", sources.WINDOWS_HOST_WORDS),
+             "windows_speakers": ("This PC's speakers", sources.WINDOWS_SPEAKERS_WORDS)}
+    for key, (generic, got) in words.items():
+        assert got == DEP.words(key, generic), key
+        assert not any(w in generic for w in ("PC22", "drawing", "ca's relay")), key
+    assert sources.LIVE_ON_SONOS.startswith(f"The Windows synth plays on {sources.WINDOWS_HOST_WORDS} only")
+    if sources.WINDOWS_SOUND:
+        assert sources.OUTPUTS[0] == {"id": "pc22", "label": sources.WINDOWS_SPEAKERS_WORDS}
 
 
 def test_which_layer_an_options_takes(tmp_path):
@@ -276,4 +322,5 @@ def test_missing_optional_site_files_mean_none(tmp_path):
     assert vm.patch_error is not None and vm.layout is None
     br = Brain(c.BrainContext(publish=lambda m: None), show_file=c.SHOW_FILE, state_file=tmp_path / "s.json",
                show_site_file=gone / "show.yaml")
-    assert br._read_settings(first=True) == yaml.safe_load(c.SHOW_FILE.read_text()) and br.settings_error is None
+    assert br._read_settings(first=True) == config.expand_urls(yaml.safe_load(c.SHOW_FILE.read_text()))
+    assert br.settings_error is None

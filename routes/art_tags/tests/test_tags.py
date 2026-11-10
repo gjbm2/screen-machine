@@ -37,6 +37,24 @@ def test_prompt_and_schema_come_from_the_lexicon():
     assert set(s["music"]["properties"]) == set(lexicon.groups())
 
 
+def test_tagger_wording_from_the_deployment(monkeypatch, tmp_path):
+    """Audit F11: the site's words (manifest wording) fill the tagger's prompt and tool; generic words otherwise.
+    finsbury's art_library/art_screens keep today's text: "a living-room art library", "two 4K TVs"."""
+    import smconfig
+    dep = smconfig.deployment()
+    words = {"art_library": "living-room art library", "art_screens": "two 4K TVs"}
+    monkeypatch.setattr(type(dep), "words", lambda self, k, d: words.get(k, d))
+    lex = dict(lexicon.load(), rubric="You tag pictures for {an_art_library}. The pictures hang on {art_screens}; {facets}")
+    monkeypatch.setattr(lexicon, "load", lambda: lex)
+    assert lexicon.system_prompt().startswith(
+        "You tag pictures for a living-room art library. The pictures hang on two 4K TVs; ")
+    assert lexicon.tool_schema()["description"] == \
+        "Tag one picture for the living-room art library, using only the given words."
+    words.clear()
+    assert lexicon.system_prompt().startswith("You tag pictures for an art library. The pictures hang on the screens; ")
+    assert lexicon.tool_schema()["description"] == "Tag one picture for the art library, using only the given words."
+
+
 def test_clean_drops_unknown_words_clamps_and_fills_groups():
     ai = lexicon.clean({"subject": ["Landscape", "spaceship", "Still Life", "sky"], "medium": "oil-painting",
                         "moods": ["calm", "zen", "dreamy", "cool", "dark"], "palette": "WARM",

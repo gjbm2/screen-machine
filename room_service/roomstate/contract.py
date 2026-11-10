@@ -100,6 +100,13 @@ class Adapter:
         """A display name for the member; the config's "labels" map overrides it."""
         return member
 
+    def absent(self, rest: str) -> str | None:
+        """For a selector under this subsystem that matches no member ("<subsystem>.<rest>", rest "" for the bare
+        subsystem): why it names nothing on this site although it isn't a mistake (a screen this site knows that has
+        no live block; lamps on a site without any), said as a warning; None when it is a mistake (an unknown member:
+        a config error). The model asks only after the selector matched nothing."""
+        return None
+
     def show(self, member: str, value: Value) -> str:
         """Short text for a row ("live:fractal-zoom")."""
         return value if isinstance(value, str) else json.dumps(value, separators=(",", ":"))

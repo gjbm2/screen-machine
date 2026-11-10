@@ -381,6 +381,7 @@ class Brain:
                 site_raw = site.read_bytes()
                 data = smconfig.deep_merge(data, parse_settings(site_raw))
                 raw = raw + b"\0" + site_raw
+            data = cfgmod.expand_urls(data)              # {room}/{flask}/{show} -> this deployment's loopback URLs
         except (OSError, ValueError) as e:
             what = e.strerror if isinstance(e, OSError) and e.strerror else str(e)
             self.settings_error = (f"{bad.name if bad is self.show_file else bad} {what}: "

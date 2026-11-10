@@ -73,9 +73,9 @@ function LookBody({ status, ...s }: Shared & { status: RoomStatus | null }) {
     };
   }, [s.api.baseUrl]);
 
-  // each room of several screens, with its live screens (as the Room page's Look fold)
+  // each room with screens room_service runs (one or more), with its live screens (as the Room page's Look fold)
   const rooms = (status?.rooms ?? [])
-    .filter((r) => (r.screens ?? []).length > 1)
+    .filter((r) => (r.screens ?? []).some((id) => id in (status?.screens ?? {})))
     .map((r) => ({
       id: r.id,
       name: r.name || r.id,
@@ -92,7 +92,7 @@ function LookBody({ status, ...s }: Shared & { status: RoomStatus | null }) {
   return (
     <>
       <Sub>How the room picks</Sub>
-      {rooms.length === 0 && <Hint>Shows here for a room with more than one screen.</Hint>}
+      {rooms.length === 0 && <Hint>Shows here for a room with screens.</Hint>}
       {rooms.map((r) =>
         r.members.length > 0 && s.lib ? (
           <div key={r.id} className="space-y-2">

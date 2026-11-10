@@ -15,6 +15,7 @@ import smconfig
 from . import __version__
 from .api import build_app
 from .adapters import build_adapters
+from .adapters.room import screens_follow_a_sensor
 from .config import RoomConfig
 from .dmx import DmxStack, hue_placeholder
 from .events import EventHub
@@ -169,7 +170,11 @@ class RoomService:
                                cfg.timeouts.policy_ack_s, blinds=self._blinds, blinds_enabled=cfg.blinds_enabled,
                                sonos=None if cfg.sonos_enabled else False,
                                hue=hue, remotes=self._remotes, show=self._show, show_url=cfg.show_url,
-                               modes_file=cfg.modes_file)
+                               modes_file=cfg.modes_file, known_screens=cfg.known_screens,
+                               sensed=screens_follow_a_sensor(
+                                   list(cfg.screens),
+                                   cfg.ingest.intensity_json or smconfig.path("intensity.json"),
+                                   cfg.destinations_file))
         adapters = list({a.subsystem: a for a in built + self._extra_adapters}.values())
         self.room_config = RoomConfigFile(cfg.modes_file, adapters, cfg.state_dir, rooms_path=cfg.rooms_file)
         self.coordinator = Coordinator(self.room_config.load(), adapters, Path(cfg.state_dir) / "state.json",
@@ -186,6 +191,9 @@ class RoomService:
         # adapter watches its source, and the room config is rebuilt when they change.
         self._member_watches = [spawn(a.watch_members(self._on_members), f"{a.subsystem}-members")
                                 for a in adapters if callable(getattr(a, "watch_members", None))]
+        # Adapters that keep a device in step on their own (brightness: show_service's lights' level).
+        self._member_watches += [spawn(a.keep_in_step(), f"{a.subsystem}-in-step")
+                                 for a in adapters if callable(getattr(a, "keep_in_step", None))]
         if not live_off:
             self.stream.start()              # the renderer's events (live off: never contacted)
         self.mask.start()

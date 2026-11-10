@@ -30,7 +30,8 @@ def build_adapters(controllers: dict, mask: Any, log_sink: Callable[[str, str], 
                    hue: Adapter | None = None, remotes: list[Adapter] | None = None,
                    sonos: Adapter | bool | None = None, autopilot: Adapter | None = None,
                    show: Adapter | bool | None = None, lights: Adapter | bool | None = None,
-                   show_url: str | None = None, modes_file: str | Path | None = None) -> list[Adapter]:
+                   show_url: str | None = None, modes_file: str | Path | None = None,
+                   known_screens: dict[str, str] | None = None, sensed: bool | None = None) -> list[Adapter]:
     """Every subsystem the room config can name. `blinds` defaults to the hub blinds from the deployment's
     room/rf/blinds.json (dry_run until writes are enabled there), or a placeholder with blinds_enabled=False, the
     deployment's blinds capability off, or no blinds.json; pass one in for tests.
@@ -48,7 +49,11 @@ def build_adapters(controllers: dict, mask: Any, log_sink: Callable[[str, str], 
     False keeps a placeholder (tests: never reach the real show_service).
     `lights` (the DMX lights: light.<fixture id> for show_service's registered non-Hue lamps) defaults to LightsAdapter,
     its list of lights cached in state_dir, when `show` is the default; with a show passed in or False (tests), or
-    lights=False, an empty placeholder, so a mode or rooms.json naming "light" still loads."""
+    lights=False, an empty placeholder, so a mode or rooms.json naming "light" still loads. brightness.lamps dims those
+    lights too (through show_service's rig level) besides the Hue stream.
+    `known_screens`: every screen the site has ({id: name}, config.known_screens), so screens/page/diag name an
+    art-only screen as nothing rather than failing (Adapter.absent). `sensed`: whether a light sensor drives a live
+    screen here (adapters.room.screens_follow_a_sensor; None: unknown), for sensor_mask's words."""
     from . import blinds as blinds_mod
     from . import broadlink_rf
     from . import sonos as sonos_mod
@@ -71,9 +76,12 @@ def build_adapters(controllers: dict, mask: Any, log_sink: Callable[[str, str], 
         lights = LightsAdapter(url=show_url, cache_file=Path(state_dir) / "lights_rig.json")
     elif lights is False:
         lights = Placeholder("light", [])
-    mask_adapter, page_adapter = SensorMaskAdapter(mask, state_dir), PageAdapter(controllers, state_dir, policy_ack_s)
-    diag_adapter = DiagAdapter(controllers, state_dir)
-    brightness = BrightnessAdapter(controllers, getattr(hue, "output", None), state_dir)   # hue: the room's stream
+    pushed = [bool(getattr(getattr(c, "cfg", None), "mask_push", False)) for c in controllers.values()]
+    mask_adapter = SensorMaskAdapter(mask, state_dir, sensed=sensed, pushed=any(pushed) if pushed else None)
+    page_adapter = PageAdapter(controllers, state_dir, policy_ack_s, known=known_screens)
+    diag_adapter = DiagAdapter(controllers, state_dir, known=known_screens)
+    brightness = BrightnessAdapter(controllers, getattr(hue, "output", None), state_dir,   # hue: the room's stream
+                                   rig=lights if isinstance(lights, LightsAdapter) else None)
     mask_adapter.restore()
     page_adapter.restore()
     diag_adapter.restore()
@@ -91,7 +99,7 @@ def build_adapters(controllers: dict, mask: Any, log_sink: Callable[[str, str], 
         show = ShowAdapter(url=show_url, cache_file=Path(state_dir) / "show_catalog.json")
     elif show is False:
         show = Placeholder("show", ["main"])
-    return [ScreensAdapter(controllers), page_adapter, diag_adapter, mask_adapter, brightness, LogAdapter(log_sink),
+    return [ScreensAdapter(controllers, known_screens), page_adapter, diag_adapter, mask_adapter, brightness, LogAdapter(log_sink),
             blinds or (_hub_blinds(blinds_mod) if blinds_enabled and smconfig.enabled("blinds")
                        else blinds_mod.placeholder_from_config()),
             *[p for p in placeholders() if p.subsystem not in taken], *extra,

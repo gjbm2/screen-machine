@@ -3,6 +3,7 @@ Ambient" and "no wish" rules, the log, and the status route. Fakes for the room,
 never RunPod, never the LLM, never the live services."""
 import json
 
+import pytest
 from flask import Flask
 
 from routes.art_tags import api, director
@@ -12,6 +13,13 @@ WISH = {"subjects": ["abstract", "interior", "urban"], "moods": ["dark", "elegan
         "avoid": ["animals"], "theme": "late-night city, smoky rooms, painterly abstraction", "via": "listener"}
 CFG = {"enabled": True, "interval_s": 60, "thin": 3, "per_screen_min_gap_s": 600, "per_day": 12}
 T0 = 1_793_000_000.0
+# finsbury's manifest block (deployment.yaml art_director:): Ambient, the drawing room only
+FINSBURY_ART = {"modes": ["ambient"], "rooms": ["drawing-room"]}
+
+
+@pytest.fixture(autouse=True)
+def _art_manifest(monkeypatch):
+    monkeypatch.setattr(director, "_manifest_section", lambda: dict(FINSBURY_ART))
 
 
 def sc(subject, moods, music=None, status="done", auto_ok=True, added=(), removed=(), prompt="p", workflow="w.json"):
@@ -259,3 +267,63 @@ def test_room_off_never_asks_the_room(out, tmp_path, monkeypatch):
     e = d.pass_once()
     assert e["action"] == "not-ambient" and e["error"] == "room is off in this deployment"
     assert fake.prompts == [] and fake.made == []
+
+
+# -- the deployment's modes, rooms and wording (audit E3/F6, E4/F5, F11) ----------------------------------------------
+def test_modes_come_from_the_manifest(out, tmp_path, monkeypatch):
+    make_bucket(out, "vj", [])
+    monkeypatch.setattr(director, "_manifest_section", lambda: {"modes": ["gallery"]})
+    fake = Fake(mode="gallery")
+    d, _ = make_director(fake, tmp_path, screens=("vj",))
+    assert d.pass_once()["action"] == "generated" and fake.made[0][0] == "vj"
+    fake.mode = "ambient"                                  # finsbury's word means nothing here
+    d.last_at.clear()
+    assert d.pass_once()["action"] == "not-ambient"
+
+
+def test_no_modes_named_never_asks_the_room(out, tmp_path, monkeypatch):
+    monkeypatch.setattr(director, "_manifest_section", lambda: {})
+    fake = Fake()
+    fake.get_json = lambda url: (_ for _ in ()).throw(AssertionError(f"asked {url} with no art modes"))
+    d, _ = make_director(fake, tmp_path)
+    e = d.pass_once()
+    assert e["action"] == "not-ambient" and "names no mode" in e["error"] and fake.made == []
+
+
+def _rooms(tmp_path, monkeypatch, rooms):
+    f = tmp_path / "rooms.json"
+    f.write_text(json.dumps(rooms))
+    monkeypatch.setattr(director, "ROOMS_FILE", f)
+
+
+def test_every_room_with_screens_by_default(tmp_path, monkeypatch):
+    # probe-s3/s4: screens in rooms other than default_room are looked after; a room without screens is skipped
+    _rooms(tmp_path, monkeypatch, {"_comment": "x", "garden": {"lights": ["light"]}, "front": {"screens": ["fs"]},
+                                   "back": {"screens": ["bs", "fs"]}})
+    monkeypatch.setattr(director, "_manifest_section", lambda: {"modes": ["gallery"]})
+    assert director.art_rooms() == ["front", "back"]
+    assert director.room_screens() == ["fs", "bs"]
+    assert director.room_screens("back") == ["bs", "fs"]
+
+
+def test_named_rooms_limit_the_screens(tmp_path, monkeypatch):
+    _rooms(tmp_path, monkeypatch, {"drawing-room": {"screens": ["north-screen", "south-screen"]},
+                                   "lab": {"screens": ["devtest"]}})
+    assert director.art_rooms() == ["drawing-room"]           # finsbury: devtest stays out
+    assert director.room_screens() == ["north-screen", "south-screen"]
+
+
+def test_the_shipped_finsbury_rooms_with_its_block(monkeypatch):
+    assert director.ROOMS_FILE.is_file()
+    assert director.room_screens() == ["north-screen", "south-screen"]
+
+
+def test_prompt_wording_from_the_deployment(monkeypatch):
+    import smconfig
+    dep = smconfig.deployment()
+    words = {"art_screen": "a 4K TV", "art_space": "a living room"}
+    monkeypatch.setattr(type(dep), "words", lambda self, k, d: words.get(k, d))
+    assert "will hang as art on a 4K TV in a living room while music plays" in director.prompt_system()
+    words.clear()
+    assert "will hang as art on a screen in a room while music plays" in director.prompt_system()
+    assert "{" not in director.prompt_system()

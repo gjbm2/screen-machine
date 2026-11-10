@@ -14,8 +14,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, ChevronDown, Pencil, Plus, Radio, Send, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useDeployment } from "@/hooks/useDeployment";
 import { cn } from "@/lib/utils";
 import { explainError, type RoomApi } from "@/pages/Room/api";
+import { capabilityOn } from "@/shared/api/deployment";
 import { Notice, Spinner } from "@/pages/Room/bits";
 import { CARD_CLASS } from "@/pages/Room/theme";
 import type { RemoteButton, RemoteDevice, RemoteLearn, RemotesView } from "@/pages/Room/types";
@@ -733,6 +735,8 @@ function AddAppliance({ api, view, onAdded }: { api: RoomApi; view: RemotesView;
 
 /** The appliances worked by remote: each one added, and Add an appliance. Nothing without the route (an older room). */
 export function RemoteControls({ api }: { api: RoomApi }) {
+  // A site without RF (capability rf off) has no remote-controlled appliances: one line, no Add form to fill in vain.
+  const { deployment } = useDeployment();
   const [view, setView] = useState<RemotesView | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -747,6 +751,16 @@ export function RemoteControls({ api }: { api: RoomApi }) {
   }, [api]);
   useEffect(load, [load]);
 
+  if (view?.rf_enabled === false || capabilityOn(deployment, "rf") === false) {
+    return (
+      <section aria-label="Appliances worked by remote" className="space-y-2" data-testid="remote-controls">
+        <h2 className="text-lg font-semibold text-stone-800">Appliances worked by remote</h2>
+        <p className="text-base text-muted-foreground" data-testid="remote-controls-none">
+          This site has no remote-controlled appliances.
+        </p>
+      </section>
+    );
+  }
   if (!view && !err) return null;
   const roomName = (id?: string | null) => view?.rooms.find((r) => r.id === id)?.name ?? null;
   return (

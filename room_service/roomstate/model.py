@@ -10,7 +10,9 @@ Selectors name targets, in state keys, group values and steps (specificity in br
 Within one mode the more specific selector wins for a target; two of equal specificity with different entries are
 an error. JSON key order never matters. A selector that matches no target is an error unless its subsystem is a
 placeholder: an adapter flagged `placeholder`, or a subsystem no adapter provides (it becomes one); or its adapter's
-members come and go at runtime (`dynamic_members`: a light not registered yet, or removed, names nothing). Dotted names the
+members come and go at runtime (`dynamic_members`: a light not registered yet, or removed, names nothing); or its
+adapter says why it names nothing on this site (Adapter.absent: a screen the site knows that has no live block, lamps
+on a site without any): then it names nothing, with a lint warning saying why. Dotted names the
 config uses for a placeholder that its device config doesn't list ("plug.dmx_power") become its members.
 
 Entries:
@@ -233,10 +235,12 @@ class Rule:
 
 class RoomConfig:
     def __init__(self, raw: dict, adapters: Iterable[Adapter], collect: bool = False,
-                 extra_groups: dict[str, list[str]] | None = None) -> None:
+                 extra_groups: dict[str, list[str]] | None = None,
+                 group_notes: dict[str, str] | None = None) -> None:
         """`adapters`: one per subsystem, placeholders included; normalize() and value checks come from them.
         `extra_groups`: groups defined outside this file (room_service derives "<room>:<kind>" from rooms.json); they
-        don't count towards the revision, and a group of the same name in the file is an error."""
+        don't count towards the revision, and a group of the same name in the file is an error. `group_notes`: for an
+        extra group that is empty, why ("Drawing room has no live screens"): a lint warning where the config uses it."""
         if not isinstance(raw, dict):
             raise ConfigError("/: the config must be a JSON object")
         self.raw, self.collect = raw, collect
@@ -247,6 +251,9 @@ class RoomConfig:
         self.targets = [f"{s}.{m}" for s, ms in self.members.items() for m in ms]
         self._auto: set[str] = set()                      # subsystems that became placeholders here
         self._auto_at: dict[str, str] = {}                # ... and the JSON pointer where each was first named
+        self._absent: dict[str, tuple[str, str]] = {}     # selector -> (where, why): names nothing here (Adapter.absent)
+        self._group_notes = dict(group_notes or {})
+        self._empty_used: dict[str, str] = {}             # an empty extra group the config uses -> where first
         self._keys(raw, TOP_KEYS, "")
         pb = raw.get("put_back_max_age_s")
         if pb is not None and (isinstance(pb, bool) or not isinstance(pb, (int, float)) or pb <= 0):
@@ -305,7 +312,8 @@ class RoomConfig:
         self.labels: dict[str, str] = {}
         for t, label in self._object(raw.get("labels"), ptr("labels")).items():
             if t in self.targets or ("." in t and (self._is_placeholder(t.split(".", 1)[0])
-                                                   or self._dynamic(t.split(".", 1)[0]))):
+                                                   or self._dynamic(t.split(".", 1)[0])
+                                                   or self._why_absent(t) is not None)):
                 self.labels[t] = str(label)
             else:
                 self._fail(ptr("labels", t), f"unknown target {t!r}")
@@ -338,6 +346,21 @@ class RoomConfig:
         a selector naming one it doesn't have (yet, or any more) names nothing, never an error."""
         return bool(getattr(self.adapters.get(sub), "dynamic_members", False))
 
+    def _why_absent(self, sel: str) -> str | None:
+        """Why a selector that matched nothing names nothing on this site without being a mistake (Adapter.absent),
+        or None. Never for a wildcard or an unknown subsystem."""
+        if WILDCARD & set(sel):
+            return None
+        sub, _, rest = sel.partition(".")
+        a = self.adapters.get(sub)
+        if a is None or sub in self._auto:
+            return None
+        try:
+            why = a.absent(rest)
+        except Exception:                                 # an adapter's bug never decides a config error
+            return None
+        return str(why) if why else None
+
     def _placeholder(self, sub: str, path: str = "") -> None:
         """A subsystem no adapter provides becomes a placeholder; the members config names are its members."""
         if sub not in self.adapters:
@@ -361,6 +384,8 @@ class RoomConfig:
             if in_group:
                 self._fail(path, f"a group can't contain another group ({sel!r})")
                 return []
+            if not self.groups.get(sel) and sel in self._group_notes:
+                self._empty_used.setdefault(sel, path)
             return [(t, 2) for t in self.groups.get(sel, [])]
         wild = bool(WILDCARD & set(sel))
         if wild:
@@ -373,6 +398,10 @@ class RoomConfig:
             return hits
         sub = sel.split(".", 1)[0]
         if WILDCARD & set(sub) or not (self._is_placeholder(sub) or self._dynamic(sub)):
+            why = self._why_absent(sel)
+            if why is not None:                           # known here, but nothing to drive: names nothing
+                self._absent.setdefault(sel, (path, why))
+                return []
             self._fail(path, f"selector {sel!r} matches no target")
             return []
         self._placeholder(sub, path)                      # accepted; it names nothing (yet)
@@ -430,6 +459,8 @@ class RoomConfig:
         if hits or (not WILDCARD & set(sub) and sub in self.adapters
                     and (self.adapters[sub].placeholder or self._dynamic(sub))):
             return hits
+        if self._why_absent(sel) is not None:
+            return []
         return None
 
     def _skip_targets(self, d: dict) -> tuple:
@@ -904,6 +935,10 @@ class RoomConfig:
                          f"{', '.join(weak)}: placeholder or dry run, so this guard "
                          + ("is not enforced (allow_skipped)" if s.allow_skipped else "aborts whenever it has to send"))
         in_state = {t.split(".", 1)[0] for m in self.modes.values() for t in m.state}
+        for sel, (at, why) in self._absent.items():        # known on this site, nothing to drive: names nothing
+            warn(at, "names_nothing", f"{why}, so {sel!r} does nothing here")
+        for g, at in self._empty_used.items():             # a rooms.json group that is empty here
+            warn(at, "names_nothing", f"{self._group_notes[g]}, so {g!r} does nothing here")
         for sub in sorted(self._auto):                     # named in config, but no adapter or device config knows it
             warn(self._auto_at.get(sub, ""), "unknown_subsystem",
                  f"{sub!r} has no adapter or device config, so it is a placeholder and nothing is sent to it "
@@ -960,13 +995,14 @@ def mode_signals(cfg: RoomConfig, name: str, key: str) -> list[Step]:
 
 
 def validate(raw: Any, adapters: Iterable[Adapter], warnings: bool = False,
-             extra_groups: dict[str, list[str]] | None = None) -> list[dict]:
+             extra_groups: dict[str, list[str]] | None = None,
+             group_notes: dict[str, str] | None = None) -> list[dict]:
     """Every problem in a config, as [{"path": JSON pointer, "message": ...}]: no errors means it can be saved.
     With warnings=True, lint() warnings follow, as {"path", "message", "code", "level": "warning"}, for the editor."""
     if not isinstance(raw, dict):
         return [explain({"path": "", "message": "the config must be a JSON object"})]
     try:
-        cfg = RoomConfig(raw, adapters, collect=True, extra_groups=extra_groups)
+        cfg = RoomConfig(raw, adapters, collect=True, extra_groups=extra_groups, group_notes=group_notes)
     except Exception as e:                                # a shape the collector didn't anticipate
         return [explain({"path": "", "message": f"invalid config: {e!r}"})]
     out = [explain(e) for e in cfg.errors]

@@ -94,6 +94,9 @@ from . import contract
 log = logging.getLogger("show_service.listener")
 
 LISTENER_LOG = contract.LISTENER_LOG    # every verdict and failure (genre.detail grows the vocab)
+#: where the clip comes from, in the listening prompt (audit SHOW-6/E10): deployment.yaml ``wording.listen_space``
+#: (finsbury: "a home's drawing room"), else a generic phrase
+LISTEN_SPACE = contract.DEPLOYMENT.words("listen_space", "a room")
 CLIPS_DIR = contract.STATE_DIR / "listen" / "clips"   # the exact bytes of the last CLIPS_KEEP clips sent (09, 21 Oct;
                                                       # __main__ passes <state_dir>/listen/clips; None: none kept)
 CLIPS_KEEP = 20
@@ -1732,7 +1735,7 @@ class Listener:
         genres = ", ".join(self.vocab.genre) or "(none: use unknown)"
         moods = ", ".join(self.vocab.music_moods or self.vocab.moods) or "(none: leave the list empty)"
         return (
-            "You listen to a short clip of what is playing in a home's drawing room, for the room's lighting and "
+            f"You listen to a short clip of what is playing in {LISTEN_SPACE}, for the room's lighting and "
             "visuals director: describe it, recommend how the visuals should treat it, and forecast what comes next. "
             "Answer only by calling the tool, briefly.\n\n"
             "Fields:\n"

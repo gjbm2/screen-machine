@@ -402,7 +402,7 @@ def test_midi_from_another_box_is_not_attached():
 
 
 # -- registry, states, active stream, health --------------------------------------------------------------------------
-def test_unknown_and_test_streams_are_accepted_and_ranked_last():
+def test_unknown_and_test_streams_are_accepted_and_ranked_last():   # test streams after unknown names (SHOW-5)
     rx, rec = make()
     for name in ("mystery", "test-thing", "phone-test"):
         for c in range(3):
@@ -414,7 +414,7 @@ def test_unknown_and_test_streams_are_accepted_and_ranked_last():
     h = rx.health()
     m, t, p = h["streams"]["mystery"], h["streams"]["test-thing"], h["streams"]["phone-test"]
     assert (m["kind"], m["rank"], m["test"]) == ("audio", contract.UNKNOWN_RANK, False)
-    assert t["test"] is True and p["test"] is True and p["rank"] < m["rank"]
+    assert t["test"] is True and p["test"] is True and p["rank"] > m["rank"] and t["rank"] == contract.TEST_RANK
     assert h["socket"]["junk"] == 2 and h["socket"]["subscribe_rx"] == 1 and h["socket"]["rx"] == 12
     assert h["active_audio"] == "mystery"                       # the first live one: anything beats nothing
 
@@ -426,6 +426,30 @@ def test_stream_priority_from_config_ranks_first():
     rx.tick(T0 + 0.01)
     s = rx.health()["streams"]
     assert s["pc22-loop"]["rank"] < s["room-mic"]["rank"] == contract.stream_rank("room-mic")
+
+
+def test_the_senders_own_streams_rank_in_their_order_before_the_conventional_names():
+    """Audit SHOW-5: a site's mic with any name ranks by the senders' order (MIDI and test streams left out), ahead of
+    the conventional names and of a test stream; a new sender list re-ranks at the next tick."""
+    studio = Sender("studio", "localhost", 6980, ("studio-piano", "studio-mic", "desk-mic"), midi=("studio-piano",))
+    rx, rec = make(Config(senders=(studio,)))
+    for c_, name in enumerate(("phone-test", "room-mic", "desk-mic", "studio-mic")):
+        rx.handle(apkt(0, name), ADDR, T0 + c_ * PKT_S)
+    rx.tick(T0 + 0.01)
+    h = rx.health()
+    s = h["streams"]
+    assert h["site"] == ["studio-mic", "desk-mic"]
+    assert s["studio-mic"]["rank"] < s["desk-mic"]["rank"] < s["room-mic"]["rank"] < s["phone-test"]["rank"]
+    assert h["senders"]["studio"]["midi"] == ["studio-piano"]
+    rx.set_senders((Sender("studio", "localhost", 6980, ("desk-mic", "studio-mic")),))
+    rx.tick(T0 + 0.02)
+    assert rx._streams["desk-mic"].rank < rx._streams["studio-mic"].rank
+
+
+def test_a_sites_midi_stream_is_never_held_off_as_a_mic():
+    rx, rec = make(Config(senders=(Sender("studio", "localhost", 6980, ("studio-mic", "studio-piano"),
+                                          midi=("studio-piano",)),)))
+    assert rx.off_streams() == {"studio-mic"}                        # the piano, unplugged (kind unknown): not a mic
 
 
 def test_health_shape_and_states():

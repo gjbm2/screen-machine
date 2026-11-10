@@ -12,7 +12,7 @@ return their usual "room is down" shape (None / {}) and writes return (False, RO
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any, Optional, Union
 
 import requests
 
@@ -256,12 +256,34 @@ def room_screens(screen: Optional[str], st: Optional[dict] = None) -> list[str]:
     return [screen] if screen else []
 
 
-def live_targets(screen: Optional[str]) -> list[str]:
-    """The live screens a voice command should act on: the asker's room's live screens, else every live screen."""
+def live_targets(screen: Union[str, list, None]) -> list[str]:
+    """The live screens a voice command should act on: the live screens of the asker's room (``screen``: the asker's
+    closest screen, or a list such as the alexadefault screens), else the deployment's default room's live screens,
+    else every live screen (only when neither has one live)."""
     st = status() or {}
     live = [sid for sid, s in (st.get("screens") or {}).items() if (s.get("observed") or {}).get("layer") == "live"]
-    near = [s for s in room_screens(screen, st) if s in live]
-    return near or live
+    near: list[str] = []
+    for one in ([screen] if isinstance(screen, str) or screen is None else screen):
+        near += [s for s in room_screens(one, st) if s in live and s not in near]
+    if near:
+        return near
+    try:
+        home = (smconfig.rooms().get(smconfig.default_room() or "") or {}).get("screens") or []
+    except (OSError, ValueError):
+        home = []
+    return [s for s in live if s in home] or live
+
+
+def rooms_of(screens: list[str], st: Optional[dict] = None) -> list[list[str]]:
+    """``screens`` grouped by room_service's rooms, each group in the given order (a screen in no room is a group of
+    its own), the groups in order of their first screen."""
+    st = st if st is not None else (status() or {})
+    groups: dict[str, list[str]] = {}
+    for sid in screens:
+        rid = next((str(r.get("id") or i) for i, r in enumerate(st.get("rooms") or [])
+                    if isinstance(r, dict) and sid in (r.get("screens") or [])), f"screen:{sid}")
+        groups.setdefault(rid, []).append(sid)
+    return list(groups.values())
 
 
 def cue_scene(screen: str, to: str) -> tuple[bool, str]:
@@ -339,10 +361,31 @@ def pick_scene(screen: str, preset: str) -> tuple[bool, str]:
     return True, "" if ok else f"the scene changed, but its auto changes didn't pause: {detail}"
 
 
+def _resume(screen: str) -> None:
+    """Scene changes resume on ``screen`` if a voice pick paused them in this same mode."""
+    if screen in _paused:
+        if _paused.pop(screen) == room_facts().get("mode"):
+            _send("PATCH", f"/api/v1/screens/{screen}/look", {"auto": True, "source": "voice"})
+
+
 def next_scene(screen: str) -> tuple[bool, str]:
     """The director's next pick; scene changes resume if a voice pick paused them in this same mode."""
     ok, detail = cue_scene(screen, "auto")
-    if ok and screen in _paused:
-        if _paused.pop(screen) == room_facts().get("mode"):
-            _send("PATCH", f"/api/v1/screens/{screen}/look", {"auto": True, "source": "voice"})
+    if ok:
+        _resume(screen)
     return ok, "" if ok else detail
+
+
+def next_scene_rooms(screens: list[str]) -> list[str]:
+    """"Change the scene" on these live screens: ONE next cue per room, on its first screen given (stream_service
+    forwards a follower's manual next to the room's leader, so a cue per screen moved the room once per screen), then
+    a voice pause lifted on every screen of that room. -> the failures' details ([] when all went)."""
+    fails = []
+    for group in rooms_of(screens):
+        ok, detail = cue_scene(group[0], "auto")
+        if not ok:
+            fails.append(detail)
+            continue
+        for sid in group:
+            _resume(sid)
+    return fails

@@ -24,7 +24,7 @@ a wrong guess would drive another site's lights and screens.
 | Code | the repo | yes | yes |
 | Shared behaviour: scenes, effects, vibes, the tuning in `show.yaml`, LLM routing, prompts, refiners, workflows, fixture and RF types | `config/`, `routes/data/` (templates), `src/data/` | yes | yes |
 | **The deployment:** screens, rooms, devices, lights, calibration, its service flags, the site layer of `show.yaml` | `deployments/<id>/` | no | yes |
-| Machine addresses, API keys, `SM_DEPLOYMENT` | `.env` | no | **no** |
+| Machine addresses, API keys, `SM_DEPLOYMENT` (see "Secrets") | `.env` | no | **no** |
 | Secrets: pairing tokens, Hue and Bloc keys, Dot. key | `~/.config/screen-machine/` | no | **no** |
 | Runtime state: room state, show state, jobs, logs | `~/.local/state/screen-machine/`, `logs/` | no | **no** |
 | Art: buckets and the current picture per screen; schedules | `output/`, `routes/scheduler/*.json` | no | **no** |
@@ -78,7 +78,9 @@ running deployment's directory. That keeps each site's edits in its own director
 id: finsbury                       # must match the directory name
 name: Drawing room (PC22)
 location: {lat: 51.5074, lon: -0.1278}   # default for a screen's light curve when its intensity_cfg has no lat/lon
-default_room: drawing-room         # the room the art director and auto hints use when none is named
+default_room: drawing-room         # the room a caller means when it names none (Alexa's fallback); else rooms.json's first
+art_director: {modes: [ambient], rooms: [drawing-room]}   # see "The art director" below
+wording: {art_space: a living room, screen_device: TV, ...}  # see "Site wording" below
 capabilities:                      # on/off per feature; one left out is OFF
   generation: true
   ...
@@ -93,6 +95,36 @@ host:                              # machine paths some services need
   windows_python: /mnt/c/Windows/py.exe
   piano_audition_dir: "/mnt/c/Users/Greg/Music/Piano audition"
 ```
+
+### The art director
+
+Flask's art director (capability `art_director`) tops up thin screen libraries. `art_director.modes` lists the room
+modes it works in; with none listed it never makes anything (mode ids are each site's own). `art_director.rooms` lists
+the rooms whose screens it looks after (a single id is fine); left out, it means every rooms.json room that has screens.
+finsbury sets `{modes: [ambient], rooms: [drawing-room]}`, which is what was hard-coded before. Without `rooms` it
+would also make art for the lab's devtest screen.
+
+### Site wording
+
+Prompts and page copy that used to name finsbury facts ("a living room", "two 4K TVs", "PC22") now read a phrase from
+the manifest's `wording` map, through `smconfig.deployment().words(key, generic default)`. A deployment without the
+key gets the generic phrase. finsbury's values keep PC22's text exactly as it was.
+
+| Key | Used by | Generic default | finsbury |
+|---|---|---|---|
+| `art_screen` | image generator: "made for ... in ..." | a screen | a 4K TV |
+| `art_space` | image generator | a room | a living room |
+| `art_library` | art tagger | art library | living-room art library |
+| `art_screens` | art tagger rubric (`config/art_tags.yaml`) | the screens | two 4K TVs |
+| `listen_space` | show_service's listener prompt | a room | a home's drawing room |
+| `screen_device` | room_service page copy ("TV pages") | display | TV |
+| `lights_menu` | the app menu's Lights hint | Lights and appliances | Lamps, glitterball, pinspots |
+| `windows_host` | show_service piano and Sonos copy | this PC | PC22 |
+| `windows_speakers` | show_service piano output | This PC's speakers | PC22 speakers |
+| `artnet_no_replies` | show_service's Art-Net hint | (generic hint) | (names PC22's relay) |
+
+`smconfig check` rejects a key that isn't in this list (`smconfig/check.py` `WORDING_KEYS`), since a typo would silently
+fall back to the generic phrase. A new key goes in both places.
 
 ### Capabilities
 
@@ -142,7 +174,41 @@ Run `check` after any edit to a deployment. The test suite runs it for every shi
    use, usually `SM_LAN_HOST=<this machine's LAN address>`. (`${PORT_<SERVICE>}` needs nothing: it is the
    manifest's port.) Then run `python -m smconfig check`. It validates the files, the modes against room_service's
    model, and the `${VAR}`s.
-6. Start as usual: `./start.sh start flask`, then `scripts/ctl start all`, which starts only the switched-on services.
+6. Run `python -m smconfig.secrets check` and add what it says is missing (next section).
+7. Start as usual: `./start.sh start flask`, then `scripts/ctl start all`, which starts only the switched-on services.
+
+## Secrets
+
+The repo is public. No key, token, password or pairing goes in git, and that includes `deployments/`. There are two
+kinds of secret:
+
+- **Keys in `.env`**: the API keys (OpenAI, Gemini, RunPod, AssemblyAI) and the Gmail alert sender. These work on any
+  machine. Every process reads them from the repo's untracked `.env`, or from its environment.
+- **Files under `~/.config/screen-machine/`** (`smconfig.secret(...)`): the Hue bridge pairing, the Samsung TV tokens,
+  the Dot. key, the Cloudflare token and room_service's tokens. Each was made on one machine for its own devices, so
+  it stays on that machine. Pair again on a new machine; don't copy these.
+
+`python -m smconfig.secrets check` lists every secret the deployment's switched-on capabilities use, each as set or
+missing. It never prints a value. The list of what each capability uses is `NEEDS` in `smconfig/secrets.py`.
+
+**Sharing keys between machines.** Copy them once through a private file, never through git:
+
+```
+# on the machine that has them (PC22):
+python -m smconfig.secrets export /mnt/c/Users/Greg/OneDrive/Private/screen-machine-keys.env
+# on the other machine, once the file has synced there:
+python -m smconfig.secrets import /mnt/c/Users/<you>/OneDrive/Private/screen-machine-keys.env
+```
+
+- `export` writes only the shareable keys this machine has, mode 0600, and refuses any path inside the repo.
+- `import` adds only the keys `.env` lacks; `--overwrite` replaces ones it has. It never prints values and leaves `.env`
+  at 0600.
+- Restart the services that use the keys afterwards.
+- Each machine keeps its own copy, so nothing at run time depends on OneDrive.
+- Delete the private file when you're done if you don't want a standing copy.
+
+The laptop rig has generation off, so it needs none of these today. The listener's "Describe it" uses an LLM key if
+one is set and works without one.
 
 ## Room audio on a WSL machine
 

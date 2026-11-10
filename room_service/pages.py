@@ -46,6 +46,7 @@ PAGE_TYPES = ("hello", "ack", "kiosk.state", "hb")
 MAX_MSGS_PER_S = 50              # per client; there is no limit on the number of pages per screen (owner, 15 Oct)
 
 CLOSE_UNKNOWN_SCREEN = 4404
+CLOSE_ART_ONLY_REASON = b"art-only screen (no live block)"   # 4404's reason for a screen the site knows, art only
 CLOSE_BAD_VERSION = 4400
 CLOSE_BEHIND = 4008       # the page reconnects at once on 4008 (fresh welcome): only for "behind"
 CLOSE_RATE = 4029         # inbound flood: the page reconnects with its normal jittered backoff
@@ -286,10 +287,14 @@ class PageHub:
                                     content_type="application/json")
         if screen not in self.cfg.screens:
             # Accept the upgrade and close with 4404: a browser reports a refused upgrade as
-            # 1006, which the page can't tell from a network failure (DCL v3 §3.7).
+            # 1006, which the page can't tell from a network failure (DCL v3 §3.7). A screen the
+            # site knows without a live block (art-only) gets its own reason: there is no control
+            # for it here, so the page should stop asking and keep polling its mask (RS-7).
+            art_only = screen in (getattr(self.cfg, "known_screens", None) or {})
             ws = web.WebSocketResponse(heartbeat=None, timeout=2.0)
             await ws.prepare(request)
-            await ws.close(code=CLOSE_UNKNOWN_SCREEN, message=b"unknown screen")
+            await ws.close(code=CLOSE_UNKNOWN_SCREEN,
+                           message=CLOSE_ART_ONLY_REASON if art_only else b"unknown screen")
             return ws
         if role not in ROLES:
             raise web.HTTPBadRequest(text=json.dumps({"error": "bad_role", "detail": role}),

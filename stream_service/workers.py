@@ -750,6 +750,7 @@ class EngineProxy:
                             "rt": {"speed": rt.speed, "depth": rt.depth, "speed_target": rt.speed_target,
                                    "depth_target": rt.depth_target, "ease_s": rt.ease_s, "palette": rt.palette,
                                    "palette_s": rt.palette_s, "level": rt.level, "level_target": rt.level_target,
+                                   "energy": rt.energy, "energy_target": rt.energy_target,
                                    "extra": dict(rt.extra or {})}})
             if self._stopped:                        # ended while it bound: undo (bind and stop run in order there)
                 c.call("stop", {"sid": self.name}, STOP_S)
@@ -1022,7 +1023,7 @@ class EngineProxy:
         rt, sp = s.runtime, s.sampler
         cur = {"speed_target": rt.speed_target, "depth_target": rt.depth_target, "palette": rt.palette,
                "palette_s": rt.palette_s, "ease_s": rt.ease_s, "extra": rt.extra, "lead": sp.lead,
-               "level_target": rt.level_target,
+               "level_target": rt.level_target, "energy_target": rt.energy_target,   # Energy (C5)
                "follow": sp.follow}
         if self.room_degrade is not None:            # (never set outside a room: the sync is as before)
             cur["room_degrade"] = self.room_degrade

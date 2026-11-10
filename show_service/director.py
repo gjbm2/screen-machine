@@ -375,6 +375,20 @@ def _lerp(rng: Any, u: float) -> float:
     return lo + (hi - lo) * _c01(u)
 
 
+def room_screens() -> Optional[tuple[str, ...]]:
+    """The renderer screen ids of the director's room, in rooms.json order: the deployment's default room's
+    ``screens`` (smconfig). None when there is no rooms.json, no default room or no screens list (every screen room
+    reports is then the room's). The art the director samples and the ensemble's unplaced screens use it (audit
+    SHOW-2, E6), so another room's screen (finsbury's lab) never colours this room's palette."""
+    try:
+        import smconfig
+        rid = smconfig.default_room()
+        scr = smconfig.rooms().get(rid, {}).get("screens") if rid else None
+    except Exception:                                    # noqa: BLE001 - no rooms.json: no scope
+        return None
+    return tuple(x for x in scr if isinstance(x, str)) if isinstance(scr, list) else None
+
+
 def _call(fn: Optional[Callable], *a: Any, **kw: Any) -> Any:
     """An input slot: None when missing or when it raises (degrade, never fail a tick)."""
     if fn is None:
@@ -830,6 +844,8 @@ class Director:
         self.music: dict = {}
         # art stills and the catalog API
         self.art: dict[str, dict] = {}                   # screen -> {"colours": [Rgb], "roles", "at_s"}
+        self._room_screens = room_screens()              # this room's screens (rooms.json; None: every one)
+        self._art_sids: tuple[str, ...] = ()             # the screens whose art can be sampled (_art_ids)
         self._art_next = 0.0
         self._art_busy = False
         self._art_error: Optional[str] = None
@@ -2899,7 +2915,7 @@ class Director:
                        if isinstance(p, dict) and p.get("device") == sub), None) or {}
             devices.append({"id": sub, "label": pt.get("label"), "at": pt.get("at")})
         players = ensmod.players(rig, self._groups, cfg=self.ensemble.cfg, space_mod=sp, view=view,
-                                 live_screens=live, devices=devices)
+                                 live_screens=live, devices=devices, screen_order=self._room_screens)
         if self.ensemble.set_players(players, now_s, space_mod=sp, view=view):
             self._log_event("ensemble", {"change": "players", "players": [
                 {k: p[k] for k in ("id", "side", "via", "on")} for p in players]})
@@ -3225,8 +3241,29 @@ class Director:
         return (max(L for L, _, _ in labs) >= float(self.cfg["art"]["min_lightness"])
                 and max(math.hypot(a, b) for _, a, b in labs) >= float(self.cfg["art"]["min_chroma"]))
 
+    def _art_ids(self, room: Any) -> tuple[str, ...]:
+        """The screens whose art the director can sample (audit SHOW-2): the fixture and lamp screens, and the
+        screens room_service reports that are in this room (rooms.json; ``room_screens``), so a live screen with no
+        fixture (a laptop's VJ screen) is sampled too. Until room_service's view first arrives, this room's
+        rooms.json screens stand in for it, so a site whose only art screen has no fixture still gets its first look
+        from the art (§8.6) rather than a catalog palette picked in the boot ticks."""
+        sids = ({d["screen"] for d in self.screens.values() if d.get("screen")}
+                | {d["screen"] for d in self.lamps.values() if d.get("screen")})
+        scr = room.get("screens") if isinstance(room, dict) else None
+        scope = self._room_screens
+        if isinstance(scr, dict):
+            sids |= {sid for sid in scr if isinstance(sid, str) and (scope is None or sid in scope)}
+        elif scope is not None:
+            sids |= set(scope)
+        return tuple(sorted(sids))
+
+    def _art_possible(self) -> bool:
+        """Some screen has art to sample (not whether colours came yet: the choice is there from boot)."""
+        return bool(self._art_sids)
+
     def _candidates(self, vs: dict) -> list[str]:
-        return [p for p in vs["palettes"] if p == contract.PALETTE_ART or self.palettes.has(p)]
+        art = self._art_possible()
+        return [p for p in vs["palettes"] if (p == contract.PALETTE_ART and art) or self.palettes.has(p)]
 
     def _base_palette(self, vs: dict) -> Optional[str]:
         c = self._candidates(vs)
@@ -3251,7 +3288,7 @@ class Director:
             return pick, "human"
         c = self._candidates(vs)
         if self.palette_name not in c:
-            if self.palette_name is None and contract.PALETTE_ART in vs["palettes"]:
+            if self.palette_name is None and contract.PALETTE_ART in vs["palettes"] and self._art_possible():
                 self.palette_name = contract.PALETTE_ART      # §8.6: the first look from the art where allowed
             else:
                 self.palette_name = c[0] if c else None
@@ -3262,7 +3299,7 @@ class Director:
         """The look's palette (with roles) and per-screen roles (the art's, where a screen has its own still)."""
         screen_roles: dict[str, contract.PaletteRoles] = {}
         if name == contract.PALETTE_ART:
-            if self._art_ready() and self._art_ok():
+            if self._art_possible() and self._art_ready() and self._art_ok():
                 cols: list = []
                 for sid, a in self.art.items():
                     if a.get("colours"):
@@ -3271,12 +3308,15 @@ class Director:
                 roles = pal.roles_from(cols)
                 return {"name": contract.PALETTE_ART, "source": "art" if source == "vibe" else source,
                         "roles": roles, "emphasis": "base"}, screen_roles
-            # no still yet, or one with no colour to give: the vibe's next catalog palette stands in
+            # no still yet, or one with no colour to give: the vibe's next catalog palette stands in. Its source is
+            # "art" even when a person chose From the art: it is not their pick of that palette (stream_service's
+            # palette-wins rule, C6, must not hold it against colour-repainting effects).
             alt = next((p for p in self._candidates(vs) if p != contract.PALETTE_ART), None)
             if alt is None:
                 name = None
             else:
-                return {"name": alt, "source": source, "roles": self.palettes.roles(alt), "emphasis": "base"}, {}
+                return {"name": alt, "source": "art" if source == "human" else source,
+                        "roles": self.palettes.roles(alt), "emphasis": "base"}, {}
         if name is not None and self.palettes.has(name):
             return {"name": name, "source": source, "roles": self.palettes.roles(name), "emphasis": "base"}, {}
         w = pal.role(pal.white(vs["key_cct"]))
@@ -3574,8 +3614,9 @@ class Director:
         name, source = self._resolve_palette(vp) if pal_on else (None, "neutral")
         self._pal_chosen = name                           # the screens' palette follows the choice, not a stand-in
         look_pal, screen_roles = self._roles_for(name, source, vp)
-        if name == contract.PALETTE_ART and self._art_ready() and not self._art_ok():
-            self._pal_chosen = look_pal.get("name")       # the art has no colour to give: the next entry is the choice
+        if name == contract.PALETTE_ART and ((self._art_ready() and not self._art_ok()) or not self._art_possible()):
+            self._pal_chosen = look_pal.get("name")       # the art has no colour to give, or no screen has art to
+                                                          # sample: the stand-in is the choice (the screens get it)
         emphasis = self._emphasis_of(arousal)
         look_pal["emphasis"] = emphasis
         xpr = self._express_now(now_s) if known else 0.0    # a section shown inside the look (§8.5)
@@ -4231,6 +4272,7 @@ class Director:
                 or contract.PALETTE_ART in getattr(self, "vp", self.vs)["palettes"])
 
     def _fetches(self, now_s: float) -> None:
+        self._art_sids = self._art_ids(_call(self.ctx.room))
         loop, get = self.ctx.loop, self.ctx.room_get
         if loop is None or get is None:
             return
@@ -4240,8 +4282,7 @@ class Director:
             self._spawn(loop, self._fetch_catalog())
         if not self._art_busy and now_s >= self._art_next and self._art_in_play():
             self._art_next = now_s + max(1.0, float(self.cfg["art"]["poll_s"]))
-            sids = sorted({d["screen"] for d in self.screens.values() if d.get("screen")}
-                          | {d["screen"] for d in self.lamps.values() if d.get("screen")})
+            sids = list(self._art_sids)
             if sids:
                 self._art_busy = True
                 self._spawn(loop, self._fetch_art(sids))
@@ -4365,7 +4406,7 @@ class Director:
         return out
 
     def catalog_choices(self) -> list[contract.PaletteChoice]:
-        return self.palettes.choices() + [self._art_choice()]
+        return self.palettes.choices() + ([self._art_choice()] if self._art_possible() else [])
 
     def catalog(self) -> contract.VibesCatalog:
         """GET /api/v1/vibes: the vibes, their field schemas, and the palettes (the catalog, then the art)."""
@@ -4606,7 +4647,7 @@ class Director:
 
     def _palette_view(self) -> dict:
         key = (id(self.vs), self.known, self._roles_key, self.palette_pick, len(self.palettes.names()),
-               tuple((s, a.get("at_s")) for s, a in self.art.items()))
+               tuple((s, a.get("at_s")) for s, a in self.art.items()), self._art_possible())
         if key == self._pview_key:
             return self._pview
         self._pview_key = key
@@ -4620,8 +4661,9 @@ class Director:
             names = self.palettes.names()
         choices: list[contract.PaletteChoice] = [          # only the room's own Auto is called "Auto" (09's audit F10)
             {"name": contract.PALETTE_AUTO, "label": "Let it choose", "family": None,
-             "swatch": [r["hex"] for r in ((self.look or {}).get("palette") or {}).get("roles", {}).values()]},
-            self._art_choice()]
+             "swatch": [r["hex"] for r in ((self.look or {}).get("palette") or {}).get("roles", {}).values()]}]
+        if self._art_possible():                          # only where some screen has art to sample (SHOW-2)
+            choices.append(self._art_choice())
         choices += [self.palettes.choice(n) for n in names[:5]]
         return {"pick": self.palette_pick, "current": self._current_palette_name(), "choices": choices}
 

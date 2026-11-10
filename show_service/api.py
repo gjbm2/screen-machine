@@ -192,6 +192,7 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", "/api/v1/rig/types"), ("POST", "/api/v1/rig/fixtures"), ("PUT", "/api/v1/rig/fixtures/{id}"),
     ("DELETE", "/api/v1/rig/fixtures/{id}"), ("POST", "/api/v1/rig/fixtures/{id}/identify"),
     ("GET", "/api/v1/rig/follow"), ("POST", "/api/v1/rig/follow"),
+    ("GET", "/api/v1/brightness"), ("PUT", "/api/v1/brightness"),
     ("POST", "/api/v1/rig/fixtures/{id}/jog"), ("POST", "/api/v1/rig/fixtures/{id}/setup"),
     ("POST", "/api/v1/rig/fixtures/{id}/positions"), ("DELETE", "/api/v1/rig/fixtures/{id}/positions/{name}"),
     ("POST", "/api/v1/rig/fixtures/{id}/teach"), ("DELETE", "/api/v1/rig/fixtures/{id}/teach/{n}"),
@@ -1147,6 +1148,8 @@ class Api:
             ("POST", "/api/v1/rig/fixtures/{id}/identify", self._rig_identify),
             ("GET", "/api/v1/rig/follow", self._rig_follow_get),
             ("POST", "/api/v1/rig/follow", self._rig_follow_post),
+            ("GET", "/api/v1/brightness", self._brightness_get),
+            ("PUT", "/api/v1/brightness", self._brightness_put),
             ("POST", "/api/v1/rig/fixtures/{id}/jog", self._rig_jog),
             ("POST", "/api/v1/rig/fixtures/{id}/setup", self._rig_setup),
             ("POST", "/api/v1/rig/fixtures/{id}/positions", self._rig_position_add),
@@ -1800,6 +1803,31 @@ class Api:
         except ValueError as e:
             code, detail = _code(e, "bad_follow")
             return _err(400, code, detail or "That isn't something a light can follow.", choices=FOLLOW_CHOICES)
+
+    # -- the lamps' brightness (room's brightness.lamps; audit RS-4) --------------------------------------------------
+    async def _brightness_get(self, request: web.Request, brain: Any) -> web.Response:
+        """``{lamps: 0..1, fixtures: how many lamps it reaches}`` (no rig: full, none reached)."""
+        rig = _components(brain).get(RIG)
+        fn = getattr(rig, "brightness_view", None) if rig is not None else None
+        return _json(fn() if callable(fn) else {"lamps": 1.0, "fixtures": 0})
+
+    async def _brightness_put(self, request: web.Request, brain: Any) -> web.Response:
+        """``{lamps: 0..1}``: every lamp that follows the look (the rig's Art-Net lights, and Hue when show drives
+        it) is scaled by it from the next frame, kept across a restart -> ``{lamps, fixtures}``."""
+        body, bad = await self._body(request)
+        if bad is not None:
+            return bad
+        lamps = body.get("lamps") if isinstance(body, dict) else None
+        if isinstance(lamps, bool) or not isinstance(lamps, (int, float)):
+            return _err(400, "bad_request", 'The body is {"lamps": <0..1>}.')
+        rig = _components(brain).get(RIG)
+        if rig is None or not callable(getattr(rig, "set_brightness", None)):
+            return _err(503, "unavailable", NO_RIG)
+        try:
+            return _json(await self._call(brain, rig.set_brightness, lamps))
+        except ValueError as e:
+            code, detail = _code(e, "bad_level")
+            return _err(400, code, detail or "lamps must be a number from 0 to 1.")
 
     # -- moving lights: Move it, setup, positions and teach (docs/LIGHTS.md §8.1) --------------------------------------
     @staticmethod

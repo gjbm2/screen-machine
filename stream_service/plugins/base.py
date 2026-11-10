@@ -30,6 +30,28 @@ _COLOR_RE = re.compile(r"^#[0-9a-fA-F]{6}$")
 EASINGS = ("linear", "ease-in-out", "ease-in", "ease-out")
 # Effect stages in render order (EFFECTS_LAYER_DESIGN A.1): a chain applies warps first and overlays last.
 STAGES = ("warp", "feedback", "glitch", "stylise", "colour", "light", "projection", "motion", "overlay")
+
+# Effects that repaint the picture's hue (owner, contract C6: a PICKED session palette wins over them), by family.
+# An effect class may say ``repaints_colour = True / False`` itself; otherwise this table decides.
+REPAINTS_COLOUR: dict[str, tuple[str, ...]] = {
+    "hue": ("hue_drift",),
+    "tint": ("isf_corner_color_tint", "isf_color_monochrome", "isf_sepia_tone"),
+    "channel": ("isf_monochrome_channelmix", "isf_v002_technicolor", "isf_color_relookup", "isf_false_color",
+                "isf_thermal_camera"),
+    "grade": ("grade", "film_stock", "split_tone_grade", "isf_auto_color_tone", "isf_colormap", "isf_duotone",
+              "isf_trio_tone", "isf_solarize"),
+    "acid-tint": ("palette_map", "isf_palettes"),     # recolour the whole frame through their own palette
+}
+_REPAINTS = frozenset(n for names in REPAINTS_COLOUR.values() for n in names)
+
+
+def repaints_colour(cls: Any) -> bool:
+    """Does this effect plug-in (class) repaint the picture's hue?  Its own ``repaints_colour`` when it sets one,
+    else :data:`REPAINTS_COLOUR`.  None / unknown: False."""
+    if cls is None:
+        return False
+    v = getattr(cls, "repaints_colour", None)
+    return v if isinstance(v, bool) else getattr(cls, "name", None) in _REPAINTS
 BINDABLE_KINDS = (True, "level", "rate", "trigger")   # x-bindable: true (core) or a kind string (lab)
 LICENSE_CLASSES = ("permissive", "attribution", "noncommercial", "unknown")
 
@@ -370,6 +392,7 @@ class Effect(Plugin):
     #                                    "scope" (wave_gpu [1024], wave_trigger), "fft" (fft_gpu / fft_peak_gpu [48],
     #                                    fft_history_gpu [128, 48] + fft_row, level): the fast feed (scope_feed.py)
     beat_clock: Any = None             # the session's beat clock this frame (plugins/_lib/beat.py; EffectSlot)
+    repaints_colour: ClassVar[Optional[bool]] = None   # repaints hue (C6); None: REPAINTS_COLOUR decides
 
     def __init__(self) -> None:
         self.ctx = None
@@ -398,7 +421,8 @@ class Effect(Plugin):
     @classmethod
     def describe(cls) -> dict:
         return {"name": cls.name, "label": cls.label or cls.name, "description": cls.description,
-                "stage": cls.stage, "internal": cls.internal, "schema": cls.schema(), **cls.meta()}
+                "stage": cls.stage, "internal": cls.internal, "repaints_colour": repaints_colour(cls),
+                "schema": cls.schema(), **cls.meta()}
 
 
 def plugin_kind(cls: Any) -> Optional[str]:

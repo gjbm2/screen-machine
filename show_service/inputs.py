@@ -2,7 +2,8 @@
 one the room listens to. Nothing is hard-coded: the inputs are show.yaml's senders and what their heartbeats report.
 
 * **Inputs** are the streams of the receiver's permanent senders (show.yaml, not ``on_demand``), less a sender with
-  ``room_sound: false``, test streams, and MIDI (health kind ``midi``, or ``contract.MIDI_STREAMS`` before any data).
+  ``room_sound: false``, test streams, and MIDI (health kind ``midi``, or before any data a MIDI name:
+  ``contract.MIDI_STREAMS``, the sender's ``midi``, show.yaml ``situations.midi.streams``).
   Each carries its sender's ``label`` (show.yaml ``senders.<name>.label``, else the sender's name), its health state
   ("off" also before its first packet while the receiver keeps it off: the mic on demand, mic.py), the device in use
   (the heartbeat's ``dev``) and the devices it could use (the heartbeat's ``devices``; [] when the sender doesn't
@@ -99,6 +100,13 @@ class Inputs:
             self._show = (key, data if isinstance(data, dict) else {})
         return self._show[1]
 
+    def _is_midi(self, stream: str, sender: Any) -> bool:
+        """A stream that carries MIDI by name, before its first data says so (audit SHOW-5): the conventional names,
+        the sender's ``midi`` (receiver health), show.yaml's situations.midi.streams and senders.<x>.midi."""
+        midi = sender.get("midi") if isinstance(sender, dict) else None
+        return (stream in contract.MIDI_STREAMS or (isinstance(midi, list) and stream in midi)
+                or stream in contract.midi_streams(self._settings()))
+
     def _h(self) -> dict:
         try:
             return _d(self._health())
@@ -124,7 +132,7 @@ class Inputs:
                     continue
                 m = _d(streams.get(st))
                 kind = m.get("kind")
-                if kind == "midi" or (kind in (None, "unknown") and st in contract.MIDI_STREAMS) or m.get("test"):
+                if kind == "midi" or (kind in (None, "unknown") and self._is_midi(st, s)) or m.get("test"):
                     continue
                 snd = _d(m.get("sender"))
                 devs = snd.get("devices")
@@ -152,7 +160,7 @@ class Inputs:
                     continue
                 m = _d(streams.get(st))
                 kind = m.get("kind")
-                if (kind == "midi" or (kind in (None, "unknown") and st in contract.MIDI_STREAMS)) and not m.get("test"):
+                if (kind == "midi" or (kind in (None, "unknown") and self._is_midi(st, s))) and not m.get("test"):
                     out.append({"stream": st, "sender": name, "label": label, "state": m.get("state") or "down"})
         return out
 

@@ -7,8 +7,26 @@ description: Production. Two Samsung Frames (north, south) on the drawing-room k
 # The default for a screen's light curve when its intensity_cfg names no lat/lon (was config.py's London default).
 location: {lat: 51.5074, lon: -0.1278}
 
-# The room Flask's art director and the auto hints work on when they name none (was ROOM = "drawing-room").
+# The room a caller means when it names none (Alexa's fallback, the Room page's first room).
 default_room: drawing-room
+
+# Flask's art director: the room modes it makes art in, and the rooms it looks after (default: every room with
+# screens). Was hard-coded to ambient and the drawing room.
+art_director: {modes: [ambient], rooms: [drawing-room]}
+
+# Site phrases in prompts and page copy (smconfig Deployment.words(key, generic default)). These keep PC22's text
+# exactly as it was; a deployment without them gets the generic wording. deployments/README.md lists the keys.
+wording:
+  art_screen: a 4K TV                       # image generator: "made for <art_screen> in <art_space>"
+  art_space: a living room
+  art_library: living-room art library      # art tagger
+  art_screens: two 4K TVs
+  listen_space: a home's drawing room       # show_service's listener prompt
+  screen_device: TV                         # room_service: "TV pages", "Show details on the TV"
+  lights_menu: Lamps, glitterball, pinspots # the app menu's Lights hint
+  windows_host: PC22                        # show_service: the Windows host's name in piano/Sonos copy
+  windows_speakers: PC22 speakers
+  artnet_no_replies: "no replies yet: nodes answer on PC22's udp 6454, which ca's relay forwards to room_service (README S5.7)"
 
 capabilities:
   generation: true

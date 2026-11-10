@@ -71,7 +71,8 @@ def test_every_rooms_list_becomes_groups_without_a_table_of_kinds():
     assert g == {"den:screens": ["screens.s1", "screens.s2"], "den:tv": ["tv.s1"],
                  "den:lights": ["hue.a", "hue.b"], "den:hue": ["hue.a", "hue.b"],
                  "den:effects": ["ball.main", "ball.motor.speed"], "den:ball": ["ball.main", "ball.motor.speed"],
-                 "den:sonos": ["sonos.den.volume", "sonos.den.playback"]}
+                 "den:sonos": ["sonos.den.volume", "sonos.den.playback"],
+                 "den:sensors": []}        # RS-6: a list that names nothing here is still a known (empty) group
 
 
 def test_describe_orders_subsystems_as_rooms_json_lists_them_settings_last(tmp_path):

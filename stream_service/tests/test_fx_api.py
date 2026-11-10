@@ -422,3 +422,69 @@ async def test_a_swap_of_the_first_of_two_effects_keeps_both_slots_right(client)
     await s.fx.auto_move(FxMove("swap", c, first, "t"), 0.5)
     stack = [(st.spec.preset, st.id) for st in s.fx.stack]
     assert [p for p, _ in stack] == [b, c] and len({i for _, i in stack}) == 2
+
+
+async def test_a_picked_palette_reports_and_drops_the_effects_that_repaint_it(client):
+    """Contract C6: palette_masked_by in the summary and the session.palette / session.fx events, only while a
+    person picked the palette (show_service's room.look); auto picks leave repainting effects out."""
+    sid, s, eng = await live(client, auto={**AUTO, "fx": {"enabled": True, "max": 2}})
+    seen = []
+    emit = s.emit
+    s.emit = lambda kind, **kw: (seen.append((kind, kw)), emit(kind, **kw))[1]
+    r = await put(client, sid, stack=["hue-drift-slow", "shake-beat"])
+    assert r.status == 200
+    assert s.summary()["palette_masked_by"] == [] and seen[-1][1]["palette_masked_by"] == []   # auto: as before
+    await client.patch(f"/api/sessions/{sid}", json={"palette": "ember"}, headers=AUTH)
+    mgr = s.mgr
+    mgr.on_room_message({"type": "room.look", "data": {"palette": {"name": "ember", "source": "vibe"}}})
+    assert not s.palette_picked() and s.summary()["palette_masked_by"] == []
+    mgr.on_room_message({"type": "room.look", "data": {"palette": {"name": "art", "source": "human"}}})
+    assert not s.palette_picked()                                             # From the art: not a pick
+    mgr.on_room_message({"type": "room.look", "data": {"palette": {"name": "ember", "source": "human"}}})
+    assert s.palette_picked() and s.summary()["palette_masked_by"] == ["Hue drift (slow)"]
+    await put(client, sid, stack=["hue-drift-slow", "shake-beat", "grade-warm"])
+    ev = [kw for k, kw in seen if k == "session.fx"][-1]
+    assert ev["palette_masked_by"] == ["Hue drift (slow)", "Grade (warm)"]
+    s._palette_t = -1e9
+    s._inputs_tick(asyncio.get_running_loop().time())
+    pal = [kw for k, kw in seen if k == "session.palette"][-1]
+    assert pal["palette"] == "ember" and pal["palette_masked_by"] == ["Hue drift (slow)", "Grade (warm)"]
+    # the FX director's own picks leave them out; the hand-placed ones stay
+    pool = s.fx_director.candidates(0.0, [], s.mgr.presets.effects, lambda n: 0.0, 1.0)
+    assert pool and not any(s.mgr.presets.effects[n].get("repaints_colour") for n in pool)
+    assert s.mgr.presets.effects["hue-drift-slow"]["repaints_colour"] is True
+    assert {st.spec.preset for st in s.fx.stack if st.origin == "manual"} == {"shake-beat", "hue-drift-slow",
+                                                                              "grade-warm"}
+    s.mgr.room_look["t"] -= 60                                                # show_service quiet: unknown, as before
+    assert not s.palette_picked()
+
+
+async def test_an_energy_step_leans_now_and_arms_the_next_scene(client):
+    """Contract C5: Energy acts within ~2 s (the scene's own energy, eased) and a step of 0.3 or more brings the
+    next scene now, as Next scene would (the director's pick and transition)."""
+    sid, s, eng = await live(client, auto=AUTO)
+    loop = asyncio.get_running_loop()
+    s.tick(loop.time())
+    assert s.director.armed and s.runtime.energy_target == 0.5
+    n0 = s._cue_n
+    await client.patch(f"/api/sessions/{sid}", json={"direction": {"energy": 0.6, "source": "panel"}}, headers=AUTH)
+    assert s.runtime.energy_target == 0.6 and s._energy_due is None          # a small step: the lean only
+    # a mode's own direction (room_service's mode switch: no source) leans the scene but does not cut it
+    await client.patch(f"/api/sessions/{sid}", json={"direction": {"energy": 0.95}}, headers=AUTH)
+    assert s.runtime.energy_target == 0.95 and s._energy_due is None
+    await client.patch(f"/api/sessions/{sid}", json={"direction": {"energy": 0.75, "source": "panel"}}, headers=AUTH)
+    assert s._energy_due is None                                             # measured from the mode's 0.95
+    await client.patch(f"/api/sessions/{sid}", json={"direction": {"energy": 0.4, "source": "panel"}}, headers=AUTH)
+    assert s.runtime.energy_target == 0.4 and s._energy_due is not None      # the Room page's Energy: now
+    s.tick(loop.time())
+    assert s._auto_task is not None and s._energy_due is None
+    await s._auto_task
+    for _ in range(50):
+        await asyncio.sleep(0.01)
+        if s._cue_n > n0:
+            break
+    assert s._cue_n > n0 and s.last_cue["reason"] == "energy" and s.last_cue["cause"] == "auto"
+    # a mode change (direction and auto together) brings its own scene from room_service: no second cut from here
+    await client.patch(f"/api/sessions/{sid}", json={"direction": {"energy": 0.2, "source": "panel"}, "auto": AUTO},
+                       headers=AUTH)
+    assert s.runtime.energy_target == 0.2 and s._energy_due is None

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 
-from stream_service import rooms
+from stream_service import rooms, sessions
 from stream_service.director import DIRECTION_DEFAULTS, FX_DIRECTION_DEFAULTS
 from stream_service.renderer import StartTransition
 
@@ -47,7 +47,8 @@ async def test_followers_cut_with_the_leader_and_next_moves_the_room(client):
     await settle(a, b)
     assert b.current_name == a.current_name != "fractal-zoom"
     assert b.last_cue["reason"] == "room" and b.last_cue["cause"] == "auto" and b.scene_cause == "auto"
-    # "next" on the follower moves the leader, and the follower with it
+    # "next" on the follower moves the leader, and the follower with it (a second later: not the same request)
+    a._room_next_last["done"] -= 2 * sessions.ROOM_NEXT_DEDUPE_S
     before = a.current_name
     r = await cue(client, sb, to="auto")
     assert r.status == 202 and (await r.json())["session"] == sa
@@ -57,6 +58,34 @@ async def test_followers_cut_with_the_leader_and_next_moves_the_room(client):
     await cue(client, sb, to="warp-cells")
     await settle(a, b)
     assert b.current_name == "warp-cells" != a.current_name
+
+
+async def test_one_next_sent_to_every_screen_of_the_room_moves_it_once(client):
+    """audit stream_flask:F7: Alexa's "change the scene" cues every live screen of the room, one after another."""
+    (sa, a, ea), (sb, b, eb) = await room_pair(client)
+    now = asyncio.get_running_loop().time()
+    a.tick(now), b.tick(now)
+    n0 = len(scene_cmds(ea))
+    r1 = await cue(client, sb, to="auto")                 # the follower first: forwarded to the leader
+    r2 = await cue(client, sa, to="auto")                 # then the leader, within the second: the same move
+    assert r1.status == r2.status == 202
+    j1, j2 = await r1.json(), await r2.json()
+    assert j2["cue_id"] == j1["cue_id"] and j2.get("deduped") is True
+    await settle(a, b)
+    assert len(scene_cmds(ea)) == n0 + 1 and b.current_name == a.current_name
+    # both at once (in flight together): still one move
+    a._room_next_last["done"] -= 2 * sessions.ROOM_NEXT_DEDUPE_S
+    r3, r4 = await asyncio.gather(cue(client, sa, to="auto"), cue(client, sb, to="auto"))
+    assert (await r3.json())["cue_id"] == (await r4.json())["cue_id"]
+    await settle(a, b)
+    assert len(scene_cmds(ea)) == n0 + 2
+    # the same screen twice is two presses
+    r5 = await cue(client, sa, to="auto")
+    await settle(a, b)
+    r6 = await cue(client, sa, to="auto")
+    assert (await r5.json())["cue_id"] != (await r6.json())["cue_id"]
+    await settle(a, b)
+    assert len(scene_cmds(ea)) == n0 + 4
 
 
 async def test_prepared_pick_is_prepared_on_the_followers_too(client):
@@ -181,7 +210,7 @@ class _Slot:
 
 
 def test_followers_take_the_sources_levels():
-    from stream_service import rooms
+    from stream_service import rooms, sessions
     src = [_Slot("posterize", 0.35), _Slot("ocean", 0.6), _Slot("mine", 1.0, origin="manual")]
     lv = rooms.auto_fx_levels(src)
     assert lv == {"posterize": 0.35, "ocean": 0.6}

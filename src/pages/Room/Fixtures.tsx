@@ -643,6 +643,7 @@ export function LightsSection({
   only,
   sub = false,
   title = "Lights",
+  showTitle,
 }: {
   api: RoomApi;
   connected: boolean;
@@ -657,6 +658,9 @@ export function LightsSection({
   sub?: boolean;
   /** The heading (the room's name), shown only when more than one room has lights. */
   title?: string;
+  /** true: show the heading whatever rooms.json says (more than one section of the page has lights, e.g. a room and
+   *  Other); otherwise the rooms.json rule above. */
+  showTitle?: boolean;
 }) {
   const own = useFixtures(api, !fixtures);
   const [openId, setOpenId] = useState<string | null>(null);
@@ -681,7 +685,7 @@ export function LightsSection({
 
   const pill = hueOn && view && lamps.length > 0 ? <Pill tone={feed.tone} pulse={!!a?.online}>{feed.text}</Pill> : null;
   // the room's name over the tiles only when more than one room has lights (else the fold's title says it)
-  const heading = rooms.filter((r) => (r.lights?.length ?? 0) > 0 || (r.effects?.length ?? 0) > 0).length > 1;
+  const heading = showTitle === true || rooms.filter((r) => (r.lights?.length ?? 0) > 0 || (r.effects?.length ?? 0) > 0).length > 1;
   const toggle = (id: string) => setOpenId((o) => (o === id ? null : id));
 
   return (

@@ -114,7 +114,11 @@ SILENT_OUTPUT = "none"
 #: (deployment.yaml ``host.windows_python`` set; finsbury's is). Elsewhere neither is offered and the piano's default
 #: output is the screens only.
 WINDOWS_SOUND = contract.DEPLOYMENT.host_path("windows_python") is not None
-OUTPUTS: tuple[dict[str, str], ...] = (({"id": "pc22", "label": "PC22 speakers"},) if WINDOWS_SOUND else ()) + (
+#: the Windows machine's words (audit SHOW-6): deployment.yaml ``wording.windows_host`` / ``wording.windows_speakers``
+#: (finsbury: "PC22" / "PC22 speakers"), else generic ones
+WINDOWS_HOST_WORDS = contract.DEPLOYMENT.words("windows_host", "this PC")
+WINDOWS_SPEAKERS_WORDS = contract.DEPLOYMENT.words("windows_speakers", "This PC's speakers")
+OUTPUTS: tuple[dict[str, str], ...] = (({"id": "pc22", "label": WINDOWS_SPEAKERS_WORDS},) if WINDOWS_SOUND else ()) + (
     {"id": SILENT_OUTPUT, "label": "Screens only"},)
 DEFAULT_OUTPUT = "pc22" if WINDOWS_SOUND else SILENT_OUTPUT
 # a phone or tablet playing PC22's piano itself ("This device", piano_live.py): "device:<its id>". The piano plays
@@ -149,7 +153,8 @@ SONOS_PREFIX = "sonos:"                # an output "sonos:<zone>": a zone of SON
 SONOS_FLAGS = frozenset(("--title", SONOS_PREFIX))     # show_sender's Sonos output (its text names "sonos:")
 #: room_service's Sonos zones (screen-machine-ff's file, read only): {"zones": {<zone>: {"room", "ip", ...}}}
 SONOS_FILE = contract.DEPLOYMENT.path("room", "sonos.json")   # absent: this site has no Sonos
-LIVE_ON_SONOS = "The Windows synth plays on PC22 only, so it's playing there; pick a rendered sound for Sonos."
+LIVE_ON_SONOS = (f"The Windows synth plays on {WINDOWS_HOST_WORDS} only, so it's playing there; pick a rendered sound "
+                 f"for Sonos.")
 PIANO_REPLAY = contract.REPO_ROOT / "stream_service" / "piano_replay.py"   # PHRASE_LABELS, read by file path
 NAME_OK = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.")
 
@@ -188,6 +193,7 @@ def parse_senders(settings: dict) -> tuple[list[Sender], list[str]]:
     if not isinstance(raw, dict):
         return [], ["senders: not a mapping (ignored)"]
     out, errors = [], []
+    site_midi = contract.midi_streams(settings)
     for name, spec in raw.items():
         where = f"senders.{name}"
         if not isinstance(name, str) or not name or not set(name) <= NAME_OK:
@@ -218,8 +224,16 @@ def parse_senders(settings: dict) -> tuple[list[Sender], list[str]]:
         if not isinstance(on_demand, bool):
             errors.append(f"{where}.on_demand: {on_demand!r} is not true/false (skipped)")
             continue
+        midi = spec.get("midi", [])
+        if isinstance(midi, str):
+            midi = [midi]
+        if not isinstance(midi, list) or not all(isinstance(m, str) and m and set(m) <= NAME_OK for m in midi):
+            errors.append(f"{where}.midi: needs a list of stream names (ignored)")
+            midi = []
+        streams = list(dict.fromkeys(list(streams) + midi))      # a MIDI stream it names is asked for too
         hs = tuple(h.strip() for h in hosts)
-        out.append(Sender(name, hs[0], port, tuple(streams), hosts=hs, on_demand=on_demand))
+        out.append(Sender(name, hs[0], port, tuple(streams), hosts=hs, on_demand=on_demand,
+                          midi=tuple(st for st in streams if st in site_midi)))
     return out, errors
 
 
@@ -441,7 +455,7 @@ def calibration_mic(settings: dict, output: Optional[str], *, rooms: Optional[di
             m = streams_h.get(st) if isinstance(streams_h.get(st), dict) else {}
             kind = m.get("kind")
             if (st in contract.TEST_STREAMS or st.startswith("test-") or m.get("test") or kind == "midi"
-                    or (kind in (None, "unknown") and st in contract.MIDI_STREAMS)):
+                    or (kind in (None, "unknown") and (st in contract.MIDI_STREAMS or st in s.midi))):
                 continue
             return st, f"show.yaml sender {s.name} ({label})"
     return None, f"no room mic in show.yaml's senders is labelled for {where}"

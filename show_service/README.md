@@ -7509,6 +7509,12 @@ RigTypeRow), `__main__` (follow.json), `deployments/<id>/lights/fixtures.added.y
     merged (null forgets an id, which then follows: the engine's default), all or nothing (400 `bad_follow` with
     `choices`), saved in the state dir's `follow.json` (atomic, read at start) and handed whole to
     `LookEngine.set_follow` at once and after every engine configure. `GET /api/v1/rig/follow` -> `{fixtures}`.
+  - `PUT /api/v1/brightness {lamps: 0..1}` (room's `brightness.lamps`, wave 1 audit RS-4) -> `{lamps, fixtures}`:
+    `LookEngine.set_level` multiplies `looks.master` on every lamp that follows the look (the rig's Art-Net lights,
+    and Hue when show drives it), from the next frame; follow colours, identify and house frames are untouched. Kept
+    in state.json's `rig.lamps_level` (only when not full). `fixtures`: how many lamps the engine drives (0: the level
+    reaches nothing here). 400 `bad_request`/`bad_level`; 503 `unavailable` without a rig. `GET /api/v1/brightness`
+    -> `{lamps, fixtures}` (no rig: `{lamps: 1.0, fixtures: 0}`).
 - **Online**: thread `show-rig-online` pings each node address (`ping -c1 -W1`, no shell) every 10 s
   (`outputs.ONLINE_CHECK_S`), off the frame path; a row's `online` is the last answer (null: no node address, or not
   checked yet). It gates nothing.

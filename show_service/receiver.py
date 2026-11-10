@@ -63,10 +63,11 @@ goes to the first such host in list order only, otherwise to every resolved host
 ranks those streams before ``cfg.stream_priority`` (which stays); the usual switch-up rule (3 s) applies.
 
 Registry. One entry per stream name, made on its first valid packet, subscribed or not; ranked by
-contract.stream_rank(name, cfg.stream_priority) (``--stream-priority`` names first, unknown names last), and
-``test-*`` / contract.TEST_STREAMS are marked test. Kind: AUDIO makes it "audio", TEXT MIDI makes it "midi" (a
-heartbeat alone leaves "unknown"). A heartbeat (TEXT named after its audio stream) updates
-that stream and is not dispatched. SUBSCRIBE packets and junk are counted and dropped.
+contract.stream_rank(name, priority, site) (``--stream-priority`` names first, then the senders' own audio streams in
+their order (``site_order``: show.yaml's senders, MIDI and test streams left out), then the conventional names, then
+unknown names, test streams last), and ``test-*`` / contract.TEST_STREAMS are marked test. Kind: AUDIO makes it
+"audio", TEXT MIDI makes it "midi" (a heartbeat alone leaves "unknown"). A heartbeat (TEXT named after its audio
+stream) updates that stream and is not dispatched. SUBSCRIBE packets and junk are counted and dropped.
 
 Audio (per stream; the receiver's own index ``n`` per segment, from 0; ``fill_max`` = packets in 250 ms):
   * counter k ahead of the next expected: k == 0 delivered; 1..fill_max a hole: later packets are held until it
@@ -121,7 +122,7 @@ import sys
 import threading
 import time
 from collections import deque
-from typing import Any, Callable, Mapping, Optional
+from typing import Any, Callable, Mapping, Optional, Sequence
 
 import numpy as np
 
@@ -302,6 +303,22 @@ def is_test_stream(name: str) -> bool:
     return name in contract.TEST_STREAMS or name.startswith("test-")
 
 
+def site_order(senders: Sequence[contract.Sender]) -> tuple[str, ...]:
+    """The site's own audio streams in sender order (show.yaml's, after any static ones): every stream of a sender
+    that isn't on_demand, less MIDI (contract.MIDI_STREAMS, the sender's ``midi``) and test streams. ``stream_rank``
+    ranks these after the priority and before the conventional names (audit SHOW-5)."""
+    out: list[str] = []
+    for s in senders:
+        if s.on_demand:
+            continue
+        midi = set(getattr(s, "midi", ()) or ())
+        for n in s.streams:
+            if n in midi or n in contract.MIDI_STREAMS or is_test_stream(n) or n in out:
+                continue
+            out.append(n)
+    return tuple(out)
+
+
 WINDOWS_HOST = "windows"   # a sender host alias: the Windows machine this WSL runs on (its default gateway)
 
 
@@ -341,10 +358,11 @@ def _r(x: Any, nd: int = 3) -> Any:
 class _Stream:
     """One stream's registry entry (show-rx only)."""
 
-    def __init__(self, name: str, addr: tuple[str, int], now: float, priority: tuple[str, ...] = ()) -> None:
+    def __init__(self, name: str, addr: tuple[str, int], now: float, priority: tuple[str, ...] = (),
+                 site: tuple[str, ...] = ()) -> None:
         self.name = name
         self.kind = "unknown"
-        self.rank = contract.stream_rank(name, priority)
+        self.rank = contract.stream_rank(name, priority, site)
         self.test = is_test_stream(name)
         self.addr = addr
         self.first_s = now
@@ -521,6 +539,7 @@ class Receiver:
         self._offsets_new: Optional[dict[str, float]] = None
         # senders: show-rx's list; set_senders (any thread) puts the next one in _senders_want (applied at a tick)
         self._senders: tuple[contract.Sender, ...] = tuple(cfg.senders)
+        self._site: tuple[str, ...] = site_order(self._senders)   # their audio streams, ranked after the priority
         self._senders_want: Optional[tuple[contract.Sender, ...]] = None
         self._senders_gen = 0
         # priority: set_priority's names first, then cfg.stream_priority (show-rx applies it at a tick)
@@ -1211,6 +1230,12 @@ class Receiver:
         old = {s.name for s in self._senders}
         self._senders = senders
         self._senders_gen += 1
+        site = site_order(senders)
+        if site != self._site:                           # show.yaml's sender order moved: rank by it at once
+            self._site = site
+            for st in self._streams.values():
+                st.rank = contract.stream_rank(st.name, self._priority, site)
+            log.info("site streams: %s", ",".join(site) or "none")
         names = {s.name for s in senders}
         for gone in old - names:
             for d in (self._sub_last, self._send_err, self._using):
@@ -1229,7 +1254,7 @@ class Receiver:
             return
         self._priority = prio
         for st in self._streams.values():
-            st.rank = contract.stream_rank(st.name, prio)
+            st.rank = contract.stream_rank(st.name, prio, self._site)
         log.info("stream priority: %s", ",".join(prio) or "none")
 
     def _rebuild_index(self) -> None:
@@ -1251,8 +1276,10 @@ class Receiver:
         for s in self._senders:
             if s.on_demand:
                 continue
+            midi = getattr(s, "midi", ()) or ()
             for name in s.streams:
-                if (cov is not None and name in cov) or name in contract.MIDI_STREAMS or is_test_stream(name):
+                if ((cov is not None and name in cov) or name in contract.MIDI_STREAMS or name in midi
+                        or is_test_stream(name)):
                     continue
                 st = self._streams.get(name)
                 if st is not None and st.kind == "midi":
@@ -1336,7 +1363,7 @@ class Receiver:
     def _stream(self, name: str, addr: tuple[str, int], now: float) -> _Stream:
         st = self._streams.get(name)
         if st is None:
-            st = self._streams[name] = _Stream(name, (str(addr[0]), int(addr[1])), now, self._priority)
+            st = self._streams[name] = _Stream(name, (str(addr[0]), int(addr[1])), now, self._priority, self._site)
             log.info("stream %s from %s:%s%s", name, addr[0], addr[1],
                      "" if name in contract.KNOWN_STREAMS else " (unknown name: lowest priority)")
         elif st.addr[0] != addr[0] or st.addr[1] != addr[1]:
@@ -1823,7 +1850,8 @@ class Receiver:
             senders[s.name] = {"host": main, "port": s.port, "addr": f"{addr[0]}:{addr[1]}" if addr else None,
                                "resolve_error": rerr.get((s.name, main)), "send_error": self._send_err.get(s.name),
                                "streams": list(s.streams), "last_subscribe_ms": _r(last * 1000.0) if last else None,
-                               "hosts": rows, "using": using, "on_demand": bool(s.on_demand)}
+                               "hosts": rows, "using": using, "on_demand": bool(s.on_demand),
+                               "midi": list(getattr(s, "midi", ()) or ())}
         # blocks: this window's counts, then the last STATS_WINDOW_S of windows
         self._win_hist.append((now, self._win_calls, self._win_pkts, self._win_fmax))
         self._win_calls = self._win_pkts = self._win_fmax = 0
@@ -1853,7 +1881,8 @@ class Receiver:
                                 "ts_bad": sb.ts_bad, "kernel_drops": sb.kernel_drops()}},
             "errors": dict(self._errors),
             "senders": senders,
-            "priority": list(self._priority), "choice": list(self._choice), "device_hints": dict(self._device_hints),
+            "priority": list(self._priority), "site": list(self._site), "choice": list(self._choice),
+            "device_hints": dict(self._device_hints),
             "off": sorted(self._off), "off_held": sorted(self._held), "off_decided": self._covered is not None,
             "off_dropped": self._off_dropped, "off_ignored": self._off_ignored,
             "streams": {st.name: self._stream_health(st, now) for st in self._streams.values()}}

@@ -133,7 +133,8 @@ One site config (owner, 14 Oct): each thing is defined once.
 Optional sections (additive; defaults in `config.py`):
 
 ```yaml
-# screens.<id>.profile: hevc-2160p60        # used when a live spec names no profile
+# screens.<id>.profile: hevc-2160p30        # used when a live spec names no profile (default: by the
+#                                           # screen's size at 30 fps: hevc-1080p30 up to 1920x1080)
 # screens.<id>.timed_reload: true           # the page policy's default (modes can change it)
 # mask: {min_fetch_interval_s: 1.0, max_requests_per_s: 10, fetch_timeout_s: 2.0}
 #   # min_fetch_interval_s: LIVE_V1 §2.2b, at most 1 GET /api/<id>/mask per second per screen: each GET

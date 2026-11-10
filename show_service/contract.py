@@ -28,17 +28,44 @@ AUDIO_PRIORITY: tuple[str, ...] = ("room-line", "room-mic", "pc22-loop", "pc22-m
 MIDI_STREAMS: tuple[str, ...] = ("room-piano", "test-piano")
 TEST_STREAMS: tuple[str, ...] = ("test-piano", "phone-test", "test-audio")   # marked test; lowest priority
 KNOWN_STREAMS: tuple[str, ...] = AUDIO_PRIORITY + MIDI_STREAMS + ("phone-test",)
-UNKNOWN_RANK = 1000                                 # unknown names: accepted, shown in health, chosen last
+UNKNOWN_RANK = 1000                                 # unknown names: accepted, shown in health, chosen after the
+TEST_RANK = UNKNOWN_RANK + 1                        # site's and the conventional names; test streams after them all
 
 
-def stream_rank(name: str, priority: tuple[str, ...] = ()) -> int:
-    """Lower is better: a name in ``priority`` (Config.stream_priority, ``--stream-priority``) first, in that order
-    (negative ranks), then the AUDIO_PRIORITY index, then known test streams, then unknown names."""
+def stream_rank(name: str, priority: tuple[str, ...] = (), site: tuple[str, ...] = ()) -> int:
+    """Lower is better: a name in ``priority`` (Config.stream_priority, ``--stream-priority``, the receiver's lifts)
+    first, in that order; then ``site``, the deployment's own audio streams in show.yaml's senders order (audit SHOW-5:
+    a site's mic is never ranked below a test stream whatever it is called); then the AUDIO_PRIORITY index (the
+    conventional names); then unknown names; then test streams (TEST_STREAMS, any ``test-*``) last."""
     if name in priority:
-        return priority.index(name) - len(priority)
+        return priority.index(name) - len(priority) - len(site)
+    if name in site:
+        return site.index(name) - len(site)
     if name in AUDIO_PRIORITY:
         return AUDIO_PRIORITY.index(name)
-    return UNKNOWN_RANK - 1 if name in TEST_STREAMS else UNKNOWN_RANK
+    return TEST_RANK if name in TEST_STREAMS or name.startswith("test-") else UNKNOWN_RANK
+
+
+def midi_streams(settings: Any) -> frozenset[str]:
+    """The stream names that carry MIDI on this site: MIDI_STREAMS (the conventional names), show.yaml
+    ``situations.midi.streams`` and every sender's ``midi`` list (``senders.<x>.midi: [studio-piano]``). Pure; a bad
+    value is ignored here (its reader reports it). Before a stream's first data its kind is unknown, so this is what
+    keeps an unplugged piano out of the Mic list and off the mic hold (audit SHOW-5)."""
+    out = set(MIDI_STREAMS)
+    s = settings if isinstance(settings, dict) else {}
+    sit = s.get("situations")
+    midi = sit.get("midi") if isinstance(sit, dict) else None
+    names = midi.get("streams") if isinstance(midi, dict) else None
+    if isinstance(names, list):
+        out.update(n for n in names if isinstance(n, str) and n)
+    senders = s.get("senders")
+    for spec in (senders.values() if isinstance(senders, dict) else ()):
+        m = spec.get("midi") if isinstance(spec, dict) else None
+        if isinstance(m, str):
+            m = [m]
+        if isinstance(m, list):
+            out.update(n for n in m if isinstance(n, str) and n)
+    return frozenset(out)
 
 
 StreamKind = Literal["audio", "midi", "unknown"]
@@ -71,6 +98,9 @@ class Sender:
     # ``on_demand``: subscribed only while sources.py runs that test source (show.yaml ``on_demand: true``).
     hosts: tuple[str, ...] = ()
     on_demand: bool = False
+    # ``midi``: which of ``streams`` carry MIDI on this site (show.yaml ``senders.<x>.midi`` and
+    # ``situations.midi.streams``, contract.midi_streams): never a mic, never ranked as audio (audit SHOW-5)
+    midi: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

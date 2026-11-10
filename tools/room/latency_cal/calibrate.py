@@ -993,10 +993,26 @@ def probe(args):
         print(res.stderr, file=sys.stderr)
 
 
+def pick_screen(screen, ports=None):
+    """The screen to take over: --screen, else the kiosk's only screen. No kiosk screens (a site without the kiosk box,
+    whose light sensor this tool also needs), or several and none named: exit with a clear message, never a KeyError."""
+    ports = CDP_PORTS if ports is None else ports
+    if not ports:
+        sys.exit("No kiosk screens to calibrate: this deployment's deployment.yaml has no kiosk.screens with a cdp_port. "
+                 "This tool drives the kiosk box's Chrome and its light sensor.")
+    if screen:
+        return screen
+    if len(ports) == 1:
+        return next(iter(ports))
+    sys.exit(f"Which screen? Pass --screen {' or '.join(ports)}.")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--host", default=DEFAULT_HOST)
-    ap.add_argument("--screen", choices=list(CDP_PORTS), default="south")
+    ap.add_argument("--screen", choices=list(CDP_PORTS) or None,
+                    help="the kiosk screen to calibrate (deployment.yaml kiosk.screens names); "
+                         "may be left out when the kiosk has only one")
     ap.add_argument("--path", choices=["dom", "live"], default="dom",
                     help="dom: a page overlay (the TV's own share); live: the cal-flash scene through the live stream "
                          "(renderer → photon end to end)")
@@ -1037,6 +1053,7 @@ def main():
     if args.sensor_modes:
         sensor_modes(args)
         return
+    args.screen = pick_screen(args.screen)
     if args.jitter < 0 or args.interval - args.jitter < MIN_INTERVAL_S:
         sys.exit(f"photosafe: need jitter ≥ 0 and interval − jitter ≥ {MIN_INTERVAL_S} s")
     if args.watchdog_s < args.interval + args.jitter + 5:

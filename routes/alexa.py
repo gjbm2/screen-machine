@@ -72,6 +72,14 @@ def Brianize(text: str) -> str:
     # Plain text — wrap in full SSML
     return f"<speak><voice name='Brian'><prosody rate='slow'>{text}</prosody></voice></speak>"
 
+def alexa_room_screens(closest_screen, subs):
+    """Where a room intent acts: the asking device's closest screen, else the alexadefault screens (its room's live
+    screens are the targets; room_client.live_targets falls back to the default room's)."""
+    if closest_screen:
+        return closest_screen
+    return [s for s in (subs.get("ALEXA_DEFAULT_SCREENS") or []) if isinstance(s, str)]
+
+
 def display_variables_overlay(subs, closest_screen=None):
     """Display variables overlay on the closest screen or default screen.
     Returns (var_count, details) tuple with the count of variables and any display details."""
@@ -824,7 +832,7 @@ def process(data):
                 # By voice name only (config/live/voice_names.yaml); a named pick pauses the director's own scene
                 # changes on those screens until "change the scene" or a mode change (owner 18 Oct).
                 query = ((result.get("data") or {}).get("query") or "").strip()
-                screens = room_client.live_targets(closest_screen)
+                screens = room_client.live_targets(alexa_room_screens(closest_screen, subs))
                 preset = room_client.resolve_voice_scene(query) if query else None
                 if not screens:
                     response_ssml = Brianize("Nothing is live. Put a mode with live screens on first.")
@@ -833,14 +841,16 @@ def process(data):
                     response_ssml = Brianize((f"The scenes I know by name are: {named}. " if named else "")
                                              + "Or say: change the scene.")
                 else:
-                    pick = (lambda sid: room_client.pick_scene(sid, preset)) if preset else room_client.next_scene
-                    fails = [d for sid in screens for ok, d in [pick(sid)] if not ok or d]
+                    if preset:                      # a named pick: on each screen
+                        fails = [d for sid in screens for ok, d in [room_client.pick_scene(sid, preset)] if not ok or d]
+                    else:                           # "change the scene": once per room, not once per screen
+                        fails = room_client.next_scene_rooms(screens)
                     if fails:
                         response_ssml = Brianize(f"The scene didn't change. {fails[0]}.")
             case "set_effect":
                 data = result.get("data") or {}
                 query, op = (data.get("query") or "").strip(), data.get("effect_op") or "replace"
-                screens = room_client.live_targets(closest_screen)
+                screens = room_client.live_targets(alexa_room_screens(closest_screen, subs))
                 preset = room_client.find("effects", query) if query and op != "clear" else None
                 if not screens:
                     response_ssml = Brianize("Nothing is live, so there are no effects to change.")

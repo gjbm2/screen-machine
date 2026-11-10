@@ -14,6 +14,16 @@ export interface DeploymentScreen {
   live: boolean;
   /** It has a light mask (the admin page shows its mask and brightness override). */
   mask: boolean;
+  /** It shows art only (no `live` block): the Room page gives it an art card, never Go live. Absent from an older Flask. */
+  art_only?: boolean;
+  /** The rooms.json room holding it, or null for none. Absent from an older Flask. */
+  room?: string | null;
+}
+
+/** One screen of the kiosk (manifest kiosk.screens): its screen id and its short name (the admin API's `screen`). */
+export interface DeploymentKioskScreen {
+  id: string;
+  name: string;
 }
 
 export interface DeploymentInfo {
@@ -23,6 +33,11 @@ export interface DeploymentInfo {
   capabilities: Record<string, boolean>;
   default_room: string | null;
   screens: DeploymentScreen[];
+  /** The site's own phrases (manifest `wording`, smconfig Deployment.words()), if Flask gives them; a page falls back to
+   *  its generic words for any it lacks. */
+  wording?: Record<string, string> | null;
+  /** The kiosk's screens, if Flask says (not yet: kioskScreens() then derives them). */
+  kiosk?: { screens?: DeploymentKioskScreen[] | Record<string, { name?: string }> } | null;
 }
 
 /** GET /api/deployment, parsed. Throws on a non-2xx status or a network error. */
@@ -52,4 +67,24 @@ export function capabilityOn(deployment: DeploymentInfo | null | undefined, capa
 /** The ids of the screens that have a light mask, in file order. */
 export function maskScreenIds(deployment: DeploymentInfo | null | undefined): string[] {
   return (deployment?.screens ?? []).filter(s => s && s.mask).map(s => s.id);
+}
+
+/** The art-only screens (no live block) and the room each is in, in file order (an older Flask: none). */
+export function artOnlyScreens(deployment: DeploymentInfo | null | undefined): DeploymentScreen[] {
+  return (deployment?.screens ?? []).filter(s => s && s.art_only === true);
+}
+
+/**
+ * The kiosk's screens, in order: the deployment's kiosk.screens when Flask gives them; else (today's /api/deployment
+ * has no kiosk) the screens with a light mask, named by their id without "-screen" ("north-screen" is "north").
+ * None when kiosk_admin is off.
+ */
+export function kioskScreens(deployment: DeploymentInfo | null | undefined): DeploymentKioskScreen[] {
+  if (!deployment || capabilityOn(deployment, 'kiosk_admin') !== true) return [];
+  const given = deployment.kiosk?.screens;
+  if (Array.isArray(given)) return given.filter(s => s && s.id && s.name);
+  if (given && typeof given === 'object') {
+    return Object.entries(given).flatMap(([id, v]) => (v && typeof v.name === 'string' && v.name ? [{ id, name: v.name }] : []));
+  }
+  return (deployment.screens ?? []).filter(s => s && s.mask).map(s => ({ id: s.id, name: s.id.replace(/-screen$/, '') }));
 }

@@ -7,7 +7,9 @@ room_service's own Art-Net receiver (127.0.0.1:<artnet bind port>, the patch's u
 fake with the real unit changes nothing else.
 
 * **Encoding** (through the patch, patch.encode): a screen device gets the song's fixture values (rgb, pulse,
-  pan/tilt/zoom, effect, variant, global.activity). A Hue lamp follows the screen it belongs to (`screen:` in
+  pan/tilt/zoom, effect, variant, global.activity), by its place among the patch's screens, whatever their ids
+  (screen_variants): the first gets the song's main values, the second its counterpart (colours rotated, pan
+  mirrored), and any further screen i of n the main values with the hue turned by i/n (pan mirrored on odd ones). A Hue lamp follows the screen it belongs to (`screen:` in
   patch.yaml), pulsed on the beat: rgb x (HUE_FLOOR + (1 - HUE_FLOOR) x pulse). MASTER DIMMER stays at 255, as
   Maestro's rule has it (v1 K2), so both see the same beat edge in the same packet.
 * **Rate:** 40 packets/s with +-3 ms jitter, like show_synth.
@@ -19,6 +21,7 @@ fake with the real unit changes nothing else.
 from __future__ import annotations
 
 import asyncio
+import colorsys
 import logging
 import random
 import time
@@ -31,6 +34,31 @@ log = logging.getLogger("room_service.dmx.fake")
 RATE_HZ = 40.0
 JITTER_S = 0.003
 HUE_FLOOR = 0.3                 # a lamp's brightness between beats, as a share of its colour
+
+
+def _turn(rgb: list, by: float) -> list:
+    h, s, v = colorsys.rgb_to_hsv(*rgb)
+    return [round(c, 4) for c in colorsys.hsv_to_rgb((h + by) % 1.0, s, v)]
+
+
+def screen_variants(songfx: dict[str, dict], screen_ids: list[str]) -> dict[str, dict]:
+    """{screen device id: its values} for the patch's screens in patch order. The song gives a main fixture and a
+    counterpart (show_synth: "screen.north", "screen.south"; else its first two): screen 0 gets the main, screen 1
+    the counterpart, screen i >= 2 of n the main with its hue turned by i/n and, on odd i, its pan mirrored."""
+    vals = list(songfx.values())
+    main = songfx.get("screen.north") or vals[0]
+    other = songfx.get("screen.south") or (vals[1] if len(vals) > 1 else None)
+    n = len(screen_ids)
+    out: dict[str, dict] = {}
+    for i, sid in enumerate(screen_ids):
+        if i == 0:
+            out[sid] = main
+        elif i == 1 and other is not None:
+            out[sid] = other
+        else:
+            out[sid] = dict(main, rgb=_turn(main["rgb"], i / n),
+                            pan=round(-main["pan"], 4) if i % 2 else main["pan"])
+    return out
 
 
 class FakeArtNet:
@@ -132,11 +160,12 @@ class FakeArtNet:
         st = self.song.state(t)
         songfx = st["fixtures"]
         first = next(iter(songfx.values()))
-        screens = {d.extra.get("screen"): songfx.get(d.id, first) for d in patch.of_kind("screen")}
+        per = screen_variants(songfx, [d.id for d in patch.of_kind("screen")])
+        screens = {d.extra.get("screen"): per[d.id] for d in patch.of_kind("screen")}
         out: dict[int, int] = {}
         for dev in patch.devices.values():
             if dev.kind == "screen":
-                vals = {**songfx.get(dev.id, first), "global.activity": st["activity"]}
+                vals = {**per[dev.id], "global.activity": st["activity"]}
             elif dev.kind == "hue":
                 fx = screens.get(dev.extra.get("screen")) or first
                 k = HUE_FLOOR + (1.0 - HUE_FLOOR) * fx["pulse"]

@@ -588,6 +588,49 @@ test("roomOfLight: Hue lamps by id, DMX lights by 'light' or 'light.<id>'", () =
   assert.equal(roomOfLight(rooms, "hue.sw", false), null);
 });
 
+test("roomOfLight (contract C1): 'light.<id>' beats another room's 'light', whatever the order", () => {
+  const rooms = [
+    { id: "dr", name: "Drawing room", lights: ["light"] },
+    { id: "lab", name: "Lab", lights: ["light.par1"] },
+  ];
+  assert.equal(roomOfLight(rooms, "par1", true)?.id, "lab");
+  assert.equal(roomOfLight(rooms, "par2", true)?.id, "dr");
+});
+
+test("roomOfLight (contract C1): two rooms saying 'light' share nothing; the first takes the light", () => {
+  const rooms = [
+    { id: "a", name: "A", lights: ["light"] },
+    { id: "b", name: "B", lights: ["light"] },
+  ];
+  assert.equal(roomOfLight(rooms, "par1", true)?.id, "a");
+});
+
+test("roomOfLight (contract C1): an unclaimed DMX light is the only room's; with several rooms it is in none", () => {
+  const one = [{ id: "studio", name: "Studio", lights: [] as string[] }];
+  assert.equal(roomOfLight(one, "par1", true)?.id, "studio");
+  assert.equal(roomOfLight(one, "hue.ne", false), null, "a Hue lamp still needs listing");
+  const two = [
+    { id: "studio", name: "Studio", lights: [] as string[] },
+    { id: "garden", name: "Garden", lights: ["light.par2"] },
+  ];
+  assert.equal(roomOfLight(two, "par1", true), null);
+  assert.equal(roomOfLight(two, "par2", true)?.id, "garden");
+  assert.equal(roomOfLight([], "par1", true), null);
+});
+
+test("roomOfLight (contract C1): as room_service reads rooms.json, a bare id or a list other than lights claims too", () => {
+  const rooms = [
+    { id: "dr", name: "Drawing room", lights: ["light"], screens: ["north-screen"] },
+    { id: "lab", name: "Lab", lights: ["par1"], screens: [] as string[] },
+    { id: "hall", name: "Hall", lights: [] as string[], sensors: ["light.par2"] },
+    { id: "porch", name: "Porch", lights: ["spot"] },
+  ];
+  assert.equal(roomOfLight(rooms, "par1", true)?.id, "lab", "the bare id, as room_config.py's resolve");
+  assert.equal(roomOfLight(rooms, "par2", true)?.id, "hall", "'light.<id>' under another key");
+  assert.equal(roomOfLight(rooms, "spot.1", true)?.id, "porch", "a bare prefix names spot.1");
+  assert.equal(roomOfLight(rooms, "par3", true)?.id, "dr", "the rest go to the room saying 'light'");
+});
+
 test("mapWhereWords reads the drawing room as placed on the map", () => {
   const size: [number, number, number] = [5, 10, 5];
   const screens = [

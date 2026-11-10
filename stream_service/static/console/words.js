@@ -138,6 +138,7 @@ const CAUSE = {
   music: "the music changed",
   room_event: "the music reached a new section",
   next: "someone asked for the next scene",
+  energy: "the energy was changed",
 };
 export function directorWords(ev, label = (s) => friendly(s), plugin = (n) => friendly(n)) {
   if (!ev) return null;

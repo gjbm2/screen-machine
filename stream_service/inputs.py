@@ -167,20 +167,26 @@ def default_fixture(screen: str) -> Optional[str]:
     return None
 
 
-def load_photon(path: Optional[pathlib.Path], screen: str) -> tuple[float, str]:
+def load_photon(path: Optional[pathlib.Path], screen: str, fixture: Optional[str] = None) -> tuple[float, str]:
     """presented -> photon ms for a screen from the deployment's calibration/latency.json -> (ms, source).
 
-    ``north-screen`` (or the fixture ``screen.north``) reads ``screens.north``; a screen with no entry uses
-    another's value, flagged."""
+    The entry is looked up exactly first: the screen id (``tv-left``), then the fixture id, then the legacy short
+    name: the fixture's last dotted part (``screen.north`` -> ``north``), or without a fixture the screen id before
+    its first hyphen (``north-screen`` -> ``north``).  Only when none of those is in the file does the screen borrow
+    another screen's value, flagged ``(no <short name> measurement)`` (audit stream_flask:F9, probe:E5). (Called with only ``screen``, a dotted value is treated as
+    the fixture, as it always was.)"""
     try:
         data = json.loads(pathlib.Path(path).read_text()) if path else {}
         screens = data.get("screens") or {}
-        key = screen.split(".")[-1] if "." in screen else screen.split("-")[0]
-        name = key if key in screens else next(iter(screens), None)
+        if fixture is None and "." in screen:
+            screen, fixture = "", screen
+        short = fixture.split(".")[-1] if fixture else screen.split("-")[0]    # the legacy name (north)
+        key = next((k for k in (screen, fixture, short) if k and k in screens), None)
+        name = key if key is not None else next(iter(screens), None)
         ms = float(screens[name]["effective"]["presented_to_photon_ms"])
         if not 0 < ms < 2000:
             raise ValueError(f"presented_to_photon_ms {ms} out of range")
-        return ms, f"latency.json:{name}" + ("" if name == key else f" (no {key} measurement)")
+        return ms, f"latency.json:{name}" + ("" if key is not None else f" (no {short} measurement)")
     except (OSError, ValueError, KeyError, TypeError) as e:
         if path and pathlib.Path(path).exists():
             log.warning("latency file %s unusable (%s); presented->photon %.0f ms", path, e, DEFAULT_PHOTON_MS)

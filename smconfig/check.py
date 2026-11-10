@@ -9,7 +9,8 @@ from . import (CAPABILITIES, CONFIG_DIR, DEFAULT_PORTS, Deployment, destinations
                rooms)
 from .legacy import MOVES
 
-MANIFEST_KEYS = {"id", "name", "description", "location", "capabilities", "ports", "default_room", "kiosk", "host"}
+MANIFEST_KEYS = {"id", "name", "description", "location", "capabilities", "ports", "default_room", "kiosk", "host",
+                 "art_director", "wording"}
 
 # Files a capability needs to start (relative to the deployment directory).
 REQUIRED: dict[str | None, tuple[str, ...]] = {
@@ -24,6 +25,21 @@ REQUIRED: dict[str | None, tuple[str, ...]] = {
 }
 
 SHOW_BASE = CONFIG_DIR / "room" / "show.yaml"
+
+# The manifest's wording keys (Deployment.words(key, generic default)): who reads each. A key not listed here is a
+# typo (it would silently fall back to the generic phrase); a new one goes here and in deployments/README.md.
+WORDING_KEYS = {
+    "art_screen": "Flask image generator: the screen the art is made for",
+    "art_space": "Flask image generator: the space it hangs in",
+    "art_library": "Flask art tagger: the library's name",
+    "art_screens": "Flask art tagger rubric (config/art_tags.yaml): the screens the art hangs on",
+    "listen_space": "show_service listener prompt: the room the mic hears",
+    "screen_device": "room_service page copy: what a screen is called (TV pages, Show details on the TV)",
+    "lights_menu": "the app menu's Lights hint",
+    "windows_host": "show_service: the Windows host's name in piano and Sonos copy",
+    "windows_speakers": "show_service: the Windows host's speakers",
+    "artnet_no_replies": "show_service: the Art-Net 'no replies yet' hint",
+}
 
 
 def known_files(dep: Deployment) -> list[str]:
@@ -72,6 +88,34 @@ def dump(dep: Deployment) -> dict[str, Any]:
     return out
 
 
+def _or_empty(fn, dep: Deployment) -> Any:
+    try:
+        return fn(dep)
+    except Exception:  # noqa: BLE001 - reported by the cross-reference checks
+        return None
+
+
+def _screen_warning(item: dict) -> bool:
+    """A modes.json lint warning about the screens, page or diag subsystems (the ones validate_site_modes models from
+    publish-destinations.json); warnings about devices only say that check has no device adapters."""
+    if item.get("code") == "unknown_subsystem":
+        return False
+    key = str(item.get("path") or "").rstrip("/").rsplit("/", 1)[-1]
+    sub = key.split(":", 1)[-1].split(".", 1)[0]
+    return sub in ("screens", "page", "diag")
+
+
+def _as_list(v: Any) -> list[str] | None:
+    """A list of ids (a lone string counts as one), [] when absent, None when it is neither."""
+    if v is None:
+        return []
+    if isinstance(v, str):
+        return [v]
+    if isinstance(v, list) and all(isinstance(x, str) for x in v):
+        return list(v)
+    return None
+
+
 def check(dep: Deployment) -> tuple[list[str], list[str]]:
     """(problems, notes). A deployment with problems must not be started."""
     problems: list[str] = []
@@ -94,6 +138,17 @@ def check(dep: Deployment) -> tuple[list[str], list[str]]:
     caps = dep.capabilities
     if caps.get("art_director") and not caps.get("generation"):
         problems.append("capability art_director needs generation")
+    wording = m.get("wording")
+    if wording is not None and not isinstance(wording, dict):
+        problems.append("deployment.yaml: wording must be a mapping of key: phrase")
+    for k, v in (wording or {}).items() if isinstance(wording, dict) else ():
+        if k not in WORDING_KEYS:
+            problems.append(f"deployment.yaml: unknown wording key {k!r} (known: {', '.join(sorted(WORDING_KEYS))})")
+        elif not isinstance(v, str) or not v.strip():
+            problems.append(f"deployment.yaml: wording.{k} must be a non-empty string")
+    kiosk_screens = (m.get("kiosk") or {}).get("screens") if isinstance(m.get("kiosk"), dict) else None
+    if kiosk_screens is not None and not isinstance(kiosk_screens, dict):
+        problems.append("deployment.yaml: kiosk.screens must be a mapping of screen id: {name, output, cdp_port}")
 
     for cap, rels in REQUIRED.items():
         if cap is not None and not caps.get(cap):
@@ -119,15 +174,22 @@ def check(dep: Deployment) -> tuple[list[str], list[str]]:
     # that room_service would reject (no '* -> *' rule, an unknown mode, a bad default) is a problem, not a surprise
     # at start-up. Device names are not checked here (no adapters): room_service warns about those itself.
     modes = dep.path("room", "modes.json")
+    modes_raw: Any = None
     if caps.get("room") and modes.is_file():
         try:
-            from room_service.roomstate.model import validate as _validate_modes  # noqa: PLC0415
+            from room_service.room_config import validate_site_modes  # noqa: PLC0415
         except Exception:  # noqa: BLE001 - room_service not importable in this environment: skip, say so
             notes.append("room/modes.json: not checked against room_service's model (room_service not importable)")
         else:
             try:
-                for err in _validate_modes(read_data(modes), []):
-                    problems.append(f"room/modes.json{err.get('path') or ''}: {err.get('message')}")
+                modes_raw = read_data(modes)
+                for item in validate_site_modes(modes_raw, _or_empty(rooms, dep), _or_empty(destinations, dep),
+                                                warnings=True):
+                    where = f"room/modes.json{item.get('path') or ''}: {item.get('message')}"
+                    if item.get("level") != "warning":
+                        problems.append(where)
+                    elif _screen_warning(item):     # only the screens are modelled here; devices are placeholders
+                        notes.append(where)
             except Exception as e:  # noqa: BLE001
                 problems.append(f"room/modes.json: {e}")
 
@@ -150,9 +212,43 @@ def check(dep: Deployment) -> tuple[list[str], list[str]]:
                 problems.append(f"rooms.json: room {rid!r} names screen {s!r}, which publish-destinations.json lacks")
     if dep.default_room and dep.default_room not in rms:
         problems.append(f"deployment.yaml: default_room {dep.default_room!r} is not in rooms.json")
-    for s in (dep.kiosk.get("screens") or {}):
+    for s in (kiosk_screens if isinstance(kiosk_screens, dict) else {}):
         if s not in ids:
             problems.append(f"deployment.yaml: kiosk screen {s!r} is not in publish-destinations.json")
+    ad = m.get("art_director")
+    if ad is not None:
+        if not isinstance(ad, dict):
+            problems.append("deployment.yaml: art_director must be a mapping {modes: [...], rooms: [...]}")
+            ad = {}
+        for k in ad:
+            if k not in ("modes", "rooms"):
+                problems.append(f"deployment.yaml: art_director: unknown key {k!r} (known: modes, rooms)")
+        ad_modes, ad_rooms = _as_list(ad.get("modes")), _as_list(ad.get("rooms"))
+        if ad_modes is None or ad_rooms is None:
+            problems.append("deployment.yaml: art_director.modes and .rooms are lists of ids")
+        else:
+            known_modes = set(((modes_raw or {}).get("modes") or {})) if isinstance(modes_raw, dict) else set()
+            for md in ad_modes:
+                if known_modes and md not in known_modes:
+                    problems.append(f"deployment.yaml: art_director mode {md!r} is not in room/modes.json")
+            for r in ad_rooms:
+                if r not in rms:
+                    problems.append(f"deployment.yaml: art_director room {r!r} is not in rooms.json")
+            if caps.get("art_director"):
+                if not ad_modes:
+                    notes.append("art_director: on, but art_director.modes is empty, so it never makes art")
+                if not any((rms.get(r) or {}).get("screens") for r in (ad_rooms or list(rms))):
+                    notes.append("art_director: on, but none of its rooms has screens")
+    elif caps.get("art_director"):
+        notes.append("art_director: on, but deployment.yaml has no art_director.modes, so it never makes art")
+    try:
+        for d in destinations(dep):
+            live = d.get("live")
+            if isinstance(live, dict) and not live.get("profile"):
+                notes.append(f"publish-destinations.json: {d['id']}'s live block names no profile; room_service "
+                             "picks one by its size (hevc-1080p30 up to 1920x1080, else hevc-2160p30)")
+    except Exception:  # noqa: BLE001 - already reported above
+        pass
     patch = dep.path("lights", "patch.yaml")
     if patch.is_file():
         try:

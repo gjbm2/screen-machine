@@ -135,7 +135,8 @@ def test_no_instruments_file_offers_the_windows_synth_and_keeps_todays_argv(lib)
     ch = r.src.choices()
     assert ch == {"instruments": [{"id": "windows-gs", "label": "Basic (Windows synth)", "kind": "live"}],
                   "default_instrument": "windows-gs",
-                  "outputs": [{"id": "pc22", "label": "PC22 speakers"}, {"id": "none", "label": "Screens only"}],
+                  "outputs": [{"id": "pc22", "label": sources.WINDOWS_SPEAKERS_WORDS},
+                              {"id": "none", "label": "Screens only"}],
                   "default_output": "pc22"}
     off = r.src.status()["piano"]
     assert off["state"] == "off" and off["instrument"] == "windows-gs" and off["output"] == "pc22"
@@ -341,7 +342,7 @@ def test_sonos_zones_are_outputs_for_a_sender_that_plays_on_sonos(lib):
     sonos_json(lib, **{"drawing-room": {"room": "Drawing Room", "ip": "192.0.2.17"}, "bad zone": {"ip": "x"},
                        "study": {"ip": "192.0.2.18"}})
     r = make(lib, script="sonos_sender.py")
-    assert r.src.choices()["outputs"] == [{"id": "pc22", "label": "PC22 speakers"},
+    assert r.src.choices()["outputs"] == [{"id": "pc22", "label": sources.WINDOWS_SPEAKERS_WORDS},
                                           {"id": "none", "label": "Screens only"},
                                           {"id": "sonos:drawing-room", "label": "Sonos (Drawing Room)"},
                                           {"id": "sonos:study", "label": "Sonos (study)"}]

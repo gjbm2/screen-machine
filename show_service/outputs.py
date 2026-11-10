@@ -518,6 +518,7 @@ class Rig:
         self._force_reload = False                          # an API write: the next registry poll reloads at once
         self.follow_file = Path(follow_file) if follow_file is not None else None   # None: kept in memory only
         self.follow_error: Optional[str] = None
+        self._lamps_level = 1.0                             # set_brightness: the lamps' brightness (room's, a mode's)
         self._follow: dict[str, Any] = self._load_follow()  # fixture id -> FOLLOW_WORDS | {hex, bri}; swapped whole
         self._online = _Online(self._node_addresses, ping_fn or ping_once, online_check_s)
         # movers, room space and the jog (docs/LIGHTS.md §5.8)
@@ -547,19 +548,58 @@ class Rig:
 
     def restore(self, saved: dict) -> None:
         """state.json's ``rig``: each output's driver state (hue: what room asked to follow), handed back when that
-        output's driver is built (README S5.14). Everything else starts from config."""
+        output's driver is built (README S5.14), and the lamps' brightness (``lamps_level``). Everything else starts
+        from config."""
         outs = saved.get("outputs") if isinstance(saved, dict) else None
         self._saved = {str(k): v for k, v in outs.items() if isinstance(v, dict)} if isinstance(outs, dict) else {}
+        lvl = saved.get("lamps_level") if isinstance(saved, dict) else None
+        if isinstance(lvl, (int, float)) and not isinstance(lvl, bool) and math.isfinite(lvl):
+            self._lamps_level = max(0.0, min(1.0, float(lvl)))
+            self._apply_level()
 
     def persist(self) -> Optional[dict]:
-        """``{"outputs": {output id: the driver's persist_state()}}``: running drivers' own, and the last state of
-        outputs switched off since (so off and on again comes back as it was). None when there is nothing."""
+        """``{"outputs": {output id: the driver's persist_state()}, "lamps_level"?: x}``: running drivers' own, and the
+        last state of outputs switched off since (so off and on again comes back as it was); the lamps' brightness
+        only when it isn't full. None when there is nothing."""
         outs = dict(self._saved)
         for oid, o in list(self._outs.items()):
             st = self._driver_state(o.driver)
             if st is not None:
                 outs[oid] = st
-        return {"outputs": outs} if outs else None
+        out: dict = {"outputs": outs} if outs else {}
+        if self._lamps_level < 1.0:
+            out["lamps_level"] = round(self._lamps_level, 4)
+        return out or None
+
+    # -- the lamps' brightness (PUT /api/v1/brightness; room's brightness.lamps) --------------------------------------
+    def brightness_view(self) -> dict:
+        """GET /api/v1/brightness (any thread): ``{lamps: 0..1, fixtures: how many lamps it reaches}``."""
+        fn = getattr(self.engine, "lamp_count", None)
+        n = self._guard("engine.lamp_count", fn) if callable(fn) else None
+        return {"lamps": round(self._lamps_level, 4), "fixtures": n if isinstance(n, int) else 0}
+
+    def set_brightness(self, lamps: Any) -> dict:
+        """PUT /api/v1/brightness (show-brain): ``lamps`` 0..1 scales every lamp that follows the look (the rig's
+        Art-Net lights, and Hue when show drives it: one look engine), from the next frame; kept across a restart
+        (state.json ``rig``). A value that isn't a number in 0..1 is a ValueError and nothing changes."""
+        if isinstance(lamps, bool) or not isinstance(lamps, (int, float)) or not math.isfinite(lamps) \
+                or not 0.0 <= float(lamps) <= 1.0:
+            raise ValueError("bad_level: lamps must be a number from 0 to 1")
+        if float(lamps) != self._lamps_level:
+            self._lamps_level = float(lamps)
+            log.info("rig: lamps brightness %.0f%%", self._lamps_level * 100.0)
+            self._guard("ctx.persist", getattr(self.ctx, "persist", None))   # state.json now, not at the next flush
+        self._apply_level()
+        return self.brightness_view()
+
+    def _apply_level(self) -> None:
+        """The level to the look engine (``LookEngine.set_level``, when it has it), then every runner wakes."""
+        fn = getattr(self.engine, "set_level", None)
+        if callable(fn):
+            self._guard("engine.set_level", fn, self._lamps_level)
+        for o in list(self._outs.values()):
+            if o.runner is not None:
+                o.runner.wake.set()
 
     def _driver_state(self, d: Any) -> Optional[dict]:
         fn = getattr(d, "persist_state", None)
@@ -1280,6 +1320,8 @@ class Rig:
                 self.engine_problems = list(got)
                 self._engine_dirty = False
             self._apply_follow()                             # README S5.23: the follow mapping, after every configure
+            if self._lamps_level != 1.0:
+                self._apply_level()
         if view is not None:
             self._reconcile(view, reconfigure=changed or view is not was or self._settings_dirty)
         self._settings_dirty = False

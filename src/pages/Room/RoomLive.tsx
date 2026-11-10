@@ -37,8 +37,10 @@ export interface RoomLiveSpec {
   room: { id: string; name: string };
   /** The room's live screens, in rooms.json order. */
   members: LiveMember[];
-  /** How many screens the room has. */
+  /** How many of the room's screens may go live (a screen whose live is switched off isn't one that joins in). */
   total: number;
+  /** More than one room's live card is showing: the title starts with the room's name ("Drawing room · Both screens"). */
+  named?: boolean;
 }
 
 /** What a room's live state gives the page: its live card (null while none of its screens is live), each screen's
@@ -47,9 +49,11 @@ export interface RoomLiveSlot {
   card: ReactNode;
   scopeFor: (screenId: string) => LookScope | null;
   scenesByItself: boolean | null;
+  /** The effects on top that repaint colour and so cover a picked palette (the renderer's palette_masked_by). */
+  paletteMaskedBy: string[];
 }
 
-function useRoomLiveSlot({ room, members, total, api, lib, subscribe, addLog, reportError }: RoomLiveSpec & Shared): RoomLiveSlot {
+function useRoomLiveSlot({ room, members, total, named = false, api, lib, subscribe, addLog, reportError }: RoomLiveSpec & Shared): RoomLiveSlot {
   const rl = useRoomLive({ api, roomId: room.id, roomName: room.name, members, lib, subscribe, addLog, reportError });
   const { takeOffPickedRaw, swapPickedRaw, views } = rl;
   const key = members.map((m) => `${m.id}=${m.name}=${(views[m.id]?.own ?? []).join(",")}`).join(" ");
@@ -68,9 +72,13 @@ function useRoomLiveSlot({ room, members, total, api, lib, subscribe, addLog, re
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, takeOffPickedRaw, swapPickedRaw]);
   return {
-    card: members.length > 0 ? <RoomLiveCard rl={rl} room={room} members={members} total={total} api={api} lib={lib} subscribe={subscribe} /> : null,
+    card:
+      members.length > 0 ? (
+        <RoomLiveCard rl={rl} room={room} members={members} total={total} named={named} api={api} lib={lib} subscribe={subscribe} />
+      ) : null,
     scopeFor: (id) => scopes[id] ?? null,
     scenesByItself: members.length > 0 && rl.look ? !!rl.look.auto?.enabled : null,
+    paletteMaskedBy: members.length > 0 ? maskedBy(rl.look?.palette_masked_by) : [],
   };
 }
 
@@ -138,11 +146,26 @@ function RoomLiveOne({ spec, shared, children }: { spec: RoomLiveSpec; shared: S
   return <>{children(slot)}</>;
 }
 
+/** The renderer's palette_masked_by (effect labels), cleaned. */
+function maskedBy(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x.trim()) : [];
+}
+
+/** The live card's title: the screen's name, "Both screens" / "All N screens", or the live ones' names; with the
+ *  room's name in front while more than one room's card shows (unless it already says it). */
+export function liveTitle(roomName: string, names: string[], total: number, named: boolean): string {
+  const n = names.length;
+  const both = n >= 2 ? (n === 2 ? "both screens" : `all ${n} screens`) : null;
+  const t = n === 1 ? names[0] : n === total && both ? cap(both) : names.join(" and ");
+  return named && roomName && roomName !== t ? `${roomName} · ${t}` : t;
+}
+
 function RoomLiveCard({
   rl,
   room,
   members,
   total,
+  named,
   api,
   lib,
   subscribe,
@@ -151,6 +174,7 @@ function RoomLiveCard({
   room: { id: string; name: string };
   members: LiveMember[];
   total: number;
+  named: boolean;
   api: RoomApi;
   lib: Library | null;
   subscribe: (fn: (e: StreamEvent) => void) => () => void;
@@ -165,7 +189,7 @@ function RoomLiveCard({
   const n = members.length;
   const names = members.map((m) => m.name);
   const both = n >= 2 ? (n === 2 ? "both screens" : `all ${n} screens`) : null;
-  const title = n === 1 ? names[0] : n === total && both ? cap(both) : names.join(" and ");
+  const title = liveTitle(room.name, names, total, named);
   const sub =
     n >= 2
       ? `Live together: a change here changes ${both}.`

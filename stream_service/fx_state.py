@@ -405,8 +405,10 @@ class SessionFx:
 
     # -- reporting -------------------------------------------------------------------
     def _emit(self, cause: str, *, added=(), removed=(), changed=(), detail: Optional[str] = None) -> None:
+        masked = getattr(self.s, "palette_masked_by", None)     # contract C6: what repaints the picked palette
         self.s.emit("session.fx", rev=self.rev, cause=cause, open=self.open, fade_s=self.fade_s, added=list(added),
                     removed=list(removed), changed=list(changed), stack=[st.entry() for st in self.stack],
+                    palette_masked_by=masked() if callable(masked) else [],
                     **({"detail": detail} if detail else {}))
 
     def _master_out(self) -> dict:

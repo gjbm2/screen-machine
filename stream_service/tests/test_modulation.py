@@ -149,3 +149,41 @@ def test_schema_marks():
         basic = [k for k, p in props.items() if (p.get("x-ui") or {}).get("basic")]
         assert basic and not set(basic) & {"energy", "exposure", "gain"}
     assert [k for k, p in FZ.param_props().items() if (p.get("x-ui") or {}).get("basic")] == ["zoom_rate", "palette"]
+
+
+def test_energy_leans_the_scenes_own_energy_and_steady_is_today():
+    """Contract C5: the Room page's Energy acts on the playing scene at once; Steady (0.5) changes nothing."""
+    from stream_service.modulation import ENERGY_EASE_S, energy_lean
+    assert energy_lean(0.37, 0.5) == 0.37
+    assert energy_lean(0.4, 1.0) == pytest.approx(min(1.0, 0.4 * 1.5 + 0.2))
+    assert energy_lean(0.4, 0.0) == pytest.approx(0.4 * 0.5 - 0.2) and energy_lean(0.1, 0.0) == 0.0
+    src = default_registry().source("chladni")
+    props = src.param_props()
+    _, b = split_bindings(props, {"energy": {"bind": "activity_slow", "range": [0.0, 1.0]}})
+    rt = SessionRuntime(None)
+    m = Modulation(rt, props, b, key="scene/chladni")
+    rt.signals = {"activity_slow": 0.6}
+    base = src.validate({})
+    steady = m.apply(base)
+    assert steady["energy"] == pytest.approx(0.6)
+    rt.energy_target = 0.9                              # Lively-ish: eased in over ~2 s on the render thread
+    t = 0.0
+    rt.begin_frame(t)
+    while t < ENERGY_EASE_S:
+        t += 1 / 30
+        rt.begin_frame(t)
+    assert rt.energy == pytest.approx(0.9, abs=0.02)
+    rt.signals = {"activity_slow": 0.6}                 # (begin_frame re-reads the inputs: none here)
+    lively = m.apply(base)["energy"]
+    assert lively == pytest.approx(energy_lean(0.6, rt.energy)) and lively > 0.6
+    # a plain (unbound) energy param leans too; an effect's 'energy' never does
+    plain = Modulation(rt, props, {}, key="scene/chladni")
+    assert plain.apply({**base, "energy": 0.5})["energy"] == pytest.approx(energy_lean(0.5, rt.energy))
+    fx = Modulation(rt, props, {}, key="effect/rain_on_glass")
+    assert fx.apply({**base, "energy": 0.5})["energy"] == 0.5
+    rt.energy_target = 0.5                              # back to Steady: lands exactly, values bit for bit
+    for _ in range(300):
+        t += 1 / 30
+        rt.begin_frame(t)
+    rt.signals = {"activity_slow": 0.6}
+    assert rt.energy == 0.5 and m.apply(base)["energy"] == steady["energy"]

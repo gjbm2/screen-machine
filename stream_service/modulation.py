@@ -15,6 +15,9 @@ Derived masters (R13), eased over ``direction_ease_s`` after create:
   speed  0.5x .. 2x, exponential in direction.pace, applied as the scene clock: a scene source gets
          ``dt * speed`` (never transitions, whose durations stay in seconds);
   depth  direction.intensity: scales every binding's swing about its rest.
+  energy direction.energy (the Room page's Energy), eased over ENERGY_EASE_S (2 s, not direction_ease_s: it must
+         show at once; contract C5): leans a scene's own ``energy`` param (bound to the music or plain) by
+         :func:`energy_lean`, after its bindings.  Steady (0.5) leaves it exactly as it was.  Scenes only.
 There is no luminance master (R2).  The session ``palette`` (R14) is crossfaded here, on the render thread, and
 handed as cosine rows to sources that mark their palette param ``x-palette: true``.
 
@@ -271,6 +274,20 @@ class Pivots:
 
 
 LEVEL_EASE_S = 2.0      # a brightness change (a mode's Brightness row) eases over this (~98 %)
+ENERGY_EASE_S = 2.0     # the Room page's Energy acts on the playing scene within this (~98 %; owner, contract C5)
+ENERGY_PARAM = "energy"  # the scene's own intensity: the generic param the Energy control leans on
+ENERGY_GAIN, ENERGY_LIFT = 1.0, 0.4    # energy_lean: gain about Steady, and the lift a full step adds or takes
+
+
+def energy_lean(value: float, energy: float) -> float:
+    """The Room page's Energy (direction.energy, 0-1; 0.5 Steady) on a scene's own intensity (0-1), contract C5:
+    ``clamp(value * (0.5 + energy) + (energy - 0.5) * 0.4, 0, 1)`` (ENERGY_GAIN 1, ENERGY_LIFT 0.4).  The gain keeps the music's swing in the value
+    (Calm halves it, Wild adds half again) and the lift moves its floor, so a quiet room still visibly calms or
+    livens; Steady (0.5) gives ``value`` exactly."""
+    if energy == 0.5:
+        return value
+    v = value * (1.0 + ENERGY_GAIN * (energy - 0.5)) + (energy - 0.5) * ENERGY_LIFT
+    return 0.0 if v < 0.0 else 1.0 if v > 1.0 else v
 
 
 class SessionRuntime:
@@ -286,10 +303,12 @@ class SessionRuntime:
         self.palette: Optional[str] = None
         self.palette_s = 4.0
         self.level_target = 1.0                   # the picture's brightness, 0-1 (the room's Brightness row)
+        self.energy_target = 0.5                  # the Room page's Energy (direction.energy; 0.5 Steady: no lean)
         # render thread state
         self.speed = speed
         self.depth = depth
         self.level = 1.0                          # eased to level_target over LEVEL_EASE_S
+        self.energy = 0.5                         # eased to energy_target over ENERGY_EASE_S (Modulation.apply)
         self.signals: dict = {}
         self.palette_rows: Optional[np.ndarray] = None    # the eased session palette (4 x 3), or None
         self._pal_from: Optional[np.ndarray] = None
@@ -329,6 +348,12 @@ class SessionRuntime:
         self.depth += (self.depth_target - self.depth) * a
         al = 1.0 - math.exp(-dt / (LEVEL_EASE_S / 4.0)) if dt > 0 else 0.0
         self.level += (self.level_target - self.level) * al
+        et = self.energy_target
+        if self.energy != et:
+            ae = 1.0 - math.exp(-dt / (ENERGY_EASE_S / 4.0)) if dt > 0 else 0.0
+            self.energy += (et - self.energy) * ae
+            if abs(et - self.energy) < 1e-4:
+                self.energy = et                  # lands exactly: Steady again is today's values, bit for bit
         name = self.palette
         if name != self._pal_name:              # a new session palette: crossfade from what is showing
             self._pal_name = name
@@ -422,7 +447,8 @@ class SessionRuntime:
 
     def masters(self) -> dict:
         return {"speed": round(self.speed, 4), "depth": round(self.depth, 4),
-                "speed_target": round(self.speed_target, 4), "depth_target": round(self.depth_target, 4)}
+                "speed_target": round(self.speed_target, 4), "depth_target": round(self.depth_target, 4),
+                "energy": round(self.energy, 4), "energy_target": round(self.energy_target, 4)}
 
     def inputs_view(self, out: dict, now: float) -> None:
         """The inputs API (loop thread, sessions.Session.inputs; ``out`` in place), off the render thread's last
@@ -525,6 +551,20 @@ class Modulation:
         return self._colour_k
 
     def apply(self, values: dict) -> dict:
+        out = self._apply(values)
+        e = getattr(self.runtime, "energy", 0.5)
+        if e != 0.5 and self.key.startswith("scene/"):
+            prop = self.props.get(ENERGY_PARAM)
+            v = out.get(ENERGY_PARAM)
+            if prop is not None and prop.get("type") != "integer" and isinstance(v, (int, float)) \
+                    and not isinstance(v, bool):
+                lo, hi = float(prop.get("minimum", 0.0)), float(prop.get("maximum", 1.0))
+                if hi > lo:
+                    out = out if out is not values else dict(values)
+                    out[ENERGY_PARAM] = lo + (hi - lo) * energy_lean(min(1.0, max(0.0, (v - lo) / (hi - lo))), e)
+        return out
+
+    def _apply(self, values: dict) -> dict:
         if not self.bindings:
             return values
         rt = self.runtime

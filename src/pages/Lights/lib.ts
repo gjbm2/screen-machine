@@ -1121,15 +1121,43 @@ export interface SiteRoomLite {
   lights: string[];
 }
 
-/** Whether a room's lights list holds this light. */
+/** Whether a room's lights list names this light: a Hue lamp by its id; a DMX light by "light.<id>" or "light" (every
+ *  DMX light). Which room a DMX light is IN is roomOfLight's rule, not just this. */
 export function roomHasLight(lights: string[], id: string, dmx: boolean): boolean {
   if (lights.includes(id)) return true;
   return dmx && (lights.includes("light") || lights.includes(`light.${id}`));
 }
 
-/** The room a light is in (the first that lists it), or null. */
+/** Every id a room's lists name (screens, lights, blinds, sensors, its effects' targets), as room_service's
+ *  light_rooms reads a rooms.json room: any list, nested objects included; not its id or name. */
+function roomItems(room: SiteRoomLite): string[] {
+  const walk = (v: unknown): string[] =>
+    typeof v === "string" ? [v] : Array.isArray(v) ? v.flatMap(walk) : v && typeof v === "object" ? Object.values(v).flatMap(walk) : [];
+  return Object.entries(room).flatMap(([k, v]) => (k === "id" || k === "name" || k.startsWith("_") || !Array.isArray(v) ? [] : walk(v)));
+}
+
+/** Whether a list item names the rig light `id` by id: "light.<id>", the bare id, or a bare prefix of it ("spot"
+ *  names "spot.1"), as room_service's room_config.py resolves an item. "light" itself is the wildcard, not a claim. */
+function claimsLight(item: string, id: string): boolean {
+  if (item === "light") return false;
+  return item === `light.${id}` || item === id || id.startsWith(`${item}.`);
+}
+
+/**
+ * The room a light is in, or null. A Hue lamp: the first room that lists its id. A DMX (rig) light, by the one rule
+ * every page and room_service's '<room>:light' groups share (room_service/room_config.py light_rooms): a room that
+ * names it by id in any of its lists ("light.<id>", or the bare id) has it (the first such room in file order);
+ * else "light" takes every rig light no room names by id (the first room that says "light"); a light no room claims
+ * is the site's only room's when rooms.json has exactly one room, else in none ("Other" / "Not in a room"). A light
+ * is never in two rooms.
+ */
 export function roomOfLight<R extends SiteRoomLite>(rooms: R[], id: string, dmx: boolean): R | null {
-  return rooms.find((r) => roomHasLight(r.lights ?? [], id, dmx)) ?? null;
+  if (!dmx) return rooms.find((r) => (r.lights ?? []).includes(id)) ?? null;
+  return (
+    rooms.find((r) => roomItems(r).some((s) => claimsLight(s, id))) ??
+    rooms.find((r) => roomItems(r).includes("light")) ??
+    (rooms.length === 1 ? rooms[0] : null)
+  );
 }
 
 /** A light's name without its room's ("Drawing room NE" in the Drawing room is "NE"); the whole name when that would

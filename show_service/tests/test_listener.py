@@ -1337,3 +1337,12 @@ def test_the_art_wish_decays_as_the_genre_and_goes_on_a_track_change(tmp_path):
     rig.lis.art_tags = c.ArtTags(tmp_path / "missing.yaml")
     rig.lis.art_tags.poll(0.0)
     assert rig.lis._art_prompt() == ""                                               # no lexicon: no art line
+
+
+def test_the_listening_prompt_names_the_deployments_room_words(tmp_path):
+    """Audit SHOW-6/E10: the clip's place is deployment.yaml wording.listen_space (generic "a room" without it)."""
+    p = Rig(tmp_path).lis._listen_prompt()
+    assert p.startswith(f"You listen to a short clip of what is playing in {L.LISTEN_SPACE}, for the room's ")
+    assert L.LISTEN_SPACE == c.DEPLOYMENT.words("listen_space", "a room")
+    if "listen_space" not in (c.DEPLOYMENT.manifest.get("wording") or {}):
+        assert "drawing room" not in p

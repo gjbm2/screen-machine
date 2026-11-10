@@ -24,18 +24,51 @@ def test_deployment_endpoint_shape(client):
     r = client.get("/api/deployment")
     assert r.status_code == 200
     d = r.get_json()
-    assert set(d) == {"id", "name", "capabilities", "default_room", "screens"}
+    assert set(d) == {"id", "name", "capabilities", "default_room", "screens", "kiosk", "wording"}
+    assert d["wording"]["lights_menu"] == "Lamps, glitterball, pinspots"   # PC22's menu hint, as before
     assert d["id"] == smconfig.deployment_id() == "finsbury"
     assert d["name"] == smconfig.deployment().name
     assert set(d["capabilities"]) == set(smconfig.CAPABILITIES)
     assert all(isinstance(v, bool) for v in d["capabilities"].values())
     assert d["default_room"] == "drawing-room"
     for s in d["screens"]:
-        assert set(s) == {"id", "name", "live", "mask"}
+        assert set(s) == {"id", "name", "live", "mask", "art_only", "room"}
         assert isinstance(s["live"], bool) and isinstance(s["mask"], bool) and s["name"]
-    # finsbury: the destinations with a live block or an intensity_cfg, in file order
-    assert [(s["id"], s["live"], s["mask"]) for s in d["screens"]] == [
-        ("north-screen", True, True), ("south-screen", True, True), ("devtest", True, False)]
+        assert s["art_only"] is (not s["live"])
+    # finsbury: the destinations with a live block, an intensity_cfg or a room, in file order
+    assert [(s["id"], s["live"], s["mask"], s["room"]) for s in d["screens"]] == [
+        ("north-screen", True, True, "drawing-room"), ("south-screen", True, True, "drawing-room"),
+        ("devtest", True, False, "lab")]
+    assert d["kiosk"] == {"screens": [{"id": "north-screen", "name": "north", "cdp_port": 9222},
+                                      {"id": "south-screen", "name": "south", "cdp_port": 9223}]}
+
+
+def _fake_deployment(tmp_path, monkeypatch, manifest: dict, dests: list, rooms: dict):
+    import json
+    import yaml
+    d = tmp_path / "deployments" / manifest["id"]
+    d.mkdir(parents=True)
+    (d / "deployment.yaml").write_text(yaml.safe_dump(manifest))
+    (d / "publish-destinations.json").write_text(json.dumps(dests))
+    (d / "rooms.json").write_text(json.dumps(rooms))
+    monkeypatch.setattr(smconfig, "DEPLOYMENTS_DIR", tmp_path / "deployments")
+    monkeypatch.setenv("SM_DEPLOYMENT", manifest["id"])
+    monkeypatch.setattr(smconfig, "deployment", lambda: smconfig.load(manifest["id"]))
+
+
+def test_deployment_lists_art_only_room_screens_and_no_kiosk(tmp_path, monkeypatch):
+    # C2: an art-only screen named by a room is listed (art_only, its room); a headless or roomless plain
+    # destination is not; a deployment without a kiosk says kiosk: null
+    from routes.deployment_api import deployment_info
+    _fake_deployment(tmp_path, monkeypatch, {"id": "probe-c2", "capabilities": {}},
+                     [{"id": "vj", "name": "VJ", "live": {}}, {"id": "frame", "name": "Frame"},
+                      {"id": "phone", "headless": True, "live": {}}, {"id": "loose", "name": "Loose"}],
+                     {"studio": {"screens": ["vj"]}, "hall": {"screens": ["frame"]}})
+    d = deployment_info()
+    assert d["kiosk"] is None
+    assert d["screens"] == [
+        {"id": "vj", "name": "VJ", "live": True, "mask": False, "art_only": False, "room": "studio"},
+        {"id": "frame", "name": "Frame", "live": False, "mask": False, "art_only": True, "room": "hall"}]
 
 
 def test_deployment_endpoint_follows_the_manifest(client, monkeypatch):
@@ -142,7 +175,7 @@ def test_site_defaults_come_from_the_deployment():
     assert (config.PORT, config.WS_PORT) == (5000, 8765)
     assert (config.INTENSITY_CFG["default_lat"], config.INTENSITY_CFG["default_lon"]) == (51.5074, -0.1278)
     assert worker.PRIORITY_BUCKETS == ("north-screen", "south-screen", "devtest")
-    assert director.ROOM == "drawing-room" and director.ROOMS_FILE == smconfig.path("rooms.json")
+    assert director.ROOMS_FILE == smconfig.path("rooms.json")
     assert room_hints.CONFIG == smconfig.path("room", "auto_hints.json")
     if not os.environ.get("ROOM_SERVICE_URL"):
         assert room_client.ROOM_URL == "http://127.0.0.1:8700"

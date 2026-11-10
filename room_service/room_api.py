@@ -65,7 +65,8 @@ def register(app: web.Application, svc: "RoomService", is_admin: Callable[[web.R
             check = svc.room_config.check(b["config"])
             if not check["ok"]:
                 return err(400, "invalid_config", "the draft has errors", errors=check["errors"])
-            draft = RoomConfig(b["config"], svc.room_config.adapters, extra_groups=svc.room_config.groups)
+            draft = RoomConfig(b["config"], svc.room_config.adapters, extra_groups=svc.room_config.groups,
+                               group_notes=svc.room_config.group_notes)
         try:
             p = await svc.coordinator.plan(str(b.get("mode", "")), refresh=bool(b.get("refresh", True)), config=draft)
         except ConfigError as e:

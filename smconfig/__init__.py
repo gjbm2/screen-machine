@@ -267,6 +267,12 @@ class Deployment:
             raise DeploymentError(f"{'/'.join(parts)!r} leaves the deployment directory") from None
         return p
 
+    def words(self, key: str, default: str) -> str:
+        """A named phrase of this site (manifest ``wording``), for text shown to people or sent to an LLM, e.g.
+        ``words("space", "the room")``. A site that sets none gets the generic default."""
+        v = (self.manifest.get("wording") or {}).get(key)
+        return str(v) if isinstance(v, str) and v.strip() else default
+
     def section(self, key: str) -> dict[str, Any]:
         v = self.manifest.get(key)
         return dict(v) if isinstance(v, dict) else {}

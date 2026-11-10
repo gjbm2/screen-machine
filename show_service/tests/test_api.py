@@ -1810,6 +1810,9 @@ def test_lights_routes_without_a_rig_component(brain):
             assert (await body(await cl.get("/api/v1/rig/follow"))) == {"fixtures": {}}
             got = await body(await cl.post("/api/v1/rig/fixtures/x/identify"))
             assert got["ok"] is False and "isn't running" in got["why"]
+            assert (await body(await cl.get("/api/v1/brightness"))) == {"lamps": 1.0, "fixtures": 0}
+            r = await cl.put("/api/v1/brightness", json={"lamps": 0.5})
+            assert r.status == 503 and (await body(r))["error"] == "unavailable"           # room says unconfirmed
     run(go())
 
 
@@ -1873,6 +1876,13 @@ def test_lights_routes_with_a_rig(brain, tmp_path):
                     r = await cl.post("/api/v1/rig/follow", json=bad)
                     b = await body(r)
                     assert r.status == 400 and b["choices"] == apimod.FOLLOW_CHOICES, bad
+                # the lamps' brightness (room's brightness.lamps)
+                b = await body(await cl.put("/api/v1/brightness", json={"lamps": 0.3}))
+                assert b == {"lamps": 0.3, "fixtures": 2} and eng.levels[-1] == 0.3
+                assert (await body(await cl.get("/api/v1/brightness"))) == b
+                for bad in ({"lamps": 2}, {"lamps": "dim"}, {"level": 0.5}, [0.5]):
+                    r = await cl.put("/api/v1/brightness", json=bad)
+                    assert r.status == 400, bad
                 # remove
                 b = await body(await cl.delete("/api/v1/rig/fixtures/dmx.ball-spot"))
                 assert b["removed"] == "dmx.ball-spot" and b["outputs"] == ["dmx-192-0-2-10-u3"]

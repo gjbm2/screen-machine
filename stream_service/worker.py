@@ -506,7 +506,8 @@ class Worker:
 
     def _apply_rt(self, rt: dict) -> None:
         r = self.runtime
-        for k in ("speed_target", "depth_target", "palette", "palette_s", "ease_s", "extra", "level", "level_target"):
+        for k in ("speed_target", "depth_target", "palette", "palette_s", "ease_s", "extra", "level", "level_target",
+                  "energy", "energy_target"):     # energy: the Room page's Energy on the scene (contract C5)
             if k in rt:
                 setattr(r, k, rt[k])
 

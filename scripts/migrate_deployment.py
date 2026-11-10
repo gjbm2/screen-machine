@@ -19,7 +19,7 @@ What --apply does (deployments/README.md, "Migrating PC22", has the whole proced
   5. `python -m smconfig check` must pass; the effective config is saved to logs/smconfig-<id>-<time>.json.
   6. Outside the repo: reports any Spectre module or boot script that still names an old path.
   7. This machine: the .env settings the service flags use (${VAR}) are set; every ~/.venvs/sm-* has PyYAML
-     (installs it when missing).
+     (installs it when missing); with ngrok on, .env gets NGROK_DOMAIN (the old start.sh default) if it lacks it.
 --verify-live checks the running services answer as the deployment says (health, screens, rooms, capabilities).
 
 Exit codes: 0 ok, 1 a problem (the report says which), 2 bad usage.
@@ -83,6 +83,13 @@ def git(*args: str, check: bool = True) -> str:
     if check and r.returncode != 0:
         raise RuntimeError(f"git {' '.join(args)}: {r.stderr.strip()}")
     return r.stdout
+
+
+def expand_show_urls(doc, dep):
+    """show.yaml as show_service reads it: its {room}/{flask}/{show} placeholders become this deployment's loopback
+    URLs (show_service.config.expand_urls, given dep's URLs so it works before .env names the deployment)."""
+    from show_service.config import URL_SERVICES, expand_urls  # noqa: PLC0415
+    return expand_urls(doc, {s: dep.url(s) for s in URL_SERVICES})
 
 
 def git_blob(rev: str, rel: str) -> bytes | None:
@@ -295,6 +302,7 @@ def step_prove(dep: smconfig.Deployment, rev: str | None, rep: Report) -> None:
     if before is not None:
         old_show = yaml.safe_load(before) or {}
         layered = smconfig.load_layered_yaml(smconfig.shared("room", "show.yaml"), dep.path("show.yaml"))
+        layered = expand_show_urls(layered, dep)         # the shared file's {room}/{flask}/{show} loopback URLs
         if layered == old_show:
             rep.ok(f"config/room/show.yaml + {dep.id}/show.yaml == {rev}:config/room/show.yaml (layered)")
         else:
@@ -357,6 +365,34 @@ def step_outside(rep: Report) -> None:
 
 
 VENVS = ("sm-stream", "sm-show", "sm-dot", "sm-show-ml", "sm-piano", "sm-score-ml")
+
+
+def _append_env(key: str, value: str, why: str) -> None:
+    envf = smconfig.ENV_FILE
+    text = envf.read_text() if envf.exists() else ""
+    if text and not text.endswith("\n"):
+        text += "\n"
+    envf.write_text(text + f"\n# {why} Added by scripts/migrate_deployment.py on {_dt.date.today().isoformat()}.\n"
+                    f"{key}={value}\n")
+
+
+def step_ngrok(dep: smconfig.Deployment, rev: str | None, apply: bool, rep: Report) -> None:
+    """start.sh used to carry this machine's ngrok domain as its default; the public repo no longer does, so .env
+    must. Recovered from the old start.sh when .env lacks it."""
+    if not dep.enabled("ngrok") or smconfig.env("NGROK_DOMAIN"):
+        if dep.enabled("ngrok"):
+            rep.ok("NGROK_DOMAIN is set in .env")
+        return
+    import re as _re
+
+    old = (git_blob(rev, "start.sh") or b"").decode(errors="replace") if rev else ""
+    m = _re.search(r'NGROK_DOMAIN="\$\{NGROK_DOMAIN:-([^}"]+)\}"', old)
+    if not m:
+        rep.bad("capability ngrok is on but .env has no NGROK_DOMAIN: add NGROK_DOMAIN=<your ngrok domain> to .env")
+        return
+    rep.do(f"add NGROK_DOMAIN to .env (the old start.sh default, from {rev}:start.sh)")
+    if apply:
+        _append_env("NGROK_DOMAIN", m.group(1), "The ngrok tunnel's domain (start.sh's old built-in default).")
 
 
 def step_machine(dep: smconfig.Deployment, apply: bool, rep: Report) -> None:
@@ -473,6 +509,7 @@ def main(argv: list[str] | None = None) -> int:
         step_check(dep, a.apply, rep)
         step_outside(rep)
         step_machine(dep, a.apply, rep)
+        step_ngrok(dep, a.from_rev or pre_layout_rev(), a.apply, rep)
     print(f"\n{'OK' if not rep.problems else f'{rep.problems} problem(s)'}")
     if a.apply and not a.verify_live:
         logs = REPO / "logs"

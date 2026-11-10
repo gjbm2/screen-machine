@@ -49,6 +49,14 @@ DOT_API = "https://dot.mindreset.tech/api/authV2/open"
 ROOM = os.environ.get("DOT_ROOM_URL") or smconfig.url("room")
 SHOW = os.environ.get("DOT_SHOW_URL") or smconfig.url("show")
 STREAM = os.environ.get("DOT_STREAM_URL") or smconfig.url("stream")
+
+
+def show_on() -> bool:
+    """The deployment runs show_service (capability "show"); off, the tags never ask it."""
+    try:
+        return smconfig.enabled("show")
+    except Exception:  # an unreadable manifest: ask show as before
+        return True
 APP = os.environ.get("DOT_APP_URL") or smconfig.url("flask")
 OWN_STREAM = "/show/api/v1/piano/stream/"   # Sonos playing the music player's own stream: the player names it
 
@@ -353,11 +361,15 @@ class DotService:
             self.modes = await self.get(f"{ROOM}/api/v1/modes")
             self.modes_at = time.time()
         keys = ("status", "auto", "player", "show", "card", "look", "listening")
-        vals = await asyncio.gather(
-            self.get(f"{ROOM}/api/v1/status"), self.get(f"{SHOW}/api/v1/autopilot"),
-            self.get(f"{SHOW}/api/v1/player"), self.soft(f"{SHOW}/api/v1/state", {}),
-            self.soft(f"{SHOW}/api/v1/card", {}), self.soft(f"{SHOW}/api/v1/look", {}),
-            self.soft(f"{SHOW}/api/v1/listening", {}))
+        if show_on():
+            # autopilot and player are hard: while show_service restarts, the tags keep the card they have
+            vals = await asyncio.gather(
+                self.get(f"{ROOM}/api/v1/status"), self.get(f"{SHOW}/api/v1/autopilot"),
+                self.get(f"{SHOW}/api/v1/player"), self.soft(f"{SHOW}/api/v1/state", {}),
+                self.soft(f"{SHOW}/api/v1/card", {}), self.soft(f"{SHOW}/api/v1/look", {}),
+                self.soft(f"{SHOW}/api/v1/listening", {}))
+        else:   # no show_service in this deployment: the room's status alone fills the card, show is never asked
+            vals = [await self.get(f"{ROOM}/api/v1/status"), {}, {}, {}, {}, {}, {}]
         src = dict(zip(keys, vals))
         now = time.time()
         for tag in list(self.tags.values()):

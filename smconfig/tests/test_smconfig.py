@@ -171,3 +171,42 @@ def test_cli(monkeypatch):
     r = subprocess.run([sys.executable, "-m", "smconfig", "get", "id"], cwd=REPO, capture_output=True, text=True,
                        env={"PATH": "/usr/bin:/bin", "SM_DEPLOYMENT": "nope"})
     assert r.returncode == 2 and "does not exist" in r.stderr
+
+
+def _alpha_problems(root, monkeypatch, manifest_extra: str = "", modes: dict | None = None):
+    m = root / "alpha" / "deployment.yaml"
+    m.write_text(m.read_text() + manifest_extra)
+    if modes is not None:
+        (root / "alpha" / "room").mkdir(exist_ok=True)
+        (root / "alpha" / "room" / "modes.json").write_text(json.dumps(modes))
+        (root / "alpha" / "room" / "room.yaml").write_text("{}\n")
+    smconfig._cache.clear()
+    monkeypatch.setenv("SM_DEPLOYMENT", "alpha")
+    return smcheck.check(smconfig.deployment())
+
+
+def test_check_wording_and_art_director(fake_deployments, monkeypatch):
+    problems, _ = _alpha_problems(fake_deployments, monkeypatch,
+                                  "wording: {art_space: a barn, art_spcae: typo, lights_menu: ''}\n"
+                                  "art_director: {modes: [ambient], rooms: [studio, attic]}\n")
+    assert any("unknown wording key 'art_spcae'" in p for p in problems)
+    assert any("wording.lights_menu must be a non-empty string" in p for p in problems)
+    assert any("art_director room 'attic'" in p for p in problems)
+    assert not any("wording.art_space" in p or "key 'art_space'" in p for p in problems)
+
+
+def test_check_kiosk_screens_must_be_a_mapping(fake_deployments, monkeypatch):
+    problems, _ = _alpha_problems(fake_deployments, monkeypatch, "kiosk: {screens: [vj]}\n")
+    assert any("kiosk.screens must be a mapping" in p for p in problems)
+
+
+def test_check_catches_a_screen_typo_in_modes(fake_deployments, monkeypatch):
+    m = fake_deployments / "alpha" / "deployment.yaml"
+    m.write_text(m.read_text().replace("capabilities: {live: true", "capabilities: {room: true, live: true"))
+    modes = {"default": "a", "modes": {"a": {"label": "A", "state": {"screens.jv": "art"}}},
+             "transitions": [{"from": "*", "to": "*"}]}
+    problems, _ = _alpha_problems(fake_deployments, monkeypatch, modes=modes)
+    assert any("room/modes.json" in p and "jv" in p for p in problems), problems
+    modes["modes"]["a"]["state"] = {"screens.vj": "art"}
+    problems, _ = _alpha_problems(fake_deployments, monkeypatch, modes=modes)
+    assert not any("room/modes.json" in p for p in problems), problems

@@ -2,8 +2,10 @@
 
 Screens are defined once, in the deployment's publish-destinations.json (Flask's display config): every
 destination with a "live" block is a room screen, with its name, size (maxwidth x maxheight) and live
-settings ({"enabled", "gpu", "profile", "mask_push", "timed_reload"?}). A `screens:` block in the YAML
-overrides per screen and per field, and may add screens (tests, dev configs).
+settings ({"enabled", "gpu", "profile", "mask_push", "timed_reload"?}). A live block that names no profile gets one
+by the screen's size at 30 fps (default_profile). A `screens:` block in the YAML overrides per screen and per field,
+and may add screens (tests, dev configs). Every other destination is known by id and name (known_screens), so a
+mode naming an art-only screen names nothing rather than failing.
 
 The extra sections below (`timeouts`, `snapshot`, `service`) are additive and optional; their defaults
 are the values in AV_PROGRAMME §3.3.
@@ -76,7 +78,7 @@ class ScreenConfig:
     live_enabled: bool = False
     mask_push: bool = False
     timed_reload: bool = True         # LIVE_V1 §3.1: the page policy's default; modes can change it
-    profile: str = "hevc-2160p60"     # used when a live spec names no profile
+    profile: str = "hevc-2160p30"     # used when a live spec names no profile (config_from_dict: by the screen's size)
     name: str = ""                    # the destination's name ("North screen")
     width: int | None = None          # the display's size (maxwidth x maxheight): render and snapshot size
     height: int | None = None
@@ -198,6 +200,9 @@ class RoomConfig:
     rooms_file: Path = field(default_factory=lambda: smconfig.path("rooms.json"))   # the site: which room holds what
     output_dir: Path = REPO_ROOT / "output"   # Flask's /output/: the art files the pages show (their shape sizes live)
     destinations_file: Path | None = None   # the screens: destinations with a "live" block (default: DEFAULT_DESTINATIONS)
+    # Every destination the site has, live block or not: {id: name} (an art-only screen a mode or a page names is
+    # known, so it names nothing rather than being an error).
+    known_screens: dict[str, str] = field(default_factory=dict)
     session_ttl_s: int = 120
     renew_every_s: float = 30.0
     config_path: Path | None = None
@@ -226,6 +231,29 @@ def _size(v: Any) -> int | None:
     return int(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and 0 < v <= 16384 else None
 
 
+PROFILE_4K, PROFILE_HD = "hevc-2160p30", "hevc-1080p30"   # stream_service's profiles (stream_service/profiles.py)
+
+
+def default_profile(width: int | None, height: int | None) -> str:
+    """The encode profile for a live block that names none: 30 fps, at the screen's size class. A display no bigger
+    than 1920x1080 (either way round) gets the 1080p profile; a bigger one, or one whose size isn't known, the 2160p
+    one (the renderer still renders at the display's own size within the profile: ScreenController._render_size)."""
+    if width and height and max(width, height) <= 1920 and min(width, height) <= 1080:
+        return PROFILE_HD
+    return PROFILE_4K
+
+
+def known_screens(path: Path) -> dict[str, str]:
+    """{id: name} for every destination in publish-destinations.json, live block or not (art-only screens too), in
+    file order; {} if the file can't be read (screens_from_destinations says so in the log)."""
+    try:
+        dests = json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return {}
+    return {d["id"]: str(d.get("name") or d["id"]) for d in (dests if isinstance(dests, list) else [])
+            if isinstance(d, dict) and isinstance(d.get("id"), str) and d["id"]}
+
+
 def screens_from_destinations(path: Path) -> dict[str, dict]:
     """{id: ScreenConfig fields} for every destination with a "live" block; {} if the file can't be read."""
     try:
@@ -246,6 +274,8 @@ def screens_from_destinations(path: Path) -> dict[str, dict]:
         for k in ("gpu", "profile", "mask_push", "timed_reload"):
             if k in live:
                 sc[k] = live[k]
+        if not sc.get("profile"):                 # never silently the 4K60 encode (RS-10): by size, at 30 fps
+            sc["profile"] = default_profile(sc["width"], sc["height"])
         if isinstance(live.get("auto"), dict):
             sc["auto"] = live["auto"]
         out[d["id"]] = sc
@@ -284,10 +314,14 @@ def config_from_dict(raw: dict[str, Any], *, base_dir: Path | None = None) -> Ro
     cfg.destinations_file = _path(svc.get("destinations_file"), DEFAULT_DESTINATIONS)   # (looked up now: tests patch it)
     # Screens: the destinations with a "live" block, then the YAML's `screens:` per screen and per field.
     merged = screens_from_destinations(cfg.destinations_file)
+    cfg.known_screens = known_screens(cfg.destinations_file)
     for sid, sc in (raw.get("screens") or {}).items():
         merged[str(sid)] = {**merged.get(str(sid), {}), **(sc or {})}
     for sid, sc in merged.items():
+        if not sc.get("profile"):                 # a YAML-only screen too: by its size, never the 4K60 encode
+            sc = {**sc, "profile": default_profile(_size(sc.get("width")), _size(sc.get("height")))}
         cfg.screens[sid] = _fill(ScreenConfig, {**sc, "id": sid})
+        cfg.known_screens.setdefault(sid, cfg.screens[sid].label)
     cfg.state_dir = _path(svc.get("state_dir"), cfg.state_dir)
     cfg.token_file = _path(svc.get("token_file"), cfg.token_file)
     cfg.page_keys_file = _path(svc.get("page_keys_file"), cfg.page_keys_file)

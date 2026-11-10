@@ -49,7 +49,9 @@ args (override env; scripts/ctl always passes --port from SHOW_PORT):
   alone means port 6454): None (off) by default, so nothing is sent unless the env file or a flag says so.
   ``__main__`` passes it to artnet_out.VirtualMaestro over ``config_from_env()``'s.
 * ``--stream-priority`` (or ``SHOW_STREAM_PRIORITY``) fills ``Config.stream_priority``: the receiver ranks those
-  audio streams first, in that order, then ``contract.AUDIO_PRIORITY`` (``contract.stream_rank``).
+  audio streams first, in that order, then the senders' own audio streams in show.yaml's order
+  (``receiver.site_order``), then ``contract.AUDIO_PRIORITY``, then unknown names, test streams last
+  (``contract.stream_rank``).
 * **The brain** (README "Stage 3", S3.4): ``load_options`` turns it on unless ``--no-brain`` or ``SHOW_BRAIN=off``
   (the rollback switch: the process is then exactly as before Stage 3). An ``Options`` built in code (tests) has it
   off unless it says ``brain=True``, so no test reaches the real show.yaml, room or state directory by accident.
@@ -133,14 +135,44 @@ def show_signature(show_file: "pathlib.Path | str", site: Optional[pathlib.Path]
     return (_stat_sig(pathlib.Path(show_file)), _stat_sig(site))
 
 
+#: The loopback placeholders a show.yaml URL value may carry (audit SHOW-4, wave 1 contract C4): ``{room}``,
+#: ``{flask}`` and ``{show}`` (and the other services of deployment.yaml ``ports``) expand to ``smconfig.url(...)``,
+#: e.g. ``"{flask}/output/{id}.jpg"`` -> ``"http://127.0.0.1:5000/output/{id}.jpg"`` on finsbury. Any other ``{...}``
+#: (the art sources' ``{id}``) is left for its reader.
+URL_SERVICES: tuple[str, ...] = ("room", "flask", "show", "show_bus", "stream", "dot", "overlay_ws")
+_URL_HOLE = re.compile(r"\{(" + "|".join(URL_SERVICES) + r")\}")
+
+
+def expand_urls(doc: Any, urls: Optional[Mapping[str, str]] = None) -> Any:
+    """``doc`` with every ``{<service>}`` in a string value replaced by that service's loopback URL (``urls``, else
+    the deployment's: contract.DEPLOYMENT.url). Dicts and lists are copied where something changed; other values are
+    returned as they are."""
+    def url_of(name: str) -> str:
+        if urls is not None and name in urls:
+            return str(urls[name]).rstrip("/")
+        return contract.DEPLOYMENT.url(name)
+
+    def walk(v: Any) -> Any:
+        if isinstance(v, str):
+            return _URL_HOLE.sub(lambda m: url_of(m.group(1)), v) if "{" in v else v
+        if isinstance(v, dict):
+            return {k: walk(x) for k, x in v.items()}
+        if isinstance(v, list):
+            return [walk(x) for x in v]
+        return v
+
+    return walk(doc)
+
+
 def read_show(show_file: "pathlib.Path | str", site: Any = SITE_AUTO) -> dict:
-    """The effective show.yaml: ``smconfig.load_layered_yaml(show_file, site layer)`` (an absent layer is no layer).
+    """The effective show.yaml: ``smconfig.load_layered_yaml(show_file, site layer)`` (an absent layer is no layer),
+    its ``{room}``/``{flask}``/``{show}`` URL placeholders expanded (``expand_urls``).
     Raises OSError (no base) or ValueError (a layer isn't YAML or isn't a mapping; the message names it)."""
     import smconfig
     import yaml
     layer = show_site_layer(show_file, site)
     try:
-        return smconfig.load_layered_yaml(pathlib.Path(show_file), layer)
+        return expand_urls(smconfig.load_layered_yaml(pathlib.Path(show_file), layer))
     except yaml.YAMLError as e:
         bad = pathlib.Path(show_file)
         for p in (pathlib.Path(show_file), layer):

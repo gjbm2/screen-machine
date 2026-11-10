@@ -308,6 +308,8 @@ export interface RemotesView {
   types: RemoteType[];
   hosts: string[];
   rooms: { id: string; name: string }[];
+  /** false: this deployment has no RF (capability rf off), so nothing can be added or worked. Absent: not said. */
+  rf_enabled?: boolean;
 }
 
 /** One room of the site (deployments/<id>/rooms.json), in file order. Ids refer to screens, lamps, blinds, sensors;
@@ -619,6 +621,8 @@ export interface SessionView extends Look {
   /** The parts of the look this screen set for itself (scope "screen": direction, palette, beat_follow, fx); the rest
    *  is the room's. Absent from a renderer without look_scope. */
   own?: string[];
+  /** The effects on top that repaint colour, covering a picked palette (their labels); empty or absent: none. */
+  palette_masked_by?: string[] | null;
 }
 
 export interface LookPatch {
