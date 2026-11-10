@@ -121,7 +121,7 @@ async def probe() -> dict:
                 async with s.post(base + "/api/v1/room/plan", json={"mode": mode}) as r:
                     plans[mode] = {"status": r.status, "body": await r.json()}
             out["plan"] = plans
-            out["switches"] = await switches(s, base, get, tmp)
+            out["switches"] = await switches(s, base, get, tmp, svc)
     finally:
         await server.close()
         await stream.stop()
@@ -141,7 +141,7 @@ def _no_repo(v: Any) -> Any:
     return json.loads(json.dumps(v).replace(str(REPO), "<repo>"))
 
 
-async def switches(s: Any, base: str, get: Any, tmp: Path) -> dict:
+async def switches(s: Any, base: str, get: Any, tmp: Path, svc: Any) -> dict:
     """Every mode in turn (sorted), then the default: each PUT's answer, the transition events, the status after and
     the state files written. Each switch is awaited to its end before the next."""
     events: list[dict] = []
@@ -174,6 +174,10 @@ async def switches(s: Any, base: str, get: Any, tmp: Path) -> dict:
             {k: v for k, v in (e.get("data") or {}).items() if k in MT_KEYS}
             for e in events[before:] if e.get("type") in ("mode.transition", "room_mode.transition")]})
     await asyncio.sleep(0.3)
+    # One reconcile tick per zone before status_after: the 5 s loops skip while a transition runs, so whether a tick
+    # landed between the back-to-back switches was timing luck (autopilot and diag read or not, run to run).
+    for co in {id(z.coordinator): z.coordinator for z in svc.zones.all()}.values():
+        await co.reconcile_once()
     task.cancel()
     await ws.close()
     files = {}

@@ -285,16 +285,16 @@
   "subsystems": {
    "autopilot": {
     "available": true,
-    "believed": null,
+    "believed": "off",
     "dry_run": false,
     "kind": "level",
     "last_error": null,
-    "last_ok_age_s": null,
+    "last_ok_age_s": "<scrubbed>",
     "members": {
      "main": {
-      "age_s": null,
-      "believed": null,
-      "confidence": "unknown",
+      "age_s": "<scrubbed>",
+      "believed": "off",
+      "confidence": "confirmed",
       "desired": null,
       "drift": null,
       "inflight": null,
@@ -318,18 +318,18 @@
    "brightness": {
     "available": true,
     "believed": {
-     "lamps": null,
-     "screens": null
+     "lamps": 100,
+     "screens": 100
     },
     "dry_run": false,
     "kind": "level",
     "last_error": null,
-    "last_ok_age_s": null,
+    "last_ok_age_s": "<scrubbed>",
     "members": {
      "lamps": {
-      "age_s": null,
-      "believed": null,
-      "confidence": "unknown",
+      "age_s": "<scrubbed>",
+      "believed": 100,
+      "confidence": "confirmed",
       "desired": null,
       "drift": null,
       "inflight": null,
@@ -340,9 +340,9 @@
       "settled": null
      },
      "screens": {
-      "age_s": null,
-      "believed": null,
-      "confidence": "unknown",
+      "age_s": "<scrubbed>",
+      "believed": 100,
+      "confidence": "confirmed",
       "desired": null,
       "drift": null,
       "inflight": null,
@@ -356,16 +356,16 @@
    },
    "diag": {
     "available": true,
-    "believed": null,
+    "believed": false,
     "dry_run": false,
     "kind": "level",
     "last_error": null,
-    "last_ok_age_s": null,
+    "last_ok_age_s": "<scrubbed>",
     "members": {
      "vj": {
-      "age_s": null,
-      "believed": null,
-      "confidence": "unknown",
+      "age_s": "<scrubbed>",
+      "believed": false,
+      "confidence": "confirmed",
       "desired": null,
       "drift": null,
       "inflight": null,
@@ -379,16 +379,20 @@
    },
    "director": {
     "available": true,
-    "believed": null,
+    "believed": {
+     "scene_tags": []
+    },
     "dry_run": false,
     "kind": "level",
     "last_error": null,
-    "last_ok_age_s": null,
+    "last_ok_age_s": "<scrubbed>",
     "members": {
      "light_scenes": {
-      "age_s": null,
-      "believed": null,
-      "confidence": "unknown",
+      "age_s": "<scrubbed>",
+      "believed": {
+       "scene_tags": []
+      },
+      "confidence": "confirmed",
       "desired": null,
       "drift": null,
       "inflight": null,
@@ -401,14 +405,14 @@
     }
    },
    "light": {
-    "available": true,
+    "available": false,
     "believed": {
      "par-left": null,
      "par-right": null
     },
     "dry_run": false,
     "kind": "level",
-    "last_error": null,
+    "last_error": "read: show_service unreachable (Cannot connect to host 127.0.0.1:<port> ssl:default [Connect call failed ('127.0.0.1', 1)])",
     "last_ok_age_s": null,
     "members": {
      "par-left": {
