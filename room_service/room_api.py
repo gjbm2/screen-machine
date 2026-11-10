@@ -4,6 +4,10 @@ Auth: since the owner's ruling of 14 Oct ("no auth anywhere in the AV stack", ap
 open. The split is kept, so admin gating can come back if the owner asks: ROOM_ADMIN_ROUTES and the is_admin checks
 for `hold` and draft plans would be enforced again by api.py's token check.
 Errors: {"error", "detail"}, plus "errors" ([{path, message}]) for an invalid config.
+Mode zones (zones.py): describe, plan, config (GET, PUT, validate) take ?room= (or "room" in the body): an own_modes
+room's modes file and coordinator; none, or a room without its own modes, the site's; a room rooms.json lacks is 404
+unknown_room. targets, assume and stored/{slot}/{target} go to the target's owner; DELETE stored/{slot} runs on every
+zone.
 """
 
 from __future__ import annotations
@@ -15,7 +19,7 @@ from aiohttp import web
 
 from .room_config import ConfigConflict, ConfigInvalid
 from .roomstate.coordinator import Refused
-from .roomstate.model import ConfigError, RoomConfig
+from .roomstate.model import ConfigError
 
 if TYPE_CHECKING:
     from .service import RoomService
@@ -49,26 +53,38 @@ def register(app: web.Application, svc: "RoomService", is_admin: Callable[[web.R
     def admin_only() -> web.Response:
         return err(401, "unauthorized", "this call needs the room admin token")
 
+    def zone_for(request: web.Request, b: dict | None = None):
+        """The zone a call names: body "room", else ?room=; none: the site. 404 unknown_room for a room rooms.json
+        doesn't have."""
+        room = b.get("room") if b is not None and b.get("room") is not None else request.query.get("room")
+        try:
+            return svc.zones.for_room(room if isinstance(room, str) and room else None)
+        except KeyError:
+            raise web.HTTPNotFound(text=json.dumps({"error": "unknown_room", "detail": str(room)}),
+                                   content_type="application/json")
+
     async def describe(request: web.Request) -> web.Response:
+        zone = zone_for(request)
         try:                                   # the screens schema's vocab comes from the renderer's catalog (cached 30 s)
             await svc.stream.catalog()
         except Exception:
             pass                               # the renderer is away: the enums stay empty, the rest is served
-        return web.json_response(svc.coordinator.describe(), dumps=lambda o: json.dumps(o, default=str))
+        return web.json_response(zone.coordinator.describe(), dumps=lambda o: json.dumps(o, default=str))
 
     async def plan(request: web.Request) -> web.Response:
         b = await body(request)
+        zone = zone_for(request, b)
+        rc = zone.room_config
         draft = None
         if "config" in b:
             if not is_admin(request):
                 return admin_only()
-            check = svc.room_config.check(b["config"])
+            check = rc.check(b["config"])
             if not check["ok"]:
                 return err(400, "invalid_config", "the draft has errors", errors=check["errors"])
-            draft = RoomConfig(b["config"], svc.room_config.adapters, extra_groups=svc.room_config.groups,
-                               group_notes=svc.room_config.group_notes)
+            draft = rc.build(b["config"])
         try:
-            p = await svc.coordinator.plan(str(b.get("mode", "")), refresh=bool(b.get("refresh", True)), config=draft)
+            p = await zone.coordinator.plan(str(b.get("mode", "")), refresh=bool(b.get("refresh", True)), config=draft)
         except ConfigError as e:
             return err(404, "unknown_mode", str(e))
         return web.json_response(p, dumps=lambda o: json.dumps(o, default=str))
@@ -83,7 +99,7 @@ def register(app: web.Application, svc: "RoomService", is_admin: Callable[[web.R
         accepted = []
         for t, v in values.items():
             try:
-                await svc.coordinator.hand_set(t, v, hold=hold, source=str(b.get("source", "web")))
+                await svc.zones.for_target(t).coordinator.hand_set(t, v, hold=hold, source=str(b.get("source", "web")))
             except KeyError:
                 return err(404, "unknown_target", t, accepted=accepted)
             except ValueError as e:
@@ -96,7 +112,8 @@ def register(app: web.Application, svc: "RoomService", is_admin: Callable[[web.R
     async def assume(request: web.Request) -> web.Response:
         b = await body(request)
         try:
-            svc.coordinator.assume(str(b.get("target")), b.get("value"), cause=str(b.get("cause", "owner (web)")))
+            t = str(b.get("target"))
+            svc.zones.for_target(t).coordinator.assume(t, b.get("value"), cause=str(b.get("cause", "owner (web)")))
         except KeyError:
             return err(404, "unknown_target", str(b.get("target")))
         except ValueError as e:
@@ -106,25 +123,27 @@ def register(app: web.Application, svc: "RoomService", is_admin: Callable[[web.R
         return web.json_response({"target": b.get("target"), "value": b.get("value")})
 
     async def get_config(request: web.Request) -> web.Response:
-        rc = svc.room_config
+        rc = zone_for(request).room_config
         return web.json_response({"config": rc.raw, "revision": rc.revision, "path": str(rc.path), "error": rc.error})
 
     async def validate_config(request: web.Request) -> web.Response:
         b = await body(request)
-        return web.json_response(svc.room_config.check(b.get("config")))
+        return web.json_response(zone_for(request, b).room_config.check(b.get("config")))
 
     async def put_config(request: web.Request) -> web.Response:
         b = await body(request)
+        zone = zone_for(request, b)
         if "base_revision" not in b:
             return err(428, "revision_required", "send the revision you edited (GET /api/v1/room/config)")
         try:
-            modes = svc.room_config.save(b.get("config"), b["base_revision"])
+            modes = zone.room_config.save(b.get("config"), b["base_revision"])
         except ConfigInvalid as e:
             return err(400, "invalid_config", str(e), errors=e.errors)
         except ConfigConflict as e:
             return err(409, "revision_conflict", str(e), current_revision=e.current)
-        out = svc.coordinator.reload(modes, cause=str(b.get("note") or "saved from the Room page"))
-        svc.events.log_event("info", f"modes.json saved (revision {modes.revision})")
+        out = zone.coordinator.reload(modes, cause=str(b.get("note") or "saved from the Room page"))
+        name = "modes.json" if zone.is_site else zone.room_config.path.name
+        svc.events.log_event("info", f"{name} saved (revision {modes.revision})")
         svc.events.mark_dirty()
         return web.json_response({"revision": modes.revision, **out})
 
@@ -132,7 +151,8 @@ def register(app: web.Application, svc: "RoomService", is_admin: Callable[[web.R
         b = await body(request)
         slot, t = request.match_info["slot"], request.match_info["target"]
         try:
-            svc.coordinator.stored_edit(slot, t, b.get("value"), cause=str(b.get("cause", "owner (web)")))
+            svc.zones.for_target(t).coordinator.stored_edit(slot, t, b.get("value"),
+                                                            cause=str(b.get("cause", "owner (web)")))
         except KeyError:
             return err(404, "unknown_target", t)
         except ValueError as e:
@@ -143,8 +163,9 @@ def register(app: web.Application, svc: "RoomService", is_admin: Callable[[web.R
 
     async def stored_forget(request: web.Request) -> web.Response:
         slot, t = request.match_info["slot"], request.match_info.get("target")
-        try:
-            svc.coordinator.stored_forget(slot, t, cause="owner (web)")
+        try:                                   # a whole slot: every zone's; one target: its owner's
+            for zone in ([svc.zones.for_target(t)] if t else svc.zones.all()):
+                zone.coordinator.stored_forget(slot, t, cause="owner (web)")
         except Refused as e:
             return refused(e)
         return web.json_response({"slot": slot, "target": t})
@@ -152,7 +173,7 @@ def register(app: web.Application, svc: "RoomService", is_admin: Callable[[web.R
     async def stored_restore(request: web.Request) -> web.Response:
         slot, t = request.match_info["slot"], request.match_info["target"]
         try:
-            out = await svc.coordinator.stored_restore(slot, t, cause="owner (web)")
+            out = await svc.zones.for_target(t).coordinator.stored_restore(slot, t, cause="owner (web)")
         except Refused as e:
             return err(404, e.code, str(e)) if e.code == "unknown_stored" else refused(e)
         return web.json_response({"slot": slot, "target": t, "status": out.status, "detail": out.detail})

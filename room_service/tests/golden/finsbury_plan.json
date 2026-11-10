@@ -1,0 +1,1372 @@
+{
+ "ambient": {
+  "body": {
+   "draft": false,
+   "from": "gallery",
+   "notes": {},
+   "reapply": false,
+   "revision": "684fe3c3e56f",
+   "steps": [
+    {
+     "action": "set suspended",
+     "detail": "",
+     "id": "i0",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "sensor_mask.main",
+     "value": "suspended"
+    },
+    {
+     "action": "set false",
+     "detail": "",
+     "id": "i1",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "page.north-screen.timed_reload",
+     "value": false
+    },
+    {
+     "action": "set false",
+     "detail": "",
+     "id": "i2",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "page.south-screen.timed_reload",
+     "value": false
+    },
+    {
+     "action": "set false",
+     "detail": "",
+     "id": "i3",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "page.devtest.timed_reload",
+     "value": false
+    },
+    {
+     "action": "set 100, put back afterwards",
+     "detail": "no adapter",
+     "guarded": true,
+     "id": "i4",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 2,
+     "subsystem": "blinds.ch02",
+     "value": 100
+    },
+    {
+     "action": "set 100, put back afterwards",
+     "detail": "no adapter",
+     "guarded": true,
+     "id": "i5",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 2,
+     "subsystem": "blinds.ch03",
+     "value": 100
+    },
+    {
+     "action": "set 100, put back afterwards",
+     "detail": "no adapter",
+     "guarded": true,
+     "id": "i6",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 2,
+     "subsystem": "blinds.ch14",
+     "value": 100
+    },
+    {
+     "action": "set hdmi, put back afterwards",
+     "detail": "no adapter",
+     "id": "i7",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 2,
+     "subsystem": "tv.north-screen",
+     "value": "hdmi"
+    },
+    {
+     "action": "set hdmi, put back afterwards",
+     "detail": "no adapter",
+     "id": "i8",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 2,
+     "subsystem": "tv.south-screen",
+     "value": "hdmi"
+    },
+    {
+     "action": "set live:#modes:ambient",
+     "detail": "",
+     "id": "i9",
+     "kind": "set",
+     "status": "pending",
+     "step": 3,
+     "subsystem": "screens.north-screen",
+     "value": {
+      "live": {
+       "scene_tags": [
+        "modes:ambient"
+       ],
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     }
+    },
+    {
+     "action": "set live:#modes:ambient",
+     "detail": "",
+     "id": "i10",
+     "kind": "set",
+     "status": "pending",
+     "step": 3,
+     "subsystem": "screens.south-screen",
+     "value": {
+      "live": {
+       "scene_tags": [
+        "modes:ambient"
+       ],
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     }
+    },
+    {
+     "action": "set stopped",
+     "detail": "no adapter",
+     "id": "i11",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 4,
+     "subsystem": "mirror_ball.main",
+     "value": "stopped"
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "",
+     "id": "i12",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "subsystem": "light.par-left",
+     "value": "dmx"
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "",
+     "id": "i13",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "subsystem": "light.par-right",
+     "value": "dmx"
+    },
+    {
+     "action": "set Mic listens, put back afterwards",
+     "detail": "",
+     "id": "i14",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "subsystem": "show.mic",
+     "value": true
+    },
+    {
+     "action": "set AI listens, put back afterwards",
+     "detail": "",
+     "id": "i15",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "subsystem": "show.ai",
+     "value": true
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "no adapter",
+     "id": "i16",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 5,
+     "subsystem": "hue.ne",
+     "value": "dmx"
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "no adapter",
+     "id": "i17",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 5,
+     "subsystem": "hue.nw",
+     "value": "dmx"
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "no adapter",
+     "id": "i18",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 5,
+     "subsystem": "hue.se",
+     "value": "dmx"
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "no adapter",
+     "id": "i19",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 5,
+     "subsystem": "hue.sw",
+     "value": "dmx"
+    },
+    {
+     "action": "signal info",
+     "detail": "",
+     "id": "i20",
+     "kind": "signal",
+     "status": "pending",
+     "step": 6,
+     "subsystem": "log"
+    }
+   ],
+   "to": "ambient",
+   "transition": 0,
+   "via": []
+  },
+  "status": 200
+ },
+ "disco": {
+  "body": {
+   "draft": false,
+   "from": "gallery",
+   "notes": {},
+   "reapply": false,
+   "revision": "684fe3c3e56f",
+   "steps": [
+    {
+     "action": "set suspended",
+     "detail": "",
+     "id": "i0",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "sensor_mask.main",
+     "value": "suspended"
+    },
+    {
+     "action": "set false",
+     "detail": "",
+     "id": "i1",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "page.north-screen.timed_reload",
+     "value": false
+    },
+    {
+     "action": "set false",
+     "detail": "",
+     "id": "i2",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "page.south-screen.timed_reload",
+     "value": false
+    },
+    {
+     "action": "set false",
+     "detail": "",
+     "id": "i3",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "page.devtest.timed_reload",
+     "value": false
+    },
+    {
+     "action": "set 100, put back afterwards",
+     "detail": "no adapter",
+     "guarded": true,
+     "id": "i4",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 2,
+     "subsystem": "blinds.ch02",
+     "value": 100
+    },
+    {
+     "action": "set 100, put back afterwards",
+     "detail": "no adapter",
+     "guarded": true,
+     "id": "i5",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 2,
+     "subsystem": "blinds.ch03",
+     "value": 100
+    },
+    {
+     "action": "set 100, put back afterwards",
+     "detail": "no adapter",
+     "guarded": true,
+     "id": "i6",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 2,
+     "subsystem": "blinds.ch14",
+     "value": 100
+    },
+    {
+     "action": "set hdmi, put back afterwards",
+     "detail": "no adapter",
+     "id": "i7",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 2,
+     "subsystem": "tv.north-screen",
+     "value": "hdmi"
+    },
+    {
+     "action": "set hdmi, put back afterwards",
+     "detail": "no adapter",
+     "id": "i8",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 2,
+     "subsystem": "tv.south-screen",
+     "value": "hdmi"
+    },
+    {
+     "action": "set live:director",
+     "detail": "",
+     "id": "i9",
+     "kind": "set",
+     "status": "pending",
+     "step": 3,
+     "subsystem": "screens.north-screen",
+     "value": {
+      "live": {
+       "auto": true,
+       "direction": {
+        "energy": 0.9,
+        "moods": [
+         "euphoric",
+         "geometric"
+        ],
+        "transition_style": "lively"
+       },
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     }
+    },
+    {
+     "action": "set live:director",
+     "detail": "",
+     "id": "i10",
+     "kind": "set",
+     "status": "pending",
+     "step": 3,
+     "subsystem": "screens.south-screen",
+     "value": {
+      "live": {
+       "auto": true,
+       "direction": {
+        "energy": 0.9,
+        "moods": [
+         "euphoric",
+         "geometric"
+        ],
+        "transition_style": "lively"
+       },
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     }
+    },
+    {
+     "action": "set spinning",
+     "detail": "no adapter",
+     "id": "i11",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 4,
+     "subsystem": "mirror_ball.main",
+     "value": "spinning"
+    },
+    {
+     "action": "set 55%, put back afterwards",
+     "detail": "",
+     "id": "i12",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "stored": 100,
+     "subsystem": "brightness.screens",
+     "value": 55
+    },
+    {
+     "action": "set 35%, put back afterwards",
+     "detail": "",
+     "id": "i13",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "stored": 100,
+     "subsystem": "brightness.lamps",
+     "value": 35
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "",
+     "id": "i14",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "subsystem": "light.par-left",
+     "value": "dmx"
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "",
+     "id": "i15",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "subsystem": "light.par-right",
+     "value": "dmx"
+    },
+    {
+     "action": "set Mic listens, put back afterwards",
+     "detail": "",
+     "id": "i16",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "subsystem": "show.mic",
+     "value": true
+    },
+    {
+     "action": "set AI listens, put back afterwards",
+     "detail": "",
+     "id": "i17",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "subsystem": "show.ai",
+     "value": true
+    },
+    {
+     "action": "set high",
+     "detail": "no adapter",
+     "id": "i18",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 5,
+     "subsystem": "mirror_ball_motor.speed",
+     "value": "high"
+    },
+    {
+     "action": "set on, put back afterwards",
+     "detail": "no adapter",
+     "id": "i19",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 5,
+     "subsystem": "pinspots.main",
+     "value": "on"
+    },
+    {
+     "action": "set white, put back afterwards",
+     "detail": "no adapter",
+     "id": "i20",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 5,
+     "subsystem": "pinspots.colour",
+     "value": "white"
+    },
+    {
+     "action": "set 8, put back afterwards",
+     "detail": "no adapter",
+     "id": "i21",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 5,
+     "subsystem": "pinspots.level",
+     "value": 8
+    },
+    {
+     "action": "set off, put back afterwards",
+     "detail": "no adapter",
+     "id": "i22",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 5,
+     "subsystem": "pinspots.flash",
+     "value": "off"
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "no adapter",
+     "id": "i23",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 5,
+     "subsystem": "hue.ne",
+     "value": "dmx"
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "no adapter",
+     "id": "i24",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 5,
+     "subsystem": "hue.nw",
+     "value": "dmx"
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "no adapter",
+     "id": "i25",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 5,
+     "subsystem": "hue.se",
+     "value": "dmx"
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "no adapter",
+     "id": "i26",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 5,
+     "subsystem": "hue.sw",
+     "value": "dmx"
+    },
+    {
+     "action": "signal info",
+     "detail": "",
+     "id": "i27",
+     "kind": "signal",
+     "status": "pending",
+     "step": 6,
+     "subsystem": "log"
+    }
+   ],
+   "to": "disco",
+   "transition": 0,
+   "via": []
+  },
+  "status": 200
+ },
+ "gallery": {
+  "body": {
+   "draft": false,
+   "from": "gallery",
+   "notes": {},
+   "reapply": true,
+   "revision": "684fe3c3e56f",
+   "steps": [
+    {
+     "action": "set AI off",
+     "detail": "",
+     "id": "i0",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "show.ai",
+     "value": false
+    },
+    {
+     "action": "set stopped",
+     "detail": "no adapter",
+     "id": "i1",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 1,
+     "subsystem": "mirror_ball.main",
+     "value": "stopped"
+    }
+   ],
+   "to": "gallery",
+   "transition": 2,
+   "via": []
+  },
+  "status": 200
+ },
+ "lights-only": {
+  "body": {
+   "draft": false,
+   "from": "gallery",
+   "notes": {},
+   "reapply": false,
+   "revision": "684fe3c3e56f",
+   "steps": [
+    {
+     "action": "set suspended",
+     "detail": "",
+     "id": "i0",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "sensor_mask.main",
+     "value": "suspended"
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "",
+     "id": "i1",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "light.par-left",
+     "value": "dmx"
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "",
+     "id": "i2",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "light.par-right",
+     "value": "dmx"
+    },
+    {
+     "action": "set Mic listens, put back afterwards",
+     "detail": "",
+     "id": "i3",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "show.mic",
+     "value": true
+    },
+    {
+     "action": "set AI off",
+     "detail": "",
+     "id": "i4",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "show.ai",
+     "value": false
+    },
+    {
+     "action": "set stopped",
+     "detail": "no adapter",
+     "id": "i5",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 1,
+     "subsystem": "mirror_ball.main",
+     "value": "stopped"
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "no adapter",
+     "id": "i6",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 1,
+     "subsystem": "hue.ne",
+     "value": "dmx"
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "no adapter",
+     "id": "i7",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 1,
+     "subsystem": "hue.nw",
+     "value": "dmx"
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "no adapter",
+     "id": "i8",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 1,
+     "subsystem": "hue.se",
+     "value": "dmx"
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "no adapter",
+     "id": "i9",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 1,
+     "subsystem": "hue.sw",
+     "value": "dmx"
+    }
+   ],
+   "to": "lights-only",
+   "transition": 2,
+   "via": []
+  },
+  "status": 200
+ },
+ "live-test": {
+  "body": {
+   "draft": false,
+   "from": "gallery",
+   "notes": {},
+   "reapply": false,
+   "revision": "684fe3c3e56f",
+   "steps": [
+    {
+     "action": "set live:director",
+     "detail": "",
+     "id": "i0",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "screens.devtest",
+     "value": {
+      "live": {
+       "auto": true,
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     }
+    },
+    {
+     "action": "set false",
+     "detail": "",
+     "id": "i1",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "page.devtest.timed_reload",
+     "value": false
+    },
+    {
+     "action": "set Mic listens, put back afterwards",
+     "detail": "",
+     "id": "i2",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "show.mic",
+     "value": true
+    },
+    {
+     "action": "set AI listens, put back afterwards",
+     "detail": "",
+     "id": "i3",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "show.ai",
+     "value": true
+    },
+    {
+     "action": "set stopped",
+     "detail": "no adapter",
+     "id": "i4",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 1,
+     "subsystem": "mirror_ball.main",
+     "value": "stopped"
+    }
+   ],
+   "to": "live-test",
+   "transition": 2,
+   "via": []
+  },
+  "status": 200
+ },
+ "off": {
+  "body": {
+   "draft": false,
+   "from": "gallery",
+   "notes": {},
+   "reapply": false,
+   "revision": "684fe3c3e56f",
+   "steps": [
+    {
+     "action": "set AI off",
+     "detail": "",
+     "id": "i0",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "show.ai",
+     "value": false
+    },
+    {
+     "action": "set standby",
+     "detail": "no adapter",
+     "id": "i1",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 1,
+     "subsystem": "tv.north-screen",
+     "value": "standby"
+    },
+    {
+     "action": "set standby",
+     "detail": "no adapter",
+     "id": "i2",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 1,
+     "subsystem": "tv.south-screen",
+     "value": "standby"
+    },
+    {
+     "action": "set paused",
+     "detail": "no adapter",
+     "id": "i3",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 1,
+     "subsystem": "sonos.drawing-room.playback",
+     "value": "paused"
+    },
+    {
+     "action": "set stopped",
+     "detail": "no adapter",
+     "id": "i4",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 1,
+     "subsystem": "mirror_ball.main",
+     "value": "stopped"
+    }
+   ],
+   "to": "off",
+   "transition": 2,
+   "via": []
+  },
+  "status": 200
+ },
+ "party": {
+  "body": {
+   "draft": false,
+   "from": "gallery",
+   "notes": {},
+   "reapply": false,
+   "revision": "684fe3c3e56f",
+   "steps": [
+    {
+     "action": "set suspended",
+     "detail": "",
+     "id": "i0",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "sensor_mask.main",
+     "value": "suspended"
+    },
+    {
+     "action": "set false",
+     "detail": "",
+     "id": "i1",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "page.north-screen.timed_reload",
+     "value": false
+    },
+    {
+     "action": "set false",
+     "detail": "",
+     "id": "i2",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "page.south-screen.timed_reload",
+     "value": false
+    },
+    {
+     "action": "set false",
+     "detail": "",
+     "id": "i3",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "page.devtest.timed_reload",
+     "value": false
+    },
+    {
+     "action": "set 100, put back afterwards",
+     "detail": "no adapter",
+     "guarded": true,
+     "id": "i4",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 2,
+     "subsystem": "blinds.ch02",
+     "value": 100
+    },
+    {
+     "action": "set 100, put back afterwards",
+     "detail": "no adapter",
+     "guarded": true,
+     "id": "i5",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 2,
+     "subsystem": "blinds.ch03",
+     "value": 100
+    },
+    {
+     "action": "set 100, put back afterwards",
+     "detail": "no adapter",
+     "guarded": true,
+     "id": "i6",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 2,
+     "subsystem": "blinds.ch14",
+     "value": 100
+    },
+    {
+     "action": "set hdmi, put back afterwards",
+     "detail": "no adapter",
+     "id": "i7",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 2,
+     "subsystem": "tv.north-screen",
+     "value": "hdmi"
+    },
+    {
+     "action": "set hdmi, put back afterwards",
+     "detail": "no adapter",
+     "id": "i8",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 2,
+     "subsystem": "tv.south-screen",
+     "value": "hdmi"
+    },
+    {
+     "action": "set live:director",
+     "detail": "",
+     "id": "i9",
+     "kind": "set",
+     "status": "pending",
+     "step": 3,
+     "subsystem": "screens.north-screen",
+     "value": {
+      "live": {
+       "auto": true,
+       "direction": {
+        "energy": 0.8,
+        "moods": [
+         "euphoric",
+         "playful",
+         "bright"
+        ],
+        "transition_style": "wild"
+       },
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     }
+    },
+    {
+     "action": "set live:director",
+     "detail": "",
+     "id": "i10",
+     "kind": "set",
+     "status": "pending",
+     "step": 3,
+     "subsystem": "screens.south-screen",
+     "value": {
+      "live": {
+       "auto": true,
+       "direction": {
+        "energy": 0.8,
+        "moods": [
+         "euphoric",
+         "playful",
+         "bright"
+        ],
+        "transition_style": "wild"
+       },
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     }
+    },
+    {
+     "action": "set stopped",
+     "detail": "no adapter",
+     "id": "i11",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 4,
+     "subsystem": "mirror_ball.main",
+     "value": "stopped"
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "",
+     "id": "i12",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "subsystem": "light.par-left",
+     "value": "dmx"
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "",
+     "id": "i13",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "subsystem": "light.par-right",
+     "value": "dmx"
+    },
+    {
+     "action": "set Mic listens, put back afterwards",
+     "detail": "",
+     "id": "i14",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "subsystem": "show.mic",
+     "value": true
+    },
+    {
+     "action": "set AI listens, put back afterwards",
+     "detail": "",
+     "id": "i15",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "subsystem": "show.ai",
+     "value": true
+    },
+    {
+     "action": "set medium",
+     "detail": "no adapter",
+     "id": "i16",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 5,
+     "subsystem": "mirror_ball_motor.speed",
+     "value": "medium"
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "no adapter",
+     "id": "i17",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 5,
+     "subsystem": "hue.ne",
+     "value": "dmx"
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "no adapter",
+     "id": "i18",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 5,
+     "subsystem": "hue.nw",
+     "value": "dmx"
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "no adapter",
+     "id": "i19",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 5,
+     "subsystem": "hue.se",
+     "value": "dmx"
+    },
+    {
+     "action": "set dmx, put back afterwards",
+     "detail": "no adapter",
+     "id": "i20",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 5,
+     "subsystem": "hue.sw",
+     "value": "dmx"
+    },
+    {
+     "action": "signal info",
+     "detail": "",
+     "id": "i21",
+     "kind": "signal",
+     "status": "pending",
+     "step": 6,
+     "subsystem": "log"
+    }
+   ],
+   "to": "party",
+   "transition": 0,
+   "via": []
+  },
+  "status": 200
+ },
+ "piano": {
+  "body": {
+   "draft": false,
+   "from": "gallery",
+   "notes": {},
+   "reapply": false,
+   "revision": "684fe3c3e56f",
+   "steps": [
+    {
+     "action": "set suspended",
+     "detail": "",
+     "id": "i0",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "sensor_mask.main",
+     "value": "suspended"
+    },
+    {
+     "action": "set false",
+     "detail": "",
+     "id": "i1",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "page.north-screen.timed_reload",
+     "value": false
+    },
+    {
+     "action": "set false",
+     "detail": "",
+     "id": "i2",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "page.south-screen.timed_reload",
+     "value": false
+    },
+    {
+     "action": "set false",
+     "detail": "",
+     "id": "i3",
+     "kind": "set",
+     "status": "pending",
+     "step": 1,
+     "subsystem": "page.devtest.timed_reload",
+     "value": false
+    },
+    {
+     "action": "set hdmi, put back afterwards",
+     "detail": "no adapter",
+     "id": "i4",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 2,
+     "subsystem": "tv.north-screen",
+     "value": "hdmi"
+    },
+    {
+     "action": "set hdmi, put back afterwards",
+     "detail": "no adapter",
+     "id": "i5",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 2,
+     "subsystem": "tv.south-screen",
+     "value": "hdmi"
+    },
+    {
+     "action": "set live:#modes:piano",
+     "detail": "",
+     "id": "i6",
+     "kind": "set",
+     "status": "pending",
+     "step": 3,
+     "subsystem": "screens.north-screen",
+     "value": {
+      "live": {
+       "direction": {
+        "energy": 0.35,
+        "moods": [
+         "elegant",
+         "dreamy",
+         "calm"
+        ],
+        "transition_style": "gentle"
+       },
+       "scene_tags": [
+        "modes:piano"
+       ],
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     }
+    },
+    {
+     "action": "set live:#modes:piano",
+     "detail": "",
+     "id": "i7",
+     "kind": "set",
+     "status": "pending",
+     "step": 3,
+     "subsystem": "screens.south-screen",
+     "value": {
+      "live": {
+       "direction": {
+        "energy": 0.35,
+        "moods": [
+         "elegant",
+         "dreamy",
+         "calm"
+        ],
+        "transition_style": "gentle"
+       },
+       "scene_tags": [
+        "modes:piano"
+       ],
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     }
+    },
+    {
+     "action": "set Mic listens, put back afterwards",
+     "detail": "",
+     "id": "i8",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "subsystem": "show.mic",
+     "value": true
+    },
+    {
+     "action": "set AI listens, put back afterwards",
+     "detail": "",
+     "id": "i9",
+     "kind": "set",
+     "status": "pending",
+     "step": 5,
+     "subsystem": "show.ai",
+     "value": true
+    },
+    {
+     "action": "set 0, put back afterwards",
+     "detail": "no adapter",
+     "id": "i10",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 5,
+     "subsystem": "sonos.drawing-room.volume",
+     "value": 0
+    },
+    {
+     "action": "set paused, put back afterwards",
+     "detail": "no adapter",
+     "id": "i11",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 5,
+     "subsystem": "sonos.drawing-room.playback",
+     "value": "paused"
+    },
+    {
+     "action": "signal info",
+     "detail": "",
+     "id": "i12",
+     "kind": "signal",
+     "status": "pending",
+     "step": 6,
+     "subsystem": "log"
+    }
+   ],
+   "to": "piano",
+   "transition": 0,
+   "via": []
+  },
+  "status": 200
+ }
+}

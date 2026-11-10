@@ -265,6 +265,8 @@ class Session(EngineListener):
         self.runtime = SessionRuntime(self.sampler, speed=speed_for(self.direction["pace"]),
                                       depth=self.direction["intensity"], ease_s=direction_ease_s)
         self.runtime.feed = mgr.music_feed        # the room's sound and beat clock (music_feed.py)
+        self.show = True                          # in the show; SessionManager.create sets False for a screen of a
+                                                  # room with "show": false (no music feed, direction, events, hold)
         self.palette = palette
         self.palette_s = palette_s
         self.runtime.palette, self.runtime.palette_s = palette, palette_s
@@ -388,6 +390,10 @@ class Session(EngineListener):
         """The signals now, as the render thread would see them (bus + music features), for cue-mode mappings."""
         now = time.monotonic()
         sig = dict(self.sampler.peek(now))
+        if not getattr(self, "show", True):       # outside the show ("show": false): no room music, as the frames
+            self.runtime.pivots.apply(sig)
+            ensemble.apply_signals(sig, self._ens_lv)
+            return sig
         feed = self.mgr.music_feed
         c = feed.clock(now)
         wf = feed.liveness(now)
@@ -423,10 +429,19 @@ class Session(EngineListener):
         is sure (SessionManager.music_grid), else the lighting desk's pulse follower; None when not following."""
         if self.sampler.follow != "extrapolate":
             return None
-        r = self.mgr.room_direction_now(now)
+        r = self.mgr.room_direction_now(now, self)
         if r is not None and r["vibe"] is not None and r.get("beat_lock") is False:   # the vibe wants no beat lock
             return None
-        return self.mgr.music_grid(now) or self.sampler.beat_grid(now)
+        return self._music_grid(now) or self.sampler.beat_grid(now)
+
+    def _in_show(self) -> bool:
+        """This screen is in the show (SessionManager.in_show: False only for a room with "show": false)."""
+        fn = getattr(self.mgr, "in_show", None)
+        return True if fn is None else fn(self)
+
+    def _music_grid(self, now: float) -> Optional[tuple[float, float]]:
+        """show_service's beat clock (SessionManager.music_grid) while this screen is in the show, else None."""
+        return self.mgr.music_grid(now) if self._in_show() else None
 
     def _fx_clock(self, now: float) -> Optional[tuple[float, int]]:
         """(beat s, beats per bar) while the beat grid is sure (the FX director's phrases and beats), else None."""
@@ -464,7 +479,7 @@ class Session(EngineListener):
     def _next_downbeat(self, now: float, margin: float = BEAT_MARGIN_S) -> Optional[float]:
         """The photon time (monotonic s, acoustic) of the next downbeat that can still land on glass, from
         show_service's clock while it is sure (bars only come from there); None otherwise."""
-        if self._beat_grid(now) is None or self.mgr.music_grid(now) is None:
+        if self._beat_grid(now) is None or self._music_grid(now) is None:
             return None
         c = self.mgr.music_feed.clock(now)
         if c is None:
@@ -665,7 +680,7 @@ class Session(EngineListener):
 
     def _ens_now(self, now: float) -> Optional[dict]:
         """show_service's room.direction.ensemble while the direction is fresh, else None (unison)."""
-        e = (self.mgr.room_direction_now(now) or {}).get("ensemble")
+        e = (self.mgr.room_direction_now(now, self) or {}).get("ensemble")
         return e if isinstance(e, dict) else None
 
     def _cue_stagger(self, cue: dict, now: float, ref_photon: float) -> float:
@@ -1821,7 +1836,7 @@ class Session(EngineListener):
         # the mappings' music and piano signals (binding.py; piano.py reads the notes this session's view has seen)
         pn = self.piano.step(now, self.sound.view.tap() if self.sound is not None else None)
         cause = self.music.update(now, snap, fresh, (d.auto or AUTO_DEFAULTS).get("follow_dmx"), armed,
-                                  room=self.mgr.room_direction_now(now), feed=feed.fresh(now),
+                                  room=self.mgr.room_direction_now(now, self), feed=feed.fresh(now),
                                   piano=pn)   # the piano's own levels (before the room harmony fills its gaps)
         hm = feed.harmony(now)
         if hm is not None:                  # no piano playing: the room's harmony (show_service, from the audio)
@@ -1868,7 +1883,7 @@ class Session(EngineListener):
         if armed and self._auto_task is None and not self.inflight and self.pending is None:
             if self.prepared_pick is None and self._pick_task is None and d.prepare_due(now):
                 self._pick_task = asyncio.create_task(self._prepare_next())
-            held = self._dark is not None or self.mgr.room_hold(now)
+            held = self._dark is not None or self.mgr.room_hold(now, self)
             due, self._energy_due = (None if held else self._energy_due), None   # an Energy step: now (C5)
             if due is None:
                 due = None if self.music.settling(now) or held else d.due(now)   # a section change:
@@ -1909,7 +1924,10 @@ class Session(EngineListener):
             self.fx_director.configure((self.director.auto or {}).get("fx"),
                                        ensemble.direction(self.direction_effective, lv))
         out = {} if w is None else {"ensemble": w}
-        seg = ensemble.segment(ens, self.screen, self.mgr.live_screens(now))
+        # F3: the segment spans this session's own room (its live screens), never another room's TVs; a screen in
+        # no room is alone (no segment)
+        seg = ensemble.segment(ens, self.screen, self.mgr.room_live_screens(now, self.room) if self.room
+                               else frozenset({self.screen}))
         if seg is not None:
             out["segment"] = seg
         return out
@@ -1920,7 +1938,7 @@ class Session(EngineListener):
         fd.arm(armed, now)
         if not armed or not fd.due(now) or self._fx_task is not None or self.fx.lock.locked():
             return
-        if self.mgr.room_hold(now):                      # Keep this look: the effects stay too
+        if self.mgr.room_hold(now, self):                # Keep this look: the effects stay too
             fd.done(now, None)
             return
         if self.inflight or self.pending is not None:     # never during a scene transition
@@ -1975,7 +1993,7 @@ class Session(EngineListener):
                                      or kind != "track_change" or detail in ("disarmed", "sound_back")):
             self._track_event(kind, at_s, detail, data)
             return
-        if kind not in CUT_EVENTS or self.mgr.room_hold(time.monotonic()):
+        if kind not in CUT_EVENTS or self.mgr.room_hold(time.monotonic(), self):
             return
         if self.director.hint(f"{kind.replace('_', ' ')} (the room's music{': ' + detail if detail else ''})",
                               urgent=kind == "drop"):
@@ -2455,7 +2473,7 @@ class Session(EngineListener):
         sure = (clk or {}).get("gate") == "beat"
         if tb is not None and (sure or not sig["beat_locked"]):   # the mappings' tempo (a locked desk's stays shown)
             out["derived"].update(bpm=r3(tb), bpm_source="clock" if sure else "clock_tentative")
-        mg = self.mgr.music_grid(now)
+        mg = self._music_grid(now)
         out["cuts_on"] = None if self._beat_grid(now) is None else "show_service clock" if mg is not None \
             else "lighting desk pulse"
         out["clock"] = None if mg is None else {"bpm": round(60.0 / mg[1], 2)}
@@ -2723,6 +2741,7 @@ class SessionManager:
         self.public_base = public_base.rstrip("/") if public_base else None
         self.sessions: dict[str, Session] = {}
         self._screen_seen: dict[str, float] = {}     # screen -> last tick it had a session live here
+        self._screen_room: dict[str, Optional[str]] = {}   # screen -> the room of its last live session (F3)
         self.idempotency: dict[str, str] = {}
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self._gpu_cache: tuple[float, list[dict]] = (0.0, [])
@@ -3039,28 +3058,44 @@ class SessionManager:
         detail = str(data.get("detail") or "")[:80]
         self.room_events_ring.append((time.time(), kind, detail))
         for s in list(self.sessions.values()):
-            s.room_event(kind, at_s, detail, data)
+            if self.in_show(s):                      # a room with "show": false hears none of the show's events
+                s.room_event(kind, at_s, detail, data)
 
     def palette_picked(self, now: float) -> bool:
         """show_service's fresh room.look says a person picked the palette (contract C6)."""
         r = getattr(self, "room_look", None)
         return bool(r and r["picked"] and now - r["t"] <= ROOM_LOOK_STALE_S)
 
-    def room_hold(self, now: float) -> bool:
+    def room_hold(self, now: float, s: Any = None) -> bool:
         """A person holds the look (show_service's room.direction ``hold``: Keep this look, or their own pick still
         pending): neither director changes anything, scenes or effects (owner 17 Oct).  A person's own Next still
-        works."""
-        r = self.room_direction_now(now)
+        works.  ``s``: the asking session; never held for one outside the show."""
+        r = self.room_direction_now(now, s)
         return bool(r and r.get("hold"))
 
-    def room_direction_now(self, now: float) -> Optional[dict]:
+    def room_direction_now(self, now: float, s: Any = None) -> Optional[dict]:
         """The room director's direction while it is fresh, else None (show_service's features, then the desk's,
         propose).  With no vibe it still follows the music (show_service's director: band moods, energy, pace), so
-        it fills the slot then too (d4's G3, owner 17 Oct)."""
+        it fills the slot then too (d4's G3, owner 17 Oct).  ``s``: the asking session (or screen); None for one
+        outside the show (in_show)."""
         r = self.room_direction
         if r is None or now - r["t"] > ROOM_STALE_S:
             return None
+        if s is not None and not self.in_show(s):
+            return None
         return r
+
+    def in_show(self, s: Any) -> bool:
+        """A session (or a screen id) is in show_service's show: False only for a screen of a room with ``"show":
+        false`` in rooms.json (rooms.RoomMap.in_show, re-read when the file changes).  Outside the show a session
+        gets no room.direction, hold, room.event, ensemble, beat grid, gestures or music feed.  None: True."""
+        if s is None:
+            return True
+        screen = s if isinstance(s, str) else getattr(s, "screen", None)
+        rm = getattr(self, "rooms", None)
+        if not isinstance(screen, str) or rm is None:
+            return True
+        return rm.in_show(screen)
 
     def live_screens(self, now: float) -> frozenset:
         """Screens with a session entering or live here, or that had one within SEGMENT_HOLD_S (ensemble.segment
@@ -3072,6 +3107,19 @@ class SessionManager:
         for k in [k for k, t in seen.items() if now - t > SEGMENT_HOLD_S]:
             del seen[k]
         return frozenset(seen)
+
+    def room_live_screens(self, now: float, room: Optional[str]) -> frozenset:
+        """live_screens narrowed to one room: the screens whose last live session here was in ``room`` (F3: a
+        session's ensemble segment spans its own room only).  A screen keeps its room through live_screens' brief
+        hold, so a TV that just dropped out keeps its slot in its own room as before.  Empty for no room."""
+        live = self.live_screens(now)
+        if not room:
+            return frozenset()
+        rm = self.__dict__.setdefault("_screen_room", {})
+        for s in list(self.sessions.values()):
+            if not s.exited and s.state in LIVE_STATES:
+                rm[s.screen] = getattr(s, "room", None)
+        return frozenset(scr for scr in live if rm.get(scr) == room)
 
     CLOCK_FRESH_S = 1.5        # music.clock comes at 10 Hz and on every re-anchor
 
@@ -3310,6 +3358,8 @@ class SessionManager:
             s = Session(self, sid=sid, screen=p["screen"], gpu=p["gpu"], profile=p["profile"], scene=p["scene"],
                         t_in=p["t_in"], t_out=p["t_out"], ttl_s=p["ttl_s"], idempotency_key=key, **look)
             s.room = p["room"]
+            if not self.in_show(p["screen"]):       # a room with "show": false: no music feed (frames and cues)
+                s.show, s.runtime.feed = False, None
             s.hud_wanted = p["hud"]
             s.profile_asked = p.get("profile_asked")
             s.attach = self.attach_for(s, host)

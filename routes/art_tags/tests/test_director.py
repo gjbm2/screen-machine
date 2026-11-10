@@ -327,3 +327,31 @@ def test_prompt_wording_from_the_deployment(monkeypatch):
     words.clear()
     assert "will hang as art on a screen in a room while music plays" in director.prompt_system()
     assert "{" not in director.prompt_system()
+
+
+# -- rooms with their own modes (rooms.json "own_modes": true; room_service status "zones") ----------------------------
+def test_each_room_is_checked_by_its_own_mode(out, tmp_path, monkeypatch):
+    monkeypatch.setattr(director, "_manifest_section", lambda: {"modes": ["ambient"], "rooms": ["drawing-room", "lab"]})
+    monkeypatch.setattr(director, "_rooms_json", lambda: {"drawing-room": {"screens": ["north-screen", "south-screen"]},
+                                                          "lab": {"screens": ["devtest"], "own_modes": True}})
+    for s in ("north-screen", "south-screen", "devtest"):
+        make_bucket(out, s, [])
+
+    class ZoneFake(Fake):
+        def __init__(self, site, lab):
+            super().__init__(mode=site)
+            self.lab = lab
+
+        def get_json(self, url):
+            if url.endswith("/api/v1/status"):
+                return {"mode": {"current": self.mode}, "zones": [{"room": "lab", "mode": {"current": self.lab}}]}
+            return super().get_json(url)
+
+    screens = ("north-screen", "south-screen", "devtest")
+    e = make_director(ZoneFake("ambient", "gallery"), tmp_path, screens=screens)[0].pass_once(dry=True)
+    assert set(e["per_screen"]) == {"north-screen", "south-screen"}             # the Lab is not in Ambient
+    assert e["mode"] == "ambient" and e["room_modes"] == {"drawing-room": "ambient", "lab": "gallery"}
+    e = make_director(ZoneFake("gallery", "ambient"), tmp_path, screens=screens)[0].pass_once(dry=True)
+    assert set(e["per_screen"]) == {"devtest"} and e["screen"] == "devtest"   # only the Lab is
+    e = make_director(ZoneFake("gallery", "gallery"), tmp_path, screens=screens)[0].pass_once(dry=True)
+    assert e["action"] == "not-ambient" and e["room_modes"] == {"drawing-room": "gallery", "lab": "gallery"}

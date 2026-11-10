@@ -14,6 +14,11 @@ and its own GPU fit (render_scale, frame rate).  Manual cues (a Library push, a 
 Membership: a session with a room (the create body's ``room``, else its screen's room in the deployment's rooms.json)
 and an auto block, not exited.  One session per screen counts (the newest).
 
+Outside the show (deployments/README.md, "Rooms with their own modes"): the screens of a rooms.json room with
+``"show": false`` (``RoomMap.in_show``, read live) get none of show_service's room.direction, hold, room.event,
+ensemble, beat clock or gestures (SessionManager.in_show gates each), and a session made for one has no music feed.
+Its own room's leader, look and FX sync still work.
+
 The ensemble (docs/ENSEMBLE.md §8; owner, 22 Oct: "more of a conversation between room elements"): show_service's
 room.direction.ensemble gives each screen a part.  The leader still picks and still prepares its pick on every screen,
 but each screen then cuts at the room's moment + its own stagger (``stagger_s``): the leader passes its base photon
@@ -59,27 +64,46 @@ UNSTAGGERED = ("track", "next", "plugin_error")   # auto cue reasons that cut to
 
 
 class RoomMap:
-    """screen -> room, from rooms.json (re-read when it changes)."""
+    """screen -> room, and which screens are outside the show, from rooms.json (re-read when it changes)."""
 
     def __init__(self, path: Any = ROOMS_FILE):
         self.path = pathlib.Path(path)
         self._mtime: Optional[float] = None
         self._map: dict[str, str] = {}
+        self._out: frozenset = frozenset()       # the screens of rooms with "show": false
 
-    def room_of(self, screen: str) -> Optional[str]:
+    @property
+    def mtime(self) -> Optional[float]:
+        """The rooms.json mtime last read (after a room_of / in_show call); None before one."""
+        return self._mtime
+
+    def _load(self) -> None:
         try:
             m = self.path.stat().st_mtime
         except OSError:
-            return self._map.get(screen)
+            return
         if m != self._mtime:
             try:
                 data = json.loads(self.path.read_text())
-                self._map = {scr: rid for rid, r in data.items() if isinstance(r, dict) and ROOM_RE.match(rid)
+                rooms = {rid: r for rid, r in data.items() if isinstance(r, dict) and ROOM_RE.match(rid)}
+                self._map = {scr: rid for rid, r in rooms.items()
                              for scr in (r.get("screens") or []) if isinstance(scr, str)}
-            except (OSError, ValueError) as e:
+                self._out = frozenset(scr for r in rooms.values() if r.get("show") is False
+                                      for scr in (r.get("screens") or []) if isinstance(scr, str))
+            except (OSError, ValueError, AttributeError) as e:
                 log.warning("rooms: %s unreadable (%s): keeping the last map", self.path, e)
             self._mtime = m
+
+    def room_of(self, screen: str) -> Optional[str]:
+        self._load()
         return self._map.get(screen)
+
+    def in_show(self, screen: str) -> bool:
+        """False only for a screen of a room with ``"show": false`` (deployments/README.md, "Rooms with their own
+        modes"): it gets none of show_service's direction, events, hold, ensemble or music. A screen in no room, and
+        every screen while no room sets the key, is in the show."""
+        self._load()
+        return screen not in self._out
 
 
 def members(sessions: Any, room: Optional[str]) -> list:

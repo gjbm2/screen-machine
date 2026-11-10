@@ -1,0 +1,331 @@
+{
+ "age_s": 0.0,
+ "autopilot": null,
+ "autopilot_on": null,
+ "current": "gallery",
+ "error": null,
+ "last_transition": {
+  "from_": null,
+  "id": "t-<id>",
+  "reason": null,
+  "source": "boot",
+  "status": "partial",
+  "to": "gallery"
+ },
+ "last_transition_id": "t-<id>",
+ "members": {
+  "autopilot.main": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "blinds.ch02": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "blinds.ch03": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "blinds.ch04": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "blinds.ch05": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "blinds.ch06": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "blinds.ch07": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "blinds.ch08": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "blinds.ch09": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "blinds.ch10": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "blinds.ch11": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "blinds.ch12": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "blinds.ch13": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "blinds.ch14": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "brightness.lamps": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "brightness.screens": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "diag.devtest": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "diag.north-screen": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "diag.south-screen": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "hue.ne": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "hue.nw": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "hue.se": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "hue.sw": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "light.par-left": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "light.par-right": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "mirror_ball.main": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "mirror_ball_motor.direction": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "mirror_ball_motor.speed": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "page.devtest.timed_reload": {
+   "age_s": null,
+   "believed": true,
+   "confidence": "confirmed",
+   "sent_age_s": null
+  },
+  "page.north-screen.timed_reload": {
+   "age_s": null,
+   "believed": true,
+   "confidence": "confirmed",
+   "sent_age_s": null
+  },
+  "page.south-screen.timed_reload": {
+   "age_s": null,
+   "believed": true,
+   "confidence": "confirmed",
+   "sent_age_s": null
+  },
+  "pinspots.colour": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "pinspots.flash": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "pinspots.level": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "pinspots.main": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "plug.dmx_power": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "screens.devtest": {
+   "age_s": null,
+   "believed": "art",
+   "confidence": "confirmed",
+   "sent_age_s": null
+  },
+  "screens.north-screen": {
+   "age_s": null,
+   "believed": "art",
+   "confidence": "confirmed",
+   "sent_age_s": null
+  },
+  "screens.south-screen": {
+   "age_s": null,
+   "believed": "art",
+   "confidence": "confirmed",
+   "sent_age_s": null
+  },
+  "sensor_mask.main": {
+   "age_s": null,
+   "believed": "follow",
+   "confidence": "confirmed",
+   "sent_age_s": null
+  },
+  "show.ai": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "show.main": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "show.mic": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "sonos.drawing-room.now_playing": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "sonos.drawing-room.playback": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "sonos.drawing-room.volume": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "tv.north-screen": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  },
+  "tv.south-screen": {
+   "age_s": null,
+   "believed": null,
+   "confidence": "unknown",
+   "sent_age_s": null
+  }
+ },
+ "modes": {},
+ "order": [],
+ "reachable": true,
+ "revision": "684fe3c3e56f",
+ "screens": {
+  "devtest": {
+   "cutting": false,
+   "layer": "art",
+   "phase": "idle"
+  },
+  "north-screen": {
+   "cutting": false,
+   "layer": "art",
+   "phase": "idle"
+  },
+  "south-screen": {
+   "cutting": false,
+   "layer": "art",
+   "phase": "idle"
+  }
+ },
+ "since_age_s": null,
+ "stored_restore": {},
+ "target": null,
+ "transition": null
+}

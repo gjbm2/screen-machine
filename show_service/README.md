@@ -7938,7 +7938,12 @@ DirectionData `ensemble`, CardData look `together`), bus.py (`room.gesture` want
   lights.flow.mirror_ball is on. x from the Room map (space.lateral, only once the placed fixtures span
   `players.min_spread_m`), else the fixture's zone through `ensemble.players.zones` (the owner's words: south left,
   north right), else the screen it hangs at, else centre. A screen is on while it shows live (compose.enabled). The
-  room today: `lamps:left, screen.south, lamps:right, screen.north`, the ball centre.
+  room today: `lamps:left, screen.south, lamps:right, screen.north`, the ball centre. Multi-room (deployments/README.md,
+  "Rooms with their own modes"): a screen fixture whose screen is in another rooms.json room than the default room is
+  never a player (E9), nor is one of a room with `"show": false` (`exclude_screens`).
+- **Rooms outside the show**: RoomLink drops the screens of status `rooms[]` entries with `"show": false` from the
+  room view (so no palette PATCH, composition or live list), and `ctx.room_excluded()` gives them to the director,
+  which ignores a `screen.look` pick on them.
 - **Forms** (`ensemble.Catalogue`, interplays.yaml, hot-reloaded every RELOAD_S): checked and scored with the light
   scenes' own tags rule and score (x flow_fit) x `boost`; `needs` (sides, grid, piano) are hard. The draw (seed
   ENSEMBLE_SEED 2) happens at a look change (the dwell `pick.dwell_bars` holds it, a song change doesn't; the form

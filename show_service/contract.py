@@ -1369,6 +1369,8 @@ class BrainContext:
     rig: Optional[Callable[[], Optional["RigView"]]] = None           # outputs.Rig.view: the fixture registry (any thread)
     room_boot: Optional[Callable[[], Optional[str]]] = None           # autopilot.RoomLink: room status.service.started_at
                                                                        # (str), None until a status; changes per room boot
+    room_excluded: Optional[Callable[[], frozenset]] = None           # autopilot.RoomLink.excluded_screens: the screens of
+                                                                       # rooms with "show": false (outside the show)
     on_room_event: list[Callable[[str, dict], None]] = field(default_factory=list)   # RoomLink calls each with (type,
                                                                        # data) for every room WS event other than status
                                                                        # and mode.transition (screen.look, ...), on

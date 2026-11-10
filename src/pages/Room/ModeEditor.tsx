@@ -34,6 +34,7 @@ import { editable, inWords, jsonKey, ValueControl, type Schema } from "./SchemaC
 import type { SceneTagIndex } from "./sceneTags";
 import type { RawMode, RawRoomConfig, RoomDescribe, RoomStatus } from "./types";
 import type { NewLogEntry } from "./useRoomConnection";
+import { zoneOf } from "./zones";
 
 const NOT_ANSWERING = "The room isn't answering. Your changes are kept; tap Save to try again.";
 
@@ -66,7 +67,7 @@ type Base = { config: RawRoomConfig; revision: string };
 
 /** POST /api/v1/room/config/validate: a read-only check of a draft. Null when the room can't say. */
 async function checkConfig(api: RoomApi, config: RawRoomConfig, signal: AbortSignal): Promise<Check | null> {
-  const res = await fetch(`${api.baseUrl}/api/v1/room/config/validate`, {
+  const res = await fetch(api.validateConfigUrl(), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ config }),
@@ -169,8 +170,9 @@ function warningWords(ws: RoomProblem[] | undefined, describe: RoomDescribe | nu
 
 export function ModeEditor({
   name,
+  room = null,
   onClose,
-  api,
+  api: apiIn,
   describe,
   tagIndex,
   onSaved,
@@ -181,6 +183,9 @@ export function ModeEditor({
 }: {
   /** The mode being edited; null when closed. */
   name: string | null;
+  /** A mode zone (a room with its own modes): the mode is in that room's own modes file (api.forRoom), "the mode it is
+   *  in" is the zone's, and there is no "Starts by itself" (Auto switches the site's modes). null: the site's. */
+  room?: string | null;
   /** Display names that beat a target's raw label (the screens' names from status), by target. */
   names?: Record<string, string>;
   onClose: () => void;
@@ -197,6 +202,7 @@ export function ModeEditor({
   /** Open at this part: "starts" = "Starts by itself" (Auto's rules for this mode). */
   initialSection?: "starts" | null;
 }) {
+  const api = apiIn.forRoom(room);
   const [base, setBase] = useState<Base | null>(null);
   const [draft, setDraft] = useState<RawMode | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
@@ -302,7 +308,8 @@ export function ModeEditor({
   const status = statusIn === undefined ? read : statusIn;
   const modeLabel = draft?.label || describe?.modes[name]?.label || friendly(name);
   const labelOf = (m: string) => (m === name ? modeLabel : describe?.modes[m]?.label || friendly(m));
-  const current = !!status?.mode && (status.mode.target ? status.mode.target === name : status.mode.current === name);
+  const modeNow = room ? zoneOf(status, room)?.mode : status?.mode;
+  const current = !!modeNow && (modeNow.target ? modeNow.target === name : modeNow.current === name);
 
   const update = (fn: (d: RawMode) => void) =>
     setDraft((d) => {
@@ -573,7 +580,8 @@ export function ModeEditor({
                 words={(t, v) => inWords(describe.targets[t]?.schema as Schema | undefined, v)}
                 nowText={micNow ? { "show.mic": micNow } : undefined}
                 wholeMode={
-                  base && (
+                  base &&
+                  !room && (
                     <div ref={startsRef} className="scroll-mt-4">
                     <AutoTriggers
                       name={name}

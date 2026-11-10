@@ -210,3 +210,136 @@ def test_check_catches_a_screen_typo_in_modes(fake_deployments, monkeypatch):
     modes["modes"]["a"]["state"] = {"screens.vj": "art"}
     problems, _ = _alpha_problems(fake_deployments, monkeypatch, modes=modes)
     assert not any("room/modes.json" in p for p in problems), problems
+
+
+# -- rooms with their own modes ("own_modes") and rooms outside the show ("show": false) --------------------------------
+
+MODES_OK = {"default": "a", "modes": {"a": {"label": "A", "state": {"screens": "art"}}},
+            "transitions": [{"from": "*", "to": "*"}]}
+
+
+def _two_rooms(root, monkeypatch, back: dict, front: dict | None = None, files: dict | None = None,
+               dests: list | None = None):
+    """alpha with a front room (the default) and a back room, the room capability on and a valid modes.json."""
+    a = root / "alpha"
+    (a / "publish-destinations.json").write_text(json.dumps(dests or [
+        {"id": "fs", "live": {"enabled": True}}, {"id": "bs", "live": {"enabled": True}}, {"id": "cloud"}]))
+    (a / "rooms.json").write_text(json.dumps({"_comment": "x", "front": front or {"name": "Front", "screens": ["fs"]},
+                                              "back": {"name": "Back", **back}}))
+    m = a / "deployment.yaml"
+    m.write_text(m.read_text().replace("capabilities: {live: true", "capabilities: {room: true, live: true")
+                 + "default_room: front\n")
+    (a / "room").mkdir(exist_ok=True)
+    (a / "room" / "room.yaml").write_text("{}\n")
+    (a / "room" / "modes.json").write_text(json.dumps(MODES_OK))
+    (a / "services").mkdir(exist_ok=True)
+    (a / "services" / "sm-stream.env").write_text("")
+    for rel, doc in (files or {}).items():
+        (a / rel).write_text(doc if isinstance(doc, str) else json.dumps(doc))
+    smconfig._cache.clear()
+    monkeypatch.setenv("SM_DEPLOYMENT", "alpha")
+    return smconfig.deployment()
+
+
+def test_room_helpers(fake_deployments, monkeypatch):
+    dep = _two_rooms(fake_deployments, monkeypatch, {"screens": ["bs"], "own_modes": True, "show": False})
+    assert smconfig.own_mode_rooms(dep) == {"back": {"name": "Back", "screens": ["bs"], "show": False}}
+    assert smconfig.out_of_show_rooms(dep) == ["back"]
+    assert smconfig.show_screens(dep) == {"fs", "cloud"}
+    assert smconfig.room_of_screen(dep, "bs") == "back" and smconfig.room_of_screen(None, "fs") == "front"
+    assert smconfig.room_of_screen(dep, "cloud") is None
+    assert smconfig.room_modes_path(dep, "back") == fake_deployments / "alpha" / "room" / "modes.back.json"
+    with pytest.raises(ValueError):
+        smconfig.room_modes_path(dep, "../x")
+    dep = _two_rooms(fake_deployments, monkeypatch, {"screens": ["bs"], "own_modes": "yes"})
+    assert smconfig.own_mode_rooms(dep) == {} and smconfig.out_of_show_rooms(dep) == []
+    assert smconfig.show_screens(dep) is None                       # no room out of the show: every screen, as before
+
+
+@pytest.mark.parametrize("dep_id", smconfig.available())
+def test_shipped_deployments_set_neither_key(dep_id):
+    dep = smconfig.load(dep_id)
+    assert smconfig.own_mode_rooms(dep) == {} and smconfig.out_of_show_rooms(dep) == []
+    assert smconfig.show_screens(dep) is None
+    assert all("own_modes" not in r and "show" not in r for r in smcheck.dump(dep)["rooms"].values())
+
+
+def test_finsbury_gets_only_the_shared_modes_note():
+    _, notes = smcheck.check(smconfig.load("finsbury"))
+    assert [n for n in notes if "rooms.json" in n] == [
+        'rooms.json: drawing-room and lab share the site\'s modes; give one "own_modes": true to switch it alone']
+    for d in ("laptop", "example"):
+        assert not [n for n in smcheck.check(smconfig.load(d))[1] if "rooms.json" in n]
+
+
+def test_a_zone_with_its_modes_file_is_clean(fake_deployments, monkeypatch):
+    dep = _two_rooms(fake_deployments, monkeypatch, {"screens": ["bs"], "own_modes": True},
+                     files={"room/modes.back.json": MODES_OK})
+    problems, notes = smcheck.check(dep)
+    assert problems == [], problems
+    assert not any("share the site's modes" in n for n in notes)      # back switches alone now
+    assert "room/modes.back.json" in smcheck.known_files(dep)
+    assert smcheck.dump(dep)["rooms"]["back"]["own_modes"] is True
+    assert "own_modes" not in smcheck.dump(dep)["rooms"]["front"]
+    assert smcheck.dump(dep)["files"]["room/modes.back.json"]["exists"] is True
+
+
+def test_check_a_zone_without_its_modes_file(fake_deployments, monkeypatch):
+    problems, _ = smcheck.check(_two_rooms(fake_deployments, monkeypatch, {"screens": ["bs"], "own_modes": True}))
+    assert any(p.startswith("room/modes.back.json: missing") for p in problems), problems
+
+
+def test_check_a_zone_modes_file_room_service_would_refuse(fake_deployments, monkeypatch):
+    bad = {"default": "nope", "modes": {"a": {"label": "A", "state": {"screens.zz": "art"}}}}
+    problems, _ = smcheck.check(_two_rooms(fake_deployments, monkeypatch, {"screens": ["bs"], "own_modes": True},
+                                           files={"room/modes.back.json": bad}))
+    assert any(p.startswith("room/modes.back.json") for p in problems), problems
+    problems, _ = smcheck.check(_two_rooms(fake_deployments, monkeypatch, {"screens": ["bs"], "own_modes": True},
+                                           files={"room/modes.back.json": "{not json"}))
+    assert any(p.startswith("room/modes.back.json") for p in problems), problems
+
+
+@pytest.mark.parametrize("key", ["own_modes", "show"])
+def test_check_the_default_room_keeps_the_site(fake_deployments, monkeypatch, key):
+    front = {"name": "Front", "screens": ["fs"], key: key == "own_modes"}
+    problems, _ = smcheck.check(_two_rooms(fake_deployments, monkeypatch, {"screens": ["bs"]}, front=front,
+                                           files={"room/modes.front.json": MODES_OK}))
+    assert any("'front' is the default room" in p and key in p for p in problems), problems
+
+
+@pytest.mark.parametrize("back,front,shared", [
+    ({"screens": ["fs", "bs"]}, None, "fs"),
+    ({"screens": ["bs"], "blinds": ["ch02"]}, {"screens": ["fs"], "blinds": ["ch02"]}, "ch02"),
+    ({"screens": ["bs"], "lights": ["hue.ne"]}, {"screens": ["fs"], "lights": ["hue.ne"]}, "hue.ne"),
+    ({"screens": ["bs"], "effects": [{"power": "ball.main"}]}, {"screens": ["fs"], "effects": [{"power": "ball.main"}]},
+     "ball.main"),
+    ({"screens": ["bs"], "lights": ["light.par1"]}, {"screens": ["fs"], "lights": ["light"]}, "light.par1"),
+])
+def test_check_a_zone_shares_nothing_with_another_room(fake_deployments, monkeypatch, back, front, shared):
+    problems, _ = smcheck.check(_two_rooms(fake_deployments, monkeypatch, {**back, "own_modes": True}, front=front,
+                                           files={"room/modes.back.json": MODES_OK}))
+    assert any("'back' has its own modes but shares" in p and shared in p for p in problems), problems
+
+
+def test_check_a_zone_lists_no_whole_subsystem(fake_deployments, monkeypatch):
+    problems, _ = smcheck.check(_two_rooms(fake_deployments, monkeypatch,
+                                           {"screens": ["bs"], "lights": ["light"], "own_modes": True},
+                                           files={"room/modes.back.json": MODES_OK}))
+    assert any("lists the whole \"light\" subsystem" in p for p in problems), problems
+
+
+@pytest.mark.parametrize("key,value", [("own_modes", "yes"), ("show", 0), ("show", None)])
+def test_check_the_keys_are_booleans(fake_deployments, monkeypatch, key, value):
+    problems, _ = smcheck.check(_two_rooms(fake_deployments, monkeypatch, {"screens": ["bs"], key: value}))
+    assert any(f"'back': \"{key}\" must be true or false" in p for p in problems), problems
+
+
+def test_check_notes_rooms_sharing_modes_and_lights_outside_the_show(fake_deployments, monkeypatch):
+    _, notes = smcheck.check(_two_rooms(fake_deployments, monkeypatch, {"screens": ["bs"]}))
+    assert 'rooms.json: front and back share the site\'s modes; give one "own_modes": true to switch it alone' \
+        in notes
+    problems, notes = smcheck.check(_two_rooms(fake_deployments, monkeypatch,
+                                               {"screens": ["bs"], "show": False, "lights": ["hue.x"]}))
+    assert problems == [], problems
+    assert any("'back' is outside the show" in n and "still play the show's look" in n for n in notes), notes
+    assert smcheck.dump(smconfig.deployment())["rooms"]["back"]["show"] is False

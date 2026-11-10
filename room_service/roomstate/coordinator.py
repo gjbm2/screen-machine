@@ -122,10 +122,14 @@ class Plan:
 class Coordinator:
     def __init__(self, config: RoomConfig, adapters: Iterable[Adapter], state_path, now: Callable[[], float] = time.time,
                  on_event: Callable[[dict], None] | None = None, margin_s: float = 15.0, cleanup_s: float = 3.0,
-                 signal_timeout_s: float = 5.0) -> None:
+                 signal_timeout_s: float = 5.0, event_type: str = "mode.transition",
+                 event_extra: dict | None = None) -> None:
         """`adapters`: the working ones; placeholders come from the config. margin_s: how long past change_time_s an
-        apply, or past a mark's `until` a proof of arrival, may take; cleanup_s: an adapter's bound after a cancel."""
+        apply, or past a mark's `until` a proof of arrival, may take; cleanup_s: an adapter's bound after a cancel.
+        event_type and event_extra: a mode zone's switches are "room_mode.transition" with {"room": id} in their data
+        (room_service/zones.py), so nothing that follows the site's "mode.transition" mistakes them."""
         self.cfg = config
+        self.event_type, self.event_extra = event_type, dict(event_extra or {})
         self.adapters: dict[str, Adapter] = {**config.adapters, **{a.subsystem: a for a in adapters}}
         self.now = now
         self.on_event = on_event or (lambda e: None)
@@ -189,7 +193,7 @@ class Coordinator:
             head.update({k: tr.get(k) for k in ("from", "via", "to", "source", "resumes", "reapply", "reason", "skip")})
             if "rollback_of" in tr:
                 head["rollback_of"] = tr["rollback_of"]
-        self.on_event({"type": "mode.transition", "data": {**head, **data}})
+        self.on_event({"type": self.event_type, "data": {**head, **data, **self.event_extra}})
 
     def _log(self, op: str, cause: str, **data) -> None:
         entry = {"at": self.now(), "op": op, "cause": cause, **data}
@@ -1168,6 +1172,118 @@ class Coordinator:
             await self._request(self.cfg.default, "boot")
         if reconcile:
             self._start_reconcile_loops()
+
+    # mode zones (room_service/zones.py) --------------------------------------------------------------------------------
+    def prune_outside(self, owner_of: Callable[[str], str | None]) -> list[str]:
+        """Zone mode, before start(): drop the desired, drift, believed and stored entries of targets another zone now
+        owns (owner_of(t): that owner's name, else None), each logged with its new owner. So a site that had a room's
+        targets before the room got its own modes neither shows drift for them nor puts a stored value back there (a
+        put-back value for a moved target is lost once, at opt-in). Returns the targets dropped."""
+        gone: dict[str, str] = {}
+        for key in ("desired", "drift", "believed"):
+            for t in list(self.s[key]):
+                if (o := owner_of(t)) is not None:
+                    gone[t] = o
+                    del self.s[key][t]
+        for slot, entries in list(self.s["stored"].items()):
+            for t in list(entries):
+                if (o := owner_of(t)) is not None:
+                    gone[t] = o
+                    del entries[t]
+            if not entries:
+                del self.s["stored"][slot]
+        self.s["config_pending"] = [t for t in self.s["config_pending"] if t not in gone]
+        for t, o in sorted(gone.items()):
+            self._log("pruned", "zones", target=t, owner=o)
+        if gone:
+            self._save()
+        return sorted(gone)
+
+    def migrate_from(self, site: "Coordinator") -> str | None:
+        """Zone mode, before start(): a mode the site was in (or heading to) that is no longer the site's but is this
+        zone's (the room got its own modes while in it, e.g. Live test) becomes this zone's current mode, and the site
+        is relabelled to its default. Nothing is sent either way. Only into a zone that has never run (no state yet).
+        Returns the mode moved, or None. The caller checks that exactly one zone has it."""
+        sm = site.s["mode"]
+        name = next((n for n in (sm["target"], sm["current"]) if n and not site.cfg.is_concrete(n)), None)
+        if name is None or not self.cfg.is_concrete(name) or self.s["mode"]["current"] is not None:
+            return None
+        now = self.now()
+        self.s["mode"].update(current=name, target=None, via=[], entered=list(self.cfg.mode(name).family), leaving=[],
+                              since=now)
+        moved = self._take_aliased(site, name)
+        self._log("migrated", "zones", mode=name, detail="the room was in it when it got its own modes; nothing sent",
+                  **({"targets": [f"{s} -> {z}" for s, z in moved]} if moved else {}))
+        self._save()
+        keep = sm["target"] if sm["target"] and site.cfg.is_concrete(sm["target"]) else None   # the site's own switch
+        tr = site.s["transition"]
+        if keep is None and tr and tr.get("status") == "running":
+            tr["status"] = tr["phase"] = "cancelled"
+            tr["detail"] = f"{name} moved to {self.event_extra.get('room') or 'a room'}'s own modes"
+        sm.update(current=site.cfg.default, target=keep, via=[v for v in sm["via"] if site.cfg.is_concrete(v)],
+                  entered=list(site.cfg.mode(site.cfg.default).family), leaving=[], since=now)
+        site._log("migrated", "zones", mode=name, now=site.cfg.default,
+                  detail=f"{name} is {self.event_extra.get('room') or 'a room'}'s now; nothing sent")
+        site._save()
+        return name
+
+    @staticmethod
+    def _alias_source(t: str, room: str) -> str | None:
+        """The site target a room zone's own member stands for (RoomConfig._alias reversed): sub.<room> -> sub.main,
+        sub.<room>.<rest> -> sub.<rest> (show.lab.mic -> show.mic); None for any other target."""
+        sub, _, rest = t.partition(".")
+        if rest == room:
+            return f"{sub}.main"
+        if rest.startswith(room + "."):
+            return f"{sub}.{rest[len(room) + 1:]}"
+        return None
+
+    def _take_aliased(self, site: "Coordinator", name: str) -> list[tuple[str, str]]:
+        """migrate_from's part for the moved mode's aliased rows (show.mic -> show.<room>.mic, show.ai,
+        brightness.screens, sensor_mask.main): what the site held for them because of that mode becomes this zone's.
+        - This zone gets the site's desired value and the site's stored put-back (the slot this zone's row stores
+          into), under its own member, so the room's next mode puts it back.
+        - The site keeps no desired value from the moved mode: its default's own value if the default sets the
+          target, else none.
+        - An adapter that keeps per-zone claims (ShowAdapter.move_claim: the mic and AI listening are ORed) is told
+          now: the room's claim is the moved value, the site's is its default's value, else its put-back value
+          (which it has then used), else off. Without that hook the site's put-back stays for its own next switch.
+        Nothing is sent. Returns [(site target, zone target)] moved."""
+        room = self.event_extra.get("room")
+        if not room:
+            return []
+        default = site.cfg.modes.get(site.cfg.default)
+        site_targets = set(site.cfg.targets)
+        moved: list[tuple[str, str]] = []
+        for tz, e in self.cfg.mode(name).state.items():
+            ts = self._alias_source(tz, room)
+            if ts is None or ts not in site_targets or tz in site_targets:
+                continue
+            slots = [e.store] if e.store else []
+            d = site.s["desired"].pop(ts, None)
+            site.s["drift"].pop(ts, None)
+            if d is not None:
+                self.s["desired"][tz] = json.loads(json.dumps(d, default=str))
+            for slot in slots:
+                have = site.s["stored"].get(slot, {}).get(ts)
+                if have is not None:
+                    self.s["stored"].setdefault(slot, {})[tz] = dict(have)
+            de = default.state.get(ts) if default is not None else None
+            site_val = de.set if de is not None and de.sets else None
+            if site_val is not None:
+                site.s["desired"][ts] = {"value": site_val, "policy": de.policy, "slot": None, "settled": False,
+                                         "retry": {"attempts": 0, "next_at": site.now(), "explained": [],
+                                                   "final": False}, "reasserted": False}
+            back = next((h for s in slots if (h := site.s["stored"].get(s, {}).get(ts)) is not None), None)
+            want = d["value"] if d is not None else (e.set if e.sets else None)
+            hook = getattr(self._adapter(tz), "move_claim", None)
+            if callable(hook) and want is not None:
+                claim = site_val if site_val is not None else (back or {}).get("value", False)
+                if hook(ts.partition(".")[2], tz.partition(".")[2], want, claim):
+                    for slot in slots:                 # the site's claim is its put-back value now: used
+                        site._unstore(slot, ts)
+            moved.append((ts, tz))
+        return moved
 
     async def stop(self) -> None:
         """Service shutdown: stop the reconcile loops, the transition and any hand set. The state file keeps an

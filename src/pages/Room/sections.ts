@@ -18,6 +18,10 @@ export interface Section {
   lights: string[] | null;
   /** Device cards (rooms.json "effects"), e.g. the glitterball. */
   effects: SiteEffect[];
+  /** rooms.json "own_modes": the room is a mode zone (its own mode strip above its screens). Only when set. */
+  ownModes?: true;
+  /** rooms.json "show": false: the room's screens are outside the show. Only when set. */
+  show?: false;
 }
 
 /** An art-only screen a room lists (GET /api/deployment `screens` with art_only). */
@@ -61,6 +65,8 @@ export function buildSections(status: RoomStatus | null, lampIds: string[] | nul
       artScreens: art,
       lights: lights.length ? lights : null,
       effects: (r.effects ?? []).filter((e) => !!status?.subsystems?.[e.power.split(".")[0]]),
+      ...(r.own_modes === true ? { ownModes: true as const } : {}),
+      ...(r.show === false ? { show: false as const } : {}),
     };
   });
   const otherScreens = Object.keys(screens).filter((id) => !placed.has(id));

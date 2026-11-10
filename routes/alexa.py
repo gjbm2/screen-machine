@@ -393,7 +393,8 @@ def process(data):
             room_facts = room_client.room_facts()
             # Only voice names reach the AI (owner 18 Oct): short, distinct, set per mode in modes.json / per scene in
             # config/live/voice_names.yaml; a mode or scene without one isn't reachable by voice.
-            subs["ROOM_MODES"] = ", ".join(room_client.voice_modes()) or "(no mode has a voice name)"
+            # (with rooms that have their own modes, theirs too: set_mode routes a name to the room that has it)
+            subs["ROOM_MODES"] = ", ".join(room_client.voice_names()) or "(no mode has a voice name)"
             subs["ROOM_SCENES"] = ", ".join(room_client.voice_scenes()) or "(none)"
             subs["ROOM_MODE_CURRENT"] = room_modes.get(room_facts.get("mode"), room_facts.get("mode") or "unknown")
             subs["ROOM_AUTO"] = {True: "on", False: "off"}.get(room_facts.get("auto"), "unknown")
@@ -809,7 +810,14 @@ def process(data):
             # The room: mode, Auto, the live scene, the live effects (room_service decides; it may refuse)
             case "set_mode":
                 want = (result.get("data") or {}).get("mode") or ""
-                ok, detail = room_client.set_mode(want, source="voice", reason=f"Alexa: {utterance}")
+                # the asker's room first if it has its own modes, then the site, then the one room that has the name
+                # (no such rooms, every deployment until one opts in: the site, exactly as before)
+                zone = None
+                if room_client.zones():
+                    key, zone = room_client.resolve_voice_mode(want, alexa_room_screens(closest_screen, subs))
+                    want = key or want
+                ok, detail = room_client.set_mode(want, source="voice", reason=f"Alexa: {utterance}",
+                                                  **({"room": zone} if zone else {}))
                 if not ok:
                     response_ssml = Brianize(f"The room didn't change mode. {detail}.")
             case "set_auto":

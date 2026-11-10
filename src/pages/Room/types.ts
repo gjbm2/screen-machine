@@ -323,6 +323,24 @@ export interface SiteRoom {
   sensors: string[];
   /** Absent from an older room_service. */
   effects?: SiteEffect[];
+  /** rooms.json "own_modes": true: the room is a mode zone, with its own modes file (status.zones has its mode).
+   *  Present only when set. */
+  own_modes?: boolean;
+  /** rooms.json "show": false: the room's screens are outside the show (no palette, direction, music feed). Present
+   *  only when false. */
+  show?: boolean;
+}
+
+/** One mode zone (status.zones[]): a room with its own modes, its own mode and its own modes file's revision. */
+export interface ZoneStatus {
+  room: string;
+  name: string;
+  screens: string[];
+  /** false: the room is outside the show. */
+  show?: boolean;
+  mode: ModeStatus & { via?: string | null; since_age_s?: number | null };
+  config?: { revision?: string; error?: string | null; warnings?: unknown[] };
+  stored?: unknown;
 }
 
 export interface RoomStatus {
@@ -334,6 +352,9 @@ export interface RoomStatus {
   rooms?: SiteRoom[];
   stream_service?: { reachable?: boolean; url?: string };
   subsystems?: Record<string, SubsystemStatus>;
+  /** The mode zones (rooms with "own_modes"); absent on a deployment without any (every room shares the site's mode,
+   *  status.mode). The site's mode, config and stored stay at the top level either way. */
+  zones?: ZoneStatus[];
 }
 
 /** GET /api/v1/room/describe, the parts the page reads: every target's label and value schema (from the device
@@ -402,6 +423,8 @@ export interface MemberStatus {
   confidence?: string;
   desired?: unknown;
   inflight?: { value: unknown; until_s: number } | null;
+  /** The mode zone that owns this member (a room with its own modes); absent for the site's. */
+  room?: string;
 }
 
 export interface SubsystemStatus {
@@ -424,11 +447,14 @@ export interface ModeDef {
 // ── §3 events ──────────────────────────────────────────────────────────────
 
 export interface RoomEvent {
-  type: "status" | "mode.transition" | "screen.phase" | "screen.mask" | "stream" | "log" | string;
+  /** "room_mode.transition": a mode zone's switch (data.room names it); "mode.transition" is always the site's. */
+  type: "status" | "mode.transition" | "room_mode.transition" | "screen.phase" | "screen.mask" | "stream" | "log" | string;
   data?: unknown;
 }
 
 export interface ModeTransitionEventData {
+  /** On "room_mode.transition" only: the zone's room. */
+  room?: string;
   id?: string;
   phase?: "started" | "step" | "done" | "cancelled" | string;
   /** null on started/done/cancelled (room_service). */

@@ -82,7 +82,12 @@ def _save(path: Path, data: dict) -> None:
 
 class SensorMaskAdapter(Adapter):
     """sensor_mask.main: "follow" | "suspended". Room-wide, through the mask's set_suspended(). The file keeps the
-    held value per screen too, so after a restart while suspended the TV pages' welcome carries what they showed."""
+    held value per screen too, so after a restart while suspended the TV pages' welcome carries what they showed.
+
+    With mode zones (zones={room: [screens]}, room_service/zones.py) there is one member per zone too:
+    sensor_mask.<room> holds only that room's screens, and "main" the screens in no zone. The file is then
+    {"scopes": {"main": bool, <room>: bool}, "held"}; an old {"suspended", "held"} file loads as main. Without zones
+    every byte is as before."""
 
     subsystem = "sensor_mask"
     subsystem_label = "Art brightness"
@@ -93,22 +98,44 @@ class SensorMaskAdapter(Adapter):
     VALUES = ("follow", "suspended")
 
     def __init__(self, mask: Any, state_dir: str | Path, sensed: bool | None = None,
-                 pushed: bool | None = None) -> None:
+                 pushed: bool | None = None, zones: dict[str, list[str]] | None = None) -> None:
         """sensed: whether a light sensor drives any of this site's live screens (screens_follow_a_sensor; False:
         the mask follows the time of day, and "follow" says so). pushed: whether any screen takes a pushed mask
-        (mask_push); False: the setting is said to change nothing here."""
+        (mask_push); False: the setting is said to change nothing here. zones: {room: [screens]} of the mode zones."""
         self.mask = mask
         self.path = Path(state_dir) / "sensor_mask.json"
         self.sensed, self.pushed = sensed, pushed
+        self.zones = {r: list(ss) for r, ss in (zones or {}).items()}
+        if self.zones:
+            self.members = ["main", *self.zones]
+            if hasattr(mask, "zone_of"):
+                mask.zone_of = {sid: r for r, ss in self.zones.items() for sid in ss}
+
+    def _set(self, member: str, suspended: bool) -> None:
+        if member == "main":
+            self.mask.set_suspended(suspended)
+        else:
+            self.mask.set_suspended(suspended, scope=member)
+
+    def _is_suspended(self, member: str) -> bool:
+        if member == "main":
+            return bool(self.mask.suspended)
+        return member in (getattr(self.mask, "suspended_scopes", None) or ())
 
     def restore(self) -> None:
         saved = _load(self.path)
-        suspended = saved.get("suspended")
-        if not isinstance(suspended, bool):
-            return
-        if suspended:
+        scopes = saved.get("scopes") if self.zones else None
+        if isinstance(scopes, dict):
+            scopes = {m: v for m, v in scopes.items() if m in self.members and isinstance(v, bool)}
+        else:
+            suspended = saved.get("suspended")
+            if not isinstance(suspended, bool):
+                return
+            scopes = {"main": suspended}
+        if any(scopes.values()):
             self._seed(saved.get("held"))
-        self.mask.set_suspended(suspended)
+        for m, v in scopes.items():
+            self._set(m, v)
 
     def _seed(self, held: Any) -> None:
         """LM-1: put the held values back as what the pages show, for screens still configured with mask_push."""
@@ -138,17 +165,28 @@ class SensorMaskAdapter(Adapter):
             raise ValueError(f"{value!r} is not one of {list(self.VALUES)}")
         return value
 
+    def label(self, member: str) -> str:
+        return f"Art brightness ({member})" if member in self.zones else member
+
     async def read(self, members: list[str]) -> dict[str, Reading]:
-        return {"main": Reading("suspended" if self.mask.suspended else "follow")}
+        if not self.zones:
+            return {"main": Reading("suspended" if self.mask.suspended else "follow")}
+        return {m: Reading("suspended" if self._is_suspended(m) else "follow") for m in members if m in self.members}
 
     async def apply(self, desired: dict[str, Any], opts: dict | None = None) -> Outcome:
-        suspended = desired["main"] == "suspended"
-        self.mask.set_suspended(suspended)
         pushed = getattr(self.mask, "pushed", None) or {}
         src = getattr(self.mask, "pushed_source", None) or {}
-        _save(self.path, {"suspended": suspended,
-                          "held": {sid: {**v.as_dict(), "source": src.get(sid)} for sid, v in pushed.items()}})
-        return Outcome("ok", "", {"main": Outcome("ok")})
+        held = {sid: {**v.as_dict(), "source": src.get(sid)} for sid, v in pushed.items()}
+        if not self.zones:
+            suspended = desired["main"] == "suspended"
+            self.mask.set_suspended(suspended)
+            _save(self.path, {"suspended": suspended, "held": held})
+            return Outcome("ok", "", {"main": Outcome("ok")})
+        ms = [m for m in desired if m in self.members]
+        for m in ms:                         # one read-modify-write, no wait inside: zones never interleave here
+            self._set(m, desired[m] == "suspended")
+        _save(self.path, {"scopes": {m: self._is_suspended(m) for m in self.members}, "held": held})
+        return Outcome("ok", "", {m: Outcome("ok") for m in ms})
 
 
 class PageAdapter(Adapter):
@@ -330,20 +368,25 @@ class BrightnessAdapter(Adapter):
     LABELS = {"screens": "Screens (live)", "lamps": "Lamps (following the music)"}
 
     def __init__(self, controllers: dict[str, "ScreenController"], hue_output: Any, state_dir: str | Path,
-                 rig: Any = None) -> None:
+                 rig: Any = None, zones: dict[str, list[str]] | None = None) -> None:
         """rig: show_service's lights (adapters.lights.LightsAdapter: its url and members), or None (no show_service
-        lights here: the show capability off, or tests)."""
+        lights here: the show capability off, or tests). zones: {room: [screens]} of the mode zones
+        (room_service/zones.py): each gets brightness.<room>.screens, which dims only its own live screens, and
+        brightness.screens then dims the screens in no zone. lamps stay site-wide (one Hue stream)."""
         self.c = controllers
         self.hue = hue_output
         self.rig = rig
         self.path = Path(state_dir) / "brightness.json"
-        self.values = {m: 100 for m in self.ALL}
+        self.zones = {r: [sid for sid in ss] for r, ss in (zones or {}).items()}
+        self.zone_of = {sid: r for r, ss in self.zones.items() for sid in ss}
+        self.all = (*self.ALL, *(f"{r}.screens" for r in self.zones))
+        self.values = {m: 100 for m in self.all}
         self._nudge: asyncio.Event | None = None
         self._said: str | None = None
 
     @property
     def members(self) -> list[str]:          # type: ignore[override]  # lamps only while there are lamps
-        return ["screens", *(["lamps"] if self.has_lamps() else [])]
+        return ["screens", *(["lamps"] if self.has_lamps() else []), *(f"{r}.screens" for r in self.zones)]
 
     def rig_lights(self) -> bool:
         return self.rig is not None and bool(getattr(self.rig, "members", None))
@@ -356,14 +399,14 @@ class BrightnessAdapter(Adapter):
 
     def restore(self) -> None:
         saved = _load(self.path)
-        for m in self.ALL:
+        for m in self.all:
             v = saved.get(m)
             if isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 100:
                 self.values[m] = v
-        self._push([m for m in self.ALL if self.values[m] != 100])
+        self._push([m for m in self.all if self.values[m] != 100])
 
     def label(self, member: str) -> str:
-        return self.LABELS.get(member, member)
+        return self.LABELS.get(member.rsplit(".", 1)[-1] if member.endswith(".screens") else member, member)
 
     def value_schema(self, member: str) -> dict:
         return range_schema(0, 100, self.label(member), "%", step=5, default=100, ends=("Dark", "Full"))
@@ -381,8 +424,14 @@ class BrightnessAdapter(Adapter):
 
     def _push(self, members: list[str]) -> None:
         if "screens" in members:
-            for c in self.c.values():
-                c.set_level(self.values["screens"] / 100.0)
+            for sid, c in self.c.items():
+                if sid not in self.zone_of:      # no zones: every screen
+                    c.set_level(self.values["screens"] / 100.0)
+        for r, ss in self.zones.items():
+            if f"{r}.screens" in members:
+                for sid in ss:
+                    if sid in self.c:
+                        self.c[sid].set_level(self.values[f"{r}.screens"] / 100.0)
         if "lamps" in members and self.hue is not None:
             self.hue.level = self.values["lamps"] / 100.0
         if "lamps" in members and self._nudge is not None:

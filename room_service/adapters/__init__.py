@@ -31,7 +31,8 @@ def build_adapters(controllers: dict, mask: Any, log_sink: Callable[[str, str], 
                    sonos: Adapter | bool | None = None, autopilot: Adapter | None = None,
                    show: Adapter | bool | None = None, lights: Adapter | bool | None = None,
                    show_url: str | None = None, modes_file: str | Path | None = None,
-                   known_screens: dict[str, str] | None = None, sensed: bool | None = None) -> list[Adapter]:
+                   known_screens: dict[str, str] | None = None, sensed: bool | None = None,
+                   zones: dict[str, dict] | None = None) -> list[Adapter]:
     """Every subsystem the room config can name. `blinds` defaults to the hub blinds from the deployment's
     room/rf/blinds.json (dry_run until writes are enabled there), or a placeholder with blinds_enabled=False, the
     deployment's blinds capability off, or no blinds.json; pass one in for tests.
@@ -53,7 +54,10 @@ def build_adapters(controllers: dict, mask: Any, log_sink: Callable[[str, str], 
     lights too (through show_service's rig level) besides the Hue stream.
     `known_screens`: every screen the site has ({id: name}, config.known_screens), so screens/page/diag name an
     art-only screen as nothing rather than failing (Adapter.absent). `sensed`: whether a light sensor drives a live
-    screen here (adapters.room.screens_follow_a_sensor; None: unknown), for sensor_mask's words."""
+    screen here (adapters.room.screens_follow_a_sensor; None: unknown), for sensor_mask's words.
+    `zones`: the rooms with their own modes ({room: {"screens", "show"}}, room_service/zones.py): the zone-only members
+    sensor_mask.<room>, brightness.<room>.screens and, for a room in the show, show.<room>.mic / .ai. None or {}: none,
+    every adapter exactly as without zones."""
     from . import blinds as blinds_mod
     from . import broadlink_rf
     from . import sonos as sonos_mod
@@ -77,11 +81,14 @@ def build_adapters(controllers: dict, mask: Any, log_sink: Callable[[str, str], 
     elif lights is False:
         lights = Placeholder("light", [])
     pushed = [bool(getattr(getattr(c, "cfg", None), "mask_push", False)) for c in controllers.values()]
-    mask_adapter = SensorMaskAdapter(mask, state_dir, sensed=sensed, pushed=any(pushed) if pushed else None)
+    zones = zones or {}
+    zone_screens = {r: list(z.get("screens") or []) for r, z in zones.items()}
+    zone_kw = {"zones": zone_screens} if zones else {}
+    mask_adapter = SensorMaskAdapter(mask, state_dir, sensed=sensed, pushed=any(pushed) if pushed else None, **zone_kw)
     page_adapter = PageAdapter(controllers, state_dir, policy_ack_s, known=known_screens)
     diag_adapter = DiagAdapter(controllers, state_dir, known=known_screens)
     brightness = BrightnessAdapter(controllers, getattr(hue, "output", None), state_dir,   # hue: the room's stream
-                                   rig=lights if isinstance(lights, LightsAdapter) else None)
+                                   rig=lights if isinstance(lights, LightsAdapter) else None, **zone_kw)
     mask_adapter.restore()
     page_adapter.restore()
     diag_adapter.restore()
@@ -96,7 +103,9 @@ def build_adapters(controllers: dict, mask: Any, log_sink: Callable[[str, str], 
     extra = [*remotes, *([sonos] if isinstance(sonos, Adapter) else [])]
     taken = {a.subsystem for a in extra}
     if show is None or show is True:
-        show = ShowAdapter(url=show_url, cache_file=Path(state_dir) / "show_catalog.json")
+        in_show = [r for r, z in zones.items() if z.get("show", True)]
+        show = ShowAdapter(url=show_url, cache_file=Path(state_dir) / "show_catalog.json",
+                           **({"zones": in_show, "claims_file": Path(state_dir) / "show_claims.json"} if in_show else {}))
     elif show is False:
         show = Placeholder("show", ["main"])
     return [ScreensAdapter(controllers, known_screens), page_adapter, diag_adapter, mask_adapter, brightness, LogAdapter(log_sink),

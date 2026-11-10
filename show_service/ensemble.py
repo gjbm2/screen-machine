@@ -64,7 +64,7 @@ import pathlib
 import random
 import string
 from dataclasses import dataclass, replace
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Collection, Mapping, Optional, Sequence
 
 from . import contract
 from . import light_scenes as lscenes
@@ -711,16 +711,21 @@ def _fixture_x(rig: Mapping, fids: Sequence[str], pc: Mapping, space_mod: Any, v
 
 def players(rig: Any, groups: Any, *, cfg: Mapping, space_mod: Any = None, view: Any = None,
             live_screens: Optional[Sequence[str]] = None, devices: Sequence[Mapping] = (),
-            screen_order: Optional[Sequence[str]] = None) -> list[contract.PlayerInfo]:
+            screen_order: Optional[Sequence[str]] = None,
+            exclude_screens: Optional[Collection[str]] = None) -> list[contract.PlayerInfo]:
     """Every player of the room (§2.1): each screen fixture, each light group's members per side, each device
     (``{"id": <room subsystem>, "label"?, "at"?: [x, y, z]}``). Pure; ``cfg`` is the resolved ensemble settings (or its
     ``players`` block). ``live_screens``: the renderer screen names showing live (None: every screen is on).
-    ``screen_order``: the room's screens in rooms.json order, which places screens nothing else places."""
+    ``screen_order``: the room's screens in rooms.json order, which places screens nothing else places.
+    ``exclude_screens``: renderer screen names whose screen fixtures are never players (another room's screens, E9,
+    and those of rooms outside the show); a fixture with no ``screen`` stays."""
     pc = cfg.get("players", cfg) if isinstance(cfg, Mapping) else {}
     rig = rig if isinstance(rig, Mapping) else {}
     fx = rig.get("fixtures") if isinstance(rig.get("fixtures"), Mapping) else {}
     groups = groups if isinstance(groups, Mapping) else {}
-    screen_ids = [fid for fid, f in fx.items() if isinstance(f, Mapping) and _kind(rig, f) == "screen"]
+    excl = frozenset(exclude_screens or ())
+    screen_ids = [fid for fid, f in fx.items() if isinstance(f, Mapping) and _kind(rig, f) == "screen"
+                  and not (excl and isinstance(f.get("screen"), str) and f["screen"] in excl)]
     lamp_ids: list[str] = []
     for g in groups.values():
         lamp_ids += [m for m in (g.get("members") or []) if m not in lamp_ids]

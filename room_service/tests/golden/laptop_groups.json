@@ -1,0 +1,15 @@
+{
+ "studio:diag": [
+  "diag.vj"
+ ],
+ "studio:light": [
+  "light.par-left",
+  "light.par-right"
+ ],
+ "studio:page": [
+  "page.vj.timed_reload"
+ ],
+ "studio:screens": [
+  "screens.vj"
+ ]
+}

@@ -747,6 +747,7 @@ class EngineProxy:
             c.call("bind", {"sid": self.name, "profile": self.profile, "screen": s.screen, "encoder": self.encoder,
                             "fixture": sp.fixture_name, "lead": sp.lead, "follow": sp.follow,
                             "sound": s.sound is not None, "hud": bool(getattr(s, "hud_wanted", False)),
+                            "feed": bool(getattr(s, "show", True)),   # False outside the show ("show": false)
                             "rt": {"speed": rt.speed, "depth": rt.depth, "speed_target": rt.speed_target,
                                    "depth_target": rt.depth_target, "ease_s": rt.ease_s, "palette": rt.palette,
                                    "palette_s": rt.palette_s, "level": rt.level, "level_target": rt.level_target,

@@ -21,6 +21,11 @@
 // recording starting anywhere opens Piano. Fold order never changes. Everything technical sits behind the menu
 // button or a screen's "More".
 //
+// Mode zones (a room with "own_modes" in rooms.json; status.zones): the modes get a caption naming the rooms they cover
+// ("Drawing room"), and under them each zone's own mode strip under its room's name (ZoneModes.tsx: no Auto, which
+// switches the site's modes), so every room's modes are in view without opening a fold; Look says which rooms the show
+// plays in. Without zones the page is exactly as before.
+//
 // Talks to room_service (LIVE_V1 §3) over HTTP and its events socket. room_service
 // is found at ?room=<url> (remembered), else the remembered sm_room_url, else this
 // host on :8700. See README.md in this folder.
@@ -72,6 +77,8 @@ import { usePcLoad } from "./usePcLoad";
 import { useRoomConnection } from "./useRoomConnection";
 import { liveOf } from "./useScreenControls";
 import { friendlyName, summariseScreen } from "./words";
+import { ZoneModes } from "./ZoneModes";
+import { showRoomsLine, siteModesCaption, zonesOf } from "./zones";
 
 /** The tab title while on this page, put back on the way out. <html> itself is never touched. */
 function usePageTitle(title: string) {
@@ -252,7 +259,17 @@ export default function RoomPage() {
   }, []);
   // The scene library's tags (every facet and word, with counts): what a mode can steer the Art Director with.
   const tagIndex = useMemo(() => buildTagIndex(room.catalog), [room.catalog]);
-  const modeBusy = useMemo(() => screensInModeChange(room.transition, room.modes), [room.transition, room.modes]);
+  // (a zone's switch counts for its screens too; without zones this is the site's alone, as before)
+  const { zoneTransitions, zoneModes } = room;
+  const modeBusy = useMemo(() => {
+    const busy = screensInModeChange(room.transition, room.modes);
+    for (const [z, t] of Object.entries(zoneTransitions)) for (const id of screensInModeChange(t, zoneModes[z] ?? null)) busy.add(id);
+    return busy;
+  }, [room.transition, room.modes, zoneTransitions, zoneModes]);
+  // Mode zones: [] and nulls without any, so nothing below draws for them.
+  const zones = zonesOf(status);
+  const siteCaption = siteModesCaption(status);
+  const showLine = showRoomsLine(status);
 
   // /room?screen=<id> (the TVs' QR codes): that screen's card opens and is highlighted, and the page
   // scrolls to it once, after the modes above it have laid out (or failed to load).
@@ -512,6 +529,11 @@ export default function RoomPage() {
                         <section id="modes" aria-label="Modes" className="scroll-mt-[calc(var(--app-top,0px)+0.5rem)]">
                           {/* Auto above the modes (owner, 24 Oct: "why wouldn't auto switch be ABOVE the various modes? it
                               determines them after all") */}
+                          {siteCaption && (
+                            <h3 className={H3} data-testid="site-modes-caption">
+                              {siteCaption}
+                            </h3>
+                          )}
                           <div className="mb-1">
                             <AutoRow api={room.api} feed={show} addLog={room.addLog} onEdit={editRule} current={status.mode?.current} />
                           </div>
@@ -535,6 +557,29 @@ export default function RoomPage() {
                               refreshDescribe();
                             }}
                           />
+                          {zones.map((z) => (
+                            <div key={z.room} className="mt-4" role="group" aria-labelledby={`zone-modes-${z.room}-title`}>
+                              <h3 id={`zone-modes-${z.room}-title`} className={H3}>
+                                {z.name || z.room}
+                              </h3>
+                              <ZoneModes
+                                api={room.api}
+                                zone={z}
+                                modes={zoneModes[z.room] ?? null}
+                                modesError={room.zoneModesError[z.room] ?? null}
+                                transition={zoneTransitions[z.room] ?? null}
+                                status={status}
+                                catalog={room.catalog}
+                                connected={connected}
+                                now={now}
+                                addLog={room.addLog}
+                                reportError={room.reportError}
+                                names={screenNames}
+                                tagIndex={tagIndex}
+                                onChanged={() => void room.refreshMeta()}
+                              />
+                            </div>
+                          ))}
                         </section>
                         <div className="mt-5 border-t border-stone-200/80 lg:border-b">
                           <Section
@@ -562,6 +607,11 @@ export default function RoomPage() {
                             {(nothingFollows ? lookModes.length > 0 : !!director.line) && (
                               <p className="px-1 text-sm leading-snug text-muted-foreground" data-testid="look-who">
                                 {nothingFollows ? `Shows in ${andList(lookModes)}` : director.line}
+                              </p>
+                            )}
+                            {showLine && (
+                              <p className="px-1 text-sm leading-snug text-muted-foreground" data-testid="look-show-rooms">
+                                {showLine}
                               </p>
                             )}
                             <DirectorControls api={room.api} feed={show} addLog={room.addLog} coveredBy={coveredBy(slots)} />

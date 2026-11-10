@@ -236,14 +236,20 @@ class Rule:
 class RoomConfig:
     def __init__(self, raw: dict, adapters: Iterable[Adapter], collect: bool = False,
                  extra_groups: dict[str, list[str]] | None = None,
-                 group_notes: dict[str, str] | None = None) -> None:
+                 group_notes: dict[str, str] | None = None, scope_room: str | None = None,
+                 owners: dict[str, str] | None = None) -> None:
         """`adapters`: one per subsystem, placeholders included; normalize() and value checks come from them.
         `extra_groups`: groups defined outside this file (room_service derives "<room>:<kind>" from rooms.json); they
         don't count towards the revision, and a group of the same name in the file is an error. `group_notes`: for an
-        extra group that is empty, why ("Drawing room has no live screens"): a lint warning where the config uses it."""
+        extra group that is empty, why ("Drawing room has no live screens"): a lint warning where the config uses it.
+        Mode zones (room_service/zones.py): `scope_room`, a room zone's id, lets a plain selector that names nothing
+        here try the room's own member ("brightness.screens" -> "brightness.<room>.screens", "show.mic" ->
+        "show.<room>.mic", "sensor_mask.main" -> "sensor_mask.<room>"); `owners`, {target outside this config's scope:
+        its owner's name}, makes naming one an error that says whose it is."""
         if not isinstance(raw, dict):
             raise ConfigError("/: the config must be a JSON object")
         self.raw, self.collect = raw, collect
+        self.scope_room, self.owners = scope_room, dict(owners or {})
         self.errors: list[dict] = []
         self.revision = revision(raw)
         self.adapters: dict[str, Adapter] = {a.subsystem: a for a in adapters}
@@ -396,6 +402,15 @@ class RoomConfig:
             hits = [(t, 1) for t in self.targets if t.startswith(sel + ".")]
         if hits:
             return hits
+        if not wild and "." in sel and (self.scope_room or self.owners):
+            if self.scope_room:                           # a room zone's alias: its own member of that name
+                hits = self._alias(sel)
+                if hits:
+                    return hits
+            owner = self.owners.get(sel) or next((o for t, o in self.owners.items() if t.startswith(sel + ".")), None)
+            if owner is not None:
+                self._fail(path, f"{sel} belongs to {owner}'s modes")
+                return []
         sub = sel.split(".", 1)[0]
         if WILDCARD & set(sub) or not (self._is_placeholder(sub) or self._dynamic(sub)):
             why = self._why_absent(sel)
@@ -406,6 +421,18 @@ class RoomConfig:
             return []
         self._placeholder(sub, path)                      # accepted; it names nothing (yet)
         return []
+
+    def _alias(self, sel: str) -> list[tuple[str, int]]:
+        """A room zone's own member for a site-style selector: sub.main -> sub.<room> (that exact target only, so
+        show.main never means the room's mic), sub.<rest> -> sub.<room>.<rest> (a target or a prefix)."""
+        sub, rest = sel.split(".", 1)
+        room = self.scope_room
+        if rest == "main":
+            return [(f"{sub}.{room}", 3)] if f"{sub}.{room}" in self.targets else []
+        alias = f"{sub}.{room}.{rest}"
+        if alias in self.targets:
+            return [(alias, 3)]
+        return [(t, 1) for t in self.targets if t.startswith(alias + ".")]
 
     def _placeholder_members(self, raw: dict) -> None:
         """Members of placeholders that no device config lists, from the dotted names the config uses
@@ -434,6 +461,8 @@ class RoomConfig:
                 else:
                     walk(s, at)
         for n, at in names.items():
+            if n in self.owners:                          # another zone's target: _select says whose
+                continue
             if n not in self.targets and not any(t.startswith(n + ".") for t in self.targets + list(names)):
                 sub, member = n.split(".", 1)
                 self._placeholder(sub, at)
@@ -996,13 +1025,16 @@ def mode_signals(cfg: RoomConfig, name: str, key: str) -> list[Step]:
 
 def validate(raw: Any, adapters: Iterable[Adapter], warnings: bool = False,
              extra_groups: dict[str, list[str]] | None = None,
-             group_notes: dict[str, str] | None = None) -> list[dict]:
+             group_notes: dict[str, str] | None = None, scope_room: str | None = None,
+             owners: dict[str, str] | None = None) -> list[dict]:
     """Every problem in a config, as [{"path": JSON pointer, "message": ...}]: no errors means it can be saved.
-    With warnings=True, lint() warnings follow, as {"path", "message", "code", "level": "warning"}, for the editor."""
+    With warnings=True, lint() warnings follow, as {"path", "message", "code", "level": "warning"}, for the editor.
+    scope_room and owners: a mode zone's (RoomConfig)."""
     if not isinstance(raw, dict):
         return [explain({"path": "", "message": "the config must be a JSON object"})]
     try:
-        cfg = RoomConfig(raw, adapters, collect=True, extra_groups=extra_groups, group_notes=group_notes)
+        cfg = RoomConfig(raw, adapters, collect=True, extra_groups=extra_groups, group_notes=group_notes,
+                         scope_room=scope_room, owners=owners)
     except Exception as e:                                # a shape the collector didn't anticipate
         return [explain({"path": "", "message": f"invalid config: {e!r}"})]
     out = [explain(e) for e in cfg.errors]
@@ -1033,6 +1065,7 @@ _ERRORS = [   # (substring of the internal message, code, text; {sel} = the row'
     ("on_room_page must be", "bad_room_page", "The tile can only be in the mode row or under More modes"),
     ("unknown key", "unknown_setting", "This has a setting the room doesn't know: {detail}"),
     ("is not one of", "bad_value", "That isn't one of its choices: {detail}"),
+    ("belongs to", "other_room", "{detail}"),
 ]
 _WARNINGS = {
     "guard_inactive": "{who} aren't wired up yet, so the screens can light up before they're done",

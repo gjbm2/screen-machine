@@ -1872,10 +1872,13 @@ def _as_bool(v) -> Optional[bool]:
 
 
 def handle_set_mode(instruction, context, now, output, publish_destination):
-    """Ask the room for a mode: {action: set_mode, mode: <key or Room page label>, reason?}."""
+    """Ask the room for a mode: {action: set_mode, mode: <key or Room page label>, reason?}. A destination in a room
+    with its own modes (rooms.json "own_modes": true) asks its room's zone; any other, the site."""
     from routes import room_client
     mode = str(instruction.get("mode") or "").strip()
-    ok, detail = room_client.set_mode(mode, source=f"schedule:{publish_destination}", reason=instruction.get("reason"))
+    zone = room_client.zone_of_screen(publish_destination)   # a room with its own modes: this screen's switches alone
+    ok, detail = room_client.set_mode(mode, source=f"schedule:{publish_destination}", reason=instruction.get("reason"),
+                                      **({"room": zone} if zone else {}))
     log_schedule(f"Room mode {mode!r}: " + (f"requested ({detail})" if ok else f"not changed: {detail}"),
                  publish_destination, now, output)
     return False
@@ -1904,7 +1907,7 @@ def handle_room_state(instruction, context, now, output, publish_destination):
         log_schedule(f"Room state: not read ({room_client.ROOM_OFF})", publish_destination, now, output)
         return False
     facts = room_client.room_facts()
-    vars_["room_mode"] = facts.get("mode")
+    vars_["room_mode"] = room_client.screen_mode(publish_destination, facts)   # its zone's mode, else the site's
     vars_["room_auto"] = facts.get("auto")
     vars_["screen_layer"] = (facts.get("screens", {}).get(publish_destination) or {}).get("layer")
     log_schedule(f"Room state: mode {vars_['room_mode']}, Auto {vars_['room_auto']}, this screen {vars_['screen_layer']}",

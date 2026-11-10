@@ -5,11 +5,13 @@ test box. Everything that differs between deployments lives in one directory, ``
 
     deployment.yaml          the manifest: name, location, capabilities, ports, default room, kiosk, host paths
     publish-destinations.json  the screens and publish targets (Flask, room_service, stream_service read it)
-    rooms.json               which room holds which screens, lights, blinds, sensors, effects
+    rooms.json               which room holds which screens, lights, blinds, sensors, effects; per room, optionally,
+                             "own_modes": true (its own room/modes.<room>.json) and "show": false (outside the show)
     intensity.json           light sensor -> screens group, and the lux curve (Flask's lightsensor)
     show.yaml                this site's layer over config/room/show.yaml (deep-merged; senders, room facts)
     dot.json                 the e-ink tags (dot_service)
-    room/                    room_service: room.yaml, modes.json, auto_hints.json, sonos.json, tv.json, rf/*.json
+    room/                    room_service: room.yaml, modes.json (modes.<room>.json for an own_modes room),
+                             auto_hints.json, sonos.json, tv.json, rf/*.json
     lights/                  the rig: patch.yaml, fixtures*.yaml, space*.yaml
     calibration/             latency.json, audio_cal.json
     live/                    stream_switches.json (per-screen encoder switches)
@@ -379,9 +381,65 @@ def default_room(dep: Deployment | None = None) -> str | None:
     return dep.default_room or next(iter(rooms(dep)), None)
 
 
+# --------------------------------------------------------------------------------------------------------------------
+# Rooms with their own modes ("own_modes": true) and rooms outside the show ("show": false) (deployments/README.md,
+# "Rooms with their own modes"). Both keys are optional; a missing key means a room shares the site's modes and follows
+# the one show, which is every room of every deployment until one opts in.
+# --------------------------------------------------------------------------------------------------------------------
+
+_ROOM_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]*$")
+
+
+def _str_list(v: Any) -> list[str]:
+    return [x for x in v if isinstance(x, str)] if isinstance(v, list) else []
+
+
+def own_mode_rooms(dep: Deployment | None = None) -> dict[str, dict[str, Any]]:
+    """The rooms with ``"own_modes": true`` (mode zones in room_service), in rooms.json order:
+    ``{room: {"name", "screens", "show"}}`` (``show``: False only for a room with ``"show": false``). Only the
+    literal ``true`` counts; ``smconfig check`` reports any other value."""
+    return {rid: {"name": str(r.get("name") or rid), "screens": _str_list(r.get("screens")),
+                  "show": r.get("show") is not False}
+            for rid, r in rooms(dep).items() if r.get("own_modes") is True}
+
+
+def out_of_show_rooms(dep: Deployment | None = None) -> list[str]:
+    """The rooms with ``"show": false`` (their screens are outside show_service's and stream_service's show), in
+    rooms.json order."""
+    return [rid for rid, r in rooms(dep).items() if r.get("show") is False]
+
+
+def show_screens(dep: Deployment | None = None) -> set[str] | None:
+    """The screens in the show: None (every screen, as before) when no room has ``"show": false``; otherwise every
+    screen in publish-destinations.json except those of the rooms with ``"show": false``."""
+    dep = dep or deployment()
+    out = out_of_show_rooms(dep)
+    if not out:
+        return None
+    rms = rooms(dep)
+    excluded = {s for rid in out for s in _str_list(rms[rid].get("screens"))}
+    return {d["id"] for d in destinations(dep)} - excluded
+
+
+def room_of_screen(dep: Deployment | None, screen: str) -> str | None:
+    """The room whose ``screens`` list holds ``screen`` (the first in rooms.json order), else None."""
+    for rid, r in rooms(dep).items():
+        if screen in _str_list(r.get("screens")):
+            return rid
+    return None
+
+
+def room_modes_path(dep: Deployment | None, room: str) -> Path:
+    """An ``own_modes`` room's modes file: ``room/modes.<room>.json`` (the modes.json schema). It need not exist."""
+    if not isinstance(room, str) or not _ROOM_ID_RE.match(room):
+        raise ValueError(f"{room!r} is not a room id")
+    return (dep or deployment()).path("room", f"modes.{room}.json")
+
+
 __all__ = [
     "CAPABILITIES", "CONFIG_DIR", "DEFAULT_PORTS", "DEPLOYMENTS_DIR", "Deployment", "DeploymentError", "REPO_ROOT",
     "SECRETS_DIR", "STATE_DIR", "available", "deep_merge", "default_room", "deployment", "deployment_id",
-    "destinations", "enabled", "env", "live_screens", "load", "load_layered_yaml", "path", "port", "read_data",
-    "rooms", "secret", "shared", "state", "url",
+    "destinations", "enabled", "env", "live_screens", "load", "load_layered_yaml", "out_of_show_rooms",
+    "own_mode_rooms", "path", "port", "read_data", "room_modes_path", "room_of_screen", "rooms", "secret", "shared",
+    "show_screens", "state", "url",
 ]

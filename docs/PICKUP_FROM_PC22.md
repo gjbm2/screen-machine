@@ -11,10 +11,10 @@ order and each depends on the one before. `deployments/README.md` has the genera
 - **`deployments-generalisation`** (this branch) builds on `main`:
   - every single-site assumption the topology audit found, fixed, plus Energy acting now and a picked palette
     beating colour-repainting effects;
-  - multi-room: rooms with their own modes and rooms outside the show. It is inert until `rooms.json` opts a room in.
-    **It is still being finished on the laptop** and arrives as later commits on this branch. Don't wait for it: once
-    it lands, `git fetch origin && git merge origin/deployments-generalisation` brings it in as plain code. It needs no
-    second migration and changes nothing on finsbury.
+  - multi-room: rooms with their own modes (`"own_modes": true`) and rooms outside the show (`"show": false`). It is
+    inert until `rooms.json` opts a room in, and finsbury doesn't (see step 6). If PC22 merged this branch before
+    multi-room landed, `git fetch origin && git merge origin/deployments-generalisation` brings it in as plain code,
+    with no second migration.
   - the public-repo cleanup, the secrets tool, and the rewritten README.
 
   **Merge this branch on PC22, not just `main`.**
@@ -102,6 +102,14 @@ approved:
 - **Labels** use screen names ("North screen", not "north-screen") in a few room_service messages.
 - `tools/room/latency_cal/calibrate.py` now needs `--screen`. It used to default to south.
 
+**The golden tests** (`room_service/tests/test_golden.py`, `show_service/tests/test_room_scope.py`) record what
+room_service and show_service build from finsbury's files: status, modes, plans, groups and players. On the laptop they
+prove that multi-room changes nothing for finsbury. On PC22 they can fail for one benign reason: PC22's own
+deployment files differ from the ones they were recorded from (for example, modes edited on the Room page). The
+failure message names the changed files when that's the cause. Check that the diff matches those edits, then
+re-record with `SM_GOLDEN_RECORD=1 .venv/bin/python -m pytest room_service/tests/test_golden.py -q -p no:cacheprovider`
+and commit the re-recorded goldens.
+
 **Everything else must look and behave exactly as before.** That includes the art director, the generator and
 tagger prompts, and the wording on every page; finsbury's `deployment.yaml` `wording` keeps them identical. Multi-room
 changes nothing until a room opts in, and finsbury's doesn't yet (step 6). The golden tests check that.
@@ -117,8 +125,8 @@ From here on, nobody pushes commits made before the purge (next step).
 
 ## 5. After the merge: purge, then public again
 
-Do this once step 4 is pushed, **multi-room has landed on this branch and been merged and pushed too**, and no
-machine has unpushed work. Unpushed commits anywhere would be stranded on the old history.
+Do this once step 4 is pushed (with everything on this branch merged) and no machine has unpushed work. Unpushed
+commits anywhere would be stranded on the old history.
 
 1. **Rotate first.** The purge doesn't un-publish anything someone already copied. Change these and re-pair the
    TVs:
@@ -146,9 +154,9 @@ machine has unpushed work. Unpushed commits anywhere would be stranded on the ol
 
 ## 6. Optional, later: the Lab gets its own modes
 
-Once multi-room has landed, it is in the code but finsbury doesn't use it. Opting the Lab in fixes "drawing-room modes
-also move devtest". It is a config change of three files, prepared and checked in `docs/multiroom/finsbury-lab/` with
-its own `APPLY.md` (exact steps, checks on PC22, two-file rollback). That folder arrives with multi-room. Do it once steps 1–5 have settled, while the site is not in
+Multi-room is in the code, but finsbury doesn't use it. Opting the Lab in fixes "drawing-room modes also move devtest".
+It is a config change, prepared and checked in `docs/multiroom/finsbury-lab/`: `apply.py` edits PC22's own files in
+place (dry run, `--apply`, `--rollback`), and `APPLY.md` has the steps, the checks on PC22 and the rollback. Do it once steps 1–5 have settled, while the site is not in
 Live test, and tell the other sessions first (it restarts Flask).
 
 ## Sharing API keys with the laptop (optional)

@@ -7,7 +7,8 @@ The screens it looks after are those of the manifest's art_director.rooms, else 
 
 One daemon thread inside Flask (started next to the tag worker), a pass every interval_s:
   1. the room's mode (room_service GET :8700/api/v1/status) must be one of art_director.modes (none named: it never
-     makes anything);
+     makes anything). A room with its own modes (rooms.json "own_modes": true) is checked by its zone's mode, the
+     others by the site's, and only the screens of rooms in one of those modes count;
   2. the art wish (show_service GET :8703/api/v1/look -> direction.art) must be there and not via "none";
   3. each of its rooms' screens: count its strong matches of the wish's LEAD subject (tagged, auto_ok; that subject,
      no avoided subject, and a wished mood or a music fit >= 0.7 for the genre heard); fewer than ``thin`` = thin;
@@ -532,7 +533,17 @@ class Director:
         except Exception as e:                        # noqa: BLE001 - room_service restarting: just not this pass
             return done("not-ambient", error=f"room status: {type(e).__name__}: {e}"[:200])
         entry["mode"] = mode
-        if mode not in modes:
+        screens: Optional[list] = None
+        zmodes = {z["room"]: (z.get("mode") or {}).get("current") for z in (status or {}).get("zones") or []
+                  if isinstance(z, dict) and isinstance(z.get("room"), str)}
+        if zmodes:                                    # rooms with their own modes: each of its rooms by its own mode
+            per_room = {r: zmodes.get(r, mode) for r in art_rooms()}
+            entry["room_modes"] = per_room
+            mine = {s for r, m in per_room.items() if m in modes for s in room_screens(r)}
+            screens = [s for s in self.screens_fn() if s in mine]
+            if not screens:
+                return done("not-ambient")
+        elif mode not in modes:
             return done("not-ambient")
         try:
             look = self.get_json(f"{SHOW_URL}/api/v1/look")
@@ -550,7 +561,7 @@ class Director:
         # for ambient); counted over every wished subject the house library was never thin, so nothing was made
         lead = {**wish, "subjects": wish["subjects"][:1]}
         entry["lead"] = lead["subjects"][0] if lead["subjects"] else None
-        for s in self.screens_fn():
+        for s in (self.screens_fn() if screens is None else screens):
             c = count_strong(s, lead, groups)
             c["thin"] = c["strong"] < need
             c["last_at"] = _iso(self.last_at.get(s))

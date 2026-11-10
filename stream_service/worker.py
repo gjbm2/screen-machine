@@ -338,7 +338,7 @@ class Worker:
             self.sampler = Sampler(self.inputs, d["fixture"], d["lead"], d["follow"])
             rt = d["rt"]
             self.runtime = SessionRuntime(self.sampler, speed=rt["speed"], depth=rt["depth"], ease_s=rt["ease_s"])
-            self.runtime.feed = self.music_feed
+            self.runtime.feed = self.music_feed if d.get("feed", True) else None   # outside the show: no music
             self._apply_rt(rt)
             self.sound = new_sound(feed=self.scope) if d.get("sound", True) else None
             eng = Engine(profile=d["profile"], gpu=self.gpu, post=functools.partial(self._post, sid),

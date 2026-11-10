@@ -389,6 +389,22 @@ def room_screens() -> Optional[tuple[str, ...]]:
     return tuple(x for x in scr if isinstance(x, str)) if isinstance(scr, list) else None
 
 
+def other_room_screens() -> frozenset:
+    """The screens of every rooms.json room other than the director's (the deployment's default room). The one
+    ensemble is the primary room's (audit E9): another room's screen fixture is never a player. Empty when there is
+    no rooms.json or no default room."""
+    try:
+        import smconfig
+        rid = smconfig.default_room()
+        if not rid:
+            return frozenset()
+        return frozenset(s for r, spec in smconfig.rooms().items() if r != rid
+                         for s in (spec.get("screens") if isinstance(spec.get("screens"), list) else [])
+                         if isinstance(s, str))
+    except Exception:                                    # noqa: BLE001 - no rooms.json: no scope
+        return frozenset()
+
+
 def _call(fn: Optional[Callable], *a: Any, **kw: Any) -> Any:
     """An input slot: None when missing or when it raises (degrade, never fail a tick)."""
     if fn is None:
@@ -845,6 +861,7 @@ class Director:
         # art stills and the catalog API
         self.art: dict[str, dict] = {}                   # screen -> {"colours": [Rgb], "roles", "at_s"}
         self._room_screens = room_screens()              # this room's screens (rooms.json; None: every one)
+        self._other_screens = other_room_screens()       # other rooms' screens: never ensemble players (E9)
         self._art_sids: tuple[str, ...] = ()             # the screens whose art can be sampled (_art_ids)
         self._art_next = 0.0
         self._art_busy = False
@@ -1026,6 +1043,8 @@ class Director:
             return                                       # not a palette change (direction, auto, ...)
         sc = self._scr
         screen = data.get("screen") if isinstance(data.get("screen"), str) else ""
+        if screen and screen in (_call(getattr(self.ctx, "room_excluded", None)) or ()):
+            return                                       # a room outside the show ("show": false): never a hold
         palette = data["palette"]
         echo = self._echo.get(screen)
         own_s = float(self.cfg["screens"]["own_echo_s"])
@@ -2904,8 +2923,10 @@ class Director:
         live = comp.enabled(room)[0] if isinstance(room, dict) and isinstance(room.get("screens"), dict) else None
         mb = self.lights_cfg["flow"]["mirror_ball"]
         sub = str(mb.get("power_member") or "").split(".", 1)[0] if mb.get("enabled") else ""
+        # outside the ensemble: another room's screens (E9) and the screens of rooms with "show": false
+        excl = self._other_screens | (_call(getattr(self.ctx, "room_excluded", None)) or frozenset())
         key = (id(rig), (rig or {}).get("revision"), self._groups_key, (view or {}).get("revision"),
-               tuple(live) if live is not None else None, sub, self._cfg_gen)
+               tuple(live) if live is not None else None, sub, self._cfg_gen, tuple(sorted(excl)))
         if key == self._ens_players_key:
             return
         self._ens_players_key = key
@@ -2915,7 +2936,8 @@ class Director:
                        if isinstance(p, dict) and p.get("device") == sub), None) or {}
             devices.append({"id": sub, "label": pt.get("label"), "at": pt.get("at")})
         players = ensmod.players(rig, self._groups, cfg=self.ensemble.cfg, space_mod=sp, view=view,
-                                 live_screens=live, devices=devices, screen_order=self._room_screens)
+                                 live_screens=live, devices=devices, screen_order=self._room_screens,
+                                 exclude_screens=excl)
         if self.ensemble.set_players(players, now_s, space_mod=sp, view=view):
             self._log_event("ensemble", {"change": "players", "players": [
                 {k: p[k] for k in ("id", "side", "via", "on")} for p in players]})

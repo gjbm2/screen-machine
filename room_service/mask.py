@@ -74,7 +74,8 @@ class MaskPusher:
         self.latest: dict[str, MaskValue] = {}     # last fetched from Flask
         self.pushed: dict[str, MaskValue] = {}     # last pushed (what pages show)
         self.rev: dict[str, int] = {}
-        self.suspended = False
+        self.suspended_scopes: set[str] = set()     # "main" (screens in no zone) and zone room ids held now
+        self.zone_of: dict[str, str] = {}           # screen -> its mode zone's room id (zones.py); none: "main"
         self.ws_connected = False
         self.ws_frames = 0
         self.lux_frames = 0
@@ -101,16 +102,35 @@ class MaskPusher:
     def on_lux_frame(self, data: dict) -> None:
         """A lux frame seen on Flask's WS (MaskArbiter feeds it to the sensor path)."""
 
-    def set_suspended(self, suspended: bool) -> None:
-        """sensor_mask: suspended holds the last pushed mask; follow resumes pushing."""
-        if suspended == self.suspended:
+    @property
+    def suspended(self) -> bool:
+        """sensor_mask.main: the screens in no mode zone hold their mask (every screen on a site without zones)."""
+        return "main" in self.suspended_scopes
+
+    @suspended.setter
+    def suspended(self, value: bool) -> None:
+        (self.suspended_scopes.add if value else self.suspended_scopes.discard)("main")
+
+    def scope_of(self, screen: str) -> str:
+        return self.zone_of.get(screen, "main")
+
+    def held(self, screen: str) -> bool:
+        """Whether the screen's sensor_mask scope (its zone's, else main) holds the last pushed mask."""
+        return self.scope_of(screen) in self.suspended_scopes
+
+    def set_suspended(self, suspended: bool, scope: str = "main") -> None:
+        """sensor_mask: suspended holds the last pushed mask; follow resumes pushing. `scope`: "main" (the screens in
+        no mode zone) or a zone's room id (sensor_mask.<room>); only that scope's screens are re-evaluated."""
+        if suspended == (scope in self.suspended_scopes):
             return
-        self.suspended = suspended
-        log.info("sensor mask %s", "suspended (holding the last value)" if suspended else "following")
+        (self.suspended_scopes.add if suspended else self.suspended_scopes.discard)(scope)
+        where = "" if scope == "main" else f" ({scope})"
+        log.info("sensor mask%s %s", where, "suspended (holding the last value)" if suspended else "following")
         self._on_change()
         if not suspended:
             for screen in list(self.latest):
-                self._maybe_push(screen)
+                if self.scope_of(screen) == scope:
+                    self._maybe_push(screen)
             self.trigger()
 
     def on_unfrozen(self, screen: str) -> None:
@@ -131,7 +151,7 @@ class MaskPusher:
     def status(self, screen: str) -> dict:
         v = self.pushed.get(screen) or self.latest.get(screen)
         d = v.as_dict() if v else {"brightness": None, "warm_hex": None, "warm_alpha": None}
-        return {**d, "suspended": self.suspended}
+        return {**d, "suspended": self.held(screen)}
 
     # -- push logic --------------------------------------------------------
     def _moved(self, old: MaskValue | None, new: MaskValue) -> bool:
@@ -146,7 +166,7 @@ class MaskPusher:
         new = self.latest.get(screen)
         if not sc or not sc.mask_push or new is None:
             return False
-        if self.suspended or self._is_frozen(screen):
+        if self.held(screen) or self._is_frozen(screen):
             return False             # hold: the last pushed value stays on the page
         if not self._moved(self.pushed.get(screen), new):
             return False

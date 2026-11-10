@@ -39,13 +39,15 @@ other with `smconfig.url("room")`. A switchable feature checks `smconfig.enabled
 deployments/<id>/
   deployment.yaml            the manifest (below)
   publish-destinations.json  screens and publish targets: buckets, sizes, Alexa, TV address, `live` block
-  rooms.json                 which room holds which screens, lights, blinds, sensors, effects
+  rooms.json                 which room holds which screens, lights, blinds, sensors, effects (and, per room,
+                             "own_modes" and "show": see "Rooms with their own modes")
   intensity.json             light sensor -> screens group, and the lux curve
   show.yaml                  this site's layer over config/room/show.yaml (deep-merged)
   dot.json                   the e-ink tags
   room/
     room.yaml                room_service settings (was config/room/room.prod.yaml)
     modes.json               the room's modes (they name this site's devices)
+    modes.<room>.json        the modes of a room with "own_modes": true (see "Rooms with their own modes")
     auto_hints.json          "turn Auto on" hints
     sonos.json  tv.json      Sonos zones; TV control (placeholder)
     rf/*.json                RF devices: blinds hub, glitterball, pinspots (one file per device; the app adds more)
@@ -147,6 +149,79 @@ fall back to the generic phrase. A new key goes in both places.
 | `rf` | No RF devices (glitterball, pinspots): they become inert placeholders. |
 | `blinds` | No blinds hub: placeholder. |
 | `sonos` | No Sonos zones: placeholder. |
+
+## Rooms with their own modes
+
+By default every room of a deployment shares the site's modes (`room/modes.json`) and follows the one show. Two
+optional keys on a room in `rooms.json` change that:
+
+```json
+"back": {"name": "Back room", "screens": ["bs"], "own_modes": true, "show": false}
+```
+
+- `"own_modes": true`: the room switches modes on its own. Its modes are in `room/modes.<room>.json`, which has the
+  same form as `modes.json`. The room owns what its `rooms.json` entry lists: its screens (their page, diag and TV
+  members too), blinds, lights listed by id, effects and its Sonos zone. The site's modes no longer move any of
+  them, and the room's switches never touch the site's. In the room's file a bare `screens`, `page`, `sensor_mask`
+  or `brightness` means the room's own. `brightness.screens`, `show.mic`, `show.ai` and `sensor_mask.main` are
+  aliases for the room's own members, so a copy of another site's `modes.json` works there (`show.mic` and `show.ai`
+  only in a room that follows the show). `show.main`, `autopilot`,
+  `brightness.lamps` and anything another room lists are refused, with the owner named.
+- `"show": false`: the room's screens are outside the show. show_service sends them no palette, composition or
+  ensemble part, and a palette picked on one of them never holds the show's. stream_service gives them no direction,
+  room events, hold, ensemble, beat clock, gestures or music feed. Lights the room lists still play the show's look,
+  because there is one look engine.
+
+The two keys are independent: a room can have its own modes and still follow the show. What stays site-wide whatever
+the keys say: Auto, the feel (`show.main`), the lamps' brightness (`brightness.lamps`, one Hue stream), the mic and
+AI listening (a room that follows the show claims them through its own members, and the claims are combined), and
+the art director and hints, which serve the default room. The ensemble is the default room's too: a screen fixture
+whose screen is in another room is never one of its players. The default room (`deployment.yaml` `default_room`, else
+the first room) can have neither key.
+
+room_service reads the rooms when it starts. After changing `own_modes`, restart room_service, which means
+restarting Flask (tell the other sessions first). Until then its status says so in `mode.rooms_error`. show_service
+and stream_service pick up `show` on their own.
+
+In room_service an `own_modes` room is a mode zone (`room_service/zones.py`, described in `room_service/README.md`).
+It keeps its state in `<state_dir>/rooms/<room>/`. Its switches are `room_mode.transition` events, and status lists it
+under `zones`. `PUT /api/v1/mode` and the mode editor's routes take a `room`. At opt-in, the site's stored values for
+the room's targets are dropped. If the site was in a mode that only the room now has (Live test, say), the room starts
+in it and the site is relabelled to its default. Nothing is sent either way.
+
+Flask follows the zones from room_service's status (`routes/room_client.py`). Alexa looks for a spoken mode in the
+asker's room first (if it has its own modes), then in the site, then in the one other room that has that name, so
+"Alexa, live test" still works after a room owns Live test. A schedule's `set_mode` and `room_state` use its screen's
+room. The scheduler's `_room_mode` event gives a room's screens their room's mode (with `room` in the payload). The
+art director checks each of its rooms by that room's own mode. The "turn Auto on" hints never show in such a room.
+With no such room, no request carries a `room`.
+
+On the Room page the site's modes get a caption naming the rooms they cover ("Drawing room"), and under them each
+such room has its own mode strip under its name: the same tiles, progress line and mode editor, on its own modes
+file, with no Auto row. Look says which rooms the show plays in. Settings › Room & modes gets a room picker. A
+room's e-ink tag (dot_service) shows that room's mode, and no Auto. Without such a room, none of this shows and the
+pages send exactly what they did.
+
+`smconfig check` validates the keys. These are problems:
+
+- a key that isn't `true` or `false`;
+- an `own_modes` room without its `modes.<room>.json`, or with one room_service would refuse;
+- either key on the default room;
+- an `own_modes` room that shares a screen, blind, light or effect with another room, or lists a whole subsystem
+  such as `"light"` (list its lights by id).
+
+These are notes, not problems:
+
+- two or more rooms with screens share the site's modes;
+- a room with `"show": false` lists lights.
+
+`smconfig` gives code the facts: `own_mode_rooms()`, `out_of_show_rooms()`, `show_screens()` (None when every
+screen is in the show), `room_of_screen(dep, screen)` and `room_modes_path(dep, room)`.
+
+Status (10 Nov 2026): no shipped deployment sets either key. `"show": false` works in show_service and
+stream_service (room_service's status passes it on in `rooms[]`). `"own_modes"` works in room_service and in
+Flask's callers (Alexa, the scheduler, the events bridge, the art director, the hints), the Room page, Settings and
+the e-ink tags.
 
 ## Commands
 

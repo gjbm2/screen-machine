@@ -5,8 +5,9 @@ import hashlib
 from pathlib import Path
 from typing import Any
 
-from . import (CAPABILITIES, CONFIG_DIR, DEFAULT_PORTS, Deployment, destinations, load_layered_yaml, read_data,
-               rooms)
+from . import (CAPABILITIES, CONFIG_DIR, DEFAULT_PORTS, Deployment, default_room, destinations, load_layered_yaml,
+               own_mode_rooms, read_data, room_modes_path, rooms)
+from . import _ROOM_ID_RE as _ROOM_FILE_ID   # a room id usable in room/modes.<room>.json
 from .legacy import MOVES
 
 MANIFEST_KEYS = {"id", "name", "description", "location", "capabilities", "ports", "default_room", "kiosk", "host",
@@ -48,6 +49,10 @@ def known_files(dep: Deployment) -> list[str]:
     rf = dep.path("room", "rf")
     if rf.is_dir():
         rels |= {f"room/rf/{p.name}" for p in rf.glob("*.json")}
+    try:                                         # each own_modes room's modes file (rooms.json problems: check says)
+        rels |= {f"room/modes.{r}.json" for r in own_mode_rooms(dep) if _ROOM_FILE_ID.match(r)}
+    except Exception:  # noqa: BLE001
+        pass
     return sorted(rels)
 
 
@@ -82,7 +87,9 @@ def dump(dep: Deployment) -> dict[str, Any]:
     except Exception as e:  # noqa: BLE001 - reported, not fatal, in a dump
         out["screens"] = {"_error": str(e)}
     try:
-        out["rooms"] = {k: {kk: v.get(kk) for kk in ("name", "screens")} for k, v in rooms(dep).items()}
+        out["rooms"] = {k: {**{kk: v.get(kk) for kk in ("name", "screens")},
+                            **{kk: v[kk] for kk in ("own_modes", "show") if kk in v}}    # only when set
+                        for k, v in rooms(dep).items()}
     except Exception as e:  # noqa: BLE001
         out["rooms"] = {"_error": str(e)}
     return out
@@ -114,6 +121,106 @@ def _as_list(v: Any) -> list[str] | None:
     if isinstance(v, list) and all(isinstance(x, str) for x in v):
         return list(v)
     return None
+
+
+def _validator(rel: str, notes: list[str]):
+    """room_service's validate_site_modes, or None (said in a note) when room_service isn't importable here."""
+    try:
+        from room_service.room_config import validate_site_modes  # noqa: PLC0415
+    except Exception:  # noqa: BLE001 - room_service not importable in this environment: skip, say so
+        notes.append(f"{rel}: not checked against room_service's model (room_service not importable)")
+        return None
+    return validate_site_modes
+
+
+def _check_modes_file(rel: str, raw: Any, dep: Deployment, problems: list[str], notes: list[str], validate,
+                      room: str | None = None) -> None:
+    """A modes file through room_service's own model, as room_service would load it: errors are problems, warnings
+    about the screens are notes. ``room``: an own_modes room's file, checked in that room's scope (validate_site_modes'
+    ``scope_room``); the site's file is checked in the site's scope when there are zones."""
+    kw: dict[str, Any] = {}
+    if room is not None:
+        import inspect  # noqa: PLC0415
+        if "scope_room" in inspect.signature(validate).parameters:
+            kw["scope_room"] = room
+    for item in validate(raw, _or_empty(rooms, dep), _or_empty(destinations, dep), warnings=True, **kw):
+        where = f"{rel}{item.get('path') or ''}: {item.get('message')}"
+        if item.get("level") != "warning":
+            problems.append(where)
+        elif _screen_warning(item):     # only the screens are modelled here; devices are placeholders
+            notes.append(where)
+
+
+def _claims(r: dict) -> tuple[set[str], set[str], set[str]]:
+    """A room's (screens, blinds, targets): its lights entries and its effects' power and setting targets. A target
+    with no dot ("light") is a whole subsystem."""
+    targets = set(_as_list(r.get("lights")) or [])
+    for e in r.get("effects") if isinstance(r.get("effects"), list) else []:
+        if isinstance(e, str):
+            targets.add(e)
+        elif isinstance(e, dict):
+            if isinstance(e.get("power"), str):
+                targets.add(e["power"])
+            targets |= set(_as_list(e.get("settings")) or [])
+    return set(_as_list(r.get("screens")) or []), set(_as_list(r.get("blinds")) or []), targets
+
+
+def _and(names: list[str]) -> str:
+    return names[0] if len(names) == 1 else f"{', '.join(names[:-1])} and {names[-1]}"
+
+
+def _check_rooms(dep: Deployment, rms: dict, caps: dict, problems: list[str], notes: list[str]) -> None:
+    """The optional per-room keys "own_modes" and "show" (deployments/README.md, "Rooms with their own modes")."""
+    for rid, r in rms.items():
+        for key in ("own_modes", "show"):
+            if key in r and not isinstance(r[key], bool):
+                problems.append(f"rooms.json: room {rid!r}: \"{key}\" must be true or false, not {r[key]!r}")
+    dr = _or_empty(default_room, dep)
+    if dr in rms:
+        if rms[dr].get("own_modes") is True:
+            problems.append(f"rooms.json: room {dr!r} is the default room (the show, Auto and the art director serve "
+                            "it, with the site's modes), so it cannot have \"own_modes\": true")
+        if rms[dr].get("show") is False:
+            problems.append(f"rooms.json: room {dr!r} is the default room (the room the show plays in), so it cannot "
+                            "have \"show\": false")
+    zones = [rid for rid, r in rms.items() if r.get("own_modes") is True]
+    claims = {rid: _claims(r) for rid, r in rms.items()}
+    for z in zones:
+        if not _ROOM_FILE_ID.match(z):
+            problems.append(f"rooms.json: room {z!r} has \"own_modes\": true but its id can't name a file "
+                            "(letters, digits, - and _ only)")
+            continue
+        rel = f"room/modes.{z}.json"
+        p = room_modes_path(dep, z)
+        if not p.is_file():
+            problems.append(f"{rel}: missing (rooms.json room {z!r} has \"own_modes\": true)")
+        elif caps.get("room") and (validate := _validator(rel, notes)) is not None:
+            try:
+                _check_modes_file(rel, read_data(p), dep, problems, notes, validate, room=z)
+            except Exception as e:  # noqa: BLE001
+                problems.append(f"{rel}: {e}")
+        zs, zb, zt = claims[z]
+        for whole in sorted(t for t in zt if "." not in t):
+            problems.append(f"rooms.json: room {z!r} has its own modes but lists the whole \"{whole}\" subsystem; "
+                            f"list its {whole} members by id (\"{whole}.<id>\")")
+        for o in rms:
+            if o == z or (o in zones and list(rms).index(o) < list(rms).index(z)):   # a zone pair is said once
+                continue
+            os_, ob, ot = claims[o]
+            shared = sorted(zs & os_) + sorted(zb & ob) + sorted(
+                (zt & ot) | {t for t in zt if "." in t and t.split(".", 1)[0] in ot})
+            if shared:
+                problems.append(f"rooms.json: room {z!r} has its own modes but shares {', '.join(shared)} with room "
+                                f"{o!r}; whatever two rooms claim stays with the site's modes")
+    if caps.get("room"):
+        shared_modes = [rid for rid, r in rms.items() if r.get("own_modes") is not True and claims[rid][0]]
+        if len(shared_modes) >= 2:
+            notes.append(f"rooms.json: {_and(shared_modes)} share the site's modes; give one \"own_modes\": true to "
+                         "switch it alone")
+    for rid, r in rms.items():
+        if r.get("show") is False and _as_list(r.get("lights")):
+            notes.append(f"rooms.json: room {rid!r} is outside the show (\"show\": false) but lists lights: its "
+                         "lights still play the show's look")
 
 
 def check(dep: Deployment) -> tuple[list[str], list[str]]:
@@ -175,23 +282,12 @@ def check(dep: Deployment) -> tuple[list[str], list[str]]:
     # at start-up. Device names are not checked here (no adapters): room_service warns about those itself.
     modes = dep.path("room", "modes.json")
     modes_raw: Any = None
-    if caps.get("room") and modes.is_file():
+    if caps.get("room") and modes.is_file() and (validate := _validator("room/modes.json", notes)) is not None:
         try:
-            from room_service.room_config import validate_site_modes  # noqa: PLC0415
-        except Exception:  # noqa: BLE001 - room_service not importable in this environment: skip, say so
-            notes.append("room/modes.json: not checked against room_service's model (room_service not importable)")
-        else:
-            try:
-                modes_raw = read_data(modes)
-                for item in validate_site_modes(modes_raw, _or_empty(rooms, dep), _or_empty(destinations, dep),
-                                                warnings=True):
-                    where = f"room/modes.json{item.get('path') or ''}: {item.get('message')}"
-                    if item.get("level") != "warning":
-                        problems.append(where)
-                    elif _screen_warning(item):     # only the screens are modelled here; devices are placeholders
-                        notes.append(where)
-            except Exception as e:  # noqa: BLE001
-                problems.append(f"room/modes.json: {e}")
+            modes_raw = read_data(modes)
+            _check_modes_file("room/modes.json", modes_raw, dep, problems, notes, validate)
+        except Exception as e:  # noqa: BLE001
+            problems.append(f"room/modes.json: {e}")
 
     # Cross-references: one fact, one place, and everything that names a screen or room names a real one.
     try:
@@ -212,6 +308,7 @@ def check(dep: Deployment) -> tuple[list[str], list[str]]:
                 problems.append(f"rooms.json: room {rid!r} names screen {s!r}, which publish-destinations.json lacks")
     if dep.default_room and dep.default_room not in rms:
         problems.append(f"deployment.yaml: default_room {dep.default_room!r} is not in rooms.json")
+    _check_rooms(dep, rms, caps, problems, notes)
     for s in (kiosk_screens if isinstance(kiosk_screens, dict) else {}):
         if s not in ids:
             problems.append(f"deployment.yaml: kiosk screen {s!r} is not in publish-destinations.json")

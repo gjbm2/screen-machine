@@ -183,11 +183,19 @@ def room_groups(rooms: dict, adapters: Iterable[Adapter]) -> dict[str, list[str]
 
 class RoomConfigFile:
     def __init__(self, path: str | Path, adapters: Iterable[Adapter], state_dir: str | Path,
-                 rooms_path: str | Path | None = None) -> None:
+                 rooms_path: str | Path | None = None, scope_room: str | None = None,
+                 owners: Callable[[], dict[str, str]] | None = None,
+                 rooms_hook: Callable[[dict], str | None] | None = None) -> None:
+        """Mode zones (zones.py): `scope_room` and `owners` go to every RoomConfig built here (a room zone's aliases;
+        whose a target outside this zone is). `rooms_hook(rooms)` runs on each good read of rooms.json, before the
+        groups are derived (the zones re-plan their scopes); what it returns is rooms_error (None: no problem)."""
         self.path = Path(path)
         self.adapters = list(adapters)
         self.history = Path(state_dir) / "config-history"
         self.rooms_path = Path(rooms_path) if rooms_path else None
+        self.scope_room = scope_room
+        self.owners = owners
+        self.rooms_hook = rooms_hook
         self.raw: dict = FALLBACK
         self.error: str | None = None
         self.rooms_error: str | None = None
@@ -217,9 +225,23 @@ class RoomConfigFile:
             self.rooms_error = f"{self.rooms_path.name} not read: {e}"
             log.error("%s", self.rooms_error)
             return self.groups
+        problem = self.rooms_hook(rooms) if self.rooms_hook is not None else None
         out, self.group_notes = derive_room_groups(rooms, self.adapters)
-        self.groups, self.rooms_error = out, None
+        self.groups, self.rooms_error = out, problem
         return out
+
+    def _zone_kw(self) -> dict:
+        """RoomConfig's zone arguments: none at all for a deployment without zones."""
+        kw: dict = {}
+        if self.scope_room is not None:
+            kw["scope_room"] = self.scope_room
+        if self.owners is not None:
+            kw["owners"] = self.owners()
+        return kw
+
+    def build(self, raw: Any) -> RoomConfig:
+        """A RoomConfig from `raw` with this file's adapters, groups and zone (POST /room/plan's draft)."""
+        return RoomConfig(raw, self.adapters, extra_groups=self.groups, group_notes=self.group_notes, **self._zone_kw())
 
     def load(self) -> RoomConfig:
         """The config from disk; on any problem, the previous one (or the fallback) with `error` set."""
@@ -227,12 +249,13 @@ class RoomConfigFile:
         try:
             self._mtime = self.path.stat().st_mtime
             raw = yaml.safe_load(self.path.read_text()) or {}
-            cfg = RoomConfig(raw, self.adapters, extra_groups=groups, group_notes=self.group_notes)
+            cfg = RoomConfig(raw, self.adapters, extra_groups=groups, group_notes=self.group_notes, **self._zone_kw())
         except Exception as e:                    # missing, unparseable or invalid: keep what we had
             self.error = f"{self.path.name} not loaded: {e}"
             log.error("%s", self.error)
             try:
-                return RoomConfig(self.raw, self.adapters, extra_groups=groups, group_notes=self.group_notes)
+                return RoomConfig(self.raw, self.adapters, extra_groups=groups, group_notes=self.group_notes,
+                                  **self._zone_kw())
             except Exception:
                 return RoomConfig(FALLBACK, self.adapters)
         self.raw, self.error = raw, None
@@ -248,7 +271,8 @@ class RoomConfigFile:
 
     def check(self, raw: Any) -> dict:
         """POST /room/config/validate: errors (blocking) and warnings, each with a JSON pointer."""
-        items = validate(raw, self.adapters, warnings=True, extra_groups=self.groups, group_notes=self.group_notes)
+        items = validate(raw, self.adapters, warnings=True, extra_groups=self.groups, group_notes=self.group_notes,
+                         **self._zone_kw())
         errors = [i for i in items if i.get("level") != "warning"]
         warnings = [i for i in items if i.get("level") == "warning"]
         if self.rooms_error:
@@ -263,7 +287,7 @@ class RoomConfigFile:
             raise ConfigInvalid(result["errors"])
         if base_revision != self.revision:
             raise ConfigConflict(self.revision)
-        cfg = RoomConfig(raw, self.adapters, extra_groups=self.groups, group_notes=self.group_notes)
+        cfg = self.build(raw)
         if self.path.exists():
             self.history.mkdir(mode=0o700, parents=True, exist_ok=True)
             (self.history / f"{int(time.time())}-{self.revision}.json").write_text(self.path.read_text())
@@ -285,11 +309,13 @@ class RoomConfigFile:
 
 
 def validate_site_modes(raw: Any, rooms: dict | None, destinations: list[dict] | None,
-                        warnings: bool = False) -> list[dict]:
+                        warnings: bool = False, scope_room: str | None = None) -> list[dict]:
     """A deployment's modes.json checked the way room_service loads it, without starting anything (smconfig check):
     the screens, page and diag subsystems stand in for the live screens of `destinations` (those with a live block),
     every destination known by id (an art-only screen named in a mode names nothing, with a warning; an id the site
     doesn't have is an error), the room groups come from `rooms`, and every other subsystem is a placeholder.
+    With rooms that have their own modes (zones.py), the file is checked in its zone's scope: `scope_room` for an
+    own_modes room's room/modes.<room>.json, else the site's (what no zone owns).
     Returns validate()'s items: errors, then warnings when asked."""
     from .adapters.room import DiagAdapter, PageAdapter      # noqa: PLC0415 - no import cost for the service path
     from .adapters.screens import ScreensAdapter             # noqa: PLC0415
@@ -299,5 +325,16 @@ def validate_site_modes(raw: Any, rooms: dict | None, destinations: list[dict] |
     with tempfile.TemporaryDirectory() as tmp:               # the adapters' state files: never read here
         adapters: list[Adapter] = [ScreensAdapter(live, known), PageAdapter(live, tmp, known=known),
                                    DiagAdapter(live, tmp, known=known)]
+        from .zones import ScopedAdapter, ZonePlan, layout_of    # noqa: PLC0415 - zones imports this module
+        layout = layout_of(rooms or {})
+        zone_kw: dict = {}
+        if layout:                                           # a site with zones: this file's scope only
+            plan = ZonePlan(layout, adapters)
+            plan.replan(rooms or {})
+            zone = scope_room if scope_room in layout else None
+            in_scope = plan.in_zone(zone) if zone else plan.in_site
+            owners = plan.owners_for(zone)()
+            adapters = [ScopedAdapter(a, in_scope, plan.name(zone)) for a in adapters]   # type: ignore[misc]
+            zone_kw = {"owners": owners, **({"scope_room": zone} if zone else {})}
         groups, notes = derive_room_groups(rooms or {}, adapters)
-        return validate(raw, adapters, warnings=warnings, extra_groups=groups, group_notes=notes)
+        return validate(raw, adapters, warnings=warnings, extra_groups=groups, group_notes=notes, **zone_kw)

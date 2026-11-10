@@ -1,0 +1,1386 @@
+{
+ "default": "gallery",
+ "error": null,
+ "modes": {
+  "ambient": {
+   "description": "",
+   "icon": "waves",
+   "label": "Ambient",
+   "on_enter": [
+    "log.info"
+   ],
+   "on_exit": [
+    "log.info"
+   ],
+   "on_room_page": "main",
+   "state": {
+    "blinds": {
+     "ch02": 100,
+     "ch03": 100,
+     "ch14": 100
+    },
+    "hue": {
+     "ne": "dmx",
+     "nw": "dmx",
+     "se": "dmx",
+     "sw": "dmx"
+    },
+    "light": {
+     "par-left": "dmx",
+     "par-right": "dmx"
+    },
+    "mirror_ball": "stopped",
+    "page": {
+     "devtest.timed_reload": false,
+     "north-screen.timed_reload": false,
+     "south-screen.timed_reload": false
+    },
+    "screens": {
+     "devtest": "art",
+     "north-screen": {
+      "live": {
+       "scene_tags": [
+        "modes:ambient"
+       ],
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     },
+     "south-screen": {
+      "live": {
+       "scene_tags": [
+        "modes:ambient"
+       ],
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     }
+    },
+    "sensor_mask": "suspended",
+    "show": {
+     "ai": true,
+     "mic": true
+    },
+    "tv": {
+     "north-screen": "hdmi",
+     "south-screen": "hdmi"
+    }
+   },
+   "targets": {
+    "blinds.ch02": {
+     "policy": "enforce",
+     "restore": true,
+     "value": 100,
+     "verb": "set+restore"
+    },
+    "blinds.ch03": {
+     "policy": "enforce",
+     "restore": true,
+     "value": 100,
+     "verb": "set+restore"
+    },
+    "blinds.ch14": {
+     "policy": "enforce",
+     "restore": true,
+     "value": 100,
+     "verb": "set+restore"
+    },
+    "hue.ne": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "hue.nw": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "hue.se": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "hue.sw": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "light.par-left": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "light.par-right": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "mirror_ball.main": {
+     "policy": "respect",
+     "restore": false,
+     "value": "stopped",
+     "verb": "set"
+    },
+    "page.devtest.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": false,
+     "verb": "set"
+    },
+    "page.north-screen.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": false,
+     "verb": "set"
+    },
+    "page.south-screen.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": false,
+     "verb": "set"
+    },
+    "screens.devtest": {
+     "policy": "respect",
+     "restore": false,
+     "value": "art",
+     "verb": "set"
+    },
+    "screens.north-screen": {
+     "policy": "respect",
+     "restore": false,
+     "value": {
+      "live": {
+       "scene_tags": [
+        "modes:ambient"
+       ],
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     },
+     "verb": "set"
+    },
+    "screens.south-screen": {
+     "policy": "respect",
+     "restore": false,
+     "value": {
+      "live": {
+       "scene_tags": [
+        "modes:ambient"
+       ],
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     },
+     "verb": "set"
+    },
+    "sensor_mask.main": {
+     "policy": "respect",
+     "restore": false,
+     "value": "suspended",
+     "verb": "set"
+    },
+    "show.ai": {
+     "policy": "respect",
+     "restore": true,
+     "value": true,
+     "verb": "set+restore"
+    },
+    "show.mic": {
+     "policy": "respect",
+     "restore": true,
+     "value": true,
+     "verb": "set+restore"
+    },
+    "tv.north-screen": {
+     "policy": "respect",
+     "restore": true,
+     "value": "hdmi",
+     "verb": "set+restore"
+    },
+    "tv.south-screen": {
+     "policy": "respect",
+     "restore": true,
+     "value": "hdmi",
+     "verb": "set+restore"
+    }
+   },
+   "voice": "ambient"
+  },
+  "disco": {
+   "description": "",
+   "icon": "disco",
+   "label": "Disco",
+   "on_enter": [
+    "log.info"
+   ],
+   "on_exit": [
+    "log.info"
+   ],
+   "on_room_page": "main",
+   "state": {
+    "blinds": {
+     "ch02": 100,
+     "ch03": 100,
+     "ch14": 100
+    },
+    "brightness": {
+     "lamps": 35,
+     "screens": 55
+    },
+    "hue": {
+     "ne": "dmx",
+     "nw": "dmx",
+     "se": "dmx",
+     "sw": "dmx"
+    },
+    "light": {
+     "par-left": "dmx",
+     "par-right": "dmx"
+    },
+    "mirror_ball": "spinning",
+    "mirror_ball_motor": {
+     "speed": "high"
+    },
+    "page": {
+     "devtest.timed_reload": false,
+     "north-screen.timed_reload": false,
+     "south-screen.timed_reload": false
+    },
+    "pinspots": {
+     "colour": "white",
+     "flash": "off",
+     "level": 8,
+     "main": "on"
+    },
+    "screens": {
+     "devtest": "art",
+     "north-screen": {
+      "live": {
+       "auto": true,
+       "direction": {
+        "energy": 0.9,
+        "moods": [
+         "euphoric",
+         "geometric"
+        ],
+        "transition_style": "lively"
+       },
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     },
+     "south-screen": {
+      "live": {
+       "auto": true,
+       "direction": {
+        "energy": 0.9,
+        "moods": [
+         "euphoric",
+         "geometric"
+        ],
+        "transition_style": "lively"
+       },
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     }
+    },
+    "sensor_mask": "suspended",
+    "show": {
+     "ai": true,
+     "mic": true
+    },
+    "tv": {
+     "north-screen": "hdmi",
+     "south-screen": "hdmi"
+    }
+   },
+   "targets": {
+    "blinds.ch02": {
+     "policy": "enforce",
+     "restore": true,
+     "value": 100,
+     "verb": "set+restore"
+    },
+    "blinds.ch03": {
+     "policy": "enforce",
+     "restore": true,
+     "value": 100,
+     "verb": "set+restore"
+    },
+    "blinds.ch14": {
+     "policy": "enforce",
+     "restore": true,
+     "value": 100,
+     "verb": "set+restore"
+    },
+    "brightness.lamps": {
+     "policy": "respect",
+     "restore": true,
+     "value": 35,
+     "verb": "set+restore"
+    },
+    "brightness.screens": {
+     "policy": "respect",
+     "restore": true,
+     "value": 55,
+     "verb": "set+restore"
+    },
+    "hue.ne": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "hue.nw": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "hue.se": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "hue.sw": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "light.par-left": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "light.par-right": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "mirror_ball.main": {
+     "policy": "respect",
+     "restore": false,
+     "value": "spinning",
+     "verb": "set"
+    },
+    "mirror_ball_motor.speed": {
+     "policy": "respect",
+     "restore": false,
+     "value": "high",
+     "verb": "set"
+    },
+    "page.devtest.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": false,
+     "verb": "set"
+    },
+    "page.north-screen.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": false,
+     "verb": "set"
+    },
+    "page.south-screen.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": false,
+     "verb": "set"
+    },
+    "pinspots.colour": {
+     "policy": "respect",
+     "restore": true,
+     "value": "white",
+     "verb": "set+restore"
+    },
+    "pinspots.flash": {
+     "policy": "respect",
+     "restore": true,
+     "value": "off",
+     "verb": "set+restore"
+    },
+    "pinspots.level": {
+     "policy": "respect",
+     "restore": true,
+     "value": 8,
+     "verb": "set+restore"
+    },
+    "pinspots.main": {
+     "policy": "respect",
+     "restore": true,
+     "value": "on",
+     "verb": "set+restore"
+    },
+    "screens.devtest": {
+     "policy": "respect",
+     "restore": false,
+     "value": "art",
+     "verb": "set"
+    },
+    "screens.north-screen": {
+     "policy": "respect",
+     "restore": false,
+     "value": {
+      "live": {
+       "auto": true,
+       "direction": {
+        "energy": 0.9,
+        "moods": [
+         "euphoric",
+         "geometric"
+        ],
+        "transition_style": "lively"
+       },
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     },
+     "verb": "set"
+    },
+    "screens.south-screen": {
+     "policy": "respect",
+     "restore": false,
+     "value": {
+      "live": {
+       "auto": true,
+       "direction": {
+        "energy": 0.9,
+        "moods": [
+         "euphoric",
+         "geometric"
+        ],
+        "transition_style": "lively"
+       },
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     },
+     "verb": "set"
+    },
+    "sensor_mask.main": {
+     "policy": "respect",
+     "restore": false,
+     "value": "suspended",
+     "verb": "set"
+    },
+    "show.ai": {
+     "policy": "respect",
+     "restore": true,
+     "value": true,
+     "verb": "set+restore"
+    },
+    "show.mic": {
+     "policy": "respect",
+     "restore": true,
+     "value": true,
+     "verb": "set+restore"
+    },
+    "tv.north-screen": {
+     "policy": "respect",
+     "restore": true,
+     "value": "hdmi",
+     "verb": "set+restore"
+    },
+    "tv.south-screen": {
+     "policy": "respect",
+     "restore": true,
+     "value": "hdmi",
+     "verb": "set+restore"
+    }
+   },
+   "voice": "disco"
+  },
+  "gallery": {
+   "description": "",
+   "icon": null,
+   "label": "Normal",
+   "on_enter": [],
+   "on_exit": [],
+   "on_room_page": "main",
+   "state": {
+    "mirror_ball": "stopped",
+    "page": {
+     "devtest.timed_reload": true,
+     "north-screen.timed_reload": true,
+     "south-screen.timed_reload": true
+    },
+    "screens": {
+     "devtest": "art",
+     "north-screen": "art",
+     "south-screen": "art"
+    },
+    "sensor_mask": "follow",
+    "show": {
+     "ai": false
+    }
+   },
+   "targets": {
+    "mirror_ball.main": {
+     "policy": "respect",
+     "restore": false,
+     "value": "stopped",
+     "verb": "set"
+    },
+    "page.devtest.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": true,
+     "verb": "set"
+    },
+    "page.north-screen.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": true,
+     "verb": "set"
+    },
+    "page.south-screen.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": true,
+     "verb": "set"
+    },
+    "screens.devtest": {
+     "policy": "respect",
+     "restore": false,
+     "value": "art",
+     "verb": "set"
+    },
+    "screens.north-screen": {
+     "policy": "respect",
+     "restore": false,
+     "value": "art",
+     "verb": "set"
+    },
+    "screens.south-screen": {
+     "policy": "respect",
+     "restore": false,
+     "value": "art",
+     "verb": "set"
+    },
+    "sensor_mask.main": {
+     "policy": "respect",
+     "restore": false,
+     "value": "follow",
+     "verb": "set"
+    },
+    "show.ai": {
+     "policy": "respect",
+     "restore": false,
+     "value": false,
+     "verb": "set"
+    }
+   },
+   "voice": "normal"
+  },
+  "lights-only": {
+   "description": "",
+   "icon": "lamp",
+   "label": "Lights only",
+   "on_enter": [],
+   "on_exit": [],
+   "on_room_page": "main",
+   "state": {
+    "hue": {
+     "ne": "dmx",
+     "nw": "dmx",
+     "se": "dmx",
+     "sw": "dmx"
+    },
+    "light": {
+     "par-left": "dmx",
+     "par-right": "dmx"
+    },
+    "mirror_ball": "stopped",
+    "page": {
+     "devtest.timed_reload": true,
+     "north-screen.timed_reload": true,
+     "south-screen.timed_reload": true
+    },
+    "screens": {
+     "devtest": "art",
+     "north-screen": "art",
+     "south-screen": "art"
+    },
+    "sensor_mask": "suspended",
+    "show": {
+     "ai": false,
+     "mic": true
+    }
+   },
+   "targets": {
+    "hue.ne": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "hue.nw": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "hue.se": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "hue.sw": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "light.par-left": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "light.par-right": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "mirror_ball.main": {
+     "policy": "respect",
+     "restore": false,
+     "value": "stopped",
+     "verb": "set"
+    },
+    "page.devtest.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": true,
+     "verb": "set"
+    },
+    "page.north-screen.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": true,
+     "verb": "set"
+    },
+    "page.south-screen.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": true,
+     "verb": "set"
+    },
+    "screens.devtest": {
+     "policy": "respect",
+     "restore": false,
+     "value": "art",
+     "verb": "set"
+    },
+    "screens.north-screen": {
+     "policy": "respect",
+     "restore": false,
+     "value": "art",
+     "verb": "set"
+    },
+    "screens.south-screen": {
+     "policy": "respect",
+     "restore": false,
+     "value": "art",
+     "verb": "set"
+    },
+    "sensor_mask.main": {
+     "policy": "respect",
+     "restore": false,
+     "value": "suspended",
+     "verb": "set"
+    },
+    "show.ai": {
+     "policy": "respect",
+     "restore": false,
+     "value": false,
+     "verb": "set"
+    },
+    "show.mic": {
+     "policy": "respect",
+     "restore": true,
+     "value": true,
+     "verb": "set+restore"
+    }
+   },
+   "voice": "lights only"
+  },
+  "live-test": {
+   "description": "",
+   "icon": null,
+   "label": "Live test (devtest)",
+   "on_enter": [],
+   "on_exit": [],
+   "on_room_page": "more",
+   "state": {
+    "mirror_ball": "stopped",
+    "page": {
+     "devtest.timed_reload": false,
+     "north-screen.timed_reload": true,
+     "south-screen.timed_reload": true
+    },
+    "screens": {
+     "devtest": {
+      "live": {
+       "auto": true,
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     }
+    },
+    "sensor_mask": "follow",
+    "show": {
+     "ai": true,
+     "mic": true
+    }
+   },
+   "targets": {
+    "mirror_ball.main": {
+     "policy": "respect",
+     "restore": false,
+     "value": "stopped",
+     "verb": "set"
+    },
+    "page.devtest.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": false,
+     "verb": "set"
+    },
+    "page.north-screen.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": true,
+     "verb": "set"
+    },
+    "page.south-screen.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": true,
+     "verb": "set"
+    },
+    "screens.devtest": {
+     "policy": "respect",
+     "restore": false,
+     "value": {
+      "live": {
+       "auto": true,
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     },
+     "verb": "set"
+    },
+    "sensor_mask.main": {
+     "policy": "respect",
+     "restore": false,
+     "value": "follow",
+     "verb": "set"
+    },
+    "show.ai": {
+     "policy": "respect",
+     "restore": true,
+     "value": true,
+     "verb": "set+restore"
+    },
+    "show.mic": {
+     "policy": "respect",
+     "restore": true,
+     "value": true,
+     "verb": "set+restore"
+    }
+   },
+   "voice": ""
+  },
+  "off": {
+   "description": "",
+   "icon": null,
+   "label": "Off",
+   "on_enter": [],
+   "on_exit": [],
+   "on_room_page": "main",
+   "state": {
+    "mirror_ball": "stopped",
+    "page": {
+     "devtest.timed_reload": true,
+     "north-screen.timed_reload": true,
+     "south-screen.timed_reload": true
+    },
+    "screens": {
+     "devtest": "art",
+     "north-screen": "art",
+     "south-screen": "art"
+    },
+    "sensor_mask": "follow",
+    "show": {
+     "ai": false
+    },
+    "sonos": {
+     "drawing-room.playback": "paused"
+    },
+    "tv": {
+     "north-screen": "standby",
+     "south-screen": "standby"
+    }
+   },
+   "targets": {
+    "mirror_ball.main": {
+     "policy": "respect",
+     "restore": false,
+     "value": "stopped",
+     "verb": "set"
+    },
+    "page.devtest.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": true,
+     "verb": "set"
+    },
+    "page.north-screen.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": true,
+     "verb": "set"
+    },
+    "page.south-screen.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": true,
+     "verb": "set"
+    },
+    "screens.devtest": {
+     "policy": "respect",
+     "restore": false,
+     "value": "art",
+     "verb": "set"
+    },
+    "screens.north-screen": {
+     "policy": "respect",
+     "restore": false,
+     "value": "art",
+     "verb": "set"
+    },
+    "screens.south-screen": {
+     "policy": "respect",
+     "restore": false,
+     "value": "art",
+     "verb": "set"
+    },
+    "sensor_mask.main": {
+     "policy": "respect",
+     "restore": false,
+     "value": "follow",
+     "verb": "set"
+    },
+    "show.ai": {
+     "policy": "respect",
+     "restore": false,
+     "value": false,
+     "verb": "set"
+    },
+    "sonos.drawing-room.playback": {
+     "policy": "ignore",
+     "restore": false,
+     "value": "paused",
+     "verb": "set"
+    },
+    "tv.north-screen": {
+     "policy": "respect",
+     "restore": false,
+     "value": "standby",
+     "verb": "set"
+    },
+    "tv.south-screen": {
+     "policy": "respect",
+     "restore": false,
+     "value": "standby",
+     "verb": "set"
+    }
+   },
+   "voice": ""
+  },
+  "party": {
+   "description": "",
+   "icon": "party",
+   "label": "Party",
+   "on_enter": [
+    "log.info"
+   ],
+   "on_exit": [
+    "log.info"
+   ],
+   "on_room_page": "main",
+   "state": {
+    "blinds": {
+     "ch02": 100,
+     "ch03": 100,
+     "ch14": 100
+    },
+    "hue": {
+     "ne": "dmx",
+     "nw": "dmx",
+     "se": "dmx",
+     "sw": "dmx"
+    },
+    "light": {
+     "par-left": "dmx",
+     "par-right": "dmx"
+    },
+    "mirror_ball": "stopped",
+    "mirror_ball_motor": {
+     "speed": "medium"
+    },
+    "page": {
+     "devtest.timed_reload": false,
+     "north-screen.timed_reload": false,
+     "south-screen.timed_reload": false
+    },
+    "screens": {
+     "devtest": "art",
+     "north-screen": {
+      "live": {
+       "auto": true,
+       "direction": {
+        "energy": 0.8,
+        "moods": [
+         "euphoric",
+         "playful",
+         "bright"
+        ],
+        "transition_style": "wild"
+       },
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     },
+     "south-screen": {
+      "live": {
+       "auto": true,
+       "direction": {
+        "energy": 0.8,
+        "moods": [
+         "euphoric",
+         "playful",
+         "bright"
+        ],
+        "transition_style": "wild"
+       },
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     }
+    },
+    "sensor_mask": "suspended",
+    "show": {
+     "ai": true,
+     "mic": true
+    },
+    "tv": {
+     "north-screen": "hdmi",
+     "south-screen": "hdmi"
+    }
+   },
+   "targets": {
+    "blinds.ch02": {
+     "policy": "enforce",
+     "restore": true,
+     "value": 100,
+     "verb": "set+restore"
+    },
+    "blinds.ch03": {
+     "policy": "enforce",
+     "restore": true,
+     "value": 100,
+     "verb": "set+restore"
+    },
+    "blinds.ch14": {
+     "policy": "enforce",
+     "restore": true,
+     "value": 100,
+     "verb": "set+restore"
+    },
+    "hue.ne": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "hue.nw": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "hue.se": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "hue.sw": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "light.par-left": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "light.par-right": {
+     "policy": "respect",
+     "restore": true,
+     "value": "dmx",
+     "verb": "set+restore"
+    },
+    "mirror_ball.main": {
+     "policy": "respect",
+     "restore": false,
+     "value": "stopped",
+     "verb": "set"
+    },
+    "mirror_ball_motor.speed": {
+     "policy": "respect",
+     "restore": false,
+     "value": "medium",
+     "verb": "set"
+    },
+    "page.devtest.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": false,
+     "verb": "set"
+    },
+    "page.north-screen.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": false,
+     "verb": "set"
+    },
+    "page.south-screen.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": false,
+     "verb": "set"
+    },
+    "screens.devtest": {
+     "policy": "respect",
+     "restore": false,
+     "value": "art",
+     "verb": "set"
+    },
+    "screens.north-screen": {
+     "policy": "respect",
+     "restore": false,
+     "value": {
+      "live": {
+       "auto": true,
+       "direction": {
+        "energy": 0.8,
+        "moods": [
+         "euphoric",
+         "playful",
+         "bright"
+        ],
+        "transition_style": "wild"
+       },
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     },
+     "verb": "set"
+    },
+    "screens.south-screen": {
+     "policy": "respect",
+     "restore": false,
+     "value": {
+      "live": {
+       "auto": true,
+       "direction": {
+        "energy": 0.8,
+        "moods": [
+         "euphoric",
+         "playful",
+         "bright"
+        ],
+        "transition_style": "wild"
+       },
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     },
+     "verb": "set"
+    },
+    "sensor_mask.main": {
+     "policy": "respect",
+     "restore": false,
+     "value": "suspended",
+     "verb": "set"
+    },
+    "show.ai": {
+     "policy": "respect",
+     "restore": true,
+     "value": true,
+     "verb": "set+restore"
+    },
+    "show.mic": {
+     "policy": "respect",
+     "restore": true,
+     "value": true,
+     "verb": "set+restore"
+    },
+    "tv.north-screen": {
+     "policy": "respect",
+     "restore": true,
+     "value": "hdmi",
+     "verb": "set+restore"
+    },
+    "tv.south-screen": {
+     "policy": "respect",
+     "restore": true,
+     "value": "hdmi",
+     "verb": "set+restore"
+    }
+   },
+   "voice": "party"
+  },
+  "piano": {
+   "description": "",
+   "icon": null,
+   "label": "Piano",
+   "on_enter": [
+    "log.info"
+   ],
+   "on_exit": [
+    "log.info"
+   ],
+   "on_room_page": "main",
+   "state": {
+    "page": {
+     "devtest.timed_reload": false,
+     "north-screen.timed_reload": false,
+     "south-screen.timed_reload": false
+    },
+    "screens": {
+     "devtest": "art",
+     "north-screen": {
+      "live": {
+       "direction": {
+        "energy": 0.35,
+        "moods": [
+         "elegant",
+         "dreamy",
+         "calm"
+        ],
+        "transition_style": "gentle"
+       },
+       "scene_tags": [
+        "modes:piano"
+       ],
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     },
+     "south-screen": {
+      "live": {
+       "direction": {
+        "energy": 0.35,
+        "moods": [
+         "elegant",
+         "dreamy",
+         "calm"
+        ],
+        "transition_style": "gentle"
+       },
+       "scene_tags": [
+        "modes:piano"
+       ],
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     }
+    },
+    "sensor_mask": "suspended",
+    "show": {
+     "ai": true,
+     "mic": true
+    },
+    "sonos": {
+     "drawing-room.playback": "paused",
+     "drawing-room.volume": 0
+    },
+    "tv": {
+     "north-screen": "hdmi",
+     "south-screen": "hdmi"
+    }
+   },
+   "targets": {
+    "page.devtest.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": false,
+     "verb": "set"
+    },
+    "page.north-screen.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": false,
+     "verb": "set"
+    },
+    "page.south-screen.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": false,
+     "verb": "set"
+    },
+    "screens.devtest": {
+     "policy": "respect",
+     "restore": false,
+     "value": "art",
+     "verb": "set"
+    },
+    "screens.north-screen": {
+     "policy": "respect",
+     "restore": false,
+     "value": {
+      "live": {
+       "direction": {
+        "energy": 0.35,
+        "moods": [
+         "elegant",
+         "dreamy",
+         "calm"
+        ],
+        "transition_style": "gentle"
+       },
+       "scene_tags": [
+        "modes:piano"
+       ],
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     },
+     "verb": "set"
+    },
+    "screens.south-screen": {
+     "policy": "respect",
+     "restore": false,
+     "value": {
+      "live": {
+       "direction": {
+        "energy": 0.35,
+        "moods": [
+         "elegant",
+         "dreamy",
+         "calm"
+        ],
+        "transition_style": "gentle"
+       },
+       "scene_tags": [
+        "modes:piano"
+       ],
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     },
+     "verb": "set"
+    },
+    "sensor_mask.main": {
+     "policy": "respect",
+     "restore": false,
+     "value": "suspended",
+     "verb": "set"
+    },
+    "show.ai": {
+     "policy": "respect",
+     "restore": true,
+     "value": true,
+     "verb": "set+restore"
+    },
+    "show.mic": {
+     "policy": "respect",
+     "restore": true,
+     "value": true,
+     "verb": "set+restore"
+    },
+    "sonos.drawing-room.playback": {
+     "policy": "ignore",
+     "restore": true,
+     "value": "paused",
+     "verb": "set+restore"
+    },
+    "sonos.drawing-room.volume": {
+     "policy": "ignore",
+     "restore": true,
+     "value": 0,
+     "verb": "set+restore"
+    },
+    "tv.north-screen": {
+     "policy": "respect",
+     "restore": true,
+     "value": "hdmi",
+     "verb": "set+restore"
+    },
+    "tv.south-screen": {
+     "policy": "respect",
+     "restore": true,
+     "value": "hdmi",
+     "verb": "set+restore"
+    }
+   },
+   "voice": "piano"
+  }
+ },
+ "revision": "684fe3c3e56f"
+}

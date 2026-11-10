@@ -281,7 +281,8 @@ interface Toast {
 }
 
 export function ModeSwitcher({
-  api,
+  api: apiIn,
+  room = null,
   modes,
   modesError,
   mode,
@@ -298,6 +299,9 @@ export function ModeSwitcher({
   onChanged,
 }: {
   api: RoomApi;
+  /** A mode zone (a room with its own modes): the tiles switch, and the edits save, that room's own modes file
+   *  (api.forRoom). null (the default): the site's modes, as before zones. */
+  room?: string | null;
   modes: Record<string, ModeDef> | null;
   /** The last modes read failed (the last good list, if any, is still shown). */
   modesError: string | null;
@@ -319,6 +323,7 @@ export function ModeSwitcher({
   /** The modes file was saved here (a mode added, copied, moved or deleted): re-read modes and describe. */
   onChanged?: () => void;
 }) {
+  const api = apiIn.forRoom(room);
   const [busy, setBusy] = useState<string | null>(null);
   const [trying, setTrying] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -577,7 +582,7 @@ export function ModeSwitcher({
   };
 
   return (
-    <div className="space-y-2" data-testid="mode-switcher">
+    <div className="space-y-2" data-testid="mode-switcher" data-room={room ?? undefined}>
       {modesError && (
         <Notice tone={modes ? "warn" : "bad"}>
           {modes ? "Couldn't refresh the modes; showing the last list." : "The modes couldn't be loaded."}{" "}

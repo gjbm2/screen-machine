@@ -17,6 +17,10 @@ Config: the deployment's dot.json (deployments/<id>/dot.json, hot-reloaded). API
 HTTP on 127.0.0.1 (DOT_PORT): /healthz, /api/v1/status, /preview/<device>.png, POST /api/v1/push (send now),
 /dev/type (the type lab, typelab.py).
 Run by scripts/ctl (screen session sm-dot, the deployment's services/sm-dot.env).
+
+Mode zones: a tag whose room has its own modes (rooms.json "own_modes"; room_service status "zones") shows that
+room's mode, labelled from its own modes file (GET /api/v1/modes?room=), and no Auto (Auto switches the site's modes).
+Every other tag shows the site's mode, as before.
 """
 
 from __future__ import annotations
@@ -32,6 +36,7 @@ import os
 import time
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import quote
 
 import aiohttp
 from aiohttp import web
@@ -133,6 +138,22 @@ def status_of(c: Card) -> tuple:
     return (c.mode, c.changing_from, c.auto, c.mic, c.ai, c.live, c.title, c.paused)
 
 
+def zone_of(status: dict, room_id: str) -> Optional[dict]:
+    """The room's own mode zone in room_service's status ("zones", only on a deployment where a room has
+    "own_modes"), or None: the room follows the site's mode (status.mode), as every room did before zones."""
+    return next((z for z in status.get("zones") or [] if z.get("room") == room_id), None)
+
+
+def mode_words(mode: dict, modes: dict) -> tuple[str, str]:
+    """(the mode shown, the mode it is changing from or "") from a mode block (status.mode or a zone's) and that
+    mode file's GET /api/v1/modes."""
+    labels = {k: (v.get("label") or k) for k, v in (modes or {}).get("modes", {}).items()}
+    current, target = mode.get("current") or "", mode.get("target")
+    shown = labels.get(target or current, target or current)
+    changing_from = labels.get(current, current) if target and target != current else ""
+    return shown, changing_from
+
+
 class DotService:
     def __init__(self) -> None:
         self.cfg_mtime = 0.0
@@ -140,6 +161,7 @@ class DotService:
         self.http: Optional[aiohttp.ClientSession] = None
         self.modes: dict = {}
         self.modes_at = 0.0
+        self.zone_modes: dict[str, tuple[float, dict]] = {}   # an own_modes room's GET /api/v1/modes?room=
         self.catalog: dict = {}
         self.catalog_at = 0.0
         self.sched: dict[str, tuple[float, dict]] = {}
@@ -199,6 +221,16 @@ class DotService:
             self.sched[room] = (time.time(), values)
         return values
 
+    async def modes_of(self, room: str) -> dict:
+        """A mode zone's modes (its own modes file), re-read every SLOW_S like the site's; the last good on a miss."""
+        at, modes = self.zone_modes.get(room, (0.0, {}))
+        if time.time() - at > SLOW_S:
+            got = await self.soft(f"{ROOM}/api/v1/modes?room={quote(room)}")
+            if got:
+                modes = got
+            self.zone_modes[room] = (time.time(), modes)
+        return modes
+
     async def scene_labels(self) -> dict:
         if time.time() - self.catalog_at > CATALOG_S:
             cat = await self.soft(f"{STREAM}/api/catalog")
@@ -214,11 +246,13 @@ class DotService:
         room = next((r for r in status.get("rooms", []) if r.get("id") == room_id), {})
         screens = room.get("screens", [])
 
-        labels = {k: (v.get("label") or k) for k, v in self.modes.get("modes", {}).items()}
-        mode = status.get("mode", {})
-        current, target = mode.get("current") or "", mode.get("target")
-        shown = labels.get(target or current, target or current)
-        changing_from = labels.get(current, current) if target and target != current else ""
+        # A room with its own modes shows its zone's mode (its own file's labels), and no Auto: Auto switches the
+        # site's modes. Every other room shows the site's, as before.
+        zone = zone_of(status, room_id)
+        if zone is None:
+            shown, changing_from = mode_words(status.get("mode", {}), self.modes)
+        else:
+            shown, changing_from = mode_words(zone.get("mode") or {}, await self.modes_of(room_id))
         live = any(((status.get("screens", {}).get(s) or {}).get("observed") or {}).get("layer") == "live"
                    for s in screens)
 
@@ -290,7 +324,8 @@ class DotService:
             style = str(values.get(art.get("style")) or "")
 
         qr = tag.spec.get("qr") or {}
-        return Card(room=room.get("name") or room_id, mode=shown, auto=bool(auto.get("on")), mic=mic_on, ai=ai_on,
+        return Card(room=room.get("name") or room_id, mode=shown, auto=bool(auto.get("on")) and zone is None,
+                    mic=mic_on, ai=ai_on,
                     live=live, changing_from=changing_from, title=title, by=by, left=left, progress=progress,
                     paused=paused, hearing=hearing, scene=scene, feel=feel, ai_heard=ai_heard, theme=theme.strip(),
                     style=style.strip(), hint=tag.spec.get("hint") or "",

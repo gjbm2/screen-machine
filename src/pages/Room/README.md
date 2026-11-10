@@ -305,6 +305,25 @@ Fields marked `x-ui.basic: true` are also shown inline on a live screen's card, 
 compact row each (label and value beside the control, no per-field reset; that is under
 "More"). Without them, nothing extra shows.
 
+## Rooms with their own modes
+
+A room with `"own_modes": true` in rooms.json is a mode zone in room_service (see `deployments/README.md`, "Rooms
+with their own modes"). room_service's status then lists it under `zones` (absent otherwise), and its switches come
+as `room_mode.transition` events (`data.room`); `mode.transition` is always the site's. On this page:
+
+- The site's modes (Auto above them) get a caption naming the rooms they cover ("Drawing room"). Under them, each
+  zone has its own mode strip under its room's name (`ZoneModes.tsx`): the same tiles, progress line, Edit modes and
+  mode editor, on the room's own modes file, and no Auto row (Auto switches the site's modes).
+- Look says which rooms the show plays in (also when a room has `"show": false` and no zone).
+- Settings › Room & modes gets a "Whose modes" picker that switches the group to a zone's modes file.
+- The nav's mode menu and the header line stay on the site's mode.
+
+`RoomApi.forRoom(room)` is the same client with the modes calls (modes, setMode, roomConfig, saveRoomConfig,
+validateConfigUrl, describe) naming that room (`?room=`, or `room` in PUT /api/v1/mode's body). `ModeSwitcher` and
+`ModeEditor` take a `room` and use it. `useRoomConnection` reads each zone's modes (again when its config.revision
+changes) and tracks each zone's transition (`zoneModes`, `zoneTransitions`). Without zones none of these requests
+are made and the page is as before (`zones.test.ts`).
+
 ## Files
 
 | File | Role |
@@ -315,6 +334,7 @@ compact row each (label and value beside the control, no per-field reset; that i
 | `api.ts` | `RoomApi` fetch client, URL and token storage, error explanations |
 | `types.ts` | LIVE_V1 §1.1 and §3 types (tolerant of added fields) |
 | `catalog.ts` | Picker choices, schema defaults, spec building |
+| `zones.ts`, `ZoneModes.tsx` | Mode zones: the captions, the transition tracking shared with the site's, and a zone's own mode strip with its editor |
 | `ModeSwitcher.tsx` | Mode tiles, their ⋯ menu (duplicate, move, delete with undo), the progress line and its step list (also used by the menu) |
 | `modeWords.ts` | What a mode changes in the room, in words from describe: the tiles' line, the progress line's "glitterball starting", the menu's "not connected yet" sentences, steps in words |
 | `ScreenCard.tsx` | One screen: status in words, inline core controls (hidden Cancel while a mode change owns the go-live), the "More" unroll |
@@ -377,6 +397,12 @@ Live controls (14 Oct), in `livectl/` (`smoke.py`): one pass against a real room
 preview config) and 2f's stream_service :8093, with the devtest display page as the glass at 1280×720 and this page
 at 390×844: go live from "More" with the picker and 720p30, cue another scene from the picker, add an effect,
 switch Auto on, pick a palette, open "Picking, the feel and fades", back to art; no page errors, no horizontal overflow.
+
+Pure helpers run under plain node (no test runner in this repo):
+
+```bash
+node --experimental-strip-types --test src/pages/Room/sections.test.ts src/pages/Room/zones.test.ts
+```
 
 Static checks:
 

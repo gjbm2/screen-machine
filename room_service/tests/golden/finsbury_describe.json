@@ -1,0 +1,8539 @@
+{
+ "default": "gallery",
+ "entry_schema": {
+  "properties": {
+   "max_age_s": {
+    "minimum": 1,
+    "type": "number",
+    "x-ui": {
+     "label": "Only if it was changed within",
+     "presets": {
+      "1 hour": 3600,
+      "12 hours": 43200,
+      "3 hours": 10800
+     },
+     "requires": "restore",
+     "unit": "s",
+     "unset_label": "Any time",
+     "widget": "select"
+    }
+   },
+   "opts": {
+    "type": "object",
+    "x-ui": {
+     "advanced": true,
+     "label": "Device hints"
+    }
+   },
+   "policy": {
+    "default": "respect",
+    "enum": [
+     "respect",
+     "enforce"
+    ],
+    "type": "string",
+    "x-ui": {
+     "description": "If someone moves it while this mode is on, move it back once",
+     "label": "Keep it there",
+     "switch": {
+      "off": "respect",
+      "on": "enforce"
+     },
+     "widget": "checkbox"
+    }
+   },
+   "restore": {
+    "default": false,
+    "type": "boolean",
+    "x-ui": {
+     "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+     "label": "Put back afterwards",
+     "widget": "checkbox"
+    }
+   },
+   "skip_if": {
+    "additionalProperties": {
+     "minItems": 1,
+     "type": "array"
+    },
+    "type": "object",
+    "x-ui": {
+     "advanced": true,
+     "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+     "label": "Leave it as it is while",
+     "unset_label": "Always change it"
+    }
+   },
+   "store_if": {
+    "type": "array",
+    "x-ui": {
+     "advanced": true,
+     "label": "Remember it only if",
+     "requires": "restore",
+     "unset_label": "Always"
+    }
+   }
+  },
+  "type": "object",
+  "x-ui": {
+   "label": "Options"
+  }
+ },
+ "groups": {
+  "all_blinds": [
+   "blinds.ch02",
+   "blinds.ch03",
+   "blinds.ch04",
+   "blinds.ch05",
+   "blinds.ch06",
+   "blinds.ch07",
+   "blinds.ch08",
+   "blinds.ch09",
+   "blinds.ch10",
+   "blinds.ch11",
+   "blinds.ch12",
+   "blinds.ch13",
+   "blinds.ch14"
+  ],
+  "drawing-room:blinds": [
+   "blinds.ch02",
+   "blinds.ch03",
+   "blinds.ch14"
+  ],
+  "drawing-room:diag": [
+   "diag.north-screen",
+   "diag.south-screen"
+  ],
+  "drawing-room:effects": [
+   "mirror_ball.main",
+   "mirror_ball_motor.speed",
+   "mirror_ball_motor.direction",
+   "pinspots.main",
+   "pinspots.colour",
+   "pinspots.level",
+   "pinspots.flash"
+  ],
+  "drawing-room:hue": [
+   "hue.ne",
+   "hue.nw",
+   "hue.se",
+   "hue.sw"
+  ],
+  "drawing-room:light": [
+   "light.par-left",
+   "light.par-right"
+  ],
+  "drawing-room:lights": [
+   "hue.ne",
+   "hue.nw",
+   "hue.se",
+   "hue.sw",
+   "light.par-left",
+   "light.par-right"
+  ],
+  "drawing-room:mirror_ball": [
+   "mirror_ball.main"
+  ],
+  "drawing-room:mirror_ball_motor": [
+   "mirror_ball_motor.speed",
+   "mirror_ball_motor.direction"
+  ],
+  "drawing-room:page": [
+   "page.north-screen.timed_reload",
+   "page.south-screen.timed_reload"
+  ],
+  "drawing-room:pinspots": [
+   "pinspots.main",
+   "pinspots.colour",
+   "pinspots.level",
+   "pinspots.flash"
+  ],
+  "drawing-room:screens": [
+   "screens.north-screen",
+   "screens.south-screen"
+  ],
+  "drawing-room:sensors": [],
+  "drawing-room:sonos": [
+   "sonos.drawing-room.volume",
+   "sonos.drawing-room.playback",
+   "sonos.drawing-room.now_playing"
+  ],
+  "drawing-room:tv": [
+   "tv.north-screen",
+   "tv.south-screen"
+  ],
+  "lab:diag": [
+   "diag.devtest"
+  ],
+  "lab:page": [
+   "page.devtest.timed_reload"
+  ],
+  "lab:screens": [
+   "screens.devtest"
+  ]
+ },
+ "groups_from_rooms": [
+  "drawing-room:blinds",
+  "drawing-room:diag",
+  "drawing-room:effects",
+  "drawing-room:hue",
+  "drawing-room:light",
+  "drawing-room:lights",
+  "drawing-room:mirror_ball",
+  "drawing-room:mirror_ball_motor",
+  "drawing-room:page",
+  "drawing-room:pinspots",
+  "drawing-room:screens",
+  "drawing-room:sensors",
+  "drawing-room:sonos",
+  "drawing-room:tv",
+  "lab:diag",
+  "lab:page",
+  "lab:screens"
+ ],
+ "mode_schema": {
+  "properties": {
+   "autopilot": {
+    "properties": {
+     "enter_when": {
+      "type": "object",
+      "x-ui": {
+       "label": "Switch to it when",
+       "situations": [],
+       "widget": "json"
+      }
+     },
+     "from": {
+      "items": {
+       "enum": [
+        "gallery",
+        "live-test",
+        "piano",
+        "off",
+        "lights-only",
+        "ambient",
+        "party",
+        "disco"
+       ],
+       "type": "string"
+      },
+      "type": "array",
+      "x-ui": {
+       "label": "Only from",
+       "unset_label": "Any mode"
+      }
+     },
+     "leave_to": {
+      "enum": [
+       "previous",
+       "gallery",
+       "live-test",
+       "piano",
+       "off",
+       "lights-only",
+       "ambient",
+       "party",
+       "disco"
+      ],
+      "type": "string",
+      "x-ui": {
+       "label": "Then go to",
+       "labels": {
+        "previous": "The mode before"
+       }
+      }
+     },
+     "leave_when": {
+      "type": "object",
+      "x-ui": {
+       "label": "Leave it when",
+       "situations": [],
+       "widget": "json"
+      }
+     },
+     "otherwise_suggest_when": {
+      "type": "object",
+      "x-ui": {
+       "label": "Suggest it when",
+       "situations": [],
+       "widget": "json"
+      }
+     },
+     "skip": {
+      "type": "array",
+      "x-ui": {
+       "label": "Leave alone when Auto switches",
+       "widget": "targets"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Auto"
+    }
+   },
+   "description": {
+    "type": "string",
+    "x-ui": {
+     "label": "Description",
+     "widget": "textarea"
+    }
+   },
+   "icon": {
+    "enum": [
+     "home",
+     "music",
+     "piano",
+     "party",
+     "disco",
+     "film",
+     "moon",
+     "sun",
+     "sparkles",
+     "power",
+     "lamp",
+     "image",
+     "waves",
+     "grid",
+     "flask"
+    ],
+    "type": "string",
+    "x-ui": {
+     "label": "Icon",
+     "widget": "icon"
+    }
+   },
+   "label": {
+    "type": "string",
+    "x-ui": {
+     "label": "Name"
+    }
+   },
+   "on_room_page": {
+    "default": "main",
+    "enum": [
+     "main",
+     "more"
+    ],
+    "type": "string",
+    "x-ui": {
+     "label": "Tile on the Room page",
+     "labels": {
+      "main": "In the mode row",
+      "more": "Under More modes"
+     }
+    }
+   }
+  },
+  "type": "object"
+ },
+ "modes": {
+  "ambient": {
+   "description": "",
+   "entries": {
+    "blinds.ch02": {
+     "from": "ambient",
+     "max_age_s": "<scrubbed>",
+     "opts": {},
+     "policy": "enforce",
+     "restore": true,
+     "selector": "drawing-room:blinds",
+     "store_if": [],
+     "value": 100,
+     "verb": "set+restore",
+     "words": "100"
+    },
+    "blinds.ch03": {
+     "from": "ambient",
+     "max_age_s": "<scrubbed>",
+     "opts": {},
+     "policy": "enforce",
+     "restore": true,
+     "selector": "drawing-room:blinds",
+     "store_if": [],
+     "value": 100,
+     "verb": "set+restore",
+     "words": "100"
+    },
+    "blinds.ch14": {
+     "from": "ambient",
+     "max_age_s": "<scrubbed>",
+     "opts": {},
+     "policy": "enforce",
+     "restore": true,
+     "selector": "drawing-room:blinds",
+     "store_if": [],
+     "value": 100,
+     "verb": "set+restore",
+     "words": "100"
+    },
+    "hue.ne": {
+     "from": "ambient",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "hue",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "dmx"
+    },
+    "hue.nw": {
+     "from": "ambient",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "hue",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "dmx"
+    },
+    "hue.se": {
+     "from": "ambient",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "hue",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "dmx"
+    },
+    "hue.sw": {
+     "from": "ambient",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "hue",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "dmx"
+    },
+    "light.par-left": {
+     "from": "ambient",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "light",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "Follows the music"
+    },
+    "light.par-right": {
+     "from": "ambient",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "light",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "Follows the music"
+    },
+    "mirror_ball.main": {
+     "from": "ambient",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "mirror_ball",
+     "store_if": [],
+     "value": "stopped",
+     "verb": "set",
+     "words": "stopped"
+    },
+    "page.devtest.timed_reload": {
+     "from": "ambient",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": false,
+     "verb": "set",
+     "words": "Off"
+    },
+    "page.north-screen.timed_reload": {
+     "from": "ambient",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": false,
+     "verb": "set",
+     "words": "Off"
+    },
+    "page.south-screen.timed_reload": {
+     "from": "ambient",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": false,
+     "verb": "set",
+     "words": "Off"
+    },
+    "screens.devtest": {
+     "from": "ambient",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "screens",
+     "store_if": [],
+     "value": "art",
+     "verb": "set",
+     "words": "Art"
+    },
+    "screens.north-screen": {
+     "from": "ambient",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "drawing-room:screens",
+     "store_if": [],
+     "value": {
+      "live": {
+       "scene_tags": [
+        "modes:ambient"
+       ],
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     },
+     "verb": "set",
+     "words": "Live (modes:ambient)"
+    },
+    "screens.south-screen": {
+     "from": "ambient",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "drawing-room:screens",
+     "store_if": [],
+     "value": {
+      "live": {
+       "scene_tags": [
+        "modes:ambient"
+       ],
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     },
+     "verb": "set",
+     "words": "Live (modes:ambient)"
+    },
+    "sensor_mask.main": {
+     "from": "ambient",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "sensor_mask",
+     "store_if": [],
+     "value": "suspended",
+     "verb": "set",
+     "words": "Stays as it was"
+    },
+    "show.ai": {
+     "from": "ambient",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "show.ai",
+     "store_if": [],
+     "value": true,
+     "verb": "set+restore",
+     "words": "Listens in this mode"
+    },
+    "show.mic": {
+     "from": "ambient",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "show.mic",
+     "store_if": [],
+     "value": true,
+     "verb": "set+restore",
+     "words": "Listens in this mode"
+    },
+    "tv.north-screen": {
+     "from": "ambient",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "drawing-room:tv",
+     "store_if": [],
+     "value": "hdmi",
+     "verb": "set+restore",
+     "words": "Our screens (HDMI)"
+    },
+    "tv.south-screen": {
+     "from": "ambient",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "drawing-room:tv",
+     "store_if": [],
+     "value": "hdmi",
+     "verb": "set+restore",
+     "words": "Our screens (HDMI)"
+    }
+   },
+   "icon": "waves",
+   "label": "Ambient",
+   "on_enter": [
+    "log.info"
+   ],
+   "on_exit": [
+    "log.info"
+   ],
+   "on_room_page": "main",
+   "order": 5,
+   "voice": "ambient"
+  },
+  "disco": {
+   "description": "",
+   "entries": {
+    "blinds.ch02": {
+     "from": "disco",
+     "max_age_s": "<scrubbed>",
+     "opts": {},
+     "policy": "enforce",
+     "restore": true,
+     "selector": "drawing-room:blinds",
+     "store_if": [],
+     "value": 100,
+     "verb": "set+restore",
+     "words": "100"
+    },
+    "blinds.ch03": {
+     "from": "disco",
+     "max_age_s": "<scrubbed>",
+     "opts": {},
+     "policy": "enforce",
+     "restore": true,
+     "selector": "drawing-room:blinds",
+     "store_if": [],
+     "value": 100,
+     "verb": "set+restore",
+     "words": "100"
+    },
+    "blinds.ch14": {
+     "from": "disco",
+     "max_age_s": "<scrubbed>",
+     "opts": {},
+     "policy": "enforce",
+     "restore": true,
+     "selector": "drawing-room:blinds",
+     "store_if": [],
+     "value": 100,
+     "verb": "set+restore",
+     "words": "100"
+    },
+    "brightness.lamps": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "brightness.lamps",
+     "store_if": [],
+     "value": 35,
+     "verb": "set+restore",
+     "words": "35%"
+    },
+    "brightness.screens": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "brightness.screens",
+     "store_if": [],
+     "value": 55,
+     "verb": "set+restore",
+     "words": "55%"
+    },
+    "hue.ne": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "hue",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "dmx"
+    },
+    "hue.nw": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "hue",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "dmx"
+    },
+    "hue.se": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "hue",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "dmx"
+    },
+    "hue.sw": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "hue",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "dmx"
+    },
+    "light.par-left": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "light",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "Follows the music"
+    },
+    "light.par-right": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "light",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "Follows the music"
+    },
+    "mirror_ball.main": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "mirror_ball",
+     "store_if": [],
+     "value": "spinning",
+     "verb": "set",
+     "words": "spinning"
+    },
+    "mirror_ball_motor.speed": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "mirror_ball_motor.speed",
+     "store_if": [],
+     "value": "high",
+     "verb": "set",
+     "words": "high"
+    },
+    "page.devtest.timed_reload": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": false,
+     "verb": "set",
+     "words": "Off"
+    },
+    "page.north-screen.timed_reload": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": false,
+     "verb": "set",
+     "words": "Off"
+    },
+    "page.south-screen.timed_reload": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": false,
+     "verb": "set",
+     "words": "Off"
+    },
+    "pinspots.colour": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "pinspots.colour",
+     "store_if": [],
+     "value": "white",
+     "verb": "set+restore",
+     "words": "white"
+    },
+    "pinspots.flash": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "pinspots.flash",
+     "store_if": [],
+     "value": "off",
+     "verb": "set+restore",
+     "words": "off"
+    },
+    "pinspots.level": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "pinspots.level",
+     "store_if": [],
+     "value": 8,
+     "verb": "set+restore",
+     "words": "8"
+    },
+    "pinspots.main": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "pinspots.main",
+     "store_if": [],
+     "value": "on",
+     "verb": "set+restore",
+     "words": "on"
+    },
+    "screens.devtest": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "screens",
+     "store_if": [],
+     "value": "art",
+     "verb": "set",
+     "words": "Art"
+    },
+    "screens.north-screen": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "drawing-room:screens",
+     "store_if": [],
+     "value": {
+      "live": {
+       "auto": true,
+       "direction": {
+        "energy": 0.9,
+        "moods": [
+         "euphoric",
+         "geometric"
+        ],
+        "transition_style": "lively"
+       },
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     },
+     "verb": "set",
+     "words": "Live"
+    },
+    "screens.south-screen": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "drawing-room:screens",
+     "store_if": [],
+     "value": {
+      "live": {
+       "auto": true,
+       "direction": {
+        "energy": 0.9,
+        "moods": [
+         "euphoric",
+         "geometric"
+        ],
+        "transition_style": "lively"
+       },
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     },
+     "verb": "set",
+     "words": "Live"
+    },
+    "sensor_mask.main": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "sensor_mask",
+     "store_if": [],
+     "value": "suspended",
+     "verb": "set",
+     "words": "Stays as it was"
+    },
+    "show.ai": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "show.ai",
+     "store_if": [],
+     "value": true,
+     "verb": "set+restore",
+     "words": "Listens in this mode"
+    },
+    "show.mic": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "show.mic",
+     "store_if": [],
+     "value": true,
+     "verb": "set+restore",
+     "words": "Listens in this mode"
+    },
+    "tv.north-screen": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "drawing-room:tv",
+     "store_if": [],
+     "value": "hdmi",
+     "verb": "set+restore",
+     "words": "Our screens (HDMI)"
+    },
+    "tv.south-screen": {
+     "from": "disco",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "drawing-room:tv",
+     "store_if": [],
+     "value": "hdmi",
+     "verb": "set+restore",
+     "words": "Our screens (HDMI)"
+    }
+   },
+   "icon": "disco",
+   "label": "Disco",
+   "on_enter": [
+    "log.info"
+   ],
+   "on_exit": [
+    "log.info"
+   ],
+   "on_room_page": "main",
+   "order": 7,
+   "voice": "disco"
+  },
+  "gallery": {
+   "description": "",
+   "entries": {
+    "mirror_ball.main": {
+     "from": "gallery",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "mirror_ball",
+     "store_if": [],
+     "value": "stopped",
+     "verb": "set",
+     "words": "stopped"
+    },
+    "page.devtest.timed_reload": {
+     "from": "gallery",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": true,
+     "verb": "set",
+     "words": "On"
+    },
+    "page.north-screen.timed_reload": {
+     "from": "gallery",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": true,
+     "verb": "set",
+     "words": "On"
+    },
+    "page.south-screen.timed_reload": {
+     "from": "gallery",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": true,
+     "verb": "set",
+     "words": "On"
+    },
+    "screens.devtest": {
+     "from": "gallery",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "screens",
+     "store_if": [],
+     "value": "art",
+     "verb": "set",
+     "words": "Art"
+    },
+    "screens.north-screen": {
+     "from": "gallery",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "screens",
+     "store_if": [],
+     "value": "art",
+     "verb": "set",
+     "words": "Art"
+    },
+    "screens.south-screen": {
+     "from": "gallery",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "screens",
+     "store_if": [],
+     "value": "art",
+     "verb": "set",
+     "words": "Art"
+    },
+    "sensor_mask.main": {
+     "from": "gallery",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "sensor_mask",
+     "store_if": [],
+     "value": "follow",
+     "verb": "set",
+     "words": "Follows the room's light"
+    },
+    "show.ai": {
+     "from": "gallery",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "show.ai",
+     "store_if": [],
+     "value": false,
+     "verb": "set",
+     "words": "Off"
+    }
+   },
+   "icon": null,
+   "label": "Normal",
+   "on_enter": [],
+   "on_exit": [],
+   "on_room_page": "main",
+   "order": 0,
+   "voice": "normal"
+  },
+  "lights-only": {
+   "description": "",
+   "entries": {
+    "hue.ne": {
+     "from": "lights-only",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "hue",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "dmx"
+    },
+    "hue.nw": {
+     "from": "lights-only",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "hue",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "dmx"
+    },
+    "hue.se": {
+     "from": "lights-only",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "hue",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "dmx"
+    },
+    "hue.sw": {
+     "from": "lights-only",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "hue",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "dmx"
+    },
+    "light.par-left": {
+     "from": "lights-only",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "light",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "Follows the music"
+    },
+    "light.par-right": {
+     "from": "lights-only",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "light",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "Follows the music"
+    },
+    "mirror_ball.main": {
+     "from": "lights-only",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "mirror_ball",
+     "store_if": [],
+     "value": "stopped",
+     "verb": "set",
+     "words": "stopped"
+    },
+    "page.devtest.timed_reload": {
+     "from": "lights-only",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": true,
+     "verb": "set",
+     "words": "On"
+    },
+    "page.north-screen.timed_reload": {
+     "from": "lights-only",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": true,
+     "verb": "set",
+     "words": "On"
+    },
+    "page.south-screen.timed_reload": {
+     "from": "lights-only",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": true,
+     "verb": "set",
+     "words": "On"
+    },
+    "screens.devtest": {
+     "from": "lights-only",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "screens",
+     "store_if": [],
+     "value": "art",
+     "verb": "set",
+     "words": "Art"
+    },
+    "screens.north-screen": {
+     "from": "lights-only",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "screens",
+     "store_if": [],
+     "value": "art",
+     "verb": "set",
+     "words": "Art"
+    },
+    "screens.south-screen": {
+     "from": "lights-only",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "screens",
+     "store_if": [],
+     "value": "art",
+     "verb": "set",
+     "words": "Art"
+    },
+    "sensor_mask.main": {
+     "from": "lights-only",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "sensor_mask",
+     "store_if": [],
+     "value": "suspended",
+     "verb": "set",
+     "words": "Stays as it was"
+    },
+    "show.ai": {
+     "from": "lights-only",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "show.ai",
+     "store_if": [],
+     "value": false,
+     "verb": "set",
+     "words": "Off"
+    },
+    "show.mic": {
+     "from": "lights-only",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "show.mic",
+     "store_if": [],
+     "value": true,
+     "verb": "set+restore",
+     "words": "Listens in this mode"
+    }
+   },
+   "icon": "lamp",
+   "label": "Lights only",
+   "on_enter": [],
+   "on_exit": [],
+   "on_room_page": "main",
+   "order": 4,
+   "voice": "lights only"
+  },
+  "live-test": {
+   "description": "",
+   "entries": {
+    "mirror_ball.main": {
+     "from": "live-test",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "mirror_ball",
+     "store_if": [],
+     "value": "stopped",
+     "verb": "set",
+     "words": "stopped"
+    },
+    "page.devtest.timed_reload": {
+     "from": "live-test",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page.devtest.timed_reload",
+     "store_if": [],
+     "value": false,
+     "verb": "set",
+     "words": "Off"
+    },
+    "page.north-screen.timed_reload": {
+     "from": "live-test",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": true,
+     "verb": "set",
+     "words": "On"
+    },
+    "page.south-screen.timed_reload": {
+     "from": "live-test",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": true,
+     "verb": "set",
+     "words": "On"
+    },
+    "screens.devtest": {
+     "from": "live-test",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "screens.devtest",
+     "store_if": [],
+     "value": {
+      "live": {
+       "auto": true,
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     },
+     "verb": "set",
+     "words": "Live"
+    },
+    "sensor_mask.main": {
+     "from": "live-test",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "sensor_mask",
+     "store_if": [],
+     "value": "follow",
+     "verb": "set",
+     "words": "Follows the room's light"
+    },
+    "show.ai": {
+     "from": "live-test",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "show.ai",
+     "store_if": [],
+     "value": true,
+     "verb": "set+restore",
+     "words": "Listens in this mode"
+    },
+    "show.mic": {
+     "from": "live-test",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "show.mic",
+     "store_if": [],
+     "value": true,
+     "verb": "set+restore",
+     "words": "Listens in this mode"
+    }
+   },
+   "icon": null,
+   "label": "Live test (devtest)",
+   "on_enter": [],
+   "on_exit": [],
+   "on_room_page": "more",
+   "order": 1,
+   "voice": ""
+  },
+  "off": {
+   "description": "",
+   "entries": {
+    "mirror_ball.main": {
+     "from": "off",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "mirror_ball",
+     "store_if": [],
+     "value": "stopped",
+     "verb": "set",
+     "words": "stopped"
+    },
+    "page.devtest.timed_reload": {
+     "from": "off",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": true,
+     "verb": "set",
+     "words": "On"
+    },
+    "page.north-screen.timed_reload": {
+     "from": "off",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": true,
+     "verb": "set",
+     "words": "On"
+    },
+    "page.south-screen.timed_reload": {
+     "from": "off",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": true,
+     "verb": "set",
+     "words": "On"
+    },
+    "screens.devtest": {
+     "from": "off",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "screens",
+     "store_if": [],
+     "value": "art",
+     "verb": "set",
+     "words": "Art"
+    },
+    "screens.north-screen": {
+     "from": "off",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "screens",
+     "store_if": [],
+     "value": "art",
+     "verb": "set",
+     "words": "Art"
+    },
+    "screens.south-screen": {
+     "from": "off",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "screens",
+     "store_if": [],
+     "value": "art",
+     "verb": "set",
+     "words": "Art"
+    },
+    "sensor_mask.main": {
+     "from": "off",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "sensor_mask",
+     "store_if": [],
+     "value": "follow",
+     "verb": "set",
+     "words": "Follows the room's light"
+    },
+    "show.ai": {
+     "from": "off",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "show.ai",
+     "store_if": [],
+     "value": false,
+     "verb": "set",
+     "words": "Off"
+    },
+    "sonos.drawing-room.playback": {
+     "from": "off",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "ignore",
+     "restore": false,
+     "selector": "sonos.drawing-room.playback",
+     "store_if": [],
+     "value": "paused",
+     "verb": "set",
+     "words": "paused"
+    },
+    "tv.north-screen": {
+     "from": "off",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "drawing-room:tv",
+     "store_if": [],
+     "value": "standby",
+     "verb": "set",
+     "words": "Off (standby)"
+    },
+    "tv.south-screen": {
+     "from": "off",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "drawing-room:tv",
+     "store_if": [],
+     "value": "standby",
+     "verb": "set",
+     "words": "Off (standby)"
+    }
+   },
+   "icon": null,
+   "label": "Off",
+   "on_enter": [],
+   "on_exit": [],
+   "on_room_page": "main",
+   "order": 3,
+   "voice": ""
+  },
+  "party": {
+   "description": "",
+   "entries": {
+    "blinds.ch02": {
+     "from": "party",
+     "max_age_s": "<scrubbed>",
+     "opts": {},
+     "policy": "enforce",
+     "restore": true,
+     "selector": "drawing-room:blinds",
+     "store_if": [],
+     "value": 100,
+     "verb": "set+restore",
+     "words": "100"
+    },
+    "blinds.ch03": {
+     "from": "party",
+     "max_age_s": "<scrubbed>",
+     "opts": {},
+     "policy": "enforce",
+     "restore": true,
+     "selector": "drawing-room:blinds",
+     "store_if": [],
+     "value": 100,
+     "verb": "set+restore",
+     "words": "100"
+    },
+    "blinds.ch14": {
+     "from": "party",
+     "max_age_s": "<scrubbed>",
+     "opts": {},
+     "policy": "enforce",
+     "restore": true,
+     "selector": "drawing-room:blinds",
+     "store_if": [],
+     "value": 100,
+     "verb": "set+restore",
+     "words": "100"
+    },
+    "hue.ne": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "hue",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "dmx"
+    },
+    "hue.nw": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "hue",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "dmx"
+    },
+    "hue.se": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "hue",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "dmx"
+    },
+    "hue.sw": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "hue",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "dmx"
+    },
+    "light.par-left": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "light",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "Follows the music"
+    },
+    "light.par-right": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "light",
+     "store_if": [],
+     "value": "dmx",
+     "verb": "set+restore",
+     "words": "Follows the music"
+    },
+    "mirror_ball.main": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "mirror_ball",
+     "store_if": [],
+     "value": "stopped",
+     "verb": "set",
+     "words": "stopped"
+    },
+    "mirror_ball_motor.speed": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "mirror_ball_motor.speed",
+     "store_if": [],
+     "value": "medium",
+     "verb": "set",
+     "words": "medium"
+    },
+    "page.devtest.timed_reload": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": false,
+     "verb": "set",
+     "words": "Off"
+    },
+    "page.north-screen.timed_reload": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": false,
+     "verb": "set",
+     "words": "Off"
+    },
+    "page.south-screen.timed_reload": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": false,
+     "verb": "set",
+     "words": "Off"
+    },
+    "screens.devtest": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "screens",
+     "store_if": [],
+     "value": "art",
+     "verb": "set",
+     "words": "Art"
+    },
+    "screens.north-screen": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "drawing-room:screens",
+     "store_if": [],
+     "value": {
+      "live": {
+       "auto": true,
+       "direction": {
+        "energy": 0.8,
+        "moods": [
+         "euphoric",
+         "playful",
+         "bright"
+        ],
+        "transition_style": "wild"
+       },
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     },
+     "verb": "set",
+     "words": "Live"
+    },
+    "screens.south-screen": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "drawing-room:screens",
+     "store_if": [],
+     "value": {
+      "live": {
+       "auto": true,
+       "direction": {
+        "energy": 0.8,
+        "moods": [
+         "euphoric",
+         "playful",
+         "bright"
+        ],
+        "transition_style": "wild"
+       },
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     },
+     "verb": "set",
+     "words": "Live"
+    },
+    "sensor_mask.main": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "sensor_mask",
+     "store_if": [],
+     "value": "suspended",
+     "verb": "set",
+     "words": "Stays as it was"
+    },
+    "show.ai": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "show.ai",
+     "store_if": [],
+     "value": true,
+     "verb": "set+restore",
+     "words": "Listens in this mode"
+    },
+    "show.mic": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "show.mic",
+     "store_if": [],
+     "value": true,
+     "verb": "set+restore",
+     "words": "Listens in this mode"
+    },
+    "tv.north-screen": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "drawing-room:tv",
+     "store_if": [],
+     "value": "hdmi",
+     "verb": "set+restore",
+     "words": "Our screens (HDMI)"
+    },
+    "tv.south-screen": {
+     "from": "party",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "drawing-room:tv",
+     "store_if": [],
+     "value": "hdmi",
+     "verb": "set+restore",
+     "words": "Our screens (HDMI)"
+    }
+   },
+   "icon": "party",
+   "label": "Party",
+   "on_enter": [
+    "log.info"
+   ],
+   "on_exit": [
+    "log.info"
+   ],
+   "on_room_page": "main",
+   "order": 6,
+   "voice": "party"
+  },
+  "piano": {
+   "description": "",
+   "entries": {
+    "page.devtest.timed_reload": {
+     "from": "piano",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": false,
+     "verb": "set",
+     "words": "Off"
+    },
+    "page.north-screen.timed_reload": {
+     "from": "piano",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": false,
+     "verb": "set",
+     "words": "Off"
+    },
+    "page.south-screen.timed_reload": {
+     "from": "piano",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "page",
+     "store_if": [],
+     "value": false,
+     "verb": "set",
+     "words": "Off"
+    },
+    "screens.devtest": {
+     "from": "piano",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "screens",
+     "store_if": [],
+     "value": "art",
+     "verb": "set",
+     "words": "Art"
+    },
+    "screens.north-screen": {
+     "from": "piano",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "drawing-room:screens",
+     "store_if": [],
+     "value": {
+      "live": {
+       "direction": {
+        "energy": 0.35,
+        "moods": [
+         "elegant",
+         "dreamy",
+         "calm"
+        ],
+        "transition_style": "gentle"
+       },
+       "scene_tags": [
+        "modes:piano"
+       ],
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     },
+     "verb": "set",
+     "words": "Live (modes:piano)"
+    },
+    "screens.south-screen": {
+     "from": "piano",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "drawing-room:screens",
+     "store_if": [],
+     "value": {
+      "live": {
+       "direction": {
+        "energy": 0.35,
+        "moods": [
+         "elegant",
+         "dreamy",
+         "calm"
+        ],
+        "transition_style": "gentle"
+       },
+       "scene_tags": [
+        "modes:piano"
+       ],
+       "transitions": {
+        "in": "crossfade-3s",
+        "out": "crossfade-3s"
+       }
+      }
+     },
+     "verb": "set",
+     "words": "Live (modes:piano)"
+    },
+    "sensor_mask.main": {
+     "from": "piano",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": false,
+     "selector": "sensor_mask",
+     "store_if": [],
+     "value": "suspended",
+     "verb": "set",
+     "words": "Stays as it was"
+    },
+    "show.ai": {
+     "from": "piano",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "show.ai",
+     "store_if": [],
+     "value": true,
+     "verb": "set+restore",
+     "words": "Listens in this mode"
+    },
+    "show.mic": {
+     "from": "piano",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "show.mic",
+     "store_if": [],
+     "value": true,
+     "verb": "set+restore",
+     "words": "Listens in this mode"
+    },
+    "sonos.drawing-room.playback": {
+     "from": "piano",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "ignore",
+     "restore": true,
+     "selector": "sonos.drawing-room.playback",
+     "skip_if": {
+      "sonos.drawing-room.playback": [
+       {
+        "uri": "http://*/show/api/v1/piano/audio/*"
+       },
+       {
+        "uri": "x-rincon-mp3radio://*/show/api/v1/piano/stream/*"
+       },
+       {
+        "uri": "http://*/show/api/v1/piano/stream/*"
+       }
+      ]
+     },
+     "store_if": [
+      "favourite",
+      "uri"
+     ],
+     "value": "paused",
+     "verb": "set+restore",
+     "words": "paused"
+    },
+    "sonos.drawing-room.volume": {
+     "from": "piano",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "ignore",
+     "restore": true,
+     "selector": "sonos.drawing-room.volume",
+     "skip_if": {
+      "sonos.drawing-room.playback": [
+       {
+        "uri": "http://*/show/api/v1/piano/audio/*"
+       },
+       {
+        "uri": "x-rincon-mp3radio://*/show/api/v1/piano/stream/*"
+       },
+       {
+        "uri": "http://*/show/api/v1/piano/stream/*"
+       }
+      ]
+     },
+     "store_if": [],
+     "value": 0,
+     "verb": "set+restore",
+     "words": "0"
+    },
+    "tv.north-screen": {
+     "from": "piano",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "drawing-room:tv",
+     "store_if": [],
+     "value": "hdmi",
+     "verb": "set+restore",
+     "words": "Our screens (HDMI)"
+    },
+    "tv.south-screen": {
+     "from": "piano",
+     "max_age_s": null,
+     "opts": {},
+     "policy": "respect",
+     "restore": true,
+     "selector": "drawing-room:tv",
+     "store_if": [],
+     "value": "hdmi",
+     "verb": "set+restore",
+     "words": "Our screens (HDMI)"
+    }
+   },
+   "icon": null,
+   "label": "Piano",
+   "on_enter": [
+    "log.info"
+   ],
+   "on_exit": [
+    "log.info"
+   ],
+   "on_room_page": "main",
+   "order": 2,
+   "voice": "piano"
+  }
+ },
+ "put_back_max_age_s": null,
+ "revision": "684fe3c3e56f",
+ "room_schema": {
+  "properties": {
+   "autopilot": {
+    "properties": {
+     "chips": {
+      "x-ui": {
+       "advanced": true,
+       "label": "Chips"
+      }
+     },
+     "hold": {
+      "x-ui": {
+       "advanced": true,
+       "label": "Hold after a choice by hand"
+      }
+     },
+     "min_dwell_s": {
+      "x-ui": {
+       "advanced": true,
+       "label": "Stay in a mode at least"
+      }
+     },
+     "on": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "label": "Auto",
+       "widget": "checkbox"
+      }
+     },
+     "quiet_hours": {
+      "x-ui": {
+       "advanced": true,
+       "label": "Quiet hours"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Auto"
+    }
+   },
+   "default": {
+    "enum": [
+     "gallery",
+     "live-test",
+     "piano",
+     "off",
+     "lights-only",
+     "ambient",
+     "party",
+     "disco"
+    ],
+    "type": "string",
+    "x-ui": {
+     "label": "Starts in"
+    }
+   },
+   "put_back_max_age_s": {
+    "minimum": 1,
+    "type": "number",
+    "x-ui": {
+     "description": "For rows with Put back afterwards that don't say",
+     "label": "Put back only if it was changed within",
+     "presets": {
+      "1 hour": 3600,
+      "12 hours": 43200,
+      "3 hours": 10800
+     },
+     "unit": "s",
+     "unset_label": "Any time",
+     "widget": "select"
+    }
+   }
+  },
+  "type": "object"
+ },
+ "rules": [
+  {
+   "from": null,
+   "rule": 2,
+   "to": "gallery"
+  },
+  {
+   "from": null,
+   "rule": 2,
+   "to": "live-test"
+  },
+  {
+   "from": null,
+   "rule": 2,
+   "to": "piano"
+  },
+  {
+   "from": null,
+   "rule": 2,
+   "to": "off"
+  },
+  {
+   "from": null,
+   "rule": 2,
+   "to": "lights-only"
+  },
+  {
+   "from": null,
+   "rule": 2,
+   "to": "ambient"
+  },
+  {
+   "from": null,
+   "rule": 2,
+   "to": "party"
+  },
+  {
+   "from": null,
+   "rule": 2,
+   "to": "disco"
+  },
+  {
+   "from": "gallery",
+   "rule": 2,
+   "to": "live-test"
+  },
+  {
+   "from": "gallery",
+   "rule": 2,
+   "to": "piano"
+  },
+  {
+   "from": "gallery",
+   "rule": 2,
+   "to": "off"
+  },
+  {
+   "from": "gallery",
+   "rule": 2,
+   "to": "lights-only"
+  },
+  {
+   "from": "gallery",
+   "rule": 2,
+   "to": "ambient"
+  },
+  {
+   "from": "gallery",
+   "rule": 2,
+   "to": "party"
+  },
+  {
+   "from": "gallery",
+   "rule": 2,
+   "to": "disco"
+  },
+  {
+   "from": "live-test",
+   "rule": 2,
+   "to": "gallery"
+  },
+  {
+   "from": "live-test",
+   "rule": 2,
+   "to": "piano"
+  },
+  {
+   "from": "live-test",
+   "rule": 2,
+   "to": "off"
+  },
+  {
+   "from": "live-test",
+   "rule": 2,
+   "to": "lights-only"
+  },
+  {
+   "from": "live-test",
+   "rule": 2,
+   "to": "ambient"
+  },
+  {
+   "from": "live-test",
+   "rule": 2,
+   "to": "party"
+  },
+  {
+   "from": "live-test",
+   "rule": 2,
+   "to": "disco"
+  },
+  {
+   "from": "piano",
+   "rule": 2,
+   "to": "gallery"
+  },
+  {
+   "from": "piano",
+   "rule": 2,
+   "to": "live-test"
+  },
+  {
+   "from": "piano",
+   "rule": 2,
+   "to": "off"
+  },
+  {
+   "from": "piano",
+   "rule": 2,
+   "to": "lights-only"
+  },
+  {
+   "from": "piano",
+   "rule": 2,
+   "to": "ambient"
+  },
+  {
+   "from": "piano",
+   "rule": 2,
+   "to": "party"
+  },
+  {
+   "from": "piano",
+   "rule": 2,
+   "to": "disco"
+  },
+  {
+   "from": "off",
+   "rule": 2,
+   "to": "gallery"
+  },
+  {
+   "from": "off",
+   "rule": 2,
+   "to": "live-test"
+  },
+  {
+   "from": "off",
+   "rule": 2,
+   "to": "piano"
+  },
+  {
+   "from": "off",
+   "rule": 2,
+   "to": "lights-only"
+  },
+  {
+   "from": "off",
+   "rule": 2,
+   "to": "ambient"
+  },
+  {
+   "from": "off",
+   "rule": 2,
+   "to": "party"
+  },
+  {
+   "from": "off",
+   "rule": 2,
+   "to": "disco"
+  },
+  {
+   "from": "lights-only",
+   "rule": 2,
+   "to": "gallery"
+  },
+  {
+   "from": "lights-only",
+   "rule": 2,
+   "to": "live-test"
+  },
+  {
+   "from": "lights-only",
+   "rule": 2,
+   "to": "piano"
+  },
+  {
+   "from": "lights-only",
+   "rule": 2,
+   "to": "off"
+  },
+  {
+   "from": "lights-only",
+   "rule": 2,
+   "to": "ambient"
+  },
+  {
+   "from": "lights-only",
+   "rule": 2,
+   "to": "party"
+  },
+  {
+   "from": "lights-only",
+   "rule": 2,
+   "to": "disco"
+  },
+  {
+   "from": "ambient",
+   "rule": 2,
+   "to": "gallery"
+  },
+  {
+   "from": "ambient",
+   "rule": 2,
+   "to": "live-test"
+  },
+  {
+   "from": "ambient",
+   "rule": 2,
+   "to": "piano"
+  },
+  {
+   "from": "ambient",
+   "rule": 2,
+   "to": "off"
+  },
+  {
+   "from": "ambient",
+   "rule": 2,
+   "to": "lights-only"
+  },
+  {
+   "from": "ambient",
+   "rule": 2,
+   "to": "party"
+  },
+  {
+   "from": "ambient",
+   "rule": 2,
+   "to": "disco"
+  },
+  {
+   "from": "party",
+   "rule": 2,
+   "to": "gallery"
+  },
+  {
+   "from": "party",
+   "rule": 2,
+   "to": "live-test"
+  },
+  {
+   "from": "party",
+   "rule": 2,
+   "to": "piano"
+  },
+  {
+   "from": "party",
+   "rule": 2,
+   "to": "off"
+  },
+  {
+   "from": "party",
+   "rule": 2,
+   "to": "lights-only"
+  },
+  {
+   "from": "party",
+   "rule": 2,
+   "to": "ambient"
+  },
+  {
+   "from": "party",
+   "rule": 2,
+   "to": "disco"
+  },
+  {
+   "from": "disco",
+   "rule": 2,
+   "to": "gallery"
+  },
+  {
+   "from": "disco",
+   "rule": 2,
+   "to": "live-test"
+  },
+  {
+   "from": "disco",
+   "rule": 2,
+   "to": "piano"
+  },
+  {
+   "from": "disco",
+   "rule": 2,
+   "to": "off"
+  },
+  {
+   "from": "disco",
+   "rule": 2,
+   "to": "lights-only"
+  },
+  {
+   "from": "disco",
+   "rule": 2,
+   "to": "ambient"
+  },
+  {
+   "from": "disco",
+   "rule": 2,
+   "to": "party"
+  }
+ ],
+ "subsystem_order": [
+  "screens",
+  "tv",
+  "blinds",
+  "hue",
+  "light",
+  "mirror_ball",
+  "mirror_ball_motor",
+  "pinspots",
+  "sonos",
+  "log",
+  "plug",
+  "page",
+  "diag",
+  "sensor_mask",
+  "brightness",
+  "show",
+  "autopilot"
+ ],
+ "subsystems": {
+  "autopilot": {
+   "actions": {},
+   "available": true,
+   "category": "setting",
+   "change_time_s": 0.0,
+   "dry_run": false,
+   "kind": "level",
+   "label": "Auto",
+   "members": [
+    "main"
+   ],
+   "order": 16,
+   "placeholder": false,
+   "poll_s": 5.0
+  },
+  "blinds": {
+   "actions": {},
+   "available": false,
+   "category": "device",
+   "change_time_s": 0.0,
+   "dry_run": false,
+   "kind": "level",
+   "label": "Blinds",
+   "members": [
+    "ch02",
+    "ch03",
+    "ch04",
+    "ch05",
+    "ch06",
+    "ch07",
+    "ch08",
+    "ch09",
+    "ch10",
+    "ch11",
+    "ch12",
+    "ch13",
+    "ch14"
+   ],
+   "order": 2,
+   "placeholder": true,
+   "poll_s": null
+  },
+  "brightness": {
+   "actions": {},
+   "available": true,
+   "category": "setting",
+   "change_time_s": 0.0,
+   "dry_run": false,
+   "kind": "level",
+   "label": "Brightness",
+   "members": [
+    "screens",
+    "lamps"
+   ],
+   "order": 14,
+   "placeholder": false,
+   "poll_s": 5.0
+  },
+  "diag": {
+   "actions": {},
+   "available": true,
+   "category": "setting",
+   "change_time_s": 5.0,
+   "dry_run": false,
+   "kind": "level",
+   "label": "Live details",
+   "members": [
+    "north-screen",
+    "south-screen",
+    "devtest"
+   ],
+   "order": 12,
+   "placeholder": false,
+   "poll_s": 5.0
+  },
+  "hue": {
+   "actions": {},
+   "available": false,
+   "category": "device",
+   "change_time_s": 0.0,
+   "dry_run": false,
+   "kind": "level",
+   "label": "Hue",
+   "members": [
+    "ne",
+    "nw",
+    "se",
+    "sw"
+   ],
+   "order": 3,
+   "placeholder": true,
+   "poll_s": null
+  },
+  "light": {
+   "actions": {
+    "identify": {
+     "label": "Identify (full white for a few seconds)",
+     "schema": {
+      "properties": {
+       "seconds": {
+        "maximum": 30,
+        "minimum": 0.5,
+        "type": "number",
+        "x-ui": {
+         "label": "For",
+         "unit": "s"
+        }
+       }
+      },
+      "type": "object"
+     }
+    }
+   },
+   "available": true,
+   "category": "device",
+   "change_time_s": 2.0,
+   "dry_run": false,
+   "kind": "level",
+   "label": "Lights",
+   "members": [
+    "par-left",
+    "par-right"
+   ],
+   "order": 4,
+   "placeholder": false,
+   "poll_s": 5.0
+  },
+  "log": {
+   "actions": {
+    "error": {
+     "label": "Log (error)",
+     "schema": {
+      "properties": {
+       "msg": {
+        "default": "",
+        "type": "string",
+        "x-ui": {
+         "label": "Message"
+        }
+       }
+      },
+      "type": "object"
+     }
+    },
+    "info": {
+     "label": "Log (info)",
+     "schema": {
+      "properties": {
+       "msg": {
+        "default": "",
+        "type": "string",
+        "x-ui": {
+         "label": "Message"
+        }
+       }
+      },
+      "type": "object"
+     }
+    },
+    "warning": {
+     "label": "Log (warning)",
+     "schema": {
+      "properties": {
+       "msg": {
+        "default": "",
+        "type": "string",
+        "x-ui": {
+         "label": "Message"
+        }
+       }
+      },
+      "type": "object"
+     }
+    }
+   },
+   "available": true,
+   "category": "device",
+   "change_time_s": 0.0,
+   "dry_run": false,
+   "kind": "action",
+   "label": "Log",
+   "members": [],
+   "order": 9,
+   "placeholder": false,
+   "poll_s": null
+  },
+  "mirror_ball": {
+   "actions": {},
+   "available": false,
+   "category": "device",
+   "change_time_s": 0.0,
+   "dry_run": false,
+   "kind": "level",
+   "label": "Glitterball",
+   "members": [
+    "main"
+   ],
+   "order": 5,
+   "placeholder": true,
+   "poll_s": null
+  },
+  "mirror_ball_motor": {
+   "actions": {},
+   "available": false,
+   "category": "device",
+   "change_time_s": 0.0,
+   "dry_run": false,
+   "kind": "level",
+   "label": "Glitterball",
+   "members": [
+    "speed",
+    "direction"
+   ],
+   "order": 6,
+   "placeholder": true,
+   "poll_s": null
+  },
+  "page": {
+   "actions": {},
+   "available": true,
+   "category": "setting",
+   "change_time_s": 10.0,
+   "dry_run": false,
+   "kind": "level",
+   "label": "TV pages",
+   "members": [
+    "north-screen.timed_reload",
+    "south-screen.timed_reload",
+    "devtest.timed_reload"
+   ],
+   "order": 11,
+   "placeholder": false,
+   "poll_s": 5.0
+  },
+  "pinspots": {
+   "actions": {},
+   "available": false,
+   "category": "device",
+   "change_time_s": 0.0,
+   "dry_run": false,
+   "kind": "level",
+   "label": "Pinspots",
+   "members": [
+    "main",
+    "colour",
+    "level",
+    "flash"
+   ],
+   "order": 7,
+   "placeholder": true,
+   "poll_s": null
+  },
+  "plug": {
+   "actions": {},
+   "available": false,
+   "category": "device",
+   "change_time_s": 0.0,
+   "dry_run": false,
+   "kind": "level",
+   "label": "Plug",
+   "members": [
+    "dmx_power"
+   ],
+   "order": 10,
+   "placeholder": true,
+   "poll_s": null
+  },
+  "screens": {
+   "actions": {},
+   "available": true,
+   "category": "device",
+   "change_time_s": 40.0,
+   "dry_run": false,
+   "kind": "level",
+   "label": "Screens",
+   "members": [
+    "north-screen",
+    "south-screen",
+    "devtest"
+   ],
+   "order": 0,
+   "placeholder": false,
+   "poll_s": 1.0
+  },
+  "sensor_mask": {
+   "actions": {},
+   "available": true,
+   "category": "setting",
+   "change_time_s": 0.0,
+   "dry_run": false,
+   "kind": "level",
+   "label": "Art brightness",
+   "members": [
+    "main"
+   ],
+   "order": 13,
+   "placeholder": false,
+   "poll_s": 1.0
+  },
+  "show": {
+   "actions": {},
+   "available": false,
+   "category": "setting",
+   "change_time_s": 2.0,
+   "dry_run": false,
+   "kind": "level",
+   "label": "Listening and feel",
+   "members": [
+    "main",
+    "mic",
+    "ai"
+   ],
+   "order": 15,
+   "placeholder": false,
+   "poll_s": 5.0,
+   "situations": []
+  },
+  "sonos": {
+   "actions": {},
+   "available": false,
+   "category": "device",
+   "change_time_s": 0.0,
+   "dry_run": false,
+   "kind": "level",
+   "label": "Music",
+   "members": [
+    "drawing-room.volume",
+    "drawing-room.playback",
+    "drawing-room.now_playing"
+   ],
+   "order": 8,
+   "placeholder": true,
+   "poll_s": null
+  },
+  "tv": {
+   "actions": {},
+   "available": false,
+   "category": "device",
+   "change_time_s": 0.0,
+   "dry_run": false,
+   "kind": "level",
+   "label": "TVs",
+   "members": [
+    "north-screen",
+    "south-screen"
+   ],
+   "order": 1,
+   "placeholder": true,
+   "poll_s": null
+  }
+ },
+ "targets": {
+  "autopilot.main": {
+   "category": "setting",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [],
+   "kind": "level",
+   "label": "Auto",
+   "member": "main",
+   "schema": {
+    "default": "off",
+    "enum": [
+     "on",
+     "off"
+    ],
+    "type": "string",
+    "x-ui": {
+     "label": "Auto",
+     "labels": {
+      "off": "Off",
+      "on": "On"
+     }
+    }
+   },
+   "subsystem": "autopilot",
+   "subsystem_label": "Auto"
+  },
+  "blinds.ch02": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:blinds",
+    "all_blinds"
+   ],
+   "kind": "level",
+   "label": "Privacy blind ch02",
+   "member": "ch02",
+   "schema": {},
+   "subsystem": "blinds",
+   "subsystem_label": "Blinds"
+  },
+  "blinds.ch03": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:blinds",
+    "all_blinds"
+   ],
+   "kind": "level",
+   "label": "Privacy blind ch03",
+   "member": "ch03",
+   "schema": {},
+   "subsystem": "blinds",
+   "subsystem_label": "Blinds"
+  },
+  "blinds.ch04": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "all_blinds"
+   ],
+   "kind": "level",
+   "label": "ch04",
+   "member": "ch04",
+   "schema": {},
+   "subsystem": "blinds",
+   "subsystem_label": "Blinds"
+  },
+  "blinds.ch05": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "all_blinds"
+   ],
+   "kind": "level",
+   "label": "ch05",
+   "member": "ch05",
+   "schema": {},
+   "subsystem": "blinds",
+   "subsystem_label": "Blinds"
+  },
+  "blinds.ch06": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "all_blinds"
+   ],
+   "kind": "level",
+   "label": "ch06",
+   "member": "ch06",
+   "schema": {},
+   "subsystem": "blinds",
+   "subsystem_label": "Blinds"
+  },
+  "blinds.ch07": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "all_blinds"
+   ],
+   "kind": "level",
+   "label": "ch07",
+   "member": "ch07",
+   "schema": {},
+   "subsystem": "blinds",
+   "subsystem_label": "Blinds"
+  },
+  "blinds.ch08": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "all_blinds"
+   ],
+   "kind": "level",
+   "label": "ch08",
+   "member": "ch08",
+   "schema": {},
+   "subsystem": "blinds",
+   "subsystem_label": "Blinds"
+  },
+  "blinds.ch09": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "all_blinds"
+   ],
+   "kind": "level",
+   "label": "ch09",
+   "member": "ch09",
+   "schema": {},
+   "subsystem": "blinds",
+   "subsystem_label": "Blinds"
+  },
+  "blinds.ch10": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "all_blinds"
+   ],
+   "kind": "level",
+   "label": "ch10",
+   "member": "ch10",
+   "schema": {},
+   "subsystem": "blinds",
+   "subsystem_label": "Blinds"
+  },
+  "blinds.ch11": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "all_blinds"
+   ],
+   "kind": "level",
+   "label": "ch11",
+   "member": "ch11",
+   "schema": {},
+   "subsystem": "blinds",
+   "subsystem_label": "Blinds"
+  },
+  "blinds.ch12": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "all_blinds"
+   ],
+   "kind": "level",
+   "label": "ch12",
+   "member": "ch12",
+   "schema": {},
+   "subsystem": "blinds",
+   "subsystem_label": "Blinds"
+  },
+  "blinds.ch13": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "all_blinds"
+   ],
+   "kind": "level",
+   "label": "ch13",
+   "member": "ch13",
+   "schema": {},
+   "subsystem": "blinds",
+   "subsystem_label": "Blinds"
+  },
+  "blinds.ch14": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:blinds",
+    "all_blinds"
+   ],
+   "kind": "level",
+   "label": "Privacy blind ch14",
+   "member": "ch14",
+   "schema": {},
+   "subsystem": "blinds",
+   "subsystem_label": "Blinds"
+  },
+  "brightness.lamps": {
+   "category": "setting",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [],
+   "kind": "level",
+   "label": "Lamps (following the music)",
+   "member": "lamps",
+   "schema": {
+    "default": 100,
+    "maximum": 100,
+    "minimum": 0,
+    "type": "integer",
+    "x-ui": {
+     "ends": {
+      "max": "Full",
+      "min": "Dark"
+     },
+     "label": "Lamps (following the music)",
+     "step": 5,
+     "unit": "%",
+     "widget": "slider"
+    }
+   },
+   "subsystem": "brightness",
+   "subsystem_label": "Brightness"
+  },
+  "brightness.screens": {
+   "category": "setting",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [],
+   "kind": "level",
+   "label": "Screens (live)",
+   "member": "screens",
+   "schema": {
+    "default": 100,
+    "maximum": 100,
+    "minimum": 0,
+    "type": "integer",
+    "x-ui": {
+     "ends": {
+      "max": "Full",
+      "min": "Dark"
+     },
+     "label": "Screens (live)",
+     "step": 5,
+     "unit": "%",
+     "widget": "slider"
+    }
+   },
+   "subsystem": "brightness",
+   "subsystem_label": "Brightness"
+  },
+  "diag.devtest": {
+   "category": "setting",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "lab:diag"
+   ],
+   "kind": "level",
+   "label": "Dev test screen",
+   "member": "devtest",
+   "schema": {
+    "default": false,
+    "type": "boolean",
+    "x-ui": {
+     "label": "Show details on the TV",
+     "labels": {
+      "false": "Off",
+      "true": "On"
+     }
+    }
+   },
+   "subsystem": "diag",
+   "subsystem_label": "Live details"
+  },
+  "diag.north-screen": {
+   "category": "setting",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:diag"
+   ],
+   "kind": "level",
+   "label": "North screen",
+   "member": "north-screen",
+   "schema": {
+    "default": false,
+    "type": "boolean",
+    "x-ui": {
+     "label": "Show details on the TV",
+     "labels": {
+      "false": "Off",
+      "true": "On"
+     }
+    }
+   },
+   "subsystem": "diag",
+   "subsystem_label": "Live details"
+  },
+  "diag.south-screen": {
+   "category": "setting",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:diag"
+   ],
+   "kind": "level",
+   "label": "South screen",
+   "member": "south-screen",
+   "schema": {
+    "default": false,
+    "type": "boolean",
+    "x-ui": {
+     "label": "Show details on the TV",
+     "labels": {
+      "false": "Off",
+      "true": "On"
+     }
+    }
+   },
+   "subsystem": "diag",
+   "subsystem_label": "Live details"
+  },
+  "hue.ne": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:lights",
+    "drawing-room:hue"
+   ],
+   "kind": "level",
+   "label": "ne",
+   "member": "ne",
+   "schema": {},
+   "subsystem": "hue",
+   "subsystem_label": "Hue"
+  },
+  "hue.nw": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:lights",
+    "drawing-room:hue"
+   ],
+   "kind": "level",
+   "label": "nw",
+   "member": "nw",
+   "schema": {},
+   "subsystem": "hue",
+   "subsystem_label": "Hue"
+  },
+  "hue.se": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:lights",
+    "drawing-room:hue"
+   ],
+   "kind": "level",
+   "label": "se",
+   "member": "se",
+   "schema": {},
+   "subsystem": "hue",
+   "subsystem_label": "Hue"
+  },
+  "hue.sw": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:lights",
+    "drawing-room:hue"
+   ],
+   "kind": "level",
+   "label": "sw",
+   "member": "sw",
+   "schema": {},
+   "subsystem": "hue",
+   "subsystem_label": "Hue"
+  },
+  "light.par-left": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:lights",
+    "drawing-room:light"
+   ],
+   "kind": "level",
+   "label": "Par left",
+   "member": "par-left",
+   "schema": {
+    "oneOf": [
+     {
+      "const": "dmx",
+      "x-ui": {
+       "label": "Follows the music"
+      }
+     },
+     {
+      "const": "off",
+      "x-ui": {
+       "label": "Off"
+      }
+     },
+     {
+      "additionalProperties": false,
+      "default": {
+       "bri": 100,
+       "hex": "#ffffff"
+      },
+      "properties": {
+       "bri": {
+        "default": 100,
+        "maximum": 100,
+        "minimum": 0,
+        "type": "integer",
+        "x-ui": {
+         "label": "Brightness",
+         "unit": "%",
+         "widget": "slider"
+        }
+       },
+       "hex": {
+        "pattern": "^#[0-9a-fA-F]{6}$",
+        "type": "string",
+        "x-ui": {
+         "label": "Colour",
+         "widget": "color"
+        }
+       }
+      },
+      "required": [
+       "hex"
+      ],
+      "type": "object",
+      "x-ui": {
+       "label": "On"
+      }
+     }
+    ],
+    "x-ui": {
+     "label": "Par left",
+     "labels": {
+      "dmx": "Follows the music",
+      "off": "Off"
+     }
+    }
+   },
+   "subsystem": "light",
+   "subsystem_label": "Lights"
+  },
+  "light.par-right": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:lights",
+    "drawing-room:light"
+   ],
+   "kind": "level",
+   "label": "Par right",
+   "member": "par-right",
+   "schema": {
+    "oneOf": [
+     {
+      "const": "dmx",
+      "x-ui": {
+       "label": "Follows the music"
+      }
+     },
+     {
+      "const": "off",
+      "x-ui": {
+       "label": "Off"
+      }
+     },
+     {
+      "additionalProperties": false,
+      "default": {
+       "bri": 100,
+       "hex": "#ffffff"
+      },
+      "properties": {
+       "bri": {
+        "default": 100,
+        "maximum": 100,
+        "minimum": 0,
+        "type": "integer",
+        "x-ui": {
+         "label": "Brightness",
+         "unit": "%",
+         "widget": "slider"
+        }
+       },
+       "hex": {
+        "pattern": "^#[0-9a-fA-F]{6}$",
+        "type": "string",
+        "x-ui": {
+         "label": "Colour",
+         "widget": "color"
+        }
+       }
+      },
+      "required": [
+       "hex"
+      ],
+      "type": "object",
+      "x-ui": {
+       "label": "On"
+      }
+     }
+    ],
+    "x-ui": {
+     "label": "Par right",
+     "labels": {
+      "dmx": "Follows the music",
+      "off": "Off"
+     }
+    }
+   },
+   "subsystem": "light",
+   "subsystem_label": "Lights"
+  },
+  "mirror_ball.main": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:effects",
+    "drawing-room:mirror_ball"
+   ],
+   "kind": "level",
+   "label": "Glitterball",
+   "member": "main",
+   "schema": {
+    "enum": [
+     "spinning",
+     "stopped"
+    ]
+   },
+   "subsystem": "mirror_ball",
+   "subsystem_label": "Glitterball"
+  },
+  "mirror_ball_motor.direction": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:effects",
+    "drawing-room:mirror_ball_motor"
+   ],
+   "kind": "level",
+   "label": "Glitterball direction",
+   "member": "direction",
+   "schema": {
+    "enum": [
+     "anticlockwise",
+     "clockwise"
+    ]
+   },
+   "subsystem": "mirror_ball_motor",
+   "subsystem_label": "Glitterball"
+  },
+  "mirror_ball_motor.speed": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:effects",
+    "drawing-room:mirror_ball_motor"
+   ],
+   "kind": "level",
+   "label": "Glitterball speed",
+   "member": "speed",
+   "schema": {
+    "enum": [
+     "low",
+     "medium",
+     "high"
+    ]
+   },
+   "subsystem": "mirror_ball_motor",
+   "subsystem_label": "Glitterball"
+  },
+  "page.devtest.timed_reload": {
+   "category": "setting",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "lab:page"
+   ],
+   "kind": "level",
+   "label": "Dev test screen",
+   "member": "devtest.timed_reload",
+   "schema": {
+    "default": true,
+    "type": "boolean",
+    "x-ui": {
+     "advanced": true,
+     "label": "Refresh the TV pages now and then",
+     "labels": {
+      "false": "Off",
+      "true": "On"
+     }
+    }
+   },
+   "subsystem": "page",
+   "subsystem_label": "TV pages"
+  },
+  "page.north-screen.timed_reload": {
+   "category": "setting",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:page"
+   ],
+   "kind": "level",
+   "label": "North screen",
+   "member": "north-screen.timed_reload",
+   "schema": {
+    "default": true,
+    "type": "boolean",
+    "x-ui": {
+     "advanced": true,
+     "label": "Refresh the TV pages now and then",
+     "labels": {
+      "false": "Off",
+      "true": "On"
+     }
+    }
+   },
+   "subsystem": "page",
+   "subsystem_label": "TV pages"
+  },
+  "page.south-screen.timed_reload": {
+   "category": "setting",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:page"
+   ],
+   "kind": "level",
+   "label": "South screen",
+   "member": "south-screen.timed_reload",
+   "schema": {
+    "default": true,
+    "type": "boolean",
+    "x-ui": {
+     "advanced": true,
+     "label": "Refresh the TV pages now and then",
+     "labels": {
+      "false": "Off",
+      "true": "On"
+     }
+    }
+   },
+   "subsystem": "page",
+   "subsystem_label": "TV pages"
+  },
+  "pinspots.colour": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:effects",
+    "drawing-room:pinspots"
+   ],
+   "kind": "level",
+   "label": "colour",
+   "member": "colour",
+   "schema": {
+    "enum": [
+     "white",
+     "red",
+     "green",
+     "blue",
+     "yellow",
+     "purple",
+     "cyan",
+     "fade"
+    ]
+   },
+   "subsystem": "pinspots",
+   "subsystem_label": "Pinspots"
+  },
+  "pinspots.flash": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:effects",
+    "drawing-room:pinspots"
+   ],
+   "kind": "level",
+   "label": "flash",
+   "member": "flash",
+   "schema": {
+    "enum": [
+     "on",
+     "off"
+    ]
+   },
+   "subsystem": "pinspots",
+   "subsystem_label": "Pinspots"
+  },
+  "pinspots.level": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:effects",
+    "drawing-room:pinspots"
+   ],
+   "kind": "level",
+   "label": "level",
+   "member": "level",
+   "schema": {
+    "enum": [
+     0,
+     1,
+     2,
+     3,
+     4,
+     5,
+     6,
+     7,
+     8
+    ]
+   },
+   "subsystem": "pinspots",
+   "subsystem_label": "Pinspots"
+  },
+  "pinspots.main": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:effects",
+    "drawing-room:pinspots"
+   ],
+   "kind": "level",
+   "label": "main",
+   "member": "main",
+   "schema": {
+    "enum": [
+     "on",
+     "off"
+    ]
+   },
+   "subsystem": "pinspots",
+   "subsystem_label": "Pinspots"
+  },
+  "plug.dmx_power": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [],
+   "kind": "level",
+   "label": "DMX power",
+   "member": "dmx_power",
+   "schema": {
+    "enum": [
+     "on",
+     "off"
+    ]
+   },
+   "subsystem": "plug",
+   "subsystem_label": "Plug"
+  },
+  "screens.devtest": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "lab:screens"
+   ],
+   "kind": "level",
+   "label": "Dev test screen",
+   "member": "devtest",
+   "schema": {
+    "oneOf": [
+     {
+      "const": "art",
+      "x-ui": {
+       "label": "Art"
+      }
+     },
+     {
+      "default": {
+       "live": {
+        "auto": true
+       }
+      },
+      "properties": {
+       "live": {
+        "properties": {
+         "auto": {
+          "type": "boolean",
+          "x-ui": {
+           "hidden": true,
+           "label": "Art director"
+          }
+         },
+         "direction": {
+          "properties": {
+           "change_rate": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": [
+             "number",
+             "null"
+            ],
+            "x-ui": {
+             "ends": {
+              "max": "High",
+              "min": "Low"
+             },
+             "label": "How often it changes",
+             "widget": "slider"
+            }
+           },
+           "energy": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": [
+             "number",
+             "null"
+            ],
+            "x-ui": {
+             "ends": {
+              "max": "High",
+              "min": "Low"
+             },
+             "label": "Energy",
+             "widget": "slider"
+            }
+           },
+           "fx": {
+            "properties": {
+             "density": {
+              "maximum": 1,
+              "minimum": 0,
+              "type": [
+               "number",
+               "null"
+              ],
+              "x-ui": {
+               "ends": {
+                "max": "High",
+                "min": "Low"
+               },
+               "label": "How many",
+               "widget": "slider"
+              }
+             },
+             "rate": {
+              "maximum": 1,
+              "minimum": 0,
+              "type": [
+               "number",
+               "null"
+              ],
+              "x-ui": {
+               "ends": {
+                "max": "High",
+                "min": "Low"
+               },
+               "label": "How often",
+               "widget": "slider"
+              }
+             }
+            },
+            "type": "object",
+            "x-ui": {
+             "label": "Effects"
+            }
+           },
+           "genre": {
+            "enum": [
+             null
+            ],
+            "type": [
+             "string",
+             "null"
+            ],
+            "x-ui": {
+             "label": "Genre"
+            }
+           },
+           "intensity": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": [
+             "number",
+             "null"
+            ],
+            "x-ui": {
+             "ends": {
+              "max": "High",
+              "min": "Low"
+             },
+             "label": "Intensity",
+             "widget": "slider"
+            }
+           },
+           "moods": {
+            "items": {
+             "enum": [],
+             "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true,
+            "x-ui": {
+             "label": "Moods"
+            }
+           },
+           "pace": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": [
+             "number",
+             "null"
+            ],
+            "x-ui": {
+             "ends": {
+              "max": "High",
+              "min": "Low"
+             },
+             "label": "Pace",
+             "widget": "slider"
+            }
+           },
+           "palette_family": {
+            "enum": [
+             null
+            ],
+            "type": [
+             "string",
+             "null"
+            ],
+            "x-ui": {
+             "label": "Palette"
+            }
+           },
+           "transition_style": {
+            "enum": [
+             null
+            ],
+            "type": [
+             "string",
+             "null"
+            ],
+            "x-ui": {
+             "label": "Transitions"
+            }
+           }
+          },
+          "type": "object",
+          "x-ui": {
+           "help": "Unset = neutral (the music decides).",
+           "label": "Art direction",
+           "unset_label": "Neutral (the music decides)"
+          }
+         },
+         "scene_tags": {
+          "items": {
+           "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true,
+          "x-ui": {
+           "help": "The Art Director only picks scenes with any of these tags.",
+           "label": "Only use these scenes",
+           "tags": [],
+           "widget": "tags"
+          }
+         },
+         "transitions": {
+          "properties": {
+           "in": {
+            "enum": [
+             "crossfade-3s",
+             "xfade",
+             null
+            ],
+            "type": [
+             "string",
+             "null"
+            ],
+            "x-ui": {
+             "enum_labels": [
+              "Crossfade 3 s",
+              "Fast crossfade",
+              "The usual"
+             ],
+             "label": "Into live",
+             "unset_label": "The usual"
+            }
+           },
+           "out": {
+            "enum": [
+             "crossfade-3s",
+             "xfade",
+             null
+            ],
+            "type": [
+             "string",
+             "null"
+            ],
+            "x-ui": {
+             "enum_labels": [
+              "Crossfade 3 s",
+              "Fast crossfade",
+              "The usual"
+             ],
+             "label": "Back to art",
+             "unset_label": "The usual"
+            }
+           }
+          },
+          "type": "object",
+          "x-ui": {
+           "label": "Cut to and from art"
+          }
+         }
+        },
+        "type": "object"
+       }
+      },
+      "required": [
+       "live"
+      ],
+      "type": "object",
+      "x-ui": {
+       "help": "The Art Director picks the scenes, effects and transitions.",
+       "label": "Live"
+      }
+     }
+    ],
+    "x-ui": {
+     "label": "Dev test screen",
+     "widget": "screen"
+    }
+   },
+   "subsystem": "screens",
+   "subsystem_label": "Screens"
+  },
+  "screens.north-screen": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:screens"
+   ],
+   "kind": "level",
+   "label": "North screen",
+   "member": "north-screen",
+   "schema": {
+    "oneOf": [
+     {
+      "const": "art",
+      "x-ui": {
+       "label": "Art"
+      }
+     },
+     {
+      "default": {
+       "live": {
+        "auto": true
+       }
+      },
+      "properties": {
+       "live": {
+        "properties": {
+         "auto": {
+          "type": "boolean",
+          "x-ui": {
+           "hidden": true,
+           "label": "Art director"
+          }
+         },
+         "direction": {
+          "properties": {
+           "change_rate": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": [
+             "number",
+             "null"
+            ],
+            "x-ui": {
+             "ends": {
+              "max": "High",
+              "min": "Low"
+             },
+             "label": "How often it changes",
+             "widget": "slider"
+            }
+           },
+           "energy": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": [
+             "number",
+             "null"
+            ],
+            "x-ui": {
+             "ends": {
+              "max": "High",
+              "min": "Low"
+             },
+             "label": "Energy",
+             "widget": "slider"
+            }
+           },
+           "fx": {
+            "properties": {
+             "density": {
+              "maximum": 1,
+              "minimum": 0,
+              "type": [
+               "number",
+               "null"
+              ],
+              "x-ui": {
+               "ends": {
+                "max": "High",
+                "min": "Low"
+               },
+               "label": "How many",
+               "widget": "slider"
+              }
+             },
+             "rate": {
+              "maximum": 1,
+              "minimum": 0,
+              "type": [
+               "number",
+               "null"
+              ],
+              "x-ui": {
+               "ends": {
+                "max": "High",
+                "min": "Low"
+               },
+               "label": "How often",
+               "widget": "slider"
+              }
+             }
+            },
+            "type": "object",
+            "x-ui": {
+             "label": "Effects"
+            }
+           },
+           "genre": {
+            "enum": [
+             null
+            ],
+            "type": [
+             "string",
+             "null"
+            ],
+            "x-ui": {
+             "label": "Genre"
+            }
+           },
+           "intensity": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": [
+             "number",
+             "null"
+            ],
+            "x-ui": {
+             "ends": {
+              "max": "High",
+              "min": "Low"
+             },
+             "label": "Intensity",
+             "widget": "slider"
+            }
+           },
+           "moods": {
+            "items": {
+             "enum": [],
+             "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true,
+            "x-ui": {
+             "label": "Moods"
+            }
+           },
+           "pace": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": [
+             "number",
+             "null"
+            ],
+            "x-ui": {
+             "ends": {
+              "max": "High",
+              "min": "Low"
+             },
+             "label": "Pace",
+             "widget": "slider"
+            }
+           },
+           "palette_family": {
+            "enum": [
+             null
+            ],
+            "type": [
+             "string",
+             "null"
+            ],
+            "x-ui": {
+             "label": "Palette"
+            }
+           },
+           "transition_style": {
+            "enum": [
+             null
+            ],
+            "type": [
+             "string",
+             "null"
+            ],
+            "x-ui": {
+             "label": "Transitions"
+            }
+           }
+          },
+          "type": "object",
+          "x-ui": {
+           "help": "Unset = neutral (the music decides).",
+           "label": "Art direction",
+           "unset_label": "Neutral (the music decides)"
+          }
+         },
+         "scene_tags": {
+          "items": {
+           "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true,
+          "x-ui": {
+           "help": "The Art Director only picks scenes with any of these tags.",
+           "label": "Only use these scenes",
+           "tags": [],
+           "widget": "tags"
+          }
+         },
+         "transitions": {
+          "properties": {
+           "in": {
+            "enum": [
+             "crossfade-3s",
+             "xfade",
+             null
+            ],
+            "type": [
+             "string",
+             "null"
+            ],
+            "x-ui": {
+             "enum_labels": [
+              "Crossfade 3 s",
+              "Fast crossfade",
+              "The usual"
+             ],
+             "label": "Into live",
+             "unset_label": "The usual"
+            }
+           },
+           "out": {
+            "enum": [
+             "crossfade-3s",
+             "xfade",
+             null
+            ],
+            "type": [
+             "string",
+             "null"
+            ],
+            "x-ui": {
+             "enum_labels": [
+              "Crossfade 3 s",
+              "Fast crossfade",
+              "The usual"
+             ],
+             "label": "Back to art",
+             "unset_label": "The usual"
+            }
+           }
+          },
+          "type": "object",
+          "x-ui": {
+           "label": "Cut to and from art"
+          }
+         }
+        },
+        "type": "object"
+       }
+      },
+      "required": [
+       "live"
+      ],
+      "type": "object",
+      "x-ui": {
+       "help": "The Art Director picks the scenes, effects and transitions.",
+       "label": "Live"
+      }
+     }
+    ],
+    "x-ui": {
+     "label": "North screen",
+     "widget": "screen"
+    }
+   },
+   "subsystem": "screens",
+   "subsystem_label": "Screens"
+  },
+  "screens.south-screen": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:screens"
+   ],
+   "kind": "level",
+   "label": "South screen",
+   "member": "south-screen",
+   "schema": {
+    "oneOf": [
+     {
+      "const": "art",
+      "x-ui": {
+       "label": "Art"
+      }
+     },
+     {
+      "default": {
+       "live": {
+        "auto": true
+       }
+      },
+      "properties": {
+       "live": {
+        "properties": {
+         "auto": {
+          "type": "boolean",
+          "x-ui": {
+           "hidden": true,
+           "label": "Art director"
+          }
+         },
+         "direction": {
+          "properties": {
+           "change_rate": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": [
+             "number",
+             "null"
+            ],
+            "x-ui": {
+             "ends": {
+              "max": "High",
+              "min": "Low"
+             },
+             "label": "How often it changes",
+             "widget": "slider"
+            }
+           },
+           "energy": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": [
+             "number",
+             "null"
+            ],
+            "x-ui": {
+             "ends": {
+              "max": "High",
+              "min": "Low"
+             },
+             "label": "Energy",
+             "widget": "slider"
+            }
+           },
+           "fx": {
+            "properties": {
+             "density": {
+              "maximum": 1,
+              "minimum": 0,
+              "type": [
+               "number",
+               "null"
+              ],
+              "x-ui": {
+               "ends": {
+                "max": "High",
+                "min": "Low"
+               },
+               "label": "How many",
+               "widget": "slider"
+              }
+             },
+             "rate": {
+              "maximum": 1,
+              "minimum": 0,
+              "type": [
+               "number",
+               "null"
+              ],
+              "x-ui": {
+               "ends": {
+                "max": "High",
+                "min": "Low"
+               },
+               "label": "How often",
+               "widget": "slider"
+              }
+             }
+            },
+            "type": "object",
+            "x-ui": {
+             "label": "Effects"
+            }
+           },
+           "genre": {
+            "enum": [
+             null
+            ],
+            "type": [
+             "string",
+             "null"
+            ],
+            "x-ui": {
+             "label": "Genre"
+            }
+           },
+           "intensity": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": [
+             "number",
+             "null"
+            ],
+            "x-ui": {
+             "ends": {
+              "max": "High",
+              "min": "Low"
+             },
+             "label": "Intensity",
+             "widget": "slider"
+            }
+           },
+           "moods": {
+            "items": {
+             "enum": [],
+             "type": "string"
+            },
+            "type": "array",
+            "uniqueItems": true,
+            "x-ui": {
+             "label": "Moods"
+            }
+           },
+           "pace": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": [
+             "number",
+             "null"
+            ],
+            "x-ui": {
+             "ends": {
+              "max": "High",
+              "min": "Low"
+             },
+             "label": "Pace",
+             "widget": "slider"
+            }
+           },
+           "palette_family": {
+            "enum": [
+             null
+            ],
+            "type": [
+             "string",
+             "null"
+            ],
+            "x-ui": {
+             "label": "Palette"
+            }
+           },
+           "transition_style": {
+            "enum": [
+             null
+            ],
+            "type": [
+             "string",
+             "null"
+            ],
+            "x-ui": {
+             "label": "Transitions"
+            }
+           }
+          },
+          "type": "object",
+          "x-ui": {
+           "help": "Unset = neutral (the music decides).",
+           "label": "Art direction",
+           "unset_label": "Neutral (the music decides)"
+          }
+         },
+         "scene_tags": {
+          "items": {
+           "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true,
+          "x-ui": {
+           "help": "The Art Director only picks scenes with any of these tags.",
+           "label": "Only use these scenes",
+           "tags": [],
+           "widget": "tags"
+          }
+         },
+         "transitions": {
+          "properties": {
+           "in": {
+            "enum": [
+             "crossfade-3s",
+             "xfade",
+             null
+            ],
+            "type": [
+             "string",
+             "null"
+            ],
+            "x-ui": {
+             "enum_labels": [
+              "Crossfade 3 s",
+              "Fast crossfade",
+              "The usual"
+             ],
+             "label": "Into live",
+             "unset_label": "The usual"
+            }
+           },
+           "out": {
+            "enum": [
+             "crossfade-3s",
+             "xfade",
+             null
+            ],
+            "type": [
+             "string",
+             "null"
+            ],
+            "x-ui": {
+             "enum_labels": [
+              "Crossfade 3 s",
+              "Fast crossfade",
+              "The usual"
+             ],
+             "label": "Back to art",
+             "unset_label": "The usual"
+            }
+           }
+          },
+          "type": "object",
+          "x-ui": {
+           "label": "Cut to and from art"
+          }
+         }
+        },
+        "type": "object"
+       }
+      },
+      "required": [
+       "live"
+      ],
+      "type": "object",
+      "x-ui": {
+       "help": "The Art Director picks the scenes, effects and transitions.",
+       "label": "Live"
+      }
+     }
+    ],
+    "x-ui": {
+     "label": "South screen",
+     "widget": "screen"
+    }
+   },
+   "subsystem": "screens",
+   "subsystem_label": "Screens"
+  },
+  "sensor_mask.main": {
+   "category": "setting",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [],
+   "kind": "level",
+   "label": "main",
+   "member": "main",
+   "schema": {
+    "default": "follow",
+    "enum": [
+     "follow",
+     "suspended"
+    ],
+    "type": "string",
+    "x-ui": {
+     "advanced": true,
+     "label": "Art brightness",
+     "labels": {
+      "follow": "Follows the room's light",
+      "suspended": "Stays as it was"
+     }
+    }
+   },
+   "subsystem": "sensor_mask",
+   "subsystem_label": "Art brightness"
+  },
+  "show.ai": {
+   "category": "setting",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [],
+   "kind": "level",
+   "label": "AI listening",
+   "member": "ai",
+   "schema": {
+    "default": true,
+    "description": "Lets the AI hear the music in this mode (while the Music card's AI listening switch is on). It sends short clips to a cloud model and costs money.",
+    "type": "boolean",
+    "x-ui": {
+     "description": "Lets the AI hear the music in this mode (while the Music card's AI listening switch is on). It sends short clips to a cloud model and costs money.",
+     "help": "Lets the AI hear the music in this mode (while the Music card's AI listening switch is on). It sends short clips to a cloud model and costs money.",
+     "label": "AI listening",
+     "labels": {
+      "false": "Off",
+      "true": "Listens in this mode"
+     }
+    }
+   },
+   "subsystem": "show",
+   "subsystem_label": "Listening and feel"
+  },
+  "show.main": {
+   "category": "setting",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "ignore",
+      "enum": [
+       "ignore",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "ignore",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [],
+   "kind": "level",
+   "label": "Feel",
+   "member": "main",
+   "schema": {
+    "properties": {
+     "listening": {
+      "default": false,
+      "description": "Not used: whether the AI listens in a mode is its own AI listening row (show.ai; owner, 20 Oct); the feel's listening has gated nothing since 17 Oct and is hidden in the editor",
+      "type": "boolean",
+      "x-ui": {
+       "description": "Not used: whether the AI listens in a mode is its own AI listening row (show.ai; owner, 20 Oct); the feel's listening has gated nothing since 17 Oct and is hidden in the editor",
+       "help": "Not used: whether the AI listens in a mode is its own AI listening row (show.ai; owner, 20 Oct); the feel's listening has gated nothing since 17 Oct and is hidden in the editor",
+       "hidden": true,
+       "label": "Listen with AI",
+       "labels": {
+        "false": "AI listening: off",
+        "true": "AI listening: on"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "overrides": {
+      "properties": {},
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Fine-tune",
+       "unset_label": "As the feel",
+       "unset_label_by": {
+        "vibe": {
+         "chill": "As the Chill feel",
+         "dinner": "As the Dinner feel",
+         "disco": "As the Disco feel",
+         "home": "As the Home feel",
+         "notes": "As the Notes feel",
+         "party": "As the Party feel"
+        }
+       }
+      }
+     },
+     "vibe": {
+      "enum": [
+       "home",
+       "dinner",
+       "chill",
+       "notes",
+       "party",
+       "disco"
+      ],
+      "type": "string",
+      "x-ui": {
+       "label": "Feel",
+       "labels": {
+        "chill": "Chill",
+        "dinner": "Dinner",
+        "disco": "Disco",
+        "home": "Home",
+        "notes": "Notes",
+        "party": "Party"
+       },
+       "unset_label": "No feel",
+       "widget": "select"
+      }
+     }
+    },
+    "required": [
+     "vibe"
+    ],
+    "type": "object",
+    "x-ui": {
+     "default_policy": "ignore",
+     "label": "Feel"
+    }
+   },
+   "subsystem": "show",
+   "subsystem_label": "Listening and feel"
+  },
+  "show.mic": {
+   "category": "setting",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [],
+   "kind": "level",
+   "label": "Mic",
+   "member": "mic",
+   "schema": {
+    "default": true,
+    "description": "The room's mic listens while this mode is on. Auto always listens; the Mic switch at the top always wins.",
+    "type": "boolean",
+    "x-ui": {
+     "description": "The room's mic listens while this mode is on. Auto always listens; the Mic switch at the top always wins.",
+     "help": "The room's mic listens while this mode is on. Auto always listens; the Mic switch at the top always wins.",
+     "label": "Mic",
+     "labels": {
+      "false": "Off",
+      "true": "Listens in this mode"
+     }
+    }
+   },
+   "subsystem": "show",
+   "subsystem_label": "Listening and feel"
+  },
+  "sonos.drawing-room.now_playing": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:sonos"
+   ],
+   "kind": "level",
+   "label": "drawing-room.now_playing",
+   "member": "drawing-room.now_playing",
+   "schema": {},
+   "subsystem": "sonos",
+   "subsystem_label": "Music"
+  },
+  "sonos.drawing-room.playback": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:sonos"
+   ],
+   "kind": "level",
+   "label": "Drawing room music",
+   "member": "drawing-room.playback",
+   "schema": {},
+   "subsystem": "sonos",
+   "subsystem_label": "Music"
+  },
+  "sonos.drawing-room.volume": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:sonos"
+   ],
+   "kind": "level",
+   "label": "Drawing room volume",
+   "member": "drawing-room.volume",
+   "schema": {},
+   "subsystem": "sonos",
+   "subsystem_label": "Music"
+  },
+  "tv.north-screen": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:tv"
+   ],
+   "kind": "level",
+   "label": "North TV",
+   "member": "north-screen",
+   "schema": {
+    "enum": [
+     "standby",
+     "art_mode",
+     "hdmi"
+    ],
+    "x-ui": {
+     "label": "North TV",
+     "labels": {
+      "art_mode": "Art mode",
+      "hdmi": "Our screens (HDMI)",
+      "standby": "Off (standby)"
+     }
+    }
+   },
+   "subsystem": "tv",
+   "subsystem_label": "TVs"
+  },
+  "tv.south-screen": {
+   "category": "device",
+   "entry_schema": {
+    "properties": {
+     "max_age_s": {
+      "minimum": 1,
+      "type": "number",
+      "x-ui": {
+       "label": "Only if it was changed within",
+       "presets": {
+        "1 hour": 3600,
+        "12 hours": 43200,
+        "3 hours": 10800
+       },
+       "requires": "restore",
+       "unit": "s",
+       "unset_label": "Any time",
+       "widget": "select"
+      }
+     },
+     "opts": {
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "label": "Device hints"
+      }
+     },
+     "policy": {
+      "default": "respect",
+      "enum": [
+       "respect",
+       "enforce"
+      ],
+      "type": "string",
+      "x-ui": {
+       "description": "If someone moves it while this mode is on, move it back once",
+       "label": "Keep it there",
+       "switch": {
+        "off": "respect",
+        "on": "enforce"
+       },
+       "widget": "checkbox"
+      }
+     },
+     "restore": {
+      "default": false,
+      "type": "boolean",
+      "x-ui": {
+       "description": "Remember what it was before this mode and put it back when the room leaves it, unless the next mode sets it itself",
+       "label": "Put back afterwards",
+       "widget": "checkbox"
+      }
+     },
+     "skip_if": {
+      "additionalProperties": {
+       "minItems": 1,
+       "type": "array"
+      },
+      "type": "object",
+      "x-ui": {
+       "advanced": true,
+       "description": "Don't change it (or remember it) when the room switches to this mode while one of these is so, for example while our own piano sound is playing on the speaker",
+       "label": "Leave it as it is while",
+       "unset_label": "Always change it"
+      }
+     },
+     "store_if": {
+      "type": "array",
+      "x-ui": {
+       "advanced": true,
+       "label": "Remember it only if",
+       "requires": "restore",
+       "unset_label": "Always"
+      }
+     }
+    },
+    "type": "object",
+    "x-ui": {
+     "label": "Options"
+    }
+   },
+   "groups": [
+    "drawing-room:tv"
+   ],
+   "kind": "level",
+   "label": "South TV",
+   "member": "south-screen",
+   "schema": {
+    "enum": [
+     "standby",
+     "art_mode",
+     "hdmi"
+    ],
+    "x-ui": {
+     "label": "South TV",
+     "labels": {
+      "art_mode": "Art mode",
+      "hdmi": "Our screens (HDMI)",
+      "standby": "Off (standby)"
+     }
+    }
+   },
+   "subsystem": "tv",
+   "subsystem_label": "TVs"
+  }
+ },
+ "warnings": [
+  {
+   "code": "guard_inactive",
+   "level": "warning",
+   "message": "blinds.ch02, blinds.ch03, blinds.ch14: placeholder or dry run, so this guard is not enforced (allow_skipped)",
+   "mode": null,
+   "path": "/transitions/0/steps/1/on_fail",
+   "target": null,
+   "text": "The blinds aren't wired up yet, so the screens can light up before the blinds are down"
+  },
+  {
+   "code": "placeholder_values_unchecked",
+   "level": "warning",
+   "message": "'blinds': a placeholder with no values in its device config; its values aren't checked",
+   "mode": null,
+   "path": "",
+   "target": null,
+   "text": "This device isn't set up yet, so its choices can't be checked"
+  },
+  {
+   "code": "placeholder_values_unchecked",
+   "level": "warning",
+   "message": "'sonos': a placeholder with no values in its device config; its values aren't checked",
+   "mode": null,
+   "path": "",
+   "target": null,
+   "text": "This device isn't set up yet, so its choices can't be checked"
+  },
+  {
+   "code": "placeholder_values_unchecked",
+   "level": "warning",
+   "message": "'hue': a placeholder with no values in its device config; its values aren't checked",
+   "mode": null,
+   "path": "",
+   "target": null,
+   "text": "This device isn't set up yet, so its choices can't be checked"
+  }
+ ]
+}

@@ -305,6 +305,53 @@ transition; one-shot actions fire at most once per departure (a running one at t
 (base class `EdgeSubsystem` for the RF adapters), `action` (`log` built in). Manual changes (`PUT
 /api/v1/screens/<id>`) follow `respect`: accepted, reported as `mode.drift` until the next transition.
 
+## Mode zones (`zones.py`)
+
+A room with `"own_modes": true` in rooms.json switches modes on its own (deployments/README.md, "Rooms with their own
+modes"). room_service reads which rooms do once, at start. With none, which is every shipped deployment, it builds
+exactly the objects it always did. `room_service/tests/test_golden.py` checks that.
+
+- **Zones.** The site zone holds `modes.json`, `state.json`, top-level `status.mode`, Auto and the feel. Each
+  `own_modes` room is a zone with its own `room/modes.<room>.json`, Coordinator and state, in
+  `<state_dir>/rooms/<room>/` (`state.json`, `config-history/`).
+- **Scope.** A zone owns its `<room>:*` groups (`room_config.derive_room_groups`), except `show.main`,
+  `autopilot.*`, `log.*` and `brightness.lamps`, which stay with the site. A target another room also lists, or a
+  light the zone takes through the whole `"light"` subsystem, also stays with the site; `mode.rooms_error` names it.
+  The site owns everything else. Scopes are re-planned when rooms.json or an adapter's members change. A change to
+  which rooms are zones only says "restart room_service (Flask) to apply".
+- **Adapters.** The adapters are shared. Each zone sees them through `ScopedAdapter` proxies whose `members` are
+  the zone's, so a bare `screens` means the zone's screens. `svc.adapters` is the raw list: the remotes API, the DMX
+  API, member watchers, `keep_in_step` and `restore` use it. `svc.coordinator` and `svc.room_config` are the
+  site's.
+- **Zone files.** In a zone's file, `brightness.screens`, `show.mic`, `show.ai` and `sensor_mask.main` are aliases
+  for the zone's own members. Naming another zone's target, or the site's, is an error that names the owner. The
+  site's file gets the same error for a zone's target.
+- **Zone-only members.** These exist only while there is a zone:
+  - `sensor_mask.<room>` holds the art mask of that room's screens only (`mask.held(screen)`);
+  - `brightness.<room>.screens` dims only its live screens;
+  - `show.<room>.mic` and `show.<room>.ai` exist for a room in the show.
+
+  `sensor_mask.main` and `brightness.screens` then mean the screens in no zone.
+- **Show claims.** Every claim member, the site's included, reads its own want, kept in `show_claims.json`.
+  show_service's `/api/v1/mic` and `/api/v1/listening` get the OR of the wants. A read that finds show_service holding
+  something else (a restart, a failed PUT) puts the OR back.
+- **API.** `PUT /api/v1/mode` takes `room`: an `own_modes` room's zone; no room, or another room, means the site; a
+  room rooms.json lacks is 404 `unknown_room`. The 202 echoes `room` when one was sent. `GET /api/v1/modes`,
+  `/room/describe` and `/room/config` (GET, PUT, validate) take `?room=`, and `/room/plan` takes it in the body.
+  `PUT /screens/{id}`, `/room/targets`, `/room/assume` and `/room/stored/{slot}/{target}` go to the target's owner.
+  `DELETE /room/stored/{slot}` clears that slot in every zone.
+- **Status and events.** Status keeps `mode`, `config` and `stored` as the site's. `subsystems` merges every zone's
+  members, and a zone's members carry `room`. `zones: [{room, name, screens, show, mode, config, stored}]` is present
+  only when a zone exists. A zone's switches are `room_mode.transition` events with `data.room`, so nothing that
+  follows the site's `mode.transition` can mistake them.
+- **Opt-in.** At start, each zone's Coordinator drops the entries for targets another zone now owns
+  (`prune_outside`, logged as `pruned`). A target no adapter has yet, such as a light show_service hasn't
+  registered, is kept. A mode the site was in that is now only one zone's moves to that zone, and the site is
+  relabelled to its default (`migrate_from`). The moved mode's aliased rows go with it: show.mic, show.ai,
+  brightness.screens and sensor_mask.main become the zone's own members, with the site's desired value and put-back.
+  The mic and AI claims move in show_claims.json too: the zone's claim is on, and the site's is its default's value,
+  else its put-back value. So the zone's next mode releases them. Nothing is sent either way.
+
 ## API extras (additive to LIVE_V1)
 
 * `status`: `mode.{last_transition, drift, default, modes_error}`; per screen `observed.{detail, frozen,
@@ -376,6 +423,12 @@ order/256 KB/5 s, inbound flood code, hb only when idle, contract defaults, ffmp
 1 req/s/screen mask rate; welcome without attach + lost-stall-ack re-entry; lost unfreeze re-sent; PATCH
 race; orphan sweep and slow create; page timed_reload policy via a mode (and the shipped modes.yaml);
 snapshot reuse and exit-snapshot retry; one-shot actions on disk before they fire.
+
+Mode zones: `test_zones.py` runs a two-room site (front shares the site's modes, back has its own) and covers
+scoping, routing, conflicts, restarts, the per-zone members, the ORed show claims, the remotes API, and the opt-in
+prune and migrate (a running Live test with its mic and AI claims included). `test_golden.py` checks that finsbury,
+laptop and example still build exactly what they did before zones (golden/): the static parts, and a pass that
+switches to every mode (each 202 body, the transition events, the status after, the state files written).
 
 Mask defaults in the harness are faster than production (`min_fetch_interval_s: 0.05`); one test runs the
 production 1 s interval.
