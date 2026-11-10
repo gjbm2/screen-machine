@@ -125,6 +125,14 @@ def test_words_are_kept_when_vocab_cannot_be_read(tmp_path):
     assert any("vocab" in x for x in v.problems)
 
 
+def test_a_persona_names_the_sites_kind_of_room(files):
+    """{feel_room} in a persona is the deployment's wording.feel_room (generic "room"); no other field is touched."""
+    _, make = files
+    v = make("vibes:\n  a: {persona: 'A lived-in {feel_room}.', description: 'A {feel_room}.'}\n")
+    assert vmod.FEEL_ROOM == contract.DEPLOYMENT.words("feel_room", "room")
+    assert v.get("a")["persona"] == f"A lived-in {vmod.FEEL_ROOM}." and v.get("a")["description"] == "A {feel_room}."
+
+
 def test_palette_names_are_checked_once_the_catalog_appears(tmp_path):
     (tmp_path / "vocab.yaml").write_text(VOCAB)
     p = tmp_path / "vibes.yaml"

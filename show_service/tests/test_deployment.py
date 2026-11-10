@@ -131,8 +131,9 @@ def test_expand_urls_takes_another_sites_ports_and_leaves_other_holes():
 def test_site_words_come_from_the_deployment_with_generic_defaults():
     """Audit SHOW-6/E10 (contract C3): every phrase that names a site's room or machine is deployment.yaml ``wording``
     with a generic default; the defaults name no site (finsbury's text is kept by its manifest's wording keys)."""
-    from show_service import artnet_lan, listener, treatment
+    from show_service import artnet_lan, listener, treatment, vibes
     words = {"listen_space": ("a room", listener.LISTEN_SPACE),
+             "feel_room": ("room", vibes.FEEL_ROOM),
              "ad_room": ("a room", treatment.AD_ROOM),
              "ad_rig": ("screens showing generative scenes, and lights", treatment.AD_RIG),
              "artnet_no_replies": ("no replies yet: no ArtPollReply from this node so far (README S5.7)",

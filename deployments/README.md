@@ -127,6 +127,7 @@ key gets the generic phrase. finsbury's values keep PC22's text exactly as it wa
 | `ad_room` | show_service's treatment prompt: "the art director of ..." | a room | a drawing room |
 | `ad_rig` | show_service's treatment prompt: what is in the room | screens showing generative scenes, and lights | two large TVs showing generative scenes, lamps, and on some modes a glitterball and pinspots |
 | `site_address` | the Alexa overlays: the address under the QR | (none: the line is left out) | screen.finsburybankforsavings.com |
+| `feel_room` | `{feel_room}` in a feel's persona (`config/room/vibes.yaml`) | room | drawing room |
 
 `smconfig check` rejects a key that isn't in this list (`smconfig/check.py` `WORDING_KEYS`), since a typo would silently
 fall back to the generic phrase. A new key goes in both places.

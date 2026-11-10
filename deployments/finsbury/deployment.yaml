@@ -30,6 +30,7 @@ wording:
   ad_room: a drawing room                   # treatment prompt: "the art director of <ad_room>: <ad_rig>"
   ad_rig: two large TVs showing generative scenes, lamps, and on some modes a glitterball and pinspots
   site_address: screen.finsburybankforsavings.com   # the Alexa overlays, under the QR (left out when unset)
+  feel_room: drawing room                   # config/room/vibes.yaml personas: "A lived-in {feel_room} ..."
 
 capabilities:
   generation: true

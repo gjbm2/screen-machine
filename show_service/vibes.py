@@ -47,6 +47,9 @@ log = logging.getLogger("show_service.vibes")
 NAME_RE = r"^[a-z0-9][a-z0-9_-]{0,31}$"
 _NAME = re.compile(NAME_RE)
 NOT_OVERRIDABLE: tuple[str, ...] = ("label", "description", "persona")
+#: a persona in vibes.yaml may say {feel_room}: deployment.yaml ``wording.feel_room`` (finsbury: "drawing room"), else
+#: "room", so a shared feel describes this site's own kind of room
+FEEL_ROOM = contract.DEPLOYMENT.words("feel_room", "room")
 WORD_AUTO = "auto"           # a word field's neutral as a choice: "the music decides" (= null, unset in the vibe)
 VOCAB_FACETS: tuple[str, ...] = ("moods", "genre", "transition_style", "palette_family")
 LABEL_MAX = 40
@@ -411,6 +414,8 @@ class Vibes:
                 if f not in _SPECS:
                     problems.append(f"vibes.{name}.{f}: unknown field: ignored")
                     continue
+                if f == "persona" and isinstance(v, str):
+                    v = v.replace("{feel_room}", FEEL_ROOM)
                 val, probs, usable = check_field(f, v, vocab=self.vocab, palette_names=pal)
                 problems += [f"vibes.{name}.{f}: {p}" for p in probs]
                 if usable:

@@ -85,7 +85,7 @@ vibes:
         screens: {picture: 0.85, pace: 0.7, pulse: 0.7, depth: 0.7, change: 0.7}
         lamps: {level: 0.6, pulse: 0.7}
     persona: >-
-      A lived-in drawing room on an ordinary day. Light should feel like the room itself: warm, steady and unhurried.
+      A lived-in {feel_room} on an ordinary day. Light should feel like the room itself: warm, steady and unhurried.
       Requests lean towards comfort, never spectacle.
 
   dinner:
