@@ -24,7 +24,7 @@ import {
   type LiveState,
 } from "./roomLink";
 
-/** The room's default live scene (config/room/modes.json, the live modes). */
+/** The room's default live scene (the deployment's room/modes.json, the live modes). */
 const DEFAULT_SCENE_KEY = "preset:fractal-zoom";
 const LAST_SCENE_KEY = (id: string) => `sm_home_live_scene:${id}`;
 const noop = () => {};

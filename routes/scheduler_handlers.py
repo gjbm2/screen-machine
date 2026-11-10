@@ -16,6 +16,7 @@ import os
 from routes.publisher import publish_to_destination
 import uuid
 import traceback
+import smconfig
 
 # Maximum number of items to keep in history variables
 MAX_HISTORY_SIZE = 20
@@ -28,8 +29,20 @@ def handle_random_choice(instruction, context, now, output, publish_destination)
     log_schedule(msg, publish_destination, now, output)
     return False
 
+def _generation_refused(action, publish_destination, now, output):
+    """True (and logged) when the deployment has generation off: generate and animate are then refused."""
+    if smconfig.enabled("generation"):
+        return False
+    msg = f"{action} refused: generation is off in this deployment"
+    warning(f"[scheduler] {publish_destination}: {msg}")
+    log_schedule(msg, publish_destination, now, output)
+    return True
+
+
 def handle_generate(instruction, context, now, output, publish_destination):
     """Handle the generate instruction."""
+    if _generation_refused("generate", publish_destination, now, output):
+        return
     # The instruction has already been processed with Jinja templating
     prompt = ""
     # Extract the prompt from instruction
@@ -399,6 +412,8 @@ def handle_generate(instruction, context, now, output, publish_destination):
         error(traceback.format_exc())
 
 def handle_animate(instruction, context, now, output, publish_destination):
+    if _generation_refused("animate", publish_destination, now, output):
+        return
     # Extract the prompt - no need to process with Jinja again
     prompt = ""
     
@@ -1883,8 +1898,12 @@ def handle_room_state(instruction, context, now, output, publish_destination):
     """Read the room into vars: room_mode, room_auto (true / false / null) and screen_layer ("art" / "live" / null,
     for this destination's screen). The same facts arrive as the events _room_mode, _room_auto and _screen_layer."""
     from routes import room_client
-    facts = room_client.room_facts()
     vars_ = context.setdefault("vars", {})
+    if not room_client.room_on():                 # no room_service here: the facts are unknown, not invented
+        vars_["room_mode"] = vars_["room_auto"] = vars_["screen_layer"] = None
+        log_schedule(f"Room state: not read ({room_client.ROOM_OFF})", publish_destination, now, output)
+        return False
+    facts = room_client.room_facts()
     vars_["room_mode"] = facts.get("mode")
     vars_["room_auto"] = facts.get("auto")
     vars_["screen_layer"] = (facts.get("screens", {}).get(publish_destination) or {}).get("layer")

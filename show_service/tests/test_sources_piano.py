@@ -135,7 +135,8 @@ def test_no_instruments_file_offers_the_windows_synth_and_keeps_todays_argv(lib)
     ch = r.src.choices()
     assert ch == {"instruments": [{"id": "windows-gs", "label": "Basic (Windows synth)", "kind": "live"}],
                   "default_instrument": "windows-gs",
-                  "outputs": [{"id": "pc22", "label": "PC22 speakers"}, {"id": "none", "label": "Screens only"}]}
+                  "outputs": [{"id": "pc22", "label": "PC22 speakers"}, {"id": "none", "label": "Screens only"}],
+                  "default_output": "pc22"}
     off = r.src.status()["piano"]
     assert off["state"] == "off" and off["instrument"] == "windows-gs" and off["output"] == "pc22"
     assert off["once"] is False and off["progress"] is None
@@ -147,6 +148,37 @@ def test_no_instruments_file_offers_the_windows_synth_and_keeps_todays_argv(lib)
     r.src.tick(0.0)
     assert r.popen.argv == today(lib)
     assert r.src.status()["audio"]["instrument"] is None and r.src.status()["audio"]["output"] is None
+    r.src.stop()
+
+
+def test_finsbury_has_the_windows_sound():
+    assert sources.WINDOWS_SOUND is True and sources.DEFAULT_OUTPUT == "pc22"      # host.windows_python is set
+    assert [o["id"] for o in sources.OUTPUTS] == ["pc22", "none"]
+    assert main_mod._piano_default_output() == "pc22"                   # the piano gate's fallback: the same
+
+
+def test_without_windows_sound_no_pc22_and_no_windows_synth(lib, monkeypatch):
+    """A deployment with no host.windows_python: the screens only by default, no PC22 output, no windows-gs sound."""
+    monkeypatch.setattr(sources, "WINDOWS_SOUND", False)
+    monkeypatch.setattr(sources, "OUTPUTS", ({"id": "none", "label": "Screens only"},))
+    monkeypatch.setattr(sources, "DEFAULT_OUTPUT", "none")
+    r = make(lib)
+    assert r.src.choices() == {"instruments": [], "default_instrument": None,
+                               "outputs": [{"id": "none", "label": "Screens only"}], "default_output": "none"}
+    with pytest.raises(ValueError, match="unknown_instrument"):        # nothing to play with: a clear refusal
+        r.src.start_test("piano", "file:Nocturne.mid")
+    instruments(lib)                                                   # windows-gs listed in the file: left out
+    r.clock.t += 5.0
+    ch = r.src.choices()
+    assert [i["id"] for i in ch["instruments"]] == ["salamander"] and ch["default_instrument"] == "salamander"
+    with pytest.raises(ValueError, match="unknown_instrument"):
+        r.src.start_test("piano", "file:Nocturne.mid", instrument="windows-gs")
+    with pytest.raises(ValueError, match="unknown_output"):
+        r.src.start_test("piano", "file:Nocturne.mid", output="pc22")
+    st = r.src.start_test("piano", "file:Nocturne.mid")                # unnamed: the default sound, screens only
+    assert st["instrument"] == "salamander" and st["output"] == "none"
+    assert r.popen.argv[:len(today(lib))] == today(lib) and r.popen.argv[len(today(lib)):][:4] == [
+        "--instrument", "salamander", "--output", "none"]
     r.src.stop()
 
 

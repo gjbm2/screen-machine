@@ -10,7 +10,7 @@ original (original/original-48k.wav). This script compares the two and writes, i
                          onset envelopes, alignment, model fit, live beats vs ground truth
   analysis/beats.json    the pseudo ground truth (madmom and Beat This!), original and recording time
   model/model.json       the room model roomsim.apply() replays (+ ir.wav, band_limit.wav, noise.wav)
-and, for a real run (not --no-config, not synthetic), config/room/audio_cal.json's entry for the run's stream
+and, for a real run (not --no-config, not synthetic), deployments/<id>/calibration/audio_cal.json's entry for the run's stream
 (summary.music_lufs: the music's loudness at the mic, what dsp's loudness gate should expect).
 
 Nothing in the real world is controlled, so every step is built to cope:
@@ -104,7 +104,16 @@ sys.path.insert(0, str(HERE))
 import roomsim  # noqa: E402
 
 REPO = HERE.parents[2]
-CONFIG_JSON = REPO / "config" / "room" / "audio_cal.json"
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+import smconfig  # noqa: E402  (the deployment: SM_DEPLOYMENT)
+
+try:   # the deployment (and PyYAML, which reads its manifest) up front: a clear message, not a traceback
+    smconfig.deployment()
+except (smconfig.DeploymentError, ImportError) as _exc:
+    raise SystemExit(f"{pathlib.Path(__file__).name}: {_exc}")
+
+CONFIG_JSON = smconfig.path("calibration", "audio_cal.json")
 SHOW_YAML = REPO / "config" / "room" / "show.yaml"
 PY_SHOW = pathlib.Path.home() / ".venvs" / "sm-show" / "bin" / "python"
 PY_ML = pathlib.Path.home() / ".venvs" / "sm-show-ml" / "bin" / "python"
@@ -2745,7 +2754,7 @@ def report_md(rep: dict) -> str:
                    f"{(real.get('hit70_gated') or 0) * 100:.0f} % flashed under the beat gate within 70 ms.")
     if st:
         L.append(f"- So the gate's reference must sit near the music's real loudness at this mic "
-                 f"({_fmt(am['short_term_median_lufs'], '{:.0f}')} LUFS, in config/room/audio_cal.json "
+                 f"({_fmt(am['short_term_median_lufs'], '{:.0f}')} LUFS, in calibration/audio_cal.json "
                  f"summary.music_lufs): at -30 dsp hears the music as quiet and the clock waits.")
     if live.get("available"):
         o = live["overall"]
@@ -3449,7 +3458,7 @@ def _analyse(run_dir: pathlib.Path, do_config: bool, skip_beats: bool, log, *, s
 def main() -> None:
     ap = argparse.ArgumentParser(description="Analyse an audio calibration run (see the module docstring).")
     ap.add_argument("run_dir")
-    ap.add_argument("--no-config", action="store_true", help="don't update config/room/audio_cal.json")
+    ap.add_argument("--no-config", action="store_true", help="don't update the deployment's calibration/audio_cal.json")
     ap.add_argument("--skip-beats", action="store_true",
                     help="skip the beat trackers, the live-clock score and the beat-stack replays")
     ap.add_argument("--no-stack", action="store_true", help="skip only the beat-stack replays (run_stack.py)")

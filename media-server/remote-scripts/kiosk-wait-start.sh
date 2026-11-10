@@ -8,7 +8,7 @@ for i in $(seq 1 "$MAX_WAIT"); do
     sleep 1
     if pgrep -f "Xorg :0" >/dev/null; then
         sleep 3                     # make sure X stays up
-        runuser -u gjbm2 -- /usr/local/bin/kiosk-loop.sh &
+        runuser -u @@KIOSK_USER@@ -- /usr/local/bin/kiosk-loop.sh &
         exit 0
     fi
 done

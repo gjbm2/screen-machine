@@ -12,10 +12,11 @@ When it sends:
 The tag's own wake interval follows the same period (Dot. Settings API), and its sleep window is the config's.
 Sends are at least MIN_GAP_S apart.
 
-Config: config/room/dot.json (hot-reloaded). API key: ~/.config/screen-machine/dot.json {"api_key"}.
+Config: the deployment's dot.json (deployments/<id>/dot.json, hot-reloaded). API key: ~/.config/screen-machine/dot.json
+{"api_key"}.
 HTTP on 127.0.0.1 (DOT_PORT): /healthz, /api/v1/status, /preview/<device>.png, POST /api/v1/push (send now),
 /dev/type (the type lab, typelab.py).
-Run by scripts/ctl (screen session sm-dot, deploy/sm-dot.env).
+Run by scripts/ctl (screen session sm-dot, the deployment's services/sm-dot.env).
 """
 
 from __future__ import annotations
@@ -35,18 +36,20 @@ from typing import Any, Optional
 import aiohttp
 from aiohttp import web
 
+import smconfig
+
 from . import typelab
 from .render import Card, render
 
 REPO = Path(__file__).resolve().parent.parent
-CONFIG = REPO / "config" / "room" / "dot.json"
-KEY_FILE = Path.home() / ".config" / "screen-machine" / "dot.json"
-BATTERY_LOG = Path.home() / ".local" / "state" / "screen-machine" / "logs" / "dot_battery.jsonl"   # every DEVICE_STATUS_S
+CONFIG = smconfig.path("dot.json")
+KEY_FILE = smconfig.secret("dot.json")
+BATTERY_LOG = smconfig.state("logs", "dot_battery.jsonl")   # every DEVICE_STATUS_S
 DOT_API = "https://dot.mindreset.tech/api/authV2/open"
-ROOM = os.environ.get("DOT_ROOM_URL", "http://127.0.0.1:8700")
-SHOW = os.environ.get("DOT_SHOW_URL", "http://127.0.0.1:8703")
-STREAM = os.environ.get("DOT_STREAM_URL", "http://127.0.0.1:8702")
-APP = os.environ.get("DOT_APP_URL", "http://127.0.0.1:5000")
+ROOM = os.environ.get("DOT_ROOM_URL") or smconfig.url("room")
+SHOW = os.environ.get("DOT_SHOW_URL") or smconfig.url("show")
+STREAM = os.environ.get("DOT_STREAM_URL") or smconfig.url("stream")
+APP = os.environ.get("DOT_APP_URL") or smconfig.url("flask")
 OWN_STREAM = "/show/api/v1/piano/stream/"   # Sonos playing the music player's own stream: the player names it
 
 POLL_S = 2.0

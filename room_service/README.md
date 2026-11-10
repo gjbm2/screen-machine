@@ -19,8 +19,8 @@ python3.12 -m venv ~/.venvs/sm-room
 ~/.venvs/sm-room/bin/pip install aiohttp pyyaml playwright==1.58.0 pytest pytest-asyncio pillow astral==3.2 websockets pycryptodomex
 cd ~/dev/screen-machine
 ~/.venvs/sm-room/bin/python -m room_service --port 8700            # binds 0.0.0.0 (kiosks reach it via the LAN)
-#   --host 127.0.0.1  --config config/room/room.prod.yaml  --state-dir …  --no-snapshots  --log-level DEBUG
-# A dev/smoke instance: a temp copy of room.prod.yaml with its own service.state_dir (and its own --port).
+#   --host 127.0.0.1  --config deployments/<id>/room/room.yaml  --state-dir …  --no-snapshots  --log-level DEBUG
+# A dev/smoke instance: a temp copy of room/room.yaml with its own service.state_dir (and its own --port).
 ```
 
 * `astral==3.2` is `lightmask`'s one dependency (sensor ingest; without it room_service runs Flask-only);
@@ -51,7 +51,7 @@ The GPU renderer (stream_service, :8702) stays a separate worker.
   need no change. Flask's public :5000 door (WAN, ngrok) has **no room routes**. room_service never imports Flask,
   and Flask only starts and stops it.
 * **Env:** `ROOM_IN_APP` (default `1`; `0` turns it off), `ROOM_PORT` (8700), `ROOM_HOST` (0.0.0.0),
-  `ROOM_CONFIG` (`config/room/room.prod.yaml`), `ROOM_LOG` (`logs/room_service.log`, INFO; warnings also go to the
+  `ROOM_CONFIG` (`deployments/<id>/room/room.yaml`), `ROOM_LOG` (`logs/room_service.log`, INFO; warnings also go to the
   Flask console).
 * **Never blocks Flask:** the port is bound before anything of room_service starts. A busy port, or the state
   dir's `room.lock` held by the separate service, gives **one** warning and then a quiet retry every 10 s, so
@@ -65,7 +65,7 @@ The GPU renderer (stream_service, :8702) stays a separate worker.
   `pycryptodomex` room_service cannot start (the blinds adapter imports it). Without playwright there are no snapshots,
   so no screen can go live.
 * **Standalone**, the same code path (e.g. a smoke check on a spare port with its own state dir):
-  `python room_in_app.py --port 8799 --config <temp copy of room.prod.yaml> [--state-dir DIR] [--no-snapshots]`.
+  `python room_in_app.py --port 8799 --config <temp copy of room/room.yaml> [--state-dir DIR] [--no-snapshots]`.
   Tests: `tests/test_in_app.py`.
 
 **Cutover** (once the packages above are in the Flask venv):
@@ -117,16 +117,16 @@ screen-machine-ca. `scripts/ctl start room` would then refuse anyway, because :8
 
 One site config (owner, 14 Oct): each thing is defined once.
 
-* **Screens** are the destinations in `routes/data/publish-destinations.json` (Flask's display config) that carry a
+* **Screens** are the destinations in `deployments/<id>/publish-destinations.json` (Flask's display config) that carry a
   `live` block: `{"enabled": true, "gpu": 0, "profile": "hevc-2160p30", "mask_push": true}` (optional
   `timed_reload`; other keys such as `auto` are ignored here). The destination's `name` is `status.screens.<id>.name`,
   and its `maxwidth` x `maxheight` is the render size (`POST /api/sessions {width, height}`, scaled down to the
   profile's pixel count when bigger, even) and the snapshot page's viewport, so a portrait screen (devtest,
   2160x3840) renders and anchors portrait. Read at start; a Flask restart (room_service runs inside it) picks up edits.
-* **Rooms**: `routes/data/rooms.json` says which room holds which screens, lights, blinds and sensors. It gives the
+* **Rooms**: `deployments/<id>/rooms.json` says which room holds which screens, lights, blinds and sensors. It gives the
   `<room>:<kind>` mode groups (`room_config.py`) and `status.rooms` (`[{id, name, screens, lights, blinds, sensors}]`,
   file order, re-read on change), from which the Room page builds one section per room.
-* **Service settings**: `config/room/room.prod.yaml` (LIVE_V1 §3.1, no `screens:`). A `screens:` block there still
+* **Service settings**: `deployments/<id>/room/room.yaml` (LIVE_V1 §3.1, no `screens:`). A `screens:` block there still
   overrides per screen and per field, and may add screens (tests, dev copies). `service.destinations_file` and
   `service.rooms_file` point elsewhere.
 
@@ -142,7 +142,7 @@ Optional sections (additive; defaults in `config.py`):
 # web_origins: [...]                        # default: from .env (SM_LAN_HOST, VITE_URL)
 # timeouts:                                 # AV_PROGRAMME §3.3
 #   freeze_ack_s: 5        snapshot_s: 3       session_ready_s: 7     live_visible_s: 10
-#   # production (room.prod.yaml): create_session_s 20, exit_session_s 20, snapshot_s 10, session_ready_s 15
+#   # production (deployments/finsbury/room/room.yaml): create_session_s 20, exit_session_s 20, snapshot_s 10, session_ready_s 15
 #   create_session_s: 5                       # POST session/exit HTTP timeout (inside the freeze)
 #   settle_before_go_s: 1.0                   # after ack live_visible, before go (decoder warm-up)
 #   held_extra_s: 5        art_visible_extra_s: 10                   # + the out transition's length
@@ -154,7 +154,7 @@ Optional sections (additive; defaults in `config.py`):
 #   viewport_w: 3840       viewport_h: 2160    timeout_s: 3          warm: true   # viewport: screens without a size
 # service:
 #   state_dir: ~/.local/state/screen-machine/room
-#   destinations_file: routes/data/publish-destinations.json   rooms_file: routes/data/rooms.json
+#   destinations_file: deployments/<id>/publish-destinations.json   rooms_file: deployments/<id>/rooms.json
 #   session_ttl_s: 120     renew_every_s: 30  sweep_orphans: true
 # ingest:                                   # light-sensor ingest, LIVE_V1 §2.2b (room_service/ingest_config.py)
 #   enabled: true          mask_source: auto  # auto: sensor while fresh, else Flask /mask, else hold | sensor | flask
@@ -168,12 +168,12 @@ Optional sections (additive; defaults in `config.py`):
 # blinds: {enabled: false}                  # the hub blinds become a placeholder (tests, no LAN)
 ```
 
-`config/room/modes.json` (docs/av/ROOM_STATE_MODEL.md §2; reloaded on change, and saved from the Room page through
+`deployments/<id>/room/modes.json` (docs/av/ROOM_STATE_MODEL.md §2; reloaded on change, and saved from the Room page through
 `PUT /api/v1/room/config`): `gallery` (label Normal, the default), `live-test` (devtest, `h264-720p30` so a headless
 Chrome can play it), `piano`, `off`, and the live modes `ambient` and `disco`, which store and lower the privacy blinds
 (ch02, ch03, ch14), store and set the TVs, and put everything back on the way out. Devices without a working adapter
 (`tv`, `mirror_ball`, `plug`, `sonos`) are placeholders: accepted, rows skipped, `available: false`. The blinds read the
-Bloc hub for real; their writes stay off (`dry_run`) until `config/room/rf/blinds.json` says `"writes_enabled": true`.
+Bloc hub for real; their writes stay off (`dry_run`) until `deployments/<id>/room/rf/blinds.json` says `"writes_enabled": true`.
 `blinds: {enabled: false}` in the room config makes them a placeholder (tests).
 
 ## How it behaves
@@ -265,7 +265,7 @@ until a sensor keys file exists**: with none, every screen's mask comes from Fla
 | Module | Job |
 |---|---|
 | `ingest.py` | `WS /v1/ingest/lux`: `hello{role:"sensor", sensor, key}` checked in constant time against `~/.config/screen-machine/room_sensors.json` (`{sensor: key}`, 0600, re-read on change) → else close **4401** (also, logged once, when there is no keys file). Then `ingest.lux{sensor, lux, seq, mono_ms, held}`: finite numbers only, clamped 0–200 klx, `seq` strictly increasing (reset on each hello), `held` a bool. `lux.ack{seq}` with the newest seq, coalesced to ≤ 1 per 200 ms (every reading acked within 200 ms; calib-3 drops a link after 5 s without one). > 50 frames/s → **4029**; > 20 readings/s → dropped; no hello in 10 s → 4002; silent 60 s → 4001; a newer socket for the sensor → 4009 for the old one. Host check as everywhere; an `Origin`, if sent, must be one the page sockets accept (the relay sends none: allowed, the key is always required). |
-| `sensors.py` | SensorService, wiring only: one `lightmask.LuxFilter` per sensor (snap 0.15 s / drift 2.5 s, spike guard, held, staleness, warm start from `<state_dir>/sensors.json`), `lightmask.ConfigWatcher` over Flask's own files (`config.py` INTENSITY_CFG, `routes/data/intensity.json`, `publish-destinations.json`; refreshed every 2 s in the executor, so the LightSense editor keeps working), `mask_for_dest` per screen, and the overrides read from Flask's `GET /api/<id>/maskstate` + `GET /api/<id>/brightness-override` every 2 s (only for screens on the sensor path). |
+| `sensors.py` | SensorService, wiring only: one `lightmask.LuxFilter` per sensor (snap 0.15 s / drift 2.5 s, spike guard, held, staleness, warm start from `<state_dir>/sensors.json`), `lightmask.ConfigWatcher` over Flask's own files (`config.py` INTENSITY_CFG, `deployments/<id>/intensity.json`, `publish-destinations.json`; refreshed every 2 s in the executor, so the LightSense editor keeps working), `mask_for_dest` per screen, and the overrides read from Flask's `GET /api/<id>/maskstate` + `GET /api/<id>/brightness-override` every 2 s (only for screens on the sensor path). |
 | `mask_arbiter.py` | MaskArbiter, a `MaskPusher` subclass and the room's one mask writer per screen. Tiers: **sensor** (fresh sensor; the Flask `/mask` fetch for that screen **stops**, since every fetch advances Flask's shared EMA), **flask** (today's fetch), **sensor-stale** (auto only: the sensor is stale *and* Flask has failed for 10 s → lightmask's ramp to the solar curve over 30 s), **hold**. `ingest.mask_source` per screen: `auto` (default), `sensor` (lightmask only, DCL), `flask` (today). `mask.set` gains `source`: lightmask's strings (`sensor`, `astral`, `manual_override`, `maskoff`, `fixed`, `blend`) or `flask`. A relay `held: true` (calibration capture) pushes nothing until it ends; frozen/suspended screens hold and catch up after. |
 | `mask_shaper.py` | Per screen, after the arbiter: a filter snap or re-init, \|Δb\| ≥ 0.05, a source or override change → **at once, 200 ms**; a sensor↔Flask handover → 2000 ms; slow drift → **≤ 1 per 3 s, 1000 ms**, only beyond 0.015 brightness or the warm-alpha deadband; never > 10 mask.set/s per screen (2/s while live). |
 | `mask_source.py` | Picks MaskArbiter or MaskPusher at start (MaskPusher if `ingest.enabled: false` or `lightmask`/`astral` is missing), fronts `/v1/ingest/lux`. |

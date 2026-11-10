@@ -75,14 +75,17 @@ from typing import Any
 import aiohttp
 import yaml
 
+import smconfig
+
 from ..roomstate.contract import Adapter, Outcome, Reading
 from .room import _load, _save
 
 log = logging.getLogger("room_service.show")
 
 REPO = Path(__file__).resolve().parents[2]
-VIBES_FILE = REPO / "config" / "room" / "vibes.yaml"     # c8's; read for names and labels only
-SHOW_URL = "http://127.0.0.1:8703"   # show_service's API over loopback (show_service.contract BUS_PORT): a default
+VIBES_FILE = smconfig.shared("room", "vibes.yaml")     # c8's (shared by every deployment); names and labels only
+SHOW_URL = smconfig.url("show")      # show_service's API over loopback (the deployment's show port): a default;
+                                     # room_service passes its cfg.show_url (build_adapters)
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")      # a vibe name (S3.5)
 FIELD_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")         # a vibe field's shape; show_service checks the name itself
 KEYS = ("vibe", "listening", "overrides")

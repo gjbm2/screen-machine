@@ -87,9 +87,9 @@ Avoid the page's timed reloads (local hours 2, 6, 10, 14, 18 and 22, until RP P5
   - `pulses.json`: the page log, with the WSL command times;
   - `meta.json`: ping, CDP RTT, clock offset and drift;
   - `result.json`: the summary plus one row per pulse.
-- `config/room/latency.json`: the latest result per screen. **The renderer reads `screens.<id>.effective.render_to_photon_ms`** (and the rise/fall breakdown) as its render-ahead.
+- `deployments/<id>/calibration/latency.json`: the latest result per screen. **The renderer reads `screens.<id>.effective.render_to_photon_ms`** (and the rise/fall breakdown) as its render-ahead.
 
-### `config/room/latency.json` schema (version 2)
+### `deployments/<id>/calibration/latency.json` schema (version 2)
 
 | Key | Written by | What it holds |
 |---|---|---|
@@ -150,5 +150,5 @@ What a real run touches, and puts back:
 - **Clock:** the WSL↔box wall-clock offset comes from about 200 UDP echoes to a throwaway responder started on the box over SSH. It is the median of the minimum-RTT probes' midpoints, and is taken before and after the run. On 18 Oct it was −49.6 ± 0.9 ms (the box runs behind WSL).
 - **Results:**
   - a run directory with `samples.jsonl`, `pulses.json`, `meta.json` and `result.json`;
-  - `config/room/latency.json` gets `outputs.hue.intensity` (all four lamps together) or `outputs.<lamp>.intensity` (a subset).
+  - `deployments/<id>/calibration/latency.json` gets `outputs.hue.intensity` (all four lamps together) or `outputs.<lamp>.intensity` (a subset).
   - The show's Hue lead (show_service artnet_out `hue_latency_ms`) is set from these entries.

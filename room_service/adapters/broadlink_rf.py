@@ -1,10 +1,10 @@
 """RF/IR remotes sent by the BroadLink RM4 Pro (python-broadlink, local UDP; no cloud).
 
-One JSON file per remote-controlled device under config/room/rf/ (every file with a "device" block: the glitterball,
-glitterball.json) says which subsystem it is, the RM4 Pro's address, and the learned codes (base64 python-broadlink
+One JSON file per remote-controlled device in the deployment's room/rf/ (every file with a "device" block: the
+glitterball, glitterball.json) says which subsystem it is, the RM4 Pro's address, and the learned codes (base64 python-broadlink
 packets, Home Assistant's format). Devices on the same RM4 Pro share one connection. Devices are added and removed in
 Settings › Lights (remotes_api.py): a new one starts as a copy of a device type, config/room/rf/types/<model>.json
-(new_device()), and its "model" names that type.
+(shared by every deployment; new_device()), and its "model" names that type.
 A file with "type": "light" is a light worked by its remote (rf_light.py: colour, brightness steps, pulse, flash).
 Otherwise the kind follows the codes, read live from the file:
   - "on" and "off"  -> edge_discrete (a latched receiver): each code sets the state, safe to re-send.
@@ -30,7 +30,8 @@ Codes can also be learned and tested from the Lights setup page (remotes_api.py:
 RM4 Pro). An RF device's frequency is found once (the sweep: hold the button) and reused for its other buttons.
 
 The file is re-read when it changes, so a code learned (or re-learned) while room_service runs is used at once:
-no restart. A missing file, or no python-broadlink in the venv, leaves the built-in placeholder.
+no restart. A missing file, or no python-broadlink in the venv, leaves the built-in placeholder. With the deployment's
+`rf` capability off every device file gives its placeholders (nothing is sent, no RM4 Pro is contacted).
 """
 
 from __future__ import annotations
@@ -46,15 +47,17 @@ import time
 from pathlib import Path
 from typing import Any
 
+import smconfig
+
 from ..roomstate.contract import Adapter, Outcome, Placeholder, Reading
 from ..roomstate.schema import enum_schema
 
 log = logging.getLogger("room_service.broadlink")
 
 REPO = Path(__file__).resolve().parents[2]
-RF_DIR = REPO / "config" / "room" / "rf"
-TYPES_DIR = RF_DIR / "types"
-DEFAULT_FILE = RF_DIR / "glitterball.json"
+RF_DIR = smconfig.path("room", "rf")                    # the site's device files (the app adds new ones here)
+TYPES_DIR = smconfig.shared("room", "rf", "types")      # the device types, shared by every deployment
+DEFAULT_FILE = smconfig.path("room", "rf", "glitterball.json")   # the CLI's default device
 STATE_BUTTONS = ("on", "off", "toggle")
 POWER_WORDS = {"on": "On", "off": "Off", "toggle": "On/off (one button)"}
 MAX_PACKET = 1000                                # bytes: 1204 failed (a held capture), ~700 sends (28 Oct)
@@ -565,6 +568,7 @@ def new_device(model: str, label: str, host: str, rf_dir: Path | None = None, ty
     if t is None:
         raise ValueError(f"no device type {model!r}")
     rf_dir = rf_dir or RF_DIR
+    rf_dir.mkdir(parents=True, exist_ok=True)       # a site's first RF device
     base = "".join(c if c.isalnum() else "_" for c in label.strip().lower()).strip("_") or model
     base = base if base[0].isalpha() else f"{model}_{base}"
     taken = {p.stem for p in rf_dir.glob("*.json")}
@@ -584,7 +588,7 @@ def new_device(model: str, label: str, host: str, rf_dir: Path | None = None, ty
 
 def from_config(path: str | Path | None = None, state_dir: str | Path | None = None,
                 rms: dict[str, RM4] | None = None) -> list[Adapter]:
-    """Every device file in config/room/rf/ with a "device" block (or just `path`), in name order; devices on the same
+    """Every device file in the deployment's room/rf/ with a "device" block (or just `path`), in name order; devices on the same
     RM4 Pro share one connection. Each file gives its power adapter (dry_run until it has codes) and, with a
     "settings" block, a settings adapter ("settings_subsystem", e.g. mirror_ball_motor); a "type": "light" file gives
     one light adapter (rf_light.py). Placeholders with their values without python-broadlink; nothing for a file that
@@ -604,6 +608,27 @@ def from_config(path: str | Path | None = None, state_dir: str | Path | None = N
     return out
 
 
+def rf_enabled() -> bool:
+    """The deployment's `rf` capability (deployment.yaml): off, every RF device is an inert placeholder."""
+    return smconfig.enabled("rf")
+
+
+def _placeholders(raw: dict, sub: str, settings_sub: str, settings: dict, light: bool) -> list[Adapter]:
+    """A device file's subsystems with nothing behind them (no python-broadlink, or rf off)."""
+    if light:
+        from .rf_light import placeholder
+        return [placeholder(raw)]
+    v = raw.get("values") or {}
+    out: list[Adapter] = [Placeholder(sub, [str(raw.get("member") or "main")],
+                                      [str(v.get("on", "spinning")), str(v.get("off", "stopped"))])]
+    if settings:
+        out.append(Placeholder(settings_sub, list(settings),
+                               {m: list(s.get("buttons") or {}) for m, s in settings.items()}))
+    for p in out:
+        p.subsystem_label = raw.get("label") or None
+    return out
+
+
 def _from_file(p: Path, state_dir: str | Path | None, rms: dict[str, RM4]) -> list[Adapter]:
     if not p.exists():
         return []
@@ -617,22 +642,14 @@ def _from_file(p: Path, state_dir: str | Path | None, rms: dict[str, RM4]) -> li
     settings_sub = str(raw.get("settings_subsystem") or f"{sub}_motor")
     settings = {m: s for m, s in (raw.get("settings") or {}).items() if isinstance(s, dict)}
     light = raw.get("type") == "light"
+    if not rf_enabled():
+        log.info("%s: the deployment's rf capability is off; placeholder (nothing is sent)", sub)
+        return _placeholders(raw, sub, settings_sub, settings, light)
     try:
         import broadlink  # noqa: F401
     except ImportError:
         log.error("%s: python-broadlink isn't installed in this venv; placeholder", sub)
-        if light:
-            from .rf_light import placeholder
-            return [placeholder(raw)]
-        v = raw.get("values") or {}
-        out: list[Adapter] = [Placeholder(sub, [str(raw.get("member") or "main")],
-                                          [str(v.get("on", "spinning")), str(v.get("off", "stopped"))])]
-        if settings:
-            out.append(Placeholder(settings_sub, list(settings),
-                                   {m: list(s.get("buttons") or {}) for m, s in settings.items()}))
-        for p in out:
-            p.subsystem_label = raw.get("label") or None
-        return out
+        return _placeholders(raw, sub, settings_sub, settings, light)
     host = str((raw.get("device") or {}).get("host") or "")
     rm = rms.setdefault(host, RM4(host))
     remote = Remote(f, rm, state_dir)

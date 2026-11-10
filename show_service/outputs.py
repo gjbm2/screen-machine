@@ -44,14 +44,14 @@ artnet_lan.ArtNetLan), each fed by its own runner thread ``show-out-<id>``:
   reconcile (its frames at once, then the area). A release in the next moments waits for that stop plus
   ``rig.hue.release_settle_s`` (the bridge's post-entertainment write), so ``released`` still means writable.
 * **The Lights page** (README S5.23), each on show-brain through ``brain.call``: ``add_fixture``, ``update_fixture``,
-  ``remove_fixture`` write config/room/fixtures.added.yaml (fixtures.Registrar: checked with the loader first, never
-  fixtures.yaml) and reload the registry at once (no debounce: the file was replaced whole), so an output made for a
-  new light starts at that reconcile. ``identify`` asks the look engine for full white on one fixture for a few seconds
-  (``LookEngine.identify``) and wakes its runner. ``set_follow`` keeps who follows the music (room's DMX-lights device:
-  FOLLOW_WORDS or a static colour) in ``follow_file`` (atomic) and hands the whole mapping to ``LookEngine.set_follow``
-  at once, after every engine configure, and on each change. An engine without those methods degrades: identify
-  answers ``ok: false``, the follow mapping is kept for when it has them. ``fixture_rows`` (any thread) is the rig
-  view's per-fixture rows (contract.RigFixtureRow) in ``GET /api/v1/rig``.
+  ``remove_fixture`` write deployments/<id>/lights/fixtures.added.yaml (fixtures.Registrar: checked with the loader
+  first, never fixtures.yaml) and reload the registry at once (no debounce: the file was replaced whole), so an output
+  made for a new light starts at that reconcile. ``identify`` asks the look engine for full white on one fixture for a
+  few seconds (``LookEngine.identify``) and wakes its runner. ``set_follow`` keeps who follows the music (room's
+  DMX-lights device: FOLLOW_WORDS or a static colour) in ``follow_file`` (atomic) and hands the whole mapping to
+  ``LookEngine.set_follow`` at once, after every engine configure, and on each change. An engine without those methods
+  degrades: identify answers ``ok: false``, the follow mapping is kept for when it has them. ``fixture_rows`` (any
+  thread) is the rig view's per-fixture rows (contract.RigFixtureRow) in ``GET /api/v1/rig``.
 * **Movers** (docs/LIGHTS.md §5.8): show.yaml ``lights`` and the room's space (``space.shared()``, polled on
   show-brain; a new revision reconfigures) reach ``LookEngine.configure``. ``jog`` (any thread, no brain hop: the
   page's Move it) holds or releases one light through the engine and wakes its runner; a frame that says ``busy`` (a
@@ -109,7 +109,11 @@ RING = 256                         # lateness and send-time samples kept per run
 RATE_WINDOW_S = 5.0
 HUE_RELEASE_TIMEOUT_S = 15.0       # show.yaml rig.hue.release_timeout_s's starting point (hue_out's RIG_HUE_DEFAULTS)
 HUE_SETTLE_S = 1.0                 # show.yaml rig.hue.release_settle_s's starting point (§9.4: the bridge's own write)
-FIXTURES_FILE_WORDS = "config/room/fixtures.yaml"
+#: driver kind -> the deployment capability it needs (deployment.yaml capabilities): off, an enabled output of that
+#: kind reads "off" with capability_off_words and its driver is never built or started (smconfig rule 5)
+CAPABILITY_OF: dict[str, str] = {"hue": "hue"}
+CAPABILITY_OFF_PREFIX = "this deployment has no "
+FIXTURES_FILE_WORDS = contract.FIXTURES_FILE_WORDS   # "deployments/<id>/lights/fixtures.yaml"
 IDENTIFY_S = 3.0                   # README S5.23: identify's full white, unless the call says how long
 IDENTIFY_MAX_S = 30.0              # starting point: a longer ask is cut to this (the answer's ``seconds`` says so)
 ONLINE_CHECK_S = 10.0              # README S5.23: each node address pinged this often (show-rig-online)
@@ -203,6 +207,23 @@ def ping_once(ip: str) -> Optional[bool]:
     except (OSError, subprocess.SubprocessError):
         return None
     return r.returncode == 0
+
+
+_cap_said: set[str] = set()
+
+
+def capability_on(cap: str) -> bool:
+    """deployment.yaml ``capabilities.<cap>`` (smconfig); off is logged once per process."""
+    on = contract.DEPLOYMENT.enabled(cap)
+    if not on and cap not in _cap_said:
+        _cap_said.add(cap)
+        log.warning("rig: %s", capability_off_words(cap))
+    return on
+
+
+def capability_off_words(cap: str) -> str:
+    return (f"{CAPABILITY_OFF_PREFIX}{cap}: the {cap} capability is off in deployments/{contract.DEPLOYMENT.id}/"
+            "deployment.yaml")
 
 
 class _Online:
@@ -727,7 +748,7 @@ class Rig:
         if oid is None:
             return f"no hue output in {FIXTURES_FILE_WORDS}"
         st = self._why.get(oid)
-        if st is not None and st[0] == "not_built":
+        if st is not None and (st[0] == "not_built" or (st[0] == "off" and st[1].startswith(CAPABILITY_OFF_PREFIX))):
             return st[1]
         return f"outputs.{oid}.enabled is false in {FIXTURES_FILE_WORDS}"
 
@@ -1298,6 +1319,8 @@ class Rig:
             kind = str(oc.get("driver"))
             if oc.get("enabled") is not True:
                 why[oid] = ("off", f"outputs.{oid}.enabled is false in {FIXTURES_FILE_WORDS}")
+            elif kind in CAPABILITY_OF and not capability_on(CAPABILITY_OF[kind]):
+                why[oid] = ("off", capability_off_words(CAPABILITY_OF[kind]))   # never built, never touches the device
             elif kind not in contract.DRIVERS_BUILT or (kind not in self._factories and kind not in DRIVER_MODULES):
                 why[oid] = ("not_built", f"the {kind} driver isn't built in Stage 5")
             elif self.engine is None:

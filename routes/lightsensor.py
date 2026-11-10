@@ -5,6 +5,11 @@ from typing import Dict, List, Optional, Tuple
 from flask import Blueprint, jsonify, request
 import logging
 
+import smconfig
+
+# The deployment's light sensor -> screens mapping and lux curve (read here, and written by the PUT below)
+INTENSITY_FILE = smconfig.path("intensity.json")
+
 # Initialize logging
 logging.basicConfig(level=logging.WARNING)  # Change to WARNING level
 logger = logging.getLogger(__name__)
@@ -39,7 +44,7 @@ class IntensityMapper:
 
     def load_mapping(self):
         try:
-            mapping_path = os.path.join(os.path.dirname(__file__), 'data', 'intensity.json')
+            mapping_path = str(INTENSITY_FILE)
             if os.path.exists(mapping_path):
                 with open(mapping_path, 'r') as f:
                     self.mapping_data = json.load(f)
@@ -52,7 +57,7 @@ class IntensityMapper:
     def save_mapping(self):
         """Save the current mapping data back to the file."""
         try:
-            mapping_path = os.path.join(os.path.dirname(__file__), 'data', 'intensity.json')
+            mapping_path = str(INTENSITY_FILE)
             with open(mapping_path, 'w') as f:
                 json.dump(self.mapping_data, f, indent=2)
             self.last_update = os.path.getmtime(mapping_path)
@@ -63,7 +68,7 @@ class IntensityMapper:
             return False
 
     def check_for_updates(self):
-        mapping_path = os.path.join(os.path.dirname(__file__), 'data', 'intensity.json')
+        mapping_path = str(INTENSITY_FILE)
         if os.path.exists(mapping_path):
             current_mtime = os.path.getmtime(mapping_path)
             if current_mtime > self.last_update:

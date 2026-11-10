@@ -10,9 +10,12 @@ stays a separate worker.
 Environment (all optional):
   ROOM_IN_APP=1          0/false/off: don't start it
   ROOM_HOST=0.0.0.0
-  ROOM_PORT=8700
-  ROOM_CONFIG=config/room/room.prod.yaml   (relative to the repo root)
+  ROOM_PORT=8700         default: the deployment's ports.room
+  ROOM_CONFIG=deployments/<id>/room/room.yaml   (default: the deployment's; relative to the repo root)
   ROOM_LOG=logs/room_service.log           (INFO and up; warnings also go to stderr)
+
+The deployment (smconfig, SM_DEPLOYMENT) must be selected and have its `room` capability on; otherwise
+room_service is not started and Flask's stderr says why, once.
 
 Port busy, or the state dir's room.lock held (the separate `scripts/ctl room` is still running): one
 warning, then a quiet retry every 10 s, so stopping the separate service is the whole hand-over.
@@ -40,7 +43,7 @@ from pathlib import Path
 from typing import Callable
 
 REPO_ROOT = Path(__file__).resolve().parent
-DEFAULT_CONFIG = "config/room/room.prod.yaml"
+DEFAULT_CONFIG: str | None = None   # None: the deployment's room/room.yaml (smconfig), looked up when used
 DEFAULT_LOG = "logs/room_service.log"
 RETRY_BUSY_S = 10.0
 BACKOFF_S = (2.0, 5.0, 15.0, 30.0, 60.0)
@@ -62,6 +65,35 @@ def _truthy(v: str | None, default: bool = True) -> bool:
 def _repo_path(p: str | os.PathLike) -> Path:
     p = Path(p).expanduser()
     return p if p.is_absolute() else REPO_ROOT / p
+
+
+def default_config() -> Path:
+    """The room config when none is named: DEFAULT_CONFIG if set, else the deployment's room/room.yaml."""
+    if DEFAULT_CONFIG:
+        return _repo_path(DEFAULT_CONFIG)
+    import smconfig
+    return smconfig.path("room", "room.yaml")
+
+
+def default_port() -> int:
+    """ROOM_PORT, else the deployment's ports.room."""
+    if os.environ.get("ROOM_PORT"):
+        return int(os.environ["ROOM_PORT"])
+    import smconfig
+    return smconfig.port("room")
+
+
+def room_disabled_reason() -> str | None:
+    """Why room_service must not start in this process (no deployment selected, or its room capability off),
+    else None."""
+    try:
+        import smconfig
+        dep = smconfig.deployment()
+    except Exception as e:                          # DeploymentError (or smconfig itself missing)
+        return f"no deployment: {e}"
+    if not dep.enabled("room"):
+        return f"the {dep.id} deployment has the room capability off (deployments/{dep.id}/deployment.yaml)"
+    return None
 
 
 def setup_logging(log_file: str | os.PathLike | None = None, *, console_level: int = logging.WARNING) -> None:
@@ -122,12 +154,12 @@ def _bind(host: str, port: int) -> socket.socket:
 class RoomRunner:
     """One supervised room_service on its own thread and event loop."""
 
-    def __init__(self, *, host: str = "0.0.0.0", port: int = 8700, config: str | os.PathLike = DEFAULT_CONFIG,
+    def __init__(self, *, host: str = "0.0.0.0", port: int | None = None, config: str | os.PathLike | None = None,
                  state_dir: str | os.PathLike | None = None, snapshots: bool | None = None,
                  retry_busy_s: float = RETRY_BUSY_S, backoff_s: tuple[float, ...] = BACKOFF_S,
                  on_crash: Callable[[str, BaseException | None], None] | None = None) -> None:
-        self.host, self.port = host, int(port)
-        self.config = _repo_path(config)
+        self.host, self.port = host, int(port) if port is not None else default_port()
+        self.config = _repo_path(config) if config else default_config()
         self.state_dir = Path(state_dir).expanduser() if state_dir else None
         self.snapshots = snapshots                  # None: as the config says
         self.retry_busy_s = retry_busy_s
@@ -316,10 +348,14 @@ def start_in_background(*, on_crash: Callable[[str, BaseException | None], None]
             return None
         if _runner is not None:
             return _runner
+        why = room_disabled_reason()
+        if why:
+            print(f"room_in_app: room_service is not started in the app: {why}", file=sys.stderr)
+            return None
         setup_logging(os.environ.get("ROOM_LOG", DEFAULT_LOG))
         _runner = RoomRunner(host=os.environ.get("ROOM_HOST", "0.0.0.0"),
-                             port=int(os.environ.get("ROOM_PORT", "8700")),
-                             config=os.environ.get("ROOM_CONFIG", DEFAULT_CONFIG),
+                             port=default_port(),
+                             config=os.environ.get("ROOM_CONFIG") or None,
                              on_crash=on_crash)
         _runner.start()
         atexit.register(_runner.stop, 8.0)
@@ -333,7 +369,7 @@ def runner() -> RoomRunner | None:
     return _runner
 
 
-def run_forever(*, port: int = 8700, config: str | os.PathLike = DEFAULT_CONFIG, host: str = "0.0.0.0",
+def run_forever(*, port: int | None = None, config: str | os.PathLike | None = None, host: str = "0.0.0.0",
                 state_dir: str | os.PathLike | None = None, snapshots: bool | None = None,
                 log_file: str | None = None) -> int:
     """Run the in-app runner in the foreground, exactly as Flask runs it, until Ctrl-C or SIGTERM."""
@@ -355,8 +391,9 @@ if __name__ == "__main__":
     import argparse
     p = argparse.ArgumentParser(description="room_service exactly as the app runs it (its own thread and loop)")
     p.add_argument("--host", default="0.0.0.0")
-    p.add_argument("--port", type=int, default=int(os.environ.get("ROOM_PORT", "8700")))
-    p.add_argument("--config", default=os.environ.get("ROOM_CONFIG", DEFAULT_CONFIG))
+    p.add_argument("--port", type=int, default=default_port())
+    p.add_argument("--config", default=os.environ.get("ROOM_CONFIG") or None,
+                   help="room config (default: the deployment's room/room.yaml)")
     p.add_argument("--state-dir")
     p.add_argument("--no-snapshots", action="store_true")
     p.add_argument("--log-file")

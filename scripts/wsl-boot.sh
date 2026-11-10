@@ -11,7 +11,7 @@
 # The shim, exactly (outside the repo: the owner approves it; screen-machine-ca installs it with
 # chmod +x, keeping the old body as ~/wsl-autostart.sh.pre-ctl). See docs/OPS_CONTROL.md section 1.
 #     #!/bin/bash
-#     exec /home/gjbm2/dev/screen-machine/scripts/wsl-boot.sh "$@"
+#     exec <this repo>/scripts/wsl-boot.sh "$@"        (on PC22: /home/gjbm2/dev/screen-machine)
 #
 # What it does:
 #   - appends timestamped lines to ~/startup.log (never truncates it)
@@ -24,14 +24,17 @@
 #   - touch the Vite target or run start.sh without an explicit flask/ngrok target: in prod mode
 #     that rebuilds dist/ from the live working tree, which must only happen as a deliberate deploy
 #   - force-start an AV service that is still on hold: `scripts/ctl start all` skips any service
-#     whose deploy/sm-*.env still has a *_HOLD line. See docs/OPS_CONTROL.md.
+#     whose deployments/<id>/services/sm-*.env still has a *_HOLD line, or whose capability is off in the
+#     deployment (SM_DEPLOYMENT, deployments/README.md). See docs/OPS_CONTROL.md.
 
 set -uo pipefail
 
-REPO="/home/gjbm2/dev/screen-machine"
-LOG="${HOME:-/home/gjbm2}/startup.log"
-STATE_DIR="${HOME:-/home/gjbm2}/.local/state/screen-machine"
-export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${HOME:-/home/gjbm2}/.local/bin:${PATH:-}"
+# The repo is wherever this script lives (scripts/wsl-boot.sh); HOME is the running user's, from passwd if unset.
+REPO="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")/.." && pwd)"   # a symlinked shim still finds the repo
+HOME_DIR="${HOME:-$(getent passwd "$(id -u)" | cut -d: -f6)}"
+LOG="$HOME_DIR/startup.log"
+STATE_DIR="$HOME_DIR/.local/state/screen-machine"
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:$HOME_DIR/.local/bin:${PATH:-}"
 
 log() {
   printf '%s [wsl-boot %s] %s\n' "$(date '+%Y-%m-%d %H:%M:%S %Z')" "$$" "$*" >> "$LOG"

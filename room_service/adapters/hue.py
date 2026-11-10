@@ -18,7 +18,8 @@ Values (canonical):
   (dynamics.duration = opts.over_s, default 1 s), and re-asserts once if the bridge overwrote it.
 * **takeover**: if another app has the area, "dmx" members fail with retry=False ("taken_over"); never fought.
 * **hue.streamer** (patch.yaml, hot-reloaded; SHOW_ENGINE §9.4): `room` (default) streams "dmx" members through
-  room_service's HueOutput. `show` hands streaming to show_service (`hue.show_url`, default http://127.0.0.1:8703):
+  room_service's HueOutput. `show` hands streaming to show_service (the patch's `hue.show_url` if set, else room_service's show_url,
+  else the deployment's show port, http://127.0.0.1:8703 on finsbury):
   "dmx" members are sent as POST /api/v1/hue/stream {lights: [the complete set of hue.* device ids that follow the
   show], on: bool}; before a state is written to a lamp that was following, POST /api/v1/hue/release {lights} must
   answer {released: true} (show_service replies once the bridge reports the area inactive plus ~1 s). show_service
@@ -43,7 +44,7 @@ from ..hue.colour import describe, hex_to_rgb, rgb_to_xy
 from ..roomstate.contract import Adapter, Outcome, Reading
 
 XY_TOL, BRI_TOL, MIREK_TOL = 0.01, 1.5, 3
-SHOW_URL = "http://127.0.0.1:8703"
+SHOW_URL: str | None = None    # None: room_service's show_url, else smconfig.url("show") (looked up when used)
 log = logging.getLogger("room_service.adapters.hue")
 
 
@@ -89,8 +90,9 @@ class HueAdapter(Adapter):
     read_timeout_s = 5.0
     actions = {"identify": {"label": "Identify (the lamp breathes)", "schema": {"type": "object"}}}
 
-    def __init__(self, output, patch, client=None) -> None:
+    def __init__(self, output, patch, client=None, show_url: str | None = None) -> None:
         self.output = output
+        self.default_show_url = show_url            # room_service's one show address (cfg.show_url)
         self.client = client or output.client       # REST of its own (house control, readback, identify)
         self.patch = patch                          # DmxStack swaps in the reloaded patch (hue.streamer is live)
         self.show_wanted: set[str] = set()          # hue.* device ids we asked show_service to stream (mode show)
@@ -113,7 +115,11 @@ class HueAdapter(Adapter):
 
     @property
     def show_url(self) -> str:
-        return str(self.patch.hue.get("show_url", SHOW_URL)).rstrip("/")
+        url = self.patch.hue.get("show_url") or self.default_show_url or SHOW_URL
+        if not url:
+            import smconfig
+            url = smconfig.url("show")
+        return str(url).rstrip("/")
 
     async def _show(self, method: str, path: str, body: dict | None = None, timeout_s: float = 5.0) -> dict | None:
         """show_service's Hue API; None when it can't be reached or refuses (never raises)."""

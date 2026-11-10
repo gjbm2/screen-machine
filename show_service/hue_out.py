@@ -1,8 +1,8 @@
 """hue_out.py: Hue Entertainment streaming from show_service (README "Stage 5", S5.6; SHOW_ENGINE §9.4 P5, §5.4).
 
-One ``HueOut`` per ``hue`` output in config/room/fixtures.yaml (contract.Driver, kind "hue"). It streams the lamps that
-room's hue adapter asks for (``POST /api/v1/hue/stream``) to the bridge's Entertainment area, from the look engine's
-frames, following room_service/hue/output.py's rules wherever they apply (68's hand-over contract, 16 Oct).
+One ``HueOut`` per ``hue`` output in deployments/<id>/lights/fixtures.yaml (contract.Driver, kind "hue"). It streams the
+lamps that room's hue adapter asks for (``POST /api/v1/hue/stream``) to the bridge's Entertainment area, from the look
+engine's frames, following room_service/hue/output.py's rules wherever they apply (68's hand-over contract, 16 Oct).
 
 **Off by default.** Nothing talks to a bridge unless the output is ``enabled: true`` in fixtures.yaml **and** 68's
 patch.yaml says ``hue.streamer: show`` **and** room has asked for at least one lamp **and** the look engine's frames
@@ -1053,7 +1053,7 @@ class HueOut:
         self._state, self._detail = state, detail
 
     def _off_detail(self) -> str:
-        return f"outputs.{self.output_id}.enabled is false in config/room/fixtures.yaml"
+        return f"outputs.{self.output_id}.enabled is false in {contract.FIXTURES_FILE_WORDS}"
 
     def _on_loop(self) -> bool:
         try:

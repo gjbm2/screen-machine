@@ -13,9 +13,8 @@ import json
 import math
 
 import pytest
-import yaml
 
-from show_service import contract
+from show_service import config, contract
 from show_service import flow as fl
 from show_service.tests import test_director as td
 
@@ -167,7 +166,7 @@ def test_bad_settings_fall_back_and_are_listed():
     assert cfg["structure"] == {} and cfg["cross_beats"] == [16.0, 2.0] and cfg["symmetry"] == "none"
     assert cfg["mirror_ball"]["enabled"] is False and cfg["blinds"]["enabled"] is False
     assert fl.parse_settings(None, []) == fl.FLOW_FALLBACK                 # no lights block: still, nothing votes
-    real = yaml.safe_load(contract.SHOW_FILE.read_text())["lights"]["flow"]
+    real = config.read_show(contract.SHOW_FILE)["lights"]["flow"]          # the shared file + this site's layer
     p2: list[str] = []
     fl.parse_settings(real, p2)
     assert p2 == []

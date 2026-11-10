@@ -1,5 +1,6 @@
 """Generic pass-through: /renderer/<path> -> <stream_service url>/<path>, and /show/<path> -> <show_service url>/<path>
-(c8's show engine on 127.0.0.1:8703, its card and API; /rs/show/* over HTTPS, Caddy strips /rs).
+(c8's show engine on cfg.show_url, 127.0.0.1:8703 on finsbury, its card and API; /rs/show/* over HTTPS, Caddy strips
+/rs).
 
 One route, any method, HTTP and WebSocket, so stream_service's own pages and API (/renderer/dev, /renderer/dev/library,
 /renderer/dev/thumb/*, /renderer/dev/preview/*, /renderer/dev/rate, /renderer/api/*, /renderer/api/events,
@@ -14,7 +15,8 @@ apply as to every route (the Host check; the Origin check is theirs for /api/* o
 * WebSocket: an upgrade on /renderer/<path> opens ws://<stream_service>/<path>?<query> with the same subprotocols and
   relays text and binary frames both ways until either side closes; the close code is passed on. No timeouts.
 * Errors (before any byte is relayed): 502 stream_unreachable, 504 stream_timeout; an upstream's own status (a 404,
-  a refused upgrade) is relayed as it is.
+  a refused upgrade) is relayed as it is. With the deployment's live capability off, /renderer/* answers 503 live_off
+  (stream_service is not part of this deployment).
 """
 
 from __future__ import annotations
@@ -134,6 +136,11 @@ class RendererProxy:
 
     # -- handlers --------------------------------------------------------------
     async def handle(self, request: web.Request) -> web.StreamResponse:
+        off = getattr(getattr(self.svc, "cfg", None), "live_off_reason", None) if self.prefix == PREFIX else None
+        if off:
+            return _err(503, "live_off", off)
+        if self.prefix == "/show" and not _show_enabled():
+            return _err(503, "show_off", "show is off for this deployment (deployment.yaml capabilities.show)")
         if request.method == "GET" and request.headers.get(hdrs.UPGRADE, "").lower() == "websocket":
             return await self.ws(request)
         return await self.http(request)
@@ -245,9 +252,19 @@ class RendererProxy:
             await self._own.close()
 
 
+def _default_show_url() -> str:
+    import smconfig
+    return smconfig.url("show")
+
+
+def _show_enabled() -> bool:
+    import smconfig
+    return smconfig.enabled("show")
+
+
 def register(app: web.Application, svc: "RoomService") -> None:
     proxies = [RendererProxy(svc),
-               RendererProxy(svc, "/show", lambda: str(getattr(svc.cfg, "show_url", "http://127.0.0.1:8703")),
+               RendererProxy(svc, "/show", lambda: str(getattr(svc.cfg, "show_url", None) or _default_show_url()),
                              "show_service")]
     for proxy in proxies:
         app.router.add_route("*", proxy.prefix + "/{tail:.*}", proxy.handle)

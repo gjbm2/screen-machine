@@ -25,7 +25,7 @@ sleep 3
 # Start the service
 echo ""
 echo "[4] Starting lightsense.py..."
-cd /home/gjbm2
+cd /home/@@KIOSK_USER@@
 source .venv/bin/activate
 nohup python lightsense.py > lightsense.log 2>&1 &
 NEW_PID=$!
@@ -42,13 +42,13 @@ if ps -p $NEW_PID > /dev/null 2>&1; then
     echo "    ✓ Process $NEW_PID is running"
 else
     echo "    ✗ Process $NEW_PID died - checking logs:"
-    tail -20 /home/gjbm2/lightsense.log
+    tail -20 /home/@@KIOSK_USER@@/lightsense.log
     exit 1
 fi
 
 echo ""
 echo "[7] Recent log output:"
-tail -10 /home/gjbm2/lightsense.log
+tail -10 /home/@@KIOSK_USER@@/lightsense.log
 
 echo ""
 echo "=== Restart Complete ==="

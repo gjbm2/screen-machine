@@ -10,7 +10,8 @@ This is a faithful port of today's production logic:
 * ``routes/display.py``        the ``GET /api/<id>/mask`` override order
   (brightness override, then maskoff, then ``adjust``),
 * ``routes/utils.py``          ``get_destinations_for_group`` and where
-  ``_load_json_once`` finds ``publish-destinations.json``.
+  ``_load_json_once`` finds ``publish-destinations.json`` (the running
+  deployment's directory first, via smconfig).
 
 Everything here is a pure function of its arguments, apart from the file
 reads in ``load_config`` / ``ConfigWatcher`` (and their state lives on the
@@ -290,7 +291,7 @@ class LightConfig:
     """Immutable snapshot of the three config inputs. Treat it as read-only."""
 
     intensity_cfg: Mapping[str, Any]                 # config.INTENSITY_CFG
-    sensor_mappings: Mapping[str, SensorMapping]     # routes/data/intensity.json, file order
+    sensor_mappings: Mapping[str, SensorMapping]     # the deployment's intensity.json, file order
     destinations: tuple                              # publish-destinations.json entries
     sources: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
 
@@ -322,9 +323,11 @@ class LightConfig:
 
 # ───────── config loading ─────────────────────────────────────────────────
 
-# Where Flask's findfile("publish-destinations.json") looks, relative to the
-# process cwd (Flask runs from the repo root) and to routes/ (SCRIPT_DIR).
-# The first existing file wins; today that is src/data/publish-destinations.json.
+# Where Flask's findfile("publish-destinations.json") looks: the running
+# deployment's directory first (smconfig: deployments/<id>/), then relative to
+# the process cwd (Flask runs from the repo root) and to routes/ (SCRIPT_DIR).
+# The first existing file wins; today that is the deployment's copy. A root
+# other than this repo (a test tree) is searched the old way only.
 _DEST_SEARCH = (
     ".", "src/data", "routes/overlays", "routes/data",
     "routes/data", "routes/workflows", "routes/sysprompts",
@@ -334,9 +337,19 @@ _DEST_SEARCH = (
 DESTINATIONS_FILENAME = "publish-destinations.json"
 
 
+def _is_repo(root: Path | str) -> bool:
+    """root is this checkout: its site files are the running deployment's."""
+    return Path(root).resolve() == REPO_ROOT.resolve()
+
+
 def find_destinations_file(root: Path | str = REPO_ROOT) -> Path | None:
     """Mirror of routes.utils.findfile("publish-destinations.json") with cwd=root."""
     root = Path(root)
+    if _is_repo(root):
+        import smconfig  # noqa: PLC0415 (lazy: lightmask itself needs only astral)
+        p = smconfig.path(DESTINATIONS_FILENAME)
+        if p.exists():
+            return p.resolve()
     for rel in _DEST_SEARCH:
         p = root / rel / DESTINATIONS_FILENAME
         if p.exists():
@@ -347,17 +360,27 @@ def find_destinations_file(root: Path | str = REPO_ROOT) -> Path | None:
     return None
 
 
+def default_intensity_json(root: Path | str = REPO_ROOT) -> Path:
+    """Flask's intensity.json: the running deployment's (smconfig) for this repo, <root>/routes/data/ for another
+    tree."""
+    root = Path(root)
+    if _is_repo(root):
+        import smconfig  # noqa: PLC0415
+        return smconfig.path("intensity.json")
+    return root.joinpath("routes", "data", "intensity.json")
+
+
 @dataclass(frozen=True)
 class ConfigPaths:
     root: Path = REPO_ROOT
     config_py: Path | None = None          # default <root>/config.py
-    intensity_json: Path | None = None     # default <root>/routes/data/intensity.json
-    destinations_json: Path | None = None  # default: Flask's findfile search from <root>
+    intensity_json: Path | None = None     # default: the deployment's intensity.json (default_intensity_json)
+    destinations_json: Path | None = None  # default: Flask's findfile search from <root> (the deployment's first)
 
     def resolve(self) -> tuple[Path, Path, Path | None]:
         root = Path(self.root)
         cfg = Path(self.config_py) if self.config_py else root / "config.py"
-        inten = Path(self.intensity_json) if self.intensity_json else root / "routes" / "data" / "intensity.json"
+        inten = Path(self.intensity_json) if self.intensity_json else default_intensity_json(root)
         dests = Path(self.destinations_json) if self.destinations_json else find_destinations_file(root)
         return cfg, inten, dests
 
@@ -391,7 +414,7 @@ def read_intensity_cfg(config_py: Path | str) -> dict:
 
 
 def read_intensity_mapping(path: Path | str) -> dict | None:
-    """routes/data/intensity.json. A missing file means no sensor mappings
+    """The deployment's intensity.json. A missing file means no sensor mappings
     (IntensityMapper leaves mapping_data None, so every screen is solar)."""
     p = Path(path)
     if not p.exists():

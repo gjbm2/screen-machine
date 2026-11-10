@@ -28,17 +28,27 @@ from typing import Any, Callable, Optional
 
 import yaml
 
+import smconfig
 from routes.art_tags import lexicon, sidecar
 
-ROOM_URL = os.environ.get("ART_DIRECTOR_ROOM_URL", "http://127.0.0.1:8700")
-SHOW_URL = os.environ.get("ART_DIRECTOR_SHOW_URL", "http://127.0.0.1:8703")
+ROOM_URL = os.environ.get("ART_DIRECTOR_ROOM_URL") or smconfig.url("room")
+SHOW_URL = os.environ.get("ART_DIRECTOR_SHOW_URL") or smconfig.url("show")
 REPO_ROOT = Path(__file__).resolve().parents[2]
-ROOMS_FILE = REPO_ROOT / "routes" / "data" / "rooms.json"
+ROOMS_FILE = smconfig.path("rooms.json")
 SCHEDULER_DIR = REPO_ROOT / "routes" / "scheduler"
-LOG_FILE = Path.home() / ".local" / "state" / "screen-machine" / "logs" / "art_director.jsonl"
+LOG_FILE = smconfig.state("logs", "art_director.jsonl")
 LOG_MAX_BYTES = 5_000_000
 
-ROOM = "drawing-room"
+
+def _default_room() -> str | None:
+    """The deployment's default room; None when it names none and has no readable rooms.json."""
+    try:
+        return smconfig.default_room()
+    except (OSError, ValueError):
+        return None
+
+
+ROOM = _default_room() or ""   # the deployment's default_room (finsbury: drawing-room); "" when it has no rooms
 MODE = "ambient"
 SOURCE = "art-director"      # the job tracker's source word
 FIT_MIN = 0.7                # a picture's music fit that counts like a wished mood (the tagger's "good" anchor)
@@ -123,7 +133,7 @@ def get_json(url: str, timeout: float = 5.0) -> Any:
 
 
 def room_screens(room: str = ROOM) -> list[str]:
-    """The room's screens (routes/data/rooms.json)."""
+    """The room's screens (the deployment's rooms.json)."""
     try:
         d = json.loads(ROOMS_FILE.read_text(encoding="utf-8"))
         return [s for s in (d.get(room) or {}).get("screens") or [] if isinstance(s, str)]
@@ -462,6 +472,8 @@ class Director:
 
         if not cfg.get("enabled"):
             return done("off")
+        if not smconfig.enabled("room"):              # no room_service here: no mode to read, never asks it
+            return done("not-ambient", error="room is off in this deployment")
         try:
             status = self.get_json(f"{ROOM_URL}/api/v1/status")
             mode = ((status or {}).get("mode") or {}).get("current")

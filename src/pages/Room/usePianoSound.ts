@@ -1,7 +1,8 @@
 // The virtual piano's sound, where it plays and how fast: one choice for the whole page (Test music's piano and the
 // Piano card's recordings use the same), remembered in this browser. The lists come from show_service (GET
-// /show/api/v1/test: `instruments`, only installed ones, `default_instrument`, `outputs`); a remembered choice the
-// server no longer lists falls back to its default sound and to PC22's speakers (this device's own output stands).
+// /show/api/v1/test: `instruments`, only installed ones, `default_instrument`, `outputs`, `default_output`); a
+// remembered choice the server no longer lists falls back to its default sound and its default output (PC22's speakers
+// from an older show_service that sends none, when listed); this device's own output stands.
 
 import { useCallback, useSyncExternalStore } from "react";
 import { storageGet, storageSet } from "./api";
@@ -12,7 +13,7 @@ import type { ShowInstrument, ShowOutput, ShowTestStartOpts, ShowTestView } from
 const SOUND_KEY = "sm_room_piano_sound";
 const OUTPUT_KEY = "sm_room_piano_output";
 const SPEED_KEY = "sm_room_piano_speed";
-const DEFAULT_OUTPUT = "pc22";
+const OLD_DEFAULT_OUTPUT = "pc22"; // an older show_service sends no default_output: its default was PC22's speakers
 
 type Saved = { instrument: string | null; output: string | null; speed: number };
 
@@ -69,7 +70,9 @@ export interface PianoSound {
   opts: ShowTestStartOpts | undefined;
 }
 
-export function usePianoSound(view: Pick<ShowTestView, "instruments" | "default_instrument" | "outputs"> | null | undefined): PianoSound {
+export function usePianoSound(
+  view: Pick<ShowTestView, "instruments" | "default_instrument" | "outputs" | "default_output"> | null | undefined,
+): PianoSound {
   const s = useSyncExternalStore(subscribe, read, read);
   const instruments = (view?.instruments ?? []).filter((i) => !!i?.id);
   const outputs = (view?.outputs ?? []).filter((o) => !!o?.id);
@@ -79,7 +82,7 @@ export function usePianoSound(view: Pick<ShowTestView, "instruments" | "default_
   // this device is an output as soon as it's picked, before show_service's list has it
   const output = outputs.some((o) => o.id === s.output) || (!!s.output && s.output === myOutput())
     ? s.output
-    : (outputs.find((o) => o.id === DEFAULT_OUTPUT)?.id ?? outputs[0]?.id ?? null);
+    : (outputs.find((o) => o.id === (view?.default_output || OLD_DEFAULT_OUTPUT))?.id ?? outputs[0]?.id ?? null);
   const available = instruments.length > 0;
   const setInstrument = useCallback((id: string) => write(SOUND_KEY, id), []);
   const setOutput = useCallback((id: string) => write(OUTPUT_KEY, id), []);

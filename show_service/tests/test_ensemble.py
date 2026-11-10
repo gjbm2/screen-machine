@@ -14,6 +14,7 @@ import pathlib
 import random
 
 import pytest
+import smconfig
 import yaml
 
 from show_service import bus as busmod
@@ -841,7 +842,7 @@ def test_settings_fall_back_with_a_problem_line():
     assert cfg["gestures"]["shapes"]["hit"] == E.ENSEMBLE_FALLBACK["gestures"]["shapes"]["hit"]
     assert cfg["piano"]["split"] == "auto"
     assert len(probs) == 8
-    real = yaml.safe_load(c.SHOW_FILE.read_text()).get("ensemble")
+    real = smconfig.load_layered_yaml(c.SHOW_FILE, c.SHOW_SITE_FILE).get("ensemble")    # the shared file + the site's
     probs = []
     got = E.parse_settings(real, probs)
     assert probs == [] and got["players"]["zones"] == ZONES

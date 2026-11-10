@@ -27,7 +27,7 @@ import numpy as np
 import pytest
 import yaml
 
-from show_service import contract, sources, test_audio, vban
+from show_service import config, contract, sources, test_audio, vban
 from show_service.contract import AUDIO_SEGMENT, BrainContext, Config, Sender
 from show_service.receiver import Receiver
 
@@ -167,7 +167,7 @@ def test_senders_from_settings_static_yaml_and_on_demand():
 
 
 def test_the_shipped_show_yaml_gives_valid_senders():
-    settings = yaml.safe_load(contract.SHOW_FILE.read_text(encoding="utf-8"))
+    settings = config.read_show(contract.SHOW_FILE)                     # the shared file + this site's layer
     got, errors = sources.parse_senders(settings)
     assert not errors and got
     by = {s.name: s for s in got}

@@ -21,6 +21,8 @@ from typing import Any, Optional, Sequence
 
 from aiohttp import web
 
+import smconfig
+
 from . import __version__, binding, mappings as mappings_mod, palettes
 from .bodies import parse_body
 from .director import MUSIC_WORD_LABELS, MUSIC_WORD_MODES
@@ -51,7 +53,18 @@ LIBRARY = web.AppKey("library", Library)
 PREVIEWS = web.AppKey("previews", Previews)
 RATINGS = web.AppKey("ratings", Ratings)
 RESCAN_S = 20.0                     # live plug-in discovery: new / changed / removed plug-in modules
-DEV_ART_SCREENS = ("north-screen", "south-screen", "devtest")
+DEV_ART_SCREENS: Optional[tuple] = None   # None: the deployment's live screens (smconfig.live_screens()), per request
+
+
+def dev_art_screens() -> tuple:
+    """The screens /dev/art/<screen> serves: DEV_ART_SCREENS when set, else the deployment's live screens."""
+    if DEV_ART_SCREENS is not None:
+        return tuple(DEV_ART_SCREENS)
+    try:
+        return tuple(smconfig.live_screens())
+    except (OSError, ValueError, smconfig.DeploymentError) as e:
+        log.warning("dev art: the deployment's screens are unreadable (%s)", e)
+        return ()
 
 
 FEATURES = ("cue", "auto", "direction", "palette", "inputs", "bindings", "effects", "fx_bus", "fx_auto",
@@ -586,7 +599,7 @@ async def put_fx(request: web.Request) -> web.Response:
 async def dev_art(request: web.Request) -> web.Response:
     """Dev only: the screen's current artwork, letterboxed to ?w=&h= (default 1280x720) as PNG."""
     screen = request.match_info["screen"]
-    if screen not in DEV_ART_SCREENS:
+    if screen not in dev_art_screens():
         raise web.HTTPNotFound()
     try:
         w = min(3840, max(16, int(request.query.get("w", "1280"))))
@@ -720,6 +733,8 @@ async def workers_warm(request: web.Request) -> web.Response:
     if pool is None:
         return web.json_response({"screen": body["screen"], "workers": "inproc", "spawned": False,
                                   "why": "no render workers in this process"})
+    if mgr.no_gpu():
+        return web.json_response({"screen": body["screen"], "spawned": False, "why": "no CUDA GPU on this machine"})
     return web.json_response(pool.hint(body["screen"], gpu))
 
 
@@ -779,7 +794,8 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
              max_sessions: int = 4, registry: Optional[Registry] = None, show_bus: Optional[str] = None,
              music_bus: Sequence[str] = (), show_bus_token_file: Optional[str] = None, latency_file: Optional[pathlib.Path] = None,
              art_dir: Optional[pathlib.Path] = None, local_control: bool = False,
-             app_url: str = "", warm: bool = False, workers: bool = False) -> web.Application:
+             app_url: str = "", warm: bool = False, workers: bool = False,
+             switches_file: Optional[pathlib.Path] = None) -> web.Application:
     from .plugins import default_registry
 
     registry = registry or default_registry()
@@ -787,7 +803,8 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
     events = EventHub()
     inputs = ShowInputs(show_bus) if show_bus else None
     mgr = SessionManager(registry=registry, presets=presets, events=events, max_sessions=max_sessions,
-                         public_base=public_base, inputs=inputs, latency_file=latency_file)
+                         public_base=public_base, inputs=inputs, latency_file=latency_file,
+                         switches_file=switches_file)
     from .scope_feed import ScopeFeed
 
     mgr.scope_feed = ScopeFeed.from_music_bus(music_bus)   # the fast scope / fft feed (None: no music bus)

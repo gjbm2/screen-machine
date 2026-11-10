@@ -260,8 +260,10 @@ and 0 missed refreshes on both TVs, 0.2-0.3 % dropped frames on 4K30 live video.
 [docs/KIOSK_INFRASTRUCTURE_NOTES.md §3](../docs/KIOSK_INFRASTRUCTURE_NOTES.md#smooth-motion-one-x-screen-per-tv-since-2026-10-13).
 
 ```bash
-# Install (from the repo root in WSL), then restart the kiosk (TVs go black ~10-20 s):
-scp media-server/remote-scripts/xorg/20-zaphod.conf media-server/remote-scripts/kiosk-loop.sh gjbm2@192.168.1.92:/tmp/
+# Install (from the repo root in WSL), then restart the kiosk (TVs go black ~10-20 s). kiosk-loop.sh is a template:
+# copy the rendered one (render_kiosk.py, see "Deployment to New Ubuntu Instance"):
+media-server/render_kiosk.py render kiosk-loop.sh > /tmp/kiosk-loop.sh
+scp media-server/remote-scripts/xorg/20-zaphod.conf /tmp/kiosk-loop.sh gjbm2@192.168.1.92:/tmp/
 ssh -t gjbm2@192.168.1.92 'sudo install -m 644 /tmp/20-zaphod.conf /etc/X11/xorg.conf.d/ && sudo install -m 755 /tmp/kiosk-loop.sh /usr/local/bin/ && sudo systemctl restart kiosk'
 # On the media server:
 DISPLAY=:0 xdpyinfo | grep 'number of screens'     # 2
@@ -758,21 +760,30 @@ grep -n "95.141.21.170" /usr/local/bin/kiosk-*.sh
 
 ### Automated Deployment
 
+The launchers' URL lines (`kiosk-loop.sh`, `kiosk-wayland.sh`, `webview-manager.sh`), the deadman's probe URL,
+`fix-lightsensor-ip.sh`, and the kiosk login in `kiosk.service`, `kiosk-x11.service`, `kiosk-wait-start.sh` and the
+light-sensor restart/fix scripts are templates (`@@KIOSK_...@@`; `render_kiosk.py list` names them all). To copy one
+to the box by hand, copy the rendered file (`media-server/render_kiosk.py render <file>`), never the template. The deploy scripts render them from the deployment's `kiosk`
+block (`deployments/<id>/deployment.yaml`: `base_url`, `host`, `user`, `screens`) with `render_kiosk.py` and install
+the rendered copies. The kiosk/TV page URLs never change: `SM_DEPLOYMENT=finsbury media-server/render_kiosk.py check`
+proves finsbury's rendered files are byte-identical to the files before they became templates.
+
 **Remote deployment (recommended):**
 ```bash
 cd media-server/local-scripts/
-./deploy-kiosk.sh 192.168.1.100 ubuntu
+./deploy-kiosk.sh --kiosk                    # this deployment's kiosk (kiosk.host / kiosk.user)
+./deploy-kiosk.sh 192.168.1.100 ubuntu       # any other box
 ```
 
 **Local deployment:**
 ```bash
-# Copy files to new server
-scp -r media-server/ user@new-server:/home/user/
+# Render the scripts for the deployment, then copy them and the deploy script to the new server
+media-server/render_kiosk.py render-dir /tmp/kiosk-rendered
+scp -r /tmp/kiosk-rendered media-server/local-scripts/deploy-kiosk.sh user@new-server:/home/user/
 
-# SSH and deploy
+# SSH and deploy from the rendered tree
 ssh user@new-server
-cd media-server/local-scripts/
-./deploy-kiosk.sh
+KIOSK_SRC_DIR=/home/user/kiosk-rendered ./deploy-kiosk.sh
 ```
 
 ### What Gets Installed

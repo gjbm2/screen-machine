@@ -78,7 +78,7 @@ export const S = createStore({
   ...ui0,
   q: "",
   mode: "browse",
-  target: ls.get("sm.console.screen", "devtest") || "devtest",
+  target: ls.get("sm.console.screen", null) || null,   // none stored: room.js picks one once the room's status loads
   sel: null,                       // the selected item key (inspector / Viewer)
   viewer: false,                   // the phone / tablet Viewer sheet is open
   review: false,

@@ -23,8 +23,11 @@
 #
 # Environment variables (optional overrides):
 #   NGROK_DOMAIN   — ngrok custom domain (default: ngrok-domain.example)
-#   NGROK_PORT     — port to tunnel (default: 5000)
+#   NGROK_PORT     — port to tunnel (default: Flask's, ports.flask in the deployment)
 #   SCREEN_MACHINE_MODE — "dev" (default) or "prod"
+#
+# The deployment (SM_DEPLOYMENT, deployments/README.md) gives Flask's port, and ngrok starts only when its
+# capability `ngrok` is on.
 
 set -euo pipefail
 
@@ -34,8 +37,19 @@ cd "$PROJECT_ROOT"
 # ── Defaults ──────────────────────────────────────────────────────────
 
 NGROK_DOMAIN="${NGROK_DOMAIN:-ngrok-domain.example}"
-NGROK_PORT="${NGROK_PORT:-5000}"
+NGROK_PORT="${NGROK_PORT:-}"   # empty: Flask's port (flask_port below)
 MODE="${SCREEN_MACHINE_MODE:-dev}"
+
+# smconfig (stdlib + PyYAML): the repo venv's python if there is one, else python3.
+SMPY="$PROJECT_ROOT/.venv/bin/python"; [[ -x "$SMPY" ]] || SMPY=python3
+sm() { PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}" "$SMPY" -m smconfig "$@"; }
+
+# Flask's port from the deployment (ports.flask); on failure prints smconfig's reason to stderr and returns 1.
+flask_port() {
+  local out
+  out="$(sm get ports.flask 2>&1)" || { echo "$out" >&2; return 1; }
+  echo "$out"
+}
 
 # ── Helpers ───────────────────────────────────────────────────────────
 
@@ -78,16 +92,18 @@ start_flask() {
     echo "Flask: already running"
     return 0
   fi
+  local port
+  if ! port="$(flask_port)"; then echo "Flask: FAILED: no deployment (see above); not started" >&2; return 1; fi
   mkdir -p "$PROJECT_ROOT/logs"
   if [[ -f "$FLASK_CONSOLE_LOG" ]]; then mv -f "$FLASK_CONSOLE_LOG" "$FLASK_CONSOLE_LOG.1"; fi
   echo "=== $(date -Is) start.sh start flask ===" >"$FLASK_CONSOLE_LOG"
   setsid -w screen -dmS flask -L -Logfile "$FLASK_CONSOLE_LOG" \
     bash -c "cd '$PROJECT_ROOT' && source .venv/bin/activate && sh -c 'echo \$\$ > \"$FLASK_PIDFILE\" && exec python3 app.py'; echo \"=== app.py exited (status \$?) ===\""
-  # Wait for :5000/api/health (30 s). If the session dies first, fail with its console tail so the caller sees why.
+  # Wait for :<flask port>/api/health (30 s). If the session dies first, fail with its console tail so the caller sees why.
   local i
   for ((i = 0; i < 60; i++)); do
-    if curl -fsS -m 2 -o /dev/null http://127.0.0.1:5000/api/health 2>/dev/null; then
-      echo "Flask: started (screen session 'flask', :5000 healthy; console: logs/flask_console.log)"
+    if curl -fsS -m 2 -o /dev/null "http://127.0.0.1:$port/api/health" 2>/dev/null; then
+      echo "Flask: started (screen session 'flask', :$port healthy; console: logs/flask_console.log)"
       return 0
     fi
     if ((i == 2)); then screen -S flask -X logfile flush 1 >/dev/null 2>&1 || true; fi
@@ -98,7 +114,7 @@ start_flask() {
     fi
     sleep 0.5
   done
-  echo "Flask: started (screen session 'flask'), but :5000/api/health is not answering yet after 30 s; console: logs/flask_console.log"
+  echo "Flask: started (screen session 'flask'), but :$port/api/health is not answering yet after 30 s; console: logs/flask_console.log"
 }
 
 start_vite() {
@@ -110,7 +126,7 @@ start_vite() {
       rm -rf dist_prev
       if [[ -d dist ]]; then mv dist dist_prev; fi
       mv dist_next dist
-      echo "Vite: built frontend into dist/ (served by Flask on :5000; no separate FE server in prod)"
+      echo "Vite: built frontend into dist/ (served by Flask on :$(flask_port 2>/dev/null || echo "?"); no separate FE server in prod)"
     else
       rm -rf dist_next
       echo "Vite: BUILD FAILED — keeping previous dist/" >&2
@@ -127,6 +143,15 @@ start_vite() {
 }
 
 start_ngrok() {
+  local rc=0 out port
+  out="$(sm enabled ngrok 2>&1)" || rc=$?
+  if ((rc == 1)); then
+    echo "Ngrok: skipped (capability 'ngrok' is off in this deployment)"
+    return 0
+  elif ((rc != 0)); then
+    echo "Ngrok: FAILED: $out" >&2
+    return 1
+  fi
   screen_wipe
   if screen_running ngrok; then
     echo "Ngrok: already running"
@@ -136,8 +161,10 @@ start_ngrok() {
     echo "Ngrok: skipped (no NGROK_DOMAIN set)"
     return 0
   fi
-  setsid -w screen -dmS ngrok bash -c "ngrok http --domain=$NGROK_DOMAIN $NGROK_PORT"
-  echo "Ngrok: started (screen session 'ngrok', domain=$NGROK_DOMAIN, port=$NGROK_PORT)"
+  port="${NGROK_PORT:-}"
+  if [[ -z "$port" ]] && ! port="$(flask_port)"; then echo "Ngrok: FAILED: no deployment (see above)" >&2; return 1; fi
+  setsid -w screen -dmS ngrok bash -c "ngrok http --domain=$NGROK_DOMAIN $port"
+  echo "Ngrok: started (screen session 'ngrok', domain=$NGROK_DOMAIN, port=$port)"
 }
 
 # ── Stop functions ────────────────────────────────────────────────────

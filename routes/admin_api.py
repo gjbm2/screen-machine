@@ -6,11 +6,15 @@ Authorization: Bearer <ADMIN_API_TOKEN> (set in .env).
 
 import base64
 import hmac
+import re
 import subprocess
 import os
 from datetime import datetime
 from flask import Blueprint, request, jsonify
 from dotenv import dotenv_values
+
+import smconfig
+from utils.logger import warning
 
 admin_api = Blueprint('admin_api', __name__)
 
@@ -35,13 +39,63 @@ def _require_admin_token():
     if not admin_token_ok(request):
         return jsonify({'error': 'unauthorized'}), 401
 
-# Load SSH config from media-server env
+# The kiosk mini-PC comes from the deployment's manifest (kiosk.host/user/screens); the SSH secrets stay in
+# media-server/local-scripts/.env, whose MEDIA_SERVER_HOST/USER override the manifest's host and user.
+_KIOSK = smconfig.deployment().kiosk
 _env_path = os.path.join(os.path.dirname(__file__), '..', 'media-server', 'local-scripts', '.env')
 _env = dotenv_values(_env_path)
-SSH_HOST = _env.get('MEDIA_SERVER_HOST', '192.168.1.92')
-SSH_USER = _env.get('MEDIA_SERVER_USER', 'gjbm2')
+SSH_HOST = _env.get('MEDIA_SERVER_HOST', str(_KIOSK.get('host') or ''))
+SSH_USER = _env.get('MEDIA_SERVER_USER', str(_KIOSK.get('user') or ''))
 SSH_PORT = _env.get('MEDIA_SERVER_PORT', '22')
 SSH_PASS = _env.get('MEDIA_SERVER_PASSWORD', '')
+
+_NAME_RX = re.compile(r'^[a-z][a-z0-9_]*$')
+_ID_RX = re.compile(r'^[A-Za-z0-9_.-]+$')
+
+
+def kiosk_screens(kiosk=None):
+    """[(screen id, short name, CDP port)] of the kiosk's screens (manifest kiosk.screens, in order; finsbury:
+    north-screen/north/9222, south-screen/south/9223). An entry without a shell-safe lower-case name, a shell-safe id
+    and a cdp_port is skipped: they go into the shell scripts run on the kiosk."""
+    kiosk = _KIOSK if kiosk is None else kiosk
+    out = []
+    for sid, spec in (kiosk.get('screens') or {}).items():
+        spec = spec if isinstance(spec, dict) else {}
+        name = str(spec.get('name') or '')
+        try:
+            port = int(spec.get('cdp_port'))
+        except (TypeError, ValueError):
+            port = None
+        if not _NAME_RX.match(name) or not _ID_RX.match(str(sid)) or port is None:
+            warning(f"[admin] kiosk screen {sid!r} skipped: it needs a lower-case name and a cdp_port")
+            continue
+        out.append((str(sid), name, port))
+    return out
+
+
+def _screen_by_name(name):
+    return next((s for s in kiosk_screens() if s[1] == name), None)
+
+
+def _screen_choice_error():
+    names = [n for _, n, _ in kiosk_screens()]
+    return 'screen must be ' + ' or '.join(f'"{n}"' for n in names) if names else 'this kiosk has no screens'
+
+
+@admin_api.before_request
+def _require_kiosk_admin():
+    # Registered after the token check. Off, or no kiosk to talk to: a clear refusal, never an SSH attempt.
+    if request.method == 'OPTIONS':
+        return None
+    if not smconfig.enabled('kiosk_admin'):
+        warning(f"[admin] {request.path} refused: kiosk_admin is off in this deployment")
+        return jsonify({'success': False, 'output': '', 'error': 'kiosk_admin is off in this deployment',
+                        'timestamp': datetime.now().isoformat()}), 409
+    if not SSH_HOST or not SSH_USER:
+        warning(f"[admin] {request.path} refused: no kiosk host/user (deployment.yaml kiosk:, or MEDIA_SERVER_*)")
+        return jsonify({'success': False, 'output': '', 'error': 'no kiosk is configured for this deployment',
+                        'timestamp': datetime.now().isoformat()}), 503
+    return None
 
 
 def _ssh_run(remote_cmd, timeout=30):
@@ -80,10 +134,28 @@ def _ssh_run(remote_cmd, timeout=30):
         }
 
 
-@admin_api.route('/admin-355729b8/status', methods=['GET'])
-def status():
-    """Compact status: uptime, kiosk, disk, memory, displays, chrome."""
-    cmd = r"""
+def status_script(screens=None):
+    """The shell script /status runs on the kiosk: one block of lines per kiosk screen (kiosk_screens(); the
+    variables are the screen's name upper-cased, NORTH_PID, ...), and one X screen per TV for the X11 fallback, in
+    manifest order. For finsbury it is exactly the script this route always ran (tests/unit/test_deployment_api.py)."""
+    screens = kiosk_screens() if screens is None else screens
+    up = [(sid, n.upper()) for sid, n, _ in screens]
+    chrome = "".join(
+        [f"{v}_PID=$(pgrep -f '^[^ ]*chrome[^ ]* .*display/{sid}' | head -1)\n" for sid, v in up]
+        + [f'echo "{v}_CHROME=${{{v}_PID:+running}}"\n' for _, v in up]
+        + [f'[ -z "${v}_PID" ] && echo "{v}_CHROME=stopped"\n' for _, v in up]
+        + ["\n# Current URLs from Chrome command lines\n"]
+        + [f'{v}_CMD=$(ps -p "${v}_PID" -o args= 2>/dev/null || true)\n' for _, v in up]
+        + [f'{v}_URL=$(echo "${v}_CMD" | grep -oP \'https?://\\S+\' | tail -1)\n' for _, v in up]
+        + [f'echo "{v}_URL=${{{v}_URL:-unknown}}"\n' for _, v in up]
+        + ["\n"])
+    xscreens = ", ".join(f":0.{i} {n}" for i, (_, n, _p) in enumerate(screens))
+    xrandr = " ".join(f"DISPLAY=:0.{i} xrandr --query;" for i in range(len(screens)))
+    return (_STATUS_HEAD + chrome
+            + _STATUS_TAIL.replace("__XSCREENS__", xscreens).replace("__XRANDR__", xrandr))
+
+
+_STATUS_HEAD = r"""
 echo "UPTIME=$(uptime -p)"
 # kiosk.service is the sway kiosk (default since 2026-10-13); the X11 fallback kiosk-x11.service counts as active too
 KIOSK=$(systemctl is-active kiosk.service)
@@ -92,24 +164,11 @@ echo "KIOSK=$KIOSK"
 
 # Chrome screens. The browser's command line starts /opt/google/chrome/chrome, so anchor on a first word containing
 # "chrome": an unanchored pattern also matches this ssh shell's own command line (which contains the pattern)
-NORTH_PID=$(pgrep -f '^[^ ]*chrome[^ ]* .*display/north-screen' | head -1)
-SOUTH_PID=$(pgrep -f '^[^ ]*chrome[^ ]* .*display/south-screen' | head -1)
-echo "NORTH_CHROME=${NORTH_PID:+running}"
-echo "SOUTH_CHROME=${SOUTH_PID:+running}"
-[ -z "$NORTH_PID" ] && echo "NORTH_CHROME=stopped"
-[ -z "$SOUTH_PID" ] && echo "SOUTH_CHROME=stopped"
+"""
 
-# Current URLs from Chrome command lines
-NORTH_CMD=$(ps -p "$NORTH_PID" -o args= 2>/dev/null || true)
-SOUTH_CMD=$(ps -p "$SOUTH_PID" -o args= 2>/dev/null || true)
-NORTH_URL=$(echo "$NORTH_CMD" | grep -oP 'https?://\S+' | tail -1)
-SOUTH_URL=$(echo "$SOUTH_CMD" | grep -oP 'https?://\S+' | tail -1)
-echo "NORTH_URL=${NORTH_URL:-unknown}"
-echo "SOUTH_URL=${SOUTH_URL:-unknown}"
-
-# Displays: one "<output> connected ..." line per connected output, from sway (the Wayland kiosk, default since
+_STATUS_TAIL = r"""# Displays: one "<output> connected ..." line per connected output, from sway (the Wayland kiosk, default since
 # 2026-10-13; every socket is tried, a crashed sway can leave a stale one), else Xorg (kiosk-x11 fallback: one X
-# screen per TV, :0.0 north, :0.1 south; on a single-screen X, :0.1 just fails), else the kernel's connector
+# screen per TV, __XSCREENS__; on a single-screen X, :0.1 just fails), else the kernel's connector
 # status when no display server answers
 displays() {
     for s in /run/user/$(id -u)/sway-ipc.*.sock; do
@@ -117,7 +176,7 @@ displays() {
             + (if .active then "\(.current_mode.width)x\(.current_mode.height)@\(.current_mode.refresh / 1000)Hz" else "(inactive)" end)' 2>/dev/null)
         [ -n "$out" ] && { echo "$out"; return; }
     done
-    out=$({ DISPLAY=:0.0 xrandr --query; DISPLAY=:0.1 xrandr --query; } 2>/dev/null | grep ' connected')
+    out=$({ __XRANDR__ } 2>/dev/null | grep ' connected')
     [ -n "$out" ] && { echo "$out"; return; }
     for f in /sys/class/drm/card*-*/status; do
         [ "$(cat "$f" 2>/dev/null)" = connected ] || continue
@@ -132,6 +191,12 @@ echo "MEM_PERCENT=$(free | grep Mem | awk '{printf "%.0f", ($3/$2)*100}')"
 echo "DISK_PERCENT=$(df -h / | tail -1 | awk '{print $5}' | tr -d '%')"
 echo "LOAD=$(uptime | awk -F'load average:' '{print $2}' | cut -d, -f1 | tr -d ' ')"
 """
+
+
+@admin_api.route('/admin-355729b8/status', methods=['GET'])
+def status():
+    """Compact status: uptime, kiosk, disk, memory, displays, chrome."""
+    cmd = status_script()
     return jsonify(_ssh_run(cmd))
 
 
@@ -164,15 +229,17 @@ echo "STATUS=$(systemctl is-active $KIOSK_UNIT)"
 
 @admin_api.route('/admin-355729b8/restart-screen', methods=['POST'])
 def restart_screen():
-    """Restart Chrome for one screen only. Body: {screen: "north"|"south"}."""
+    """Restart Chrome for one screen only. Body: {screen: <a kiosk screen's name, e.g. "north">}."""
     data = request.get_json() or {}
     screen = data.get('screen', '').lower()
-    if screen not in ('north', 'south'):
+    picked = _screen_by_name(screen)
+    if picked is None:
         return jsonify({
             'success': False, 'output': '',
-            'error': 'screen must be "north" or "south"',
+            'error': _screen_choice_error(),
             'timestamp': datetime.now().isoformat()
         }), 400
+    screen_id = picked[0]
 
     # Pattern anchored on the browser binary (first word contains "chrome"): unanchored, it matches this ssh shell's
     # own command line and pkill kills the shell instead of Chrome.
@@ -182,13 +249,13 @@ if systemctl is-active --quiet kiosk-x11.service; then
     echo "RESULT=unsupported: the X11 fallback (kiosk-x11.service) does not relaunch Chrome; restart the kiosk instead"
     exit 1
 fi
-pkill -f '^[^ ]*chrome[^ ]* .*display/{screen}-screen' 2>/dev/null || true
+pkill -f '^[^ ]*chrome[^ ]* .*display/{screen_id}' 2>/dev/null || true
 sleep 2
 # under sway, kiosk-wayland.sh relaunches a Chrome that exits within 5 s
-echo "Killed {screen}-screen Chrome. kiosk-wayland.sh will relaunch it."
+echo "Killed {screen_id} Chrome. kiosk-wayland.sh will relaunch it."
 # Check if it came back
 sleep 5
-if pgrep -f '^[^ ]*chrome[^ ]* .*display/{screen}-screen' >/dev/null; then
+if pgrep -f '^[^ ]*chrome[^ ]* .*display/{screen_id}' >/dev/null; then
     echo "RESULT=restarted"
 else
     echo "RESULT=killed_awaiting_relaunch"
@@ -199,14 +266,15 @@ fi
 
 @admin_api.route('/admin-355729b8/set-url', methods=['POST'])
 def set_url():
-    """Change URL for a screen. Body: {screen: "north"|"south", url: string}."""
+    """Change URL for a screen. Body: {screen: <a kiosk screen's name, e.g. "north">, url: string}."""
     data = request.get_json() or {}
     screen = data.get('screen', '').lower()
     url = data.get('url', '').strip()
-    if screen not in ('north', 'south'):
+    picked = _screen_by_name(screen)
+    if picked is None:
         return jsonify({
             'success': False, 'output': '',
-            'error': 'screen must be "north" or "south"',
+            'error': _screen_choice_error(),
             'timestamp': datetime.now().isoformat()
         }), 400
     if not url:
@@ -216,7 +284,7 @@ def set_url():
             'timestamp': datetime.now().isoformat()
         }), 400
 
-    port = 9222 if screen == 'north' else 9223
+    port = picked[2]   # the screen's Chrome DevTools port (kiosk.screens.<id>.cdp_port)
 
     # Write a CDP navigation script to remote, then execute it.
     # repr() yields a valid Python string literal for the URL, and the script

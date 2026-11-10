@@ -6,7 +6,6 @@ from __future__ import annotations
 
 import json
 import shutil
-from pathlib import Path
 
 import pytest
 
@@ -14,7 +13,7 @@ from room_service.adapters import broadlink_rf
 
 from .conftest import Harness
 
-REPO_TYPES = Path(broadlink_rf.__file__).resolve().parents[2] / "config" / "room" / "rf" / "types"
+REPO_TYPES = broadlink_rf.TYPES_DIR          # config/room/rf/types: the shared device types
 
 
 @pytest.fixture

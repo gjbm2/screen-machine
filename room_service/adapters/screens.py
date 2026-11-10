@@ -124,7 +124,8 @@ class ScreensAdapter(Adapter):
         try:
             c.set_desired(value, source=source)
         except LiveDisabled:
-            return Outcome("failed", "live_disabled", retry=False)
+            why = getattr(getattr(getattr(c, "mgr", None), "cfg", None), "live_off_reason", None)
+            return Outcome("failed", f"live_disabled: {why}" if why else "live_disabled", retry=False)
         except ValueError as e:
             return Outcome("failed", str(e))
         status, detail = await c.wait_settled(value, self.change_time_s)

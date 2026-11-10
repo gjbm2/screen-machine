@@ -30,6 +30,7 @@ import numpy as np  # noqa: E402
 import soxr  # noqa: E402
 import yaml  # noqa: E402
 
+import smconfig  # noqa: E402
 from show_service import contract as C  # noqa: E402
 from show_service.ml import models as M  # noqa: E402
 
@@ -43,7 +44,7 @@ def main(argv: list[str]) -> int:
     models_dir = pathlib.Path(spec["models_dir"]).expanduser()
     groups = spec.get("groups")
     if groups is None:
-        cfg = yaml.safe_load((REPO / "config" / "room" / "show.yaml").read_text()) or {}
+        cfg = smconfig.load_layered_yaml(REPO / "config" / "room" / "show.yaml", smconfig.path("show.yaml"))
         groups = (cfg.get("ml") or {}).get("ced_groups") or {}
     t = time.perf_counter()
     task = M.CedTask(M.Model(spec.get("model", "ced-mini"), models_dir, M.read_index(models_dir)), groups,

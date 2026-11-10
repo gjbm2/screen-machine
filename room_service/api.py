@@ -198,7 +198,7 @@ def build_app(svc: "RoomService") -> web.Application:
         except ValueError as e:
             return err(400, "bad_desired", str(e))
         if d != "art" and not c.cfg.live_enabled:
-            return err(409, "live_disabled", f"live is disabled for {c.id}")
+            return err(409, "live_disabled", getattr(svc.cfg, "live_off_reason", None) or f"live is disabled for {c.id}")
         # for_s: after that many seconds, if desired is still this value, it goes back to what it was before
         # (server-side, persisted: a closed tab never leaves a TV live). A PUT without for_s cancels the timer.
         for_s = body.get("for_s")

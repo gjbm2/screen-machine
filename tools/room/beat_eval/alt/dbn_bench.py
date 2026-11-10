@@ -4,7 +4,7 @@
   flock ~/.cache/screen-machine/cpu.lock nice -n 19 ~/.venvs/sm-show/bin/python \\
       tools/room/beat_eval/alt/dbn_bench.py AUDIO [--start-s 30] [--dur-s 60] [--reps 2] [--variant best] [--set k=v]
 
-What it times (process CPU time, OMP/OpenBLAS at one thread as deploy/sm-show.env; the best of ``--reps``):
+What it times (process CPU time, OMP/OpenBLAS at one thread as services/sm-show.env; the best of ``--reps``):
 - ``act2`` / ``act8``: madmom's online LSTM alone (clock.MadmomActivation, 2 and 8 nets), per 441-sample hop, on
   the soxr'd 44.1 kHz audio: what beatproc.py's child process spends live (it runs the activation and nothing else);
 - ``dbn``: the candidate's tracker (madmom_dbn.DbnTracker: forward step, line, conf, gate) on those activations;

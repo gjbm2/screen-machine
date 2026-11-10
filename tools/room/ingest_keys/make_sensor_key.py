@@ -25,8 +25,25 @@ import sys
 import tempfile
 from pathlib import Path
 
+REPO = Path(__file__).resolve().parents[3]
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+import smconfig  # noqa: E402  (SM_LAN_HOST from .env; the room port from the deployment)
+
+
+def default_url() -> str | None:
+    """ws://<SM_LAN_HOST>:<ports.room>/v1/ingest/lux (room_service's LAN door); None without an address or deployment."""
+    host = smconfig.env("SM_LAN_HOST")
+    if not host:
+        return None
+    try:
+        return f"ws://{host}:{smconfig.port('room')}/v1/ingest/lux"
+    except smconfig.DeploymentError:
+        return None
+
+
 SENSOR_ID_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}")      # room_service/ingest.py
-DEFAULT_URL = "ws://192.168.1.205:8700/v1/ingest/lux"
+DEFAULT_URL = default_url()        # e.g. ws://192.168.1.205:8700/v1/ingest/lux
 DEFAULT_KEYS = "~/.config/screen-machine/room_sensors.json"
 DEFAULT_OUT_DIR = "~/.config/screen-machine/light-relay"
 
@@ -69,6 +86,8 @@ def main(argv: list[str] | None = None) -> int:
 
     if not SENSOR_ID_RE.fullmatch(a.sensor_id):
         p.error(f"sensor_id must match {SENSOR_ID_RE.pattern}")
+    if not a.url:
+        p.error("--url is required: no SM_LAN_HOST in .env or no deployment (SM_DEPLOYMENT) to build the default from")
     if not a.url.startswith(("ws://", "wss://")) or not a.url.rstrip("/").endswith("/v1/ingest/lux"):
         p.error("--url must be ws://<host>:<port>/v1/ingest/lux (the relay ignores anything else)")
     keys_path = Path(a.keys_file).expanduser()

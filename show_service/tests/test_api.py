@@ -1584,7 +1584,7 @@ def test_hue_routes_with_the_hue_output_off(brain):
             async with served(api) as cl:
                 st = await body(await cl.post("/api/v1/hue/stream", json={"lights": ["lamp.a"], "on": True}))
                 assert st["state"] == "idle" and st["wanted"] == []
-                assert st["detail"] == "outputs.o-hue.enabled is false in config/room/fixtures.yaml"
+                assert st["detail"] == f"outputs.o-hue.enabled is false in {c.FIXTURES_FILE_WORDS}"
                 assert st["lights"] == ["lamp.a"] and st["boot_id"] == api.boot_id     # kept for on again
                 hs = await body(await cl.get("/api/v1/hue/status"))
                 assert hs["lights"] == ["lamp.a"] and hs["boot_id"] == api.boot_id
@@ -1888,14 +1888,13 @@ def test_lights_routes_with_a_rig(brain, tmp_path):
 
 # -- docs/LIGHTS.md §8.1: moving lights, the Room map and the live view ---------------------------------------------------
 # The rig's hooks (engine), fixtures.SetupStore (encode) and the space module (space) are fakes to the spec's
-# interfaces, on tmp files: nothing under config/ is written.
+# interfaces, on tmp files: nothing under config/ or deployments/ is written.
 import copy
 import math
 
 from show_service import fixtures as fxmod
 
-CONFIG_FILES = (c.CONFIG_ROOM_DIR / "fixtures.setup.yaml", c.CONFIG_ROOM_DIR / "space.added.yaml",
-                c.CONFIG_ROOM_DIR / "space.yaml")
+CONFIG_FILES = (c.FIXTURES_SETUP_FILE, c.SPACE_ADDED_FILE, c.SPACE_FILE)   # deployments/<id>/lights/
 MOVER_CAPS = {"attrs": ["intensity", "colour", "pan", "tilt", "zoom", "gobo"], "moves": True,
               "pan": {"min": -270.0, "max": 270.0, "fine": True, "limits": None},
               "tilt": {"min": -135.0, "max": 135.0, "fine": True, "limits": None},

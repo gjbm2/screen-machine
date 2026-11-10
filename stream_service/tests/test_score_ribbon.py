@@ -148,3 +148,18 @@ def test_scene_runs(tmp_path):
             assert (diffs > 8).mean() < 1e-3
 
 
+
+
+def test_without_verovio_the_glyphs_say_so(monkeypatch):
+    """No verovio importable: no data path, and reading the font says "verovio is not installed" (the plug-in's
+    load error), never another machine's path."""
+    from stream_service.score import ribbon_glyphs as RG
+    monkeypatch.setattr(RG, "VEROVIO_DATA", None)
+    RG.metrics.cache_clear()
+    try:
+        with pytest.raises(RuntimeError, match="verovio is not installed"):
+            RG.metrics()
+        with pytest.raises(RuntimeError, match="verovio is not installed"):
+            RG.glyph_outline("E0A4")
+    finally:
+        RG.metrics.cache_clear()

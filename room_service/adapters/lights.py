@@ -1,6 +1,6 @@
 """The `light` subsystem: the room's DMX lights, one member per light registered with show_service that isn't a Hue lamp
-(kind "lamp" on an Art-Net output: config/room/fixtures.yaml plus the Lights setup page's fixtures.added.yaml), as
-`light.<fixture id>`. show_service drives them (Art-Net, unicast to each node); the room only says which of them
+(kind "lamp" on an Art-Net output: the deployment's lights/fixtures.yaml plus the Lights setup page's
+fixtures.added.yaml), as `light.<fixture id>`. show_service drives them (Art-Net, unicast to each node); the room only says which of them
 follow the music. Hue lamps stay the `hue` subsystem's (adapters/hue.py).
 
 Values (canonical):
@@ -37,13 +37,16 @@ from urllib.parse import quote
 
 import aiohttp
 
+import smconfig
+
 from ..hue.colour import describe, hex_to_rgb, rgb_to_xy
 from ..roomstate.contract import Adapter, Outcome, Reading
 from .room import _load, _save
 
 log = logging.getLogger("room_service.adapters.lights")
 
-SHOW_URL = "http://127.0.0.1:8703"   # show_service's API over loopback (as adapters/show.py): a default
+SHOW_URL = smconfig.url("show")     # show_service's API over loopback (the deployment's show port): a default;
+                                     # room_service passes its cfg.show_url (build_adapters)
 RIG = "/api/v1/rig"
 FOLLOW = "/api/v1/rig/follow"
 REFRESH_S = 10.0                     # members: show_service's rig is re-read this often

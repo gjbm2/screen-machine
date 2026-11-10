@@ -55,6 +55,8 @@ import secrets
 import time
 from typing import Any, Callable, Optional
 
+import smconfig
+
 from . import binding, ensemble, fx_interplay, palettes, rooms
 from .bodies import PngData
 from .director import AUTO_DEFAULTS, AUTO_FX_DEFAULTS, DIRECTION_DEFAULTS, FX_DIRECTION_DEFAULTS, Director, \
@@ -104,6 +106,7 @@ CUE_SOURCES = ("panel", "director", "mode")
 INPUTS_EVENT_MIN_S = 2.0
 PALETTE_S_DEFAULT = 4.0
 FIXTURE_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+GPU_REPROBE_S = 5.0           # an empty CUDA device probe is retried this often (Manager.gpu_names)
 
 
 class SessionError(Exception):
@@ -244,9 +247,9 @@ class Session(EngineListener):
         # -- LIVE_V1 1.1: direction, masters, palette, inputs (modulation.py, inputs.py) --
         self.direction = direction or dict(DIRECTION_DEFAULTS, moods=[], fx=dict(FX_DIRECTION_DEFAULTS))
         self.direction_ease_s = direction_ease_s
-        self.fixture = fixture or default_fixture(screen)
+        self.fixture = fixture or default_fixture(screen)    # None: no fixture (inputs.default_fixture)
         self.beat_follow = beat_follow
-        self.photon_ms, self.photon_source = load_photon(mgr.latency_file, self.fixture)
+        self.photon_ms, self.photon_source = load_photon(mgr.latency_file, self.fixture or screen)
         self.lead_parts: dict = {}
         self.lead_ms: Optional[float] = None
         self._lead_t = 0.0
@@ -2622,7 +2625,7 @@ class Session(EngineListener):
 class SessionManager:
     def __init__(self, *, registry: Registry, presets: Presets, events, max_sessions: int = 4,
                  public_base: Optional[str] = None, inputs: Optional[ShowInputs] = None,
-                 latency_file: Optional[Any] = None):
+                 latency_file: Optional[Any] = None, switches_file: Optional[Any] = None):
         self.registry = registry
         self.presets = presets
         self.events = events
@@ -2646,7 +2649,8 @@ class SessionManager:
         self.calibration = Calibration()                 # tools/calibrate.py's per-GPU costs (re-read on change)
         self.ratings: Any = None                         # the owner's Library ratings (ratings.Ratings; make_app)
         self.rooms = rooms.RoomMap()                     # screen -> room (rooms.json): one director per room
-        self.switches = StreamSwitches.in_dir(getattr(presets, "dir", None))   # stream_switches.json (change 2)
+        self.switches = (StreamSwitches(switches_file) if switches_file is not None    # stream_switches.json
+                         else StreamSwitches.in_dir(getattr(presets, "dir", None)))  # (change 2; switches.py)
         self.room_direction: Optional[dict] = None       # show_service's last room.direction (on_room_message)
         self.music_feed = MusicFeed(getattr(presets, "music_response", None))   # show_service's music.* (+ config)
         self.room_events_ring: collections.deque = collections.deque(maxlen=8)   # (wall s, kind, detail)
@@ -3080,6 +3084,9 @@ class SessionManager:
         screen = body.get("screen")
         if not isinstance(screen, str) or not SCREEN_RE.match(screen):
             raise ParamError("bad_request", "screen must be an id like 'devtest'")
+        if not smconfig.enabled("live"):
+            log.warning("create refused: the deployment %s has live off", smconfig.deployment_id())
+            raise ParamError("live_off", "live sessions are switched off for this deployment (capability 'live')")
         gpu = body.get("gpu", 0)
         n_gpus = len(self.gpu_names())
         if isinstance(gpu, bool) or not isinstance(gpu, int) or gpu < 0 or (n_gpus and gpu >= n_gpus):
@@ -3168,6 +3175,10 @@ class SessionManager:
     async def create(self, body: Any, host: str) -> tuple[Session, bool]:
         """-> (session, created).  An idempotency_key that names a known session returns that session."""
         p = self._parse(body)
+        if self.no_gpu():                        # a valid request, but nothing to render it on (not a CUDA crash)
+            log.warning("create refused: no CUDA GPU on this machine (screen %s)", p["screen"])
+            raise ParamError("no_gpu", "this machine has no CUDA GPU the renderer can use (CuPy sees none), so it "
+                                       "can't start a live session")
         key = p["idempotency_key"]
         if key is not None:
             while key in self._creating:         # the same request is being served right now: wait for it
@@ -3283,11 +3294,29 @@ class SessionManager:
 
     # -- GPUs ----------------------------------------------------------------------
     def gpu_names(self) -> list[dict]:
-        from .gpu import device_names
+        """CUDA devices (gpu.device_names), cached. An empty probe is not kept: it is retried at most every
+        GPU_REPROBE_S, so a CUDA / CuPy that wasn't ready at startup (--warm probes early) doesn't refuse every create
+        until a restart."""
+        from . import gpu as _gpu
 
-        if not hasattr(self, "_devices"):
-            self._devices = device_names()
-        return self._devices
+        devs = getattr(self, "_devices", None)
+        now = time.monotonic()
+        if devs is None or (not devs and now - getattr(self, "_devices_t", -1e9) >= GPU_REPROBE_S):
+            devs = self._devices = _gpu.device_names()
+            self._devices_t = now
+            if not devs and not getattr(self, "_no_gpu_logged", False):
+                self._no_gpu_logged = True
+                log.warning("GPUs: CuPy sees no CUDA device (%s); retrying every %.0f s",
+                            _gpu.LAST_PROBE_ERROR or "device count 0", GPU_REPROBE_S)
+            elif devs and getattr(self, "_no_gpu_logged", False):
+                self._no_gpu_logged = False
+                log.info("GPUs: CuPy now sees %d CUDA device(s)", len(devs))
+        return devs
+
+    def no_gpu(self) -> bool:
+        """True when sessions need a CUDA GPU (renderer.Engine.needs_gpu) and this machine has none: a create is
+        refused (no_gpu) instead of failing inside CUDA; the service itself runs on (/healthz, the catalog)."""
+        return bool(getattr(Engine, "needs_gpu", False)) and not self.gpu_names()
 
     def gpu_state(self) -> list[dict]:
         """[{index, name, mem_used_mb}] via NVML (diag.py: no fork; nvidia-smi only without NVML), cached for 2 s."""

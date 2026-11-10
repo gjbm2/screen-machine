@@ -25,11 +25,12 @@ then measured during the play:
    "race" where the wave is newer than ``c``, dropped frames filled with zeros and masked). The host time of a
    sample is the lower envelope of the arrivals (min of a - sample/fs over the window, the receiver's own rule),
    less the sender's input buffering beyond one packet (heartbeat ``in_lat_ms``) and TRANSPORT_S, plus
-   config/room/latency.json ``sources.<mic>.acoustic_offset_ms`` (screen-machine-10's; 0 today). The mic per output:
+   the deployment's calibration/latency.json ``sources.<mic>.acoustic_offset_ms`` (screen-machine-10's; 0 today). The mic per output:
    the session's ``mic`` (show_service's sources.py names it from show.yaml's senders and sonos.json: the one that
-   hears that room; "" = none does: no mic check, and the status says why), else $PIANO_CALIBRATE_MIC, else MIC_FOR
-   (the drawing room's kiosk "room-mic" for Sonos, "pc22-mic" for PC22). Read only: this module never changes
-   show_service's input and never turns a mic on (a Sonos run's mic is claimed by show_service itself).
+   hears that room; "" = none does: no mic check, and the status says why), else $PIANO_CALIBRATE_MIC, else
+   default_mic(): the deployment's show.yaml sender labelled for the output's room, by show_service's own rule (e.g.
+   the drawing room's kiosk "room-mic" for its Sonos, "pc22-mic" for PC22; none: no mic check). Read only: this
+   module never changes show_service's input and never turns a mic on (a Sonos run's mic is claimed by show_service itself).
 2. **What we sent.** The reference knows exactly what the sink was given: MIDI frame p plays at sink_t0 + p/fs.
    FileReference reads a rendered file; StreamReference takes the streamer's blocks (``sent(pos, data)``, cheap
    enough for the audio thread: a mono mix and an append; the work is done in the calibrator's thread).
@@ -117,11 +118,13 @@ from typing import Any, Callable, Optional, Sequence
 
 import numpy as np
 
+import smconfig
+
 log = logging.getLogger("piano_render.calibrate")
 
 REPO = Path(__file__).resolve().parent.parent
 SHOW_URL_ENV = "PIANO_SHOW_URL"
-SHOW_URL = "http://127.0.0.1:8703"
+SHOW_URL = smconfig.url("show")     # show_service on this box ($PIANO_SHOW_URL overrides)
 LEVELS_PATH = "/v1/levels"
 WAVE_N = 2048                       # levels.WAVE_MAX: samples a frame carries
 TAP_MIN_OVERLAP = 64                # samples two frames must share to be stitched on content
@@ -130,9 +133,9 @@ TRANSPORT_S = 0.0005                # the smallest one-way network delay (LAN / 
 GAP_FILL_MAX_S = 2.0                # a longer hole in the feed starts the tap again
 LAT_FILE_ENV = "PIANO_LATENCY_FILE"
 DEFAULT_LAT_FILE = Path("~/.local/state/screen-machine/piano/latency.json").expanduser()
-ROOM_LATENCY_FILE = REPO / "config" / "room" / "latency.json"    # screen-machine-10's: read only
+ROOM_LATENCY_FILE = smconfig.path("calibration", "latency.json")    # the deployment's (screen-machine-10's): read only
 MIC_ENV = "PIANO_CALIBRATE_MIC"
-MIC_FOR = {"pc22": "pc22-mic", "sonos": "room-mic"}
+MIC_FOR: dict = {}                  # {output kind or output id: stream} overrides; else default_mic() derives it
 HEARD_MIN_S = 0.025                 # a sink's "heard" closer than this to the MIDI clock's leaves it be
 KEEP_N = 9                          # measurements kept per output; the prior is their median
 DELAY_LIMIT_S = 15.0                # a persisted delay beyond this is ignored (a Sonos radio stream: seconds)
@@ -938,6 +941,48 @@ def output_kind(output: str) -> str:
     return "sonos" if output.startswith("sonos:") else "pc22"
 
 
+def _place(text: str) -> str:
+    """A room or sender name compared loosely: case, spaces, hyphens and underscores ignored (show_service's rule)."""
+    return "".join(ch for ch in text.lower() if not ch.isspace() and ch not in "-_")
+
+
+def default_mic(output: str) -> str:
+    """The room mic that hears ``output`` when neither the session nor $PIANO_CALIBRATE_MIC names one: MIC_FOR (an
+    override, by output id or kind), else, as show_service's sources.calibration_mic finds it, the first room-sound
+    stream of the deployment's show.yaml sender (shared config/room/show.yaml with deployments/<id>/show.yaml over it)
+    whose ``label`` or name is the output's room: a Sonos zone's ``room`` in room/sonos.json (else the zone key), or
+    the output id for "pc22". Room sound: not ``on_demand``, not ``room_sound: false``, not a test stream and not one
+    of the deployment's MIDI streams (``situations.midi.streams``). "" when none: no mic check (the status says why)."""
+    if output in MIC_FOR or output_kind(output) in MIC_FOR:
+        return str(MIC_FOR.get(output, MIC_FOR.get(output_kind(output))) or "")
+    try:
+        show = smconfig.load_layered_yaml(smconfig.shared("room", "show.yaml"), smconfig.path("show.yaml"))
+    except Exception as e:  # noqa: BLE001 - OSError, a YAML error, no PyYAML
+        log.warning("calibrate: show.yaml unreadable (%s: %s): no default mic for %s", type(e).__name__, e, output)
+        return ""
+    if output.startswith("sonos:"):
+        from . import sonos as _sonos
+        zone = output[len("sonos:"):]
+        z = (_sonos._read_json(_sonos.SONOS_FILE).get("zones") or {}).get(zone)
+        room = z.get("room") if isinstance(z, dict) and isinstance(z.get("room"), str) and z["room"].strip() else zone
+        names = {_place(room), _place(zone)}
+    else:
+        names = {_place(output)}
+    midi = ((show.get("situations") or {}).get("midi") or {}).get("streams") if isinstance(show, dict) else None
+    midi = set(midi) if isinstance(midi, list) else set()
+    senders = show.get("senders") if isinstance(show.get("senders"), dict) else {}
+    for name, spec in senders.items():
+        if not isinstance(spec, dict) or spec.get("on_demand") or spec.get("room_sound") is False:
+            continue
+        label = spec["label"].strip() if isinstance(spec.get("label"), str) and spec["label"].strip() else str(name)
+        if _place(label) not in names and _place(str(name)) not in names:
+            continue
+        for st in spec.get("streams") or ():
+            if isinstance(st, str) and st and not st.startswith("test-") and st != "phone-test" and st not in midi:
+                return st
+    return ""
+
+
 # ---------------------------------------------------------------------------------------------------- show_service
 
 def _get_json(url: str, timeout: float = 2.0) -> Any:
@@ -1013,7 +1058,7 @@ class Calibrator:
         self.first_jump = self.kind == "sonos"        # the first lock's correction in one step (module docstring)
         self.key = output_key(output, device)
         if mic is None:
-            mic = os.environ.get(MIC_ENV) or MIC_FOR[self.kind]
+            mic = os.environ.get(MIC_ENV) or default_mic(output)
         self.mic: Optional[str] = mic.strip() or None       # "": show_service named no mic that hears this output
         self.no_mic_why = None if self.mic else f"show_service names no mic that hears {output}"
         self.feed_named: Optional[bool] = None              # the feed honours ?stream (True), ignores it (False)
@@ -1546,6 +1591,13 @@ def measure_offline(ref_audio: np.ndarray, ref_fs: int, rec: np.ndarray, rec_fs:
 
 # ---------------------------------------------------------------------------------------------------- CLI
 
+def _sonos_outputs() -> list[str]:
+    """"sonos:<zone>" for each zone of the deployment's room/sonos.json (none: no Sonos)."""
+    from . import sonos as _sonos
+    zones = _sonos._read_json(_sonos.SONOS_FILE).get("zones")
+    return [f"sonos:{z}" for z in zones] if isinstance(zones, dict) else []
+
+
 def _cmd_status(a) -> int:
     d = load_latency()
     print(f"{lat_file()}:")
@@ -1553,8 +1605,8 @@ def _cmd_status(a) -> int:
         print(f"  {k}: {o.get('delay_ms')} ms (median of {o.get('n')}; {o.get('updated_utc')})")
     if not d.get("outputs"):
         print("  (no measurements yet)")
-    for out in ("pc22", "sonos:drawing-room"):
-        mic = os.environ.get(MIC_ENV) or MIC_FOR[output_kind(out)]
+    for out in ("pc22", *_sonos_outputs()):
+        mic = os.environ.get(MIC_ENV) or default_mic(out)
         i = show_info(mic, (os.environ.get(SHOW_URL_ENV) or SHOW_URL).rstrip("/"))
         if not i.get("ok"):
             print(f"{out}: mic {mic}: {i.get('why')}")
@@ -1569,7 +1621,9 @@ def _cmd_status(a) -> int:
 def _cmd_listen(a) -> int:
     """Read the levels feed through the tap for a while (read only) and say what it saw."""
     show = (os.environ.get(SHOW_URL_ENV) or SHOW_URL).rstrip("/")
-    mic = a.mic or os.environ.get(MIC_ENV) or MIC_FOR[output_kind(a.output)]
+    if a.output is None:
+        a.output = next(iter(_sonos_outputs()), "pc22")
+    mic = a.mic or os.environ.get(MIC_ENV) or default_mic(a.output)
     info = show_info(mic, show)
     print(json.dumps({k: info.get(k) for k in ("ok", "why", "active", "label", "state", "mic_on", "mic_why", "fs",
                                                "packet", "in_lat_ms", "offset_ms")}))
@@ -1630,7 +1684,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     sub = ap.add_subparsers(dest="cmd", required=True)
     sub.add_parser("status")
     li = sub.add_parser("listen")
-    li.add_argument("--output", default="sonos:drawing-room")
+    li.add_argument("--output", default=None, help="pc22 or sonos:<zone> (default: the deployment's first Sonos "
+                                                   "zone, else pc22)")
     li.add_argument("--mic", default=None)
     li.add_argument("--seconds", type=float, default=10.0)
     me = sub.add_parser("measure")

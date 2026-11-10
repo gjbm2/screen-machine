@@ -15,6 +15,10 @@ import pytest
 import pytest_asyncio
 from aiohttp.test_utils import TestServer
 
+# room_service/pytest.ini anchors this suite here, so the repo root's conftest.py (which selects the deployment) is not
+# loaded: select it the same way, before room_service (which reads the deployment at import) is imported.
+os.environ.setdefault("SM_DEPLOYMENT", "finsbury")
+
 from room_service.config import config_from_dict
 from room_service.roomstate.fakes import FakeLevel
 from room_service.service import RoomService
@@ -124,7 +128,7 @@ class Harness:
 
     async def start_room(self) -> None:
         # Fake hub blinds: tests never reach the real Bloc hub on the LAN. No RM4 Pro remotes either: the glitterball
-        # stays the built-in placeholder, whatever codes the repo's config/room/rf/glitterball.json has. No real
+        # stays the built-in placeholder, whatever codes the deployment's room/rf/glitterball.json has. No real
         # show_service either: show.main is a placeholder.
         blinds = FakeLevel("blinds", {f"ch{n:02d}": 0 for n in range(2, 15)}, tolerance=3)
         self.svc = RoomService(self.config(), snapshotter=self.snap, token=ROOM_TOKEN,

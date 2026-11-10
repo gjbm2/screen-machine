@@ -42,13 +42,15 @@ import threading
 import time
 from typing import Any, Callable, Optional
 
+import smconfig
+
 from .ipc import BOUND, EXIT, IDLE, LINGERING, SPAWNING, Channel, HandleTable, K_MEDIA, K_MSG, Lifecycle, dumps, \
     loads, pack
 
 log = logging.getLogger("stream_service.workers")
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-DESTINATIONS = REPO / "routes" / "data" / "publish-destinations.json"   # each screen's "live" block (room's too)
+DESTINATIONS = smconfig.path("publish-destinations.json")   # the deployment's screens: each one's "live" block
 LINGER_S = 30.0
 READY_S = 20.0          # spawn -> hello, else the session runs in this process
 CALL_S = 30.0           # a prepare (a cold NVRTC compile can take seconds)

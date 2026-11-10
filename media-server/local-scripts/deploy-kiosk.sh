@@ -1,12 +1,17 @@
 #!/bin/bash
 # Kiosk System Deployment Script
 # Usage: ./deploy-kiosk.sh [remote-host] [remote-user]
+#        ./deploy-kiosk.sh --kiosk     remote, to the deployment's kiosk (kiosk.host / kiosk.user in
+#                                      deployments/<id>/deployment.yaml; MEDIA_SERVER_HOST / MEDIA_SERVER_USER override)
 #
 # Installs the Wayland kiosk as the default (since 2026-10-13): kiosk.service runs sway, which starts
 # kiosk-wayland.sh (one full-screen Chrome per TV). The X11 kiosk (Xorg + kiosk-loop.sh, one X screen per TV) is
 # installed as kiosk-x11.service, DISABLED, as the fallback. Switch back on the box:
 #   sudo systemctl disable --now kiosk && sudo systemctl enable --now kiosk-x11
-# Files are read from media-server/remote-scripts/ (run from the repo, or from a copy of media-server/).
+# Files are read from media-server/remote-scripts/, rendered for the deployment first: the launchers' URLs (the
+# kiosk/TV page URLs, which never change) are templates filled from the deployment's kiosk block by
+# media-server/render_kiosk.py (`render_kiosk.py check` proves finsbury's rendered files are unchanged). Run from the
+# repo with SM_DEPLOYMENT set, or set KIOSK_SRC_DIR to a tree rendered beforehand (render_kiosk.py render-dir <dir>).
 
 set -e  # Exit on any error
 
@@ -17,8 +22,9 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-# Kiosk files, relative to SRC_DIR
-SRC_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/remote-scripts"
+# Kiosk files, relative to SRC_DIR: the rendered copy of media-server/remote-scripts/ (render_sources below)
+MEDIA_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+SRC_DIR="${KIOSK_SRC_DIR:-}"
 KIOSK_FILES=(
     kiosk.service wayland/sway-kiosk.conf wayland/kiosk-wayland.sh            # default: Wayland (sway)
     kiosk-x11.service kiosk-wait-start.sh kiosk-loop.sh xorg/20-zaphod.conf    # fallback: X11, disabled
@@ -60,12 +66,31 @@ check_sudo() {
     fi
 }
 
-# Function to check that every kiosk file is present (before anything is installed)
+# Render media-server/remote-scripts/ for this deployment into a temp dir (unless KIOSK_SRC_DIR names a rendered tree)
+render_sources() {
+    [[ -n "$SRC_DIR" ]] && return 0
+    # shellcheck disable=SC1091
+    source "$MEDIA_DIR/kiosk-config.sh"
+    SRC_DIR="$(mktemp -d)"
+    trap 'rm -rf "$SRC_DIR"' EXIT
+    if ! kiosk_render_dir "$SRC_DIR"; then
+        print_error "Could not render the kiosk scripts for this deployment (see above)"
+        print_status "Run from the repo with SM_DEPLOYMENT set, or set KIOSK_SRC_DIR to a tree made by:"
+        print_status "  media-server/render_kiosk.py render-dir <dir>"
+        exit 1
+    fi
+}
+
+# Function to check that every kiosk file is present and rendered (before anything is installed)
 check_files() {
     for file in "${KIOSK_FILES[@]}"; do
         if [[ ! -f "$SRC_DIR/$file" ]]; then
             print_error "Required file not found: $SRC_DIR/$file"
-            print_status "Run this script from a copy of media-server/ (it reads media-server/remote-scripts/)"
+            print_status "Run this script from the repo (it renders media-server/remote-scripts/), or set KIOSK_SRC_DIR"
+            exit 1
+        fi
+        if grep -q '@@KIOSK_' "$SRC_DIR/$file"; then
+            print_error "$SRC_DIR/$file is an unrendered template (@@KIOSK_...@@): see media-server/render_kiosk.py"
             exit 1
         fi
     done
@@ -323,6 +348,7 @@ show_usage() {
     echo ""
     echo "Remote deployment:"
     echo "  $0 192.168.1.100 ubuntu"
+    echo "  $0 --kiosk          (this deployment's kiosk: kiosk.host / kiosk.user in its deployment.yaml)"
     echo ""
     echo "This script will:"
     echo "  1. Install system dependencies (sway; X packages for the fallback)"
@@ -347,7 +373,8 @@ deploy_remote() {
         print_warning "No SSH key found. You may need to enter password multiple times."
     fi
     
-    # Validate files exist
+    # Render for the deployment, then validate the files
+    render_sources
     check_files
     
     # Copy files to remote host (flat into /tmp; every basename is unique)
@@ -516,7 +543,15 @@ main() {
     echo ""
     
     # Check if remote deployment
-    if [[ $# -eq 2 ]]; then
+    if [[ $# -eq 1 && "$1" == "--kiosk" ]]; then
+        # shellcheck disable=SC1091
+        source "$MEDIA_DIR/kiosk-config.sh"
+        local host user
+        host="${MEDIA_SERVER_HOST:-$(kiosk_get host)}" || { print_error "No kiosk host (MEDIA_SERVER_HOST or kiosk.host)"; exit 1; }
+        user="${MEDIA_SERVER_USER:-$(kiosk_get user)}" || { print_error "No kiosk user (MEDIA_SERVER_USER or kiosk.user)"; exit 1; }
+        deploy_remote "$host" "$user"
+        exit 0
+    elif [[ $# -eq 2 ]]; then
         deploy_remote "$1" "$2"
         exit 0
     elif [[ $# -eq 0 ]]; then
@@ -530,6 +565,7 @@ main() {
     # Check prerequisites
     check_root
     check_sudo
+    render_sources
     check_files
     
     # Execute deployment steps

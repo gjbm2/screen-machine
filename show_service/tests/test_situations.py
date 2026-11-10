@@ -962,8 +962,8 @@ def test_light_words_in_the_vocabulary_and_their_labels():
 
 
 def test_the_real_show_yaml_light_section_and_bad_values():
-    import yaml as _yaml
-    real = _yaml.safe_load(c.SHOW_FILE.read_text())
+    import smconfig
+    real = smconfig.load_layered_yaml(c.SHOW_FILE, c.SHOW_SITE_FILE)      # the shared file + this site's layer
     e = LightEnv()
     e.sit.configure(real)
     assert e.sit.problems == []

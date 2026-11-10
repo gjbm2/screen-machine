@@ -24,7 +24,9 @@ from pathlib import Path
 import pytest
 
 import lightmask as lm
+import smconfig
 from lightmask import model
+from smconfig.legacy import MOVES
 
 HERE = Path(__file__).resolve().parent
 FIXTURE = HERE / "fixtures" / "golden_flask.json.gz"
@@ -162,6 +164,13 @@ def _sha16(p: Path) -> str:
     return hashlib.sha256(p.read_bytes()).hexdigest()[:16]
 
 
+def _now(rel: str) -> Path:
+    """Where a file the fixtures name lives now: a site file the deployments/ move took (smconfig.legacy; the old
+    src/data/ symlink pointed at routes/data/'s copy) is the deployment's copy, byte-identical; else the repo's."""
+    rel = {"src/data/publish-destinations.json": "routes/data/publish-destinations.json"}.get(rel, rel)
+    return smconfig.path(MOVES[rel]) if rel in MOVES else REPO / rel
+
+
 def test_load_config_reads_what_flask_read():
     """load_config() on the repo files gives the inputs Flask used for the
     "real" fixtures. Skipped (not failed) when those files changed since the
@@ -169,9 +178,11 @@ def test_load_config_reads_what_flask_read():
     shas = GOLD["flask_sources_sha256_16"]
     cfg = lm.load_config()
     dest_rel = GOLD["destinations_file"]
-    assert Path(cfg.sources["destinations_json"]) == (REPO / dest_rel).resolve()
-    inputs = ("config.py", "routes/data/intensity.json", dest_rel)
-    changed = [p for p in inputs if _sha16(REPO / p) != shas[p]]
+    assert Path(cfg.sources["destinations_json"]) == _now(dest_rel).resolve()
+    inten_rel = next(p for p in shas if p.endswith("intensity.json"))
+    assert Path(cfg.sources["intensity_json"]) == _now(inten_rel)
+    inputs = ("config.py", inten_rel, dest_rel)
+    changed = [p for p in inputs if _sha16(_now(p)) != shas[p]]
     if changed:
         pytest.skip(f"{changed} changed since fixtures were generated; rerun lightmask/tests/gen_golden.py")
     real = GOLD["sets"]["real"]["inputs"]

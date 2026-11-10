@@ -289,8 +289,13 @@ class RenderContext:
         return self.cp.empty((self.height, self.width, 4), self.cp.uint8)
 
 
+LAST_PROBE_ERROR: Optional[str] = None     # why the last device_names() found none ("Type: text"), else None
+
+
 def device_names() -> list[dict]:
-    """[{index, name, cc}] for every CUDA device (no context is created)."""
+    """[{index, name, cc}] for every CUDA device (no context is created); [] when CuPy / CUDA can't say (the reason
+    in LAST_PROBE_ERROR)."""
+    global LAST_PROBE_ERROR
     try:
         import cupy as cp
 
@@ -299,8 +304,10 @@ def device_names() -> list[dict]:
             p = cp.cuda.runtime.getDeviceProperties(i)
             out.append({"index": i, "name": p["name"].decode(errors="replace"),
                         "cc": (int(p["major"]), int(p["minor"])), "pci_bus": int(p["pciBusID"])})
+        LAST_PROBE_ERROR = None
         return out
-    except Exception:
+    except Exception as e:
+        LAST_PROBE_ERROR = f"{type(e).__name__}: {e}"
         return []
 
 

@@ -15,7 +15,7 @@ What it does:
      duration). Notes and duration are the catalogue's (from the cleaned file); a file: piece is measured with the
      library's own clean_midi (in memory, nothing written).
 
-Usage: ready_playlists.py [--api http://127.0.0.1:8700/show] [--dry-run] [--stress-out PATH]
+Usage: ready_playlists.py [--api http://127.0.0.1:<ports.room>/show] [--dry-run] [--stress-out PATH]
 """
 from __future__ import annotations
 
@@ -29,6 +29,7 @@ import urllib.request
 REPO = pathlib.Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO))
 from show_service import library as L  # noqa: E402  (resolve, clean_midi, the catalogue location)
+import smconfig  # noqa: E402  (the room port: show_service's API is reached through room's /show door)
 
 STRESS_N = 14
 STRESS_CAPS = {"chopin": 5, "liszt": 4}
@@ -285,7 +286,7 @@ def stress_list(infos: list[dict]) -> list[dict]:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    ap.add_argument("--api", default="http://127.0.0.1:8700/show", help="show_service's API root (via room)")
+    ap.add_argument("--api", default=smconfig.url("room") + "/show", help="show_service's API root (via room)")
     ap.add_argument("--dry-run", action="store_true", help="check and report; create nothing")
     ap.add_argument("--stress-out", type=pathlib.Path, help="write the Virtuoso stress list here")
     a = ap.parse_args()

@@ -48,6 +48,12 @@ StreamStateName = Literal["streaming", "quiet", "stale", "down", "no_device", "o
 # -- config (fields only: config.py parses args/env into these; the receiver takes them) ------------------------------
 REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
 
+# The deployment (deployments/<id>/, chosen by SM_DEPLOYMENT; smconfig refuses to guess, so an unselected process stops
+# here with smconfig's message). Site files come from it; shared behaviour stays under config/.
+import smconfig  # noqa: E402
+
+DEPLOYMENT = smconfig.deployment()
+
 
 @dataclass(frozen=True)
 class Sender:
@@ -59,8 +65,9 @@ class Sender:
     port: int = 6980
     streams: tuple[str, ...] = ()
     # Stage 3 (README "Stage 3 > sources.py / receiver seam"), additions:
-    # ``hosts``: the ordered fallback list from config/room/show.yaml (device addresses live in config/room/, owner
-    # ruling 16 Oct, like sonos.json); when non-empty it is the truth and ``host`` == hosts[0] for older readers.
+    # ``hosts``: the ordered fallback list from show.yaml's site layer (deployments/<id>/show.yaml: device addresses
+    # live with the deployment, owner ruling 16 Oct, like sonos.json); when non-empty it is the truth and ``host`` ==
+    # hosts[0] for older readers.
     # ``on_demand``: subscribed only while sources.py runs that test source (show.yaml ``on_demand: true``).
     hosts: tuple[str, ...] = ()
     on_demand: bool = False
@@ -71,8 +78,8 @@ class Config:
     """Everything show_service is started with (config.load builds it from args over env)."""
     senders: tuple[Sender, ...] = ()
     vban_bind: tuple[str, int] = ("0.0.0.0", 6980)
-    bus_bind: tuple[str, int] = ("127.0.0.1", 8703)
-    latency_file: pathlib.Path = REPO_ROOT / "config" / "room" / "latency.json"   # read-only for us (10's schema v2)
+    bus_bind: tuple[str, int] = ("127.0.0.1", DEPLOYMENT.port("show"))   # deployment.yaml ports.show (8703)
+    latency_file: pathlib.Path = DEPLOYMENT.path("calibration", "latency.json")   # read-only for us (10's schema v2)
     log_level: str = "INFO"
     stream_priority: tuple[str, ...] = ()           # audio streams ranked before AUDIO_PRIORITY (stream_rank)
 
@@ -99,7 +106,7 @@ Publish = Callable[[dict], None]
 
 # -- the show bus (§11.1) ---------------------------------------------------------------------------------------------
 BUS_HOST = "127.0.0.1"
-BUS_PORT = 8703
+BUS_PORT = DEPLOYMENT.port("show")                  # deployment.yaml ports.show (8703 on every shipped deployment)
 BUS_PATH = "/v1/show"
 BUS_SCHEMA = 2
 RENDERER_QUEUE = 64     # the renderer role is never coalesced: 64 queued, then close CLOSE_BEHIND
@@ -272,10 +279,15 @@ from dataclasses import field  # noqa: E402
 from typing import Any, NotRequired, Protocol  # noqa: E402
 
 # -- files (all hot-reloaded by their reader unless it says so) -------------------------------------------------------
-CONFIG_ROOM_DIR = REPO_ROOT / "config" / "room"
+CONFIG_ROOM_DIR = REPO_ROOT / "config" / "room"     # SHARED room behaviour (vibes, show.yaml's tuning, fixture types)
 VIBES_FILE = CONFIG_ROOM_DIR / "vibes.yaml"         # c8: the vibes (§8.1); vibes.py reads it
-SHOW_FILE = CONFIG_ROOM_DIR / "show.yaml"           # c8: show_service's own settings; brain.py reads it
-PATCH_FILE = CONFIG_ROOM_DIR / "patch.yaml"         # 68's; read-only for us (lamp placement -> roles)
+SHOW_FILE = CONFIG_ROOM_DIR / "show.yaml"           # c8: show_service's own settings, the shared base (tuning)
+SHOW_SITE_FILE = DEPLOYMENT.path("show.yaml")       # this site's layer over SHOW_FILE (senders, room targets, zones),
+                                                    # deep-merged (smconfig.load_layered_yaml; config.read_show);
+                                                    # absent: no layer. brain.py, inputs.py, library.py read both,
+                                                    # hot-reloaded
+PATCH_FILE = DEPLOYMENT.path("lights", "patch.yaml")   # 68's; read-only for us (lamp placement -> roles)
+AUDIO_CAL_FILE = DEPLOYMENT.path("calibration", "audio_cal.json")   # the mics' calibration (config.GateOffsetWatch)
 LLM_FILE = REPO_ROOT / "config" / "llm.yaml"        # c8: task -> model list, prices, budgets (utils/llm)
 VOCAB_FILE = REPO_ROOT / "config" / "live" / "vocab.yaml"        # 04's; read-only (moods, genre, transition_style)
 ART_TAGS_FILE = REPO_ROOT / "config" / "art_tags.yaml"   # Flask's tagger's lexicon + music_art; read-only (ArtTags)
@@ -291,8 +303,9 @@ LISTENER_LOG = STATE_DIR / "listener.jsonl"         # every listener verdict, fa
 CUES_LOG = STATE_DIR / "cues.jsonl"                 # every cue armed, fired, disarmed, missed, and its outcome (1 MB)
 LLM_LEDGER = pathlib.Path.home() / ".local" / "state" / "screen-machine" / "llm" / "ledger.jsonl"
 TEST_MUSIC_DIR = pathlib.Path.home() / ".cache" / "screen-machine" / "test-music"   # tools/show/fetch_test_music.py
-ROOM_URL = "http://127.0.0.1:8700"                  # room_service in the Flask process, over loopback (show.yaml
+ROOM_URL = DEPLOYMENT.url("room")                   # room_service in the Flask process, over loopback (show.yaml
                                                     # room.url overrides); never a LAN address in code
+FLASK_URL = DEPLOYMENT.url("flask")                 # the app (its /output/<screen>.jpg art), over loopback
 
 # -- streams and test sources ------------------------------------------------------------------------------------------
 TEST_PIANO_STREAM = "test-piano"
@@ -1824,7 +1837,8 @@ class MusicEventData(EventData):
 
 
 # =====================================================================================================================
-# Stage 5 (README "Stage 5"): the rig. The fixture registry (config/room/fixtures.yaml, OFL types, tag groups; fixtures.py),
+# Stage 5 (README "Stage 5"): the rig. The fixture registry (deployments/<id>/lights/fixtures.yaml, OFL types, tag
+# groups; fixtures.py),
 # the look engine (looks.py, emitters.py), the output drivers and their runners (outputs.py; hue_out.py, artnet_lan.py),
 # and the screens' hand-pick hold (director.py + autopilot.RoomLink). Additions only: the names the five Stage-5
 # builders share (B12 the rig and the wiring, B13 the look engine, B14 Hue, B15 Art-Net on the LAN, B16 the director
@@ -1833,20 +1847,26 @@ class MusicEventData(EventData):
 # =====================================================================================================================
 
 # -- files --------------------------------------------------------------------------------------------------------------
-FIXTURES_FILE = CONFIG_ROOM_DIR / "fixtures.yaml"   # c8: the registry (§9.2); fixtures.py reads it (hot-reloaded)
-FIXTURE_TYPES_DIR = CONFIG_ROOM_DIR / "fixture-types"   # c8: OFL fixture JSON (MIT), ofl/<maker>/<model>.json; a type's
-                                                    # ``file`` is relative to this directory
-LATENCY_FILE = CONFIG_ROOM_DIR / "latency.json"     # 10's schema v2, read-only for us: outputs.<key>.<attribute>
+FIXTURES_FILE = DEPLOYMENT.path("lights", "fixtures.yaml")   # c8: the registry (§9.2); fixtures.py reads it
+                                                    # (hot-reloaded)
+FIXTURE_TYPES_DIR = CONFIG_ROOM_DIR / "fixture-types"   # c8 (shared): OFL fixture JSON (MIT), ofl/<maker>/<model>.json;
+                                                    # a type's ``file`` is relative to this directory
+LATENCY_FILE = DEPLOYMENT.path("calibration", "latency.json")   # 10's schema v2, read-only for us:
+                                                    # outputs.<key>.<attribute>
+# page words for the hand file: "deployments/<id>/lights/fixtures.yaml"
+FIXTURES_FILE_WORDS = (str(FIXTURES_FILE.relative_to(REPO_ROOT)) if FIXTURES_FILE.is_relative_to(REPO_ROOT)
+                       else str(FIXTURES_FILE))
 NODES_STATE_FILE = STATE_DIR / "nodes.json"         # artnet_lan: what discovery last saw per node (atomic); never config
-FIXTURES_ADDED_FILE = CONFIG_ROOM_DIR / "fixtures.added.yaml"   # the Lights page's lights (README S5.23): written
-                                                    # only by the rig API (fixtures.Registrar), merged under
+FIXTURES_ADDED_FILE = DEPLOYMENT.path("lights", "fixtures.added.yaml")   # the Lights page's lights (README S5.23):
+                                                    # written only by the rig API (fixtures.Registrar), merged under
                                                     # fixtures.yaml
-FIXTURES_SETUP_FILE = CONFIG_ROOM_DIR / "fixtures.setup.yaml"   # per-light settings from the Lights page (home, limits,
-                                                    # beam, slot names, positions; docs/LIGHTS.md §2.6): written only
-                                                    # by the rig API (fixtures.SetupStore); any fixture, hand-file too
+FIXTURES_SETUP_FILE = DEPLOYMENT.path("lights", "fixtures.setup.yaml")   # per-light settings from the Lights page
+                                                    # (home, limits, beam, slot names, positions; docs/LIGHTS.md §2.6):
+                                                    # written only by the rig API (fixtures.SetupStore); any fixture,
+                                                    # hand-file too
 FOLLOW_STATE_FILE = STATE_DIR / "follow.json"       # outputs.Rig: who follows the music (POST /api/v1/rig/follow;
                                                     # atomic)
-HUE_SECRETS_DIR = pathlib.Path.home() / ".config" / "screen-machine" / "hue"   # room_service.hue.pair writes
+HUE_SECRETS_DIR = smconfig.secret("hue")            # ~/.config/screen-machine/hue: room_service.hue.pair writes
                                                     # <bridge_id>.json (0600); hue_out reads it only through room's
                                                     # BridgeSecrets.load (room_service.hue.client), read-only
 SHOW_SOURCE = "show_service"                        # the ``source`` on our room PATCHes; room's screen.look events carry it
@@ -2106,8 +2126,9 @@ class FixtureCaps(TypedDict):
 
 
 class FixtureSetup(TypedDict, total=False):
-    """config/room/fixtures.setup.yaml ``fixtures.<id>`` (fixtures.SetupStore; docs/LIGHTS.md §2.6). Every key is
-    owner-set on the Lights page; an absent key means "not set" (no default limits, speeds or names are invented)."""
+    """deployments/<id>/lights/fixtures.setup.yaml ``fixtures.<id>`` (fixtures.SetupStore; docs/LIGHTS.md §2.6). Every
+    key is owner-set on the Lights page; an absent key means "not set" (no default limits, speeds or names are
+    invented)."""
     home: dict                     # {"pan": deg, "tilt": deg}: where it rests (house, inactive, uncalibrated patterns)
     limits: dict                   # {"pan": [lo, hi], "tilt": [lo, hi]}: soft limits, centred degrees; absent = the
                                    # full range
@@ -2366,18 +2387,20 @@ class Driver(Protocol):
 
 
 # -- room space (docs/LIGHTS.md §3) ------------------------------------------------------------------------------------
-# One room frame in metres: x east, y north, z up, origin the south-west floor corner. space.py reads config/room/
-# space.yaml (hand) with space.added.yaml (the Lights page's Room map and Move it) under it; every appliance kind reads
-# directions and places through it, so "upwards" or "the piano" means the same thing to a screen, a lamp and a mover.
+# One room frame in metres: x east, y north, z up, origin the south-west floor corner. space.py reads deployments/<id>/
+# lights/space.yaml (hand) with space.added.yaml (the Lights page's Room map and Move it) under it; every appliance
+# kind reads directions and places through it, so "upwards" or "the piano" means the same thing to a screen, a lamp and
+# a mover.
 #: A flow's direction (FlowData.dir). left/right are as seen facing the room's front; cw/ccw as seen from above (the
 #: floor plan, N -> E -> S -> W); towards/away are about the flow's ``at`` (cw/ccw/outward/inward turn round it).
 FLOW_DIRS: tuple[str, ...] = ("still", "up", "down", "left", "right", "cw", "ccw", "outward", "inward", "towards",
                               "away")
 FLOW_OPPOSITE: dict[str, str] = {"up": "down", "down": "up", "left": "right", "right": "left", "cw": "ccw", "ccw": "cw",
                                  "outward": "inward", "inward": "outward", "towards": "away", "away": "towards"}
-SPACE_FILE = CONFIG_ROOM_DIR / "space.yaml"         # hand-written: the room, its places and appliances (space.py)
-SPACE_ADDED_FILE = CONFIG_ROOM_DIR / "space.added.yaml"   # written only by the rig API (the Room map, Move it's teach
-                                                    # points and poses), whole and atomically; merged under space.yaml
+SPACE_FILE = DEPLOYMENT.path("lights", "space.yaml")   # hand-written: the room, its places and appliances (space.py)
+SPACE_ADDED_FILE = DEPLOYMENT.path("lights", "space.added.yaml")   # written only by the rig API (the Room map, Move
+                                                    # it's teach points and poses), whole and atomically; merged under
+                                                    # space.yaml
 MOUNTS: tuple[str, ...] = ("ceiling", "floor", "wall", "truss")   # how a mover hangs (the pose solve's hint)
 
 

@@ -61,6 +61,7 @@ from typing import NamedTuple, Optional
 
 import numpy as np
 
+import smconfig
 from stream_service.gpu import raw_module
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
 from stream_service.plugins._lib.params import num, standard_scene_params
@@ -69,7 +70,7 @@ from stream_service.plugins.sources.image import load_image
 
 log = logging.getLogger("stream_service.plugins.live_art")
 
-DEFAULT_ROOM = "http://127.0.0.1:8700"
+DEFAULT_ROOM = smconfig.url("room")   # room_service on this machine ($SM_ROOM_URL overrides)
 POLL_S = 1.0                     # stills: a 1 s monotonic grid
 ERROR_POLL_S = 5.0               # any other error: back off
 WARMING_MAX_S = 2.0              # 503: honour Retry-After up to this

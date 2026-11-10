@@ -929,7 +929,7 @@ def _names_from_config() -> set[str]:
     names = {"piano"}
     vib = yaml.safe_load(contract.VIBES_FILE.read_text())
     names |= set((vib.get("vibes") or {}).keys())
-    modes = json.loads((contract.CONFIG_ROOM_DIR / "modes.json").read_text())
+    modes = json.loads((contract.DEPLOYMENT.path("room", "modes.json")).read_text())
     names |= set((modes.get("modes") or {}).keys())
     patch = yaml.safe_load(contract.PATCH_FILE.read_text())
     for did, d in (patch.get("devices") or {}).items():

@@ -1,7 +1,8 @@
 """Routes for the devices worked by the RM4 Pro's remotes (adapters/broadlink_rf.py, rf_light.py): add, remove, learn
 and test them in Settings › Lights (setup lives in Settings; the main pages operate). Config-driven: a device exists
-once it is added (its file in config/room/rf/, a card in its room in rooms.json), made from a device type
-(config/room/rf/types/). Open, like the rest of the AV stack (owner, 14 Oct). Registered from api.py.
+once it is added (its file in the deployment's room/rf/, a card in its room in rooms.json), made from a device type
+(config/room/rf/types/, shared). With the deployment's rf capability off, adding is refused (409 rf_off). Open, like
+the rest of the AV stack (owner, 14 Oct). Registered from api.py.
 
   GET    /api/v1/remotes                 every device added: its type, room, buttons (learned or not), the learn in
                                          progress, and a light's record of what it is doing; plus the types and RM4 Pros
@@ -143,6 +144,8 @@ def register(app: web.Application, svc: "RoomService") -> None:
     async def add(request: web.Request) -> web.Response:
         b = await body(request)
         model, label, room = str(b.get("model") or ""), str(b.get("label") or "").strip(), str(b.get("room") or "")
+        if not broadlink_rf.rf_enabled():
+            return _err(409, "rf_off", "this deployment has no RF devices (its rf capability is off in deployment.yaml)")
         have = remotes()
         hosts = sorted({r.rm.host for r, _ in have.values() if r.rm.host})
         host = str(b.get("host") or (hosts[0] if len(hosts) == 1 else "")).strip()

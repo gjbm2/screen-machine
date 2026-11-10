@@ -11,10 +11,38 @@ from wakeonlan import send_magic_packet
 from contextlib import suppress
 from pathlib import Path
 from dataclasses import dataclass
+import functools
+
+import smconfig
 
 _tv_cache = {}
 
 DeviceActionResult = Literal["success", "no_action", "fail"]
+
+
+def token_path(name: str) -> str:
+    """Where a destination's Samsung pairing token lives: its ``samsung-token`` is a bare file name, kept in this
+    machine's secrets (~/.config/screen-machine/samsung/<name>, 0600; the folder 0700). Pairing writes it there too."""
+    p = smconfig.secret("samsung", Path(str(name)).name)
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        os.chmod(p.parent, 0o700)
+        if p.exists():
+            os.chmod(p, 0o600)
+    except OSError as e:
+        warning(f"[samsung] {p}: {e}")
+    return str(p)
+
+
+def _tv_power(fn):
+    """Samsung Frame control needs the deployment's tv_power capability; off, every action is a logged no-op."""
+    @functools.wraps(fn)
+    def wrapper(publish_destination, *args, **kwargs):
+        if not smconfig.enabled("tv_power"):
+            info(f"[samsung] {fn.__name__}({publish_destination}): tv_power is off in this deployment; nothing sent")
+            return "no_action"
+        return fn(publish_destination, *args, **kwargs)
+    return wrapper
 
 @dataclass
 class TVStatus:
@@ -37,6 +65,11 @@ def _get_tv(publish_destination: str, timeout: int = 5) -> SamsungTVWS:
         if dest['id'] == publish_destination:
             ip_address = dest.get('ip-address')
             token_file = dest.get('samsung-token')
+            if token_file:
+                token_file = token_path(token_file)
+                if not os.path.exists(token_file):
+                    warning(f"[get_tv] {publish_destination}: no pairing token at {token_file}; the TV will ask to "
+                            f"pair (copy the token there, 0600, or run scripts/migrate_deployment.py --apply)")
             if ip_address and token_file:
                 try:
                     tv = SamsungTVWS(
@@ -132,6 +165,7 @@ def get_power_state(publish_destination: str, timeout: int = 5) -> PowerState:
 
     return "on"
 
+@_tv_power
 def device_sleep(publish_destination: str, timeout: int = 5) -> DeviceActionResult:
     """Put the TV into art mode.
     
@@ -161,6 +195,7 @@ def device_sleep(publish_destination: str, timeout: int = 5) -> DeviceActionResu
         info(f"{publish_destination} appears to be off — cannot sleep it")
         return "no_action"
 
+@_tv_power
 def device_wake(publish_destination: str, timeout: int = 5) -> DeviceActionResult:
     """Wake the TV from art mode or standby.
     
@@ -214,6 +249,7 @@ def device_wake(publish_destination: str, timeout: int = 5) -> DeviceActionResul
         error(f"{publish_destination} is still off or unresponsive after wake attempt")
         return "fail"
 
+@_tv_power
 def device_sync(publish_destination: str, debug_mode: bool = False, timeout: int = 5) -> DeviceActionResult:
     """
     Synchronise the Frame TV's "My Photos" folder so that it contains *exactly*
@@ -428,6 +464,7 @@ def device_sync(publish_destination: str, debug_mode: bool = False, timeout: int
 
 # --- Device standby helper ----------------------------------------------
 
+@_tv_power
 def device_standby(publish_destination: str, timeout: int = 5) -> DeviceActionResult:
     """Put the TV into standby mode.
     
@@ -487,6 +524,7 @@ def pair_device(publish_destination: str) -> bool:
     if not token_file:
         warning(f"[pair_device] No token_file configured for {publish_destination}")
         return False
+    token_file = token_path(token_file)
     try:
         Path(token_file).unlink(missing_ok=True)
         info(f"[pair_device] Removed token file for {publish_destination}: {token_file}")

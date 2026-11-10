@@ -1,4 +1,4 @@
-"""The site's rooms (routes/data/rooms.json) as the Room page reads them.
+"""The site's rooms (the deployment's rooms.json) as the Room page reads them.
 
 [{id, name, screens, lights, blinds, sensors, effects}] in file order, skipping "_" keys, each list [] when absent.
 effects are devices the Room page gives a card: {"power": target, "settings": [targets]} (a bare target string is

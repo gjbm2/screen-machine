@@ -6,7 +6,7 @@
 // on the right, the player under both:
 //   Look         who is choosing; Calmer · Wilder, Describe it, the palette (MusicCard.tsx DirectorControls) and, while
 //                a room's screens are live, that room's scene and effect picking (RoomLive.tsx)
-//   Screens      each screen's card, under its room's name (status.rooms, from routes/data/rooms.json; "Other" last)
+//   Screens      each screen's card, under its room's name (status.rooms, from deployments/<id>/rooms.json; "Other" last)
 //   Today's art  each room's TodayCard (TodayFold.tsx)
 //   Listening    room mic, AI listening, what it hears, levels (MusicCard.tsx ListeningPanel); the Mic and AI
 //                switches are the header's (TopToggles.tsx), and tapping their line opens this fold

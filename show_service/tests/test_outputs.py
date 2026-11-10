@@ -393,7 +393,7 @@ def test_hue_routes_answer_off_without_a_hue_output_and_reach_the_driver():
     try:
         st = rig.hue_request(["lamp.a"], True)
         assert st["state"] == "off" and st["output"] == "o-hue" and st["enabled"] is False
-        assert st["detail"] == "outputs.o-hue.enabled is false in config/room/fixtures.yaml"
+        assert st["detail"] == f"outputs.o-hue.enabled is false in {contract.FIXTURES_FILE_WORDS}"
         assert set(st) == set(contract.HueStatus.__annotations__)
         assert rig.hue_release(["lamp.a"]) is None and not rig.hue_running()
         with pytest.raises(ValueError, match="bad_request"):

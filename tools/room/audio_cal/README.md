@@ -29,6 +29,9 @@ $P $C record status                                       # seconds so far, the 
 $P $C record stop
 ```
 
+The tools read the deployment (`SM_DEPLOYMENT`, deployments/README.md) through smconfig, which needs PyYAML in the
+venv: if `~/.venvs/sm-roundtrip/bin/python -c 'import yaml'` fails, `~/.venvs/sm-roundtrip/bin/pip install pyyaml`.
+
 - `record start` records the mic that show_service's stream is using right now (its `sender.dev`; `--device` to
   pick another). On PC22 that is `pc22_record.py`, run on Windows Python (`py -3.12`) through powershell.exe. It
   opens the mic as `tools/show_sender/pc22_agent.py` does (WASAPI shared mode, 48 kHz, mono, float32), so it hears
@@ -71,7 +74,7 @@ flock ~/.cache/screen-machine/cpu.lock nice -n 19 ~/.venvs/sm-roundtrip/bin/pyth
   dsp's default gate (-30 LUFS) and at the music's measured loudness (or `--stack-gates`).
 - `--skip-beats` leaves out the trackers, the live-clock score and the stack: no ground truth, about 5 minutes.
 - `--no-stack` leaves out only the stack replays.
-- `--no-config` leaves `config/room/audio_cal.json` alone. Synthetic runs never write it.
+- `--no-config` leaves `deployments/<id>/calibration/audio_cal.json` alone. Synthetic runs never write it.
 - From Python (calibrate.py): `analyse(run_dir, write_config=True, cpu_lock=True)`. It takes the CPU lock in-process. Never combine `cpu_lock=True` (or `--lock`) with an outer `flock` on the same file, because it would wait for itself.
 
 ## A run directory
@@ -91,7 +94,7 @@ flock ~/.cache/screen-machine/cpu.lock nice -n 19 ~/.venvs/sm-roundtrip/bin/pyth
 | `model/model.json`, `ir.wav`, `band_limit.wav`, `noise.wav` | analyse.py | the room model |
 | `reference/` | screen-machine-26, by hand | the first run's reference beats and stack results (README.txt there) |
 
-For a real run, analyse.py also updates `config/room/audio_cal.json`. That file holds `streams.<stream>`: the run, when it was measured, the device, a summary, and the model's path. `summary.music_lufs` is the music's loudness at the mic as dsp's gate reads it (the median 3 s loudness at party volume): the gate's reference (a vibe's `loudness_ref_lufs`) belongs near it.
+For a real run, analyse.py also updates `deployments/<id>/calibration/audio_cal.json`. That file holds `streams.<stream>`: the run, when it was measured, the device, a summary, and the model's path. `summary.music_lufs` is the music's loudness at the mic as dsp's gate reads it (the median 3 s loudness at party volume): the gate's reference (a vibe's `loudness_ref_lufs`) belongs near it.
 
 ## What the analysis does
 
@@ -188,7 +191,7 @@ flock ... programme_analyse.py <pass-2 run dir> --programme .../pass2-YYYYMMDD -
   scored with `beat_eval/score.py` (F, CMLt, AMLt, hit25, cover, precision, wrong lock, lock and gate times, bpm),
   the offline replay beside it (parity); pass 2 against pass 1 on the songs both played (before and after the gate).
 - Writes `analysis/programme_report.md` (for the owner), `programme_report.json`, `gate.json`, `clock_u.json`,
-  `figs/levels.png`. `--write-config` merges `streams.room-mic` into `config/room/audio_cal.json` (or
+  `figs/levels.png`. `--write-config` merges `streams.room-mic` into `deployments/<id>/calibration/audio_cal.json` (or
   `--audio-cal-file`), taking pass 1's ladder when pass 2 has none; never from a synthetic run into the real file.
   `--fast` skips the replay (levels from the live bus).
 

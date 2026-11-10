@@ -18,7 +18,7 @@ from room_service.dmx.artnet import parse_artdmx
 from room_service.dmx.patch import parse_patch
 from show_service.artnet_out import parse_layout
 
-PATCH = {   # config/room/patch.yaml's shape: two screens, then four Hue lamps at 33/37/41/45
+PATCH = {   # lights/patch.yaml's shape: two screens, then four Hue lamps at 33/37/41/45
     "artnet": {"bind": "0.0.0.0:6454", "universe": 0},
     "profiles": {
         "screen": {"channels": [{"attr": a, "field": f} for a, f in (

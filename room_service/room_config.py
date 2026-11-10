@@ -1,4 +1,4 @@
-"""The room's modes file (config/room/modes.json, ROOM_STATE_MODEL §2): load, watch, save.
+"""The room's modes file (the deployment's room/modes.json, ROOM_STATE_MODEL §2): load, watch, save.
 
 - room_service is the only writer. A save is validated first, refused on a stale `base_revision`, written atomically
   and order-preserving (key order matters: it is part of the revision), and the previous file is kept in
@@ -6,7 +6,7 @@
 - An edit made on disk is picked up by the watcher. A bad file keeps the previous config and reports the error; with
   no previous config (first boot) the room runs a one-mode fallback and PUT /mode answers 404 for real modes.
 - JSON is the format; YAML also loads (it is a superset), so an old-style file still parses before it is rewritten.
-- The site file routes/data/rooms.json says which room holds what. Each room gives read-only groups, holding only
+- The site file rooms.json (the deployment's) says which room holds what. Each room gives read-only groups, holding only
   settable targets an adapter has (derive_groups); a bad rooms.json keeps the last good groups.
 """
 

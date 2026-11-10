@@ -40,8 +40,14 @@ elif [ -f "$SCRIPT_DIR/.env" ]; then
     source "$SCRIPT_DIR/.env"
 fi
 
-REMOTE_HOST="${MEDIA_SERVER_HOST:-192.168.1.92}"
-REMOTE_USER="${MEDIA_SERVER_USER:-gjbm2}"
+# Host and login: local-scripts/.env (MEDIA_SERVER_*) first, else the deployment's kiosk block (kiosk.host / kiosk.user
+# in deployments/<id>/deployment.yaml, via kiosk-config.sh)
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/kiosk-config.sh"
+REMOTE_HOST="${MEDIA_SERVER_HOST:-}"
+REMOTE_USER="${MEDIA_SERVER_USER:-}"
+if [ -z "$REMOTE_HOST" ]; then REMOTE_HOST="$(kiosk_get host)" || { echo "kiosk-ctl: no kiosk host (MEDIA_SERVER_HOST or the deployment's kiosk.host)" >&2; exit 2; }; fi
+if [ -z "$REMOTE_USER" ]; then REMOTE_USER="$(kiosk_get user)" || { echo "kiosk-ctl: no kiosk user (MEDIA_SERVER_USER or the deployment's kiosk.user)" >&2; exit 2; }; fi
 REMOTE_PORT="${MEDIA_SERVER_PORT:-22}"
 case "$REMOTE_HOST$REMOTE_USER$REMOTE_PORT" in
     *[!A-Za-z0-9._-]*) echo "kiosk-ctl: invalid MEDIA_SERVER_HOST/USER/PORT in local-scripts/.env" >&2; exit 2 ;;

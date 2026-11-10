@@ -36,6 +36,7 @@ from typing import Any, Callable, Optional
 
 from aiohttp import web
 
+from . import config as cfgmod
 from . import contract
 
 log = logging.getLogger("show_service.inputs")
@@ -50,9 +51,10 @@ def _d(v: Any) -> dict:
 
 class Inputs:
     def __init__(self, health: Callable[[], dict], show_file: Path | str = contract.SHOW_FILE,
-                 state_file: Path | str = INPUT_FILE) -> None:
+                 state_file: Path | str = INPUT_FILE, show_site_file: Any = cfgmod.SITE_AUTO) -> None:
         self._health = health
         self._show_file = Path(show_file)
+        self._show_site = cfgmod.show_site_layer(self._show_file, show_site_file)   # this site's layer (None: none)
         self._file = Path(state_file)
         self._rx: Any = None
         self._stream: Optional[str] = None
@@ -85,15 +87,12 @@ class Inputs:
 
     # -- reading ---------------------------------------------------------------------------------------------------
     def _settings(self) -> dict:
-        try:
-            st = self._show_file.stat()
-            key = (st.st_mtime_ns, st.st_size)
-        except OSError:
+        key = cfgmod.show_signature(self._show_file, self._show_site)   # either layer changed: re-read
+        if key[0][0] == "missing":
             return {}
         if key != self._show[0]:
             try:
-                import yaml
-                data = yaml.safe_load(self._show_file.read_text(encoding="utf-8"))
+                data = cfgmod.read_show(self._show_file, self._show_site)
             except Exception as e:                       # noqa: BLE001
                 log.warning("show.yaml not read for input labels (%s)", e)
                 data = {}

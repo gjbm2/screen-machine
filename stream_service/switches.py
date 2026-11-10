@@ -1,4 +1,7 @@
-"""Per-screen stream switches: config/live/stream_switches.json (4K60 plan changes 2 and 3), re-read when it changes.
+"""Per-screen stream switches: the deployment's live/stream_switches.json (4K60 plan changes 2 and 3), re-read when
+it changes.  Where: ``--switches-file`` / $SM_STREAM_SWITCHES, else ``deployments/<id>/live/stream_switches.json``
+(smconfig).  The shared --config-dir (config/live) holds everything else; a config dir of its own (a test's, a dev
+copy) still carries its own stream_switches.json (``in_dir``).
 
     {"default": {"encoder": "ffmpeg"}, "screens": {"south-screen": {"encoder": "nvenc", "workers": "proc"}}}
 
@@ -18,12 +21,14 @@ from __future__ import annotations
 import json
 import logging
 import pathlib
+import os
 from typing import Any, Optional
 
 log = logging.getLogger("stream_service.switches")
 
 FILE = "stream_switches.json"
-DEFAULT_DIR = pathlib.Path(__file__).resolve().parent.parent / "config" / "live"
+ENV = "SM_STREAM_SWITCHES"                 # a file to use instead of the deployment's (also --switches-file)
+DEFAULT_DIR = pathlib.Path(__file__).resolve().parent.parent / "config" / "live"   # the shared --config-dir
 ENCODERS = ("nvenc", "ffmpeg")
 WORKERS = ("inproc", "proc")
 FPS = (30, 60)
@@ -61,9 +66,25 @@ def _parse(raw: Any) -> tuple[dict, dict, list[str]]:
     return default, screens, errs
 
 
+def default_file() -> pathlib.Path:
+    """$SM_STREAM_SWITCHES, else the deployment's live/stream_switches.json."""
+    env = os.environ.get(ENV, "").strip()
+    if env:
+        return pathlib.Path(env)
+    import smconfig
+    return smconfig.path("live", FILE)
+
+
+def _same_dir(a: Any, b: pathlib.Path) -> bool:
+    try:
+        return pathlib.Path(a).resolve() == b.resolve()
+    except OSError:
+        return False
+
+
 class StreamSwitches:
     def __init__(self, path: Optional[Any] = None):
-        self.path = pathlib.Path(path) if path is not None else DEFAULT_DIR / FILE
+        self.path = pathlib.Path(path) if path is not None else default_file()
         self.default: dict = {}
         self.screens: dict[str, dict] = {}
         self.errors: list[str] = []
@@ -71,7 +92,11 @@ class StreamSwitches:
 
     @classmethod
     def in_dir(cls, config_dir: Optional[Any]) -> "StreamSwitches":
-        return cls(pathlib.Path(config_dir if config_dir is not None else DEFAULT_DIR) / FILE)
+        """The switches for a --config-dir: the shared one (config/live, or None) -> default_file() (the deployment's);
+        any other dir -> its own stream_switches.json (absent: the defaults)."""
+        if config_dir is None or _same_dir(config_dir, DEFAULT_DIR):
+            return cls(default_file())
+        return cls(pathlib.Path(config_dir) / FILE)
 
     def reload_if_changed(self) -> bool:
         try:

@@ -50,7 +50,7 @@ Per-mic parameters (``mic_params(model.json)``, all from the stream's calibratio
 ``hi_hz`` (the lowest band starts at 0.7 x lo_hz, 115 Hz here; "low" = the bands under 500 Hz; the kick band), the
 room tail's ``rt60_s`` (derev), the passband response and coherence (eq, coherence weights), and the music-over-room
 SNR per third octave (``band_snr``: rec-music.wav against model/noise.wav; snr weights). Keyed by stream like the
-gate offset (config/room/audio_cal.json streams.<stream>.model): a stream without a calibration gets none.
+gate offset (calibration/audio_cal.json streams.<stream>.model): a stream without a calibration gets none.
 
 What the dev subset said (19 Oct; micfe_screen.py, results in ~/.cache/screen-machine/beat-eval/alt-micfe/):
 - Only the onset boost in the surviving low bands (``trans``, bands under 500 Hz) helps, best with late-reverb

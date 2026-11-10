@@ -427,7 +427,8 @@ def test_python_m_show_service_with_the_brain(tmp_path):
     with open(log_path, "wb") as log:
         p = subprocess.Popen([sys.executable, "-m", "show_service", "--port", str(port), "--host", "127.0.0.1",
                               "--vban-bind", "127.0.0.1:0", "--latency-file", str(tmp_path / "latency.json"),
-                              "--show-file", str(show_yaml), "--state-dir", str(state_dir)],
+                              "--show-file", str(show_yaml), "--show-site-file", "off",   # no site's senders
+                              "--state-dir", str(state_dir)],
                              cwd=str(contract.REPO_ROOT), env=env, stdout=log, stderr=subprocess.STDOUT)
         try:
             deadline = time.monotonic() + 60

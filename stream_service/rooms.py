@@ -11,7 +11,7 @@ The room's other sessions follow it:
 Each screen keeps its own fixture, so Maestro's per-screen colour, pulse and pan/tilt/zoom still drive it alone,
 and its own GPU fit (render_scale, frame rate).  Manual cues (a Library push, a PATCH scene) stay on their screen.
 
-Membership: a session with a room (the create body's ``room``, else its screen's room in routes/data/rooms.json)
+Membership: a session with a room (the create body's ``room``, else its screen's room in the deployment's rooms.json)
 and an auto block, not exited.  One session per screen counts (the newest).
 
 The ensemble (docs/ENSEMBLE.md §8; owner, 22 Oct: "more of a conversation between room elements"): show_service's
@@ -42,12 +42,14 @@ import pathlib
 import re
 from typing import Any, Optional
 
+import smconfig
+
 from . import ensemble
 
 log = logging.getLogger("stream_service.rooms")
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
-ROOMS_FILE = REPO / "routes" / "data" / "rooms.json"
+ROOMS_FILE = smconfig.path("rooms.json")         # the deployment's rooms (deployments/<id>/rooms.json)
 ROOM_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")
 LIVE_STATES = ("entering", "live")
 READY_S = 3.0              # the leader waits at most this long for the followers' copies of its pick

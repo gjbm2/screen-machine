@@ -12,7 +12,7 @@ KillMode=control-group
 
 # ➤ ensure the user runtime dir exists BEFORE Xorg or Chromium start
 ExecStartPre=/bin/mkdir -p /run/user/1000
-ExecStartPre=/bin/chown gjbm2:gjbm2 /run/user/1000
+ExecStartPre=/bin/chown @@KIOSK_USER@@:@@KIOSK_USER@@ /run/user/1000
 ExecStartPre=/bin/chmod 700 /run/user/1000
 
 # ➤ give snapd / GPU drivers time to settle

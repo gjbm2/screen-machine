@@ -203,7 +203,7 @@ ART_PATHS = ("/api/v1/screens/{id}/art",                 # the live art feed: th
 # The art palette's sources, first that gives colours wins (show.yaml director.art.sources): the UNMASKED art first
 # (75 / owner, 17 Oct: the light mask is display dimming, not the art's colour, so the glass reads near-black at
 # night). An http(s) template is fetched as is; a path goes to room (ctx.room_get).
-ART_SOURCES = ("http://127.0.0.1:5000/output/{id}.jpg",) + ART_PATHS
+ART_SOURCES = (f"{contract.FLASK_URL}/output/{{id}}.jpg",) + ART_PATHS   # Flask over loopback (ports.flask)
 HOUSE_FOLLOWING = ("dmx", "taken_over")                 # room hue values that are not a stored house light state
 GATE_REF_DEFAULT_LUFS = -30.0       # dsp.Features.gate_ref_lufs's own default: put back when a vibe stops setting it
 STALE_S = 2.0                       # features older than this are stale (they come at 25 Hz)

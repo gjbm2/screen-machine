@@ -26,7 +26,7 @@ What one run does:
   7. Cleanup on every exit path (exception, Ctrl-C, SIGTERM): back to dark, each lamp's target put back to exactly
      what it was, Art-Net stopped (show_service resumes by itself once room's input goes stale), the capture ended.
   8. Analysis: calibrate.analyse() with each flip moved onto the box clock; a run directory, and
-     config/room/latency.json outputs.<key>.intensity (all four lamps: the hue output's key, "hue"; fewer: each
+     calibration/latency.json outputs.<key>.intensity (all four lamps: the hue output's key, "hue"; fewer: each
      lamp's own id). --each only reports which lamps the sensor sees, with their SNR.
 
 Usage (see README.md):
@@ -71,7 +71,7 @@ EACH_GAP_S = 2.5                             # --each: dark between lamps (analy
 TAIL_S = 2.2                                 # after the last flip: its post window must stay clean
 SOURCE = "latency-cal"                       # the hand sets' source in room's log
 ZERO = "Art-Net frame sent (WSL)"
-FIXTURES_FILE = os.path.join(cal.REPO, "config", "room", "fixtures.yaml")
+FIXTURES_FILE = str(cal.smconfig.path("lights", "fixtures.yaml"))
 WHITE, BLACK = "#ffffff", "#000000"          # analyse() reads a pulse's direction from its colour
 
 # The box's clock responder: one UDP socket on an ephemeral port (printed first), replying to each probe with the
@@ -924,7 +924,7 @@ def main():
     ap.add_argument("--dry-seconds", type=float, default=3.0)
     ap.add_argument("--yes", action="store_true", help="confirm the room is dark and the lamps may flash")
     ap.add_argument("--reanalyse", metavar="RUN_DIR")
-    ap.add_argument("--update-latest", action="store_true", help="with --reanalyse: also write config/room/latency.json")
+    ap.add_argument("--update-latest", action="store_true", help="with --reanalyse: also write the deployment's calibration/latency.json")
     args = ap.parse_args()
 
     if args.reanalyse:

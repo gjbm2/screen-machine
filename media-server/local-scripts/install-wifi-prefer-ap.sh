@@ -16,8 +16,12 @@ PREFER_CURRENT=0
 
 # SSH credentials (same source as install-deadman.sh)
 set -a; source "$SCRIPT_DIR/.env"; set +a
-HOST="${MEDIA_SERVER_HOST:-192.168.1.92}"
-USER="${MEDIA_SERVER_USER:-gjbm2}"
+# The kiosk's address and login: local-scripts/.env (MEDIA_SERVER_*) first, else the deployment's kiosk block
+# (deployments/<id>/deployment.yaml) via media-server/kiosk-config.sh
+# shellcheck disable=SC1091
+source "$PROJECT_ROOT/media-server/kiosk-config.sh"
+HOST="${MEDIA_SERVER_HOST:-$(kiosk_get host)}"
+USER="${MEDIA_SERVER_USER:-$(kiosk_get user)}"
 PORT="${MEDIA_SERVER_PORT:-22}"
 PASS="${MEDIA_SERVER_PASSWORD:?MEDIA_SERVER_PASSWORD missing from media-server/local-scripts/.env}"
 

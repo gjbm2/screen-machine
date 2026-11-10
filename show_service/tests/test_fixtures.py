@@ -306,8 +306,24 @@ def test_a_bad_file_gives_an_error_and_empty_maps(tmp_path):
     for text in ("fixtures: [unclosed", "- a list", ""):
         v = load(tmp_path, text)
         assert v["error"] and v["fixtures"] == {} and v["outputs"] == {}
-    v = fx.load(tmp_path / "nope.yaml")
-    assert "nope.yaml" in v["error"] and v["revision"] == ""
+    (tmp_path / "dir.yaml").mkdir()                                     # an unreadable hand file is still an error
+    v = fx.load(tmp_path / "dir.yaml")
+    assert "dir.yaml" in v["error"] and v["revision"] == "" and v["fixtures"] == {}
+
+
+def test_no_hand_file_means_no_hand_written_lights(rigdir):
+    v = fx.load(rigdir / "fixtures.yaml", types_dir=rigdir / "types")              # nothing at all: ok, empty
+    assert v["error"] is None and v["problems"] == [] and v["fixtures"] == {} and v["outputs"] == {}
+    (rigdir / fx.ADDED_NAME).write_text(
+        "version: 1\nnodes:\n  n1: {last_ip: 192.0.2.10}\noutputs:\n  o1: {driver: artnet, enabled: true, node: n1, "
+        "port_address: 1}\ntypes:\n  generic-rgbw: {source: builtin}\nfixtures:\n  dmx.one: {label: One, "
+        "type: generic-rgbw, output: o1, address: 1}\n")
+    v = fx.load(rigdir / "fixtures.yaml", types_dir=rigdir / "types", added_path=rigdir / fx.ADDED_NAME)
+    assert v["error"] is None and set(v["fixtures"]) == {"dmx.one"} and v["problems"] == []
+    r = fx.Registry(rigdir / "fixtures.yaml", types_dir=rigdir / "types", latency_path=rigdir / "l.json",
+                    patch_path=rigdir / "p.yaml")
+    assert r.poll() is True and r.view()["error"] is None and r.added_ids == {"dmx.one"}
+    assert set(r.view()["fixtures"]) == {"dmx.one"}
 
 
 # -- selectors ---------------------------------------------------------------------------------------------------------
@@ -539,6 +555,7 @@ def test_unreadable_side_files_are_problems_not_errors(reg):
 
 
 def test_no_good_view_yet_gives_the_error_view(tmp_path):
+    (tmp_path / "fixtures.yaml").write_text("fixtures: [oops")          # broken (a missing one is "no lights": ok)
     r = fx.Registry(tmp_path / "fixtures.yaml", types_dir=tmp_path, latency_path=tmp_path / "l.json",
                     patch_path=tmp_path / "p.yaml")
     assert r.poll() is True
@@ -713,8 +730,8 @@ def test_add_makes_the_node_output_and_type_once_and_never_touches_the_hand_file
     fid3, probs3, _ = r.add({"label": "Hand node", "type": "generic-rgb", "node_ip": "192.0.2.10", "universe": 1,
                              "address": 100})
     assert added(hand)["fixtures"][fid3]["output"] == "dmx-a" and "node-1" not in added(hand)["nodes"]
-    assert probs3 == ["outputs.dmx-a: switched off in config/room/fixtures.yaml (enabled: false): switch it on there "
-                      "and this light sends"]
+    assert probs3 == [f"outputs.dmx-a: switched off in {contract.FIXTURES_FILE_WORDS} (enabled: false): switch it "
+                      "on there and this light sends"]
     assert (hand / "fixtures.yaml").read_bytes() == before
     assert not [p for p in hand.iterdir() if p.name.endswith(".tmp")]
     v = fx.load(hand / "fixtures.yaml", types_dir=hand / "types", added_path=hand / fx.ADDED_NAME)
@@ -828,11 +845,18 @@ def test_type_rows_and_labels(rigdir):
     assert fx.role_of({"kind": "lamp", "role": "key"}) == "key" and fx.role_of({"kind": "screen"}) is None
 
 
+def _app_header(text: str) -> str:
+    """The comment block an app-managed file starts with (ADDED_HEADER / SETUP_HEADER as written when it was last saved:
+    the deployments/ move kept the files byte-identical, so one not saved since still names config/room/)."""
+    return "".join(line + "\n" for line in text.splitlines() if line.startswith("#")) if text.startswith("#") else ""
+
+
 def test_the_real_added_file_reads():
-    """The repo's config/room/fixtures.added.yaml: the header, version 1, and the real registry with it merged."""
+    """The deployment's lights/fixtures.added.yaml: the header, version 1, and the real registry with it merged."""
     p = contract.FIXTURES_ADDED_FILE
     assert p == fx.added_path_for(contract.FIXTURES_FILE)
-    assert p.read_text().startswith(fx.ADDED_HEADER)
+    head = _app_header(p.read_text())
+    assert head == fx.ADDED_HEADER or ("WRITTEN BY show_service's rig" in head and "fixtures.added.yaml" in head)
     doc = yaml.safe_load(p.read_text())
     assert doc["version"] == 1 and set(doc) <= {"version", *fx.ADDED_SECTIONS}
     v = fx.load(lamps=LAMPS, looks=SHOW.get("looks"), added_path=p)
@@ -996,9 +1020,11 @@ def test_the_registry_merges_the_setup_file_and_reloads_on_it(reg):
 
 
 def test_the_real_setup_file_reads():
-    """The repo's config/room/fixtures.setup.yaml: the header, version 1, every id a light in the real registry."""
+    """The deployment's lights/fixtures.setup.yaml: the header, version 1, every id a light in the real registry."""
     p = contract.FIXTURES_SETUP_FILE
-    assert p == fx.setup_path_for(contract.FIXTURES_FILE) and p.read_text().startswith(fx.SETUP_HEADER)
+    assert p == fx.setup_path_for(contract.FIXTURES_FILE)
+    head = _app_header(p.read_text())
+    assert head == fx.SETUP_HEADER or ("WRITTEN BY" in head and "fixtures.setup.yaml" in head)
     doc = yaml.safe_load(p.read_text())
     assert doc["version"] == 1 and isinstance(doc["fixtures"], dict)
     v = fx.load(lamps=LAMPS, looks=SHOW.get("looks"), added_path=contract.FIXTURES_ADDED_FILE, setup_path=p)

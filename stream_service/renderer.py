@@ -236,6 +236,8 @@ class _Rec:
 
 
 class Engine:
+    needs_gpu = True     # a session on it needs a CUDA GPU: with none, SessionManager refuses the create (no_gpu)
+
     def __init__(self, *, profile: Profile, gpu: int, post: Callable[..., None], listener: EngineListener,
                  name: str = "session"):
         self.profile = profile

@@ -11,7 +11,7 @@ Everything run_stack.py does stays as it is (decode, the room model, the INT16 w
 dsp, the clock, the flashes, the JSON score.py reads); this only changes what the rhythm lane hears:
 - ``--fe``: a micfe.VARIANTS name (``none`` = run_stack.py exactly), or ``--fe-json`` a config. Its per-mic
   parameters come from ``--fe-model`` (default: run_stack's ``--degrade`` model, else the pc22-mic calibration in
-  config/room/audio_cal.json): the front end is keyed by the stream's calibration, as the gate offset is. In
+  calibration/audio_cal.json): the front end is keyed by the stream's calibration, as the gate offset is. In
   condition A (clean audio) that is the pc22 front end on audio that never went through that mic: the "does it hurt
   a good signal" check.
 - The front end runs causally over the stream (micfe.selftest: any block cut gives the same samples), so it is
@@ -59,9 +59,10 @@ import numpy as np  # noqa: E402
 import micfe  # noqa: E402
 from show_service import clock as clockmod  # noqa: E402
 from show_service import contract  # noqa: E402
+import smconfig  # noqa: E402  (REPO is on the path via run_stack)
 
 REPO = HERE.parents[3]
-AUDIO_CAL = REPO / "config" / "room" / "audio_cal.json"
+AUDIO_CAL = smconfig.path("calibration", "audio_cal.json")
 STREAM_CAL = "pc22-mic"
 DBN_LAG_S = 0.0125              # the DBN's beat frame vs the sound: -5 / -10 ms offsets at the clock's 20 ms on the exact
                                 # synthetic loops (beat-eval/synth house120, hiphop92), so 12.5 ms

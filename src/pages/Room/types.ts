@@ -310,7 +310,7 @@ export interface RemotesView {
   rooms: { id: string; name: string }[];
 }
 
-/** One room of the site (routes/data/rooms.json), in file order. Ids refer to screens, lamps, blinds, sensors;
+/** One room of the site (deployments/<id>/rooms.json), in file order. Ids refer to screens, lamps, blinds, sensors;
  *  effects are device cards. */
 export interface SiteRoom {
   id: string;
@@ -814,7 +814,8 @@ export interface ShowInstrument {
   /** "rendered": made into a sound file first (state "preparing"); "live": played note by note. */
   kind: "rendered" | "live" | string;
 }
-/** Where the test piano's sound comes out ("pc22": PC22's speakers, "none": the screens only). */
+/** Where the test piano's sound comes out ("pc22": PC22's speakers, where the deployment has them; "none": the
+ * screens only). */
 export interface ShowOutput {
   id: string;
   label: string;
@@ -839,6 +840,8 @@ export interface ShowTestView {
   instruments?: ShowInstrument[];
   default_instrument?: string;
   outputs?: ShowOutput[];
+  /** Where a start that names no output plays ("pc22" where the deployment has PC22's sound, else "none"). */
+  default_output?: string | null;
 }
 
 /** One saved take of the Steinway (GET /show/api/v1/piano/recordings); it plays as test piece "rec:<id>". */

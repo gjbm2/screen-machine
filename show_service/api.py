@@ -606,7 +606,8 @@ def neutral_source(source: str, why: Optional[str] = None) -> dict:
 
 
 #: GET /api/v1/test's sound choices when the sources component can't say (an older one, or none)
-NO_TEST_CHOICES: dict[str, Any] = {"instruments": [], "default_instrument": None, "outputs": []}
+NO_TEST_CHOICES: dict[str, Any] = {"instruments": [], "default_instrument": None, "outputs": [],
+                                   "default_output": None}
 NO_RECORDINGS: dict[str, Any] = {"recording": {"state": "off", "since_s": None, "notes": 0, "duration_s": 0.0},
                                  "recordings": []}
 
@@ -1668,7 +1669,7 @@ class Api:
         choices = sorted((view or {}).get("outputs") or {})
         body = rig.frame_view(oid) if rig is not None and oid else None
         if body is None:
-            return _err(404, "unknown_output", f"No output {oid!r} in config/room/fixtures.yaml." if oid else
+            return _err(404, "unknown_output", f"No output {oid!r} in {contract.FIXTURES_FILE_WORDS}." if oid else
                         "Say which output: ?output=<id>.", choices=choices)
         return _json(body)
 
@@ -1682,7 +1683,7 @@ class Api:
         nid = request.match_info["id"]
         if rig is None or not rig.has_node(nid):
             view = rig.view() if rig is not None else None
-            return _err(404, "unknown_node", f"No node {nid!r} in config/room/fixtures.yaml.",
+            return _err(404, "unknown_node", f"No node {nid!r} in {contract.FIXTURES_FILE_WORDS}.",
                         choices=sorted((view or {}).get("nodes") or {}))
         return _json(await self._call(brain, rig.record_failsafe, nid))
 
@@ -1886,8 +1887,7 @@ class Api:
         own = getattr(reg, "setup_store", None)
         if callable(getattr(own, "patch", None)) and callable(getattr(own, "read", None)):
             return own
-        path = getattr(reg, "setup_path", None) or getattr(contract, "FIXTURES_SETUP_FILE", None) \
-            or contract.CONFIG_ROOM_DIR / "fixtures.setup.yaml"
+        path = getattr(reg, "setup_path", None) or contract.FIXTURES_SETUP_FILE
         if self._setup_made is not None and self._setup_made[0] == path:
             return self._setup_made[1]
         try:
@@ -2618,7 +2618,8 @@ class Api:
                       **(await self._test_choices(brain, src))})
 
     async def _test_choices(self, brain: Any, src: Any) -> dict:
-        """The test piano's ``instruments``, ``default_instrument`` and ``outputs`` (Sources.choices)."""
+        """The test piano's ``instruments``, ``default_instrument``, ``outputs`` and ``default_output``
+        (Sources.choices)."""
         fn = getattr(src, "choices", None)
         if not callable(fn):
             return dict(NO_TEST_CHOICES)

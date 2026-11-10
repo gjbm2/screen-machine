@@ -20,11 +20,19 @@ import re
 
 import numpy as np
 
+NO_VEROVIO = "verovio is not installed"           # what the plug-in reports without it (its fonts are Verovio's)
 try:
     import verovio as _vrv
     VEROVIO_DATA = pathlib.Path(_vrv.__file__).resolve().parent / "data"
 except Exception:                                    # pragma: no cover - the stream venv always has it
-    VEROVIO_DATA = pathlib.Path("/home/gjbm2/.venvs/sm-stream/lib/python3.12/site-packages/verovio/data")
+    VEROVIO_DATA = None
+
+
+def _data() -> pathlib.Path:
+    """Verovio's data folder (the Leipzig font); RuntimeError(NO_VEROVIO) without verovio."""
+    if VEROVIO_DATA is None:
+        raise RuntimeError(NO_VEROVIO)
+    return VEROVIO_DATA
 
 TPS = 32.0          # atlas texels per staff space (4K: a staff space is ~28 px, so ~1.1 texels a pixel)
 PAD = 0.75          # true distances out to here (sp): the halo reaches 0.6 sp
@@ -149,7 +157,7 @@ def parse_path(d: str) -> list[np.ndarray]:
 
 def glyph_outline(code: str) -> list[np.ndarray]:
     """The glyph's contours in staff spaces, y DOWN (screen orientation), origin at the SMuFL origin."""
-    txt = (VEROVIO_DATA / "Leipzig" / f"{code}.xml").read_text()
+    txt = (_data() / "Leipzig" / f"{code}.xml").read_text()
     d = re.search(r'\sd="([^"]+)"', txt).group(1)
     return [np.stack([c[:, 0] / UNITS_PER_SP, -c[:, 1] / UNITS_PER_SP], axis=1) for c in parse_path(d)]
 
@@ -157,7 +165,7 @@ def glyph_outline(code: str) -> list[np.ndarray]:
 @functools.lru_cache(maxsize=1)
 def metrics() -> dict:
     """code -> {bbox (x, y, w, h) sp, y up as SMuFL; anchors {name: (x, y) sp, y up}}."""
-    txt = (VEROVIO_DATA / "Leipzig.xml").read_text()
+    txt = (_data() / "Leipzig.xml").read_text()
     out = {}
     for m in re.finditer(r'<g c="([0-9A-F]+)" x="([-\d.]+)" y="([-\d.]+)" w="([-\d.]+)" h="([-\d.]+)"[^>]*?(/>|>(.*?)</g>)',
                          txt, re.S):

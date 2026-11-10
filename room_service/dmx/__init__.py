@@ -1,8 +1,10 @@
-"""Virtual DMX devices: the patch (config/room/patch.yaml), the Art-Net receiver, the show bus and the Hue output.
+"""Virtual DMX devices: the patch (the deployment's lights/patch.yaml), the Art-Net receiver, the show bus and the Hue
+output.
 
 DmxStack owns their lifecycle inside room_service: Art-Net packets are decoded through the patch; screen.* devices
 reach the renderer on the show bus (127.0.0.1:8701); hue.* devices stream to the bridge while the room-state `hue`
-targets say "dmx" (adapters/hue.py).
+targets say "dmx" (adapters/hue.py). With the deployment's hue capability off no HueOutput is built (the patched hue.*
+members are a placeholder).
 """
 
 from __future__ import annotations
@@ -10,6 +12,8 @@ from __future__ import annotations
 import asyncio
 import logging
 from pathlib import Path
+
+import smconfig
 
 from .artnet import ArtNetReceiver
 from .bus import ShowBus
@@ -20,7 +24,9 @@ log = logging.getLogger("room_service.dmx")
 
 
 class DmxStack:
-    def __init__(self, patch_file: Path, show_bus_port: int = 8701, mode_fn=None) -> None:
+    def __init__(self, patch_file: Path, show_bus_port: int | None = None, mode_fn=None) -> None:
+        if show_bus_port is None:
+            show_bus_port = smconfig.port("show_bus")     # the deployment's show bus (0: not bound)
         self.patch_file = Path(patch_file)
         self.patch: Patch = load_patch(self.patch_file)
         self.patch_error: str | None = None
@@ -39,6 +45,10 @@ class DmxStack:
     def _build_hue(self) -> None:
         if not self.patch.of_kind("hue"):
             return
+        if not smconfig.enabled("hue"):
+            self.hue_error = "hue is off for this deployment (deployment.yaml capabilities.hue)"
+            log.info("%s: the patched hue.* lamps are a placeholder", self.hue_error)
+            return
         try:
             from ..hue.client import BridgeSecrets, HueClient
             from ..hue.output import HueOutput
@@ -53,13 +63,14 @@ class DmxStack:
         self.hue = HueOutput(HueClient(sec), self.patch, self.rx, area_id=h.get("area"),
                              stop_after_s=float(h.get("stop_after_s", 10)))
 
-    def adapter(self):
-        """The room-state `hue` adapter, or a placeholder naming the patched members when there is no bridge."""
+    def adapter(self, show_url: str | None = None):
+        """The room-state `hue` adapter, or a placeholder naming the patched members when there is no bridge (or hue is
+        off). show_url: room_service's show_service address (the patch's hue.show_url still wins)."""
         from ..roomstate.contract import Placeholder
         if self.hue is not None:
             from ..adapters.hue import HueAdapter
             from ..hue.client import HueClient
-            self.hue_adapter = HueAdapter(self.hue, self.patch, client=HueClient(self.hue.secrets))
+            self.hue_adapter = HueAdapter(self.hue, self.patch, client=HueClient(self.hue.secrets), show_url=show_url)
             return self.hue_adapter
         members = [d.id.split(".", 1)[1] for d in self.patch.of_kind("hue")]
         return Placeholder("hue", members) if members else None
@@ -125,7 +136,7 @@ class DmxStack:
 
 
 def hue_placeholder(patch_file: Path):
-    """With dmx off, the hue members still exist (as a placeholder) so modes.json can name them."""
+    """With dmx off (or no patch), the hue members still exist (as a placeholder) so modes.json can name them."""
     from ..roomstate.contract import Placeholder
     try:
         members = [d.id.split(".", 1)[1] for d in load_patch(patch_file).of_kind("hue")]

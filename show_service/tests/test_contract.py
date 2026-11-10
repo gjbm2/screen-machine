@@ -45,7 +45,7 @@ def test_config_fields_live_here():
 
     cfg = c.Config(senders=(c.Sender("kiosk", "screen-machine-drawingroom", streams=("room-mic", "room-piano")),))
     assert cfg.vban_bind == ("0.0.0.0", 6980) and cfg.bus_bind == ("127.0.0.1", c.BUS_PORT)
-    assert cfg.latency_file.parts[-3:] == ("config", "room", "latency.json")
+    assert cfg.latency_file == c.DEPLOYMENT.path("calibration", "latency.json") == c.LATENCY_FILE   # the site's
     assert cfg.senders[0].port == 6980
     try:
         cfg.log_level = "DEBUG"  # type: ignore[misc]

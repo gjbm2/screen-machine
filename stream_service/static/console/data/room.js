@@ -12,7 +12,14 @@ let ws = null, backoff = 1000, timer = null, pollT = null, wsUp = false, missing
 
 function setStatus(st) {
   if (!st || typeof st !== "object" || !st.screens) return;
-  S.set({ roomStatus: st });
+  const patch = { roomStatus: st };
+  const t = S.get().target;
+  if (!t || !st.screens[t]) {          // none stored, or a screen this room doesn't have: its test screen, else the first
+    const ids = liveScreens(st);
+    const pick = ids.find((i) => /dev|test/i.test(i)) || ids[0];
+    if (pick) patch.target = pick;
+  }
+  S.set(patch);
   ev.emit("status", st);
 }
 function connect() {

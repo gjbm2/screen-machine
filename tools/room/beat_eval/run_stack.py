@@ -30,7 +30,7 @@ The wiring, as show_service/__main__.py does it live
 - **Packet loss** (``--loss-pct``, default 0; ``--loss-burst`` packets per hole on average): lost packets become what
   the receiver makes of a hole up to 250 ms, one zero block flagged AUDIO_GAP and the next real block AUDIO_RESUME
   (delivered with it), and the slow lane skips a window holding a gap, as the worker does (its turn is used up).
-- **The clock** runs madmom inline by default. Live it runs on show-beat (deploy/sm-show.env ``SHOW_BEAT_THREAD=on``,
+- **The clock** runs madmom inline by default. Live it runs on show-beat (services/sm-show.env ``SHOW_BEAT_THREAD=on``,
   18 Oct); the frames are the same either way (clock.py, test_clock_thread.py), and on house120 the flashed beats
   were identical to the microsecond, while the thread hand-offs cost a quarter more wall time. ``--beat-thread on``
   runs show-beat, with ``wait_beat()`` after each block (an unpaced feed). Live, show-beat's results can drain up to
@@ -86,20 +86,21 @@ from typing import Any, Optional
 T_START_UNIX = time.time()      # before the heavy imports: run_batch.py splits its wall time into lock wait and run
 REPO = pathlib.Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO))
-for _k in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS"):  # one BLAS thread, as deploy/sm-show.env runs show_service
+for _k in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS"):  # one BLAS thread, as services/sm-show.env runs show_service
     os.environ.setdefault(_k, "1")
 
 import numpy as np  # noqa: E402
 import yaml  # noqa: E402
 
+import smconfig  # noqa: E402  (the deployment: SM_DEPLOYMENT)
 from show_service import clock as clockmod  # noqa: E402
 from show_service import contract, dsp, mllink, vban  # noqa: E402
 from show_service.artnet_out import REPHASE_SKIP  # noqa: E402
 
 HERE = pathlib.Path(__file__).resolve().parent
 AUDIO_CAL = REPO / "tools" / "room" / "audio_cal"
-SHOW_YAML = REPO / "config" / "room" / "show.yaml"
-SHOW_ENV = REPO / "deploy" / "sm-show.env"
+SHOW_YAML = REPO / "config" / "room" / "show.yaml"          # the shared layer; the deployment's show.yaml goes over it
+SHOW_ENV = smconfig.path("services", "sm-show.env")
 ML_PYTHON = pathlib.Path("~/.venvs/sm-show-ml/bin/python").expanduser()
 RT_PYTHON = pathlib.Path("~/.venvs/sm-roundtrip/bin/python").expanduser()
 OUT_DIR = pathlib.Path("~/.cache/screen-machine/beat-eval/runs").expanduser()
@@ -206,9 +207,8 @@ def estimate_delay(ref: np.ndarray, y: np.ndarray, max_s: float = 60.0) -> float
 # -- settings ----------------------------------------------------------------------------------------------------------
 def show_settings() -> dict:
     try:
-        d = yaml.safe_load(SHOW_YAML.read_text())
-        return d if isinstance(d, dict) else {}
-    except (OSError, yaml.YAMLError):
+        return smconfig.load_layered_yaml(SHOW_YAML, smconfig.path("show.yaml"))   # what show_service runs
+    except (OSError, ValueError, yaml.YAMLError):
         return {}
 
 
@@ -218,12 +218,26 @@ STACK_FILES = ("show_service/clock.py", "show_service/beatdbn.py", "show_service
                "show_service/ml/worker.py", "config/room/show.yaml")
 
 
+def stack_files() -> tuple:
+    """STACK_FILES plus the deployment's show.yaml layer (deployments/<id>/show.yaml, over config/room/show.yaml), so
+    an edit to the site layer changes the fingerprint too. A path outside the repo is kept absolute."""
+    try:
+        layer = smconfig.path("show.yaml")
+    except smconfig.DeploymentError:
+        return STACK_FILES
+    try:
+        return STACK_FILES + (str(layer.relative_to(REPO)),)
+    except ValueError:
+        return STACK_FILES + (str(layer),)
+
+
 def stack_fingerprint() -> dict:
     """Which stack this replay ran: git HEAD, whether the stack's files differ from it (other sessions edit
     show_service in place), and a short hash of each, so results from different days can be told apart."""
     import hashlib
     out: dict = {"files": {}}
-    for f in STACK_FILES:
+    files = stack_files()
+    for f in files:
         try:
             out["files"][f] = hashlib.sha256((REPO / f).read_bytes()).hexdigest()[:12]
         except OSError:
@@ -231,7 +245,7 @@ def stack_fingerprint() -> dict:
     try:
         out["head"] = subprocess.run(["git", "rev-parse", "--short=10", "HEAD"], cwd=str(REPO), capture_output=True,
                                      text=True, timeout=10).stdout.strip() or None
-        p = subprocess.run(["git", "status", "--porcelain", "--", *STACK_FILES], cwd=str(REPO), capture_output=True,
+        p = subprocess.run(["git", "status", "--porcelain", "--", *files], cwd=str(REPO), capture_output=True,
                            text=True, timeout=10)
         out["dirty"] = sorted(line[3:] for line in p.stdout.splitlines() if line.strip())
     except (OSError, subprocess.SubprocessError):
@@ -242,7 +256,7 @@ def stack_fingerprint() -> dict:
 
 
 def beat_thread_default() -> bool:
-    """deploy/sm-show.env's SHOW_BEAT_THREAD (what production runs)."""
+    """The deployment's services/sm-show.env SHOW_BEAT_THREAD (what production runs)."""
     try:
         for line in SHOW_ENV.read_text().splitlines():
             k, _, v = line.partition("=")
@@ -512,7 +526,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     ap.add_argument("--loss-burst", type=float, default=1.0, help="lost packets per hole on average (default 1)")
     ap.add_argument("--gate-ref-lufs", type=float, default=contract.GATE_REF_DEFAULT_LUFS)
     ap.add_argument("--beat-thread", choices=("on", "off", "env"), default="off",
-                    help="madmom on show-beat (default off: the same frames, faster offline; env: deploy/sm-show.env)")
+                    help="madmom on show-beat (default off: the same frames, faster offline; env: services/sm-show.env)")
     ap.add_argument("--no-slow-lane", action="store_true", help="no Beat This! votes")
     ap.add_argument("--all-bodies", action="store_true", help="keep the 10 Hz heartbeats that repeat a body")
     ap.add_argument("--slow-cost-s", default=str(SLOW_COST_S),

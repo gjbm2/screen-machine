@@ -1,4 +1,4 @@
-// A room's live card (owner, 17 Oct: a control acts where it sits; the rooms are config, routes/data/rooms.json).
+// A room's live card (owner, 17 Oct: a control acts where it sits; the rooms are config, deployments/<id>/rooms.json).
 // In a room with more than one screen, the controls that are the room's live here, above its screens' cards, and act
 // on every live screen in the room: the scene for all of them, Scenes and Effects each picked by itself or by you
 // (with Next scene / Next effect), the room's picked effects, Change effect (with No effects and Add on top), How

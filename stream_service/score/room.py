@@ -44,6 +44,8 @@ import threading
 import time
 from typing import Any, Optional
 
+import smconfig
+
 from .quantize import Bar, BeatGrid, Note, ScoreBuilder
 
 log = logging.getLogger("stream_service.score")
@@ -188,7 +190,7 @@ LINGER_S = 30.0                        # the room's process exits this long afte
 SPAWN_WAIT_S = 10.0                    # a worker waits this long for the process it started to listen
 RETRY_S = (0.5, 5.0)                   # reconnects back off from 0.5 s, doubling to 5 s
 INBOX_MAX = 256                        # a scene that isn't ticking (prepared, not shown): its inbox is folded to one
-MUSIC_BUS = "ws://127.0.0.1:8703/v1/show"
+MUSIC_BUS = smconfig.url("show", "ws") + "/v1/show"   # show_service's bus on this machine ($SM_MUSIC_BUS overrides)
 SPAWN_ARGS: tuple = ()                 # more arguments for the room's process (tests: --no-analysis)
 LOG_FILE = pathlib.Path.home() / ".local" / "state" / "screen-machine" / "logs" / "score_room.log"
 _LEN = struct.Struct(">I")

@@ -1,6 +1,6 @@
 """Music-derived direction: the show bus proposes the director's direction (owner, 15 Oct 2026).
 
-The only live input is MaestroDMX over Art-Net (config/room/patch.yaml; docs/av/evidence/r3_maestro.md).  Maestro
+The only live input is MaestroDMX over Art-Net (the deployment's lights/patch.yaml; docs/av/evidence/r3_maestro.md).  Maestro
 sends no tempo, genre or section names, so this module reads only what its channels carry, through the session's
 Sampler snapshot (inputs.py): ACTIVITY (one global musical-activity level), the DIMMER pulse (its edges -> how often
 and how hard the music hits; the beat follower's bpm when locked) and the GOBO step (``effect``: a section change).

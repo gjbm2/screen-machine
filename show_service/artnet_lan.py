@@ -1201,7 +1201,7 @@ class ArtNetLan:
         node = self.nodes.status(u.node_id) if u is not None and u.node_id else None
         sent = self._sent_at
         if not self._enabled:
-            state, detail = "off", f"outputs.{self.output_id}.enabled is false in config/room/fixtures.yaml"
+            state, detail = "off", f"outputs.{self.output_id}.enabled is false in {contract.FIXTURES_FILE_WORDS}"
         elif u is None:
             state, detail = "no_config", "not configured yet"
         elif u.why is not None:

@@ -38,7 +38,7 @@ URLs, JSON or ids:
    skipped because its device isn't connected says "Not connected yet"; a failed one shows the
    room's reason).
 4. **Rooms**: below the modes (which stay room-wide), one section per room of the site, in the order of
-   `routes/data/rooms.json` (room_service sends it as `status.rooms`): the room's name as the heading, its **live
+   `deployments/<id>/rooms.json` (room_service sends it as `status.rooms`): the room's name as the heading, its **live
    card** (below; a room of two or more screens, while any of them is live), its screen cards, then its **Lights**
    (the lamps it lists, from one shared fixtures poll). Screens or lamps in no room go in an
    **Other** section at the end; a room with nothing to show is left out. Without `status.rooms` (an older

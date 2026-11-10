@@ -717,7 +717,7 @@ def test_keyword_fallback():
 def test_step_words_name_no_mode_or_vibe():
     import yaml
     vibes = set((yaml.safe_load(c.VIBES_FILE.read_text()).get("vibes") or {}))
-    modes = set((json.loads((c.CONFIG_ROOM_DIR / "modes.json").read_text()).get("modes") or {}))
+    modes = set((json.loads((c.DEPLOYMENT.path("room", "modes.json")).read_text()).get("modes") or {}))
     assert not (L.CALMER_WORDS | L.WILDER_WORDS) & (vibes | modes)
 
 

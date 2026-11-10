@@ -10,7 +10,7 @@
 ``<maker>/<model>`` is the fixture's address on https://open-fixture-library.org (its page is
 ``open-fixture-library.org/<maker>/<model>``; the file is that plus ``.json``). The Open Fixture Library is MIT.
 
-The tool never edits fixtures.yaml (c8's file; code never writes it): it prints the ``types`` entry to paste, with the
+The tool never edits fixtures.yaml (the deployment's lights/fixtures.yaml, c8's file; code never writes it): it prints the ``types`` entry to paste, with the
 mode's name. Then add the fixtures (``type``, ``output``, ``address``), and the output and node (README S5.12 step 5).
 The channel map it prints is exactly what show_service drives (show_service/ofl.py): which channels are intensity,
 emitters, a colour wheel, a shutter, pan and tilt, gobo and prism wheels, zoom, focus and the rest (each channel's

@@ -2,8 +2,9 @@
 # scripts/ctl — start/stop the production GPU renderer (stream_service, on-demand worker).
 #
 # Same pattern as start.sh uses for Flask/ngrok: it runs in GNU screen session sm-stream.
-# Spectre's Live renderer card calls this script. Flags and port: deploy/sm-stream.env (owner
-# screen-machine-04). Room management runs inside the Flask process (since 14 Oct), not here.
+# Spectre's Live renderer card calls this script. Flags: deployments/<id>/services/sm-stream.env (owner
+# screen-machine-04); the port: deployment.yaml's ports.stream. Room management runs inside the Flask
+# process (since 14 Oct), not here.
 #
 # Usage:
 #   scripts/ctl start|stop|restart <stream|show|dot|all> [--force]
@@ -14,30 +15,72 @@
 #
 # A *_HOLD line in a service's env file blocks start/restart (exit 2) until its owner deletes it;
 # --force overrides. stop is never blocked. This script never pkills anything.
+# The deployment (SM_DEPLOYMENT, deployments/README.md) names each service's env file and port, and says whether
+# the service is on at all (capabilities live/show/dot): `start all` skips one that is off; `start <it>` is refused.
 
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ENV_DIR="${CTL_ENV_DIR:-$REPO/deploy}"
+ENV_DIR="${CTL_ENV_DIR:-}"          # tests only; else smconfig names deployments/<id>/services/
 LOG_DIR="${CTL_LOG_DIR:-$HOME/.local/state/screen-machine/logs}"
 RUN_DIR="${CTL_RUN_DIR:-$HOME/.local/state/screen-machine/run}"
 SUFFIX="${CTL_SESSION_SUFFIX:-}"   # tests only
+
+# smconfig (deployments/README.md) is stdlib + PyYAML: the repo venv's python if there is one, else python3.
+SMPY="$REPO/.venv/bin/python"; [[ -x "$SMPY" ]] || SMPY=python3
+sm() { PYTHONPATH="$REPO${PYTHONPATH:+:$PYTHONPATH}" "$SMPY" -m smconfig "$@"; }
+ALL=0   # 1 while the target is `all` (a service that is off in this deployment is skipped, not refused)
 
 svc_def() {
   case "$1" in
     stream)
       SESSION="sm-stream$SUFFIX"; MODULE=stream_service; PY="$HOME/.venvs/sm-stream/bin/python"
-      ENVF="$ENV_DIR/sm-stream.env"; KEY=STREAM; LOG="$LOG_DIR/stream_service.log"; WAIT=45 ;;
+      KEY=STREAM; CAP=live; LOG="$LOG_DIR/stream_service.log"; WAIT=45 ;;
     show)
       SESSION="sm-show$SUFFIX"; MODULE=show_service; PY="$HOME/.venvs/sm-show/bin/python"
-      ENVF="$ENV_DIR/sm-show.env"; KEY=SHOW; LOG="$LOG_DIR/show_service.log"; WAIT=45 ;;
+      KEY=SHOW; CAP=show; LOG="$LOG_DIR/show_service.log"; WAIT=45 ;;
     dot)
       SESSION="sm-dot$SUFFIX"; MODULE=dot_service; PY="$HOME/.venvs/sm-dot/bin/python"
-      ENVF="$ENV_DIR/sm-dot.env"; KEY=DOT; LOG="$LOG_DIR/dot_service.log"; WAIT=15 ;;
+      KEY=DOT; CAP=dot; LOG="$LOG_DIR/dot_service.log"; WAIT=15 ;;
     room) echo "ctl: room management now runs inside the Flask process (./start.sh ... flask); not managed here" >&2; exit 64 ;;
     *) echo "ctl: unknown service '$1' (stream|show|dot|all)" >&2; exit 64 ;;
   esac
+  SVC="$1"; ENVF=""; PORT=""
   PIDF="$RUN_DIR/$SESSION.pid"
+}
+
+# The service's env file (deployments/<id>/services/sm-<svc>.env) and port (deployment.yaml's ports.<svc>), from
+# smconfig. Tests set CTL_ENV_DIR and CTL_PORT_<KEY> instead. A <KEY>_PORT line left in the env file must agree.
+svc_cfg() {
+  local out want ov="CTL_PORT_$KEY"
+  if [[ -n "$ENV_DIR" ]]; then
+    ENVF="$ENV_DIR/sm-$SVC.env"
+  else
+    out="$(sm get "path.services/sm-$SVC.env" 2>&1)" || { echo "ctl: $SVC: ${out:-smconfig failed}" >&2; return 1; }
+    ENVF="$out"
+  fi
+  if [[ -n "${!ov:-}" ]]; then
+    PORT="${!ov}"
+  else
+    out="$(sm get "ports.$SVC" 2>&1)" || { echo "ctl: $SVC: ${out:-smconfig failed}" >&2; return 1; }
+    PORT="$out"
+  fi
+  want="$(env_get "${KEY}_PORT")"
+  if [[ -n "$want" && "$want" != "$PORT" ]]; then
+    echo "ctl: $SVC: ${KEY}_PORT=$want in $ENVF disagrees with the deployment's port $PORT (ports.$SVC in" \
+      "deployment.yaml); the port comes from deployment.yaml: delete the ${KEY}_PORT line or make them agree" >&2
+    return 1
+  fi
+}
+
+# Is the service's capability on in this deployment? 0 on, 1 off, 2 smconfig failed (message printed).
+svc_on() {
+  local out rc=0
+  out="$(sm enabled "$CAP" 2>&1)" || rc=$?
+  case "$rc" in
+    0|1) return "$rc" ;;
+    *) echo "ctl: $SVC: ${out:-smconfig failed (exit $rc)}" >&2; return 2 ;;
+  esac
 }
 
 # KEY=VALUE reader (the env file is never sourced).
@@ -46,7 +89,34 @@ env_get() {
   sed -n "s/^$1=//p" "$ENVF" | tail -n 1 | sed -e 's/^"\(.*\)"$/\1/' -e "s/^'\(.*\)'\$/\1/"
 }
 
-svc_port() { env_get "${KEY}_PORT"; }
+# ${VAR} in an env-file value: the environment, else the repo .env (smconfig.env), so a deployment's env files
+# carry no machine addresses (e.g. ${SM_LAN_HOST}); ${PORT_<SERVICE>} is that service's port from deployment.yaml
+# (e.g. ${PORT_SHOW}). An unset VAR refuses the start.
+expand() {
+  if [[ "$1" != *'${'* ]]; then printf '%s' "$1"; return 0; fi
+  PYTHONPATH="$REPO${PYTHONPATH:+:$PYTHONPATH}" "$SMPY" - "$1" "$ENVF" <<'PY'
+import re, sys
+import smconfig
+value, envf = sys.argv[1], sys.argv[2]
+missing = []
+def sub(m):
+    name = m.group(1)
+    if name.startswith("PORT_"):            # ${PORT_STREAM}, ${PORT_SHOW_BUS}: deployment.yaml's ports
+        ports = smconfig.deployment().ports
+        if name[5:].lower() in ports:
+            return str(ports[name[5:].lower()])
+    got = smconfig.env(name)
+    if not got:
+        missing.append(m.group(1))
+    return got
+out = re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", sub, value)
+if missing:
+    sys.exit(f"ctl: {', '.join(dict.fromkeys(missing))} (used in {envf}) is not set in the environment or the repo .env")
+sys.stdout.write(out)
+PY
+}
+
+svc_port() { printf '%s\n' "$PORT"; }
 
 running() { screen -ls 2>/dev/null | grep -q "[0-9]\.${SESSION}[[:space:]]"; }
 
@@ -61,16 +131,23 @@ svc_pid() {
 healthy() { curl -fsS -m 3 -o /dev/null "http://127.0.0.1:$1/healthz" 2>/dev/null; }
 
 do_start() {
-  local svc="$1" force="$2" port args hold holder envs=() line k
+  local svc="$1" force="$2" port args hold holder envs=() line k v on=0
   svc_def "$svc"
+  svc_on || on=$?
+  if (( on == 2 )); then return 1; fi
+  if (( on == 1 )); then
+    if [[ "$ALL" == 1 ]]; then echo "$svc: skipped (capability '$CAP' is off in this deployment)"; return 0; fi
+    echo "ctl: start REFUSED: $svc is off in this deployment (capabilities.$CAP in its deployment.yaml)" >&2; return 2
+  fi
+  svc_cfg || return 1
   hold="$(env_get "${KEY}_HOLD")"
   if running; then echo "$svc: already running"; return 0; fi
   if [[ -n "$hold" && "$force" != 1 ]]; then
     echo "ctl: start REFUSED: $svc is on hold: $hold" >&2; return 2
   fi
   port="$(svc_port)"; args="$(env_get "${KEY}_ARGS")"
-  if [[ -z "$port" ]]; then echo "ctl: ${KEY}_PORT missing in $ENVF" >&2; return 1; fi
-  if [[ " $args " == *" --port"* ]]; then echo "ctl: remove --port from ${KEY}_ARGS (the port is ${KEY}_PORT)" >&2; return 1; fi
+  if [[ " $args " == *" --port"* ]]; then echo "ctl: remove --port from ${KEY}_ARGS (the port is ports.$svc in deployment.yaml)" >&2; return 1; fi
+  args="$(expand "$args")" || return 1
   holder="$(ss -Hltnp "sport = :$port" 2>/dev/null || true)"
   if [[ -n "$holder" ]]; then
     echo "ctl: start REFUSED: port $port is already in use: $holder" >&2; return 2
@@ -79,13 +156,15 @@ do_start() {
   while IFS= read -r line; do
     k="${line%%=*}"
     case "$k" in "${KEY}_PORT"|"${KEY}_ARGS"|"${KEY}_HOLD") continue ;; esac
-    envs+=("$k=$(env_get "$k")")
+    v="$(expand "$(env_get "$k")")" || return 1
+    envs+=("$k=$v")
   done < <(grep -E '^[A-Z_][A-Z0-9_]*=' "$ENVF" 2>/dev/null || true)
   envs+=("PYTHONUNBUFFERED=1" "PATH=/usr/lib/wsl/lib:$PATH")
   mkdir -p "$LOG_DIR" "$RUN_DIR"
   local cmd
   if [[ -n "${CTL_FAKE:-}" ]]; then   # tests only
-    cmd="$(printf '%q ' env "${envs[@]}" python3 "$REPO/tests/ops/fake_service.py" --port "$port" --name "$svc")"
+    # shellcheck disable=SC2086
+    cmd="$(printf '%q ' env "${envs[@]}" python3 "$REPO/tests/ops/fake_service.py" --port "$port" --name "$svc" $args)"
   else
     # shellcheck disable=SC2086  # ARGS is deliberately split into flags
     cmd="$(printf '%q ' env "${envs[@]}" "$PY" -m "$MODULE" --port "$port" $args)"
@@ -121,8 +200,14 @@ do_stop() {
 }
 
 do_status() {
-  local svc="$1" port hold
+  local svc="$1" port hold on=0
   svc_def "$svc"
+  svc_on || on=$?
+  if (( on == 2 )); then return 1; fi
+  if (( on == 1 )) && ! running; then
+    echo "$svc: off (capability '$CAP' is off in this deployment)"; if [[ "$ALL" == 1 ]]; then return 0; fi; return 3
+  fi
+  svc_cfg || return 1
   port="$(svc_port)"; hold="$(env_get "${KEY}_HOLD")"
   local note=""; [[ -n "$hold" ]] && note=" [HOLD: $hold]"
   if ! running; then echo "$svc: stopped (:$port)$note"; return 3; fi
@@ -134,7 +219,7 @@ for_each() {   # for_each <fn> <stream|all> [args...] — aggregates exit codes 
   local fn="$1" target="$2"; shift 2
   local list rc=0 r
   case "$target" in
-    all) list="stream show dot" ;;
+    all) list="stream show dot"; ALL=1 ;;
     stream|show|dot) list="$target" ;;
     room) echo "ctl: room management now runs inside the Flask process (./start.sh ... flask); not managed here" >&2; exit 64 ;;
     *) echo "ctl: unknown service '$target' (stream|show|dot|all)" >&2; exit 64 ;;
@@ -160,19 +245,23 @@ case "$cmd" in
   stop)    with_lock; for_each do_stop "$target" ;;
   restart)
     with_lock
-    if [[ "$target" != all ]]; then svc_def "$target"
+    if [[ "$target" != all ]]; then svc_def "$target"; svc_cfg || exit 1
       if [[ -n "$(env_get "${KEY}_HOLD")" && "$force" != 1 ]]; then
         echo "ctl: restart REFUSED: $target is on hold: $(env_get "${KEY}_HOLD")" >&2; exit 2; fi
     fi
     for_each do_stop "$target"; for_each do_start "$target" "$force" ;;
   status)  for_each do_status "$target" ;;
-  health)  svc_def "$target"; curl -sS -m 3 "http://127.0.0.1:$(svc_port)/healthz"; echo ;;
+  health)  svc_def "$target"; svc_cfg || exit 1; curl -sS -m 3 "http://127.0.0.1:$(svc_port)/healthz"; echo ;;
   logs)    svc_def "$target"; tail -n "${3:-200}" "$LOG" 2>/dev/null || echo "($target: no log yet: $LOG)" ;;
   ports)
-    printf '%-8s %-6s %s\n' service port scope stream 8702 "LAN (TV media sockets); never WAN" \
-      "room" 8700 "LAN; inside Flask" "show-bus" 8701 "localhost; inside Flask" \
-      "show" 8703 "localhost (bus + API; pages via :8700/show/*)" "show-vban" "6980/udp" "WSL socket; receiver-initiated"
+    # The deployment's ports (deployment.yaml), so this table matches what the services bind.
+    for k in stream room show_bus show; do
+      v="$(sm get "ports.$k" 2>&1)" || { echo "ctl: $v" >&2; exit 1; }; printf -v "P_$k" '%s' "$v"
+    done
+    printf '%-8s %-6s %s\n' service port scope stream "$P_stream" "LAN (TV media sockets); never WAN" \
+      "room" "$P_room" "LAN; inside Flask" "show-bus" "$P_show_bus" "localhost; inside Flask" \
+      "show" "$P_show" "localhost (bus + API; pages via :$P_room/show/*)" "show-vban" "6980/udp" "WSL socket; receiver-initiated"
     echo "Register: docs/PORTS.md" ;;
-  help|-h|--help) sed -n '2,16p' "$0" | sed 's/^# \{0,1\}//' ;;
+  help|-h|--help) sed -n '2,19p' "$0" | sed 's/^# \{0,1\}//' ;;
   *) echo "ctl: unknown command '$cmd' (try: scripts/ctl help)" >&2; exit 64 ;;
 esac

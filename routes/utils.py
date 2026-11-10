@@ -19,6 +19,8 @@ from pathlib import Path
 from flask import url_for
 from typing import Any
 
+import smconfig
+
 # image processing
 from PIL import Image
 import piexif
@@ -29,7 +31,10 @@ _json_cache = {}
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 
+# The running deployment's directory comes first, so every name-based lookup of a site file
+# (publish-destinations.json, rooms.json, intensity.json) finds deployments/<id>/'s copy.
 SEARCH_PATHS = [
+    str(smconfig.deployment().dir),
     os.path.join(os.getcwd(), "src", "data"),
     os.path.join(os.getcwd(), "routes", "overlays"),
     os.path.join(os.getcwd(), "routes", "data"),

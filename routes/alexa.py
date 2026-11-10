@@ -39,7 +39,12 @@ from typing import Dict, Any
 import uuid
 from routes.generate_handler import throw_user_interacting_event, handle_image_generation, async_amimate, async_adapt, async_combine
 from routes import room_client
+import smconfig
 from routes.samsung_utils import device_wake, device_sleep, device_sync
+
+_GENERATION_INTENTS = ("generate_image", "animate", "adapt", "combine")
+_ROOM_INTENTS = ("set_mode", "set_auto", "set_listening", "cue_scene", "set_effect")
+
 
 def Brianize(text: str) -> str:
     # Already contains Brian *and* prosody — leave untouched
@@ -353,7 +358,7 @@ def process(data):
                     'QR_BASE64': get_qr(publish=closest_screen),
                     'DURATION': duration,
                     # Auto, the mic and AI listening, as they are now (owner, 27 Oct)
-                    'LISTEN': room_client.listening_state(),
+                    'LISTEN': room_client.listening_state() if room_client.room_on() else None,
                 },
                 duration=duration * 1000,
                 clear=True
@@ -375,14 +380,20 @@ def process(data):
         )
 
         # The room (modes, Auto) for the room intents: set_mode, set_auto, cue_scene, set_effect (routes/room_client.py)
-        room_modes = room_client.modes_cached()
-        room_facts = room_client.room_facts()
-        # Only voice names reach the AI (owner 18 Oct): short, distinct, set per mode in modes.json / per scene in
-        # config/live/voice_names.yaml; a mode or scene without one isn't reachable by voice.
-        subs["ROOM_MODES"] = ", ".join(room_client.voice_modes()) or "(no mode has a voice name)"
-        subs["ROOM_SCENES"] = ", ".join(room_client.voice_scenes()) or "(none)"
-        subs["ROOM_MODE_CURRENT"] = room_modes.get(room_facts.get("mode"), room_facts.get("mode") or "unknown")
-        subs["ROOM_AUTO"] = {True: "on", False: "off"}.get(room_facts.get("auto"), "unknown")
+        if room_client.room_on():
+            room_modes = room_client.modes_cached()
+            room_facts = room_client.room_facts()
+            # Only voice names reach the AI (owner 18 Oct): short, distinct, set per mode in modes.json / per scene in
+            # config/live/voice_names.yaml; a mode or scene without one isn't reachable by voice.
+            subs["ROOM_MODES"] = ", ".join(room_client.voice_modes()) or "(no mode has a voice name)"
+            subs["ROOM_SCENES"] = ", ".join(room_client.voice_scenes()) or "(none)"
+            subs["ROOM_MODE_CURRENT"] = room_modes.get(room_facts.get("mode"), room_facts.get("mode") or "unknown")
+            subs["ROOM_AUTO"] = {True: "on", False: "off"}.get(room_facts.get("auto"), "unknown")
+        else:                                       # no room_service in this deployment: nothing to ask it
+            subs["ROOM_MODES"] = "(none: the room is off here)"
+            subs["ROOM_SCENES"] = "(none)"
+            subs["ROOM_MODE_CURRENT"] = "unknown (the room is off here)"
+            subs["ROOM_AUTO"] = "unknown"
         
         # Add exported variable friendly names for this screen's scope
         if closest_screen:
@@ -599,6 +610,18 @@ def process(data):
         
         #info(f"> processed object: {result}")
         #info(f"> intent: {intent}; response_ssml: {response_ssml}")    
+
+        # Generation (generate, animate, adapt, combine) needs the deployment's "generation" capability
+        if intent in _GENERATION_INTENTS and not smconfig.enabled("generation"):
+            utils.logger.warning(f"[alexa] {intent} refused: generation is off in this deployment")
+            response_ssml = Brianize("Making pictures is switched off here.")
+            intent = "respond_only"
+
+        # The room intents need the deployment's "room" capability (room_service)
+        if intent in _ROOM_INTENTS and not room_client.room_on():
+            utils.logger.warning(f"[alexa] {intent} refused: {room_client.ROOM_OFF}")
+            response_ssml = Brianize("The room controls are switched off here.")
+            intent = "respond_only"
 
         # == After processing the intent, we can handle the result ==
         match intent:

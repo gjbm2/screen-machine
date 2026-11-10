@@ -1,6 +1,6 @@
 """The audition set: five short excerpts of the test pieces played on every instrument, as tagged 16-bit FLACs to
-listen to on PC22 (C:\\Users\\Greg\\Music\\Piano audition). This is how the 22 Oct set was made, so it can be made
-again after an instrument changes.
+listen to (the deployment.yaml's host.piano_audition_dir; on PC22 its Music/Piano audition folder). This is how
+the 22 Oct set was made, so it can be made again after an instrument changes.
 
     python -m piano_render audition [--out DIR] [--instruments ID ...] [--excerpts N ...] [--no-ab] [--work DIR]
 
@@ -39,12 +39,14 @@ from typing import Callable, Iterable, Optional
 
 import numpy as np
 
+import smconfig
+
 from . import instruments as _instruments
 from . import score as _score
 
 REPO = Path(__file__).resolve().parent.parent
 LIBRARY = REPO / "config" / "live" / "test-piano"
-AUDITION_DIR = Path("/mnt/c/Users/Greg/Music/Piano audition")       # PC22's C:\Users\Greg\Music\Piano audition
+AUDITION_DIR = smconfig.deployment().host_path("piano_audition_dir")   # deployment.yaml host (None: unset)
 WORK_DIR = Path("~/.cache/screen-machine/piano/audition").expanduser()
 ALBUM = "Piano audition (22 Oct 2026)"
 SR = 48000
@@ -298,11 +300,14 @@ def run(instruments: Optional[Iterable[str]] = None, excerpts: Optional[Iterable
         log: Log = print) -> list[dict]:
     """Cut, render and export (see the module doc). Returns one row per file written (also merged into
     <work>/table.json)."""
+    out = Path(out_dir) if out_dir else AUDITION_DIR
+    if out is None:
+        raise ValueError("no audition folder: pass --out, or set host.piano_audition_dir in the deployment's "
+                         "deployment.yaml")
     import soundfile as sf
 
     from . import render as _render
     reg = registry if registry is not None else _instruments.load()
-    out = Path(out_dir) if out_dir else AUDITION_DIR
     work = Path(work_dir).expanduser() if work_dir else WORK_DIR
     out.mkdir(parents=True, exist_ok=True)
     (work / "excerpts").mkdir(parents=True, exist_ok=True)

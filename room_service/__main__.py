@@ -1,4 +1,6 @@
-"""python -m room_service [--port 8700] [--config config/room/room.prod.yaml] (a dev instance: a temp copy with its own state_dir)"""
+"""python -m room_service [--port 8700] [--config deployments/<id>/room/room.yaml] (a dev instance: a temp copy with its own state_dir)
+
+Defaults: the deployment's room/room.yaml (smconfig) and its ports.room."""
 
 from __future__ import annotations
 
@@ -10,6 +12,8 @@ import sys
 from pathlib import Path
 
 from aiohttp import web
+
+import smconfig
 
 from .api import SafeAccessLogger
 from .config import DEFAULT_CONFIG, load_config
@@ -44,7 +48,7 @@ async def serve(svc: RoomService, host: str, port: int) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="python -m room_service", description=__doc__)
-    p.add_argument("--port", type=int, default=8700)
+    p.add_argument("--port", type=int, default=smconfig.port("room"))
     p.add_argument("--host", default="0.0.0.0", help="bind address (kiosks reach it over the LAN)")
     p.add_argument("--config", default=str(DEFAULT_CONFIG))
     p.add_argument("--state-dir", help="override service.state_dir")

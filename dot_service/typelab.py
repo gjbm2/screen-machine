@@ -1,9 +1,10 @@
 """The type lab: a page for trying bitmap fonts on the tag's card, rendered by the tag's own renderer.
 
 GET /dev/type is the page. It lists the fonts in dot_service/fonts, the library (~/.local/share/screen-machine/
-dot-fonts, fonts to try; not in git) and Windows' classic bitmap fonts (/mnt/c, used in place, never copied), and
-re-renders the card as the controls change (POST /api/v1/preview -> PNG, exactly what the tag would get).
-"Use on the tag" saves the type to config/room/dot.json (types); library fonts it uses are copied into
+dot-fonts, fonts to try; not in git) and Windows' classic bitmap fonts (the deployment's host.fonts_dir, used in
+place, never copied), and re-renders the card as the controls change (POST /api/v1/preview -> PNG, exactly what the
+tag would get).
+"Use on the tag" saves the type to the deployment's dot.json (types); library fonts it uses are copied into
 dot_service/fonts first, so the repo has them.
 """
 
@@ -25,7 +26,7 @@ from PIL import Image
 
 from . import render as R
 
-WINDOWS_FONTS = Path("/mnt/c/Windows/Fonts")
+WINDOWS_FONTS = R.WINDOWS_FONTS   # the deployment's host.fonts_dir, or None (then only the bundled and library fonts)
 WINDOWS_BITMAP = ["sserife.fon", "sseriff.fon", "serife.fon", "seriff.fon", "smalle.fon", "vgasys.fon",
                   "8514sys.fon", "courf.fon"]
 # Windows' screen fonts, outlines with hand-made hinting for small sizes (best from about 13-14 px): regular -> bold
@@ -96,7 +97,7 @@ def library() -> list[dict]:
                 bold = twin if twin and (folder / twin).exists() else None
             out.append({"id": p.name, "name": name.replace(" Regular", ""), "where": where, "sizes": _native(f),
                         "bold": bold})
-    for name, bold in WINDOWS_OUTLINE.items():
+    for name, bold in WINDOWS_OUTLINE.items() if WINDOWS_FONTS else ():
         for fn in (name, bold):
             p = WINDOWS_FONTS / fn if fn else None
             if p is None or not p.exists():
@@ -106,7 +107,7 @@ def library() -> list[dict]:
                         f"{f.style_name.decode(errors='replace')}".replace(" Regular", ""),
                         "where": "outline", "sizes": [],
                         "bold": str(WINDOWS_FONTS / bold) if fn == name and bold else None})
-    for name in WINDOWS_BITMAP:
+    for name in WINDOWS_BITMAP if WINDOWS_FONTS else ():
         p = WINDOWS_FONTS / name
         if not p.exists():
             continue
@@ -134,12 +135,27 @@ def _png(img: Image.Image) -> web.Response:
     return web.Response(body=buf.getvalue(), content_type="image/png", headers={"Cache-Control": "no-store"})
 
 
-def _card(base: Optional[R.Card], body: dict) -> R.Card:
+def _site(spec: Optional[dict]) -> dict:
+    """The sample card's room, hint and QR from the first tag in the deployment's dot.json (its room's display name
+    from rooms.json, else its id); generic placeholders when there is no tag."""
+    spec = spec or {}
+    room_id = str(spec.get("room") or "")
+    room = room_id or "Room"
+    if room_id:
+        try:
+            import smconfig
+            room = str((smconfig.rooms().get(room_id) or {}).get("name") or room_id)
+        except Exception:                             # noqa: BLE001 - no rooms.json: the id will do
+            pass
+    qr = spec.get("qr")
+    return dict(room=room, hint=str(spec.get("hint") or ""),
+                qr=str((qr.get("url") if isinstance(qr, dict) else qr) or ""))
+
+
+def _card(base: Optional[R.Card], body: dict, spec: Optional[dict] = None) -> R.Card:
     sample = body.get("sample") or "live"
     if sample in SAMPLES or base is None:
-        fields = dict(room="Drawing room", hint="Say 'Computer, use AI' to interact",
-                      qr="https://screen.finsburybankforsavings.com", stamp="20:58",
-                      **SAMPLES.get(sample, SAMPLES["art"]))
+        fields = dict(**_site(spec), stamp="20:58", **SAMPLES.get(sample, SAMPLES["art"]))
         card = R.Card(**fields)
     else:
         card = dataclasses.replace(base, stamp=base.stamp or "20:58")
@@ -191,7 +207,8 @@ def routes(app: web.Application, svc: Any, config: Path) -> None:
         body = await request.json()
         tag = next(iter(svc.tags.values()), None)
         try:
-            return _png(R.render(_card(tag.card if tag else None, body), body.get("types")))
+            return _png(R.render(_card(tag.card if tag else None, body, tag.spec if tag else None),
+                                 body.get("types")))
         except (FileNotFoundError, freetype.FT_Exception, KeyError, ValueError) as e:
             return web.json_response({"error": str(e)}, status=400)
 
@@ -207,7 +224,8 @@ def routes(app: web.Application, svc: Any, config: Path) -> None:
         types = body.get("types") or {}
         try:
             R._fonts(types)                       # it must build before it goes in config
-            R.render(_card(None, {"sample": "art"}), types)
+            tag = next(iter(svc.tags.values()), None)
+            R.render(_card(None, {"sample": "art"}, tag.spec if tag else None), types)
         except (FileNotFoundError, freetype.FT_Exception, KeyError, ValueError) as e:
             return web.json_response({"error": str(e)}, status=400)
         save_types(types, config)

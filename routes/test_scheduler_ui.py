@@ -25,7 +25,9 @@ import base64
 from urllib.parse import quote
 from jsonschema.validators import validator_for
 
-BASE_URL = "http://localhost:5000"
+import smconfig
+
+BASE_URL = f"http://localhost:{smconfig.port('flask')}"   # this app (the deployment's Flask port)
 
 # === Scheduler Control Panel UI ===
 test_scheduler_bp = Blueprint("test_scheduler", __name__)
@@ -853,7 +855,7 @@ def schedule_editor(destination, layer, message=None, error=False):
         schema = get_schema()
         
         # Load VITE URL from environment
-        vite_url = os.getenv('VITE_URL', 'http://localhost:5000')
+        vite_url = os.getenv('VITE_URL', BASE_URL)
         if vite_url.endswith('/'):
             vite_url = vite_url[:-1]
             
@@ -967,7 +969,7 @@ def create_editor_url(destination):
         }
 
         # Get Vite URL from environment
-        vite_url = os.getenv('VITE_URL', 'http://localhost:5000')
+        vite_url = os.getenv('VITE_URL', BASE_URL)
         if vite_url.endswith('/'):
             vite_url = vite_url[:-1]
 

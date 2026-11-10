@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { adminApi } from '@/shared/api';
+import { getDeploymentRelative, maskScreenIds, type DeploymentInfo } from '@/shared/api/deployment';
 
 const POLL_INTERVAL = 120_000; // 2 minutes
 
@@ -25,6 +26,20 @@ function useDisplayScreens(): DisplayScreen[] {
     return () => { cancelled = true; };
   }, []);
   return screens;
+}
+
+// The deployment, fetched same-origin like every other admin call (not the shared useDeployment hook, which goes
+// via API_URL); null until it has loaded, or if it could not be read.
+function useAdminDeployment(): DeploymentInfo | null {
+  const [deployment, setDeployment] = useState<DeploymentInfo | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getDeploymentRelative()
+      .then(d => { if (!cancelled) setDeployment(d); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+  return deployment;
 }
 
 interface ApiResult {
@@ -61,6 +76,9 @@ function parseStatus(output: string) {
 
 export default function AdminPanel() {
   const displayScreens = useDisplayScreens();
+  // The screens with a light mask come from the deployment (GET /api/deployment), not a list here.
+  const deployment = useAdminDeployment();
+  const maskIds = maskScreenIds(deployment).join(',');
   const [status, setStatus] = useState<ReturnType<typeof parseStatus> | null>(null);
   const [statusOk, setStatusOk] = useState<boolean | null>(null);
   const [loading, setLoading] = useState('');
@@ -113,34 +131,35 @@ export default function AdminPanel() {
   }, [addLog]);
 
   const fetchLight = useCallback(async () => {
+    const ids = maskIds ? maskIds.split(',') : [];
     try {
-      const [lightRes, northMask, southMask, northOv, southOv] = await Promise.all([
+      const [lightRes, masks, ovs] = await Promise.all([
         adminApi.getLightsenseResponse(),
-        adminApi.getMaskResponse('north-screen'),
-        adminApi.getMaskResponse('south-screen'),
-        adminApi.getBrightnessOverrideResponse('north-screen'),
-        adminApi.getBrightnessOverrideResponse('south-screen'),
+        Promise.all(ids.map(id => adminApi.getMaskResponse(id))),
+        Promise.all(ids.map(id => adminApi.getBrightnessOverrideResponse(id))),
       ]);
       setLightData(await lightRes.json());
-      setMaskData({
-        'north-screen': await northMask.json(),
-        'south-screen': await southMask.json(),
-      });
-      const northOvData = await northOv.json();
-      const southOvData = await southOv.json();
-      setOverrides({
-        'north-screen': northOvData,
-        'south-screen': southOvData,
-      });
+      const maskEntries: Record<string, any> = {};
+      for (let i = 0; i < ids.length; i++) maskEntries[ids[i]] = await masks[i].json();
+      setMaskData(maskEntries);
+      const ovEntries: Record<string, { active: boolean; override: number | null }> = {};
+      for (let i = 0; i < ids.length; i++) ovEntries[ids[i]] = await ovs[i].json();
+      setOverrides(ovEntries);
     } catch { /* ignore */ }
-  }, []);
+  }, [maskIds]);
 
+  // Two polls: the deployment's screens arriving re-runs only the light fetch, never the kiosk status (an SSH round-trip)
   useEffect(() => {
     fetchStatus();
-    fetchLight();
-    pollRef.current = setInterval(() => { fetchStatus(); fetchLight(); }, POLL_INTERVAL);
+    pollRef.current = setInterval(fetchStatus, POLL_INTERVAL);
     return () => clearInterval(pollRef.current);
-  }, [fetchStatus, fetchLight]);
+  }, [fetchStatus]);
+
+  useEffect(() => {
+    fetchLight();
+    const id = setInterval(fetchLight, POLL_INTERVAL);
+    return () => clearInterval(id);
+  }, [fetchLight]);
 
   const doAction = async (endpoint: string, label: string, body?: object) => {
     setLoading(label);

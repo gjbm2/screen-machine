@@ -1,6 +1,6 @@
 """sonos: Sonos zones through SoCo (S2, UPnP on; plain HTTP to :1400, which works from WSL; no SSDP or events needed).
 
-Device config: config/room/sonos.json {"zones": {"drawing-room": {"room": "Drawing Room", "ip": "192.168.1.17"}}}.
+Device config: the deployment's room/sonos.json {"zones": {"drawing-room": {"room": "Drawing Room", "ip": "192.168.1.17"}}}.
 Members per zone `<zone>`:
   <zone>.volume       level, 0..100 (tolerance 1); opts {"over_s": n} ramps it
   <zone>.playback     level: "paused" | "stopped" | {"favourite": "<Sonos favourite title>"} |
@@ -28,6 +28,8 @@ import time
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote
+
+import smconfig
 
 from ..roomstate.contract import Adapter, Outcome, Placeholder, Reading
 from ..roomstate.schema import range_schema
@@ -454,8 +456,9 @@ class SonosAdapter(Adapter):
 
 
 def from_config(path: str | Path | None = None) -> Adapter | None:
-    """SonosAdapter for config/room/sonos.json; a Placeholder (same members) without SoCo; None without the file."""
-    p = Path(path) if path else Path(__file__).resolve().parents[2] / "config" / "room" / "sonos.json"
+    """SonosAdapter for the deployment's room/sonos.json; a Placeholder (same members) without SoCo; None without the
+    file (this site has no Sonos)."""
+    p = Path(path) if path else smconfig.path("room", "sonos.json")
     try:
         raw = json.loads(p.read_text())
         zones = raw["zones"]

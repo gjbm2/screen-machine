@@ -16,6 +16,9 @@ import urllib.request
 import pytest
 
 os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
+# The tests read the shipped finsbury deployment unless SM_DEPLOYMENT says otherwise (as the root conftest.py does;
+# this suite's own pytest.ini makes this directory the rootdir, so that one is not loaded here).
+os.environ.setdefault("SM_DEPLOYMENT", "finsbury")
 
 REPO = pathlib.Path(__file__).resolve().parents[2]
 PORT = int(os.environ.get("SM_TEST_PORT", "8082"))

@@ -6,16 +6,18 @@ This file centralizes all configuration constants and settings.
 import os
 from pathlib import Path
 
+import smconfig
+
 # Application paths
 ROOT_DIR = Path(__file__).parent
 STATIC_FOLDER = 'dist'
 OUTPUT_DIR = 'output'
 
-# Server settings
+# Server settings (ports: the deployment's manifest, smconfig.DEFAULT_PORTS otherwise)
 HOST = "0.0.0.0"
-PORT = 5000
+PORT = smconfig.port("flask")
 DEBUG = False
-WS_PORT = 8765
+WS_PORT = smconfig.port("overlay_ws")
 
 # API settings
 API_PREFIX = '/api'
@@ -33,8 +35,9 @@ MAX_SCHEDULER_LOG_SIZE = 5000
 
 # Alerting (Siren) — see utils/alerts/ and docs/ALERTING_PROPOSAL.md.
 # Credentials and recipient live in .env (ALERT_EMAIL_TO, GOOGLE_*,
-# HEALTHCHECK_PING_URL); env ALERTING_ENABLED=0 disables (tests/dev).
-ALERTING_ENABLED = True
+# HEALTHCHECK_PING_URL); the deployment's "alerts" capability switches it; env ALERTING_ENABLED (0/1) overrides
+# both ways (tests/dev).
+ALERTING_ENABLED = smconfig.enabled("alerts")
 ALERT_QUEUE_MAX = 1000
 ALERT_STATE_PATH = str(ROOT_DIR / "logs" / "alerts_state.json")
 ALERT_THROTTLE = {
@@ -238,6 +241,12 @@ INTENSITY_CFG = {
     # - +1.0 = extreme broadening: night becomes very short, plateau during day
     # Typical values: 0.3 to 0.6 for subtle broadening effect
 
-    "default_lat": 51.5074,  # London
+    "default_lat": 51.5074,  # London; the deployment's location replaces both (below)
     "default_lon": -0.1278,  # London
 }
+
+# A screen's light curve without its own lat/lon uses the deployment's location (deployment.yaml location:).
+_location = smconfig.deployment().location
+if _location:
+    INTENSITY_CFG["default_lat"] = _location["lat"]
+    INTENSITY_CFG["default_lon"] = _location["lon"]

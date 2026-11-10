@@ -75,6 +75,7 @@ import routes.display as rdisplay          # noqa: E402
 import routes.display_utils as rdu         # noqa: E402
 import routes.lightsensor as rls           # noqa: E402
 import routes.utils as rutils              # noqa: E402
+import smconfig                            # noqa: E402
 from flask import Flask                    # noqa: E402
 
 APP = Flask("lightmask_golden")
@@ -337,7 +338,9 @@ def build_all() -> dict:
     _, syn_comp = build_set(SYN_DESTS, SYN_MAPPING, syn_lux, t_2h, t_few[:2], t_sensor[:1], syn_compute)
 
     files = {p: sha(REPO / p) for p in ("routes/display_utils.py", "routes/lightsensor.py", "routes/display.py",
-                                         "routes/utils.py", "config.py", "routes/data/intensity.json")}
+                                         "routes/utils.py", "config.py")}
+    inten = smconfig.path("intensity.json")                 # the deployment's (Flask's IntensityMapper reads it)
+    files[str(inten.relative_to(REPO))] = sha(inten)
     files[str(dest_path.relative_to(REPO))] = sha(dest_path)
     out = {
         "about": "Golden outputs of Flask's compute_mask and GET /api/<id>/mask; see gen_golden.py",

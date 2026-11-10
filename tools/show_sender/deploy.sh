@@ -1,15 +1,22 @@
 #!/usr/bin/env bash
 # Deploy the show sender to the kiosk mini-PC (owner's OK and a quiet window first: docs/AV_PROGRAMME §11 rule 4).
-#   tools/show_sender/deploy.sh [user@host]          default gjbm2@192.168.1.92
+#   tools/show_sender/deploy.sh [user@host]          default: the deployment's kiosk (kiosk.user@kiosk.host)
 # Copies show_sender.py + show_service/vban.py to ~/show-sender/, makes its venv (numpy) if missing, then:
 #   with passwordless sudo: installs alsa-utils if missing and the system unit show-sender.service;
 #   without (the kiosk, 18 Oct): unpacks arecord from Ubuntu's alsa-utils .deb into ~/show-sender/bin and installs
 #   the systemd --user unit show-sender.user.service as show-sender.service (gjbm2 lingers).
 # Then (re)starts it.  Idempotent.
 set -euo pipefail
-HOST="${1:-gjbm2@192.168.1.92}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../.." && pwd)"
+if [[ -n "${1:-}" ]]; then
+  HOST="$1"
+else
+  # shellcheck disable=SC1091
+  source "$REPO/media-server/kiosk-config.sh"
+  k_user="$(kiosk_get user)"; k_host="$(kiosk_get host)"
+  HOST="$k_user@$k_host"
+fi
 SSH=(ssh -o BatchMode=yes -o ConnectTimeout=8 "$HOST")
 "${SSH[@]}" 'mkdir -p ~/show-sender'
 scp -q -o BatchMode=yes "$HERE/show_sender.py" "$REPO/show_service/vban.py" "$HERE/show-sender.service" \

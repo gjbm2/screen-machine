@@ -1,5 +1,5 @@
 """Room config (ROOM_STATE_MODEL §2): groups, labels, modes and transition rules, as JSON (room_service keeps it in
-config/room/modes.json; example_room.json is the spec's complete example). Keys starting with "_" are comments.
+the deployment's room/modes.json; example_room.json is the spec's complete example). Keys starting with "_" are comments.
 
 Selectors name targets, in state keys, group values and steps (specificity in brackets):
   "blinds.ch02"              one target (3)

@@ -10,6 +10,8 @@ from pathlib import Path
 import aiohttp
 from aiohttp import web
 
+import smconfig
+
 from . import __version__
 from .api import build_app
 from .adapters import build_adapters
@@ -59,8 +61,8 @@ class RoomService:
                  extra_adapters: list[Adapter] | None = None, blinds: Adapter | None = None,
                  remotes: list[Adapter] | None = None, show: Adapter | bool | None = None) -> None:
         """extra_adapters replace built ones with the same subsystem (tests); blinds defaults to the Bloc hub;
-        remotes to the RM4 Pro devices in config/room/rf/ (the glitterball); show to show_service's Feel (False: a
-        placeholder, so tests never reach the real show_service)."""
+        remotes to the RM4 Pro devices in the deployment's room/rf/ (the glitterball); show to show_service's Feel
+        (False: a placeholder, so tests never reach the real show_service)."""
         self.cfg = cfg
         self.epoch = secrets.token_hex(4)
         self.started_at = utc_iso()
@@ -119,13 +121,20 @@ class RoomService:
             self.token = load_or_create_token(cfg.token_file)
         REDACT.add(self.token)
         self.http = aiohttp.ClientSession()
+        live_off = None if smconfig.enabled("live") else \
+            "live is off for this deployment (deployment.yaml capabilities.live): no screen goes live"
+        if live_off:
+            for sc in cfg.screens.values():
+                sc.live_enabled = False
+            log.warning("%s; stream_service is not contacted", live_off)
+        cfg.live_off_reason = live_off
         self.events = EventHub(self.status)
         self.pages = PageHub(cfg, on_hello=lambda c: self.screens.welcome(c),
                              on_message=lambda c, t, d: self.screens.page_message(c, t, d),
                              on_closed=lambda c: self.screens.page_closed(c),
                              on_log=self.events.log_event)
         self.stream = StreamClient(cfg.stream_url, cfg.stream_token_file, self.http,
-                                   http_timeout_s=cfg.timeouts.http_s)
+                                   http_timeout_s=cfg.timeouts.http_s, disabled=live_off)
         # MaskArbiter (Flask + sensor ingest, LIVE_V1 §2.2b) unless ingest is off; without a
         # sensor keys file it behaves exactly like MaskPusher.
         self.mask = make_mask_source(cfg, self.http, self.pages,
@@ -143,17 +152,24 @@ class RoomService:
                                       snapshotter=self.snapshotter, mask=self.mask, events=self.events,
                                       http=self.http)
         # The room state model (ROOM_STATE_MODEL): adapters, modes.json, one state file.
-        # Virtual DMX devices (config/room/patch.yaml): Art-Net in, show bus out, Hue streaming; opt-in (dmx.enabled).
-        if cfg.dmx_enabled:
+        # Virtual DMX devices (the deployment's lights/patch.yaml): Art-Net in, show bus out, Hue streaming; opt-in
+        # (dmx.enabled in the room config) and only with the deployment's dmx capability on.
+        if cfg.dmx_enabled and not smconfig.enabled("dmx"):
+            log.info("dmx is off for this deployment (deployment.yaml capabilities.dmx): no Art-Net, show bus or Hue "
+                     "stream")
+        elif cfg.dmx_enabled and not Path(cfg.patch_file).exists():
+            log.info("dmx: no patch (%s): this site has no DMX patch", cfg.patch_file)
+        elif cfg.dmx_enabled:
             try:
                 self.dmx = DmxStack(cfg.patch_file, cfg.show_bus_port)
             except Exception as e:
                 log.error("dmx disabled: %s", e)
-        hue = self.dmx.adapter() if self.dmx is not None else hue_placeholder(cfg.patch_file)
+        hue = self.dmx.adapter(show_url=cfg.show_url) if self.dmx is not None else hue_placeholder(cfg.patch_file)
         built = build_adapters(self.screens.controllers, self.mask, self.events.log_event, cfg.state_dir,
                                cfg.timeouts.policy_ack_s, blinds=self._blinds, blinds_enabled=cfg.blinds_enabled,
                                sonos=None if cfg.sonos_enabled else False,
-                               hue=hue, remotes=self._remotes, show=self._show)
+                               hue=hue, remotes=self._remotes, show=self._show, show_url=cfg.show_url,
+                               modes_file=cfg.modes_file)
         adapters = list({a.subsystem: a for a in built + self._extra_adapters}.values())
         self.room_config = RoomConfigFile(cfg.modes_file, adapters, cfg.state_dir, rooms_path=cfg.rooms_file)
         self.coordinator = Coordinator(self.room_config.load(), adapters, Path(cfg.state_dir) / "state.json",
@@ -170,7 +186,8 @@ class RoomService:
         # adapter watches its source, and the room config is rebuilt when they change.
         self._member_watches = [spawn(a.watch_members(self._on_members), f"{a.subsystem}-members")
                                 for a in adapters if callable(getattr(a, "watch_members", None))]
-        self.stream.start()
+        if not live_off:
+            self.stream.start()              # the renderer's events (live off: never contacted)
         self.mask.start()
         await self.snapshotter.start([sid for sid, sc in cfg.screens.items() if sc.live_enabled])
         log.info("room_service %s up (epoch %s); screens: %s", __version__, self.epoch,
@@ -292,7 +309,8 @@ class RoomService:
             "screens": self.screens.status(),
             "rooms": self.site.view(),     # rooms.json: [{id, name, screens, lights, blinds, sensors}], file order
             "stream_service": {"reachable": self.stream.reachable, "url": self.cfg.stream_url,
-                               "last_error": None if self.stream.reachable else self.stream.last_error,
+                               "last_error": None if self.stream.reachable else
+                               (self.cfg.live_off_reason or self.stream.last_error),   # live off: why
                                "owned_sessions": sorted(self.screens.owned),
                                "foreign_sessions": self.screens.foreign},
             "subsystems": room["subsystems"],

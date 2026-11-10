@@ -33,7 +33,7 @@ Usage (heavy: run_stack replays the whole fake recording, about 0.4 x real time;
   $P $S programme [--out ~/.cache/screen-machine/audio_cal_synth/programmes/synth-YYYYMMDD]
   flock ~/.cache/screen-machine/cpu.lock nice -n 19 $P $S run --programme <programme dir> [--offset-s 3.7] ...
   flock ~/.cache/screen-machine/cpu.lock nice -n 19 $P tools/room/audio_cal/programme_analyse.py <run dir> \\
-      --programme <programme dir> --write-config --audio-cal-file <a copy of config/room/audio_cal.json>
+      --programme <programme dir> --write-config --audio-cal-file <a copy of calibration/audio_cal.json>
   $P $S check <run dir> [--audio-cal-before <the original> --audio-cal-after <the copy>]
 Synthetic programmes and runs live in ~/.cache/screen-machine/audio_cal_synth/, never in the repo.
 """

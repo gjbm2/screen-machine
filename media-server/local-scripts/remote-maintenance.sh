@@ -57,7 +57,13 @@ fi
 
 # Configuration with fallbacks
 REMOTE_HOST="${MEDIA_SERVER_HOST:-screen-machine-drawingroom}"
-REMOTE_USER="${MEDIA_SERVER_USER:-gjbm2}"
+# Login not set in .env: the deployment's kiosk.user (deployments/<id>/deployment.yaml, via kiosk-config.sh)
+REMOTE_USER="${MEDIA_SERVER_USER:-}"
+if [ -z "$REMOTE_USER" ]; then
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR/../kiosk-config.sh"
+    REMOTE_USER="$(kiosk_get user)" || { echo "no kiosk user (MEDIA_SERVER_USER or the deployment's kiosk.user)" >&2; exit 2; }
+fi
 REMOTE_PORT="${MEDIA_SERVER_PORT:-22}"
 SSH_KEY="${MEDIA_SERVER_SSH_KEY:-}"
 SSH_PASSWORD="${MEDIA_SERVER_PASSWORD:-}"
@@ -627,17 +633,29 @@ cmd_deploy_scripts() {
     
     echo ""
     
+    # The scripts as rendered for this deployment: the launchers' URLs are templates filled from the deployment's
+    # kiosk block (media-server/render_kiosk.py); the templates themselves are never copied to the box
+    local src_dir
+    src_dir="$(mktemp -d)"
+    # shellcheck disable=SC1091
+    source "$MEDIA_SERVER_DIR/kiosk-config.sh"
+    if ! kiosk_render_dir "$src_dir"; then
+        rm -rf "$src_dir"
+        print_error "Could not render the kiosk scripts for this deployment (SM_DEPLOYMENT; see above)"
+        return 1
+    fi
+    
     # Deploy each script
     local deployed_count=0
     for script in "${scripts_to_deploy[@]}"; do
-        local local_path="$MEDIA_SERVER_DIR/remote-scripts/$script"
+        local local_path="$src_dir/$script"
         local remote_path="/usr/local/bin/$script"
         local mode=755
         case "$script" in
             kiosk-wayland.sh)
-                local_path="$MEDIA_SERVER_DIR/remote-scripts/wayland/$script" ;;
+                local_path="$src_dir/wayland/$script" ;;
             sway-kiosk.conf)
-                local_path="$MEDIA_SERVER_DIR/remote-scripts/wayland/$script"
+                local_path="$src_dir/wayland/$script"
                 remote_path="/usr/local/share/kiosk/$script"
                 mode=644 ;;
         esac
@@ -678,6 +696,8 @@ EOF
         deployed_count=$((deployed_count + 1))
         echo ""
     done
+    
+    rm -rf "$src_dir"
     
     if [ $deployed_count -eq 0 ]; then
         print_error "No scripts were deployed!"
@@ -793,7 +813,7 @@ case "${1:-}" in
         echo ""
         echo "Environment Variables:"
         echo "  MEDIA_SERVER_HOST             Remote hostname (default: screen-machine-drawingroom)"
-        echo "  MEDIA_SERVER_USER             Remote username (default: gjbm2)"
+        echo "  MEDIA_SERVER_USER             Remote username (default: the deployment's kiosk.user)"
         echo ""
         echo "Examples:"
         echo "  $0 diagnose-lightsensor"

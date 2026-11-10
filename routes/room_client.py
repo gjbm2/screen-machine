@@ -2,9 +2,12 @@
 the Alexa room intents and the room events bridge (routes/room_events_bridge.py) all go through here.
 
 room_service runs inside this process (room_in_app.py) but owns its own asyncio loop, so this talks to its LAN door
-over HTTP (127.0.0.1:8700) like any other client: the room keeps its own rules (a mode request can be refused,
-Auto's minimum stay, holds), nothing here writes room state directly. Every call is bounded and never raises:
+over HTTP (smconfig.url("room"), 127.0.0.1:8700 on finsbury; ROOM_SERVICE_URL overrides) like any other client: the
+room keeps its own rules (a mode request can be refused, Auto's minimum stay, holds), nothing here writes room state directly. Every call is bounded and never raises:
 it returns (ok, detail) so a schedule or a voice reply can say what happened.
+
+With the deployment's "room" capability off (smconfig.enabled("room") false) nothing here touches the network: reads
+return their usual "room is down" shape (None / {}) and writes return (False, ROOM_OFF), logged.
 """
 from __future__ import annotations
 
@@ -13,11 +16,27 @@ from typing import Any, Optional
 
 import requests
 
-ROOM_URL = os.environ.get("ROOM_SERVICE_URL", "http://127.0.0.1:8700").rstrip("/")
+import smconfig
+from utils.logger import warning
+
+ROOM_URL = (os.environ.get("ROOM_SERVICE_URL") or smconfig.url("room")).rstrip("/")
 TIMEOUT_S = 5.0
+ROOM_OFF = "room is off in this deployment"
+
+
+def room_on() -> bool:
+    """The deployment runs room_service (the "room" capability); off: every call here is refused without a request."""
+    return smconfig.enabled("room")
+
+
+def _refused(method: str, path: str) -> None:
+    warning(f"[room_client] {method} {path} refused: {ROOM_OFF}")
 
 
 def _get(path: str, timeout: float = TIMEOUT_S) -> Optional[Any]:
+    if not room_on():
+        _refused("GET", path)
+        return None
     try:
         r = requests.get(f"{ROOM_URL}{path}", timeout=timeout)
         return r.json() if r.ok else None
@@ -26,6 +45,9 @@ def _get(path: str, timeout: float = TIMEOUT_S) -> Optional[Any]:
 
 
 def _send(method: str, path: str, body: dict, timeout: float = TIMEOUT_S) -> tuple[bool, str]:
+    if not room_on():
+        _refused(method, path)
+        return False, ROOM_OFF
     try:
         r = requests.request(method, f"{ROOM_URL}{path}", json=body, timeout=timeout)
     except requests.RequestException as e:
@@ -86,6 +108,9 @@ def resolve_mode(name: str, known: Optional[dict[str, str]] = None) -> Optional[
 
 def set_mode(name: str, source: str, reason: Optional[str] = None) -> tuple[bool, str]:
     """Ask room_service for a mode (PUT /api/v1/mode); the room may refuse (its rules decide)."""
+    if not room_on():
+        _refused("PUT", "/api/v1/mode")
+        return False, ROOM_OFF
     key = resolve_mode(name)
     if key is None:
         return False, f"unknown mode {name!r}"

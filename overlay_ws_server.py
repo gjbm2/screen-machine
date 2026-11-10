@@ -304,14 +304,15 @@ async def send_overlay_to_clients(data: dict):
 
 # WebSocket server entry point
 async def ws_main():
+    from config import WS_PORT   # the deployment's overlay_ws port (8765)
     async with websockets.serve(
         handler,
         "0.0.0.0",
-        8765,
+        WS_PORT,
         compression=None,
         logger=_WS_LOGGER,
     ):
-        debug("🌐 WebSocket server running on ws://0.0.0.0:8765")
+        debug(f"🌐 WebSocket server running on ws://0.0.0.0:{WS_PORT}")
         await asyncio.Future()  # run forever
 
 # Launch WebSocket server

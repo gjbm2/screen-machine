@@ -1,7 +1,7 @@
 """The room's live-score transcription in a process of its own, shared by the screens' render workers (proc workers,
 one render process per screen, can't share score/room.py's RoomScore in memory).  RemoteRoom starts it.
 
-    python -m stream_service.score.room_proc --key room [--sock PATH] [--music-bus ws://127.0.0.1:8703/v1/show]
+    python -m stream_service.score.room_proc --key room [--sock PATH] [--music-bus ws://127.0.0.1:<show port>/v1/show]
                                              [--linger 30]
 
 It hears the music bus itself (showbus.run into a SoundView, the path a scene's notes take) and feeds the room's one

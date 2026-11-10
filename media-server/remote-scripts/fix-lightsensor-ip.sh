@@ -5,9 +5,9 @@
 set -e
 
 OLD_IP="185.254.136.244"
-NEW_IP="95.141.21.170"
-SCRIPT_PATH="/home/gjbm2/lightsense.py"
-BACKUP_PATH="/home/gjbm2/lightsense.py.backup-$(date +%Y%m%d-%H%M%S)"
+NEW_IP="@@KIOSK_BASE_HOST@@"
+SCRIPT_PATH="/home/@@KIOSK_USER@@/lightsense.py"
+BACKUP_PATH="/home/@@KIOSK_USER@@/lightsense.py.backup-$(date +%Y%m%d-%H%M%S)"
 
 echo "=== Light Sensor IP Fix ==="
 echo ""
@@ -51,7 +51,7 @@ if pgrep -f "lightsense.py" > /dev/null; then
     echo ""
     echo "    To restart:"
     echo "      pkill -f lightsense.py"
-    echo "      cd /home/gjbm2 && source .venv/bin/activate && python lightsense.py &"
+    echo "      cd /home/@@KIOSK_USER@@ && source .venv/bin/activate && python lightsense.py &"
 else
     echo "    No lightsense.py process running"
 fi

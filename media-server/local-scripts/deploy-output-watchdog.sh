@@ -2,10 +2,18 @@
 # Install the kiosk output watchdog (media-server/remote-scripts/wayland/output_watchdog.py) on the kiosk mini-PC as the
 # systemd --user unit kiosk-output-watchdog.service, then (re)start it. No sudo; touches nothing else (not sway,
 # kiosk.service or the show sender).  Idempotent.
-#   media-server/local-scripts/deploy-output-watchdog.sh [user@host]     default gjbm2@192.168.1.92
+#   media-server/local-scripts/deploy-output-watchdog.sh [user@host]     default: the deployment's kiosk
+#   (kiosk.user@kiosk.host in deployments/<id>/deployment.yaml; MEDIA_SERVER_USER / MEDIA_SERVER_HOST override)
 # Watch it: grep watchdog /var/log/kiosk.log  (or journalctl --user -u kiosk-output-watchdog on the kiosk)
 set -euo pipefail
-HOST="${1:-gjbm2@192.168.1.92}"
+if [[ -n "${1:-}" ]]; then
+  HOST="$1"
+else
+  # shellcheck disable=SC1091
+  source "$(dirname "$0")/../kiosk-config.sh"
+  k_user="${MEDIA_SERVER_USER:-$(kiosk_get user)}"; k_host="${MEDIA_SERVER_HOST:-$(kiosk_get host)}"
+  HOST="$k_user@$k_host"
+fi
 SRC="$(cd "$(dirname "$0")/../remote-scripts/wayland" && pwd)"
 SSH=(ssh -o BatchMode=yes -o ConnectTimeout=8 "$HOST")
 "${SSH[@]}" 'mkdir -p ~/kiosk-watchdog ~/.config/systemd/user'

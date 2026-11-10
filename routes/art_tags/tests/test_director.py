@@ -246,3 +246,16 @@ def test_api_director_status(out, tmp_path):
         assert j["today_count"] == 0 and set(j) >= {"wish", "per_screen", "last_prompt", "last_error"}
     finally:
         director.set_director(None)
+
+
+def test_room_off_never_asks_the_room(out, tmp_path, monkeypatch):
+    """A deployment without room_service: no mode to read, so no pass reaches the room (or show), and it says why."""
+    import smconfig
+    real = smconfig.enabled
+    monkeypatch.setattr(smconfig, "enabled", lambda c: False if c == "room" else real(c))
+    fake = Fake()
+    fake.get_json = lambda url: (_ for _ in ()).throw(AssertionError(f"asked {url} with room off"))
+    d, _ = make_director(fake, tmp_path)
+    e = d.pass_once()
+    assert e["action"] == "not-ambient" and e["error"] == "room is off in this deployment"
+    assert fake.prompts == [] and fake.made == []

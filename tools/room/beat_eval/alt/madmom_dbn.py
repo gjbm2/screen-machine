@@ -102,7 +102,7 @@ import sys
 import time
 from typing import Any, Optional
 
-for _k in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS"):  # as deploy/sm-show.env; the host renders 4K
+for _k in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS"):  # as services/sm-show.env; the host renders 4K
     os.environ.setdefault(_k, "1")
 os.environ.setdefault("MKL_NUM_THREADS", "1")
 
