@@ -54,7 +54,9 @@ printf 'STREAM_ARGS="--public-base ws://${SM_TEST_UNSET_HOST}:1"\n' >"$CTL_ENV_D
 check "start refused when an \${VAR} is unset (1)" 1 env -u SM_TEST_UNSET_HOST "$CTL" start stream
 printf 'STREAM_ARGS="--public-base ws://${SM_TEST_HOST}:1"\nSM_TEST_EXTRA=${SM_TEST_HOST}/x\n' >"$CTL_ENV_DIR/sm-stream.env"
 check "start with \${VAR} expanded" 0 env SM_TEST_HOST=10.9.8.7 "$CTL" start stream
-"$CTL" logs stream 50 | grep -q "ws://10.9.8.7:1" && ok "ARGS carried the expanded host" || bad "ARGS expansion"
+# screen flushes the service's output to the log about once a second: poll it (up to ~12 s), don't read it once.
+seen=0; for _ in $(seq 1 24); do "$CTL" logs stream 50 | grep -q "ws://10.9.8.7:1" && { seen=1; break; }; sleep 0.5; done
+(( seen )) && ok "ARGS carried the expanded host" || bad "ARGS expansion"
 check "stop after expansion test" 0 "$CTL" stop stream
 
 # A service whose capability is off: `start all` skips it and says so; `start <it>` is refused (2).
