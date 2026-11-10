@@ -133,14 +133,15 @@ commits anywhere would be stranded on the old history.
    - the Wi-Fi passwords;
    - the network controller's device SSH and admin passwords;
    - the kiosk's login password, and make its SSH key-only.
-2. **Purge**, from any one clone (the laptop is fine):
+2. **Purge, on PC22, straight after its push.** Then nothing new can land on the old history in between. It needs
+   SSH push access to GitHub and `python3 -m venv`; the script installs `git-filter-repo` into a throwaway venv.
    ```bash
    scripts/purge_public_history.sh           # dry run: rewrites a temp mirror and shows what goes
    scripts/purge_public_history.sh --push    # force-pushes the rewritten branches and tags
    ```
    It removes `debug/`, `media-server/maintenance.log`, `wav/` and the TV token files from every commit.
-3. **Re-sync every clone** (PC22, the laptop, anything else). The old commits must never be pushed again. On each
-   machine:
+3. **Re-sync every other clone**: the laptop, and anything else. PC22 needs it too, because the script rewrote a
+   temp mirror, not PC22's checkout. The old commits must never be pushed again. On each machine:
    ```bash
    git status                               # must be clean; commit and push anything first (before step 2!)
    git fetch origin
@@ -150,7 +151,9 @@ commits anywhere would be stranded on the old history.
    Untracked and ignored files (`.env`, `output/`, `logs/`, venvs, `dist/`) are kept. The tracked files come out
    identical, except the purged ones, which were already gone from the tree.
 4. Optionally ask GitHub Support to drop cached views of the old commits.
-5. **Make the repo public again** (Settings › General › Change visibility).
+5. **Make the repo public again**: Settings › General › Change visibility, or
+   `gh repo edit gjbm2/screen-machine --visibility public --accept-visibility-change-consequences`. Then tell the
+   laptop's session to re-sync (step 3) if it hasn't.
 
 ## 6. Optional, later: the Lab gets its own modes
 
