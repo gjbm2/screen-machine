@@ -404,10 +404,11 @@ export default function RoomPage() {
         ? [{ id, name: sc.name || friendlyName(id), session: obs.session }]
         : [];
     });
-  // Each room of several screens: its live state (the card in Look, the scopes for its screens' cards in Screens).
+  // Each room with screens: its live state (the card in Look, the scopes for its screens' cards in Screens). A room of
+  // one screen gets its live card too, so its scene and effect controls sit in Look, as a room of several's do.
   const liveSpecs: RoomLiveSpec[] = room.library
     ? sections
-        .filter((sec) => sec.key !== "_other" && sec.screens.length > 1)
+        .filter((sec) => sec.key !== "_other" && sec.screens.length > 0)
         .map((sec) => ({ room: { id: sec.key, name: sec.title }, members: liveMembers(sec.screens), total: sec.screens.length }))
     : [];
 

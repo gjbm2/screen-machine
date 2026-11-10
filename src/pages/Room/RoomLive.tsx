@@ -32,7 +32,7 @@ interface Shared {
   reportError: (e: unknown) => void;
 }
 
-/** One multi-screen room, as RoomLive takes it. */
+/** One room with screens (one or more), as RoomLive takes it. */
 export interface RoomLiveSpec {
   room: { id: string; name: string };
   /** The room's live screens, in rooms.json order. */
