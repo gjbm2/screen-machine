@@ -18,7 +18,11 @@
             "auto": true
           }
         },
-        "page": true
+        "page": true,
+        "show.mic": {
+          "set": true,
+          "restore": true
+        }
       }
     }
   },
