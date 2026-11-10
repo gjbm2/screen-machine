@@ -1,0 +1,24 @@
+[
+  {
+    "id": "_recent",
+    "name": "Recent",
+    "description": "Recently uploaded images",
+    "icon": "History",
+    "type": "bucket",
+    "has_bucket": true,
+    "headless": true,
+    "hidden": true
+  },
+  {
+    "id": "vj",
+    "name": "VJ screen",
+    "description": "The laptop rig's screen: a browser showing /display/vj",
+    "icon": "Monitor",
+    "type": "screen",
+    "has_bucket": true,
+    "maxwidth": 1920,
+    "maxheight": 1080,
+    "groups": ["studio"],
+    "live": {"enabled": true, "gpu": 0, "profile": "hevc-1080p60", "mask_push": false}
+  }
+]

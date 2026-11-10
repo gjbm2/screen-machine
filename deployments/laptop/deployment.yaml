@@ -1,0 +1,27 @@
+# deployments/laptop/deployment.yaml: the owner's laptop (Greg-Nous-Jan26, WSL). One VJ screen, Art-Net lights on a
+# local LAN (added on the Lights setup page: they land in lights/ here), no image generation. deployments/README.md.
+id: laptop
+name: Laptop rig
+location: {lat: 51.5074, lon: -0.1278}
+default_room: studio
+capabilities:
+  generation: false
+  art_director: false
+  art_tags: false
+  alexa: false
+  tv_power: false
+  kiosk_admin: false
+  alerts: false
+  ngrok: false
+  room: true
+  live: true
+  show: true
+  dot: false
+  dmx: false
+  hue: false
+  rf: false
+  blinds: false
+  sonos: false
+ports: {flask: 5000, overlay_ws: 8765, room: 8700, show_bus: 8701, stream: 8702, show: 8703, dot: 8704}
+host:
+  fonts_dir: /mnt/c/Windows/Fonts
