@@ -29,6 +29,8 @@ dist_next
 __pycache__/
 *.py[cod]
 .env
+.env.*
+!.env.example
 
 
 output/*
@@ -44,7 +46,8 @@ samsungtvws/example/web_interface/images
 *:Zone.Identifier
 # npm is the package manager; keeps the old Lovable bun lockfile from coming back
 bun.lockb
-# TV pairing tokens must never be added again (the two live ones are still tracked; see REFACTOR_PLAN P2)
+# TV pairing tokens must never be added again. They live in ~/.config/screen-machine/samsung/ (moved there by
+# scripts/migrate_deployment.py), and scripts/purge_public_history.sh removes the old copies from history.
 /*-token*.txt
 
 # Local runtime leftovers (22 Oct commit-everything pass)
@@ -61,8 +64,21 @@ bun.lockb
 
 # Never commit: vendor backups and support bundles (a UniFi .unf decrypts with a public key and holds the Wi-Fi
 # passwords), room recordings, logs. Secrets live in .env and ~/.config/screen-machine/ (deployments/README.md).
-debug/
+# /debug/ is the repo root's only: src/components/**/debug/ is app code.
+/debug/
 *.unf
 support-*.tgz
 *:Zone.Identifier
 wav/
+
+# Never commit: secrets anywhere in the tree. Tokens, keys, exported or encrypted key files, the kiosk's login
+# (media-server/local-scripts/.env; also covered by .env above). smconfig.secrets export refuses the repo anyway.
+**/*-token*.txt
+*.token
+*.pem
+*.key
+id_rsa*
+id_ed25519*
+*keys.env
+*.env.gpg
+media-server/local-scripts/.env
