@@ -14,6 +14,14 @@ import smconfig
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
+@pytest.fixture
+def finsbury(monkeypatch):
+    """The tests of finsbury's own facts read finsbury, whichever deployment the run selected: smconfig's calls during
+    the test resolve finsbury (module-level paths are patched by the test that reads one)."""
+    monkeypatch.setenv("SM_DEPLOYMENT", "finsbury")
+    return smconfig.load("finsbury")
+
+
 # -- F1 / F2: the mask route ----------------------------------------------------------------------------------------
 @pytest.fixture
 def client():
@@ -66,9 +74,11 @@ def test_hints_show_on_the_named_room_else_every_room_with_screens(tmp_path, mon
     assert room_hints.hint_screens({"room": "garden"}) == []
 
 
-def test_finsbury_hints_stay_on_the_drawing_room():
+def test_finsbury_hints_stay_on_the_drawing_room(finsbury, monkeypatch):
     from routes import room_hints
-    assert room_hints.hint_screens(room_hints.load_config()) == ["north-screen", "south-screen"]
+    monkeypatch.setattr(room_hints, "ROOMS", finsbury.path("rooms.json"))
+    cfg = room_hints.load_config(finsbury.path("room", "auto_hints.json"))
+    assert room_hints.hint_screens(cfg) == ["north-screen", "south-screen"]
 
 
 # -- F7 / F8: Alexa's room intents ----------------------------------------------------------------------------------
@@ -105,7 +115,7 @@ def test_change_the_scene_moves_each_room_once(room):
         ["south-screen", "north-screen"], ["devtest"], ["loose"]]
 
 
-def test_live_targets_closest_else_default_screens_else_default_room(room, monkeypatch):
+def test_live_targets_closest_else_default_screens_else_default_room(room, finsbury, monkeypatch):
     rc, _ = room
     assert rc.live_targets("devtest") == ["devtest"]
     assert rc.live_targets(["north-screen", "south-screen"]) == ["north-screen", "south-screen"]
@@ -126,6 +136,7 @@ def test_alexa_acts_on_the_default_screens_when_no_device_is_mapped():
 
 # -- F10: the e-ink tags without show_service ----------------------------------------------------------------------
 def test_dot_never_asks_show_when_show_is_off(monkeypatch):
+    pytest.importorskip("freetype")                   # dot_service's renderer (sm-dot's venv has it; the repo's may not)
     import dot_service.__main__ as dot
     real = smconfig.enabled
     monkeypatch.setattr(smconfig, "enabled", lambda c: False if c == "show" else real(c))
@@ -156,10 +167,13 @@ def test_calibration_screen_choice():
         import calibrate
     finally:
         sys.path.pop(0)
-    assert calibrate.CDP_PORTS == {"north": 9222, "south": 9223}          # finsbury's kiosk
-    assert calibrate.pick_screen("south") == "south"
+    kiosk = smconfig.deployment().kiosk                                   # the selected deployment's kiosk, if any
+    assert calibrate.CDP_PORTS == {s["name"]: s["cdp_port"] for s in (kiosk.get("screens") or {}).values()}
+    fins = {s["name"]: s["cdp_port"] for s in smconfig.load("finsbury").kiosk["screens"].values()}
+    assert fins == {"north": 9222, "south": 9223}                          # finsbury's kiosk
+    assert calibrate.pick_screen("south", fins) == "south"
     assert calibrate.pick_screen(None, {"vj": 9222}) == "vj"
     with pytest.raises(SystemExit, match="Pass --screen north or south"):
-        calibrate.pick_screen(None)
+        calibrate.pick_screen(None, fins)
     with pytest.raises(SystemExit, match="No kiosk screens"):
         calibrate.pick_screen(None, {})
