@@ -315,12 +315,12 @@ The sensor must not depend on Flask's legacy :8765 server or on Flask computing 
 
 **room_service computes the mask itself.** The page never sees lux: it receives only final mask values, so no mapping logic moves into the browser.
 - **One implementation, not a fork:** the mapping becomes a pure, shared Python module (no Flask imports, no globals) that room_service uses now and Flask's `compute_mask` can switch to later. Today's Flask code is the reference. The module covers:
-  - **sensor path:** sensor → `target_group` → destinations; the piecewise-linear lux→intensity curve from `routes/data/intensity.json`;
+  - **sensor path:** sensor → `target_group` → destinations; the piecewise-linear lux→intensity curve from `deployments/finsbury/intensity.json`;
   - **colour:** mired interpolation, kelvin→sRGB, the gain against the reference white, `warm_alpha`;
   - **solar fallback** (`_solar_index` with astral, `east_west_bias` power, `day_stretch` gamma, `night_floor`);
   - **per-destination `intensity_cfg`** (`adjust`, lat/lon, per-screen keys);
   - **overrides.**
-- **The same config files stay in use,** reloaded when they change, so the LightSense editor keeps working: `routes/data/intensity.json`, INTENSITY_CFG from `config.py` (read as `compute_mask` does today, or moved to `config/light.json` later), and the `publish-destinations.json` `intensity_cfg` and groups.
+- **The same config files stay in use,** reloaded when they change, so the LightSense editor keeps working: `deployments/finsbury/intensity.json`, INTENSITY_CFG from `config.py` (read as `compute_mask` does today, or moved to `config/light.json` later), and the `publish-destinations.json` `intensity_cfg` and groups.
 - **Golden tests:** the module must reproduce today's `compute_mask` output over a grid of lux values, times of day, destinations and override states, except for smoothing.
 - **Smoothing changes on purpose.** Today's intensity EMA (α = 0.2, `routes/lightsensor.py`) advances on every *read*, from every caller, and its state is shared across screens. Its time constant therefore depends on how many clients poll it. The port replaces it with the time-based filter below;
 - with the DCL §2.6 filter: log-lux; a 0.15 s snap when the reading is more than 0.75 EV away for 2 consecutive samples; otherwise a 2.5 s drift; a deadband; constants in a config file reloaded on change.

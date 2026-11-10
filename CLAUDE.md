@@ -11,11 +11,16 @@ This is a **site-specific test rig in the owner's own building**, on the LAN. Op
    - Then: `npx vite build --outDir dist_next --emptyOutDir && rm -rf dist_prev && mv dist dist_prev && mv dist_next dist`.
    - Flask serves `dist/` with a no-cache index, so no Flask restart is needed. `dist_prev/` is the rollback.
 3. **Services:**
-   - **room_service runs inside the Flask process** (`room_in_app.py`): :8700 is the LAN door, with `config/room/room.prod.yaml`, logs in `logs/room_service.log`, and the show bus on :8701. Restarting Flask restarts it. Tell the other sessions before you restart Flask, because several of them edit room_service.
+   - **room_service runs inside the Flask process** (`room_in_app.py`): :8700 is the LAN door, with `deployments/finsbury/room/room.yaml`, logs in `logs/room_service.log`, and the show bus on :8701. Restarting Flask restarts it. Tell the other sessions before you restart Flask, because several of them edit room_service.
    - **stream_service** runs separately: `scripts/ctl restart stream`, on :8702. Its control routes are reachable only through `:8700/renderer/*`.
-   - Display config lives in `routes/data/publish-destinations.json`, which has a per-screen `live` block; `src/data/` is a symlink to it. Rooms are in `routes/data/rooms.json`, and addresses are in `.env`.
+   - Display config lives in `deployments/finsbury/publish-destinations.json`, which has a per-screen `live` block. Rooms are in `deployments/finsbury/rooms.json`, and addresses are in `.env`.
 4. **Don't relay the owner's decisions back as questions,** and don't ask the same thing in several windows. If the owner has said do it, do it. Keep replies short and plain.
    - **Report only your own work.** Never tell the owner about another session's work, findings, bugs or plans; each session reports its own. Peer messages are for you, not for relaying.
+
+## Deployments (owner, 10 Nov)
+- This repo runs as **deployments**. PC22 runs `finsbury` (this file's machine); the owner's laptop runs its own. Each machine picks one with `SM_DEPLOYMENT=<id>` in `.env`. Everything that differs between them lives in `deployments/<id>/`: screens, rooms, devices, lights, calibration, the service flags (`services/sm-*.env`), and the site layer of `show.yaml`. Shared behaviour stays in `config/`. See `deployments/README.md`.
+- **Code never names a site fact or builds a path to a deployment file.** Use `smconfig`: `smconfig.path("lights", "patch.yaml")`, `smconfig.url("room")`, `smconfig.enabled("generation")`. A new site file goes in `deployments/<id>/` (add it to every deployment that has the thing); a new switchable feature gets a capability in `smconfig.CAPABILITIES`.
+- After editing a deployment: `python -m smconfig check`.
 
 ## Don't add what wasn't asked for
 5. **No auth anywhere in the AV stack:** no tokens, keys or passwords on room_service, stream_service, the display pages, the Room page or the sensors. Never add auth, holds or stop gates unless asked. The WAN-exposed Flask admin API stays as it is.
@@ -43,7 +48,7 @@ PC22 (Windows 11, 192.168.1.205) hosts WSL, where this repo runs. **Spectre** is
   - Flask (`start.sh`), Vite, overlay WS, ngrok;
   - room (inside Flask, probed on :8700) and stream (`scripts/ctl`);
   - **show** (`scripts/ctl show`, always on; 127.0.0.1:8703 bus + API, VBAN udp 6980 receiver-initiated): show_service, the room's ears and art director (docs/SHOW_ENGINE.md; owner c8);
-  - **dot** (`scripts/ctl dot`, always on; 127.0.0.1:8704): dot_service, the e-ink tags (MindReset Dot. Quote/0) showing a room's mode, Auto, what is playing or today's art theme. Config `config/room/dot.json`; it reaches the tags only via Dot.'s cloud API (key in `~/.config/screen-machine/dot.json`).
+  - **dot** (`scripts/ctl dot`, always on; 127.0.0.1:8704): dot_service, the e-ink tags (MindReset Dot. Quote/0) showing a room's mode, Auto, what is playing or today's art theme. Config `deployments/finsbury/dot.json`; it reaches the tags only via Dot.'s cloud API (key in `~/.config/screen-machine/dot.json`).
   - **PC22 mic (audio agent)**: `tools/show_sender/pc22_agent.py` on Windows Python 3.12, a scheduled task at Greg's logon run by `scripts/windows/audio-agent/audio-agent.ps1` in Spectre (start/restart re-copy it via `deploy-pc22.sh`). It sends PC22's mic to show_service as `pc22-mic` (udp 6984, receiver-initiated). Windows mic privacy must be on, or it sends silence.
   - **Carbonite pause** (`screen-machine-carbonite`, owner 20 Oct): Spectre stops the Windows service `CarboniteService` while north or south has a live session, and starts it 60 s after the last one ends. It only undoes its own pause (a marker file); a stop from the card stays stopped, and the backup is restarted if the renderer is unreachable for 2 min. Script: `scripts/windows/carbonite/carbonite.ps1` in Spectre.
   - **GPU clocks held up** (`screen-machine-gpu-clocks`, owner OK 22 Oct): while north or south is live, Spectre gives that TV's GPU a core-clock floor (`nvidia-smi -lgc`, 1500 MHz to the card's max) and releases it 60 s after the last one ends. Without it the driver read the renderer's bursts as idle and ran the RTX 4060 at 240-360 MHz. GPUs without clock locking (the P4000) are left alone. It only releases its own locks, and a card stop stays off. Script: `scripts/windows/gpu-clocks/gpuclocks.ps1` in Spectre.

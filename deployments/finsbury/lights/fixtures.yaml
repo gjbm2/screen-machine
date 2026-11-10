@@ -1,16 +1,16 @@
-# config/room/fixtures.yaml: the room's fixture registry (docs/SHOW_ENGINE.md §9.2; show_service/README.md "Stage 5",
+# deployments/finsbury/lights/fixtures.yaml: the room's fixture registry (docs/SHOW_ENGINE.md §9.2; show_service/README.md "Stage 5",
 # S5.2 is the schema). Owner: screen-machine-c8 (AV_PROGRAMME §11). show_service re-reads it when it changes (mtime,
 # every 2 s); a bad edit keeps the last good registry, and GET /show/api/v1/rig shows the error and problems.
 #
 # EVERY OUTPUT IS OFF (enabled: false) until it is switched on here, so this file changes nothing anyone can see.
 #
 # What lives here and what doesn't:
-#   - The fixtures are exactly the room's existing devices, copied read-only from config/room/patch.yaml (68's), with
+#   - The fixtures are exactly the room's existing devices, copied read-only from deployments/finsbury/lights/patch.yaml (68's), with
 #     the same ids, labels, light ids, screens and placements. zone is each device's screen side (patch.yaml's own
 #     G2 north / G3 south grouping). patch.yaml stays the virtual Maestro's channel layout and room_service's Hue
 #     block until P5; nothing here changes it.
 #   - Roles are not set: a lamp's role comes from its placement (show.yaml lamps.placement_roles).
-#   - Latency comes from config/room/latency.json (10's v2: outputs.<fixture id or output key>.<attribute>). Nothing
+#   - Latency comes from deployments/finsbury/calibration/latency.json (10's v2: outputs.<fixture id or output key>.<attribute>). Nothing
 #     here is a measured number; hand-set latencies stay unset until someone measures them.
 #   - Addresses: no IP in code. An Art-Net node is matched by MAC or short name, with last_ip here. The Hue bridge's
 #     address is patch.yaml hue.host when set (as room does), else the pairing file's (~/.config/screen-machine/hue/<bridge>.json), found by the bridge id.
@@ -28,7 +28,7 @@ outputs:
     enabled: false                          # GO-LIVE STEP (with 68, README S5.12): true here first, then patch.yaml
                                             # hue.streamer: show hands the area over. Until room asks (POST
                                             # /show/api/v1/hue/stream) nothing streams, even when enabled.
-    # Each key left out is read from config/room/patch.yaml's hue block (68's; the one truth until P5 moves it here):
+    # Each key left out is read from deployments/finsbury/lights/patch.yaml's hue block (68's; the one truth until P5 moves it here):
     #   bridge, area, gamma, stop_after_s. Set one here only to make show_service differ from room_service.
     # latency_key: hue                      # latency.json outputs.<key> for the output as a whole (default: this id).
     #                                       # A lamp's own outputs.<fixture id> entry wins over it.

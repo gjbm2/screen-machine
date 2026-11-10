@@ -138,17 +138,38 @@ Run `check` after any edit to a deployment. The test suite runs it for every shi
 3. Describe the screens in `publish-destinations.json`. A screen that goes live needs a `live` block. Then fill in
    `rooms.json`.
 4. Add device files only for devices you have (lights in `lights/`, RF devices in `room/rf/`, and so on).
-5. On the machine: `SM_DEPLOYMENT=<id>` in `.env`, then `python -m smconfig check`.
+5. On the machine, set `SM_DEPLOYMENT=<id>` in `.env`. Also set any `${VAR}` the deployment's `services/*.env`
+   use, usually `SM_LAN_HOST=<this machine's LAN address>`. (`${PORT_<SERVICE>}` needs nothing: it is the
+   manifest's port.) Then run `python -m smconfig check`. It validates the files, the modes against room_service's
+   model, and the `${VAR}`s.
 6. Start as usual: `./start.sh start flask`, then `scripts/ctl start all`, which starts only the switched-on services.
 
 ## Migrating PC22 (finsbury) from the old layout
 
 The old layout kept these files in `config/room/`, `routes/data/` and `deploy/`.
-`smconfig/legacy.py` lists every move. The content of each file is byte-for-byte unchanged, except `show.yaml`. Its
-site keys moved to `deployments/finsbury/show.yaml`, and the layered result equals the old file exactly.
+`smconfig/legacy.py` lists every move. Every moved file holds the same data as before. Some differ in bytes:
 
-**Before you start.** Tell the other sessions. Ask them to commit their work, so `git status` is clean for
-`config/`, `routes/data/` and `deploy/`, and to stop editing those paths. The pull moves files they edit.
+- Comments that named old paths now name the new ones. The app-written files (`*.added.yaml`, `fixtures.setup.yaml`)
+  carry the app's new header.
+- `services/sm-stream.env` says `${SM_LAN_HOST}` where it said `192.168.1.205`. `scripts/ctl` fills that in from
+  `.env`.
+- One declared data edit (`smconfig/legacy.py` `CONTENT_EDITS`): the `devtest` screen's `live` block gains
+  `"fixture": "screen.north"`. This is the fact stream_service used to hard-code.
+- `show.yaml`'s site keys moved to `deployments/finsbury/show.yaml`. The layered result equals the old file exactly.
+
+The migration proves all of this file by file. It compares parsed data, expanded env values, the declared edit and
+the layered `show.yaml`.
+
+**Before you start.**
+
+- Tell the other sessions. Ask them to commit their work, so `git status` is clean for `config/`, `routes/data/` and
+  `deploy/`, and to stop editing those paths. The pull moves files they edit.
+- `git status -- '*-screen-token*.txt'`. If a Samsung token shows as modified (a TV re-paired since the last commit),
+  copy it first: `mkdir -p -m 700 ~/.config/screen-machine/samsung && cp -p north-screen-token.txt
+  ~/.config/screen-machine/samsung/ && chmod 600 ~/.config/screen-machine/samsung/*`. Then delete the repo copy
+  (`rm north-screen-token.txt`): the pull deletes it anyway, and a local deletion doesn't block it. The migration keeps a token that is already in place.
+- `.env` must have `SM_LAN_HOST=192.168.1.205` (it does today), with each key on one line only. The migration checks
+  both.
 
 ```bash
 cd ~/dev/screen-machine
@@ -187,16 +208,20 @@ It stops on a conflict without overwriting anything.
 
 **Then test** (see "Testing after the migration" below).
 
-**Rollback.** `git checkout <the commit before the pull> -- .` won't do, because the files moved. Use:
+**Rollback** (without reset or checkout, per CLAUDE.md rule 9):
 
 ```bash
-git reset --keep ORIG_HEAD            # back to the pre-pull commit (only if nothing was committed since)
-# put the Samsung tokens back in the repo root if TV control is needed:
-cp ~/.config/screen-machine/samsung/*-token*.txt .
-./start.sh restart flask; scripts/ctl restart all
+scripts/ctl stop all; ./start.sh stop flask
+git add -- deployments/                       # commit what the app wrote since the migration, so the revert carries it
+git commit -m "Before rolling back the deployments layout" || true
+git revert --no-edit <first deployments commit>^..<last deployments commit>   # git log --oneline -- smconfig/
+cp -p ~/.config/screen-machine/samsung/*-token*.txt .                       # the old code reads the tokens here
+./start.sh start flask; scripts/ctl start all
 ```
 
-`.env`'s `SM_DEPLOYMENT` line is harmless to the old code.
+The revert moves every file back to its old path, edits included. The migration's report in `logs/migration-*.txt`
+lists any leftover files it moved (the `do move` lines). Move those back by hand. `SM_DEPLOYMENT` in `.env` is
+harmless to the old code.
 
 ### Old path → new path
 

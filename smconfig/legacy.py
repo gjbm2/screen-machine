@@ -53,6 +53,14 @@ SHOW_SITE_KEYS: tuple[str, ...] = (
     "ensemble.players.zones",
 )
 
+# Data edits made to moved files on purpose (new path -> list of (destination id, dotted key, value)). Each one replaces
+# a hard-coded fact the code used to carry (stream_service's DEFAULT_FIXTURES gave devtest north's lights). The
+# migration's proof applies them to the old content before comparing. Comment-only changes and ${VAR} references that
+# expand to the old value need no entry: the proof compares parsed data and expanded env lines.
+CONTENT_EDITS: dict[str, list[tuple[str, str, object]]] = {
+    "publish-destinations.json": [("devtest", "live.fixture", "screen.north")],
+}
+
 # Secrets that used to sit in the repo root (tracked by mistake). They move to ~/.config/screen-machine/<new>.
 SECRET_MOVES: dict[str, str] = {
     "north-screen-token.txt": "samsung/north-screen-token.txt",

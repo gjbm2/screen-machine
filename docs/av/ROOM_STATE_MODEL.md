@@ -33,7 +33,7 @@ The model has five concepts, the same five as aa's reference:
 
 **What changed from the reference:** there are no new owner concepts. The fixes are rules and state fields (§1.3), and `class` is gone because `@name` replaces it. The review (§11) added two options to the existing `on_fail` key (`rollback`, `allow_skipped`) and nothing else the owner has to learn. Two possible concepts are deferred: overlays such as photosafe or guests (S14), and precedence between requesters (S13).
 
-**Files:** the owner's config is `config/room/modes.json` (in git). The runtime state is `~/.local/state/screen-machine/room/state.json` (not in git).
+**Files:** the owner's config is `deployments/finsbury/room/modes.json` (in git). The runtime state is `~/.local/state/screen-machine/room/state.json` (not in git).
 
 ---
 
@@ -176,7 +176,7 @@ Every change names the scenario that needs it. "Concept?" says whether the chang
 
 | File | Holds | In git | Written by |
 |---|---|---|---|
-| `config/room/modes.json` | labels, groups, modes, transition rules | yes | the owner, with 2f |
+| `deployments/finsbury/room/modes.json` | labels, groups, modes, transition rules | yes | the owner, with 2f |
 | `config/room/room.yaml` | service config (LIVE_V1 §3.1) | yes | 2f |
 | `config/room/<subsystem>.json` | device addresses: `rf/blinds.json` (from the spike), `tv.json`, `sonos.json`, `plugs.json`; for a placeholder, optionally its `members` and `values` | yes (no secrets) | the spike, 2f |
 | `~/.config/screen-machine/…` | keys and tokens, mode 0600 | no | each service |
@@ -1370,7 +1370,7 @@ A placeholder takes its `members` and, optionally, `values` (an enum per member)
   - `read(members)` returns `Reading(position, moving=operation in {opening, closing})`. aa saw the cache keep the old position, as `stopped`, during a hand move; whether it shows motion for a move *we* command is untested. **The in-flight mark and the proof-of-arrival rule (§4.4) cover either case, including a blind sent back to where it started** (R1).
   - `apply` sends `WriteDevice {targetPosition: n}` per member, serialised with the hub lock. It waits for each blind to read `stopped` within tolerance of its target **with proof** (honouring `opts.pending`), and returns a per-member Outcome. If a blind is seen stopped somewhere else after the command, it re-sends once.
   - A cancel sends no STOP.
-  - Writes are gated by `writes_enabled` in `config/room/rf/blinds.json`. Until the owner-present `targetPosition` test (aa NOTES §4) the adapter runs `dry_run`.
+  - Writes are gated by `writes_enabled` in `deployments/finsbury/room/rf/blinds.json`. Until the owner-present `targetPosition` test (aa NOTES §4) the adapter runs `dry_run`.
   - **The same test must check re-targeting mid-travel,** which S4 needs. If the hub can't do it, the adapter sends STOP, waits for the stop to show in the cache, then sends the new position.
 - **mirror_ball.** The RM4 Pro, through `python-broadlink`. Prefer a latched relay with separate ON and OFF codes (edge_discrete). With a toggle relay the owner confirms its state once (aa's `assume`, §4.11).
 - **plug.** A placeholder until a plug is chosen. Prefer one that reports its state (level), so DMX power drift is visible and the exit gate (rule 2) can be confirmed.
@@ -1793,7 +1793,7 @@ Pure asyncio with fakes: no I/O, no RF, no hub, no TVs. aa's 50 tests (`test_sce
 | 2 | **Adapters** in `room_service/adapters/`: `screens.py` (the shim, 1 h); `sensor_mask.py` with persistence (0.5 h); `page.py` with persistence (0.5 h, if the page track has landed `policy.timed_reload`, otherwise a placeholder); `placeholder.py` for `mirror_ball`, `plug` and `sonos`, with `members` and `values` from device config (0.3 h); `blinds.py`, reading for real with writes in `dry_run` (1 h); `tv.py`, verify-only over IP Control (1–1.5 h); `log.py` from v1 `LogAction` | 4.5–5 |
 | 3 | **API and events** (§7): rows with ids, `last_transition` and `phase`, `members`, `stored`, `config`, `GET /modes` additions, `source`, the request lock, the 409s, `PUT /room/targets`. Wire into `service.py` and `api.py`. aa's editor endpoints can follow. | 2 |
 
-**The shipped `config/room/modes.json`** is §2.2's example plus `live-test` (§9.2), with `"allow_skipped": true` on both guarded steps until the blinds' writes and the DMX plug exist. Status then shows "guard not enforced" on every live transition, so nobody mistakes the demo for the real guard.
+**The shipped `deployments/finsbury/room/modes.json`** is §2.2's example plus `live-test` (§9.2), with `"allow_skipped": true` on both guarded steps until the blinds' writes and the DMX plug exist. Status then shows "guard not enforced" on every live transition, so nobody mistakes the demo for the real guard.
 
 **The demo at the end of the day:**
 - gallery (now `normal`) ↔ `live-test` on devtest, driven from the Room page through the new coordinator;
@@ -1811,7 +1811,7 @@ Pure asyncio with fakes: no I/O, no RF, no hub, no TVs. aa's 50 tests (`test_sce
 | v1 (`room_service/coordinator.py`, `subsystems.py`) | New |
 |---|---|
 | `parse_modes`, `sequence`, `after:`, the `fired` dict, the plan by sequence groups | `roomstate.model` (transition rules) and `roomstate.Coordinator`. `sequence`/`after` are rejected at load with a pointer to `transitions`. |
-| `config/room/modes.yaml` (`gallery`, `live-test`) | `config/room/modes.json`, shipped in the slice, with §2.2's modes plus `"live-test": {"label": "Live test (devtest)", "extends": "house", "state": {"screens.devtest": {"live": {"scene": "fractal-zoom", "transitions": {"in": "crossfade-3s", "out": "crossfade-3s"}, "profile": "h264-720p30"}}}}`. `gallery` becomes `normal`. **There is no fallback to `modes.yaml`** (R23): it has no `transitions`, which §2.5 requires, and its `unmanaged` keyword is `null` here. `modes.yaml` is deleted when `modes.json` lands. |
+| `config/room/modes.yaml` (`gallery`, `live-test`) | `deployments/finsbury/room/modes.json`, shipped in the slice, with §2.2's modes plus `"live-test": {"label": "Live test (devtest)", "extends": "house", "state": {"screens.devtest": {"live": {"scene": "fractal-zoom", "transitions": {"in": "crossfade-3s", "out": "crossfade-3s"}, "profile": "h264-720p30"}}}}`. `gallery` becomes `normal`. **There is no fallback to `modes.yaml`** (R23): it has no `transitions`, which §2.5 requires, and its `unmanaged` keyword is `null` here. `modes.yaml` is deleted when `modes.json` lands. |
 | `ScreenSubsystem` (one key per screen; `read()` = desired) | `ScreensAdapter`: members = screen ids; `read()` = what is on glass, or `"failed"` (§5.4) |
 | `SensorMaskSubsystem` (`sensor_mask`) | `SensorMaskAdapter`, member `main`, persisted. The selector `sensor_mask` still works, by prefix expansion. |
 | `PlaceholderSubsystem`, `KNOWN_PLACEHOLDERS` | `Placeholder` adapters with members and values from device config (`mirror_ball: [main]`, `plug: [dmx_power]`, `sonos: [lounge.volume, lounge.playback]`, `blinds` from `rf/blinds.json` when the adapter is off) |
@@ -1821,7 +1821,7 @@ Pure asyncio with fakes: no I/O, no RF, no hub, no TVs. aa's 50 tests (`test_sce
 | status `last_transition`, `phase`, step `id` | Kept (§7.1). `started_at`/`finished_at` become ages. |
 
 **LIVE_V1 notes to add (additive, by 2f):**
-- §0 Modes row → `config/room/modes.json`;
+- §0 Modes row → `deployments/finsbury/room/modes.json`;
 - §3 the status and row additions in §7, and the `/room/*` routes with their auth labels;
 - §3.2 a pointer to this spec.
 

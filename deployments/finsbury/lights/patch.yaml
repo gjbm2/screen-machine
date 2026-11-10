@@ -1,4 +1,4 @@
-# config/room/patch.yaml: the virtual DMX devices on MaestroDMX's Art-Net universe (AV_PROGRAMME v1 K2).
+# deployments/finsbury/lights/patch.yaml: the virtual DMX devices on MaestroDMX's Art-Net universe (AV_PROGRAMME v1 K2).
 # room_service/dmx/patch.py documents the format. Not secret. room_service re-reads this file when it changes.
 #
 # Each device is one fixture in Maestro's Patcher, on its Art-Net universe, using the profile of the same

@@ -18,6 +18,8 @@ What --apply does (deployments/README.md, "Migrating PC22", has the whole proced
      config/room/show.yaml is compared after layering (shared file + deployments/<id>/show.yaml == the old file).
   5. `python -m smconfig check` must pass; the effective config is saved to logs/smconfig-<id>-<time>.json.
   6. Outside the repo: reports any Spectre module or boot script that still names an old path.
+  7. This machine: the .env settings the service flags use (${VAR}) are set; every ~/.venvs/sm-* has PyYAML
+     (installs it when missing).
 --verify-live checks the running services answer as the deployment says (health, screens, rooms, capabilities).
 
 Exit codes: 0 ok, 1 a problem (the report says which), 2 bad usage.
@@ -40,7 +42,8 @@ sys.path.insert(0, str(REPO))
 
 import smconfig  # noqa: E402
 from smconfig import check as smcheck  # noqa: E402
-from smconfig.legacy import DIR_MOVE_EXCLUDE, DIR_MOVES, MOVES, SECRET_MOVES, SHOW_SITE_KEYS  # noqa: E402
+from smconfig.legacy import (CONTENT_EDITS, DIR_MOVE_EXCLUDE, DIR_MOVES, MOVES, SECRET_MOVES,  # noqa: E402
+                             SHOW_SITE_KEYS)
 
 SPECTRE = Path("/mnt/c/Users/Greg/OneDrive/dev/local-automation")
 OLD_MARKERS = ("config/room/room.prod.yaml", "routes/data/publish-destinations.json", "routes/data/rooms.json",
@@ -204,6 +207,57 @@ def _get(d, dotted):
     return d
 
 
+def _env_pairs(text: str, expand: bool) -> dict[str, str]:
+    import re as _re
+
+    out = smconfig._parse_env_text(text)
+    if expand:
+        ports = smconfig.deployment().ports
+
+        def sub(m):
+            name = m.group(1)
+            if name.startswith("PORT_") and name[5:].lower() in ports:
+                return str(ports[name[5:].lower()])
+            return smconfig.env(name)
+
+        out = {k: _re.sub(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", sub, v) for k, v in out.items()}
+    return out
+
+
+def _apply_edits(rel: str, data):
+    for dest_id, dotted, value in CONTENT_EDITS.get(rel, []):
+        for d in data if isinstance(data, list) else []:
+            if isinstance(d, dict) and d.get("id") == dest_id:
+                cur = d
+                *parents, last = dotted.split(".")
+                for k in parents:
+                    cur = cur.setdefault(k, {})
+                cur[last] = value
+    return data
+
+
+def same_content(rel: str, before: bytes, p: Path) -> str | None:
+    """Why the new file holds the same data as the old content (None when it does not)."""
+    after = p.read_bytes()
+    if after == before:
+        return "identical"
+    import yaml
+
+    try:
+        if p.suffix == ".json":
+            if _apply_edits(rel, json.loads(before)) == json.loads(after):
+                return "same data" + (" with the declared edits" if rel in CONTENT_EDITS else "; comments differ")
+        elif p.suffix in (".yaml", ".yml"):
+            if yaml.safe_load(before) == yaml.safe_load(after):
+                return "same data; comments differ"
+        elif p.suffix == ".env":
+            if _env_pairs(before.decode(), False) == _env_pairs(after.decode(), True):
+                return "same values once ${VAR}s expand; comments differ"
+    except Exception:  # noqa: BLE001 - a parse failure is a difference
+        return None
+    return None
+
+
 def step_prove(dep: smconfig.Deployment, rev: str | None, rep: Report) -> None:
     rep.head(f"4. Moved files match their old content at {rev or '?'}")
     if not rev:
@@ -219,8 +273,8 @@ def step_prove(dep: smconfig.Deployment, rev: str | None, rep: Report) -> None:
             continue
         if not p.exists():
             rep.bad(f"{new}: missing (it was {old})")
-        elif p.read_bytes() == before:
-            rep.ok(f"{new} == {rev}:{old}")
+        elif why := same_content(new, before, p):
+            rep.ok(f"{new} == {rev}:{old} ({why})")
         else:
             rep.bad(f"{new} differs from {rev}:{old} (git diff {rev}:{old} {p.relative_to(REPO)})")
     # Device files in old directories at rev.
@@ -233,8 +287,8 @@ def step_prove(dep: smconfig.Deployment, rev: str | None, rep: Report) -> None:
             before = git_blob(rev, rel)
             if not p.exists():
                 rep.bad(f"{p.relative_to(REPO)}: missing (it was {rel})")
-            elif p.read_bytes() == before:
-                rep.ok(f"{p.relative_to(REPO)} == {rev}:{rel}")
+            elif why := same_content(str(p.relative_to(dep.dir)), before, p):
+                rep.ok(f"{p.relative_to(REPO)} == {rev}:{rel} ({why})")
             else:
                 rep.bad(f"{p.relative_to(REPO)} differs from {rev}:{rel}")
     before = git_blob(rev, "config/room/show.yaml")
@@ -254,7 +308,7 @@ def step_prove(dep: smconfig.Deployment, rev: str | None, rep: Report) -> None:
                 pass
 
 
-def step_check(dep: smconfig.Deployment, rep: Report) -> None:
+def step_check(dep: smconfig.Deployment, apply: bool, rep: Report) -> None:
     rep.head("5. smconfig check")
     problems, notes = smcheck.check(dep)
     for n in notes:
@@ -263,6 +317,9 @@ def step_check(dep: smconfig.Deployment, rep: Report) -> None:
         rep.bad(p)
     if not problems:
         rep.ok(f"deployment {dep.id} checks clean")
+    if not apply:
+        rep.note("the effective config is saved to logs/ by --apply")
+        return
     logs = REPO / "logs"
     logs.mkdir(exist_ok=True)
     out = logs / f"smconfig-{dep.id}-{_dt.datetime.now().strftime('%Y%m%dT%H%M%S')}.json"
@@ -297,6 +354,49 @@ def step_outside(rep: Report) -> None:
         rep.note(f"a comment names an old path (update when convenient): {c}")
     if not hits:
         rep.ok("no code in Spectre or the boot script uses an old path")
+
+
+VENVS = ("sm-stream", "sm-show", "sm-dot", "sm-show-ml", "sm-piano", "sm-score-ml")
+
+
+def step_machine(dep: smconfig.Deployment, apply: bool, rep: Report) -> None:
+    rep.head("7. This machine: settings and Python environments")
+    import re as _re
+
+    needed = set()
+    for f in sorted(dep.path("services").glob("*.env")) if dep.path("services").is_dir() else []:
+        needed |= set(_re.findall(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", "\n".join(
+            ln for ln in f.read_text().splitlines() if not ln.lstrip().startswith("#"))))
+    needed = {v for v in needed if not (v.startswith("PORT_") and v[5:].lower() in dep.ports)}
+    # A key written twice in .env: the last one wins (as python-dotenv and smconfig read it); room_service's old
+    # reader took the first, so a duplicate could change the hosts room_service allows. Make each key appear once.
+    if smconfig.ENV_FILE.exists():
+        keys = [ln.split("=", 1)[0].strip().removeprefix("export ").strip()
+                for ln in smconfig.ENV_FILE.read_text().splitlines() if "=" in ln and not ln.lstrip().startswith("#")]
+        dups = sorted({k for k in keys if keys.count(k) > 1})
+        if dups:
+            rep.bad(f".env sets {', '.join(dups)} more than once: keep one line each (the last one wins now)")
+        else:
+            rep.ok(".env sets each key once")
+    for var in sorted(needed):
+        if smconfig.env(var):
+            rep.ok(f"{var} is set ({smconfig.env(var)}); the service flags use it")
+        else:
+            rep.bad(f"{var} is not set in .env, and deployments/{dep.id}/services/*.env use it")
+    # Every process imports smconfig, which reads the manifest with PyYAML.
+    for name in VENVS:
+        py = Path.home() / ".venvs" / name / "bin" / "python"
+        if not py.exists():
+            continue
+        r = subprocess.run([str(py), "-c", "import yaml"], capture_output=True)
+        if r.returncode == 0:
+            rep.ok(f"~/.venvs/{name} has PyYAML")
+            continue
+        rep.do(f"install PyYAML into ~/.venvs/{name}")
+        if apply:
+            r = subprocess.run([str(py), "-m", "pip", "install", "-q", "PyYAML"], capture_output=True, text=True)
+            (rep.ok if r.returncode == 0 else rep.bad)(
+                f"~/.venvs/{name}: pip install PyYAML {'done' if r.returncode == 0 else 'failed: ' + r.stderr[-300:]}")
 
 
 def _get_json(url: str, timeout: float = 5.0):
@@ -370,9 +470,16 @@ def main(argv: list[str] | None = None) -> int:
         step_leftovers(dep, a.apply, rep)
         step_secrets(a.apply, rep)
         step_prove(dep, a.from_rev or pre_layout_rev(), rep)
-        step_check(dep, rep)
+        step_check(dep, a.apply, rep)
         step_outside(rep)
+        step_machine(dep, a.apply, rep)
     print(f"\n{'OK' if not rep.problems else f'{rep.problems} problem(s)'}")
+    if a.apply and not a.verify_live:
+        logs = REPO / "logs"
+        logs.mkdir(exist_ok=True)
+        log = logs / f"migration-{dep.id}-{_dt.datetime.now().strftime('%Y%m%dT%H%M%S')}.txt"
+        log.write_text("\n".join(rep.lines) + "\n")
+        print(f"this run's report (what it moved and wrote): {log.relative_to(REPO)}")
     return 1 if rep.problems else 0
 
 

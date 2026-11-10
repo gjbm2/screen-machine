@@ -1,4 +1,4 @@
-# config/room/room.prod.yaml: the PRODUCTION room_service (inside Flask: room_in_app.py, :8700).
+# deployments/finsbury/room/room.yaml: the PRODUCTION room_service (inside Flask: room_in_app.py, :8700).
 # No auth (owner, 14 Oct). A dev or smoke instance uses a temp copy of this file (own state_dir and port).
 stream_service: {url: "http://127.0.0.1:8702"}
 flask: {url: "http://127.0.0.1:5000", ws: "ws://127.0.0.1:8765/"}   # read-only; never send a frame on :8765
@@ -10,10 +10,10 @@ art_page_base: "http://127.0.0.1:5000"
 mask: {deadband_brightness: 0.005, deadband_warm_alpha: 0.002, transition_ms: 200, backstop_s: 1.0,
        drift_interval_s: 0.25, drift_transition_ms: 300, snap_delta_brightness: 0.02}
 ingest: {filter: {snap_ev: 0.25, snap_confirm: 1, drift_tau_s: 0.6}}
-# Screens are defined once, in routes/data/publish-destinations.json: each destination with a "live" block
+# Screens are defined once, in this deployment's publish-destinations.json: each destination with a "live" block
 # ({enabled, gpu, profile, mask_push}) is a room screen. Live and its snapshot take the glass's shape (the page's
 # viewport) at the profile's pixel count; maxwidth x maxheight (the art's bounds) only when no page has reported one.
-# Which room holds what is routes/data/rooms.json. A `screens:` block here would override per screen and field.
+# Which room holds what is this deployment's rooms.json. A `screens:` block here would override per screen and field.
 # Hosts and browser origins come from .env (SM_LAN_HOST, VITE_URL); no addresses here.
 dmx: {enabled: true}
 # A cold renderer GPU compiles its transitions on the first session (~8 s); allow for it.

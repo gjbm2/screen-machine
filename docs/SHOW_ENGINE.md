@@ -168,7 +168,7 @@
 - IPC is latest-value only: a shared-memory seqlock, or localhost UDP.
 - If the brain restarts, show_rt holds the last look and keeps the clock and the lights.
 
-**Startup.** It always runs and starts at boot, unlike the on-demand renderer. It uses `scripts/ctl show`, with `deploy/sm-show.env` and no hold line. Both processes report on one Spectre card.
+**Startup.** It always runs and starts at boot, unlike the on-demand renderer. It uses `scripts/ctl show`, with `deployments/finsbury/services/sm-show.env` and no hold line. Both processes report on one Spectre card.
 
 **Time.** Everything uses CLOCK_MONOTONIC. No slewing NTP daemon runs in WSL: chrony's default slew is 83 333 ppm, and the old chrony fight cost 2 %.
 
@@ -520,7 +520,7 @@ Each output evaluates its look at **`now + L(output, attribute)`**:
 
 **Ground truth for tuning the tracker.** Cross-correlate the source file with the mic recording, which is sub-ms. Beat This! labels are only good to about ±10 ms.
 
-Results go in `config/room/latency.json` v2 (hot-reloaded; schema in `tools/room/latency_cal/README.md`):
+Results go in `deployments/finsbury/calibration/latency.json` v2 (hot-reloaded; schema in `tools/room/latency_cal/README.md`):
 - **`outputs.<output>.<attribute>`** = `{rise: {t10, t50, t90, n}, fall, trim_ms, zero, se_ms, method, measured_at, run_dir}`. `zero` for DMX is "frame sent"; `trim_ms` survives re-runs.
 - **`sources.<stream>`** = `{acoustic_offset_ms, method, measured_at}`.
 
@@ -1185,7 +1185,7 @@ whatever a scene says.
 
 **Later, with the first moving fixture:** pan/tilt, aim at room points, spatial waves.
 
-### 9.2 Fixtures: `config/room/fixtures.yaml` (hot-reloaded)
+### 9.2 Fixtures: `deployments/finsbury/lights/fixtures.yaml` (hot-reloaded)
 
 v1 is hand-edited. An OFL import script and a Rig page come when the first node arrives.
 
@@ -1216,7 +1216,7 @@ fixtures:
 identifies and removes DMX lights through show_service's rig routes (`/show/api/v1/rig/fixtures`, `/types`,
 `/fixtures/{id}/identify`). A light is a name, a type (a generic RGB/RGBW/RGBA/... type, or an OFL type from
 fixtures.yaml), the node's IP, its universe (Port-Address ≥ 1) and a start address, with an optional placement, role
-and zone. The API writes them to `config/room/fixtures.added.yaml` (machine-owned, same schema, checked with the loader
+and zone. The API writes them to `deployments/finsbury/lights/fixtures.added.yaml` (machine-owned, same schema, checked with the loader
 before it is written), which the registry merges under the hand-written fixtures.yaml; the hand file wins on a clash
 and is never written by code. A light's node and Art-Net output are found or made (on), so it sends the moment it is
 registered and works the moment its node is plugged in. room_service's DMX-lights device says which lights follow the
@@ -1443,11 +1443,11 @@ GET    /show/healthz
 | File | Owner (proposed) | Contents |
 |---|---|---|
 | `config/room/vibes.yaml` | c8 | Vibes (§8.1) |
-| `config/room/fixtures.yaml`, `config/room/fixture-types/` | c8 (patch.yaml stays 68's until P5) | §9.2 |
-| `config/room/latency.json` v2 `outputs`, `sources` | 10 (schema, done 15 Oct), c8 (writes its own keys from the photodiode runner) | §5.5 |
+| `deployments/finsbury/lights/fixtures.yaml`, `config/room/fixture-types/` | c8 (patch.yaml stays 68's until P5) | §9.2 |
+| `deployments/finsbury/calibration/latency.json` v2 `outputs`, `sources` | 10 (schema, done 15 Oct), c8 (writes its own keys from the photodiode runner) | §5.5 |
 | `config/llm.yaml` | c8 | task → provider/model list, prices, budgets |
-| `config/room/modes.json` per-mode `autopilot` + top-level `autopilot` | 2f (file), aa (schema), c8 (semantics) | §8.9 |
-| `deploy/sm-show.env` | ca (wiring), c8 (flags) | Sender names, venv paths, `CUDA_VISIBLE_DEVICES=` |
+| `deployments/finsbury/room/modes.json` per-mode `autopilot` + top-level `autopilot` | 2f (file), aa (schema), c8 (semantics) | §8.9 |
+| `deployments/finsbury/services/sm-show.env` | ca (wiring), c8 (flags) | Sender names, venv paths, `CUDA_VISIBLE_DEVICES=` |
 
 ---
 
@@ -1561,7 +1561,7 @@ GET    /show/healthz
 - **ca:**
   - PORTS.md rows for 8703 (`127.0.0.1`) and 6980/udp (WSL socket, receiver-initiated);
   - a `show` entry in `scripts/ctl` (venv `~/.venvs/sm-show`, in `all`, started at boot, no hold line);
-  - `deploy/sm-show.env`;
+  - `deployments/finsbury/services/sm-show.env`;
   - the show card and the PC22 audio-agent card;
   - the CLAUDE.md "Screen Machine cards now" list.
 - **2f:** ~~an AV_PROGRAMME §11 row for c8, and the §4.4a, §6.3 and §11.3 amendments~~ (done 15 Oct). 2f also owns the LIVE_V1 1.2 proposal for bus v2 (send §11.1 when P4 is near). For P2, ping 2f once the API is up on :8703: one announced Flask restart carries the pass-through and the Music card.

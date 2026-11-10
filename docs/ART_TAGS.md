@@ -109,7 +109,7 @@ Every `interval_s` (60 s), one decision:
    mode: nothing.
 2. **Is there an art wish?** It reads show_service `GET :8703/api/v1/look` `direction.art`. If there is none, or it
    is `via: none`: nothing.
-3. **Is a screen thin?** For each of the room's screens (`routes/data/rooms.json`) it counts the **strong matches**
+3. **Is a screen thin?** For each of the room's screens (`deployments/finsbury/rooms.json`) it counts the **strong matches**
    among the gallery's pictures in the screen's bucket (DATE-HEX stills whose sidecar has a prompt and a workflow).
    A strong match is tagged (`status: done`, `auto_ok: true`), has a wished subject and no avoided one, and has a
    wished mood **or** a music fit of 0.7 or more for the genre heard. Fewer than `thin` (24) means thin.

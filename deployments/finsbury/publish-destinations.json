@@ -119,6 +119,7 @@
     ],
     "live": {
       "enabled": true,
+      "fixture": "screen.north",
       "gpu": 1,
       "profile": "hevc-2160p30",
       "mask_push": true,

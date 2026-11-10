@@ -148,8 +148,8 @@ Adding a device means one adapter plus some YAML.
 |---|---|---|
 | **Screens** | level | §3. The first subsystem, built now. |
 | **Sensor mask** | level | `follow` or `suspended`, set per mode (§3.4). |
-| **Mirror ball** | edge (separate codes, preferred) | The radio unit (Amazon UK B083LLLVPN) is a **BroadLink RM4 Pro**: a Wi-Fi IR + RF (433/315 MHz) transmitter that `python-broadlink` controls locally. It only transmits, so the motor needs a 433 MHz receiver; a latched relay with separate ON and OFF codes is preferred. **On the LAN since 15 Oct** at 192.168.1.178 (mac 34:8e:89:b1:5d:b2, devtype 0x520b); unicast from WSL works. Adapter `room_service/adapters/broadlink_rf.py` (screen-machine-d4), device file `config/room/rf/glitterball.json`; it reads the codes live and stays `dry_run` until they are learned, then runs `edge_discrete` (ON + OFF) or `edge_toggle`. Labelled "Glitterball" on the Room page (Drawing room › Effects); spins in Party and Disco. **Blocked on the owner** unlocking the RM4 in the BroadLink app so the codes can be learned. |
-| **Blinds** | **level**, with a position for each blind | Bloc iQ hub at 192.168.1.136 (Dooya/Motion protocol, UDP :32100), driving 13 two-way battery roller blinds. Proven by screen-machine-aa (the spike) on 13 Oct:<br>• unicast request/reply from WSL works (~70 ms);<br>• multicast pushes don't reach WSL, so the adapter polls the hub's cache (no key needed, no RF sent);<br>• no Windows relay is needed.<br>Code: `experiments/rf-spike/rfspike/`. Addresses: `config/room/rf/blinds.json`. Behaviour: §2.5 (D5). |
+| **Mirror ball** | edge (separate codes, preferred) | The radio unit (Amazon UK B083LLLVPN) is a **BroadLink RM4 Pro**: a Wi-Fi IR + RF (433/315 MHz) transmitter that `python-broadlink` controls locally. It only transmits, so the motor needs a 433 MHz receiver; a latched relay with separate ON and OFF codes is preferred. **On the LAN since 15 Oct** at 192.168.1.178 (mac 34:8e:89:b1:5d:b2, devtype 0x520b); unicast from WSL works. Adapter `room_service/adapters/broadlink_rf.py` (screen-machine-d4), device file `deployments/finsbury/room/rf/glitterball.json`; it reads the codes live and stays `dry_run` until they are learned, then runs `edge_discrete` (ON + OFF) or `edge_toggle`. Labelled "Glitterball" on the Room page (Drawing room › Effects); spins in Party and Disco. **Blocked on the owner** unlocking the RM4 in the BroadLink app so the codes can be learned. |
+| **Blinds** | **level**, with a position for each blind | Bloc iQ hub at 192.168.1.136 (Dooya/Motion protocol, UDP :32100), driving 13 two-way battery roller blinds. Proven by screen-machine-aa (the spike) on 13 Oct:<br>• unicast request/reply from WSL works (~70 ms);<br>• multicast pushes don't reach WSL, so the adapter polls the hub's cache (no key needed, no RF sent);<br>• no Windows relay is needed.<br>Code: `experiments/rf-spike/rfspike/`. Addresses: `deployments/finsbury/room/rf/blinds.json`. Behaviour: §2.5 (D5). |
 | **Display page policy** | level, read back from the page's `kiosk.state` | Target `page.<screen>.timed_reload`. The page reloads itself every 4 h (02/06/10/14/18/22h) because of past browser instability and memory leaks.<br>**Owner, 13 Oct late:** hard reloads must not cut across live, so this is mode config, e.g. `false` in live modes and `true` in normal. room_service sends it over the page's control socket (LIVE_V1 §2.1 `policy`).<br>Backstop: the page never reloads mid-live or mid-cut, whatever the config. |
 | Hue, Maestro, Sonos | — | Later this week (§6). |
 
@@ -382,7 +382,7 @@ crossfade-3s:
   - The exit cut is also softer than the entry cut on textured stills: luma mean 3.2 off at `hold_pts`, against 1.1–1.6 at entry, until the next keyframe. screen-machine-04 decides the fix: report `hold_pts` at the first keyframe after the still is exact, or force a keyframe once encoding runs from GPU memory.
 - A late render repeats the previous frame in its slot, so the timeline never shifts.
 
-**Latency, measured 13 Oct** by screen-machine-10 (`tools/room/latency_cal`, south TV; the result is in `config/room/latency.json`):
+**Latency, measured 13 Oct** by screen-machine-10 (`tools/room/latency_cal`, south TV; the result is in `deployments/finsbury/calibration/latency.json`):
 
 | Leg | Value |
 |---|---|
@@ -391,7 +391,7 @@ crossfade-3s:
 | Render → light (the lab's 130 ms capture → presented at 4K60, plus 179 ms) | ≈ 309 ms |
 
 - The leg from "presented" to light covers the TV, the One Connect box and the panel. The panel brightens more slowly than it darkens, probably because of local dimming.
-- For beat-phased visuals later, the renderer draws about 0.28–0.30 s ahead, reading its render-ahead from `config/room/latency.json`, with a ±50 ms trim. Not this week.
+- For beat-phased visuals later, the renderer draws about 0.28–0.30 s ahead, reading its render-ahead from `deployments/finsbury/calibration/latency.json`, with a ±50 ms trim. Not this week.
 - Re-run the calibration (about 35 s, no sudo) after any change in the display chain.
 
 **Safety:**
@@ -625,8 +625,8 @@ screen-machine-2f will send these to the docs' owners once the owner has settled
    | screen-machine-2f | `room_service/` (core, ingest, `live_api.py`), `config/room/` (except below), `src/pages/Room/`, `src/pages/DisplayPage/`, `docs/AV_PROGRAMME.md`, `docs/av/` |
    | screen-machine-04 | `stream_service/`, `config/live/` (since the cut-over on 14 Oct) |
    | screen-machine-aa | `room_service/roomstate/`, `room_service/adapters/` (blinds and devices), `room_service/room_api.py`, `room_service/room_config.py`, `config/room/rf/`, `experiments/rf-spike/` (frozen since 14 Oct) |
-   | screen-machine-68 | `room_service/hue/`, `room_service/dmx/`, `config/room/patch.yaml`, and their wiring: the Art-Net receiver, the show bus on :8701, and the Hue adapter |
-   | screen-machine-10 | `config/room/latency.json`, `tools/room/latency_cal/` (the light relay) |
+   | screen-machine-68 | `room_service/hue/`, `room_service/dmx/`, `deployments/finsbury/lights/patch.yaml`, and their wiring: the Art-Net receiver, the show bus on :8701, and the Hue adapter |
+   | screen-machine-10 | `deployments/finsbury/calibration/latency.json`, `tools/room/latency_cal/` (the light relay) |
    | screen-machine-ca | `scripts/ctl`, `deploy/` wiring, `docs/PORTS.md`, `docs/OPS_CONTROL.md`, the Windows and Spectre rules |
-   | screen-machine-c8 | `show_service/`, `utils/llm/`, `config/room/vibes.yaml`, `config/room/fixtures.yaml`, `config/room/fixture-types/`, `config/llm.yaml`, `docs/SHOW_ENGINE.md` (the show engine: audio in, DSP, the room art director, Art-Net out; since 15 Oct) |
+   | screen-machine-c8 | `show_service/`, `utils/llm/`, `config/room/vibes.yaml`, `deployments/finsbury/lights/fixtures.yaml`, `config/room/fixture-types/`, `config/llm.yaml`, `docs/SHOW_ENGINE.md` (the show engine: audio in, DSP, the room art director, Art-Net out; since 15 Oct) |
    | bd (read-only for everyone else) | `experiments/stream-latency/`; stream_service copies from it and never edits it |

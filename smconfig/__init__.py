@@ -89,11 +89,15 @@ class DeploymentError(RuntimeError):
 # --------------------------------------------------------------------------------------------------------------------
 
 def _read_env_file(path: Path | None = None) -> dict[str, str]:
-    out: dict[str, str] = {}
     try:
-        text = (path or ENV_FILE).read_text()
+        return _parse_env_text((path or ENV_FILE).read_text())
     except OSError:
-        return out
+        return {}
+
+
+def _parse_env_text(text: str) -> dict[str, str]:
+    """KEY=VALUE lines (the .env / services/*.env format: comments, optional quotes, optional `export`)."""
+    out: dict[str, str] = {}
     for line in text.splitlines():
         line = line.strip()
         if not line or line.startswith("#"):
@@ -104,8 +108,8 @@ def _read_env_file(path: Path | None = None) -> dict[str, str]:
         if not sep:
             continue
         v = v.strip()
-        if v[:1] in ("'", '"') and v[-1:] == v[:1] and len(v) >= 2:
-            v = v[1:-1]
+        if v[:1] in ("'", '"') and v.find(v[0], 1) > 0:
+            v = v[1:v.find(v[0], 1)]     # "quoted value"  # a comment after the closing quote is dropped
         else:
             v = v.split(" #", 1)[0].split("\t#", 1)[0].strip()
             if v.startswith("#"):

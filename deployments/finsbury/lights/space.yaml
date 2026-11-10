@@ -1,5 +1,5 @@
-# config/room/space.yaml: the room in metres (docs/LIGHTS.md §3). x east, y north, z up; origin the south-west floor
-# corner. Hand-written; the Lights page's Room map writes config/room/space.added.yaml (merged under this file: this
+# deployments/finsbury/lights/space.yaml: the room in metres (docs/LIGHTS.md §3). x east, y north, z up; origin the south-west floor
+# corner. Hand-written; the Lights page's Room map writes deployments/finsbury/lights/space.added.yaml (merged under this file: this
 # file wins on a clash). show_service re-reads both when they change. Nothing here is measured yet: set the room on the
 # Room map (or here), never guess. Anything set here can't be moved on the page (it shows as fixed), so leave a thing
 # commented while it is placed on the map.
@@ -7,7 +7,7 @@
 # The drawing room as known: the two Frame TVs hang side by side on the SAME wall, the west wall, both FACING EAST
 # (owner, 22 Oct: "they're not on opposite walls ... they are on the same side, facing east"): the south screen at the
 # south end, on the left as you face them, and the north screen at the north end, on the right. The four Hue lamps
-# (owner, 14 Oct; config/room/patch.yaml and fixtures.yaml): "SE is above the south screen and SW opposite it; NE is
+# (owner, 14 Oct; deployments/finsbury/lights/patch.yaml and fixtures.yaml): "SE is above the south screen and SW opposite it; NE is
 # above the north screen and NW opposite it"; the Steinway and the
 # glitterball (room device mirror_ball: its motor turns with the flow, docs/LIGHTS.md §4.4) are in the room. Every
 # measurement below is a commented starting point in <angle brackets>: measure it, or place it on the Room map.

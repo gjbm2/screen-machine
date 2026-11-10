@@ -115,6 +115,22 @@ def check(dep: Deployment) -> tuple[list[str], list[str]]:
     except Exception as e:  # noqa: BLE001
         problems.append(f"show.yaml over config/room/show.yaml: {e}")
 
+    # The room's modes through room_service's own model (when it is importable here): a modes.json that parses but
+    # that room_service would reject (no '* -> *' rule, an unknown mode, a bad default) is a problem, not a surprise
+    # at start-up. Device names are not checked here (no adapters): room_service warns about those itself.
+    modes = dep.path("room", "modes.json")
+    if caps.get("room") and modes.is_file():
+        try:
+            from room_service.roomstate.model import validate as _validate_modes  # noqa: PLC0415
+        except Exception:  # noqa: BLE001 - room_service not importable in this environment: skip, say so
+            notes.append("room/modes.json: not checked against room_service's model (room_service not importable)")
+        else:
+            try:
+                for err in _validate_modes(read_data(modes), []):
+                    problems.append(f"room/modes.json{err.get('path') or ''}: {err.get('message')}")
+            except Exception as e:  # noqa: BLE001
+                problems.append(f"room/modes.json: {e}")
+
     # Cross-references: one fact, one place, and everything that names a screen or room names a real one.
     try:
         ids = [d["id"] for d in destinations(dep)]
@@ -146,6 +162,17 @@ def check(dep: Deployment) -> tuple[list[str], list[str]]:
                     problems.append(f"lights/patch.yaml: device {did!r} names screen {s!r}, which is not a destination")
         except Exception:  # noqa: BLE001 - already reported as a parse problem
             pass
+    # ${VAR}s the service flags use must be set on this machine (scripts/ctl refuses to start a service otherwise).
+    import re
+
+    from . import env as _env
+
+    for f in sorted(dep.path("services").glob("*.env")) if dep.path("services").is_dir() else []:
+        for var in sorted(set(re.findall(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}", "\n".join(
+                ln for ln in f.read_text().splitlines() if not ln.lstrip().startswith("#"))))):
+            if not var.startswith("PORT_") and not _env(var):
+                notes.append(f"services/{f.name} uses ${{{var}}}, which is not set on this machine (.env); "
+                             "scripts/ctl will refuse to start that service until it is")
     for cap in ("generation", "alexa", "tv_power", "kiosk_admin"):
         if not caps.get(cap):
             notes.append(f"{cap}: off")
