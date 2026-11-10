@@ -144,6 +144,34 @@ Run `check` after any edit to a deployment. The test suite runs it for every shi
    model, and the `${VAR}`s.
 6. Start as usual: `./start.sh start flask`, then `scripts/ctl start all`, which starts only the switched-on services.
 
+## Room audio on a WSL machine
+
+show_service runs in WSL and never opens a Windows sound device. A small agent on the Windows side
+(`tools/show_sender/pc22_agent.py`) captures the Windows default input and sends it as a VBAN stream. show_service
+subscribes to every sender its `show.yaml` lists.
+
+- **The deployment** lists the sender in `deployments/<id>/show.yaml`. Use the host alias `windows`, which
+  show_service resolves to the Windows machine its WSL runs on, so there's no fixed address to keep up to date:
+  ```yaml
+  senders:
+    laptop: {hosts: [windows], port: 6984, streams: [room-mic], label: Laptop}
+  ```
+  Name the stream `room-mic` when it is the room's main mic, because Auto listens to `room-mic` first.
+- **Windows needs** Python 3.12 with `py -3.12 -m pip install --user sounddevice numpy`, and microphone access for
+  desktop apps switched on (Settings > Privacy & security > Microphone).
+- **Install:** run `bash tools/show_sender/deploy-pc22.sh` in WSL. Then, once, in an **admin** PowerShell, run
+  `powershell -ExecutionPolicy Bypass -File \\wsl.localhost\Ubuntu\home\<you>\dev\screen-machine\tools\show_sender\windows-setup.ps1`.
+  It sets the firewall (it removes the Block rules Windows adds when its "Allow access" prompt is dismissed, and
+  allows UDP 6984 from WSL only), adds a start-at-logon launcher, and starts the agent.
+- **Check:** `tail /mnt/c/Users/<you>/AppData/Local/screen-machine/audio-agent/agent.log` should say `mic: off
+  (show_service: nothing needs it)` (heard, idle) or `on (subscribed)`. The mic opens only while something needs it
+  (Auto, a mode that follows the music, or AI listening).
+- **Auto's ears in full** also need the ML worker. Build `~/.venvs/sm-show-ml` from `show_service/ml/requirements.txt`,
+  then fetch the models with `python3 tools/show/fetch_models.py`. The one exported model is made by
+  `tools/show/export_onnx.py beat-this-small0` (its docstring has the throwaway venv; that venv also needs PyYAML).
+
+PC22 does the Windows side through Spectre's audio-agent card instead of the script.
+
 ## Migrating PC22 (finsbury) from the old layout
 
 The old layout kept these files in `config/room/`, `routes/data/` and `deploy/`.

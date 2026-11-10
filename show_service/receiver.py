@@ -56,7 +56,8 @@ socket).
 Senders (Stage 3, README S3.10 "the receiver seam"). The list starts as ``cfg.senders``; :meth:`set_senders` (any
 thread; sources.py, from config/room/show.yaml) replaces it at the next tick, and show-dns resolves the new hosts at
 once. A removed sender gets no more SUBSCRIBEs; its streams stay in the registry and go down by the usual rules. A
-sender's ``hosts`` (else ``(host,)``) is an ordered fallback list: every host is resolved; a host "answers" when a
+sender's ``hosts`` (else ``(host,)``) is an ordered fallback list (the alias ``windows`` is the Windows machine
+this WSL runs on: windows_host()): every host is resolved; a host "answers" when a
 packet arrives from its resolved address and port; while some host has answered within ANSWER_FRESH_S, SUBSCRIBE
 goes to the first such host in list order only, otherwise to every resolved host. :meth:`set_priority` (any thread)
 ranks those streams before ``cfg.stream_priority`` (which stays); the usual switch-up rule (3 s) applies.
@@ -299,6 +300,21 @@ def _pct(vals: list) -> Optional[dict]:
 
 def is_test_stream(name: str) -> bool:
     return name in contract.TEST_STREAMS or name.startswith("test-")
+
+
+WINDOWS_HOST = "windows"   # a sender host alias: the Windows machine this WSL runs on (its default gateway)
+
+
+def windows_host(route_file: str = "/proc/net/route") -> str:
+    """The Windows host's address as WSL (NAT mode) sees it: the default route's gateway. It changes when WSL
+    restarts, so a deployment names the alias ``windows`` instead of an address (a laptop has no fixed LAN address,
+    and PC22's LAN address is a fact of that machine). Raises OSError when there is no default route."""
+    with open(route_file) as f:
+        for line in f.readlines()[1:]:
+            parts = line.split()
+            if len(parts) > 2 and parts[1] == "00000000" and parts[2] != "00000000":
+                return socket.inet_ntoa(int(parts[2], 16).to_bytes(4, "little"))
+    raise OSError("no default route (not WSL, or no network)")
 
 
 def sender_hosts(s: contract.Sender) -> tuple[str, ...]:
@@ -978,7 +994,8 @@ class Receiver:
                 if key in errs:                          # a host listed twice
                     continue
                 try:
-                    info = socket.getaddrinfo(h, s.port, socket.AF_INET, socket.SOCK_DGRAM)
+                    target = windows_host() if h == WINDOWS_HOST else h
+                    info = socket.getaddrinfo(target, s.port, socket.AF_INET, socket.SOCK_DGRAM)
                     addr = (str(info[0][4][0]), int(info[0][4][1]))
                     changed |= old_r.get(key) != addr
                     resolved[key], errs[key] = addr, None
