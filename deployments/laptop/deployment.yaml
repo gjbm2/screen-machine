@@ -25,3 +25,4 @@ capabilities:
 ports: {flask: 5000, overlay_ws: 8765, room: 8700, show_bus: 8701, stream: 8702, show: 8703, dot: 8704}
 host:
   fonts_dir: /mnt/c/Windows/Fonts
+  chrome: ~/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome   # the snapshotter's headless Chromium

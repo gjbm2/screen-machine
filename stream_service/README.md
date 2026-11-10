@@ -70,7 +70,7 @@ cd ~/dev/screen-machine
   stops the beats (a breakdown) and jumps to the next section, and shows the synth's tempo next to the beat
   follower's, timing how long the follower takes to re-lock. It goes through `/dev/synth`, which proxies
   show-synth's `GET/POST /v1/control` (see the docstring in `tools/show_synth.py`).
-* Venv: `~/.venvs/sm-stream` (cupy-cuda12x, aiohttp, numpy, pyyaml, pillow, jsonschema, PyNvVideoCodec==2.2.3
+* Venv: `~/.venvs/sm-stream` (cupy-cuda12x[ctk] (the [ctk] extra brings the CUDA headers its kernels compile against; without them the first kernel fails "Failed to find CUDA headers"), aiohttp, numpy, pyyaml, pillow, jsonschema, PyNvVideoCodec==2.2.3
   for the GPU encoder; tests add pytest, pytest-asyncio, playwright). Needs the distro `ffmpeg` (6.1, NVENC API 12)
   on PATH (the ffmpeg encoder, and the GPU encoder's fallback).
 
