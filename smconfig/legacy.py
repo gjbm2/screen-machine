@@ -74,3 +74,24 @@ SECRET_MOVES: dict[str, str] = {
 # The symlink src/data/publish-destinations.json -> routes/data/publish-destinations.json is removed: nothing in
 # src/ imports it, and it made Flask's findfile() see a second copy of the screens.
 REMOVED_LINKS = ("src/data/publish-destinations.json",)
+
+
+def leftovers(root) -> list[tuple[str, str]]:
+    """Files still at an old path under the repo ``root``: (old repo path, its path inside deployments/<id>/). These
+    are MOVES files, and JSON device files under DIR_MOVES (not rf/types/). Symlinks are left out. Nothing reads them
+    now (the deployment's copy is read instead), so an edit there never takes effect; `smconfig check` notes them and
+    scripts/migrate_deployment.py moves them."""
+    from pathlib import Path
+
+    root = Path(root)
+    out = [(old, new) for old, new in MOVES.items() if (root / old).is_file() and not (root / old).is_symlink()]
+    for old_dir, new_dir in DIR_MOVES.items():
+        d = root / old_dir
+        if not d.is_dir():
+            continue
+        for p in sorted(d.rglob("*.json")):
+            rel = p.relative_to(root).as_posix()
+            if p.is_symlink() or not p.is_file() or any(rel == x or rel.startswith(x + "/") for x in DIR_MOVE_EXCLUDE):
+                continue
+            out.append((rel, f"{new_dir}/{p.relative_to(d).as_posix()}"))
+    return out

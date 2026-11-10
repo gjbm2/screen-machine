@@ -43,6 +43,18 @@ WORDING_KEYS = {
 }
 
 
+# The frontend's build-time addresses: `npx vite build` bakes these .env values into dist/. Each one's manifest port,
+# and the capability that needs it (None: always). VITE_API_URL: src/shared/http/client.ts (every API call, the TV
+# pages' masks and files too). VITE_WS_HOST: src/pages/DisplayPage/hooks/useOverlayWebSocket.ts (the TV pages'
+# overlay socket). VITE_ROOM_URL: src/pages/DisplayPage/index.tsx (the TV pages' control socket, which
+# DisplayController opens) and src/pages/Room/api.ts (the Room page).
+FRONTEND_ADDRESSES: dict[str, tuple[str, str | None]] = {
+    "VITE_API_URL": ("flask", None),
+    "VITE_WS_HOST": ("overlay_ws", None),
+    "VITE_ROOM_URL": ("room", "room"),
+}
+
+
 def known_files(dep: Deployment) -> list[str]:
     """Every deployment file smconfig knows of, existing or not, plus any device file in room/rf/."""
     rels = set(MOVES.values()) | {"deployment.yaml", "show.yaml"}
@@ -223,6 +235,55 @@ def _check_rooms(dep: Deployment, rms: dict, caps: dict, problems: list[str], no
                          "lights still play the show's look")
 
 
+def _old_path_notes(dep: Deployment, notes: list[str]) -> None:
+    """A file still at a pre-deployments path (smconfig/legacy.py): nothing reads it, so a session or tool that follows
+    an old note and edits it changes nothing. A note, never a problem: it doesn't stop anything."""
+    from . import REPO_ROOT    # read at call time (tests point it elsewhere)
+    from .legacy import leftovers
+
+    found = leftovers(REPO_ROOT)
+    if found:
+        files = "; ".join(f"{old} (now deployments/{dep.id}/{new})" for old, new in found)
+        notes.append(f"files at old paths: {files}. Nothing reads them any more, so an edit there never takes "
+                     f"effect. `.venv/bin/python scripts/migrate_deployment.py --deployment {dep.id}` lists them, and "
+                     "--apply moves each one (or removes it when the deployment's copy is the same)")
+
+
+def _frontend_notes(dep: Deployment, caps: dict, notes: list[str]) -> None:
+    """The frontend's build-time addresses (FRONTEND_ADDRESSES) are in .env and use the manifest's ports. Notes only.
+    Skipped when this machine's .env names another deployment."""
+    from urllib.parse import urlsplit
+
+    from . import env as _env
+
+    selected = _env("SM_DEPLOYMENT")
+    if selected and selected != dep.id:
+        return
+    missing = []
+    for name, (svc, cap) in FRONTEND_ADDRESSES.items():
+        if cap and not caps.get(cap):
+            continue
+        value = _env(name)
+        if not value:
+            missing.append(name)
+            continue
+        try:
+            got = urlsplit(value).port
+        except ValueError:
+            notes.append(f".env: {name} has a port that isn't a number; the app is built with it (npx vite build)")
+            continue
+        want = dep.ports[svc]
+        if got is not None and got != want:
+            notes.append(f".env: {name} uses port {got}, but deployment.yaml's ports.{svc} is {want}. The app is built "
+                         f"with it (npx vite build): make them agree and rebuild, unless something forwards {got} to "
+                         f"{want}")
+    if missing:
+        it = "it" if len(missing) == 1 else "them"
+        notes.append(f".env lacks {_and(missing)}. The app is built with {it} (npx vite build), and without {it} the "
+                     "TV pages and the Room page can't reach this machine's services. deployments/README.md › "
+                     f"\"Setting up a new deployment\" lists {it}; rebuild after setting {it}")
+
+
 def check(dep: Deployment) -> tuple[list[str], list[str]]:
     """(problems, notes). A deployment with problems must not be started."""
     problems: list[str] = []
@@ -366,6 +427,8 @@ def check(dep: Deployment) -> tuple[list[str], list[str]]:
             if not var.startswith("PORT_") and not _env(var):
                 notes.append(f"services/{f.name} uses ${{{var}}}, which is not set on this machine (.env); "
                              "scripts/ctl will refuse to start that service until it is")
+    _frontend_notes(dep, caps, notes)
+    _old_path_notes(dep, notes)
     for cap in ("generation", "alexa", "tv_power", "kiosk_admin"):
         if not caps.get(cap):
             notes.append(f"{cap}: off")

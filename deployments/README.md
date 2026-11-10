@@ -247,8 +247,17 @@ Run `check` after any edit to a deployment. The test suite runs it for every shi
 4. Add device files only for devices you have (lights in `lights/`, RF devices in `room/rf/`, and so on).
 5. On the machine, set `SM_DEPLOYMENT=<id>` in `.env`. Also set any `${VAR}` the deployment's `services/*.env`
    use, usually `SM_LAN_HOST=<this machine's LAN address>`. (`${PORT_<SERVICE>}` needs nothing: it is the
-   manifest's port.) Then run `python -m smconfig check`. It validates the files, the modes against room_service's
-   model, and the `${VAR}`s.
+   manifest's port.) Then set the app's addresses. `npx vite build` bakes them into the TV pages and the Room page,
+   so rebuild after changing one. `<host>` is the address the TVs and browsers reach this machine on, and each port
+   is the manifest's:
+   - `VITE_API_URL=http://<host>:<ports.flask>/api`: the app's API (the TV pages' masks and pictures too);
+   - `VITE_WS_HOST=ws://<host>:<ports.overlay_ws>`: the TV pages' overlay socket;
+   - `VITE_ROOM_URL=http://<host>:<ports.room>`: room_service, for the TV pages' control socket and the Room page
+     (only with `room` on).
+
+   `.env.example` has the other settings. Then run `python -m smconfig check`. It validates the files, the modes
+   against room_service's model, and the `${VAR}`s. It also notes any of these addresses that is missing or on
+   another port.
 6. Run `python -m smconfig.secrets check` and add what it says is missing (next section).
 7. Start as usual: `./start.sh start flask`, then `scripts/ctl start all`, which starts only the switched-on services.
 
@@ -415,6 +424,9 @@ harmless to the old code.
 These stay where they were, shared by every deployment: `config/room/show.yaml` (tuning), `config/room/vibes.yaml`,
 `config/room/rf/types/`, `config/room/fixture-types/`, `config/live/*`, `config/llm.yaml`, `config/art_tags.yaml`,
 `config/piano/`, and `routes/data/*` templates.
+
+A file that turns up at an old path later (a session or tool following an old note, say) is read by nothing, so its
+edits never take effect. `smconfig check` notes each one, and the migration's plan and `--apply` move it.
 
 ## Testing after the migration
 

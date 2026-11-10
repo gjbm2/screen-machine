@@ -343,3 +343,92 @@ def test_check_notes_rooms_sharing_modes_and_lights_outside_the_show(fake_deploy
     assert problems == [], problems
     assert any("'back' is outside the show" in n and "still play the show's look" in n for n in notes), notes
     assert smcheck.dump(smconfig.deployment())["rooms"]["back"]["show"] is False
+
+
+# -- notes about this machine: files at old paths, and the frontend's build-time addresses ------------------------------
+
+def _old_path_notes(notes):
+    return [n for n in notes if n.startswith("files at old paths")]
+
+
+def test_check_notes_files_at_old_paths(fake_deployments, monkeypatch, tmp_path):
+    root = tmp_path / "repo"
+    (root / "config" / "room" / "rf" / "types").mkdir(parents=True)
+    (root / "config" / "room" / "modes.json").write_text("{}")                  # a session followed an old note
+    (root / "config" / "room" / "rf" / "lamp.json").write_text("{}")            # an app-written device, old dir
+    (root / "config" / "room" / "rf" / "notes.txt").write_text("x")             # not JSON: not a device file
+    (root / "config" / "room" / "rf" / "types" / "lamp.json").write_text("{}")  # shared types stay there
+    (root / "routes" / "data").mkdir(parents=True)
+    (root / "routes" / "data" / "rooms.json").symlink_to(root / "config" / "room" / "modes.json")   # a link: skipped
+    monkeypatch.setenv("SM_DEPLOYMENT", "alpha")
+    before, _ = smcheck.check(smconfig.deployment())
+    monkeypatch.setattr(smconfig, "REPO_ROOT", root)
+    problems, notes = smcheck.check(smconfig.deployment())
+    assert problems == before, problems                                         # a note, never a problem
+    assert _old_path_notes(notes) == [
+        "files at old paths: config/room/modes.json (now deployments/alpha/room/modes.json); config/room/rf/lamp.json "
+        "(now deployments/alpha/room/rf/lamp.json). Nothing reads them any more, so an edit there never takes effect. "
+        "`.venv/bin/python scripts/migrate_deployment.py --deployment alpha` lists them, and --apply moves each one "
+        "(or removes it when the deployment's copy is the same)"]
+    for p in ((root / "config" / "room" / "modes.json"), (root / "config" / "room" / "rf" / "lamp.json")):
+        p.unlink()
+    assert _old_path_notes(smcheck.check(smconfig.deployment())[1]) == []
+
+
+def test_this_checkout_has_no_files_at_old_paths():
+    from smconfig.legacy import leftovers
+
+    assert leftovers(REPO) == []
+
+
+def _frontend(fake_deployments, monkeypatch, tmp_path, env_text: str, room: bool = True, selected: str = "alpha"):
+    m = fake_deployments / "alpha" / "deployment.yaml"
+    m.write_text(m.read_text().replace("capabilities: {room: true, ", "capabilities: {")
+                 .replace("capabilities: {", "capabilities: {room: true, " if room else "capabilities: {"))
+    smconfig._cache.clear()
+    f = tmp_path / "frontend.env"
+    f.write_text(env_text)
+    monkeypatch.setattr(smconfig, "ENV_FILE", f)
+    for k in ("VITE_API_URL", "VITE_WS_HOST", "VITE_ROOM_URL"):
+        monkeypatch.delenv(k, raising=False)
+    monkeypatch.setenv("SM_DEPLOYMENT", selected)
+    dep = smconfig.load("alpha")
+    assert dep.enabled("room") is room
+    problems, notes = smcheck.check(dep)
+    assert not [p for p in problems if "VITE_" in p], problems                 # notes only, never a problem
+    return [n for n in notes if "VITE_" in n]
+
+
+GOOD = ("VITE_API_URL=http://203.0.113.5:5000/api   # Backend API URL\nVITE_WS_HOST=ws://203.0.113.5:8765\n"
+        "VITE_ROOM_URL=http://192.0.2.10:9700\n")                                # alpha's room port is 9700
+
+
+def test_frontend_addresses_that_agree_say_nothing(fake_deployments, monkeypatch, tmp_path):
+    assert _frontend(fake_deployments, monkeypatch, tmp_path, GOOD) == []
+    no_port = GOOD.replace("http://203.0.113.5:5000/api", "https://screen.example/api")   # a proxy's default port
+    assert _frontend(fake_deployments, monkeypatch, tmp_path, no_port) == []
+
+
+def test_frontend_address_on_another_port(fake_deployments, monkeypatch, tmp_path):
+    notes = _frontend(fake_deployments, monkeypatch, tmp_path, GOOD.replace(":9700", ":8700"))
+    assert notes == [".env: VITE_ROOM_URL uses port 8700, but deployment.yaml's ports.room is 9700. The app is built "
+                     "with it (npx vite build): make them agree and rebuild, unless something forwards 8700 to 9700"]
+    notes = _frontend(fake_deployments, monkeypatch, tmp_path, GOOD.replace(":8765", ":x"))
+    assert notes == [".env: VITE_WS_HOST has a port that isn't a number; the app is built with it (npx vite build)"]
+
+
+def test_frontend_addresses_missing(fake_deployments, monkeypatch, tmp_path):
+    notes = _frontend(fake_deployments, monkeypatch, tmp_path, "VITE_API_URL=http://h:5000/api\n")
+    assert len(notes) == 1 and notes[0].startswith(".env lacks VITE_WS_HOST and VITE_ROOM_URL. The app is built "
+                                                   "with them (npx vite build)")
+    assert "Setting up a new deployment" in notes[0]
+    notes = _frontend(fake_deployments, monkeypatch, tmp_path, "VITE_API_URL=http://h:5000/api\n"
+                      "VITE_WS_HOST=ws://h:8765\n", room=False)                 # room off: no VITE_ROOM_URL needed
+    assert notes == []
+
+
+def test_frontend_addresses_of_another_deployments_machine_are_not_checked(fake_deployments, monkeypatch, tmp_path):
+    (fake_deployments / "beta").mkdir()
+    (fake_deployments / "beta" / "deployment.yaml").write_text("id: beta\n")
+    assert _frontend(fake_deployments, monkeypatch, tmp_path, "", selected="beta") == []
+    assert _frontend(fake_deployments, monkeypatch, tmp_path, "", selected="alpha") != []
