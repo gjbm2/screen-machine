@@ -63,6 +63,8 @@ ALLOWED: dict[str, tuple[set[str], str]] = {
                                            "worked examples in finsbury's Alexa prompt for the LLM"),
     "smconfig/legacy.py": ({"devtest", "screen.north"}, "the migration's declared edit to finsbury's own file"),
     "scripts/manual/manual_ws_overlay_client.py": ({"devtest"}, "a hand-run test client aimed at the test screen"),
+    "show_service/static/dsp_monitor.html": ({"devtest"}, "the dev page opens on finsbury's test screen as before; "
+                                                          "?screen= picks any other"),
 }
 
 # Raw reads of the shared show.yaml that stay, with why.
