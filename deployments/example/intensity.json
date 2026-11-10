@@ -1,0 +1,4 @@
+{
+  "_comment": "Light sensor -> screens group and the lux curve (routes/lightsensor.py). No sensor here: the screens follow the solar curve.",
+  "sensor_mappings": {}
+}

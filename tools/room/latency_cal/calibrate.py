@@ -24,7 +24,7 @@ What one run does:
   6. Analysis: rebuild the sensor's own measurement events from the repeated reports,
      estimate its integration window from the partial measurements, find each pulse's
      10/50/90 % crossings on the box clock, and write a run directory plus
-     config/room/latency.json.
+     deployments/<id>/calibration/latency.json.
 
 The glass leg is timed entirely on the box's clock (CLOCK_REALTIME: Python time.time_ns()
 for sensor reports, Date.now() in Chrome), so the network does not enter it. The network
@@ -54,17 +54,24 @@ import websockets
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.abspath(os.path.join(HERE, "..", "..", ".."))
+if REPO not in sys.path:
+    sys.path.insert(0, REPO)
+import smconfig  # noqa: E402  (the deployment: SM_DEPLOYMENT)
+
 RUNS_DIR = os.path.join(HERE, "runs")
-LATENCY_JSON = os.path.join(REPO, "config", "room", "latency.json")
-ROOM_API = "http://127.0.0.1:8700/api/v1"      # --path live: room_service puts the screen live
-STREAM_API = "http://127.0.0.1:8702/api"       # ...and stream_service's session takes the flips
+LATENCY_JSON = str(smconfig.path("calibration", "latency.json"))
+ROOM_API = smconfig.url("room") + "/api/v1"     # --path live: room_service puts the screen live
+STREAM_API = smconfig.url("stream") + "/api"    # ...and stream_service's session takes the flips
 LIVE_SCENE = "cal-flash"                       # stream_service/plugins/sources/cal_flash.py
 LIVE_LEAD_S = 0.4                              # each flip is scheduled this far after its command
 STREAM_LOG = os.path.expanduser("~/.local/state/screen-machine/logs/stream_service.log")   # cal_flash logs each flip
 
 DEFAULT_HOST = "gjbm2@192.168.1.10"          # kiosk box, wired (enp1s0)
-FALLBACK_HOST = "gjbm2@192.168.1.92"         # the box's Wi-Fi address, used only for cleanup retries
-CDP_PORTS = {"north": 9222, "south": 9223}
+_KIOSK = smconfig.deployment().kiosk           # deployment.yaml's kiosk block
+# the box's Wi-Fi address, used only for cleanup retries; None when the deployment's kiosk block names no user/host
+FALLBACK_HOST = (f"{_KIOSK['user']}@{_KIOSK['host']}" if _KIOSK.get("user") and _KIOSK.get("host") else None)
+CDP_PORTS = {s["name"]: int(s["cdp_port"]) for s in (_KIOSK.get("screens") or {}).values()
+             if s and s.get("name") and s.get("cdp_port")}   # north 9222, south 9223
 BOX_DIR = "~/latency_cal"
 BOX_PY = "~/.venv/bin/python"
 RELAY_UNIT = "light-relay"
@@ -372,6 +379,9 @@ async def remove_overlay(cdp, args):
         except BaseException as exc:                  # noqa: BLE001 — cleanup must continue
             log(f"overlay removal over the run's CDP link failed ({exc!r}); retrying")
     for host in (args.host, FALLBACK_HOST):
+        if not host:
+            log("no Wi-Fi fallback host to retry over (the deployment's kiosk block has no user/host)")
+            continue
         tunnel = None
         try:
             tunnel = Tunnel(host, CDP_PORTS[args.screen])
@@ -983,10 +993,26 @@ def probe(args):
         print(res.stderr, file=sys.stderr)
 
 
+def pick_screen(screen, ports=None):
+    """The screen to take over: --screen, else the kiosk's only screen. No kiosk screens (a site without the kiosk box,
+    whose light sensor this tool also needs), or several and none named: exit with a clear message, never a KeyError."""
+    ports = CDP_PORTS if ports is None else ports
+    if not ports:
+        sys.exit("No kiosk screens to calibrate: this deployment's deployment.yaml has no kiosk.screens with a cdp_port. "
+                 "This tool drives the kiosk box's Chrome and its light sensor.")
+    if screen:
+        return screen
+    if len(ports) == 1:
+        return next(iter(ports))
+    sys.exit(f"Which screen? Pass --screen {' or '.join(ports)}.")
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--host", default=DEFAULT_HOST)
-    ap.add_argument("--screen", choices=list(CDP_PORTS), default="south")
+    ap.add_argument("--screen", choices=list(CDP_PORTS) or None,
+                    help="the kiosk screen to calibrate (deployment.yaml kiosk.screens names); "
+                         "may be left out when the kiosk has only one")
     ap.add_argument("--path", choices=["dom", "live"], default="dom",
                     help="dom: a page overlay (the TV's own share); live: the cal-flash scene through the live stream "
                          "(renderer → photon end to end)")
@@ -1015,7 +1041,7 @@ def main():
     ap.add_argument("--probe-seconds", type=float, default=3.0)
     ap.add_argument("--reanalyse", metavar="RUN_DIR")
     ap.add_argument("--update-latest", action="store_true",
-                    help="with --reanalyse: also write the result to config/room/latency.json")
+                    help="with --reanalyse: also write the result to the deployment's calibration/latency.json")
     args = ap.parse_args()
 
     if args.reanalyse:
@@ -1027,6 +1053,7 @@ def main():
     if args.sensor_modes:
         sensor_modes(args)
         return
+    args.screen = pick_screen(args.screen)
     if args.jitter < 0 or args.interval - args.jitter < MIN_INTERVAL_S:
         sys.exit(f"photosafe: need jitter ≥ 0 and interval − jitter ≥ {MIN_INTERVAL_S} s")
     if args.watchdog_s < args.interval + args.jitter + 5:

@@ -13,9 +13,12 @@ import { Switch } from "@/components/ui/switch";
 import type { RoomApi } from "./api";
 import { Spinner } from "./bits";
 import { NoteLine, useSend, useShowState, type ShowFeed } from "./MusicCard";
+import { dmxStates } from "./lightStates";
 import { CARD_CLASS } from "./theme";
 import type { FixturesView, RoomStatus } from "./types";
 import type { NewLogEntry } from "./useRoomConnection";
+
+export { lightsFollow } from "./lightStates";
 
 /** A light's state in the summary: [plural, singular] verb phrase, in the order the summary lists them. */
 const STATES: Record<string, [string, string]> = {
@@ -34,19 +37,6 @@ const HUE_STATE: Record<string, keyof typeof STATES> = {
   off: "off",
   taken_over: "taken",
 };
-
-/** The DMX lights' believed values (status.subsystems.light: "dmx" | "off" | {hex, bri}), by light id. */
-function dmxStates(status: RoomStatus | null | undefined, only?: (id: string) => boolean): string[] {
-  const believed = (status?.subsystems as Record<string, { believed?: unknown }> | undefined)?.light?.believed;
-  if (!believed || typeof believed !== "object") return [];
-  return Object.entries(believed as Record<string, unknown>).flatMap(([id, v]) => {
-    if (only && !only(id)) return [];
-    if (v === "dmx") return ["follow"];
-    if (v === "off") return ["off"];
-    if (v && typeof v === "object") return ["on"];
-    return [];
-  });
-}
 
 /**
  * The Lights fold's summary: the lights by what they're doing. `view`: the fixtures view (null while loading);
@@ -70,12 +60,6 @@ export function lightsWords(view: FixturesView | null, hueMissing: boolean, stat
       return `${n}${i === 0 ? ` ${noun(n)}` : ""} ${n === 1 ? one : many}`;
     });
   return parts.join(" · ");
-}
-
-/** Whether any lamp or DMX light is set to follow the music (following, or waiting for it): the look shows on it. */
-export function lightsFollow(view: FixturesView | null, status: RoomStatus | null): boolean {
-  const hue = (view?.enabled ? view.fixtures : []).some((f) => f.kind === "hue" && f.control === "dmx");
-  return hue || dmxStates(status).includes("follow");
 }
 
 /** House lights and Lights low: two switches for every lamp at once (show_service's own actions). */

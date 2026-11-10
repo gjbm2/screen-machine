@@ -1090,6 +1090,25 @@ def test_follow_values_show_the_house_state_instead_of_the_look():
     assert inten(e.evaluate("o", 10.3, DMX_CAPS), "lamp.2") == 1.0
 
 
+def test_the_lamps_brightness_scales_every_following_lamp_and_nothing_else():
+    """Audit RS-4 (show side of brightness.lamps): set_level multiplies looks.master on the lamps that follow the look;
+    a follow colour and identify are as they were."""
+    box = {"look": look(), "f": feats(10.0)}
+    e = LookEngine(palette_fn=lambda t: box.get("pal"), look_fn=lambda: box["look"], features_fn=lambda: box["f"],
+                   clock=SnapClock(anchor=10.0, period=0.5), light_scenes=False)
+    assert e.configure({"layers": []}, lamps_rig(3, output="o")) == []
+    box["pal"] = {f"lamp.{i}": (0.0, 0.0, 1.0) for i in range(3)}
+    full = inten(e.evaluate("o", 10.0, DMX_CAPS), "lamp.0")
+    assert full > 0.0 and e.level() == 1.0 and e.lamp_count() == 3
+    e.set_follow({"lamp.1": {"hex": "#FF8000", "bri": 50}})
+    assert e.set_level(0.4) == 0.4
+    fr = e.evaluate("o", 10.1, DMX_CAPS)
+    assert inten(fr, "lamp.0") == pytest.approx(full * 0.4) and inten(fr, "lamp.1") == pytest.approx(0.5)
+    assert e.set_level(7) == 1.0 and e.set_level(-1) == 0.0
+    with pytest.raises(ValueError):
+        e.set_level(float("nan"))
+
+
 def test_a_follow_colour_still_rises_through_the_hue_rise_limit():
     e = LookEngine(palette_fn=lambda t: {"lamp.0": (0.0, 0.0, 0.0)}, light_scenes=False)
     assert e.configure({"layers": []}, lamps_rig(1)) == []

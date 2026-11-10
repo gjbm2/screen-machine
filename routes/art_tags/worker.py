@@ -17,13 +17,14 @@ import threading
 import time
 from typing import Any, Callable, Optional
 
+import smconfig
 from routes.art_tags import lexicon, sidecar
 
 FIRST_SWEEP_S = 60.0
 BACKOFF_MIN_S, BACKOFF_MAX_S = 30.0, 1800.0
 PAUSE_S = 3600.0
 COVERAGE_TTL_S = 60.0
-PRIORITY_BUCKETS = ("north-screen", "south-screen", "devtest")
+PRIORITY_BUCKETS = tuple(smconfig.live_screens())   # the deployment's live screens, in file order
 _STAMP_RX = re.compile(r"^\d{8}-\d{6}")
 
 
@@ -63,7 +64,7 @@ def _skip_buckets() -> set:
 
 
 def scan(skip: Optional[set] = None) -> list[dict]:
-    """Every tagging candidate, in sweep order: north-screen, south-screen, devtest, then the other buckets
+    """Every tagging candidate, in sweep order: the live screens (PRIORITY_BUCKETS), then the other buckets
     alphabetically; within a bucket favourites first, then newest first. One dict per media file named in a bucket's
     sequence that exists: {bucket, file, fav, status}."""
     base = sidecar.output_base()

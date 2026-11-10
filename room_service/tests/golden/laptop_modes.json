@@ -1,0 +1,93 @@
+{
+ "default": "gallery",
+ "error": null,
+ "modes": {
+  "gallery": {
+   "description": "",
+   "icon": null,
+   "label": "Normal",
+   "on_enter": [],
+   "on_exit": [],
+   "on_room_page": "main",
+   "state": {
+    "page": {
+     "vj.timed_reload": true
+    },
+    "screens": {
+     "vj": "art"
+    },
+    "sensor_mask": "follow"
+   },
+   "targets": {
+    "page.vj.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": true,
+     "verb": "set"
+    },
+    "screens.vj": {
+     "policy": "respect",
+     "restore": false,
+     "value": "art",
+     "verb": "set"
+    },
+    "sensor_mask.main": {
+     "policy": "respect",
+     "restore": false,
+     "value": "follow",
+     "verb": "set"
+    }
+   },
+   "voice": ""
+  },
+  "live": {
+   "description": "",
+   "icon": null,
+   "label": "Live",
+   "on_enter": [],
+   "on_exit": [],
+   "on_room_page": "main",
+   "state": {
+    "page": {
+     "vj.timed_reload": true
+    },
+    "screens": {
+     "vj": {
+      "live": {
+       "auto": true
+      }
+     }
+    },
+    "show": {
+     "mic": true
+    }
+   },
+   "targets": {
+    "page.vj.timed_reload": {
+     "policy": "respect",
+     "restore": false,
+     "value": true,
+     "verb": "set"
+    },
+    "screens.vj": {
+     "policy": "respect",
+     "restore": false,
+     "value": {
+      "live": {
+       "auto": true
+      }
+     },
+     "verb": "set"
+    },
+    "show.mic": {
+     "policy": "respect",
+     "restore": true,
+     "value": true,
+     "verb": "set+restore"
+    }
+   },
+   "voice": ""
+  }
+ },
+ "revision": "fccfb55f11a5"
+}

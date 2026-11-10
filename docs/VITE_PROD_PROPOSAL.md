@@ -31,7 +31,7 @@ Two mandatory riders ship with this change: `DEBUG=False` and a production WSGI 
 |---|---|---|
 | Kiosk Chrome ×2 (TV displays) | `http://95.141.21.170:8000/display/{north,south}-screen` ([kiosk-loop.sh:30-31](../media-server/remote-scripts/kiosk-loop.sh#L30-L31)) | Windows `netsh` portproxy `:8000` → WSL `:8080` = **Vite dev server** |
 | Dev browser | `http://<host>:8080` | Vite dev server |
-| Alexa webhook, remote | ngrok `ngrok-domain.example` | Flask `:5000` |
+| Alexa webhook, remote | ngrok `<ngrok-domain>` | Flask `:5000` |
 | Overlay/generation websockets | `ws://95.141.21.170:8765` (baked into bundle) | `overlay_ws_server.py` |
 
 So **production traffic is already flowing through the dev server** — the TVs work only because Vite serves the entire project root off disk, which is what makes relative `/output/...` URLs resolve.

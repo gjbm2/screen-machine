@@ -1,0 +1,13 @@
+{
+ "intensity.json": "a612c684be020ff22ce5059827b46b8180625375",
+ "lights/patch.yaml": "3a19340446829d6e53c4a8ae80d333c8e7dd95c5",
+ "publish-destinations.json": "ab3b236fe6aacbf570f63dbf4be668e0f1b5876e",
+ "room/modes.json": "76c72d7ba8fa3d329b14da010b1a274d8a155ab7",
+ "room/rf/blinds.json": "a0df775fca765c89a3a8b0cea373dcb1c531276d",
+ "room/rf/glitterball.json": "c8e4e995eee065ed954f39734ef39fc47f627058",
+ "room/rf/pinspots.json": "ae4f2cb4f10c15f3b38e74b58c40355efe34ae38",
+ "room/room.yaml": "a28af37c97904a06e3dfd7e49b5668cda6fac102",
+ "room/sonos.json": "c0695dd4f8faa196e650c2078cc85e01dd76876a",
+ "room/tv.json": "726e9dd730e1442655b2912c6dfc58846a04767a",
+ "rooms.json": "49b67bfb659061ad8b6ac7bfd6ef6441f9aa4d57"
+}

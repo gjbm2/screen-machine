@@ -153,13 +153,25 @@ def build_app(svc: "RoomService") -> web.Application:
         return web.json_response(svc.status(), dumps=lambda o: json.dumps(o, default=str))
 
     async def modes(request: web.Request) -> web.Response:
-        return web.json_response(svc.modes_view(), dumps=lambda o: json.dumps(o, default=str))
+        room = request.query.get("room")
+        try:
+            view = svc.modes_view(room) if room else svc.modes_view()
+        except KeyError:
+            return err(404, "unknown_room", str(room))
+        return web.json_response(view, dumps=lambda o: json.dumps(o, default=str))
 
     async def put_mode(request: web.Request) -> web.Response:
         body = await read_json(request)
         name = body.get("mode") if isinstance(body, dict) else None
         if not isinstance(name, str) or not name:
             return err(400, "bad_request", "body must be {mode: <name>}")
+        room = body.get("room")
+        if room is not None and not isinstance(room, str):
+            return err(400, "bad_request", "room is a room id from rooms.json")
+        try:                                       # an own_modes room: its zone; none or another room: the site
+            zone = svc.zones.for_room(room)
+        except KeyError:
+            return err(404, "unknown_room", str(room))
         skip, expect = body.get("skip"), body.get("expect")
         def skip_item(x) -> bool:
             return isinstance(x, str) or (isinstance(x, dict) and bool(x) and all(
@@ -169,16 +181,19 @@ def build_app(svc: "RoomService") -> web.Application:
             return err(400, "bad_request", 'skip is a list of selectors or {selector: {"from": value}}; '
                                            "expect is {current?, last_transition_id?}")
         try:
-            tid = await svc.coordinator.request_mode(name, source=str(body.get("source", "web")),
-                                                     reason=body.get("reason"), expect=expect, skip=skip)
+            tid = await zone.coordinator.request_mode(name, source=str(body.get("source", "web")),
+                                                      reason=body.get("reason"), expect=expect, skip=skip)
         except ConfigError:
             return err(404, "unknown_mode", name)
         except ValueError as e:
             return err(400, "bad_skip", str(e))
         except Refused as e:
             return room_api.refused(e)
-        tr = svc.coordinator.s["transition"] or {}
-        return web.json_response({"transition_id": tid, "reapply": bool(tr.get("reapply"))}, status=202)
+        tr = zone.coordinator.s["transition"] or {}
+        out = {"transition_id": tid, "reapply": bool(tr.get("reapply"))}
+        if room is not None:
+            out["room"] = room                     # echoed only when asked for one (no room: as before)
+        return web.json_response(out, status=202)
 
     def screen_or_404(request: web.Request):
         sid = request.match_info["id"]
@@ -198,7 +213,7 @@ def build_app(svc: "RoomService") -> web.Application:
         except ValueError as e:
             return err(400, "bad_desired", str(e))
         if d != "art" and not c.cfg.live_enabled:
-            return err(409, "live_disabled", f"live is disabled for {c.id}")
+            return err(409, "live_disabled", getattr(svc.cfg, "live_off_reason", None) or f"live is disabled for {c.id}")
         # for_s: after that many seconds, if desired is still this value, it goes back to what it was before
         # (server-side, persisted: a closed tab never leaves a TV live). A PUT without for_s cancels the timer.
         for_s = body.get("for_s")
@@ -208,7 +223,7 @@ def build_app(svc: "RoomService") -> web.Application:
         # A timed change over a timed change still goes back to the value from before the first one.
         revert = c.expiry["revert"] if c.expiry else c.desired
         try:                                       # a change by hand, under the current mode's policy (§4.11)
-            await svc.coordinator.hand_set(f"screens.{c.id}", d, source="web")
+            await svc.zones.for_target(f"screens.{c.id}").coordinator.hand_set(f"screens.{c.id}", d, source="web")
         except ValueError as e:
             return err(400, "bad_desired", str(e))
         except Refused as e:

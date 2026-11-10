@@ -1,10 +1,11 @@
 """Auto-off hints on a room's screens (owner, 28 Oct): while Auto is off and the room hears something a mode is made
 for (Sonos playing, the piano played over MIDI), the room's screens say how to turn Auto on or which mode to pick.
 
-Config: config/room/auto_hints.json (re-read when it changes). Each hint names one show_service situations word
-(GET /show/api/v1/situations readings, the word's default params), how long it must hold (``for_s``, from the
+Config: the deployment's room/auto_hints.json (re-read when it changes). Each hint names one show_service situations
+word (GET /show/api/v1/situations readings, the word's default params), how long it must hold (``for_s``, from the
 reading's ``since_s``), the modes the room may be in for it (``from``) and the modes it offers; the first hint that
-holds wins. A hint shows for ``show_s`` when it starts holding, again after ``again_after_s`` while it still holds,
+holds wins. The hints show on the screens of its ``room`` (an id or a list), else of every room that has screens,
+never on a room with its own modes (rooms.json "own_modes": true), since Auto and the offered modes are the site's. A hint shows for ``show_s`` when it starts holding, again after ``again_after_s`` while it still holds,
 and is taken down at once when it stops (Auto on, a mode picked, the music stopped). The overlay is
 routes/overlays/overlay_auto_hint.html.j2 through routes.display.send_overlay. It only reads: nothing here changes the
 room. Bounded; never raises into Flask. AUTO_HINTS=0 turns it off.
@@ -19,17 +20,18 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+import smconfig
 from utils.logger import debug, error, info
 
 from routes import room_client
 
 ROOT = Path(__file__).resolve().parent.parent
-CONFIG = ROOT / "config" / "room" / "auto_hints.json"
-ROOMS = ROOT / "routes" / "data" / "rooms.json"
+CONFIG = smconfig.path("room", "auto_hints.json")
+ROOMS = smconfig.path("rooms.json")
 TEMPLATE = "overlay_auto_hint.html.j2"
 CLEAR_HTML = "<div></div>"
 #: when each hint last showed (wall clock), so a Flask restart doesn't bring a hint back before again_after_s
-STATE = Path(os.environ.get("ROOM_HINTS_STATE", Path.home() / ".local" / "state" / "screen-machine" / "room_hints.json"))
+STATE = Path(os.environ.get("ROOM_HINTS_STATE") or smconfig.state("room_hints.json"))
 
 _thread: Optional[threading.Thread] = None
 _cfg: dict = {"mtime": None, "cfg": {}}
@@ -65,6 +67,44 @@ def room_screens(room: str) -> list[str]:
         return []
     s = (d.get(room) or {}).get("screens") if isinstance(d, dict) else None
     return [x for x in s if isinstance(x, str)] if isinstance(s, list) else []
+
+
+_said_none: set = set()
+
+
+def _rooms_json() -> dict:
+    try:
+        d = json.loads(ROOMS.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def hint_screens(cfg: dict) -> list[str]:
+    """The screens the hints show on: those of auto_hints.json's "room" (one id, or a list; finsbury: drawing-room),
+    else of every rooms.json room that has screens, each screen once. A room with its own modes ("own_modes": true)
+    is skipped: Auto and the modes a hint offers are the site's. None found is logged once (not every tick)."""
+    named = cfg.get("room")
+    d = _rooms_json()
+    if isinstance(named, str) and named:
+        rooms = [named]
+    elif isinstance(named, list):
+        rooms = [r for r in named if isinstance(r, str) and r]
+    else:
+        rooms = [k for k, v in d.items() if not k.startswith("_") and isinstance(v, dict)]
+    zones = [r for r in rooms if isinstance(d.get(r), dict) and d[r].get("own_modes") is True]
+    out: list[str] = []
+    for r in rooms:
+        if r not in zones:
+            out += [s for s in room_screens(r) if s not in out]
+    key = ",".join(rooms)
+    if zones and f"zones:{key}" not in _said_none:
+        _said_none.add(f"zones:{key}")
+        info(f"[room hints] not on {', '.join(zones)}: a room with its own modes (Auto is the site's)")
+    if not out and key not in _said_none:
+        _said_none.add(key)
+        info(f"[room hints] no screens to show hints on (rooms: {key or 'none'})")
+    return out
 
 
 def pick(cfg: dict, auto: Any, current: Any, readings: dict) -> Optional[dict]:
@@ -166,7 +206,7 @@ def _tick(state: Hints) -> float:
     hint = None
     if isinstance(ap, dict) and isinstance(sit, dict):
         hint = pick(cfg, ap.get("on"), room.get("current"), sit.get("readings") or {})
-    state.step(cfg, hint, room_screens(str(cfg.get("room") or "")), time.time())
+    state.step(cfg, hint, hint_screens(cfg), time.time())
     return _num(cfg.get("check_s"), 3.0)
 
 

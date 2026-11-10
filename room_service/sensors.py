@@ -5,7 +5,7 @@ No filter or mapping code lives here; it follows lightmask/README.md's room_serv
 * one `lightmask.LuxFilter` per sensor (log-lux snap 0.15 s / drift 2.5 s, the spike guard,
   `held`, `seq`, staleness, warm start from `<state_dir>/sensors.json`);
 * `lightmask.ConfigWatcher` over Flask's own files (INTENSITY_CFG from `config.py`,
-  `routes/data/intensity.json`, `publish-destinations.json`), refreshed by the caller in an
+  the deployment's `intensity.json` and `publish-destinations.json`), refreshed by the caller in an
   executor, so the LightSense editor keeps working;
 * `lightmask.mask_for_dest` per screen: sensor -> target_group -> destinations exactly as
   Flask resolves them, then overrides, `adjust`, the sensor curve or the solar curve;

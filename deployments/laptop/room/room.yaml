@@ -1,0 +1,2 @@
+# room_service settings for the laptop rig (the full key list: deployments/finsbury/room/room.yaml).
+dmx: {enabled: false}

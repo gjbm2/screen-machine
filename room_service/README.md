@@ -21,8 +21,8 @@ python3.12 -m venv ~/.venvs/sm-room
 ~/.venvs/sm-room/bin/pip install aiohttp pyyaml playwright==1.58.0 pytest pytest-asyncio pillow astral==3.2 websockets pycryptodomex
 cd ~/dev/screen-machine
 ~/.venvs/sm-room/bin/python -m room_service --port 8799            # binds 0.0.0.0; :8700 is the in-app production one
-#   --host 127.0.0.1  --config config/room/room.prod.yaml  --state-dir …  --no-snapshots  --log-level DEBUG
-# A dev/smoke instance: a temp copy of room.prod.yaml with its own service.state_dir (and its own --port).
+#   --host 127.0.0.1  --config deployments/<id>/room/room.yaml  --state-dir …  --no-snapshots  --log-level DEBUG
+# A dev/smoke instance: a temp copy of room/room.yaml with its own service.state_dir (and its own --port).
 ```
 
 * `astral==3.2` is `lightmask`'s one dependency (sensor ingest; without it room_service runs Flask-only);
@@ -53,7 +53,7 @@ The GPU renderer (stream_service, :8702) stays a separate worker.
   need no change. Flask's public :5000 door (WAN, ngrok) has **no room routes**; the HTTPS name (Caddy) passes `/rs/*` to :8700. room_service never imports Flask,
   and Flask only starts and stops it.
 * **Env:** `ROOM_IN_APP` (default `1`; `0` turns it off), `ROOM_PORT` (8700), `ROOM_HOST` (0.0.0.0),
-  `ROOM_CONFIG` (`config/room/room.prod.yaml`), `ROOM_LOG` (`logs/room_service.log`, INFO; warnings also go to the
+  `ROOM_CONFIG` (`deployments/<id>/room/room.yaml`), `ROOM_LOG` (`logs/room_service.log`, INFO; warnings also go to the
   Flask console).
 * **Never blocks Flask:** the port is bound before anything of room_service starts. A busy port, or the state
   dir's `room.lock` held by another instance, gives **one** warning and then a quiet retry every 10 s. Any other failure (a missing package, the config, the loop
@@ -66,7 +66,7 @@ The GPU renderer (stream_service, :8702) stays a separate worker.
   `pycryptodomex` room_service cannot start (the blinds adapter imports it). Without playwright there are no snapshots,
   so no screen can go live.
 * **Standalone**, the same code path (e.g. a smoke check on a spare port with its own state dir):
-  `python room_in_app.py --port 8799 --config <temp copy of room.prod.yaml> [--state-dir DIR] [--no-snapshots]`.
+  `python room_in_app.py --port 8799 --config <temp copy of room/room.yaml> [--state-dir DIR] [--no-snapshots]`.
   Tests: `tests/test_in_app.py`.
 
 **Restart** = restart Flask (tell the other sessions first; several edit room_service). The separate service is
@@ -97,24 +97,25 @@ tail -n 20 logs/room_service.log
 
 One site config (owner, 14 Oct): each thing is defined once.
 
-* **Screens** are the destinations in `routes/data/publish-destinations.json` (Flask's display config) that carry a
+* **Screens** are the destinations in `deployments/<id>/publish-destinations.json` (Flask's display config) that carry a
   `live` block: `{"enabled": true, "gpu": 0, "profile": "hevc-2160p30", "mask_push": true}` (optional
   `timed_reload`, and `auto`: the director block every new session gets). The destination's `name` is
   `status.screens.<id>.name`. The render size (`POST /api/sessions {width, height}`) is the art's own shape at the
   profile's pixel count, so live sits where the art sat; with no art size known, the destination's `maxwidth` x
   `maxheight`, scaled down to the profile when bigger. Read at start; a Flask restart (room_service runs inside it)
   picks up edits.
-* **Rooms**: `routes/data/rooms.json` says which room holds which screens, lights, blinds and sensors. It gives the
+* **Rooms**: `deployments/<id>/rooms.json` says which room holds which screens, lights, blinds and sensors. It gives the
   `<room>:<kind>` mode groups (`room_config.py`) and `status.rooms` (`[{id, name, screens, lights, blinds, sensors}]`,
   file order, re-read on change), from which the Room page builds one section per room.
-* **Service settings**: `config/room/room.prod.yaml` (LIVE_V1 §3.1, no `screens:`). A `screens:` block there still
+* **Service settings**: `deployments/<id>/room/room.yaml` (LIVE_V1 §3.1, no `screens:`). A `screens:` block there still
   overrides per screen and per field, and may add screens (tests, dev copies). `service.destinations_file` and
   `service.rooms_file` point elsewhere.
 
 Optional sections (additive; defaults in `config.py`):
 
 ```yaml
-# screens.<id>.profile: hevc-2160p60        # used when a live spec names no profile
+# screens.<id>.profile: hevc-2160p30        # used when a live spec names no profile (default: by the
+#                                           # screen's size at 30 fps: hevc-1080p30 up to 1920x1080)
 # screens.<id>.timed_reload: true           # the page policy's default (modes can change it)
 # mask: {min_fetch_interval_s: 1.0, max_requests_per_s: 10, fetch_timeout_s: 2.0}
 #   # min_fetch_interval_s: LIVE_V1 §2.2b, at most 1 GET /api/<id>/mask per second per screen: each GET
@@ -123,7 +124,7 @@ Optional sections (additive; defaults in `config.py`):
 # web_origins: [...]                        # default: from .env (SM_LAN_HOST, VITE_URL)
 # timeouts:                                 # AV_PROGRAMME §3.3
 #   freeze_ack_s: 5        snapshot_s: 3       session_ready_s: 7     live_visible_s: 10
-#   # production (room.prod.yaml): create_session_s 20, exit_session_s 20, snapshot_s 10, session_ready_s 15
+#   # production (deployments/finsbury/room/room.yaml): create_session_s 20, exit_session_s 20, snapshot_s 10, session_ready_s 15
 #   switch_to_art_s: 8     switch_to_live_s: 15                      # the switches' deadlines (owner, 23 Oct)
 #   create_session_s: 3    exit_session_s: 5                         # POST session / exit HTTP timeouts
 #   settle_before_go_s: 1.0                   # after ack live_visible, before go (decoder warm-up)
@@ -136,7 +137,7 @@ Optional sections (additive; defaults in `config.py`):
 #   viewport_w: 3840       viewport_h: 2160    timeout_s: 3          warm: true   # viewport: screens without a size
 # service:
 #   state_dir: ~/.local/state/screen-machine/room
-#   destinations_file: routes/data/publish-destinations.json   rooms_file: routes/data/rooms.json
+#   destinations_file: deployments/<id>/publish-destinations.json   rooms_file: deployments/<id>/rooms.json
 #   session_ttl_s: 120     renew_every_s: 30  sweep_orphans: true
 # ingest:                                   # light-sensor ingest, LIVE_V1 §2.2b (room_service/ingest_config.py)
 #   enabled: true          mask_source: auto  # auto: sensor while fresh, else Flask /mask, else hold | sensor | flask
@@ -150,14 +151,14 @@ Optional sections (additive; defaults in `config.py`):
 # blinds: {enabled: false}                  # the hub blinds become a placeholder (tests, no LAN)
 ```
 
-`config/room/modes.json` (docs/av/ROOM_STATE_MODEL.md §2; reloaded on change, and saved from the Room page through
+`deployments/<id>/room/modes.json` (docs/av/ROOM_STATE_MODEL.md §2; reloaded on change, and saved from the Room page through
 `PUT /api/v1/room/config`): flat, every mode complete (owner, 16 Oct). Today `gallery` (label Normal, the default),
 `live-test` (devtest), `piano`, `off`, `lights-only`, `ambient`, `party` and `disco`; the live drawing-room modes store
 and lower the privacy blinds (ch02, ch03, ch14), store and set the TVs, and put everything back on the way out.
 Devices without a working adapter (`tv`, verify-only, and `plug`) are placeholders: accepted, rows skipped,
-`available: false`; `mirror_ball` (the RM4 Pro remote, `config/room/rf/glitterball.json`) and `sonos`
-(`config/room/sonos.json`) are placeholders only without their config. The blinds read the Bloc hub; they write only
-when `config/room/rf/blinds.json` says `"writes_enabled": true` (it does), else `dry_run`.
+`available: false`; `mirror_ball` (the RM4 Pro remote, `deployments/<id>/room/rf/glitterball.json`) and `sonos`
+(`deployments/<id>/room/sonos.json`) are placeholders only without their config. The blinds read the Bloc hub; they write only
+when `deployments/<id>/room/rf/blinds.json` says `"writes_enabled": true` (it does), else `dry_run`.
 `blinds: {enabled: false}` in the room config makes them a placeholder (tests).
 
 ## How it behaves
@@ -254,9 +255,9 @@ default, no keys** (owner, 14 Oct): any relay may send readings. The relay's rea
 | Module | Job |
 |---|---|
 | `ingest.py` | `WS /v1/ingest/lux`: `hello{role:"sensor", sensor}`; any valid sensor id is accepted and a `key`, if sent, is ignored. Only ingest being off closes the socket, with **4401** and the reason (logged once). Then `ingest.lux{sensor, lux, seq, mono_ms, held}`: finite numbers only, clamped 0–200 klx, `seq` strictly increasing (reset on each hello), `held` a bool. `lux.ack{seq}` with the newest seq, coalesced to ≤ 1 per 200 ms (every reading acked within 200 ms; calib-3 drops a link after 5 s without one). > 50 frames/s → **4029**; > 20 readings/s → dropped; no hello in 10 s → 4002; silent 60 s → 4001; a newer socket for the sensor → 4009 for the old one. Host check as everywhere; an `Origin`, if sent, must be one the page sockets accept (the relay sends none: allowed). |
-| `sensors.py` | SensorService, wiring only: one `lightmask.LuxFilter` per sensor (snap 0.15 s / drift 2.5 s, spike guard, held, staleness, warm start from `<state_dir>/sensors.json`), `lightmask.ConfigWatcher` over Flask's own files (`config.py` INTENSITY_CFG, `routes/data/intensity.json`, `publish-destinations.json`; refreshed every 2 s in the executor, so the LightSense editor keeps working), `mask_for_dest` per screen, and the overrides read from Flask's `GET /api/<id>/maskstate` + `GET /api/<id>/brightness-override` every 2 s (only for screens on the sensor path). |
+| `sensors.py` | SensorService, wiring only: one `lightmask.LuxFilter` per sensor (snap 0.15 s / drift 2.5 s, spike guard, held, staleness, warm start from `<state_dir>/sensors.json`), `lightmask.ConfigWatcher` over Flask's own files (`config.py` INTENSITY_CFG, `deployments/<id>/intensity.json`, `publish-destinations.json`; refreshed every 2 s in the executor, so the LightSense editor keeps working), `mask_for_dest` per screen, and the overrides read from Flask's `GET /api/<id>/maskstate` + `GET /api/<id>/brightness-override` every 2 s (only for screens on the sensor path). |
 | `mask_arbiter.py` | MaskArbiter, a `MaskPusher` subclass and the room's one mask writer per screen. Tiers: **sensor** (fresh sensor; the Flask `/mask` fetch for that screen **stops**, since every fetch advances Flask's shared EMA), **flask** (today's fetch), **sensor-stale** (auto only: the sensor is stale *and* Flask has failed for 10 s → lightmask's ramp to the solar curve over 30 s), **hold**. `ingest.mask_source` per screen: `auto` (default), `sensor` (lightmask only, DCL), `flask` (today). `mask.set` gains `source`: lightmask's strings (`sensor`, `astral`, `manual_override`, `maskoff`, `fixed`, `blend`) or `flask`. A relay `held: true` (calibration capture) pushes nothing until it ends; frozen/suspended screens hold and catch up after. |
-| `mask_shaper.py` | Per screen, after the arbiter: a filter snap or re-init, \|Δb\| ≥ 0.05, a source or override change → **at once, 200 ms**; a sensor↔Flask handover → 2000 ms; slow drift → **≤ 1 per 3 s, 1000 ms**, only beyond 0.015 brightness or the warm-alpha deadband; never > 10 mask.set/s per screen (2/s while live). Defaults; `room.prod.yaml` makes these faster (snap past 0.02, drift every 0.25 s, 300 ms). |
+| `mask_shaper.py` | Per screen, after the arbiter: a filter snap or re-init, \|Δb\| ≥ 0.05, a source or override change → **at once, 200 ms**; a sensor↔Flask handover → 2000 ms; slow drift → **≤ 1 per 3 s, 1000 ms**, only beyond 0.015 brightness or the warm-alpha deadband; never > 10 mask.set/s per screen (2/s while live). Defaults; the deployment's `room/room.yaml` makes these faster (snap past 0.02, drift every 0.25 s, 300 ms). |
 | `mask_source.py` | Picks MaskArbiter or MaskPusher at start (MaskPusher if `ingest.enabled: false` or `lightmask`/`astral` is missing), fronts `/v1/ingest/lux`. |
 
 Status: `GET /api/v1/status` has a top-level `mask` section (`ingest` with connections/closes/rejects/relay
@@ -292,6 +293,53 @@ transition; one-shot actions fire at most once per departure (a running one at t
 `unconfirmed`, never re-fired). Kinds: `level` (screens.<id>, sensor_mask), `edge_discrete` / `edge_toggle`
 (base class `EdgeSubsystem` for the RF adapters), `action` (`log` built in). Manual changes (`PUT
 /api/v1/screens/<id>`) follow `respect`: accepted, reported as `mode.drift` until the next transition.
+
+## Mode zones (`zones.py`)
+
+A room with `"own_modes": true` in rooms.json switches modes on its own (deployments/README.md, "Rooms with their own
+modes"). room_service reads which rooms do once, at start. With none, which is every shipped deployment, it builds
+exactly the objects it always did. `room_service/tests/test_golden.py` checks that.
+
+- **Zones.** The site zone holds `modes.json`, `state.json`, top-level `status.mode`, Auto and the feel. Each
+  `own_modes` room is a zone with its own `room/modes.<room>.json`, Coordinator and state, in
+  `<state_dir>/rooms/<room>/` (`state.json`, `config-history/`).
+- **Scope.** A zone owns its `<room>:*` groups (`room_config.derive_room_groups`), except `show.main`,
+  `autopilot.*`, `log.*` and `brightness.lamps`, which stay with the site. A target another room also lists, or a
+  light the zone takes through the whole `"light"` subsystem, also stays with the site; `mode.rooms_error` names it.
+  The site owns everything else. Scopes are re-planned when rooms.json or an adapter's members change. A change to
+  which rooms are zones only says "restart room_service (Flask) to apply".
+- **Adapters.** The adapters are shared. Each zone sees them through `ScopedAdapter` proxies whose `members` are
+  the zone's, so a bare `screens` means the zone's screens. `svc.adapters` is the raw list: the remotes API, the DMX
+  API, member watchers, `keep_in_step` and `restore` use it. `svc.coordinator` and `svc.room_config` are the
+  site's.
+- **Zone files.** In a zone's file, `brightness.screens`, `show.mic`, `show.ai` and `sensor_mask.main` are aliases
+  for the zone's own members. Naming another zone's target, or the site's, is an error that names the owner. The
+  site's file gets the same error for a zone's target.
+- **Zone-only members.** These exist only while there is a zone:
+  - `sensor_mask.<room>` holds the art mask of that room's screens only (`mask.held(screen)`);
+  - `brightness.<room>.screens` dims only its live screens;
+  - `show.<room>.mic` and `show.<room>.ai` exist for a room in the show.
+
+  `sensor_mask.main` and `brightness.screens` then mean the screens in no zone.
+- **Show claims.** Every claim member, the site's included, reads its own want, kept in `show_claims.json`.
+  show_service's `/api/v1/mic` and `/api/v1/listening` get the OR of the wants. A read that finds show_service holding
+  something else (a restart, a failed PUT) puts the OR back.
+- **API.** `PUT /api/v1/mode` takes `room`: an `own_modes` room's zone; no room, or another room, means the site; a
+  room rooms.json lacks is 404 `unknown_room`. The 202 echoes `room` when one was sent. `GET /api/v1/modes`,
+  `/room/describe` and `/room/config` (GET, PUT, validate) take `?room=`, and `/room/plan` takes it in the body.
+  `PUT /screens/{id}`, `/room/targets`, `/room/assume` and `/room/stored/{slot}/{target}` go to the target's owner.
+  `DELETE /room/stored/{slot}` clears that slot in every zone.
+- **Status and events.** Status keeps `mode`, `config` and `stored` as the site's. `subsystems` merges every zone's
+  members, and a zone's members carry `room`. `zones: [{room, name, screens, show, mode, config, stored}]` is present
+  only when a zone exists. A zone's switches are `room_mode.transition` events with `data.room`, so nothing that
+  follows the site's `mode.transition` can mistake them.
+- **Opt-in.** At start, each zone's Coordinator drops the entries for targets another zone now owns
+  (`prune_outside`, logged as `pruned`). A target no adapter has yet, such as a light show_service hasn't
+  registered, is kept. A mode the site was in that is now only one zone's moves to that zone, and the site is
+  relabelled to its default (`migrate_from`). The moved mode's aliased rows go with it: show.mic, show.ai,
+  brightness.screens and sensor_mask.main become the zone's own members, with the site's desired value and put-back.
+  The mic and AI claims move in show_claims.json too: the zone's claim is on, and the site's is its default's value,
+  else its put-back value. So the zone's next mode releases them. Nothing is sent either way.
 
 ## API extras (additive to LIVE_V1)
 
@@ -364,6 +412,12 @@ order/256 KB/5 s, inbound flood code, hb only when idle, contract defaults, ffmp
 1 req/s/screen mask rate; welcome without attach + lost-stall-ack re-entry; lost unfreeze re-sent; PATCH
 race; orphan sweep and slow create; page timed_reload policy via a mode (and the shipped modes.json);
 snapshot reuse and exit-snapshot retry; one-shot actions on disk before they fire.
+
+Mode zones: `test_zones.py` runs a two-room site (front shares the site's modes, back has its own) and covers
+scoping, routing, conflicts, restarts, the per-zone members, the ORed show claims, the remotes API, and the opt-in
+prune and migrate (a running Live test with its mic and AI claims included). `test_golden.py` checks that finsbury,
+laptop and example still build exactly what they did before zones (golden/): the static parts, and a pass that
+switches to every mode (each 202 body, the transition events, the status after, the state files written).
 
 Mask defaults in the harness are faster than production (`min_fetch_interval_s: 0.05`); one test runs the
 production 1 s interval.

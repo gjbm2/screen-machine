@@ -1,4 +1,5 @@
-"""fixtures: the rig's registry, config/room/fixtures.yaml resolved (SHOW_ENGINE §9.2; README "Stage 5", S5.2, S5.4).
+"""fixtures: the rig's registry, deployments/<id>/lights/fixtures.yaml resolved (SHOW_ENGINE §9.2; README "Stage 5",
+S5.2, S5.4).
 
 Pure: no threads, no network. ``Registry.poll`` runs on show-brain (every RELOAD_S); ``Registry.view`` gives any thread
 the current ``contract.RigView``, swapped by reference and never mutated after the swap.
@@ -34,19 +35,19 @@ the group's order (the first such group a fixture is in), then the rest by ``ord
 ``outputs.<the output's latency_key>.<attr>``, then fixtures.yaml's hand-set ms, then 0 ("unset"). A measured edge's
 value is its perceived onset ``t10 + (t50 - t10) x (align_pct - 10) / 40`` plus the entry's ``trim_ms``.
 
-**The added file** (README S5.23): config/room/fixtures.added.yaml holds the lights registered on the Lights page, in
-fixtures.yaml's schema (its nodes, outputs, types and fixtures). ``Registry`` merges it under the hand file (the hand
-file wins on an id clash, with a problem line; one that doesn't read is a problem line and the hand file loads alone)
-and reloads on its changes too. Only ``Registrar`` writes it, whole and atomically, after checking the result with the
-loader itself; nothing in code ever writes fixtures.yaml. ``GENERIC_TYPES`` are builtin channelled types (RGB, RGBW,
-..., the movers) for a DMX light with no OFL file: ``GENERIC_RANGES`` gives their channels' ranges (starting points
-for a typical head; the wheels re-divide by the light's setup ``slots.count``).
+**The added file** (README S5.23): deployments/<id>/lights/fixtures.added.yaml holds the lights registered on the Lights
+page, in fixtures.yaml's schema (its nodes, outputs, types and fixtures). ``Registry`` merges it under the hand file
+(the hand file wins on an id clash, with a problem line; one that doesn't read is a problem line and the hand file loads
+alone) and reloads on its changes too. Only ``Registrar`` writes it, whole and atomically, after checking the result
+with the loader itself; nothing in code ever writes fixtures.yaml. ``GENERIC_TYPES`` are builtin channelled types (RGB,
+RGBW, ..., the movers) for a DMX light with no OFL file: ``GENERIC_RANGES`` gives their channels' ranges (starting
+points for a typical head; the wheels re-divide by the light's setup ``slots.count``).
 
-**The setup file** (docs/LIGHTS.md §2.6): config/room/fixtures.setup.yaml holds each light's settings from the Lights
-page (home, soft limits, measured speeds, its range when the type doesn't say, its default beam, slot names, named
-positions, its strobe cap), keyed by fixture id, for any fixture (hand-file ones too). Only ``SetupStore`` writes it,
-whole and atomically; ``Registry`` merges each entry into ``FixtureInfo.setup`` (``{}`` when none) and reloads on its
-changes. A key it can't use is dropped with a problem line; an id that isn't a light is kept in the file, with a
+**The setup file** (docs/LIGHTS.md §2.6): deployments/<id>/lights/fixtures.setup.yaml holds each light's settings from
+the Lights page (home, soft limits, measured speeds, its range when the type doesn't say, its default beam, slot names,
+named positions, its strobe cap), keyed by fixture id, for any fixture (hand-file ones too). Only ``SetupStore`` writes
+it, whole and atomically; ``Registry`` merges each entry into ``FixtureInfo.setup`` (``{}`` when none) and reloads on
+its changes. A key it can't use is dropped with a problem line; an id that isn't a light is kept in the file, with a
 problem line; a file that doesn't read keeps the last good settings.
 
 Config names live in config: nothing here branches on a fixture, output, node, group, zone, screen or role name. A
@@ -1141,8 +1142,11 @@ def _load(path: pathlib.Path, types_dir: pathlib.Path, latency: Optional[dict], 
     """(view, the type files it read, ok, the fixture ids that came from the added file). Not ok: ``error`` set and
     empty maps. ``added_path``: fixtures.added.yaml, merged under the hand file (``merge_added``); None: none.
     ``setups``: (fixtures.setup.yaml's ``fixtures`` mapping, its bytes) to merge into each FixtureInfo.setup."""
+    missing = False
     try:
         data = path.read_bytes()
+    except FileNotFoundError:                   # no hand file: this site has no hand-written lights (the added file
+        data, missing = b"", True               # still merges; the view is ok, maybe with no fixtures)
     except OSError as e:
         return _empty_view(path, f"{path.name}: {e.strerror or e}"), [], False, frozenset()
     pre: list[str] = []
@@ -1154,7 +1158,7 @@ def _load(path: pathlib.Path, types_dir: pathlib.Path, latency: Optional[dict], 
         h.update(b"\0setup\0" + setups[1])
     revision = h.hexdigest()[:12]
     try:
-        raw = _yaml(data)
+        raw = {"version": VERSION} if missing else _yaml(data)
         if not isinstance(raw, dict):
             raise ValueError("the file is not a mapping")
     except Exception as e:
@@ -1207,11 +1211,11 @@ def summary(view: Optional[contract.RigView]) -> dict:
 ADDED_NAME = "fixtures.added.yaml"
 ADDED_SECTIONS: tuple[str, ...] = ("nodes", "outputs", "types", "fixtures")   # what it holds, in the order written
 ADDED_HEADER = """\
-# config/room/fixtures.added.yaml: the lights registered on the Lights page (/lights). WRITTEN BY show_service's rig
-# API (POST, PUT and DELETE /show/api/v1/rig/fixtures; show_service/README.md S5.23), whole, on every change: don't
-# edit it by hand. show_service merges it under config/room/fixtures.yaml (the hand file; the same schema, README
-# S5.2), which wins on an id clash (a problem line), and re-reads it when it changes. Removing a light here removes the
-# node and output made for it once nothing else uses them.
+# deployments/<id>/lights/fixtures.added.yaml: the lights registered on the Lights page (/lights). WRITTEN BY
+# show_service's rig API (POST, PUT and DELETE /show/api/v1/rig/fixtures; show_service/README.md S5.23), whole, on
+# every change: don't edit it by hand. show_service merges it under deployments/<id>/lights/fixtures.yaml (the hand
+# file; the same schema, README S5.2), which wins on an id clash (a problem line), and re-reads it when it changes.
+# Removing a light here removes the node and output made for it once nothing else uses them.
 """
 
 
@@ -1619,7 +1623,8 @@ class Registrar:
 
     def _editable(self, fid: str, hand: dict, added: dict) -> None:
         if fid in (hand.get("fixtures") if isinstance(hand.get("fixtures"), dict) else {}):
-            raise Refused("in_hand_file", f"{fid} is written by hand in config/room/fixtures.yaml: change it there")
+            raise Refused("in_hand_file",
+                          f"{fid} is written by hand in {contract.FIXTURES_FILE_WORDS}: change it there")
         if fid not in added["fixtures"]:
             raise Refused("unknown_fixture", f"There's no light {fid!r} added on the Lights page.",
                           choices=sorted(added["fixtures"]))
@@ -1697,8 +1702,8 @@ class Registrar:
                                    "port_address": universe}
         elif dict(outs)[oid].get("enabled") is not True:
             if oid in (hand.get("outputs") if isinstance(hand.get("outputs"), dict) else {}):
-                probs.append(f"outputs.{oid}: switched off in config/room/fixtures.yaml (enabled: false): switch it "
-                             f"on there and this light sends")
+                probs.append(f"outputs.{oid}: switched off in {contract.FIXTURES_FILE_WORDS} (enabled: false): "
+                             f"switch it on there and this light sends")
             else:
                 new["outputs"][oid] = {**new["outputs"][oid], "enabled": True}
         return oid
@@ -1762,11 +1767,12 @@ SETUP_COUNTS: tuple[str, ...] = ("gobo", "colour")    # slots.count.<wheel>: a g
 _SETUP_MERGE_DEPTH: dict[str, int] = {"home": 1, "limits": 1, "max_speed": 1, "range": 1, "beam": 1, "jog_flip": 1,
                                       "positions": 1, "slots": 2}
 SETUP_HEADER = """\
-# config/room/fixtures.setup.yaml: each light's settings from the Lights page (Move it and set it up: where it rests,
-# its limits, its normal beam, its pattern and colour names, its named positions; docs/LIGHTS.md §2.6). WRITTEN BY
-# show_service's rig API (POST /show/api/v1/rig/fixtures/{id}/setup and .../positions; fixtures.SetupStore), whole, on
-# every change: don't edit it by hand. Keyed by fixture id, for any light (config/room/fixtures.yaml's too).
-# show_service re-reads it when it changes. Angles are degrees from the middle of the light's pan or tilt range.
+# deployments/<id>/lights/fixtures.setup.yaml: each light's settings from the Lights page (Move it and set it up: where
+# it rests, its limits, its normal beam, its pattern and colour names, its named positions; docs/LIGHTS.md §2.6).
+# WRITTEN BY show_service's rig API (POST /show/api/v1/rig/fixtures/{id}/setup and .../positions; fixtures.SetupStore),
+# whole, on every change: don't edit it by hand. Keyed by fixture id, for any light (deployments/<id>/lights/
+# fixtures.yaml's too). show_service re-reads it when it changes. Angles are degrees from the middle of the light's pan
+# or tilt range.
 """
 
 

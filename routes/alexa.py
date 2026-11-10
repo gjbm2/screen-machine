@@ -39,7 +39,12 @@ from typing import Dict, Any
 import uuid
 from routes.generate_handler import throw_user_interacting_event, handle_image_generation, async_amimate, async_adapt, async_combine
 from routes import room_client
+import smconfig
 from routes.samsung_utils import device_wake, device_sleep, device_sync
+
+_GENERATION_INTENTS = ("generate_image", "animate", "adapt", "combine")
+_ROOM_INTENTS = ("set_mode", "set_auto", "set_listening", "cue_scene", "set_effect")
+
 
 def Brianize(text: str) -> str:
     # Already contains Brian *and* prosody — leave untouched
@@ -66,6 +71,14 @@ def Brianize(text: str) -> str:
 
     # Plain text — wrap in full SSML
     return f"<speak><voice name='Brian'><prosody rate='slow'>{text}</prosody></voice></speak>"
+
+def alexa_room_screens(closest_screen, subs):
+    """Where a room intent acts: the asking device's closest screen, else the alexadefault screens (its room's live
+    screens are the targets; room_client.live_targets falls back to the default room's)."""
+    if closest_screen:
+        return closest_screen
+    return [s for s in (subs.get("ALEXA_DEFAULT_SCREENS") or []) if isinstance(s, str)]
+
 
 def display_variables_overlay(subs, closest_screen=None):
     """Display variables overlay on the closest screen or default screen.
@@ -353,7 +366,7 @@ def process(data):
                     'QR_BASE64': get_qr(publish=closest_screen),
                     'DURATION': duration,
                     # Auto, the mic and AI listening, as they are now (owner, 27 Oct)
-                    'LISTEN': room_client.listening_state(),
+                    'LISTEN': room_client.listening_state() if room_client.room_on() else None,
                 },
                 duration=duration * 1000,
                 clear=True
@@ -375,14 +388,21 @@ def process(data):
         )
 
         # The room (modes, Auto) for the room intents: set_mode, set_auto, cue_scene, set_effect (routes/room_client.py)
-        room_modes = room_client.modes_cached()
-        room_facts = room_client.room_facts()
-        # Only voice names reach the AI (owner 18 Oct): short, distinct, set per mode in modes.json / per scene in
-        # config/live/voice_names.yaml; a mode or scene without one isn't reachable by voice.
-        subs["ROOM_MODES"] = ", ".join(room_client.voice_modes()) or "(no mode has a voice name)"
-        subs["ROOM_SCENES"] = ", ".join(room_client.voice_scenes()) or "(none)"
-        subs["ROOM_MODE_CURRENT"] = room_modes.get(room_facts.get("mode"), room_facts.get("mode") or "unknown")
-        subs["ROOM_AUTO"] = {True: "on", False: "off"}.get(room_facts.get("auto"), "unknown")
+        if room_client.room_on():
+            room_modes = room_client.modes_cached()
+            room_facts = room_client.room_facts()
+            # Only voice names reach the AI (owner 18 Oct): short, distinct, set per mode in modes.json / per scene in
+            # config/live/voice_names.yaml; a mode or scene without one isn't reachable by voice.
+            # (with rooms that have their own modes, theirs too: set_mode routes a name to the room that has it)
+            subs["ROOM_MODES"] = ", ".join(room_client.voice_names()) or "(no mode has a voice name)"
+            subs["ROOM_SCENES"] = ", ".join(room_client.voice_scenes()) or "(none)"
+            subs["ROOM_MODE_CURRENT"] = room_modes.get(room_facts.get("mode"), room_facts.get("mode") or "unknown")
+            subs["ROOM_AUTO"] = {True: "on", False: "off"}.get(room_facts.get("auto"), "unknown")
+        else:                                       # no room_service in this deployment: nothing to ask it
+            subs["ROOM_MODES"] = "(none: the room is off here)"
+            subs["ROOM_SCENES"] = "(none)"
+            subs["ROOM_MODE_CURRENT"] = "unknown (the room is off here)"
+            subs["ROOM_AUTO"] = "unknown"
         
         # Add exported variable friendly names for this screen's scope
         if closest_screen:
@@ -600,6 +620,18 @@ def process(data):
         #info(f"> processed object: {result}")
         #info(f"> intent: {intent}; response_ssml: {response_ssml}")    
 
+        # Generation (generate, animate, adapt, combine) needs the deployment's "generation" capability
+        if intent in _GENERATION_INTENTS and not smconfig.enabled("generation"):
+            utils.logger.warning(f"[alexa] {intent} refused: generation is off in this deployment")
+            response_ssml = Brianize("Making pictures is switched off here.")
+            intent = "respond_only"
+
+        # The room intents need the deployment's "room" capability (room_service)
+        if intent in _ROOM_INTENTS and not room_client.room_on():
+            utils.logger.warning(f"[alexa] {intent} refused: {room_client.ROOM_OFF}")
+            response_ssml = Brianize("The room controls are switched off here.")
+            intent = "respond_only"
+
         # == After processing the intent, we can handle the result ==
         match intent:
             # User wants to set a exported variable
@@ -778,7 +810,14 @@ def process(data):
             # The room: mode, Auto, the live scene, the live effects (room_service decides; it may refuse)
             case "set_mode":
                 want = (result.get("data") or {}).get("mode") or ""
-                ok, detail = room_client.set_mode(want, source="voice", reason=f"Alexa: {utterance}")
+                # the asker's room first if it has its own modes, then the site, then the one room that has the name
+                # (no such rooms, every deployment until one opts in: the site, exactly as before)
+                zone = None
+                if room_client.zones():
+                    key, zone = room_client.resolve_voice_mode(want, alexa_room_screens(closest_screen, subs))
+                    want = key or want
+                ok, detail = room_client.set_mode(want, source="voice", reason=f"Alexa: {utterance}",
+                                                  **({"room": zone} if zone else {}))
                 if not ok:
                     response_ssml = Brianize(f"The room didn't change mode. {detail}.")
             case "set_auto":
@@ -801,7 +840,7 @@ def process(data):
                 # By voice name only (config/live/voice_names.yaml); a named pick pauses the director's own scene
                 # changes on those screens until "change the scene" or a mode change (owner 18 Oct).
                 query = ((result.get("data") or {}).get("query") or "").strip()
-                screens = room_client.live_targets(closest_screen)
+                screens = room_client.live_targets(alexa_room_screens(closest_screen, subs))
                 preset = room_client.resolve_voice_scene(query) if query else None
                 if not screens:
                     response_ssml = Brianize("Nothing is live. Put a mode with live screens on first.")
@@ -810,14 +849,16 @@ def process(data):
                     response_ssml = Brianize((f"The scenes I know by name are: {named}. " if named else "")
                                              + "Or say: change the scene.")
                 else:
-                    pick = (lambda sid: room_client.pick_scene(sid, preset)) if preset else room_client.next_scene
-                    fails = [d for sid in screens for ok, d in [pick(sid)] if not ok or d]
+                    if preset:                      # a named pick: on each screen
+                        fails = [d for sid in screens for ok, d in [room_client.pick_scene(sid, preset)] if not ok or d]
+                    else:                           # "change the scene": once per room, not once per screen
+                        fails = room_client.next_scene_rooms(screens)
                     if fails:
                         response_ssml = Brianize(f"The scene didn't change. {fails[0]}.")
             case "set_effect":
                 data = result.get("data") or {}
                 query, op = (data.get("query") or "").strip(), data.get("effect_op") or "replace"
-                screens = room_client.live_targets(closest_screen)
+                screens = room_client.live_targets(alexa_room_screens(closest_screen, subs))
                 preset = room_client.find("effects", query) if query and op != "clear" else None
                 if not screens:
                     response_ssml = Brianize("Nothing is live, so there are no effects to change.")

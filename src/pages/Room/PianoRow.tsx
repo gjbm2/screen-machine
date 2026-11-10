@@ -39,14 +39,17 @@ function ago(ms: number): string {
   return m < 60 ? `${m} min ago` : "over an hour ago";
 }
 
-/** `onConnected`: told whether the piano's MIDI is coming in (null: no piano known), e.g. for a fold's summary. */
+/** `onConnected`: told whether the piano's MIDI is coming in (null: no piano known), e.g. for a fold's summary.
+ *  `onPianos`: told how many piano senders show_service has (0: this site has none), once it has answered. */
 export function PianoRow({
   api,
   onConnected,
+  onPianos,
   className,
 }: {
   api: RoomApi;
   onConnected?: (connected: boolean | null) => void;
+  onPianos?: (count: number) => void;
   className?: string;
 }) {
   const [pianos, setPianos] = useState<Piano[] | null>(null);
@@ -58,10 +61,13 @@ export function PianoRow({
   const [flash, setFlash] = useState(false);
   const [now, setNow] = useState(() => Date.now());
 
+  const toldPianos = useRef(onPianos);
+  toldPianos.current = onPianos;
   const load = useCallback(async () => {
     try {
       const body = (await api.showInputs()) as { pianos?: Piano[]; piano?: { last_note_age_s?: number | null } | null };
       setPianos(Array.isArray(body.pianos) ? body.pianos : null);
+      if (body && typeof body === "object") toldPianos.current?.(Array.isArray(body.pianos) ? body.pianos.length : 0);
       const a = body.piano?.last_note_age_s;
       setLastAge(typeof a === "number" ? { s: a, at: Date.now() } : null);
     } catch {
@@ -137,12 +143,12 @@ export function PianoRow({
     .filter(([, v]) => v > 0.1)
     .map(([k]) => PEDAL_WORDS[k] ?? k);
 
-  // "Relay on" is all that the sender's heartbeat proves: the mini-PC's MIDI relay is running. Whether the piano is
+  // "Relay on" is all that the sender's heartbeat proves: the sender's MIDI relay is running. Whether the piano is
   // sending shows only in its notes (owner, 25 Oct: '"Connected" but clearly they are NOT connected ... highly
   // misleading'): a dead USB link and an idle piano look the same until a key is played.
   const sinceNote = lastAge ? lastAge.s + (now - lastAge.at) / 1000 : null;
   let line: string;
-  if (!connected) line = `Relay off: nothing is coming from ${piano?.label || "the mini-PC"}`;
+  if (!connected) line = `Relay off: nothing is coming from ${piano?.label || "the piano's sender"}`;
   else if (!last && sinceNote === null) line = "Relay on · no notes received yet · play a key to check the piano";
   else if (!last && sinceNote !== null) line = `Relay on · no notes for ${ago(sinceNote * 1000).replace(" ago", "")} · if the piano is being played, its USB MIDI isn't sending`;
   else

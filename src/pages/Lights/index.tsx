@@ -156,7 +156,7 @@ export default function LightsPage() {
     const out: Group[] = [];
     const taken = new Set<string>();
     for (const room of facts.rooms) {
-      const mine = rows.filter((r) => !taken.has(r.id) && roomOfLight([room], r.id, r.dmx));
+      const mine = rows.filter((r) => !taken.has(r.id) && roomOfLight(facts.rooms, r.id, r.dmx)?.id === room.id);
       if (!mine.length) continue;
       mine.forEach((r) => taken.add(r.id));
       out.push({ key: room.id, title: room.name, roomId: room.id, rows: [...mine].sort(byPlace) });

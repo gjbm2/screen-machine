@@ -6,7 +6,13 @@
 # Run from the repo root in WSL:  setsid nohup bash scripts/powerline_soak.sh > /dev/null 2>&1 &
 # Output: logs/powerline-soak-<start>.csv  (summarise with: column -s, -t < that file)
 set -u
-BOX=${BOX:-gjbm2@192.168.1.92}; ETH=${ETH:-192.168.1.10}; MB=${MB:-200}; INTERVAL=${INTERVAL:-900}; HOURS=${HOURS:-24}
+if [[ -z "${BOX:-}" ]]; then   # the deployment's kiosk (kiosk.user@kiosk.host in deployment.yaml)
+  # shellcheck disable=SC1091
+  source "$(dirname "$0")/../media-server/kiosk-config.sh"
+  k_user="$(kiosk_get user)" && k_host="$(kiosk_get host)" || { echo "no kiosk: set BOX=user@host" >&2; exit 1; }
+  BOX="$k_user@$k_host"
+fi
+ETH=${ETH:-192.168.1.10}; MB=${MB:-200}; INTERVAL=${INTERVAL:-900}; HOURS=${HOURS:-24}
 OUT=logs/powerline-soak-$(date +%Y%m%d-%H%M).csv
 mkdir -p logs; echo $$ > logs/powerline-soak.pid; echo "utc,mbit_s,ping_idle_p50,ping_idle_p99,ping_load_p50,ping_load_p99,ping_loss_pct,eth_carrier,default_dev" > "$OUT"
 B=(ssh -o BatchMode=yes -o ConnectTimeout=8 "$BOX")

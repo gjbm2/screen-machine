@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { adminApi } from '@/shared/api';
+import { capabilityOn, getDeploymentRelative, kioskScreens, maskScreenIds, type DeploymentInfo } from '@/shared/api/deployment';
+import { parseStatus } from './adminStatus';
 
 const POLL_INTERVAL = 120_000; // 2 minutes
 
@@ -27,6 +29,20 @@ function useDisplayScreens(): DisplayScreen[] {
   return screens;
 }
 
+// The deployment, fetched same-origin like every other admin call (not the shared useDeployment hook, which goes
+// via API_URL); null until it has loaded, or if it could not be read.
+function useAdminDeployment(): DeploymentInfo | null {
+  const [deployment, setDeployment] = useState<DeploymentInfo | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getDeploymentRelative()
+      .then(d => { if (!cancelled) setDeployment(d); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+  return deployment;
+}
+
 interface ApiResult {
   success: boolean;
   output: string;
@@ -39,37 +55,28 @@ interface LogEntry {
   result: ApiResult;
 }
 
-function parseStatus(output: string) {
-  const get = (key: string) => {
-    const m = output.match(new RegExp(`^${key}=(.*)$`, 'm'));
-    return m ? m[1] : null;
-  };
-  const displays = [...output.matchAll(/^DISPLAY_LINE=(.*)$/gm)].map(m => m[1]);
-  return {
-    uptime: get('UPTIME') || 'unknown',
-    kiosk: get('KIOSK') || 'unknown',
-    northChrome: get('NORTH_CHROME') || 'unknown',
-    southChrome: get('SOUTH_CHROME') || 'unknown',
-    northUrl: get('NORTH_URL') || '',
-    southUrl: get('SOUTH_URL') || '',
-    mem: get('MEM_PERCENT'),
-    disk: get('DISK_PERCENT'),
-    load: get('LOAD'),
-    displays,
-  };
-}
+const capWord = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 export default function AdminPanel() {
   const displayScreens = useDisplayScreens();
+  // The screens with a light mask come from the deployment (GET /api/deployment), not a list here.
+  const deployment = useAdminDeployment();
+  const maskIds = maskScreenIds(deployment).join(',');
+  // The kiosk's screens (URL pickers, Chrome rows); none, and no kiosk status or restarts, where kiosk_admin is off.
+  const kioskOff = capabilityOn(deployment, 'kiosk_admin') === false;
+  const kiosk = kioskScreens(deployment);
+  // One card per kiosk screen or screen with a light mask, in the deployment's order.
+  const cardScreens = (deployment?.screens ?? [])
+    .filter(d => d && (d.mask || kiosk.some(k => k.id === d.id)))
+    .map(d => ({ id: d.id, name: d.name, kiosk: kiosk.find(k => k.id === d.id)?.name ?? null, mask: !!d.mask }));
   const [status, setStatus] = useState<ReturnType<typeof parseStatus> | null>(null);
   const [statusOk, setStatusOk] = useState<boolean | null>(null);
   const [loading, setLoading] = useState('');
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [lastPoll, setLastPoll] = useState<string>('');
-  const [northUrl, setNorthUrl] = useState('');
-  const [southUrl, setSouthUrl] = useState('');
-  const [northCustomUrl, setNorthCustomUrl] = useState('');
-  const [southCustomUrl, setSouthCustomUrl] = useState('');
+  // By kiosk screen name: the URL picked, and the last custom URL typed.
+  const [urls, setUrls] = useState<Record<string, string>>({});
+  const [customUrls, setCustomUrls] = useState<Record<string, string>>({});
   const [lightData, setLightData] = useState<any>(null);
   const [maskData, setMaskData] = useState<Record<string, any>>({});
   const [overrides, setOverrides] = useState<Record<string, { active: boolean; override: number | null }>>({});
@@ -96,8 +103,8 @@ export default function AdminPanel() {
         const parsed = parseStatus(data.output);
         setStatus(parsed);
         setStatusOk(parsed.kiosk === 'active');
-        if (parsed.northUrl && parsed.northUrl !== 'unknown') setNorthUrl(parsed.northUrl);
-        if (parsed.southUrl && parsed.southUrl !== 'unknown') setSouthUrl(parsed.southUrl);
+        const known = Object.entries(parsed.urls).filter(([, u]) => u && u !== 'unknown');
+        if (known.length) setUrls(prev => ({ ...prev, ...Object.fromEntries(known) }));
       } else {
         setStatusOk(false);
         setStatus(null);
@@ -113,34 +120,36 @@ export default function AdminPanel() {
   }, [addLog]);
 
   const fetchLight = useCallback(async () => {
+    const ids = maskIds ? maskIds.split(',') : [];
     try {
-      const [lightRes, northMask, southMask, northOv, southOv] = await Promise.all([
+      const [lightRes, masks, ovs] = await Promise.all([
         adminApi.getLightsenseResponse(),
-        adminApi.getMaskResponse('north-screen'),
-        adminApi.getMaskResponse('south-screen'),
-        adminApi.getBrightnessOverrideResponse('north-screen'),
-        adminApi.getBrightnessOverrideResponse('south-screen'),
+        Promise.all(ids.map(id => adminApi.getMaskResponse(id))),
+        Promise.all(ids.map(id => adminApi.getBrightnessOverrideResponse(id))),
       ]);
       setLightData(await lightRes.json());
-      setMaskData({
-        'north-screen': await northMask.json(),
-        'south-screen': await southMask.json(),
-      });
-      const northOvData = await northOv.json();
-      const southOvData = await southOv.json();
-      setOverrides({
-        'north-screen': northOvData,
-        'south-screen': southOvData,
-      });
+      const maskEntries: Record<string, any> = {};
+      for (let i = 0; i < ids.length; i++) maskEntries[ids[i]] = await masks[i].json();
+      setMaskData(maskEntries);
+      const ovEntries: Record<string, { active: boolean; override: number | null }> = {};
+      for (let i = 0; i < ids.length; i++) ovEntries[ids[i]] = await ovs[i].json();
+      setOverrides(ovEntries);
     } catch { /* ignore */ }
-  }, []);
+  }, [maskIds]);
+
+  // Two polls: the deployment's screens arriving re-runs only the light fetch, never the kiosk status (an SSH round-trip)
+  useEffect(() => {
+    if (kioskOff) return; // no kiosk on this site: nothing to ask
+    fetchStatus();
+    pollRef.current = setInterval(fetchStatus, POLL_INTERVAL);
+    return () => clearInterval(pollRef.current);
+  }, [fetchStatus, kioskOff]);
 
   useEffect(() => {
-    fetchStatus();
     fetchLight();
-    pollRef.current = setInterval(() => { fetchStatus(); fetchLight(); }, POLL_INTERVAL);
-    return () => clearInterval(pollRef.current);
-  }, [fetchStatus, fetchLight]);
+    const id = setInterval(fetchLight, POLL_INTERVAL);
+    return () => clearInterval(id);
+  }, [fetchLight]);
 
   const doAction = async (endpoint: string, label: string, body?: object) => {
     setLoading(label);
@@ -224,34 +233,40 @@ export default function AdminPanel() {
       {/* Status Card */}
       <div style={{
         background: '#1a1a1a', borderRadius: 10, padding: 16, marginBottom: 20,
-        border: `1px solid ${statusOk === null ? '#333' : statusOk ? '#22c55e44' : '#ef444444'}`,
+        border: `1px solid ${kioskOff || statusOk === null ? '#333' : statusOk ? '#22c55e44' : '#ef444444'}`,
       }}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 10 }}>
-          <Dot ok={statusOk} />
+          <Dot ok={kioskOff ? null : statusOk} />
           <span style={{ fontWeight: 600, fontSize: 16 }}>
-            {statusOk === null ? 'Checking...' : statusOk ? 'Healthy' : 'Unhealthy'}
+            {kioskOff ? 'No kiosk' : statusOk === null ? 'Checking...' : statusOk ? 'Healthy' : 'Unhealthy'}
           </span>
         </div>
-        {status ? (
+        {kioskOff ? (
+          <div style={{ color: '#888', fontSize: 13 }}>This site has no kiosk to look after.</div>
+        ) : status ? (
           <div style={{ fontSize: 13, lineHeight: 1.8 }}>
             <div><b>Kiosk:</b> {status.kiosk}</div>
             <div><b>Uptime:</b> {status.uptime}</div>
-            <div><b>North Screen:</b> {status.northChrome}</div>
-            <div style={{ fontSize: 11, color: '#888', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{status.northUrl}</div>
-            <div><b>South Screen:</b> {status.southChrome}</div>
-            <div style={{ fontSize: 11, color: '#888', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{status.southUrl}</div>
+            {kiosk.map(k => (
+              <div key={k.id}>
+                <div><b>{capWord(k.name)} Screen:</b> {status.chrome[k.name] ?? 'unknown'}</div>
+                <div style={{ fontSize: 11, color: '#888', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{status.urls[k.name] ?? ''}</div>
+              </div>
+            ))}
             <div><b>Memory:</b> {status.mem}% · <b>Disk:</b> {status.disk}% · <b>Load:</b> {status.load}</div>
             <div><b>Displays:</b> {status.displays.length > 0 ? status.displays.join(', ') : 'none detected'}</div>
           </div>
         ) : (
           <div style={{ color: '#888' }}>No data yet</div>
         )}
-        <button
-          onClick={() => fetchStatus()}
-          style={{ ...btnBase, background: '#333', marginTop: 10, marginBottom: 0 }}
-        >
-          Refresh Now
-        </button>
+        {!kioskOff && (
+          <button
+            onClick={() => fetchStatus()}
+            style={{ ...btnBase, background: '#333', marginTop: 10, marginBottom: 0 }}
+          >
+            Refresh Now
+          </button>
+        )}
       </div>
 
       {/* Sensor readout */}
@@ -271,15 +286,16 @@ export default function AdminPanel() {
         </div>
       )}
 
-      {/* Per-screen controls: URL + Brightness */}
-      {(['north', 'south'] as const).map(screen => {
-        const screenId = `${screen}-screen`;
-        const url = screen === 'north' ? northUrl : southUrl;
-        const setUrl = screen === 'north' ? setNorthUrl : setSouthUrl;
-        const customUrl = screen === 'north' ? northCustomUrl : southCustomUrl;
-        const setCustomUrl = screen === 'north' ? setNorthCustomUrl : setSouthCustomUrl;
-        const currentUrl = status ? (screen === 'north' ? status.northUrl : status.southUrl) : '';
-        const defaultUrl = `${window.location.origin}/display/${screen}-screen`;
+      {/* Per-screen controls: URL (a kiosk screen) + Brightness (a screen with a light mask), from the deployment */}
+      {cardScreens.map(card => {
+        const screenId = card.id;
+        const screen = card.kiosk ?? '';
+        const url = urls[screen] ?? '';
+        const setUrl = (u: string) => setUrls(prev => ({ ...prev, [screen]: u }));
+        const customUrl = customUrls[screen] ?? '';
+        const setCustomUrl = (u: string) => setCustomUrls(prev => ({ ...prev, [screen]: u }));
+        const currentUrl = status ? status.urls[screen] ?? '' : '';
+        const defaultUrl = `${window.location.origin}/display/${screenId}`;
         const changed = url !== currentUrl && url !== '';
         const urlPath = url.replace(/^https?:\/\/[^/]+/, '');
         const matchedScreen = displayScreens.find(d => urlPath === `/display/${d.id}`);
@@ -291,15 +307,16 @@ export default function AdminPanel() {
         const currentBrightness = mask?.brightness ?? 1;
 
         return (
-          <div key={screen} style={{
+          <div key={screenId} style={{
             background: '#1a1a1a', borderRadius: 10, padding: 14, marginBottom: 12,
             border: '1px solid #333',
           }}>
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 10, textTransform: 'capitalize' }}>
-              {screen} Screen
+              {card.kiosk ? `${card.kiosk} Screen` : card.name}
             </div>
 
-            {/* URL control */}
+            {/* URL control (the kiosk's screens only) */}
+            {card.kiosk && (<>
             <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
               <select
                 value={selectValue}
@@ -361,9 +378,11 @@ export default function AdminPanel() {
                 }}
               />
             )}
+            </>)}
 
-            {/* Brightness control */}
-            <div style={{ borderTop: '1px solid #333', paddingTop: 10 }}>
+            {/* Brightness control (a screen with a light mask) */}
+            {card.mask && (
+            <div style={{ borderTop: card.kiosk ? '1px solid #333' : 'none', paddingTop: card.kiosk ? 10 : 0 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
                 <span style={{ fontSize: 13, flex: 1 }}>
                   <b>Brightness</b>{' '}
@@ -400,11 +419,13 @@ export default function AdminPanel() {
                 style={{ width: '100%' }}
               />
             </div>
+            )}
           </div>
         );
       })}
 
-      {/* Action Buttons */}
+      {/* Action Buttons (the kiosk's: none where this site has no kiosk) */}
+      {!kioskOff && (
       <div style={{ marginBottom: 20 }}>
         <button
           onClick={() => doAction('restart-kiosk', 'Restart Kiosk (All)')}
@@ -421,6 +442,7 @@ export default function AdminPanel() {
           {loading === 'Reboot Server' ? 'Rebooting...' : 'Reboot Server'}
         </button>
       </div>
+      )}
 
       {/* Output Log */}
       <div>

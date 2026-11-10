@@ -11,6 +11,7 @@
 import type { ReactNode } from "react";
 import { CalendarClock, ExternalLink, Lightbulb, Music, Settings, SlidersHorizontal, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useDeployment } from "@/hooks/useDeployment";
 import { usePublishDestinations } from "@/hooks/usePublishDestinations";
 import { Unroll } from "@/pages/Room/bits";
 import { SidePanel } from "@/pages/Room/overlays";
@@ -166,6 +167,9 @@ function MenuBody({
   close: () => void;
 }) {
   const room = useRoomLink();
+  // The Lights row's hint: the site's own words (manifest wording.lights_menu, when /api/deployment gives them), else generic.
+  const { deployment } = useDeployment();
+  const lightsHint = deployment?.wording?.lights_menu || "Lights and appliances";
   const { destinationsWithBuckets } = usePublishDestinations();
   const screens = destinationsWithBuckets.filter((d) => d.id !== "_recent");
   const roomScreens = room.status?.screens ?? {};
@@ -182,7 +186,7 @@ function MenuBody({
           <NavRow href={musicPageUrl()} icon={<Music className="h-5 w-5" />} label="Music" hint="Pieces, playlists, recordings" current={current === "music"} onGo={close} />
         )}
         {(room.onLan || current === "lights") && (
-          <NavRow href={lightsPageUrl()} icon={<Lightbulb className="h-5 w-5" />} label="Lights" hint="Lamps, glitterball, pinspots" current={current === "lights"} onGo={close} testId="menu-lights" />
+          <NavRow href={lightsPageUrl()} icon={<Lightbulb className="h-5 w-5" />} label="Lights" hint={lightsHint} current={current === "lights"} onGo={close} testId="menu-lights" />
         )}
         <NavRow href={generatorUrl()} icon={<Sparkles className="h-5 w-5" />} label="Generator" hint="Make art for each screen" current={current === "generator"} onGo={close} />
         <NavRow href={schedulerUrl()} icon={<CalendarClock className="h-5 w-5" />} label="Schedules" hint="What each screen does through the day" current={current === "scheduler"} onGo={close} />

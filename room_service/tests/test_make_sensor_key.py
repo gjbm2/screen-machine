@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 import stat
 import subprocess
 import sys
 from pathlib import Path
 
+import smconfig
 from room_service.ingest import SensorKeys
 
 from .ingest_helpers import REPO
@@ -15,8 +17,14 @@ from .ingest_helpers import REPO
 TOOL = REPO / "tools" / "room" / "ingest_keys" / "make_sensor_key.py"
 
 
+LAN_HOST = "192.168.1.205"     # this test's SM_LAN_HOST (the machine's .env normally says it)
+
+
 def run(*args: str) -> subprocess.CompletedProcess:
-    return subprocess.run([sys.executable, "-I", str(TOOL), *args], capture_output=True, text=True, timeout=30)
+    """The tool with this test's machine settings: SM_LAN_HOST here, the selected deployment's room port."""
+    env = {**os.environ, "SM_LAN_HOST": LAN_HOST}
+    return subprocess.run([sys.executable, "-I", str(TOOL), *args], capture_output=True, text=True, timeout=30,
+                          env=env)
 
 
 def mode(p: Path) -> int:
@@ -43,7 +51,8 @@ def test_creates_rotates_and_never_prints_the_key(tmp_path):
     data = json.loads(keys.read_text())
     assert set(data) == {"living-room", "hall"} and data["living-room"] != k1
     assert json.loads(out.read_text())["key"] == data["living-room"]
-    assert json.loads(out.read_text())["url"] == "ws://192.168.1.205:8700/v1/ingest/lux"   # the default
+    assert json.loads(out.read_text())["url"] == \
+        f"ws://{LAN_HOST}:{smconfig.port('room')}/v1/ingest/lux"   # the default: SM_LAN_HOST, the deployment's port
     assert data["living-room"] not in r.stdout + r.stderr
     assert not list(keys.parent.glob(".*.tmp")) and not list(out.parent.glob(".*.tmp"))
 

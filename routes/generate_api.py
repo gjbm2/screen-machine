@@ -10,6 +10,7 @@ from urllib.parse import unquote
 from utils.logger import log_to_console, info, error, warning, debug
 from routes.generate_handler import jpg_from_mp4_handler, process_generate_image_request
 from routes.utils import encode_image_uploads, encode_reference_urls
+import smconfig
 
 # Use the existing Blueprint
 generate_api = Blueprint('generate_api', __name__)
@@ -141,6 +142,9 @@ def generate_image_route():
     """
     Generate image(s) from a prompt, optionally with reference images.
     """
+    if not smconfig.enabled("generation"):
+        warning("[generate_image_route] refused: generation is off in this deployment")
+        return jsonify({"error": "generation is off in this deployment", "capability": "generation"}), 503
     # Extract JSON data from the form
     json_data = request.form.get('data')
     if not json_data:

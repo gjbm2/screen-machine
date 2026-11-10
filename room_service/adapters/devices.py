@@ -2,7 +2,7 @@
 config can name them, typos are still rejected at load, their rows are skipped and status shows available: false.
 Each becomes a real adapter as its hardware is configured (RM4 Pro, a DMX plug, SoCo, TV IP Control writes).
 
-Also the site's room names (routes/data/rooms.json), for adapters that word a member by the room it is in.
+Also the site's room names (the deployment's rooms.json), for adapters that word a member by the room it is in.
 """
 
 from __future__ import annotations
@@ -11,11 +11,13 @@ import json
 from pathlib import Path
 from typing import Any
 
+import smconfig
+
 from ..roomstate.contract import Placeholder
 
 REPO = Path(__file__).resolve().parents[2]
-ROOM_DIR = REPO / "config" / "room"
-ROOMS_FILE = REPO / "routes" / "data" / "rooms.json"
+ROOM_DIR = smconfig.path("room")              # the deployment's room/: tv.json, sonos.json
+ROOMS_FILE = smconfig.path("rooms.json")
 
 
 def _read(path: Path) -> dict | None:
@@ -53,8 +55,8 @@ class ConfigDevice(Placeholder):
 
 
 def tv(path: str | Path | None = None) -> ConfigDevice | None:
-    """tv.<screen>: the screens that have a TV, from config/room/tv.json; None without the file (no TVs)."""
-    raw = _read(Path(path) if path else ROOM_DIR / "tv.json")
+    """tv.<screen>: the screens that have a TV, from the deployment's room/tv.json; None without the file (no TVs)."""
+    raw = _read(Path(path) if path else ROOM_DIR.joinpath("tv.json"))
     return ConfigDevice("tv", raw) if raw and raw.get("members") else None
 
 
@@ -86,7 +88,7 @@ def room_of(key: str, item: str, path: str | Path | None = None) -> str | None:
 
 def _sonos_members() -> list[str]:
     try:
-        zones = json.loads((ROOM_DIR / "sonos.json").read_text())["zones"]
+        zones = json.loads(ROOM_DIR.joinpath("sonos.json").read_text())["zones"]
     except (OSError, ValueError, KeyError):
         return []                                         # no zones configured: nothing to name
     return [f"{z}.{m}" for z in zones for m in ("volume", "playback", "now_playing")]
@@ -99,10 +101,37 @@ def _named(p: Placeholder, label: str, **attrs) -> Placeholder:
     return p
 
 
+def _rf_has(subsystem: str) -> bool:
+    """A device file in the deployment's room/rf/ is `subsystem` (an unreadable file counts if its text names it,
+    so a broken glitterball.json still leaves the placeholder its modes need)."""
+    from .broadlink_rf import RF_DIR                      # lazy: tests monkeypatch it
+    try:
+        files = sorted(Path(RF_DIR).glob("*.json"))
+    except OSError:
+        return False
+    for f in files:
+        try:
+            text = f.read_text()
+        except OSError:
+            continue
+        try:
+            raw = json.loads(text)
+        except ValueError:
+            if f'"{subsystem}"' in text:
+                return True
+            continue
+        if isinstance(raw, dict) and raw.get("subsystem") == subsystem:
+            return True
+    return False
+
+
 def placeholders() -> list[Placeholder]:
+    """Only what this deployment has: the glitterball when its room/rf/ has a mirror_ball file (the RM4 Pro adapter
+    replaces it), the DMX power plug with the dmx capability on, Sonos (empty without sonos.json), the TVs (tv.json)."""
     return [
         *([t] if (t := tv()) else []),                                  # verify-only until writes are approved (Q6)
-        _named(Placeholder("mirror_ball", ["main"], ["spinning", "stopped"]), "Glitterball"),   # RM4 Pro (Q3)
-        Placeholder("plug", ["dmx_power"], ["on", "off"]),
+        *([_named(Placeholder("mirror_ball", ["main"], ["spinning", "stopped"]), "Glitterball")]   # RM4 Pro (Q3)
+          if _rf_has("mirror_ball") else []),
+        *([Placeholder("plug", ["dmx_power"], ["on", "off"])] if smconfig.enabled("dmx") else []),
         _named(Placeholder("sonos", _sonos_members()), "Music", room_group="music"),   # SoCo off or no sonos.json
     ]

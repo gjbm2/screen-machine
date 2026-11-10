@@ -22,7 +22,8 @@ WebSocket fan-out with drop-to-keyframe are reused here.
   previous frame is repeated in that slot (`repeats`), so the timeline never shifts; if the pipe/encoder is
   behind, the right content is rendered late and the stream catches up. More than 0.25 s behind re-bases the
   schedule (`resyncs`): the stream then runs that much later than real time, which the player's buffer absorbs.
-* **Encoder per screen** (`config/live/stream_switches.json`, 4K60 plan change 2): `nvenc` = GPU-resident
+* **Encoder per screen** (the deployment's `deployments/<id>/live/stream_switches.json`; `--switches-file` /
+  `$SM_STREAM_SWITCHES` override it; 4K60 plan change 2): `nvenc` = GPU-resident
   (`encode/nvenc.py`: PyNvVideoCodec encodes the slot's NV12 surface on the render stream, no host copy, no
   ffmpeg; HEVC only), `ffmpeg` = the pipe above. Read when a session is created (no restart to flip a screen):
   `{"default": {"encoder": "ffmpeg"}, "screens": {"south-screen": {"encoder": "nvenc"}}}`. The GPU encoder forces
@@ -69,7 +70,7 @@ cd ~/dev/screen-machine
   stops the beats (a breakdown) and jumps to the next section, and shows the synth's tempo next to the beat
   follower's, timing how long the follower takes to re-lock. It goes through `/dev/synth`, which proxies
   show-synth's `GET/POST /v1/control` (see the docstring in `tools/show_synth.py`).
-* Venv: `~/.venvs/sm-stream` (cupy-cuda12x, aiohttp, numpy, pyyaml, pillow, jsonschema, PyNvVideoCodec==2.2.3
+* Venv: `~/.venvs/sm-stream` (cupy-cuda12x[ctk] (the [ctk] extra brings the CUDA headers its kernels compile against; without them the first kernel fails "Failed to find CUDA headers"), aiohttp, numpy, pyyaml, pillow, jsonschema, PyNvVideoCodec==2.2.3
   for the GPU encoder; tests add pytest, pytest-asyncio, playwright). Needs the distro `ffmpeg` (6.1, NVENC API 12)
   on PATH (the ffmpeg encoder, and the GPU encoder's fallback).
 

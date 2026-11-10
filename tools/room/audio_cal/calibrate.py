@@ -13,7 +13,7 @@ One run, start to finish (run with ~/.venvs/sm-roundtrip/bin/python):
   calibrate.py record status             # elapsed time, the last second's level, overflows, bus messages
   calibrate.py record stop               # finishes the WAV, moves it into the run dir
   calibrate.py fetch "<YouTube URL or search words>"     # the original, into the run's original/
-  calibrate.py analyse                   # analysis/ + model/ in the run dir, and config/room/audio_cal.json
+  calibrate.py analyse                   # analysis/ + model/ in the run dir, and calibration/audio_cal.json
 Each takes --run <dir name> to act on a run other than the latest (runs/CURRENT).
 
 What ``record start`` runs, both detached (they outlive this command, and stop on ``record stop``):
@@ -21,7 +21,7 @@ What ``record start`` runs, both detached (they outlive this command, and stop o
   is using right now (its ``sender.dev``), opened as the agent opens it (WASAPI shared, 48 kHz mono float32), so
   it records what the beat clock hears, and the agent carries on. It writes on C: and ``record stop`` moves it.
 - **The bus logger** (``calibrate.py _buslog``): show_service's music.clock, music.hit, music.rhythm, music.features
-  and music.context from ws://127.0.0.1:8703/v1/show into bus.jsonl, and GET /api/v1/state at 1 Hz into
+  and music.context from ws://127.0.0.1:<ports.show>/v1/show into bus.jsonl, and GET /api/v1/state at 1 Hz into
   state.jsonl, each line stamped ``rx_ms`` (CLOCK_MONOTONIC ms, show_service's own time base). It reconnects
   through show_service restarts. Those lines let analyse.py score the live clock on the real room's audio.
 
@@ -45,10 +45,19 @@ import urllib.request
 
 HERE = pathlib.Path(__file__).resolve().parent
 REPO = HERE.parents[2]
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
+import smconfig  # noqa: E402  (the deployment: SM_DEPLOYMENT)
+
+try:   # the deployment (and PyYAML, which reads its manifest) up front: a clear message, not a traceback
+    smconfig.deployment()
+except (smconfig.DeploymentError, ImportError) as _exc:
+    raise SystemExit(f"{pathlib.Path(__file__).name}: {_exc}")
+
 RUNS = HERE / "runs"
 CURRENT = RUNS / "CURRENT"
-SHOW_API = "http://127.0.0.1:8703/api/v1"
-SHOW_BUS = "ws://127.0.0.1:8703/v1/show"
+SHOW_API = smconfig.url("show") + "/api/v1"
+SHOW_BUS = smconfig.url("show", "ws") + "/v1/show"
 BUS_WANT = ["music.clock", "music.hit", "music.rhythm", "music.features", "music.context"]
 WIN_DIR = r"C:\Users\Greg\AppData\Local\screen-machine\audio-cal"     # the recorder's home on PC22 (LOCALAPPDATA)
 WIN_DIR_WSL = pathlib.Path("/mnt/c/Users/Greg/AppData/Local/screen-machine/audio-cal")
@@ -248,8 +257,8 @@ def record_stop(a) -> None:
 
 # ---------------------------------------------------------------------------------------------------- sonos run
 
-ROOM_API = "http://127.0.0.1:8700/api/v1/room"
-SONOS_JSON = REPO / "config" / "room" / "sonos.json"
+ROOM_API = smconfig.url("room") + "/api/v1/room"
+SONOS_JSON = smconfig.path("room", "sonos.json")
 VOLUME_CAP = 50             # the owner, 20 Oct: party is about 70, "you don't need that much to test it"
 
 
@@ -684,7 +693,7 @@ def main() -> None:
     sr = sub.add_parser("sonos-run", help="play a calibration programme through the Sonos and record the mic")
     sr.add_argument("--programme", required=True, help="a programme dir (programme.py: manifest.json + programme.flac)")
     sr.add_argument("--stream", default="room-mic")
-    sr.add_argument("--zone", help="config/room/sonos.json zone (default: the first)")
+    sr.add_argument("--zone", help="a zone of the deployment's room/sonos.json (default: the first)")
     sr.add_argument("--max-volume", type=int, default=VOLUME_CAP)
     sr.add_argument("--note", default="")
     sr.add_argument("--dry-run", action="store_true", help="check everything, play nothing")

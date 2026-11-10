@@ -1,0 +1,1323 @@
+{
+ "config": {
+  "error": null,
+  "pending_targets": [],
+  "revision": "684fe3c3e56f",
+  "warnings": [
+   {
+    "code": "guard_inactive",
+    "level": "warning",
+    "message": "blinds.ch02, blinds.ch03, blinds.ch14: placeholder or dry run, so this guard is not enforced (allow_skipped)",
+    "mode": null,
+    "path": "/transitions/0/steps/1/on_fail",
+    "target": null,
+    "text": "The blinds aren't wired up yet, so the screens can light up before the blinds are down"
+   },
+   {
+    "code": "placeholder_values_unchecked",
+    "level": "warning",
+    "message": "'blinds': a placeholder with no values in its device config; its values aren't checked",
+    "mode": null,
+    "path": "",
+    "target": null,
+    "text": "This device isn't set up yet, so its choices can't be checked"
+   },
+   {
+    "code": "placeholder_values_unchecked",
+    "level": "warning",
+    "message": "'sonos': a placeholder with no values in its device config; its values aren't checked",
+    "mode": null,
+    "path": "",
+    "target": null,
+    "text": "This device isn't set up yet, so its choices can't be checked"
+   },
+   {
+    "code": "placeholder_values_unchecked",
+    "level": "warning",
+    "message": "'hue': a placeholder with no values in its device config; its values aren't checked",
+    "mode": null,
+    "path": "",
+    "target": null,
+    "text": "This device isn't set up yet, so its choices can't be checked"
+   }
+  ]
+ },
+ "dmx": {
+  "enabled": false
+ },
+ "flask": {
+  "last_fetch_error": null,
+  "lux_frames": 0,
+  "mask_requests": 0,
+  "ws_connected": true
+ },
+ "mask": {
+  "config": {
+   "last_error": null,
+   "loaded": true,
+   "reloads": 1,
+   "sources": {
+    "config_py": "<repo>/config.py",
+    "destinations_json": "<repo>/deployments/finsbury/publish-destinations.json",
+    "intensity_json": "<repo>/deployments/finsbury/intensity.json"
+   }
+  },
+  "counts": {},
+  "ingest": {
+   "armed": true,
+   "closes": {},
+   "connections": [],
+   "disabled_reason": null,
+   "hellos": 0,
+   "key_failures": 0,
+   "on": true,
+   "rejected": {},
+   "relay_lag_ms": {
+    "max": null,
+    "n": 0,
+    "p50": null,
+    "p95": null
+   },
+   "unauthenticated_sockets": 0
+  },
+  "latency_ms": {
+   "deferred": {
+    "max": null,
+    "n": 0,
+    "p50": null,
+    "p95": null
+   },
+   "immediate": {
+    "max": null,
+    "n": 0,
+    "p50": null,
+    "p95": null
+   },
+   "p50": null,
+   "p95": null,
+   "total": 0
+  },
+  "mask_source": {
+   "devtest": "auto",
+   "north-screen": "auto",
+   "south-screen": "auto"
+  },
+  "override_errors": {},
+  "overrides": {},
+  "params": {
+   "drift_tau_s": 0.6,
+   "fresh_ramp_s": 5.0,
+   "snap_ev": 0.25,
+   "snap_tau_s": 0.15,
+   "stale_after_s": 10.0,
+   "stale_ramp_s": 30.0
+  },
+  "sensors": {},
+  "tiers": {
+   "devtest": "flask",
+   "north-screen": "flask",
+   "south-screen": "flask"
+  }
+ },
+ "mode": {
+  "current": "gallery",
+  "default": "gallery",
+  "entered": [
+   "gallery"
+  ],
+  "last_transition": {
+   "detail": "",
+   "finished_age_s": "<scrubbed>",
+   "fired": [],
+   "from": null,
+   "id": "t-<id>",
+   "phase": "done",
+   "reapply": false,
+   "resumes": null,
+   "rule": 2,
+   "source": "boot",
+   "started_age_s": "<scrubbed>",
+   "status": "partial",
+   "steps": [
+    {
+     "action": "set AI off",
+     "detail": "show_service unreachable (Cannot connect to host 127.0.0.1:<port> ssl:default [Connect call failed ('127.0.0.1', 1)])",
+     "id": "i0",
+     "kind": "set",
+     "status": "failed",
+     "step": 1,
+     "subsystem": "show.ai",
+     "value": false
+    },
+    {
+     "action": "set stopped",
+     "detail": "no adapter",
+     "id": "i1",
+     "kind": "set",
+     "reason": "unavailable",
+     "status": "skipped",
+     "step": 1,
+     "subsystem": "mirror_ball.main",
+     "value": "stopped"
+    }
+   ],
+   "to": "gallery",
+   "via": []
+  },
+  "leaving": [],
+  "modes_error": null,
+  "rooms_error": null,
+  "since_age_s": "<scrubbed>",
+  "target": null,
+  "transition": null,
+  "via": []
+ },
+ "rooms": [
+  {
+   "blinds": [
+    "ch02",
+    "ch03",
+    "ch14"
+   ],
+   "effects": [
+    {
+     "power": "mirror_ball.main",
+     "settings": [
+      "mirror_ball_motor.speed",
+      "mirror_ball_motor.direction"
+     ]
+    },
+    {
+     "power": "pinspots.main",
+     "settings": [
+      "pinspots.colour",
+      "pinspots.level",
+      "pinspots.flash"
+     ]
+    }
+   ],
+   "id": "drawing-room",
+   "lights": [
+    "hue.ne",
+    "hue.nw",
+    "hue.se",
+    "hue.sw",
+    "light"
+   ],
+   "name": "Drawing room",
+   "screens": [
+    "north-screen",
+    "south-screen"
+   ],
+   "sensors": [
+    "living-room"
+   ]
+  },
+  {
+   "blinds": [],
+   "effects": [],
+   "id": "lab",
+   "lights": [],
+   "name": "Lab",
+   "screens": [
+    "devtest"
+   ],
+   "sensors": []
+  }
+ ],
+ "screens": {
+  "devtest": {
+   "desired": "art",
+   "desired_expires_in_s": null,
+   "desired_expires_to": null,
+   "hud": {
+    "applied": false,
+    "failed": null,
+    "wanted": false
+   },
+   "last_error": null,
+   "mask": {
+    "brightness": null,
+    "held": false,
+    "latency_ms": {
+     "deferred": {
+      "max": null,
+      "n": 0,
+      "p50": null,
+      "p95": null
+     },
+     "immediate": {
+      "max": null,
+      "n": 0,
+      "p50": null,
+      "p95": null
+     },
+     "p50": null,
+     "p95": null,
+     "total": 0
+    },
+    "mask_source": "auto",
+    "sensor": null,
+    "sensor_fresh": false,
+    "source": null,
+    "suspended": false,
+    "tier": "flask",
+    "warm_alpha": null,
+    "warm_hex": null
+   },
+   "name": "Dev test screen",
+   "observed": {
+    "detail": "",
+    "duplicate_glass": false,
+    "fallbacks_in_window": 0,
+    "frozen": false,
+    "glass_clients": 0,
+    "headless": false,
+    "kiosk_state": null,
+    "last_ack_at": null,
+    "layer": "art",
+    "page": null,
+    "page_connected": false,
+    "page_role": null,
+    "phase": "idle",
+    "retry_in_s": null,
+    "session": null,
+    "viewers": 0
+   },
+   "policy": {
+    "live_enabled": true,
+    "mask_push": true,
+    "page_key_required": false,
+    "timed_reload": true,
+    "timed_reload_applied": null
+   },
+   "snapshots": {
+    "anchor": false,
+    "target": false,
+    "unmatched": null
+   }
+  },
+  "north-screen": {
+   "desired": "art",
+   "desired_expires_in_s": null,
+   "desired_expires_to": null,
+   "hud": {
+    "applied": false,
+    "failed": null,
+    "wanted": false
+   },
+   "last_error": null,
+   "mask": {
+    "brightness": null,
+    "held": false,
+    "latency_ms": {
+     "deferred": {
+      "max": null,
+      "n": 0,
+      "p50": null,
+      "p95": null
+     },
+     "immediate": {
+      "max": null,
+      "n": 0,
+      "p50": null,
+      "p95": null
+     },
+     "p50": null,
+     "p95": null,
+     "total": 0
+    },
+    "mask_source": "auto",
+    "sensor": null,
+    "sensor_fresh": false,
+    "source": null,
+    "suspended": false,
+    "tier": "flask",
+    "warm_alpha": null,
+    "warm_hex": null
+   },
+   "name": "North screen",
+   "observed": {
+    "detail": "",
+    "duplicate_glass": false,
+    "fallbacks_in_window": 0,
+    "frozen": false,
+    "glass_clients": 0,
+    "headless": false,
+    "kiosk_state": null,
+    "last_ack_at": null,
+    "layer": "art",
+    "page": null,
+    "page_connected": false,
+    "page_role": null,
+    "phase": "idle",
+    "retry_in_s": null,
+    "session": null,
+    "viewers": 0
+   },
+   "policy": {
+    "live_enabled": true,
+    "mask_push": true,
+    "page_key_required": false,
+    "timed_reload": true,
+    "timed_reload_applied": null
+   },
+   "snapshots": {
+    "anchor": false,
+    "target": false,
+    "unmatched": null
+   }
+  },
+  "south-screen": {
+   "desired": "art",
+   "desired_expires_in_s": null,
+   "desired_expires_to": null,
+   "hud": {
+    "applied": false,
+    "failed": null,
+    "wanted": false
+   },
+   "last_error": null,
+   "mask": {
+    "brightness": null,
+    "held": false,
+    "latency_ms": {
+     "deferred": {
+      "max": null,
+      "n": 0,
+      "p50": null,
+      "p95": null
+     },
+     "immediate": {
+      "max": null,
+      "n": 0,
+      "p50": null,
+      "p95": null
+     },
+     "p50": null,
+     "p95": null,
+     "total": 0
+    },
+    "mask_source": "auto",
+    "sensor": null,
+    "sensor_fresh": false,
+    "source": null,
+    "suspended": false,
+    "tier": "flask",
+    "warm_alpha": null,
+    "warm_hex": null
+   },
+   "name": "South screen",
+   "observed": {
+    "detail": "",
+    "duplicate_glass": false,
+    "fallbacks_in_window": 0,
+    "frozen": false,
+    "glass_clients": 0,
+    "headless": false,
+    "kiosk_state": null,
+    "last_ack_at": null,
+    "layer": "art",
+    "page": null,
+    "page_connected": false,
+    "page_role": null,
+    "phase": "idle",
+    "retry_in_s": null,
+    "session": null,
+    "viewers": 0
+   },
+   "policy": {
+    "live_enabled": true,
+    "mask_push": true,
+    "page_key_required": false,
+    "timed_reload": true,
+    "timed_reload_applied": null
+   },
+   "snapshots": {
+    "anchor": false,
+    "target": false,
+    "unmatched": null
+   }
+  }
+ },
+ "service": {
+  "epoch": "<scrubbed>",
+  "started_at": "<scrubbed>",
+  "version": "0.1.0"
+ },
+ "snapshotter": {
+  "count": 0,
+  "fake": true
+ },
+ "stored": {},
+ "stream_service": {
+  "foreign_sessions": [],
+  "last_error": null,
+  "owned_sessions": [],
+  "reachable": true,
+  "url": "http://127.0.0.1:<port>"
+ },
+ "subsystems": {
+  "autopilot": {
+   "available": true,
+   "believed": null,
+   "dry_run": false,
+   "kind": "level",
+   "last_error": null,
+   "last_ok_age_s": null,
+   "members": {
+    "main": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    }
+   }
+  },
+  "blinds": {
+   "available": false,
+   "believed": {
+    "ch02": null,
+    "ch03": null,
+    "ch04": null,
+    "ch05": null,
+    "ch06": null,
+    "ch07": null,
+    "ch08": null,
+    "ch09": null,
+    "ch10": null,
+    "ch11": null,
+    "ch12": null,
+    "ch13": null,
+    "ch14": null
+   },
+   "dry_run": false,
+   "guard": "inactive",
+   "kind": "level",
+   "last_error": "no adapter",
+   "last_ok_age_s": null,
+   "members": {
+    "ch02": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "ch03": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "ch04": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "ch05": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "ch06": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "ch07": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "ch08": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "ch09": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "ch10": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "ch11": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "ch12": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "ch13": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "ch14": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    }
+   }
+  },
+  "brightness": {
+   "available": true,
+   "believed": {
+    "lamps": null,
+    "screens": null
+   },
+   "dry_run": false,
+   "kind": "level",
+   "last_error": null,
+   "last_ok_age_s": null,
+   "members": {
+    "lamps": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "screens": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    }
+   }
+  },
+  "diag": {
+   "available": true,
+   "believed": {
+    "devtest": null,
+    "north-screen": null,
+    "south-screen": null
+   },
+   "dry_run": false,
+   "kind": "level",
+   "last_error": null,
+   "last_ok_age_s": null,
+   "members": {
+    "devtest": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "north-screen": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "south-screen": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    }
+   }
+  },
+  "hue": {
+   "available": false,
+   "believed": {
+    "ne": null,
+    "nw": null,
+    "se": null,
+    "sw": null
+   },
+   "dry_run": false,
+   "kind": "level",
+   "last_error": "no adapter",
+   "last_ok_age_s": null,
+   "members": {
+    "ne": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "nw": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "se": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "sw": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    }
+   }
+  },
+  "light": {
+   "available": true,
+   "believed": {
+    "par-left": null,
+    "par-right": null
+   },
+   "dry_run": false,
+   "kind": "level",
+   "last_error": null,
+   "last_ok_age_s": null,
+   "members": {
+    "par-left": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "par-right": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    }
+   }
+  },
+  "log": {
+   "available": true,
+   "believed": {},
+   "dry_run": false,
+   "kind": "action",
+   "last_error": null,
+   "last_ok_age_s": null,
+   "members": {}
+  },
+  "mirror_ball": {
+   "available": false,
+   "believed": null,
+   "dry_run": false,
+   "kind": "level",
+   "last_error": "no adapter",
+   "last_ok_age_s": null,
+   "members": {
+    "main": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": "stopped",
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": "respect",
+     "retry": null,
+     "sent_age_s": null,
+     "settled": false
+    }
+   }
+  },
+  "mirror_ball_motor": {
+   "available": false,
+   "believed": {
+    "direction": null,
+    "speed": null
+   },
+   "dry_run": false,
+   "kind": "level",
+   "last_error": "no adapter",
+   "last_ok_age_s": null,
+   "members": {
+    "direction": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "speed": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    }
+   }
+  },
+  "page": {
+   "available": true,
+   "believed": {
+    "devtest.timed_reload": true,
+    "north-screen.timed_reload": true,
+    "south-screen.timed_reload": true
+   },
+   "dry_run": false,
+   "kind": "level",
+   "last_error": null,
+   "last_ok_age_s": "<scrubbed>",
+   "members": {
+    "devtest.timed_reload": {
+     "age_s": "<scrubbed>",
+     "believed": true,
+     "confidence": "confirmed",
+     "desired": true,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": "respect",
+     "retry": null,
+     "sent_age_s": null,
+     "settled": true
+    },
+    "north-screen.timed_reload": {
+     "age_s": "<scrubbed>",
+     "believed": true,
+     "confidence": "confirmed",
+     "desired": true,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": "respect",
+     "retry": null,
+     "sent_age_s": null,
+     "settled": true
+    },
+    "south-screen.timed_reload": {
+     "age_s": "<scrubbed>",
+     "believed": true,
+     "confidence": "confirmed",
+     "desired": true,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": "respect",
+     "retry": null,
+     "sent_age_s": null,
+     "settled": true
+    }
+   }
+  },
+  "pinspots": {
+   "available": false,
+   "believed": {
+    "colour": null,
+    "flash": null,
+    "level": null,
+    "main": null
+   },
+   "dry_run": false,
+   "kind": "level",
+   "last_error": "no adapter",
+   "last_ok_age_s": null,
+   "members": {
+    "colour": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "flash": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "level": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "main": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    }
+   }
+  },
+  "plug": {
+   "available": false,
+   "believed": null,
+   "dry_run": false,
+   "kind": "level",
+   "last_error": "no adapter",
+   "last_ok_age_s": null,
+   "members": {
+    "dmx_power": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    }
+   }
+  },
+  "screens": {
+   "available": true,
+   "believed": {
+    "devtest": "art",
+    "north-screen": "art",
+    "south-screen": "art"
+   },
+   "dry_run": false,
+   "kind": "level",
+   "last_error": null,
+   "last_ok_age_s": "<scrubbed>",
+   "members": {
+    "devtest": {
+     "age_s": "<scrubbed>",
+     "believed": "art",
+     "confidence": "confirmed",
+     "desired": "art",
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": "respect",
+     "retry": null,
+     "sent_age_s": null,
+     "settled": true
+    },
+    "north-screen": {
+     "age_s": "<scrubbed>",
+     "believed": "art",
+     "confidence": "confirmed",
+     "desired": "art",
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": "respect",
+     "retry": null,
+     "sent_age_s": null,
+     "settled": true
+    },
+    "south-screen": {
+     "age_s": "<scrubbed>",
+     "believed": "art",
+     "confidence": "confirmed",
+     "desired": "art",
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": "respect",
+     "retry": null,
+     "sent_age_s": null,
+     "settled": true
+    }
+   }
+  },
+  "sensor_mask": {
+   "available": true,
+   "believed": "follow",
+   "dry_run": false,
+   "kind": "level",
+   "last_error": null,
+   "last_ok_age_s": "<scrubbed>",
+   "members": {
+    "main": {
+     "age_s": "<scrubbed>",
+     "believed": "follow",
+     "confidence": "confirmed",
+     "desired": "follow",
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": "respect",
+     "retry": null,
+     "sent_age_s": null,
+     "settled": true
+    }
+   }
+  },
+  "show": {
+   "available": false,
+   "believed": {
+    "ai": null,
+    "main": null,
+    "mic": null
+   },
+   "dry_run": false,
+   "kind": "level",
+   "last_error": "read: show_service unreachable (Cannot connect to host 127.0.0.1:<port> ssl:default [Connect call failed ('127.0.0.1', 1)])",
+   "last_ok_age_s": null,
+   "members": {
+    "ai": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": false,
+     "drift": null,
+     "inflight": {
+      "until_s": "<scrubbed>",
+      "value": false
+     },
+     "moving": false,
+     "policy": "respect",
+     "retry": {
+      "attempts": 0,
+      "explained": [
+       false
+      ],
+      "final": false,
+      "next_in_s": "<scrubbed>",
+      "why": "show_service unreachable (Cannot connect to host 127.0.0.1:<port> ssl:default [Connect call failed ('127.0.0.1', 1)])"
+     },
+     "sent_age_s": "<scrubbed>",
+     "settled": false
+    },
+    "main": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "mic": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    }
+   }
+  },
+  "sonos": {
+   "available": false,
+   "believed": {
+    "drawing-room.now_playing": null,
+    "drawing-room.playback": null,
+    "drawing-room.volume": null
+   },
+   "dry_run": false,
+   "kind": "level",
+   "last_error": "no adapter",
+   "last_ok_age_s": null,
+   "members": {
+    "drawing-room.now_playing": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "drawing-room.playback": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "drawing-room.volume": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    }
+   }
+  },
+  "tv": {
+   "available": false,
+   "believed": {
+    "north-screen": null,
+    "south-screen": null
+   },
+   "dry_run": false,
+   "kind": "level",
+   "last_error": "no adapter",
+   "last_ok_age_s": null,
+   "members": {
+    "north-screen": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "south-screen": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    }
+   }
+  }
+ }
+}

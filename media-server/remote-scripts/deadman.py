@@ -189,7 +189,7 @@ def resolve_issue(env, state, key, subject, body):
 
 def probe(env):
     url = env.get("PROBE_URL",
-                  "http://95.141.21.170:8000/api/health?probe=deadman")
+                  "@@KIOSK_BASE_URL@@/api/health?probe=deadman")
     try:
         status, text = _http(url, timeout=10)
         if status == 200:

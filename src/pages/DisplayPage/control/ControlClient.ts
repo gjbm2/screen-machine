@@ -3,8 +3,10 @@
 //   * liveness: no inbound frame for 6 s => dead: drop it and reconnect;
 //   * reconnect: full-jitter backoff random(0, min(10 s, 0.5 s·2^n)); n resets after 30 s connected;
 //     at once on the browser's `online` event, or on close code 4008 (server backlog/rate) if that
-//     connection had been up for 5 s (otherwise backoff: never a tight loop, rule 11);
+//     connection had been up for 5 s (otherwise backoff: never a tight loop, rule 11); after a 4404 (room_service
+//     doesn't run this screen: an art-only one) only every 5 min (closePolicy.ts);
 //   * `hb {}` whenever nothing has been sent for 2 s.
+import { reconnectPlan } from "./closePolicy";
 import { envelope, parseEnvelope, type Envelope, type Hello } from "./protocol";
 
 const DEAD_AFTER_MS = 6_000;
@@ -36,6 +38,8 @@ export class ControlClient {
   /** Number of (re)connections after the first; reported in kiosk.state. */
   reconnects = 0;
   private connects = 0;
+  /** Said once that room_service doesn't know this screen (4404), until a connection is welcomed again. */
+  private toldUnknown = false;
 
   constructor(private opts: ControlClientOptions) {}
 
@@ -100,6 +104,7 @@ export class ControlClient {
     ws.onmessage = (ev) => {
       if (this.ws !== ws) return;
       this.lastInbound = performance.now();
+      this.toldUnknown = false;
       const msg = parseEnvelope(ev.data);
       if (msg) this.opts.onMessage(msg);
     };
@@ -108,7 +113,14 @@ export class ControlClient {
       this.opts.log?.("control socket closed", { code: ev.code, reason: ev.reason });
       this.ws = null;
       const upFor = this.openedAt ? performance.now() - this.openedAt : 0;
-      this.onDown(ev.code === 4008 && upFor >= IMMEDIATE_AFTER_UP_MS);
+      const plan = reconnectPlan(ev.code, upFor, IMMEDIATE_AFTER_UP_MS);
+      if (plan.kind === "after") {
+        if (!this.toldUnknown) this.opts.log?.("room_service doesn't run this screen (4404): trying again every few minutes");
+        this.toldUnknown = true;
+        this.onDown(false, plan.ms);
+      } else {
+        this.onDown(plan.kind === "now");
+      }
     };
     ws.onerror = () => {
       /* onclose follows */
@@ -130,11 +142,14 @@ export class ControlClient {
     if (reconnect) this.onDown(immediately);
   }
 
-  private onDown(immediately: boolean): void {
+  private onDown(immediately: boolean, afterMs?: number): void {
     if (this.openedAt && performance.now() - this.openedAt >= RESET_BACKOFF_AFTER_MS) this.attempt = 0;
     this.openedAt = 0;
     this.opts.onStatus("down");
-    if (immediately) {
+    if (afterMs !== undefined && !this.stopped) {
+      if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = setTimeout(() => this.connect(), afterMs);
+    } else if (immediately) {
       if (this.reconnectTimer) clearTimeout(this.reconnectTimer);
       this.reconnectTimer = setTimeout(() => this.connect(), 0);
     } else {

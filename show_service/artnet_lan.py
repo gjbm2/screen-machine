@@ -108,8 +108,10 @@ RATE_WINDOW_S = 5.0             # OutputStatus.rate_hz is measured over this
 ERROR_RUN = 3                   # this many failed sends in a row: state "error" (frames keep being tried)
 RING = 256
 SHARED_KEY = "artnet.nodes"     # outputs.py's shared dict: one Nodes per Rig
-NO_REPLIES = ("no replies yet: nodes answer on PC22's udp 6454, which ca's relay forwards to room_service "
-              "(README S5.7)")
+#: a polled node that has never answered (audit SHOW-6): the site's words for how replies reach it
+#: (deployment.yaml ``wording.artnet_no_replies``; finsbury names PC22's udp 6454 and ca's relay), else a neutral line
+NO_REPLIES = contract.DEPLOYMENT.words("artnet_no_replies",
+                                       "no replies yet: no ArtPollReply from this node so far (README S5.7)")
 
 CAPS: contract.DriverCaps = {"hits": True, "min_attack_ms": 0.0, "grid": "beat", "rate_hz": MAX_HZ,
                              "keepalive_s": KEEPALIVE_S, "min_period_ms": 0.0,
@@ -1201,7 +1203,7 @@ class ArtNetLan:
         node = self.nodes.status(u.node_id) if u is not None and u.node_id else None
         sent = self._sent_at
         if not self._enabled:
-            state, detail = "off", f"outputs.{self.output_id}.enabled is false in config/room/fixtures.yaml"
+            state, detail = "off", f"outputs.{self.output_id}.enabled is false in {contract.FIXTURES_FILE_WORDS}"
         elif u is None:
             state, detail = "no_config", "not configured yet"
         elif u.why is not None:

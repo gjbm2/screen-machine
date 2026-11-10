@@ -71,7 +71,8 @@ reach a frame.
      ``flash = depth x strength``, held for the fixture's ``min_pulse_ms`` from the hit's time, then decaying with
      ``decay_ms``; ``intensity = max(intensity, min(1, level + flash))`` (HTP). A hit is shown at once (evaluated at
      the send time), never delayed to its own latency.
-  7. **Master and caps** (lamps only): x ``looks.master``; ``caps.flash_hz_max`` (unset: off) lets a rise of more than
+  7. **Master and caps** (lamps only): x ``looks.master`` x the lamps' brightness (``set_level``: room's
+     brightness.lamps, 1 by default); ``caps.flash_hz_max`` (unset: off) lets a rise of more than
      0.5 above the fixture's low since its last such rise happen at most that often; then the output's rise limit: no
      rise is steeper than a smoothstep over ``caps.min_attack_ms`` (its peak slope, SLEW_PEAK / attack), so the swell
      itself is never clipped and nothing else rises faster (Hue: 80 ms, §5.4).
@@ -966,6 +967,7 @@ class LookEngine:
         self._ident: dict[str, tuple[float, list[float]]] = {}       # fixture -> (until, colour at full value)
         self._follow: dict[str, tuple[float, list[float]]] = {}      # fixture -> (intensity, colour): not following
         self._follow_view: dict[str, Any] = {}                       # fixture -> "off" | {hex, bri}, as accepted
+        self._level = 1.0                                            # set_level: the lamps' brightness (a mode's)
         # drop lines (trigger_hit; any thread)
         self._drops: collections.deque = collections.deque(maxlen=DROP_RING)   # (key, at_s, strength)
         self._drop_lock = threading.Lock()
@@ -2184,6 +2186,23 @@ class LookEngine:
         self._follow, self._follow_view = cur, view
         return accepted
 
+    def set_level(self, level: float) -> float:
+        """The lamps' brightness 0..1 (any thread; room's brightness.lamps through PUT /api/v1/brightness): multiplies
+        ``looks.master`` on every lamp that follows the look, Hue and Art-Net alike. Identify, a follow value and
+        inactive (house) frames are as they were. Returns the level kept."""
+        x = float(level)
+        if not math.isfinite(x):
+            raise ValueError("bad_level: not a number")
+        self._level = _c01(x)
+        return self._level
+
+    def level(self) -> float:
+        return self._level
+
+    def lamp_count(self) -> int:
+        """How many lamps the compiled program drives (every output's slots): 0 means a level reaches nothing."""
+        return sum(len(op.slots) for op in self._program.outputs.values())
+
     def follow(self) -> dict[str, Any]:
         """The fixtures not following the music, as accepted ({id: "off" | {hex, bri}}); every other id follows."""
         return dict(self._follow_view)
@@ -2745,7 +2764,7 @@ class LookEngine:
                         rm.setdefault(r, []).append(did)
             st.role_map = rm
 
-        master = prog.master
+        master = prog.master * self._level                     # looks.master x the mode's lamps brightness
         memo: dict[tuple, float] = {}                            # one oscillator value per (layer, time, lag)
         fl_memo: dict[tuple, float] = {}
         te0 = t * 1000.0

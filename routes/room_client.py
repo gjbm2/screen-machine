@@ -2,22 +2,46 @@
 the Alexa room intents and the room events bridge (routes/room_events_bridge.py) all go through here.
 
 room_service runs inside this process (room_in_app.py) but owns its own asyncio loop, so this talks to its LAN door
-over HTTP (127.0.0.1:8700) like any other client: the room keeps its own rules (a mode request can be refused,
-Auto's minimum stay, holds), nothing here writes room state directly. Every call is bounded and never raises:
+over HTTP (smconfig.url("room"), 127.0.0.1:8700 on finsbury; ROOM_SERVICE_URL overrides) like any other client: the
+room keeps its own rules (a mode request can be refused, Auto's minimum stay, holds), nothing here writes room state directly. Every call is bounded and never raises:
 it returns (ok, detail) so a schedule or a voice reply can say what happened.
+
+Rooms with their own modes (rooms.json "own_modes": true) are room_service's mode zones (status "zones"): set_mode,
+modes and voice_modes take an optional room, and zones() / zone_of_screen() / resolve_voice_mode() say where a request
+goes. With no zones (every deployment until a room opts in) no call sends a room, so every request is as before.
+
+With the deployment's "room" capability off (smconfig.enabled("room") false) nothing here touches the network: reads
+return their usual "room is down" shape (None / {}) and writes return (False, ROOM_OFF), logged.
 """
 from __future__ import annotations
 
 import os
-from typing import Any, Optional
+from typing import Any, Optional, Union
+from urllib.parse import quote
 
 import requests
 
-ROOM_URL = os.environ.get("ROOM_SERVICE_URL", "http://127.0.0.1:8700").rstrip("/")
+import smconfig
+from utils.logger import warning
+
+ROOM_URL = (os.environ.get("ROOM_SERVICE_URL") or smconfig.url("room")).rstrip("/")
 TIMEOUT_S = 5.0
+ROOM_OFF = "room is off in this deployment"
+
+
+def room_on() -> bool:
+    """The deployment runs room_service (the "room" capability); off: every call here is refused without a request."""
+    return smconfig.enabled("room")
+
+
+def _refused(method: str, path: str) -> None:
+    warning(f"[room_client] {method} {path} refused: {ROOM_OFF}")
 
 
 def _get(path: str, timeout: float = TIMEOUT_S) -> Optional[Any]:
+    if not room_on():
+        _refused("GET", path)
+        return None
     try:
         r = requests.get(f"{ROOM_URL}{path}", timeout=timeout)
         return r.json() if r.ok else None
@@ -26,6 +50,9 @@ def _get(path: str, timeout: float = TIMEOUT_S) -> Optional[Any]:
 
 
 def _send(method: str, path: str, body: dict, timeout: float = TIMEOUT_S) -> tuple[bool, str]:
+    if not room_on():
+        _refused(method, path)
+        return False, ROOM_OFF
     try:
         r = requests.request(method, f"{ROOM_URL}{path}", json=body, timeout=timeout)
     except requests.RequestException as e:
@@ -45,30 +72,33 @@ def status() -> Optional[dict]:
     return _get("/api/v1/status")
 
 
-def modes() -> dict[str, str]:
-    """{mode key: label} from room_service (modes.json, hot-reloaded); {} if the room is down."""
-    return {k: v["label"] for k, v in _modes_full().items()}
+def modes(room: Optional[str] = None) -> dict[str, str]:
+    """{mode key: label} from room_service (modes.json, hot-reloaded); {} if the room is down. ``room``: a mode
+    zone's modes (an own_modes room, room/modes.<room>.json); None, or a room without its own modes, the site's."""
+    return {k: v["label"] for k, v in _modes_full(room).items()}
 
 
-def _modes_full() -> dict[str, dict]:
-    """{mode key: {label, voice}} from room_service; voice is the mode's short name for Alexa ("" = none)."""
-    d = _get("/api/v1/modes") or {}
+def _modes_full(room: Optional[str] = None) -> dict[str, dict]:
+    """{mode key: {label, voice}} from room_service; voice is the mode's short name for Alexa ("" = none).
+    ``room``: as modes(); ?room= is sent only when it is set."""
+    d = _get("/api/v1/modes" + (f"?room={quote(room, safe='')}" if room else "")) or {}
     ms = d.get("modes") if isinstance(d, dict) else None
     if not isinstance(ms, dict):
         return {}
     return {k: {"label": v.get("label") or k, "voice": str(v.get("voice") or "").strip()} for k, v in ms.items()}
 
 
-def voice_modes() -> dict[str, str]:
-    """{voice name: mode key} for the modes that have one (owner 18 Oct: only these are reachable by voice)."""
-    _modes_cached()
-    return {v["voice"].lower(): k for k, v in _modes_cache["full"].items() if v["voice"]}
+def voice_modes(room: Optional[str] = None) -> dict[str, str]:
+    """{voice name: mode key} for the modes that have one (owner 18 Oct: only these are reachable by voice).
+    ``room``: a mode zone's (as modes()); None: the site's."""
+    full = _zone_modes_cached(room) if room else _modes_cached()
+    return {v["voice"].lower(): k for k, v in full.items() if v["voice"]}
 
 
-def resolve_mode(name: str, known: Optional[dict[str, str]] = None) -> Optional[str]:
+def resolve_mode(name: str, known: Optional[dict[str, str]] = None, room: Optional[str] = None) -> Optional[str]:
     """A mode key from its key or its Room page label, case- and space-insensitive ("Normal" -> "gallery",
-    "live test" -> "live-test"); None if nothing matches."""
-    known = modes() if known is None else known
+    "live test" -> "live-test"); None if nothing matches. ``room``: a mode zone's modes (as modes()); None: the site's."""
+    known = modes(room) if known is None else known
     want = " ".join(str(name or "").lower().replace("-", " ").replace("_", " ").split())
     if not want:
         return None
@@ -81,19 +111,138 @@ def resolve_mode(name: str, known: Optional[dict[str, str]] = None) -> Optional[
             return k
     if want.endswith(" mode"):
         want = want[:-5].strip()
-    return voice_modes().get(want)                        # its voice name ("normal", "lights only")
+    return voice_modes(room).get(want)                    # its voice name ("normal", "lights only")
 
 
-def set_mode(name: str, source: str, reason: Optional[str] = None) -> tuple[bool, str]:
-    """Ask room_service for a mode (PUT /api/v1/mode); the room may refuse (its rules decide)."""
-    key = resolve_mode(name)
+def set_mode(name: str, source: str, reason: Optional[str] = None,
+             room: Optional[str] = None) -> tuple[bool, str]:
+    """Ask room_service for a mode (PUT /api/v1/mode); the room may refuse (its rules decide). ``room``: a mode zone
+    (an own_modes room) switches alone, its name resolved in its own modes; None: the site, and the body has no
+    "room" key (as before zones existed)."""
+    if not room_on():
+        _refused("PUT", "/api/v1/mode")
+        return False, ROOM_OFF
+    key = resolve_mode(name, room=room)
     if key is None:
-        return False, f"unknown mode {name!r}"
+        return False, f"unknown mode {name!r}" + (f" in {room}" if room else "")
     body: dict = {"mode": key, "source": source}
+    if room:
+        body["room"] = room
     if reason:
         body["reason"] = str(reason)[:200]
     ok, detail = _send("PUT", "/api/v1/mode", body)
     return ok, (key if ok else detail)
+
+
+# -- mode zones (rooms.json "own_modes": true; room_service status "zones") ---------------------------------------
+# Every deployment has none until a room opts in: then zones() is [] and every call above goes to the site unchanged.
+ZONES_TTL_S = 30.0
+_zones_cache: dict = {"t": -1e9, "zones": []}
+_zone_modes: dict[str, dict] = {}            # room -> {"t", "full"}
+
+
+def _zones_in(st: Optional[dict]) -> list[dict]:
+    zs = (st or {}).get("zones") if isinstance(st, dict) else None
+    return [z for z in zs if isinstance(z, dict) and isinstance(z.get("room"), str)] if isinstance(zs, list) else []
+
+
+_local_zones: dict = {"key": None, "has": False}
+
+
+def _has_zone_rooms() -> bool:
+    """Whether this deployment's rooms.json has a room with its own modes (smconfig.own_mode_rooms), re-read only when
+    the file changes. False: room_service has no zones either (it reads the same file), so zones() answers [] without
+    a status read and every caller makes exactly the requests it made before zones existed. With ROOM_SERVICE_URL
+    pointing elsewhere the local file says nothing about that room_service: True (ask it)."""
+    if os.environ.get("ROOM_SERVICE_URL"):
+        return True
+    try:
+        p = smconfig.deployment().path("rooms.json")
+        f = p.stat()
+        key = (str(p), f.st_mtime_ns, f.st_size)
+    except Exception:                         # no rooms.json: no rooms, so no zones
+        return False
+    if key != _local_zones["key"]:
+        try:
+            has = bool(smconfig.own_mode_rooms())
+        except Exception:                     # unreadable: room_service builds no zones from it either
+            has = False
+        _local_zones.update(key=key, has=has)
+    return _local_zones["has"]
+
+
+def zones(st: Optional[dict] = None, ttl_s: float = ZONES_TTL_S) -> list[dict]:
+    """room_service's mode zones (status "zones": [{room, name, screens, mode, ...}]), from ``st`` or a status read
+    cached ``ttl_s``; [] when no room has its own modes or the room is down. With no own_modes room in rooms.json it
+    is [] at once, with no status read (so a slow room_service never delays Alexa or the scheduler more than before)."""
+    if st is not None:
+        return _zones_in(st)
+    if not room_on() or not _has_zone_rooms():   # no room_service here, or no zones: nothing is asked
+        return []
+    now = _time.monotonic()
+    if now - _zones_cache["t"] > ttl_s:
+        got = status()                        # the room down: the last known zones, asked again after ttl_s
+        _zones_cache.update(t=now, zones=_zones_in(got) if got is not None else _zones_cache["zones"])
+    return list(_zones_cache["zones"])
+
+
+def zone_of(room: Optional[str], st: Optional[dict] = None) -> Optional[dict]:
+    """The zone entry of ``room`` when it is a mode zone, else None (a room sharing the site's modes, or no room)."""
+    if not room:
+        return None
+    return next((z for z in zones(st) if z["room"] == room), None)
+
+
+def zone_of_screen(screen: Optional[str], st: Optional[dict] = None) -> Optional[str]:
+    """The mode zone (room id) whose screens hold ``screen``, else None (the screen follows the site's modes)."""
+    if not screen:
+        return None
+    return next((z["room"] for z in zones(st) if screen in (z.get("screens") or [])), None)
+
+
+def _zone_modes_cached(room: str, ttl_s: float = 60.0) -> dict[str, dict]:
+    now = _time.monotonic()
+    c = _zone_modes.get(room)
+    if c is None or not c["full"] or now - c["t"] > ttl_s:
+        full = _modes_full(room)
+        if full or c is None:
+            c = _zone_modes[room] = {"t": now, "full": full}
+    return c["full"]
+
+
+def zone_modes(st: Optional[dict] = None) -> dict[str, dict[str, str]]:
+    """{zone room: {mode key: label}} for every mode zone (GET /api/v1/modes?room=, cached); {} with no zones."""
+    return {z["room"]: {k: v["label"] for k, v in _zone_modes_cached(z["room"]).items()} for z in zones(st)}
+
+
+def voice_names() -> list[str]:
+    """Every mode voice name Alexa can use: the site's, then each zone's not already named (no zones: the site's)."""
+    out = list(voice_modes())
+    for z in zones():
+        out += [v for v in voice_modes(z["room"]) if v not in out]
+    return out
+
+
+def resolve_voice_mode(name: str, near: Union[str, list, None] = None,
+                       st: Optional[dict] = None) -> tuple[Optional[str], Optional[str]]:
+    """Where a spoken mode goes -> (mode key, zone room or None for the site); (None, None) if nothing has it.
+    In order: the asker's zone (``near``: the asker's closest screen, or a list such as the alexadefault screens),
+    then the site, then the one other zone that has that name ("Alexa, live test" after the Lab owns Live test).
+    With no zones it is resolve_mode(name) and the site."""
+    zs = zones(st)
+    if not zs:
+        return resolve_mode(name), None
+    here: Optional[str] = None
+    for s in ([near] if isinstance(near, str) or near is None else near):
+        here = zone_of_screen(s, st) if isinstance(s, str) else None
+        if here:
+            break
+    if here and (key := resolve_mode(name, room=here)):
+        return key, here
+    if key := resolve_mode(name):
+        return key, None
+    others = [(k, z["room"]) for z in zs if z["room"] != here for k in [resolve_mode(name, room=z["room"])] if k]
+    return others[0] if len(others) == 1 else (None, None)
 
 
 def auto() -> Optional[bool]:
@@ -127,11 +276,11 @@ def set_auto(on: bool) -> tuple[bool, str]:
 
 
 def room_facts(st: Optional[dict] = None) -> dict:
-    """The facts the scheduler and the bridge use, from one status: {mode, mode_label, mode_source, auto,
-    screens: {id: {layer, desired, phase}}}. Missing parts are None, never invented."""
+    """The facts the scheduler and the bridge use, from one status: {mode, mode_source, auto,
+    screens: {id: {layer, desired, phase}}}, plus, only when a room has its own modes, zones: {room: {mode,
+    mode_source, screens}} (``mode`` is then the site's). Missing parts are None, never invented."""
     st = st if st is not None else (status() or {})
     m = st.get("mode") or {}
-    last = m.get("last_transition") or {}
     believed = ((st.get("subsystems") or {}).get("autopilot") or {}).get("believed")
     av = believed.get("main") if isinstance(believed, dict) else believed
     screens = {}
@@ -140,8 +289,29 @@ def room_facts(st: Optional[dict] = None) -> dict:
         d = s.get("desired")
         screens[sid] = {"layer": ob.get("layer"), "phase": ob.get("phase"),
                         "desired": "art" if d == "art" else ("live" if isinstance(d, dict) else d)}
-    return {"mode": m.get("current"), "mode_source": last.get("source") if last.get("to") == m.get("current") else None,
-            "auto": True if av == "on" else False if av == "off" else None, "screens": screens}
+    out = {"mode": m.get("current"), "mode_source": _source_of(m), "auto": True if av == "on" else False if av == "off"
+           else None, "screens": screens}
+    zs = _zones_in(st)
+    if zs:                                    # only with mode zones: each zone's own mode and the screens it covers
+        out["zones"] = {z["room"]: {"mode": (z.get("mode") or {}).get("current"), "mode_source": _source_of(z.get("mode")),
+                                    "screens": [s for s in z.get("screens") or [] if isinstance(s, str)]} for z in zs}
+    return out
+
+
+def screen_mode(screen: Optional[str], facts: Optional[dict] = None) -> Optional[str]:
+    """The mode ``screen`` is in (room_facts): its zone's when it is in a mode zone, else the site's."""
+    facts = facts if facts is not None else room_facts()
+    for z in (facts.get("zones") or {}).values():
+        if screen in z.get("screens", []):
+            return z.get("mode")
+    return facts.get("mode")
+
+
+def _source_of(m: Any) -> Optional[str]:
+    """Who made the current mode (its last transition's source, when that transition led to it)."""
+    m = m if isinstance(m, dict) else {}
+    last = m.get("last_transition") or {}
+    return last.get("source") if last.get("to") == m.get("current") else None
 
 
 # -- scenes and effects by voice (Alexa) ---------------------------------------------------------------------------
@@ -231,12 +401,34 @@ def room_screens(screen: Optional[str], st: Optional[dict] = None) -> list[str]:
     return [screen] if screen else []
 
 
-def live_targets(screen: Optional[str]) -> list[str]:
-    """The live screens a voice command should act on: the asker's room's live screens, else every live screen."""
+def live_targets(screen: Union[str, list, None]) -> list[str]:
+    """The live screens a voice command should act on: the live screens of the asker's room (``screen``: the asker's
+    closest screen, or a list such as the alexadefault screens), else the deployment's default room's live screens,
+    else every live screen (only when neither has one live)."""
     st = status() or {}
     live = [sid for sid, s in (st.get("screens") or {}).items() if (s.get("observed") or {}).get("layer") == "live"]
-    near = [s for s in room_screens(screen, st) if s in live]
-    return near or live
+    near: list[str] = []
+    for one in ([screen] if isinstance(screen, str) or screen is None else screen):
+        near += [s for s in room_screens(one, st) if s in live and s not in near]
+    if near:
+        return near
+    try:
+        home = (smconfig.rooms().get(smconfig.default_room() or "") or {}).get("screens") or []
+    except (OSError, ValueError):
+        home = []
+    return [s for s in live if s in home] or live
+
+
+def rooms_of(screens: list[str], st: Optional[dict] = None) -> list[list[str]]:
+    """``screens`` grouped by room_service's rooms, each group in the given order (a screen in no room is a group of
+    its own), the groups in order of their first screen."""
+    st = st if st is not None else (status() or {})
+    groups: dict[str, list[str]] = {}
+    for sid in screens:
+        rid = next((str(r.get("id") or i) for i, r in enumerate(st.get("rooms") or [])
+                    if isinstance(r, dict) and sid in (r.get("screens") or [])), f"screen:{sid}")
+        groups.setdefault(rid, []).append(sid)
+    return list(groups.values())
 
 
 def cue_scene(screen: str, to: str) -> tuple[bool, str]:
@@ -257,12 +449,13 @@ def set_effects(screen: str, stack: list) -> tuple[bool, str]:
 _modes_cache: dict = {"t": -1e9, "modes": {}, "full": {}}
 
 
-def _modes_cached(ttl_s: float = 60.0) -> None:
+def _modes_cached(ttl_s: float = 60.0) -> dict[str, dict]:
     now = _time.monotonic()
     if not _modes_cache["full"] or now - _modes_cache["t"] > ttl_s:
         full = _modes_full()
         if full:
             _modes_cache.update(t=now, full=full, modes={k: v["label"] for k, v in full.items()})
+    return _modes_cache["full"]
 
 
 def modes_cached(ttl_s: float = 60.0) -> dict[str, str]:
@@ -310,14 +503,35 @@ def pick_scene(screen: str, preset: str) -> tuple[bool, str]:
         return ok, detail
     ok, detail = _send("PATCH", f"/api/v1/screens/{screen}/look", {"auto": False, "source": "voice"})
     if ok:
-        _paused[screen] = room_facts().get("mode")
+        _paused[screen] = screen_mode(screen)
     return True, "" if ok else f"the scene changed, but its auto changes didn't pause: {detail}"
+
+
+def _resume(screen: str) -> None:
+    """Scene changes resume on ``screen`` if a voice pick paused them in this same mode."""
+    if screen in _paused:
+        if _paused.pop(screen) == screen_mode(screen):
+            _send("PATCH", f"/api/v1/screens/{screen}/look", {"auto": True, "source": "voice"})
 
 
 def next_scene(screen: str) -> tuple[bool, str]:
     """The director's next pick; scene changes resume if a voice pick paused them in this same mode."""
     ok, detail = cue_scene(screen, "auto")
-    if ok and screen in _paused:
-        if _paused.pop(screen) == room_facts().get("mode"):
-            _send("PATCH", f"/api/v1/screens/{screen}/look", {"auto": True, "source": "voice"})
+    if ok:
+        _resume(screen)
     return ok, "" if ok else detail
+
+
+def next_scene_rooms(screens: list[str]) -> list[str]:
+    """"Change the scene" on these live screens: ONE next cue per room, on its first screen given (stream_service
+    forwards a follower's manual next to the room's leader, so a cue per screen moved the room once per screen), then
+    a voice pause lifted on every screen of that room. -> the failures' details ([] when all went)."""
+    fails = []
+    for group in rooms_of(screens):
+        ok, detail = cue_scene(group[0], "auto")
+        if not ok:
+            fails.append(detail)
+            continue
+        for sid in group:
+            _resume(sid)
+    return fails

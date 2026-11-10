@@ -367,7 +367,7 @@ def build_lines(s: Any, now: float, hud_ms: Optional[float] = None) -> tuple[lis
     eff = s.direction_effective or {}
     add(f"dir  energy {_f(eff.get('energy'), 2)} pace {_f(eff.get('pace'), 2)}  "
         + ", ".join((eff.get("moods") or [])[:3]))
-    r = s.mgr.room_direction_now(now)
+    r = s.mgr.room_direction_now(now, s)
     ctx = getattr(feed, "context", None) or {}
     genre = (ctx.get("genre") or {}).get("word") if isinstance(ctx.get("genre"), dict) else ctx.get("genre")
     key = " ".join(x for x in (ctx.get("key"), ctx.get("mode")) if x)

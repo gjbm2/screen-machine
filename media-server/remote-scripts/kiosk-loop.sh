@@ -27,8 +27,8 @@ echo "$(date '+%F %T')  --- script start"
 exec 9>/tmp/kiosk.lock
 flock -n 9 || { echo "$(date '+%F %T')  exit: another copy running"; exit 0; }
 
-URL_NORTH="http://95.141.21.170:8000/display/north-screen"
-URL_SOUTH="http://95.141.21.170:8000/display/south-screen"
+URL_NORTH="@@KIOSK_BASE_URL@@/display/@@KIOSK_SCREEN_NORTH@@"
+URL_SOUTH="@@KIOSK_BASE_URL@@/display/@@KIOSK_SCREEN_SOUTH@@"
 W=3840 H=2160
 
 DIR_NORTH=/tmp/chrome-north

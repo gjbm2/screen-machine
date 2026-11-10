@@ -10,7 +10,8 @@ component on it.
                          includes waiting for the GIL behind show-rx: the lag signal) and CPU (thread_time: the
                          component's own work, what the S3.3 budgets apply to)
               house      every 0.25 s: state.json when due (at most once per PERSIST_MIN_S, after a change), show.yaml
-                         every RELOAD_S (mtime or size changed: valid -> swap ctx.settings and configure() every
+                         every RELOAD_S (the shared base and this site's layer, deployments/<id>/show.yaml, deep-merged;
+                         either one's mtime or size changed: valid -> swap ctx.settings and configure() every
                          component; invalid -> keep the last good, show the error), the loop's lag
               tasks      the components' own (RoomLink's socket, listener calls, art fetches, child-process polls)
 ```
@@ -41,6 +42,9 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+import smconfig
+
+from . import config as cfgmod
 from . import contract
 from .state_store import StateStore
 
@@ -115,9 +119,13 @@ class Brain:
 
     def __init__(self, ctx: contract.BrainContext, *, show_file: Path = contract.SHOW_FILE,
                  state_file: Path = contract.STATE_FILE, wall: Callable[[], float] = time.time,
-                 mono: Callable[[], float] = time.monotonic, reload_s: float = contract.RELOAD_S) -> None:
+                 mono: Callable[[], float] = time.monotonic, reload_s: float = contract.RELOAD_S,
+                 show_site_file: Any = cfgmod.SITE_AUTO) -> None:
         self.ctx = ctx
         self.show_file = Path(show_file)
+        # this site's layer over show_file (config.show_site_layer: by default the deployment's over the shared base,
+        # none over any other base); None: no layer. An absent layer file is no layer.
+        self.show_site_file: Optional[Path] = cfgmod.show_site_layer(self.show_file, show_site_file)
         self.store = StateStore(Path(state_file), wall=wall, mono=mono)
         self.wall, self.mono = wall, mono
         self.reload_s = float(reload_s)
@@ -317,8 +325,9 @@ class Brain:
             comps[name] = s if isinstance(s, dict) else {}
         return {"running": self.running, "components": comps, "ticks": self._tick_view,
                 "loop_lag_ms_p95": self._lag_p95,
-                "settings": {"path": str(self.show_file), "revision": self.settings_revision,
-                             "error": self.settings_error},
+                "settings": {"path": str(self.show_file),
+                             "site_path": str(self.show_site_file) if self.show_site_file is not None else None,
+                             "revision": self.settings_revision, "error": self.settings_error},
                 "state_file": self.store.status(), "modules": dict(self.modules),
                 "errors": {k: g.errors for k, g in self._g.items() if g.errors}}
 
@@ -349,27 +358,33 @@ class Brain:
             self._guarded("configure", name, comp.configure, settings)
 
     def _read_settings(self, first: bool = False) -> Optional[dict]:
-        """show.yaml when it changed (or ``first``): the parsed dict, or None when unchanged or bad (the error is
-        kept; at start a bad file gives None, which the caller turns into {})."""
-        try:
-            st = self.show_file.stat()
-            sig: Any = (st.st_mtime_ns, st.st_size)
-        except OSError as e:
-            sig = ("missing", getattr(e, "errno", None))
+        """show.yaml (the base with the site layer deep-merged over it) when either changed (or ``first``): the parsed
+        dict, or None when unchanged or bad (the error is kept; at start a bad file gives None, which the caller turns
+        into {}). A missing layer is no layer; a bad one is an error like a bad base."""
+        sig: Any = cfgmod.show_signature(self.show_file, self.show_site_file)
         if not first and sig == self._settings_sig:
             return None
         self._settings_sig = sig
-        if sig[0] == "missing":
+        if sig[0][0] == "missing":
             self.settings_error = f"{self.show_file} not found: neutral settings (every value unset)" if first \
                 else f"{self.show_file} not found: keeping the last good settings"
             log.error("settings: %s", self.settings_error)
             return None
+        site = self.show_site_file if sig[1] is not None and sig[1][0] != "missing" else None
+        bad = self.show_file
         try:
             raw = self.show_file.read_bytes()
             data = parse_settings(raw)
+            if site is not None:
+                # each layer parsed from the bytes hashed below, then smconfig's merge (load_layered_yaml's semantics)
+                bad = site
+                site_raw = site.read_bytes()
+                data = smconfig.deep_merge(data, parse_settings(site_raw))
+                raw = raw + b"\0" + site_raw
+            data = cfgmod.expand_urls(data)              # {room}/{flask}/{show} -> this deployment's loopback URLs
         except (OSError, ValueError) as e:
             what = e.strerror if isinstance(e, OSError) and e.strerror else str(e)
-            self.settings_error = (f"{self.show_file.name} {what}: "
+            self.settings_error = (f"{bad.name if bad is self.show_file else bad} {what}: "
                                    + ("neutral settings (every value unset)" if first else "keeping the last good"))
             log.error("settings: %s", self.settings_error)
             return None

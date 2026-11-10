@@ -8,9 +8,9 @@ its sample 0 reaches the DAC.
 
     python -m piano_render play-pc22 FILE_OR_MID [--instrument ID]      (play() below; a .mid renders as it plays)
 
-How it works: start() spawns ``/mnt/c/Windows/py.exe -3.12 pc22_player.py`` (the windows/ folder, by its wslpath -w
-path) and streams the PCM to its stdin from a writer thread (float32 by default; the protocol is in
-windows/pc22_player.py's docstring). The player opens WASAPI (shared, auto_convert), buffers prebuffer_ms, starts, and
+How it works: start() spawns ``<host.windows_python> -3.12 pc22_player.py`` (py.exe, the deployment.yaml's
+host.windows_python; the windows/ folder, by its wslpath -w path) and streams the PCM to its stdin from a writer
+thread (float32 by default; the protocol is in windows/pc22_player.py's docstring). The player opens WASAPI (shared, auto_convert), buffers prebuffer_ms, starts, and
 from its first callback prints ``started`` with that callback's DAC time; start() returns t_audio0 = arrival of that
 line + dac_in_ms/1000 - first_frame/rate + extra_ms/1000.
 
@@ -64,9 +64,14 @@ from typing import Any, Callable, Iterator, Optional
 import numpy as np
 import soundfile as sf
 
+import smconfig
+
 log = logging.getLogger("piano_render.pc22")
 
-PY = "/mnt/c/Windows/py.exe"
+_PY_PATH = smconfig.deployment().host_path("windows_python")   # deployment.yaml host.windows_python (py.exe)
+PY: Optional[str] = str(_PY_PATH) if _PY_PATH else None        # None: this deployment has no Windows Python
+NO_PY = ("no Windows Python for this deployment: set host.windows_python (the py.exe launcher, e.g. "
+         "/mnt/c/Windows/py.exe) in its deployment.yaml")
 PY_ARGS = ("-3.12",)
 PLAYER = Path(__file__).resolve().parent / "windows" / "pc22_player.py"
 READY_S = 10.0
@@ -90,9 +95,9 @@ class Halted(Exception):
 
 
 def available() -> bool:
-    """WSL interop and Windows' py.exe are here."""
-    return (os.path.exists("/proc/sys/fs/binfmt_misc/WSLInterop")
-            or os.path.exists("/proc/sys/fs/binfmt_misc/WSLInterop-late")) and os.access(PY, os.X_OK)
+    """WSL interop and Windows' py.exe (the deployment's host.windows_python) are here."""
+    return PY is not None and (os.path.exists("/proc/sys/fs/binfmt_misc/WSLInterop")
+                               or os.path.exists("/proc/sys/fs/binfmt_misc/WSLInterop-late")) and os.access(PY, os.X_OK)
 
 
 def audio0(t_arrival: float, started: dict, rate: float, extra_ms: float = 0.0) -> float:
@@ -511,7 +516,7 @@ class PC22Output:
 
     def __init__(self, *, device: Optional[str] = None, prebuffer_ms: Optional[float] = None,
                  latency_ms: float = 20.0, fmt: str = "f32le", lead_s: float = 2.0, buffer_ms: Optional[float] = None,
-                 lead_in_ms: float = 0.0, extra_ms: float = 0.0, py: str = PY) -> None:
+                 lead_in_ms: float = 0.0, extra_ms: float = 0.0, py: Optional[str] = PY) -> None:
         if fmt not in ("f32le", "s16le"):
             raise ValueError(f"fmt {fmt!r}")
         self.opts = dict(device=device, prebuffer_ms=prebuffer_ms, latency_ms=latency_ms, fmt=fmt, lead_s=lead_s,
@@ -555,8 +560,11 @@ class PC22Output:
         """Starts a file (a path) or a stream (module docstring, Sources); returns t_audio0 once the player's first
         callback is in. Raises PC22Error (the player is then gone). overrides: any constructor option for this play
         only (e.g. lead_in_ms), and ``rate`` for a stream that has no ``sr``."""
+        if self.py is None:
+            log.warning("pc22: refused: %s", NO_PY)
+            raise PC22Error(NO_PY)
         if not available() and self.py == PY:
-            raise PC22Error("no Windows here (WSL interop, /mnt/c/Windows/py.exe)")
+            raise PC22Error(f"no Windows here (WSL interop, {PY})")
         opts = {**self.opts, **overrides}
         s = _Session(source if not is_file_source(source) else str(source), py=self.py, **opts)
         with self._lock:

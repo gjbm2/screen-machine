@@ -1,9 +1,11 @@
-"""Per-screen stream switches (config/live/stream_switches.json, plan change 2): read by mtime at session start."""
+"""Per-screen stream switches (the deployment's live/stream_switches.json, plan change 2): read by mtime at session
+start."""
 from __future__ import annotations
 
 import json
 import os
 
+import smconfig
 from stream_service import switches as sw_mod
 from stream_service.server import MANAGER
 from stream_service.switches import StreamSwitches
@@ -77,9 +79,11 @@ def test_workers_per_screen(tmp_path):
     assert s.encoder("devtest") == "ffmpeg" and len(s.errors) == 2
 
 
-def test_in_dir_and_the_shipped_file():
+def test_in_dir_and_the_shipped_file(monkeypatch):
+    monkeypatch.delenv(sw_mod.ENV, raising=False)
     s = StreamSwitches.in_dir(None)
-    assert s.path == sw_mod.DEFAULT_DIR / "stream_switches.json"
+    assert s.path == smconfig.path("live", "stream_switches.json")   # the deployment's, not the shared config/live
+    assert StreamSwitches.in_dir(sw_mod.DEFAULT_DIR).path == s.path == StreamSwitches().path
     assert s.path.exists()                                            # shipped: ffmpeg, nvenc on the P4000's screens
     assert [s.encoder(k) for k in ("north-screen", "south-screen", "devtest", "other")] == \
         ["nvenc", "nvenc", "nvenc", "ffmpeg"] and s.errors == []
@@ -125,3 +129,27 @@ async def test_a_sessions_frame_rate_and_degrade_mode_come_from_the_file(client,
     assert s2.profile.name == "hevc-2160p30" and s2.engine.degrade_mode == "on"
     _, s3 = await create(client, profile="h264-720p30", idempotency_key="c")   # no 60p sibling: as asked
     assert s3.profile.name == "h264-720p30"
+
+
+def test_a_config_dir_of_its_own_keeps_its_own_file_and_the_env_overrides(monkeypatch, tmp_path):
+    monkeypatch.delenv(sw_mod.ENV, raising=False)
+    assert StreamSwitches.in_dir(tmp_path).path == tmp_path / "stream_switches.json"   # a test's / dev copy's dir
+    assert StreamSwitches.in_dir(tmp_path).encoder("north-screen") == "ffmpeg"         # none there: the defaults
+    alt = tmp_path / "alt.json"
+    write(alt, {"screens": {"x": {"encoder": "nvenc"}}})
+    monkeypatch.setenv(sw_mod.ENV, str(alt))
+    assert StreamSwitches().path == alt and StreamSwitches.in_dir(None).path == alt
+    assert StreamSwitches.in_dir(sw_mod.DEFAULT_DIR).encoder("x") == "nvenc"
+
+
+def test_make_app_takes_a_switches_file(monkeypatch, tmp_path):
+    from stream_service.server import make_app
+
+    from .test_sessions import REPO_CONFIG
+    p = tmp_path / "sw.json"
+    write(p, {"default": {"fps": 60}})
+    app = make_app(config_dir=REPO_CONFIG, switches_file=p)
+    assert app[MANAGER].switches.path == p and app[MANAGER].switches.fps("anything") == 60
+    monkeypatch.delenv(sw_mod.ENV, raising=False)
+    assert make_app(config_dir=REPO_CONFIG)[MANAGER].switches.path == smconfig.path("live", "stream_switches.json")
+    assert make_app(config_dir=tmp_path)[MANAGER].switches.path == tmp_path / "stream_switches.json"

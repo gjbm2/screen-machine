@@ -12,6 +12,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { MonitorPlay } from "lucide-react";
 import { schedulerUrl, displayUrl } from "@/components/nav/appNav";
 import { Button } from "@/components/ui/button";
+import { useDeployment } from "@/hooks/useDeployment";
+import { artOnlyScreens } from "@/shared/api/deployment";
 import { Slider } from "@/components/ui/slider";
 import { clearBrightnessOverride, getBrightnessOverrideResponse, setBrightnessOverride } from "@/shared/api/admin";
 import { getIntensitySettings, getLightsense, updateIntensitySettings } from "@/shared/api/light";
@@ -310,6 +312,9 @@ export function ScreensGroup({
   reportError: (e: unknown) => void;
 }) {
   const screens = Object.entries(status?.screens ?? {});
+  // The art-only screens a room lists (GET /api/deployment): room_service runs none of them, so they aren't in status.
+  const { deployment } = useDeployment();
+  const artScreens = artOnlyScreens(deployment).filter((a) => !!a.room && !(a.id in (status?.screens ?? {})));
   const destOf = (id: string) => dests?.find((d) => d.id === id) ?? null;
   const yesNo = (v: boolean | undefined | null, yes: string, no: string) => (v === undefined || v === null ? "Not set" : v ? yes : no);
 
@@ -318,7 +323,11 @@ export function ScreensGroup({
       id="screens"
       title="Screens"
       icon={<MonitorPlay />}
-      summary={screens.length ? screens.map(([id, sc]) => sc.name || friendlyName(id)).join(", ") : "Screens"}
+      summary={
+        screens.length + artScreens.length
+          ? [...screens.map(([id, sc]) => sc.name || friendlyName(id)), ...artScreens.map((a) => a.name || friendlyName(a.id))].join(", ")
+          : "Screens"
+      }
       owns={(t) => t.startsWith("screen-")}
     >
       <Sub>Art brightness</Sub>
@@ -326,7 +335,7 @@ export function ScreensGroup({
       <Curves status={status} />
 
       <Sub>Each screen</Sub>
-      {screens.length === 0 && <Hint>{status ? "The room has no screens set up." : "Reading the room…"}</Hint>}
+      {screens.length === 0 && artScreens.length === 0 && <Hint>{status ? "The room has no screens set up." : "Reading the room…"}</Hint>}
       <div className="space-y-2">
         {screens.map(([id, sc]) => {
           const name = sc.name || friendlyName(id);
@@ -365,6 +374,26 @@ export function ScreensGroup({
                 <LinkRow href={`/room?screen=${encodeURIComponent(id)}`}>On the Room page</LinkRow>
                 <LinkRow href={schedulerUrl(id)}>Schedule</LinkRow>
                 <LinkRow href={displayUrl(id)} newTab>
+                  TV page
+                </LinkRow>
+              </div>
+            </Group>
+          );
+        })}
+        {artScreens.map((a) => {
+          const name = a.name || friendlyName(a.id);
+          const d = destOf(a.id);
+          return (
+            <Group key={a.id} id={`screen-${a.id}`} title={name} summary="Showing art" sub>
+              <Sub>Set up</Sub>
+              <ReadRow label="Name" value={d?.name || name} />
+              <ReadRow label="Goes live" value="No: art only" />
+              <ReadRow label="Dims with the room's light" value={d ? (d.intensity_cfg?.adjust ? "Yes" : "No") : "Not set"} />
+              <Hint>These are read only here for now.</Hint>
+              <div className="flex flex-wrap gap-x-4">
+                <LinkRow href={`/room?screen=${encodeURIComponent(a.id)}`}>On the Room page</LinkRow>
+                <LinkRow href={schedulerUrl(a.id)}>Schedule</LinkRow>
+                <LinkRow href={displayUrl(a.id)} newTab>
                   TV page
                 </LinkRow>
               </div>

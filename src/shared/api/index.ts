@@ -2,6 +2,7 @@
 export * as adminApi from './admin';
 export * as audioApi from './audio';
 export * as bucketsApi from './buckets';
+export * as deploymentApi from './deployment';
 export * as eventsApi from './events';
 export * as filesApi from './files';
 export * as generationApi from './generation';

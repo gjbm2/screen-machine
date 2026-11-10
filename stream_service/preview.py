@@ -21,6 +21,9 @@ import logging
 import re
 from typing import Any, Optional
 
+import smconfig
+
+from . import inputs
 from .plugins.base import ParamError
 
 log = logging.getLogger("stream_service.preview")
@@ -62,6 +65,17 @@ class Previews:
     @staticmethod
     def _screen(client: str) -> str:
         return "dev-preview-" + hashlib.sha1(client.encode()).hexdigest()[:10]
+
+    @staticmethod
+    def _fixture() -> Optional[str]:
+        """The fixture a preview follows: the deployment's first live screen's (inputs.default_fixture), so a preview
+        reacts to the room's light and music as that TV does; None when the deployment has none (no fixture)."""
+        try:
+            first = next(iter(smconfig.live_screens()), None)
+        except Exception as e:  # noqa: BLE001 - publish-destinations.json unreadable: the preview follows no light
+            log.warning("preview: no live screens (%s: %s); the preview follows no light", type(e).__name__, e)
+            return None
+        return inputs.default_fixture(first) if first else None
 
     def _session(self, client: str):
         sid = self.sids.get(client)
@@ -139,9 +153,12 @@ class Previews:
                 s = None
             was = self.kinds.get(client) if s is not None else None
             if s is None:
-                s, _ = await self.mgr.create({
-                    "screen": self._screen(client), "gpu": want, "profile": PROFILE, "anchor": {"rgb": [0, 0, 0]},
-                    "scene": to, "transitions": {"in": CUT, "out": CUT}, "ttl_s": TTL_S}, host)
+                req = {"screen": self._screen(client), "gpu": want, "profile": PROFILE, "anchor": {"rgb": [0, 0, 0]},
+                       "scene": to, "transitions": {"in": CUT, "out": CUT}, "ttl_s": TTL_S}
+                fixture = self._fixture()
+                if fixture:
+                    req["fixture"] = fixture
+                s, _ = await self.mgr.create(req, host)
                 self.sids[client] = s.id
                 await self._wait_state(s, ("holding",) + LIVE)
                 if s.state == "holding":

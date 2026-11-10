@@ -107,6 +107,18 @@ async def test_first_show_creates_a_720p_cut_session_and_goes_live(pv):
     assert s.went == 1 and r["attach"]["url"] == s.attach["url"]
 
 
+async def test_a_finsbury_preview_follows_the_first_live_screens_fixture(pv):
+    """A preview reacts to the room as the deployment's first live TV does (finsbury: north-screen -> screen.north)."""
+    await pv.show({"client": "tab-1", "kind": "scene", "spec": "a"}, "h")
+    assert pv.mgr.created[0]["fixture"] == "screen.north"
+
+
+async def test_a_preview_with_no_live_screen_follows_no_light(pv, monkeypatch):
+    monkeypatch.setattr(P.smconfig, "live_screens", lambda *a: [])
+    await pv.show({"client": "tab-1", "kind": "scene", "spec": "a"}, "h")
+    assert "fixture" not in pv.mgr.created[0]
+
+
 async def test_next_show_recues_the_same_session_with_a_cut(pv):
     await pv.show({"client": "tab-1", "kind": "scene", "spec": "a"}, "h")
     r = await pv.show({"client": "tab-1", "kind": "scene", "spec": {"source": "b"}}, "h")

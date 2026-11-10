@@ -17,6 +17,7 @@ import pytest
 from aiohttp import web
 from aiohttp.test_utils import TestServer, unused_port
 
+import smconfig
 from room_service.adapters import build_adapters
 from room_service.adapters.lights import LightsAdapter, ShowUnreachable, rig_lights, rig_revision
 from room_service.room_config import RoomConfigFile, room_groups
@@ -304,8 +305,8 @@ def test_the_shipped_rooms_and_modes_load_with_registered_lights(tmp_path):
     ad = build_adapters(controllers, mask, lambda lvl, msg: None, tmp_path, sonos=False, show=False, remotes=[],
                         blinds=FakeLevel("blinds", {f"ch{n:02d}": 0 for n in range(2, 15)}),
                         lights=cached(tmp_path, "par1", "par2"))
-    rc = RoomConfigFile(REPO / "config" / "room" / "modes.json", ad, tmp_path,
-                        rooms_path=REPO / "routes" / "data" / "rooms.json")
+    rc = RoomConfigFile(smconfig.path("room", "modes.json"), ad, tmp_path,
+                        rooms_path=smconfig.path("rooms.json"))
     cfg = rc.load()
     assert rc.error is None and rc.rooms_error is None, (rc.error, rc.rooms_error)
     assert cfg.groups["drawing-room:light"] == ["light.par1", "light.par2"]
@@ -352,7 +353,7 @@ async def test_a_mode_makes_the_lights_follow_the_music_and_the_room_puts_them_b
 async def test_room_service_rebuilds_its_config_when_a_light_is_registered(rig, tmp_path):
     rig.rows = [r for r in rig.rows if r["kind"] != "lamp" or r["output"] != "dmx-a"]   # no DMX lights yet
     h = Harness(tmp_path)
-    h.overrides = {"service": {"rooms_file": str(REPO / "routes" / "data" / "rooms.json")}}
+    h.overrides = {"service": {"rooms_file": str(smconfig.path("rooms.json"))}}
     h.extra_adapters = [LightsAdapter(rig.url, cache_file=tmp_path / "lights_rig.json", refresh_s=0.05)]
     await h.start()
     try:

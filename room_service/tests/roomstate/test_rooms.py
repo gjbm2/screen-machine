@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 
+import smconfig
 from room_service.adapters import build_adapters
 from room_service.room_config import RoomConfigFile
 from room_service.roomstate.fakes import FakeLevel
@@ -23,8 +24,8 @@ def adapters(tmp_path):
 
 
 def test_the_shipped_modes_and_rooms_load_together(tmp_path):
-    rc = RoomConfigFile(REPO / "config" / "room" / "modes.json", adapters(tmp_path), tmp_path,
-                        rooms_path=REPO / "routes" / "data" / "rooms.json")
+    rc = RoomConfigFile(smconfig.path("room", "modes.json"), adapters(tmp_path), tmp_path,
+                        rooms_path=smconfig.path("rooms.json"))
     cfg = rc.load()
     assert rc.error is None and rc.rooms_error is None, (rc.error, rc.rooms_error)
     assert cfg.groups["drawing-room:blinds"] == ["blinds.ch02", "blinds.ch03", "blinds.ch14"]
@@ -70,7 +71,8 @@ def test_every_rooms_list_becomes_groups_without_a_table_of_kinds():
     assert g == {"den:screens": ["screens.s1", "screens.s2"], "den:tv": ["tv.s1"],
                  "den:lights": ["hue.a", "hue.b"], "den:hue": ["hue.a", "hue.b"],
                  "den:effects": ["ball.main", "ball.motor.speed"], "den:ball": ["ball.main", "ball.motor.speed"],
-                 "den:sonos": ["sonos.den.volume", "sonos.den.playback"]}
+                 "den:sonos": ["sonos.den.volume", "sonos.den.playback"],
+                 "den:sensors": []}        # RS-6: a list that names nothing here is still a known (empty) group
 
 
 def test_describe_orders_subsystems_as_rooms_json_lists_them_settings_last(tmp_path):
@@ -79,8 +81,8 @@ def test_describe_orders_subsystems_as_rooms_json_lists_them_settings_last(tmp_p
     ad = adapters(tmp_path)
     for c in ad[0].c.values():                                          # no renderer catalog here
         c.mgr = SimpleNamespace(stream=SimpleNamespace(cached_catalog=lambda: None))
-    rc = RoomConfigFile(REPO / "config" / "room" / "modes.json", ad, tmp_path,
-                        rooms_path=REPO / "routes" / "data" / "rooms.json")
+    rc = RoomConfigFile(smconfig.path("room", "modes.json"), ad, tmp_path,
+                        rooms_path=smconfig.path("rooms.json"))
     c = Coordinator(rc.load(), rc.adapters, tmp_path / "state.json")
     d = c.describe()
     order = d["subsystem_order"]

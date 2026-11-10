@@ -41,6 +41,8 @@ export interface PromptFormProps {
   onWorkflowChange?: (workflowId: string) => void;
   onRefinerChange?: (refinerId: string) => void;
   onPublishChange?: (publishId: string) => void;
+  /** The deployment has generation switched off (capabilities.generation): the form says so and won't submit. */
+  generationOff?: boolean;
 }
 
 export interface ToolbarProps {

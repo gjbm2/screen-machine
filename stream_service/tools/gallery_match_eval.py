@@ -151,7 +151,7 @@ def summary(deck: "g._Deck", scen: str, names: list[str]) -> str:
 
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
-    ap.add_argument("--screen", default="north-screen")
+    ap.add_argument("--screen", default=None, help="a TV screen (default: the deployment's first live screen)")
     ap.add_argument("--dir", help="the bucket directory (default: the renderer's output/<screen>)")
     ap.add_argument("--scenarios", default=",".join(SCENARIOS))
     ap.add_argument("--picks", type=int, default=16)
@@ -159,6 +159,12 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--no-art", action="store_true", help="scenarios without the art wish (as before 28 Oct)")
     ap.add_argument("--out", required=True)
     a = ap.parse_args(argv)
+    if a.screen is None:
+        tvs = g.screens()
+        if not tvs:
+            print("no live screen in the deployment's publish-destinations.json: pass --screen", file=sys.stderr)
+            return 1
+        a.screen = tvs[0]
     table = {} if a.no_art else music_art()
     out = pathlib.Path(a.out)
     out.mkdir(parents=True, exist_ok=True)

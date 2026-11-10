@@ -56,7 +56,7 @@ The builder's final report adds the performance numbers (4K60 on each GPU: late-
 - **Run:** `~/.venvs/sm-stream/bin/python -m stream_service --port <port>`
   - **Port:** dev on 8082 and up, inside WSL. **Production: 8702** (the AV block: room 8700, show bus 8701, stream 8702, agreed with screen-machine-ca on 14 Oct).
     - 8081 is exlib's Metro bundler and bd's lab default. Don't use it.
-    - Production runs in the GNU screen session `sm-stream` through screen-machine-ca's `scripts/ctl` (same pattern as Flask and ngrok; `screen -r sm-stream` attaches; logs in `~/.local/state/screen-machine/logs/stream_service.log`). Your arguments go in `deploy/sm-stream.env` (STREAM_PORT, STREAM_ARGS, STREAM_HOLD, plus pass-through env vars), which you own.
+    - Production runs in the GNU screen session `sm-stream` through screen-machine-ca's `scripts/ctl` (same pattern as Flask and ngrok; `screen -r sm-stream` attaches; logs in `~/.local/state/screen-machine/logs/stream_service.log`). Your arguments go in `deployments/finsbury/services/sm-stream.env` (STREAM_PORT, STREAM_ARGS, STREAM_HOLD, plus pass-through env vars), which you own.
   - **Token:** `~/.config/screen-machine/stream_service.token` (0600, created on first start). Never print it.
 - **Test console:** from Windows Chrome open `http://localhost:<port>/dev`; WSL forwards localhost.
   - Windows Chrome can decode HEVC on the RTX 4060, so try `hevc-2160p60`.
@@ -77,8 +77,8 @@ The builder's final report adds the performance numbers (4K60 on each GPU: late-
 | 3 | **Colour parity at the cut** | Tonight the integration agent compares the sRGB and BT.709 transfer tags with H.264 in headless Chrome. **HEVC on the real TVs** still has to be checked on glass, in an owner window. Kiosk access goes through screen-machine-2f and the owner. |
 | 4 | **Visual quality at 4K** | Fractal shimmer and aliasing (`aa=2` costs 4×). How the encoder copes with fine fractal detail at 30 Mbit/s HEVC. Palettes. |
 | 5 | **More scenes and transitions** | The owner wants this extensible: one plug-in file plus a preset each. Transition ideas: a "screen melt", a noise dissolve, a zoom-through. Each scene is a plug-in with a schema; the web Room page builds its forms from the catalog automatically. |
-| 6 | **Production service** | A startup unit; `--public-base ws://192.168.1.205:8702` (via `scripts/ctl` and `deploy/sm-stream.env`, in screen session `sm-stream`); two sessions at once (north on GPU 0, the 4060, which has only ~1.5 GB of VRAM free because Windows uses the rest; south on GPU 1, the P4000); the GeForce NVENC session cap; logs. |
-| 7 | **Later** | Beat-phased visuals: render about 0.3 s ahead using `config/room/latency.json` (screen-machine-10's calibration). Parameter bindings to show-state once Art-Net/Maestro exist. An optional flash-limiter output filter, off by default (owner: safety mechanisms are optional). |
+| 6 | **Production service** | A startup unit; `--public-base ws://192.168.1.205:8702` (via `scripts/ctl` and `deployments/finsbury/services/sm-stream.env`, in screen session `sm-stream`); two sessions at once (north on GPU 0, the 4060, which has only ~1.5 GB of VRAM free because Windows uses the rest; south on GPU 1, the P4000); the GeForce NVENC session cap; logs. |
+| 7 | **Later** | Beat-phased visuals: render about 0.3 s ahead using `deployments/finsbury/calibration/latency.json` (screen-machine-10's calibration). Parameter bindings to show-state once Art-Net/Maestro exist. An optional flash-limiter output filter, off by default (owner: safety mechanisms are optional). |
 
 ## 6. Coordination and the cut-over
 

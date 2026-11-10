@@ -113,7 +113,25 @@ def system_prompt() -> str:
     facets = "\n".join(lines)
     grp = "; ".join(f"{g} ({d})" for g, d in lex["music_groups"].items())
     # str.replace, not format: the rubric's own text may hold braces
-    return lex["rubric"].replace("{facets}", facets).replace("{groups}", grp).strip()
+    lib = library_words()
+    return (lex["rubric"].replace("{facets}", facets).replace("{groups}", grp)
+            .replace("{an_art_library}", ("an " if lib[:1].lower() in "aeiou" else "a ") + lib)
+            .replace("{art_library}", lib)
+            .replace("{art_screens}", _words("art_screens", "the screens"))).strip()
+
+
+def _words(key: str, default: str) -> str:
+    """A phrase of this site (the manifest's wording; smconfig.Deployment.words), else the generic default."""
+    try:
+        import smconfig
+        return smconfig.deployment().words(key, default)
+    except Exception:                                 # noqa: BLE001 - no deployment: the generic words
+        return default
+
+
+def library_words() -> str:
+    """What the art library is called (manifest wording art_library; finsbury: "living-room art library")."""
+    return _words("art_library", "art library")
 
 
 def tool_schema() -> dict:
@@ -124,7 +142,7 @@ def tool_schema() -> dict:
     fw = {f: list(lex["facets"][f]) for f in FACETS}
     return {
         "name": "tag_picture",
-        "description": "Tag one picture for the living-room art library, using only the given words.",
+        "description": f"Tag one picture for the {library_words()}, using only the given words.",
         "parameters": {
             "type": "object",
             "properties": {

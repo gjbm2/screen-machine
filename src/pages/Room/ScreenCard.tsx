@@ -290,6 +290,76 @@ export const ScreenCard = memo(function ScreenCard({
 
 const FOOT_LINK = "inline-flex min-h-11 items-center gap-1 rounded-xl px-1 text-[15px] font-medium text-teal-800 hover:underline";
 
+/** A screen that shows art only (no live block, so room_service doesn't run it; from GET /api/deployment): its picture,
+ *  which opens its TV page, its name, and the Generator's picture controls (schedule, step, mask, upload), with its
+ *  generator, schedule and settings links. Never Go live. */
+export function ArtScreenCard({ screenId, name, room }: { screenId: string; name: string; room?: string }) {
+  const art = usePublishedArt(screenId, null);
+  const [open, setOpen] = useState(false);
+  return (
+    <section data-screen={screenId} aria-label={name} className={cn(CARD_CLASS, "scroll-mt-3")} data-testid={`art-screen-${screenId}`}>
+      <Collapsible open={open} onOpenChange={setOpen}>
+        <div className="flex gap-3 p-3">
+          <a
+            href={displayUrl(screenId)}
+            target="_blank"
+            rel="noreferrer"
+            title={`Open what ${name} is showing`}
+            aria-label={`Open what ${name} is showing`}
+            data-testid={`live-page-${screenId}`}
+            className="group relative shrink-0 self-start rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <ArtThumb src={art?.thumb} live={false} problem={false} className="aspect-video h-auto w-40" />
+            <span className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full bg-white/90 text-stone-700 shadow-sm group-hover:bg-white">
+              <ExternalLink className="h-3.5 w-3.5" aria-hidden />
+            </span>
+          </a>
+          <div className="flex min-w-0 flex-1 flex-col justify-between gap-1">
+            <div className="min-w-0">
+              <p className="truncate text-base font-semibold leading-snug">{name}</p>
+              <p className="flex min-w-0 items-center gap-1.5 text-[15px] leading-snug">
+                <Dot tone="muted" />
+                <span className="min-w-0 truncate" data-testid={`status-${screenId}`}>
+                  Showing art <span className="text-muted-foreground">· art only</span>
+                </span>
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <CollapsibleTrigger
+                data-testid={`more-${screenId}`}
+                aria-label={open ? `Less about ${name}` : `More about ${name}`}
+                title={open ? "Less" : "More: generator, schedule, settings"}
+                className={cn(
+                  "grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-stone-200 bg-white text-stone-600 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  open && "bg-stone-100",
+                )}
+              >
+                <ChevronDown aria-hidden className={cn("h-5 w-5 transition-transform motion-reduce:transition-none", open && "rotate-180")} />
+              </CollapsibleTrigger>
+            </div>
+          </div>
+        </div>
+
+        <div className="-mt-1 px-3 pb-3">
+          <ScreenImageControls screenId={screenId} name={name} room={room} />
+        </div>
+
+        <CollapsibleContent>
+          <div className="space-y-3 border-t border-stone-200/80 px-3 pb-3 pt-3">
+            <div>
+              <GeneratorLink screenId={screenId} prompt={art?.prompt} />
+              <ScheduleLink screenId={screenId} />
+              <AppLink href={settingsUrl(`screen-${screenId}`)} state={{ from: "Room" }} className={cn(FOOT_LINK, "text-stone-600")}>
+                Screen settings <ChevronRight className="h-4 w-4" aria-hidden />
+              </AppLink>
+            </div>
+          </div>
+        </CollapsibleContent>
+      </Collapsible>
+    </section>
+  );
+}
+
 /** The Generator's picture controls for this screen: its strip's controls row, with what it reads and does
  *  (useScreenStripState), and the same Upload and Maintenance dialogs. Talk (the generator's voice prompt) is left out. */
 function ScreenImageControls({ screenId, name, room }: { screenId: string; name: string; room?: string }) {

@@ -110,8 +110,20 @@ SPEED_RANGE = (0.25, 4.0)                         # --speed: the piece's tempo t
 PEDAL_CCS = (64, 66, 67)
 LIVE_INSTRUMENT = "windows-gs"                    # today's sound: PC22's GS synth (Speaker)
 OUTPUTS = ("pc22", "none")
-SONOS_PREFIX = "sonos:"                           # --output sonos:<zone> (a zone of config/room/sonos.json)
-ROOM_DOOR_PORT = 8700                             # room_service's LAN door: its /show/* reaches show_service
+SONOS_PREFIX = "sonos:"                           # --output sonos:<zone> (a zone of the deployment's room/sonos.json)
+
+
+def _room_door_port() -> Optional[int]:
+    """The deployment's room port (smconfig ports.room). None where there is no deployment: the kiosk's copy of this
+    file has no smconfig, and it never sends to a Sonos."""
+    try:
+        import smconfig  # noqa: PLC0415  (in the repo only)
+        return smconfig.port("room")
+    except (ImportError, RuntimeError, KeyError, ValueError, OSError):
+        return None
+
+
+ROOM_DOOR_PORT = _room_door_port()                # room_service's LAN door: its /show/* reaches show_service
 SHOW_DOOR = "/show"                               # ...under which show_service serves the live stream
 PIANO_AUDIO_PATH = "/show/api/v1/piano/audio/{key}.flac"   # an older helper's rendered file
 ENV_FILE = REPO / ".env"                          # SM_LAN_HOST: the address the Sonos fetches the sound from
@@ -615,6 +627,8 @@ def sonos_url(rendered_path: Optional[str] = None, host: Optional[str] = None) -
     host = host or lan_host()
     if not host:
         raise HelperFailed("no SM_LAN_HOST in .env (the address the Sonos fetches the sound from)")
+    if not ROOM_DOOR_PORT:
+        raise HelperFailed("no deployment (SM_DEPLOYMENT): room_service's port, the Sonos's door, is unknown")
     if key is None:
         return f"http://{host}:{ROOM_DOOR_PORT}{SHOW_DOOR}"
     return f"http://{host}:{ROOM_DOOR_PORT}{PIANO_AUDIO_PATH.format(key=key)}"

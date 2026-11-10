@@ -27,6 +27,11 @@ music's load budget and the scene leave it (never below level_min).  An effect d
 ``draws``) is x by how much of it there is now (``heard``, set by the session): no piano, few note streams.  One layer moves at a time: a section change
 waits SECTION_WAIT_S for the scene director, and when the scene changes the carried auto effects are re-checked
 against the new scene (the one that fits worst is swapped once its fit fell below refit_below of what it was).
+
+A picked palette (owner, contract C6; ``palette_locked``, set by the session from show_service's room.look): while a
+person has PICKED the palette (not auto, not From the art), effects that repaint colour (the catalog's
+``repaints_colour``, plugins.base.REPAINTS_COLOUR) are never picked, and an auto one already on is the first thing
+the next change takes off (swapped for one that does not, else removed).  Hand-placed effects stay.
 """
 from __future__ import annotations
 
@@ -131,6 +136,7 @@ class FxDirector:
         self.looks: Any = None      # fx_interplay.Interplay (set by the session): roles, measured looks, the table
         self.scene: Optional[Callable[[], tuple[Optional[str], Optional[dict]]]] = None   # the scene on screen
         self.heard: Optional[Callable[[], dict]] = None      # -> {listens kind: 0..1} what there is to hear now
+        self.palette_locked: Optional[Callable[[], bool]] = None   # -> a person PICKED the palette (contract C6)
         self._scene_seen: Optional[str] = None
         self._event_scene: Optional[str] = None               # the scene when a section change came in
         self._fit_at_add: dict[str, float] = {}                # preset -> its fit when it came in
@@ -296,13 +302,15 @@ class FxDirector:
         """Eligible presets for one more bus effect (``freed``: a slot about to be swapped out).  ``cost`` and
         ``pixels_ratio`` are not read any more (no cost budget, 21 Oct); the callers' signature stays.  ``relaxed``
         (the owner's Next, when nothing fits the stage rules): any stage, a second one on a stage, outside
-        direction.fx.stages; still never quarantined, unvetted, ``auto: false`` or already on the bus."""
+        direction.fx.stages; still never quarantined, unvetted, ``auto: false``, already on the bus, or repainting
+        a picked palette (C6)."""
         pool = resolve_pool(self.auto_fx.get("pool", "all"), presets)
         q = self._quarantined(now)
         allowed = self.fxd.get("stages")
         keep = [s for s in stack if s is not freed]
         used_stages = {getattr(s, "stage", None) for s in keep}
         used_presets = {getattr(s.spec, "preset", None) for s in stack}    # a swap never re-picks the same
+        locked = self.locked()
         out = []
         for name in pool:
             p = presets[name]
@@ -312,10 +320,42 @@ class FxDirector:
                 continue
             if self.vet is not None and not self._vetted(p.get("effect")):
                 continue
+            if locked and p.get("repaints_colour"):
+                continue                            # a picked palette wins over effects that repaint colour (C6)
             if not relaxed and (stage not in STAGES or stage in used_stages or (allowed and stage not in allowed)):
                 continue
             out.append(name)
         return out
+
+    def locked(self) -> bool:
+        """A person picked the palette (not auto, not From the art): effects that repaint colour stay out (C6)."""
+        try:
+            return bool(self.palette_locked()) if self.palette_locked is not None else False
+        except Exception:
+            return False
+
+    def repainting(self, stack: list, presets: dict[str, dict]) -> list:
+        """The auto effects on the bus that repaint colour, while the palette is picked (oldest first); a hand-placed
+        effect is never counted (it stays)."""
+        if not self.locked():
+            return []
+        return [s for s in stack if getattr(s, "origin", "manual") == "auto"
+                and (presets.get(getattr(s.spec, "preset", None) or "") or {}).get("repaints_colour")]
+
+    def _uncover(self, now: float, stack: list, presets: dict[str, dict], cost: Callable[[str], Optional[float]],
+                 pixels_ratio: float, prefer: tuple, why: str) -> Optional[FxMove]:
+        """The next change takes off an auto effect that repaints over a picked palette: swapped for one that
+        does not, else removed."""
+        rp = self.repainting(stack, presets)
+        if not rp:
+            return None
+        old = rp[0]
+        got = self._choose(self.candidates(now, stack, presets, cost, pixels_ratio, freed=old), presets, prefer,
+                           stack, old)
+        if got is not None:
+            return self._move("swap", got, old.id, f"{why}: {got[1]} for {old.spec.name}, which repaints the "
+                                                   f"picked palette")
+        return FxMove("remove", None, old.id, f"{why}: remove {old.spec.name}, which repaints the picked palette")
 
     def _rated(self, plugin: Optional[str]) -> float:
         if self.rate is None:
@@ -455,6 +495,9 @@ class FxDirector:
         autos = [s for s in stack if getattr(s, "origin", "manual") == "auto"]
         ev = self.event
         on = f" (on the {ev.replace('_', ' ')})" if ev else ""
+        mv = self._uncover(now, stack, presets, cost, pixels_ratio, prefer, f"palette{on}")
+        if mv is not None:
+            return mv
         if ev == "scene_change" or (ev == "section_change" and self._scene_seen != self._event_scene):
             return self._refit(now, stack, presets, cost, pixels_ratio, prefer, on)   # one layer at a time
         k = self.target_count()
@@ -489,7 +532,8 @@ class FxDirector:
         that is empty too, or the bus is full with no auto effect to swap."""
         stack = bus_slots(stack)
         autos = [s for s in stack if getattr(s, "origin", "manual") == "auto"]
-        old = oldest(autos)
+        rp = self.repainting(stack, presets)
+        old = oldest(rp) if rp else oldest(autos)   # one over a picked palette goes first, else the one in first
         if old is None and len(stack) >= MAX_BUS_SLOTS:
             return None
         got = None

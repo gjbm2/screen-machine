@@ -39,7 +39,7 @@ from .music_feed import ResponseFile
 from .modulation import parse_binding, split_bindings
 from .piano import PIANO_SIGNALS
 from .plugins import Registry
-from .plugins.base import ParamError, is_bindable
+from .plugins.base import ParamError, is_bindable, repaints_colour
 from .tag_overlay import TagOverlay
 from .tags import TagError, Vocab, unknown_words, validate_tags
 
@@ -359,6 +359,7 @@ class Presets:
                          **({"generic": generic} if generic else {})}
                 if kind == "effect":
                     entry["stage"] = getattr(cls, "stage", "stylise")
+                    entry["repaints_colour"] = repaints_colour(cls)
                 try:
                     entry["tags"] = validate_tags(self._auto_tags(e.get("tags"), kind, cls))
                 except TagError as te:
@@ -394,6 +395,7 @@ class Presets:
             cls = self.registry.effect(entry[key])
             cls.validate(split_bindings(cls.param_props(), params)[0])
             out["stage"] = getattr(cls, "stage", "stylise")
+            out["repaints_colour"] = repaints_colour(cls)
         if isinstance(entry.get("description"), str):
             out["description"] = entry["description"]
         return out

@@ -6,7 +6,7 @@ command. Nothing is rendered ahead and nothing is stored (owner, 22 Oct: "it sho
 
 Started by tools/show_sender/show_sender.py (``--test-piano PIECE --instrument ID --output pc22|sonos:<zone>``) from
 the repo root. --output: pc22 (the default: PC22's speakers, piano_render/pc22.py) or sonos:<zone> (a zone of
-config/room/sonos.json, through room_service: piano_render/sonos.py, whose docstring has the volume, stream, start
+the deployment's room/sonos.json, through room_service: piano_render/sonos.py, whose docstring has the volume, stream, start
 estimate and watch rules).
 
 How a play works (piano_render/README.md, "Latency and compute", has the numbers):
@@ -103,6 +103,8 @@ import time
 from pathlib import Path
 from typing import Any, Callable, Optional
 
+import smconfig
+
 log = logging.getLogger("piano_render.session")
 
 REPO = Path(__file__).resolve().parent.parent
@@ -136,7 +138,7 @@ REARM_S = 0.5                       # after a play ends: the next one's player (
 ARM_WAIT_S = 0.02
 SONOS_STREAM_ENV = "PIANO_SESSION_SONOS_STREAM"   # 1: stream to the Sonos, 0: the old file path, unset: ask show
 SHOW_URL_ENV = "PIANO_SHOW_URL"
-SHOW_URL = "http://127.0.0.1:8703"
+SHOW_URL = smconfig.url("show")     # show_service on this box ($PIANO_SHOW_URL overrides)
 STREAM_PROBE_ID = "0" * 32
 OLD_SONOS_PAD_MIN_S = 0.75          # the old file path's own minimum pad (show_sender used to send it)
 
@@ -874,7 +876,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--instrument", required=True, help="instrument id (config/piano/instruments.json)")
     ap.add_argument("--pad-s", type=float, default=0.0, help="the first MIDI event's need after 'started' (above)")
     ap.add_argument("--output", default=PC22_OUTPUT, type=output_arg, metavar="pc22|sonos:<zone>",
-                    help="where it plays: PC22's speakers (default) or a Sonos zone of config/room/sonos.json")
+                    help="where it plays: PC22's speakers (default) or a Sonos zone of the deployment's room/sonos.json")
     ap.add_argument("--calibration-mic", default=None, type=mic_arg, metavar="STREAM",
                     help="the mic stream that hears the output (show_service names it); \"\": none hears it")
     return ap

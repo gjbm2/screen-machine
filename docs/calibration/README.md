@@ -6,9 +6,9 @@ stack reads, so compensation follows the measurement. Rerun one when its hardwar
 
 | Calibration | What it measures | Tool | Result read live |
 |---|---|---|---|
-| Screen latency | a screen change → light at the room's sensor (render-ahead for beat-phased visuals) | `tools/room/latency_cal/` (Yocto light sensor via the light relay) | `config/room/latency.json` `screens.<screen>` |
-| Room audio | what the PA, the room and a mic do to music before the beat clock hears it; a room model for offline tests | `tools/room/audio_cal/` (record the mic, fetch or own the original, analyse) | `config/room/audio_cal.json` `streams.<stream>.summary.music_lufs` → show_service's loudness gate offset |
-| Lighting output latency (planned) | a lighting trigger → light from a fixture through Art-Net → node → DMX/D-Fi, with a camera and a screen-flash reference | to build: [the owner's brief](lighting-latency-and-portable-subnet-brief.md), chapter 1 | `config/room/latency.json` `outputs.<latency_key>` (show_service `artnet_lan.output_lead` already leads each Art-Net output by it) |
+| Screen latency | a screen change → light at the room's sensor (render-ahead for beat-phased visuals) | `tools/room/latency_cal/` (Yocto light sensor via the light relay) | `deployments/finsbury/calibration/latency.json` `screens.<screen>` |
+| Room audio | what the PA, the room and a mic do to music before the beat clock hears it; a room model for offline tests | `tools/room/audio_cal/` (record the mic, fetch or own the original, analyse) | `deployments/finsbury/calibration/audio_cal.json` `streams.<stream>.summary.music_lufs` → show_service's loudness gate offset |
+| Lighting output latency (planned) | a lighting trigger → light from a fixture through Art-Net → node → DMX/D-Fi, with a camera and a screen-flash reference | to build: [the owner's brief](lighting-latency-and-portable-subnet-brief.md), chapter 1 | `deployments/finsbury/calibration/latency.json` `outputs.<latency_key>` (show_service `artnet_lan.output_lead` already leads each Art-Net output by it) |
 
 Related, later: the owner's portable rig (a Windows laptop driving Art-Net lighting only, no screens) needs its own
 local Ethernet lighting subnet (the brief's chapter 2).

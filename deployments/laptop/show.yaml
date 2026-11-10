@@ -1,0 +1,10 @@
+# deployments/laptop/show.yaml: the laptop rig's layer over config/room/show.yaml (deployments/README.md).
+# The room's ears: the laptop's own microphone (the Windows default input), sent by the audio agent running on this
+# laptop's Windows side (tools/show_sender/pc22_agent.py; deployments/README.md "Room audio on a WSL machine").
+# "windows" is the Windows machine this WSL runs on (show_service resolves it each time; no fixed address).
+senders:
+  laptop:
+    hosts: [windows]
+    port: 6984
+    streams: [room-mic]                     # this rig's room mic: Auto listens to room-mic first
+    label: Laptop                           # the Room page's Mic list groups this sender's inputs under it

@@ -14,6 +14,7 @@ import pathlib
 import random
 
 import pytest
+import smconfig
 import yaml
 
 from show_service import bus as busmod
@@ -199,7 +200,9 @@ def test_screens_on_the_front_axis_fall_back_to_the_zones():
 
 def test_no_zones_and_no_space_is_all_centre_and_only_unison_forms(tmp_path, scorer):
     cfg = E.parse_settings({}, [])
-    pl = players(cfg=cfg)
+    rig = rig_view()
+    del rig["fixtures"]["screen.north"]                          # one screen: nothing to stand it beside
+    pl = players(rig, cfg=cfg)
     assert {p["side"] for p in pl} == {"centre"} and all(p["id"].endswith(":all") or p["kind"] == "screen"
                                                          for p in pl)
     assert len(E.teams(pl, "side", E.flow_order(pl, None))) < 2
@@ -207,6 +210,41 @@ def test_no_zones_and_no_space_is_all_centre_and_only_unison_forms(tmp_path, sco
     cat.poll()
     ws = cat.weights(DIRECTION, {"dir": "right"}, {"sides": False, "grid": True, "piano": False})
     assert set(ws) and all(cat.entries[n]["kind"] == "unison" for n in ws)
+
+
+def test_unplaced_screens_stand_in_the_rooms_order_and_a_middle_one_plays(scorer):
+    """Audit E6: with no space and no zones two or more screens stand evenly left to right in rooms.json order (their
+    lamps follow them); a middle screen is a team of its own for team_by player and travels in the order."""
+    cfg = E.parse_settings({}, [])
+    rig = rig_view()
+    rig["fixtures"]["screen.mid"] = fixture("screen.mid", "sm-screen", "mid-screen", None, "Middle")
+    order = ["north-screen", "mid-screen", "south-screen"]
+    pl = {p["id"]: p for p in players(rig, cfg=cfg, screen_order=order)}
+    assert [(pl[f]["x"], pl[f]["side"], pl[f]["via"]) for f in ("screen.north", "screen.mid", "screen.south")] == \
+        [(-1.0, "left", "order"), (0.0, "centre", "order"), (1.0, "right", "order")]
+    assert pl["lamps:left"]["members"] == ["hue.ne", "hue.nw"] and pl["lamps:left"]["via"] == "screen"
+    ps = list(pl.values())
+    order_ids = E.flow_order(ps, None)
+    assert order_ids.index("screen.north") < order_ids.index("screen.mid") < order_ids.index("screen.south")
+    by_player = E.teams(ps, "player", order_ids)
+    assert ["screen.mid"] in by_player and all(t != ["lamps:all"] for t in by_player)
+    by_side = E.teams(ps, "side", order_ids)
+    assert all("screen.mid" not in t for t in by_side) and len(by_side) == 2   # sides stay left and right
+    # without an order the fixtures' own order places them; one placed by a zone keeps the rest where they were
+    pl2 = {p["id"]: p for p in players(rig, cfg=cfg)}
+    assert {pl2[f]["via"] for f in ("screen.north", "screen.mid", "screen.south")} == {"order"}
+    pl3 = {p["id"]: p for p in players(rig)}                      # ZONES places north and south: no order fallback
+    assert pl3["screen.mid"]["via"] == "none" and pl3["screen.north"]["via"] == "zone"
+
+
+def test_zones_take_centre_and_a_number():
+    probs: list[str] = []
+    cfg = E.parse_settings({"players": {"zones": {"south": "left", "north": 0.5, "mid": "centre"}}}, probs)
+    assert probs == [] and cfg["players"]["zones"] == {"south": "left", "north": 0.5, "mid": "centre"}
+    pl = {p["id"]: p for p in players(cfg=cfg)}
+    assert pl["screen.north"]["x"] == 0.5 and pl["screen.north"]["via"] == "zone"
+    bad: list[str] = []
+    assert E.parse_settings({"players": {"zones": {"a": 2}}}, bad)["players"]["zones"] == {} and bad
 
 
 def test_a_lamp_with_no_zone_takes_its_screens_side():
@@ -803,6 +841,22 @@ def test_neutral_house_and_low_seed_nothing(tmp_path, scorer):
     assert b.en.block()["source"] != "neutral" and b.en.block()["line"].startswith(E.LINE_PREFIX)
 
 
+def test_fewer_than_two_players_announce_no_interplay(tmp_path, scorer):
+    """Audit SHOW-3: one screen and nothing else (or nobody) is no band: the block is the neutral unison with no line,
+    whatever form was drawn; a second player brings the form back."""
+    together = "  together: {kind: unison, line: \"all together on the big moments\", routes: [hit]}\n"
+    lone = [p for p in players() if p["id"] == "screen.north"]
+    for plist in ([], lone):
+        b = Band(tmp_path, scorer, together, plist=plist)
+        b.start(96.0)
+        blk = b.en.block()
+        assert blk["source"] == "neutral" and blk["line"] is None and blk["form"] == E.BUILTIN_NAME, plist
+        assert "fewer than two players" in blk["why"]
+    b.en.set_players(players(), b.t)
+    b.tick()
+    assert b.en.block()["source"] != "neutral" and b.en.block()["line"] is not None
+
+
 def test_reset_goes_back_to_unison_and_calls_off_what_was_coming(tmp_path, scorer):
     b = Band(tmp_path, scorer, CANON)
     b.accents = "downbeat"
@@ -841,7 +895,7 @@ def test_settings_fall_back_with_a_problem_line():
     assert cfg["gestures"]["shapes"]["hit"] == E.ENSEMBLE_FALLBACK["gestures"]["shapes"]["hit"]
     assert cfg["piano"]["split"] == "auto"
     assert len(probs) == 8
-    real = yaml.safe_load(c.SHOW_FILE.read_text()).get("ensemble")
+    real = smconfig.load_layered_yaml(c.SHOW_FILE, c.SHOW_SITE_FILE).get("ensemble")    # the shared file + the site's
     probs = []
     got = E.parse_settings(real, probs)
     assert probs == [] and got["players"]["zones"] == ZONES

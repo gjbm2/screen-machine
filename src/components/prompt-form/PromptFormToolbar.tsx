@@ -46,7 +46,7 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
   };
   
   // The button should be enabled if there's a prompt OR uploaded images
-  const shouldDisableButton = isLoading || (!prompt.trim() && !hasUploadedImages);
+  const shouldDisableButton = isButtonDisabled || isLoading || (!prompt.trim() && !hasUploadedImages);
   
   // Common style for all toolbar buttons to ensure consistency
   const toolbarButtonClass = "h-[28px] text-muted-foreground bg-white";

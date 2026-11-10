@@ -7,13 +7,13 @@ All servers on PC22's WSL use one pattern: **a project script starts each in a G
   Spectre card *Screen Machine — Room (in Flask)* probes `:8700/healthz` and `/api/v1/dmx` (Art-Net in, show bus, Hue);
   Start = start Flask; Stop is refused (stop Flask instead). Logs: `logs/room_service.log`. Rollback: `ROOM_IN_APP=0` in `.env` + Flask restart.
 - **GPU renderer** (stream_service, :8702) is an on-demand worker in screen session `sm-stream`, run by `scripts/ctl`.
-- **show_service** (127.0.0.1:8703) and **dot_service** (127.0.0.1:8704) are always on, in screen sessions `sm-show` and `sm-dot`, run by the same `scripts/ctl` (settings `deploy/sm-show.env`, `deploy/sm-dot.env`; Spectre cards `screen-machine-show`, `screen-machine-dot`).
+- **show_service** (127.0.0.1:8703) and **dot_service** (127.0.0.1:8704) are always on, in screen sessions `sm-show` and `sm-dot`, run by the same `scripts/ctl` (settings `deployments/finsbury/services/sm-show.env`, `deployments/finsbury/services/sm-dot.env`; Spectre cards `screen-machine-show`, `screen-machine-dot`).
 
 | Layer | What | Where |
 |---|---|---|
 | Spectre | *Screen Machine — Live renderer* card: status (`/healthz` + session), Start/Stop/Restart, logs, LAN toggle | `local-automation` `services/screen-machine-stream.ts` (standard `wslService`) |
 | Project script | `scripts/ctl start\|stop\|restart\|status\|health\|logs stream` | this repo |
-| Settings | `deploy/sm-stream.env` (owner screen-machine-04) | this repo |
+| Settings | `deployments/finsbury/services/sm-stream.env` (owner screen-machine-04) | this repo |
 | Network | portproxy `0.0.0.0:8700/8702 -> WSL` + firewall rules `la-screen-machine-{room,stream}-*` scoped to 192.168.1-4.0/24 (never WAN) | Spectre LAN toggles |
 | Boot | Flask (+ room) via the Screen Machine group / `scripts/wsl-boot.sh`; renderer optional via the *Live renderer* boot group (`scripts/ctl start all`) | Spectre boot-start |
 
@@ -23,7 +23,7 @@ Ports and owners: `docs/PORTS.md`.
 
 ```
 scripts/ctl status              # stream, show, dot: running/stopped (+ HOLD if any); exit 0 ok, 3 stopped, 1 unhealthy
-scripts/ctl start stream        # refuses (exit 2) if deploy/sm-stream.env has STREAM_HOLD, or :8702 is taken
+scripts/ctl start stream        # refuses (exit 2) if deployments/finsbury/services/sm-stream.env has STREAM_HOLD, or :8702 is taken
 scripts/ctl stop stream         # SIGTERM to the pid, then its process group after 15 s; never pkill
 scripts/ctl logs stream 200     # ~/.local/state/screen-machine/logs/stream_service.log (show/dot likewise)
 screen -r sm-stream             # attach (Ctrl-A D to detach)

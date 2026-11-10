@@ -27,7 +27,13 @@ fi
 
 # Configuration with fallbacks
 REMOTE_HOST="${MEDIA_SERVER_HOST:-screen-machine-drawingroom}"
-REMOTE_USER="${MEDIA_SERVER_USER:-gjbm2}"
+# Login not set in .env: the deployment's kiosk.user (deployments/<id>/deployment.yaml, via kiosk-config.sh)
+REMOTE_USER="${MEDIA_SERVER_USER:-}"
+if [ -z "$REMOTE_USER" ]; then
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR/kiosk-config.sh"
+    REMOTE_USER="$(kiosk_get user)" || { echo "no kiosk user (MEDIA_SERVER_USER or the deployment's kiosk.user)" >&2; exit 2; }
+fi
 REMOTE_PORT="${MEDIA_SERVER_PORT:-22}"
 
 # Colors

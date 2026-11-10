@@ -268,6 +268,9 @@ function useRoomMusic(baseUrl: string, onLibrary: () => void): { ctx: MusicCtx; 
   return { ctx, msg };
 }
 
+/** The card's line when the recorder has no takes (the Room page reads it: no piano and no recordings). */
+export const NO_RECORDINGS = "No recordings yet";
+
 export function PianoCard({
   api,
   connected,
@@ -303,7 +306,7 @@ export function PianoCard({
     if (r.recording) return `Recording · ${r.notes} note${r.notes === 1 ? "" : "s"}`;
     if (playingRec) return `Playing · ${playingRec.title}`;
     const newest = r.takes.reduce<PianoRecording | null>((a, t) => (!a || t.recorded_at > a.recorded_at ? t : a), null);
-    return newest ? `Last recording ${when(newest.recorded_at) || newest.title}` : "No recordings yet";
+    return newest ? `Last recording ${when(newest.recorded_at) || newest.title}` : NO_RECORDINGS;
   })();
   useEffect(() => {
     if (summaryLine !== undefined) sumRef.current?.(summaryLine);

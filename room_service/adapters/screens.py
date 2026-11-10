@@ -17,6 +17,25 @@ if TYPE_CHECKING:
     from ..screens import ScreenController
 
 
+def screen_label(controllers: dict, known: dict[str, str] | None, sid: str) -> str:
+    """A screen's name for people: its destination's name ("North screen"), else its id."""
+    label = getattr(getattr(controllers.get(sid), "cfg", None), "label", None)
+    return str(label) if isinstance(label, str) and label else (known or {}).get(sid) or sid
+
+
+def screen_absent(controllers: dict, known: dict[str, str] | None, rest: str, suffixes: tuple[str, ...] = ("",)) -> str | None:
+    """Adapter.absent for the per-screen subsystems (screens, page, diag): the bare subsystem on a site with no live
+    screen, or a screen the site knows (a destination in publish-destinations.json) without a live block, names
+    nothing; anything else matched nothing because it is a mistake (None). `suffixes`: what may follow the screen id
+    in a member ("" for screens.<id>; ".timed_reload" for page.<id>.timed_reload)."""
+    if rest == "":
+        return None if controllers else "No screen here can go live"
+    for sid, name in (known or {}).items():
+        if sid not in controllers and any(rest == sid + sfx for sfx in ("", *suffixes)):
+            return f"{name or sid} has no live block"
+    return None
+
+
 class ScreensAdapter(Adapter):
     subsystem = "screens"
     subsystem_label = "Screens"
@@ -25,9 +44,18 @@ class ScreensAdapter(Adapter):
     poll_s = 1.0
     poll_inflight_s = 0.5
 
-    def __init__(self, controllers: dict[str, "ScreenController"]) -> None:
+    def __init__(self, controllers: dict[str, "ScreenController"], known: dict[str, str] | None = None) -> None:
+        """known: every screen the site has ({id: name}, art-only ones too: config.known_screens), so a mode naming
+        one without a live block names nothing (absent) rather than failing to load."""
         self.c = controllers
         self.members = list(controllers)
+        self.known = dict(known or {})
+
+    def label(self, member: str) -> str:
+        return screen_label(self.c, self.known, member)
+
+    def absent(self, rest: str) -> str | None:
+        return screen_absent(self.c, self.known, rest)
 
     def value_schema(self, member: str) -> dict:
         """The Room page's screen editor: "art" or a live spec. A mode never names a scene (owner, 15 Oct): it steers
@@ -85,7 +113,7 @@ class ScreensAdapter(Adapter):
         via = lambda label: {"type": ["string", "null"], "enum": [n for n, _ in transitions] + [None],   # noqa: E731
                              "x-ui": {"label": label, "enum_labels": [lb for _, lb in transitions] + ["The usual"],
                                       "unset_label": "The usual"}}
-        return {"x-ui": {"label": member, "widget": "screen"},
+        return {"x-ui": {"label": self.label(member), "widget": "screen"},
                 "oneOf": [{"const": "art", "x-ui": {"label": "Art"}},
                           {"type": "object", "default": {"live": {"auto": True}},
                            "x-ui": {"label": "Live", "help": "The Art Director picks the scenes, effects and transitions."},
@@ -136,7 +164,8 @@ class ScreensAdapter(Adapter):
         try:
             c.set_desired(value, source=source)
         except LiveDisabled:
-            return Outcome("failed", "live_disabled", retry=False)
+            why = getattr(getattr(getattr(c, "mgr", None), "cfg", None), "live_off_reason", None)
+            return Outcome("failed", f"live_disabled: {why}" if why else "live_disabled", retry=False)
         except ValueError as e:
             return Outcome("failed", str(e))
         status, detail = await c.wait_settled(value, self.change_time_s)

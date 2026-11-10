@@ -2,11 +2,13 @@ import asyncio
 import json
 import websockets
 
+import smconfig
+
 async def test_overlay():
-    uri = "ws://localhost:8765"  # or whatever port your WebSocket server uses
+    uri = f"ws://localhost:{smconfig.port('overlay_ws')}"  # the deployment's overlay WebSocket
     async with websockets.connect(uri) as websocket:
         message = {
-            "screens": ["north-screen"],
+            "screens": smconfig.live_screens()[:1],
             "htmlFile": "/overlays/overlay_alert.html",
             "duration": 3000,
             "position": "bottom-center",

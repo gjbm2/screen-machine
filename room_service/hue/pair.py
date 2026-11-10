@@ -16,7 +16,9 @@ import time
 import urllib.request
 from pathlib import Path
 
-SECRETS_DIR = Path("~/.config/screen-machine/hue").expanduser()
+import smconfig
+
+SECRETS_DIR = smconfig.secret("hue")          # ~/.config/screen-machine/hue (per machine, never in git)
 
 
 def _ctx() -> ssl.SSLContext:

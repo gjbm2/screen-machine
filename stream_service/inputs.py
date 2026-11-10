@@ -47,6 +47,8 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
+import smconfig
+
 log = logging.getLogger("stream_service.inputs")
 
 from .piano import PIANO_LEVELS, PIANO_SIGNALS, PIANO_TRIGGERS
@@ -90,7 +92,11 @@ TAU_SAT_S, TAU_HUE_S = 3.0, 6.0
 LIT_V = 0.05
 SECTION_DECAY_S = 1.5
 DEFAULT_PHOTON_MS = 178.7  # presented -> photon when latency.json is absent (south, 13 Oct)
-DEFAULT_FIXTURES = {"north-screen": "screen.north", "south-screen": "screen.south", "devtest": "screen.north"}
+DEFAULT_FIXTURES: dict[str, str] = {}   # screen -> fixture overrides (tests); the deployment's files decide the rest
+DESTINATIONS = smconfig.path("publish-destinations.json")   # a screen's live.fixture
+PATCH = smconfig.path("lights", "patch.yaml")               # devices: the profile-"screen" fixture whose screen: it is
+_FIXTURE_FILES: dict = {}                                   # path -> (mtime_ns, parsed), the last good copy
+_NO_FIXTURE_LOGGED: set = set()
 
 
 def signal_kind(s: str) -> str:
@@ -116,24 +122,71 @@ def pivotable(signal: str) -> bool:
     return signal in BIND_SIGNALS and signal_kind(signal) == "level" and signal not in POSITIONAL
 
 
-def default_fixture(screen: str) -> str:
-    return DEFAULT_FIXTURES.get(screen, "screen.north")
+def _read_cached(path: pathlib.Path) -> Any:
+    """A JSON / YAML file parsed, re-read when its mtime changes; None when absent; the last good copy when broken."""
+    try:
+        m = path.stat().st_mtime_ns
+    except OSError:
+        _FIXTURE_FILES.pop(str(path), None)
+        return None
+    hit = _FIXTURE_FILES.get(str(path))
+    if hit and hit[0] == m:
+        return hit[1]
+    try:
+        data = smconfig.read_data(path)
+    except Exception as e:  # noqa: BLE001 - OSError, ValueError, a YAML error
+        log.warning("fixtures: %s unreadable (%s); %s", path, e, "keeping the last good copy" if hit else "ignored")
+        return hit[1] if hit else None
+    _FIXTURE_FILES[str(path)] = (m, data)
+    return data
 
 
-def load_photon(path: Optional[pathlib.Path], screen: str) -> tuple[float, str]:
-    """presented -> photon ms for a screen from config/room/latency.json -> (ms, source).
+def default_fixture(screen: str) -> Optional[str]:
+    """The fixture a screen's session follows when its create body names none: DEFAULT_FIXTURES (an override), else
+    the screen's destination ``live.fixture`` (publish-destinations.json), else the patch device (lights/patch.yaml
+    ``devices``) with ``profile: screen`` and ``screen: <this screen>``, else None: no fixture (the session follows
+    no light; never another screen's)."""
+    if screen in DEFAULT_FIXTURES:
+        return DEFAULT_FIXTURES[screen]
+    dests = _read_cached(pathlib.Path(DESTINATIONS))
+    for d in dests if isinstance(dests, list) else ():
+        if isinstance(d, dict) and d.get("id") == screen and isinstance(d.get("live"), dict):
+            fx = d["live"].get("fixture")
+            if isinstance(fx, str) and fx:
+                return fx
+            break
+    patch = _read_cached(pathlib.Path(PATCH))
+    devices = patch.get("devices") if isinstance(patch, dict) else None
+    for fid, dev in (devices.items() if isinstance(devices, dict) else ()):
+        if isinstance(dev, dict) and dev.get("profile") == "screen" and dev.get("screen") == screen:
+            return str(fid)
+    if screen not in _NO_FIXTURE_LOGGED:
+        _NO_FIXTURE_LOGGED.add(screen)
+        log.info("fixtures: no fixture for screen %s (no live.fixture, no screen device in the patch): its sessions "
+                 "follow no light", screen)
+    return None
 
-    ``north-screen`` (or the fixture ``screen.north``) reads ``screens.north``; a screen with no entry uses
-    another's value, flagged."""
+
+def load_photon(path: Optional[pathlib.Path], screen: str, fixture: Optional[str] = None) -> tuple[float, str]:
+    """presented -> photon ms for a screen from the deployment's calibration/latency.json -> (ms, source).
+
+    The entry is looked up exactly first: the screen id (``tv-left``), then the fixture id, then the legacy short
+    name: the fixture's last dotted part (``screen.north`` -> ``north``), or without a fixture the screen id before
+    its first hyphen (``north-screen`` -> ``north``).  Only when none of those is in the file does the screen borrow
+    another screen's value, flagged ``(no <short name> measurement)`` (audit stream_flask:F9, probe:E5). (Called with only ``screen``, a dotted value is treated as
+    the fixture, as it always was.)"""
     try:
         data = json.loads(pathlib.Path(path).read_text()) if path else {}
         screens = data.get("screens") or {}
-        key = screen.split(".")[-1] if "." in screen else screen.split("-")[0]
-        name = key if key in screens else next(iter(screens), None)
+        if fixture is None and "." in screen:
+            screen, fixture = "", screen
+        short = fixture.split(".")[-1] if fixture else screen.split("-")[0]    # the legacy name (north)
+        key = next((k for k in (screen, fixture, short) if k and k in screens), None)
+        name = key if key is not None else next(iter(screens), None)
         ms = float(screens[name]["effective"]["presented_to_photon_ms"])
         if not 0 < ms < 2000:
             raise ValueError(f"presented_to_photon_ms {ms} out of range")
-        return ms, f"latency.json:{name}" + ("" if name == key else f" (no {key} measurement)")
+        return ms, f"latency.json:{name}" + ("" if key is not None else f" (no {short} measurement)")
     except (OSError, ValueError, KeyError, TypeError) as e:
         if path and pathlib.Path(path).exists():
             log.warning("latency file %s unusable (%s); presented->photon %.0f ms", path, e, DEFAULT_PHOTON_MS)
@@ -603,7 +656,8 @@ class Sampler:
     ``beat`` and ``beat_phase`` are predicted at ``now + lead`` when the follower is locked, so steady beats
     land on glass on time; everything else is the latest value (it lands ``lead`` late)."""
 
-    def __init__(self, inputs: Optional[ShowInputs], fixture: str, lead_s: float, follow: str = "extrapolate"):
+    def __init__(self, inputs: Optional[ShowInputs], fixture: Optional[str], lead_s: float,
+                 follow: str = "extrapolate"):
         self.inputs = inputs
         self.fixture_name = fixture
         self.lead = lead_s                # seconds; written by the loop (1 Hz, slewed), read here

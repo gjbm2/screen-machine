@@ -1,0 +1,78 @@
+{
+ "drawing-room:blinds": [
+  "blinds.ch02",
+  "blinds.ch03",
+  "blinds.ch14"
+ ],
+ "drawing-room:diag": [
+  "diag.north-screen",
+  "diag.south-screen"
+ ],
+ "drawing-room:effects": [
+  "mirror_ball.main",
+  "mirror_ball_motor.direction",
+  "mirror_ball_motor.speed",
+  "pinspots.colour",
+  "pinspots.flash",
+  "pinspots.level",
+  "pinspots.main"
+ ],
+ "drawing-room:hue": [
+  "hue.ne",
+  "hue.nw",
+  "hue.se",
+  "hue.sw"
+ ],
+ "drawing-room:light": [
+  "light.par-left",
+  "light.par-right"
+ ],
+ "drawing-room:lights": [
+  "hue.ne",
+  "hue.nw",
+  "hue.se",
+  "hue.sw",
+  "light.par-left",
+  "light.par-right"
+ ],
+ "drawing-room:mirror_ball": [
+  "mirror_ball.main"
+ ],
+ "drawing-room:mirror_ball_motor": [
+  "mirror_ball_motor.direction",
+  "mirror_ball_motor.speed"
+ ],
+ "drawing-room:page": [
+  "page.north-screen.timed_reload",
+  "page.south-screen.timed_reload"
+ ],
+ "drawing-room:pinspots": [
+  "pinspots.colour",
+  "pinspots.flash",
+  "pinspots.level",
+  "pinspots.main"
+ ],
+ "drawing-room:screens": [
+  "screens.north-screen",
+  "screens.south-screen"
+ ],
+ "drawing-room:sensors": [],
+ "drawing-room:sonos": [
+  "sonos.drawing-room.now_playing",
+  "sonos.drawing-room.playback",
+  "sonos.drawing-room.volume"
+ ],
+ "drawing-room:tv": [
+  "tv.north-screen",
+  "tv.south-screen"
+ ],
+ "lab:diag": [
+  "diag.devtest"
+ ],
+ "lab:page": [
+  "page.devtest.timed_reload"
+ ],
+ "lab:screens": [
+  "screens.devtest"
+ ]
+}

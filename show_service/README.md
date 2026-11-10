@@ -11,7 +11,7 @@ the show bus as `music.*` (§11.1). Session names change; ask on the peer list w
   flock /tmp/claude-1000/sm-build.lock nice -n 19 ~/.venvs/sm-show/bin/python -m pytest show_service/tests -q
   ```
 - **Run:** `~/.venvs/sm-show/bin/python -m show_service` (from the repo root). In production it is started by
-  `scripts/ctl show` (owned by ca), with `deploy/sm-show.env`: see **Deploy (P0)** at the end.
+  `scripts/ctl show` (owned by ca), with `deployments/<id>/services/sm-show.env`: see **Deploy (P0)** at the end.
 - **Ports:** VBAN on `0.0.0.0:6980/udp` (receiver-initiated, §3.1). The bus and API are on `127.0.0.1:8703`, and are
   reached only through `:8700/show/*`. The test sources (Stage 3) are children on `127.0.0.1:6981/udp` (piano) and
   `127.0.0.1:6982/udp` (audio) while they play. Stage 5 opens **no listening port**: Art-Net goes unicast from one
@@ -22,9 +22,9 @@ the show bus as `music.*` (§11.1). Session names change; ask on the peer list w
   `autopilot.jsonl`, `listener.jsonl`, `cues.jsonl` (S5.22), `test-piano.log`, `test-audio.log`, `ml-worker.log` (Stage 4: the worker's
   stderr, appended per run after a "--- ml-worker start ---" line, rotated to `.1` past 1 MB), `nodes.json` (Stage 5:
   where artnet_lan's discovery last found each node; written only when a node answers from a new address). It reads
-  `config/room/show.yaml`, `config/room/vibes.yaml`, `config/room/patch.yaml`, `config/llm.yaml`,
-  `config/live/vocab.yaml` and (Stage 5) `config/room/fixtures.yaml`, `config/room/fixture-types/` and
-  `config/room/latency.json`, each re-read when it changes; (the worker) `~/.cache/screen-machine/models/` (Stage 4;
+  `config/room/show.yaml (+ the deployment's deployments/<id>/show.yaml layer)`, `config/room/vibes.yaml`, `deployments/<id>/lights/patch.yaml`, `config/llm.yaml`,
+  `config/live/vocab.yaml` and (Stage 5) `deployments/<id>/lights/fixtures.yaml`, `config/room/fixture-types/` and
+  `deployments/<id>/calibration/latency.json`, each re-read when it changes; (the worker) `~/.cache/screen-machine/models/` (Stage 4;
   `tools/show/fetch_models.py`); and (Stage 5, only once the Hue output streams) the bridge's pairing file
   `~/.config/screen-machine/hue/<bridge>.json`.
 - **The ML worker** (Stage 4) is show_service's child, `python -m show_service.ml.worker` in its own venv
@@ -63,7 +63,7 @@ the show bus as `music.*` (§11.1). Session names change; ask on the peer list w
 | director, situations, listener, api card, vibes | Stage 4's consumers (S4.8) | **done**, tested, wired |
 | `tests/test_e2e.py::test_stage4_end_to_end` | three real tracks back to back through the real worker, against a fake room | **done**, passing |
 | Stage 4 review fixes (S4.13) | the 24 review issues of 16 Oct: GOBO ownership, track changes, the CED speech words, hysteresis, the ML genre, the meter, tokens, freshness, the worker's guards, memory, hand-off, budget, the owner's 0.8 | **done**, tested (948 passed); committed 16 Oct (15d468ff) |
-| **Stage 5** (below) | every output **off** in config/room/fixtures.yaml: the restart that ships it changes nothing anyone can see | |
+| **Stage 5** (below) | every output **off** in deployments/<id>/lights/fixtures.yaml: the restart that ships it changes nothing anyone can see | |
 | `fixtures.py`, `ofl.py`, `tools/show/add_fixture.py` | the fixture registry (fixtures.yaml, OFL types, selectors, groups, latency), hot-reloaded | **done**, tested, wired |
 | `looks.py`, `colour_mix.py` | the look engine (layers, hits, caps, latency per fixture, the screens rule) and colour to emitters | **done**, tested, wired |
 | `outputs.py` | the `rig` component: registry, engine, drivers, one runner thread per enabled output | **done**, tested, wired (c8) |
@@ -664,11 +664,11 @@ stub, and the bind retry.
 
 ### artnet_out.py (done)
 The P0 "virtual Maestro" (SHOW_ENGINE §0.1, §9.4, §9.5, §13.2). It sends one ArtDmx universe in exactly
-`config/room/patch.yaml`'s profiles to room_service's own receiver, so the BeatFollower, music_direction and Hue
+`deployments/<id>/lights/patch.yaml`'s profiles to room_service's own receiver, so the BeatFollower, music_direction and Hue
 "Follow" run unchanged on the real music. The module docstring is the full channel spec.
 ```python
 VirtualMaestro(*, target=None,                       # (host, port); None = OFF (the default): start() logs and returns
-               patch_path=<repo>/config/room/patch.yaml, clock=None, features_fn=None, palette_fn=None,
+               patch_path=<repo>/deployments/<id>/lights/patch.yaml, clock=None, features_fn=None, palette_fn=None,
                hue_latency_ms=0.0, hue_depth=0.7, room_dmx_url="http://127.0.0.1:8700/api/v1/dmx",
                poll_fn=None, poll_s=5.0, idle_after_s=5.0, layout=None, time_fn=time.monotonic,
                palette=None,                         # (r, g, b) 0..1: the fixed P0 colour (SHOW_PALETTE); None = amber
@@ -851,7 +851,7 @@ MadmomActivation(nets=2), AubioActivation(), make_activation(prefer="auto", nets
 ```python
 contract.Sender(name, host, port=6980, streams=())
 contract.Config(senders=(), vban_bind=("0.0.0.0", 6980), bus_bind=("127.0.0.1", 8703),
-                latency_file=<repo>/config/room/latency.json,        # read-only for us (10's schema v2)
+                latency_file=<repo>/deployments/<id>/calibration/latency.json,        # read-only for us (10's schema v2)
                 log_level="INFO", stream_priority=())                # audio streams ranked first (receiver)
 def parse_sender(spec: str) -> contract.Sender   # "kiosk=screen-machine-drawingroom[:6980][/room-mic,room-piano]"
                                                  # ValueError if bad; no streams = every contract.KNOWN_STREAMS name
@@ -864,7 +864,7 @@ def acoustic_offsets(path: pathlib.Path) -> dict[str, float]   # sources.<stream
 class LatencyWatch(path): .poll(force=False) -> dict | None     # offsets when mtime/size changed; None otherwise
                                                  # and over a torn/invalid file (the last offsets stay); .last, .errors
 ```
-- **Env** (from `deploy/sm-show.env`; ca does the wiring, c8 the flags):
+- **Env** (from `deployments/<id>/services/sm-show.env`; ca does the wiring, c8 the flags):
   - `SHOW_SENDERS` (`;`-separated specs);
   - `SHOW_VBAN_BIND`, `SHOW_BUS_BIND` (`host:port`);
   - `SHOW_LATENCY_FILE`, `SHOW_LOG_LEVEL`;
@@ -1105,7 +1105,7 @@ The spec left these open; vban.py's docstring is the authority. They are also no
 
 ## Deploy (P0)
 
-ca writes `deploy/sm-show.env` and the ctl entry; c8 owns the flags. `scripts/ctl` reads the file as KEY=VALUE lines
+ca writes `deployments/<id>/services/sm-show.env` and the ctl entry; c8 owns the flags. `scripts/ctl` reads the file as KEY=VALUE lines
 and never sources it:
 - `SHOW_PORT` becomes `--port`;
 - `SHOW_ARGS` is split into flags (never put `--port` in it: ctl refuses);
@@ -1146,7 +1146,7 @@ SHOW_BEAT_PROC=on
   - `SHOW_PALETTE=amber` (the P0 colour of screens and lamps, above);
   - `SHOW_HUE_LATENCY_MS=0` (until P6);
   - `SHOW_ROOM_DMX_URL=` (empty means no yield check; the default is room's);
-  - `SHOW_LATENCY_FILE` (the default is config/room/latency.json, read-only for us).
+  - `SHOW_LATENCY_FILE` (the default is deployments/<id>/calibration/latency.json, read-only for us).
 - `CUDA_VISIBLE_DEVICES=` (empty) follows §11.3: show_service is CPU only.
 - **Stage 3 lines** (all optional): `SHOW_BRAIN=off` (the rollback: no director, Auto, test sources, listener or
   Stage-3 routes; exactly P0), `SHOW_FILE`, `SHOW_VIBES_FILE`, `SHOW_STATE_DIR` (their defaults are the production
@@ -1179,7 +1179,7 @@ SHOW_BEAT_PROC=on
   - 8703 binds `127.0.0.1` only, and the LAN reaches it through room's `:8700/show/*` pass-through (P2, 2f).
   - 6980/udp needs no portproxy or firewall rule. The receiver sends SUBSCRIBE out and the kiosk answers to that
     source; WSL's NAT carries the replies.
-- **The renderer is already pointed at it:** `deploy/sm-stream.env` passes `--music-bus ws://127.0.0.1:8703/v1/show`.
+- **The renderer is already pointed at it:** `deployments/<id>/services/sm-stream.env` passes `--music-bus ws://127.0.0.1:8703/v1/show`.
   stream_service connects as a `renderer` as soon as show_service is up, and its sound views start following.
 
 **Dev smoke run** (no kiosk; never on 8703, which the renderer reads):
@@ -2805,7 +2805,7 @@ under both `~/.venvs/sm-show` and Flask's `.venv`). openai 1.77.0 and its pins a
       (show.yaml hot-reloads; no restart) show_service SUBSCRIBEs the kiosk's two addresses on udp 6980 every second,
       and whenever 98's show-sender.service runs there the room's sound drives the screens' and lamps' Art-Net (the
       fixed amber while no vibe is set; the director's look once a mode sets one).
-   4. `deploy/sm-show.env` (c8 with ca; tell 98): drop `--sender testpiano=localhost:6981/test-piano` from
+   4. `deployments/<id>/services/sm-show.env` (c8 with ca; tell 98): drop `--sender testpiano=localhost:6981/test-piano` from
       `SHOW_ARGS`. The test piano is now show_service's child (`POST /show/api/v1/test`) and show.yaml's on_demand
       `test-piano` sender subscribes it while it plays. Keeping the flag is harmless (the same socket asks, so it
       streams once), but it also keeps subscribing a test piano started by hand. Leave `SHOW_BRAIN` unset (on).
@@ -2827,7 +2827,7 @@ under both `~/.venvs/sm-show` and Flask's `.venv`). openai 1.77.0 and its pins a
      no longer pass the switch, and no show target means no clips). With the switch on, a mode that listens and a
      vibe that allows it, test audio (`room_sound: false`) is clipped every 20 s (about $0.013 a call, about $2.30 an
      hour); the room mic waits for the music/speech check (P1).
-   - Rollback: `SHOW_BRAIN=off` in `deploy/sm-show.env`, then `scripts/ctl restart show` (exactly P0 again).
+   - Rollback: `SHOW_BRAIN=off` in `deployments/<id>/services/sm-show.env`, then `scripts/ctl restart show` (exactly P0 again).
 2. **The room adapter (B5): one announced Flask restart, after step 1.**
    1. Tell aa: `build_adapters` gained a `show` parameter (room_service/adapters/__init__.py), and the roomstate edits
       (`contract.Adapter.vocabulary()`, `schema.mode_schema`/`mode_autopilot_schema` with `situations`,
@@ -4299,7 +4299,7 @@ production still runs Stage 3). Every build, fetch and test goes under `flock /t
    listed in S4.12), `tools/show/fetch_models.py`, `tools/show/export_onnx.py`, `config/room/show.yaml`. Never the
    models, the venvs or `/tmp`.
 4. **Restart:** `scripts/ctl restart show`. That is show_service's own restart; nothing else restarts.
-   `deploy/sm-show.env` needs no new line: the beat thread is off by default (`SHOW_BEAT_THREAD=on` would turn it on),
+   `deployments/<id>/services/sm-show.env` needs no new line: the beat thread is off by default (`SHOW_BEAT_THREAD=on` would turn it on),
    and `CUDA_VISIBLE_DEVICES=` is already there.
 5. **Check:**
    - `curl -s 127.0.0.1:8703/api/v1/state | jq '.modules, .ml.state, .ml.hello.models, .ml.cpu,
@@ -4524,10 +4524,10 @@ for audio and MIDI alike, and the kernel dropped about 76 datagrams a second (20
 | long holes skip madmom; AGC per 128 frames | clock.py | `SHOW_RX_OFF=gapskip` / `agc` |
 
 `SHOW_RX_COALESCE_MIN` (default 1: never wait) can make show-rx wait for N packets. mllink counts the beat process in
-show_service's CPU share (`child_pids`, `cpu.children`). deploy/sm-show.env has `SHOW_BEAT_PROC=on`.
+show_service's CPU share (`child_pids`, `cpu.children`). deployments/<id>/services/sm-show.env has `SHOW_BEAT_PROC=on`.
 
 **The loudness gate per mic** (3ecda73a). 26's room calibration found PC22's mic hears party music at about
--47.5 LUFS, so the mode's -30 gate kept madmom off and the clock never locked. `config/room/audio_cal.json` (local,
+-47.5 LUFS, so the mode's -30 gate kept madmom off and the clock never locked. `deployments/<id>/calibration/audio_cal.json` (local,
 hot-reloaded every 2 s; `SHOW_AUDIO_CAL_FILE`) `streams.<stream>.summary.music_lufs` gives that stream an offset of
 music_lufs + 30 dB (clamped -40..+20) over the mode's `gate_ref_lufs` (`Features.gate_offsets`; `gate_offset_db` in
 the DSP stats). No file or no entry: 0, as before.
@@ -4834,7 +4834,7 @@ state, epoch, bpm); the parity stage runs all 8 reference cases. `madmom_dbn.py 
 reference on the new Clock. Since the publisher (step 2) the flashes are the smoothed line's, so the parity is the
 tracker's underneath: on all 8 cases the gate's runs and switch times are step 1's to 0.000 ms.
 
-**Rollback.** `SHOW_CLOCK_ESTIMATOR=legacy` in deploy/sm-show.env (or `--clock-estimator legacy`) and a show restart:
+**Rollback.** `SHOW_CLOCK_ESTIMATOR=legacy` in deployments/<id>/services/sm-show.env (or `--clock-estimator legacy`) and a show restart:
 exactly the clock as before. In code, `Clock(estimator="legacy")`. A tracker that cannot be built runs legacy
 (counted `dbn_failed`). **Live** at the next show restart (none was done for this).
 
@@ -5132,7 +5132,7 @@ files. It turns SHOW_ENGINE §5.4 (rules per output, the DMX frame grid, Hue's r
 dimmed), §8.8 (colour, lamp roles), §9 (the look engine, fixtures.yaml, Art-Net out, Hue) and §11 into a build spec.
 - The shared names and the **exact shapes** are contract.py's **"Stage 5" block**, plus the Stage-5 slots at the end
   of `BrainContext` (`rig`, `room_boot`, `on_room_event`).
-- The config is **`config/room/fixtures.yaml`** (new, S5.2) and show.yaml's Stage-5 keys (S5.10: `rig`, `looks`, and
+- The config is **`deployments/<id>/lights/fixtures.yaml`** (new, S5.2) and show.yaml's Stage-5 keys (S5.10: `rig`, `looks`, and
   two `director.screens` keys). Both are in place now; nothing reads them until this code ships.
 - **Every output is off** (`enabled: false`) in fixtures.yaml, so the restart that ships Stage 5 changes nothing anyone
   can see (S5.0 rule 6). Each output is switched on later, in config, with the session that owns the other side.
@@ -5204,7 +5204,7 @@ S3.0 and S4.0 still hold. For Stage 5:
 | **B15 Art-Net on the LAN** | `artnet_lan.py`; `tests/test_artnet_lan.py` | none |
 | **B16 director and room seams** | none of its own | `director.py` (S5.8: the hold, the source probe, lamps from the registry, `look_fn`), `autopilot.py` (`RoomLink`: `on_room_event`, `room_boot`); additions to `test_director.py` (the hold, the probe, the name scan) and `test_autopilot.py` |
 
-- c8 owns `contract.py`, `config/room/show.yaml`, `config/room/fixtures.yaml`, `config/room/fixture-types/` and this
+- c8 owns `contract.py`, `config/room/show.yaml`, `deployments/<id>/lights/fixtures.yaml`, `config/room/fixture-types/` and this
   README. A builder that needs a change to any of them asks c8; it never edits them.
 - **Imports.** A Stage-5 module imports `contract`, the stdlib and its pinned dependencies, plus these c8 rulings:
   - `looks.py` may import `emitters.py` (same builder), `clock.py`'s pure consumer helpers (`beat_at`, `next_beat`,
@@ -5474,7 +5474,7 @@ class Rig:                                                 # Component "rig", ti
   line in Stage 5). Their `brain.call` waits `release_timeout_s + 2` for release, the usual timeout otherwise.
 - **With no hue output on** (no rig, `enabled: false`, or `not_built`): `stream` and `status` answer `HueStatus` with
   `state: "off"`, `enabled: false` and a `detail` naming the switch (`outputs.hue.enabled is false in
-  config/room/fixtures.yaml`); `release` answers exactly as Stage 3 did: `{"released": true, "via": "room", ...}`.
+  deployments/<id>/lights/fixtures.yaml`); `release` answers exactly as Stage 3 did: `{"released": true, "via": "room", ...}`.
 - **Before the brain runs:** the rig routes answer 503 `starting`; `hue/release` answers as with no hue output (nothing
   can be streaming yet), as it does today.
 
@@ -5633,7 +5633,7 @@ ephemeral sink and a virtual node).
 nodes' universes decoded from the packets the drivers kept, `{nodes: {node: {port_address: {seq, length, channels,
 age_s}}}}`, the previz feed), `POST /api/v1/rig/nodes/{id}/record-failsafe` (404 `unknown_node` with `choices`),
 `POST /api/v1/hue/stream`, `POST /api/v1/hue/release`, `GET /api/v1/hue/status`. With no hue output running, stream
-and status answer HueStatus `off` (detail: `outputs.<id>.enabled is false in config/room/fixtures.yaml`, or the rig's
+and status answer HueStatus `off` (detail: `outputs.<id>.enabled is false in deployments/<id>/lights/fixtures.yaml`, or the rig's
 own switch, or the driver's `not_built` reason) and release answers as Stage 3 (`released: true, via: room`). A
 running hue output's release goes through `brain.call` with `rig.hue.release_timeout_s + 2` (a timeout answers
 `released: false, why: timeout`). Without a rig component, `GET /api/v1/rig` answers `{"enabled": false, "why"}`.
@@ -6136,7 +6136,7 @@ deployed, every output is still off.
    - A host change in patch.yaml while streaming stops the area and starts it again at the new address, as a bridge
      or area change does.
    - (Room reads `host` only at its own start. We follow it at the reload.)
-   - config/room/fixtures.yaml's header still says the address is the pairing file's. That is c8's file, outside
+   - deployments/<id>/lights/fixtures.yaml's header still says the address is the pairing file's. That is c8's file, outside
      show_service/: fix the wording at the next fixtures.yaml edit.
 5. **No release answers `released: true` while show_service is starting under `show`** (minor).
    - Before the brain runs, `POST /api/v1/hue/release` reads patch.yaml and fixtures.yaml (`Api(patch_path=,
@@ -6510,7 +6510,7 @@ The steps, in order (c8's; integration done 16 Oct, S5.13). Nothing visible chan
    S5.14's grid tolerance), the new and edited tests (`test_{fixtures,ofl,outputs,looks,colour_mix,hue_out,
    artnet_lan}.py`; `test_{main,api,director,autopilot,e2e,artnet_out}.py`),
    `show_service/README.md`, `show_service/requirements.txt` (B14's block), `tools/show/add_fixture.py`,
-   `config/room/fixtures.yaml`, `config/room/show.yaml`. The hue-entertainment block is already installed in
+   `deployments/<id>/lights/fixtures.yaml`, `config/room/show.yaml`. The hue-entertainment block is already installed in
    `~/.venvs/sm-show`.
 3. **Restart show_service:** `scripts/ctl restart show`. **No output changes**: every output is off. Two director
    fixes (S5.14) do show on today's lamps, through the virtual Maestro: the key lamps (`opposite`) go warm white at
@@ -6518,7 +6518,7 @@ The steps, in order (c8's; integration done 16 Oct, S5.13). Nothing visible chan
    a one-beat step (Party, Disco). Say so when announcing the restart.
    - Check (from WSL): `curl -s http://127.0.0.1:8700/show/api/v1/rig | jq '{enabled, registry, o: (.outputs |
      map_values(.state))}'` reads 6 fixtures, no problems, every output `off`; `/show/api/v1/hue/status` reads `idle`
-     ("outputs.hue.enabled is false in config/room/fixtures.yaml"; the four route words, S5.6b); `/show/api/v1/state`
+     ("outputs.hue.enabled is false in deployments/<id>/lights/fixtures.yaml"; the four route words, S5.6b); `/show/api/v1/state`
      `.brain.components.director.patch.from` is `fixtures.yaml`; no `show-out-*` thread in `.threads`.
    - The director's next screens-palette PATCH carries `source`. Until step 4 the running room code refuses it once
      per room boot (400) and the director sends it again without (`screens_palette.look_source: "no"`); a hand pick
@@ -6530,10 +6530,10 @@ The steps, in order (c8's; integration done 16 Oct, S5.13). Nothing visible chan
    reading `hue.streamer`). After it: `look_source` reads `yes`, and a palette picked on a screen's card holds (the
    chip "Colours: <label> (picked on a screen)" on the Music card) until ×, Back to auto or a mode change.
 5. **The Hue cut-over** (the owner's call, with 68; S5.9's order, no gap and no fight):
-   1. c8 sets `outputs.hue.enabled: true` in `config/room/fixtures.yaml` (hot-reloaded within 2 s). `GET
+   1. c8 sets `outputs.hue.enabled: true` in `deployments/<id>/lights/fixtures.yaml` (hot-reloaded within 2 s). `GET
       /show/api/v1/rig` `.hue.state` reads `waiting_room` (patch.yaml still says room); `/show/api/v1/hue/status`
       reads `idle`.
-   2. 68 sets `hue.streamer: show` in `config/room/patch.yaml` (room and show_service both hot-reload it): room's
+   2. 68 sets `hue.streamer: show` in `deployments/<id>/lights/patch.yaml` (room and show_service both hot-reload it): room's
       HueOutput stops its area; room's hue adapter sends `POST /show/api/v1/hue/stream` for the lamps that follow;
       hue_out waits up to `start_wait_s` (3 s) for the area to go inactive, then starts.
    3. Check: `/show/api/v1/hue/status` `streaming` ("Following the music"; `armed`, "Ready: waiting for the music",
@@ -7499,9 +7499,9 @@ SHOW_ENGINE §7.1-§7.5, §8.2, §8.5 ("Cues").
 The Lights page (`/lights`, frontend) registers DMX lights without hand-editing fixtures.yaml; room_service's
 DMX-lights device says which of them follow the music. Docs: SHOW_ENGINE §9.2 "Registering lights". Files:
 fixtures.py, outputs.py, api.py, contract.py (FIXTURES_ADDED_FILE, FOLLOW_STATE_FILE, FOLLOW_WORDS, RigFixtureRow,
-RigTypeRow), `__main__` (follow.json), `config/room/fixtures.added.yaml` (new).
+RigTypeRow), `__main__` (follow.json), `deployments/<id>/lights/fixtures.added.yaml` (new).
 
-- **The added file** `config/room/fixtures.added.yaml`: fixtures.yaml's schema (S5.2), its `nodes`, `outputs`, `types`
+- **The added file** `deployments/<id>/lights/fixtures.added.yaml`: fixtures.yaml's schema (S5.2), its `nodes`, `outputs`, `types`
   and `fixtures` only, written **only by the API** (fixtures.Registrar), whole and atomically (tmp, fsync,
   os.replace), with a header saying so. The Registry merges it under the hand file (the hand file wins on an id clash,
   a problem line; one that doesn't read is a problem line and the hand file loads alone) and hot-reloads on it. Code
@@ -7540,6 +7540,12 @@ RigTypeRow), `__main__` (follow.json), `config/room/fixtures.added.yaml` (new).
     merged (null forgets an id, which then follows: the engine's default), all or nothing (400 `bad_follow` with
     `choices`), saved in the state dir's `follow.json` (atomic, read at start) and handed whole to
     `LookEngine.set_follow` at once and after every engine configure. `GET /api/v1/rig/follow` -> `{fixtures}`.
+  - `PUT /api/v1/brightness {lamps: 0..1}` (room's `brightness.lamps`, wave 1 audit RS-4) -> `{lamps, fixtures}`:
+    `LookEngine.set_level` multiplies `looks.master` on every lamp that follows the look (the rig's Art-Net lights,
+    and Hue when show drives it), from the next frame; follow colours, identify and house frames are untouched. Kept
+    in state.json's `rig.lamps_level` (only when not full). `fixtures`: how many lamps the engine drives (0: the level
+    reaches nothing here). 400 `bad_request`/`bad_level`; 503 `unavailable` without a rig. `GET /api/v1/brightness`
+    -> `{lamps, fixtures}` (no rig: `{lamps: 1.0, fixtures: 0}`).
 - **Online**: thread `show-rig-online` pings each node address (`ping -c1 -W1`, no shell) every 10 s
   (`outputs.ONLINE_CHECK_S`), off the frame path; a row's `online` is the last answer (null: no node address, or not
   checked yet). It gates nothing.
@@ -7628,7 +7634,7 @@ Movers and every other light become a set of normalised attributes, each mapped 
 ranges. Files: `show_service/fixture_encode.py` (new), ofl.py, fixtures.py, contract.py (ATTRS, SHUTTER_MODES, the
 extended CHANNEL_ATTRS, FIXTURES_SETUP_FILE, AttrChannel `ranges`/`res`, TypeInfo `wheels`/`physical`, FixtureInfo and
 RigFixtureRow `setup`, RigFixtureRow/RigTypeRow `caps`, and CapRange, FixtureCaps, FixtureSetup), outputs.py (the rig
-rows' `caps` and `setup`: one hunk), `config/room/fixtures.setup.yaml` (new), tools/show/add_fixture.py (lists the
+rows' `caps` and `setup`: one hunk), `deployments/<id>/lights/fixtures.setup.yaml` (new), tools/show/add_fixture.py (lists the
 wheels and the pan/tilt degrees).
 
 - **Attributes** (`contract.ATTRS`): intensity, colour, colour_slot, colour_spin, cct, shutter `{mode, hz}`, pan and
@@ -7654,7 +7660,7 @@ wheels and the pan/tilt degrees).
   tilt 16-bit, speed, dimmer, shutter, colour wheel, gobo, gobo rotation, prism, zoom, focus) is new.
   `fixtures.GENERIC_RANGES` gives their ranges (starting points for a common budget head); `GENERIC_DEFAULTS` rests
   them centred with the shutter open; the wheels re-divide by the light's `slots.count` (`fixtures.generic_type`).
-- **The setup file** `config/room/fixtures.setup.yaml` (version 1, `fixtures: {<id>: FixtureSetup}`): written only by
+- **The setup file** `deployments/<id>/lights/fixtures.setup.yaml` (version 1, `fixtures: {<id>: FixtureSetup}`): written only by
   `fixtures.SetupStore(path).patch(fid, patch)` (merge: a null removes a key; positions per name, slots per wheel and
   slot, the rest per axis; the whole result checked, any problem refused `bad_request` with `problems` and nothing
   written; atomic, with a header), `.read()`, `.get(fid)`, `.remove(fid)`. Position names are ids (`fixtures.slug_id`
@@ -7674,10 +7680,10 @@ wheels and the pan/tilt degrees).
 
 ### S5.27 Lights: room space (18 Oct; docs/LIGHTS.md §3; the space builder)
 
-- **Files**: `config/room/space.yaml` (hand) ships with every room fact commented: the drawing room's two Frame TVs
+- **Files**: `deployments/<id>/lights/space.yaml` (hand) ships with every room fact commented: the drawing room's two Frame TVs
   (north and south walls, their normals), the four Hue lamps by their corners, the piano and the glitterball
   (`device: mirror_ball`) as `<measure>` starting points. `front` is commented too, so the Room map can set it (unset:
-  north, the frame's convention; the hand file would otherwise win). `config/room/space.added.yaml` (header, `version:
+  north, the frame's convention; the hand file would otherwise win). `deployments/<id>/lights/space.added.yaml` (header, `version:
   1`, empty sections) is written only by the rig API. `space.Store` (`shared()`, one per process, loaded once on
   creation) merges them: the hand file wins with a problem line, per key for an appliance (a hand-placed light can
   still be taught) and whole entries for points, regions and surfaces. A file that doesn't read keeps its last good
@@ -7963,7 +7969,12 @@ DirectionData `ensemble`, CardData look `together`), bus.py (`room.gesture` want
   lights.flow.mirror_ball is on. x from the Room map (space.lateral, only once the placed fixtures span
   `players.min_spread_m`), else the fixture's zone through `ensemble.players.zones` (the owner's words: south left,
   north right), else the screen it hangs at, else centre. A screen is on while it shows live (compose.enabled). The
-  room today: `lamps:left, screen.south, lamps:right, screen.north`, the ball centre.
+  room today: `lamps:left, screen.south, lamps:right, screen.north`, the ball centre. Multi-room (deployments/README.md,
+  "Rooms with their own modes"): a screen fixture whose screen is in another rooms.json room than the default room is
+  never a player (E9), nor is one of a room with `"show": false` (`exclude_screens`).
+- **Rooms outside the show**: RoomLink drops the screens of status `rooms[]` entries with `"show": false` from the
+  room view (so no palette PATCH, composition or live list), and `ctx.room_excluded()` gives them to the director,
+  which ignores a `screen.look` pick on them.
 - **Forms** (`ensemble.Catalogue`, interplays.yaml, hot-reloaded every RELOAD_S): checked and scored with the light
   scenes' own tags rule and score (x flow_fit) x `boost`; `needs` (sides, grid, piano) are hard. The draw (seed
   ENSEMBLE_SEED 2) happens at a look change (the dwell `pick.dwell_bars` holds it, a song change doesn't; the form

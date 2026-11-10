@@ -69,6 +69,20 @@ def test_lists_pianos(make):
     assert make(h).body()["pianos"] == [{"stream": "room-piano", "sender": "kiosk", "label": "Drawing room",
                                          "state": "down"}]
 
+def test_an_unplugged_piano_of_any_name_is_a_piano_not_a_mic(tmp_path):
+    """Audit SHOW-5: a MIDI stream named by the site (situations.midi.streams, senders.<x>.midi, or the sender's midi
+    in the receiver's health) stays out of the Mic list and in the pianos before its first data."""
+    show = tmp_path / "show.yaml"
+    show.write_text("senders:\n  studio: {hosts: [s], streams: [studio-mic, studio-piano, keys], midi: [keys]}\n"
+                    "situations: {midi: {streams: [studio-piano]}}\n")
+    h = {"senders": {"studio": {"streams": ["studio-mic", "studio-piano", "keys", "pad"], "on_demand": False,
+                                "midi": ["pad"]}},
+         "streams": {"studio-piano": {"kind": "unknown", "state": "no_device", "test": False}}}
+    inp = Inputs(lambda: h, show_file=show, state_file=tmp_path / "input.json")
+    assert [i["stream"] for i in inp.inputs()] == ["studio-mic"]
+    assert [p["stream"] for p in inp.pianos()] == ["studio-piano", "keys", "pad"]
+
+
 def test_choice_applies_persists_and_reloads(make, tmp_path):
     inp, rx = make(), FakeRx()
     inp.attach(rx)

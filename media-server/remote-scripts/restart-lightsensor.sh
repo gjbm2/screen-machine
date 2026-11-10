@@ -4,9 +4,9 @@
 
 set -e
 
-SCRIPT_PATH="/home/gjbm2/lightsense.py"
-VENV_PATH="/home/gjbm2/.venv"
-LOG_FILE="/home/gjbm2/lightsense.log"
+SCRIPT_PATH="/home/@@KIOSK_USER@@/lightsense.py"
+VENV_PATH="/home/@@KIOSK_USER@@/.venv"
+LOG_FILE="/home/@@KIOSK_USER@@/lightsense.log"
 
 echo "=== Light Sensor Restart ==="
 echo ""
@@ -51,7 +51,7 @@ echo "    ✓ Virtual environment found"
 # Start the service
 echo ""
 echo "[4] Starting lightsense.py..."
-cd /home/gjbm2
+cd /home/@@KIOSK_USER@@
 source "$VENV_PATH/bin/activate"
 nohup python "$SCRIPT_PATH" > "$LOG_FILE" 2>&1 &
 NEW_PID=$!

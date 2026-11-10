@@ -95,6 +95,17 @@ def test_destinations_search_order_matches_flask(tmp_path):
     assert lm.find_destinations_file(tmp_path) == (tmp_path / "publish-destinations.json").resolve()
 
 
+def test_the_repo_reads_the_running_deployments_files():
+    """At the repo root (Flask's and room_service's default) the site files are the deployment's (smconfig), as
+    Flask's findfile now searches deployments/<id>/ first."""
+    import smconfig
+    cfg, inten, dests = lm.ConfigPaths().resolve()
+    assert cfg == lm.REPO_ROOT / "config.py"
+    assert inten == smconfig.path("intensity.json")
+    assert dests == smconfig.path("publish-destinations.json").resolve()
+    assert lm.find_destinations_file() == dests
+
+
 def test_missing_intensity_json_means_no_sensors(tmp_path):
     write_tree(tmp_path)
     (tmp_path / "routes/data/intensity.json").unlink()

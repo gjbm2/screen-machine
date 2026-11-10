@@ -1,0 +1,69 @@
+# deployments/finsbury/show.yaml: this site's layer of show_service's settings. show_service deep-merges it over the
+# shared config/room/show.yaml (smconfig.load_layered_yaml: mappings merge key by key, anything else replaces), and
+# re-reads both when either changes. Only facts about this room live here: its audio senders and their addresses, its
+# MIDI stream, its Sonos zone, its light sensor, its glitterball's and pinspots' room targets (the remote-worked
+# appliances) and which side each screen is on.
+# Tuning stays in the shared file. Moved here verbatim from config/room/show.yaml on 10 Nov 2026.
+
+senders:
+  # LIVE 18 Oct (owner: "plug the MIDI cable / a mic into the mini-PC and it Just Works"): the kiosk's show-sender
+  # (a systemd --user unit, tools/show_sender/deploy.sh) sends the Steinway's USB MIDI and a USB mic whenever they are
+  # plugged in; with neither, its heartbeats say no_device. The mic still captures only on demand (mic.py).
+  kiosk:                                    # screen-machine-drawingroom, 98's show_sender.py
+    hosts: ["192.168.1.10", "192.168.1.92"] # Ethernet over powerline (primary since 13 Oct), then Wi-Fi (docs/PORTS.md)
+    port: 6980
+    streams: [room-mic, room-piano]
+    label: Drawing room                     # the Room page's Mic list groups this sender's inputs under it
+  pc22:                                     # a PC22 mic (the Dell monitor's: the Insta360 lags 134-148 ms) until the
+    hosts: ["192.168.1.205"]                # kiosk's arrives: tools/show_sender/pc22_agent.py on Windows, run by
+    port: 6984                              # Spectre's audio-agent card (d4, 16 Oct; SHOW_ENGINE §3.2 "PC22")
+    streams: [pc22-mic]
+    label: PC22                             # the Room page's Mic list groups this sender's inputs under it
+
+situations:
+  midi:
+    streams: [room-piano]                   # the MIDI streams that count. test-piano, phone-test and pc22-* never do
+                                            # unless they are listed here or a rule sets include_test: true.
+  sonos:
+    now_playing: sonos.drawing-room.now_playing     # room targets (sonos.json zone "drawing-room")
+    volume: sonos.drawing-room.volume
+  light:
+    sensor: living-room                     # the sensor a rule reads when it names none (the route's only one today)
+
+lights:
+  groups:
+    remote-lights:                          # owner, 28 Oct: the glitterball and the pinspots are appliances the art
+      label: Glitterball and pinspots       # director programs like any light group, with their own scenes (the
+      appliances: [glitterball, pinspots]   # light scenes with an appliances block; a mode's light scene tags narrow
+      repeat_weight: 0.5                    # them). repeat_weight: they may stay resting (or lit) twice running
+  # The room's remote-worked appliances (show_service/appliances.py): which room target works each capability. The
+  # director sends a change only while the mode lets it use the appliance (room's director.<id> row), never while the
+  # room is changing mode, at most once per min_gap_s per target (default 2 s). YAML: on/off must be quoted.
+  appliances:
+    glitterball:
+      label: Glitterball
+      controls:
+        pan_spin:                           # the motor: off when the spin is 0, its size the speed, its sense the way
+          power: {target: mirror_ball.main, "on": spinning, "off": stopped}
+          speed: {target: mirror_ball_motor.speed, words: [[0.0, low], [0.4, medium], [0.75, high]]}
+          direction: {target: mirror_ball_motor.direction, cw: clockwise, ccw: anticlockwise, min_gap_s: 120}
+    pinspots:
+      label: Pinspots
+      controls:
+        intensity:
+          power: {target: pinspots.main, "on": "on", "off": "off"}
+          level: {target: pinspots.level, steps: 8}
+        colour_slot: {target: pinspots.colour}   # the scene's slot word is the remote's colour (white, red, fade, ...)
+        shutter: {target: pinspots.flash, strobe: "on", open: "off"}
+  flow:
+    mirror_ball:
+      enabled: false                        # owner, 28 Oct: the glitterball is an appliance in lights.groups now (its
+                                            # scenes' spin follows the flow); true: the old flow-only motor control
+      power_member: mirror_ball.main
+      direction_target: mirror_ball_motor.direction
+      speed_target: mirror_ball_motor.speed
+
+ensemble:
+  players:
+    zones: {south: left, north: right}      # owner, 22 Oct: "south (left) ... north (right)". The Room map's positions
+                                            # win once the room is placed and its front set (facing west, south left).

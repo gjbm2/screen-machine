@@ -1,4 +1,5 @@
-"""The DMX patch: virtual devices on Maestro's Art-Net universe (AV_PROGRAMME v1 K2; config/room/patch.yaml).
+"""The DMX patch: virtual devices on Maestro's Art-Net universe (AV_PROGRAMME v1 K2; the deployment's
+lights/patch.yaml).
 
 A **virtual device** is one thing in the room that Maestro drives as if it were a DMX fixture: a Frame TV (the
 renderer reads it from the show bus) or a Hue light (room_service streams it to the bridge). Each device has an id
@@ -35,10 +36,12 @@ from typing import Any
 
 import yaml
 
+import smconfig
+
 KINDS = ("screen", "hue", "other")
 DEVICE_ID_RE = re.compile(r"[a-z][a-z0-9_-]*\.[a-z0-9][a-z0-9_-]*")
 FIELD_RE = re.compile(r"(global\.)?[a-z][a-z0-9_]*")
-DEFAULT_PATCH = Path(__file__).resolve().parents[2] / "config" / "room" / "patch.yaml"
+DEFAULT_PATCH = smconfig.path("lights", "patch.yaml")
 
 
 class PatchError(ValueError):

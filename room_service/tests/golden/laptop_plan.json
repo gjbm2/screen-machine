@@ -1,0 +1,55 @@
+{
+ "gallery": {
+  "body": {
+   "draft": false,
+   "from": "gallery",
+   "notes": {},
+   "reapply": true,
+   "revision": "fccfb55f11a5",
+   "steps": [],
+   "to": "gallery",
+   "transition": 0,
+   "via": []
+  },
+  "status": 200
+ },
+ "live": {
+  "body": {
+   "draft": false,
+   "from": "gallery",
+   "notes": {},
+   "reapply": false,
+   "revision": "fccfb55f11a5",
+   "steps": [
+    {
+     "action": "set live:director",
+     "detail": "",
+     "id": "i0",
+     "kind": "set",
+     "status": "pending",
+     "step": 3,
+     "subsystem": "screens.vj",
+     "value": {
+      "live": {
+       "auto": true
+      }
+     }
+    },
+    {
+     "action": "set Mic listens, put back afterwards",
+     "detail": "",
+     "id": "i1",
+     "kind": "set",
+     "status": "pending",
+     "step": 4,
+     "subsystem": "show.mic",
+     "value": true
+    }
+   ],
+   "to": "live",
+   "transition": 0,
+   "via": []
+  },
+  "status": 200
+ }
+}

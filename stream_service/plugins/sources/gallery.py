@@ -83,6 +83,7 @@ from pathlib import Path
 
 import numpy as np
 
+import smconfig
 from stream_service.easing import ease
 from stream_service.gpu import raw_module
 from stream_service.plugins._lib.cuda import HELPERS, launch_2d
@@ -333,11 +334,11 @@ _SCREENS_CACHE: dict = {"mtime": None, "ids": ()}
 
 
 def screens() -> tuple:
-    """The TV screens: publish-destinations entries with a live block (Flask's display config, the same file
-    room_service reads), in file order. Their buckets are the only ones the gallery reads, so phone wallpapers,
+    """The TV screens: publish-destinations entries with a live block (the deployment's publish-destinations.json,
+    $SM_DESTINATIONS overrides; the same file room_service reads), in file order. Their buckets are the only ones the gallery reads, so phone wallpapers,
     work content and upload buckets never are. The last good list is kept if the file can't be read."""
-    path = Path(os.environ.get("SM_DESTINATIONS") or _repo() / "routes" / "data" / "publish-destinations.json")
     try:
+        path = Path(os.environ.get("SM_DESTINATIONS") or smconfig.path("publish-destinations.json"))
         m = path.stat().st_mtime
         if m != _SCREENS_CACHE["mtime"]:
             data = json.loads(path.read_text())
@@ -345,8 +346,8 @@ def screens() -> tuple:
                         if isinstance(d, dict) and d.get("id") and isinstance(d.get("live"), dict))
             _SCREENS_CACHE.update(mtime=m, ids=ids)
     except Exception as e:
-        log.info("gallery: screens from %s unavailable (%s); keeping %s", path.name, type(e).__name__,
-                 list(_SCREENS_CACHE["ids"]))
+        log.info("gallery: screens from the deployment's publish-destinations.json unavailable (%s: %s); keeping %s",
+                 type(e).__name__, e, list(_SCREENS_CACHE["ids"]))
     return _SCREENS_CACHE["ids"]
 
 
@@ -1197,7 +1198,7 @@ class Gallery(Source):
         self.rng = random.Random(int(params.get("seed", 1)) * 7919 + id(self) % 1000)
         screen = getattr(ctx, "screen", None)
         tvs = screens()
-        self.screen = screen if screen in tvs else (tvs[0] if tvs else "north-screen")
+        self.screen = screen if screen in tvs else (tvs[0] if tvs else "")   # "": no TV screen, no bucket (black)
         self.dec = None
         self._drift = 0.5
         _purge_grave()
@@ -1213,6 +1214,8 @@ class Gallery(Source):
 
     # ------------------------------------------------------------------ setup
     def _setup(self, ctx, params: dict) -> None:
+        if not self.screen:                  # no bucket: never output/ itself (its loose <screen>.jpg files)
+            raise LookupError("no TV screen in this deployment (no publish-destinations entry with a live block)")
         cp = ctx.cp
         W, H = ctx.width, ctx.height
         self.deck = _deck(self.screen)

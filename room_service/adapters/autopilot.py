@@ -1,7 +1,7 @@
 """autopilot.main: Auto on/off (docs/SHOW_ENGINE.md §8.9) as a room target, so a mode or the page can turn it on.
 
 The value lives here, in <state_dir>/autopilot.json (contract rule 10), so it holds with show_service down; show_brain
-reads it. With no state file yet it starts from modes.json's top-level autopilot.on (default off).
+reads it. With no state file yet it starts from the deployment's room/modes.json top-level autopilot.on (default off).
 """
 
 from __future__ import annotations
@@ -11,11 +11,13 @@ from typing import Any
 
 import yaml
 
+import smconfig
+
 from ..roomstate.contract import Adapter, Outcome, Reading
 from ..roomstate.schema import enum_schema
 from .room import _load, _save
 
-MODES_FILE = Path(__file__).resolve().parents[2] / "config" / "room" / "modes.json"
+MODES_FILE = smconfig.path("room", "modes.json")      # the deployment's room/modes.json
 
 
 class AutopilotAdapter(Adapter):

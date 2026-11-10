@@ -12,7 +12,7 @@ One rendered test-piano run for show_sender: render (cached), then play it on PC
 
 Started by tools/show_sender/show_sender.py (``--test-piano PIECE --instrument ID --output pc22|sonos:<zone>``) from
 the repo root. --output: pc22 (the default: PC22's speakers, piano_render/pc22.py) or sonos:<zone> (a zone of
-config/room/sonos.json, through room_service: piano_render/sonos.py, whose docstring has the volume, pad, feature
+the deployment's room/sonos.json, through room_service: piano_render/sonos.py, whose docstring has the volume, pad, feature
 detection, start estimate and watch rules).
 
 stdout: the protocol only, one JSON object per line, flushed (anything else that writes to fd 1 goes to stderr; logs
@@ -1062,7 +1062,7 @@ def build_parser() -> argparse.ArgumentParser:
     ap.add_argument("--instrument", required=True, help="instrument id (config/piano/instruments.json)")
     ap.add_argument("--pad-s", type=float, default=0.0, help="digital silence before MIDI time 0 on each play")
     ap.add_argument("--output", default=PC22_OUTPUT, type=output_arg, metavar="pc22|sonos:<zone>",
-                    help="where it plays: PC22's speakers (default) or a Sonos zone of config/room/sonos.json")
+                    help="where it plays: PC22's speakers (default) or a Sonos zone of the deployment's room/sonos.json")
     ap.add_argument("--render-child", action="store_true", help=argparse.SUPPRESS)
     return ap
 

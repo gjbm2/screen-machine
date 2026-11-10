@@ -269,8 +269,10 @@ class Mic:
             except Exception:                           # noqa: BLE001 - not classified: anything that could be a mic
                 self._failed("inputs")                  # is off (privacy first), as the receiver's own hold
                 inputs, choice, on, broken = [], None, False, True
+                midi = {m for snd in _d(h.get("senders")).values() if isinstance(snd, dict)
+                        for m in (snd.get("midi") or []) if isinstance(m, str)}
                 room = [st for st in covered if st not in contract.MIDI_STREAMS and st not in contract.TEST_STREAMS
-                        and not st.startswith("test-")]
+                        and not st.startswith("test-") and st not in midi]
             states = {i["stream"]: i.get("state") for i in inputs if isinstance(i, dict) and i.get("stream") in room}
             chosen = choice.get("stream") if isinstance(choice, dict) else None
             if chosen != self._choice:

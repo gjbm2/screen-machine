@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 
-from stream_service import rooms
+from stream_service import rooms, sessions
 from stream_service.director import DIRECTION_DEFAULTS, FX_DIRECTION_DEFAULTS
 from stream_service.renderer import StartTransition
 
@@ -47,7 +47,8 @@ async def test_followers_cut_with_the_leader_and_next_moves_the_room(client):
     await settle(a, b)
     assert b.current_name == a.current_name != "fractal-zoom"
     assert b.last_cue["reason"] == "room" and b.last_cue["cause"] == "auto" and b.scene_cause == "auto"
-    # "next" on the follower moves the leader, and the follower with it
+    # "next" on the follower moves the leader, and the follower with it (a second later: not the same request)
+    a._room_next_last["done"] -= 2 * sessions.ROOM_NEXT_DEDUPE_S
     before = a.current_name
     r = await cue(client, sb, to="auto")
     assert r.status == 202 and (await r.json())["session"] == sa
@@ -57,6 +58,34 @@ async def test_followers_cut_with_the_leader_and_next_moves_the_room(client):
     await cue(client, sb, to="warp-cells")
     await settle(a, b)
     assert b.current_name == "warp-cells" != a.current_name
+
+
+async def test_one_next_sent_to_every_screen_of_the_room_moves_it_once(client):
+    """audit stream_flask:F7: Alexa's "change the scene" cues every live screen of the room, one after another."""
+    (sa, a, ea), (sb, b, eb) = await room_pair(client)
+    now = asyncio.get_running_loop().time()
+    a.tick(now), b.tick(now)
+    n0 = len(scene_cmds(ea))
+    r1 = await cue(client, sb, to="auto")                 # the follower first: forwarded to the leader
+    r2 = await cue(client, sa, to="auto")                 # then the leader, within the second: the same move
+    assert r1.status == r2.status == 202
+    j1, j2 = await r1.json(), await r2.json()
+    assert j2["cue_id"] == j1["cue_id"] and j2.get("deduped") is True
+    await settle(a, b)
+    assert len(scene_cmds(ea)) == n0 + 1 and b.current_name == a.current_name
+    # both at once (in flight together): still one move
+    a._room_next_last["done"] -= 2 * sessions.ROOM_NEXT_DEDUPE_S
+    r3, r4 = await asyncio.gather(cue(client, sa, to="auto"), cue(client, sb, to="auto"))
+    assert (await r3.json())["cue_id"] == (await r4.json())["cue_id"]
+    await settle(a, b)
+    assert len(scene_cmds(ea)) == n0 + 2
+    # the same screen twice is two presses
+    r5 = await cue(client, sa, to="auto")
+    await settle(a, b)
+    r6 = await cue(client, sa, to="auto")
+    assert (await r5.json())["cue_id"] != (await r6.json())["cue_id"]
+    await settle(a, b)
+    assert len(scene_cmds(ea)) == n0 + 4
 
 
 async def test_prepared_pick_is_prepared_on_the_followers_too(client):
@@ -181,9 +210,176 @@ class _Slot:
 
 
 def test_followers_take_the_sources_levels():
-    from stream_service import rooms
+    from stream_service import rooms, sessions
     src = [_Slot("posterize", 0.35), _Slot("ocean", 0.6), _Slot("mine", 1.0, origin="manual")]
     lv = rooms.auto_fx_levels(src)
     assert lv == {"posterize": 0.35, "ocean": 0.6}
     assert rooms.fx_level_drift([_Slot("posterize", 1.0), _Slot("ocean", 0.6)], lv)
     assert not rooms.fx_level_drift([_Slot("posterize", 0.35), _Slot("other", 1.0)], lv)
+
+
+# -- F3: the ensemble segment spans the session's own room ------------------------------------------------------------
+def _mgr(*ss):
+    mgr = sessions.SessionManager.__new__(sessions.SessionManager)
+    mgr._screen_seen, mgr._screen_room = {}, {}
+    mgr.sessions = {f"s{i}": s for i, s in enumerate(ss)}
+    return mgr
+
+
+def _sess(screen, room, state="live"):
+    from types import SimpleNamespace
+    return SimpleNamespace(screen=screen, room=room, state=state, exited=False)
+
+
+ENS3 = {"screens": {"west": "p.w", "middle": "p.m", "east": "p.e"},
+        "players": {"p.w": {"x": -0.5}, "p.m": {"x": 0.0}, "p.e": {"x": 0.5}}}
+
+
+def _seg(mgr, screen, room, now=100.0):
+    from stream_service import ensemble
+    return ensemble.segment(ENS3, screen, mgr.room_live_screens(now, room) if room else frozenset({screen}))
+
+
+def test_segment_two_rooms_of_one_screen_each_are_each_alone():
+    mgr = _mgr(_sess("west", "a"), _sess("east", "b"))
+    assert _seg(mgr, "west", "a") is None and _seg(mgr, "east", "b") is None       # was (0, 2) / (1, 2)
+    assert mgr.room_live_screens(100.0, "a") == {"west"} and mgr.room_live_screens(100.0, None) == frozenset()
+
+
+def test_segment_counts_the_rooms_own_screens_only():
+    mgr = _mgr(_sess("west", "a"), _sess("middle", "b"), _sess("east", "a"))
+    assert _seg(mgr, "west", "a") == (0, 2) and _seg(mgr, "east", "a") == (1, 2)    # middle is another room's
+    assert _seg(mgr, "middle", "b") is None
+
+
+def test_segment_finsbury_shape_is_unchanged():
+    from stream_service import ensemble
+    ens = {"screens": {"south-screen": "screen.south", "north-screen": "screen.north"},
+           "players": {"screen.south": {"x": 0.2}, "screen.north": {"x": 0.8}}}
+    mgr = _mgr(_sess("north-screen", "drawing-room"), _sess("south-screen", "drawing-room"),
+               _sess("devtest", "lab"))
+    for scr in ("north-screen", "south-screen"):
+        today = ensemble.segment(ens, scr, mgr.live_screens(100.0))
+        assert ensemble.segment(ens, scr, mgr.room_live_screens(100.0, "drawing-room")) == today
+    assert ensemble.segment(ens, "devtest", mgr.room_live_screens(100.0, "lab")) is None
+
+
+def test_segment_a_screen_in_no_room_is_alone_and_the_hold_keeps_the_room():
+    north = _sess("east", "a")
+    mgr = _mgr(_sess("west", None), _sess("middle", "a"), north)
+    assert _seg(mgr, "west", None) is None
+    assert _seg(mgr, "middle", "a") == (0, 2)
+    north.state = "ended"                                   # a brief gap: its slot stays, in its own room
+    assert _seg(mgr, "middle", "a", 100.0 + sessions.SEGMENT_HOLD_S - 1) == (0, 2)
+    assert _seg(mgr, "middle", "a", 100.0 + sessions.SEGMENT_HOLD_S + 1) is None
+
+
+async def test_sessions_in_two_rooms_get_no_shared_segment(client):
+    from stream_service.server import MANAGER
+
+    from .test_ensemble import ens, part, say
+    sa, a, ea = await live(client, screen="north-screen", room="r1", auto=FX_AUTO)
+    sb, b, eb = await live(client, screen="south-screen", room="r2", auto=FX_AUTO)
+    say(client.app[MANAGER], ens(north=part(x=0.71), south=part(x=-0.71)))
+    now = asyncio.get_running_loop().time()
+    a.tick(now), b.tick(now)
+    assert "segment" not in a.runtime.extra and "segment" not in b.runtime.extra
+
+
+# -- golden (multi-room plan, step 1): finsbury's screens, their rooms and the show scope as they are today -----------
+def test_golden_finsburys_screens_are_all_in_the_show():
+    """Until a room sets "show": false every screen is in the show (RoomMap.in_show, when it exists, says True), and
+    the rooms are what rooms.json says today. Step 8 (the Lab's own modes) leaves this as it is: the Lab stays in."""
+    import smconfig
+    m = rooms.RoomMap(smconfig.load("finsbury").path("rooms.json"))
+    assert {s: m.room_of(s) for s in ("north-screen", "south-screen", "devtest")} == \
+        {"north-screen": "drawing-room", "south-screen": "drawing-room", "devtest": "lab"}
+    in_show = getattr(m, "in_show", None)
+    for s in ("north-screen", "south-screen", "devtest", "no-such-screen"):
+        assert in_show is None or in_show(s) is True, s
+
+
+# -- step 3: a room with "show": false is outside the show (F4) --------------------------------------------------------
+def test_room_map_in_show_is_false_only_for_a_show_false_room_and_reads_live(tmp_path):
+    import os
+    p = tmp_path / "rooms.json"
+    p.write_text('{"front": {"screens": ["fs"]}, "back": {"screens": ["bs"], "show": false}}')
+    m = rooms.RoomMap(p)
+    assert m.in_show("fs") and not m.in_show("bs") and m.in_show("nowhere")
+    assert m.room_of("bs") == "back"
+    p.write_text('{"front": {"screens": ["fs"]}, "back": {"screens": ["bs"], "show": true}}')
+    os.utime(p, (1e9, 1e9))                                  # a new mtime: re-read
+    assert m.in_show("bs")
+    p.write_text('{"back": {"screens": ["bs"], "show": "no"}}')
+    os.utime(p, (1e9 + 5, 1e9 + 5))
+    assert m.in_show("bs")                                   # only the literal false counts
+
+
+def _outside(tmp_path, mgr, screen="south-screen"):
+    p = tmp_path / "rooms.json"
+    p.write_text('{"r1": {"screens": ["north-screen"]}, "r2": {"screens": ["%s"], "show": false}}' % screen)
+    mgr.rooms = rooms.RoomMap(p)
+
+
+async def test_a_session_outside_the_show_gets_no_direction_hold_events_or_music(client, tmp_path):
+    import time
+
+    from stream_service.server import MANAGER
+    mgr = client.app[MANAGER]
+    _outside(tmp_path, mgr)
+    sa, a, ea = await live(client, screen="north-screen", room="r1", auto=FX_AUTO)
+    sb, b, eb = await live(client, screen="south-screen", room="r2", auto=FX_AUTO)
+    assert a.show is True and a.runtime.feed is mgr.music_feed
+    assert b.show is False and b.runtime.feed is None                # no music feed (frames, cue mappings)
+    b._cue_signals()                                                  # silent, never raises
+    assert mgr.in_show(a) and not mgr.in_show(b) and mgr.in_show(None) and not mgr.in_show("south-screen")
+    mgr.on_room_message({"type": "room.direction", "data": {"hold": True, "vibe": "x"}})
+    now = time.monotonic()
+    assert mgr.room_direction_now(now) is not None and mgr.room_hold(now)          # no session: as before
+    assert mgr.room_hold(now, a) and mgr.room_direction_now(now, a) is not None
+    assert not mgr.room_hold(now, b) and mgr.room_direction_now(now, b) is None
+    assert b._ens_now(now) is None and b._music_grid(now) is None
+    heard = {}
+    for s in (a, b):
+        s.room_event = lambda kind, *x, _s=s: heard.setdefault(_s.screen, []).append(kind)
+    mgr._room_event({"kind": "drop", "at_ms": 1.0, "id": "e1"})
+    assert heard == {"north-screen": ["drop"]}
+
+
+async def test_with_no_show_false_room_every_session_is_in_the_show(client, tmp_path):
+    from stream_service.server import MANAGER
+    mgr = client.app[MANAGER]
+    p = tmp_path / "rooms.json"
+    p.write_text('{"r1": {"screens": ["north-screen", "south-screen"]}}')
+    mgr.rooms = rooms.RoomMap(p)
+    sa, a, ea = await live(client, screen="north-screen", room="r1", auto=FX_AUTO)
+    assert a.show is True and a.runtime.feed is mgr.music_feed and mgr.in_show(a)
+
+
+def test_gesture_slots_skip_sessions_outside_the_show(monkeypatch):
+    from stream_service import gestures
+    set_calls = []
+
+    async def fake_set(s, want, spec, fade):
+        set_calls.append((s.screen, want))
+
+    class S:
+        state, exited = "live", False
+
+        def __init__(self, screen):
+            self.screen = screen
+            self.fx = type("Fx", (), {"stack": []})()
+
+    a, b = S("in"), S("out")
+    mgr = type("M", (), {"sessions": {"a": a, "b": b}, "in_show": lambda self, s: s.screen != "out"})()
+    monkeypatch.setattr(gestures.BOOK, "wants_slot", lambda screen, now, keep: True)
+    monkeypatch.setattr(gestures, "_spec", lambda m: {"x": 1})
+    monkeypatch.setattr(gestures, "_set", fake_set)
+
+    async def run():
+        gestures.sync_slots(mgr, 1000.0)
+        await asyncio.sleep(0)
+
+    asyncio.run(run())
+    assert set_calls == [("in", True)]
+    gestures._slots.pop(a, None), gestures._slots.pop(b, None)

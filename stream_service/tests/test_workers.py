@@ -351,6 +351,35 @@ def test_runtime_targets_and_dropped_stand_ins_are_synced_at_the_tick():
     assert ("sync", 0, {"sid": "s-test", "speed_target": 1.5}) in conn.sent and ("gone", 0, [hid]) in conn.sent
 
 
+def test_the_room_pages_energy_reaches_the_worker_runtime():
+    """Contract C5 in a 'proc' render (every finsbury screen): the Energy's lean is set on the control's runtime;
+    the worker's own runtime (the one its Modulation.apply reads) must get it, at bind and on each change."""
+    px, conn = _proxy()
+    w, socks = _worker()
+    s = px.listener
+    s.runtime = SessionRuntime(None)
+    s.sampler = types.SimpleNamespace(lead=0.12, follow="extrapolate")
+    s._frame_hook = lambda now: None
+    w._apply_rt({"energy": 0.2, "energy_target": 0.2})            # bind: where the control's runtime is now
+    assert (w.runtime.energy, w.runtime.energy_target) == (0.2, 0.2)
+    px.tick(1.0)
+    conn.sent.clear()
+    s.runtime.energy_target = 0.9                                  # the Room page: Wild
+    px.tick(1.1)
+    sync = [m for m in conn.sent if m[0] == "sync"]
+    assert sync and sync[0][2]["energy_target"] == 0.9
+    for m in sync:
+        _deliver(w, m)
+    assert w.runtime.energy_target == 0.9
+    t = 10.0
+    for _ in range(70):                                            # ~2.3 s of frames: the worker's copy eases there
+        t += 1 / 30
+        w.runtime.begin_frame(t)
+    assert abs(w.runtime.energy - 0.9) < 0.05
+    for x in socks:
+        x.close()
+
+
 # -- the degrade path, through the API -----------------------------------------------------------------------------
 async def test_a_worker_that_cannot_spawn_leaves_the_session_in_process(monkeypatch, tmp_path):
     from aiohttp.test_utils import TestClient, TestServer

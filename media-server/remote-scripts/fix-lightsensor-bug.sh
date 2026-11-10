@@ -3,8 +3,8 @@
 
 set -e
 
-SCRIPT_PATH="/home/gjbm2/lightsense.py"
-BACKUP_PATH="/home/gjbm2/lightsense.py.backup-bug-fix-$(date +%Y%m%d-%H%M%S)"
+SCRIPT_PATH="/home/@@KIOSK_USER@@/lightsense.py"
+BACKUP_PATH="/home/@@KIOSK_USER@@/lightsense.py.backup-bug-fix-$(date +%Y%m%d-%H%M%S)"
 
 echo "=== Light Sensor Bug Fix ==="
 echo ""

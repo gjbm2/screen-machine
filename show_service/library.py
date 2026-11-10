@@ -10,7 +10,8 @@ one id namespace, searchable, pinnable, with uploads and imports from the web.
 
 **No side effects at import, no package imports at module level**: sources.py (and scripts) load this file by path for
 :func:`resolve` (and reads STATE_DIR/library-pins.json). aiohttp is imported where it is used (no mido); show.yaml
-(``tests.piano.pieces`` / ``tests.piano.recordings``) is read only when PyYAML is there, else the defaults hold.
+(``tests.piano.pieces`` / ``tests.piano.recordings``: the shared file with the deployment's layer over it, smconfig
+imported only there; without smconfig the shared file alone) is read only when PyYAML is there, else the defaults hold.
 
 **Cleaning** (:func:`clean_midi`, the same for the build and for every import; a small SMF reader/writer of its own,
 about 20x faster than mido's checked messages): piano_render and piano_replay merge
@@ -65,6 +66,7 @@ STATE_DIR = pathlib.Path.home() / ".local" / "state" / "screen-machine" / "show"
 TEST_PIANO_DIR = REPO_ROOT / "config" / "live" / "test-piano"                          # contract.TEST_PIANO_DIR
 RECORDINGS_DIR = pathlib.Path.home() / ".local" / "share" / "screen-machine" / "piano-recordings"   # recorder's
 SHOW_FILE = REPO_ROOT / "config" / "room" / "show.yaml"                                # contract.SHOW_FILE
+SHOW_SITE_FILE: Optional[pathlib.Path] = None   # contract.SHOW_SITE_FILE; None: smconfig's, resolved when first read
 PIANO_REPLAY = REPO_ROOT / "stream_service" / "piano_replay.py"                        # PHRASE_LABELS
 CATALOG = "catalog.json"
 USER_JSON = "user.json"
@@ -282,13 +284,28 @@ class _JsonFile:
             return self.doc, self.error
 
 
-def _show_dirs_read() -> dict:
+def _show_site() -> Optional[pathlib.Path]:
+    """The deployment's show.yaml layer (SHOW_SITE_FILE, else smconfig.path("show.yaml")); None without smconfig."""
+    if SHOW_SITE_FILE is not None:
+        return pathlib.Path(SHOW_SITE_FILE)
+    try:
+        import smconfig                                # the repo root on sys.path (every service's cwd); else no layer
+        return smconfig.path("show.yaml")
+    except Exception:                                  # noqa: BLE001
+        return None
+
+
+def _show_dirs_read(site: Optional[pathlib.Path] = None) -> dict:
     try:
         import yaml                                    # show_service's venv has it; another venv may not
     except Exception:                                  # noqa: BLE001
         return {}
     try:
-        doc = yaml.safe_load(SHOW_FILE.read_text(encoding="utf-8"))
+        try:
+            import smconfig
+            doc = smconfig.load_layered_yaml(SHOW_FILE, site)
+        except ImportError:
+            doc = yaml.safe_load(SHOW_FILE.read_text(encoding="utf-8"))
     except Exception:                                  # noqa: BLE001
         return {}
     tests = doc.get("tests") if isinstance(doc, dict) else None
@@ -305,9 +322,10 @@ def _show_piano() -> dict:
         now = time.monotonic()
         if now - _show_cache["checked"] >= RELOAD_S:
             _show_cache["checked"] = now
-            stamp = _stamp(SHOW_FILE)
+            site = _show_site()
+            stamp = (_stamp(SHOW_FILE), str(site), _stamp(site) if site is not None else None)   # either changed
             if stamp != _show_cache["stamp"]:
-                _show_cache["stamp"], _show_cache["piano"] = stamp, _show_dirs_read()
+                _show_cache["stamp"], _show_cache["piano"] = stamp, _show_dirs_read(site)
         return _show_cache["piano"]
 
 

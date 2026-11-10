@@ -11,7 +11,7 @@ it (session.py --output sonos:<zone>).
 
 Device control goes through room_service (screen-machine-ff's; AV_PROGRAMME §11): the Sonos state is read from
 ``GET <ROOM_URL>/api/v1/status`` and playback is asked for with ``PUT <ROOM_URL>/api/v1/room/targets``. The player
-itself is only *read* here: UPnP GetTransportInfo + GetPositionInfo on the zone's ip (config/room/sonos.json) at
+itself is only *read* here: UPnP GetTransportInfo + GetPositionInfo on the zone's ip (the deployment's room/sonos.json) at
 WATCH_HZ, plain HTTP SOAP to UPNP_PORT (Sonos's fixed control port).
 
 start():
@@ -33,7 +33,7 @@ start():
      keys [...]"); OPTIONAL_KEYS it names are dropped for the rest of this process (UNSUPPORTED) and the PUT is sent
      again (with the fade pad when fade_s went). Any other refusal is an error.
   6. ``t_audio0 = t_put + start_ms/1000 + pad`` (+ ramp_s when fade_s is unsupported and the Sonos was playing: the
-     hand-set fades that out first). t_put: just before the PUT that played. start_ms: config/room/latency.json
+     hand-set fades that out first). t_put: just before the PUT that played. start_ms: calibration/latency.json
      ``outputs["sonos:<zone>"].start_ms`` (screen-machine-10's file, read only), else START_MS_DEFAULT (500: PUT ->
      file t=0 at the room mic, 0.499 and 0.498 s on 21 Oct, from PAUSED_PLAYBACK).
 The watch (a thread per play, WATCH_HZ): our URI must be PLAYING within START_TIMEOUT_S (other URIs before it are the
@@ -103,12 +103,14 @@ from pathlib import Path
 from typing import Any, Callable, Optional
 from urllib.parse import unquote, urlsplit
 
+import smconfig
+
 log = logging.getLogger("piano_render.sonos")
 
 REPO = Path(__file__).resolve().parent.parent
-ROOM_URL = "http://127.0.0.1:8700"                 # room_service on this box (loopback is an allowed Host)
-SONOS_FILE = REPO / "config" / "room" / "sonos.json"
-LATENCY_FILE = REPO / "config" / "room" / "latency.json"
+ROOM_URL = smconfig.url("room")                    # room_service on this box (loopback is an allowed Host)
+SONOS_FILE = smconfig.path("room", "sonos.json")   # the deployment's Sonos zones (none: no Sonos)
+LATENCY_FILE = smconfig.path("calibration", "latency.json")
 SOURCE = "test piano"                              # the PUT's source (room_service's log)
 UPNP_PORT = 1400
 AVT = ("/MediaRenderer/AVTransport/Control", "urn:schemas-upnp-org:service:AVTransport:1")
@@ -579,6 +581,9 @@ class SonosOutput:
                  clock: Callable[[], float] = time.monotonic, stream_scheme: str = STREAM_SCHEME,
                  stream_dir: Optional[Path] = None, stream_start_ms: float = STREAM_START_MS_DEFAULT,
                  stream_ahead_s: float = STREAM_AHEAD_S, put_after_s: float = STREAM_PUT_AFTER_S) -> None:
+        if not smconfig.enabled("sonos"):
+            log.warning("sonos: refused zone %s: the deployment %s has no Sonos", zone, smconfig.deployment_id())
+            raise SonosError("this deployment has no Sonos (its 'sonos' capability is off)")
         cfg = _read_json(sonos_file)
         z = (cfg.get("zones") or {}).get(zone)
         if not isinstance(z, dict) or not isinstance(z.get("ip"), str) or not z["ip"].strip():

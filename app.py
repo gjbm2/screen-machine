@@ -46,6 +46,8 @@ from routes.jobs.api import jobs_api
 import routes.jobs
 from routes.art_tags.api import art_tags_api
 import routes.art_tags
+from routes.deployment_api import deployment_api
+import smconfig
 
 # Load environment variables
 load_dotenv()
@@ -75,6 +77,7 @@ app.register_blueprint(audio_api, url_prefix=API_PREFIX)
 app.register_blueprint(admin_api, url_prefix=API_PREFIX)
 app.register_blueprint(jobs_api, url_prefix=API_PREFIX)  # generation jobs + SSE (docs/JOBS.md)
 app.register_blueprint(art_tags_api, url_prefix=API_PREFIX)  # AI art tags + tag edits (docs/ART_TAGS.md)
+app.register_blueprint(deployment_api, url_prefix=API_PREFIX)  # GET /api/deployment (deployments/README.md)
 
 # Register test blueprints (no prefix needed for test routes)
 app.register_blueprint(test_buckets_bp)
@@ -126,6 +129,9 @@ def add_log():
 @app.route(f"{API_PREFIX}/alexa", methods=["POST"])
 def alexa_webhook():
     """Handle incoming Alexa webhook requests."""
+    if not smconfig.enabled("alexa"):
+        warning("[alexa] request refused: alexa is off in this deployment")
+        return jsonify({"error": "alexa is off in this deployment"}), 404
     data = request.get_json()
     response_ssml = alexa_process(data)
     
@@ -239,28 +245,33 @@ if __name__ == '__main__':
         error(f"art tags could not be started: {e}")
 
     # Room control: room_service runs in this process on its own thread, event loop and LAN port
-    # (ROOM_PORT, default 8700); this :5000 door has no room routes. Never blocks or breaks start-up:
-    # while the separate room_service still holds :8700 it waits and retries. ROOM_IN_APP=0 turns it off.
-    try:
-        import room_in_app
-        room_in_app.start_in_background(on_crash=lambda summary, exc: alert(
-            "room.service_died", summary, severity="error", exc=exc))
-    except Exception as e:
-        error(f"room_service could not be started in the app: {e}")
+    # (the deployment's ports.room, 8700); this app door has no room routes. Never blocks or breaks start-up:
+    # while the separate room_service still holds the port it waits and retries. ROOM_IN_APP=0 turns it off.
+    # A deployment with the "room" capability off starts none of room_service, the events bridge or the hints.
+    if not smconfig.enabled("room"):
+        info("room is off in this deployment: room_service, the room events bridge and room hints are not started")
+    else:
+        try:
+            import room_in_app
+            room_in_app.start_in_background(on_crash=lambda summary, exc: alert(
+                "room.service_died", summary, severity="error", exc=exc))
+        except Exception as e:
+            error(f"room_service could not be started in the app: {e}")
 
-    # Room -> scheduler: mode, Auto and art/live changes become scheduler events (routes/room_events_bridge.py)
-    try:
-        from routes.room_events_bridge import start_bridge
-        start_bridge()
-    except Exception as e:
-        error(f"room events bridge could not be started: {e}")
+        # Room -> scheduler: mode, Auto and art/live changes become scheduler events (routes/room_events_bridge.py)
+        try:
+            from routes.room_events_bridge import start_bridge
+            start_bridge()
+        except Exception as e:
+            error(f"room events bridge could not be started: {e}")
 
-    # Auto off + music or the piano: the room's screens say how to turn Auto on or pick a mode (routes/room_hints.py)
-    try:
-        from routes.room_hints import start as start_room_hints
-        start_room_hints()
-    except Exception as e:
-        error(f"room hints could not be started: {e}")
+        # Auto off + music or the piano: the room's screens say how to turn Auto on or pick a mode
+        # (routes/room_hints.py)
+        try:
+            from routes.room_hints import start as start_room_hints
+            start_room_hints()
+        except Exception as e:
+            error(f"room hints could not be started: {e}")
 
     if DEBUG:
         info(f"Starting Flask dev server on port {PORT} (DEBUG)")

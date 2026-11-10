@@ -52,7 +52,7 @@ RT_PY = pathlib.Path("~/.venvs/sm-roundtrip/bin/python").expanduser()
 LOCK = pathlib.Path("~/.cache/screen-machine/cpu.lock").expanduser()
 RESULTS = pathlib.Path("~/.cache/screen-machine/beat-eval/results").expanduser()
 AUDIO_EXT = (".wav", ".flac", ".mp3", ".ogg", ".m4a", ".opus", ".aiff", ".au")
-THREADS = {"OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"}   # as deploy/sm-show.env
+THREADS = {"OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"}   # as services/sm-show.env
 
 
 def load_index(path: pathlib.Path) -> tuple[str, list[dict]]:

@@ -4,6 +4,10 @@
 // Every write is the room's own config save (PUT /api/v1/room/config: the whole modes file, refused if someone saved
 // meanwhile; room_service reloads it at once). Deleting a mode stays with the mode's own ⋯ on the Room page, which
 // tidies everything that names it.
+//
+// Mode zones (rooms with "own_modes" in rooms.json; status.zones): a room picker at the top (only when zones exist)
+// switches the whole group to that room's own modes file (api.forRoom): its modes, start mode and switching order. Auto
+// switches the site's modes only, so its wait shows for the site alone. Without zones the group is as before.
 
 import { useEffect, useState } from "react";
 import { ArrowDown, ArrowUp, Copy, LayoutGrid, Pencil } from "lucide-react";
@@ -16,7 +20,11 @@ import { modeChanges, notConnectedWords } from "@/pages/Room/modeWords";
 import type { ModeDef, RawMode, RawRoomConfig, RoomDescribe, RoomStatus } from "@/pages/Room/types";
 import type { NewLogEntry } from "@/pages/Room/useRoomConnection";
 import { friendlyName, modeDescription, modeLabel } from "@/pages/Room/words";
-import { Group, Hint, LinkRow, ReadRow, Row, Sub } from "./Group";
+import { siteModesCaption, zoneOf, zonesOf } from "@/pages/Room/zones";
+import { Chips, Group, Hint, LinkRow, ReadRow, Row, Sub } from "./Group";
+
+/** The room picker's value for the site's modes. */
+const SITE = "_site";
 
 type Json = Record<string, unknown>;
 const isObj = (v: unknown): v is Json => !!v && typeof v === "object" && !Array.isArray(v);
@@ -70,16 +78,21 @@ type ModesProps = {
   onEdit: (name: string) => void;
   onChanged: () => void;
   addLog: (e: NewLogEntry) => void;
+  /** Mode zones: the room whose own modes the group shows (null: the site's), and the picker's change. `modes` and
+   *  `describe` are that room's. Without zones both stay unset. */
+  room?: string | null;
+  onRoom?: (room: string | null) => void;
 };
 
 export function ModesGroup(props: ModesProps) {
-  const { modes, status } = props;
+  const { modes, status, room } = props;
+  const modeNow = room ? zoneOf(status, room)?.mode : status?.mode;
   return (
     <Group
       id="modes"
       title="Room & modes"
       icon={<LayoutGrid />}
-      summary={modes ? `${Object.keys(modes).length} modes · starts in ${modeLabel(status?.mode?.default ?? null, modes)}` : "Modes"}
+      summary={modes ? `${Object.keys(modes).length} modes · starts in ${modeLabel(modeNow?.default ?? null, modes)}` : "Modes"}
     >
       <ModesBody {...props} />
     </Group>
@@ -88,7 +101,7 @@ export function ModesGroup(props: ModesProps) {
 
 /** Mounted only while the group is open, so a closed group costs no requests. */
 function ModesBody({
-  api,
+  api: apiIn,
   status,
   modes,
   describe,
@@ -96,12 +109,18 @@ function ModesBody({
   onEdit,
   onChanged,
   addLog,
+  room = null,
+  onRoom,
 }: ModesProps) {
+  const zones = zonesOf(status);
+  const zone = zoneOf(status, room);
+  const api = apiIn.forRoom(zone ? room : null);
+  const modeNow = zone ? zone.mode : status?.mode;
   const [cfg, setCfg] = useState<{ config: RawRoomConfig; revision: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dwell, setDwell] = useState("");
-  const revision = status?.config?.revision;
+  const revision = zone ? zone.config?.revision : status?.config?.revision;
 
   // the file itself (for the start mode, Auto's wait and the switching rules), read again when it changes
   useEffect(() => {
@@ -114,13 +133,15 @@ function ModesBody({
       alive = false;
     };
   }, [api, revision]);
+  // the group follows the picked room's file: nothing of the last room's is kept
+  useEffect(() => setError(null), [api]);
 
   const ap = isObj(cfg?.config.autopilot) ? (cfg?.config.autopilot as Json) : null;
   const dwellNow = typeof ap?.min_dwell_s === "number" ? (ap.min_dwell_s as number) : null;
   useEffect(() => setDwell(dwellNow === null ? "" : String(dwellNow)), [dwellNow]);
 
-  const startMode = status?.mode?.default ?? (typeof cfg?.config.default === "string" ? cfg.config.default : null);
-  const current = status?.mode?.current ?? null;
+  const startMode = modeNow?.default ?? (typeof cfg?.config.default === "string" ? cfg.config.default : null);
+  const current = modeNow?.current ?? null;
   const entries = Object.entries(modes ?? {});
   const wordsOpts = { names, live: status?.subsystems };
 
@@ -202,6 +223,19 @@ function ModesBody({
 
   return (
     <>
+      {zones.length > 0 && onRoom && (
+        <Row label="Whose modes" hint="Some rooms have modes of their own. Pick whose to see and change here." stack testId="settings-modes-room">
+          <Chips
+            label="Whose modes"
+            value={zone ? zone.room : SITE}
+            options={[
+              { value: SITE, label: siteModesCaption(status) ?? "The site" },
+              ...zones.map((z) => ({ value: z.room, label: z.name || z.room })),
+            ]}
+            onChange={(v) => onRoom(v === SITE ? null : v)}
+          />
+        </Row>
+      )}
       {error && <Notice tone="bad">{error}</Notice>}
 
       <Sub>Modes</Sub>
@@ -268,35 +302,37 @@ function ModesBody({
       )}
       <Hint>To delete a mode, use its ⋯ (or the pencil at the end of the modes) on the Room page: it tidies everything else that names it.</Hint>
 
-      <Row
-        label="Auto waits before changing mode again"
-        hint={dwellNow === null ? "Not set in the modes file: Auto uses its own." : `Now ${dwellNow} s.`}
-        stack
-        testId="settings-modes-dwell"
-      >
-        <form
-          className="flex flex-wrap items-center gap-2"
-          onSubmit={(e) => {
-            e.preventDefault();
-            if (dwellOk) saveDwell();
-          }}
+      {!zone && (
+        <Row
+          label="Auto waits before changing mode again"
+          hint={dwellNow === null ? "Not set in the modes file: Auto uses its own." : `Now ${dwellNow} s.`}
+          stack
+          testId="settings-modes-dwell"
         >
-          <Input
-            type="number"
-            inputMode="numeric"
-            min={0}
-            step={5}
-            value={dwell}
-            onChange={(e) => setDwell(e.target.value)}
-            aria-label="Seconds"
-            className="h-11 w-28 rounded-xl bg-white text-base"
-          />
-          <span className="text-[15px] text-muted-foreground">seconds</span>
-          <Button type="submit" disabled={!dwellOk || !!busy} className="h-11 rounded-xl px-5 text-base">
-            Save
-          </Button>
-        </form>
-      </Row>
+          <form
+            className="flex flex-wrap items-center gap-2"
+            onSubmit={(e) => {
+              e.preventDefault();
+              if (dwellOk) saveDwell();
+            }}
+          >
+            <Input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              step={5}
+              value={dwell}
+              onChange={(e) => setDwell(e.target.value)}
+              aria-label="Seconds"
+              className="h-11 w-28 rounded-xl bg-white text-base"
+            />
+            <span className="text-[15px] text-muted-foreground">seconds</span>
+            <Button type="submit" disabled={!dwellOk || !!busy} className="h-11 rounded-xl px-5 text-base">
+              Save
+            </Button>
+          </form>
+        </Row>
+      )}
 
       <Unroll title="What each mode does" testId="settings-modes-does">
         <ul className="space-y-2 pb-2">
@@ -344,6 +380,8 @@ function ModesBody({
               {!!r.blinds?.length && <ReadRow label="Blinds" value={`${r.blinds.length}`} />}
               {!!r.sensors?.length && <ReadRow label="Light sensors" value={r.sensors.join(", ")} />}
               {!!r.effects?.length && <ReadRow label="Room effects" value={`${r.effects.length}`} />}
+              {r.own_modes && <ReadRow label="Modes" value="Its own" />}
+              {r.show === false && <ReadRow label="In the show" value="No: no palette, Auto or music on its screens" />}
             </div>
           ))}
           <Hint>What each room holds is read only here.</Hint>

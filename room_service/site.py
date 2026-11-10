@@ -1,6 +1,7 @@
-"""The site's rooms (routes/data/rooms.json) as the Room page reads them.
+"""The site's rooms (the deployment's rooms.json) as the Room page reads them.
 
-[{id, name, screens, lights, blinds, sensors, effects}] in file order, skipping "_" keys, each list [] when absent.
+[{id, name, screens, lights, blinds, sensors, effects}] in file order, skipping "_" keys, each list [] when absent; a
+room also carries "own_modes": true and "show": false when rooms.json sets them (never otherwise).
 effects are devices the Room page gives a card: {"power": target, "settings": [targets]} (a bare target string is
 {"power": it, "settings": []}); the card's words come from the targets' schemas (GET /api/v1/room/describe).
 Re-read when the file's mtime changes; a bad file keeps the last good list. (room_config.py derives the
@@ -61,6 +62,12 @@ class SiteRooms:
                 ids = spec.get(k)
                 room[k] = [i for i in ids if isinstance(i, str)] if isinstance(ids, list) else []
             room["effects"] = [x for x in map(_effect, spec.get("effects") or []) if x]
+            # the multi-room keys (deployments/README.md, "Rooms with their own modes"): present only when set, so a
+            # deployment that sets neither keeps today's status byte for byte
+            if spec.get("own_modes") is True:
+                room["own_modes"] = True
+            if spec.get("show") is False:
+                room["show"] = False
             out.append(room)
         self.rooms, self.error = out, None
         return out

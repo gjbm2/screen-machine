@@ -36,7 +36,18 @@ LIBRARY = Path.home() / ".local" / "share" / "screen-machine" / "dot-fonts"   # 
 # px = the size drawn (a bitmap font's design size); line = line height (default: from the font's ink);
 # bold = how the role's bold is made: "double" (each stroke drawn twice, a pixel apart), "none", or the bold
 # cut's font; scale = each font pixel drawn as scale x scale; serif_i = a serifed capital I ("AI", not "Al").
-_ARIAL = "/mnt/c/Windows/Fonts/arial.ttf"   # Windows', used in place (never copied into the repo)
+def _host_fonts() -> Optional[Path]:
+    """The machine's system fonts folder (deployment.yaml host.fonts_dir: Windows' on PC22), or None."""
+    try:
+        import smconfig
+        return smconfig.deployment().host_path("fonts_dir")
+    except Exception:                                 # noqa: BLE001 - no deployment / no PyYAML: the bundled fonts
+        return None
+
+
+WINDOWS_FONTS = _host_fonts()
+# Windows' Arial, used in place (never copied into the repo); absent (no fonts_dir, not mounted): the bundled Galmuri
+_ARIAL = str(WINDOWS_FONTS / "arial.ttf") if WINDOWS_FONTS else ""
 DEFAULT_TYPES = {
     # headlines (always bold): Arial Bold 17 is the standard (owner, 27 Oct: legibility over one family);
     # Galmuri 14, pixel-doubled, where Windows' fonts aren't mounted

@@ -16,7 +16,7 @@ there (SMC is offline) is reported and skipped.
 
 ``run`` runs each condition with run_batch.py on that index (each track under the CPU lock at nice 19, resumable):
   A  clean, the default gate (dsp's gate_ref_lufs -30)                       slow lane off
-  B  through the room model (config/room/audio_cal.json's pc22-mic model), default gate          off
+  B  through the room model (calibration/audio_cal.json's pc22-mic model), default gate          off
   C  room model, the calibrated gate: -30 + (music_lufs + 30) = music_lufs, as show_service's
      GateOffsetWatch sets it live for pc22-mic (-47 if the file has none)                          off
   D  as C with the slow lane on (Beat This! votes, as live)
@@ -57,12 +57,19 @@ for _k in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS"):    # t
 HERE = pathlib.Path(__file__).resolve().parent
 REPO = HERE.parents[2]
 sys.path.insert(0, str(HERE))
+if str(REPO) not in sys.path:
+    sys.path.insert(0, str(REPO))
 import run_batch  # noqa: E402
+import smconfig  # noqa: E402  (the deployment: SM_DEPLOYMENT)
+try:   # the deployment (and PyYAML, which reads its manifest) up front: a clear message, not a traceback
+    smconfig.deployment()
+except (smconfig.DeploymentError, ImportError) as _exc:
+    raise SystemExit(f"{pathlib.Path(__file__).name}: {_exc}")
 
 CACHE = pathlib.Path("~/.cache/screen-machine/beat-eval").expanduser()
 COMBINED = pathlib.Path("~/.cache/screen-machine/beat-datasets/index.json").expanduser()
 SUBSET = CACHE / "baseline-subset.json"
-AUDIO_CAL = REPO / "config" / "room" / "audio_cal.json"
+AUDIO_CAL = smconfig.path("calibration", "audio_cal.json")
 STREAM = "pc22-mic"
 COUNTS = "ballroom=20,gtzan=20,harmonix=6,tapcorrect=2,asap=3,smc=4"
 DUR_CAP_S = 260.0
@@ -185,6 +192,11 @@ def stack_fingerprint() -> dict:
     tree = ast.parse((HERE / "run_stack.py").read_text())
     files = next(ast.literal_eval(n.value) for n in tree.body if isinstance(n, ast.Assign)
                  and any(isinstance(t, ast.Name) and t.id == "STACK_FILES" for t in n.targets))
+    layer = smconfig.path("show.yaml")    # the deployment's show.yaml layer, as run_stack.stack_files() adds it
+    try:
+        files = tuple(files) + (str(layer.relative_to(REPO)),)
+    except ValueError:
+        files = tuple(files) + (str(layer),)
     out: dict = {"files": {}}
     for f in files:
         try:

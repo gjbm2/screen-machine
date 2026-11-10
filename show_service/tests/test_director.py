@@ -330,6 +330,66 @@ def test_the_palettes_auto_choice_is_let_it_choose(rig):
     first = rig.d.snapshot()["palette"]["choices"][0]
     assert first["name"] == contract.PALETTE_AUTO and first["label"] == "Let it choose"   # only the room's Auto
 
+def _no_screen_fixtures(r) -> None:
+    """The patch's screens and every lamp's screen gone (a laptop: no fixtures name a screen)."""
+    lamps, _screens = r.d._patch_layout
+    r.d._patch_layout = ({k: {kk: vv for kk, vv in v.items() if kk != "screen"} for k, v in lamps.items()}, {})
+    r.d._apply_layout()
+
+
+def test_from_the_art_is_offered_only_where_a_screen_has_art_to_sample(tmp_path):
+    """Audit SHOW-2: no fixture screen and no screen of this room: 'From the art' isn't offered, art is no candidate and
+    the screens get the stand-in catalog palette; a screen room reports in this room brings it back (another room's
+    screen never does)."""
+    st = json.loads(json.dumps(SETTINGS))
+    st.setdefault("director", {})["no_feel"] = {"palettes": ["art", "ember"]}
+    r = Rig(tmp_path, settings=st)
+    r.run(0.1)                                                          # the patch read
+    _no_screen_fixtures(r)
+    r.d._room_screens = ("vj",)                                         # this room's screens (rooms.json)
+    r.room = {"reachable": True, "screens": {}}                         # room reports none of them
+    r.run(1.0)
+    assert r.d._art_sids == () and not r.d._art_possible()
+    assert contract.PALETTE_ART not in [c["name"] for c in r.d.catalog_choices()]
+    assert contract.PALETTE_ART not in [c["name"] for c in r.d.snapshot()["palette"]["choices"]]
+    assert (r.d.look or {}).get("palette", {}).get("name") == "ember" and r.d._pal_chosen == "ember"
+    assert r.d.snapshot()["screens_palette"]["palette"] == "ember"     # the screens get a palette, not "art"
+    r.d.set_palette(contract.PALETTE_ART)                               # a stale card's pick: the stand-in, said so
+    r.run(0.5)
+    assert r.d._pal_chosen == "ember" and r.d.snapshot()["screens_palette"]["palette"] == "ember"
+    r.room = {"reachable": True, "screens": {"vj": {"layer": "live", "phase": "live", "cutting": False},
+                                             "lab": {"layer": "live", "phase": "live", "cutting": False}}}
+    r.run(0.5)
+    assert r.d._art_sids == ("vj",)                                     # the lab's screen is another room's
+    assert contract.PALETTE_ART in [c["name"] for c in r.d.catalog_choices()]
+    r.d._room_screens = None                                            # no rooms.json: every screen room reports
+    r.run(0.2)
+    assert r.d._art_sids == ("lab", "vj")
+
+
+def test_before_rooms_view_arrives_this_rooms_screens_give_the_first_look_from_the_art(tmp_path):
+    """Review of SHOW-2: a site whose only art screen has no fixture (the laptop's vj) and whose room view hasn't come
+    yet: this room's rooms.json screens stand in, so the first look is still 'From the art' (§8.6), not the catalog
+    palette of the boot ticks; once room reports, its view decides."""
+    st = json.loads(json.dumps(SETTINGS))
+    st.setdefault("director", {})["no_feel"] = {"palettes": ["art", "ember"]}
+    r = Rig(tmp_path, settings=st)
+    r.run(0.1)
+    _no_screen_fixtures(r)
+    r.d._room_screens = ("vj",)
+    r.d.palette_name = None                                             # the boot state
+    r.run(0.5)                                                          # no room view yet
+    assert r.d._art_sids == ("vj",) and r.d._art_possible()
+    assert r.d.palette_name == contract.PALETTE_ART
+    r.room = {"reachable": True, "screens": {"vj": {"layer": "art", "phase": "idle", "cutting": False}}}
+    r.run(0.2)
+    assert r.d._art_sids == ("vj",) and r.d.palette_name == contract.PALETTE_ART
+    r.d._room_screens = None                                            # no rooms.json and no view: fixtures only
+    r.room = None
+    r.run(0.2)
+    assert r.d._art_sids == ()
+
+
 def test_art_without_colour_to_give_falls_through_to_the_next_palette(tmp_path):
     st = json.loads(json.dumps(SETTINGS))
     st.setdefault("director", {})["no_feel"] = {"palettes": ["art", "ember"]}
@@ -1020,7 +1080,7 @@ def _names_from_config() -> set[str]:
     names = {"piano"}
     vib = yaml.safe_load(contract.VIBES_FILE.read_text())
     names |= set((vib.get("vibes") or {}).keys())
-    modes = json.loads((contract.CONFIG_ROOM_DIR / "modes.json").read_text())
+    modes = json.loads((contract.DEPLOYMENT.path("room", "modes.json")).read_text())
     names |= set((modes.get("modes") or {}).keys())
     patch = yaml.safe_load(contract.PATCH_FILE.read_text())
     for did, d in (patch.get("devices") or {}).items():

@@ -163,7 +163,7 @@ def compute_mask(
             
             # Check if we have a light sensor mapping for this screen's group
             sensor_matched = False
-            for sensor_name, mapping in intensity_mapper.mapping_data.get("sensor_mappings", {}).items():
+            for sensor_name, mapping in ((intensity_mapper.mapping_data or {}).get("sensor_mappings") or {}).items():
                 target_group = mapping.get("target_group")
                 if target_group:
                     # Use get_destinations_for_group to resolve the target_group

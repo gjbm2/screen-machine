@@ -58,3 +58,11 @@ bun.lockb
 /routes/scheduler/*.json
 /routes/scheduler/*.json.bak
 /scheduler/_vars.json
+
+# Never commit: vendor backups and support bundles (a UniFi .unf decrypts with a public key and holds the Wi-Fi
+# passwords), room recordings, logs. Secrets live in .env and ~/.config/screen-machine/ (deployments/README.md).
+debug/
+*.unf
+support-*.tgz
+*:Zone.Identifier
+wav/

@@ -25,6 +25,7 @@ import re
 import sys
 
 import requests
+import smconfig
 from utils.logger import info, error, warning, debug
 from routes.utils import (
     _load_json_once, 
@@ -52,8 +53,8 @@ from routes.bucketer import (
 OUTPUT_ROOT = Path("output")         # centralised
 ISO_NOW     = lambda: datetime.utcnow().isoformat() + "Z"
 
-# Load publish destinations from JSON file
-PUBLISH_DESTINATIONS_FILE = findfile("publish-destinations.json")
+# Load publish destinations from the deployment's JSON file (deployments/<id>/publish-destinations.json)
+PUBLISH_DESTINATIONS_FILE = str(smconfig.path("publish-destinations.json"))
 publish_destinations = {}
 
 def _load_publish_destinations():
@@ -425,7 +426,7 @@ def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict
         is_history_navigation: True if this is an undo/redo operation, False for new publishes
     """
     # Get API URL from environment
-    VITE_API_URL = os.environ.get("VITE_API_URL", "http://localhost:5000/api").rstrip("/")
+    VITE_API_URL = os.environ.get("VITE_API_URL", f"http://localhost:{smconfig.port('flask')}/api").rstrip("/")
     
     # Determine if running in test mode
     is_test_mode = 'pytest' in sys.modules
@@ -846,7 +847,7 @@ def get_published_info(publish_destination_id: str) -> dict:
     """
     debug(f"get_published_info called for destination: {publish_destination_id}")
     try:
-        VITE_API_URL = os.environ.get("VITE_API_URL", "http://localhost:5000/api").rstrip("/")
+        VITE_API_URL = os.environ.get("VITE_API_URL", f"http://localhost:{smconfig.port('flask')}/api").rstrip("/")
         
         dest = get_destination(publish_destination_id)
         

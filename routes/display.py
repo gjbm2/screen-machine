@@ -154,8 +154,7 @@ def mask(dest_id: str):
         }
     else:
         # If adjustment is enabled, calculate the mask
-        lat = float(dest["intensity_cfg"]["lat"])
-        lon = float(dest["intensity_cfg"]["lon"])
+        lat, lon = mask_latlon(dest["intensity_cfg"])
         screen_cfg = {**dest["intensity_cfg"], "id": dest_id}  # Include screen ID in config
         payload = compute_mask(lat, lon, screen_cfg=screen_cfg)
 
@@ -180,6 +179,15 @@ def mask(dest_id: str):
     payload.pop("_debug", None)
     
     return jsonify(payload)
+
+def mask_latlon(icfg: dict) -> tuple[float, float]:
+    """A screen's lat/lon for its light curve: its intensity_cfg's own when it names both, else the deployment's
+    location (config.INTENSITY_CFG default_lat/default_lon), as lightmask/model.py _dest_latlon does."""
+    if "lat" in icfg and "lon" in icfg:
+        return float(icfg["lat"]), float(icfg["lon"])
+    import config
+    return float(config.INTENSITY_CFG["default_lat"]), float(config.INTENSITY_CFG["default_lon"])
+
 
 def send_overlay(
     html: str,

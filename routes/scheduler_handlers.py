@@ -16,6 +16,7 @@ import os
 from routes.publisher import publish_to_destination
 import uuid
 import traceback
+import smconfig
 
 # Maximum number of items to keep in history variables
 MAX_HISTORY_SIZE = 20
@@ -28,8 +29,20 @@ def handle_random_choice(instruction, context, now, output, publish_destination)
     log_schedule(msg, publish_destination, now, output)
     return False
 
+def _generation_refused(action, publish_destination, now, output):
+    """True (and logged) when the deployment has generation off: generate and animate are then refused."""
+    if smconfig.enabled("generation"):
+        return False
+    msg = f"{action} refused: generation is off in this deployment"
+    warning(f"[scheduler] {publish_destination}: {msg}")
+    log_schedule(msg, publish_destination, now, output)
+    return True
+
+
 def handle_generate(instruction, context, now, output, publish_destination):
     """Handle the generate instruction."""
+    if _generation_refused("generate", publish_destination, now, output):
+        return
     # The instruction has already been processed with Jinja templating
     prompt = ""
     # Extract the prompt from instruction
@@ -399,6 +412,8 @@ def handle_generate(instruction, context, now, output, publish_destination):
         error(traceback.format_exc())
 
 def handle_animate(instruction, context, now, output, publish_destination):
+    if _generation_refused("animate", publish_destination, now, output):
+        return
     # Extract the prompt - no need to process with Jinja again
     prompt = ""
     
@@ -1857,10 +1872,13 @@ def _as_bool(v) -> Optional[bool]:
 
 
 def handle_set_mode(instruction, context, now, output, publish_destination):
-    """Ask the room for a mode: {action: set_mode, mode: <key or Room page label>, reason?}."""
+    """Ask the room for a mode: {action: set_mode, mode: <key or Room page label>, reason?}. A destination in a room
+    with its own modes (rooms.json "own_modes": true) asks its room's zone; any other, the site."""
     from routes import room_client
     mode = str(instruction.get("mode") or "").strip()
-    ok, detail = room_client.set_mode(mode, source=f"schedule:{publish_destination}", reason=instruction.get("reason"))
+    zone = room_client.zone_of_screen(publish_destination)   # a room with its own modes: this screen's switches alone
+    ok, detail = room_client.set_mode(mode, source=f"schedule:{publish_destination}", reason=instruction.get("reason"),
+                                      **({"room": zone} if zone else {}))
     log_schedule(f"Room mode {mode!r}: " + (f"requested ({detail})" if ok else f"not changed: {detail}"),
                  publish_destination, now, output)
     return False
@@ -1883,9 +1901,13 @@ def handle_room_state(instruction, context, now, output, publish_destination):
     """Read the room into vars: room_mode, room_auto (true / false / null) and screen_layer ("art" / "live" / null,
     for this destination's screen). The same facts arrive as the events _room_mode, _room_auto and _screen_layer."""
     from routes import room_client
-    facts = room_client.room_facts()
     vars_ = context.setdefault("vars", {})
-    vars_["room_mode"] = facts.get("mode")
+    if not room_client.room_on():                 # no room_service here: the facts are unknown, not invented
+        vars_["room_mode"] = vars_["room_auto"] = vars_["screen_layer"] = None
+        log_schedule(f"Room state: not read ({room_client.ROOM_OFF})", publish_destination, now, output)
+        return False
+    facts = room_client.room_facts()
+    vars_["room_mode"] = room_client.screen_mode(publish_destination, facts)   # its zone's mode, else the site's
     vars_["room_auto"] = facts.get("auto")
     vars_["screen_layer"] = (facts.get("screens", {}).get(publish_destination) or {}).get("layer")
     log_schedule(f"Room state: mode {vars_['room_mode']}, Auto {vars_['room_auto']}, this screen {vars_['screen_layer']}",

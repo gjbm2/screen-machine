@@ -597,7 +597,7 @@ def test_the_calibration_mic_from_show_service_reaches_the_calibrator(monkeypatc
             session._calibrator("sonos:drawing-room", proto, None, ""),
             session._calibrator("pc22", proto, None, None)]
     try:
-        assert [c.mic for c in cals] == ["room-mic", None, calibrate.MIC_FOR["pc22"]]
+        assert [c.mic for c in cals] == ["room-mic", None, calibrate.default_mic("pc22")]
         assert cals[1].no_mic_why == "show_service names no mic that hears sonos:drawing-room"
     finally:
         for c in cals:

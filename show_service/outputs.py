@@ -44,14 +44,14 @@ artnet_lan.ArtNetLan), each fed by its own runner thread ``show-out-<id>``:
   reconcile (its frames at once, then the area). A release in the next moments waits for that stop plus
   ``rig.hue.release_settle_s`` (the bridge's post-entertainment write), so ``released`` still means writable.
 * **The Lights page** (README S5.23), each on show-brain through ``brain.call``: ``add_fixture``, ``update_fixture``,
-  ``remove_fixture`` write config/room/fixtures.added.yaml (fixtures.Registrar: checked with the loader first, never
-  fixtures.yaml) and reload the registry at once (no debounce: the file was replaced whole), so an output made for a
-  new light starts at that reconcile. ``identify`` asks the look engine for full white on one fixture for a few seconds
-  (``LookEngine.identify``) and wakes its runner. ``set_follow`` keeps who follows the music (room's DMX-lights device:
-  FOLLOW_WORDS or a static colour) in ``follow_file`` (atomic) and hands the whole mapping to ``LookEngine.set_follow``
-  at once, after every engine configure, and on each change. An engine without those methods degrades: identify
-  answers ``ok: false``, the follow mapping is kept for when it has them. ``fixture_rows`` (any thread) is the rig
-  view's per-fixture rows (contract.RigFixtureRow) in ``GET /api/v1/rig``.
+  ``remove_fixture`` write deployments/<id>/lights/fixtures.added.yaml (fixtures.Registrar: checked with the loader
+  first, never fixtures.yaml) and reload the registry at once (no debounce: the file was replaced whole), so an output
+  made for a new light starts at that reconcile. ``identify`` asks the look engine for full white on one fixture for a
+  few seconds (``LookEngine.identify``) and wakes its runner. ``set_follow`` keeps who follows the music (room's
+  DMX-lights device: FOLLOW_WORDS or a static colour) in ``follow_file`` (atomic) and hands the whole mapping to
+  ``LookEngine.set_follow`` at once, after every engine configure, and on each change. An engine without those methods
+  degrades: identify answers ``ok: false``, the follow mapping is kept for when it has them. ``fixture_rows`` (any
+  thread) is the rig view's per-fixture rows (contract.RigFixtureRow) in ``GET /api/v1/rig``.
 * **Movers** (docs/LIGHTS.md §5.8): show.yaml ``lights`` and the room's space (``space.shared()``, polled on
   show-brain; a new revision reconfigures) reach ``LookEngine.configure``. ``jog`` (any thread, no brain hop: the
   page's Move it) holds or releases one light through the engine and wakes its runner; a frame that says ``busy`` (a
@@ -109,7 +109,11 @@ RING = 256                         # lateness and send-time samples kept per run
 RATE_WINDOW_S = 5.0
 HUE_RELEASE_TIMEOUT_S = 15.0       # show.yaml rig.hue.release_timeout_s's starting point (hue_out's RIG_HUE_DEFAULTS)
 HUE_SETTLE_S = 1.0                 # show.yaml rig.hue.release_settle_s's starting point (§9.4: the bridge's own write)
-FIXTURES_FILE_WORDS = "config/room/fixtures.yaml"
+#: driver kind -> the deployment capability it needs (deployment.yaml capabilities): off, an enabled output of that
+#: kind reads "off" with capability_off_words and its driver is never built or started (smconfig rule 5)
+CAPABILITY_OF: dict[str, str] = {"hue": "hue"}
+CAPABILITY_OFF_PREFIX = "this deployment has no "
+FIXTURES_FILE_WORDS = contract.FIXTURES_FILE_WORDS   # "deployments/<id>/lights/fixtures.yaml"
 IDENTIFY_S = 3.0                   # README S5.23: identify's full white, unless the call says how long
 IDENTIFY_MAX_S = 30.0              # starting point: a longer ask is cut to this (the answer's ``seconds`` says so)
 ONLINE_CHECK_S = 10.0              # README S5.23: each node address pinged this often (show-rig-online)
@@ -203,6 +207,23 @@ def ping_once(ip: str) -> Optional[bool]:
     except (OSError, subprocess.SubprocessError):
         return None
     return r.returncode == 0
+
+
+_cap_said: set[str] = set()
+
+
+def capability_on(cap: str) -> bool:
+    """deployment.yaml ``capabilities.<cap>`` (smconfig); off is logged once per process."""
+    on = contract.DEPLOYMENT.enabled(cap)
+    if not on and cap not in _cap_said:
+        _cap_said.add(cap)
+        log.warning("rig: %s", capability_off_words(cap))
+    return on
+
+
+def capability_off_words(cap: str) -> str:
+    return (f"{CAPABILITY_OFF_PREFIX}{cap}: the {cap} capability is off in deployments/{contract.DEPLOYMENT.id}/"
+            "deployment.yaml")
 
 
 class _Online:
@@ -497,6 +518,7 @@ class Rig:
         self._force_reload = False                          # an API write: the next registry poll reloads at once
         self.follow_file = Path(follow_file) if follow_file is not None else None   # None: kept in memory only
         self.follow_error: Optional[str] = None
+        self._lamps_level = 1.0                             # set_brightness: the lamps' brightness (room's, a mode's)
         self._follow: dict[str, Any] = self._load_follow()  # fixture id -> FOLLOW_WORDS | {hex, bri}; swapped whole
         self._online = _Online(self._node_addresses, ping_fn or ping_once, online_check_s)
         # movers, room space and the jog (docs/LIGHTS.md §5.8)
@@ -526,19 +548,58 @@ class Rig:
 
     def restore(self, saved: dict) -> None:
         """state.json's ``rig``: each output's driver state (hue: what room asked to follow), handed back when that
-        output's driver is built (README S5.14). Everything else starts from config."""
+        output's driver is built (README S5.14), and the lamps' brightness (``lamps_level``). Everything else starts
+        from config."""
         outs = saved.get("outputs") if isinstance(saved, dict) else None
         self._saved = {str(k): v for k, v in outs.items() if isinstance(v, dict)} if isinstance(outs, dict) else {}
+        lvl = saved.get("lamps_level") if isinstance(saved, dict) else None
+        if isinstance(lvl, (int, float)) and not isinstance(lvl, bool) and math.isfinite(lvl):
+            self._lamps_level = max(0.0, min(1.0, float(lvl)))
+            self._apply_level()
 
     def persist(self) -> Optional[dict]:
-        """``{"outputs": {output id: the driver's persist_state()}}``: running drivers' own, and the last state of
-        outputs switched off since (so off and on again comes back as it was). None when there is nothing."""
+        """``{"outputs": {output id: the driver's persist_state()}, "lamps_level"?: x}``: running drivers' own, and the
+        last state of outputs switched off since (so off and on again comes back as it was); the lamps' brightness
+        only when it isn't full. None when there is nothing."""
         outs = dict(self._saved)
         for oid, o in list(self._outs.items()):
             st = self._driver_state(o.driver)
             if st is not None:
                 outs[oid] = st
-        return {"outputs": outs} if outs else None
+        out: dict = {"outputs": outs} if outs else {}
+        if self._lamps_level < 1.0:
+            out["lamps_level"] = round(self._lamps_level, 4)
+        return out or None
+
+    # -- the lamps' brightness (PUT /api/v1/brightness; room's brightness.lamps) --------------------------------------
+    def brightness_view(self) -> dict:
+        """GET /api/v1/brightness (any thread): ``{lamps: 0..1, fixtures: how many lamps it reaches}``."""
+        fn = getattr(self.engine, "lamp_count", None)
+        n = self._guard("engine.lamp_count", fn) if callable(fn) else None
+        return {"lamps": round(self._lamps_level, 4), "fixtures": n if isinstance(n, int) else 0}
+
+    def set_brightness(self, lamps: Any) -> dict:
+        """PUT /api/v1/brightness (show-brain): ``lamps`` 0..1 scales every lamp that follows the look (the rig's
+        Art-Net lights, and Hue when show drives it: one look engine), from the next frame; kept across a restart
+        (state.json ``rig``). A value that isn't a number in 0..1 is a ValueError and nothing changes."""
+        if isinstance(lamps, bool) or not isinstance(lamps, (int, float)) or not math.isfinite(lamps) \
+                or not 0.0 <= float(lamps) <= 1.0:
+            raise ValueError("bad_level: lamps must be a number from 0 to 1")
+        if float(lamps) != self._lamps_level:
+            self._lamps_level = float(lamps)
+            log.info("rig: lamps brightness %.0f%%", self._lamps_level * 100.0)
+            self._guard("ctx.persist", getattr(self.ctx, "persist", None))   # state.json now, not at the next flush
+        self._apply_level()
+        return self.brightness_view()
+
+    def _apply_level(self) -> None:
+        """The level to the look engine (``LookEngine.set_level``, when it has it), then every runner wakes."""
+        fn = getattr(self.engine, "set_level", None)
+        if callable(fn):
+            self._guard("engine.set_level", fn, self._lamps_level)
+        for o in list(self._outs.values()):
+            if o.runner is not None:
+                o.runner.wake.set()
 
     def _driver_state(self, d: Any) -> Optional[dict]:
         fn = getattr(d, "persist_state", None)
@@ -727,7 +788,7 @@ class Rig:
         if oid is None:
             return f"no hue output in {FIXTURES_FILE_WORDS}"
         st = self._why.get(oid)
-        if st is not None and st[0] == "not_built":
+        if st is not None and (st[0] == "not_built" or (st[0] == "off" and st[1].startswith(CAPABILITY_OFF_PREFIX))):
             return st[1]
         return f"outputs.{oid}.enabled is false in {FIXTURES_FILE_WORDS}"
 
@@ -1259,6 +1320,8 @@ class Rig:
                 self.engine_problems = list(got)
                 self._engine_dirty = False
             self._apply_follow()                             # README S5.23: the follow mapping, after every configure
+            if self._lamps_level != 1.0:
+                self._apply_level()
         if view is not None:
             self._reconcile(view, reconfigure=changed or view is not was or self._settings_dirty)
         self._settings_dirty = False
@@ -1298,6 +1361,8 @@ class Rig:
             kind = str(oc.get("driver"))
             if oc.get("enabled") is not True:
                 why[oid] = ("off", f"outputs.{oid}.enabled is false in {FIXTURES_FILE_WORDS}")
+            elif kind in CAPABILITY_OF and not capability_on(CAPABILITY_OF[kind]):
+                why[oid] = ("off", capability_off_words(CAPABILITY_OF[kind]))   # never built, never touches the device
             elif kind not in contract.DRIVERS_BUILT or (kind not in self._factories and kind not in DRIVER_MODULES):
                 why[oid] = ("not_built", f"the {kind} driver isn't built in Stage 5")
             elif self.engine is None:

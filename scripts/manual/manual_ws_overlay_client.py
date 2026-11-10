@@ -1,11 +1,15 @@
 import asyncio
+import os
 import websockets
 import sys
 import json
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+import smconfig  # noqa: E402  (the deployment: SM_DEPLOYMENT)
+
 async def test_connection():
     try:
-        uri = "ws://localhost:8765"
+        uri = smconfig.url("overlay_ws", "ws")   # Flask's overlay socket (ports.overlay_ws)
         print(f"🔍 Attempting to connect to {uri}...")
         
         async with websockets.connect(uri) as websocket:

@@ -5,6 +5,11 @@ from typing import Dict, List, Optional, Tuple
 from flask import Blueprint, jsonify, request
 import logging
 
+import smconfig
+
+# The deployment's light sensor -> screens mapping and lux curve (read here, and written by the PUT below)
+INTENSITY_FILE = smconfig.path("intensity.json")
+
 # Initialize logging
 logging.basicConfig(level=logging.WARNING)  # Change to WARNING level
 logger = logging.getLogger(__name__)
@@ -39,7 +44,7 @@ class IntensityMapper:
 
     def load_mapping(self):
         try:
-            mapping_path = os.path.join(os.path.dirname(__file__), 'data', 'intensity.json')
+            mapping_path = str(INTENSITY_FILE)
             if os.path.exists(mapping_path):
                 with open(mapping_path, 'r') as f:
                     self.mapping_data = json.load(f)
@@ -52,7 +57,7 @@ class IntensityMapper:
     def save_mapping(self):
         """Save the current mapping data back to the file."""
         try:
-            mapping_path = os.path.join(os.path.dirname(__file__), 'data', 'intensity.json')
+            mapping_path = str(INTENSITY_FILE)
             with open(mapping_path, 'w') as f:
                 json.dump(self.mapping_data, f, indent=2)
             self.last_update = os.path.getmtime(mapping_path)
@@ -62,15 +67,20 @@ class IntensityMapper:
             logger.error(f"Error saving intensity mapping: {e}")
             return False
 
+    def sensor_mappings(self) -> dict:
+        """intensity.json's sensor_mappings; {} when the site has no intensity.json (or a bad one): no sensor."""
+        m = self.mapping_data.get("sensor_mappings") if isinstance(self.mapping_data, dict) else None
+        return m if isinstance(m, dict) else {}
+
     def check_for_updates(self):
-        mapping_path = os.path.join(os.path.dirname(__file__), 'data', 'intensity.json')
+        mapping_path = str(INTENSITY_FILE)
         if os.path.exists(mapping_path):
             current_mtime = os.path.getmtime(mapping_path)
             if current_mtime > self.last_update:
                 self.load_mapping()
 
     def get_intensity(self, sensor_name: str, lux: float) -> Optional[float]:
-        if not self.mapping_data or sensor_name not in self.mapping_data["sensor_mappings"]:
+        if sensor_name not in self.sensor_mappings():
             return None
 
         # Get smoothed lux value
@@ -107,14 +117,15 @@ class IntensityMapper:
         return points[-1]["intensity"]
 
     def get_target_group(self, sensor_name: str) -> Optional[str]:
-        if not self.mapping_data or sensor_name not in self.mapping_data["sensor_mappings"]:
-            return None
-        return self.mapping_data["sensor_mappings"][sensor_name]["target_group"]
+        m = self.sensor_mappings().get(sensor_name)
+        return m.get("target_group") if isinstance(m, dict) else None
 
     def update_mapping(self, sensor_name: str, points: List[Dict[str, float]], target_group: str) -> bool:
         """Update the mapping for a specific sensor."""
-        if not self.mapping_data:
+        if not isinstance(self.mapping_data, dict):
             self.mapping_data = {"sensor_mappings": {}}
+        if not isinstance(self.mapping_data.get("sensor_mappings"), dict):
+            self.mapping_data["sensor_mappings"] = {}
         
         # Validate points
         if not points or not all("lux" in p and "intensity" in p for p in points):
@@ -139,7 +150,8 @@ intensity_mapper = IntensityMapper()
 def get_intensity_settings():
     """Get current intensity settings for all sensors."""
     intensity_mapper.check_for_updates()
-    return jsonify(intensity_mapper.mapping_data)
+    return jsonify(intensity_mapper.mapping_data if intensity_mapper.mapping_data is not None
+                   else {"sensor_mappings": {}})
 
 @lightsensor_bp.route('/lightsensor/intensity-settings/<sensor_name>', methods=['PUT'])
 def update_intensity_settings(sensor_name):

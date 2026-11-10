@@ -1,4 +1,5 @@
-"""Optional room config (room.prod.yaml) settings for light-sensor ingest (LIVE_V1 §2.2b, DCL v3.1 §4.4).
+"""Optional room config (the deployment's room/room.yaml) settings for light-sensor ingest (LIVE_V1 §2.2b,
+DCL v3.1 §4.4).
 
 Every key is optional. Ingest is on by default and needs no sensor keys (owner ruling, 14 Oct):
 any relay may send readings. `enabled: false` turns the sensor path off, and the mask then comes
@@ -12,8 +13,8 @@ ingest:
   screens: {north-screen: flask}   # per-screen mask_source
   filter_file: config/light.json   # lightmask FilterParams ("filter" object), reloaded on change
   filter: {stale_after_s: 10}      # FilterParams overrides on top of filter_file (not reloaded)
-  lightmask: {root: ., config_py: config.py, intensity_json: routes/data/intensity.json,
-              destinations_json: src/data/publish-destinations.json}   # default: Flask's own files
+  lightmask: {root: ., config_py: config.py, intensity_json: <deployment>/intensity.json,
+              destinations_json: <deployment>/publish-destinations.json}   # default: the deployment's (Flask's own)
   overrides_poll_s: 2.0         # Flask GET maskstate + brightness-override, per screen on the sensor path
   eval_interval_s: 1.0          # re-evaluate every screen (solar curve, stale ramp, tier changes)
   config_refresh_s: 2.0         # lightmask.ConfigWatcher.refresh(), in the executor
@@ -55,8 +56,10 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 from typing import Any
 
+import smconfig
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_SENSORS_FILE = Path("~/.config/screen-machine/room_sensors.json")
+DEFAULT_SENSORS_FILE = smconfig.secret("room_sensors.json")
 DEFAULT_FILTER_FILE = REPO_ROOT / "config" / "light.json"
 MASK_SOURCES = ("auto", "sensor", "flask")
 

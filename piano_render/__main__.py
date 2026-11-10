@@ -11,8 +11,8 @@
                                                        rendered as it plays, nothing kept)
   audition [--out DIR] [--instruments ID ...] [--excerpts N ...] [--no-ab] [--work DIR] [--json]
                                                        the audition set: excerpts x instruments as tagged 16-bit
-                                                       FLACs (piano_render.audition; default out: PC22's
-                                                       C:\\Users\\Greg\\Music\\Piano audition)
+                                                       FLACs (piano_render.audition; default out: the
+                                                       deployment.yaml's host.piano_audition_dir)
 
 --config (or $PIANO_RENDER_CONFIG) picks the instruments.json; --cache (or $PIANO_RENDER_CACHE) names a render cache
 (there is none unless named: the live test piano renders as it plays and keeps nothing). render and audition drop to
@@ -247,7 +247,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.set_defaults(fn=cmd_fetch)
 
     p = sub.add_parser("audition", help="render the audition set (excerpts x instruments) as tagged 16-bit FLACs")
-    p.add_argument("--out", default=None, help="folder for the FLACs (default PC22's Music/Piano audition)")
+    p.add_argument("--out", default=None, help="folder for the FLACs (default: the deployment's host.piano_audition_dir)")
     p.add_argument("--instruments", "-i", nargs="+", default=None, help="ids (default: every installed one)")
     p.add_argument("--excerpts", nargs="+", type=int, default=None, help="excerpt numbers 1-5 (default: all)")
     p.add_argument("--no-ab", action="store_true", help="skip the default instrument's dry / no-room files")

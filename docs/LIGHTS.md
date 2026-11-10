@@ -256,7 +256,7 @@ GENERIC_DEFAULTS = {"Pan": 128, "Tilt": 128, "Shutter": 8}    # centre, centre, 
 The generic fine channels pair with Pan/Tilt (`fine` offsets). The generic wheel slot count is setup `slots.count`
 (default 8, starting point), so the page can say "It has 6 patterns" and the slots re-divide.
 
-### 2.6 Per-fixture setup: `config/room/fixtures.setup.yaml` (new; written only by the API)
+### 2.6 Per-fixture setup: `deployments/finsbury/lights/fixtures.setup.yaml` (new; written only by the API)
 
 This holds settings for **any** fixture: hand-file fixtures too, so a mover written in fixtures.yaml can still be set
 up on the page. It is keyed by fixture id and written whole and atomically (fixtures.write_added's pattern, with its
@@ -333,11 +333,11 @@ fixtures.py adds:
   surface, left to right as seen from inside the room facing it; on the floor and ceiling, east) and `v` (on walls
   up, on the floor and ceiling north). More named surfaces (a TV wall, a truss) can be added by hand.
 
-### 3.2 `config/room/space.yaml` (hand-written; ships with every room fact commented)
+### 3.2 `deployments/finsbury/lights/space.yaml` (hand-written; ships with every room fact commented)
 
 ```yaml
-# config/room/space.yaml: the room in metres (docs/LIGHTS.md §3). x east, y north, z up; origin the south-west floor
-# corner. Hand-written; the Lights page's Room map writes config/room/space.added.yaml (merged under this file: this
+# deployments/finsbury/lights/space.yaml: the room in metres (docs/LIGHTS.md §3). x east, y north, z up; origin the south-west floor
+# corner. Hand-written; the Lights page's Room map writes deployments/finsbury/lights/space.added.yaml (merged under this file: this
 # file wins on a clash). show_service re-reads both when they change. Nothing here is measured yet: set the room on the
 # Room map (or here), never guess.
 version: 1
@@ -357,7 +357,7 @@ surfaces: {}                       # extra planes beyond floor, ceiling and the 
   # tv-wall: {label: TV wall, origin: [...], normal: [...], up: [...], size: [<w>, <h>]}
 ```
 
-`config/room/space.added.yaml` has the same keys, written only by the API (whole, atomic, with a header saying so).
+`deployments/finsbury/lights/space.added.yaml` has the same keys, written only by the API (whole, atomic, with a header saying so).
 Its `appliances.<id>` may also carry `teach: [TeachSample]` and `pose: MoverPose` (§3.6). Ids follow fixtures.py's
 ID_RE. Labels are page words.
 
@@ -1543,8 +1543,8 @@ What show_service sends, and what the renderer is asked to add. None of it is re
 
 | builder | owns | reads (never edits) |
 |---|---|---|
-| **encode** | show_service/ofl.py, show_service/fixture_encode.py (new), show_service/fixtures.py, colour_mix.py (only if a hook is needed), config/room/fixtures.setup.yaml (new: header + `version: 1`, `fixtures: {}`), contract: §11.2 encode anchors, tests: test_ofl.py, test_fixture_encode.py (new), test_fixtures.py | — |
-| **space** | show_service/space.py (new), config/room/space.yaml (new, §3.2), config/room/space.added.yaml (new, header + empty sections), contract: space block, tests: test_space.py (new) | contract FixtureSetup |
+| **encode** | show_service/ofl.py, show_service/fixture_encode.py (new), show_service/fixtures.py, colour_mix.py (only if a hook is needed), deployments/finsbury/lights/fixtures.setup.yaml (new: header + `version: 1`, `fixtures: {}`), contract: §11.2 encode anchors, tests: test_ofl.py, test_fixture_encode.py (new), test_fixtures.py | — |
+| **space** | show_service/space.py (new), deployments/finsbury/lights/space.yaml (new, §3.2), deployments/finsbury/lights/space.added.yaml (new, header + empty sections), contract: space block, tests: test_space.py (new) | contract FixtureSetup |
 | **engine** | show_service/looks.py, show_service/outputs.py (jog/hold, busy, live view, lights settings, space polling hooks only), contract: frames block, tests: test_looks.py, test_looks_motion.py (new), test_outputs.py | fixture_encode, space, light_scenes.group_members / Catalogue.effects |
 | **catalogue** | show_service/light_scenes.py, show_service/flow.py (new), config/live/light_scenes.yaml (append), config/live/light_effects.yaml (new), config/live/light_transitions.yaml (new), show_service/director.py (lighting hunks only), config/room/show.yaml (`lights:` block only, §12), contract: programs/flow block, tests: test_light_scenes.py, test_flow.py (new), test_director.py (lighting cases) | space (resolve, screen_flow, spatial_fn), fixtures.select |
 | **page** | show_service/api.py, src/pages/Lights/* (api.ts, lib.ts, LightForm.tsx, index.tsx, new MoveIt.tsx, JogPad.tsx, CapControls.tsx, RoomMap.tsx, Preview.tsx, jog.ts), tests: test_api.py, lib.test.ts | Rig hooks, fixtures.SetupStore, space.Store/solve_pose/ray_hit |

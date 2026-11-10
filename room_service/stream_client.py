@@ -4,6 +4,8 @@
   (an older renderer wants it), and nothing is sent without one.
 * `reachable` means the events socket is up: the handshakes need its events.
 * The events URL carries `?token=`; it is never logged (describe_exc strips queries).
+* `disabled` (the deployment's live capability off): every call is refused at once with StreamError("live_off"),
+  nothing is sent and the events socket is never opened.
 """
 
 from __future__ import annotations
@@ -40,8 +42,9 @@ ConnCb = Callable[[bool], Awaitable[None] | None]
 
 class StreamClient:
     def __init__(self, url: str, token_file, http: aiohttp.ClientSession, *,
-                 http_timeout_s: float = 10.0) -> None:
+                 http_timeout_s: float = 10.0, disabled: str | None = None) -> None:
         self.url = url.rstrip("/")
+        self.disabled = disabled               # why stream_service is never contacted (live off), else None
         self.token_file = token_file
         self.http = http
         self.http_timeout_s = http_timeout_s
@@ -82,6 +85,8 @@ class StreamClient:
     # -- REST --------------------------------------------------------------
     async def _req(self, method: str, path: str, body: Any = None, *,
                    timeout: float | None = None, ok: tuple[int, ...] = (200, 201, 202, 204)) -> Any:
+        if self.disabled:
+            raise StreamError("live_off", self.disabled, 503)
         for attempt in (0, 1):
             tok = self._get_token(refresh=attempt == 1)
             headers = {"Authorization": f"Bearer {tok}"} if tok else {}
@@ -186,6 +191,8 @@ class StreamClient:
 
     # -- events WS ---------------------------------------------------------
     def start(self) -> None:
+        if self.disabled:
+            return
         if self._task is None:
             self._task = spawn(self._events_loop(), "stream-events")
 

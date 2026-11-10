@@ -338,7 +338,7 @@ class Worker:
             self.sampler = Sampler(self.inputs, d["fixture"], d["lead"], d["follow"])
             rt = d["rt"]
             self.runtime = SessionRuntime(self.sampler, speed=rt["speed"], depth=rt["depth"], ease_s=rt["ease_s"])
-            self.runtime.feed = self.music_feed
+            self.runtime.feed = self.music_feed if d.get("feed", True) else None   # outside the show: no music
             self._apply_rt(rt)
             self.sound = new_sound(feed=self.scope) if d.get("sound", True) else None
             eng = Engine(profile=d["profile"], gpu=self.gpu, post=functools.partial(self._post, sid),
@@ -524,7 +524,8 @@ class Worker:
 
     def _apply_rt(self, rt: dict) -> None:
         r = self.runtime
-        for k in ("speed_target", "depth_target", "palette", "palette_s", "ease_s", "extra", "level", "level_target"):
+        for k in ("speed_target", "depth_target", "palette", "palette_s", "ease_s", "extra", "level", "level_target",
+                  "energy", "energy_target"):     # energy: the Room page's Energy on the scene (contract C5)
             if k in rt:
                 setattr(r, k, rt[k])
 

@@ -69,6 +69,7 @@ def test_scheduler_room_actions(monkeypatch):
     monkeypatch.setattr(room_client, "set_mode", lambda m, source, reason=None: (calls.append(("mode", m, source, reason)) or (True, "party")))
     monkeypatch.setattr(room_client, "set_auto", lambda on: (calls.append(("auto", on)) or (True, "ok")))
     monkeypatch.setattr(room_client, "room_facts", lambda st=None: facts(mode="party", auto=True, north="live"))
+    monkeypatch.setattr(room_client, "zones", lambda st=None: [])            # no room has its own modes
     ctx, out, now = {"vars": {}}, [], datetime.now()
     assert H.handle_set_mode({"action": "set_mode", "mode": "Party", "reason": "loaded"}, ctx, now, out, "north-screen") is False
     assert H.handle_set_auto({"action": "set_auto", "on": "False"}, ctx, now, out, "north-screen") is False

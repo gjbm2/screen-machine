@@ -193,6 +193,7 @@ class RoomLink:
         self._cfg_trigger: Any = _BAD                 # the status revision that last triggered a fetch
         self._cfg_next = 0.0
         self._view: contract.RoomView = _empty_view()
+        self._excluded: frozenset = frozenset()     # screens of the status's "show": false rooms (_build)
         self._seen: OrderedDict[str, set] = OrderedDict()
         self._info: OrderedDict[str, dict] = OrderedDict()
         self._baselined = False
@@ -207,8 +208,9 @@ class RoomLink:
     def provides(self) -> dict:
         # room_patch: Stage 4 (the director's screens palette); brain.add sets it once contract.BrainContext has
         # the slot (c8), and ignores it until then. room_boot: Stage 5 (README S5.8, the director's source probe).
+        # room_excluded: the screens outside the show (rooms with "show": false), for the director's hand picks
         return {"room": self.view, "room_get": self.get, "room_put": self.put, "room_patch": self.patch,
-                "room_boot": self.room_boot}
+                "room_boot": self.room_boot, "room_excluded": self.excluded_screens}
 
     def configure(self, settings: dict) -> None:
         r = settings.get("room") if isinstance(settings, dict) else None
@@ -292,6 +294,11 @@ class RoomLink:
         svc = st.get("service") if isinstance(st, dict) else None
         v = svc.get("started_at") if isinstance(svc, dict) else None
         return None if v is None else str(v)
+
+    def excluded_screens(self) -> frozenset:
+        """The screens of the rooms with ``"show": false`` in the last status (room_service rooms[]): outside the
+        show. Empty (every screen in the show, as before) when no room sets it. Safe from any thread."""
+        return self._excluded
 
     def view(self) -> contract.RoomView:
         v, t, now = self._view, self._status_at, self._mono()
@@ -471,8 +478,17 @@ class RoomLink:
                 if isinstance(x, dict):
                     members[f"{s}.{m}"] = {"believed": x.get("believed"), "confidence": x.get("confidence", "unknown"),
                                            "age_s": _num(x.get("age_s")), "sent_age_s": _num(x.get("sent_age_s"))}
+        # "show": false rooms (status rooms[], present only when set): their screens are outside the show, so the
+        # director's palette, compose's enabled set and the ensemble's live list never see them
+        excluded = frozenset(s for r in (d.get("rooms") if isinstance(d.get("rooms"), list) else [])
+                             if isinstance(r, dict) and r.get("show") is False
+                             for s in (r.get("screens") if isinstance(r.get("screens"), list) else [])
+                             if isinstance(s, str))
+        self._excluded = excluded
         screens = {}
         for sid, sc in (d.get("screens") or {}).items():
+            if sid in excluded:
+                continue
             obs = (sc or {}).get("observed") or {}
             phase = obs.get("phase")
             screens[sid] = {"layer": obs.get("layer"), "phase": phase,

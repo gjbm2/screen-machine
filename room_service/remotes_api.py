@@ -1,7 +1,8 @@
 """Routes for the devices worked by the RM4 Pro's remotes (adapters/broadlink_rf.py, rf_light.py): add, remove, learn
 and test them in Settings › Lights (setup lives in Settings; the main pages operate). Config-driven: a device exists
-once it is added (its file in config/room/rf/, a card in its room in rooms.json), made from a device type
-(config/room/rf/types/). Open, like the rest of the AV stack (owner, 14 Oct). Registered from api.py.
+once it is added (its file in the deployment's room/rf/, a card in its room in rooms.json), made from a device type
+(config/room/rf/types/, shared). With the deployment's rf capability off, adding is refused (409 rf_off). Open, like
+the rest of the AV stack (owner, 14 Oct). Registered from api.py.
 
   GET    /api/v1/remotes                 every device added: its type, room, buttons (learned or not), the learn in
                                          progress, and a light's record of what it is doing; plus the types and RM4 Pros
@@ -45,10 +46,19 @@ def _err(status: int, code: str, detail: str = "") -> web.Response:
 
 
 def register(app: web.Application, svc: "RoomService") -> None:
+    def zones() -> list:
+        zs = getattr(svc, "zones", None)
+        return zs.all() if zs is not None else []
+
+    def owner(t: str):
+        """The coordinator that owns a target (its mode zone's; the site's without zones)."""
+        return svc.zones.for_target(t).coordinator
+
     def remotes() -> dict[str, tuple[Remote, list]]:
+        """The RM4 Pro devices and their adapters, from the raw shared adapters (svc.adapters): the isinstance checks
+        below need the adapters themselves, never a zone's ScopedAdapter."""
         out: dict[str, tuple[Remote, list]] = {}
-        coord = getattr(svc, "coordinator", None)
-        for a in (coord.adapters.values() if coord else ()):
+        for a in list(getattr(svc, "adapters", None) or ()):
             r = getattr(a, "remote", None)
             if isinstance(r, Remote):
                 out.setdefault(r.id, (r, []))[1].append(a)
@@ -106,7 +116,8 @@ def register(app: web.Application, svc: "RoomService") -> None:
             return a.now.get(m)
         if isinstance(a, RemoteSettingsAdapter):
             return a.remote.sent.get(m)
-        return ((svc.coordinator.s.get("believed") or {}).get(f"{a.subsystem}.{m}") or {}).get("value")
+        t = f"{a.subsystem}.{m}"
+        return ((owner(t).s.get("believed") or {}).get(t) or {}).get("value")
 
     def state_rows(adapters: list) -> list[dict]:
         return [{"target": f"{a.subsystem}.{m}", "label": a.label(m), "schema": a.value_schema(m), "value": believed(a, m)}
@@ -145,6 +156,8 @@ def register(app: web.Application, svc: "RoomService") -> None:
     async def add(request: web.Request) -> web.Response:
         b = await body(request)
         model, label, room = str(b.get("model") or ""), str(b.get("label") or "").strip(), str(b.get("room") or "")
+        if not broadlink_rf.rf_enabled():
+            return _err(409, "rf_off", "this deployment has no RF devices (its rf capability is off in deployment.yaml)")
         have = remotes()
         hosts = sorted({r.rm.host for r, _ in have.values() if r.rm.host})
         host = str(b.get("host") or (hosts[0] if len(hosts) == 1 else "")).strip()
@@ -162,7 +175,7 @@ def register(app: web.Application, svc: "RoomService") -> None:
         if not added:
             path.unlink(missing_ok=True)
             return _err(500, "not_loaded", f"{path.name} didn't load; see the room log")
-        taken = set(svc.coordinator.adapters)
+        taken = {a.subsystem for a in svc.adapters}.union(*(z.coordinator.adapters for z in zones()))
         clash = [a.subsystem for a in added if a.subsystem in taken]
         if clash:
             path.unlink(missing_ok=True)
@@ -179,8 +192,7 @@ def register(app: web.Application, svc: "RoomService") -> None:
             return got
         r, adapters = got
         subs = {a.subsystem for a in adapters}
-        cfg = svc.coordinator.cfg
-        using = sorted({m.label or name for name, m in cfg.modes.items()
+        using = sorted({m.label or name for z in zones() for name, m in z.coordinator.cfg.modes.items()
                         if any(t.split(".", 1)[0] in subs for t in m.state)})
         if using:
             return _err(409, "in_modes", f"{', '.join(using)} still set it: take it out of those modes first")
@@ -306,7 +318,7 @@ def register(app: web.Application, svc: "RoomService") -> None:
                 elif isinstance(a, RemoteSettingsAdapter):
                     r.remember(m, v)
                 else:
-                    svc.coordinator.assume(t, v, cause="put right on the light setup page")
+                    owner(t).assume(t, v, cause="put right on the light setup page")
                 touched.add(sub)
         except ValueError as e:
             return _err(400, "bad_value", str(e))
@@ -314,7 +326,8 @@ def register(app: web.Application, svc: "RoomService") -> None:
             return _err(409, e.code, str(e))
         for sub in touched:                      # the room reads the corrected record now, not in 5 s
             if by_sub[sub].kind == "level":
-                await svc.coordinator.reconcile_tick(sub)
+                for z in zones():                # each zone reads its own members of it
+                    await z.coordinator.reconcile_tick(sub)
         svc.events.mark_dirty()
         return web.json_response(view(r, adapters))
 

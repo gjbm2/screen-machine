@@ -6,8 +6,8 @@
   - plus show.yaml's senders that are not ``on_demand``;
   - plus the ``on_demand`` senders whose test is running.
   Each becomes ``Sender(name, host=hosts[0], port, streams, hosts=tuple(hosts), on_demand)``: ``hosts`` is the
-  ordered fallback list the receiver tries (device addresses live in config/room/, never in code). A bad entry is
-  skipped and listed in ``errors``.
+  ordered fallback list the receiver tries (device addresses live in the deployment's show.yaml layer, never in
+  code). A bad entry is skipped and listed in ``errors``.
 - **Test sources** (``POST/DELETE/GET /api/v1/test``): ``piano`` plays a .mid (or a built-in phrase) through 98's
   ``tools/show_sender/show_sender.py --test-piano``; ``audio`` plays a music file through ``show_service.test_audio``
   as the stream ``test-audio``. Both are children of show_service on localhost, bound to 127.0.0.1 on their show.yaml
@@ -31,10 +31,14 @@ test-source words to the program that plays them; senders, ports, streams, folde
   ``file`` exists under its ``root`` (or the file's top-level ``root``; ~ expanded); ordered by ``order``. No file: the
   windows-gs entry alone. ``default_instrument``: the file's ``default`` when offered, else the windows-gs one, else
   the first. ``OUTPUTS``: "pc22" (PC22 speakers) or "none" (screens only), plus **Play on Sonos** (22 Oct): one
-  ``"sonos:<zone>"`` ("Sonos (<room>)") per zone in config/room/sonos.json (``SONOS_FILE``, room_service's; re-read
-  every RELOAD_S; a zone key outside NAME_OK is skipped and listed in ``errors``), offered while a rendered sound is
-  offered and the piano script names ``"sonos:"`` and ``--title`` (SONOS_FLAGS). The Windows synth plays only on
-  PC22: asked for on Sonos, it plays on PC22 and the status says so in ``error`` (degrade, never refuse).
+  ``"sonos:<zone>"`` ("Sonos (<room>)") per zone in deployments/<id>/room/sonos.json (``SONOS_FILE``, room_service's;
+  absent: no Sonos; re-read every RELOAD_S; a zone key outside NAME_OK is skipped and listed in ``errors``), offered
+  while a rendered sound is offered and the piano script names ``"sonos:"`` and ``--title`` (SONOS_FLAGS). The Windows
+  synth plays only on PC22: asked for on Sonos, it plays on PC22 and the status says so in ``error`` (degrade, never
+  refuse). The windows-gs sound and "pc22" exist only where the deployment can play them (``WINDOWS_SOUND``:
+  deployment.yaml ``host.windows_python`` set); elsewhere only rendered sounds are offered (none installed: a start is
+  refused "unknown_instrument") and the default output (``DEFAULT_OUTPUT``, ``choices()``' ``default_output``) is
+  "none".
 - ``start_test(source, piece, instrument, output, once)``: the piano's defaults are windows-gs (a POST without an
   instrument keeps today's sound for scripts and other sessions; the Room page always names one), "pc22", and
   once = False for a library piece, True for ``rec:<id>`` (a recording in recorder.py's folder, played by its absolute
@@ -105,9 +109,18 @@ STARTING = ("starting", "preparing")             # fast-polled; "preparing": the
 INSTRUMENTS_FILE = contract.REPO_ROOT / "config/piano/instruments.json"
 LIVE_ENGINE = "windows-gs"
 LIVE_INSTRUMENT = {"id": "windows-gs", "label": "Basic (Windows synth)", "kind": "live"}
-OUTPUTS: tuple[dict[str, str], ...] = ({"id": "pc22", "label": "PC22 speakers"}, {"id": "none", "label": "Screens only"})
-DEFAULT_OUTPUT = "pc22"
 SILENT_OUTPUT = "none"
+#: PC22's speakers and its GS synth (pc22_synth.py, run by Windows Python): only where the deployment can play them
+#: (deployment.yaml ``host.windows_python`` set; finsbury's is). Elsewhere neither is offered and the piano's default
+#: output is the screens only.
+WINDOWS_SOUND = contract.DEPLOYMENT.host_path("windows_python") is not None
+#: the Windows machine's words (audit SHOW-6): deployment.yaml ``wording.windows_host`` / ``wording.windows_speakers``
+#: (finsbury: "PC22" / "PC22 speakers"), else generic ones
+WINDOWS_HOST_WORDS = contract.DEPLOYMENT.words("windows_host", "this PC")
+WINDOWS_SPEAKERS_WORDS = contract.DEPLOYMENT.words("windows_speakers", "This PC's speakers")
+OUTPUTS: tuple[dict[str, str], ...] = (({"id": "pc22", "label": WINDOWS_SPEAKERS_WORDS},) if WINDOWS_SOUND else ()) + (
+    {"id": SILENT_OUTPUT, "label": "Screens only"},)
+DEFAULT_OUTPUT = "pc22" if WINDOWS_SOUND else SILENT_OUTPUT
 # a phone or tablet playing PC22's piano itself ("This device", piano_live.py): "device:<its id>". The piano plays
 # there only (PC22 and Sonos quiet, show_sender runs as for "none"); piano_live lets that device's stream hear it.
 DEVICE_PREFIX = "device:"
@@ -139,8 +152,9 @@ RENDER_FLAGS = frozenset(("--instrument", "--output", "--status-file"))
 SONOS_PREFIX = "sonos:"                # an output "sonos:<zone>": a zone of SONOS_FILE (Play on Sonos)
 SONOS_FLAGS = frozenset(("--title", SONOS_PREFIX))     # show_sender's Sonos output (its text names "sonos:")
 #: room_service's Sonos zones (screen-machine-ff's file, read only): {"zones": {<zone>: {"room", "ip", ...}}}
-SONOS_FILE = contract.REPO_ROOT / "config/room/sonos.json"
-LIVE_ON_SONOS = "The Windows synth plays on PC22 only, so it's playing there; pick a rendered sound for Sonos."
+SONOS_FILE = contract.DEPLOYMENT.path("room", "sonos.json")   # absent: this site has no Sonos
+LIVE_ON_SONOS = (f"The Windows synth plays on {WINDOWS_HOST_WORDS} only, so it's playing there; pick a rendered sound "
+                 f"for Sonos.")
 PIANO_REPLAY = contract.REPO_ROOT / "stream_service" / "piano_replay.py"   # PHRASE_LABELS, read by file path
 NAME_OK = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_.")
 
@@ -179,6 +193,7 @@ def parse_senders(settings: dict) -> tuple[list[Sender], list[str]]:
     if not isinstance(raw, dict):
         return [], ["senders: not a mapping (ignored)"]
     out, errors = [], []
+    site_midi = contract.midi_streams(settings)
     for name, spec in raw.items():
         where = f"senders.{name}"
         if not isinstance(name, str) or not name or not set(name) <= NAME_OK:
@@ -209,8 +224,16 @@ def parse_senders(settings: dict) -> tuple[list[Sender], list[str]]:
         if not isinstance(on_demand, bool):
             errors.append(f"{where}.on_demand: {on_demand!r} is not true/false (skipped)")
             continue
+        midi = spec.get("midi", [])
+        if isinstance(midi, str):
+            midi = [midi]
+        if not isinstance(midi, list) or not all(isinstance(m, str) and m and set(m) <= NAME_OK for m in midi):
+            errors.append(f"{where}.midi: needs a list of stream names (ignored)")
+            midi = []
+        streams = list(dict.fromkeys(list(streams) + midi))      # a MIDI stream it names is asked for too
         hs = tuple(h.strip() for h in hosts)
-        out.append(Sender(name, hs[0], port, tuple(streams), hosts=hs, on_demand=on_demand))
+        out.append(Sender(name, hs[0], port, tuple(streams), hosts=hs, on_demand=on_demand,
+                          midi=tuple(st for st in streams if st in site_midi)))
     return out, errors
 
 
@@ -292,6 +315,11 @@ def _num_or(v: Any, default: float) -> float:
     return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and v == v else default
 
 
+def _live_rows() -> list[dict]:
+    """The windows-gs entry alone where the deployment has the Windows synth (WINDOWS_SOUND), else nothing."""
+    return [dict(LIVE_INSTRUMENT, engine=LIVE_ENGINE)] if WINDOWS_SOUND else []
+
+
 def load_instruments(path: pathlib.Path = INSTRUMENTS_FILE) -> tuple[list[dict], Optional[str], list[str]]:
     """config/piano/instruments.json -> (the offered instruments in order, each ``{"id", "label", "kind", "engine"}``;
     the file's ``default``; problems). A missing file: the windows-gs entry alone; an unreadable one: the same, and a
@@ -300,16 +328,16 @@ def load_instruments(path: pathlib.Path = INSTRUMENTS_FILE) -> tuple[list[dict],
     try:
         doc = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
     except FileNotFoundError:
-        return [dict(LIVE_INSTRUMENT, engine=LIVE_ENGINE)], None, []
+        return _live_rows(), None, []
     except (OSError, ValueError) as e:
-        return ([dict(LIVE_INSTRUMENT, engine=LIVE_ENGINE)], None,
+        return (_live_rows(), None,
                 [f"{path.name}: not read ({type(e).__name__}: {e}): only the Windows synth is offered"])
     top = doc if isinstance(doc, dict) else {}
     raw = top.get("instruments") if isinstance(doc, dict) else doc
     if isinstance(raw, dict):
         raw = [{"id": k, **v} for k, v in raw.items() if isinstance(v, dict)]
     if not isinstance(raw, list):
-        return [dict(LIVE_INSTRUMENT, engine=LIVE_ENGINE)], None, [f"{path.name}: no instruments list"]
+        return _live_rows(), None, [f"{path.name}: no instruments list"]
     root_top = top.get("root") if isinstance(top.get("root"), str) else None
     rows, problems = [], []
     for i, spec in enumerate(raw):
@@ -321,6 +349,8 @@ def load_instruments(path: pathlib.Path = INSTRUMENTS_FILE) -> tuple[list[dict],
             continue
         label = spec.get("label") if isinstance(spec.get("label"), str) and spec.get("label") else iid
         if engine == LIVE_ENGINE:
+            if not WINDOWS_SOUND:
+                continue                                 # no Windows synth on this deployment: not offered
             kind = "live"
         else:
             f = spec.get("file")
@@ -350,7 +380,7 @@ def load_instruments(path: pathlib.Path = INSTRUMENTS_FILE) -> tuple[list[dict],
 
 
 def load_sonos_outputs(path: pathlib.Path = SONOS_FILE) -> tuple[list[dict], list[str]]:
-    """config/room/sonos.json -> (the Sonos outputs in file order, ``{"id": "sonos:<zone>", "label": "Sonos
+    """deployments/<id>/room/sonos.json -> (the Sonos outputs in file order, ``{"id": "sonos:<zone>", "label": "Sonos
     (<room>)"}``; problems). A missing file: none, quietly; an unreadable one or a bad zone key: listed."""
     try:
         doc = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
@@ -372,7 +402,8 @@ def load_sonos_outputs(path: pathlib.Path = SONOS_FILE) -> tuple[list[dict], lis
 
 
 def sonos_rooms(path: pathlib.Path = SONOS_FILE) -> dict[str, str]:
-    """config/room/sonos.json -> {zone: its Sonos room name} ({} when it can't be read; load_sonos_outputs says why)."""
+    """deployments/<id>/room/sonos.json -> {zone: its Sonos room name} ({} when it can't be read; load_sonos_outputs
+    says why)."""
     try:
         doc = json.loads(pathlib.Path(path).read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -424,7 +455,7 @@ def calibration_mic(settings: dict, output: Optional[str], *, rooms: Optional[di
             m = streams_h.get(st) if isinstance(streams_h.get(st), dict) else {}
             kind = m.get("kind")
             if (st in contract.TEST_STREAMS or st.startswith("test-") or m.get("test") or kind == "midi"
-                    or (kind in (None, "unknown") and st in contract.MIDI_STREAMS)):
+                    or (kind in (None, "unknown") and (st in contract.MIDI_STREAMS or st in s.midi))):
                 continue
             return st, f"show.yaml sender {s.name} ({label})"
     return None, f"no room mic in show.yaml's senders is labelled for {where}"
@@ -640,9 +671,11 @@ class Sources:
         return [{"id": r["id"], "label": r["label"], "kind": r["kind"]} for r in rows], default
 
     def choices(self) -> dict:
-        """GET /api/v1/test's ``instruments``, ``default_instrument`` and ``outputs``."""
+        """GET /api/v1/test's ``instruments``, ``default_instrument``, ``outputs`` and ``default_output`` (where a
+        start that names none plays: DEFAULT_OUTPUT)."""
         rows, default = self.instruments()
-        return {"instruments": rows, "default_instrument": default, "outputs": self._outputs()}
+        return {"instruments": rows, "default_instrument": default, "outputs": self._outputs(),
+                "default_output": DEFAULT_OUTPUT}
 
     def start_test(self, source: str, piece: Optional[str] = None, instrument: Optional[str] = None,
                    output: Optional[str] = None, once: Optional[bool] = None,
@@ -682,10 +715,13 @@ class Sources:
         spec: Optional[dict] = None
         out = None
         if midi:
-            rows, _ = self._instruments()
-            iid = instrument if instrument is not None else LIVE_ENGINE   # unnamed: today's sound (not the file's default)
+            rows, dflt = self._instruments()
+            # unnamed: today's sound (not the file's default); without the Windows synth, the default
+            iid = instrument if instrument is not None else (LIVE_ENGINE if WINDOWS_SOUND else dflt)
             spec = next((r for r in rows if r["id"] == iid), None)
             if spec is None:
+                log.warning("test %s: instrument %s isn't offered here (offered: %s)", source, iid,
+                            ", ".join(r["id"] for r in rows) or "none")
                 raise ValueError("unknown_instrument")
             out = output if output is not None else self._room_output()
             if not is_device(out) and out not in {o["id"] for o in self._outputs()}:
@@ -779,7 +815,7 @@ class Sources:
 
     def _instruments(self) -> tuple[list[dict], Optional[str]]:
         """(offered rows with their engine, the default id), instruments.json re-read every RELOAD_S. Nothing offered:
-        the Windows synth (degrade to today's sound)."""
+        the Windows synth (degrade to today's sound); without one (WINDOWS_SOUND), nothing and None."""
         now = self.clock()
         if self._instr is None or now - self._instr_at >= contract.RELOAD_S:
             self._instr, self._instr_at = load_instruments(self.instruments_file), now
@@ -787,7 +823,9 @@ class Sources:
         if not RENDER_FLAGS <= self._sender_flags():          # an older show_sender: today's sound only
             rows = [r for r in rows if r.get("engine") == LIVE_ENGINE]
         if not rows:
-            rows = [dict(LIVE_INSTRUMENT, engine=LIVE_ENGINE)]
+            rows = _live_rows()
+        if not rows:
+            return [], None
         ids = [r["id"] for r in rows]
         if want in ids:
             return rows, want

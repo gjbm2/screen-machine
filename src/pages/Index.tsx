@@ -25,8 +25,16 @@ import { useUploadedImages } from '@/hooks/image-generation/use-uploaded-images'
 import { useReferenceImages } from '@/contexts/ReferenceImagesContext';
 import { useReferenceImagesAdapter } from '@/hooks/context-adapter';
 import { JobsDock } from '@/components/jobs/JobsDock';
+import { useDeployment } from '@/hooks/useDeployment';
+import { capabilityOn } from '@/shared/api/deployment';
+
+const GENERATION_OFF_MESSAGE = 'Generation is off in this deployment';
 
 const Index = () => {
+  // capabilities.generation off: the prompt form says so and won't submit (buckets, publishing and the rest still work).
+  // While the deployment is unknown (loading, or the request failed) the form is left as it is.
+  const { deployment } = useDeployment();
+  const generationOff = capabilityOn(deployment, 'generation') === false;
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -206,6 +214,17 @@ const Index = () => {
     const hasRunParam = searchParams.get('run');
     if (hasRunParam) {
       const timer = setTimeout(() => {
+        if (generationOff) {
+          addConsoleLog({
+            type: 'info',
+            message: 'URL parameter: run=true ignored (generation is off in this deployment)'
+          });
+          toast.error(GENERATION_OFF_MESSAGE);
+          const newParams = new URLSearchParams(searchParams);
+          newParams.delete('run');
+          navigate(`/?${newParams.toString()}`, { replace: true });
+          return;
+        }
         const currentPromptValue = promptParam ? processUrlParam(promptParam) : currentPrompt;
         
         if (currentPromptValue || Object.keys(workflowParamsObj).length > 0) {
@@ -253,7 +272,8 @@ const Index = () => {
     selectedRefiner, 
     refinerParams, 
     selectedPublish, 
-    navigate
+    navigate,
+    generationOff
   ]);
 
   const handleOpenAdvancedOptions = useCallback(() => {
@@ -457,6 +477,7 @@ const Index = () => {
           onWorkflowChange={setCurrentWorkflow}
           onRefinerChange={handleRefinerChange}
           onPublishChange={handlePublishChange}
+          generationOff={generationOff}
         />
         
         <ImageDisplay 
@@ -471,7 +492,7 @@ const Index = () => {
           workflow={currentWorkflow}
           generationParams={currentParams}
           onUseGeneratedAsInput={handleUseGeneratedAsInput}
-          onCreateAgain={handleCreateAgain}
+          onCreateAgain={generationOff ? () => toast.error(GENERATION_OFF_MESSAGE) : handleCreateAgain}
           onReorderContainers={handleReorderContainers}
           onDeleteImage={handleDeleteImage}
           onDeleteContainer={handleDeleteContainer}

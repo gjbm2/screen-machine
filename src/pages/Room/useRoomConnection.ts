@@ -5,10 +5,15 @@
 //   - the modes, the catalog and /healthz, re-read whenever the socket (re)opens.
 //
 // The page never sends anything on the events socket; the server only sends.
+//
+// Mode zones (rooms with their own modes; status.zones, only when one exists): "mode.transition" is always the site's,
+// as before; "room_mode.transition" (data.room) updates only that zone's transition. Each zone's modes are read with
+// GET /api/v1/modes?room=, again whenever that zone's config.revision changes. Without zones none of this runs.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { explainError, RoomApi, RoomApiError } from "./api";
 import { stepGoingLive } from "./words";
+import { patchSteps, patchZoneStatus, trackFromEvent, trackFromStatus } from "./zones";
 import type {
   Catalog,
   Library,
@@ -103,6 +108,10 @@ export function useRoomConnection(baseUrl: string) {
   const [log, setLog] = useState<LogEntry[]>([]);
   const [statusCount, setStatusCount] = useState(0);
   const [transition, setTransition] = useState<TrackedTransition | null>(null);
+  // Mode zones only (status.zones): each zone's modes, its last modes-read failure, and its tracked transition.
+  const [zoneModes, setZoneModes] = useState<Record<string, Record<string, ModeDef>>>({});
+  const [zoneModesError, setZoneModesError] = useState<Record<string, string>>({});
+  const [zoneTransitions, setZoneTransitions] = useState<Record<string, TrackedTransition | null>>({});
   // Bumped to force a fresh connection.
   const [nonce, setNonce] = useState(0);
 
@@ -158,6 +167,9 @@ export function useRoomConnection(baseUrl: string) {
     setCatalogError(null);
     setModesError(null);
     setTransition(null);
+    setZoneModes({});
+    setZoneModesError({});
+    setZoneTransitions({});
     setStatusCount(0);
     setConn(INITIAL_CONN);
 
@@ -183,42 +195,50 @@ export function useRoomConnection(baseUrl: string) {
     let libraryTimer: ReturnType<typeof setTimeout> | null = null;
     const pendingMasks = new Map<string, ScreenMask>();
     const ac = new AbortController();
+    /** Mode zones: the config.revision each zone's modes were last read at ("" while a read is out or failed). */
+    const zoneRevs = new Map<string, string>();
+    let zoneIds: string[] = [];
+
+    const refreshZoneModes = async (zone: string, rev: string) => {
+      zoneRevs.set(zone, rev);
+      try {
+        const m = await api.modes(ac.signal, zone);
+        if (!alive) return;
+        setZoneModes((prev) => ({ ...prev, [zone]: m?.modes ?? {} }));
+        setZoneModesError((prev) => {
+          if (!(zone in prev)) return prev;
+          const { [zone]: _gone, ...rest } = prev;
+          return rest;
+        });
+      } catch (e) {
+        if (!alive) return;
+        zoneRevs.delete(zone); // the next status tries again
+        setZoneModesError((prev) => ({ ...prev, [zone]: explainError(e) }));
+        reportError(e);
+      }
+    };
+
+    /** A status's zones: each one's tracked transition, and its modes read when new or its file changed. */
+    const applyZones = (s: RoomStatus) => {
+      const zones = Array.isArray(s?.zones) ? s.zones : [];
+      if (!zones.length && !zoneIds.length) return; // no zones: nothing, as before
+      zoneIds = zones.map((z) => z.room);
+      setZoneTransitions((prev) => {
+        const next: Record<string, TrackedTransition | null> = {};
+        for (const z of zones) next[z.room] = trackFromStatus(prev[z.room] ?? null, z.mode);
+        return next;
+      });
+      for (const z of zones) {
+        const rev = z.config?.revision ?? "";
+        if (!zoneRevs.has(z.room) || (rev && zoneRevs.get(z.room) !== rev)) void refreshZoneModes(z.room, rev);
+      }
+    };
 
     const applyStatus = (s: RoomStatus) => {
       setStatus(s);
       patchConn({ lastStatusAt: Date.now(), lastError: null });
-      const t = s?.mode?.transition;
-      // Not in LIVE_V1 §3, read if present: room_service keeps the finished transition here
-      // (transition goes null when it ends), with its real outcome.
-      const last = s?.mode?.last_transition;
-      setTransition((prev) => {
-        if (t && t.id) {
-          const finished = prev && prev.id === t.id && (prev.phase === "done" || prev.phase === "cancelled");
-          return { ...t, phase: finished ? prev.phase : "running", finishedAt: finished ? prev.finishedAt : undefined };
-        }
-        if (last && last.id) {
-          // Also covers a page opened after the transition ended, or one that missed the events.
-          const seen = prev && prev.id === last.id ? prev.finishedAt : undefined;
-          // status sends finished_age_s (seconds since it ended) when it has no finished_at: a switch 87 min old
-          // is 87 min old, not "just now" (it showed "Now Normal" for 15 s on every page open).
-          const ageS = (last as { finished_age_s?: number | null }).finished_age_s;
-          const at =
-            seen ??
-            (last.finished_at
-              ? Date.parse(last.finished_at)
-              : typeof ageS === "number" && Number.isFinite(ageS)
-                ? Date.now() - ageS * 1000
-                : NaN);
-          return {
-            ...last,
-            phase: last.phase === "cancelled" ? "cancelled" : "done",
-            finishedAt: Number.isFinite(at) ? at : Date.now(),
-          };
-        }
-        // Status dropped the transition, so it is over. Keep it on screen with its outcome.
-        if (prev && prev.phase === "running") return { ...prev, phase: "done", finishedAt: Date.now() };
-        return prev;
-      });
+      setTransition((prev) => trackFromStatus(prev, s?.mode));
+      applyZones(s);
       // stream_service came back: its catalog may have changed (or never loaded).
       const reachable = s?.stream_service?.reachable;
       const cameBack = reachable === true && streamReachable === false;
@@ -305,6 +325,7 @@ export function useRoomConnection(baseUrl: string) {
         reportError(c.reason);
       }
       if (h.status === "fulfilled") patchConn({ version: h.value?.version ?? null });
+      for (const z of zoneIds) void refreshZoneModes(z, zoneRevs.get(z) ?? "");
       metaOk = m.status === "fulfilled" && c.status === "fulfilled";
     };
 
@@ -371,51 +392,33 @@ export function useRoomConnection(baseUrl: string) {
               : `${td.id ?? ""} ${td.phase ?? ""}`,
             data: ev.data,
           });
-          // Steps carry an id (room_service); match on it, else on subsystem + action. A step not
-          // seen yet (the started event has only a step count) is appended; the next status
-          // push brings the full list anyway.
-          const patchSteps = <T extends { id?: string; steps?: TrackedTransition["steps"] }>(t: T): T => {
-            if (!step || typeof step !== "object") return t;
-            const steps = t.steps ?? [];
-            const i = steps.findIndex((s) =>
-              step.id && s.id ? s.id === step.id : s.subsystem === step.subsystem && s.action === step.action,
-            );
-            return {
-              ...t,
-              steps: i >= 0 ? steps.map((s, j) => (j === i ? { ...s, ...step } : s)) : [...steps, step],
-            };
-          };
-          setTransition((prev) => {
-            if (!prev || prev.id !== td.id) {
-              return td.phase === "started" && td.id
-                ? {
-                    id: td.id,
-                    from: td.from ?? null,
-                    to: td.to ?? null,
-                    steps: [],
-                    phase: "running",
-                    ...(td.source !== undefined ? { source: td.source } : {}),
-                    ...(td.reason !== undefined ? { reason: td.reason } : {}),
-                    ...(td.skip !== undefined ? { skip: td.skip } : {}),
-                  }
-                : prev;
-            }
-            const next = patchSteps(prev);
-            if (td.phase === "done" || td.phase === "cancelled")
-              return {
-                ...next,
-                phase: td.phase,
-                finishedAt: Date.now(),
-                ...(td.status !== undefined ? { status: td.status } : {}),
-                ...(td.detail !== undefined ? { detail: td.detail } : {}),
-              };
-            return next;
-          });
+          // Steps carry an id (room_service); match on it, else on subsystem + action (zones.ts patchSteps).
+          setTransition((prev) => trackFromEvent(prev, td));
           setStatus((prev) => {
             const t = prev?.mode?.transition;
             if (!prev || !t || t.id !== td.id) return prev;
-            return { ...prev, mode: { ...prev.mode, transition: patchSteps(t) } };
+            return { ...prev, mode: { ...prev.mode, transition: patchSteps(t, td.step) } };
           });
+          break;
+        }
+        case "room_mode.transition": {
+          // A mode zone's switch: only that zone's transition (never the site's).
+          const td = d as ModeTransitionEventData;
+          const zone = str(td.room);
+          const step = td.step;
+          addLog({
+            type: ev.type,
+            level: step?.status === "failed" ? "error" : step?.status === "unconfirmed" && !stepGoingLive(step) ? "warn" : "info",
+            summary: `${zone}: ${
+              step
+                ? `${td.id ?? ""} step ${step.subsystem} ${step.action}: ${step.status}${step.detail ? ` (${step.detail})` : ""}`
+                : `${td.id ?? ""} ${td.phase ?? ""}`
+            }`,
+            data: ev.data,
+          });
+          if (!zone) break;
+          setZoneTransitions((prev) => ({ ...prev, [zone]: trackFromEvent(prev[zone] ?? null, td) }));
+          setStatus((prev) => patchZoneStatus(prev, td));
           break;
         }
         case "screen.phase": {
@@ -620,6 +623,9 @@ export function useRoomConnection(baseUrl: string) {
     log,
     statusCount,
     transition,
+    zoneModes,
+    zoneModesError,
+    zoneTransitions,
     addLog,
     clearLog,
     reportError,

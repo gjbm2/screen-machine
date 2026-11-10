@@ -182,9 +182,32 @@ export interface LivePatch {
 /** Thin fetch wrapper. room_service is open (owner, 14 Oct: no auth anywhere in the AV stack). */
 export class RoomApi {
   readonly baseUrl: string;
+  /** A mode zone (a room with its own modes, rooms.json "own_modes"): the modes calls (modes, setMode, roomConfig,
+   *  saveRoomConfig, validateConfig, describe) name it, so they read and switch that room's own modes file. null: the
+   *  site's modes, exactly as before zones. Every other call is the same for every zone. */
+  readonly room: string | null;
+  private readonly zoneApis = new Map<string, RoomApi>();
 
-  constructor(baseUrl: string) {
+  constructor(baseUrl: string, room: string | null = null) {
     this.baseUrl = baseUrl;
+    this.room = room;
+  }
+
+  /** The same room_service, with the modes calls for `room`'s own modes (null: the site's: this one). One per room,
+   *  so it is stable across renders (effects depend on it). */
+  forRoom(room: string | null | undefined): RoomApi {
+    if (!room || room === this.room) return this;
+    let z = this.zoneApis.get(room);
+    if (!z) {
+      z = new RoomApi(this.baseUrl, room);
+      this.zoneApis.set(room, z);
+    }
+    return z;
+  }
+
+  /** "?room=<id>" for a zone's modes calls, "" for the site's (so the site's requests are as before). */
+  private roomQuery(room: string | null = this.room): string {
+    return room ? `?room=${encodeURIComponent(room)}` : "";
   }
 
   eventsUrl(): string {
@@ -280,8 +303,8 @@ export class RoomApi {
     return this.json<RoomStatus>("GET", "/api/v1/status", undefined, signal);
   }
 
-  modes(signal?: AbortSignal) {
-    return this.json<{ modes?: Record<string, ModeDef> }>("GET", "/api/v1/modes", undefined, signal);
+  modes(signal?: AbortSignal, room: string | null = this.room) {
+    return this.json<{ modes?: Record<string, ModeDef> }>("GET", `/api/v1/modes${this.roomQuery(room)}`, undefined, signal);
   }
 
   catalog(signal?: AbortSignal) {
@@ -290,8 +313,12 @@ export class RoomApi {
 
   /** ``via``: which control asked (room_service logs it as the switch's source, "web:<via>"), so a switch nobody
    *  remembers making can be traced to the button that sent it. */
-  setMode(mode: string, via: string) {
-    return this.json<{ transition_id?: string }>("PUT", "/api/v1/mode", { mode, source: `web:${via}` });
+  setMode(mode: string, via: string, room: string | null = this.room) {
+    return this.json<{ transition_id?: string; room?: string }>("PUT", "/api/v1/mode", {
+      mode,
+      source: `web:${via}`,
+      ...(room ? { room } : {}),
+    });
   }
 
   setDesired(screen: string, desired: Desired) {
@@ -417,7 +444,7 @@ export class RoomApi {
   roomConfig(signal?: AbortSignal) {
     return this.json<{ config: RawRoomConfig; revision: string; error: string | null }>(
       "GET",
-      "/api/v1/room/config",
+      `/api/v1/room/config${this.roomQuery()}`,
       undefined,
       signal,
     );
@@ -425,12 +452,21 @@ export class RoomApi {
 
   /** Save the whole modes config; refused (409) if someone saved since `baseRevision`, (400) if invalid. */
   saveRoomConfig(config: RawRoomConfig, baseRevision: string, note: string) {
-    return this.json<{ revision: string }>("PUT", "/api/v1/room/config", { config, base_revision: baseRevision, note });
+    return this.json<{ revision: string }>("PUT", `/api/v1/room/config${this.roomQuery()}`, {
+      config,
+      base_revision: baseRevision,
+      note,
+    });
+  }
+
+  /** The URL of POST /api/v1/room/config/validate (a read-only check of a draft) for this api's modes file. */
+  validateConfigUrl(): string {
+    return `${this.baseUrl}/api/v1/room/config/validate${this.roomQuery()}`;
   }
 
   /** Every target's label and value schema, and every mode's resolved entries (the modes.json view). */
   describe(signal?: AbortSignal) {
-    return this.json<RoomDescribe>("GET", "/api/v1/room/describe", undefined, signal);
+    return this.json<RoomDescribe>("GET", `/api/v1/room/describe${this.roomQuery()}`, undefined, signal);
   }
 
   /** Tell the room what an edge device is doing, without sending anything (a toggle remote after a restart). */

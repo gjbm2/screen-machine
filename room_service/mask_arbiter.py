@@ -243,12 +243,12 @@ class MaskArbiter(MaskPusher):
         if not self._legacy(screen):
             self._flush(screen)
 
-    def set_suspended(self, suspended: bool) -> None:
-        was = self.suspended
-        super().set_suspended(suspended)
+    def set_suspended(self, suspended: bool, scope: str = "main") -> None:
+        was = scope in self.suspended_scopes
+        super().set_suspended(suspended, scope)
         if was and not suspended and (self.armed or self._sourced):
             for sid in self.cfg.screens:
-                if not self._legacy(sid):
+                if self.scope_of(sid) == scope and not self._legacy(sid):
                     self.evaluate(sid)
                     self._flush(sid)
 
@@ -371,7 +371,7 @@ class MaskArbiter(MaskPusher):
 
     # -- shaping and sending -------------------------------------------------------------
     def _can_send(self, screen: str) -> bool:
-        return not self.suspended and not self._is_frozen(screen) and self.pages.any_connected(screen)
+        return not self.held(screen) and not self._is_frozen(screen) and self.pages.any_connected(screen)
 
     def _offer(self, screen: str, mask: dict, t: float, *, arrival: float | None = None,
                hint: str | None = None, flask: bool = False) -> bool:
@@ -387,7 +387,7 @@ class MaskArbiter(MaskPusher):
 
     def _send(self, screen: str, s: Shaped, t: float, *, deferred: bool) -> bool:
         sh = self.shapers[screen]
-        if self.suspended or self._is_frozen(screen):
+        if self.held(screen) or self._is_frozen(screen):
             sh.defer(s)                         # hold: the page keeps what it shows
             self.counts["held_frozen"] += 1
             return False

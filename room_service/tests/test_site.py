@@ -78,6 +78,18 @@ async def test_render_size_names_and_rooms(make_harness, tmp_path: Path) -> None
     assert c._shaped({"base_url": "/output/x.jpg", "viewport": {"w": 1177, "h": 1326}})["viewport"] is None
 
 
+def test_rooms_carry_own_modes_and_show_only_when_set(tmp_path: Path) -> None:
+    from room_service.site import SiteRooms
+    p = tmp_path / "rooms.json"
+    p.write_text(json.dumps({"front": {"screens": ["fs"], "show": True, "own_modes": False},
+                             "back": {"screens": ["bs"], "own_modes": True, "show": False},
+                             "odd": {"screens": [], "own_modes": "yes", "show": 0}}))
+    v = {r["id"]: r for r in SiteRooms(p).view()}
+    assert "own_modes" not in v["front"] and "show" not in v["front"]
+    assert v["back"]["own_modes"] is True and v["back"]["show"] is False
+    assert "own_modes" not in v["odd"] and "show" not in v["odd"]      # only the literal true / false count
+
+
 async def test_art_shape_is_read_from_the_art_file(make_harness, tmp_path: Path) -> None:
     out = tmp_path / "output"
     out.mkdir()

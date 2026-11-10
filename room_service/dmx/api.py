@@ -166,7 +166,9 @@ def register(app: web.Application, svc: "RoomService", is_admin: Callable[[web.R
             return web.json_response({"enabled": False, "fixtures": []})
         fixtures, glob = s.patch.decode(s.rx.dmx)
         have_dmx = s.rx.packets > 0
-        room = svc.coordinator.status()["subsystems"].get("hue", {}).get("members", {})
+        room = {}                                # hue's members as the room holds them, every zone's
+        for z in svc.zones.all():
+            room.update(z.coordinator.status()["subsystems"].get("hue", {}).get("members", {}))
         lights = await bridge_lights(s) if s.hue is not None else {}
         renderers = [c.client_id for c in s.bus.clients if c.role == "renderer"] if s.bus else []
         rows = []

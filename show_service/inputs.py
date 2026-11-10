@@ -2,7 +2,8 @@
 one the room listens to. Nothing is hard-coded: the inputs are show.yaml's senders and what their heartbeats report.
 
 * **Inputs** are the streams of the receiver's permanent senders (show.yaml, not ``on_demand``), less a sender with
-  ``room_sound: false``, test streams, and MIDI (health kind ``midi``, or ``contract.MIDI_STREAMS`` before any data).
+  ``room_sound: false``, test streams, and MIDI (health kind ``midi``, or before any data a MIDI name:
+  ``contract.MIDI_STREAMS``, the sender's ``midi``, show.yaml ``situations.midi.streams``).
   Each carries its sender's ``label`` (show.yaml ``senders.<name>.label``, else the sender's name), its health state
   ("off" also before its first packet while the receiver keeps it off: the mic on demand, mic.py), the device in use
   (the heartbeat's ``dev``) and the devices it could use (the heartbeat's ``devices``; [] when the sender doesn't
@@ -36,6 +37,7 @@ from typing import Any, Callable, Optional
 
 from aiohttp import web
 
+from . import config as cfgmod
 from . import contract
 
 log = logging.getLogger("show_service.inputs")
@@ -50,9 +52,10 @@ def _d(v: Any) -> dict:
 
 class Inputs:
     def __init__(self, health: Callable[[], dict], show_file: Path | str = contract.SHOW_FILE,
-                 state_file: Path | str = INPUT_FILE) -> None:
+                 state_file: Path | str = INPUT_FILE, show_site_file: Any = cfgmod.SITE_AUTO) -> None:
         self._health = health
         self._show_file = Path(show_file)
+        self._show_site = cfgmod.show_site_layer(self._show_file, show_site_file)   # this site's layer (None: none)
         self._file = Path(state_file)
         self._rx: Any = None
         self._stream: Optional[str] = None
@@ -85,20 +88,24 @@ class Inputs:
 
     # -- reading ---------------------------------------------------------------------------------------------------
     def _settings(self) -> dict:
-        try:
-            st = self._show_file.stat()
-            key = (st.st_mtime_ns, st.st_size)
-        except OSError:
+        key = cfgmod.show_signature(self._show_file, self._show_site)   # either layer changed: re-read
+        if key[0][0] == "missing":
             return {}
         if key != self._show[0]:
             try:
-                import yaml
-                data = yaml.safe_load(self._show_file.read_text(encoding="utf-8"))
+                data = cfgmod.read_show(self._show_file, self._show_site)
             except Exception as e:                       # noqa: BLE001
                 log.warning("show.yaml not read for input labels (%s)", e)
                 data = {}
             self._show = (key, data if isinstance(data, dict) else {})
         return self._show[1]
+
+    def _is_midi(self, stream: str, sender: Any) -> bool:
+        """A stream that carries MIDI by name, before its first data says so (audit SHOW-5): the conventional names,
+        the sender's ``midi`` (receiver health), show.yaml's situations.midi.streams and senders.<x>.midi."""
+        midi = sender.get("midi") if isinstance(sender, dict) else None
+        return (stream in contract.MIDI_STREAMS or (isinstance(midi, list) and stream in midi)
+                or stream in contract.midi_streams(self._settings()))
 
     def _h(self) -> dict:
         try:
@@ -125,7 +132,7 @@ class Inputs:
                     continue
                 m = _d(streams.get(st))
                 kind = m.get("kind")
-                if kind == "midi" or (kind in (None, "unknown") and st in contract.MIDI_STREAMS) or m.get("test"):
+                if kind == "midi" or (kind in (None, "unknown") and self._is_midi(st, s)) or m.get("test"):
                     continue
                 snd = _d(m.get("sender"))
                 devs = snd.get("devices")
@@ -153,7 +160,7 @@ class Inputs:
                     continue
                 m = _d(streams.get(st))
                 kind = m.get("kind")
-                if (kind == "midi" or (kind in (None, "unknown") and st in contract.MIDI_STREAMS)) and not m.get("test"):
+                if (kind == "midi" or (kind in (None, "unknown") and self._is_midi(st, s))) and not m.get("test"):
                     out.append({"stream": st, "sender": name, "label": label, "state": m.get("state") or "down"})
         return out
 

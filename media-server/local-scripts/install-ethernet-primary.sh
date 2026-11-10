@@ -19,9 +19,16 @@ PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 NET_DIR="$PROJECT_ROOT/media-server/remote-scripts/network"
 
 set -a; source "$SCRIPT_DIR/.env"; set +a
-HOST="${MEDIA_SERVER_HOST:-192.168.1.92}"     # the Wi-Fi address (stays reachable via the source route)
-USER="${MEDIA_SERVER_USER:-gjbm2}"
+# The kiosk's address and login: local-scripts/.env (MEDIA_SERVER_*) first, else the deployment's kiosk block
+# (deployments/<id>/deployment.yaml) via media-server/kiosk-config.sh
+# shellcheck disable=SC1091
+source "$PROJECT_ROOT/media-server/kiosk-config.sh"
+HOST="${MEDIA_SERVER_HOST:-$(kiosk_get host)}"     # the Wi-Fi address (stays reachable via the source route)
+USER="${MEDIA_SERVER_USER:-$(kiosk_get user)}"
 PORT="${MEDIA_SERVER_PORT:-22}"
+# The public host the kiosk's Chromes load their pages from: the host part of the deployment's kiosk.base_url
+URL_HOST="$(kiosk_get base_url)" || exit 1
+URL_HOST="${URL_HOST#*://}"; URL_HOST="${URL_HOST%%[:/]*}"
 PASS="${MEDIA_SERVER_PASSWORD:?MEDIA_SERVER_PASSWORD missing from media-server/local-scripts/.env}"
 SSH_OPTS=(-q -o StrictHostKeyChecking=no -o LogLevel=ERROR -o ConnectTimeout=8 -p "$PORT")
 SSH=(sshpass -p "$PASS" ssh "${SSH_OPTS[@]}" "$USER@$HOST")
@@ -81,7 +88,7 @@ echo "Ethernet address: ${ETH_IP:-none}"; echo "default route: ${DEF:-none}"
 if [[ -n "$ETH_IP" ]]; then
   sshpass -p "$PASS" ssh "${SSH_OPTS[@]}" "$USER@$ETH_IP" true || { echo "FAIL: no SSH on the Ethernet address $ETH_IP"; ok=0; }
 fi
-"${SSH[@]}" "ping -c 3 -W 2 95.141.21.170 >/dev/null" || echo "WARN: public address (kiosk URL host) not answering ping (may be normal)"
+"${SSH[@]}" "ping -c 3 -W 2 $URL_HOST >/dev/null" || echo "WARN: public address (kiosk URL host) not answering ping (may be normal)"
 
 if (( ok )); then
   sudo_box systemctl stop eth-primary-deadman.timer

@@ -28,7 +28,7 @@ import weakref
 from typing import Optional
 
 from .base import (STAGES, Effect, ParamError, Source, Transition, check_props, is_bindable, iter_plugin_classes,
-                   plugin_kind)
+                   plugin_kind, repaints_colour)
 
 log = logging.getLogger("stream_service.plugins")
 
@@ -347,6 +347,7 @@ class Registry:
                  "origin": getattr(cls, "origin", "core"), "tags": dict(getattr(cls, "tags", {}) or {}),
                  "license_class": getattr(cls, "license_class", "unknown")}
         d["amount_mode"] = getattr(cls, "amount_mode", "native")
+        d["repaints_colour"] = repaints_colour(cls)     # contract C6: a picked palette wins over it
         return d
 
     def broken_list(self) -> list[dict]:

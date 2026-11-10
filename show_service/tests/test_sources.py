@@ -27,7 +27,7 @@ import numpy as np
 import pytest
 import yaml
 
-from show_service import contract, sources, test_audio, vban
+from show_service import config, contract, sources, test_audio, vban
 from show_service.contract import AUDIO_SEGMENT, BrainContext, Config, Sender
 from show_service.receiver import Receiver
 
@@ -153,6 +153,23 @@ def test_parse_senders_reads_hosts_and_skips_bad_entries():
     assert sources.parse_senders({"senders": ["x"]})[1]
 
 
+def test_parse_senders_marks_the_sites_midi_streams():
+    """Audit SHOW-5: a sender's MIDI streams (its midi list, situations.midi.streams, the conventional names) are
+    marked, and a midi name the streams lack is asked for too."""
+    got, errors = sources.parse_senders({
+        "situations": {"midi": {"streams": ["keys"]}},
+        "senders": {"studio": {"hosts": ["s"], "streams": ["studio-mic", "keys"], "midi": ["studio-piano"]},
+                    "kiosk": {"hosts": ["k"], "streams": ["room-mic", "room-piano"]},
+                    "bad": {"hosts": ["b"], "streams": ["x"], "midi": [3]}}})
+    by = {x.name: x for x in got}
+    assert by["studio"].streams == ("studio-mic", "keys", "studio-piano")
+    assert by["studio"].midi == ("keys", "studio-piano") and by["kiosk"].midi == ("room-piano",)
+    assert by["bad"].midi == () and errors == ["senders.bad.midi: needs a list of stream names (ignored)"]
+    if contract.DEPLOYMENT.id == "finsbury":                  # the kiosk's piano, as before
+        real = {x.name: x for x in sources.parse_senders(config.read_show(contract.SHOW_FILE))[0]}
+        assert real["kiosk"].streams == ("room-mic", "room-piano") and real["kiosk"].midi == ("room-piano",)
+
+
 def test_senders_from_settings_static_yaml_and_on_demand():
     settings = {"senders": {
         "kiosk": {"hosts": ["192.0.2.10"], "port": 6980, "streams": ["room-mic"]},
@@ -167,7 +184,7 @@ def test_senders_from_settings_static_yaml_and_on_demand():
 
 
 def test_the_shipped_show_yaml_gives_valid_senders():
-    settings = yaml.safe_load(contract.SHOW_FILE.read_text(encoding="utf-8"))
+    settings = config.read_show(contract.SHOW_FILE)                     # the shared file + this site's layer
     got, errors = sources.parse_senders(settings)
     assert not errors and got
     by = {s.name: s for s in got}

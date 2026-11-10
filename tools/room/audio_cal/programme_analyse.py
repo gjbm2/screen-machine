@@ -32,7 +32,7 @@ beats/<segment>.beats) through the Drawing Room Sonos at timed volumes, records 
      artnet_out's re-phase rule (a crossing within REPHASE_SKIP of a period after the last is that beat re-phased:
      what run_stack.py's flashes do). Host time -> recording sample by a lower-envelope line through tapmap.jsonl
      (``n_end`` against ``a``, the newest packet's arrival: the receiver's own sample-to-host map, show_service/
-     timeline.py) and config/room/latency.json's acoustic offset for the stream; then -> programme time. Scored against
+     timeline.py) and calibration/latency.json's acoustic offset for the stream; then -> programme time. Scored against
      the segment's annotated beats (in programme time; the alignment puts them where the mic heard them) with
      beat_eval/score.py's score_one: F, CMLt, AMLt, hit25, cover, precision while gated, wrong lock, lock time, bpm;
      plus the time to the first gate "beat" and the share of time gated. For the piano, the gated share and the false
@@ -55,7 +55,7 @@ beats/<segment>.beats) through the Drawing Room Sonos at timed volumes, records 
 Modes:
   --gate-test-only  after pass 1: prints {"music_lufs_test", "music_lufs_party", "volume_main", "ladder"} on stdout
                     and writes analysis/gate.json; never the config.
-  --write-config    after pass 2: also sets config/room/audio_cal.json (or --audio-cal-file PATH) streams.<stream>
+  --write-config    after pass 2: also sets calibration/audio_cal.json (or --audio-cal-file PATH) streams.<stream>
                     (run, measured_at, device, summary: music_lufs = the party prediction, ...), merged: every other
                     stream, and every other key of this stream's entry (e.g. a model), stays. A run without a usable
                     ladder takes pass 1's (--pass1, else the newest sibling run of a "pass1-*" programme with a
@@ -97,7 +97,7 @@ import roomsim  # noqa: E402
 
 REPO = HERE.parents[2]
 CONFIG_JSON = A.CONFIG_JSON
-LATENCY_JSON = REPO / "config" / "room" / "latency.json"
+LATENCY_JSON = A.smconfig.path("calibration", "latency.json")
 DSP_PY = REPO / "show_service" / "dsp.py"
 ARTNET_PY = REPO / "show_service" / "artnet_out.py"
 CPU_LOCK = A.CPU_LOCK
@@ -244,7 +244,7 @@ def source_key(s: dict) -> str:
 
 
 def acoustic_offset_ms(stream: str) -> float:
-    """config/room/latency.json ``sources.<stream>.acoustic_offset_ms`` (the receiver adds it to the stream's host
+    """calibration/latency.json ``sources.<stream>.acoustic_offset_ms`` (the receiver adds it to the stream's host
     times, so the clock's times carry it), 0 when absent."""
     v = ((read_json(LATENCY_JSON).get("sources") or {}).get(stream) or {}).get("acoustic_offset_ms")
     return _num(v) or 0.0
@@ -1582,10 +1582,10 @@ def _analyse(run_dir: pathlib.Path, pdir: pathlib.Path, *, write_config, audio_c
     if write_config:
         target = pathlib.Path(audio_cal_file).expanduser().resolve() if audio_cal_file else CONFIG_JSON
         if synthetic and target == CONFIG_JSON.resolve():
-            raise SystemExit("refused: a synthetic run never writes config/room/audio_cal.json (use --audio-cal-file)")
+            raise SystemExit("refused: a synthetic run never writes calibration/audio_cal.json (use --audio-cal-file)")
         if party is None:
             raise SystemExit("refused: no party level (no usable ladder here or in pass 1, or no steady music at the "
-                             "main volume): config/room/audio_cal.json left as it is")
+                             "main volume): calibration/audio_cal.json left as it is")
         summary = {"music_lufs": party,
                    "music_lufs_method": gv["method"],
                    "music_lufs_note": "the music at this mic at party volume as dsp's loudness gate reads it (median "
@@ -1647,7 +1647,7 @@ def main(argv=None) -> int:
                     help="the programme directory (default: run.json programme.dir)")
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--write-config", action="store_true",
-                      help="also set config/room/audio_cal.json (or --audio-cal-file) streams.<stream>")
+                      help="also set the deployment's calibration/audio_cal.json (or --audio-cal-file) streams.<stream>")
     mode.add_argument("--gate-test-only", action="store_true", help="the gate values only: print, gate.json; no config")
     ap.add_argument("--audio-cal-file", type=pathlib.Path, default=None,
                     help=f"the file --write-config merges into (default {CONFIG_JSON.relative_to(REPO)})")

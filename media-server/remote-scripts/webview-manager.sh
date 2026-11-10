@@ -3,8 +3,8 @@ exec 9>/tmp/webview-manager.lock
 flock -n 9 || exit 0
 # Screen-1 -> URL1  Screen-2 -> URL2 (if present).  No forced reloads.
 
-URL1="http://95.141.21.170:8000/display/north-screen"
-URL2="http://95.141.21.170:8000/display/south-screen"
+URL1="@@KIOSK_BASE_URL@@/display/@@KIOSK_SCREEN_NORTH@@"
+URL2="@@KIOSK_BASE_URL@@/display/@@KIOSK_SCREEN_SOUTH@@"
 WIDTH=3840
 HEIGHT=2160
 

@@ -6,10 +6,12 @@ from utils.logger import info, error, warning, debug
 import json
 from pathlib import Path
 
+import smconfig
+
 publish_api = Blueprint('publish_api', __name__)
 
-# Load publish destinations from JSON file
-PUBLISH_DESTINATIONS_FILE = findfile("publish-destinations.json")
+# Load publish destinations from the deployment's JSON file (deployments/<id>/publish-destinations.json)
+PUBLISH_DESTINATIONS_FILE = str(smconfig.path("publish-destinations.json"))
 publish_destinations = _load_json_once("publish_destinations", PUBLISH_DESTINATIONS_FILE)
 
 # Device credentials/addresses are backend-only (Samsung pairing token, LAN IP,

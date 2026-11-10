@@ -1,6 +1,7 @@
 """Show-bus inputs: the beat follower against show-synth songs, liveness, follow_dmx debouncing (no GPU)."""
 from __future__ import annotations
 
+import json
 import math
 import random
 import statistics
@@ -232,3 +233,27 @@ def test_signal_catalog_and_photon_lead(tmp_path):
     assert load_photon(f, "south-screen") == (150.0, "latency.json:south")
     ms, src = load_photon(f, "north-screen")
     assert ms == 150.0 and "no north" in src
+
+
+def test_photon_latency_is_keyed_exactly_before_the_legacy_short_name(tmp_path):
+    """audit stream_flask:F9 / probe:E5: tv-left and tv-right are two measurements, not one 'tv'."""
+    def eff(ms):
+        return {"effective": {"presented_to_photon_ms": ms}}
+    f = tmp_path / "latency.json"
+    f.write_text(json.dumps({"screens": {"tv-left": eff(100.0), "tv-right": eff(300.0), "a": eff(150.0)}}))
+    assert load_photon(f, "tv-left") == (100.0, "latency.json:tv-left")
+    assert load_photon(f, "tv-right") == (300.0, "latency.json:tv-right")
+    ms, src = load_photon(f, "b")                    # no measurement: borrows, flagged (unchanged)
+    assert ms == 100.0 and "(no b measurement)" in src
+    # a fixture's own id or short name is found too
+    f.write_text(json.dumps({"screens": {"left": eff(90.0), "screen.right": eff(110.0)}}))
+    assert load_photon(f, "tv-left", "screen.left") == (90.0, "latency.json:left")
+    assert load_photon(f, "tv-right", "screen.right") == (110.0, "latency.json:screen.right")
+    # finsbury: fixtures screen.north / screen.south, a file with only 'south' -> north borrows, flagged as today
+    f.write_text(json.dumps({"screens": {"south": eff(150.0)}}))
+    assert load_photon(f, "south-screen", "screen.south") == (150.0, "latency.json:south")
+    assert load_photon(f, "north-screen", "screen.north") == (150.0, "latency.json:south (no north measurement)")
+    assert load_photon(f, "screen.north") == (150.0, "latency.json:south (no north measurement)")
+    # the legacy short name still works for a fixture-less screen
+    f.write_text(json.dumps({"screens": {"tv": eff(120.0)}}))
+    assert load_photon(f, "tv-left") == (120.0, "latency.json:tv")

@@ -34,7 +34,8 @@ the brain and (Stage 4) the ML worker's feed, then keep them running.
 
 * **The brain** (README "Stage 3", S3.4) is on unless ``--no-brain`` / ``SHOW_BRAIN=off``; off, the process is exactly
   as before Stage 3 (no taps, no ring, no Stage-3 routes: the rollback switch). Its files come from the options:
-  ``show_file``, ``vibes_file``, and ``state_dir`` (state.json, director/autopilot/listener jsonl, the test children's
+  ``show_file`` with ``show_site_file`` (the shared show.yaml and this site's layer, deployments/<id>/show.yaml),
+  ``vibes_file``, and ``state_dir`` (state.json, director/autopilot/listener jsonl, the test children's
   logs). The engine side of ``contract.BrainContext`` is filled here (README S3.4 "Engine-side slots"); the
   components fill the rest through ``Brain.add``. The director's ``palette_fn`` is Art-Net's palette (None while
   neutral: Art-Net keeps its fixed colour), and ``set_look`` / ``section_change`` go back to the director.
@@ -74,15 +75,15 @@ the brain and (Stage 4) the ML worker's feed, then keep them running.
   routes ride ``_routes`` like inputs.py's; the card's ``mic_state`` is ``Mic.state()``. A mic.py that fails to load
   leaves the receiver holding every room mic off (privacy first), logged.
 * **Stage 5** (README S5.4): with the brain, the rig (``outputs.attach``: the fixture registry, the look engine and
-  the drivers, every output off until config/room/fixtures.yaml enables it) joins the brain last, after the
-  director, fed by reference: ``palette_fn`` and ``look_fn`` (the director's), the clock, ``Features.latest`` and
+  the drivers, every output off until deployments/<id>/lights/fixtures.yaml enables it) joins the brain last, after
+  the director, fed by reference: ``palette_fn`` and ``look_fn`` (the director's), the clock, ``Features.latest`` and
   artnet_out's neutral colour and depth. ``ctx.set_look_out`` fans out to Art-Net out's ``set_look`` and the rig's
   (each guarded, each with only its own keys: the composer's ``plan`` is Art-Net out's, ``beat_depth`` the rig's;
   README S5.18); the ``music.hit`` bodies that reach ``Clock.observe_hit`` also reach ``Rig.on_hit`` (guard
-  "rig.hit"). The registry reads config/room/fixtures.yaml (with the Lights page's fixtures.added.yaml merged under
-  it, README S5.23), the latency file (``--latency-file``) and artnet_out's patch.yaml; nodes.json and follow.json
-  (who follows the music) go to the state dir. ``/api/v1/state`` gains ``rig`` (the Rig snapshot). Stop: the brain
-  stops the rig first (runners, then drivers: Hue gives its area back), then Art-Net out, rx, bus.
+  "rig.hit"). The registry reads deployments/<id>/lights/fixtures.yaml (with the Lights page's fixtures.added.yaml
+  merged under it, README S5.23), the latency file (``--latency-file``) and artnet_out's patch.yaml; nodes.json and
+  follow.json (who follows the music) go to the state dir. ``/api/v1/state`` gains ``rig`` (the Rig snapshot). Stop: the
+  brain stops the rig first (runners, then drivers: Hue gives its area back), then Art-Net out, rx, bus.
 """
 
 from __future__ import annotations
@@ -171,6 +172,11 @@ class _Guard:
                       exc_info=True)
 
 
+def dmx_enabled() -> bool:
+    """deployment.yaml capabilities.dmx: the virtual Maestro (Art-Net out to room's DMX stack) runs only with it."""
+    return contract.DEPLOYMENT.enabled("dmx")
+
+
 def _attr(obj: Any, name: str, default: Any = None) -> Any:
     try:
         v = getattr(obj, name)
@@ -198,6 +204,16 @@ def _set_voice(piano: Any, on: bool, now_s: float) -> None:
     fn = getattr(piano, "set_voice", None)
     if fn is not None:
         fn(on, now_s)
+
+
+def _piano_default_output() -> str:
+    """Where the piano plays when nothing chose: sources.DEFAULT_OUTPUT (PC22's speakers where the deployment has
+    Windows sound, else the screens only); "none" without the sources module."""
+    try:
+        from . import sources  # noqa: PLC0415  (a brain module: optional, loaded by the brain)
+        return sources.DEFAULT_OUTPUT
+    except Exception:                                    # noqa: BLE001
+        return "none"
 
 
 def _present_at(piano: Any, now_s: float) -> bool:
@@ -249,7 +265,8 @@ class Show:
         self.levels = levels_mod.LevelFeed()
         from . import inputs as inputs_mod             # the Room page's Mic choice, GET/PUT /api/v1/input(s)
         self.inputs = inputs_mod.Inputs(self.health, show_file=self.opts.show_file,
-                                        state_file=pathlib.Path(self.opts.state_dir) / "input.json")
+                                        state_file=pathlib.Path(self.opts.state_dir) / "input.json",
+                                        show_site_file=self.opts.show_site_file)
         self.inputs.set_piano(self._piano_view)     # GET /api/v1/inputs: is the piano sending (owner, 25 Oct)
         self.mic: Any = None                           # the mic on demand, GET/PUT /api/v1/mic (README S5.16)
         mic_mod = self._import("mic")
@@ -327,10 +344,10 @@ class Show:
 
     # -- building (main thread) ----------------------------------------------------------------------------------
     def _read_show_file(self) -> dict:
-        """show.yaml, best effort (--no-brain only: the MIDI state channels). Missing or bad: {} (all channels)."""
+        """show.yaml (the base + this site's layer), best effort (--no-brain only: the MIDI state channels). Missing or
+        bad: {} (all channels)."""
         try:
-            import yaml
-            data = yaml.safe_load(pathlib.Path(self.opts.show_file).read_text())
+            data = config.read_show(self.opts.show_file, self.opts.show_site_file)
             return data if isinstance(data, dict) else {}
         except Exception as e:
             log.warning("show.yaml not read (%s): MIDI states describe every channel", e)
@@ -453,6 +470,13 @@ class Show:
     def _virtual_maestro(self, amod: Any, out_cfg: dict) -> Any:
         kw = dict(out_cfg)
         kw["target"] = self.opts.artnet_target          # config.py: --artnet-target over SHOW_ARTNET_TARGET
+        if kw["target"] is not None and not dmx_enabled():
+            # the virtual Maestro feeds room's DMX stack (Art-Net in on :6454): a deployment without the dmx capability
+            # has none, so nothing is sent there (said once, at start)
+            log.warning("Art-Net out to %s:%d off: the dmx capability is off in deployments/%s/deployment.yaml",
+                        kw["target"][0], kw["target"][1], contract.DEPLOYMENT.id)
+            self.modules["artnet_out"] = "off: the dmx capability is off in this deployment"
+            kw["target"] = None
         clock = self.clock if hasattr(self.clock, "next_beat") else None
         features_fn = self.features.latest if self.features is not None else None
         # the director's look (None: the fixed colour); maestro_palette_fn carries the drop's hit as Hue takes it, since
@@ -504,7 +528,7 @@ class Show:
 
     def _piano_output(self) -> Optional[str]:
         """Where the piano is heard now (piano_live's gate): the test piano's output while it plays, else the music
-        player's chosen one (PC22 when it has none)."""
+        player's chosen one (sources.DEFAULT_OUTPUT when it has none: PC22 where the deployment has Windows sound)."""
         src = self._component("sources")
         try:
             st = (src.status() or {}).get("piano") if src is not None else None
@@ -514,7 +538,7 @@ class Show:
             return str(st["output"])
         pl = self._component("player")                   # playlist.py's component is named "player"
         out = getattr(pl, "output", None)
-        return out if isinstance(out, str) and out else "pc22"
+        return out if isinstance(out, str) and out else _piano_default_output()
 
     def _piano_pos(self) -> Optional[dict]:
         """Where the test piano is in its piece now (piano_live's map for a device's own light): {piece, pos_s, at
@@ -605,7 +629,8 @@ class Show:
         self.ctx = ctx
         sd = pathlib.Path(self.opts.state_dir)
         self.brain = self._make("brain", lambda: bmod.Brain(ctx, show_file=pathlib.Path(self.opts.show_file),
-                                                            state_file=sd / "state.json"))
+                                                            state_file=sd / "state.json",
+                                                            show_site_file=self.opts.show_site_file))
         if self.brain is None:
             return
         for name in BRAIN_MODULES:
@@ -796,10 +821,9 @@ class Show:
             return
         try:
             import json
-            import yaml
             path = pathlib.Path(self.cfg.latency_file)
             doc = json.loads(path.read_text()) if path.exists() else None    # none yet: the hand value
-            show = yaml.safe_load(pathlib.Path(self.opts.show_file).read_text()) or {}
+            show = config.read_show(self.opts.show_file, self.opts.show_site_file) or {}
             align = (show.get("looks") or {}).get("align_pct", fmod.ALIGN_PCT)
             hand = {"intensity": {"rise_ms": self._out_cfg.get("hue_latency_ms") or 0.0}}
             lv = fmod.resolve_latency("hue", {"latency_key": "hue", "latency": hand}, doc, align_pct=float(align))

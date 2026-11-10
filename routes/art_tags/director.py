@@ -1,13 +1,16 @@
 """Art tags: the art director's picture maker (docs/ART_TAGS.md). Owner, 27-28 Oct 2026: "connect listening AI with
-artistic director with AI image generator". While the drawing room is in Ambient and a screen's library holds few
-pictures that fit the room's art wish (show_service's direction.art, from the AI listener or the music's group), one
+artistic director with AI image generator". While the room is in one of the art director's modes (the manifest's
+art_director.modes; finsbury: Ambient) and a screen's library holds few pictures that fit the room's art wish (show_service's direction.art, from the AI listener or the music's group), one
 new picture is made for that screen now and then. It goes into the screen's bucket only, never onto the wall; the
-bucket save queues its tagging, and the renderer's gallery re-indexes within a minute, so it joins Ambient's pool.
+bucket save queues its tagging, and the renderer's gallery re-indexes within a minute, so it joins that mode's pool.
+The screens it looks after are those of the manifest's art_director.rooms, else of every rooms.json room with screens.
 
 One daemon thread inside Flask (started next to the tag worker), a pass every interval_s:
-  1. the room's mode (room_service GET :8700/api/v1/status) must be Ambient;
+  1. the room's mode (room_service GET :8700/api/v1/status) must be one of art_director.modes (none named: it never
+     makes anything). A room with its own modes (rooms.json "own_modes": true) is checked by its zone's mode, the
+     others by the site's, and only the screens of rooms in one of those modes count;
   2. the art wish (show_service GET :8703/api/v1/look -> direction.art) must be there and not via "none";
-  3. each of the room's screens: count its strong matches of the wish's LEAD subject (tagged, auto_ok; that subject,
+  3. each of its rooms' screens: count its strong matches of the wish's LEAD subject (tagged, auto_ok; that subject,
      no avoided subject, and a wished mood or a music fit >= 0.7 for the genre heard); fewer than ``thin`` = thin;
   4. one thin screen (the one served longest ago) within the caps gets one picture: one prompt call (utils.llm task
      "prompt") and one generation through the scheduler's own path (generate with no target, then a bucket save with
@@ -28,18 +31,18 @@ from typing import Any, Callable, Optional
 
 import yaml
 
+import smconfig
 from routes.art_tags import lexicon, sidecar
 
-ROOM_URL = os.environ.get("ART_DIRECTOR_ROOM_URL", "http://127.0.0.1:8700")
-SHOW_URL = os.environ.get("ART_DIRECTOR_SHOW_URL", "http://127.0.0.1:8703")
+ROOM_URL = os.environ.get("ART_DIRECTOR_ROOM_URL") or smconfig.url("room")
+SHOW_URL = os.environ.get("ART_DIRECTOR_SHOW_URL") or smconfig.url("show")
 REPO_ROOT = Path(__file__).resolve().parents[2]
-ROOMS_FILE = REPO_ROOT / "routes" / "data" / "rooms.json"
+ROOMS_FILE = smconfig.path("rooms.json")
 SCHEDULER_DIR = REPO_ROOT / "routes" / "scheduler"
-LOG_FILE = Path.home() / ".local" / "state" / "screen-machine" / "logs" / "art_director.jsonl"
+LOG_FILE = smconfig.state("logs", "art_director.jsonl")
 LOG_MAX_BYTES = 5_000_000
 
-ROOM = "drawing-room"
-MODE = "ambient"
+
 SOURCE = "art-director"      # the job tracker's source word
 FIT_MIN = 0.7                # a picture's music fit that counts like a wished mood (the tagger's "good" anchor)
 FIRST_PASS_S = 60.0          # after Flask starts: room_service and the show bus settle first
@@ -62,8 +65,9 @@ GROUP_WORDS = {
     "world": ["world", "latin", "afrobeat", "reggae"],
 }
 
+# {screen} and {space}: the manifest's wording art_screen / art_space (finsbury: "a 4K TV", "a living room").
 PROMPT_SYSTEM = (
-    "You write one prompt for an AI image generator. The picture will hang as art on a 4K TV in a living room while "
+    "You write one prompt for an AI image generator. The picture will hang as art on {screen} in {space} while "
     "music plays, chosen by an art director to suit what is heard. Write a single vivid prompt of 40-80 words: the "
     "subject, the setting, the light, the colour and the medium. It must be 16:9 landscape wall art: no text, "
     "letters, words, signatures, logos, watermarks or frames, and nothing ugly or disturbing. Follow the art wish: "
@@ -122,13 +126,62 @@ def get_json(url: str, timeout: float = 5.0) -> Any:
         return json.loads(r.read().decode("utf-8"))
 
 
-def room_screens(room: str = ROOM) -> list[str]:
-    """The room's screens (routes/data/rooms.json)."""
+def _manifest_section() -> dict:
+    """The manifest's art_director: block ({} when it has none or the manifest can't be read)."""
+    try:
+        return smconfig.deployment().section("art_director")
+    except Exception:                                 # noqa: BLE001 - a bad manifest: the director does nothing
+        return {}
+
+
+def _str_list(v: Any) -> list[str]:
+    """A list of ids; a lone string is a one-id list (as auto_hints.json's "room" is)."""
+    if isinstance(v, str):
+        return [v] if v else []
+    return [x for x in v if isinstance(x, str) and x] if isinstance(v, list) else []
+
+
+def art_modes() -> list[str]:
+    """The room modes the director works in: the manifest's art_director.modes (finsbury: [ambient]). None named:
+    it never makes anything (the modes are this site's own ids)."""
+    return _str_list(_manifest_section().get("modes"))
+
+
+def _rooms_json() -> dict:
     try:
         d = json.loads(ROOMS_FILE.read_text(encoding="utf-8"))
-        return [s for s in (d.get(room) or {}).get("screens") or [] if isinstance(s, str)]
-    except (OSError, ValueError, AttributeError):
-        return []
+    except (OSError, ValueError):
+        return {}
+    return {k: v for k, v in d.items() if not k.startswith("_") and isinstance(v, dict)} if isinstance(d, dict) else {}
+
+
+_said_empty: set = set()
+
+
+def art_rooms() -> list[str]:
+    """The rooms whose screens the director looks after: the manifest's art_director.rooms (finsbury: [drawing-room]),
+    else every rooms.json room that has screens, in file order. A named room without screens is logged once."""
+    rooms = _rooms_json()
+    named = _str_list(_manifest_section().get("rooms"))
+    if not named:
+        return [r for r, v in rooms.items() if _str_list(v.get("screens"))]
+    for r in named:
+        if not _str_list((rooms.get(r) or {}).get("screens")) and r not in _said_empty:
+            _said_empty.add(r)
+            _log("warning", f"art_director.rooms names {r!r}, which has no screens in rooms.json")
+    return named
+
+
+def room_screens(room: Optional[str] = None) -> list[str]:
+    """One room's screens (the deployment's rooms.json); with no room, the screens of every art_rooms() room, each
+    once, in order."""
+    rooms = _rooms_json()
+    out: list[str] = []
+    for r in ([room] if room is not None else art_rooms()):
+        for s in _str_list((rooms.get(r) or {}).get("screens")):
+            if s not in out:
+                out.append(s)
+    return out
 
 
 # -- the art wish and the library ---------------------------------------------------------------------------------
@@ -251,6 +304,13 @@ def pick_screen(thin: list[str], last_at: dict, today_count: int, now: float, cf
 
 
 # -- the prompt and the generation (the defaults; tests inject fakes) ----------------------------------------------
+def prompt_system() -> str:
+    """PROMPT_SYSTEM in this site's words (manifest wording art_screen, art_space; generic: a screen, a room)."""
+    dep = smconfig.deployment()
+    return (PROMPT_SYSTEM.replace("{screen}", dep.words("art_screen", "a screen"))
+            .replace("{space}", dep.words("art_space", "a room")))
+
+
 def write_prompt(wish: dict, genre: Optional[str], character: Any, recent: list[str]) -> dict:
     """One utils.llm call (task "prompt", the app's prompt work) -> {ok, prompt, cost_usd, model, error}."""
     import utils.llm as llm
@@ -267,7 +327,7 @@ def write_prompt(wish: dict, genre: Optional[str], character: Any, recent: list[
         lines.append(f"The listener's sense of the music: {c[:400]}")
     if recent:
         lines.append("Recent prompts (make something different):\n" + "\n".join(f"- {p[:200]}" for p in recent[-5:]))
-    res = llm.call_json("prompt", system=PROMPT_SYSTEM, user="\n".join(lines), tool=PROMPT_TOOL, lenient=True)
+    res = llm.call_json("prompt", system=prompt_system(), user="\n".join(lines), tool=PROMPT_TOOL, lenient=True)
     p = res.data.get("prompt") if res.ok and isinstance(res.data, dict) else None
     p = re.sub(r"\s+", " ", p).strip()[:PROMPT_MAX] if isinstance(p, str) else ""
     if not p:
@@ -441,7 +501,7 @@ class Director:
     # -- one pass ---------------------------------------------------------------------------------------------------
     def pass_once(self, dry: bool = False) -> dict:
         """One decision. -> the log entry: {at, mode, wish, genre, per_screen, action, screen?, prompt?, file?, error?}.
-        action: off | not-ambient | no-wish | enough | waiting (a thin screen, the caps say not yet) | would-generate
+        action: off | not-ambient (the room is not in an art_director.modes mode) | no-wish | enough | waiting (a thin screen, the caps say not yet) | would-generate
         (dry) | generated | failed. dry: decide only (no prompt call, no generation, no log line, no state)."""
         self._seed()
         now = self.clock()
@@ -462,13 +522,28 @@ class Director:
 
         if not cfg.get("enabled"):
             return done("off")
+        if not smconfig.enabled("room"):              # no room_service here: no mode to read, never asks it
+            return done("not-ambient", error="room is off in this deployment")
+        modes = art_modes()
+        if not modes:                                 # the site names no art mode: it never makes anything
+            return done("not-ambient", error="the deployment's art_director.modes names no mode")
         try:
             status = self.get_json(f"{ROOM_URL}/api/v1/status")
             mode = ((status or {}).get("mode") or {}).get("current")
         except Exception as e:                        # noqa: BLE001 - room_service restarting: just not this pass
             return done("not-ambient", error=f"room status: {type(e).__name__}: {e}"[:200])
         entry["mode"] = mode
-        if mode != MODE:
+        screens: Optional[list] = None
+        zmodes = {z["room"]: (z.get("mode") or {}).get("current") for z in (status or {}).get("zones") or []
+                  if isinstance(z, dict) and isinstance(z.get("room"), str)}
+        if zmodes:                                    # rooms with their own modes: each of its rooms by its own mode
+            per_room = {r: zmodes.get(r, mode) for r in art_rooms()}
+            entry["room_modes"] = per_room
+            mine = {s for r, m in per_room.items() if m in modes for s in room_screens(r)}
+            screens = [s for s in self.screens_fn() if s in mine]
+            if not screens:
+                return done("not-ambient")
+        elif mode not in modes:
             return done("not-ambient")
         try:
             look = self.get_json(f"{SHOW_URL}/api/v1/look")
@@ -486,7 +561,7 @@ class Director:
         # for ambient); counted over every wished subject the house library was never thin, so nothing was made
         lead = {**wish, "subjects": wish["subjects"][:1]}
         entry["lead"] = lead["subjects"][0] if lead["subjects"] else None
-        for s in self.screens_fn():
+        for s in (self.screens_fn() if screens is None else screens):
             c = count_strong(s, lead, groups)
             c["thin"] = c["strong"] < need
             c["last_at"] = _iso(self.last_at.get(s))

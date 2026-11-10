@@ -57,6 +57,13 @@ allows it has "show.ai": {"set": true, "restore": true}, so leaving it drops the
 - normalize(): the mic's words (a bool, on/off, listen/listens, true/false).
 - Also a "setting" ("Behind the scenes"), labelled "AI listening" like the Music card's switch it narrows.
 
+Mode zones (room_service/zones.py; ShowAdapter(zones=[rooms in the show that have their own modes])): each such room
+gets show.<room>.mic and show.<room>.ai, its own claim. Every claim member then reads its own persisted want
+(show_claims.json in the state dir), the site's mic and ai too, so one room's claim is never drift in another's. apply
+stores the want and PUTs {"mode": the OR of every want on that route}; a read that finds show_service holding anything
+else (a restart, a failed PUT) puts the OR back in the background. show.main stays the site's. Without zones every
+call is as before.
+
 No code here knows a vibe, a mode or a field by meaning: BASIC_FIELDS only decides which fine-tune fields the form shows
 up front (§8.1's behaviour table); the rest sit behind "More".
 """
@@ -75,14 +82,17 @@ from typing import Any
 import aiohttp
 import yaml
 
+import smconfig
+
 from ..roomstate.contract import Adapter, Outcome, Reading
 from .room import _load, _save
 
 log = logging.getLogger("room_service.show")
 
 REPO = Path(__file__).resolve().parents[2]
-VIBES_FILE = REPO / "config" / "room" / "vibes.yaml"     # c8's; read for names and labels only
-SHOW_URL = "http://127.0.0.1:8703"   # show_service's API over loopback (show_service.contract BUS_PORT): a default
+VIBES_FILE = smconfig.shared("room", "vibes.yaml")     # c8's (shared by every deployment); names and labels only
+SHOW_URL = smconfig.url("show")      # show_service's API over loopback (the deployment's show port): a default;
+                                     # room_service passes its cfg.show_url (build_adapters)
 NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")      # a vibe name (S3.5)
 FIELD_RE = re.compile(r"^[a-z][a-z0-9_]{0,63}$")         # a vibe field's shape; show_service checks the name itself
 KEYS = ("vibe", "listening", "overrides")
@@ -111,6 +121,7 @@ FLAGS: dict[str, dict[str, str]] = {
            "redo": "allowing AI listening again", "short": "AI"},
 }
 STATUSES = ("ok", "unconfirmed", "failed")                # best to worst (contract rule 4)
+CLAIM_FIX_S = 5.0       # zones: the OR is put back at most this often when show_service holds something else
 
 
 class ShowUnreachable(ConnectionError):
@@ -262,10 +273,27 @@ class ShowAdapter(Adapter):
     read_timeout_s = 2.0
 
     def __init__(self, url: str = SHOW_URL, vibes_file: str | Path = VIBES_FILE,
-                 cache_file: str | Path | None = None) -> None:
+                 cache_file: str | Path | None = None, zones: list[str] | None = None,
+                 claims_file: str | Path | None = None) -> None:
         """cache_file: where the last good catalog and situations are kept (the room's state dir), so the Feel form
-        and the Auto vocabulary survive a restart while show_service is down. None: memory only."""
+        and the Auto vocabulary survive a restart while show_service is down. None: memory only.
+        zones: the rooms in the show with their own modes (their show.<room>.mic and .ai claims); claims_file: where
+        every claim's want is kept (zones only; None: memory only)."""
         self.url = url.rstrip("/")
+        self.zones = list(zones or [])
+        self.claims_file = Path(claims_file) if claims_file else None
+        self.wants: dict[str, bool] = {}
+        self._claim_locks = {f: asyncio.Lock() for f in FLAGS}
+        self._claim_fix: dict[str, float] = {}
+        self._claim_task: dict[str, asyncio.Task] = {}
+        if self.zones:
+            self.members = ["main", *FLAGS, *(f"{r}.{f}" for r in self.zones for f in FLAGS)]
+            try:
+                saved = _load(self.claims_file) if self.claims_file else {}
+            except OSError:
+                saved = {}
+            got = saved.get("wants") if isinstance(saved, dict) else None
+            self.wants = {m: v for m, v in (got or {}).items() if m in self.members and isinstance(v, bool)}
         self.vibes_file = Path(vibes_file)
         self.cache_file = Path(cache_file) if cache_file else None
         self._yaml_key: tuple[float, int] | None = None                  # vibes.yaml's (mtime, size) last looked at
@@ -336,13 +364,19 @@ class ShowAdapter(Adapter):
     def vocabulary(self) -> dict[str, list]:
         return {"situations": self.situations()}
 
+    @staticmethod
+    def _flag(member: str) -> str | None:
+        """The route a bool member is on: "mic" or "ai" for show.mic / show.ai and a zone's show.<room>.mic / .ai."""
+        f = member.rsplit(".", 1)[-1]
+        return f if f in FLAGS else None
+
     # -- the editor ----------------------------------------------------------------------------------------------------
     def label(self, member: str) -> str:
-        return {"mic": "Mic", "ai": "AI listening"}.get(member, "Feel")
+        return {"mic": "Mic", "ai": "AI listening"}.get(self._flag(member) or member, "Feel")
 
     def value_schema(self, member: str) -> dict:
-        if member in FLAGS:                         # two choices, as the pages' on/off settings (PageAdapter)
-            words = MIC_HELP if member == "mic" else AI_HELP
+        if (flag := self._flag(member)) is not None:   # two choices, as the pages' on/off settings (PageAdapter)
+            words = MIC_HELP if flag == "mic" else AI_HELP
             return {"type": "boolean", "default": True, "description": words, "x-ui": {
                 "label": self.label(member), "labels": {"true": "Listens in this mode", "false": "Off"},
                 "description": words, "help": words}}
@@ -375,8 +409,8 @@ class ShowAdapter(Adapter):
                         "unset_label_by": {"vibe": {n: f"As the {labels.get(n, n)} feel" for n in order}}}}}}
 
     def normalize(self, member: str, value: Any) -> dict | bool:
-        if member in FLAGS:
-            return flag_value(member, value)
+        if (flag := self._flag(member)) is not None and member in self.members:
+            return flag_value(flag, value)
         if member not in self.members:
             raise ValueError(f"show has three members, main (the feel), mic (the mode follows the music) and ai (the "
                              f"mode lets the AI listen), not {member!r}")
@@ -385,8 +419,8 @@ class ShowAdapter(Adapter):
     def show(self, member: str, value: Any) -> str:
         """'Party · listening', 'Dinner', 'Chill · fine-tuned', 'No feel'; the mic: 'Mic listens', 'Mic off'; AI
         listening: 'AI listens', 'AI off'."""
-        if member in FLAGS and isinstance(value, bool):
-            return f"{FLAGS[member]['short']} {'listens' if value else 'off'}"
+        if (flag := self._flag(member)) is not None and isinstance(value, bool):
+            return f"{FLAGS[flag]['short']} {'listens' if value else 'off'}"
         if isinstance(value, dict) and "vibe" in value and value.get("vibe") is None:
             return "No feel"
         if not isinstance(value, dict) or not isinstance(value.get("vibe"), str):
@@ -428,6 +462,8 @@ class ShowAdapter(Adapter):
         asked = [m for m in self.members if m in members]
         if not asked:
             return {}
+        if self.zones:
+            return await self._read_zoned(asked)
         # each member's own route, at once (all within read_timeout_s); the Feel's failure fails the read as before
         got = dict(zip(asked, await asyncio.gather(*(self._get(PATHS[m]) for m in asked), return_exceptions=True)))
         for x in got.values():
@@ -511,7 +547,7 @@ class ShowAdapter(Adapter):
 
     async def _put_flag_again(self, member: str) -> None:
         try:
-            status, body = await self._http("PUT", PATHS[member], {"mode": True},
+            status, body = await self._http("PUT", PATHS[member], {"mode": self._or(member) if self.zones else True},
                                             timeout=self.change_time_s + self.read_timeout_s)
             if status == 200 and isinstance(body, dict):
                 self._flags[member].applied_boot = _boot_of(body) or self._boot
@@ -524,7 +560,8 @@ class ShowAdapter(Adapter):
         asked = [m for m in self.members if m in desired]
         if not asked:
             return Outcome("ok")
-        one = {"main": self._apply_main, **{m: functools.partial(self._apply_flag, m) for m in FLAGS}}
+        one = {"main": self._apply_main, **{m: functools.partial(self._apply_claim if self.zones else self._apply_flag, m)
+                                            for m in self.members if self._flag(m)}}
         if len(asked) == 1:
             return await one[asked[0]](desired[asked[0]])
         outs = await asyncio.gather(*(one[m](desired[m]) for m in asked))     # independent routes: at once
@@ -564,7 +601,8 @@ class ShowAdapter(Adapter):
         while got is not want and time.monotonic() < deadline:
             await asyncio.sleep(0.25)
             try:
-                got = (await self.read([member]))[member].value
+                got = (flag_mode(member, await self._get(path)) if self.zones
+                       else (await self.read([member]))[member].value)
             except (ShowUnreachable, ValueError):
                 got = None
         if got is want:
@@ -572,6 +610,116 @@ class ShowAdapter(Adapter):
             return Outcome("ok", "", {member: Outcome("ok")})
         detail = f"reads {self.show(member, got) if got is not None else 'no ' + FLAGS[member]['noun'] + ' answer'}"
         return Outcome("unconfirmed", detail, {member: Outcome("unconfirmed", detail)})
+
+    # -- mode zones: every claim's own want, show_service gets their OR --------------------------------------------------
+    def _or(self, flag: str) -> bool:
+        return any(v for m, v in self.wants.items() if self._flag(m) == flag)
+
+    def _save_claims(self) -> None:
+        if self.claims_file is not None:
+            try:
+                _save(self.claims_file, {"wants": dict(self.wants)})
+            except OSError as e:
+                log.warning("show: claims not saved: %s", e)
+
+    async def _read_zoned(self, asked: list[str]) -> dict[str, Reading]:
+        """Zones: the Feel as before; each claim member reads its own want. Each route is still fetched (show_service
+        must answer, and what it holds is checked against the OR); a site claim with no want yet adopts what show_service
+        holds (the site's claim from before the zones)."""
+        routes = list(dict.fromkeys(f for m in asked if (f := self._flag(m))))
+        fetch = (["main"] if "main" in asked else []) + routes
+        got = dict(zip(fetch, await asyncio.gather(*(self._get(PATHS[k]) for k in fetch), return_exceptions=True)))
+        for x in got.values():
+            if isinstance(x, BaseException) and not isinstance(x, Exception):
+                raise x
+        out: dict[str, Reading] = {}
+        if "main" in got:
+            body = got["main"]
+            if isinstance(body, BaseException):
+                raise body
+            self._refresh_soon()
+            self._boot = _boot_of(body) or self._boot
+            value = readback(body)
+            self._maybe_reapply(body, value)
+            out["main"] = Reading(value)
+        gaps: dict[str, Exception] = {}
+        for f in routes:
+            body = got[f]
+            try:
+                if isinstance(body, BaseException):
+                    raise body
+                mode = flag_mode(f, body)
+            except (ShowUnreachable, ValueError) as e:
+                gaps[f] = e
+                continue
+            self._boot = _boot_of(body) or self._boot
+            if f not in self.wants:                 # the site's claim from before there were zones
+                self.wants[f] = mode
+                self._save_claims()
+            for m in asked:
+                if self._flag(m) == f:
+                    out[m] = Reading(self.wants.get(m, False))
+            self._fix_claim(f, mode)
+        if gaps and not out:
+            raise next(iter(gaps.values()))
+        for f, e in gaps.items():
+            if str(e) != self._flags[f].gap:
+                self._flags[f].gap = str(e)
+                log.warning("show: %s isn't read (%s); the rest still is", FLAGS[f]["claim"], e)
+        return out
+
+    def _fix_claim(self, flag: str, mode: bool) -> None:
+        """show_service holds something other than the OR (it restarted, or a PUT failed) and no apply is running:
+        put the OR back, in the background, at most every CLAIM_FIX_S."""
+        if mode is self._or(flag) or self._claim_locks[flag].locked():
+            return
+        t = self._claim_task.get(flag)
+        if (t is not None and not t.done()) or time.monotonic() < self._claim_fix.get(flag, 0.0):
+            return
+        self._claim_fix[flag] = time.monotonic() + CLAIM_FIX_S
+        log.info("show: show_service holds %s %s; putting the rooms' claim (%s) back", FLAGS[flag]["noun"], mode,
+                 self._or(flag))
+        self._claim_task[flag] = asyncio.get_running_loop().create_task(self._put_flag_again(flag),
+                                                                         name=f"show-{flag}-claim")
+
+    def move_claim(self, src: str, dst: str, dst_want: Any, src_want: Any) -> bool:
+        """Zones, when a room opts in while the site is in a mode that is now the room's (Coordinator.migrate_from):
+        that mode's claim moves from the site's member (src, "mic") to the room's (dst, "lab.mic"). dst wants
+        dst_want, src wants src_want (the site's own value now; None: off). Saved; nothing is sent (the OR is what
+        show_service holds already). False when either isn't a claim member here."""
+        flag = self._flag(src)
+        if not self.zones or flag is None or self._flag(dst) != flag or not {src, dst} <= set(self.members):
+            return False
+        try:
+            mine = flag_value(flag, dst_want)
+            theirs = flag_value(flag, src_want) if src_want is not None else False
+        except ValueError:
+            return False
+        self.wants[dst], self.wants[src] = mine, theirs
+        self._save_claims()
+        log.info("show: the %s claim moved from %s to %s (%s; the site's now %s)", FLAGS[flag]["noun"], src, dst, mine,
+                 theirs)
+        return True
+
+    async def _apply_claim(self, member: str, value: Any) -> Outcome:
+        """Zones: store this member's want, then PUT the OR of every want on its route (one apply per route at a time,
+        so the last PUT always carries the latest OR)."""
+        flag = self._flag(member) or member
+        try:
+            want = flag_value(flag, value)
+        except ValueError as e:
+            return _failed(str(e), retry=False, member=member)
+        async with self._claim_locks[flag]:
+            if flag not in self.wants and member != flag:    # the site's claim from before the zones: kept in the OR
+                try:
+                    self.wants[flag] = flag_mode(flag, await self._get(PATHS[flag]))
+                except (ShowUnreachable, ValueError):
+                    pass
+            self.wants[member] = want
+            self._save_claims()
+            o = await self._apply_flag(flag, self._or(flag))
+        sub = o.members.get(flag, o)
+        return Outcome(o.status, o.detail, {member: Outcome(sub.status, sub.detail, retry=sub.retry)}, retry=o.retry)
 
     async def _apply_main(self, value: Any) -> Outcome:
         try:

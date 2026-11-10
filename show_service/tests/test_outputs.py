@@ -393,7 +393,7 @@ def test_hue_routes_answer_off_without_a_hue_output_and_reach_the_driver():
     try:
         st = rig.hue_request(["lamp.a"], True)
         assert st["state"] == "off" and st["output"] == "o-hue" and st["enabled"] is False
-        assert st["detail"] == "outputs.o-hue.enabled is false in config/room/fixtures.yaml"
+        assert st["detail"] == f"outputs.o-hue.enabled is false in {contract.FIXTURES_FILE_WORDS}"
         assert set(st) == set(contract.HueStatus.__annotations__)
         assert rig.hue_release(["lamp.a"]) is None and not rig.hue_running()
         with pytest.raises(ValueError, match="bad_request"):
@@ -692,6 +692,13 @@ class LightsEngine(FakeEngine):
     def set_follow(self, mapping):
         self.follows.append(mapping)
 
+    def set_level(self, level):
+        self.levels = getattr(self, "levels", []) + [level]
+        return level
+
+    def lamp_count(self):
+        return 2
+
 
 HAND = """
 version: 1
@@ -889,6 +896,41 @@ def test_follow_is_validated_merged_saved_and_handed_to_the_engine(tmp_path):
     assert rig2.follow_view() == {"fixtures": {"a": "off"}}
     rig3 = make(FakeRegistry(view({})), FakeEngine())                    # no follow_file: memory only, no engine
     assert rig3.set_follow({"x": "dmx"})["saved"] is False and rig3.follow_view() == {"fixtures": {"x": "dmx"}}
+
+
+def test_the_lamps_brightness_reaches_the_engine_and_survives_a_restart(tmp_path):
+    """PUT /api/v1/brightness's Rig side (audit RS-4): validated, handed to the look engine, re-applied after a
+    configure, kept in state.json's rig (only when not full)."""
+    eng = LightsEngine()
+    rig = lights_rig(tmp_path, engine=eng)
+    persisted = []
+    rig.ctx.persist = lambda: persisted.append(1)
+    rig.start()
+    try:
+        assert rig.brightness_view() == {"lamps": 1.0, "fixtures": 2} and rig.persist() is None
+        assert rig.set_brightness(0.25) == {"lamps": 0.25, "fixtures": 2} and eng.levels[-1] == 0.25
+        assert persisted == [1]                                          # marked dirty at once (a crash keeps it)
+        rig.set_brightness(0.25)
+        assert persisted == [1]                                          # the same level: nothing to save
+        for bad in (1.5, -0.1, "half", True, float("nan"), None):
+            with pytest.raises(ValueError):
+                rig.set_brightness(bad)
+        assert rig.brightness_view()["lamps"] == 0.25
+        n = len(eng.levels)
+        rig.configure({"rig": {"enabled": True}, "looks": {"master": 0.5}})   # a new look config: re-applied
+        assert len(eng.levels) == n + 1 and eng.levels[-1] == 0.25
+        saved = rig.persist()
+        assert saved["lamps_level"] == 0.25
+    finally:
+        stop(rig)
+    eng2 = LightsEngine()
+    rig2 = lights_rig(tmp_path, engine=eng2)
+    rig2.restore(saved)
+    assert rig2.brightness_view()["lamps"] == 0.25 and eng2.levels == [0.25]
+    rig2.set_brightness(1)
+    assert "lamps_level" not in (rig2.persist() or {})
+    rig3 = make(FakeRegistry(view({})), FakeEngine())                    # an engine without a level: no crash
+    assert rig3.set_brightness(0.5) == {"lamps": 0.5, "fixtures": 0}
 
 
 def test_online_pings_each_node_address_off_the_frame_path(tmp_path):

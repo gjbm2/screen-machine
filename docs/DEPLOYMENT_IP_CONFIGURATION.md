@@ -27,7 +27,7 @@ VITE_URL=http://YOUR_PUBLIC_IP:8000           # Frontend URL
 - **Direct API Access**: `http://YOUR_PUBLIC_IP:5000/api/`
 - **Frontend Access**: `http://YOUR_PUBLIC_IP:8000/` (router 8000 -> PC22:8080 -> WSL Flask :5000)
 - **HTTPS**: `https://screen.finsburybankforsavings.com` (Caddy on PC22, router 443). Its Cloudflare DNS record `screen` points at the public IP, so it needs updating too.
-- **Ngrok Tunnel**: `https://ngrok-domain.example` -> Flask :5000 (no public IP involved)
+- **Ngrok Tunnel**: `https://<ngrok-domain>` (`NGROK_DOMAIN` in `.env`) -> Flask :5000 (no public IP involved)
 
 ## When Your ISP Changes Your IP Address
 

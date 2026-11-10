@@ -8,7 +8,9 @@ import re
 from flask import Blueprint, abort, jsonify, request
 
 import routes.art_tags as art_tags
+import smconfig
 from routes.art_tags import lexicon, sidecar
+from utils.logger import warning
 
 art_tags_api = Blueprint("art_tags", __name__)
 
@@ -28,6 +30,14 @@ def _media(bucket: str, filename: str):
     if os.path.dirname(real) != root or not os.path.isfile(real):
         abort(404, "no such file")
     return p
+
+
+def _tags_off(what: str):
+    """A logged 409 refusal when the deployment has art_tags off (its queue never runs), else None."""
+    if smconfig.enabled("art_tags"):
+        return None
+    warning(f"[art_tags] {what} refused: art_tags is off in this deployment")
+    return jsonify({"error": "art_tags is off in this deployment", "capability": "art_tags"}), 409
 
 
 def _words(v):
@@ -62,6 +72,9 @@ def get_director_status():
 
 @art_tags_api.route("/art-tags/sweep", methods=["POST"])
 def post_sweep():
+    refused = _tags_off("sweep")
+    if refused:
+        return refused
     return jsonify({"queued": art_tags.get_worker().sweep()})
 
 
@@ -81,6 +94,9 @@ def post_tags(bucket, filename):
 
 @art_tags_api.route("/buckets/<bucket>/tags/<filename>/retag", methods=["POST"])
 def post_retag(bucket, filename):
+    refused = _tags_off("retag")
+    if refused:
+        return refused
     _media(bucket, filename)
     w = art_tags.get_worker()
     queued = w.enqueue(bucket, filename, front=True, retag=True) or (bucket, filename) in w.queued

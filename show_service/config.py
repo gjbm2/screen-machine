@@ -1,14 +1,15 @@
 """show_service settings: CLI args over env over defaults, into ``contract.Config`` (fields only, in contract.py).
 
 ```
-env (deploy/sm-show.env; scripts/ctl passes the other KEY=VALUE lines as env, and SHOW_ARGS as argv):
+env (deployments/<id>/services/sm-show.env; scripts/ctl passes the other KEY=VALUE lines as env, and SHOW_ARGS as argv):
   SHOW_SENDERS       "kiosk=screen-machine-drawingroom/room-mic,room-piano;pc22=pc22.lan:6980/pc22-loop"
-  SHOW_VBAN_BIND     0.0.0.0:6980            SHOW_BUS_BIND   127.0.0.1:8703
-  SHOW_LATENCY_FILE  config/room/latency.json                  SHOW_LOG_LEVEL  INFO
+  SHOW_VBAN_BIND     0.0.0.0:6980            SHOW_BUS_BIND   127.0.0.1:<deployment.yaml ports.show, 8703>
+  SHOW_LATENCY_FILE  deployments/<id>/calibration/latency.json   SHOW_LOG_LEVEL  INFO
   SHOW_ARTNET_TARGET host:port | off (artnet_out.py; its other SHOW_* keys are read by artnet_out.config_from_env)
   SHOW_STREAM_PRIORITY a,b,c (audio streams ranked first, best first)
   SHOW_BRAIN         on (default) | off: Stage 3's brain (director, Auto, the API's routes, test sources, listener)
-  SHOW_FILE          config/room/show.yaml       SHOW_VIBES_FILE  config/room/vibes.yaml
+  SHOW_FILE          config/room/show.yaml (the shared base)   SHOW_VIBES_FILE  config/room/vibes.yaml
+  SHOW_SITE_FILE     deployments/<id>/show.yaml (this site's layer, deep-merged over the base; off/none: no layer)
   SHOW_STATE_DIR     ~/.local/state/screen-machine/show (state.json, the jsonl logs, the test children's logs)
   SHOW_BEAT_THREAD   off (default: inline on show-rx) | on: Stage 4's show-beat thread for madmom's activation
   SHOW_BEAT_PROC     off (default) | on: madmom's activation in its own child process (beatproc.py; wins over the
@@ -17,9 +18,9 @@ env (deploy/sm-show.env; scripts/ctl passes the other KEY=VALUE lines as env, an
                      before 19 Oct, the rollback (clock.py "Estimators", README S4.15)
   SHOW_RX_COALESCE_MIN  1 (default: show-rx hands on what is already queued, never waits) | N: it waits for up to N
                      packets (at most N packets' time + 1 ms) before one on_audio call (receiver.py)
-  SHOW_AUDIO_CAL_FILE config/room/audio_cal.json (the room calibration: streams.<stream>.summary.music_lufs, the
-                     median lufs_s of music at party volume on that mic; local, hot-reloaded -> each stream's gate
-                     offset = music_lufs - (-30): dsp.Features.gate_offsets)
+  SHOW_AUDIO_CAL_FILE deployments/<id>/calibration/audio_cal.json (the room calibration:
+                     streams.<stream>.summary.music_lufs, the median lufs_s of music at party volume on that mic;
+                     local, hot-reloaded -> each stream's gate offset = music_lufs - (-30): dsp.Features.gate_offsets)
   SHOW_RX_OFF        "" (default) | any of coalesce,stamps,split,batch,gapskip,agc (comma list): turns that hot-path
                      change off, the rollback switch: one on_audio per packet / arrival after recv / MIDI on the audio
                      socket (receiver.py); per-piece hits and per-hop spectra (dsp.py); holes zero-filled through
@@ -28,7 +29,8 @@ args (override env; scripts/ctl always passes --port from SHOW_PORT):
   --sender SPEC (repeatable; any --sender replaces SHOW_SENDERS)   --vban-bind HOST:PORT   --bus-bind HOST:PORT
   --host HOST --port PORT (the bus, over --bus-bind)   --latency-file PATH   --log-level LEVEL
   --artnet-target HOST[:PORT]|off (over SHOW_ARTNET_TARGET; default off)   --stream-priority a,b,c
-  --no-brain | --brain (over SHOW_BRAIN)   --show-file PATH   --vibes-file PATH   --state-dir PATH
+  --no-brain | --brain (over SHOW_BRAIN)   --show-file PATH   --show-site-file PATH|off   --vibes-file PATH
+  --state-dir PATH
   --beat-thread on|off (over SHOW_BEAT_THREAD; default off)   --beat-proc on|off (over SHOW_BEAT_PROC; default off)
   --clock-estimator dbn|legacy (over SHOW_CLOCK_ESTIMATOR; default dbn)
 ```
@@ -47,11 +49,20 @@ args (override env; scripts/ctl always passes --port from SHOW_PORT):
   alone means port 6454): None (off) by default, so nothing is sent unless the env file or a flag says so.
   ``__main__`` passes it to artnet_out.VirtualMaestro over ``config_from_env()``'s.
 * ``--stream-priority`` (or ``SHOW_STREAM_PRIORITY``) fills ``Config.stream_priority``: the receiver ranks those
-  audio streams first, in that order, then ``contract.AUDIO_PRIORITY`` (``contract.stream_rank``).
+  audio streams first, in that order, then the senders' own audio streams in show.yaml's order
+  (``receiver.site_order``), then ``contract.AUDIO_PRIORITY``, then unknown names, test streams last
+  (``contract.stream_rank``).
 * **The brain** (README "Stage 3", S3.4): ``load_options`` turns it on unless ``--no-brain`` or ``SHOW_BRAIN=off``
   (the rollback switch: the process is then exactly as before Stage 3). An ``Options`` built in code (tests) has it
   off unless it says ``brain=True``, so no test reaches the real show.yaml, room or state directory by accident.
   ``show_file``, ``vibes_file`` and ``state_dir`` default to contract's paths.
+* **show.yaml is layered** (deployments/README.md): the shared ``show_file`` (contract.SHOW_FILE, the tuning) with the
+  deployment's ``show_site_file`` (contract.SHOW_SITE_FILE: its senders, room targets, zones) deep-merged over it
+  (``read_show``: smconfig.load_layered_yaml). Every reader re-reads when EITHER file changes (``show_signature``).
+  ``load_options`` always takes the deployment's layer (``--show-site-file`` / ``SHOW_SITE_FILE`` override it, ``off``
+  drops it), whatever ``--show-file`` says. An ``Options`` (or a Brain, Inputs) built in code takes it only over the
+  shared base: a test's own show.yaml never picks up this site's senders. A site key the layer leaves out means this
+  site has none (no Sonos targets, no glitterball, no zones, no default sensor): the code defaults never name one.
 * **The beat thread** (README "Stage 4", S4.5, S4.12): ``Options.beat_thread``, ``--beat-thread`` over
   ``SHOW_BEAT_THREAD``. **Off by default** (and in an ``Options`` built in code): the clock's activation runs inline
   on show-rx, as in Stage 3. Measured in the real process (16 Oct), the show-beat thread cost +0.14-0.15 of a core
@@ -78,7 +89,7 @@ import os
 import pathlib
 import re
 from dataclasses import dataclass
-from typing import Callable, Mapping, Optional, Sequence
+from typing import Any, Callable, Mapping, Optional, Sequence
 
 from . import contract
 from .contract import Config, Sender
@@ -93,6 +104,85 @@ RX_FEATURES = ("coalesce", "stamps", "split",   # SHOW_RX_OFF's words: receiver.
                "batch", "gapskip", "agc")       # split_midi=), dsp.Features(batch=), clock.Clock(gap_skip=, agc_chunks=)
 _NAME = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 _HOST = re.compile(r"^[A-Za-z0-9_.-]{1,253}$")
+
+
+OFF_WORDS = ("off", "none", "0", "false", "no")
+SITE_AUTO: Any = type("_SiteAuto", (), {"__repr__": lambda self: "SITE_AUTO"})()   # "the default layer" (below)
+
+
+# -- show.yaml: the shared base + this site's layer --------------------------------------------------------------
+def show_site_layer(show_file: "pathlib.Path | str", site: Any = SITE_AUTO) -> Optional[pathlib.Path]:
+    """The site layer that goes over ``show_file``: ``site`` when given (None: no layer); by default the deployment's
+    (contract.SHOW_SITE_FILE) over the shared base (contract.SHOW_FILE), and none over any other base, so a test's or
+    a tool's own show.yaml is read alone."""
+    if site is not SITE_AUTO:
+        return pathlib.Path(site) if site is not None else None
+    return contract.SHOW_SITE_FILE if pathlib.Path(show_file) == contract.SHOW_FILE else None
+
+
+def _stat_sig(path: Optional[pathlib.Path]) -> Any:
+    if path is None:
+        return None
+    try:
+        st = pathlib.Path(path).stat()
+        return (st.st_mtime_ns, st.st_size)
+    except OSError as e:
+        return ("missing", getattr(e, "errno", None))
+
+
+def show_signature(show_file: "pathlib.Path | str", site: Optional[pathlib.Path]) -> tuple:
+    """(base, layer) mtime/size (("missing", errno) for an absent one): a reader re-reads when either changes."""
+    return (_stat_sig(pathlib.Path(show_file)), _stat_sig(site))
+
+
+#: The loopback placeholders a show.yaml URL value may carry (audit SHOW-4, wave 1 contract C4): ``{room}``,
+#: ``{flask}`` and ``{show}`` (and the other services of deployment.yaml ``ports``) expand to ``smconfig.url(...)``,
+#: e.g. ``"{flask}/output/{id}.jpg"`` -> ``"http://127.0.0.1:5000/output/{id}.jpg"`` on finsbury. Any other ``{...}``
+#: (the art sources' ``{id}``) is left for its reader.
+URL_SERVICES: tuple[str, ...] = ("room", "flask", "show", "show_bus", "stream", "dot", "overlay_ws")
+_URL_HOLE = re.compile(r"\{(" + "|".join(URL_SERVICES) + r")\}")
+
+
+def expand_urls(doc: Any, urls: Optional[Mapping[str, str]] = None) -> Any:
+    """``doc`` with every ``{<service>}`` in a string value replaced by that service's loopback URL (``urls``, else
+    the deployment's: contract.DEPLOYMENT.url). Dicts and lists are copied where something changed; other values are
+    returned as they are."""
+    def url_of(name: str) -> str:
+        if urls is not None and name in urls:
+            return str(urls[name]).rstrip("/")
+        return contract.DEPLOYMENT.url(name)
+
+    def walk(v: Any) -> Any:
+        if isinstance(v, str):
+            return _URL_HOLE.sub(lambda m: url_of(m.group(1)), v) if "{" in v else v
+        if isinstance(v, dict):
+            return {k: walk(x) for k, x in v.items()}
+        if isinstance(v, list):
+            return [walk(x) for x in v]
+        return v
+
+    return walk(doc)
+
+
+def read_show(show_file: "pathlib.Path | str", site: Any = SITE_AUTO) -> dict:
+    """The effective show.yaml: ``smconfig.load_layered_yaml(show_file, site layer)`` (an absent layer is no layer),
+    its ``{room}``/``{flask}``/``{show}`` URL placeholders expanded (``expand_urls``).
+    Raises OSError (no base) or ValueError (a layer isn't YAML or isn't a mapping; the message names it)."""
+    import smconfig
+    import yaml
+    layer = show_site_layer(show_file, site)
+    try:
+        return expand_urls(smconfig.load_layered_yaml(pathlib.Path(show_file), layer))
+    except yaml.YAMLError as e:
+        bad = pathlib.Path(show_file)
+        for p in (pathlib.Path(show_file), layer):
+            if p is not None and p.exists():
+                try:
+                    yaml.safe_load(p.read_text())
+                except yaml.YAMLError:
+                    bad = p
+                    break
+        raise ValueError(f"{bad} isn't valid YAML ({str(e).splitlines()[0][:120]})") from None
 
 
 @dataclass(frozen=True)
@@ -112,7 +202,13 @@ class Options:
     clock_estimator: str = "dbn"                         # clock.Clock(estimator=): dbn (default) | legacy (rollback)
     rx_coalesce_min: int = 1                             # receiver.Receiver(coalesce_min=)
     rx_off: frozenset = frozenset()                      # SHOW_RX_OFF: receive-path changes turned off (RX_FEATURES)
-    audio_cal_file: pathlib.Path = contract.REPO_ROOT / "config/room/audio_cal.json"   # gate_offsets (GateOffsetWatch)
+    audio_cal_file: pathlib.Path = contract.AUDIO_CAL_FILE   # gate_offsets (GateOffsetWatch)
+    show_site_file: Optional[pathlib.Path] = SITE_AUTO       # type: ignore[assignment]  # the site layer over show_file
+                                                         # (None: none); SITE_AUTO: show_site_layer(show_file)
+
+    def __post_init__(self) -> None:
+        if self.show_site_file is SITE_AUTO:
+            object.__setattr__(self, "show_site_file", show_site_layer(self.show_file))
 
 
 # -- parsers ----------------------------------------------------------------------------------------------------------
@@ -189,7 +285,8 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--sender", action="append", default=None, metavar="SPEC",
                     help="NAME=HOST[:PORT][/STREAM,...] (repeatable; replaces SHOW_SENDERS)")
     ap.add_argument("--vban-bind", metavar="HOST:PORT", help="VBAN UDP socket (default 0.0.0.0:6980)")
-    ap.add_argument("--bus-bind", metavar="HOST:PORT", help="bus and API (default 127.0.0.1:8703)")
+    ap.add_argument("--bus-bind", metavar="HOST:PORT",
+                    help=f"bus and API (default 127.0.0.1:{contract.BUS_PORT}, deployment.yaml ports.show)")
     ap.add_argument("--host", help="bus and API host (over --bus-bind)")
     ap.add_argument("--port", help="bus and API port (over --bus-bind; scripts/ctl passes it)")
     ap.add_argument("--latency-file", metavar="PATH", help="latency.json (sources.<stream>.acoustic_offset_ms)")
@@ -201,7 +298,9 @@ def _parser() -> argparse.ArgumentParser:
     ap.add_argument("--no-brain", dest="brain", action="store_false", default=None,
                     help="no Stage-3 brain (director, Auto, API routes, test sources, listener): the rollback switch")
     ap.add_argument("--brain", dest="brain", action="store_true", default=None, help="the brain on (the default)")
-    ap.add_argument("--show-file", metavar="PATH", help="show.yaml (default config/room/show.yaml)")
+    ap.add_argument("--show-file", metavar="PATH", help="show.yaml's shared base (default config/room/show.yaml)")
+    ap.add_argument("--show-site-file", metavar="PATH|off",
+                    help="this site's show.yaml layer (default deployments/<id>/show.yaml; off: none)")
     ap.add_argument("--vibes-file", metavar="PATH", help="vibes.yaml (default config/room/vibes.yaml)")
     ap.add_argument("--state-dir", metavar="PATH", help="state.json and the logs (default ~/.local/state/"
                                                         "screen-machine/show)")
@@ -356,13 +455,19 @@ def load_options(argv: Sequence[str] | None = None, env: Mapping[str, str] | Non
 
     cfg = Config(senders=tuple(senders.values()), vban_bind=vban_bind, bus_bind=bus_bind,
                  latency_file=latency_file, log_level=level, stream_priority=priority or ())
+    site_text = args.show_site_file if args.show_site_file is not None else env.get("SHOW_SITE_FILE")
+    if site_text is not None and site_text.strip().lower() in OFF_WORDS:
+        show_site_file: Optional[pathlib.Path] = None
+    else:
+        show_site_file = path_opt(args.show_site_file, "SHOW_SITE_FILE", contract.SHOW_SITE_FILE)
     return Options(config=cfg, stream_priority=priority, artnet_target=artnet, notes=tuple(notes), brain=brain,
                    show_file=path_opt(args.show_file, "SHOW_FILE", contract.SHOW_FILE),
+                   show_site_file=show_site_file,
                    vibes_file=path_opt(args.vibes_file, "SHOW_VIBES_FILE", contract.VIBES_FILE),
                    state_dir=path_opt(args.state_dir, "SHOW_STATE_DIR", contract.STATE_DIR), beat_thread=beat_thread,
                    beat_proc=beat_proc, beat_nice=beat_nice, rx_coalesce_min=rx_coalesce_min,
                    rx_off=rx_off, clock_estimator=clock_estimator,
-                   audio_cal_file=path_opt(None, "SHOW_AUDIO_CAL_FILE", contract.REPO_ROOT / "config/room/audio_cal.json"))
+                   audio_cal_file=path_opt(None, "SHOW_AUDIO_CAL_FILE", contract.AUDIO_CAL_FILE))
 
 
 def load(argv: Sequence[str] | None = None, env: Mapping[str, str] | None = None) -> Config:

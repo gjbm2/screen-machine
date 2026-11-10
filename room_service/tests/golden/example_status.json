@@ -1,0 +1,488 @@
+{
+ "config": {
+  "error": null,
+  "pending_targets": [],
+  "revision": "fccfb55f11a5",
+  "warnings": []
+ },
+ "dmx": {
+  "enabled": false
+ },
+ "flask": {
+  "last_fetch_error": null,
+  "lux_frames": 0,
+  "mask_requests": 0,
+  "ws_connected": true
+ },
+ "mask": {
+  "config": {
+   "last_error": null,
+   "loaded": true,
+   "reloads": 1,
+   "sources": {
+    "config_py": "<repo>/config.py",
+    "destinations_json": "<repo>/deployments/example/publish-destinations.json",
+    "intensity_json": "<repo>/deployments/example/intensity.json"
+   }
+  },
+  "counts": {},
+  "ingest": {
+   "armed": true,
+   "closes": {},
+   "connections": [],
+   "disabled_reason": null,
+   "hellos": 0,
+   "key_failures": 0,
+   "on": true,
+   "rejected": {},
+   "relay_lag_ms": {
+    "max": null,
+    "n": 0,
+    "p50": null,
+    "p95": null
+   },
+   "unauthenticated_sockets": 0
+  },
+  "latency_ms": {
+   "deferred": {
+    "max": null,
+    "n": 0,
+    "p50": null,
+    "p95": null
+   },
+   "immediate": {
+    "max": null,
+    "n": 0,
+    "p50": null,
+    "p95": null
+   },
+   "p50": null,
+   "p95": null,
+   "total": 0
+  },
+  "mask_source": {
+   "vj": "auto"
+  },
+  "override_errors": {},
+  "overrides": {},
+  "params": {
+   "drift_tau_s": 2.5,
+   "fresh_ramp_s": 5.0,
+   "snap_ev": 0.75,
+   "snap_tau_s": 0.15,
+   "stale_after_s": 10.0,
+   "stale_ramp_s": 30.0
+  },
+  "sensors": {},
+  "tiers": {}
+ },
+ "mode": {
+  "current": "gallery",
+  "default": "gallery",
+  "entered": [
+   "gallery"
+  ],
+  "last_transition": {
+   "detail": "",
+   "finished_age_s": "<scrubbed>",
+   "fired": [],
+   "from": null,
+   "id": "t-<id>",
+   "phase": "done",
+   "reapply": false,
+   "resumes": null,
+   "rule": 0,
+   "source": "boot",
+   "started_age_s": "<scrubbed>",
+   "status": "ok",
+   "steps": [],
+   "to": "gallery",
+   "via": []
+  },
+  "leaving": [],
+  "modes_error": null,
+  "rooms_error": null,
+  "since_age_s": "<scrubbed>",
+  "target": null,
+  "transition": null,
+  "via": []
+ },
+ "rooms": [
+  {
+   "blinds": [],
+   "effects": [],
+   "id": "studio",
+   "lights": [],
+   "name": "Studio",
+   "screens": [
+    "vj"
+   ],
+   "sensors": []
+  }
+ ],
+ "screens": {
+  "vj": {
+   "desired": "art",
+   "desired_expires_in_s": null,
+   "desired_expires_to": null,
+   "hud": {
+    "applied": false,
+    "failed": null,
+    "wanted": false
+   },
+   "last_error": null,
+   "mask": {
+    "brightness": null,
+    "held": false,
+    "latency_ms": {
+     "deferred": {
+      "max": null,
+      "n": 0,
+      "p50": null,
+      "p95": null
+     },
+     "immediate": {
+      "max": null,
+      "n": 0,
+      "p50": null,
+      "p95": null
+     },
+     "p50": null,
+     "p95": null,
+     "total": 0
+    },
+    "mask_source": "auto",
+    "sensor": null,
+    "sensor_fresh": false,
+    "source": null,
+    "suspended": false,
+    "tier": "flask",
+    "warm_alpha": null,
+    "warm_hex": null
+   },
+   "name": "VJ screen",
+   "observed": {
+    "detail": "",
+    "duplicate_glass": false,
+    "fallbacks_in_window": 0,
+    "frozen": false,
+    "glass_clients": 0,
+    "headless": false,
+    "kiosk_state": null,
+    "last_ack_at": null,
+    "layer": "art",
+    "page": null,
+    "page_connected": false,
+    "page_role": null,
+    "phase": "idle",
+    "retry_in_s": null,
+    "session": null,
+    "viewers": 0
+   },
+   "policy": {
+    "live_enabled": true,
+    "mask_push": false,
+    "page_key_required": false,
+    "timed_reload": true,
+    "timed_reload_applied": null
+   },
+   "snapshots": {
+    "anchor": false,
+    "target": false,
+    "unmatched": null
+   }
+  }
+ },
+ "service": {
+  "epoch": "<scrubbed>",
+  "started_at": "<scrubbed>",
+  "version": "0.1.0"
+ },
+ "snapshotter": {
+  "count": 0,
+  "fake": true
+ },
+ "stored": {},
+ "stream_service": {
+  "foreign_sessions": [],
+  "last_error": null,
+  "owned_sessions": [],
+  "reachable": true,
+  "url": "http://127.0.0.1:<port>"
+ },
+ "subsystems": {
+  "autopilot": {
+   "available": true,
+   "believed": null,
+   "dry_run": false,
+   "kind": "level",
+   "last_error": null,
+   "last_ok_age_s": null,
+   "members": {
+    "main": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    }
+   }
+  },
+  "blinds": {
+   "available": false,
+   "believed": {},
+   "dry_run": false,
+   "kind": "level",
+   "last_error": "no adapter",
+   "last_ok_age_s": null,
+   "members": {}
+  },
+  "brightness": {
+   "available": true,
+   "believed": {
+    "lamps": null,
+    "screens": null
+   },
+   "dry_run": false,
+   "kind": "level",
+   "last_error": null,
+   "last_ok_age_s": null,
+   "members": {
+    "lamps": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "screens": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    }
+   }
+  },
+  "diag": {
+   "available": true,
+   "believed": null,
+   "dry_run": false,
+   "kind": "level",
+   "last_error": null,
+   "last_ok_age_s": null,
+   "members": {
+    "vj": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    }
+   }
+  },
+  "light": {
+   "available": true,
+   "believed": {
+    "par-left": null,
+    "par-right": null
+   },
+   "dry_run": false,
+   "kind": "level",
+   "last_error": null,
+   "last_ok_age_s": null,
+   "members": {
+    "par-left": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "par-right": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    }
+   }
+  },
+  "log": {
+   "available": true,
+   "believed": {},
+   "dry_run": false,
+   "kind": "action",
+   "last_error": null,
+   "last_ok_age_s": null,
+   "members": {}
+  },
+  "page": {
+   "available": true,
+   "believed": true,
+   "dry_run": false,
+   "kind": "level",
+   "last_error": null,
+   "last_ok_age_s": "<scrubbed>",
+   "members": {
+    "vj.timed_reload": {
+     "age_s": "<scrubbed>",
+     "believed": true,
+     "confidence": "confirmed",
+     "desired": true,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": "respect",
+     "retry": null,
+     "sent_age_s": null,
+     "settled": true
+    }
+   }
+  },
+  "screens": {
+   "available": true,
+   "believed": "art",
+   "dry_run": false,
+   "kind": "level",
+   "last_error": null,
+   "last_ok_age_s": "<scrubbed>",
+   "members": {
+    "vj": {
+     "age_s": "<scrubbed>",
+     "believed": "art",
+     "confidence": "confirmed",
+     "desired": "art",
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": "respect",
+     "retry": null,
+     "sent_age_s": null,
+     "settled": true
+    }
+   }
+  },
+  "sensor_mask": {
+   "available": true,
+   "believed": "follow",
+   "dry_run": false,
+   "kind": "level",
+   "last_error": null,
+   "last_ok_age_s": "<scrubbed>",
+   "members": {
+    "main": {
+     "age_s": "<scrubbed>",
+     "believed": "follow",
+     "confidence": "confirmed",
+     "desired": "follow",
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": "respect",
+     "retry": null,
+     "sent_age_s": null,
+     "settled": true
+    }
+   }
+  },
+  "show": {
+   "available": true,
+   "believed": {
+    "ai": null,
+    "main": null,
+    "mic": null
+   },
+   "dry_run": false,
+   "kind": "level",
+   "last_error": null,
+   "last_ok_age_s": null,
+   "members": {
+    "ai": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "main": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    },
+    "mic": {
+     "age_s": null,
+     "believed": null,
+     "confidence": "unknown",
+     "desired": null,
+     "drift": null,
+     "inflight": null,
+     "moving": false,
+     "policy": null,
+     "retry": null,
+     "sent_age_s": null,
+     "settled": null
+    }
+   }
+  },
+  "sonos": {
+   "available": false,
+   "believed": {},
+   "dry_run": false,
+   "kind": "level",
+   "last_error": "no adapter",
+   "last_ok_age_s": null,
+   "members": {}
+  }
+ }
+}

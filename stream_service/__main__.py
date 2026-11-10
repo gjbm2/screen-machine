@@ -1,7 +1,8 @@
 """python -m stream_service [--host 0.0.0.0] [--port 8082] [--public-base ws://host:port]
                           [--config-dir config/live]
                           [--show-bus ws://127.0.0.1:8701/v1/show] [--show-bus-token-file FILE]
-                          [--latency-file config/room/latency.json] [--art-dir output]
+                          [--latency-file deployments/<id>/calibration/latency.json] [--art-dir output]
+                          [--switches-file deployments/<id>/live/stream_switches.json]
 """
 from __future__ import annotations
 
@@ -16,6 +17,10 @@ import sys
 os.environ.setdefault("CUDA_DEVICE_ORDER", "PCI_BUS_ID")
 
 REPO = pathlib.Path(__file__).resolve().parent.parent
+
+import smconfig  # noqa: E402
+
+from .switches import ENV as SWITCHES_ENV  # noqa: E402
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -35,8 +40,11 @@ def main(argv: list[str] | None = None) -> None:
                          "music.* and show.state reach the scenes' sound, never the fixtures")
     ap.add_argument("--show-bus-token-file", default="~/.config/screen-machine/show_bus.token",
                     help="the bus token (sent in hello when the file exists)")
-    ap.add_argument("--latency-file", default=str(REPO / "config" / "room" / "latency.json"),
-                    help="render->photon calibration (presented->photon per screen)")
+    ap.add_argument("--latency-file", default=str(smconfig.path("calibration", "latency.json")),
+                    help="render->photon calibration (presented->photon per screen; default: the deployment's)")
+    ap.add_argument("--switches-file", default=os.environ.get(SWITCHES_ENV) or None,
+                    help="per-screen encoder switches (default: $SM_STREAM_SWITCHES, else the deployment's "
+                         "live/stream_switches.json; a --config-dir other than config/live may carry its own)")
     ap.add_argument("--art-dir", default=str(REPO / "output"),
                     help="dev page only: where <screen>.jpg (the current artwork) is read from")
     ap.add_argument("--local-control", action="store_true",
@@ -64,7 +72,8 @@ def main(argv: list[str] | None = None) -> None:
                    max_sessions=args.max_sessions, show_bus=args.show_bus, music_bus=args.music_bus,
                    show_bus_token_file=args.show_bus_token_file, latency_file=pathlib.Path(args.latency_file),
                    art_dir=pathlib.Path(args.art_dir), local_control=args.local_control,
-                   app_url=args.app_url, warm=args.warm, workers=True)
+                   app_url=args.app_url, warm=args.warm, workers=True,
+                   switches_file=pathlib.Path(args.switches_file) if args.switches_file else None)
     logging.getLogger("stream_service").info("listening on %s:%d (dev page: /dev)", args.host, args.port)
     web.run_app(app, host=args.host, port=args.port, print=None, access_log=None,
                 shutdown_timeout=10.0)

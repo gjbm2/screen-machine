@@ -30,6 +30,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
   onWorkflowChange: externalWorkflowChange,
   onRefinerChange: externalRefinerChange,
   onPublishChange: externalPublishChange,
+  generationOff = false,
 }) => {
   const [imageFiles, setImageFiles] = useState<Array<File | string>>([]);
   const [prompt, setPrompt] = useState(currentPrompt || '');
@@ -447,8 +448,8 @@ const PromptForm: React.FC<PromptFormProps> = ({
       e.stopPropagation();
     }
     
-    // Don't submit if loading or if there's no content
-    if (localLoading || (prompt.trim() === '' && referenceUrls.length === 0 && imageFiles.length === 0)) {
+    // Don't submit if loading, if there's no content, or if this deployment has generation off
+    if (generationOff || localLoading || (prompt.trim() === '' && referenceUrls.length === 0 && imageFiles.length === 0)) {
       return;
     }
     
@@ -729,7 +730,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
     }
   }, [isLoading, localLoading]);
 
-  const isButtonDisabled = localLoading || (prompt.trim() === '' && referenceUrls.length === 0 && imageFiles.length === 0);
+  const isButtonDisabled = generationOff || localLoading || (prompt.trim() === '' && referenceUrls.length === 0 && imageFiles.length === 0);
 
   // Create display URLs for File objects (for preview only)
   const displayUrls = React.useMemo(() => {
@@ -803,6 +804,11 @@ const PromptForm: React.FC<PromptFormProps> = ({
       onTouchStart={isMobile ? (e) => e.stopPropagation() : undefined}
     >
       <Card className="p-4 relative">
+        {generationOff && (
+          <div role="note" className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            Generation is off in this deployment. Buckets and publishing still work.
+          </div>
+        )}
         <PromptInput 
           prompt={prompt} 
           onPromptChange={handlePromptChange} 

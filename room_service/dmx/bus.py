@@ -54,8 +54,11 @@ class _Client:
 
 
 class ShowBus:
-    def __init__(self, patch: Patch, receiver: ArtNetReceiver, *, host: str = "127.0.0.1", port: int = 8701,
+    def __init__(self, patch: Patch, receiver: ArtNetReceiver, *, host: str = "127.0.0.1", port: int | None = None,
                  mode_fn: Callable[[], dict | None] | None = None) -> None:
+        if port is None:
+            import smconfig                                  # the deployment's show bus port
+            port = smconfig.port("show_bus")
         self.patch, self.rx = patch, receiver
         self.host, self.port = host, port
         self.mode_fn = mode_fn

@@ -9,6 +9,10 @@ changes, thrown to the screens' schedulers (routes/scheduler_utils.throw_event):
   _room_auto     to every room screen   payload {on, from, initial}
   _screen_layer  to that screen         payload {screen, layer: "art" | "live", from, initial}
 
+With mode zones (rooms.json "own_modes": true; room_service status "zones"), a zone's screens get _room_mode from
+their zone's own mode (the payload adds "room"), and the site's mode goes only to the other screens. With none (every
+deployment until a room opts in), everything is as before.
+
 `source` says who changed the mode ("web", "autopilot", "schedule:<screen>", "voice", ...), so a schedule can ignore
 its own changes. On every (re)connect the current facts go out once with initial: true, so a schedule always learns
 where it stands. A schedule reads the payload as {{ _event.payload.<field> }} (e.g. set_var screen_layer). Bounded:
@@ -30,19 +34,35 @@ TTL = "60s"
 _thread: Optional[threading.Thread] = None
 
 
-def diff(prev: Optional[dict], facts: dict, labels: Optional[dict] = None) -> list[tuple[str, str, dict]]:
+def diff(prev: Optional[dict], facts: dict, labels: Optional[dict] = None,
+         zone_labels: Optional[dict] = None) -> list[tuple[str, str, dict]]:
     """The events (scope, key, payload) that take a schedule from ``prev`` to ``facts`` (room_client.room_facts);
-    ``prev`` None: everything known, as initial."""
+    ``prev`` None: everything known, as initial. With mode zones (facts "zones"), a zone's screens get their zone's
+    mode (labelled from ``zone_labels[room]``) and the site's mode goes only to the other screens."""
     out: list[tuple[str, str, dict]] = []
     initial = prev is None
     prev = prev or {}
     screens = sorted((facts.get("screens") or {}).keys())
     labels = labels or {}
+    zones = facts.get("zones") or {}
+    pzones = prev.get("zones") or {}
+    zoned = {sid: room for room, z in zones.items() for sid in z.get("screens") or []}
     mode, pmode = facts.get("mode"), prev.get("mode")
     if mode is not None and (initial or mode != pmode):
         for sid in screens:
-            out.append((sid, "_room_mode", {"mode": mode, "label": labels.get(mode, mode), "from": pmode,
-                                            "source": facts.get("mode_source"), "initial": initial}))
+            if sid not in zoned:
+                out.append((sid, "_room_mode", {"mode": mode, "label": labels.get(mode, mode), "from": pmode,
+                                                "source": facts.get("mode_source"), "initial": initial}))
+    for room, z in zones.items():                    # only with zones: each zone's switch, to its own screens
+        zmode, zpmode = z.get("mode"), (pzones.get(room) or {}).get("mode")
+        if zmode is None or not (initial or room not in pzones or zmode != zpmode):
+            continue
+        zl = (zone_labels or {}).get(room) or {}
+        for sid in screens:
+            if zoned.get(sid) == room:
+                out.append((sid, "_room_mode", {"mode": zmode, "label": zl.get(zmode, zmode), "from": zpmode,
+                                                "source": z.get("mode_source"), "initial": initial,
+                                                "room": room}))
     on, pon = facts.get("auto"), prev.get("auto")
     if on is not None and (initial or on != pon):
         for sid in screens:
@@ -71,6 +91,7 @@ async def _run() -> None:
     while True:
         prev: Optional[dict] = None
         labels = room_client.modes()
+        zone_labels: dict[str, dict] = {}            # mode zone -> its labels (rooms.json "own_modes"; none: unused)
         try:
             async with aiohttp.ClientSession() as http:
                 async with http.ws_connect(url, heartbeat=30.0, max_msg_size=4 * 1024 * 1024) as ws:
@@ -88,7 +109,10 @@ async def _run() -> None:
                         facts = room_client.room_facts(m["data"])
                         if facts.get("mode") and facts["mode"] not in labels:
                             labels = room_client.modes() or labels   # modes.json is hot-reloaded: a new mode
-                        events = diff(prev, facts, labels)
+                        for room, z in (facts.get("zones") or {}).items():   # mode zones only: their own labels
+                            if z.get("mode") and z["mode"] not in zone_labels.get(room, {}):
+                                zone_labels[room] = room_client.modes(room) or zone_labels.get(room, {})
+                        events = diff(prev, facts, labels, zone_labels)
                         if events:
                             debug(f"[room bridge] {len(events)} event(s): {sorted({k for _, k, _ in events})}")
                             await asyncio.get_running_loop().run_in_executor(None, _throw, events)

@@ -15,6 +15,7 @@ import aiohttp
 from aiohttp import web
 
 import lightmask as lm
+import smconfig
 from lightmask.model import read_intensity_cfg
 
 from room_service.ingest_config import ingest_config_from_dict
@@ -34,7 +35,7 @@ def write_light_config(tmp: Path, *, devtest_adjust: bool = True) -> dict[str, P
     d.mkdir(parents=True, exist_ok=True)
     base = read_intensity_cfg(REPO / "config.py")
     (d / "config.py").write_text(f"INTENSITY_CFG = {base!r}\n")
-    mapping = json.loads((REPO / "routes" / "data" / "intensity.json").read_text())
+    mapping = json.loads(smconfig.path("intensity.json").read_text())
     (d / "intensity.json").write_text(json.dumps(mapping))
     icfg = {"lat": 51.5074, "lon": -0.1278, "east_west_bias": 0.25, "adjust": True}
     dests = [

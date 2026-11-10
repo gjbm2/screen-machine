@@ -290,7 +290,8 @@ def sync_slots(mgr: Any, now: float) -> None:
             if st["task"] is not None and not st["task"].done():
                 continue
             have = any(getattr(x, "origin", None) == "gesture" for x in s.fx.stack)
-            want = BOOK.wants_slot(getattr(s, "screen", None), now, keep)
+            ins = getattr(mgr, "in_show", None)      # a room with "show": false plays no gestures
+            want = BOOK.wants_slot(getattr(s, "screen", None), now, keep) and (ins is None or ins(s))
             if want == have:
                 st["on"] = have
                 continue

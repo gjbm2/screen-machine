@@ -15,8 +15,8 @@ echo $$ > "$PIDF"
 [[ -r /etc/default/kiosk-wayland ]] && . /etc/default/kiosk-wayland
 KIOSK_VIDEO=${KIOSK_VIDEO:-zerocopy}
 
-URL_NORTH="http://95.141.21.170:8000/display/north-screen"
-URL_SOUTH="http://95.141.21.170:8000/display/south-screen"
+URL_NORTH="@@KIOSK_BASE_URL@@/display/@@KIOSK_SCREEN_NORTH@@"
+URL_SOUTH="@@KIOSK_BASE_URL@@/display/@@KIOSK_SCREEN_SOUTH@@"
 DIR_NORTH=/tmp/chrome-north DIR_SOUTH=/tmp/chrome-south
 DBG_NORTH=9222 DBG_SOUTH=9223
 mkdir -p "$DIR_NORTH" "$DIR_SOUTH"; chmod 700 "$DIR_NORTH" "$DIR_SOUTH"

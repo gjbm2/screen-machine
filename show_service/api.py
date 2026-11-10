@@ -192,6 +192,7 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", "/api/v1/rig/types"), ("POST", "/api/v1/rig/fixtures"), ("PUT", "/api/v1/rig/fixtures/{id}"),
     ("DELETE", "/api/v1/rig/fixtures/{id}"), ("POST", "/api/v1/rig/fixtures/{id}/identify"),
     ("GET", "/api/v1/rig/follow"), ("POST", "/api/v1/rig/follow"),
+    ("GET", "/api/v1/brightness"), ("PUT", "/api/v1/brightness"),
     ("POST", "/api/v1/rig/fixtures/{id}/jog"), ("POST", "/api/v1/rig/fixtures/{id}/setup"),
     ("POST", "/api/v1/rig/fixtures/{id}/positions"), ("DELETE", "/api/v1/rig/fixtures/{id}/positions/{name}"),
     ("POST", "/api/v1/rig/fixtures/{id}/teach"), ("DELETE", "/api/v1/rig/fixtures/{id}/teach/{n}"),
@@ -609,7 +610,8 @@ def neutral_source(source: str, why: Optional[str] = None) -> dict:
 
 
 #: GET /api/v1/test's sound choices when the sources component can't say (an older one, or none)
-NO_TEST_CHOICES: dict[str, Any] = {"instruments": [], "default_instrument": None, "outputs": []}
+NO_TEST_CHOICES: dict[str, Any] = {"instruments": [], "default_instrument": None, "outputs": [],
+                                   "default_output": None}
 NO_RECORDINGS: dict[str, Any] = {"recording": {"state": "off", "since_s": None, "notes": 0, "duration_s": 0.0},
                                  "recordings": []}
 
@@ -1149,6 +1151,8 @@ class Api:
             ("POST", "/api/v1/rig/fixtures/{id}/identify", self._rig_identify),
             ("GET", "/api/v1/rig/follow", self._rig_follow_get),
             ("POST", "/api/v1/rig/follow", self._rig_follow_post),
+            ("GET", "/api/v1/brightness", self._brightness_get),
+            ("PUT", "/api/v1/brightness", self._brightness_put),
             ("POST", "/api/v1/rig/fixtures/{id}/jog", self._rig_jog),
             ("POST", "/api/v1/rig/fixtures/{id}/setup", self._rig_setup),
             ("POST", "/api/v1/rig/fixtures/{id}/positions", self._rig_position_add),
@@ -1671,7 +1675,7 @@ class Api:
         choices = sorted((view or {}).get("outputs") or {})
         body = rig.frame_view(oid) if rig is not None and oid else None
         if body is None:
-            return _err(404, "unknown_output", f"No output {oid!r} in config/room/fixtures.yaml." if oid else
+            return _err(404, "unknown_output", f"No output {oid!r} in {contract.FIXTURES_FILE_WORDS}." if oid else
                         "Say which output: ?output=<id>.", choices=choices)
         return _json(body)
 
@@ -1685,7 +1689,7 @@ class Api:
         nid = request.match_info["id"]
         if rig is None or not rig.has_node(nid):
             view = rig.view() if rig is not None else None
-            return _err(404, "unknown_node", f"No node {nid!r} in config/room/fixtures.yaml.",
+            return _err(404, "unknown_node", f"No node {nid!r} in {contract.FIXTURES_FILE_WORDS}.",
                         choices=sorted((view or {}).get("nodes") or {}))
         return _json(await self._call(brain, rig.record_failsafe, nid))
 
@@ -1803,6 +1807,31 @@ class Api:
             code, detail = _code(e, "bad_follow")
             return _err(400, code, detail or "That isn't something a light can follow.", choices=FOLLOW_CHOICES)
 
+    # -- the lamps' brightness (room's brightness.lamps; audit RS-4) --------------------------------------------------
+    async def _brightness_get(self, request: web.Request, brain: Any) -> web.Response:
+        """``{lamps: 0..1, fixtures: how many lamps it reaches}`` (no rig: full, none reached)."""
+        rig = _components(brain).get(RIG)
+        fn = getattr(rig, "brightness_view", None) if rig is not None else None
+        return _json(fn() if callable(fn) else {"lamps": 1.0, "fixtures": 0})
+
+    async def _brightness_put(self, request: web.Request, brain: Any) -> web.Response:
+        """``{lamps: 0..1}``: every lamp that follows the look (the rig's Art-Net lights, and Hue when show drives
+        it) is scaled by it from the next frame, kept across a restart -> ``{lamps, fixtures}``."""
+        body, bad = await self._body(request)
+        if bad is not None:
+            return bad
+        lamps = body.get("lamps") if isinstance(body, dict) else None
+        if isinstance(lamps, bool) or not isinstance(lamps, (int, float)):
+            return _err(400, "bad_request", 'The body is {"lamps": <0..1>}.')
+        rig = _components(brain).get(RIG)
+        if rig is None or not callable(getattr(rig, "set_brightness", None)):
+            return _err(503, "unavailable", NO_RIG)
+        try:
+            return _json(await self._call(brain, rig.set_brightness, lamps))
+        except ValueError as e:
+            code, detail = _code(e, "bad_level")
+            return _err(400, code, detail or "lamps must be a number from 0 to 1.")
+
     # -- moving lights: Move it, setup, positions and teach (docs/LIGHTS.md §8.1) --------------------------------------
     @staticmethod
     def _lights_cfg(brain: Any) -> dict:
@@ -1889,8 +1918,7 @@ class Api:
         own = getattr(reg, "setup_store", None)
         if callable(getattr(own, "patch", None)) and callable(getattr(own, "read", None)):
             return own
-        path = getattr(reg, "setup_path", None) or getattr(contract, "FIXTURES_SETUP_FILE", None) \
-            or contract.CONFIG_ROOM_DIR / "fixtures.setup.yaml"
+        path = getattr(reg, "setup_path", None) or contract.FIXTURES_SETUP_FILE
         if self._setup_made is not None and self._setup_made[0] == path:
             return self._setup_made[1]
         try:
@@ -2621,7 +2649,8 @@ class Api:
                       **(await self._test_choices(brain, src))})
 
     async def _test_choices(self, brain: Any, src: Any) -> dict:
-        """The test piano's ``instruments``, ``default_instrument`` and ``outputs`` (Sources.choices)."""
+        """The test piano's ``instruments``, ``default_instrument``, ``outputs`` and ``default_output``
+        (Sources.choices)."""
         fn = getattr(src, "choices", None)
         if not callable(fn):
             return dict(NO_TEST_CHOICES)

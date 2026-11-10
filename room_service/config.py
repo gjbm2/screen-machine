@@ -1,18 +1,23 @@
-"""room_service configuration: config/room/room.prod.yaml (LIVE_V1 §3.1) plus the site files.
+"""room_service configuration: the deployment's room/room.yaml (deployments/<id>/, LIVE_V1 §3.1) plus the site files.
 
-Screens are defined once, in routes/data/publish-destinations.json (Flask's display config): every
+Screens are defined once, in the deployment's publish-destinations.json (Flask's display config): every
 destination with a "live" block is a room screen, with its name, size (maxwidth x maxheight) and live
-settings ({"enabled", "gpu", "profile", "mask_push", "timed_reload"?}). A `screens:` block in the YAML
-overrides per screen and per field, and may add screens (tests, dev configs).
+settings ({"enabled", "gpu", "profile", "mask_push", "timed_reload"?}). A live block that names no profile gets one
+by the screen's size at 30 fps (default_profile). A `screens:` block in the YAML overrides per screen and per field,
+and may add screens (tests, dev configs). Every other destination is known by id and name (known_screens), so a
+mode naming an art-only screen names nothing rather than failing.
 
 The extra sections below (`timeouts`, `snapshot`, `service`) are additive and optional; their defaults
 are the values in AV_PROGRAMME §3.3.
+
+Site files (rooms.json, room/modes.json, lights/patch.yaml, publish-destinations.json) come from the deployment
+(smconfig); the loopback addresses of the other services default to this machine's ports (deployment.yaml), and
+the YAML still overrides each.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field, fields
-import os
 import re
 from pathlib import Path
 from typing import Any
@@ -22,30 +27,24 @@ import logging
 
 import yaml
 
+import smconfig
+
 from .ingest_config import IngestConfig, ingest_config_from_dict
 
 log = logging.getLogger("room_service.config")
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-DEFAULT_CONFIG = REPO_ROOT / "config" / "room" / "room.prod.yaml"
-DEFAULT_DESTINATIONS = REPO_ROOT / "routes" / "data" / "publish-destinations.json"
-DEFAULT_STATE_DIR = Path("~/.local/state/screen-machine/room")
-DEFAULT_TOKEN_FILE = Path("~/.config/screen-machine/room_service.token")
-DEFAULT_CHROME = "~/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome"
-# LIVE_V1 §3 "Browser protection": the Host header must name one of these (port ignored),
-# which defends against DNS rebinding.
+DEFAULT_CONFIG = smconfig.path("room", "room.yaml")                       # deployments/<id>/room/room.yaml
+DEFAULT_DESTINATIONS = smconfig.path("publish-destinations.json")
+DEFAULT_STATE_DIR = smconfig.state("room")
+DEFAULT_TOKEN_FILE = smconfig.secret("room_service.token")
+_PLAYWRIGHT_CHROME = "~/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome"   # Playwright's own download
+DEFAULT_CHROME = str(smconfig.deployment().host_path("chrome", _PLAYWRIGHT_CHROME))  # deployment.yaml host.chrome wins
+
+
 def _env(name: str) -> str:
     """A setting from the environment, else from the repo's .env (owner, 14 Oct: addresses live in .env only)."""
-    if os.environ.get(name):
-        return os.environ[name].strip()
-    try:
-        for line in (Path(__file__).resolve().parent.parent / ".env").read_text().splitlines():
-            k, sep, v = line.partition("=")
-            if sep and k.strip() == name:
-                return v.split("#", 1)[0].strip().strip('"').strip("'")
-    except OSError:
-        pass
-    return ""
+    return smconfig.env(name)
 
 
 def _origin(url: str) -> str:
@@ -57,12 +56,17 @@ LAN_HOST = _env("SM_LAN_HOST")                    # e.g. 192.168.1.205 (.env)
 APP_ORIGIN = _origin(_env("VITE_URL"))            # the app's public origin (.env VITE_URL); the kiosk pages load from it
 APP_LAN_ORIGIN = _origin(_env("VITE_APP_LAN_URL"))  # the app on the LAN, or its friendly HTTPS name (Caddy /rs -> here)
 APP_LAN_HOST = re.sub(r"^https?://|:\d+$", "", APP_LAN_ORIGIN)
+# LIVE_V1 §3 "Browser protection": the Host header must name one of these (port ignored),
+# which defends against DNS rebinding.
 DEFAULT_ALLOWED_HOSTS = [h for h in dict.fromkeys((LAN_HOST, APP_LAN_HOST, "localhost", "127.0.0.1", "::1")) if h]
-DEFAULT_PAGE_KEYS_FILE = Path("~/.config/screen-machine/room_page_keys.json")
+DEFAULT_PAGE_KEYS_FILE = smconfig.secret("room_page_keys.json")
+FLASK_PORT = smconfig.port("flask")               # the app's own port (deployment.yaml ports.flask)
+# The app's origins (its port from the deployment), then the dev conveniences: :8080 (the LAN door / Vite), the
+# Vite dev ports 5174 and 5185.
 DEFAULT_WEB_ORIGINS = [o for o in (
-    f"http://{LAN_HOST}:8080" if LAN_HOST else "", f"http://{LAN_HOST}:5000" if LAN_HOST else "",
+    f"http://{LAN_HOST}:8080" if LAN_HOST else "", f"http://{LAN_HOST}:{FLASK_PORT}" if LAN_HOST else "",
     APP_ORIGIN, APP_LAN_ORIGIN,
-    "http://localhost:5000", "http://127.0.0.1:5000", "http://localhost:8080",
+    f"http://localhost:{FLASK_PORT}", f"http://127.0.0.1:{FLASK_PORT}", "http://localhost:8080",
     "http://localhost:5174", "http://127.0.0.1:5174", "http://localhost:5185", "http://127.0.0.1:5185",
 ) if o]
 
@@ -74,7 +78,7 @@ class ScreenConfig:
     live_enabled: bool = False
     mask_push: bool = False
     timed_reload: bool = True         # LIVE_V1 §3.1: the page policy's default; modes can change it
-    profile: str = "hevc-2160p60"     # used when a live spec names no profile
+    profile: str = "hevc-2160p30"     # used when a live spec names no profile (config_from_dict: by the screen's size)
     name: str = ""                    # the destination's name ("North screen")
     width: int | None = None          # the display's size (maxwidth x maxheight): render and snapshot size
     height: int | None = None
@@ -164,12 +168,14 @@ class SnapshotConfig:
 
 @dataclass
 class RoomConfig:
-    stream_url: str = "http://127.0.0.1:8082"
-    show_url: str = "http://127.0.0.1:8703"   # show_service (c8): its API and card, passed through at /show/*
-    stream_token_file: Path = Path("~/.config/screen-machine/stream_service.token")   # sent if present (no auth now)
-    flask_url: str = "http://127.0.0.1:5000"
-    flask_ws: str = "ws://127.0.0.1:8765/"
-    art_page_base: str = "http://127.0.0.1:5174"
+    # Loopback defaults from this machine's ports (deployment.yaml); the YAML's stream_service.url, show_service.url,
+    # flask.url / flask.ws and art_page_base override them.
+    stream_url: str = field(default_factory=lambda: smconfig.url("stream"))
+    show_url: str = field(default_factory=lambda: smconfig.url("show"))   # show_service (c8): its API and card, at /show/*
+    stream_token_file: Path = field(default_factory=lambda: smconfig.secret("stream_service.token"))   # sent if present
+    flask_url: str = field(default_factory=lambda: smconfig.url("flask"))
+    flask_ws: str = field(default_factory=lambda: smconfig.url("overlay_ws", "ws") + "/")
+    art_page_base: str = field(default_factory=lambda: smconfig.url("flask"))   # the deployed app's /display/<id>
     mask: MaskConfig = field(default_factory=MaskConfig)
     screens: dict[str, ScreenConfig] = field(default_factory=dict)
     web_origins: list[str] = field(default_factory=lambda: list(DEFAULT_WEB_ORIGINS))
@@ -180,7 +186,8 @@ class RoomConfig:
     kiosk_origins: list[str] = field(default_factory=list)
     timeouts: Timeouts = field(default_factory=Timeouts)
     snapshot: SnapshotConfig = field(default_factory=SnapshotConfig)
-    modes_file: Path = REPO_ROOT / "config" / "room" / "modes.json"   # ROOM_STATE_MODEL §2 (JSON; YAML also loads)
+    # ROOM_STATE_MODEL §2 (JSON; YAML also loads). load_config() takes the one next to the YAML (room/modes.json).
+    modes_file: Path = field(default_factory=lambda: smconfig.path("room", "modes.json"))
     state_dir: Path = DEFAULT_STATE_DIR
     token_file: Path = DEFAULT_TOKEN_FILE
     # Per-screen keys for the kiosk control socket (LIVE_V1 §3 "Machine channels"): a JSON
@@ -190,19 +197,24 @@ class RoomConfig:
     sweep_orphans: bool = True        # delete stray stream sessions for our screens (each renew cycle)
     blinds_enabled: bool = True       # `blinds: {enabled: false}`: the hub blinds become a placeholder (tests, no LAN)
     sonos_enabled: bool = True        # `sonos: {enabled: false}`: Sonos becomes a placeholder (tests, no LAN)
-    rooms_file: Path = REPO_ROOT / "routes" / "data" / "rooms.json"   # the site: which room holds what
+    rooms_file: Path = field(default_factory=lambda: smconfig.path("rooms.json"))   # the site: which room holds what
     output_dir: Path = REPO_ROOT / "output"   # Flask's /output/: the art files the pages show (their shape sizes live)
     destinations_file: Path | None = None   # the screens: destinations with a "live" block (default: DEFAULT_DESTINATIONS)
+    # Every destination the site has, live block or not: {id: name} (an art-only screen a mode or a page names is
+    # known, so it names nothing rather than being an error).
+    known_screens: dict[str, str] = field(default_factory=dict)
     session_ttl_s: int = 120
     renew_every_s: float = 30.0
     config_path: Path | None = None
     ingest: IngestConfig = field(default_factory=IngestConfig)   # LIVE_V1 §2.2b (ingest_config.py)
     # Virtual DMX devices (room_service/dmx): Art-Net in, the show bus out, Hue streaming. Opt-in:
-    # `dmx: {enabled: true, patch_file: config/room/patch.yaml, show_bus_port: 8701}`
-    # (0 = not served on :8701; WS /api/v1/dmx/live still is).
+    # `dmx: {enabled: true, patch_file: <deployment>/lights/patch.yaml, show_bus_port: 8701}`
+    # (0 = not served on :8701; WS /api/v1/dmx/live still is). It also needs the deployment's dmx capability.
     dmx_enabled: bool = False
-    patch_file: Path = REPO_ROOT / "config" / "room" / "patch.yaml"
-    show_bus_port: int = 8701
+    patch_file: Path = field(default_factory=lambda: smconfig.path("lights", "patch.yaml"))
+    show_bus_port: int = field(default_factory=lambda: smconfig.port("show_bus"))
+    # Set by RoomService.start when the deployment's `live` capability is off: why no screen may go live.
+    live_off_reason: str | None = None
 
     def screen(self, screen_id: str) -> ScreenConfig | None:
         return self.screens.get(screen_id)
@@ -217,6 +229,29 @@ def _fill(cls, data: dict | None):
 
 def _size(v: Any) -> int | None:
     return int(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and 0 < v <= 16384 else None
+
+
+PROFILE_4K, PROFILE_HD = "hevc-2160p30", "hevc-1080p30"   # stream_service's profiles (stream_service/profiles.py)
+
+
+def default_profile(width: int | None, height: int | None) -> str:
+    """The encode profile for a live block that names none: 30 fps, at the screen's size class. A display no bigger
+    than 1920x1080 (either way round) gets the 1080p profile; a bigger one, or one whose size isn't known, the 2160p
+    one (the renderer still renders at the display's own size within the profile: ScreenController._render_size)."""
+    if width and height and max(width, height) <= 1920 and min(width, height) <= 1080:
+        return PROFILE_HD
+    return PROFILE_4K
+
+
+def known_screens(path: Path) -> dict[str, str]:
+    """{id: name} for every destination in publish-destinations.json, live block or not (art-only screens too), in
+    file order; {} if the file can't be read (screens_from_destinations says so in the log)."""
+    try:
+        dests = json.loads(Path(path).read_text())
+    except (OSError, ValueError):
+        return {}
+    return {d["id"]: str(d.get("name") or d["id"]) for d in (dests if isinstance(dests, list) else [])
+            if isinstance(d, dict) and isinstance(d.get("id"), str) and d["id"]}
 
 
 def screens_from_destinations(path: Path) -> dict[str, dict]:
@@ -239,6 +274,8 @@ def screens_from_destinations(path: Path) -> dict[str, dict]:
         for k in ("gpu", "profile", "mask_push", "timed_reload"):
             if k in live:
                 sc[k] = live[k]
+        if not sc.get("profile"):                 # never silently the 4K60 encode (RS-10): by size, at 30 fps
+            sc["profile"] = default_profile(sc["width"], sc["height"])
         if isinstance(live.get("auto"), dict):
             sc["auto"] = live["auto"]
         out[d["id"]] = sc
@@ -277,10 +314,14 @@ def config_from_dict(raw: dict[str, Any], *, base_dir: Path | None = None) -> Ro
     cfg.destinations_file = _path(svc.get("destinations_file"), DEFAULT_DESTINATIONS)   # (looked up now: tests patch it)
     # Screens: the destinations with a "live" block, then the YAML's `screens:` per screen and per field.
     merged = screens_from_destinations(cfg.destinations_file)
+    cfg.known_screens = known_screens(cfg.destinations_file)
     for sid, sc in (raw.get("screens") or {}).items():
         merged[str(sid)] = {**merged.get(str(sid), {}), **(sc or {})}
     for sid, sc in merged.items():
+        if not sc.get("profile"):                 # a YAML-only screen too: by its size, never the 4K60 encode
+            sc = {**sc, "profile": default_profile(_size(sc.get("width")), _size(sc.get("height")))}
         cfg.screens[sid] = _fill(ScreenConfig, {**sc, "id": sid})
+        cfg.known_screens.setdefault(sid, cfg.screens[sid].label)
     cfg.state_dir = _path(svc.get("state_dir"), cfg.state_dir)
     cfg.token_file = _path(svc.get("token_file"), cfg.token_file)
     cfg.page_keys_file = _path(svc.get("page_keys_file"), cfg.page_keys_file)
@@ -298,6 +339,8 @@ def config_from_dict(raw: dict[str, Any], *, base_dir: Path | None = None) -> Ro
 
 
 def load_config(path: Path | str | None = None) -> RoomConfig:
+    """The room config at `path` (default: the deployment's room/room.yaml). Its modes file is the modes.json next
+    to it unless `service.modes_file` names one."""
     path = Path(path).expanduser() if path else DEFAULT_CONFIG
     if not path.is_absolute() and not path.exists():
         path = REPO_ROOT / path
@@ -306,6 +349,6 @@ def load_config(path: Path | str | None = None) -> RoomConfig:
         raw = yaml.safe_load(f) or {}
     cfg = config_from_dict(raw, base_dir=REPO_ROOT)
     if "service" not in raw or "modes_file" not in (raw.get("service") or {}):
-        cfg.modes_file = path.parent / "modes.json"
+        cfg.modes_file = path.parent.joinpath("modes.json")
     cfg.config_path = path
     return cfg

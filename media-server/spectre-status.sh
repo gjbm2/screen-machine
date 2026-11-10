@@ -38,19 +38,30 @@ if [ -f "$ENV_FILE" ]; then
         printf '%s\n' "${MEDIA_SERVER_HOST:-}" "${MEDIA_SERVER_USER:-}" "${MEDIA_SERVER_PORT:-}" "${MEDIA_SERVER_ETH_HOST:-}"
     )
 fi
-HOST="${HOST:-192.168.1.92}"
-USER_="${USER_:-gjbm2}"
 PORT="${PORT:-22}"
 ETH_HOST="${ETH_HOST:-192.168.1.10}"
-
-SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=5 -o ControlMaster=no -o ServerAliveInterval=2 -o ServerAliveCountMax=2
-          -o LogLevel=ERROR -p "$PORT")
-SSH_TIMEOUT=7   # whole round-trip, so a failed probe returns within ~8 s
 
 json_error() {   # json_error <message>: minimal error object without python3 (message is reduced to safe characters)
     printf '{"ok":false,"host":"%s","error":"%s"}\n' "$(printf '%s' "$HOST" | tr -cd 'A-Za-z0-9._-')" \
         "$(printf '%s' "$1" | tr -cd 'A-Za-z0-9 ._:/()=-')"
 }
+
+# Host and login not set in local-scripts/.env come from the deployment's kiosk block (kiosk.host / kiosk.user in
+# deployments/<id>/deployment.yaml, via kiosk-config.sh)
+if [ -z "$HOST" ] || [ -z "$USER_" ]; then
+    # shellcheck disable=SC1091
+    source "$SCRIPT_DIR/kiosk-config.sh"
+    if [ -z "$HOST" ]; then
+        HOST="$(kiosk_get host 2>/dev/null)" || { json_error "no kiosk (MEDIA_SERVER_HOST or the deployment's kiosk.host)"; exit 0; }
+    fi
+    if [ -z "$USER_" ]; then
+        USER_="$(kiosk_get user 2>/dev/null)" || { json_error "no kiosk user (MEDIA_SERVER_USER or the deployment's kiosk.user)"; exit 0; }
+    fi
+fi
+
+SSH_OPTS=(-o BatchMode=yes -o ConnectTimeout=5 -o ControlMaster=no -o ServerAliveInterval=2 -o ServerAliveCountMax=2
+          -o LogLevel=ERROR -p "$PORT")
+SSH_TIMEOUT=7   # whole round-trip, so a failed probe returns within ~8 s
 
 case "$HOST$USER_$PORT" in
     *[!A-Za-z0-9._-]*) json_error "invalid MEDIA_SERVER_HOST/USER/PORT in local-scripts/.env"; exit 0 ;;

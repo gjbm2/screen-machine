@@ -310,9 +310,11 @@ export interface RemotesView {
   types: RemoteType[];
   hosts: string[];
   rooms: { id: string; name: string }[];
+  /** false: this deployment has no RF (capability rf off), so nothing can be added or worked. Absent: not said. */
+  rf_enabled?: boolean;
 }
 
-/** One room of the site (routes/data/rooms.json), in file order. Ids refer to screens, lamps, blinds, sensors;
+/** One room of the site (deployments/<id>/rooms.json), in file order. Ids refer to screens, lamps, blinds, sensors;
  *  effects are device cards. */
 export interface SiteRoom {
   id: string;
@@ -323,6 +325,24 @@ export interface SiteRoom {
   sensors: string[];
   /** Absent from an older room_service. */
   effects?: SiteEffect[];
+  /** rooms.json "own_modes": true: the room is a mode zone, with its own modes file (status.zones has its mode).
+   *  Present only when set. */
+  own_modes?: boolean;
+  /** rooms.json "show": false: the room's screens are outside the show (no palette, direction, music feed). Present
+   *  only when false. */
+  show?: boolean;
+}
+
+/** One mode zone (status.zones[]): a room with its own modes, its own mode and its own modes file's revision. */
+export interface ZoneStatus {
+  room: string;
+  name: string;
+  screens: string[];
+  /** false: the room is outside the show. */
+  show?: boolean;
+  mode: ModeStatus & { via?: string | null; since_age_s?: number | null };
+  config?: { revision?: string; error?: string | null; warnings?: unknown[] };
+  stored?: unknown;
 }
 
 export interface RoomStatus {
@@ -334,6 +354,9 @@ export interface RoomStatus {
   rooms?: SiteRoom[];
   stream_service?: { reachable?: boolean; url?: string };
   subsystems?: Record<string, SubsystemStatus>;
+  /** The mode zones (rooms with "own_modes"); absent on a deployment without any (every room shares the site's mode,
+   *  status.mode). The site's mode, config and stored stay at the top level either way. */
+  zones?: ZoneStatus[];
 }
 
 /** GET /api/v1/room/describe, the parts the page reads: every target's label and value schema (from the device
@@ -404,6 +427,8 @@ export interface MemberStatus {
   confidence?: string;
   desired?: unknown;
   inflight?: { value: unknown; until_s: number } | null;
+  /** The mode zone that owns this member (a room with its own modes); absent for the site's. */
+  room?: string;
 }
 
 export interface SubsystemStatus {
@@ -426,11 +451,14 @@ export interface ModeDef {
 // ── §3 events ──────────────────────────────────────────────────────────────
 
 export interface RoomEvent {
-  type: "status" | "mode.transition" | "screen.phase" | "screen.mask" | "stream" | "log" | string;
+  /** "room_mode.transition": a mode zone's switch (data.room names it); "mode.transition" is always the site's. */
+  type: "status" | "mode.transition" | "room_mode.transition" | "screen.phase" | "screen.mask" | "stream" | "log" | string;
   data?: unknown;
 }
 
 export interface ModeTransitionEventData {
+  /** On "room_mode.transition" only: the zone's room. */
+  room?: string;
   id?: string;
   phase?: "started" | "step" | "done" | "cancelled" | string;
   /** null on started/done/cancelled (room_service). */
@@ -634,6 +662,8 @@ export interface SessionView extends Look {
   /** The parts of the look this screen set for itself (scope "screen": direction, palette, beat_follow, fx); the rest
    *  is the room's. Absent from a renderer without look_scope. */
   own?: string[];
+  /** The effects on top that repaint colour, covering a picked palette (their labels); empty or absent: none. */
+  palette_masked_by?: string[] | null;
 }
 
 export interface LookPatch {
@@ -829,7 +859,8 @@ export interface ShowInstrument {
   /** "rendered": made into a sound file first (state "preparing"); "live": played note by note. */
   kind: "rendered" | "live" | string;
 }
-/** Where the test piano's sound comes out ("pc22": PC22's speakers, "none": the screens only). */
+/** Where the test piano's sound comes out ("pc22": PC22's speakers, where the deployment has them; "none": the
+ * screens only). */
 export interface ShowOutput {
   id: string;
   label: string;
@@ -854,6 +885,8 @@ export interface ShowTestView {
   instruments?: ShowInstrument[];
   default_instrument?: string;
   outputs?: ShowOutput[];
+  /** Where a start that names no output plays ("pc22" where the deployment has PC22's sound, else "none"). */
+  default_output?: string | null;
 }
 
 /** One saved take of the Steinway (GET /show/api/v1/piano/recordings); it plays as test piece "rec:<id>". */

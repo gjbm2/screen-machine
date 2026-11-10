@@ -55,6 +55,8 @@ import secrets
 import time
 from typing import Any, Callable, Optional
 
+import smconfig
+
 from . import binding, ensemble, fx_interplay, palettes, rooms
 from .bodies import PngData
 from .director import AUTO_DEFAULTS, AUTO_FX_DEFAULTS, AUTO_FX_MAX, DIRECTION_DEFAULTS, FX_DIRECTION_DEFAULTS, \
@@ -76,7 +78,7 @@ from .upnext import EFFECTS_AHEAD, KINDS as UPNEXT_KINDS, SCENES_AHEAD, UpNext, 
 from .music_direction import BANDS, ROOM_STALE_S, MusicDirection, art_wish, effective_direction, music_fields, pick_key
 from .piano import PIANO_LEVELS, PianoSignals, envelopes as piano_envelopes
 from .plugins import Registry
-from .plugins.base import ParamError
+from .plugins.base import ParamError, repaints_colour
 from .plugins.sources.image import ImageSource, load_png
 from .presets import Presets, SceneSpec, TransitionSpec
 from .profiles import PROFILES, Profile, at_fps
@@ -112,6 +114,12 @@ CUE_SOURCES = ("panel", "director", "mode")
 INPUTS_EVENT_MIN_S = 2.0
 PALETTE_S_DEFAULT = 4.0
 FIXTURE_RE = re.compile(r"^[a-z0-9][a-z0-9._-]{0,63}$")
+GPU_REPROBE_S = 5.0           # an empty CUDA device probe is retried this often (Manager.gpu_names)
+PALETTE_PICKED_SOURCES = ("human", "describe")   # room.look palette.source: a person chose it (C6) ...
+PALETTE_NOT_PICKED = ("art", "neutral")          # ... except From the art / no palette
+ROOM_LOOK_STALE_S = 15.0      # room.look comes on change and every 5 s: older than this, the pick is not known
+ENERGY_REPICK = 0.3           # an Energy step this big (Calm -> Lively ...) arms the next scene pick at once (C5)
+ROOM_NEXT_DEDUPE_S = 1.0      # a manual "next" for another screen of the room this soon after one moved it: the same move
 
 
 class SessionError(Exception):
@@ -257,12 +265,13 @@ class Session(EngineListener):
         self.exit_tid: Optional[int] = None
         self.ready = False
         self.attach: dict = {}
+        self._room_next_last: Optional[dict] = None    # the room's last manual "next" while this leads (_room_next)
         # -- LIVE_V1 1.1: direction, masters, palette, inputs (modulation.py, inputs.py) --
         self.direction = direction or dict(DIRECTION_DEFAULTS, moods=[], fx=dict(FX_DIRECTION_DEFAULTS))
         self.direction_ease_s = direction_ease_s
-        self.fixture = fixture or default_fixture(screen)
+        self.fixture = fixture or default_fixture(screen)    # None: no fixture (inputs.default_fixture)
         self.beat_follow = beat_follow
-        self.photon_ms, self.photon_source = load_photon(mgr.latency_file, self.fixture)
+        self.photon_ms, self.photon_source = load_photon(mgr.latency_file, screen, self.fixture)
         self.lead_parts: dict = {}
         self.lead_ms: Optional[float] = None
         self._lead_t = 0.0
@@ -272,10 +281,13 @@ class Session(EngineListener):
         self.runtime = SessionRuntime(self.sampler, speed=speed_for(self.direction["pace"]),
                                       depth=self.direction["intensity"], ease_s=direction_ease_s)
         self.runtime.feed = mgr.music_feed        # the room's sound and beat clock (music_feed.py)
+        self.show = True                          # in the show; SessionManager.create sets False for a screen of a
+                                                  # room with "show": false (no music feed, direction, events, hold)
         self.palette = palette
         self.palette_s = palette_s
         self.runtime.palette, self.runtime.palette_s = palette, palette_s
         self.level = self.runtime.level = self.runtime.level_target = level   # brightness 0-1 (no fade at start)
+        self.runtime.energy = self.runtime.energy_target = self._panel_energy()   # Energy on the scene (C5)
         # -- what scenes can hear (sound.py): the piano and the room mic, one view per session --
         self.sound = new_sound(feed=getattr(mgr, "scope_feed", None))   # + the fast scope / fft feed
         self.engine.sound = self.sound
@@ -312,6 +324,7 @@ class Session(EngineListener):
         self._inputs_state: Optional[tuple] = None
         self._inputs_t = -1e9
         self._palette_sent: Any = None
+        self._masked_sent: tuple = ()              # palette_masked_by as last sent on session.palette
         self._palette_t = -1e9
         # -- effects layer (EFFECTS_LAYER_DESIGN C-D) --
         self.entry_spec = scene                   # the recovery scene when there is no auto block
@@ -325,6 +338,8 @@ class Session(EngineListener):
         self._dir_key = pick_key(self.direction)
         self._dir_gen = 0                         # bumped when a prepared pick no longer fits the direction
         self._dir_drop_t = -1e9
+        self._energy_at = self.runtime.energy_target    # the Energy the last pick was armed for (ENERGY_REPICK)
+        self._energy_due: Optional[tuple[str, str]] = None   # an Energy step's next pick, taken on the next tick
         self._fx_task: Optional[asyncio.Task] = None
         self._scene_fx_n = 0
         self.plugin_error_count = 0
@@ -346,6 +361,7 @@ class Session(EngineListener):
         self.fx_director.looks = fx_interplay.shared(self.mgr.presets.dir)   # scenes and effects together
         self.fx_director.scene = lambda: (self.current_name, self.mgr.presets.scenes.get(self.current_name or ""))
         self.fx_director.heard = self._heard_now    # an effect drawn from the sound: weighted by what there is
+        self.fx_director.palette_locked = self.palette_picked   # a picked palette wins over repainting effects (C6)
         # -- room-level direction (rooms.py): set by the manager on create --
         self.room: Optional[str] = None
         self.scene_cause: Optional[str] = None    # what put the current scene up: go | auto | manual | patch
@@ -396,6 +412,10 @@ class Session(EngineListener):
         """The signals now, as the render thread would see them (bus + music features), for cue-mode mappings."""
         now = time.monotonic()
         sig = dict(self.sampler.peek(now))
+        if not getattr(self, "show", True):       # outside the show ("show": false): no room music, as the frames
+            self.runtime.pivots.apply(sig)
+            ensemble.apply_signals(sig, self._ens_lv)
+            return sig
         feed = self.mgr.music_feed
         c = feed.clock(now)
         wf = feed.liveness(now)
@@ -431,10 +451,19 @@ class Session(EngineListener):
         is sure (SessionManager.music_grid), else the lighting desk's pulse follower; None when not following."""
         if self.sampler.follow != "extrapolate":
             return None
-        r = self.mgr.room_direction_now(now)
+        r = self.mgr.room_direction_now(now, self)
         if r is not None and r["vibe"] is not None and r.get("beat_lock") is False:   # the vibe wants no beat lock
             return None
-        return self.mgr.music_grid(now) or self.sampler.beat_grid(now)
+        return self._music_grid(now) or self.sampler.beat_grid(now)
+
+    def _in_show(self) -> bool:
+        """This screen is in the show (SessionManager.in_show: False only for a room with "show": false)."""
+        fn = getattr(self.mgr, "in_show", None)
+        return True if fn is None else fn(self)
+
+    def _music_grid(self, now: float) -> Optional[tuple[float, float]]:
+        """show_service's beat clock (SessionManager.music_grid) while this screen is in the show, else None."""
+        return self.mgr.music_grid(now) if self._in_show() else None
 
     def _fx_clock(self, now: float) -> Optional[tuple[float, int]]:
         """(beat s, beats per bar) while the beat grid is sure (the FX director's phrases and beats), else None."""
@@ -472,7 +501,7 @@ class Session(EngineListener):
     def _next_downbeat(self, now: float, margin: float = BEAT_MARGIN_S) -> Optional[float]:
         """The photon time (monotonic s, acoustic) of the next downbeat that can still land on glass, from
         show_service's clock while it is sure (bars only come from there); None otherwise."""
-        if self._beat_grid(now) is None or self.mgr.music_grid(now) is None:
+        if self._beat_grid(now) is None or self._music_grid(now) is None:
             return None
         c = self.mgr.music_feed.clock(now)
         if c is None:
@@ -674,7 +703,7 @@ class Session(EngineListener):
 
     def _ens_now(self, now: float) -> Optional[dict]:
         """show_service's room.direction.ensemble while the direction is fresh, else None (unison)."""
-        e = (self.mgr.room_direction_now(now) or {}).get("ensemble")
+        e = (self.mgr.room_direction_now(now, self) or {}).get("ensemble")
         return e if isinstance(e, dict) else None
 
     def _cue_stagger(self, cue: dict, now: float, ref_photon: float) -> float:
@@ -1565,7 +1594,7 @@ class Session(EngineListener):
             q.move(qid, 0)
             self._upnext_edited()
             if kind == "scene":
-                result["cue"] = await self.cue({"to": "auto", "at": body.get("when") or "now"})
+                result["cue"] = await self.cue({"to": "auto", "at": body.get("when") or "now"}, room_dedupe=False)
             else:                                       # the effect the owner pressed Play on, not a fresh pick
                 result["fx"] = await self.fx_next({"effect": q.effects[0]["effect"]})
         else:
@@ -1575,9 +1604,38 @@ class Session(EngineListener):
         self._upnext_emit()
         return {**result, "upnext": self.upnext_view()}
 
+    async def _room_next(self, body: dict, origin: str, reason: Optional[str], detail: Optional[str]) -> dict:
+        """Leader: a manual "next" for the room.  One request sent to several of the room's screens (Alexa's
+        "change the scene" with two live) moves the room once: a next for ANOTHER screen of the room while one is
+        in flight, or within ROOM_NEXT_DEDUPE_S of it, is that same move (audit stream_flask:F7).  The same screen
+        twice is two presses."""
+        rn = self._room_next_last
+        if rn is not None and origin not in rn["origins"] and (
+                rn["done"] is None or time.monotonic() - rn["done"] <= ROOM_NEXT_DEDUPE_S):
+            rn["origins"].add(origin)
+            try:
+                return dict(await asyncio.shield(rn["fut"]), deduped=True)
+            except Exception:
+                pass                                     # that move failed: this one tries for itself
+        rn = self._room_next_last = {"origins": {origin}, "done": None,
+                                     "fut": asyncio.get_running_loop().create_future()}
+        try:
+            resp = await self.cue(body, reason=reason, detail=detail, room_dedupe=False)
+        except BaseException as e:
+            rn["done"] = time.monotonic()
+            rn["fut"].set_exception(e if isinstance(e, Exception) else RuntimeError("cancelled"))
+            rn["fut"].exception()                        # retrieved: no "exception was never retrieved" warning
+            raise
+        rn["done"] = time.monotonic()
+        rn["fut"].set_result(resp)
+        return resp
+
     async def cue(self, body: Any, *, cause: str = "manual", reason: Optional[str] = None,
-                  detail: Optional[str] = None, photon_at: Optional[float] = None, stagger: bool = True) -> dict:
-        """``stagger`` False: the ensemble never staggers this cue across the room (a sweep's room.event)."""
+                  detail: Optional[str] = None, photon_at: Optional[float] = None, stagger: bool = True,
+                  origin: Optional[str] = None, room_dedupe: bool = True) -> dict:
+        """``stagger`` False: the ensemble never staggers this cue across the room (a sweep's room.event).
+        ``origin``: the screen a forwarded manual "next" was sent to (a follower's; default this one).
+        ``room_dedupe`` False: a manual "next" that is never taken for another screen's (_room_next)."""
         if not isinstance(body, dict):
             raise ParamError("bad_request", "body must be a JSON object")
         unknown = set(body) - {"to", "via", "at", "idempotency_key", "source"}
@@ -1614,7 +1672,10 @@ class Session(EngineListener):
                 raise SessionError(409, "auto_unavailable", "the session has no auto block")
             ld = self.following()
             if ld is not None and cause == "manual":    # "next" on any screen in a room moves the room
-                return await ld.cue(body, cause=cause, reason=reason, detail=detail)
+                return await ld.cue(body, cause=cause, reason=reason, detail=detail, origin=self.screen,
+                                    room_dedupe=room_dedupe)
+            if cause == "manual" and key is None and room_dedupe and self.room_leader() is self:
+                return await self._room_next(body, origin or self.screen, reason, detail)
             if cause == "manual":
                 self._taste_skip(source)                 # a person's quick Next: the room's taste (taste.py)
                 cause, reason = "auto", "next"
@@ -1671,6 +1732,7 @@ class Session(EngineListener):
             outcome = self._dispatch(cue)
             if outcome != "skipped":
                 self.scene_spec = spec
+                self._energy_due = None     # a new scene, picked after the Energy step: that answers it (C5)
         if to != "auto" and cause == "manual" and source not in NOT_PEOPLE and outcome != "skipped" \
                 and spec.name != DARK_SCENE:            # a person chose this scene by hand: the room's taste
             self.mgr.taste_signal("like", spec.source, self.direction_effective, spec.name)
@@ -1758,6 +1820,8 @@ class Session(EngineListener):
             self._fill_retry["effect"] = 0.0
         elif look.keys() & {"direction", "auto"}:
             self._apply_direction("panel" if "direction" in look else "auto")
+            if "auto" in look:
+                self._energy_due = None     # a mode change (its own direction and pool): room_service cues it (C5)
         if "palette_transition_s" in look:
             self.palette_s = self.runtime.palette_s = look["palette_transition_s"]
         if "palette" in look and look["palette"] != self.palette:
@@ -1796,6 +1860,7 @@ class Session(EngineListener):
         self.director.direction = eff
         self.runtime.speed_target = speed_for(eff["pace"])     # eased over direction_ease_s
         self.runtime.depth_target = eff["intensity"]
+        self._energy_now(cause, ld)
         fd = self.fx_director
         fd.configure((self.director.auto or {}).get("fx"), ensemble.direction(eff, self._ens_lv))   # its part's
         if head_only:                                   # (picked for the new direction: after it is set)
@@ -1806,6 +1871,26 @@ class Session(EngineListener):
             self._emit_director(cause)
         if ld is None:
             self._room_direction(cause)
+
+    def _panel_energy(self) -> float:
+        e = (self.direction or {}).get("energy", 0.5)
+        return float(e) if isinstance(e, (int, float)) and not isinstance(e, bool) else 0.5
+
+    def _energy_now(self, cause: str, ld: Optional["Session"]) -> None:
+        """Energy acts now (owner, contract C5): the Room page's Energy (the panel's direction.energy, not the music's
+        trim of it) leans the playing scene's own intensity at once (modulation.energy_lean, eased over 2 s), and a
+        step of ENERGY_REPICK or more arms the next scene pick, as Next scene would (the director's pick and
+        transition, so the transition style is honoured).  The room's leader (or a lone screen) picks; its followers
+        cut with it.  Only the Room page's own change arms the pick (the direction's ``source`` "panel"): a mode's
+        direction (room_service's mode switch, no source) leans the scene but cuts only as it always did."""
+        e = self._panel_energy()
+        self.runtime.energy_target = e
+        if cause != "panel" or ld is not None:
+            return
+        if (self.direction or {}).get("source") == "panel" and abs(e - self._energy_at) >= ENERGY_REPICK \
+                and self.director.armed and self.director.enabled:
+            self._energy_due = ("energy", f"energy {self._energy_at:.2f}→{e:.2f}")
+        self._energy_at = e
 
     def _drop_prepared(self) -> None:
         if self.prepared_pick is not None:
@@ -1844,7 +1929,7 @@ class Session(EngineListener):
         # the mappings' music and piano signals (binding.py; piano.py reads the notes this session's view has seen)
         pn = self.piano.step(now, self.sound.view.tap() if self.sound is not None else None)
         cause = self.music.update(now, snap, fresh, (d.auto or AUTO_DEFAULTS).get("follow_dmx"), armed,
-                                  room=self.mgr.room_direction_now(now), feed=feed.fresh(now),
+                                  room=self.mgr.room_direction_now(now, self), feed=feed.fresh(now),
                                   piano=pn)   # the piano's own levels (before the room harmony fills its gaps)
         hm = feed.harmony(now)
         if hm is not None:                  # no piano playing: the room's harmony (show_service, from the audio)
@@ -1892,8 +1977,10 @@ class Session(EngineListener):
         if armed and self._auto_task is None and not self.inflight and self.pending is None:
             if self.prepared_pick is None and self._pick_task is None and d.prepare_due(now):
                 self._pick_task = asyncio.create_task(self._prepare_next())
-            due = None if self.music.settling(now) or self._dark is not None or self.mgr.room_hold(now) \
-                else d.due(now)   # a section change:
+            held = self._dark is not None or self.mgr.room_hold(now, self)
+            due, self._energy_due = (None if held else self._energy_due), None   # an Energy step: now (C5)
+            if due is None:
+                due = None if self.music.settling(now) or held else d.due(now)   # a section change:
             # pick for the new direction (between songs, the next song's own cue brings the scene in)
             if due is not None:
                 self._auto_task = asyncio.create_task(self._auto_cue(*due))
@@ -1931,7 +2018,10 @@ class Session(EngineListener):
             self.fx_director.configure((self.director.auto or {}).get("fx"),
                                        ensemble.direction(self.direction_effective, lv))
         out = {} if w is None else {"ensemble": w}
-        seg = ensemble.segment(ens, self.screen, self.mgr.live_screens(now))
+        # F3: the segment spans this session's own room (its live screens), never another room's TVs; a screen in
+        # no room is alone (no segment)
+        seg = ensemble.segment(ens, self.screen, self.mgr.room_live_screens(now, self.room) if self.room
+                               else frozenset({self.screen}))
         if seg is not None:
             out["segment"] = seg
         return out
@@ -1942,7 +2032,7 @@ class Session(EngineListener):
         fd.arm(armed, now)
         if not armed or not fd.due(now) or self._fx_task is not None or self.fx.lock.locked():
             return
-        if self.mgr.room_hold(now):                      # Keep this look: the effects stay too
+        if self.mgr.room_hold(now, self):                # Keep this look: the effects stay too
             fd.done(now, None)
             return
         if self.inflight or self.pending is not None:     # never during a scene transition
@@ -2004,7 +2094,7 @@ class Session(EngineListener):
                                      or kind != "track_change" or detail in ("disarmed", "sound_back")):
             self._track_event(kind, at_s, detail, data)
             return
-        if kind not in CUT_EVENTS or self.mgr.room_hold(time.monotonic()):
+        if kind not in CUT_EVENTS or self.mgr.room_hold(time.monotonic(), self):
             return
         if self.director.hint(f"{kind.replace('_', ' ')} (the room's music{': ' + detail if detail else ''})",
                               urgent=kind == "drop"):
@@ -2508,10 +2598,30 @@ class Session(EngineListener):
         if state != self._inputs_state and now - self._inputs_t >= INPUTS_EVENT_MIN_S:
             self._inputs_state, self._inputs_t = state, now
             self.emit("session.inputs", online=online, beat_locked=locked, stale=self.sampler.stale)
-        if self.palette != self._palette_sent and now - self._palette_t >= 1.0:
-            self._palette_sent, self._palette_t = self.palette, now
+        masked = tuple(self.palette_masked_by())
+        if (self.palette != self._palette_sent or masked != self._masked_sent) and now - self._palette_t >= 1.0:
+            self._palette_sent, self._masked_sent, self._palette_t = self.palette, masked, now
             self.emit("session.palette", palette=self.palette, cause="set",
-                      swatch=palettes.swatch(self.palette) if self.palette else None)
+                      swatch=palettes.swatch(self.palette) if self.palette else None, palette_masked_by=list(masked))
+
+    def palette_picked(self) -> bool:
+        """A person PICKED the room's palette (show_service's room.look: source human or describe, not auto / "Let
+        it choose", not From the art) and this session wears one.  Contract C6: then the palette wins over effects
+        that repaint colour.  No fresh room.look (show_service quiet): not picked, so nothing changes."""
+        return self.palette is not None and self.mgr.palette_picked(time.monotonic())
+
+    def palette_masked_by(self) -> list[str]:
+        """The effects on top that repaint colour (plugins.base.REPAINTS_COLOUR) while the palette is picked: the
+        bus's (not bypassed) and the scene's own, by label.  [] while the palette is on auto (as before)."""
+        if not self.palette_picked():
+            return []
+        reg = self.mgr.registry.effects
+        out = [st.label for st in self.fx.stack if not st.bypass and repaints_colour(reg.get(st.spec.effect))]
+        for e in getattr(self.current_scene, "fx_specs", None) or ():
+            if repaints_colour(reg.get(e.effect)):
+                ent = self.mgr.presets.effects.get(e.preset or "") or {}
+                out.append(str(ent.get("label") or getattr(reg.get(e.effect), "label", "") or e.effect))
+        return list(dict.fromkeys(out))
 
     def inputs(self) -> dict:
         """GET /api/sessions/{id}/inputs (LIVE_V1 1.1 §1.9 monitor)."""
@@ -2562,7 +2672,7 @@ class Session(EngineListener):
         sure = (clk or {}).get("gate") == "beat"
         if tb is not None and (sure or not sig["beat_locked"]):   # the mappings' tempo (a locked desk's stays shown)
             out["derived"].update(bpm=r3(tb), bpm_source="clock" if sure else "clock_tentative")
-        mg = self.mgr.music_grid(now)
+        mg = self._music_grid(now)
         out["cuts_on"] = None if self._beat_grid(now) is None else "show_service clock" if mg is not None \
             else "lighting desk pulse"
         out["clock"] = None if mg is None else {"bpm": round(60.0 / mg[1], 2)}
@@ -2793,6 +2903,7 @@ class Session(EngineListener):
             "direction_effective": self.direction_effective, "music": ds._music_status(time.monotonic()),
             "music_fields": music_fields(ds.direction, ds.music.proposal, ds.music.m),
             "room": self.room_status(),
+            "palette_masked_by": self.palette_masked_by(),     # contract C6: effects on top repainting the picked palette
             "masters": self.runtime.masters(), "fixture": self.fixture, "beat_follow": self.beat_follow,
             "level": self.level,
             "lead_ms": None if self.lead_ms is None else round(self.lead_ms, 1),
@@ -2833,7 +2944,7 @@ class Session(EngineListener):
 class SessionManager:
     def __init__(self, *, registry: Registry, presets: Presets, events, max_sessions: int = 4,
                  public_base: Optional[str] = None, inputs: Optional[ShowInputs] = None,
-                 latency_file: Optional[Any] = None):
+                 latency_file: Optional[Any] = None, switches_file: Optional[Any] = None):
         self.registry = registry
         self.presets = presets
         self.events = events
@@ -2841,6 +2952,7 @@ class SessionManager:
         self.public_base = public_base.rstrip("/") if public_base else None
         self.sessions: dict[str, Session] = {}
         self._screen_seen: dict[str, float] = {}     # screen -> last tick it had a session live here
+        self._screen_room: dict[str, Optional[str]] = {}   # screen -> the room of its last live session (F3)
         self.idempotency: dict[str, str] = {}
         self.loop: Optional[asyncio.AbstractEventLoop] = None
         self._gpu_cache: tuple[float, list[dict]] = (0.0, [])
@@ -2858,13 +2970,15 @@ class SessionManager:
         self.ratings: Any = None                         # the owner's Library ratings (ratings.Ratings; make_app)
         self.taste: Any = None                           # the room's Next / by-hand / Keep (taste.Taste; make_app)
         self.rooms = rooms.RoomMap()                     # screen -> room (rooms.json): one director per room
-        self.switches = StreamSwitches.in_dir(getattr(presets, "dir", None))   # stream_switches.json (change 2)
+        self.switches = (StreamSwitches(switches_file) if switches_file is not None    # stream_switches.json
+                         else StreamSwitches.in_dir(getattr(presets, "dir", None)))  # (change 2; switches.py)
         self.room_direction: Optional[dict] = None       # show_service's last room.direction (on_room_message)
         self.music_feed = MusicFeed(getattr(presets, "music_response", None))   # show_service's music.* (+ config)
         self.room_events_ring: collections.deque = collections.deque(maxlen=8)   # (wall s, kind, detail)
         self.track_n = 0                                 # +1 per new song (room.event track_change): the gallery's
         self._track_last: Any = None                     # picture set holds until the song changes (music_dir.track)
         self.room_why: Optional[tuple[dict, float]] = None    # show_service's room.why (data, arrival)
+        self.room_look: Optional[dict] = None             # show_service's last room.look palette: {picked, name, t}
         self.room_leaders: dict[str, str] = {}           # room -> its leader's session id (kept while it is live)
         self.workers: Any = None                         # workers.WorkerPool (make_app); None: every screen in-process
         self._broken_names: tuple = (None, frozenset())
@@ -3126,6 +3240,13 @@ class SessionManager:
         if msg.get("type") == "room.event" and isinstance(msg.get("data"), dict):
             self._room_event(msg["data"])
             return
+        if msg.get("type") == "room.look" and isinstance(msg.get("data"), dict):
+            pal = msg["data"].get("palette")             # only whether a person picked it (C6); the palette itself
+            if isinstance(pal, dict):                    # still reaches the sessions through room_service
+                self.room_look = {"picked": pal.get("source") in PALETTE_PICKED_SOURCES
+                                  and pal.get("name") not in PALETTE_NOT_PICKED,
+                                  "name": pal.get("name"), "t": time.monotonic()}
+            return
         if msg.get("type") == "room.why" and isinstance(msg.get("data"), dict):
             self.room_why = (msg["data"], time.monotonic())      # show_service's reasons, for the details panel
             return
@@ -3179,23 +3300,44 @@ class SessionManager:
         detail = str(data.get("detail") or "")[:80]
         self.room_events_ring.append((time.time(), kind, detail))
         for s in list(self.sessions.values()):
-            s.room_event(kind, at_s, detail, data)
+            if self.in_show(s):                      # a room with "show": false hears none of the show's events
+                s.room_event(kind, at_s, detail, data)
 
-    def room_hold(self, now: float) -> bool:
+    def palette_picked(self, now: float) -> bool:
+        """show_service's fresh room.look says a person picked the palette (contract C6)."""
+        r = getattr(self, "room_look", None)
+        return bool(r and r["picked"] and now - r["t"] <= ROOM_LOOK_STALE_S)
+
+    def room_hold(self, now: float, s: Any = None) -> bool:
         """A person holds the look (show_service's room.direction ``hold``: Keep this look, or their own pick still
         pending): neither director changes anything, scenes or effects (owner 17 Oct).  A person's own Next still
-        works."""
-        r = self.room_direction_now(now)
+        works.  ``s``: the asking session; never held for one outside the show."""
+        r = self.room_direction_now(now, s)
         return bool(r and r.get("hold"))
 
-    def room_direction_now(self, now: float) -> Optional[dict]:
+    def room_direction_now(self, now: float, s: Any = None) -> Optional[dict]:
         """The room director's direction while it is fresh, else None (show_service's features, then the desk's,
         propose).  With no vibe it still follows the music (show_service's director: band moods, energy, pace), so
-        it fills the slot then too (d4's G3, owner 17 Oct)."""
+        it fills the slot then too (d4's G3, owner 17 Oct).  ``s``: the asking session (or screen); None for one
+        outside the show (in_show)."""
         r = self.room_direction
         if r is None or now - r["t"] > ROOM_STALE_S:
             return None
+        if s is not None and not self.in_show(s):
+            return None
         return r
+
+    def in_show(self, s: Any) -> bool:
+        """A session (or a screen id) is in show_service's show: False only for a screen of a room with ``"show":
+        false`` in rooms.json (rooms.RoomMap.in_show, re-read when the file changes).  Outside the show a session
+        gets no room.direction, hold, room.event, ensemble, beat grid, gestures or music feed.  None: True."""
+        if s is None:
+            return True
+        screen = s if isinstance(s, str) else getattr(s, "screen", None)
+        rm = getattr(self, "rooms", None)
+        if not isinstance(screen, str) or rm is None:
+            return True
+        return rm.in_show(screen)
 
     def live_screens(self, now: float) -> frozenset:
         """Screens with a session entering or live here, or that had one within SEGMENT_HOLD_S (ensemble.segment
@@ -3207,6 +3349,19 @@ class SessionManager:
         for k in [k for k, t in seen.items() if now - t > SEGMENT_HOLD_S]:
             del seen[k]
         return frozenset(seen)
+
+    def room_live_screens(self, now: float, room: Optional[str]) -> frozenset:
+        """live_screens narrowed to one room: the screens whose last live session here was in ``room`` (F3: a
+        session's ensemble segment spans its own room only).  A screen keeps its room through live_screens' brief
+        hold, so a TV that just dropped out keeps its slot in its own room as before.  Empty for no room."""
+        live = self.live_screens(now)
+        if not room:
+            return frozenset()
+        rm = self.__dict__.setdefault("_screen_room", {})
+        for s in list(self.sessions.values()):
+            if not s.exited and s.state in LIVE_STATES:
+                rm[s.screen] = getattr(s, "room", None)
+        return frozenset(scr for scr in live if rm.get(scr) == room)
 
     CLOCK_FRESH_S = 1.5        # music.clock comes at 10 Hz and on every re-anchor
 
@@ -3322,6 +3477,9 @@ class SessionManager:
         screen = body.get("screen")
         if not isinstance(screen, str) or not SCREEN_RE.match(screen):
             raise ParamError("bad_request", "screen must be an id like 'devtest'")
+        if not smconfig.enabled("live"):
+            log.warning("create refused: the deployment %s has live off", smconfig.deployment_id())
+            raise ParamError("live_off", "live sessions are switched off for this deployment (capability 'live')")
         gpu = body.get("gpu", 0)
         n_gpus = len(self.gpu_names())
         if isinstance(gpu, bool) or not isinstance(gpu, int) or gpu < 0 or (n_gpus and gpu >= n_gpus):
@@ -3410,6 +3568,10 @@ class SessionManager:
     async def create(self, body: Any, host: str) -> tuple[Session, bool]:
         """-> (session, created).  An idempotency_key that names a known session returns that session."""
         p = self._parse(body)
+        if self.no_gpu():                        # a valid request, but nothing to render it on (not a CUDA crash)
+            log.warning("create refused: no CUDA GPU on this machine (screen %s)", p["screen"])
+            raise ParamError("no_gpu", "this machine has no CUDA GPU the renderer can use (CuPy sees none), so it "
+                                       "can't start a live session")
         key = p["idempotency_key"]
         if key is not None:
             while key in self._creating:         # the same request is being served right now: wait for it
@@ -3438,6 +3600,8 @@ class SessionManager:
             s = Session(self, sid=sid, screen=p["screen"], gpu=p["gpu"], profile=p["profile"], scene=p["scene"],
                         t_in=p["t_in"], t_out=p["t_out"], ttl_s=p["ttl_s"], idempotency_key=key, **look)
             s.room = p["room"]
+            if not self.in_show(p["screen"]):       # a room with "show": false: no music feed (frames and cues)
+                s.show, s.runtime.feed = False, None
             s.hud_wanted = p["hud"]
             s.profile_asked = p.get("profile_asked")
             s.attach = self.attach_for(s, host)
@@ -3525,11 +3689,29 @@ class SessionManager:
 
     # -- GPUs ----------------------------------------------------------------------
     def gpu_names(self) -> list[dict]:
-        from .gpu import device_names
+        """CUDA devices (gpu.device_names), cached. An empty probe is not kept: it is retried at most every
+        GPU_REPROBE_S, so a CUDA / CuPy that wasn't ready at startup (--warm probes early) doesn't refuse every create
+        until a restart."""
+        from . import gpu as _gpu
 
-        if not hasattr(self, "_devices"):
-            self._devices = device_names()
-        return self._devices
+        devs = getattr(self, "_devices", None)
+        now = time.monotonic()
+        if devs is None or (not devs and now - getattr(self, "_devices_t", -1e9) >= GPU_REPROBE_S):
+            devs = self._devices = _gpu.device_names()
+            self._devices_t = now
+            if not devs and not getattr(self, "_no_gpu_logged", False):
+                self._no_gpu_logged = True
+                log.warning("GPUs: CuPy sees no CUDA device (%s); retrying every %.0f s",
+                            _gpu.LAST_PROBE_ERROR or "device count 0", GPU_REPROBE_S)
+            elif devs and getattr(self, "_no_gpu_logged", False):
+                self._no_gpu_logged = False
+                log.info("GPUs: CuPy now sees %d CUDA device(s)", len(devs))
+        return devs
+
+    def no_gpu(self) -> bool:
+        """True when sessions need a CUDA GPU (renderer.Engine.needs_gpu) and this machine has none: a create is
+        refused (no_gpu) instead of failing inside CUDA; the service itself runs on (/healthz, the catalog)."""
+        return bool(getattr(Engine, "needs_gpu", False)) and not self.gpu_names()
 
     def gpu_state(self) -> list[dict]:
         """[{index, name, mem_used_mb}] via NVML (diag.py: no fork; nvidia-smi only without NVML), cached for 2 s."""

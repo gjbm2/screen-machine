@@ -15,12 +15,31 @@ def test_spectrum32_edges_match_the_spec():
 
 
 def test_stream_priority():
-    ranks = [c.stream_rank(s) for s in ("room-line", "room-mic", "pc22-loop", "pc22-mic", "test-piano", "whatever")]
+    ranks = [c.stream_rank(s) for s in ("room-line", "room-mic", "pc22-loop", "pc22-mic", "whatever", "test-piano")]
     assert ranks == sorted(ranks) and len(set(ranks)) == len(ranks)
-    assert c.stream_rank("phone-test") == c.stream_rank("test-piano")
+    assert c.stream_rank("phone-test") == c.stream_rank("test-piano") == c.stream_rank("test-thing") == c.TEST_RANK
     pri = ("pc22-loop", "room-mic")                     # Config.stream_priority: those first, in that order
     ranks = [c.stream_rank(s, pri) for s in ("pc22-loop", "room-mic", "room-line", "pc22-mic", "whatever")]
     assert ranks == sorted(ranks) and len(set(ranks)) == len(ranks)
+
+
+def test_the_sites_own_streams_rank_in_sender_order_and_never_below_a_test_stream():
+    """Audit SHOW-5: a site's mic named anything ranks by show.yaml's senders order, after the priority and before
+    the conventional names; an unknown name still beats a test stream."""
+    site = ("studio-mic", "desk-mic")
+    order = ("over", "studio-mic", "desk-mic", "room-mic", "whatever", "phone-test")
+    ranks = [c.stream_rank(s, ("over",), site) for s in order]
+    assert ranks == sorted(ranks) and len(set(ranks)) == len(ranks)
+    assert c.stream_rank("whatever") < c.stream_rank("phone-test")
+    assert c.stream_rank("room-mic", (), ()) == 1                     # no site: today's numbers
+
+
+def test_midi_streams_come_from_the_site_too():
+    s = {"situations": {"midi": {"streams": ["room-piano", "keys"]}},
+         "senders": {"studio": {"streams": ["studio-mic", "studio-piano"], "midi": ["studio-piano"]},
+                     "odd": {"midi": "solo"}, "bad": "x"}}
+    assert c.midi_streams(s) == frozenset(c.MIDI_STREAMS) | {"keys", "studio-piano", "solo"}
+    assert c.midi_streams(None) == frozenset(c.MIDI_STREAMS)
 
 
 def test_clock_body_lives_here():
@@ -45,7 +64,7 @@ def test_config_fields_live_here():
 
     cfg = c.Config(senders=(c.Sender("kiosk", "screen-machine-drawingroom", streams=("room-mic", "room-piano")),))
     assert cfg.vban_bind == ("0.0.0.0", 6980) and cfg.bus_bind == ("127.0.0.1", c.BUS_PORT)
-    assert cfg.latency_file.parts[-3:] == ("config", "room", "latency.json")
+    assert cfg.latency_file == c.DEPLOYMENT.path("calibration", "latency.json") == c.LATENCY_FILE   # the site's
     assert cfg.senders[0].port == 6980
     try:
         cfg.log_level = "DEBUG"  # type: ignore[misc]

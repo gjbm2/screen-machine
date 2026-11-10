@@ -10,7 +10,7 @@ Conflicts=kiosk-x11.service getty@tty1.service
 After=systemd-user-sessions.service network.target snapd.seeded.service
 
 [Service]
-User=gjbm2
+User=@@KIOSK_USER@@
 PAMName=login
 TTYPath=/dev/tty1
 TTYReset=yes
@@ -24,8 +24,8 @@ UtmpMode=user
 Environment=XDG_SESSION_TYPE=wayland
 ExecStart=/usr/bin/sway --config /usr/local/share/kiosk/sway-kiosk.conf
 # sway's children live in the login session, not this unit's cgroup: clean them up on stop
-ExecStopPost=-/usr/bin/pkill -u gjbm2 -f /usr/local/bin/kiosk-wayland.sh
-ExecStopPost=-/usr/bin/pkill -u gjbm2 -f -- --user-data-dir=/tmp/chrome-(north|south)
+ExecStopPost=-/usr/bin/pkill -u @@KIOSK_USER@@ -f /usr/local/bin/kiosk-wayland.sh
+ExecStopPost=-/usr/bin/pkill -u @@KIOSK_USER@@ -f -- --user-data-dir=/tmp/chrome-(north|south)
 Restart=always
 RestartSec=5
 

@@ -1,11 +1,12 @@
 """artnet_out: the virtual Maestro (P0, docs/SHOW_ENGINE.md §0.1, §9.4, §9.5, §13.2).
 
-show_service sends one ArtDmx universe, in exactly MaestroDMX's channel layout (config/room/patch.yaml), to
+show_service sends one ArtDmx universe, in exactly MaestroDMX's channel layout (deployments/<id>/lights/patch.yaml), to
 room_service's own Art-Net receiver. room_service decodes it as it would Maestro, so the renderer's BeatFollower,
 music_direction.py and the Hue "Follow" streamer follow the room's real music with no change on their side.
 
 **Off by default.** Nothing is sent until a target is configured (``SHOW_ARTNET_TARGET``; production
-``127.0.0.1:6454``, room's receiver). Tests send to an ephemeral local UDP socket, never 6454.
+``127.0.0.1:6454``, room's receiver; only with the deployment's dmx capability, ``__main__``). Tests send to an
+ephemeral local UDP socket, never 6454.
 
 Thread ``show-artnet``: a deadline loop, at most 44 Hz (Art-Net 4's limit; nodes drop excess frames). It reads the
 beat clock and the feature snapshot **by reference** each frame and never locks, waits on or calls into show-rx.
@@ -64,7 +65,7 @@ While the director plays a vibe (``palette_fn`` returns a dict), neither idles: 
 base look, Lights low, House lights; §8.5 "never black") with hue_depth 0, no DIMMER pulses and no beat edges, and the
 features are not followed (``status()["held"]``: the reason).
 
-**Yield** (§9.4, as fake_artnet yields to Maestro). Every 5 s ``GET http://127.0.0.1:8700/api/v1/dmx`` (its
+**Yield** (§9.4, as fake_artnet yields to Maestro). Every 5 s ``GET <room>/api/v1/dmx`` (smconfig.url("room"); its
 ``input``: last_from, age_ms, source), and pause (log it, ``yield.from``) when the input is fresh (``age_ms`` <=
 1500, room's stale_after_ms) and ``input.last_from`` is not one of our source addresses (127.0.0.1 or the socket's
 own). There is no packet-rate test (09's audit F4, 21 Oct: "over our own rate + 8" tripped on our own beat-edge
@@ -123,7 +124,7 @@ from typing import Any, Callable, Mapping, Optional, Protocol, Sequence
 
 import numpy as np
 
-from .contract import REPO_ROOT
+from . import contract
 
 log = logging.getLogger("show_service.artnet_out")
 
@@ -174,8 +175,8 @@ QUIET_AFTER_S = 10.0
 FRAME_LOG_S = 30.0                  # a failing frame is logged once, then at most this often
 
 # -- config -----------------------------------------------------------------------------------------------------------
-PATCH_FILE = REPO_ROOT / "config" / "room" / "patch.yaml"
-ROOM_DMX_URL = "http://127.0.0.1:8700/api/v1/dmx"
+PATCH_FILE = contract.PATCH_FILE                    # deployments/<id>/lights/patch.yaml (SHOW_PATCH_FILE overrides)
+ROOM_DMX_URL = f"{contract.ROOM_URL}/api/v1/dmx"     # room_service over loopback (SHOW_ROOM_DMX_URL overrides)
 POLL_S = 5.0
 PATCH_CHECK_S = 2.0
 FOREIGN_FRESH_MS = 1500.0           # room's artnet.stale_after_ms

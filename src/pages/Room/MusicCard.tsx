@@ -734,7 +734,18 @@ function AutoRules({ api, onEdit, current }: { api: RoomApi; onEdit?: (mode: str
  * The room director's controls: Calmer · Wilder, Describe it (one line under them), the palette, Next look · Keep this
  * look, and the nudges that are on (each with ×, and Clear all). House lights and Lights low are in the Lights fold.
  */
-export function DirectorControls({ api, feed, addLog }: { api: RoomApi; feed: ShowFeed; addLog: (e: NewLogEntry) => void }) {
+export function DirectorControls({
+  api,
+  feed,
+  addLog,
+  coveredBy = [],
+}: {
+  api: RoomApi;
+  feed: ShowFeed;
+  addLog: (e: NewLogEntry) => void;
+  /** Effects on the live screens that repaint colour over the picked palette (the renderer's palette_masked_by). */
+  coveredBy?: string[];
+}) {
   const { card } = useShowState(feed);
   const main = useSend(feed, addLog);
   const { send, busy } = main;
@@ -876,6 +887,12 @@ export function DirectorControls({ api, feed, addLog }: { api: RoomApi; feed: Sh
         })}
       </div>
 
+      {coveredBy.length > 0 && (
+        <p className="px-1 text-sm leading-snug text-muted-foreground" data-testid="palette-covered">
+          Covered by {coveredBy.length === 1 ? coveredBy[0] : `${coveredBy.slice(0, -1).join(", ")} and ${coveredBy[coveredBy.length - 1]}`}
+        </p>
+      )}
+
       {/* Describe it: say how it should feel, in your own words (out of More: owner's walk, 24 Oct) */}
       <div data-testid="music-describe" className={cn(!describeShown && "sm:hidden")}>
         <form
@@ -964,12 +981,18 @@ export function ListeningPanel({
   api,
   feed,
   now,
+  hasPiano = true,
+  hasSonos = true,
 }: {
   api: RoomApi;
   feed: ShowFeed;
   /** The page's 1 s clock (whether a polled card is still fresh). */
   now: number;
   addLog?: (e: NewLogEntry) => void;
+  /** The site has a piano sender (show_service's inputs; true until known): the mic-off line names only what exists. */
+  hasPiano?: boolean;
+  /** The site has Sonos (room_service's sonos subsystem). */
+  hasSonos?: boolean;
 }) {
   const { card, live, lastAt } = useShowState(feed);
   const answering = !!card && (live || (lastAt !== null && now - lastAt < FRESH_MS));
@@ -982,9 +1005,10 @@ export function ListeningPanel({
   const { allowed: micAllowed, listening: micListening, line: micLine } = micWords(mic);
   const claimWords = (mic?.claims ?? []).map((c) => (c.by === "auto" ? "Auto" : c.label || mic?.mode || "This mode"));
   // Off while something wants it: say who loses the room's sound.
+  const sees = [hasPiano ? "the piano" : null, hasSonos ? "Sonos" : null].filter(Boolean).join(" and ");
   const micMissed =
     mic && !micAllowed && (mic.wanted || claimWords.length || card?.auto?.on === true)
-      ? `${claimWords.length ? claimWords.join(" and ") : "Auto"} can't hear the room. It still sees the piano and Sonos.`
+      ? `${claimWords.length ? claimWords.join(" and ") : "Auto"} can't hear the room.${sees ? ` It still sees ${sees}.` : ""}`
       : null;
 
   const level = answering ? clamp01(hearing?.level) : 0;

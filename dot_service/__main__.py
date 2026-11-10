@@ -12,10 +12,15 @@ When it sends:
 The tag's own wake interval follows the same period (Dot. Settings API), and its sleep window is the config's.
 Sends are at least MIN_GAP_S apart.
 
-Config: config/room/dot.json (hot-reloaded). API key: ~/.config/screen-machine/dot.json {"api_key"}.
+Config: the deployment's dot.json (deployments/<id>/dot.json, hot-reloaded). API key: ~/.config/screen-machine/dot.json
+{"api_key"}.
 HTTP on 127.0.0.1 (DOT_PORT): /healthz, /api/v1/status, /preview/<device>.png, POST /api/v1/push (send now),
 /dev/type (the type lab, typelab.py).
-Run by scripts/ctl (screen session sm-dot, deploy/sm-dot.env).
+Run by scripts/ctl (screen session sm-dot, the deployment's services/sm-dot.env).
+
+Mode zones: a tag whose room has its own modes (rooms.json "own_modes"; room_service status "zones") shows that
+room's mode, labelled from its own modes file (GET /api/v1/modes?room=), and no Auto (Auto switches the site's modes).
+Every other tag shows the site's mode, as before.
 """
 
 from __future__ import annotations
@@ -31,22 +36,33 @@ import os
 import time
 from pathlib import Path
 from typing import Any, Optional
+from urllib.parse import quote
 
 import aiohttp
 from aiohttp import web
+
+import smconfig
 
 from . import typelab
 from .render import Card, render
 
 REPO = Path(__file__).resolve().parent.parent
-CONFIG = REPO / "config" / "room" / "dot.json"
-KEY_FILE = Path.home() / ".config" / "screen-machine" / "dot.json"
-BATTERY_LOG = Path.home() / ".local" / "state" / "screen-machine" / "logs" / "dot_battery.jsonl"   # every DEVICE_STATUS_S
+CONFIG = smconfig.path("dot.json")
+KEY_FILE = smconfig.secret("dot.json")
+BATTERY_LOG = smconfig.state("logs", "dot_battery.jsonl")   # every DEVICE_STATUS_S
 DOT_API = "https://dot.mindreset.tech/api/authV2/open"
-ROOM = os.environ.get("DOT_ROOM_URL", "http://127.0.0.1:8700")
-SHOW = os.environ.get("DOT_SHOW_URL", "http://127.0.0.1:8703")
-STREAM = os.environ.get("DOT_STREAM_URL", "http://127.0.0.1:8702")
-APP = os.environ.get("DOT_APP_URL", "http://127.0.0.1:5000")
+ROOM = os.environ.get("DOT_ROOM_URL") or smconfig.url("room")
+SHOW = os.environ.get("DOT_SHOW_URL") or smconfig.url("show")
+STREAM = os.environ.get("DOT_STREAM_URL") or smconfig.url("stream")
+
+
+def show_on() -> bool:
+    """The deployment runs show_service (capability "show"); off, the tags never ask it."""
+    try:
+        return smconfig.enabled("show")
+    except Exception:  # an unreadable manifest: ask show as before
+        return True
+APP = os.environ.get("DOT_APP_URL") or smconfig.url("flask")
 OWN_STREAM = "/show/api/v1/piano/stream/"   # Sonos playing the music player's own stream: the player names it
 
 POLL_S = 2.0
@@ -122,6 +138,22 @@ def status_of(c: Card) -> tuple:
     return (c.mode, c.changing_from, c.auto, c.mic, c.ai, c.live, c.title, c.paused)
 
 
+def zone_of(status: dict, room_id: str) -> Optional[dict]:
+    """The room's own mode zone in room_service's status ("zones", only on a deployment where a room has
+    "own_modes"), or None: the room follows the site's mode (status.mode), as every room did before zones."""
+    return next((z for z in status.get("zones") or [] if z.get("room") == room_id), None)
+
+
+def mode_words(mode: dict, modes: dict) -> tuple[str, str]:
+    """(the mode shown, the mode it is changing from or "") from a mode block (status.mode or a zone's) and that
+    mode file's GET /api/v1/modes."""
+    labels = {k: (v.get("label") or k) for k, v in (modes or {}).get("modes", {}).items()}
+    current, target = mode.get("current") or "", mode.get("target")
+    shown = labels.get(target or current, target or current)
+    changing_from = labels.get(current, current) if target and target != current else ""
+    return shown, changing_from
+
+
 class DotService:
     def __init__(self) -> None:
         self.cfg_mtime = 0.0
@@ -129,6 +161,7 @@ class DotService:
         self.http: Optional[aiohttp.ClientSession] = None
         self.modes: dict = {}
         self.modes_at = 0.0
+        self.zone_modes: dict[str, tuple[float, dict]] = {}   # an own_modes room's GET /api/v1/modes?room=
         self.catalog: dict = {}
         self.catalog_at = 0.0
         self.sched: dict[str, tuple[float, dict]] = {}
@@ -188,6 +221,16 @@ class DotService:
             self.sched[room] = (time.time(), values)
         return values
 
+    async def modes_of(self, room: str) -> dict:
+        """A mode zone's modes (its own modes file), re-read every SLOW_S like the site's; the last good on a miss."""
+        at, modes = self.zone_modes.get(room, (0.0, {}))
+        if time.time() - at > SLOW_S:
+            got = await self.soft(f"{ROOM}/api/v1/modes?room={quote(room)}")
+            if got:
+                modes = got
+            self.zone_modes[room] = (time.time(), modes)
+        return modes
+
     async def scene_labels(self) -> dict:
         if time.time() - self.catalog_at > CATALOG_S:
             cat = await self.soft(f"{STREAM}/api/catalog")
@@ -203,11 +246,13 @@ class DotService:
         room = next((r for r in status.get("rooms", []) if r.get("id") == room_id), {})
         screens = room.get("screens", [])
 
-        labels = {k: (v.get("label") or k) for k, v in self.modes.get("modes", {}).items()}
-        mode = status.get("mode", {})
-        current, target = mode.get("current") or "", mode.get("target")
-        shown = labels.get(target or current, target or current)
-        changing_from = labels.get(current, current) if target and target != current else ""
+        # A room with its own modes shows its zone's mode (its own file's labels), and no Auto: Auto switches the
+        # site's modes. Every other room shows the site's, as before.
+        zone = zone_of(status, room_id)
+        if zone is None:
+            shown, changing_from = mode_words(status.get("mode", {}), self.modes)
+        else:
+            shown, changing_from = mode_words(zone.get("mode") or {}, await self.modes_of(room_id))
         live = any(((status.get("screens", {}).get(s) or {}).get("observed") or {}).get("layer") == "live"
                    for s in screens)
 
@@ -279,7 +324,8 @@ class DotService:
             style = str(values.get(art.get("style")) or "")
 
         qr = tag.spec.get("qr") or {}
-        return Card(room=room.get("name") or room_id, mode=shown, auto=bool(auto.get("on")), mic=mic_on, ai=ai_on,
+        return Card(room=room.get("name") or room_id, mode=shown, auto=bool(auto.get("on")) and zone is None,
+                    mic=mic_on, ai=ai_on,
                     live=live, changing_from=changing_from, title=title, by=by, left=left, progress=progress,
                     paused=paused, hearing=hearing, scene=scene, feel=feel, ai_heard=ai_heard, theme=theme.strip(),
                     style=style.strip(), hint=tag.spec.get("hint") or "",
@@ -350,11 +396,15 @@ class DotService:
             self.modes = await self.get(f"{ROOM}/api/v1/modes")
             self.modes_at = time.time()
         keys = ("status", "auto", "player", "show", "card", "look", "listening")
-        vals = await asyncio.gather(
-            self.get(f"{ROOM}/api/v1/status"), self.get(f"{SHOW}/api/v1/autopilot"),
-            self.get(f"{SHOW}/api/v1/player"), self.soft(f"{SHOW}/api/v1/state", {}),
-            self.soft(f"{SHOW}/api/v1/card", {}), self.soft(f"{SHOW}/api/v1/look", {}),
-            self.soft(f"{SHOW}/api/v1/listening", {}))
+        if show_on():
+            # autopilot and player are hard: while show_service restarts, the tags keep the card they have
+            vals = await asyncio.gather(
+                self.get(f"{ROOM}/api/v1/status"), self.get(f"{SHOW}/api/v1/autopilot"),
+                self.get(f"{SHOW}/api/v1/player"), self.soft(f"{SHOW}/api/v1/state", {}),
+                self.soft(f"{SHOW}/api/v1/card", {}), self.soft(f"{SHOW}/api/v1/look", {}),
+                self.soft(f"{SHOW}/api/v1/listening", {}))
+        else:   # no show_service in this deployment: the room's status alone fills the card, show is never asked
+            vals = [await self.get(f"{ROOM}/api/v1/status"), {}, {}, {}, {}, {}, {}]
         src = dict(zip(keys, vals))
         now = time.time()
         for tag in list(self.tags.values()):

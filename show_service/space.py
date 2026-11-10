@@ -8,12 +8,13 @@ facing the front; cw/ccw are as seen from above (the floor plan: N -> E -> S -> 
 the ceiling and the four walls come from the room's size. A direction ("upwards", "turning clockwise") or a place ("the
 piano") therefore means the same thing to a screen, a lamp and a mover.
 
-**Files** (``Store``, one per process: ``shared()``): config/room/space.yaml (hand) with config/room/space.added.yaml
-(written only by the rig API: the Room map, Move it's teach points and solved poses) merged under it. Keys:
-``room {size, front}``, ``appliances.<fixture or room device id> {at, kind, label, mount, plane {normal, up, size},
-teach, pose}``, ``points.<name> {label, at, device}``, ``regions.<name> {label, surface, centre, size}``,
-``surfaces.<name> {label, origin, normal, up, size}``. The hand file wins on a clash (a problem line): per key for an
-appliance (so a hand-placed mover can still be taught on the page), whole entries for points, regions and surfaces.
+**Files** (``Store``, one per process: ``shared()``): deployments/<id>/lights/space.yaml (hand) with
+deployments/<id>/lights/space.added.yaml (written only by the rig API: the Room map, Move it's teach points and solved
+poses) merged under it. Keys: ``room {size, front}``, ``appliances.<fixture or room device id> {at, kind, label, mount,
+plane {normal, up, size}, teach, pose}``, ``points.<name> {label, at, device}``, ``regions.<name> {label, surface,
+centre, size}``, ``surfaces.<name> {label, origin, normal, up, size}``. The hand file wins on a clash (a problem line):
+per key for an appliance (so a hand-placed mover can still be taught on the page), whole entries for points, regions and
+surfaces.
 
 **Load rules** (fixtures.py's): ``poll`` re-reads on any mtime or size change of either file; a file that doesn't read
 keeps that file's last good contents (``error`` says why); a value it can't use drops that key or entry with a
@@ -590,11 +591,11 @@ def empty_view() -> contract.SpaceView:
 
 # -- the store ---------------------------------------------------------------------------------------------------------
 ADDED_HEADER = """\
-# config/room/space.added.yaml: the room as set on the Lights page (the Room map, and Move it's "Point it at…"). WRITTEN
-# BY show_service's rig API (/show/api/v1/rig/space/..., .../teach; docs/LIGHTS.md §3, §8.1), whole, on every change:
-# don't edit it by hand. show_service merges it under config/room/space.yaml (the hand file, the same keys), which wins
-# on a clash (a problem line), and re-reads both when they change. appliances.<id>.teach are a mover's taught places
-# and .pose its solved mounting (space.solve_pose).
+# deployments/<id>/lights/space.added.yaml: the room as set on the Lights page (the Room map, and Move it's "Point it
+# at…"). WRITTEN BY show_service's rig API (/show/api/v1/rig/space/..., .../teach; docs/LIGHTS.md §3, §8.1), whole, on
+# every change: don't edit it by hand. show_service merges it under deployments/<id>/lights/space.yaml (the hand file,
+# the same keys), which wins on a clash (a problem line), and re-reads both when they change. appliances.<id>.teach are
+# a mover's taught places and .pose its solved mounting (space.solve_pose).
 """
 
 
@@ -646,8 +647,8 @@ def _one(parse: Callable[[list[str]], Any], what: str) -> Any:
 
 
 class Store:
-    """config/room/space.yaml + space.added.yaml (module docstring). ``poll`` and the writers from show-brain (one at a
-    time: an RLock); ``view`` from any thread (swapped by reference)."""
+    """deployments/<id>/lights/space.yaml + space.added.yaml (module docstring). ``poll`` and the writers from
+    show-brain (one at a time: an RLock); ``view`` from any thread (swapped by reference)."""
 
     def __init__(self, path: pathlib.Path = contract.SPACE_FILE, *,
                  added_path: Optional[pathlib.Path] = None) -> None:
@@ -987,8 +988,8 @@ _SHARED_LOCK = threading.Lock()
 
 
 def shared() -> Store:
-    """The process's one Store of config/room/space.yaml (+ space.added.yaml): the director, the rig's look engine and
-    the API read the same room. Created (and loaded once) on first use; polled by its readers."""
+    """The process's one Store of deployments/<id>/lights/space.yaml (+ space.added.yaml): the director, the rig's look
+    engine and the API read the same room. Created (and loaded once) on first use; polled by its readers."""
     global _SHARED
     with _SHARED_LOCK:
         if _SHARED is None:

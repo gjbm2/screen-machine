@@ -1,0 +1,50 @@
+{
+  "default": "gallery",
+  "modes": {
+    "gallery": {
+      "label": "Normal",
+      "state": {
+        "screens": "art",
+        "page": true,
+        "sensor_mask": "follow"
+      }
+    },
+    "live-test": {
+      "label": "Live test (devtest)",
+      "state": {
+        "show.mic": {
+          "set": true,
+          "restore": true
+        },
+        "show.ai": {
+          "set": true,
+          "restore": true
+        },
+        "page": true,
+        "page.devtest.timed_reload": false,
+        "sensor_mask": "follow",
+        "screens": {
+          "live": {
+            "auto": true,
+            "transitions": {
+              "in": "crossfade-3s",
+              "out": "crossfade-3s"
+            }
+          }
+        }
+      }
+    }
+  },
+  "transitions": [
+    {
+      "from": "*",
+      "to": "*",
+      "steps": [
+        "sensor_mask",
+        "page",
+        "screens",
+        "rest"
+      ]
+    }
+  ]
+}

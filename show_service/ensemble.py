@@ -7,9 +7,11 @@ then on north (right) and/or echo between -- likewise the relationship between t
 **Players** (``players``; §2): each screen fixture (``kind: screen``), each light group split by side ("Lamps, left" /
 "Lamps, right"; unplaced or unsplit members in ``<group>:all``), and a room device (the glitterball) at the centre.
 A fixture's ``x`` (-1 left .. +1 right), first rule that answers: the room space (space.lateral over the placed
-fixtures, only when they span ``players.min_spread_m``), its ``zone`` through show.yaml ``ensemble.players.zones``,
-the screen it hangs at (``screen:``), else 0. Side: x < -0.05 left, > 0.05 right, else centre. Players on one side form
-a **team** (``teams``), ordered by the travel order (``flow_order``: the room's left to right, or the flow's).
+fixtures, only when they span ``players.min_spread_m``), its ``zone`` through show.yaml ``ensemble.players.zones``
+(left | centre | right, or x itself), when neither places any screen two or more screens stand evenly left to right
+in the room's rooms.json order (``order``), the screen it hangs at (``screen:``), else 0. Side: x < -0.05 left,
+> 0.05 right, else centre. Players on one side form a **team** (``teams``), ordered by the travel order
+(``flow_order``: the room's left to right, or the flow's).
 
 **Gestures** (§3): accent, downbeat, phrase, fill (the clock's lines, bounded by the feel's ``accents`` word, the
 clock's gate and beat_lock), hit (structure's drop line, else a drop heard), section (a look for a section, a song or a
@@ -41,7 +43,9 @@ room.direction ``ensemble``). The screens never take a scale as a gain (the rend
 **Degrade.** No ``ensemble:`` block in show.yaml (``parse_settings(None)``): the room plays as today: the built-in
 unison, no pick, nothing seeded or published on room.gesture (the director still carries the block). Neutral (no
 palette), House lights or Lights low: no seeds are kept and the block is unison with ``source: neutral`` and no line.
-Without the room placed or zones, every player is centre and only forms without ``needs: sides`` are eligible.
+Fewer than two players on (one screen and nothing else): the same neutral unison, no line, whatever was picked.
+Without the room placed or zones, a lone screen and the lights are centre and only forms without ``needs: sides`` are
+eligible; with ``team_by: player`` a centre screen is a team of its own.
 
 Pure: no I/O but the catalogue's file, no thread of its own. Every method runs on show-brain except ``block``,
 ``part_of``, ``scale``, ``lamp_parts`` and ``recent``, which read references swapped there. Nothing here names a
@@ -60,7 +64,7 @@ import pathlib
 import random
 import string
 from dataclasses import dataclass, replace
-from typing import Any, Mapping, Optional, Sequence
+from typing import Any, Collection, Mapping, Optional, Sequence
 
 from . import contract
 from . import light_scenes as lscenes
@@ -83,7 +87,8 @@ UNISON_IN: dict[str, tuple[str, ...]] = {         # kinds a form plays on every 
     "unison": contract.GESTURE_KINDS, "contrast": contract.GESTURE_KINDS}
 FILL_ROLL = "fill"                                # rolls player by player along the travel order, whatever team_by
 SIDE_EDGE = 0.05                                  # |x| under this is the centre
-VIA_RANK = {"space": 0, "zone": 1, "screen": 2, "none": 3}
+VIA_RANK = {"space": 0, "zone": 1, "order": 2, "screen": 3, "none": 4}
+ZONE_X = {"left": -1.0, "centre": 0.0, "center": 0.0, "right": 1.0}   # ensemble.players.zones' words; or a number
 NO_GRID_BAR_S = 2.0                               # max_per_bar counts per this many seconds without a grid
 SEEN_KEEP_S = 30.0                                # clock lines remembered (each line once)
 SCHED_KEEP_S = 10.0                               # each player's scheduled parts kept for spacing
@@ -187,6 +192,16 @@ def _c01(x: float) -> float:
 def _smooth(x: float) -> float:
     x = _c01(x)
     return x * x * (3.0 - 2.0 * x)
+
+
+def zone_x(v: Any) -> Optional[float]:
+    """A zones value as x (audit E6): left -1, centre 0, right 1, or a number in -1..1 (a row of three: the middle
+    one centre); None when it isn't one."""
+    if isinstance(v, str):
+        return ZONE_X.get(v)
+    if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and -1.0 <= v <= 1.0:
+        return float(v)
+    return None
 
 
 def side_of(x: float) -> str:
@@ -320,11 +335,11 @@ def parse_settings(raw: Any, probs: list[str]) -> dict:
                              f"{dst[key]!r} used")
     zones = secs["players"].get("zones")
     if zones is not None:
-        if isinstance(zones, Mapping) and all(isinstance(k, str) and v in SIDE_WORDS for k, v in zones.items()):
-            out["players"]["zones"] = {str(k): str(v) for k, v in zones.items()}
+        if isinstance(zones, Mapping) and all(isinstance(k, str) and zone_x(v) is not None for k, v in zones.items()):
+            out["players"]["zones"] = {str(k): (str(v) if isinstance(v, str) else float(v)) for k, v in zones.items()}
         else:
-            probs.append(f"ensemble.players.zones: {zones!r} isn't {{zone: left | right}}: no zones (every player "
-                         f"centre)")
+            probs.append(f"ensemble.players.zones: {zones!r} isn't {{zone: left | centre | right | x in -1..1}}: no "
+                         f"zones (every player centre)")
     _parse_roles(raw.get("roles"), out, probs)
     g = secs["gestures"]
     for key in ("strength", "colours"):
@@ -647,10 +662,12 @@ def _kind(rig: Mapping, f: Mapping) -> Any:
     return (t.get("kind") if isinstance(t, Mapping) else None) or f.get("kind")
 
 
-def _fixture_x(rig: Mapping, fids: Sequence[str], pc: Mapping, space_mod: Any, view: Any
-               ) -> tuple[dict[str, tuple[float, str]], Optional[float]]:
+def _fixture_x(rig: Mapping, fids: Sequence[str], pc: Mapping, space_mod: Any, view: Any,
+               screen_order: Optional[Sequence[str]] = None) -> tuple[dict[str, tuple[float, str]], Optional[float]]:
     """fixture id -> (x, via) by §2.2's rules, and the space's scale (max |lateral|, metres) when the space rule is
-    in use (None: zones and screens decide)."""
+    in use (None: zones and screens decide). When neither the space nor a zone places any screen, two or more screen
+    fixtures stand evenly from left to right in ``screen_order`` (the room's screens, rooms.json order; others after,
+    in fixture order): via "order" (audit E6)."""
     fx = rig.get("fixtures") or {}
     lat: dict[str, float] = {}
     if space_mod is not None and isinstance(view, Mapping):
@@ -669,10 +686,18 @@ def _fixture_x(rig: Mapping, fids: Sequence[str], pc: Mapping, space_mod: Any, v
     out: dict[str, tuple[float, str]] = {}
     for fid in fids:
         f = fx.get(fid) if isinstance(fx.get(fid), Mapping) else {}
+        zx = zone_x(zones.get(f.get("zone"))) if f.get("zone") is not None else None
         if scale is not None and fid in lat:
             out[fid] = (max(-1.0, min(1.0, lat[fid] / scale)), "space")
-        elif zones.get(f.get("zone")) in SIDE_WORDS:
-            out[fid] = (-1.0 if zones[f["zone"]] == "left" else 1.0, "zone")
+        elif zx is not None:
+            out[fid] = (zx, "zone")
+    scr_fids = [fid for fid in fids if isinstance(fx.get(fid), Mapping) and _kind(rig, fx[fid]) == "screen"]
+    if len(scr_fids) >= 2 and not any(fid in out for fid in scr_fids):
+        pos = {sid: i for i, sid in enumerate(screen_order or ())}
+        ranked = sorted(scr_fids, key=lambda fid: (pos.get(fx[fid].get("screen"), len(pos)), scr_fids.index(fid)))
+        n = len(ranked)
+        for i, fid in enumerate(ranked):
+            out[fid] = (-1.0 + 2.0 * i / (n - 1), "order")
     screen_x = {fx[fid].get("screen"): out[fid] for fid in out
                 if isinstance(fx.get(fid), Mapping) and _kind(rig, fx[fid]) == "screen" and fx[fid].get("screen")}
     for fid in fids:
@@ -685,20 +710,26 @@ def _fixture_x(rig: Mapping, fids: Sequence[str], pc: Mapping, space_mod: Any, v
 
 
 def players(rig: Any, groups: Any, *, cfg: Mapping, space_mod: Any = None, view: Any = None,
-            live_screens: Optional[Sequence[str]] = None, devices: Sequence[Mapping] = ()
-            ) -> list[contract.PlayerInfo]:
+            live_screens: Optional[Sequence[str]] = None, devices: Sequence[Mapping] = (),
+            screen_order: Optional[Sequence[str]] = None,
+            exclude_screens: Optional[Collection[str]] = None) -> list[contract.PlayerInfo]:
     """Every player of the room (§2.1): each screen fixture, each light group's members per side, each device
     (``{"id": <room subsystem>, "label"?, "at"?: [x, y, z]}``). Pure; ``cfg`` is the resolved ensemble settings (or its
-    ``players`` block). ``live_screens``: the renderer screen names showing live (None: every screen is on)."""
+    ``players`` block). ``live_screens``: the renderer screen names showing live (None: every screen is on).
+    ``screen_order``: the room's screens in rooms.json order, which places screens nothing else places.
+    ``exclude_screens``: renderer screen names whose screen fixtures are never players (another room's screens, E9,
+    and those of rooms outside the show); a fixture with no ``screen`` stays."""
     pc = cfg.get("players", cfg) if isinstance(cfg, Mapping) else {}
     rig = rig if isinstance(rig, Mapping) else {}
     fx = rig.get("fixtures") if isinstance(rig.get("fixtures"), Mapping) else {}
     groups = groups if isinstance(groups, Mapping) else {}
-    screen_ids = [fid for fid, f in fx.items() if isinstance(f, Mapping) and _kind(rig, f) == "screen"]
+    excl = frozenset(exclude_screens or ())
+    screen_ids = [fid for fid, f in fx.items() if isinstance(f, Mapping) and _kind(rig, f) == "screen"
+                  and not (excl and isinstance(f.get("screen"), str) and f["screen"] in excl)]
     lamp_ids: list[str] = []
     for g in groups.values():
         lamp_ids += [m for m in (g.get("members") or []) if m not in lamp_ids]
-    xs, scale = _fixture_x(rig, screen_ids + lamp_ids, pc, space_mod, view)
+    xs, scale = _fixture_x(rig, screen_ids + lamp_ids, pc, space_mod, view, screen_order)
     live = set(live_screens) if live_screens is not None else None
     out: list[dict] = []
     for fid in screen_ids:
@@ -745,13 +776,19 @@ def players(rig: Any, groups: Any, *, cfg: Mapping, space_mod: Any = None, view:
     return out                                        # type: ignore[return-value]
 
 
+def _centre_screen(p: Mapping) -> bool:
+    """A screen player at the centre (audit E6: the middle of a row of three, or one nothing places)."""
+    return p.get("kind") == "screen" and p.get("side") not in SIDE_WORDS
+
+
 def teams(players: Sequence[Mapping], team_by: str, order: Sequence[str]) -> list[list[str]]:
     """The teams a form plays with (§2.3): ``side`` -> left and right (on players; centre and devices left out),
-    ``player`` -> one per player; members and teams in the travel ``order``."""
+    ``player`` -> one per player (centre screens too; centre light groups and devices left out); members and teams in
+    the travel ``order``."""
     pos = {pid: i for i, pid in enumerate(order)}
     on = [p for p in players if p.get("on") and p.get("side") in SIDE_WORDS and p.get("kind") != "device"]
     if team_by == "player":
-        ts = [[p["id"]] for p in on]
+        ts = [[p["id"]] for p in players if p.get("on") and (p in on or _centre_screen(p))]
     else:
         by: dict[str, list[str]] = {}
         for p in on:
@@ -767,9 +804,9 @@ def flow_order(players: Sequence[Mapping], flow: Optional[Mapping], space_mod: A
                ) -> list[str]:
     """The order a gesture travels by the room's flow (§2.3): with the room placed, ascending flow_coord of each
     player's centroid; without, right and cw go left to right, left and ccw right to left, any other dir the room's
-    order. Centre players and devices are left out."""
-    cand = sorted((p for p in players if p.get("side") in SIDE_WORDS and p.get("kind") != "device"),
-                  key=lambda p: (p["x"], p["id"]))
+    order. Centre light groups and devices are left out; a centre screen travels at its x (audit E6)."""
+    cand = sorted((p for p in players if (p.get("side") in SIDE_WORDS and p.get("kind") != "device")
+                   or _centre_screen(p)), key=lambda p: (p["x"], p["id"]))
     room = [p["id"] for p in cand]
     d = flow.get("dir") if isinstance(flow, Mapping) else None
     if not d:
@@ -938,6 +975,11 @@ class Ensemble:
                 self._layout_cache.clear()
             self._layout_cache[key] = got
         return got
+
+    def _band(self) -> bool:
+        """Two or more players are on (audit SHOW-3): with fewer there is no ensemble to announce, so the block shows
+        the built-in unison, source neutral, no line."""
+        return sum(1 for p in self._players if p.get("on")) >= 2
 
     def _sides(self) -> bool:
         return len(teams(self._players, "side", flow_order(self._players, None))) >= 2
@@ -1141,9 +1183,12 @@ class Ensemble:
             return False
         self._key = key
         self._rev += 1
-        active = self._active and self.on
+        band = self._band()
+        active = self._active and self.on and band
         f_show = f if active else _Form(BUILTIN_NAME, BUILTIN, self._at_s, "neutral",
-                                        "today's room" if self._active else "no colours, House lights or Lights low")
+                                        "no colours, House lights or Lights low" if not self._active
+                                        else "today's room" if not self.on
+                                        else "fewer than two players: nothing to play together")
         players = self._parts_at(f_show, now_s, grid)
         order, _ = self._layout(f_show)
         nxt = None
@@ -1156,6 +1201,8 @@ class Ensemble:
             source = "neutral"
         elif not self.on:
             source = "default"
+        elif not band:
+            source = "neutral"
         elif self._held:
             source = "held"
         else:

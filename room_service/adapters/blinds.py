@@ -22,6 +22,8 @@ from typing import Any
 
 from Cryptodome.Cipher import AES
 
+import smconfig
+
 from ..roomstate.contract import Adapter, Outcome, Reading
 from ..roomstate.schema import range_schema
 
@@ -163,7 +165,7 @@ class BlocBlinds(Adapter):
     its target, and, when opts["pending"] says it is being re-targeted while an earlier command may still be running,
     a reading equal to that `from` or an `earlier` value only counts once `earlier_until` has passed. A blind seen
     stopped somewhere else after the command gets it re-sent once. A cancel sends no STOP.
-    Writes are off (dry_run) until writes_enabled, from config/room/rf/blinds.json after the owner-present test; the
+    Writes are off (dry_run) until writes_enabled, from the deployment's room/rf/blinds.json after the owner-present test; the
     coordinator then sends nothing, and apply() itself refuses (retry=False) if it is called anyway.
     """
 
@@ -312,14 +314,16 @@ class BlocBlinds(Adapter):
 # --- construction from the repo's device config ----------------------------------------------------------------------
 
 def from_config(path: str | None = None, key_path: str | None = None) -> "BlocBlinds":
-    """BlocBlinds for the 13 hub blinds in config/room/rf/blinds.json; the hub key from ~/.config/screen-machine/rf/.
-    Writes stay off (dry_run) unless blinds.json says "writes_enabled": true (after the owner-present test, Q11)."""
+    """BlocBlinds for the hub blinds in the deployment's room/rf/blinds.json; the hub key (a secret) from
+    ~/.config/screen-machine/rf/bloc_hub.json. Writes stay off (dry_run) unless blinds.json says
+    "writes_enabled": true (after the owner-present test, Q11). Raises OSError (FileNotFoundError: this site has no
+    hub blinds) or ValueError/KeyError on a bad file; build_adapters turns that into the placeholder."""
     import json
     import stat
     from pathlib import Path
-    cfg_path = Path(path) if path else Path(__file__).resolve().parents[2] / "config" / "room" / "rf" / "blinds.json"
+    cfg_path = Path(path) if path else smconfig.path("room", "rf", "blinds.json")
     cfg = json.loads(cfg_path.read_text())
-    kp = Path(key_path) if key_path else Path.home() / ".config" / "screen-machine" / "rf" / "bloc_hub.json"
+    kp = Path(key_path) if key_path else smconfig.secret("rf", "bloc_hub.json")
     key = None
     if kp.exists() and not stat.S_IMODE(kp.stat().st_mode) & 0o077:
         key = (json.loads(kp.read_text()).get("key") or "").strip() or None
@@ -330,15 +334,16 @@ def from_config(path: str | None = None, key_path: str | None = None) -> "BlocBl
 
 
 def placeholder_from_config(path: str | None = None):
-    """The same 13 members as from_config(), with nothing behind them (room config `blinds: {enabled: false}`)."""
+    """The same members as from_config(), with nothing behind them (room config `blinds: {enabled: false}`, the
+    deployment's blinds capability off, or no usable blinds.json: then no members, as this site has no hub blinds)."""
     import json
     from pathlib import Path
     from ..roomstate.contract import Placeholder
-    cfg_path = Path(path) if path else Path(__file__).resolve().parents[2] / "config" / "room" / "rf" / "blinds.json"
+    cfg_path = Path(path) if path else smconfig.path("room", "rf", "blinds.json")
     try:
-        members = list(json.loads(cfg_path.read_text())["blinds"])
-    except (OSError, ValueError, KeyError):
-        members = [f"ch{n:02d}" for n in range(2, 15)]
+        members = [str(m) for m in json.loads(cfg_path.read_text())["blinds"]]
+    except (OSError, ValueError, KeyError, TypeError):
+        members = []
     p = Placeholder("blinds", members)
     p.subsystem_label = BlocBlinds.subsystem_label
     return p

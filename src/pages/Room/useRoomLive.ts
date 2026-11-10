@@ -1,5 +1,5 @@
 // A room's live screens as one (owner, 17 Oct: a control acts where it sits, and the rooms are config,
-// routes/data/rooms.json; a control at room level acts on every screen in the room).
+// deployments/<id>/rooms.json; a control at room level acts on every screen in the room).
 //
 // Reads each live screen's session summary from the renderer (GET /renderer/api/sessions/{sid}: the look's fields,
 // its room {id, role, leader, screens} and its Up next) when the screens or their sessions change, shortly after their

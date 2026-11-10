@@ -25,8 +25,11 @@ def set_worker(worker):
 
 
 def enqueue(bucket, filename, front=False, retag=False):
-    """Queue one bucket file for tagging. Never blocks, never raises."""
+    """Queue one bucket file for tagging (not when the deployment has art_tags off). Never blocks, never raises."""
     try:
+        import smconfig
+        if not smconfig.enabled("art_tags"):
+            return False
         return get_worker().enqueue(bucket, filename, front=front, retag=retag)
     except Exception as e:                            # noqa: BLE001
         try:
@@ -40,13 +43,27 @@ def enqueue(bucket, filename, front=False, retag=False):
 def startup():
     """At Flask start: the worker thread (first sweep 60 s later, the historic backfill included), and the art
     director's thread, which has new pictures made for a screen whose library is thin for the music in Ambient
-    (owner, 28 Oct; routes/art_tags/director.py). Never raises."""
+    (owner, 28 Oct; routes/art_tags/director.py). Each starts only when the deployment has it on: the tagging queue
+    needs "art_tags", the art director "art_director" and "generation". Never raises."""
     from utils.logger import info, error
     try:
-        get_worker().start()
-        info("[art_tags] tagging queue started")
+        import smconfig
+        tags_on = smconfig.enabled("art_tags")
+        director_on = smconfig.enabled("art_director") and smconfig.enabled("generation")
     except Exception as e:                            # noqa: BLE001
-        error(f"[art_tags] startup failed: {e}")
+        error(f"[art_tags] startup: no deployment ({e}); neither the tagging queue nor the art director started")
+        return
+    if not tags_on:
+        info("[art_tags] tagging queue not started: art_tags is off in this deployment")
+    else:
+        try:
+            get_worker().start()
+            info("[art_tags] tagging queue started")
+        except Exception as e:                        # noqa: BLE001
+            error(f"[art_tags] startup failed: {e}")
+    if not director_on:
+        info("[art_tags] art director not started: art_director (or generation) is off in this deployment")
+        return
     try:
         from routes.art_tags.director import get_director
         get_director().start()

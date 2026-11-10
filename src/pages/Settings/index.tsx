@@ -27,6 +27,7 @@ import { buildTagIndex } from "@/pages/Room/sceneTags";
 import { RoomThemeStyle, THEME_CLASS } from "@/pages/Room/theme";
 import type { ShowTestView } from "@/pages/Room/types";
 import { useDescribe } from "@/pages/Room/useDescribe";
+import { zoneOf } from "@/pages/Room/zones";
 import { useRoomConnection } from "@/pages/Room/useRoomConnection";
 import { ConnectionGroup } from "./Connection";
 import { DeveloperGroup } from "./Developer";
@@ -71,6 +72,17 @@ export default function SettingsPage() {
   const [editing, setEditing] = useState<string | null>(null);
 
   const { describe, refresh: refreshDescribe } = useDescribe(room.api, status?.config?.revision, !!status);
+  // Mode zones (Room & modes' room picker; only when status.zones exists): the picked room's own modes and describe,
+  // and the room of the mode being edited. Without zones these stay null and nothing extra is read.
+  const [modesRoom, setModesRoom] = useState<string | null>(null);
+  const [editingRoom, setEditingRoom] = useState<string | null>(null);
+  const pickedZone = zoneOf(status, modesRoom);
+  const pickedRoom = pickedZone ? pickedZone.room : null;
+  const { describe: zoneDescribe, refresh: refreshZoneDescribe } = useDescribe(
+    room.api.forRoom(pickedRoom),
+    pickedZone?.config?.revision,
+    !!pickedZone,
+  );
   const tagIndex = useMemo(() => buildTagIndex(room.catalog), [room.catalog]);
   const names = useMemo(
     () =>
@@ -118,7 +130,8 @@ export default function SettingsPage() {
   const onChanged = useCallback(() => {
     void room.refreshMeta();
     refreshDescribe();
-  }, [room, refreshDescribe]);
+    refreshZoneDescribe();
+  }, [room, refreshDescribe, refreshZoneDescribe]);
 
   const liveNow = Object.values(status?.screens ?? {}).some((sc) => sc.observed?.phase === "live" || sc.observed?.layer === "live");
   const shared = { api: room.api, lib: room.library, subscribe: room.subscribeStream, addLog: room.addLog, reportError: room.reportError };
@@ -140,12 +153,17 @@ export default function SettingsPage() {
           <ModesGroup
             api={room.api}
             status={status}
-            modes={room.modes}
-            describe={describe}
+            modes={pickedRoom ? (room.zoneModes[pickedRoom] ?? null) : room.modes}
+            describe={pickedRoom ? zoneDescribe : describe}
             names={names}
-            onEdit={setEditing}
+            onEdit={(n) => {
+              setEditingRoom(pickedRoom);
+              setEditing(n);
+            }}
             onChanged={onChanged}
             addLog={room.addLog}
+            room={pickedRoom}
+            onRoom={setModesRoom}
           />
           <ScreensGroup status={status} dests={dests} {...shared} />
           <LookGroup status={status} {...shared} />
@@ -176,9 +194,10 @@ export default function SettingsPage() {
 
       <ModeEditor
         name={editing}
+        room={editingRoom}
         onClose={() => setEditing(null)}
         api={room.api}
-        describe={describe}
+        describe={editingRoom ? zoneDescribe : describe}
         status={status}
         tagIndex={tagIndex}
         connected={connected}
