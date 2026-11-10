@@ -56,7 +56,7 @@ The authoritative list of every port screen-machine uses or must avoid, on the w
 |---|---|---|---|---|---|---|
 | **5000** | Flask API plus the built SPA (`dist/`), serving `/display/*` | `screen` session `flask` (`./start.sh start flask`); Spectre module `screen-machine-flask` | `0.0.0.0` | **WAN** (direct 5000; also via 8080 <- WAN 8000) | portproxy `5000 -> WSL:5000` and `8080 -> WSL:5000` | **kiosk-critical** |
 | **8765** | overlay and light WebSocket (inside the Flask process) | same process as 5000 | `0.0.0.0` | **WAN** | portproxy `8765 -> WSL:8765` | **kiosk-critical** (light relay) |
-| 4040 | ngrok local inspector API | `screen` session `ngrok` | `127.0.0.1` | WSL-only | none | ngrok tunnels :5000 outbound to `ngrok-domain.example`; it needs no inbound port |
+| 4040 | ngrok local inspector API | `screen` session `ngrok` | `127.0.0.1` | WSL-only | none | ngrok tunnels :5000 outbound to `<ngrok-domain>`; it needs no inbound port |
 
 ### 2.2 Other WSL services
 

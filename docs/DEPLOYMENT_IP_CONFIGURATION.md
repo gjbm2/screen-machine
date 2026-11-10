@@ -58,7 +58,7 @@ npm run dev
 # Start Ngrok (Terminal 3)
 # IMPORTANT (WSL/Win11): tunnel the service that actually owns the webhook route.
 # Alexa webhook is served by Flask at /api/alexa (port 5000), so point ngrok at 5000.
-ngrok http --domain=ngrok-domain.example 5000
+ngrok http --domain=<ngrok-domain> 5000
 
 # (Optional) If you want to expose the frontend separately, start a *second* tunnel
 # to Flask (port 5000 serves the frontend in prod) using a different ngrok domain/subdomain.

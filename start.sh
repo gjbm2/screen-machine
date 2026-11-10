@@ -22,7 +22,7 @@
 #   Ngrok  → screen session "ngrok"
 #
 # Environment variables (optional overrides):
-#   NGROK_DOMAIN   — ngrok custom domain (default: ngrok-domain.example)
+#   NGROK_DOMAIN   — ngrok custom domain (environment, else .env; none: ngrok is skipped)
 #   NGROK_PORT     — port to tunnel (default: Flask's, ports.flask in the deployment)
 #   SCREEN_MACHINE_MODE — "dev" (default) or "prod"
 #
@@ -36,13 +36,13 @@ cd "$PROJECT_ROOT"
 
 # ── Defaults ──────────────────────────────────────────────────────────
 
-NGROK_DOMAIN="${NGROK_DOMAIN:-ngrok-domain.example}"
 NGROK_PORT="${NGROK_PORT:-}"   # empty: Flask's port (flask_port below)
 MODE="${SCREEN_MACHINE_MODE:-dev}"
 
 # smconfig (stdlib + PyYAML): the repo venv's python if there is one, else python3.
 SMPY="$PROJECT_ROOT/.venv/bin/python"; [[ -x "$SMPY" ]] || SMPY=python3
 sm() { PYTHONPATH="$PROJECT_ROOT${PYTHONPATH:+:$PYTHONPATH}" "$SMPY" -m smconfig "$@"; }
+NGROK_DOMAIN="${NGROK_DOMAIN:-$(sm get env.NGROK_DOMAIN 2>/dev/null || true)}"   # a machine setting: .env
 
 # Flask's port from the deployment (ports.flask); on failure prints smconfig's reason to stderr and returns 1.
 flask_port() {

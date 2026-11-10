@@ -16,5 +16,5 @@ id_ed25519*
 
 # Logs
 *.log
-!maintenance.log
+# maintenance.log is never committed: a set -x trace once wrote credentials into it
 

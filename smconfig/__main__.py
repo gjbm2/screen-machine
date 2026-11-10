@@ -2,7 +2,8 @@
 
   which [REL]        the selected deployment's id and directory, or the absolute path of REL inside it
   get KEY            one value, for shell scripts: id, name, dir, capabilities.<cap>, ports.<svc>, urls.<svc>,
-                     default_room, kiosk.<key>, host.<key>, path.<rel> (booleans print true/false)
+                     default_room, kiosk.<key>, host.<key>, path.<rel>, env.<NAME> (a .env machine setting;
+                     empty when unset) (booleans print true/false)
   enabled CAP        exit 0 if the capability is on, 1 if off (for `if python -m smconfig enabled dot; then`)
   check              validate the deployment (manifest, required files, parsing, cross-references); exit 1 on problems
   dump               the effective configuration as JSON (what every process resolves); diff it across a change
@@ -24,6 +25,9 @@ def _get(dep, key: str):
 
     if key.startswith("path."):
         return str(dep.path(*key[len("path."):].split("/")))
+    if key.startswith("env."):
+        from . import env
+        return env(key[len("env."):])
     d = dump(dep)
     cur = d
     for part in key.split("."):
