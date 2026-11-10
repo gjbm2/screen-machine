@@ -87,7 +87,10 @@ def git(*args: str, check: bool = True) -> str:
 
 def expand_show_urls(doc, dep):
     """show.yaml as show_service reads it: its {room}/{flask}/{show} placeholders become this deployment's loopback
-    URLs (show_service.config.expand_urls, given dep's URLs so it works before .env names the deployment)."""
+    URLs (show_service.config.expand_urls, given dep's URLs so it works before .env names the deployment).
+    show_service.contract selects the deployment when it is imported, so on a machine whose .env doesn't name one yet
+    (the plan, run before --apply writes SM_DEPLOYMENT) this run's --deployment is selected, in this process only."""
+    os.environ.setdefault("SM_DEPLOYMENT", dep.id)
     from show_service.config import URL_SERVICES, expand_urls  # noqa: PLC0415
     return expand_urls(doc, {s: dep.url(s) for s in URL_SERVICES})
 
