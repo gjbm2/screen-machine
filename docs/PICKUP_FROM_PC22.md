@@ -72,6 +72,11 @@ work, so PC22's edits count as the "before". It also does the following:
 
 `deployments/README.md` › "Migrating PC22" explains each line of its report.
 
+Before `scripts/ctl start all`, check the report's `PyYAML in ~/.venvs/<name>` lines (one per `~/.venvs/sm-*`). Each
+must say `there` or `installed now`. dot_service and the piano and score workers import smconfig, which needs
+PyYAML. A `FAIL` line (pip had no network, say) ends with the command to run by hand; run it, then run `--apply`
+again.
+
 Then:
 
 ```bash

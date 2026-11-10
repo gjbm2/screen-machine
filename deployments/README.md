@@ -371,7 +371,9 @@ scripts/ctl start all
 - moves the Samsung pairing tokens out of the repo root into `~/.config/screen-machine/samsung/`;
 - proves every moved file matches its pre-pull content (`ORIG_HEAD`);
 - runs `smconfig check`, and saves the effective config to `logs/`;
-- lists anything in Spectre or the boot script that still names an old path.
+- lists anything in Spectre or the boot script that still names an old path;
+- installs PyYAML into every `~/.venvs/sm-*` that lacks it, with one `PyYAML in ~/.venvs/<name>` line each. If pip
+  can't install it, that line is a FAIL with the command to run by hand.
 
 It stops on a conflict without overwriting anything.
 

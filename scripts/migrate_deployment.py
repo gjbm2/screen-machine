@@ -19,7 +19,8 @@ What --apply does (deployments/README.md, "Migrating PC22", has the whole proced
   5. `python -m smconfig check` must pass; the effective config is saved to logs/smconfig-<id>-<time>.json.
   6. Outside the repo: reports any Spectre module or boot script that still names an old path.
   7. This machine: the .env settings the service flags use (${VAR}) are set; every ~/.venvs/sm-* has PyYAML
-     (installs it when missing); with ngrok on, .env gets NGROK_DOMAIN (the old start.sh default) if it lacks it.
+     (installs it when missing; one "PyYAML in ~/.venvs/<name>" line each, and a failed install gives the pip
+     command to run by hand); with ngrok on, .env gets NGROK_DOMAIN (the old start.sh default) if it lacks it.
 --verify-live checks the running services answer as the deployment says (health, screens, rooms, capabilities).
 
 Exit codes: 0 ok, 1 a problem (the report says which), 2 bad usage.
@@ -367,7 +368,40 @@ def step_outside(rep: Report) -> None:
         rep.ok("no code in Spectre or the boot script uses an old path")
 
 
-VENVS = ("sm-stream", "sm-show", "sm-dot", "sm-show-ml", "sm-piano", "sm-score-ml")
+def _venvs() -> list[str]:
+    """Every ~/.venvs/sm-* with a python. Any of them may import smconfig: the services and their workers (dot, the
+    piano and score workers), and the tools run with their own venv (tools/room/audio_cal with sm-roundtrip)."""
+    root = Path.home() / ".venvs"
+    return sorted(p.name for p in root.glob("sm-*") if (p / "bin" / "python").exists()) if root.is_dir() else []
+
+
+def _pyyaml(name: str, apply: bool, rep: Report) -> None:
+    """One report line for one venv: PyYAML is there, would be installed, was installed, or could not be (with the
+    command to run by hand). A failed install is a problem in the report; the run carries on."""
+    py = Path.home() / ".venvs" / name / "bin" / "python"
+    by_hand = f"{py} -m pip install PyYAML"
+    where = f"PyYAML in ~/.venvs/{name}"
+    try:
+        has = subprocess.run([str(py), "-c", "import yaml"], capture_output=True, timeout=120).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        has = False
+    if has:
+        rep.ok(f"{where}: there")
+        return
+    if not apply:
+        rep.do(f"{where}: missing; --apply installs it (by hand: {by_hand})")
+        return
+    try:
+        r = subprocess.run([str(py), "-m", "pip", "install", "-q", "--disable-pip-version-check", "PyYAML"],
+                           capture_output=True, text=True, timeout=600)
+        ok, err = r.returncode == 0, r.stderr
+    except (OSError, subprocess.TimeoutExpired) as e:
+        ok, err = False, str(e)
+    if ok:
+        rep.ok(f"{where}: installed now")
+        return
+    why = next((ln.strip() for ln in reversed(err.splitlines()) if ln.strip()), "no message")[:200]
+    rep.bad(f"{where}: MISSING, and pip could not install it ({why}). Run by hand: {by_hand}")
 
 
 def _append_env(key: str, value: str, why: str) -> None:
@@ -422,20 +456,12 @@ def step_machine(dep: smconfig.Deployment, apply: bool, rep: Report) -> None:
             rep.ok(f"{var} is set ({smconfig.env(var)}); the service flags use it")
         else:
             rep.bad(f"{var} is not set in .env, and deployments/{dep.id}/services/*.env use it")
-    # Every process imports smconfig, which reads the manifest with PyYAML.
-    for name in VENVS:
-        py = Path.home() / ".venvs" / name / "bin" / "python"
-        if not py.exists():
-            continue
-        r = subprocess.run([str(py), "-c", "import yaml"], capture_output=True)
-        if r.returncode == 0:
-            rep.ok(f"~/.venvs/{name} has PyYAML")
-            continue
-        rep.do(f"install PyYAML into ~/.venvs/{name}")
-        if apply:
-            r = subprocess.run([str(py), "-m", "pip", "install", "-q", "PyYAML"], capture_output=True, text=True)
-            (rep.ok if r.returncode == 0 else rep.bad)(
-                f"~/.venvs/{name}: pip install PyYAML {'done' if r.returncode == 0 else 'failed: ' + r.stderr[-300:]}")
+    # Every process imports smconfig, which reads the manifest with PyYAML: one line per venv.
+    venvs = _venvs()
+    if not venvs:
+        rep.note(f"no ~/.venvs/sm-* here ({Path.home() / '.venvs'}); nothing to check for PyYAML")
+    for name in venvs:
+        _pyyaml(name, apply, rep)
 
 
 def _get_json(url: str, timeout: float = 5.0):
