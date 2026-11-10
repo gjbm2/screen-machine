@@ -1,0 +1,20 @@
+# deployments/example/lights/fixtures.yaml: the light registry (show_service/README.md "Stage 5", S5.2 is the schema;
+# deployments/finsbury/lights/fixtures.yaml is a full one). show_service re-reads it when it changes.
+#
+# Each screen needs one screen fixture here (type sm-screen, screen: its id in publish-destinations.json) to join
+# the ensemble: the screens playing together, and scenes that span them. A screen without one plays on its own.
+# Lights added on the Lights page go in fixtures.added.yaml next to this file (the app writes it).
+# YAML note: on/off/yes/no are booleans in this parser, so write true/false.
+
+version: 1
+
+outputs:
+  screens:
+    driver: showbus                         # the screens' output (not built yet: the screen fixture only places the
+    enabled: false                          # screen in the ensemble)
+
+types:
+  sm-screen: {source: builtin}              # a screen: colour only, kind screen (never dimmed)
+
+fixtures:
+  screen.vj: {label: VJ screen, type: sm-screen, output: screens, screen: vj}

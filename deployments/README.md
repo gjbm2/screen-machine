@@ -246,7 +246,10 @@ Run `check` after any edit to a deployment. The test suite runs it for every shi
 2. In `deployment.yaml`, switch on only what this site has.
 3. Describe the screens in `publish-destinations.json`. A screen that goes live needs a `live` block. Then fill in
    `rooms.json`.
-4. Add device files only for devices you have (lights in `lights/`, RF devices in `room/rf/`, and so on).
+4. Give each screen a screen fixture in `lights/fixtures.yaml` (`type: sm-screen`, `screen: <its id>`), as
+   example's `screen.vj`. A screen without one plays on its own and never joins the ensemble (the screens playing
+   together, and scenes that span them). Then add device files only for devices you have (lights in `lights/`, RF
+   devices in `room/rf/`, and so on).
 5. On the machine, set `SM_DEPLOYMENT=<id>` in `.env`. Also set any `${VAR}` the deployment's `services/*.env`
    use, usually `SM_LAN_HOST=<this machine's LAN address>`. (`${PORT_<SERVICE>}` needs nothing: it is the
    manifest's port.) Then set the app's addresses. `npx vite build` bakes them into the TV pages and the Room page,
