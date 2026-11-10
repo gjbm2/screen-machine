@@ -207,12 +207,12 @@ def _get(d, dotted):
     return d
 
 
-def _env_pairs(text: str, expand: bool) -> dict[str, str]:
+def _env_pairs(text: str, expand: bool, dep: smconfig.Deployment | None = None) -> dict[str, str]:
     import re as _re
 
     out = smconfig._parse_env_text(text)
     if expand:
-        ports = smconfig.deployment().ports
+        ports = (dep or smconfig.deployment()).ports
 
         def sub(m):
             name = m.group(1)
@@ -236,7 +236,7 @@ def _apply_edits(rel: str, data):
     return data
 
 
-def same_content(rel: str, before: bytes, p: Path) -> str | None:
+def same_content(rel: str, before: bytes, p: Path, dep: smconfig.Deployment | None = None) -> str | None:
     """Why the new file holds the same data as the old content (None when it does not)."""
     after = p.read_bytes()
     if after == before:
@@ -251,7 +251,7 @@ def same_content(rel: str, before: bytes, p: Path) -> str | None:
             if yaml.safe_load(before) == yaml.safe_load(after):
                 return "same data; comments differ"
         elif p.suffix == ".env":
-            if _env_pairs(before.decode(), False) == _env_pairs(after.decode(), True):
+            if _env_pairs(before.decode(), False) == _env_pairs(after.decode(), True, dep):
                 return "same values once ${VAR}s expand; comments differ"
     except Exception:  # noqa: BLE001 - a parse failure is a difference
         return None
@@ -273,7 +273,7 @@ def step_prove(dep: smconfig.Deployment, rev: str | None, rep: Report) -> None:
             continue
         if not p.exists():
             rep.bad(f"{new}: missing (it was {old})")
-        elif why := same_content(new, before, p):
+        elif why := same_content(new, before, p, dep):
             rep.ok(f"{new} == {rev}:{old} ({why})")
         else:
             rep.bad(f"{new} differs from {rev}:{old} (git diff {rev}:{old} {p.relative_to(REPO)})")
@@ -287,7 +287,7 @@ def step_prove(dep: smconfig.Deployment, rev: str | None, rep: Report) -> None:
             before = git_blob(rev, rel)
             if not p.exists():
                 rep.bad(f"{p.relative_to(REPO)}: missing (it was {rel})")
-            elif why := same_content(str(p.relative_to(dep.dir)), before, p):
+            elif why := same_content(str(p.relative_to(dep.dir)), before, p, dep):
                 rep.ok(f"{p.relative_to(REPO)} == {rev}:{rel} ({why})")
             else:
                 rep.bad(f"{p.relative_to(REPO)} differs from {rev}:{rel}")
