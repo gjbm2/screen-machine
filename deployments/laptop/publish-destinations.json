@@ -16,9 +16,9 @@
     "icon": "Monitor",
     "type": "screen",
     "has_bucket": true,
-    "maxwidth": 1920,
-    "maxheight": 1080,
+    "maxwidth": 3840,
+    "maxheight": 2160,
     "groups": ["studio"],
-    "live": {"enabled": true, "gpu": 0, "profile": "hevc-1080p60", "mask_push": false}
+    "live": {"enabled": true, "gpu": 0, "profile": "hevc-2160p30", "mask_push": false}
   }
 ]

@@ -21,7 +21,7 @@ param(
 )
 $ErrorActionPreference = "Stop"
 if (-not (Test-Path $Python)) { throw "No pythonw at $Python (install Python 3.12, then: py -3.12 -m pip install --user sounddevice numpy)" }
-if (-not (Test-Path "$AgentDir\pc22_agent.py")) { throw "No agent in $AgentDir: run tools/show_sender/deploy-pc22.sh in WSL first" }
+if (-not (Test-Path "$AgentDir\pc22_agent.py")) { throw "No agent in ${AgentDir}; run tools/show_sender/deploy-pc22.sh in WSL first" }
 
 # 1. Firewall
 $blocks = Get-NetFirewallRule -Direction Inbound -Action Block -ErrorAction SilentlyContinue |
