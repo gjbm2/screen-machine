@@ -13,7 +13,9 @@ What --apply does (deployments/README.md, "Migrating PC22", has the whole proced
      config/room/rf/<id>.json) moves to its new home; an identical duplicate is removed; a different one is a
      conflict and stops the run (nothing is overwritten).
   3. Secrets: the Samsung pairing tokens move from the repo root (or, once git removed them, from git history)
-     to ~/.config/screen-machine/samsung/ (0600).
+     to ~/.config/screen-machine/samsung/ (0600). Then the secrets become this user's only: .env and the kiosk's
+     media-server/local-scripts/.env 0600, ~/.config/screen-machine/ 0700 (smconfig.secrets.private_paths). Every
+     reader runs as this user (Spectre and Caddy use wsl.exe as the distro's default user), so nothing else needs them.
   4. Proof: every moved file is compared with its old content at the pre-pull commit (ORIG_HEAD, or --from-rev);
      config/room/show.yaml is compared after layering (shared file + deployments/<id>/show.yaml == the old file).
   5. `python -m smconfig check` must pass; the effective config is saved to logs/smconfig-<id>-<time>.json.
@@ -33,6 +35,7 @@ import filecmp
 import json
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import urllib.request
@@ -43,6 +46,7 @@ sys.path.insert(0, str(REPO))
 
 import smconfig  # noqa: E402
 from smconfig import check as smcheck  # noqa: E402
+from smconfig import secrets as smsecrets  # noqa: E402
 from smconfig.legacy import (CONTENT_EDITS, DIR_MOVE_EXCLUDE, DIR_MOVES, MOVES, SECRET_MOVES,  # noqa: E402
                              SHOW_SITE_KEYS)
 
@@ -179,7 +183,7 @@ def step_leftovers(dep: smconfig.Deployment, apply: bool, rep: Report) -> None:
 
 
 def step_secrets(apply: bool, rep: Report) -> None:
-    rep.head("3. Secrets out of the repo")
+    rep.head("3. Secrets out of the repo, and this user's only")
     for old, new in SECRET_MOVES.items():
         dest = smconfig.secret(*new.split("/"))
         if dest.exists():
@@ -204,12 +208,33 @@ def step_secrets(apply: bool, rep: Report) -> None:
             continue
         rep.do(f"write {dest} (0600) from {src}")
         if apply:
-            dest.parent.mkdir(parents=True, exist_ok=True)
+            smconfig.SECRETS_DIR.mkdir(mode=0o700, parents=True, exist_ok=True)
+            dest.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
             os.chmod(dest.parent, 0o700)
             dest.write_bytes(data)
             os.chmod(dest, 0o600)
             if (REPO / old).exists():
                 (REPO / old).unlink()
+    step_private(apply, rep)
+
+
+def step_private(apply: bool, rep: Report) -> None:
+    """.env, the kiosk's .env and ~/.config/screen-machine/ readable by this user only. A mode that lets group or
+    other users in is narrowed (never widened); a file that isn't there is skipped."""
+    for p, want in smsecrets.private_paths():
+        if not p.exists():
+            continue
+        cur = stat.S_IMODE(p.stat().st_mode)
+        if not cur & 0o077:
+            rep.ok(f"{smsecrets.shown(p)} is {cur:04o}: this user's only")
+            continue
+        rep.do(f"chmod {want:o} {smsecrets.shown(p)} (it {'was' if apply else 'is'} {cur:04o}: other users on this "
+               "machine can open it)")
+        if apply:
+            try:
+                os.chmod(p, want)
+            except OSError as e:
+                rep.note(f"couldn't chmod {smsecrets.shown(p)}: {e}; do it by hand")
 
 
 def _get(d, dotted):
