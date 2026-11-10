@@ -50,8 +50,10 @@ tokens that forget the key and the tempo:
 Geometry: x(t) maps a note's time to the timeline (the present 3% in from the right edge).  The window opens at
 8 s (or 0.08 x ``window_s``) when a piece starts and widens with the music (1.15 x the time since its first note) up to
 ``window_s``, like Wattenberg's diagram, which always fits the whole piece: the first repeats of a piece are big,
-not specks in the corner.  On the two TVs side by side (``span`` pair, ``ctx.screen`` south-screen / north-screen,
-south on the left) the timeline runs across both: the south TV shows the older half, the north TV the newer.
+not specks in the corner.  On the two TVs side by side (``span`` pair) the timeline runs across both: the left TV
+shows the older half, the right TV the newer.  Each screen's place is the room's segment (Sound.segment: the
+ensemble's live screens left to right; finsbury's south TV is the left one); alone, or with no segment, a screen
+shows the whole timeline.
 Outer half-ellipse: centre (x(A0) + x(B1)) / 2, rx_o = (x(B1) - x(A0)) / 2, ry_o = min(0.42 H, arch_height x
 rx_o); inner: rx_i = (x(B0) - x(A1)) / 2, ry_i = ry_o x rx_i / rx_o.  The band between them (soft 1.5 px edges,
 brighter 2.6 px rims) is drawn above the baseline at 0.96 H.
@@ -543,10 +545,9 @@ class EchoArcs(Effect):
         self.show_t = np.zeros(MAXA)
         self.tick_ar = np.arange(TRING)
         self._dt = 0.0
-        screen = getattr(ctx, "screen", None)
-        pair = str(params.get("span", "pair")) == "pair" and screen in ("south-screen", "north-screen")
-        self.span_w = (2.0 if pair else 1.0) * W        # the timeline's width (both TVs side by side)
-        self.x_off = W if (pair and screen == "north-screen") else 0.0
+        self.pair = str(params.get("span", "pair")) == "pair"
+        self.span_w = float(W)                          # the timeline's width (n TVs side by side: _place)
+        self.x_off = 0.0                                # this screen's left edge on it
         self.m = Matcher()
         self.now = 0.0
         self.line = 0.0
@@ -574,6 +575,18 @@ class EchoArcs(Effect):
             for t, pitch, vel in evs:
                 self.m.onset(t, pitch, vel)
         return bool(getattr(snd, "present", False))
+
+    def _place(self) -> None:
+        """span pair: this screen's (k, n) in the room's segment (left to right); alone or without one, (0, 1)."""
+        seg = getattr(getattr(self, "sound", None), "segment", None) if self.pair else None
+        try:
+            k, n = (int(seg[0]), int(seg[1])) if seg is not None else (0, 1)
+        except Exception:  # noqa: BLE001  (a malformed segment: this screen alone)
+            k, n = 0, 1
+        if not (n >= 1 and 0 <= k < n):
+            k, n = 0, 1
+        W = float(self.ctx.width)
+        self.span_w, self.x_off = n * W, k * W
 
     def _xmap(self, t, win: float):
         """Time -> x on this screen (pixels)."""
@@ -725,6 +738,7 @@ class EchoArcs(Effect):
         window = min(max(float(p["window_s"]), 30.0), 300.0)
         m.window_hint = window
         present = self._ingest()
+        self._place()
         m.flush(self.now)
         m.step(self.now, dtc, float(p["memory_s"]))
         # the window opens with the piece and widens with it up to window_s

@@ -55,8 +55,10 @@ x n^-gamma with gamma = 1.6 - 0.8 x velocity (a harder strike is brighter in its
 the piano's decay and the damper / sostenuto holds, so pedalled notes keep their combs.  The room's FFT (the fast
 feed) is only a faint haze along the same axis: it trails the ear by ~0.25 s, so it never drives anything.
 
-``span``: ``full`` shows 40 Hz-8 kHz on each screen; ``pair`` splits one axis over the two TVs side by side (south,
-on the left: 27-600 Hz; north: 600 Hz-14 kHz).  Without a known screen (fxtest, previews) ``pair`` shows full.
+``span``: ``full`` shows 40 Hz-8 kHz on each screen; ``pair`` splits one axis over the two TVs side by side (the left
+one 27-600 Hz, the right one 600 Hz-14 kHz), by this screen's place in the room's segment (Sound.segment: the
+ensemble's live screens left to right; finsbury's south TV is the left one).  Alone, or with no segment (fxtest,
+previews, one TV live), ``pair`` shows full.
 
 How it is drawn
 ---------------
@@ -120,7 +122,7 @@ F_GAIN = 6.0                   # gold
 G0 = 0.05                      # grain
 DMAX_H = 0.012                 # max displacement, frame heights (~26 px at 4K)
 FULL_SPAN = (40.0, 8000.0)
-PAIR_SPAN = {"south": (27.5, 600.0), "north": (600.0, 14000.0)}
+PAIR_SPAN = ((27.5, 600.0), (600.0, 14000.0))   # left, right (span pair over two screens)
 FFT_LO, FFT_HI, FFT_N = 40.0, 16000.0, 48
 
 # P (main kernel) layout
@@ -488,13 +490,8 @@ class OvertoneBeats(Effect):
         self.qh = np.zeros(NQ, np.float32)
         self.ph_host = np.zeros(32, np.float32)
         # span
-        span = str(params.get("span", "full"))
-        scr = str(getattr(ctx, "screen", "") or "").lower()
-        self.f_lo, self.f_hi = FULL_SPAN
-        if span == "pair":
-            for k, v in PAIR_SPAN.items():
-                if k in scr:
-                    self.f_lo, self.f_hi = v
+        self.pair = str(params.get("span", "full")) == "pair"
+        self.f_lo, self.f_hi = FULL_SPAN                   # _place sets the pair's half each frame
         self._tab_st = None
         self.ftab = self.utab = None
         # per (pitch, partial) phase, integrated at slow x f: a pair's difference turns at slow x its beat
@@ -541,6 +538,21 @@ class OvertoneBeats(Effect):
         m = np.maximum(c.max(axis=1, keepdims=True), 0.4)
         self._col, self._col_key = np.minimum(c * (0.95 / m), 1.0), key
         return self._col
+
+    def _place(self) -> None:
+        """span pair: this screen's half of the axis from the room's segment ((k, n) left to right among the
+        ensemble's live screens); two screens split it, anything else (alone, no segment) shows it whole."""
+        rng = FULL_SPAN
+        seg = getattr(getattr(self, "sound", None), "segment", None) if self.pair else None
+        try:
+            k, n = (int(seg[0]), int(seg[1])) if seg is not None else (0, 1)
+        except Exception:  # noqa: BLE001  (a malformed segment: the whole axis)
+            k, n = 0, 1
+        if n == len(PAIR_SPAN) and 0 <= k < n:
+            rng = PAIR_SPAN[k]
+        if rng != (self.f_lo, self.f_hi):
+            self.f_lo, self.f_hi = rng
+            self._tab_st = None                            # the partial table follows the range
 
     def _tables(self, stretch: float) -> None:
         if self._tab_st is None or abs(stretch - self._tab_st) > 2e-3:
@@ -656,6 +668,7 @@ class OvertoneBeats(Effect):
         self.drift = math.fmod(self.drift + float(p["drift_speed"]) * dtc, 1000.0)
         self.clock = math.fmod(self.clock + dtc, 3600.0)
         self.fizz = math.fmod(self.fizz + (0.3 + 0.7 * slow) * dtc, 3600.0)   # the grain's drift, a rate
+        self._place()
         self._tables(min(max(float(p["stretch"]), 0.0), 1.0))
         # phases turn at slow x f (wrapped); only differences are ever used
         np.multiply(self.ftab, 2.0 * math.pi * slow * dtc, out=self._dphi)
