@@ -123,6 +123,7 @@ class HueAdapter(Adapter):
         self.dry_run = not bool(patch.hue.get("writes_enabled", False))
         self._commanded: dict[str, Any] = {}
         self.house: dict[str, Any] = {}            # each lamp's last state under house control ("Stop following")
+        self.last_lit: dict[str, dict] = {}        # each lamp's last lit state (undimmed): what "on" puts back
         self.last_light: dict[str, dict] = {}      # the bridge's last light record per member (fixtures view)
         self._fading: dict[str, Any] = {}          # member -> the state the stream is easing it to (room mode)
         self._lock = asyncio.Lock()
@@ -169,9 +170,10 @@ class HueAdapter(Adapter):
         async with self._lock:
             following = self.show_wanted if self.mode == "show" else self.output.wanted
             for m, d in self.devices.items():
-                v = self._commanded.get(m, self.house.get(m))
-                if d.id in following or not isinstance(v, dict):
-                    continue
+                lit, cmd = self.house.get(m), self._commanded.get(m)
+                if d.id in following or not isinstance(lit, dict):
+                    continue                        # off (or following): nothing to dim; "on" uses the level later
+                v = cmd if isinstance(cmd, dict) else lit
                 await self._put(m, v, int(LEVEL_FADE_S * 1000))
 
     def _keep(self) -> None:
@@ -332,6 +334,8 @@ class HueAdapter(Adapter):
         else:
             val = self._unscaled(val)
         self.house[member] = val
+        if isinstance(val, dict):
+            self.last_lit[member] = val
         return Reading(val)
 
     async def _post_show_set(self) -> dict | None:
@@ -503,8 +507,11 @@ class HueAdapter(Adapter):
         return self._worst(results)
 
     async def _put(self, member: str, value: Any, duration_ms: int) -> Outcome:
-        if value == "on":                          # as it was under house control, else the bridge's own last state
-            last = self.house.get(member)
+        if value == "on":                          # as it was when last lit, at the dimmer's level
+            last = self.last_lit.get(member)
+            li = self.last_light.get(member)
+            if last is None and li:                # not seen lit since we started: the bridge's own last state
+                last = self._unscaled(_canon_light({**li, "on": {"on": True}}))
             if isinstance(last, dict):
                 value = last
         body: dict[str, Any] = {"dynamics": {"duration": duration_ms}}

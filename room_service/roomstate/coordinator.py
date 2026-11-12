@@ -1298,6 +1298,70 @@ class Coordinator:
         await self._stop_tasks()
 
     # changes by hand and owner corrections (§4.11) -------------------------------------------------------------------
+    async def hand_set_many(self, values: dict[str, Any], hold: bool = False, source: str = "web") -> list[asyncio.Task]:
+        """Several targets by hand as ONE change (PUT /room/targets with several values: the Lamps switch, owner 12 Nov:
+        "it turns on only 1 of 4 lights"). hand_set one by one cancelled each earlier one (the last change wins), so only
+        the last lamp moved. Every value is checked first (nothing is sent if one is bad: KeyError / ValueError /
+        Refused, with .target set); then each subsystem gets one apply with all its members. During a switch each
+        target goes as hand_set's does."""
+        checked: dict[str, Any] = {}
+        for t, value in values.items():
+            try:
+                a, member = self._target(t)
+                checked[t] = a.normalize(member, value)
+                if a.placeholder or a.dry_run:
+                    raise Refused("unavailable", f"{t}: " + ("no adapter" if a.placeholder else "writes are off (dry run)"))
+            except (KeyError, ValueError, Refused) as e:
+                e.target = t                      # type: ignore[attr-defined]
+                raise
+        if len(checked) == 1:
+            (t, v), = checked.items()
+            return [await self.hand_set(t, v, hold=hold, source=source)]
+        self._gen += 1
+        async with self._req:
+            if self._task and not self._task.done():
+                tasks = []
+                for t, v in checked.items():
+                    self._hand_wins[t] = v
+                    task = asyncio.create_task(self._hand_apply_during(t, v, source, hold))
+                    self._rtasks.add(task)
+                    task.add_done_callback(self._rtasks.discard)
+                    tasks.append(task)
+                return tasks
+            await self._stop_tasks(rtasks_only=True)
+            task = asyncio.create_task(self._hand_apply_many(checked, source, hold))
+            self._rtasks.add(task)
+            task.add_done_callback(self._rtasks.discard)
+        return [task]
+
+    async def _hand_apply_many(self, values: dict[str, Any], source: str, hold: bool) -> dict[str, Outcome]:
+        async with self._work:
+            by_sub: dict[str, dict[str, Any]] = defaultdict(dict)
+            for t, v in values.items():
+                sub, member = t.split(".", 1)
+                by_sub[sub][member] = v
+            outs = await asyncio.gather(*(self._send(sub, vals) for sub, vals in by_sub.items()))
+            out = {t: o for d in outs for t, o in d.items()}
+            for t, v in values.items():
+                self._hand_done(t, v, out[t], source, hold)
+            self._save()
+            return out
+
+    def _hand_done(self, t: str, v: Any, out: Outcome, source: str, hold: bool) -> None:
+        d = self.s["desired"].get(t)
+        if d and not same(v, d["value"], self._adapter(t)):
+            d["settled"], d["retry"], d["reasserted"] = True, None, True   # the user's value wins until the next transition
+            if d.get("slot"):
+                self._unstore(d["slot"], t)   # a closed retrieve is abandoned, not fought
+            if d["policy"] != "ignore":
+                self.s["drift"][t] = {"observed": v, "desired": d["value"], "at": self.now(), "manual": True,
+                                      "overridden": d["policy"] == "enforce", "source": source}
+        elif d:
+            self.s["drift"].pop(t, None)
+            if out.status == "ok":
+                self._settle(t)
+        self._log("hand_set", source, target=t, value=v, hold=hold, status=out.status)
+
     async def hand_set(self, t: str, value: Any, hold: bool = False, source: str = "web") -> asyncio.Task:
         """PUT /room/targets/{t}, PUT /screens/{id}: one target by hand, under the current mode's policy. Returns the
         running change (202): its result is the Outcome. KeyError: unknown target (404); ValueError: bad value (400);
@@ -1362,19 +1426,7 @@ class Coordinator:
         async with self._work:
             sub, member = t.split(".", 1)
             out = (await self._send(sub, {member: v}))[t]    # no row; a hand set is reported, not retried
-            d = self.s["desired"].get(t)
-            if d and not same(v, d["value"], self._adapter(t)):
-                d["settled"], d["retry"], d["reasserted"] = True, None, True   # the user's value wins until the next transition
-                if d.get("slot"):
-                    self._unstore(d["slot"], t)   # a closed retrieve is abandoned, not fought
-                if d["policy"] != "ignore":
-                    self.s["drift"][t] = {"observed": v, "desired": d["value"], "at": self.now(), "manual": True,
-                                          "overridden": d["policy"] == "enforce", "source": source}
-            elif d:
-                self.s["drift"].pop(t, None)
-                if out.status == "ok":
-                    self._settle(t)
-            self._log("hand_set", source, target=t, value=v, hold=hold, status=out.status)
+            self._hand_done(t, v, out, source, hold)
             self._save()
             return out
 

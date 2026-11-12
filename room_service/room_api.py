@@ -97,16 +97,23 @@ def register(app: web.Application, svc: "RoomService", is_admin: Callable[[web.R
         if hold and not is_admin(request):
             return admin_only()
         accepted = []
-        for t, v in values.items():
+        groups: dict[int, tuple[Any, dict]] = {}        # one change per coordinator (mode zone): never one by one,
+        for t, v in values.items():                     # where each would cancel the one before
             try:
-                await svc.zones.for_target(t).coordinator.hand_set(t, v, hold=hold, source=str(b.get("source", "web")))
+                coord = svc.zones.for_target(t).coordinator
             except KeyError:
                 return err(404, "unknown_target", t, accepted=accepted)
+            groups.setdefault(id(coord), (coord, {}))[1][t] = v
+        for coord, vals in groups.values():
+            try:
+                await coord.hand_set_many(vals, hold=hold, source=str(b.get("source", "web")))
+            except KeyError as e:
+                return err(404, "unknown_target", getattr(e, "target", str(e)), accepted=accepted)
             except ValueError as e:
-                return err(400, "bad_value", f"{t}: {e}", accepted=accepted)
+                return err(400, "bad_value", f"{getattr(e, 'target', '?')}: {e}", accepted=accepted)
             except Refused as e:
                 return refused(e)
-            accepted.append(t)
+            accepted += list(vals)
         return web.json_response({"accepted": accepted}, status=202)
 
     async def assume(request: web.Request) -> web.Response:

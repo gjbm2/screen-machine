@@ -718,3 +718,22 @@ def test_status_rows_ids_ages_and_round_trip(tmp_path):
         assert '_at"' not in text and json.loads(text) == st                # ages, never clock times
         assert {"revision", "error", "pending_targets", "warnings"} <= set(st["config"])
     asyncio.run(body())
+
+
+def test_hand_set_many_moves_every_target_in_one_change(tmp_path):
+    """owner, 12 Nov: the Lamps switch "turns on only 1 of 4 lights". One PUT with several values went through
+    hand_set one by one, each cancelling the one before; hand_set_many sends them as one change, one apply per
+    subsystem, and a bad target sends nothing."""
+    async def body():
+        r = make_room(tmp_path)
+        await boot(r)
+        before = len(sends(r, "blinds"))
+        with pytest.raises(KeyError) as e:
+            await r.c.hand_set_many({"blinds.ch02": 10, "blinds.nope": 5})
+        assert e.value.target == "blinds.nope" and len(sends(r, "blinds")) == before
+        tasks = await r.c.hand_set_many({"blinds.ch02": 10, "blinds.ch03": 20}, source="owner")
+        outs = [await t for t in tasks]
+        assert len(tasks) == 1 and all(o.status == "ok" for d in outs for o in d.values())
+        assert (r.blinds.value["ch02"], r.blinds.value["ch03"]) == (10, 20)
+        assert len(sends(r, "blinds")) == before + 1                         # one apply with both members
+    asyncio.run(body())

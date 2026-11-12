@@ -291,11 +291,16 @@ async def test_on_turns_a_lamp_on_as_it_was_and_reads_as_on():
     """The pages' one switch for all the lamps (owner, 12 Nov): "on" lights a lamp at its own last state."""
     patch, client, out, a = make("room")
     assert a.normalize("ne", "on") == "on"
+    await a.read(["ne"])                                         # seen lit (the poll): 22 %
     await a.apply({"ne": "off"}, {"over_s": 0})
     res = await a.apply({"ne": "on"}, {"over_s": 0})
     assert res.status == "ok", res
     body = [p for p in client.puts if p[0] == "light"][-1][2]
-    assert body["on"] == {"on": True} and "dimming" not in body
+    assert body["on"] == {"on": True} and body["dimming"]["brightness"] == 22.0      # as it was when last lit
     got = (await a.read(["ne"]))["ne"].value
     assert got == {"on": True, "bri": 22, "xy": [0.482, 0.409]} and a.equivalent("on", got)
+    out.level = 0.5                                              # the dimmer at 50 %: "on" comes on at half
+    await a.apply({"ne": "off"}, {"over_s": 0})
+    await a.apply({"ne": "on"}, {"over_s": 0})
+    assert [p for p in client.puts if p[0] == "light"][-1][2]["dimming"]["brightness"] == 11.0
     await a.close()
