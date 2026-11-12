@@ -20,7 +20,8 @@ Rules every adapter keeps (§5.2):
   5. Applying the same values again is safe (except edge_toggle, which the coordinator never re-sends).
   6. Cancellation stops the wait, not the device: clean up within 3 s and re-raise CancelledError, never swallow it.
      While a device-side process carries on, read() reports moving=True where the device can tell.
-  7. opts are hints ({"over_s": 5}, "pending"); ignore what you can't use.
+  7. opts are hints ({"over_s": 5}, "pending", "put_back": [members whose value is a retrieve, not set afresh]);
+     ignore what you can't use.
   8. The adapter serialises its own device (the Bloc hub lock, one IP Control connection per TV) and keeps no
      coordinator state.
   9. Device writes only with the owner's approval; a writer that isn't approved yet runs as dry_run.

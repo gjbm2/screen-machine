@@ -772,6 +772,9 @@ class Coordinator:
             by_sub[sub][m] = v
         opts = {sub: {k: o for m in vals if mode and f"{sub}.{m}" in mode.state
                       for k, o in mode.state[f"{sub}.{m}"].opts.items()} for sub, vals in by_sub.items()}
+        for sub, vals in by_sub.items():          # a hint: these values are put back (a retrieve), not set afresh
+            if back := sorted(m for m in vals if f"{sub}.{m}" in slots):
+                opts[sub]["put_back"] = back
         sends = [self._send(sub, vals, tr, opts[sub]) for sub, vals in by_sub.items()]
         outs = await asyncio.gather(*([_eager(c) for c in sends] if eager else sends))
         out = {t: o for d in outs for t, o in d.items()}  # gather re-raises a cancel even if an adapter swallows it

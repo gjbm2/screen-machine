@@ -26,6 +26,7 @@ class FakeSoCo:
         self.music_library = SimpleNamespace(get_sonos_favorites=lambda: favs)
         self.queue: list = []
         self.shuffle = False
+        self.play_mode, self.index, self.position, self.seeks = "NORMAL", 0, "0:01:00", []
 
     def get_sonos_playlists(self):
         return [SimpleNamespace(title="Dinner", item_id="SQ:1")]
@@ -34,7 +35,18 @@ class FakeSoCo:
         return {"current_transport_state": self.state}
 
     def get_current_track_info(self):
-        return {"title": "Today", "artist": "", "album": "", "position": "0:01:00", "duration": "", "uri": self.uri}
+        return {"title": "Today", "artist": "", "album": "", "position": self.position, "duration": "", "uri": self.uri,
+                "playlist_position": str(self.index + 1)}
+
+    def get_queue(self, start, n):
+        return self.queue[start:start + n]
+
+    def add_multiple_to_queue(self, items):
+        self.queue += list(items)
+
+    def seek(self, pos):
+        self.seeks.append(pos)
+        self.position = pos
 
     def pause(self):
         self.state = "PAUSED_PLAYBACK"
@@ -56,8 +68,9 @@ class FakeSoCo:
     def add_to_queue(self, ref):
         self.queue.append(ref)
 
-    def play_from_queue(self, i):
-        self.uri, self.state = "x-rincon-cpcontainer:disco", "PLAYING"
+    def play_from_queue(self, i, start=True):
+        self.uri, self.index = "x-rincon-queue:RINCON_1#0", i
+        self.state = "PLAYING" if start else "STOPPED"
 
 
 def adapter() -> tuple[SonosAdapter, FakeSoCo]:
@@ -323,3 +336,25 @@ def test_fade_s_and_title_are_checked_and_worded():
     assert a.words("drawing-room.playback", {"favourite": "Disco", "fade_s": 2}) == "Play Disco, fading over 2 s"
     assert a.words("drawing-room.playback", {"uri": PIANO}) == "Play a stream"
     assert a.show("drawing-room.playback", n) == "play Chopin"
+
+
+def test_putting_back_music_a_mode_replaced_carries_on_from_its_track_and_position():
+    """Normal (the house's own queue, track 7 at 2:34) → Disco (its playlist replaces the queue) → Normal: the queue,
+    the track and the position come back (owner, 12 Nov: "resumes broadly from where it was"). Disco's own music,
+    set afresh, starts at its top."""
+    async def body():
+        a, dev = adapter()
+        house = [f"track-{i}" for i in range(250)]                # more than one get_queue batch
+        dev.uri, dev.state, dev.queue, dev.index, dev.position = "x-rincon-queue:RINCON_1#0", "PLAYING", list(house), 6, "0:02:34"
+        dev.play_mode = "SHUFFLE_NOREPEAT"
+        stored = (await a.read(["drawing-room.playback"]))["drawing-room.playback"].value
+        assert stored == {"uri": "x-rincon-queue:RINCON_1#0"}
+        out = await a.apply({"drawing-room.playback": {"sonos_playlist": "Dinner"}})     # Disco: its own, afresh
+        assert out.status == "ok" and dev.queue[-1].title == "Dinner" and dev.index == 0
+        dev.play_mode = "NORMAL"
+        out = await a.apply({"drawing-room.playback": stored}, {"put_back": ["drawing-room.playback"]})
+        assert out.status == "ok", out
+        assert dev.queue == house and dev.index == 6 and dev.seeks[-1] == "0:02:34" and dev.state == "PLAYING"
+        assert dev.play_mode == "SHUFFLE_NOREPEAT"
+        assert (await a.read(["drawing-room.playback"]))["drawing-room.playback"].value == stored
+    asyncio.run(body())

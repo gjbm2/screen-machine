@@ -12,6 +12,12 @@ Members per zone `<zone>`:
                       read() gives the playback *context*, never the track: what we started reads back as we said it
                       (same context URI), a playing favourite as {"favourite": ...}, anything else as {"uri": ...}; so a
                       store captures the station or playlist and a retrieve brings it back
+                      **Where it was** (owner, 12 Nov: Normal → Disco → Normal "resumes broadly from where it was"):
+                      when a mode change replaces or pauses music playing from the local queue, the zone keeps the
+                      queue, the track and the position under the value that music reads as. Putting that value back
+                      (a retrieve: opts put_back) rebuilds the queue and carries on from that track and position (a
+                      pause that nothing else followed still simply resumes); a mode's own music starts afresh. Kept
+                      for MARK_MAX_S, the last MARKS of them.
   <zone>.now_playing  read-only: {state, source, title, artist, album, track_id, duration, position, mute, group}
 SoCo is blocking, so every call runs in a thread with a timeout. Topology (the group coordinator), favourites and Sonos
 playlists are cached for 60 s; transport state and the track are read on every poll (poll_s 2).
@@ -40,6 +46,10 @@ PLAYBACK_WORDS = ("paused", "stopped")
 CONTEXTS = ("favourite", "sonos_playlist", "spotify_link", "uri")    # what a playback object plays (exactly one)
 SPOTIFY_LINK = r"^(https://open.spotify.com/|spotify:)"
 CACHE_S = 60.0
+MARKS = 4                                             # where music was: the last few a mode change replaced
+MARK_MAX_S = 12 * 3600.0                              # ... and for how long one is worth putting back
+QUEUE_MAX = 1000                                      # tracks of a queue kept (get_queue reads QUEUE_BATCH at a time)
+QUEUE_BATCH = 100
 PLAYING = ("PLAYING", "TRANSITIONING")
 EXTRAS = ("shuffle", "volume", "only_if_idle", "fade_s", "title")    # options a playback object may carry
 URI_ONLY = ("title",)                                 # ... only a {"uri": ...} one
@@ -89,6 +99,7 @@ class _Zone:
         self._pls: list = []
         self._pls_at = 0.0
         self.played: tuple[str, dict] | None = None      # (context URI, the value we started it with)
+        self.marks: dict[str, dict] = {}                 # the value music read as -> where it was (queue, track, position)
         self.gen = 0                                      # bumped by each change: a running ramp sees it and stops
 
     def dev(self):
@@ -127,14 +138,7 @@ class _Zone:
                 self.playlists()
             except Exception as e:                        # a picker list: never worth making the zone unavailable
                 log.debug("%s: Sonos playlists not read: %s", self.key, e)
-            if state in PLAYING:
-                fav = next((f.title for f in favs if _ctx(self.fav_uri(f)) == _ctx(uri) and uri), None)
-                if self.played and uri and self.played[0] == _ctx(uri):
-                    playback: Any = dict(self.played[1])  # ours: reads back as we said it (shuffle, volume ...)
-                else:
-                    playback = {"favourite": fav} if fav else {"uri": uri}
-            else:
-                playback = "paused" if state == "PAUSED_PLAYBACK" else "stopped"
+            playback = self._playback_of(state, uri, favs)
             return {
                 "volume": int(dev.volume),
                 "playback": playback,
@@ -144,6 +148,89 @@ class _Zone:
                                 "position": track.get("position") or "", "mute": bool(dev.mute),
                                 "group": [m.player_name for m in dev.group.members]},
             }
+
+    def _playback_of(self, state: str, uri: str, favs: list) -> Any:
+        if state not in PLAYING:
+            return "paused" if state == "PAUSED_PLAYBACK" else "stopped"
+        if self.played and uri and self.played[0] == _ctx(uri):
+            return dict(self.played[1])                   # ours: reads back as we said it (shuffle, volume ...)
+        fav = next((f.title for f in favs if _ctx(self.fav_uri(f)) == _ctx(uri) and uri), None)
+        return {"favourite": fav} if fav else {"uri": uri}
+
+    @staticmethod
+    def _key(v: dict) -> str:
+        return json.dumps({k: x for k, x in v.items() if k not in START_ONLY}, sort_keys=True)
+
+    def mark(self) -> None:
+        """Music playing from the local queue is about to be replaced or paused by a mode: keep where it was, under
+        the value it reads as (what the coordinator stores), so putting that back carries on from there."""
+        with self.lock:
+            co = self.coordinator()
+            state = co.get_current_transport_info()["current_transport_state"]
+            uri = co.avTransport.GetMediaInfo([("InstanceID", 0)]).get("CurrentURI", "") or ""
+            if state not in PLAYING or not (uri.startswith("x-rincon-queue:") and uri.endswith("#0")):
+                return                                    # a stream has no place to lose; a cloud queue can't return
+            v = self._playback_of(state, uri, self.favourites())
+            track = co.get_current_track_info()
+            items: list = []
+            while len(items) < QUEUE_MAX:
+                batch = list(co.get_queue(len(items), QUEUE_BATCH))
+                items += batch
+                if len(batch) < QUEUE_BATCH:
+                    break
+            if not items:
+                return
+            pos = str(track.get("playlist_position") or "")
+            try:
+                play_mode = co.play_mode
+            except Exception:
+                play_mode = None
+            self.marks.pop(self._key(v), None)
+            self.marks[self._key(v)] = {"at": time.monotonic(), "queue": items[:QUEUE_MAX], "play_mode": play_mode,
+                                        "index": int(pos) - 1 if pos.isdigit() and int(pos) > 0 else 0,
+                                        "position": track.get("position") or ""}
+            while len(self.marks) > MARKS:
+                self.marks.pop(next(iter(self.marks)))
+            log.info("%s: kept where %s was (track %s at %s, %d in the queue)", self.key, v, pos or "?",
+                     track.get("position") or "?", len(items))
+
+    def _resume(self, v: dict) -> bool:
+        """Put `v` back where it was (mark): the queue, the track, the position. False: nothing kept for it (or it
+        is simply paused there: _play resumes it)."""
+        with self.lock:
+            m = self.marks.pop(self._key(v), None)
+            if m is None or time.monotonic() - m["at"] > MARK_MAX_S:
+                return False
+            co = self.coordinator()
+            if self._paused_on(co, v):
+                return False
+            co.clear_queue()
+            try:
+                co.add_multiple_to_queue(m["queue"])
+            except Exception as e:                        # an item it won't take in a batch: one at a time
+                log.info("%s: queue back one track at a time (%s)", self.key, e)
+                co.clear_queue()
+                for it in m["queue"]:
+                    try:
+                        co.add_uri_to_queue(it.get_uri())
+                    except Exception:
+                        pass
+            if m["play_mode"] is not None:
+                try:
+                    co.play_mode = m["play_mode"]
+                except Exception as e:
+                    log.info("%s: play mode not put back (%s)", self.key, e)
+            co.play_from_queue(m["index"], start=False)
+            if m["position"]:
+                try:
+                    co.seek(m["position"])
+                except Exception as e:
+                    log.info("%s: position not put back (%s)", self.key, e)
+            co.play()
+            uri = co.avTransport.GetMediaInfo([("InstanceID", 0)]).get("CurrentURI", "") or ""
+            self.played = (_ctx(uri), dict(v))
+            log.info("%s: put %s back at track %d, %s", self.key, v, m["index"] + 1, m["position"] or "the start")
+            return True
 
     STEP_S = 0.2                                          # ramp step (owner, 16 Oct: smooth, never a jump)
 
@@ -229,12 +316,13 @@ class _Zone:
             uri = co.avTransport.GetMediaInfo([("InstanceID", 0)]).get("CurrentURI", "") or ""
             self.played = (_ctx(uri), dict(v))
 
-    def change(self, volume: int | None, playback: Any, over_s: float, gen: int) -> str:
+    def change(self, volume: int | None, playback: Any, over_s: float, gen: int, put_back: bool = False) -> str:
         """One mode-driven change, smoothly. Pause or stop: fade out, pause, then put the volume back silently so the
         next play isn't at zero. Play: fade out what's playing, switch, fade up from 0 to the target (the volume
         member, else the playback's own volume, else where the volume was). Volume alone: a ramp while playing, a
         silent set while not. A playback's fade_s replaces over_s for the whole change; fade_s 0 plays at once: no
-        fade-out, the volume set first, then play, no ramp. Returns a note when only_if_idle left playing music alone
+        fade-out, the volume set first, then play, no ramp. put_back: the playback is music a mode change took
+        away, so it carries on from where it was (mark) when that was kept. Returns a note when only_if_idle left playing music alone
         ("" otherwise)."""
         playing = self._state() in PLAYING
         before = self._vol()
@@ -244,6 +332,11 @@ class _Zone:
             over_s = float(fade)
         if isinstance(playback, dict) and playback.get("only_if_idle") and playing:
             playback, note = None, "music already playing: left alone (only_if_idle)"
+        if playing and playback is not None:
+            try:
+                self.mark()
+            except Exception as e:                        # never worth holding up the change
+                log.info("%s: where the music was not kept (%s)", self.key, e)
         if playback in ("paused", "stopped"):
             if playing:
                 if not self.ramp(0, over_s, gen):
@@ -256,12 +349,12 @@ class _Zone:
             target = volume if volume is not None else playback.get("volume", before)
             if fade is not None and over_s <= 0:          # no fade: at the volume from the first note
                 self._set_vol(target)
-                self._play(playback)
+                (put_back and self._resume(playback)) or self._play(playback)
                 return note
             if playing and not self.ramp(0, over_s, gen):
                 return note
             self._set_vol(0)
-            self._play(playback)
+            (put_back and self._resume(playback)) or self._play(playback)
             self.ramp(target, over_s, gen)
         elif volume is not None:
             if playing:
@@ -422,6 +515,7 @@ class SonosAdapter(Adapter):
 
     async def apply(self, desired: dict[str, Any], opts: dict | None = None) -> Outcome:
         over = float((opts or {}).get("over_s", self.ramp_s))
+        put_back = set((opts or {}).get("put_back") or ())
         results: dict[str, Outcome] = {}
         by_zone: dict[str, dict[str, Any]] = {}
         for m, v in desired.items():
@@ -436,8 +530,8 @@ class SonosAdapter(Adapter):
             pb = fields.get("playback")
             span = float(pb["fade_s"]) if isinstance(pb, dict) and "fade_s" in pb else over   # the fade it will use
             try:
-                note = await asyncio.wait_for(asyncio.to_thread(z.change, fields.get("volume"), pb, over, z.gen),
-                                              span * 3 + 15)
+                note = await asyncio.wait_for(asyncio.to_thread(z.change, fields.get("volume"), pb, over, z.gen,
+                                                                f"{zk}.playback" in put_back), span * 3 + 15)
             except asyncio.CancelledError:
                 z.gen += 1                                # stop the ramp: the next change carries on from here
                 raise
