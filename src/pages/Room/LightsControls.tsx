@@ -45,7 +45,16 @@ export function LightsControls({
   const anyLights = lampIds === null || lampIds.length > 0 || (rigLightIds(status) ?? []).length > 0;
   return (
     <>
-      {anyLights && <RoomLightsRow api={api} status={status} addLog={addLog} reportError={reportError} />}
+      {anyLights && (
+        <RoomLightsRow
+          api={api}
+          status={status}
+          view={fixtures.view}
+          onChanged={fixtures.refresh}
+          addLog={addLog}
+          reportError={reportError}
+        />
+      )}
       {!flat && groups.length === 0 && (
         <p className="px-1 text-base text-muted-foreground" data-testid="no-lights">
           No lights yet ·{" "}

@@ -4,6 +4,9 @@ Values (canonical):
   "dmx"                                   follow Art-Net: the device streams in the Entertainment area while Maestro
                                           sends (HueOutput gates on fresh Art-Net, so with no Maestro nothing moves)
   "off"
+  "on"                                    turn on as it was: its last state under house control (else the bridge's own),
+                                          for the pages' one switch for all the lamps (owner, 12 Nov); any lit reading
+                                          is equivalent
   {"on": true, "bri": 0-100, "xy": [x, y]}  or  {"on": true, "bri": 0-100, "mirek": 153-500}
                                           a light state: what `store` snapshots and `retrieve` puts back
                                           ({"hex": "#rrggbb"} is accepted and becomes xy; with two colour keys
@@ -220,7 +223,12 @@ class HueAdapter(Adapter):
     def label(self, member: str) -> str:
         return self.devices[member].label if member in self.devices else member
 
-    WORDS = {"dmx": "Follows the music", "off": "Off", "taken_over": "Taken over by another app"}
+    WORDS = {"dmx": "Follows the music", "off": "Off", "on": "On", "taken_over": "Taken over by another app"}
+
+    def equivalent(self, x: Any, y: Any) -> bool:
+        """"on" is any lit state."""
+        return ((x == "on" and isinstance(y, dict) and y.get("on", True))
+                or (y == "on" and isinstance(x, dict) and x.get("on", True)))
 
     def value_schema(self, member: str) -> dict:
         """For the Room page's schema-driven editor. normalize() stays the real check (check_value ignores oneOf):
@@ -230,6 +238,7 @@ class HueAdapter(Adapter):
             "oneOf": [
                 {"const": "dmx", "x-ui": {"label": self.WORDS["dmx"]}},
                 {"const": "off", "x-ui": {"label": "Off"}},
+                {"const": "on", "x-ui": {"label": "On, as it was"}},
                 # exclusive: the editor clears the other colour keys when one is set, so the value holds only the
                 # control touched last (normalize's hex > mirek > xy order is the fallback for older values)
                 {"type": "object", "x-ui": {"label": "On", "exclusive": [["hex", "mirek", "xy"]]},
@@ -255,7 +264,7 @@ class HueAdapter(Adapter):
     def normalize(self, member: str, value: Any) -> Any:
         if value == "show":                         # SHOW_ENGINE §9.4 alias
             return "dmx"
-        if value in ("dmx", "off", "taken_over"):
+        if value in ("dmx", "off", "on", "taken_over"):
             return value
         if not isinstance(value, dict):
             raise ValueError(f"hue value: 'dmx', 'off' or {{on, bri, xy|mirek}}, got {value!r}")
@@ -407,11 +416,12 @@ class HueAdapter(Adapter):
             if results[m].status != "ok":
                 continue
             got = self._reading(m, lights.get(self.devices[m].extra["light"])).value
-            if got != v:                           # overwritten (or a slow lamp): re-assert once
+            if not (got == v or self.equivalent(got, v)):     # overwritten (or a slow lamp): re-assert once
                 await self._put(m, v, 0)
                 await asyncio.sleep(1.0)
                 got = self._reading(m, (await self._lights()).get(self.devices[m].extra["light"])).value
-                results[m] = Outcome("ok") if got == v else Outcome("unconfirmed", f"reads {got!r}")
+                results[m] = (Outcome("ok") if got == v or self.equivalent(got, v)
+                              else Outcome("unconfirmed", f"reads {got!r}"))
 
     async def _apply_show(self, desired: dict[str, Any], opts: dict) -> Outcome:
         """hue.streamer = show: show_service streams; we ask it to, and wait for its release before writing states."""
@@ -493,9 +503,15 @@ class HueAdapter(Adapter):
         return self._worst(results)
 
     async def _put(self, member: str, value: Any, duration_ms: int) -> Outcome:
+        if value == "on":                          # as it was under house control, else the bridge's own last state
+            last = self.house.get(member)
+            if isinstance(last, dict):
+                value = last
         body: dict[str, Any] = {"dynamics": {"duration": duration_ms}}
         if value == "off":
             body["on"] = {"on": False}
+        elif value == "on":
+            body["on"] = {"on": True}
         else:
             body["on"] = {"on": True}
             body["dimming"] = {"brightness": round(float(self._scaled(value)["bri"]), 1)}

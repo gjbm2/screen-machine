@@ -285,3 +285,17 @@ async def test_the_dimmer_scales_lamps_under_house_control_and_values_stay_undim
     r = await a.read(["ne", "nw"])
     assert r["ne"].value == {"on": True, "bri": 80, "mirek": 400} and r["nw"].value == "off"
     await a.close()
+
+
+async def test_on_turns_a_lamp_on_as_it_was_and_reads_as_on():
+    """The pages' one switch for all the lamps (owner, 12 Nov): "on" lights a lamp at its own last state."""
+    patch, client, out, a = make("room")
+    assert a.normalize("ne", "on") == "on"
+    await a.apply({"ne": "off"}, {"over_s": 0})
+    res = await a.apply({"ne": "on"}, {"over_s": 0})
+    assert res.status == "ok", res
+    body = [p for p in client.puts if p[0] == "light"][-1][2]
+    assert body["on"] == {"on": True} and "dimming" not in body
+    got = (await a.read(["ne"]))["ne"].value
+    assert got == {"on": True, "bri": 22, "xy": [0.482, 0.409]} and a.equivalent("on", got)
+    await a.close()
