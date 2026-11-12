@@ -47,7 +47,11 @@ _env = dotenv_values(_env_path)
 SSH_HOST = _env.get('MEDIA_SERVER_HOST', str(_KIOSK.get('host') or ''))
 SSH_USER = _env.get('MEDIA_SERVER_USER', str(_KIOSK.get('user') or ''))
 SSH_PORT = _env.get('MEDIA_SERVER_PORT', '22')
-SSH_PASS = _env.get('MEDIA_SERVER_PASSWORD', '')
+
+
+def _kiosk_password():
+    """The kiosk login's password, for sudo: read at each use, so a new one in the .env needs no Flask restart."""
+    return dotenv_values(_env_path).get('MEDIA_SERVER_PASSWORD') or ''
 
 _NAME_RX = re.compile(r'^[a-z][a-z0-9_]*$')
 _ID_RX = re.compile(r'^[A-Za-z0-9_.-]+$')
@@ -98,11 +102,15 @@ def _require_kiosk_admin():
     return None
 
 
-def _ssh_run(remote_cmd, timeout=30):
-    """Run a command on the media server via SSH and return result dict."""
+def _ssh_run(remote_cmd, timeout=30, sudo=False):
+    """Run a command on the media server via SSH and return result dict.
+
+    Key auth only (the kiosk refuses passwords since 12 Nov 2026). With sudo=True the login password goes to the
+    remote command's stdin for its one `sudo -S -p ''`: never in a command line, where ps and shell traces show it.
+    ControlMaster=no as in kiosk-ctl.sh: a persistent master spawned here would hold the output pipe open."""
     ssh_cmd = [
-        'sshpass', '-p', SSH_PASS,
         'ssh', '-q', '-o', 'StrictHostKeyChecking=no',
+        '-o', 'BatchMode=yes', '-o', 'ControlMaster=no',
         '-o', 'LogLevel=ERROR',
         '-p', SSH_PORT,
         f'{SSH_USER}@{SSH_HOST}',
@@ -110,7 +118,8 @@ def _ssh_run(remote_cmd, timeout=30):
     ]
     try:
         result = subprocess.run(
-            ssh_cmd, capture_output=True, text=True, timeout=timeout
+            ssh_cmd, capture_output=True, text=True, timeout=timeout,
+            input=f'{_kiosk_password()}\n' if sudo else '',
         )
         return {
             'success': result.returncode == 0,
@@ -203,10 +212,8 @@ def status():
 @admin_api.route('/admin-355729b8/logs', methods=['GET'])
 def logs():
     """Recent kiosk service logs."""
-    cmd = 'sudo journalctl -u kiosk.service --no-pager -n 50 2>/dev/null || echo "Cannot read logs"'
-    # Use password for sudo
-    full_cmd = f'echo "{SSH_PASS}" | sudo -S journalctl -u kiosk.service --no-pager -n 50 2>/dev/null || echo "Cannot read logs"'
-    return jsonify(_ssh_run(full_cmd))
+    cmd = "sudo -S -p '' journalctl -u kiosk.service --no-pager -n 50 2>/dev/null || echo \"Cannot read logs\""
+    return jsonify(_ssh_run(cmd, sudo=True))
 
 
 @admin_api.route('/admin-355729b8/restart-kiosk', methods=['POST'])
@@ -216,15 +223,15 @@ def restart_kiosk():
     # kiosk-x11.service, so a restart never switches modes. No pkill: both units stop their own Chrome
     # (kiosk.service's ExecStopPost, kiosk-x11's KillMode=control-group), and a pkill -f pattern written here would
     # match this ssh shell's own command line and kill it between the stop and the start.
-    cmd = f"""
+    cmd = """
 KIOSK_UNIT=kiosk.service
 systemctl is-active --quiet kiosk-x11.service && KIOSK_UNIT=kiosk-x11.service
-echo "{SSH_PASS}" | sudo -S systemctl restart $KIOSK_UNIT
+sudo -S -p '' systemctl restart $KIOSK_UNIT
 sleep 3
 echo "UNIT=$KIOSK_UNIT"
 echo "STATUS=$(systemctl is-active $KIOSK_UNIT)"
 """
-    return jsonify(_ssh_run(cmd, timeout=30))
+    return jsonify(_ssh_run(cmd, timeout=30, sudo=True))
 
 
 @admin_api.route('/admin-355729b8/restart-screen', methods=['POST'])
@@ -365,5 +372,5 @@ s.close()
 @admin_api.route('/admin-355729b8/reboot', methods=['POST'])
 def reboot():
     """Full server reboot."""
-    cmd = f'echo "{SSH_PASS}" | sudo -S reboot'
-    return jsonify(_ssh_run(cmd, timeout=10))
+    cmd = "sudo -S -p '' reboot"
+    return jsonify(_ssh_run(cmd, timeout=10, sudo=True))
