@@ -22,6 +22,8 @@
 #
 # Needs python3 -m venv (git-filter-repo, pinned below, goes into a throwaway venv) and SSH access to GitHub.
 # Settings for a test run: PURGE_REMOTE (a remote or local path), PURGE_ENV_FILE (default: this checkout's .env).
+# PURGE_EXTRA_VALUES: a private file of more literal values to take out of every file and message, one per line
+# (a retired password, say, that .env no longer holds); redacted and checked like the .env values, never printed.
 set -euo pipefail
 umask 077
 
@@ -108,12 +110,20 @@ for d in domains:
         continue
     rules.append(f"literal:{d}==>example.com")
     finds.append(re.escape(d))
+extra = [x.strip() for x in open(os.environ["PURGE_EXTRA_VALUES"]).read().splitlines()] \
+    if os.environ.get("PURGE_EXTRA_VALUES") else []
+extra = [x for x in extra if len(x) >= 6 and "==>" not in x]      # never a short, common string
+for x in extra:
+    rules.append(f"literal:{x}==>redacted")
+    finds.append(re.escape(x))
 token = "--connection-token=[0-9a-fA-F][0-9a-fA-F-]{7,}"     # hex and dashes, so "=redacted" isn't one
 rules.append(f"regex:{token}==>--connection-token=redacted")
 finds.append(token)
 open(rules_path, "w").write("\n".join(rules) + "\n")
 open(find_path, "w").write("\n".join(finds) + "\n")
 print(f"values from .env: {', '.join(used) or 'none'}" + (f"; not set, skipped: {', '.join(unset)}" if unset else ""))
+if extra:
+    print(f"values from PURGE_EXTRA_VALUES: {len(extra)}")
 print(f"e-mail domains: {len(domains) - kept_domains} redacted"
       + (f", {kept_domains} kept (the current tree still uses it)" if kept_domains else ""))
 print("pattern: VS Code connection tokens")
