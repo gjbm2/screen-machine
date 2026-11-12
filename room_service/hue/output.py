@@ -13,6 +13,11 @@ DTLS-PSK, via the pinned `hue-entertainment` package's streamer; r7 §4, §12).
   (patch.yaml `hue.gamma`, default 0.6; below 1 lifts the mid-levels) and the colour is the xy of the full-level rgb.
 * **Level:** `level` (0-1, the room's brightness.lamps target) scales every lamp's brightness; a change eases over
   LEVEL_EASE_S.
+* **Fades (owner, 12 Nov: the TVs fade on a mode switch, the lamps cut):** the stream starts on each lamp's own state
+  (read from the bridge just before the start) and eases to the music over `hue.fade_s` (patch.yaml, default FADE_S).
+  A lamp leaving (`set_wanted(..., fade_to={device: its next state})`) is streamed on, easing to that state, and the
+  area stops only once every fade out has landed, so the bridge's own hand-back and the adapter's write that follows
+  change nothing visible. Art-Net going stale fades the lamps back to their pre-stream state before the stop.
 * **hue.streamer (patch.yaml, hot-reloaded):** `room` (default) is this loop; `show` hands streaming to show_service
   (SHOW_ENGINE §9.4): this output then never starts the area (and stops it if it was streaming), state `show`.
 * **Takeover (r7 §5):** every 2 s while streaming, the area's status and active_streamer are read. If another app has
@@ -29,6 +34,7 @@ import time
 from ..dmx.artnet import ArtNetReceiver
 from ..dmx.patch import Patch
 from .client import BridgeSecrets, HueClient, HueError, resolve_area
+from .colour import mirek_to_rgb, rgb_to_xy
 from .stream import GAMMA, xy_bri, xy_streamer
 
 log = logging.getLogger("room_service.hue.output")
@@ -36,6 +42,39 @@ log = logging.getLogger("room_service.hue.output")
 RATE_HZ = 25.0
 STATUS_EVERY_S = 2.0
 LEVEL_EASE_S = 2.0          # a brightness change eases (linearly) over this
+FADE_S = 3.0                # a lamp joining or leaving the stream eases over this (patch.yaml hue.fade_s wins)
+
+
+def state_xyb(value, near=None) -> tuple[int, int, int] | None:
+    """A lamp state as a HueStream (x, y, bri) triple, 16-bit: a CLIP v2 light record, the adapter's canonical value
+    ({on, bri, xy|mirek} or "off"), or None. Off is brightness 0 at `near`'s colour (else the record's own)."""
+    if value is None:
+        return None
+    if isinstance(value, dict) and "id" in value:            # a CLIP light record
+        xy = (value.get("color") or {}).get("xy")
+        ct = value.get("color_temperature") or {}
+        xy = (xy["x"], xy["y"]) if xy else rgb_to_xy(*mirek_to_rgb(ct["mirek"])) if ct.get("mirek") else None
+        on = (value.get("on") or {}).get("on", False)
+        bri = (value.get("dimming") or {}).get("brightness", 100.0) if on else 0.0
+    elif value == "off":
+        xy, bri = None, 0.0
+    elif isinstance(value, dict):
+        xy = value.get("xy") or (rgb_to_xy(*mirek_to_rgb(value["mirek"])) if value.get("mirek") else None)
+        bri = float(value.get("bri", 100)) if value.get("on", True) else 0.0
+    else:
+        return None
+    if xy is None:
+        xy = (near[0] / 0xFFFF, near[1] / 0xFFFF) if near else (0.3227, 0.329)
+    return round(xy[0] * 0xFFFF), round(xy[1] * 0xFFFF), round(max(0.0, min(100.0, bri)) / 100 * 0xFFFF)
+
+
+def _mix(a: tuple, b: tuple, k: float) -> tuple[int, int, int]:
+    """a -> b at k (0-1); a dark end takes the other end's colour, so a fade from or to off only dims."""
+    if a[2] == 0:
+        a = (b[0], b[1], 0)
+    if b[2] == 0:
+        b = (a[0], a[1], 0)
+    return tuple(round(p + (q - p) * k) for p, q in zip(a, b))       # type: ignore[return-value]
 
 
 class HueOutput:
@@ -59,6 +98,10 @@ class HueOutput:
         self._last_send_t = 0.0
         self._task: asyncio.Task | None = None
         self._changed = asyncio.Event()
+        self._house: dict[str, tuple] = {}      # device -> its (x, y, bri) just before the stream started
+        self._sent_dev: dict[str, tuple] = {}   # device -> the (x, y, bri) last streamed to it
+        self._fades: dict[str, tuple] = {}      # device -> (t0, from, to); to None = the music (a fade in)
+        self._stale = False                     # Art-Net went stale: fading back to the house before the stop
 
     @property
     def secrets(self) -> BridgeSecrets:
@@ -76,8 +119,20 @@ class HueOutput:
                 pass
         await self._stop_stream("room_service stopping")
 
-    def set_wanted(self, devices: set[str]) -> None:
+    def set_wanted(self, devices: set[str], fade_to: dict | None = None) -> None:
+        """fade_to: {device: the state it goes to next} for lamps leaving, so the stream eases them there first."""
         if devices != self.wanted:
+            if self.state == "streaming" and self.streamer.is_connected:
+                now = time.monotonic()
+                for d in self.wanted - devices:
+                    frm = self._sent_dev.get(d)
+                    to = state_xyb((fade_to or {}).get(d), frm) or self._house.get(d)
+                    if frm is not None and to is not None:
+                        self._fades[d] = (now, frm, to)
+                for d in devices - self.wanted:
+                    frm = self._sent_dev.get(d) or self._house.get(d)
+                    if frm is not None:
+                        self._fades[d] = (now, frm, None)
             self.wanted = set(devices)
             if self.state == "taken_over" and frozenset(devices) != self._taken_wanted:
                 self.state, self.detail = "idle", ""
@@ -85,6 +140,10 @@ class HueOutput:
 
     def is_streaming(self, device: str) -> bool:
         return self.state == "streaming" and device in self.wanted
+
+    def fading_out(self, devices=None) -> bool:
+        """A lamp (of `devices`, else any) is still being eased to the state it leaves the stream for."""
+        return any(f[2] is not None and (devices is None or d in devices) for d, f in list(self._fades.items()))
 
     # -- the loop ----------------------------------------------------------------------------------------------
     async def _run(self) -> None:
@@ -105,6 +164,10 @@ class HueOutput:
                     self.state, self.detail = "idle", ""
                 age = self.rx.age_ms
                 fresh = age is not None and age <= self.stop_after_s * 1000.0
+                streaming = self.state == "streaming" and self.streamer.is_connected
+                if not self.wanted and streaming and self.fading_out():
+                    self._send()                    # the last lamps ease to their next state; then the stop
+                    continue
                 if not self.wanted or self.state == "taken_over":
                     if self.streamer.is_connected or self.state in ("streaming", "starting"):
                         await self._stop_stream("not wanted")
@@ -112,6 +175,15 @@ class HueOutput:
                         self.state = "idle"
                     continue
                 if not fresh:
+                    if streaming and not self._stale:
+                        self._stale, now = True, time.monotonic()
+                        for d in self.wanted:
+                            frm, to = self._sent_dev.get(d), self._house.get(d)
+                            if frm is not None and to is not None:
+                                self._fades[d] = (now, frm, to)
+                    if streaming and self.fading_out():
+                        self._send()
+                        continue
                     if self.state in ("streaming", "starting"):
                         await self._stop_stream(f"no Art-Net for {self.stop_after_s:.0f} s")
                     self.state, self.detail = "waiting_input", "no Art-Net input"
@@ -119,6 +191,11 @@ class HueOutput:
                 if self.state != "streaming" or not self.streamer.is_connected:
                     await self._start_stream()
                     continue
+                if self._stale:                     # Art-Net back mid fade out: ease back to the music
+                    self._stale, now = False, time.monotonic()
+                    for d in self.wanted:
+                        if d in self._sent_dev:
+                            self._fades[d] = (now, self._sent_dev[d], None)
                 self._send()
                 now = time.monotonic()
                 if now >= next_status:
@@ -138,6 +215,15 @@ class HueOutput:
     async def _start_stream(self) -> None:
         self.state, self.detail = "starting", ""
         await self._resolve()
+        try:                                    # each lamp's own state: the stream starts there and eases in
+            lights = {li["id"]: li for li in await self.client.get("light")}
+        except HueError as e:
+            log.info("hue output: no light states before the start (%s): no fade in", e)
+            lights = {}
+        self._house = {d.id: state_xyb(lights[d.extra["light"]]) for d in self.patch.of_kind("hue")
+                       if d.extra.get("light") in lights}
+        self._sent_dev, self._stale, now = {}, False, time.monotonic()
+        self._fades = {d: (now, self._house[d], None) for d in self.wanted if d in self._house}
         await self.client.put("entertainment_configuration", self.area_id, {"action": "start"})
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self.streamer.connect, self.secrets.host, self.secrets.app_key,
@@ -160,6 +246,7 @@ class HueOutput:
             log.info("hue output: stream stopped (%s)", why)
         if self.state in ("streaming", "starting"):
             self.state = "idle"
+        self._fades, self._sent_dev, self._stale = {}, {}, False
 
     async def _check_takeover(self) -> None:
         area = (await self.client.get("entertainment_configuration", self.area_id))[0]
@@ -183,14 +270,24 @@ class HueOutput:
         gamma = float(self.patch.hue.get("gamma", GAMMA))
         now = time.monotonic()
         lv = self._ease_level(now)
+        fade_s = max(0.0, float(self.patch.hue.get("fade_s", FADE_S)))
         cmds = []
         for dev in self.patch.of_kind("hue"):
             light = dev.extra.get("light")
             ch = self.channels.get(light) if light else None
-            if ch is None or dev.id not in self.wanted:
+            if ch is None or (dev.id not in self.wanted and dev.id not in self._fades):
                 continue
             x, y, bri = xy_bri(fixtures[dev.id].get("rgb", [0, 0, 0]), gamma)
-            cmds.append((ch, x, y, round(bri * lv)))
+            val = (x, y, round(bri * lv))
+            fade = self._fades.get(dev.id)
+            if fade is not None:
+                t0, frm, to = fade
+                k = 1.0 if fade_s <= 0 else min(1.0, (now - t0) / fade_s)
+                val = _mix(frm, val if to is None else to, k * k * (3 - 2 * k))
+                if k >= 1.0:
+                    del self._fades[dev.id]
+            self._sent_dev[dev.id] = val
+            cmds.append((ch, *val))
         if cmds and (tuple(cmds) != self._last_sent or now - self._last_send_t >= 1.0):
             self.streamer.send_colors(cmds)
             self._last_sent, self._last_send_t = tuple(cmds), now

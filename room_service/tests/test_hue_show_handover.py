@@ -47,11 +47,14 @@ class FakeOutput:
     def __init__(self, client):
         self.client, self.wanted, self.state = client, set(), "idle"
 
-    def set_wanted(self, devices):
+    def set_wanted(self, devices, fade_to=None):
         self.wanted = set(devices)
         self.state = "waiting_input" if devices else "idle"
 
     def is_streaming(self, device):
+        return False
+
+    def fading_out(self, devices=None):
         return False
 
 

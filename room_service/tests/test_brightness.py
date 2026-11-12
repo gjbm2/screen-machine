@@ -45,6 +45,7 @@ def test_hue_output_scales_brightness():
     o.streamer = SimpleNamespace(send_colors=sent.append)
     o._last_sent, o._last_send_t, o.frames = None, 0.0, 0
     o.level, o._lv, o._lv_t = 0.5, 0.5, None
+    o._fades, o._sent_dev = {}, {}
     o._send()
     assert sent[-1][0][3] == round(0xFFFF * 0.5)
 

@@ -13,9 +13,11 @@ Values (canonical):
 * **read** is one GET /light. A light we are streaming (or armed to stream, waiting for Art-Net) reads "dmx".
   A reading within tolerance of the last value we commanded reads as that value, so the bridge's rounding
   (brightness is 0-254 inside) is not drift.
-* **apply** sets HueOutput's wanted set for "dmx" members. For state values it first lets the stream stop (if
-  nothing else still wants it), waits 1 s for the bridge's own post-entertainment state (r7 §6), PUTs each light
-  (dynamics.duration = opts.over_s, default 1 s), and re-asserts once if the bridge overwrote it.
+* **apply** sets HueOutput's wanted set for "dmx" members. For state values it first lets the stream ease each
+  leaving lamp to its new state (HueOutput's fade, patch.yaml hue.fade_s) and stop (if nothing else still wants it),
+  waits 1 s for the bridge's own post-entertainment state (r7 §6), PUTs each light (dynamics.duration =
+  opts.over_s, default 1 s), and re-asserts once if the bridge overwrote it. A lamp mid fade out reads as its new
+  state, moving.
 * **takeover**: if another app has the area, "dmx" members fail with retry=False ("taken_over"); never fought.
 * **hue.streamer** (patch.yaml, hot-reloaded; SHOW_ENGINE §9.4): `room` (default) streams "dmx" members through
   room_service's HueOutput. `show` hands streaming to show_service (the patch's `hue.show_url` if set, else room_service's show_url,
@@ -41,6 +43,7 @@ from typing import Any
 import aiohttp
 
 from ..hue.colour import describe, hex_to_rgb, rgb_to_xy
+from ..hue.output import FADE_S
 from ..roomstate.contract import Adapter, Outcome, Reading
 
 XY_TOL, BRI_TOL, MIREK_TOL = 0.01, 1.5, 3
@@ -107,6 +110,7 @@ class HueAdapter(Adapter):
         self._commanded: dict[str, Any] = {}
         self.house: dict[str, Any] = {}            # each lamp's last state under house control ("Stop following")
         self.last_light: dict[str, dict] = {}      # the bridge's last light record per member (fixtures view)
+        self._fading: dict[str, Any] = {}          # member -> the state the stream is easing it to (room mode)
         self._lock = asyncio.Lock()
 
     @property
@@ -240,6 +244,8 @@ class HueAdapter(Adapter):
             armed = dev.id in self.output.wanted and self.output.state in ("streaming", "waiting_input", "starting")
             if armed:
                 return Reading("dmx", moving=self.output.state == "starting")
+            if member in self._fading and self.output.fading_out({dev.id}):
+                return Reading(self._fading[member], moving=True)
         if li.get("mode") == "streaming":
             return Reading("taken_over")
         val = _canon_light(li)
@@ -389,11 +395,14 @@ class HueAdapter(Adapter):
         leaving = {self.devices[m].id for m in rest}
         wanted = (out.wanted - leaving) | dmx
         was_streaming = out.state == "streaming" and bool(out.wanted & leaving)
-        out.set_wanted(wanted)
+        self._fading = dict(rest)
+        out.set_wanted(wanted, fade_to={self.devices[m].id: v for m, v in rest.items()})
 
         if rest:
-            if was_streaming:
-                await self._wait(lambda: out.state != "streaming" or not (out.wanted & leaving), 5.0)
+            if was_streaming:                          # eased to the new state, then the stream stops (or goes on)
+                fade_s = float(self.patch.hue.get("fade_s", FADE_S))
+                await self._wait(lambda: not out.fading_out(leaving) and (out.state != "streaming" or bool(out.wanted)),
+                                 fade_s + 5.0)
                 await asyncio.sleep(1.0)               # the bridge writes its post-entertainment state first
             await self._put_states(rest, opts, results)
 
