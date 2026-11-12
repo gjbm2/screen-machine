@@ -29,6 +29,9 @@ Values (canonical):
   ({state, lights, boot_id}): first contact adopts its persisted set; a failed POST, a new boot_id or a mismatch
   re-sends ours. "show" is accepted as an alias of "dmx". Rollback:
   flip the switch back. The adapter's REST (house control, readback, identify) is its own client in both modes.
+* **Across a restart** (contract rule 10): room mode's following set is kept in <state_dir>/hue.json and handed back
+  to HueOutput at start, so a Flask restart mid show still reads (and streams) "dmx" instead of the house state the
+  coordinator would then take as the user's.
 * **signal** `hue.<member>.identify`: the bridge's own identify breathe (not while streaming).
 * Writes only when the patch's `hue.writes_enabled` is true; otherwise dry_run (reads work).
 """
@@ -36,8 +39,10 @@ Values (canonical):
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
+from pathlib import Path
 from typing import Any
 
 import aiohttp
@@ -93,7 +98,7 @@ class HueAdapter(Adapter):
     read_timeout_s = 5.0
     actions = {"identify": {"label": "Identify (the lamp breathes)", "schema": {"type": "object"}}}
 
-    def __init__(self, output, patch, client=None, show_url: str | None = None) -> None:
+    def __init__(self, output, patch, client=None, show_url: str | None = None, state_dir=None) -> None:
         self.output = output
         self.default_show_url = show_url            # room_service's one show address (cfg.show_url)
         self.client = client or output.client       # REST of its own (house control, readback, identify)
@@ -112,6 +117,23 @@ class HueAdapter(Adapter):
         self.last_light: dict[str, dict] = {}      # the bridge's last light record per member (fixtures view)
         self._fading: dict[str, Any] = {}          # member -> the state the stream is easing it to (room mode)
         self._lock = asyncio.Lock()
+        self.path = Path(state_dir) / "hue.json" if state_dir else None
+        if self.path is not None and self.mode == "room":
+            try:
+                kept = json.loads(self.path.read_text()).get("following", [])
+                self.output.set_wanted({d for d in kept if d.split(".", 1)[-1] in self.devices})
+            except (FileNotFoundError, ValueError, AttributeError):
+                pass
+
+    def _keep(self) -> None:
+        if self.path is None:
+            return
+        try:
+            tmp = self.path.with_name(f".{self.path.name}.tmp")
+            tmp.write_text(json.dumps({"following": sorted(self.output.wanted)}))
+            tmp.replace(self.path)
+        except OSError as e:
+            log.warning("hue: can't keep the following set in %s: %s", self.path, e)
 
     @property
     def mode(self) -> str:
@@ -397,6 +419,7 @@ class HueAdapter(Adapter):
         was_streaming = out.state == "streaming" and bool(out.wanted & leaving)
         self._fading = dict(rest)
         out.set_wanted(wanted, fade_to={self.devices[m].id: v for m, v in rest.items()})
+        self._keep()
 
         if rest:
             if was_streaming:                          # eased to the new state, then the stream stops (or goes on)

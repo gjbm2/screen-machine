@@ -252,3 +252,15 @@ async def test_idle_with_matching_set_is_not_re_sent(show_service):
     await a.read(["ne"])
     assert [c[0] for c in calls] == ["status"]
     await a.close()
+
+
+async def test_room_mode_following_set_survives_a_restart(tmp_path):
+    patch, client, out, _ = make("room")
+    a = HueAdapter(out, patch, client=client, state_dir=tmp_path)
+    await a.apply({"ne": "dmx"}, {})
+    await a.close()
+    out2 = FakeOutput(client)
+    b = HueAdapter(out2, patch, client=client, state_dir=tmp_path)    # room_service restarted mid show
+    assert out2.wanted == {"hue.ne"}
+    assert (await b.read(["ne"]))["ne"].value == "dmx"
+    await b.close()

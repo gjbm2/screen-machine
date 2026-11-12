@@ -170,7 +170,7 @@ class RoomService:
                 self.dmx = DmxStack(cfg.patch_file, cfg.show_bus_port)
             except Exception as e:
                 log.error("dmx disabled: %s", e)
-        hue = self.dmx.adapter(show_url=cfg.show_url) if self.dmx is not None else hue_placeholder(cfg.patch_file)
+        hue = self.dmx.adapter(show_url=cfg.show_url, state_dir=cfg.state_dir) if self.dmx is not None else hue_placeholder(cfg.patch_file)
         # Mode zones (zones.py): the rooms.json rooms with "own_modes": true, read once here. None: today's objects.
         rooms_raw = read_rooms(cfg.rooms_file)
         layout = layout_of(rooms_raw)

@@ -63,14 +63,15 @@ class DmxStack:
         self.hue = HueOutput(HueClient(sec), self.patch, self.rx, area_id=h.get("area"),
                              stop_after_s=float(h.get("stop_after_s", 10)))
 
-    def adapter(self, show_url: str | None = None):
+    def adapter(self, show_url: str | None = None, state_dir: str | None = None):
         """The room-state `hue` adapter, or a placeholder naming the patched members when there is no bridge (or hue is
         off). show_url: room_service's show_service address (the patch's hue.show_url still wins)."""
         from ..roomstate.contract import Placeholder
         if self.hue is not None:
             from ..adapters.hue import HueAdapter
             from ..hue.client import HueClient
-            self.hue_adapter = HueAdapter(self.hue, self.patch, client=HueClient(self.hue.secrets), show_url=show_url)
+            self.hue_adapter = HueAdapter(self.hue, self.patch, client=HueClient(self.hue.secrets), show_url=show_url,
+                                          state_dir=state_dir)
             return self.hue_adapter
         members = [d.id.split(".", 1)[1] for d in self.patch.of_kind("hue")]
         return Placeholder("hue", members) if members else None
