@@ -1,4 +1,4 @@
-// The room's lights, worked from the Room page's Lights fold and the Lights page (/lights): House lights and Lights low
+// The room's lights, worked from the Room page's Lights fold and the Lights page (/lights): one dimmer for them all
 // (RoomLightsRow.tsx), then each room's lamps (Fixtures.tsx) and its appliances worked by remote (Effects.tsx: the
 // glitterball, pinspots). Operating only; setting them up is in Settings (the light setup page).
 
@@ -8,7 +8,6 @@ import { lightSetupUrl } from "@/components/nav/appNav";
 import { EffectsSection } from "./Effects";
 import { LightsSection } from "./Fixtures";
 import { rigLightIds } from "./lightStates";
-import type { ShowFeed } from "./MusicCard";
 import { RoomLightsRow } from "./RoomLightsRow";
 import type { Section } from "./sections";
 import type { RoomApi } from "./api";
@@ -22,7 +21,6 @@ export function LightsControls({
   addLog,
   reportError,
   fixtures,
-  show,
   status,
   describe,
   groups,
@@ -34,7 +32,6 @@ export function LightsControls({
   addLog: (e: NewLogEntry) => void;
   reportError: (e: unknown) => void;
   fixtures: FixturesState;
-  show: ShowFeed;
   status: RoomStatus | null;
   describe: RoomDescribe | null;
   /** The rooms with lights or appliances (sections.ts). */
@@ -44,11 +41,11 @@ export function LightsControls({
   /** No rooms (an older room_service): one flat list. */
   flat: boolean;
 }) {
-  // House lights and Lights low act on the Hue lamps and the DMX lights alike (show_service's house/low)
+  // the dimmer acts on the Hue lamps and the DMX lights alike (brightness.lamps)
   const anyLights = lampIds === null || lampIds.length > 0 || (rigLightIds(status) ?? []).length > 0;
   return (
     <>
-      {anyLights && <RoomLightsRow api={api} feed={show} addLog={addLog} />}
+      {anyLights && <RoomLightsRow api={api} status={status} addLog={addLog} reportError={reportError} />}
       {!flat && groups.length === 0 && (
         <p className="px-1 text-base text-muted-foreground" data-testid="no-lights">
           No lights yet ·{" "}

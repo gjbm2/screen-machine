@@ -38,6 +38,8 @@ class FakeClient:
                 li["dimming"] = {"brightness": body["dimming"]["brightness"]}
             if "color" in body:
                 li["color"] = {"xy": dict(body["color"]["xy"])}
+            if "color_temperature" in body:
+                li["color_temperature"] = {"mirek": body["color_temperature"]["mirek"], "mirek_valid": True}
 
     async def close(self):
         pass
@@ -264,3 +266,22 @@ async def test_room_mode_following_set_survives_a_restart(tmp_path):
     assert out2.wanted == {"hue.ne"}
     assert (await b.read(["ne"]))["ne"].value == "dmx"
     await b.close()
+
+
+async def test_the_dimmer_scales_lamps_under_house_control_and_values_stay_undimmed(monkeypatch):
+    """owner, 12 Nov: one dimmer for all active lights. brightness.lamps (HueOutput.level) re-writes every lamp on
+    under house control at value x level; readings divide by it, so a stored value is the undimmed one."""
+    from room_service.adapters import hue as hue_mod
+    monkeypatch.setattr(hue_mod, "LEVEL_FADE_S", 0.0)
+    patch, client, out, a = make("room")
+    out.level = 1.0
+    await a.apply({"ne": {"on": True, "bri": 80, "mirek": 400}, "nw": "off"}, {"over_s": 0})
+    out.level = 0.5
+    a._level_changed()
+    await a._level_task
+    ne = client.lights[a.devices["ne"].extra["light"]]
+    assert ne["dimming"]["brightness"] == 40.0
+    assert not any(p[1] == a.devices["nw"].extra["light"] and p[2].get("on", {}).get("on") for p in client.puts)
+    r = await a.read(["ne", "nw"])
+    assert r["ne"].value == {"on": True, "bri": 80, "mirek": 400} and r["nw"].value == "off"
+    await a.close()

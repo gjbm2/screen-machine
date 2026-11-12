@@ -10,7 +10,7 @@
 //   Today's art  each room's TodayCard (TodayFold.tsx)
 //   Listening    room mic, AI listening, what it hears, levels (MusicCard.tsx ListeningPanel); the Mic and AI
 //                switches are the header's (TopToggles.tsx), and tapping their line opens this fold
-//   Lights       House lights and Lights low (RoomLightsRow.tsx), each room's lamps and room effects (the glitterball);
+//   Lights       one dimmer for them all (RoomLightsRow.tsx), each room's lamps and room effects (the glitterball);
 //                "Set up lights ›" at the right of its heading
 //   Piano        the piano's keys and pedals (PianoRow.tsx), Record (also in its heading), the last recordings
 // and the dock at the bottom (the app's player). Each fold ends with its "… settings ›" link (/settings#<group>).
@@ -684,7 +684,6 @@ export default function RoomPage() {
                             addLog={room.addLog}
                             reportError={room.reportError}
                             fixtures={fixtures}
-                            show={show}
                             status={status}
                             describe={describe}
                             groups={lightGroups}

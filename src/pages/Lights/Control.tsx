@@ -1,5 +1,5 @@
 // /lights, Lights: work the room's lights and appliances (owner, 28 Oct: "an appliance control page not an appliance
-// config page"). House lights and Lights low, then each room's lamps and its appliances worked by remote (the
+// config page"). One dimmer for every light that is on, then each room's lamps and its appliances worked by remote (the
 // glitterball, pinspots), the same controls as the Room page's Lights fold (LightsControls.tsx). Setting them up (adding
 // a light or an appliance, placing it, learning its remote) is the light setup page in Settings, one link away.
 
@@ -14,7 +14,6 @@ import { resolveRoomUrl } from "@/pages/Room/api";
 import { Spinner } from "@/pages/Room/bits";
 import { isConnected } from "@/pages/Room/connection";
 import { LightsControls } from "@/pages/Room/LightsControls";
-import { useShowFeed } from "@/pages/Room/MusicCard";
 import { buildSections } from "@/pages/Room/sections";
 import { RoomThemeStyle, THEME_CLASS } from "@/pages/Room/theme";
 import { useDescribe } from "@/pages/Room/useDescribe";
@@ -46,7 +45,6 @@ export default function LightsControlPage() {
   const [menuOpen, setMenuOpen] = useState(false);
 
   const fixtures = useFixtures(room.api, !!status);
-  const show = useShowFeed(room.api, !!status, room.addLog);
   const { describe } = useDescribe(room.api, status?.config?.revision, !!status);
   const lampIds = useMemo(() => {
     if (fixtures.missing || (fixtures.view && !fixtures.view.enabled)) return [];
@@ -91,7 +89,6 @@ export default function LightsControlPage() {
               addLog={room.addLog}
               reportError={room.reportError}
               fixtures={fixtures}
-              show={show}
               status={status}
               describe={describe}
               groups={groups}

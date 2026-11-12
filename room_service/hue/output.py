@@ -92,6 +92,7 @@ class HueOutput:
         self.frames = 0
         self.level = 1.0                        # wanted brightness 0-1 (BrightnessAdapter)
         self._lv = 1.0                          # what is sent now, eased to level
+        self.on_level = None                    # the hue adapter's hook: lamps under house control follow level too
         self._lv_t: float | None = None
         self._taken_wanted: frozenset[str] | None = None
         self._last_sent: tuple | None = None

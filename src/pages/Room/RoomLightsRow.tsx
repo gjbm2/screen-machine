@@ -1,7 +1,8 @@
-// The top of the Room page's Lights fold (ia, 24 Oct): the two switches that change every lamp at once, House lights
-// and Lights low (show_service's actions, through room_service's /show pass-through; they used to sit in Look, where
-// someone dimming the lamps couldn't find them). Each appears once, here, next to the lamps they change: side by side
-// in one row (owner, 25 Oct: "vertical space is at a HIGH PREMIUM"), what each does in its tooltip.
+// The top of the Room page's Lights fold and of the Lights page: one dimmer for every light that is on (owner, 12 Nov:
+// "'house lights' ... doesn't really seem to work... nor 'lights low' ... surely there should just be a global dimmer
+// here, really, for all active lights"). It is the room's brightness.lamps: the lamps following the music, the lamps
+// on as house lights and the DMX lights all scale by it; a mode that sets it (Disco's 35 %) moves it too. Sent on
+// letting go, held on screen until the room reports it.
 //
 // lightsWords(): the fold's closed summary from the lights' real states (owner, 24 Oct: it said "4 lamps follow the
 // music" while all four were off): the Hue lamps from room_service's fixtures view (status per lamp), the DMX lights
@@ -9,10 +10,9 @@
 // "lights" when the kinds are mixed. No light is named here.
 
 import { useEffect, useState } from "react";
-import { Switch } from "@/components/ui/switch";
+import { Slider } from "@/components/ui/slider";
 import type { RoomApi } from "./api";
 import { Spinner } from "./bits";
-import { NoteLine, useSend, useShowState, type ShowFeed } from "./MusicCard";
 import { dmxStates } from "./lightStates";
 import { CARD_CLASS } from "./theme";
 import type { FixturesView, RoomStatus } from "./types";
@@ -62,59 +62,75 @@ export function lightsWords(view: FixturesView | null, hueMissing: boolean, stat
   return parts.join(" · ");
 }
 
-/** House lights and Lights low: two switches for every lamp at once (show_service's own actions). */
-export function RoomLightsRow({ api, feed, addLog }: { api: RoomApi; feed: ShowFeed; addLog: (e: NewLogEntry) => void }) {
-  const { card } = useShowState(feed);
-  const main = useSend(feed, addLog);
-  const { send, busy } = main;
-  const [pendingHouse, setPendingHouse] = useState<boolean | null>(null);
-  const [pendingLow, setPendingLow] = useState<boolean | null>(null);
+/** The lights' dimmer (brightness.lamps) as the room believes it, 0-100; null when the room has none. */
+export function dimmerValue(status: RoomStatus | null): number | null {
+  const sub = status?.subsystems?.brightness;
+  const v = sub?.members?.lamps?.believed ?? (sub?.believed as Record<string, unknown> | undefined)?.lamps;
+  return typeof v === "number" ? v : null;
+}
 
-  const setHouse = (on: boolean) => {
-    setPendingHouse(on);
-    void send("house", on ? "House lights" : "back from house lights", () => api.showAction("house", on), { latest: true }).then((ok) => {
-      if (ok) setTimeout(() => setPendingHouse(null), 3_000);
-      else if (ok === false) setPendingHouse(null);
-    });
-  };
-  const setLow = (on: boolean) => {
-    setPendingLow(on);
-    void send("low", on ? "Lights low" : "lights back up", () => api.showAction("low", on), { latest: true }).then((ok) => {
-      if (ok) setTimeout(() => setPendingLow(null), 3_000);
-      else if (ok === false) setPendingLow(null);
-    });
-  };
-  // the card's next patch agrees: drop the guess at once
+/** One dimmer for every light that is on: the room's brightness.lamps. */
+export function RoomLightsRow({
+  api,
+  status,
+  addLog,
+  reportError,
+}: {
+  api: RoomApi;
+  status: RoomStatus | null;
+  addLog: (e: NewLogEntry) => void;
+  reportError: (e: unknown) => void;
+}) {
+  const believed = dimmerValue(status);
+  const [n, setN] = useState<number | null>(null);         // moving, or sent and not reported yet
+  const [busy, setBusy] = useState(false);
+  const [sentAt, setSentAt] = useState(0);
   useEffect(() => {
-    if (pendingHouse !== null && !!card?.house === pendingHouse) setPendingHouse(null);
-  }, [card?.house, pendingHouse]);
+    if (n !== null && !busy && believed === n) setN(null);  // the room agrees: show its value again
+  }, [believed, n, busy]);
   useEffect(() => {
-    if (pendingLow !== null && !!card?.low === pendingLow) setPendingLow(null);
-  }, [card?.low, pendingLow]);
+    if (!sentAt) return;
+    const t = window.setTimeout(() => setN(null), 8_000);   // never stuck on a guess
+    return () => window.clearTimeout(t);
+  }, [sentAt]);
+  if (believed === null) return null;
+  const shown = n ?? believed;
 
-  const houseOn = pendingHouse ?? !!card?.house;
-  const lowOn = pendingLow ?? !!card?.low;
-
-  const row = (key: "house" | "low", label: string, sub: string, on: boolean, set: (v: boolean) => void) => (
-    <label title={sub} className="flex min-h-11 min-w-0 cursor-pointer items-center justify-between gap-2 px-3 sm:px-4">
-      <span className="min-w-0 truncate text-base font-medium">
-        {label}
-        <span className="sr-only">: {sub}</span>
-      </span>
-      <span className="flex shrink-0 items-center gap-2">
-        {busy(key) && <Spinner />}
-        <Switch aria-label={label} checked={on} onCheckedChange={set} />
-      </span>
-    </label>
-  );
+  const commit = async (v: number) => {
+    setBusy(true);
+    try {
+      await api.setTargets({ "brightness.lamps": v });
+      addLog({ type: "fixture", level: "info", summary: `Lights: ${v}%` });
+    } catch (e) {
+      reportError(e);
+      setN(null);
+    } finally {
+      setBusy(false);
+      setSentAt(Date.now());
+    }
+  };
 
   return (
     <div className={CARD_CLASS} data-testid="room-lights-row">
-      <div className="grid grid-cols-2 divide-x divide-stone-100">
-        {row("house", "House lights", "The lamps light the room as usual instead of following the music.", houseOn, setHouse)}
-        {row("low", "Lights low", "Dims the lamps. The screens stay as they are.", lowOn, setLow)}
+      <div className="flex min-h-11 items-center gap-3 px-3 sm:px-4">
+        <span className="shrink-0 text-base font-medium" title="Dims every light that is on: the lamps and the DMX lights. The screens stay as they are.">
+          Brightness
+        </span>
+        <Slider
+          aria-label="Brightness of all the lights"
+          className="flex-1 py-3 [&_[role=slider]]:h-6 [&_[role=slider]]:w-6"
+          min={0}
+          max={100}
+          step={5}
+          value={[shown]}
+          onValueChange={([v]) => setN(v)}
+          onValueCommit={([v]) => void commit(v)}
+        />
+        <span className="flex w-14 shrink-0 items-center justify-end gap-1 font-mono text-[15px] tabular-nums text-stone-700">
+          {busy && <Spinner />}
+          {shown}%
+        </span>
       </div>
-      {main.note && <NoteLine note={main.note} className="border-t border-stone-100 px-3 py-2 sm:px-4" />}
     </div>
   );
 }

@@ -29,6 +29,11 @@ Values (canonical):
   ({state, lights, boot_id}): first contact adopts its persisted set; a failed POST, a new boot_id or a mismatch
   re-sends ours. "show" is accepted as an alias of "dmx". Rollback:
   flip the switch back. The adapter's REST (house control, readback, identify) is its own client in both modes.
+* **The lights dimmer** (owner, 12 Nov: "there should just be a global dimmer here, really, for all active
+  lights"): brightness.lamps sets HueOutput.level, which scales the streamed lamps, and calls on_level here, which
+  re-writes every lamp that is on under house control at its value x the level, fading over LEVEL_FADE_S. Values stay
+  undimmed: a write sends value x level, and a reading is divided by it, so what a mode stores and puts back doesn't
+  depend on where the dimmer is.
 * **Across a restart** (contract rule 10): room mode's following set is kept in <state_dir>/hue.json and handed back
   to HueOutput at start, so a Flask restart mid show still reads (and streams) "dmx" instead of the house state the
   coordinator would then take as the user's.
@@ -52,6 +57,7 @@ from ..hue.output import FADE_S
 from ..roomstate.contract import Adapter, Outcome, Reading
 
 XY_TOL, BRI_TOL, MIREK_TOL = 0.01, 1.5, 3
+LEVEL_FADE_S = 2.0          # house lamps follow a dimmer change over this (HueOutput's LEVEL_EASE_S for the stream)
 SHOW_URL: str | None = None    # None: room_service's show_url, else smconfig.url("show") (looked up when used)
 log = logging.getLogger("room_service.adapters.hue")
 
@@ -117,6 +123,8 @@ class HueAdapter(Adapter):
         self.last_light: dict[str, dict] = {}      # the bridge's last light record per member (fixtures view)
         self._fading: dict[str, Any] = {}          # member -> the state the stream is easing it to (room mode)
         self._lock = asyncio.Lock()
+        self._level_task: asyncio.Task | None = None
+        self.output.on_level = self._level_changed     # BrightnessAdapter calls it when brightness.lamps moves
         self.path = Path(state_dir) / "hue.json" if state_dir else None
         if self.path is not None and self.mode == "room":
             try:
@@ -124,6 +132,44 @@ class HueAdapter(Adapter):
                 self.output.set_wanted({d for d in kept if d.split(".", 1)[-1] in self.devices})
             except (FileNotFoundError, ValueError, AttributeError):
                 pass
+
+    @property
+    def level(self) -> float:
+        lv = getattr(self.output, "level", 1.0)
+        return max(0.0, min(1.0, float(lv))) if isinstance(lv, (int, float)) else 1.0
+
+    def _scaled(self, value: Any) -> Any:
+        """A canonical value as the lamp shows it under the dimmer."""
+        if isinstance(value, dict) and "bri" in value and self.level < 1.0:
+            return {**value, "bri": value["bri"] * self.level}
+        return value
+
+    def _unscaled(self, value: Any) -> Any:
+        if isinstance(value, dict) and "bri" in value and 0.02 < self.level < 1.0:
+            return {**value, "bri": min(100, round(value["bri"] / self.level))}
+        return value
+
+    def _level_changed(self) -> None:
+        if self.dry_run:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:                                # at build time: the lamps already show the kept level
+            return
+        if self._level_task is not None and not self._level_task.done():
+            self._level_task.cancel()
+        self._level_task = loop.create_task(self._relevel())
+
+    async def _relevel(self) -> None:
+        """The dimmer moved: every lamp on under house control goes to its value x the new level."""
+        await asyncio.sleep(0.3)                            # a slider's last move wins
+        async with self._lock:
+            following = self.show_wanted if self.mode == "show" else self.output.wanted
+            for m, d in self.devices.items():
+                v = self._commanded.get(m, self.house.get(m))
+                if d.id in following or not isinstance(v, dict):
+                    continue
+                await self._put(m, v, int(LEVEL_FADE_S * 1000))
 
     def _keep(self) -> None:
         if self.path is None:
@@ -272,8 +318,10 @@ class HueAdapter(Adapter):
             return Reading("taken_over")
         val = _canon_light(li)
         cmd = self._commanded.get(member)
-        if cmd is not None and _close(val, cmd):
+        if cmd is not None and _close(val, self._scaled(cmd)):
             val = cmd
+        else:
+            val = self._unscaled(val)
         self.house[member] = val
         return Reading(val)
 
@@ -418,7 +466,7 @@ class HueAdapter(Adapter):
         wanted = (out.wanted - leaving) | dmx
         was_streaming = out.state == "streaming" and bool(out.wanted & leaving)
         self._fading = dict(rest)
-        out.set_wanted(wanted, fade_to={self.devices[m].id: v for m, v in rest.items()})
+        out.set_wanted(wanted, fade_to={self.devices[m].id: self._scaled(v) for m, v in rest.items()})
         self._keep()
 
         if rest:
@@ -450,7 +498,7 @@ class HueAdapter(Adapter):
             body["on"] = {"on": False}
         else:
             body["on"] = {"on": True}
-            body["dimming"] = {"brightness": float(value["bri"])}
+            body["dimming"] = {"brightness": round(float(self._scaled(value)["bri"]), 1)}
             if "xy" in value:
                 body["color"] = {"xy": {"x": value["xy"][0], "y": value["xy"][1]}}
             elif "mirek" in value:

@@ -13,7 +13,7 @@
 //     "Pictures: late-night city, smoky rooms" (owner, 28 Oct): what pictures the art director asks for, read-only.
 //   - Calmer · Wilder, Describe it (one line), the palette, Next look · Keep this look.
 //   - The active nudges as chips, each with an ×, and Clear all.
-// House lights and Lights low change the lamps, so they sit in the Room page's Lights fold (RoomLightsRow.tsx).
+// The lights' dimmer sits in the Room page's Lights fold (RoomLightsRow.tsx).
 // On the Room page (layout A, 24 Oct) the parts sit apart: AutoRow under the modes (with "How Auto picks ›": each
 // mode's start rule, AutoTriggers.tsx useAutoRules), DirectorControls in Look, ListeningPanel in Listening (the piano's
 // MIDI line is in the Piano fold); MusicCard still puts them together.
@@ -732,7 +732,7 @@ function AutoRules({ api, onEdit, current }: { api: RoomApi; onEdit?: (mode: str
 
 /**
  * The room director's controls: Calmer · Wilder, Describe it (one line under them), the palette, Next look · Keep this
- * look, and the nudges that are on (each with ×, and Clear all). House lights and Lights low are in the Lights fold.
+ * look, and the nudges that are on (each with ×, and Clear all). The lights' dimmer is in the Lights fold.
  */
 export function DirectorControls({
   api,
