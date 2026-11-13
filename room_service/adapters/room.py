@@ -499,9 +499,6 @@ class BrightnessAdapter(Adapter):
                         self.c[sid].set_level(self.values[f"{r}.screens"] / 100.0)
         if "lamps" in members and self.hue is not None:
             self.hue.level = self.values["lamps"] / 100.0
-            cb = getattr(self.hue, "on_level", None)
-            if callable(cb):
-                cb()                           # the hue adapter: lamps on under house control follow the dimmer
         if "lamps" in members and self._nudge is not None:
             self._nudge.set()                  # show_service's lights: keep_in_step sends it
 

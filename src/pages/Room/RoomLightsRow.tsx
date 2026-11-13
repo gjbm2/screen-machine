@@ -1,10 +1,11 @@
 // The top of the Room page's Lights fold and of the Lights page: one switch and one dimmer for all the lamps (owner,
 // 12 Nov: "'house lights' ... doesn't really seem to work... nor 'lights low' ... surely there should just be a global
 // dimmer here, really, for all active lights"; then "there's no way to turn house lights on except one by one").
-// The switch turns every lamp on as it was (the hue adapter's "on") or off; it reads on while any lamp is lit or
-// following. The dimmer is the room's brightness.lamps: the lamps following the music, the lamps on as house lights
-// and the DMX lights all scale by it; a mode that sets it (Disco's 35 %) moves it too. Sent on letting go, held on
-// screen until the room reports it.
+// The switch turns every lamp on in its last colour at the dimmer's % (the hue adapter's "on") or off; it reads on
+// while any lamp is lit or following. The dimmer is absolute (owner, 13 Nov: as a multiplier on each lamp's own last
+// level, 100 % meant 1 %): letting go sends the room's brightness.lamps (the gain on the lamps following the music and
+// the DMX lights; Disco's 35 % moves it too) and every lamp lit as a house light at that %, its colour kept, as one
+// change. Held on screen until the room reports it.
 //
 // lightsWords(): the fold's closed summary from the lights' real states (owner, 24 Oct: it said "4 lamps follow the
 // music" while all four were off): the Hue lamps from room_service's fixtures view (status per lamp), the DMX lights
@@ -73,6 +74,19 @@ export function dimmerValue(status: RoomStatus | null): number | null {
 }
 
 const lit = (f: Fixture) => f.status === "following" || f.status === "armed" || !!f.light?.on;
+const targetOf = (f: Fixture) => f.target ?? `hue.${f.id.split(".")[1]}`;
+
+/** Every lamp lit as a house light (its believed value a state, not "dmx" or "off") at `pct` %, its colour kept. */
+function houseLampsAt(status: RoomStatus | null, lamps: Fixture[], pct: number): Record<string, unknown> {
+  const members = status?.subsystems?.hue?.members ?? {};
+  const out: Record<string, unknown> = {};
+  for (const f of lamps) {
+    const t = targetOf(f);
+    const b = members[t.split(".")[1]]?.believed;
+    if (b && typeof b === "object") out[t] = { ...(b as Record<string, unknown>), bri: pct };
+  }
+  return out;
+}
 
 /** One switch for all the lamps (on as they were, or off) and one dimmer for every light that is on (brightness.lamps). */
 export function RoomLightsRow({
@@ -107,7 +121,7 @@ export function RoomLightsRow({
     setPendingOn(on);
     setSwitching(true);
     try {
-      await api.setTargets(Object.fromEntries(lamps.map((f) => [f.target ?? `hue.${f.id.split(".")[1]}`, on ? "on" : "off"])));
+      await api.setTargets(Object.fromEntries(lamps.map((f) => [targetOf(f), on ? "on" : "off"])));
       addLog({
         type: "fixture",
         level: "info",
@@ -141,7 +155,7 @@ export function RoomLightsRow({
   const commit = async (v: number) => {
     setBusy(true);
     try {
-      await api.setTargets({ "brightness.lamps": v });
+      await api.setTargets({ "brightness.lamps": v, ...houseLampsAt(status, lamps, v) });
       addLog({ type: "fixture", level: "info", summary: `Lights: ${v}%` });
     } catch (e) {
       reportError(e);
@@ -156,7 +170,7 @@ export function RoomLightsRow({
     <div className={CARD_CLASS} data-testid="room-lights-row">
       <div className="flex min-h-11 items-center gap-3 px-3 sm:px-4">
         {lamps.length > 0 && (
-          <label className="flex shrink-0 cursor-pointer items-center gap-2" title="Every lamp on, as it was, or off">
+          <label className="flex shrink-0 cursor-pointer items-center gap-2" title="Every lamp on at the dimmer's brightness, or off">
             <span className="text-base font-medium">Lamps</span>
             {switching ? <Spinner /> : null}
             <Switch aria-label="All the lamps" checked={lampsOn} onCheckedChange={(v) => void setAll(v)} />

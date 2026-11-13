@@ -268,39 +268,34 @@ async def test_room_mode_following_set_survives_a_restart(tmp_path):
     await b.close()
 
 
-async def test_the_dimmer_scales_lamps_under_house_control_and_values_stay_undimmed(monkeypatch):
-    """owner, 12 Nov: one dimmer for all active lights. brightness.lamps (HueOutput.level) re-writes every lamp on
-    under house control at value x level; readings divide by it, so a stored value is the undimmed one."""
-    from room_service.adapters import hue as hue_mod
-    monkeypatch.setattr(hue_mod, "LEVEL_FADE_S", 0.0)
+async def test_the_dimmer_never_rewrites_lamps_under_house_control():
+    """owner, 13 Nov: the dimmer is absolute. brightness.lamps is a gain on the stream only; a lamp on under house
+    control keeps (and reads) its real brightness, so a mode moving brightness.lamps (Disco's 35 %) leaves it be."""
     patch, client, out, a = make("room")
-    out.level = 1.0
-    await a.apply({"ne": {"on": True, "bri": 80, "mirek": 400}, "nw": "off"}, {"over_s": 0})
-    out.level = 0.5
-    a._level_changed()
-    await a._level_task
+    out.level = 0.35
+    await a.apply({"ne": {"on": True, "bri": 80, "mirek": 400}}, {"over_s": 0})
     ne = client.lights[a.devices["ne"].extra["light"]]
-    assert ne["dimming"]["brightness"] == 40.0
-    assert not any(p[1] == a.devices["nw"].extra["light"] and p[2].get("on", {}).get("on") for p in client.puts)
-    r = await a.read(["ne", "nw"])
-    assert r["ne"].value == {"on": True, "bri": 80, "mirek": 400} and r["nw"].value == "off"
+    assert ne["dimming"]["brightness"] == 80.0
+    assert (await a.read(["ne"]))["ne"].value == {"on": True, "bri": 80, "mirek": 400}
     await a.close()
 
 
-async def test_on_turns_a_lamp_on_as_it_was_and_reads_as_on():
-    """The pages' one switch for all the lamps (owner, 12 Nov): "on" lights a lamp at its own last state."""
+async def test_on_lights_a_lamp_in_its_last_colour_at_the_dimmer():
+    """The pages' one switch for all the lamps (owner, 12-13 Nov): "on" lights a lamp in its last colour at the
+    slider's %, however dim it was last."""
     patch, client, out, a = make("room")
     assert a.normalize("ne", "on") == "on"
     await a.read(["ne"])                                         # seen lit (the poll): 22 %
     await a.apply({"ne": "off"}, {"over_s": 0})
-    res = await a.apply({"ne": "on"}, {"over_s": 0})
+    res = await a.apply({"ne": "on"}, {"over_s": 0})             # the dimmer at 100 %
     assert res.status == "ok", res
     body = [p for p in client.puts if p[0] == "light"][-1][2]
-    assert body["on"] == {"on": True} and body["dimming"]["brightness"] == 22.0      # as it was when last lit
+    assert body["on"] == {"on": True} and body["dimming"]["brightness"] == 100.0
+    assert body["color"] == {"xy": {"x": 0.482, "y": 0.409}}
     got = (await a.read(["ne"]))["ne"].value
-    assert got == {"on": True, "bri": 22, "xy": [0.482, 0.409]} and a.equivalent("on", got)
-    out.level = 0.5                                              # the dimmer at 50 %: "on" comes on at half
+    assert got == {"on": True, "bri": 100, "xy": [0.482, 0.409]} and a.equivalent("on", got)
+    out.level = 0.5
     await a.apply({"ne": "off"}, {"over_s": 0})
     await a.apply({"ne": "on"}, {"over_s": 0})
-    assert [p for p in client.puts if p[0] == "light"][-1][2]["dimming"]["brightness"] == 11.0
+    assert [p for p in client.puts if p[0] == "light"][-1][2]["dimming"]["brightness"] == 50.0
     await a.close()
