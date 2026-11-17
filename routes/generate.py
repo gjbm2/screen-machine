@@ -107,11 +107,23 @@ def worker_output(output, job_id):
     if first.get("type") == "s3_url":
         return {"status": "success", "message": first.get("data")}
     import base64
-    ext = os.path.splitext(first.get("filename") or "")[1] or ".png"
+    data = base64.b64decode(first.get("data") or "")
+    ext = os.path.splitext(first.get("filename") or "")[1].lower() or ".png"
+    os.makedirs("output", exist_ok=True)
+    if ext in (".png", ".jpeg", ".webp"):
+        # A still becomes a JPEG, as an S3 URL's does when it is published: the TV page only shows <screen>.jpg / .mp4,
+        # so a PNG published as <screen>.png never appeared (17 Nov, "a puppy" on north).
+        try:
+            from io import BytesIO
+            from PIL import Image
+            path = os.path.abspath(os.path.join("output", f"worker_{job_id}.jpg"))
+            Image.open(BytesIO(data)).convert("RGB").save(path, format="JPEG", quality=95, subsampling=0)
+            return {"status": "success", "message": path}
+        except Exception as e:
+            warning(f"worker output: JPEG conversion failed ({e}); keeping the {ext}")
     path = os.path.abspath(os.path.join("output", f"worker_{job_id}{ext}"))
-    os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "wb") as f:
-        f.write(base64.b64decode(first.get("data") or ""))
+        f.write(data)
     return {"status": "success", "message": path}
 
 
