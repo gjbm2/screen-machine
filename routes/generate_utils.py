@@ -15,6 +15,7 @@ from utils.logger import info, error, warning, debug
 from routes.bucketer import _append_to_bucket
 from routes.scheduler_utils import throw_event
 from routes.utils import safe_cast
+from routes.result_source import browser_url
 
 def throw_user_interacting_event(publish_destination, action_type="generate", wait_time=None):
     """
@@ -67,18 +68,22 @@ def throw_user_interacting_event(publish_destination, action_type="generate", wa
 
 def save_to_recent(img_url, batch_id, metadata=None, reference_sources=None):
     """
-    Downloads the image from img_url, converts it to JPEG, and appends it to the _recent bucket.
+    Reads the image from img_url (a URL, or a result file under output/), converts it to JPEG, and appends it to
+    the _recent bucket.
     If *metadata* is provided, it is written to the side-car so that generation params are preserved.
     If *reference_sources* is provided, stores reference images alongside the generated image.
     Returns the target path if successful, None otherwise.
     """
     try:
-        response = requests.get(img_url)
-        if response.status_code != 200:
-            error(f"[save_to_recent] Failed to download image from {img_url}: {response.status_code}")
+        # A URL (the worker's bucket) or a file under output/ (an inline result): routes/result_source.py
+        from routes.result_source import read_bytes
+        try:
+            content = read_bytes(img_url)
+        except Exception as e:
+            error(f"[save_to_recent] Failed to read image from {img_url}: {e}")
             return None
-        info(f"[save_to_recent] Downloaded image from {img_url}, converting to JPEG")
-        img = Image.open(BytesIO(response.content)).convert("RGB")
+        info(f"[save_to_recent] Read image from {img_url}, converting to JPEG")
+        img = Image.open(BytesIO(content)).convert("RGB")
         with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
             img.save(temp_file, format="JPEG", quality=90)
             temp_file.flush()
@@ -244,7 +249,8 @@ def process_generate_image_request(data, uploaded_images=None):
         image_data = {
             "id": image_id,
             "job_id": r.get("job_id"),
-            "url": r.get("message", None),
+            # What the browser loads: the worker's URL, or /output/... when the picture came back inline
+            "url": browser_url(r.get("message", None)),
             "seed": r["seed"],
             "original_prompt": prompt,
             "prompt": r["prompt"],  # This is the refined prompt

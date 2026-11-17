@@ -9,6 +9,7 @@ any other name says "done" and changes nothing on the wall, which is what happen
 the new worker sent a PNG inline, it was published as north-screen.png).
 """
 import base64
+import copy
 import json
 import os
 import re
@@ -23,8 +24,20 @@ from routes.jobs import runpod_api, set_tracker
 from routes.jobs.store import JobStore
 from routes.jobs.tracker import JobTracker
 
+import smconfig
+
 REPO = Path(__file__).resolve().parents[2]
-SCREEN = "roundtrip-screen"
+
+
+def _a_screen():
+    """A real screen of the deployment the tests run against (its id, size and file name are what the pipeline
+    resolves a target to); every file it gets here is under the test's temp output folder."""
+    destinations = json.loads(Path(smconfig.path("publish-destinations.json")).read_text())
+    return next(d["id"] for d in destinations
+                if d.get("has_bucket") and not d.get("headless") and not d["id"].startswith("_"))
+
+
+SCREEN = _a_screen()
 OLD = (0, 0, 200)      # the picture on the screen before the request
 NEW = (200, 0, 0)      # the picture the worker sends
 
@@ -86,7 +99,8 @@ class FakeRunPod:
     RunPodError = runpod_api.RunPodError
 
     def __init__(self, final):
-        self.statuses = [{"status": "IN_QUEUE"}, {"status": "IN_PROGRESS"}, final]
+        # a fresh copy each time, as RunPod's reply is: routes.generate adds to the output it is given
+        self.statuses = [{"status": "IN_QUEUE"}, {"status": "IN_PROGRESS"}, copy.deepcopy(final)]
         self.endpoint = None
         self.payload = None
 
@@ -132,8 +146,7 @@ def house(tmp_path, monkeypatch):
 
     monkeypatch.chdir(tmp_path)                           # routes.generate saves an inline result under ./output
     monkeypatch.setattr(bucketer, "BASE_OUTPUT", output)
-    monkeypatch.setattr(publisher, "publish_destinations",
-                        [{"id": SCREEN, "name": "Round trip", "file": SCREEN, "has_bucket": True, "headless": False}])
+    assert tmp_path in bucketer.bucket_path(SCREEN).parents      # nothing here may reach the house's own output/
     monkeypatch.setattr(publisher, "_send_overlay_prompt", lambda *a, **k: None)
     monkeypatch.setattr(generate, "alert", lambda *a, **k: None)
     monkeypatch.setattr(handler, "calculate_generation_cost", lambda *a, **k: 0.02)
@@ -260,6 +273,100 @@ def test_no_output_says_what_happened(house):
     assert "RunPod" in job["error"] and "no picture" in job["error"]
 
 
+# ------------------------------------------------------------------------------------- the generator page (no screen)
+
+@pytest.mark.parametrize("name,final,downloads", RESULT_SHAPES, ids=[s[0] for s in RESULT_SHAPES])
+def test_every_result_shape_reaches_the_generator_page(house, name, final, downloads):
+    """A request from the generator page with no screen: the picture goes to Recent and the page is given a URL
+    it can load."""
+    import routes.generate_handler as handler
+    import routes.generate_utils as generate_utils
+    import routes.result_source as result_source
+
+    generate, mp = house["generate"], house["monkeypatch"]
+    mp.setattr(generate, "runpod_api", FakeRunPod(final))
+    mp.setattr(handler, "_refine", lambda data, prompt, workflow, *a, **k: (workflow or _default_workflow(), prompt, prompt))
+    fetched = []
+    if downloads is not None:
+        def get(url, **kwargs):
+            fetched.append(url)
+            return FakeDownload(*downloads)
+        mp.setattr(result_source.requests, "get", get)
+
+    out = generate_utils.process_generate_image_request(
+        {"prompt": "a puppy", "workflow": _default_workflow(), "batch_id": "abc123_frontend",
+         "params": {"poll_interval": 0.01}, "global_params": {"batch_size": 1}})
+
+    assert out["success"] and len(out["images"]) == 1
+    url = out["images"][0]["url"]
+    assert url.startswith(("https://", "/output/")), f"the page was given something a browser cannot load: {url}"
+    if url.startswith("/output/"):
+        served = house["output"] / url[len("/output/"):]
+        assert served.exists() and near(colour_of(served), NEW)
+
+    assert len(out["recent_files"]) == 1, "nothing was saved to Recent"
+    recent = house["output"] / "_recent" / out["recent_files"][0]
+    assert near(colour_of(recent), NEW)
+    assert (house["output"] / "_recent" / "thumbnails" / f"{recent.name}.jpg").exists()
+
+
+# ----------------------------------------------------------------------------- the scheduler (most of the house's jobs)
+
+@pytest.fixture
+def schedule(house):
+    """The scheduler's generate and publish instructions on the real pipeline (in tests the scheduler otherwise gets
+    a mock generation service, so nothing behind it runs)."""
+    import routes.generate_handler as handler
+    import routes.scheduler_handlers as scheduler_handlers
+    from routes.scheduler_utils import default_context
+
+    mp = house["monkeypatch"]
+    mp.setattr(scheduler_handlers, "get_generation_service", lambda: handler.handle_image_generation)
+    mp.setattr(scheduler_handlers, "_generation_refused", lambda *a, **k: False)
+    mp.setattr(handler, "_refine", lambda data, prompt, workflow, *a, **k: (workflow or _default_workflow(), prompt, prompt))
+    context = default_context()
+    context["vars"] = {}
+
+    def run(action, instruction, final=None, downloads=None):
+        from datetime import datetime
+        if final is not None:
+            mp.setattr(house["generate"], "runpod_api", FakeRunPod(final))
+        if downloads is not None:
+            mp.setattr(house["publisher"].requests, "get", lambda url, **k: FakeDownload(*downloads))
+        handle = scheduler_handlers.handle_generate if action == "generate" else scheduler_handlers.handle_publish
+        handle({"action": action, **instruction}, context, datetime.now(), [], SCREEN)
+        return context
+
+    return run
+
+
+SCHEDULER_SHAPES = [s for s in RESULT_SHAPES if s[0] in ("old worker, png url", "new worker, png url",
+                                                         "new worker, inline png")]
+
+
+@pytest.mark.parametrize("name,final,downloads", SCHEDULER_SHAPES, ids=[s[0] for s in SCHEDULER_SHAPES])
+def test_a_scheduled_generate_reaches_the_tv(house, schedule, name, final, downloads):
+    context = schedule("generate", {"input": {"prompt": "a puppy"}, "workflow": _default_workflow(),
+                                    "additionalProperties": {"poll_interval": 0.01}, "output_var": "img"},
+                       final, downloads)
+    assert near(colour_of(tv_shows(house["output"])), NEW)
+    assert context["vars"].get("img"), "the schedule was not told which picture it made"
+
+
+@pytest.mark.parametrize("name,final,downloads", SCHEDULER_SHAPES, ids=[s[0] for s in SCHEDULER_SHAPES])
+def test_a_scheduled_generate_without_publish_then_publish(house, schedule, name, final, downloads):
+    """A schedule that makes pictures for the library, then publishes one of them."""
+    context = schedule("generate", {"input": {"prompt": "a puppy"}, "workflow": _default_workflow(),
+                                    "additionalProperties": {"poll_interval": 0.01}, "publish": False,
+                                    "output_var": "img"}, final, downloads)
+    assert near(colour_of(tv_shows(house["output"])), OLD), "publish: false still changed the TV"
+    stored = Path(context["vars"]["img"])
+    assert stored.parent == house["output"] / SCREEN and near(colour_of(stored), NEW)
+
+    schedule("publish", {"source": context["vars"]["img"], "silent": True})
+    assert near(colour_of(tv_shows(house["output"])), NEW)
+
+
 # ------------------------------------------------------------------------------- publishing a file already in a library
 
 @pytest.mark.parametrize("fmt,ext", [("PNG", ".png"), ("WEBP", ".webp"), ("JPEG", ".jpeg"), ("JPEG", ".jpg")])
@@ -275,8 +382,8 @@ def test_publishing_a_library_picture_of_any_format_reaches_the_tv(house, fmt, e
 
 
 def test_publishing_from_another_library_reaches_the_tv(house):
-    other = house["output"] / "another-screen"
-    other.mkdir()
+    other = house["output"] / "_recent"
+    other.mkdir(exist_ok=True)
     source = other / "20261117-120000-aaaaaaaa.png"
     source.write_bytes(_image_bytes("PNG"))
     result = house["publisher"].publish_to_destination(source=source, publish_destination_id=SCREEN,

@@ -95,7 +95,7 @@ def get_input_text(input_arg):
 def worker_output(output, job_id):
     """The worker's output as {"status": "success", "message": <image URL or path>}. The old worker sends that
     already; worker-comfyui (worker/) sends {"images": [{"type": "s3_url" | "base64", "data": ...}]} (base64 when no
-    bucket is set: saved under output/ and the local path used)."""
+    bucket is set: kept as a file, routes/result_source.py, and its path used)."""
     if output is None:
         # RunPod reports COMPLETED and drops a result over its size limit (17 Nov: a 4K PNG sent inline)
         return {"status": "error", "message": "RunPod finished the job but sent no picture back (an inline result "
@@ -111,23 +111,11 @@ def worker_output(output, job_id):
     if first.get("type") == "s3_url":
         return {"status": "success", "message": first.get("data")}
     import base64
-    data = base64.b64decode(first.get("data") or "")
-    ext = os.path.splitext(first.get("filename") or "")[1].lower() or ".png"
-    os.makedirs("output", exist_ok=True)
-    if ext in (".png", ".jpeg", ".webp"):
-        # A still becomes a JPEG, as an S3 URL's does when it is published: the TV page only shows <screen>.jpg / .mp4,
-        # so a PNG published as <screen>.png never appeared (17 Nov, "a puppy" on north).
-        try:
-            from io import BytesIO
-            from PIL import Image
-            path = os.path.abspath(os.path.join("output", f"worker_{job_id}.jpg"))
-            Image.open(BytesIO(data)).convert("RGB").save(path, format="JPEG", quality=95, subsampling=0)
-            return {"status": "success", "message": path}
-        except Exception as e:
-            warning(f"worker output: JPEG conversion failed ({e}); keeping the {ext}")
-    path = os.path.abspath(os.path.join("output", f"worker_{job_id}{ext}"))
-    with open(path, "wb") as f:
-        f.write(data)
+    from routes.result_source import save_inline
+    try:
+        path = save_inline(base64.b64decode(first.get("data") or ""), first.get("filename"), job_id)
+    except Exception as e:
+        return {"status": "error", "message": f"the worker's inline picture could not be saved: {e}"[:300]}
     return {"status": "success", "message": path}
 
 

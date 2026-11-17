@@ -216,7 +216,7 @@ def check_publishing_consistency(output_dir, bucket_id, filename, file_ext):
     if is_same_bucket:
         # Case A>A: Same bucket publishing
         expected_raw_url = f"/output/{bucket_id}/{filename}"
-        expected_thumbnail_url = f"/output/{bucket_id}/thumbnails/{filename}"
+        expected_thumbnail_url = f"/output/{bucket_id}/thumbnails/{filename}.jpg"   # thumbnails are <file>.jpg
         assert raw_url == expected_raw_url, f"Same-bucket raw_url incorrect. Expected {expected_raw_url}, got {raw_url}"
         assert thumbnail_url == expected_thumbnail_url, f"Same-bucket thumbnail_url incorrect. Expected {expected_thumbnail_url}, got {thumbnail_url}"
     else:
@@ -274,7 +274,7 @@ def test_publish_jpg_to_same_bucket(patch_publisher_functions):
     
     # First add the JPG to bucket_a
     source_file = output_dir / TEST_JPG_FILENAME
-    bucket_file = _append_to_bucket("bucket_a", source_file, custom_metadata)
+    bucket_file = _append_to_bucket("bucket_a", source_file, metadata=custom_metadata)
     
     # Now publish from bucket_a to bucket_a
     result = publish_to_destination(
@@ -313,7 +313,7 @@ def test_publish_mp4_to_same_bucket(patch_publisher_functions):
     
     # First add the MP4 to bucket_a
     source_file = output_dir / TEST_MP4_FILENAME
-    bucket_file = _append_to_bucket("bucket_a", source_file, custom_metadata)
+    bucket_file = _append_to_bucket("bucket_a", source_file, metadata=custom_metadata)
     
     # Now publish from bucket_a to bucket_a
     result = publish_to_destination(
@@ -353,7 +353,7 @@ def test_publish_jpg_from_bucket_b_to_bucket_a(patch_publisher_functions):
     
     # First add the JPG to bucket_b
     source_file = output_dir / TEST_JPG_FILENAME
-    bucket_b_file = _append_to_bucket("bucket_b", source_file, custom_metadata)
+    bucket_b_file = _append_to_bucket("bucket_b", source_file, metadata=custom_metadata)
     
     # Now publish from bucket_b to bucket_a
     result = publish_to_destination(
@@ -369,7 +369,8 @@ def test_publish_jpg_from_bucket_b_to_bucket_a(patch_publisher_functions):
     # The filename in bucket_a should be different from the one in bucket_b
     bucket_a_meta = load_meta("bucket_a")
     assert len(bucket_a_meta["sequence"]) > 0, "No files added to bucket_a"
-    bucket_a_file = bucket_a_meta["sequence"][-1]
+    entry = bucket_a_meta["sequence"][-1]
+    bucket_a_file = entry["file"] if isinstance(entry, dict) else entry
     assert bucket_a_file != bucket_b_file.name, "File not renamed when copying to bucket_a"
     
     # Check consistency
@@ -400,7 +401,7 @@ def test_publish_mp4_from_bucket_b_to_bucket_a(patch_publisher_functions):
     
     # First add the MP4 to bucket_b
     source_file = output_dir / TEST_MP4_FILENAME
-    bucket_b_file = _append_to_bucket("bucket_b", source_file, custom_metadata)
+    bucket_b_file = _append_to_bucket("bucket_b", source_file, metadata=custom_metadata)
     
     # Now publish from bucket_b to bucket_a
     result = publish_to_destination(
@@ -416,7 +417,8 @@ def test_publish_mp4_from_bucket_b_to_bucket_a(patch_publisher_functions):
     # The filename in bucket_a should be different from the one in bucket_b
     bucket_a_meta = load_meta("bucket_a")
     assert len(bucket_a_meta["sequence"]) > 0, "No files added to bucket_a"
-    bucket_a_file = bucket_a_meta["sequence"][-1]
+    entry = bucket_a_meta["sequence"][-1]
+    bucket_a_file = entry["file"] if isinstance(entry, dict) else entry
     assert bucket_a_file != bucket_b_file.name, "File not renamed when copying to bucket_a"
     
     # Check consistency

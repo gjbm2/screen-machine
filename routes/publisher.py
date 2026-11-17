@@ -271,7 +271,8 @@ def publish_to_destination(
 
                 # If we get here, we need to download the remote URL
                 info(f"[publish_to_destination] Downloading remote URL: {source}")
-                response = requests.get(source, stream=True)
+                # connect, read: a stalled download failed nothing and held the job for ever
+                response = requests.get(source, stream=True, timeout=(10, 120))
                 response.raise_for_status()
                 
                 # --------------------------------------------------
