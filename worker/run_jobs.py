@@ -53,8 +53,11 @@ def workers(endpoint):
         return {}
 
 
-def submit(endpoint, graph):
-    r = requests.post(f"{API}/{endpoint}/run", headers=headers(), json={"input": {"workflow": graph}}, timeout=30)
+def submit(endpoint, graph, images=None):
+    body = {"workflow": graph}
+    if images:
+        body["images"] = images
+    r = requests.post(f"{API}/{endpoint}/run", headers=headers(), json={"input": body}, timeout=30)
     r.raise_for_status()
     return r.json()["id"]
 
@@ -91,6 +94,10 @@ def report(endpoint, job, s, before, out, label):
             row["mb"] = round(len(data) / 1e6, 1)
         elif img.get("type") == "s3_url":
             row["image"] = img.get("data")
+            if out:
+                path = os.path.join(out, f"{label}_{job[:8]}_{i}.png")
+                open(path, "wb").write(requests.get(img["data"], timeout=60).content)
+                row["image"] = path
     if s.get("error"):
         row["error"] = str(s["error"])[:300]
     print(json.dumps(row), flush=True)
@@ -106,6 +113,7 @@ def main():
     ap.add_argument("--pair", action="store_true")
     ap.add_argument("--size")
     ap.add_argument("--label", default="job")
+    ap.add_argument("--image", action="append", default=[], help="input image(s) for LoadImage nodes: input.png, input2.png")
     ap.add_argument("--out", default=".")
     a = ap.parse_args()
     graph = json.load(open(a.graph))
@@ -114,7 +122,9 @@ def main():
     for _ in range(a.n):
         before = workers(a.endpoint)
         k = 2 if a.pair else 1
-        jobs = [submit(a.endpoint, fill(graph, a.prompt, size, random.randrange(2**31))) for _ in range(k)]
+        images = [{"name": ("input.png", "input2.png")[i], "image": base64.b64encode(open(p, "rb").read()).decode()}
+                  for i, p in enumerate(a.image[:2])]
+        jobs = [submit(a.endpoint, fill(graph, a.prompt, size, random.randrange(2**31)), images) for _ in range(k)]
         for j in jobs:
             report(a.endpoint, j, wait(a.endpoint, j), before, a.out, a.label)
 

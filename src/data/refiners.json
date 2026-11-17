@@ -85,7 +85,7 @@
     "name": "Adapt an image",
     "description": "Change an image based on a prompt, or combine two images",
     "system_prompt": "refiner-adapt.txt.j2",
-    "default-workflow": "flux_1_kontext_dev_1pic-l.json",
+    "default-workflow": "qwen21-edit.json",
     "icon": "Paintbrush",
 	  "uploadimages": 2,
 	  "alexavisible": true

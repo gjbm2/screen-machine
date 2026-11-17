@@ -401,6 +401,7 @@
     "name": "Upscale Image",
     "description": "Upscale an image to 4K",
     "runpod_id": "oh422aycpybd5u",
+    "hidden": true,
     "default-refiner": "none",
     "uses_images": 1,
     "processing_stages": [
@@ -723,6 +724,118 @@
           "1152"
         ],
         "default": "1152"
+      },
+      {
+        "id": "seed",
+        "name": "Random seed",
+        "type": "number"
+      }
+    ]
+  },
+  {
+    "id": "qwen21-edit.json",
+    "name": "Adapt an image",
+    "runpod_id": "1p4605rkgfo392",
+    "description": "Change an image from a prompt (Qwen-Image-2.1 Turbo edit)",
+    "default-refiner": "adapt",
+    "icon": "PaintBucket",
+    "input": [
+      "image",
+      "text"
+    ],
+    "processing_stages": [
+      {
+        "name": "Rendering",
+        "weight": 95
+      },
+      {
+        "name": "Finishing",
+        "weight": 5
+      }
+    ],
+    "alexavisible": true,
+    "style_guidance": "Use to adapt an image to a new style, or to add a new element to an image.",
+    "style_descriptor": "faithful to the source image, coherent lighting, seamless changes",
+    "note": "Replaces Kontext (flux_1_kontext_dev_1pic-l, endpoint off) on the new worker (docs/genai-review/PROJECT_PLAN.md step 5).",
+    "params": [
+      {
+        "id": "width",
+        "name": "Width",
+        "type": "select",
+        "options": [
+          "1920",
+          "2752",
+          "3840"
+        ],
+        "default": "3840"
+      },
+      {
+        "id": "height",
+        "name": "Height",
+        "type": "select",
+        "options": [
+          "1080",
+          "1536",
+          "2160"
+        ],
+        "default": "2160"
+      },
+      {
+        "id": "seed",
+        "name": "Random seed",
+        "type": "number"
+      }
+    ]
+  },
+  {
+    "id": "qwen21-combine.json",
+    "name": "Combine two images",
+    "runpod_id": "1p4605rkgfo392",
+    "description": "Combine two images from a prompt (Qwen-Image-2.1 Turbo edit, two references)",
+    "default-refiner": "adapt",
+    "icon": "Merge",
+    "input": [
+      "image",
+      "image",
+      "text"
+    ],
+    "uses_images": 2,
+    "processing_stages": [
+      {
+        "name": "Rendering",
+        "weight": 95
+      },
+      {
+        "name": "Finishing",
+        "weight": 5
+      }
+    ],
+    "alexavisible": true,
+    "style_guidance": "Use to combine two images together, blend subjects, or create interactions between elements from different images.",
+    "style_descriptor": "seamless blend, harmonious composition, balanced integration, natural interaction",
+    "note": "Replaces Kontext (flux_1_kontext_dev_2pic-l, endpoint off) on the new worker (docs/genai-review/PROJECT_PLAN.md step 5).",
+    "params": [
+      {
+        "id": "width",
+        "name": "Width",
+        "type": "select",
+        "options": [
+          "1920",
+          "2752",
+          "3840"
+        ],
+        "default": "3840"
+      },
+      {
+        "id": "height",
+        "name": "Height",
+        "type": "select",
+        "options": [
+          "1080",
+          "1536",
+          "2160"
+        ],
+        "default": "2160"
       },
       {
         "id": "seed",

@@ -1,0 +1,199 @@
+{
+ "1": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "qwen_image_2.1_bf16.safetensors",
+   "weight_dtype": "default"
+  },
+  "_meta": {
+   "title": "Load Diffusion Model {{BASE-MODEL}}"
+  }
+ },
+ "2": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "qwen3vl_8b_bf16.safetensors",
+   "type": "qwen_image",
+   "device": "default"
+  },
+  "_meta": {
+   "title": "Load CLIP"
+  }
+ },
+ "3": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+  },
+  "_meta": {
+   "title": "Load VAE"
+  }
+ },
+ "8": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "7",
+    0
+   ],
+   "vae": [
+    "3",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "VAE Decode"
+  }
+ },
+ "15": {
+  "class_type": "LoraLoaderModelOnly",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "lora_name": "qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors",
+   "strength_model": 1.0
+  },
+  "_meta": {
+   "title": "Turbo LoRA"
+  }
+ },
+ "10": {
+  "class_type": "RandomNoise",
+  "inputs": {
+   "noise_seed": 0
+  },
+  "_meta": {
+   "title": "RandomNoise {{SAMPLER}}"
+  }
+ },
+ "11": {
+  "class_type": "CFGGuider",
+  "inputs": {
+   "model": [
+    "15",
+    0
+   ],
+   "positive": [
+    "5",
+    0
+   ],
+   "negative": [
+    "5",
+    1
+   ],
+   "cfg": 1.0
+  },
+  "_meta": {
+   "title": "CFGGuider"
+  }
+ },
+ "12": {
+  "class_type": "KSamplerSelect",
+  "inputs": {
+   "sampler_name": "euler"
+  },
+  "_meta": {
+   "title": "KSamplerSelect"
+  }
+ },
+ "13": {
+  "class_type": "ManualSigmas",
+  "inputs": {
+   "sigmas": "1.0, 0.978453, 0.95418, 0.926626, 0.89508, 0.845148, 0.704534, 0.414568, 0"
+  },
+  "_meta": {
+   "title": "Turbo 8-step sigmas"
+  }
+ },
+ "20": {
+  "class_type": "ImageScale",
+  "inputs": {
+   "image": [
+    "8",
+    0
+   ],
+   "upscale_method": "lanczos",
+   "width": 3840,
+   "height": 2160,
+   "crop": "center"
+  },
+  "_meta": {
+   "title": "Finish to the screen {{FINISH}}"
+  }
+ },
+ "9": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "20",
+    0
+   ],
+   "filename_prefix": "qwen21_edit"
+  },
+  "_meta": {
+   "title": "Save Image"
+  }
+ },
+ "30": {
+  "class_type": "LoadImage",
+  "inputs": {
+   "image": "input.png"
+  },
+  "_meta": {
+   "title": "Load Image {{LOAD-IMAGE}}"
+  }
+ },
+ "5": {
+  "class_type": "TextEncodeQwenImage21",
+  "inputs": {
+   "clip": [
+    "2",
+    0
+   ],
+   "prompt": "",
+   "negative_prompt": "",
+   "resolution": 2048,
+   "vae": [
+    "3",
+    0
+   ],
+   "images.image_1": [
+    "30",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "Text Encode Qwen Image 2.1 (edit) {{POSITIVE-PROMPT}}"
+  }
+ },
+ "7": {
+  "class_type": "SamplerCustomAdvanced",
+  "inputs": {
+   "noise": [
+    "10",
+    0
+   ],
+   "guider": [
+    "11",
+    0
+   ],
+   "sampler": [
+    "12",
+    0
+   ],
+   "sigmas": [
+    "13",
+    0
+   ],
+   "latent_image": [
+    "5",
+    2
+   ]
+  },
+  "_meta": {
+   "title": "SamplerCustomAdvanced"
+  }
+ }
+}
