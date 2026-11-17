@@ -775,3 +775,23 @@ def test_handler_makes_jobs_before_refining(monkeypatch, tracker):
     call = seen["calls"][-1]
     assert call["job_id"] == out[0] and call["batch_id"] == "C" and call["prompt"] == "final"
     assert tracker.get(out[0])["source"] == "scheduler"
+
+
+def test_start_reads_step_progress_from_the_status(gen, monkeypatch, tracker):
+    # the new worker (worker/handler.py) puts ComfyUI step frames in the IN_PROGRESS job's output
+    seen = []
+    orig = tracker.on_worker_frame
+    monkeypatch.setattr(tracker, "on_worker_frame", lambda rid, comfy: seen.append(comfy) or orig(rid, comfy))
+    fake = FakeRunPod([{"status": "IN_QUEUE"},
+                       {"status": "IN_PROGRESS", "output": {"comfy": {"type": "progress", "data": {"value": 4, "max": 8}}}},
+                       {"status": "COMPLETED", "output": {"status": "success", "message": "http://r/out.jpg"}}])
+    job, _ = run_start(gen, fake, monkeypatch, tracker)
+    assert seen and seen[0]["data"]["value"] == 4
+    assert job["status"] == "completed" and job["generating_at"]
+
+
+def test_worker_output_reads_new_worker_images():
+    import routes.generate as generate
+    out = generate.worker_output({"images": [{"type": "s3_url", "data": "https://b/x.png"}]}, "job_1")
+    assert out == {"status": "success", "message": "https://b/x.png"}
+    assert generate.worker_output({"error": "boom"}, "job_1")["status"] == "error"

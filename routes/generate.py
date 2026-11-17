@@ -96,6 +96,10 @@ def worker_output(output, job_id):
     """The worker's output as {"status": "success", "message": <image URL or path>}. The old worker sends that
     already; worker-comfyui (worker/) sends {"images": [{"type": "s3_url" | "base64", "data": ...}]} (base64 when no
     bucket is set: saved under output/ and the local path used)."""
+    if output is None:
+        # RunPod reports COMPLETED and drops a result over its size limit (17 Nov: a 4K PNG sent inline)
+        return {"status": "error", "message": "RunPod finished the job but sent no picture back (an inline result "
+                                              "over RunPod's size limit is dropped: the endpoint needs its S3 bucket)"}
     if not isinstance(output, dict) or output.get("message"):
         return output
     if "images" not in output:
@@ -612,9 +616,13 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
             tracker.update(job_id, status="queued", message="Waiting for a GPU")
 
         elif status == "IN_PROGRESS":
-            # Step progress arrives separately, from the worker's ComfyUI relay (overlay_ws_server)
             if tracker.get(job_id)["status"] == "queued":
                 tracker.update(job_id, status="running", message="Starting the workflow")
+            # Step progress: the new worker (worker/) reports it in the job's status ({"comfy": frame}); the old
+            # worker's ComfyUI relay sends the same frames through overlay_ws_server
+            frame = (state.get("output") or {}).get("comfy") if isinstance(state.get("output"), dict) else None
+            if frame:
+                tracker.on_worker_frame(runpod_job_id, frame)
 
         elif status == "COMPLETED":
             output = worker_output(state.get("output"), job_id)

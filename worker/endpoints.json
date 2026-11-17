@@ -2,7 +2,7 @@
   "note": "RunPod endpoints for the new worker (worker/endpoints.py saves them; saveEndpoint is a full replace). Secrets are RunPod secret references, never values.",
   "template": {
     "name": "sm-worker-2026-11-17",
-    "image": "gjbm2/sm-worker:2026-11-18",
+    "image": "gjbm2/sm-worker:2026-11-18-2",
     "registry_auth": "cm88p5oli0001ky083ca8cu1f",
     "container_disk_gb": 30
   },
@@ -21,7 +21,16 @@
       "workers_max": 3,
       "idle_timeout": 5,
       "execution_timeout_s": 1200,
-      "bundle": "https://huggingface.co/gjbm2/sm-image-bundle:main"
+      "bundle": "https://huggingface.co/gjbm2/sm-image-bundle:d624f8b4869a4cce0d627eb735656aa6117d2a0d"
+    },
+    "sm-eval": {
+      "gpus": "BLACKWELL_96,AMPERE_80",
+      "workers_max": 2,
+      "idle_timeout": 5,
+      "execution_timeout_s": 1200,
+      "bundle": "https://huggingface.co/gjbm2/sm-image-bundle:main",
+      "note": "Bake-off endpoint: tries a newer bundle without touching sm-image (which the TVs use, pinned to its commit).",
+      "id": "8qsre6gme7s90l"
     }
   }
 }

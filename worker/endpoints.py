@@ -70,6 +70,13 @@ def save_endpoint(name, e, template_id):
     out = gql("mutation($i: EndpointInput!) { saveEndpoint(input: $i) { id workersMax modelReferences } }",
               {"i": inp})["saveEndpoint"]
     print(f"endpoint {name} {out['id']}: max {out['workersMax']}, model {out['modelReferences']}")
+    if not e.get("id"):   # a new endpoint: remember its id, so the next run updates it instead of making another
+        path = os.path.join(os.path.dirname(__file__), "endpoints.json")
+        saved = json.load(open(path))
+        saved["endpoints"][name]["id"] = out["id"]
+        with open(path, "w") as f:
+            json.dump(saved, f, indent=2)
+            f.write("\n")
 
 
 if __name__ == "__main__":

@@ -905,6 +905,21 @@ def handler(job):
         # Wait for execution completion via WebSocket
         print(f"worker-comfyui - Waiting for workflow execution ({prompt_id})...")
         execution_done = False
+        # screen-machine: step progress reaches the app through RunPod's job status (progress_update sets the
+        # IN_PROGRESS job's output), in the shape the app's job tracker already reads from the old worker's relay
+        last_sent = [0.0, None]
+
+        def send_progress(comfy, force=False):
+            now = time.time()
+            if not force and now - last_sent[0] < 0.75:
+                return
+            last_sent[0] = now
+            try:
+                runpod.serverless.progress_update(job, {"comfy": comfy})
+            except Exception as e:  # progress is a nicety; never fail the job over it
+                print(f"worker-comfyui - progress update failed: {e}")
+
+        send_progress({"type": "status", "data": {"status": {"exec_info": {"queue_remaining": 1}}}}, force=True)
         while True:
             try:
                 out = ws.recv()
@@ -915,6 +930,12 @@ def handler(job):
                         print(
                             f"worker-comfyui - Status update: {status_data.get('exec_info', {}).get('queue_remaining', 'N/A')} items remaining in queue"
                         )
+                    elif message.get("type") == "progress":
+                        data = message.get("data", {})
+                        if data.get("prompt_id") in (None, prompt_id):
+                            value, max_v = data.get("value"), data.get("max")
+                            send_progress({"type": "progress", "data": {"value": value, "max": max_v}},
+                                          force=value in (1, max_v))
                     elif message.get("type") == "executing":
                         data = message.get("data", {})
                         if (

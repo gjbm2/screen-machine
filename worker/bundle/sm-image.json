@@ -32,6 +32,24 @@
       "src": "Comfy-Org/Z-Image-Turbo",
       "path": "split_files/vae/ae.safetensors",
       "dest": "vae/ae.safetensors"
+    },
+    {
+      "src": "Comfy-Org/Krea-2",
+      "path": "diffusion_models/krea2_turbo_fp8_scaled.safetensors"
+    },
+    {
+      "src": "Comfy-Org/Krea-2",
+      "path": "text_encoders/qwen3vl_4b_fp8_scaled.safetensors"
+    },
+    {
+      "src": "Comfy-Org/Krea-2",
+      "path": "vae/qwen_image_vae.safetensors"
+    },
+    {
+      "src": "Rand000mGuy/filterbypass",
+      "path": "fedor_bypass.safetensors",
+      "dest": "loras/krea2_fedor_bypass.safetensors",
+      "note": "Krea 2's safety tuning: a raw .diff on txtfusion.projector columns 9-10 only (sha256 0f9e2350ce7d4da5e0f0dc8ae02bbf99f2db4c4143beae899f9f808fc26d7d2c, 1040 bytes); recommended strength 3-5 full, 1-2 subtle"
     }
   ]
 }
