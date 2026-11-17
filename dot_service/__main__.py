@@ -10,7 +10,9 @@ When it sends:
 - anything else: once per refresh period, refresh_s.live while a screen of the room is live, else
   refresh_s.normal; the card is redrawn then even if nothing changed, so its clock says how fresh it is.
 The tag's own wake interval follows the same period (Dot. Settings API), and its sleep window is the config's.
-Sends are at least MIN_GAP_S apart.
+Sends are at least MIN_GAP_S apart. A push while the tag sleeps is only stored by the cloud ("asleep or offline"); the
+glass draws it at its next wake. The cloud's renderInfo says when the glass last drew: if that falls two wake intervals
+behind what we sent while the tag is awake, the settings and card go again (check_drawn) and status shows stuck_since_s.
 
 Config: the deployment's dot.json (deployments/<id>/dot.json, hot-reloaded). API key: ~/.config/screen-machine/dot.json
 {"api_key"}.
@@ -123,6 +125,8 @@ class Tag:
         self.last_error_at = 0.0
         self.device_status: Any = None
         self.render: dict = {}                  # the cloud's renderInfo: when the glass last drew, when it next wakes
+        self.stuck_since = 0.0                  # the glass stopped drawing what we send (owner, 17 Nov: blank for days)
+        self.nudged_at = 0.0
         self.settings_sent: Optional[dict] = None
 
     @property
@@ -376,6 +380,7 @@ class DotService:
                                      timeout=aiohttp.ClientTimeout(total=20)) as r:
                 body = await r.json()
                 tag.device_status, tag.render = body.get("status"), body.get("renderInfo") or {}
+            self.check_drawn(tag)
         except Exception as e:
             log.debug("device status %s: %s", tag.device, e)
             return
@@ -391,6 +396,56 @@ class DotService:
                 fh.write(json.dumps(row) + "\n")
         except OSError as e:
             log.debug("battery log: %s", e)
+
+    def check_drawn(self, tag: Tag) -> None:
+        """The glass hasn't drawn for two wake intervals while awake, though we sent since (owner, 17 Nov: the tag went
+        blank on entering Disco and stayed blank after it for two days, every push accepted by the cloud): say so in
+        the log and status, and send the settings and the card again, at most once per two intervals."""
+        try:
+            drawn = time.mktime(time.strptime(str(tag.render.get("last")), "%m/%d/%Y %H:%M"))
+        except (TypeError, ValueError, OverflowError):
+            return
+        now = time.time()
+        quiet = 2 * tag.refresh_s(bool(tag.card and tag.card.live)) + 300
+        since = max(drawn, self.sleep_ended(tag, now))
+        if tag.sent_at <= drawn + 60 or now - since < quiet or self.asleep(tag, now):
+            if tag.stuck_since:
+                log.info("%s drawing again (last %s)", tag.device, tag.render.get("last"))
+            tag.stuck_since = 0.0
+            return
+        if not tag.stuck_since:
+            tag.stuck_since = now
+            log.warning("%s hasn't drawn since %s though sent %d s ago: sending again", tag.device,
+                        tag.render.get("last"), round(now - tag.sent_at))
+        if now - tag.nudged_at >= quiet:
+            tag.nudged_at = now
+            tag.settings_sent, tag.sent = None, None       # the next tick posts both again
+
+    @staticmethod
+    def _window(tag: Tag, now: float) -> Optional[tuple[float, float]]:
+        sl = tag.spec.get("sleep")
+        if not sl:
+            return None
+        lt = time.localtime(now)
+        def at(hm: str, day: int = 0) -> float:
+            h, m = (int(x) for x in hm.split(":"))
+            return time.mktime((lt.tm_year, lt.tm_mon, lt.tm_mday + day, h, m, 0, 0, 0, -1))
+        start, end = at(sl["start"]), at(sl["end"])
+        if end <= start:                                    # crosses midnight
+            return (at(sl["start"], -1), end) if now < end else (start, at(sl["end"], 1))
+        return start, end
+
+    def asleep(self, tag: Tag, now: float) -> bool:
+        w = self._window(tag, now)
+        return bool(w and w[0] <= now < w[1])
+
+    def sleep_ended(self, tag: Tag, now: float) -> float:
+        """When the tag's sleep window last ended (0 without one)."""
+        w = self._window(tag, now)
+        if not w:
+            return 0.0
+        end = w[1]
+        return end if end <= now else end - 86400
 
     # ---- loop
     async def tick(self) -> None:
@@ -467,6 +522,7 @@ class DotService:
                 "device_status": t.device_status,
                 "drawn": t.render.get("last"),            # what the glass last drew (the tag's clock), vs sent_age_s
                 "next_wake": (t.render.get("next") or {}).get("battery"),
+                "stuck_since_s": round(now - t.stuck_since) if t.stuck_since else None,
             } for t in self.tags.values()],
         }
 
