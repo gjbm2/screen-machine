@@ -42,7 +42,10 @@ sharing a `batch_id`.
 | `publishing_at` | number \| null | when the status became `publishing` |
 | `estimate` | object \| null | expected phase lengths, see "Phases and the time estimate" |
 | `duration_s` | number \| null | created → finished |
-| `cost_gbp` | number \| null | GPU cost |
+| `cost_gbp` | number \| null | GPU cost (see "Cost") |
+| `cost_state` | `provisional` \| `reconciled` \| null | where `cost_gbp` comes from |
+| `cost_provisional_gbp` | number \| null | the first, provisional cost, kept once it is reconciled |
+| `billing` | object \| null | the job's RunPod timings: `billed_s` (= `exec_s` + `cold_s`), `delay_s`, `gpu`, `rate_usd_h`, `worker_id`, `billed_from`/`billed_to` (epoch) |
 | `seed` | number \| null | |
 | `result_url` | string \| null | the output (image or video URL) |
 | `published_path` | string \| null | where it was published |
@@ -107,3 +110,20 @@ from the worker's ComfyUI relay: the worker opens a websocket to Flask's :8765 a
 `{job_id: <runpod id>, comfy: {type, data}}`. `overlay_ws_server.py` hands those frames to the tracker
 (and no longer broadcasts them to screens). `progress` frames give `value/max`; the stage advances when
 `value` drops or `max` changes; overall percent is weighted by the workflow's `processing_stages`.
+
+## Cost
+
+RunPod bills a serverless worker for its whole life: start-up, model loading, the jobs and the idle timeout after
+the last one. A job's own timings cover only part of that.
+
+- **Provisional**, when the job finishes (`routes/jobs/runpod_api.py` `billing`): `executionTime` plus the cold start
+  inside `delayTime` (when the worker started after the job was sent), at the serverless rate of the GPU it ran on
+  (REST v2 `/catalog/gpus`). Queue waiting isn't billed.
+- **Reconciled**, within the hour (`routes/jobs/billing.py`, a thread in Flask): RunPod's bill per endpoint per hour
+  (REST v2 `/billing/serverless?bucketSize=hour`) is shared among that endpoint's jobs by how much of each job's
+  billed time (`billed_from`..`billed_to`; older jobs: sent..finished) falls in the hour. The job's cost becomes the
+  sum of its shares, so an hour's jobs add up to RunPod's bill for it. The last 48 h are re-read every hour (the
+  buckets fill in late); the first pass after a start covers the whole history. Hours with no job (tests, a worker
+  that started for nothing) stay unattributed. Each endpoint-hour is kept in `billing_hours` in the same SQLite file.
+- **Report:** `GET /api/jobs/costs?days=30` (RunPod's bill, the jobs' total, unattributed, per day, per workflow with
+  the median cost per image, per source, per endpoint), shown as "Cost" on the Jobs page.

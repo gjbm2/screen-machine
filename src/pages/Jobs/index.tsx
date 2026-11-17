@@ -2,6 +2,7 @@
 //
 // The app's header (PageHeader: "‹ Generator" back, "Jobs", Mic and AI, the menu), then:
 //   - Running now: live from the job tracker's stream (useJobs), each with its progress and Cancel; "Cancel all".
+//   - Cost: RunPod's bill for the last 7/30/90 days, per image by workflow, per day and per who asked (Costs.tsx).
 //   - History: finished jobs, newest first, a page at a time ("Load more"), filtered by how it ended, the screen,
 //     who asked and words in the prompt. A job that finishes while the page is open joins the top of it live.
 // A history row unrolls in place for the details (HistoryRow.tsx).
@@ -10,6 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { JobRow } from "@/components/jobs/JobRow";
+import { Costs } from "@/pages/Jobs/Costs";
 import { HistoryRow } from "@/pages/Jobs/HistoryRow";
 import { cancelEveryJob, SOURCE_WORDS, useNow } from "@/components/jobs/jobWords";
 import { AppMenu } from "@/components/nav/AppMenu";
@@ -173,6 +175,8 @@ export default function JobsPage() {
             </p>
           )}
         </section>
+
+        <Costs />
 
         <section aria-labelledby="jobs-history" className="mt-8">
           <h2 id="jobs-history" className="mb-2 text-[17px] font-semibold">

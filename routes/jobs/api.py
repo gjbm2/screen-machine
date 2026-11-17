@@ -37,6 +37,17 @@ def list_jobs():
     return jsonify({"jobs": jobs, "next_before": next_before})
 
 
+@jobs_api.route("/jobs/costs", methods=["GET"])
+def job_costs():
+    """What generation cost: RunPod's bill against the jobs, per day, workflow, source and endpoint (billing.py)."""
+    from routes.jobs import billing
+    try:
+        days = max(1, min(90, int(request.args.get("days", 30))))
+    except ValueError:
+        days = 30
+    return jsonify(billing.summary(get_tracker(), days=days))
+
+
 @jobs_api.route("/jobs/<job_id>", methods=["GET"])
 def get_job(job_id):
     job = get_tracker().get(job_id)

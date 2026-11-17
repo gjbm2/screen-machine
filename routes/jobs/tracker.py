@@ -27,6 +27,9 @@ FIELDS = {
     "publishing_at": None, "finished_at": None, "updated_at": None, "estimate": None,
     "duration_s": None, "cost_gbp": None, "seed": None, "result_url": None, "published_path": None,
     "cancel_requested": False,
+    # cost_state: "provisional" (from the job's own RunPod timings, billing) until routes.jobs.billing replaces
+    # cost_gbp with the job's share of RunPod's hourly bill ("reconciled"; cost_provisional_gbp keeps the first)
+    "billing": None, "cost_state": None, "cost_provisional_gbp": None,
 }
 # Fields a caller may set through update(); the rest are kept by the tracker itself
 _SETTABLE = set(FIELDS) - {"id", "created_at", "updated_at", "generating_at", "publishing_at",
@@ -258,6 +261,22 @@ class JobTracker:
 
     def complete(self, job_id, **fields):
         return self.update(job_id, status="completed", message=None, **fields)
+
+    def set_cost(self, job_id, cost_gbp, cost_state):
+        """Re-cost a job, finished or not (routes.jobs.billing), without publishing it. Keeps the first cost in
+        cost_provisional_gbp. Returns False for an unknown job."""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job is None:
+                job = with_all_fields(self.store.get(job_id)) if self.store else None
+                if job is None:
+                    return False
+            if job.get("cost_provisional_gbp") is None:
+                job["cost_provisional_gbp"] = job.get("cost_gbp")
+            job["cost_gbp"], job["cost_state"] = cost_gbp, cost_state
+            if self.store:
+                self.store.upsert(job)
+            return True
 
     def fail(self, job_id, error_text, **fields):
         return self.update(job_id, status="failed", error=str(error_text or "Failed"),

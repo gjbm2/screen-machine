@@ -18,21 +18,20 @@ from routes.bucketer import _append_to_bucket
 from routes.generate_utils import throw_user_interacting_event, process_generate_image_request, save_to_recent
 
 def calculate_generation_cost(seconds_taken, workflow_id=None, runpod_id=None, default_cost_per_second=0.000584,
-                              runpod_status=None, submitted_at=None):
+                              billing=None):
     """
     Calculate the cost of image generation.
 
-    With RunPod's final job status, it is what RunPod bills (routes.jobs.runpod_api.billed_usd: executionTime plus
-    the billed cold start, at the serverless rate of the GPU used). Otherwise, or when that can't be worked out,
-    seconds_taken at the workflow's cost_per_second (else the default).
+    With the job's provisional bill (routes.jobs.runpod_api.billing: executionTime plus the billed cold start, at the
+    serverless rate of the GPU used), that. Otherwise seconds_taken at the workflow's cost_per_second (else the
+    default). routes.jobs.billing later replaces it with the job's share of RunPod's hourly bill.
 
     Args:
         seconds_taken: Number of seconds the generation took
         workflow_id: Optional workflow ID to look up specific cost rate
         runpod_id: RunPod endpoint ID
         default_cost_per_second: Default cost per second (USD) if RunPod's bill can't be worked out
-        runpod_status: RunPod's status dict for the finished job (executionTime, delayTime, workerId)
-        submitted_at: time() when the job was sent to RunPod
+        billing: routes.jobs.runpod_api.billing() for the finished job, or None
 
     Returns:
         Cost in GBP
@@ -41,13 +40,11 @@ def calculate_generation_cost(seconds_taken, workflow_id=None, runpod_id=None, d
         # Static exchange rate: 1 GBP = 1.3 USD
         FX_RATE_USD_TO_GBP = 1 / 1.3
 
-        if runpod_id and runpod_status:
-            from routes.jobs import runpod_api
-            usd, how = runpod_api.billed_usd(runpod_id, runpod_status, submitted_at)
-            if usd is not None:
-                info(f"RunPod bill for {runpod_id}: {how}")
-                return round(usd * FX_RATE_USD_TO_GBP, 6)
-            warning(f"RunPod bill for {runpod_id} unknown ({how}); estimating from the time taken")
+        if billing:
+            info(f"RunPod bill for {runpod_id}: {billing.get('how')}")
+            return round(billing["usd"] * FX_RATE_USD_TO_GBP, 6)
+        if runpod_id:
+            warning(f"RunPod bill for {runpod_id} unknown; estimating from the time taken")
 
         cost_per_second_usd = default_cost_per_second
 

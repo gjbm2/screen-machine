@@ -55,7 +55,7 @@ def test_job_has_every_contract_field(tracker):
                 "stages", "stage_index", "percent", "error", "runpod_job_id", "endpoint_id",
                 "created_at", "submitted_at", "started_at", "generating_at", "publishing_at",
                 "finished_at", "updated_at", "duration_s", "cost_gbp", "seed", "result_url",
-                "published_path", "cancel_requested", "estimate"}
+                "published_path", "cancel_requested", "estimate", "billing", "cost_state", "cost_provisional_gbp"}
     assert set(job) == expected
     assert job["id"].startswith("job_") and len(job["id"]) == 16
     assert job["status"] == "preparing" and job["stages"] == [] and job["cancel_requested"] is False
@@ -625,6 +625,9 @@ class FakeRunPod:
     def cancel(self, endpoint_id, job_id, timeout=10):
         self.cancelled.append(job_id)
         return True
+
+    def billing(self, endpoint_id, status, submitted_at=None, finished_at=None):
+        return None
 
 
 @pytest.fixture

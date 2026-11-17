@@ -1,5 +1,5 @@
 # screen-machine worker image (docs/genai-review/PROJECT_PLAN.md).
-# Upstream: runpod-workers/worker-comfyui 5.11.0 (MIT, see LICENSE), base stage only,
+# Upstream: runpod-workers/worker-comfyui 5.11.0 (licence in LICENSE), base stage only,
 # ComfyUI pinned below. No model weights in the image.
 # Build argument for base image selection
 ARG BASE_IMAGE=nvidia/cuda:12.8.1-cudnn-runtime-ubuntu24.04

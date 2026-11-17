@@ -26,12 +26,14 @@ def set_tracker(tracker):
 
 def startup():
     """At Flask start: prune history past 90 days, fail jobs a restart orphaned (cancelling their RunPod
-    jobs in the background). Never raises."""
+    jobs in the background), and start costing jobs against RunPod's hourly bill (billing.py). Never raises."""
     from utils.logger import info, error
     try:
         tracker = get_tracker()
         pruned = tracker.store.prune()
         orphaned = tracker.reconcile_on_startup()
         info(f"[jobs] store {tracker.store.path}: pruned {pruned}, orphaned {orphaned}")
+        from routes.jobs import billing
+        billing.start(tracker)
     except Exception as e:
         error(f"[jobs] startup failed: {e}")

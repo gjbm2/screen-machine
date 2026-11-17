@@ -30,6 +30,11 @@ class JobStore:
                 " target TEXT, source TEXT, prompt TEXT, data TEXT NOT NULL)")
             self._db.execute("CREATE INDEX IF NOT EXISTS jobs_created ON jobs(created_at)")
             self._db.execute("CREATE INDEX IF NOT EXISTS jobs_status ON jobs(status)")
+            # RunPod's bill per endpoint per hour (routes.jobs.billing), and how much of it went to jobs
+            self._db.execute(
+                "CREATE TABLE IF NOT EXISTS billing_hours ("
+                " endpoint TEXT NOT NULL, hour REAL NOT NULL, usd REAL NOT NULL, attributed_usd REAL NOT NULL,"
+                " jobs INTEGER NOT NULL, PRIMARY KEY (endpoint, hour))")
 
     def upsert(self, job):
         row = (job["id"], job["created_at"], job["status"], job.get("target"), job.get("source"),
@@ -91,13 +96,35 @@ class JobStore:
             rows = self._db.execute(sql, args).fetchall()
         return [json.loads(r[0]) for r in rows]
 
+    def created_between(self, start, end):
+        """Every job created in [start, end), oldest first (for costing against RunPod's bill)."""
+        with self._lock:
+            rows = self._db.execute("SELECT data FROM jobs WHERE created_at >= ? AND created_at < ?"
+                                    " ORDER BY created_at", (start, end)).fetchall()
+        return [json.loads(r[0]) for r in rows]
+
+    def save_billing_hours(self, rows):
+        """rows: (endpoint, hour start epoch, usd, attributed usd, jobs), replacing any earlier reading."""
+        with self._lock:
+            self._db.executemany(
+                "INSERT INTO billing_hours (endpoint, hour, usd, attributed_usd, jobs) VALUES (?, ?, ?, ?, ?)"
+                " ON CONFLICT(endpoint, hour) DO UPDATE SET usd=excluded.usd,"
+                " attributed_usd=excluded.attributed_usd, jobs=excluded.jobs", rows)
+
+    def billing_hours(self, start, end):
+        """[(endpoint, hour, usd, attributed_usd, jobs)] for hours starting in [start, end)."""
+        with self._lock:
+            return self._db.execute("SELECT endpoint, hour, usd, attributed_usd, jobs FROM billing_hours"
+                                    " WHERE hour >= ? AND hour < ? ORDER BY hour", (start, end)).fetchall()
+
     def active(self):
         return self.query(state="active", limit=10_000)
 
     def prune(self, now=None, retention_s=RETENTION_S):
-        """Drop jobs created more than retention_s ago; returns how many."""
+        """Drop jobs (and billing hours) more than retention_s old; returns how many jobs."""
         cutoff = (now or time.time()) - retention_s
         with self._lock:
+            self._db.execute("DELETE FROM billing_hours WHERE hour < ?", (cutoff,))
             return self._db.execute("DELETE FROM jobs WHERE created_at < ?", (cutoff,)).rowcount
 
     def close(self):

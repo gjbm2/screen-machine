@@ -60,5 +60,12 @@ def test_catalogue_prices_by_gpu_and_dearest_in_pool():
 
 def test_cost_in_gbp_uses_the_bill(monkeypatch):
     from routes import generate_handler
-    monkeypatch.setattr(runpod_api, "billed_usd", lambda ep, st, at: (1.3, "test"))
-    assert generate_handler.calculate_generation_cost(99, runpod_id="ep", runpod_status={"executionTime": 1}) == 1.0
+    assert generate_handler.calculate_generation_cost(99, runpod_id="ep", billing={"usd": 1.3, "how": "test"}) == 1.0
+
+
+def test_billing_gives_the_worker_time_paid_for(fake):
+    fake["worker"] = {"id": "w1", "gpuTypeId": "NVIDIA A100 80GB PCIe", "startedAt": _iso(SENT + 10)}
+    b = runpod_api.billing("ep", {"executionTime": 20000, "delayTime": 25000, "workerId": "w1"}, SENT, SENT + 60)
+    assert b["billed_s"] == 35.0 and b["cold_s"] == 15.0 and b["gpu"] == "NVIDIA A100 80GB PCIe"
+    assert b["billed_to"] == SENT + 60 and b["billed_from"] == SENT + 25
+    assert b["usd"] == pytest.approx(35 * A100_S, abs=1e-6)

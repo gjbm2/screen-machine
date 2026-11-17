@@ -639,12 +639,12 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
     
     # Import the function from generate_handler
     from routes.generate_handler import calculate_generation_cost
+    billing = runpod_api.billing(runpod_id, final_state or {}, submitted_at, generation_end_time)
     generation_cost = calculate_generation_cost(
         generation_time_seconds, 
         workflow_id=args_namespace.workflow,
         runpod_id=runpod_id,
-        runpod_status=final_state,
-        submitted_at=submitted_at,
+        billing=billing,
     )
     
     # Add time and cost to output metadata
@@ -704,7 +704,8 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
             output["destination"] = {}
 
     tracker.complete(job_id, result_url=output.get("message"), seed=args_namespace.seed,
-                     cost_gbp=generation_cost, published_path=output.get("published_path"),
+                     cost_gbp=generation_cost, billing=billing, cost_state="provisional" if billing else None,
+                     published_path=output.get("published_path"),
                      refined_prompt=args_namespace.prompt)
     return output
 

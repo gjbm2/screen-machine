@@ -49,6 +49,11 @@ export interface Job {
   updated_at: number;
   duration_s: number | null;
   cost_gbp: number | null;
+  /** provisional: from the job's own RunPod timings; reconciled: its share of RunPod's hourly bill */
+  cost_state?: 'provisional' | 'reconciled' | null;
+  cost_provisional_gbp?: number | null;
+  /** The job's RunPod timings: billed_s = exec_s + cold_s, on gpu at rate_usd_h */
+  billing?: { billed_s: number; exec_s: number; cold_s: number; delay_s: number; gpu: string | null; rate_usd_h: number } | null;
   seed: number | null;
   result_url: string | null;
   published_path: string | null;
@@ -84,6 +89,35 @@ function queryString(query: object): string {
   }
   const text = params.toString();
   return text ? `?${text}` : '';
+}
+
+export interface CostGroup {
+  key: string;
+  images: number;
+  total_gbp: number;
+  /** median */
+  per_image_gbp: number;
+  mean_gbp: number;
+  reconciled: number;
+}
+
+/** GET /api/jobs/costs (routes/jobs/billing.py summary) */
+export interface JobCosts {
+  days: number;
+  billed_gbp: number;
+  jobs_gbp: number;
+  unattributed_gbp: number;
+  images: number;
+  reconciled: number;
+  last_hour_read: number | null;
+  by_day: Array<{ day: string; jobs_gbp: number; billed_gbp: number; images: number }>;
+  by_workflow: CostGroup[];
+  by_source: CostGroup[];
+  by_endpoint: Array<{ endpoint: string; name: string; billed_gbp: number; unattributed_gbp: number }>;
+}
+
+export function getJobCosts(days = 30): Promise<JobCosts> {
+  return requestJson(`/jobs/costs?days=${days}`, undefined, 'Could not load the costs');
 }
 
 export function listJobs(query: JobListQuery = {}): Promise<JobPage> {

@@ -100,12 +100,27 @@ def _epoch(iso):
         return None
 
 
-def billed_usd(endpoint_id, job_status, submitted_at=None):
+def billing(endpoint_id, job_status, submitted_at=None, finished_at=None):
+    """The provisional bill for a finished job, as a dict for the job record: usd, billed_s, exec_s, delay_s,
+    cold_s, gpu, rate_usd_h, worker_id, and billed_from/billed_to (epoch: the stretch of worker time it paid for,
+    which routes.jobs.billing uses to share out RunPod's hourly bill). None when it can't be worked out."""
+    detail = {}
+    usd, how = billed_usd(endpoint_id, job_status, submitted_at, detail)
+    if usd is None:
+        return None
+    end = finished_at or time.time()
+    return dict(detail, usd=round(usd, 6), how=how, billed_from=round(end - detail["billed_s"], 1),
+                billed_to=round(end, 1))
+
+
+def billed_usd(endpoint_id, job_status, submitted_at=None, detail=None):
     """What RunPod bills for a finished job: (USD, how it was worked out), or (None, why not).
 
     Billed time = executionTime + the cold start inside delayTime: when the worker started after the job was sent,
     the time from its start to the job starting (a warm worker adds nothing; queue waiting is not billed). Rate = the
-    serverless per-second price of the GPU the worker ran on, else of the endpoint's first GPU pool."""
+    serverless per-second price of the GPU the worker ran on, else of the endpoint's first GPU pool. RunPod also bills
+    the worker's idle timeout after the job; that part only shows in its hourly bill (routes.jobs.billing).
+    detail, if given, is filled with the parts."""
     exec_ms = job_status.get("executionTime")
     if not isinstance(exec_ms, (int, float)):
         return None, "RunPod sent no executionTime"
@@ -127,6 +142,10 @@ def billed_usd(endpoint_id, job_status, submitted_at=None):
     if started and submitted_at and started > submitted_at - 2:   # 2 s for clock skew
         cold_s = min(max(submitted_at + delay_s - started, 0.0), delay_s)
     billed_s = exec_ms / 1000 + cold_s
+    if detail is not None:
+        detail.update(billed_s=round(billed_s, 1), exec_s=round(exec_ms / 1000, 1), delay_s=round(delay_s, 1),
+                      cold_s=round(cold_s, 1), gpu=gpu, rate_usd_h=round(rate * 3600, 4),
+                      worker_id=job_status.get("workerId"))
     return billed_s * rate, (f"{billed_s:.1f} s on {gpu} at ${rate * 3600:.2f}/h "
                              f"(run {exec_ms / 1000:.1f} s, cold start {cold_s:.1f} s, waited {delay_s:.1f} s)")
 

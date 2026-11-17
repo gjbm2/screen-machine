@@ -64,7 +64,18 @@ export function HistoryRow({ job, now }: { job: Job; now: number }) {
             <Detail label="Asked">{clockTime(job.created_at)}</Detail>
             {job.finished_at && <Detail label="Finished">{clockTime(job.finished_at)}</Detail>}
             {duration && <Detail label="Took">{duration}</Detail>}
-            {cost && <Detail label="GPU cost">{cost}</Detail>}
+            {cost && (
+              <Detail label="GPU cost">
+                {cost}
+                {job.cost_state === "reconciled" ? " (its share of RunPod's bill)" : job.cost_state === "provisional" ? " (provisional, from its own timings)" : ""}
+                {job.billing && (
+                  <span className="block text-muted-foreground">
+                    {job.billing.billed_s.toFixed(0)} s billed ({job.billing.cold_s > 0 ? `${job.billing.cold_s.toFixed(0)} s start-up + ` : ""}
+                    {job.billing.exec_s.toFixed(0)} s run) on {job.billing.gpu ?? "a GPU"} at ${job.billing.rate_usd_h.toFixed(2)}/h
+                  </span>
+                )}
+              </Detail>
+            )}
             {job.published_path && <Detail label="Published to" mono>{job.published_path}</Detail>}
             <Detail label="Job" mono>{job.id}</Detail>
             {job.batch_id && <Detail label="Batch" mono>{job.batch_id}</Detail>}
