@@ -282,5 +282,9 @@ if __name__ == '__main__':
         from waitress import serve as waitress_serve
         info(f"Starting waitress server on port {PORT}")
         # Generation requests block their worker on external APIs for minutes;
-        # the pool must stay large enough that kiosk /output polls never queue
-        waitress_serve(app, host=HOST, port=PORT, threads=64)
+        # the pool must stay large enough that kiosk /output polls never queue.
+        # Open connections: waitress's default limit is 100, and a gallery grid's thumbnail burst through Caddy
+        # filled it; waitress then stopped accepting and the whole app hung until idle ones timed out (17 Nov
+        # 23:11-23:16, ~2 min). 500 stays inside the process's 1024 open files (~180 in use); poll() because
+        # select() can't watch descriptors above 1024.
+        waitress_serve(app, host=HOST, port=PORT, threads=64, connection_limit=500, asyncore_use_poll=True)
