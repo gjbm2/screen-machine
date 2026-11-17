@@ -646,7 +646,7 @@ def run_start(gen, fake, monkeypatch, tracker, **kwargs):
     job_id = tracker.create(prompt="a red fox", source="generator")["id"]
     kwargs.setdefault("poll_interval", 0.01)
     try:
-        result = gen.start(prompt="a red fox", workflow="flux1-dev-scale-l.json", job_id=job_id, **kwargs)
+        result = gen.start(prompt="a red fox", workflow="qwen21-turbo.json", job_id=job_id, **kwargs)
     except ValueError:
         result = None
     return tracker.get(job_id), result
@@ -657,8 +657,8 @@ def test_start_completes(gen, monkeypatch, tracker):
                        {"status": "COMPLETED", "output": {"status": "success", "message": "http://r/out.jpg"}}])
     job, result = run_start(gen, fake, monkeypatch, tracker)
     assert job["status"] == "completed" and job["result_url"] == "http://r/out.jpg"
-    assert job["runpod_job_id"] == "rp-123" and job["endpoint_id"] == "k98wg36ip597n0"
-    assert job["stages"] == ["Rendering", "Upscaling"] and job["kind"] == "image"
+    assert job["runpod_job_id"] == "rp-123" and job["endpoint_id"] == "1p4605rkgfo392"
+    assert job["stages"] == ["Rendering", "Finishing"] and job["kind"] == "image"
     assert job["cost_gbp"] == 0.02 and job["seed"] is not None and job["refined_prompt"] == "a red fox"
     assert job["started_at"] and job["submitted_at"] and job["publishing_at"]
     assert job["generating_at"] is None          # no relay frames: not a learning sample
@@ -703,7 +703,7 @@ def test_start_cancel_while_polling(gen, monkeypatch, tracker):
     monkeypatch.setattr(gen, "runpod_api", fake)
     job_id = tracker.create(prompt="x")["id"]
     t = threading.Thread(target=lambda: pytest.raises(ValueError, gen.start, prompt="x",
-                                                      workflow="flux1-dev-scale-l.json",
+                                                      workflow="qwen21-turbo.json",
                                                       job_id=job_id, poll_interval=0.01))
     t.start()
     assert wait_for(lambda: tracker.get(job_id)["status"] == "queued")
@@ -719,7 +719,7 @@ def test_start_cancelled_before_submit(gen, monkeypatch, tracker):
     job_id = tracker.create(prompt="x")["id"]
     tracker.cancel(job_id)
     with pytest.raises(ValueError):
-        gen.start(prompt="x", workflow="flux1-dev-scale-l.json", job_id=job_id)
+        gen.start(prompt="x", workflow="qwen21-turbo.json", job_id=job_id)
     assert fake.payload is None and tracker.get(job_id)["status"] == "cancelled"
 
 
@@ -766,7 +766,7 @@ def test_handler_makes_jobs_before_refining(monkeypatch, tracker):
     assert jobs[0]["target_name"] == "North screen"
 
     # and the happy path passes each thread its own job id and the batch id
-    monkeypatch.setattr(handler, "_refine", lambda *a, **k: ("flux1-dev-scale-l.json", "refined", "final"))
+    monkeypatch.setattr(handler, "_refine", lambda *a, **k: ("qwen21-turbo.json", "refined", "final"))
     out = []
     results = handler.handle_image_generation(
         {"data": {"prompt": "x", "targets": ["north-screen"], "batch_id": "C"}},

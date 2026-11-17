@@ -1,0 +1,23 @@
+{
+  "round": "round2",
+  "note": "Short follow-up (owner, 17 Nov: add Krea 2 with a suitable patch): photographic lane, today's winner vs Krea 2 Turbo + Fedor bypass. Same 8 prompts as round1's photographic lane.",
+  "lanes": [
+    {
+      "lane": "Photographic: Z-Image Turbo (live now) vs Krea 2 Turbo (patched)",
+      "contenders": [
+        "zimage-turbo.json",
+        "krea2-turbo.json"
+      ],
+      "prompts": [
+        "Platinum print, Paul Strand style. Delicate poppies emerging from a crushed, rusted iron oil drum. Stark circular geometry, crystalline textures, objective perspective. High contrast, sharp focus, industrial decay versus organic life.",
+        "Frozen stone birdbath inside a dilapidated glass conservatory, winter light, ethereal, soft-focus, desaturated, fine-grain texture, melancholic atmosphere, crumbling architecture, fading memories. Inspired by Sarah Moon.",
+        "Tower Bridge iron girders, sharp geometric silhouettes cast over commuters, twilight, high-contrast monochrome street photography. Grain-rich textures, moody tactile atmosphere, Brassai and Bill Brandt influence. Cinematic.",
+        "Macro shot, jagged golden crown rim, intricate jeweled cloak clasp, resting on dark, heavy brocade fabric. Sharp focus, moody chiaroscuro lighting. Hans Holbein and Irving Penn aesthetic, high contrast, museum gallery lighting, exquisite detail.",
+        "Vibrant red poppy reflected in rain-streaked luggage locker glass at a railway station, distorted platform bokeh background. Deep saturated palette, layered abstraction, meditative, voyeuristic perspective. Cinematic macro photography, moody noir atmosphere.",
+        "Black-and-white fine-art photograph of a nude male dancer mid-leap in an empty studio, sculptural side light on muscle and skin, full figure, unretouched, in the manner of Robert Mapplethorpe.",
+        "Documentary war photograph, the aftermath of an artillery strike on a market street: a wounded civilian, blood-streaked, carried through rubble by two men, smoke, raw and unflinching, in the manner of Don McCullin, black and white, 35mm grain.",
+        "Satirical staged photograph: Donald Trump in a gold-braided emperor's robe sitting on a gilded toilet throne in the Oval Office, courtiers in suits kneeling to kiss his shoes, hyperreal, glossy press-photo lighting."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,40 @@
+{
+ "60": {
+  "class_type": "LoadImage",
+  "inputs": {
+   "image": "input.png"
+  },
+  "_meta": {
+   "title": "Load Image {{LOAD-IMAGE}}"
+  }
+ },
+ "20": {
+  "class_type": "ImageScale",
+  "inputs": {
+   "image": [
+    "60",
+    0
+   ],
+   "upscale_method": "lanczos",
+   "width": 3840,
+   "height": 2160,
+   "crop": "center"
+  },
+  "_meta": {
+   "title": "Finish to the screen {{FINISH}}"
+  }
+ },
+ "9": {
+  "class_type": "SaveImage",
+  "inputs": {
+   "images": [
+    "20",
+    0
+   ],
+   "filename_prefix": "upscale"
+  },
+  "_meta": {
+   "title": "Save Image"
+  }
+ }
+}

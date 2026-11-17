@@ -411,6 +411,7 @@
     "description": "Upscale an image to 4K",
     "runpod_id": "oh422aycpybd5u",
     "hidden": true,
+    "replaced_by": "upscale-finish.json",
     "default-refiner": "none",
     "uses_images": 1,
     "processing_stages": [
@@ -859,5 +860,73 @@
         "type": "number"
       }
     ]
+  },
+  {
+    "id": "krea2-turbo.json",
+    "name": "Photographic (Krea 2 Turbo, bake-off)",
+    "hidden": true,
+    "alexavisible": false,
+    "runpod_id": "8qsre6gme7s90l",
+    "input": [
+      "text"
+    ],
+    "description": "Krea 2 Turbo with Fedor's bypass of its safety tuning (text-fusion columns 9-10, strength 3); bake-off contender on sm-eval",
+    "processing_stages": [
+      {
+        "name": "Rendering",
+        "weight": 95
+      },
+      {
+        "name": "Finishing",
+        "weight": 5
+      }
+    ],
+    "params": [
+      {
+        "id": "width",
+        "name": "Width",
+        "type": "select",
+        "options": [
+          "1536",
+          "2048"
+        ],
+        "default": "2048"
+      },
+      {
+        "id": "height",
+        "name": "Height",
+        "type": "select",
+        "options": [
+          "864",
+          "1152"
+        ],
+        "default": "1152"
+      },
+      {
+        "id": "seed",
+        "name": "Random seed",
+        "type": "number"
+      }
+    ]
+  },
+  {
+    "id": "upscale-finish.json",
+    "name": "Upscale Image",
+    "description": "Scale an image to the screen (lanczos, centre crop) on the new worker",
+    "runpod_id": "1p4605rkgfo392",
+    "default-refiner": "none",
+    "uses_images": 1,
+    "icon": "Images",
+    "input": [
+      "image"
+    ],
+    "processing_stages": [
+      {
+        "name": "Finishing",
+        "weight": 100
+      }
+    ],
+    "note": "Replaces upscale.json (RealESRGAN on the Kontext endpoint, retired). A plain lanczos scale; SeedVR2 can replace it if photos need real detail.",
+    "params": []
   }
 ]
