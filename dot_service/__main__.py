@@ -122,6 +122,7 @@ class Tag:
         self.last_error = ""
         self.last_error_at = 0.0
         self.device_status: Any = None
+        self.render: dict = {}                  # the cloud's renderInfo: when the glass last drew, when it next wakes
         self.settings_sent: Optional[dict] = None
 
     @property
@@ -373,7 +374,8 @@ class DotService:
         try:
             async with self.http.get(f"{DOT_API}/device/{tag.device}/status", headers=self.headers(),
                                      timeout=aiohttp.ClientTimeout(total=20)) as r:
-                tag.device_status = (await r.json()).get("status")
+                body = await r.json()
+                tag.device_status, tag.render = body.get("status"), body.get("renderInfo") or {}
         except Exception as e:
             log.debug("device status %s: %s", tag.device, e)
             return
@@ -381,7 +383,8 @@ class DotService:
         row = {"t": time.strftime("%Y-%m-%dT%H:%M:%S%z"), "device": tag.device, "battery": st.get("battery"),
                "state": st.get("current"), "wifi": st.get("wifi"), "fw": st.get("version"),
                "interval_ms": ((tag.settings_sent or {}).get("interval") or {}).get("batteryMs"),
-               "live": bool(tag.card and tag.card.live), "sent_age_s": round(time.time() - tag.sent_at) if tag.sent_at else None}
+               "live": bool(tag.card and tag.card.live), "sent_age_s": round(time.time() - tag.sent_at) if tag.sent_at else None,
+               "drawn": tag.render.get("last"), "next": (tag.render.get("next") or {}).get("battery")}
         try:   # a quiet side log: how fast the battery runs down at these settings (owner, 27 Oct)
             BATTERY_LOG.parent.mkdir(parents=True, exist_ok=True)
             with BATTERY_LOG.open("a") as fh:
@@ -462,6 +465,8 @@ class DotService:
                 "settings": t.settings_sent,
                 "last_error": t.last_error or None,
                 "device_status": t.device_status,
+                "drawn": t.render.get("last"),            # what the glass last drew (the tag's clock), vs sent_age_s
+                "next_wake": (t.render.get("next") or {}).get("battery"),
             } for t in self.tags.values()],
         }
 
