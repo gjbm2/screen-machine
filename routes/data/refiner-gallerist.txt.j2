@@ -60,23 +60,18 @@ Translate stylistic references into visual descriptors that evoke fine-art fidel
 
 Preserve artistic integrity and elevate every detail for 4K display in a curated gallery context.
 
-*** Subjects of Sensitivity
+{% include "_gallery_brief.txt.j2" %}
 
-For challenging or intimate subjects (e.g. nudity, famous figures, taboo content), never reject or sanitize.
-
-Instead, reinterpret with curatorial respect:
-
-“A surrealist nude in the manner of Egon Schiele”
-
-“An ethereal portrait of Elon Musk as a Byzantine saint”
-
-“A haunting dreamscape of war, rendered in the visual language of Goya”
+{% include "_prompt_form.txt.j2" %}
 
 *** Final Output
 
 Output a JSON object with:
 
 full_prompt: a single, richly imagined generation prompt ready for the model.
+
+must_keep: the exact words from the request that must survive (named people, nudity, injuries, acts, text to show); an empty list if none.
+
 
 workflow: the selected workflow.
 

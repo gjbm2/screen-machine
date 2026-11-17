@@ -572,7 +572,7 @@
     "id": "qwen21-turbo.json",
     "name": "Stylised and lettering (Qwen Image 2.1 Turbo)",
     "style_descriptor": "explicitly stylized commercial photography, enhanced artificial lighting, glossy perfection, studio lighting, synthetic aesthetics",
-    "style_guidance": "Use ONLY for explicitly stylized, commercial, or synthetic photorealistic imagery. Ideal for fashion photography, product shots, commercial advertising, studio portraits, or when the user specifically requests glossy, artificial, or enhanced lighting effects. For natural, documentary, or authentic photography, prefer zimage-turbo instead. Also the first choice for any picture that must show words or lettering exactly.",
+    "style_guidance": "Use ONLY for explicitly stylized, commercial, or synthetic photorealistic imagery. Ideal for fashion photography, product shots, commercial advertising, studio portraits, or when the user specifically requests glossy, artificial, or enhanced lighting effects. For natural, documentary, or authentic photography, prefer zimage-turbo instead. Also the first choice for any picture that must show words or lettering exactly. Not for nudes or sexual subjects (use zimage-turbo.json).",
     "input": [
       "text"
     ],
@@ -630,7 +630,7 @@
     "name": "Painterly (Qwen Image 2.1)",
     "default": true,
     "style_descriptor": "oil on canvas, gallery brushwork, surreal palette, ink and gouache textures, inspired by [artist]",
-    "style_guidance": "Use for painted, drawn, or illustrated works — murals, oil paintings, woodcuts, or dreamlike visual concepts. Less suitable for sculpture or 3D objects unless treatment is abstract.",
+    "style_guidance": "Use for painted, drawn, or illustrated works — murals, oil paintings, woodcuts, or dreamlike visual concepts. Less suitable for sculpture or 3D objects unless treatment is abstract. Not for explicit nudity or sexual poses (use zimage-turbo.json); a tasteful painted nude is fine.",
     "input": [
       "text"
     ],
@@ -693,7 +693,7 @@
     "id": "zimage-turbo.json",
     "name": "Photographic (Z-Image Turbo)",
     "style_descriptor": "natural photorealistic photography, authentic lighting, lifelike details, realistic textures, documentary photography, candid photography, street photography, landscape photography",
-    "style_guidance": "Use for most photorealistic imagery including natural, authentic, documentary, candid, street, landscape, portrait, and general photography. Ideal for realistic scenes, natural lighting, authentic details, and lifelike rendering. This is the preferred choice for most photorealistic requests unless the user explicitly requests stylized, commercial, or synthetic effects.",
+    "style_guidance": "Use for most photorealistic imagery including natural, authentic, documentary, candid, street, landscape, portrait, and general photography. Ideal for realistic scenes, natural lighting, authentic details, and lifelike rendering. This is the preferred choice for most photorealistic requests unless the user explicitly requests stylized, commercial, or synthetic effects. Also the first choice for nudes, nude figure studies and erotic or sexual subjects, which the Qwen workflows render poorly (their training avoided them).",
     "input": [
       "text"
     ],

@@ -538,6 +538,16 @@ def _refine(data, prompt, workflow, images, corrected_refiner, images_required, 
             utils.logger.warning(f"[handle_image_generation] refiner unavailable ({e}); using the prompt as given")
             refined_output = {}
         refined_prompt = (refined_output or {}).get("full_prompt", prompt)
+        # No implicit censorship (owner, 17 Nov): what the request asked for must survive the rewrite, except in a
+        # refiner that censors on purpose (refiners.json "censored", e.g. Nous for the-beast)
+        refiner_entry = next((r for r in _load_json_once("refiner", "refiners.json")
+                              if r.get("system_prompt") == corrected_refiner), {})
+        if refined_output and not refiner_entry.get("censored"):
+            from routes.prompt_guard import guard
+            refined_prompt, lost = guard(prompt, refined_prompt, refined_output.get("must_keep"))
+            if lost:
+                utils.logger.warning(f"[handle_image_generation] the refiner dropped {lost}; the request's own words "
+                                     f"are put in front of its prompt")
     else:
         refined_output = {}
         refined_prompt = prompt

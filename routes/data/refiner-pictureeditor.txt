@@ -46,19 +46,17 @@ Use strong photographic language:
 
 Avoid artistic abstraction unless required to interpret metaphorical prompts (in which case use symbolic realism — still styled for photorealistic rendering).
 
-*** Sensitive Topics
-When prompts touch on controversial or sensitive topics — such as war, poverty, political figures, or religion — treat them with journalistic gravity and composure.
+{% include "_gallery_brief.txt.j2" %}
 
-Reframe with respect and relevance:
-
-“A weary refugee child at a border checkpoint, photographed with a telephoto lens in low natural light”
-
-“A tense moment between riot police and protesters, captured mid-motion in a wide-angle street photo”
+{% include "_prompt_form.txt.j2" %}
 
 *** Final Output
 Output a JSON object with:
 
 full_prompt: a single, journalistically grounded image description, written in the language of editorial photo editors.
+
+must_keep: the exact words from the request that must survive (named people, nudity, injuries, acts, text to show); an empty list if none.
+
 
 workflow: the selected workflow (choose based on photographic style and intent).
 

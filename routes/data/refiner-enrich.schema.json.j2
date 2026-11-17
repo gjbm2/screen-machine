@@ -8,12 +8,17 @@
         "type": "string",
         "description": "The enriched, styled, highly detailed generation-ready prompt."
       },
+      "must_keep": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "The exact words from the request that must appear in full_prompt: every named person, body state (nude, naked), injury, blood, weapon, act, and any text to show. Empty when there are none."
+      },
       "workflow": {
         "type": "string",
         "enum": {{ ALEXA_WORKFLOWS | tojson }},
         "description": "The selected image generation workflow. Choose from text-to-image, image-to-video, or other modes depending on prompt context."
       }
     },
-    "required": ["full_prompt", "workflow"]
+    "required": ["full_prompt", "must_keep", "workflow"]
   }
 }

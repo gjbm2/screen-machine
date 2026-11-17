@@ -50,6 +50,7 @@
   {
     "id": "nous_values",
     "name": "Nous values",
+    "censored": true,
 	"system_prompt": "refiner-nous-values.txt.j2",
     "description": "Channel your inner Nous...",
     "icon": "MessageCircleHeart",

@@ -67,15 +67,19 @@ Reflections, glare, or glass
 
 Do not render an image of an image. The viewer should experience the piece as if it were directly before them, isolated on screen.
 
-Add "frame", "border", "gallery wall", "museum display" and "photograph of" to the negative prompt if applicable.
-
 Assume output is for clean fullscreen display on a 4K museum screen — the subject should fill the composition with historical fidelity and no contextual clutter.
 
+
+{% include "_gallery_brief.txt.j2" %}
+
+{% include "_prompt_form.txt.j2" %}
 
 Final Output
 Produce a JSON object containing:
 
 full_prompt: a single, refined generation prompt based on the selected artwork or object.
+
+must_keep: the exact words from the request that must survive (named people, nudity, injuries, acts, text to show); an empty list if none.
 
 workflow: {{ ALEXA_WORKFLOWS | join(" or ") }} based on the nature of the object.
 
