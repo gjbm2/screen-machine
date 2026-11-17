@@ -24,11 +24,19 @@ def env_list():
     return [{"key": k, "value": v} for k, v in cfg["env"].items()]
 
 
-def save_template():
+def save_template(endpoint_id=None):
+    """Save the worker template. An existing endpoint keeps the template it was created with (RunPod ignores a new
+    templateId on saveEndpoint), so that template is the one updated; otherwise the one named in endpoints.json."""
     t = cfg["template"]
-    found = gql("query { myself { podTemplates { id name } } }", {})["myself"]["podTemplates"]
-    tid = next((x["id"] for x in found if x["name"] == t["name"]), None)
-    inp = {"name": t["name"], "imageName": t["image"], "isServerless": True, "containerDiskInGb": t["container_disk_gb"],
+    tid = None
+    if endpoint_id:
+        tid = gql('query($id: String!) { myself { endpoint(id: $id) { templateId } } }',
+                  {"id": endpoint_id})["myself"]["endpoint"]["templateId"]
+    if not tid:
+        found = gql("query { myself { podTemplates { id name } } }", {})["myself"]["podTemplates"]
+        tid = next((x["id"] for x in found if x["name"] == t["name"]), None)
+    names = {x["id"]: x["name"] for x in gql("query { myself { podTemplates { id name } } }", {})["myself"]["podTemplates"]}
+    inp = {"name": names.get(tid, t["name"]), "imageName": t["image"], "isServerless": True, "containerDiskInGb": t["container_disk_gb"],
            "dockerArgs": "", "volumeInGb": 0, "containerRegistryAuthId": t["registry_auth"], "env": env_list()}
     if tid:
         inp["id"] = tid
@@ -65,6 +73,6 @@ def save_endpoint(name, e, template_id):
 
 
 if __name__ == "__main__":
-    tid = save_template()
     for name in sys.argv[1:] or cfg["endpoints"]:
-        save_endpoint(name, cfg["endpoints"][name], tid)
+        e = cfg["endpoints"][name]
+        save_endpoint(name, e, save_template(e.get("id")))

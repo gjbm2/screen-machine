@@ -1,7 +1,7 @@
 {
   "note": "RunPod endpoints for the new worker (worker/endpoints.py saves them; saveEndpoint is a full replace). Secrets are RunPod secret references, never values.",
   "template": {
-    "name": "sm-worker",
+    "name": "sm-worker-2026-11-17",
     "image": "gjbm2/sm-worker:2026-11-18",
     "registry_auth": "cm88p5oli0001ky083ca8cu1f",
     "container_disk_gb": 30
