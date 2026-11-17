@@ -127,3 +127,21 @@ the last one. A job's own timings cover only part of that.
   that started for nothing) stay unattributed. Each endpoint-hour is kept in `billing_hours` in the same SQLite file.
 - **Report:** `GET /api/jobs/costs?days=30` (RunPod's bill, the jobs' total, unattributed, per day, per workflow with
   the median cost per image, per source, per endpoint), shown as "Cost" on the Jobs page.
+
+## Tests and checks
+
+Run these after any change to `src/data/workflows.json`, a graph in `routes/workflows/`, the worker's output, `routes/generate.py`, `routes/result_source.py` or the publisher. None makes a picture or calls a model; together they take about half a minute.
+
+    .venv/bin/python -m pytest tests/integration/test_generate_roundtrip.py tests/integration/test_publisher.py \
+        tests/unit/test_result_source.py tests/unit/test_workflow_catalogue.py tests/unit/test_jobs.py -q
+
+- `tests/integration/test_generate_roundtrip.py` follows a request to the picture a TV shows. Only RunPod and the result download are faked.
+  - It runs every result shape a worker has sent through each way in: a screen target, the generator page with no screen, and a scheduled generate (with and without publish).
+  - It runs every workflow in the catalogue.
+  - "What the TV shows" is the newest of the files the TV page asks for, read from `useFilePolling.ts`. The screen's own file is always `<screen>.jpg` or `.mp4` (`routes/publisher.py`, `_place_for_screen`).
+- `tests/unit/test_workflow_catalogue.py` checks the catalogue against the graphs and refiners.
+- `tests/unit/test_result_source.py` covers `routes/result_source.py`. That module is the one place that knows a result is either a URL (the worker's S3 bucket) or a file under `output/_inline/` (the picture came back inside the reply).
+
+The tests cannot see the live set-up. `scripts/check_generator.py` reads it without making a picture: each reachable workflow's endpoint is on and has its S3 bucket, and it lists the workflows the screens' schedules name. Run it after changing an endpoint or a template on RunPod:
+
+    .venv/bin/python scripts/check_generator.py
