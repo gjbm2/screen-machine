@@ -10,7 +10,7 @@
       {"name": "Rendering", "weight": 90},
       {"name": "Upscaling", "weight": 10}
     ],	
-    "alexavisible": true,
+    "alexavisible": false,
     "style_guidance": "Use ONLY for explicitly stylized, commercial, or synthetic photorealistic imagery. Ideal for fashion photography, product shots, commercial advertising, studio portraits, or when the user specifically requests glossy, artificial, or enhanced lighting effects. For natural, documentary, or authentic photography, prefer krea instead.",
     "style_descriptor": "explicitly stylized commercial photography, enhanced artificial lighting, glossy perfection, studio lighting, synthetic aesthetics",
     "params": [
@@ -65,7 +65,7 @@
       {"name": "Rendering", "weight": 90},
       {"name": "Upscaling", "weight": 10}
     ],	
-    "alexavisible": true,
+    "alexavisible": false,
     "style_guidance": "Use for most photorealistic imagery including natural, authentic, documentary, candid, street, landscape, portrait, and general photography. Ideal for realistic scenes, natural lighting, authentic details, and lifelike rendering. This is the preferred choice for most photorealistic requests unless the user explicitly requests stylized, commercial, or synthetic effects.",
     "style_descriptor": "natural photorealistic photography, authentic lighting, lifelike details, realistic textures, documentary photography, candid photography, street photography, landscape photography",
     "params": [
@@ -190,8 +190,7 @@
 		{"name": "Rendering", "weight": 90},
 		{"name": "Upscaling", "weight": 10}
 	],
-    "default": true,
-	"alexavisible": true,
+	"alexavisible": false,
     "input": ["text"],	   
 	"style_guidance": "Use for painted, drawn, or illustrated works — murals, oil paintings, woodcuts, or dreamlike visual concepts. Less suitable for sculpture or 3D objects unless treatment is abstract.",
 	"style_descriptor": "oil on canvas, gallery brushwork, surreal palette, ink and gouache textures, inspired by [artist]",
@@ -268,6 +267,7 @@
   {
     "id": "flux_1_kontext_dev_1pic-l.json",
     "name": "Adapt an image",
+    "replaced_by": "qwen21-edit.json",
     "runpod_id": "oh422aycpybd5u",
     "description": "Intelligently adapt an image based on a prompt",
     "default-refiner": "adapt",
@@ -340,6 +340,7 @@
   {
     "id": "flux_1_kontext_dev_2pic-l.json",
     "name": "Combine two images",
+    "replaced_by": "qwen21-combine.json",
     "runpod_id": "oh422aycpybd5u",
     "description": "Intelligently combine two images based on a prompt",
     "default-refiner": "adapt",
@@ -561,6 +562,8 @@
   {
     "id": "qwen21-turbo.json",
     "name": "Qwen Image 2.1 Turbo",
+    "style_descriptor": "explicitly stylized commercial photography, enhanced artificial lighting, glossy perfection, studio lighting, synthetic aesthetics",
+    "style_guidance": "Use ONLY for explicitly stylized, commercial, or synthetic photorealistic imagery. Ideal for fashion photography, product shots, commercial advertising, studio portraits, or when the user specifically requests glossy, artificial, or enhanced lighting effects. For natural, documentary, or authentic photography, prefer zimage-turbo instead. Also the first choice for any picture that must show words or lettering exactly.",
     "input": [
       "text"
     ],
@@ -577,8 +580,8 @@
         "weight": 5
       }
     ],
-    "alexavisible": false,
-    "note": "New worker (worker/, docs/genai-review/PROJECT_PLAN.md step 1): not offered to the refiners (alexavisible false) until the bake-off picks it.",
+    "alexavisible": true,
+    "note": "Chosen in the 17 Nov bake-off; takes over from flux1-dev-scale-l.json (docs/genai-review/PROJECT_PLAN.md step 3).",
     "params": [
       {
         "id": "width",
@@ -616,6 +619,9 @@
   {
     "id": "qwen21.json",
     "name": "Qwen Image 2.1",
+    "default": true,
+    "style_descriptor": "oil on canvas, gallery brushwork, surreal palette, ink and gouache textures, inspired by [artist]",
+    "style_guidance": "Use for painted, drawn, or illustrated works — murals, oil paintings, woodcuts, or dreamlike visual concepts. Less suitable for sculpture or 3D objects unless treatment is abstract.",
     "input": [
       "text"
     ],
@@ -632,8 +638,8 @@
         "weight": 5
       }
     ],
-    "alexavisible": false,
-    "note": "New worker (worker/, docs/genai-review/PROJECT_PLAN.md step 1): not offered to the refiners (alexavisible false) until the bake-off picks it.",
+    "alexavisible": true,
+    "note": "Chosen in the 17 Nov bake-off; takes over from sd35.json (docs/genai-review/PROJECT_PLAN.md step 3).",
     "params": [
       {
         "id": "steps",
@@ -677,6 +683,8 @@
   {
     "id": "zimage-turbo.json",
     "name": "Z-Image Turbo",
+    "style_descriptor": "natural photorealistic photography, authentic lighting, lifelike details, realistic textures, documentary photography, candid photography, street photography, landscape photography",
+    "style_guidance": "Use for most photorealistic imagery including natural, authentic, documentary, candid, street, landscape, portrait, and general photography. Ideal for realistic scenes, natural lighting, authentic details, and lifelike rendering. This is the preferred choice for most photorealistic requests unless the user explicitly requests stylized, commercial, or synthetic effects.",
     "input": [
       "text"
     ],
@@ -693,8 +701,8 @@
         "weight": 5
       }
     ],
-    "alexavisible": false,
-    "note": "New worker (worker/, docs/genai-review/PROJECT_PLAN.md step 1): not offered to the refiners (alexavisible false) until the bake-off picks it.",
+    "alexavisible": true,
+    "note": "Chosen in the 17 Nov bake-off; takes over from kreav2.json (docs/genai-review/PROJECT_PLAN.md step 3).",
     "params": [
       {
         "id": "steps",

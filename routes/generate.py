@@ -426,6 +426,12 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
         targetfile=target_config.get('file')
         info(f"Target config: {targetfile}")
     
+    # A retired workflow named by an old schedule or caller runs on its replacement (workflows.json "replaced_by")
+    retired = next((w for w in _load_json_once("workflow", "workflows.json")
+                    if w.get("id") == args_namespace.workflow and w.get("replaced_by")), None)
+    if retired:
+        info(f"Workflow {args_namespace.workflow} is retired; using {retired['replaced_by']}")
+        args_namespace.workflow = retired["replaced_by"]
     tracker.update(job_id, workflow=args_namespace.workflow, refined_prompt=args_namespace.prompt,
                    message="Loading the workflow")
     info(f"Trying to load: {args_namespace.workflow}")
