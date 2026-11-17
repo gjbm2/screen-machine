@@ -563,6 +563,37 @@ def _place_atomically(src: Path, dst: Path) -> None:
         tmp.unlink(missing_ok=True)
 
 
+# The screen's own file (output/<screen>.<ext>) is read by the TV page and by room_service's live art feed, and both
+# look only for <screen>.jpg, .JPG and .mp4. A still in any other format is therefore placed as a JPEG: on 17 Nov a PNG
+# from the new worker was published as north-screen.png, the job said done and the TV kept the old picture.
+SCREEN_STILL_EXT = ".jpg"
+_STILLS_TO_JPEG = {".png", ".webp", ".gif", ".jpeg", ".bmp", ".tif", ".tiff"}
+
+
+def screen_file_extension(source_ext: str | None) -> str | None:
+    """The extension a published file gets as the screen's own file: .jpg for every still, else as it is."""
+    if source_ext and source_ext.lower() in _STILLS_TO_JPEG | {".jpg"}:
+        return SCREEN_STILL_EXT
+    return source_ext
+
+
+def _place_for_screen(src: Path, dst: Path) -> None:
+    """Place ``src`` as the screen's file ``dst`` in one step: a still that is not a JPEG is converted (q95, 4:4:4),
+    anything else is copied as _place_atomically does."""
+    if src.suffix.lower() not in _STILLS_TO_JPEG - {".jpeg"}:
+        _place_atomically(src, dst)
+        return
+    from PIL import Image
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp = _tmp_beside(dst)
+    try:
+        with Image.open(src) as img:
+            img.convert("RGB").save(tmp, format="JPEG", quality=95, subsampling=0)
+        os.replace(tmp, dst)
+    finally:
+        tmp.unlink(missing_ok=True)
+
+
 def _tmp_beside(dst: Path) -> Path:
     """A hidden temp name next to ``dst`` (same filesystem, so os.replace is one step), unique per process and thread:
     two web threads publishing to the same screen at once must not share one."""
@@ -760,11 +791,13 @@ def _publish_to_destination(
             info(f"Using .mp4 extension based on video metadata type")
         
         info(f"Detected file extension for publishing: {file_extension}")
+        # The screen's own file is always <screen>.jpg or .mp4 (see _place_for_screen)
+        screen_extension = screen_file_extension(file_extension)
             
         base_output_dir = Path(bucket_path(publish_destination_id)).parent
         
         if cross_bucket_mode:
-            display_path = base_output_dir / f"{dest['id']}{file_extension}"
+            display_path = base_output_dir / f"{dest['id']}{screen_extension}"
         else:
             display_path = source_filepath
             
@@ -772,18 +805,18 @@ def _publish_to_destination(
             
             # Only copy to direct output path if we're updating the published pointer
             if update_published:
-                direct_output_path = base_output_dir / f"{dest['id']}{file_extension}"
+                direct_output_path = base_output_dir / f"{dest['id']}{screen_extension}"
                 debug(f"Same-bucket publishing - also copying to direct output path: {direct_output_path}")
                 
                 try:
-                    _place_atomically(source_filepath, direct_output_path)
+                    _place_for_screen(source_filepath, direct_output_path)
                     _after_placing(direct_output_path)
                 except Exception as e:
                     error(f"Failed to copy to direct output path: {e}")
         
         # Only copy to display path if we're updating the published pointer
         if update_published and source_filepath != display_path:
-            _place_atomically(source_filepath, display_path)
+            _place_for_screen(source_filepath, display_path)
             _after_placing(display_path)
 
         effective_metadata = None
@@ -816,7 +849,7 @@ def _publish_to_destination(
                 when=publish_time,
                 source_metadata=effective_metadata,
                 cross_bucket_mode=actual_cross_bucket_mode,
-                file_extension=file_extension,
+                file_extension=screen_extension,
                 is_history_navigation=is_history_navigation
             )
 
