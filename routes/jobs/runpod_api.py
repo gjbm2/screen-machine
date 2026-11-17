@@ -1,15 +1,21 @@
 """Minimal RunPod serverless client for the job lifecycle: submit, status, cancel. Every request has a
-timeout, and HTTP failures become one plain-text line a person can act on."""
+timeout, and HTTP failures become one plain-text line a person can act on. Also what a finished job cost
+(billed_usd), from RunPod's management API."""
 import os
 import threading
+import time
+from datetime import datetime
 
 import requests
 
 BASE_URL = "https://api.runpod.ai/v2"
-REST_URL = "https://rest.runpod.io/v1"
+# The management API: REST v2 (v1 at rest.runpod.io was retired on 15 Nov 2026; spec at /v2/openapi.json)
+REST_URL = "https://api.runpod.io/v2"
 
-_names = {}
-_names_lock = threading.Lock()
+_CACHE_S = 3600          # endpoint details and the GPU price list change rarely
+_CACHE_FAIL_S = 60       # a failed read is retried after a minute, not on every error message
+_cache = {}              # key -> (read at, value or None)
+_cache_lock = threading.Lock()
 
 
 class RunPodError(Exception):
@@ -23,21 +29,106 @@ def _headers():
     return {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
 
 
-def endpoint_name(endpoint_id):
-    """The endpoint's name on RunPod (cached), or its id when it can't be read."""
-    with _names_lock:
-        if endpoint_id in _names:
-            return _names[endpoint_id]
-    name = endpoint_id
+def _cached_get(key, path, keep):
+    """GET REST_URL + path, kept for an hour as keep(json); None when it can't be read. Only keep()'s result is
+    held, so nothing else in the response (an endpoint's template env) stays in memory."""
+    now = time.time()
+    with _cache_lock:
+        hit = _cache.get(key)
+    if hit and now - hit[0] < (_CACHE_S if hit[1] is not None else _CACHE_FAIL_S):
+        return hit[1]
+    value = None
     try:
-        r = requests.get(f"{REST_URL}/endpoints/{endpoint_id}", headers=_headers(), timeout=5)
+        r = requests.get(f"{REST_URL}{path}", headers=_headers(), timeout=5)
         if r.status_code == 200:
-            name = (r.json() or {}).get("name") or endpoint_id
+            value = keep(r.json() or {})
     except Exception:
         pass
-    with _names_lock:
-        _names[endpoint_id] = name
-    return name
+    if value is None and hit and hit[1] is not None:
+        value = hit[1]   # a stale answer beats none
+    with _cache_lock:
+        _cache[key] = (now, value)
+    return value
+
+
+def endpoint_info(endpoint_id):
+    """{name, pools} for an endpoint (pools: its GPU pools in preference order, e.g. AMPERE_80), or None."""
+    return _cached_get(("endpoint", endpoint_id), f"/serverless/{endpoint_id}",
+                       lambda d: {"name": d.get("name"), "pools": list((d.get("gpu") or {}).get("pools") or [])})
+
+
+def endpoint_name(endpoint_id):
+    """The endpoint's name on RunPod (cached), or its id when it can't be read."""
+    return (endpoint_info(endpoint_id) or {}).get("name") or endpoint_id
+
+
+def _prices(gpus):
+    by_gpu, by_pool = {}, {}
+    for g in gpus.get("gpus") or []:
+        per_hour = (g.get("price") or {}).get("serverless")
+        if not per_hour:
+            continue
+        by_gpu[g.get("id")] = per_hour / 3600
+        if g.get("pool"):
+            by_pool[g["pool"]] = max(by_pool.get(g["pool"], 0), per_hour / 3600)
+    return {"gpu": by_gpu, "pool": by_pool} if by_gpu else None
+
+
+def serverless_prices():
+    """RunPod's serverless (flex) prices in USD per second, from its GPU catalogue: {"gpu": {gpu type id: rate},
+    "pool": {pool: rate}} (a pool's rate is its dearest GPU's), or None."""
+    return _cached_get("gpus", "/catalog/gpus", _prices)
+
+
+def worker(endpoint_id, worker_id):
+    """The endpoint's worker ({gpuTypeId, startedAt, ...}) while RunPod still lists it, else None. Not cached."""
+    if not worker_id:
+        return None
+    try:
+        r = requests.get(f"{REST_URL}/serverless/{endpoint_id}/workers", headers=_headers(), timeout=5)
+        if r.status_code == 200:
+            return next((w for w in (r.json() or {}).get("workers") or [] if w.get("id") == worker_id), None)
+    except Exception:
+        pass
+    return None
+
+
+def _epoch(iso):
+    try:
+        return datetime.fromisoformat(str(iso).replace("Z", "+00:00")).timestamp()
+    except (TypeError, ValueError):
+        return None
+
+
+def billed_usd(endpoint_id, job_status, submitted_at=None):
+    """What RunPod bills for a finished job: (USD, how it was worked out), or (None, why not).
+
+    Billed time = executionTime + the cold start inside delayTime: when the worker started after the job was sent,
+    the time from its start to the job starting (a warm worker adds nothing; queue waiting is not billed). Rate = the
+    serverless per-second price of the GPU the worker ran on, else of the endpoint's first GPU pool."""
+    exec_ms = job_status.get("executionTime")
+    if not isinstance(exec_ms, (int, float)):
+        return None, "RunPod sent no executionTime"
+    delay_s = (job_status.get("delayTime") or 0) / 1000
+    prices = serverless_prices()
+    if not prices:
+        return None, "RunPod's GPU prices could not be read"
+    w = worker(endpoint_id, job_status.get("workerId"))
+    gpu = (w or {}).get("gpuTypeId")
+    rate = prices["gpu"].get(gpu)
+    if rate is None:
+        pools = (endpoint_info(endpoint_id) or {}).get("pools") or []
+        gpu = pools[0] if pools else None
+        rate = prices["pool"].get(gpu)
+    if rate is None:
+        return None, f"no serverless price for {gpu or 'the endpoint GPU'}"
+    cold_s = 0.0
+    started = _epoch((w or {}).get("startedAt"))
+    if started and submitted_at and started > submitted_at - 2:   # 2 s for clock skew
+        cold_s = min(max(submitted_at + delay_s - started, 0.0), delay_s)
+    billed_s = exec_ms / 1000 + cold_s
+    return billed_s * rate, (f"{billed_s:.1f} s on {gpu} at ${rate * 3600:.2f}/h "
+                             f"(run {exec_ms / 1000:.1f} s, cold start {cold_s:.1f} s, waited {delay_s:.1f} s)")
 
 
 def describe_http_error(endpoint_id, status_code, body):

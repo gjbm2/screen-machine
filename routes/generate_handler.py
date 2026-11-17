@@ -17,162 +17,42 @@ from utils.logger import info, error, warning, debug
 from routes.bucketer import _append_to_bucket
 from routes.generate_utils import throw_user_interacting_event, process_generate_image_request, save_to_recent
 
-# Cache for GPU pricing to avoid repeated API calls
-_gpu_price_cache = {}
-_gpu_cache_expiry = 3600  # Cache for 1 hour (in seconds)
-
-def calculate_generation_cost(seconds_taken, workflow_id=None, runpod_id=None, default_cost_per_second=0.000584):
+def calculate_generation_cost(seconds_taken, workflow_id=None, runpod_id=None, default_cost_per_second=0.000584,
+                              runpod_status=None, submitted_at=None):
     """
-    Calculate the cost of image generation based on time taken and the GPU used by RunPod.
-    
+    Calculate the cost of image generation.
+
+    With RunPod's final job status, it is what RunPod bills (routes.jobs.runpod_api.billed_usd: executionTime plus
+    the billed cold start, at the serverless rate of the GPU used). Otherwise, or when that can't be worked out,
+    seconds_taken at the workflow's cost_per_second (else the default).
+
     Args:
         seconds_taken: Number of seconds the generation took
         workflow_id: Optional workflow ID to look up specific cost rate
-        runpod_id: RunPod endpoint ID to get actual GPU costs from API
-        default_cost_per_second: Default cost per second if API calls fail
-        
+        runpod_id: RunPod endpoint ID
+        default_cost_per_second: Default cost per second (USD) if RunPod's bill can't be worked out
+        runpod_status: RunPod's status dict for the finished job (executionTime, delayTime, workerId)
+        submitted_at: time() when the job was sent to RunPod
+
     Returns:
         Cost in GBP
     """
     try:
         # Static exchange rate: 1 GBP = 1.3 USD
         FX_RATE_USD_TO_GBP = 1 / 1.3
-        
-        # Try to find the workflow's specific cost_per_second setting first
+
+        if runpod_id and runpod_status:
+            from routes.jobs import runpod_api
+            usd, how = runpod_api.billed_usd(runpod_id, runpod_status, submitted_at)
+            if usd is not None:
+                info(f"RunPod bill for {runpod_id}: {how}")
+                return round(usd * FX_RATE_USD_TO_GBP, 6)
+            warning(f"RunPod bill for {runpod_id} unknown ({how}); estimating from the time taken")
+
         cost_per_second_usd = default_cost_per_second
-        used_real_time_pricing = False
-        
-        # Check cache first if runpod_id is provided
-        cache_key = f"endpoint_{runpod_id}" if runpod_id else None
-        current_time = time.time()
-        
-        if cache_key and cache_key in _gpu_price_cache:
-            cache_entry = _gpu_price_cache[cache_key]
-            # Check if cache is still valid
-            if current_time - cache_entry['timestamp'] < _gpu_cache_expiry:
-                info(f"Using cached GPU pricing for {cache_entry['gpu_name']}: ${cache_entry['cost_per_second']:.6f}/second")
-                cost_per_second_usd = cache_entry['cost_per_second']
-                used_real_time_pricing = True
-            else:
-                info(f"GPU price cache expired for {runpod_id}, refreshing...")
-        
-        # If not in cache or cache expired, and runpod_id is provided, try to get from API
-        if not used_real_time_pricing and runpod_id:
-            try:
-                # Check if runpod_id is valid
-                if not runpod_id or runpod_id == "None" or runpod_id.lower() == "null":
-                    warning(f"Invalid RunPod ID: '{runpod_id}', falling back to default cost")
-                else:
-                    # Get RunPod API key from environment
-                    api_key = os.getenv("RUNPOD_API_KEY")
-                    if not api_key:
-                        warning("RUNPOD_API_KEY not found in environment, falling back to default cost")
-                    else:
-                        # Correct GraphQL endpoint
-                        headers = {"Authorization": f"Bearer {api_key}"}
-                        gql_endpoint = "https://api.runpod.io/graphql"
-                        
-                        info(f"Fetching GPU info for RunPod endpoint ID: {runpod_id}")
-                        
-                        try:
-                            # 1. Get GPU types for this endpoint from the REST API
-                            # (GraphQL's endpoints(filter:{id}) was removed, and its gpuIds are
-                            # pool names like AMPERE_80 that gpuTypes can't price)
-                            endpoint_url = f"https://rest.runpod.io/v1/endpoints/{runpod_id}"
-                            info(f"Calling RunPod REST for endpoint info: {endpoint_url}")
-                            endpoint_response = requests.get(endpoint_url, headers=headers, timeout=5)
 
-                            info(f"Endpoint query response status: {endpoint_response.status_code}")
-
-                            if endpoint_response.status_code != 200:
-                                warning(f"Failed to get endpoint data: HTTP {endpoint_response.status_code}")
-                                warning(f"Response content: {endpoint_response.text[:200]}")
-                            else:
-                                try:
-                                    # Don't log the whole response: it carries the template's env (bucket keys)
-                                    endpoint_info = endpoint_response.json()
-                                    gpu_type_ids = endpoint_info.get("gpuTypeIds") or []
-
-                                    if not gpu_type_ids:
-                                        warning(f"No endpoint GPU types found for {runpod_id}")
-                                    else:
-                                        # Price on the first (preferred) GPU type
-                                        gpu_id = gpu_type_ids[0]
-                                        endpoint_name = endpoint_info.get("name", f"Endpoint {runpod_id}")
-                                        
-                                        if not gpu_id:
-                                            warning(f"No GPU ID found for endpoint {runpod_id}")
-                                        else:
-                                            info(f"Found GPU ID: {gpu_id} for endpoint: {endpoint_name}")
-                                            
-                                            # 2. Get price for this GPU type using GraphQL
-                                            price_query = """
-                                            query($id:String!){
-                                              gpuTypes(input:{id:$id}){ securePrice communityPrice displayName }
-                                            }"""
-                                            
-                                            info(f"Calling RunPod GraphQL for GPU pricing: {gql_endpoint}")
-                                            price_response = requests.post(
-                                                gql_endpoint,
-                                                json={"query": price_query, "variables": {"id": gpu_id}},
-                                                headers=headers,
-                                                timeout=5
-                                            )
-                                            
-                                            info(f"Price query response status: {price_response.status_code}")
-                                            
-                                            if price_response.status_code != 200:
-                                                warning(f"Failed to get GPU price data: HTTP {price_response.status_code}")
-                                                warning(f"Response content: {price_response.text[:200]}")
-                                            else:
-                                                try:
-                                                    price_data = price_response.json()
-                                                    # Log a shortened version to avoid flooding logs
-                                                    response_excerpt = json.dumps(price_data)[:200] + "..." if len(json.dumps(price_data)) > 200 else json.dumps(price_data)
-                                                    info(f"Price query response: {response_excerpt}")
-                                                    
-                                                    if not price_data.get("data") or not price_data["data"].get("gpuTypes") or \
-                                                       len(price_data["data"]["gpuTypes"]) == 0:
-                                                        warning(f"No GPU type data found in response: {response_excerpt}")
-                                                        if "errors" in price_data:
-                                                            warning(f"GraphQL errors: {json.dumps(price_data['errors'])}")
-                                                    else:
-                                                        # Extract price and GPU display name
-                                                        gpu_data = price_data["data"]["gpuTypes"][0]
-                                                        price_per_hour = gpu_data.get("securePrice") or gpu_data.get("communityPrice", 0)
-                                                        gpu_display_name = gpu_data.get("displayName", gpu_id)
-                                                        
-                                                        if price_per_hour == 0:
-                                                            warning(f"Price per hour is zero for GPU {gpu_id}")
-                                                        
-                                                        # Convert to price per second (USD)
-                                                        cost_per_second_usd = price_per_hour / 3600
-                                                        
-                                                        # Save to cache
-                                                        if cache_key:
-                                                            _gpu_price_cache[cache_key] = {
-                                                                'cost_per_second': cost_per_second_usd,
-                                                                'gpu_name': gpu_display_name,
-                                                                'timestamp': current_time
-                                                            }
-                                                        
-                                                        info(f"Using real-time pricing for {gpu_display_name}: ${cost_per_second_usd:.6f}/second")
-                                                        used_real_time_pricing = True
-                                                except json.JSONDecodeError as jde:
-                                                    warning(f"Failed to parse price query response: {jde}")
-                                                    warning(f"Raw response: {price_response.text[:200]}")
-                                except json.JSONDecodeError as jde:
-                                    warning(f"Failed to parse endpoint query response: {jde}")
-                                    warning(f"Raw response: {endpoint_response.text[:200]}")
-                        except requests.exceptions.RequestException as re:
-                            warning(f"RunPod GraphQL request failed: {type(re).__name__}: {str(re)}")
-            except Exception as e:
-                warning(f"Error getting GPU price from RunPod API: {type(e).__name__}: {str(e)}")
-                import traceback
-                warning(f"Traceback: {traceback.format_exc()}")
-        
-        # Check workflow config as fallback if we didn't get real-time pricing
-        if not used_real_time_pricing and workflow_id:
+        # Otherwise the workflow's own rate, if it has one
+        if workflow_id:
             # Import locally to avoid circular imports
             from routes.utils import findfile, _load_json_once
             
@@ -685,7 +565,8 @@ def _refine(data, prompt, workflow, images, corrected_refiner, images_required, 
             
             if has_images:
                 # Images provided: select first workflow that supports image input
-                image_workflow = next((w for w in workflows if w.get("input") and "image" in w.get("input", [])), None)
+                image_workflow = next((w for w in workflows if w.get("input") and "image" in w.get("input", [])
+                                       and not w.get("hidden")), None)
                 if image_workflow:
                     corrected_workflow = image_workflow["id"]
                     utils.logger.info(

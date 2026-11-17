@@ -316,7 +316,7 @@ def publish_to_destination(
 
                         img = Image.open(BytesIO(response.content)).convert('RGB')
                         with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as temp_file:
-                            img.save(temp_file, format='JPEG', quality=95)
+                            img.save(temp_file, format='JPEG', quality=95, subsampling=0)
                             temp_path = Path(temp_file.name)
                         debug(f"Image converted to JPEG for publishing (original ext {file_extension}) -> {temp_path.name}")
                         file_extension = '.jpg'  # normalise

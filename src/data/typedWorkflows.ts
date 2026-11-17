@@ -29,6 +29,9 @@ function convertToTypedWorkflows(data: any[]): Workflow[] {
   }));
 }
 
-const typedWorkflows: Workflow[] = convertToTypedWorkflows(rawWorkflowsData);
+// "hidden": true keeps a workflow's graph and config but leaves it out of what the app offers
+const typedWorkflows: Workflow[] = convertToTypedWorkflows(
+  (rawWorkflowsData as any[]).filter(workflow => !workflow.hidden)
+);
 
 export default typedWorkflows;

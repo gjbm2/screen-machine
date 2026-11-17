@@ -385,6 +385,7 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
         raise ValueError("A prompt or image must be provided.")
     
     # Get destinations data and see if we have a size constraint
+    maxwidth = maxheight = None
     if publish_destination:
         info(f"publish_destination: {publish_destination}")
         with open(findfile("publish-destinations.json"), "r") as file:
@@ -419,7 +420,7 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
         r"{{POSITIVE-PROMPT}}": {  
             "text":  args_namespace.prompt
         },
-        r"{{NEGATIVE-PROMPT}}": {  
+        r"{{NEGATIVE[-_]PROMPT}}": {  
             "text": vars(args_namespace).get("negativeprompt", None)
         },
         r"{{UPSCALER}}": {
@@ -442,8 +443,10 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
             "strength_clip": vars(args_namespace).get("lora_strength", None)
         },
         r"{{DOWNSCALER}}": {
-            "width": locals().get("maxwidth", 6400),
-            "height": locals().get("maxheight", 6400)
+            # The destination's size, else the caller's maxwidth/maxheight (the scheduler sends the screen's when it
+            # saves to the bucket without publishing), else no limit
+            "width": maxwidth or vars(args_namespace).get("maxwidth") or 6400,
+            "height": maxheight or vars(args_namespace).get("maxheight") or 6400
         },
         r"{{INTERPOLATOR}}": {
             "multiplier": vars(args_namespace).get("interpolate_frames", None)
@@ -526,6 +529,7 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
 
     # Let's go...
     runpod_job_id = runpod_api.submit(runpod_id, input_payload)
+    submitted_at = time()
     info(f"RunPod job {runpod_job_id} submitted for {job_id}")
     tracker.update(job_id, status="queued", runpod_job_id=runpod_job_id, endpoint_id=runpod_id,
                    message="Waiting for a GPU")
@@ -561,6 +565,7 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
 
         elif status == "COMPLETED":
             output = state.get("output")
+            final_state = state
             break
 
         elif status in ("FAILED", "TIMED_OUT"):
@@ -637,7 +642,9 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
     generation_cost = calculate_generation_cost(
         generation_time_seconds, 
         workflow_id=args_namespace.workflow,
-        runpod_id=runpod_id
+        runpod_id=runpod_id,
+        runpod_status=final_state,
+        submitted_at=submitted_at,
     )
     
     # Add time and cost to output metadata

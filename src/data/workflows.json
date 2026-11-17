@@ -24,15 +24,15 @@
       "id": "width",
       "name": "Width",
       "type": "select",
-      "options": ["256", "512", "720", "768", "920", "1024", "1280"],
-      "default": "1280"
+      "options": ["256", "512", "720", "768", "920", "1024", "1280", "1920"],
+      "default": "1920"
       },
         {
       "id": "height",
       "name": "Height",
       "type": "select",
-      "options": ["256", "512", "720", "768", "920", "1024", "1280"],
-      "default": "720"
+      "options": ["256", "512", "720", "768", "920", "1024", "1088", "1280"],
+      "default": "1088"
       },
         {
       "id": "lora",
@@ -51,13 +51,6 @@
       "id": "seed",
       "name": "Random seed",
       "type": "number"
-      },
-      {
-      "id": "upscaler",
-      "name": "Upscaler model",
-      "type": "select",
-      "options": ["RealESRGAN_x2plus.pth","RealESRGAN_x4plus.pth"],
-        "default": "RealESRGAN_x2plus.pth"
       }
     ]
   },
@@ -86,15 +79,15 @@
       "id": "width",
       "name": "Width",
       "type": "select",
-      "options": ["256", "512", "720", "768", "920", "1024", "1280"],
-      "default": "1280"
+      "options": ["256", "512", "720", "768", "920", "1024", "1280", "1920"],
+      "default": "1920"
       },
         {
       "id": "height",
       "name": "Height",
       "type": "select",
-      "options": ["256", "512", "720", "768", "920", "1024", "1280"],
-      "default": "720"
+      "options": ["256", "512", "720", "768", "920", "1024", "1088", "1280"],
+      "default": "1088"
       },
         {
       "id": "lora",
@@ -113,13 +106,6 @@
       "id": "seed",
       "name": "Random seed",
       "type": "number"
-      },
-      {
-      "id": "upscaler",
-      "name": "Upscaler model",
-      "type": "select",
-      "options": ["RealESRGAN_x2plus.pth","RealESRGAN_x4plus.pth"],
-        "default": "RealESRGAN_x2plus.pth"
       }
     ]
   },
@@ -291,7 +277,8 @@
       {"name": "Rendering", "weight": 80},
       {"name": "Upscaling", "weight": 20}
     ],	
-    "alexavisible": true,
+    "alexavisible": false,
+    "hidden": true,
     "style_guidance": "Use to adapt an image to a new style, or to add a new element to an image.",
     "style_descriptor": "photo-realistic, soft cinematic lighting, medium format lens, glossy textures",
     "params": [
@@ -363,7 +350,8 @@
       {"name": "Rendering", "weight": 90},
       {"name": "Upscaling", "weight": 10}
     ],	
-    "alexavisible": true,
+    "alexavisible": false,
+    "hidden": true,
     "style_guidance": "Use to combine two images together, blend subjects, or create interactions between elements from different images.",
     "style_descriptor": "seamless blend, harmonious composition, balanced integration, natural interaction",
     "params": [
@@ -438,7 +426,8 @@
 	"runpod_id": "wxd8n6sak3urv5",
     "input": ["image", "text"],	
     "async": true,
-	"alexavisible": true,
+	"alexavisible": false,
+	"hidden": true,
 	"icon": "FileVideo2",
   "cost_per_second" : 0.000584,
 	"processing_stages": [
@@ -507,7 +496,8 @@
     "input": ["image", "text"],	
     "uses_images": 2,
     "async": true,
-	"alexavisible": true,
+	"alexavisible": false,
+	"hidden": true,
 	"icon": "FileVideo2",
 	"processing_stages": [
 		{"name": "Rendering", "weight": 70},

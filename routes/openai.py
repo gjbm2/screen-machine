@@ -30,7 +30,7 @@ def hash_schema(schema):
     return hashlib.md5(json.dumps(schema, sort_keys=True).encode()).hexdigest()
 
 
-def _image_to_base64_data_url(image_input, index=0, max_dim=512, quality=90):
+def _image_to_base64_data_url(image_input, index=0, max_dim=1536, quality=90):
     """Convert an image input (file path, dict, or raw base64 string) to a
     base64 data URL suitable for the Chat Completions vision API.
     Returns the data URL string, or None on failure."""
@@ -161,7 +161,7 @@ def openai_prompt(
         for i, image_input in enumerate(images):
             data_url = _image_to_base64_data_url(image_input, index=i)
             if data_url:
-                image_content_parts.append({"type": "image_url", "image_url": {"url": data_url, "detail": "low"}})
+                image_content_parts.append({"type": "image_url", "image_url": {"url": data_url, "detail": "high"}})
 
         if not image_content_parts:
             warning("[openai_prompt] No images could be processed, falling through to text-only")
