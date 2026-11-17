@@ -33,6 +33,7 @@ The biggest quality lever is not the model. **Every 4K image on the TVs is a 128
 - The-beast publishes 5120×2880 images: `maxwidth` is read through `locals()` (`generate.py:449-452`).
 - When ComfyUI errors, the worker keeps polling until RunPod's timeout (600–5000 s), so a crashed job still bills for its full timeout.
 - The app's live price lookup returns HTTP 400 on every job. The cost it reports is about 1.75× below real billing.
+- **Update, 17 Nov:** RunPod retired REST v1 on 15 Nov (`rest.runpod.io` no longer resolves). The cost lookup (`generate_handler.py:81`) and the endpoint name in `routes/jobs/runpod_api.py` now fail on every job; jobs still run. REST v2 (`api.runpod.io/v2/serverless`) answers with our key.
 
 **Platform**
 - The base image is CUDA 11.8 with Python 3.10, and the ComfyUI pin is `null`.
@@ -165,6 +166,17 @@ The Hugging Face `2kpr` "x4plus" upscaler file is mislabelled; it is really `rea
 8. Vision checks at 1536 px instead of 512 px "low".
 9. Render Krea and Flux at a **1920×1088** latent instead of 1280×720.
 10. Send the prompt-layer changes to b8.
+
+**Phase 1a (pre-spike: does cached-on-demand work?)** (owner, 17 Nov: prove it before building on it). About $10–20 on RunPod, nothing heavy on PC22.
+1. Build one weightless image: stock worker-comfyui, ComfyUI 0.41 pinned, cu128. Push it to Docker Hub (gjbm2).
+2. Create a throwaway endpoint `sm-prespike`: workersMax 1, no network volume, all datacentres, PRO 6000 then H100. Attach the model through GraphQL `modelReferences` (REST v2 has no cached-model field; GraphQL retires early 2027).
+3. Test A, public repo (no HF token needed): `Comfy-Org/Qwen-Image_ComfyUI` (model + text encoder + VAE). Does ComfyUI find the cached files, and is the download billed?
+4. Test B, the real bundle: a private HF repo holding the proposed `sm-image` set (Qwen-2.1, Z-Image, SeedVR2, about 60–75 GB). Needs an HF write token.
+5. Cold-start run: a test job every 20 min for 24 h (a tiny script on PC22 that only posts to RunPod), plus 3 co-fired pairs. Each job logs queue wait (delayTime), run time (executionTime), whether the host already held the model, and RunPod's own `/v2/serverless/{id}/metrics/cold-starts`.
+6. Push a new bundle revision mid-run and see when workers pick it up.
+
+**Pass:** median submit→first step no worse than today (Krea 33 s wait, 27 Oct–17 Nov), p90 under 2 min, model download never billed, and a cold start that has to download stays under 3 min and is rare (<10%).
+**Fail → fallback:** keep the one pinned image but bake each endpoint's weights into its own layer (still one Dockerfile in `worker/`, no network volume). Re-run the cold-start run on that before going on.
 
 **Phase 1 (spike):** build `worker/`, create `sm-image` with a minimal bundle, and run cold and warm jobs. Measure:
 - whether the bundle maps onto ComfyUI's paths;
