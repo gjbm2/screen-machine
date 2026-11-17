@@ -498,6 +498,7 @@ def _refine(data, prompt, workflow, images, corrected_refiner, images_required, 
     import routes.openai
     import utils.logger
     from routes.utils import resolve_runtime_value, dict_substitute, _load_json_once
+    from utils.llm import LLMError
 
     # Refine if needed
     if corrected_refiner is not None:
@@ -527,8 +528,16 @@ def _refine(data, prompt, workflow, images, corrected_refiner, images_required, 
         utils.logger.debug(json.dumps(log_args, indent=2)[:1000])  # Now safe to log without base64 overflow
 
         
-        refined_output = routes.openai.openai_prompt(**openai_args)
-        refined_prompt = refined_output.get("full_prompt", prompt)
+        try:
+            refined_output = routes.openai.openai_prompt(**openai_args)
+        except LLMError as e:
+            # Every prompt model failed (down, timed out): the user's own words go to the image model. A safety block
+            # (Gemini's PROHIBITED_CONTENT / CSAM classes) is final and is not passed through.
+            if e.blocked:
+                raise
+            utils.logger.warning(f"[handle_image_generation] refiner unavailable ({e}); using the prompt as given")
+            refined_output = {}
+        refined_prompt = (refined_output or {}).get("full_prompt", prompt)
     else:
         refined_output = {}
         refined_prompt = prompt
@@ -600,8 +609,14 @@ def _refine(data, prompt, workflow, images, corrected_refiner, images_required, 
             "user_prompt": refined_prompt,
             "system_prompt": dict_substitute("prompt-translate.txt", subs)
         }
-        final_prompt = routes.openai.openai_prompt(**openai_args)
-        utils.logger.info(f"Translated: {refined_prompt} to {final_prompt}")
+        try:
+            final_prompt = routes.openai.openai_prompt(**openai_args)
+            utils.logger.info(f"Translated: {refined_prompt} to {final_prompt}")
+        except LLMError as e:
+            if e.blocked:
+                raise
+            utils.logger.warning(f"[handle_image_generation] translation unavailable ({e}); sending it untranslated")
+            final_prompt = refined_prompt
     else:
         final_prompt = refined_prompt
 
