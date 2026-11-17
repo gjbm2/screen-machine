@@ -1,0 +1,44 @@
+{
+  "round": "round1",
+  "note": "Short blind bake-off (docs/genai-review/PROJECT_PLAN.md step 2). Prompts: real refined prompts from jobs.db + 3 expression probes per lane, each run once on every contender. tools: worker/bakeoff/run.py; page: /api/bakeoff/round1",
+  "lanes": [
+    {
+      "lane": "Photographic (today's Krea, most of what the TVs show)",
+      "contenders": ["kreav2.json", "qwen21-turbo.json", "zimage-turbo.json"],
+      "prompts": [
+        "Platinum print, Paul Strand style. Delicate poppies emerging from a crushed, rusted iron oil drum. Stark circular geometry, crystalline textures, objective perspective. High contrast, sharp focus, industrial decay versus organic life.",
+        "Frozen stone birdbath inside a dilapidated glass conservatory, winter light, ethereal, soft-focus, desaturated, fine-grain texture, melancholic atmosphere, crumbling architecture, fading memories. Inspired by Sarah Moon.",
+        "Tower Bridge iron girders, sharp geometric silhouettes cast over commuters, twilight, high-contrast monochrome street photography. Grain-rich textures, moody tactile atmosphere, Brassai and Bill Brandt influence. Cinematic.",
+        "Macro shot, jagged golden crown rim, intricate jeweled cloak clasp, resting on dark, heavy brocade fabric. Sharp focus, moody chiaroscuro lighting. Hans Holbein and Irving Penn aesthetic, high contrast, museum gallery lighting, exquisite detail.",
+        "Vibrant red poppy reflected in rain-streaked luggage locker glass at a railway station, distorted platform bokeh background. Deep saturated palette, layered abstraction, meditative, voyeuristic perspective. Cinematic macro photography, moody noir atmosphere.",
+        "Black-and-white fine-art photograph of a nude male dancer mid-leap in an empty studio, sculptural side light on muscle and skin, full figure, unretouched, in the manner of Robert Mapplethorpe.",
+        "Documentary war photograph, the aftermath of an artillery strike on a market street: a wounded civilian, blood-streaked, carried through rubble by two men, smoke, raw and unflinching, in the manner of Don McCullin, black and white, 35mm grain.",
+        "Satirical staged photograph: Donald Trump in a gold-braided emperor's robe sitting on a gilded toilet throne in the Oval Office, courtiers in suits kneeling to kiss his shoes, hyperreal, glossy press-photo lighting."
+      ]
+    },
+    {
+      "lane": "Painterly (today's SD3.5)",
+      "contenders": ["sd35.json", "qwen21-turbo.json", "qwen21.json"],
+      "prompts": [
+        "Gordon Matta-Clark wide-angle architectural cutaway: bisected Gilded Age subway station intersecting a hollowed marble vault. Skeletal steel grids, layered masonry, geometric voids. Cinematic lighting, raw industrial brutalism.",
+        "Hypnotic digital painting, sprawling cityscape at night. Swirling liquid neon, dense silhouetted crowds, euphoric electronic pulse. Amber, magenta, cobalt color palette. Rhythmic composition, fluid motion blur.",
+        "Vorticist London gas lamps, jagged Victorian ironwork, dense morning vapor, sharp-angled geometric planes, high-contrast, deep industrial shadows, architectural abstraction, influenced by Wyndham Lewis and C. R. W. Nevinson.",
+        "A Turner-style oil painting of a harbour at dusk, storm light breaking over masts, thick impasto, gold and slate.",
+        "Close-up, weathered leather gauntlets beside an ornate gold signet ring, dark heavy velvet backdrop. Deep chiaroscuro, dramatic shadows, crisp textures. Hans Holbein and Rembrandt style oil painting, austere static composition.",
+        "Oil painting in the manner of Amedeo Modigliani: a reclining nude woman on a crimson divan, elongated forms, warm ochre skin, frank and unidealised, visible brushwork, museum masterpiece.",
+        "Goya-style war painting at night: a firing squad executing kneeling civilians, a man in a white shirt with arms flung wide, blood pooling on the cobbles, raw terror, dark earth palette, lantern light.",
+        "Hand-coloured satirical etching in the style of James Gillray: Xi Jinping as a bloated Winnie-the-Pooh on a dragon throne, gobbling a honey pot shaped like Taiwan while ministers bow, exaggerated caricature, cross-hatching, speech-bubble captions."
+      ]
+    },
+    {
+      "lane": "Lettering (the-beast and office screens)",
+      "contenders": ["flux1-dev-scale-l.json", "qwen21-turbo.json"],
+      "prompts": [
+        "A warm, intimate 1920s jazz lounge scene. An elegant silver pocket watch resting on a velvet table has an intricate engraving on its lid reading: BE GOOD COMPANY. Cinematic lighting.",
+        "A hyper-realistic close-up portrait of a woman looking through a transparent glass pane etched with the words 'SEE THROUGH', soft studio lighting, crystalline refractions, sharp focus, cinematic atmosphere.",
+        "A cinematic wide shot of a futuristic cyberpunk city. A massive, glowing neon banner draped across a jagged skyscraper facade displays the bold, illuminated text: TECH TO POWER. Rain-slicked streets.",
+        "A hyper-realistic, wide-angle cinematic shot of a futuristic urban laboratory. A glowing holographic whiteboard displays the luminous equation 'solve for people' written in elegant, glowing white neon."
+      ]
+    }
+  ]
+}

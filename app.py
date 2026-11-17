@@ -47,6 +47,7 @@ import routes.jobs
 from routes.art_tags.api import art_tags_api
 import routes.art_tags
 from routes.deployment_api import deployment_api
+from routes.bakeoff_api import bakeoff_api
 import smconfig
 
 # Load environment variables
@@ -78,6 +79,7 @@ app.register_blueprint(admin_api, url_prefix=API_PREFIX)
 app.register_blueprint(jobs_api, url_prefix=API_PREFIX)  # generation jobs + SSE (docs/JOBS.md)
 app.register_blueprint(art_tags_api, url_prefix=API_PREFIX)  # AI art tags + tag edits (docs/ART_TAGS.md)
 app.register_blueprint(deployment_api, url_prefix=API_PREFIX)  # GET /api/deployment (deployments/README.md)
+app.register_blueprint(bakeoff_api, url_prefix=API_PREFIX)  # blind model bake-off page (docs/genai-review/PROJECT_PLAN.md)
 
 # Register test blueprints (no prefix needed for test routes)
 app.register_blueprint(test_buckets_bp)

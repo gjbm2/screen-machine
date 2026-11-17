@@ -1,0 +1,27 @@
+{
+  "note": "RunPod endpoints for the new worker (worker/endpoints.py saves them; saveEndpoint is a full replace). Secrets are RunPod secret references, never values.",
+  "template": {
+    "name": "sm-worker",
+    "image": "gjbm2/sm-worker:2026-11-18",
+    "registry_auth": "cm88p5oli0001ky083ca8cu1f",
+    "container_disk_gb": 30
+  },
+  "env": {
+    "HF_TOKEN": "{{ RUNPOD_SECRET_hf_token }}",
+    "BUCKET_ENDPOINT_URL": "{{ RUNPOD_SECRET_sm_bucket_url }}",
+    "BUCKET_ACCESS_KEY_ID": "{{ RUNPOD_SECRET_sm_bucket_key_id }}",
+    "BUCKET_SECRET_ACCESS_KEY": "{{ RUNPOD_SECRET_sm_bucket_secret }}",
+    "COMFY_LOG_LEVEL": "INFO",
+    "SM_REQUIRE_MODELS": "1"
+  },
+  "endpoints": {
+    "sm-image": {
+      "id": "1p4605rkgfo392",
+      "gpus": "BLACKWELL_96,AMPERE_80",
+      "workers_max": 2,
+      "idle_timeout": 5,
+      "execution_timeout_s": 1200,
+      "bundle": "https://huggingface.co/gjbm2/sm-image-bundle:main"
+    }
+  }
+}

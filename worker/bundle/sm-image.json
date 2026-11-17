@@ -2,9 +2,36 @@
   "repo": "gjbm2/sm-image-bundle",
   "note": "Files copied server-side from upstream HF repos into one private bundle, laid out like ComfyUI's models/ folder (worker/bundle/build_bundle.py). RunPod Cached Models allows one repo per endpoint and downloads all of it, so list only what the graphs use.",
   "files": [
-    {"src": "Comfy-Org/Qwen-Image-2.1", "path": "diffusion_models/qwen_image_2.1_bf16.safetensors"},
-    {"src": "Comfy-Org/Qwen-Image-2.1", "path": "loras/qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors"},
-    {"src": "Comfy-Org/Qwen-Image-2.1", "path": "text_encoders/qwen3vl_8b_bf16.safetensors"},
-    {"src": "Comfy-Org/Qwen-Image-2.1", "path": "vae/qwen_image_2.1_vae_bf16.safetensors"}
+    {
+      "src": "Comfy-Org/Qwen-Image-2.1",
+      "path": "diffusion_models/qwen_image_2.1_bf16.safetensors"
+    },
+    {
+      "src": "Comfy-Org/Qwen-Image-2.1",
+      "path": "loras/qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors"
+    },
+    {
+      "src": "Comfy-Org/Qwen-Image-2.1",
+      "path": "text_encoders/qwen3vl_8b_bf16.safetensors"
+    },
+    {
+      "src": "Comfy-Org/Qwen-Image-2.1",
+      "path": "vae/qwen_image_2.1_vae_bf16.safetensors"
+    },
+    {
+      "src": "Comfy-Org/Z-Image-Turbo",
+      "path": "split_files/diffusion_models/z_image_turbo_bf16.safetensors",
+      "dest": "diffusion_models/z_image_turbo_bf16.safetensors"
+    },
+    {
+      "src": "Comfy-Org/Z-Image-Turbo",
+      "path": "split_files/text_encoders/qwen_3_4b.safetensors",
+      "dest": "text_encoders/qwen_3_4b.safetensors"
+    },
+    {
+      "src": "Comfy-Org/Z-Image-Turbo",
+      "path": "split_files/vae/ae.safetensors",
+      "dest": "vae/ae.safetensors"
+    }
   ]
 }

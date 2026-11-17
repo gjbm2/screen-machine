@@ -92,6 +92,29 @@ def get_input_text(input_arg):
         return input_arg
 
 # Dictionary replacer
+def worker_output(output, job_id):
+    """The worker's output as {"status": "success", "message": <image URL or path>}. The old worker sends that
+    already; worker-comfyui (worker/) sends {"images": [{"type": "s3_url" | "base64", "data": ...}]} (base64 when no
+    bucket is set: saved under output/ and the local path used)."""
+    if not isinstance(output, dict) or output.get("message"):
+        return output
+    if "images" not in output:
+        return {"status": "error", "message": str(output.get("error") or "the worker sent no image")[:300]}
+    images = output.get("images") or []
+    if not images:
+        return {"status": "error", "message": output.get("error") or "the worker sent no image"}
+    first = images[0]
+    if first.get("type") == "s3_url":
+        return {"status": "success", "message": first.get("data")}
+    import base64
+    ext = os.path.splitext(first.get("filename") or "")[1] or ".png"
+    path = os.path.abspath(os.path.join("output", f"worker_{job_id}{ext}"))
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "wb") as f:
+        f.write(base64.b64decode(first.get("data") or ""))
+    return {"status": "success", "message": path}
+
+
 def update_workflow(json_data, replacements):
     """
     Updates 'inputs' of matching nodes in a workflow JSON based on regex matches
@@ -418,7 +441,8 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
             "batch_size": args_namespace.batch
         },
         r"{{POSITIVE-PROMPT}}": {  
-            "text":  args_namespace.prompt
+            "text":  args_namespace.prompt,
+            "prompt": args_namespace.prompt     # Qwen-Image's own text encoder node
         },
         r"{{NEGATIVE[-_]PROMPT}}": {  
             "text": vars(args_namespace).get("negativeprompt", None)
@@ -433,6 +457,7 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
             "steps": args_namespace.steps,
             "scheduler": vars(args_namespace).get("scheduler", None),
             "sampler":vars(args_namespace).get("sampler", None),
+            "sampler_name": vars(args_namespace).get("sampler", None),
             "width": args_namespace.width,
             "height": args_namespace.height,
             "cfg": vars(args_namespace).get("cfg", None)
@@ -447,6 +472,16 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
             # saves to the bucket without publishing), else no limit
             "width": maxwidth or vars(args_namespace).get("maxwidth") or 6400,
             "height": maxheight or vars(args_namespace).get("maxheight") or 6400
+        },
+        # The new worker's graphs (worker/): render at the model's own size, then one lanczos scale with a centre crop
+        # to the screen (else to the latent's own size, a no-op), and the sampling shift for the latent's size
+        r"{{FINISH}}": {
+            "width": maxwidth or vars(args_namespace).get("maxwidth") or args_namespace.width,
+            "height": maxheight or vars(args_namespace).get("maxheight") or args_namespace.height
+        },
+        r"{{SHIFT}}": {
+            "width": args_namespace.width,
+            "height": args_namespace.height
         },
         r"{{INTERPOLATOR}}": {
             "multiplier": vars(args_namespace).get("interpolate_frames", None)
@@ -564,7 +599,7 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
                 tracker.update(job_id, status="running", message="Starting the workflow")
 
         elif status == "COMPLETED":
-            output = state.get("output")
+            output = worker_output(state.get("output"), job_id)
             final_state = state
             break
 

@@ -60,7 +60,12 @@ echo "worker-comfyui: GPU available — $GPU_CHECK"
 comfy-manager-set-mode offline || echo "worker-comfyui - Could not set ComfyUI-Manager network_mode" >&2
 
 # screen-machine: point ComfyUI at the cached model bundle
-/sm_models.sh || echo "sm: sm_models.sh failed" >&2
+/sm_models.sh
+case $? in
+  0) ;;
+  2) echo "sm: no models on this worker; exiting so it isn't given jobs" >&2; exit 1 ;;
+  *) echo "sm: sm_models.sh failed" >&2 ;;
+esac
 
 echo "worker-comfyui: Starting ComfyUI"
 

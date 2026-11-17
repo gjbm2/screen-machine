@@ -34,6 +34,9 @@ for root in $ROOTS; do
 done
 echo "sm: $n cached model folder(s) registered"
 [ "$n" -gt 0 ] || echo "sm: no cached models found under: $ROOTS"
+missing=$([ "$n" -gt 0 ] || echo 1)
 # what the host gave us, for the logs
 for d in /runpod-volume /runpod/model-store; do [ -d "$d" ] && find "$d" -maxdepth 6 2>/dev/null | head -40 | sed 's/^/sm: ls /'; done
+# SM_REQUIRE_MODELS=1 (the endpoints set it): a worker without its models must not take jobs, so start.sh exits
+[ -n "$missing" ] && [ "${SM_REQUIRE_MODELS:-0}" = "1" ] && exit 2
 exit 0

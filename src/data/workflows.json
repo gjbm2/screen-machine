@@ -556,5 +556,179 @@
         "default": 8
       }
     ]
+  },
+  {
+    "id": "qwen21-turbo.json",
+    "name": "Qwen Image 2.1 Turbo",
+    "input": [
+      "text"
+    ],
+    "description": "Image from text with Qwen-Image-2.1 Turbo (8 steps), rendered natively at up to 4 MP",
+    "runpod_id": "1p4605rkgfo392",
+    "icon": "Palette",
+    "processing_stages": [
+      {
+        "name": "Rendering",
+        "weight": 95
+      },
+      {
+        "name": "Finishing",
+        "weight": 5
+      }
+    ],
+    "alexavisible": false,
+    "note": "New worker (worker/, docs/genai-review/PROJECT_PLAN.md step 1): not offered to the refiners (alexavisible false) until the bake-off picks it.",
+    "params": [
+      {
+        "id": "width",
+        "name": "Width",
+        "type": "select",
+        "options": [
+          "1664",
+          "1920",
+          "2048",
+          "2528",
+          "2752"
+        ],
+        "default": "2752"
+      },
+      {
+        "id": "height",
+        "name": "Height",
+        "type": "select",
+        "options": [
+          "928",
+          "1088",
+          "1152",
+          "1536",
+          "1696"
+        ],
+        "default": "1536"
+      },
+      {
+        "id": "seed",
+        "name": "Random seed",
+        "type": "number"
+      }
+    ]
+  },
+  {
+    "id": "qwen21.json",
+    "name": "Qwen Image 2.1",
+    "input": [
+      "text"
+    ],
+    "description": "Image from text with Qwen-Image-2.1 (full, 40 steps), rendered natively at up to 4 MP",
+    "runpod_id": "1p4605rkgfo392",
+    "icon": "Palette",
+    "processing_stages": [
+      {
+        "name": "Rendering",
+        "weight": 95
+      },
+      {
+        "name": "Finishing",
+        "weight": 5
+      }
+    ],
+    "alexavisible": false,
+    "note": "New worker (worker/, docs/genai-review/PROJECT_PLAN.md step 1): not offered to the refiners (alexavisible false) until the bake-off picks it.",
+    "params": [
+      {
+        "id": "steps",
+        "name": "Steps",
+        "type": "number",
+        "default": 40
+      },
+      {
+        "id": "width",
+        "name": "Width",
+        "type": "select",
+        "options": [
+          "1664",
+          "1920",
+          "2048",
+          "2528",
+          "2752"
+        ],
+        "default": "2752"
+      },
+      {
+        "id": "height",
+        "name": "Height",
+        "type": "select",
+        "options": [
+          "928",
+          "1088",
+          "1152",
+          "1536",
+          "1696"
+        ],
+        "default": "1536"
+      },
+      {
+        "id": "seed",
+        "name": "Random seed",
+        "type": "number"
+      }
+    ]
+  },
+  {
+    "id": "zimage-turbo.json",
+    "name": "Z-Image Turbo",
+    "input": [
+      "text"
+    ],
+    "description": "Photographic image from text with Z-Image Turbo (8 steps)",
+    "runpod_id": "1p4605rkgfo392",
+    "icon": "Camera",
+    "processing_stages": [
+      {
+        "name": "Rendering",
+        "weight": 95
+      },
+      {
+        "name": "Finishing",
+        "weight": 5
+      }
+    ],
+    "alexavisible": false,
+    "note": "New worker (worker/, docs/genai-review/PROJECT_PLAN.md step 1): not offered to the refiners (alexavisible false) until the bake-off picks it.",
+    "params": [
+      {
+        "id": "steps",
+        "name": "Steps",
+        "type": "number",
+        "default": 8
+      },
+      {
+        "id": "width",
+        "name": "Width",
+        "type": "select",
+        "options": [
+          "1024",
+          "1536",
+          "1920",
+          "2048"
+        ],
+        "default": "2048"
+      },
+      {
+        "id": "height",
+        "name": "Height",
+        "type": "select",
+        "options": [
+          "1024",
+          "1088",
+          "1152"
+        ],
+        "default": "1152"
+      },
+      {
+        "id": "seed",
+        "name": "Random seed",
+        "type": "number"
+      }
+    ]
   }
 ]
