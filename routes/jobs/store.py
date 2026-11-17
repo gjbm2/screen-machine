@@ -96,6 +96,12 @@ class JobStore:
             rows = self._db.execute(sql, args).fetchall()
         return [json.loads(r[0]) for r in rows]
 
+    def first_created(self):
+        """When the oldest job kept was created, or None."""
+        with self._lock:
+            row = self._db.execute("SELECT MIN(created_at) FROM jobs").fetchone()
+        return row[0] if row else None
+
     def created_between(self, start, end):
         """Every job created in [start, end), oldest first (for costing against RunPod's bill)."""
         with self._lock:

@@ -105,6 +105,8 @@ export interface CostGroup {
 export interface JobCosts {
   days: number;
   billed_gbp: number;
+  /** billed in the period but before the job records began */
+  before_history_gbp: number;
   jobs_gbp: number;
   unattributed_gbp: number;
   images: number;

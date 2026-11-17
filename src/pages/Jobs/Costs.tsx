@@ -124,6 +124,11 @@ export function Costs() {
                     {money(costs.unattributed_gbp)} of it was GPU time no job used (tests, or a worker that started for nothing).
                   </p>
                 )}
+                {costs.before_history_gbp >= 0.05 && (
+                  <p className="text-[14px] text-muted-foreground">
+                    {money(costs.before_history_gbp)} of it was before the job records began, so it isn't split by image.
+                  </p>
+                )}
                 {pending > 0 && (
                   <p className="text-[14px] text-muted-foreground">
                     {pending} recent {pending === 1 ? "job is" : "jobs are"} costed from {pending === 1 ? "its" : "their"} own timings until RunPod's bill

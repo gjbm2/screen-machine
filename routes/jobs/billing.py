@@ -103,6 +103,10 @@ def summary(tracker, days=30, now=None):
     start = now - days * 24 * HOUR
     jobs = [j for j in tracker.store.created_between(start, now) if j.get("cost_gbp") is not None]
     hours = tracker.store.billing_hours(start - start % HOUR, now)
+    # hours before the job history began can't be matched to jobs: reported apart, not as unattributed
+    history_from = tracker.store.first_created() or now
+    early = [r for r in hours if r[1] + HOUR <= history_from]
+    hours = [r for r in hours if r[1] + HOUR > history_from]
 
     def gbp(x):
         return round(x * FX_USD_TO_GBP, 2)
@@ -138,7 +142,8 @@ def summary(tracker, days=30, now=None):
     attributed = sum(e["attributed_usd"] for e in by_endpoint.values())
     return {
         "days": days,
-        "billed_gbp": gbp(billed),                 # what RunPod billed in the period (hours read so far)
+        "billed_gbp": gbp(billed + sum(r[2] for r in early)),   # what RunPod billed in the period (hours read so far)
+        "before_history_gbp": gbp(sum(r[2] for r in early)),   # billed before the job records began (27 Oct)
         "jobs_gbp": round(sum(j["cost_gbp"] for j in jobs), 2),
         "unattributed_gbp": gbp(billed - attributed),
         "images": len(jobs),
