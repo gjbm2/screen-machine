@@ -3,7 +3,12 @@
 worker/bakeoff/run.py makes every prompt on every contender and writes a round file in
 ~/.local/state/screen-machine/bakeoff/<round>.json; this serves the page that shows each prompt's pictures as A, B, C
 in a shuffled order, takes the owner's pick for each, can put a picture on the devtest screen, and reveals the models
-and costs once every prompt has a pick."""
+and costs once every prompt has a pick.
+
+A round with "kind": "score" is a scorecard instead (step 3g: is what was commissioned what was drawn?): each commission
+went through the app as a person would send it (refiner and model chosen by the app), and the owner scores every
+picture 1-5 for following the request and 1-5 for anatomy, with a note; models, refined prompts and costs are shown,
+and the summary averages the scores by model and by section."""
 import json
 import os
 import threading
@@ -69,10 +74,61 @@ def _public(data):
     return out
 
 
+def _scorecard(data):
+    """A score round as the page sees it: everything shown, plus averages by model and by section."""
+    scores = data.get("scores", {})
+    out = {"round": data["round"], "kind": "score", "scores": scores, "lanes": []}
+    sums = {"workflow": {}, "lane": {}}
+    for lane in data["lanes"]:
+        lo = {"lane": lane["lane"], "items": []}
+        for it in lane["items"]:
+            entries = []
+            for e in it["entries"]:
+                entries.append({k: e.get(k) for k in ("key", "image", "error", "workflow", "refined_prompt", "cost_gbp",
+                                                      "seconds")} | {"ok": bool(e.get("image"))})
+                sc = scores.get(f"{it['id']}/{e['key']}") or {}
+                for group, name in (("workflow", e.get("workflow") or "?"), ("lane", lane["lane"])):
+                    t = sums[group].setdefault(name, {"n": 0, "adherence": 0, "anatomy": 0, "an_n": 0})
+                    if sc.get("adherence"):
+                        t["n"] += 1
+                        t["adherence"] += sc["adherence"]
+                    if sc.get("anatomy"):
+                        t["an_n"] += 1
+                        t["anatomy"] += sc["anatomy"]
+            lo["items"].append({"id": it["id"], "prompt": it["prompt"], "entries": entries})
+        out["lanes"].append(lo)
+    out["summary"] = {g: {k: {"scored": v["n"], "adherence": round(v["adherence"] / v["n"], 2) if v["n"] else None,
+                              "anatomy": round(v["anatomy"] / v["an_n"], 2) if v["an_n"] else None}
+                          for k, v in t.items()} for g, t in sums.items()}
+    return out
+
+
+def _view(data):
+    return _scorecard(data) if data.get("kind") == "score" else _public(data)
+
+
 @bakeoff_api.route("/bakeoff/<round_id>/data", methods=["GET"])
 def round_data(round_id):
     data = load(round_id)
-    return (jsonify(_public(data)), 200) if data else (jsonify({"error": "no such round"}), 404)
+    return (jsonify(_view(data)), 200) if data else (jsonify({"error": "no such round"}), 404)
+
+
+@bakeoff_api.route("/bakeoff/<round_id>/score", methods=["POST"])
+def score(round_id):
+    """{item, key, adherence?, anatomy?, note?}: merges into that picture's score."""
+    body = request.get_json(silent=True) or {}
+    with _lock:
+        data = load(round_id)
+        if not data:
+            return jsonify({"error": "no such round"}), 404
+        sc = data.setdefault("scores", {}).setdefault(f"{body.get('item')}/{body.get('key')}", {})
+        for k in ("adherence", "anatomy"):
+            if k in body:
+                sc[k] = int(body[k]) if body[k] in (1, 2, 3, 4, 5, "1", "2", "3", "4", "5") else None
+        if "note" in body:
+            sc["note"] = str(body["note"])[:1000]
+        save(round_id, data)
+    return jsonify(_view(data))
 
 
 @bakeoff_api.route("/bakeoff/<round_id>/pick", methods=["POST"])
@@ -107,7 +163,9 @@ def show(round_id):
 
 @bakeoff_api.route("/bakeoff/<round_id>", methods=["GET"])
 def page(round_id):
-    return Response(PAGE.replace("__ROUND__", json.dumps(round_id)), mimetype="text/html")
+    data = load(round_id) or {}
+    html = SCORE_PAGE if data.get("kind") == "score" else PAGE
+    return Response(html.replace("__ROUND__", json.dumps(round_id)), mimetype="text/html")
 
 
 PAGE = """<!doctype html>
@@ -153,5 +211,58 @@ function render(){const L=document.getElementById('lanes');let n=0,p=0;
  if(state.tally){s+='<h2>Result</h2>'+Object.entries(state.tally).map(([lane,t])=>`<p class="muted">${esc(lane)}</p><table><tr><th>Model</th><th>Wins</th><th>Shown</th><th>GPU cost</th></tr>`+
   Object.entries(t).sort((a,b)=>b[1].wins-a[1].wins).map(([w,v])=>`<tr><td>${esc(w.replace('.json',''))}</td><td>${v.wins}</td><td>${v.shown}</td><td>£${v.cost_gbp.toFixed(2)}</td></tr>`).join('')+'</table>').join('')}
  document.getElementById('summary').innerHTML=s}
+load();
+</script></body></html>"""
+
+
+SCORE_PAGE = """<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Commission scorecard</title>
+<style>
+:root{--bg:#faf7f2;--card:#fff;--ink:#2b2622;--muted:#7a7068;--line:#e7e0d6;--accent:#0f6b63;--on:#e6f3f1;--bad:#b4442c}
+@media (prefers-color-scheme:dark){:root{--bg:#1c1a18;--card:#262320;--ink:#efe9e1;--muted:#a59b90;--line:#3a3530;--accent:#5cc2b5;--on:#1f3532;--bad:#e07a5f}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,Segoe UI,sans-serif}
+main{max-width:1100px;margin:0 auto;padding:16px}h1{font-size:22px;margin:8px 0 4px}h2{font-size:18px;margin:28px 0 8px}
+.muted{color:var(--muted)}.item{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:12px;margin:12px 0}
+.req{font-weight:600;margin:0 0 10px}.grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+figure{margin:0;border:1px solid var(--line);border-radius:12px;padding:8px}
+img{width:100%;border-radius:8px;display:block;cursor:zoom-in;background:var(--line);aspect-ratio:16/9;object-fit:contain}
+.row{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:8px}.lbl{width:84px;font-size:14px;color:var(--muted)}
+button{font:inherit;min-height:40px;min-width:40px;border-radius:10px;border:1px solid var(--line);background:var(--card);color:var(--ink);padding:0 10px;cursor:pointer}
+button.on{background:var(--accent);border-color:var(--accent);color:#fff}
+textarea{width:100%;font:inherit;font-size:14px;border:1px solid var(--line);border-radius:10px;padding:6px;background:var(--bg);color:var(--ink);margin-top:8px}
+details{font-size:13px;color:var(--muted);margin-top:6px}.meta{font-size:13px;color:var(--muted)}.err{color:var(--bad);font-size:13px}
+table{border-collapse:collapse;width:100%;font-size:14px;margin-bottom:12px}td,th{border-bottom:1px solid var(--line);padding:6px 4px;text-align:left}
+#zoom{position:fixed;inset:0;background:#000;display:none;align-items:center;justify-content:center;z-index:9}
+#zoom img{width:auto;max-width:none;aspect-ratio:auto;object-fit:none;cursor:zoom-out}#zoom.on{display:flex;overflow:auto}
+</style></head><body><main>
+<h1>Commission scorecard</h1>
+<p class="muted">Each request went through the generator as you would send it (the app chose the refiner and the model).
+Score every picture: <b>Follows</b> = did it draw what was asked (5 = exactly); <b>Anatomy</b> = are the bodies right
+(5 = flawless; 1 = wrong sex organs, extra or fused limbs). Add a note for anything specific. Tap a picture for full size.</p>
+<div id="summary"></div><div id="lanes">Loading…</div></main>
+<div id="zoom" onclick="this.className=''"><img alt=""></div>
+<script>
+const ROUND=__ROUND__;const api=p=>`/api/bakeoff/${ROUND}${p}`;let state=null;
+async function load(){const r=await fetch(api('/data'));state=await r.json();render()}
+async function post(body){const r=await fetch(api('/score'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});state=await r.json();summary()}
+function set(item,key,k,v,btn){post({item,key,[k]:v});btn.parentNode.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===btn))}
+async function tv(item,key,btn){btn.textContent='Sending…';const r=await fetch(api('/show'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({item,key})});const j=await r.json();btn.textContent=j.ok?'On the TV ✓':'Failed'}
+function zoom(src){const z=document.getElementById('zoom');z.querySelector('img').src=src;z.className='on'}
+function esc(s){return String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}
+function scale(item,key,k,cur){return [1,2,3,4,5].map(v=>`<button class="${cur===v?'on':''}" onclick="set('${item}','${key}','${k}',${v},this)">${v}</button>`).join('')}
+function render(){document.getElementById('lanes').innerHTML=state.lanes.map(l=>`<h2>${esc(l.lane)}</h2>`+l.items.map(it=>
+ `<div class="item"><p class="req">${esc(it.prompt)}</p><div class="grid">`+it.entries.map(e=>{const sc=state.scores[it.id+'/'+e.key]||{};
+ return `<figure>${e.ok?`<img loading="lazy" src="${esc(e.image)}" onclick="zoom(this.src)" alt="">`:`<div class="err">${esc(e.error||'Not made')}</div>`}
+ <div class="meta">${esc((e.workflow||'').replace('.json',''))}${e.cost_gbp!=null?` · £${e.cost_gbp.toFixed(3)}`:''}${e.seconds?` · ${Math.round(e.seconds)} s`:''}</div>
+ ${e.ok?`<div class="row"><span class="lbl">Follows</span>${scale(it.id,e.key,'adherence',sc.adherence)}</div>
+ <div class="row"><span class="lbl">Anatomy</span>${scale(it.id,e.key,'anatomy',sc.anatomy)}</div>
+ <textarea rows="2" placeholder="Note (optional)" onchange="post({item:'${it.id}',key:'${e.key}',note:this.value})">${esc(sc.note||'')}</textarea>
+ <div class="row"><button onclick="tv('${it.id}','${e.key}',this)">On the TV</button></div>
+ <details><summary>Prompt the model got</summary>${esc(e.refined_prompt||'')}</details>`:''}</figure>`}).join('')+'</div></div>').join('')).join('');summary()}
+function table(t,head){return `<table><tr><th>${head}</th><th>Scored</th><th>Follows</th><th>Anatomy</th></tr>`+Object.entries(t).map(([k,v])=>
+ `<tr><td>${esc(k.replace('.json',''))}</td><td>${v.scored}</td><td>${v.adherence??'–'}</td><td>${v.anatomy??'–'}</td></tr>`).join('')+'</table>'}
+function summary(){let n=0,d=0;state.lanes.forEach(l=>l.items.forEach(it=>it.entries.forEach(e=>{if(e.ok){n++;const s=state.scores[it.id+'/'+e.key];if(s&&s.adherence&&s.anatomy)d++}})));
+ document.getElementById('summary').innerHTML=`<p><b>${d} of ${n}</b> scored.</p>`+(d?table(state.summary.workflow,'Model')+table(state.summary.lane,'Section'):'')}
 load();
 </script></body></html>"""

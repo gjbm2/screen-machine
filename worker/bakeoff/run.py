@@ -3,6 +3,9 @@ model gets the same words), published to devtest. Writes ~/.local/state/screen-m
 page at /api/bakeoff/<round> (routes/bakeoff_api.py). Re-running fills in only what is missing.
 
     python worker/bakeoff/run.py worker/bakeoff/round1.json [--app http://127.0.0.1:5000] [--parallel 3]
+
+A spec with "kind": "score" makes a scorecard (routes/bakeoff_api.py): each lane lists prompts, and every prompt is sent
+"seeds" times exactly as a person would (no workflow, no refiner: the app chooses), keys 1, 2, ...
 """
 import argparse
 import hashlib
@@ -24,9 +27,20 @@ lock = threading.Lock()
 
 def build(spec, data):
     """The round's items, keeping what an earlier run made. Keys A/B/C are shuffled per prompt, stably."""
-    old = {(it["id"], e["workflow"]): e for lane in (data or {}).get("lanes", []) for it in lane["items"]
-           for e in it["entries"]}
+    score = spec.get("kind") == "score"
+    old = {(it["id"], e["key"] if score else e["workflow"]): e for lane in (data or {}).get("lanes", [])
+           for it in lane["items"] for e in it["entries"]}
     lanes = []
+    if spec.get("kind") == "score":
+        for lane in spec["lanes"]:
+            items = []
+            for prompt in lane["prompts"]:
+                iid = hashlib.sha1(prompt.encode()).hexdigest()[:10]
+                entries = [dict(old.get((iid, str(k)), {}), key=str(k), workflow=None)
+                           for k in range(1, spec.get("seeds", 2) + 1)]
+                items.append({"id": iid, "prompt": prompt, "entries": entries})
+            lanes.append({"lane": lane["lane"], "items": items})
+        return {"round": spec["round"], "kind": "score", "lanes": lanes, "scores": (data or {}).get("scores", {})}
     for lane in spec["lanes"]:
         items = []
         for prompt in lane["prompts"]:
@@ -40,8 +54,9 @@ def build(spec, data):
 
 
 def make(app, round_id, data, item, entry):
-    body = {"prompt": item["prompt"], "workflow": entry["workflow"], "refiner": "none",
-            "params": {"publish_destination": "devtest"}}
+    body = {"prompt": item["prompt"], "workflow": entry["workflow"], "params": {"publish_destination": "devtest"}}
+    if entry["workflow"]:
+        body["refiner"] = "none"
     t0 = time.time()
     try:
         r = requests.post(f"{app}/api/generate-image", data={"data": json.dumps(body)}, timeout=1800)
@@ -53,6 +68,8 @@ def make(app, round_id, data, item, entry):
         fn = job.get("published_path")
         entry.update(job_id=img.get("job_id"), filename=fn, image=f"/api/buckets/devtest/raw/{fn}" if fn else img.get("url"),
                      cost_gbp=job.get("cost_gbp"), seconds=round(time.time() - t0, 1), error=None)
+        if data.get("kind") == "score":
+            entry.update(workflow=job.get("workflow"), refined_prompt=job.get("refined_prompt"))
     except Exception as e:
         entry.update(error=str(e)[:300], image=None)
     with lock:
