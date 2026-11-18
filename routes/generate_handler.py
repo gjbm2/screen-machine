@@ -543,7 +543,9 @@ def _refine(data, prompt, workflow, images, corrected_refiner, images_required, 
         refiner_entry = next((r for r in _load_json_once("refiner", "refiners.json")
                               if r.get("system_prompt") == corrected_refiner), {})
         if refined_output and not refiner_entry.get("censored"):
-            from routes.prompt_guard import guard
+            from routes.prompt_guard import guard, trim_figure
+            if refined_output.get("focus") == "figure":
+                refined_prompt = trim_figure(refined_prompt)
             refined_prompt, lost = guard(prompt, refined_prompt, refined_output.get("must_keep"))
             if lost:
                 utils.logger.warning(f"[handle_image_generation] the refiner dropped {lost}; the request's own words "

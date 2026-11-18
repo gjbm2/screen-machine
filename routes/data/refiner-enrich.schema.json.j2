@@ -13,12 +13,17 @@
         "items": {"type": "string"},
         "description": "The exact words from the request that must appear in full_prompt: every named person, body state (nude, naked), injury, blood, weapon, act, and any text to show. Empty when there are none."
       },
+      "focus": {
+        "type": "string",
+        "enum": ["figure", "scene"],
+        "description": "figure: the picture is chiefly a figure's pose, an act between people, an injury or violence to a body, or shows a named real person (also as a caricature or as another character); scene: anything else (landscapes, interiors, objects, crowds, still lifes)."
+      },
       "workflow": {
         "type": "string",
         "enum": {{ ALEXA_WORKFLOWS | tojson }},
         "description": "The selected image generation workflow. Choose from text-to-image, image-to-video, or other modes depending on prompt context."
       }
     },
-    "required": ["full_prompt", "must_keep", "workflow"]
+    "required": ["full_prompt", "must_keep", "focus", "workflow"]
   }
 }
