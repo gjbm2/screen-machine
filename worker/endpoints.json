@@ -34,12 +34,12 @@
     },
     "sm-zimage": {
       "template": "sm-worker-zimage",
-      "gpus": "BLACKWELL_96,ADA_80_PRO,HOPPER_141",
+      "gpus": "ADA_32_PRO,BLACKWELL_96,ADA_80_PRO,HOPPER_141",
       "workers_max": 3,
       "idle_timeout": 5,
       "execution_timeout_s": 1200,
       "bundle": "https://huggingface.co/gjbm2/sm-zimage-bundle:main",
-      "note": "One model per endpoint (18 Nov): a worker FlashBoot resumes always has Z-Image loaded; no idle dwell. --disable-dynamic-vram so a resumed worker still holds the weights in GPU memory (DynamicVRAM re-reads them); SM_PREFETCH reads the weights into RAM while ComfyUI boots.",
+      "note": "One model per endpoint (18 Nov): a worker FlashBoot resumes always has Z-Image loaded; no idle dwell. --disable-dynamic-vram so a resumed worker still holds the weights in GPU memory (DynamicVRAM re-reads them); SM_PREFETCH reads the weights into RAM while ComfyUI boots. RTX 5090 first (18 Nov probe: resumed 13 s with the model still loaded, cold 38 s, half the PRO 6000's price; PRO 6000 hosts were throttled most of the evening).",
       "id": "bm00rlfpej1cyj",
       "image": "gjbm2/sm-worker:2026-11-18-3",
       "env": {
