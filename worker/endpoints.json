@@ -17,20 +17,11 @@
   "endpoints": {
     "sm-image": {
       "id": "1p4605rkgfo392",
-      "gpus": "BLACKWELL_96,AMPERE_80",
+      "gpus": "BLACKWELL_96,AMPERE_80,ADA_80_PRO,HOPPER_141",
       "workers_max": 3,
       "idle_timeout": 5,
       "execution_timeout_s": 1200,
-      "bundle": "https://huggingface.co/gjbm2/sm-image-bundle:d624f8b4869a4cce0d627eb735656aa6117d2a0d"
-    },
-    "sm-eval": {
-      "gpus": "BLACKWELL_96,AMPERE_80",
-      "workers_max": 2,
-      "idle_timeout": 5,
-      "execution_timeout_s": 1200,
-      "bundle": "https://huggingface.co/gjbm2/sm-image-bundle:main",
-      "note": "Bake-off endpoint: tries a newer bundle without touching sm-image (which the TVs use, pinned to its commit).",
-      "id": "8qsre6gme7s90l"
+      "bundle": "https://huggingface.co/gjbm2/sm-image-bundle:3bfda65d9f89bbb8eb5e0f8092a510095af3eb14"
     }
   }
 }

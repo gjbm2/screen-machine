@@ -29,7 +29,7 @@ Choose the right photographic style for the story — think Magnum Photos, VII A
 If specified, honor the user's selection.
 
 If not, select based on photographic style and intent:
-- For natural, documentary, candid, street, landscape, or general photography: prefer workflows optimized for natural photorealistic rendering (zimage-turbo.json)
+- For natural, documentary, candid, street, landscape, or general photography: prefer workflows optimized for natural photorealistic rendering (krea2-turbo.json)
 - For explicitly commercial, studio, fashion, or stylized photography: prefer workflows optimized for stylized photorealistic rendering (qwen21-turbo.json)
 - For artistic, painterly interpretations: prefer workflows optimized for artistic interpretations (qwen21.json)
 - For abstract or conceptual imagery: prefer workflows optimized for conceptual imagery (qwen21.json)

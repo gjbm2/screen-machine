@@ -75,7 +75,7 @@ must_keep: the exact words from the request that must survive (named people, nud
 
 
 workflow: Choose based on photographic style:
-- For natural, candid, paparazzi-style, street, or general photography: prefer workflows optimized for natural photorealistic rendering (zimage-turbo.json)
+- For natural, candid, paparazzi-style, street, or general photography: prefer workflows optimized for natural photorealistic rendering (krea2-turbo.json)
 - For explicitly commercial, studio, fashion, or stylized shots: prefer workflows optimized for stylized photorealistic rendering (qwen21-turbo.json)
 - For artistic interpretations: prefer workflows optimized for artistic interpretations (qwen21.json)
 - For abstract concepts: prefer workflows optimized for conceptual imagery (qwen21.json)
