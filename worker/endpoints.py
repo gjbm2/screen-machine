@@ -24,10 +24,11 @@ def env_list():
     return [{"key": k, "value": v} for k, v in cfg["env"].items()]
 
 
-def save_template(endpoint_id=None):
+def save_template(endpoint_id=None, name=None):
     """Save the worker template. An existing endpoint keeps the template it was created with (RunPod ignores a new
-    templateId on saveEndpoint), so that template is the one updated; otherwise the one named in endpoints.json."""
-    t = cfg["template"]
+    templateId on saveEndpoint), so that template is the one updated; otherwise the one named (the endpoint's own
+    "template" name, else endpoints.json's), so a new endpoint never re-saves a template others run on."""
+    t = dict(cfg["template"], name=name or cfg["template"]["name"])
     tid = None
     if endpoint_id:
         tid = gql('query($id: String!) { myself { endpoint(id: $id) { templateId } } }',
@@ -82,4 +83,4 @@ def save_endpoint(name, e, template_id):
 if __name__ == "__main__":
     for name in sys.argv[1:] or cfg["endpoints"]:
         e = cfg["endpoints"][name]
-        save_endpoint(name, e, save_template(e.get("id")))
+        save_endpoint(name, e, save_template(e.get("id"), e.get("template")))

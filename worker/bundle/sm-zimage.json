@@ -1,0 +1,9 @@
+{
+  "repo": "gjbm2/sm-zimage-bundle",
+  "note": "Z-Image Turbo only, for an endpoint that runs one model (worker/bundle/build_bundle.py). A worker resumed by FlashBoot then always has its model loaded, and a fresh host fetches ~20 GB, not 73.",
+  "files": [
+    {"src": "Comfy-Org/Z-Image-Turbo", "path": "split_files/diffusion_models/z_image_turbo_bf16.safetensors", "dest": "diffusion_models/z_image_turbo_bf16.safetensors"},
+    {"src": "Comfy-Org/Z-Image-Turbo", "path": "split_files/text_encoders/qwen_3_4b.safetensors", "dest": "text_encoders/qwen_3_4b.safetensors"},
+    {"src": "Comfy-Org/Z-Image-Turbo", "path": "split_files/vae/ae.safetensors", "dest": "vae/ae.safetensors"}
+  ]
+}

@@ -17,20 +17,30 @@
   "endpoints": {
     "sm-image": {
       "id": "1p4605rkgfo392",
-      "gpus": "BLACKWELL_96,AMPERE_80,ADA_80_PRO,HOPPER_141",
+      "gpus": "BLACKWELL_96,ADA_80_PRO,HOPPER_141",
       "workers_max": 3,
       "idle_timeout": 5,
       "execution_timeout_s": 1200,
       "bundle": "https://huggingface.co/gjbm2/sm-image-bundle:3bfda65d9f89bbb8eb5e0f8092a510095af3eb14"
     },
     "sm-live": {
-      "gpus": "BLACKWELL_96,AMPERE_80,ADA_80_PRO,HOPPER_141",
+      "gpus": "BLACKWELL_96,ADA_80_PRO,HOPPER_141",
       "workers_max": 2,
       "idle_timeout": 120,
       "execution_timeout_s": 1200,
       "bundle": "https://huggingface.co/gjbm2/sm-image-bundle:3bfda65d9f89bbb8eb5e0f8092a510095af3eb14",
       "note": "Interactive (generator page, Alexa): stays warm 2 min after a job or a warm-up, so the next picture starts at once. sm-image (TVs, schedules) keeps a 5 s idle timeout.",
       "id": "v0lfqu2owx3lc4"
+    },
+    "sm-zimage": {
+      "template": "sm-worker-zimage",
+      "gpus": "BLACKWELL_96,ADA_80_PRO,HOPPER_141",
+      "workers_max": 2,
+      "idle_timeout": 5,
+      "execution_timeout_s": 1200,
+      "bundle": "https://huggingface.co/gjbm2/sm-zimage-bundle:main",
+      "note": "One model per endpoint (18 Nov): a worker FlashBoot resumes always has Z-Image loaded; no idle dwell.",
+      "id": "bm00rlfpej1cyj"
     }
   }
 }
