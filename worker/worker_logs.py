@@ -18,8 +18,9 @@ def headers():
     return {"Authorization": f"Bearer {os.environ['RUNPOD_API_KEY']}"}
 
 
-def fetch(endpoint, wid, since, quiet_s=8, max_s=120):
-    """Lines until the stream has been quiet for quiet_s (the backfill is done) or max_s passed."""
+def fetch(endpoint, wid, since, quiet_s=30, max_s=120):
+    """Lines until the stream has been quiet for quiet_s or max_s passed. The backfill arrives in bursts with pauses
+    between them, and only lasts while the worker exists (a removed container's lines are gone)."""
     params = {"since": since} if since else {"tail": 5000}
     lines, done = [], threading.Event()
 
