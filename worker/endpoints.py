@@ -21,8 +21,10 @@ def gql(query, variables):
 
 
 def env_list(e=None):
-    """The shared env plus the endpoint's own "env" (e.g. COMFY_ARGS, SM_PREFETCH for a one-model endpoint)."""
-    return [{"key": k, "value": v} for k, v in {**cfg["env"], **((e or {}).get("env") or {})}.items()]
+    """The shared env plus the endpoint's own "env" (e.g. COMFY_ARGS, SM_PREFETCH for a one-model endpoint). An
+    endpoint that is not the ComfyUI worker (e.g. sm-judge on RunPod's vLLM worker) sets "shared_env": false."""
+    shared = cfg["env"] if (e or {}).get("shared_env", True) else {}
+    return [{"key": k, "value": v} for k, v in {**shared, **((e or {}).get("env") or {})}.items()]
 
 
 def save_template(endpoint_id=None, name=None, e=None):
@@ -67,7 +69,7 @@ def save_endpoint(name, e, template_id):
     inp = {"name": name, "templateId": template_id, "gpuIds": e["gpus"], "gpuCount": 1, "workersMin": e.get("workers_min", 0),
            "workersMax": e["workers_max"], "idleTimeout": e["idle_timeout"], "scalerType": "QUEUE_DELAY",
            "scalerValue": e.get("scaler_s", 4), "executionTimeoutMs": e["execution_timeout_s"] * 1000,
-           "flashBootType": "FLASHBOOT", "locations": "", "networkVolumeIds": [],
+           "flashBootType": "FLASHBOOT" if e.get("flashboot", True) else "OFF", "locations": "", "networkVolumeIds": [],
            "modelReferences": [pinned(e["bundle"])] if e.get("bundle") else [], "env": env_list(e)}
     if e.get("id"):
         inp["id"] = e["id"]
