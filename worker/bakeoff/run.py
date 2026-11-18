@@ -13,16 +13,14 @@ import json
 import os
 import random
 import sys
-import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
 
 import requests
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", ".."))
-from routes.bakeoff_api import load, save  # noqa: E402
+from routes.bakeoff_api import load, save, update  # noqa: E402
 
-lock = threading.Lock()
 
 
 def build(spec, data):
@@ -72,8 +70,13 @@ def make(app, round_id, data, item, entry):
             entry.update(workflow=job.get("workflow"), refined_prompt=job.get("refined_prompt"))
     except Exception as e:
         entry.update(error=str(e)[:300], image=None)
-    with lock:
-        save(round_id, data)
+    with update(round_id) as cur:      # merge this picture into the file; never write a stale copy over scores
+        for c_lane, lane in zip(cur["lanes"], data["lanes"]):
+            for c_it, it in zip(c_lane["items"], lane["items"]):
+                if it is item:
+                    for c_e in c_it["entries"]:
+                        if c_e["key"] == entry["key"]:
+                            c_e.update(entry)
     print(f"{entry['workflow']:<24} {entry.get('seconds')}s {entry.get('cost_gbp')} {entry.get('error') or ''} | {item['prompt'][:50]}",
           flush=True)
 

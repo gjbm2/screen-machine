@@ -9,6 +9,8 @@ A round with "kind": "score" is a scorecard instead (step 3g: is what was commis
 went through the app as a person would send it (refiner and model chosen by the app), and the owner scores every
 picture 1-5 for following the request and 1-5 for anatomy, with a note; models, refined prompts and costs are shown,
 and the summary averages the scores by model and by section."""
+import contextlib
+import fcntl
 import json
 import os
 import threading
@@ -37,10 +39,23 @@ def load(round_id):
 def save(round_id, data):
     p = _path(round_id)
     os.makedirs(STATE_DIR, exist_ok=True)
-    tmp = p + ".tmp"
+    tmp = f"{p}.{os.getpid()}.{threading.get_ident()}.tmp"
     with open(tmp, "w") as f:
         json.dump(data, f, indent=1)
     os.replace(tmp, p)
+
+
+@contextlib.contextmanager
+def update(round_id):
+    """Read-modify-write of a round under a file lock shared by the app and worker/bakeoff/run.py, so neither
+    overwrites the other's changes (18 Nov: the runner's stale copy wiped the owner's scores). Yields the round."""
+    os.makedirs(STATE_DIR, exist_ok=True)
+    with _lock, open(_path(round_id) + ".lock", "w") as lk:
+        fcntl.flock(lk, fcntl.LOCK_EX)
+        data = load(round_id)
+        yield data
+        if data is not None:
+            save(round_id, data)
 
 
 def _public(data):
@@ -117,8 +132,7 @@ def round_data(round_id):
 def score(round_id):
     """{item, key, adherence?, anatomy?, note?}: merges into that picture's score."""
     body = request.get_json(silent=True) or {}
-    with _lock:
-        data = load(round_id)
+    with update(round_id) as data:
         if not data:
             return jsonify({"error": "no such round"}), 404
         sc = data.setdefault("scores", {}).setdefault(f"{body.get('item')}/{body.get('key')}", {})
@@ -127,19 +141,16 @@ def score(round_id):
                 sc[k] = int(body[k]) if body[k] in (1, 2, 3, 4, 5, "1", "2", "3", "4", "5") else None
         if "note" in body:
             sc["note"] = str(body["note"])[:1000]
-        save(round_id, data)
     return jsonify(_view(data))
 
 
 @bakeoff_api.route("/bakeoff/<round_id>/pick", methods=["POST"])
 def pick(round_id):
     body = request.get_json(silent=True) or {}
-    with _lock:
-        data = load(round_id)
+    with update(round_id) as data:
         if not data:
             return jsonify({"error": "no such round"}), 404
         data.setdefault("picks", {})[str(body.get("item"))] = str(body.get("key"))
-        save(round_id, data)
     return jsonify(_public(data))
 
 
@@ -245,7 +256,8 @@ Score every picture: <b>Follows</b> = did it draw what was asked (5 = exactly); 
 <script>
 const ROUND=__ROUND__;const api=p=>`/api/bakeoff/${ROUND}${p}`;let state=null;
 async function load(){const r=await fetch(api('/data'));state=await r.json();render()}
-async function post(body){const r=await fetch(api('/score'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});state=await r.json();summary()}
+async function post(body){let ok=false;try{const r=await fetch(api('/score'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});if(r.ok){state=await r.json();ok=true}}catch(e){}
+ if(ok)summary();else document.getElementById('summary').innerHTML='<p class="err"><b>Not saved</b> — the last answer did not reach the server. Tap it again.</p>'}
 function set(item,key,k,v,btn){post({item,key,[k]:v});btn.parentNode.querySelectorAll('button').forEach(b=>b.classList.toggle('on',b===btn))}
 async function tv(item,key,btn){btn.textContent='Sending…';const r=await fetch(api('/show'),{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({item,key})});const j=await r.json();btn.textContent=j.ok?'On the TV ✓':'Failed'}
 function zoom(src){const z=document.getElementById('zoom');z.querySelector('img').src=src;z.className='on'}
