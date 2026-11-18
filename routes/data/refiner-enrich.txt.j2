@@ -32,6 +32,8 @@ Workflow selection
   - "draw", "watercolor", "watercolour", "painting" → prefer workflows optimized for artistic interpretations (qwen21.json)
   - "dreamlike", "abstract", "surreal" → prefer workflows optimized for conceptual imagery (qwen21.json)
   - words, a sign, a caption or any lettering that must read exactly → qwen21-turbo.json
+  - a named person's own face on another body or character ("Xi Jinping as Winnie the Pooh") → qwen21-turbo.json
+{% include "private/refiner/routing.txt.j2" ignore missing %}
 
 {% if ALEXA_WORKFLOWS_LABELLED %}
 Available workflows include:
