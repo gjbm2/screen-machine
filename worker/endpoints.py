@@ -20,15 +20,18 @@ def gql(query, variables):
     return j["data"]
 
 
-def env_list():
-    return [{"key": k, "value": v} for k, v in cfg["env"].items()]
+def env_list(e=None):
+    """The shared env plus the endpoint's own "env" (e.g. COMFY_ARGS, SM_PREFETCH for a one-model endpoint)."""
+    return [{"key": k, "value": v} for k, v in {**cfg["env"], **((e or {}).get("env") or {})}.items()]
 
 
-def save_template(endpoint_id=None, name=None):
+def save_template(endpoint_id=None, name=None, e=None):
     """Save the worker template. An existing endpoint keeps the template it was created with (RunPod ignores a new
     templateId on saveEndpoint), so that template is the one updated; otherwise the one named (the endpoint's own
     "template" name, else endpoints.json's), so a new endpoint never re-saves a template others run on."""
     t = dict(cfg["template"], name=name or cfg["template"]["name"])
+    if e and e.get("image"):   # an endpoint may run a newer worker image than the shared template
+        t["image"] = e["image"]
     tid = None
     if endpoint_id:
         tid = gql('query($id: String!) { myself { endpoint(id: $id) { templateId } } }',
@@ -38,7 +41,7 @@ def save_template(endpoint_id=None, name=None):
         tid = next((x["id"] for x in found if x["name"] == t["name"]), None)
     names = {x["id"]: x["name"] for x in gql("query { myself { podTemplates { id name } } }", {})["myself"]["podTemplates"]}
     inp = {"name": names.get(tid, t["name"]), "imageName": t["image"], "isServerless": True, "containerDiskInGb": t["container_disk_gb"],
-           "dockerArgs": "", "volumeInGb": 0, "containerRegistryAuthId": t["registry_auth"], "env": env_list()}
+           "dockerArgs": "", "volumeInGb": 0, "containerRegistryAuthId": t["registry_auth"], "env": env_list(e)}
     if tid:
         inp["id"] = tid
     out = gql("mutation($i: SaveTemplateInput) { saveTemplate(input: $i) { id imageName } }", {"i": inp})["saveTemplate"]
@@ -65,7 +68,7 @@ def save_endpoint(name, e, template_id):
            "workersMax": e["workers_max"], "idleTimeout": e["idle_timeout"], "scalerType": "QUEUE_DELAY",
            "scalerValue": e.get("scaler_s", 4), "executionTimeoutMs": e["execution_timeout_s"] * 1000,
            "flashBootType": "FLASHBOOT", "locations": "", "networkVolumeIds": [],
-           "modelReferences": [pinned(e["bundle"])] if e.get("bundle") else [], "env": env_list()}
+           "modelReferences": [pinned(e["bundle"])] if e.get("bundle") else [], "env": env_list(e)}
     if e.get("id"):
         inp["id"] = e["id"]
     out = gql("mutation($i: EndpointInput!) { saveEndpoint(input: $i) { id workersMax modelReferences } }",
@@ -83,4 +86,4 @@ def save_endpoint(name, e, template_id):
 if __name__ == "__main__":
     for name in sys.argv[1:] or cfg["endpoints"]:
         e = cfg["endpoints"][name]
-        save_endpoint(name, e, save_template(e.get("id"), e.get("template")))
+        save_endpoint(name, e, save_template(e.get("id"), e.get("template"), e))

@@ -39,4 +39,11 @@ missing=$([ "$n" -gt 0 ] || echo 1)
 for d in /runpod-volume /runpod/model-store; do [ -d "$d" ] && find "$d" -maxdepth 6 2>/dev/null | head -40 | sed 's/^/sm: ls /'; done
 # SM_REQUIRE_MODELS=1 (the endpoints set it): a worker without its models must not take jobs, so start.sh exits
 [ -n "$missing" ] && [ "${SM_REQUIRE_MODELS:-0}" = "1" ] && exit 2
+# SM_PREFETCH=1 (one-model endpoints): read the weights into the page cache while ComfyUI boots, so the first job
+# loads them from RAM. Not for the 73 GB multi-model bundle, which would crowd out the model actually asked for.
+if [ "${SM_PREFETCH:-0}" = "1" ] && [ "$n" -gt 0 ]; then
+  for base in $seen; do find -L "$base" -name '*.safetensors' -type f; done | sort -u |
+    (t0=$(date +%s); xargs -r -P 4 -I{} cat {} > /dev/null; echo "sm: prefetched weights in $(( $(date +%s) - t0 )) s") &
+fi
+exit 0
 exit 0
