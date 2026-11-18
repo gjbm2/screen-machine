@@ -118,6 +118,11 @@ export interface JobCosts {
   by_endpoint: Array<{ endpoint: string; name: string; billed_gbp: number; unattributed_gbp: number }>;
 }
 
+/** Warm a GPU for a workflow before the picture is asked for (routes/jobs/warm.py); fire and forget. */
+export function warmGpu(workflow: string): void {
+  void requestJson('/jobs/warm', jsonInit('POST', { workflow }), 'Could not warm a GPU').catch(() => undefined);
+}
+
 export function getJobCosts(days = 30): Promise<JobCosts> {
   return requestJson(`/jobs/costs?days=${days}`, undefined, 'Could not load the costs');
 }

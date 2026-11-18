@@ -244,7 +244,8 @@ def test_every_workflow_round_trips(house, workflow):
     job, fake = request_picture(house, inline("PNG", "out_00001_.png"), workflow=workflow, images=images)
     assert job["status"] == "completed", job.get("error")
     assert job["workflow"] == runs_as
-    assert fake.endpoint == ran["runpod_id"]
+    # request_picture asks as Alexa: someone waiting, so the workflow's interactive endpoint when it has one
+    assert fake.endpoint == (ran.get("runpod_id_live") or ran["runpod_id"])
 
     graph = json.dumps(fake.payload["input"]["workflow"])
     if "text" in (ran.get("input") or []):

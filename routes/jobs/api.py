@@ -37,6 +37,14 @@ def list_jobs():
     return jsonify({"jobs": jobs, "next_before": next_before})
 
 
+@jobs_api.route("/jobs/warm", methods=["POST"])
+def warm_gpu():
+    """Warm a GPU for a workflow before the picture is asked for (warm.py)."""
+    from routes.jobs import warm
+    body = request.get_json(silent=True) or {}
+    return jsonify({"result": warm.warm(str(body.get("workflow") or "auto"))})
+
+
 @jobs_api.route("/jobs/costs", methods=["GET"])
 def job_costs():
     """What generation cost: RunPod's bill against the jobs, per day, workflow, source and endpoint (billing.py)."""

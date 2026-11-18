@@ -657,7 +657,7 @@ def test_start_completes(gen, monkeypatch, tracker):
                        {"status": "COMPLETED", "output": {"status": "success", "message": "http://r/out.jpg"}}])
     job, result = run_start(gen, fake, monkeypatch, tracker)
     assert job["status"] == "completed" and job["result_url"] == "http://r/out.jpg"
-    assert job["runpod_job_id"] == "rp-123" and job["endpoint_id"] == "1p4605rkgfo392"
+    assert job["runpod_job_id"] == "rp-123" and job["endpoint_id"] == "v0lfqu2owx3lc4"  # a generator job runs on the interactive endpoint
     assert job["stages"] == ["Rendering", "Finishing"] and job["kind"] == "image"
     assert job["cost_gbp"] == 0.02 and job["seed"] is not None and job["refined_prompt"] == "a red fox"
     assert job["started_at"] and job["submitted_at"] and job["publishing_at"]

@@ -92,6 +92,9 @@ def get_input_text(input_arg):
         return input_arg
 
 # Dictionary replacer
+INTERACTIVE_SOURCES = ("generator", "alexa")
+
+
 def worker_output(output, job_id):
     """The worker's output as {"status": "success", "message": <image URL or path>}. The old worker sends that
     already; worker-comfyui (worker/) sends {"images": [{"type": "s3_url" | "base64", "data": ...}]} (base64 when no
@@ -562,6 +565,10 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
         (item.get("runpod_id") for item in workflow_config_list if item["id"] == args_namespace.workflow and item.get("runpod_id")),
         getattr(args_namespace, "pod", None) or os.getenv("RUNPOD_ID")
     )
+    # Someone waiting at the generator page or Alexa runs on the workflow's interactive endpoint (warm for 2 minutes
+    # after a job or a warm-up); schedules keep the batch endpoint, which goes idle at once (owner, 18 Nov)
+    if tracker.get(job_id).get("source") in INTERACTIVE_SOURCES and workflow_config.get("runpod_id_live"):
+        runpod_id = workflow_config["runpod_id_live"]
 
     info(f"Workflow: {args_namespace.workflow}")
     info(f"RunPod ID: {runpod_id}")

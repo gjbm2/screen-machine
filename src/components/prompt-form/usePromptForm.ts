@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import typedWorkflows from '@/data/typedWorkflows';
+import { warmGpu } from '@/shared/api/jobs';
 import refinersData from '@/data/refiners.json';
 import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 
@@ -63,6 +64,12 @@ const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
     console.log("usePromptForm: Current selected workflow:", selectedWorkflow);
     console.log("usePromptForm: Current selected refiner:", selectedRefiner);
   }, [selectedWorkflow, selectedRefiner]);
+
+  // Start a GPU and load this workflow's models while the prompt is written (owner, 18 Nov: long "Getting ready");
+  // the server sends at most one warm-up per workflow every two minutes
+  useEffect(() => {
+    warmGpu(selectedWorkflow || 'auto');
+  }, [selectedWorkflow]);
 
   // Initialize workflow parameters when workflow changes
   useEffect(() => {
