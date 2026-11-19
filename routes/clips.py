@@ -4,9 +4,9 @@ would naturally be included as part of a single logical object").
 
 A clip made from a still names it: `still` (the still's file name in the same bucket) in the clip's metadata, which
 is its sidecar and, for an eased clip, its own MP4 comment tag too (routes/clip_ease.py). From that:
-  * a bucket's listing shows the still once, with its clips under `clips` (newest first), not as items of their own;
-    a clip whose still has gone is listed as itself;
-  * publishing the still publishes its newest clip after it (the TV shows the picture, then it comes to life);
+  * a bucket's listing shows the still once, with its clips under `clips` (the one that plays first, then newest
+    first), not as items of their own; a clip whose still has gone is listed as itself;
+  * publishing the still publishes the clip that plays (its newest, or the one chosen: `chosen_at`) after it;
   * deleting, purging or copying the still takes its clips with it.
 """
 import json
@@ -27,11 +27,25 @@ def _meta(path: Path) -> dict:
         return {}
 
 
+def _rank(mtime, meta: dict | None) -> float:
+    """A clip's place among its still's clips: when it was chosen to play, or else when it was made."""
+    return max(float(mtime or 0), float((meta or {}).get("chosen_at") or 0))
+
+
 def clips_of(folder: Path, still: str) -> list[Path]:
-    """The clips in `folder` made from `still`, newest first."""
-    found = [p for p in folder.iterdir()
-             if p.suffix.lower() in VIDEOS and p.is_file() and still_of(_meta(p)) == still]
-    return sorted(found, key=lambda p: p.stat().st_mtime, reverse=True)
+    """The clips in `folder` made from `still`, the one that plays first."""
+    found = [(p, _meta(p)) for p in folder.iterdir() if p.suffix.lower() in VIDEOS and p.is_file()]
+    found = [(p, m) for p, m in found if still_of(m) == still]
+    return [p for p, m in sorted(found, key=lambda pm: _rank(pm[0].stat().st_mtime, pm[1]), reverse=True)]
+
+
+def choose(folder: Path, clip: str) -> None:
+    """Make `clip` the one its still plays (it goes first among its still's clips)."""
+    import time
+    sc = (folder / clip).with_suffix((folder / clip).suffix + ".json")
+    meta = _meta(folder / clip)
+    meta["chosen_at"] = time.time()
+    sc.write_text(json.dumps(meta, indent=2, ensure_ascii=False), "utf-8")
 
 
 def group(files: list[dict]) -> list[dict]:
@@ -46,7 +60,7 @@ def group(files: list[dict]) -> list[dict]:
             out.append(f)
     for f in out:
         if f.get("clips"):
-            f["clips"].sort(key=lambda c: c.get("modified") or 0, reverse=True)
+            f["clips"].sort(key=lambda c: _rank(c.get("modified"), c.get("metadata")), reverse=True)
     return out
 
 

@@ -82,12 +82,19 @@ def save_to_recent(img_url, batch_id, metadata=None, reference_sources=None):
         except Exception as e:
             error(f"[save_to_recent] Failed to read image from {img_url}: {e}")
             return None
-        info(f"[save_to_recent] Read image from {img_url}, converting to JPEG")
-        img = Image.open(BytesIO(content)).convert("RGB")
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
-            img.save(temp_file, format="JPEG", quality=90)
-            temp_file.flush()
-            temp_path = Path(temp_file.name)
+        if content[4:8] == b"ftyp":
+            # a clip (an MP4) is kept as it is: it could not be read as a picture, so Generated never got it
+            info(f"[save_to_recent] Read a clip from {img_url}")
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as temp_file:
+                temp_file.write(content)
+                temp_path = Path(temp_file.name)
+        else:
+            info(f"[save_to_recent] Read image from {img_url}, converting to JPEG")
+            img = Image.open(BytesIO(content)).convert("RGB")
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".jpg") as temp_file:
+                img.save(temp_file, format="JPEG", quality=90)
+                temp_file.flush()
+                temp_path = Path(temp_file.name)
         info(f"[save_to_recent] Calling _append_to_bucket with batch_id={batch_id}")
         target_path = _append_to_bucket("_recent", temp_path, batch_id=batch_id, metadata=metadata)
         temp_path.unlink()
@@ -304,9 +311,13 @@ def process_generate_image_request(data, uploaded_images=None):
                     except Exception as e:
                         error(f"[generate_image] Failed to create reference sources: {e}")
                 
+                source = data.get("source_still") or {}
+                if source.get("bucket") == "_recent":
+                    image_data["still"] = source.get("file")   # a clip of a Generated picture: one object with it
                 target_path = save_to_recent(r.get("message"), batch_id, metadata=image_data, reference_sources=reference_sources)
                 if target_path:
                     recent_files.append(target_path.name)
+                    _file_with_its_still(target_path, image_data, source)
             except Exception as e:
                 error(f"[generate_image] Failed to copy into _recent: {e}")
                 import traceback
@@ -324,6 +335,19 @@ def process_generate_image_request(data, uploaded_images=None):
         "workflow": workflow,
         "recent_files": recent_files
     }
+
+
+def _file_with_its_still(clip: Path, meta: dict, source: dict) -> None:
+    """A clip made in the generator from a picture in a screen's bucket is filed with that picture too, as one object
+    (routes/clips.py); it is not put on the screen."""
+    from routes.image_formats import VIDEOS
+    if clip.suffix.lower() not in VIDEOS or not source.get("bucket") or source["bucket"] == "_recent":
+        return
+    try:
+        _append_to_bucket(source["bucket"], clip, metadata={**meta, "still": source["file"]})
+        info(f"[generate_image] clip {clip.name} filed with {source['bucket']}/{source['file']}")
+    except Exception as e:
+        error(f"[generate_image] could not file {clip.name} with its picture: {e}")
 
 
 def _failed_jobs_reason(job_ids):

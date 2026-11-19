@@ -236,6 +236,16 @@ def _generate_image():
     
     # Process reference URLs
     reference_urls = data.get('referenceUrls', [])
+    # One picture from a bucket: a clip made from it belongs with it (routes/clips.py), at its full size
+    if len(reference_urls) == 1:
+        import re
+        from urllib.parse import unquote, urlparse
+        from routes.bucketer import bucket_path
+        from routes.image_formats import STILLS
+        m = re.match(r"^/output/([^/]+)/([^/]+)$", unquote(urlparse(str(reference_urls[0])).path))
+        if m and Path(m.group(2)).suffix.lower() in STILLS and (bucket_path(m.group(1)) / m.group(2)).is_file():
+            data['source_still'] = {"bucket": m.group(1), "file": m.group(2)}
+            data['still_image'] = str(bucket_path(m.group(1)) / m.group(2))
     info(f"[generate_image_route] Calling encode_reference_urls with {len(reference_urls)} URLs")
     
     # Check if we have a publish_destination to resolve bucket-relative paths

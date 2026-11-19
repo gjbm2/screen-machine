@@ -1,5 +1,8 @@
 import React from 'react';
-import { Maximize2, Star, Film, MoreVertical, Copy, Share, Trash, ExternalLink, Sparkles, RefreshCw } from 'lucide-react';
+import { Maximize2, Star, Film, MoreVertical, Copy, Share, Trash, ExternalLink, Sparkles, RefreshCw, Info, Wand2 } from 'lucide-react';
+import { toast } from 'sonner';
+import { animateStill } from '@/shared/api/buckets';
+import { openNextWithInfo } from '@/contexts/LoopeViewContext';
 import { ImageItem } from '@/types/image-types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -229,6 +232,24 @@ const ImageCard: React.FC<ImageCardProps> = ({
         </Badge>
       )}
 
+      {/* Info button (desktop, on hover): the Loope opened on this picture's Info; on a phone, tap then swipe up */}
+      {!isPlaceholder && onFullscreenClick && (
+        <Button
+          variant="ghost"
+          size="icon"
+          title="Info"
+          aria-label="Info"
+          className={`absolute bottom-2 right-[4.5rem] z-30 h-6 w-6 bg-black/30 hover:bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity ${isMobile ? 'hidden' : ''}`}
+          onClick={(e) => {
+            e.stopPropagation();
+            openNextWithInfo();
+            onFullscreenClick(image);
+          }}
+        >
+          <Info className="h-4 w-4" />
+        </Button>
+      )}
+
       {/* Fullscreen button - bottom right */}
       {!isPlaceholder && onFullscreenClick && (
         <Button
@@ -258,6 +279,33 @@ const ImageCard: React.FC<ImageCardProps> = ({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="right">
+            {onFullscreenClick && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  openNextWithInfo();
+                  onFullscreenClick(image);
+                }}
+              >
+                <Info className="h-4 w-4 mr-2" />
+                Info
+              </DropdownMenuItem>
+            )}
+            {/* Bring to life: a clip of this still, filed with it (the triage picks what moves) */}
+            {bucketId && !isVideo(image) && (
+              <DropdownMenuItem
+                onClick={(e) => {
+                  e.stopPropagation();
+                  animateStill(bucketId, image.id).then(
+                    () => toast.success('Making a clip: it appears with the picture in a few minutes'),
+                    (err) => toast.error(String(err?.message || err)),
+                  );
+                }}
+              >
+                <Wand2 className="h-4 w-4 mr-2" />
+                Bring to life
+              </DropdownMenuItem>
+            )}
             {/* Use as prompt */}
             {onUseAsPrompt && (
               <DropdownMenuItem

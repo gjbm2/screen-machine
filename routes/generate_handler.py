@@ -435,7 +435,7 @@ def handle_image_generation(input_obj, wait=False, source="api", job_ids_out=Non
         base_kwargs["silent"] = data["silent"]
 
     # A clip's still: its name in the bucket and its full-size copy (async_amimate; routes/clips.py)
-    for key in ("still", "still_image", "pace"):
+    for key in ("still", "still_image", "pace", "space"):
         if data.get(key):
             base_kwargs[key] = data[key]
 
@@ -888,6 +888,65 @@ def async_amimate(targets, obj = {}, source="api"):
         warning("Animate: no targets specified")
     
     return None
+
+def triage_motion(image_path: str, context: str = "") -> tuple[str, str | None]:
+    """What should move in a picture and at what pace, from the screens' triage reasoner (reasoners/animate_triage):
+    (brief, pace). Asked for a clip, so a STILL verdict just gives no brief (the animator decides)."""
+    import routes.openai
+    from routes.utils import dict_substitute, build_schema_subs
+    subs = build_schema_subs()
+    out = routes.openai.openai_prompt(
+        user_prompt=context or "No theme: a picture someone asked to see come to life.",
+        system_prompt=dict_substitute("data/reasoners/animate_triage.txt.j2", subs),
+        schema=json.loads(dict_substitute("data/reasoner.schema.json.j2", subs)),
+        images=[image_path]) or {}
+    o = out.get("outputs") or []
+    if len(o) < 2 or str(o[0]).upper() != "MOVE":
+        return "", None
+    pace = str(o[3]).lower() if len(o) > 3 and str(o[3]).lower() in ("slow", "gentle", "natural") else None
+    return str(o[1]), pace
+
+
+def animate_still(bucket: str, filename: str, prompt: str = "", pace: str | None = None, space: str | None = None,
+                  source: str = "api") -> dict:
+    """Bring a still in a bucket to life (routes/clips.py: the clip is filed with it, linked as one object). With no
+    prompt the screens' triage says what moves and at what pace. The clip goes to the screen only if the screen is
+    showing that still when it lands (routes/generate.py). Runs in the background; returns at once."""
+    import base64, io, threading
+    from PIL import Image, ImageOps
+    from routes.bucketer import bucket_path
+    path = bucket_path(bucket) / filename
+    if not path.exists():
+        raise FileNotFoundError(filename)
+    workflow = animate_workflow()
+    if not workflow:
+        raise RuntimeError("no image-to-video workflow in the catalogue")
+
+    def run():
+        from routes.utils import resolve_runtime_value
+        brief, chosen = (prompt, pace) if prompt else triage_motion(str(path))
+        p = (pace or chosen or "").lower() or None
+        im = ImageOps.exif_transpose(Image.open(path)).convert("RGB")
+        im.thumbnail((3840, 3840))
+        buf = io.BytesIO()
+        im.save(buf, "JPEG", quality=92)
+        data = {
+            "prompt": f"{brief} (Pace: {p}.)" if p and brief else brief,
+            "pace": p,
+            "refiner": resolve_runtime_value("refiner", "animate"),
+            "targets": [bucket],
+            "workflow": workflow,
+            "images": [{"name": f"{bucket}.jpg", "image": base64.b64encode(buf.getvalue()).decode()}],
+            "still": filename,
+            "still_image": str(path),
+        }
+        if space:
+            data["space"] = space
+        handle_image_generation(input_obj={"intent": "animate", "data": data}, source=source)
+
+    threading.Thread(target=run, name=f"animate-{filename[:20]}", daemon=True).start()
+    return {"status": "started", "workflow": workflow}
+
 
 def async_adapt(targets, obj = {}, source="api"):
     """

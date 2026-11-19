@@ -21,6 +21,7 @@ import { bucketsApi, publishApi } from '@/shared/api';
 import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 import { ReferenceImageService } from '@/services/reference-image-service';
 import { TagLozenges } from '@/components/tags/TagLozenges';
+import { ImageInfo } from './ImageInfo';
 import { notifyItemUpdated } from '@/components/tags/events';
 
 interface LoopeModalProps {
@@ -45,15 +46,6 @@ function bucketOf(img: any): string | null {
   const m = (typeof img.raw_url === 'string' && img.raw_url.match(/\/output\/([^\/]+)\/(.+)/))
     || (typeof img.urlThumb === 'string' && img.urlThumb.match(/\/output\/([^\/]+)\/thumbnails\/(.+)/));
   return m ? m[1] : null;
-}
-
-/** Music groups the tagger scored a good fit (0.7+), best first (docs/ART_TAGS.md). */
-function suitedGroups(music: Record<string, number> | undefined): string[] {
-  if (!music || typeof music !== 'object') return [];
-  return Object.entries(music)
-    .filter(([, v]) => typeof v === 'number' && v >= 0.7)
-    .sort((a, b) => b[1] - a[1])
-    .map(([k]) => k);
 }
 
 /**
@@ -206,6 +198,11 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
         }
       }
     }, [isOpen, zoomSrc, emblaApi, close]);
+
+    // Each opening starts on the picture, or on its Info when asked (a tile's Info button)
+    useEffect(() => {
+      if (isOpen) setIsFlipped(!!carouselOptions?.showInfo);
+    }, [isOpen, carouselOptions]);
 
     useEffect(() => {
       window.addEventListener('keydown', handleKey);
@@ -1096,7 +1093,6 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
     const showTags = !!currentImage && !!tagBucket && tagBucket !== '_recent'
       && currentImage.disableFavorite !== true && currentImage.isPublished !== true;
     const tagMeta = (currentImage?.metadata || {}) as Record<string, any>;
-    const tagAi = tagMeta.tagging?.ai as Record<string, any> | undefined;
 
     return (
       <Dialog 
@@ -1183,280 +1179,19 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
             </div>
           </div>
 
-          {/* Metadata overlay - positioned so it doesn't obscure title */}
-          {isFlipped && (
-            <div className="absolute inset-10 z-40 bg-neutral-900/95 rounded-md overflow-hidden shadow-xl border border-neutral-700">
-              <div className="h-full flex flex-col">
-                <div className="p-3 border-b border-neutral-700 flex justify-between items-center">
-                  <h3 className="font-medium text-sm">Image Metadata</h3>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="h-7 w-7 p-0"
-                    onClick={() => setIsFlipped(false)}
-                  >
-                    <X className="h-4 w-4" />
-                  </Button>
-                </div>
-                
-                <div className="flex-1 overflow-y-auto p-3 text-xs">
-                  {currentImage && (
-                    <div className="space-y-4">
-                      {/* Basic info section */}
-                      <div>
-                        <h4 className="font-medium text-xs text-neutral-400 mb-2">Basic Information</h4>
-                        <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2">
-                          <div className="text-neutral-300">ID</div>
-                          <div className="break-all text-white">{currentImage.id}</div>
-                          
-                          {typeof currentImage?.bucketId === 'string' && (
-                            <>
-                              <div className="text-neutral-300">Bucket</div>
-                              <div className="break-all text-white">{currentImage.bucketId}</div>
-                            </>
-                          )}
-                          
-                          {currentImage.mediaType && (
-                            <>
-                              <div className="text-neutral-300">Type</div>
-                              <div className="text-white">{currentImage.mediaType}</div>
-                            </>
-                          )}
-                          
-                          {currentImage.createdAt && (
-                            <>
-                              <div className="text-neutral-300">Created</div>
-                              <div className="text-white">{new Date(currentImage.createdAt).toLocaleString()}</div>
-                            </>
-                          )}
-                          
-                          {currentImage.isFavourite !== undefined && (
-                            <>
-                              <div className="text-neutral-300">Favorite</div>
-                              <div className="text-white">{currentImage.isFavourite ? "Yes" : "No"}</div>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                      
-                      {/* Reference Images section */}
-                      {(() => {
-                        // Debug the current image data
-                        console.log('=== LoopeModal Reference Images Debug ===');
-                        console.log('currentImage:', currentImage);
-                        console.log('currentImage.reference_images:', currentImage?.reference_images);
-                        console.log('currentImage.metadata:', currentImage?.metadata);
-                        console.log('currentImage.metadata.reference_images:', (currentImage?.metadata as any)?.reference_images);
-                        
-                        // Check all possible locations for reference images
-                        const directRefImages = currentImage?.reference_images;
-                        const metadataRefImages = (currentImage?.metadata as any)?.reference_images;
-                        
-                        console.log('directRefImages:', directRefImages);
-                        console.log('metadataRefImages:', metadataRefImages);
-                        
-                        // Use the first available reference images array
-                        const refImages = directRefImages || metadataRefImages || [];
-                        
-                        console.log('Final refImages to render:', refImages);
-                        console.log('refImages.length:', refImages.length);
-                        console.log('refImages is array:', Array.isArray(refImages));
-                        
-                        // Additional debug info
-                        console.log('currentImage keys:', currentImage ? Object.keys(currentImage) : 'none');
-                        console.log('currentImage.bucketId:', currentImage?.bucketId);
-                        console.log('==========================================');
-                        
-                        if (!Array.isArray(refImages) || refImages.length === 0) {
-                          console.log('No reference images found - not rendering section');
-                          return null;
-                        }
-                        
-                        return (
-                          <div>
-                            <h4 className="font-medium text-xs text-neutral-400 mb-2">Reference Images ({refImages.length})</h4>
-                            <div className="flex gap-2 flex-wrap">
-                              {refImages.map((ref: any, idx: number) => {
-                              console.log(`Processing reference image ${idx}:`, ref);
-                              // Get the bucket ID from the image data, fallback to _recent for backward compatibility
-                              const bucketId = currentImage.bucketId || '_recent';
-                              const refUrl = ReferenceImageService.getReferenceImageUrls(bucketId, [ref])[0];
-                              const thumbnailUrl = ReferenceImageService.getReferenceImageThumbnailUrls(bucketId, [ref])[0] || 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
-                              console.log('Using bucketId:', bucketId);
-                              console.log('Generated refUrl:', refUrl);
-                              console.log('Generated thumbnailUrl:', thumbnailUrl);
-
-                              
-                              return (
-                                <button
-                                  key={ref.stored_path}
-                                  onClick={() => {
-                                    console.log('Clicking reference image, opening:', refUrl);
-                                    // Open the reference image in a new tab
-                                    window.open(refUrl, '_blank', 'noopener,noreferrer');
-                                  }}
-                                  className="relative group cursor-pointer"
-                                  title={`Click to view original: ${ref.original_filename}`}
-                                >
-                                  <img
-                                    src={thumbnailUrl}
-                                    alt={`Reference ${idx + 1}`}
-                                    className="w-16 h-16 object-cover rounded border border-neutral-600 hover:border-neutral-400 transition-colors"
-                                    onError={e => {
-                                      console.error('Reference image thumbnail failed to load:', thumbnailUrl);
-                                      e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
-                                    }}
-                                  />
-                                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors rounded flex items-center justify-center">
-                                    <div className="opacity-0 group-hover:opacity-100 transition-opacity text-white text-xs font-medium">
-                                      View
-                                    </div>
-                                  </div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                        );
-                      })()}
-                      
-                      {/* Prompt section */}
-                      {currentImage.promptKey && (
-                        <div>
-                          <h4 className="font-medium text-xs text-neutral-400 mb-2">Prompt</h4>
-                          <div className="bg-neutral-800 p-2 rounded-md text-white break-words whitespace-pre-wrap">{currentImage.promptKey}</div>
-                        </div>
-                      )}
-                      
-                      {/* Tags: what the AI tagger saw (the lozenges themselves are under the picture) */}
-                      {tagAi && (
-                        <div>
-                          <h4 className="font-medium text-xs text-neutral-400 mb-2">Tags</h4>
-                          <div className="bg-neutral-800 p-2 rounded-md text-white space-y-1">
-                            {tagAi.look && <div className="break-words">{String(tagAi.look)}</div>}
-                            <div className="flex flex-wrap gap-x-3 gap-y-1 text-neutral-300">
-                              {tagAi.palette && <span>Palette: <span className="text-white">{String(tagAi.palette)}</span></span>}
-                              {suitedGroups(tagAi.music).length > 0 && (
-                                <span>Suits: <span className="text-white">{suitedGroups(tagAi.music).join(', ')}</span></span>
-                              )}
-                              {typeof tagAi.quality === 'number' && (
-                                <span>Quality <span className="text-white tabular-nums">{tagAi.quality.toFixed(2)}</span></span>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      )}
-                      {tagMeta.tagging?.status === 'failed' && (
-                        <div className="text-neutral-400">
-                          Not tagged{tagMeta.tagging.error ? `: ${String(tagMeta.tagging.error)}` : ''}
-                        </div>
-                      )}
-
-                      {/* Other properties section (excluding already shown and metadata) */}
-                      {Object.entries(currentImage).some(([key, value]) => 
-                        !['id', 'promptKey', 'metadata', 'raw_url', 'urlFull', 'urlThumb', 'bucketId', 'mediaType', 'createdAt', 'isFavourite'].includes(key) &&
-                        typeof value !== 'object' && 
-                        typeof value !== 'function' &&
-                        value !== null &&
-                        value !== undefined
-                      ) && (
-                        <div>
-                          <h4 className="font-medium text-xs text-neutral-400 mb-2">Properties</h4>
-                          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2">
-                            {Object.entries(currentImage).map(([key, value]) => {
-                              if (['id', 'promptKey', 'metadata', 'raw_url', 'urlFull', 'urlThumb', 'bucketId', 'mediaType', 'createdAt', 'isFavourite'].includes(key) || 
-                                  typeof value === 'object' || 
-                                  typeof value === 'function' ||
-                                  value === null ||
-                                  value === undefined) return null;
-                              
-                              return (
-                                <React.Fragment key={key}>
-                                  <div className="text-neutral-300">{key}</div>
-                                  <div className="break-all text-white">{String(value)}</div>
-                                </React.Fragment>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      )}
-                      
-                      {/* Additional metadata section */}
-                      {currentImage.metadata && Object.keys(currentImage.metadata).length > 0 && (
-                        <div>
-                          <h4 className="font-medium text-xs text-neutral-400 mb-2">Extended Metadata</h4>
-                          <div className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2">
-                            {Object.entries(currentImage.metadata)
-                              .filter(([key, value]) => 
-                                // Don't show prompt again if already shown in prompt section
-                                !(key === 'prompt' && currentImage.promptKey) &&
-                                // Skip favorite since it's shown in basic info
-                                key !== 'favorite' &&
-                                // Tags have their own block and lozenges
-                                key !== 'tags' && key !== 'tagging' &&
-                                value !== null &&
-                                value !== undefined
-                              )
-                              .sort(([a], [b]) => a.localeCompare(b))
-                              .map(([key, value]) => {
-                                // Format the value based on its type
-                                let displayValue;
-                                if (value === null || value === undefined) {
-                                  return null; // Skip null/undefined values
-                                } else if (Array.isArray(value)) {
-                                  if (value.length === 0) {
-                                    displayValue = "[]"; // Empty array
-                                  } else {
-                                    displayValue = (
-                                      <span className="text-xs bg-neutral-800 p-1 rounded">
-                                        {JSON.stringify(value, null, 2)}
-                                      </span>
-                                    );
-                                  }
-                                } else if (typeof value === 'object') {
-                                  try {
-                                    const jsonString = JSON.stringify(value, null, 2) || "";
-                                    displayValue = (
-                                      <span className="text-xs bg-neutral-800 p-1 rounded">
-                                        <pre className="whitespace-pre-wrap">{jsonString}</pre>
-                                      </span>
-                                    );
-                                  } catch (err) {
-                                    displayValue = "[Object]";
-                                  }
-                                } else if (typeof value === 'number' && key.includes('time')) {
-                                  // Format timestamps more nicely
-                                  try {
-                                    const date = new Date(value * 1000);
-                                    if (!isNaN(date.getTime())) {
-                                      displayValue = date.toLocaleString();
-                                    } else {
-                                      displayValue = String(value);
-                                    }
-                                  } catch (e) {
-                                    displayValue = String(value);
-                                  }
-                                } else {
-                                  displayValue = String(value);
-                                }
-                                
-                                return (
-                                  <React.Fragment key={key}>
-                                    <div className="text-neutral-300">{key}</div>
-                                    <div className="break-all text-white">
-                                      {displayValue}
-                                    </div>
-                                  </React.Fragment>
-                                );
-                              })}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
+          {/* Info: what the picture (or clip) is, how it was made, its movement (ImageInfo.tsx) */}
+          {isFlipped && currentImage && (
+            <ImageInfo
+              key={currentImage.id}
+              image={currentImage}
+              bucket={bucketOf(currentImage)}
+              placeName={destinations.find((d) => d.id === bucketOf(currentImage))?.name ?? null}
+              onClose={() => setIsFlipped(false)}
+              onWatch={() => {
+                setIsFlipped(false);
+                setMoving(true);
+              }}
+            />
           )}
 
           {/* Arrow buttons */}

@@ -19,6 +19,28 @@ export async function uploadUrlToBucket(bucketId: string, url: string): Promise<
   await request(`/buckets/${bucketId}/upload`, jsonInit('POST', { url }), 'Upload failed');
 }
 
+/** Make a clip of a still, filed with it (routes/clips.py); with no prompt the screens' triage picks what moves and the pace. */
+export async function animateStill(
+  bucketId: string,
+  filename: string,
+  options: { prompt?: string; pace?: 'slow' | 'gentle' | 'natural' } = {},
+): Promise<{ status: string }> {
+  return requestJson(
+    `/buckets/${bucketId}/animate/${encodeURIComponent(filename)}`,
+    jsonInit('POST', options),
+    (r) => `Could not start the clip: ${r.statusText}`,
+  );
+}
+
+/** Make this clip the one its still plays. */
+export async function chooseClip(bucketId: string, filename: string): Promise<{ status: string }> {
+  return requestJson(
+    `/buckets/${bucketId}/choose-clip/${encodeURIComponent(filename)}`,
+    { method: 'POST' },
+    (r) => `Could not choose the clip: ${r.statusText}`,
+  );
+}
+
 export async function deleteFromBucket(bucketId: string, filename: string): Promise<{ status: string }> {
   return requestJson(
     `/buckets/${bucketId}/${filename}`,
@@ -103,7 +125,7 @@ export async function getBucketDetails(bucketId: string, options: { everyone?: b
           timestamp: createdTs,
           // a still's clips are part of it, not items of their own (routes/clips.py)
           ...(Array.isArray(file.clips) && file.clips.length
-            ? { clips: file.clips.map((c) => ({ filename: c.filename, url: c.raw_url || c.url || '', thumbnail_url: c.thumbnail_url })) }
+            ? { clips: file.clips.map((c) => ({ filename: c.filename, url: c.raw_url || c.url || '', thumbnail_url: c.thumbnail_url, metadata: c.metadata || {} })) }
             : {}),
         },
         created_at: createdTs,

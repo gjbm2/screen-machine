@@ -405,6 +405,40 @@ def delete_file(bucket_id: str, filename: str):
 
     return jsonify({"status": "deleted"})
 
+# -- bring to life -----------------------------------------------------------
+
+@buckets_bp.route("/buckets/<bucket_id>/animate/<filename>", methods=["POST"])
+def animate(bucket_id: str, filename: str):
+    """Make a clip of a still, filed with it as one object (routes/clips.py). Body (optional): prompt (what moves),
+    pace (slow | gentle | natural). With no prompt the screens' triage chooses both. It takes a few minutes; the
+    clip appears under the still (and on the screen if the screen still shows it)."""
+    dests = _load_json_once("publish_destinations", "publish-destinations.json")
+    if not any(d["id"] == bucket_id and d.get("has_bucket", False) for d in dests):
+        abort(400, "Invalid bucket_id or destination does not support buckets")
+    if Path(filename).suffix.lower() in (".mp4", ".webm", ".mov") or not (bucket_path(bucket_id) / filename).is_file():
+        abort(404, "no such picture")
+    body = request.get_json(silent=True) or {}
+    pace = (body.get("pace") or "").lower() or None
+    if pace not in (None, "slow", "gentle", "natural"):
+        abort(400, "pace is slow, gentle or natural")
+    from routes import auth
+    from routes.generate_handler import animate_still
+    try:
+        return jsonify(animate_still(bucket_id, filename, (body.get("prompt") or "").strip(), pace,
+                                     space=auth.own_space() if bucket_id == "_recent" else None))
+    except (FileNotFoundError, RuntimeError) as e:
+        abort(400, str(e))
+
+@buckets_bp.route("/buckets/<bucket_id>/choose-clip/<filename>", methods=["POST"])
+def choose_clip(bucket_id: str, filename: str):
+    """Make this clip the one its still plays (routes/clips.py)."""
+    from routes.clips import choose, still_of, _meta
+    fp = bucket_path(bucket_id) / filename
+    if not fp.is_file() or not still_of(_meta(fp)):
+        abort(404, "no such clip")
+    choose(bucket_path(bucket_id), filename)
+    return jsonify({"status": "chosen"})
+
 # -- move / copy -------------------------------------------------------------
 
 @buckets_bp.route("/buckets/add_image_to_new_bucket", methods=["POST"])

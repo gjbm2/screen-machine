@@ -866,13 +866,14 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
     # and keeps the still if the camera moved
     loop = next((w.get("loop") for w in _load_json_once("workflow", "workflows.json")
                  if w.get("id") == args_namespace.workflow), None)
+    still_image = vars(args_namespace).pop("still_image", None)
     if loop:
         pace = vars(args_namespace).get("pace") or loop.get("pace", "slow")
         loop = {**loop, **(loop.get("paces") or {}).get(pace, {}), "pace": pace}
         from routes.clip_ease import ease_result
         tracker.update(job_id, message="Easing the clip")
         output["message"], clip = ease_result(output["message"], loop, job_id,
-                                              still=vars(args_namespace).pop("still_image", None))
+                                              still=still_image)
         info(f"Eased clip: {clip}")
         if clip["motion"] > loop.get("max_motion", 16):
             raise RuntimeError(f"The clip changed too much of the picture (camera movement; {clip['motion']}), "
@@ -883,6 +884,16 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
         if tracker.is_cancelled(job_id):
             raise JobCancelled("Cancelled before it was published")
 
+        # A clip of a still goes on the screen only if the screen still shows that still; otherwise it is just
+        # filed with it (routes/clips.py)
+        on_screen = True
+        if vars(args_namespace).get("still") and isinstance(publish_destination, str):
+            from routes.clips import published_still
+            showing = published_still(publish_destination)
+            on_screen = showing in (None, vars(args_namespace)["still"])
+            if not on_screen:
+                info(f"{publish_destination} now shows {showing}: the clip is filed with its still, not shown")
+
         # Actually publish into your screen's bucket
         pub_res = publish_to_destination(
             source = output["message"],
@@ -890,6 +901,7 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
             metadata = vars(args_namespace),
             batch_id = batch_id,
             silent = silent,
+            update_published = on_screen,
         )
         if not pub_res["success"]:
             raise RuntimeError(f"Publish failed: {pub_res.get('error')}")
