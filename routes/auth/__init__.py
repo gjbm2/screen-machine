@@ -1,11 +1,10 @@
 """Accounts (owner, 19 Nov): Google sign-in, roles and per-person generator spaces. See docs/ACCOUNTS.md.
 
-Inert until the deployment turns the `accounts` capability on and names a Google client ID (deployment.yaml
-`accounts: {google_client_id}`): until then every caller is treated as an admin, so the app behaves as before, while
-new generations are already stamped with the space that made them.
+All of it is deployment config: the `accounts` capability switches it on, and deployments/<id>/private/accounts.yaml
+(gitignored) holds the Google OAuth client ID and who is admin or member. Without a client ID every caller is treated
+as an admin, so the app behaves as before, while new generations are already stamped with the space that made them.
 
-- Who: a signed session cookie (sm_session) names a Google account; deployments/<id>/private/accounts.yaml gives it a
-  role (admin, member). Anyone else is a guest: an unlisted Google account keeps its own space on every device, an
+- Who: a signed session cookie (sm_session) names a Google account; the private accounts file gives it a role. Anyone else is a guest: an unlisted Google account keeps its own space on every device, an
   anonymous browser gets one from the sm_space cookie. Processes on this machine (127.0.0.1) pass every gate.
 - What: config/auth/gates.yaml says which API calls need which role (gates.py); a destination's role is its
   `access` in publish-destinations.json (default admin).

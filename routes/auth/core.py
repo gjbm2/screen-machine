@@ -23,12 +23,47 @@ def rank(role):
     return ROLES.index(role) if role in ROLES else len(ROLES)  # an unknown role is above admin: nobody
 
 
-def settings():
-    return smconfig.deployment().section("accounts")
+# ---------------------------------------------------------------- the deployment's sign-in config
+
+# Everything site-specific about sign-in is deployment config, kept out of git: deployments/<id>/private/accounts.yaml
+#   google_client_id: "<the deployment's Google OAuth web client>"
+#   people: [{email, role: admin|member, name}]
+# The code names no site, account or address.
+_config_lock = threading.Lock()
+_config = {"mtime": None, "client_id": "", "by_email": {}}
+
+
+def _accounts_config():
+    """The private accounts file, parsed; re-read when it changes. Missing or unreadable: no client ID, nobody listed."""
+    path = smconfig.path("private", "accounts.yaml")
+    try:
+        mtime = path.stat().st_mtime_ns
+    except OSError:
+        return {"client_id": "", "by_email": {}}
+    with _config_lock:
+        if _config["mtime"] != mtime:
+            client, by_email = "", {}
+            try:
+                data = smconfig.read_data(path) or {}
+                client = str(data.get("google_client_id") or "").strip()
+                for p in data.get("people") or []:
+                    email = str((p or {}).get("email") or "").strip().lower()
+                    if email:
+                        by_email[email] = {"role": p.get("role") if p.get("role") in ROLES else "guest",
+                                           "name": p.get("name")}
+            except Exception as e:
+                warning(f"[auth] {path}: {e}")
+            _config.update(mtime=mtime, client_id=client, by_email=by_email)
+        return {"client_id": _config["client_id"], "by_email": _config["by_email"]}
 
 
 def client_id():
-    return str(settings().get("google_client_id") or "").strip()
+    return _accounts_config()["client_id"]
+
+
+def people():
+    """{email: {role, name}} of the people the deployment lists."""
+    return _accounts_config()["by_email"]
 
 
 def active():
@@ -38,35 +73,6 @@ def active():
     except Exception as e:  # a broken manifest must not lock everyone out
         warning(f"[auth] deployment unreadable, accounts off: {e}")
         return False
-
-
-# ---------------------------------------------------------------- people (private/accounts.yaml)
-
-_people_lock = threading.Lock()
-_people = {"mtime": None, "by_email": {}}
-
-
-def people():
-    """{email: {role, name}} from deployments/<id>/private/accounts.yaml (`people: [{email, role, name}]`),
-    re-read when it changes. Missing file: nobody is listed."""
-    path = smconfig.path("private", "accounts.yaml")
-    try:
-        mtime = path.stat().st_mtime_ns
-    except OSError:
-        return {}
-    with _people_lock:
-        if _people["mtime"] != mtime:
-            by_email = {}
-            try:
-                for p in (smconfig.read_data(path) or {}).get("people") or []:
-                    email = str((p or {}).get("email") or "").strip().lower()
-                    if email:
-                        by_email[email] = {"role": p.get("role") if p.get("role") in ROLES else "guest",
-                                           "name": p.get("name")}
-            except Exception as e:
-                warning(f"[auth] {path}: {e}")
-            _people.update(mtime=mtime, by_email=by_email)
-        return _people["by_email"]
 
 
 # ---------------------------------------------------------------- session cookie
@@ -97,7 +103,7 @@ def _session():
 
 
 def https():
-    """Behind Caddy (the https name) cookies are Secure; the http doors (TVs, the IP address) can't keep those."""
+    """Behind the https proxy cookies are Secure; plain-http callers (e.g. screens' display pages) can't keep those."""
     return request.headers.get("X-Forwarded-Proto") == "https" or request.is_secure
 
 
