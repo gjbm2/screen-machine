@@ -43,15 +43,6 @@
    "title": "Video VAE"
   }
  },
- "5": {
-  "class_type": "VAELoader",
-  "inputs": {
-   "vae_name": "minimax_h3_audio_vae_fp32.safetensors"
-  },
-  "_meta": {
-   "title": "Audio VAE"
-  }
- },
  "6": {
   "class_type": "LoadImage",
   "inputs": {
@@ -178,31 +169,11 @@
    "title": "VAEDecode"
   }
  },
- "15": {
-  "class_type": "VAEDecodeAudio",
-  "inputs": {
-   "samples": [
-    "13",
-    0
-   ],
-   "vae": [
-    "5",
-    0
-   ]
-  },
-  "_meta": {
-   "title": "VAEDecodeAudio"
-  }
- },
  "16": {
   "class_type": "CreateVideo",
   "inputs": {
    "images": [
-    "14",
-    0
-   ],
-   "audio": [
-    "15",
+    "19",
     0
    ],
    "fps": 24
@@ -224,6 +195,32 @@
   },
   "_meta": {
    "title": "SaveVideo"
+  }
+ },
+ "18": {
+  "class_type": "FrameInterpolationModelLoader",
+  "inputs": {
+   "model_name": "rife_v4.26.safetensors"
+  },
+  "_meta": {
+   "title": "Interpolation model"
+  }
+ },
+ "19": {
+  "class_type": "FrameInterpolate",
+  "inputs": {
+   "interp_model": [
+    "18",
+    0
+   ],
+   "images": [
+    "14",
+    0
+   ],
+   "multiplier": 3
+  },
+  "_meta": {
+   "title": "Interpolate {{INTERPOLATOR}}"
   }
  }
 }

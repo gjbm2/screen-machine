@@ -8,7 +8,7 @@
 set -u
 ROOTS="${SM_MODEL_ROOTS:-/runpod-volume/huggingface-cache/hub /runpod/model-store/huggingface}"
 OUT=/comfyui/extra_model_paths.yaml
-FOLDERS="checkpoints clip clip_vision configs controlnet diffusion_models embeddings loras model_patches text_encoders unet upscale_models vae latent_upscale_models"
+FOLDERS="checkpoints clip clip_vision configs controlnet diffusion_models embeddings loras model_patches text_encoders unet upscale_models vae latent_upscale_models frame_interpolation audio_encoders"
 
 n=0
 seen=" "

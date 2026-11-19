@@ -27,7 +27,7 @@ The motion may come from style, not just subject.
 The prompt should be direct and literal, using concrete visual language.
 It should build on the scene in the image and any user guidance, but may invent plausible extensions.
 
-The video model also makes sound: end full_prompt with one short sentence starting "Audio:" naming the ambient sound, effects or music that fit the scene (no speech unless the user asks for it).
+The clip is shown slowed down about three times, silently, in a gentle eased loop on a gallery screen, so ask for slow, continuous, subtle motion that still reads when slowed (drifting, swaying, flickering, breathing, a slow push-in), not quick actions or cuts.
 
 workflow: The string "h3-i2v.json" (always this exact ID)
 

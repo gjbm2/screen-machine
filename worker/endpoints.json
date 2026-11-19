@@ -80,17 +80,17 @@
     },
     "sm-video": {
       "template": "sm-worker-video",
-      "image": "gjbm2/sm-worker:2026-11-18-3",
+      "image": "gjbm2/sm-worker:2026-11-19-1",
       "gpus": "BLACKWELL_96,HOPPER_141",
       "workers_max": 1,
       "idle_timeout": 5,
       "execution_timeout_s": 1800,
-      "bundle": "https://huggingface.co/gjbm2/sm-h3-bundle:55ed5c3b5824f47a2ab6a12fd95350666980c3af",
+      "bundle": "https://huggingface.co/gjbm2/sm-h3-bundle:736cf2d7b12ea50d0b58faf3b1b7926e29fb16c5",
       "env": {
         "COMFY_ARGS": "--disable-dynamic-vram",
         "SM_PREFETCH": "1"
       },
-      "note": "Video (plan step 6, 19 Nov): MiniMax H3 FL2VA, h3-i2v.json and h3-fl2v.json; 5 s at 1344x768, 24 fps, with sound; ~100 s a clip on a PRO 6000. One model, no dwell; flags as sm-zimage. Max 1 (account quota 10).",
+      "note": "Video (plan step 6, 19 Nov): MiniMax H3 FL2VA, h3-i2v.json and h3-fl2v.json; 5 s at 1344x768 drawn, RIFE x3 to 15 s at 24 fps for the TV's slow eased loop, no sound; ~2 min a clip on a PRO 6000. Image 2026-11-19-1 maps the frame_interpolation folder. One model, no dwell. Max 1 (account quota 10).",
       "id": "srxuhd77ow2yco"
     }
   }
