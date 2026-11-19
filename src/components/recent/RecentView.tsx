@@ -584,13 +584,14 @@ export const RecentView: React.FC<RecentViewProps> = ({
     try {
       toast.loading(`Publishing to ${targetBucketId}...`, { id: 'publish-toast' });
       const bucketId = img.bucketId || '_recent';
-      await publishApi.publishImageUnified({
+      const result = await publishApi.publishImageUnified({
         dest_bucket_id: targetBucketId,
         src_bucket_id: bucketId,
         filename: img.id
       });
       toast.dismiss('publish-toast');
-      toast.success(`Image published to ${targetBucketId}`);
+      if (result.success) toast.success(`Image published to ${targetBucketId}`);
+      else if (!result.cancelled) toast.error(`Failed to publish image: ${result.error ?? ''}`);
     } catch (error) {
       console.error('Error publishing image:', error);
       toast.dismiss('publish-toast');

@@ -155,7 +155,7 @@ def house(tmp_path, monkeypatch):
         monkeypatch.setenv(var, "x")
     # a picture of another shape: each test sets the screen's choice (Settings > Screens), and the vision model that
     # finds a crop's subject is never asked (a test that crops gives its own answer)
-    policy = {"mode": "whole"}
+    policy = {"mode": "frame"}
     monkeypatch.setattr(reframe, "screen_policy", lambda screen_id: policy["mode"])
 
     def no_vision(img):
@@ -640,7 +640,7 @@ def pixel(path, x, y):
 
 
 def test_a_portrait_on_a_screen_set_to_extend_goes_up_whole_then_fills_it(house):
-    house["policy"]["mode"] = "extend"
+    house["policy"]["mode"] = "adapt"
     fake = GatedRunPod()
     house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
     stored = library_picture(house)
@@ -669,7 +669,7 @@ def test_a_portrait_on_a_screen_set_to_extend_goes_up_whole_then_fills_it(house)
 
 
 def test_republishing_an_extended_picture_uses_the_kept_copy(house):
-    house["policy"]["mode"] = "extend"
+    house["policy"]["mode"] = "adapt"
     fake = GatedRunPod()
     fake.gate.set()
     house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
@@ -688,7 +688,7 @@ def test_republishing_an_extended_picture_uses_the_kept_copy(house):
 
 
 def test_a_screen_given_something_else_meanwhile_keeps_it(house):
-    house["policy"]["mode"] = "extend"
+    house["policy"]["mode"] = "adapt"
     fake = GatedRunPod()
     house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
     publish(house, library_picture(house))
@@ -701,7 +701,7 @@ def test_a_screen_given_something_else_meanwhile_keeps_it(house):
 
 
 def test_a_failed_extension_leaves_the_picture_whole(house):
-    house["policy"]["mode"] = "extend"
+    house["policy"]["mode"] = "adapt"
     fake = GatedRunPod(fail=True)
     fake.gate.set()
     house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
@@ -728,7 +728,7 @@ def test_a_crop_with_no_answer_from_the_ai_keeps_the_middle(house):
     assert same_shape(size_of(tv_shows(house["output"])), screen_size())
 
 
-@pytest.mark.parametrize("mode", ["extend", "crop", "whole"])
+@pytest.mark.parametrize("mode", ["auto", "adapt", "crop", "frame"])
 def test_a_picture_of_the_screens_shape_is_never_reframed(house, mode):
     house["policy"]["mode"] = mode
     fake = GatedRunPod()
@@ -747,7 +747,7 @@ def test_a_screen_set_to_show_whole_shows_it_whole(house):
 
 
 def test_a_picture_whose_shape_was_chosen_at_the_generator_is_not_reframed(house):
-    house["policy"]["mode"] = "extend"
+    house["policy"]["mode"] = "adapt"
     fake = GatedRunPod()
     fake.gate.set()
     house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
@@ -757,7 +757,7 @@ def test_a_picture_whose_shape_was_chosen_at_the_generator_is_not_reframed(house
 
 
 def test_the_blank_screen_is_not_reframed(house):
-    house["policy"]["mode"] = "extend"
+    house["policy"]["mode"] = "adapt"
     fake = GatedRunPod()
     fake.gate.set()
     house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
@@ -1064,3 +1064,62 @@ def test_a_chosen_size_is_drawn_as_chosen(house, workflow):
 def test_a_text_picture_for_a_tv_is_drawn_as_the_graph_says(house, workflow):
     latent, finish = render_for(house, workflow, (3840, 2160))
     assert latent == _graph_latent(workflow) and finish == (3840, 2160)
+
+
+# ------------------------------------------------- the person's choice when publishing; auto (owner, 19 Nov)
+
+def test_the_persons_choice_wins_over_the_screens(house):
+    house["policy"]["mode"] = "adapt"
+    fake = GatedRunPod()
+    fake.gate.set()
+    house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
+    stored = library_picture(house)
+    house["publisher"].publish_to_destination(source=stored, publish_destination_id=SCREEN, silent=True, fit="frame",
+                                              metadata={"type": "image"})
+    wait_for_extensions()
+    assert size_of(tv_shows(house["output"])) == (556, 1024) and fake.jobs == 0
+    house["publisher"].publish_to_destination(source=stored, publish_destination_id=SCREEN, silent=True, fit="crop",
+                                              metadata={"type": "image"})
+    assert same_shape(size_of(tv_shows(house["output"])), screen_size())
+
+
+def test_a_chosen_fit_applies_even_to_a_picture_shaped_at_the_generator(house):
+    stored = library_picture(house)
+    house["publisher"].publish_to_destination(source=stored, publish_destination_id=SCREEN, silent=True, fit="crop",
+                                              metadata={"type": "image", "shape": "portrait"})
+    assert same_shape(size_of(tv_shows(house["output"])), screen_size())
+
+
+def test_auto_reads_the_picture_then_paints_to_its_plan(house):
+    """The AI's plan: trim the top and bottom fifth, put the rest left of centre, say what to paint; one generator
+    pass; the kept part's own pixels are on the screen."""
+    import routes.openai
+    house["policy"]["mode"] = "auto"
+    house["monkeypatch"].setattr(routes.openai, "openai_prompt", lambda *a, **k: {
+        "keep_start": 0.2, "keep_end": 0.8, "place": 0.25, "fill": "more of the street, a lamp post on the right",
+        "explanation": "empty sky and pavement"})
+    fake = GatedRunPod()
+    fake.gate.set()
+    house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
+    publish(house, library_picture(house, two_part=True))
+    wait_for_extensions()
+
+    assert fake.jobs == 1
+    assert "a lamp post on the right" in _prompt_sent(fake.payload)
+    with Image.open(BytesIO(base64.b64decode(fake.images[0]["image"]))) as canvas:
+        canvas = canvas.convert("RGB")
+        assert same_shape(canvas.size, screen_size())
+        kept_h = canvas.height
+        assert abs(canvas.width - round(kept_h * 16 / 9)) <= 2
+        # the kept part (556 wide, 60% of 1024 tall, scaled to the canvas height) sits left of centre
+        kept_w = round(556 * kept_h / round(1024 * 0.6))
+        left = round((canvas.width - kept_w) * 0.25)
+        assert near(canvas.getpixel((left + kept_w // 2, 5)), TOP)       # its top is the picture's upper half
+        assert near(canvas.getpixel((canvas.width - 5, kept_h // 2)), (128, 128, 128))
+    shown = tv_shows(house["output"])
+    w, h = screen_size()
+    assert size_of(shown) == (w, h)
+    kept_on_screen = round(556 * h / round(1024 * 0.6))
+    x_mid = round((w - kept_on_screen) * 0.25) + kept_on_screen // 2
+    assert near(pixel(shown, x_mid, h // 4), TOP) and near(pixel(shown, x_mid, 3 * h // 4), OLD)
+    assert near(pixel(shown, w - 10, h // 2), NEW), "the right is not the painted part"

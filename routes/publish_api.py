@@ -40,10 +40,10 @@ _WRITE_LOCK = threading.Lock()
 @publish_api.route('/publish-destinations/<dest_id>/reframe', methods=['PUT'])
 def set_screen_reframe(dest_id):
     """A screen's choice for a picture of another shape than its own (Settings > Screens; routes/reframe.py):
-    {"reframe": "extend" | "crop" | "whole"}. Kept in the deployment's publish-destinations.json."""
+    {"reframe": "auto" | "crop" | "frame" | "adapt"}. Kept in the deployment's publish-destinations.json."""
     from routes import reframe
-    mode = (request.get_json(silent=True) or {}).get("reframe")
-    if mode not in reframe.MODES:
+    mode = reframe.mode_of((request.get_json(silent=True) or {}).get("reframe"))
+    if mode is None:
         return jsonify({"error": f"reframe must be one of {', '.join(reframe.MODES)}"}), 400
     path = Path(PUBLISH_DESTINATIONS_FILE)
     with _WRITE_LOCK:
@@ -59,6 +59,57 @@ def set_screen_reframe(dest_id):
         os.replace(tmp, path)
     info(f"[publish_api] {dest_id}: pictures of another shape -> {mode}")
     return jsonify({"id": dest_id, "reframe": mode})
+
+
+@publish_api.route('/publish/fit-check', methods=['POST'])
+def fit_check():
+    """Is this still the wrong shape for the screen, so the app should ask how to fit it (auto, crop, frame, adapt;
+    routes/reframe.py)? Body as POST /publish: publish_destination_id (or dest_bucket_id), and src_bucket_id + filename
+    or source_url. Answers {"ask": bool, "picture": [w, h], "screen": [w, h], "name", "default": the screen's setting}; ask is
+    false for a video, a picture of the screen's shape, a screen with no size, or a picture that can't be read."""
+    from PIL import Image, ImageOps
+    from io import BytesIO
+    from routes import reframe
+    from routes.bucket_api import bucket_path
+    data = request.get_json(silent=True) or {}
+    dest_id = data.get("publish_destination_id") or data.get("dest_bucket_id")
+    try:
+        dest = get_destination(dest_id)
+    except KeyError:
+        return jsonify({"error": f"no screen {dest_id}"}), 404
+    if not (dest.get("maxwidth") and dest.get("maxheight")):
+        return jsonify({"ask": False})
+    screen = [int(dest["maxwidth"]), int(dest["maxheight"])]
+    try:
+        if data.get("src_bucket_id") and data.get("filename"):
+            path = bucket_path(data["src_bucket_id"]) / data["filename"]
+            if path.suffix.lower() in (".mp4", ".mov", ".webm", ".m4v"):
+                return jsonify({"ask": False})
+            raw = path.read_bytes()
+        elif data.get("source_url"):
+            from urllib.parse import urlparse, unquote
+            from routes.bucketer import BASE_OUTPUT
+            from routes.result_source import read_bytes
+            import re
+            local = unquote(urlparse(data["source_url"]).path)
+            raw_route = re.match(r"^/api/buckets/([^/]+)/raw/(.+)$", local)
+            if local.startswith("/output/") or raw_route:   # one of this app's own pictures: read it, don't fetch it
+                path = (bucket_path(raw_route.group(1)) / raw_route.group(2) if raw_route
+                        else Path(BASE_OUTPUT) / local[len("/output/"):]).resolve()
+                if not path.is_relative_to(Path(BASE_OUTPUT).resolve()):
+                    return jsonify({"ask": False})
+                raw = path.read_bytes()
+            else:
+                raw = read_bytes(data["source_url"])
+        else:
+            return jsonify({"error": "src_bucket_id + filename or source_url is required"}), 400
+        with Image.open(BytesIO(raw)) as img:
+            picture = list(ImageOps.exif_transpose(img).size)
+    except Exception as e:
+        warning(f"[fit_check] could not read the picture: {e}")
+        return jsonify({"ask": False})
+    return jsonify({"ask": reframe.off_shape(picture, screen[0] / screen[1]), "picture": picture, "screen": screen,
+                    "name": dest.get("name") or dest_id, "default": reframe.screen_policy(dest_id)})
 
 
 @publish_api.route('/publish', methods=['POST'])
@@ -120,7 +171,8 @@ def unified_publish_image():
                 publish_destination_id=dest_bucket_id,
                 # Metadata will be automatically loaded from sidecar by publish_to_destination
                 skip_bucket=True,  # Always skip bucket append since image is already in a bucket
-                cross_bucket_mode=cross_bucket_mode  # Set cross_bucket_mode flag based on buckets
+                cross_bucket_mode=cross_bucket_mode,  # Set cross_bucket_mode flag based on buckets
+                fit=data.get('fit'),  # how the person chose to fit a picture of another shape (routes/reframe.py)
             )
             
         # Route B: External URL publishing
@@ -136,7 +188,8 @@ def unified_publish_image():
                 publish_destination_id=dest_bucket_id,
                 metadata=metadata,
                 skip_bucket=data.get('skip_bucket', False),
-                cross_bucket_mode=True  # External URLs should use cross-bucket URL format
+                cross_bucket_mode=True,  # External URLs should use cross-bucket URL format
+                fit=data.get('fit'),
             )
             
         else:

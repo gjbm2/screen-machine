@@ -574,7 +574,8 @@ export const BucketGridView = ({
         filename: filename
       });
       
-      if (success) {
+      if (success.cancelled) return;     // the person cancelled the fit choice
+      if (success.success) {
         // Update local state immediately
         setBucketDetails(prev => prev ? {
           ...prev,

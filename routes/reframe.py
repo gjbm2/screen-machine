@@ -1,10 +1,16 @@
-"""A picture of another shape than the place it goes (owner, 19 Nov 2026): extend it with AI, or let AI pick the
-part to crop, or show it whole.
+"""A picture of another shape than the place it goes (owner, 19 Nov 2026). Four ways to fit it to a screen:
+- auto: an AI read of the picture plans the reframe for this screen (a little cropping where the picture has little to
+  lose, the rest extended, the subject placed, what to paint in the new parts), then one generator pass carries it out;
+- crop: AI picks the part to keep;
+- frame: shown whole, with bars;
+- adapt: the whole picture, extended with AI.
+When publishing from the app the person is asked (Auto first); a publish nobody watches (a schedule, Alexa) uses the
+screen's setting.
 
 Two places use it:
-- a screen (publish-destinations.json "reframe": extend | crop | whole, set on Settings > Screens): a still published
-  to the screen whose shape is off the screen's is cropped before it goes up, or shown whole at once and swapped for
-  its extended copy when that is made (routes/publisher.py). The library keeps the original; reframed copies are
+- a screen (publish-destinations.json "reframe": auto | crop | frame | adapt, set on Settings > Screens, or the
+  person's choice for one publish): a still published to the screen whose shape is off the screen's is cropped before
+  it goes up, or shown whole at once and swapped for its reframed copy when that is made (routes/publisher.py). The library keeps the original; reframed copies are
   kept under output/_reframe/ and reused.
 - the generator's Adapt and Combine (params "shape" and "fill"): a photo turned into another shape before the edit,
   so it is still one job (routes/generate.py).
@@ -30,7 +36,8 @@ from utils.logger import info, warning
 # A picture this close to the shape it goes into is left alone (routes.generate fills the screen with it)
 TOLERANCE = 0.02
 SHAPES = {"landscape": 16 / 9, "portrait": 9 / 16, "square": 1.0}
-MODES = ("extend", "crop", "whole")
+MODES = ("auto", "crop", "frame", "adapt")
+OLD_MODES = {"extend": "adapt", "whole": "frame"}     # the first names (19 Nov), still read from a screen's setting
 GREY = (128, 128, 128)
 FEATHER = 0.02          # the soft edge of the original put back over an extended picture, as a share of its width
 EXTEND_WORKFLOW = "qwen21-edit.json"
@@ -49,15 +56,23 @@ def off_shape(size, aspect, tolerance=TOLERANCE) -> bool:
     return bool(w and h and aspect) and abs((w / h) / aspect - 1) > tolerance
 
 
-def pad(img: Image.Image, aspect: float) -> tuple[Image.Image, tuple[int, int, int, int]]:
-    """The picture centred on a grey canvas of the shape, and where it sits (x0, y0, x1, y1)."""
+def mode_of(value) -> str | None:
+    """A fit mode by its name or its first name, else None."""
+    value = OLD_MODES.get(value, value)
+    return value if value in MODES else None
+
+
+def pad(img: Image.Image, aspect: float, place: float = 0.5) -> tuple[Image.Image, tuple[int, int, int, int]]:
+    """The picture on a grey canvas of the shape, and where it sits (x0, y0, x1, y1). place: where it sits along the
+    side that grows, 0 (left / top) to 1 (right / bottom); 0.5 centred."""
     w, h = img.size
     if w / h < aspect:
         cw, ch = round(h * aspect), h
     else:
         cw, ch = w, round(w / aspect)
     canvas = Image.new("RGB", (cw, ch), GREY)
-    x0, y0 = (cw - w) // 2, (ch - h) // 2
+    place = min(max(float(place), 0.0), 1.0)
+    x0, y0 = round((cw - w) * place), round((ch - h) * place)
     canvas.paste(img.convert("RGB"), (x0, y0))
     return canvas, (x0, y0, x0 + w, y0 + h)
 
@@ -156,19 +171,98 @@ def paste_back(extended: Image.Image, original: Image.Image, canvas_size, box) -
     return out
 
 
-def extend(img: Image.Image, aspect: float, size, label: str = "", target: str | None = None) -> Image.Image:
-    """The picture extended to the shape by Qwen 2.1 edit at size (w, h), the original put back over the middle.
+# Auto: the AI read that plans the reframe (owner, 19 Nov: "ai should reason through how to adapt the image for the
+# screen smartly -- which may be a bit of cropping, a bit of extending")
+PLAN_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "keep_start": {"type": "number"}, "keep_end": {"type": "number"}, "place": {"type": "number"},
+        "fill": {"type": "string"}, "explanation": {"type": "string"},
+    },
+    "required": ["keep_start", "keep_end", "place", "fill", "explanation"],
+}
+PLAN_SYSTEM = """You reframe a picture for a screen of another shape, as a picture editor would. The picture is {pw}x{ph}
+and the screen is {sw}x{sh}, so the picture is too {long_word} for it. Two tools: cut some of its {cut_side} away, and
+paint more of the scene at its {grow_side} (an AI continues the scene there). Use each as far as it serves the picture:
+- Cut only what adds little (empty sky, blank floor, a plain margin), never the subject (faces, heads, the action,
+  what the picture is about) or what frames it. Keep everything when nothing is expendable.
+- keep_start and keep_end: the part to keep {along}, as fractions 0 to 1 ({start_word} = 0).
+- place: where the kept part sits across the new frame {across}: 0 = {place0}, 0.5 = centred, 1 = {place1}. Leave room
+  where the subject looks or moves; centre a frontal or symmetrical subject.
+- fill: one sentence on what to paint in the new parts, continuing this scene (say what goes on each side).
+- explanation: one short sentence."""
+
+
+def _plan_words(size, aspect):
+    tall = size[0] / size[1] < aspect
+    if tall:
+        return {"long_word": "tall", "cut_side": "top and bottom", "grow_side": "left and right", "along": "from top to bottom",
+                "start_word": "top", "across": "from left to right", "place0": "at the left", "place1": "at the right"}
+    return {"long_word": "wide", "cut_side": "left and right", "grow_side": "top and bottom", "along": "from left to right",
+            "start_word": "left", "across": "from top to bottom", "place0": "at the top", "place1": "at the bottom"}
+
+
+def plan(img: Image.Image, aspect: float, size) -> dict:
+    """The AI's reframe of a picture for a screen of size (w, h): {"keep": (x0, y0, x1, y1) in pixels, "place",
+    "fill", "why"}. The kept part is cut only along the picture's long side and never past the screen's shape (beyond
+    that there would be nothing left to extend). With no answer: everything kept, centred, a plain continuation."""
+    from routes.openai import openai_prompt
+    w, h = img.size
+    tall = w / h < aspect
+    answer = {}
+    try:
+        buf = BytesIO()
+        small = img.convert("RGB").copy()
+        small.thumbnail((1536, 1536))
+        small.save(buf, format="JPEG", quality=90)
+        answer = openai_prompt("Plan the reframe of this picture for the screen.",
+                               system_prompt=PLAN_SYSTEM.format(pw=w, ph=h, sw=size[0], sh=size[1],
+                                                                **_plan_words(img.size, aspect)),
+                               schema=PLAN_SCHEMA, images=[base64.b64encode(buf.getvalue()).decode()], verbose=False)
+    except Exception as e:
+        warning(f"[reframe] no plan from the AI ({e}); extending the whole picture")
+    start = min(max(float(answer.get("keep_start", 0.0)), 0.0), 1.0)
+    end = min(max(float(answer.get("keep_end", 1.0)), 0.0), 1.0)
+    if end <= start:
+        start, end = 0.0, 1.0
+    length = h if tall else w
+    shortest = (w / aspect) if tall else (h * aspect)          # cut no further than the screen's own shape
+    a, b = start * length, end * length
+    if b - a < shortest:
+        mid = (a + b) / 2
+        a = min(max(mid - shortest / 2, 0), length - shortest)
+        b = a + shortest
+    keep = (0, round(a), w, round(b)) if tall else (round(a), 0, round(b), h)
+    return {"keep": keep, "place": min(max(float(answer.get("place", 0.5)), 0.0), 1.0),
+            "fill": str(answer.get("fill") or "").strip(), "why": str(answer.get("explanation") or "").strip()}
+
+
+def auto(img: Image.Image, aspect: float, size, label: str = "", target: str | None = None) -> Image.Image:
+    """The picture reframed for the screen as the AI planned it: the kept part, placed, the rest painted to its
+    plan (one generator pass), the kept part's own pixels put back. A plan that is all cropping needs no pass."""
+    p = plan(img, aspect, size)
+    kept = img.crop(p["keep"])
+    info(f"[reframe] auto plan: keep {p['keep']} of {img.size}, place {p['place']:.2f}; {p['fill']} ({p['why']})")
+    if not off_shape(kept.size, aspect):
+        return ImageOps.fit(kept, tuple(size), Image.LANCZOS)
+    prompt = EXTEND_PROMPT + (f" In the new parts: {p['fill']}" if p["fill"] else "")
+    return extend(kept, aspect, size, label=label, target=target, place=p["place"], prompt=prompt)
+
+
+def extend(img: Image.Image, aspect: float, size, label: str = "", target: str | None = None, place: float = 0.5,
+           prompt: str = EXTEND_PROMPT) -> Image.Image:
+    """The picture extended to the shape by Qwen 2.1 edit at size (w, h), the original put back over its part.
     A tracker job (source "reframe") shows it in the Jobs dock. Raises when the job fails."""
     import routes.generate as generate
     from routes.jobs import get_tracker
     from routes.jobs.workflows import target_name
     from routes.result_source import read_bytes
-    canvas, box = pad(img, aspect)
+    canvas, box = pad(img, aspect, place)
     buf = BytesIO()
     canvas.save(buf, format="JPEG", quality=95)
     job = get_tracker().create(prompt=label or "Extend the picture to fill the screen", source="reframe",
                                target=target, target_name=target_name(target))
-    out = generate.start(prompt=EXTEND_PROMPT, workflow=EXTEND_WORKFLOW, job_id=job["id"],
+    out = generate.start(prompt=prompt, workflow=EXTEND_WORKFLOW, job_id=job["id"],
                          images=[{"name": "reframe.jpg", "image": base64.b64encode(buf.getvalue()).decode()}],
                          maxwidth=size[0], maxheight=size[1], silent=True)
     with Image.open(BytesIO(read_bytes(out["message"]))) as result:
@@ -208,14 +302,13 @@ def save_cached(img: Image.Image, path: Path) -> Path:
 
 
 def screen_policy(screen_id: str) -> str:
-    """The screen's choice for a picture of another shape (Settings > Screens), read fresh each time: extend, crop or
-    whole (the default)."""
+    """The screen's choice for a picture of another shape (Settings > Screens), read fresh each time: auto, crop,
+    frame (the default) or adapt."""
     from routes.utils import _load_json_once
     try:
         dest = next((d for d in _load_json_once("publish_destinations", "publish-destinations.json")
                      if d.get("id") == screen_id), {})
     except Exception as e:
         warning(f"[reframe] could not read the screens: {e}")
-        return "whole"
-    mode = dest.get("reframe")
-    return mode if mode in MODES else "whole"
+        return "frame"
+    return mode_of(dest.get("reframe")) or "frame"

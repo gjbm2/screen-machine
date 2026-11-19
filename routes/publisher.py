@@ -102,9 +102,12 @@ def publish_to_destination(
     batch_id: str | None = None,
     update_published: bool = True,
     is_history_navigation: bool = False,
+    fit: str | None = None,
 ) -> dict:
     """
-    Publish an image to a destination, optionally saving to a bucket.
+    Publish an image to a destination, optionally saving to a bucket. fit: how a still of another shape than the
+    screen's is fitted to it, as the person chose when publishing (auto, crop, frame, adapt; routes/reframe.py); None
+    for the screen's own setting.
 
     Args:
         source: URL or local file path to the image
@@ -343,7 +346,8 @@ def publish_to_destination(
                     cross_bucket_mode=cross_bucket_mode or True,  # URL sources are like cross-bucket
                     batch_id=batch_id,
                     update_published=update_published,
-                    is_history_navigation=is_history_navigation
+                    is_history_navigation=is_history_navigation,
+                    fit=fit,
                 )
                 
                 # Clean up the temporary file
@@ -369,7 +373,8 @@ def publish_to_destination(
                 cross_bucket_mode=cross_bucket_mode,
                 batch_id=batch_id,
                 update_published=update_published,
-                is_history_navigation=is_history_navigation
+                is_history_navigation=is_history_navigation,
+                fit=fit,
             )
             
             return result
@@ -583,11 +588,13 @@ def screen_file_extension(source_ext: str | None) -> str | None:
 _PLACE_LOCK = threading.RLock()
 
 
-def _place_for_screen(src: Path, dst: Path, dest: dict | None = None, metadata: dict | None = None) -> None:
+def _place_for_screen(src: Path, dst: Path, dest: dict | None = None, metadata: dict | None = None,
+                      fit: str | None = None) -> None:
     """Place ``src`` as the screen's file ``dst`` in one step. With the screen's ``dest``, a still of another shape
-    than the screen's goes up as its Settings choice says (routes/reframe.py): cropped where the subject is, or whole
-    at once and swapped for its extended copy when that is made (in the background), or whole."""
-    plan = _reframe_plan(src, dest, metadata) if dest else None
+    than the screen's is fitted as the person chose (fit) or else as the screen's setting says (routes/reframe.py):
+    cropped where the subject is before it goes up; or up whole at once and swapped for its reframed copy (auto: the
+    AI's plan; adapt: extended) when that is made in the background; or whole (frame)."""
+    plan = _reframe_plan(src, dest, metadata, fit) if dest else None
     with _PLACE_LOCK:
         if plan and plan["ready"]:
             src = plan["ready"]
@@ -606,18 +613,21 @@ def _stamp(path: Path):
         return None
 
 
-def _reframe_plan(src: Path, dest: dict, metadata: dict | None) -> dict | None:
+def _reframe_plan(src: Path, dest: dict, metadata: dict | None, fit: str | None = None) -> dict | None:
     """What to do with a still of another shape than the screen's: {"mode", "size", "cache", "ready": a file to place
-    now or None (extend: made in the background)}. None: place it as it is (a screen set to show pictures whole, a
-    picture of the screen's shape, a video, or a picture whose shape was chosen at the generator)."""
+    now or None (auto, adapt: made in the background)}. None: place it as it is (frame, a picture of the screen's
+    shape, a video, or, unless the person chose, a picture whose shape was chosen at the generator)."""
     from PIL import Image, ImageOps
     from routes import reframe
     if src.suffix.lower() not in _STILLS_TO_JPEG | {".jpg"} or not (dest.get("maxwidth") and dest.get("maxheight")):
         return None
-    mode = reframe.screen_policy(dest["id"])
-    if mode == "whole":
+    chosen = reframe.mode_of(fit)
+    mode = chosen or reframe.mode_of(reframe.screen_policy(dest["id"])) or "frame"
+    if mode == "frame":
         return None
-    if metadata is None and sidecar_path(src).exists():
+    if chosen:
+        metadata = {}
+    elif metadata is None and sidecar_path(src).exists():
         try:
             metadata = json.loads(sidecar_path(src).read_text(encoding="utf-8"))
         except Exception:
@@ -645,12 +655,14 @@ def _reframe_plan(src: Path, dest: dict, metadata: dict | None) -> dict | None:
 
 
 def _extend_for_screen(plan: dict, dst: Path, stamp) -> None:
-    """Make the extended copy, keep it, and put it on the screen unless the screen has had something else since."""
+    """Make the reframed copy (auto: the AI's plan; adapt: extended), keep it, and put it on the screen unless the
+    screen has had something else since."""
     from routes import reframe
     size = plan["size"]
+    make = reframe.auto if plan["mode"] == "auto" else reframe.extend
     try:
-        extended = reframe.extend(plan["picture"], size[0] / size[1], size,
-                                  label=f"Extend the picture to fill {plan['name']}", target=plan["screen"])
+        extended = make(plan["picture"], size[0] / size[1], size, target=plan["screen"],
+                        label=f"Fit the picture to {plan['name']}" + (" (auto)" if plan["mode"] == "auto" else ""))
         reframe.save_cached(extended, plan["cache"])
     except Exception as e:
         warning(f"[publish] extending a picture for {plan['screen']} failed, so it stays whole: {e}")
@@ -821,6 +833,7 @@ def _publish_to_destination(
     update_published: bool = True,
     is_history_navigation: bool = False,
     fit_screen: bool = True,
+    fit: str | None = None,
 ) -> dict:
     """Internal helper for publish_to_destination. fit_screen: a still of another shape than the screen's goes up
     as the screen's Settings choice says (_place_for_screen); False for the blank screen."""
@@ -897,14 +910,14 @@ def _publish_to_destination(
                 debug(f"Same-bucket publishing - also copying to direct output path: {direct_output_path}")
                 
                 try:
-                    _place_for_screen(source_filepath, direct_output_path, dest if fit_screen else None, metadata)
+                    _place_for_screen(source_filepath, direct_output_path, dest if fit_screen else None, metadata, fit)
                     _after_placing(direct_output_path)
                 except Exception as e:
                     error(f"Failed to copy to direct output path: {e}")
         
         # Only copy to display path if we're updating the published pointer
         if update_published and source_filepath != display_path:
-            _place_for_screen(source_filepath, display_path, dest if fit_screen else None, metadata)
+            _place_for_screen(source_filepath, display_path, dest if fit_screen else None, metadata, fit)
             _after_placing(display_path)
 
         effective_metadata = None

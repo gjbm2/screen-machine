@@ -468,13 +468,14 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
         }
         
         // Call API to publish - using correct method with proper parameters
-        await publishApi.publishImageUnified({
+        const result = await publishApi.publishImageUnified({
           dest_bucket_id: destinationId,
           src_bucket_id: sourceBucketId,
           filename: img.id
         });
         
-        toast.success(`Published to ${destinationId}`);
+        if (result.success) toast.success(`Published to ${destinationId}`);
+        else if (!result.cancelled) toast.error(`Failed to publish image: ${result.error ?? ''}`);
       } catch (error) {
         console.error('Error publishing image:', error);
         toast.error('Failed to publish image');

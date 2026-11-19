@@ -582,7 +582,12 @@ export function ImageDisplay(props: ImageDisplayProps) {
             src_bucket_id: sourceBucket,
             filename: activeId
           })
-          .then(async () => {
+          .then(async (result) => {
+            // publishImageUnified resolves with { success }; a cancelled fit choice says nothing
+            if (!result.success) {
+              if (!result.cancelled) toast.error(`Publish failed: ${result.error ?? ''}`);
+              return;
+            }
             // Refresh both source and destination buckets to ensure UI is up to date
             await Promise.all([
               stableRefreshBucket(sourceBucket),
@@ -667,7 +672,11 @@ export function ImageDisplay(props: ImageDisplayProps) {
           src_bucket_id: getDestinationFile(selectedTab),
           filename: imageId
         })
-        .then(() => {
+        .then((result) => {
+          if (!result.success) {
+            if (!result.cancelled) toast.error(`Publish failed: ${result.error ?? ''}`);
+            return;
+          }
           toast.success('Published successfully');
           stableRefreshBucket(destId);
         })
@@ -686,7 +695,11 @@ export function ImageDisplay(props: ImageDisplayProps) {
           metadata: {}, // Add metadata if available
           skip_bucket: false
         })
-        .then(() => {
+        .then((result) => {
+          if (!result.success) {
+            if (!result.cancelled) toast.error(`Publish failed: ${result.error ?? ''}`);
+            return;
+          }
           toast.success('Published successfully');
           stableRefreshBucket(destId);
         })

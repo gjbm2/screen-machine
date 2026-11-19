@@ -1,5 +1,6 @@
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
+import { FitChoiceDialog } from "@/components/publish/FitChoiceDialog";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Routes, Route } from "react-router-dom";
@@ -63,6 +64,7 @@ const App = () => (
           <DarkMode />
           <Toaster />
           <Sonner />
+          <FitChoiceDialog />
           <AppPlayerProvider>
           {/* the app's places: a top bar on iPad and desktop, a bottom tab bar on a phone */}
           <AppNav />

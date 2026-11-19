@@ -38,7 +38,7 @@ export interface Destination {
   live?: { enabled?: boolean; gpu?: number; profile?: string } | null;
   maxwidth?: number;
   maxheight?: number;
-  reframe?: Reframe;
+  reframe?: string;
 }
 
 interface Point {
@@ -66,18 +66,23 @@ const MASK_SOURCE: Record<string, string> = {
 // ── A picture of another shape (owner, 19 Nov: a portrait photo on a landscape TV) ──────────────────────────
 
 const REFRAME: { value: Reframe; label: string }[] = [
-  { value: "extend", label: "Extend it" },
-  { value: "crop", label: "Crop it" },
-  { value: "whole", label: "Show it whole" },
+  { value: "auto", label: "Auto" },
+  { value: "crop", label: "Crop" },
+  { value: "frame", label: "Frame" },
+  { value: "adapt", label: "Adapt" },
 ];
 const REFRAME_HINT: Record<Reframe, string> = {
-  extend: "AI paints more of the scene around it to fill the screen. It shows whole for the half-minute that takes; the picture in the library is untouched.",
+  auto: "AI looks at the picture and fits it: trims a little where nothing is lost, paints in the rest. It shows whole for the minute that takes.",
   crop: "AI picks the part to keep and fills the screen with it.",
-  whole: "It shows whole, with black at the sides or top and bottom.",
+  frame: "It shows whole, with black at the sides or top and bottom.",
+  adapt: "AI keeps the whole picture and paints more of the scene around it. It shows whole for the minute that takes.",
 };
+// The first names (19 Nov) still read
+const OLD_REFRAME: Record<string, Reframe> = { extend: "adapt", whole: "frame" };
 
 function ShapeChoice({ dest }: { dest: Destination }) {
-  const [value, setValue] = useState<Reframe>(dest.reframe ?? "whole");
+  const stored = (dest.reframe && (OLD_REFRAME[dest.reframe] ?? dest.reframe)) as Reframe | undefined;
+  const [value, setValue] = useState<Reframe>(stored && stored in REFRAME_HINT ? stored : "frame");
   const [error, setError] = useState<string | null>(null);
   const choose = (next: Reframe) => {
     const was = value;
@@ -91,7 +96,7 @@ function ShapeChoice({ dest }: { dest: Destination }) {
   return (
     <>
       <Sub>A picture of another shape</Sub>
-      <Row label={`A portrait photo, say, on this ${dest.maxwidth}×${dest.maxheight} screen`} hint={REFRAME_HINT[value]} stack>
+      <Row label={`A portrait photo, say, on this ${dest.maxwidth}×${dest.maxheight} screen, when nobody is asked (a schedule, Alexa)`} hint={REFRAME_HINT[value]} stack>
         <Chips value={value} options={REFRAME} onChange={choose} label="A picture of another shape" testId={`reframe-${dest.id}`} />
       </Row>
       {error && <Notice tone="bad">{error}</Notice>}

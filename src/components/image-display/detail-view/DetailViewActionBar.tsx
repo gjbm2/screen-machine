@@ -184,10 +184,11 @@ const DetailViewActionBar: React.FC<DetailViewActionBarProps> = ({
         });
       }
       
-      if (success) {
+      // the result is an object (always truthy): its success flag says; a cancelled fit choice says nothing
+      if (success.success) {
         toast.success('Image published successfully');
-      } else {
-        toast.error('Failed to publish image');
+      } else if (!success.cancelled) {
+        toast.error(success.error ? `Failed to publish image: ${success.error}` : 'Failed to publish image');
       }
     } catch (error) {
       console.error('Error publishing image:', error);
