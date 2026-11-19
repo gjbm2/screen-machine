@@ -1309,3 +1309,65 @@ def test_a_picture_from_a_url_of_any_format_goes_up_on_the_screen(house, fmt, ct
                                                        publish_destination_id=SCREEN, metadata={"type": "image"})
     assert result["success"], result
     assert near(colour_of(tv_shows(house["output"])), NEW)
+
+
+# ------------------------------------------------- a request sent twice is one generation (19 Nov)
+# Owner, 19 Nov: photos from a phone. The phone lost its connection twice while two pictures were being made; its
+# browser re-sent both requests by itself, so four RunPod jobs ran and the page still reported a failure.
+
+def test_a_generate_request_sent_again_gets_the_first_runs_answer(monkeypatch):
+    import threading
+    from flask import Flask
+    import routes.generate_api as generate_api
+    import smconfig
+    monkeypatch.setattr(smconfig, "enabled", lambda *a, **k: True)
+    monkeypatch.setattr(generate_api, "_RUNS", {})
+    app = Flask(__name__)
+    app.register_blueprint(generate_api.generate_api, url_prefix="/api")
+    started, finish, runs = threading.Event(), threading.Event(), []
+
+    def slow(data, uploaded_images=None):
+        runs.append(data["batch_id"])
+        started.set()
+        assert finish.wait(10)
+        return {"batch_id": data["batch_id"], "images": [{"url": "/output/x.jpg"}], "run": len(runs)}
+    monkeypatch.setattr(generate_api, "process_generate_image_request", slow)
+
+    def post(placeholder="p1"):
+        return app.test_client().post("/api/generate-image", data={
+            "data": json.dumps({"prompt": "night", "batch_id": "b1",
+                                "placeholders": [{"batch_index": 0, "placeholder_id": placeholder}]}),
+            "image": [(BytesIO(_image_bytes("JPEG", OLD, size=(64, 36))), "photo.jpg")]},
+            content_type="multipart/form-data")
+
+    answers = []
+    first = threading.Thread(target=lambda: answers.append(post()))
+    first.start()
+    assert started.wait(10)
+    again = threading.Thread(target=lambda: answers.append(post()))     # the browser re-sends while the first still runs
+    again.start()
+    again.join(0.3)
+    assert again.is_alive(), "the second request did not wait for the first"
+    finish.set()
+    first.join(10), again.join(10)
+    assert runs == ["b1"], "the same request ran twice"
+    assert [a.status_code for a in answers] == [200, 200]
+    assert answers[0].get_json() == answers[1].get_json()
+    assert post().get_json()["run"] == 1, "sent again after it finished: the same answer"
+    assert post("p2").get_json()["run"] == 2, "another Generate into the same batch is its own run"
+
+
+def test_a_generate_request_without_placeholders_always_runs(monkeypatch):
+    from flask import Flask
+    import routes.generate_api as generate_api
+    import smconfig
+    monkeypatch.setattr(smconfig, "enabled", lambda *a, **k: True)
+    monkeypatch.setattr(generate_api, "_RUNS", {})
+    app = Flask(__name__)
+    app.register_blueprint(generate_api.generate_api, url_prefix="/api")
+    runs = []
+    monkeypatch.setattr(generate_api, "process_generate_image_request", lambda data, **k: runs.append(1) or {"images": []})
+    for _ in range(2):
+        assert app.test_client().post("/api/generate-image", data={"data": json.dumps({"prompt": "x", "batch_id": "b"})},
+                                      content_type="multipart/form-data").status_code == 200
+    assert len(runs) == 2

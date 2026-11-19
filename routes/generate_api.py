@@ -1,10 +1,12 @@
 """
 Generate API - Routes for generating content from other content
 """
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, make_response, Response
 from pathlib import Path
 import os
 import json
+import threading
+import time
 from urllib.parse import unquote
 
 from utils.logger import log_to_console, info, error, warning, debug
@@ -137,8 +139,65 @@ def jpg_from_mp4():
 #
 
 
+# A request the browser sends twice is one generation (owner, 19 Nov: photos from a phone). The POST is held open until
+# the picture is made; a phone that locks or switches app mid-wait drops the connection, and the browser re-sends the
+# whole POST by itself (seen 19 Nov 11:26: two requests became four RunPod jobs, and the page reported a failure). The
+# page's placeholder ids are new for every Generate, so the same batch and placeholders means the same request: it gets
+# the first run's answer. The page re-sends too when its connection is cut (src/shared/api/generation.ts).
+_RUNS = {}                     # (batch_id, placeholder ids) -> {"done": Event, "answer": (body, status, mimetype), "t"}
+_RUNS_LOCK = threading.Lock()
+RUN_KEPT_S = 30 * 60
+RUN_WAIT_S = 15 * 60
+
+
+def _run_key():
+    try:
+        data = json.loads(request.form.get('data') or '')
+        ids = tuple(p['placeholder_id'] for p in data.get('placeholders') or [])
+    except Exception:
+        return None
+    return (data['batch_id'], ids) if data.get('batch_id') and ids and all(ids) else None
+
+
 @generate_api.route('/generate-image', methods=['POST'])
 def generate_image_route():
+    key = _run_key()
+    if key is None:              # no placeholders (Alexa, the scheduler, scripts): every request is its own
+        return _generate_image()
+    now = time.time()
+    with _RUNS_LOCK:
+        for old in [k for k, r in _RUNS.items() if now - r["t"] > RUN_KEPT_S]:
+            del _RUNS[old]
+        run = _RUNS.get(key)
+        first = run is None
+        if first:
+            run = _RUNS[key] = {"done": threading.Event(), "answer": None, "t": now}
+    if not first:
+        info(f"[generate_image_route] batch {key[0]} sent again (its connection was cut): answering with the first run")
+        run["done"].wait(RUN_WAIT_S)
+        if run["answer"] is None:
+            return jsonify({"error": "that generation did not finish"}), 500
+        body, status, mimetype = run["answer"]
+        return Response(body, status=status, mimetype=mimetype)
+    try:
+        answer = make_response(_generate_image())
+        run["answer"] = (answer.get_data(), answer.status_code, answer.mimetype)
+        return answer
+    finally:
+        run["done"].set()
+
+
+@generate_api.route('/generate/page-restored', methods=['POST'])
+def page_restored():
+    """The generator page says it came back after the browser closed it (src/utils/photoCache.ts): one log line, so
+    how often a phone drops the page while a photo is being chosen, and at which step, can be read from the log."""
+    note = request.get_json(silent=True) or {}
+    warning(f"[generator page] restored after the browser closed it: {json.dumps(note)[:600]} "
+            f"| {request.headers.get('User-Agent', '')[:160]}")
+    return jsonify({"ok": True})
+
+
+def _generate_image():
     """
     Generate image(s) from a prompt, optionally with reference images.
     """

@@ -13,6 +13,39 @@ function normalizeReferenceUrl(url: string): string {
   return url;
 }
 
+// The request is held open until the picture is made. A phone that locks or switches app in that time loses the
+// connection, and the request fails although the picture is still being made. The server takes the same batch and
+// placeholders as the same request (routes/generate_api.py), so asking again once the page is back joins the run that
+// is going, or gets its finished answer. (Owner, 19 Nov: photos from a phone.)
+const RESENDS = 5;
+
+async function sendUntilAnswered(body: () => FormData, sameRequest: boolean): Promise<Response> {
+  for (let sent = 0; ; sent++) {
+    try {
+      return await send('/generate-image', { method: 'POST', body: body() });
+    } catch (e) {
+      // fetch rejects with a TypeError only when the connection failed; an answer of any status is returned above
+      if (!sameRequest || sent >= RESENDS || !(e instanceof TypeError)) throw e;
+      await pageIsBack();
+    }
+  }
+}
+
+/** Resolves a second after the page is on screen and online again. */
+function pageIsBack(): Promise<void> {
+  return new Promise(resolve => {
+    const check = () => {
+      if (document.visibilityState !== 'visible' || navigator.onLine === false) return;
+      document.removeEventListener('visibilitychange', check);
+      window.removeEventListener('online', check);
+      setTimeout(resolve, 1000);
+    };
+    document.addEventListener('visibilitychange', check);
+    window.addEventListener('online', check);
+    check();
+  });
+}
+
 export async function generateImage(params: GenerateImageParams) {
   const {
     prompt,
@@ -53,18 +86,20 @@ export async function generateImage(params: GenerateImageParams) {
     }
   }
 
-  const formData = new FormData();
-  formData.append('data', JSON.stringify(jsonData));
+  const body = () => {
+    const formData = new FormData();
+    formData.append('data', JSON.stringify(jsonData));
+    if (imageFiles && imageFiles.length > 0) {
+      imageFiles.forEach(file => {
+        if (file instanceof File) {
+          formData.append('image', file);
+        }
+      });
+    }
+    return formData;
+  };
 
-  if (imageFiles && imageFiles.length > 0) {
-    imageFiles.forEach(file => {
-      if (file instanceof File) {
-        formData.append('image', file);
-      }
-    });
-  }
-
-  const response = await send('/generate-image', { method: 'POST', body: formData });
+  const response = await sendUntilAnswered(body, !!batch_id && !!placeholders && placeholders.length > 0);
 
   if (!response.ok) {
     // A non-JSON error body rejects with the SyntaxError from response.json()

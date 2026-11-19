@@ -4,13 +4,7 @@ import { Upload, Camera, Palette } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useReferenceImages } from '@/contexts/ReferenceImagesContext';
-import { 
-  putPhoto, 
-  restorePhotoIfValid,
-  saveFormState,
-  restoreFormState,
-  clearAll
-} from '@/utils/photoCache';
+import { pickerClosed, pickerOpened, reportRestored, takeClosedPage, watchForm } from '@/utils/photoCache';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -51,8 +45,13 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   currentFormState,
   onRestoreFormState
 }) => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  // a picker closed without a photo fires 'cancel' on its input (React has no prop for it on an input)
+  const pickerInput = (ref: React.MutableRefObject<HTMLInputElement | null>) => (node: HTMLInputElement | null) => {
+    ref.current = node;
+    node?.addEventListener('cancel', pickerClosed);
+  };
   const buttonRef = useRef<HTMLButtonElement>(null);
   const isMobile = useIsMobile();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -107,67 +106,37 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     };
   }, [onImageUpload]);
 
-  // Check for cached photo on mount (only once)
+  // The form is kept while the page is hidden, for the browser closing the page (utils/photoCache.ts)
+  const formState = useRef(currentFormState);
+  formState.current = currentFormState;
+  useEffect(() => watchForm(() => formState.current || {}), []);
+
+  // A page the browser closed (most often while the camera or the picker was open) comes back with its form
   const hasCheckedCache = useRef(false);
   useEffect(() => {
-    if (hasCheckedCache.current) {
-      return; // Already checked, don't check again
-    }
-    
-    const restoreFromCache = async () => {
-      const startTime = performance.now();
-      console.log('ImageUploader: Checking for cached photo on mount');
-      showDebugMessage('📸 Checking for cached photo');
-      
-      // IMPORTANT: Get form state BEFORE calling restorePhotoIfValid which clears the cache
-      const formStateStartTime = performance.now();
-      const formState = restoreFormState();
-      const formStateTime = performance.now() - formStateStartTime;
-      console.log(`ImageUploader: restoreFormState took ${formStateTime.toFixed(2)}ms`);
-      
-      const cachedPhoto = await restorePhotoIfValid();
-      
-      if (cachedPhoto) {
-        console.log('ImageUploader: Found cached photo, restoring');
-        showDebugMessage('📸 Found cached photo, restoring as File...');
-
-        // IMPORTANT: Avoid converting large images to base64 data URIs on mobile (memory spike / tab reload risk).
-        // Instead, restore as a File and funnel through the normal upload path (PromptForm previews via object URL).
-        try {
-          const inferredType = (cachedPhoto as any)?.type || 'image/jpeg';
-          const restoredFile = new File([cachedPhoto], `camera-photo-${Date.now()}.jpg`, { type: inferredType });
-          console.log('ImageUploader: Restored cached photo as File:', restoredFile.name, restoredFile.size, restoredFile.type);
-          showDebugMessage('📸 Cached photo restored (File)');
-          onImageUpload([restoredFile]);
-        } catch (error) {
-          console.error('ImageUploader: Failed restoring cached photo as File:', error);
-          toast.error('Failed to restore cached photo');
-        }
-        
-        // Restore form state if available (already retrieved above)
-        if (formState && onRestoreFormState) {
-          console.log('ImageUploader: Restoring form state');
-          showDebugMessage('📸 Form state restored');
-          
-          const onRestoreStartTime = performance.now();
-          onRestoreFormState(formState);
-          const onRestoreTime = performance.now() - onRestoreStartTime;
-          console.log(`ImageUploader: onRestoreFormState callback took ${onRestoreTime.toFixed(2)}ms`);
-          showDebugMessage(`📸 Form state callback: ${onRestoreTime.toFixed(0)}ms`);
-        }
-        
-        const totalTime = performance.now() - startTime;
-        console.log(`ImageUploader: Total cache restoration took ${totalTime.toFixed(2)}ms`);
-        showDebugMessage(`📸 Total cache restoration: ${totalTime.toFixed(0)}ms`);
-      } else {
-        console.log('ImageUploader: No cached photo found');
-        showDebugMessage('📸 No cached photo found');
-      }
-    };
-
+    if (hasCheckedCache.current) return;
     hasCheckedCache.current = true;
-    restoreFromCache();
-  }, []); // Empty dependency array - only run once on mount
+    (async () => {
+      const closed = await takeClosedPage();
+      if (!closed) return;
+      const { page, photos } = closed;
+      if (photos.length > 0) onImageUpload(photos);
+      if (onRestoreFormState) onRestoreFormState(page.form);
+      reportRestored(page, photos.length);
+
+      const hadPrompt = !!(page.form.prompt || '').trim();
+      const lostPhotos = page.photos - photos.length;
+      let back = '';
+      if (hadPrompt && photos.length > 0) back = photos.length > 1 ? 'Your prompt and photos are back.' : 'Your prompt and photo are back.';
+      else if (photos.length > 0) back = photos.length > 1 ? 'Your photos are back.' : 'Your photo is back.';
+      else if (hadPrompt) back = 'Your prompt is back.';
+      const again = page.picking ? 'Choose the photo again.' : lostPhotos > 0 ? 'Add the photo again.' : '';
+      const what = page.picking
+        ? 'Your browser closed this page while you were choosing a photo.'
+        : 'Your browser had closed this page.';
+      toast.message([what, back, again].filter(Boolean).join(' '), { duration: 10000 });
+    })();
+  }, []);
 
   const processFiles = (files: FileList | null) => {
     try {
@@ -211,6 +180,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     e.preventDefault();
     e.stopPropagation();
+    pickerClosed();
     processFiles(e.target.files);
     e.target.value = '';
   };
@@ -291,67 +261,25 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     }
   };
 
-  const triggerFileInput = () => fileInputRef.current?.click();
+  const triggerFileInput = () => {
+    pickerOpened('gallery');
+    fileInputRef.current?.click();
+  };
   
   const triggerCameraInput = () => {
     setMenuOpen(false);
+    pickerOpened('camera');
     setTimeout(() => {
       cameraInputRef.current?.click();
     }, 100);
   };
 
-  const handleCameraInput = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    console.log('ImageUploader: handleCameraInput called');
-    const file = e.target.files?.[0];
-    if (!file) {
-      console.log('ImageUploader: No file selected');
-      return;
-    }
-
-    // Clear input early so selecting the same photo again still triggers onChange on iOS/Safari.
+  // A camera photo comes in like any other; the form keeps it from then on (PromptForm, utils/photoCache.ts)
+  const handleCameraInput = (e: React.ChangeEvent<HTMLInputElement>) => {
+    pickerClosed();
+    processFiles(e.target.files);
+    // cleared so that taking the same photo again still fires onChange on iOS/Safari
     e.target.value = '';
-
-    // TEMPORARY: Debug message
-    console.log('📸 UPLOADER: Camera input received', file.name, file.size);
-    showDebugMessage('📸 Camera photo received');
-
-    console.log('ImageUploader: Processing camera photo');
-
-    try {
-      const validationError = validateIncomingImageFile(file);
-      if (validationError) {
-        toast.error(validationError);
-        showDebugMessage(`❌ ${validationError}`);
-        return;
-      }
-
-      // 1. Store photo to cache
-      await putPhoto(file);
-      console.log('ImageUploader: Photo stored to cache');
-      showDebugMessage('📸 Photo cached');
-
-      // 2. Save current form state
-      if (currentFormState) {
-        console.log('ImageUploader: currentFormState provided:', currentFormState);
-        showDebugMessage('📸 Form state provided, saving...');
-        saveFormState(currentFormState);
-        console.log('ImageUploader: Form state saved');
-        showDebugMessage('📸 Form state saved');
-      } else {
-        console.log('ImageUploader: No currentFormState provided!');
-        showDebugMessage('❌ No form state provided');
-      }
-
-      // 3. Upload as a File (PromptForm will generate object URLs for preview).
-      // Avoid converting to base64 data URIs on mobile (memory + crash/reload risk).
-      onImageUpload([file]);
-      showDebugMessage('📸 Photo added (File)');
-
-    } catch (error) {
-      console.error('ImageUploader: Error processing camera input:', error);
-      showDebugMessage('❌ Camera input failed');
-      toast.error('Failed to process photo');
-    }
   };
 
   const dragButtonClass = `${isDragging ? 'bg-purple-100 border-purple-500' : 'border border-input'} transition-colors`;
@@ -404,7 +332,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       <>
         <input
           type="file"
-          ref={fileInputRef}
+          ref={pickerInput(fileInputRef)}
           className="hidden"
           accept="image/*"
           onChange={handleImageUpload}
@@ -413,7 +341,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
         />
         <input
           type="file"
-          ref={cameraInputRef}
+          ref={pickerInput(cameraInputRef)}
           className="hidden"
           accept="image/*"
           onChange={handleCameraInput}
@@ -482,7 +410,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     <>
       <input
         type="file"
-        ref={fileInputRef}
+        ref={pickerInput(fileInputRef)}
         className="hidden"
         accept="image/*"
         onChange={handleImageUpload}

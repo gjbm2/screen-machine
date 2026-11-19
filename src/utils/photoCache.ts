@@ -1,11 +1,23 @@
-import { openDB, deleteDB } from 'idb';
+// What the generator form keeps so that it survives the browser closing the page (owner, 19 Nov: "uploaded photos on
+// mobile devices sometimes trigger the page to reload before the image gets processed").
+//
+// A phone closes a page it is short of memory for, most often while the camera or the photo picker is on top of the
+// browser: Android kills the browser's page process, iOS the Safari one. No event fires; the page is simply loaded
+// again when the person comes back, empty, and the photo they chose has nowhere to go. A page can't prevent that. So:
+//   - the form (prompt and settings) is written to localStorage whenever the page is hidden and just before a picker
+//     opens, and removed when the page is left normally (pagehide fires for a reload or a close, never for a kill);
+//   - the photos already chosen are kept in IndexedDB;
+//   - a page that loads and finds a form left behind by a page that is no longer alive puts it all back, says so, and
+//     tells the server (one log line: routes/generate_api.py page_restored).
+// A photo being chosen at the moment the page was closed is lost: the browser never hands it over.
+import { openDB } from 'idb';
+import { jsonInit, send } from '@/shared/http/client';
 
 const DB_NAME = 'camera-cache';
 const STORE = 'photos';
-const KEY = 'pendingPhoto';
-
-// Debug flag - set to true to enable on-screen debug messages
-const DEBUG_MODE = false;
+const PICKED = 'picked';
+const KEY = 'sm_generator_form';
+const FRESH_MS = 15 * 60_000;
 
 export interface UiSnapshot {
   prompt?: string;
@@ -16,200 +28,192 @@ export interface UiSnapshot {
   refinerParams?: Record<string, any>;
   globalParams?: Record<string, any>;
   referenceUrls?: string[];
-  timestamp?: number;
 }
 
-// 1. Store photo to IndexedDB and set sessionStorage flag
-export async function putPhoto(blob: Blob): Promise<void> {
-  console.log('photoCache: Storing photo to IndexedDB');
-  try {
-    const db = await openDB(DB_NAME, 1, {
-      upgrade(db) { 
-        db.createObjectStore(STORE); 
-      }
-    });
-    
-    await db.put(STORE, blob, KEY);
-    
-    // Set flag with timestamp
-    sessionStorage.setItem('photoKey', KEY);
-    sessionStorage.setItem('photoTimestamp', Date.now().toString());
-    console.log('photoCache: Photo stored successfully');
-  } catch (error) {
-    console.error('photoCache: Error storing photo:', error);
-  }
+export type Picker = 'gallery' | 'camera';
+
+export interface ClosedPage {
+  t: number;
+  form: UiSnapshot;
+  /** photos the form held */
+  photos: number;
+  /** the picker that was open when the page was last seen, and since when */
+  picking?: Picker;
+  pickingSince?: number;
+  /** held by the page that wrote this for as long as it lives */
+  lock?: string;
 }
 
-// 2. On refresh: restore photo if < 1 minute old
-export async function restorePhotoIfValid(): Promise<Blob | null> {
-  const startTime = performance.now();
-  console.log('photoCache: Checking for cached photo');
-  showDebugMessage('📸 Cache: Starting photo check');
-  
-  const photoKey = sessionStorage.getItem('photoKey');
-  const timestampStr = sessionStorage.getItem('photoTimestamp');
-  
-  if (!photoKey || !timestampStr) {
-    console.log('photoCache: No cached photo found');
-    showDebugMessage('📸 Cache: No cached photo found');
-    return null;
-  }
-  
-  // Check if recent enough to be a "camera handoff" recovery (mobile Safari may reload the tab).
-  const timestamp = parseInt(timestampStr);
-  const age = Date.now() - timestamp;
-  const ONE_MINUTE = 60_000;
-  
-  if (age > ONE_MINUTE) {
-    console.log('photoCache: Cached photo too old, clearing');
-    showDebugMessage('📸 Cache: Photo too old, clearing');
-    await clearAll();
-    return null;
-  }
-  
-  console.log('photoCache: Cached photo is valid, restoring');
-  showDebugMessage('📸 Cache: Photo valid, opening IndexedDB...');
-  
-  try {
-    const dbStartTime = performance.now();
-    const db = await openDB(DB_NAME, 1);
-    const dbTime = performance.now() - dbStartTime;
-    console.log(`photoCache: IndexedDB opened in ${dbTime.toFixed(2)}ms`);
-    showDebugMessage(`📸 Cache: DB opened in ${dbTime.toFixed(0)}ms`);
-    
-    const getStartTime = performance.now();
-    const blob = await db.get(STORE, KEY);
-    const getTime = performance.now() - getStartTime;
-    console.log(`photoCache: Photo retrieved in ${getTime.toFixed(2)}ms`);
-    showDebugMessage(`📸 Cache: Photo retrieved in ${getTime.toFixed(0)}ms`);
-    
-    if (blob) {
-      const totalTime = performance.now() - startTime;
-      console.log(`photoCache: Total restore time: ${totalTime.toFixed(2)}ms`);
-      showDebugMessage(`📸 Cache: Total restore time: ${totalTime.toFixed(0)}ms`);
-      
-      // Clear cache after successful restore
-      await clearAll();
-      return blob as Blob;
-    }
-  } catch (error) {
-    console.error('photoCache: Error restoring photo:', error);
-    showDebugMessage('❌ Cache: Error restoring photo');
-    await clearAll();
-  }
-  
-  return null;
+// This page holds a Web Lock for as long as it lives, so another tab can tell a form left by a dead page from the
+// form of a live one in the background.
+const LOCK = `${KEY}_${Math.random().toString(36).slice(2)}`;
+try {
+  navigator.locks?.request(LOCK, () => new Promise(() => {}));
+} catch {
+  // no Web Locks: a left-behind form is taken as a dead page's
 }
 
-// Save form state
-export function saveFormState(formState: UiSnapshot): void {
-  console.log('photoCache: Saving form state');
-  console.log('photoCache: Form state to save:', formState);
-  showDebugMessage('📸 Cache: Saving form state');
-  
-  const stateWithTimestamp = {
-    ...formState,
-    timestamp: Date.now()
+let readForm: (() => UiSnapshot) | null = null;
+let photoCount = 0;
+let picking: { how: Picker; since: number } | null = null;
+let wrote = false;
+let taken = false;
+let leaving = false;   // between pagehide and the page going (or coming back from the back/forward cache)
+
+function save(): void {
+  if (!readForm || leaving) return;
+  const form = readForm();
+  if (!picking && !photoCount && !(form.prompt || '').trim()) {
+    drop();
+    return;
+  }
+  const page: ClosedPage = {
+    t: Date.now(), form, photos: photoCount, picking: picking?.how, pickingSince: picking?.since, lock: LOCK,
   };
-  sessionStorage.setItem('formState', JSON.stringify(stateWithTimestamp));
-  console.log('photoCache: Form state saved to sessionStorage');
-  showDebugMessage('📸 Cache: Form state saved to sessionStorage');
+  try {
+    localStorage.setItem(KEY, JSON.stringify(page));
+    wrote = true;
+  } catch {
+    // no storage (private mode, full): nothing is kept
+  }
 }
 
-// Restore form state if valid
-export function restoreFormState(): UiSnapshot | null {
-  console.log('photoCache: Checking for cached form state');
-  showDebugMessage('📸 Cache: Checking for form state');
-  
-  const stored = sessionStorage.getItem('formState');
-  if (!stored) {
-    console.log('photoCache: No form state found in sessionStorage');
-    showDebugMessage('📸 Cache: No form state found');
+function drop(): void {
+  if (!wrote) return;
+  try {
+    localStorage.removeItem(KEY);
+  } catch {
+    // as above
+  }
+  wrote = false;
+}
+
+/** Keep `read()`'s form while the page is hidden. Returns the undo. */
+export function watchForm(read: () => UiSnapshot): () => void {
+  readForm = read;
+  const onVisibility = () => {
+    if (document.visibilityState === 'hidden') {
+      save();
+    } else if (picking) {
+      // back on screen and alive: the picker has closed, whether or not it hands over a photo
+      const open = picking;
+      setTimeout(() => {
+        if (picking === open) pickerClosed();
+      }, 5000);
+    }
+  };
+  // a reload or a close: pagehide comes first, then the page is hidden too, which must not write the form back
+  const onPageHide = () => {
+    leaving = true;
+    drop();
+  };
+  const onPageShow = () => {
+    leaving = false;
+  };
+  document.addEventListener('visibilitychange', onVisibility);
+  window.addEventListener('pagehide', onPageHide);
+  window.addEventListener('pageshow', onPageShow);
+  return () => {
+    document.removeEventListener('visibilitychange', onVisibility);
+    window.removeEventListener('pagehide', onPageHide);
+    window.removeEventListener('pageshow', onPageShow);
+    drop();
+    if (readForm === read) readForm = null;
+  };
+}
+
+/** Call just before the camera or the photo picker opens. */
+export function pickerOpened(how: Picker): void {
+  picking = { how, since: Date.now() };
+  save();
+}
+
+export function pickerClosed(): void {
+  if (!picking) return;
+  picking = null;
+  save();
+}
+
+async function photosDb() {
+  return openDB(DB_NAME, 1, {
+    upgrade(db) {
+      db.createObjectStore(STORE);
+    },
+  });
+}
+
+/** The photos the form holds now (none: forget them). */
+export async function keepPhotos(files: File[]): Promise<void> {
+  try {
+    const db = await photosDb();
+    if (files.length) {
+      await db.put(STORE, files.map(f => ({ name: f.name, type: f.type, lastModified: f.lastModified, blob: f })), PICKED);
+    } else {
+      await db.delete(STORE, PICKED);
+    }
+    photoCount = files.length;
+  } catch {
+    photoCount = 0;
+  }
+  if (files.length || wrote) save();
+}
+
+async function keptPhotos(): Promise<File[]> {
+  try {
+    const kept = await (await photosDb()).get(STORE, PICKED);
+    return (kept || []).map((p: { name: string; type: string; lastModified: number; blob: Blob }) =>
+      new File([p.blob], p.name, { type: p.type, lastModified: p.lastModified }));
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Once per page load: the form (and photos) of a page the browser closed, if there is one from the last 15 minutes.
+ * Anything older, or nothing, clears the kept photos.
+ */
+export async function takeClosedPage(): Promise<{ page: ClosedPage; photos: File[] } | null> {
+  if (taken) return null;
+  taken = true;
+  let page: ClosedPage | null = null;
+  try {
+    page = JSON.parse(localStorage.getItem(KEY) || 'null');
+  } catch {
+    page = null;
+  }
+  if (page?.lock && navigator.locks?.query) {
+    try {
+      const { held } = await navigator.locks.query();
+      if (held?.some(l => l.name === page!.lock)) return null; // its page is alive in another tab: not ours to take
+    } catch {
+      // can't tell: take it
+    }
+  }
+  try {
+    localStorage.removeItem(KEY);
+  } catch {
+    // no storage
+  }
+  if (!page || !page.form || Date.now() - page.t > FRESH_MS) {
+    keepPhotos([]);
     return null;
   }
-  
-  try {
-    const state = JSON.parse(stored) as UiSnapshot;
-    console.log('photoCache: Parsed form state from sessionStorage:', state);
-    showDebugMessage('📸 Cache: Form state parsed from sessionStorage');
-    
-    // Keep in sync with photo TTL (mobile camera round-trips can take longer than a few seconds).
-    const ONE_MINUTE = 60_000;
-    if (state.timestamp && (Date.now() - state.timestamp) < ONE_MINUTE) {
-      console.log('photoCache: Form state is valid, restoring');
-      showDebugMessage('📸 Cache: Form state is valid, restoring');
-      return state;
-    } else {
-      console.log('photoCache: Form state too old, clearing');
-      showDebugMessage('📸 Cache: Form state too old, clearing');
-      sessionStorage.removeItem('formState');
-    }
-  } catch (error) {
-    console.error('photoCache: Error parsing form state:', error);
-    showDebugMessage('❌ Cache: Error parsing form state');
-    sessionStorage.removeItem('formState');
-  }
-  
-  return null;
+  return { page, photos: page.photos ? await keptPhotos() : [] };
 }
 
-// 3. Clear everything
-export async function clearAll(): Promise<void> {
-  console.log('photoCache: Clearing all cached data');
-  
-  // Clear sessionStorage
-  sessionStorage.removeItem('photoKey');
-  sessionStorage.removeItem('photoTimestamp');
-  sessionStorage.removeItem('formState');
-  
-  // Clear IndexedDB
-  try {
-    const db = await openDB(DB_NAME, 1);
-    await db.delete(STORE, KEY);
-  } catch (error) {
-    // Continue silently
-  }
-} 
-
-// TEMPORARY: Debug message display function
-const showDebugMessage = (message: string) => {
-  if (!DEBUG_MODE) return; // Skip if debug mode is disabled
-  
-  // Create or update debug element
-  let debugEl = document.getElementById('debug-messages');
-  if (!debugEl) {
-    debugEl = document.createElement('div');
-    debugEl.id = 'debug-messages';
-    debugEl.style.cssText = `
-      position: fixed;
-      top: 10px;
-      right: 10px;
-      background: rgba(0,0,0,0.8);
-      color: white;
-      padding: 10px;
-      border-radius: 5px;
-      font-family: monospace;
-      font-size: 12px;
-      z-index: 10000;
-      max-width: 300px;
-      word-wrap: break-word;
-    `;
-    document.body.appendChild(debugEl);
-  }
-  
-  const timestamp = new Date().toLocaleTimeString();
-  debugEl.innerHTML += `<div>[${timestamp}] ${message}</div>`;
-  
-  // Keep only last 10 messages
-  const messages = debugEl.children;
-  if (messages.length > 10) {
-    debugEl.removeChild(messages[0]);
-  }
-  
-  // Auto-clear after 15 seconds (3x longer)
-  setTimeout(() => {
-    if (debugEl && debugEl.children.length > 0) {
-      debugEl.removeChild(debugEl.children[0]);
-    }
-  }, 15000);
-}; 
+/** One line in the server log, so how often this happens, and at which step, can be read there. */
+export function reportRestored(page: ClosedPage, photosRestored: number): void {
+  const nav = performance.getEntriesByType?.('navigation')[0] as PerformanceNavigationTiming | undefined;
+  const note = {
+    picking: page.picking || null,
+    picker_open_s: page.pickingSince ? Math.round((page.t - page.pickingSince) / 1000) : null,
+    closed_for_s: Math.round((Date.now() - page.t) / 1000),
+    photos_held: page.photos,
+    photos_restored: photosRestored,
+    had_prompt: !!(page.form.prompt || '').trim(),
+    discarded: (document as any).wasDiscarded ?? null,
+    navigation: nav?.type ?? null,
+    device_memory_gb: (navigator as any).deviceMemory ?? null,
+  };
+  send('/generate/page-restored', jsonInit('POST', note)).catch(() => {});
+}

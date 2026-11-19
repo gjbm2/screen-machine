@@ -9,7 +9,7 @@ import { useReferenceImages } from '@/contexts/ReferenceImagesContext';
 import { Workflow } from '@/types/workflows';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { dataURItoFile, isDataURI } from '@/utils/imageUtils';
-import { clearAll } from '@/utils/photoCache';
+import { keepPhotos } from '@/utils/photoCache';
 import { bucketsApi, publishApi } from '@/shared/api';
 
 // Debug flag - set to true to enable on-screen debug messages
@@ -167,6 +167,17 @@ const PromptForm: React.FC<PromptFormProps> = ({
   // Enhanced blob URL management for mobile
   const blobUrlsRef = useRef<Map<File, string>>(new Map());
   const cleanupTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // The photos the form holds are kept for the browser closing the page (utils/photoCache.ts). Not on mount: the
+  // photos of a closed page are read back first (ImageUploader).
+  const photosChanged = useRef(false);
+  useEffect(() => {
+    if (!photosChanged.current) {
+      photosChanged.current = true;
+      return;
+    }
+    keepPhotos(imageFiles.filter((f): f is File => f instanceof File));
+  }, [imageFiles]);
 
   // Mobile-specific: Delay blob URL cleanup to prevent premature revocation
   const scheduleCleanup = React.useCallback(() => {
@@ -550,16 +561,6 @@ const PromptForm: React.FC<PromptFormProps> = ({
       }
       
       showDebugMessage('📸 Form submitted successfully');
-      
-      // Clear photo cache after successful submission
-      try {
-        await clearAll();
-        console.log('PromptForm: Photo cache cleared after successful submission');
-        showDebugMessage('📸 Cache cleared after submit');
-      } catch (error) {
-        console.log('PromptForm: Error clearing photo cache:', error);
-        showDebugMessage('❌ Cache clear failed');
-      }
       
       // Reset local loading state after successful submission
       setLocalLoading(false);
