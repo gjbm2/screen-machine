@@ -579,6 +579,18 @@ export const RecentView: React.FC<RecentViewProps> = ({
     }
   };
   
+  // Handle moving an image (with its clips) to another bucket: it leaves Generated
+  const handleMoveTo = async (img: ImageItem, targetBucketId: string) => {
+    try {
+      await bucketsApi.copyImageToBucket(img.bucketId || '_recent', targetBucketId, img.id, false);
+      toast.success(`Image moved to ${targetBucketId}`);
+      fetchRecentImages();
+    } catch (error) {
+      console.error('Error moving image:', error);
+      toast.error('Failed to move image');
+    }
+  };
+
   // Handle publishing an image
   const handlePublish = async (img: ImageItem, targetBucketId: string) => {
     try {
@@ -1110,7 +1122,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
   };
 
   // Draggable wrapper for a batch panel – defined outside component so its identity is stable
-  const DraggableBatchPanel = React.memo(({ batch, isCollapsed, collapsedPanels, onCollapseChange, handleDeleteImage, handleDeleteBatch, handleImageClick, handleCopyTo, handlePublish, handleUseAsPrompt, handleGenerateAgain, destinations, selectedImageByBatch, handleSelectImage }: {
+  const DraggableBatchPanel = React.memo(({ batch, isCollapsed, collapsedPanels, onCollapseChange, handleDeleteImage, handleDeleteBatch, handleImageClick, handleCopyTo, handleMoveTo, handlePublish, handleUseAsPrompt, handleGenerateAgain, destinations, selectedImageByBatch, handleSelectImage }: {
     batch: { batchId: string; images: ImageItem[] };
     isCollapsed: boolean;
     collapsedPanels: Record<string, boolean>;
@@ -1119,6 +1131,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
     handleDeleteBatch: (batchId: string) => void;
     handleImageClick: (img: ImageItem) => void;
     handleCopyTo: (img: ImageItem, destId: string) => void;
+    handleMoveTo: (img: ImageItem, destId: string) => void;
     handlePublish: (img: ImageItem, destId: string) => void;
     handleUseAsPrompt: (img: ImageItem) => void;
     handleGenerateAgain: (batchId: string) => void;
@@ -1158,6 +1171,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
           onDeleteBatch={handleDeleteBatch}
           onImageClick={handleImageClick}
           onCopyTo={handleCopyTo}
+          onMoveTo={handleMoveTo}
           onPublish={handlePublish}
           onUseAsPrompt={handleUseAsPrompt}
           onGenerateAgain={handleGenerateAgain}
@@ -1355,6 +1369,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
                   handleDeleteBatch={handleDeleteBatch}
                   handleImageClick={handleImageClick}
                   handleCopyTo={handleCopyTo}
+                  handleMoveTo={handleMoveTo}
                   handlePublish={handlePublish}
                   handleUseAsPrompt={handleUseAsPrompt}
                   handleGenerateAgain={handleGenerateAgain}

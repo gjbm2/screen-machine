@@ -2,18 +2,19 @@ import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react'
 import { ExpandableContainer } from '@/components/common';
 import SortableImageGrid from '@/components/common/SortableImageGrid';
 import { ImageItem } from '@/types/image-types';
-import { GripVertical, Trash2, RefreshCw, MoreVertical, Copy, Share, Maximize2, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
+import { GripVertical, Trash2, RefreshCw, MoreVertical, Maximize2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { GenerateAgainCard } from './GenerateAgainCard';
 import styles from './recent.module.css';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { Button } from '@/components/ui/button';
-import { Sparkles } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { ReferenceImageService } from '@/services/reference-image-service';
 import { toast } from 'sonner';
 import { JobPlaceholder, placeholderKeyOf } from '@/components/jobs/JobPlaceholder';
+import { ImageMenuItems } from '@/components/common/ImageMenuItems';
+import { openNextWithInfo } from '@/contexts/LoopeViewContext';
 
 // Add type declaration for window.generateImage
 declare global {
@@ -38,6 +39,7 @@ export interface RecentBatchPanelProps {
   onToggleFavorite?: (img: ImageItem) => void;
   onImageClick?: (img: ImageItem) => void;
   onCopyTo?: (img: ImageItem, destId: string) => void;
+  onMoveTo?: (img: ImageItem, destId: string) => void;
   onPublish?: (img: ImageItem, destId: string) => void;
   onUseAsPrompt?: (img: ImageItem) => void;
   onGenerateAgain?: (batchId: string) => void;
@@ -57,6 +59,7 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
   onToggleFavorite,
   onImageClick,
   onCopyTo,
+  onMoveTo,
   onPublish,
   onUseAsPrompt,
   onGenerateAgain,
@@ -307,6 +310,58 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
     onCollapseChange?.(batchId, newState);
   };
   
+  // Start again: the picture's prompt and reference pictures back in the generator
+  const startAgain = (img: ImageItem) => {
+    try {
+      // Get the prompt text and reference images from the image
+      const promptText = img.promptKey || img.metadata?.prompt || '';
+      const referenceImages = img.reference_images || [];
+    
+      // Set the prompt text
+      window.dispatchEvent(
+        new CustomEvent('setPromptText', {
+          detail: { prompt: promptText }
+        })
+      );
+    
+      // Convert reference images to URLs and load them into the prompt area
+      const bucketId = img.bucketId || '_recent';
+      const referenceUrls = ReferenceImageService.getReferenceImageUrls(bucketId, referenceImages);
+    
+      // Clear existing reference images and set the first one
+      if (referenceUrls.length > 0) {
+        window.dispatchEvent(
+          new CustomEvent('useImageAsPrompt', {
+            detail: {
+              url: referenceUrls[0],
+              append: false // Clear existing and set this one
+            }
+          })
+        );
+      
+        // Add remaining reference images
+        for (let i = 1; i < referenceUrls.length; i++) {
+          window.dispatchEvent(
+            new CustomEvent('useImageAsPrompt', {
+              detail: {
+                url: referenceUrls[i],
+                append: true // Add to existing
+              }
+            })
+          );
+        }
+      }
+    
+      toast.success('Loaded prompt and reference images for editing');
+    } catch (error) {
+      console.error('Error starting again:', error);
+      toast.error('Failed to load prompt and reference images');
+    }
+  };
+
+  // Info: the Loope opened on the picture's Info panel
+  const showInfo = onImageClick ? (img: ImageItem) => { openNextWithInfo(); onImageClick(img); } : undefined;
+
   const handleDelete = (img: ImageItem) => {
     if (onDeleteImage) {
       onDeleteImage(img);
@@ -391,6 +446,14 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
               setIsCollapsed(false);
               handleThumbnailClick(img);
             }}
+            onInfo={showInfo}
+            onDelete={onDeleteImage ? handleDelete : undefined}
+            onCopyTo={onCopyTo}
+            onMoveTo={onMoveTo}
+            onPublish={onPublish}
+            onUseAsPrompt={onUseAsPrompt}
+            onGenerateAgain={startAgain}
+            publishDestinations={publishDestinations}
           />
         </div>
       </ExpandableContainer>
@@ -497,183 +560,18 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent side="right">
-                  {/* Use as prompt */}
-                  {onUseAsPrompt && (
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        onUseAsPrompt(selectedImage);
-                      }}
-                      className="flex items-center"
-                    >
-                      <Sparkles className="h-4 w-4 mr-2" />
-                      Use as prompt
-                    </DropdownMenuItem>
-                  )}
-                  
-                  {/* Start Again - only show for images with reference images */}
-                  {selectedImage.reference_images && selectedImage.reference_images.length > 0 && (
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        
-                        try {
-                          // Get the prompt text and reference images from the image
-                          const promptText = selectedImage.promptKey || selectedImage.metadata?.prompt || '';
-                          const referenceImages = selectedImage.reference_images || [];
-                          
-                          // Set the prompt text
-                          window.dispatchEvent(
-                            new CustomEvent('setPromptText', {
-                              detail: { prompt: promptText }
-                            })
-                          );
-                          
-                          // Convert reference images to URLs and load them into the prompt area
-                          const bucketId = selectedImage.bucketId || '_recent';
-                          const referenceUrls = ReferenceImageService.getReferenceImageUrls(bucketId, referenceImages);
-                          
-                          // Clear existing reference images and set the first one
-                          if (referenceUrls.length > 0) {
-                            window.dispatchEvent(
-                              new CustomEvent('useImageAsPrompt', {
-                                detail: {
-                                  url: referenceUrls[0],
-                                  append: false // Clear existing and set this one
-                                }
-                              })
-                            );
-                            
-                            // Add remaining reference images
-                            for (let i = 1; i < referenceUrls.length; i++) {
-                              window.dispatchEvent(
-                                new CustomEvent('useImageAsPrompt', {
-                                  detail: {
-                                    url: referenceUrls[i],
-                                    append: true // Add to existing
-                                  }
-                                })
-                              );
-                            }
-                          }
-                          
-                          toast.success('Loaded prompt and reference images for editing');
-                        } catch (error) {
-                          console.error('Error starting again:', error);
-                          toast.error('Failed to load prompt and reference images');
-                        }
-                      }}
-                      className="flex items-center"
-                    >
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                      Start Again
-                    </DropdownMenuItem>
-                  )}
-                  
-                  {/* Copy to submenu */}
-                  {onCopyTo && publishDestinations && publishDestinations.length > 0 && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <DropdownMenuItem
-                          onClick={(e) => e.stopPropagation()}
-                          className="flex items-center"
-                        >
-                          <Copy className="h-4 w-4 mr-2" />
-                          Copy to...
-                        </DropdownMenuItem>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent side="right">
-                        {publishDestinations.map(dest => (
-                          <DropdownMenuItem
-                            key={dest.id}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (onCopyTo) onCopyTo(selectedImage, dest.id);
-                            }}
-                          >
-                            {dest.name}
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-                  
-                  {/* Publish to submenu */}
-                  {onPublish && publishDestinations && publishDestinations.length > 0 && (
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <DropdownMenuItem
-                          onClick={(e) => e.stopPropagation()}
-                          className="flex items-center"
-                        >
-                          <Share className="h-4 w-4 mr-2" />
-                          Publish to...
-                        </DropdownMenuItem>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent side="right">
-                        {publishDestinations
-                          .filter(dest => !dest.headless)
-                          .map(dest => (
-                            <DropdownMenuItem
-                              key={dest.id}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                
-                                try {
-                                  onPublish(selectedImage, dest.id);
-                                } catch (error) {
-                                  console.error("Error publishing image:", error);
-                                }
-                              }}
-                            >
-                              {dest.name}
-                            </DropdownMenuItem>
-                          ))}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  )}
-                  
-                  {/* Full Screen option */}
-                  {selectedImage.urlFull && (
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        window.open(selectedImage.urlFull, '_blank');
-                      }}
-                    >
-                      <Maximize2 className="h-4 w-4 mr-2" />
-                      Full Screen
-                    </DropdownMenuItem>
-                  )}
-                  
-                  {/* Raw URL */}
-                  <DropdownMenuItem
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      // Use the actual bucket ID from the image data, fallback to _recent for backward compatibility
-                      const bucketId = selectedImage.bucketId || '_recent';
-                      window.open(`/output/${bucketId}/${selectedImage.id}`, '_blank');
-                    }}
-                  >
-                    <ExternalLink className="h-4 w-4 mr-2" />
-                    Raw URL
-                  </DropdownMenuItem>
-                  
-                  {/* Delete option */}
-                  {onDeleteImage && (
-                    <DropdownMenuItem
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onDeleteImage(selectedImage);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4 mr-2" />
-                      Delete
-                    </DropdownMenuItem>
-                  )}
+                  <ImageMenuItems
+                    image={selectedImage}
+                    bucket={selectedImage.bucketId || '_recent'}
+                    onInfo={showInfo}
+                    onUseAsPrompt={onUseAsPrompt}
+                    onStartAgain={startAgain}
+                    onCopyTo={onCopyTo}
+                    onMoveTo={onMoveTo}
+                    onPublish={onPublish}
+                    publishDestinations={publishDestinations}
+                    onDelete={onDeleteImage ? handleDelete : undefined}
+                  />
                 </DropdownMenuContent>
               </DropdownMenu>
               )}
@@ -782,10 +680,13 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
                 handleThumbnailClick(img);
               }
             }}
-            onDelete={handleDelete}
+            onDelete={onDeleteImage ? handleDelete : undefined}
             onCopyTo={onCopyTo}
+            onMoveTo={onMoveTo}
             onPublish={onPublish}
             onUseAsPrompt={onUseAsPrompt}
+            onGenerateAgain={startAgain}
+            onInfo={showInfo}
             publishDestinations={publishDestinations}
             className={`${styles.thumbnailGrid} recent-thumbnail-grid`}
             disableDefaultGridCols={true}

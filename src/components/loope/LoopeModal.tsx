@@ -3,18 +3,13 @@ import ReactDOM from 'react-dom';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useLoopeView } from '@/contexts/LoopeViewContext';
 import useEmblaCarousel from 'embla-carousel-react';
-import { ChevronLeft, ChevronRight, X, ChevronUp, Star, Info, Download, Trash2, Share, Clipboard, MoreHorizontal, ExternalLink, Move, Copy, RefreshCcw, RefreshCw, Loader2, Film } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, ChevronUp, Star, Info, Download, Clipboard, MoreHorizontal, Move, Copy, RefreshCcw, Loader2, Film } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import {
   DropdownMenu,
   DropdownMenuContent,
-  DropdownMenuItem,
   DropdownMenuTrigger,
-  DropdownMenuSub,
-  DropdownMenuSubTrigger,
-  DropdownMenuSubContent,
-  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { toast } from 'sonner';
 import { bucketsApi, publishApi } from '@/shared/api';
@@ -22,6 +17,7 @@ import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 import { ReferenceImageService } from '@/services/reference-image-service';
 import { TagLozenges } from '@/components/tags/TagLozenges';
 import { ImageInfo } from './ImageInfo';
+import { ImageMenuItems } from '@/components/common/ImageMenuItems';
 import { notifyItemUpdated } from '@/components/tags/events';
 
 interface LoopeModalProps {
@@ -1338,79 +1334,18 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent>
-                  {/* Publish to submenu */}
-                  {nonHeadlessDestinations && nonHeadlessDestinations.length > 0 && (
-                    <DropdownMenuSub>
-                      <DropdownMenuSubTrigger>
-                        <Share className="mr-2 h-4 w-4" />
-                        <span>Publish to...</span>
-                      </DropdownMenuSubTrigger>
-                      <DropdownMenuSubContent>
-                        {nonHeadlessDestinations.map(dest => (
-                          <DropdownMenuItem 
-                            key={`publish-${dest.id}`}
-                            onClick={() => handlePublish(currentImage, dest.id)}
-                          >
-                            {dest.name || dest.id}
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuSubContent>
-                    </DropdownMenuSub>
-                  )}
-                  
-                  {/* Copy to submenu */}
-                  {destinations && destinations.length > 0 && (
-                    <DropdownMenuSub>
-                      <DropdownMenuSubTrigger>
-                        <Copy className="mr-2 h-4 w-4" />
-                        <span>Copy to...</span>
-                      </DropdownMenuSubTrigger>
-                      <DropdownMenuSubContent>
-                        {destinations.map(dest => (
-                          <DropdownMenuItem 
-                            key={`copy-${dest.id}`}
-                            onClick={() => handleCopyTo(currentImage, dest.id)}
-                          >
-                            {dest.name || dest.id}
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuSubContent>
-                    </DropdownMenuSub>
-                  )}
-                  
-                  {/* Move to submenu */}
-                  {destinations && destinations.length > 0 && (
-                    <DropdownMenuSub>
-                      <DropdownMenuSubTrigger>
-                        <Move className="mr-2 h-4 w-4" />
-                        <span>Move to...</span>
-                      </DropdownMenuSubTrigger>
-                      <DropdownMenuSubContent>
-                        {destinations.map(dest => (
-                          <DropdownMenuItem 
-                            key={`move-${dest.id}`}
-                            onClick={() => handleMoveTo(currentImage, dest.id)}
-                          >
-                            {dest.name || dest.id}
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuSubContent>
-                    </DropdownMenuSub>
-                  )}
-                  
-                  <DropdownMenuSeparator />
-                  
-                  {/* Start Again option */}
-                  <DropdownMenuItem onClick={() => handleStartAgain(currentImage)}>
-                    <RefreshCw className="mr-2 h-4 w-4" />
-                    <span>Start Again</span>
-                  </DropdownMenuItem>
-                  
-                  {/* Delete option */}
-                  <DropdownMenuItem onClick={() => handleDelete(currentImage)}>
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    <span>Delete</span>
-                  </DropdownMenuItem>
+                  {/* the same items as the picture's menu everywhere else (ImageMenuItems), less the bar's own buttons */}
+                  <ImageMenuItems
+                    image={currentImage}
+                    bucket={bucketOf(currentImage)}
+                    except={['info', 'useAsPrompt', 'fullScreen', 'rawUrl']}
+                    onStartAgain={handleStartAgain}
+                    onPublish={handlePublish}
+                    onCopyTo={handleCopyTo}
+                    onMoveTo={handleMoveTo}
+                    publishDestinations={(destinations || []).map((d) => ({ id: d.id, name: d.name || d.id, headless: !(nonHeadlessDestinations || []).some((n) => n.id === d.id) }))}
+                    onDelete={handleDelete}
+                  />
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>

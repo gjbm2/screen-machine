@@ -2,15 +2,17 @@
 // shared job stream (docs/JOBS.md), as a progress ring and the friendly stage words. The job is found by the
 // placeholder id the page sent with the request (job.placeholder_id), else by its batch and index. Until the job
 // shows up, the old spinner. Large (the selected view) adds the stage and the time left under the ring; small (a
-// thumbnail, a few dozen pixels) is the ring alone, with the words as its tooltip.
+// thumbnail, a few dozen pixels) is the ring alone, with the words as its tooltip. While the job runs it can be
+// cancelled from here (owner, 19 Nov): a Cancel button under the large ring, a small × in the thumbnail's corner.
 
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type RefObject } from "react";
 import { Ban, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { isActive, type Job } from "@/shared/api/jobs";
 import { useJobs } from "@/shared/jobs/store";
 import { useJobProgress } from "@/shared/jobs/estimate";
 import { remainingLabel, stageLabel, STAGE_WORDS } from "@/shared/jobs/words";
+import { cancelOneJob } from "./jobWords";
 import type { ImageItem } from "@/types/image-types";
 import { PlaceholderImage } from "@/components/recent/PlaceholderImage";
 import { ProgressRing } from "./JobBits";
@@ -96,6 +98,12 @@ export function JobPlaceholder({
   const time = isActive(job) && !job.cancel_requested ? remainingLabel(progress.remainingS, progress.overrunS) : "";
   const words = time ? `${stage} · ${time}` : stage;
   const StopIcon = job.status === "failed" ? X : Ban;
+  const cancellable = isActive(job) && !job.cancel_requested;
+  const cancel = (e: ReactMouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    void cancelOneJob(job);
+  };
 
   // Inline positioning, not Tailwind's .absolute: the Recent thumbnail strip hides every .absolute child on hover.
   return (
@@ -130,7 +138,33 @@ export function JobPlaceholder({
               {job.status === "failed" ? STAGE_WORDS.failed : stage}
             </span>
             {time && <span className="max-w-full truncate text-xs text-gray-500 dark:text-gray-400">{time}</span>}
+            {cancellable && (
+              <button
+                type="button"
+                onClick={cancel}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="mt-1 rounded-full border border-gray-300 px-3 py-1 text-xs text-gray-600 hover:bg-gray-200 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+            )}
+            {isActive(job) && job.cancel_requested && (
+              <span className="text-xs text-gray-500 dark:text-gray-400">Cancelling…</span>
+            )}
           </>
+        )}
+        {!large && cancellable && (
+          <button
+            type="button"
+            onClick={cancel}
+            onPointerDown={(e) => e.stopPropagation()}
+            aria-label="Cancel"
+            title="Cancel"
+            className="grid place-items-center rounded-full bg-black/40 text-white hover:bg-black/70"
+            style={{ position: "absolute", top: 2, right: 2, width: 18, height: 18 }}
+          >
+            <X className="h-3 w-3" />
+          </button>
         )}
       </div>
     </div>

@@ -626,6 +626,17 @@ export const BucketGridView = ({
     }
   };
 
+  const handleMoveToDestination = async (image: BucketImage, targetBucket: string) => {
+    try {
+      await bucketsApi.copyImageToBucket(destination, targetBucket, getOriginalId(image.id), false);
+      toast.success(`Image moved to ${targetBucket}`);
+      debouncedFetchBucketDetails();
+    } catch (error) {
+      console.error('Error moving image:', error);
+      toast.error('Failed to move image');
+    }
+  };
+
   // Handle maintenance actions
   const handlePurgeNonFavorites = () => {
     setShowMaintenanceModal(true);
@@ -1591,6 +1602,12 @@ export const BucketGridView = ({
                 const originalImage = bucketImages.find(i => i.id === originalId);
                 if (originalImage && destId) {
                   handleCopyToDestination(originalImage, destId);
+                }
+              }}
+              onMoveTo={(img, destId) => {
+                const originalImage = bucketImages.find(i => i.id === getOriginalId(img.id));
+                if (originalImage && destId && destId !== destination) {
+                  handleMoveToDestination(originalImage, destId);
                 }
               }}
               onPublish={(img, destId) => {

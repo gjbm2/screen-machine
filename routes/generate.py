@@ -862,8 +862,7 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
     if batch_id is not None:
         vars(args_namespace)["batch_id"] = batch_id
 
-    # A screen clip (workflows.json "loop") gets its slow ease rendered in, on the full-size still it was made from,
-    # and keeps the still if the camera moved
+    # A screen clip (workflows.json "loop") gets its slow ease rendered in, on the full-size still it was made from
     loop = next((w.get("loop") for w in _load_json_once("workflow", "workflows.json")
                  if w.get("id") == args_namespace.workflow), None)
     still_image = vars(args_namespace).pop("still_image", None)
@@ -875,10 +874,7 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
         output["message"], clip = ease_result(output["message"], loop, job_id,
                                               still=still_image)
         info(f"Eased clip: {clip}")
-        if clip["motion"] > loop.get("max_motion", 16):
-            raise RuntimeError(f"The clip changed too much of the picture (camera movement; {clip['motion']}), "
-                               "so the still stays")
-        vars(args_namespace)["clip"] = clip
+        vars(args_namespace)["clip"] = clip   # a lot of movement only lengthens its rests; a clip is never thrown away
 
     if publish_destination:
         if tracker.is_cancelled(job_id):

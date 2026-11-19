@@ -1,7 +1,6 @@
 import React from 'react';
-import { Maximize2, Star, Film, MoreVertical, Copy, Share, Trash, ExternalLink, Sparkles, RefreshCw, Info, Wand2 } from 'lucide-react';
-import { toast } from 'sonner';
-import { animateStill } from '@/shared/api/buckets';
+import { Maximize2, Star, Film, MoreVertical, Info } from 'lucide-react';
+import { ImageMenuItems } from './ImageMenuItems';
 import { openNextWithInfo } from '@/contexts/LoopeViewContext';
 import { ImageItem } from '@/types/image-types';
 import { Button } from '@/components/ui/button';
@@ -9,7 +8,6 @@ import { Badge } from '@/components/ui/badge';
 import { 
   DropdownMenu, 
   DropdownMenuContent, 
-  DropdownMenuItem, 
   DropdownMenuTrigger 
 } from '@/components/ui/dropdown-menu';
 import { JobPlaceholder, placeholderKeyOf } from '@/components/jobs/JobPlaceholder';
@@ -54,6 +52,8 @@ export interface ImageCardProps {
   onDelete?: (img: ImageItem) => void;
   /** Called to copy image to other bucket */
   onCopyTo?: (img: ImageItem, destId: string) => void;
+  /** Called to move image to another bucket */
+  onMoveTo?: (img: ImageItem, destId: string) => void;
   /** Called to publish image */
   onPublish?: (img: ImageItem, destId: string) => void;
   /** Called when image should be used as a prompt reference */
@@ -72,6 +72,8 @@ export interface ImageCardProps {
   sectionVariant?: 'favourites' | 'dated';
   /** Called when user clicks the fullscreen/expand icon */
   onFullscreenClick?: (img: ImageItem) => void;
+  /** Show this picture's Info (the Loope's Info panel); by default where a click opens the Loope */
+  onInfo?: (img: ImageItem) => void;
 }
 
 const ImageCard: React.FC<ImageCardProps> = ({
@@ -80,6 +82,7 @@ const ImageCard: React.FC<ImageCardProps> = ({
   onToggleFavorite,
   onDelete,
   onCopyTo,
+  onMoveTo,
   onPublish,
   onUseAsPrompt,
   onGenerateAgain,
@@ -89,6 +92,7 @@ const ImageCard: React.FC<ImageCardProps> = ({
   bucketId = '',
   sectionVariant,
   onFullscreenClick,
+  onInfo,
 }) => {
   const style: React.CSSProperties = {
     cursor: 'grab',
@@ -163,6 +167,11 @@ const ImageCard: React.FC<ImageCardProps> = ({
   // Check if this is a thumbnail in the recent view
   const isRecentThumbnail = className.includes('recent-thumbnail-grid');
 
+  // Info: the caller's, or the Loope opened on this picture's Info where a click opens the Loope
+  const info = onInfo ?? (onFullscreenClick && !isRecentThumbnail
+    ? (img: ImageItem) => { openNextWithInfo(); onFullscreenClick(img); }
+    : undefined);
+
   return (
     <div style={style} className={`relative group ${className}`}>
       {/* Custom component, placeholder, or image thumbnail */}
@@ -234,7 +243,7 @@ const ImageCard: React.FC<ImageCardProps> = ({
 
       {/* Info button (desktop, on hover): the Loope opened on this picture's Info; on a phone, tap then swipe up.
           Not on Generated's thumbnails, whose expand selects the picture in its batch instead of opening the Loope */}
-      {!isPlaceholder && onFullscreenClick && !isRecentThumbnail && (
+      {!isPlaceholder && info && (
         <Button
           variant="ghost"
           size="icon"
@@ -243,8 +252,7 @@ const ImageCard: React.FC<ImageCardProps> = ({
           className={`absolute bottom-2 right-[4.5rem] z-30 h-6 w-6 bg-black/30 hover:bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity ${isMobile ? 'hidden' : ''}`}
           onClick={(e) => {
             e.stopPropagation();
-            openNextWithInfo();
-            onFullscreenClick(image);
+            info(image);
           }}
         >
           <Info className="h-4 w-4" />
@@ -280,173 +288,18 @@ const ImageCard: React.FC<ImageCardProps> = ({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="right">
-            {onFullscreenClick && !isRecentThumbnail && (
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  openNextWithInfo();
-                  onFullscreenClick(image);
-                }}
-              >
-                <Info className="h-4 w-4 mr-2" />
-                Info
-              </DropdownMenuItem>
-            )}
-            {/* Bring to life: a clip of this still, filed with it (the triage picks what moves) */}
-            {(bucketId || image.bucketId) && !isVideo(image) && (
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  animateStill((bucketId || image.bucketId) as string, image.id).then(
-                    () => toast.success('Making a clip: it appears with the picture in a few minutes'),
-                    (err) => toast.error(String(err?.message || err)),
-                  );
-                }}
-              >
-                <Wand2 className="h-4 w-4 mr-2" />
-                Bring to life
-              </DropdownMenuItem>
-            )}
-            {/* Use as prompt */}
-            {onUseAsPrompt && (
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onUseAsPrompt(image);
-                }}
-                className="flex items-center"
-              >
-                <Sparkles className="h-4 w-4 mr-2" />
-                Use as prompt
-              </DropdownMenuItem>
-            )}
-            
-            {/* Start Again - only show for images with reference images */}
-            {onGenerateAgain && image.reference_images && image.reference_images.length > 0 && (
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onGenerateAgain(image);
-                }}
-                className="flex items-center"
-              >
-                <RefreshCw className="h-4 w-4 mr-2" />
-                Start Again
-              </DropdownMenuItem>
-            )}
-            
-            {/* Copy to submenu */}
-            {onCopyTo && publishDestinations && publishDestinations.length > 0 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <DropdownMenuItem
-                    onClick={(e) => e.stopPropagation()}
-                    className="flex items-center"
-                  >
-                    <Copy className="h-4 w-4 mr-2" />
-                    Copy to...
-                  </DropdownMenuItem>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent side="right">
-                  {publishDestinations.map(dest => (
-                    <DropdownMenuItem
-                      key={dest.id}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        if (onCopyTo) onCopyTo(image, dest.id);
-                      }}
-                    >
-                      {dest.name}
-                    </DropdownMenuItem>
-                  ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            
-            {/* Publish to submenu */}
-            {onPublish && publishDestinations && publishDestinations.length > 0 && (
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
-                  <DropdownMenuItem
-                    onClick={(e) => e.stopPropagation()}
-                    className="flex items-center"
-                  >
-                    <Share className="h-4 w-4 mr-2" />
-                    Publish to...
-                  </DropdownMenuItem>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent side="right">
-                  {publishDestinations
-                    .filter(dest => !dest.headless)
-                    .map(dest => (
-                      <DropdownMenuItem
-                        key={dest.id}
-                        onClick={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          
-                          try {
-                            onPublish(image, dest.id);
-                          } catch (error) {
-                            console.error("Error publishing image:", error);
-                          }
-                        }}
-                      >
-                        {dest.name}
-                      </DropdownMenuItem>
-                    ))}
-                </DropdownMenuContent>
-              </DropdownMenu>
-            )}
-            
-            {/* Full Screen option */}
-            {image.urlFull && (
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  // Open the original URL in a new tab
-                  window.open(image.urlFull, '_blank');
-                }}
-              >
-                <Maximize2 className="h-4 w-4 mr-2" />
-                Full Screen
-              </DropdownMenuItem>
-            )}
-            
-            {/* Raw URL */}
-            <DropdownMenuItem
-              onClick={(e) => {
-                e.stopPropagation();
-                
-                // Use the provided bucket ID from props
-                const url = `/output/${bucketId}/${image.id}`;
-                
-                window.open(url, '_blank');
-              }}
-            >
-              <ExternalLink className="h-4 w-4 mr-2" />
-              Raw URL
-            </DropdownMenuItem>
-            
-            {/* Delete option */}
-            {onDelete && (
-              <DropdownMenuItem
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (image.isFavourite) {
-                    if (!confirm('Are you sure you want to delete this favorite image?')) {
-                      return;
-                    }
-                  }
-                  onDelete(image);
-                }}
-              >
-                <Trash className="h-4 w-4 mr-2" />
-                Delete
-              </DropdownMenuItem>
-            )}
+            <ImageMenuItems
+              image={image}
+              bucket={bucketId || image.bucketId}
+              onInfo={info}
+              onUseAsPrompt={onUseAsPrompt}
+              onStartAgain={onGenerateAgain}
+              onCopyTo={onCopyTo}
+              onMoveTo={onMoveTo}
+              onPublish={onPublish}
+              publishDestinations={publishDestinations}
+              onDelete={onDelete}
+            />
           </DropdownMenuContent>
         </DropdownMenu>
       )}

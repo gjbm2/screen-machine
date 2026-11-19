@@ -31,6 +31,7 @@ interface SortableImageGridProps {
   onDelete?: (img: ImageItem) => void;
   /** Called to copy image to other bucket */
   onCopyTo?: (img: ImageItem, destId: string) => void;
+  onMoveTo?: (img: ImageItem, destId: string) => void;
   /** Called to publish image */
   onPublish?: (img: ImageItem, destId: string) => void;
   /** Called when image should be used as a prompt reference */
@@ -46,6 +47,7 @@ interface SortableImageGridProps {
   disableDefaultGridCols?: boolean;
   /** Called when image should be used as a prompt reference */
   onFullscreenClick?: (img: ImageItem) => void;
+  onInfo?: (img: ImageItem) => void;
 }
 
 export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
@@ -57,6 +59,7 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
   onImageClick,
   onDelete,
   onCopyTo,
+  onMoveTo,
   onPublish,
   onUseAsPrompt,
   onGenerateAgain,
@@ -65,6 +68,7 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
   sectionVariant,
   disableDefaultGridCols,
   onFullscreenClick,
+  onInfo,
 }) => {
   const [items, setItems] = React.useState<string[]>(images.map((i) => i.id));
 
@@ -107,7 +111,8 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
             onToggleFavorite={onToggleFavorite} 
             onImageClick={onImageClick} 
             onDelete={onDelete} 
-            onCopyTo={onCopyTo} 
+            onCopyTo={onCopyTo}
+            onMoveTo={onMoveTo}
             onPublish={onPublish}
             onUseAsPrompt={onUseAsPrompt}
             onGenerateAgain={onGenerateAgain}
@@ -116,6 +121,7 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
             sectionVariant={sectionVariant}
             className={itemExtraClass}
             onFullscreenClick={onFullscreenClick}
+            onInfo={onInfo}
           />
         ) : (
           <DraggableImage 
@@ -125,7 +131,8 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
             onToggleFavorite={onToggleFavorite} 
             onImageClick={onImageClick} 
             onDelete={onDelete} 
-            onCopyTo={onCopyTo} 
+            onCopyTo={onCopyTo}
+            onMoveTo={onMoveTo}
             onPublish={onPublish}
             onUseAsPrompt={onUseAsPrompt}
             onGenerateAgain={onGenerateAgain}
@@ -134,6 +141,7 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
             sectionVariant={sectionVariant}
             className={itemExtraClass}
             onFullscreenClick={onFullscreenClick}
+            onInfo={onInfo}
           />
         );
       })}
@@ -156,6 +164,7 @@ interface ImageProps {
   onImageClick?: (img: ImageItem) => void;
   onDelete?: (img: ImageItem) => void;
   onCopyTo?: (img: ImageItem, destId: string) => void;
+  onMoveTo?: (img: ImageItem, destId: string) => void;
   onPublish?: (img: ImageItem, destId: string) => void;
   onUseAsPrompt?: (img: ImageItem) => void;
   onGenerateAgain?: (img: ImageItem) => void;
@@ -164,6 +173,7 @@ interface ImageProps {
   sectionVariant?: 'favourites' | 'dated';
   className?: string;
   onFullscreenClick?: (img: ImageItem) => void;
+  onInfo?: (img: ImageItem) => void;
 }
 
 const SortableImage: React.FC<ImageProps> = ({ 
@@ -172,7 +182,8 @@ const SortableImage: React.FC<ImageProps> = ({
   onToggleFavorite, 
   onImageClick, 
   onDelete, 
-  onCopyTo, 
+  onCopyTo,
+  onMoveTo,
   onPublish,
   onUseAsPrompt,
   onGenerateAgain,
@@ -181,6 +192,7 @@ const SortableImage: React.FC<ImageProps> = ({
   sectionVariant,
   className = '',
   onFullscreenClick,
+  onInfo,
 }) => {
   const {
     attributes,
@@ -246,6 +258,7 @@ const SortableImage: React.FC<ImageProps> = ({
         onClick={onImageClick} 
         onDelete={onDelete}
         onCopyTo={onCopyTo}
+        onMoveTo={onMoveTo}
         onPublish={onPublish}
         onUseAsPrompt={onUseAsPrompt}
         onGenerateAgain={onGenerateAgain}
@@ -254,6 +267,7 @@ const SortableImage: React.FC<ImageProps> = ({
         sectionVariant={sectionVariant}
         className={className}
         onFullscreenClick={onFullscreenClick}
+            onInfo={onInfo}
       />
     </div>
   );
@@ -266,7 +280,8 @@ const DraggableImage: React.FC<ImageProps> = ({
   onToggleFavorite, 
   onImageClick, 
   onDelete, 
-  onCopyTo, 
+  onCopyTo,
+  onMoveTo,
   onPublish, 
   onUseAsPrompt,
   onGenerateAgain,
@@ -275,6 +290,7 @@ const DraggableImage: React.FC<ImageProps> = ({
   sectionVariant,
   className = '',
   onFullscreenClick,
+  onInfo,
 }) => {
   const {
     attributes,
@@ -342,6 +358,7 @@ const DraggableImage: React.FC<ImageProps> = ({
         onClick={onImageClick}
         onDelete={onDelete}
         onCopyTo={onCopyTo}
+        onMoveTo={onMoveTo}
         onPublish={onPublish}
         onUseAsPrompt={onUseAsPrompt}
         onGenerateAgain={onGenerateAgain}
@@ -350,6 +367,7 @@ const DraggableImage: React.FC<ImageProps> = ({
         sectionVariant={sectionVariant}
         className={className}
         onFullscreenClick={onFullscreenClick}
+            onInfo={onInfo}
       />
     </div>
   );
