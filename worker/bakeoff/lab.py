@@ -1,8 +1,8 @@
-"""Render a lab bake-off (plan step 3g) on the sm-lab endpoint: every commission on each of its lanes' graphs
-(routes/workflows/lab/), N seeds. For judging by eye, each commission gets a contact sheet with the pictures shuffled
+"""Render a lab bake-off on the sm-lab endpoint: every commission on each of its lanes' graphs (the deployment's
+private workflows/lab/, not in git), N seeds. For judging by eye, each commission gets a contact sheet with the pictures shuffled
 and numbered; key.json says which number is which lane. Resumable: pictures already in rows.json are skipped.
 
-    .venv/bin/python worker/bakeoff/lab.py worker/bakeoff/lab1.json --out DIR [--endpoint ID] [--only id,id] [--seeds N]
+    .venv/bin/python worker/bakeoff/lab.py SPEC.json --out DIR [--endpoint ID] [--only id,id] [--seeds N]
 """
 import argparse
 import json
@@ -13,6 +13,7 @@ import textwrap
 
 ROOT = os.path.join(os.path.dirname(__file__), "..", "..")
 sys.path.insert(0, os.path.join(ROOT, "worker"))
+sys.path.insert(0, ROOT)
 
 
 def sheets(spec, rows, out):
@@ -42,14 +43,17 @@ def sheets(spec, rows, out):
 def main():
     from dotenv import load_dotenv
     load_dotenv(os.path.join(ROOT, ".env"))
+    import smconfig
     from run_jobs import fill, report, submit, wait, workers
     ap = argparse.ArgumentParser()
     ap.add_argument("spec")
     ap.add_argument("--out", required=True)
-    ap.add_argument("--endpoint", default=json.load(open(os.path.join(ROOT, "worker/endpoints.json")))["endpoints"]["sm-lab"]["id"])
+    ap.add_argument("--endpoint", default="sm-lab")
     ap.add_argument("--only")
     ap.add_argument("--seeds", type=int)
     a = ap.parse_args()
+    from endpoints import cfg
+    endpoint = cfg["endpoints"].get(a.endpoint, {}).get("id", a.endpoint)
     spec = json.load(open(a.spec))
     os.makedirs(a.out, exist_ok=True)
     rows_path = os.path.join(a.out, "rows.json")
@@ -60,14 +64,14 @@ def main():
         if only and c["id"] not in only:
             continue
         for lane in spec["lanes"][c["kind"]]:
-            graph = json.load(open(os.path.join(ROOT, "routes/workflows/lab", lane + ".json")))
+            graph = json.load(open(smconfig.path("private", "workflows", "lab", lane + ".json")))
             prompt = c["tags"] if lane == "lab-noobai" else c["prompt"]
             for s in range(a.seeds or spec["seeds"]):
                 if (c["id"], lane, s) in done:
                     continue
-                before = workers(a.endpoint)
-                job = submit(a.endpoint, fill(graph, prompt, None, 1000 + s))
-                r = report(a.endpoint, job, wait(a.endpoint, job), before, a.out, f"{c['id']}_{lane}_{s}")
+                before = workers(endpoint)
+                job = submit(endpoint, fill(graph, prompt, None, 1000 + s))
+                r = report(endpoint, job, wait(endpoint, job), before, a.out, f"{c['id']}_{lane}_{s}")
                 rows = [x for x in rows if (x["commission"], x["lane"], x["seed"]) != (c["id"], lane, s)]
                 rows.append({"commission": c["id"], "lane": lane, "seed": s,
                              **{k: r.get(k) for k in ("image", "error", "exec_s", "delay_s", "gpu")}})

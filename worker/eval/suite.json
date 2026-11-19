@@ -1,0 +1,19 @@
+{
+ "about": "Standing eval: what people commission, by area. route = the workflow(s) the refiner should pick; must = what the picture has to show to pass (judged by eye, see run.py). A deployment adds its own cases in deployments/<id>/private/eval/suite.json (not in git).",
+ "cases": [
+  {"id": "street", "area": "photo", "route": ["krea2-turbo.json"], "request": "a woman in a red coat walking a dog along a rainy city street at night, photograph", "must": "one woman, red coat, dog on a lead, wet street, night, looks like a real photograph"},
+  {"id": "fisherman", "area": "photo", "route": ["krea2-turbo.json"], "request": "close-up portrait of an old Cornish fisherman, weathered face, documentary photograph", "must": "one old man, natural skin and eyes, fisherman's clothes, documentary look"},
+  {"id": "loch", "area": "photo", "route": ["krea2-turbo.json"], "request": "a Highland loch at dawn with mist on the water and a ruined castle, landscape photograph", "must": "loch, mist, ruined castle, dawn light, photographic"},
+  {"id": "turner", "area": "painting", "route": ["qwen21.json"], "request": "a Turner painting of a steamship in a snowstorm off a harbour mouth", "must": "a steamship in a vortex of snow and sea, Turner's loose oil handling"},
+  {"id": "venice", "area": "painting", "route": ["qwen21.json"], "request": "a watercolour of a Venice canal with gondolas, loose and wet", "must": "canal, gondolas, real watercolour washes and paper, not a photo filter"},
+  {"id": "stilllife", "area": "painting", "route": ["qwen21.json"], "request": "a Dutch Golden Age still life of a lobster, lemons and a silver goblet on a dark table, oil painting", "must": "lobster, peeled lemon, silver goblet, dark ground, old-master oil"},
+  {"id": "etching", "area": "painting", "route": ["qwen21.json", "qwen21-turbo.json"], "request": "an etching of a ruined abbey in the moonlight, Piranesi style", "must": "ruined abbey, moon, hatched etched lines, black ink on paper"},
+  {"id": "poster", "area": "lettering", "route": ["qwen21-turbo.json"], "request": "a 1930s railway travel poster that reads VISIT MARGATE, beach and pier", "must": "the words VISIT MARGATE spelled right, beach, pier, 1930s poster style"},
+  {"id": "sign", "area": "lettering", "route": ["qwen21-turbo.json"], "request": "an Art Deco neon sign over a cocktail bar door that reads THE GILDED OWL", "must": "THE GILDED OWL spelled right, neon, Art Deco, bar door"},
+  {"id": "hokusai", "area": "painting", "route_only": true, "route": ["qwen21.json"], "request": "a Hokusai style woodblock print of a great wave over fishing boats"},
+  {"id": "product", "area": "photo", "route_only": true, "route": ["qwen21-turbo.json"], "request": "a glossy studio product shot of a perfume bottle on black acrylic"},
+  {"id": "kiss", "area": "photo", "route_only": true, "route": ["krea2-turbo.json"], "request": "an elderly couple kissing on a park bench in autumn, photograph"},
+  {"id": "titlecard", "area": "lettering", "route_only": true, "route": ["qwen21-turbo.json"], "request": "a watercolour of a lighthouse with the title SOUTHWOLD hand-lettered underneath"},
+  {"id": "dream", "area": "painting", "route_only": true, "route": ["qwen21.json"], "request": "a surreal dreamscape of melting clocks over a desert"}
+ ]
+}

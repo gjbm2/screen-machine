@@ -602,8 +602,7 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
 
 
     # Use the right runpod container id and get workflow config
-    with open(findfile("workflows.json")) as f:
-        workflow_config_list = json.load(f)
+    workflow_config_list = _load_json_once("workflow", "workflows.json")
     
     # Find the specific workflow configuration
     workflow_config = next(

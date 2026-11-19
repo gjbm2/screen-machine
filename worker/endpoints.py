@@ -1,5 +1,6 @@
 """Save the worker's RunPod template and endpoints from worker/endpoints.json (GraphQL; REST v2 can't set cached
-models). saveEndpoint replaces the whole endpoint, so every field is sent each time.
+models). saveEndpoint replaces the whole endpoint, so every field is sent each time. A deployment's own endpoints
+(deployments/<id>/private/endpoints.json, not in git) are added to the shared ones.
     python worker/endpoints.py [name ...]      (RUNPOD_API_KEY from .env; nothing secret is printed)"""
 import json
 import os
@@ -7,8 +8,15 @@ import sys
 
 import requests
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
+import smconfig  # noqa: E402
+
 GQL = "https://api.runpod.io/graphql"
-cfg = json.load(open(os.path.join(os.path.dirname(__file__), "endpoints.json")))
+SHARED = os.path.join(os.path.dirname(__file__), "endpoints.json")
+PRIVATE = smconfig.path("private", "endpoints.json")
+cfg = json.load(open(SHARED))
+if PRIVATE.exists():
+    cfg["endpoints"].update(json.loads(PRIVATE.read_text())["endpoints"])
 
 
 def gql(query, variables):
@@ -77,7 +85,7 @@ def save_endpoint(name, e, template_id):
               {"i": inp})["saveEndpoint"]
     print(f"endpoint {name} {out['id']}: max {out['workersMax']}, model {out['modelReferences']}")
     if not e.get("id"):   # a new endpoint: remember its id, so the next run updates it instead of making another
-        path = os.path.join(os.path.dirname(__file__), "endpoints.json")
+        path = PRIVATE if PRIVATE.exists() and name in json.loads(PRIVATE.read_text())["endpoints"] else SHARED
         saved = json.load(open(path))
         saved["endpoints"][name]["id"] = out["id"]
         with open(path, "w") as f:

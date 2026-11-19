@@ -59,7 +59,8 @@ def main():
     if not key:
         print("RUNPOD_API_KEY is not set")
         return 1
-    catalogue = json.loads((REPO / "src" / "data" / "workflows.json").read_text())
+    from routes.utils import _load_json_once
+    catalogue = _load_json_once("workflow", "workflows.json")   # with this deployment's private entries
     by_id = {w["id"]: w for w in catalogue}
     scheduled = schedule_workflows()
 

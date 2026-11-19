@@ -18,11 +18,29 @@ function flaskUrl(): string {
   return "http://localhost:5000";
 }
 
+// This deployment's own workflows (deployments/<id>/private/catalogue.json, not in git), merged into the catalogue
+// at build time by src/data/typedWorkflows.ts. None if smconfig can't answer or the file isn't there.
+function privateWorkflows(): unknown[] {
+  const py = fs.existsSync(path.resolve(__dirname, ".venv/bin/python")) ? path.resolve(__dirname, ".venv/bin/python") : "python3";
+  try {
+    const dir = execFileSync(py, ["-m", "smconfig", "get", "dir"], {
+      cwd: __dirname, encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 10000,
+    }).trim();
+    const file = path.join(dir, "private", "catalogue.json");
+    return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : [];
+  } catch {
+    return [];
+  }
+}
+
 // https://vitejs.dev/config/
 export default defineConfig(({ mode, command }) => {
   const apiTarget = process.env.VITE_API_URL || (command === "serve" ? flaskUrl() : "http://localhost:5000");
   return {
   base: '/',
+  define: {
+    __PRIVATE_WORKFLOWS__: JSON.stringify(privateWorkflows()),
+  },
   
   server: {
     host: "::",

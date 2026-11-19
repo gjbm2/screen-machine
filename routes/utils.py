@@ -35,6 +35,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 # (publish-destinations.json, rooms.json, intensity.json) finds deployments/<id>/'s copy.
 SEARCH_PATHS = [
     str(smconfig.deployment().dir),
+    str(smconfig.path("private", "workflows")),
     os.path.join(os.getcwd(), "src", "data"),
     os.path.join(os.getcwd(), "routes", "overlays"),
     os.path.join(os.getcwd(), "routes", "data"),
@@ -152,6 +153,27 @@ def detect_file_type(url: str) -> str:
         return "image"
     return "unknown"
 
+# A deployment's private config (deployments/<id>/private/, not in git) can add to a shared file: the workflow
+# catalogue takes this deployment's own workflows from private/catalogue.json (see merge_catalogue).
+OVERLAYS = {"workflows.json": ("private", "catalogue.json")}
+
+
+def merge_catalogue(public, private):
+    """The catalogue with a deployment's private entries: an entry with a public id changes that entry's fields,
+    a new id is added (after the entry its "after" names, else at the end)."""
+    out = [dict(w) for w in public]
+    for p in private or []:
+        p = dict(p)
+        mine = next((w for w in out if w.get("id") == p.get("id")), None)
+        after = p.pop("after", None)
+        if mine is not None:
+            mine.update(p)
+            continue
+        at = next((i + 1 for i, w in enumerate(out) if w.get("id") == after), len(out))
+        out.insert(at, p)
+    return out
+
+
 def _load_json_once(cache_key: str, filename: str, force_reload: bool = False) -> Any:
     """
     Find and load a JSON file using findfile(), cache it by name,
@@ -160,9 +182,11 @@ def _load_json_once(cache_key: str, filename: str, force_reload: bool = False) -
     path = findfile(filename)
     if not path:
         raise FileNotFoundError(f"Could not locate file: {filename}")
-    
+    overlay = smconfig.path(*OVERLAYS[filename]) if filename in OVERLAYS else None
+    overlay = overlay if overlay and overlay.exists() else None
+
     try:
-        mtime = os.path.getmtime(path)
+        mtime = (os.path.getmtime(path), overlay.stat().st_mtime if overlay else None)
     except Exception as e:
         error(f"[_load_json_once] Failed to get mtime for {path}: {e}")
         mtime = None
@@ -176,6 +200,8 @@ def _load_json_once(cache_key: str, filename: str, force_reload: bool = False) -
             debug(f"[_load_json_once] Reloading {cache_key} from disk (no timestamp)")
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
+        if overlay:
+            data = merge_catalogue(data, json.loads(overlay.read_text(encoding="utf-8")))
         _json_cache[cache_key] = {
             "data": data,
             "timestamp": mtime
@@ -426,7 +452,8 @@ def dict_substitute(template_or_file: str, substitutions: dict = None) -> str:
         template_name = os.path.basename(filepath)
         template_dir = os.path.dirname(filepath)
 
-        env = SandboxedEnvironment(loader=FileSystemLoader(template_dir))
+        # The template's own folder first; the search paths let it include a deployment's private text
+        env = SandboxedEnvironment(loader=FileSystemLoader([template_dir] + SEARCH_PATHS))
         env.filters['tojson'] = lambda val: json.dumps(val)
 
         try:
