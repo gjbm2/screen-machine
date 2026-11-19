@@ -56,3 +56,15 @@ def test_image_size_applies_the_rotate_tag_as_comfyuis_loadimage_does():
 def test_image_size_of_something_that_is_not_an_image():
     assert image_size({"name": "x.jpg", "image": "bm90IGFuIGltYWdl"}) is None
     assert image_size({"name": "x.jpg"}) is None
+
+
+@pytest.mark.parametrize("size,box,expected", [
+    ((2048, 1152), (1080, 2400), (1024, 2304)),     # a phone: the same pixels, the phone's shape
+    ((2752, 1536), (1080, 2400), (1376, 3072)),
+    ((2048, 1152), (3840, 2160), (2048, 1152)),     # a TV: as it is
+    ((2752, 1536), (3840, 2160), (2752, 1536)),     # 0.8% off 16:9: as it is
+    ((2048, 1152), (2000, 2000), (1536, 1536)),
+])
+def test_latent_for_screen(size, box, expected):
+    from routes.generate import latent_for_screen
+    assert latent_for_screen(size, box) == expected

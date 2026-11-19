@@ -1003,3 +1003,64 @@ def test_the_numbered_prompt_reaches_the_model(house):
          "params": {"poll_interval": 0.01}, "global_params": {"batch_size": 1}},
         uploaded_images=[picture(PERSON, (556, 1024)), picture(PAINTING, (1600, 900))])
     assert _prompt_sent(fake.payload) == "Put the man from image 2 into the room in image 1."
+
+
+# ------------------------------------------------- a picture drawn from text for a screen of another shape (19 Nov)
+# Owner, 19 Nov: a text-to-image picture for a portrait screen (a phone, 1080x2400) was drawn landscape and
+# letterboxed. It is now drawn in the screen's shape at the workflow's own pixel count, unless the caller chose a size.
+
+PHONE = (1080, 2400)
+
+
+def render_for(house, workflow, box, **params):
+    fake = FinishingRunPod()
+    house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
+    job_id = house["tracker"].create(prompt="a lighthouse", source="generator")["id"]
+    house["generate"].start(prompt="a lighthouse", workflow=workflow, job_id=job_id, poll_interval=0.01,
+                            maxwidth=box[0], maxheight=box[1], **params)
+    latent = next(n["inputs"] for n in fake.payload["input"]["workflow"].values()
+                  if "{{LATENT-IMAGE}}" in (n.get("_meta") or {}).get("title", ""))
+    node = _finish_node(fake.payload)
+    return (int(latent["width"]), int(latent["height"])), (int(node["inputs"]["width"]), int(node["inputs"]["height"]))
+
+
+def _graph_latent(workflow):
+    return next((int(n["inputs"]["width"]), int(n["inputs"]["height"]))
+                for n in json.loads((REPO / "routes" / "workflows" / workflow).read_text()).values()
+                if "{{LATENT-IMAGE}}" in (n.get("_meta") or {}).get("title", ""))
+
+
+def _default_size(workflow):
+    params = {p["id"]: p.get("default") for p in next(w for w in _catalogue() if w["id"] == workflow).get("params") or []}
+    return int(params["width"]), int(params["height"])
+
+
+@pytest.mark.parametrize("workflow", _text_only())
+def test_a_text_picture_for_a_phone_is_drawn_tall_and_fills_it(house, workflow):
+    latent, finish = render_for(house, workflow, PHONE)
+    assert same_shape(latent, PHONE), f"drawn {latent}, not the phone's shape"
+    assert latent[0] % 16 == 0 and latent[1] % 16 == 0
+    graph = _graph_latent(workflow)
+    assert abs(latent[0] * latent[1] / (graph[0] * graph[1]) - 1) < 0.06, "not the workflow's own pixel count"
+    assert finish == PHONE, f"finished at {finish}, not the whole phone"
+
+
+@pytest.mark.parametrize("workflow", _text_only())
+def test_the_pages_default_size_still_draws_for_the_phone(house, workflow):
+    """The generator page sends the workflow's default Width/Height whenever a workflow is picked by hand."""
+    latent, finish = render_for(house, workflow, PHONE, width=_default_size(workflow)[0], height=_default_size(workflow)[1])
+    assert same_shape(latent, PHONE) and finish == PHONE
+
+
+@pytest.mark.parametrize("workflow", _text_only())
+def test_a_chosen_size_is_drawn_as_chosen(house, workflow):
+    w, h = _default_size(workflow)
+    latent, finish = render_for(house, workflow, PHONE, width=w - 64, height=h)
+    assert latent == (w - 64, h), "the caller's own size was changed"
+    assert same_shape(finish, latent) and finish[0] <= PHONE[0] and finish[1] <= PHONE[1]
+
+
+@pytest.mark.parametrize("workflow", _text_only())
+def test_a_text_picture_for_a_tv_is_drawn_as_the_graph_says(house, workflow):
+    latent, finish = render_for(house, workflow, (3840, 2160))
+    assert latent == _graph_latent(workflow) and finish == (3840, 2160)

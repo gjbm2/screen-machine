@@ -143,6 +143,31 @@ def image_size(image):
         return None
 
 
+def size_chosen(workflow_id, width, height):
+    """True when the caller asked for a size other than the workflow's default (src/data/workflows.json params)."""
+    if not width or not height:
+        return False
+    entry = next((w for w in _load_json_once("workflow", "workflows.json") if w.get("id") == workflow_id), {})
+    defaults = {p.get("id"): p.get("default") for p in entry.get("params") or []}
+    try:
+        return (int(width), int(height)) != (int(defaults.get("width") or 0), int(defaults.get("height") or 0))
+    except (TypeError, ValueError):
+        return True
+
+
+def latent_for_screen(size, box, step=32):
+    """The latent (w, h) in the screen's shape at the same pixel count, in steps of 32; the size as it is when it is
+    already within the finish's tolerance of the screen's shape."""
+    import math
+    w, h = int(size[0]), int(size[1])
+    aspect = int(box[0]) / int(box[1])
+    if abs((w / h) / aspect - 1) <= FINISH_SHAPE_TOLERANCE:
+        return w, h
+    area = w * h
+    return (max(step, round(math.sqrt(area * aspect) / step) * step),
+            max(step, round(math.sqrt(area / aspect) / step) * step))
+
+
 def reshape_photo(images, prompt, aspect, fill, has_prompt):
     """The request's first image turned to the shape (aspect, w / h) before an edit: put on a grey canvas with an
     instruction to extend the scene into it (fill "extend", the default; a graph that takes no prompt is cropped
@@ -521,6 +546,21 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
             args_namespace.images, args_namespace.prompt, reframe.SHAPES[args_namespace.shape],
             vars(args_namespace).get("fill"), bool(_node_inputs(workflow_data, "{{POSITIVE-PROMPT}}")))
 
+    screen_box = (maxwidth, maxheight) if maxwidth and maxheight else (
+        (args_namespace.maxwidth, args_namespace.maxheight)
+        if vars(args_namespace).get("maxwidth") and vars(args_namespace).get("maxheight") else None)
+
+    # A picture drawn from text for a screen of another shape (a phone, 1080x2400) is drawn in the screen's shape, at
+    # the workflow's own pixel count, unless the caller chose its size (owner, 19 Nov: a portrait screen got a
+    # landscape picture letterboxed). The page always sends the workflow's default size, so that counts as not chosen.
+    if latent and screen_box:
+        size = (args_namespace.width or latent.get("width"), args_namespace.height or latent.get("height"))
+        if not size_chosen(args_namespace.workflow, args_namespace.width, args_namespace.height):
+            drawn = latent_for_screen(size, screen_box)
+            if drawn != tuple(int(v) for v in size):
+                info(f"Drawn {drawn[0]}x{drawn[1]} for a {screen_box[0]}x{screen_box[1]} screen (was {size[0]}x{size[1]})")
+                args_namespace.width, args_namespace.height = drawn
+
     # The finish: the picture's own shape inside the screen's box. The picture is the latent's shape, or for a graph
     # with no {{LATENT-IMAGE}} (edit, combine, upscale) the first reference image's: Qwen 2.1's edit encoder makes
     # its latent on that image's shape. With no screen, the box (the caller's size, else the graph's) turns to suit.
@@ -528,9 +568,6 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
         picture = (args_namespace.width or latent.get("width"), args_namespace.height or latent.get("height"))
     else:
         picture = image_size(args_namespace.images[0]) if args_namespace.images else None
-    screen_box = (maxwidth, maxheight) if maxwidth and maxheight else (
-        (args_namespace.maxwidth, args_namespace.maxheight)
-        if vars(args_namespace).get("maxwidth") and vars(args_namespace).get("maxheight") else None)
     finish_node = _node_inputs(workflow_data, "{{FINISH}}")
     finish = None
     if finish_node:
