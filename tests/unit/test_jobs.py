@@ -657,7 +657,10 @@ def test_start_completes(gen, monkeypatch, tracker):
                        {"status": "COMPLETED", "output": {"status": "success", "message": "http://r/out.jpg"}}])
     job, result = run_start(gen, fake, monkeypatch, tracker)
     assert job["status"] == "completed" and job["result_url"] == "http://r/out.jpg"
-    assert job["runpod_job_id"] == "rp-123" and job["endpoint_id"] == "v0lfqu2owx3lc4"  # a generator job runs on the interactive endpoint
+    from routes.utils import _load_json_once
+    entry = next(w for w in _load_json_once("workflow", "workflows.json") if w["id"] == "qwen21-turbo.json")
+    # a generator job runs on the workflow's interactive endpoint if it has one, else its own
+    assert job["runpod_job_id"] == "rp-123" and job["endpoint_id"] == entry.get("runpod_id_live", entry["runpod_id"])
     assert job["stages"] == ["Rendering", "Finishing"] and job["kind"] == "image"
     assert job["cost_gbp"] == 0.02 and job["seed"] is not None and job["refined_prompt"] == "a red fox"
     assert job["started_at"] and job["submitted_at"] and job["publishing_at"]
