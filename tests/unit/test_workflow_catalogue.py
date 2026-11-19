@@ -78,7 +78,7 @@ def test_the_generators_fallback_workflow_is_in_the_catalogue():
     assert generate.get_parser().parse_args([]).workflow in BY_ID
 
 
-STILLS = [w["id"] for w in LIVE if not w["id"].startswith("wan_")]
+STILLS = [w["id"] for w in LIVE if not w.get("async")]
 
 
 @pytest.mark.parametrize("workflow", STILLS)

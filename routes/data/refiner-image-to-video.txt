@@ -27,7 +27,9 @@ The motion may come from style, not just subject.
 The prompt should be direct and literal, using concrete visual language.
 It should build on the scene in the image and any user guidance, but may invent plausible extensions.
 
-workflow: The string "wan_image_to_video_upscale_slow.json" (always this exact ID)
+The video model also makes sound: end full_prompt with one short sentence starting "Audio:" naming the ambient sound, effects or music that fit the scene (no speech unless the user asks for it).
+
+workflow: The string "h3-i2v.json" (always this exact ID)
 
 ** Tone and Constraints **
 

@@ -431,6 +431,7 @@
   },
   {
     "id": "wan_image_to_video_upscale_slow.json",
+    "replaced_by": "h3-i2v.json",
     "name": "Image to Video",
     "description": "Animate an image based on a text prompt",
     "default-refiner": "animator",
@@ -501,6 +502,7 @@
   },
   {
     "id": "wan_ftl_image_to_video_upscale_slow.json",
+    "replaced_by": "h3-fl2v.json",
     "name": "First-to-last image to Video",
     "description": "Animate an image to another image based on a text prompt",
 	"runpod_id": "wxd8n6sak3urv5",
@@ -568,6 +570,8 @@
       }
     ]
   },
+  {"id": "h3-i2v.json", "name": "Image to video", "summary": "Bring a picture to life, with sound", "description": "Animate a picture: 5 seconds at 24 fps with sound (MiniMax H3, Turbo 8-step; about 100 s on a PRO 6000). Won the 19 Nov test against Wan 2.2.", "input": ["image", "text"], "default-refiner": "animator", "runpod_id": "srxuhd77ow2yco", "async": true, "alexavisible": false, "icon": "FileVideo2", "processing_stages": [{"name": "Rendering", "weight": 90}, {"name": "Finishing", "weight": 10}]},
+  {"id": "h3-fl2v.json", "name": "First-to-last image to video", "summary": "Move from one picture to another, with sound", "description": "Animate from one picture to another: 5 seconds at 24 fps with sound (MiniMax H3).", "input": ["image", "text"], "uses_images": 2, "default-refiner": "ftl-animator", "runpod_id": "srxuhd77ow2yco", "async": true, "alexavisible": false, "icon": "FileVideo2", "processing_stages": [{"name": "Rendering", "weight": 90}, {"name": "Finishing", "weight": 10}]},
   {
     "id": "qwen21-turbo.json",
     "name": "Stylised and lettering",

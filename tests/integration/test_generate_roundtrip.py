@@ -48,7 +48,7 @@ def _catalogue():
 
 def _still_workflows():
     """Every workflow a caller can name that makes a still (a retired one runs on its replacement)."""
-    return [w["id"] for w in _catalogue() if not w["id"].startswith("wan_")]
+    return [w["id"] for w in _catalogue() if not w.get("async")]
 
 
 def _default_workflow():
@@ -426,12 +426,12 @@ def _destination(screen=SCREEN):
 def _takes_images():
     """Live still workflows whose picture is made from an uploaded one (it sets the picture's shape)."""
     return [w["id"] for w in _catalogue()
-            if not w.get("replaced_by") and not w["id"].startswith("wan_") and "image" in (w.get("input") or [])]
+            if not w.get("replaced_by") and not w.get("async") and "image" in (w.get("input") or [])]
 
 
 def _text_only():
     return [w["id"] for w in _catalogue()
-            if not w.get("replaced_by") and not w["id"].startswith("wan_") and "image" not in (w.get("input") or [])]
+            if not w.get("replaced_by") and not w.get("async") and "image" not in (w.get("input") or [])]
 
 
 def _finish_node(payload):

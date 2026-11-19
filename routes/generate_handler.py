@@ -522,6 +522,11 @@ def _refine(data, prompt, workflow, images, corrected_refiner, images_required, 
             "system_prompt": dict_substitute(corrected_refiner, subs),
             "schema": schema or json.loads(dict_substitute("refiner-enrich.schema.json.j2", subs))
         }
+        # A workflow the caller named is always a choice, even one the refiners are not offered (video: h3-i2v)
+        body = openai_args["schema"].get("parameters") or openai_args["schema"]
+        enum = ((body.get("properties") or {}).get("workflow") or {}).get("enum")
+        if workflow and isinstance(enum, list) and workflow not in enum:
+            enum.append(workflow)
         
         if images_required:
             openai_args["images"] = prepared_images

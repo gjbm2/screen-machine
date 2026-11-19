@@ -1,0 +1,11 @@
+{
+  "repo": "gjbm2/sm-h3-bundle",
+  "note": "MiniMax H3 FL2VA only (pruned fp8 DiT, Turbo 8-step LoRA, Qwen3-VL-32B nvfp4 encoder, video + audio VAEs), for the one-model video endpoint sm-video (plan step 6: won the 19 Nov test against Wan 2.2). fp8 rather than int8_convrot because the worker's torch is cu128.",
+  "files": [
+    {"src": "Comfy-Org/MiniMax-H3", "path": "diffusion_models/minimax_h3_fl2va_pruned_fp8_scaled.safetensors"},
+    {"src": "Comfy-Org/MiniMax-H3", "path": "loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"},
+    {"src": "Comfy-Org/MiniMax-H3", "path": "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"},
+    {"src": "Comfy-Org/MiniMax-H3", "path": "vae/minimax_h3_video_vae_fp16.safetensors"},
+    {"src": "Comfy-Org/MiniMax-H3", "path": "vae/minimax_h3_audio_vae_fp32.safetensors"}
+  ]
+}
