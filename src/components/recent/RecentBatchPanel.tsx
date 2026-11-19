@@ -89,6 +89,19 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
   
   // Collapsed state
   const [isCollapsed, setIsCollapsed] = useState<boolean>(initialCollapsed);
+
+  // The shape of the batch's pictures (its first one's thumbnail), so the Another tile matches them (owner, 19 Nov).
+  // The strip's cells are 16:9 at least and grow to their picture; a grid item with an aspect ratio doesn't stretch to
+  // its row, so the tile needs the pictures' own ratio.
+  const firstThumb = images.find(img => img.metadata?.placeholder !== true)?.urlThumb;
+  const [thumbRatio, setThumbRatio] = useState<number | null>(null);
+  useEffect(() => {
+    if (!firstThumb) return;
+    const probe = new Image();
+    probe.onload = () => { if (probe.naturalWidth && probe.naturalHeight) setThumbRatio(probe.naturalWidth / probe.naturalHeight); };
+    probe.src = firstThumb;
+    return () => { probe.onload = null; };
+  }, [firstThumb]);
   
   // First-time initialization only (happens once)
   useEffect(() => {
@@ -744,6 +757,7 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
                 customComponent: (
                   <button 
                     className={styles.generateAgainCard}
+                    style={thumbRatio ? { aspectRatio: `${thumbRatio}`, height: 'auto' } : undefined}
                     onClick={(e) => {
                       e.stopPropagation();
                       if (onGenerateAgain) onGenerateAgain(batchId);
