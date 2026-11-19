@@ -915,7 +915,9 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
             output["published_meta"] = {}
             output["destination"] = {}
 
-    tracker.complete(job_id, result_url=output.get("message"), seed=args_namespace.seed,
+    # what a browser can open: a result kept as a file (an inline result, an eased clip) is its /output/ URL
+    from routes.result_source import browser_url
+    tracker.complete(job_id, result_url=browser_url(output.get("message")) or output.get("message"), seed=args_namespace.seed,
                      cost_gbp=generation_cost, billing=billing, cost_state="provisional" if billing else None,
                      published_path=output.get("published_path"),
                      refined_prompt=args_namespace.prompt)
