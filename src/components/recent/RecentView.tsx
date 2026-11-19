@@ -590,7 +590,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
         filename: img.id
       });
       toast.dismiss('publish-toast');
-      if (result.success) toast.success(`Image published to ${targetBucketId}`);
+      if (result.success) toast.success(publishApi.publishedWords(result, `Image published to ${targetBucketId}`));
       else if (!result.cancelled) toast.error(`Failed to publish image: ${result.error ?? ''}`);
     } catch (error) {
       console.error('Error publishing image:', error);

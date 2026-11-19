@@ -584,24 +584,43 @@ def screen_file_extension(source_ext: str | None) -> str | None:
 _PLACE_LOCK = threading.RLock()
 # The publish each screen file should show: a reframe that finishes after a newer publish is not placed
 _LATEST: dict[str, str] = {}
+# What waits for a picture that is still being reframed to reach the screen (its prompt overlay): token -> callables
+_WHEN_PLACED: dict[str, list] = {}
+
+
+def _when_placed(token: str | None, then) -> bool:
+    """Run ``then`` once the picture being reframed under ``token`` is on the screen (never, if the screen is given
+    something newer first). False: nothing is being made under that token, so the caller does it now."""
+    with _PLACE_LOCK:
+        if token in _WHEN_PLACED:
+            _WHEN_PLACED[token].append(then)
+            return True
+    return False
 
 
 def _place_for_screen(src: Path, dst: Path, dest: dict | None = None, metadata: dict | None = None,
-                      fit: str | None = None) -> None:
+                      fit: str | None = None) -> str | None:
     """Place ``src`` as the screen's file ``dst`` in one step. With the screen's ``dest``, a still of another shape
     than the screen's is fitted as the person chose (fit) or else as the screen's setting says (routes/reframe.py):
     cropped where the subject is before it goes up; or (auto: the AI's plan; adapt: extended) made in the background
     while the screen keeps its picture, then placed, so the screen changes once (owner, 19 Nov: devtest flicked between
-    a barred portrait and its widened copy as four pictures were made in a row); or whole (frame)."""
+    a barred portrait and its widened copy as four pictures were made in a row); or whole (frame).
+
+    Returns None when the picture is on the screen, or a token (for _when_placed) while it is still being made."""
     plan = _reframe_plan(src, dest, metadata, fit) if dest else None
     token = uuid.uuid4().hex
+    making = bool(plan and not plan["ready"])
     with _PLACE_LOCK:
         _LATEST[str(dst)] = token
-        if not (plan and not plan["ready"]):
+        if making:
+            _WHEN_PLACED[token] = []
+        else:
             _place_file(plan["ready"] if plan else src, dst)
-    if plan and not plan["ready"]:
-        threading.Thread(target=_extend_for_screen, args=(plan, dst, token), name=f"extend-{dst.stem}",
-                         daemon=True).start()
+    if not making:
+        return None
+    threading.Thread(target=_extend_for_screen, args=(plan, dst, token), name=f"extend-{dst.stem}",
+                     daemon=True).start()
+    return token
 
 
 def _reframe_plan(src: Path, dest: dict, metadata: dict | None, fit: str | None = None) -> dict | None:
@@ -660,6 +679,7 @@ def _extend_for_screen(plan: dict, dst: Path, token: str) -> None:
         warning(f"[publish] reframing a picture for {plan['screen']} failed, so it goes up whole: {e}")
         made = None
     with _PLACE_LOCK:
+        waiting = _WHEN_PLACED.pop(token, [])
         if _LATEST.get(str(dst)) != token:
             info(f"[publish] {plan['screen']} was given something newer while this picture was reframed"
                  + ("; the copy is kept for next time" if made else ""))
@@ -669,6 +689,11 @@ def _extend_for_screen(plan: dict, dst: Path, token: str) -> None:
         else:
             _place_image(plan["picture"], dst)
     info(f"[publish] {plan['screen']} now shows the {'reframed' if made else 'whole'} picture")
+    for then in waiting:
+        try:
+            then()
+        except Exception as e:
+            warning(f"[publish] after placing the picture on {plan['screen']}: {e}")
 
 
 def _place_image(img, dst: Path) -> None:
@@ -886,6 +911,7 @@ def _publish_to_destination(
 
         source_filepath = source
         bucket_filename = None
+        making = None     # a token while the picture is still being fitted to the screen (_place_for_screen)
         
         if not skip_bucket:
             bucket_file_path = _append_to_bucket(
@@ -930,14 +956,14 @@ def _publish_to_destination(
                 debug(f"Same-bucket publishing - also copying to direct output path: {direct_output_path}")
                 
                 try:
-                    _place_for_screen(source_filepath, direct_output_path, dest if fit_screen else None, metadata, fit)
+                    making = _place_for_screen(source_filepath, direct_output_path, dest if fit_screen else None, metadata, fit) or making
                     _after_placing(direct_output_path)
                 except Exception as e:
                     error(f"Failed to copy to direct output path: {e}")
         
         # Only copy to display path if we're updating the published pointer
         if update_published and source_filepath != display_path:
-            _place_for_screen(source_filepath, display_path, dest if fit_screen else None, metadata, fit)
+            making = _place_for_screen(source_filepath, display_path, dest if fit_screen else None, metadata, fit) or making
             _after_placing(display_path)
 
         effective_metadata = None
@@ -974,16 +1000,19 @@ def _publish_to_destination(
                 is_history_navigation=is_history_navigation
             )
 
+            # the prompt overlay goes up with the picture: at once, or when a picture still being fitted to the
+            # screen lands (owner, 19 Nov: "it showed the overlay immediately but didn't then upload photo until a
+            # minute later ... overlay only when the image landed")
             if not silent and effective_metadata:
-                _send_overlay_prompt(publish_destination_id, effective_metadata)
+                def show_prompt():
+                    _send_overlay_prompt(publish_destination_id, effective_metadata)
+                if not _when_placed(making, show_prompt):
+                    show_prompt()
 
-        return {
-            "success": True,
-            "meta": {
-                "filename": bucket_filename or source_filepath.name,
-                "published_at": publish_time
-            }
-        }
+        meta = {"filename": bucket_filename or source_filepath.name, "published_at": publish_time}
+        if making:
+            meta["fitting"] = dest.get("name") or dest["id"]   # still being fitted: it goes up when it is made
+        return {"success": True, "meta": meta}
     except Exception as e:
         error(f"Publish failed: {e}")
         return {"success": False, "error": str(e)}

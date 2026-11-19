@@ -599,7 +599,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
               stableRefreshBucket('_recent');
             }
             
-            toast.success('Published successfully');
+            toast.success(publishApi.publishedWords(result, 'Published successfully'));
           })
           .catch((err) => {
             console.error('Publish failed:', err);
@@ -677,7 +677,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
             if (!result.cancelled) toast.error(`Publish failed: ${result.error ?? ''}`);
             return;
           }
-          toast.success('Published successfully');
+          toast.success(publishApi.publishedWords(result, 'Published successfully'));
           stableRefreshBucket(destId);
         })
         .catch((err) => {
@@ -700,7 +700,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
             if (!result.cancelled) toast.error(`Publish failed: ${result.error ?? ''}`);
             return;
           }
-          toast.success('Published successfully');
+          toast.success(publishApi.publishedWords(result, 'Published successfully'));
           stableRefreshBucket(destId);
         })
         .catch((err) => {

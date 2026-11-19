@@ -586,7 +586,7 @@ export const BucketGridView = ({
         // Refresh bucket details to ensure everything is in sync
         await fetchBucketDetails();
         
-        toast.success('Image published successfully');
+        toast.success(publishApi.publishedWords(success, 'Image published successfully'));
       } else {
         // Handle successful response but unsuccessful operation
         console.warn('Publish operation returned false');

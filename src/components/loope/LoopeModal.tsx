@@ -474,7 +474,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
           filename: img.id
         });
         
-        if (result.success) toast.success(`Published to ${destinationId}`);
+        if (result.success) toast.success(publishApi.publishedWords(result, `Published to ${destinationId}`));
         else if (!result.cancelled) toast.error(`Failed to publish image: ${result.error ?? ''}`);
       } catch (error) {
         console.error('Error publishing image:', error);

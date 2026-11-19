@@ -36,6 +36,14 @@ export async function chooseFit(where: {
   }
 }
 
+/**
+ * What to say after a publish: `published`, unless the picture is still being fitted to the screen (routes/publisher.py
+ * makes it in the background, as a job in the Jobs dock, and the screen changes when it is ready).
+ */
+export function publishedWords(result: { fitting?: string } | undefined, published: string): string {
+  return result?.fitting ? `Fitting the picture to ${result.fitting}: it goes up when it's ready, in about a minute` : published;
+}
+
 // Never rejects: every failure (validation, non-2xx, timeout, network, unparseable 2xx body) resolves { success: false, error }.
 // A picture of another shape than the screen is fitted as the person chooses (chooseFit), unless `fit` is given;
 // { success: false, cancelled: true } when they cancel.
@@ -47,7 +55,7 @@ export async function publishImageUnified(data: {
   metadata?: unknown;
   skip_bucket?: boolean;
   fit?: Fit;
-}): Promise<{ success: boolean; error?: string; cancelled?: boolean }> {
+}): Promise<{ success: boolean; error?: string; cancelled?: boolean; fitting?: string }> {
   const isRouteBucket = !!(data.src_bucket_id && data.filename);
   const isRouteExternal = !!data.source_url;
 
@@ -85,9 +93,10 @@ export async function publishImageUnified(data: {
       };
     }
 
-    // The server payload is discarded, but a non-JSON 2xx body still lands in the catch below.
-    await response.json();
-    return { success: true };
+    // A non-JSON 2xx body lands in the catch below. `fitting` names the screen while the picture is still being
+    // fitted to it in the background (it goes up, with its overlay, when it is made).
+    const body = await response.json();
+    return { success: true, fitting: body?.meta?.fitting || undefined };
   } catch (error) {
     if (error instanceof DOMException && error.name === 'AbortError') {
       console.error('[publishImageUnified] Request timed out after 30 seconds');

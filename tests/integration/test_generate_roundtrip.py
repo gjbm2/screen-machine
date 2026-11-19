@@ -1371,3 +1371,68 @@ def test_a_generate_request_without_placeholders_always_runs(monkeypatch):
         assert app.test_client().post("/api/generate-image", data={"data": json.dumps({"prompt": "x", "batch_id": "b"})},
                                       content_type="multipart/form-data").status_code == 200
     assert len(runs) == 2
+
+
+# ------------------------------------------------- the prompt overlay goes up with the picture (19 Nov)
+# Owner, 19 Nov, after dropping a picture on devtest that was fitted in the background: "it showed the overlay
+# immediately but didn't then upload photo until a minute later ... overlay only when the image landed".
+
+def overlays(house):
+    shown = []
+    house["monkeypatch"].setattr(house["publisher"], "_send_overlay_prompt", lambda screen, meta: shown.append(screen))
+    return shown
+
+
+def publish_aloud(house, stored):
+    result = house["publisher"].publish_to_destination(source=stored, publish_destination_id=SCREEN, silent=False,
+                                                       metadata={"type": "image", "prompt": "a photo"})
+    assert result["success"], result
+    return result
+
+
+def test_the_prompt_overlay_waits_for_a_picture_that_is_still_being_fitted(house):
+    house["policy"]["mode"] = "adapt"
+    fake = GatedRunPod()
+    house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
+    shown = overlays(house)
+    result = publish_aloud(house, library_picture(house))
+    assert result["meta"]["fitting"], "the page is not told the picture is still being fitted"
+    assert shown == [], "the overlay went up before the picture"
+    fake.gate.set()
+    wait_for_extensions()
+    assert size_of(tv_shows(house["output"])) == screen_size()
+    assert shown == [SCREEN], "no overlay when the picture landed"
+
+
+def test_the_prompt_overlay_goes_up_at_once_with_a_picture_that_is_placed_at_once(house):
+    shown = overlays(house)
+    stored = house["output"] / SCREEN / "20261119-090100-landscape.jpg"
+    stored.write_bytes(_image_bytes("JPEG", NEW, size=(64, 36)))
+    result = publish_aloud(house, stored)
+    assert shown == [SCREEN] and "fitting" not in result["meta"]
+
+
+def test_a_picture_overtaken_while_it_was_fitted_shows_no_overlay_of_its_own(house):
+    house["policy"]["mode"] = "adapt"
+    fake = GatedRunPod()
+    house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
+    shown = overlays(house)
+    publish_aloud(house, library_picture(house))
+    newer = house["output"] / SCREEN / "20261119-090200-newer.jpg"
+    newer.write_bytes(_image_bytes("JPEG", NEW, size=(64, 36)))
+    publish_aloud(house, newer)
+    assert shown == [SCREEN], "the newer picture's overlay"
+    fake.gate.set()
+    wait_for_extensions()
+    assert shown == [SCREEN], "the overtaken picture showed an overlay over the newer one"
+
+
+def test_a_picture_that_could_not_be_fitted_goes_up_whole_with_its_overlay(house):
+    house["policy"]["mode"] = "adapt"
+    fake = GatedRunPod(fail=True)
+    fake.gate.set()
+    house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
+    shown = overlays(house)
+    publish_aloud(house, library_picture(house))
+    wait_for_extensions()
+    assert size_of(tv_shows(house["output"])) == (556, 1024) and shown == [SCREEN]
