@@ -1,0 +1,17 @@
+{
+  "repo": "gjbm2/sm-video-lab-bundle",
+  "note": "Plan step 6, the video test: MiniMax H3 FL2VA (pruned fp8, Turbo 8-step LoRA, Qwen3-VL-32B nvfp4 encoder, video + audio VAEs) and Wan 2.2 I2V A14B (high/low-noise fp8 + lightx2v 4-step LoRAs, umt5 fp8, Wan 2.1 VAE). fp8 rather than int8_convrot because the worker's torch is cu128.",
+  "files": [
+    {"src": "Comfy-Org/MiniMax-H3", "path": "diffusion_models/minimax_h3_fl2va_pruned_fp8_scaled.safetensors"},
+    {"src": "Comfy-Org/MiniMax-H3", "path": "loras/minimax_h3_fl2v_turbo_8step_v1.0_comfyui_bf16.safetensors"},
+    {"src": "Comfy-Org/MiniMax-H3", "path": "text_encoders/qwen3vl_32b_minimax_h3_nvfp4_awq.safetensors"},
+    {"src": "Comfy-Org/MiniMax-H3", "path": "vae/minimax_h3_video_vae_fp16.safetensors"},
+    {"src": "Comfy-Org/MiniMax-H3", "path": "vae/minimax_h3_audio_vae_fp32.safetensors"},
+    {"src": "Comfy-Org/Wan-2.2", "path": "split_files/diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors", "dest": "diffusion_models/wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors"},
+    {"src": "Comfy-Org/Wan-2.2", "path": "split_files/diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors", "dest": "diffusion_models/wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors"},
+    {"src": "Comfy-Org/Wan-2.2", "path": "split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors", "dest": "loras/wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors"},
+    {"src": "Comfy-Org/Wan-2.2", "path": "split_files/loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors", "dest": "loras/wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors"},
+    {"src": "Comfy-Org/Wan-2.2", "path": "split_files/text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors", "dest": "text_encoders/umt5_xxl_fp8_e4m3fn_scaled.safetensors"},
+    {"src": "Comfy-Org/Wan-2.2", "path": "split_files/vae/wan_2.1_vae.safetensors", "dest": "vae/wan_2.1_vae.safetensors"}
+  ]
+}

@@ -1,0 +1,269 @@
+{
+ "1": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "wan2.2_i2v_high_noise_14B_fp8_scaled.safetensors",
+   "weight_dtype": "default"
+  },
+  "_meta": {
+   "title": "High-noise model {{BASE-MODEL}}"
+  }
+ },
+ "2": {
+  "class_type": "UNETLoader",
+  "inputs": {
+   "unet_name": "wan2.2_i2v_low_noise_14B_fp8_scaled.safetensors",
+   "weight_dtype": "default"
+  },
+  "_meta": {
+   "title": "Low-noise model"
+  }
+ },
+ "3": {
+  "class_type": "LoraLoaderModelOnly",
+  "inputs": {
+   "model": [
+    "1",
+    0
+   ],
+   "lora_name": "wan2.2_i2v_lightx2v_4steps_lora_v1_high_noise.safetensors",
+   "strength_model": 1.0
+  },
+  "_meta": {
+   "title": "lightx2v 4-step (high)"
+  }
+ },
+ "4": {
+  "class_type": "LoraLoaderModelOnly",
+  "inputs": {
+   "model": [
+    "2",
+    0
+   ],
+   "lora_name": "wan2.2_i2v_lightx2v_4steps_lora_v1_low_noise.safetensors",
+   "strength_model": 1.0
+  },
+  "_meta": {
+   "title": "lightx2v 4-step (low)"
+  }
+ },
+ "5": {
+  "class_type": "ModelSamplingSD3",
+  "inputs": {
+   "model": [
+    "3",
+    0
+   ],
+   "shift": 5.0
+  },
+  "_meta": {
+   "title": "ModelSamplingSD3"
+  }
+ },
+ "6": {
+  "class_type": "ModelSamplingSD3",
+  "inputs": {
+   "model": [
+    "4",
+    0
+   ],
+   "shift": 5.0
+  },
+  "_meta": {
+   "title": "ModelSamplingSD3"
+  }
+ },
+ "7": {
+  "class_type": "CLIPLoader",
+  "inputs": {
+   "clip_name": "umt5_xxl_fp8_e4m3fn_scaled.safetensors",
+   "type": "wan",
+   "device": "default"
+  },
+  "_meta": {
+   "title": "CLIPLoader"
+  }
+ },
+ "8": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "clip": [
+    "7",
+    0
+   ],
+   "text": ""
+  },
+  "_meta": {
+   "title": "CLIP Text Encode {{POSITIVE-PROMPT}}"
+  }
+ },
+ "9": {
+  "class_type": "CLIPTextEncode",
+  "inputs": {
+   "clip": [
+    "7",
+    0
+   ],
+   "text": "\u8272\u8c03\u8273\u4e3d\uff0c\u8fc7\u66dd\uff0c\u9759\u6001\uff0c\u7ec6\u8282\u6a21\u7cca\u4e0d\u6e05\uff0c\u5b57\u5e55\uff0c\u6574\u4f53\u53d1\u7070\uff0c\u6700\u5dee\u8d28\u91cf\uff0c\u4f4e\u8d28\u91cf\uff0cJPEG\u538b\u7f29\u6b8b\u7559\uff0c\u4e11\u964b\u7684\uff0c\u6b8b\u7f3a\u7684\uff0c\u591a\u4f59\u7684\u624b\u6307\uff0c\u753b\u5f97\u4e0d\u597d\u7684\u624b\u90e8\uff0c\u753b\u5f97\u4e0d\u597d\u7684\u8138\u90e8\uff0c\u7578\u5f62\u7684\uff0c\u6bc1\u5bb9\u7684\uff0c\u5f62\u6001\u7578\u5f62\u7684\u80a2\u4f53\uff0c\u624b\u6307\u878d\u5408\uff0c\u9759\u6b62\u4e0d\u52a8\u7684\u6742\u4e71\u7684\u80cc\u666f\uff0c\u4e09\u6761\u817f\uff0c\u80cc\u666f\u4eba\u5f88\u591a\uff0c\u5012\u7740\u8d70"
+  },
+  "_meta": {
+   "title": "Negative {{NEGATIVE_PROMPT}}"
+  }
+ },
+ "10": {
+  "class_type": "VAELoader",
+  "inputs": {
+   "vae_name": "wan_2.1_vae.safetensors"
+  },
+  "_meta": {
+   "title": "VAELoader"
+  }
+ },
+ "11": {
+  "class_type": "LoadImage",
+  "inputs": {
+   "image": "input.png"
+  },
+  "_meta": {
+   "title": "Load Image {{LOAD-IMAGE}}"
+  }
+ },
+ "12": {
+  "class_type": "WanImageToVideo",
+  "inputs": {
+   "positive": [
+    "8",
+    0
+   ],
+   "negative": [
+    "9",
+    0
+   ],
+   "vae": [
+    "10",
+    0
+   ],
+   "start_image": [
+    "11",
+    0
+   ],
+   "width": 1280,
+   "height": 720,
+   "length": 81,
+   "batch_size": 1
+  },
+  "_meta": {
+   "title": "WanImageToVideo"
+  }
+ },
+ "13": {
+  "class_type": "KSamplerAdvanced",
+  "inputs": {
+   "model": [
+    "5",
+    0
+   ],
+   "add_noise": "enable",
+   "noise_seed": 0,
+   "steps": 4,
+   "cfg": 1.0,
+   "sampler_name": "euler",
+   "scheduler": "simple",
+   "positive": [
+    "12",
+    0
+   ],
+   "negative": [
+    "12",
+    1
+   ],
+   "latent_image": [
+    "12",
+    2
+   ],
+   "start_at_step": 0,
+   "end_at_step": 2,
+   "return_with_leftover_noise": "enable"
+  },
+  "_meta": {
+   "title": "High noise {{SAMPLER}}"
+  }
+ },
+ "14": {
+  "class_type": "KSamplerAdvanced",
+  "inputs": {
+   "model": [
+    "6",
+    0
+   ],
+   "add_noise": "disable",
+   "noise_seed": 0,
+   "steps": 4,
+   "cfg": 1.0,
+   "sampler_name": "euler",
+   "scheduler": "simple",
+   "positive": [
+    "12",
+    0
+   ],
+   "negative": [
+    "12",
+    1
+   ],
+   "latent_image": [
+    "13",
+    0
+   ],
+   "start_at_step": 2,
+   "end_at_step": 10000,
+   "return_with_leftover_noise": "disable"
+  },
+  "_meta": {
+   "title": "Low noise"
+  }
+ },
+ "15": {
+  "class_type": "VAEDecode",
+  "inputs": {
+   "samples": [
+    "14",
+    0
+   ],
+   "vae": [
+    "10",
+    0
+   ]
+  },
+  "_meta": {
+   "title": "VAEDecode"
+  }
+ },
+ "16": {
+  "class_type": "CreateVideo",
+  "inputs": {
+   "images": [
+    "15",
+    0
+   ],
+   "fps": 16
+  },
+  "_meta": {
+   "title": "CreateVideo"
+  }
+ },
+ "17": {
+  "class_type": "SaveVideo",
+  "inputs": {
+   "video": [
+    "16",
+    0
+   ],
+   "filename_prefix": "wan22_i2v",
+   "format": "auto",
+   "codec": "auto"
+  },
+  "_meta": {
+   "title": "SaveVideo"
+  }
+ }
+}
