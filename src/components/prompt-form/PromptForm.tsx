@@ -801,8 +801,10 @@ const PromptForm: React.FC<PromptFormProps> = ({
     <div 
       className="w-full mb-8"
       onSubmit={handleFormSubmit}
-      // Add additional mobile-specific event prevention
-      onTouchStart={isMobile ? (e) => e.stopPropagation() : undefined}
+      // Add additional mobile-specific event prevention. Only for touches on the form itself: a dialog opened from it
+      // (Famous artworks) is its React child but drawn elsewhere, and stopping its touchstart kept it from the
+      // dialog's scroll lock, which then refused every swipe (19 Nov: couldn't scroll the artworks by thumb).
+      onTouchStart={isMobile ? (e) => { if (e.currentTarget.contains(e.target as Node)) e.stopPropagation(); } : undefined}
     >
       <Card className="p-4 relative">
         {generationOff && (
