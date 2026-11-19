@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useLoopeView } from '@/contexts/LoopeViewContext';
 import useEmblaCarousel from 'embla-carousel-react';
-import { ChevronLeft, ChevronRight, X, ChevronUp, Star, Info, Download, Trash2, Share, Clipboard, MoreHorizontal, ExternalLink, Move, Copy, RefreshCcw, RefreshCw, Loader2 } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, ChevronUp, Star, Info, Download, Trash2, Share, Clipboard, MoreHorizontal, ExternalLink, Move, Copy, RefreshCcw, RefreshCw, Loader2, Film } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import {
@@ -77,6 +77,9 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
     });
     
     const [isFlipped, setIsFlipped] = useState(false);
+    // A still with clips (its `metadata.clips`, routes/clips.py) can be watched moving, here in place of the picture
+    const [moving, setMoving] = useState(false);
+    useEffect(() => setMoving(false), [currentIndex, isOpen]);
     const [zoomSrc, setZoomSrc] = useState<string | null>(null);
     const [zoomPosition, setZoomPosition] = useState<ZoomPosition>({ x: 0, y: 0 });
     const touchStartY = useRef<number | null>(null);
@@ -1130,6 +1133,14 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                 const src = img.raw_url || img.urlFull;
                 const isImgVideo = img.mediaType === 'video' || /\.mp4$|\.webm$/i.test(src);
                 const isLoading = loadingImages[src] !== false; // true or undefined means loading
+                const clipSrc = moving && img.id === currentImage?.id ? img.metadata?.clips?.[0]?.url : undefined;
+                if (clipSrc) {
+                  return (
+                    <div key={img.id} className="flex-shrink-0 flex items-center justify-center px-4" style={{ flex: '0 0 100%' }}>
+                      <video src={clipSrc} autoPlay muted playsInline loop controls className="max-h-full max-w-full object-contain" />
+                    </div>
+                  );
+                }
                 
                 return (
                   <div 
@@ -1521,6 +1532,19 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                 <Info className="h-4 w-4" />
                 <span className="hidden sm:inline">Info</span>
               </Button>
+
+              {/* A still that has been brought to life: watch it move */}
+              {currentImage?.metadata?.clips?.length > 0 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={`text-xs flex items-center gap-1 ${moving ? 'bg-white/10 text-white' : 'text-white/90 hover:text-white hover:bg-white/10'}`}
+                  onClick={() => setMoving(!moving)}
+                >
+                  <Film className="h-4 w-4" />
+                  <span className="hidden sm:inline">{moving ? 'Still' : 'Moving'}</span>
+                </Button>
+              )}
               
               {/* Favorite */}
               {showFavoriteButton && (

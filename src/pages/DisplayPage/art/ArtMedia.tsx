@@ -10,7 +10,7 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { Fit } from "../control/protocol";
-import { ClipCycle, CROSSFADE_DURATION, FIRST_FRAME_FADE_OUT_DURATION, type EasedLoop } from "./ClipCycle";
+import { ClipCycle, CROSSFADE_DURATION, EASED_FADE, FIRST_FRAME_FADE_OUT_DURATION, type EasedLoop } from "./ClipCycle";
 import { isClip, mediaContainerStyle, mediaStyle } from "./styles";
 
 const FADE_OUT_TIME = 1000;
@@ -128,6 +128,7 @@ export const ArtMedia = forwardRef<ArtMediaHandle, Props>(function ArtMedia(
   const [firstFrame, setFirstFrame] = useState<string | null>(null);
   const [showFirstFrame, setShowFirstFrame] = useState(false);
   const [snapFirstFrame, setSnapFirstFrame] = useState(false);
+  const [eased, setEased] = useState(false); // a clip with its ease rendered in: even fades to and from the still
   const [debugInfo, setDebugInfo] = useState<{ currentTime?: string; playbackRate?: string; duration?: string }>({});
   const [searchParams] = useSearchParams();
   const showDebug = mode === "cycle" && searchParams.has("debug");
@@ -237,6 +238,7 @@ export const ArtMedia = forwardRef<ArtMediaHandle, Props>(function ArtMedia(
     let alive = true;
     void easedLoop(src).then((loop) => {
       if (!alive) return;
+      setEased(!!loop);
       cycle.setEased(loop);
       cycle.start();
     });
@@ -310,9 +312,11 @@ export const ArtMedia = forwardRef<ArtMediaHandle, Props>(function ArtMedia(
     opacity: showFirstFrame ? 1 : 0,
     transition: snapFirstFrame
       ? "none"
-      : showFirstFrame
-        ? `opacity ${CROSSFADE_DURATION}ms ${OPACITY_EASING}`
-        : `opacity ${FIRST_FRAME_FADE_OUT_DURATION}ms ${OPACITY_EASING}`,
+      : eased
+        ? `opacity ${EASED_FADE}ms ${OPACITY_EASING}`
+        : showFirstFrame
+          ? `opacity ${CROSSFADE_DURATION}ms ${OPACITY_EASING}`
+          : `opacity ${FIRST_FRAME_FADE_OUT_DURATION}ms ${OPACITY_EASING}`,
     zIndex: 2,
   };
 

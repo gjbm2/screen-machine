@@ -20,9 +20,11 @@
 // A clip with its ease rendered in (routes/clip_ease.py; its published sidecar says `clip.eased`) plays
 // differently, because the browser can't ease smoothly: at 0.065x each frame stays up for 0.6 s, so the old loop
 // started with two visible ticks and stepped for its first ~3 s (owner, 19 Nov). That clip is 30 fps and already
-// eases from stillness and back, and it ends on exactly its first frame (the picture). So it plays at 1x, then
-// rests on the picture for a random time in `restS` (longer for bigger movements), seeks back to frame 0 (the same
-// picture) and plays again. The first play waits a short random while after the clip arrives.
+// eases from stillness and back, it ends on exactly its first frame, and that frame is the full-size still (the
+// clip's motion is laid onto it). So, as the owner set out: the still shows (the first-frame overlay); when play
+// time comes it fades over EASED_FADE to the clip's start, the clip plays at 1x, the still fades back in, and it
+// rests for a random time in `restS` (longer for bigger movements) before playing again. The first play waits a
+// short random while after the clip arrives.
 
 export const EASE_IN_DURATION = 2500;
 export const EASE_OUT_DURATION = 2500;
@@ -41,6 +43,7 @@ export interface EasedLoop {
   restS: [number, number];
 }
 const FIRST_REST_S: [number, number] = [5, 20];
+export const EASED_FADE = 2000;
 
 export interface ClipCycleHooks {
   /** Today's `paused` state (drives the ?debug "Paused on Final Frame" label). */
@@ -219,17 +222,21 @@ export class ClipCycle {
     const v = this.video;
     this.played = true;
     this.phase = "cruise";
+    this.overlay = false;
+    this.hooks.setShowFirstFrame(false); // fades to the clip's start, which is the same picture
     this.hooks.setPaused(false);
     v.playbackRate = 1;
     this.once(g, "ended", () => this.restStep(g));
     this.play(g, () => {});
   }
 
-  /** Rest on the picture (the clip's last frame is its first), then seek back to frame 0 and play again. */
+  /** Fade back to the still and rest on it, then seek back to frame 0 (under the still) and play again. */
   private restStep(g: number): void {
     if (!this.eased) return;
     this.phase = "rest";
     this.video.pause();
+    this.overlay = true;
+    this.hooks.setShowFirstFrame(true);
     this.hooks.setPaused(true);
     const [lo, hi] = this.played ? this.eased.restS : FIRST_REST_S;
     this.later(g, () => this.begin(), (lo + Math.random() * (hi - lo)) * 1000);

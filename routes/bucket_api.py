@@ -330,28 +330,9 @@ def unfavorite(bucket_id: str, filename: str):
 
 # -- delete ------------------------------------------------------------------
 
-@buckets_bp.route("/buckets/<bucket_id>/<filename>", methods=["DELETE"])
-def delete_file(bucket_id: str, filename: str):
-    """Delete a file from a bucket"""
-    # Verify this is a valid destination with has_bucket=true
-    dests = _load_json_once("publish_destinations", "publish-destinations.json")
-    dest = next((d for d in dests if d["id"] == bucket_id and d.get("has_bucket", False)), None)
-    if not dest:
-        abort(400, "Invalid bucket_id or destination does not support buckets")
-    
+def _remove_from_bucket(bucket_id: str, filename: str) -> None:
+    """Delete a file with its sidecar, thumbnail, references, sequence entry and favourite."""
     fp = bucket_path(bucket_id) / filename
-    if not fp.exists():
-        abort(404, "file missing")
-    if bucket_id == "_recent":
-        # someone else's Generated image is not there for this caller (docs/ACCOUNTS.md)
-        from routes import auth
-        try:
-            space = json.loads(sidecar_path(fp).read_text("utf-8")).get("space")
-        except Exception:
-            space = None
-        if not auth.can_see_space(space, everyone=True):
-            abort(404, "file missing")
-
     # Clean up reference images before deleting main file
     try:
         from routes.bucket_utils import ReferenceImageStorage
@@ -361,7 +342,7 @@ def delete_file(bucket_id: str, filename: str):
     except Exception as e:
         error(f"Failed to cleanup reference images for {filename}: {e}")
     
-    fp.unlink()
+    fp.unlink(missing_ok=True)
 
     # remove side-car
     sc = sidecar_path(fp)
@@ -392,6 +373,35 @@ def delete_file(bucket_id: str, filename: str):
         meta["favorites"] = favs
 
     save_meta(bucket_id, meta)
+
+
+@buckets_bp.route("/buckets/<bucket_id>/<filename>", methods=["DELETE"])
+def delete_file(bucket_id: str, filename: str):
+    """Delete a file from a bucket"""
+    # Verify this is a valid destination with has_bucket=true
+    dests = _load_json_once("publish_destinations", "publish-destinations.json")
+    dest = next((d for d in dests if d["id"] == bucket_id and d.get("has_bucket", False)), None)
+    if not dest:
+        abort(400, "Invalid bucket_id or destination does not support buckets")
+    
+    fp = bucket_path(bucket_id) / filename
+    if not fp.exists():
+        abort(404, "file missing")
+    if bucket_id == "_recent":
+        # someone else's Generated image is not there for this caller (docs/ACCOUNTS.md)
+        from routes import auth
+        try:
+            space = json.loads(sidecar_path(fp).read_text("utf-8")).get("space")
+        except Exception:
+            space = None
+        if not auth.can_see_space(space, everyone=True):
+            abort(404, "file missing")
+
+    # A still's clips go with it (routes/clips.py)
+    from routes.clips import clips_of
+    clips = [] if fp.suffix.lower() in (".mp4", ".webm", ".mov") else [c.name for c in clips_of(bucket_path(bucket_id), filename)]
+    for name in [filename] + clips:
+        _remove_from_bucket(bucket_id, name)
 
     return jsonify({"status": "deleted"})
 
@@ -821,6 +831,14 @@ def get_bucket_complete(bucket_id: str):
         # Log what we're returning for debugging
         info(f"Published info for bucket {bucket_id}: {published}")
 
+    # A clip made from a still is shown with it (its `clips`), not as an item of its own (routes/clips.py); a
+    # published clip shows as its still being published
+    from routes.clips import group
+    files = group(files)
+    if published:
+        owner = next((f["filename"] for f in files for c in f.get("clips", []) if c["filename"] == published["filename"]), None)
+        if owner:
+            published.update(clip=published["filename"], filename=owner, from_bucket=True)
     return jsonify({
         "bucket_id": bucket_id,
         "files": files,

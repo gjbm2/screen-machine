@@ -434,6 +434,11 @@ def handle_image_generation(input_obj, wait=False, source="api", job_ids_out=Non
     if "silent" in data:
         base_kwargs["silent"] = data["silent"]
 
+    # A clip's still: its name in the bucket and its full-size copy (async_amimate; routes/clips.py)
+    for key in ("still", "still_image"):
+        if data.get(key):
+            base_kwargs[key] = data[key]
+
     # ✨ Remove the seed if batch_size > 1 so that each run gets its own
     #     random seed (generate.start will assign a random default).
     if batch_size > 1:
@@ -849,6 +854,16 @@ def async_amimate(targets, obj = {}, source="api"):
                 }
             }
             
+            # The clip belongs to the still on the screen (routes/clips.py), and is laid onto its full-size copy
+            # (routes/clip_ease.py): both are taken now, as the screen may have a new picture by the time it lands
+            from routes.clips import published_still, snapshot_screen_still
+            still = published_still(target_destination)
+            if still:
+                target_result["data"]["still"] = still
+            snap = snapshot_screen_still(target_destination)
+            if snap:
+                target_result["data"]["still_image"] = snap
+
             if image_payload:
                 # Include the current published image as input for animation
                 target_result["data"]["images"] = [image_payload]

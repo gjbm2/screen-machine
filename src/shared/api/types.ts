@@ -179,6 +179,8 @@ export interface RawBucketFile {
   created_at?: number;
   modified?: number;
   reference_images?: ReferenceImageInfo[];
+  /** A still's clips (routes/clips.py), newest first */
+  clips?: RawBucketFile[];
 }
 
 export interface MaskData {

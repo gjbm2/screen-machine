@@ -223,7 +223,7 @@ const ImageCard: React.FC<ImageCardProps> = ({
       )}
       
       {/* Video indicator - bottom left */}
-      {isVideo(image) && !isPlaceholder && (
+      {(isVideo(image) || (image.metadata?.clips?.length ?? 0) > 0) && !isPlaceholder && (
         <Badge className="absolute bottom-2 left-2 z-30 bg-black/60 text-white">
           <Film className="h-3 w-3" />
         </Badge>

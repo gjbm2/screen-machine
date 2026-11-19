@@ -101,6 +101,10 @@ export async function getBucketDetails(bucketId: string, options: { everyone?: b
         metadata: {
           ...baseMeta,
           timestamp: createdTs,
+          // a still's clips are part of it, not items of their own (routes/clips.py)
+          ...(Array.isArray(file.clips) && file.clips.length
+            ? { clips: file.clips.map((c) => ({ filename: c.filename, url: c.raw_url || c.url || '', thumbnail_url: c.thumbnail_url })) }
+            : {}),
         },
         created_at: createdTs,
         reference_images: Array.isArray(file.reference_images) ? file.reference_images : [],

@@ -371,6 +371,9 @@ def publish_to_destination(
                 is_history_navigation=is_history_navigation,
                 fit=fit,
             )
+            placing = (result.get("meta") or {}).pop("placing", None)
+            if result.get("success") and update_published:
+                _publish_clip_of(source_path, publish_destination_id, result, placing, batch_id, is_history_navigation)
             
             return result
             
@@ -379,6 +382,40 @@ def publish_to_destination(
     except Exception as e:
         error(f"Publish failed: {e}")
         return {"success": False, "error": str(e)}
+
+def _publish_clip_of(still: Path, publish_destination_id: str, result: dict, placing: str | None, batch_id,
+                     is_history_navigation: bool) -> None:
+    """A published still brings its newest clip with it (routes/clips.py): the clip goes up after the picture (after
+    it lands, when it is still being fitted to the screen), so the screen shows the picture and then it comes to
+    life. A copy into another bucket is linked to the still's copy."""
+    from routes.image_formats import STILLS
+    from routes.clips import clips_of
+    if still.suffix.lower() not in STILLS or not still.parent.is_dir():
+        return
+    try:
+        clips = clips_of(still.parent, still.name)
+    except Exception as e:
+        warning(f"[publish] could not look for {still.name}'s clips: {e}")
+        return
+    if not clips:
+        return
+    clip = clips[0]
+    meta = {}
+    try:
+        meta = json.loads(sidecar_path(clip).read_text("utf-8"))
+    except Exception:
+        pass
+    meta["still"] = (result.get("meta") or {}).get("filename") or still.name
+    info(f"[publish] {still.name} has a clip: publishing {clip.name} after it")
+
+    def go():
+        res = publish_to_destination(source=clip, publish_destination_id=publish_destination_id, metadata=meta,
+                                     silent=True, batch_id=batch_id, is_history_navigation=is_history_navigation)
+        if not res.get("success"):
+            warning(f"[publish] {still.name}'s clip did not go up: {res.get('error')}")
+    if not _when_placed(placing, go):
+        go()
+
 
 # ─── overlay helper ────────────────────────────────────────────────────────
 def _send_overlay_prompt(screen_id: str, metadata: dict[str, Any]) -> None:
@@ -1012,6 +1049,7 @@ def _publish_to_destination(
         meta = {"filename": bucket_filename or source_filepath.name, "published_at": publish_time}
         if making:
             meta["fitting"] = dest.get("name") or dest["id"]   # still being fitted: it goes up when it is made
+            meta["placing"] = making                           # for what must follow it (its clip); taken off again
         return {"success": True, "meta": meta}
     except Exception as e:
         error(f"Publish failed: {e}")

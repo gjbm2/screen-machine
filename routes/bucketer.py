@@ -327,9 +327,24 @@ def purge_bucket(publish_destination_id: str, include_favorites: bool = False, d
         cutoff_time = datetime.now() - timedelta(days=days)
 
     removed = []
+    # A clip made from a still in this bucket goes or stays with its still (routes/clips.py)
+    from routes.clips import still_of
+    names = set(filenames)
+    parent = {}
+    for fname in filenames:
+        if Path(fname).suffix.lower() in {".mp4", ".webm", ".mov"}:
+            try:
+                still = still_of(json.loads(sidecar_path(bucket_path(publish_destination_id) / fname).read_text("utf-8")))
+            except Exception:
+                still = None
+            if still in names:
+                parent[fname] = still
     # Remove media + side-cars + matching thumbs
     # Create a copy of the sequence to iterate over while we modify the original
-    for i, fname in enumerate(filenames):
+    for i, fname in enumerate(filenames + [c for c in parent]):
+        if fname in parent:
+            if i < len(filenames) or parent[fname] not in removed:
+                continue
         # Skip favorites unless include_favorites is True
         if not include_favorites and fname in favs:
             info(f"[purge] Skipping favorite file: {fname}")
@@ -780,6 +795,19 @@ def copy_image_from_bucket_to_bucket(source_publish_destination: str, target_pub
     except Exception as e:
         error(f"[copy_image_from_bucket_to_bucket] Failed to update destination metadata: {str(e)}")
         raise
+
+    # A still's clips go with it, renamed to the copy (routes/clips.py); a move deletes them with the still below
+    if Path(filename).suffix.lower() not in {".mp4", ".webm", ".mov"}:
+        from routes.clips import clips_of
+        for clip in clips_of(bucket_path(source_publish_destination), filename):
+            moved = copy_image_from_bucket_to_bucket(source_publish_destination, target_publish_destination, clip.name, copy=True)
+            sc = sidecar_path(bucket_path(target_publish_destination) / moved["filename"])
+            try:
+                cm = json.loads(sc.read_text("utf-8"))
+                cm["still"] = target_filename
+                sc.write_text(json.dumps(cm, indent=2, ensure_ascii=False), "utf-8")
+            except Exception as e:
+                error(f"[copy_image_from_bucket_to_bucket] Failed to link clip {clip.name} to {target_filename}: {e}")
 
     # Handle source deletion if this is a move (not copy)
     if not copy:
