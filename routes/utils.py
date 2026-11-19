@@ -1,7 +1,7 @@
 import os
 import difflib
 import json
-from PIL import Image
+from PIL import Image, ImageOps
 import io
 import base64
 from werkzeug.utils import secure_filename
@@ -268,6 +268,7 @@ def encode_image_uploads(image_files, max_file_size_mb=5):
         quality = 95
         step = 5
         buffer = io.BytesIO()
+        image = ImageOps.exif_transpose(image)   # the JPEG below drops EXIF, so a phone's portrait would go sideways
 
         # Ensure it's in RGB for JPEG compatibility
         if image.mode in ("RGBA", "P", "LA"):
@@ -316,6 +317,7 @@ def encode_reference_urls(reference_urls, max_file_size_mb=5, bucket_id=None):
     def compress_image(image, max_size_bytes):
         info(f"[compress_image] Converting to JPEG. Original mode: {image.mode}, size: {image.size}")
         buffer = BytesIO()
+        image = ImageOps.exif_transpose(image)   # the JPEG below drops EXIF, so a phone's portrait would go sideways
 
         # Convert to RGB if needed (JPEG doesn't support alpha or palette)
         if image.mode in ("RGBA", "P", "LA"):

@@ -122,6 +122,48 @@ def worker_output(output, job_id):
     return {"status": "success", "message": path}
 
 
+def _node_inputs(workflow_data, placeholder):
+    """The inputs of the first node whose title carries placeholder (e.g. "{{FINISH}}"), else {}."""
+    for node in workflow_data.values():
+        if isinstance(node, dict) and placeholder in (node.get("_meta") or {}).get("title", ""):
+            return node.get("inputs") or {}
+    return {}
+
+
+def image_size(image):
+    """(width, height) of a request image ({"name", "image": base64}) as ComfyUI's LoadImage sees it (EXIF
+    orientation applied), else None."""
+    import base64
+    from PIL import Image, ImageOps
+    try:
+        with Image.open(BytesIO(base64.b64decode(image.get("image") or ""))) as img:
+            return ImageOps.exif_transpose(img).size
+    except Exception:
+        return None
+
+
+# A picture this close to the screen's shape fills it (the crop trims a sliver); any further off, it keeps its shape
+FINISH_SHAPE_TOLERANCE = 0.02
+
+
+def finish_size(picture, box, turn=False):
+    """The size the {{FINISH}} node scales the picture to: inside box, keeping the picture's shape (owner, 19 Nov: a
+    portrait photo adapted came back cropped to a landscape screen). turn: the box is a size budget, not a screen, so
+    it takes the picture's orientation. picture None: the box as it is."""
+    box_w, box_h = int(box[0]), int(box[1])
+    if not picture or not picture[0] or not picture[1]:
+        return box_w, box_h
+    w, h = int(picture[0]), int(picture[1])
+    if turn and w != h and (w > h) != (box_w > box_h):
+        box_w, box_h = box_h, box_w
+    shape, box_shape = w / h, box_w / box_h
+    if abs(shape / box_shape - 1) <= FINISH_SHAPE_TOLERANCE:
+        return box_w, box_h
+    if shape > box_shape:
+        return box_w, max(1, round(box_w / shape))
+    return max(1, round(box_h * shape)), box_h
+
+
 def update_workflow(json_data, replacements):
     """
     Updates 'inputs' of matching nodes in a workflow JSON based on regex matches
@@ -446,7 +488,27 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
         workflow_data = json.load(file)
     info(f"Successfully loaded: {args_namespace.workflow}")
     
-    unique_video_name = f"output_video{str(uuid.uuid4())[:8]}"    
+    # The finish: the picture's own shape inside the screen's box. The picture is the latent's shape, or for a graph
+    # with no {{LATENT-IMAGE}} (edit, combine, upscale) the first reference image's: Qwen 2.1's edit encoder makes
+    # its latent on that image's shape. With no screen, the box (the caller's size, else the graph's) turns to suit.
+    latent = _node_inputs(workflow_data, "{{LATENT-IMAGE}}")
+    if latent:
+        picture = (args_namespace.width or latent.get("width"), args_namespace.height or latent.get("height"))
+    else:
+        picture = image_size(args_namespace.images[0]) if args_namespace.images else None
+    screen_box = (maxwidth, maxheight) if maxwidth and maxheight else (
+        (args_namespace.maxwidth, args_namespace.maxheight)
+        if vars(args_namespace).get("maxwidth") and vars(args_namespace).get("maxheight") else None)
+    finish_node = _node_inputs(workflow_data, "{{FINISH}}")
+    finish = None
+    if finish_node:
+        box = screen_box or ((args_namespace.width, args_namespace.height)
+                             if args_namespace.width and args_namespace.height
+                             else (finish_node.get("width"), finish_node.get("height")))
+        finish = finish_size(picture, box, turn=screen_box is None)
+        info(f"Finish: picture {picture} -> {finish[0]}x{finish[1]} (box {box})")
+
+    unique_video_name = f"output_video{str(uuid.uuid4())[:8]}"
     json_replacements = {
         r"{{LATENT-IMAGE}}": {  
             "width": args_namespace.width,
@@ -486,11 +548,11 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
             "width": maxwidth or vars(args_namespace).get("maxwidth") or 6400,
             "height": maxheight or vars(args_namespace).get("maxheight") or 6400
         },
-        # The new worker's graphs (worker/): render at the model's own size, then one lanczos scale with a centre crop
-        # to the screen (else to the latent's own size, a no-op), and the sampling shift for the latent's size
+        # The new worker's graphs (worker/): render at the model's own size, then one lanczos scale to the finish
+        # above (its centre crop trims at most a sliver), and the sampling shift for the latent's size
         r"{{FINISH}}": {
-            "width": maxwidth or vars(args_namespace).get("maxwidth") or args_namespace.width,
-            "height": maxheight or vars(args_namespace).get("maxheight") or args_namespace.height
+            "width": finish[0] if finish else None,
+            "height": finish[1] if finish else None
         },
         r"{{SHIFT}}": {
             "width": args_namespace.width,

@@ -402,3 +402,168 @@ def test_publishing_a_video_reaches_the_tv(house):
     assert result["success"], result
     shown = tv_shows(house["output"])
     assert shown.suffix == ".mp4" and shown.read_bytes() == stored.read_bytes()
+
+
+# ---------------------------------------------------------------------------- a picture keeps its shape (owner, 19 Nov)
+# An uploaded portrait photo, adapted, came back cut to the landscape screen: the new graphs' {{FINISH}} scaled to the
+# screen's size with a centre crop. The fake worker below makes its picture at the size the graph's {{FINISH}} node was
+# given, as ComfyUI's ImageScale does, so what reaches the TV or Recent is the shape the app asked for.
+
+def _destination(screen=SCREEN):
+    destinations = json.loads(Path(smconfig.path("publish-destinations.json")).read_text())
+    return next(d for d in destinations if d["id"] == screen)
+
+
+def _takes_images():
+    """Live still workflows whose picture is made from an uploaded one (it sets the picture's shape)."""
+    return [w["id"] for w in _catalogue()
+            if not w.get("replaced_by") and not w["id"].startswith("wan_") and "image" in (w.get("input") or [])]
+
+
+def _text_only():
+    return [w["id"] for w in _catalogue()
+            if not w.get("replaced_by") and not w["id"].startswith("wan_") and "image" not in (w.get("input") or [])]
+
+
+def _finish_node(payload):
+    return next((n for n in payload["input"]["workflow"].values()
+                 if "{{FINISH}}" in (n.get("_meta") or {}).get("title", "")), None)
+
+
+class FinishingRunPod(FakeRunPod):
+    """The worker: its picture is the size the graph's {{FINISH}} node was given (ImageScale with a centre crop)."""
+
+    def __init__(self):
+        super().__init__({"status": "COMPLETED"})
+
+    def submit(self, endpoint_id, payload, timeout=60):
+        node = _finish_node(payload)
+        assert node is not None, "the graph has no {{FINISH}} node"
+        size = (int(node["inputs"]["width"]), int(node["inputs"]["height"]))
+        self.statuses[-1] = inline_sized(size)
+        self.images = copy.deepcopy(payload["input"].get("images"))    # routes.generate strips them after the job
+        return super().submit(endpoint_id, payload, timeout)
+
+
+def inline_sized(size):
+    return {"status": "COMPLETED", "output": {"images": [
+        {"filename": "out_00001_.png", "type": "base64",
+         "data": base64.b64encode(_image_bytes("PNG", size=size)).decode()}]}}
+
+
+def upload(size, exif_orientation=None):
+    """A photo as the generator page's upload reaches routes.generate (routes.utils.encode_image_uploads)."""
+    from werkzeug.datastructures import FileStorage
+    from routes.utils import encode_image_uploads
+    img = Image.new("RGB", size, OLD)
+    buf = BytesIO()
+    if exif_orientation:
+        exif = img.getexif()
+        exif[0x0112] = exif_orientation
+        img.save(buf, format="JPEG", exif=exif.tobytes())
+    else:
+        img.save(buf, format="JPEG")
+    buf.seek(0)
+    return encode_image_uploads([FileStorage(stream=buf, filename="photo.jpg")])
+
+
+def shape(size):
+    return size[0] / size[1]
+
+
+def same_shape(a, b, tolerance=0.02):
+    return abs(shape(a) / shape(b) - 1) <= tolerance
+
+
+def size_of(path):
+    with Image.open(path) as img:
+        return img.size
+
+
+PHOTOS = {"portrait": (556, 1024), "landscape 4:3": (1024, 768), "square": (800, 800), "tall": (400, 1200)}
+
+
+@pytest.mark.parametrize("photo", PHOTOS, ids=list(PHOTOS))
+@pytest.mark.parametrize("workflow", _takes_images())
+def test_an_uploaded_photo_keeps_its_shape_on_the_tv(house, workflow, photo):
+    ran = next(w for w in _catalogue() if w["id"] == workflow)
+    images = upload(PHOTOS[photo]) * (ran.get("uses_images") or 1)
+    fake = FinishingRunPod()
+    house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
+    job_id = house["tracker"].create(prompt="make it snow", source="generator", target=SCREEN)["id"]
+    house["generate"].start(prompt="make it snow", workflow=workflow, images=images, job_id=job_id,
+                            publish_destination=SCREEN, silent=True, poll_interval=0.01)
+
+    shown = size_of(tv_shows(house["output"]))
+    screen = (_destination()["maxwidth"], _destination()["maxheight"])
+    assert same_shape(shown, PHOTOS[photo]), f"a {photo} photo came back {shown[0]}x{shown[1]}"
+    assert shown[0] <= screen[0] and shown[1] <= screen[1], "bigger than the screen"
+    assert shown[0] == screen[0] or shown[1] == screen[1], "smaller than the screen allows"
+
+
+@pytest.mark.parametrize("photo", PHOTOS, ids=list(PHOTOS))
+@pytest.mark.parametrize("workflow", _takes_images())
+def test_an_uploaded_photo_keeps_its_shape_in_recent(house, workflow, photo):
+    """The generator page with no screen (the owner's case on 19 Nov: a portrait photo, 'Adapt', into Recent): the
+    picture keeps its shape at the full size, turned to suit it."""
+    import routes.generate_handler as handler
+    import routes.generate_utils as generate_utils
+
+    ran = next(w for w in _catalogue() if w["id"] == workflow)
+    mp = house["monkeypatch"]
+    mp.setattr(house["generate"], "runpod_api", FinishingRunPod())
+    mp.setattr(handler, "_refine", lambda data, prompt, workflow, *a, **k: (workflow, prompt, prompt))
+    out = generate_utils.process_generate_image_request(
+        {"prompt": "make it snow", "workflow": workflow, "batch_id": "abc123_frontend",
+         "params": {"poll_interval": 0.01}, "global_params": {"batch_size": 1}},
+        uploaded_images=upload(PHOTOS[photo]) * (ran.get("uses_images") or 1))
+
+    made = size_of(house["output"] / "_recent" / out["recent_files"][0])
+    assert same_shape(made, PHOTOS[photo]), f"a {photo} photo came back {made[0]}x{made[1]}"
+    finish = _finish_node({"input": {"workflow": json.loads((REPO / "routes" / "workflows" / workflow).read_text())}})
+    budget = sorted((finish["inputs"]["width"], finish["inputs"]["height"]))
+    assert sorted(made)[1] <= budget[1] and sorted(made)[0] <= budget[0]
+    assert sorted(made)[1] == budget[1] or sorted(made)[0] == budget[0], "smaller than the graph's size allows"
+
+
+@pytest.mark.parametrize("workflow", _takes_images())
+def test_a_phones_portrait_with_a_rotate_tag_stays_portrait(house, workflow):
+    """A phone stores a portrait as landscape pixels plus an EXIF 'rotate 90'; the re-encoded upload drops the tag,
+    so it must be turned first or the model is given the photo on its side."""
+    ran = next(w for w in _catalogue() if w["id"] == workflow)
+    images = upload((1024, 556), exif_orientation=6) * (ran.get("uses_images") or 1)
+    fake = FinishingRunPod()
+    house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
+    job_id = house["tracker"].create(prompt="make it snow", source="generator", target=SCREEN)["id"]
+    house["generate"].start(prompt="make it snow", workflow=workflow, images=images, job_id=job_id,
+                            publish_destination=SCREEN, silent=True, poll_interval=0.01)
+
+    sent = Image.open(BytesIO(base64.b64decode(fake.images[0]["image"])))
+    assert sent.size == (556, 1024), "the model was given the photo on its side"
+    shown = size_of(tv_shows(house["output"]))
+    assert shown[1] > shown[0] and same_shape(shown, (556, 1024))
+
+
+@pytest.mark.parametrize("workflow", _text_only())
+def test_a_text_picture_fills_the_screen(house, workflow):
+    fake = FinishingRunPod()
+    house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
+    job_id = house["tracker"].create(prompt="a puppy", source="generator", target=SCREEN)["id"]
+    house["generate"].start(prompt="a puppy", workflow=workflow, job_id=job_id,
+                            publish_destination=SCREEN, silent=True, poll_interval=0.01)
+    assert size_of(tv_shows(house["output"])) == (_destination()["maxwidth"], _destination()["maxheight"])
+
+
+@pytest.mark.parametrize("workflow", _text_only())
+def test_a_portrait_text_picture_is_not_cut_to_the_screen(house, workflow):
+    """A caller that asks for a portrait render (width < height) gets a portrait, not a landscape strip of it."""
+    latent = next(n["inputs"] for n in json.loads((REPO / "routes" / "workflows" / workflow).read_text()).values()
+                  if "{{LATENT-IMAGE}}" in (n.get("_meta") or {}).get("title", ""))
+    portrait = (latent["height"], latent["width"])
+    fake = FinishingRunPod()
+    house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
+    job_id = house["tracker"].create(prompt="a puppy", source="generator", target=SCREEN)["id"]
+    house["generate"].start(prompt="a puppy", workflow=workflow, width=portrait[0], height=portrait[1], job_id=job_id,
+                            publish_destination=SCREEN, silent=True, poll_interval=0.01)
+    shown = size_of(tv_shows(house["output"]))
+    assert same_shape(shown, portrait), f"a {portrait[0]}x{portrait[1]} render came back {shown[0]}x{shown[1]}"

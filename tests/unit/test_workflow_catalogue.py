@@ -76,3 +76,25 @@ def test_a_refiners_default_workflow_exists(refiner):
 def test_the_generators_fallback_workflow_is_in_the_catalogue():
     import routes.generate as generate
     assert generate.get_parser().parse_args([]).workflow in BY_ID
+
+
+STILLS = [w["id"] for w in LIVE if not w["id"].startswith("wan_")]
+
+
+@pytest.mark.parametrize("workflow", STILLS)
+def test_only_the_finish_node_may_crop(workflow):
+    """A crop to a fixed size cuts away any picture of another shape (19 Nov: portrait photos came back landscape).
+    The one crop allowed is the {{FINISH}} node's, which routes.generate sizes to the picture's own shape."""
+    for node in graph(workflow).values():
+        crop = (node.get("inputs") or {}).get("crop") if isinstance(node, dict) else None
+        if crop and crop != "disabled":
+            assert "{{FINISH}}" in (node.get("_meta") or {}).get("title", ""), \
+                f"{node.get('class_type')} crops to a fixed size; title it {{{{FINISH}}}} so the app sizes it"
+
+
+@pytest.mark.parametrize("workflow", [w for w in STILLS if has_node(w, "{{FINISH}}")])
+def test_a_finished_workflow_knows_its_pictures_shape(workflow):
+    """routes.generate reads the picture's shape from the {{LATENT-IMAGE}} node, else from the first reference
+    image (the edit graphs' latent is made on it); a graph with neither would be finished to the screen's shape."""
+    assert has_node(workflow, "{{LATENT-IMAGE}}") or "image" in (BY_ID[workflow].get("input") or []), \
+        "no {{LATENT-IMAGE}} node and no reference image: the finish cannot know the picture's shape"
