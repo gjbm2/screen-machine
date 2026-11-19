@@ -578,8 +578,7 @@
       "text"
     ],
     "description": "Image from text with Qwen-Image-2.1 Turbo (8 steps), rendered natively at up to 4 MP",
-    "runpod_id": "1p4605rkgfo392",
-    "runpod_id_live": "v0lfqu2owx3lc4",
+    "runpod_id": "rwl6rp3wgg890o",
     "icon": "Palette",
     "processing_stages": [
       {
@@ -638,8 +637,7 @@
       "text"
     ],
     "description": "Image from text with Qwen-Image-2.1 (full, 40 steps), rendered natively at up to 4 MP",
-    "runpod_id": "1p4605rkgfo392",
-    "runpod_id_live": "v0lfqu2owx3lc4",
+    "runpod_id": "rwl6rp3wgg890o",
     "icon": "Palette",
     "processing_stages": [
       {
@@ -703,8 +701,7 @@
       "text"
     ],
     "description": "Photographic image from text with Z-Image Turbo (8 steps)",
-    "runpod_id": "1p4605rkgfo392",
-    "runpod_id_live": "v0lfqu2owx3lc4",
+    "runpod_id": "bm00rlfpej1cyj",
     "icon": "Camera",
     "processing_stages": [
       {
@@ -759,8 +756,7 @@
     "id": "qwen21-edit.json",
     "name": "Adapt an image",
     "summary": "Change a picture you upload",
-    "runpod_id": "1p4605rkgfo392",
-    "runpod_id_live": "v0lfqu2owx3lc4",
+    "runpod_id": "rwl6rp3wgg890o",
     "description": "Change an image from a prompt (Qwen-Image-2.1 Turbo edit)",
     "default-refiner": "adapt",
     "icon": "PaintBucket",
@@ -817,8 +813,7 @@
     "id": "qwen21-combine.json",
     "name": "Combine two images",
     "summary": "Mix two pictures you upload",
-    "runpod_id": "1p4605rkgfo392",
-    "runpod_id_live": "v0lfqu2owx3lc4",
+    "runpod_id": "rwl6rp3wgg890o",
     "description": "Combine two images from a prompt (Qwen-Image-2.1 Turbo edit, two references)",
     "default-refiner": "adapt",
     "icon": "Merge",
@@ -880,8 +875,7 @@
     "style_descriptor": "natural photorealistic photography, authentic lighting, lifelike details, realistic textures, documentary photography, candid photography, street photography, landscape photography",
     "style_guidance": "Use for most photorealistic imagery including natural, authentic, documentary, candid, street, landscape, portrait, and general photography. Ideal for realistic scenes, natural lighting, authentic details, and lifelike rendering. This is the preferred choice for most photorealistic requests unless the user explicitly requests stylized, commercial, or synthetic effects.",
     "alexavisible": true,
-    "runpod_id": "1p4605rkgfo392",
-    "runpod_id_live": "v0lfqu2owx3lc4",
+    "runpod_id": "jgd96xqhx0r9np",
     "input": [
       "text"
     ],
@@ -929,8 +923,7 @@
     "name": "Upscale",
     "summary": "Fit a picture to the screen, sharper",
     "description": "Scale an image to the screen (lanczos, centre crop) on the new worker",
-    "runpod_id": "1p4605rkgfo392",
-    "runpod_id_live": "v0lfqu2owx3lc4",
+    "runpod_id": "bm00rlfpej1cyj",
     "default-refiner": "none",
     "uses_images": 1,
     "icon": "Images",
