@@ -4,6 +4,7 @@ import { bucketsApi, generationApi, publishApi } from '@/shared/api';
 import { SortableContext, arrayMove, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { DragStartEvent, DragEndEvent, useDndMonitor, DragOverlay } from '@dnd-kit/core';
+import { DRAG_OVERLAY_CLASS } from '@/dnd/collision';
 import { ImageItem } from '@/types/image-types';
 import { useLoopeView } from '@/contexts/LoopeViewContext';
 import styles from './recent.module.css';
@@ -1300,7 +1301,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-      <DragOverlay adjustScale={false}>
+      <DragOverlay adjustScale={false} className={DRAG_OVERLAY_CLASS}>
         {activeDraggedImage ? (
           <div className="rounded-md overflow-hidden shadow-xl transform-gpu scale-105 opacity-70">
             <img

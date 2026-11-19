@@ -16,10 +16,11 @@ import {
   MouseSensor,
   TouchSensor,
   KeyboardSensor,
-  closestCenter,
 } from '@dnd-kit/core';
 import { sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { DROP_ZONES } from '@/dnd/dropZones';
+import { autoScrollOptions, pointerZone } from '@/dnd/collision';
+import { DndProbe } from '@/dnd/DndProbe';
 import { getReferenceUrl } from '@/utils/image-utils';
 import { useUploadedImages } from '@/hooks/image-generation/use-uploaded-images';
 import { useReferenceImages } from '@/contexts/ReferenceImagesContext';
@@ -459,9 +460,11 @@ const Index = () => {
       >
         <DndContext 
           sensors={sensors} 
-          collisionDetection={closestCenter}
+          collisionDetection={pointerZone}
+          autoScroll={autoScrollOptions}
           onDragEnd={handleDragEnd}
         >
+        <DndProbe />
         <PromptForm 
           onSubmit={handlePromptSubmit}
           isLoading={activeGenerations.length > 0}

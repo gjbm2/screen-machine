@@ -30,6 +30,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { ExpandableContainer } from '@/components/common';
 import { DATE_GROUP_ORDER, dateGroupLabel } from '@/utils/date-groups';
 import SortableImageGrid from '@/components/common/SortableImageGrid';
+import { DRAG_OVERLAY_CLASS } from '@/dnd/collision';
 import { ImageItem } from '@/types/image-types';
 
 import { ScreenPicture, ScreenStrip, type StripPicture } from '@/components/room/ScreenStrip';
@@ -1047,7 +1048,7 @@ export const BucketGridView = ({
       setDropTargetType(null);
       document.body.style.touchAction = 'auto';
       return;
-    } else if (typeof over.id === 'string' && (over.id as string).startsWith('group-')) {
+    } else if (typeof over.id === 'string' && (over.id as string).startsWith(DROP_ZONES.SECTION_PREFIX)) {
       // Check if we dropped on a content area - only act on content area drops, ignore header drops
       const overData = over.data?.current as any;
       const isContentArea = overData?.type === 'content-area';
@@ -1062,7 +1063,7 @@ export const BucketGridView = ({
         return;
       }
       
-      const groupKey = (over.id as string).slice(6);
+      const groupKey = (over.id as string).slice(DROP_ZONES.SECTION_PREFIX.length);
       const targetSection = sections.find(s => s.id === groupKey);
       
       if (targetSection && activeDraggedImage) {
@@ -1314,12 +1315,13 @@ export const BucketGridView = ({
     // Check if we're over a section content area
     const overData = over.data?.current as any;
     const isContentArea = overData?.type === 'content-area';
-    const isGroupTarget = typeof over.id === 'string' && (over.id as string).startsWith('group-');
+    const isGroupTarget = typeof over.id === 'string' && (over.id as string).startsWith(DROP_ZONES.SECTION_PREFIX);
     
     if (isGroupTarget && isContentArea) {
       // We're over a section content area
-      // Get the section id from the over.id (remove 'group-' prefix)
-      const sectionId = (over.id as string).slice(6);
+      // Get the section id from the over.id. These checks looked for 'group-', which no zone is called, so a drop on a
+      // section's space between pictures did nothing (19 Nov).
+      const sectionId = (over.id as string).slice(DROP_ZONES.SECTION_PREFIX.length);
       const sectionVariant = overData?.variant || sections.find(s => s.id === sectionId)?.variant;
       
       // Special handling for empty favorites section
@@ -2225,7 +2227,7 @@ export const BucketGridView = ({
       </Dialog>
 
       {/* Drag overlay with scale and shadow */}
-      <DragOverlay adjustScale={false}>
+      <DragOverlay adjustScale={false} className={DRAG_OVERLAY_CLASS}>
         {activeDraggedImage ? (
           <div
             className="rounded-md overflow-hidden shadow-xl transform-gpu scale-105"
