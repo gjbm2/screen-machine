@@ -19,6 +19,8 @@ import {
 } from '@/components/ui/alert-dialog';
 import { DATE_GROUP_ORDER, dateGroupLabel } from '@/utils/date-groups';
 import { atLeast, canUseDestination, useViewer, type Role } from '@/shared/auth/viewer';
+import { isActive, type Job } from '@/shared/api/jobs';
+import { useJobs } from '@/shared/jobs/store';
 
 // Deletes at once when a whole date section goes (Flask serves them; hundreds in one burst would queue behind the rest)
 const BULK_DELETE_CONCURRENCY = 6;
@@ -241,6 +243,20 @@ export const RecentView: React.FC<RecentViewProps> = ({
     return [];
   };
 
+  // This browser's record of its placeholders (activePlaceholders): add one, take some out
+  const rememberPlaceholder = (id: string, batchId: string) => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('activePlaceholders') || '[]');
+      localStorage.setItem('activePlaceholders', JSON.stringify([...stored, { id, batchId, timestamp: Date.now() }]));
+    } catch { /* storage off: a reload just won't bring it back */ }
+  };
+  const forgetPlaceholders = (ids: string[]) => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('activePlaceholders') || '[]');
+      localStorage.setItem('activePlaceholders', JSON.stringify(stored.filter((p: PlaceholderInfo) => !ids.includes(p.id))));
+    } catch { /* nothing to forget */ }
+  };
+
   // Add this function to clean up expired placeholders in localStorage
   const cleanupExpiredPlaceholders = () => {
     try {
@@ -248,7 +264,9 @@ export const RecentView: React.FC<RecentViewProps> = ({
       if (storedPlaceholders) {
         const parsed = JSON.parse(storedPlaceholders);
         const now = Date.now();
-        const expireTime = 10 * 60 * 1000; // 10 minutes
+        // 2 hours: a reload brings back the placeholders of jobs still running (the jobs effect), and a cold GPU can
+        // keep one going well past the old 10 minutes
+        const expireTime = 2 * 60 * 60 * 1000;
         
         const activePlaceholders = parsed.filter((p: any) => (now - p.timestamp) < expireTime);
         
@@ -305,9 +323,9 @@ export const RecentView: React.FC<RecentViewProps> = ({
       
       setBucketImages(prev => {
         // Get all current placeholders that should be preserved
-        const currentPlaceholders = prev.filter(img => 
-          img.id.startsWith('placeholder-') && img.metadata?.placeholder
-        );
+        // (any id: the generator's placeholder ids never had the 'placeholder-' prefix this once required, so a
+        // fetch while pictures were being made dropped their placeholders)
+        const currentPlaceholders = prev.filter(img => img.metadata?.placeholder === true);
         
         // Filter to keep only placeholders that are still active or not in the localStorage list
         const relevantPlaceholders = currentPlaceholders.filter(placeholder => {
@@ -682,6 +700,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
       }
     };
     setBucketImages(prev => [...prev, placeholder]);
+    rememberPlaceholder(placeholderId, batchId);
     setPlaceholders(prev => [...prev, {
       id: placeholderId,
       timestamp: Date.now()
@@ -826,6 +845,64 @@ export const RecentView: React.FC<RecentViewProps> = ({
     // Removed verbose logging to reduce console noise
     return () => window.removeEventListener('recent:batch-placeholders', handleBatchPlaceholders as EventListener);
   }, []);
+
+  // After a reload the page has forgotten the pictures still being made, though the job tracker has them (owner,
+  // 19 Nov). Put back a placeholder for each of this browser's still running (its ids are in activePlaceholders; other
+  // people's jobs are not ours to show). The request that would have swapped in the picture went with the old page,
+  // so when such a job ends its placeholder goes, and if it completed the list is fetched again to show the picture.
+  // (A job started before this, with no placeholder id, or on another device, is not brought back.)
+  const { jobs } = useJobs();
+  const restoredRef = useRef(new Set<string>());
+  // placeholders this page has shown: once swapped for their picture they must not come back while the job's last
+  // update is still on its way
+  const shownRef = useRef(new Set<string>());
+  useEffect(() => {
+    bucketImages.forEach(img => { if (img.metadata?.placeholder === true) shownRef.current.add(img.id); });
+  }, [bucketImages]);
+  useEffect(() => {
+    const mine = new Set(loadActivePlaceholdersFromStorage().map((p: PlaceholderInfo) => p.id));
+    const restore: Job[] = [];
+    const ended: Job[] = [];
+    for (const job of Object.values(jobs)) {
+      const id = job.placeholder_id;
+      if (!id || !job.batch_id || !mine.has(id)) continue;
+      if (isActive(job)) { if (!shownRef.current.has(id)) restore.push(job); }
+      else if (restoredRef.current.has(id)) ended.push(job);
+    }
+    if (restore.length) {
+      setBucketImages(prev => {
+        const have = new Set(prev.map(img => img.id));
+        const back = restore.filter(job => !have.has(job.placeholder_id!));
+        if (!back.length) return prev;
+        back.forEach(job => restoredRef.current.add(job.placeholder_id!));
+        const blank = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
+        return [...back.map((job): BucketImage => ({
+          id: job.placeholder_id!,
+          url: blank,
+          thumbnail_url: blank,
+          batchId: job.batch_id!,
+          created_at: job.created_at,
+          prompt: job.prompt,
+          metadata: {
+            placeholder: true,
+            aspectRatio: 16 / 9,
+            prompt: job.prompt,
+            workflow: job.workflow,
+            batchId: job.batch_id,
+            batchIndex: job.batch_index ?? 0,
+          },
+        })), ...prev];
+      });
+    }
+    if (ended.length) {
+      const gone = ended.map(job => job.placeholder_id!);
+      gone.forEach(id => restoredRef.current.delete(id));
+      setBucketImages(prev => prev.filter(img => !gone.includes(img.id)));
+      forgetPlaceholders(gone);
+      // the picture is copied into Generated just after its job completes: look now and twice more
+      if (ended.some(job => job.status === 'completed')) [0, 3000, 10000].forEach(ms => setTimeout(() => fetchRecentImages(false), ms));
+    }
+  }, [jobs]);
 
   // Add a new useEffect to handle the generation-complete event:
   useEffect(() => {
