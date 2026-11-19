@@ -503,13 +503,14 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
               ) : selectedImage.mediaType === 'video' || isVideoFile(selectedImage.urlFull || selectedImage.id) ? (
                 // a clip, with a play button (Generated keeps clips since 19 Nov: an <img> showed its prompt as broken
                 // alt text); it doesn't play by itself, which was distracting and restarted on every scroll
+                // its own first frame, at the clip's own size (the thumbnail as a poster was a blurry enlargement);
+                // "#t=0.001" makes every browser, iOS too, draw that frame before Play
                 <video
                   key={selectedImage.id}
-                  src={selectedImage.urlFull}
-                  poster={selectedImage.urlThumb || undefined}
+                  src={`${selectedImage.urlFull}#t=0.001`}
                   className={styles.selectedImage}
                   controls
-                  preload="metadata"
+                  preload="auto"
                   playsInline
                 />
               ) : (
