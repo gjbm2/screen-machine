@@ -124,17 +124,11 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       if (onRestoreFormState) onRestoreFormState(page.form);
       reportRestored(page, photos.length);
 
+      // short, like the app's other messages
       const hadPrompt = !!(page.form.prompt || '').trim();
-      const lostPhotos = page.photos - photos.length;
-      let back = '';
-      if (hadPrompt && photos.length > 0) back = photos.length > 1 ? 'Your prompt and photos are back.' : 'Your prompt and photo are back.';
-      else if (photos.length > 0) back = photos.length > 1 ? 'Your photos are back.' : 'Your photo is back.';
-      else if (hadPrompt) back = 'Your prompt is back.';
-      const again = page.picking ? 'Choose the photo again.' : lostPhotos > 0 ? 'Add the photo again.' : '';
-      const what = page.picking
-        ? 'Your browser closed this page while you were choosing a photo.'
-        : 'Your browser had closed this page.';
-      toast.message([what, back, again].filter(Boolean).join(' '), { duration: 10000 });
+      const back = [hadPrompt && 'prompt', photos.length > 0 && (photos.length > 1 ? 'photos' : 'photo')].filter(Boolean).join(' and ');
+      const again = page.picking || page.photos > photos.length;
+      toast.message(`Page reloaded: ${[back && `${back} restored`, again && 'choose the photo again'].filter(Boolean).join(', ') || 'nothing lost'}`);
     })();
   }, []);
 

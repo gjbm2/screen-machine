@@ -41,7 +41,7 @@ export async function chooseFit(where: {
  * makes it in the background, as a job in the Jobs dock, and the screen changes when it is ready).
  */
 export function publishedWords(result: { fitting?: string } | undefined, published: string): string {
-  return result?.fitting ? `Fitting the picture to ${result.fitting}: it goes up when it's ready, in about a minute` : published;
+  return result?.fitting ? `Fitting to ${result.fitting}…` : published;
 }
 
 // Never rejects: every failure (validation, non-2xx, timeout, network, unparseable 2xx body) resolves { success: false, error }.
