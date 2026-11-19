@@ -28,6 +28,7 @@ import { CSS } from '@dnd-kit/utilities';
 
 // New unified-dnd building blocks
 import { ExpandableContainer } from '@/components/common';
+import { DATE_GROUP_ORDER, dateGroupLabel } from '@/utils/date-groups';
 import SortableImageGrid from '@/components/common/SortableImageGrid';
 import { ImageItem } from '@/types/image-types';
 
@@ -748,45 +749,10 @@ export const BucketGridView = ({
     etc.) will translate this duplicate id back to the original id before performing API calls.
   */
 
-  // Helper to derive friendly date bucket label – defined here (before first use)
-  const getDateBucketLabel = (timestamp?: number): string => {
-    if (!timestamp) return 'Older';
-    
-    const date = new Date((timestamp ?? 0) * 1000);
-    const now = new Date();
-
-    // Set both dates to midnight for day comparison
-    const dateAtMidnight = new Date(date);
-    dateAtMidnight.setHours(0, 0, 0, 0);
-    const nowAtMidnight = new Date(now);
-    nowAtMidnight.setHours(0, 0, 0, 0);
-    
-    // Calculate difference in days
-    const diffMs = nowAtMidnight.getTime() - dateAtMidnight.getTime();
-    const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000));
-
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Yesterday';
-
-    // Start of current week (Monday)
-    const startOfWeek = new Date(nowAtMidnight);
-    const day = startOfWeek.getDay();
-    const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1); // Adjust for Sunday
-    startOfWeek.setDate(diff);
-    if (date >= startOfWeek) return 'Earlier this week';
-
-    // Previous week
-    const startOfLastWeek = new Date(startOfWeek);
-    startOfLastWeek.setDate(startOfLastWeek.getDate() - 7);
-    if (date >= startOfLastWeek) return 'Last week';
-
-    return 'Older';
-  };
-
   const dateGroupsMap: Record<string, BucketImage[]> = {};
 
   bucketImages.forEach((img) => {
-    const label = getDateBucketLabel(img.created_at);
+    const label = dateGroupLabel(img.created_at);
 
     // If the image is a favourite we clone it with a unique id so it can coexist with the
     // original one that lives in the favourites section.
@@ -807,9 +773,6 @@ export const BucketGridView = ({
     });
   });
 
-  // Preserve deterministic order of date group labels
-  const orderedDateLabels = ['Today', 'Yesterday', 'Earlier this week', 'Last week', 'Older'];
-
   interface Section {
     id: string;
     label: string;
@@ -824,7 +787,7 @@ export const BucketGridView = ({
     sections.push({ id: 'favourites', label: `Favourites (${favourites.length})`, variant: 'favourites', images: favourites });
   }
 
-  orderedDateLabels.forEach((lbl) => {
+  DATE_GROUP_ORDER.forEach((lbl) => {
     if (dateGroupsMap[lbl] && dateGroupsMap[lbl].length > 0) {
       sections.push({ id: lbl.toLowerCase().replace(/\s+/g, '-'), label: `${lbl} (${dateGroupsMap[lbl].length})`, variant: 'dated', images: dateGroupsMap[lbl] });
     }

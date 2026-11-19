@@ -10,6 +10,16 @@ import styles from './recent.module.css';
 import React from 'react';
 import RecentBatchPanel from './RecentBatchPanel';
 import { ReferenceImageService } from '@/services/reference-image-service';
+import { Trash } from 'lucide-react';
+import { ExpandableContainer } from '@/components/common';
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { DATE_GROUP_ORDER, dateGroupLabel } from '@/utils/date-groups';
+
+// Deletes at once when a whole date section goes (Flask serves them; hundreds in one burst would queue behind the rest)
+const BULK_DELETE_CONCURRENCY = 6;
 
 // Add type declarations for window functions
 declare global {
@@ -62,7 +72,11 @@ export const RecentView: React.FC<RecentViewProps> = ({
   
   // Panel collapse state
   const [collapsedPanels, setCollapsedPanels] = useState<Record<string, boolean>>({});
-  
+
+  // Date sections (Today, Yesterday…): folded state, and the one whose "Delete all" is waiting for confirmation
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const [sectionToDelete, setSectionToDelete] = useState<string | null>(null);
+
   // For Loope integration
   let openLoope;
   try {
@@ -144,6 +158,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
           const state = JSON.parse(savedState);
           if (state.batchOrder) setBatchOrder(state.batchOrder);
           if (state.collapsedPanels) setCollapsedPanels(state.collapsedPanels);
+          if (state.collapsedSections) setCollapsedSections(state.collapsedSections);
         } catch (e) {
           console.error('Error parsing saved state', e);
         }
@@ -169,7 +184,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
   // Save state to localStorage on any state change
   useEffect(() => {
     saveStateToStorage();
-  }, [batchOrder, collapsedPanels]);
+  }, [batchOrder, collapsedPanels, collapsedSections]);
   
   // Group images by batchId whenever the bucket images change
   useEffect(() => {
@@ -458,6 +473,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
       const state = {
         batchOrder,
         collapsedPanels,
+        collapsedSections,
       };
       localStorage.setItem('recentTabState', JSON.stringify(state));
     } catch (error) {
@@ -1052,7 +1068,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
   // Add targeted logging to key useEffect hooks
   useEffect(() => {
     saveStateToStorage();
-  }, [batchOrder, collapsedPanels]);
+  }, [batchOrder, collapsedPanels, collapsedSections]);
 
   // Add a useEffect to expire placeholders after 5 minutes
   useEffect(() => {
@@ -1094,10 +1110,57 @@ export const RecentView: React.FC<RecentViewProps> = ({
     // No need to clear interval since we're not setting one
   }, [placeholders]);
 
-  // Memoize batch groups to prevent unnecessary re-renders
-  const memoizedBatchGroups = useMemo(() => {
-    return batchGroups;
+  // Batches by date section (Today, Yesterday…), in batch order within each. A batch goes by its newest image, so
+  // "Generate again" on an old batch brings it into Today.
+  const dateSections = useMemo(() => {
+    const byLabel = new Map<string, { batchId: string; images: ImageItem[] }[]>();
+    batchGroups.forEach(batch => {
+      const newest = Math.max(0, ...batch.images.map(img => new Date(img.createdAt).getTime() / 1000 || 0));
+      const label = dateGroupLabel(newest);
+      if (!byLabel.has(label)) byLabel.set(label, []);
+      byLabel.get(label)!.push(batch);
+    });
+    return DATE_GROUP_ORDER.filter(label => byLabel.has(label)).map(label => {
+      const batches = byLabel.get(label)!;
+      const imageCount = batches.reduce((n, b) => n + b.images.filter(img => !img.metadata?.placeholder).length, 0);
+      return { id: label.toLowerCase().replace(/\s+/g, '-'), label, batches, imageCount };
+    });
   }, [batchGroups]);
+
+  // Until the viewer folds or opens one, the newest section is open and the rest are folded
+  const isSectionCollapsed = (sectionId: string) =>
+    collapsedSections[sectionId] ?? sectionId !== dateSections[0]?.id;
+
+  const toggleSection = useCallback((sectionId: string) => {
+    setCollapsedSections(prev => ({ ...prev, [sectionId]: !(prev[sectionId] ?? sectionId !== dateSections[0]?.id) }));
+  }, [dateSections]);
+
+  // "Delete all" on a date section: every finished image in its batches (an image still being made is left alone)
+  const handleDeleteSection = async (sectionId: string) => {
+    const section = dateSections.find(s => s.id === sectionId);
+    if (!section) return;
+    const images = section.batches.flatMap(b => b.images).filter(img => !img.metadata?.placeholder);
+    const loadingToast = toast.loading(`Deleting ${images.length} images…`);
+    const deleted = new Set<string>();
+    let failed = 0;
+    for (let i = 0; i < images.length; i += BULK_DELETE_CONCURRENCY) {
+      const chunk = images.slice(i, i + BULK_DELETE_CONCURRENCY);
+      const results = await Promise.allSettled(chunk.map(img => bucketsApi.deleteImage(img.bucketId || '_recent', img.id)));
+      results.forEach((r, j) => {
+        if (r.status === 'fulfilled') deleted.add(chunk[j].id);
+        else failed++;
+      });
+    }
+    toast.dismiss(loadingToast);
+    if (failed === 0) toast.success(`Deleted ${deleted.size} images`);
+    else toast.error(`Deleted ${deleted.size} images; ${failed} could not be deleted`);
+
+    setBucketImages(prev => prev.filter(img => !deleted.has(img.id)));
+    const goneBatches = section.batches
+      .filter(b => b.images.every(img => img.metadata?.placeholder || deleted.has(img.id)))
+      .map(b => b.batchId);
+    setBatchOrder(prev => prev.filter(id => !goneBatches.includes(id)));
+  };
 
   // Add diagnostic logging for component mounting
   useEffect(() => {
@@ -1136,28 +1199,72 @@ export const RecentView: React.FC<RecentViewProps> = ({
   return (
     <>
       <div className={styles.recentViewContainer}>
-        <SortableContext items={batchOrder} strategy={rectSortingStrategy}>
-          {memoizedBatchGroups.map(batch => (
-            <DraggableBatchPanel
-              key={`batch-panel-${batch.batchId}`}
-              batch={batch}
-              isCollapsed={collapsedPanels[batch.batchId] || false}
-              collapsedPanels={collapsedPanels}
-              onCollapseChange={(id, collapsed) => setCollapsedPanels(prev => ({ ...prev, [id]: collapsed }))}
-              handleDeleteImage={handleDeleteImage}
-              handleDeleteBatch={handleDeleteBatch}
-              handleImageClick={handleImageClick}
-              handleCopyTo={handleCopyTo}
-              handlePublish={handlePublish}
-              handleUseAsPrompt={handleUseAsPrompt}
-              handleGenerateAgain={handleGenerateAgain}
-              destinations={destinations}
-              selectedImageByBatch={selectedImageByBatch}
-              handleSelectImage={handleSelectImage}
-            />
-          ))}
-        </SortableContext>
+        {dateSections.map(section => (
+          <ExpandableContainer
+            key={`date-section-${section.id}`}
+            id={section.id}
+            label={`${section.label} (${section.imageCount})`}
+            variant="section"
+            iconPos="left"
+            collapsed={isSectionCollapsed(section.id)}
+            onToggle={toggleSection}
+            className="mb-2"
+            showContextMenu={section.imageCount > 0}
+            contextMenuItems={[{
+              label: 'Delete all',
+              onClick: () => setSectionToDelete(section.id),
+              icon: <Trash className="h-4 w-4" />,
+              variant: 'destructive' as const,
+            }]}
+          >
+            <SortableContext items={section.batches.map(b => b.batchId)} strategy={rectSortingStrategy}>
+              {section.batches.map(batch => (
+                <DraggableBatchPanel
+                  key={`batch-panel-${batch.batchId}`}
+                  batch={batch}
+                  isCollapsed={collapsedPanels[batch.batchId] || false}
+                  collapsedPanels={collapsedPanels}
+                  onCollapseChange={(id, collapsed) => setCollapsedPanels(prev => ({ ...prev, [id]: collapsed }))}
+                  handleDeleteImage={handleDeleteImage}
+                  handleDeleteBatch={handleDeleteBatch}
+                  handleImageClick={handleImageClick}
+                  handleCopyTo={handleCopyTo}
+                  handlePublish={handlePublish}
+                  handleUseAsPrompt={handleUseAsPrompt}
+                  handleGenerateAgain={handleGenerateAgain}
+                  destinations={destinations}
+                  selectedImageByBatch={selectedImageByBatch}
+                  handleSelectImage={handleSelectImage}
+                />
+              ))}
+            </SortableContext>
+          </ExpandableContainer>
+        ))}
       </div>
+      <AlertDialog open={sectionToDelete !== null} onOpenChange={open => { if (!open) setSectionToDelete(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete images</AlertDialogTitle>
+            <AlertDialogDescription>
+              {(() => {
+                const section = dateSections.find(s => s.id === sectionToDelete);
+                return section
+                  ? `Delete all ${section.imageCount} images in ${section.label}? This cannot be undone.`
+                  : 'Delete these images? This cannot be undone.';
+              })()}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => { const id = sectionToDelete; setSectionToDelete(null); if (id) handleDeleteSection(id); }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
       <DragOverlay adjustScale={false}>
         {activeDraggedImage ? (
           <div className="rounded-md overflow-hidden shadow-xl transform-gpu scale-105 opacity-70">
