@@ -78,7 +78,8 @@ def save_endpoint(name, e, template_id):
            "workersMax": e["workers_max"], "idleTimeout": e["idle_timeout"], "scalerType": "QUEUE_DELAY",
            "scalerValue": e.get("scaler_s", 4), "executionTimeoutMs": e["execution_timeout_s"] * 1000,
            "flashBootType": "FLASHBOOT" if e.get("flashboot", True) else "OFF", "locations": "", "networkVolumeIds": [],
-           "modelReferences": [pinned(e["bundle"])] if e.get("bundle") else [], "env": env_list(e)}
+           "modelReferences": [pinned(e["bundle"])] if e.get("bundle") else [], "env": env_list(e),
+           "allowedCudaVersions": e.get("cuda", "")}   # e.g. "13.0": only hosts whose driver runs that CUDA
     if e.get("id"):
         inp["id"] = e["id"]
     out = gql("mutation($i: EndpointInput!) { saveEndpoint(input: $i) { id workersMax modelReferences } }",
