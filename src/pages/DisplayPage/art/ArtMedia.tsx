@@ -70,19 +70,27 @@ function waitEvent(el: HTMLMediaElement, ok: string, ms: number): Promise<void> 
   });
 }
 
-/** A clip with its ease rendered in says so in its published sidecar (<clip>.json: `clip.eased`, `clip.rest_s`).
- *  The sidecar can land just after the clip, so a sidecar without it is read once more. */
+/** A clip with its ease rendered in says so in its own MP4 comment tag, JSON {"clip": {"eased", "rest_s"}}
+ *  (routes/clip_ease.py). The tag sits in the file's header, which is at the front (faststart): read the first
+ *  64 KB and find it there. Any other clip is played the old way. */
 async function easedLoop(src: string): Promise<EasedLoop | null> {
-  const url = `${src.split("?")[0]}.json`;
-  for (let attempt = 0; attempt < 2; attempt++) {
-    if (attempt) await new Promise((r) => setTimeout(r, 1500));
-    try {
-      const r = await fetch(url, { cache: "no-store" });
-      const clip = r.ok ? (await r.json())?.clip : null;
-      if (clip?.eased && Array.isArray(clip.rest_s)) return { restS: [Number(clip.rest_s[0]), Number(clip.rest_s[1])] };
-    } catch {
-      // no sidecar: an older clip, played the old way
+  try {
+    const r = await fetch(src, { headers: { Range: "bytes=0-65535" }, cache: "no-store" });
+    if (!r.ok) return null;
+    const head = new TextDecoder("latin1").decode((await r.arrayBuffer()).slice(0, 65536));
+    const at = head.indexOf('{"clip"');
+    if (at < 0) return null;
+    let depth = 0;
+    for (let i = at; i < head.length; i++) {
+      if (head[i] === "{") depth++;
+      else if (head[i] === "}" && --depth === 0) {
+        const clip = JSON.parse(head.slice(at, i + 1)).clip;
+        if (clip?.eased && Array.isArray(clip.rest_s)) return { restS: [Number(clip.rest_s[0]), Number(clip.rest_s[1])] };
+        return null;
+      }
     }
+  } catch {
+    // unreadable: play it the old way
   }
   return null;
 }

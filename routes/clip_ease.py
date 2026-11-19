@@ -9,8 +9,10 @@ A position that falls between two of the worker's (already 3x interpolated) fram
 the slow, subtle motion these clips have is a true in-between. The last `settle_s` fade into frame 0, so the clip
 ends on exactly the picture it starts on, and the TV can rest on it and play again with no jump.
 
-A catalogue entry with `loop` ({"play_s", "ramp_s", "settle_s", "rest_s": [shortest, longest]}) gets this; the
-result's `clip` metadata (published in output/<screen>.mp4.json) tells the TV page to play it at 1x and rest between
+A catalogue entry with `loop` ({"play_s", "ramp_s", "settle_s", "rest_s": [shortest, longest]}) gets this. The clip
+carries its own `clip` metadata in the file (the MP4 comment tag, as JSON {"clip": {...}}: the app's convention for an
+MP4's metadata, routes/utils._extract_mp4_comment_json), so any copy of it, published or republished from a bucket,
+still says how to play it. The TV page reads it from the head of the file and plays the clip at 1x, resting between
 plays for a random time: the more of the picture moves, the longer the rest (owner: "30 s to 3 m depending on the
 scale of the movement").
 """
@@ -134,7 +136,11 @@ def ease_result(source, loop, job_id):
             f.write(read_bytes(source))
         play, ramp, settle = loop.get("play_s", 30), loop.get("ramp_s", 8), loop.get("settle_s", 3)
         motion = ease_file(src, dst, play, ramp, settle)
-        with open(dst, "rb") as f:
+        clip = {"eased": True, "play_s": play, "motion": round(motion, 2),
+                "rest_s": rest_range(motion, loop.get("rest_s", [30, 180]))}
+        tagged = os.path.join(tmp, "tagged.mp4")
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", dst, "-c", "copy", "-metadata",
+                        "comment=" + json.dumps({"clip": clip}), "-movflags", "+faststart", tagged], check=True)
+        with open(tagged, "rb") as f:
             path = save_inline(f.read(), "eased.mp4", job_id)
-    return path, {"eased": True, "play_s": play, "motion": round(motion, 2),
-                  "rest_s": rest_range(motion, loop.get("rest_s", [30, 180]))}
+    return path, clip
