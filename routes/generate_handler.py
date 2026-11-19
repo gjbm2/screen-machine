@@ -798,7 +798,7 @@ def async_combine(targets, obj = {}, source="api"):
 
 def animate_workflow():
     """The catalogue's image-to-video workflow: the one, taking a single picture, whose default refiner is the animate
-    refiner (h3-i2v.json today); None if there is none."""
+    refiner (h3-loop.json today: the screen clip); None if there is none."""
     from routes.utils import _load_json_once, resolve_runtime_value
     refiner = resolve_runtime_value("refiner", "animate")
     return next((w["id"] for w in _load_json_once("workflow", "workflows.json")

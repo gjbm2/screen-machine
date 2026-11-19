@@ -863,8 +863,8 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
         vars(args_namespace)["batch_id"] = batch_id
 
     # A screen clip (workflows.json "loop") gets its slow ease rendered in, on the full-size still it was made from
-    loop = next((w.get("loop") for w in _load_json_once("workflow", "workflows.json")
-                 if w.get("id") == args_namespace.workflow), None)
+    entry = next((w for w in _load_json_once("workflow", "workflows.json") if w.get("id") == args_namespace.workflow), {})
+    loop = entry.get("loop")
     still_image = vars(args_namespace).pop("still_image", None)
     if loop:
         pace = vars(args_namespace).get("pace") or loop.get("pace", "slow")
@@ -875,6 +875,13 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
                                               still=still_image)
         info(f"Eased clip: {clip}")
         vars(args_namespace)["clip"] = clip   # a lot of movement only lengthens its rests; a clip is never thrown away
+    elif entry.get("async") and str(output.get("message") or "").lower().split("?")[0].endswith(".mp4"):
+        # a normal video plays as it is (real speed); it carries the play info a screen reads all the same
+        try:
+            from routes.clip_ease import tag_clip
+            output["message"], vars(args_namespace)["clip"] = tag_clip(output["message"], job_id)
+        except Exception as e:
+            warning(f"Could not tag the video's play info: {e}")
 
     if publish_destination:
         if tracker.is_cancelled(job_id):

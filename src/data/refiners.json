@@ -57,11 +57,21 @@
 	"alexavisible": true
   },
   {
+    "id": "video",
+    "name": "Video from an image",
+    "system_prompt": "refiner-video.txt",
+    "description": "A normal short video from an image, at real speed",
+    "default-workflow": "h3-i2v.json",
+    "icon": "MessageCircleHeart",
+    "uploadimages": 1,
+    "alexavisible": false
+  },
+  {
     "id": "animator",
-    "name": "Animate an image",
+    "name": "Bring to life (screen clip)",
 	"system_prompt": "refiner-image-to-video.txt",
-    "description": "Create a short video from an image",
-    "default-workflow": "wan_image_to_video_upscale_slow.json",
+    "description": "A gentle moving version of a picture for the screens",
+    "default-workflow": "h3-loop.json",
     "icon": "MessageCircleHeart",
 	"uploadimages": 1,
 	"alexavisible": true

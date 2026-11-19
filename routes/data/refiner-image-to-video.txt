@@ -36,7 +36,7 @@ Return a JSON object with the following fields:
 
 full_prompt: one or two short, literal sentences naming what moves and how slowly, then the camera sentence above. Write as if briefing a video model: clear subjects and verbs ("Mist drifts slowly across the water. The reeds sway slightly."). No poetry, no mood words, no "bringing the scene to life".
 
-workflow: The string "h3-i2v.json" (always this exact ID)
+workflow: The string "h3-loop.json" (always this exact ID)
 
 ** Final Instructions **
 

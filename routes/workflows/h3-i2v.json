@@ -70,10 +70,6 @@
    "first_frame": [
     "6",
     0
-   ],
-   "last_frame": [
-    "6",
-    0
    ]
   },
   "_meta": {
@@ -180,7 +176,7 @@
     "19",
     0
    ],
-   "fps": 24
+   "fps": 48
   },
   "_meta": {
    "title": "CreateVideo"
@@ -221,7 +217,7 @@
     "14",
     0
    ],
-   "multiplier": 3
+   "multiplier": 2
   },
   "_meta": {
    "title": "Interpolate {{INTERPOLATOR}}"
