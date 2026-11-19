@@ -177,3 +177,12 @@ export async function publishUrl(destBucketId: string, sourceUrl: string) {
     (response) => `Publish failed: ${response.statusText}`,
   );
 }
+
+/** What a screen does with a picture of another shape than its own (routes/reframe.py). */
+export type Reframe = 'extend' | 'crop' | 'whole';
+
+/** PUT /api/publish-destinations/<id>/reframe: a screen's choice for a picture of another shape (Settings › Screens). */
+export function setScreenReframe(id: string, reframe: Reframe): Promise<{ id: string; reframe: Reframe }> {
+  return requestJson(`/publish-destinations/${encodeURIComponent(id)}/reframe`, jsonInit('PUT', { reframe }),
+    "The screen's choice wasn't saved");
+}

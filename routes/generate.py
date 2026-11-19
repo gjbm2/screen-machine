@@ -25,6 +25,7 @@ from routes.publisher import publish_to_destination
 from routes.jobs import get_tracker, runpod_api
 from routes.jobs.runpod_api import RunPodError
 from routes.jobs.workflows import workflow_kind, target_name
+from routes import reframe
 
 from io import BytesIO
 
@@ -92,7 +93,7 @@ def get_input_text(input_arg):
         return input_arg
 
 # Dictionary replacer
-INTERACTIVE_SOURCES = ("generator", "alexa")
+INTERACTIVE_SOURCES = ("generator", "alexa", "reframe")   # reframe: a picture extended for a screen, shown at once
 
 
 def worker_output(output, job_id):
@@ -140,6 +141,28 @@ def image_size(image):
             return ImageOps.exif_transpose(img).size
     except Exception:
         return None
+
+
+def reshape_photo(images, prompt, aspect, fill, has_prompt):
+    """The request's first image turned to the shape (aspect, w / h) before an edit: put on a grey canvas with an
+    instruction to extend the scene into it (fill "extend", the default; a graph that takes no prompt is cropped
+    instead), or cropped where the vision model finds the subject (fill "crop"). (images, prompt) as sent."""
+    import base64
+    from PIL import Image, ImageOps
+    size = image_size(images[0])
+    if not size or not reframe.off_shape(size, aspect):
+        return images, prompt
+    with Image.open(BytesIO(base64.b64decode(images[0]["image"]))) as img:
+        photo = ImageOps.exif_transpose(img).convert("RGB")
+    if fill != "crop" and has_prompt:
+        photo, _ = reframe.pad(photo, aspect)
+        prompt = reframe.EXTEND_EDIT + (prompt or "")
+    else:
+        photo = reframe.ai_crop(photo, aspect)
+    info(f"Photo {size[0]}x{size[1]} -> {photo.width}x{photo.height} ({'crop' if fill == 'crop' or not has_prompt else 'extend'})")
+    buf = BytesIO()
+    photo.save(buf, format="JPEG", quality=95)
+    return [{**images[0], "image": base64.b64encode(buf.getvalue()).decode()}] + list(images[1:]), prompt
 
 
 # A picture this close to the screen's shape fills it (the crop trims a sliver); any further off, it keeps its shape
@@ -396,6 +419,8 @@ def start(
         lora: str | None = None,
         video_length: int | None = None,
         lora_strength: float | None = None,
+        shape: str | None = None,
+        fill: str | None = None,
         cli_args=None,
         publish_destination: str | None = None,
         batch_id: str | None = None,
@@ -419,7 +444,7 @@ def start(
             scale=scale, setwallpaper=setwallpaper, refine=refine, workflow=workflow, seed=seed,
             timeout=timeout, suppress=suppress, metaprompt=metaprompt, images=images,
             negativeprompt=negativeprompt, interpolate_frames=interpolate_frames, upscaler=upscaler,
-            lora=lora, video_length=video_length, lora_strength=lora_strength),
+            lora=lora, video_length=video_length, lora_strength=lora_strength, shape=shape, fill=fill),
             cli_args=cli_args, publish_destination=publish_destination, batch_id=batch_id,
             silent=silent, kwargs=kwargs)
     except JobCancelled as e:
@@ -488,10 +513,17 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
         workflow_data = json.load(file)
     info(f"Successfully loaded: {args_namespace.workflow}")
     
+    # A photo to be edited into another shape (Adapt/Combine's "shape" and "fill"): turned before the edit, so the
+    # edit encoder's latent takes the new shape; one job (routes/reframe.py)
+    latent = _node_inputs(workflow_data, "{{LATENT-IMAGE}}")
+    if args_namespace.images and not latent and vars(args_namespace).get("shape") in reframe.SHAPES:
+        args_namespace.images, args_namespace.prompt = reshape_photo(
+            args_namespace.images, args_namespace.prompt, reframe.SHAPES[args_namespace.shape],
+            vars(args_namespace).get("fill"), bool(_node_inputs(workflow_data, "{{POSITIVE-PROMPT}}")))
+
     # The finish: the picture's own shape inside the screen's box. The picture is the latent's shape, or for a graph
     # with no {{LATENT-IMAGE}} (edit, combine, upscale) the first reference image's: Qwen 2.1's edit encoder makes
     # its latent on that image's shape. With no screen, the box (the caller's size, else the graph's) turns to suit.
-    latent = _node_inputs(workflow_data, "{{LATENT-IMAGE}}")
     if latent:
         picture = (args_namespace.width or latent.get("width"), args_namespace.height or latent.get("height"))
     else:

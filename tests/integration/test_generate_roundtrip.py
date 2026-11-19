@@ -136,6 +136,7 @@ def house(tmp_path, monkeypatch):
     import routes.generate as generate
     import routes.generate_handler as handler
     import routes.publisher as publisher
+    import routes.reframe as reframe
 
     output = tmp_path / "output"
     (output / SCREEN / "thumbnails").mkdir(parents=True)
@@ -152,12 +153,20 @@ def house(tmp_path, monkeypatch):
     monkeypatch.setattr(handler, "calculate_generation_cost", lambda *a, **k: 0.02)
     for var in ("OPENAI_API_KEY", "RUNPOD_API_KEY", "RUNPOD_ID"):
         monkeypatch.setenv(var, "x")
+    # a picture of another shape: each test sets the screen's choice (Settings > Screens), and the vision model that
+    # finds a crop's subject is never asked (a test that crops gives its own answer)
+    policy = {"mode": "whole"}
+    monkeypatch.setattr(reframe, "screen_policy", lambda screen_id: policy["mode"])
+
+    def no_vision(img):
+        raise RuntimeError("no vision model in tests")
+    monkeypatch.setattr(reframe, "_vision_focus", no_vision)
 
     store = JobStore(str(tmp_path / "jobs.db"))
     tracker = JobTracker(store=store, progress_interval=0.1, persist_interval=0.5, cancel_remote=lambda ep, rid: True)
     set_tracker(tracker)
     yield {"output": output, "tracker": tracker, "generate": generate, "publisher": publisher,
-           "monkeypatch": monkeypatch}
+           "monkeypatch": monkeypatch, "policy": policy, "reframe": reframe}
     set_tracker(None)
     store.close()
 
@@ -567,3 +576,282 @@ def test_a_portrait_text_picture_is_not_cut_to_the_screen(house, workflow):
                             publish_destination=SCREEN, silent=True, poll_interval=0.01)
     shown = size_of(tv_shows(house["output"]))
     assert same_shape(shown, portrait), f"a {portrait[0]}x{portrait[1]} render came back {shown[0]}x{shown[1]}"
+
+
+# ------------------------------------------------- a picture of another shape on a screen, and a chosen shape (19 Nov)
+# Owner, 19 Nov: what happens when a portrait photo is published to a landscape TV, and when a landscape output is
+# chosen for a portrait photo at the generator; AI extends the picture or picks the part to crop (routes/reframe.py).
+
+import threading
+
+TOP = (0, 160, 0)        # the upper half of a two-part portrait
+
+
+class GatedRunPod(FinishingRunPod):
+    """As FinishingRunPod, but the job only finishes when the test opens the gate (the worker is still drawing)."""
+
+    def __init__(self, fail=False):
+        super().__init__()
+        self.gate = threading.Event()
+        self.jobs = 0
+        self.fail = fail
+
+    def submit(self, endpoint_id, payload, timeout=60):
+        self.jobs += 1
+        return super().submit(endpoint_id, payload, timeout)
+
+    def status(self, endpoint_id, job_id, timeout=10):
+        if not self.gate.is_set():
+            return {"status": "IN_PROGRESS"}
+        if self.fail:
+            return {"status": "FAILED", "error": "out of memory"}
+        return super().status(endpoint_id, job_id, timeout)
+
+
+def wait_for_extensions(timeout=30):
+    for t in threading.enumerate():
+        if t.name.startswith("extend-"):
+            t.join(timeout)
+
+
+def library_picture(house, size=(556, 1024), name="20261119-090000-portrait1.jpg", two_part=False):
+    img = Image.new("RGB", size, OLD)
+    if two_part:
+        img.paste(Image.new("RGB", (size[0], size[1] // 2), TOP), (0, 0))
+    stored = house["output"] / SCREEN / name
+    img.save(stored, format="JPEG", quality=95)
+    return stored
+
+
+def publish(house, stored, metadata=None):
+    result = house["publisher"].publish_to_destination(source=stored, publish_destination_id=SCREEN, silent=True,
+                                                       metadata=metadata or {"type": "image", "prompt": "a photo"})
+    assert result["success"], result
+    return result
+
+
+def screen_size():
+    return _destination()["maxwidth"], _destination()["maxheight"]
+
+
+def pixel(path, x, y):
+    with Image.open(path) as img:
+        return img.convert("RGB").getpixel((x, y))
+
+
+def test_a_portrait_on_a_screen_set_to_extend_goes_up_whole_then_fills_it(house):
+    house["policy"]["mode"] = "extend"
+    fake = GatedRunPod()
+    house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
+    stored = library_picture(house)
+    publish(house, stored)
+
+    # at once: the portrait, whole, while the worker draws
+    shown = tv_shows(house["output"])
+    assert size_of(shown) == (556, 1024)
+    fake.gate.set()
+    wait_for_extensions()
+
+    shown = tv_shows(house["output"])
+    assert size_of(shown) == screen_size(), "the screen was not filled"
+    w, h = screen_size()
+    assert near(pixel(shown, w // 2, h // 2), OLD), "the middle is not the original picture"
+    assert near(pixel(shown, 10, h // 2), NEW), "the sides are not the extension"
+    assert size_of(stored) == (556, 1024), "the library's picture was changed"
+    sent = fake.images[0]
+    with Image.open(BytesIO(base64.b64decode(sent["image"]))) as canvas:
+        assert same_shape(canvas.size, screen_size()), "the worker was not given the screen's shape"
+        assert near(canvas.convert("RGB").getpixel((5, canvas.height // 2)), (128, 128, 128)), "no grey to fill"
+    assert _prompt_sent(fake.payload) == house["reframe"].EXTEND_PROMPT
+    jobs, _ = house["tracker"].list(source="reframe", limit=1)
+    job = jobs[0]
+    assert job["status"] == "completed" and job["target"] == SCREEN, "the extension is not in the Jobs dock"
+
+
+def test_republishing_an_extended_picture_uses_the_kept_copy(house):
+    house["policy"]["mode"] = "extend"
+    fake = GatedRunPod()
+    fake.gate.set()
+    house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
+    stored = library_picture(house)
+    publish(house, stored)
+    wait_for_extensions()
+    assert fake.jobs == 1
+
+    other = house["output"] / SCREEN / "20261119-090100-landscape.jpg"
+    other.write_bytes(_image_bytes("JPEG", NEW, size=(64, 36)))
+    publish(house, other)
+    publish(house, stored)
+    assert size_of(tv_shows(house["output"])) == screen_size(), "the kept copy was not used at once"
+    wait_for_extensions()
+    assert fake.jobs == 1, "the picture was extended again"
+
+
+def test_a_screen_given_something_else_meanwhile_keeps_it(house):
+    house["policy"]["mode"] = "extend"
+    fake = GatedRunPod()
+    house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
+    publish(house, library_picture(house))
+    newer = house["output"] / SCREEN / "20261119-090200-newer.jpg"
+    newer.write_bytes(_image_bytes("JPEG", NEW, size=(64, 36)))
+    publish(house, newer)
+    fake.gate.set()
+    wait_for_extensions()
+    assert size_of(tv_shows(house["output"])) == (64, 36), "the extension replaced a newer picture"
+
+
+def test_a_failed_extension_leaves_the_picture_whole(house):
+    house["policy"]["mode"] = "extend"
+    fake = GatedRunPod(fail=True)
+    fake.gate.set()
+    house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
+    publish(house, library_picture(house))
+    wait_for_extensions()
+    assert size_of(tv_shows(house["output"])) == (556, 1024)
+
+
+def test_a_portrait_on_a_screen_set_to_crop_shows_the_part_the_ai_picked(house):
+    house["policy"]["mode"] = "crop"
+    house["monkeypatch"].setattr(house["reframe"], "_vision_focus",
+                                 lambda img: (0, 0, img.width, img.height // 4))      # the subject is at the top
+    stored = library_picture(house, two_part=True)
+    publish(house, stored)
+    shown = tv_shows(house["output"])
+    assert same_shape(size_of(shown), screen_size()), "not cropped to the screen's shape"
+    assert near(colour_of(shown), TOP), "the crop is not where the subject is"
+    assert size_of(stored) == (556, 1024), "the library's picture was changed"
+
+
+def test_a_crop_with_no_answer_from_the_ai_keeps_the_middle(house):
+    house["policy"]["mode"] = "crop"
+    publish(house, library_picture(house))
+    assert same_shape(size_of(tv_shows(house["output"])), screen_size())
+
+
+@pytest.mark.parametrize("mode", ["extend", "crop", "whole"])
+def test_a_picture_of_the_screens_shape_is_never_reframed(house, mode):
+    house["policy"]["mode"] = mode
+    fake = GatedRunPod()
+    fake.gate.set()
+    house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
+    stored = house["output"] / SCREEN / "20261119-090300-wide.jpg"
+    stored.write_bytes(_image_bytes("JPEG", NEW, size=(1000, 560)))       # 0.4% off 16:9
+    publish(house, stored)
+    wait_for_extensions()
+    assert size_of(tv_shows(house["output"])) == (1000, 560) and fake.jobs == 0
+
+
+def test_a_screen_set_to_show_whole_shows_it_whole(house):
+    publish(house, library_picture(house))
+    assert size_of(tv_shows(house["output"])) == (556, 1024)
+
+
+def test_a_picture_whose_shape_was_chosen_at_the_generator_is_not_reframed(house):
+    house["policy"]["mode"] = "extend"
+    fake = GatedRunPod()
+    fake.gate.set()
+    house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
+    publish(house, library_picture(house), metadata={"type": "image", "shape": "portrait"})
+    wait_for_extensions()
+    assert size_of(tv_shows(house["output"])) == (556, 1024) and fake.jobs == 0
+
+
+def test_the_blank_screen_is_not_reframed(house):
+    house["policy"]["mode"] = "extend"
+    fake = GatedRunPod()
+    fake.gate.set()
+    house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
+    (house["output"] / "_blank.jpg").write_bytes(_image_bytes("JPEG", (0, 0, 0), size=(100, 100)))
+    house["monkeypatch"].chdir(house["output"].parent)
+    house["publisher"].publish_to_destination(source=None, publish_destination_id=SCREEN, blank=True, silent=True)
+    wait_for_extensions()
+    assert fake.jobs == 0
+
+
+# A landscape output chosen for a portrait photo at the generator (Adapt and Combine's "shape" and "fill")
+
+def _prompt_sent(payload):
+    node = next(n for n in payload["input"]["workflow"].values()
+                if "{{POSITIVE-PROMPT}}" in (n.get("_meta") or {}).get("title", ""))
+    return node["inputs"].get("prompt") or node["inputs"].get("text")
+
+
+def adapt(house, workflow, images, **params):
+    fake = FinishingRunPod()
+    house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
+    job_id = house["tracker"].create(prompt="make it snow", source="generator")["id"]
+    out = house["generate"].start(prompt="make it snow", workflow=workflow, images=images, job_id=job_id,
+                                  poll_interval=0.01, **params)
+    with Image.open(BytesIO(base64.b64decode(fake.images[0]["image"]))) as sent:
+        sent = sent.convert("RGB")
+    node = _finish_node(fake.payload)
+    return fake, sent, (int(node["inputs"]["width"]), int(node["inputs"]["height"])), out
+
+
+EDITS = [w for w in _takes_images() if w != "upscale-finish.json"]
+
+
+@pytest.mark.parametrize("workflow", EDITS)
+@pytest.mark.parametrize("shape,aspect", [("landscape", 16 / 9), ("square", 1.0)])
+def test_a_chosen_shape_extends_the_photo_in_the_same_job(house, workflow, shape, aspect):
+    ran = next(w for w in _catalogue() if w["id"] == workflow)
+    fake, sent, finish, _ = adapt(house, workflow, upload((556, 1024)) * (ran.get("uses_images") or 1),
+                                  shape=shape, fill="extend")
+    assert abs((sent.width / sent.height) / aspect - 1) < 0.01, f"the photo was sent at {sent.size}"
+    assert near(sent.getpixel((3, sent.height // 2)), (128, 128, 128)), "the photo was not put on a grey canvas"
+    assert near(sent.getpixel((sent.width // 2, sent.height // 2)), OLD)
+    assert _prompt_sent(fake.payload).startswith(house["reframe"].EXTEND_EDIT) and "make it snow" in _prompt_sent(fake.payload)
+    assert abs((finish[0] / finish[1]) / aspect - 1) < 0.02, f"finished at {finish}"
+
+
+@pytest.mark.parametrize("workflow", EDITS)
+def test_a_chosen_shape_crops_the_photo_where_the_ai_finds_the_subject(house, workflow):
+    house["monkeypatch"].setattr(house["reframe"], "_vision_focus", lambda img: (0, 0, img.width, img.height // 4))
+    img = Image.new("RGB", (556, 1024), OLD)
+    img.paste(Image.new("RGB", (556, 512), TOP), (0, 0))
+    buf = BytesIO()
+    img.save(buf, format="JPEG", quality=95)
+    photo = [{"name": "photo.jpg", "image": base64.b64encode(buf.getvalue()).decode()}]
+    ran = next(w for w in _catalogue() if w["id"] == workflow)
+    fake, sent, finish, _ = adapt(house, workflow, photo * (ran.get("uses_images") or 1), shape="landscape", fill="crop")
+    assert same_shape(sent.size, (16, 9))
+    assert near(sent.getpixel((sent.width // 2, sent.height // 2)), TOP), "the crop is not where the subject is"
+    assert _prompt_sent(fake.payload) == "make it snow"
+    assert same_shape(finish, (16, 9))
+
+
+@pytest.mark.parametrize("workflow", EDITS)
+def test_same_as_the_photo_changes_nothing(house, workflow):
+    ran = next(w for w in _catalogue() if w["id"] == workflow)
+    fake, sent, finish, _ = adapt(house, workflow, upload((556, 1024)) * (ran.get("uses_images") or 1),
+                                  shape="photo", fill="extend")
+    assert sent.size == (556, 1024) and _prompt_sent(fake.payload) == "make it snow"
+    assert same_shape(finish, (556, 1024))
+
+
+def test_the_generator_pages_shape_reaches_the_job(house):
+    """The page sends Adapt's options as params; only start()'s own parameters get through, so shape and fill must
+    be among them."""
+    import routes.generate_handler as handler
+    import routes.generate_utils as generate_utils
+    mp = house["monkeypatch"]
+    mp.setattr(house["generate"], "runpod_api", FinishingRunPod())
+    mp.setattr(handler, "_refine", lambda data, prompt, workflow, *a, **k: (workflow, prompt, prompt))
+    out = generate_utils.process_generate_image_request(
+        {"prompt": "make it snow", "workflow": "qwen21-edit.json", "batch_id": "abc123_frontend",
+         "params": {"poll_interval": 0.01, "shape": "landscape", "fill": "extend", "seed": 5},
+         "global_params": {"batch_size": 1}},
+        uploaded_images=upload((556, 1024)))
+    made = size_of(house["output"] / "_recent" / out["recent_files"][0])
+    assert same_shape(made, (16, 9)), f"a landscape was chosen, {made[0]}x{made[1]} came back"
+
+
+def test_the_catalogues_shape_options_are_the_ones_the_app_knows():
+    from routes import reframe
+    for w in _catalogue():
+        for p in w.get("params") or []:
+            if p["id"] == "shape":
+                values = {o["value"] if isinstance(o, dict) else o for o in p["options"]}
+                assert values - {"photo"} <= set(reframe.SHAPES), f"{w['id']}: shapes the app doesn't know"
+            if p["id"] == "fill":
+                assert {o["value"] if isinstance(o, dict) else o for o in p["options"]} <= {"extend", "crop"}

@@ -4,6 +4,8 @@ from routes.publisher import publish_to_destination, display_from_bucket, get_de
 import logging
 from utils.logger import info, error, warning, debug
 import json
+import os
+import threading
 from pathlib import Path
 
 import smconfig
@@ -20,8 +22,9 @@ _PRIVATE_DESTINATION_KEYS = ("samsung-token", "ip-address", "mac")
 
 @publish_api.route('/publish-destinations', methods=['GET'])
 def get_publish_destinations():
-    """Get all available publish destinations"""
+    """Get all available publish destinations (read fresh: Settings > Screens changes a screen's reframe)"""
     try:
+        publish_destinations = _load_json_once("publish_destinations", PUBLISH_DESTINATIONS_FILE)
         return jsonify([
             {k: v for k, v in d.items() if k not in _PRIVATE_DESTINATION_KEYS}
             if isinstance(d, dict) else d
@@ -30,6 +33,33 @@ def get_publish_destinations():
     except Exception as e:
         logging.error(f"Error getting publish destinations: {str(e)}")
         return jsonify({"error": "Failed to get publish destinations"}), 500
+
+_WRITE_LOCK = threading.Lock()
+
+
+@publish_api.route('/publish-destinations/<dest_id>/reframe', methods=['PUT'])
+def set_screen_reframe(dest_id):
+    """A screen's choice for a picture of another shape than its own (Settings > Screens; routes/reframe.py):
+    {"reframe": "extend" | "crop" | "whole"}. Kept in the deployment's publish-destinations.json."""
+    from routes import reframe
+    mode = (request.get_json(silent=True) or {}).get("reframe")
+    if mode not in reframe.MODES:
+        return jsonify({"error": f"reframe must be one of {', '.join(reframe.MODES)}"}), 400
+    path = Path(PUBLISH_DESTINATIONS_FILE)
+    with _WRITE_LOCK:
+        dests = json.loads(path.read_text(encoding="utf-8"))
+        dest = next((d for d in dests if isinstance(d, dict) and d.get("id") == dest_id), None)
+        if dest is None:
+            return jsonify({"error": f"no screen {dest_id}"}), 404
+        if not (dest.get("maxwidth") and dest.get("maxheight")):
+            return jsonify({"error": f"{dest_id} has no size, so nothing is the wrong shape for it"}), 400
+        dest["reframe"] = mode
+        tmp = path.with_name(f".{path.name}.tmp")
+        tmp.write_text(json.dumps(dests, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+        os.replace(tmp, path)
+    info(f"[publish_api] {dest_id}: pictures of another shape -> {mode}")
+    return jsonify({"id": dest_id, "reframe": mode})
+
 
 @publish_api.route('/publish', methods=['POST'])
 def unified_publish_image():

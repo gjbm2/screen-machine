@@ -5,6 +5,8 @@
 //     POST/DELETE /api/<screen>/brightness-override: a fixed level until "Back to automatic");
 //   - what the site config says about it, read only for now (its name, whether it goes live, whether it follows the
 //     room's light, picture profile and GPU, from GET /api/publish-destinations);
+//   - what it does with a picture of another shape than its own: extend it or crop it with AI, or show it whole
+//     (PUT /api/publish-destinations/<id>/reframe; routes/reframe.py);
 //   - while it's live, how it picks scenes and effects and its feel (the Room page's LookSettings, by import);
 //   - links to it on the Room page, its schedule and its TV page.
 
@@ -14,6 +16,7 @@ import { schedulerUrl, displayUrl } from "@/components/nav/appNav";
 import { Button } from "@/components/ui/button";
 import { useDeployment } from "@/hooks/useDeployment";
 import { artOnlyScreens } from "@/shared/api/deployment";
+import { setScreenReframe, type Reframe } from "@/shared/api/publish";
 import { Slider } from "@/components/ui/slider";
 import { clearBrightnessOverride, getBrightnessOverrideResponse, setBrightnessOverride } from "@/shared/api/admin";
 import { getIntensitySettings, getLightsense, updateIntensitySettings } from "@/shared/api/light";
@@ -24,7 +27,7 @@ import type { Library, RoomStatus, ScreenStatus } from "@/pages/Room/types";
 import { useLiveLook } from "@/pages/Room/useLiveLook";
 import type { NewLogEntry, StreamEvent } from "@/pages/Room/useRoomConnection";
 import { friendlyName } from "@/pages/Room/words";
-import { Group, Hint, LinkRow, ReadRow, Row, Sub } from "./Group";
+import { Chips, Group, Hint, LinkRow, ReadRow, Row, Sub } from "./Group";
 
 /** The parts of a publish-destinations.json entry shown here. */
 export interface Destination {
@@ -33,6 +36,9 @@ export interface Destination {
   hidden?: boolean;
   intensity_cfg?: { adjust?: boolean } | null;
   live?: { enabled?: boolean; gpu?: number; profile?: string } | null;
+  maxwidth?: number;
+  maxheight?: number;
+  reframe?: Reframe;
 }
 
 interface Point {
@@ -56,6 +62,42 @@ const MASK_SOURCE: Record<string, string> = {
   maskoff: "not dimmed",
   flask: "from the app",
 };
+
+// ── A picture of another shape (owner, 19 Nov: a portrait photo on a landscape TV) ──────────────────────────
+
+const REFRAME: { value: Reframe; label: string }[] = [
+  { value: "extend", label: "Extend it" },
+  { value: "crop", label: "Crop it" },
+  { value: "whole", label: "Show it whole" },
+];
+const REFRAME_HINT: Record<Reframe, string> = {
+  extend: "AI paints more of the scene around it to fill the screen. It shows whole for the half-minute that takes; the picture in the library is untouched.",
+  crop: "AI picks the part to keep and fills the screen with it.",
+  whole: "It shows whole, with black at the sides or top and bottom.",
+};
+
+function ShapeChoice({ dest }: { dest: Destination }) {
+  const [value, setValue] = useState<Reframe>(dest.reframe ?? "whole");
+  const [error, setError] = useState<string | null>(null);
+  const choose = (next: Reframe) => {
+    const was = value;
+    setValue(next);
+    setError(null);
+    setScreenReframe(dest.id, next).catch((e) => {
+      setValue(was);
+      setError(e instanceof Error ? e.message : String(e));
+    });
+  };
+  return (
+    <>
+      <Sub>A picture of another shape</Sub>
+      <Row label={`A portrait photo, say, on this ${dest.maxwidth}×${dest.maxheight} screen`} hint={REFRAME_HINT[value]} stack>
+        <Chips value={value} options={REFRAME} onChange={choose} label="A picture of another shape" testId={`reframe-${dest.id}`} />
+      </Row>
+      {error && <Notice tone="bad">{error}</Notice>}
+    </>
+  );
+}
 
 // ── The curve, per light sensor ──────────────────────────────────────────────
 
@@ -353,6 +395,7 @@ export function ScreensGroup({
               {d?.live?.profile && <ReadRow label="Live picture" value={d.live.profile} />}
               {typeof d?.live?.gpu === "number" && <ReadRow label="Graphics card" value={`GPU ${d.live.gpu}`} />}
               <Hint>These are read only here for now.</Hint>
+              {d?.maxwidth && d?.maxheight && <ShapeChoice dest={d} />}
 
               <Sub>Scenes and effects</Sub>
               {live && obs?.session ? (
@@ -390,6 +433,7 @@ export function ScreensGroup({
               <ReadRow label="Goes live" value="No: art only" />
               <ReadRow label="Dims with the room's light" value={d ? (d.intensity_cfg?.adjust ? "Yes" : "No") : "Not set"} />
               <Hint>These are read only here for now.</Hint>
+              {d?.maxwidth && d?.maxheight && <ShapeChoice dest={d} />}
               <div className="flex flex-wrap gap-x-4">
                 <LinkRow href={`/room?screen=${encodeURIComponent(a.id)}`}>On the Room page</LinkRow>
                 <LinkRow href={schedulerUrl(a.id)}>Schedule</LinkRow>

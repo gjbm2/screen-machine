@@ -780,26 +780,26 @@
     "note": "Replaces Kontext (flux_1_kontext_dev_1pic-l, endpoint off) on the new worker (docs/genai-review/PROJECT_PLAN.md step 5).",
     "params": [
       {
-        "id": "width",
-        "name": "Width",
+        "id": "shape",
+        "name": "Shape",
         "type": "select",
         "options": [
-          "1920",
-          "2752",
-          "3840"
+          {"value": "photo", "label": "Same as the photo"},
+          {"value": "landscape", "label": "Landscape (16:9)"},
+          {"value": "portrait", "label": "Portrait (9:16)"},
+          {"value": "square", "label": "Square"}
         ],
-        "default": "3840"
+        "default": "photo"
       },
       {
-        "id": "height",
-        "name": "Height",
+        "id": "fill",
+        "name": "To change the shape",
         "type": "select",
         "options": [
-          "1080",
-          "1536",
-          "2160"
+          {"value": "extend", "label": "Extend the picture (AI)"},
+          {"value": "crop", "label": "Crop it (AI picks the part)"}
         ],
-        "default": "2160"
+        "default": "extend"
       },
       {
         "id": "seed",
@@ -838,26 +838,26 @@
     "note": "Replaces Kontext (flux_1_kontext_dev_2pic-l, endpoint off) on the new worker (docs/genai-review/PROJECT_PLAN.md step 5).",
     "params": [
       {
-        "id": "width",
-        "name": "Width",
+        "id": "shape",
+        "name": "Shape",
         "type": "select",
         "options": [
-          "1920",
-          "2752",
-          "3840"
+          {"value": "photo", "label": "Same as the photo"},
+          {"value": "landscape", "label": "Landscape (16:9)"},
+          {"value": "portrait", "label": "Portrait (9:16)"},
+          {"value": "square", "label": "Square"}
         ],
-        "default": "3840"
+        "default": "photo"
       },
       {
-        "id": "height",
-        "name": "Height",
+        "id": "fill",
+        "name": "To change the shape",
         "type": "select",
         "options": [
-          "1080",
-          "1536",
-          "2160"
+          {"value": "extend", "label": "Extend the picture (AI)"},
+          {"value": "crop", "label": "Crop it (AI picks the part)"}
         ],
-        "default": "2160"
+        "default": "extend"
       },
       {
         "id": "seed",

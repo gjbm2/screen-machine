@@ -31,6 +31,7 @@ export const SOURCE_WORDS: Record<JobSource, string> = {
   scheduler: "Schedule",
   alexa: "Alexa",
   "art-director": "Art director",
+  reframe: "Fit to a screen",
   api: "API",
 };
 
