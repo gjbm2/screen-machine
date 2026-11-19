@@ -199,13 +199,13 @@ const SortableImage: React.FC<ImageProps> = ({
     }
   });
 
+  // The page's drag shadow (DragOverlay) is the copy that follows the finger. This one marks the slot the picture
+  // would land in: dimmed, not lifted (owner, 19 Nov: two copies of the picture, drifting apart).
   const style: React.CSSProperties = {
     transform: CSS.Translate.toString(transform),   // moved, never scaled: items differ in size now that pictures keep their shape
     transition,
-    opacity: isDragging ? 0.6 : 1,
+    opacity: isDragging ? 0.35 : 1,
     cursor: isDragging ? 'grabbing' : 'grab',
-    boxShadow: isDragging ? '0 4px 14px rgba(0,0,0,0.3)' : undefined,
-    zIndex: isDragging ? 50 : undefined,
   };
 
   return (
@@ -302,13 +302,12 @@ const DraggableImage: React.FC<ImageProps> = ({
     setDropNodeRef(node);
   };
 
+  // The page's drag shadow (DragOverlay) is the copy that follows the finger; the picture itself stays where it is,
+  // dimmed, like a batch's big picture (owner, 19 Nov: it followed the finger too, as a second copy, and the two
+  // drifted apart whenever the page moved under the drag).
   const style: React.CSSProperties = {
-    transform: CSS.Translate.toString(transform),   // moved, never scaled: items differ in size now that pictures keep their shape
-    transition: isDragging ? undefined : 'transform 0.2s ease',
-    opacity: isDragging ? 0.6 : 1,
+    opacity: isDragging ? 0.35 : 1,
     cursor: isDragging ? 'grabbing' : 'grab',
-    boxShadow: isDragging ? '0 4px 14px rgba(0,0,0,0.3)' : undefined,
-    zIndex: isDragging ? 50 : undefined,
   };
 
   return (
