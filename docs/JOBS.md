@@ -95,6 +95,8 @@ If `generating_at` is null the client takes generation to start at `started_at`.
 - `POST /api/jobs/<id>/cancel` → `Job`.
 - `POST /api/jobs/cancel-all` → `{cancelled: number}`. `/api/cancel_all_jobs` is kept as an alias.
 - `GET /api/jobs/stream?target=<id>` → Server-Sent Events. With `target`, only jobs for that target.
+  - A screen's own feed is open to its page whoever started the job (docs/ACCOUNTS.md): such a job is cut down to
+    the pill's fields (`ON_SCREEN` in `routes/jobs/api.py`).
   - `event: snapshot`, data `{jobs: Job[], server_time}`: active jobs plus those finished in the last 60 s.
     Sent first on every (re)connect.
   - `event: job`, data `Job`: the whole job after any change (progress at most ~4 per second per job).

@@ -85,13 +85,25 @@ def _event(name, data):
     return f"event: {name}\ndata: {json.dumps(data, default=str)}\n\n"
 
 
-def event_stream(tracker, target=None, ping_s=PING_S, stream_s=STREAM_S, visible=lambda job: True):
+# What a screen's page shows of a job on that screen (its pill: a ring and one stage word). Nothing about what was
+# asked for or made.
+ON_SCREEN = ("id", "source", "kind", "target", "target_name", "status", "stages", "stage_index", "percent",
+             "created_at", "submitted_at", "started_at", "generating_at", "publishing_at", "finished_at", "updated_at",
+             "cancel_requested", "estimate")
+
+
+def on_screen(job):
+    return {k: job[k] for k in ON_SCREEN if k in job}
+
+
+def event_stream(tracker, target=None, ping_s=PING_S, stream_s=STREAM_S, visible=lambda job: True, shown=lambda job: job):
     """SSE frames: retry + snapshot, then each job change, a ping comment every ping_s, and the end
-    after stream_s (EventSource reconnects and gets a fresh snapshot). Only jobs `visible` passes are sent."""
+    after stream_s (EventSource reconnects and gets a fresh snapshot). Only jobs `visible` passes are sent, each as
+    `shown` gives it."""
     sub = tracker.subscribe(target=target)
     try:
         yield f"retry: {RETRY_MS}\n\n"
-        jobs = [j for j in tracker.snapshot(target) if visible(j)]
+        jobs = [shown(j) for j in tracker.snapshot(target) if visible(j)]
         yield _event("snapshot", {"jobs": jobs, "server_time": time.time()})
         end = time.monotonic() + stream_s
         next_ping = time.monotonic() + ping_s
@@ -104,7 +116,7 @@ def event_stream(tracker, target=None, ping_s=PING_S, stream_s=STREAM_S, visible
                 next_ping = now + ping_s
             job = sub.get(timeout=max(0.05, min(next_ping, end) - now))
             if job is not None and visible(job):
-                yield _event("job", job)
+                yield _event("job", shown(job))
     finally:
         sub.close()
 
@@ -115,5 +127,12 @@ def stream_jobs():
     everyone = request.args.get("everyone") not in ("0", "false")
     # the stream outlives the request, so who is watching is settled now (docs/ACCOUNTS.md)
     visible = auth.job_visibility(everyone=everyone)
-    return Response(event_stream(get_tracker(), target, visible=visible), mimetype="text/event-stream",
+    shown = lambda job: job
+    if target:
+        # One screen's feed is that screen's own page (its pill), and a screen is never signed in: it gets every job
+        # on it, whoever started it, down to what the pill draws (owner, 19 Nov: a picture being fitted to devtest
+        # showed no progress there; since sign-in the TVs had lost the pill for generator jobs too).
+        mine = visible
+        visible, shown = (lambda job: True), (lambda job: job if mine(job) else on_screen(job))
+    return Response(event_stream(get_tracker(), target, visible=visible, shown=shown), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

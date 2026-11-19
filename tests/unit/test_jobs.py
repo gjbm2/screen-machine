@@ -601,6 +601,31 @@ def test_stream_route_headers(client):
     resp.close()
 
 
+def test_a_screens_own_feed_shows_every_job_on_it_but_only_what_the_pill_draws(client, tracker, monkeypatch):
+    """A screen's page is never signed in: it still gets the jobs on its screen (owner, 19 Nov: no progress on devtest
+    while a picture was fitted to it), without what was asked for; the whole feed stays each person's own."""
+    from routes.jobs import api
+    monkeypatch.setattr(api.auth, "job_visibility", lambda everyone=True: lambda job: job["prompt"] == "mine")
+    tracker.create(prompt="mine", target="devtest", source="generator")
+    theirs = tracker.create(prompt="someone else's", target="devtest", source="reframe")["id"]
+    tracker.create(prompt="another screen", target="north-screen", source="reframe")
+
+    def snapshot(url):
+        resp = client.get(url, buffered=False)
+        frames = iter(resp.response)
+        next(frames)                                   # retry
+        jobs = parse_sse(next(frames).decode())[0][1]["jobs"]
+        resp.close()
+        return jobs
+
+    on_devtest = {j.get("prompt"): j for j in snapshot("/api/jobs/stream?target=devtest")}
+    assert set(on_devtest) == {"mine", None}
+    pill = on_devtest[None]
+    assert pill["id"] == theirs and pill["status"] == "preparing" and pill["estimate"] and pill["target"] == "devtest"
+    assert not {"prompt", "refined_prompt", "batch_id", "result_url", "error", "message"} & set(pill)
+    assert [j["prompt"] for j in snapshot("/api/jobs/stream")] == ["mine"]
+
+
 # ------------------------------------------------------------------ lifecycle in routes.generate.start
 
 class FakeRunPod:

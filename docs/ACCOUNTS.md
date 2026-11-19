@@ -71,6 +71,9 @@ with a role to pick, and adds someone by e-mail before they first sign in. The l
   admins; an admin can switch to Everyone's (`?everyone=1`).
 - The jobs feed (`/jobs`, `/jobs/stream`): an admin sees every job; anyone else their own generator jobs plus the
   house's jobs for destinations they may use.
+  - One screen's feed (`/jobs/stream?target=<screen>`, what its `/display` page reads for the pill) carries every
+    job on that screen for anyone, since a screen is never signed in; a job the caller may not see comes down to
+    what the pill draws (state, stage, times), with nothing of what was asked for or made.
 - Signing in moves the browser's anonymous images into the account.
 
 ## Not yet
