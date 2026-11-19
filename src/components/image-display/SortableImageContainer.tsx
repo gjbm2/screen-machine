@@ -55,7 +55,7 @@ const SortableImageContainer: React.FC<SortableContainerProps> = ({
     : 'w-full'; // Default width for other view modes
 
   const style = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Translate.toString(transform),   // moved, never scaled: items differ in size now that pictures keep their shape
     transition,
     opacity: isDragging ? 0.6 : 1,
     zIndex: isDragging ? 10 : 1,

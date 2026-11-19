@@ -1141,7 +1141,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
     const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: batch.batchId, data: { shownImage } });
 
     const style: React.CSSProperties = {
-      transform: CSS.Transform.toString(transform),
+      transform: CSS.Translate.toString(transform),   // moved, never scaled: items differ in size now that pictures keep their shape
       transition,
       cursor: 'grab',
       opacity: isDragging ? 0.5 : 1,

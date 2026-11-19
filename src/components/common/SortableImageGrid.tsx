@@ -200,7 +200,7 @@ const SortableImage: React.FC<ImageProps> = ({
   });
 
   const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Translate.toString(transform),   // moved, never scaled: items differ in size now that pictures keep their shape
     transition,
     opacity: isDragging ? 0.6 : 1,
     cursor: isDragging ? 'grabbing' : 'grab',
@@ -303,7 +303,7 @@ const DraggableImage: React.FC<ImageProps> = ({
   };
 
   const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
+    transform: CSS.Translate.toString(transform),   // moved, never scaled: items differ in size now that pictures keep their shape
     transition: isDragging ? undefined : 'transform 0.2s ease',
     opacity: isDragging ? 0.6 : 1,
     cursor: isDragging ? 'grabbing' : 'grab',
