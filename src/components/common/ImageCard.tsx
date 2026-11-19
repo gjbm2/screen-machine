@@ -232,8 +232,9 @@ const ImageCard: React.FC<ImageCardProps> = ({
         </Badge>
       )}
 
-      {/* Info button (desktop, on hover): the Loope opened on this picture's Info; on a phone, tap then swipe up */}
-      {!isPlaceholder && onFullscreenClick && (
+      {/* Info button (desktop, on hover): the Loope opened on this picture's Info; on a phone, tap then swipe up.
+          Not on Generated's thumbnails, whose expand selects the picture in its batch instead of opening the Loope */}
+      {!isPlaceholder && onFullscreenClick && !isRecentThumbnail && (
         <Button
           variant="ghost"
           size="icon"
@@ -279,7 +280,7 @@ const ImageCard: React.FC<ImageCardProps> = ({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent side="right">
-            {onFullscreenClick && (
+            {onFullscreenClick && !isRecentThumbnail && (
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
@@ -292,11 +293,11 @@ const ImageCard: React.FC<ImageCardProps> = ({
               </DropdownMenuItem>
             )}
             {/* Bring to life: a clip of this still, filed with it (the triage picks what moves) */}
-            {bucketId && !isVideo(image) && (
+            {(bucketId || image.bucketId) && !isVideo(image) && (
               <DropdownMenuItem
                 onClick={(e) => {
                   e.stopPropagation();
-                  animateStill(bucketId, image.id).then(
+                  animateStill((bucketId || image.bucketId) as string, image.id).then(
                     () => toast.success('Making a clip: it appears with the picture in a few minutes'),
                     (err) => toast.error(String(err?.message || err)),
                   );

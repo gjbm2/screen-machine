@@ -23,10 +23,11 @@ interface LoopeViewContextValue {
 
 const LoopeViewContext = createContext<LoopeViewContextValue | undefined>(undefined);
 
-/** A tile's Info button opens the Loope the usual way (its view's own open), straight on the Info panel. */
-let infoOnNextOpen = false;
+/** A tile's Info button opens the Loope the usual way (its view's own open), straight on the Info panel. Only an
+ *  open that follows at once counts: a view whose tile click doesn't open the Loope must not leave it set. */
+let infoOnNextOpen = 0;
 export function openNextWithInfo(): void {
-  infoOnNextOpen = true;
+  infoOnNextOpen = Date.now();
 }
 
 export const LoopeViewProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -40,8 +41,8 @@ export const LoopeViewProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setImages(imgs);
     setCurrentIndex(startIdx);
     setTitle(ttl);
-    setCarouselOptions({ ...options, showInfo: options.showInfo ?? infoOnNextOpen });
-    infoOnNextOpen = false;
+    setCarouselOptions({ ...options, showInfo: options.showInfo ?? Date.now() - infoOnNextOpen < 1000 });
+    infoOnNextOpen = 0;
     setIsOpen(true);
   }, []);
 
