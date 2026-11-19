@@ -51,6 +51,13 @@
   position: relative;
   width: 100%;
   z-index: 1;
+  /* a portrait picture sits centred, its height held to the window (owner, 19 Nov: at full width it ran far past the
+     screen and was hard to use); a landscape one still fills the width */
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: rgba(0, 0, 0, 0.04);
+  border-radius: 0.25rem;
 }
 
 /* When dragging, ensure the dragged item is above everything */
@@ -63,8 +70,10 @@
 
 /* Selected image styling */
 .selectedImage {
-  width: 100%;
+  width: auto;
+  max-width: 100%;
   height: auto;
+  max-height: 72vh;
   object-fit: contain;
   border-radius: 0.25rem;
   cursor: pointer;
