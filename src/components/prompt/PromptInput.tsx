@@ -6,6 +6,7 @@ import PromptExamples from './PromptExamples';
 import ReferenceImagesSection from '@/components/image-display/ReferenceImagesSection';
 import { useDroppable } from '@dnd-kit/core';
 import { DROP_ZONES } from '@/dnd/dropZones';
+import { pastedImages } from './pastedImages';
 
 interface PromptInputProps {
   prompt: string;
@@ -21,7 +22,10 @@ interface PromptInputProps {
   maxLength?: number;
   onSubmit?: () => void;
   isFirstRun?: boolean;
+  /** Pictures pasted into the prompt (Ctrl+V of a copied picture): added like an upload. */
+  onImagePaste?: (files: File[]) => void;
 }
+
 
 const PromptInput: React.FC<PromptInputProps> = ({ 
   prompt, 
@@ -36,7 +40,8 @@ const PromptInput: React.FC<PromptInputProps> = ({
   multiline = true,
   maxLength,
   onSubmit,
-  isFirstRun
+  isFirstRun,
+  onImagePaste
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { setNodeRef, isOver } = useDroppable({
@@ -67,6 +72,16 @@ const PromptInput: React.FC<PromptInputProps> = ({
         onSubmit();
       }
     }
+  };
+
+  // A copied picture pasted into the prompt is added like an upload; text pastes as usual
+  const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    if (!onImagePaste) return;
+    const files = pastedImages(e.clipboardData);
+    if (files.length === 0) return;
+    e.preventDefault();
+    onImagePaste(files);
+    toast.success(files.length === 1 ? "Picture added" : `${files.length} pictures added`);
   };
 
   const handleExampleClick = (example: string) => {
@@ -143,6 +158,7 @@ const PromptInput: React.FC<PromptInputProps> = ({
           autoResize();
         }}
         onKeyDown={handleKeyDown}
+        onPaste={handlePaste}
         disabled={isLoading}
         rows={multiline ? 2 : 1}
         style={{ maxHeight: '50vh' }}

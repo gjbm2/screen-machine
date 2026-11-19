@@ -819,6 +819,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
           isFirstRun={isFirstRun}
           onSubmit={handleSubmit}
           uploadedImages={displayUrls}
+          onImagePaste={handleImageUpload}
         />
         <PromptFormToolbar 
           isLoading={localLoading}
