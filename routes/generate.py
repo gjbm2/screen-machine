@@ -155,22 +155,32 @@ def video_size(aspect):
             max(256, round(math.sqrt(VIDEO_AREA / aspect) / 32) * 32))
 
 
-def crop_to_aspect(image, aspect):
-    """A request image ({"name", "image": base64}) cropped about its centre to `aspect`."""
+def fit_for_video(image, aspect, mode="auto"):
+    """A request image ({"name", "image": base64}) fitted to the video's shape the way a picture is fitted to a screen
+    of another shape (routes/reframe.py): auto (the AI plans a crop and an extension), crop (the AI picks the part)
+    or extend (the AI paints the rest). An AI step that fails falls back to the AI's crop."""
     import base64
     from PIL import Image, ImageOps
+    from routes import reframe
     with Image.open(BytesIO(base64.b64decode(image.get("image") or ""))) as img:
         img = ImageOps.exif_transpose(img).convert("RGB")
-        w, h = img.size
-        if w / h > aspect:
-            cw = round(h * aspect)
-            img = img.crop(((w - cw) // 2, 0, (w - cw) // 2 + cw, h))
+    w, h = video_size(aspect)
+    size = (w * 2, h * 2)
+    try:
+        if mode == "extend":
+            out = reframe.extend(img, aspect, size, label="Extend the picture for the video")
+        elif mode == "crop":
+            out = reframe.ai_crop(img, aspect)
         else:
-            ch = round(w / aspect)
-            img = img.crop((0, (h - ch) // 2, w, (h - ch) // 2 + ch))
-        buf = BytesIO()
-        img.save(buf, "JPEG", quality=95)
+            out = reframe.auto(img, aspect, size, label="Fit the picture to the video")
+    except Exception as e:
+        warning(f"Fitting the picture to the video ({mode}) failed ({e}); cropping instead")
+        out = reframe.ai_crop(img, aspect)
+    buf = BytesIO()
+    out.convert("RGB").save(buf, "JPEG", quality=95)
     return {**image, "image": base64.b64encode(buf.getvalue()).decode()}
+
+
 MAX_VIDEO_S = 30          # the longest video asked for (Advanced: Length)
 SEGMENT_FRAMES = 244      # one H3 pass, at most (10 s at 24 fps); a longer video is made of passes in a chain
 
@@ -675,7 +685,9 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
         # (routes/clip_ease.py fits) matches it; beyond that the picture is cropped to the shape drawn
         out = int(args_namespace.width) / int(args_namespace.height)
         if pic and abs(pic[0] / pic[1] / out - 1) > 0.03:
-            args_namespace.images[0] = crop_to_aspect(args_namespace.images[0], out)
+            # the same fitting as publishing a picture to a screen of another shape (routes/reframe.py)
+            args_namespace.images[0] = fit_for_video(args_namespace.images[0], out,
+                                                     vars(args_namespace).get("video_fit") or "auto")
         seconds = vars(args_namespace).get("video_seconds")
         if seconds and not vars(args_namespace).get("video_length"):
             seconds = min(MAX_VIDEO_S, max(1.0, float(seconds)))

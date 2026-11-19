@@ -1145,9 +1145,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                       <video
                         src={src}
                         controls
-                        autoPlay={img.id === currentImage?.id}
-                        muted
-                        loop
+                        preload="metadata"
                         playsInline
                         className={`max-h-full max-w-full object-contain ${isLoading ? 'hidden' : ''}`}
                         onLoadedData={() => handleImageLoad(src)}

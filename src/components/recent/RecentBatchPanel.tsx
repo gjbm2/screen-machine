@@ -501,17 +501,16 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
                   large
                 />
               ) : selectedImage.mediaType === 'video' || isVideoFile(selectedImage.urlFull || selectedImage.id) ? (
-                // a clip plays here (Generated keeps clips since 19 Nov: an <img> showed its prompt as broken alt text)
+                // a clip, with a play button (Generated keeps clips since 19 Nov: an <img> showed its prompt as broken
+                // alt text); it doesn't play by itself, which was distracting and restarted on every scroll
                 <video
                   key={selectedImage.id}
                   src={selectedImage.urlFull}
                   poster={selectedImage.urlThumb || undefined}
                   className={styles.selectedImage}
-                  autoPlay
-                  muted
-                  loop
+                  controls
+                  preload="metadata"
                   playsInline
-                  onClick={() => onImageClick && onImageClick(selectedImage)}
                 />
               ) : (
                 <img 

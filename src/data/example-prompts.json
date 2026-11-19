@@ -3,14 +3,14 @@
     "Desert inside a snow globe",
     "Nun lighting fireworks",
     "Tiger in a library",
-	"Forest of empty chairs",
-	"Road through a glacier",
+    "Forest of empty chairs",
+    "Road through a glacier",
     "Wolf in a wedding dress",
     "Lunar teatime",
     "Scientist in hot air ballroom",
     "Cathedral made of glass",
-	"Orchestra tuning underwater",
-	"Giraffe on an escalator"
+    "Orchestra tuning underwater",
+    "Giraffe on an escalator"
   ],
   "stylePrompts": [
     {
@@ -85,13 +85,146 @@
       "display": "Cubist layers...",
       "prompt": "fragmented geometric abstraction with overlapping forms and multifaceted perspectives. Dry-brush textures and a subdued earthy palette inspired by early 20th-century Cubism"
     },
-	{
-       "display": "Zen ink...",
+    {
+      "display": "Zen ink...",
       "prompt": "monochromatic ink wash technique with minimalist composition, textured brushstrokes, and soft diffusion. Inspired by Japanese sumi-e painting and wabi-sabi aesthetics"
     },
     {
       "display": "Surreal texture...",
       "prompt": "strange and uncanny compositions using realistic textures—skin, fabric, woodgrain—assembled in illogical but beautiful ways. A quiet, museum-ready surrealism with rich surface detail"
     }
-  ]
+  ],
+  "contextPrompts": {
+    "video": [
+      {
+        "label": "Motion",
+        "prompts": [
+          {
+            "display": "Real-time action",
+            "prompt": "the action plays out at its natural, real-time speed"
+          },
+          {
+            "display": "Slow motion",
+            "prompt": "in slow motion"
+          },
+          {
+            "display": "Subtle movement",
+            "prompt": "only subtle movement: everything else stays still"
+          },
+          {
+            "display": "Gentle breeze",
+            "prompt": "a gentle breeze moves hair, clothes and leaves"
+          },
+          {
+            "display": "Breathing, blinking",
+            "prompt": "the people breathe and blink naturally"
+          },
+          {
+            "display": "Turns to camera",
+            "prompt": "the subject slowly turns to look at the camera"
+          },
+          {
+            "display": "Smiles",
+            "prompt": "the subject breaks into a natural smile"
+          },
+          {
+            "display": "Walks away",
+            "prompt": "the subject walks away from the camera"
+          },
+          {
+            "display": "Weather",
+            "prompt": "rain or snow falls steadily"
+          },
+          {
+            "display": "Water moves",
+            "prompt": "the water ripples and moves naturally"
+          }
+        ]
+      },
+      {
+        "label": "Camera",
+        "prompts": [
+          {
+            "display": "Holds still",
+            "prompt": "the camera is locked off on a tripod and does not move, zoom or cut"
+          },
+          {
+            "display": "Slow push in",
+            "prompt": "the camera slowly pushes in"
+          },
+          {
+            "display": "Slow pull back",
+            "prompt": "the camera slowly pulls back to reveal more of the scene"
+          },
+          {
+            "display": "Pan left",
+            "prompt": "the camera pans slowly to the left"
+          },
+          {
+            "display": "Pan right",
+            "prompt": "the camera pans slowly to the right"
+          },
+          {
+            "display": "Orbit",
+            "prompt": "the camera slowly orbits around the subject"
+          },
+          {
+            "display": "Handheld",
+            "prompt": "a gentle handheld camera, as if filmed on a phone"
+          },
+          {
+            "display": "No cuts",
+            "prompt": "one continuous shot with no cuts"
+          }
+        ]
+      }
+    ],
+    "image": [
+      {
+        "label": "Change",
+        "prompts": [
+          {
+            "display": "Keep the composition",
+            "prompt": "keep the composition, pose and framing exactly as in the picture"
+          },
+          {
+            "display": "Same person",
+            "prompt": "keep the person's face and identity exactly the same"
+          },
+          {
+            "display": "New background",
+            "prompt": "replace the background with"
+          },
+          {
+            "display": "Night time",
+            "prompt": "make it night time, lit by lamps and moonlight"
+          },
+          {
+            "display": "As a painting",
+            "prompt": "turn it into an oil painting, keeping the composition"
+          },
+          {
+            "display": "As a photo",
+            "prompt": "turn it into a realistic photograph, keeping the composition"
+          },
+          {
+            "display": "Change the clothes",
+            "prompt": "change the clothes to"
+          },
+          {
+            "display": "Remove",
+            "prompt": "remove"
+          },
+          {
+            "display": "Add",
+            "prompt": "add"
+          },
+          {
+            "display": "Wider view",
+            "prompt": "show more of the scene around the picture"
+          }
+        ]
+      }
+    ]
+  }
 }

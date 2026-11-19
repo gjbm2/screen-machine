@@ -13,12 +13,15 @@ interface StylePromptsListProps {
   styles: StylePrompt[];
   initialCount: number;
   onStyleClick: (style: StylePrompt) => void;
+  /** The row's label ("Style" by default; the context rows: "Motion", "Camera", "Change"). */
+  label?: string;
 }
 
 const StylePromptsList: React.FC<StylePromptsListProps> = ({ 
   styles, 
   initialCount, 
-  onStyleClick 
+  onStyleClick,
+  label = 'Style',
 }) => {
   const [showAllStyles, setShowAllStyles] = useState(false);
   
@@ -38,7 +41,7 @@ const StylePromptsList: React.FC<StylePromptsListProps> = ({
   
   return (
     <div className="flex flex-wrap gap-1 items-center">
-      <span className="text-xs text-muted-foreground">Style:</span>
+      <span className="text-xs text-muted-foreground">{label}:</span>
       {visibleStyles.map((style, index) => (
         <Badge 
           key={index}

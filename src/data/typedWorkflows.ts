@@ -27,7 +27,9 @@ function convertToTypedWorkflows(data: any[]): Workflow[] {
       name: param.name,
       type: param.type as "select" | "checkbox" | "range" | "text" | "number",
       options: param.options,
-      default: param.default
+      default: param.default,
+      ...(param.min !== undefined ? { min: param.min } : {}),
+      ...(param.max !== undefined ? { max: param.max } : {}),
     }))
   }));
 }

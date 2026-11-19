@@ -5,8 +5,13 @@ import { useWindowSize } from '@/hooks/use-mobile';
 import PromptExamplesList from './PromptExamplesList';
 import StylePromptsList from './StylePromptsList';
 
+/** What the prompt is for, so the suggestions fit it: a picture from words, a change to an attached picture, or a
+ *  video (owner, 19 Nov: "the sorts of text they might want to append to the prompt is context-dependent"). */
+export type PromptContext = 'text' | 'image' | 'video';
+
 interface PromptExamplesProps {
   prompt: string;
+  context?: PromptContext;
   onExampleClick: (example: string) => void;
   onStyleClick: (prompt: string) => void;
   showMore?: boolean;
@@ -16,8 +21,11 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
   prompt, 
   onExampleClick, 
   onStyleClick,
-  showMore = false
+  showMore = false,
+  context = 'text',
 }) => {
+  const contextRows = (examplePrompts as { contextPrompts?: Record<string, { label: string; prompts: { display: string; prompt: string }[] }[]> })
+    .contextPrompts?.[context] || [];
   const [randomizedExamples, setRandomizedExamples] = useState<string[]>([]);
   const [randomizedStyles, setRandomizedStyles] = useState<{display: string, prompt: string}[]>([]);
   const [initialExamplesCount, setInitialExamplesCount] = useState(1);
@@ -90,17 +98,32 @@ const PromptExamples: React.FC<PromptExamplesProps> = ({
   
   return (
     <div className="p-2 pt-4 space-y-1.5">
-      <PromptExamplesList 
-        examples={randomizedExamples} 
-        initialCount={initialExamplesCount} 
-        onExampleClick={handleExampleClick}
-      />
-      
-      <StylePromptsList 
-        styles={randomizedStyles} 
-        initialCount={initialStylesCount} 
-        onStyleClick={handleStyleClick}
-      />
+      {/* a video or a change to an attached picture: suggestions that add to the prompt, not whole new ideas */}
+      {context === 'text' && (
+        <PromptExamplesList 
+          examples={randomizedExamples} 
+          initialCount={initialExamplesCount} 
+          onExampleClick={handleExampleClick}
+        />
+      )}
+
+      {contextRows.map((row) => (
+        <StylePromptsList
+          key={row.label}
+          label={row.label}
+          styles={row.prompts}
+          initialCount={initialStylesCount}
+          onStyleClick={handleStyleClick}
+        />
+      ))}
+
+      {context !== 'video' && (
+        <StylePromptsList 
+          styles={randomizedStyles} 
+          initialCount={initialStylesCount} 
+          onStyleClick={handleStyleClick}
+        />
+      )}
     </div>
   );
 };

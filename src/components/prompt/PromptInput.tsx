@@ -2,7 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { Textarea } from '@/components/ui/textarea';
 import { X } from 'lucide-react';
 import { toast } from 'sonner';
-import PromptExamples from './PromptExamples';
+import PromptExamples, { type PromptContext } from './PromptExamples';
 import ReferenceImagesSection from '@/components/image-display/ReferenceImagesSection';
 import { useDroppable } from '@dnd-kit/core';
 import { DROP_ZONES } from '@/dnd/dropZones';
@@ -22,6 +22,8 @@ interface PromptInputProps {
   maxLength?: number;
   onSubmit?: () => void;
   isFirstRun?: boolean;
+  /** What the prompt is for (the suggestion rows fit it). */
+  context?: PromptContext;
   /** Pictures pasted into the prompt (Ctrl+V of a copied picture): added like an upload. */
   onImagePaste?: (files: File[]) => void;
 }
@@ -41,7 +43,8 @@ const PromptInput: React.FC<PromptInputProps> = ({
   maxLength,
   onSubmit,
   isFirstRun,
-  onImagePaste
+  onImagePaste,
+  context = 'text',
 }) => {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { setNodeRef, isOver } = useDroppable({
@@ -175,6 +178,7 @@ const PromptInput: React.FC<PromptInputProps> = ({
         onExampleClick={handleExampleClick}
         onStyleClick={handleStyleClick}
         showMore={!isLoading}
+        context={context}
       />
     </div>
   );

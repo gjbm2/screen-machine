@@ -814,6 +814,8 @@ const PromptForm: React.FC<PromptFormProps> = ({
         )}
         <PromptInput 
           prompt={prompt} 
+          context={(workflows as Workflow[] | undefined)?.find((w) => w.id === selectedWorkflow)?.async
+            ? 'video' : displayUrls.length > 0 ? 'image' : 'text'}
           onPromptChange={handlePromptChange} 
           onClearPrompt={handleClearPrompt}
           onClearAllImages={clearAllImages}

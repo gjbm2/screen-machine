@@ -5,6 +5,9 @@ export interface WorkflowParam {
   type: "select" | "checkbox" | "range" | "text" | "number";
   options?: string[] | { value: string; label: string }[];
   default?: string | number | boolean;
+  /** A number field's bounds. */
+  min?: number;
+  max?: number;
 }
 
 export interface Workflow {

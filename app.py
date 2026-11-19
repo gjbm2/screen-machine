@@ -5,6 +5,7 @@ Handles route registration, server initialization, and core application setup.
 
 # Standard library imports
 import os
+import re
 import sys
 import json
 import logging
@@ -207,7 +208,18 @@ def serve(path):
     """Serve static files and handle React frontend routing."""
     # Handle output directory requests
     if path.startswith(f'{OUTPUT_DIR}/'):
-        return send_from_directory(OUTPUT_DIR, path[len(OUTPUT_DIR)+1:])
+        rel = path[len(OUTPUT_DIR)+1:]
+        # a stored reference picture (<image>.ref.N) has no extension: say what it is, or the browser downloads it
+        if re.search(r"\.ref\.\d+$", rel):
+            try:
+                with open(os.path.join(OUTPUT_DIR, rel), "rb") as f:
+                    head = f.read(12)
+            except OSError:
+                head = b""
+            kind = ("image/jpeg" if head[:3] == b"\xff\xd8\xff" else "image/png" if head[:8] == b"\x89PNG\r\n\x1a\n"
+                    else "image/webp" if head[8:12] == b"WEBP" else None)
+            return send_from_directory(OUTPUT_DIR, rel, mimetype=kind)
+        return send_from_directory(OUTPUT_DIR, rel)
 
     # Handle React frontend requests
     if path != "" and os.path.exists(app.static_folder + '/' + path):
