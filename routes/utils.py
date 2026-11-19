@@ -667,24 +667,25 @@ def build_schema_subs():
 
 # A fresh cast for each picture whose request doesn't say who the people are (owner, 19 Nov: every picture had the
 # same couple). A prompt model left to itself writes "a man in his thirties, lean build" every time, and a Turbo
-# image model then draws its one default couple; a random draw here is what varies it.
-CAST_AGES = ["early twenties", "late twenties", "thirties", "forties", "fifties", "sixties", "seventies"]
+# image model then draws its one default couple; a random draw here is what varies it. Owner, 19 Nov: variety, but
+# situationally appropriate, "not a Benetton ad": who the people are (origin, look) follows the picture's place and
+# period, and ages and sexes follow the situation (a drawn age put pensioners in a rugby scrum, a drawn cast made a
+# couple two men); the draw varies only build, face and hair, which fit anyone.
 CAST_BUILDS = ["slight", "slim", "wiry", "athletic", "average", "broad-shouldered", "stocky", "soft and rounded", "heavy"]
-CAST_LOOKS = ["Black British", "West African", "East African", "Caribbean", "East Asian", "South Asian", "Southeast Asian",
-              "Middle Eastern", "North African", "Latin American", "Mediterranean", "Northern European", "Eastern European",
-              "Irish", "mixed-race", "Pacific Islander"]
-CAST_HAIR = ["close-cropped grey hair", "long straight black hair", "a shaved head", "tight black curls", "a blonde bob",
-             "long red hair", "thinning sandy hair", "a grey beard", "dark wavy hair to the shoulders", "an auburn pixie cut",
-             "salt-and-pepper stubble", "braids", "a silver plait", "messy brown hair", "a dark undercut"]
+CAST_FACES = ["a long nose", "freckles", "heavy brows", "a round face", "deep-set eyes", "a gap-toothed smile",
+              "weathered skin", "high cheekbones", "a broken nose", "laughter lines", "a strong jaw", "a soft double chin"]
+CAST_HAIR = ["close-cropped hair", "long straight hair", "a shaved head", "tight curls", "a bob", "thinning hair",
+             "a beard", "wavy hair to the shoulders", "a pixie cut", "stubble", "a plait", "messy hair", "an undercut",
+             "a grey streak", "a bun"]
 
 
 def casting(people=4, rng=None):
-    """'first person: …; second person: …' for up to `people` people, each drawn at random."""
+    """'first person: …; second person: …' for up to `people` people: build, face and hair drawn at random."""
     import random
     rng = rng or random.Random()
     ordinals = ["first", "second", "third", "fourth", "fifth"]
-    return "; ".join(f"{ordinals[i]} person: {rng.choice(CAST_AGES)}, {rng.choice(CAST_BUILDS)}, "
-                     f"{rng.choice(CAST_LOOKS)}, {rng.choice(CAST_HAIR)}" for i in range(people))
+    return "; ".join(f"{ordinals[i]} person: {rng.choice(CAST_BUILDS)}, {rng.choice(CAST_FACES)}, {rng.choice(CAST_HAIR)}"
+                     for i in range(people))
     
 def resize_image_keep_aspect(image_path, max_dim=512):
     """
