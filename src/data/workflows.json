@@ -407,7 +407,7 @@
   },
   {
     "id": "upscale.json",
-    "name": "Upscale Image",
+    "name": "Upscale",
     "description": "Upscale an image to 4K",
     "runpod_id": "oh422aycpybd5u",
     "hidden": true,
@@ -570,7 +570,7 @@
   },
   {
     "id": "qwen21-turbo.json",
-    "name": "Stylised and lettering (Qwen Image 2.1 Turbo)",
+    "name": "Stylised and lettering",
     "summary": "Illustration, posters, words in the picture",
     "style_descriptor": "explicitly stylized commercial photography, enhanced artificial lighting, glossy perfection, studio lighting, synthetic aesthetics",
     "style_guidance": "Use ONLY for explicitly stylized, commercial, or synthetic photorealistic imagery. Ideal for fashion photography, product shots, commercial advertising, studio portraits, or when the user specifically requests glossy, artificial, or enhanced lighting effects. For natural, documentary, or authentic photography, prefer zimage-turbo instead. Also the first choice for any picture that must show words or lettering exactly. Also the first choice for a named person's own face on another body or character.",
@@ -629,7 +629,7 @@
   },
   {
     "id": "qwen21.json",
-    "name": "Painterly (Qwen Image 2.1)",
+    "name": "Painterly",
     "summary": "Paintings and fine art; slower, more detail",
     "default": true,
     "style_descriptor": "oil on canvas, gallery brushwork, surreal palette, ink and gouache textures, inspired by [artist]",
@@ -695,7 +695,7 @@
   },
   {
     "id": "zimage-turbo.json",
-    "name": "Photographic, alternative (Z-Image Turbo)",
+    "name": "Photographic, alternative",
     "summary": "Photos with a different look; fast",
     "style_descriptor": "natural photorealistic photography, authentic lighting, lifelike details, realistic textures, documentary photography, candid photography, street photography, landscape photography",
     "style_guidance": "An alternative for natural photographs. For most photographs prefer krea2-turbo.json.",
@@ -875,7 +875,7 @@
   },
   {
     "id": "krea2-turbo.json",
-    "name": "Photographic (Krea 2 Turbo)",
+    "name": "Photographic",
     "summary": "Photos: people, places, everyday scenes",
     "style_descriptor": "natural photorealistic photography, authentic lighting, lifelike details, realistic textures, documentary photography, candid photography, street photography, landscape photography",
     "style_guidance": "Use for most photorealistic imagery including natural, authentic, documentary, candid, street, landscape, portrait, and general photography. Ideal for realistic scenes, natural lighting, authentic details, and lifelike rendering. This is the preferred choice for most photorealistic requests unless the user explicitly requests stylized, commercial, or synthetic effects.",
@@ -926,7 +926,7 @@
   },
   {
     "id": "upscale-finish.json",
-    "name": "Upscale Image",
+    "name": "Upscale",
     "summary": "Fit a picture to the screen, sharper",
     "description": "Scale an image to the screen (lanczos, centre crop) on the new worker",
     "runpod_id": "1p4605rkgfo392",

@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import * as LucideIcons from 'lucide-react';
-import { Image, Zap } from 'lucide-react';
+import { Image, Info, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   HoverCard,
@@ -34,6 +34,7 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
   const shouldHideName = hideWorkflowName || isNarrow;
 
   const [isOpen, setIsOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState<string | null>(null);
   const [maxContentHeight, setMaxContentHeight] = useState<number | undefined>(undefined);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -90,27 +91,47 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
         {/* Separator */}
         <div className="border-t border-border my-1" />
         
-        {/* Regular workflows */}
+        {/* Regular workflows: the plain name and one line on what it's for (the catalogue's summary). The rest (the
+            model, steps and the like: its description) on hover, or under the row after a tap on its info button. */}
         {workflows.map((workflow) => (
-          <Button
-            key={workflow.id}
-            variant={workflow.id === selectedWorkflow ? "secondary" : "ghost"}
-            size="sm"
-            className="justify-start text-sm h-auto py-2"
-            onClick={() => handleSelectWorkflow(workflow.id)}
-            type="button"
-          >
-            <div className="mr-2 flex-shrink-0">
-              {getWorkflowIcon(workflow.icon)}
-            </div>
-            <div className="flex flex-col items-start overflow-hidden">
-              <span className="truncate w-full text-left text-sm">{workflow.name}</span>
-              {/* one line on what it's for (the catalogue's summary); the long description is for its maintainers */}
-              {workflow.summary && (
-                <span className="text-xs text-muted-foreground w-full text-left truncate">{workflow.summary}</span>
+          <div key={workflow.id}>
+            <div className="flex items-stretch gap-0.5">
+              <Button
+                variant={workflow.id === selectedWorkflow ? "secondary" : "ghost"}
+                size="sm"
+                className="min-w-0 flex-1 justify-start text-sm h-auto py-2"
+                onClick={() => handleSelectWorkflow(workflow.id)}
+                title={workflow.description || undefined}
+                type="button"
+              >
+                <div className="mr-2 flex-shrink-0">
+                  {getWorkflowIcon(workflow.icon)}
+                </div>
+                <div className="flex flex-col items-start overflow-hidden">
+                  <span className="truncate w-full text-left text-sm">{workflow.name}</span>
+                  {workflow.summary && (
+                    <span className="text-xs text-muted-foreground w-full text-left truncate">{workflow.summary}</span>
+                  )}
+                </div>
+              </Button>
+              {workflow.description && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-auto shrink-0 px-2 text-muted-foreground"
+                  aria-label={`About ${workflow.name}`}
+                  aria-expanded={aboutOpen === workflow.id}
+                  onClick={() => setAboutOpen(aboutOpen === workflow.id ? null : workflow.id)}
+                  type="button"
+                >
+                  <Info className="h-4 w-4" />
+                </Button>
               )}
             </div>
-          </Button>
+            {aboutOpen === workflow.id && (
+              <p className="px-3 pb-2 text-xs text-muted-foreground whitespace-normal">{workflow.description}</p>
+            )}
+          </div>
         ))}
       </div>
     </div>
@@ -136,6 +157,7 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
               className="h-[36px] border border-input hover:bg-purple-500/10 text-purple-700 flex items-center px-3 text-sm"
               type="button"
               onClick={() => setIsOpen(prev => !prev)}
+              title={selectedWorkflowObj && 'description' in selectedWorkflowObj ? selectedWorkflowObj.description : undefined}
             >
               {displayIcon}
               {!shouldHideName && (
@@ -166,6 +188,7 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
               className="h-[36px] border border-input hover:bg-purple-500/10 text-purple-700 flex items-center px-3 text-sm"
               type="button"
               onClick={() => setIsOpen(prev => !prev)}
+              title={selectedWorkflowObj && 'description' in selectedWorkflowObj ? selectedWorkflowObj.description : undefined}
             >
               {displayIcon}
               {!shouldHideName && (
