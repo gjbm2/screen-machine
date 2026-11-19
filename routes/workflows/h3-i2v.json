@@ -73,7 +73,7 @@
    ]
   },
   "_meta": {
-   "title": "MiniMax H3 Image to Video {{POSITIVE-PROMPT}}"
+   "title": "MiniMax H3 Image to Video {{POSITIVE-PROMPT}} {{IMAGE-TO-VIDEO}}"
   }
  },
  "9": {
@@ -179,7 +179,7 @@
    "fps": 48
   },
   "_meta": {
-   "title": "CreateVideo"
+   "title": "CreateVideo {{CREATE-VIDEO}}"
   }
  },
  "17": {

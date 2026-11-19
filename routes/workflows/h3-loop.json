@@ -77,7 +77,7 @@
    ]
   },
   "_meta": {
-   "title": "MiniMax H3 Image to Video {{POSITIVE-PROMPT}}"
+   "title": "MiniMax H3 Image to Video {{POSITIVE-PROMPT}} {{IMAGE-TO-VIDEO}}"
   }
  },
  "9": {

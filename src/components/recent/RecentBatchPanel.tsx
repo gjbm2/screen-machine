@@ -15,6 +15,7 @@ import { toast } from 'sonner';
 import { JobPlaceholder, placeholderKeyOf } from '@/components/jobs/JobPlaceholder';
 import { ImageMenuItems } from '@/components/common/ImageMenuItems';
 import { openNextWithInfo } from '@/contexts/LoopeViewContext';
+import { isVideoFile } from '@/utils/image-utils';
 
 // Add type declaration for window.generateImage
 declare global {
@@ -491,6 +492,19 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
                   placeholder={placeholderKeyOf(selectedImage)}
                   aspectRatio={typeof selectedImage.metadata?.aspectRatio === 'number' ? selectedImage.metadata.aspectRatio : 16 / 9}
                   large
+                />
+              ) : selectedImage.mediaType === 'video' || isVideoFile(selectedImage.urlFull || selectedImage.id) ? (
+                // a clip plays here (Generated keeps clips since 19 Nov: an <img> showed its prompt as broken alt text)
+                <video
+                  key={selectedImage.id}
+                  src={selectedImage.urlFull}
+                  poster={selectedImage.urlThumb || undefined}
+                  className={styles.selectedImage}
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  onClick={() => onImageClick && onImageClick(selectedImage)}
                 />
               ) : (
                 <img 

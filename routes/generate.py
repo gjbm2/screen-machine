@@ -143,6 +143,9 @@ def image_size(image):
         return None
 
 
+VIDEO_SIZES = {"landscape": (1344, 768), "portrait": (768, 1344), "square": (1024, 1024)}   # MiniMax H3's sizes
+
+
 def size_chosen(workflow_id, width, height):
     """True when the caller asked for a size other than the workflow's default (src/data/workflows.json params)."""
     if not width or not height:
@@ -577,6 +580,24 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
         finish = finish_size(picture, box, turn=screen_box is None)
         info(f"Finish: picture {picture} -> {finish[0]}x{finish[1]} (box {box})")
 
+    # A video's Advanced settings (workflows.json h3-i2v params): its shape (by default the picture's, so a portrait
+    # isn't stretched into landscape), its length in seconds, and its smoothness (frame interpolation; the frame
+    # rate follows, so it plays at real speed)
+    fps = None
+    if _node_inputs(workflow_data, "{{IMAGE-TO-VIDEO}}"):
+        shape = vars(args_namespace).get("video_shape") or "auto"
+        if shape == "auto" and args_namespace.images:
+            w, h = image_size(args_namespace.images[0]) or (16, 9)
+            shape = "landscape" if w / h >= 1.2 else "portrait" if w / h <= 1 / 1.2 else "square"
+        size = VIDEO_SIZES.get(shape)
+        if size and not (args_namespace.width and args_namespace.height):
+            args_namespace.width, args_namespace.height = size
+        seconds = vars(args_namespace).get("video_seconds")
+        if seconds and not vars(args_namespace).get("video_length"):
+            vars(args_namespace)["video_length"] = int(round(24 * float(seconds))) + 4
+        if vars(args_namespace).get("interpolate_frames"):
+            fps = 24 * int(vars(args_namespace)["interpolate_frames"])
+
     unique_video_name = f"output_video{str(uuid.uuid4())[:8]}"
     json_replacements = {
         r"{{LATENT-IMAGE}}": {  
@@ -629,12 +650,16 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
             "height": args_namespace.height
         },
         r"{{INTERPOLATOR}}": {
-            "multiplier": vars(args_namespace).get("interpolate_frames", None)
+            "multiplier": int(vars(args_namespace)["interpolate_frames"])
+            if str(vars(args_namespace).get("interpolate_frames") or "").isdigit() else None
         },        
         r"{{IMAGE-TO-VIDEO}}": {
             "length": vars(args_namespace).get("video_length", None),
             "width": args_namespace.width,
             "height": args_namespace.height
+        },
+        r"{{CREATE-VIDEO}}": {
+            "fps": fps
         },
         r"{{SAVE-WEBM}}": {
             "filename_prefix": unique_video_name
