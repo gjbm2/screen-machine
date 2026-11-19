@@ -867,6 +867,8 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
     loop = next((w.get("loop") for w in _load_json_once("workflow", "workflows.json")
                  if w.get("id") == args_namespace.workflow), None)
     if loop:
+        pace = vars(args_namespace).get("pace") or loop.get("pace", "slow")
+        loop = {**loop, **(loop.get("paces") or {}).get(pace, {}), "pace": pace}
         from routes.clip_ease import ease_result
         tracker.update(job_id, message="Easing the clip")
         output["message"], clip = ease_result(output["message"], loop, job_id,

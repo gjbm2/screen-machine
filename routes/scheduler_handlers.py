@@ -440,7 +440,8 @@ def handle_animate(instruction, context, now, output, publish_destination):
                 "targets": [publish_destination],
                 "refiner": refiner,
                 "prompt": prompt if prompt else None,
-                "image_path": image_path
+                "image_path": image_path,
+                "pace": (instruction.get("pace") or "").strip().lower() or None,
             }
         }
         

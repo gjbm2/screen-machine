@@ -373,7 +373,8 @@ def publish_to_destination(
             )
             placing = (result.get("meta") or {}).pop("placing", None)
             if result.get("success") and update_published:
-                _publish_clip_of(source_path, publish_destination_id, result, placing, batch_id, is_history_navigation)
+                _publish_clip_of(source_path, publish_destination_id, result, placing, batch_id, is_history_navigation,
+                                 skip_bucket, cross_bucket_mode)
             
             return result
             
@@ -384,7 +385,7 @@ def publish_to_destination(
         return {"success": False, "error": str(e)}
 
 def _publish_clip_of(still: Path, publish_destination_id: str, result: dict, placing: str | None, batch_id,
-                     is_history_navigation: bool) -> None:
+                     is_history_navigation: bool, skip_bucket, cross_bucket_mode: bool) -> None:
     """A published still brings its newest clip with it (routes/clips.py): the clip goes up after the picture (after
     it lands, when it is still being fitted to the screen), so the screen shows the picture and then it comes to
     life. A copy into another bucket is linked to the still's copy."""
@@ -409,8 +410,10 @@ def _publish_clip_of(still: Path, publish_destination_id: str, result: dict, pla
     info(f"[publish] {still.name} has a clip: publishing {clip.name} after it")
 
     def go():
+        # into the destination's bucket exactly when the still went there (then linked to the still's copy)
         res = publish_to_destination(source=clip, publish_destination_id=publish_destination_id, metadata=meta,
-                                     silent=True, batch_id=batch_id, is_history_navigation=is_history_navigation)
+                                     skip_bucket=skip_bucket, cross_bucket_mode=cross_bucket_mode, silent=True,
+                                     batch_id=batch_id, is_history_navigation=is_history_navigation)
         if not res.get("success"):
             warning(f"[publish] {still.name}'s clip did not go up: {res.get('error')}")
     if not _when_placed(placing, go):

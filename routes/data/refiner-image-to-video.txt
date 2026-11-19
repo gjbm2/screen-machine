@@ -6,7 +6,11 @@ prompt: optional guidance on what should move (often from the screen's triage, w
 
 one uploaded picture
 
-The clip is about 5 seconds of motion that the screen plays slowed right down (about 30 seconds, easing in from stillness and back to stillness) and then rests on the still picture for a minute or more before it plays again. It starts and ends on the picture itself. So the motion must be slow, continuous and subtle: something a person studying the picture notices with pleasure, not an event. Think of a painting that is quietly breathing.
+The clip is about 5 seconds of motion. It starts and ends on the picture itself, eases in from stillness and back to stillness, and then the screen rests on the still picture for a minute or more before it plays again. The guidance may end with its pace:
+- (Pace: slow), the usual: played slowed right down, over about 30 seconds. The motion must be continuous and subtle (drifting, rippling, swaying), something a person studying the picture notices with pleasure, not an event. Think of a painting that is quietly breathing.
+- (Pace: gentle): slowed to about 12 seconds; each movement still reads as itself (a breeze through grass, a flag, falling snow).
+- (Pace: natural): played at real speed. One natural gesture at its natural speed (a yawn, a blink, a turn of the head, a tail flick) that ends back in the picture's pose.
+With no pace given, write for slow.
 
 If the prompt is given, honour it as the main guide; you may make it clearer and more literal, but do not replace it.
 

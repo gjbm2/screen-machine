@@ -228,7 +228,7 @@ def ease_result(source, loop, job_id, still=None):
         if run.returncode != 0:
             raise RuntimeError(f"easing the clip failed: {run.stderr.strip()[-300:]}")
         motion = float(run.stdout.strip().splitlines()[-1])
-        clip = {"eased": True, "play_s": play, "motion": round(motion, 2),
+        clip = {"eased": True, "pace": loop.get("pace", "slow"), "play_s": play, "motion": round(motion, 2),
                 "rest_s": rest_range(motion, loop.get("rest_s", [30, 180]))}
         tagged = os.path.join(tmp, "tagged.mp4")
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", dst, "-c", "copy", "-metadata",

@@ -435,7 +435,7 @@ def handle_image_generation(input_obj, wait=False, source="api", job_ids_out=Non
         base_kwargs["silent"] = data["silent"]
 
     # A clip's still: its name in the bucket and its full-size copy (async_amimate; routes/clips.py)
-    for key in ("still", "still_image"):
+    for key in ("still", "still_image", "pace"):
         if data.get(key):
             base_kwargs[key] = data[key]
 
@@ -843,10 +843,14 @@ def async_amimate(targets, obj = {}, source="api"):
             image_payload = get_image_from_target(target_destination)
             
             # Create a separate request for each target
+            # The pace the clip is played at (catalogue loop "paces"): the animator hears it, the easing renders it
+            pace = (result.get("data", {}).get("pace") or "").lower() or None
+            brief = result.get("data", {}).get("prompt", "") or ""
             target_result = {
                 "intent": "animate",
                 "data": {
-                    "prompt": result.get("data", {}).get("prompt", ""),
+                    "prompt": f"{brief} (Pace: {pace}.)" if pace and brief else brief,
+                    "pace": pace,
                     "refiner": resolve_runtime_value("refiner", "animate"),
                     "targets": [target_destination],  # Single target for this request
                     # Alexa can only name the refiners' (still) workflows, so animate takes the catalogue's own
