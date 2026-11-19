@@ -1,0 +1,39 @@
+{
+  "name": "adapt_prompt",
+  "description": "The instruction for an edit of one or two pictures, which picture the result is built on, and its shape.",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "canvas": {
+        "type": "string",
+        "enum": ["A", "B", "none"],
+        "description": "The uploaded picture the result is built on (its scene, frame and shape stay): A (first uploaded), B (second), or none for a new scene made from both."
+      },
+      "shape": {
+        "type": "string",
+        "enum": ["canvas", "landscape", "portrait", "square"],
+        "description": "canvas: the result keeps the canvas's shape. For a new scene: landscape, portrait or square."
+      },
+      "full_prompt": {
+        "type": "string",
+        "description": "The instruction, with the pictures called image A (uploaded first) and image B (second)."
+      },
+      "must_keep": {
+        "type": "array",
+        "items": {"type": "string"},
+        "description": "The exact words from the request that must appear in full_prompt: every named person, body state, injury, act and any text to show. Empty when there are none."
+      },
+      "focus": {
+        "type": "string",
+        "enum": ["figure", "scene"],
+        "description": "figure: the picture is chiefly a person or people; scene: anything else."
+      },
+      "workflow": {
+        "type": "string",
+        "enum": ["qwen21-edit.json", "qwen21-combine.json"],
+        "description": "qwen21-edit.json for one picture, qwen21-combine.json for two."
+      }
+    },
+    "required": ["canvas", "shape", "full_prompt", "must_keep", "focus", "workflow"]
+  }
+}

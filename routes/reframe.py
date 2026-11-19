@@ -38,7 +38,7 @@ EXTEND_PROMPT = ("Extend this picture to fill the whole frame: replace the plain
                  "scene, continuing it seamlessly in the same style, light and colours. Keep the original part of the "
                  "picture exactly as it is.")
 # Before an edit's own instruction, when the photo was put on a grey canvas of the chosen shape
-EXTEND_EDIT = ("Picture 1 has plain grey areas at its edges: fill them by extending the scene seamlessly in the same "
+EXTEND_EDIT = ("Image 1 has plain grey areas at its edges: fill them by extending the scene seamlessly in the same "
                "style and light. Then: ")
 CACHE_DAYS = 60
 

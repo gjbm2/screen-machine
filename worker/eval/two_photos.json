@@ -1,0 +1,43 @@
+{
+  "note": "Edits of one or two uploaded pictures (owner, 19 Nov 2026): the refiner must name the picture the result is built on (canvas A = first uploaded, B = second, none = a new scene), and the result must take that picture's shape whatever the other's is. Inputs are made by `two_photos.py inputs` with the app's own models (neutral subjects, deliberately different shapes).",
+  "inputs": {
+    "man": {"workflow": "krea2-turbo.json", "size": [1152, 1728], "prompt": "Studio portrait photograph of a bearded middle-aged man in a grey wool suit and white shirt, head and shoulders, facing the camera, plain grey backdrop, soft light."},
+    "woman_coat": {"workflow": "krea2-turbo.json", "size": [1152, 2048], "prompt": "Full-length photograph of a young woman with dark shoulder-length hair in a long red wool coat, standing on a London street of brick houses, facing the camera, overcast daylight."},
+    "room_painting": {"workflow": "qwen21.json", "size": [2752, 1536], "prompt": "Oil painting of a Victorian drawing room: an empty green velvet armchair beside a lit fireplace on the right, a rug, a window on the left, warm firelight, visible brushwork and canvas texture."},
+    "style_painting": {"workflow": "qwen21.json", "size": [1536, 1536], "prompt": "Post-impressionist oil painting of wheat fields and cypress trees under a swirling night sky with a crescent moon, thick impasto, short directional brushstrokes, bold ultramarine and chrome yellow."},
+    "dog": {"workflow": "krea2-turbo.json", "size": [2048, 1536], "prompt": "Photograph of a golden retriever sitting on green grass in a park, looking at the camera, trees behind, afternoon sun."},
+    "woman_beach": {"workflow": "krea2-turbo.json", "size": [2048, 1360], "prompt": "Full-length photograph of a woman with long blonde hair in a light blue summer dress standing barefoot on a sandy beach, the sea behind her, bright midday light."}
+  },
+  "cases": [
+    {"id": "person_into_painting", "request": "add this man into the painting, sitting in the armchair",
+     "uploads": ["man", "room_painting"], "canvas": "B", "shape": "room_painting",
+     "must": "the room painting with the bearded man seated in the green armchair, painted to match; room unchanged"},
+    {"id": "dog_into_painting", "request": "put the dog in this painting, lying by the fire",
+     "uploads": ["room_painting", "dog"], "canvas": "A", "shape": "room_painting",
+     "must": "the room painting with the golden retriever lying by the fireplace, painted to match"},
+    {"id": "replace_person", "request": "replace the woman on the beach with the woman in the red coat",
+     "uploads": ["woman_coat", "woman_beach"], "canvas": "B", "shape": "woman_beach",
+     "must": "the beach photo; the dark-haired woman in the red coat stands where the blonde was; beach unchanged"},
+    {"id": "style_transfer", "request": "render this photo in the style of this painting",
+     "uploads": ["style_painting", "dog"], "canvas": "B", "shape": "dog",
+     "must": "the dog photo's composition (dog sitting, park) repainted with swirling impasto in blues and yellows"},
+    {"id": "two_together", "request": "put these two together in the same photo, side by side",
+     "uploads": ["man", "woman_coat"], "canvas": "none", "shape": "landscape",
+     "must": "one landscape photo with both the bearded man and the woman in the red coat side by side, both recognisable"},
+    {"id": "head_swap", "request": "put this man's head on the woman in the red coat",
+     "uploads": ["man", "woman_coat"], "canvas": "B", "shape": "woman_coat",
+     "must": "the street photo of the red-coat figure, now with the bearded man's head and face"},
+    {"id": "clothes_from_other", "request": "make the woman on the beach wear the red coat from the other photo",
+     "uploads": ["woman_beach", "woman_coat"], "canvas": "A", "shape": "woman_beach",
+     "must": "the beach photo; the blonde woman now wears the long red coat; her face and the beach unchanged"},
+    {"id": "explicit_numbering", "request": "photo 2's man standing behind the woman in photo 1",
+     "uploads": ["woman_coat", "man"], "canvas": "A", "shape": "woman_coat",
+     "must": "the red-coat street photo with the bearded man standing just behind her"},
+    {"id": "background_from_other", "request": "use the painting as the background for the dog",
+     "uploads": ["dog", "room_painting"], "canvas": "B", "shape": "room_painting",
+     "must": "the drawing-room painting with the golden retriever in it; acceptable: the dog painted in"},
+    {"id": "one_picture", "request": "make it night, the fire the only light",
+     "uploads": ["room_painting"], "canvas": "A", "shape": "room_painting",
+     "must": "the same room at night lit only by the fire"}
+  ]
+}

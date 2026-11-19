@@ -11,7 +11,7 @@ def test_refiner_failure_passes_the_prompt_through(monkeypatch):
     monkeypatch.setattr(routes.openai, "openai_prompt", fail)
     monkeypatch.setattr(routes.utils, "dict_substitute", lambda name, subs: "{}" if name.endswith(".json.j2") else "x")
     monkeypatch.setattr(routes.utils, "resolve_runtime_value", lambda **kw: "qwen21-turbo.json")
-    wf, refined, final = generate_handler._refine({}, "a nude by Modigliani", "qwen21-turbo.json", [], "enrich", False, [],
+    wf, refined, final, _ = generate_handler._refine({}, "a nude by Modigliani", "qwen21-turbo.json", [], "enrich", False, [],
                                                   {"prompt": "a nude by Modigliani"}, {})
     assert refined == "a nude by Modigliani" and final == refined
 

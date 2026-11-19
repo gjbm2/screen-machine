@@ -784,12 +784,13 @@
         "name": "Shape",
         "type": "select",
         "options": [
+          {"value": "auto", "label": "Automatic"},
           {"value": "photo", "label": "Same as the photo"},
           {"value": "landscape", "label": "Landscape (16:9)"},
           {"value": "portrait", "label": "Portrait (9:16)"},
           {"value": "square", "label": "Square"}
         ],
-        "default": "photo"
+        "default": "auto"
       },
       {
         "id": "fill",
@@ -842,12 +843,13 @@
         "name": "Shape",
         "type": "select",
         "options": [
+          {"value": "auto", "label": "Automatic"},
           {"value": "photo", "label": "Same as the photo"},
           {"value": "landscape", "label": "Landscape (16:9)"},
           {"value": "portrait", "label": "Portrait (9:16)"},
           {"value": "square", "label": "Square"}
         ],
-        "default": "photo"
+        "default": "auto"
       },
       {
         "id": "fill",

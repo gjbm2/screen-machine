@@ -384,9 +384,12 @@ def handle_image_generation(input_obj, wait=False, source="api", job_ids_out=Non
                 job_ids_out.append(job["id"])
 
     try:
-        corrected_workflow, refined_prompt, final_prompt = _refine(
+        corrected_workflow, refined_prompt, final_prompt, *rest = _refine(
             data, prompt, workflow, images, corrected_refiner, images_required, prepared_images,
             input_dict, subs)
+        framing = rest[0] if rest else {}
+        if framing:
+            refined_prompt, final_prompt = number_pictures(refined_prompt, framing), number_pictures(final_prompt, framing)
     except Exception as e:
         reason = str(e).strip().splitlines()[0][:300] if str(e).strip() else type(e).__name__
         for job_id, _ in jobs:
@@ -413,6 +416,9 @@ def handle_image_generation(input_obj, wait=False, source="api", job_ids_out=Non
     base_kwargs.pop("job_id", None)                   # Each thread gets its own
     base_kwargs["images"] = images                    # ensure images list is passed downstream
     base_kwargs["batch_id"] = batch_id
+    if framing:
+        base_kwargs["images"], base_kwargs["shape"] = framing_for(images, framing, base_kwargs.get("shape"))
+        utils.logger.info(f"Framing {framing}: shape {base_kwargs['shape']}")
     
     # Add workflow-specific parameters
     if skip_upscaling is not None:
@@ -493,7 +499,8 @@ def handle_image_generation(input_obj, wait=False, source="api", job_ids_out=Non
 def _refine(data, prompt, workflow, images, corrected_refiner, images_required, prepared_images,
             input_dict, subs):
     """Refine (OpenAI), choose the workflow and translate if asked. Returns
-    (corrected_workflow, refined_prompt, final_prompt)."""
+    (corrected_workflow, refined_prompt, final_prompt, framing): framing is the adapt refiner's {"canvas": "A" | "B" |
+    "none", "shape": ...} for an edit of uploaded pictures (see framing_for), else {}."""
     import json
     import routes.openai
     import utils.logger
@@ -502,10 +509,18 @@ def _refine(data, prompt, workflow, images, corrected_refiner, images_required, 
 
     # Refine if needed
     if corrected_refiner is not None:
+        # A refiner with its own answer (refiner-<name>.schema.json.j2, e.g. adapt's canvas and shape), else enrich's
+        own_schema = corrected_refiner.replace(".txt.j2", ".schema.json.j2").replace(".txt", ".schema.json.j2")
+        try:
+            schema = json.loads(dict_substitute(own_schema, subs)) if own_schema != corrected_refiner else None
+        except Exception:
+            schema = None
+        if images_required and len(prepared_images) == 2:
+            input_dict = {**input_dict, "pictures": "Two pictures are attached: A (uploaded first), then B."}
         openai_args = {
             "user_prompt": json.dumps(input_dict),
             "system_prompt": dict_substitute(corrected_refiner, subs),
-            "schema": json.loads(dict_substitute("refiner-enrich.schema.json.j2", subs))
+            "schema": schema or json.loads(dict_substitute("refiner-enrich.schema.json.j2", subs))
         }
         
         if images_required:
@@ -632,7 +647,35 @@ def _refine(data, prompt, workflow, images, corrected_refiner, images_required, 
     else:
         final_prompt = refined_prompt
 
-    return corrected_workflow, refined_prompt, final_prompt
+    framing = {k: refined_output[k] for k in ("canvas", "shape") if isinstance(refined_output, dict) and k in refined_output}
+    return corrected_workflow, refined_prompt, final_prompt, framing
+
+
+def number_pictures(prompt, framing):
+    """The adapt refiner's "image A" / "image B" (upload order) as the model's image 1 / image 2 (the canvas is
+    image 1). The refiner names the pictures by letter because, asked to number them itself, it often numbered them in
+    upload order while putting the canvas first (19 Nov eval)."""
+    import re
+    if not prompt:
+        return prompt
+    number = {"A": "2", "B": "1"} if framing.get("canvas") == "B" else {"A": "1", "B": "2"}
+    return re.sub(r"\b(image|picture|photo)\s+([AB])\b", lambda m: f"{m.group(1)} {number[m.group(2)]}", prompt)
+
+
+def framing_for(images, framing, shape):
+    """Two pictures to edit, ordered so the result is built on the right one (owner, 19 Nov: 'add this person into
+    the painting', 'replace that woman with this one', 'render this in the style of this painting'): Qwen 2.1 builds
+    its result on image 1 and keeps its frame and shape, and the adapt refiner names that picture (canvas A or B, or
+    none for a new scene) and writes its prompt with the canvas as image 1. Returns (images, shape): the canvas first;
+    the shape the user chose, else for a new scene the refiner's (landscape, portrait or square), else the canvas's
+    own (None)."""
+    from routes import reframe
+    images = list(images or [])
+    if framing.get("canvas") == "B" and len(images) >= 2:
+        images = [images[1], images[0]] + images[2:]
+    if shape in (None, "", "auto") and framing.get("canvas") == "none" and framing.get("shape") in reframe.SHAPES:
+        shape = framing["shape"]
+    return images, (None if shape == "auto" else shape)
 
 def async_combine(targets, obj = {}, source="api"):
     """

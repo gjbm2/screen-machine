@@ -852,6 +852,154 @@ def test_the_catalogues_shape_options_are_the_ones_the_app_knows():
         for p in w.get("params") or []:
             if p["id"] == "shape":
                 values = {o["value"] if isinstance(o, dict) else o for o in p["options"]}
-                assert values - {"photo"} <= set(reframe.SHAPES), f"{w['id']}: shapes the app doesn't know"
+                assert values - {"auto", "photo"} <= set(reframe.SHAPES), f"{w['id']}: shapes the app doesn't know"
             if p["id"] == "fill":
                 assert {o["value"] if isinstance(o, dict) else o for o in p["options"]} <= {"extend", "crop"}
+
+
+# ------------------------------------------------- two pictures: which one the result is built on (owner, 19 Nov)
+# "add this person into the painting", "replace that woman with this one", "render this in the style of this
+# painting", "put these two together": Qwen 2.1 builds its result on image 1, so the adapt refiner names the canvas
+# (A, B or none) and the app puts it first; the result takes the canvas's shape whatever the other picture's is.
+
+PAINTING, PERSON = (150, 110, 60), (40, 40, 160)
+
+
+def picture(colour, size):
+    buf = BytesIO()
+    Image.new("RGB", size, colour).save(buf, format="JPEG", quality=95)
+    return {"name": f"{colour[0]}.jpg", "image": base64.b64encode(buf.getvalue()).decode()}
+
+
+def combine_through_the_page(house, framing, uploads, **params):
+    """The generator page, Adapt's refiner answering with framing; returns (fake worker, picture made)."""
+    import routes.generate_handler as handler
+    import routes.generate_utils as generate_utils
+    mp = house["monkeypatch"]
+    fake = FinishingRunPod()
+    mp.setattr(house["generate"], "runpod_api", fake)
+    mp.setattr(handler, "_refine", lambda data, prompt, workflow, *a, **k: (
+        "qwen21-combine.json", "Put the man from image 2 into image 1", "Put the man from image 2 into image 1", framing))
+    out = generate_utils.process_generate_image_request(
+        {"prompt": "add this man into the painting", "batch_id": "abc123_frontend", "refiner": "adapt",
+         "params": {"poll_interval": 0.01, **params}, "global_params": {"batch_size": 1}}, uploaded_images=uploads)
+    return fake, size_of(house["output"] / "_recent" / out["recent_files"][0])
+
+
+def sent_colours(fake):
+    out = []
+    for img in fake.images:
+        with Image.open(BytesIO(base64.b64decode(img["image"]))) as im:
+            im = im.convert("RGB")
+            out.append(im.getpixel((im.width // 2, im.height // 2)))
+    return out
+
+
+def test_the_canvas_uploaded_second_goes_first_and_sets_the_shape(house):
+    """'add this man into the painting', the man uploaded first: the painting is image 1 and the result is its shape."""
+    fake, made = combine_through_the_page(house, {"canvas": "B", "shape": "canvas"},
+                                          [picture(PERSON, (556, 1024)), picture(PAINTING, (1600, 900))])
+    first, second = sent_colours(fake)
+    assert near(first, PAINTING) and near(second, PERSON), "the painting is not image 1"
+    assert same_shape(made, (1600, 900)), f"the result is {made}, not the painting's shape"
+
+
+def test_the_canvas_uploaded_first_stays_first(house):
+    fake, made = combine_through_the_page(house, {"canvas": "A", "shape": "canvas"},
+                                          [picture(PAINTING, (1600, 900)), picture(PERSON, (556, 1024))])
+    assert near(sent_colours(fake)[0], PAINTING) and same_shape(made, (1600, 900))
+
+
+def test_a_new_scene_takes_the_refiners_shape(house):
+    """'put these two together': no canvas; two portraits side by side make a landscape."""
+    fake, made = combine_through_the_page(house, {"canvas": "none", "shape": "landscape"},
+                                          [picture(PERSON, (556, 1024)), picture(PAINTING, (600, 1000))])
+    with Image.open(BytesIO(base64.b64decode(fake.images[0]["image"]))) as first:
+        assert same_shape(first.size, (16, 9)), "image 1 was not given the new scene's shape"
+    assert same_shape(made, (16, 9))
+
+
+def test_the_users_shape_wins_over_the_refiners(house):
+    fake, made = combine_through_the_page(house, {"canvas": "none", "shape": "landscape"},
+                                          [picture(PERSON, (556, 1024)), picture(PAINTING, (600, 1000))],
+                                          shape="square", fill="extend")
+    assert same_shape(made, (1, 1))
+
+
+def test_automatic_with_a_canvas_keeps_the_canvass_shape(house):
+    fake, made = combine_through_the_page(house, {"canvas": "B", "shape": "canvas"},
+                                          [picture(PERSON, (556, 1024)), picture(PAINTING, (1024, 768))], shape="auto")
+    assert same_shape(made, (1024, 768))
+
+
+def test_the_adapt_refiner_is_told_which_picture_is_which_and_answers_with_a_canvas(monkeypatch):
+    """_refine sends Adapt's own answer schema (canvas, shape) and names the uploads A and B; its answer comes back."""
+    import routes.generate_handler as handler
+    import routes.openai
+    from routes.utils import build_schema_subs
+    seen = {}
+
+    def answer(**kw):
+        seen.update(kw)
+        return {"canvas": "B", "shape": "canvas", "full_prompt": "Put the man from image 2 into image 1",
+                "must_keep": [], "focus": "scene", "workflow": "qwen21-combine.json"}
+    monkeypatch.setattr(routes.openai, "openai_prompt", answer)
+    images = [picture(PERSON, (56, 102)), picture(PAINTING, (160, 90))]
+    wf, refined, final, framing = handler._refine(
+        {}, "add this man into the painting", None, images, "refiner-adapt.txt.j2", 2, images,
+        {"prompt": "add this man into the painting"}, build_schema_subs())
+    assert wf == "qwen21-combine.json" and framing == {"canvas": "B", "shape": "canvas"}
+    assert set(seen["schema"]["parameters"]["properties"]) >= {"canvas", "shape", "full_prompt"}
+    assert "A (uploaded first), then B" in seen["user_prompt"]
+    assert len(seen["images"]) == 2
+
+
+@pytest.mark.parametrize("framing,shape,order,expected_shape", [
+    ({"canvas": "A", "shape": "canvas"}, None, "ab", None),
+    ({"canvas": "B", "shape": "canvas"}, None, "ba", None),
+    ({"canvas": "B", "shape": "canvas"}, "auto", "ba", None),
+    ({"canvas": "none", "shape": "landscape"}, None, "ab", "landscape"),
+    ({"canvas": "none", "shape": "landscape"}, "auto", "ab", "landscape"),
+    ({"canvas": "none", "shape": "landscape"}, "portrait", "ab", "portrait"),   # the user's choice wins
+    ({"canvas": "B", "shape": "canvas"}, "square", "ba", "square"),
+    ({}, None, "ab", None),
+])
+def test_framing_for(framing, shape, order, expected_shape):
+    from routes.generate_handler import framing_for
+    images, got = framing_for([{"name": "a"}, {"name": "b"}], framing, shape)
+    assert "".join(i["name"] for i in images) == order and got == expected_shape
+
+
+def test_one_picture_is_never_reordered():
+    from routes.generate_handler import framing_for
+    images, _ = framing_for([{"name": "a"}], {"canvas": "B", "shape": "canvas"}, None)
+    assert [i["name"] for i in images] == ["a"]
+
+
+@pytest.mark.parametrize("canvas,expected", [
+    ("B", "Put the man from image 2 into the room in image 1; keep image 1 unchanged."),
+    ("A", "Put the man from image 1 into the room in image 2; keep image 2 unchanged."),
+    ("none", "Put the man from image 1 into the room in image 2; keep image 2 unchanged."),
+])
+def test_the_refiners_letters_become_the_models_numbers(canvas, expected):
+    """The refiner calls the uploads image A and image B; the model gets the canvas as image 1."""
+    from routes.generate_handler import number_pictures
+    raw = "Put the man from image A into the room in image B; keep image B unchanged."
+    assert number_pictures(raw, {"canvas": canvas}) == expected
+    assert number_pictures("A cat on a mat, a Bauhaus poster", {"canvas": "B"}) == "A cat on a mat, a Bauhaus poster"
+
+
+def test_the_numbered_prompt_reaches_the_model(house):
+    """Through the page: the refiner's letters are numbered with the canvas first, in what the model is sent."""
+    import routes.generate_handler as handler
+    import routes.generate_utils as generate_utils
+    mp = house["monkeypatch"]
+    fake = FinishingRunPod()
+    mp.setattr(house["generate"], "runpod_api", fake)
+    raw = "Put the man from image A into the room in image B."
+    mp.setattr(handler, "_refine", lambda *a, **k: ("qwen21-combine.json", raw, raw, {"canvas": "B", "shape": "canvas"}))
+    generate_utils.process_generate_image_request(
+        {"prompt": "add this man into the painting", "batch_id": "abc123_frontend", "refiner": "adapt",
+         "params": {"poll_interval": 0.01}, "global_params": {"batch_size": 1}},
+        uploaded_images=[picture(PERSON, (556, 1024)), picture(PAINTING, (1600, 900))])
+    assert _prompt_sent(fake.payload) == "Put the man from image 2 into the room in image 1."
