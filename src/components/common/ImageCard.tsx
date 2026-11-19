@@ -110,7 +110,8 @@ const ImageCard: React.FC<ImageCardProps> = ({
     return image.metadata && typeof image.metadata === 'object' && 'placeholder' in image.metadata && image.metadata.placeholder === true;
   }, [image.metadata]);
 
-  // Get aspect ratio from metadata if available
+  // Get aspect ratio from metadata if available. The thumbnail holds this shape until it loads ('auto' then takes the
+  // picture's own), so a bucket's grid doesn't open as collapsed cells with their icons piled up (owner, 19 Nov).
   const aspectRatio = React.useMemo(() => {
     if (image.metadata && typeof image.metadata === 'object' && 'aspectRatio' in image.metadata) {
       return typeof image.metadata.aspectRatio === 'number'
@@ -173,6 +174,7 @@ const ImageCard: React.FC<ImageCardProps> = ({
           <RetryImg
             src={image.urlThumb || image.urlFull}
             alt={image.promptKey}
+            style={{ aspectRatio: `auto ${aspectRatio}` }}
             className="w-full h-auto object-cover rounded-md select-none cursor-pointer"
             draggable={false}
             onClick={(e) => {
@@ -198,6 +200,7 @@ const ImageCard: React.FC<ImageCardProps> = ({
           <RetryImg
             src={image.urlThumb || image.urlFull}
             alt={image.promptKey}
+            style={{ aspectRatio: `auto ${aspectRatio}` }}
             className="w-full h-auto object-cover rounded-md select-none"
             draggable={false}
           />
