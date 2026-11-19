@@ -512,19 +512,10 @@ const Index = () => {
         workflows={workflows}
         selectedWorkflow={currentWorkflow}
         currentParams={currentParams}
-        currentGlobalParams={currentGlobalParams}
         onWorkflowChange={setCurrentWorkflow}
         onParamsChange={setCurrentParams}
-        onGlobalParamChange={(paramId: string, value: any) => {
-          setCurrentGlobalParams(prev => ({
-            ...prev,
-            [paramId]: value
-          }));
-        }}
         selectedRefiner={selectedRefiner}
-        refinerParams={refinerParams}
         onRefinerChange={handleRefinerChange}
-        onRefinerParamChange={handleRefinerParamChange}
       />
 
       {/* every job being made, live from the job tracker (docs/JOBS.md) */}

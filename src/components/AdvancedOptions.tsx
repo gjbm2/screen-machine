@@ -1,6 +1,12 @@
-
-import React, { useState, useEffect } from 'react';
-import { 
+// The generator's Advanced panel (owner, 19 Nov: "meant to adapt to the workflow in question and surface relevant
+// controls"). Everything in it is read from the catalogue, so a new workflow brings its own controls:
+//   Workflow       Auto or one workflow: its one-line summary, and its description (model, steps…) on request
+//   Its settings   that workflow's params (size, steps, seed, shape…); none under Auto, which picks per prompt
+//   Prompt helper  the refiner, with its description
+// The old Global settings (endpoint, debug, quality, console), refiner params and resource links were placeholders
+// nothing read, so they're gone.
+import React, { useState } from 'react';
+import {
   Sheet,
   SheetContent,
   SheetDescription,
@@ -11,14 +17,13 @@ import {
 } from '@/components/ui/sheet';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
-import { Workflow, WorkflowParam } from '@/types/workflows';
-import ParamSection from './advanced/ParamSection';
-import ResourceLinks from './advanced/ResourceLinks';
-import globalOptionsData from '@/data/global-options.json';
+import { Workflow } from '@/types/workflows';
+import ParamInput from './advanced/ParamInput';
 import refinersData from '@/data/refiners.json';
-import refinerParamsData from '@/data/refiner-params.json';
 import { useIsMobile } from '@/hooks/use-mobile';
+
+const AUTO_WORKFLOW = { id: 'auto', name: 'Auto', summary: 'Picks the best one for your prompt' };
+const AUTO_REFINER = { id: 'auto', name: 'Auto', description: 'Picks the best helper for the workflow and prompt' };
 
 interface AdvancedOptionsProps {
   workflows: Workflow[];
@@ -26,12 +31,9 @@ interface AdvancedOptionsProps {
   onWorkflowChange: (workflowId: string) => void;
   params: Record<string, any>;
   onParamChange: (paramId: string, value: any) => void;
-  globalParams?: Record<string, any>;
-  onGlobalParamChange?: (paramId: string, value: any) => void;
+  onResetParams: () => void;
   selectedRefiner?: string;
   onRefinerChange?: (refinerId: string) => void;
-  refinerParams?: Record<string, any>;
-  onRefinerParamChange?: (paramId: string, value: any) => void;
   isOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
 }
@@ -42,156 +44,95 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
   onWorkflowChange,
   params,
   onParamChange,
-  globalParams = {},
-  onGlobalParamChange = () => {},
-  selectedRefiner = 'none',
+  onResetParams,
+  selectedRefiner = 'auto',
   onRefinerChange = () => {},
-  refinerParams = {},
-  onRefinerParamChange = () => {},
   isOpen = false,
   onOpenChange = () => {},
 }) => {
-  const [isParamsOpen, setIsParamsOpen] = useState(true);
-  const [isRefinerParamsOpen, setIsRefinerParamsOpen] = useState(true);
-  const [isGlobalParamsOpen, setIsGlobalParamsOpen] = useState(true);
-  const [currentRefinerParams, setCurrentRefinerParams] = useState<WorkflowParam[]>([]);
   const isMobile = useIsMobile();
-  
-  // Handle open/close events
-  const handleOpenChange = (open: boolean) => {
-    console.log("Advanced options panel - handleOpenChange called with:", open);
-    onOpenChange(open);
-  };
-  
-  const currentWorkflow = workflows.find(w => w.id === selectedWorkflow) || workflows[0];
+  const [aboutOpen, setAboutOpen] = useState(false);
 
-  useEffect(() => {
-    const refinerData = refinerParamsData.find(r => r.id === selectedRefiner);
-    if (refinerData && refinerData.params) {
-      setCurrentRefinerParams(refinerData.params as WorkflowParam[]);
-      
-      if (refinerData.params) {
-        refinerData.params.forEach(param => {
-          if (param.default !== undefined && refinerParams[param.id] === undefined) {
-            onRefinerParamChange(param.id, param.default);
-          }
-        });
-      }
-    } else {
-      setCurrentRefinerParams([]);
-    }
-  }, [selectedRefiner, onRefinerParamChange, refinerParams]);
-
-  const sheetWidth = isMobile ? "w-[85%]" : "sm:max-w-md";
+  const workflow = selectedWorkflow === 'auto' ? null : workflows.find(w => w.id === selectedWorkflow) ?? null;
+  const settings = workflow?.params ?? [];
+  const changed = settings.some(p => params[p.id] !== undefined && params[p.id] !== p.default);
+  const refiner = selectedRefiner === 'auto' ? AUTO_REFINER : refinersData.find(r => r.id === selectedRefiner);
 
   return (
-    <Sheet open={isOpen} onOpenChange={handleOpenChange}>
-      <SheetContent 
-        className={`${sheetWidth} overflow-y-auto`}
-        onPointerDownOutside={(e) => {
-          // This prevents the click outside from propagating but allows the dialog to close
-          e.preventDefault();
-        }}
-        onEscapeKeyDown={(e) => {
-          // Allow escape key to close the sheet but prevent propagation
-          e.stopPropagation();
-        }}
+    <Sheet open={isOpen} onOpenChange={onOpenChange}>
+      <SheetContent
+        className={`${isMobile ? 'w-[85%]' : 'sm:max-w-md'} overflow-y-auto`}
+        onPointerDownOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => e.stopPropagation()}
       >
         <SheetHeader className="text-left p-0">
-          <div className="flex justify-between items-center mb-4">
-            <div>
-              <SheetTitle>Advanced Options</SheetTitle>
-              <SheetDescription>
-                Configure generation settings for your images
-              </SheetDescription>
-            </div>
-          </div>
+          <SheetTitle>Advanced</SheetTitle>
+          <SheetDescription>The workflow, its settings and the prompt helper</SheetDescription>
         </SheetHeader>
-        
+
         <div className="py-6 space-y-6">
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Generation Workflow</label>
-            <Select 
-              value={selectedWorkflow} 
-              onValueChange={onWorkflowChange}
-            >
-              <SelectTrigger className="w-full text-left">
-                <SelectValue placeholder="Select workflow" />
+          <section className="space-y-2">
+            <label className="text-sm font-medium" htmlFor="advanced-workflow">Workflow</label>
+            <Select value={workflow ? workflow.id : 'auto'} onValueChange={(id) => { setAboutOpen(false); onWorkflowChange(id); }}>
+              <SelectTrigger id="advanced-workflow" className="w-full text-left">
+                <SelectValue placeholder="Auto" />
               </SelectTrigger>
               <SelectContent>
-                {workflows.map((workflow) => (
-                  <SelectItem key={workflow.id} value={workflow.id}>
-                    {workflow.name}
-                  </SelectItem>
+                {[AUTO_WORKFLOW, ...workflows].map((w) => (
+                  <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground mt-1">
-              {currentWorkflow?.description}
-            </p>
-          </div>
+            <p className="text-xs text-muted-foreground">{(workflow ?? AUTO_WORKFLOW).summary}</p>
+            {workflow?.description && (
+              <button type="button" className="text-xs underline underline-offset-2" onClick={() => setAboutOpen(o => !o)} aria-expanded={aboutOpen}>
+                {aboutOpen ? 'Less' : 'More about it'}
+              </button>
+            )}
+            {aboutOpen && workflow?.description && <p className="text-xs text-muted-foreground">{workflow.description}</p>}
+          </section>
 
-          {currentWorkflow?.params && currentWorkflow.params.length > 0 && (
-            <ParamSection
-              title="Workflow Parameters"
-              params={currentWorkflow.params}
-              values={params}
-              onChange={onParamChange}
-              isOpen={isParamsOpen}
-              onOpenChange={setIsParamsOpen}
-            />
-          )}
+          <section className="space-y-3 rounded-md border p-3">
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-sm font-medium">{workflow ? `${workflow.name} settings` : 'Settings'}</h3>
+              {changed && (
+                <button type="button" className="text-xs underline underline-offset-2" onClick={onResetParams}>
+                  Back to defaults
+                </button>
+              )}
+            </div>
+            {!workflow && (
+              <p className="text-sm text-muted-foreground">
+                Auto picks a workflow for each prompt. Choose one above to set its size, steps or seed.
+              </p>
+            )}
+            {workflow && settings.length === 0 && (
+              <p className="text-sm text-muted-foreground">This workflow has nothing to set.</p>
+            )}
+            {settings.map((param) => (
+              <ParamInput key={param.id} param={param} value={params[param.id]} onChange={onParamChange} />
+            ))}
+          </section>
 
-          <div className="space-y-2">
-            <label className="text-sm font-medium">Generation Refiner</label>
-            <Select 
-              value={selectedRefiner} 
-              onValueChange={onRefinerChange}
-            >
-              <SelectTrigger className="w-full text-left">
-                <SelectValue placeholder="Select refiner" />
+          <section className="space-y-2">
+            <label className="text-sm font-medium" htmlFor="advanced-refiner">Prompt helper</label>
+            <Select value={selectedRefiner} onValueChange={onRefinerChange}>
+              <SelectTrigger id="advanced-refiner" className="w-full text-left">
+                <SelectValue placeholder="Auto" />
               </SelectTrigger>
               <SelectContent>
-                {refinersData.map((refiner) => (
-                  <SelectItem key={refiner.id} value={refiner.id}>
-                    {refiner.name}
-                  </SelectItem>
+                {[AUTO_REFINER, ...refinersData].map((r) => (
+                  <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
-            <p className="text-xs text-muted-foreground mt-1">
-              {refinersData.find(r => r.id === selectedRefiner)?.description || ''}
-            </p>
-          </div>
-
-          {currentRefinerParams.length > 0 && (
-            <ParamSection
-              title="Refiner Parameters"
-              params={currentRefinerParams}
-              values={refinerParams}
-              onChange={onRefinerParamChange}
-              isOpen={isRefinerParamsOpen}
-              onOpenChange={setIsRefinerParamsOpen}
-            />
-          )}
-
-          <ParamSection
-            title="Global Settings"
-            params={globalOptionsData as WorkflowParam[]}
-            values={globalParams}
-            onChange={onGlobalParamChange}
-            isOpen={isGlobalParamsOpen}
-            onOpenChange={setIsGlobalParamsOpen}
-          />
+            <p className="text-xs text-muted-foreground">{refiner?.description || ''}</p>
+          </section>
         </div>
-        
-        <Separator className="my-4" />
-        
-        <ResourceLinks />
-        
-        <SheetFooter className="flex justify-end py-4 sm:py-0 mt-4">
+
+        <SheetFooter className="flex justify-end py-4 sm:py-0">
           <SheetClose asChild>
-            <Button variant="outline" onClick={() => handleOpenChange(false)}>Close</Button>
+            <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
           </SheetClose>
         </SheetFooter>
       </SheetContent>
