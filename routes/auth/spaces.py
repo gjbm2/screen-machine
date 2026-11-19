@@ -1,5 +1,6 @@
-"""Which space each generator batch belongs to (SQLite at ~/.local/state/screen-machine/accounts.db), so the jobs feed
-can show a viewer only their own; and moving a browser's images into an account when it signs in."""
+"""Accounts state (SQLite at ~/.local/state/screen-machine/accounts.db): which space each generator batch belongs to,
+so the jobs feed can show a viewer only their own; who has signed in and when (Settings › People); and moving a
+browser's images into an account when it signs in."""
 import json
 import os
 import sqlite3
@@ -25,6 +26,8 @@ def _conn():
         _db.execute("CREATE TABLE IF NOT EXISTS batch_spaces ("
                     " batch_id TEXT PRIMARY KEY, space TEXT NOT NULL, created_at REAL NOT NULL)")
         _db.execute("CREATE INDEX IF NOT EXISTS batch_spaces_space ON batch_spaces(space)")
+        _db.execute("CREATE TABLE IF NOT EXISTS people_seen ("
+                    " email TEXT PRIMARY KEY, name TEXT, first_seen REAL NOT NULL, last_seen REAL NOT NULL)")
     return _db
 
 
@@ -35,6 +38,24 @@ def note_batch(batch_id, space):
         _conn().execute("INSERT OR IGNORE INTO batch_spaces (batch_id, space, created_at) VALUES (?, ?, ?)",
                         (str(batch_id), space, time.time()))
         _cache.pop(str(batch_id), None)
+
+
+def note_person(email, name=None):
+    """Someone signed in, or came back signed in."""
+    if not email:
+        return
+    now = time.time()
+    with _lock:
+        _conn().execute("INSERT INTO people_seen (email, name, first_seen, last_seen) VALUES (?, ?, ?, ?)"
+                        " ON CONFLICT(email) DO UPDATE SET last_seen=excluded.last_seen,"
+                        " name=COALESCE(excluded.name, people_seen.name)", (email, name, now, now))
+
+
+def seen_people():
+    """{email: {name, first_seen, last_seen}} of everyone who has signed in."""
+    with _lock:
+        rows = _conn().execute("SELECT email, name, first_seen, last_seen FROM people_seen").fetchall()
+    return {r[0]: {"name": r[1], "first_seen": r[2], "last_seen": r[3]} for r in rows}
 
 
 def batch_space(batch_id):

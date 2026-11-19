@@ -1,5 +1,6 @@
 import { JSON_HEADERS, jsonInit, readErrorBody, requestJson, send } from '@/shared/http/client';
 import type { PublishDestination } from './types';
+import { askFit, type Fit } from '@/shared/fitChoice';
 
 interface RawPublishDestination {
   id: string;
@@ -10,10 +11,34 @@ interface RawPublishDestination {
   headless?: boolean;
   hidden?: boolean;
   groups?: string[];
-  access?: 'guest' | 'member' | 'admin';
+  access?: 'guest' | 'approved' | 'admin';
+}
+
+/**
+ * How to fit a picture of another shape than the screen (routes/reframe.py): asks the person (FitChoiceDialog) when
+ * POST /api/publish/fit-check says the picture is the wrong shape. Returns the choice, undefined to use the screen's own
+ * setting (the right shape, no dialog, or the check failed: never in the way of a publish), or null when they cancel.
+ */
+export async function chooseFit(where: {
+  dest_bucket_id: string;
+  src_bucket_id?: string;
+  filename?: string;
+  source_url?: string;
+}): Promise<Fit | null | undefined> {
+  try {
+    const response = await send('/publish/fit-check', jsonInit('POST', where));
+    if (!response.ok) return undefined;
+    const check = await response.json();
+    if (!check?.ask) return undefined;
+    return askFit({ screen: where.dest_bucket_id, name: check.name || where.dest_bucket_id, picture: check.picture, size: check.screen });
+  } catch {
+    return undefined;
+  }
 }
 
 // Never rejects: every failure (validation, non-2xx, timeout, network, unparseable 2xx body) resolves { success: false, error }.
+// A picture of another shape than the screen is fitted as the person chooses (chooseFit), unless `fit` is given;
+// { success: false, cancelled: true } when they cancel.
 export async function publishImageUnified(data: {
   dest_bucket_id: string;
   src_bucket_id?: string;
@@ -21,13 +46,20 @@ export async function publishImageUnified(data: {
   source_url?: string;
   metadata?: unknown;
   skip_bucket?: boolean;
-}): Promise<{ success: boolean; error?: string }> {
+  fit?: Fit;
+}): Promise<{ success: boolean; error?: string; cancelled?: boolean }> {
   const isRouteBucket = !!(data.src_bucket_id && data.filename);
   const isRouteExternal = !!data.source_url;
 
   if (!isRouteBucket && !isRouteExternal) {
     console.error('[publishImageUnified] Missing required parameters');
     return { success: false, error: 'Missing required parameters: either (src_bucket_id + filename) or source_url' };
+  }
+
+  if (!data.fit) {
+    const fit = await chooseFit(data);
+    if (fit === null) return { success: false, cancelled: true, error: 'Not published' };
+    if (fit) data = { ...data, fit };
   }
 
   try {
@@ -164,24 +196,29 @@ export async function getPublishedContentForDestination(destinationId: string): 
 }
 
 // Throwing variants of POST /publish (publishImageUnified returns {success:false} and has a 30 s timeout instead).
+// Both ask how to fit a picture of another shape (chooseFit); a cancel throws "Not published".
 export async function publishBucketFile(destBucketId: string, srcBucketId: string, filename: string) {
+  const fit = await chooseFit({ dest_bucket_id: destBucketId, src_bucket_id: srcBucketId, filename });
+  if (fit === null) throw new Error('Not published');
   return requestJson(
     '/publish',
-    jsonInit('POST', { dest_bucket_id: destBucketId, src_bucket_id: srcBucketId, filename }),
+    jsonInit('POST', { dest_bucket_id: destBucketId, src_bucket_id: srcBucketId, filename, ...(fit ? { fit } : {}) }),
     (response) => `Publish failed: ${response.statusText}`,
   );
 }
 
 export async function publishUrl(destBucketId: string, sourceUrl: string) {
+  const fit = await chooseFit({ dest_bucket_id: destBucketId, source_url: sourceUrl });
+  if (fit === null) throw new Error('Not published');
   return requestJson(
     '/publish',
-    jsonInit('POST', { dest_bucket_id: destBucketId, source_url: sourceUrl }),
+    jsonInit('POST', { dest_bucket_id: destBucketId, source_url: sourceUrl, ...(fit ? { fit } : {}) }),
     (response) => `Publish failed: ${response.statusText}`,
   );
 }
 
 /** What a screen does with a picture of another shape than its own (routes/reframe.py). */
-export type Reframe = 'extend' | 'crop' | 'whole';
+export type Reframe = Fit;
 
 /** PUT /api/publish-destinations/<id>/reframe: a screen's choice for a picture of another shape (Settings › Screens). */
 export function setScreenReframe(id: string, reframe: Reframe): Promise<{ id: string; reframe: Reframe }> {

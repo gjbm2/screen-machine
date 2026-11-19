@@ -1,7 +1,7 @@
 # Who may call what in the Flask API (routes/auth/gates.py; docs/ACCOUNTS.md). Only enforced while the deployment's
 # `accounts` capability is on and it names a Google client ID. Processes on this machine pass every gate.
 #
-# A rule: {path: regex on the request path, methods: [..] (default all), role: guest|member|admin|destination,
+# A rule: {path: regex on the request path, methods: [..] (default all), role: guest|approved|admin|destination,
 # body: [JSON body keys naming destinations]}. Every matching rule must pass; anything no rule matches is open.
 # `destination` = the role in that destination's `access` (publish-destinations.json; default admin).
 #
@@ -40,6 +40,7 @@ rules:
   - {path: '^/api/(jobs/cancel-all|cancel_all_jobs)$', role: admin}
 
   # --- the rest of the setup
+  - {path: '^/api/auth/people$', role: admin}   # Settings › People: who has which role
   - {path: '^/api/bakeoff/', role: admin}
   - {path: '^/api/art-tags/sweep$', role: admin}
   - {path: '^/api/files', role: admin}

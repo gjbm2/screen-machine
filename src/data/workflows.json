@@ -571,6 +571,7 @@
   {
     "id": "qwen21-turbo.json",
     "name": "Stylised and lettering (Qwen Image 2.1 Turbo)",
+    "summary": "Illustration, posters, words in the picture",
     "style_descriptor": "explicitly stylized commercial photography, enhanced artificial lighting, glossy perfection, studio lighting, synthetic aesthetics",
     "style_guidance": "Use ONLY for explicitly stylized, commercial, or synthetic photorealistic imagery. Ideal for fashion photography, product shots, commercial advertising, studio portraits, or when the user specifically requests glossy, artificial, or enhanced lighting effects. For natural, documentary, or authentic photography, prefer zimage-turbo instead. Also the first choice for any picture that must show words or lettering exactly. Also the first choice for a named person's own face on another body or character.",
     "input": [
@@ -629,6 +630,7 @@
   {
     "id": "qwen21.json",
     "name": "Painterly (Qwen Image 2.1)",
+    "summary": "Paintings and fine art; slower, more detail",
     "default": true,
     "style_descriptor": "oil on canvas, gallery brushwork, surreal palette, ink and gouache textures, inspired by [artist]",
     "style_guidance": "Use for painted, drawn, or illustrated works — murals, oil paintings, woodcuts, or dreamlike visual concepts. Less suitable for sculpture or 3D objects unless treatment is abstract. The first choice for painted, drawn or printed nudes and poses.",
@@ -694,6 +696,7 @@
   {
     "id": "zimage-turbo.json",
     "name": "Photographic, alternative (Z-Image Turbo)",
+    "summary": "Photos with a different look; fast",
     "style_descriptor": "natural photorealistic photography, authentic lighting, lifelike details, realistic textures, documentary photography, candid photography, street photography, landscape photography",
     "style_guidance": "An alternative for natural photographs. For most photographs prefer krea2-turbo.json.",
     "input": [
@@ -755,6 +758,7 @@
   {
     "id": "qwen21-edit.json",
     "name": "Adapt an image",
+    "summary": "Change a picture you upload",
     "runpod_id": "1p4605rkgfo392",
     "runpod_id_live": "v0lfqu2owx3lc4",
     "description": "Change an image from a prompt (Qwen-Image-2.1 Turbo edit)",
@@ -812,6 +816,7 @@
   {
     "id": "qwen21-combine.json",
     "name": "Combine two images",
+    "summary": "Mix two pictures you upload",
     "runpod_id": "1p4605rkgfo392",
     "runpod_id_live": "v0lfqu2owx3lc4",
     "description": "Combine two images from a prompt (Qwen-Image-2.1 Turbo edit, two references)",
@@ -871,6 +876,7 @@
   {
     "id": "krea2-turbo.json",
     "name": "Photographic (Krea 2 Turbo)",
+    "summary": "Photos: people, places, everyday scenes",
     "style_descriptor": "natural photorealistic photography, authentic lighting, lifelike details, realistic textures, documentary photography, candid photography, street photography, landscape photography",
     "style_guidance": "Use for most photorealistic imagery including natural, authentic, documentary, candid, street, landscape, portrait, and general photography. Ideal for realistic scenes, natural lighting, authentic details, and lifelike rendering. This is the preferred choice for most photorealistic requests unless the user explicitly requests stylized, commercial, or synthetic effects.",
     "alexavisible": true,
@@ -921,6 +927,7 @@
   {
     "id": "upscale-finish.json",
     "name": "Upscale Image",
+    "summary": "Fit a picture to the screen, sharper",
     "description": "Scale an image to the screen (lanczos, centre crop) on the new worker",
     "runpod_id": "1p4605rkgfo392",
     "runpod_id_live": "v0lfqu2owx3lc4",

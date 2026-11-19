@@ -1,4 +1,6 @@
+import { useSyncExternalStore } from 'react';
 import { Workflow, WorkflowParam } from '@/types/workflows';
+import { requestJson } from '@/shared/http/client';
 import rawWorkflowsData from './workflows.json';
 
 function convertToTypedWorkflows(data: any[]): Workflow[] {
@@ -6,6 +8,7 @@ function convertToTypedWorkflows(data: any[]): Workflow[] {
     id: workflow.id,
     name: workflow.name,
     icon: workflow.icon,
+    summary: workflow.summary,
     description: workflow.description || '',
     default: workflow.default || false,
     input: workflow.input || [],
@@ -46,8 +49,40 @@ function mergeCatalogue(publicData: any[], privateData: any[]): any[] {
 }
 
 // "hidden": true keeps a workflow's graph and config but leaves it out of what the app offers
-const typedWorkflows: Workflow[] = convertToTypedWorkflows(
-  mergeCatalogue(rawWorkflowsData as any[], __PRIVATE_WORKFLOWS__).filter(workflow => !workflow.hidden)
-);
+const offered = (data: any[]) => convertToTypedWorkflows(data.filter(workflow => !workflow.hidden));
+
+// The shared catalogue at first. The deployment's private entries are never in the bundle: Flask hands them only to
+// people allowed them (GET /api/workflows/private; docs/ACCOUNTS.md), and loadPrivateWorkflows() merges them in place,
+// so code holding this array (a .find at submit time) sees them too.
+const typedWorkflows: Workflow[] = offered(rawWorkflowsData as any[]);
+
+let snapshot: Workflow[] = [...typedWorkflows];
+const listeners = new Set<() => void>();
+let privateLoad: Promise<void> | null = null;
+
+/** Asks Flask for the private entries once per page (it answers [] to anyone not allowed them). */
+export function loadPrivateWorkflows(): Promise<void> {
+  privateLoad ??= requestJson<any[]>('/workflows/private', undefined, 'Could not read the workflows')
+    .then(privateData => {
+      if (!Array.isArray(privateData) || privateData.length === 0) return;
+      typedWorkflows.splice(0, typedWorkflows.length, ...offered(mergeCatalogue(rawWorkflowsData as any[], privateData)));
+      snapshot = [...typedWorkflows];
+      listeners.forEach(l => l());
+    })
+    .catch(() => { privateLoad = null; });
+  return privateLoad;
+}
+
+/** The workflows this person may use, re-rendering when the private entries arrive. */
+export function useWorkflows(): Workflow[] {
+  return useSyncExternalStore(
+    (listener) => {
+      listeners.add(listener);
+      void loadPrivateWorkflows();
+      return () => listeners.delete(listener);
+    },
+    () => snapshot,
+  );
+}
 
 export default typedWorkflows;

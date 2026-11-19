@@ -154,8 +154,15 @@ def detect_file_type(url: str) -> str:
     return "unknown"
 
 # A deployment's private config (deployments/<id>/private/, not in git) can add to a shared file: the workflow
-# catalogue takes this deployment's own workflows from private/catalogue.json (see merge_catalogue).
+# catalogue takes this deployment's own workflows from private/catalogue.json (see merge_catalogue). Only for callers
+# routes.auth.private_ok() allows (approved people, admins, and work with no request behind it; docs/ACCOUNTS.md):
+# anyone else gets the shared catalogue, and the private templates are missing for them (_PrivateAwareLoader).
 OVERLAYS = {"workflows.json": ("private", "catalogue.json")}
+
+
+def _private_ok():
+    from routes.auth import private_ok
+    return private_ok()
 
 
 def merge_catalogue(public, private):
@@ -182,8 +189,10 @@ def _load_json_once(cache_key: str, filename: str, force_reload: bool = False) -
     path = findfile(filename)
     if not path:
         raise FileNotFoundError(f"Could not locate file: {filename}")
-    overlay = smconfig.path(*OVERLAYS[filename]) if filename in OVERLAYS else None
+    overlay = smconfig.path(*OVERLAYS[filename]) if filename in OVERLAYS and _private_ok() else None
     overlay = overlay if overlay and overlay.exists() else None
+    if filename in OVERLAYS and not overlay:
+        cache_key += ":shared"  # the shared catalogue alone, cached apart from the merged one
 
     try:
         mtime = (os.path.getmtime(path), overlay.stat().st_mtime if overlay else None)
@@ -443,6 +452,17 @@ def encode_reference_urls(reference_urls, max_file_size_mb=5, bucket_id=None):
     return result
 
 
+class _PrivateAwareLoader(FileSystemLoader):
+    """A template loader for which the deployment's private templates (private/...) are missing when the caller may
+    not see the private catalogue (routes.auth.private_ok), so the shared templates' `ignore missing` includes skip
+    them."""
+
+    def get_source(self, environment, template):
+        if template.replace("\\", "/").startswith("private/") and not _private_ok():
+            raise TemplateNotFound(template)
+        return super().get_source(environment, template)
+
+
 def dict_substitute(template_or_file: str, substitutions: dict = None) -> str:
     substitutions = substitutions or {}
     filepath = find_template_file(template_or_file)
@@ -453,7 +473,7 @@ def dict_substitute(template_or_file: str, substitutions: dict = None) -> str:
         template_dir = os.path.dirname(filepath)
 
         # The template's own folder first; the search paths let it include a deployment's private text
-        env = SandboxedEnvironment(loader=FileSystemLoader([template_dir] + SEARCH_PATHS))
+        env = SandboxedEnvironment(loader=_PrivateAwareLoader([template_dir] + SEARCH_PATHS))
         env.filters['tojson'] = lambda val: json.dumps(val)
 
         try:
@@ -467,7 +487,7 @@ def dict_substitute(template_or_file: str, substitutions: dict = None) -> str:
             return ""
     else:
         # NEW: Use a loader so {% include %} still works in string templates
-        env = SandboxedEnvironment(loader=FileSystemLoader(SEARCH_PATHS))
+        env = SandboxedEnvironment(loader=_PrivateAwareLoader(SEARCH_PATHS))
         env.filters['tojson'] = lambda val: json.dumps(val)
         try:
             template = env.from_string(template_or_file)

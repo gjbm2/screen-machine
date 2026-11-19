@@ -166,6 +166,14 @@ def generate_image_route():
         return jsonify({"error": f"you can't publish to {target}"}), 403
     data['space'] = auth.own_space()
     auth.note_batch(data.get('batch_id'), data['space'])
+    # a workflow outside the caller's catalogue (the deployment's private one is for approved people and admins) is
+    # left to the router, which only sees theirs
+    workflow = data.get('workflow')
+    if workflow and workflow != 'auto':
+        from routes.utils import _load_json_once
+        if workflow not in {w.get('id') for w in _load_json_once("workflow", "workflows.json")}:
+            info(f"[generate_image_route] workflow {workflow} is not open to this caller: chosen by the router instead")
+            data['workflow'] = None
     
     # Process reference URLs
     reference_urls = data.get('referenceUrls', [])

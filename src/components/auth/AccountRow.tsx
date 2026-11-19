@@ -4,7 +4,7 @@ import { toast } from "sonner";
 import { signOut, useViewer } from "@/shared/auth/viewer";
 import { GoogleSignIn } from "./GoogleSignIn";
 
-const ROLE_WORDS = { admin: "Admin", member: "Member", guest: "Guest" } as const;
+const ROLE_WORDS = { admin: "Admin", approved: "Approved", guest: "Guest" } as const;
 
 export function AccountRow() {
   const viewer = useViewer();

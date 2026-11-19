@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import typedWorkflows from '@/data/typedWorkflows';
+import typedWorkflows, { useWorkflows } from '@/data/typedWorkflows';
 import { warmGpu } from '@/shared/api/jobs';
 import refinersData from '@/data/refiners.json';
 import { usePublishDestinations } from '@/hooks/usePublishDestinations';
@@ -14,6 +14,8 @@ export interface PromptFormInitialValues {
 }
 
 const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
+  // the shared catalogue, plus the deployment's private entries for people allowed them (docs/ACCOUNTS.md)
+  const workflows = useWorkflows();
   // Find the default workflow ID for initialization - but we'll default to "auto" now
   const getDefaultWorkflowId = (): string => {
     // If initialValues provides a specific workflow, use it
@@ -171,7 +173,7 @@ const usePromptForm = (initialValues: PromptFormInitialValues = {}) => {
     workflowParams,
     globalParams,
     refinerParams,
-    workflows: typedWorkflows,
+    workflows,
     refiners: refinersData,
     publishDestinations,
     handleWorkflowChange,

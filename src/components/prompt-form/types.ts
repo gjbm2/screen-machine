@@ -7,6 +7,7 @@ export interface WorkflowProps {
   id: string;
   name: string;
   icon?: string;
+  summary?: string;
   description: string;
   default?: boolean;
   input?: string[];

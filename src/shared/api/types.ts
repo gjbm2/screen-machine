@@ -113,7 +113,7 @@ export interface PublishDestination {
   hidden?: boolean;
   groups?: string[];
   /** The least role that may see and use it once sign-in is on (docs/ACCOUNTS.md); none = admins only. */
-  access?: 'guest' | 'member' | 'admin';
+  access?: 'guest' | 'approved' | 'admin';
 }
 
 export interface GenerateImageParams {

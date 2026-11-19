@@ -11,7 +11,7 @@ from itsdangerous import BadSignature, URLSafeTimedSerializer
 import smconfig
 from utils.logger import warning
 
-ROLES = ("guest", "member", "admin")  # rising; a role passes every gate needing it or less
+ROLES = ("guest", "approved", "admin")  # rising; a role passes every gate needing it or less
 SESSION_COOKIE = "sm_session"
 SPACE_COOKIE = "sm_space"
 COOKIE_DAYS = 365
@@ -27,7 +27,7 @@ def rank(role):
 
 # Everything site-specific about sign-in is deployment config, kept out of git: deployments/<id>/private/accounts.yaml
 #   google_client_id: "<the deployment's Google OAuth web client>"
-#   people: [{email, role: admin|member, name}]
+#   people: [{email, role: admin|approved, name}]
 # The code names no site, account or address.
 _config_lock = threading.Lock()
 _config = {"mtime": None, "client_id": "", "by_email": {}}
@@ -49,16 +49,39 @@ def _accounts_config():
                 for p in data.get("people") or []:
                     email = str((p or {}).get("email") or "").strip().lower()
                     if email:
-                        by_email[email] = {"role": p.get("role") if p.get("role") in ROLES else "guest",
-                                           "name": p.get("name")}
+                        by_email[email] = {"role": _role(p.get("role")), "name": p.get("name")}
             except Exception as e:
                 warning(f"[auth] {path}: {e}")
             _config.update(mtime=mtime, client_id=client, by_email=by_email)
         return {"client_id": _config["client_id"], "by_email": _config["by_email"]}
 
 
+def _role(value):
+    value = "approved" if value == "member" else value  # the first name for approved
+    return value if value in ROLES else "guest"
+
+
 def client_id():
     return _accounts_config()["client_id"]
+
+
+def save_people(by_email):
+    """Rewrites the people list of the private accounts file (the Settings › People page), keeping its client ID and
+    its leading comment lines. Atomic. by_email: {email: {role, name}}; a guest is simply not listed."""
+    path = smconfig.path("private", "accounts.yaml")
+    try:
+        text = path.read_text()
+    except OSError:
+        text = ""
+    header = "".join(line + "\n" for line in text.splitlines() if line.startswith("#"))
+    rows = [{"email": e, "role": p["role"], **({"name": p["name"]} if p.get("name") else {})}
+            for e, p in sorted(by_email.items()) if p.get("role") in ("approved", "admin")]
+    body = smconfig._yaml().safe_dump({"google_client_id": client_id(), "people": rows}, sort_keys=False,
+                                      default_flow_style=None, width=120)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(".yaml.tmp")
+    tmp.write_text(header + body)
+    os.replace(tmp, path)
 
 
 def people():
@@ -178,6 +201,16 @@ def destination_access(dest_id):
     except Exception as e:
         warning(f"[auth] publish-destinations unreadable: {e}")
     return "admin"
+
+
+def private_ok():
+    """Whether this caller may see the deployment's private catalogue (private/catalogue.json: its own workflows and
+    the routing text that goes with them): approved people and admins. Work with no request behind it (schedules,
+    generation threads) and processes on this machine may."""
+    from flask import has_request_context
+    if not has_request_context() or not active():
+        return True
+    return viewer().at_least("approved")
 
 
 def can_use_destination(dest_id):

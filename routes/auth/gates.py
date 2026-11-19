@@ -1,6 +1,6 @@
 """Which API calls need which role: config/auth/gates.yaml, checked before every /api request (app.py).
 
-A rule is {path: regex, methods: [..] (default all), role: guest|member|admin|destination, body: [keys]}.
+A rule is {path: regex, methods: [..] (default all), role: guest|approved|admin|destination, body: [keys]}.
 Every rule whose path and method match must pass. `role: destination` takes the role from the destination named by
 the regex's `destination` group (its `access` in publish-destinations.json); `body` keys name destinations in the
 JSON body, each of which must be usable too. Anything no rule matches is open."""

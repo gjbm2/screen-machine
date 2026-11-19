@@ -6,7 +6,7 @@ import MainLayout from '@/components/layout/MainLayout';
 import AdvancedOptionsContainer from '@/components/advanced/AdvancedOptionsContainer';
 import { useImageGeneration } from '@/hooks/image-generation/use-image-generation';
 import { useConsoleManagement } from '@/hooks/use-console-management';
-import typedWorkflows from '@/data/typedWorkflows';
+import typedWorkflows, { useWorkflows } from '@/data/typedWorkflows';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import type { PublishDestination } from '@/shared/api';
 import {
@@ -36,6 +36,7 @@ const Index = () => {
   // While the deployment is unknown (loading, or the request failed) the form is left as it is.
   const { deployment } = useDeployment();
   const generationOff = capabilityOn(deployment, 'generation') === false;
+  const workflows = useWorkflows();
   const [advancedOptionsOpen, setAdvancedOptionsOpen] = useState(false);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
@@ -508,7 +509,7 @@ const Index = () => {
       <AdvancedOptionsContainer
         isOpen={advancedOptionsOpen}
         onOpenChange={handleAdvancedOptionsOpenChange}
-        workflows={typedWorkflows}
+        workflows={workflows}
         selectedWorkflow={currentWorkflow}
         currentParams={currentParams}
         currentGlobalParams={currentGlobalParams}

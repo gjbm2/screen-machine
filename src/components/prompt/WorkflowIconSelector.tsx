@@ -41,7 +41,7 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
   const autoOption = {
     id: 'auto',
     name: 'Auto',
-    description: 'Automatically select the best workflow based on your prompt and refiner',
+    summary: 'Picks the best one for your prompt',
     icon: 'Zap'
   };
 
@@ -83,7 +83,7 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
           </div>
           <div className="flex flex-col items-start overflow-hidden">
             <span className="truncate w-full text-left text-sm font-medium">Auto</span>
-            <span className="text-xs text-muted-foreground w-full text-left whitespace-normal">Automatically select the best workflow based on your prompt and refiner</span>
+            <span className="text-xs text-muted-foreground w-full text-left whitespace-normal">{autoOption.summary}</span>
           </div>
         </Button>
         
@@ -105,7 +105,10 @@ const WorkflowIconSelector: React.FC<WorkflowIconSelectorProps> = ({
             </div>
             <div className="flex flex-col items-start overflow-hidden">
               <span className="truncate w-full text-left text-sm">{workflow.name}</span>
-              <span className="text-xs text-muted-foreground w-full text-left whitespace-normal">{workflow.description}</span>
+              {/* one line on what it's for (the catalogue's summary); the long description is for its maintainers */}
+              {workflow.summary && (
+                <span className="text-xs text-muted-foreground w-full text-left truncate">{workflow.summary}</span>
+              )}
             </div>
           </Button>
         ))}

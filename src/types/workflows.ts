@@ -11,6 +11,9 @@ export interface Workflow {
   id: string;
   name: string;
   icon?: string;
+  /** One short line for people choosing it (the generator's workflow menu). */
+  summary?: string;
+  /** What it is, for the people who maintain it (models, steps, history). */
   description: string;
   default?: boolean;
   input?: string[];

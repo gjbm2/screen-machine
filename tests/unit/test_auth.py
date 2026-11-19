@@ -23,7 +23,7 @@ def on(monkeypatch, tmp_path):
     monkeypatch.setattr(core, "client_id", lambda: "cid")
     monkeypatch.setattr(core.smconfig, "destinations", lambda *a: DESTS)
     monkeypatch.setattr(core, "people", lambda: {"boss@x.com": {"role": "admin", "name": "Boss"},
-                                                 "kid@x.com": {"role": "member", "name": "Kid"}})
+                                                 "kid@x.com": {"role": "approved", "name": "Kid"}})
     monkeypatch.setattr(core.smconfig, "secret", lambda *p: tmp_path.joinpath(*p))
     monkeypatch.setenv("ACCOUNTS_DB", str(tmp_path / "accounts.db"))
     monkeypatch.setattr(spaces, "_db", None)
@@ -80,7 +80,7 @@ def test_guest_operates_open_screens_only(on, app):
     assert guest.get("/api/jobs/costs").status_code == 401
 
 
-def test_member_is_refused_admin_calls_with_403_and_admin_passes(on, app):
+def test_approved_is_refused_admin_calls_with_403_and_admin_passes(on, app):
     assert client_as(app, "kid@x.com").get("/api/schedulers").status_code == 403
     assert client_as(app, "boss@x.com").get("/api/schedulers").status_code == 200
     assert client_as(app, "stranger@x.com").get("/api/schedulers").status_code == 403  # signed in, but a guest
@@ -144,7 +144,7 @@ def test_sign_in_sets_the_session_and_adopts_the_browser_space(on, app, monkeypa
     c.get("/api/auth/me")
     browser = c.get_cookie(core.SPACE_COOKIE).value
     r = c.post("/api/auth/google", json={"credential": "tok"})
-    assert r.status_code == 200 and r.get_json()["role"] == "member"
+    assert r.status_code == 200 and r.get_json()["role"] == "approved"
     assert c.get_cookie(core.SESSION_COOKIE)
     assert c.get("/api/auth/me").get_json()["email"] == "kid@x.com"
     import time
@@ -189,3 +189,58 @@ def test_adopt_moves_generated_sidecars(on, monkeypatch, tmp_path):
     assert json.loads((recent / "a.jpg.json").read_text())["space"] == "u:me@x.com"
     assert json.loads((recent / "b.jpg.json").read_text())["space"] == "g:other"
     assert spaces.batch_space("b") == "u:me@x.com"
+
+
+def test_people_page_sets_roles_and_keeps_an_admin(on, app, monkeypatch, tmp_path):
+    accounts = tmp_path / "accounts.yaml"
+    accounts.write_text("# header kept\ngoogle_client_id: cid\npeople:\n  - {email: boss@x.com, role: admin}\n")
+    monkeypatch.setattr(core.smconfig, "path", lambda *p: tmp_path / p[-1])
+    monkeypatch.setattr(core, "people", lambda: core._accounts_config()["by_email"])  # the file, not the fixture's
+    monkeypatch.setattr(core, "client_id", lambda: "cid")
+    spaces.note_person("kid@x.com", "Kid")
+    admin = client_as(app, "boss@x.com")
+    rows = admin.get("/api/auth/people").get_json()["people"]
+    assert [(r["email"], r["role"]) for r in rows] == [("boss@x.com", "admin"), ("kid@x.com", "guest")]
+    r = admin.put("/api/auth/people", json={"email": "kid@x.com", "role": "approved"})
+    assert r.status_code == 200
+    text = accounts.read_text()
+    assert text.startswith("# header kept\n") and "google_client_id: cid" in text and "kid@x.com" in text
+    assert core._accounts_config()["by_email"]["kid@x.com"]["role"] == "approved"
+    assert admin.put("/api/auth/people", json={"email": "boss@x.com", "role": "guest"}).status_code == 409
+    assert client_as(app, "kid@x.com").get("/api/auth/people").status_code == 403
+
+
+def test_private_catalogue_only_for_approved_and_admins(on, app):
+    with app.test_request_context(environ_base={"REMOTE_ADDR": "10.0.0.2"}):
+        assert not core.private_ok()
+    for email, ok in (("kid@x.com", True), ("boss@x.com", True), ("stranger@x.com", False)):
+        c = client_as(app, email)
+        with app.test_request_context(environ_base={"REMOTE_ADDR": "10.0.0.2"},
+                                      headers={"Cookie": f"{core.SESSION_COOKIE}={c.get_cookie(core.SESSION_COOKIE).value}"}):
+            assert core.private_ok() is ok
+    # no request behind it: schedules, generation threads (pytest-flask keeps a request context pushed, so pretend)
+    import flask
+    with pytest.MonkeyPatch.context() as m:
+        m.setattr(flask, "has_request_context", lambda: False)
+        assert core.private_ok()
+
+
+def test_catalogue_and_private_templates_follow_the_caller(on, app, monkeypatch, tmp_path):
+    from routes import utils
+    (tmp_path / "workflows.json").write_text('[{"id": "a.json"}]')
+    (tmp_path / "private").mkdir()
+    (tmp_path / "private" / "catalogue.json").write_text('[{"id": "p.json", "summary": "s"}]')
+    (tmp_path / "private" / "t.txt.j2").write_text("PRIVATE")
+    (tmp_path / "main.txt.j2").write_text('shared{% include "private/t.txt.j2" ignore missing %}')
+    monkeypatch.setattr(utils, "findfile", lambda name: str(tmp_path / name))
+    monkeypatch.setattr(utils.smconfig, "path", lambda *p: tmp_path.joinpath(*p))
+    monkeypatch.setattr(utils, "find_template_file", lambda name: str(tmp_path / name))
+    monkeypatch.setattr(utils, "SEARCH_PATHS", [str(tmp_path)])
+    utils._json_cache.clear()
+    with app.test_request_context(environ_base={"REMOTE_ADDR": "10.0.0.2"}):
+        assert [w["id"] for w in utils._load_json_once("workflow", "workflows.json")] == ["a.json"]
+        assert utils.dict_substitute("main.txt.j2") == "shared"
+    import flask
+    monkeypatch.setattr(flask, "has_request_context", lambda: False)  # work with no request behind it
+    assert [w["id"] for w in utils._load_json_once("workflow", "workflows.json")] == ["a.json", "p.json"]
+    assert utils.dict_substitute("main.txt.j2") == "sharedPRIVATE"
