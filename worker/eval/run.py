@@ -163,6 +163,7 @@ def main():
     os.makedirs(out, exist_ok=True)
     only = set(a.only.split(",")) if a.only else None
     if a.cmd == "route":
+        suite["cases"] = [c for c in suite["cases"] if not only or c["id"] in only]
         return route_cmd(suite, out, a.repeats, max(a.par, 6))
     todo = [(c, s) for c in suite["cases"] if (not only or c["id"] in only) and not c.get("route_only")
             for s in range(a.seeds)]

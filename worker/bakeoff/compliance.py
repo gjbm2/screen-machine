@@ -36,7 +36,7 @@ def refine(prompt, refiner_id):
     subs = build_schema_subs()
     system = resolve_runtime_value("refiner", refiner_id, return_key="system_prompt")
     try:
-        wf, refined, final = _refine({}, prompt, None, [], system, 0, [], {"prompt": prompt}, subs)
+        wf, refined, final = _refine({}, prompt, None, [], system, 0, [], {"prompt": prompt}, subs)[:3]
         return wf, final, None
     except Exception as e:
         return None, None, f"{type(e).__name__}: {e}"[:200]

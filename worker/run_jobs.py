@@ -31,7 +31,7 @@ def fill(graph, prompt, size, seed):
         title = node.get("_meta", {}).get("title", "")
         ins = node.get("inputs", {})
         if "{{POSITIVE-PROMPT}}" in title:
-            for k in ("prompt", "text"):
+            for k in ("prompt", "text", "value"):
                 if k in ins:
                     ins[k] = prompt
         if size and node.get("class_type") in ("EmptyLatentImage", "EmptySD3LatentImage", "ModelSamplingFlux"):

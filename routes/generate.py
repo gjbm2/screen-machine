@@ -549,7 +549,8 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
         },
         r"{{POSITIVE-PROMPT}}": {  
             "text":  args_namespace.prompt,
-            "prompt": args_namespace.prompt     # Qwen-Image's own text encoder node
+            "prompt": args_namespace.prompt,    # Qwen-Image's own text encoder node
+            "value": args_namespace.prompt      # a string node (PrimitiveStringMultiline) that feeds several encoders
         },
         r"{{NEGATIVE[-_]PROMPT}}": {  
             "text": vars(args_namespace).get("negativeprompt", None)
