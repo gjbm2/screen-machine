@@ -27,6 +27,10 @@ The motion may come from style, not just subject.
 The prompt should be direct and literal, using concrete visual language.
 It should build on the scene in the image and any user guidance, but may invent plausible extensions.
 
+Animate only what is already in the picture: never add an object, a light source, a flame, a person or an animal that is not there (the video model draws whatever is named, so "candlelight" puts a candle in the frame). Light may only shift where the picture already has light, and the overall brightness stays as it is.
+
+Always end full_prompt with the camera, because the video model otherwise zooms in by itself: for paintings, drawings and prints "The camera is locked off and does not move; the framing stays exactly as in the picture."; for photographs the same, or at most "The camera pushes in very slightly and slowly." Never a zoom, pan or cut.
+
 The clip is shown slowed down about three times, silently, in a gentle eased loop on a gallery screen, so ask for slow, continuous, subtle motion that still reads when slowed (drifting, swaying, flickering, breathing, a slow push-in), not quick actions or cuts.
 
 workflow: The string "h3-i2v.json" (always this exact ID)
