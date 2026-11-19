@@ -1,7 +1,8 @@
 """Download the famous-artworks library (config/artworks/catalogue.yaml) for the generator's Upload menu.
 
 Each work's picture is the lead image of its English Wikipedia article (the `wiki` title, else the best search hit for
-`search` or "<title> <artist>"), a Wikimedia Commons file. It is fetched at most 3840 px on its long edge (no
+`search` or "<title> <artist>"), a Wikimedia Commons file; failing that the article's Wikidata image, and for a work
+without one (or whose article names none), the first Commons file found by its `commons` words or title and artist. It is fetched at most 3840 px on its long edge (no
 upscaling; a 4K frame's width), saved as JPEG under 4.5 MB, with a 512 px thumbnail for the picker, into
 output/_artworks/ (served by Flask as /output/_artworks/, not in git). library.json there is what the page reads.
 
@@ -70,13 +71,26 @@ def api(**params) -> dict:
     raise RuntimeError(f"Wikipedia API kept refusing: {params}")
 
 
+STOP = {"with", "from", "over", "under", "after", "portrait", "painting", "still", "life", "self"}
+
+
+def fold(text: str) -> str:
+    import unicodedata
+    text = unicodedata.normalize("NFD", text)
+    return "".join(c if c.isalnum() else " " for c in text if not unicodedata.combining(c)).lower()
+
+
 def article(work: dict) -> str | None:
     """The English Wikipedia article for a work."""
     if work.get("wiki"):
         return work["wiki"]
     q = work.get("search") or f"{work['title']} {work['artist']} painting"
     hits = api(action="query", list="search", srsearch=q, srlimit=1).get("query", {}).get("search", [])
-    return hits[0]["title"] if hits else None
+    if not hits:
+        return None
+    # only an article about the work itself (it shares a word of the title), not the artist's or a list's
+    words = {w for w in fold(work["title"]).split() if len(w) >= 4 and w not in STOP}
+    return hits[0]["title"] if words & set(fold(hits[0]["title"]).split()) else None
 
 
 def lead_image(page: str) -> tuple[str, str] | None:
@@ -86,6 +100,36 @@ def lead_image(page: str) -> tuple[str, str] | None:
     if not pages or pages[0].get("missing") or not pages[0].get("pageimage"):
         return None
     return pages[0]["title"], pages[0]["pageimage"]
+
+
+def wikidata_image(page: str) -> tuple[str, str] | None:
+    """The article's Wikidata item's image (P18), for articles whose lead image Wikipedia doesn't name."""
+    data = api(action="query", titles=page, prop="pageprops", ppprop="wikibase_item", redirects=1)
+    pages = data.get("query", {}).get("pages", [])
+    qid = pages[0].get("pageprops", {}).get("wikibase_item") if pages else None
+    if not qid:
+        return None
+    r = session.get("https://www.wikidata.org/w/api.php", timeout=30, params={
+        "action": "wbgetclaims", "entity": qid, "property": "P18", "format": "json"})
+    time.sleep(0.3)
+    claims = r.json().get("claims", {}).get("P18", [])
+    if not claims:
+        return None
+    return pages[0]["title"], claims[0]["mainsnak"]["datavalue"]["value"].replace(" ", "_")
+
+
+def commons_search(work: dict) -> tuple[str, str] | None:
+    """A Commons file found by its `commons` words, else title and artist, for works without an article of their own
+    or whose article leads with something else (a study, the artist, a gallery photo)."""
+    q = work.get("commons") or f"{work['title']} {work['artist']}"
+    r = session.get("https://commons.wikimedia.org/w/api.php", timeout=30, params={
+        "action": "query", "list": "search", "srnamespace": 6, "srsearch": q, "srlimit": 5, "format": "json"})
+    time.sleep(0.3)
+    for hit in r.json().get("query", {}).get("search", []):
+        name = hit["title"].removeprefix("File:")
+        if name.lower().rsplit(".", 1)[-1] in ("jpg", "jpeg", "png", "tif", "tiff"):
+            return f"Commons: {hit['title']}", name.replace(" ", "_")
+    return None
 
 
 def image_info(file: str) -> dict:
@@ -170,8 +214,13 @@ def main() -> None:
         if dest.exists() and thumb.exists() and wid in sources and not a.refresh:
             continue
         try:
-            page = article(work)
+            page = None if work.get("commons") else article(work)
+            # the article's lead image, else its Wikidata image, else (no article of its own) a Commons search
             lead = lead_image(page) if page else None
+            if not lead and work.get("wiki"):
+                lead = wikidata_image(page)
+            if not lead:
+                lead = commons_search(work)
             if not lead:
                 failed.append((wid, f"no lead image (article: {page})"))
                 continue
