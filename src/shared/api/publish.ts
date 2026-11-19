@@ -10,6 +10,7 @@ interface RawPublishDestination {
   headless?: boolean;
   hidden?: boolean;
   groups?: string[];
+  access?: 'guest' | 'member' | 'admin';
 }
 
 // Never rejects: every failure (validation, non-2xx, timeout, network, unparseable 2xx body) resolves { success: false, error }.
@@ -82,7 +83,8 @@ export async function getPublishDestinations(includeRecent: boolean = false): Pr
       has_bucket: dest.has_bucket || false,
       headless: dest.headless || false,
       hidden: dest.hidden || false,
-      groups: dest.groups || []
+      groups: dest.groups || [],
+      access: dest.access,
     }));
 }
 

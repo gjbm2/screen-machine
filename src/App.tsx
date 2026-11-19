@@ -10,6 +10,7 @@ import { DarkMode } from './darkMode';
 import { AppPlayerProvider } from "@/components/player/appPlayer";
 import { DockedPlayer } from "@/components/player/DockedPlayer";
 import { AppNav } from "@/components/nav/AppNav";
+import { AdminOnly } from "@/components/auth/AdminOnly";
 
 // Each page is its own chunk: the TVs' /display/<screen> no longer loads the generator, Room, Music and the rest.
 // A deploy replaces dist/, so a tab opened before it asks for chunks that are gone: reload once to pick up the new build.
@@ -70,19 +71,19 @@ const App = () => (
             <Route path="/" element={<Index />} />
             <Route path="/display/:screenId" element={<DisplayPage />} />
             <Route path="/display" element={<Display />} />
-            <Route path="/schema-edit" element={<SchemaEdit />} />
-            <Route path="/schema-dynamic-form" element={<SchemaDynamicForm />} />
-            <Route path="/scheduler" element={<Scheduler />} />
-            <Route path="/jobs" element={<JobsPage />} />
-            <Route path="/lightsense" element={<LightSense />} />
+            <Route path="/schema-edit" element={<AdminOnly><SchemaEdit /></AdminOnly>} />
+            <Route path="/schema-dynamic-form" element={<AdminOnly><SchemaDynamicForm /></AdminOnly>} />
+            <Route path="/scheduler" element={<AdminOnly><Scheduler /></AdminOnly>} />
+            <Route path="/jobs" element={<AdminOnly><JobsPage /></AdminOnly>} />
+            <Route path="/lightsense" element={<AdminOnly><LightSense /></AdminOnly>} />
             <Route path="/androidapp" element={<AndroidApp />} />
             <Route path="/app" element={<AndroidApp />} />
-            <Route path="/adminadmin" element={<AdminPanel />} />
+            <Route path="/adminadmin" element={<AdminOnly><AdminPanel /></AdminOnly>} />
             <Route path="/room" element={<RoomPage />} />
             <Route path="/lights" element={<LightsControlPage />} />
-            <Route path="/settings/lights" element={<LightsPage />} />
+            <Route path="/settings/lights" element={<AdminOnly><LightsPage /></AdminOnly>} />
             <Route path="/music" element={<MusicPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/settings" element={<AdminOnly><SettingsPage /></AdminOnly>} />
             {/* where the app opens: this device's choice in Settings (Room or Music) */}
             <Route path="/start" element={<StartPage />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

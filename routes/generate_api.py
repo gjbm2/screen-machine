@@ -158,6 +158,14 @@ def generate_image_route():
         return jsonify({"error": f"Invalid JSON: {str(e)}"}), 400
 
     info(f"Full blob: {data}")
+
+    # Accounts (docs/ACCOUNTS.md): publishing only where the caller may, and the batch is theirs (their Generated tab)
+    from routes import auth
+    target = (data.get('params') or {}).get('publish_destination')
+    if target and target != "_recent" and not auth.can_use_destination(target):
+        return jsonify({"error": f"you can't publish to {target}"}), 403
+    data['space'] = auth.own_space()
+    auth.note_batch(data.get('batch_id'), data['space'])
     
     # Process reference URLs
     reference_urls = data.get('referenceUrls', [])

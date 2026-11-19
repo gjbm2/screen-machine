@@ -75,9 +75,10 @@ function emptyBucketDetails(bucketId: string, error: string | null): BucketDetai
 }
 
 /** Never rejects: failures come back in `error` (a 404 is an empty bucket with error null). */
-export async function getBucketDetails(bucketId: string): Promise<BucketDetails> {
+/** everyone: an admin's view of every person's Generated (_recent) images, not just their own (docs/ACCOUNTS.md). */
+export async function getBucketDetails(bucketId: string, options: { everyone?: boolean } = {}): Promise<BucketDetails> {
   try {
-    const response = await send(`/buckets/${bucketId}/complete`);
+    const response = await send(`/buckets/${bucketId}/complete${options.everyone ? '?everyone=1' : ''}`);
 
     if (response.status === 404) {
       return emptyBucketDetails(bucketId, null);

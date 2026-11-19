@@ -50,6 +50,13 @@ capabilities:
   rf: true
   blinds: true
   sonos: true
+  accounts: true
+
+# Sign-in (docs/ACCOUNTS.md; owner, 19 Nov): the Google OAuth web client the app signs in with (its origin is
+# https://screen.finsburybankforsavings.com). Empty: nobody can sign in and every caller is treated as an admin, as before.
+# Who is admin or member: private/accounts.yaml.
+accounts:
+  google_client_id: ""
 
 # Ports on this machine (these are the defaults; docs/PORTS.md is the register, Spectre mirrors it).
 ports: {flask: 5000, overlay_ws: 8765, room: 8700, show_bus: 8701, stream: 8702, show: 8703, dot: 8704}

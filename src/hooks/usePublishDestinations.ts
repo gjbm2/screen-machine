@@ -1,9 +1,16 @@
 import { useState, useEffect, useMemo } from 'react';
 import { publishApi } from '@/shared/api';
 import type { PublishDestination } from '@/shared/api';
+import { canUseDestination, useViewer } from '@/shared/auth/viewer';
 
 export function usePublishDestinations() {
-  const [destinations, setDestinations] = useState<PublishDestination[]>([]);
+  const [allDestinations, setDestinations] = useState<PublishDestination[]>([]);
+  // Only those this viewer may use, once sign-in is on (docs/ACCOUNTS.md; e.g. guests: the TVs, not devtest)
+  const viewer = useViewer();
+  const destinations = useMemo(
+    () => allDestinations.filter(dest => canUseDestination(viewer, dest)),
+    [allDestinations, viewer],
+  );
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,7 +46,7 @@ export function usePublishDestinations() {
   }, [destinations]);
 
   return {
-    destinations,             // All destinations without filtering
+    destinations,             // All destinations this viewer may use
     destinationsWithBuckets,  // All non-hidden destinations (except _recent)
     nonHeadlessDestinations,  // Only destinations that aren't marked as headless (except _recent)
     loading,

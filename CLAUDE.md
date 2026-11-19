@@ -24,6 +24,7 @@ This is a **site-specific test rig in the owner's own building**, on the LAN. Op
 
 ## Don't add what wasn't asked for
 5. **No auth anywhere in the AV stack:** no tokens, keys or passwords on room_service, stream_service, the display pages, the Room page or the sensors. Never add auth, holds or stop gates unless asked. The WAN-exposed Flask admin API stays as it is.
+   - **Exception (owner, 19 Nov): Google sign-in and roles** (docs/ACCOUNTS.md). Guests operate; admins set up; each person has their own Generated space. Who may call what lives in `config/auth/gates.yaml` and each destination's `access`; never add gates anywhere else. The TVs' `/display` pages and processes on this machine always pass.
 6. **Feature breadth, not enterprise QA.** No end-to-end or integration test runs, no reviewer or critic loops, no multi-round design reviews. Builders test their own work at the "does it crash" level. Shared plumbing gets real tests.
 7. **The Room console** is the app's own `/room` page: https://screen.finsburybankforsavings.com/room on the house network (or http://192.168.1.205:8080/room). It has simple controls only: no config, DMX patches, JSON or keys on it.
 

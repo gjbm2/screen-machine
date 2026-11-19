@@ -1,6 +1,7 @@
 [
   {
     "id": "_recent",
+    "access": "guest",
     "name": "Recent",
     "icon": "SquareArrowUp",
     "type": "output_file",
@@ -11,6 +12,7 @@
   },
   {
     "id": "north-screen",
+    "access": "guest",
     "name": "North screen",
     "icon": "SquareArrowUp",
     "type": "output_file",
@@ -53,6 +55,7 @@
   },
   {
     "id": "south-screen",
+    "access": "guest",
     "name": "South screen",
     "icon": "SquareArrowDown",
     "type": "output_file",

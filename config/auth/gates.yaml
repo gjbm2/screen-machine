@@ -1,0 +1,45 @@
+# Who may call what in the Flask API (routes/auth/gates.py; docs/ACCOUNTS.md). Only enforced while the deployment's
+# `accounts` capability is on and it names a Google client ID. Processes on this machine pass every gate.
+#
+# A rule: {path: regex on the request path, methods: [..] (default all), role: guest|member|admin|destination,
+# body: [JSON body keys naming destinations]}. Every matching rule must pass; anything no rule matches is open.
+# `destination` = the role in that destination's `access` (publish-destinations.json; default admin).
+#
+# The split (owner, 19 Nov): guests operate (generate, publish to and browse the screens open to them, run those
+# screens' schedules from the Room page); admins set things up (the Scheduler page, every destination, costs).
+rules:
+  # --- the scheduler: running a screen's schedule is operating it; what a schedule says is setup
+  - {path: '^/api/schedulers/(?P<destination>(?!events/|all/|exported-vars/)[^/]+)/', role: destination}
+  - {path: '^/api/schedulers/(?P<destination>(?!events$|all$|terminate$|exported-vars$)[^/]+)$', role: destination}
+  - {path: '^/api/schedulers$', role: admin}
+  - {path: '^/api/scheduler/schema$', role: admin}
+  - {path: '^/api/vars-registry$', role: admin}
+  - {path: '^/api/schedulers/[^/]+/schedule(/\d+)?$', methods: [POST, PUT], role: admin}
+  - {path: '^/api/schedulers/[^/]+/(schedule/stack|instructions)$', role: admin}
+  - {path: '^/api/schedulers/terminate$', role: admin}
+  - {path: '^/api/schedulers/events', methods: [DELETE], role: admin}
+  - {path: '^/api/schedulers/exported-vars/', methods: [DELETE], role: admin}
+
+  # --- buckets: each is its destination's; making, rebuilding and purging them is setup
+  - {path: '^/api/buckets/(?P<destination>(?!reindex$|add_image_to_new_bucket$)[^/]+)(/|$)', role: destination}
+  - {path: '^/api/buckets/$', methods: [POST], role: admin}
+  - {path: '^/api/buckets/reindex$', role: admin}
+  - {path: '^/api/buckets/[^/]+/(purge|reindex|extractjson)$', role: admin}
+  - {path: '^/api/buckets/_recent/(items|info)$', role: admin}   # the whole of everyone's Generated
+  - {path: '^/api/buckets/add_image_to_new_bucket$', role: guest, body: [source_publish_destination, target_publish_destination]}
+
+  # --- publishing: to and from destinations the caller may use
+  - {path: '^/api/publish$', methods: [POST], role: guest, body: [dest_bucket_id, src_bucket_id]}
+  - {path: '^/api/publish/(?P<destination>[^/]+)/display$', role: destination}
+  - {path: '^/api/publish/[^/]+$', methods: [POST], role: guest, body: [publish_destination_id]}
+  - {path: '^/api/(undo|redo|history|published)/(?P<destination>[^/]+)$', role: destination}
+  - {path: '^/api/publish-destinations/[^/]+/reframe$', methods: [PUT], role: admin}
+
+  # --- generation jobs: the feed is filtered per person (routes/jobs/api.py); these are the house's
+  - {path: '^/api/jobs/costs$', role: admin}
+  - {path: '^/api/(jobs/cancel-all|cancel_all_jobs)$', role: admin}
+
+  # --- the rest of the setup
+  - {path: '^/api/bakeoff/', role: admin}
+  - {path: '^/api/art-tags/sweep$', role: admin}
+  - {path: '^/api/files', role: admin}

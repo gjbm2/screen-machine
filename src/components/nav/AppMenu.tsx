@@ -1,7 +1,8 @@
 // The app's one menu, on every page (the generator, Schedules, Room, Music, Lights setup, Settings): navigation and
 // read-only status only, never a control (each switch lives once, on its page, next to what it changes). In order:
+//   You         who is signed in (Google; docs/ACCOUNTS.md), only once the deployment has sign-in set up
 //   Go to       Room · Music · Lights setup · Generator · Schedules · Settings ("Here" marks this page; Room, Music
-//               and Lights only while the room answers)
+//               and Lights only while the room answers; Schedules, Settings, Tools and Developer for admins only)
 //   <this page> whatever the page passes as children (the Room page: its connection, last mode change, activity log)
 //   Screens     folded ("7 screens"): each screen's live badge and its Room, Generator, Schedule and TV page links
 //   Tools       LAN only, each in a new tab: the scene library, the DSP monitor (never Spectre: owner, it is not reachable from this app)
@@ -22,6 +23,8 @@ import type { ModeDef } from "@/pages/Room/types";
 import { modeLabel } from "@/pages/Room/words";
 import { AppLink } from "./AppLink";
 import { useRoomGlance } from "./useRoomGlance";
+import { AccountRow } from "@/components/auth/AccountRow";
+import { atLeast, useViewer } from "@/shared/auth/viewer";
 import {
   DEV_LINKS,
   displayUrl,
@@ -173,10 +176,12 @@ function MenuBody({
   const { destinationsWithBuckets } = usePublishDestinations();
   const screens = destinationsWithBuckets.filter((d) => d.id !== "_recent");
   const roomScreens = room.status?.screens ?? {};
+  const admin = atLeast(useViewer(), "admin");
   const liveCount = screens.filter((d) => liveStateOf(roomScreens[d.id]) === "live").length;
 
   return (
     <div className="space-y-5">
+      <AccountRow />
       <nav aria-label="Go to" className="space-y-1 border-b border-stone-200/80 pb-4">
         <Heading>Go to</Heading>
         {(room.onLan || current === "room") && (
@@ -189,8 +194,12 @@ function MenuBody({
           <NavRow href={lightsPageUrl()} icon={<Lightbulb className="h-5 w-5" />} label="Lights" hint={lightsHint} current={current === "lights"} onGo={close} testId="menu-lights" />
         )}
         <NavRow href={generatorUrl()} icon={<Sparkles className="h-5 w-5" />} label="Generator" hint="Make art for each screen" current={current === "generator"} onGo={close} />
-        <NavRow href={schedulerUrl()} icon={<CalendarClock className="h-5 w-5" />} label="Schedules" hint="What each screen does through the day" current={current === "scheduler"} onGo={close} />
-        <NavRow href={settingsUrl()} icon={<Settings className="h-5 w-5" />} label="Settings" hint="Things you set once in a while" current={current === "settings"} onGo={close} testId="menu-settings" />
+        {admin && (
+          <NavRow href={schedulerUrl()} icon={<CalendarClock className="h-5 w-5" />} label="Schedules" hint="What each screen does through the day" current={current === "scheduler"} onGo={close} />
+        )}
+        {admin && (
+          <NavRow href={settingsUrl()} icon={<Settings className="h-5 w-5" />} label="Settings" hint="Things you set once in a while" current={current === "settings"} onGo={close} testId="menu-settings" />
+        )}
       </nav>
 
       {children && (
@@ -230,9 +239,11 @@ function MenuBody({
                       <Chip href={generatorUrl(d.id)} onGo={close}>
                         Generator
                       </Chip>
-                      <Chip href={schedulerUrl(d.id)} onGo={close}>
-                        Schedule
-                      </Chip>
+                      {admin && (
+                        <Chip href={schedulerUrl(d.id)} onGo={close}>
+                          Schedule
+                        </Chip>
+                      )}
                       {/* what the TV itself loads: small, in a new tab, so a phone doesn't open it by accident */}
                       <Chip href={displayUrl(d.id)} newTab small onGo={close}>
                         TV page
@@ -246,7 +257,7 @@ function MenuBody({
         </nav>
       )}
 
-      {room.onLan && (
+      {room.onLan && admin && (
         <nav aria-label="Tools" className="space-y-1 border-b border-stone-200/80 pb-4">
           <Heading>Tools</Heading>
           {TOOL_LINKS.map((l) => (
@@ -255,7 +266,7 @@ function MenuBody({
         </nav>
       )}
 
-      <Unroll title="Developer" hint="technical details and raw data" testId="app-menu-dev">
+      {admin && <Unroll title="Developer" hint="technical details and raw data" testId="app-menu-dev">
         {dev && <div className="space-y-3 pb-3">{dev}</div>}
         <ul className="space-y-1 pb-2">
           {DEV_LINKS.filter((l) => !l.lan || room.onLan).map((l) => (
@@ -273,7 +284,7 @@ function MenuBody({
             </li>
           ))}
         </ul>
-      </Unroll>
+      </Unroll>}
     </div>
   );
 }

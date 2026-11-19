@@ -1,0 +1,72 @@
+// Who is using the app (docs/ACCOUNTS.md): /api/auth/me, read once per page with useViewer(), plus Google sign-in and
+// sign-out. While the deployment has no sign-in set up (`accounts` false) everyone is an admin, as before.
+import { useSyncExternalStore } from 'react';
+import { jsonInit, requestJson } from '@/shared/http/client';
+
+export type Role = 'guest' | 'member' | 'admin';
+
+export interface Viewer {
+  /** Sign-in and roles are in force. */
+  accounts: boolean;
+  google_client_id: string | null;
+  signed_in: boolean;
+  email: string | null;
+  name: string | null;
+  role: Role;
+}
+
+const ROLES: Role[] = ['guest', 'member', 'admin'];
+
+/** Until /auth/me answers (or if it fails), the page acts as it did before accounts. */
+const UNKNOWN: Viewer = { accounts: false, google_client_id: null, signed_in: false, email: null, name: null, role: 'admin' };
+
+let state: Viewer = UNKNOWN;
+let loaded = false;
+let loading: Promise<void> | null = null;
+const listeners = new Set<() => void>();
+
+function set(next: Viewer) {
+  state = next;
+  loaded = true;
+  listeners.forEach((l) => l());
+}
+
+export function refreshViewer(): Promise<void> {
+  loading = requestJson<Viewer>('/auth/me', undefined, 'Could not read who is signed in')
+    .then(set)
+    .catch(() => set(UNKNOWN));
+  return loading;
+}
+
+function subscribe(listener: () => void) {
+  listeners.add(listener);
+  if (!loaded && !loading) void refreshViewer();
+  return () => listeners.delete(listener);
+}
+
+export function useViewer(): Viewer {
+  return useSyncExternalStore(subscribe, () => state);
+}
+
+/** Whether the viewer has at least `role` (always, while accounts are off). */
+export function atLeast(viewer: Viewer, role: Role | undefined): boolean {
+  if (!viewer.accounts) return true;
+  return ROLES.indexOf(viewer.role) >= ROLES.indexOf(role ?? 'admin');
+}
+
+/** A destination is usable by roles from its `access` (publish-destinations.json; default admin). */
+export function canUseDestination(viewer: Viewer, dest: { access?: Role }): boolean {
+  return atLeast(viewer, dest.access);
+}
+
+/** Google sign-in: the ID token from Google's button, checked by Flask, which sets the session cookie. */
+export async function signInWithGoogle(credential: string): Promise<Viewer> {
+  const me = await requestJson<Viewer>('/auth/google', jsonInit('POST', { credential }), 'Sign-in failed');
+  set(me);
+  return me;
+}
+
+export async function signOut(): Promise<void> {
+  await requestJson('/auth/signout', { method: 'POST' }, 'Sign-out failed');
+  await refreshViewer();
+}

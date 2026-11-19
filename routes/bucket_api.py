@@ -342,7 +342,16 @@ def delete_file(bucket_id: str, filename: str):
     fp = bucket_path(bucket_id) / filename
     if not fp.exists():
         abort(404, "file missing")
-    
+    if bucket_id == "_recent":
+        # someone else's Generated image is not there for this caller (docs/ACCOUNTS.md)
+        from routes import auth
+        try:
+            space = json.loads(sidecar_path(fp).read_text("utf-8")).get("space")
+        except Exception:
+            space = None
+        if not auth.can_see_space(space, everyone=True):
+            abort(404, "file missing")
+
     # Clean up reference images before deleting main file
     try:
         from routes.bucket_utils import ReferenceImageStorage
@@ -721,6 +730,10 @@ def get_bucket_complete(bucket_id: str):
                 filenames_only.append(fname)
                 sequence_entries[fname] = {"file": fname}
     
+    # Generated (_recent) shows each person their own images; an admin may ask for everyone's (docs/ACCOUNTS.md)
+    from routes import auth
+    everyone = request.args.get("everyone") in ("1", "true")
+
     # Only show files that are in the sequence list
     for filename in filenames_only:
         file_path = bucket_dir / filename
@@ -735,6 +748,8 @@ def get_bucket_complete(bucket_id: str):
                 file_meta = json.loads(sidecar.read_text("utf-8"))
             except Exception as e:
                 warning(f"Failed to read sidecar for {file_path.name}: {e}")
+        if bucket_id == "_recent" and not auth.can_see_space(file_meta.get("space"), everyone=everyone):
+            continue
         
         # Get file stats for timestamps
         file_stats = file_path.stat()

@@ -68,6 +68,8 @@ CAPABILITIES: dict[str, str] = {
     "rf": "Broadlink RM4 Pro RF devices (room/rf/*.json): glitterball, pinspots",
     "blinds": "the Bloc iQ blinds hub (room/rf/blinds.json)",
     "sonos": "Sonos zones (room/sonos.json)",
+    "accounts": "Google sign-in, roles and per-person Generated spaces (manifest accounts.google_client_id, "
+                "private/accounts.yaml, config/auth/gates.yaml; docs/ACCOUNTS.md)",
 }
 
 # Ports of the services on this machine (loopback unless a service says otherwise). A manifest may override any.

@@ -48,6 +48,8 @@ from routes.art_tags.api import art_tags_api
 import routes.art_tags
 from routes.deployment_api import deployment_api
 from routes.bakeoff_api import bakeoff_api
+from routes.auth.api import auth_api
+import routes.auth
 import smconfig
 
 # Load environment variables
@@ -80,6 +82,12 @@ app.register_blueprint(jobs_api, url_prefix=API_PREFIX)  # generation jobs + SSE
 app.register_blueprint(art_tags_api, url_prefix=API_PREFIX)  # AI art tags + tag edits (docs/ART_TAGS.md)
 app.register_blueprint(deployment_api, url_prefix=API_PREFIX)  # GET /api/deployment (deployments/README.md)
 app.register_blueprint(bakeoff_api, url_prefix=API_PREFIX)  # blind model bake-off page (docs/genai-review/PROJECT_PLAN.md)
+app.register_blueprint(auth_api, url_prefix=API_PREFIX)  # Google sign-in (docs/ACCOUNTS.md)
+
+# Accounts (docs/ACCOUNTS.md): config/auth/gates.yaml decides which API calls need which role; inert until the
+# deployment turns accounts on with a Google client ID. after_request sets a new browser's space cookie.
+app.before_request(routes.auth.gate)
+app.after_request(routes.auth.after_request)
 
 # Register test blueprints (no prefix needed for test routes)
 app.register_blueprint(test_buckets_bp)

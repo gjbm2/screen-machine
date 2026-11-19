@@ -17,6 +17,7 @@ import {
   AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { DATE_GROUP_ORDER, dateGroupLabel } from '@/utils/date-groups';
+import { atLeast, canUseDestination, useViewer, type Role } from '@/shared/auth/viewer';
 
 // Deletes at once when a whole date section goes (Flask serves them; hundreds in one burst would queue behind the rest)
 const BULK_DELETE_CONCURRENCY = 6;
@@ -90,7 +91,19 @@ export const RecentView: React.FC<RecentViewProps> = ({
   }
   
   // Destinations for copy/move operations
-  const [destinations, setDestinations] = useState<{id: string, name: string, headless: boolean, has_bucket?: boolean}[]>([]);
+  const [allDestinations, setDestinations] = useState<{id: string, name: string, headless: boolean, has_bucket?: boolean, access?: Role}[]>([]);
+
+  // Who is looking (docs/ACCOUNTS.md): copy/publish offers only destinations they may use; an admin may see everyone's
+  // Generated images, not just their own
+  const viewer = useViewer();
+  const destinations = useMemo(
+    () => allDestinations.filter(dest => canUseDestination(viewer, dest)),
+    [allDestinations, viewer],
+  );
+  const [everyone, setEveryone] = useState(false);
+  const everyoneRef = useRef(everyone);
+  everyoneRef.current = everyone;
+  useEffect(() => { if (initializedRef.current) fetchRecentImages(); }, [everyone]);
   
   // Ref for interval/timeout cleanup
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -203,7 +216,8 @@ export const RecentView: React.FC<RecentViewProps> = ({
         id: bucket.id,
         name: bucket.name || bucket.id,
         headless: bucket.headless || false,
-        has_bucket: bucket.has_bucket || false
+        has_bucket: bucket.has_bucket || false,
+        access: bucket.access,
       })));
     } catch (error) {
       console.error('Error fetching destinations:', error);
@@ -257,7 +271,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
     const currentSelections = {...selectedImageByBatch};
     
     try {
-      const details = await bucketsApi.getBucketDetails('_recent');
+      const details = await bucketsApi.getBucketDetails('_recent', { everyone: everyoneRef.current });
       if (details.error) {
         throw new Error(details.error);
       }
@@ -1175,6 +1189,25 @@ export const RecentView: React.FC<RecentViewProps> = ({
     onDragEnd: handleDragEnd
   });
 
+  // An admin's choice, once sign-in is on: their own Generated images, or everyone's (docs/ACCOUNTS.md)
+  const scopeToggle = viewer.accounts && atLeast(viewer, 'admin') ? (
+    <div className="mb-2 flex justify-end">
+      <div role="group" aria-label="Whose pictures" className="inline-flex overflow-hidden rounded-lg border text-sm">
+        {([false, true] as const).map(all => (
+          <button
+            key={String(all)}
+            type="button"
+            aria-pressed={everyone === all}
+            onClick={() => setEveryone(all)}
+            className={`px-3 py-1 ${everyone === all ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+          >
+            {all ? "Everyone's" : 'Mine'}
+          </button>
+        ))}
+      </div>
+    </div>
+  ) : null;
+
   // If loading, show loading state
   if (loading) {
     return <div className="p-4 text-center">Loading recent images...</div>;
@@ -1189,6 +1222,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
   if (batchGroups.length === 0) {
     return (
       <div className="p-4 text-center text-gray-500">
+        {scopeToggle}
         <p>No recent images found.</p>
         <p className="text-sm mt-2">Generated images will appear here.</p>
       </div>
@@ -1199,6 +1233,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
   return (
     <>
       <div className={styles.recentViewContainer}>
+        {scopeToggle}
         {dateSections.map(section => (
           <ExpandableContainer
             key={`date-section-${section.id}`}

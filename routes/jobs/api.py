@@ -4,6 +4,7 @@ import time
 
 from flask import Blueprint, Response, jsonify, request
 
+from routes import auth
 from routes.jobs import get_tracker
 
 jobs_api = Blueprint("jobs_api", __name__)
@@ -34,6 +35,9 @@ def list_jobs():
         state=state, limit=limit, before=_float_arg("before"),
         target=request.args.get("target") or None, source=request.args.get("source") or None,
         q=request.args.get("q") or None)
+    # each person sees their own generator jobs and the house's for screens they may use (docs/ACCOUNTS.md)
+    everyone = request.args.get("everyone") not in ("0", "false")
+    jobs = [j for j in jobs if auth.can_see_job(j, everyone=everyone)]
     return jsonify({"jobs": jobs, "next_before": next_before})
 
 
@@ -59,11 +63,14 @@ def job_costs():
 @jobs_api.route("/jobs/<job_id>", methods=["GET"])
 def get_job(job_id):
     job = get_tracker().get(job_id)
-    return (jsonify(job), 200) if job else (jsonify({"error": "unknown job"}), 404)
+    return (jsonify(job), 200) if job and auth.can_see_job(job) else (jsonify({"error": "unknown job"}), 404)
 
 
 @jobs_api.route("/jobs/<job_id>/cancel", methods=["POST"])
 def cancel_job(job_id):
+    seen = get_tracker().get(job_id)
+    if not seen or not auth.can_see_job(seen):
+        return jsonify({"error": "unknown job"}), 404
     job = get_tracker().cancel(job_id)
     return (jsonify(job), 200) if job else (jsonify({"error": "unknown job"}), 404)
 
@@ -78,13 +85,14 @@ def _event(name, data):
     return f"event: {name}\ndata: {json.dumps(data, default=str)}\n\n"
 
 
-def event_stream(tracker, target=None, ping_s=PING_S, stream_s=STREAM_S):
+def event_stream(tracker, target=None, ping_s=PING_S, stream_s=STREAM_S, visible=lambda job: True):
     """SSE frames: retry + snapshot, then each job change, a ping comment every ping_s, and the end
-    after stream_s (EventSource reconnects and gets a fresh snapshot)."""
+    after stream_s (EventSource reconnects and gets a fresh snapshot). Only jobs `visible` passes are sent."""
     sub = tracker.subscribe(target=target)
     try:
         yield f"retry: {RETRY_MS}\n\n"
-        yield _event("snapshot", {"jobs": tracker.snapshot(target), "server_time": time.time()})
+        jobs = [j for j in tracker.snapshot(target) if visible(j)]
+        yield _event("snapshot", {"jobs": jobs, "server_time": time.time()})
         end = time.monotonic() + stream_s
         next_ping = time.monotonic() + ping_s
         while True:
@@ -95,7 +103,7 @@ def event_stream(tracker, target=None, ping_s=PING_S, stream_s=STREAM_S):
                 yield ": ping\n\n"
                 next_ping = now + ping_s
             job = sub.get(timeout=max(0.05, min(next_ping, end) - now))
-            if job is not None:
+            if job is not None and visible(job):
                 yield _event("job", job)
     finally:
         sub.close()
@@ -104,5 +112,8 @@ def event_stream(tracker, target=None, ping_s=PING_S, stream_s=STREAM_S):
 @jobs_api.route("/jobs/stream", methods=["GET"])
 def stream_jobs():
     target = request.args.get("target") or None
-    return Response(event_stream(get_tracker(), target), mimetype="text/event-stream",
+    everyone = request.args.get("everyone") not in ("0", "false")
+    # the stream outlives the request, so who is watching is settled now (docs/ACCOUNTS.md)
+    visible = auth.job_visibility(everyone=everyone)
+    return Response(event_stream(get_tracker(), target, visible=visible), mimetype="text/event-stream",
                     headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

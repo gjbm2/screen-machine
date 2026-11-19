@@ -11,7 +11,7 @@ from . import _ROOM_ID_RE as _ROOM_FILE_ID   # a room id usable in room/modes.<r
 from .legacy import MOVES
 
 MANIFEST_KEYS = {"id", "name", "description", "location", "capabilities", "ports", "default_room", "kiosk", "host",
-                 "art_director", "wording"}
+                 "art_director", "wording", "accounts"}
 
 # Files a capability needs to start (relative to the deployment directory).
 REQUIRED: dict[str | None, tuple[str, ...]] = {
@@ -362,6 +362,17 @@ def check(dep: Deployment) -> tuple[list[str], list[str]]:
         ids = []
     if len(ids) != len(set(ids)):
         problems.append("publish-destinations.json: duplicate ids")
+    try:
+        for d in destinations(dep):
+            if "access" in d and d["access"] not in ("guest", "member", "admin"):
+                problems.append(f"publish-destinations.json: {d['id']}: access {d['access']!r} is not guest, member or admin")
+    except Exception:  # noqa: BLE001 - reported above
+        pass
+    acc = m.get("accounts")
+    if acc is not None and (not isinstance(acc, dict) or set(acc) - {"google_client_id"}):
+        problems.append("deployment.yaml: accounts is a mapping {google_client_id: ...}")
+    elif caps.get("accounts") and not (acc or {}).get("google_client_id"):
+        notes.append("accounts is on but names no google_client_id: nobody can sign in, so every caller is an admin")
     try:
         rms = rooms(dep)
     except Exception as e:  # noqa: BLE001
