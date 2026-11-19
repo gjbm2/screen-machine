@@ -678,8 +678,9 @@ def build_schema_subs():
 # period, and ages and sexes follow the situation (a drawn age put pensioners in a rugby scrum, a drawn cast made a
 # couple two men); the draw varies only build, face and hair, which fit anyone.
 CAST_BUILDS = ["slight", "slim", "wiry", "athletic", "average", "broad-shouldered", "stocky", "soft and rounded", "heavy"]
-CAST_FACES = ["a long nose", "freckles", "heavy brows", "a round face", "deep-set eyes", "a gap-toothed smile",
-              "weathered skin", "high cheekbones", "a broken nose", "laughter lines", "a strong jaw", "a soft double chin"]
+# No noses (owner, 19 Nov): "a long nose" / "a broken nose" came out grotesquely deformed
+CAST_FACES = ["dimples", "freckles", "heavy brows", "a round face", "deep-set eyes", "a gap-toothed smile",
+              "weathered skin", "high cheekbones", "a cleft chin", "laughter lines", "a strong jaw", "a soft double chin"]
 CAST_HAIR_MEN = ["close-cropped hair", "a shaved head", "thinning hair", "a full beard", "stubble", "wavy hair to the collar",
                  "a grey crew cut", "curly hair", "a receding hairline", "slicked-back hair", "a moustache"]
 CAST_HAIR_WOMEN = ["long straight hair", "tight curls", "a bob", "a pixie cut", "a plait", "wavy hair to the shoulders",
