@@ -1194,3 +1194,31 @@ def test_a_phones_sideways_photo_goes_up_upright(house):
     generate_thumbnail(stored, thumb)
     with Image.open(thumb) as t:
         assert t.height > t.width, "the thumbnail is on its side"
+
+
+def test_a_photo_the_app_cant_read_says_which_and_why():
+    """19 Nov: two photos for Combine, one of them AVIF, which this Pillow could not read; the request died with no
+    word. Now the upload is refused with the file's name, and the page shows that on its placeholder."""
+    from werkzeug.datastructures import FileStorage
+    from routes.utils import encode_image_uploads
+    with pytest.raises(ValueError, match=r"Couldn't read the picture 'face\.avif' \(AVIF\)"):
+        encode_image_uploads([FileStorage(stream=BytesIO(b"\x00\x00\x00\x1cftypavif not really"), filename="face.avif")])
+
+
+def test_the_generate_route_answers_400_with_the_reason(monkeypatch):
+    from flask import Flask
+    import routes.generate_api as generate_api
+    import smconfig
+    monkeypatch.setattr(smconfig, "enabled", lambda *a, **k: True)
+    app = Flask(__name__)
+    app.register_blueprint(generate_api.generate_api, url_prefix="/api")
+    called = []
+    monkeypatch.setattr(generate_api, "process_generate_image_request", lambda *a, **k: called.append(1))
+    client = app.test_client()
+    good = BytesIO(_image_bytes("JPEG", OLD, size=(64, 36)))
+    res = client.post("/api/generate-image", data={
+        "data": json.dumps({"prompt": "his face on the vermeer"}),
+        "image": [(good, "vermeer.jpg"), (BytesIO(b"\x00\x00\x00\x1cftypavif"), "face.avif")]},
+        content_type="multipart/form-data")
+    assert res.status_code == 400 and "face.avif" in res.get_json()["error"]
+    assert not called, "the job went ahead without the picture"

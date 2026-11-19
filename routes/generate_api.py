@@ -190,9 +190,13 @@ def generate_image_route():
         images = encode_reference_urls(reference_urls, max_file_size_mb=5)
     info(f"[generate_image_route] Finished encode_reference_urls, got {len(images)} images")
 
-    # Process uploaded files
+    # Process uploaded files (a picture that can't be read is a 400 that names it)
     image_files = request.files.getlist('image')
-    images.extend(encode_image_uploads(image_files, max_file_size_mb=5))
+    try:
+        images.extend(encode_image_uploads(image_files, max_file_size_mb=5))
+    except ValueError as e:
+        error(f"[generate_image_route] {e}")
+        return jsonify({"error": str(e)}), 400
 
     # Log processed image details
     for img in images:

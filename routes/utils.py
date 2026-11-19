@@ -24,6 +24,11 @@ import smconfig
 # image processing
 from PIL import Image
 import piexif
+try:                                    # iPhone photos (HEIC): read once pillow-heif is installed (requirements.txt)
+    from pillow_heif import register_heif_opener
+    register_heif_opener()
+except ImportError:
+    pass
 import piexif.helper
 
 # Internal JSON cache
@@ -323,7 +328,12 @@ def encode_image_uploads(image_files, max_file_size_mb=5):
     for file in image_files:
         if file and file.filename:
             filename = secure_filename(file.filename)
-            image = Image.open(file.stream)
+            try:
+                image = Image.open(file.stream)
+            except Exception as e:
+                # say which photo and why, rather than fail the whole request with no word (19 Nov: an AVIF upload)
+                kind = (os.path.splitext(file.filename)[1].lstrip(".") or file.mimetype or "unknown").upper()
+                raise ValueError(f"Couldn't read the picture '{file.filename}' ({kind}): try a JPEG or PNG") from e
 
             compressed_bytes = compress_image(image, max_size_bytes)
             image_base64 = base64.b64encode(compressed_bytes).decode('utf-8')
