@@ -111,10 +111,16 @@ def _vision_focus(img: Image.Image):
     img.convert("RGB").save(buf, format="JPEG", quality=90)
     answer = openai_prompt("Where is the subject of this picture?", system_prompt=FOCUS_SYSTEM, schema=FOCUS_SCHEMA,
                            images=[base64.b64encode(buf.getvalue()).decode()], verbose=False)
-    x0, y0, x1, y1 = (min(max(float(answer[k]), 0.0), 1.0) for k in ("x0", "y0", "x1", "y1"))
+    w, h = img.size
+    vals = [float(answer[k]) for k in ("x0", "y0", "x1", "y1")]
+    if max(vals) > 1.5:
+        # the model sometimes answers in pixels of the picture it was shown (routes/openai sends it at most 1536 px
+        # on its long side), not fractions: read them as such rather than clamp them all to 1 (an empty box)
+        sw, sh = (w, h) if max(w, h) <= 1536 else (round(w * 1536 / max(w, h)), round(h * 1536 / max(w, h)))
+        vals = [vals[0] / sw, vals[1] / sh, vals[2] / sw, vals[3] / sh]
+    x0, y0, x1, y1 = (min(max(v, 0.0), 1.0) for v in vals)
     if x1 <= x0 or y1 <= y0:
         raise ValueError(f"an empty box: {answer}")
-    w, h = img.size
     return round(x0 * w), round(y0 * h), round(x1 * w), round(y1 * h)
 
 
