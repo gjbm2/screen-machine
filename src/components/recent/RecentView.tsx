@@ -1126,7 +1126,19 @@ export const RecentView: React.FC<RecentViewProps> = ({
     selectedImageByBatch: Record<string,string>;
     handleSelectImage: (batchId:string, imgId:string)=>void;
   }) => {
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: batch.batchId });
+    // The whole panel is the handle for reordering. Dropped on a screen's tab it means the picture the panel shows
+    // (owner, 19 Nov: a drag on the phone took the panel, and the batch's id was published as a file name:
+    // "file not found in _recent"): read at the drop, as the panel keeps its own selection (RecentBatchPanel).
+    const shownImage = () => {
+      let id = selectedImageByBatch[batch.batchId] || '';
+      try {
+        id = localStorage.getItem(`recent_selected_${batch.batchId}`) || id;
+      } catch {
+        // no storage: the first picture
+      }
+      return batch.images.find((img) => img.id === id) || batch.images[0];
+    };
+    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: batch.batchId, data: { shownImage } });
 
     const style: React.CSSProperties = {
       transform: CSS.Transform.toString(transform),

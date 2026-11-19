@@ -541,7 +541,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
     const { active, over } = event;
     if (!over) return;
 
-    const activeData: any = active?.data?.current;
+    let activeData: any = active?.data?.current;
 
     // Strip prefix if dragging selected image
     let activeId = active.id as string;
@@ -552,6 +552,16 @@ export function ImageDisplay(props: ImageDisplayProps) {
     // Tab drop handling – IDs prefixed with DROP_ZONES.TAB_PREFIX
     if (typeof over.id === 'string' && (over.id as string).startsWith(DROP_ZONES.TAB_PREFIX)) {
       const destId = (over.id as string).slice(DROP_ZONES.TAB_PREFIX.length);
+      // A whole Generated batch dropped on a tab means the picture it shows (RecentView's shownImage)
+      if (typeof activeData?.shownImage === 'function') {
+        const shown = activeData.shownImage();
+        if (!shown?.id || shown.metadata?.placeholder) {
+          toast.message('That picture is still being made');
+          return;
+        }
+        activeId = shown.id;
+        activeData = { image: shown, raw_url: shown.raw_url || shown.urlFull, thumbnail_url: shown.urlThumb, bucketId: shown.bucketId || '_recent' };
+      }
       // If dropping onto the Generated tab (recent), treat as prompt drop
       if (destId === 'recent') {
         try {
