@@ -74,6 +74,8 @@ export class ClipCycle {
   private overlay = false;
   private eased: EasedLoop | null = null;
   private played = false;
+  /** The rest before this begin() is over: play now (a begin() without one rests first). */
+  private rested = false;
 
   constructor(private video: HTMLVideoElement, private hooks: ClipCycleHooks) {
     this.watchFrames();
@@ -191,7 +193,7 @@ export class ClipCycle {
       void this.frameReady(g).then(() => this.framePresented(g)).then(() => {
         if (g !== this.gen) return;
         if (this.eased) {
-          if (this.played) this.playEased(g);
+          if (this.rested) this.playEased(g);
           else this.restStep(g);
           return;
         }
@@ -221,6 +223,7 @@ export class ClipCycle {
   private playEased(g: number): void {
     const v = this.video;
     this.played = true;
+    this.rested = false;
     this.phase = "cruise";
     this.overlay = false;
     this.hooks.setShowFirstFrame(false); // fades to the clip's start, which is the same picture
@@ -239,7 +242,10 @@ export class ClipCycle {
     this.hooks.setShowFirstFrame(true);
     this.hooks.setPaused(true);
     const [lo, hi] = this.played ? this.eased.restS : FIRST_REST_S;
-    this.later(g, () => this.begin(), (lo + Math.random() * (hi - lo)) * 1000);
+    this.later(g, () => {
+      this.rested = true;
+      this.begin();
+    }, (lo + Math.random() * (hi - lo)) * 1000);
   }
 
   private easeOutStep(g: number): void {
