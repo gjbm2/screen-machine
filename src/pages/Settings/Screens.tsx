@@ -72,10 +72,10 @@ const REFRAME: { value: Reframe; label: string }[] = [
   { value: "adapt", label: "Adapt" },
 ];
 const REFRAME_HINT: Record<Reframe, string> = {
-  auto: "AI looks at the picture and fits it: trims a little where nothing is lost, paints in the rest. It shows whole for the minute that takes.",
+  auto: "AI looks at the picture and fits it: trims a little where nothing is lost, paints in the rest. The screen changes when it's ready, in about a minute.",
   crop: "AI picks the part to keep and fills the screen with it.",
   frame: "It shows whole, with black at the sides or top and bottom.",
-  adapt: "AI keeps the whole picture and paints more of the scene around it. It shows whole for the minute that takes.",
+  adapt: "AI keeps the whole picture and paints more of the scene around it. The screen changes when it's ready, in about a minute.",
 };
 // The first names (19 Nov) still read
 const OLD_REFRAME: Record<string, Reframe> = { extend: "adapt", whole: "frame" };

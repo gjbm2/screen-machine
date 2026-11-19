@@ -586,31 +586,26 @@ def screen_file_extension(source_ext: str | None) -> str | None:
 
 # Placing a screen's file and the extended-copy swap's check-then-place happen one at a time
 _PLACE_LOCK = threading.RLock()
+# The publish each screen file should show: a reframe that finishes after a newer publish is not placed
+_LATEST: dict[str, str] = {}
 
 
 def _place_for_screen(src: Path, dst: Path, dest: dict | None = None, metadata: dict | None = None,
                       fit: str | None = None) -> None:
     """Place ``src`` as the screen's file ``dst`` in one step. With the screen's ``dest``, a still of another shape
     than the screen's is fitted as the person chose (fit) or else as the screen's setting says (routes/reframe.py):
-    cropped where the subject is before it goes up; or up whole at once and swapped for its reframed copy (auto: the
-    AI's plan; adapt: extended) when that is made in the background; or whole (frame)."""
+    cropped where the subject is before it goes up; or (auto: the AI's plan; adapt: extended) made in the background
+    while the screen keeps its picture, then placed, so the screen changes once (owner, 19 Nov: devtest flicked between
+    a barred portrait and its widened copy as four pictures were made in a row); or whole (frame)."""
     plan = _reframe_plan(src, dest, metadata, fit) if dest else None
+    token = uuid.uuid4().hex
     with _PLACE_LOCK:
-        if plan and plan["ready"]:
-            src = plan["ready"]
-        _place_file(src, dst)
-        stamp = _stamp(dst)
+        _LATEST[str(dst)] = token
+        if not (plan and not plan["ready"]):
+            _place_file(plan["ready"] if plan else src, dst)
     if plan and not plan["ready"]:
-        threading.Thread(target=_extend_for_screen, args=(plan, dst, stamp), name=f"extend-{dst.stem}",
+        threading.Thread(target=_extend_for_screen, args=(plan, dst, token), name=f"extend-{dst.stem}",
                          daemon=True).start()
-
-
-def _stamp(path: Path):
-    try:
-        st = path.stat()
-        return st.st_ino, st.st_mtime_ns, st.st_size
-    except OSError:
-        return None
 
 
 def _reframe_plan(src: Path, dest: dict, metadata: dict | None, fit: str | None = None) -> dict | None:
@@ -654,9 +649,9 @@ def _reframe_plan(src: Path, dest: dict, metadata: dict | None, fit: str | None 
     return plan
 
 
-def _extend_for_screen(plan: dict, dst: Path, stamp) -> None:
+def _extend_for_screen(plan: dict, dst: Path, token: str) -> None:
     """Make the reframed copy (auto: the AI's plan; adapt: extended), keep it, and put it on the screen unless the
-    screen has had something else since."""
+    screen has been given something newer since. If it can't be made, the picture goes up whole."""
     from routes import reframe
     size = plan["size"]
     make = reframe.auto if plan["mode"] == "auto" else reframe.extend
@@ -664,32 +659,61 @@ def _extend_for_screen(plan: dict, dst: Path, stamp) -> None:
         extended = make(plan["picture"], size[0] / size[1], size, target=plan["screen"],
                         label=f"Fit the picture to {plan['name']}" + (" (auto)" if plan["mode"] == "auto" else ""))
         reframe.save_cached(extended, plan["cache"])
+        made = plan["cache"]
     except Exception as e:
-        warning(f"[publish] extending a picture for {plan['screen']} failed, so it stays whole: {e}")
-        return
+        warning(f"[publish] reframing a picture for {plan['screen']} failed, so it goes up whole: {e}")
+        made = None
     with _PLACE_LOCK:
-        if _stamp(dst) != stamp:
-            info(f"[publish] {plan['screen']} changed while its picture was extended; the copy is kept for next time")
+        if _LATEST.get(str(dst)) != token:
+            info(f"[publish] {plan['screen']} was given something newer while this picture was reframed"
+                 + ("; the copy is kept for next time" if made else ""))
             return
-        _place_file(plan["cache"], dst)
-    info(f"[publish] {plan['screen']} now shows the extended picture")
+        if made:
+            _place_file(made, dst)
+        else:
+            _place_image(plan["picture"], dst)
+    info(f"[publish] {plan['screen']} now shows the {'reframed' if made else 'whole'} picture")
+
+
+def _place_image(img, dst: Path) -> None:
+    """A picture in memory as the screen's file, in one step."""
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    tmp = _tmp_beside(dst)
+    try:
+        img.convert("RGB").save(tmp, format="JPEG", quality=95, subsampling=0)
+        os.replace(tmp, dst)
+    finally:
+        tmp.unlink(missing_ok=True)
 
 
 def _place_file(src: Path, dst: Path) -> None:
-    """Place ``src`` as the screen's file ``dst`` in one step: a still that is not a JPEG is converted (q95, 4:4:4),
-    anything else is copied as _place_atomically does."""
-    if src.suffix.lower() not in _STILLS_TO_JPEG - {".jpeg"}:
+    """Place ``src`` as the screen's file ``dst`` in one step: a still that is not a JPEG, or a JPEG stored on its side
+    with an EXIF rotate tag (a phone's photo; the live art feed and anything else that reads pixels ignores the tag), is
+    converted upright (q95, 4:4:4); anything else is copied as _place_atomically does."""
+    if src.suffix.lower() not in _STILLS_TO_JPEG - {".jpeg"} and not _rotated(src):
         _place_atomically(src, dst)
         return
-    from PIL import Image
+    from PIL import Image, ImageOps
     dst.parent.mkdir(parents=True, exist_ok=True)
     tmp = _tmp_beside(dst)
     try:
         with Image.open(src) as img:
-            img.convert("RGB").save(tmp, format="JPEG", quality=95, subsampling=0)
+            ImageOps.exif_transpose(img).convert("RGB").save(tmp, format="JPEG", quality=95, subsampling=0)
         os.replace(tmp, dst)
     finally:
         tmp.unlink(missing_ok=True)
+
+
+def _rotated(src: Path) -> bool:
+    """A JPEG whose EXIF says to turn or mirror it to show it upright."""
+    if src.suffix.lower() not in (".jpg", ".jpeg"):
+        return False
+    from PIL import Image
+    try:
+        with Image.open(src) as img:
+            return img.getexif().get(0x0112, 1) not in (0, 1)
+    except Exception:
+        return False
 
 
 def _tmp_beside(dst: Path) -> Path:

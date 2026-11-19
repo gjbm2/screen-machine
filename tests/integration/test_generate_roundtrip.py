@@ -639,16 +639,16 @@ def pixel(path, x, y):
         return img.convert("RGB").getpixel((x, y))
 
 
-def test_a_portrait_on_a_screen_set_to_extend_goes_up_whole_then_fills_it(house):
+def test_a_portrait_on_a_screen_set_to_adapt_keeps_the_old_picture_then_fills_it(house):
+    """The screen changes once (owner, 19 Nov: devtest flicked between a barred portrait and its widened copy)."""
     house["policy"]["mode"] = "adapt"
     fake = GatedRunPod()
     house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
     stored = library_picture(house)
     publish(house, stored)
 
-    # at once: the portrait, whole, while the worker draws
-    shown = tv_shows(house["output"])
-    assert size_of(shown) == (556, 1024)
+    # while the worker draws, the screen keeps the picture it had
+    assert near(colour_of(tv_shows(house["output"])), OLD) and size_of(tv_shows(house["output"])) == (64, 36)
     fake.gate.set()
     wait_for_extensions()
 
@@ -1123,3 +1123,74 @@ def test_auto_reads_the_picture_then_paints_to_its_plan(house):
     x_mid = round((w - kept_on_screen) * 0.25) + kept_on_screen // 2
     assert near(pixel(shown, x_mid, h // 4), TOP) and near(pixel(shown, x_mid, 3 * h // 4), OLD)
     assert near(pixel(shown, w - 10, h // 2), NEW), "the right is not the painted part"
+
+
+
+def test_four_pictures_in_a_row_put_only_the_last_on_the_screen(house):
+    """As on devtest, 19 Nov: four results published within half a minute, each reframed; the screen shows the last
+    one's reframe and nothing in between."""
+    house["policy"]["mode"] = "adapt"
+    fake = GatedRunPod()
+    house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
+    colours = [(200, 0, 0), (0, 200, 0), (0, 0, 200), (200, 200, 0)]
+    for i, colour in enumerate(colours):
+        img = Image.new("RGB", (556, 1024), colour)
+        stored = house["output"] / SCREEN / f"20261119-1127{i:02d}-row.jpg"
+        img.save(stored, format="JPEG", quality=95)
+        publish(house, stored)
+        assert near(colour_of(tv_shows(house["output"])), OLD), "the screen changed before a reframe was ready"
+    fake.gate.set()
+    wait_for_extensions()
+    w, h = screen_size()
+    shown = tv_shows(house["output"])
+    assert size_of(shown) == (w, h) and near(pixel(shown, w // 2, h // 2), colours[-1])
+
+
+class GreyRunPod(GatedRunPod):
+    """A worker that sends the grey canvas back as it was given (the model left the new parts unfilled)."""
+
+    def submit(self, endpoint_id, payload, timeout=60):
+        node = _finish_node(payload)
+        size = (int(node["inputs"]["width"]), int(node["inputs"]["height"]))
+        with Image.open(BytesIO(base64.b64decode(payload["input"]["images"][0]["image"]))) as sent:
+            back = sent.convert("RGB").resize(size)
+        buf = BytesIO()
+        back.save(buf, format="PNG")
+        self.jobs += 1
+        self.statuses = [{"status": "IN_QUEUE"}, {"status": "IN_PROGRESS"}, {"status": "COMPLETED", "output": {
+            "images": [{"filename": "out.png", "type": "base64", "data": base64.b64encode(buf.getvalue()).decode()}]}}]
+        self.payload = payload
+        return "rp-grey"
+
+
+def test_a_reframe_left_grey_is_asked_again_then_the_picture_goes_up_whole(house):
+    """19 Nov: one of five reframes for devtest came back with its side panels still grey."""
+    house["policy"]["mode"] = "adapt"
+    fake = GreyRunPod()
+    fake.gate.set()
+    house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
+    publish(house, library_picture(house))
+    wait_for_extensions()
+    assert fake.jobs == 2, "not asked again"
+    assert size_of(tv_shows(house["output"])) == (556, 1024), "grey bars reached the screen"
+    assert not list((house["output"] / "_reframe").glob("*")), "a grey copy was kept for next time"
+
+
+def test_a_phones_sideways_photo_goes_up_upright(house):
+    """A phone stores a portrait on its side with an EXIF rotate tag; the screen's file and its thumbnail are upright
+    (tag-blind readers: the live art feed, thumbnails)."""
+    img = Image.new("RGB", (1024, 556), OLD)
+    img.paste(Image.new("RGB", (512, 556), TOP), (0, 0))           # the left half, which is the top when upright
+    exif = img.getexif()
+    exif[0x0112] = 6
+    stored = house["output"] / SCREEN / "20261119-112607-phone.jpg"
+    img.save(stored, format="JPEG", quality=95, exif=exif.tobytes())
+    publish(house, stored)
+    shown = tv_shows(house["output"])
+    with Image.open(shown) as placed:
+        assert placed.size == (556, 1024) and placed.getexif().get(0x0112, 1) == 1
+    from routes.utils import generate_thumbnail
+    thumb = house["output"] / SCREEN / "thumbnails" / f"{stored.name}.jpg"
+    generate_thumbnail(stored, thumb)
+    with Image.open(thumb) as t:
+        assert t.height > t.width, "the thumbnail is on its side"

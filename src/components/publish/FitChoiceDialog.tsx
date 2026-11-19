@@ -64,7 +64,7 @@ export function FitChoiceDialog() {
                   <span className="block text-sm leading-snug text-stone-600">{c.words}</span>
                 </button>
               ))}
-              <p className="pt-1 text-xs text-muted-foreground">Auto and Adapt take about a minute; the picture shows whole meanwhile.</p>
+              <p className="pt-1 text-xs text-muted-foreground">Auto and Adapt take about a minute; the screen changes when the picture is ready.</p>
             </div>
           </>
         )}

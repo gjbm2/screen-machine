@@ -693,7 +693,7 @@ def resize_image_keep_aspect(image_path, max_dim=512):
     Returns:
         A resized PIL.Image object.
     """
-    image = Image.open(image_path)
+    image = ImageOps.exif_transpose(Image.open(image_path))
     image.thumbnail((max_dim, max_dim), Image.LANCZOS)
     return image
 
@@ -722,7 +722,8 @@ def generate_thumbnail(source: Path, thumb: Path = None) -> None:
     ext = source.suffix.lower()
     try:
         if ext in {".jpg", ".jpeg", ".png", ".webp"}:
-            img = Image.open(source)
+            # upright: a phone photo is stored on its side with an EXIF rotate tag, and the thumbnail keeps no tag
+            img = ImageOps.exif_transpose(Image.open(source))
         else:
             # video: capture first frame
             cap = cv2.VideoCapture(str(source))

@@ -10,7 +10,7 @@ screen's setting.
 Two places use it:
 - a screen (publish-destinations.json "reframe": auto | crop | frame | adapt, set on Settings > Screens, or the
   person's choice for one publish): a still published to the screen whose shape is off the screen's is cropped before
-  it goes up, or shown whole at once and swapped for its reframed copy when that is made (routes/publisher.py). The library keeps the original; reframed copies are
+  it goes up, or reframed in the background while the screen keeps its picture, then placed (routes/publisher.py). The library keeps the original; reframed copies are
   kept under output/_reframe/ and reused.
 - the generator's Adapt and Combine (params "shape" and "fill"): a photo turned into another shape before the edit,
   so it is still one job (routes/generate.py).
@@ -252,7 +252,9 @@ def auto(img: Image.Image, aspect: float, size, label: str = "", target: str | N
 def extend(img: Image.Image, aspect: float, size, label: str = "", target: str | None = None, place: float = 0.5,
            prompt: str = EXTEND_PROMPT) -> Image.Image:
     """The picture extended to the shape by Qwen 2.1 edit at size (w, h), the original put back over its part.
-    A tracker job (source "reframe") shows it in the Jobs dock. Raises when the job fails."""
+    A tracker job (source "reframe") shows it in the Jobs dock. The model now and then leaves the grey as it is (19 Nov,
+    one of five on devtest): then it is asked once more with another seed. Raises when the job fails or the new parts
+    are still grey, so the picture stays whole rather than going up with grey bars."""
     import routes.generate as generate
     from routes.jobs import get_tracker
     from routes.jobs.workflows import target_name
@@ -260,16 +262,44 @@ def extend(img: Image.Image, aspect: float, size, label: str = "", target: str |
     canvas, box = pad(img, aspect, place)
     buf = BytesIO()
     canvas.save(buf, format="JPEG", quality=95)
-    job = get_tracker().create(prompt=label or "Extend the picture to fill the screen", source="reframe",
-                               target=target, target_name=target_name(target))
-    out = generate.start(prompt=prompt, workflow=EXTEND_WORKFLOW, job_id=job["id"],
-                         images=[{"name": "reframe.jpg", "image": base64.b64encode(buf.getvalue()).decode()}],
-                         maxwidth=size[0], maxheight=size[1], silent=True)
-    with Image.open(BytesIO(read_bytes(out["message"]))) as result:
-        result = ImageOps.exif_transpose(result).convert("RGB")
-    if result.size != tuple(size):
-        result = ImageOps.fit(result, tuple(size), Image.LANCZOS)
-    return paste_back(result, img, canvas.size, box)
+    for attempt in (1, 2):
+        job = get_tracker().create(prompt=(label or "Extend the picture to fill the screen")
+                                   + (" (again: the first left grey)" if attempt == 2 else ""),
+                                   source="reframe", target=target, target_name=target_name(target))
+        out = generate.start(prompt=prompt, workflow=EXTEND_WORKFLOW, job_id=job["id"],
+                             images=[{"name": "reframe.jpg", "image": base64.b64encode(buf.getvalue()).decode()}],
+                             maxwidth=size[0], maxheight=size[1], silent=True)
+        with Image.open(BytesIO(read_bytes(out["message"]))) as result:
+            result = ImageOps.exif_transpose(result).convert("RGB")
+        if result.size != tuple(size):
+            result = ImageOps.fit(result, tuple(size), Image.LANCZOS)
+        grey = grey_share(result, canvas.size, box)
+        if grey <= GREY_LEFT:
+            return paste_back(result, img, canvas.size, box)
+        warning(f"[reframe] the new parts came back {grey:.0%} grey (attempt {attempt})")
+    raise RuntimeError("the model left the new parts grey twice")
+
+
+GREY_LEFT = 0.25      # more than this share of the new parts still flat grey: the model didn't fill them
+
+
+def grey_share(result: Image.Image, canvas_size, box) -> float:
+    """The share of the new parts (outside where the original sat on the canvas) that is still the canvas's grey."""
+    W, H = result.size
+    sx, sy = W / canvas_size[0], H / canvas_size[1]
+    x0, y0, x1, y1 = round(box[0] * sx), round(box[1] * sy), round(box[2] * sx), round(box[3] * sy)
+    small = result.convert("RGB").resize((max(1, W // 8), max(1, H // 8)))
+    inside = (x0 // 8, y0 // 8, x1 // 8, y1 // 8)
+    grey = total = 0
+    px = small.load()
+    for y in range(small.height):
+        for x in range(small.width):
+            if inside[0] <= x < inside[2] and inside[1] <= y < inside[3]:
+                continue
+            total += 1
+            r, g, b = px[x, y]
+            grey += abs(r - GREY[0]) < 8 and abs(g - GREY[1]) < 8 and abs(b - GREY[2]) < 8
+    return grey / total if total else 0.0
 
 
 # ---------------------------------------------------------------------------------------------- reframed copies
