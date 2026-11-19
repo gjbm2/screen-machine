@@ -32,6 +32,7 @@ rules:
   - {path: '^/api/publish$', methods: [POST], role: guest, body: [dest_bucket_id, src_bucket_id]}
   - {path: '^/api/publish/(?P<destination>[^/]+)/display$', role: destination}
   - {path: '^/api/publish/[^/]+$', methods: [POST], role: guest, body: [publish_destination_id]}
+  - {path: '^/api/publish/fit-check$', methods: [POST], role: guest, body: [dest_bucket_id, src_bucket_id]}   # reads the picture only
   - {path: '^/api/(undo|redo|history|published)/(?P<destination>[^/]+)$', role: destination}
   - {path: '^/api/publish-destinations/[^/]+/reframe$', methods: [PUT], role: admin}
 
