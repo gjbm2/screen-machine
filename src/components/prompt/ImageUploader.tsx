@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { toast } from 'sonner';
-import { Upload, Camera } from 'lucide-react';
+import { Upload, Camera, Palette } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useReferenceImages } from '@/contexts/ReferenceImagesContext';
@@ -18,6 +18,7 @@ import {
   DropdownMenuTrigger,
   DropdownMenuPortal,
 } from "@/components/ui/dropdown-menu";
+import { ArtworkPicker } from '@/components/artworks/ArtworkPicker';
 
 // Debug flag - set to true to enable on-screen debug messages
 const DEBUG_MODE = false;
@@ -56,6 +57,13 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
   const isMobile = useIsMobile();
   const [menuOpen, setMenuOpen] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
+  // Famous artworks (components/artworks): picked pictures arrive as files, like an upload
+  const [artOpen, setArtOpen] = useState(false);
+  const openArtworks = () => {
+    setMenuOpen(false);
+    setTimeout(() => setArtOpen(true), 50);   // after the menu has closed, so it doesn't take the focus back
+  };
+  const artworkPicker = <ArtworkPicker open={artOpen} onOpenChange={setArtOpen} onPick={onImageUpload} />;
   
   const { addReferenceUrl, clearReferenceUrls } = useReferenceImages();
 
@@ -455,9 +463,18 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
                 <Camera className="h-4 w-4 mr-2" />
                 From Camera
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                openArtworks();
+              }} className="px-4 py-1.5 text-sm">
+                <Palette className="h-4 w-4 mr-2" />
+                Famous artworks
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenuPortal>
         </DropdownMenu>
+        {artworkPicker}
       </>
     );
   }
@@ -474,21 +491,35 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
         multiple
       />
 
-      <Button
-        type="button"
-        variant="outline"
-        onClick={triggerFileInput}
-        className={`h-[36px] rounded-md flex-shrink-0 text-sm flex items-center gap-2 px-3 hover:bg-purple-500/10 text-purple-700 ${dragButtonClass}`}
-        disabled={isLoading}
-        ref={buttonRef}
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-      >
-        <Upload className="h-4 w-4" />
-        {!hideLabel && "Upload"}
-      </Button>
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen} modal={false}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            type="button"
+            variant="outline"
+            className={`h-[36px] rounded-md flex-shrink-0 text-sm flex items-center gap-2 px-3 hover:bg-purple-500/10 text-purple-700 ${dragButtonClass}`}
+            disabled={isLoading}
+            ref={buttonRef}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+          >
+            <Upload className="h-4 w-4" />
+            {!hideLabel && "Upload"}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="start" className="w-56 p-1">
+          <DropdownMenuItem onClick={triggerFileInput} className="px-3 py-1.5 text-sm">
+            <Upload className="h-4 w-4 mr-2" />
+            From this computer
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={openArtworks} className="px-3 py-1.5 text-sm">
+            <Palette className="h-4 w-4 mr-2" />
+            Famous artworks
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {artworkPicker}
     </>
   );
 };
