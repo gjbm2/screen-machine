@@ -34,7 +34,7 @@ def _rank(mtime, meta: dict | None) -> float:
 
 def clips_of(folder: Path, still: str) -> list[Path]:
     """The clips in `folder` made from `still`, the one that plays first."""
-    found = [(p, _meta(p)) for p in folder.iterdir() if p.suffix.lower() in VIDEOS and p.is_file()]
+    found = [(p, _meta(p)) for p in folder.iterdir() if p.suffix.lower() in VIDEOS and p.is_file()]   # clips only
     found = [(p, m) for p, m in found if still_of(m) == still]
     return [p for p, m in sorted(found, key=lambda pm: _rank(pm[0].stat().st_mtime, pm[1]), reverse=True)]
 
@@ -54,7 +54,8 @@ def group(files: list[dict]) -> list[dict]:
     out = []
     for f in files:
         still = still_of(f.get("metadata"))
-        if still and still != f["filename"] and still in by_name:
+        is_clip = Path(f["filename"]).suffix.lower() in VIDEOS   # only a clip belongs to a still
+        if is_clip and still and still != f["filename"] and still in by_name:
             by_name[still].setdefault("clips", []).append(f)
         else:
             out.append(f)

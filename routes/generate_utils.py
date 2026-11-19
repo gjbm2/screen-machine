@@ -312,6 +312,9 @@ def process_generate_image_request(data, uploaded_images=None):
                         error(f"[generate_image] Failed to create reference sources: {e}")
                 
                 source = data.get("source_still") or {}
+                is_clip = str(r.get("message") or "").lower().split("?")[0].endswith((".mp4", ".webm", ".mov"))
+                if not is_clip:
+                    source = {}   # a new picture made from a picture is a picture of its own, never part of it
                 if source.get("bucket") == "_recent":
                     image_data["still"] = source.get("file")   # a clip of a Generated picture: one object with it
                 target_path = save_to_recent(r.get("message"), batch_id, metadata=image_data, reference_sources=reference_sources)

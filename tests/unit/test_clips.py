@@ -16,3 +16,8 @@ def test_clips_go_under_their_still_newest_first():
 def test_still_named_in_the_clip_block_too():
     assert still_of({"clip": {"still": "x.jpg"}}) == "x.jpg"
     assert still_of(None) is None
+
+
+def test_a_picture_made_from_a_picture_stays_its_own():
+    files = [{"filename": "a.jpg", "metadata": {}}, {"filename": "b.jpg", "metadata": {"still": "a.jpg"}}]
+    assert [f["filename"] for f in group(files)] == ["a.jpg", "b.jpg"]

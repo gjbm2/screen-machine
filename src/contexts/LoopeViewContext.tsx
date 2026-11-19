@@ -23,6 +23,36 @@ interface LoopeViewContextValue {
 
 const LoopeViewContext = createContext<LoopeViewContextValue | undefined>(undefined);
 
+/** Enlarged, a picture and its clips come apart (owner, 19 Nov): each clip is a slide of its own right after its
+ *  picture, so it can be watched, published, moved or deleted by itself. The grids keep them stacked. */
+function ungroup(imgs: ImageItem[], startIdx: number): { items: ImageItem[]; start: number } {
+  const items: ImageItem[] = [];
+  let start = 0;
+  imgs.forEach((img, i) => {
+    if (i === startIdx) start = items.length;
+    items.push(img);
+    const clips = Array.isArray(img.metadata?.clips) ? img.metadata!.clips : [];
+    clips.forEach((c: { filename: string; url: string; thumbnail_url?: string; metadata?: Record<string, any> }) => {
+      items.push({
+        id: c.filename,
+        uniqueKey: `${img.id}::${c.filename}`,
+        urlFull: c.url,
+        raw_url: c.url,
+        urlThumb: c.thumbnail_url,
+        promptKey: (c.metadata?.prompt as string) || '',
+        seed: 0,
+        createdAt: img.createdAt,
+        isFavourite: false,
+        disableFavorite: true,
+        mediaType: 'video',
+        bucketId: img.bucketId,
+        metadata: { ...(c.metadata || {}), still: c.metadata?.still || img.id },
+      });
+    });
+  });
+  return { items, start };
+}
+
 /** A tile's Info button opens the Loope the usual way (its view's own open), straight on the Info panel. Only an
  *  open that follows at once counts: a view whose tile click doesn't open the Loope must not leave it set. */
 let infoOnNextOpen = 0;
@@ -38,8 +68,9 @@ export const LoopeViewProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [carouselOptions, setCarouselOptions] = useState<CarouselOptions>({ loop: true });
 
   const open = useCallback((imgs: ImageItem[], startIdx = 0, ttl = '', options: CarouselOptions = { loop: true }) => {
-    setImages(imgs);
-    setCurrentIndex(startIdx);
+    const { items, start } = ungroup(imgs, startIdx);
+    setImages(items);
+    setCurrentIndex(start);
     setTitle(ttl);
     setCarouselOptions({ ...options, showInfo: options.showInfo ?? Date.now() - infoOnNextOpen < 1000 });
     infoOnNextOpen = 0;
