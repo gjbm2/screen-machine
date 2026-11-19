@@ -517,9 +517,12 @@ def _refine(data, prompt, workflow, images, corrected_refiner, images_required, 
             schema = None
         if images_required and len(prepared_images) == 2:
             input_dict = {**input_dict, "pictures": "Two pictures are attached: A (uploaded first), then B."}
+        system_prompt = dict_substitute(corrected_refiner, subs)
+        if 'the input\'s "cast"' in system_prompt:    # _prompt_form: a fresh random cast (routes.utils.casting)
+            input_dict = {**input_dict, "cast": subs.get("CASTING")}
         openai_args = {
             "user_prompt": json.dumps(input_dict),
-            "system_prompt": dict_substitute(corrected_refiner, subs),
+            "system_prompt": system_prompt,
             "schema": schema or json.loads(dict_substitute("refiner-enrich.schema.json.j2", subs))
         }
         # A workflow the caller named is always a choice, even one the refiners are not offered (video: h3-i2v)

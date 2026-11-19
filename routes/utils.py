@@ -661,7 +661,30 @@ def build_schema_subs():
     except Exception as e:
         error(f"[build_schema_subs] Failed to build substitutions: {str(e)}")
 
+    subs["CASTING"] = casting()
     return subs
+
+
+# A fresh cast for each picture whose request doesn't say who the people are (owner, 19 Nov: every picture had the
+# same couple). A prompt model left to itself writes "a man in his thirties, lean build" every time, and a Turbo
+# image model then draws its one default couple; a random draw here is what varies it.
+CAST_AGES = ["early twenties", "late twenties", "thirties", "forties", "fifties", "sixties", "seventies"]
+CAST_BUILDS = ["slight", "slim", "wiry", "athletic", "average", "broad-shouldered", "stocky", "soft and rounded", "heavy"]
+CAST_LOOKS = ["Black British", "West African", "East African", "Caribbean", "East Asian", "South Asian", "Southeast Asian",
+              "Middle Eastern", "North African", "Latin American", "Mediterranean", "Northern European", "Eastern European",
+              "Irish", "mixed-race", "Pacific Islander"]
+CAST_HAIR = ["close-cropped grey hair", "long straight black hair", "a shaved head", "tight black curls", "a blonde bob",
+             "long red hair", "thinning sandy hair", "a grey beard", "dark wavy hair to the shoulders", "an auburn pixie cut",
+             "salt-and-pepper stubble", "braids", "a silver plait", "messy brown hair", "a dark undercut"]
+
+
+def casting(people=4, rng=None):
+    """'first person: …; second person: …' for up to `people` people, each drawn at random."""
+    import random
+    rng = rng or random.Random()
+    ordinals = ["first", "second", "third", "fourth", "fifth"]
+    return "; ".join(f"{ordinals[i]} person: {rng.choice(CAST_AGES)}, {rng.choice(CAST_BUILDS)}, "
+                     f"{rng.choice(CAST_LOOKS)}, {rng.choice(CAST_HAIR)}" for i in range(people))
     
 def resize_image_keep_aspect(image_path, max_dim=512):
     """
