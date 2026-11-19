@@ -24,11 +24,7 @@ import smconfig
 # image processing
 from PIL import Image
 import piexif
-try:                                    # iPhone photos (HEIC): read once pillow-heif is installed (requirements.txt)
-    from pillow_heif import register_heif_opener
-    register_heif_opener()
-except ImportError:
-    pass
+import routes.image_formats as image_formats   # registers HEIC/HEIF (pillow-heif); the formats the app takes
 import piexif.helper
 
 # Internal JSON cache
@@ -445,7 +441,7 @@ def encode_reference_urls(reference_urls, max_file_size_mb=5, bucket_id=None):
                 basename = os.path.basename(url.split("?")[0])
                 if not basename:
                     basename = "image.jpg"
-                elif not any(basename.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.gif', '.webp']):
+                elif not image_formats.is_still(basename):
                     basename = f"{basename}.jpg"
                 filename = basename.replace(".png", ".jpg")
 
@@ -732,7 +728,7 @@ def generate_thumbnail(source: Path, thumb: Path = None) -> None:
         
     ext = source.suffix.lower()
     try:
-        if ext in {".jpg", ".jpeg", ".png", ".webp"}:
+        if ext in image_formats.STILLS:
             # upright: a phone photo is stored on its side with an EXIF rotate tag, and the thumbnail keeps no tag
             img = ImageOps.exif_transpose(Image.open(source))
         else:

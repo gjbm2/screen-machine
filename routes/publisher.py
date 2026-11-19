@@ -288,22 +288,17 @@ def publish_to_destination(
                 path_tail = Path(unquote(parsed_url.path)).name  # e.g. "image.jpg"
                 ext = Path(path_tail).suffix.lower()
 
-                valid_exts = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.mov'}
-                file_extension = ext if ext in valid_exts else ''
+                from routes.image_formats import STILLS, VIDEOS, CONTENT_TYPES
+                file_extension = ext if ext in STILLS | VIDEOS else ''
 
                 # Fallback: look at Content-Type header
                 if not file_extension:
                     content_type = response.headers.get('Content-Type', '').lower()
+                    known = next((e for t, e in CONTENT_TYPES.items() if t in content_type), None)
                     if 'video' in content_type:
                         file_extension = '.mp4'
-                    elif 'image/jpeg' in content_type:
-                        file_extension = '.jpg'
-                    elif 'image/png' in content_type:
-                        file_extension = '.png'
-                    elif 'image/gif' in content_type:
-                        file_extension = '.gif'
-                    elif 'image/webp' in content_type:
-                        file_extension = '.webp'
+                    elif known:
+                        file_extension = known
                     else:
                         # Default safe fallback
                         file_extension = '.jpg'
@@ -311,7 +306,7 @@ def publish_to_destination(
                 debug(f"Determined file extension: {file_extension} (url='{path_tail}', content-type='{response.headers.get('Content-Type', '')}')")
                 
                 # If the file is an image but not already JPEG, convert to JPEG for consistency
-                image_exts = {'.png', '.gif', '.webp', '.jpeg'}
+                image_exts = STILLS - {'.jpg'}
                 is_video   = file_extension in {'.mp4', '.webm', '.mov'}
 
                 if file_extension in image_exts and not is_video:
@@ -554,7 +549,8 @@ def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict
             except Exception as e2:
                 error(f"Failed even to create minimal fallback sidecar: {e2}")
 
-_TEMP_MEDIA_EXTS = {'.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.mov'}
+from routes.image_formats import STILLS as _STILLS, VIDEOS as _VIDEOS
+_TEMP_MEDIA_EXTS = _STILLS | _VIDEOS
 
 def _place_atomically(src: Path, dst: Path) -> None:
     """Copy ``src`` to ``dst`` in one step (a hidden temp file in the same folder, then os.replace), with the mtime set
@@ -574,7 +570,7 @@ def _place_atomically(src: Path, dst: Path) -> None:
 # look only for <screen>.jpg, .JPG and .mp4. A still in any other format is therefore placed as a JPEG: on 17 Nov a PNG
 # from the new worker was published as north-screen.png, the job said done and the TV kept the old picture.
 SCREEN_STILL_EXT = ".jpg"
-_STILLS_TO_JPEG = {".png", ".webp", ".gif", ".jpeg", ".bmp", ".tif", ".tiff"}
+_STILLS_TO_JPEG = _STILLS - {".jpg"}
 
 
 def screen_file_extension(source_ext: str | None) -> str | None:

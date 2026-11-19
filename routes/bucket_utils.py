@@ -168,7 +168,8 @@ class ReferenceImageStorage:
         
         # Find the main image file to get its sidecar
         main_image_path = None
-        for ext in ['.jpg', '.jpeg', '.png', '.webp']:
+        from routes.image_formats import STILLS
+        for ext in sorted(STILLS):
             potential_path = bucket_dir / f"{base_filename}{ext}"
             if potential_path.exists():
                 main_image_path = potential_path

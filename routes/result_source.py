@@ -18,7 +18,7 @@ from utils.logger import warning
 INLINE_DIR = "_inline"
 INLINE_KEEP_S = 24 * 3600            # an inline result is only needed until it is published or copied to Recent
 DOWNLOAD_TIMEOUT = (10, 120)         # connect, read: a stalled download must not hold a job (or its thread) for ever
-_STILLS = {".png", ".jpg", ".jpeg", ".webp", ".gif", ".bmp"}
+from routes.image_formats import STILLS as _STILLS
 
 
 def is_url(source) -> bool:

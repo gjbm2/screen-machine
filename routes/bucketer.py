@@ -28,7 +28,8 @@ from routes.utils import (
 # ----------------------------------------------------------------------------
 
 BASE_OUTPUT = Path("output").resolve()             # change to "/output" if needed
-ALLOWED_EXT = {".jpg", ".jpeg", ".png", ".webp", ".mp4", ".mov"}
+from routes.image_formats import STILLS, TO_JPEG_IN_LIBRARY, save_as_jpeg
+ALLOWED_EXT = STILLS | {".mp4", ".mov"}
 ISO_NOW = lambda: datetime.utcnow().isoformat() + "Z"
 
 # ----------------------------------------------------------------------------
@@ -78,7 +79,7 @@ def infer_meta_from_file(file_path: Path) -> dict:
     ext = file_path.suffix.lower()
 
     try:
-        if ext in {".jpg", ".jpeg", ".png", ".webp"}:
+        if ext in STILLS:
             img = Image.open(file_path)
             meta = {
                 "format": img.format,
@@ -488,8 +489,12 @@ def _append_to_bucket(screen: str, published_path: Path, batch_id: str = None, m
         
         target_path = bucket_dir / target_name
 
-    # copy media + side-car
-    shutil.copy2(published_path, target_path)
+    # copy media + side-car; a HEIC, AVIF, TIFF or BMP picture is kept as an upright JPEG, which every page and TV shows
+    if published_path.suffix.lower() in TO_JPEG_IN_LIBRARY:
+        target_path = target_path.with_name(target_path.stem + ".jpg")
+        save_as_jpeg(published_path, target_path)
+    else:
+        shutil.copy2(published_path, target_path)
     sc_src, sc_dst = sidecar_path(published_path), sidecar_path(target_path)
     
     # Handle sidecar creation/copying

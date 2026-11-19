@@ -75,6 +75,7 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
       lower.endsWith('.png') ||
       lower.endsWith('.webp') ||
       lower.endsWith('.gif') ||
+      lower.endsWith('.avif') ||
       lower.endsWith('.heic') ||
       lower.endsWith('.heif')
     );
@@ -85,10 +86,10 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
     const typeOk = file.type ? file.type.startsWith('image/') : isLikelyImageByName(file.name);
     if (!typeOk) return `${file.name || 'File'} is not an image file`;
 
-    // Keep the existing 5MB default behavior for now (matches gallery upload path).
-    // If we want to allow larger camera originals, we should add client-side downscale/compression first.
-    const MAX_BYTES = 5 * 1024 * 1024;
-    if (file.size > MAX_BYTES) return `${file.name || 'Image'} exceeds the 5MB size limit`;
+    // A camera original (often 5-12 MB) is welcome: the server re-encodes every upload to a JPEG of at most 5 MB
+    // (routes/utils.encode_image_uploads); this only stops something absurd
+    const MAX_BYTES = 30 * 1024 * 1024;
+    if (file.size > MAX_BYTES) return `${file.name || 'Image'} is over 30 MB`;
 
     return null;
   };
@@ -174,12 +175,10 @@ const ImageUploader: React.FC<ImageUploaderProps> = ({
 
       const validFiles: File[] = [];
       Array.from(files).forEach(file => {
-        if (!file.type.startsWith('image/')) {
-          toast.error(`${file.name} is not an image file`);
-          return;
-        }
-        if (file.size > 5 * 1024 * 1024) {
-          toast.error(`${file.name} exceeds the 5MB size limit`);
+        // one check for every way in (a HEIC from a phone can come with no type: its name says)
+        const problem = validateIncomingImageFile(file);
+        if (problem) {
+          toast.error(problem);
           return;
         }
         validFiles.push(file);

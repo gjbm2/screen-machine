@@ -1222,3 +1222,90 @@ def test_the_generate_route_answers_400_with_the_reason(monkeypatch):
         content_type="multipart/form-data")
     assert res.status_code == 400 and "face.avif" in res.get_json()["error"]
     assert not called, "the job went ahead without the picture"
+
+
+# ------------------------------------------------- AVIF and HEIC pictures, everywhere a picture comes in (19 Nov)
+# Owner, 19 Nov: "we should be able to handle these sorts of images, obviously" (an AVIF photo for Combine failed).
+
+import routes.image_formats  # noqa: F401  (registers HEIC)
+
+
+def encoded(fmt, size=(556, 1024), colour=OLD, rotate=None):
+    img = Image.new("RGB", size, colour)
+    buf = BytesIO()
+    if rotate:
+        exif = img.getexif()
+        exif[0x0112] = rotate
+        img.save(buf, format=fmt, exif=exif.tobytes())
+    else:
+        img.save(buf, format=fmt)
+    return buf.getvalue()
+
+
+@pytest.mark.parametrize("fmt,ext", [("AVIF", "avif"), ("HEIF", "heic"), ("WEBP", "webp"), ("PNG", "png")])
+def test_a_photo_of_any_common_format_reaches_the_model(house, fmt, ext):
+    from werkzeug.datastructures import FileStorage
+    from routes.utils import encode_image_uploads
+    images = encode_image_uploads([FileStorage(stream=BytesIO(encoded(fmt)), filename=f"photo.{ext}")])
+    fake = FinishingRunPod()
+    house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
+    job_id = house["tracker"].create(prompt="make it snow", source="generator")["id"]
+    house["generate"].start(prompt="make it snow", workflow="qwen21-edit.json", images=images, job_id=job_id,
+                            poll_interval=0.01)
+    with Image.open(BytesIO(base64.b64decode(fake.images[0]["image"]))) as sent:
+        assert sent.format == "JPEG" and sent.size == (556, 1024)
+        assert near(sent.convert("RGB").getpixel((278, 512)), OLD)
+
+
+def test_two_photos_one_avif_one_heic_combine(house):
+    """The 19 Nov request: two photos for Combine, one of them AVIF (and an iPhone's HEIC for good measure)."""
+    import routes.generate_handler as handler
+    import routes.generate_utils as generate_utils
+    from werkzeug.datastructures import FileStorage
+    from routes.utils import encode_image_uploads
+    uploads = encode_image_uploads([FileStorage(stream=BytesIO(encoded("AVIF", (600, 900), PERSON)), filename="face.avif"),
+                                    FileStorage(stream=BytesIO(encoded("HEIF", (1600, 900), PAINTING)), filename="vermeer.heic")])
+    mp = house["monkeypatch"]
+    fake = FinishingRunPod()
+    mp.setattr(house["generate"], "runpod_api", fake)
+    mp.setattr(handler, "_refine", lambda *a, **k: ("qwen21-combine.json", "Put his face from image 2 on image 1",
+                                                    "Put his face from image 2 on image 1", {"canvas": "B", "shape": "canvas"}))
+    out = generate_utils.process_generate_image_request(
+        {"prompt": "his face on the vermeer", "batch_id": "abc123_frontend", "refiner": "adapt",
+         "params": {"poll_interval": 0.01}, "global_params": {"batch_size": 1}}, uploaded_images=uploads)
+    assert out["success"]
+    first, second = sent_colours(fake)
+    assert near(first, PAINTING) and near(second, PERSON)
+    assert same_shape(size_of(house["output"] / "_recent" / out["recent_files"][0]), (1600, 900))
+
+
+@pytest.mark.parametrize("fmt,ext", [("AVIF", "avif"), ("HEIF", "heic"), ("HEIF", "heif")])
+def test_a_picture_added_to_a_library_is_kept_as_an_upright_jpeg(house, fmt, ext):
+    from routes.bucketer import _append_to_bucket
+    src = house["output"].parent / f"upload.{ext}"
+    src.write_bytes(encoded(fmt, (1024, 556), rotate=6))
+    stored = _append_to_bucket(SCREEN, src)
+    assert stored.suffix == ".jpg" and stored.exists()
+    with Image.open(stored) as img:
+        assert img.format == "JPEG" and img.size == (556, 1024)
+    thumb = house["output"] / SCREEN / "thumbnails" / f"{stored.name}.jpg"
+    assert thumb.exists() and size_of(thumb)[1] > size_of(thumb)[0]
+
+
+@pytest.mark.parametrize("fmt,ext", [("AVIF", "avif"), ("HEIF", "heic")])
+def test_a_library_picture_of_any_format_goes_up_on_the_screen(house, fmt, ext):
+    stored = house["output"] / SCREEN / f"20261119-120000-x.{ext}"
+    stored.write_bytes(encoded(fmt, (1600, 900), NEW))
+    publish(house, stored)
+    shown = tv_shows(house["output"])
+    assert shown.suffix in (".jpg", ".JPG") and near(colour_of(shown), NEW)
+
+
+@pytest.mark.parametrize("fmt,ctype", [("AVIF", "image/avif"), ("HEIF", "image/heic")])
+def test_a_picture_from_a_url_of_any_format_goes_up_on_the_screen(house, fmt, ctype):
+    house["monkeypatch"].setattr(house["publisher"].requests, "get",
+                                 lambda url, **k: FakeDownload(encoded(fmt, (1600, 900), NEW), ctype))
+    result = house["publisher"].publish_to_destination(source="https://example.com/picture", silent=True,
+                                                       publish_destination_id=SCREEN, metadata={"type": "image"})
+    assert result["success"], result
+    assert near(colour_of(tv_shows(house["output"])), NEW)
