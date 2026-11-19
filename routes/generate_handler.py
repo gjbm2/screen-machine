@@ -791,6 +791,16 @@ def async_combine(targets, obj = {}, source="api"):
     info(f"Combine: started parallel combination threads for {target_a} and {target_b}")
     return None
 
+def animate_workflow():
+    """The catalogue's image-to-video workflow: the one, taking a single picture, whose default refiner is the animate
+    refiner (h3-i2v.json today); None if there is none."""
+    from routes.utils import _load_json_once, resolve_runtime_value
+    refiner = resolve_runtime_value("refiner", "animate")
+    return next((w["id"] for w in _load_json_once("workflow", "workflows.json")
+                 if not w.get("replaced_by") and w.get("default-refiner") == refiner
+                 and w.get("uses_images", 1) == 1), None)
+
+
 def async_amimate(targets, obj = {}, source="api"):
     """
     Process animation for the specified targets.
@@ -834,7 +844,8 @@ def async_amimate(targets, obj = {}, source="api"):
                     "prompt": result.get("data", {}).get("prompt", ""),
                     "refiner": resolve_runtime_value("refiner", "animate"),
                     "targets": [target_destination],  # Single target for this request
-                    "workflow": result.get("data", {}).get("workflow")
+                    # Alexa can only name the refiners' (still) workflows, so animate takes the catalogue's own
+                    "workflow": animate_workflow() or result.get("data", {}).get("workflow")
                 }
             }
             
