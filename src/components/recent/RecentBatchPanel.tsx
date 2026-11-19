@@ -141,6 +141,11 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
     initializedRef.current = true;
   }, [forceSelectId, images, batchId]);
   
+  const expand = () => {
+    setIsCollapsed(false);
+    onCollapseChange?.(batchId, false);
+  };
+
   // Handle thumbnail selection - PURE LOCAL STATE MANAGEMENT
   const handleThumbnailClick = (img: ImageItem) => {
     if (img.id === selectedId || !isMountedRef.current) return;
@@ -437,14 +442,16 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
             images={images.map(img => ({ ...img, isSelected: false }))}
             sortable={false}
             onImageClick={(img) => {
-              // Expand and select
-              setIsCollapsed(false);
+              // Expand and select. The parent hears of it too: otherwise a panel opened on its already-selected
+              // picture (handleThumbnailClick returns early) shut again at the next re-render, e.g. while another
+              // batch's job ticks (owner, 19 Nov, on a phone)
+              expand();
               handleThumbnailClick(img);
             }}
             className={`${styles.thumbnailGrid} recent-thumbnail-grid`}
             disableDefaultGridCols={true}
             onFullscreenClick={(img)=> {
-              setIsCollapsed(false);
+              expand();
               handleThumbnailClick(img);
             }}
             onInfo={showInfo}

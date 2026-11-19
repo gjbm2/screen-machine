@@ -82,6 +82,7 @@ export const generateImage = async (
   console.log('- publish destination:', params.publish_destination);
   console.log('- batchId:', batchId);
   console.log('- isAsync:', isAsync);
+  const ownBatch = true;   // every generation, async (video) included, has its batch and placeholders in Generated
   console.log('- imageFiles:', imageFiles?.length, imageFiles?.map(f => typeof f === 'string' ? `string(${f.substring(0, 50)}...)` : `file(${f.name})`));
   console.log('- referenceUrls:', referenceUrls?.length, referenceUrls?.map(url => url.substring(0, 50) + '...'));
 
@@ -109,7 +110,7 @@ export const generateImage = async (
     });
     
     // Only add to the container order if this is a new batch and NOT async
-    if (!isAsync) {
+    if (ownBatch) {
       setImageContainerOrder(prev => [currentBatchId, ...prev]);
       
       // Only increment container ID for new batches
@@ -125,10 +126,9 @@ export const generateImage = async (
   // Keep track of this generation
   setActiveGenerations(prev => [...prev, currentBatchId]);
   
-  // Async workflows: say so at once; its progress and result are in the jobs dock (bottom left) and on /jobs
-  if (isAsync) {
-    toast.success("Started. Follow it in Jobs, bottom left.");
-  }
+  // An async workflow (a video) gets its batch in Generated like a picture (owner, 19 Nov: "why isn't it creating a
+  // new container at the time of the commission"): its placeholder shows the job's progress, and the clip lands in
+  // it (the server holds the request until the clip is made and keeps it in Generated)
   
   try {
     const mergedImageInputs = [
@@ -187,10 +187,9 @@ export const generateImage = async (
     // Determine which container ID to use
     const containerIdToUse = getContainerIdForBatch(batchId, existingContainerId, nextContainerId);
     
-    // Skip creating placeholders for async workflows
     let placeholders: GeneratedImage[] = [];
     
-    if (!isAsync) {
+    if (ownBatch) {
       setGeneratedImages(prevImages => {
         // Create placeholders with unique IDs
         placeholders = createPlaceholderBatch(
@@ -306,7 +305,7 @@ export const generateImage = async (
         });
         
         // For non-async workflows, update the images with the actual URLs
-        if (!isAsync) {
+        if (ownBatch) {
           setGeneratedImages(prevImages => {
             const updatedImages = processGenerationResults(response, currentBatchId, prevImages);
             return updatedImages;
@@ -443,7 +442,7 @@ export const generateImage = async (
         });
         
         // Mark the batch as error if it exists
-        if (!isAsync) {
+        if (ownBatch) {
           setGeneratedImages(prevImages => {
             return markBatchAsError(currentBatchId, prevImages);
           });
