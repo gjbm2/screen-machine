@@ -144,6 +144,57 @@ def image_size(image):
 
 
 VIDEO_SIZES = {"landscape": (1344, 768), "portrait": (768, 1344), "square": (1024, 1024)}   # MiniMax H3's sizes
+MAX_VIDEO_S = 30          # the longest video asked for (Advanced: Length)
+SEGMENT_FRAMES = 244      # one H3 pass, at most (10 s at 24 fps); a longer video is made of passes in a chain
+
+
+def chain_long_video(graph, frames, seed):
+    """A video longer than one pass of the H3 graph (SEGMENT_FRAMES) as a chain of passes in the same job: each
+    pass starts on the previous pass's last frame, and the passes are joined (the repeated frame dropped) before
+    interpolation. Same prompt throughout. graph unchanged when one pass is enough or it isn't an H3 graph."""
+    import copy, math
+    frames = int(frames or 0)
+    first = next((k for k, n in graph.items() if n.get("class_type") == "MiniMaxH3ImageToVideo"), None)
+    if not first or frames <= SEGMENT_FRAMES:
+        return graph
+    n_seg = math.ceil((frames - 1) / (SEGMENT_FRAMES - 1))
+    per = [SEGMENT_FRAMES] * (n_seg - 1)
+    rest = max(28, frames - sum(per) + (n_seg - 1))       # the rest; each later pass repeats one frame
+    per.append(-(-rest // 4) * 4)                          # H3 lengths are whole multiples of 4 frames
+    by_class = {n["class_type"]: k for k, n in graph.items()}
+    guider, sampler, decode = by_class["BasicGuider"], by_class["SamplerCustomAdvanced"], by_class["VAEDecode"]
+    users = [k for k, n in graph.items() if any(v == [decode, 0] for v in n.get("inputs", {}).values())]
+    graph[first]["inputs"]["length"] = per[0]
+    joined, prev_decode, nid = [decode, 0], decode, 900
+    for i, length in enumerate(per[1:], start=1):
+        tail, i2v, noise, guide, samp, dec, trim, join = (str(nid + k) for k in range(8))
+        nid += 8
+        graph[tail] = {"class_type": "ImageFromBatch", "_meta": {"title": f"Pass {i + 1}: start frame"},
+                       "inputs": {"image": [prev_decode, 0], "batch_index": per[i - 1] - 1, "length": 1}}
+        node = copy.deepcopy(graph[first])
+        node["inputs"].update(first_frame=[tail, 0], length=length)
+        node["inputs"].pop("last_frame", None)
+        node["_meta"] = {"title": f"Pass {i + 1}"}
+        graph[i2v] = node
+        graph[noise] = {"class_type": "RandomNoise", "_meta": {"title": f"Pass {i + 1} noise"},
+                        "inputs": {"noise_seed": int(seed or 0) + i}}
+        graph[guide] = copy.deepcopy(graph[guider])
+        graph[guide]["inputs"]["conditioning"] = [i2v, 0]
+        graph[samp] = copy.deepcopy(graph[sampler])
+        graph[samp]["inputs"].update(noise=[noise, 0], guider=[guide, 0], latent_image=[i2v, 1])
+        graph[dec] = copy.deepcopy(graph[decode])
+        graph[dec]["inputs"]["samples"] = [samp, 0]
+        graph[trim] = {"class_type": "ImageFromBatch", "_meta": {"title": f"Pass {i + 1} without its first frame"},
+                       "inputs": {"image": [dec, 0], "batch_index": 1, "length": length - 1}}
+        graph[join] = {"class_type": "ImageBatch", "_meta": {"title": f"Passes 1-{i + 1}"},
+                       "inputs": {"image1": joined, "image2": [trim, 0]}}
+        joined, prev_decode = [join, 0], dec
+    for k in users:
+        for key, v in graph[k]["inputs"].items():
+            if v == [decode, 0]:
+                graph[k]["inputs"][key] = joined
+    info(f"Long video: {frames} frames as {len(per)} passes {per}")
+    return graph
 
 
 def size_chosen(workflow_id, width, height):
@@ -594,7 +645,8 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
             args_namespace.width, args_namespace.height = size
         seconds = vars(args_namespace).get("video_seconds")
         if seconds and not vars(args_namespace).get("video_length"):
-            vars(args_namespace)["video_length"] = int(round(24 * float(seconds))) + 4
+            seconds = min(MAX_VIDEO_S, max(1.0, float(seconds)))
+            vars(args_namespace)["video_length"] = 4 * round((24 * seconds + 4) / 4)   # H3: multiples of 4
         if vars(args_namespace).get("interpolate_frames"):
             fps = 24 * int(vars(args_namespace)["interpolate_frames"])
 
@@ -711,7 +763,8 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
     # Compile the final object to submit
     input_payload = {
       "input": {
-        "workflow": update_workflow(workflow_data, json_replacements),
+        "workflow": chain_long_video(update_workflow(workflow_data, json_replacements),
+                                     vars(args_namespace).get("video_length"), args_namespace.seed),
       }
     }
     if args_namespace.images:
@@ -743,7 +796,9 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
                    message="Waiting for a GPU")
 
     poll_interval = getattr(args_namespace, "poll_interval", 0.5)
-    info(f"> Polling RunPod every {poll_interval}s for up to {RUNPOD_TIMEOUT_S}s...")
+    # a long video takes longer: 40 s more per second of video over 10 (a 30 s video took 15 min on a PRO 6000)
+    timeout_s = RUNPOD_TIMEOUT_S + 40 * max(0, int(vars(args_namespace).get("video_length") or 0) // 24 - 10)
+    info(f"> Polling RunPod every {poll_interval}s for up to {timeout_s}s...")
     alert_context = {"job_id": runpod_job_id, "endpoint": runpod_id,
                      "workflow": args_namespace.workflow, "destination": publish_destination}
     start_time = time()
@@ -797,13 +852,13 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
             tracker.update(job_id, status="cancelled", message="Cancelled on RunPod")
             raise JobCancelled("Cancelled on RunPod")
 
-        if time() - start_time > RUNPOD_TIMEOUT_S:
+        if time() - start_time > timeout_s:
             alert("runpod.timeout",
-                  f"RunPod job timed out after {RUNPOD_TIMEOUT_S}s — if it never left "
+                  f"RunPod job timed out after {timeout_s}s — if it never left "
                   f"IN_QUEUE, check RunPod credit",
                   context=alert_context, dedup_key=f"runpod.timeout:{args_namespace.workflow}")
             runpod_api.cancel(runpod_id, runpod_job_id, timeout=10)
-            raise TimeoutError(f"Timed out after {RUNPOD_TIMEOUT_S // 60} minutes; the RunPod job was cancelled")
+            raise TimeoutError(f"Timed out after {timeout_s // 60} minutes; the RunPod job was cancelled")
 
         # A wait=True generation blocks its scheduler loop thread in
         # join() for up to 20 min; tick from here so a busy destination

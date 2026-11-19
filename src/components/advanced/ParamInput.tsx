@@ -107,6 +107,8 @@ const ParamInput: React.FC<ParamInputProps> = ({ param, value, onChange }) => {
           <input
             type="number"
             id={param.id}
+            min={(param as { min?: number }).min}
+            max={(param as { max?: number }).max}
             value={paramValue ?? ''}
             onChange={(e) => onChange(param.id, e.target.value === '' ? null : Number(e.target.value))}
             placeholder={`Enter ${param.name.toLowerCase()}`}
