@@ -13,7 +13,7 @@
   {"id": "hokusai", "area": "painting", "route_only": true, "route": ["qwen21.json"], "request": "a Hokusai style woodblock print of a great wave over fishing boats"},
   {"id": "product", "area": "photo", "route_only": true, "route": ["qwen21-turbo.json"], "request": "a glossy studio product shot of a perfume bottle on black acrylic"},
   {"id": "kiss", "area": "photo", "route_only": true, "route": ["krea2-turbo.json"], "request": "an elderly couple kissing on a park bench in autumn, photograph"},
-  {"id": "titlecard", "area": "lettering", "route_only": true, "route": ["qwen21-turbo.json"], "request": "a watercolour of a lighthouse with the title SOUTHWOLD hand-lettered underneath"},
+  {"id": "titlecard", "area": "lettering", "route_only": true, "route": ["qwen21-turbo.json", "qwen21.json"], "request": "a watercolour of a lighthouse with the title SOUTHWOLD hand-lettered underneath"},
   {"id": "dream", "area": "painting", "route_only": true, "route": ["qwen21.json"], "request": "a surreal dreamscape of melting clocks over a desert"}
  ]
 }
