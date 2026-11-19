@@ -3,12 +3,13 @@ import ReactDOM from 'react-dom';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useLoopeView } from '@/contexts/LoopeViewContext';
 import useEmblaCarousel from 'embla-carousel-react';
-import { ChevronLeft, ChevronRight, X, ChevronUp, Star, Info, Download, Clipboard, MoreHorizontal, Move, Copy, RefreshCcw, Loader2, Film } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, ChevronUp, Star, Info, Download, Clipboard, MoreHorizontal, Move, Copy, RefreshCcw, Loader2, Film, Scissors } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from 'sonner';
@@ -66,8 +67,9 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
     
     const [isFlipped, setIsFlipped] = useState(false);
     // A still with clips (its `metadata.clips`, routes/clips.py) can be watched moving, here in place of the picture
-    const [moving, setMoving] = useState(false);
-    useEffect(() => setMoving(false), [currentIndex, isOpen]);
+    // which clip is showing (its index in metadata.clips), else null; while one shows, the bar's actions are the clip's
+    const [moving, setMoving] = useState<number | null>(null);
+    useEffect(() => setMoving(null), [currentIndex, isOpen]);
     const [zoomSrc, setZoomSrc] = useState<string | null>(null);
     const [zoomPosition, setZoomPosition] = useState<ZoomPosition>({ x: 0, y: 0 });
     const touchStartY = useRef<number | null>(null);
@@ -1079,6 +1081,15 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
     const headerText = dynamicTitle ? displayTitle : `${displayTitle} ${currentIndex + 1}/${images.length}`;
     const currentImage = images[currentIndex];
     const imageSrc = currentImage?.raw_url || currentImage?.urlFull || '';
+    // What the bar acts on: the clip while one is showing (owner, 19 Nov: a clip attached to a still couldn't be
+    // published on its own), else the picture
+    const movingClip = moving !== null ? currentImage?.metadata?.clips?.[moving] : undefined;
+    const subject = movingClip
+      ? { ...currentImage, id: movingClip.filename, urlFull: movingClip.url, raw_url: movingClip.url,
+          urlThumb: movingClip.thumbnail_url, mediaType: 'video' as const, isFavourite: false,
+          metadata: { ...(movingClip.metadata || {}) } }
+      : currentImage;
+    const subjectSrc = movingClip ? movingClip.url : imageSrc;
     const isVideo = currentImage?.mediaType === 'video' || /\.mp4$|\.webm$/i.test(imageSrc);
     
     // Disable favorite button for published images
@@ -1125,7 +1136,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                 const src = img.raw_url || img.urlFull;
                 const isImgVideo = img.mediaType === 'video' || /\.mp4$|\.webm$/i.test(src);
                 const isLoading = loadingImages[src] !== false; // true or undefined means loading
-                const clipSrc = moving && img.id === currentImage?.id ? img.metadata?.clips?.[0]?.url : undefined;
+                const clipSrc = moving !== null && img.id === currentImage?.id ? img.metadata?.clips?.[moving]?.url : undefined;
                 if (clipSrc) {
                   return (
                     <div key={img.id} className="flex-shrink-0 flex items-center justify-center px-4" style={{ flex: '0 0 100%' }}>
@@ -1183,10 +1194,11 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
               bucket={bucketOf(currentImage)}
               placeName={destinations.find((d) => d.id === bucketOf(currentImage))?.name ?? null}
               onClose={() => setIsFlipped(false)}
-              onWatch={() => {
+              onWatch={(i = 0) => {
                 setIsFlipped(false);
-                setMoving(true);
+                setMoving(i);
               }}
+              publishTargets={(nonHeadlessDestinations || []).map((d) => ({ id: d.id, name: d.name || d.id }))}
             />
           )}
 
@@ -1264,17 +1276,22 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                 <span className="hidden sm:inline">Info</span>
               </Button>
 
-              {/* A still that has been brought to life: watch it move */}
+              {/* A still with clips is a stack: Picture | Clip 1 | Clip 2 … picks which one shows, and the bar's actions
+                  (Publish, Copy, Move, Delete, Download, Copy URL) then apply to that one */}
               {currentImage?.metadata?.clips?.length > 0 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={`text-xs flex items-center gap-1 ${moving ? 'bg-white/10 text-white' : 'text-white/90 hover:text-white hover:bg-white/10'}`}
-                  onClick={() => setMoving(!moving)}
-                >
-                  <Film className="h-4 w-4" />
-                  <span className="hidden sm:inline">{moving ? 'Still' : 'Moving'}</span>
-                </Button>
+                <div className="flex items-center rounded-md bg-white/5 p-0.5" role="group" aria-label="Picture or clip">
+                  {[null, ...currentImage.metadata.clips.map((_: unknown, i: number) => i)].map((i: number | null) => (
+                    <Button
+                      key={i === null ? 'picture' : `clip-${i}`}
+                      variant="ghost"
+                      size="sm"
+                      className={`h-7 px-2 text-xs flex items-center gap-1 ${moving === i ? 'bg-white/20 text-white' : 'text-white/80 hover:text-white hover:bg-white/10'}`}
+                      onClick={() => setMoving(i)}
+                    >
+                      {i === null ? 'Picture' : (<><Film className="h-3.5 w-3.5" />{currentImage.metadata.clips.length > 1 ? `Clip ${i + 1}` : 'Clip'}</>)}
+                    </Button>
+                  ))}
+                </div>
               )}
               
               {/* Favorite */}
@@ -1307,7 +1324,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                 size="sm"
                 className="text-xs flex items-center gap-1 text-white/90 hover:text-white hover:bg-white/10"
                 onClick={() => {
-                  copyToClipboard(imageSrc);
+                  copyToClipboard(subjectSrc);
                 }}
               >
                 <Clipboard className="h-4 w-4" />
@@ -1319,7 +1336,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                 variant="ghost" 
                 size="sm"
                 className="text-xs flex items-center gap-1 text-white/90 hover:text-white hover:bg-white/10"
-                onClick={() => window.open(imageSrc, '_blank')}
+                onClick={() => window.open(subjectSrc, '_blank')}
               >
                 <Download className="h-4 w-4" />
                 <span className="hidden sm:inline">Download</span>
@@ -1336,7 +1353,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                 <DropdownMenuContent>
                   {/* the same items as the picture's menu everywhere else (ImageMenuItems), less the bar's own buttons */}
                   <ImageMenuItems
-                    image={currentImage}
+                    image={subject}
                     bucket={bucketOf(currentImage)}
                     except={['info', 'useAsPrompt', 'fullScreen', 'rawUrl']}
                     onStartAgain={handleStartAgain}
@@ -1346,6 +1363,19 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                     publishDestinations={(destinations || []).map((d) => ({ id: d.id, name: d.name || d.id, headless: !(nonHeadlessDestinations || []).some((n) => n.id === d.id) }))}
                     onDelete={handleDelete}
                   />
+                  {movingClip && bucketOf(currentImage) && (
+                    <DropdownMenuItem
+                      onClick={() =>
+                        bucketsApi.detachClip(bucketOf(currentImage) as string, movingClip.filename).then(
+                          () => toast.success('The clip is now an item of its own'),
+                          (err) => toast.error(String(err?.message || err)),
+                        )
+                      }
+                    >
+                      <Scissors className="mr-2 h-4 w-4" />
+                      <span>Separate from the picture</span>
+                    </DropdownMenuItem>
+                  )}
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>

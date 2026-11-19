@@ -41,6 +41,15 @@ export async function chooseClip(bucketId: string, filename: string): Promise<{ 
   );
 }
 
+/** Make a clip an item of its own: it no longer belongs to its still. */
+export async function detachClip(bucketId: string, filename: string): Promise<{ status: string }> {
+  return requestJson(
+    `/buckets/${bucketId}/detach-clip/${encodeURIComponent(filename)}`,
+    { method: 'POST' },
+    (r) => `Could not separate the clip: ${r.statusText}`,
+  );
+}
+
 export async function deleteFromBucket(bucketId: string, filename: string): Promise<{ status: string }> {
   return requestJson(
     `/buckets/${bucketId}/${filename}`,

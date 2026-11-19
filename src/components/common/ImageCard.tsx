@@ -76,6 +76,9 @@ export interface ImageCardProps {
   onInfo?: (img: ImageItem) => void;
 }
 
+/** How far each card behind a still with clips peeks out (px). */
+const STACK_STEP = 4;
+
 const ImageCard: React.FC<ImageCardProps> = ({
   image,
   onClick,
@@ -164,6 +167,9 @@ const ImageCard: React.FC<ImageCardProps> = ({
     }
   };
   
+  // A still with clips is drawn as a stack (the clips "behind" it) with their count on the film badge
+  const clipCount = Array.isArray(image.metadata?.clips) ? image.metadata.clips.length : 0;
+
   // Check if this is a thumbnail in the recent view
   const isRecentThumbnail = className.includes('recent-thumbnail-grid');
 
@@ -173,7 +179,22 @@ const ImageCard: React.FC<ImageCardProps> = ({
     : undefined);
 
   return (
-    <div style={style} className={`relative group ${className}`}>
+    <div
+      style={clipCount ? { ...style, paddingTop: STACK_STEP * 2, paddingRight: STACK_STEP * 2, isolation: 'isolate' } : style}
+      className={`relative group ${className}`}
+    >
+      {/* a still with clips: the clips are cards peeking out behind it (inline styles: Generated's strip hides .absolute) */}
+      {clipCount > 0 && [2, 1].map((n) => (
+        <div
+          key={n}
+          aria-hidden
+          style={{
+            position: 'absolute', zIndex: -1, borderRadius: 6, top: (2 - n) * STACK_STEP, right: (2 - n) * STACK_STEP,
+            bottom: n * STACK_STEP, left: n * STACK_STEP,
+            background: n === 2 ? '#d6d3d1' : '#a8a29e', boxShadow: '0 0 0 1px rgba(0,0,0,0.15)',
+          }}
+        />
+      ))}
       {/* Custom component, placeholder, or image thumbnail */}
       {image.customComponent ? (
         image.customComponent
@@ -235,9 +256,10 @@ const ImageCard: React.FC<ImageCardProps> = ({
       )}
       
       {/* Video indicator - bottom left */}
-      {(isVideo(image) || (image.metadata?.clips?.length ?? 0) > 0) && !isPlaceholder && (
-        <Badge className="absolute bottom-2 left-2 z-30 bg-black/60 text-white">
+      {(isVideo(image) || clipCount > 0) && !isPlaceholder && (
+        <Badge className="absolute bottom-2 left-2 z-30 bg-black/60 text-white gap-1" title={clipCount ? `${clipCount} clip${clipCount > 1 ? 's' : ''} with this picture` : 'A clip'}>
           <Film className="h-3 w-3" />
+          {clipCount > 0 && <span className="text-[10px] leading-none">{clipCount}</span>}
         </Badge>
       )}
 

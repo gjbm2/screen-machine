@@ -236,8 +236,10 @@ def _generate_image():
     
     # Process reference URLs
     reference_urls = data.get('referenceUrls', [])
-    # One picture from a bucket: a clip made from it belongs with it (routes/clips.py), at its full size
-    if len(reference_urls) == 1:
+    # One picture from a bucket: a clip made from it belongs with it (routes/clips.py), at its full size, unless the
+    # person chose to keep it separate (Advanced: "The video")
+    keep = str((data.get('params') or {}).get('keep_with_picture') or 'yes').lower() != 'no'
+    if len(reference_urls) == 1 and keep:
         import re
         from urllib.parse import unquote, urlparse
         from routes.bucketer import bucket_path

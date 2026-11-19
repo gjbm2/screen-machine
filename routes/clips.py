@@ -64,6 +64,17 @@ def group(files: list[dict]) -> list[dict]:
     return out
 
 
+def detach(folder: Path, clip: str) -> None:
+    """Make a clip an item of its own again: it no longer belongs to its still (it keeps its own play info)."""
+    meta = _meta(folder / clip)
+    meta.pop("still", None)
+    meta.pop("chosen_at", None)
+    if isinstance(meta.get("clip"), dict):
+        meta["clip"].pop("still", None)
+    (folder / clip).with_suffix((folder / clip).suffix + ".json").write_text(
+        json.dumps(meta, indent=2, ensure_ascii=False), "utf-8")
+
+
 def published_still(bucket: str) -> str | None:
     """The still the screen is showing, as its file name in the screen's bucket (a published clip stands for its still)."""
     from routes.bucketer import bucket_path, load_meta

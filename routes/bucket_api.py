@@ -439,6 +439,16 @@ def choose_clip(bucket_id: str, filename: str):
     choose(bucket_path(bucket_id), filename)
     return jsonify({"status": "chosen"})
 
+@buckets_bp.route("/buckets/<bucket_id>/detach-clip/<filename>", methods=["POST"])
+def detach_clip(bucket_id: str, filename: str):
+    """Make a clip an item of its own (it no longer belongs to its still; routes/clips.py)."""
+    from routes.clips import detach, still_of, _meta
+    fp = bucket_path(bucket_id) / filename
+    if not fp.is_file() or not still_of(_meta(fp)):
+        abort(404, "no such clip")
+    detach(bucket_path(bucket_id), filename)
+    return jsonify({"status": "detached"})
+
 # -- move / copy -------------------------------------------------------------
 
 @buckets_bp.route("/buckets/add_image_to_new_bucket", methods=["POST"])

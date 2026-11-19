@@ -5,9 +5,10 @@
 // play info: pace, length, rests; routes/clips.py, routes/clip_ease.py); references; tags; and everything else in
 // the file's metadata under "Technical details", folded away.
 import React, { useState } from 'react';
-import { Check, ChevronDown, Copy, Film, Trash2, Wand2, X } from 'lucide-react';
+import { Check, ChevronDown, Copy, Film, Scissors, Share, Trash2, Wand2, X } from 'lucide-react';
 import { toast } from 'sonner';
-import { animateStill, chooseClip, deleteFromBucket } from '@/shared/api/buckets';
+import { animateStill, chooseClip, deleteFromBucket, detachClip } from '@/shared/api/buckets';
+import { publishApi } from '@/shared/api';
 import { Button } from '@/components/ui/button';
 import { useWorkflows } from '@/data/typedWorkflows';
 import { ReferenceImageService } from '@/services/reference-image-service';
@@ -192,11 +193,13 @@ interface Props {
   /** The screen or collection the picture is in, by name. */
   placeName?: string | null;
   onClose: () => void;
-  /** Show the still's newest clip playing (the Loope's Moving view). */
-  onWatch?: () => void;
+  /** Show one of the still's clips playing in the Loope (its index; then the Loope's actions are the clip's). */
+  onWatch?: (index?: number) => void;
+  /** Screens a clip can be published to on its own. */
+  publishTargets?: Array<{ id: string; name: string }>;
 }
 
-export function ImageInfo({ image, bucket, placeName, onClose, onWatch }: Props) {
+export function ImageInfo({ image, bucket, placeName, onClose, onWatch, publishTargets = [] }: Props) {
   const workflows = useWorkflows();
   const meta = (image.metadata || {}) as Record<string, any>;
   const isClip = image.mediaType === 'video';
@@ -259,10 +262,11 @@ export function ImageInfo({ image, bucket, placeName, onClose, onWatch }: Props)
 
         {!isClip && (
           <Section title={clips.length > 1 ? `Movement (${clips.length} clips)` : 'Movement'}>
-            {clips.length > 0 && onWatch && (
-              <Button variant="secondary" size="sm" className="gap-1" onClick={onWatch}>
-                <Film className="h-4 w-4" /> Watch it move
-              </Button>
+            {clips.length > 0 && (
+              <p className="text-xs text-neutral-400">
+                Publishing the picture puts {clips.length > 1 ? 'the clip that plays' : 'its clip'} up with it. To act
+                on a clip alone, Watch it (the bar's actions are then the clip's), publish it here, or Separate it.
+              </p>
             )}
             {clips.length === 0 && <p className="text-neutral-400">This picture is still.</p>}
             <div className="space-y-4">
@@ -273,7 +277,40 @@ export function ImageInfo({ image, bucket, placeName, onClose, onWatch }: Props)
                   )}
                   <ClipRows meta={c.metadata || {}} />
                   {bucket && (
-                    <div className="mt-2 flex flex-wrap gap-2">
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      {onWatch && (
+                        <Button variant="secondary" size="sm" className="gap-1" onClick={() => onWatch(i)}>
+                          <Film className="h-4 w-4" /> Watch
+                        </Button>
+                      )}
+                      {publishTargets.length > 0 && (
+                        <label className="inline-flex items-center gap-1 text-neutral-300">
+                          <Share className="h-4 w-4" />
+                          <select
+                            value=""
+                            aria-label="Publish this clip to"
+                            className="rounded-md bg-neutral-800 px-2 py-1.5 text-white"
+                            onChange={(e) => {
+                              const dest = e.target.value;
+                              if (!dest) return;
+                              publishApi
+                                .publishImageUnified({ dest_bucket_id: dest, src_bucket_id: bucket, filename: c.filename })
+                                .then(
+                                  (r) => {
+                                    if (r.success) toast.success(publishApi.publishedWords(r, 'Clip published'));
+                                    else if (!r.cancelled) toast.error(`Could not publish: ${r.error ?? ''}`);
+                                  },
+                                  (err) => toast.error(String(err?.message || err)),
+                                );
+                            }}
+                          >
+                            <option value="">Publish this clip to…</option>
+                            {publishTargets.map((d) => (
+                              <option key={d.id} value={d.id}>{d.name}</option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
                       {i > 0 && (
                         <Button
                           variant="secondary"
@@ -301,6 +338,23 @@ export function ImageInfo({ image, bucket, placeName, onClose, onWatch }: Props)
                         }}
                       >
                         <Trash2 className="h-4 w-4" /> Delete clip
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="gap-1 text-neutral-300 hover:text-white"
+                        title="Make the clip an item of its own, no longer part of this picture"
+                        onClick={() =>
+                          detachClip(bucket, c.filename).then(
+                            () => {
+                              setClips(clips.filter((x) => x !== c));
+                              toast.success('The clip is now an item of its own');
+                            },
+                            (err) => toast.error(String(err?.message || err)),
+                          )
+                        }
+                      >
+                        <Scissors className="h-4 w-4" /> Separate
                       </Button>
                     </div>
                   )}
