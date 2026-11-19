@@ -415,13 +415,13 @@ def handle_animate(instruction, context, now, output, publish_destination):
     if _generation_refused("animate", publish_destination, now, output):
         return
     # Extract the prompt - no need to process with Jinja again
-    prompt = ""
-    
+    prompt = instruction.get("prompt") or ""   # the schema's field (an old schedule may carry input.prompt)
+
     if "input" in instruction:
         if isinstance(instruction["input"], dict):
             if "prompt" in instruction["input"]:
                 prompt = instruction["input"]["prompt"]
-    
+
     # Make the request to the animate endpoint
     try:
         # Get the animation service from our factory

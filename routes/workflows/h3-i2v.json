@@ -121,7 +121,7 @@
     0
    ],
    "conditioning": [
-    "20",
+    "8",
     0
    ]
   },
@@ -225,31 +225,6 @@
   },
   "_meta": {
    "title": "Interpolate {{INTERPOLATOR}}"
-  }
- },
- "20": {
-  "class_type": "MiniMaxH3AddGuide",
-  "inputs": {
-   "positive": [
-    "8",
-    0
-   ],
-   "vae": [
-    "4",
-    0
-   ],
-   "latent": [
-    "8",
-    1
-   ],
-   "image": [
-    "6",
-    0
-   ],
-   "frame_idx": 61
-  },
-  "_meta": {
-   "title": "The picture again at mid-clip (keeps the framing)"
   }
  }
 }

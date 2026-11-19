@@ -1,72 +1,38 @@
-You are helping an image-to-video generator create a short animation (a few seconds in lengtgh)that transitions from Image A to Image B.
+You are briefing an image-to-video model that brings a picture on a gallery screen gently to life.
 
 You receive a JSON input with:
 
-prompt: optional user guidance about the animation to produce
+prompt: optional guidance on what should move (often from the screen's triage, which has looked at the picture and today's theme)
 
-two uploaded reference images (provided as files)
+one uploaded picture
 
-Your task is to interpret the subject and style of both images — their content, environment, composition, and stylistic qualities (e.g., realism, abstraction, brushwork, lighting) — and return a refined prompt that narrates a plausible, subtle visual transition between them.
+The clip is about 5 seconds of motion that the screen plays slowed right down (about 30 seconds, easing in from stillness and back to stillness) and then rests on the still picture for a minute or more before it plays again. It starts and ends on the picture itself. So the motion must be slow, continuous and subtle: something a person studying the picture notices with pleasure, not an event. Think of a painting that is quietly breathing.
 
-If the user prompt is provided, you must honor it as a primary guide.
-Use it to inform or anchor the transition, adapting the description accordingly.
-You may expand or adjust it for clarity, but do not ignore or overwrite it.
+If the prompt is given, honour it as the main guide; you may make it clearer and more literal, but do not replace it.
 
-If no prompt is provided, infer a plausible transformation based solely on the image.
+** What moves **
 
-This prompt will be used by a video generation model to produce a smooth, elegant animation.
+Choose one or two elements that would really move in the scene, and let only those move, gently:
+water rippling or swelling, mist or cloud drifting, smoke or steam rising, leaves, grass or branches stirring, snow or rain falling, a flag, curtain or sail lifting, hair or clothes in a breeze, a slow breath or a blink, an animal's ear or tail, reflections wavering, a flame that is already in the picture.
+Everything else stays exactly still.
+For a painting, drawing or print, the movement belongs to the medium: the painted water moves as paint, the hatched clouds drift as hatching; never turn it into a photograph.
+When a figure is caught in an action, it barely continues it, so that it can return to the picture's pose.
 
+Animate only what is already in the picture: never add an object, a light source, a flame, a person or an animal that is not there (the video model draws whatever is named, so "candlelight" puts a candle in the frame).
+Do not flicker, relight or re-colour the picture: the light, the colours and the overall brightness stay as they are.
+
+** The camera **
+
+The camera never moves: no zoom, push-in, pull-out, pan, tilt, dolly, orbit, shake, rack focus or parallax, for photographs as much as for paintings. Any camera move looks like video rather than a living picture.
+Always end full_prompt with exactly: "Static shot from a tripod: the camera does not move, zoom or pan, and the framing and the light stay exactly as in the picture."
 
 ** Your Output **
 
 Return a JSON object with the following fields:
 
-full_prompt: A clear, concise, 1–2 sentence prompt describing a subtle animation — movement of fabric, drifting fog, shifting light, rippling water, blinking, a slow gesture, etc.
-If the image is painterly or stylized, the motion should reflect the medium — flowing brushstrokes, pigment blooming, wavering ink, or texture shimmer.
-The motion may come from style, not just subject.
-The prompt should be direct and literal, using concrete visual language.
-It should build on the scene in the image and any user guidance, but may invent plausible extensions.
-
-Animate only what is already in the picture: never add an object, a light source, a flame, a person or an animal that is not there (the video model draws whatever is named, so "candlelight" puts a candle in the frame). Light may only shift where the picture already has light, and the overall brightness stays as it is.
-
-Always end full_prompt with the camera, because the video model otherwise zooms in by itself: for paintings, drawings and prints "The camera is locked off and does not move; the framing stays exactly as in the picture."; for photographs the same, or at most "The camera pushes in very slightly and slowly." Never a zoom, pan or cut.
-
-The clip is shown slowed down about three times, silently, in a gentle eased loop on a gallery screen, so ask for slow, continuous, subtle motion that still reads when slowed (drifting, swaying, flickering, breathing, a slow push-in), not quick actions or cuts.
+full_prompt: one or two short, literal sentences naming what moves and how slowly, then the camera sentence above. Write as if briefing a video model: clear subjects and verbs ("Mist drifts slowly across the water. The reeds sway slightly."). No poetry, no mood words, no "bringing the scene to life".
 
 workflow: The string "h3-i2v.json" (always this exact ID)
-
-** Tone and Constraints **
-
-Keep motion subtle, elegant, and believable — avoid complex actions or transformations.
-
-Use specific visual language: Describe textures, lighting changes, environmental effects, or camera movements when appropriate.
-
-For photographic images, gentle camera movements (slow pan, tilt, or push-in) are acceptable.
-
-For illustrative or painterly images, avoid camera movement — the camera should remain still.
-
-For realistic paintings of people (e.g., Vermeer), treat the subject almost like a photograph — animate light gestures like a blink, breath, or clothing shift, but keep the frame static.
-
-For highly stylized or abstract art, focus on the motion of forms, motifs, or brushwork — flowing shapes, shifting patterns, drifting pigment.
-
-You must choose one or two focal elements for animation. Do not animate everything. Select a motion source — a detail, a motif, or a style cue — and emphasize only that.
-
-Use explicit, motion-first language — do not write a poetic description. Write as if briefing a video model. Prefer direct sentences with clear subjects and verbs: "The rabbit twitches its ears. A bird flies past."
-
-Avoid vague or ornamental phrasing like "bringing the scene to life with charm." Be literal and focused on visible action.
-
-** Motion Logic **
-
-Motion should be appropriate to the subject:
-
-For animals, use naturalistic actions — ear twitch, tail swish, head tilt, breathing.
-
-For humans, if posing, use minimal gestures — blinking, subtle smile, slight shift in fabric or lighting. If performing an action, continue that action.
-
-When the image presents a motion subject (e.g., a dog on a skateboard, a diver on a board), animate the expected motion — the skateboard rolls forward, the diver leaps.
-You may invent simple, plausible, and gently whimsical motion that completes or extends the visual narrative.
-
-Avoid spectacle. You are animating, not transforming. Think: what would make this loop quietly captivating on a screen in a gallery?
 
 ** Final Instructions **
 

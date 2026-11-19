@@ -16,6 +16,13 @@
 // just inside the frame that was last presented (tracked with requestVideoFrameCallback): the picture
 // does not change, and the art-only page reaches the same frame through the same seek. A hold during
 // the first-frame cross-fade snaps to frame 0 (the cross-fade target) instead.
+//
+// A clip with its ease rendered in (routes/clip_ease.py; its published sidecar says `clip.eased`) plays
+// differently, because the browser can't ease smoothly: at 0.065x each frame stays up for 0.6 s, so the old loop
+// started with two visible ticks and stepped for its first ~3 s (owner, 19 Nov). That clip is 30 fps and already
+// eases from stillness and back, and it ends on exactly its first frame (the picture). So it plays at 1x, then
+// rests on the picture for a random time in `restS` (longer for bigger movements), seeks back to frame 0 (the same
+// picture) and plays again. The first play waits a short random while after the clip arrives.
 
 export const EASE_IN_DURATION = 2500;
 export const EASE_OUT_DURATION = 2500;
@@ -27,7 +34,13 @@ export const FIRST_FRAME_FADE_OUT_DURATION = 500;
 export const PACE = 0.6;
 const SLOW = 0.065;
 
-type Phase = "idle" | "seeking" | "primer" | "easeIn" | "cruise" | "easeOut" | "holdFinal" | "crossfade" | "restartDelay";
+type Phase = "idle" | "seeking" | "primer" | "easeIn" | "cruise" | "easeOut" | "holdFinal" | "crossfade" | "restartDelay" | "rest";
+
+/** A clip with its ease rendered in: play at 1x, rest on the picture for `restS` seconds (a random time in the range). */
+export interface EasedLoop {
+  restS: [number, number];
+}
+const FIRST_REST_S: [number, number] = [5, 20];
 
 export interface ClipCycleHooks {
   /** Today's `paused` state (drives the ?debug "Paused on Final Frame" label). */
@@ -56,6 +69,8 @@ export class ClipCycle {
   private rvfc: number | null = null;
   /** The first-frame overlay is up (from the cross-fade until the restart has frame 0 on screen). */
   private overlay = false;
+  private eased: EasedLoop | null = null;
+  private played = false;
 
   constructor(private video: HTMLVideoElement, private hooks: ClipCycleHooks) {
     this.watchFrames();
@@ -68,6 +83,11 @@ export class ClipCycle {
       this.watchFrames();
     });
   };
+
+  /** Set before start(): the clip has its ease rendered in. */
+  setEased(loop: EasedLoop | null): void {
+    this.eased = loop;
+  }
 
   get isHeld(): boolean {
     return this.heldPhase !== null;
@@ -128,6 +148,9 @@ export class ClipCycle {
       case "holdFinal":
         this.crossfadeStep(this.gen);
         break;
+      case "rest":
+        this.restStep(this.gen);
+        break;
       case "crossfade":
       case "restartDelay":
         this.begin();
@@ -136,7 +159,8 @@ export class ClipCycle {
         this.begin();
         break;
       default:
-        this.resumeMotion(this.gen);
+        if (this.eased) this.playEased(this.gen);
+        else this.resumeMotion(this.gen);
     }
   }
 
@@ -163,6 +187,11 @@ export class ClipCycle {
     this.once(g, "seeked", () => {
       void this.frameReady(g).then(() => this.framePresented(g)).then(() => {
         if (g !== this.gen) return;
+        if (this.eased) {
+          if (this.played) this.playEased(g);
+          else this.restStep(g);
+          return;
+        }
         if (this.overlay) {
           // Frame 0 is on screen under the overlay, which shows the same picture: it can go now.
           this.overlay = false;
@@ -184,6 +213,26 @@ export class ClipCycle {
         });
       });
     });
+  }
+
+  private playEased(g: number): void {
+    const v = this.video;
+    this.played = true;
+    this.phase = "cruise";
+    this.hooks.setPaused(false);
+    v.playbackRate = 1;
+    this.once(g, "ended", () => this.restStep(g));
+    this.play(g, () => {});
+  }
+
+  /** Rest on the picture (the clip's last frame is its first), then seek back to frame 0 and play again. */
+  private restStep(g: number): void {
+    if (!this.eased) return;
+    this.phase = "rest";
+    this.video.pause();
+    this.hooks.setPaused(true);
+    const [lo, hi] = this.played ? this.eased.restS : FIRST_REST_S;
+    this.later(g, () => this.begin(), (lo + Math.random() * (hi - lo)) * 1000);
   }
 
   private easeOutStep(g: number): void {

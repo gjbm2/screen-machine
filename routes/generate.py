@@ -862,6 +862,19 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
     if batch_id is not None:
         vars(args_namespace)["batch_id"] = batch_id
 
+    # A screen clip (workflows.json "loop") gets its slow ease rendered in, and keeps the still if the camera moved
+    loop = next((w.get("loop") for w in _load_json_once("workflow", "workflows.json")
+                 if w.get("id") == args_namespace.workflow), None)
+    if loop:
+        from routes.clip_ease import ease_result
+        tracker.update(job_id, message="Easing the clip")
+        output["message"], clip = ease_result(output["message"], loop, job_id)
+        info(f"Eased clip: {clip}")
+        if clip["motion"] > loop.get("max_motion", 16):
+            raise RuntimeError(f"The clip changed too much of the picture (camera movement; {clip['motion']}), "
+                               "so the still stays")
+        vars(args_namespace)["clip"] = clip
+
     if publish_destination:
         if tracker.is_cancelled(job_id):
             raise JobCancelled("Cancelled before it was published")

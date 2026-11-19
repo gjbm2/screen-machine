@@ -10,7 +10,7 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { Fit } from "../control/protocol";
-import { ClipCycle, CROSSFADE_DURATION, FIRST_FRAME_FADE_OUT_DURATION } from "./ClipCycle";
+import { ClipCycle, CROSSFADE_DURATION, FIRST_FRAME_FADE_OUT_DURATION, type EasedLoop } from "./ClipCycle";
 import { isClip, mediaContainerStyle, mediaStyle } from "./styles";
 
 const FADE_OUT_TIME = 1000;
@@ -68,6 +68,23 @@ function waitEvent(el: HTMLMediaElement, ok: string, ms: number): Promise<void> 
     el.addEventListener(ok, done);
     el.addEventListener("error", done);
   });
+}
+
+/** A clip with its ease rendered in says so in its published sidecar (<clip>.json: `clip.eased`, `clip.rest_s`).
+ *  The sidecar can land just after the clip, so a sidecar without it is read once more. */
+async function easedLoop(src: string): Promise<EasedLoop | null> {
+  const url = `${src.split("?")[0]}.json`;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt) await new Promise((r) => setTimeout(r, 1500));
+    try {
+      const r = await fetch(url, { cache: "no-store" });
+      const clip = r.ok ? (await r.json())?.clip : null;
+      if (clip?.eased && Array.isArray(clip.rest_s)) return { restS: [Number(clip.rest_s[0]), Number(clip.rest_s[1])] };
+    } catch {
+      // no sidecar: an older clip, played the old way
+    }
+  }
+  return null;
 }
 
 function twoFrames(): Promise<void> {
@@ -209,8 +226,14 @@ export const ArtMedia = forwardRef<ArtMediaHandle, Props>(function ArtMedia(
     });
     cycleRef.current = cycle;
     if (holdRef.current) holdDone.current = cycle.hold();
-    cycle.start();
+    let alive = true;
+    void easedLoop(src).then((loop) => {
+      if (!alive) return;
+      cycle.setEased(loop);
+      cycle.start();
+    });
     return () => {
+      alive = false;
       cycle.dispose();
       if (cycleRef.current === cycle) cycleRef.current = null;
     };
