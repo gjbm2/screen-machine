@@ -680,18 +680,23 @@ def build_schema_subs():
 CAST_BUILDS = ["slight", "slim", "wiry", "athletic", "average", "broad-shouldered", "stocky", "soft and rounded", "heavy"]
 CAST_FACES = ["a long nose", "freckles", "heavy brows", "a round face", "deep-set eyes", "a gap-toothed smile",
               "weathered skin", "high cheekbones", "a broken nose", "laughter lines", "a strong jaw", "a soft double chin"]
-CAST_HAIR = ["close-cropped hair", "long straight hair", "a shaved head", "tight curls", "a bob", "thinning hair",
-             "a beard", "wavy hair to the shoulders", "a pixie cut", "stubble", "a plait", "messy hair", "an undercut",
-             "a grey streak", "a bun"]
+CAST_HAIR_MEN = ["close-cropped hair", "a shaved head", "thinning hair", "a full beard", "stubble", "wavy hair to the collar",
+                 "a grey crew cut", "curly hair", "a receding hairline", "slicked-back hair", "a moustache"]
+CAST_HAIR_WOMEN = ["long straight hair", "tight curls", "a bob", "a pixie cut", "a plait", "wavy hair to the shoulders",
+                   "a bun", "a grey streak in long hair", "a fringe", "a ponytail", "messy shoulder-length hair"]
 
 
-def casting(people=4, rng=None):
-    """'first person: …; second person: …' for up to `people` people: build, face and hair drawn at random."""
+def casting(each=3, rng=None):
+    """'man 1: …; woman 1: …; man 2: …' — `each` men and women, each with a build, a face and hair drawn at random.
+    The sexes are named in the cast itself: left to choose, the prompt model sexed a random cast at random (two men as
+    a couple, a woman with a beard), and the image model followed."""
     import random
     rng = rng or random.Random()
-    ordinals = ["first", "second", "third", "fourth", "fifth"]
-    return "; ".join(f"{ordinals[i]} person: {rng.choice(CAST_BUILDS)}, {rng.choice(CAST_FACES)}, {rng.choice(CAST_HAIR)}"
-                     for i in range(people))
+    cast = []
+    for i in range(1, each + 1):
+        for sex, hair in (("man", CAST_HAIR_MEN), ("woman", CAST_HAIR_WOMEN)):
+            cast.append(f"{sex} {i}: {rng.choice(CAST_BUILDS)}, {rng.choice(CAST_FACES)}, {rng.choice(hair)}")
+    return "; ".join(cast)
     
 def resize_image_keep_aspect(image_path, max_dim=512):
     """
