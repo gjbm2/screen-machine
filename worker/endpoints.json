@@ -18,24 +18,25 @@
     "sm-image": {
       "id": "1p4605rkgfo392",
       "gpus": "BLACKWELL_96,ADA_80_PRO,HOPPER_141",
-      "workers_max": 3,
+      "workers_max": 0,
       "idle_timeout": 5,
       "execution_timeout_s": 1200,
-      "bundle": "https://huggingface.co/gjbm2/sm-image-bundle:3bfda65d9f89bbb8eb5e0f8092a510095af3eb14"
+      "bundle": "https://huggingface.co/gjbm2/sm-image-bundle:3bfda65d9f89bbb8eb5e0f8092a510095af3eb14",
+      "note": "Retired 19 Nov (plan 3f): every workflow runs on its one-model endpoint (sm-krea2, sm-qwen, sm-zimage). Kept at 0 workers for a week as the rollback."
     },
     "sm-live": {
       "gpus": "BLACKWELL_96,ADA_80_PRO,HOPPER_141",
-      "workers_max": 2,
+      "workers_max": 0,
       "idle_timeout": 120,
       "execution_timeout_s": 1200,
       "bundle": "https://huggingface.co/gjbm2/sm-image-bundle:3bfda65d9f89bbb8eb5e0f8092a510095af3eb14",
-      "note": "Interactive (generator page, Alexa): stays warm 2 min after a job or a warm-up, so the next picture starts at once. sm-image (TVs, schedules) keeps a 5 s idle timeout.",
+      "note": "Retired 19 Nov (plan 3f, owner: no warm dwell). Kept at 0 workers for a week as the rollback.",
       "id": "v0lfqu2owx3lc4"
     },
     "sm-zimage": {
       "template": "sm-worker-zimage",
       "gpus": "ADA_32_PRO,BLACKWELL_96,ADA_80_PRO,HOPPER_141",
-      "workers_max": 1,
+      "workers_max": 2,
       "idle_timeout": 5,
       "execution_timeout_s": 1200,
       "bundle": "https://huggingface.co/gjbm2/sm-zimage-bundle:main",
@@ -50,8 +51,8 @@
     "sm-krea2": {
       "template": "sm-worker-krea2",
       "image": "gjbm2/sm-worker:2026-11-18-3",
-      "gpus": "ADA_32_PRO,BLACKWELL_96,ADA_80_PRO,HOPPER_141",
-      "workers_max": 1,
+      "gpus": "BLACKWELL_96,ADA_80_PRO,HOPPER_141,ADA_32_PRO",
+      "workers_max": 3,
       "idle_timeout": 5,
       "execution_timeout_s": 1200,
       "bundle": "https://huggingface.co/gjbm2/sm-krea2-bundle:07fc453e4732a77e477049ff62001b41de343083",
@@ -59,14 +60,14 @@
         "COMFY_ARGS": "--disable-dynamic-vram",
         "SM_PREFETCH": "1"
       },
-      "note": "One model per endpoint (plan step 3f, 19 Nov): Krea 2 Turbo fp8 (krea2-turbo.json), 18.6 GB bundle; fits a 32 GB RTX 5090. No dwell; FlashBoot; flags as sm-zimage.",
+      "note": "One model per endpoint (plan step 3f, 19 Nov): Krea 2 Turbo fp8 (krea2-turbo.json), 18.6 GB bundle. PRO 6000 first: the 19 Nov probe ran 22-25 s a picture warm on the RTX 5090 (the same model family runs ~10 s on the PRO 6000). No dwell; FlashBoot; flags as sm-zimage.",
       "id": "jgd96xqhx0r9np"
     },
     "sm-qwen": {
       "template": "sm-worker-qwen",
       "image": "gjbm2/sm-worker:2026-11-18-3",
       "gpus": "BLACKWELL_96,ADA_80_PRO,HOPPER_141",
-      "workers_max": 1,
+      "workers_max": 3,
       "idle_timeout": 5,
       "execution_timeout_s": 1200,
       "bundle": "https://huggingface.co/gjbm2/sm-qwen-bundle:afeedec4cae1dddc06f266487d1e8096986bbfb7",
@@ -76,6 +77,21 @@
       },
       "note": "One model per endpoint (plan step 3f, 19 Nov): Qwen-Image 2.1 bf16 + Turbo LoRA + Qwen3-VL 8B (qwen21, qwen21-turbo, qwen21-edit, qwen21-combine), 33.4 GB bundle; 80 GB-class GPUs (weights stay resident). No dwell; FlashBoot; flags as sm-zimage.",
       "id": "rwl6rp3wgg890o"
+    },
+    "sm-video": {
+      "template": "sm-worker-video",
+      "image": "gjbm2/sm-worker:2026-11-18-3",
+      "gpus": "BLACKWELL_96,HOPPER_141",
+      "workers_max": 1,
+      "idle_timeout": 5,
+      "execution_timeout_s": 1800,
+      "bundle": "https://huggingface.co/gjbm2/sm-h3-bundle:55ed5c3b5824f47a2ab6a12fd95350666980c3af",
+      "env": {
+        "COMFY_ARGS": "--disable-dynamic-vram",
+        "SM_PREFETCH": "1"
+      },
+      "note": "Video (plan step 6, 19 Nov): MiniMax H3 FL2VA, h3-i2v.json and h3-fl2v.json; 5 s at 1344x768, 24 fps, with sound; ~100 s a clip on a PRO 6000. One model, no dwell; flags as sm-zimage. Max 1 (account quota 10).",
+      "id": "srxuhd77ow2yco"
     }
   }
 }
