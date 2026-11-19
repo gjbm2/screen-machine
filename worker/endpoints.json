@@ -35,7 +35,7 @@
     "sm-zimage": {
       "template": "sm-worker-zimage",
       "gpus": "ADA_32_PRO,BLACKWELL_96,ADA_80_PRO,HOPPER_141",
-      "workers_max": 3,
+      "workers_max": 1,
       "idle_timeout": 5,
       "execution_timeout_s": 1200,
       "bundle": "https://huggingface.co/gjbm2/sm-zimage-bundle:main",
@@ -46,6 +46,36 @@
         "COMFY_ARGS": "--disable-dynamic-vram",
         "SM_PREFETCH": "1"
       }
+    },
+    "sm-krea2": {
+      "template": "sm-worker-krea2",
+      "image": "gjbm2/sm-worker:2026-11-18-3",
+      "gpus": "ADA_32_PRO,BLACKWELL_96,ADA_80_PRO,HOPPER_141",
+      "workers_max": 1,
+      "idle_timeout": 5,
+      "execution_timeout_s": 1200,
+      "bundle": "https://huggingface.co/gjbm2/sm-krea2-bundle:07fc453e4732a77e477049ff62001b41de343083",
+      "env": {
+        "COMFY_ARGS": "--disable-dynamic-vram",
+        "SM_PREFETCH": "1"
+      },
+      "note": "One model per endpoint (plan step 3f, 19 Nov): Krea 2 Turbo fp8 (krea2-turbo.json), 18.6 GB bundle; fits a 32 GB RTX 5090. No dwell; FlashBoot; flags as sm-zimage.",
+      "id": "jgd96xqhx0r9np"
+    },
+    "sm-qwen": {
+      "template": "sm-worker-qwen",
+      "image": "gjbm2/sm-worker:2026-11-18-3",
+      "gpus": "BLACKWELL_96,ADA_80_PRO,HOPPER_141",
+      "workers_max": 1,
+      "idle_timeout": 5,
+      "execution_timeout_s": 1200,
+      "bundle": "https://huggingface.co/gjbm2/sm-qwen-bundle:afeedec4cae1dddc06f266487d1e8096986bbfb7",
+      "env": {
+        "COMFY_ARGS": "--disable-dynamic-vram",
+        "SM_PREFETCH": "1"
+      },
+      "note": "One model per endpoint (plan step 3f, 19 Nov): Qwen-Image 2.1 bf16 + Turbo LoRA + Qwen3-VL 8B (qwen21, qwen21-turbo, qwen21-edit, qwen21-combine), 33.4 GB bundle; 80 GB-class GPUs (weights stay resident). No dwell; FlashBoot; flags as sm-zimage.",
+      "id": "rwl6rp3wgg890o"
     }
   }
 }

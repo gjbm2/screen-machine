@@ -1,0 +1,10 @@
+{
+  "repo": "gjbm2/sm-qwen-bundle",
+  "note": "Qwen-Image 2.1 only (bf16 DiT, Turbo LoRA, Qwen3-VL 8B, VAE), for the one-model endpoint sm-qwen (plan step 3f): qwen21, qwen21-turbo, qwen21-edit and qwen21-combine share one loaded model.",
+  "files": [
+    {"src": "Comfy-Org/Qwen-Image-2.1", "path": "diffusion_models/qwen_image_2.1_bf16.safetensors"},
+    {"src": "Comfy-Org/Qwen-Image-2.1", "path": "loras/qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors"},
+    {"src": "Comfy-Org/Qwen-Image-2.1", "path": "text_encoders/qwen3vl_8b_bf16.safetensors"},
+    {"src": "Comfy-Org/Qwen-Image-2.1", "path": "vae/qwen_image_2.1_vae_bf16.safetensors"}
+  ]
+}

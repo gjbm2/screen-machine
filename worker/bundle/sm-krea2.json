@@ -1,0 +1,10 @@
+{
+  "repo": "gjbm2/sm-krea2-bundle",
+  "note": "Krea 2 Turbo only (fp8) + its text encoder, VAE and Fedor's bypass LoRA, for the one-model endpoint sm-krea2 (plan step 3f): a worker FlashBoot resumes always has its model loaded, and a fresh host fetches ~20 GB, not 73.",
+  "files": [
+    {"src": "Comfy-Org/Krea-2", "path": "diffusion_models/krea2_turbo_fp8_scaled.safetensors"},
+    {"src": "Comfy-Org/Krea-2", "path": "text_encoders/qwen3vl_4b_fp8_scaled.safetensors"},
+    {"src": "Comfy-Org/Krea-2", "path": "vae/qwen_image_vae.safetensors"},
+    {"src": "Rand000mGuy/filterbypass", "path": "fedor_bypass.safetensors", "dest": "loras/krea2_fedor_bypass.safetensors"}
+  ]
+}
