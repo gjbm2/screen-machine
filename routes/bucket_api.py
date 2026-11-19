@@ -876,9 +876,12 @@ def get_bucket_complete(bucket_id: str):
         info(f"Published info for bucket {bucket_id}: {published}")
 
     # A clip made from a still is shown with it (its `clips`), not as an item of its own (routes/clips.py); a
-    # published clip shows as its still being published
+    # published clip shows as its still being published. Not in Generated: there each result stays in the batch it
+    # was made in, so a video made from a picture is found where it was commissioned (owner, 19 Nov: "I still can't
+    # get the video independently of the photo that was used to generate it")
     from routes.clips import group
-    files = group(files)
+    if bucket_id != "_recent":
+        files = group(files)
     if published:
         owner = next((f["filename"] for f in files for c in f.get("clips", []) if c["filename"] == published["filename"]), None)
         if owner:

@@ -143,7 +143,34 @@ def image_size(image):
         return None
 
 
-VIDEO_SIZES = {"landscape": (1344, 768), "portrait": (768, 1344), "square": (1024, 1024)}   # MiniMax H3's sizes
+VIDEO_ASPECTS = {"landscape": 16 / 9, "portrait": 9 / 16, "square": 1.0}
+VIDEO_AREA = 1344 * 768    # MiniMax H3's pixel count (its 16:9 size)
+
+
+def video_size(aspect):
+    """A video size of `aspect` at H3's pixel count, in steps of 32 (aspect held to 9:21-21:9)."""
+    import math
+    aspect = min(21 / 9, max(9 / 21, aspect))
+    return (max(256, round(math.sqrt(VIDEO_AREA * aspect) / 32) * 32),
+            max(256, round(math.sqrt(VIDEO_AREA / aspect) / 32) * 32))
+
+
+def crop_to_aspect(image, aspect):
+    """A request image ({"name", "image": base64}) cropped about its centre to `aspect`."""
+    import base64
+    from PIL import Image, ImageOps
+    with Image.open(BytesIO(base64.b64decode(image.get("image") or ""))) as img:
+        img = ImageOps.exif_transpose(img).convert("RGB")
+        w, h = img.size
+        if w / h > aspect:
+            cw = round(h * aspect)
+            img = img.crop(((w - cw) // 2, 0, (w - cw) // 2 + cw, h))
+        else:
+            ch = round(w / aspect)
+            img = img.crop((0, (h - ch) // 2, w, (h - ch) // 2 + ch))
+        buf = BytesIO()
+        img.save(buf, "JPEG", quality=95)
+    return {**image, "image": base64.b64encode(buf.getvalue()).decode()}
 MAX_VIDEO_S = 30          # the longest video asked for (Advanced: Length)
 SEGMENT_FRAMES = 244      # one H3 pass, at most (10 s at 24 fps); a longer video is made of passes in a chain
 
@@ -636,13 +663,19 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
     # rate follows, so it plays at real speed)
     fps = None
     if _node_inputs(workflow_data, "{{IMAGE-TO-VIDEO}}"):
+        # The video is drawn in the picture's own shape (the model stretches its first frame to the video's size: a
+        # 3:4 photo in a 9:16 video came out stretched and the model cut away from it, owner 19 Nov); a shape the
+        # person chose crops the picture to it first
         shape = vars(args_namespace).get("video_shape") or "auto"
-        if shape == "auto" and args_namespace.images:
-            w, h = image_size(args_namespace.images[0]) or (16, 9)
-            shape = "landscape" if w / h >= 1.2 else "portrait" if w / h <= 1 / 1.2 else "square"
-        size = VIDEO_SIZES.get(shape)
-        if size and not (args_namespace.width and args_namespace.height):
-            args_namespace.width, args_namespace.height = size
+        pic = image_size(args_namespace.images[0]) if args_namespace.images else None
+        aspect = VIDEO_ASPECTS.get(shape) or (pic[0] / pic[1] if pic else 16 / 9)
+        if not (args_namespace.width and args_namespace.height):
+            args_namespace.width, args_namespace.height = video_size(aspect)
+        # within 3% (the steps of 32) the model's own stretch is invisible, and a screen clip's 4K overlay
+        # (routes/clip_ease.py fits) matches it; beyond that the picture is cropped to the shape drawn
+        out = int(args_namespace.width) / int(args_namespace.height)
+        if pic and abs(pic[0] / pic[1] / out - 1) > 0.03:
+            args_namespace.images[0] = crop_to_aspect(args_namespace.images[0], out)
         seconds = vars(args_namespace).get("video_seconds")
         if seconds and not vars(args_namespace).get("video_length"):
             seconds = min(MAX_VIDEO_S, max(1.0, float(seconds)))
