@@ -16,6 +16,7 @@ import { JobPlaceholder, placeholderKeyOf } from '@/components/jobs/JobPlacehold
 import { ImageMenuItems } from '@/components/common/ImageMenuItems';
 import { openNextWithInfo, useLoopeView } from '@/contexts/LoopeViewContext';
 import { isVideoFile } from '@/utils/image-utils';
+import { startAgain } from './startAgain';
 
 // Add type declaration for window.generateImage
 declare global {
@@ -333,55 +334,6 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
     onCollapseChange?.(batchId, newState);
   };
   
-  // Start again: the picture's prompt and reference pictures back in the generator
-  const startAgain = (img: ImageItem) => {
-    try {
-      // Get the prompt text and reference images from the image
-      const promptText = img.promptKey || img.metadata?.prompt || '';
-      const referenceImages = img.reference_images || [];
-    
-      // Set the prompt text
-      window.dispatchEvent(
-        new CustomEvent('setPromptText', {
-          detail: { prompt: promptText }
-        })
-      );
-    
-      // Convert reference images to URLs and load them into the prompt area
-      const bucketId = img.bucketId || '_recent';
-      const referenceUrls = ReferenceImageService.getReferenceImageUrls(bucketId, referenceImages);
-    
-      // Clear existing reference images and set the first one
-      if (referenceUrls.length > 0) {
-        window.dispatchEvent(
-          new CustomEvent('useImageAsPrompt', {
-            detail: {
-              url: referenceUrls[0],
-              append: false // Clear existing and set this one
-            }
-          })
-        );
-      
-        // Add remaining reference images
-        for (let i = 1; i < referenceUrls.length; i++) {
-          window.dispatchEvent(
-            new CustomEvent('useImageAsPrompt', {
-              detail: {
-                url: referenceUrls[i],
-                append: true // Add to existing
-              }
-            })
-          );
-        }
-      }
-    
-      toast.success('Loaded prompt and reference images for editing');
-    } catch (error) {
-      console.error('Error starting again:', error);
-      toast.error('Failed to load prompt and reference images');
-    }
-  };
-
   // Info: the Loope opened on the picture's Info panel
   const showInfo = onImageClick ? (img: ImageItem) => { openNextWithInfo(); onImageClick(img); } : undefined;
 

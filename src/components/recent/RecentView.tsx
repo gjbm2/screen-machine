@@ -12,8 +12,9 @@ import { useLoopeView } from '@/contexts/LoopeViewContext';
 import styles from './recent.module.css';
 import React from 'react';
 import RecentBatchPanel from './RecentBatchPanel';
+import { GeneratedTiles, type GeneratedLayout } from './GeneratedTiles';
 import { ReferenceImageService } from '@/services/reference-image-service';
-import { Trash } from 'lucide-react';
+import { LayoutGrid, Rows3, PanelTop, Trash } from 'lucide-react';
 import { ExpandableContainer } from '@/components/common';
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription,
@@ -171,6 +172,24 @@ export const RecentView: React.FC<RecentViewProps> = ({
     [allDestinations, viewer],
   );
   const [everyone, setEveryone] = useState(false);
+
+  // How Generated is laid out (GeneratedTiles.tsx): the classic batch panels, or the tile layouts to compare them with
+  // (owner, 20 Nov: "build it with a toggle so I can compare"). Kept per browser.
+  const [layout, setLayout] = useState<GeneratedLayout>(() => {
+    try {
+      const saved = localStorage.getItem('generated_layout');
+      return saved === 'batches' || saved === 'grid' ? saved : 'classic';
+    } catch {
+      return 'classic';
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem('generated_layout', layout);
+    } catch {
+      // no storage: this visit only
+    }
+  }, [layout]);
   const everyoneRef = useRef(everyone);
   everyoneRef.current = everyone;
   useEffect(() => { if (initializedRef.current) fetchRecentImages(); }, [everyone]);
@@ -1300,9 +1319,31 @@ export const RecentView: React.FC<RecentViewProps> = ({
     onDragEnd: handleDragEnd
   });
 
+  const layoutToggle = (
+    <div role="group" aria-label="Layout" className="inline-flex overflow-hidden rounded-lg border text-sm">
+      {([
+        ['classic', 'Panels', PanelTop],
+        ['batches', 'Batches', Rows3],
+        ['grid', 'Grid', LayoutGrid],
+      ] as const).map(([id, label, Icon]) => (
+        <button
+          key={id}
+          type="button"
+          aria-pressed={layout === id}
+          title={id === 'classic' ? 'Each batch as a panel that opens' : id === 'batches' ? 'Each batch as a row of its pictures' : 'Every picture, small: for looking back'}
+          onClick={() => setLayout(id)}
+          className={`inline-flex items-center gap-1.5 px-2.5 py-1 ${layout === id ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'}`}
+        >
+          <Icon className="h-4 w-4" />
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+
   // An admin's choice, once sign-in is on: their own Generated images, or everyone's (docs/ACCOUNTS.md)
   const scopeToggle = viewer.accounts && atLeast(viewer, 'admin') ? (
-    <div className="mb-2 flex justify-end">
+    <div className="flex justify-end">
       <div role="group" aria-label="Whose pictures" className="inline-flex overflow-hidden rounded-lg border text-sm">
         {([false, true] as const).map(all => (
           <button
@@ -1344,8 +1385,27 @@ export const RecentView: React.FC<RecentViewProps> = ({
   return (
     <>
       <div className={styles.recentViewContainer}>
-        {scopeToggle}
-        {dateSections.map(section => (
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          {layoutToggle}
+          {scopeToggle}
+        </div>
+        {layout !== 'classic' ? (
+          <GeneratedTiles
+            layout={layout}
+            sections={dateSections}
+            isSectionCollapsed={isSectionCollapsed}
+            onToggleSection={toggleSection}
+            onDeleteSection={setSectionToDelete}
+            onDeleteImage={handleDeleteImage}
+            onDeleteBatch={handleDeleteBatch}
+            onCopyTo={handleCopyTo}
+            onMoveTo={handleMoveTo}
+            onPublish={handlePublish}
+            onUseAsPrompt={handleUseAsPrompt}
+            onGenerateAgain={handleGenerateAgain}
+            destinations={destinations}
+          />
+        ) : dateSections.map(section => (
           <ExpandableContainer
             key={`date-section-${section.id}`}
             id={section.id}

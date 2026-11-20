@@ -1162,8 +1162,12 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
           <div className="relative flex-1 min-h-0 w-full">
           <div className="w-full h-full overflow-hidden" ref={emblaRef} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
             <div className="flex h-full">
-              {images.map((img) => {
+              {images.map((img, slide) => {
                 const src = img.raw_url || img.urlFull;
+                // only the slides in view and beside it load now: a day of pictures, or a picture's 4K clips (each
+                // ~100 MB), all loading at once made the viewer slow to open
+                const near = Math.abs(slide - currentIndex) <= 1
+                  || (carouselOptions?.loop !== false && Math.abs(slide - currentIndex) === images.length - 1);
                 const isImgVideo = img.mediaType === 'video' || /\.mp4$|\.webm$/i.test(src);
                 const isLoading = loadingImages[src] !== false; // true or undefined means loading
                 
@@ -1186,7 +1190,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                       <video
                         src={`${src}#t=0.001`}
                         controls
-                        preload="auto"
+                        preload={near ? 'auto' : 'none'}
                         playsInline
                         ref={(el) => {
                           if (el) videoEls.current.set(img.id, el);
@@ -1199,6 +1203,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                       <img
                         src={src}
                         alt={img.promptKey || ''}
+                        loading={near ? 'eager' : 'lazy'}
                         className={`max-h-full max-w-full object-contain select-none carousel-image-item ${isLoading ? 'hidden' : ''}`}
                         onDoubleClick={(e) => handleDoubleClick(e, src)}
                         onTouchStart={(e) => handleImageTouchStart(e, src)}

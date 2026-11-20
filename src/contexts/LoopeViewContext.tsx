@@ -81,7 +81,7 @@ export const LoopeViewProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setCurrentIndex(atClip ? start + 1 : start);
     setTitle(ttl);
     setCarouselOptions({ ...options, showInfo: options.showInfo ?? Date.now() - infoOnNextOpen < 1000,
-                         playId: atClip ? items[start + 1].id : null });
+                         playId: atClip ? items[start + 1].id : ((options.playId as string | undefined) ?? null) });
     infoOnNextOpen = 0;
     setIsOpen(true);
   }, []);

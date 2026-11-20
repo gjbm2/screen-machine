@@ -21,7 +21,7 @@ import HoverActionBar from './HoverActionBar';
  *  thumbnails asked for while Flask restarts fail, and since the cards stopped being rebuilt every room frame
  *  nothing reloaded them. Up to 4 more tries, further apart each time; the same URL plus ?retry=n. */
 const RETRY_MS = [1500, 4000, 10000, 30000];
-function RetryImg({ src, ...rest }: React.ImgHTMLAttributes<HTMLImageElement>) {
+export function RetryImg({ src, ...rest }: React.ImgHTMLAttributes<HTMLImageElement>) {
   const [attempt, setAttempt] = React.useState(0);
   React.useEffect(() => setAttempt(0), [src]);
   const timer = React.useRef<ReturnType<typeof setTimeout> | null>(null);

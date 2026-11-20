@@ -1,10 +1,10 @@
 // One picture's ⋯ menu, the same wherever the picture is shown small or large (a bucket tile, Generated's thumbnails
 // and its selected picture, the Loope's More): Info, Bring to life, Use as prompt, Start again, Publish to, Copy to,
-// Move to, Full screen, Raw URL, Delete. Each item shows when its handler is given (owner, 19 Nov: the options had
+// Move to, Open in a new tab, Delete. Each item shows when its handler is given (owner, 19 Nov: the options had
 // drifted apart between the thumbnails and the large picture). `except` leaves out what a surface already has as a
 // button of its own (the Loope's bar).
 import React from 'react';
-import { Copy, ExternalLink, Info, Maximize2, Move, RefreshCw, Share, Sparkles, Trash, Wand2 } from 'lucide-react';
+import { Copy, ExternalLink, Info, Move, RefreshCw, Share, Sparkles, Trash, Wand2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { DropdownMenuItem, DropdownMenuSub, DropdownMenuSubContent, DropdownMenuSubTrigger } from '@/components/ui/dropdown-menu';
 import { animateStill } from '@/shared/api/buckets';
@@ -105,14 +105,13 @@ export function ImageMenuItems({
         <Submenu icon={<Move className="h-4 w-4 mr-2" />} label="Move to…" destinations={destinations}
           onPick={(id) => onMoveTo(image, id)} />
       )}
-      {image.urlFull && !except.includes('fullScreen') && (
-        <DropdownMenuItem onClick={(e) => { item(e); window.open(image.urlFull, '_blank'); }}>
-          <Maximize2 className="h-4 w-4 mr-2" /> Full screen
-        </DropdownMenuItem>
-      )}
-      {where && !except.includes('rawUrl') && (
-        <DropdownMenuItem onClick={(e) => { item(e); window.open(`/output/${where}/${image.id}`, '_blank'); }}>
-          <ExternalLink className="h-4 w-4 mr-2" /> Raw URL
+      {/* one way to the file itself, and it says it opens a tab (owner, 20 Nov: a new tab without warning; "Full
+          screen" and "Raw URL" both did that). Looking closely is the viewer's job */}
+      {(where || image.urlFull) && !except.includes('rawUrl') && (
+        <DropdownMenuItem
+          onClick={(e) => { item(e); window.open(where ? `/output/${where}/${image.id}` : image.urlFull, '_blank'); }}
+        >
+          <ExternalLink className="h-4 w-4 mr-2" /> Open in a new tab
         </DropdownMenuItem>
       )}
       {onDelete && (
