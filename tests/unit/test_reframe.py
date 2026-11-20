@@ -78,6 +78,19 @@ def test_the_vision_answer_is_turned_into_pixels(monkeypatch):
     assert reframe._vision_focus(Image.new("RGB", (400, 1000))) == (100, 100, 300, 1000)
 
 
+@pytest.mark.parametrize("size,answer,box", [
+    # Gemini's own boxes are thousandths (19 Nov: the two people shaking hands in a 3238x2160 group picture)
+    ((3238, 2160), (339, 234, 697, 985), (1098, 505, 2257, 2128)),
+    # over 1000: pixels of the copy it was shown (1536 px on the long side)
+    ((3072, 2048), (1100, 100, 1400, 900), (2200, 200, 2800, 1800)),
+])
+def test_a_vision_answer_in_whole_numbers(monkeypatch, size, answer, box):
+    import routes.openai
+    monkeypatch.setattr(routes.openai, "openai_prompt",
+                        lambda *a, **k: dict(zip(("x0", "y0", "x1", "y1"), answer), explanation="them"))
+    assert reframe._vision_focus(Image.new("RGB", size)) == box
+
+
 def test_face_focus_on_a_picture_with_no_face():
     assert reframe._face_focus(Image.new("RGB", (400, 800), RED)) is None
 

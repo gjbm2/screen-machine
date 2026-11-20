@@ -113,11 +113,15 @@ def _vision_focus(img: Image.Image):
                            images=[base64.b64encode(buf.getvalue()).decode()], verbose=False)
     w, h = img.size
     vals = [float(answer[k]) for k in ("x0", "y0", "x1", "y1")]
-    if max(vals) > 1.5:
-        # the model sometimes answers in pixels of the picture it was shown (routes/openai sends it at most 1536 px
-        # on its long side), not fractions: read them as such rather than clamp them all to 1 (an empty box)
+    if max(vals) > 1000:
+        # pixels of the picture it was shown (routes/openai sends it at most 1536 px on its long side)
         sw, sh = (w, h) if max(w, h) <= 1536 else (round(w * 1536 / max(w, h)), round(h * 1536 / max(w, h)))
         vals = [vals[0] / sw, vals[1] / sh, vals[2] / sw, vals[3] / sh]
+    elif max(vals) > 1.5:
+        # Gemini's own way of giving a box, whatever it is asked for: thousandths of the width and height. (19 Nov,
+        # a 3238x2160 group picture: 339,234 to 697,985 is the two people shaking hands as thousandths, and someone
+        # else's back as pixels.) Clamped to 1 these were an empty box.
+        vals = [v / 1000 for v in vals]
     x0, y0, x1, y1 = (min(max(v, 0.0), 1.0) for v in vals)
     if x1 <= x0 or y1 <= y0:
         raise ValueError(f"an empty box: {answer}")
