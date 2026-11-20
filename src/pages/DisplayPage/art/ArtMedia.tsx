@@ -92,7 +92,8 @@ async function clipInfo(src: string): Promise<Record<string, any> | null> {
 
 /** A clip with its ease rendered in plays at 1x and rests; any other video plays the old eased loop. */
 function easedLoop(clip: Record<string, any> | null): EasedLoop | null {
-  if (clip?.eased && Array.isArray(clip.rest_s)) return { restS: [Number(clip.rest_s[0]), Number(clip.rest_s[1])] };
+  if (clip?.eased && Array.isArray(clip.rest_s))
+    return { restS: [Number(clip.rest_s[0]), Number(clip.rest_s[1])], returns: clip.returns !== false };
   return null;
 }
 
@@ -129,6 +130,7 @@ export const ArtMedia = forwardRef<ArtMediaHandle, Props>(function ArtMedia(
   const [firstFrame, setFirstFrame] = useState<string | null>(null);
   const [showFirstFrame, setShowFirstFrame] = useState(false);
   const [snapFirstFrame, setSnapFirstFrame] = useState(false);
+  const [fadeMs, setFadeMs] = useState(EASED_FADE); // an eased clip's overlay fade, set with each change (ClipCycle)
   const [eased, setEased] = useState(false); // a clip with its ease rendered in: even fades to and from the still
   const [debugInfo, setDebugInfo] = useState<{ currentTime?: string; playbackRate?: string; duration?: string }>({});
   const [searchParams] = useSearchParams();
@@ -224,8 +226,9 @@ export const ArtMedia = forwardRef<ArtMediaHandle, Props>(function ArtMedia(
     if (!v) return;
     const cycle = new ClipCycle(v, {
       setPaused,
-      setShowFirstFrame: (s) => {
+      setShowFirstFrame: (s, ms) => {
         if (s) setSnapFirstFrame(false);
+        if (ms) setFadeMs(ms);
         setShowFirstFrame(s);
       },
       snapFirstFrameOff: () => {
@@ -317,7 +320,7 @@ export const ArtMedia = forwardRef<ArtMediaHandle, Props>(function ArtMedia(
     transition: snapFirstFrame
       ? "none"
       : eased
-        ? `opacity ${EASED_FADE}ms ${OPACITY_EASING}`
+        ? `opacity ${fadeMs}ms ${OPACITY_EASING}`
         : showFirstFrame
           ? `opacity ${CROSSFADE_DURATION}ms ${OPACITY_EASING}`
           : `opacity ${FIRST_FRAME_FADE_OUT_DURATION}ms ${OPACITY_EASING}`,

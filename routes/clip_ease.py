@@ -28,24 +28,28 @@ FPS = 30            # an even cadence on the TVs' 60 Hz
 SMALL, LARGE = 3.0, 12.0  # mean change against frame 0 (0-255) of a barely moving clip and of a busy one (mist over a whole loch)
 
 
-def position(t, play, ramp):
-    """0..1 along the source at time t: velocity rises from 0 on a half cosine over `ramp`, holds, and falls back."""
-    ramp = min(ramp, play / 2)
-    total = play - ramp
+def position(t, play, ramp, ramp_out=None):
+    """0..1 along the source at time t: velocity rises from 0 on a half cosine over `ramp`, holds, and falls back over
+    `ramp_out` (the same as `ramp` when not given)."""
+    ri = ramp
+    ro = ramp if ramp_out is None else ramp_out
+    if ri + ro > play:
+        ri, ro = ri * play / (ri + ro), ro * play / (ri + ro)
+    total = play - (ri + ro) / 2
 
-    def ramped(x):  # distance covered x seconds into a ramp, at a top speed of 1
-        return x / 2 - ramp / (2 * math.pi) * math.sin(math.pi * x / ramp) if ramp else x
+    def ramped(x, r):  # distance covered x seconds into a ramp of r seconds, at a top speed of 1
+        return x / 2 - r / (2 * math.pi) * math.sin(math.pi * x / r) if r else x
 
     if t <= 0:
         return 0.0
     if t >= play:
         return 1.0
-    if t < ramp:
-        d = ramped(t)
-    elif t <= play - ramp:
-        d = ramp / 2 + (t - ramp)
+    if t < ri:
+        d = ramped(t, ri)
+    elif t <= play - ro:
+        d = ri / 2 + (t - ri)
     else:
-        d = total - ramped(play - t)
+        d = total - ramped(play - t, ro)
     return d / total
 
 
@@ -57,12 +61,16 @@ def rest_range(motion, rest_s):
     return [round(start), round(min(hi, start + (hi - lo) * (0.3 + 0.2 * k)))]
 
 
-def _probe(path):
+def _probe(path, rate=False):
     out = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-count_packets", "-show_entries",
-                          "stream=width,height,nb_read_packets", "-of", "json", path],
+                          "stream=width,height,nb_read_packets,r_frame_rate", "-of", "json", path],
                          capture_output=True, text=True, check=True).stdout
     s = json.loads(out)["streams"][0]
-    return int(s["width"]), int(s["height"]), int(s["nb_read_packets"])
+    whn = int(s["width"]), int(s["height"]), int(s["nb_read_packets"])
+    if not rate:
+        return whn
+    num, _, den = s.get("r_frame_rate", "30/1").partition("/")
+    return whn + (float(num) / float(den or 1),)
 
 
 def _blocks(f):
@@ -132,9 +140,10 @@ def fits(still_path, w, h):
         return False
 
 
-def ease_file(src, dst, play_s=30.0, ramp_s=8.0, settle_s=3.0, still=None):
+def ease_file(src, dst, play_s=30.0, ramp_s=8.0, settle_s=3.0, still=None, fps=FPS, ramp_out_s=None):
     """Render src (any clip) into dst on the eased curve, at the size of `still` when it is given (the full-size
-    picture the clip was made from: see _OnTheStill); returns how much of the picture moves (mean |frame - frame 0|)."""
+    picture the clip was made from: see _OnTheStill), at `fps`; returns how much of the picture moves (mean |frame -
+    frame 0|)."""
     w, h, n = _probe(src)
     size = w * h * 3
     dec = subprocess.Popen(["ffmpeg", "-v", "error", "-i", src, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
@@ -145,8 +154,10 @@ def ease_file(src, dst, play_s=30.0, ramp_s=8.0, settle_s=3.0, still=None):
 
     def encoder(W, H):
         return subprocess.Popen(["nice", "-n", "19", "ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt",
-                                 "rgb24", "-s", f"{W}x{H}", "-r", str(FPS), "-i", "-", "-an", "-c:v", "libx264",
+                                 "rgb24", "-s", f"{W}x{H}", "-r", f"{fps:g}", "-i", "-", "-an", "-c:v", "libx264",
                                  "-preset", "veryfast" if W > 2000 else "medium", "-crf", "17", "-pix_fmt", "yuv420p",
+                                 # a keyframe a second: the publisher's re-encode for quick stills has nothing to do
+                                 "-g", str(max(1, round(fps))), "-keyint_min", str(max(1, round(fps))),
                                  "-movflags", "+faststart", dst], stdin=subprocess.PIPE)
 
     def frame(i):  # source frames arrive in order and positions never go back: keep the two in use (and frame 0)
@@ -174,15 +185,15 @@ def ease_file(src, dst, play_s=30.0, ramp_s=8.0, settle_s=3.0, still=None):
         if still and fits(still, w, h):
             lay = _OnTheStill(still, first, w, h)
         enc = encoder(*(lay.size if lay else (w, h)))
-        total = int(round(play_s * FPS))
+        total = int(round(play_s * fps))
         for k in range(total + 1):
-            t = k / FPS
-            x = position(t, play_s, ramp_s) * (n - 1)
+            t = k / fps
+            x = position(t, play_s, ramp_s, ramp_out_s) * (n - 1)
             i = int(x)
             a = frame(i).astype(np.float32)
             frac = x - i
             out = a if frac < 1e-3 else a + (frame(i + 1).astype(np.float32) - a) * frac
-            if t > play_s - settle_s:
+            if settle_s and t > play_s - settle_s:
                 u = (t - (play_s - settle_s)) / settle_s
                 wgt = u * u * (3 - 2 * u)
                 out = out + (first - out) * wgt
@@ -258,8 +269,54 @@ def ease_result(source, loop, job_id, still=None):
     return path, clip
 
 
+# A video published to a screen without its ease rendered in (a normal video, an old one): the browser can't ease it
+# smoothly (owner, 20 Nov: the start was janky, the end staccato, and it stopped short of the end), so the screen's copy
+# gets the ease here. It plays at its own speed (a video made at real speed, `pace` natural) or at the old loop's 0.6,
+# rises from rest over RAMP_IN and comes to rest over the longer RAMP_OUT, and ends on its own last frame (it doesn't
+# come back to its first: the TV holds that frame, then dissolves to the first one, slowly).
+RAMP_IN, RAMP_OUT = 1.5, 2.0
+
+
+def clip_tag(path):
+    """The `clip` play info in a video's own MP4 comment tag, or None."""
+    try:
+        out = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format_tags=comment", "-of",
+                              "default=nw=1:nk=1", str(path)], capture_output=True, text=True, timeout=30).stdout.strip()
+        clip = json.loads(out).get("clip") if out.startswith("{") else None
+        return clip if isinstance(clip, dict) else None
+    except Exception:
+        return None
+VIDEO_REST_S = [16, 28]      # from the end of one play to the next, the hold and the dissolve included
+
+
+def ease_video(src, dst):
+    """Render the screen's copy of a video with its ease (see above) into dst, tagged: returns its `clip` metadata."""
+    w, h, n, rate = _probe(src, rate=True)
+    clip = clip_tag(src) or {}
+    speed = 1.0 if clip.get("pace") == "natural" else 0.6
+    # At real speed the output keeps the source's frames (the same rate, and the steady part lands on whole frames:
+    # a blend of two neighbouring frames at full speed would pulse soft and sharp); slowed, 30 fps (even on 60 Hz).
+    fps = min(rate, 60.0) if speed == 1.0 else float(FPS)
+    content = (n - 1) / (rate * speed)               # seconds the source takes at that speed
+    ri = min(RAMP_IN, content * 0.3)
+    ri = round(ri * fps / 2) * 2 / fps               # half the ramp is a whole number of frames
+    ro = min(RAMP_OUT, content * 0.35)
+    play = content + (ri + ro) / 2
+    with tempfile.TemporaryDirectory() as tmp:
+        raw = os.path.join(tmp, "eased.mp4")
+        ease_file(src, raw, play, ri, 0.0, None, fps=fps, ramp_out_s=ro)
+        clip = {"eased": True, "pace": clip.get("pace") or "slow", "play_s": round(play, 2), "returns": False,
+                "rest_s": VIDEO_REST_S}
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", raw, "-c", "copy", "-metadata",
+                        "comment=" + json.dumps({"clip": clip}), "-movflags", "+faststart", dst], check=True)
+    return clip
+
+
 if __name__ == "__main__":
     import sys
     _no_thp_stalls()
     a = sys.argv[1:]
-    print(ease_file(a[0], a[1], float(a[2]), float(a[3]), float(a[4]), a[5] or None))
+    if a[0] == "--video":
+        print(json.dumps(ease_video(a[1], a[2])))
+    else:
+        print(ease_file(a[0], a[1], float(a[2]), float(a[3]), float(a[4]), a[5] or None))

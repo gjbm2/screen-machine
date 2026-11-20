@@ -38,18 +38,27 @@ const SLOW = 0.065;
 
 type Phase = "idle" | "seeking" | "primer" | "easeIn" | "cruise" | "easeOut" | "holdFinal" | "crossfade" | "restartDelay" | "rest";
 
-/** A clip with its ease rendered in: play at 1x, rest on the picture for `restS` seconds (a random time in the range). */
+/** A clip with its ease rendered in: play at 1x, rest on the picture for `restS` seconds (a random time in the range).
+ *  `returns`: it ends on its first frame (a screen clip); a video that doesn't (routes/clip_ease.py ease_video) holds its
+ *  last frame, then dissolves slowly back to its first. */
 export interface EasedLoop {
   restS: [number, number];
+  returns: boolean;
 }
 const FIRST_REST_S: [number, number] = [5, 20];
 export const EASED_FADE = 2000;
+/** The first-frame overlay goes as the eased clip starts: quickly, as the clip is still all but at rest (its first
+ *  half second moves under a twentieth of a second of the source), so nothing of the moving picture shows through it. */
+export const START_FADE = 500;
+/** A video that ends away from its first frame: its last frame holds, then dissolves back to the first. */
+export const HOLD_END = 3000;
+export const RETURN_FADE = 6000;
 
 export interface ClipCycleHooks {
   /** Today's `paused` state (drives the ?debug "Paused on Final Frame" label). */
   setPaused(p: boolean): void;
-  /** Today's `showFirstFrame` state (the 8 s cross-fade to frame 0). */
-  setShowFirstFrame(show: boolean): void;
+  /** Today's `showFirstFrame` state (the 8 s cross-fade to frame 0); an eased clip says how long the fade takes. */
+  setShowFirstFrame(show: boolean, fadeMs?: number): void;
   /** Hide the first-frame overlay at once, with no fade (used by hold()). */
   snapFirstFrameOff(): void;
   log?: (...args: unknown[]) => void;
@@ -215,11 +224,7 @@ export class ClipCycle {
             this.phase = "easeIn";
             this.ease(g, SLOW, this.pace, EASE_IN_DURATION, () => {
               this.phase = "cruise";
-              // Today's formula, unchanged (MediaDisplay.tsx playUntil).
-              const primerSeconds = (PRIMER_PLAYBACK_DURATION / 1000) * SLOW;
-              const easeInSeconds = (EASE_IN_DURATION / 1000) * ((this.pace + SLOW) / 2);
-              const playUntil = Math.max(0, (v.duration / this.pace - (primerSeconds + easeInSeconds) - EASE_OUT_DURATION / 1000) * 1000);
-              this.later(g, () => this.easeOutStep(g), playUntil);
+              this.cruiseToEnd(g);
             });
           }, PRIMER_PLAYBACK_DURATION);
         });
@@ -232,27 +237,51 @@ export class ClipCycle {
     this.played = true;
     this.rested = false;
     this.phase = "cruise";
-    this.overlay = false;
-    this.hooks.setShowFirstFrame(false); // fades to the clip's start, which is the same picture
     this.hooks.setPaused(false);
     v.playbackRate = 1;
     this.once(g, "ended", () => this.restStep(g));
-    this.play(g, () => {});
+    // the overlay (the same picture as frame 0) goes once the clip is really moving, not while play() is starting
+    this.play(g, () => {
+      this.overlay = false;
+      this.hooks.setShowFirstFrame(false, START_FADE);
+    });
   }
 
-  /** Fade back to the still and rest on it, then seek back to frame 0 (under the still) and play again. */
+  /** Back to the still and rest on it, then seek back to frame 0 (under the still) and play again. A clip that ends
+   *  on its first frame is already on the still; a video that doesn't holds its last frame, then dissolves. */
   private restStep(g: number): void {
     if (!this.eased) return;
+    const eased = this.eased;
     this.phase = "rest";
     this.video.pause();
-    this.overlay = true;
-    this.hooks.setShowFirstFrame(true);
     this.hooks.setPaused(true);
-    const [lo, hi] = this.played ? this.eased.restS : FIRST_REST_S;
+    const back = () => {
+      this.overlay = true;
+      this.hooks.setShowFirstFrame(true, eased.returns || !this.played ? EASED_FADE : RETURN_FADE);
+    };
+    if (eased.returns || !this.played) back();
+    else this.later(g, back, HOLD_END);
+    const [lo, hi] = this.played ? eased.restS : FIRST_REST_S;
+    const least = eased.returns || !this.played ? EASED_FADE : HOLD_END + RETURN_FADE;
     this.later(g, () => {
       this.rested = true;
       this.begin();
-    }, (lo + Math.random() * (hi - lo)) * 1000);
+    }, Math.max(least + 1000, (lo + Math.random() * (hi - lo)) * 1000));
+  }
+
+  /** Cruise until the ease-out, measured from where the clip really is, so it comes to rest on its last frame (the
+   *  old formula mixed media and wall seconds and stopped a real-speed video ~1 s short of its end, owner 20 Nov). */
+  private cruiseToEnd(g: number): void {
+    const v = this.video;
+    this.phase = "cruise";
+    // media the ease-out consumes: its duration times the mean rate of the ease (easeInOutQuad is symmetric)
+    const easeOutMedia = (EASE_OUT_DURATION / 1000) * ((this.pace + SLOW) / 2);
+    const check = () => {
+      const left = Number.isFinite(v.duration) ? v.duration - v.currentTime - easeOutMedia : 0;
+      if (left <= 0.02) this.easeOutStep(g);
+      else this.later(g, check, Math.min(250, (left / this.pace) * 1000));
+    };
+    check();
   }
 
   private easeOutStep(g: number): void {
@@ -281,11 +310,7 @@ export class ClipCycle {
     this.play(g, () => {
       this.phase = "easeIn";
       this.ease(g, v.playbackRate, this.pace, EASE_IN_DURATION, () => {
-        this.phase = "cruise";
-        // Media consumed by the ease-out: its duration times the mean rate.
-        const easeOutMedia = (EASE_OUT_DURATION / 1000) * ((this.pace + SLOW) / 2);
-        const left = Number.isFinite(v.duration) ? v.duration - v.currentTime - easeOutMedia : 0;
-        this.later(g, () => this.easeOutStep(g), Math.max(0, (left / this.pace) * 1000));
+        this.cruiseToEnd(g);
       });
     });
   }

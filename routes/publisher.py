@@ -12,7 +12,7 @@ publisher.py – one canonical place for every way we can publish an asset.
 
 from __future__ import annotations
 
-import json, shutil, subprocess, threading
+import hashlib, json, shutil, subprocess, threading, time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, Optional
@@ -648,19 +648,75 @@ def _place_for_screen(src: Path, dst: Path, dest: dict | None = None, metadata: 
 
     Returns None when the picture is on the screen, or a token (for _when_placed) while it is still being made."""
     plan = _reframe_plan(src, dest, metadata, fit) if dest else None
+    eased = None if plan else _ease_plan(src)
     token = uuid.uuid4().hex
-    making = bool(plan and not plan["ready"])
+    making = bool(plan and not plan["ready"]) or bool(eased and not eased["ready"])
     with _PLACE_LOCK:
         _LATEST[str(dst)] = token
         if making:
             _WHEN_PLACED[token] = []
         else:
-            _place_file(plan["ready"] if plan else src, dst)
+            _place_file(plan["ready"] if plan else eased["ready"] if eased else src, dst)
     if not making:
         return None
-    threading.Thread(target=_extend_for_screen, args=(plan, dst, token), name=f"extend-{dst.stem}",
-                     daemon=True).start()
+    if plan:
+        threading.Thread(target=_extend_for_screen, args=(plan, dst, token), name=f"extend-{dst.stem}",
+                         daemon=True).start()
+    else:
+        threading.Thread(target=_ease_for_screen, args=(eased, dst, token), name=f"ease-{dst.stem}",
+                         daemon=True).start()
     return token
+
+
+# A video without its ease rendered in gets it for the screen (routes/clip_ease.py ease_video): the browser's own ease
+# stepped at the start, stopped short and ended abruptly (owner, 20 Nov). Kept by the video's name, size and time, so a
+# republish places it at once.
+def _ease_plan(src: Path) -> dict | None:
+    """{"src", "cache", "ready": the eased copy when it is already made} for a video that needs one, else None."""
+    if src.suffix.lower() != ".mp4":
+        return None
+    from routes.clip_ease import clip_tag
+    if (clip_tag(src) or {}).get("eased"):
+        return None
+    st = src.stat()
+    key = hashlib.sha1(f"{src.resolve()}|{st.st_size}|{st.st_mtime_ns}".encode()).hexdigest()[:20]
+    from routes.bucketer import BASE_OUTPUT
+    cache = Path(BASE_OUTPUT) / "_eased" / f"{key}.mp4"
+    return {"src": src, "cache": cache, "ready": cache if cache.exists() else None}
+
+
+def _ease_for_screen(plan: dict, dst: Path, token: str) -> None:
+    """Make the eased copy (in its own process, at low priority: seconds of numpy and x264) and put it on the screen
+    unless the screen has been given something newer since. If it can't be made, the video goes up as it is."""
+    cache = plan["cache"]
+    made = None
+    try:
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        tmp = cache.with_name(f".{cache.name}.tmp.mp4")
+        run = subprocess.run(["nice", "-n", "10", sys.executable, "-m", "routes.clip_ease", "--video", str(plan["src"]),
+                              str(tmp)], capture_output=True, text=True, timeout=900,
+                             cwd=str(Path(__file__).resolve().parent.parent))
+        if run.returncode != 0:
+            raise RuntimeError(run.stderr.strip()[-300:])
+        os.replace(tmp, cache)
+        made = cache
+        for old in cache.parent.glob("*.mp4"):          # a week's worth is plenty
+            if old.stat().st_mtime < time.time() - 7 * 86400:
+                old.unlink(missing_ok=True)
+    except Exception as e:
+        warning(f"[publish] easing {plan['src'].name} for the screen failed, so it goes up as it is: {e}")
+    with _PLACE_LOCK:
+        waiting = _WHEN_PLACED.pop(token, [])
+        if _LATEST.get(str(dst)) != token:
+            info(f"[publish] {dst.stem} was given something newer while its video was eased")
+            return
+        _place_file(made or plan["src"], dst)
+    info(f"[publish] {dst.stem} now shows {plan['src'].name}" + (" with its ease" if made else ""))
+    for then in waiting:
+        try:
+            then()
+        except Exception as e:
+            warning(f"[publish] after placing the video on {dst.stem}: {e}")
 
 
 def _reframe_plan(src: Path, dest: dict, metadata: dict | None, fit: str | None = None) -> dict | None:
