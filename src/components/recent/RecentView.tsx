@@ -1,3 +1,5 @@
+import { getReferenceUrl } from '@/utils/image-utils';
+import { ITEM_REMOVED_EVENT } from '@/components/tags/events';
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { toast } from 'sonner';
 import { bucketsApi, generationApi, publishApi } from '@/shared/api';
@@ -238,7 +240,8 @@ export const RecentView: React.FC<RecentViewProps> = ({
         try {
           const state = JSON.parse(savedState);
           if (state.batchOrder) setBatchOrder(state.batchOrder);
-          if (state.collapsedPanels) setCollapsedPanels(state.collapsedPanels);
+          // panels are not restored: the page opens with only the newest batch open (owner, 20 Nov: "they all start
+          // maximised"; every batch opened once stayed open on every visit)
           if (state.collapsedSections) setCollapsedSections(state.collapsedSections);
         } catch (e) {
           console.error('Error parsing saved state', e);
@@ -524,14 +527,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
     
     setBatchGroups(groups);
 
-    // If first load (no batchOrder yet), set initial collapsed panels: newest open
-    if (batchOrder.length === 0 && groups.length > 0) {
-      const firstId = groups[0].batchId;
-      const initialCollapse: Record<string, boolean> = {};
-      // Force ALL panels to start collapsed
-      groups.forEach(g => { initialCollapse[g.batchId] = true; });
-      setCollapsedPanels(initialCollapse);
-    }
+    // which panels are open on arrival: the render's default (only the newest), nothing to set here
   };
   
   // Convert BucketImage to ImageItem for components
@@ -649,7 +645,8 @@ export const RecentView: React.FC<RecentViewProps> = ({
     try {
       await bucketsApi.copyImageToBucket(img.bucketId || '_recent', targetBucketId, img.id, false);
       toast.success(`Image moved to ${targetBucketId}`);
-      fetchRecentImages();
+      setBucketImages(prev => prev.filter(i => i.id !== img.id));   // gone from Generated at once
+      fetchRecentImages(false);
     } catch (error) {
       console.error('Error moving image:', error);
       toast.error('Failed to move image');
@@ -677,16 +674,11 @@ export const RecentView: React.FC<RecentViewProps> = ({
   };
   
   // Handle using an image in the prompt
+  // the same way as everywhere else (window.addImageReferenceToPrompt was never defined: it only ever said "Could not
+  // add to prompt"); the prompt form adds the picture and puts the cursor in the prompt
   const handleUseAsPrompt = (img: ImageItem) => {
-    if (window.addImageReferenceToPrompt) {
-      const sourceUrl = img.raw_url || img.urlFull;
-      const bucketId = img.bucketId || '_recent';
-      window.addImageReferenceToPrompt(sourceUrl, bucketId, img.id);
-      toast.success('Added to prompt');
-    } else {
-      console.error('addImageReferenceToPrompt not available');
-      toast.error('Could not add to prompt');
-    }
+    window.dispatchEvent(new CustomEvent('useImageAsPrompt', { detail: { url: getReferenceUrl(img), append: false } }));
+    toast.success('Added to the prompt');
   };
   
   // Handle panel expansion/collapse
@@ -981,6 +973,16 @@ export const RecentView: React.FC<RecentViewProps> = ({
       if (ended.some(job => job.status === 'completed')) [0, 3000, 10000].forEach(ms => setTimeout(() => fetchRecentImages(false), ms));
     }
   }, [jobs]);
+
+  // A picture moved or deleted from the Loope leaves Generated at once
+  useEffect(() => {
+    const onRemoved = (e: Event) => {
+      const { bucket, filename } = (e as CustomEvent<{ bucket: string; filename: string }>).detail || ({} as never);
+      if (bucket === '_recent' && filename) setBucketImages(prev => prev.filter(i => i.id !== filename));
+    };
+    window.addEventListener(ITEM_REMOVED_EVENT, onRemoved);
+    return () => window.removeEventListener(ITEM_REMOVED_EVENT, onRemoved);
+  }, []);
 
   // Add a new useEffect to handle the generation-complete event:
   useEffect(() => {
@@ -1366,7 +1368,7 @@ export const RecentView: React.FC<RecentViewProps> = ({
                 <DraggableBatchPanel
                   key={`batch-panel-${batch.batchId}`}
                   batch={batch}
-                  isCollapsed={collapsedPanels[batch.batchId] || false}
+                  isCollapsed={collapsedPanels[batch.batchId] ?? batch.batchId !== dateSections[0]?.batches[0]?.batchId}
                   collapsedPanels={collapsedPanels}
                   onCollapseChange={(id, collapsed) => setCollapsedPanels(prev => ({ ...prev, [id]: collapsed }))}
                   handleDeleteImage={handleDeleteImage}

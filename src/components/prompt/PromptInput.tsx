@@ -152,6 +152,7 @@ const PromptInput: React.FC<PromptInputProps> = ({
 
       <Textarea
         ref={textareaRef}
+        data-prompt-input
         placeholder={placeholder}
         className={`${minHeight} resize-none border-0 bg-transparent p-4 text-base placeholder:text-muted-foreground/50 focus-visible:ring-0 overflow-hidden`}
         value={prompt}

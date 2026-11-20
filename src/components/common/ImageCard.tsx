@@ -1,7 +1,7 @@
 import React from 'react';
-import { Maximize2, Star, Film, MoreVertical, Info } from 'lucide-react';
+import { Maximize2, Star, Film, MoreVertical, Info, Play } from 'lucide-react';
 import { ImageMenuItems } from './ImageMenuItems';
-import { openNextWithInfo } from '@/contexts/LoopeViewContext';
+import { openNextAtClip, openNextWithInfo } from '@/contexts/LoopeViewContext';
 import { ImageItem } from '@/types/image-types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -256,11 +256,27 @@ const ImageCard: React.FC<ImageCardProps> = ({
       )}
       
       {/* Video indicator - bottom left */}
-      {(isVideo(image) || clipCount > 0) && !isPlaceholder && (
-        <Badge className="absolute bottom-2 left-2 z-30 bg-black/60 text-white gap-1" title={clipCount ? `${clipCount} clip${clipCount > 1 ? 's' : ''} with this picture` : 'A clip'}>
+      {isVideo(image) && !clipCount && !isPlaceholder && (
+        <Badge className="absolute bottom-2 left-2 z-30 bg-black/60 text-white gap-1" title="A clip">
           <Film className="h-3 w-3" />
-          {clipCount > 0 && <span className="text-[10px] leading-none">{clipCount}</span>}
         </Badge>
+      )}
+      {/* a picture with clips: the badge plays them (owner, 20 Nov: "I don't see any way to discover the video") */}
+      {clipCount > 0 && !isPlaceholder && onFullscreenClick && (
+        <button
+          type="button"
+          className="absolute bottom-2 left-2 z-30 inline-flex items-center gap-1 rounded-full bg-black/70 px-2 py-1 text-xs font-medium text-white hover:bg-black/85"
+          title={clipCount > 1 ? `Play its clips (${clipCount})` : 'Play its clip'}
+          onClick={(e) => {
+            e.stopPropagation();
+            openNextAtClip();
+            onFullscreenClick(image);
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <Play className="h-3 w-3 fill-white" />
+          {clipCount > 1 ? `${clipCount} clips` : 'Clip'}
+        </button>
       )}
 
       {/* Info button (desktop, on hover): the Loope opened on this picture's Info; on a phone, tap then swipe up.

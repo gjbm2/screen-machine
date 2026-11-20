@@ -3,7 +3,7 @@ import ReactDOM from 'react-dom';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { useLoopeView } from '@/contexts/LoopeViewContext';
 import useEmblaCarousel from 'embla-carousel-react';
-import { ChevronLeft, ChevronRight, X, ChevronUp, Star, Info, Download, Clipboard, MoreHorizontal, Move, Copy, RefreshCcw, Loader2, Scissors } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, ChevronUp, Star, Info, Download, Clipboard, MoreHorizontal, Move, Copy, RefreshCcw, Loader2, Scissors, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import {
@@ -19,7 +19,7 @@ import { ReferenceImageService } from '@/services/reference-image-service';
 import { TagLozenges } from '@/components/tags/TagLozenges';
 import { ImageInfo } from './ImageInfo';
 import { ImageMenuItems } from '@/components/common/ImageMenuItems';
-import { notifyItemUpdated } from '@/components/tags/events';
+import { notifyItemRemoved, notifyItemUpdated } from '@/components/tags/events';
 
 interface LoopeModalProps {
   title?: string;
@@ -52,7 +52,7 @@ function bucketOf(img: any): string | null {
 const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
   // Add a try/catch around context usage to prevent uncaught errors
   try {
-    const { isOpen, images, currentIndex, goto, close, carouselOptions } = useLoopeView();
+    const { isOpen, images, currentIndex, goto, close, carouselOptions, open } = useLoopeView();
     
     // Use a defensive check - if context isn't fully initialized, return null
     if (images === undefined || goto === undefined || close === undefined) {
@@ -66,6 +66,8 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
     });
     
     const [isFlipped, setIsFlipped] = useState(false);
+    // a clip asked for with Play (the button over its picture, or a tile's clip badge) plays on arrival; others wait
+    const [playId, setPlayId] = useState<string | null>(null);
     const [zoomSrc, setZoomSrc] = useState<string | null>(null);
     const [zoomPosition, setZoomPosition] = useState<ZoomPosition>({ x: 0, y: 0 });
     const touchStartY = useRef<number | null>(null);
@@ -195,7 +197,10 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
 
     // Each opening starts on the picture, or on its Info when asked (a tile's Info button)
     useEffect(() => {
-      if (isOpen) setIsFlipped(!!carouselOptions?.showInfo);
+      if (isOpen) {
+        setIsFlipped(!!carouselOptions?.showInfo);
+        setPlayId((carouselOptions?.playId as string | null) ?? null);
+      }
     }, [isOpen, carouselOptions]);
 
     useEffect(() => {
@@ -420,6 +425,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
         // Call API to move (copy with delete)
         await bucketsApi.copyImageToBucket(sourceBucketId, destinationId, img.id, false);
         toast.success(`Moved to ${destinationId}`);
+        notifyItemRemoved({ bucket: sourceBucketId, filename: img.id });
         
         // Close modal as the current image is gone
         close();
@@ -515,6 +521,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
         // Call API to delete
         await bucketsApi.deleteFromBucket(bucketId, img.id);
         toast.success('Image deleted');
+        notifyItemRemoved({ bucket: bucketId, filename: img.id });
         
         // Close modal as the current image is gone
         close();
@@ -1147,6 +1154,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                         controls
                         preload="auto"
                         playsInline
+                        autoPlay={img.id === currentImage?.id && img.id === playId}
                         className={`max-h-full max-w-full object-contain ${isLoading ? 'hidden' : ''}`}
                         onLoadedData={() => handleImageLoad(src)}
                       />
@@ -1169,6 +1177,37 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
             </div>
           </div>
 
+          {/* A picture with clips: its clips are the slides after it; say so where it can't be missed */}
+          {!isFlipped && !zoomSrc && currentImage && (currentImage.metadata?.clips?.length > 0 || clipOf) && (
+            <div className="absolute left-1/2 top-14 z-30 -translate-x-1/2">
+              {clipOf ? (
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  className="gap-1 rounded-full bg-black/60 text-white hover:bg-black/80"
+                  onClick={() => {
+                    const at = images.findIndex((x) => x.id === clipOf);
+                    if (at >= 0) goto(at);
+                  }}
+                >
+                  <ChevronLeft className="h-4 w-4" /> Back to its picture
+                </Button>
+              ) : (
+                <Button
+                  size="sm"
+                  className="gap-1 rounded-full bg-white/90 text-black hover:bg-white"
+                  onClick={() => {
+                    setPlayId(images[currentIndex + 1]?.id ?? null);
+                    goto(currentIndex + 1);
+                  }}
+                >
+                  <Play className="h-4 w-4 fill-black" />
+                  {currentImage.metadata.clips.length > 1 ? `Play its clips (${currentImage.metadata.clips.length})` : 'Play its clip'}
+                </Button>
+              )}
+            </div>
+          )}
+
           {/* Info: what the picture (or clip) is, how it was made, its movement (ImageInfo.tsx) */}
           {isFlipped && currentImage && (
             <ImageInfo
@@ -1183,6 +1222,10 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                 if (at >= 0) goto(at);
               }}
               publishTargets={(nonHeadlessDestinations || []).map((d) => ({ id: d.id, name: d.name || d.id }))}
+              onOpenReferences={(items, i) => {
+                setIsFlipped(false);
+                open(items, i, 'Reference pictures');
+              }}
             />
           )}
 

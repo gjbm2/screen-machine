@@ -195,11 +195,13 @@ interface Props {
   onClose: () => void;
   /** Show one of the still's clips playing in the Loope (its index; then the Loope's actions are the clip's). */
   onWatch?: (index?: number) => void;
+  /** Open the reference pictures in the Loope (in place of a new tab). */
+  onOpenReferences?: (items: ImageItem[], index: number) => void;
   /** Screens a clip can be published to on its own. */
   publishTargets?: Array<{ id: string; name: string }>;
 }
 
-export function ImageInfo({ image, bucket, placeName, onClose, onWatch, publishTargets = [] }: Props) {
+export function ImageInfo({ image, bucket, placeName, onClose, onWatch, publishTargets = [], onOpenReferences }: Props) {
   const workflows = useWorkflows();
   const meta = (image.metadata || {}) as Record<string, any>;
   const isClip = image.mediaType === 'video';
@@ -376,7 +378,13 @@ export function ImageInfo({ image, bucket, placeName, onClose, onWatch, publishT
                   <button
                     key={ref.stored_path || idx}
                     type="button"
-                    onClick={() => window.open(full, '_blank', 'noopener,noreferrer')}
+                    onClick={() => onOpenReferences?.(refs.map((r: any, k: number) => ({
+                      id: r.stored_path || `ref-${k}`,
+                      urlFull: ReferenceImageService.getReferenceImageUrls(image.bucketId || '_recent', [r])[0],
+                      urlThumb: ReferenceImageService.getReferenceImageThumbnailUrls(image.bucketId || '_recent', [r])[0],
+                      promptKey: r.original_filename || `Reference ${k + 1}`, seed: 0, createdAt: '', isFavourite: false,
+                      disableFavorite: true, mediaType: 'image' as const,
+                    })), idx) ?? window.open(full, '_blank', 'noopener,noreferrer')}
                     title={ref.original_filename ? `Open ${ref.original_filename}` : 'Open'}
                   >
                     <img src={thumb} alt={`Reference ${idx + 1}`} className="h-16 w-16 rounded border border-neutral-600 object-cover hover:border-neutral-400" />

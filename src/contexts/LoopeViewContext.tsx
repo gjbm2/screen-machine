@@ -60,6 +60,12 @@ export function openNextWithInfo(): void {
   infoOnNextOpen = Date.now();
 }
 
+/** A tile's clip badge opens the Loope the usual way, on the picture's first clip. */
+let clipOnNextOpen = 0;
+export function openNextAtClip(): void {
+  clipOnNextOpen = Date.now();
+}
+
 export const LoopeViewProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [images, setImages] = useState<ImageItem[]>([]);
@@ -69,10 +75,13 @@ export const LoopeViewProvider: React.FC<{ children: React.ReactNode }> = ({ chi
 
   const open = useCallback((imgs: ImageItem[], startIdx = 0, ttl = '', options: CarouselOptions = { loop: true }) => {
     const { items, start } = ungroup(imgs, startIdx);
+    const atClip = Date.now() - clipOnNextOpen < 1000 && items[start + 1]?.metadata?.still === items[start]?.id;
+    clipOnNextOpen = 0;
     setImages(items);
-    setCurrentIndex(start);
+    setCurrentIndex(atClip ? start + 1 : start);
     setTitle(ttl);
-    setCarouselOptions({ ...options, showInfo: options.showInfo ?? Date.now() - infoOnNextOpen < 1000 });
+    setCarouselOptions({ ...options, showInfo: options.showInfo ?? Date.now() - infoOnNextOpen < 1000,
+                         playId: atClip ? items[start + 1].id : null });
     infoOnNextOpen = 0;
     setIsOpen(true);
   }, []);

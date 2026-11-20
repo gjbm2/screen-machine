@@ -14,7 +14,7 @@ import { ReferenceImageService } from '@/services/reference-image-service';
 import { toast } from 'sonner';
 import { JobPlaceholder, placeholderKeyOf } from '@/components/jobs/JobPlaceholder';
 import { ImageMenuItems } from '@/components/common/ImageMenuItems';
-import { openNextWithInfo } from '@/contexts/LoopeViewContext';
+import { openNextWithInfo, useLoopeView } from '@/contexts/LoopeViewContext';
 import { isVideoFile } from '@/utils/image-utils';
 
 // Add type declaration for window.generateImage
@@ -47,6 +47,21 @@ export interface RecentBatchPanelProps {
   publishDestinations?: Array<{id: string, name: string, headless: boolean}>;
   onSelectImage?: (batchId: string, imgId: string) => void;
   onCollapseChange?: (batchId: string, collapsed: boolean) => void;
+}
+
+/** A picture's reference pictures as Loope items (they open there, like any picture). */
+function referenceItems(bucketId: string, refs: any[]): ImageItem[] {
+  return refs.map((ref, i) => ({
+    id: ref.stored_path || `ref-${i}`,
+    urlFull: ReferenceImageService.getReferenceImageUrls(bucketId, [ref])[0],
+    urlThumb: ReferenceImageService.getReferenceImageThumbnailUrls(bucketId, [ref])[0],
+    promptKey: ref.original_filename || `Reference ${i + 1}`,
+    seed: 0,
+    createdAt: '',
+    isFavourite: false,
+    disableFavorite: true,
+    mediaType: 'image' as const,
+  }));
 }
 
 export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
@@ -141,6 +156,8 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
     initializedRef.current = true;
   }, [forceSelectId, images, batchId]);
   
+  const { open: openLoope } = useLoopeView();
+
   const expand = () => {
     setIsCollapsed(false);
     onCollapseChange?.(batchId, false);
@@ -622,11 +639,11 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
               // Use the actual bucket ID from the image data, fallback to _recent for backward compatibility
               const bucketId = selectedImage.bucketId || '_recent';
               return (
-                <a
+                // opens in the Loope like any picture (owner, 20 Nov: it opened a new tab without warning)
+                <button
+                  type="button"
                   key={ref.stored_path}
-                  href={ReferenceImageService.getReferenceImageUrls(bucketId, [ref])[0]}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  onClick={() => openLoope(referenceItems(bucketId, selectedImage.reference_images || []), idx, 'Reference pictures')}
                   title={ref.original_filename}
                   style={{ display: 'inline-block', border: '1px solid #ccc', borderRadius: 4 }}
                 >
@@ -636,7 +653,7 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
                     style={{ width: 48, height: 48, objectFit: 'cover', borderRadius: 4 }}
                     onError={e => (e.currentTarget.src = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=')}
                   />
-                </a>
+                </button>
               );
             })}
           </div>

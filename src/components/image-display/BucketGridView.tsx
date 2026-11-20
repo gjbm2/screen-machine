@@ -57,7 +57,7 @@ import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 import { Tag as TagIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TagFilterBar } from '@/components/tags/TagFilterBar';
-import { ITEM_UPDATED_EVENT, type ItemUpdatedDetail } from '@/components/tags/events';
+import { ITEM_REMOVED_EVENT, ITEM_UPDATED_EVENT, type ItemUpdatedDetail } from '@/components/tags/events';
 import {
   awaitingTagger,
   buildChips,
@@ -2026,7 +2026,16 @@ export const BucketGridView = ({
       );
     };
     window.addEventListener(ITEM_UPDATED_EVENT, onItemUpdated);
-    return () => window.removeEventListener(ITEM_UPDATED_EVENT, onItemUpdated);
+    // a picture moved or deleted from the Loope leaves the grid at once
+    const onItemRemoved = (e: Event) => {
+      const d = (e as CustomEvent<{ bucket: string; filename: string }>).detail;
+      if (d && d.bucket === destination) setBucketImages((prev) => prev.filter((img) => img.id !== d.filename));
+    };
+    window.addEventListener(ITEM_REMOVED_EVENT, onItemRemoved);
+    return () => {
+      window.removeEventListener(ITEM_UPDATED_EVENT, onItemUpdated);
+      window.removeEventListener(ITEM_REMOVED_EVENT, onItemRemoved);
+    };
   }, [destination]);
 
   // Tags view: the lexicon groups the chips (subject, medium, moods); without it words still show, by count.

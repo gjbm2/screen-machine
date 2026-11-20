@@ -271,6 +271,18 @@ const PromptForm: React.FC<PromptFormProps> = ({
         
         // Note: imageFiles now only contains File objects, not URLs
         // URLs are handled by the referenceUrls context
+
+        // and the prompt comes into view with the cursor in it, to say what to do with the picture (owner, 20 Nov:
+        // "'use as prompt' doesn't move focus to prompt area"); after the Loope has closed
+        const focusPrompt = (scroll: boolean) => {
+          const ta = document.querySelector<HTMLTextAreaElement>('textarea[data-prompt-input]');
+          if (!ta || document.activeElement === ta) return;
+          if (scroll) ta.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          ta.focus({ preventScroll: true });
+          ta.setSelectionRange(ta.value.length, ta.value.length);
+        };
+        setTimeout(() => focusPrompt(true), 150);
+        setTimeout(() => focusPrompt(false), 500);   // a closing menu hands focus back to its button: take it again
       } catch (error) {
         console.error('Error in useImageAsPrompt handler:', error);
       }
