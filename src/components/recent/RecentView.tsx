@@ -63,6 +63,71 @@ interface PlaceholderInfo {
   timestamp: number;
 }
 
+// One batch in Generated, draggable to reorder or onto a screen. At module scope: defined inside RecentView it was
+// a new component on every render, so every batch remounted whenever anything changed (a job's progress tick):
+// a playing clip restarted and the page jumped as its pictures reloaded (owner, 20 Nov).
+const DraggableBatchPanel = React.memo(({ batch, isCollapsed, collapsedPanels, onCollapseChange, handleDeleteImage, handleDeleteBatch, handleImageClick, handleCopyTo, handleMoveTo, handlePublish, handleUseAsPrompt, handleGenerateAgain, destinations, selectedImageByBatch, handleSelectImage }: {
+  batch: { batchId: string; images: ImageItem[] };
+  isCollapsed: boolean;
+  collapsedPanels: Record<string, boolean>;
+  onCollapseChange: (id: string, collapsed: boolean) => void;
+  handleDeleteImage: (img: ImageItem) => void;
+  handleDeleteBatch: (batchId: string) => void;
+  handleImageClick: (img: ImageItem) => void;
+  handleCopyTo: (img: ImageItem, destId: string) => void;
+  handleMoveTo: (img: ImageItem, destId: string) => void;
+  handlePublish: (img: ImageItem, destId: string) => void;
+  handleUseAsPrompt: (img: ImageItem) => void;
+  handleGenerateAgain: (batchId: string) => void;
+  destinations: { id: string; name: string; headless: boolean }[];
+  selectedImageByBatch: Record<string,string>;
+  handleSelectImage: (batchId:string, imgId:string)=>void;
+}) => {
+  // The whole panel is the handle for reordering. Dropped on a screen's tab it means the picture the panel shows
+  // (owner, 19 Nov: a drag on the phone took the panel, and the batch's id was published as a file name:
+  // "file not found in _recent"): read at the drop, as the panel keeps its own selection (RecentBatchPanel).
+  const shownImage = () => {
+    let id = selectedImageByBatch[batch.batchId] || '';
+    try {
+      id = localStorage.getItem(`recent_selected_${batch.batchId}`) || id;
+    } catch {
+      // no storage: the first picture
+    }
+    return batch.images.find((img) => img.id === id) || batch.images[0];
+  };
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: batch.batchId, data: { shownImage } });
+
+  const style: React.CSSProperties = {
+    transform: CSS.Translate.toString(transform),   // moved, never scaled: items differ in size now that pictures keep their shape
+    transition,
+    cursor: 'grab',
+    opacity: isDragging ? 0.5 : 1,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="mb-2">
+      <RecentBatchPanel
+        batchId={batch.batchId}
+        images={batch.images}
+        initialCollapsed={isCollapsed}
+        onToggleFavorite={() => {}}
+        onDeleteImage={handleDeleteImage}
+        onDeleteBatch={handleDeleteBatch}
+        onImageClick={handleImageClick}
+        onCopyTo={handleCopyTo}
+        onMoveTo={handleMoveTo}
+        onPublish={handlePublish}
+        onUseAsPrompt={handleUseAsPrompt}
+        onGenerateAgain={handleGenerateAgain}
+        publishDestinations={destinations}
+        forceSelectId={selectedImageByBatch[batch.batchId] || null}
+        onSelectImage={handleSelectImage}
+        onCollapseChange={onCollapseChange}
+      />
+    </div>
+  );
+});
+
 export const RecentView: React.FC<RecentViewProps> = ({
   refreshRecent,
 }) => {
@@ -1122,67 +1187,6 @@ export const RecentView: React.FC<RecentViewProps> = ({
   };
 
   // Draggable wrapper for a batch panel – defined outside component so its identity is stable
-  const DraggableBatchPanel = React.memo(({ batch, isCollapsed, collapsedPanels, onCollapseChange, handleDeleteImage, handleDeleteBatch, handleImageClick, handleCopyTo, handleMoveTo, handlePublish, handleUseAsPrompt, handleGenerateAgain, destinations, selectedImageByBatch, handleSelectImage }: {
-    batch: { batchId: string; images: ImageItem[] };
-    isCollapsed: boolean;
-    collapsedPanels: Record<string, boolean>;
-    onCollapseChange: (id: string, collapsed: boolean) => void;
-    handleDeleteImage: (img: ImageItem) => void;
-    handleDeleteBatch: (batchId: string) => void;
-    handleImageClick: (img: ImageItem) => void;
-    handleCopyTo: (img: ImageItem, destId: string) => void;
-    handleMoveTo: (img: ImageItem, destId: string) => void;
-    handlePublish: (img: ImageItem, destId: string) => void;
-    handleUseAsPrompt: (img: ImageItem) => void;
-    handleGenerateAgain: (batchId: string) => void;
-    destinations: { id: string; name: string; headless: boolean }[];
-    selectedImageByBatch: Record<string,string>;
-    handleSelectImage: (batchId:string, imgId:string)=>void;
-  }) => {
-    // The whole panel is the handle for reordering. Dropped on a screen's tab it means the picture the panel shows
-    // (owner, 19 Nov: a drag on the phone took the panel, and the batch's id was published as a file name:
-    // "file not found in _recent"): read at the drop, as the panel keeps its own selection (RecentBatchPanel).
-    const shownImage = () => {
-      let id = selectedImageByBatch[batch.batchId] || '';
-      try {
-        id = localStorage.getItem(`recent_selected_${batch.batchId}`) || id;
-      } catch {
-        // no storage: the first picture
-      }
-      return batch.images.find((img) => img.id === id) || batch.images[0];
-    };
-    const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: batch.batchId, data: { shownImage } });
-
-    const style: React.CSSProperties = {
-      transform: CSS.Translate.toString(transform),   // moved, never scaled: items differ in size now that pictures keep their shape
-      transition,
-      cursor: 'grab',
-      opacity: isDragging ? 0.5 : 1,
-    };
-
-    return (
-      <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="mb-2">
-        <RecentBatchPanel
-          batchId={batch.batchId}
-          images={batch.images}
-          initialCollapsed={isCollapsed}
-          onToggleFavorite={() => {}}
-          onDeleteImage={handleDeleteImage}
-          onDeleteBatch={handleDeleteBatch}
-          onImageClick={handleImageClick}
-          onCopyTo={handleCopyTo}
-          onMoveTo={handleMoveTo}
-          onPublish={handlePublish}
-          onUseAsPrompt={handleUseAsPrompt}
-          onGenerateAgain={handleGenerateAgain}
-          publishDestinations={destinations}
-          forceSelectId={selectedImageByBatch[batch.batchId] || null}
-          onSelectImage={handleSelectImage}
-          onCollapseChange={onCollapseChange}
-        />
-      </div>
-    );
-  });
 
   // Add targeted logging to key useEffect hooks
   useEffect(() => {
