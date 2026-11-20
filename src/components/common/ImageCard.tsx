@@ -319,7 +319,9 @@ const ImageCard: React.FC<ImageCardProps> = ({
             <Button
               variant="ghost" 
               size="icon" 
-              className={`absolute bottom-2 right-2 z-40 h-6 w-6 bg-black/30 hover:bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity ${isMobile ? 'hidden' : ''}`}
+              // on a phone (no hover) it is always there, the picture's actions without opening the viewer; not on
+              // Generated's tiny batch thumbnails, where the selected picture has its own
+              className={`absolute bottom-2 right-2 z-40 h-6 w-6 bg-black/30 hover:bg-black/50 text-white transition-opacity ${isMobile ? (isRecentThumbnail ? 'hidden' : 'opacity-100') : 'opacity-0 group-hover:opacity-100'}`}
               onClick={(e) => e.stopPropagation()}
             >
               <MoreVertical className="h-4 w-4" />
