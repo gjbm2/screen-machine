@@ -10,7 +10,7 @@
 import React, { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { Fit } from "../control/protocol";
-import { ClipCycle, CROSSFADE_DURATION, EASED_FADE, FIRST_FRAME_FADE_OUT_DURATION, type EasedLoop } from "./ClipCycle";
+import { ClipCycle, CROSSFADE_DURATION, EASED_FADE, FIRST_FRAME_FADE_OUT_DURATION, PACE, type EasedLoop } from "./ClipCycle";
 import { isClip, mediaContainerStyle, mediaStyle } from "./styles";
 
 const FADE_OUT_TIME = 1000;
@@ -70,10 +70,9 @@ function waitEvent(el: HTMLMediaElement, ok: string, ms: number): Promise<void> 
   });
 }
 
-/** A clip with its ease rendered in says so in its own MP4 comment tag, JSON {"clip": {"eased", "rest_s"}}
- *  (routes/clip_ease.py). The tag sits in the file's header, which is at the front (faststart): read the first
- *  64 KB and find it there. Any other clip is played the old way. */
-async function easedLoop(src: string): Promise<EasedLoop | null> {
+/** A clip's play info is in its own MP4 comment tag, JSON {"clip": {"eased", "pace", "rest_s"}} (routes/clip_ease.py).
+ *  The tag sits in the file's header, which is at the front (faststart): read the first 64 KB and find it there. */
+async function clipInfo(src: string): Promise<Record<string, any> | null> {
   try {
     const r = await fetch(src, { headers: { Range: "bytes=0-65535" }, cache: "no-store" });
     if (!r.ok) return null;
@@ -83,15 +82,17 @@ async function easedLoop(src: string): Promise<EasedLoop | null> {
     let depth = 0;
     for (let i = at; i < head.length; i++) {
       if (head[i] === "{") depth++;
-      else if (head[i] === "}" && --depth === 0) {
-        const clip = JSON.parse(head.slice(at, i + 1)).clip;
-        if (clip?.eased && Array.isArray(clip.rest_s)) return { restS: [Number(clip.rest_s[0]), Number(clip.rest_s[1])] };
-        return null;
-      }
+      else if (head[i] === "}" && --depth === 0) return JSON.parse(head.slice(at, i + 1)).clip ?? null;
     }
   } catch {
     // unreadable: play it the old way
   }
+  return null;
+}
+
+/** A clip with its ease rendered in plays at 1x and rests; any other video plays the old eased loop. */
+function easedLoop(clip: Record<string, any> | null): EasedLoop | null {
+  if (clip?.eased && Array.isArray(clip.rest_s)) return { restS: [Number(clip.rest_s[0]), Number(clip.rest_s[1])] };
   return null;
 }
 
@@ -236,10 +237,13 @@ export const ArtMedia = forwardRef<ArtMediaHandle, Props>(function ArtMedia(
     cycleRef.current = cycle;
     if (holdRef.current) holdDone.current = cycle.hold();
     let alive = true;
-    void easedLoop(src).then((loop) => {
+    void clipInfo(src).then((clip) => {
       if (!alive) return;
+      const loop = easedLoop(clip);
       setEased(!!loop);
       cycle.setEased(loop);
+      // a video made at real speed loops at real speed, eased in and out by the browser (owner, 20 Nov)
+      cycle.setPace(clip?.pace === "natural" ? 1 : PACE);
       cycle.start();
     });
     return () => {

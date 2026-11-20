@@ -66,8 +66,9 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
     });
     
     const [isFlipped, setIsFlipped] = useState(false);
-    // a clip asked for with Play (the button over its picture, or a tile's clip badge) plays on arrival; others wait
+    // a clip asked for (its tile in the strip below the picture, or a tile's clip badge) plays on arrival; others wait
     const [playId, setPlayId] = useState<string | null>(null);
+    const videoEls = useRef(new Map<string, HTMLVideoElement>());
     const [zoomSrc, setZoomSrc] = useState<string | null>(null);
     const [zoomPosition, setZoomPosition] = useState<ZoomPosition>({ x: 0, y: 0 });
     const touchStartY = useRef<number | null>(null);
@@ -113,6 +114,24 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
         emblaApi.scrollTo(currentIndex, true);
       }
     }, [currentIndex, emblaApi, isOpen, zoomSrc]);
+
+    // Only the slide in view plays: leaving a clip pauses it, and the clip asked for is started here (an autoPlay
+    // attribute does nothing to a slide's <video> that has already loaded, which is why Play did nothing).
+    useEffect(() => {
+      if (!isOpen) return;
+      const id = images[currentIndex]?.id;
+      videoEls.current.forEach((el, key) => {
+        if (key !== id && !el.paused) el.pause();
+      });
+      if (id && id === playId) {
+        const el = videoEls.current.get(id);
+        if (el) {
+          el.currentTime = 0;
+          void el.play().catch(() => {});
+        }
+        setPlayId(null);
+      }
+    }, [currentIndex, playId, isOpen, images]);
 
     useEffect(() => {
       if (!emblaApi) return;
@@ -1087,15 +1106,29 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
     // a picture's clip is a slide of its own (LoopeViewContext ungroup): this is it, and the picture it belongs to
     const clipOf = currentImage?.mediaType === 'video' ? (currentImage?.metadata?.still as string | undefined) : undefined;
     const isVideo = currentImage?.mediaType === 'video' || /\.mp4$|\.webm$/i.test(imageSrc);
+    // the picture and its clips around the current slide (ungroup puts a picture's clips right after it)
+    const groupId = clipOf ?? (currentImage?.metadata?.clips?.length ? currentImage.id : undefined);
+    const group: { item: typeof currentImage; index: number }[] = [];
+    if (groupId) {
+      const at = images.findIndex((x) => x.id === groupId);
+      if (at >= 0) {
+        group.push({ item: images[at], index: at });
+        for (let i = at + 1; i < images.length && images[i].metadata?.still === groupId; i++) group.push({ item: images[i], index: i });
+      }
+    }
     
+    // A picture's clips share its star and its tag row: moving between them leaves the rows below as they are, so the
+    // picture stays where it is (owner, 20 Nov: "don't let the image move up and down")
+    const tagItem = group.length > 1 ? group[0].item : currentImage;
+
     // Disable favorite button for published images
-    const showFavoriteButton = !(currentImage?.disableFavorite === true);
+    const showFavoriteButton = !(tagItem?.disableFavorite === true);
 
     // Tag lozenges: saved bucket images only (the _recent scratch area isn't tagged; a published copy's id isn't a file).
-    const tagBucket = bucketOf(currentImage);
-    const showTags = !!currentImage && !!tagBucket && tagBucket !== '_recent'
-      && currentImage.disableFavorite !== true && currentImage.isPublished !== true;
-    const tagMeta = (currentImage?.metadata || {}) as Record<string, any>;
+    const tagBucket = bucketOf(tagItem);
+    const showTags = !!tagItem && !!tagBucket && tagBucket !== '_recent'
+      && tagItem.disableFavorite !== true && tagItem.isPublished !== true;
+    const tagMeta = (tagItem?.metadata || {}) as Record<string, any>;
 
     return (
       <Dialog 
@@ -1126,7 +1159,8 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
           </div>
 
           {/* Main carousel */}
-          <div className="flex-1 w-full h-full overflow-hidden" ref={emblaRef} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+          <div className="relative flex-1 min-h-0 w-full">
+          <div className="w-full h-full overflow-hidden" ref={emblaRef} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
             <div className="flex h-full">
               {images.map((img) => {
                 const src = img.raw_url || img.urlFull;
@@ -1154,8 +1188,11 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                         controls
                         preload="auto"
                         playsInline
-                        autoPlay={img.id === currentImage?.id && img.id === playId}
-                        className={`max-h-full max-w-full object-contain ${isLoading ? 'hidden' : ''}`}
+                        ref={(el) => {
+                          if (el) videoEls.current.set(img.id, el);
+                          else videoEls.current.delete(img.id);
+                        }}
+                        className={`h-full w-full object-contain ${isLoading ? 'hidden' : ''}`}
                         onLoadedData={() => handleImageLoad(src)}
                       />
                     ) : (
@@ -1177,36 +1214,41 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
             </div>
           </div>
 
-          {/* A picture with clips: its clips are the slides after it; say so where it can't be missed */}
-          {!isFlipped && !zoomSrc && currentImage && (currentImage.metadata?.clips?.length > 0 || clipOf) && (
-            <div className="absolute left-1/2 top-14 z-30 -translate-x-1/2">
-              {clipOf ? (
-                <Button
-                  size="sm"
-                  variant="secondary"
-                  className="gap-1 rounded-full bg-black/60 text-white hover:bg-black/80"
-                  onClick={() => {
-                    const at = images.findIndex((x) => x.id === clipOf);
-                    if (at >= 0) goto(at);
-                  }}
-                >
-                  <ChevronLeft className="h-4 w-4" /> Back to its picture
-                </Button>
-              ) : (
-                <Button
-                  size="sm"
-                  className="gap-1 rounded-full bg-white/90 text-black hover:bg-white"
-                  onClick={() => {
-                    setPlayId(images[currentIndex + 1]?.id ?? null);
-                    goto(currentIndex + 1);
-                  }}
-                >
-                  <Play className="h-4 w-4 fill-black" />
-                  {currentImage.metadata.clips.length > 1 ? `Play its clips (${currentImage.metadata.clips.length})` : 'Play its clip'}
-                </Button>
-              )}
-            </div>
-          )}
+            {/* A picture and its clips: a small strip of their tiles at the foot of the picture; each clip's tile plays
+                that clip (owner, 20 Nov: one big "Play its clip" button took room and didn't say which clip) */}
+            {!isFlipped && !zoomSrc && group.length > 1 && (
+              <div className="absolute bottom-2 left-1/2 z-30 flex max-w-[92%] -translate-x-1/2 gap-1.5 overflow-x-auto rounded-lg bg-black/55 p-1.5">
+                {group.map(({ item, index }, n) => {
+                  const here = index === currentIndex;
+                  const secs = Number(item.metadata?.clip?.play_s) || 0;
+                  return (
+                    <button
+                      key={item.uniqueKey || item.id}
+                      type="button"
+                      title={n === 0 ? 'The picture' : `Clip ${n}${item.metadata?.clip?.pace ? ` (${item.metadata.clip.pace})` : ''}: play it`}
+                      className={`relative h-10 w-10 shrink-0 overflow-hidden rounded md:h-12 md:w-12 ${here ? 'ring-2 ring-white' : 'opacity-75 hover:opacity-100'}`}
+                      onClick={() => {
+                        if (n > 0) setPlayId(item.id);
+                        goto(index);
+                      }}
+                    >
+                      {item.urlThumb ? (
+                        <img src={item.urlThumb} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <video src={`${item.urlFull}#t=0.1`} preload="metadata" muted className="h-full w-full object-cover" />
+                      )}
+                      {n > 0 && (
+                        <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-0.5 bg-black/60 text-[10px] leading-4 text-white">
+                          <Play className="h-2.5 w-2.5 fill-white" />
+                          {secs ? `${Math.round(secs)}s` : ''}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
 
           {/* Info: what the picture (or clip) is, how it was made, its movement (ImageInfo.tsx) */}
           {isFlipped && currentImage && (
@@ -1219,7 +1261,10 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
               onWatch={(i = 0) => {
                 const at = images.findIndex((x) => x.id === currentImage.metadata?.clips?.[i]?.filename);
                 setIsFlipped(false);
-                if (at >= 0) goto(at);
+                if (at >= 0) {
+                  setPlayId(images[at].id);
+                  goto(at);
+                }
               }}
               publishTargets={(nonHeadlessDestinations || []).map((d) => ({ id: d.id, name: d.name || d.id }))}
               onOpenReferences={(items, i) => {
@@ -1253,7 +1298,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
 
           {/* Flip hint */}
           {/* not with the tag row: its height varies and the hint landed on the lozenges; the Info button stays */}
-          {!isFlipped && !zoomSrc && showHint && !showTags && (
+          {!isFlipped && !zoomSrc && showHint && !showTags && group.length < 2 && (
             <div className={`absolute bottom-16 left-1/2 -translate-x-1/2 text-white/80 flex flex-col items-center text-xs pointer-events-none md:hidden`}>
               <ChevronUp className="h-4 w-4 animate-bounce mb-1" />
               <span>Info</span>
@@ -1264,22 +1309,22 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
           {!zoomSrc && showTags && (
             <div className="w-full px-4 pt-2 flex justify-center">
               <TagLozenges
-                key={`${tagBucket}/${currentImage.id}`}
+                key={`${tagBucket}/${tagItem.id}`}
                 variant="dark"
                 compact
                 className="justify-center"
                 bucket={tagBucket as string}
-                filename={currentImage.id}
+                filename={tagItem.id}
                 tags={tagMeta.tags}
                 tagging={tagMeta.tagging}
-                favorite={!!currentImage.isFavourite}
-                isVideo={isVideo}
+                favorite={!!tagItem.isFavourite}
+                isVideo={tagItem.mediaType === 'video'}
                 onTagsChange={(patch) => {
-                  currentImage.metadata = { ...(currentImage.metadata || {}), ...patch };
+                  tagItem.metadata = { ...(tagItem.metadata || {}), ...patch };
                   bumpItems();
                 }}
                 onFavoriteChange={(fav) => {
-                  currentImage.isFavourite = fav;
+                  tagItem.isFavourite = fav;
                   bumpItems();
                 }}
               />
@@ -1309,9 +1354,9 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                   variant="ghost" 
                   size="sm" 
                   className="text-xs flex items-center gap-1 text-white/90 hover:text-white hover:bg-white/10"
-                  onClick={() => handleToggleFavorite(currentImage)}
+                  onClick={() => handleToggleFavorite(tagItem)}
                 >
-                  <Star className={`h-4 w-4 ${currentImage?.isFavourite ? 'fill-yellow-400' : ''}`} />
+                  <Star className={`h-4 w-4 ${tagItem?.isFavourite ? 'fill-yellow-400' : ''}`} />
                   <span className="hidden sm:inline">Favorite</span>
                 </Button>
               )}

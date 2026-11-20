@@ -200,7 +200,9 @@ def ease_file(src, dst, play_s=30.0, ramp_s=8.0, settle_s=3.0, still=None):
 
 def tag_clip(source, job_id):
     """A normal video (not a screen clip): kept as it is, with the play info the screens read (routes/clips.py: it
-    can be filed with its picture): play at real speed, rest a minute or two. (new source path, `clip` metadata)"""
+    can be filed with its picture). It has no ease rendered in, so the screens play it on their own eased loop, at
+    real speed (owner, 20 Nov: a published video must loop with the ease; "eased" here had it play at 1x from a
+    standing start and rest). (new source path, `clip` metadata)"""
     from routes.result_source import read_bytes, save_inline
     with tempfile.TemporaryDirectory() as tmp:
         src, dst = os.path.join(tmp, "in.mp4"), os.path.join(tmp, "out.mp4")
@@ -208,7 +210,7 @@ def tag_clip(source, job_id):
             f.write(read_bytes(source))
         dur = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", src],
                                    capture_output=True, text=True).stdout.strip() or 0)
-        clip = {"eased": True, "pace": "natural", "play_s": round(dur, 1), "rest_s": [60, 150]}
+        clip = {"eased": False, "pace": "natural", "play_s": round(dur, 1)}
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", src, "-c", "copy", "-metadata",
                         "comment=" + json.dumps({"clip": clip}), "-movflags", "+faststart", dst], check=True)
         with open(dst, "rb") as f:

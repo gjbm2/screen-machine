@@ -73,6 +73,8 @@ export class ClipCycle {
   /** The first-frame overlay is up (from the cross-fade until the restart has frame 0 on screen). */
   private overlay = false;
   private eased: EasedLoop | null = null;
+  /** The cruising rate of the old loop: PACE, or 1 for a video made at real speed (its tag says pace natural). */
+  private pace = PACE;
   private played = false;
   /** The rest before this begin() is over: play now (a begin() without one rests first). */
   private rested = false;
@@ -88,6 +90,11 @@ export class ClipCycle {
       this.watchFrames();
     });
   };
+
+  /** Set before start(): the cruising rate of a clip without its ease rendered in. */
+  setPace(rate: number): void {
+    this.pace = rate;
+  }
 
   /** Set before start(): the clip has its ease rendered in. */
   setEased(loop: EasedLoop | null): void {
@@ -206,12 +213,12 @@ export class ClipCycle {
           this.phase = "primer";
           this.later(g, () => {
             this.phase = "easeIn";
-            this.ease(g, SLOW, PACE, EASE_IN_DURATION, () => {
+            this.ease(g, SLOW, this.pace, EASE_IN_DURATION, () => {
               this.phase = "cruise";
               // Today's formula, unchanged (MediaDisplay.tsx playUntil).
               const primerSeconds = (PRIMER_PLAYBACK_DURATION / 1000) * SLOW;
-              const easeInSeconds = (EASE_IN_DURATION / 1000) * ((PACE + SLOW) / 2);
-              const playUntil = Math.max(0, (v.duration / PACE - (primerSeconds + easeInSeconds) - EASE_OUT_DURATION / 1000) * 1000);
+              const easeInSeconds = (EASE_IN_DURATION / 1000) * ((this.pace + SLOW) / 2);
+              const playUntil = Math.max(0, (v.duration / this.pace - (primerSeconds + easeInSeconds) - EASE_OUT_DURATION / 1000) * 1000);
               this.later(g, () => this.easeOutStep(g), playUntil);
             });
           }, PRIMER_PLAYBACK_DURATION);
@@ -250,7 +257,7 @@ export class ClipCycle {
 
   private easeOutStep(g: number): void {
     this.phase = "easeOut";
-    this.ease(g, PACE, SLOW, EASE_OUT_DURATION, () => {
+    this.ease(g, this.pace, SLOW, EASE_OUT_DURATION, () => {
       this.video.pause();
       this.hooks.setPaused(true);
       this.phase = "holdFinal";
@@ -273,12 +280,12 @@ export class ClipCycle {
     const v = this.video;
     this.play(g, () => {
       this.phase = "easeIn";
-      this.ease(g, v.playbackRate, PACE, EASE_IN_DURATION, () => {
+      this.ease(g, v.playbackRate, this.pace, EASE_IN_DURATION, () => {
         this.phase = "cruise";
         // Media consumed by the ease-out: its duration times the mean rate.
-        const easeOutMedia = (EASE_OUT_DURATION / 1000) * ((PACE + SLOW) / 2);
+        const easeOutMedia = (EASE_OUT_DURATION / 1000) * ((this.pace + SLOW) / 2);
         const left = Number.isFinite(v.duration) ? v.duration - v.currentTime - easeOutMedia : 0;
-        this.later(g, () => this.easeOutStep(g), Math.max(0, (left / PACE) * 1000));
+        this.later(g, () => this.easeOutStep(g), Math.max(0, (left / this.pace) * 1000));
       });
     });
   }
