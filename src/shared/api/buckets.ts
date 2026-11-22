@@ -2,6 +2,7 @@
 // Path segments are interpolated raw unless encodeURIComponent is shown; that matches the old Api class.
 
 import { apiUrl, jsonInit, JSON_HEADERS, request, requestJson, send, sendUrl } from '@/shared/http/client';
+import { realFilename } from './filename';
 import type { BucketDetails, RawBucketFile, ReferenceImageInfo } from './types';
 
 export async function uploadToBucket(bucketId: string, file: File): Promise<{ filename: string }> {
@@ -25,6 +26,7 @@ export async function animateStill(
   filename: string,
   options: { prompt?: string; pace?: 'slow' | 'gentle' | 'natural' } = {},
 ): Promise<{ status: string }> {
+  filename = realFilename(filename);
   return requestJson(
     `/buckets/${bucketId}/animate/${encodeURIComponent(filename)}`,
     jsonInit('POST', options),
@@ -34,6 +36,7 @@ export async function animateStill(
 
 /** Make this clip the one its still plays. */
 export async function chooseClip(bucketId: string, filename: string): Promise<{ status: string }> {
+  filename = realFilename(filename);
   return requestJson(
     `/buckets/${bucketId}/choose-clip/${encodeURIComponent(filename)}`,
     { method: 'POST' },
@@ -43,6 +46,7 @@ export async function chooseClip(bucketId: string, filename: string): Promise<{ 
 
 /** Make a clip an item of its own: it no longer belongs to its still. */
 export async function detachClip(bucketId: string, filename: string): Promise<{ status: string }> {
+  filename = realFilename(filename);
   return requestJson(
     `/buckets/${bucketId}/detach-clip/${encodeURIComponent(filename)}`,
     { method: 'POST' },
@@ -51,6 +55,7 @@ export async function detachClip(bucketId: string, filename: string): Promise<{ 
 }
 
 export async function deleteFromBucket(bucketId: string, filename: string): Promise<{ status: string }> {
+  filename = realFilename(filename);
   return requestJson(
     `/buckets/${bucketId}/${filename}`,
     { method: 'DELETE' },
@@ -83,6 +88,8 @@ export async function moveToPosition(
   filename: string,
   targetFilename: string | null = null,
 ): Promise<{ status: string; index: number }> {
+  filename = realFilename(filename);
+  targetFilename = targetFilename && realFilename(targetFilename);
   // A null target is sent explicitly ("insert_after": null) and means move to the front.
   return requestJson(
     `/buckets/${bucketId}/move-to/${filename}`,
@@ -178,6 +185,7 @@ export async function getImageComplete(bucketId: string, filename: string): Prom
   raw_url: string;
   reference_images: ReferenceImageInfo[];
 }> {
+  filename = realFilename(filename);
   return requestJson(
     `/buckets/${bucketId}/image/${encodeURIComponent(filename)}/complete`,
     undefined,
@@ -187,6 +195,7 @@ export async function getImageComplete(bucketId: string, filename: string): Prom
 
 /** isFavorite is the DESIRED state: true favourites (POST), false unfavourites (DELETE). */
 export async function toggleFavorite(bucketId: string, filename: string, isFavorite: boolean): Promise<boolean> {
+  filename = realFilename(filename);
   const method = isFavorite ? 'POST' : 'DELETE';
   const data = await requestJson(
     `/buckets/${bucketId}/favorite/${encodeURIComponent(filename)}`,
@@ -197,6 +206,7 @@ export async function toggleFavorite(bucketId: string, filename: string, isFavor
 }
 
 export async function deleteImage(bucketId: string, filename: string): Promise<boolean> {
+  filename = realFilename(filename);
   await request(`/buckets/${bucketId}/${filename}`, { method: 'DELETE' }, (r) => `Failed to delete image: ${r.statusText}`);
   return true;
 }
@@ -208,6 +218,7 @@ export async function copyImageToBucket(
   filename: string,
   copy: boolean = false,
 ): Promise<{ status: string; filename: string }> {
+  filename = realFilename(filename);
   return requestJson(
     '/buckets/add_image_to_new_bucket',
     jsonInit('POST', {

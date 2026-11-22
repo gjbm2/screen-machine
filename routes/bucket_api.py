@@ -308,8 +308,10 @@ def favorite(bucket_id: str, filename: str):
     # Use seq_to_filenames helper to handle both string and dict entries
     if filename not in seq_to_filenames(meta.get("sequence", [])):
         abort(404, "not in bucket")
-    meta.setdefault("favorites", []).append(filename)
-    save_meta(bucket_id, meta)
+    favs = meta.setdefault("favorites", [])
+    if filename not in favs:            # twice would need two untags
+        favs.append(filename)
+        save_meta(bucket_id, meta)
     return jsonify({"status": "favorited"})
 
 

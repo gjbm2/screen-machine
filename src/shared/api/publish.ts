@@ -1,5 +1,6 @@
 import { JSON_HEADERS, jsonInit, readErrorBody, requestJson, send } from '@/shared/http/client';
 import type { PublishDestination } from './types';
+import { realFilename } from './filename';
 import { askFit, type Fit } from '@/shared/fitChoice';
 
 interface RawPublishDestination {
@@ -43,10 +44,6 @@ export async function chooseFit(where: {
 export function publishedWords(result: { fitting?: string } | undefined, published: string): string {
   return result?.fitting ? `Fitting to ${result.fitting}…` : published;
 }
-
-// The bucket grid shows a favourite twice and gives the copy in its date group the id `<file>#dup`; that id reaches
-// the viewer and the menus, so the file is named without it here.
-const realFilename = (filename: string) => filename.replace(/#dup$/, '');
 
 // Never rejects: every failure (validation, non-2xx, timeout, network, unparseable 2xx body) resolves { success: false, error }.
 // A picture of another shape than the screen is fitted as the person chooses (chooseFit), unless `fit` is given;
