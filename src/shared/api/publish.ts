@@ -44,6 +44,10 @@ export function publishedWords(result: { fitting?: string } | undefined, publish
   return result?.fitting ? `Fitting to ${result.fitting}…` : published;
 }
 
+// The bucket grid shows a favourite twice and gives the copy in its date group the id `<file>#dup`; that id reaches
+// the viewer and the menus, so the file is named without it here.
+const realFilename = (filename: string) => filename.replace(/#dup$/, '');
+
 // Never rejects: every failure (validation, non-2xx, timeout, network, unparseable 2xx body) resolves { success: false, error }.
 // A picture of another shape than the screen is fitted as the person chooses (chooseFit), unless `fit` is given;
 // { success: false, cancelled: true } when they cancel.
@@ -63,6 +67,7 @@ export async function publishImageUnified(data: {
     console.error('[publishImageUnified] Missing required parameters');
     return { success: false, error: 'Missing required parameters: either (src_bucket_id + filename) or source_url' };
   }
+  if (data.filename) data = { ...data, filename: realFilename(data.filename) };
 
   if (!data.fit) {
     const fit = await chooseFit(data);
@@ -207,6 +212,7 @@ export async function getPublishedContentForDestination(destinationId: string): 
 // Throwing variants of POST /publish (publishImageUnified returns {success:false} and has a 30 s timeout instead).
 // Both ask how to fit a picture of another shape (chooseFit); a cancel throws "Not published".
 export async function publishBucketFile(destBucketId: string, srcBucketId: string, filename: string) {
+  filename = realFilename(filename);
   const fit = await chooseFit({ dest_bucket_id: destBucketId, src_bucket_id: srcBucketId, filename });
   if (fit === null) throw new Error('Not published');
   return requestJson(
