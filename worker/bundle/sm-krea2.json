@@ -5,6 +5,8 @@
     {"src": "Comfy-Org/Krea-2", "path": "diffusion_models/krea2_turbo_fp8_scaled.safetensors"},
     {"src": "Comfy-Org/Krea-2", "path": "text_encoders/qwen3vl_4b_fp8_scaled.safetensors"},
     {"src": "Comfy-Org/Krea-2", "path": "vae/qwen_image_vae.safetensors"},
-    {"src": "Rand000mGuy/filterbypass", "path": "fedor_bypass.safetensors", "dest": "loras/krea2_fedor_bypass.safetensors"}
+    {"src": "Rand000mGuy/filterbypass", "path": "fedor_bypass.safetensors", "dest": "loras/krea2_fedor_bypass.safetensors"},
+    {"src": "2kpr/Real-ESRGAN", "path": "RealESRGAN_x4plus.pth", "dest": "upscale_models/RealESRGAN_x4plus.pth"},
+    {"src": "2kpr/Real-ESRGAN", "path": "RealESRGAN_x2plus.pth", "dest": "upscale_models/RealESRGAN_x2plus.pth"}
   ]
 }

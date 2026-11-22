@@ -107,11 +107,36 @@
    "title": "Turbo 8-step sigmas"
   }
  },
+ "21": {
+  "inputs": {
+   "model_name": "RealESRGAN_x2plus.pth"
+  },
+  "class_type": "UpscaleModelLoader",
+  "_meta": {
+   "title": "AI upscaler {{UPSCALER}} {{UPSCALE_FLAG}}"
+  }
+ },
+ "22": {
+  "inputs": {
+   "upscale_model": [
+    "21",
+    0
+   ],
+   "image": [
+    "8",
+    0
+   ]
+  },
+  "class_type": "ImageUpscaleWithModel",
+  "_meta": {
+   "title": "AI upscale {{UPSCALE_FLAG}}"
+  }
+ },
  "20": {
   "class_type": "ImageScale",
   "inputs": {
    "image": [
-    "8",
+    "22",
     0
    ],
    "upscale_method": "lanczos",
@@ -120,7 +145,7 @@
    "crop": "center"
   },
   "_meta": {
-   "title": "Finish to the screen {{FINISH}}"
+   "title": "Finish to the screen {{FINISH}} {{UPSCALE_FLAG}}"
   }
  },
  "9": {

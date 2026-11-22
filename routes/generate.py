@@ -131,6 +131,22 @@ def _node_inputs(workflow_data, placeholder):
     return {}
 
 
+def _upscales_known_size(workflow_data):
+    """The graph's AI upscaler is fed a loaded image as it is, or the decode of a sampler that drew on the
+    {{LATENT-IMAGE}} (not a restyle or edit pass, whose size is its encoder's)."""
+    def node(link):
+        return workflow_data.get(str(link[0]), {}) if isinstance(link, list) else {}
+    for up in workflow_data.values():
+        if isinstance(up, dict) and up.get("class_type") == "ImageUpscaleWithModel":
+            src = node(up["inputs"].get("image"))
+            if src.get("class_type") == "LoadImage":
+                return True
+            sampler = node(src.get("inputs", {}).get("samples")) if src.get("class_type") == "VAEDecode" else {}
+            drawn_on = node(sampler.get("inputs", {}).get("latent_image"))
+            return "{{LATENT-IMAGE}}" in (drawn_on.get("_meta") or {}).get("title", "")
+    return False
+
+
 def image_size(image):
     """(width, height) of a request image ({"name", "image": base64}) as ComfyUI's LoadImage sees it (EXIF
     orientation applied), else None."""
@@ -622,6 +638,10 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
     if retired:
         info(f"Workflow {args_namespace.workflow} is retired; using {retired['replaced_by']}")
         args_namespace.workflow = retired["replaced_by"]
+        # its upscaler was chosen for its own render size (the screens' auto-upscale names x4 for Kontext's
+        # 1280x720); the replacement's is chosen by size below
+        if vars(args_namespace).get("upscaler"):
+            vars(args_namespace)["upscaler"] = None
     tracker.update(job_id, workflow=args_namespace.workflow, refined_prompt=args_namespace.prompt,
                    message="Loading the workflow")
     info(f"Trying to load: {args_namespace.workflow}")
@@ -667,6 +687,14 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
                              else (finish_node.get("width"), finish_node.get("height")))
         finish = finish_size(picture, box, turn=screen_box is None)
         info(f"Finish: picture {picture} -> {finish[0]}x{finish[1]} (box {box})")
+
+    # The AI upscaler does the enlarging and the finish only ever shrinks a little: RealESRGAN x2 when the picture is
+    # at least half the finish, x4 below that (owner's design, 22 Nov). Only where the upscaler's input size is known
+    # (the latent, or an image fed straight in); an edit graph's size is its encoder's, so it keeps its own x2.
+    if finish and picture and not vars(args_namespace).get("upscaler") and _upscales_known_size(workflow_data):
+        need = max(finish[0] / int(picture[0]), finish[1] / int(picture[1]))
+        vars(args_namespace)["upscaler"] = "RealESRGAN_x4plus.pth" if need > 2 else "RealESRGAN_x2plus.pth"
+        info(f"AI upscaler: {vars(args_namespace)['upscaler']} (finish {need:.2f}x the picture)")
 
     # A video's Advanced settings (workflows.json h3-i2v params): its shape (by default the picture's, so a portrait
     # isn't stretched into landscape), its length in seconds, and its smoothness (frame interpolation; the frame
@@ -736,8 +764,9 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
             "width": maxwidth or vars(args_namespace).get("maxwidth") or 6400,
             "height": maxheight or vars(args_namespace).get("maxheight") or 6400
         },
-        # The new worker's graphs (worker/): render at the model's own size, then one lanczos scale to the finish
-        # above (its centre crop trims at most a sliver), and the sampling shift for the latent's size
+        # The new worker's graphs (worker/): render at the model's own size, then the AI upscaler (x2 or x4, above)
+        # and one lanczos shrink to the finish above (its centre crop trims at most a sliver), and the sampling shift
+        # for the latent's size
         r"{{FINISH}}": {
             "width": finish[0] if finish else None,
             "height": finish[1] if finish else None

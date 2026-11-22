@@ -4,6 +4,8 @@
   "files": [
     {"src": "Comfy-Org/Z-Image-Turbo", "path": "split_files/diffusion_models/z_image_turbo_bf16.safetensors", "dest": "diffusion_models/z_image_turbo_bf16.safetensors"},
     {"src": "Comfy-Org/Z-Image-Turbo", "path": "split_files/text_encoders/qwen_3_4b.safetensors", "dest": "text_encoders/qwen_3_4b.safetensors"},
-    {"src": "Comfy-Org/Z-Image-Turbo", "path": "split_files/vae/ae.safetensors", "dest": "vae/ae.safetensors"}
+    {"src": "Comfy-Org/Z-Image-Turbo", "path": "split_files/vae/ae.safetensors", "dest": "vae/ae.safetensors"},
+    {"src": "2kpr/Real-ESRGAN", "path": "RealESRGAN_x4plus.pth", "dest": "upscale_models/RealESRGAN_x4plus.pth"},
+    {"src": "2kpr/Real-ESRGAN", "path": "RealESRGAN_x2plus.pth", "dest": "upscale_models/RealESRGAN_x2plus.pth"}
   ]
 }

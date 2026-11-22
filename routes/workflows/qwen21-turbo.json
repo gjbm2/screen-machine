@@ -161,11 +161,36 @@
    "title": "SamplerCustomAdvanced"
   }
  },
+ "21": {
+  "inputs": {
+   "model_name": "RealESRGAN_x2plus.pth"
+  },
+  "class_type": "UpscaleModelLoader",
+  "_meta": {
+   "title": "AI upscaler {{UPSCALER}}"
+  }
+ },
+ "22": {
+  "inputs": {
+   "upscale_model": [
+    "21",
+    0
+   ],
+   "image": [
+    "8",
+    0
+   ]
+  },
+  "class_type": "ImageUpscaleWithModel",
+  "_meta": {
+   "title": "AI upscale"
+  }
+ },
  "20": {
   "class_type": "ImageScale",
   "inputs": {
    "image": [
-    "8",
+    "22",
     0
    ],
    "upscale_method": "lanczos",

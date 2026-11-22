@@ -5,6 +5,8 @@
     {"src": "Comfy-Org/Qwen-Image-2.1", "path": "diffusion_models/qwen_image_2.1_bf16.safetensors"},
     {"src": "Comfy-Org/Qwen-Image-2.1", "path": "loras/qwen_image_2.1_turbo_lora_avg_rank_178_bf16.safetensors"},
     {"src": "Comfy-Org/Qwen-Image-2.1", "path": "text_encoders/qwen3vl_8b_bf16.safetensors"},
-    {"src": "Comfy-Org/Qwen-Image-2.1", "path": "vae/qwen_image_2.1_vae_bf16.safetensors"}
+    {"src": "Comfy-Org/Qwen-Image-2.1", "path": "vae/qwen_image_2.1_vae_bf16.safetensors"},
+    {"src": "2kpr/Real-ESRGAN", "path": "RealESRGAN_x4plus.pth", "dest": "upscale_models/RealESRGAN_x4plus.pth"},
+    {"src": "2kpr/Real-ESRGAN", "path": "RealESRGAN_x2plus.pth", "dest": "upscale_models/RealESRGAN_x2plus.pth"}
   ]
 }

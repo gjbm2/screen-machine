@@ -54,6 +54,14 @@ def is_active(job):
     return job.get("status") in ACTIVE
 
 
+def _graph_changed(workflow):
+    """When a workflow's graph file last changed (epoch s), for the estimate; None if there is no such file."""
+    import os
+    from routes.utils import findfile
+    path = findfile(workflow) if workflow and workflow.endswith(".json") else None
+    return os.path.getmtime(path) if path and os.path.isfile(path) else None
+
+
 class Subscription:
     """A bounded queue of job events for one listener. The publisher never blocks: when the
     listener falls behind, the oldest events are dropped (the next snapshot repairs it)."""
@@ -99,7 +107,7 @@ class JobTracker:
     def __init__(self, store=None, progress_interval=0.25, persist_interval=5.0,
                  cancel_remote=None, estimator=None):
         self.store = store if store is not None else JobStore(":memory:")
-        self.estimator = estimator or Estimator(self.store)
+        self.estimator = estimator or Estimator(self.store, graph_changed=_graph_changed)
         self.progress_interval = progress_interval
         self.persist_interval = persist_interval
         # RunPod cancel (endpoint_id, runpod_job_id) -> bool; swapped out by tests

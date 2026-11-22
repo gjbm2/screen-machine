@@ -419,6 +419,19 @@ def test_estimate_learns_per_workflow_median(store):
                    "basis": "workflow"}
 
 
+def test_estimate_learns_only_since_the_graph_changed(store):
+    for g in (10, 12, 14):
+        past_job(store, "wf-a", generate=g, created=1_000.0 + g)
+    for g in (30, 32, 34):
+        past_job(store, "wf-a", generate=g, created=5_000.0 + g)
+    est = Estimator(store, graph_changed=lambda wf: 5_000.0).estimate("wf-a")
+    assert est["generate_s"] == 32.0 and est["samples"] == 3 and est["basis"] == "workflow"
+    # fewer than 3 since the change: its own older timings, not another workflow's
+    past_job(store, "wf-b", generate=99)
+    est = Estimator(store, graph_changed=lambda wf: 5_031.0).estimate("wf-a")
+    assert est["basis"] == "workflow" and est["samples"] == 6
+
+
 def test_estimate_falls_back_to_all_workflows(store):
     for g in (10, 20, 30):
         past_job(store, "wf-b", generate=g)
@@ -686,7 +699,7 @@ def test_start_completes(gen, monkeypatch, tracker):
     entry = next(w for w in _load_json_once("workflow", "workflows.json") if w["id"] == "qwen21-turbo.json")
     # a generator job runs on the workflow's interactive endpoint if it has one, else its own
     assert job["runpod_job_id"] == "rp-123" and job["endpoint_id"] == entry.get("runpod_id_live", entry["runpod_id"])
-    assert job["stages"] == ["Rendering", "Finishing"] and job["kind"] == "image"
+    assert job["stages"] == ["Rendering", "Upscaling"] and job["kind"] == "image"
     assert job["cost_gbp"] == 0.02 and job["seed"] is not None and job["refined_prompt"] == "a red fox"
     assert job["started_at"] and job["submitted_at"] and job["publishing_at"]
     assert job["generating_at"] is None          # no relay frames: not a learning sample

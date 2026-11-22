@@ -26,15 +26,15 @@
       "id": "width",
       "name": "Width",
       "type": "select",
-      "options": ["256", "512", "720", "768", "920", "1024", "1280", "1920"],
-      "default": "1920"
+      "options": ["256", "512", "720", "768", "920", "1024", "1280"],
+      "default": "1280"
       },
         {
       "id": "height",
       "name": "Height",
       "type": "select",
-      "options": ["256", "512", "720", "768", "920", "1024", "1088", "1280"],
-      "default": "1088"
+      "options": ["256", "512", "720", "768", "920", "1024", "1280"],
+      "default": "720"
       },
         {
       "id": "lora",
@@ -53,6 +53,13 @@
       "id": "seed",
       "name": "Random seed",
       "type": "number"
+      },
+      {
+      "id": "upscaler",
+      "name": "Upscaler model",
+      "type": "select",
+      "options": ["RealESRGAN_x2plus.pth","RealESRGAN_x4plus.pth"],
+        "default": "RealESRGAN_x2plus.pth"
       }
     ]
   },
@@ -83,15 +90,15 @@
       "id": "width",
       "name": "Width",
       "type": "select",
-      "options": ["256", "512", "720", "768", "920", "1024", "1280", "1920"],
-      "default": "1920"
+      "options": ["256", "512", "720", "768", "920", "1024", "1280"],
+      "default": "1280"
       },
         {
       "id": "height",
       "name": "Height",
       "type": "select",
-      "options": ["256", "512", "720", "768", "920", "1024", "1088", "1280"],
-      "default": "1088"
+      "options": ["256", "512", "720", "768", "920", "1024", "1280"],
+      "default": "720"
       },
         {
       "id": "lora",
@@ -110,6 +117,13 @@
       "id": "seed",
       "name": "Random seed",
       "type": "number"
+      },
+      {
+      "id": "upscaler",
+      "name": "Upscaler model",
+      "type": "select",
+      "options": ["RealESRGAN_x2plus.pth","RealESRGAN_x4plus.pth"],
+        "default": "RealESRGAN_x2plus.pth"
       }
     ]
   },
@@ -588,11 +602,11 @@
     "processing_stages": [
       {
         "name": "Rendering",
-        "weight": 95
+        "weight": 80
       },
       {
-        "name": "Finishing",
-        "weight": 5
+        "name": "Upscaling",
+        "weight": 20
       }
     ],
     "alexavisible": true,
@@ -650,7 +664,7 @@
         "weight": 95
       },
       {
-        "name": "Finishing",
+        "name": "Upscaling",
         "weight": 5
       }
     ],
@@ -711,11 +725,11 @@
     "processing_stages": [
       {
         "name": "Rendering",
-        "weight": 95
+        "weight": 85
       },
       {
-        "name": "Finishing",
-        "weight": 5
+        "name": "Upscaling",
+        "weight": 15
       }
     ],
     "alexavisible": true,
@@ -772,11 +786,11 @@
     "processing_stages": [
       {
         "name": "Rendering",
-        "weight": 95
+        "weight": 80
       },
       {
-        "name": "Finishing",
-        "weight": 5
+        "name": "Upscaling",
+        "weight": 20
       }
     ],
     "alexavisible": true,
@@ -784,6 +798,14 @@
     "style_descriptor": "faithful to the source image, coherent lighting, seamless changes",
     "note": "Replaces Kontext (flux_1_kontext_dev_1pic-l, endpoint off) on the new worker (docs/genai-review/PROJECT_PLAN.md step 5).",
     "params": [
+      {
+        "id": "skip-upscaling",
+        "mutate": "skip_nodes",
+        "pattern": "UPSCALE_FLAG",
+        "name": "Skip upscale step?",
+        "type": "bool",
+        "default": false
+      },
       {
         "id": "shape",
         "name": "Shape",
@@ -831,11 +853,11 @@
     "processing_stages": [
       {
         "name": "Rendering",
-        "weight": 95
+        "weight": 80
       },
       {
-        "name": "Finishing",
-        "weight": 5
+        "name": "Upscaling",
+        "weight": 20
       }
     ],
     "alexavisible": true,
@@ -843,6 +865,14 @@
     "style_descriptor": "seamless blend, harmonious composition, balanced integration, natural interaction",
     "note": "Replaces Kontext (flux_1_kontext_dev_2pic-l, endpoint off) on the new worker (docs/genai-review/PROJECT_PLAN.md step 5).",
     "params": [
+      {
+        "id": "skip-upscaling",
+        "mutate": "skip_nodes",
+        "pattern": "UPSCALE_FLAG",
+        "name": "Skip upscale step?",
+        "type": "bool",
+        "default": false
+      },
       {
         "id": "shape",
         "name": "Shape",
@@ -888,11 +918,11 @@
     "processing_stages": [
       {
         "name": "Rendering",
-        "weight": 95
+        "weight": 90
       },
       {
-        "name": "Finishing",
-        "weight": 5
+        "name": "Upscaling",
+        "weight": 10
       }
     ],
     "params": [
@@ -937,7 +967,7 @@
     ],
     "processing_stages": [
       {
-        "name": "Finishing",
+        "name": "Upscaling",
         "weight": 100
       }
     ],
