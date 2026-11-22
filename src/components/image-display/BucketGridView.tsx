@@ -854,8 +854,9 @@ export const BucketGridView = ({
   };
 
   // Convert BucketImage -> ImageItem for display components
+  // The viewer gets the real filename, never a favourite's `#dup` copy id: everything it does is by filename.
   const toImageItem = (img: BucketImage): ImageItem => ({
-    id: img.id,
+    id: getOriginalId(img.id),
     urlThumb: img.thumbnail_url,
     urlFull: img.url,
     promptKey: img.prompt || '',
