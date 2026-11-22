@@ -31,6 +31,8 @@ export default {
 			}
 		},
 		extend: {
+			// a phone on its side (the Loope lays its controls over the picture there)
+			screens: { short: { raw: '(max-height: 500px)' } },
 			backgroundColor: bg,
 			gradientColorStops: bg,
 			ringOffsetColor: bg,

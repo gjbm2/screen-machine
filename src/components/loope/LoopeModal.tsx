@@ -1,11 +1,10 @@
-import React, { useEffect, useCallback, useState, useRef, useReducer } from 'react';
-import ReactDOM from 'react-dom';
-import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
+import React, { useEffect, useCallback, useMemo, useState, useRef, useReducer } from 'react';
+import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { useLoopeView } from '@/contexts/LoopeViewContext';
 import useEmblaCarousel from 'embla-carousel-react';
-import { ChevronLeft, ChevronRight, X, ChevronUp, Star, Info, Download, Clipboard, MoreHorizontal, Move, Copy, RefreshCcw, Loader2, Scissors, Play } from 'lucide-react';
+import type { ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
+import { ChevronLeft, ChevronRight, X, ChevronUp, Star, Info, Download, Clipboard, MoreHorizontal, RefreshCcw, Loader2, Scissors, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -17,7 +16,10 @@ import { bucketsApi, publishApi } from '@/shared/api';
 import { usePublishDestinations } from '@/hooks/usePublishDestinations';
 import { ReferenceImageService } from '@/services/reference-image-service';
 import { TagLozenges } from '@/components/tags/TagLozenges';
+import type { ImageItem } from '@/types/image-types';
 import { ImageInfo } from './ImageInfo';
+import { ZoomSlide } from './ZoomSlide';
+import type { Size } from './zoomMath';
 import { ImageMenuItems } from '@/components/common/ImageMenuItems';
 import { notifyItemRemoved, notifyItemUpdated } from '@/components/tags/events';
 
@@ -25,1232 +27,557 @@ interface LoopeModalProps {
   title?: string;
 }
 
-interface ZoomPosition {
-  x: number;
-  y: number;
-  exactX?: number;
-  exactY?: number;
-  imageWidth?: number;
-  imageHeight?: number;
-  imageLeft?: number;
-  imageTop?: number;
-}
-
 /** The bucket an image lives in: its bucketId, else parsed from /output/<bucket>/ in its URLs. */
-function bucketOf(img: any): string | null {
+function bucketOf(img: ImageItem | undefined): string | null {
   if (!img) return null;
   if (typeof img.bucketId === 'string' && img.bucketId) return img.bucketId;
-  const m = (typeof img.raw_url === 'string' && img.raw_url.match(/\/output\/([^\/]+)\/(.+)/))
-    || (typeof img.urlThumb === 'string' && img.urlThumb.match(/\/output\/([^\/]+)\/thumbnails\/(.+)/));
+  const m = (typeof img.raw_url === 'string' && img.raw_url.match(/\/output\/([^/]+)\/(.+)/))
+    || (typeof img.urlThumb === 'string' && img.urlThumb.match(/\/output\/([^/]+)\/thumbnails\/(.+)/));
   return m ? m[1] : null;
 }
 
+const isVideoItem = (img: ImageItem, src: string) => img.mediaType === 'video' || /\.mp4$|\.webm$/i.test(src);
+
+/** A picture and its clips: a small strip of their tiles; each clip's tile plays that clip (owner, 20 Nov: one big
+ *  "Play its clip" button took room and didn't say which clip). */
+function ClipStrip({ group, currentIndex, onPick, className = '' }: {
+  group: { item: ImageItem; index: number }[];
+  currentIndex: number;
+  onPick: (index: number, play: boolean) => void;
+  className?: string;
+}) {
+  return (
+    <div className={`max-w-[92%] gap-1.5 overflow-x-auto rounded-lg bg-black/55 p-1.5 ${className}`}>
+      {group.map(({ item, index }, n) => {
+        const secs = Number(item.metadata?.clip?.play_s) || 0;
+        return (
+          <button
+            key={item.uniqueKey || item.id}
+            type="button"
+            title={n === 0 ? 'The picture' : `Clip ${n}${item.metadata?.clip?.pace ? ` (${item.metadata.clip.pace})` : ''}: play it`}
+            className={`relative h-10 w-10 shrink-0 overflow-hidden rounded md:h-12 md:w-12 ${index === currentIndex ? 'ring-2 ring-white' : 'opacity-75 hover:opacity-100'}`}
+            onClick={() => onPick(index, n > 0)}
+          >
+            {item.urlThumb ? (
+              <img src={item.urlThumb} alt="" className="h-full w-full object-cover" />
+            ) : (
+              <video src={`${item.urlFull}#t=0.1`} preload="metadata" muted className="h-full w-full object-cover" />
+            )}
+            {n > 0 && (
+              <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-0.5 bg-black/60 text-[10px] leading-4 text-white">
+                <Play className="h-2.5 w-2.5 fill-white" />
+                {secs ? `${Math.round(secs)}s` : ''}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 /**
- * Temporary stub for LoopeModal until full implementation.
- * It simply presents a minimal dialog that can be closed.
+ * The Loope: the full-screen viewer for a set of pictures and clips (owner, 22 Nov: "quite easy to get 'stuck' after
+ * pinch zooming & panning"; "doesn't cope with landscape mode on a phone").
+ * - It fills the screen (dynamic viewport height, safe areas), any device, either way up. On a phone on its side the
+ *   tags and buttons lie over the picture, and a tap on the picture hides or shows them.
+ * - Zoom is in place, on the slide (ZoomSlide): pinch, wheel or double tap; never smaller than fit; zoomed, a finger
+ *   pans; at fit it swipes to the next. The close button is always there; Escape and the phone's Back step out
+ *   (zoom, then Info, then the viewer).
  */
 const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
-  // Add a try/catch around context usage to prevent uncaught errors
-  try {
-    const { isOpen, images, currentIndex, goto, close, carouselOptions, open } = useLoopeView();
-    
-    // Use a defensive check - if context isn't fully initialized, return null
-    if (images === undefined || goto === undefined || close === undefined) {
-      console.log("LoopeView context not fully initialized yet");
-      return null;
-    }
-    
-    const [emblaRef, emblaApi] = useEmblaCarousel({ 
-      ...carouselOptions,
-      loop: carouselOptions?.loop ?? true
+  const { isOpen, images, currentIndex, goto, close, carouselOptions, open } = useLoopeView();
+
+  // zoomed, the carousel must not take the finger: read when a drag starts
+  const zoomedRef = useRef(false);
+  const [zoomed, setZoomedState] = useState(false);
+  const setZoomed = useCallback((z: boolean) => {
+    zoomedRef.current = z;
+    setZoomedState(z);
+  }, []);
+  const zoomApis = useRef(new Map<string, ReactZoomPanPinchRef>());
+
+  const emblaOptions = useMemo(() => ({
+    ...carouselOptions,
+    loop: carouselOptions?.loop ?? true,
+    watchDrag: () => !zoomedRef.current,
+  }), [carouselOptions]);
+  const [emblaRef, emblaApi] = useEmblaCarousel(emblaOptions);
+
+  const [isFlipped, setIsFlipped] = useState(false);
+  // the controls laid over the picture (a phone on its side) and the title: a tap on the picture hides or shows them
+  const [chrome, setChrome] = useState(true);
+  // a clip asked for (its tile in the strip below the picture, or a tile's clip badge) plays on arrival; others wait
+  const [playId, setPlayId] = useState<string | null>(null);
+  const videoEls = useRef(new Map<string, HTMLVideoElement>());
+  const [loadedVideos, setLoadedVideos] = useState<Record<string, boolean>>({});
+  const [showHint, setShowHint] = useState(true);
+  const touchStartY = useRef<number | null>(null);
+
+  // Items are the opener's objects, patched in place (star, tags); this re-renders after a patch.
+  const [, bumpItems] = useReducer((n: number) => n + 1, 0);
+  const { destinations, nonHeadlessDestinations } = usePublishDestinations();
+
+  // The stage's size: each picture is fitted to it, and a change (a phone turned) starts its zoom afresh.
+  const [stage, setStage] = useState<Size>({ w: 0, h: 0 });
+  const stageObserver = useRef<ResizeObserver | null>(null);
+  const stageRef = useCallback((el: HTMLDivElement | null) => {
+    stageObserver.current?.disconnect();
+    stageObserver.current = null;
+    if (!el) return;
+    const ro = new ResizeObserver(([entry]) => {
+      const { width, height } = entry.contentRect;
+      setStage((s) => (Math.round(width) === s.w && Math.round(height) === s.h ? s : { w: Math.round(width), h: Math.round(height) }));
     });
-    
-    const [isFlipped, setIsFlipped] = useState(false);
-    // a clip asked for (its tile in the strip below the picture, or a tile's clip badge) plays on arrival; others wait
-    const [playId, setPlayId] = useState<string | null>(null);
-    const videoEls = useRef(new Map<string, HTMLVideoElement>());
-    const [zoomSrc, setZoomSrc] = useState<string | null>(null);
-    const [zoomPosition, setZoomPosition] = useState<ZoomPosition>({ x: 0, y: 0 });
-    const touchStartY = useRef<number | null>(null);
-    const [showHint, setShowHint] = useState(true);
-    const [dynamicTitle, setDynamicTitle] = useState<string | null>(null);
-    
-    // Track when we're about to loop around to ensure images are still displayed
-    const [hasLooped, setHasLooped] = useState(false);
-    
-    // Add loading state for images
-    const [loadingImages, setLoadingImages] = useState<{[key: string]: boolean}>({});
+    ro.observe(el);
+    stageObserver.current = ro;
+  }, []);
 
-    // Items are the opener's objects, patched in place (star, tags); this re-renders after a patch.
-    const [, bumpItems] = useReducer((n: number) => n + 1, 0);
-    
-    // Get publish destinations for actions
-    const { destinations, nonHeadlessDestinations, loading: destinationsLoading } = usePublishDestinations();
+  /* ------------------------------------------------------------------ */
+  /* Opening, closing, the phone's Back                                  */
+  /* ------------------------------------------------------------------ */
 
-    // Add new state for mobile detection
-    const [isMobile, setIsMobile] = useState(false);
-    
-    // Detect mobile devices
-    useEffect(() => {
-      const checkMobile = () => {
-        setIsMobile(window.innerWidth <= 768);
-      };
-      
-      checkMobile();
-      window.addEventListener('resize', checkMobile);
-      return () => window.removeEventListener('resize', checkMobile);
-    }, []);
+  // Each opening starts on the picture, or on its Info when asked (a tile's Info button)
+  useEffect(() => {
+    if (!isOpen) return;
+    setIsFlipped(!!carouselOptions?.showInfo);
+    setPlayId((carouselOptions?.playId as string | null) ?? null);
+    setChrome(true);
+    setZoomed(false);
+  }, [isOpen, carouselOptions, setZoomed]);
 
-    // Log destination information without hardcoding specific IDs
-    useEffect(() => {
-      // Removed verbose logging to reduce console noise
-    }, [destinations, nonHeadlessDestinations]);
-
-    /* ------------------------------------------------------------------ */
-    /* Sync embla selection -> context index                               */
-    /* ------------------------------------------------------------------ */
-    useEffect(() => {
-      if (emblaApi && isOpen && !zoomSrc) {
-        emblaApi.scrollTo(currentIndex, true);
-      }
-    }, [currentIndex, emblaApi, isOpen, zoomSrc]);
-
-    // Only the slide in view plays: leaving a clip pauses it, and the clip asked for is started here (an autoPlay
-    // attribute does nothing to a slide's <video> that has already loaded, which is why Play did nothing).
-    useEffect(() => {
-      if (!isOpen) return;
-      const id = images[currentIndex]?.id;
-      videoEls.current.forEach((el, key) => {
-        if (key !== id && !el.paused) el.pause();
-      });
-      if (id && id === playId) {
-        const el = videoEls.current.get(id);
-        if (el) {
-          el.currentTime = 0;
-          void el.play().catch(() => {});
-        }
-        setPlayId(null);
-      }
-    }, [currentIndex, playId, isOpen, images]);
-
-    useEffect(() => {
-      if (!emblaApi) return;
-      
-      const onSelect = () => {
-        const idx = emblaApi.selectedScrollSnap();
-        
-        // Check if we've looped back to the start
-        const wasLastSlide = currentIndex === images.length - 1;
-        const isFirstSlide = idx === 0;
-        
-        // If we detect a wrap-around, force a re-init of the carousel
-        if (wasLastSlide && isFirstSlide) {
-          setHasLooped(true);
-          // Using a microtask to ensure state updates first
-          setTimeout(() => {
-            if (emblaApi) {
-              emblaApi.reInit();
-            }
-          }, 0);
-        }
-        
-        if (idx !== currentIndex) goto(idx);
-      };
-      
-      emblaApi.on('select', onSelect);
-      return () => {
-        emblaApi.off('select', onSelect);
-      };
-    }, [emblaApi, currentIndex, goto, images.length]);
-
-    // Ensure carousel is re-initialized when images change or when looping occurs
-    useEffect(() => {
-      if (!emblaApi) return;
-      
-      if (hasLooped) {
-        emblaApi.reInit();
-        setHasLooped(false);
-      }
-    }, [emblaApi, hasLooped]);
-
-    useEffect(() => {
-      if (!zoomSrc && emblaApi) {
-        emblaApi.reInit();
-      }
-    }, [zoomSrc, emblaApi, images]);
-
-    /* ------------------------------------------------------------------ */
-    /* Keyboard navigation                                                */
-    /* ------------------------------------------------------------------ */
-    const handleKey = useCallback((e: KeyboardEvent) => {
-      if (!isOpen) return;
-      // Typing in a field (the tag search) is not navigation: arrows, "i" and Escape belong to it.
-      const t = e.target as HTMLElement | null;
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-      
-      if (zoomSrc && e.key === 'Escape') {
-        e.preventDefault();
-        setZoomSrc(null);
-        return;
-      }
-      
-      if (!zoomSrc) {
-        if (e.key === 'ArrowLeft') {
-          e.preventDefault();
-          emblaApi?.scrollPrev();
-        } else if (e.key === 'ArrowRight') {
-          e.preventDefault();
-          emblaApi?.scrollNext();
-        } else if (e.key === 'ArrowUp' || e.key.toLowerCase() === 'i') {
-          e.preventDefault();
-          setIsFlipped(true);
-          setShowHint(false);
-        } else if (e.key === 'ArrowDown') {
-          e.preventDefault();
-          setIsFlipped(false);
-        } else if (e.key === 'Escape') {
-          close();
-        }
-      }
-    }, [isOpen, zoomSrc, emblaApi, close]);
-
-    // Each opening starts on the picture, or on its Info when asked (a tile's Info button)
-    useEffect(() => {
-      if (isOpen) {
-        setIsFlipped(!!carouselOptions?.showInfo);
-        setPlayId((carouselOptions?.playId as string | null) ?? null);
-      }
-    }, [isOpen, carouselOptions]);
-
-    useEffect(() => {
-      window.addEventListener('keydown', handleKey);
-      return () => window.removeEventListener('keydown', handleKey);
-    }, [handleKey]);
-
-    /* ------------------------------------------------------------------ */
-    /* Touch vertical swipe for flip                                      */
-    /* ------------------------------------------------------------------ */
-    const handleTouchStart: React.TouchEventHandler = (e) => {
-      if (zoomSrc) return;
-      touchStartY.current = e.touches[0].clientY;
-    };
-
-    const handleTouchEnd: React.TouchEventHandler = (e) => {
-      if (zoomSrc || touchStartY.current === null) return;
-      
-      const delta = e.changedTouches[0].clientY - touchStartY.current;
-      if (delta < -80) {
-        setIsFlipped(true);
-        setShowHint(false);
-      } else if (delta > 80) {
-        setIsFlipped(false);
-      }
-      
-      touchStartY.current = null;
-    };
-
-    /* ------------------------------------------------------------------ */
-    /* Handle double click to zoom                                        */
-    /* ------------------------------------------------------------------ */
-    const handleDoubleClick = (e: React.MouseEvent, src: string) => {
-      e.preventDefault();
-      
-      // Get the current image position and dimensions
-      const rect = e.currentTarget.getBoundingClientRect();
-      
-      // Calculate exact position ratios to maintain the view centered exactly where clicked
-      const x = (e.clientX - rect.left) / rect.width;
-      const y = (e.clientY - rect.top) / rect.height;
-      
-      // Store exact pixel position for more precise positioning
-      const exactX = e.clientX;
-      const exactY = e.clientY;
-      
-      setZoomPosition({
-        x,
-        y,
-        exactX,
-        exactY,
-        imageWidth: rect.width,
-        imageHeight: rect.height,
-        imageLeft: rect.left,
-        imageTop: rect.top
-      });
-      
-      setZoomSrc(src);
-    };
-
-    /* ------------------------------------------------------------------ */
-    /* Toggle favorite                                                   */
-    /* ------------------------------------------------------------------ */
-    const handleToggleFavorite = async (img: any) => {
-      if (!img || !img.id) return;
-      
-      // Get current favorite state
-      const currentState = img.isFavourite;
+  // Back closes the viewer: it puts an entry on top while open (the same pattern as the score's stand).
+  // The entry is put on and taken off by the open state itself, not an effect's cleanup (a re-run must not pop it).
+  const backEntry = useRef(false);
+  useEffect(() => {
+    if (isOpen && !backEntry.current) {
       try {
-        // Get bucket ID from img if available, or extract from URL
-        let bucketId = img.bucketId;
-        
-        // If no bucketId directly available, try to parse from URL
-        if (!bucketId && img.raw_url) {
-          // Parse from URL pattern like /output/north-screen/20250512-220119-fd5cd39f.jpg
-          const urlMatch = img.raw_url.match(/\/output\/([^\/]+)\/(.+)/);
-          if (urlMatch) {
-            bucketId = urlMatch[1];
-          }
-        }
-        
-        // If still no bucket ID, try parsing from urlThumb 
-        if (!bucketId && img.urlThumb) {
-          const thumbMatch = img.urlThumb.match(/\/output\/([^\/]+)\/thumbnails\/(.+)/);
-          if (thumbMatch) {
-            bucketId = thumbMatch[1];
-          }
-        }
-        
-        if (!bucketId) {
-          console.error('Could not determine bucket ID for favorite toggle', img);
-          toast.error('Could not toggle favorite: missing bucket ID');
-          return;
-        }
-        
-        console.log('Toggling favorite state:', { id: img.id, bucketId, currentState, newState: !currentState });
-        
-        // Call the API to toggle favorite status
-        const success = await bucketsApi.toggleFavorite(bucketId, img.id, !currentState);
-        
-        if (success) {
-          // Update the state in context
-          img.isFavourite = !currentState;
-          bumpItems();
-          // The grid holds its own copy: tell it, so it isn't stale until a refresh.
-          notifyItemUpdated({ bucket: bucketId, filename: img.id, patch: { favorite: img.isFavourite } });
-          toast.success(img.isFavourite ? 'Added to favorites' : 'Removed from favorites');
-        } else {
-          toast.error('Failed to toggle favorite status');
-        }
-      } catch (error) {
-        console.error('Error toggling favorite:', error);
-        toast.error('Failed to toggle favorite');
+        window.history.pushState(window.history.state, '');
+        backEntry.current = true;
+      } catch {
+        /* no entry: Back leaves the page as before */
       }
-    };
-
-    /* ------------------------------------------------------------------ */
-    /* Use as prompt                                                     */
-    /* ------------------------------------------------------------------ */
-    const handleUseAsPrompt = (img: any) => {
-      if (!img) return;
-      
-      // Get the URL to use
-      const imageUrl = img.raw_url || img.urlFull;
-      if (!imageUrl) {
-        toast.error('Image URL not found');
-        return;
-      }
-      
-      // Dispatch event for prompt form to handle
-      const event = new CustomEvent('useImageAsPrompt', { 
-        detail: { 
-          url: imageUrl,
-          preserveFavorites: true,
-          useReferenceUrl: true,
-          imageId: img.id,
-          source: 'loope-view',
-          append: false // Replace current reference images
-        } 
-      });
-      
-      window.dispatchEvent(event);
-      toast.success('Image set as prompt reference');
-      
-      // Optionally close the modal
+    } else if (!isOpen && backEntry.current) {
+      backEntry.current = false;
+      window.history.back();
+    }
+  }, [isOpen]);
+  useEffect(() => {
+    if (!isOpen) return;
+    const onPop = () => {
+      if (!backEntry.current) return;
+      backEntry.current = false;
       close();
     };
-    
-    /* ------------------------------------------------------------------ */
-    /* Copy to destination                                               */
-    /* ------------------------------------------------------------------ */
-    const handleCopyTo = async (img: any, destinationId: string) => {
-      if (!img || !img.id) return;
-      
-      try {
-        // Get source bucket ID
-        let sourceBucketId = img.bucketId;
-        
-        // If no bucketId directly available, try to parse from URL
-        if (!sourceBucketId && img.raw_url) {
-          const urlMatch = img.raw_url.match(/\/output\/([^\/]+)\/(.+)/);
-          if (urlMatch) {
-            sourceBucketId = urlMatch[1];
-          }
-        }
-        
-        // If still no bucket ID, try parsing from urlThumb 
-        if (!sourceBucketId && img.urlThumb) {
-          const thumbMatch = img.urlThumb.match(/\/output\/([^\/]+)\/thumbnails\/(.+)/);
-          if (thumbMatch) {
-            sourceBucketId = thumbMatch[1];
-          }
-        }
-        
-        if (!sourceBucketId) {
-          console.error('Could not determine source bucket ID for copy', img);
-          toast.error('Could not copy: missing source bucket ID');
-          return;
-        }
-        
-        // Call API to copy
-        await bucketsApi.copyImageToBucket(sourceBucketId, destinationId, img.id, true);
-        toast.success(`Copied to ${destinationId}`);
-      } catch (error) {
-        console.error('Error copying image:', error);
-        toast.error('Failed to copy image');
-      }
-    };
-    
-    /* ------------------------------------------------------------------ */
-    /* Move to destination                                               */
-    /* ------------------------------------------------------------------ */
-    const handleMoveTo = async (img: any, destinationId: string) => {
-      if (!img || !img.id) return;
-      
-      try {
-        // Get source bucket ID
-        let sourceBucketId = img.bucketId;
-        
-        // If no bucketId directly available, try to parse from URL
-        if (!sourceBucketId && img.raw_url) {
-          const urlMatch = img.raw_url.match(/\/output\/([^\/]+)\/(.+)/);
-          if (urlMatch) {
-            sourceBucketId = urlMatch[1];
-          }
-        }
-        
-        // If still no bucket ID, try parsing from urlThumb 
-        if (!sourceBucketId && img.urlThumb) {
-          const thumbMatch = img.urlThumb.match(/\/output\/([^\/]+)\/thumbnails\/(.+)/);
-          if (thumbMatch) {
-            sourceBucketId = thumbMatch[1];
-          }
-        }
-        
-        if (!sourceBucketId) {
-          console.error('Could not determine source bucket ID for move', img);
-          toast.error('Could not move: missing source bucket ID');
-          return;
-        }
-        
-        // Call API to move (copy with delete)
-        await bucketsApi.copyImageToBucket(sourceBucketId, destinationId, img.id, false);
-        toast.success(`Moved to ${destinationId}`);
-        notifyItemRemoved({ bucket: sourceBucketId, filename: img.id });
-        
-        // Close modal as the current image is gone
-        close();
-      } catch (error) {
-        console.error('Error moving image:', error);
-        toast.error('Failed to move image');
-      }
-    };
-    
-    /* ------------------------------------------------------------------ */
-    /* Publish to destination                                            */
-    /* ------------------------------------------------------------------ */
-    const handlePublish = async (img: any, destinationId: string) => {
-      if (!img || !img.id) return;
-      
-      try {
-        // Get source bucket ID
-        let sourceBucketId = img.bucketId;
-        
-        // If no bucketId directly available, try to parse from URL
-        if (!sourceBucketId && img.raw_url) {
-          const urlMatch = img.raw_url.match(/\/output\/([^\/]+)\/(.+)/);
-          if (urlMatch) {
-            sourceBucketId = urlMatch[1];
-          }
-        }
-        
-        // If still no bucket ID, try parsing from urlThumb 
-        if (!sourceBucketId && img.urlThumb) {
-          const thumbMatch = img.urlThumb.match(/\/output\/([^\/]+)\/thumbnails\/(.+)/);
-          if (thumbMatch) {
-            sourceBucketId = thumbMatch[1];
-          }
-        }
-        
-        if (!sourceBucketId) {
-          console.error('Could not determine source bucket ID for publish', img);
-          toast.error('Could not publish: missing source bucket ID');
-          return;
-        }
-        
-        // Call API to publish - using correct method with proper parameters
-        const result = await publishApi.publishImageUnified({
-          dest_bucket_id: destinationId,
-          src_bucket_id: sourceBucketId,
-          filename: img.id
-        });
-        
-        if (result.success) toast.success(publishApi.publishedWords(result, `Published to ${destinationId}`));
-        else if (!result.cancelled) toast.error(`Failed to publish image: ${result.error ?? ''}`);
-      } catch (error) {
-        console.error('Error publishing image:', error);
-        toast.error('Failed to publish image');
-      }
-    };
-    
-    /* ------------------------------------------------------------------ */
-    /* Handle delete                                                     */
-    /* ------------------------------------------------------------------ */
-    const handleDelete = async (img: any) => {
-      if (!img || !img.id) return;
-      
-      if (!confirm(`Are you sure you want to delete this image${img.isFavourite ? ' (favorite)' : ''}?`)) {
-        return;
-      }
-      
-      try {
-        // Get bucket ID
-        let bucketId = img.bucketId;
-        
-        // If no bucketId directly available, try to parse from URL
-        if (!bucketId && img.raw_url) {
-          const urlMatch = img.raw_url.match(/\/output\/([^\/]+)\/(.+)/);
-          if (urlMatch) {
-            bucketId = urlMatch[1];
-          }
-        }
-        
-        // If still no bucket ID, try parsing from urlThumb 
-        if (!bucketId && img.urlThumb) {
-          const thumbMatch = img.urlThumb.match(/\/output\/([^\/]+)\/thumbnails\/(.+)/);
-          if (thumbMatch) {
-            bucketId = thumbMatch[1];
-          }
-        }
-        
-        if (!bucketId) {
-          console.error('Could not determine bucket ID for delete', img);
-          toast.error('Could not delete: missing bucket ID');
-          return;
-        }
-        
-        // Call API to delete
-        await bucketsApi.deleteFromBucket(bucketId, img.id);
-        toast.success('Image deleted');
-        notifyItemRemoved({ bucket: bucketId, filename: img.id });
-        
-        // Close modal as the current image is gone
-        close();
-      } catch (error) {
-        console.error('Error deleting image:', error);
-        toast.error('Failed to delete image');
-      }
-    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [isOpen, close]);
 
-    const handleStartAgain = (img: any) => {
-      if (!img) return;
-      
-      try {
-        // Get the prompt text and reference images from the image metadata
-        const promptText = img.prompt || img.metadata?.prompt || '';
-        const referenceImages = img.reference_images || img.metadata?.reference_images || [];
-        
-        // Dispatch custom events to set the prompt form
-        if (promptText) {
-          window.dispatchEvent(new CustomEvent('setPromptText', { 
-            detail: { prompt: promptText } 
-          }));
-        }
-        
-        if (referenceImages && referenceImages.length > 0) {
-          // Get the bucket ID from the image
-          const bucketId = img.bucketId || '_recent';
-          
-          // Convert reference images to accessible URLs
-          const referenceUrls = ReferenceImageService.getReferenceImageUrls(bucketId, referenceImages);
-          
-          if (referenceUrls.length > 0) {
-            // Clear existing reference images first
-            window.dispatchEvent(new CustomEvent('useImageAsPrompt', { 
-              detail: { url: referenceUrls[0], append: false } 
-            }));
-            
-            // Add remaining images
-            for (let i = 1; i < referenceUrls.length; i++) {
-              window.dispatchEvent(new CustomEvent('useImageAsPrompt', { 
-                detail: { url: referenceUrls[i], append: true } 
-              }));
-            }
-          }
-        }
-        
-        // Close the modal
-        close();
-        
-        toast.success('Loaded prompt and reference images for editing');
-      } catch (error) {
-        console.error('Error starting again:', error);
-        toast.error('Failed to load prompt and reference images');
-      }
-    };
+  // a new slide starts at fit
+  useEffect(() => {
+    setZoomed(false);
+  }, [currentIndex, setZoomed]);
 
-    // Function to copy text to clipboard with fallback
-    const copyToClipboard = (text: string) => {
-      if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
-        navigator.clipboard.writeText(text)
-          .then(() => toast.success('Copied to clipboard'))
-          .catch(err => {
-            console.error('Failed to copy with clipboard API:', err);
-            fallbackCopyToClipboard(text);
-          });
-      } else {
-        fallbackCopyToClipboard(text);
-      }
-    };
-    
-    // Fallback method for copying to clipboard
-    const fallbackCopyToClipboard = (text: string) => {
-      try {
-        // Create temporary textarea
-        const textArea = document.createElement('textarea');
-        textArea.value = text;
-        textArea.style.position = 'fixed'; // Avoid scrolling to bottom
-        textArea.style.top = '0';
-        textArea.style.left = '0';
-        textArea.style.width = '2em';
-        textArea.style.height = '2em';
-        textArea.style.padding = '0';
-        textArea.style.border = 'none';
-        textArea.style.outline = 'none';
-        textArea.style.boxShadow = 'none';
-        textArea.style.background = 'transparent';
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        
-        // Execute copy command
-        const successful = document.execCommand('copy');
-        if (successful) {
-          toast.success('Copied to clipboard');
-        } else {
-          toast.error('Failed to copy to clipboard');
-          
-          // Provide manual copy instructions as last resort
-          toast.info('Copy this manually: ' + text.substring(0, 30) + '...');
-        }
-        
-        // Clean up
-        document.body.removeChild(textArea);
-      } catch (err) {
-        console.error('Fallback copy method failed:', err);
-        toast.error('Failed to copy to clipboard');
-        
-        // Show text for user to manually copy
-        toast.info('Copy this manually: ' + text.substring(0, 30) + '...');
-      }
-    };
+  const unzoom = useCallback(() => {
+    const id = images[currentIndex]?.id;
+    const api = id ? zoomApis.current.get(id) : undefined;
+    if (api) api.centerView(1, 200);
+    else setZoomed(false);
+  }, [images, currentIndex, setZoomed]);
 
-    // Handle double tap to zoom for touch devices
-    const [lastTapTime, setLastTapTime] = useState(0);
-    const [lastTouchCount, setLastTouchCount] = useState(0);
-    
-    // Zoom handling
-    const closeZoom = useCallback(() => {
-      setZoomSrc(null);
-      // Reset zoom position state to defaults
-      setZoomPosition({ x: 0, y: 0 });
-      
-      // Make sure the carousel is reinitialized properly
-      setTimeout(() => {
-        if (emblaApi) {
-          emblaApi.reInit();
-        }
-      }, 100);
-    }, [emblaApi]);
-
-    // Prevent zooming in mobile browsers during pinch gestures only when over carousel images
-    useEffect(() => {
-      const preventBrowserZoom = (e: TouchEvent) => {
-        // Only prevent browser zoom when:
-        // 1. Modal is open
-        // 2. We're not already in zoomed mode (TransformWrapper handles zoom then)
-        // 3. It's a multi-touch gesture (pinch)
-        // 4. We're touching a carousel image
-        if (isOpen && !zoomSrc && e.touches.length > 1) {
-          const target = e.target as Element;
-          const isOverImage = target.closest('.carousel-image-item');
-          
-          if (isOverImage) {
-            // Only prevent browser default - this will still allow our 
-            // TransformWrapper to handle the zoom after we enter zoom mode
-            e.preventDefault();
-            
-            // Detect pinch and enter zoom mode
-            const img = isOverImage as HTMLElement;
-            const src = img.getAttribute('src');
-            
-            // Only trigger zoom mode if we have a valid source
-            if (src) {
-              const rect = img.getBoundingClientRect();
-              
-              // Calculate midpoint of the pinch
-              const touchX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-              const touchY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-              
-              // Calculate relative position in the image
-              const relativeX = (touchX - rect.left) / rect.width;
-              const relativeY = (touchY - rect.top) / rect.height;
-              
-              // Use requestAnimationFrame to avoid React state updates during event handling
-              requestAnimationFrame(() => {
-                setZoomPosition({
-                  x: relativeX,
-                  y: relativeY,
-                  exactX: touchX,
-                  exactY: touchY,
-                  imageWidth: rect.width,
-                  imageHeight: rect.height,
-                  imageLeft: rect.left,
-                  imageTop: rect.top
-                });
-                
-                // Enter zoom mode
-                setZoomSrc(src);
-              });
-            }
-          }
-        }
-      };
-      
-      // Must use passive: false to allow preventDefault to work
-      document.addEventListener('touchmove', preventBrowserZoom, { passive: false });
-      
-      return () => {
-        document.removeEventListener('touchmove', preventBrowserZoom);
-      };
-    }, [isOpen, zoomSrc]);
-    
-    // Handle touch events
-    const handleTap = (e: React.TouchEvent, src: string) => {
-      // Reset touch tracking count
-      const touchCount = e.touches.length;
-      setLastTouchCount(touchCount);
-      
-      // Skip if this is a multi-touch event (likely a pinch)
-      if (touchCount > 1 || e.changedTouches.length > 1) {
-        return;
-      }
-      
-      // If we previously had multiple touches and now have fewer,
-      // this might be the end of a pinch gesture, so ignore
-      if (lastTouchCount > 1) {
-        return;
-      }
-      
-      const now = Date.now();
-      const DOUBLE_TAP_DELAY = 300; // ms
-      
-      if (now - lastTapTime < DOUBLE_TAP_DELAY) {
-        // This is a double tap
-        e.preventDefault();
-        
-        if (zoomSrc) {
-          // If already zoomed, exit zoom
-          closeZoom();
-        } else {
-          // Zoom in at tap position
-          const rect = e.currentTarget.getBoundingClientRect();
-          const touch = e.touches[0] || e.changedTouches[0];
-          const x = (touch.clientX - rect.left) / rect.width;
-          const y = (touch.clientY - rect.top) / rect.height;
-          
-          setZoomPosition({
-            x,
-            y,
-            exactX: touch.clientX,
-            exactY: touch.clientY,
-            imageWidth: rect.width,
-            imageHeight: rect.height,
-            imageLeft: rect.left,
-            imageTop: rect.top
-          });
-          setZoomSrc(src);
-        }
-      }
-      
-      setLastTapTime(now);
-    };
-
-    // NEW: Unified touch start handler that detects pinch gesture and routes single-tap to handleTap
-    const handleImageTouchStart = (e: React.TouchEvent, src: string) => {
-      if (e.touches.length > 1) {
-        // Pinch gesture detected – enter zoom mode and prevent browser default
-        e.preventDefault();
-        const rect = e.currentTarget.getBoundingClientRect();
-        const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-        const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-        const relX = (centerX - rect.left) / rect.width;
-        const relY = (centerY - rect.top) / rect.height;
-        setZoomPosition({
-          x: relX,
-          y: relY,
-          exactX: centerX,
-          exactY: centerY,
-          imageWidth: rect.width,
-          imageHeight: rect.height,
-          imageLeft: rect.left,
-          imageTop: rect.top
-        });
-        setZoomSrc(src);
-      } else {
-        // Delegate to existing single-tap / double-tap logic
-        handleTap(e, src);
-      }
-    };
-
-    // Handle mouse wheel zooming on the main image (without having to double-click first)
-    const handleWheel = useCallback((e: React.WheelEvent, src: string) => {
-      // Only handle wheel events if we're not already in zoom mode
-      if (zoomSrc) return;
-      
-      // Only trigger zoom mode on zoom in (negative deltaY)
-      // If user scrolls down (positive deltaY), it's a zoom out gesture so don't enter zoom mode
-      if (e.deltaY >= 0) return;
-      
-      // Prevent default scrolling behavior
-      e.preventDefault();
-      
-      // Get exact position information for precise zoom targeting
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = (e.clientX - rect.left) / rect.width;
-      const y = (e.clientY - rect.top) / rect.height;
-      
-      // Store exact pixel positions
-      const exactX = e.clientX;
-      const exactY = e.clientY;
-      
-      // Enter zoom mode directly with the image - only on zoom in
-      setZoomPosition({
-        x,
-        y,
-        exactX,
-        exactY,
-        imageWidth: rect.width,
-        imageHeight: rect.height,
-        imageLeft: rect.left,
-        imageTop: rect.top
-      });
-      
-      setZoomSrc(src);
-    }, [zoomSrc]);
-
-    // Add passive wheel event listener to document to prevent scrolling when over images
-    useEffect(() => {
-      // This function needs to be declared outside the event handler to be used for removal
-      const preventScroll = (e: WheelEvent) => {
-        // Only prevent if over an image in the carousel and not already in zoom mode
-        if (isOpen && !zoomSrc && e.target instanceof Element) {
-          const isOverCarouselImage = e.target.closest('.carousel-image-item');
-          if (isOverCarouselImage) {
-            // Using stopPropagation instead of preventDefault since we're in a passive handler
-            e.stopPropagation();
-          }
-        }
-      };
-      
-      // The wheel event is passive by default in modern browsers
-      // Instead of trying to preventDefault (which won't work in passive handlers),
-      // we'll handle the zoom directly in our onWheel event on the images
-      window.addEventListener('wheel', preventScroll);
-      
-      return () => {
-        window.removeEventListener('wheel', preventScroll);
-      };
-    }, [isOpen, zoomSrc]);
-
-    // Reset zoom when closing the modal
-    useEffect(() => {
-      if (!isOpen) {
-        setZoomSrc(null);
-      }
-    }, [isOpen]);
-
-    // Update dynamic title when swiping between published images
-    useEffect(() => {
-      if (isOpen && images.length > 0 && currentIndex >= 0 && currentIndex < images.length) {
-        const currentImage = images[currentIndex];
-        
-        // Check if this is a published image with destination info
-        if (currentImage?.isPublished && currentImage.destinationName) {
-          // Create dynamic title for published images
-          setDynamicTitle(`Currently published - ${currentImage.destinationName} (${currentIndex + 1}/${images.length})`);
-        } else {
-          // For non-published images, use the provided title
-          setDynamicTitle(null);
-        }
-      }
-    }, [isOpen, images, currentIndex]);
-
-    // Reset dynamic title when closing modal
-    useEffect(() => {
-      if (!isOpen) {
-        setDynamicTitle(null);
-      }
-    }, [isOpen]);
-
-    // Memoised base scale so that the image starts exactly at the size it had inside the carousel
-    const baseScale = React.useMemo(() => {
-      if (!zoomSrc || !zoomPosition.imageWidth || !zoomPosition.imageHeight) return 1;
-      // imageWidth is the rendered width inside carousel. At scale S the image rendered width = viewportWidth * S (if width limited) or viewportHeight*aspect etc
-      // For object-contain the rendered width at scale 1 equals viewportWidth OR less. We can derive scale by simple ratio of carousel width to viewport width
-      const sX = zoomPosition.imageWidth / window.innerWidth;
-      const sY = zoomPosition.imageHeight / window.innerHeight;
-      // whichever dimension was limiting inside carousel we use that ratio
-      return Math.max(sX, sY);
-    }, [zoomSrc, zoomPosition.imageWidth, zoomPosition.imageHeight]);
-
-    // Reset states when modal opens or closes
-    useEffect(() => {
-      if (isOpen) {
-        // When modal opens, set all images as loading initially
-        const initialLoadingState: {[key: string]: boolean} = {};
-        images.forEach(img => {
-          const imgSrc = img.raw_url || img.urlFull || '';
-          initialLoadingState[imgSrc] = true;
-        });
-        setLoadingImages(initialLoadingState);
-      } else {
-        // When modal closes, reset loading states
-        setLoadingImages({});
-        setZoomSrc(null);
-      }
-    }, [isOpen, images]);
-
-    // Handle image load completion
-    const handleImageLoad = (src: string) => {
-      setLoadingImages(prev => ({
-        ...prev,
-        [src]: false
-      }));
-    };
-
-    // Add a ref for the transform component
-    const [isOneToOne, setIsOneToOne] = useState(false);
-    const transformRef = useRef<any>(null);
-    
-    // Complete rewrite of double tap/click handling
-    // Track touch events more explicitly
-    const [touchInfo, setTouchInfo] = useState<{
-      lastTapTime: number;
-      lastX: number;
-      lastY: number;
-    }>({
-      lastTapTime: 0,
-      lastX: 0,
-      lastY: 0
-    });
-
-    // Handle touch start for double tap detection
-    const handleZoomTouchStart = useCallback((e: React.TouchEvent) => {
-      // Only handle single touches, not pinch gestures
-      if (e.touches.length !== 1) return;
-      
-      const touch = e.touches[0];
-      const now = Date.now();
-      const { lastTapTime, lastX, lastY } = touchInfo;
-      const DOUBLE_TAP_DELAY = 300; // ms
-      const POSITION_THRESHOLD = 30; // px
-
-      // Calculate distance between taps
-      const dx = Math.abs(touch.clientX - lastX);
-      const dy = Math.abs(touch.clientY - lastY);
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      
-      console.log('Touch start in zoom mode', { 
-        timeSinceLastTap: now - lastTapTime,
-        distance
-      });
-
-      // Detect double tap: quick enough and close enough to previous tap
-      if (now - lastTapTime < DOUBLE_TAP_DELAY && distance < POSITION_THRESHOLD) {
-        console.log('Double tap detected in zoom mode');
-        e.preventDefault();
-        
-        if (!transformRef.current) return;
-        
-        if (isOneToOne) {
-          console.log('Resetting from 1:1 view');
-          transformRef.current.resetTransform();
-          setIsOneToOne(false);
-        } else {
-          console.log('Zooming to 1:1');
-          const scale = 1.0 / baseScale;
-          transformRef.current.zoomToPoint(touch.clientX, touch.clientY, scale);
-          setIsOneToOne(true);
-        }
-        
-        // Reset touch info to prevent triple-tap being detected as double-tap
-        setTouchInfo({
-          lastTapTime: 0,
-          lastX: 0,
-          lastY: 0
-        });
-      } else {
-        // Store current touch info for next comparison
-        setTouchInfo({
-          lastTapTime: now,
-          lastX: touch.clientX,
-          lastY: touch.clientY
-        });
-      }
-    }, [touchInfo, isOneToOne, baseScale]);
-
-    // Handle desktop double-click
-    const handleImageDoubleClick = useCallback((e: React.MouseEvent) => {
-      console.log('Double click in desktop zoom mode');
-      e.stopPropagation();
-      
-      if (!transformRef.current) return;
-      
-      if (isOneToOne) {
-        console.log('Resetting from 1:1 view');
-        transformRef.current.resetTransform();
-        setIsOneToOne(false);
-      } else {
-        console.log('Zooming to 1:1');
-        const scale = 1.0 / baseScale;
-        transformRef.current.zoomToPoint(e.clientX, e.clientY, scale);
-        setIsOneToOne(true);
-      }
-    }, [isOneToOne, baseScale]);
-
-    // Enhanced close zoom function
-    const handleCloseZoom = useCallback((e: React.MouseEvent) => {
-      e.stopPropagation();
-      console.log('Closing zoom view');
-      closeZoom();
-    }, [closeZoom]);
-    
-    // Reset isOneToOne when closing zoom
-    useEffect(() => {
-      if (!zoomSrc) {
-        setIsOneToOne(false);
-      }
-    }, [zoomSrc]);
-
-    // Handle double-tap in zoom view specifically for mobile
-    useEffect(() => {
-      // Only run this effect when in zoom mode on mobile
-      if (!isMobile || !zoomSrc) return;
-      
-      let lastTap = 0;
-      
-      const handleTap = (e) => {
-        const now = Date.now();
-        const DOUBLE_TAP_DELAY = 300;
-        
-        // Check if this is a double-tap
-        if (now - lastTap < DOUBLE_TAP_DELAY) {
-          console.log('Double tap detected in zoom mode!');
-          e.preventDefault();
-          
-          // Toggle between 1:1 and normal zoom
-          if (transformRef.current) {
-            if (isOneToOne) {
-              console.log('Resetting zoom to normal view');
-              transformRef.current.resetTransform();
-              setIsOneToOne(false);
-            } else {
-              console.log('Setting zoom to 1:1');
-              const scale = 1.0 / baseScale;
-              // For simplicity, zoom to center rather than tap location
-              transformRef.current.zoomTo(scale);
-              setIsOneToOne(true);
-            }
-          }
-          
-          // Reset to prevent triple-tap being detected as double
-          lastTap = 0;
-        } else {
-          // First tap - store timestamp
-          lastTap = now;
-        }
-      };
-      
-      // Get the zoom image element - we'll attach a listener directly to it
-      const zoomImage = document.getElementById('zoom-image');
-      
-      if (zoomImage) {
-        console.log('Adding direct tap handler to zoom image');
-        zoomImage.addEventListener('touchend', handleTap);
-      }
-      
-      // Clean up
-      return () => {
-        if (zoomImage) {
-          zoomImage.removeEventListener('touchend', handleTap);
-        }
-      };
-    }, [isMobile, zoomSrc, isOneToOne, baseScale, transformRef]);
-
-    if (!isOpen) return null;
-
-    // Use dynamic title if available, otherwise fall back to the original title
-    const displayTitle = dynamicTitle || title || '';
-    const headerText = dynamicTitle ? displayTitle : `${displayTitle} ${currentIndex + 1}/${images.length}`;
-    const currentImage = images[currentIndex];
-    const imageSrc = currentImage?.raw_url || currentImage?.urlFull || '';
-    // a picture's clip is a slide of its own (LoopeViewContext ungroup): this is it, and the picture it belongs to
-    const clipOf = currentImage?.mediaType === 'video' ? (currentImage?.metadata?.still as string | undefined) : undefined;
-    const isVideo = currentImage?.mediaType === 'video' || /\.mp4$|\.webm$/i.test(imageSrc);
-    // the picture and its clips around the current slide (ungroup puts a picture's clips right after it)
-    const groupId = clipOf ?? (currentImage?.metadata?.clips?.length ? currentImage.id : undefined);
-    const group: { item: typeof currentImage; index: number }[] = [];
-    if (groupId) {
-      const at = images.findIndex((x) => x.id === groupId);
-      if (at >= 0) {
-        group.push({ item: images[at], index: at });
-        for (let i = at + 1; i < images.length && images[i].metadata?.still === groupId; i++) group.push({ item: images[i], index: i });
-      }
+  /** Escape steps out: the zoom, then Info, then the viewer. */
+  const stepOut = useCallback((): boolean => {
+    if (zoomedRef.current) {
+      unzoom();
+      return true;
     }
-    
-    // A picture's clips share its star and its tag row: moving between them leaves the rows below as they are, so the
-    // picture stays where it is (owner, 20 Nov: "don't let the image move up and down")
-    const tagItem = group.length > 1 ? group[0].item : currentImage;
+    if (isFlipped) {
+      setIsFlipped(false);
+      return true;
+    }
+    return false;
+  }, [unzoom, isFlipped]);
 
-    // Disable favorite button for published images
-    const showFavoriteButton = !(tagItem?.disableFavorite === true);
+  /* ------------------------------------------------------------------ */
+  /* Carousel <-> context index                                          */
+  /* ------------------------------------------------------------------ */
+  useEffect(() => {
+    if (emblaApi && isOpen && emblaApi.selectedScrollSnap() !== currentIndex) emblaApi.scrollTo(currentIndex, true);
+  }, [currentIndex, emblaApi, isOpen]);
 
-    // Tag lozenges: saved bucket images only (the _recent scratch area isn't tagged; a published copy's id isn't a file).
-    const tagBucket = bucketOf(tagItem);
-    const showTags = !!tagItem && !!tagBucket && tagBucket !== '_recent'
-      && tagItem.disableFavorite !== true && tagItem.isPublished !== true;
-    const tagMeta = (tagItem?.metadata || {}) as Record<string, any>;
+  useEffect(() => {
+    if (!emblaApi) return;
+    const onSelect = () => goto(emblaApi.selectedScrollSnap());
+    emblaApi.on('select', onSelect);
+    return () => {
+      emblaApi.off('select', onSelect);
+    };
+  }, [emblaApi, goto]);
 
-    return (
-      <Dialog 
-        open={isOpen} 
-        onOpenChange={(open) => {
-          // Only allow closing via Dialog's built-in mechanisms when NOT in zoom mode
-          if (!zoomSrc && !open) {
-            close();
-          }
-        }}
-      >
-        <DialogContent className={`max-w-[95vw] w-[95vw] p-0 overflow-hidden flex flex-col bg-neutral-900 text-white shadow-[0_0_40px_rgba(0,0,0,.9)] border-0 group ${isMobile ? 'max-h-[65vh] h-[65vh]' : 'max-h-[80vh] h-[80vh]'}`}>
-          <DialogTitle className="sr-only">Image Viewer</DialogTitle>
-          
-          {/* Close button for the main dialog */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="absolute top-2 right-2 z-50 bg-black/50 hover:bg-black/70 text-white"
-            onClick={close}
-          >
-            <X className="h-5 w-5" />
-          </Button>
-          
-          {/* Header */}
-          <div className="absolute top-2 left-4 text-sm opacity-90 pointer-events-none truncate max-w-[70%]">
-            {headerText}
-          </div>
+  // Only the slide in view plays: leaving a clip pauses it, and the clip asked for is started here (an autoPlay
+  // attribute does nothing to a slide's <video> that has already loaded, which is why Play did nothing).
+  useEffect(() => {
+    if (!isOpen) return;
+    const id = images[currentIndex]?.id;
+    videoEls.current.forEach((el, key) => {
+      if (key !== id && !el.paused) el.pause();
+    });
+    if (id && id === playId) {
+      const el = videoEls.current.get(id);
+      if (el) {
+        el.currentTime = 0;
+        void el.play().catch(() => {});
+      }
+      setPlayId(null);
+    }
+  }, [currentIndex, playId, isOpen, images]);
 
-          {/* Main carousel */}
-          <div className="relative flex-1 min-h-0 w-full">
-          <div className="w-full h-full overflow-hidden" ref={emblaRef} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-            <div className="flex h-full">
-              {images.map((img, slide) => {
-                const src = img.raw_url || img.urlFull;
-                // only the slides in view and beside it load now: a day of pictures, or a picture's 4K clips (each
-                // ~100 MB), all loading at once made the viewer slow to open
-                const near = Math.abs(slide - currentIndex) <= 1
-                  || (carouselOptions?.loop !== false && Math.abs(slide - currentIndex) === images.length - 1);
-                const isImgVideo = img.mediaType === 'video' || /\.mp4$|\.webm$/i.test(src);
-                const isLoading = loadingImages[src] !== false; // true or undefined means loading
-                
-                return (
-                  <div 
-                    key={img.id} 
-                    className="flex-shrink-0 flex items-center justify-center px-4" 
-                    style={{ 
-                      flex: '0 0 100%'
-                    }}
-                  >
-                    {isLoading && (
-                      <div className="flex flex-col items-center justify-center text-white/70">
-                        <Loader2 className="h-8 w-8 animate-spin mb-2" />
-                        <span className="text-sm">Loading image...</span>
-                      </div>
-                    )}
-                    
-                    {isImgVideo ? (
-                      <video
-                        src={`${src}#t=0.001`}
-                        controls
-                        preload={near ? 'auto' : 'none'}
-                        playsInline
-                        ref={(el) => {
-                          if (el) videoEls.current.set(img.id, el);
-                          else videoEls.current.delete(img.id);
-                        }}
-                        className={`h-full w-full object-contain ${isLoading ? 'hidden' : ''}`}
-                        onLoadedData={() => handleImageLoad(src)}
-                      />
-                    ) : (
-                      <img
-                        src={src}
-                        alt={img.promptKey || ''}
-                        loading={near ? 'eager' : 'lazy'}
-                        className={`max-h-full max-w-full object-contain select-none carousel-image-item ${isLoading ? 'hidden' : ''}`}
-                        onDoubleClick={(e) => handleDoubleClick(e, src)}
-                        onTouchStart={(e) => handleImageTouchStart(e, src)}
-                        onWheel={(e) => handleWheel(e, src)}
-                        onLoad={() => handleImageLoad(src)}
-                        title="Scroll to zoom, double-click to enter zoom mode"
-                        style={{ touchAction: 'none' }}
-                      />
-                    )}
-                  </div>
-                );
-              })}
+  /* ------------------------------------------------------------------ */
+  /* Keys (Escape is the dialog's: stepOut first)                        */
+  /* ------------------------------------------------------------------ */
+  useEffect(() => {
+    if (!isOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      // Typing in a field (the tag search) is not navigation: arrows and "i" belong to it.
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+      if (zoomedRef.current) return;
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        emblaApi?.scrollPrev();
+      } else if (e.key === 'ArrowRight') {
+        e.preventDefault();
+        emblaApi?.scrollNext();
+      } else if (e.key === 'ArrowUp' || e.key.toLowerCase() === 'i') {
+        e.preventDefault();
+        setIsFlipped(true);
+        setShowHint(false);
+      } else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setIsFlipped(false);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isOpen, emblaApi]);
+
+  // iOS Safari zooms the whole page on a pinch unless its gesture events are stopped; the picture zooms instead.
+  useEffect(() => {
+    if (!isOpen) return;
+    const stop = (e: Event) => e.preventDefault();
+    document.addEventListener('gesturestart', stop);
+    return () => document.removeEventListener('gesturestart', stop);
+  }, [isOpen]);
+
+  /* ------------------------------------------------------------------ */
+  /* Vertical swipe at fit: up opens Info, down closes it                */
+  /* ------------------------------------------------------------------ */
+  const handleTouchStart: React.TouchEventHandler = (e) => {
+    touchStartY.current = !zoomedRef.current && e.touches.length === 1 ? e.touches[0].clientY : null;
+  };
+  const handleTouchEnd: React.TouchEventHandler = (e) => {
+    if (zoomedRef.current || touchStartY.current === null || e.touches.length > 0) return;
+    const delta = e.changedTouches[0].clientY - touchStartY.current;
+    touchStartY.current = null;
+    if (delta < -80) {
+      setIsFlipped(true);
+      setShowHint(false);
+    } else if (delta > 80) {
+      setIsFlipped(false);
+    }
+  };
+
+  /* ------------------------------------------------------------------ */
+  /* Actions                                                             */
+  /* ------------------------------------------------------------------ */
+  const needBucket = (img: ImageItem, what: string): string | null => {
+    const b = bucketOf(img);
+    if (!b) toast.error(`Could not ${what}: missing bucket ID`);
+    return b;
+  };
+
+  const handleToggleFavorite = async (img: ImageItem) => {
+    if (!img?.id) return;
+    const bucketId = needBucket(img, 'toggle favorite');
+    if (!bucketId) return;
+    try {
+      const want = !img.isFavourite;
+      if (!(await bucketsApi.toggleFavorite(bucketId, img.id, want))) throw new Error('not toggled');
+      img.isFavourite = want;
+      bumpItems();
+      // The grid holds its own copy: tell it, so it isn't stale until a refresh.
+      notifyItemUpdated({ bucket: bucketId, filename: img.id, patch: { favorite: want } });
+      toast.success(want ? 'Added to favorites' : 'Removed from favorites');
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+      toast.error('Failed to toggle favorite');
+    }
+  };
+
+  const handleUseAsPrompt = (img: ImageItem) => {
+    const imageUrl = img?.raw_url || img?.urlFull;
+    if (!imageUrl) {
+      toast.error('Image URL not found');
+      return;
+    }
+    window.dispatchEvent(new CustomEvent('useImageAsPrompt', {
+      detail: { url: imageUrl, preserveFavorites: true, useReferenceUrl: true, imageId: img.id, source: 'loope-view', append: false },
+    }));
+    toast.success('Image set as prompt reference');
+    close();
+  };
+
+  const handleCopyTo = async (img: ImageItem, destinationId: string) => {
+    const source = img?.id && needBucket(img, 'copy');
+    if (!source) return;
+    try {
+      await bucketsApi.copyImageToBucket(source, destinationId, img.id, true);
+      toast.success(`Copied to ${destinationId}`);
+    } catch (error) {
+      console.error('Error copying image:', error);
+      toast.error('Failed to copy image');
+    }
+  };
+
+  const handleMoveTo = async (img: ImageItem, destinationId: string) => {
+    const source = img?.id && needBucket(img, 'move');
+    if (!source) return;
+    try {
+      await bucketsApi.copyImageToBucket(source, destinationId, img.id, false);
+      toast.success(`Moved to ${destinationId}`);
+      notifyItemRemoved({ bucket: source, filename: img.id });
+      close();
+    } catch (error) {
+      console.error('Error moving image:', error);
+      toast.error('Failed to move image');
+    }
+  };
+
+  const handlePublish = async (img: ImageItem, destinationId: string) => {
+    const source = img?.id && needBucket(img, 'publish');
+    if (!source) return;
+    try {
+      const result = await publishApi.publishImageUnified({ dest_bucket_id: destinationId, src_bucket_id: source, filename: img.id });
+      if (result.success) toast.success(publishApi.publishedWords(result, `Published to ${destinationId}`));
+      else if (!result.cancelled) toast.error(`Failed to publish image: ${result.error ?? ''}`);
+    } catch (error) {
+      console.error('Error publishing image:', error);
+      toast.error('Failed to publish image');
+    }
+  };
+
+  const handleDelete = async (img: ImageItem) => {
+    if (!img?.id) return;
+    if (!confirm(`Are you sure you want to delete this image${img.isFavourite ? ' (favorite)' : ''}?`)) return;
+    const bucketId = needBucket(img, 'delete');
+    if (!bucketId) return;
+    try {
+      await bucketsApi.deleteFromBucket(bucketId, img.id);
+      toast.success('Image deleted');
+      notifyItemRemoved({ bucket: bucketId, filename: img.id });
+      close();
+    } catch (error) {
+      console.error('Error deleting image:', error);
+      toast.error('Failed to delete image');
+    }
+  };
+
+  const handleStartAgain = (img: ImageItem) => {
+    if (!img) return;
+    const promptText = img.prompt || img.metadata?.prompt || '';
+    const referenceImages = img.reference_images || img.metadata?.reference_images || [];
+    if (promptText) window.dispatchEvent(new CustomEvent('setPromptText', { detail: { prompt: promptText } }));
+    const urls = referenceImages.length ? ReferenceImageService.getReferenceImageUrls(img.bucketId || '_recent', referenceImages) : [];
+    urls.forEach((url, i) => window.dispatchEvent(new CustomEvent('useImageAsPrompt', { detail: { url, append: i > 0 } })));
+    close();
+    toast.success('Loaded prompt and reference images for editing');
+  };
+
+  const copyToClipboard = (text: string) => {
+    const fallback = () => {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      const ok = document.execCommand('copy');
+      document.body.removeChild(ta);
+      if (ok) toast.success('Copied to clipboard');
+      else toast.info('Copy this manually: ' + text.substring(0, 30) + '...');
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(() => toast.success('Copied to clipboard'), fallback);
+    } else {
+      fallback();
+    }
+  };
+
+  if (!isOpen) return null;
+
+  const currentImage = images[currentIndex];
+  const imageSrc = currentImage?.raw_url || currentImage?.urlFull || '';
+  const headerText = currentImage?.isPublished && currentImage.destinationName
+    ? `Currently published - ${currentImage.destinationName} (${currentIndex + 1}/${images.length})`
+    : `${title || ''} ${currentIndex + 1}/${images.length}`;
+  // a picture's clip is a slide of its own (LoopeViewContext ungroup): this is it, and the picture it belongs to
+  const clipOf = currentImage?.mediaType === 'video' ? (currentImage?.metadata?.still as string | undefined) : undefined;
+  // the picture and its clips around the current slide (ungroup puts a picture's clips right after it)
+  const groupId = clipOf ?? (currentImage?.metadata?.clips?.length ? currentImage.id : undefined);
+  const group: { item: ImageItem; index: number }[] = [];
+  if (groupId) {
+    const at = images.findIndex((x) => x.id === groupId);
+    if (at >= 0) {
+      group.push({ item: images[at], index: at });
+      for (let i = at + 1; i < images.length && images[i].metadata?.still === groupId; i++) group.push({ item: images[i], index: i });
+    }
+  }
+  const pickInGroup = (index: number, play: boolean) => {
+    if (play) setPlayId(images[index].id);
+    goto(index);
+  };
+
+  // A picture's clips share its star and its tag row: moving between them leaves the rows below as they are, so the
+  // picture stays where it is (owner, 20 Nov: "don't let the image move up and down")
+  const tagItem = group.length > 1 ? group[0].item : currentImage;
+  const showFavoriteButton = !(tagItem?.disableFavorite === true);
+  // Tag lozenges: saved bucket images only (the _recent scratch area isn't tagged; a published copy's id isn't a file).
+  const tagBucket = bucketOf(tagItem);
+  const showTags = !!tagItem && !!tagBucket && tagBucket !== '_recent'
+    && tagItem.disableFavorite !== true && tagItem.isPublished !== true;
+  const tagMeta = tagItem?.metadata || {};
+
+  // the controls laid over the picture on a phone on its side, hidden by a tap (or while zoomed in)
+  const overlayHidden = !chrome || zoomed;
+  const barButton = 'text-xs flex items-center gap-1 text-white/90 hover:text-white hover:bg-white/10';
+
+  return (
+    <DialogPrimitive.Root open={isOpen} onOpenChange={(o) => { if (!o) close(); }}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Content
+          aria-describedby={undefined}
+          onOpenAutoFocus={(e) => e.preventDefault()}
+          onEscapeKeyDown={(e) => {
+            if (stepOut()) e.preventDefault();
+          }}
+          className="fixed inset-0 z-50 flex h-[100dvh] w-screen flex-col overflow-hidden bg-neutral-950 text-white outline-none group"
+        >
+          <DialogPrimitive.Title className="sr-only">Image Viewer</DialogPrimitive.Title>
+
+          {/* Top: what this is, and the way out (always there, zoomed or not) */}
+          <div className="pointer-events-none absolute inset-x-0 top-0 z-50 flex items-start justify-between gap-2 bg-gradient-to-b from-black/60 to-transparent px-3 pb-6 pt-[max(0.5rem,env(safe-area-inset-top))]">
+            <div className={`mt-1.5 truncate text-sm transition-opacity ${overlayHidden ? 'opacity-0' : 'opacity-90'}`}>
+              {headerText}
             </div>
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Close"
+              className="pointer-events-auto shrink-0 rounded-full bg-black/50 text-white hover:bg-black/70"
+              onClick={close}
+            >
+              <X className="h-5 w-5" />
+            </Button>
           </div>
 
-            {/* A picture and its clips: a small strip of their tiles at the foot of the picture; each clip's tile plays
-                that clip (owner, 20 Nov: one big "Play its clip" button took room and didn't say which clip) */}
-            {!isFlipped && !zoomSrc && group.length > 1 && (
-              <div className="absolute bottom-2 left-1/2 z-30 flex max-w-[92%] -translate-x-1/2 gap-1.5 overflow-x-auto rounded-lg bg-black/55 p-1.5">
-                {group.map(({ item, index }, n) => {
-                  const here = index === currentIndex;
-                  const secs = Number(item.metadata?.clip?.play_s) || 0;
+          {/* The pictures */}
+          <div ref={stageRef} className="relative min-h-0 w-full flex-1">
+            <div
+              className="h-full w-full overflow-hidden"
+              ref={emblaRef}
+              style={{ touchAction: 'none' }}
+              onTouchStart={handleTouchStart}
+              onTouchEnd={handleTouchEnd}
+            >
+              <div className="flex h-full">
+                {images.map((img, slide) => {
+                  const src = img.raw_url || img.urlFull || '';
+                  // only the slides in view and beside it load now: a day of pictures, or a picture's 4K clips (each
+                  // ~100 MB), all loading at once made the viewer slow to open
+                  const near = Math.abs(slide - currentIndex) <= 1
+                    || (carouselOptions?.loop !== false && Math.abs(slide - currentIndex) === images.length - 1);
                   return (
-                    <button
-                      key={item.uniqueKey || item.id}
-                      type="button"
-                      title={n === 0 ? 'The picture' : `Clip ${n}${item.metadata?.clip?.pace ? ` (${item.metadata.clip.pace})` : ''}: play it`}
-                      className={`relative h-10 w-10 shrink-0 overflow-hidden rounded md:h-12 md:w-12 ${here ? 'ring-2 ring-white' : 'opacity-75 hover:opacity-100'}`}
-                      onClick={() => {
-                        if (n > 0) setPlayId(item.id);
-                        goto(index);
-                      }}
-                    >
-                      {item.urlThumb ? (
-                        <img src={item.urlThumb} alt="" className="h-full w-full object-cover" />
+                    <div key={img.uniqueKey || img.id} className="relative h-full min-w-0 flex-[0_0_100%]">
+                      {isVideoItem(img, src) ? (
+                        <div className="flex h-full w-full items-center justify-center px-2">
+                          {!loadedVideos[src] && (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center text-white/70 pointer-events-none">
+                              <Loader2 className="h-8 w-8 animate-spin mb-2" />
+                              <span className="text-sm">Loading clip...</span>
+                            </div>
+                          )}
+                          <video
+                            src={`${src}#t=0.001`}
+                            controls
+                            preload={near ? 'auto' : 'none'}
+                            playsInline
+                            ref={(el) => {
+                              if (el) videoEls.current.set(img.id, el);
+                              else videoEls.current.delete(img.id);
+                            }}
+                            className="h-full w-full object-contain"
+                            onLoadedData={() => setLoadedVideos((v) => ({ ...v, [src]: true }))}
+                          />
+                        </div>
                       ) : (
-                        <video src={`${item.urlFull}#t=0.1`} preload="metadata" muted className="h-full w-full object-cover" />
+                        <ZoomSlide
+                          src={src}
+                          alt={img.promptKey || ''}
+                          active={slide === currentIndex && !isFlipped}
+                          near={near}
+                          stage={stage}
+                          onZoomed={slide === currentIndex ? setZoomed : noop}
+                          onApi={(api) => {
+                            if (api) zoomApis.current.set(img.id, api);
+                            else zoomApis.current.delete(img.id);
+                          }}
+                          onTap={() => setChrome((c) => !c)}
+                        />
                       )}
-                      {n > 0 && (
-                        <span className="absolute inset-x-0 bottom-0 flex items-center justify-center gap-0.5 bg-black/60 text-[10px] leading-4 text-white">
-                          <Play className="h-2.5 w-2.5 fill-white" />
-                          {secs ? `${Math.round(secs)}s` : ''}
-                        </span>
-                      )}
-                    </button>
+                    </div>
                   );
                 })}
+              </div>
+            </div>
+
+            {!isFlipped && !zoomed && group.length > 1 && (
+              <ClipStrip
+                group={group}
+                currentIndex={currentIndex}
+                onPick={pickInGroup}
+                className="absolute bottom-2 left-1/2 z-30 flex -translate-x-1/2 short:hidden"
+              />
+            )}
+
+            {/* Arrows (a mouse; fingers swipe) */}
+            {images.length > 1 && !zoomed && !isFlipped && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Previous"
+                  className="absolute left-0 top-1/2 z-40 h-20 w-12 -translate-y-1/2 rounded-none bg-black/30 opacity-0 hover:bg-black/50 [@media(hover:none)]:hidden hover:opacity-100 md:group-hover:opacity-70"
+                  onClick={() => emblaApi?.scrollPrev()}
+                >
+                  <ChevronLeft className="h-6 w-6" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  aria-label="Next"
+                  className="absolute right-0 top-1/2 z-40 h-20 w-12 -translate-y-1/2 rounded-none bg-black/30 opacity-0 hover:bg-black/50 [@media(hover:none)]:hidden hover:opacity-100 md:group-hover:opacity-70"
+                  onClick={() => emblaApi?.scrollNext()}
+                >
+                  <ChevronRight className="h-6 w-6" />
+                </Button>
+              </>
+            )}
+
+            {/* Flip hint: not with the tag row (its height varies and the hint landed on the lozenges) */}
+            {!isFlipped && !zoomed && showHint && !showTags && group.length < 2 && (
+              <div className="pointer-events-none absolute bottom-4 left-1/2 flex -translate-x-1/2 flex-col items-center text-xs text-white/80 md:hidden short:hidden">
+                <ChevronUp className="mb-1 h-4 w-4 animate-bounce" />
+                <span>Info</span>
               </div>
             )}
           </div>
@@ -1279,71 +606,51 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
             />
           )}
 
-          {/* Arrow buttons */}
-          {images.length > 1 && !zoomSrc && !isFlipped && (
-            <>
+          {/* Below the picture: tags and buttons. On a phone on its side they lie over the picture instead, and a tap
+              on the picture (or zooming in) hides them. Elsewhere they stay put: the picture's area never changes size
+              under a zoom. */}
+          <div
+            className={`z-40 w-full shrink-0 pb-[env(safe-area-inset-bottom)] transition-opacity short:absolute short:inset-x-0 short:bottom-0 short:bg-gradient-to-t short:from-black/80 short:via-black/50 short:to-transparent short:pt-6 ${
+              overlayHidden ? 'short:pointer-events-none short:opacity-0' : ''
+            }`}
+          >
+            {!isFlipped && group.length > 1 && (
+              <div className="hidden justify-center px-2 short:flex">
+                <ClipStrip group={group} currentIndex={currentIndex} onPick={pickInGroup} className="flex" />
+              </div>
+            )}
+
+            {/* Tag lozenges, just above the action bar: visible without flipping, phone and desktop (owner, 27 Oct) */}
+            {showTags && (
+              <div className="flex w-full justify-center px-4 pt-2">
+                <TagLozenges
+                  key={`${tagBucket}/${tagItem.id}`}
+                  variant="dark"
+                  compact
+                  className="justify-center"
+                  bucket={tagBucket as string}
+                  filename={tagItem.id}
+                  tags={tagMeta.tags}
+                  tagging={tagMeta.tagging}
+                  favorite={!!tagItem.isFavourite}
+                  isVideo={tagItem.mediaType === 'video'}
+                  onTagsChange={(patch) => {
+                    tagItem.metadata = { ...(tagItem.metadata || {}), ...patch };
+                    bumpItems();
+                  }}
+                  onFavoriteChange={(fav) => {
+                    tagItem.isFavourite = fav;
+                    bumpItems();
+                  }}
+                />
+              </div>
+            )}
+
+            <div className="flex w-full flex-wrap justify-center gap-1 border-t border-white/10 px-4 py-2 short:border-0 short:py-1">
               <Button
                 variant="ghost"
-                size="icon"
-                className="absolute left-0 top-1/2 -translate-y-1/2 h-20 w-12 rounded-none opacity-0 md:group-hover:opacity-70 hover:opacity-100 z-40 bg-black/30 hover:bg-black/50"
-                onClick={() => emblaApi?.scrollPrev()}
-              >
-                <ChevronLeft className="h-6 w-6" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="absolute right-0 top-1/2 -translate-y-1/2 h-20 w-12 rounded-none opacity-0 md:group-hover:opacity-70 hover:opacity-100 z-40 bg-black/30 hover:bg-black/50"
-                onClick={() => emblaApi?.scrollNext()}
-              >
-                <ChevronRight className="h-6 w-6" />
-              </Button>
-            </>
-          )}
-
-          {/* Flip hint */}
-          {/* not with the tag row: its height varies and the hint landed on the lozenges; the Info button stays */}
-          {!isFlipped && !zoomSrc && showHint && !showTags && group.length < 2 && (
-            <div className={`absolute bottom-16 left-1/2 -translate-x-1/2 text-white/80 flex flex-col items-center text-xs pointer-events-none md:hidden`}>
-              <ChevronUp className="h-4 w-4 animate-bounce mb-1" />
-              <span>Info</span>
-            </div>
-          )}
-
-          {/* Tag lozenges, just above the action bar: visible without flipping, phone and desktop (owner, 27 Oct) */}
-          {!zoomSrc && showTags && (
-            <div className="w-full px-4 pt-2 flex justify-center">
-              <TagLozenges
-                key={`${tagBucket}/${tagItem.id}`}
-                variant="dark"
-                compact
-                className="justify-center"
-                bucket={tagBucket as string}
-                filename={tagItem.id}
-                tags={tagMeta.tags}
-                tagging={tagMeta.tagging}
-                favorite={!!tagItem.isFavourite}
-                isVideo={tagItem.mediaType === 'video'}
-                onTagsChange={(patch) => {
-                  tagItem.metadata = { ...(tagItem.metadata || {}), ...patch };
-                  bumpItems();
-                }}
-                onFavoriteChange={(fav) => {
-                  tagItem.isFavourite = fav;
-                  bumpItems();
-                }}
-              />
-            </div>
-          )}
-
-          {/* Action bar */}
-          {!zoomSrc && (
-            <div className="border-t border-white/10 bg-gradient-to-t from-black/70 to-transparent w-full px-4 py-2 flex flex-wrap gap-1 justify-center">
-              {/* Info button */}
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                className={`text-xs flex items-center gap-1 ${isFlipped ? 'bg-white/10 text-white' : 'text-white/90 hover:text-white hover:bg-white/10'}`}
+                size="sm"
+                className={`${barButton} ${isFlipped ? 'bg-white/10 text-white' : ''}`}
                 onClick={() => {
                   setIsFlipped(!isFlipped);
                   setShowHint(false);
@@ -1353,58 +660,31 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                 <span className="hidden sm:inline">Info</span>
               </Button>
 
-              {/* Favorite */}
               {showFavoriteButton && (
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  className="text-xs flex items-center gap-1 text-white/90 hover:text-white hover:bg-white/10"
-                  onClick={() => handleToggleFavorite(tagItem)}
-                >
+                <Button variant="ghost" size="sm" className={barButton} onClick={() => handleToggleFavorite(tagItem)}>
                   <Star className={`h-4 w-4 ${tagItem?.isFavourite ? 'fill-yellow-400' : ''}`} />
                   <span className="hidden sm:inline">Favorite</span>
                 </Button>
               )}
 
-              {/* Use as prompt - changed icon to RefreshCcw */}
-              <Button 
-                variant="ghost" 
-                size="sm"
-                className="text-xs flex items-center gap-1 text-white/90 hover:text-white hover:bg-white/10"
-                onClick={() => handleUseAsPrompt(currentImage)}
-              >
+              <Button variant="ghost" size="sm" className={barButton} onClick={() => handleUseAsPrompt(currentImage)}>
                 <RefreshCcw className="h-4 w-4" />
                 <span className="hidden sm:inline">Use as prompt</span>
               </Button>
 
-              {/* Raw URL */}
-              <Button 
-                variant="ghost" 
-                size="sm"
-                className="text-xs flex items-center gap-1 text-white/90 hover:text-white hover:bg-white/10"
-                onClick={() => {
-                  copyToClipboard(imageSrc);
-                }}
-              >
+              <Button variant="ghost" size="sm" className={barButton} onClick={() => copyToClipboard(imageSrc)}>
                 <Clipboard className="h-4 w-4" />
                 <span className="hidden sm:inline">Copy URL</span>
               </Button>
 
-              {/* Download */}
-              <Button 
-                variant="ghost" 
-                size="sm"
-                className="text-xs flex items-center gap-1 text-white/90 hover:text-white hover:bg-white/10"
-                onClick={() => window.open(imageSrc, '_blank')}
-              >
+              <Button variant="ghost" size="sm" className={barButton} onClick={() => window.open(imageSrc, '_blank')}>
                 <Download className="h-4 w-4" />
                 <span className="hidden sm:inline">Download</span>
               </Button>
 
-              {/* More actions dropdown */}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="sm" className="text-xs flex items-center gap-1 text-white/90 hover:text-white hover:bg-white/10">
+                  <Button variant="ghost" size="sm" className={barButton}>
                     <MoreHorizontal className="h-4 w-4" />
                     <span className="hidden sm:inline">More</span>
                   </Button>
@@ -1438,188 +718,13 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                 </DropdownMenuContent>
               </DropdownMenu>
             </div>
-          )}
-        </DialogContent>
-
-        {/* Full viewport zoom overlay - COMPLETE REWRITE OF PROBLEM AREAS */}
-        {zoomSrc && ReactDOM.createPortal(
-          <div 
-            className="fixed inset-0 z-[1000] bg-black/95" 
-            onClick={closeZoom}
-          >
-            {/* DESKTOP CONFIG */}
-            {!isMobile && (
-              <TransformWrapper
-                initialScale={1.0}
-                minScale={0.95}
-                maxScale={16}
-                centerOnInit={false}
-                centerZoomedOut={false}
-                limitToBounds={true}
-                disabled={false}
-                wheel={{
-                  disabled: false,
-                  step: 0.2
-                }}
-                pinch={{
-                  disabled: false,
-                  step: 5
-                }}
-                initialPositionX={
-                  zoomPosition.exactX ? 
-                  window.innerWidth / 2 - zoomPosition.exactX : 
-                  0
-                }
-                initialPositionY={
-                  zoomPosition.exactY ? 
-                  window.innerHeight / 2 - zoomPosition.exactY : 
-                  0
-                }
-                panning={{
-                  disabled: false,
-                  velocityDisabled: false,
-                  lockAxisX: false,
-                  lockAxisY: false,
-                  excluded: []
-                }}
-                doubleClick={{
-                  disabled: true
-                }}
-                onZoom={(ref) => {
-                  const ZOOM_EXIT_THRESHOLD = 1.05;
-                  if (ref.state.scale <= ZOOM_EXIT_THRESHOLD) {
-                    setTimeout(() => closeZoom(), 0);
-                  }
-                }}
-                ref={transformRef}
-              >
-                {({ zoomIn, zoomOut, resetTransform }) => (
-                  <TransformComponent
-                    wrapperClass="cursor-grab active:cursor-grabbing"
-                    wrapperStyle={{ width: '100vw', height: '100vh' }}
-                    contentStyle={{ 
-                      width: '100%', 
-                      height: '100%', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      touchAction: 'none'
-                    }}
-                  >
-                    <img 
-                      src={zoomSrc} 
-                      className="max-h-full max-w-full select-none" 
-                      alt=""
-                      style={{ objectFit: 'contain', pointerEvents: 'auto' }}
-                      onClick={(e) => e.stopPropagation()}
-                      onDoubleClick={handleImageDoubleClick}
-                      onDragStart={(e) => e.preventDefault()}
-                    />
-                  </TransformComponent>
-                )}
-              </TransformWrapper>
-            )}
-
-            {/* MOBILE CONFIG */}
-            {isMobile && (
-              <TransformWrapper
-                initialScale={baseScale * 1.2}
-                minScale={0.95}
-                maxScale={16}
-                centerOnInit={false}
-                centerZoomedOut={false}
-                limitToBounds={true}
-                disabled={false}
-                wheel={{
-                  disabled: false,
-                  step: 0.2
-                }}
-                pinch={{
-                  disabled: false,
-                  step: 5
-                }}
-                panning={{
-                  disabled: false,
-                  velocityDisabled: false,
-                  lockAxisX: false,
-                  lockAxisY: false,
-                  excluded: []
-                }}
-                doubleClick={{
-                  disabled: true
-                }}
-                onZoom={(ref) => {
-                  const ZOOM_EXIT_THRESHOLD = baseScale * 1.05;
-                  if (ref.state.scale <= ZOOM_EXIT_THRESHOLD) {
-                    setTimeout(() => closeZoom(), 0);
-                  }
-                }}
-                ref={transformRef}
-              >
-                {({ zoomIn, zoomOut, resetTransform }) => (
-                  <TransformComponent
-                    wrapperClass="cursor-grab active:cursor-grabbing"
-                    wrapperStyle={{ 
-                      width: '100vw', 
-                      height: '100vh',
-                      transform: 'translateY(-10vh)'
-                    }}
-                    contentStyle={{ 
-                      width: '100%', 
-                      height: '100%', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      touchAction: 'none'
-                    }}
-                  >
-                    <img 
-                      id="zoom-image"
-                      src={zoomSrc} 
-                      className="max-h-full max-w-full select-none" 
-                      alt=""
-                      style={{ objectFit: 'contain', pointerEvents: 'auto' }}
-                      onClick={(e) => e.stopPropagation()}
-                      onDragStart={(e) => e.preventDefault()}
-                    />
-                  </TransformComponent>
-                )}
-              </TransformWrapper>
-            )}
-            
-            {/* Close button for the zoom view - works on both desktop and mobile */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="fixed top-4 right-4 z-[9999] bg-black/80 hover:bg-black text-white rounded-full"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                closeZoom();
-              }}
-              style={{ 
-                touchAction: 'manipulation'
-              }}
-            >
-              <X className="h-5 w-5" />
-            </Button>
-            
-            {/* 1:1 indicator */}
-            {isOneToOne && (
-              <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-black/70 text-white px-3 py-1 rounded text-sm z-[9999]">
-                1:1 view
-              </div>
-            )}
-          </div>, 
-          document.body
-        )}
-      </Dialog>
-    );
-  } catch (error) {
-    // Log the error but prevent it from crashing the app
-    console.warn("Error in LoopeModal:", error);
-    return null;
-  }
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
+  );
 };
 
-export default LoopeModal; 
+const noop = () => {};
+
+export default LoopeModal;
