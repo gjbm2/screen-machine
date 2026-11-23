@@ -22,6 +22,7 @@ import {
   useDroppable,
   DragEndEvent,
   DragStartEvent,
+  DragOverEvent,
   useDndMonitor,
 } from '@dnd-kit/core';
 import { toast } from 'sonner';
@@ -106,6 +107,10 @@ export function ImageDisplay(props: ImageDisplayProps) {
   const [cloudPick, setCloudPick] = useState<string | null>(null);
   const cloud = clouds.find(c => c.id === cloudPick) ?? clouds[0];
   const [cloudMenuAt, setCloudMenuAt] = useState<DOMRect | null>(null);
+  // opened by a drag held over the Cloud tab (owner, 23 Nov): its rows are drop zones, so the picture lands in the
+  // cloud store picked
+  const [cloudMenuDrop, setCloudMenuDrop] = useState(false);
+  const dragHold = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [unlocking, setUnlocking] = useState(false);
   const openLocked = useRef(false);   // just unlocked: show the hidden cloud once the list has it
   // Only the screens' live states (the tab dots), so a room status frame that changes nothing else doesn't
@@ -606,6 +611,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
   const handleDragEnd = (event: DragEndEvent) => {
     // Always clear overlay state first
     setDraggedImageData(null);
+    endDragHold();
 
     const { active, over } = event;
     if (!over) return;
@@ -620,7 +626,8 @@ export function ImageDisplay(props: ImageDisplayProps) {
 
     // Tab drop handling – IDs prefixed with DROP_ZONES.TAB_PREFIX
     if (typeof over.id === 'string' && (over.id as string).startsWith(DROP_ZONES.TAB_PREFIX)) {
-      const destId = (over.id as string).slice(DROP_ZONES.TAB_PREFIX.length);
+      // a row of the Cloud menu opened by holding the drag over the tab: "<cloud id>#menu"
+      const destId = (over.id as string).slice(DROP_ZONES.TAB_PREFIX.length).replace(/#menu$/, '');
       // A whole Generated batch dropped on a tab means the picture it shows (RecentView's shownImage)
       if (typeof activeData?.shownImage === 'function') {
         const shown = activeData.shownImage();
@@ -710,6 +717,8 @@ export function ImageDisplay(props: ImageDisplayProps) {
     }
   };
 
+  const nameOf = (id: string) => destinationsWithBuckets.find(d => d.id === id)?.name || id;
+
   // Handle menu action selection
   const handleMenuAction = (action: MenuAction) => {
     if (!contextMenu) return;
@@ -720,7 +729,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
       console.log(`Copying image ${imageId} from ${selectedTab} to ${destId}`);
       bucketsApi.copyImageToBucket(getDestinationFile(selectedTab), destId, imageId, true)
         .then(() => {
-          toast.success(`Copied to ${destId}`);
+          toast.success(`Copied to ${nameOf(destId)}`);
           stableRefreshBucket(destId);
         })
         .catch((err) => {
@@ -731,7 +740,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
       console.log(`Moving image ${imageId} from ${selectedTab} to ${destId}`);
       bucketsApi.copyImageToBucket(getDestinationFile(selectedTab), destId, imageId, false)
         .then(() => {
-          toast.success(`Moved to ${destId}`);
+          toast.success(`Moved to ${nameOf(destId)}`);
           stableRefreshBucket(destId);
           // Also refresh the source bucket since the file should be removed
           stableRefreshBucket(getDestinationFile(selectedTab));
@@ -793,9 +802,38 @@ export function ImageDisplay(props: ImageDisplayProps) {
   };
 
   // Listen for global DnD events from the root context
+  // A drag held over the Cloud tab opens its menu, to drop in the cloud store wanted
+  function endDragHold() {
+    if (dragHold.current) clearTimeout(dragHold.current);
+    dragHold.current = null;
+    setCloudMenuDrop((open) => {
+      if (open) setCloudMenuAt(null);
+      return false;
+    });
+  }
+  const handleDragOver = (event: DragOverEvent) => {
+    const overId = typeof event.over?.id === 'string' ? event.over.id : '';
+    const onTab = !!cloud && clouds.length > 1 && overId === `${DROP_ZONES.TAB_PREFIX}${cloud.id}`;
+    if (!onTab) {
+      if (dragHold.current) clearTimeout(dragHold.current);
+      dragHold.current = null;
+      return;
+    }
+    if (dragHold.current || cloudMenuDrop) return;
+    dragHold.current = setTimeout(() => {
+      dragHold.current = null;
+      const el = tabsRef.current?.querySelector(`button[data-tab-id="${cloud.id}"]`);
+      if (!el) return;
+      setCloudMenuDrop(true);
+      setCloudMenuAt(el.getBoundingClientRect());
+    }, LONG_PRESS_MS);
+  };
+
   useDndMonitor({
     onDragStart: handleDragStart,
+    onDragOver: handleDragOver,
     onDragEnd: handleDragEnd,
+    onDragCancel: endDragHold,
   });
 
   // Helper to get current bucket id when BucketGridView is active
@@ -959,7 +997,8 @@ export function ImageDisplay(props: ImageDisplayProps) {
           at={cloudMenuAt}
           clouds={clouds}
           current={cloud?.id}
-          unlockedUntil={viewer.unlocked_until}
+          unlockedUntil={cloudMenuDrop ? null : viewer.unlocked_until}
+          dropping={cloudMenuDrop}
           onPick={pickCloud}
           onLock={() => {
             setCloudMenuAt(null);
@@ -1069,7 +1108,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
             }}
           >
             <Copy className="mr-2 h-4 w-4" />
-            Copy to {contextMenu.destId}
+            Copy to {nameOf(contextMenu.destId)}
           </Button>
           <Button
             variant="ghost"
@@ -1080,7 +1119,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
             }}
           >
             <Send className="mr-2 h-4 w-4" />
-            Move to {contextMenu.destId}
+            Move to {nameOf(contextMenu.destId)}
           </Button>
           {!contextMenu.isHeadless && (
             <Button
@@ -1092,7 +1131,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
               }}
             >
               <Share className="mr-2 h-4 w-4" />
-              Publish to {contextMenu.destId}
+              Publish to {nameOf(contextMenu.destId)}
             </Button>
           )}
         </div>
