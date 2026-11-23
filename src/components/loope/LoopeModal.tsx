@@ -2,7 +2,7 @@ import React, { useEffect, useCallback, useMemo, useState, useRef, useReducer } 
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { useLoopeView } from '@/contexts/LoopeViewContext';
 import useEmblaCarousel from 'embla-carousel-react';
-import { ChevronLeft, ChevronRight, X, ChevronUp, Star, Info, Download, Clipboard, MoreHorizontal, RefreshCcw, Loader2, Scissors, Play } from 'lucide-react';
+import { ChevronLeft, ChevronRight, X, ChevronUp, Star, Info, Download, Clipboard, MoreHorizontal, RefreshCcw, Loader2, Scissors, Play, Share2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -20,6 +20,7 @@ import { ImageInfo } from './ImageInfo';
 import LoopeZoom, { type ZoomOrigin, type ZoomEntry } from './LoopeZoom';
 import { ImageMenuItems } from '@/components/common/ImageMenuItems';
 import { notifyItemRemoved, notifyItemUpdated } from '@/components/tags/events';
+import { shareMedia } from '@/shared/shareMedia';
 
 interface LoopeModalProps {
   title?: string;
@@ -502,6 +503,22 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
     toast.success('Loaded prompt and reference images for editing');
   };
 
+  // the picture or clip shown, as a file, through the phone's share sheet (src/shared/shareMedia.ts)
+  const [sharing, setSharing] = useState(false);
+  const handleShare = async (url: string) => {
+    if (!url || sharing) return;
+    setSharing(true);
+    try {
+      const outcome = await shareMedia(url);
+      if (outcome === 'needs-tap') toast('Ready to share', { action: { label: 'Share', onClick: () => void handleShare(url) } });
+      else if (outcome === 'downloaded') toast.success('Downloaded (this browser has no share sheet)');
+    } catch (err) {
+      toast.error(`Couldn't share: ${String((err as Error)?.message || err)}`);
+    } finally {
+      setSharing(false);
+    }
+  };
+
   const copyToClipboard = (text: string) => {
     const fallback = () => {
       const ta = document.createElement('textarea');
@@ -806,6 +823,11 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                   <span className="hidden sm:inline">Favorite</span>
                 </Button>
               )}
+
+              <Button variant="ghost" size="sm" className={barButton} aria-label="Share" disabled={sharing} onClick={() => void handleShare(imageSrc)}>
+                {sharing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+                <span className="hidden sm:inline">Share</span>
+              </Button>
 
               <Button variant="ghost" size="sm" className={barButton} onClick={() => handleUseAsPrompt(currentImage)}>
                 <RefreshCcw className="h-4 w-4" />

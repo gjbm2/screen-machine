@@ -462,7 +462,22 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
               {...dragAttributes}
               className={`${styles.selectedImageContainer} ${isDragging ? styles.dragging : ''} group`}
               style={{ opacity: isDragging ? 0.4 : 1, cursor: isDragging ? 'grabbing' : 'grab' }}
+              // a swipe moves between the batch's pictures; taps go through to the picture (it opens the Loope) and a
+              // clip's own controls (owner, 23 Nov: an overlay over the whole picture swallowed them on phones)
+              onTouchStart={(e) => {
+                const t = e.touches[0];
+                const target = e.target as HTMLElement;
+                // a drag along a clip's seek bar scrubs it, it doesn't change picture
+                if (target.tagName === 'VIDEO' && t.clientY > target.getBoundingClientRect().bottom - 56) return;
+                setTouchStart(t.clientX);
+                setTouchEnd(null);
+              }}
+              onTouchMove={(e) => setTouchEnd(e.touches[0].clientX)}
+              onTouchEnd={handleTouchEnd}
             >
+              {/* the picture's own frame: the counter and its buttons sit on its corners, not the panel's (a portrait
+                  picture is narrower than the panel, and they floated off it) */}
+              <div className="relative flex max-w-full">
               {selectedIsPlaceholder ? (
                 <JobPlaceholder
                   placeholder={placeholderKeyOf(selectedImage)}
@@ -493,22 +508,6 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
               <div className={styles.imageCounter}>
                 {selectedIndex + 1}/{images.length}
               </div>
-
-              {/* Mobile swipe navigation overlay */}
-              {isMobile && (
-                <div 
-                  className="absolute inset-0 z-20"
-                  onTouchStart={(e) => {
-                    const touch = e.touches[0];
-                    setTouchStart(touch.clientX);
-                  }}
-                  onTouchMove={(e) => {
-                    const touch = e.touches[0];
-                    setTouchEnd(touch.clientX);
-                  }}
-                  onTouchEnd={handleTouchEnd}
-                />
-              )}
 
               {/* Navigation arrows - visible on hover for desktop */}
               {!isMobile && (
@@ -543,7 +542,8 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
                   <Button
                     variant="ghost" 
                     size="icon" 
-                    className="absolute bottom-2 right-2 z-40 h-8 w-8 bg-black/30 hover:bg-black/60 text-white"
+                    aria-label="Picture menu"
+                    className="absolute top-2 right-2 z-40 h-10 w-10 rounded-full bg-black/40 hover:bg-black/60 text-white"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <MoreVertical className="h-5 w-5" />
@@ -566,12 +566,14 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
               </DropdownMenu>
               )}
               
-              {/* Fullscreen button */}
+              {/* Open in the Loope: top right, clear of a clip's own control bar along the bottom (owner, 23 Nov: it sat
+                  on the clip's seek bar and was very hard to hit) */}
               {onImageClick && !selectedIsPlaceholder && (
                 <Button
                   variant="ghost" 
                   size="icon" 
-                  className="absolute bottom-2 right-12 z-30 h-8 w-8 bg-black/30 hover:bg-black/60 text-white"
+                  aria-label="Open in the viewer"
+                  className="absolute top-2 right-14 z-30 h-10 w-10 rounded-full bg-black/40 hover:bg-black/60 text-white"
                   onClick={(e) => {
                     e.stopPropagation();
                     onImageClick(selectedImage);
@@ -580,6 +582,7 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
                   <Maximize2 className="h-5 w-5" />
                 </Button>
               )}
+              </div>
             </div>
           </>
         )}
