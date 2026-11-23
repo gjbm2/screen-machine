@@ -308,7 +308,7 @@ def test_feed_video_fades_ignore_runs_of_identical_frames(room):
     seq = [0, 1, 2, 2, 2, 2, 3, 4, 5, 6, 7, 8]
     r = room(mode="video", period=0.4, ids=lambda k: seq[min(k, len(seq) - 1)])
     feed = _feed(r.base)
-    feed.next_t = time.monotonic()
+    r.t0 = feed.next_t = time.monotonic()   # the first fetch at the start of a frame, however long the set-up took
     got = _run_feed(feed, 4.3)
     assert sum(1 for _, _, s in r.log if s == 304) >= 3, r.log   # the hold was polled through (304s)
     assert len(got) >= 7, got
