@@ -5,7 +5,7 @@ import { useLoopeView } from '@/contexts/LoopeViewContext';
 import useEmblaCarousel from 'embla-carousel-react';
 import { ChevronLeft, ChevronRight, X, ChevronUp, Star, Info, Download, Trash2, Share, Clipboard, MoreHorizontal, ExternalLink, Move, Copy, RefreshCcw, RefreshCw, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { TransformWrapper, TransformComponent } from 'react-zoom-pan-pinch';
+import LoopeZoom, { type ZoomOrigin, type ZoomEntry } from './LoopeZoom';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,17 +25,6 @@ import { notifyItemUpdated } from '@/components/tags/events';
 
 interface LoopeModalProps {
   title?: string;
-}
-
-interface ZoomPosition {
-  x: number;
-  y: number;
-  exactX?: number;
-  exactY?: number;
-  imageWidth?: number;
-  imageHeight?: number;
-  imageLeft?: number;
-  imageTop?: number;
 }
 
 /** The bucket an image lives in: its bucketId, else parsed from /output/<bucket>/ in its URLs. */
@@ -77,8 +66,10 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
     });
     
     const [isFlipped, setIsFlipped] = useState(false);
-    const [zoomSrc, setZoomSrc] = useState<string | null>(null);
-    const [zoomPosition, setZoomPosition] = useState<ZoomPosition>({ x: 0, y: 0 });
+    const [zoom, setZoom] = useState<ZoomOrigin | null>(null);
+    const zoomSrc = zoom?.src ?? null;
+    const zoomRef = useRef<ZoomOrigin | null>(null);
+    zoomRef.current = zoom;
     const touchStartY = useRef<number | null>(null);
     const [showHint, setShowHint] = useState(true);
     const [dynamicTitle, setDynamicTitle] = useState<string | null>(null);
@@ -180,7 +171,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
       
       if (zoomSrc && e.key === 'Escape') {
         e.preventDefault();
-        setZoomSrc(null);
+        setZoom(null);
         return;
       }
       
@@ -213,7 +204,8 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
     /* Touch vertical swipe for flip                                      */
     /* ------------------------------------------------------------------ */
     const handleTouchStart: React.TouchEventHandler = (e) => {
-      if (zoomSrc) return;
+      // A second finger makes it a pinch, not a flip.
+      if (zoomSrc || e.touches.length > 1) { touchStartY.current = null; return; }
       touchStartY.current = e.touches[0].clientY;
     };
 
@@ -229,37 +221,6 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
       }
       
       touchStartY.current = null;
-    };
-
-    /* ------------------------------------------------------------------ */
-    /* Handle double click to zoom                                        */
-    /* ------------------------------------------------------------------ */
-    const handleDoubleClick = (e: React.MouseEvent, src: string) => {
-      e.preventDefault();
-      
-      // Get the current image position and dimensions
-      const rect = e.currentTarget.getBoundingClientRect();
-      
-      // Calculate exact position ratios to maintain the view centered exactly where clicked
-      const x = (e.clientX - rect.left) / rect.width;
-      const y = (e.clientY - rect.top) / rect.height;
-      
-      // Store exact pixel position for more precise positioning
-      const exactX = e.clientX;
-      const exactY = e.clientY;
-      
-      setZoomPosition({
-        x,
-        y,
-        exactX,
-        exactY,
-        imageWidth: rect.width,
-        imageHeight: rect.height,
-        imageLeft: rect.left,
-        imageTop: rect.top
-      });
-      
-      setZoomSrc(src);
     };
 
     /* ------------------------------------------------------------------ */
@@ -633,228 +594,111 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
       }
     };
 
-    // Handle double tap to zoom for touch devices
-    const [lastTapTime, setLastTapTime] = useState(0);
-    const [lastTouchCount, setLastTouchCount] = useState(0);
-    
-    // Zoom handling
+    /* ------------------------------------------------------------------ */
+    /* Zoom: opened from a carousel still or clip (LoopeZoom does the rest) */
+    /* ------------------------------------------------------------------ */
     const closeZoom = useCallback(() => {
-      setZoomSrc(null);
-      // Reset zoom position state to defaults
-      setZoomPosition({ x: 0, y: 0 });
-      
+      setZoom(null);
       // Make sure the carousel is reinitialized properly
-      setTimeout(() => {
-        if (emblaApi) {
-          emblaApi.reInit();
-        }
-      }, 100);
+      setTimeout(() => emblaApi?.reInit(), 100);
     }, [emblaApi]);
 
-    // Prevent zooming in mobile browsers during pinch gestures only when over carousel images
-    useEffect(() => {
-      const preventBrowserZoom = (e: TouchEvent) => {
-        // Only prevent browser zoom when:
-        // 1. Modal is open
-        // 2. We're not already in zoomed mode (TransformWrapper handles zoom then)
-        // 3. It's a multi-touch gesture (pinch)
-        // 4. We're touching a carousel image
-        if (isOpen && !zoomSrc && e.touches.length > 1) {
-          const target = e.target as Element;
-          const isOverImage = target.closest('.carousel-image-item');
-          
-          if (isOverImage) {
-            // Only prevent browser default - this will still allow our 
-            // TransformWrapper to handle the zoom after we enter zoom mode
-            e.preventDefault();
-            
-            // Detect pinch and enter zoom mode
-            const img = isOverImage as HTMLElement;
-            const src = img.getAttribute('src');
-            
-            // Only trigger zoom mode if we have a valid source
-            if (src) {
-              const rect = img.getBoundingClientRect();
-              
-              // Calculate midpoint of the pinch
-              const touchX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-              const touchY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-              
-              // Calculate relative position in the image
-              const relativeX = (touchX - rect.left) / rect.width;
-              const relativeY = (touchY - rect.top) / rect.height;
-              
-              // Use requestAnimationFrame to avoid React state updates during event handling
-              requestAnimationFrame(() => {
-                setZoomPosition({
-                  x: relativeX,
-                  y: relativeY,
-                  exactX: touchX,
-                  exactY: touchY,
-                  imageWidth: rect.width,
-                  imageHeight: rect.height,
-                  imageLeft: rect.left,
-                  imageTop: rect.top
-                });
-                
-                // Enter zoom mode
-                setZoomSrc(src);
-              });
-            }
-          }
-        }
+    const openZoom = useCallback((el: HTMLElement, entry: ZoomEntry) => {
+      if (zoomRef.current) return;
+      const r = el.getBoundingClientRect();
+      if (r.width < 2 || r.height < 2) return; // still loading (hidden)
+      const isVid = el instanceof HTMLVideoElement;
+      const origin: ZoomOrigin = {
+        src: el.getAttribute('data-loope-media') || (el as HTMLImageElement).currentSrc || '',
+        isVideo: isVid,
+        rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+        naturalWidth: isVid ? (el as HTMLVideoElement).videoWidth : (el as HTMLImageElement).naturalWidth,
+        sourceEl: el,
+        entry,
       };
-      
-      // Must use passive: false to allow preventDefault to work
-      document.addEventListener('touchmove', preventBrowserZoom, { passive: false });
-      
-      return () => {
-        document.removeEventListener('touchmove', preventBrowserZoom);
-      };
-    }, [isOpen, zoomSrc]);
-    
-    // Handle touch events
-    const handleTap = (e: React.TouchEvent, src: string) => {
-      // Reset touch tracking count
-      const touchCount = e.touches.length;
-      setLastTouchCount(touchCount);
-      
-      // Skip if this is a multi-touch event (likely a pinch)
-      if (touchCount > 1 || e.changedTouches.length > 1) {
+      if (!origin.src) return;
+      zoomRef.current = origin;
+      setZoom(origin);
+    }, []);
+
+    // Double tap / double click on carousel media zooms in at that point (one detector for mouse and touch).
+    const carouselTap = useRef({ downAt: 0, x: 0, y: 0, lastAt: 0, lastX: 0, lastY: 0, multi: false });
+    const onMediaPointerDown = (e: React.PointerEvent) => {
+      const s = carouselTap.current;
+      if (!e.isPrimary) { s.multi = true; return; }
+      s.multi = false; s.downAt = performance.now(); s.x = e.clientX; s.y = e.clientY;
+    };
+    const onMediaPointerUp = (e: React.PointerEvent) => {
+      const s = carouselTap.current;
+      if (!e.isPrimary || s.multi) return;
+      const now = performance.now();
+      if (now - s.downAt > 300 || Math.hypot(e.clientX - s.x, e.clientY - s.y) > 10) return;
+      if (now - s.lastAt < 300 && Math.hypot(e.clientX - s.lastX, e.clientY - s.lastY) < 40) {
+        s.lastAt = 0;
+        openZoom(e.currentTarget as HTMLElement, { kind: 'point', x: e.clientX, y: e.clientY, scale: 'detail' });
         return;
       }
-      
-      // If we previously had multiple touches and now have fewer,
-      // this might be the end of a pinch gesture, so ignore
-      if (lastTouchCount > 1) {
-        return;
-      }
-      
-      const now = Date.now();
-      const DOUBLE_TAP_DELAY = 300; // ms
-      
-      if (now - lastTapTime < DOUBLE_TAP_DELAY) {
-        // This is a double tap
-        e.preventDefault();
-        
-        if (zoomSrc) {
-          // If already zoomed, exit zoom
-          closeZoom();
-        } else {
-          // Zoom in at tap position
-          const rect = e.currentTarget.getBoundingClientRect();
-          const touch = e.touches[0] || e.changedTouches[0];
-          const x = (touch.clientX - rect.left) / rect.width;
-          const y = (touch.clientY - rect.top) / rect.height;
-          
-          setZoomPosition({
-            x,
-            y,
-            exactX: touch.clientX,
-            exactY: touch.clientY,
-            imageWidth: rect.width,
-            imageHeight: rect.height,
-            imageLeft: rect.left,
-            imageTop: rect.top
-          });
-          setZoomSrc(src);
-        }
-      }
-      
-      setLastTapTime(now);
+      s.lastAt = now; s.lastX = e.clientX; s.lastY = e.clientY;
     };
 
-    // NEW: Unified touch start handler that detects pinch gesture and routes single-tap to handleTap
-    const handleImageTouchStart = (e: React.TouchEvent, src: string) => {
-      if (e.touches.length > 1) {
-        // Pinch gesture detected – enter zoom mode and prevent browser default
+    // Pinch and scroll on carousel media open the zoom; the page itself never zooms under the dialog.
+    // Native listeners because React's touch and wheel listeners are passive (preventDefault is ignored).
+    const [carouselNode, setCarouselNode] = useState<HTMLDivElement | null>(null);
+    const carouselRef = useCallback((el: HTMLDivElement | null) => {
+      emblaRef(el);
+      setCarouselNode(el);
+    }, [emblaRef]);
+    useEffect(() => {
+      const node = carouselNode;
+      if (!node) return;
+      const mediaOf = (t: EventTarget | null) =>
+        (t as Element | null)?.closest?.('[data-loope-media]') as HTMLElement | null;
+      const onTouchStart = (e: TouchEvent) => {
+        if (e.touches.length !== 2 || zoomRef.current) return;
+        const [a, b] = [e.touches[0], e.touches[1]];
+        const media = mediaOf(b.target) || mediaOf(a.target);
+        if (!media) return;
         e.preventDefault();
-        const rect = e.currentTarget.getBoundingClientRect();
-        const centerX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
-        const centerY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
-        const relX = (centerX - rect.left) / rect.width;
-        const relY = (centerY - rect.top) / rect.height;
-        setZoomPosition({
-          x: relX,
-          y: relY,
-          exactX: centerX,
-          exactY: centerY,
-          imageWidth: rect.width,
-          imageHeight: rect.height,
-          imageLeft: rect.left,
-          imageTop: rect.top
+        openZoom(media, {
+          kind: 'pinch',
+          ids: [a.identifier, b.identifier],
+          m0: { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 },
+          d0: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
         });
-        setZoomSrc(src);
-      } else {
-        // Delegate to existing single-tap / double-tap logic
-        handleTap(e, src);
-      }
-    };
-
-    // Handle mouse wheel zooming on the main image (without having to double-click first)
-    const handleWheel = useCallback((e: React.WheelEvent, src: string) => {
-      // Only handle wheel events if we're not already in zoom mode
-      if (zoomSrc) return;
-      
-      // Only trigger zoom mode on zoom in (negative deltaY)
-      // If user scrolls down (positive deltaY), it's a zoom out gesture so don't enter zoom mode
-      if (e.deltaY >= 0) return;
-      
-      // Prevent default scrolling behavior
-      e.preventDefault();
-      
-      // Get exact position information for precise zoom targeting
-      const rect = e.currentTarget.getBoundingClientRect();
-      const x = (e.clientX - rect.left) / rect.width;
-      const y = (e.clientY - rect.top) / rect.height;
-      
-      // Store exact pixel positions
-      const exactX = e.clientX;
-      const exactY = e.clientY;
-      
-      // Enter zoom mode directly with the image - only on zoom in
-      setZoomPosition({
-        x,
-        y,
-        exactX,
-        exactY,
-        imageWidth: rect.width,
-        imageHeight: rect.height,
-        imageLeft: rect.left,
-        imageTop: rect.top
-      });
-      
-      setZoomSrc(src);
-    }, [zoomSrc]);
-
-    // Add passive wheel event listener to document to prevent scrolling when over images
-    useEffect(() => {
-      // This function needs to be declared outside the event handler to be used for removal
-      const preventScroll = (e: WheelEvent) => {
-        // Only prevent if over an image in the carousel and not already in zoom mode
-        if (isOpen && !zoomSrc && e.target instanceof Element) {
-          const isOverCarouselImage = e.target.closest('.carousel-image-item');
-          if (isOverCarouselImage) {
-            // Using stopPropagation instead of preventDefault since we're in a passive handler
-            e.stopPropagation();
-          }
+      };
+      const onTouchMove = (e: TouchEvent) => {
+        if (e.touches.length > 1) e.preventDefault();
+      };
+      const onWheel = (e: WheelEvent) => {
+        if (zoomRef.current) return;
+        const media = mediaOf(e.target);
+        if (!media) return;
+        // Scroll up or a trackpad pinch-out zooms in; a pinch-in is swallowed so the page doesn't shrink.
+        if (e.deltaY < 0) {
+          e.preventDefault();
+          openZoom(media, { kind: 'point', x: e.clientX, y: e.clientY, scale: 1.5 });
+        } else if (e.ctrlKey) {
+          e.preventDefault();
         }
       };
-      
-      // The wheel event is passive by default in modern browsers
-      // Instead of trying to preventDefault (which won't work in passive handlers),
-      // we'll handle the zoom directly in our onWheel event on the images
-      window.addEventListener('wheel', preventScroll);
-      
+      const stopGesture = (e: Event) => e.preventDefault();
+      const opts = { passive: false } as AddEventListenerOptions;
+      node.addEventListener('touchstart', onTouchStart, opts);
+      node.addEventListener('touchmove', onTouchMove, opts);
+      node.addEventListener('wheel', onWheel, opts);
+      node.addEventListener('gesturestart', stopGesture, opts);
       return () => {
-        window.removeEventListener('wheel', preventScroll);
+        node.removeEventListener('touchstart', onTouchStart, opts);
+        node.removeEventListener('touchmove', onTouchMove, opts);
+        node.removeEventListener('wheel', onWheel, opts);
+        node.removeEventListener('gesturestart', stopGesture, opts);
       };
-    }, [isOpen, zoomSrc]);
+    }, [carouselNode, openZoom]);
 
     // Reset zoom when closing the modal
     useEffect(() => {
       if (!isOpen) {
-        setZoomSrc(null);
+        setZoom(null);
       }
     }, [isOpen]);
 
@@ -881,17 +725,6 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
       }
     }, [isOpen]);
 
-    // Memoised base scale so that the image starts exactly at the size it had inside the carousel
-    const baseScale = React.useMemo(() => {
-      if (!zoomSrc || !zoomPosition.imageWidth || !zoomPosition.imageHeight) return 1;
-      // imageWidth is the rendered width inside carousel. At scale S the image rendered width = viewportWidth * S (if width limited) or viewportHeight*aspect etc
-      // For object-contain the rendered width at scale 1 equals viewportWidth OR less. We can derive scale by simple ratio of carousel width to viewport width
-      const sX = zoomPosition.imageWidth / window.innerWidth;
-      const sY = zoomPosition.imageHeight / window.innerHeight;
-      // whichever dimension was limiting inside carousel we use that ratio
-      return Math.max(sX, sY);
-    }, [zoomSrc, zoomPosition.imageWidth, zoomPosition.imageHeight]);
-
     // Reset states when modal opens or closes
     useEffect(() => {
       if (isOpen) {
@@ -905,7 +738,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
       } else {
         // When modal closes, reset loading states
         setLoadingImages({});
-        setZoomSrc(null);
+        setZoom(null);
       }
     }, [isOpen, images]);
 
@@ -916,165 +749,6 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
         [src]: false
       }));
     };
-
-    // Add a ref for the transform component
-    const [isOneToOne, setIsOneToOne] = useState(false);
-    const transformRef = useRef<any>(null);
-    
-    // Complete rewrite of double tap/click handling
-    // Track touch events more explicitly
-    const [touchInfo, setTouchInfo] = useState<{
-      lastTapTime: number;
-      lastX: number;
-      lastY: number;
-    }>({
-      lastTapTime: 0,
-      lastX: 0,
-      lastY: 0
-    });
-
-    // Handle touch start for double tap detection
-    const handleZoomTouchStart = useCallback((e: React.TouchEvent) => {
-      // Only handle single touches, not pinch gestures
-      if (e.touches.length !== 1) return;
-      
-      const touch = e.touches[0];
-      const now = Date.now();
-      const { lastTapTime, lastX, lastY } = touchInfo;
-      const DOUBLE_TAP_DELAY = 300; // ms
-      const POSITION_THRESHOLD = 30; // px
-
-      // Calculate distance between taps
-      const dx = Math.abs(touch.clientX - lastX);
-      const dy = Math.abs(touch.clientY - lastY);
-      const distance = Math.sqrt(dx * dx + dy * dy);
-      
-      console.log('Touch start in zoom mode', { 
-        timeSinceLastTap: now - lastTapTime,
-        distance
-      });
-
-      // Detect double tap: quick enough and close enough to previous tap
-      if (now - lastTapTime < DOUBLE_TAP_DELAY && distance < POSITION_THRESHOLD) {
-        console.log('Double tap detected in zoom mode');
-        e.preventDefault();
-        
-        if (!transformRef.current) return;
-        
-        if (isOneToOne) {
-          console.log('Resetting from 1:1 view');
-          transformRef.current.resetTransform();
-          setIsOneToOne(false);
-        } else {
-          console.log('Zooming to 1:1');
-          const scale = 1.0 / baseScale;
-          transformRef.current.zoomToPoint(touch.clientX, touch.clientY, scale);
-          setIsOneToOne(true);
-        }
-        
-        // Reset touch info to prevent triple-tap being detected as double-tap
-        setTouchInfo({
-          lastTapTime: 0,
-          lastX: 0,
-          lastY: 0
-        });
-      } else {
-        // Store current touch info for next comparison
-        setTouchInfo({
-          lastTapTime: now,
-          lastX: touch.clientX,
-          lastY: touch.clientY
-        });
-      }
-    }, [touchInfo, isOneToOne, baseScale]);
-
-    // Handle desktop double-click
-    const handleImageDoubleClick = useCallback((e: React.MouseEvent) => {
-      console.log('Double click in desktop zoom mode');
-      e.stopPropagation();
-      
-      if (!transformRef.current) return;
-      
-      if (isOneToOne) {
-        console.log('Resetting from 1:1 view');
-        transformRef.current.resetTransform();
-        setIsOneToOne(false);
-      } else {
-        console.log('Zooming to 1:1');
-        const scale = 1.0 / baseScale;
-        transformRef.current.zoomToPoint(e.clientX, e.clientY, scale);
-        setIsOneToOne(true);
-      }
-    }, [isOneToOne, baseScale]);
-
-    // Enhanced close zoom function
-    const handleCloseZoom = useCallback((e: React.MouseEvent) => {
-      e.stopPropagation();
-      console.log('Closing zoom view');
-      closeZoom();
-    }, [closeZoom]);
-    
-    // Reset isOneToOne when closing zoom
-    useEffect(() => {
-      if (!zoomSrc) {
-        setIsOneToOne(false);
-      }
-    }, [zoomSrc]);
-
-    // Handle double-tap in zoom view specifically for mobile
-    useEffect(() => {
-      // Only run this effect when in zoom mode on mobile
-      if (!isMobile || !zoomSrc) return;
-      
-      let lastTap = 0;
-      
-      const handleTap = (e) => {
-        const now = Date.now();
-        const DOUBLE_TAP_DELAY = 300;
-        
-        // Check if this is a double-tap
-        if (now - lastTap < DOUBLE_TAP_DELAY) {
-          console.log('Double tap detected in zoom mode!');
-          e.preventDefault();
-          
-          // Toggle between 1:1 and normal zoom
-          if (transformRef.current) {
-            if (isOneToOne) {
-              console.log('Resetting zoom to normal view');
-              transformRef.current.resetTransform();
-              setIsOneToOne(false);
-            } else {
-              console.log('Setting zoom to 1:1');
-              const scale = 1.0 / baseScale;
-              // For simplicity, zoom to center rather than tap location
-              transformRef.current.zoomTo(scale);
-              setIsOneToOne(true);
-            }
-          }
-          
-          // Reset to prevent triple-tap being detected as double
-          lastTap = 0;
-        } else {
-          // First tap - store timestamp
-          lastTap = now;
-        }
-      };
-      
-      // Get the zoom image element - we'll attach a listener directly to it
-      const zoomImage = document.getElementById('zoom-image');
-      
-      if (zoomImage) {
-        console.log('Adding direct tap handler to zoom image');
-        zoomImage.addEventListener('touchend', handleTap);
-      }
-      
-      // Clean up
-      return () => {
-        if (zoomImage) {
-          zoomImage.removeEventListener('touchend', handleTap);
-        }
-      };
-    }, [isMobile, zoomSrc, isOneToOne, baseScale, transformRef]);
 
     if (!isOpen) return null;
 
@@ -1124,7 +798,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
           </div>
 
           {/* Main carousel */}
-          <div className="flex-1 w-full h-full overflow-hidden" ref={emblaRef} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+          <div className="flex-1 w-full h-full overflow-hidden" ref={carouselRef} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
             <div className="flex h-full">
               {images.map((img) => {
                 const src = img.raw_url || img.urlFull;
@@ -1149,20 +823,29 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                     {isImgVideo ? (
                       <video
                         src={src}
+                        data-loope-media={src}
                         controls
+                        playsInline
                         className={`max-h-full max-w-full object-contain ${isLoading ? 'hidden' : ''}`}
                         onLoadedData={() => handleImageLoad(src)}
+                        onPointerDown={onMediaPointerDown}
+                        onPointerUp={onMediaPointerUp}
+                        // Our double-click zooms; stop the browser's own double-click fullscreen.
+                        onDoubleClick={(e) => e.preventDefault()}
+                        title="Pinch, scroll or double-click to zoom"
+                        style={{ touchAction: 'none' }}
                       />
                     ) : (
                       <img
                         src={src}
                         alt={img.promptKey || ''}
-                        className={`max-h-full max-w-full object-contain select-none carousel-image-item ${isLoading ? 'hidden' : ''}`}
-                        onDoubleClick={(e) => handleDoubleClick(e, src)}
-                        onTouchStart={(e) => handleImageTouchStart(e, src)}
-                        onWheel={(e) => handleWheel(e, src)}
+                        data-loope-media={src}
+                        draggable={false}
+                        className={`max-h-full max-w-full object-contain select-none ${isLoading ? 'hidden' : ''}`}
+                        onPointerDown={onMediaPointerDown}
+                        onPointerUp={onMediaPointerUp}
                         onLoad={() => handleImageLoad(src)}
-                        title="Scroll to zoom, double-click to enter zoom mode"
+                        title="Pinch, scroll or double-click to zoom"
                         style={{ touchAction: 'none' }}
                       />
                     )}
@@ -1658,178 +1341,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
           )}
         </DialogContent>
 
-        {/* Full viewport zoom overlay - COMPLETE REWRITE OF PROBLEM AREAS */}
-        {zoomSrc && ReactDOM.createPortal(
-          <div 
-            className="fixed inset-0 z-[1000] bg-black/95" 
-            onClick={closeZoom}
-          >
-            {/* DESKTOP CONFIG */}
-            {!isMobile && (
-              <TransformWrapper
-                initialScale={1.0}
-                minScale={0.95}
-                maxScale={16}
-                centerOnInit={false}
-                centerZoomedOut={false}
-                limitToBounds={true}
-                disabled={false}
-                wheel={{
-                  disabled: false,
-                  step: 0.2
-                }}
-                pinch={{
-                  disabled: false,
-                  step: 5
-                }}
-                initialPositionX={
-                  zoomPosition.exactX ? 
-                  window.innerWidth / 2 - zoomPosition.exactX : 
-                  0
-                }
-                initialPositionY={
-                  zoomPosition.exactY ? 
-                  window.innerHeight / 2 - zoomPosition.exactY : 
-                  0
-                }
-                panning={{
-                  disabled: false,
-                  velocityDisabled: false,
-                  lockAxisX: false,
-                  lockAxisY: false,
-                  excluded: []
-                }}
-                doubleClick={{
-                  disabled: true
-                }}
-                onZoom={(ref) => {
-                  const ZOOM_EXIT_THRESHOLD = 1.05;
-                  if (ref.state.scale <= ZOOM_EXIT_THRESHOLD) {
-                    setTimeout(() => closeZoom(), 0);
-                  }
-                }}
-                ref={transformRef}
-              >
-                {({ zoomIn, zoomOut, resetTransform }) => (
-                  <TransformComponent
-                    wrapperClass="cursor-grab active:cursor-grabbing"
-                    wrapperStyle={{ width: '100vw', height: '100vh' }}
-                    contentStyle={{ 
-                      width: '100%', 
-                      height: '100%', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      touchAction: 'none'
-                    }}
-                  >
-                    <img 
-                      src={zoomSrc} 
-                      className="max-h-full max-w-full select-none" 
-                      alt=""
-                      style={{ objectFit: 'contain', pointerEvents: 'auto' }}
-                      onClick={(e) => e.stopPropagation()}
-                      onDoubleClick={handleImageDoubleClick}
-                      onDragStart={(e) => e.preventDefault()}
-                    />
-                  </TransformComponent>
-                )}
-              </TransformWrapper>
-            )}
-
-            {/* MOBILE CONFIG */}
-            {isMobile && (
-              <TransformWrapper
-                initialScale={baseScale * 1.2}
-                minScale={0.95}
-                maxScale={16}
-                centerOnInit={false}
-                centerZoomedOut={false}
-                limitToBounds={true}
-                disabled={false}
-                wheel={{
-                  disabled: false,
-                  step: 0.2
-                }}
-                pinch={{
-                  disabled: false,
-                  step: 5
-                }}
-                panning={{
-                  disabled: false,
-                  velocityDisabled: false,
-                  lockAxisX: false,
-                  lockAxisY: false,
-                  excluded: []
-                }}
-                doubleClick={{
-                  disabled: true
-                }}
-                onZoom={(ref) => {
-                  const ZOOM_EXIT_THRESHOLD = baseScale * 1.05;
-                  if (ref.state.scale <= ZOOM_EXIT_THRESHOLD) {
-                    setTimeout(() => closeZoom(), 0);
-                  }
-                }}
-                ref={transformRef}
-              >
-                {({ zoomIn, zoomOut, resetTransform }) => (
-                  <TransformComponent
-                    wrapperClass="cursor-grab active:cursor-grabbing"
-                    wrapperStyle={{ 
-                      width: '100vw', 
-                      height: '100vh',
-                      transform: 'translateY(-10vh)'
-                    }}
-                    contentStyle={{ 
-                      width: '100%', 
-                      height: '100%', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center',
-                      touchAction: 'none'
-                    }}
-                  >
-                    <img 
-                      id="zoom-image"
-                      src={zoomSrc} 
-                      className="max-h-full max-w-full select-none" 
-                      alt=""
-                      style={{ objectFit: 'contain', pointerEvents: 'auto' }}
-                      onClick={(e) => e.stopPropagation()}
-                      onDragStart={(e) => e.preventDefault()}
-                    />
-                  </TransformComponent>
-                )}
-              </TransformWrapper>
-            )}
-            
-            {/* Close button for the zoom view - works on both desktop and mobile */}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="fixed top-4 right-4 z-[9999] bg-black/80 hover:bg-black text-white rounded-full"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                closeZoom();
-              }}
-              style={{ 
-                touchAction: 'manipulation'
-              }}
-            >
-              <X className="h-5 w-5" />
-            </Button>
-            
-            {/* 1:1 indicator */}
-            {isOneToOne && (
-              <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 bg-black/70 text-white px-3 py-1 rounded text-sm z-[9999]">
-                1:1 view
-              </div>
-            )}
-          </div>, 
-          document.body
-        )}
+        {zoom && <LoopeZoom origin={zoom} onClose={closeZoom} />}
       </Dialog>
     );
   } catch (error) {
