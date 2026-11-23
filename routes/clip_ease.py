@@ -73,10 +73,20 @@ def _probe(path, rate=False):
     return whn + (float(num) / float(den or 1),)
 
 
-def _blocks(f):
-    """8x8 block means: the picture as the eye takes it in, without the grain (motion is measured on this)."""
+TUNED_W = 1344   # the clip width the mask (_OnTheStill) and the motion (_blocks) were tuned on: the video model's
+
+
+def mask_scale(w):
+    """The clip's width over TUNED_W, whole (2 for a clip AI-upscaled to 2688x1536): the mask is made and the motion
+    measured that much coarser, so both mean what they were tuned to."""
+    return max(1, round(w / TUNED_W))
+
+
+def _blocks(f, k=1):
+    """(8k)x(8k) block means: the picture as the eye takes it in, without the grain (motion is measured on this)."""
     import cv2
-    return cv2.resize(f, (f.shape[1] // 8, f.shape[0] // 8), interpolation=cv2.INTER_AREA).astype(np.float32)
+    b = 8 * k
+    return cv2.resize(f, (f.shape[1] // b, f.shape[0] // b), interpolation=cv2.INTER_AREA).astype(np.float32)
 
 
 class _OnTheStill:
@@ -102,7 +112,9 @@ class _OnTheStill:
         self.still = s.astype(np.int16)
         self.first = first
         self.base = cv2.resize(first, self.size, interpolation=cv2.INTER_CUBIC) - s   # the clip's picture minus the still
-        self.sx, self.sy = self.size[0] / w, self.size[1] / h
+        self.k = mask_scale(w)
+        self.mask_size = (w // self.k, h // self.k)
+        self.sx, self.sy = self.size[0] / self.mask_size[0], self.size[1] / self.mask_size[1]   # the mask's to the still's
         self.up = np.empty_like(self.still)                 # reused every frame: no fresh 50 MB arrays
         self.out = np.empty_like(self.still)
         self.u8 = np.empty(self.still.shape, np.uint8)
@@ -114,7 +126,10 @@ class _OnTheStill:
         d = cv2.subtract(low, self.first)
         cv2.resize(np.rint(d).astype(np.int16), self.size, dst=self.up, interpolation=cv2.INTER_LINEAR)
         out = cv2.add(self.still, self.up, dst=self.out)
-        a = cv2.GaussianBlur(cv2.cvtColor(np.abs(d), cv2.COLOR_RGB2GRAY), (0, 0), 3)
+        g = cv2.cvtColor(np.abs(d), cv2.COLOR_RGB2GRAY)
+        if self.k > 1:
+            g = cv2.resize(g, self.mask_size, interpolation=cv2.INTER_AREA)
+        a = cv2.GaussianBlur(g, (0, 0), 3)
         m = np.clip((a - self.LOW) / (self.HIGH - self.LOW), 0, 1)
         ys, xs = np.nonzero(m)
         if len(ys):
@@ -162,7 +177,7 @@ WAIT_LIVE_S = 480
 _idle = False   # the CPU took over from a job held back by a live TV
 
 
-def _on_gpu(src, dst, still, fps, frames, progress):
+def _on_gpu(src, dst, still, fps, frames, progress, k=1):
     """The ease made on the renderer's GPU: how much of the picture moves, or None if the CPU must make it (no GPU
     batch here, the renderer unreachable, the job failed, or it waited WAIT_LIVE_S behind a live TV)."""
     global _idle
@@ -174,7 +189,7 @@ def _on_gpu(src, dst, still, fps, frames, progress):
     import smconfig
     url = smconfig.url("room").rstrip("/") + "/renderer/api/batch"
     args = {"src": os.path.abspath(src), "still": still and os.path.abspath(still), "dst": os.path.abspath(dst),
-            "fps": fps, "frames": frames}
+            "fps": fps, "frames": frames, "k": k}
     try:
         r = requests.post(url, json={"kind": "ease", "args": args}, timeout=10)
         if r.status_code != 202:
@@ -228,7 +243,7 @@ def ease_file(src, dst, play_s=30.0, ramp_s=8.0, settle_s=3.0, still=None, fps=F
     w, h, n = _probe(src)
     frames_out = schedule(n, play_s, ramp_s, settle_s, fps, ramp_out_s)
     still = still if still and fits(still, w, h) else None
-    motion = _on_gpu(src, dst, still, fps, frames_out, progress)
+    motion = _on_gpu(src, dst, still, fps, frames_out, progress, mask_scale(w))
     if motion is not None:
         return motion
     if _idle:
@@ -259,7 +274,7 @@ def ease_file(src, dst, play_s=30.0, ramp_s=8.0, settle_s=3.0, still=None, fps=F
             read += 1
             f = np.frombuffer(buf, np.uint8).reshape(h, w, 3)
             frames[read] = f
-            small = _blocks(f)
+            small = _blocks(f, mask_scale(w))
             if read:
                 motion = max(motion, float(np.abs(small - ref).mean()))
             else:

@@ -22,7 +22,8 @@ function convertToTypedWorkflows(data: any[]): Workflow[] {
       name: stage.name,
       weight: stage.weight
     })),
-    params: (workflow.params || []).map((param: any): WorkflowParam => ({
+    // a hidden param is the app's to set, not the person's (h3's skip-upscaling: on for a screen, off inline)
+    params: (workflow.params || []).filter((param: any) => !param.hidden).map((param: any): WorkflowParam => ({
       id: param.id,
       name: param.name,
       type: param.type as "select" | "checkbox" | "range" | "text" | "number",

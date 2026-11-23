@@ -227,13 +227,38 @@
     0
    ],
    "images": [
-    "14",
+    "22",
     0
    ],
    "multiplier": 3
   },
   "_meta": {
    "title": "Interpolate {{INTERPOLATOR}}"
+  }
+ },
+ "21": {
+  "inputs": {
+   "model_name": "RealESRGAN_x2plus.pth"
+  },
+  "class_type": "UpscaleModelLoader",
+  "_meta": {
+   "title": "AI upscaler {{UPSCALE_FLAG}}"
+  }
+ },
+ "22": {
+  "inputs": {
+   "upscale_model": [
+    "21",
+    0
+   ],
+   "image": [
+    "14",
+    0
+   ]
+  },
+  "class_type": "ImageUpscaleWithModel",
+  "_meta": {
+   "title": "AI upscale the drawn frames {{UPSCALE_FLAG}}"
   }
  }
 }

@@ -1442,3 +1442,38 @@ def test_a_picture_that_could_not_be_fitted_goes_up_whole_with_its_overlay(house
     publish_aloud(house, library_picture(house))
     wait_for_extensions()
     assert size_of(tv_shows(house["output"])) == (556, 1024) and shown == [SCREEN]
+
+
+# ---------------------------------------------------------------------------- a video for a screen is AI-upscaled (23 Nov)
+# The video model draws 1344x768; for a 4K screen its drawn frames get RealESRGAN x2 before the interpolation, so moving
+# pictures are as detailed as the stills; inline in the generator the drawn size is fine and quicker (owner, 23 Nov).
+
+def _sent_graph(house, workflow, destination):
+    fake = FakeRunPod(inline("PNG", "out_00001_.png"))
+    house["monkeypatch"].setattr(house["generate"], "runpod_api", fake)
+    job_id = house["tracker"].create(prompt="the mist drifts", source="generator", target=destination)["id"]
+    ref = base64.b64encode(_image_bytes("JPEG", OLD, size=(1920, 1080))).decode()
+    images = [{"name": f"ref{i}.jpg", "image": ref} for i in range(2)]
+    try:
+        house["generate"].start(prompt="the mist drifts", workflow=workflow, images=images, job_id=job_id,
+                                publish_destination=destination, silent=True, poll_interval=0.01)
+    except Exception:
+        pass          # what comes back is a still, not a clip: only what was sent matters here
+    return fake.payload["input"]["workflow"], house["tracker"].get(job_id)
+
+
+@pytest.mark.parametrize("workflow", ["h3-loop.json", "h3-i2v.json", "h3-fl2v.json"])
+def test_a_video_for_a_screen_is_upscaled_and_inline_it_is_not(house, workflow):
+    graph, job = _sent_graph(house, workflow, SCREEN)
+    ups = [k for k, n in graph.items() if n["class_type"] == "ImageUpscaleWithModel"]
+    assert len(ups) == 1, "a video for the 4K screen lost its AI upscale"
+    rife = next(n for n in graph.values() if n["class_type"] == "FrameInterpolate")
+    assert rife["inputs"]["images"] == [ups[0], 0], "the in-betweens should be made from the upscaled frames"
+    assert "Upscaling" in (job["stages"] or [])
+
+    graph, job = _sent_graph(house, workflow, None)
+    assert not [n for n in graph.values() if n["class_type"] in ("ImageUpscaleWithModel", "UpscaleModelLoader")]
+    decode = next(k for k, n in graph.items() if n["class_type"] == "VAEDecode")
+    rife = next(n for n in graph.values() if n["class_type"] == "FrameInterpolate")
+    assert rife["inputs"]["images"] == [decode, 0]
+    assert "Upscaling" not in (job["stages"] or [])

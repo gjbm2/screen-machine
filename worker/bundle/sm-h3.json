@@ -1,6 +1,6 @@
 {
   "repo": "gjbm2/sm-h3-bundle",
-  "note": "MiniMax H3 FL2VA only (pruned fp8 DiT, Turbo 8-step LoRA, Qwen3-VL-32B nvfp4 encoder, video + audio VAEs), for the one-model video endpoint sm-video (plan step 6: won the 19 Nov test against Wan 2.2). fp8 rather than int8_convrot because the worker's torch is cu128. 19 Nov: + RIFE 4.26 and FILM frame interpolation (the TV's slow, eased clips want 3x the frames).",
+  "note": "MiniMax H3 FL2VA only (pruned fp8 DiT, Turbo 8-step LoRA, Qwen3-VL-32B nvfp4 encoder, video + audio VAEs), for the one-model video endpoint sm-video (plan step 6: won the 19 Nov test against Wan 2.2). fp8 rather than int8_convrot because the worker's torch is cu128. 19 Nov: + RIFE 4.26 and FILM frame interpolation (the TV's slow, eased clips want 3x the frames). 23 Nov: + RealESRGAN x2 (every frame upscaled after the interpolation, as the Wan workflows had it: 1344x768 -> 2688x1536).",
   "files": [
     {
       "src": "Comfy-Org/MiniMax-H3",
@@ -29,6 +29,11 @@
     {
       "src": "Comfy-Org/Frame-Interpolation",
       "path": "frame_interpolation/film_net_fp16.safetensors"
+    },
+    {
+      "src": "2kpr/Real-ESRGAN",
+      "path": "RealESRGAN_x2plus.pth",
+      "dest": "upscale_models/RealESRGAN_x2plus.pth"
     }
   ]
 }

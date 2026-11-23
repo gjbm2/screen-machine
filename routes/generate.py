@@ -832,6 +832,16 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
     )
     
     # Apply runtime mutations based on parameters
+    # A video's drawn frames are AI-upscaled ({{UPSCALE_FLAG}}: RealESRGAN x2, before the interpolation) only for a
+    # screen bigger than the video is drawn, so moving pictures are as detailed as the stills on a 4K TV; inline in the
+    # generator the drawn size is fine and quicker (owner, 23 Nov)
+    if workflow_config.get("async") and vars(args_namespace).get("skip-upscaling") is None:   # the video workflows
+        video = next((n["inputs"] for n in workflow_data.values() if isinstance(n, dict)
+                      and {"width", "height", "length"} <= set(n.get("inputs", {}))), {})
+        drawn = max(int(args_namespace.width or video.get("width") or 0),
+                    int(args_namespace.height or video.get("height") or 0))
+        vars(args_namespace)["skip-upscaling"] = not (screen_box and drawn and max(screen_box) > 1.25 * drawn)
+        info(f"Video upscale: {'off' if vars(args_namespace)['skip-upscaling'] else 'on'} (drawn {drawn}, screen {screen_box})")
     workflow_data = apply_workflow_mutations(workflow_data, workflow_config, args_namespace)
     
     # Compile the final object to submit
@@ -855,7 +865,10 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
 
     info(f"Workflow: {args_namespace.workflow}")
     info(f"RunPod ID: {runpod_id}")
-    tracker.set_stages(job_id, workflow_config.get("processing_stages"))
+    # a skipped upscale is no stage (else the stages after it take its name)
+    stages = [st for st in workflow_config.get("processing_stages") or []
+              if not (vars(args_namespace).get("skip-upscaling") is True and st.get("name") == "Upscaling")]
+    tracker.set_stages(job_id, stages or None)
     tracker.update(job_id, kind=workflow_kind(workflow_config), endpoint_id=runpod_id,
                    message="Sending to RunPod")
 

@@ -10,7 +10,8 @@ the clip really moves the upscaled clip itself) or, without a still, the frame a
 (BT.601 limited range, untagged, as ffmpeg's rgb24 -> yuv420p gave the CPU's clips) and encoded by the GPU's NVENC
 without leaving it; ffmpeg only puts the H.264 stream in the MP4.
 
-args: {src, still (or null), dst, fps, frames}. Writes dst (via a temp file beside it, so a job killed for a live TV
+args: {src, still (or null), dst, fps, frames, k}: k, the clip's size over the size the mask and the motion were
+tuned on (clip_ease.mask_scale: 2 for a clip upscaled to 2688x1536), so both mean what they did. Writes dst (via a temp file beside it, so a job killed for a live TV
 leaves no partial file) and dst + ".json" {"motion": mean |frame - frame 0| over the clip, on 8x8 blocks}.
 """
 from __future__ import annotations
@@ -44,7 +45,7 @@ __device__ __forceinline__ float tap(const float* p, int w, int h, int c, float 
 // BT.601 limited-range Y and the block's averaged chroma.
 extern "C" __global__ void compose_nv12(const float* frame, const float* diff, const float* mask,
                                         const unsigned char* still, const float* base, unsigned char* nv12,
-                                        int W, int H, int w, int h, int on_still) {
+                                        int W, int H, int w, int h, int mw, int mh, int on_still) {
     int bx = blockIdx.x * blockDim.x + threadIdx.x, by = blockIdx.y * blockDim.y + threadIdx.y;
     if (bx >= W / 2 || by >= H / 2) return;
     float sx = (float)w / W, sy = (float)h / H, cb = 0.f, cr = 0.f;
@@ -53,7 +54,7 @@ extern "C" __global__ void compose_nv12(const float* frame, const float* diff, c
         float rgb[3];
         if (on_still) {
             float fx = (X + .5f) * sx - .5f, fy = (Y + .5f) * sy - .5f;
-            float m = tap(mask, w, h, 1, fx, fy, false);
+            float m = tap(mask, mw, mh, 1, (X + .5f) * mw / W - .5f, (Y + .5f) * mh / H - .5f, false);
             for (int c = 0; c < 3; c++) {
                 size_t i = ((size_t)Y * W + X) * 3 + c;
                 float up = rintf(tap(diff + c, w, h, 3, fx, fy, true));
@@ -82,10 +83,11 @@ def _probe(path):
     return int(out[0]), int(out[1]), int(out[2])
 
 
-def _blocks(f):
-    """8x8 block means (as clip_ease._blocks): the picture as the eye takes it in, without the grain."""
-    h, w = f.shape[0] // 8 * 8, f.shape[1] // 8 * 8
-    return f[:h, :w].reshape(h // 8, 8, w // 8, 8, 3).mean(axis=(1, 3), dtype=np.float32)
+def _blocks(f, k=1):
+    """(8k)x(8k) block means (as clip_ease._blocks): the picture as the eye takes it in, without the grain."""
+    b = 8 * k
+    h, w = f.shape[0] // b * b, f.shape[1] // b * b
+    return f[:h, :w].reshape(h // b, b, w // b, b, 3).mean(axis=(1, 3), dtype=np.float32)
 
 
 def _still(path, first):
@@ -107,8 +109,9 @@ def run(args: dict, progress) -> None:
     from stream_service.encode.nvenc import Surface
 
     cp.get_default_memory_pool().set_limit(size=POOL_BYTES)
-    src, dst, fps, frames = args["src"], args["dst"], float(args["fps"]), args["frames"]
+    src, dst, fps, frames, k_ = args["src"], args["dst"], float(args["fps"]), args["frames"], int(args.get("k") or 1)
     w, h, n = _probe(src)
+    mw, mh = w // k_, h // k_           # the mask's size: the scale it was tuned on
     dec = subprocess.Popen(["ffmpeg", "-v", "error", "-i", src, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
                            stdout=subprocess.PIPE)
     cache, read, motion, ref = {}, -1, 0.0, None
@@ -123,7 +126,7 @@ def run(args: dict, progress) -> None:
             read += 1
             f = np.frombuffer(buf, np.uint8).reshape(h, w, 3)
             cache[read] = f
-            small = _blocks(f)
+            small = _blocks(f, k_)
             if read:
                 motion = max(motion, float(np.abs(small - ref).mean()))
             else:
@@ -132,10 +135,20 @@ def run(args: dict, progress) -> None:
                 del cache[k]
         return cache[i]
 
+    on_gpu = {}
+
+    def gpu(i):  # each source frame goes up once, as bytes, and is made float on the GPU
+        i = min(i, n - 1)
+        if i not in on_gpu:
+            on_gpu[i] = cp.asarray(frame(i)).astype(cp.float32)
+            for k in [k for k in on_gpu if k < i - 1]:
+                del on_gpu[k]
+        return on_gpu[i]
+
     tmp_h264, tmp = dst + ".part.h264", dst + ".part.mp4"
     try:
         first8 = frame(0)
-        first = cp.asarray(first8, dtype=cp.float32)
+        first = cp.asarray(first8).astype(cp.float32)
         still = base = None
         if args.get("still"):
             s, b = _still(args["still"], first8)
@@ -157,22 +170,24 @@ def run(args: dict, progress) -> None:
             for k, (x, wgt) in enumerate(frames):
                 i = int(x)
                 frac = x - i
-                f = cp.asarray(frame(i), dtype=cp.float32)
+                f = gpu(i).copy()
                 if frac >= 1e-3:
-                    f += (cp.asarray(frame(i + 1), dtype=cp.float32) - f) * cp.float32(frac)
+                    f += (gpu(i + 1) - f) * cp.float32(frac)
                 if wgt:
                     f += (first - f) * cp.float32(wgt)
                 if still is not None:
                     d = f - first
                     ad = cp.abs(d)
                     gray = ad[..., 0] * cp.float32(0.299) + ad[..., 1] * cp.float32(0.587) + ad[..., 2] * cp.float32(0.114)
+                    if k_ > 1:
+                        gray = gray[: mh * k_, : mw * k_].reshape(mh, k_, mw, k_).mean(axis=(1, 3))
                     m = cp.clip((ndimage.gaussian_filter(gray, 3, mode="mirror", truncate=4.0) - LOW) / (HIGH - LOW), 0, 1)
                     mask = cp.ascontiguousarray(m * m * (3 - 2 * m), dtype=cp.float32)
                     kernel(grid, (16, 16), (f, d, mask, still, base, nv12, np.int32(W), np.int32(H), np.int32(w),
-                                            np.int32(h), np.int32(1)))
+                                            np.int32(h), np.int32(mw), np.int32(mh), np.int32(1)))
                 else:
                     kernel(grid, (16, 16), (f, f, f, nv12, f, nv12, np.int32(W), np.int32(H), np.int32(w),
-                                            np.int32(h), np.int32(0)))
+                                            np.int32(h), np.int32(mw), np.int32(mh), np.int32(0)))
                 write(enc.Encode(surface))
                 if k % 10 == 0:
                     progress(k / len(frames))
