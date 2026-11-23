@@ -24,6 +24,7 @@ from aiohttp import web
 import smconfig
 
 from . import __version__, binding, fx_interplay, mappings as mappings_mod, palettes
+from .batch import Batch, known_kind
 from .bodies import parse_body
 from .director import MUSIC_WORD_LABELS, MUSIC_WORD_MODES
 from .events import EventHub
@@ -52,6 +53,7 @@ SHOW_BUS = web.AppKey("show_bus", object)
 LIBRARY = web.AppKey("library", Library)
 PREVIEWS = web.AppKey("previews", Previews)
 RATINGS = web.AppKey("ratings", Ratings)
+BATCH = web.AppKey("batch", Batch)
 RESCAN_S = 20.0                     # live plug-in discovery: new / changed / removed plug-in modules
 DEV_ART_SCREENS: Optional[tuple] = None   # None: the deployment's live screens (smconfig.live_screens()), per request
 
@@ -739,6 +741,44 @@ async def state(request: web.Request) -> web.Response:
                               "workers": pool.describe() if pool is not None else None})
 
 
+def _batch(request: web.Request) -> Batch:
+    batch = request.app[BATCH]
+    if not batch.gpus:
+        raise SessionError(503, "no_batch_gpu", "this deployment lists no GPU for batch work (--batch-gpus)")
+    return batch
+
+
+async def batch_submit(request: web.Request) -> web.Response:
+    """POST /api/batch {kind, args}: queue a batch GPU job (batch.py).  It runs when its GPU has no session."""
+    batch = _batch(request)
+    body = await read_json(request, allow_empty=False)
+    if not isinstance(body, dict) or not isinstance(body.get("args", {}), dict):
+        raise ParamError("bad_request", "body must be {\"kind\": name, \"args\": {...}}")
+    if not known_kind(body.get("kind")):
+        raise ParamError("unknown_kind", f"no batch job called {body.get('kind')!r}")
+    job = batch.submit(body["kind"], body.get("args", {}))
+    batch.tick()                                   # a free GPU takes it now, not at the next tick
+    return web.json_response(job.describe(), status=202)
+
+
+async def batch_list(request: web.Request) -> web.Response:
+    return web.json_response(request.app[BATCH].describe(), headers={"Cache-Control": "no-store"})
+
+
+async def batch_get(request: web.Request) -> web.Response:
+    job = request.app[BATCH].jobs.get(request.match_info["jid"])
+    if job is None:
+        raise SessionError(404, "not_found", "no such batch job (finished long ago, or from before a restart)")
+    return web.json_response(job.describe(), headers={"Cache-Control": "no-store"})
+
+
+async def batch_cancel(request: web.Request) -> web.Response:
+    job = request.app[BATCH].cancel(request.match_info["jid"])
+    if job is None:
+        raise SessionError(404, "not_found", "no such batch job")
+    return web.json_response(job.describe())
+
+
 async def workers_warm(request: web.Request) -> web.Response:
     """POST /api/workers/warm {screen, gpu?}: spawn a render worker ahead of that screen's next session (plan change 3,
     additive: room may send it at the start of an entry).  A screen on inproc: nothing to do."""
@@ -815,7 +855,7 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
              music_bus: Sequence[str] = (), show_bus_token_file: Optional[str] = None, latency_file: Optional[pathlib.Path] = None,
              art_dir: Optional[pathlib.Path] = None, local_control: bool = False,
              app_url: str = "", warm: bool = False, workers: bool = False,
-             switches_file: Optional[pathlib.Path] = None) -> web.Application:
+             switches_file: Optional[pathlib.Path] = None, batch_gpus: Sequence[int] = ()) -> web.Application:
     from .plugins import default_registry
 
     registry = registry or default_registry()
@@ -851,6 +891,15 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
     app[SHOW_BUS] = inputs
     app[LIBRARY] = mgr.library = Library(registry, presets, mgr)
     app[PREVIEWS] = Previews(mgr, presets)
+
+    def batch_busy(gpu: int) -> Optional[str]:
+        """Why a batch job may not have this GPU now: a session on it (a TV, or a preview in the console)."""
+        for s in mgr.sessions.values():
+            if s.gpu == gpu and s.state not in ("ended", "failed"):
+                return "a preview is running" if str(s.screen).startswith("dev-preview-") else f"{s.screen} is live"
+        return None
+
+    app[BATCH] = Batch(batch_gpus, batch_busy)
     app[RATINGS] = mgr.ratings = Ratings(pathlib.Path(config_dir) / "ratings.json")
     from . import taste as _taste
 
@@ -903,6 +952,10 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
     r.add_get("/api/sessions/{sid}/frames", session_frames)
     r.add_get("/api/state", state)
     r.add_post("/api/workers/warm", workers_warm)
+    r.add_post("/api/batch", batch_submit)
+    r.add_get("/api/batch", batch_list)
+    r.add_get("/api/batch/{jid}", batch_get)
+    r.add_delete("/api/batch/{jid}", batch_cancel)
     r.add_get("/api/diag", diag)
     r.add_get("/api/events", events_ws)
     r.add_get("/media/{sid}", media_ws)
@@ -934,11 +987,13 @@ def make_app(*, config_dir: pathlib.Path, public_base: Optional[str] = None,
             app[TASKS].append(asyncio.create_task(mgr.scope_feed.run()))
         if pool is not None:
             app[TASKS].append(asyncio.create_task(pool.run()))
+        app[TASKS].append(asyncio.create_task(app[BATCH].run()))
 
     async def on_shutdown(app: web.Application) -> None:
         for task in app[TASKS]:
             task.cancel()
         await app[PREVIEWS].close()
+        await app[BATCH].close()
         await mgr.shutdown()      # session.ended events go out first ...
         if pool is not None:
             await pool.close()    # (the workers' sessions ended: each exits, else is killed)

@@ -55,6 +55,9 @@ def main(argv: list[str] | None = None) -> None:
                          "on /dev is sent there (with --local-control)")
     ap.add_argument("--warm", action="store_true",
                     help="at start, load the usual transitions on every GPU in the background (production)")
+    ap.add_argument("--batch-gpus", type=int, nargs="*", default=[],
+                    help="GPUs that may run batch jobs (batch.py) while they have no session; never one that also "
+                         "drives a desktop.  None: no GPU batch work here")
     ap.add_argument("--log-level", default="INFO")
     args = ap.parse_args(argv)
 
@@ -73,7 +76,8 @@ def main(argv: list[str] | None = None) -> None:
                    show_bus_token_file=args.show_bus_token_file, latency_file=pathlib.Path(args.latency_file),
                    art_dir=pathlib.Path(args.art_dir), local_control=args.local_control,
                    app_url=args.app_url, warm=args.warm, workers=True,
-                   switches_file=pathlib.Path(args.switches_file) if args.switches_file else None)
+                   switches_file=pathlib.Path(args.switches_file) if args.switches_file else None,
+                   batch_gpus=args.batch_gpus)
     logging.getLogger("stream_service").info("listening on %s:%d (dev page: /dev)", args.host, args.port)
     web.run_app(app, host=args.host, port=args.port, print=None, access_log=None,
                 shutdown_timeout=10.0)
