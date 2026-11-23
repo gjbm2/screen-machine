@@ -15,20 +15,24 @@ export function usePublishDestinations() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let live = true;
     async function fetchDestinations() {
       try {
         const data = await publishApi.getPublishDestinations();
+        if (!live) return;
         setDestinations(data);
         setError(null);
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to fetch publish destinations');
+        if (live) setError(err instanceof Error ? err.message : 'Failed to fetch publish destinations');
       } finally {
-        setLoading(false);
+        if (live) setLoading(false);
       }
     }
 
     fetchDestinations();
-  }, []);
+    return () => { live = false; };
+    // read again when the viewer changes or the hidden buckets open or close (routes/auth/lock.py)
+  }, [viewer.email, viewer.unlocked_until]);
 
   // Filter out headless destinations and hidden destinations (except _recent)
   const nonHeadlessDestinations = useMemo(() => {

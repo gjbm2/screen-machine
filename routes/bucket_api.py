@@ -66,7 +66,8 @@ def list_buckets():
     """List all buckets (only destinations with has_bucket=true)"""
     dests = _load_json_once("publish_destinations", "publish-destinations.json")
     #return jsonify([d["id"] for d in dests])
-    return jsonify([d["id"] for d in dests if d.get("has_bucket")])
+    from routes.auth import lock
+    return jsonify([d["id"] for d in dests if d.get("has_bucket") and not lock.hidden(d["id"])])
 
 @buckets_bp.route("/buckets/", methods=["POST"])
 def create_bucket():

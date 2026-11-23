@@ -161,7 +161,19 @@
     "headless": true,
     "type": "output_file",
     "has_bucket": true,
-    "description": "Publish to cloud storage"
+    "description": "Publish to cloud storage",
+    "cloud": true
+  },
+  {
+    "id": "private",
+    "name": "Private",
+    "icon": "LockKeyhole",
+    "headless": true,
+    "type": "output_file",
+    "has_bucket": true,
+    "cloud": true,
+    "locked": true,
+    "description": "Hidden until unlocked"
   },
   {
     "id": "greg-mobile",

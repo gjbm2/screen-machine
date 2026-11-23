@@ -20,15 +20,32 @@ publish_destinations = _load_json_once("publish_destinations", PUBLISH_DESTINATI
 # MAC); no frontend code reads them, but this endpoint is public.
 _PRIVATE_DESTINATION_KEYS = ("samsung-token", "ip-address", "mac")
 
+def _visible(d):
+    """Hidden buckets only once unlocked, and a person's cloud only to them and the admins (routes/auth)."""
+    from routes import auth
+    from routes.auth import lock
+    if lock.hidden(d.get("id")):
+        return False
+    return not d.get("owner") or not auth.active() or auth.can_use_destination(d.get("id"))
+
+
+def _shown(d):
+    from routes import auth
+    out = {k: v for k, v in d.items() if k not in _PRIVATE_DESTINATION_KEYS}
+    if d.get("owner") and auth.active() and auth.viewer().email == d["owner"]:
+        out["access"] = "guest"  # their own cloud: the page offers it to them
+    return out
+
+
 @publish_api.route('/publish-destinations', methods=['GET'])
 def get_publish_destinations():
     """Get all available publish destinations (read fresh: Settings > Screens changes a screen's reframe)"""
     try:
         publish_destinations = _load_json_once("publish_destinations", PUBLISH_DESTINATIONS_FILE)
         return jsonify([
-            {k: v for k, v in d.items() if k not in _PRIVATE_DESTINATION_KEYS}
-            if isinstance(d, dict) else d
+            _shown(d) if isinstance(d, dict) else d
             for d in publish_destinations
+            if not isinstance(d, dict) or _visible(d)
         ])
     except Exception as e:
         logging.error(f"Error getting publish destinations: {str(e)}")

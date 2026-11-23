@@ -1,11 +1,12 @@
 """Sign-in API (docs/ACCOUNTS.md): who am I, sign in with Google, sign out; the people and their roles (Settings ›
 People, admins only by config/auth/gates.yaml); the deployment's private catalogue for those allowed it."""
 import threading
+import time
 
 import requests
 from flask import Blueprint, jsonify, request
 
-from routes.auth import core, spaces
+from routes.auth import core, lock, spaces
 from utils.logger import info, warning
 
 auth_api = Blueprint("auth_api", __name__)
@@ -23,6 +24,11 @@ def _me():
         "email": v.email,
         "name": v.name,
         "role": v.role,
+        # the hidden buckets (lock.py): whether this viewer may unlock them, whether a PIN is chosen, and until when
+        # this browser has them open (epoch seconds; null while locked)
+        "can_unlock": v.admin and bool(lock.locked_ids()),
+        "pin_set": v.admin and lock.pin_set(),
+        "unlocked_until": lock.until(),
     }
 
 
@@ -82,6 +88,37 @@ def google_sign_in():
 def sign_out():
     response = jsonify({"signed_in": False})
     response.delete_cookie(core.SESSION_COOKIE, path="/")
+    return response
+
+
+# ---------------------------------------------------------------- the hidden buckets (lock.py)
+
+@auth_api.route("/auth/unlock", methods=["POST"])
+def unlock():
+    """{pin}: shows the hidden buckets to this browser for lock.MINUTES. Admins only (config/auth/gates.yaml). The
+    first PIN an admin types becomes the PIN."""
+    v = core.viewer()
+    if not v.admin:
+        return jsonify({"error": "only an admin can unlock"}), 403
+    pin = str((request.get_json(silent=True) or {}).get("pin") or "").strip()
+    if len(pin) < lock.MIN_PIN:
+        return jsonify({"error": f"the PIN has at least {lock.MIN_PIN} characters"}), 400
+    chose = not lock.pin_set()
+    if not lock.check_pin(pin):
+        warning(f"[lock] wrong PIN from {v.email or request.remote_addr}")
+        time.sleep(1)  # slows guessing
+        return jsonify({"error": "wrong PIN"}), 401
+    until = time.time() + lock.MINUTES * 60
+    response = jsonify({**_me(), "pin_set": True, "unlocked_until": until})
+    lock.set_unlock(response, v.email, until)
+    info(f"[lock] {'PIN chosen; ' if chose else ''}unlocked by {v.email or request.remote_addr} for {lock.MINUTES} min")
+    return response
+
+
+@auth_api.route("/auth/lock", methods=["POST"])
+def lock_now():
+    response = jsonify({**_me(), "unlocked_until": None})
+    lock.clear_unlock(response)
     return response
 
 

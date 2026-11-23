@@ -88,6 +88,10 @@ def get_destination(dest_id: str) -> dict[str, Any]:
     for d in publish_destinations:
         if d["id"] == dest_id:
             return d
+    from routes.auth.clouds import clouds  # someone's own cloud, made from the people (routes/auth/clouds.py)
+    for d in clouds():
+        if d["id"] == dest_id:
+            return d
     raise KeyError(f"Unknown publish_destination_id '{dest_id}'")
 
 # ─── Public wrapper ─────────────────────────────────────────────────────

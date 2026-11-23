@@ -13,6 +13,9 @@ interface RawPublishDestination {
   hidden?: boolean;
   groups?: string[];
   access?: 'guest' | 'approved' | 'admin';
+  cloud?: boolean;
+  owner?: string;
+  locked?: boolean;
 }
 
 /**
@@ -128,6 +131,9 @@ export async function getPublishDestinations(includeRecent: boolean = false): Pr
       hidden: dest.hidden || false,
       groups: dest.groups || [],
       access: dest.access,
+      cloud: dest.cloud || false,
+      owner: dest.owner,
+      locked: dest.locked || false,
     }));
 }
 

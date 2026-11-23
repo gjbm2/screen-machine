@@ -76,6 +76,22 @@ with a role to pick, and adds someone by e-mail before they first sign in. The l
     what the pill draws (state, stage, times), with nothing of what was asked for or made.
 - Signing in moves the browser's anonymous images into the account.
 
+## Clouds and the hidden Private bucket
+
+- The Generator page's Cloud tab is a menu of cloud stores: destinations with `"cloud": true` (the house's Cloud,
+  Private) and each person's own cloud.
+- **Each person's own cloud** (`routes/auth/clouds.py`): every signed-in person who isn't an admin has one
+  (`cloud-<hash of their e-mail>`, "<first name>'s cloud"), made from `accounts.yaml` and who has signed in, and added
+  to the destinations as they are read. It is never written to `publish-destinations.json`. They see only their own;
+  admins see all of them. A shared cloud for a group is for later.
+- **Hidden buckets** (`routes/auth/lock.py`): a destination with `"locked": true` (Private) is left out of every list
+  and answers 404 to every call and `/output/<bucket>/` file until an admin unlocks this browser. To unlock, long-press
+  the Cloud tab and type the PIN. It then shows for 30 minutes, or until someone locks it: long-press again, or
+  "Lock now" in the Cloud menu.
+  - The first PIN typed becomes the PIN; its hash is kept in `private/lock.yaml`. Delete that file to choose another.
+  - The unlock is a signed `sm_unlock` cookie bound to the account. The lock applies even with accounts off.
+  - Processes on this machine and schedules always see the hidden buckets.
+
 ## Not yet
 
 - room_service's own setup routes (`:8700`, `/rs/*`: lights patch, modes editor, devices, remote learning) are not

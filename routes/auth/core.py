@@ -100,14 +100,14 @@ def active():
 
 # ---------------------------------------------------------------- session cookie
 
-def _signer():
+def _signer(salt="sm-session"):
     key_path = smconfig.secret("session.key")
     if not key_path.exists():
         key_path.parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(key_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         with os.fdopen(fd, "w") as f:
             f.write(secrets.token_hex(32))
-    return URLSafeTimedSerializer(key_path.read_text().strip(), salt="sm-session")
+    return URLSafeTimedSerializer(key_path.read_text().strip(), salt=salt)
 
 
 def session_value(email, name):
@@ -130,8 +130,8 @@ def https():
     return request.headers.get("X-Forwarded-Proto") == "https" or request.is_secure
 
 
-def set_cookie(response, name, value, days=COOKIE_DAYS):
-    response.set_cookie(name, value, max_age=days * 86400, httponly=True, samesite="Lax", secure=https(), path="/")
+def set_cookie(response, name, value, days=COOKIE_DAYS, seconds=None):
+    response.set_cookie(name, value, max_age=seconds if seconds is not None else days * 86400, httponly=True, samesite="Lax", secure=https(), path="/")
 
 
 # ---------------------------------------------------------------- the viewer
@@ -193,7 +193,13 @@ def after_request(response):
 # ---------------------------------------------------------------- what they may see
 
 def destination_access(dest_id):
-    """The least role that may see and use a destination: its `access` in publish-destinations.json, else admin."""
+    """The least role that may see and use a destination: its `access` in publish-destinations.json, else admin. A
+    person's own cloud (clouds.py) is theirs and the admins'."""
+    from routes.auth import clouds
+    owner = clouds.owner_of(dest_id)
+    if owner:
+        from flask import has_request_context
+        return "guest" if has_request_context() and viewer().email == owner else "admin"
     try:
         for d in smconfig.destinations():
             if d.get("id") == dest_id:
@@ -214,6 +220,9 @@ def private_ok():
 
 
 def can_use_destination(dest_id):
+    from routes.auth import lock
+    if lock.hidden(dest_id):
+        return False
     return not active() or viewer().at_least(destination_access(dest_id))
 
 

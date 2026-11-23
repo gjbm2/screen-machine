@@ -41,6 +41,10 @@ def app():
     @app.route("/api/<path:rest>", methods=["GET", "POST", "PUT", "DELETE"])
     def anything(rest):
         return jsonify({"ok": True, "space": auth.own_space(mint=False)})
+
+    @app.route("/output/<path:rest>")
+    def output(rest):
+        return "file"
     return app
 
 
@@ -104,7 +108,7 @@ def test_a_browser_gets_one_space_and_keeps_it(on, app):
     r = guest.get("/api/auth/me")
     me = r.get_json()
     assert me == {"accounts": True, "google_client_id": "cid", "signed_in": False, "email": None, "name": None,
-                  "role": "guest"}
+                  "role": "guest", "can_unlock": False, "pin_set": False, "unlocked_until": None}
     cookie = guest.get_cookie(core.SPACE_COOKIE)
     assert cookie and cookie.http_only
     assert guest.get("/api/x").get_json()["space"] == "g:" + cookie.value
@@ -244,3 +248,65 @@ def test_catalogue_and_private_templates_follow_the_caller(on, app, monkeypatch,
     monkeypatch.setattr(flask, "has_request_context", lambda: False)  # work with no request behind it
     assert [w["id"] for w in utils._load_json_once("workflow", "workflows.json")] == ["a.json", "p.json"]
     assert utils.dict_substitute("main.txt.j2") == "sharedPRIVATE"
+
+
+@pytest.fixture
+def hidden(on, monkeypatch, tmp_path):
+    """`on`, plus a hidden bucket (lock.py) and a fresh PIN file."""
+    from routes.auth import clouds, lock
+    monkeypatch.setattr(core.smconfig, "destinations",
+                        lambda *a: DESTS + [{"id": "private", "has_bucket": True, "locked": True}])
+    monkeypatch.setattr(lock, "_pin_file", lambda: tmp_path / "private" / "lock.yaml")
+    monkeypatch.setattr(lock, "_ids", {"at": None, "ids": frozenset()})
+    monkeypatch.setattr(clouds, "_cache", {"at": None, "clouds": []})
+    return lock
+
+
+def test_hidden_bucket_needs_an_admin_and_the_pin(hidden, app, monkeypatch):
+    lock = hidden
+    boss, kid = client_as(app, "boss@x.com"), client_as(app, "kid@x.com")
+    for c in (boss, kid, client_as(app)):
+        assert c.get("/api/buckets/private/complete").status_code == 404
+        assert c.get("/output/private/a.jpg").status_code == 404
+        assert c.post("/api/buckets/add_image_to_new_bucket", json={"source_publish_destination": "_recent",
+                      "target_publish_destination": "private"}).status_code == 404
+    assert client_as(app, remote="127.0.0.1").get("/api/buckets/private/complete").status_code == 200
+    me = boss.get("/api/auth/me").get_json()
+    assert me["can_unlock"] and not me["pin_set"] and me["unlocked_until"] is None
+    assert kid.post("/api/auth/unlock", json={"pin": "1234"}).status_code == 403
+    assert boss.post("/api/auth/unlock", json={"pin": "12"}).status_code == 400
+    r = boss.post("/api/auth/unlock", json={"pin": "1234"})       # the first PIN becomes the PIN
+    assert r.status_code == 200 and r.get_json()["unlocked_until"] > 0 and lock.pin_set()
+    assert boss.get("/api/buckets/private/complete").status_code == 200
+    assert boss.get("/output/private/a.jpg").status_code == 200 and boss.get("/output/cloud/a.jpg").status_code == 200
+    assert kid.get("/api/buckets/private/complete").status_code == 404   # one browser's unlock only
+    boss.post("/api/auth/lock")
+    assert boss.get("/api/buckets/private/complete").status_code == 404
+    monkeypatch.setattr("time.sleep", lambda s: None)
+    assert boss.post("/api/auth/unlock", json={"pin": "9999"}).status_code == 401
+    assert boss.post("/api/auth/unlock", json={"pin": "1234"}).status_code == 200
+    # 30 minutes on, it is hidden again
+    import time as _time
+    real = _time.time
+    monkeypatch.setattr(_time, "time", lambda: real() + lock.MINUTES * 60 + 1)
+    assert boss.get("/api/buckets/private/complete").status_code == 404
+
+
+def test_hidden_bucket_stays_hidden_with_accounts_off(hidden, app, monkeypatch):
+    monkeypatch.setattr(core, "active", lambda: False)
+    monkeypatch.setattr(gates, "active", lambda: False)
+    c = client_as(app)
+    assert c.get("/api/buckets/private/complete").status_code == 404
+    assert c.post("/api/auth/unlock", json={"pin": "4321"}).status_code == 200   # everyone is an admin
+    assert c.get("/api/buckets/private/complete").status_code == 200
+
+
+def test_each_person_has_their_own_cloud(hidden, app):
+    from routes.auth import clouds
+    kid_cloud = clouds.cloud_id("kid@x.com")
+    assert [d["id"] for d in clouds.clouds()] == [kid_cloud]          # admins have none of their own
+    assert clouds.clouds()[0]["name"] == "Kid's cloud" and clouds.owner_of(kid_cloud) == "kid@x.com"
+    assert client_as(app, "kid@x.com").get(f"/api/buckets/{kid_cloud}/complete").status_code == 200
+    assert client_as(app, "boss@x.com").get(f"/api/buckets/{kid_cloud}/complete").status_code == 200
+    assert client_as(app, "stranger@x.com").get(f"/api/buckets/{kid_cloud}/complete").status_code == 403
+    assert client_as(app).get(f"/api/buckets/{kid_cloud}/complete").status_code == 401

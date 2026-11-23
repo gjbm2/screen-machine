@@ -217,7 +217,19 @@ def _load_json_once(cache_key: str, filename: str, force_reload: bool = False) -
             "timestamp": mtime
         }
 
-    return _json_cache[cache_key]["data"]
+    data = _json_cache[cache_key]["data"]
+    if Path(filename).name == "publish-destinations.json":
+        data = data + _people_clouds()  # everyone's own cloud, made from the people (routes/auth/clouds.py)
+    return data
+
+
+def _people_clouds():
+    try:
+        from routes.auth.clouds import clouds
+        return clouds()
+    except Exception as e:
+        warning(f"[_load_json_once] people's clouds left out: {e}")
+        return []
 
 def fuzzy_match(name, candidates, key="name"):
     """Fuzzy match input name to item in candidate list by key."""

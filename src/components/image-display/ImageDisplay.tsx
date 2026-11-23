@@ -9,8 +9,11 @@ import * as LucideIcons from 'lucide-react';
 import { BucketGridView } from './BucketGridView';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
 import ViewModeSelector from './ViewModeSelector';
-import { CirclePause, CirclePlay, CircleStop, Settings, Image, ImagePlus, ChevronRight, ChevronLeft, Copy, Send, Share, ClockIcon, Layers } from 'lucide-react';
+import { CirclePause, CirclePlay, CircleStop, Settings, Image, ImagePlus, ChevronRight, ChevronLeft, ChevronDown, Copy, Send, Share, ClockIcon, Layers } from 'lucide-react';
 import { AllBucketsView } from './AllBucketsView';
+import { CloudMenu } from './CloudMenu';
+import { UnlockDialog } from './UnlockDialog';
+import { lockHidden, useViewer } from '@/shared/auth/viewer';
 
 /** The All buckets tab's id (a pseudo-bucket: no real bucket may have this name). */
 const ALL_BUCKETS_TAB = '__all';
@@ -83,7 +86,12 @@ interface DestinationTab {
   highlight: boolean;
   file: string | null;
   headless?: boolean;
+  /** The Cloud tab (it shows the cloud store picked); `menu` when there are several to pick from. */
+  cloud?: { menu: boolean };
 }
+
+/** How long a press on the Cloud tab is held to unlock or lock the hidden buckets. */
+const LONG_PRESS_MS = 700;
 
 // Height (in px) of the tab bar – used for spacer when it becomes fixed
 const TAB_BAR_HEIGHT = 48;
@@ -91,6 +99,15 @@ const TAB_BAR_HEIGHT = 48;
 export function ImageDisplay(props: ImageDisplayProps) {
   const { destinationsWithBuckets, loading: destinationsLoading } = usePublishDestinations();
   const [selectedTab, setSelectedTab] = useState<string>('recent');
+  // The cloud stores (owner, 23 Nov) share one Cloud tab: the house's Cloud, Private (hidden until an admin unlocks it
+  // with a long press and the PIN, routes/auth/lock.py), each person's own (routes/auth/clouds.py).
+  const viewer = useViewer();
+  const clouds = useMemo(() => destinationsWithBuckets.filter(d => d.cloud), [destinationsWithBuckets]);
+  const [cloudPick, setCloudPick] = useState<string | null>(null);
+  const cloud = clouds.find(c => c.id === cloudPick) ?? clouds[0];
+  const [cloudMenuAt, setCloudMenuAt] = useState<DOMRect | null>(null);
+  const [unlocking, setUnlocking] = useState(false);
+  const openLocked = useRef(false);   // just unlocked: show the hidden cloud once the list has it
   // Only the screens' live states (the tab dots), so a room status frame that changes nothing else doesn't
   // re-render the generator (it re-rendered every ~1 s and the grid lost its hover state, owner 28 Oct).
   const liveKey = useRoomLinkSelect((s) =>
@@ -221,17 +238,21 @@ export function ImageDisplay(props: ImageDisplayProps) {
         file: '_recent',
         headless: true
       } as DestinationTab,
-      ...destinationsWithBuckets.map(dest => {
+      ...destinationsWithBuckets.flatMap(d => {
+        // the cloud stores: one tab, where the first of them is, showing the one picked
+        if (d.cloud && d.id !== clouds[0]?.id) return [];
+        const dest = d.cloud && cloud ? cloud : d;
         // Get the icon component from Lucide icons if specified
         const IconComponent = dest.icon ? (LucideIcons as any)[dest.icon] : Image;
-        return {
+        return [{
           id: dest.id,
           label: dest.name,
           icon: <IconComponent className="h-4 w-4 mr-2" />,
           highlight: false,
           file: dest.file || dest.id,
-          headless: dest.headless || false
-        };
+          headless: dest.headless || false,
+          ...(d.cloud ? { cloud: { menu: clouds.length > 1 } } : {}),
+        } as DestinationTab];
       }),
       // every bucket's saved pictures together, browsed by tag (owner, 28 Oct); not a real bucket, so no drops
       {
@@ -243,7 +264,52 @@ export function ImageDisplay(props: ImageDisplayProps) {
         headless: true
       } as DestinationTab,
     ];
-  }, [destinationsWithBuckets]);
+  }, [destinationsWithBuckets, clouds, cloud]);
+
+  // A cloud store that went (locked again, or the list changed): back to the first one. Just unlocked: show Private.
+  useEffect(() => {
+    if (openLocked.current) {
+      const hidden = clouds.find(c => c.locked);
+      if (hidden) {
+        openLocked.current = false;
+        setCloudPick(hidden.id);
+        setSelectedTab(hidden.id);
+        return;
+      }
+    }
+    if (cloudPick && !clouds.some(c => c.id === cloudPick)) {
+      setCloudPick(null);
+      setSelectedTab(t => (t === cloudPick ? clouds[0]?.id ?? 'recent' : t));
+    }
+  }, [clouds, cloudPick]);
+
+  const pickCloud = (id: string) => {
+    setCloudPick(id);
+    setCloudMenuAt(null);
+    handleTabClick(id);
+  };
+
+  // A long press on the Cloud tab: an admin unlocks the hidden buckets (the PIN), or locks them again.
+  const press = useRef<{ timer: ReturnType<typeof setTimeout> | null; long: boolean }>({ timer: null, long: false });
+  const endPress = () => {
+    if (press.current.timer) clearTimeout(press.current.timer);
+    press.current.timer = null;
+  };
+  const startPress = (tab: DestinationTab) => {
+    endPress();
+    press.current.long = false;
+    if (!tab.cloud || !(viewer.can_unlock || viewer.unlocked_until)) return;
+    press.current.timer = setTimeout(() => {
+      press.current = { timer: null, long: true };
+      navigator.vibrate?.(15);
+      setCloudMenuAt(null);
+      if (viewer.unlocked_until) {
+        lockHidden().then(() => toast('Locked')).catch(() => toast.error('Could not lock'));
+      } else {
+        setUnlocking(true);
+      }
+    }, LONG_PRESS_MS);
+  };
 
   // ?publish=<id> (the Room page's "Art" link, the TV QR codes) opens that screen's tab, once.
   const publishParamApplied = useRef(false);
@@ -251,7 +317,10 @@ export function ImageDisplay(props: ImageDisplayProps) {
     if (publishParamApplied.current || destinationsWithBuckets.length === 0) return;
     publishParamApplied.current = true;
     const want = new URLSearchParams(window.location.search).get('publish');
-    if (want && destinationsWithBuckets.some(d => d.id === want)) setSelectedTab(want);
+    if (want && destinationsWithBuckets.some(d => d.id === want)) {
+      setSelectedTab(want);
+      if (clouds.some(c => c.id === want)) setCloudPick(want);
+    }
   }, [destinationsWithBuckets]);
 
   // Find file property for a destination ID
@@ -748,9 +817,21 @@ export function ImageDisplay(props: ImageDisplayProps) {
         ref={setNodeRef as React.RefObject<HTMLButtonElement>}
         key={tab.id}
         data-tab-id={tab.id}
-        onClick={() => handleTabClick(tab.id)}
+        onClick={(e) => {
+          if (press.current.long) {   // that was a long press, not a tap
+            press.current.long = false;
+            return;
+          }
+          handleTabClick(tab.id);
+          if (tab.cloud?.menu) setCloudMenuAt(e.currentTarget.getBoundingClientRect());
+        }}
+        onPointerDown={() => startPress(tab)}
+        onPointerUp={endPress}
+        onPointerLeave={endPress}
+        onPointerCancel={endPress}
+        onContextMenu={tab.cloud ? (e) => e.preventDefault() : undefined}
         className={`px-2 py-1.5 text-xs sm:text-sm sm:px-3 sm:py-2 inline-flex items-center rounded-md transition-colors
-          relative
+          relative ${tab.cloud ? 'select-none [-webkit-touch-callout:none]' : ''}
           ${isDroppable && isOver ? 'ring-2 ring-primary' : ''}
           ${tab.highlight && selectedTab === tab.id 
             ? 'bg-primary text-primary-foreground' 
@@ -765,6 +846,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
         )}
         {tab.icon}
         <span className="truncate max-w-[60px] sm:max-w-[100px]">{tab.label}</span>
+        {tab.cloud?.menu && <ChevronDown className="ml-0.5 h-3.5 w-3.5 shrink-0 opacity-60" />}
         {(() => {
           // Live screens are marked on their tab (red), and screens on the way in or out (amber).
           const ls = liveStates[tab.id] ?? liveStateOf(undefined);
@@ -871,6 +953,31 @@ export function ImageDisplay(props: ImageDisplayProps) {
           </div>
         </div>
       </div>
+
+      {cloudMenuAt && (
+        <CloudMenu
+          at={cloudMenuAt}
+          clouds={clouds}
+          current={cloud?.id}
+          unlockedUntil={viewer.unlocked_until}
+          onPick={pickCloud}
+          onLock={() => {
+            setCloudMenuAt(null);
+            lockHidden().then(() => toast('Locked')).catch(() => toast.error('Could not lock'));
+          }}
+          onClose={() => setCloudMenuAt(null)}
+        />
+      )}
+      <UnlockDialog
+        open={unlocking}
+        choosing={!viewer.pin_set}
+        onClose={() => setUnlocking(false)}
+        onUnlocked={() => {
+          setUnlocking(false);
+          openLocked.current = true;
+          toast('Unlocked for 30 minutes');
+        }}
+      />
 
       {/* Content area */}
       <div className="p-4">

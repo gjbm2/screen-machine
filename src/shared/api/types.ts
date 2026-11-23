@@ -114,6 +114,12 @@ export interface PublishDestination {
   groups?: string[];
   /** The least role that may see and use it once sign-in is on (docs/ACCOUNTS.md); none = admins only. */
   access?: 'guest' | 'approved' | 'admin';
+  /** One of the cloud stores, shown together under the Cloud tab: the house's, Private, each person's own. */
+  cloud?: boolean;
+  /** A person's own cloud: their e-mail (routes/auth/clouds.py). */
+  owner?: string;
+  /** Hidden until unlocked (routes/auth/lock.py): only listed while it is. */
+  locked?: boolean;
 }
 
 export interface GenerateImageParams {

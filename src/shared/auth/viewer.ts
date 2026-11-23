@@ -13,6 +13,10 @@ export interface Viewer {
   email: string | null;
   name: string | null;
   role: Role;
+  /** The hidden buckets (routes/auth/lock.py): this viewer may unlock them; a PIN is chosen; open until (epoch s). */
+  can_unlock?: boolean;
+  pin_set?: boolean;
+  unlocked_until?: number | null;
 }
 
 const ROLES: Role[] = ['guest', 'approved', 'admin'];
@@ -25,9 +29,17 @@ let loaded = false;
 let loading: Promise<void> | null = null;
 const listeners = new Set<() => void>();
 
+let relock: ReturnType<typeof setTimeout> | null = null;
+
 function set(next: Viewer) {
   state = next;
   loaded = true;
+  // the hidden buckets close by themselves: read again when the unlock runs out, so every list drops them
+  if (relock) clearTimeout(relock);
+  relock = null;
+  if (next.unlocked_until) {
+    relock = setTimeout(() => void refreshViewer(), Math.max(0, next.unlocked_until * 1000 - Date.now()) + 1000);
+  }
   listeners.forEach((l) => l());
 }
 
@@ -64,6 +76,21 @@ export async function signInWithGoogle(credential: string): Promise<Viewer> {
   const me = await requestJson<Viewer>('/auth/google', jsonInit('POST', { credential }), 'Sign-in failed');
   set(me);
   return me;
+}
+
+/** Shows the hidden buckets to this browser for 30 minutes (admins; the first PIN typed becomes the PIN). Rejects
+ * with the server's reason (e.g. "wrong PIN"). */
+export async function unlockHidden(pin: string): Promise<Viewer> {
+  const r = await send('/auth/unlock', jsonInit('POST', { pin }));
+  const body = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(body.error || 'Could not unlock');
+  set(body as Viewer);
+  return body as Viewer;
+}
+
+export async function lockHidden(): Promise<void> {
+  const me = await requestJson<Viewer>('/auth/lock', { method: 'POST' }, 'Could not lock');
+  set(me);
 }
 
 export async function signOut(): Promise<void> {

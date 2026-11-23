@@ -42,6 +42,7 @@ rules:
 
   # --- the rest of the setup
   - {path: '^/api/auth/people$', role: admin}   # Settings › People: who has which role
+  - {path: '^/api/auth/unlock$', role: admin}   # the hidden buckets' PIN (routes/auth/lock.py)
   - {path: '^/api/bakeoff/', role: admin}
   - {path: '^/api/art-tags/sweep$', role: admin}
   - {path: '^/api/files', role: admin}
