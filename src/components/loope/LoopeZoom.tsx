@@ -47,6 +47,9 @@ const LoopeZoom: React.FC<{ origin: ZoomOrigin; onClose: () => void }> = ({ orig
   // The overlay is fixed inset-0, i.e. the documentElement's client box.
   const [vp, setVp] = useState(() => ({ w: document.documentElement.clientWidth, h: document.documentElement.clientHeight }));
   const [playing, setPlaying] = useState(false);
+  // a clip's scrub bar: where it is and how long it runs
+  const [time, setTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   // Entering: the library must not re-align (it centres anything smaller than the screen), so the
   // media stays exactly where it was in the carousel until the entry is done.
   const [entering, setEntering] = useState(true);
@@ -339,6 +342,9 @@ const LoopeZoom: React.FC<{ origin: ZoomOrigin; onClose: () => void }> = ({ orig
               disablePictureInPicture
               onPlay={() => setPlaying(true)}
               onPause={() => setPlaying(false)}
+              onTimeUpdate={e => setTime(e.currentTarget.currentTime)}
+              onSeeked={e => setTime(e.currentTarget.currentTime)}
+              onLoadedMetadata={e => setDuration(Number.isFinite(e.currentTarget.duration) ? e.currentTarget.duration : 0)}
               style={mediaStyle}
             />
           ) : (
@@ -367,22 +373,53 @@ const LoopeZoom: React.FC<{ origin: ZoomOrigin; onClose: () => void }> = ({ orig
         <X className="h-5 w-5" />
       </Button>
 
+      {/* A clip's controls stay put at the bottom (the clip's own would zoom with it and catch the pinches) */}
       {origin.isVideo && (
-        <Button
+        <div
           data-zoom-ui
-          variant="ghost"
-          size="icon"
-          aria-label={playing ? 'Pause' : 'Play'}
-          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[1001] bg-black/80 hover:bg-black text-white rounded-full"
-          style={{ touchAction: 'manipulation' }}
-          onClick={e => { e.stopPropagation(); togglePlay(); }}
+          className="fixed inset-x-0 bottom-0 z-[1001] flex items-center gap-3 bg-gradient-to-t from-black/80 to-transparent px-4 pt-6 text-xs text-white tabular-nums"
+          style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))', opacity: leaving ? 0 : 1, transition: `opacity ${FADE_MS}ms` }}
         >
-          {playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            aria-label={playing ? 'Pause' : 'Play'}
+            className="shrink-0 rounded-full bg-black/60 text-white hover:bg-black"
+            style={{ touchAction: 'manipulation' }}
+            onClick={e => { e.stopPropagation(); togglePlay(); }}
+          >
+            {playing ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
+          </Button>
+          <span className="w-10 text-right">{clock(time)}</span>
+          <input
+            type="range"
+            aria-label="Position in the clip"
+            min={0}
+            max={duration || 0}
+            step={0.01}
+            value={Math.min(time, duration || 0)}
+            disabled={!duration}
+            className="h-6 min-w-0 flex-1 cursor-pointer accent-white"
+            style={{ touchAction: 'none' }}
+            onChange={e => {
+              const v = videoRef.current;
+              const t = Number(e.currentTarget.value);
+              setTime(t);
+              if (v) v.currentTime = t;
+            }}
+          />
+          <span className="w-10">{clock(duration)}</span>
+        </div>
       )}
     </div>,
     document.body,
   );
 };
+
+/** 0:07, 1:23 */
+function clock(s: number): string {
+  const t = Math.max(0, Math.floor(s || 0));
+  return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
+}
 
 export default LoopeZoom;
