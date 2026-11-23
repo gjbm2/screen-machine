@@ -22,7 +22,8 @@ websocket-server==0.6.4
 websockets>=11.0
 
 # Imaging / metadata tools
-pillow>=11.3.0          # 11.3 reads AVIF (19 Nov: an AVIF upload failed)
+pillow>=13.0.0          # 11.3 reads AVIF (19 Nov: an AVIF upload failed); 13.0 for heap-overflow fixes (Dependabot, 23 Nov)
+certifi>=2026.10.18     # drops the emSign roots (compromised intermediate CA keys)
 pillow-heif>=1.8.1     # iPhone HEIC photos
 piexif>=1.1.3
 python-xmp-toolkit>=2.0.1
