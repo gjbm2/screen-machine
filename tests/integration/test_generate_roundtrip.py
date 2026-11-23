@@ -409,6 +409,12 @@ def test_publishing_a_video_reaches_the_tv(house):
     result = house["publisher"].publish_to_destination(source=stored, publish_destination_id=SCREEN,
                                                        metadata={"type": "video"}, silent=True)
     assert result["success"], result
+    # its screen copy is made in the background (the ease, routes/clip_ease.py), which this stub can't have: as it is
+    deadline = time.time() + 60
+    while house["publisher"]._WHEN_PLACED and time.time() < deadline:
+        time.sleep(0.05)
+    with house["publisher"]._PLACE_LOCK:
+        pass
     shown = tv_shows(house["output"])
     assert shown.suffix == ".mp4" and shown.read_bytes() == stored.read_bytes()
 

@@ -22,6 +22,19 @@ from routes.bucketer import (
     save_meta
 )
 
+
+def _placed(timeout=120):
+    """A video's screen copy is made in the background (its ease, routes/clip_ease.py ease_video) while the screen keeps
+    its picture: wait until every such copy is placed."""
+    import time
+    import routes.publisher as publisher
+    end = time.time() + timeout
+    while publisher._WHEN_PLACED and time.time() < end:
+        time.sleep(0.05)
+    with publisher._PLACE_LOCK:     # the copy is placed under the lock its token leaves under
+        pass
+
+
 # Constants for testing
 TEST_JPG_FILENAME = "test_image.jpg"
 TEST_MP4_FILENAME = "test_video.mp4"
@@ -326,6 +339,7 @@ def test_publish_mp4_to_same_bucket(patch_publisher_functions):
     assert result["success"], f"Publishing failed: {result.get('error', 'Unknown error')}"
     
     # Check consistency
+    _placed()
     assert check_publishing_consistency(output_dir, "bucket_a", bucket_file.name, ".mp4")
     
     # Get published info and validate content
@@ -422,6 +436,7 @@ def test_publish_mp4_from_bucket_b_to_bucket_a(patch_publisher_functions):
     assert bucket_a_file != bucket_b_file.name, "File not renamed when copying to bucket_a"
     
     # Check consistency
+    _placed()
     assert check_publishing_consistency(output_dir, "bucket_a", bucket_a_file, ".mp4")
     
     # Get published info and validate content
