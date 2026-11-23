@@ -110,6 +110,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
   // opened by a drag held over the Cloud tab (owner, 23 Nov): its rows are drop zones, so the picture lands in the
   // cloud store picked
   const [cloudMenuDrop, setCloudMenuDrop] = useState(false);
+  const [cloudChosen, setCloudChosen] = useState<string | null>(null);   // the row a picture was dropped on
   const dragHold = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [unlocking, setUnlocking] = useState(false);
   const openLocked = useRef(false);   // just unlocked: show the hidden cloud once the list has it
@@ -581,9 +582,19 @@ export function ImageDisplay(props: ImageDisplayProps) {
     if (!contextMenu) return;
     
     const handleClickOutside = () => setContextMenu(null);
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setContextMenu(null);
     window.addEventListener('click', handleClickOutside);
-    return () => window.removeEventListener('click', handleClickOutside);
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('click', handleClickOutside);
+      window.removeEventListener('keydown', onKey);
+    };
   }, [contextMenu]);
+
+  // the Copy/Move choice answered or dismissed: the Cloud menu it cascaded from goes with it
+  useEffect(() => {
+    if (!contextMenu && cloudChosen) endDragHold();
+  }, [contextMenu, cloudChosen]);
 
   // Ref to track mouse position
   const mousePositionRef = useRef({ x: 0, y: 0 });
@@ -611,9 +622,16 @@ export function ImageDisplay(props: ImageDisplayProps) {
   const handleDragEnd = (event: DragEndEvent) => {
     // Always clear overlay state first
     setDraggedImageData(null);
-    endDragHold();
 
     const { active, over } = event;
+    // dropped on a row of the Cloud menu: the menu stays open while the Copy/Move choice is asked beside that row
+    const onCloudRow = typeof over?.id === 'string' && over.id.endsWith('#menu');
+    if (onCloudRow) {
+      if (dragHold.current) clearTimeout(dragHold.current);
+      dragHold.current = null;
+    } else {
+      endDragHold();
+    }
     if (!over) return;
 
     let activeData: any = active?.data?.current;
@@ -695,16 +713,26 @@ export function ImageDisplay(props: ImageDisplayProps) {
         }
       }
 
+      if (destId === selectedTab && onCloudRow) endDragHold();   // the cloud being shown: nothing to ask
+
       if (destId !== selectedTab) {
         // Find if the destination is headless
         const destInfo = destinationsWithBuckets.find(d => d.id === destId);
         const isHeadless = destInfo?.headless || false;
         
-        // Use the current mouse position that we've been tracking
-        const { x, y } = mousePositionRef.current;
+        // Use the current mouse position that we've been tracking; from a Cloud menu row, beside that row
+        let { x, y } = mousePositionRef.current;
+        const row = onCloudRow ? document.querySelector(`[data-cloud-row="${CSS.escape(destId)}"]`) : null;
+        if (row) {
+          const r = row.getBoundingClientRect();
+          const width = 230;
+          x = r.right + 4 + width <= window.innerWidth ? r.right + 4 : r.left - 4 - width >= 8 ? r.left - 4 - width : r.left;
+          y = x === r.left ? r.bottom + 2 : r.top;
+        }
         
         // Show context menu (prevent event bubbling that would close it immediately)
         setTimeout(() => {
+          if (row) setCloudChosen(destId);   // with the choice, in one render: the menu must not close between them
           setContextMenu({
             x,
             y,
@@ -806,6 +834,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
   function endDragHold() {
     if (dragHold.current) clearTimeout(dragHold.current);
     dragHold.current = null;
+    setCloudChosen(null);
     setCloudMenuDrop((open) => {
       if (open) setCloudMenuAt(null);
       return false;
@@ -861,7 +890,6 @@ export function ImageDisplay(props: ImageDisplayProps) {
             return;
           }
           handleTabClick(tab.id);
-          if (tab.cloud?.menu) setCloudMenuAt(e.currentTarget.getBoundingClientRect());
         }}
         onPointerDown={() => startPress(tab)}
         onPointerUp={endPress}
@@ -884,7 +912,28 @@ export function ImageDisplay(props: ImageDisplayProps) {
         )}
         {tab.icon}
         <span className="truncate max-w-[60px] sm:max-w-[100px]">{tab.label}</span>
-        {tab.cloud?.menu && <ChevronDown className="ml-0.5 h-3.5 w-3.5 shrink-0 opacity-60" />}
+        {/* a split tab (owner, 23 Nov: the whole tab opening a menu was "unexpected"): the name opens the cloud shown,
+            the arrow the list of clouds */}
+        {tab.cloud?.menu && (
+          <span
+            role="button"
+            aria-label="Choose a cloud"
+            aria-haspopup="menu"
+            aria-expanded={!!cloudMenuAt}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (press.current.long) {
+                press.current.long = false;
+                return;
+              }
+              const box = (e.currentTarget.closest('button') as HTMLElement).getBoundingClientRect();
+              setCloudMenuAt(open => (open ? null : box));
+            }}
+            className="-my-1 -mr-1 ml-1 inline-flex items-center rounded border-l border-stone-200 px-1 py-1 hover:bg-stone-200/70"
+          >
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
+          </span>
+        )}
         {(() => {
           // Live screens are marked on their tab (red), and screens on the way in or out (amber).
           const ls = liveStates[tab.id] ?? liveStateOf(undefined);
@@ -999,6 +1048,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
           current={cloud?.id}
           unlockedUntil={cloudMenuDrop ? null : viewer.unlocked_until}
           dropping={cloudMenuDrop}
+          chosen={cloudChosen}
           onPick={pickCloud}
           onLock={() => {
             setCloudMenuAt(null);
@@ -1092,7 +1142,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
       {/* Context menu */}
       {contextMenu && (
         <div
-          className="fixed z-50 min-w-[180px] overflow-hidden rounded-md border bg-background p-1 shadow-md animate-in fade-in-80"
+          className="fixed z-[62] min-w-[180px] overflow-hidden rounded-md border bg-background p-1 shadow-md animate-in fade-in-80"
           style={{
             top: `${contextMenu.y}px`,
             left: `${contextMenu.x}px`
