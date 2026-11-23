@@ -572,6 +572,8 @@ export function ImageDisplay(props: ImageDisplayProps) {
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
+    /** beside a Cloud menu row on its left: the menu's right edge (px from the window's right), so it never covers it */
+    right?: number;
     destId: string;
     imageId: string;
     isHeadless: boolean;
@@ -722,12 +724,16 @@ export function ImageDisplay(props: ImageDisplayProps) {
         
         // Use the current mouse position that we've been tracking; from a Cloud menu row, beside that row
         let { x, y } = mousePositionRef.current;
+        let right: number | undefined;
         const row = onCloudRow ? document.querySelector(`[data-cloud-row="${CSS.escape(destId)}"]`) : null;
         if (row) {
+          // beside the row: to its right if the choice fits, else to its left, else (a phone) under it
           const r = row.getBoundingClientRect();
-          const width = 230;
-          x = r.right + 4 + width <= window.innerWidth ? r.right + 4 : r.left - 4 - width >= 8 ? r.left - 4 - width : r.left;
-          y = x === r.left ? r.bottom + 2 : r.top;
+          const width = 240;
+          y = r.top;
+          if (r.right + 4 + width <= window.innerWidth) x = r.right + 4;
+          else if (r.left - 4 - width >= 8) right = window.innerWidth - (r.left - 4);
+          else { x = r.left; y = r.bottom + 2; }
         }
         
         // Show context menu (prevent event bubbling that would close it immediately)
@@ -736,6 +742,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
           setContextMenu({
             x,
             y,
+            right,
             destId,
             imageId: activeId,
             isHeadless
@@ -1142,11 +1149,10 @@ export function ImageDisplay(props: ImageDisplayProps) {
       {/* Context menu */}
       {contextMenu && (
         <div
-          className="fixed z-[62] min-w-[180px] overflow-hidden rounded-md border bg-background p-1 shadow-md animate-in fade-in-80"
-          style={{
-            top: `${contextMenu.y}px`,
-            left: `${contextMenu.x}px`
-          }}
+          className="fixed z-[62] w-max min-w-[180px] overflow-hidden rounded-md border bg-background p-1 shadow-md animate-in fade-in-80"
+          style={contextMenu.right !== undefined
+            ? { top: `${contextMenu.y}px`, right: `${contextMenu.right}px` }
+            : { top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}
           onClick={(e) => e.stopPropagation()}
         >
           <Button
