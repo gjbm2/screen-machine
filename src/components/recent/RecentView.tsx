@@ -299,8 +299,9 @@ export const RecentView: React.FC<RecentViewProps> = ({
     try {
       const buckets = await publishApi.getPublishDestinations();
       
-      // Filter out hidden destinations like _recent
-      const visibleDestinations = buckets.filter(dest => !dest.headless && dest.has_bucket);
+      // every bucket, cloud stores included (owner, 23 Nov: Move to had no way into a cloud); the picture's menu
+      // offers only the screens (not headless) to Publish to
+      const visibleDestinations = buckets.filter(dest => dest.has_bucket && dest.id !== '_recent');
       
       setDestinations(visibleDestinations.map(bucket => ({
         id: bucket.id,
@@ -315,6 +316,11 @@ export const RecentView: React.FC<RecentViewProps> = ({
     }
   };
   
+  // read again when the hidden buckets open or close (routes/auth/lock.py)
+  useEffect(() => {
+    if (viewer.unlocked_until !== undefined) fetchDestinations();
+  }, [viewer.unlocked_until]);
+
   // Add this function to load active placeholders from localStorage at the top of the component
   const loadActivePlaceholdersFromStorage = (): PlaceholderInfo[] => {
     try {

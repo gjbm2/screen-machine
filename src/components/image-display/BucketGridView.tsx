@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { canUseDestination, useViewer, type Role } from '@/shared/auth/viewer';
 import { toast } from 'sonner';
 import { format, formatDistance } from 'date-fns';
 import { audioApi, bucketsApi, generationApi, publishApi, tagsApi } from '@/shared/api';
@@ -242,7 +243,8 @@ export const BucketGridView = ({
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showMaintenanceModal, setShowMaintenanceModal] = useState(false);
   const [currentPublishedImage, setCurrentPublishedImage] = useState<BucketImage | null>(null);
-  const [destinations, setDestinations] = useState<{id: string, name: string, headless?: boolean, has_bucket: boolean}[]>([]);
+  const [destinations, setDestinations] = useState<{id: string, name: string, headless?: boolean, has_bucket: boolean, access?: Role}[]>([]);
+  const viewer = useViewer();
   const [showFavoritesFirst, setShowFavoritesFirst] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -302,8 +304,12 @@ export const BucketGridView = ({
 
   useEffect(() => {
     fetchBucketDetails();
-    fetchDestinations();
   }, [destination]);
+
+  // read again when the hidden buckets open or close (routes/auth/lock.py), so Copy/Move to offers Private
+  useEffect(() => {
+    fetchDestinations();
+  }, [destination, viewer.email, viewer.unlocked_until]);
 
   useEffect(() => {
     // Detect iOS
@@ -320,7 +326,8 @@ export const BucketGridView = ({
         id: bucket.id,
         name: bucket.name || bucket.id,
         headless: bucket.headless || false,
-        has_bucket: bucket.has_bucket || false
+        has_bucket: bucket.has_bucket || false,
+        access: bucket.access,
       })));
       
       // Set hasBucket state for current destination
@@ -1640,13 +1647,11 @@ export const BucketGridView = ({
                   handleGenerateAgain(originalImage);
                 }
               }}
+              // every bucket they may use, cloud stores included (owner, 23 Nov: Move to had no way into a cloud); the
+              // menu offers only the screens (not headless) to Publish to
               publishDestinations={destinations
-                .filter(d => !d.headless) // Filter out headless destinations
-                .map(d => ({
-                  id: d.id,
-                  name: d.name,
-                  headless: false // Already filtered out headless ones
-                }))}
+                .filter(d => d.has_bucket && d.id !== destination && canUseDestination(viewer, d))
+                .map(d => ({ id: d.id, name: d.name, headless: !!d.headless }))}
               bucketId={destination}
               sectionVariant={section.variant === 'tagged' ? 'dated' : section.variant}
               onFullscreenClick={(img) => {
