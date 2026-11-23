@@ -426,9 +426,12 @@ def test_estimate_learns_only_since_the_graph_changed(store):
         past_job(store, "wf-a", generate=g, created=5_000.0 + g)
     est = Estimator(store, graph_changed=lambda wf: 5_000.0).estimate("wf-a")
     assert est["generate_s"] == 32.0 and est["samples"] == 3 and est["basis"] == "workflow"
-    # fewer than 3 since the change: its own older timings, not another workflow's
+    # one since the change: that one (a changed run is told by its own new timings from the first)
+    est = Estimator(store, graph_changed=lambda wf: 5_033.0).estimate("wf-a")
+    assert est["generate_s"] == 34.0 and est["samples"] == 1
+    # none since the change: its own older timings, not another workflow's
     past_job(store, "wf-b", generate=99)
-    est = Estimator(store, graph_changed=lambda wf: 5_031.0).estimate("wf-a")
+    est = Estimator(store, graph_changed=lambda wf: 5_100.0).estimate("wf-a")
     assert est["basis"] == "workflow" and est["samples"] == 6
 
 

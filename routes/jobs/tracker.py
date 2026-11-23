@@ -54,12 +54,32 @@ def is_active(job):
     return job.get("status") in ACTIVE
 
 
+# The code of a step a workflow's run has after its graph, by its catalogue entry's key (workflows.json): a screen
+# clip's ease (`loop`), which the renderer's GPU job makes
+RUN_STEPS = {"loop": ("routes/clip_ease.py", "stream_service/batch_jobs/ease.py")}
+
+
 def _graph_changed(workflow):
-    """When a workflow's graph file last changed (epoch s), for the estimate; None if there is no such file."""
+    """When a workflow's run last changed (epoch s), for the estimate: its graph file, or the code of a step it runs
+    after it (RUN_STEPS); None if there is no graph file."""
     import os
     from routes.utils import findfile
     path = findfile(workflow) if workflow and workflow.endswith(".json") else None
-    return os.path.getmtime(path) if path and os.path.isfile(path) else None
+    if not path or not os.path.isfile(path):
+        return None
+    changed = os.path.getmtime(path)
+    try:
+        from routes.generate import _load_json_once
+        entry = next((w for w in _load_json_once("workflow", "workflows.json") if w.get("id") == workflow), {})
+    except Exception:
+        entry = {}
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    for key, files in RUN_STEPS.items():
+        if entry.get(key):
+            for f in files:
+                if os.path.isfile(os.path.join(root, f)):
+                    changed = max(changed, os.path.getmtime(os.path.join(root, f)))
+    return changed
 
 
 class Subscription:

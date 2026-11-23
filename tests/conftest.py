@@ -6,6 +6,8 @@ from datetime import datetime
 # Alerting must never send real emails from test runs; utils/alerts honors
 # this env override before config.ALERTING_ENABLED (see utils/alerts/dispatcher.py)
 os.environ.setdefault("ALERTING_ENABLED", "0")
+# tests never send work to the house renderer's GPU (routes/clip_ease.py _on_gpu): their clips ease on the CPU
+os.environ.setdefault("CLIP_EASE_GPU", "0")
 # The generation job tracker (routes/jobs) must never write the live jobs.db from tests
 import tempfile as _tempfile
 os.environ.setdefault("JOBS_DB", os.path.join(_tempfile.mkdtemp(prefix="jobs_tests_"), "jobs.db"))

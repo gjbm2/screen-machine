@@ -9,8 +9,9 @@ deliberately never learned, so a cold start can't skew the estimate. A job that 
 progress frame (no generating_at) is not a sample.
 
 Each phase is the median over the last 30 completed jobs of the same workflow ("workflow", needs at
-least 3 samples; only jobs since its graph last changed once there are 3 of those, as a new step changes the
-time), else of any workflow ("all"), else fixed defaults ("default"). Clients turn it into a
+least 3 samples; only jobs since its run last changed, its graph or the code of a step it runs, from the first
+of those, as a new step changes the time: 23 Nov, a screen clip's ease went from ~4.5 min to ~30 s), else of any
+workflow ("all"), else fixed defaults ("default"). Clients turn it into a
 smoothly moving progress ring (src/shared/jobs/estimate.ts). Results are cached per workflow for 60 s,
 so a job update never costs a history scan."""
 import statistics
@@ -44,10 +45,10 @@ def phase_durations(job):
     return out if out["generate_s"] is not None else None
 
 
-def summarise(jobs, basis):
-    """The estimate dict from completed jobs (newest first), or None with fewer than MIN_SAMPLES."""
+def summarise(jobs, basis, min_samples=MIN_SAMPLES):
+    """The estimate dict from completed jobs (newest first), or None with fewer than min_samples."""
     samples = [d for d in (phase_durations(j) for j in jobs) if d is not None][:WINDOW]
-    if len(samples) < MIN_SAMPLES:
+    if len(samples) < min_samples:
         return None
     est = {}
     for name, _, _ in PHASES:
@@ -66,7 +67,7 @@ class Estimator:
 
     def __init__(self, store, cache_s=CACHE_S, clock=time.monotonic, graph_changed=None):
         self.store = store
-        self.graph_changed = graph_changed   # workflow -> when its graph last changed (epoch s), else None
+        self.graph_changed = graph_changed   # workflow -> when its run last changed (epoch s), else None
         self.cache_s = cache_s
         self.clock = clock
         self._lock = threading.Lock()
@@ -100,10 +101,11 @@ class Estimator:
                 except Exception:
                     since = None
             est = summarise(self.store.recent_completed(SAMPLE_STAMPS, workflow=workflow,
-                                                        limit=WINDOW, since=since), "workflow")
+                                                        limit=WINDOW, since=since), "workflow",
+                            min_samples=1 if since else MIN_SAMPLES)   # the new run's own timings from its first
             if est:
                 return est
-            if since:   # too few since the change: the workflow's own older timings are still nearer than others'
+            if since:   # none since the change: the workflow's own older timings are still nearer than others'
                 est = summarise(self.store.recent_completed(SAMPLE_STAMPS, workflow=workflow, limit=WINDOW),
                                 "workflow")
                 if est:

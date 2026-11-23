@@ -2,7 +2,7 @@
 // shows progress, manages expectation). One place for all of them, so they're easy to change. Used by the TV pill,
 // the generator's jobs dock and the Jobs page; the TVs show the stage only, never the time left.
 import type { Job } from '@/shared/api/jobs';
-import type { JobPhase } from './estimate';
+import { isEasing, type JobPhase } from './estimate';
 
 export const STAGE_WORDS = {
   preparing: 'Imagining', // refining the prompt, loading the workflow
@@ -42,10 +42,6 @@ const NEARLY_S = 15;
 
 type StageJob = Pick<Job, 'status' | 'kind' | 'stages' | 'stage_index' | 'cancel_requested'>;
 
-function stageName(job: StageJob): string | undefined {
-  return job.stage_index != null ? job.stages?.[job.stage_index]?.trim().toLowerCase() : undefined;
-}
-
 /** What it's doing now, in one or two plain words. `phase` from jobProgress / useJobProgress. */
 export function stageLabel(job: StageJob, phase: JobPhase): string {
   if (job.status === 'completed') return STAGE_WORDS.completed;
@@ -59,7 +55,7 @@ export function stageLabel(job: StageJob, phase: JobPhase): string {
       return STAGE_WORDS.waiting;
     case 'publishing':
       // a screen clip's ease is rendered here, minutes of it (the server names it as its own stage)
-      return stageName(job) === 'easing' ? STAGE_WORDS.smoothing : STAGE_WORDS.publishing;
+      return isEasing(job) ? STAGE_WORDS.smoothing : STAGE_WORDS.publishing;
     case 'generating': {
       const name = job.stage_index != null ? job.stages[job.stage_index] : undefined;
       const key = name ? STAGE_NAMES[name.trim().toLowerCase()] ?? 'working' : 'painting';

@@ -140,11 +140,99 @@ def fits(still_path, w, h):
         return False
 
 
-def ease_file(src, dst, play_s=30.0, ramp_s=8.0, settle_s=3.0, still=None, fps=FPS, ramp_out_s=None):
+def schedule(n, play_s, ramp_s, settle_s, fps, ramp_out_s=None):
+    """Each output frame of the ease: [its place in the n-frame source (a fractional frame), how far it has faded
+    into frame 0 (the last `settle_s`)]."""
+    frames = []
+    for k in range(int(round(play_s * fps)) + 1):
+        t = k / fps
+        wgt = 0.0
+        if settle_s and t > play_s - settle_s:
+            u = (t - (play_s - settle_s)) / settle_s
+            wgt = u * u * (3 - 2 * u)
+        frames.append([position(t, play_s, ramp_s, ramp_out_s) * (n - 1), wgt])
+    return frames
+
+
+# The GPU makes the ease when it can (owner, 23 Nov: "if we _are_ doing it locally it should be local GPU enabled"):
+# the renderer's batch queue (stream_service/batch_jobs/ease.py, on the GPU the deployment gives batch work), ~35 ms a
+# 4K frame against ~0.3 s here. A live TV on that GPU comes first (the job waits, or is restarted if the TV goes live
+# mid-way); after WAIT_LIVE_S of that the CPU makes it, at idle priority, the renderer's host threads being busy too.
+WAIT_LIVE_S = 480
+_idle = False   # the CPU took over from a job held back by a live TV
+
+
+def _on_gpu(src, dst, still, fps, frames, progress):
+    """The ease made on the renderer's GPU: how much of the picture moves, or None if the CPU must make it (no GPU
+    batch here, the renderer unreachable, the job failed, or it waited WAIT_LIVE_S behind a live TV)."""
+    global _idle
+    if os.environ.get("CLIP_EASE_GPU") == "0":     # off (the tests)
+        return None
+    import sys
+    import time
+    import requests
+    import smconfig
+    url = smconfig.url("room").rstrip("/") + "/renderer/api/batch"
+    args = {"src": os.path.abspath(src), "still": still and os.path.abspath(still), "dst": os.path.abspath(dst),
+            "fps": fps, "frames": frames}
+    try:
+        r = requests.post(url, json={"kind": "ease", "args": args}, timeout=10)
+        if r.status_code != 202:
+            print(f"GPU ease: the renderer answered {r.status_code}; on the CPU", file=sys.stderr)
+            return None
+        job = r.json()["id"]
+    except Exception as e:
+        print(f"GPU ease: no renderer ({e}); on the CPU", file=sys.stderr)
+        return None
+    held, misses, last = 0.0, 0, time.time()
+    while True:
+        time.sleep(0.5)
+        now = time.time()
+        try:
+            st = requests.get(f"{url}/{job}", timeout=10)
+            if st.status_code == 404:           # the renderer restarted and forgot it
+                return None
+            st, misses = st.json(), 0
+        except Exception:
+            misses += 1
+            if misses > 20:
+                return None
+            continue
+        if st.get("state") == "done":
+            with open(dst + ".json") as f:
+                motion = float(json.load(f)["motion"])
+            os.remove(dst + ".json")
+            return motion
+        if st.get("state") in ("failed", "cancelled"):
+            print(f"GPU ease {st.get('state')}: {st.get('error')}; on the CPU", file=sys.stderr)
+            return None
+        if st.get("state") == "running" and st.get("progress") is not None:
+            progress(float(st["progress"]))
+        held += (now - last) if st.get("waiting") else 0.0
+        last = now
+        if held > WAIT_LIVE_S:
+            print(f"GPU ease held {held:.0f} s ({st.get('waiting')}); on the CPU at idle priority", file=sys.stderr)
+            try:
+                requests.delete(f"{url}/{job}", timeout=10)
+            except Exception:
+                pass
+            _idle = True
+            return None
+
+
+def ease_file(src, dst, play_s=30.0, ramp_s=8.0, settle_s=3.0, still=None, fps=FPS, ramp_out_s=None,
+              progress=lambda f: None):
     """Render src (any clip) into dst on the eased curve, at the size of `still` when it is given (the full-size
     picture the clip was made from: see _OnTheStill), at `fps`; returns how much of the picture moves (mean |frame -
-    frame 0|)."""
+    frame 0|). On the renderer's GPU when it can (_on_gpu), else here; `progress` is told how far it is (0-1)."""
     w, h, n = _probe(src)
+    frames_out = schedule(n, play_s, ramp_s, settle_s, fps, ramp_out_s)
+    still = still if still and fits(still, w, h) else None
+    motion = _on_gpu(src, dst, still, fps, frames_out, progress)
+    if motion is not None:
+        return motion
+    if _idle:
+        os.sched_setscheduler(0, os.SCHED_IDLE, os.sched_param(0))   # ffmpeg below inherits it
     size = w * h * 3
     dec = subprocess.Popen(["ffmpeg", "-v", "error", "-i", src, "-f", "rawvideo", "-pix_fmt", "rgb24", "-"],
                            stdout=subprocess.PIPE)
@@ -156,6 +244,7 @@ def ease_file(src, dst, play_s=30.0, ramp_s=8.0, settle_s=3.0, still=None, fps=F
         return subprocess.Popen(["nice", "-n", "19", "ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt",
                                  "rgb24", "-s", f"{W}x{H}", "-r", f"{fps:g}", "-i", "-", "-an", "-c:v", "libx264",
                                  "-preset", "veryfast" if W > 2000 else "medium", "-crf", "17", "-pix_fmt", "yuv420p",
+                                 *(["-threads", "4"] if _idle else []),
                                  # a keyframe a second: the publisher's re-encode for quick stills has nothing to do
                                  "-g", str(max(1, round(fps))), "-keyint_min", str(max(1, round(fps))),
                                  "-movflags", "+faststart", dst], stdin=subprocess.PIPE)
@@ -182,20 +271,17 @@ def ease_file(src, dst, play_s=30.0, ramp_s=8.0, settle_s=3.0, still=None, fps=F
     enc = None
     try:
         first = frame(0).astype(np.float32)
-        if still and fits(still, w, h):
+        if still:
             lay = _OnTheStill(still, first, w, h)
         enc = encoder(*(lay.size if lay else (w, h)))
-        total = int(round(play_s * fps))
-        for k in range(total + 1):
-            t = k / fps
-            x = position(t, play_s, ramp_s, ramp_out_s) * (n - 1)
+        for k, (x, wgt) in enumerate(frames_out):
+            if k % 10 == 0:
+                progress(k / len(frames_out))
             i = int(x)
             a = frame(i).astype(np.float32)
             frac = x - i
             out = a if frac < 1e-3 else a + (frame(i + 1).astype(np.float32) - a) * frac
-            if settle_s and t > play_s - settle_s:
-                u = (t - (play_s - settle_s)) / settle_s
-                wgt = u * u * (3 - 2 * u)
+            if wgt:
                 out = out + (first - out) * wgt
             enc.stdin.write(lay(out).tobytes() if lay else np.clip(out + 0.5, 0, 255).astype(np.uint8).tobytes())
         frame(n - 1)                     # read on to the end, so the motion counts the whole clip
@@ -242,9 +328,9 @@ def _no_thp_stalls():
     _set_madvise_hugepage(False)
 
 
-def ease_result(source, loop, job_id, still=None):
+def ease_result(source, loop, job_id, still=None, progress=lambda f: None):
     """A finished job's clip (URL or file) rendered on the eased curve, onto the full-size `still` it was made from
-    when given: (new source path, `clip` metadata)."""
+    when given: (new source path, `clip` metadata). `progress` is told how far the ease is (0-1)."""
     from routes.result_source import read_bytes, save_inline
     with tempfile.TemporaryDirectory() as tmp:
         src, dst = os.path.join(tmp, "in.mp4"), os.path.join(tmp, "out.mp4")
@@ -253,12 +339,21 @@ def ease_result(source, loop, job_id, still=None):
         play, ramp, settle = loop.get("play_s", 30), loop.get("ramp_s", 8), loop.get("settle_s", 3)
         # in its own process: minutes of 4K work must not sit in Flask's (room_service lives there too)
         import sys
-        run = subprocess.run(["nice", "-n", "10", sys.executable, "-m", "routes.clip_ease", src, dst, str(play),
-                              str(ramp), str(settle), still or ""], capture_output=True, text=True,
-                             cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-        if run.returncode != 0:
-            raise RuntimeError(f"easing the clip failed: {run.stderr.strip()[-300:]}")
-        motion = float(run.stdout.strip().splitlines()[-1])
+        run = subprocess.Popen(["nice", "-n", "10", sys.executable, "-m", "routes.clip_ease", src, dst, str(play),
+                                str(ramp), str(settle), still or ""], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                               text=True, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        err = []
+        import threading
+        threading.Thread(target=lambda: err.extend(run.stderr), daemon=True).start()
+        lines = []
+        for line in run.stdout:           # "progress <0-1>" as it goes, then the motion
+            if line.startswith("progress "):
+                progress(float(line.split()[1]))
+            else:
+                lines.append(line)
+        if run.wait() != 0:
+            raise RuntimeError(f"easing the clip failed: {''.join(err).strip()[-300:]}")
+        motion = float("".join(lines).strip().splitlines()[-1])
         clip = {"eased": True, "pace": loop.get("pace", "slow"), "play_s": play, "motion": round(motion, 2),
                 "rest_s": rest_range(motion, loop.get("rest_s", [30, 180]))}
         tagged = os.path.join(tmp, "tagged.mp4")
@@ -319,4 +414,5 @@ if __name__ == "__main__":
     if a[0] == "--video":
         print(json.dumps(ease_video(a[1], a[2])))
     else:
-        print(ease_file(a[0], a[1], float(a[2]), float(a[3]), float(a[4]), a[5] or None))
+        print(ease_file(a[0], a[1], float(a[2]), float(a[3]), float(a[4]), a[5] or None,
+                        progress=lambda f: print(f"progress {f:.3f}", flush=True)))
