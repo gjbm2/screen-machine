@@ -8,11 +8,13 @@ from io import BytesIO
 from pathlib import Path
 from PIL import Image
 import urllib.parse
+import functools
+import http.server
+import threading
 
 # Define test constants
 TEST_SERVER = "http://127.0.0.1:5000"  # Adjust if your server runs on a different URL
 ENDPOINT = "/api/generate/jpg_from_mp4"
-EXTERNAL_MP4_URL = "http://185.254.136.253:8000/output/devtest.mp4"
 
 @pytest.fixture
 def test_mp4():
@@ -42,6 +44,18 @@ def test_mp4():
     if os.path.exists(mp4_path):
         os.unlink(mp4_path)
 
+@pytest.fixture
+def external_mp4_url(test_mp4):
+    """The test MP4 served over HTTP by a throwaway server on this machine (it was a fixed address on the old server,
+    which stopped answering, so these tests failed with the endpoint's 500 on a download timeout)."""
+    folder, name = os.path.split(test_mp4)
+    handler = functools.partial(http.server.SimpleHTTPRequestHandler, directory=folder)
+    httpd = http.server.ThreadingHTTPServer(("127.0.0.1", 0), handler)
+    threading.Thread(target=httpd.serve_forever, daemon=True).start()
+    yield f"http://127.0.0.1:{httpd.server_address[1]}/{name}"
+    httpd.shutdown()
+    httpd.server_close()
+
 class TestJpgFromMp4:
     """Test suite for jpg_from_mp4 endpoint."""
     
@@ -64,11 +78,11 @@ class TestJpgFromMp4:
         assert response.headers.get('Content-Type', '').startswith('image/jpeg')
         assert self.is_valid_jpeg(response.content)
     
-    def test_external_url(self):
+    def test_external_url(self, external_mp4_url):
         """Test the endpoint with an external URL."""
         response = requests.get(
             f"{TEST_SERVER}{ENDPOINT}", 
-            params={"file": EXTERNAL_MP4_URL}
+            params={"file": external_mp4_url}
         )
         
         assert response.status_code == 200
@@ -112,9 +126,9 @@ class TestJpgFromMp4:
         )
         assert response.status_code == 404
     
-    def test_url_parameter_encoding(self):
+    def test_url_parameter_encoding(self, external_mp4_url):
         """Test the endpoint with a URL parameter that needs encoding."""
-        encoded_url = urllib.parse.quote_plus(EXTERNAL_MP4_URL)
+        encoded_url = urllib.parse.quote_plus(external_mp4_url)
         response = requests.get(
             f"{TEST_SERVER}{ENDPOINT}?file={encoded_url}"
         )
