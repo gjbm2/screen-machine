@@ -316,7 +316,11 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
       // Typing in a field (the tag search) is not navigation: arrows and "i" belong to it.
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
-      if (zoomedRef.current) return;
+      if (zoomedRef.current) {
+        // zoomed, an arrow leaves the zoom and moves on (as in a photo app); other keys are the zoom's
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        setZoom(null);
+      }
       if (e.key === 'ArrowLeft') {
         e.preventDefault();
         emblaApi?.scrollPrev();
@@ -334,7 +338,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, emblaApi]);
+  }, [isOpen, emblaApi, setZoom]);
 
   // iOS Safari zooms the whole page on a pinch unless its gesture events are stopped; the picture zooms instead.
   useEffect(() => {
@@ -345,22 +349,52 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
   }, [isOpen]);
 
   /* ------------------------------------------------------------------ */
-  /* Vertical swipe at fit: up opens Info, down closes it                */
+  /* Vertical swipe: up opens Info; down closes Info, or else the viewer */
+  /* (the picture follows the finger down and the page shows through,   */
+  /* as in a photo app)                                                 */
   /* ------------------------------------------------------------------ */
+  const [dragY, setDragY] = useState(0);
+  const touchAxis = useRef<{ x: number; v: boolean | null } | null>(null);
   const handleTouchStart: React.TouchEventHandler = (e) => {
-    touchStartY.current = !zoomedRef.current && e.touches.length === 1 ? e.touches[0].clientY : null;
+    const one = !zoomedRef.current && e.touches.length === 1;
+    touchStartY.current = one ? e.touches[0].clientY : null;
+    touchAxis.current = one ? { x: e.touches[0].clientX, v: null } : null;
+    if (!one) setDragY(0);
+  };
+  const handleTouchMove: React.TouchEventHandler = (e) => {
+    const a = touchAxis.current;
+    if (!a || touchStartY.current === null || e.touches.length !== 1) return;
+    const dx = e.touches[0].clientX - a.x;
+    const dy = e.touches[0].clientY - touchStartY.current;
+    // the first clear movement decides: across is the carousel's, down is ours
+    if (a.v === null) {
+      if (Math.hypot(dx, dy) < 10) return;
+      a.v = Math.abs(dy) > Math.abs(dx);
+    }
+    if (a.v && !isFlipped) setDragY(Math.max(0, dy));
   };
   const handleTouchEnd: React.TouchEventHandler = (e) => {
-    if (zoomedRef.current || touchStartY.current === null || e.touches.length > 0) return;
+    const vertical = touchAxis.current?.v;
+    touchAxis.current = null;
+    setDragY(0);
+    if (zoomedRef.current || touchStartY.current === null || e.touches.length > 0 || !vertical) return;
     const delta = e.changedTouches[0].clientY - touchStartY.current;
     touchStartY.current = null;
     if (delta < -80) {
       setIsFlipped(true);
       setShowHint(false);
     } else if (delta > 80) {
-      setIsFlipped(false);
+      if (isFlipped) setIsFlipped(false);
+      else if (delta > 110) close();
     }
   };
+  const handleTouchCancel = () => {
+    touchAxis.current = null;
+    touchStartY.current = null;
+    setDragY(0);
+  };
+  // how far a drag down has gone (0..1): the picture shrinks a little and the viewer fades towards the page
+  const dragK = Math.min(dragY / 400, 1);
 
   /* ------------------------------------------------------------------ */
   /* Actions                                                             */
@@ -540,11 +574,15 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
             if (stepOut()) e.preventDefault();
           }}
           className="fixed inset-0 z-50 flex h-[100dvh] w-screen flex-col overflow-hidden bg-neutral-950 text-white outline-none group"
+          style={dragY ? { backgroundColor: `rgb(10 10 10 / ${1 - 0.85 * dragK})` } : undefined}
         >
           <DialogPrimitive.Title className="sr-only">Image Viewer</DialogPrimitive.Title>
 
           {/* Top: what this is, and the way out (always there, zoomed or not) */}
-          <div className="pointer-events-none absolute inset-x-0 top-0 z-50 flex items-start justify-between gap-2 bg-gradient-to-b from-black/60 to-transparent px-3 pb-6 pt-[max(0.5rem,env(safe-area-inset-top))]">
+          <div
+            className="pointer-events-none absolute inset-x-0 top-0 z-50 flex items-start justify-between gap-2 bg-gradient-to-b from-black/60 to-transparent px-3 pb-6 pt-[max(0.5rem,env(safe-area-inset-top))]"
+            style={dragY ? { opacity: Math.max(0, 1 - dragY / 120) } : undefined}
+          >
             <div className={`mt-1.5 truncate text-sm transition-opacity ${overlayHidden ? 'opacity-0' : 'opacity-90'}`}>
               {headerText}
             </div>
@@ -560,13 +598,21 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
           </div>
 
           {/* The pictures */}
-          <div className="relative min-h-0 w-full flex-1">
+          <div
+            className="relative min-h-0 w-full flex-1"
+            style={{
+              transform: dragY ? `translateY(${dragY}px) scale(${1 - 0.25 * dragK})` : undefined,
+              transition: dragY ? 'none' : 'transform 200ms ease-out',
+            }}
+          >
             <div
               className="h-full w-full overflow-hidden"
               ref={carouselRef}
               style={{ touchAction: 'none' }}
               onTouchStart={handleTouchStart}
+              onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
+              onTouchCancel={handleTouchCancel}
             >
               <div className="flex h-full">
                 {images.map((img, slide) => {
@@ -578,7 +624,17 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                   return (
                     <div key={img.uniqueKey || img.id} className="relative h-full min-w-0 flex-[0_0_100%]">
                       <div className="flex h-full w-full items-center justify-center px-2">
-                        {!loaded[src] && (
+                        {/* a picture shows its thumbnail at once and sharpens when the full one lands (not a clip:
+                            owner, 19 Nov, a clip waiting for Play is never its still blown up) */}
+                        {!loaded[src] && !isVideoItem(img, src) && near && img.urlThumb ? (
+                          <img
+                            src={img.urlThumb}
+                            alt=""
+                            aria-hidden
+                            draggable={false}
+                            className="pointer-events-none absolute inset-0 h-full w-full select-none object-contain px-2"
+                          />
+                        ) : !loaded[src] && (
                           <div className="absolute inset-0 flex flex-col items-center justify-center text-white/70 pointer-events-none">
                             <Loader2 className="h-8 w-8 animate-spin mb-2" />
                             <span className="text-sm">{isVideoItem(img, src) ? 'Loading clip...' : 'Loading image...'}</span>
@@ -610,7 +666,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                             alt={img.promptKey || ''}
                             data-loope-media={src}
                             draggable={false}
-                            className={`max-h-full max-w-full object-contain select-none ${loaded[src] ? '' : 'opacity-0'}`}
+                            className={`relative max-h-full max-w-full object-contain select-none ${loaded[src] ? '' : 'opacity-0'}`}
                             onLoad={() => setLoaded((v) => ({ ...v, [src]: true }))}
                             onPointerDown={onMediaPointerDown}
                             onPointerUp={onMediaPointerUp}
@@ -696,6 +752,7 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
             className={`z-40 w-full shrink-0 pb-[env(safe-area-inset-bottom)] transition-opacity short:absolute short:inset-x-0 short:bottom-0 short:bg-gradient-to-t short:from-black/80 short:via-black/50 short:to-transparent short:pt-6 ${
               overlayHidden ? 'short:pointer-events-none short:opacity-0' : ''
             }`}
+            style={dragY ? { opacity: Math.max(0, 1 - dragY / 120) } : undefined}
           >
             {!isFlipped && group.length > 1 && (
               <div className="hidden justify-center px-2 short:flex">

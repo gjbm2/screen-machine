@@ -93,7 +93,7 @@ with sync_playwright() as pw:
     tile = page.locator('[data-section-variant="dated"] .drag-grid > div img').first
     tile.scroll_into_view_if_needed()
     tile.tap()
-    page.wait_for_selector('[role="dialog"] img[data-loope-media]', timeout=20000)
+    page.wait_for_selector('[role="dialog"] img[data-loope-media]:not(.opacity-0)', timeout=20000)
     page.wait_for_timeout(1200)
     cdp = ctx.new_cdp_session(page)
     s0 = page.evaluate(STATE)
@@ -135,7 +135,7 @@ with sync_playwright() as pw:
 
     # landscape phone
     tile.tap()
-    page.wait_for_selector('[role="dialog"] img[data-loope-media]', timeout=20000)
+    page.wait_for_selector('[role="dialog"] img[data-loope-media]:not(.opacity-0)', timeout=20000)
     page.set_viewport_size({"width": 844, "height": 390})
     page.wait_for_timeout(1000)
     sl = page.evaluate(STATE)
@@ -165,8 +165,39 @@ with sync_playwright() as pw:
     check(e1["open"] and not e1["zoom"], f"Escape leaves the zoom first {e1}")
     page.keyboard.press("Escape"); page.wait_for_timeout(500)
     check(not page.evaluate(STATE)["open"], "Escape again closes")
-    # Back closes it
+    # desktop keys: an arrow while zoomed leaves the zoom and moves on
+    tile.tap()
+    page.wait_for_selector('[role="dialog"] img[data-loope-media]:not(.opacity-0)', timeout=20000)
+    page.wait_for_timeout(800)
+    double_tap(page, 422, 195)
+    k0 = page.evaluate(STATE)
+    page.keyboard.press("ArrowRight"); page.wait_for_timeout(700)
+    k1 = page.evaluate(STATE)
+    check(k0["zoom"] and not k1["zoom"] and k1["counter"] != k0["counter"], f"ArrowRight while zoomed moves on {k0} -> {k1}")
+    page.keyboard.press("Escape"); page.wait_for_timeout(500)
+    # a drag down follows the finger, and far enough closes the viewer (Info shut)
     page.set_viewport_size({"width": 390, "height": 844})
+    tile.tap()
+    page.wait_for_selector('[role="dialog"] img[data-loope-media]:not(.opacity-0)', timeout=20000)
+    page.wait_for_timeout(800)
+    touch(cdp, "touchStart", [(195, 300)])
+    for k in range(1, 9):
+        touch(cdp, "touchMove", [(195, 300 + 20 * k)]); page.wait_for_timeout(16)
+    mid = page.evaluate("() => { const s = document.querySelector('[role=dialog] .flex-1'); return s ? getComputedStyle(s).transform : null }")
+    check(bool(mid) and mid != "none", f"the picture follows a drag down ({mid})")
+    for k in range(9, 13):
+        touch(cdp, "touchMove", [(195, 300 + 20 * k)]); page.wait_for_timeout(16)
+    cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+    page.wait_for_timeout(700)
+    check(not page.evaluate(STATE)["open"], "a drag down closes the viewer")
+    # a short drag down springs back
+    tile.tap()
+    page.wait_for_selector('[role="dialog"] img[data-loope-media]:not(.opacity-0)', timeout=20000)
+    page.wait_for_timeout(800)
+    drag(cdp, page, 195, 300, 195, 360)
+    check(page.evaluate(STATE)["open"], "a short drag down springs back")
+    page.get_by_role("button", name="Close", exact=True).tap(); page.wait_for_timeout(600)
+    # Back closes it
     tile.tap()
     page.wait_for_selector('[role="dialog"]', timeout=10000)
     page.wait_for_timeout(500)
