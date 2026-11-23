@@ -1,0 +1,9 @@
+[Unit]
+Description=Nightly kiosk browser cycle (Chrome's memory doesn't creep for weeks); skipped while a TV is live
+
+[Timer]
+OnCalendar=*-*-* 04:30:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target

@@ -168,6 +168,10 @@ def chrome_browser_pid(name):
             argv = open(f"{d}/cmdline", "rb").read().split(b"\0")
         except OSError:
             continue
+        # Chrome rewrites its command line as one space-joined string (23 Nov: so this never matched, and the
+        # "restart its Chrome" step below never found a Chrome to restart)
+        if len([a for a in argv if a]) == 1:
+            argv = argv[0].split(b" ")
         if (argv and argv[0].endswith(b"/chrome") and f"--user-data-dir=/tmp/chrome-{name}".encode() in argv
                 and not any(a.startswith(b"--type=") for a in argv)):
             return int(d[6:])

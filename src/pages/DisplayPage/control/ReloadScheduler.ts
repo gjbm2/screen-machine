@@ -39,8 +39,13 @@ export class ReloadScheduler {
   private dueAt: Date | null = null;
   private timer: ReturnType<typeof setTimeout> | null = null;
   private fired = false;
+  private asked: ReturnType<typeof setTimeout> | null = null;
 
-  constructor(private opts: ReloadSchedulerOptions) {}
+  private opts: ReloadSchedulerOptions;
+
+  constructor(opts: ReloadSchedulerOptions) {
+    this.opts = opts;
+  }
 
   start(): void {
     if (this.running) return;
@@ -51,6 +56,30 @@ export class ReloadScheduler {
   stop(): void {
     this.running = false;
     this.clear();
+    if (this.asked) clearTimeout(this.asked);
+    this.asked = null;
+  }
+
+  /**
+   * Reload as soon as the page may (a new build): the same backstop as a timed reload (re-checked every 5 s while
+   * live, frozen or just back from live), whether or not timed reloads are on.
+   */
+  requestNow(reason: string): void {
+    if (this.fired || this.asked) return;
+    this.opts.log?.(`reload asked for: ${reason}`);
+    const tryNow = (): void => {
+      this.asked = null;
+      if (!this.running || this.fired) return;
+      if (!this.opts.canReloadNow()) {
+        this.asked = setTimeout(tryNow, RECHECK_MS);
+        return;
+      }
+      this.fired = true;
+      this.clear();
+      this.opts.log?.(`${reason}: fading to black before reload`);
+      this.opts.reload();
+    };
+    tryNow();
   }
 
   /** Effective `timed_reload`. Off cancels the scheduled reload; on schedules the next slot. */

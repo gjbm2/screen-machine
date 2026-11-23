@@ -18,9 +18,25 @@
     <meta name="theme-color" media="(prefers-color-scheme: light)" content="#faf8f5" />
     <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#110f0e" />
     <script>
-      // the TVs' /display pages never go dark (src/darkMode.ts keeps this right as the route changes)
-      if (/^\/display(\/|$)/.test(location.pathname)) document.documentElement.classList.add("light-only");
+      // the TVs' /display pages never go dark (src/darkMode.ts keeps this right as the route changes); they are black
+      // from their first frame (sm-display below), never the app's light page
+      if (/^\/display(\/|$)/.test(location.pathname)) document.documentElement.classList.add("light-only", "sm-display");
     </script>
+    <style>
+      html.sm-display,
+      html.sm-display body {
+        background: #000 !important;
+      }
+      /* a TV page starts under black and fades in when its first picture is on glass (see the script in <body>) */
+      #sm-cover {
+        position: fixed;
+        inset: 0;
+        z-index: 2147483647;
+        background: #000;
+        pointer-events: none;
+        transition: opacity 1s ease;
+      }
+    </style>
     <style>
       /* Style overrides for bucket view */
       .bucket-grid-container img {
@@ -48,6 +64,28 @@
         var nudge = function () { band.style.height = band.style.height === "13px" ? "12px" : "13px"; };
         if (mq.addEventListener) mq.addEventListener("change", nudge); else if (mq.addListener) mq.addListener(nudge);
         document.addEventListener("visibilitychange", function () { if (!document.hidden) nudge(); });
+      })();
+    </script>
+    <script>
+      // A TV page (re)loads under black and fades in from it (owner, 23 Nov: a reload or a browser restart went
+      // through plain white). The display page calls __smReveal() when its first picture (or live) is on glass; it
+      // never stays black past 12 s. data-sm-painted marks the first frame drawn: the kiosk's launcher keeps a new
+      // Chrome window out of sight until then (media-server/remote-scripts/wayland/kiosk-wayland.sh).
+      (function () {
+        var root = document.documentElement;
+        if (!root.classList.contains("sm-display")) return;
+        var cover = document.createElement("div");
+        cover.id = "sm-cover";
+        document.body.appendChild(cover);
+        window.__smReveal = function () {
+          if (!cover.parentNode || cover.style.opacity === "0") return;
+          cover.style.opacity = "0";
+          setTimeout(function () { if (cover.parentNode) cover.parentNode.removeChild(cover); }, 1100);
+        };
+        setTimeout(window.__smReveal, 12000);
+        requestAnimationFrame(function () {
+          requestAnimationFrame(function () { root.setAttribute("data-sm-painted", "1"); });
+        });
       })();
     </script>
     <div id="root"></div>

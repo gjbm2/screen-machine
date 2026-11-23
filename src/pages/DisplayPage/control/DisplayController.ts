@@ -289,6 +289,11 @@ export class DisplayController {
     this.event("overlay-dropped", { total: this.overlaysDropped });
   }
 
+  /** Reload as soon as rule 9 allows (a new build), timed reloads on or off. */
+  requestReload(reason: string): void {
+    this.reloads.requestNow(reason);
+  }
+
   /** LIVE_V1 §2.2 rule 9: no timed reload while live, frozen, attaching, or within 60 s of returning to art. */
   canReloadNow(): boolean {
     const s = this.store.getState();

@@ -37,6 +37,10 @@ declare global {
   interface Window {
     /** The controlled page's DisplayController (diagnostics and tests; only with ?ctl=). */
     __smCtl?: DisplayController;
+    /** Lifts the black the page loads under (index.html). */
+    __smReveal?: () => void;
+    /** Fades the page to black; the kiosk calls it before restarting its browser (kiosk_cycle.py). */
+    __smFadeOut?: () => Promise<void>;
   }
 }
 
@@ -280,6 +284,28 @@ function DisplayPage() {
     scheduleNextHardReload();
   }, []);
 
+  // A frontend deploy reaches the TVs by itself (owner, 23 Nov): once a minute the page reads the served index, and
+  // when it names another bundle the page fades to black and reloads (the controlled page waits while live, frozen or
+  // just back from live, as for a timed reload). The kiosk's browser cycle (kiosk_cycle.py) fades through here too.
+  useEffect(() => {
+    window.__smFadeOut = fadeToBlack;
+    const mine = ownBundle();
+    if (!mine) return;
+    const t = setInterval(() => {
+      servedBundle().then(
+        (served) => {
+          if (!served || served === mine) return;
+          clearInterval(t);
+          console.log(`[reload] new build ${served} (this page runs ${mine})`);
+          if (ctlRef.current) ctlRef.current.requestReload("new build");
+          else fadeToBlackAndReload();
+        },
+        () => {}, // the server is restarting: next minute
+      );
+    }, BUILD_CHECK_MS);
+    return () => clearInterval(t);
+  }, []);
+
   // Handle new media arrival
   useEffect(() => {
     if (ctl) return; // the controlled page's version is below
@@ -411,6 +437,23 @@ function DisplayPage() {
     ctl.setArtAdapter(adapter);
     return () => ctl.setArtAdapter(null);
   }, [ctl]);
+
+  // The page loads under black (index.html #sm-cover): lift it (a 1 s fade) once the first picture is decoded and on
+  // glass, or live is showing. Never held past 6 s here (and index.html lifts it at 12 s whatever happens).
+  const revealed = useRef(false);
+  useEffect(() => {
+    if (revealed.current || !(visibleSrc || liveOnGlass)) return;
+    let alive = true;
+    const shown = liveOnGlass ? Promise.resolve() : (artMediaRef.current?.ready() ?? Promise.resolve());
+    void Promise.race([shown.catch(() => undefined), new Promise((r) => setTimeout(r, 6000))]).then(() => {
+      if (!alive || revealed.current) return;
+      revealed.current = true;
+      requestAnimationFrame(() => window.__smReveal?.());
+    });
+    return () => {
+      alive = false;
+    };
+  }, [visibleSrc, liveOnGlass]);
 
   useEffect(() => {
     ctl?.setFlags({ nomask: noMask, nocolour: noColour, fit: displayMode });
@@ -683,7 +726,9 @@ function scheduleNextHardReload() {
   }, delay);
 }
 
-function fadeToBlackAndReload() {
+/** Fade the whole page to black (1 s); resolves once it is black. The new page then starts under black and fades in
+ *  (index.html #sm-cover), so a reload or a browser restart never goes through white. */
+function fadeToBlack(): Promise<void> {
   const fade = document.createElement("div");
   fade.style.position = "fixed";
   fade.style.top = "0";
@@ -693,15 +738,29 @@ function fadeToBlackAndReload() {
   fade.style.backgroundColor = "black";
   fade.style.opacity = "0";
   fade.style.transition = "opacity 1s ease";
-  fade.style.zIndex = "999999";
+  fade.style.zIndex = "2147483647";
   fade.style.pointerEvents = "none";
   document.body.appendChild(fade);
 
   requestAnimationFrame(() => {
     fade.style.opacity = "1";
   });
-
-  setTimeout(() => {
-    location.reload();
-  }, 1200);
+  return new Promise((r) => setTimeout(r, 1200));
 }
+
+function fadeToBlackAndReload() {
+  void fadeToBlack().then(() => location.reload());
+}
+
+/** The bundle this page runs, and the one the server now serves (null: dev server, or not readable). */
+function ownBundle(): string | null {
+  return document.querySelector<HTMLScriptElement>('script[type="module"][src*="/assets/"]')?.getAttribute("src") ?? null;
+}
+async function servedBundle(): Promise<string | null> {
+  const r = await fetch("/", { cache: "no-store" });
+  if (!r.ok) return null;
+  return (await r.text()).match(/<script[^>]*type="module"[^>]*src="([^"]*\/assets\/[^"]+)"/)?.[1] ?? null;
+}
+
+/** How often a TV page looks for a new build. */
+const BUILD_CHECK_MS = 60_000;

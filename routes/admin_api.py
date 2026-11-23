@@ -234,6 +234,27 @@ echo "STATUS=$(systemctl is-active $KIOSK_UNIT)"
     return jsonify(_ssh_run(cmd, timeout=30, sudo=True))
 
 
+# The kiosk's smooth browser cycle (media-server/remote-scripts/wayland/kiosk_cycle.py, owner 23 Nov): each page fades
+# to black, its Chrome restarts out of sight, the page fades back in. Never through white.
+_CYCLE = 'python3 ~/kiosk-watchdog/kiosk_cycle.py cycle'
+
+
+@admin_api.route('/admin-355729b8/cycle-browsers', methods=['POST'])
+def cycle_browsers():
+    """Fade to black, restart the screens' Chromes, fade back in. Body (optional): {screen: "north"} for one screen,
+    {force: true} to cycle even while a screen is live (otherwise it answers 409 and does nothing)."""
+    data = request.get_json(silent=True) or {}
+    screen = str(data.get('screen') or '').lower()
+    if screen and _screen_by_name(screen) is None:
+        return jsonify({'success': False, 'output': '', 'error': _screen_choice_error(),
+                        'timestamp': datetime.now().isoformat()}), 400
+    cmd = f"{_CYCLE} {screen} {'--force' if data.get('force') else ''}".strip()
+    out = _ssh_run(cmd, timeout=120)
+    if not out['success'] and 'not now:' in (out.get('output') or ''):
+        return jsonify({**out, 'error': 'a screen is live: not cycled (force to cycle anyway)'}), 409
+    return jsonify(out)
+
+
 @admin_api.route('/admin-355729b8/restart-screen', methods=['POST'])
 def restart_screen():
     """Restart Chrome for one screen only. Body: {screen: <a kiosk screen's name, e.g. "north">}."""
@@ -247,6 +268,12 @@ def restart_screen():
             'timestamp': datetime.now().isoformat()
         }), 400
     screen_id = picked[0]
+    # Through black when the kiosk has the cycle (an asked-for restart: even while live); else the old kill below.
+    cycled = _ssh_run(f"if [ -f ~/kiosk-watchdog/kiosk_cycle.py ]; then {_CYCLE} {screen} --force; "
+                      "else echo NO_CYCLE; fi", timeout=120)
+    if 'NO_CYCLE' not in (cycled.get('output') or ''):
+        result = 'restarted' if cycled['success'] else 'cycled_not_drawing'
+        return jsonify({**cycled, 'output': (cycled.get('output') or '') + f'RESULT={result}\n'})
 
     # Pattern anchored on the browser binary (first word contains "chrome"): unanchored, it matches this ssh shell's
     # own command line and pkill kills the shell instead of Chrome.

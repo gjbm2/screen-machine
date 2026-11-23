@@ -17,13 +17,14 @@ fi
 SRC="$(cd "$(dirname "$0")/../remote-scripts/wayland" && pwd)"
 SSH=(ssh -o BatchMode=yes -o ConnectTimeout=8 "$HOST")
 "${SSH[@]}" 'mkdir -p ~/kiosk-watchdog ~/.config/systemd/user'
-scp -q -o BatchMode=yes "$SRC/output_watchdog.py" "$HOST:kiosk-watchdog/"
-scp -q -o BatchMode=yes "$SRC/kiosk-output-watchdog.service" "$HOST:.config/systemd/user/"
+scp -q -o BatchMode=yes "$SRC/output_watchdog.py" "$SRC/kiosk_cycle.py" "$HOST:kiosk-watchdog/"
+scp -q -o BatchMode=yes "$SRC/kiosk-output-watchdog.service" "$SRC/kiosk-cycle.service" "$SRC/kiosk-cycle.timer" "$HOST:.config/systemd/user/"
 "${SSH[@]}" bash -s <<'EOF'
 set -e
 python3 ~/kiosk-watchdog/output_watchdog.py --once
 systemctl --user daemon-reload
 systemctl --user enable kiosk-output-watchdog.service >/dev/null
+systemctl --user enable --now kiosk-cycle.timer >/dev/null
 systemctl --user restart kiosk-output-watchdog.service
 sleep 2
 systemctl --user --no-pager --lines=5 status kiosk-output-watchdog.service || true

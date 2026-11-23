@@ -33,7 +33,14 @@ CHROME="google-chrome-stable --ozone-platform=wayland \
         --no-first-run --no-default-browser-check --noerrdialogs \
         --kiosk $DISABLE $VIDEO \
         --kiosk-mode-no-dialogs --kiosk-mode-no-prompts \
-        --disable-session-crashed-bubble --disable-infobars ${CHROME_EXTRA:-}"
+        --disable-session-crashed-bubble --disable-infobars \
+        --force-dark-mode --password-store=basic ${CHROME_EXTRA:-}"
+# A restarted Chrome showed its empty window for 25 s before it even began loading the page (measured 23 Nov), and that
+# window is plain white: the white a browser cycle went through (owner, 23 Nov). The 25 s was the D-Bus timeout on a
+# desktop keyring the kiosk doesn't run (Chrome won't send a request until it has its cookie key):
+# --password-store=basic skips it. --force-dark-mode makes the empty window dark grey rather than white for the moment
+# it is still shown; it doesn't touch the pages (all dark styling is under html:not(.light-only); the TV page is
+# light-only and black under its art).
 echo "$(date '+%F %T')  video path: $KIOSK_VIDEO"
 
 declare -A PID

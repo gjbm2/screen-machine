@@ -1,0 +1,6 @@
+[Unit]
+Description=Kiosk browser cycle: fade the TVs to black, restart their Chromes, fade back in (kiosk_cycle.py)
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 %h/kiosk-watchdog/kiosk_cycle.py cycle
