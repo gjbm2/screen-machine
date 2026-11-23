@@ -2,7 +2,6 @@ import React, { useEffect, useCallback, useMemo, useState, useRef, useReducer } 
 import * as DialogPrimitive from '@radix-ui/react-dialog';
 import { useLoopeView } from '@/contexts/LoopeViewContext';
 import useEmblaCarousel from 'embla-carousel-react';
-import type { ReactZoomPanPinchRef } from 'react-zoom-pan-pinch';
 import { ChevronLeft, ChevronRight, X, ChevronUp, Star, Info, Download, Clipboard, MoreHorizontal, RefreshCcw, Loader2, Scissors, Play } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -18,8 +17,7 @@ import { ReferenceImageService } from '@/services/reference-image-service';
 import { TagLozenges } from '@/components/tags/TagLozenges';
 import type { ImageItem } from '@/types/image-types';
 import { ImageInfo } from './ImageInfo';
-import { ZoomSlide } from './ZoomSlide';
-import type { Size } from './zoomMath';
+import LoopeZoom, { type ZoomOrigin, type ZoomEntry } from './LoopeZoom';
 import { ImageMenuItems } from '@/components/common/ImageMenuItems';
 import { notifyItemRemoved, notifyItemUpdated } from '@/components/tags/events';
 
@@ -81,21 +79,22 @@ function ClipStrip({ group, currentIndex, onPick, className = '' }: {
  * pinch zooming & panning"; "doesn't cope with landscape mode on a phone").
  * - It fills the screen (dynamic viewport height, safe areas), any device, either way up. On a phone on its side the
  *   tags and buttons lie over the picture, and a tap on the picture hides or shows them.
- * - Zoom is in place, on the slide (ZoomSlide): pinch, wheel or double tap; never smaller than fit; zoomed, a finger
- *   pans; at fit it swipes to the next. The close button is always there; Escape and the phone's Back step out
- *   (zoom, then Info, then the viewer).
+ * - Zoom (LoopeZoom, stills and clips alike): a pinch, scroll or double tap/click on the picture opens it full screen
+ *   from where it sits, and it goes back there on the way out (X, Escape, a tap on the black, pinching or scrolling
+ *   it below fit). The close button is always there; Escape and the phone's Back step out (zoom, then Info, then the
+ *   viewer).
  */
 const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
   const { isOpen, images, currentIndex, goto, close, carouselOptions, open } = useLoopeView();
 
   // zoomed, the carousel must not take the finger: read when a drag starts
+  const [zoom, setZoomState] = useState<ZoomOrigin | null>(null);
   const zoomedRef = useRef(false);
-  const [zoomed, setZoomedState] = useState(false);
-  const setZoomed = useCallback((z: boolean) => {
-    zoomedRef.current = z;
-    setZoomedState(z);
+  const setZoom = useCallback((z: ZoomOrigin | null) => {
+    zoomedRef.current = !!z;
+    setZoomState(z);
   }, []);
-  const zoomApis = useRef(new Map<string, ReactZoomPanPinchRef>());
+  const zoomed = !!zoom;
 
   const emblaOptions = useMemo(() => ({
     ...carouselOptions,
@@ -110,28 +109,13 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
   // a clip asked for (its tile in the strip below the picture, or a tile's clip badge) plays on arrival; others wait
   const [playId, setPlayId] = useState<string | null>(null);
   const videoEls = useRef(new Map<string, HTMLVideoElement>());
-  const [loadedVideos, setLoadedVideos] = useState<Record<string, boolean>>({});
+  const [loaded, setLoaded] = useState<Record<string, boolean>>({});
   const [showHint, setShowHint] = useState(true);
   const touchStartY = useRef<number | null>(null);
 
   // Items are the opener's objects, patched in place (star, tags); this re-renders after a patch.
   const [, bumpItems] = useReducer((n: number) => n + 1, 0);
   const { destinations, nonHeadlessDestinations } = usePublishDestinations();
-
-  // The stage's size: each picture is fitted to it, and a change (a phone turned) starts its zoom afresh.
-  const [stage, setStage] = useState<Size>({ w: 0, h: 0 });
-  const stageObserver = useRef<ResizeObserver | null>(null);
-  const stageRef = useCallback((el: HTMLDivElement | null) => {
-    stageObserver.current?.disconnect();
-    stageObserver.current = null;
-    if (!el) return;
-    const ro = new ResizeObserver(([entry]) => {
-      const { width, height } = entry.contentRect;
-      setStage((s) => (Math.round(width) === s.w && Math.round(height) === s.h ? s : { w: Math.round(width), h: Math.round(height) }));
-    });
-    ro.observe(el);
-    stageObserver.current = ro;
-  }, []);
 
   /* ------------------------------------------------------------------ */
   /* Opening, closing, the phone's Back                                  */
@@ -143,8 +127,11 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
     setIsFlipped(!!carouselOptions?.showInfo);
     setPlayId((carouselOptions?.playId as string | null) ?? null);
     setChrome(true);
-    setZoomed(false);
-  }, [isOpen, carouselOptions, setZoomed]);
+  }, [isOpen, carouselOptions]);
+  // closed (or a new slide), the zoom goes with it
+  useEffect(() => {
+    setZoom(null);
+  }, [isOpen, currentIndex, setZoom]);
 
   // Back closes the viewer: it puts an entry on top while open (the same pattern as the score's stand).
   // The entry is put on and taken off by the open state itself, not an effect's cleanup (a re-run must not pop it).
@@ -173,30 +160,118 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
     return () => window.removeEventListener('popstate', onPop);
   }, [isOpen, close]);
 
-  // a new slide starts at fit
-  useEffect(() => {
-    setZoomed(false);
-  }, [currentIndex, setZoomed]);
-
-  const unzoom = useCallback(() => {
-    const id = images[currentIndex]?.id;
-    const api = id ? zoomApis.current.get(id) : undefined;
-    if (api) api.centerView(1, 200);
-    else setZoomed(false);
-  }, [images, currentIndex, setZoomed]);
-
-  /** Escape steps out: the zoom, then Info, then the viewer. */
+  /** Escape steps out: the zoom (LoopeZoom takes its own Escape first), then Info, then the viewer. */
   const stepOut = useCallback((): boolean => {
-    if (zoomedRef.current) {
-      unzoom();
-      return true;
-    }
+    if (zoomedRef.current) return true;
     if (isFlipped) {
       setIsFlipped(false);
       return true;
     }
     return false;
-  }, [unzoom, isFlipped]);
+  }, [isFlipped]);
+
+  /* ------------------------------------------------------------------ */
+  /* Zoom: opened from a slide's picture or clip (LoopeZoom does the rest) */
+  /* ------------------------------------------------------------------ */
+  const openZoom = useCallback((el: HTMLElement, entry: ZoomEntry) => {
+    if (zoomedRef.current) return;
+    const isVideo = el instanceof HTMLVideoElement;
+    // not loaded yet: nothing to zoom
+    if (isVideo ? (el as HTMLVideoElement).readyState < 1 : !(el as HTMLImageElement).naturalWidth) return;
+    const r = el.getBoundingClientRect();
+    const src = el.getAttribute('data-loope-media') || '';
+    if (r.width < 2 || r.height < 2 || !src) return;
+    setZoom({
+      src,
+      isVideo,
+      rect: { left: r.left, top: r.top, width: r.width, height: r.height },
+      naturalWidth: isVideo ? (el as HTMLVideoElement).videoWidth : (el as HTMLImageElement).naturalWidth,
+      sourceEl: el,
+      entry,
+    });
+  }, [setZoom]);
+
+  // Taps on a slide's media (one detector for mouse and touch): a double tap/click zooms in at that point; a single
+  // tap on a picture shows or hides the controls laid over it (a clip's own controls take its single taps).
+  const tap = useRef({ downAt: 0, x: 0, y: 0, lastAt: 0, lastX: 0, lastY: 0, multi: false, timer: undefined as number | undefined });
+  useEffect(() => () => window.clearTimeout(tap.current.timer), []);
+  const onMediaPointerDown = (e: React.PointerEvent) => {
+    const s = tap.current;
+    if (!e.isPrimary) {
+      s.multi = true;
+      return;
+    }
+    s.multi = false;
+    s.downAt = performance.now();
+    s.x = e.clientX;
+    s.y = e.clientY;
+  };
+  const onMediaPointerUp = (e: React.PointerEvent) => {
+    const s = tap.current;
+    if (!e.isPrimary || s.multi) return;
+    const now = performance.now();
+    if (now - s.downAt > TAP_MS || Math.hypot(e.clientX - s.x, e.clientY - s.y) > TAP_SLOP) return;
+    window.clearTimeout(s.timer);
+    if (now - s.lastAt < TAP_MS && Math.hypot(e.clientX - s.lastX, e.clientY - s.lastY) < 40) {
+      s.lastAt = 0;
+      openZoom(e.currentTarget as HTMLElement, { kind: 'point', x: e.clientX, y: e.clientY, scale: 'detail' });
+      return;
+    }
+    s.lastAt = now;
+    s.lastX = e.clientX;
+    s.lastY = e.clientY;
+    if (!(e.currentTarget instanceof HTMLVideoElement)) s.timer = window.setTimeout(() => setChrome((c) => !c), TAP_MS);
+  };
+
+  // Pinch and scroll on a slide's media open the zoom; the page itself never zooms under the viewer.
+  // Native listeners because React's touch and wheel listeners are passive (preventDefault is ignored).
+  const [carouselNode, setCarouselNode] = useState<HTMLDivElement | null>(null);
+  const carouselRef = useCallback((el: HTMLDivElement | null) => {
+    emblaRef(el);
+    setCarouselNode(el);
+  }, [emblaRef]);
+  useEffect(() => {
+    const node = carouselNode;
+    if (!node) return;
+    const mediaOf = (t: EventTarget | null) => (t as Element | null)?.closest?.('[data-loope-media]') as HTMLElement | null;
+    const onTouchStart = (e: TouchEvent) => {
+      if (e.touches.length !== 2 || zoomedRef.current) return;
+      const [a, b] = [e.touches[0], e.touches[1]];
+      const media = mediaOf(b.target) || mediaOf(a.target);
+      if (!media) return;
+      e.preventDefault();
+      openZoom(media, {
+        kind: 'pinch',
+        ids: [a.identifier, b.identifier],
+        m0: { x: (a.clientX + b.clientX) / 2, y: (a.clientY + b.clientY) / 2 },
+        d0: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY),
+      });
+    };
+    const onTouchMove = (e: TouchEvent) => {
+      if (e.touches.length > 1) e.preventDefault();
+    };
+    const onWheel = (e: WheelEvent) => {
+      if (zoomedRef.current) return;
+      const media = mediaOf(e.target);
+      if (!media) return;
+      // Scroll up or a trackpad pinch-out zooms in; a pinch-in is swallowed so the page doesn't shrink.
+      if (e.deltaY < 0) {
+        e.preventDefault();
+        openZoom(media, { kind: 'point', x: e.clientX, y: e.clientY, scale: 1.5 });
+      } else if (e.ctrlKey) {
+        e.preventDefault();
+      }
+    };
+    const opts = { passive: false } as AddEventListenerOptions;
+    node.addEventListener('touchstart', onTouchStart, opts);
+    node.addEventListener('touchmove', onTouchMove, opts);
+    node.addEventListener('wheel', onWheel, opts);
+    return () => {
+      node.removeEventListener('touchstart', onTouchStart, opts);
+      node.removeEventListener('touchmove', onTouchMove, opts);
+      node.removeEventListener('wheel', onWheel, opts);
+    };
+  }, [carouselNode, openZoom]);
 
   /* ------------------------------------------------------------------ */
   /* Carousel <-> context index                                          */
@@ -452,11 +527,15 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
   const barButton = 'text-xs flex items-center gap-1 text-white/90 hover:text-white hover:bg-white/10';
 
   return (
-    <DialogPrimitive.Root open={isOpen} onOpenChange={(o) => { if (!o) close(); }}>
+    <DialogPrimitive.Root open={isOpen} onOpenChange={(o) => { if (!o && !zoomedRef.current) close(); }}>
       <DialogPrimitive.Portal>
         <DialogPrimitive.Content
           aria-describedby={undefined}
           onOpenAutoFocus={(e) => e.preventDefault()}
+          // the zoom view lies outside the dialog: a touch on it is not a click outside the viewer
+          onInteractOutside={(e) => {
+            if (zoomedRef.current) e.preventDefault();
+          }}
           onEscapeKeyDown={(e) => {
             if (stepOut()) e.preventDefault();
           }}
@@ -481,10 +560,10 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
           </div>
 
           {/* The pictures */}
-          <div ref={stageRef} className="relative min-h-0 w-full flex-1">
+          <div className="relative min-h-0 w-full flex-1">
             <div
               className="h-full w-full overflow-hidden"
-              ref={emblaRef}
+              ref={carouselRef}
               style={{ touchAction: 'none' }}
               onTouchStart={handleTouchStart}
               onTouchEnd={handleTouchEnd}
@@ -498,42 +577,46 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
                     || (carouselOptions?.loop !== false && Math.abs(slide - currentIndex) === images.length - 1);
                   return (
                     <div key={img.uniqueKey || img.id} className="relative h-full min-w-0 flex-[0_0_100%]">
-                      {isVideoItem(img, src) ? (
-                        <div className="flex h-full w-full items-center justify-center px-2">
-                          {!loadedVideos[src] && (
-                            <div className="absolute inset-0 flex flex-col items-center justify-center text-white/70 pointer-events-none">
-                              <Loader2 className="h-8 w-8 animate-spin mb-2" />
-                              <span className="text-sm">Loading clip...</span>
-                            </div>
-                          )}
+                      <div className="flex h-full w-full items-center justify-center px-2">
+                        {!loaded[src] && (
+                          <div className="absolute inset-0 flex flex-col items-center justify-center text-white/70 pointer-events-none">
+                            <Loader2 className="h-8 w-8 animate-spin mb-2" />
+                            <span className="text-sm">{isVideoItem(img, src) ? 'Loading clip...' : 'Loading image...'}</span>
+                          </div>
+                        )}
+                        {/* sized to the media itself (not the slide), so the zoom opens exactly over it */}
+                        {isVideoItem(img, src) ? (
                           <video
                             src={`${src}#t=0.001`}
+                            data-loope-media={src}
                             controls
                             preload={near ? 'auto' : 'none'}
                             playsInline
+                            disablePictureInPicture
                             ref={(el) => {
                               if (el) videoEls.current.set(img.id, el);
                               else videoEls.current.delete(img.id);
                             }}
-                            className="h-full w-full object-contain"
-                            onLoadedData={() => setLoadedVideos((v) => ({ ...v, [src]: true }))}
+                            className="max-h-full max-w-full object-contain"
+                            onLoadedData={() => setLoaded((v) => ({ ...v, [src]: true }))}
+                            onPointerDown={onMediaPointerDown}
+                            onPointerUp={onMediaPointerUp}
+                            // our double-click zooms; not the browser's own double-click full screen
+                            onDoubleClick={(e) => e.preventDefault()}
                           />
-                        </div>
-                      ) : (
-                        <ZoomSlide
-                          src={src}
-                          alt={img.promptKey || ''}
-                          active={slide === currentIndex && !isFlipped}
-                          near={near}
-                          stage={stage}
-                          onZoomed={slide === currentIndex ? setZoomed : noop}
-                          onApi={(api) => {
-                            if (api) zoomApis.current.set(img.id, api);
-                            else zoomApis.current.delete(img.id);
-                          }}
-                          onTap={() => setChrome((c) => !c)}
-                        />
-                      )}
+                        ) : (
+                          <img
+                            src={near || loaded[src] ? src : undefined}
+                            alt={img.promptKey || ''}
+                            data-loope-media={src}
+                            draggable={false}
+                            className={`max-h-full max-w-full object-contain select-none ${loaded[src] ? '' : 'opacity-0'}`}
+                            onLoad={() => setLoaded((v) => ({ ...v, [src]: true }))}
+                            onPointerDown={onMediaPointerDown}
+                            onPointerUp={onMediaPointerUp}
+                          />
+                        )}
+                      </div>
                     </div>
                   );
                 })}
@@ -721,10 +804,12 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
           </div>
         </DialogPrimitive.Content>
       </DialogPrimitive.Portal>
+      {zoom && <LoopeZoom origin={zoom} onClose={() => setZoom(null)} />}
     </DialogPrimitive.Root>
   );
 };
 
-const noop = () => {};
+const TAP_MS = 300;
+const TAP_SLOP = 10;
 
 export default LoopeModal;
