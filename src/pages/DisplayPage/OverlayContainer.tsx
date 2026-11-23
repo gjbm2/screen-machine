@@ -10,8 +10,10 @@ export interface Overlay {
   position?: string;
   visible: boolean;
   fadein?: number;
-  /** Fade-out override in ms (set only by the controlled page's freeze; absent everywhere else). */
+  /** Fade-out override in ms (a freeze, a `clear`, or the picture it captions going). */
   fadeout?: number;
+  /** The caption of a published picture (it fades with that picture). */
+  withBase?: boolean;
 }
 
 function getOverlayStyle(
@@ -32,7 +34,8 @@ function getOverlayStyle(
     position: "absolute",
     zIndex: 10000,
     opacity: visible ? 1 : 0,
-    transition: fadein === 0 ? "none" : `opacity ${fadeDuration}ms ease`,
+    // fadein 0: on and off in one frame, unless dismissed with an explicit fade-out
+    transition: fadein === 0 && (visible || fadeout === undefined) ? "none" : `opacity ${fadeDuration}ms ease`,
     pointerEvents: "none",
   };
 

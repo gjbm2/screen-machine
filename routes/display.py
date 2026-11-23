@@ -207,7 +207,8 @@ def send_overlay(
     clear: bool = True,
     substitutions=None,
     fadein=0,
-    job_id=None
+    job_id=None,
+    with_base=False,
 ):
     # Only overlay/template files may be read; anything else is literal HTML
     file_path = find_template_file(html)
@@ -258,7 +259,9 @@ def send_overlay(
         "substitutions": substitutions,
         "clear": clear,
         "fadein": fadein,
-        "job_id": job_id  # Add job_id to the WebSocket message
+        "job_id": job_id,  # Add job_id to the WebSocket message
+        # the caption of the picture being published: the TV shows it once that picture has faded in
+        "with_base": bool(with_base),
     }
 
     if not job_id and not final_html:

@@ -1,5 +1,6 @@
 // src/pages/DisplayPage/hooks/useOverlayWebSocket.ts
 import { useEffect, useRef } from "react";
+import type { Overlay } from "../OverlayContainer";
 
 // Over HTTPS (the friendly LAN name) the overlay socket comes through Caddy at /ws/ (an insecure ws:// is blocked there
 // and used to crash the page layer: black screen, owner 17 Oct); over http (the TVs, the public IP) VITE_WS_HOST as before.
@@ -15,15 +16,12 @@ interface OverlayMessage {
   clear?: boolean;
   screens?: string[];
   fadein?: number;
+  /** The caption of the picture being published with it (routes/publisher.py): shown once that picture is up. */
+  with_base?: boolean;
 }
 
-interface Overlay {
-  id: string;
-  html: string;
-  position: string | undefined;
-  visible: boolean;
-  fadein?: number;
-}
+/** How long overlays replaced by a `clear` take to fade out (they used to vanish in one frame). */
+const CLEAR_FADEOUT_MS = 800;
 
 function generateId(): string {
   return (typeof crypto !== "undefined" && crypto.randomUUID)
@@ -37,9 +35,14 @@ export default function useOverlayWebSocket(
   // Optional gate (controlled page only): return false to drop an overlay message, e.g. while
   // the screen is frozen or live (LIVE_V1 §2.2 rule 5). Without it, every message is shown as today.
   accept?: () => boolean,
+  // Optional (controlled page only): runs `show` for a picture's caption once that picture is on glass
+  // (art/baseLanding.ts). Without it, captions show on arrival as before.
+  whenBaseLands?: (show: () => void) => void,
 ) {
   const acceptRef = useRef(accept);
   acceptRef.current = accept;
+  const whenBaseLandsRef = useRef(whenBaseLands);
+  whenBaseLandsRef.current = whenBaseLands;
 
   useEffect(() => {
     if (!screenId) return;
@@ -90,38 +93,47 @@ export default function useOverlayWebSocket(
           if (acceptRef.current && !acceptRef.current()) return;
 
           const { html, duration, position, clear, fadein } = msg;
-          const id = generateId();
-          const showDuration = typeof duration === "number" ? duration : 5000;
-          const displayTime = Math.max(0, showDuration);
+          const withBase = !!msg.with_base;
+          const displayTime = Math.max(0, typeof duration === "number" ? duration : 5000);
 
-          setOverlays((prev) => {
-            const base = clear ? [] : [...prev];
-            return [...base, {
-              id,
-              html,
-              position,
-              visible: fadein === 0,
-              fadein
-            }];
-          });
+          const show = () => {
+            const id = generateId();
+            setOverlays((prev) => {
+              // replaced overlays fade out under the new one instead of vanishing (a `fadeout` marks one dismissed:
+              // one still waiting for its fade-in never comes up)
+              const base = clear ? prev.map((o) => ({ ...o, visible: false, fadeout: o.fadeout ?? CLEAR_FADEOUT_MS })) : prev;
+              return [...base, { id, html, position, visible: fadein === 0, fadein, withBase }];
+            });
 
-          if (fadein !== 0) {
+            if (fadein !== 0) {
+              setTimeout(() => {
+                setOverlays((prev) =>
+                  prev.map((o) => (o.id === id && o.fadeout === undefined ? { ...o, visible: true } : o))
+                );
+              }, 50);
+            }
+
             setTimeout(() => {
               setOverlays((prev) =>
-                prev.map((o) => (o.id === id ? { ...o, visible: true } : o))
+                prev.map((o) => (o.id === id ? { ...o, visible: false } : o))
               );
-            }, 50);
+
+              setTimeout(() => {
+                setOverlays((prev) => prev.filter((o) => o.id !== id));
+              }, 5000);
+            }, displayTime);
+          };
+
+          const defer = withBase ? whenBaseLandsRef.current : undefined;
+          if (!defer) {
+            show();
+            return;
           }
-
-          setTimeout(() => {
-            setOverlays((prev) =>
-              prev.map((o) => (o.id === id ? { ...o, visible: false } : o))
-            );
-
-            setTimeout(() => {
-              setOverlays((prev) => prev.filter((o) => o.id !== id));
-            }, 5000);
-          }, displayTime);
+          // its display time runs from when the picture is up; a freeze or live cut meanwhile drops it
+          defer(() => {
+            if (acceptRef.current && !acceptRef.current()) return;
+            show();
+          });
         } catch (err) {
           console.error("Overlay message failed:", err);
         }

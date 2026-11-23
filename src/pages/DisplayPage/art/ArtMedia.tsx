@@ -5,17 +5,20 @@
 //   * `hold`: pause a clip on one frame (freeze, or while the art stack is hidden under live);
 //   * an imperative handle that reports what is drawn (`kind`, `clip_t`) and resolves once the base
 //     is decoded, so a freeze ack, an exit cut or an art-only render never races the decoder.
-// mode="cycle": today's behaviour (through-black fade-out, slow-motion clip loop).
+// mode="cycle": the TV (slow-motion clip loop). A new base is a second ArtMedia cross-faded in over this one by the
+//   page (index.tsx): it is mounted with shouldPlay false, `prime()`d (decoded / frame 0 ready), faded in, and only
+//   then plays, so at most one clip is decoding at a time (the N95 kiosk).
 // mode="static": the art-only page (no fades, no loop; a clip is shown paused at `clipT`).
-import React, { forwardRef, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
+import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import type { Fit } from "../control/protocol";
 import { ClipCycle, CROSSFADE_DURATION, EASED_FADE, FIRST_FRAME_FADE_OUT_DURATION, PACE, type EasedLoop } from "./ClipCycle";
 import { isClip, mediaContainerStyle, mediaStyle } from "./styles";
 
-const FADE_OUT_TIME = 1000;
 const OPACITY_EASING = "cubic-bezier(0.65, 0, 0.35, 1)";
 const READY_TIMEOUT_MS = 4000;
+/** A new base that hasn't decoded by now fades in anyway (the freeze ack waits for the whole change). */
+const PRIME_TIMEOUT_MS = 2000;
 
 export interface ArtMediaHandle {
   kind(): "image" | "video";
@@ -23,6 +26,8 @@ export interface ArtMediaHandle {
   clipTime(): number | null;
   /** Resolves once the base is decoded (img.decode) or a held/static clip shows its frame. */
   ready(): Promise<void>;
+  /** A new base about to fade in: resolves once the still is decoded or the (paused) clip shows frame 0. */
+  prime(): Promise<void>;
   element(): HTMLImageElement | HTMLVideoElement | null;
 }
 
@@ -33,8 +38,6 @@ interface Props {
   mode: "cycle" | "static";
   /** Overrides the ".mp4" test (the art-only page is told the kind in its ArtState). */
   kind?: "image" | "video";
-  fadeOut?: boolean;
-  onFadeOutComplete?: () => void;
   shouldPlay?: boolean;
   hold?: boolean;
   clipT?: number | null;
@@ -114,7 +117,7 @@ async function seekClip(v: HTMLVideoElement, t: number): Promise<void> {
 }
 
 export const ArtMedia = forwardRef<ArtMediaHandle, Props>(function ArtMedia(
-  { src, videoKey, displayMode, mode, kind, fadeOut = false, onFadeOutComplete, shouldPlay = false, hold = false, clipT = null },
+  { src, videoKey, displayMode, mode, kind, shouldPlay = false, hold = false, clipT = null },
   ref,
 ) {
   const isVideo = kind ? kind === "video" : isClip(src);
@@ -123,8 +126,16 @@ export const ArtMedia = forwardRef<ArtMediaHandle, Props>(function ArtMedia(
   const cycleRef = useRef<ClipCycle | null>(null);
   const holdRef = useRef(hold);
   const holdDone = useRef<Promise<void>>(Promise.resolve());
-  const onFadeOutCompleteRef = useRef(onFadeOutComplete);
-  onFadeOutCompleteRef.current = onFadeOutComplete;
+  // The <video> is replaced per videoKey and dropped when a cross-fade ends: free its decoder there and then
+  // rather than at GC (a ref callback, as StrictMode doesn't run those twice).
+  const setVideo = useCallback((v: HTMLVideoElement | null) => {
+    const old = videoRef.current;
+    videoRef.current = v;
+    if (old && old !== v) {
+      old.removeAttribute("src");
+      old.load();
+    }
+  }, []);
 
   const [paused, setPaused] = useState(false);
   const [firstFrame, setFirstFrame] = useState<string | null>(null);
@@ -156,6 +167,15 @@ export const ArtMedia = forwardRef<ArtMediaHandle, Props>(function ArtMedia(
         const img = imgRef.current;
         return img ? withTimeout(img.decode(), READY_TIMEOUT_MS) : Promise.resolve();
       },
+      prime: () => {
+        if (isVideo) {
+          const v = videoRef.current;
+          if (!v) return Promise.resolve();
+          return (v.readyState >= 2 ? Promise.resolve() : waitEvent(v, "loadeddata", PRIME_TIMEOUT_MS)).then(twoFrames);
+        }
+        const img = imgRef.current;
+        return img ? withTimeout(img.decode(), PRIME_TIMEOUT_MS).then(twoFrames) : Promise.resolve();
+      },
       element: () => (isVideo ? videoRef.current : imgRef.current),
     }),
     [isVideo, mode, clipT],
@@ -169,9 +189,10 @@ export const ArtMedia = forwardRef<ArtMediaHandle, Props>(function ArtMedia(
     setPaused(false);
   }, [src]);
 
-  // Extract the clip's first frame for the end-of-loop cross-fade (as MediaDisplay does).
+  // Extract the clip's first frame for the end-of-loop cross-fade (as MediaDisplay does). Not while the clip is
+  // still fading in: a 4K decode + JPEG encode on the kiosk's CPU waits until it's the one on glass.
   useEffect(() => {
-    if (mode !== "cycle" || !isVideo || !src) return;
+    if (mode !== "cycle" || !isVideo || !src || !shouldPlay) return;
     let cancelled = false;
     const v = document.createElement("video");
     v.crossOrigin = "anonymous";
@@ -205,19 +226,7 @@ export const ArtMedia = forwardRef<ArtMediaHandle, Props>(function ArtMedia(
     return () => {
       cancelled = true;
     };
-  }, [src, mode, isVideo]);
-
-  // Through-black fade-out: after FADE_OUT_TIME the parent swaps the source.
-  useEffect(() => {
-    if (!fadeOut) return;
-    // As MediaDisplay: the callback of the render that started the fade is the one called.
-    const done = onFadeOutCompleteRef.current;
-    cycleRef.current?.dispose();
-    setPaused(false);
-    setShowFirstFrame(false);
-    const t = setTimeout(() => done?.(), FADE_OUT_TIME);
-    return () => clearTimeout(t);
-  }, [fadeOut]);
+  }, [src, mode, isVideo, shouldPlay]);
 
   // The slow-motion loop.
   useEffect(() => {
@@ -327,28 +336,16 @@ export const ArtMedia = forwardRef<ArtMediaHandle, Props>(function ArtMedia(
     zIndex: 2,
   };
 
-  const fadeOverlayStyle: React.CSSProperties = {
-    position: "fixed",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "black",
-    opacity: fadeOut ? 1 : 0,
-    transition: mode === "static" ? "none" : `opacity 1000ms ease`,
-    zIndex: 9998,
-  };
-
   return (
     <div style={mediaContainerStyle}>
       {isVideo ? (
         <video
           key={videoKey}
-          ref={videoRef}
+          ref={setVideo}
           src={src}
           muted
           playsInline
-          preload={mode === "static" || hold ? "auto" : undefined}
+          preload="auto"
           style={media}
         />
       ) : (
@@ -360,8 +357,6 @@ export const ArtMedia = forwardRef<ArtMediaHandle, Props>(function ArtMedia(
       <div style={overlayStyle}>
         <div style={{ color: "white", textAlign: "center", fontSize: "2rem" }}>Paused on Final Frame</div>
       </div>
-
-      <div style={fadeOverlayStyle} />
 
       {showDebug && (
         <div

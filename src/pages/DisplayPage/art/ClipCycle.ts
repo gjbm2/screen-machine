@@ -114,7 +114,8 @@ export class ClipCycle {
     return this.heldPhase !== null;
   }
 
-  /** Today's maybeStartPlayback(): reload, then begin the cycle once metadata is known. */
+  /** Today's maybeStartPlayback(): begin the cycle once metadata is known. A clip that cross-faded in is already
+   *  showing frame 0, so it isn't reloaded (load() would blank it for a moment); one that never loaded is. */
   start(): void {
     if (this.disposed) return;
     if (this.isHeld) {
@@ -123,7 +124,7 @@ export class ClipCycle {
     }
     const g = this.next();
     const v = this.video;
-    v.load();
+    if (v.readyState === 0) v.load();
     if (v.readyState >= 1) this.begin();
     else this.once(g, "loadedmetadata", () => this.begin());
   }

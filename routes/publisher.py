@@ -445,7 +445,9 @@ def _send_overlay_prompt(screen_id: str, metadata: dict[str, Any]) -> None:
         screens=[screen_id],
         substitutions=substitutions,
         duration=30_000,        # 30 s
-        clear=True
+        clear=True,
+        fadein=1200,            # eases in after the picture
+        with_base=True,         # the TV holds it until the picture has cross-faded in
     )
     
 # ─────────────────────────────────────────────────────────────────────────────

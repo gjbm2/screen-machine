@@ -80,8 +80,8 @@ overlays z 9999, controls panel).
   mask) has arrived on this connection; it resumes 5 s after the socket goes down. A failed poll keeps
   the last mask. While the art stack is hidden (live), masks apply with `transition: none`, and a
   commit still pending when a cut reveals the art is made first, with no transition.
-- **Freeze**: new bases/masks are queued (latest only); a running mask transition and any through-black
-  base change finish; overlays fade out over 600 ms (not their normal 5 s) and the ack waits for that,
+- **Freeze**: new bases/masks are queued (latest only); a running mask transition and any base
+  cross-fade finish; overlays fade out over 600 ms (not their normal 5 s) and the ack waits for that,
   so nothing the ArtState lacks is on glass (new ones are dropped and counted); the controls panel
   closes; a clip is held on one frame (`ClipCycle.hold()`; mid cross-fade it snaps to frame 0). Then
   `ack frozen` with the exact `ArtState` (mask as drawn after nomask/nocolour; `base_url` as the page
@@ -100,6 +100,12 @@ overlays z 9999, controls panel).
   more than 2× target ahead (`edge_jumps`); holes are skipped (`gap_skips`). Teardown: close socket,
   `SourceBuffer.abort()`, `removeAttribute('src')`, `load()`, remove the element.
   While a session is mounted, `html[data-sm-live]` hides everything else in the app (e.g. toasts).
+- **New picture** (23 Nov): a 1.6 s cross-fade, not through black. The new base is mounted invisible on top,
+  `prime()`d (still decoded; a clip paused on frame 0, so only one clip decodes at a time), faded in on `opacity`
+  only (compositor work, cheap on the N95), then the old layer and its decoder go and the new clip starts its loop.
+  The publisher's caption (`with_base` on the overlay message) waits for that (`art/baseLanding.ts`), then eases in
+  over 1.2 s; the old caption fades with the old picture, and a `clear` fades replaced overlays instead of cutting
+  them. A freeze ack waits for a running cross-fade. The default (`?ctl=off`) page still goes through black.
 - **While live or frozen**: overlays are dropped and counted (`overlays_dropped`), the overlay layer and
   controls panel are unmounted while live; new bases swap into the hidden art stack after `img.decode()`
   with no through-black.

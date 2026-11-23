@@ -16,6 +16,7 @@ import { ControlsPanel, type NextAction, type SchedulerStatus } from "./Controls
 import { LegacyMaskLayers } from "./LegacyMaskLayers";
 import { ArtOnlyPage } from "./art/ArtOnlyPage";
 import { ArtMedia, type ArtMediaHandle } from "./art/ArtMedia";
+import { BaseLanding } from "./art/baseLanding";
 import { MaskLayers } from "./art/MaskLayers";
 import { isClip, mediaContainerStyle, mediaStyle } from "./art/styles";
 import { LiveLayer } from "./live/LiveLayer";
@@ -144,7 +145,17 @@ function DisplayPage() {
     return false;
   }, [ctl]);
 
-  useOverlayWebSocket(screenId, ctl ? setOverlaysGated : setOverlays, ctl ? acceptOverlay : undefined);
+  // A published picture's caption waits until that picture has cross-faded in (art/baseLanding.ts).
+  const baseLanding = useMemo(() => new BaseLanding(), []);
+  useEffect(() => () => baseLanding.dispose(), [baseLanding]);
+  const whenBaseLands = useCallback((show: () => void) => baseLanding.whenLanded(show), [baseLanding]);
+
+  useOverlayWebSocket(
+    screenId,
+    ctl ? setOverlaysGated : setOverlays,
+    ctl ? acceptOverlay : undefined,
+    ctl ? whenBaseLands : undefined,
+  );
 
   const { brightness, warmHex, warmAlpha, rgba: brightnessLayer } = useMask(ctl ? undefined : screenId, noMask);
 
@@ -291,7 +302,7 @@ function DisplayPage() {
   const shownSrc = visibleSrc || currentSrc;
   const shownSrcRef = useRef(shownSrc);
   shownSrcRef.current = shownSrc;
-  /** performance.now() until which a through-black base change is still on screen. */
+  /** performance.now() until which a base change (decode + cross-fade) is still on screen. */
   const baseBusyUntil = useRef(0);
   /** performance.now() until which dismissed overlays are still fading out (freeze / live). */
   const overlaysBusyUntil = useRef(0);
@@ -307,7 +318,11 @@ function DisplayPage() {
   );
 
   // New media, controlled page: frozen -> queued (applied after unfreeze); art hidden under live ->
-  // decoded first, then swapped with no transition; otherwise today's through-black change.
+  // decoded first, then swapped with no transition; otherwise cross-faded in over the current base
+  // (`incoming`, below). One change at a time: a newer file waits for the running one to land.
+  const [incoming, setIncoming] = useState<{ src: string; videoKey: string } | null>(null);
+  const [incomingShown, setIncomingShown] = useState(false);
+  const incomingMediaRef = useRef<ArtMediaHandle>(null);
   useEffect(() => {
     if (!ctl || !currentSrc) return;
     if (!visibleSrc) {
@@ -315,9 +330,9 @@ function DisplayPage() {
       setShouldPlay(true);
       return;
     }
-    if (frozen) return;
+    if (frozen || incoming) return;
     if (liveOnGlass) {
-      if (currentSrc === visibleSrc || fadingOut || hiddenSwap.current === currentSrc) return;
+      if (currentSrc === visibleSrc || hiddenSwap.current === currentSrc) return;
       const target = currentSrc;
       const key = pollingVideoKey;
       hiddenSwap.current = target;
@@ -331,12 +346,43 @@ function DisplayPage() {
       });
       return;
     }
-    if (currentSrc !== pendingSrc && currentSrc !== visibleSrc && !fadingOut) {
-      baseBusyUntil.current = Number.POSITIVE_INFINITY;
-      setPendingSrc(currentSrc);
-      setFadingOut(true);
-    }
-  }, [ctl, currentSrc, visibleSrc, fadingOut, frozen, liveOnGlass, pendingSrc, pollingVideoKey]);
+    if (currentSrc === visibleSrc) return;
+    baseBusyUntil.current = Number.POSITIVE_INFINITY;
+    baseLanding.started();
+    setIncomingShown(false);
+    setIncoming({ src: currentSrc, videoKey: pollingVideoKey });
+    // the old picture's caption goes with it
+    setOverlays((prev) =>
+      prev.map((o) => (o.withBase && o.visible ? { ...o, visible: false, fadeout: CROSSFADE_MS } : o)),
+    );
+  }, [ctl, currentSrc, visibleSrc, frozen, liveOnGlass, incoming, pollingVideoKey, baseLanding]);
+
+  // The cross-fade: the new base is mounted invisible on top, decoded (a clip: paused on frame 0, so only one clip
+  // decodes at a time), faded in on the compositor (opacity only: cheap on the kiosk's N95), and then the old one goes
+  // and the new one starts its clip loop. A freeze's ack waits for it (baseBusyUntil).
+  useEffect(() => {
+    if (!incoming) return;
+    let alive = true;
+    let done: ReturnType<typeof setTimeout> | undefined;
+    void (incomingMediaRef.current?.prime() ?? Promise.resolve()).then(() => {
+      if (!alive) return;
+      baseBusyUntil.current = performance.now() + CROSSFADE_MS + 150;
+      setIncomingShown(true);
+      done = setTimeout(() => {
+        setVisibleSrc(incoming.src);
+        setPendingSrc(null);
+        setVideoKey(incoming.videoKey);
+        setShouldPlay(true);
+        setIncoming(null);
+        setIncomingShown(false);
+        baseLanding.landed();
+      }, CROSSFADE_MS + 50);
+    });
+    return () => {
+      alive = false;
+      clearTimeout(done);
+    };
+  }, [incoming, baseLanding]);
 
   // Wire the controller to the art stack.
   useEffect(() => {
@@ -450,8 +496,6 @@ function DisplayPage() {
     }
 
     setShouldPlay(false);
-    // Controlled page: the swap is on screen for 1 s of black, then a 1 s fade in.
-    if (ctl) baseBusyUntil.current = performance.now() + 2100;
 
     setTimeout(() => {
       setVideoKey(pollingVideoKey);
@@ -515,17 +559,32 @@ function DisplayPage() {
       {/* Main Media */}
       <LayerBoundary name="media" resetKey={lastGoodSrc} fallback={mediaFallback}>
         {ctl ? (
-          <ArtMedia
-            ref={artMediaRef}
-            src={visibleSrc || currentSrc}
-            videoKey={videoKey}
-            displayMode={displayMode}
-            mode="cycle"
-            fadeOut={fadingOut}
-            shouldPlay={shouldPlay}
-            hold={frozen || liveOnGlass}
-            onFadeOutComplete={onFadeOutComplete}
-          />
+          // Keyed by videoKey, so the incoming layer stays the same element when it becomes the current one.
+          [{ src: visibleSrc || currentSrc, key: videoKey, current: true }, ...(incoming ? [{ src: incoming.src, key: incoming.videoKey, current: false }] : [])].map(
+            (l) => (
+              <div
+                key={l.key}
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  zIndex: 0,
+                  opacity: l.current || incomingShown ? 1 : 0,
+                  transition: l.current ? "none" : `opacity ${CROSSFADE_MS}ms ${CROSSFADE_EASING}`,
+                  willChange: "opacity", // keeps an invisible incoming layer rastered, so its fade starts smooth
+                }}
+              >
+                <ArtMedia
+                  ref={l.current ? artMediaRef : incomingMediaRef}
+                  src={l.src}
+                  videoKey={l.key}
+                  displayMode={displayMode}
+                  mode="cycle"
+                  shouldPlay={l.current && shouldPlay}
+                  hold={frozen || liveOnGlass}
+                />
+              </div>
+            ),
+          )
         ) : (
           <MediaDisplay
             src={visibleSrc || currentSrc}
@@ -574,6 +633,10 @@ function DisplayPage() {
     </>
   );
 }
+
+/** The controlled page's dissolve from one base to the next (the default page still goes through black). */
+const CROSSFADE_MS = 1600;
+const CROSSFADE_EASING = "cubic-bezier(0.45, 0, 0.55, 1)";
 
 /** Fade-out of overlays dismissed by a freeze (their normal exit is 5 s; room_service allows 3 s for the ack). */
 const FREEZE_OVERLAY_FADE_MS = 600;
