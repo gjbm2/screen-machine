@@ -38,6 +38,7 @@ const TAP_MS = 300;
 const TAP_SLOP = 10;
 const DOUBLE_SLOP = 40;
 const ANIM_MS = 250;
+const FADE_MS = 200;
 
 const LoopeZoom: React.FC<{ origin: ZoomOrigin; onClose: () => void }> = ({ origin, onClose }) => {
   const rootRef = useRef<HTMLDivElement>(null);
@@ -46,6 +47,13 @@ const LoopeZoom: React.FC<{ origin: ZoomOrigin; onClose: () => void }> = ({ orig
   // The overlay is fixed inset-0, i.e. the documentElement's client box.
   const [vp, setVp] = useState(() => ({ w: document.documentElement.clientWidth, h: document.documentElement.clientHeight }));
   const [playing, setPlaying] = useState(false);
+  // Entering: the library must not re-align (it centres anything smaller than the screen), so the
+  // media stays exactly where it was in the carousel until the entry is done.
+  const [entering, setEntering] = useState(true);
+  // The zoom's own copy has a frame to show; until then the carousel's stays visible under it.
+  const [ready, setReady] = useState(false);
+  const [shown, setShown] = useState(false); // backdrop faded in
+  const [leaving, setLeaving] = useState(false);
 
   // Geometry is fixed for the life of the view except on a viewport resize (then it re-fits).
   const aspect = origin.rect.width / Math.max(1, origin.rect.height);
@@ -65,15 +73,30 @@ const LoopeZoom: React.FC<{ origin: ZoomOrigin; onClose: () => void }> = ({ orig
   const apply = (p: Pose, ms = 0) => tw.current?.setTransform(p.x, p.y, p.scale, ms, 'easeOut');
   const toFit = () => apply(clampPose({ x: 0, y: 0, scale: 1 }, fit, vp.w, vp.h), ANIM_MS);
 
+  /** Leave the way it came: back onto the carousel media while the backdrop fades, then close. */
+  const leavingRef = useRef(false);
+  const dismiss = useCallback(() => {
+    if (leavingRef.current) return;
+    leavingRef.current = true;
+    setLeaving(true);
+    const r = origin.sourceEl.getBoundingClientRect();
+    if (r.width > 2 && tw.current) {
+      apply(poseOver(fit, { left: r.left, top: r.top, width: r.width, height: r.height }), FADE_MS);
+      setTimeout(onClose, FADE_MS);
+    } else {
+      onClose();
+    }
+  }, [fit, onClose]); // eslint-disable-line react-hooks/exhaustive-deps
+
   /** After any gesture: close if let go well under fit, spring back to fit if a little under, else keep on screen. */
   const settle = useCallback(() => {
     const p = pose();
     if (!p) return;
-    if (p.scale < dismissBelow) { onClose(); return; }
+    if (p.scale < dismissBelow) { dismiss(); return; }
     if (p.scale < 1) { toFit(); return; }
     const c = clampPose(p, fit, vp.w, vp.h);
     if (Math.abs(c.x - p.x) > 0.5 || Math.abs(c.y - p.y) > 0.5) apply(c, ANIM_MS);
-  }, [dismissBelow, fit, vp.w, vp.h, onClose]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [dismissBelow, fit, vp.w, vp.h, dismiss]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* -- viewport size ------------------------------------------------------------------------ */
   useLayoutEffect(() => {
@@ -101,8 +124,10 @@ const LoopeZoom: React.FC<{ origin: ZoomOrigin; onClose: () => void }> = ({ orig
       const target = e.scale === 'detail' ? detailScale : Math.max(1, e.scale);
       // The library's ResizeObserver fires once after init and cancels any running animation,
       // so start ours the frame after that.
-      requestAnimationFrame(() => requestAnimationFrame(() =>
-        apply(clampPose(zoomAbout(start, e.x, e.y, target), fit, vp.w, vp.h), ANIM_MS)));
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        apply(clampPose(zoomAbout(start, e.x, e.y, target), fit, vp.w, vp.h), ANIM_MS);
+        setTimeout(() => setEntering(false), ANIM_MS + 20);
+      }));
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -132,6 +157,7 @@ const LoopeZoom: React.FC<{ origin: ZoomOrigin; onClose: () => void }> = ({ orig
       if (done || find(ev.touches)) return;
       done = true;
       detach();
+      setEntering(false);
       settle();
     };
     const opts = { capture: true, passive: false } as AddEventListenerOptions;
@@ -153,11 +179,29 @@ const LoopeZoom: React.FC<{ origin: ZoomOrigin; onClose: () => void }> = ({ orig
       if (ev.key !== 'Escape') return;
       ev.preventDefault();
       ev.stopPropagation();
-      onClose();
+      dismiss();
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
-  }, [onClose]);
+  }, [dismiss]);
+
+  // Fade the backdrop in on the first frame.
+  useEffect(() => {
+    const id = requestAnimationFrame(() => setShown(true));
+    return () => cancelAnimationFrame(id);
+  }, []);
+
+  // Once the zoom's copy shows a frame, hide the carousel's (no ghost behind a moving image).
+  useEffect(() => {
+    if (!ready) return;
+    const el = origin.sourceEl;
+    const was = el.style.visibility;
+    el.style.visibility = 'hidden';
+    return () => { el.style.visibility = was; };
+  }, [ready]); // eslint-disable-line react-hooks/exhaustive-deps
+  const imgRef = useCallback((el: HTMLImageElement | null) => {
+    if (el?.complete && el.naturalWidth > 0) setReady(true);
+  }, []);
 
   // iOS Safari zooms the page on its own gesture events unless told not to.
   useEffect(() => {
@@ -174,15 +218,18 @@ const LoopeZoom: React.FC<{ origin: ZoomOrigin; onClose: () => void }> = ({ orig
     const t = src.currentTime;
     src.pause();
     const v = videoRef.current;
+    const fallback = setTimeout(() => setReady(true), 1500); // never leave it invisible
     if (v) {
       v.muted = src.muted;
       const go = () => {
-        try { v.currentTime = t; } catch { /* not seekable yet */ }
+        v.addEventListener('seeked', () => setReady(true), { once: true });
+        try { v.currentTime = t; } catch { setReady(true); }
         if (wasPlaying) v.play().catch(() => {});
       };
       if (v.readyState >= 1) go(); else v.addEventListener('loadedmetadata', go, { once: true });
     }
     return () => {
+      clearTimeout(fallback);
       if (!v) return;
       try { src.currentTime = v.currentTime; } catch { /* ignore */ }
       src.muted = v.muted;
@@ -235,23 +282,30 @@ const LoopeZoom: React.FC<{ origin: ZoomOrigin; onClose: () => void }> = ({ orig
     clearTimeout(s.timer);
     // Single tap, once it is clear no second one is coming: black closes; a video toggles play.
     s.timer = setTimeout(() => {
-      if (!onMedia) onClose();
+      if (!onMedia) dismiss();
       else if (origin.isVideo) togglePlay();
     }, TAP_MS);
   };
 
-  const mediaStyle: React.CSSProperties = { width: '100%', height: '100%', objectFit: 'contain', display: 'block', userSelect: 'none' };
+  const mediaStyle: React.CSSProperties = {
+    width: '100%', height: '100%', objectFit: 'contain', display: 'block', userSelect: 'none',
+    opacity: ready ? 1 : 0,
+  };
 
   return ReactDOM.createPortal(
     <div
       ref={rootRef}
-      className="fixed inset-0 z-[1000] bg-black/95"
-      style={{ pointerEvents: 'auto', touchAction: 'none', overscrollBehavior: 'contain' }}
+      className="fixed inset-0 z-[1000]"
+      style={{ pointerEvents: leaving ? 'none' : 'auto', touchAction: 'none', overscrollBehavior: 'contain' }}
       onPointerDown={onPointerDown}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
       onContextMenu={e => e.preventDefault()}
     >
+      <div
+        className="absolute inset-0 bg-black/95"
+        style={{ opacity: shown && !leaving ? 1 : 0, transition: `opacity ${FADE_MS}ms ease-out` }}
+      />
       <TransformWrapper
         ref={tw}
         initialScale={start.scale}
@@ -265,6 +319,7 @@ const LoopeZoom: React.FC<{ origin: ZoomOrigin; onClose: () => void }> = ({ orig
         wheel={{ step: 0.2 }}
         pinch={{ step: 5 }}
         doubleClick={{ disabled: true }}
+        alignmentAnimation={{ disabled: entering }}
         panning={{ velocityDisabled: false }}
         onInit={onInit}
         onPinchingStop={settle}
@@ -291,7 +346,9 @@ const LoopeZoom: React.FC<{ origin: ZoomOrigin; onClose: () => void }> = ({ orig
               data-zoom-media
               src={origin.src}
               alt=""
+              ref={imgRef}
               draggable={false}
+              onLoad={() => setReady(true)}
               style={mediaStyle}
             />
           )}
@@ -305,7 +362,7 @@ const LoopeZoom: React.FC<{ origin: ZoomOrigin; onClose: () => void }> = ({ orig
         aria-label="Close zoom"
         className="fixed top-4 right-4 z-[1001] bg-black/80 hover:bg-black text-white rounded-full"
         style={{ touchAction: 'manipulation' }}
-        onClick={e => { e.stopPropagation(); onClose(); }}
+        onClick={e => { e.stopPropagation(); dismiss(); }}
       >
         <X className="h-5 w-5" />
       </Button>
