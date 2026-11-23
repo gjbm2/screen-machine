@@ -1024,7 +1024,9 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
         pace = vars(args_namespace).get("pace") or loop.get("pace", "slow")
         loop = {**loop, **(loop.get("paces") or {}).get(pace, {}), "pace": pace}
         from routes.clip_ease import ease_result
-        tracker.update(job_id, message="Easing the clip")
+        # its own stage: minutes of 4K work, which the ring and the words show as such, not as "Almost there"
+        stages = [*((tracker.get(job_id) or {}).get("stages") or []), "Easing"]
+        tracker.update(job_id, message="Easing the clip", stages=stages, stage_index=len(stages) - 1)
         output["message"], clip = ease_result(output["message"], loop, job_id,
                                               still=still_image)
         info(f"Eased clip: {clip}")

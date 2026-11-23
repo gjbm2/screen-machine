@@ -9,7 +9,8 @@
 //                             drive at most REAL_SHARE of this span, since after the last step the worker still saves
 //                             and uploads (owner, 28 Oct: the ring looked done while ~5-8 s remained). That tail
 //                             fills by time (estimate.generate_s is learned up to publishing_at, so it includes it).
-//   publishing  0.95 -> 0.99  over estimate.publish_s
+//   publishing  0.95 -> 0.99  over estimate.publish_s; a long one (a screen clip's ease, minutes) gets its share of
+//                             0.12 -> 0.99 by time instead, so the ring doesn't sit at 95% for most of the job
 //   done        1 when completed
 // A phase that runs long approaches its end ever more slowly: it never stalls dead, never jumps, never reaches the
 // next phase's share early. Worked out on the client from the job's timestamps, so it moves between server events.
@@ -83,6 +84,12 @@ export function jobPhase(job: Job): JobPhase {
 
 const lerp = (a: number, b: number, f: number) => a + (b - a) * f;
 
+/** Where generating hands over to publishing: GENERATE_END, or earlier when publishing usually takes a while. */
+function generateEnd(est: JobEstimate): number {
+  const pubShare = (PUBLISH_END - WAIT_END) * (est.publish_s / (est.generate_s + est.publish_s));
+  return Math.min(GENERATE_END, PUBLISH_END - pubShare);
+}
+
 export function jobProgress(job: Job, nowServerS: number): JobProgress {
   const phase = jobPhase(job);
   if (phase === 'done') {
@@ -140,13 +147,13 @@ export function jobProgress(job: Job, nowServerS: number): JobProgress {
       remainingGen = Math.max(0, est.generate_s - elapsed);
       overrunS = Math.max(0, elapsed - est.generate_s);
     }
-    return { fraction: lerp(WAIT_END, GENERATE_END, g), remainingS: remainingGen + est.publish_s, phase, overrunS };
+    return { fraction: lerp(WAIT_END, generateEnd(est), g), remainingS: remainingGen + est.publish_s, phase, overrunS };
   }
 
   // publishing
   const elapsed = since(stamp(job.publishing_at) ?? job.updated_at);
   return {
-    fraction: lerp(GENERATE_END, PUBLISH_END, soft(elapsed / est.publish_s)),
+    fraction: lerp(generateEnd(est), PUBLISH_END, soft(elapsed / est.publish_s)),
     remainingS: Math.max(0, est.publish_s - elapsed),
     phase,
     overrunS: Math.max(0, elapsed - est.publish_s),

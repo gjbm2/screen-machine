@@ -42,6 +42,10 @@ const NEARLY_S = 15;
 
 type StageJob = Pick<Job, 'status' | 'kind' | 'stages' | 'stage_index' | 'cancel_requested'>;
 
+function stageName(job: StageJob): string | undefined {
+  return job.stage_index != null ? job.stages?.[job.stage_index]?.trim().toLowerCase() : undefined;
+}
+
 /** What it's doing now, in one or two plain words. `phase` from jobProgress / useJobProgress. */
 export function stageLabel(job: StageJob, phase: JobPhase): string {
   if (job.status === 'completed') return STAGE_WORDS.completed;
@@ -54,7 +58,8 @@ export function stageLabel(job: StageJob, phase: JobPhase): string {
     case 'waiting':
       return STAGE_WORDS.waiting;
     case 'publishing':
-      return STAGE_WORDS.publishing;
+      // a screen clip's ease is rendered here, minutes of it (the server names it as its own stage)
+      return stageName(job) === 'easing' ? STAGE_WORDS.smoothing : STAGE_WORDS.publishing;
     case 'generating': {
       const name = job.stage_index != null ? job.stages[job.stage_index] : undefined;
       const key = name ? STAGE_NAMES[name.trim().toLowerCase()] ?? 'working' : 'painting';
