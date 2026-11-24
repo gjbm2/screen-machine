@@ -169,8 +169,8 @@ no use for a toy or a guinea pig.
 ### Stage 1: slots (built 23 Nov)
 
 A film specialisation of the generator's top section: the plain A > B > C rendering pipeline, without the story tools.
-The top section has a **Create / Film** switch (Create is the prompt form, and the default; the choice is kept per
-browser).
+The top section has a **Create / Storyboard** switch in the toolbar's row (Create is the prompt form, and the default;
+the choice is kept per browser; named Storyboard on 24 Nov, its id is still `film`).
 
 - A row of slots, two to start with, more with the + at the end; the row scrolls sideways when it outgrows the form.
   A picture goes into a slot by:
@@ -178,7 +178,7 @@ browser).
   - dropping files on it;
   - the slot's own menu, which offers what the form's Upload offers (this computer, the camera on a phone, Famous
     artworks); several pictures chosen at once fill the slots from there on;
-  - the toolbar's Upload, or "Use as prompt" on any picture while Film is open: the next empty slot.
+  - the toolbar's Upload, or "Use as prompt" on any picture while Storyboard is open: the next empty slot.
 - Between each pair of slots: what happens (the person narrates the transition) and a slider for how many seconds
   (2 to 10: one pass of the model).
 - The form's own toolbar and button, as in Create: Upload, the prompt helper (the film's own, or none), Advanced, and
@@ -203,7 +203,7 @@ How it is made:
 | The slots, links and time estimate (pure, tested) | `src/components/film/film.ts`, `film.test.ts` |
 | The film held by the form, and the requests that make it | `src/components/film/useFilm.ts` |
 | The strip | `src/components/film/FilmStrip.tsx` |
-| The switch, the toolbar and Advanced in Film, "Use as prompt" into the film | `src/components/prompt-form/PromptForm.tsx`, `PromptFormToolbar.tsx` |
+| The switch, the toolbar and Advanced in Storyboard, "Use as prompt" into the film | `src/components/prompt-form/PromptForm.tsx`, `PromptFormToolbar.tsx` |
 | A picture dropped on a slot | `src/pages/Index.tsx` (`DROP_ZONES.FILM_SLOT_PREFIX`) |
 | The segment's graph | `routes/workflows/h3-film.json` (`h3-fl2v` at real speed, with H3's sound; catalogue entry hidden) |
 | Its refiner | `routes/data/refiner-film.txt` (refiner `film`, hidden from the pickers) |
