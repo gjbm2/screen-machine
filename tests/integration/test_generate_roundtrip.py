@@ -1555,3 +1555,34 @@ def test_a_requests_pictures_keep_the_pages_order():
     assert in_page_order(["u1", "u2"], [], ["url", "url"]) == ["u1", "u2"]
     with pytest.raises(ValueError):          # one link could not be read: the rest would shift into its place
         in_page_order(["u1"], ["f1"], ["url", "file", "url"])
+
+
+def test_a_silent_film_segment_has_no_sound_track(house):
+    _, graph, _ = video_through_the_page(house, "h3-film.json", [picture(PAINTING, (1600, 900))] * 2, sound="silent")
+    kinds = [n["class_type"] for n in graph.values()]
+    assert "VAEDecodeAudio" not in kinds
+    assert not [n for n in graph.values() if n["class_type"] == "VAELoader" and "audio" in n["inputs"]["vae_name"]]
+    made = next(n for n in graph.values() if n["class_type"] == "CreateVideo")
+    assert "audio" not in made["inputs"]
+    assert all(str(v[0]) in graph for n in graph.values() for v in n["inputs"].values()
+               if isinstance(v, list) and len(v) == 2 and isinstance(v[1], int)), "a link to a removed node"
+
+
+def test_no_music_is_asked_for_after_any_rewrite(house):
+    from routes.generate import NO_MUSIC
+    fake, graph, passes = video_through_the_page(house, "h3-film.json", [picture(PAINTING, (1600, 900))] * 2, sound="no_music")
+    assert passes[0]["inputs"]["prompt"] == f"the ice melts {NO_MUSIC}"
+    assert any(n["class_type"] == "VAEDecodeAudio" for n in graph.values()), "no music still keeps the sound"
+
+
+def test_a_film_segments_place_rides_along_without_reaching_the_model(house):
+    """film_link (where the segment goes in its film) is kept with the result for Start again; start() ignores it."""
+    _, _, passes = video_through_the_page(house, "h3-film.json", [picture(PAINTING, (1600, 900))] * 2, film_link=2)
+    assert passes[0]["inputs"]["prompt"] == "the ice melts"
+
+
+def test_a_videos_pictures_go_to_the_worker_no_bigger_than_it_needs(house):
+    fake, _, _ = video_through_the_page(house, "h3-film.json", [picture(PAINTING, (3840, 2160)), picture(PERSON, (3840, 2160))])
+    for img in fake.images:
+        with Image.open(BytesIO(base64.b64decode(img["image"]))) as sent:
+            assert max(sent.size) <= 1920, f"a picture went at {sent.size}"

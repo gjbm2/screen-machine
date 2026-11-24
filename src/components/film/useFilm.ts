@@ -3,10 +3,10 @@
 import { useEffect, useState } from 'react';
 import { toast } from 'sonner';
 import { nanoid } from '@/lib/utils';
-import { generationApi } from '@/shared/api';
+import { generationApi, publishApi } from '@/shared/api';
 import { remainingLabel } from '@/shared/jobs/words';
 import {
-  FILM_WORKFLOW, addPicture, addSlot, emptyFilm, estimateSeconds, filmAspect, fromStored, placePictures, removeSlot,
+  FILM_WORKFLOW, addPicture, addSlot, emptyFilm, estimateSeconds, filmAspect, filmOf, fromStored, placePictures, removeSlot,
   requestPictures, segments, setAspect, setLink, setPicture, slotLetter, toStored,
   type Film, type Link, type SlotPicture,
 } from './film';
@@ -24,6 +24,8 @@ interface Kept {
   film: Film;
   params: Record<string, unknown>;
   refiner: FilmRefiner;
+  /** where the finished film is published: screens' ids, comma separated, or 'none' */
+  publish: string;
 }
 
 function load(): Kept {
@@ -33,9 +35,10 @@ function load(): Kept {
       film: fromStored(stored) ?? emptyFilm(),
       params: stored && typeof stored.params === 'object' && stored.params ? stored.params : {},
       refiner: stored?.refiner === 'none' ? 'none' : 'auto',
+      publish: typeof stored?.publish === 'string' && stored.publish ? stored.publish : 'none',
     };
   } catch {
-    return { film: emptyFilm(), params: {}, refiner: 'auto' };
+    return { film: emptyFilm(), params: {}, refiner: 'auto', publish: 'none' };
   }
 }
 
@@ -66,14 +69,15 @@ export function useFilm(generationOff = false) {
   // Advanced: the workflow's own settings (shape, how another shape is fitted, smoothness, seed)
   const [params, setParams] = useState<Record<string, unknown>>(kept.params);
   const [refiner, setRefiner] = useState<FilmRefiner>(kept.refiner);
+  const [publish, setPublish] = useState<string>(kept.publish);
   // the video asked for on each link, by the two slots it runs between
   const [asked, setAsked] = useState<Record<string, { placeholderId: string; batchId: string }>>({});
 
   useEffect(() => {
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify({ ...toStored(film), params, refiner }));
+      localStorage.setItem(STORE_KEY, JSON.stringify({ ...toStored(film), params, refiner, publish }));
     } catch { /* storage off: the film just isn't kept */ }
-  }, [film, params, refiner]);
+  }, [film, params, refiner, publish]);
 
   useEffect(() => {
     const onAdd = (e: Event) => {
@@ -127,13 +131,17 @@ export function useFilm(generationOff = false) {
       ...Object.fromEntries(jobs.map((j) => [linkKey(j.seg.index), { placeholderId: j.placeholderId, batchId }])),
     }));
 
-    jobs.forEach(({ seg, placeholderId, batchIndex }) => {
+    // once every video has landed: one film (two or more joined into one clip, kept in Generated with them), then
+    // published where chosen. A segment that failed leaves the others in Generated, unjoined.
+    const screens = publish === 'none' ? [] : publish.split(',').filter(Boolean);
+    const made = jobs.map(({ seg, placeholderId, batchIndex }) => {
       const { files, urls, order } = requestPictures(seg);
-      generationApi.generateImage({
+      return generationApi.generateImage({
         prompt: seg.text,
         workflow: FILM_WORKFLOW,
         params: {
           ...params,
+          film_link: seg.index,        // where it goes in the film, kept with it (Start again rebuilds the film)
           video_seconds: seg.seconds,
           keep_with_picture: 'no',     // a segment belongs to the film, not to either of its pictures
           ...(aspect ? { video_aspect: aspect } : {}),
@@ -146,14 +154,46 @@ export function useFilm(generationOff = false) {
         placeholders: [{ batch_index: batchIndex, placeholder_id: placeholderId }],
         ...(refiner === 'none' ? { refiner: 'none' } : {}),
       })
-        .then(() => forgetPlaceholder(placeholderId))
+        .then((result) => {
+          forgetPlaceholder(placeholderId);
+          return (result?.recent_files?.[0] as string | undefined) ?? null;
+        })
         .catch((error: unknown) => {
           forgetPlaceholder(placeholderId);
           window.dispatchEvent(new CustomEvent('recent:placeholder-gone', { detail: { batchId, placeholderId } }));
           const from = slotLetter(seg.index);
           const to = slotLetter(seg.index + 1);
           toast.error(`${from} to ${to}: ${error instanceof Error && error.message ? error.message : "couldn't make the video"}`);
+          return null;
         });
+    });
+
+    void Promise.all(made).then(async (files) => {
+      if (files.some((f) => !f)) {
+        if (jobs.length > 1) toast.error("Not every video was made, so the film wasn't joined");
+        return;
+      }
+      let film = files[0] as string;
+      if (files.length > 1) {
+        try {
+          const joined = await generationApi.joinFilm(batchId, files as string[], segs.map((s) => s.text));
+          film = joined.file;
+          window.dispatchEvent(new CustomEvent('recent:add', { detail: {
+            batchId, files: [film], imagesWithMetadata: [{ fileName: film, metadata: joined.metadata }], placeholderIds: [],
+          } }));
+          toast.success('The film is in Generated');
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : "Couldn't join the film");
+          return;
+        }
+      }
+      for (const screen of screens) {
+        try {
+          await publishApi.publishBucketFile(screen, '_recent', film);
+        } catch (error) {
+          toast.error(error instanceof Error ? error.message : `Couldn't publish to ${screen}`);
+        }
+      }
     });
   };
 
@@ -163,6 +203,8 @@ export function useFilm(generationOff = false) {
     linkKey,
     params,
     refiner,
+    publish,
+    setPublish,
     canMake: !generationOff && segs.length > 0,
     /** "About 2 minutes", or nothing while there is no video to make. */
     estimate: seconds > 0 ? remainingLabel(seconds) : undefined,
@@ -184,6 +226,13 @@ export function useFilm(generationOff = false) {
     setRefiner: (id: string) => setRefiner(id === 'none' ? 'none' : 'auto'),
     startAgain: () => {
       setFilm(emptyFilm());
+      setAsked({});
+    },
+    /** A film made before, back in the slots (Start again: components/recent/recipe.ts). */
+    load: (pictures: Array<string | null>, links: Array<Partial<Link>>, settings: Record<string, unknown>, helper: FilmRefiner) => {
+      setFilm(filmOf(pictures, links));
+      setParams(settings);
+      setRefiner(helper);
       setAsked({});
     },
   };

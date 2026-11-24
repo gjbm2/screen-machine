@@ -1,17 +1,21 @@
-// Start again: a picture's prompt and its reference pictures back in the generator (Generated's panels and tiles).
+// Start again (owner, 24 Nov): a picture or clip's recipe (recipe.ts) back in the generator. A still: Image, with the
+// words as written, its pictures, workflow, settings and prompt helper. A film segment: Film, with its pictures in the
+// slots and its words and seconds on the link; from its batch, the whole film. The form does the setting up
+// (PromptForm, START_AGAIN_EVENT).
 import { toast } from 'sonner';
-import { ReferenceImageService } from '@/services/reference-image-service';
 import type { ImageItem } from '@/types/image-types';
+import { recipeOf } from './recipe';
 
-export function startAgain(img: ImageItem): void {
+export const START_AGAIN_EVENT = 'generator:start-again';
+
+/** `batch`: the pictures made with it, where known (a film is rebuilt from all its segments). */
+export function startAgain(img: ImageItem, batch: ImageItem[] = []): void {
   try {
-    window.dispatchEvent(new CustomEvent('setPromptText', { detail: { prompt: img.promptKey || img.metadata?.prompt || '' } }));
-    const urls = ReferenceImageService.getReferenceImageUrls(img.bucketId || '_recent', img.reference_images || []);
-    // the first replaces what the prompt had, the rest are added to it
-    urls.forEach((url, i) => window.dispatchEvent(new CustomEvent('useImageAsPrompt', { detail: { url, append: i > 0 } })));
-    toast.success('Loaded prompt and reference images for editing');
+    const recipe = recipeOf(img, batch);
+    window.dispatchEvent(new CustomEvent(START_AGAIN_EVENT, { detail: recipe }));
+    toast.success(recipe.kind === 'film' ? 'The film is back in Film' : 'Ready to make again');
   } catch (error) {
     console.error('Error starting again:', error);
-    toast.error('Failed to load prompt and reference images');
+    toast.error("Couldn't start again from that");
   }
 }

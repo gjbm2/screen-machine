@@ -272,6 +272,9 @@ def extend(img: Image.Image, aspect: float, size, label: str = "", target: str |
     canvas, box = pad(img, aspect, place)
     buf = BytesIO()
     canvas.save(buf, format="JPEG", quality=95)
+    # a picture whose own edges are that grey (a studio backdrop): grey new parts are it, carried on (24 Nov: a portrait
+    # on a grey backdrop was refused twice and cropped to the face)
+    own_grey = edge_grey(img) >= OWN_GREY
     for attempt in (1, 2):
         job = get_tracker().create(prompt=(label or "Extend the picture to fill the screen")
                                    + (" (again: the first left grey)" if attempt == 2 else ""),
@@ -284,13 +287,31 @@ def extend(img: Image.Image, aspect: float, size, label: str = "", target: str |
         if result.size != tuple(size):
             result = ImageOps.fit(result, tuple(size), Image.LANCZOS)
         grey = grey_share(result, canvas.size, box)
-        if grey <= GREY_LEFT:
+        if grey <= GREY_LEFT or own_grey:
             return paste_back(result, img, canvas.size, box)
         warning(f"[reframe] the new parts came back {grey:.0%} grey (attempt {attempt})")
     raise RuntimeError("the model left the new parts grey twice")
 
 
 GREY_LEFT = 0.25      # more than this share of the new parts still flat grey: the model didn't fill them
+OWN_GREY = 0.5        # at least this share of the picture's own edges is that grey: grey new parts are no sign of it
+
+
+def edge_grey(img: Image.Image, band: float = 0.06) -> float:
+    """The share of the picture's outer band (each side's outer `band`) that is about the canvas's grey."""
+    small = img.convert("RGB").resize((64, max(1, round(64 * img.height / img.width))))
+    W, H = small.size
+    bx, by = max(1, round(W * band)), max(1, round(H * band))
+    px = small.load()
+    grey = total = 0
+    for y in range(H):
+        for x in range(W):
+            if bx <= x < W - bx and by <= y < H - by:
+                continue
+            total += 1
+            r, g, b = px[x, y]
+            grey += abs(r - GREY[0]) < 16 and abs(g - GREY[1]) < 16 and abs(b - GREY[2]) < 16
+    return grey / total if total else 0.0
 
 
 def grey_share(result: Image.Image, canvas_size, box) -> float:

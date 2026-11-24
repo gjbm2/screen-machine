@@ -137,5 +137,17 @@ export async function generateImage(params: GenerateImageParams) {
   return result;
 }
 
+/** A film's segments in Generated joined into one clip kept with them (routes/film.py); its file name in Generated. */
+export async function joinFilm(batchId: string, files: string[], links: string[]): Promise<{ file: string; metadata: Record<string, unknown> }> {
+  const response = await send('/film/join', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ batch_id: batchId, files, links }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(body.error || "Couldn't join the film");
+  return body;
+}
+
 // Job control (cancel one, cancel all) is the job tracker's: ./jobs.ts. Re-exported for the old Api facade.
 export { cancelAllJobs } from './jobs';

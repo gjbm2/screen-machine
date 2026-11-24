@@ -493,6 +493,8 @@ const Index = () => {
           refinerParams={refinerParams}
           globalParams={currentGlobalParams}
           onWorkflowChange={setCurrentWorkflow}
+          onParamsChange={(params) => setCurrentParams(prev => (
+            prev.publish_destination !== undefined ? { ...params, publish_destination: prev.publish_destination } : params))}
           onRefinerChange={handleRefinerChange}
           onPublishChange={handlePublishChange}
           generationOff={generationOff}

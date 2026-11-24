@@ -13,7 +13,6 @@ import {
 import { toast } from 'sonner';
 import { bucketsApi, publishApi } from '@/shared/api';
 import { usePublishDestinations } from '@/hooks/usePublishDestinations';
-import { ReferenceImageService } from '@/services/reference-image-service';
 import { TagLozenges } from '@/components/tags/TagLozenges';
 import type { ImageItem } from '@/types/image-types';
 import { ImageInfo } from './ImageInfo';
@@ -21,6 +20,7 @@ import LoopeZoom, { type ZoomOrigin, type ZoomEntry } from './LoopeZoom';
 import { ImageMenuItems } from '@/components/common/ImageMenuItems';
 import { notifyItemRemoved, notifyItemUpdated } from '@/components/tags/events';
 import { shareMedia } from '@/shared/shareMedia';
+import { startAgain } from '@/components/recent/startAgain';
 
 interface LoopeModalProps {
   title?: string;
@@ -492,15 +492,11 @@ const LoopeModal: React.FC<LoopeModalProps> = ({ title }) => {
     }
   };
 
+  // the generator set up to make it again (components/recent/startAgain.ts); the pictures shown with it may be its batch
   const handleStartAgain = (img: ImageItem) => {
     if (!img) return;
-    const promptText = img.prompt || img.metadata?.prompt || '';
-    const referenceImages = img.reference_images || img.metadata?.reference_images || [];
-    if (promptText) window.dispatchEvent(new CustomEvent('setPromptText', { detail: { prompt: promptText } }));
-    const urls = referenceImages.length ? ReferenceImageService.getReferenceImageUrls(img.bucketId || '_recent', referenceImages) : [];
-    urls.forEach((url, i) => window.dispatchEvent(new CustomEvent('useImageAsPrompt', { detail: { url, append: i > 0 } })));
+    startAgain(img, images);
     close();
-    toast.success('Loaded prompt and reference images for editing');
   };
 
   // the picture or clip shown, as a file, through the phone's share sheet (src/shared/shareMedia.ts)

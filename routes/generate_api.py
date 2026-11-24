@@ -304,3 +304,45 @@ def _generate_image():
         import traceback
         error(f"Traceback: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
+
+
+@generate_api.route('/film/join', methods=['POST'])
+def film_join():
+    """A film's segments, already in Generated, joined in slot order into one clip kept with them (routes/film.py).
+    Body: {batch_id, files: [Generated file names, in order], links: [the words of each link]}. Only the caller's own
+    batch (docs/ACCOUNTS.md)."""
+    from routes import auth
+    from routes.bucketer import BASE_OUTPUT, bucket_path
+    from routes.film import join
+    from routes.generate_utils import save_to_recent
+    body = request.get_json(silent=True) or {}
+    batch_id, files = body.get('batch_id'), body.get('files') or []
+    if not batch_id or not isinstance(files, list) or len(files) < 2 or not all(isinstance(f, str) for f in files):
+        return jsonify({"error": "a film needs its batch and two clips or more"}), 400
+    # someone else's film: refused. A browser that sends no space of its own (the page on another origin than the API,
+    # whose cookie isn't sent) can't say whose it is, so is let through, as its own Generated is
+    caller = auth.own_space(mint=False)
+    if auth.active() and not auth.viewer().admin and caller and auth.batch_space(batch_id) not in (None, caller):
+        return jsonify({"error": "not your film"}), 403
+    folder = bucket_path("_recent")
+    clips = [folder / Path(f).name for f in files]
+    missing = [c.name for c in clips if not c.is_file() or batch_id not in c.name]
+    if missing:
+        return jsonify({"error": f"not in this film: {', '.join(missing)}"}), 404
+    out = Path(BASE_OUTPUT) / "_inline" / f"film_{Path(batch_id).name}_{int(time.time())}.mp4"
+    try:
+        join(clips, out)
+        links = [str(t) for t in body.get('links') or [] if str(t).strip()]
+        metadata = {"workflow": "h3-film.json", "joined_film": True, "batch_id": batch_id,
+                    "original_prompt": " / ".join(links) or "Film", "prompt": " / ".join(links) or "Film",
+                    "film_segments": [c.name for c in clips], "space": auth.batch_space(batch_id) or caller,
+                    "timestamp": int(time.time() * 1000)}
+        saved = save_to_recent(str(out.resolve()), batch_id, metadata=dict(metadata))
+    except Exception as e:
+        error(f"[film_join] {e}")
+        return jsonify({"error": str(e)}), 500
+    finally:
+        out.unlink(missing_ok=True)
+    if not saved:
+        return jsonify({"error": "the joined film could not be kept"}), 500
+    return jsonify({"file": saved.name, "metadata": metadata})

@@ -434,8 +434,9 @@ def handle_image_generation(input_obj, wait=False, source="api", job_ids_out=Non
     if "silent" in data:
         base_kwargs["silent"] = data["silent"]
 
-    # A clip's still: its name in the bucket and its full-size copy (async_amimate; routes/clips.py)
-    for key in ("still", "still_image", "pace", "space"):
+    # A clip's still: its name in the bucket and its full-size copy (async_amimate; routes/clips.py); a scheduled
+    # picture's transition (routes/transitions.py)
+    for key in ("still", "still_image", "pace", "space", "transition"):
         if data.get(key):
             base_kwargs[key] = data[key]
 

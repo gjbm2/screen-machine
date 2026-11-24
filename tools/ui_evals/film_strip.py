@@ -26,6 +26,7 @@ import subprocess
 import sys
 import time
 import urllib.request
+from pathlib import Path
 
 from playwright.sync_api import sync_playwright
 
@@ -63,8 +64,17 @@ def run(args) -> int:
         page.wait_for_selector("[data-film-strip]")
         check(page.locator("textarea[data-prompt-input]").count() == 0, "Film replaces the prompt box")
         check(page.locator("[data-film-slot]").count() == 2, "two slots to start with")
-        strip_text = page.locator("[data-film-strip]").inner_text().split()
-        check(strip_text == ["A", "5", "s", "B"], f"no words in the strip but the slots' letters and the seconds ({strip_text})")
+        check(page.locator('[data-generator-mode="create"]').inner_text().strip() == "Image", "the other mode is called Image")
+        row_text = page.locator("[data-film-row]").inner_text().split()
+        check(row_text == ["A", "5", "s", "B"], f"no words among the slots but their letters and the seconds ({row_text})")
+        nudges = [t.strip() for t in page.locator("[data-film-nudges] span.text-xs").all_inner_texts()]
+        if args.phone:
+            rows = page.locator("[data-film-nudges] > div").all()
+            heights = [r.bounding_box()["height"] for r in rows]
+            check(all(h < 34 for h in heights), f"on a phone each suggestion row is one line ({[round(h) for h in heights]})")
+        check(nudges == ["Change:", "Camera:", "Sound:"], f"suggestion rows under the strip ({nudges})")
+        check(page.get_by_role("button", name="Publish").count() + page.locator("button:has(svg.lucide-share2)").count() >= 1
+              or page.locator("text=Publish").count() >= 1, "the Publish menu is in the toolbar")
         make = page.locator("[data-generate-button]")
         check(make.is_disabled(), "the generate button is off with no pictures")
         check(page.locator("[data-generate-estimate]").count() == 0, "no time shown with nothing to make")
@@ -91,6 +101,13 @@ def run(args) -> int:
         print("Links")
         box = page.locator('[data-film-link="AB"] textarea')
         box.fill(args.make[0] if args.make else "the first becomes the second")
+        if not args.make:
+            page.locator('[data-film-link="BC"] textarea').click()
+            page.locator("[data-film-nudges]").get_by_text("No music", exact=True).click()
+            check(page.locator('[data-film-link="BC"] textarea').input_value() == "no music, only the sounds of the action and the place",
+                  "a suggestion adds its words to the link being written")
+            check(box.input_value() == "the first becomes the second", "and leaves the other links alone")
+            page.locator('[data-film-link="BC"] textarea').fill("")
         if args.make:
             page.locator('[data-film-link="BC"] textarea').fill(args.make[1])
         thumb = page.locator('[data-film-link="AB"] [role=slider]')
@@ -104,7 +121,17 @@ def run(args) -> int:
             check(over <= 1, f"nothing is wider than the phone's screen (over by {over}px)")
             a = page.locator('[data-film-slot="A"]').bounding_box()
             b = page.locator('[data-film-slot="B"]').bounding_box()
+            link = page.locator('[data-film-link="AB"] textarea').bounding_box()
             check(b["y"] > a["y"] + a["height"], "on a phone the slots run down the page")
+            check(a["width"] <= 120, f"on a phone a slot is a small thumbnail ({a['width']:.0f}px wide)")
+            check(link["x"] > a["x"] + a["width"] and abs(link["y"] - a["y"]) < 20, "and its link sits beside it")
+            strip = page.locator("[data-film-strip]").bounding_box()
+            check(strip["height"] < 520, f"three slots fit in about half a phone's screen ({strip['height']:.0f}px)")
+            page.locator('[data-film-slot="A"] img').click()
+            page.wait_for_timeout(800)
+            check(page.get_by_role("dialog").count() >= 1, "tapping a picture opens it in the Loope")
+            page.keyboard.press("Escape")
+            page.wait_for_timeout(400)
 
         if not args.phone and not args.make:
             print("Dragging a picture from the page")
@@ -183,7 +210,8 @@ def run(args) -> int:
                 page.wait_for_timeout(5000)
                 jobs = json.load(urllib.request.urlopen(f"{args.url.rstrip('/')}/api/jobs?state=all&limit=10"))["jobs"]
                 mine = [j for j in jobs if j.get("workflow") == "h3-film.json" and j["created_at"] >= started - 5]
-                batch = batch or (mine[0]["batch_id"] if mine else None)
+                batch = batch or (min(mine, key=lambda j: j["created_at"])["batch_id"] if mine else None)
+                mine = [j for j in mine if j["batch_id"] == batch]      # not a film someone else makes meanwhile
                 for j in mine:
                     if j["status"] in ("completed", "failed", "cancelled"):
                         done[j["id"]] = j
@@ -199,6 +227,39 @@ def run(args) -> int:
             texts = [t.inner_text() for t in page.locator("[data-film-status]").all()]
             check(all(t == "Ready" for t in texts), f"the links say the videos are ready ({texts})")
             print(f"  batch {batch}")
+            # the film: the two joined into one clip, kept in Generated with them
+            joined = None
+            for _ in range(60):
+                for side in sorted(Path(args.output, "_recent").glob(f"*batch-{batch}.mp4.json")):
+                    meta = json.loads(side.read_text())
+                    if meta.get("joined_film"):
+                        joined = side.with_suffix("")
+                if joined:
+                    break
+                page.wait_for_timeout(2000)
+            check(joined is not None, "the videos are joined into one film in Generated")
+            if joined:
+                info = probe(str(joined))
+                kinds = sorted(st["codec_type"] for st in info.get("streams", []))
+                total = sum(float(j.get("duration_s") or 0) for j in done.values())
+                print(f"  film {joined.name}: {float(info['format']['duration']):.1f} s, streams {kinds}")
+                check(kinds == ["audio", "video"], "the film has its sound")
+
+                print("Start again from the film")
+                page.click('[data-generator-mode="create"]')
+                page.get_by_text("Generated", exact=False).first.click()
+                page.wait_for_timeout(2500)
+                menu = page.get_by_role("button", name="Batch menu").first
+                if menu.count():
+                    menu.click()
+                    page.get_by_role("menuitem", name="Start again from this prompt").click()
+                    page.wait_for_timeout(1500)
+                    check(page.locator('[data-generator-mode="film"]').get_attribute("aria-selected") == "true", "Start again opens Film")
+                    words = [page.locator(f'[data-film-link="{k}"] textarea').input_value() for k in ("AB", "BC")]
+                    check(words == list(args.make), f"with each link's words ({words})")
+                    check(page.locator("[data-film-slot] img").count() == 3, "and its three pictures")
+                else:
+                    print("  (Generated is not in its tiles layout here: Start again not tried)")
         browser.close()
     print("\n" + ("FAILED: " + "; ".join(FAILS) if FAILS else "all ok"))
     return 1 if FAILS else 0
@@ -212,4 +273,5 @@ if __name__ == "__main__":
     ap.add_argument("--phone", action="store_true")
     ap.add_argument("--make", nargs=2, metavar=("A_TO_B", "B_TO_C"), help="press Make the film (two paid videos)")
     ap.add_argument("--wait", type=int, default=900)
+    ap.add_argument("--output", default=str(Path(__file__).resolve().parents[2] / "output"), help="the app's output folder")
     sys.exit(run(ap.parse_args()))

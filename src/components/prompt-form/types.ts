@@ -40,6 +40,8 @@ export interface PromptFormProps {
   refinerParams?: Record<string, any>;
   globalParams?: Record<string, any>;
   onWorkflowChange?: (workflowId: string) => void;
+  /** The workflow's settings, set from outside the Advanced panel (Start again). */
+  onParamsChange?: (params: Record<string, any>) => void;
   onRefinerChange?: (refinerId: string) => void;
   onPublishChange?: (publishId: string) => void;
   /** The deployment has generation switched off (capabilities.generation): the form says so and won't submit. */
@@ -66,7 +68,7 @@ export interface ToolbarProps {
   refinerParams?: Record<string, any>;
   globalParams?: Record<string, any>;
   onRestoreFormState?: (formState: any) => void;
-  /** Film mode (components/film): no workflow or screen to choose, and only its own prompt helper or none. */
+  /** Film mode (components/film): no workflow to choose, and only its own prompt helper or none. */
   film?: boolean;
   /** About how long it will take, under the button ("About 2 minutes"). */
   estimate?: string;

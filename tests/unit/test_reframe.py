@@ -235,3 +235,52 @@ def test_the_persons_choice_goes_with_the_publish(api):
                                       "fit": "crop"})
     client.post("/api/publish", json={"dest_bucket_id": "tv", "source_url": "/output/lib/portrait.jpg"})
     assert published[0]["fit"] == "crop" and published[1]["fit"] is None
+
+
+def _extend_with(monkeypatch, original, drawn):
+    """reframe.extend with the edit model answering `drawn` (a function of the canvas it was sent); the jobs it made."""
+    import base64
+    from io import BytesIO
+    import routes.generate as generate
+    import routes.result_source as result_source
+
+    class Tracker:
+        made = []
+        def create(self, **k):
+            self.made.append(k)
+            return {"id": f"job{len(self.made)}"}
+
+    tracker = Tracker()
+    monkeypatch.setattr("routes.jobs.get_tracker", lambda: tracker)
+    sent = {}
+
+    def start(**k):
+        with Image.open(BytesIO(base64.b64decode(k["images"][0]["image"]))) as canvas:
+            out = drawn(canvas.convert("RGB"))
+        buf = BytesIO()
+        out.save(buf, format="PNG")
+        sent["bytes"] = buf.getvalue()
+        return {"message": "result"}
+
+    monkeypatch.setattr(generate, "start", start)
+    monkeypatch.setattr(result_source, "read_bytes", lambda src: sent["bytes"])
+    return tracker
+
+
+def test_a_picture_on_a_grey_backdrop_may_be_extended_with_grey(monkeypatch):
+    """24 Nov: a studio portrait on a grey backdrop had its extension refused twice ("came back grey") and was cropped
+    to the face. When the picture's own edges are that grey, grey new parts are the backdrop carried on."""
+    portrait = Image.new("RGB", (300, 450), reframe.GREY)
+    portrait.paste(Image.new("RGB", (120, 260), BLUE), (90, 150))         # the sitter, on the grey backdrop
+    tracker = _extend_with(monkeypatch, portrait, lambda canvas: canvas)  # the model leaves the grey as it is
+    out = reframe.extend(portrait, 16 / 9, (640, 360))
+    assert out.size == (640, 360)
+    assert len(tracker.made) == 1, "asked again for a backdrop that is grey anyway"
+
+
+def test_a_picture_left_on_grey_bars_is_still_refused(monkeypatch):
+    colourful = Image.new("RGB", (300, 450), RED)
+    tracker = _extend_with(monkeypatch, colourful, lambda canvas: canvas)
+    with pytest.raises(RuntimeError):
+        reframe.extend(colourful, 16 / 9, (640, 360))
+    assert len(tracker.made) == 2

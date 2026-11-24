@@ -16,12 +16,14 @@ import { FILM_ADD_EVENT, useFilm } from '@/components/film/useFilm';
 import { FILM_WORKFLOW } from '@/components/film/film';
 import AdvancedOptions from '@/components/AdvancedOptions';
 import { catalogueEntry } from '@/data/typedWorkflows';
+import { START_AGAIN_EVENT } from '@/components/recent/startAgain';
+import type { Recipe } from '@/components/recent/recipe';
 import { Clapperboard, Sparkles, X } from 'lucide-react';
 
 // Film's own workflow is not one the pickers offer; its settings are still the person's to change (Advanced)
 const FILM_WORKFLOWS = [catalogueEntry(FILM_WORKFLOW)].filter((w): w is Workflow => !!w);
 
-// The top section's two modes (owner, 23 Nov): the prompt form, or Film (a row of pictures with a video made between
+// The top section's two modes (owner, 23 Nov; "Image", 24 Nov): the prompt form, or Film (a row of pictures with a video made between
 // each pair; docs/FILM_MODE.md). The form is the default; the choice is kept in this browser.
 type FormMode = 'create' | 'film';
 const MODE_KEY = 'generator.mode';
@@ -49,6 +51,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
   refinerParams: externalRefinerParams,
   globalParams: externalGlobalParams,
   onWorkflowChange: externalWorkflowChange,
+  onParamsChange: externalParamsChange,
   onRefinerChange: externalRefinerChange,
   onPublishChange: externalPublishChange,
   generationOff = false,
@@ -334,6 +337,35 @@ const PromptForm: React.FC<PromptFormProps> = ({
       window.removeEventListener('useImageAsPrompt', handleUseImageAsPrompt as EventListener);
     };
   }, [addReferenceUrl, clearReferenceUrls, referenceUrls]);
+
+  // Start again (components/recent/startAgain.ts): the form set up as the picture or film was made. A ref, so the
+  // listener added once always sees the form's current handlers.
+  const startAgainRef = useRef<(recipe: Recipe) => void>(() => {});
+  startAgainRef.current = (recipe: Recipe) => {
+    if (recipe.kind === 'film') {
+      chooseMode('film');
+      film.load(recipe.pictures, recipe.links, recipe.params, recipe.refiner);
+    } else {
+      chooseMode('create');
+      setPrompt(recipe.prompt);
+      lastReceivedPrompt.current = recipe.prompt;
+      clearAllImages();
+      recipe.pictures.forEach((url, i) => addReferenceUrl(url, i > 0));
+      // a workflow the pickers don't offer (retired, hidden) is left to Auto
+      const workflow = (workflows as Workflow[] | undefined)?.some((w) => w.id === recipe.workflow) ? recipe.workflow : 'auto';
+      setSelectedWorkflow(workflow);
+      externalWorkflowChange?.(workflow);
+      setSelectedRefiner(recipe.refiner);
+      externalRefinerChange?.(recipe.refiner);
+      externalParamsChange?.(recipe.params);
+    }
+    setTimeout(() => document.querySelector('[data-generator-mode]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+  };
+  useEffect(() => {
+    const onStartAgain = (e: Event) => startAgainRef.current((e as CustomEvent<Recipe>).detail);
+    window.addEventListener(START_AGAIN_EVENT, onStartAgain);
+    return () => window.removeEventListener(START_AGAIN_EVENT, onStartAgain);
+  }, []);
 
   // Add event listener for setting prompt text
   useEffect(() => {
@@ -866,7 +898,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
         )}
         {/* the app's one look for a choice of a few (components/ui/segmented.tsx; owner, 24 Nov: black "too prominent") */}
         <div className="mb-3 inline-flex items-center gap-0.5 rounded-full bg-stone-200/70 p-0.5" role="tablist" aria-label="What to make">
-          {([['create', 'Create', Sparkles], ['film', 'Film', Clapperboard]] as const).map(([id, label, Icon]) => (
+          {([['create', 'Image', Sparkles], ['film', 'Film', Clapperboard]] as const).map(([id, label, Icon]) => (
             <button
               key={id}
               type="button"
@@ -902,11 +934,11 @@ const PromptForm: React.FC<PromptFormProps> = ({
               isLoading={false}
               selectedWorkflow={FILM_WORKFLOW}
               selectedRefiner={film.refiner}
-              selectedPublish="none"
+              selectedPublish={film.publish}
               onImageUpload={film.addPictures}
               onWorkflowChange={() => {}}
               onRefinerChange={film.setRefiner}
-              onPublishChange={() => {}}
+              onPublishChange={film.setPublish}
               toggleAdvancedOptions={() => setFilmAdvancedOpen(true)}
               handleSubmit={film.make}
               prompt=""

@@ -225,6 +225,115 @@
           }
         ]
       }
+    ],
+    "film": [
+      {
+        "label": "Change",
+        "prompts": [
+          {
+            "display": "Smooth morph",
+            "prompt": "one smoothly transforms into the other"
+          },
+          {
+            "display": "Time passes",
+            "prompt": "time passes and the light changes"
+          },
+          {
+            "display": "Walks into shot",
+            "prompt": "someone walks into shot"
+          },
+          {
+            "display": "Grows",
+            "prompt": "it grows slowly"
+          },
+          {
+            "display": "Melts",
+            "prompt": "it melts away"
+          },
+          {
+            "display": "Lights change",
+            "prompt": "the lighting changes"
+          },
+          {
+            "display": "Real-time action",
+            "prompt": "the action plays out at its natural, real-time speed"
+          },
+          {
+            "display": "Slow motion",
+            "prompt": "in slow motion"
+          }
+        ]
+      },
+      {
+        "label": "Camera",
+        "prompts": [
+          {
+            "display": "Holds still",
+            "prompt": "the camera holds still"
+          },
+          {
+            "display": "Slow push in",
+            "prompt": "the camera slowly pushes in"
+          },
+          {
+            "display": "Slow pull back",
+            "prompt": "the camera slowly pulls back"
+          },
+          {
+            "display": "Pan left",
+            "prompt": "the camera pans left"
+          },
+          {
+            "display": "Pan right",
+            "prompt": "the camera pans right"
+          },
+          {
+            "display": "Orbit",
+            "prompt": "the camera orbits slowly around the subject"
+          },
+          {
+            "display": "Handheld",
+            "prompt": "handheld camera"
+          }
+        ]
+      },
+      {
+        "label": "Sound",
+        "prompts": [
+          {
+            "display": "No music",
+            "prompt": "no music, only the sounds of the action and the place"
+          },
+          {
+            "display": "Soft music",
+            "prompt": "soft background music"
+          },
+          {
+            "display": "Dramatic music",
+            "prompt": "dramatic music builds"
+          },
+          {
+            "display": "Someone speaks",
+            "prompt": "someone says: \""
+          },
+          {
+            "display": "Footsteps",
+            "prompt": "footsteps"
+          },
+          {
+            "display": "Birdsong",
+            "prompt": "birdsong"
+          },
+          {
+            "display": "Rain",
+            "prompt": "the sound of rain"
+          },
+          {
+            "display": "City",
+            "prompt": "city noise in the background"
+          }
+        ]
+      }
     ]
   }
 }

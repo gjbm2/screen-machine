@@ -204,6 +204,9 @@ def handle_generate(instruction, context, now, output, publish_destination):
                 "maxheight": target_config.get("maxheight")
             }
         }
+        # a video from the picture on the screen to the new one, played once as it changes (routes/transitions.py)
+        if instruction.get("transition") and publish:
+            send_obj["data"]["transition"] = True
 
         # Handle additionalProperties - can be string containing JSON or key=value format
         if "additionalProperties" in instruction:

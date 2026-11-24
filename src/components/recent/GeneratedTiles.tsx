@@ -158,7 +158,7 @@ interface TileProps {
   menu: Omit<Props, 'layout' | 'sections' | 'isSectionCollapsed' | 'onToggleSection' | 'onDeleteSection' | 'onDeleteBatch' | 'onGenerateAgain'>;
 }
 
-function Tile({ img, w, h, menuAlways, onOpen, menu }: TileProps) {
+function Tile({ img, w, h, menuAlways, onOpen, menu, peers }: TileProps & { peers?: ImageItem[] }) {
   // Dragged onto the prompt or a screen's tab, as everywhere else: the same data as SortableImageGrid's pictures
   const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
     id: img.id,
@@ -220,7 +220,7 @@ function Tile({ img, w, h, menuAlways, onOpen, menu }: TileProps) {
             bucket={img.bucketId || '_recent'}
             onInfo={(i) => onOpen(i, { info: true })}
             onUseAsPrompt={menu.onUseAsPrompt}
-            onStartAgain={startAgain}
+            onStartAgain={(i) => startAgain(i, peers)}
             onCopyTo={menu.onCopyTo}
             onMoveTo={menu.onMoveTo}
             onPublish={menu.onPublish}
@@ -254,6 +254,7 @@ function Rows({ images, target, menuAlways, onOpen, menu, shapeOf }: {
               menuAlways={menuAlways}
               onOpen={onOpen}
               menu={menu}
+              peers={images}
             />
           ))}
         </div>
@@ -329,7 +330,7 @@ function BatchCaption({ batch, onGenerateAgain, onDeleteBatch, onOpenRefs }: {
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
           {first && !isPlaceholder(first) && (
-            <DropdownMenuItem onClick={() => startAgain(first)}>
+            <DropdownMenuItem onClick={() => startAgain(first, batch.images)}>
               <Wand2 className="mr-2 h-4 w-4" /> Start again from this prompt
             </DropdownMenuItem>
           )}

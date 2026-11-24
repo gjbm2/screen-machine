@@ -1113,6 +1113,18 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
             if not on_screen:
                 info(f"{publish_destination} now shows {showing}: the clip is filed with its still, not shown")
 
+        # A scheduled picture with "transition": the video from what the screen shows to it, made before it goes up
+        # (routes/transitions.py); none (or a failure) and it cross-fades as before
+        transition = None
+        if vars(args_namespace).pop("transition", None) and on_screen and isinstance(publish_destination, str) \
+                and not vars(args_namespace).get("still") \
+                and not str(output["message"]).lower().split("?")[0].endswith((".mp4", ".webm", ".mov")):
+            from routes.transitions import before_publish
+            transition = before_publish(publish_destination, output["message"], job_id, tracker,
+                                        meta_b={"prompt": args_namespace.prompt})
+            if transition:
+                vars(args_namespace)["transition"] = transition
+
         # Actually publish into your screen's bucket
         pub_res = publish_to_destination(
             source = output["message"],
@@ -1124,6 +1136,9 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
         )
         if not pub_res["success"]:
             raise RuntimeError(f"Publish failed: {pub_res.get('error')}")
+        if transition:
+            from routes.transitions import note_published
+            note_published(publish_destination, (pub_res.get("meta") or {}).get("filename"), transition)
 
         # Only access meta data if publish was successful
         if "meta" in pub_res and "filename" in pub_res["meta"]:

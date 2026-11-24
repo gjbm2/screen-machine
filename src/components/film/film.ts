@@ -148,6 +148,18 @@ export function requestPictures(seg: Segment): { files: File[]; urls: string[]; 
   return { files, urls, order };
 }
 
+/** A film from its pictures (links to them; null for an empty slot) and the links between them (Start again). */
+export function filmOf(pictures: Array<string | null>, links: Array<Partial<Link>>): Film {
+  const n = Math.max(2, pictures.length, links.length + 1);
+  return {
+    slots: Array.from({ length: n }, (_, i) => newSlot(pictures[i] ? { kind: 'url', url: pictures[i] as string } : null)),
+    links: Array.from({ length: n - 1 }, (_, i) => ({
+      text: typeof links[i]?.text === 'string' ? (links[i].text as string) : '',
+      seconds: clampSeconds(Number(links[i]?.seconds ?? DEFAULT_SECONDS)),
+    })),
+  };
+}
+
 // --- kept across a reload: the links, and the pictures the app already has (a file from the device can't be kept)
 
 interface Stored {

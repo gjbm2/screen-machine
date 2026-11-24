@@ -17,6 +17,7 @@ import { chooseClip, getPublishedInfo, publishOwnClip, type PublishedClip } from
 import { LegacyMaskLayers } from "./LegacyMaskLayers";
 import { ArtOnlyPage } from "./art/ArtOnlyPage";
 import { ArtMedia, type ArtMediaHandle } from "./art/ArtMedia";
+import { TransitionLayer, transitionFor } from "./art/TransitionLayer";
 import { BaseLanding } from "./art/baseLanding";
 import { MaskLayers } from "./art/MaskLayers";
 import { isClip, mediaContainerStyle, mediaStyle } from "./art/styles";
@@ -460,6 +461,10 @@ function DisplayPage() {
   // decoded first, then swapped with no transition; otherwise cross-faded in over the current base
   // (`incoming`, below). One change at a time: a newer file waits for the running one to land.
   const [incoming, setIncoming] = useState<{ src: string; videoKey: string } | null>(null);
+  // A scheduled picture's transition (art/TransitionLayer.tsx): looked up for each new base, played over the old one,
+  // and the cross-fade then happens under it (`covered`)
+  const [transition, setTransition] = useState<{ for: string; url: string | null; covered: boolean } | null>(null);
+  const playedTransitions = useRef(new Set<string>());
   const [incomingShown, setIncomingShown] = useState(false);
   const incomingMediaRef = useRef<ArtMediaHandle>(null);
   useEffect(() => {
@@ -486,6 +491,15 @@ function DisplayPage() {
       return;
     }
     if (currentSrc === visibleSrc) return;
+    if (transition?.for !== currentSrc) {
+      const target = currentSrc;
+      setTransition({ for: target, url: null, covered: false });
+      void transitionFor(target, playedTransitions.current, () => artMediaRef.current).then((url) =>
+        setTransition((t) => (t && t.for === target ? { ...t, url, covered: !url } : t)),
+      );
+      return;
+    }
+    if (!transition.covered) return;
     baseBusyUntil.current = Number.POSITIVE_INFINITY;
     baseLanding.started();
     setIncomingShown(false);
@@ -494,7 +508,11 @@ function DisplayPage() {
     setOverlays((prev) =>
       prev.map((o) => (o.withBase && o.visible ? { ...o, visible: false, fadeout: CROSSFADE_MS } : o)),
     );
-  }, [ctl, currentSrc, visibleSrc, frozen, liveOnGlass, incoming, pollingVideoKey, baseLanding]);
+  }, [ctl, currentSrc, visibleSrc, frozen, liveOnGlass, incoming, pollingVideoKey, baseLanding, transition]);
+  // a freeze or the live layer ends a transition at once (the art stack is about to be held or hidden)
+  useEffect(() => {
+    if (quiet) setTransition((t) => (t && (t.url || !t.covered) ? { ...t, url: null, covered: true } : t));
+  }, [quiet]);
 
   // The cross-fade: the new base is mounted invisible on top, decoded (a clip: paused on frame 0, so only one clip
   // decodes at a time), faded in on the compositor (opacity only: cheap on the kiosk's N95), and then the old one goes
@@ -755,6 +773,17 @@ function DisplayPage() {
           />
         )}
       </LayerBoundary>
+
+      {ctl && transition?.url && !quiet && (
+        <LayerBoundary name="transition">
+          <TransitionLayer
+            src={transition.url}
+            displayMode={displayMode}
+            onCovered={() => setTransition((t) => (t && !t.covered ? { ...t, covered: true } : t))}
+            onDone={() => setTransition((t) => (t ? { ...t, url: null, covered: true } : t))}
+          />
+        </LayerBoundary>
+      )}
 
       <LayerBoundary name="mask">
         {ctl ? (

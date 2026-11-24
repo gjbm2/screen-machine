@@ -429,7 +429,7 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
             onMoveTo={onMoveTo}
             onPublish={onPublish}
             onUseAsPrompt={onUseAsPrompt}
-            onGenerateAgain={startAgain}
+            onGenerateAgain={(img) => startAgain(img, images)}
             publishDestinations={publishDestinations}
           />
         </div>
@@ -555,7 +555,7 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
                     bucket={selectedImage.bucketId || '_recent'}
                     onInfo={showInfo}
                     onUseAsPrompt={onUseAsPrompt}
-                    onStartAgain={startAgain}
+                    onStartAgain={(img) => startAgain(img, images)}
                     onCopyTo={onCopyTo}
                     onMoveTo={onMoveTo}
                     onPublish={onPublish}
@@ -678,7 +678,7 @@ export const RecentBatchPanel: React.FC<RecentBatchPanelProps> = ({
             onMoveTo={onMoveTo}
             onPublish={onPublish}
             onUseAsPrompt={onUseAsPrompt}
-            onGenerateAgain={startAgain}
+            onGenerateAgain={(img) => startAgain(img, images)}
             onInfo={showInfo}
             publishDestinations={publishDestinations}
             className={`${styles.thumbnailGrid} recent-thumbnail-grid`}

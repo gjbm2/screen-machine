@@ -217,7 +217,33 @@ of video, 76 s for 3 s, about 100 s for 5 s.
 Checks: `tests/integration/test_generate_roundtrip.py` (film segments), `node --experimental-strip-types --test
 src/components/film/film.test.ts`, and on the live page `tools/ui_evals/film_strip.py` (`--make` makes a real film).
 
-Not in this stage: joining the videos into one clip, cut or move, redoing one segment, a saved film.
+Added 24 Nov (owner's notes on the first version):
+
+- **Image / Film** (was Create / Film).
+- **On a phone** each slot is a small thumbnail beside the link that leaves it; tapping a picture opens it in the
+  Loope.
+- **Suggestion rows** under the strip, as under Image's prompt (Change, Camera, Sound;
+  `src/data/example-prompts.json` `contextPrompts.film`): a chip adds its words to the link being written. On a phone
+  each row is one line that scrolls sideways.
+- **The prompt helper** (`refiner-film.txt`) is told each link's seconds and the Sound setting: it paces the action to
+  the time, and with an empty link describes the most natural change from one picture to the next.
+- **Advanced: Sound**: as the model draws it, no music (a line added after any rewrite), or silent (the graph's sound
+  is taken out: `silence()` in `routes/generate.py`).
+- **One film, published**: when the last segment lands the page asks for them joined (`POST /api/film/join`,
+  `routes/film.py`: ffmpeg, slot order, each segment's sound or silence) into one clip kept in Generated with them, then
+  publishes it to the screens chosen in the toolbar's Publish menu. A film of one link publishes that clip.
+- **Start again** reads what every result keeps (its words as written, workflow, settings, prompt helper and pictures
+  in order; `src/components/recent/recipe.ts`): a still comes back to Image, a segment or a joined film comes back to
+  Film with its pictures, words and seconds, and from its batch the whole film. Each segment keeps its place in the film
+  (`film_link`): the stored batch index is 0 for every one.
+- Fitting a picture with a plain grey backdrop: its extension is no longer refused as "left grey"
+  (`routes/reframe.py` `edge_grey`); it had fallen back to a crop of the face.
+
+Known: two unrelated scenes joined by a move come out as a picture-in-picture card that zooms in (the model's way of
+joining them). A cut is the answer; Cut / Move per join is next. The join runs from the page, so a page closed before
+the last segment lands leaves the segments unjoined.
+
+Not in this stage: cut or move, redoing one segment, a saved film.
 
 ### Stage 2: one film
 

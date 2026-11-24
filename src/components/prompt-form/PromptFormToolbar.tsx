@@ -79,13 +79,11 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
           only={film ? ['none'] : undefined}
         />
         
-        {!film && (
         <PublishSelector 
           selectedPublish={selectedPublish || 'none'}
           onPublishChange={onPublishChange}
           isCompact={isMobile}
         />
-        )}
 
 		<Button 
 		  type="button"
