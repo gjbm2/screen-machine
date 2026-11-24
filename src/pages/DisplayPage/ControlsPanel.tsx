@@ -67,6 +67,7 @@ export function ControlsPanel({
 }: Props) {
   return (
     <div
+      data-sm-controls=""
       style={{
         position: 'fixed',
         top: 20,
@@ -85,6 +86,7 @@ export function ControlsPanel({
         userSelect: 'none',
         minWidth: isMobile ? 200 : 260,
         maxWidth: '90vw',
+        ...(isMobile ? { maxHeight: '80vh', overflowY: 'auto' as const } : {}),
       }}
     >
       {/* File info */}

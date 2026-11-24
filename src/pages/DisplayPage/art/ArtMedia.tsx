@@ -29,6 +29,8 @@ export interface ArtMediaHandle {
   /** A new base about to fade in: resolves once the still is decoded or the (paused) clip shows frame 0. */
   prime(): Promise<void>;
   element(): HTMLImageElement | HTMLVideoElement | null;
+  /** The base is a screen clip with its ease rendered in (the controls panel offers Play). */
+  isEasedClip(): boolean;
   /** A screen clip resting on its picture: it can play now (the controls panel's Play). */
   canPlayNow(): boolean;
   /** Play the resting clip now; false when it can't (see ClipCycle.playNow). */
@@ -181,6 +183,7 @@ export const ArtMedia = forwardRef<ArtMediaHandle, Props>(function ArtMedia(
         return img ? withTimeout(img.decode(), PRIME_TIMEOUT_MS).then(twoFrames) : Promise.resolve();
       },
       element: () => (isVideo ? videoRef.current : imgRef.current),
+      isEasedClip: () => !!cycleRef.current?.isEased,
       canPlayNow: () => !!cycleRef.current?.canPlayNow,
       playNow: () => cycleRef.current?.playNow() ?? false,
     }),

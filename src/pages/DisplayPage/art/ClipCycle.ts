@@ -157,6 +157,11 @@ export class ClipCycle {
     });
   }
 
+  /** A clip with its ease rendered in (it rests between plays, and Play can start it). */
+  get isEased(): boolean {
+    return !!this.eased;
+  }
+
   /** A clip with its ease rendered in, resting on its picture: it can play now (the display page's Play). */
   get canPlayNow(): boolean {
     return !this.disposed && !this.isHeld && !!this.eased && this.phase === "rest";

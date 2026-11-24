@@ -183,11 +183,51 @@ function DisplayPage() {
 
   const isMobile = useIsMobile() || IS_HANDHELD;
 
-  // Global touch handler to show controls (ensures we catch touches even if elements overlay the container)
+  // Touch: a plain one-finger tap opens the controls and another closes them; a pinch, a pan or a double tap (zoom)
+  // leaves them alone, so a phone can look over and zoom into the whole picture (owner, 24 Nov: "all I see is the
+  // mouseover view immediately and it prevents navigation if I WANT to zoom in"). On the window, so overlays on top
+  // of the art don't swallow it; taps on the panel itself are its own.
   useEffect(() => {
-    const onTouch = () => handleShowControls();
-    window.addEventListener('touchstart', onTouch, { passive: true });
-    return () => window.removeEventListener('touchstart', onTouch);
+    let start: { x: number; y: number; t: number } | null = null;
+    let multi = false; // more than one finger, or one that moved: not a tap
+    let pending: ReturnType<typeof setTimeout> | null = null;
+    const onStart = (e: TouchEvent) => {
+      if (e.touches.length > 1) multi = true;
+      else if (!start) {
+        multi = false;
+        start = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() };
+      }
+    };
+    const onMove = (e: TouchEvent) => {
+      const t = e.touches[0];
+      if (start && t && Math.hypot(t.clientX - start.x, t.clientY - start.y) >= 10) multi = true; // a pan, not a tap
+    };
+    const onEnd = (e: TouchEvent) => {
+      if (e.touches.length > 0 || !start) return;
+      const tap = !multi && Date.now() - start.t < 350;
+      start = null;
+      if (!tap || (e.target as Element | null)?.closest?.("[data-sm-controls]")) return;
+      if (pending) {
+        // a second tap: a double tap, the browser's zoom
+        clearTimeout(pending);
+        pending = null;
+        return;
+      }
+      pending = setTimeout(() => {
+        pending = null;
+        if (controlsTimeout.current) clearTimeout(controlsTimeout.current);
+        setShowControls((shown) => !shown && !quietRef.current);
+      }, 300);
+    };
+    window.addEventListener("touchstart", onStart, { passive: true });
+    window.addEventListener("touchmove", onMove, { passive: true });
+    window.addEventListener("touchend", onEnd, { passive: true });
+    return () => {
+      window.removeEventListener("touchstart", onStart);
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onEnd);
+      if (pending) clearTimeout(pending);
+    };
   }, []);
 
   // Poll scheduler status only when overlay is shown
@@ -342,6 +382,7 @@ function DisplayPage() {
   // The published picture's clips, for the controls panel's Play (read while it is open)
   const [published, setPublished] = useState<{ filename: string; clips: PublishedClip[] } | null>(null);
   const [canPlayNow, setCanPlayNow] = useState(false);
+  const [easedOnScreen, setEasedOnScreen] = useState(false);
   const [startingClip, setStartingClip] = useState<string | null>(null);
   const playWait = useRef<ReturnType<typeof setInterval> | null>(null);
   useEffect(() => {
@@ -351,8 +392,12 @@ function DisplayPage() {
       getPublishedInfo(screenId).then((r) => live && setPublished({ filename: r.filename, clips: r.clips ?? [] }), () => live && setPublished(null));
     read();
     const t = setInterval(read, 15000);
-    const p = setInterval(() => setCanPlayNow(!!artMediaRef.current?.canPlayNow()), 500);
-    setCanPlayNow(!!artMediaRef.current?.canPlayNow());
+    const poll = () => {
+      setCanPlayNow(!!artMediaRef.current?.canPlayNow());
+      setEasedOnScreen(!!artMediaRef.current?.isEasedClip());
+    };
+    const p = setInterval(poll, 500);
+    poll();
     return () => {
       live = false;
       clearInterval(t);
@@ -362,7 +407,11 @@ function DisplayPage() {
   useEffect(() => () => {
     if (playWait.current) clearInterval(playWait.current);
   }, []);
-  const panelClips: PanelClip[] = (published?.clips ?? []).map((c) => ({ ...c, onScreen: c.filename === published?.filename && isClip(shownSrc ?? "") }));
+  const listed: PanelClip[] = (published?.clips ?? []).map((c) => ({ ...c, onScreen: c.filename === published?.filename && isClip(shownSrc ?? "") }));
+  // The clip on screen plays here whatever the list says: the list (the picture's other clips) needs the screen's
+  // access, which a page on plain http can't carry for an admins-only screen such as devtest (owner, 24 Nov)
+  const panelClips: PanelClip[] =
+    easedOnScreen && !listed.some((c) => c.onScreen) ? [{ filename: shownSrc ?? "", onScreen: true }, ...listed] : listed;
 
   /** Play the clip on screen now; another of the picture's clips is chosen, put up, and played as soon as it lands
    *  (rather than after its first short rest). */
@@ -558,7 +607,7 @@ function DisplayPage() {
     });
   }, [quiet]);
 
-  // Show controls on hover (desktop) or tap (mobile)
+  // Show controls on hover (a mouse; a tap on a touch screen is above)
   const handleShowControls = (e?: React.SyntheticEvent | Event) => {
     if (quietRef.current) return;
     setShowControls(true);
@@ -638,11 +687,8 @@ function DisplayPage() {
       ref={ctl ? artStackRef : containerRef}
       data-sm-art={ctl ? "" : undefined}
       style={ctl ? { ...containerStyle, zIndex: 2 } : containerStyle}
-      onPointerDown={(e) => {
-        if (e.pointerType === 'touch') handleShowControls();
-      }}
-      onMouseMove={!isMobile ? handleShowControls : undefined}
-      onTouchStart={handleShowControls}
+      // a real mouse at any width (a phone's taps are above; its emulated mouse events come as touch pointers)
+      onPointerMove={(e) => e.pointerType === "mouse" && handleShowControls()}
     >
       {/* Controls Overlay */}
       {showControls && !quiet && (
