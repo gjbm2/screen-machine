@@ -20,7 +20,10 @@ fi
 # csc reads Windows paths: work in Windows' temp folder
 wtmp="$(wslpath "$(powershell.exe -NoProfile -Command '[IO.Path]::GetTempPath()' | tr -d '\r')")/sm-screensaver-build"
 rm -rf "$wtmp" && mkdir -p "$wtmp"
-cp "$here/ScreenMachineSaver.cs" "$cache/lib/net462/Microsoft.Web.WebView2.Core.dll" "$cache/runtimes/win-x64/native/WebView2Loader.dll" "$wtmp/"
+version="$(date -u +%Y%m%d%H%M)"  # the installed copies update themselves to a newer one (Updater, GET /api/screensaver/version)
+sed "s/public const string Version = \"0\";/public const string Version = \"$version\";/" "$here/ScreenMachineSaver.cs" > "$wtmp/ScreenMachineSaver.cs"
+grep -q "Version = \"$version\"" "$wtmp/ScreenMachineSaver.cs" || { echo "couldn't stamp the version" >&2; exit 1; }
+cp "$cache/lib/net462/Microsoft.Web.WebView2.Core.dll" "$cache/runtimes/win-x64/native/WebView2Loader.dll" "$wtmp/"
 (cd "$wtmp" && "$CSC" /nologo /target:winexe /platform:x64 /optimize+ /out:ScreenMachine.exe \
   /r:System.Windows.Forms.dll /r:System.Drawing.dll /r:System.Web.Extensions.dll /r:Microsoft.Web.WebView2.Core.dll \
   /resource:Microsoft.Web.WebView2.Core.dll /resource:WebView2Loader.dll ScreenMachineSaver.cs | tr -d '\r')
@@ -28,7 +31,8 @@ cp "$here/ScreenMachineSaver.cs" "$cache/lib/net462/Microsoft.Web.WebView2.Core.
 mkdir -p "$here/out"
 cp "$wtmp/ScreenMachine.exe" "$here/out/ScreenMachine-screensaver.exe.new"
 mv "$here/out/ScreenMachine-screensaver.exe.new" "$here/out/ScreenMachine-screensaver.exe"
-echo "built $here/out/ScreenMachine-screensaver.exe ($(stat -c %s "$here/out/ScreenMachine-screensaver.exe") bytes)"
+echo "$version" > "$here/out/version.txt"
+echo "built $here/out/ScreenMachine-screensaver.exe v$version ($(stat -c %s "$here/out/ScreenMachine-screensaver.exe") bytes)"
 
 if [ "${1:-}" = "--test" ]; then
   # a stamped copy, as the download is (server and screen from SM_SCREENSAVER_TEST_SERVER/_SCREEN)

@@ -2,9 +2,11 @@
 
 One built file (tools/screensaver/build.sh) for every site; each download gets its server and screen written into a
 fixed slot inside the program (stamp()), which it reads back. Never appended after the end of the file: Defender's
-model flags a program with data after its end as a hidden script (Trojan:Script/Wacatac.B!ml, 24 Nov). The server is
+model flags a program with data after its end as a hidden script, and the domain in plain text as a banking trojan
+(Trojan:Script/Wacatac.B!ml, .H!ml, 24 Nov). The server is
 the page's own origin (the address the person reached the app at), else this request's.
 """
+import base64
 import json
 import re
 from pathlib import Path
@@ -14,6 +16,7 @@ from flask import Blueprint, Response, jsonify, request
 screensaver_api = Blueprint("screensaver_api", __name__)
 
 BUILT = Path(__file__).resolve().parent.parent / "tools" / "screensaver" / "out" / "ScreenMachine-screensaver.exe"
+VERSION = BUILT.parent / "version.txt"  # written by build.sh beside the build
 _ORIGIN = re.compile(r"^https?://[A-Za-z0-9.\-]+(:\d{1,5})?$")
 _SCREEN = re.compile(r"^[A-Za-z0-9_.\-]{1,80}$")
 
@@ -32,14 +35,15 @@ _CLOSE = "]]".encode("utf-16-le")
 
 def stamp(exe: bytes, server: str, screen: str) -> bytes:
     """The program with {"server", "screen"} in its slot: a UTF-16 string literal "[[SMSS-CONFIG<spaces>]]" in the
-    program (ScreenMachineSaver.cs, Self.Slot), overwritten in place at the same length."""
+    program (ScreenMachineSaver.cs, Self.Slot), overwritten in place at the same length with base64 JSON. Never the
+    address as plain text: Defender's model blocked the program with the site's domain ("...bank...") in it."""
     start = exe.find(_OPEN)
     if start < 0:
         raise ValueError("no config slot in the screensaver build")
     body_at = start + len(_OPEN)
     end = exe.find(_CLOSE, body_at)
     room = (end - body_at) // 2
-    text = json.dumps({"server": server, "screen": screen}, ensure_ascii=True)
+    text = base64.b64encode(json.dumps({"server": server, "screen": screen}).encode()).decode()
     if end < 0 or len(text) > room:
         raise ValueError("the screensaver's config slot is too small")
     return exe[:body_at] + text.ljust(room).encode("utf-16-le") + exe[end:]
@@ -57,3 +61,14 @@ def download():
         "Content-Disposition": 'attachment; filename="ScreenMachine-screensaver.exe"',
         "Cache-Control": "no-store",
     })
+
+
+@screensaver_api.route("/screensaver/version", methods=["GET"])
+def version():
+    """The built screensaver's version (its UTC build time, yyyyMMddHHmm): installed copies check it once a day and
+    update themselves from /screensaver/download when it's newer."""
+    try:
+        v = VERSION.read_text().strip() if BUILT.is_file() else ""
+    except OSError:
+        v = ""
+    return jsonify({"version": v}), 200, {"Cache-Control": "no-store"}

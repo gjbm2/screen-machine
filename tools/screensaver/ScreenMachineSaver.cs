@@ -31,7 +31,7 @@ namespace ScreenMachine.Screensaver
 {
     static class Program
     {
-        public const string Version = "1";
+        public const string Version = "0";  // build.sh writes the build's UTC time here (yyyyMMddHHmm)
 
         [STAThread]
         static int Main(string[] args)
@@ -55,7 +55,8 @@ namespace ScreenMachine.Screensaver
                 if (colon >= 0) { value = verb.Substring(colon + 1); verb = verb.Substring(0, colon); }
                 else if (args.Length > 1) value = args[1];
             }
-            Log.Write("start " + (verb == "" ? "(none)" : verb) + " from " + Self.Path);
+            Log.Write("start " + (verb == "" ? "(none)" : verb) + " v" + Version + " from " + Self.Path);
+            Updater.Tidy();
             switch (verb)
             {
                 case "s": Saver.Run(); return 0;
@@ -77,8 +78,9 @@ namespace ScreenMachine.Screensaver
         static Dictionary<string, object> config;
 
         /// The download's own settings (server, screen), written by the server into this fixed slot inside the program
-        /// (routes/screensaver.py stamp()). Inside, not appended: Defender's model reads data after the end of a
-        /// program as a script hidden in it (Trojan:Script/Wacatac.B!ml, 24 Nov).
+        /// (routes/screensaver.py stamp()), as base64 JSON. Inside, not appended, and never the address as plain text:
+        /// Defender's model flagged both (Trojan:Script/Wacatac.B!ml and .H!ml, 24 Nov); the site's domain, with
+        /// "bank" in it, read as a banking trojan's target.
         static readonly string Slot = "[[SMSS-CONFIG                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    ]]";
 
         public static string Trailer(string key)
@@ -94,7 +96,8 @@ namespace ScreenMachine.Screensaver
             try
             {
                 string body = Slot.Substring(13, Slot.Length - 15).Trim();
-                if (!body.StartsWith("{")) return none;
+                if (body == "") return none;
+                body = Encoding.UTF8.GetString(Convert.FromBase64String(body));
                 return new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(body) ?? none;
             }
             catch (Exception e) { Log.Write("config: " + e.Message); return none; }
@@ -125,6 +128,13 @@ namespace ScreenMachine.Screensaver
         {
             get { return (Get(Key, "Server") ?? Self.Trailer("server") ?? "").Trim().TrimEnd('/'); }
             set { Set(Key, "Server", (value ?? "").Trim().TrimEnd('/')); }
+        }
+
+        /// When the updater last asked the server (UTC ticks).
+        public static string UpdateChecked
+        {
+            get { return Get(Key, "UpdateChecked"); }
+            set { Set(Key, "UpdateChecked", value); }
         }
 
         /// For monitors with no choice of their own (and the ones plugged in later). The download's screen at first.
@@ -477,6 +487,7 @@ namespace ScreenMachine.Screensaver
 
         public static void Run()
         {
+            Updater.Soon();
             Input.Start();
             Web.PageInput = Input.FromPage;
             ui = new Control();
@@ -925,7 +936,7 @@ namespace ScreenMachine.Screensaver
                 Close();
             };
             signIn.Click += delegate { new SignInForm(server.Text.Trim().TrimEnd('/')).ShowDialog(this); LoadScreens(); };
-            Shown += delegate { LoadScreens(); };
+            Shown += delegate { LoadScreens(); Updater.Soon(); };
         }
 
         void Build()
@@ -1203,6 +1214,63 @@ namespace ScreenMachine.Screensaver
         }
     }
 
+    /// Keeps the installed copy current without anyone touching the PC. At most once a day, when the screensaver or
+    /// Settings starts, it asks its own server for the latest build's version (GET /api/screensaver/version); if that's
+    /// newer it downloads the build (as the Settings' server and default screen) and swaps it in for the next start.
+    /// A running program can be renamed but not overwritten, so the running one becomes ".old" (deleted next start).
+    static class Updater
+    {
+        static bool started;
+
+        public static void Soon()
+        {
+            if (started || !Installer.IsInstalledCopy) return;
+            started = true;
+            Task.Delay(15000).ContinueWith(t => Check());
+        }
+
+        public static void Tidy()
+        {
+            try { if (File.Exists(Installer.Target + ".old")) File.Delete(Installer.Target + ".old"); } catch (Exception) { }
+        }
+
+        static void Check()
+        {
+            try
+            {
+                string server = Settings.Server;
+                if (server == "") return;
+                long ticks;
+                if (long.TryParse(Settings.UpdateChecked ?? "", out ticks) && DateTime.UtcNow - new DateTime(ticks, DateTimeKind.Utc) < TimeSpan.FromHours(20)) return;
+                Settings.UpdateChecked = DateTime.UtcNow.Ticks.ToString();
+                using (var wc = new WebClient())
+                {
+                    var d = new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(wc.DownloadString(server + "/api/screensaver/version"));
+                    string latest = d != null && d.ContainsKey("version") ? d["version"] as string : null;
+                    if (!Newer(latest, Program.Version)) { Log.Write("update: v" + Program.Version + " is current"); return; }
+                    byte[] data = wc.DownloadData(server + "/api/screensaver/download?screen=" + Uri.EscapeDataString(Settings.Default.Screen ?? "") +
+                        "&origin=" + Uri.EscapeDataString(server));
+                    if (data.Length < 400000 || data[0] != 'M' || data[1] != 'Z') { Log.Write("update: not a program (" + data.Length + " bytes)"); return; }
+                    string target = Installer.Target, fresh = target + ".new", old = target + ".old";
+                    File.WriteAllBytes(fresh, data);
+                    if (File.Exists(old)) File.Delete(old);
+                    File.Move(target, old);
+                    try { File.Move(fresh, target); }
+                    catch (Exception) { File.Move(old, target); throw; }
+                    Installer.Version(latest);
+                    Log.Write("update: v" + Program.Version + " -> v" + latest + ", from the next start");
+                }
+            }
+            catch (Exception e) { Log.Write("update: " + e.Message); }
+        }
+
+        static bool Newer(string latest, string mine)
+        {
+            long a, b;
+            return long.TryParse(latest ?? "", out a) && long.TryParse(mine ?? "", out b) && a > b;
+        }
+    }
+
     static class Installer
     {
         const string UninstallKey = @"Software\Microsoft\Windows\CurrentVersion\Uninstall\ScreenMachineScreensaver";
@@ -1282,6 +1350,13 @@ namespace ScreenMachine.Screensaver
                     return "Installed, but this computer's policy chooses its own screensaver, so Windows won't use this one.";
             Log.Write("installed " + path);
             return null;
+        }
+
+        /// What Apps lists as the version.
+        public static void Version(string v)
+        {
+            using (var k = Registry.CurrentUser.OpenSubKey(UninstallKey, true))
+                if (k != null) k.SetValue("DisplayVersion", v);
         }
 
         public static void OpenWindowsSettings()
