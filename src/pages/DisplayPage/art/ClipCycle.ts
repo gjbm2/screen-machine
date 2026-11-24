@@ -157,6 +157,29 @@ export class ClipCycle {
     });
   }
 
+  /** A clip with its ease rendered in, resting on its picture: it can play now (the display page's Play). */
+  get canPlayNow(): boolean {
+    return !this.disposed && !this.isHeld && !!this.eased && this.phase === "rest";
+  }
+
+  /** Play now instead of waiting out the rest (the display page's Play). A video that doesn't end on its first frame
+   *  dissolves back to it first, as its rest would. False when it can't (playing already, held, not eased). */
+  playNow(): boolean {
+    if (!this.canPlayNow) return false;
+    const g = this.next();
+    const go = () => {
+      this.rested = true;
+      this.begin();
+    };
+    if (this.overlay) go();
+    else {
+      this.overlay = true;
+      this.hooks.setShowFirstFrame(true, EASED_FADE);
+      this.later(g, go, EASED_FADE);
+    }
+    return true;
+  }
+
   /** Continue the cycle after a hold. */
   resume(): void {
     if (this.disposed || !this.isHeld) return;

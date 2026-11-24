@@ -44,6 +44,28 @@ export async function chooseClip(bucketId: string, filename: string): Promise<{ 
   );
 }
 
+/** One of the published picture's clips (GET /buckets/<id>/info). */
+export interface PublishedClip {
+  filename: string;
+  pace?: string | null;
+  play_s?: number | null;
+  thumbnail_url?: string;
+}
+
+/** What a screen has published, with the published picture's clips (a published clip stands for its still). */
+export async function getPublishedInfo(bucketId: string): Promise<{ filename: string; still: string | null; clips: PublishedClip[] }> {
+  return requestJson(`/buckets/${bucketId}/info`, undefined, (r) => `Could not read what's on the screen: ${r.statusText}`);
+}
+
+/** Put one of the published picture's clips on its screen (a clip has its still's shape, so no fit is asked). */
+export async function publishOwnClip(bucketId: string, filename: string): Promise<unknown> {
+  return requestJson(
+    '/publish',
+    jsonInit('POST', { dest_bucket_id: bucketId, src_bucket_id: bucketId, filename: realFilename(filename) }),
+    (r) => `Could not put the clip up: ${r.statusText}`,
+  );
+}
+
 /** Make a clip an item of its own: it no longer belongs to its still. */
 export async function detachClip(bucketId: string, filename: string): Promise<{ status: string }> {
   filename = realFilename(filename);

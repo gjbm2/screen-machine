@@ -287,11 +287,25 @@ def published_info(bucket_id: str):
     published_at= pm["published_at"]
     raw_url     = f"/output/{bucket_id}/{filename}"
     thumb_url   = f"/output/{bucket_id}/thumbnails/{Path(filename).stem}{Path(filename).suffix}.jpg"
+    # The published picture and its clips (routes/clips.py; a published clip stands for its still): the display
+    # page's Play
+    from routes.clips import clips_of, still_of, _meta
+    from routes.image_formats import VIDEOS
+    folder = bucket_path(bucket_id)
+    still = still_of(_meta(folder / filename)) if Path(filename).suffix.lower() in VIDEOS else filename
+    clips = []
+    if still and (folder / still).is_file():
+        for c in clips_of(folder, still):
+            clip = _meta(c).get("clip") or {}
+            clips.append({"filename": c.name, "pace": clip.get("pace"), "play_s": clip.get("play_s"),
+                          "thumbnail_url": f"/output/{bucket_id}/thumbnails/{c.name}.jpg"})
     return jsonify({
         "filename": filename,
         "published_at": published_at,
         "raw_url": raw_url,
         "thumbnail_url": thumb_url,
+        "still": still if clips else None,
+        "clips": clips,
     })
 
 # -- favourites --------------------------------------------------------------

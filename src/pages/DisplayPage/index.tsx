@@ -12,7 +12,8 @@ import { Api } from "@/utils/api";
 import { extractEventTriggers } from "@/utils/scheduleUtils";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { LayerBoundary } from "./common/LayerBoundary";
-import { ControlsPanel, type NextAction, type SchedulerStatus } from "./ControlsPanel";
+import { ControlsPanel, type NextAction, type PanelClip, type SchedulerStatus } from "./ControlsPanel";
+import { chooseClip, getPublishedInfo, publishOwnClip, type PublishedClip } from "@/shared/api/buckets";
 import { LegacyMaskLayers } from "./LegacyMaskLayers";
 import { ArtOnlyPage } from "./art/ArtOnlyPage";
 import { ArtMedia, type ArtMediaHandle } from "./art/ArtMedia";
@@ -62,6 +63,15 @@ export default function DisplayPageRoute() {
 
 const noopSubscribe = () => () => undefined;
 const initialSnapshot = () => initialCtlState;
+
+/** A phone or tablet viewing a display page (never a TV or the kiosk's browser): it keeps the device's own width.
+ *  Told by the device, not innerWidth, which the TV's 1920-wide layout below sets itself: a phone used to get that
+ *  layout, shrunk to a fifth or cropped to its top left, with fit/fill and the rest out of reach (owner, 24 Nov). */
+const IS_HANDHELD = (() => {
+  const ua = typeof navigator === "undefined" ? "" : navigator.userAgent;
+  if (/AFT|FireTV|Amazon|SmartTV|Tizen|Web0S|\bTV\b/i.test(ua)) return false;
+  return /Mobi|iPhone|iPad|Android/i.test(ua) || (navigator.maxTouchPoints > 1 && /Macintosh/i.test(ua));
+})();
 
 /** Role for the control socket: `?kiosk=north|south` -> kiosk, `?kiosk=lab` -> lab, otherwise viewer. */
 // The room's control plane (VITE_ROOM_URL in .env). Every display page connects to it, so the TV URLs never change:
@@ -171,7 +181,7 @@ function DisplayPage() {
   const [showControls, setShowControls] = useState(false);
   const controlsTimeout = useRef<NodeJS.Timeout | null>(null);
 
-  const isMobile = useIsMobile();
+  const isMobile = useIsMobile() || IS_HANDHELD;
 
   // Global touch handler to show controls (ensures we catch touches even if elements overlay the container)
   useEffect(() => {
@@ -328,6 +338,60 @@ function DisplayPage() {
   const shownSrc = visibleSrc || currentSrc;
   const shownSrcRef = useRef(shownSrc);
   shownSrcRef.current = shownSrc;
+
+  // The published picture's clips, for the controls panel's Play (read while it is open)
+  const [published, setPublished] = useState<{ filename: string; clips: PublishedClip[] } | null>(null);
+  const [canPlayNow, setCanPlayNow] = useState(false);
+  const [startingClip, setStartingClip] = useState<string | null>(null);
+  const playWait = useRef<ReturnType<typeof setInterval> | null>(null);
+  useEffect(() => {
+    if (!screenId || !showControls) return;
+    let live = true;
+    const read = () =>
+      getPublishedInfo(screenId).then((r) => live && setPublished({ filename: r.filename, clips: r.clips ?? [] }), () => live && setPublished(null));
+    read();
+    const t = setInterval(read, 15000);
+    const p = setInterval(() => setCanPlayNow(!!artMediaRef.current?.canPlayNow()), 500);
+    setCanPlayNow(!!artMediaRef.current?.canPlayNow());
+    return () => {
+      live = false;
+      clearInterval(t);
+      clearInterval(p);
+    };
+  }, [screenId, showControls]);
+  useEffect(() => () => {
+    if (playWait.current) clearInterval(playWait.current);
+  }, []);
+  const panelClips: PanelClip[] = (published?.clips ?? []).map((c) => ({ ...c, onScreen: c.filename === published?.filename && isClip(shownSrc ?? "") }));
+
+  /** Play the clip on screen now; another of the picture's clips is chosen, put up, and played as soon as it lands
+   *  (rather than after its first short rest). */
+  const playClip = async (clip: PanelClip) => {
+    if (!screenId) return;
+    if (clip.onScreen) {
+      if (artMediaRef.current?.playNow()) setCanPlayNow(false);
+      return;
+    }
+    const from = shownSrcRef.current;
+    setStartingClip(clip.filename);
+    try {
+      await chooseClip(screenId, clip.filename);
+      await publishOwnClip(screenId, clip.filename);
+    } catch (e) {
+      console.warn("[play] could not put the clip up", e);
+      setStartingClip(null);
+      return;
+    }
+    if (playWait.current) clearInterval(playWait.current);
+    const until = Date.now() + 90_000;
+    playWait.current = setInterval(() => {
+      const done = Date.now() > until || (shownSrcRef.current !== from && !!artMediaRef.current?.playNow());
+      if (!done) return;
+      if (playWait.current) clearInterval(playWait.current);
+      playWait.current = null;
+      setStartingClip(null);
+    }, 500);
+  };
   /** performance.now() until which a base change (decode + cross-fade) is still on screen. */
   const baseBusyUntil = useRef(0);
   /** performance.now() until which dismissed overlays are still fading out (freeze / live). */
@@ -596,6 +660,10 @@ function DisplayPage() {
             toggleDisplayMode={toggleDisplayMode}
             toggleNoMask={toggleNoMask}
             handleThrowEvent={handleThrowEvent}
+            clips={panelClips}
+            canPlayNow={canPlayNow}
+            startingClip={startingClip}
+            onPlayClip={playClip}
           />
         </LayerBoundary>
       )}
