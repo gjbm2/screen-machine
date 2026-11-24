@@ -20,6 +20,7 @@ import json
 import math
 import os
 import subprocess
+import sys
 import tempfile
 
 import numpy as np
@@ -235,12 +236,43 @@ def _on_gpu(src, dst, still, fps, frames, progress, k=1):
             return None
 
 
+# A drawn clip that can't find its way back to the picture often cuts back to it in one frame near the end (owner, 24
+# Nov: a natural clip "played half ... then snapped back to still"; one frame changed by 63/255 where the rest moved
+# under 17). The ease plays up to the cut and comes back to the still over at least CUT_SETTLE_S instead.
+CUT_JUMP = 25.0       # a frame-to-frame change (mean |diff|, 0-255) at least this big ...
+CUT_RATIO = 4.0       # ... and this many times the clip's usual change is a cut
+CUT_FROM = 0.4        # looked for after this share of the clip (a model cuts back to its last frame)
+CUT_SETTLE_S = 2.0
+
+
+def cut_at(src):
+    """The first frame of a hard cut in the later part of src (the frames before it are kept), or None."""
+    w, h = 320, 180
+    raw = subprocess.run(["ffmpeg", "-v", "error", "-i", src, "-vf", f"scale={w}:{h}", "-f", "rawvideo",
+                          "-pix_fmt", "gray", "-"], capture_output=True, timeout=120).stdout
+    f = np.frombuffer(raw, np.uint8)[: len(raw) // (w * h) * w * h].reshape(-1, h, w).astype(np.float32)
+    if len(f) < 10:
+        return None
+    step = np.abs(np.diff(f, axis=0)).mean(axis=(1, 2))      # step[i]: frame i -> i + 1
+    usual = float(np.median(step)) or 0.1
+    for i in range(int(len(step) * CUT_FROM), len(step)):
+        if step[i] >= CUT_JUMP and step[i] >= CUT_RATIO * max(usual, float(np.median(step[max(0, i - 12):i]))):
+            return i + 1
+    return None
+
+
 def ease_file(src, dst, play_s=30.0, ramp_s=8.0, settle_s=3.0, still=None, fps=FPS, ramp_out_s=None,
               progress=lambda f: None):
     """Render src (any clip) into dst on the eased curve, at the size of `still` when it is given (the full-size
     picture the clip was made from: see _OnTheStill), at `fps`; returns how much of the picture moves (mean |frame -
     frame 0|). On the renderer's GPU when it can (_on_gpu), else here; `progress` is told how far it is (0-1)."""
     w, h, n = _probe(src)
+    cut = cut_at(src)
+    if cut:
+        print(f"cut at frame {cut} of {n}: played up to it", file=sys.stderr)
+        n = cut
+        if settle_s:
+            settle_s = max(settle_s, min(CUT_SETTLE_S, play_s / 2))
     frames_out = schedule(n, play_s, ramp_s, settle_s, fps, ramp_out_s)
     still = still if still and fits(still, w, h) else None
     motion = _on_gpu(src, dst, still, fps, frames_out, progress, mask_scale(w))

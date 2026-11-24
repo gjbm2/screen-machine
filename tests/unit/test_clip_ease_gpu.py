@@ -114,3 +114,21 @@ def test_held_too_long_behind_a_live_tv_cancels_and_goes_idle(renderer, monkeypa
     assert ce._on_gpu("in.mp4", "/tmp/x.mp4", None, 30, [[0, 0]], lambda f: None) is None
     assert r.deleted and r.deleted[0].endswith("/b1")
     assert ce._idle is True           # the CPU makes it at idle priority
+
+
+def _clip(path, frames):
+    import subprocess
+    import numpy as np
+    raw = np.stack(frames).astype(np.uint8).tobytes()
+    subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt", "gray", "-s", "64x36", "-r", "30",
+                    "-i", "-", "-c:v", "libx264", "-qp", "0", "-pix_fmt", "yuv420p", str(path)], input=raw, check=True)
+
+
+def test_a_hard_cut_back_to_the_picture_is_found(tmp_path):
+    import numpy as np
+    # drifts slowly away from the picture, then cuts straight back to it at frame 40 (owner, 24 Nov: "snapped back")
+    frames = [np.full((36, 64), 40 + i * 2, np.uint8) for i in range(40)] + [np.full((36, 64), 40, np.uint8)] * 10
+    _clip(tmp_path / "cut.mp4", frames)
+    assert ce.cut_at(str(tmp_path / "cut.mp4")) == 40
+    _clip(tmp_path / "smooth.mp4", [np.full((36, 64), 40 + i * 2, np.uint8) for i in range(50)])
+    assert ce.cut_at(str(tmp_path / "smooth.mp4")) is None
