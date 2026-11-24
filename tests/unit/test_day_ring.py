@@ -212,8 +212,14 @@ def test_the_ring_publishes_only_when_the_turn_comes(monkeypatch):
     assert [d["source"] for d in run(_rotation("north-screen"), ctx)] == ["p1"]
     at(monkeypatch, 8, 1)
     assert run(_rotation("north-screen"), ctx) == []
-    ctx["vars"]["screen_layer"] = "live"
+    ctx["vars"]["day_set"][2] = None                                              # a set still coming
     at(monkeypatch, 9, 0)
+    assert run(_rotation("north-screen"), ctx) == []
+    ctx["vars"]["day_set"][2] = "p2"
+    at(monkeypatch, 9, 4)
+    assert [d["source"] for d in run(_rotation("north-screen"), ctx)] == ["p2"]  # up as soon as it is made
+    ctx["vars"]["screen_layer"] = "live"
+    at(monkeypatch, 10, 0)
     assert run(_rotation("north-screen"), ctx) == []                              # live: the ring waits
 
 
@@ -251,6 +257,9 @@ def test_the_cloud_commissions_from_the_north_screens_next_turn(monkeypatch):
     monkeypatch.setattr(routes.openai, "openai_prompt", lambda **k: {"outputs": [f"prompt {i}" for i in range(8)]})
     at(monkeypatch, 10, 10)                                                         # north is on p3, next p4
     ctx = {"vars": {"ring_n": 8, "ring_step_min": 30, "ring_screens": 2, "day_set": [f"old{i}" for i in range(8)]}}
+    short = {"vars": {"ring_n": 8, "day_set": ["x"]}}                              # a ring is n long from the start
+    run([x for x in blk if x.get("action") == "set_var" and x.get("var") == "day_set" and "{{ i }}" not in str(x)], short)
+    assert short["vars"]["day_set"][0] == "x" and len(short["vars"]["day_set"]) == 8
     done = run([x for x in blk if x.get("action") != "export_var"], ctx, important=True)
     gens = [d["input"]["prompt"] for d in done if d["action"] == "generate"]
     assert gens == [f"prompt {i}" for i in (4, 5, 6, 7, 0, 1, 2, 3)]
