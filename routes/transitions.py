@@ -19,6 +19,7 @@ import base64
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -33,11 +34,18 @@ PLAY_S, RAMP_S = 15.0, 3.5  # on screen: eased in from A and out onto B
 DEADLINE_S = 540            # the new picture waits no longer than this for its transition (a cold GPU included)
 FOLDER = "transitions"
 WRITER = "refiner-transition.txt"
-SCHEMA = {"name": "transition", "description": "The transition from picture A to picture B",
-          "parameters": {"type": "object", "properties": {
-              "idea": {"type": "string", "description": "The link and the manner, in a few words."},
-              "full_prompt": {"type": "string", "description": "One or two sentences for the video model."}},
-              "required": ["idea", "full_prompt"]}}
+FIELDS = {"link_a": "The element or region of A the change starts from, and where it sits in the frame.",
+          "link_b": "What it becomes in B, and where it sits.",
+          "motion": "How it gets there: plain movement with a direction.",
+          "rest": "What the rest of the frame does meanwhile.",
+          "idea": "The link and the manner, in a few words.",
+          "full_prompt": "Two or three sentences for the video model, in time order, built from the fields above."}
+SCHEMA = {"name": "transition", "description": "The transition from picture A to picture B, worked out step by step",
+          "parameters": {"type": "object", "properties": {k: {"type": "string", "description": v} for k, v in FIELDS.items()},
+                         "required": list(FIELDS)}}
+# What the video model does with a vague prompt: paint or light bursting out of the centre (owner, 24 Nov: "a bit much
+# 'expanding paint star'"). A prompt with these words goes back to the writer once.
+BURST = re.compile(r"\b(burst|explod|radiat|star ?burst|rays?\b|bloom|splash|shatter)", re.I)
 
 
 def _frames(seconds):
@@ -60,13 +68,22 @@ def _sidecar(path: Path) -> dict:
 
 
 def write(a: bytes, b: bytes, meta_a: dict, meta_b: dict) -> dict:
-    """The writer's {idea, full_prompt} for a transition from picture a to picture b (JPEG/PNG bytes)."""
+    """The writer's answer (FIELDS) for a transition from picture a to picture b (JPEG/PNG bytes). A prompt that
+    still reads like a burst goes back once with a note."""
     import routes.openai
-    return routes.openai.openai_prompt(
-        user_prompt=json.dumps({"A": _about(meta_a), "B": _about(meta_b),
-                                "pictures": "Two pictures are attached: A first, then B."}),
-        system_prompt=WRITER, schema=SCHEMA,
-        images=[{"name": "A.jpg", "image": _b64(a)}, {"name": "B.jpg", "image": _b64(b)}], verbose=False) or {}
+    ask = {"A": _about(meta_a), "B": _about(meta_b), "pictures": "Two pictures are attached: A first, then B."}
+    images = [{"name": "A.jpg", "image": _b64(a)}, {"name": "B.jpg", "image": _b64(b)}]
+    out = {}
+    for _ in range(2):
+        out = routes.openai.openai_prompt(user_prompt=json.dumps(ask), system_prompt=WRITER, schema=SCHEMA,
+                                          images=images, verbose=False) or {}
+        hit = BURST.search(out.get("full_prompt") or "")
+        if not hit:
+            break
+        info(f"[transition] the writer's prompt has {hit.group(0)!r}: asking again")
+        ask["note"] = (f"Your last full_prompt said {hit.group(0)!r}, which the video model turns into a burst from the "
+                       f"centre. Write it again as directional movement, without that word: {out.get('full_prompt')}")
+    return out
 
 
 def draw(a: bytes, b: bytes, prompt: str, job_id: str, deadline: float, upscale: bool = True) -> tuple[str, float | None]:

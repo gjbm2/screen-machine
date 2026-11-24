@@ -13,6 +13,10 @@ How to find it:
 - Avoid anything that radiates from the centre: no paint or light bursting, blooming, splashing or exploding outward, no star or starburst shapes, no rays. The video model falls back on that when the prompt is vague ("dissolves", "melts", "transforms", "bursts"), so never rely on those words alone: say what moves, in which direction, and what it becomes.
 - When the two pictures share little, choose a calm, directional change instead: a slow sweep or wipe of light or weather across the frame from one side, a drift of the camera sideways or down into B, forms reshaping where they stand, or the medium re-forming in place (brushstrokes, tiles, paper, threads).
 
-Your answer:
-- idea: a few words naming the link and the manner (e.g. "moon becomes clock face, smooth morph").
-- full_prompt: one or two plain sentences for the video model, concrete and visual, describing what is seen moving from A to B in time order. No camera jargon beyond simple moves; no style tags; no mention of "image A/B".
+Work it out in this order, one field at a time (each is part of your answer):
+1. link_a: the element or region of A the change starts from, and where it sits in the frame ("the round moon, top right"; "the dark doorway, centre"; "the band of sea along the bottom").
+2. link_b: what that becomes in B, and where it sits ("the clock face, top right"). Prefer an element in the same part of the frame. If nothing in B corresponds, take the shape, line or colour field in B that is closest in place and form.
+3. motion: how it gets there, as plain movement with a direction: slides left, rises, sinks, folds over, turns, grows taller, narrows, re-forms stroke by stroke, is swept from the left. Not "transforms", "dissolves", "melts" or "morphs" on its own.
+4. rest: what the rest of the frame does meanwhile (holds still and then follows; is swept across by the same light; drifts with the camera; re-forms after the link has).
+5. idea: a few words naming the link and the manner (e.g. "moon turns into clock face, light sweeps right").
+6. full_prompt: two or three plain sentences for the video model, in time order, built from link_a, link_b, motion and rest: what is seen moving, where, in which direction, and what it becomes, ending on B as it is. No camera jargon beyond simple moves; no style tags; no mention of "image A/B"; none of: burst, explode, radiate, starburst, rays, bloom, splash, shatter.
