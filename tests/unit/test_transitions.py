@@ -10,6 +10,11 @@ def test_the_draw_is_about_four_seconds_in_h3_lengths():
     assert (n - 5) % 17 == 0 and 3.5 <= n / 24 <= 4.5
 
 
+def test_the_writer_answers_in_steps_ending_with_the_prompt():
+    fields = tr.schema()["parameters"]["required"]
+    assert fields[0] == "connection" and fields[-1] == "full_prompt"
+
+
 def test_nothing_on_the_screen_means_no_transition(monkeypatch):
     import routes.clips
     monkeypatch.setattr(routes.clips, "published_still", lambda screen: None)

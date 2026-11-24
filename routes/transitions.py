@@ -34,15 +34,14 @@ PLAY_S, RAMP_S = 15.0, 3.5  # on screen: eased in from A and out onto B
 DEADLINE_S = 540            # the new picture waits no longer than this for its transition (a cold GPU included)
 FOLDER = "transitions"
 WRITER = "refiner-transition.txt"
-FIELDS = {"link_a": "The element or region of A the change starts from, and where it sits in the frame.",
-          "link_b": "What it becomes in B, and where it sits.",
-          "motion": "How it gets there: plain movement with a direction.",
-          "rest": "What the rest of the frame does meanwhile.",
-          "idea": "The link and the manner, in a few words.",
-          "full_prompt": "Two or three sentences for the video model, in time order, built from the fields above."}
-SCHEMA = {"name": "transition", "description": "The transition from picture A to picture B, worked out step by step",
-          "parameters": {"type": "object", "properties": {k: {"type": "string", "description": v} for k, v in FIELDS.items()},
-                         "required": list(FIELDS)}}
+SCHEMA_FILE = "refiner-transition.schema.json"   # the answer's fields, next to the brief: both read on every call
+
+
+def schema() -> dict:
+    from routes.utils import findfile
+    return json.loads(Path(findfile(SCHEMA_FILE)).read_text("utf-8"))
+
+
 # What the video model does with a vague prompt: paint or light bursting out of the centre (owner, 24 Nov: "a bit much
 # 'expanding paint star'"). A prompt with these words goes back to the writer once.
 BURST = re.compile(r"\b(burst|explod|radiat|star ?burst|rays?\b|bloom|splash|shatter)", re.I)
@@ -75,7 +74,7 @@ def write(a: bytes, b: bytes, meta_a: dict, meta_b: dict) -> dict:
     images = [{"name": "A.jpg", "image": _b64(a)}, {"name": "B.jpg", "image": _b64(b)}]
     out = {}
     for _ in range(2):
-        out = routes.openai.openai_prompt(user_prompt=json.dumps(ask), system_prompt=WRITER, schema=SCHEMA,
+        out = routes.openai.openai_prompt(user_prompt=json.dumps(ask), system_prompt=WRITER, schema=schema(),
                                           images=images, verbose=False) or {}
         hit = BURST.search(out.get("full_prompt") or "")
         if not hit:
@@ -207,7 +206,7 @@ def before_publish(screen: str, source: str, job_id: str, tracker=None, meta_b: 
         name = time.strftime("%Y%m%d-%H%M%S") + f"-{job_id[-8:]}.mp4"
         ease(drawn, folder / name, deadline)
         out = {"file": f"{FOLDER}/{name}", "url": f"/output/{screen}/{FOLDER}/{name}", "from": showing,
-               "idea": words.get("idea"), "prompt": prompt, "at": round(time.time(), 1), "play_s": PLAY_S,
+               "connection": words.get("connection"), "device": words.get("device"), "idea": words.get("idea"), "prompt": prompt, "at": round(time.time(), 1), "play_s": PLAY_S,
                "cost_usd": usd, "made_s": round(time.time() - t0, 1)}
         info(f"[transition] {screen}: {showing} -> new picture in {out['made_s']} s: {out['idea']}")
         return out

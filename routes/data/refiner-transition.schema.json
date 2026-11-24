@@ -1,0 +1,18 @@
+{
+  "name": "transition",
+  "description": "The transition from picture A to picture B, worked out step by step (routes/data/refiner-transition.txt)",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "connection": {"type": "string", "enum": ["link", "device"], "description": "link: an element of A a viewer would recognise as becoming an element of B; device: no such link, so a crafted transition device."},
+      "device": {"type": "string", "description": "With device: which one (e.g. painted over, page turn, weather passing). With link: empty."},
+      "link_a": {"type": "string", "description": "With link: the element or region of A the change starts from, and where it sits. With device: where the device starts."},
+      "link_b": {"type": "string", "description": "With link: what it becomes in B, and where. With device: what of B appears first, and where."},
+      "motion": {"type": "string", "description": "How it gets there: plain movement with a direction."},
+      "rest": {"type": "string", "description": "What the rest of the frame does meanwhile."},
+      "idea": {"type": "string", "description": "The connection and the manner, in a few words."},
+      "full_prompt": {"type": "string", "description": "Two or three sentences for the video model, in time order, built from the fields above."}
+    },
+    "required": ["connection", "device", "link_a", "link_b", "motion", "rest", "idea", "full_prompt"]
+  }
+}
