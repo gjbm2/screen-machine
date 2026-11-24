@@ -500,6 +500,20 @@ def _send_overlay_prompt(screen_id: str, metadata: dict[str, Any]) -> None:
 # ─────────────────────────────────────────────────────────────────────────────
 # Internal helper – bucket append
 # ─────────────────────────────────────────────────────────────────────────────
+def _published_sidecar(source_sidecar: Path, source_metadata: dict | None) -> dict:
+    """The screen's published sidecar: the picture's own, with the origin this publish found for it and the
+    transition to play now (none left from an earlier change)."""
+    data = json.loads(source_sidecar.read_text("utf-8"))
+    extra = source_metadata or {}
+    if extra.get("origin") and not data.get("origin"):
+        data["origin"] = extra["origin"]
+    if extra.get("transition"):
+        data["transition"] = extra["transition"]
+    else:
+        data.pop("transition", None)
+    return data
+
+
 def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict = None, cross_bucket_mode: bool = False, file_extension: str = None, is_history_navigation: bool = False) -> None:
     """
     Persist publish information in multiple locations to maintain consistency:
@@ -594,11 +608,18 @@ def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict
         
         if source_sidecar.exists():
             try:
-                _copy_atomically(source_sidecar, published_info_path)
+                # the picture's sidecar, with what this publish adds (_with_origin_and_transition): its origin, and
+                # the transition to play now, never one left from an earlier change
+                _write_json_atomically(published_info_path, _published_sidecar(source_sidecar, source_metadata))
                 info(f"Copied sidecar from {source_sidecar} to {published_info_path}")
                 return
             except Exception as e:
                 warning(f"Failed to copy sidecar: {e}")
+                try:
+                    _copy_atomically(source_sidecar, published_info_path)
+                    return
+                except Exception:
+                    pass
     
     if source_metadata:
         try:

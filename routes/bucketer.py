@@ -517,6 +517,16 @@ def _append_to_bucket(screen: str, published_path: Path, batch_id: str = None, m
         # If source sidecar exists, copy it
         shutil.copy2(sc_src, sc_dst)
         debug(f"Copied sidecar: {sc_src} -> {sc_dst}")
+        # a copy remembers its original (routes/transitions.origin), and never carries a change's transition
+        if metadata and (metadata.get("origin") or "transition" in metadata):
+            try:
+                data = json.loads(sc_dst.read_text("utf-8"))
+                data.setdefault("origin", metadata.get("origin"))
+                data.pop("transition", None)
+                sc_dst.write_text(json.dumps({k: v for k, v in data.items() if v is not None}, indent=2,
+                                             ensure_ascii=False), "utf-8")
+            except Exception as e:
+                warning(f"[bucket] could not note {target_path.name}'s origin: {e}")
     elif metadata:
         # If we have metadata but no source sidecar, create a new one
         try:

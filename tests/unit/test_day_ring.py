@@ -169,6 +169,26 @@ def test_a_published_picture_keeps_its_origin_and_drops_an_old_transition(monkey
     assert meta["origin"] == "cloud/z.jpg" and meta["transition"] == {"url": "given"}
 
 
+def test_a_copy_on_a_screen_remembers_its_original_and_the_screen_gets_the_transition(monkeypatch, tmp_path):
+    import routes.bucketer as bk
+    import routes.publisher as pub
+    monkeypatch.setattr(bk, "BASE_OUTPUT", tmp_path)
+    (tmp_path / "cloud").mkdir()
+    (tmp_path / "north-screen").mkdir()
+    src = tmp_path / "cloud" / "20261124-075037-abc.jpg"
+    from PIL import Image
+    Image.new("RGB", (64, 36)).save(src)
+    (tmp_path / "cloud" / "20261124-075037-abc.jpg.json").write_text(json.dumps({"prompt": "p", "transition": {"url": "old"}}))
+    copy = bk._append_to_bucket("north-screen", src, metadata={"prompt": "p", "origin": "cloud/20261124-075037-abc.jpg"})
+    meta = json.loads(copy.with_suffix(".jpg.json").read_text())
+    assert meta["origin"] == "cloud/20261124-075037-abc.jpg" and "transition" not in meta
+    assert tr.origin(copy) == "cloud/20261124-075037-abc.jpg"
+    side = copy.with_suffix(".jpg.json")
+    assert pub._published_sidecar(side, {"origin": "x", "transition": {"url": "now"}})["transition"] == {"url": "now"}
+    side.write_text(json.dumps({"prompt": "p", "transition": {"url": "old"}}))
+    assert "transition" not in pub._published_sidecar(side, {"prompt": "p"})
+
+
 # --- the live schedules' arithmetic ---------------------------------------------------------------------------------
 
 def _trigger(screen, pick):
