@@ -74,7 +74,7 @@ def _probe(path, rate=False):
     return whn + (float(num) / float(den or 1),)
 
 
-TUNED_W = 1344   # the clip width the mask (_OnTheStill) and the motion (_blocks) were tuned on: the video model's
+TUNED_W = 1344   # the clip width the motion (_blocks) was tuned on: the video model's
 
 
 def mask_scale(w):
@@ -88,72 +88,6 @@ def _blocks(f, k=1):
     import cv2
     b = 8 * k
     return cv2.resize(f, (f.shape[1] // b, f.shape[0] // b), interpolation=cv2.INTER_AREA).astype(np.float32)
-
-
-class _OnTheStill:
-    """The clip's motion laid onto the full-size still (owner, 19 Nov: the clip on the 4K TV looked blurry; "there
-    should be a completely invisible join between still image and video"). The video model draws 1344x768, the
-    screen's still is 3840x2160. Each frame is the still plus the clip's change since its first frame, upscaled;
-    where the clip really moves (its change is large) the upscaled clip itself shows instead, so nothing sharp
-    from the still ghosts over the motion. Where nothing moves, the frame is the still, pixel for pixel, and the
-    first and last frames are exactly the still."""
-
-    LOW, HIGH = 3.0, 12.0   # change (0-255, smoothed) below which the still shows, above which the clip does
-
-    def __init__(self, still_path, first, w, h):
-        import cv2
-        self.cv2 = cv2
-        s = cv2.cvtColor(cv2.imread(str(still_path), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
-        H, W = s.shape[:2]
-        if W > 3840:
-            H, W = round(H * 3840 / W), 3840
-            s = cv2.resize(s, (W, H), interpolation=cv2.INTER_AREA)
-        self.size = (W // 2 * 2, H // 2 * 2)
-        s = s[: self.size[1], : self.size[0]]
-        self.still = s.astype(np.int16)
-        self.first = first
-        self.base = cv2.resize(first, self.size, interpolation=cv2.INTER_CUBIC) - s   # the clip's picture minus the still
-        self.k = mask_scale(w)
-        self.mask_size = (w // self.k, h // self.k)
-        self.sx, self.sy = self.size[0] / self.mask_size[0], self.size[1] / self.mask_size[1]   # the mask's to the still's
-        self.up = np.empty_like(self.still)                 # reused every frame: no fresh 50 MB arrays
-        self.out = np.empty_like(self.still)
-        self.u8 = np.empty(self.still.shape, np.uint8)
-
-    def __call__(self, low):
-        """The full-size frame (uint8) for a clip frame `low` (float32, the clip's size). In int16, and the clip's own
-        picture only where it moves: a whole 4K frame in float32 took ~0.24 s."""
-        cv2 = self.cv2
-        d = cv2.subtract(low, self.first)
-        cv2.resize(np.rint(d).astype(np.int16), self.size, dst=self.up, interpolation=cv2.INTER_LINEAR)
-        out = cv2.add(self.still, self.up, dst=self.out)
-        g = cv2.cvtColor(np.abs(d), cv2.COLOR_RGB2GRAY)
-        if self.k > 1:
-            g = cv2.resize(g, self.mask_size, interpolation=cv2.INTER_AREA)
-        a = cv2.GaussianBlur(g, (0, 0), 3)
-        m = np.clip((a - self.LOW) / (self.HIGH - self.LOW), 0, 1)
-        ys, xs = np.nonzero(m)
-        if len(ys):
-            x0, x1 = max(0, int(xs.min() - 2)), min(m.shape[1], int(xs.max() + 3))
-            y0, y1 = max(0, int(ys.min() - 2)), min(m.shape[0], int(ys.max() + 3))
-            X0, X1, Y0, Y1 = int(x0 * self.sx), int(x1 * self.sx), int(y0 * self.sy), int(y1 * self.sy)
-            mm = m[y0:y1, x0:x1]
-            M = cv2.resize(mm * mm * (3 - 2 * mm), (X1 - X0, Y1 - Y0), interpolation=cv2.INTER_LINEAR)
-            roi = out[Y0:Y1, X0:X1]
-            mix = cv2.multiply(cv2.merge([M, M, M]), self.base[Y0:Y1, X0:X1])
-            cv2.add(roi, mix, dst=roi, dtype=cv2.CV_16S)
-        cv2.max(out, 0, dst=out)
-        return cv2.convertScaleAbs(out, dst=self.u8)
-
-
-def fits(still_path, w, h):
-    """The still has the clip's shape (it was made from it), so the clip can be laid onto it."""
-    try:
-        from PIL import Image
-        W, H = Image.open(still_path).size
-        return abs(W / H - w / h) < 0.03 * (w / h) and W > w   # the video model stretches 16:9 into 1344x768
-    except Exception:
-        return False
 
 
 def schedule(n, play_s, ramp_s, settle_s, fps, ramp_out_s=None):
@@ -178,7 +112,7 @@ WAIT_LIVE_S = 480
 _idle = False   # the CPU took over from a job held back by a live TV
 
 
-def _on_gpu(src, dst, still, fps, frames, progress, k=1):
+def _on_gpu(src, dst, fps, frames, progress, k=1):
     """The ease made on the renderer's GPU: how much of the picture moves, or None if the CPU must make it (no GPU
     batch here, the renderer unreachable, the job failed, or it waited WAIT_LIVE_S behind a live TV)."""
     global _idle
@@ -189,7 +123,7 @@ def _on_gpu(src, dst, still, fps, frames, progress, k=1):
     import requests
     import smconfig
     url = smconfig.url("room").rstrip("/") + "/renderer/api/batch"
-    args = {"src": os.path.abspath(src), "still": still and os.path.abspath(still), "dst": os.path.abspath(dst),
+    args = {"src": os.path.abspath(src), "still": None, "dst": os.path.abspath(dst),
             "fps": fps, "frames": frames, "k": k}
     try:
         r = requests.post(url, json={"kind": "ease", "args": args}, timeout=10)
@@ -261,11 +195,13 @@ def cut_at(src):
     return None
 
 
-def ease_file(src, dst, play_s=30.0, ramp_s=8.0, settle_s=3.0, still=None, fps=FPS, ramp_out_s=None,
+def ease_file(src, dst, play_s=30.0, ramp_s=8.0, settle_s=3.0, fps=FPS, ramp_out_s=None,
               progress=lambda f: None):
-    """Render src (any clip) into dst on the eased curve, at the size of `still` when it is given (the full-size
-    picture the clip was made from: see _OnTheStill), at `fps`; returns how much of the picture moves (mean |frame -
-    frame 0|). On the renderer's GPU when it can (_on_gpu), else here; `progress` is told how far it is (0-1)."""
+    """Render src (any clip) into dst on the eased curve, at its own size, at `fps`; returns how much of the picture
+    moves (mean |frame - frame 0|). The clip itself, never laid onto its still (owner, 24 Nov: that overlay ghosted
+    outlines where things moved a little): the TV shows the still at rest and fades to the clip only while it plays
+    (src/pages/DisplayPage/art/ClipLayer.tsx). On the renderer's GPU when it can (_on_gpu), else here; `progress` is
+    told how far it is (0-1)."""
     w, h, n = _probe(src)
     cut = cut_at(src)
     if cut:
@@ -274,8 +210,7 @@ def ease_file(src, dst, play_s=30.0, ramp_s=8.0, settle_s=3.0, still=None, fps=F
         if settle_s:
             settle_s = max(settle_s, min(CUT_SETTLE_S, play_s / 2))
     frames_out = schedule(n, play_s, ramp_s, settle_s, fps, ramp_out_s)
-    still = still if still and fits(still, w, h) else None
-    motion = _on_gpu(src, dst, still, fps, frames_out, progress, mask_scale(w))
+    motion = _on_gpu(src, dst, fps, frames_out, progress, mask_scale(w))
     if motion is not None:
         return motion
     if _idle:
@@ -285,7 +220,6 @@ def ease_file(src, dst, play_s=30.0, ramp_s=8.0, settle_s=3.0, still=None, fps=F
                            stdout=subprocess.PIPE)
     frames, read, motion, ref = {}, -1, 0.0, None
     first = None
-    lay = None
 
     def encoder(W, H):
         return subprocess.Popen(["nice", "-n", "19", "ffmpeg", "-v", "error", "-y", "-f", "rawvideo", "-pix_fmt",
@@ -318,9 +252,7 @@ def ease_file(src, dst, play_s=30.0, ramp_s=8.0, settle_s=3.0, still=None, fps=F
     enc = None
     try:
         first = frame(0).astype(np.float32)
-        if still:
-            lay = _OnTheStill(still, first, w, h)
-        enc = encoder(*(lay.size if lay else (w, h)))
+        enc = encoder(w, h)
         for k, (x, wgt) in enumerate(frames_out):
             if k % 10 == 0:
                 progress(k / len(frames_out))
@@ -330,7 +262,7 @@ def ease_file(src, dst, play_s=30.0, ramp_s=8.0, settle_s=3.0, still=None, fps=F
             out = a if frac < 1e-3 else a + (frame(i + 1).astype(np.float32) - a) * frac
             if wgt:
                 out = out + (first - out) * wgt
-            enc.stdin.write(lay(out).tobytes() if lay else np.clip(out + 0.5, 0, 255).astype(np.uint8).tobytes())
+            enc.stdin.write(np.clip(out + 0.5, 0, 255).astype(np.uint8).tobytes())
         frame(n - 1)                     # read on to the end, so the motion counts the whole clip
     finally:
         dec.stdout.close()
@@ -375,9 +307,9 @@ def _no_thp_stalls():
     _set_madvise_hugepage(False)
 
 
-def ease_result(source, loop, job_id, still=None, progress=lambda f: None):
-    """A finished job's clip (URL or file) rendered on the eased curve, onto the full-size `still` it was made from
-    when given: (new source path, `clip` metadata). `progress` is told how far the ease is (0-1)."""
+def ease_result(source, loop, job_id, progress=lambda f: None):
+    """A finished job's clip (URL or file) rendered on the eased curve: (new source path, `clip` metadata). `progress`
+    is told how far the ease is (0-1)."""
     from routes.result_source import read_bytes, save_inline
     with tempfile.TemporaryDirectory() as tmp:
         src, dst = os.path.join(tmp, "in.mp4"), os.path.join(tmp, "out.mp4")
@@ -387,7 +319,7 @@ def ease_result(source, loop, job_id, still=None, progress=lambda f: None):
         # in its own process: minutes of 4K work must not sit in Flask's (room_service lives there too)
         import sys
         run = subprocess.Popen(["nice", "-n", "10", sys.executable, "-m", "routes.clip_ease", src, dst, str(play),
-                                str(ramp), str(settle), still or ""], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                str(ramp), str(settle)], stdout=subprocess.PIPE, stderr=subprocess.PIPE,
                                text=True, cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
         err = []
         import threading
@@ -446,7 +378,7 @@ def ease_video(src, dst):
     play = content + (ri + ro) / 2
     with tempfile.TemporaryDirectory() as tmp:
         raw = os.path.join(tmp, "eased.mp4")
-        ease_file(src, raw, play, ri, 0.0, None, fps=fps, ramp_out_s=ro)
+        ease_file(src, raw, play, ri, 0.0, fps=fps, ramp_out_s=ro)
         clip = {"eased": True, "pace": clip.get("pace") or "slow", "play_s": round(play, 2), "returns": False,
                 "rest_s": VIDEO_REST_S}
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", raw, "-c", "copy", "-metadata",
@@ -461,5 +393,5 @@ if __name__ == "__main__":
     if a[0] == "--video":
         print(json.dumps(ease_video(a[1], a[2])))
     else:
-        print(ease_file(a[0], a[1], float(a[2]), float(a[3]), float(a[4]), a[5] or None,
+        print(ease_file(a[0], a[1], float(a[2]), float(a[3]), float(a[4]),
                         progress=lambda f: print(f"progress {f:.3f}", flush=True)))

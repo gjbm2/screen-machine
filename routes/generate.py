@@ -1109,10 +1109,11 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
     if batch_id is not None:
         vars(args_namespace)["batch_id"] = batch_id
 
-    # A screen clip (workflows.json "loop") gets its slow ease rendered in, on the full-size still it was made from
+    # A screen clip (workflows.json "loop") gets its slow ease rendered in (the clip itself: the TV fades to it from the
+    # still only while it plays)
     entry = next((w for w in _load_json_once("workflow", "workflows.json") if w.get("id") == args_namespace.workflow), {})
     loop = entry.get("loop")
-    still_image = vars(args_namespace).pop("still_image", None)
+    vars(args_namespace).pop("still_image", None)   # not part of the clip's metadata
     if loop:
         pace = vars(args_namespace).get("pace") or loop.get("pace", "slow")
         loop = {**loop, **(loop.get("paces") or {}).get(pace, {}), "pace": pace}
@@ -1120,7 +1121,7 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
         # its own stage, which the ring and the words show as such (not "Almost there"), with its real progress
         stages = [*((tracker.get(job_id) or {}).get("stages") or []), "Easing"]
         tracker.update(job_id, message="Easing the clip", stages=stages, stage_index=len(stages) - 1, percent=0)
-        output["message"], clip = ease_result(output["message"], loop, job_id, still=still_image,
+        output["message"], clip = ease_result(output["message"], loop, job_id,
                                               progress=lambda f: tracker.progress(job_id, percent=round(f * 100)))
         info(f"Eased clip: {clip}")
         vars(args_namespace)["clip"] = clip   # a lot of movement only lengthens its rests; a clip is never thrown away

@@ -85,7 +85,7 @@ def test_done_on_the_gpu_reads_the_motion_and_leaves_no_file(renderer, tmp_path)
                             {"state": "done"}],
                            on_done=lambda: (tmp_path / "out.mp4.json").write_text(json.dumps({"motion": 12.5}))))
     frames = ce.schedule(121, 30, 8, 3, 30)
-    assert ce._on_gpu("in.mp4", str(dst), None, 30, frames, seen.append) == 12.5
+    assert ce._on_gpu("in.mp4", str(dst), 30, frames, seen.append) == 12.5
     assert not (tmp_path / "out.mp4.json").exists()
     assert seen == [0.5]
     job = r.posted[0]
@@ -96,14 +96,14 @@ def test_done_on_the_gpu_reads_the_motion_and_leaves_no_file(renderer, tmp_path)
 @pytest.mark.parametrize("post", [_Resp(503, {"error": "no_batch_gpu"}), _Resp(400), ConnectionError("down")])
 def test_no_gpu_batch_means_the_cpu_at_once(renderer, post):
     renderer(_Renderer(post))
-    assert ce._on_gpu("in.mp4", "/tmp/x.mp4", None, 30, [[0, 0]], lambda f: None) is None
+    assert ce._on_gpu("in.mp4", "/tmp/x.mp4", 30, [[0, 0]], lambda f: None) is None
     assert ce._idle is False          # nothing live held it up: the CPU at its usual priority
 
 
 @pytest.mark.parametrize("state", [{"state": "failed", "error": "boom"}, {"state": "cancelled"}, _Resp(404)])
 def test_a_failed_or_forgotten_job_means_the_cpu(renderer, state):
     renderer(_Renderer(_Resp(202, {"id": "b1"}), [state]))
-    assert ce._on_gpu("in.mp4", "/tmp/x.mp4", None, 30, [[0, 0]], lambda f: None) is None
+    assert ce._on_gpu("in.mp4", "/tmp/x.mp4", 30, [[0, 0]], lambda f: None) is None
 
 
 def test_held_too_long_behind_a_live_tv_cancels_and_goes_idle(renderer, monkeypatch):
@@ -111,7 +111,7 @@ def test_held_too_long_behind_a_live_tv_cancels_and_goes_idle(renderer, monkeypa
     clock = iter(range(0, 10_000, 60))
     monkeypatch.setattr(time, "time", lambda: next(clock))
     r = renderer(_Renderer(_Resp(202, {"id": "b1"}), [{"state": "queued", "waiting": "north-screen is live"}]))
-    assert ce._on_gpu("in.mp4", "/tmp/x.mp4", None, 30, [[0, 0]], lambda f: None) is None
+    assert ce._on_gpu("in.mp4", "/tmp/x.mp4", 30, [[0, 0]], lambda f: None) is None
     assert r.deleted and r.deleted[0].endswith("/b1")
     assert ce._idle is True           # the CPU makes it at idle priority
 
