@@ -1,0 +1,439 @@
+{
+    "interactionModel": {
+        "languageModel": {
+            "invocationName": "a. i.",
+            "intents": [
+                {
+                    "name": "AMAZON.CancelIntent",
+                    "samples": [
+                        "interrupt",
+                        "terminate",
+                        "stop",
+                        "cease"
+                    ]
+                },
+                {
+                    "name": "AMAZON.HelpIntent",
+                    "samples": [
+                        "support",
+                        "advice",
+                        "guidance",
+                        "help"
+                    ]
+                },
+                {
+                    "name": "AMAZON.StopIntent",
+                    "samples": [
+                        "terminate",
+                        "interrupt",
+                        "cease",
+                        "stop"
+                    ]
+                },
+                {
+                    "name": "select_refiner",
+                    "slots": [
+                        {
+                            "name": "utterance",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "select {utterance}",
+                        "be a {utterance}",
+                        "channel {utterance}",
+                        "pretend you are a {utterance}",
+                        "imagine you are a {utterance}",
+                        "act as a {utterance}",
+                        "act like a {utterance}",
+                        "behave as a {utterance}",
+                        "behave like a {utterance}"
+                    ]
+                },
+                {
+                    "name": "adapt",
+                    "slots": [
+                        {
+                            "name": "utterance",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "adapt {utterance}",
+                        "amend {utterance}",
+                        "change {utterance}"
+                    ]
+                },
+                {
+                    "name": "combine",
+                    "slots": [
+                        {
+                            "name": "utterance",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "combine {utterance}",
+                        "merge {utterance}"
+                    ]
+                },
+                {
+                    "name": "animate",
+                    "slots": [
+                        {
+                            "name": "utterance",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "animate {utterance}"
+                    ]
+                },
+                {
+                    "name": "load_schedule",
+                    "slots": [
+                        {
+                            "name": "utterance",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "load {utterance}",
+                        "start {utterance}"
+                    ]
+                },
+                {
+                    "name": "unload_schedule",
+                    "slots": [
+                        {
+                            "name": "utterance",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "unload {utterance}"
+                    ]
+                },
+                {
+                    "name": "set",
+                    "slots": [
+                        {
+                            "name": "utterance",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "set {utterance}"
+                    ]
+                },
+                {
+                    "name": "schedule",
+                    "slots": [],
+                    "samples": [
+                        "schedule"
+                    ]
+                },
+                {
+                    "name": "undo",
+                    "slots": [
+                        {
+                            "name": "utterance",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "undo {utterance}",
+                        "undo"
+                    ]
+                },
+                {
+                    "name": "redo",
+                    "slots": [
+                        {
+                            "name": "utterance",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "redo {utterance}",
+                        "redo"
+                    ]
+                },
+                {
+                    "name": "repeat",
+                    "slots": [],
+                    "samples": [
+                        "go again",
+                        "repeat"
+                    ]
+                },
+                {
+                    "name": "paint",
+                    "slots": [
+                        {
+                            "name": "utterance",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "paint {utterance}"
+                    ]
+                },
+                {
+                    "name": "trigger",
+                    "slots": [
+                        {
+                            "name": "utterance",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "trigger {utterance}",
+                        "throw {utterance}",
+                        "fire {utterance}"
+                    ]
+                },
+                {
+                    "name": "illustrate",
+                    "slots": [
+                        {
+                            "name": "utterance",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "illustrate {utterance}"
+                    ]
+                },
+                {
+                    "name": "photograph",
+                    "slots": [
+                        {
+                            "name": "utterance",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "photograph {utterance}"
+                    ]
+                },
+                {
+                    "name": "draw",
+                    "slots": [
+                        {
+                            "name": "utterance",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "draw {utterance}"
+                    ]
+                },
+                {
+                    "name": "generate",
+                    "slots": [
+                        {
+                            "name": "utterance",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "show me {utterance}",
+                        "show {utterance}",
+                        "depict {utterance}",
+                        "render {utterance}",
+                        "display {utterance}",
+                        "generate {utterance}",
+                        "produce {utterance}"
+                    ]
+                },
+                {
+                    "name": "ask",
+                    "slots": [
+                        {
+                            "name": "utterance",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "ask {utterance}",
+                        "tell me {utterance}"
+                    ]
+                },
+                {
+                    "name": "make_me",
+                    "slots": [
+                        {
+                            "name": "utterance",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "make me {utterance}"
+                    ]
+                },
+                {
+                    "name": "surprise_me",
+                    "slots": [],
+                    "samples": [
+                        "surprise me"
+                    ]
+                },
+                {
+                    "name": "sleep",
+                    "slots": [],
+                    "samples": [
+                        "sleep"
+                    ]
+                },
+                {
+                    "name": "cancel",
+                    "slots": [],
+                    "samples": [
+                        "cancel"
+                    ]
+                },
+                {
+                    "name": "entertain_me",
+                    "slots": [],
+                    "samples": [
+                        "entertain me"
+                    ]
+                },
+                {
+                    "name": "delight_me",
+                    "slots": [],
+                    "samples": [
+                        "delight me"
+                    ]
+                },
+                {
+                    "name": "mode",
+                    "slots": [
+                        {
+                            "name": "utterance",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "switch to {utterance} mode",
+                        "change the mode to {utterance}",
+                        "change mode to {utterance}",
+                        "set the mode to {utterance}",
+                        "go to {utterance} mode",
+                        "go back to {utterance} mode",
+                        "go back to {utterance}",
+                        "put the room in {utterance} mode",
+                        "turn on {utterance} mode"
+                    ]
+                },
+                {
+                    "name": "next_scene",
+                    "slots": [],
+                    "samples": [
+                        "change the scene",
+                        "skip this scene",
+                        "skip the scene",
+                        "pick another scene",
+                        "try another scene",
+                        "go to the next scene",
+                        "move on to the next scene"
+                    ]
+                },
+                {
+                    "name": "clear_effects",
+                    "slots": [],
+                    "samples": [
+                        "clear the effects",
+                        "remove the effects",
+                        "turn off the effects",
+                        "turn the effects off",
+                        "get rid of the effects",
+                        "lose the effects"
+                    ]
+                },
+                {
+                    "name": "auto_on",
+                    "slots": [],
+                    "samples": [
+                        "follow the music",
+                        "listen to the music",
+                        "start listening",
+                        "turn auto on",
+                        "turn on auto",
+                        "switch auto on"
+                    ]
+                },
+                {
+                    "name": "auto_off",
+                    "slots": [],
+                    "samples": [
+                        "stop following the music",
+                        "stop listening",
+                        "turn auto off",
+                        "turn off auto",
+                        "switch auto off"
+                    ]
+                },
+                {
+                    "name": "ai_on",
+                    "slots": [],
+                    "samples": [
+                        "turn on a. i. listening",
+                        "turn a. i. listening on",
+                        "switch on a. i. listening",
+                        "a. i. listening on",
+                        "start a. i. listening",
+                        "let the a. i. listen"
+                    ]
+                },
+                {
+                    "name": "ai_off",
+                    "slots": [],
+                    "samples": [
+                        "turn off a. i. listening",
+                        "turn a. i. listening off",
+                        "switch off a. i. listening",
+                        "a. i. listening off",
+                        "stop a. i. listening",
+                        "stop the a. i. listening"
+                    ]
+                },
+                {
+                    "name": "which_mode",
+                    "slots": [],
+                    "samples": [
+                        "tell me the mode",
+                        "tell me what mode we're in",
+                        "tell me which mode we're in",
+                        "what mode are we in",
+                        "what mode we're in",
+                        "which mode we're in"
+                    ]
+                },
+                {
+                    "name": "review_day",
+                    "slots": [
+                        {
+                            "name": "day",
+                            "type": "AMAZON.SearchQuery"
+                        }
+                    ],
+                    "samples": [
+                        "review {day}",
+                        "replay {day}",
+                        "play back {day}",
+                        "go over {day}",
+                        "review the pictures from {day}",
+                        "replay the pictures from {day}"
+                    ]
+                },
+                {
+                    "name": "AMAZON.NavigateHomeIntent",
+                    "samples": []
+                }
+            ],
+            "types": []
+        }
+    }
+}

@@ -4,15 +4,17 @@
     {
       "name": "review_day",
       "slots": [
-        {"name": "day", "type": "AMAZON.SearchQuery"}
+        {
+          "name": "day",
+          "type": "AMAZON.SearchQuery"
+        }
       ],
       "samples": [
         "review {day}",
         "replay {day}",
         "play back {day}",
         "go over {day}",
-        "show me {day} again",
-        "show me the pictures from {day}",
+        "review the pictures from {day}",
         "replay the pictures from {day}"
       ]
     }
