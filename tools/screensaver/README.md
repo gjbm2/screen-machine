@@ -31,8 +31,11 @@ input.
 - **Start:** the window is DWM-cloaked until it has painted black, so the screen snaps straight to black. An injected
   script makes the page black and lays a black cover over it. The cover fades out over 1.5 s once the art is on
   screen, so the app's light background is never seen.
-- **Exit:** low-level keyboard and mouse hooks end it on any key, click or wheel, or on a move of more than 12 px.
-  A cursor-watching timer backs them up.
+- **Exit:** any key, click, tap or wheel, or a mouse move of more than 12 px, ends it at once, and the page never
+  sees that input, so it can't open the display page's hover or tap controls. Two routes:
+  - low-level keyboard and mouse hooks, backed up by a cursor-watching timer;
+  - an injected script that stops every input event at the page's window and posts it to the saver. This is the
+    only route for touch, which the browser takes directly and the mouse hook never sees.
 - **Monitors:** one window and one page per monitor. Each monitor is known by its device path from
   QueryDisplayConfig, which is that physical monitor on that connector. A laptop's choice therefore comes back
   whenever the same monitor is plugged in again, whatever number Windows gives it that day.
@@ -57,7 +60,8 @@ SM_SCREENSAVER_TEST_SERVER=https://<app address> SM_SCREENSAVER_TEST_SCREEN=<scr
 - reads the screen list;
 - draws Settings and the preview to PNGs;
 - loads the page off-screen on its own profile;
-- logs the brightness of each frame from the start, which must stay black until the art is ready and then fade up.
+- logs the brightness of each frame from the start, which must stay black until the art is ready and then fade up;
+- sends a tap, which must reach the saver and not the page (`shield: ... OK`).
 
 Results go to `out/selftest/`.
 

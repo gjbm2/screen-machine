@@ -391,6 +391,39 @@ namespace ScreenMachine.Screensaver
   })();
 })();";
 
+        /// The saver page's input, which the page never sees: everything the person does is stopped at the window
+        /// (capture phase, before the app's own handlers) and sent here, so a touch, click or mouse move ends the
+        /// screensaver instead of opening the page's hover or tap controls. Touch never reaches the low-level mouse
+        /// hook (the browser takes pointer input itself), so this is the only way a tap is seen.
+        const string Shield = @"(function () {
+  if (window.top !== window) return;
+  var x0 = null, y0 = null, sent = false;
+  function quit(why) {
+    if (sent) return;
+    sent = true;
+    try { window.chrome.webview.postMessage(why); } catch (e) {}
+  }
+  function eat(e) { e.stopImmediatePropagation(); if (e.cancelable) e.preventDefault(); }
+  ['pointerdown', 'pointerup', 'mousedown', 'mouseup', 'click', 'dblclick', 'contextmenu', 'touchstart', 'touchend',
+   'wheel', 'keydown', 'keyup'].forEach(function (t) {
+    window.addEventListener(t, function (e) { eat(e); quit(t + (e.pointerType ? ':' + e.pointerType : '')); },
+      { capture: true, passive: false });
+  });
+  ['pointerover', 'pointerenter', 'pointerout', 'pointerleave', 'mouseover', 'mouseenter', 'mouseout', 'mouseleave',
+   'mousemove', 'touchmove'].forEach(function (t) {
+    window.addEventListener(t, eat, { capture: true, passive: false });
+  });
+  window.addEventListener('pointermove', function (e) {
+    eat(e);
+    if (e.pointerType && e.pointerType !== 'mouse') return quit('pointermove:' + e.pointerType);
+    if (x0 === null) { x0 = e.screenX; y0 = e.screenY; return; }  // where the cursor was when the page appeared
+    if (Math.abs(e.screenX - x0) + Math.abs(e.screenY - y0) > 12) quit('pointermove:mouse');
+  }, { capture: true, passive: false });
+})();";
+
+        /// Where a saver page's input goes (Saver sets it; the self-test leaves it unset).
+        public static Action<string> PageInput;
+
         /// A page filling `host`. `saver`: no menus, keys, popups or sound, no cursor; a failed load stays black and
         /// tries again every 30 s (the page itself rides out the server going away once it has loaded).
         public static async Task<CoreWebView2Controller> Attach(Control host, string url, bool saver, string profile, string extraArgs)
@@ -414,6 +447,15 @@ namespace ScreenMachine.Screensaver
                 w.IsMuted = true;
                 w.NewWindowRequested += delegate(object s, CoreWebView2NewWindowRequestedEventArgs a) { a.Handled = true; };
                 await w.AddScriptToExecuteOnDocumentCreatedAsync(Smooth);
+                await w.AddScriptToExecuteOnDocumentCreatedAsync(Shield);
+                w.WebMessageReceived += delegate(object s, CoreWebView2WebMessageReceivedEventArgs a)
+                {
+                    var h = PageInput;
+                    if (h == null) return;
+                    string why;
+                    try { why = a.TryGetWebMessageAsString(); } catch { why = "?"; }
+                    h(why);
+                };
                 var retry = new Timer { Interval = 30000 };
                 retry.Tick += delegate { retry.Stop(); if (!host.IsDisposed) w.Navigate(url); };
                 host.Disposed += delegate { retry.Dispose(); };
@@ -442,6 +484,7 @@ namespace ScreenMachine.Screensaver
         public static void Run()
         {
             Input.Start();
+            Web.PageInput = Input.FromPage;
             ui = new Control();
             ui.CreateControl();  // marshals Windows' display-change event onto this thread
             settle = new Timer { Interval = 1000 };  // a dock or undock changes things several times over a second
@@ -583,10 +626,18 @@ namespace ScreenMachine.Screensaver
             return Native.CallNextHookEx(mouseHook, code, wParam, lParam);
         }
 
+        public static void FromPage(string why) { Quit("page " + why); }
+
+        static bool quitting;
+
+        /// Once: the windows vanish at once (cloaked), then everything closes.
         static void Quit(string why)
         {
+            if (quitting) return;
             if ((DateTime.UtcNow - started).TotalMilliseconds < 800) return;  // the click on "Preview" and its release
+            quitting = true;
             Log.Write("exit: " + why);
+            foreach (Form f in Application.OpenForms) try { Native.Cloak(f.Handle, true); } catch { }
             Application.Exit();
         }
     }
@@ -1086,6 +1137,15 @@ namespace ScreenMachine.Screensaver
                         report.AppendLine("t=" + clock.ElapsedMilliseconds + "ms visible=" + c.IsVisible + " " + await Frame(c));
                     }
                     report.AppendLine("readyAfterMs=" + await c.CoreWebView2.ExecuteScriptAsync("window.__smSaverReadyAfterMs"));
+                    // a tap must reach us and never the app (whose tap opens its controls)
+                    string got = null;
+                    c.CoreWebView2.WebMessageReceived += delegate(object s, CoreWebView2WebMessageReceivedEventArgs a) { got = a.TryGetWebMessageAsString(); };
+                    string leaked = await c.CoreWebView2.ExecuteScriptAsync(
+                        "(function(){var n=0,f=function(){n++};document.addEventListener('pointerdown',f,true);" +
+                        "document.body.dispatchEvent(new PointerEvent('pointerdown',{bubbles:true,pointerType:'touch'}));" +
+                        "document.removeEventListener('pointerdown',f,true);return n})()");
+                    await Task.Delay(300);
+                    report.AppendLine("shield: tap sent=" + (got ?? "nothing") + " reached page=" + leaked + (got != null && leaked == "0" ? " OK" : " FAIL"));
                     await Task.Delay(12000);
                     string state = await c.CoreWebView2.ExecuteScriptAsync(
                         "JSON.stringify({title:document.title,imgs:[...document.images].map(i=>i.currentSrc+' '+getComputedStyle(i).objectFit).slice(0,4)," +
