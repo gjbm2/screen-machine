@@ -882,10 +882,11 @@ const PromptForm: React.FC<PromptFormProps> = ({
   };
 
   // Image / Film, first in the toolbar's row (owner, 24 Nov: on a row of its own it was "very expensive in real estate
-  // terms"). The app's one look for a choice of a few (components/ui/segmented.tsx); icons only on a phone.
+  // terms"), drawn as the toolbar's own buttons (white, outlined, purple; the chosen one tinted as an open menu's
+  // button is), joined into one; icons only on a phone.
   const modeSwitch = (
-    <div className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-stone-200/70 p-0.5" role="tablist" aria-label="What to make">
-      {([['create', 'Image', Sparkles], ['film', 'Film', Clapperboard]] as const).map(([id, label, Icon]) => (
+    <div className="inline-flex h-[36px] shrink-0 overflow-hidden rounded-md border border-input bg-white" role="tablist" aria-label="What to make">
+      {([['create', 'Image', Sparkles], ['film', 'Film', Clapperboard]] as const).map(([id, label, Icon], i) => (
         <button
           key={id}
           type="button"
@@ -895,8 +896,9 @@ const PromptForm: React.FC<PromptFormProps> = ({
           title={label}
           data-generator-mode={id}
           onClick={() => chooseMode(id)}
-          className={`flex h-8 items-center gap-1.5 rounded-full px-2.5 text-sm transition-colors sm:px-3 ${
-            mode === id ? 'bg-white font-medium text-teal-800 shadow-sm ring-1 ring-stone-200' : 'text-stone-600 hover:text-stone-900'
+          className={`flex items-center gap-2 px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring ${
+            i > 0 ? 'border-l border-input' : ''} ${
+            mode === id ? 'bg-purple-500/10 font-medium text-purple-700' : 'text-muted-foreground hover:bg-purple-500/5 hover:text-purple-700'
           }`}
         >
           <Icon className="h-4 w-4" />
