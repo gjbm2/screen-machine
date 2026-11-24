@@ -267,6 +267,15 @@ def build_app(svc: "RoomService") -> web.Application:
             return err(404, "no_snapshot", f"no {kind} snapshot for {c.id} yet")
         return web.Response(body=png, content_type="image/png", headers={"Cache-Control": "no-store"})
 
+    async def art_state(request: web.Request) -> web.Response:
+        # What the screen now shows (Flask's routes/screen_state.py, one document per publish), passed on to its
+        # pages at once. Only a speed-up: a page reads the document itself on start, wake, reconnect and every ~10 s.
+        body = await read_json(request)
+        if not isinstance(body, dict) or not isinstance(body.get("seq"), int):
+            return err(400, "bad_request", "body must be a screen state document with an integer seq")
+        sent = svc.pages.broadcast(request.match_info["id"], "art.state", body)
+        return web.json_response({"screen": request.match_info["id"], "sent": sent})
+
     async def events_ws(request: web.Request) -> web.StreamResponse:
         return await svc.events.handle(request)
 
@@ -283,6 +292,7 @@ def build_app(svc: "RoomService") -> web.Application:
     app.router.add_put("/api/v1/mode", put_mode)
     app.router.add_put("/api/v1/screens/{id}", put_screen)
     app.router.add_patch("/api/v1/screens/{id}/live", patch_live)
+    app.router.add_post("/api/v1/screens/{id}/art-state", art_state)
     app.router.add_get("/api/v1/catalog", catalog)
     app.router.add_get(r"/api/v1/screens/{id}/snapshots/{kind:(anchor|target)}.png", snapshot_png)
     app.router.add_get("/api/v1/events", events_ws)

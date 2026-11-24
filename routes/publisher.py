@@ -1165,6 +1165,15 @@ def _publish_to_destination(
                 if not _when_placed(making, show_prompt):
                     show_prompt()
 
+            # what the screen shows, as one document, once its file has landed (routes/screen_state.py)
+            def write_state():
+                from routes import screen_state
+                # the bucket copy's name too: a still's clip names its still by it (_publish_clip_of)
+                screen_state.placed(dest["id"], base_output_dir / f"{dest['id']}{screen_extension}",
+                                    {**(effective_metadata or {}), "filename": bucket_filename or source_filepath.name})
+            if not _when_placed(making, write_state):
+                write_state()
+
         meta = {"filename": bucket_filename or source_filepath.name, "published_at": publish_time}
         if making:
             meta["fitting"] = dest.get("name") or dest["id"]   # still being fitted: it goes up when it is made

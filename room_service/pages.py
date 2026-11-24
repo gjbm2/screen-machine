@@ -74,8 +74,9 @@ class PageGone(Exception):
 class PageClient:
     """One page socket. Outbound messages go through a bounded outbox (LIVE_V1 §2.2a.1):
 
-    * `mask.set` and `policy` are latest-value only: a newer one replaces an unsent older
-      one (policy messages always carry the full Policy, so nothing is lost).
+    * `mask.set`, `policy` and `art.state` are latest-value only: a newer one replaces an unsent
+      older one (policy messages always carry the full Policy and art.state the whole screen
+      state, so nothing is lost).
     * Everything else (`welcome`, `freeze`, `unfreeze`, `live.*`) is never dropped and keeps
       its order.
     * A client with more than `behind_bytes` unsent, or whose oldest unsent message is older
@@ -83,7 +84,7 @@ class PageClient:
       fresh, authoritative `welcome`).
     """
 
-    LATEST_ONLY = ("mask.set", "policy")
+    LATEST_ONLY = ("mask.set", "policy", "art.state")
 
     def __init__(self, screen: str, role: str, ws: web.WebSocketResponse, remote: str | None, *,
                  behind_bytes: int = 256 * 1024, behind_s: float = 5.0, user_agent: str | None = None) -> None:

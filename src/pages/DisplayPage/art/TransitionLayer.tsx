@@ -4,8 +4,9 @@
 // underneath; when it ends (on B, at rest) it fades away to show B. A transition that won't load or play just goes.
 import React, { useEffect, useRef, useState } from "react";
 import type { Fit } from "../control/protocol";
-import { isClip, mediaStyle } from "./styles";
+import { boxFor, isClip, mediaStyle } from "./styles";
 import type { ArtMediaHandle } from "./ArtMedia";
+import type { TransitionRef } from "./screenState";
 
 const IN_MS = 1200;
 const OUT_MS = 1800;
@@ -21,21 +22,34 @@ const REST_WAIT_MS = 40_000;
  * fresh and not already played on this page for this publish. Waits for a moving clip on
  * screen to come to rest first.
  */
-export async function transitionFor(src: string, played: Set<string>, media: () => ArtMediaHandle | null): Promise<{ url: string; aspect: number | null } | null> {
+export async function transitionFor(
+  src: string,
+  played: Set<string>,
+  media: () => ArtMediaHandle | null,
+  /** From the screen's state document (art/screenState.ts transitionToPlay, already checked): no sidecar is read. */
+  fromState?: { t: TransitionRef | null },
+  /** A still's clip (art/ClipLayer.tsx) is playing over the old picture. */
+  clipPlaying: () => boolean = () => false,
+): Promise<{ url: string; aspect: number | null } | null> {
   if (isClip(src)) return null;
   try {
     const page = new URL(src, window.location.href);
-    const r = await fetch(page.origin + page.pathname + ".json", { cache: "no-store" });
-    if (!r.ok) return null;
-    const t = (await r.json())?.transition;
-    // once per publish (`at`): an upscaled copy of B carries it again, but a replay of the day publishes it anew
-    const key = `${t?.url}@${t?.at}`;
-    if (!t?.url || played.has(key) || !(Date.now() / 1000 - Number(t.at) < FRESH_S)) return null;
-    played.add(key);
+    let t: { url?: string; at?: number | null } | null | undefined = fromState?.t;
+    if (!fromState) {
+      const r = await fetch(page.origin + page.pathname + ".json", { cache: "no-store" });
+      if (!r.ok) return null;
+      t = (await r.json())?.transition;
+      // once per publish (`at`): an upscaled copy of B carries it again, but a replay of the day publishes it anew
+      const key = `${t?.url}@${t?.at}`;
+      if (!t?.url || played.has(key) || !(Date.now() / 1000 - Number(t.at) < FRESH_S)) return null;
+      played.add(key);
+    }
+    if (!t?.url) return null;
     const until = Date.now() + REST_WAIT_MS;
     for (;;) {
       const m = media();
-      if (!m || !m.isEasedClip() || m.canPlayNow() || Date.now() > until) break;
+      const moving = clipPlaying() || (!!m && m.isEasedClip() && !m.canPlayNow());
+      if (!moving || Date.now() > until) break;
       await new Promise((res) => setTimeout(res, 500));
     }
     // the old picture's shape: the transition was drawn from it stretched to the model's size, so it is shown
@@ -60,18 +74,6 @@ interface Props {
   onDone: () => void;
 }
 
-/** Where a picture of `aspect` sits on the screen, fitted (contain) or filling (cover). */
-function boxFor(aspect: number, mode: Fit): React.CSSProperties {
-  const W = window.innerWidth;
-  const H = window.innerHeight;
-  let w = W;
-  let h = W / aspect;
-  if (mode === "fill" ? h < H : h > H) {
-    h = H;
-    w = H * aspect;
-  }
-  return { position: "absolute", left: (W - w) / 2, top: (H - h) / 2, width: w, height: h };
-}
 
 export function TransitionLayer({ src, aspect, displayMode, onCovered, onDone }: Props) {
   const ref = useRef<HTMLVideoElement | null>(null);

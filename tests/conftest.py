@@ -42,6 +42,13 @@ def pytest_configure(config):
         return os.path.join(storage_dir, f"{dest_id}.json")
     _sutils.get_scheduler_storage_path = _mock_get_storage_path
 
+@pytest.fixture(autouse=True)
+def _no_screen_state_push(monkeypatch):
+    """A publish in a test never tells real pages anything (routes/screen_state.py pushes through room_service)."""
+    from routes import screen_state
+    monkeypatch.setattr(screen_state, "push", lambda screen, state: None)
+
+
 @pytest.fixture
 def temp_registry_file(clean_scheduler_state):
     """Get the temporary registry file path from clean_scheduler_state.

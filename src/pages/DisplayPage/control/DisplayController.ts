@@ -269,6 +269,23 @@ export class DisplayController {
     this.art = a;
   }
 
+  /** What the screen shows (`art.state`, art/screenState.ts), pushed by room_service; null after a (re)connect's
+   *  welcome, meaning "read the document now" (a push may have been missed while the socket was down). */
+  onArtState(fn: (state: unknown | null) => void): () => void {
+    this.artStateListeners.add(fn);
+    return () => this.artStateListeners.delete(fn);
+  }
+  private readonly artStateListeners = new Set<(state: unknown | null) => void>();
+  private tellArtState(state: unknown | null): void {
+    for (const fn of this.artStateListeners) {
+      try {
+        fn(state);
+      } catch (e) {
+        this.log("art.state listener failed", e);
+      }
+    }
+  }
+
   attachArtStack = (el: HTMLElement | null): void => {
     this.artStack = el;
   };
@@ -347,6 +364,9 @@ export class DisplayController {
         this.dropRejoin(String(d.session));
         this.live.abort(String(d.session), String(d.reason ?? ""));
         break;
+      case "art.state":
+        this.tellArtState(d);
+        break;
       case "hb":
         break;
       default:
@@ -360,6 +380,7 @@ export class DisplayController {
       this.maskRev = null; // new epoch: the snapshot is authoritative
     }
     this.welcomed = true;
+    this.tellArtState(null);
     this.welcomedThisConnection = true;
     this.store.dispatch({ type: "welcome", epoch: w.epoch, policy: w.policy });
     this.event("welcome", { epoch: w.epoch, policy: this.store.getState().policy, live: w.live?.session ?? null });

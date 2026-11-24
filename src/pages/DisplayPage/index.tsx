@@ -2,6 +2,8 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import useBaseFileName from "./hooks/useBaseFileName";
 import useFilePolling from "./hooks/useFilePolling";
+import useScreenState from "./hooks/useScreenState";
+import { baseUrl, stillAspect, transitionToPlay, type ScreenState } from "./art/screenState";
 import { MediaDisplay } from "./MediaDisplay";
 import { OverlayContainer } from "./OverlayContainer";
 import { JobIndicator } from "./JobIndicator";
@@ -18,6 +20,7 @@ import { LegacyMaskLayers } from "./LegacyMaskLayers";
 import { ArtOnlyPage } from "./art/ArtOnlyPage";
 import { ArtMedia, type ArtMediaHandle } from "./art/ArtMedia";
 import { TransitionLayer, transitionFor } from "./art/TransitionLayer";
+import { ClipLayer, type ClipLayerHandle } from "./art/ClipLayer";
 import { BaseLanding } from "./art/baseLanding";
 import { MaskLayers } from "./art/MaskLayers";
 import { isClip, mediaContainerStyle, mediaStyle } from "./art/styles";
@@ -98,11 +101,6 @@ function DisplayPage() {
   const { screenId } = useParams();
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const baseFileName = useBaseFileName(screenId);
-  const filePolling = useFilePolling(baseFileName);
-  const { currentSrc, videoKey: pollingVideoKey, lastModified, fileType, fileName } = filePolling;
-
-  const [videoKey, setVideoKey] = useState(pollingVideoKey);
   const [overlays, setOverlays] = useState<Overlay[]>([]);
 
   // Scheduler status state
@@ -146,6 +144,19 @@ function DisplayPage() {
   const quiet = !!ctl && (frozen || liveOnGlass);
   const quietRef = useRef(quiet);
   quietRef.current = quiet;
+
+  const baseFileName = useBaseFileName(screenId);
+  // What the screen shows, as one document (art/screenState.ts): on the controlled page it replaces reading the
+  // screen's files once the screen has one. The base is the still (or a published video); a still's clip is not.
+  const { state: screenState, available: stateMode } = useScreenState(ctl ? baseFileName : null, ctl);
+  const filePolling = useFilePolling(baseFileName, !stateMode);
+  const stateBase = stateMode ? baseUrl(screenState) : null;
+  const currentSrc = stateBase ?? filePolling.currentSrc;
+  const pollingVideoKey = stateBase ?? filePolling.videoKey;
+  const fileType = stateMode ? (screenState?.video ? "mp4" : "jpg") : filePolling.fileType;
+  const fileName = stateMode ? `${baseFileName}.${fileType}` : filePolling.fileName;
+  const lastModified = stateMode ? Math.round((screenState?.at ?? 0) * 1000) : filePolling.lastModified;
+  const [videoKey, setVideoKey] = useState(pollingVideoKey);
 
   // While quiet, overlays never become visible (their own timers may still try).
   const setOverlaysGated = useCallback((u: React.SetStateAction<Overlay[]>) => {
@@ -376,6 +387,15 @@ function DisplayPage() {
 
   // --- Controlled page: base changes, freeze, cuts -------------------------------------------------
   const artMediaRef = useRef<ArtMediaHandle>(null);
+  // A still's own clip, played over it now and then (art/ClipLayer.tsx; state documents only)
+  const clipLayerRef = useRef<ClipLayerHandle>(null);
+  // Each state document by its base, so a transition knows the picture it starts from (art/screenState.ts)
+  const statesByBase = useRef(new Map<string, ScreenState>());
+  useEffect(() => {
+    const b = baseUrl(screenState);
+    if (b && screenState) statesByBase.current.set(b, screenState);
+    if (statesByBase.current.size > 20) statesByBase.current.delete(statesByBase.current.keys().next().value as string);
+  }, [screenState]);
   const shownSrc = visibleSrc || currentSrc;
   const shownSrcRef = useRef(shownSrc);
   shownSrcRef.current = shownSrc;
@@ -394,8 +414,9 @@ function DisplayPage() {
     read();
     const t = setInterval(read, 15000);
     const poll = () => {
-      setCanPlayNow(!!artMediaRef.current?.canPlayNow());
-      setEasedOnScreen(!!artMediaRef.current?.isEasedClip());
+      const layer = clipLayerRef.current;
+      setCanPlayNow(!!(layer?.url() ? layer.canPlayNow() : artMediaRef.current?.canPlayNow()));
+      setEasedOnScreen(!!(layer?.url() || artMediaRef.current?.isEasedClip()));
     };
     const p = setInterval(poll, 500);
     poll();
@@ -408,7 +429,7 @@ function DisplayPage() {
   useEffect(() => () => {
     if (playWait.current) clearInterval(playWait.current);
   }, []);
-  const listed: PanelClip[] = (published?.clips ?? []).map((c) => ({ ...c, onScreen: c.filename === published?.filename && isClip(shownSrc ?? "") }));
+  const listed: PanelClip[] = (published?.clips ?? []).map((c) => ({ ...c, onScreen: c.filename === published?.filename && (isClip(shownSrc ?? "") || !!screenState?.clip) }));
   // The clip on screen plays here whatever the list says: the list (the picture's other clips) needs the screen's
   // access, which a page on plain http can't carry for an admins-only screen such as devtest (owner, 24 Nov)
   const panelClips: PanelClip[] =
@@ -419,10 +440,11 @@ function DisplayPage() {
   const playClip = async (clip: PanelClip) => {
     if (!screenId) return;
     if (clip.onScreen) {
-      if (artMediaRef.current?.playNow()) setCanPlayNow(false);
+      if (clipLayerRef.current?.url() ? clipLayerRef.current.playNow() : artMediaRef.current?.playNow()) setCanPlayNow(false);
       return;
     }
     const from = shownSrcRef.current;
+    const fromClip = clipLayerRef.current?.url() ?? null;
     setStartingClip(clip.filename);
     try {
       await chooseClip(screenId, clip.filename);
@@ -435,7 +457,10 @@ function DisplayPage() {
     if (playWait.current) clearInterval(playWait.current);
     const until = Date.now() + 90_000;
     playWait.current = setInterval(() => {
-      const done = Date.now() > until || (shownSrcRef.current !== from && !!artMediaRef.current?.playNow());
+      // a still's clip arrives as the still's new clip (state documents), else as the screen's new file
+      const layer = clipLayerRef.current;
+      const landed = layer?.url() && layer.url() !== fromClip ? layer.playNow() : shownSrcRef.current !== from && !!artMediaRef.current?.playNow();
+      const done = Date.now() > until || landed;
       if (!done) return;
       if (playWait.current) clearInterval(playWait.current);
       playWait.current = null;
@@ -465,6 +490,8 @@ function DisplayPage() {
   // and the cross-fade then happens under it (`covered`)
   const [transition, setTransition] = useState<{ for: string; url: string | null; aspect?: number | null; covered: boolean } | null>(null);
   const playedTransitions = useRef(new Set<string>());
+  const transitionBusyRef = useRef(false);
+  transitionBusyRef.current = !!(transition && (transition.url || !transition.covered));
   const [incomingShown, setIncomingShown] = useState(false);
   const incomingMediaRef = useRef<ArtMediaHandle>(null);
   useEffect(() => {
@@ -494,7 +521,11 @@ function DisplayPage() {
     if (transition?.for !== currentSrc) {
       const target = currentSrc;
       setTransition({ for: target, url: null, covered: false });
-      void transitionFor(target, playedTransitions.current, () => artMediaRef.current).then((found) =>
+      const shownState = visibleSrc ? statesByBase.current.get(visibleSrc) ?? null : null;
+      const fromState = stateMode && screenState && baseUrl(screenState) === target
+        ? { t: transitionToPlay(shownState, screenState, Date.now() / 1000, playedTransitions.current) }
+        : undefined;
+      void transitionFor(target, playedTransitions.current, () => artMediaRef.current, fromState, () => !!clipLayerRef.current?.playing()).then((found) =>
         setTransition((t) => (t && t.for === target ? { ...t, url: found?.url ?? null, aspect: found?.aspect, covered: !found } : t)),
       );
       return;
@@ -508,7 +539,7 @@ function DisplayPage() {
     setOverlays((prev) =>
       prev.map((o) => (o.withBase && o.visible ? { ...o, visible: false, fadeout: CROSSFADE_MS } : o)),
     );
-  }, [ctl, currentSrc, visibleSrc, frozen, liveOnGlass, incoming, pollingVideoKey, baseLanding, transition]);
+  }, [ctl, currentSrc, visibleSrc, frozen, liveOnGlass, incoming, pollingVideoKey, baseLanding, transition, stateMode, screenState]);
   // a freeze or the live layer ends a transition at once (the art stack is about to be held or hidden)
   useEffect(() => {
     if (quiet) setTransition((t) => (t && (t.url || !t.covered) ? { ...t, url: null, covered: true } : t));
@@ -552,6 +583,8 @@ function DisplayPage() {
         while (busy() && performance.now() - t0 < 4000) {
           await new Promise((r) => setTimeout(r, 50));
         }
+        // a still's clip fades back to the still (ClipLayer, quiet): the frozen screen is the still
+        await Promise.race([clipLayerRef.current?.settled() ?? Promise.resolve(), new Promise((r) => setTimeout(r, 1500))]);
         await artMediaRef.current?.ready();
       },
       snapshot: () => {
@@ -782,6 +815,19 @@ function DisplayPage() {
             displayMode={displayMode}
             onCovered={() => setTransition((t) => (t && !t.covered ? { ...t, covered: true } : t))}
             onDone={() => setTransition((t) => (t ? { ...t, url: null, covered: true } : t))}
+          />
+        </LayerBoundary>
+      )}
+
+      {ctl && stateMode && (
+        <LayerBoundary name="clip">
+          <ClipLayer
+            ref={clipLayerRef}
+            clip={screenState?.still && !screenState.video && visibleSrc === screenState.still.url ? screenState.clip : null}
+            aspect={stillAspect(screenState)}
+            displayMode={displayMode}
+            quiet={quiet || !!incoming || !!(transition && (transition.url || !transition.covered))}
+            slotFree={() => !transitionBusyRef.current}
           />
         </LayerBoundary>
       )}

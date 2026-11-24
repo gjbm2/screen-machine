@@ -61,3 +61,16 @@ export const warmLayerStyle: React.CSSProperties = {
   willChange: "opacity",
   zIndex: 6,
 };
+
+/** Where a picture of `aspect` sits on the screen, fitted (contain) or filling (cover). */
+export function boxFor(aspect: number, mode: Fit): React.CSSProperties {
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+  let w = W;
+  let h = W / aspect;
+  if (mode === "fill" ? h < H : h > H) {
+    h = H;
+    w = H * aspect;
+  }
+  return { position: "absolute", left: (W - w) / 2, top: (H - h) / 2, width: w, height: h };
+}

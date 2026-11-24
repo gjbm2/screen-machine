@@ -3,7 +3,8 @@ import { useEffect, useRef, useState } from "react";
 
 const POLL_INTERVAL = 1000;
 
-export default function useFilePolling(baseFileName: string | null) {
+/** `enabled` false (the controlled page, once the screen has a state document: hooks/useScreenState.ts): no polling. */
+export default function useFilePolling(baseFileName: string | null, enabled = true) {
   const [currentSrc, setCurrentSrc] = useState<string | null>(null);
   const [videoKey, setVideoKey] = useState<string>("initial");
   const lastModifiedRef = useRef<number>(0);
@@ -12,7 +13,7 @@ export default function useFilePolling(baseFileName: string | null) {
   const [fileName, setFileName] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!baseFileName) return;
+    if (!baseFileName || !enabled) return;
 
     const base = `/output/${baseFileName}`;
 
@@ -89,7 +90,7 @@ export default function useFilePolling(baseFileName: string | null) {
     detectInitialFile();
     const interval = setInterval(checkForChange, POLL_INTERVAL);
     return () => clearInterval(interval);
-  }, [baseFileName]);
+  }, [baseFileName, enabled]);
 
   return { currentSrc, videoKey, lastModified, fileType, fileName };
 }
