@@ -10,6 +10,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Drawing;
+using System.Drawing.Drawing2D;
 using System.IO;
 using System.Net;
 using System.Reflection;
@@ -735,8 +736,145 @@ namespace ScreenMachine.Screensaver
     {
         public Monitor Monitor;  // null: monitors plugged in later
         public Choice Was;
-        public ComboBox Screen = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 230, Enabled = false };
-        public ComboBox Fit = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 140 };
+        public ComboBox Screen = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.System, Enabled = false };
+        public ComboBox Fit = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, FlatStyle = FlatStyle.System };
+    }
+
+    /// Settings' look: Windows 11's light dialog (a pale page, white cards, a footer band), Screen Machine's teal.
+    static class Ui
+    {
+        public static readonly Color Page = Color.FromArgb(249, 249, 249), Card = Color.White, Line = Color.FromArgb(229, 229, 229),
+            Footer = Color.FromArgb(240, 240, 240), Ink = Color.FromArgb(26, 26, 26), Muted = Color.FromArgb(96, 96, 96),
+            Accent = Color.FromArgb(17, 94, 89), AccentHover = Color.FromArgb(22, 112, 106), AccentDown = Color.FromArgb(12, 72, 68),
+            Warn = Color.FromArgb(255, 244, 206), WarnLine = Color.FromArgb(240, 222, 160), WarnInk = Color.FromArgb(110, 74, 0),
+            Danger = Color.FromArgb(196, 43, 28);
+
+        public static GraphicsPath Round(RectangleF r, float radius)
+        {
+            var p = new GraphicsPath();
+            float d = Math.Max(1f, radius * 2);
+            p.AddArc(r.Left, r.Top, d, d, 180, 90);
+            p.AddArc(r.Right - d, r.Top, d, d, 270, 90);
+            p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+            p.AddArc(r.Left, r.Bottom - d, d, d, 90, 90);
+            p.CloseFigure();
+            return p;
+        }
+
+        public static Color Behind(Control c)
+        {
+            var card = c.Parent as CardPanel;
+            return card != null ? card.Fill : c.Parent != null ? c.Parent.BackColor : Page;
+        }
+    }
+
+    /// A rounded panel, with hairlines between its rows.
+    sealed class CardPanel : Panel
+    {
+        public Color Fill = Ui.Card, Border = Ui.Line;
+        public float Radius = 8;
+        public readonly List<int> Rules = new List<int>();
+
+        public CardPanel()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        }
+
+        protected override void OnPaintBackground(PaintEventArgs e) { e.Graphics.Clear(Parent != null ? Parent.BackColor : Ui.Page); }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (var path = Ui.Round(new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f), Radius))
+            using (var fill = new SolidBrush(Fill))
+            using (var pen = new Pen(Border))
+            {
+                g.FillPath(fill, path);
+                g.DrawPath(pen, path);
+            }
+            g.SmoothingMode = SmoothingMode.None;
+            using (var pen = new Pen(Ui.Line))
+                foreach (int y in Rules) g.DrawLine(pen, 1, y, Width - 2, y);
+        }
+    }
+
+    /// The monitor's number in a disc (the same number "Identify monitors" puts on it).
+    sealed class Badge : Control
+    {
+        public Color Fill = Ui.Accent;
+
+        public Badge()
+        {
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.Clear(Ui.Behind(this));
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            using (var b = new SolidBrush(Fill)) g.FillEllipse(b, 0, 0, Width - 1, Height - 1);
+            TextRenderer.DrawText(g, Text, Font, ClientRectangle, ForeColor,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine | TextFormatFlags.NoPadding);
+        }
+    }
+
+    /// A Windows 11 button: rounded, the main one filled with the accent.
+    sealed class NiceButton : Button
+    {
+        readonly bool primary;
+        public float Radius = 4;
+        bool hover, down;
+
+        public NiceButton(bool primary)
+        {
+            this.primary = primary;
+            FlatStyle = FlatStyle.Flat;
+            FlatAppearance.BorderSize = 0;
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer, true);
+        }
+
+        protected override void OnMouseEnter(EventArgs e) { hover = true; Invalidate(); base.OnMouseEnter(e); }
+        protected override void OnMouseLeave(EventArgs e) { hover = down = false; Invalidate(); base.OnMouseLeave(e); }
+        protected override void OnMouseDown(MouseEventArgs e) { down = true; Invalidate(); base.OnMouseDown(e); }
+        protected override void OnMouseUp(MouseEventArgs e) { down = false; Invalidate(); base.OnMouseUp(e); }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.Clear(Ui.Behind(this));
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            Color fill, border, ink;
+            if (primary)
+            {
+                fill = !Enabled ? Color.FromArgb(160, 190, 188) : down ? Ui.AccentDown : hover ? Ui.AccentHover : Ui.Accent;
+                border = fill;
+                ink = Color.White;
+            }
+            else
+            {
+                fill = down ? Color.FromArgb(235, 235, 235) : hover ? Color.FromArgb(246, 246, 246) : Color.White;
+                border = Color.FromArgb(208, 208, 208);
+                ink = Enabled ? Ui.Ink : Ui.Muted;
+            }
+            var r = new RectangleF(0.5f, 0.5f, Width - 1.5f, Height - 1.5f);
+            using (var path = Ui.Round(r, Radius))
+            using (var b = new SolidBrush(fill))
+            using (var pen = new Pen(border))
+            {
+                g.FillPath(b, path);
+                g.DrawPath(pen, path);
+            }
+            if (Focused && ShowFocusCues)
+            {
+                r.Inflate(-2.5f, -2.5f);
+                using (var path = Ui.Round(r, Math.Max(1f, Radius - 2)))
+                using (var pen = new Pen(primary ? Color.White : Ui.Ink, 1.5f)) g.DrawPath(pen, path);
+            }
+            TextRenderer.DrawText(g, Text, Font, ClientRectangle, ink,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.SingleLine);
+        }
     }
 
     /// The one window: what each monitor shows, and from where. Run from the download it installs; run from Windows'
@@ -749,81 +887,187 @@ namespace ScreenMachine.Screensaver
         const string FillWords = "Fill (crops edges)", FitWords = "Fit (black bars)";
 
         readonly List<MonitorRow> rows = new List<MonitorRow>();
-        readonly TextBox server = new TextBox { Width = 380 };
-        readonly Label note = new Label { AutoSize = true, MaximumSize = new Size(480, 0), ForeColor = Color.DimGray };
-        readonly LinkLabel signIn = new LinkLabel { AutoSize = true, Text = "Sign in", Visible = false };
-        readonly Button ok = new Button { AutoSize = true, Padding = new Padding(8, 2, 8, 2) };
-        readonly Button remove = new Button { AutoSize = true, Text = "Remove", Padding = new Padding(8, 2, 8, 2) };
-        readonly Button cancel = new Button { AutoSize = true, Text = "Cancel", DialogResult = DialogResult.Cancel, Padding = new Padding(8, 2, 8, 2) };
+        readonly TextBox server = new TextBox();
+        readonly CardPanel strip = new CardPanel { Radius = 6 };
+        readonly Label note = new Label { AutoSize = false, AutoEllipsis = true, TextAlign = ContentAlignment.MiddleLeft };
+        readonly NiceButton signIn = new NiceButton(false) { Text = "Sign in", Visible = false };
+        readonly NiceButton ok = new NiceButton(true);
+        readonly NiceButton cancel = new NiceButton(false) { Text = "Cancel", DialogResult = DialogResult.Cancel };
+        readonly LinkLabel remove = new LinkLabel { AutoSize = true, Text = "Remove from this PC", LinkBehavior = LinkBehavior.HoverUnderline };
         readonly bool installing;
+        readonly float scale = 1f;
         int loading;
+
+        int D(float v) { return (int)Math.Round(v * scale); }
 
         public SettingsForm()
         {
             installing = !Installer.IsInstalledCopy || !Installer.IsCurrentScreensaver;
             Text = "Screen Machine screensaver";
-            Font = new Font("Segoe UI", 10f);
+            AutoScaleMode = AutoScaleMode.None;  // sized below, in pixels at this monitor's scale
+            Font = new Font("Segoe UI", 9.75f);
+            ForeColor = Ui.Ink;
+            BackColor = Ui.Page;
             FormBorderStyle = FormBorderStyle.FixedDialog;
             MaximizeBox = MinimizeBox = false;
+            ShowIcon = false;
             StartPosition = FormStartPosition.CenterScreen;
-            AutoSize = true;
-            AutoSizeMode = AutoSizeMode.GrowAndShrink;
-            Padding = new Padding(16);
+            using (var g = CreateGraphics()) scale = g.DpiX / 96f;  // the fonts (in points) scale the same way
             AcceptButton = ok;
             CancelButton = cancel;
 
-            var col = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, WrapContents = false };
-            var head = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, 0, 0, 8) };
-            head.Controls.Add(new Label { AutoSize = true, Text = "When the computer is idle, show", Font = new Font("Segoe UI Semibold", 11f) });
-            var which = new LinkLabel { AutoSize = true, Text = "Which monitor is which?", Margin = new Padding(12, 4, 0, 0) };
-            which.LinkClicked += delegate { Identify(); };
-            head.Controls.Add(which);
-            col.Controls.Add(head);
-
-            var grid = new TableLayoutPanel { AutoSize = true, ColumnCount = 3, Margin = new Padding(0) };
             var mons = Monitors.Now();
             foreach (var m in mons) rows.Add(new MonitorRow { Monitor = m, Was = Settings.For(m) });
             rows.Add(new MonitorRow { Monitor = null, Was = Settings.Default });
-            int n = 0;
-            foreach (var r in rows)
-            {
-                n++;
-                var name = new Label { AutoSize = true, Margin = new Padding(0, 6, 16, 6), MaximumSize = new Size(230, 0) };
-                name.Text = r.Monitor == null ? "Monitors plugged in later" : n + "  " + r.Monitor.Name + "\n    " + r.Monitor.Describe();
-                if (r.Monitor == null) name.ForeColor = Color.DimGray;
-                r.Fit.Items.AddRange(new object[] { FillWords, FitWords });
-                r.Fit.SelectedIndex = r.Was.Fill ? 0 : 1;
-                r.Screen.SelectedIndexChanged += delegate { ShowAccess(); };
-                grid.Controls.Add(name);
-                grid.Controls.Add(r.Screen);
-                grid.Controls.Add(r.Fit);
-            }
-            col.Controls.Add(grid);
-            var noteRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, 6, 0, 12) };
-            noteRow.Controls.Add(note);
-            noteRow.Controls.Add(signIn);
-            col.Controls.Add(noteRow);
-            col.Controls.Add(new Label { AutoSize = true, Text = "From", ForeColor = Color.DimGray });
-            col.Controls.Add(server);
-            var buttons = new FlowLayoutPanel { AutoSize = true, FlowDirection = FlowDirection.RightToLeft, Dock = DockStyle.Fill, Margin = new Padding(0, 16, 0, 0) };
-            buttons.Controls.Add(cancel);
-            buttons.Controls.Add(ok);
-            if (Installer.IsInstalled) buttons.Controls.Add(remove);
-            col.Controls.Add(buttons);
-            Controls.Add(col);
+            Build();
 
             ok.Text = installing ? "Use as screensaver" : "Save";
             server.Text = Settings.Server;
             server.Leave += delegate { LoadScreens(); };
             ok.Click += delegate { Save(); };
-            remove.Click += delegate
+            remove.LinkClicked += delegate
             {
                 if (MessageBox.Show(this, "Remove the Screen Machine screensaver from this computer?", Text, MessageBoxButtons.OKCancel) != DialogResult.OK) return;
                 Installer.Uninstall();
                 Close();
             };
-            signIn.LinkClicked += delegate { new SignInForm(server.Text.Trim().TrimEnd('/')).ShowDialog(this); LoadScreens(); };
+            signIn.Click += delegate { new SignInForm(server.Text.Trim().TrimEnd('/')).ShowDialog(this); LoadScreens(); };
             Shown += delegate { LoadScreens(); };
+        }
+
+        void Build()
+        {
+            int width = D(720), pad = D(24), inner = width - 2 * pad;
+            var title = new Font("Segoe UI Semibold", 15f);
+            var strong = new Font("Segoe UI Semibold", 9.75f);
+            var small = new Font("Segoe UI", 8.75f);
+            int y = pad;
+
+            // header: the title, what it does, and "Identify monitors"
+            var identify = new NiceButton(false) { Text = "Identify monitors", Radius = 4 * scale };
+            identify.Size = new Size(TextRenderer.MeasureText("Identify monitors", Font).Width + D(28), D(32));
+            identify.Click += delegate { Identify(); };
+            var head = new Label { AutoSize = true, Text = "Screen Machine screensaver", Font = title, Location = new Point(pad, y) };
+            Controls.Add(head);
+            identify.Location = new Point(width - pad - identify.Width, y + (head.PreferredHeight - identify.Height) / 2);
+            Controls.Add(identify);
+            y += head.PreferredHeight + D(2);
+            var sub = new Label
+            {
+                AutoSize = true, MaximumSize = new Size(inner, 0), ForeColor = Ui.Muted, Location = new Point(pad, y),
+                Text = "What each monitor shows when this PC is idle. Windows sets the wait and the lock.",
+            };
+            Controls.Add(sub);
+            y += sub.PreferredHeight + D(18);
+
+            // the monitors, one row each, in a card
+            var card = new CardPanel { Location = new Point(pad, y), Width = inner, Radius = 8 * scale };
+            Controls.Add(card);
+            int rowH = D(66), fitW = D(150), screenW = D(230), left = D(60), cy = 0, n = 0;
+            int fitX = inner - D(16) - fitW, screenX = fitX - D(8) - screenW, nameW = screenX - left - D(12);
+            int lineH = TextRenderer.MeasureText("Ag", strong).Height;
+            foreach (var r in rows)
+            {
+                bool later = r.Monitor == null;
+                if (!later) n++;
+                var badge = new Badge
+                {
+                    Size = new Size(D(30), D(30)), Location = new Point(D(18), cy + (rowH - D(30)) / 2),
+                    Text = later ? "+" : n.ToString(), Font = strong,
+                    Fill = later ? Color.FromArgb(232, 232, 232) : Ui.Accent, ForeColor = later ? Ui.Muted : Color.White,
+                };
+                var name = new Label
+                {
+                    AutoSize = false, AutoEllipsis = true, Font = strong, BackColor = Ui.Card, Size = new Size(nameW, lineH),
+                    Text = later ? "Monitors plugged in later" : r.Monitor.Name,
+                };
+                var desc = new Label
+                {
+                    AutoSize = false, AutoEllipsis = true, Font = small, ForeColor = Ui.Muted, BackColor = Ui.Card,
+                    Size = new Size(nameW, TextRenderer.MeasureText("Ag", small).Height),
+                    Text = later ? "Any other monitor" : r.Monitor.Describe(),
+                };
+                int textTop = cy + (rowH - name.Height - desc.Height) / 2;
+                name.Location = new Point(left, textTop);
+                desc.Location = new Point(left, textTop + name.Height);
+                r.Fit.Items.AddRange(new object[] { FillWords, FitWords });
+                r.Fit.SelectedIndex = r.Was.Fill ? 0 : 1;
+                r.Screen.SelectedIndexChanged += delegate { ShowAccess(); };
+                card.Controls.Add(badge);
+                card.Controls.Add(name);
+                card.Controls.Add(desc);
+                card.Controls.Add(r.Screen);
+                card.Controls.Add(r.Fit);
+                r.Screen.Width = screenW;
+                r.Fit.Width = fitW;
+                r.Screen.Location = new Point(screenX, cy + (rowH - r.Screen.Height) / 2);
+                r.Fit.Location = new Point(fitX, cy + (rowH - r.Fit.Height) / 2);
+                cy += rowH;
+                if (r != rows[rows.Count - 1]) card.Rules.Add(cy);
+            }
+            card.Height = cy;
+            y += cy + D(12);
+
+            // a line under the card: what's happening, or that a screen needs signing in
+            strip.Location = new Point(pad, y);
+            strip.Size = new Size(inner, D(44));
+            strip.Radius = 6 * scale;
+            signIn.Radius = 4 * scale;
+            signIn.Size = new Size(TextRenderer.MeasureText("Sign in", Font).Width + D(28), D(30));
+            signIn.Location = new Point(strip.Width - D(8) - signIn.Width, (strip.Height - signIn.Height) / 2);
+            note.Location = new Point(D(14), 0);
+            note.Size = new Size(signIn.Left - D(22), strip.Height);
+            strip.Controls.Add(note);
+            strip.Controls.Add(signIn);
+            Controls.Add(strip);
+            SetNote("", false);
+            y += strip.Height + D(16);
+
+            // where the screens come from
+            var fromLabel = new Label { AutoSize = true, Text = "Server", ForeColor = Ui.Muted };
+            Controls.Add(fromLabel);
+            Controls.Add(server);
+            int labelW = D(64);
+            server.Location = new Point(pad + labelW, y);
+            server.Width = inner - labelW;
+            fromLabel.Location = new Point(pad, y + (server.Height - fromLabel.PreferredHeight) / 2);
+            y += server.Height + pad;
+
+            // the footer band: remove on the left, the answer on the right
+            var footer = new Panel { Location = new Point(0, y), Size = new Size(width, D(68)), BackColor = Ui.Footer };
+            footer.Paint += delegate(object o, PaintEventArgs e) { using (var pen = new Pen(Ui.Line)) e.Graphics.DrawLine(pen, 0, 0, footer.Width, 0); };
+            Controls.Add(footer);
+            int bh = D(34);
+            foreach (var b in new[] { ok, cancel })
+            {
+                b.Radius = 4 * scale;
+                b.Height = bh;
+            }
+            ok.Width = Math.Max(D(96), TextRenderer.MeasureText(installing ? "Use as screensaver" : "Save", Font).Width + D(36));
+            cancel.Width = Math.Max(D(96), TextRenderer.MeasureText(cancel.Text, Font).Width + D(36));
+            cancel.Location = new Point(width - pad - cancel.Width, (footer.Height - bh) / 2);
+            ok.Location = new Point(cancel.Left - D(8) - ok.Width, cancel.Top);
+            footer.Controls.Add(ok);
+            footer.Controls.Add(cancel);
+            if (Installer.IsInstalled)
+            {
+                remove.LinkColor = remove.ActiveLinkColor = Ui.Danger;
+                remove.Location = new Point(pad, (footer.Height - remove.PreferredHeight) / 2);
+                footer.Controls.Add(remove);
+            }
+            ClientSize = new Size(width, y + footer.Height);
+        }
+
+        /// The line under the monitors: plain, or a yellow strip with "Sign in" when a chosen screen needs it.
+        void SetNote(string text, bool warn)
+        {
+            strip.Fill = warn ? Ui.Warn : Ui.Page;
+            strip.Border = warn ? Ui.WarnLine : Ui.Page;
+            note.BackColor = strip.Fill;
+            note.ForeColor = warn ? Ui.WarnInk : Ui.Muted;
+            note.Text = text;
+            signIn.Visible = warn;
+            strip.Invalidate();
         }
 
         /// A big number on each monitor for two seconds, matching the rows.
@@ -837,7 +1081,7 @@ namespace ScreenMachine.Screensaver
                 var tag = new Form
                 {
                     FormBorderStyle = FormBorderStyle.None, StartPosition = FormStartPosition.Manual, ShowInTaskbar = false, TopMost = true,
-                    BackColor = Color.FromArgb(17, 94, 89), ForeColor = Color.White, Size = new Size(220, 220),
+                    BackColor = Ui.Accent, ForeColor = Color.White, Size = new Size(220, 220),
                 };
                 tag.Location = new Point(r.Monitor.Bounds.Left + 40, r.Monitor.Bounds.Top + 40);
                 tag.Controls.Add(new Label { Dock = DockStyle.Fill, Text = n.ToString(), Font = new Font("Segoe UI Semibold", 96f), TextAlign = ContentAlignment.MiddleCenter });
@@ -852,8 +1096,7 @@ namespace ScreenMachine.Screensaver
         {
             string from = server.Text.Trim().TrimEnd('/');
             int ticket = ++loading;
-            note.Text = from == "" ? "Type the Screen Machine address below." : "Finding the screens...";
-            signIn.Visible = false;
+            SetNote(from == "" ? "Type the Screen Machine address below." : "Finding the screens...", false);
             if (from == "") return;
             Task.Run(() => Fetch(from)).ContinueWith(t =>
             {
@@ -861,7 +1104,7 @@ namespace ScreenMachine.Screensaver
                 BeginInvoke((Action)(() =>
                 {
                     if (ticket != loading) return;
-                    if (t.Result == null) { note.Text = "Couldn't reach " + from + "."; return; }
+                    if (t.Result == null) { SetNote("Couldn't reach " + from + ". Check the server address below.", false); return; }
                     foreach (var r in rows)
                     {
                         // keep what's picked (a second load after signing in), else what was saved
@@ -915,8 +1158,8 @@ namespace ScreenMachine.Screensaver
                 var s = r.Screen.SelectedItem as ScreenChoice;
                 if (s != null && s.Access != "guest") open = false;
             }
-            note.Text = open ? "Each shows whatever that screen shows, live included." : "A screen you chose is for signed-in people.";
-            signIn.Visible = !open;
+            if (open) SetNote("Each monitor shows whatever its screen shows, live included.", false);
+            else SetNote("A screen you chose is for signed-in people. Sign in once and it is remembered for a year.", true);
         }
 
         static Choice Of(MonitorRow r)
