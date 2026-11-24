@@ -63,7 +63,7 @@ def run(args) -> int:
         page.wait_for_selector("[data-film-strip]")
         check(page.locator("textarea[data-prompt-input]").count() == 0, "Film replaces the prompt box")
         check(page.locator("[data-film-slot]").count() == 2, "two slots to start with")
-        check(page.locator('[data-generator-mode="create"]').get_attribute("aria-label") == "Image", "the other mode is called Image")
+        check(page.locator('[data-generator-mode="create"]').get_attribute("aria-label") == "Create", "the other mode is called Create")
         row_text = page.locator("[data-film-row]").inner_text().split()
         check(row_text == ["A", "5", "s", "B"], f"no words among the slots but their letters and the seconds ({row_text})")
         nudges = [t.strip() for t in page.locator("[data-film-nudges] span.text-xs").all_inner_texts()]

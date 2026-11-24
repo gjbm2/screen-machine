@@ -881,12 +881,13 @@ const PromptForm: React.FC<PromptFormProps> = ({
     handleSubmit(e);
   };
 
-  // Image / Film, first in the toolbar's row (owner, 24 Nov: on a row of its own it was "very expensive in real estate
+  // Create / Storyboard (owner, 24 Nov: "Image" and "Film" weren't right, as Create makes clips too; Storyboard joins
+  // pictures into one film), first in the toolbar's row (owner, 24 Nov: on a row of its own it was "very expensive in real estate
   // terms"), drawn as the toolbar's own buttons (white, outlined, purple; the chosen one tinted as an open menu's
   // button is), joined into one; icons only on a phone.
   const modeSwitch = (
     <div className="inline-flex h-[36px] shrink-0 overflow-hidden rounded-md border border-input bg-white" role="tablist" aria-label="What to make">
-      {([['create', 'Image', Sparkles], ['film', 'Film', Clapperboard]] as const).map(([id, label, Icon], i) => (
+      {([['create', 'Create', Sparkles], ['film', 'Storyboard', Clapperboard]] as const).map(([id, label, Icon], i) => (
         <button
           key={id}
           type="button"
