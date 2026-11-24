@@ -463,7 +463,7 @@ function DisplayPage() {
   const [incoming, setIncoming] = useState<{ src: string; videoKey: string } | null>(null);
   // A scheduled picture's transition (art/TransitionLayer.tsx): looked up for each new base, played over the old one,
   // and the cross-fade then happens under it (`covered`)
-  const [transition, setTransition] = useState<{ for: string; url: string | null; covered: boolean } | null>(null);
+  const [transition, setTransition] = useState<{ for: string; url: string | null; aspect?: number | null; covered: boolean } | null>(null);
   const playedTransitions = useRef(new Set<string>());
   const [incomingShown, setIncomingShown] = useState(false);
   const incomingMediaRef = useRef<ArtMediaHandle>(null);
@@ -494,8 +494,8 @@ function DisplayPage() {
     if (transition?.for !== currentSrc) {
       const target = currentSrc;
       setTransition({ for: target, url: null, covered: false });
-      void transitionFor(target, playedTransitions.current, () => artMediaRef.current).then((url) =>
-        setTransition((t) => (t && t.for === target ? { ...t, url, covered: !url } : t)),
+      void transitionFor(target, playedTransitions.current, () => artMediaRef.current).then((found) =>
+        setTransition((t) => (t && t.for === target ? { ...t, url: found?.url ?? null, aspect: found?.aspect, covered: !found } : t)),
       );
       return;
     }
@@ -778,6 +778,7 @@ function DisplayPage() {
         <LayerBoundary name="transition">
           <TransitionLayer
             src={transition.url}
+            aspect={transition.aspect ?? null}
             displayMode={displayMode}
             onCovered={() => setTransition((t) => (t && !t.covered ? { ...t, covered: true } : t))}
             onDone={() => setTransition((t) => (t ? { ...t, url: null, covered: true } : t))}

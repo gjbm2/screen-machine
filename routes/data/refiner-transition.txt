@@ -10,6 +10,8 @@ How to find it:
 - Respect both pictures' style and medium. A painterly pair transforms in paint; a photographic pair transforms through light, space and physical matter; a pair of different styles can change medium on the way.
 - Keep it legible and graceful: one clear transformation, continuous, unhurried, readable when slowed. It ends exactly on B, so the last moments settle into B's composition.
 - Avoid: cuts, flashes, white-outs, glitch effects, text, gimmicks (portals, explosions, spinning), new characters or objects that belong to neither picture, anything frightening or grotesque, and a plain dissolve (that is what we already have).
+- Avoid anything that radiates from the centre: no paint or light bursting, blooming, splashing or exploding outward, no star or starburst shapes, no rays. The video model falls back on that when the prompt is vague ("dissolves", "melts", "transforms", "bursts"), so never rely on those words alone: say what moves, in which direction, and what it becomes.
+- When the two pictures share little, choose a calm, directional change instead: a slow sweep or wipe of light or weather across the frame from one side, a drift of the camera sideways or down into B, forms reshaping where they stand, or the medium re-forming in place (brushstrokes, tiles, paper, threads).
 
 Your answer:
 - idea: a few words naming the link and the manner (e.g. "moon becomes clock face, smooth morph").

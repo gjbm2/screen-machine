@@ -21,7 +21,7 @@ const REST_WAIT_MS = 40_000;
  * fresh and not already played on this page (an upscaled copy of B carries it again). Waits for a moving clip on
  * screen to come to rest first.
  */
-export async function transitionFor(src: string, played: Set<string>, media: () => ArtMediaHandle | null): Promise<string | null> {
+export async function transitionFor(src: string, played: Set<string>, media: () => ArtMediaHandle | null): Promise<{ url: string; aspect: number | null } | null> {
   if (isClip(src)) return null;
   try {
     const page = new URL(src, window.location.href);
@@ -36,7 +36,12 @@ export async function transitionFor(src: string, played: Set<string>, media: () 
       if (!m || !m.isEasedClip() || m.canPlayNow() || Date.now() > until) break;
       await new Promise((res) => setTimeout(res, 500));
     }
-    return new URL(t.url, page).toString();
+    // the old picture's shape: the transition was drawn from it stretched to the model's size, so it is shown
+    // stretched back (owner, 24 Nov: an aspect-ratio jump as it began)
+    const el = media()?.element();
+    const w = el instanceof HTMLVideoElement ? el.videoWidth : el?.naturalWidth;
+    const h = el instanceof HTMLVideoElement ? el.videoHeight : el?.naturalHeight;
+    return { url: new URL(t.url, page).toString(), aspect: w && h ? w / h : null };
   } catch {
     return null;
   }
@@ -44,6 +49,8 @@ export async function transitionFor(src: string, played: Set<string>, media: () 
 
 interface Props {
   src: string;
+  /** The old picture's width / height: the transition is shown in that shape, fitted as the picture is. */
+  aspect: number | null;
   displayMode: Fit;
   /** It covers the screen (or gave up): the base can change under it. */
   onCovered: () => void;
@@ -51,7 +58,20 @@ interface Props {
   onDone: () => void;
 }
 
-export function TransitionLayer({ src, displayMode, onCovered, onDone }: Props) {
+/** Where a picture of `aspect` sits on the screen, fitted (contain) or filling (cover). */
+function boxFor(aspect: number, mode: Fit): React.CSSProperties {
+  const W = window.innerWidth;
+  const H = window.innerHeight;
+  let w = W;
+  let h = W / aspect;
+  if (mode === "fill" ? h < H : h > H) {
+    h = H;
+    w = H * aspect;
+  }
+  return { position: "absolute", left: (W - w) / 2, top: (H - h) / 2, width: w, height: h };
+}
+
+export function TransitionLayer({ src, aspect, displayMode, onCovered, onDone }: Props) {
   const ref = useRef<HTMLVideoElement | null>(null);
   const [phase, setPhase] = useState<"loading" | "in" | "out">("loading");
   const cb = useRef({ onCovered, onDone });
@@ -104,7 +124,13 @@ export function TransitionLayer({ src, displayMode, onCovered, onDone }: Props) 
         willChange: "opacity",
       }}
     >
-      <video ref={ref} src={src} muted playsInline preload="auto" style={mediaStyle(displayMode)} />
+      {aspect ? (
+        <div style={boxFor(aspect, displayMode)}>
+          <video ref={ref} src={src} muted playsInline preload="auto" style={{ width: "100%", height: "100%", objectFit: "fill" }} />
+        </div>
+      ) : (
+        <video ref={ref} src={src} muted playsInline preload="auto" style={mediaStyle(displayMode)} />
+      )}
     </div>
   );
 }
