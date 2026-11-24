@@ -36,6 +36,10 @@ interface AdvancedOptionsProps {
   onRefinerChange?: (refinerId: string) => void;
   isOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** The workflow is not the person's to choose here (Film): its settings are shown without the picker. */
+  fixedWorkflow?: boolean;
+  /** Only these prompt helpers (after Auto) make sense here. */
+  refinerIds?: string[];
 }
 
 const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
@@ -49,6 +53,8 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
   onRefinerChange = () => {},
   isOpen = false,
   onOpenChange = () => {},
+  fixedWorkflow = false,
+  refinerIds,
 }) => {
   const isMobile = useIsMobile();
   const [aboutOpen, setAboutOpen] = useState(false);
@@ -67,10 +73,11 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
       >
         <SheetHeader className="text-left p-0">
           <SheetTitle>Advanced</SheetTitle>
-          <SheetDescription>The workflow, its settings and the prompt helper</SheetDescription>
+          <SheetDescription>{fixedWorkflow ? 'The settings and the prompt helper' : 'The workflow, its settings and the prompt helper'}</SheetDescription>
         </SheetHeader>
 
         <div className="py-6 space-y-6">
+          {!fixedWorkflow && (
           <section className="space-y-2">
             <label className="text-sm font-medium" htmlFor="advanced-workflow">Workflow</label>
             <Select value={workflow ? workflow.id : 'auto'} onValueChange={(id) => { setAboutOpen(false); onWorkflowChange(id); }}>
@@ -91,6 +98,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
             )}
             {aboutOpen && workflow?.description && <p className="text-xs text-muted-foreground">{workflow.description}</p>}
           </section>
+          )}
 
           <section className="space-y-3 rounded-md border p-3">
             <div className="flex items-center justify-between gap-2">
@@ -121,7 +129,7 @@ const AdvancedOptions: React.FC<AdvancedOptionsProps> = ({
                 <SelectValue placeholder="Auto" />
               </SelectTrigger>
               <SelectContent>
-                {[AUTO_REFINER, ...refinersData].map((r) => (
+                {[AUTO_REFINER, ...refinersData.filter((r) => !(r as { hidden?: boolean }).hidden && (!refinerIds || refinerIds.includes(r.id)))].map((r) => (
                   <SelectItem key={r.id} value={r.id}>{r.name}</SelectItem>
                 ))}
               </SelectContent>

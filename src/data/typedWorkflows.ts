@@ -54,6 +54,11 @@ function mergeCatalogue(publicData: any[], privateData: any[]): any[] {
 // "hidden": true keeps a workflow's graph and config but leaves it out of what the app offers
 const offered = (data: any[]) => convertToTypedWorkflows(data.filter(workflow => !workflow.hidden));
 
+/** A catalogue entry by id, hidden ones included: for a mode of the app that runs on a workflow it doesn't offer in
+ *  the pickers (Film: h3-film.json). */
+export const catalogueEntry = (id: string): Workflow | undefined =>
+  convertToTypedWorkflows((rawWorkflowsData as any[]).filter(workflow => workflow.id === id))[0];
+
 // The shared catalogue at first. The deployment's private entries are never in the bundle: Flask hands them only to
 // people allowed them (GET /api/workflows/private; docs/ACCOUNTS.md), and loadPrivateWorkflows() merges them in place,
 // so code holding this array (a .find at submit time) sees them too.

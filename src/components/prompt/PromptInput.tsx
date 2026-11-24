@@ -123,7 +123,7 @@ const PromptInput: React.FC<PromptInputProps> = ({
       ref={setNodeRef}
       className={`relative rounded-lg transition-all duration-200 ${
         isOver 
-          ? 'ring-2 ring-primary ring-offset-2 bg-primary/5' 
+          ? 'ring-2 ring-teal-600 ring-offset-2 bg-teal-50/60' 
           : ''
       }`}
     >

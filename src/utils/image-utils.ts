@@ -62,7 +62,7 @@ export const getReferenceUrl = (item: any): string => {
         ? `${window.location.origin}${videoRawUrl}`
         : videoRawUrl;
         
-      const highResImageUrl = `${API_URL}/jpg_from_mp4?file=${encodeURIComponent(absoluteVideoUrl)}`;
+      const highResImageUrl = `${API_URL}/generate/jpg_from_mp4?file=${encodeURIComponent(absoluteVideoUrl)}`;
       console.log('Using high-resolution first frame for video reference:', highResImageUrl);
       return highResImageUrl;
     }

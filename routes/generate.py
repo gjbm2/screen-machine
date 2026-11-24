@@ -553,6 +553,10 @@ def start(
         lora_strength: float | None = None,
         shape: str | None = None,
         fill: str | None = None,
+        video_seconds: float | None = None,
+        video_shape: str | None = None,
+        video_fit: str | None = None,
+        video_aspect: float | None = None,
         cli_args=None,
         publish_destination: str | None = None,
         batch_id: str | None = None,
@@ -576,7 +580,8 @@ def start(
             scale=scale, setwallpaper=setwallpaper, refine=refine, workflow=workflow, seed=seed,
             timeout=timeout, suppress=suppress, metaprompt=metaprompt, images=images,
             negativeprompt=negativeprompt, interpolate_frames=interpolate_frames, upscaler=upscaler,
-            lora=lora, video_length=video_length, lora_strength=lora_strength, shape=shape, fill=fill),
+            lora=lora, video_length=video_length, lora_strength=lora_strength, shape=shape, fill=fill,
+            video_seconds=video_seconds, video_shape=video_shape, video_fit=video_fit, video_aspect=video_aspect),
             cli_args=cli_args, publish_destination=publish_destination, batch_id=batch_id,
             silent=silent, kwargs=kwargs)
     except JobCancelled as e:
@@ -706,20 +711,34 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
         # person chose crops the picture to it first
         shape = vars(args_namespace).get("video_shape") or "auto"
         pic = image_size(args_namespace.images[0]) if args_namespace.images else None
-        aspect = VIDEO_ASPECTS.get(shape) or (pic[0] / pic[1] if pic else 16 / 9)
+        # a film's segments are all drawn in the film's shape (the shape chosen, else video_aspect: its first
+        # picture's), whichever two pictures a segment runs between
+        aspect = (VIDEO_ASPECTS.get(shape) or float(vars(args_namespace).get("video_aspect") or 0)
+                  or (pic[0] / pic[1] if pic else 16 / 9))
         if not (args_namespace.width and args_namespace.height):
             args_namespace.width, args_namespace.height = video_size(aspect)
         # within 3% (the steps of 32) the model's own stretch is invisible, and a screen clip's 4K overlay
         # (routes/clip_ease.py fits) matches it; beyond that the picture is cropped to the shape drawn
         out = int(args_namespace.width) / int(args_namespace.height)
-        if pic and abs(pic[0] / pic[1] / out - 1) > 0.03:
-            # the same fitting as publishing a picture to a screen of another shape (routes/reframe.py)
-            args_namespace.images[0] = fit_for_video(args_namespace.images[0], out,
-                                                     vars(args_namespace).get("video_fit") or "auto")
+        # a graph that runs from one picture to another ("uses_images": 2) has both fitted
+        two = next((w for w in _load_json_once("workflow", "workflows.json")
+                    if w.get("id") == args_namespace.workflow), {}).get("uses_images", 1) == 2
+        for i in range(min(len(args_namespace.images or []), 2 if two else 1)):
+            size_i = pic if i == 0 else image_size(args_namespace.images[i])
+            if size_i and abs(size_i[0] / size_i[1] / out - 1) > 0.03:
+                # the same fitting as publishing a picture to a screen of another shape (routes/reframe.py)
+                args_namespace.images[i] = fit_for_video(args_namespace.images[i], out,
+                                                         vars(args_namespace).get("video_fit") or "auto")
         seconds = vars(args_namespace).get("video_seconds")
         if seconds and not vars(args_namespace).get("video_length"):
-            seconds = min(MAX_VIDEO_S, max(1.0, float(seconds)))
+            # to a last picture there is one pass (a chain of passes only continues from the first picture)
+            longest = (SEGMENT_FRAMES - 4) / 24 if two else MAX_VIDEO_S
+            seconds = min(longest, max(1.0, float(seconds)))
             vars(args_namespace)["video_length"] = 4 * round((24 * seconds + 4) / 4)   # H3: multiples of 4
+            if two:
+                # H3 draws 17k + 5 frames and rounds a length up to the next (23 Nov: 76 asked, 90 drawn, 3.7 s for
+                # 3), so a film segment asks for the one nearest its seconds
+                vars(args_namespace)["video_length"] = 17 * max(1, round((24 * seconds - 5) / 17)) + 5
         if vars(args_namespace).get("interpolate_frames"):
             fps = 24 * int(vars(args_namespace)["interpolate_frames"])
 

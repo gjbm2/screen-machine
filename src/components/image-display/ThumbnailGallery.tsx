@@ -33,7 +33,7 @@ const ThumbnailGallery: React.FC<ThumbnailGalleryProps> = ({
         <div 
           key={`thumb-${batchId}-${index}`}
           className={`relative rounded-md overflow-hidden cursor-pointer border-2 ${
-            activeIndex === index ? 'border-primary' : 'border-transparent'
+            activeIndex === index ? 'border-teal-600' : 'border-transparent'
           }`}
           style={{ width: '70px', height: '70px' }}
           onClick={() => onThumbnailClick(index)}

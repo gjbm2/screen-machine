@@ -29,7 +29,9 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
   workflowParams,
   refinerParams,
   globalParams,
-  onRestoreFormState
+  onRestoreFormState,
+  film = false,
+  estimate,
 }) => {
   const isMobile = useIsMobile();
   
@@ -62,23 +64,28 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
 		  onRestoreFormState={onRestoreFormState}
 		/>
         
+        {!film && (
         <WorkflowIconSelector
           workflows={workflows}
           selectedWorkflow={selectedWorkflow}
           onWorkflowChange={onWorkflowChange}
           hideWorkflowName={isMobile}
         />
+        )}
         
         <RefinerSelector
           selectedRefiner={selectedRefiner}
           onRefinerChange={onRefinerChange}
+          only={film ? ['none'] : undefined}
         />
         
+        {!film && (
         <PublishSelector 
           selectedPublish={selectedPublish || 'none'}
           onPublishChange={onPublishChange}
           isCompact={isMobile}
         />
+        )}
 
 		<Button 
 		  type="button"
@@ -94,9 +101,10 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
 		</Button>
       </div>
 
-      <div className="ml-auto">
+      <div className="ml-auto flex shrink-0 flex-col items-center pl-2">
         <Button 
           type="button" 
+          data-generate-button
           className={`h-12 w-12 rounded-full transition-all hover:shadow-md flex items-center justify-center btn-shine ${
             shouldDisableButton && isCompact ? 'bg-gray-300 text-gray-600' : 'bg-primary text-primary-foreground'
           }`}
@@ -109,6 +117,9 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
         >
           <ArrowUp className="h-6 w-6" />
         </Button>
+        {estimate && (
+          <span className="mt-1 whitespace-nowrap text-xs text-muted-foreground" data-generate-estimate>{estimate}</span>
+        )}
       </div>
     </div>
   );

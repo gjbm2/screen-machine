@@ -905,12 +905,10 @@ export function ImageDisplay(props: ImageDisplayProps) {
         onContextMenu={tab.cloud ? (e) => e.preventDefault() : undefined}
         className={`px-2 py-1.5 text-xs sm:text-sm sm:px-3 sm:py-2 inline-flex items-center rounded-md transition-colors
           relative ${tab.cloud ? 'select-none [-webkit-touch-callout:none]' : ''}
-          ${isDroppable && isOver ? 'ring-2 ring-primary' : ''}
-          ${tab.highlight && selectedTab === tab.id 
-            ? 'bg-primary text-primary-foreground' 
-            : selectedTab === tab.id
-              ? 'text-primary border-b-2 border-primary'
-              : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+          ${isDroppable && isOver ? 'ring-2 ring-teal-600' : ''}
+          ${selectedTab === tab.id   // chosen: teal and underlined, as the app marks a choice (components/ui/segmented.tsx)
+            ? 'rounded-b-none border-b-2 border-teal-700 font-medium text-teal-800'
+            : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
           }`}
       >
         {/* Extended drop area that gives more space for drop detection */}

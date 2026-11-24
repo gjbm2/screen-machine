@@ -18,11 +18,14 @@ import refinersData from '@/data/refiners.json';
 interface RefinerSelectorProps {
   selectedRefiner: string;
   onRefinerChange: (refinerId: string) => void;
+  /** Only these (after Auto) make sense here (Film: with its own helper, or none). */
+  only?: string[];
 }
 
 const RefinerSelector: React.FC<RefinerSelectorProps> = ({
   selectedRefiner,
   onRefinerChange,
+  only,
 }) => {
   const isMobile = useIsMobile();
   const { width, height: viewportHeight } = useWindowSize();
@@ -84,7 +87,7 @@ const RefinerSelector: React.FC<RefinerSelectorProps> = ({
         <div className="border-t border-border my-1" />
         
         {/* Regular refiners */}
-        {refinersData.map((refiner) => (
+        {refinersData.filter((refiner) => !(refiner as { hidden?: boolean }).hidden && (!only || only.includes(refiner.id))).map((refiner) => (
           <Button
             key={refiner.id}
             variant={refiner.id === selectedRefiner ? "secondary" : "ghost"}

@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { canUseDestination, useViewer, type Role } from '@/shared/auth/viewer';
+import { Segmented } from '@/components/ui/segmented';
 import { toast } from 'sonner';
 import { format, formatDistance } from 'date-fns';
 import { audioApi, bucketsApi, generationApi, publishApi, tagsApi } from '@/shared/api';
@@ -1542,7 +1543,7 @@ export const BucketGridView = ({
           // Special handling for empty favorites container
           <div
             ref={setEmptyFavoritesRef}
-            className={`min-h-[100px] ${isEmptyFavoritesOver ? 'ring-2 ring-primary' : ''}`}
+            className={`min-h-[100px] ${isEmptyFavoritesOver ? 'ring-2 ring-teal-600' : ''}`}
             data-section-id={section.id}
             data-section-variant="favourites"
             data-empty-favorites="true"
@@ -1558,7 +1559,7 @@ export const BucketGridView = ({
           // Special handling for empty dated sections
           <div
             ref={setEmptyDatedRef}
-            className={`min-h-[100px] ${isEmptyDatedOver ? 'ring-2 ring-primary' : ''}`}
+            className={`min-h-[100px] ${isEmptyDatedOver ? 'ring-2 ring-teal-600' : ''}`}
             data-section-id={section.id}
             data-section-variant="dated"
             data-empty-dated="true"
@@ -1574,7 +1575,7 @@ export const BucketGridView = ({
           // Normal content area for non-empty sections
           <div 
             ref={setContentNodeRef}
-            className={isContentOver ? 'ring-2 ring-primary/60' : ''}
+            className={isContentOver ? 'ring-2 ring-teal-600/60' : ''}
             data-section-id={section.id}
             data-section-variant={section.variant}
           >
@@ -1828,24 +1829,16 @@ export const BucketGridView = ({
     // By date | By tag, right above the pictures and labelled on every screen (owner, 28 Oct: a toolbar toggle went
     // unnoticed - "not exposed whatsoever on the generator page")
     const browseBar = (
-      <div role="group" aria-label="Browse pictures" className="flex items-center gap-1.5 pt-2">
-        {(['date', 'tags'] as const).map((m) => (
-          <button
-            key={m}
-            type="button"
-            aria-pressed={viewMode === m}
-            onClick={() => chooseViewMode(m)}
-            className={cn(
-              'inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3.5 text-[15px] transition-colors',
-              viewMode === m   // solid when chosen, like the tag chips (owner, 28 Oct: pale on-states read as off)
-                ? 'border-teal-700 bg-teal-700 font-semibold text-white shadow-sm'
-                : 'border-stone-200 bg-white text-stone-700 hover:bg-stone-50',
-            )}
-          >
-            {m === 'tags' && <TagIcon className="h-4 w-4" aria-hidden />}
-            {m === 'date' ? 'By date' : 'By tag'}
-          </button>
-        ))}
+      <div className="pt-2">
+        <Segmented
+          ariaLabel="Browse pictures"
+          value={viewMode}
+          onChange={chooseViewMode}
+          options={[
+            { value: 'date', label: 'By date' },
+            { value: 'tags', label: 'By tag', icon: TagIcon },
+          ]}
+        />
       </div>
     );
 

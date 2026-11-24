@@ -11,6 +11,27 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { dataURItoFile, isDataURI } from '@/utils/imageUtils';
 import { keepPhotos } from '@/utils/photoCache';
 import { bucketsApi, publishApi } from '@/shared/api';
+import FilmStrip from '@/components/film/FilmStrip';
+import { FILM_ADD_EVENT, useFilm } from '@/components/film/useFilm';
+import { FILM_WORKFLOW } from '@/components/film/film';
+import AdvancedOptions from '@/components/AdvancedOptions';
+import { catalogueEntry } from '@/data/typedWorkflows';
+import { Clapperboard, Sparkles, X } from 'lucide-react';
+
+// Film's own workflow is not one the pickers offer; its settings are still the person's to change (Advanced)
+const FILM_WORKFLOWS = [catalogueEntry(FILM_WORKFLOW)].filter((w): w is Workflow => !!w);
+
+// The top section's two modes (owner, 23 Nov): the prompt form, or Film (a row of pictures with a video made between
+// each pair; docs/FILM_MODE.md). The form is the default; the choice is kept in this browser.
+type FormMode = 'create' | 'film';
+const MODE_KEY = 'generator.mode';
+const savedMode = (): FormMode => {
+  try {
+    return localStorage.getItem(MODE_KEY) === 'film' ? 'film' : 'create';
+  } catch {
+    return 'create';
+  }
+};
 
 // Debug flag - set to true to enable on-screen debug messages
 const DEBUG_MODE = false;
@@ -40,6 +61,17 @@ const PromptForm: React.FC<PromptFormProps> = ({
   const lastReceivedPrompt = useRef(currentPrompt);
   const isInitialMount = useRef(true);
   const isMobile = useIsMobile();
+  const [mode, setMode] = useState<FormMode>(savedMode);
+  const modeRef = useRef(mode);
+  modeRef.current = mode;
+  const film = useFilm(generationOff);
+  const [filmAdvancedOpen, setFilmAdvancedOpen] = useState(false);
+  const chooseMode = (next: FormMode) => {
+    setMode(next);
+    try {
+      localStorage.setItem(MODE_KEY, next);
+    } catch { /* storage off: the choice just isn't kept */ }
+  };
 
   // Use our new ReferenceImages context
   const { referenceUrls, addReferenceUrl, removeReferenceUrl, clearReferenceUrls } = useReferenceImages();
@@ -260,6 +292,14 @@ const PromptForm: React.FC<PromptFormProps> = ({
     }>) => {
       try {
         const { url, preserveFavorites, useReferenceUrl, source, append } = event.detail;
+
+        // with Film open, a picture sent to the prompt goes into the film's next empty slot
+        if (modeRef.current === 'film') {
+          window.dispatchEvent(new CustomEvent(FILM_ADD_EVENT, { detail: { url } }));
+          toast.success('Added to the film');
+          document.querySelector('[data-film-strip]')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          return;
+        }
         
         // Instead of modifying local state, use the context methods
         if (append) {
@@ -824,6 +864,75 @@ const PromptForm: React.FC<PromptFormProps> = ({
             Generation is off in this deployment. Buckets and publishing still work.
           </div>
         )}
+        {/* the app's one look for a choice of a few (components/ui/segmented.tsx; owner, 24 Nov: black "too prominent") */}
+        <div className="mb-3 inline-flex items-center gap-0.5 rounded-full bg-stone-200/70 p-0.5" role="tablist" aria-label="What to make">
+          {([['create', 'Create', Sparkles], ['film', 'Film', Clapperboard]] as const).map(([id, label, Icon]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={mode === id}
+              data-generator-mode={id}
+              onClick={() => chooseMode(id)}
+              className={`flex h-8 items-center gap-1.5 rounded-full px-3 text-sm transition-colors ${
+                mode === id ? 'bg-white font-medium text-teal-800 shadow-sm ring-1 ring-stone-200' : 'text-stone-600 hover:text-stone-900'
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5" />
+              {label}
+            </button>
+          ))}
+        </div>
+        {mode === 'film' ? (
+          <>
+            {!film.isEmpty && (
+              <button
+                type="button"
+                onClick={film.startAgain}
+                className="absolute right-4 top-4 z-10 rounded-full p-1 text-muted-foreground transition-colors hover:text-foreground"
+                aria-label="Clear the film"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+            <FilmStrip film={film} />
+            {/* the form's own toolbar: Upload fills the next empty slots, and its button makes the film */}
+            <PromptFormToolbar
+              film
+              isLoading={false}
+              selectedWorkflow={FILM_WORKFLOW}
+              selectedRefiner={film.refiner}
+              selectedPublish="none"
+              onImageUpload={film.addPictures}
+              onWorkflowChange={() => {}}
+              onRefinerChange={film.setRefiner}
+              onPublishChange={() => {}}
+              toggleAdvancedOptions={() => setFilmAdvancedOpen(true)}
+              handleSubmit={film.make}
+              prompt=""
+              isButtonDisabled={!film.canMake}
+              workflows={workflows as unknown as WorkflowProps[]}
+              isCompact={false}
+              hasUploadedImages={film.canMake}
+              estimate={film.estimate}
+              onRestoreFormState={handleRestoreFormState}
+            />
+            <AdvancedOptions
+              fixedWorkflow
+              workflows={FILM_WORKFLOWS}
+              selectedWorkflow={FILM_WORKFLOW}
+              onWorkflowChange={() => {}}
+              params={film.params}
+              onParamChange={film.setParam}
+              onResetParams={film.resetParams}
+              selectedRefiner={film.refiner}
+              onRefinerChange={film.setRefiner}
+              refinerIds={['none']}
+              isOpen={filmAdvancedOpen}
+              onOpenChange={setFilmAdvancedOpen}
+            />
+          </>
+        ) : (<>
         <PromptInput 
           prompt={prompt} 
           context={(workflows as Workflow[] | undefined)?.find((w) => w.id === selectedWorkflow)?.async
@@ -859,6 +968,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
           globalParams={globalParams}
           onRestoreFormState={handleRestoreFormState}
         />
+        </>)}
       </Card>
     </div>
   );

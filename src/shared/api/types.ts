@@ -137,6 +137,9 @@ export interface GenerateImageParams {
   refiner?: string;
   refiner_params?: Record<string, any>;
   is_async?: boolean;
+  /** How the page holds the pictures, one entry each ("url" from referenceUrls, "file" from imageFiles); without it
+   *  the server takes the links first and the files after (routes/generate_api.py in_page_order). */
+  image_order?: Array<'url' | 'file'>;
 }
 
 export interface BucketDetails {

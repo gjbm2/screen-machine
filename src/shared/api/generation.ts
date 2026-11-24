@@ -58,6 +58,7 @@ export async function generateImage(params: GenerateImageParams) {
     referenceUrls,
     refiner,
     refiner_params,
+    image_order,
   } = params;
 
   const jsonData: Record<string, unknown> = {
@@ -76,6 +77,10 @@ export async function generateImage(params: GenerateImageParams) {
 
   if (placeholders && placeholders.length > 0) {
     jsonData.placeholders = placeholders;
+  }
+
+  if (image_order && image_order.length > 0) {
+    jsonData.image_order = image_order;
   }
 
   // "auto" (or unset) omits refiner so the backend decides; "none" is sent explicitly

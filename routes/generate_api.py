@@ -197,6 +197,20 @@ def page_restored():
     return jsonify({"ok": True})
 
 
+def in_page_order(linked, uploaded, order=None):
+    """The request's pictures as one list. Linked pictures (referenceUrls) come first and uploaded files after, unless
+    the page says how it holds them: image_order, a list of "url" and "file", one per picture (a film segment runs from
+    its first picture to its second, whichever of them is a link and whichever a file). A picture that could not be
+    read then is an error: the pictures left would be in the wrong places."""
+    if not order:
+        return [*linked, *uploaded]
+    if (not isinstance(order, list) or any(kind not in ("url", "file") for kind in order)
+            or order.count("url") != len(linked) or order.count("file") != len(uploaded)):
+        raise ValueError("one of the pictures could not be read")
+    linked, uploaded = iter(linked), iter(uploaded)
+    return [next(linked if kind == "url" else uploaded) for kind in order]
+
+
 def _generate_image():
     """
     Generate image(s) from a prompt, optionally with reference images.
@@ -264,7 +278,12 @@ def _generate_image():
     # Process uploaded files (a picture that can't be read is a 400 that names it)
     image_files = request.files.getlist('image')
     try:
-        images.extend(encode_image_uploads(image_files, max_file_size_mb=5))
+        uploads = encode_image_uploads(image_files, max_file_size_mb=5)
+    except ValueError as e:
+        error(f"[generate_image_route] {e}")
+        return jsonify({"error": str(e)}), 400
+    try:
+        images = in_page_order(images, uploads, data.get('image_order'))
     except ValueError as e:
         error(f"[generate_image_route] {e}")
         return jsonify({"error": str(e)}), 400

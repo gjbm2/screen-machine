@@ -1477,3 +1477,81 @@ def test_a_video_for_a_screen_is_upscaled_and_inline_it_is_not(house, workflow):
     rife = next(n for n in graph.values() if n["class_type"] == "FrameInterpolate")
     assert rife["inputs"]["images"] == [decode, 0]
     assert "Upscaling" not in (job["stages"] or [])
+
+
+# ---------------------------------------------------------------------------- film segments (docs/FILM_MODE.md, 23 Nov)
+# The generator's Film mode sends one request per pair of slots: the two pictures in slot order, what happens between
+# them, how many seconds, and the film's shape. What reaches the worker is what is checked here.
+
+class KeepingRunPod(FakeRunPod):
+    """Keeps the pictures sent with the job (routes.generate strips them from the payload afterwards)."""
+
+    def __init__(self):
+        super().__init__(inline("PNG", "out_00001_.png"))
+
+    def submit(self, endpoint_id, payload, timeout=60):
+        self.images = copy.deepcopy(payload["input"].get("images"))
+        return super().submit(endpoint_id, payload, timeout)
+
+
+def video_through_the_page(house, workflow, uploads, **params):
+    import routes.generate_handler as handler
+    import routes.generate_utils as generate_utils
+    mp = house["monkeypatch"]
+    fake = KeepingRunPod()
+    mp.setattr(house["generate"], "runpod_api", fake)
+    mp.setattr(handler, "_refine", lambda data, prompt, workflow, *a, **k: (workflow, prompt, prompt))
+    generate_utils.process_generate_image_request(
+        {"prompt": "the ice melts", "workflow": workflow, "batch_id": "film123_frontend",
+         "params": {"poll_interval": 0.01, **params}, "global_params": {"batch_size": 1}}, uploaded_images=uploads)
+    graph = fake.payload["input"]["workflow"]
+    return fake, graph, [n for n in graph.values() if n["class_type"] == "MiniMaxH3ImageToVideo"]
+
+
+def test_a_film_segment_runs_from_the_first_picture_to_the_second_in_the_films_shape(house):
+    from routes.generate import video_size
+    fake, graph, passes = video_through_the_page(
+        house, "h3-film.json", [picture(PAINTING, (1600, 900)), picture(PERSON, (556, 1024))],
+        video_seconds=3, video_aspect=16 / 9, video_fit="crop", keep_with_picture="no")
+    assert len(passes) == 1
+    video = passes[0]["inputs"]
+    assert (video["width"], video["height"]) == video_size(16 / 9)
+    assert video["length"] == 73, "3 seconds at 24 fps, on H3's grid of 17k + 5 frames"
+    assert video["prompt"] == "the ice melts"
+    first, last = (graph[video[k][0]]["inputs"]["image"] for k in ("first_frame", "last_frame"))
+    assert [img["name"] for img in fake.images] == [first, last]
+    assert near(sent_colours(fake)[0], PAINTING) and near(sent_colours(fake)[1], PERSON), "slot order was lost"
+    for img in fake.images:      # the portrait is cropped to the film's shape, not stretched by the model
+        with Image.open(BytesIO(base64.b64decode(img["image"]))) as sent:
+            assert same_shape(sent.size, (16, 9)), f"a picture was sent at {sent.size}"
+
+
+def test_a_film_segment_keeps_its_sound_and_plays_at_real_speed(house):
+    fake, graph, _ = video_through_the_page(house, "h3-film.json", [picture(PAINTING, (1600, 900))] * 2, video_seconds=5)
+    sound = [k for k, n in graph.items() if n["class_type"] == "VAEDecodeAudio"]
+    made = next(n for n in graph.values() if n["class_type"] == "CreateVideo")
+    rife = next(n for n in graph.values() if n["class_type"] == "FrameInterpolate")
+    assert len(sound) == 1 and made["inputs"]["audio"] == [sound[0], 0], "the segment lost its sound"
+    assert made["inputs"]["fps"] == 24 * rife["inputs"]["multiplier"], "interpolated frames must not slow the clip"
+
+
+def test_a_film_segment_is_one_pass_however_long_is_asked(house):
+    _, _, passes = video_through_the_page(house, "h3-film.json", [picture(PAINTING, (1600, 900))] * 2, video_seconds=30)
+    assert len(passes) == 1 and "last_frame" in passes[0]["inputs"], "a chained pass would not end on the second picture"
+    assert passes[0]["inputs"]["length"] == 243
+
+
+def test_a_videos_length_from_the_generator_page_reaches_the_job(house):
+    """Advanced: Length. Only start()'s own parameters get through from the page (20 Nov: 8 seconds asked for three
+    times, 5 made each time)."""
+    _, _, passes = video_through_the_page(house, "h3-i2v.json", [picture(PAINTING, (1600, 900))], video_seconds=8)
+    assert passes[0]["inputs"]["length"] == 196
+
+
+def test_a_requests_pictures_keep_the_pages_order():
+    from routes.generate_api import in_page_order
+    assert in_page_order(["u1", "u2"], ["f1"]) == ["u1", "u2", "f1"]
+    assert in_page_order(["u1"], ["f1"], ["file", "url"]) == ["f1", "u1"]
+    assert in_page_order(["u1", "u2"], [], ["url", "url"]) == ["u1", "u2"]
+    with pytest.raises(ValueError):          # one link could not be read: the rest would shift into its place
+        in_page_order(["u1"], ["f1"], ["url", "file", "url"])

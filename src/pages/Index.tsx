@@ -28,6 +28,7 @@ import { useReferenceImagesAdapter } from '@/hooks/context-adapter';
 import { JobsDock } from '@/components/jobs/JobsDock';
 import { useDeployment } from '@/hooks/useDeployment';
 import { capabilityOn } from '@/shared/api/deployment';
+import { FILM_SLOT_EVENT } from '@/components/film/useFilm';
 
 const GENERATION_OFF_MESSAGE = 'Generation is off in this deployment';
 
@@ -408,6 +409,19 @@ const Index = () => {
       return;
     }
     
+    // A picture dropped on one of the Film mode's slots (components/film/FilmStrip.tsx holds the film)
+    if (typeof over.id === 'string' && over.id.startsWith(DROP_ZONES.FILM_SLOT_PREFIX)) {
+      const url = active.data?.current ? getReferenceUrl(active.data.current) : '';
+      if (!url) {
+        toast.error("Couldn't use that picture");
+        return;
+      }
+      window.dispatchEvent(new CustomEvent(FILM_SLOT_EVENT, {
+        detail: { slotId: over.id.slice(DROP_ZONES.FILM_SLOT_PREFIX.length), url },
+      }));
+      return;
+    }
+
     // Handle drops on the prompt area
     if (over.id === DROP_ZONES.PROMPT) {
       const imageId = active.id;

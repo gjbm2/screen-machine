@@ -86,6 +86,17 @@
 	"alexavisible": true
   },  
   {
+    "id": "film",
+    "name": "Film segment",
+    "system_prompt": "refiner-film.txt",
+    "description": "One segment of a film: from one picture to the next, at real speed, with sound",
+    "default-workflow": "h3-film.json",
+    "icon": "Clapperboard",
+    "uploadimages": 2,
+    "alexavisible": false,
+    "hidden": true
+  },
+  {
     "id": "upscale",
     "name": "Upscale",
     "description": "Increase resolution while preserving details",
