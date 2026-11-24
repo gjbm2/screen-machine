@@ -799,13 +799,14 @@ export const BucketGridView = ({
     label: string;
     variant: 'favourites' | 'dated' | 'tagged';
     images: BucketImage[];
-    /** Tags view: folded until opened (date sections keep their own first-load rule below). */
+    /** Folded until opened: Favourites, and the Tags view's later tags (date sections keep their own first-load rule below). */
     defaultCollapsed?: boolean;
   }
 
   const sections: Section[] = [];
   if (favourites.length > 0) {
-    sections.push({ id: 'favourites', label: `Favourites (${favourites.length})`, variant: 'favourites', images: favourites });
+    // folded when a bucket is first opened (owner, 24 Nov): the newest pictures come first
+    sections.push({ id: 'favourites', label: `Favourites (${favourites.length})`, variant: 'favourites', images: favourites, defaultCollapsed: true });
   }
 
   DATE_GROUP_ORDER.forEach((lbl) => {
@@ -1705,11 +1706,6 @@ export const BucketGridView = ({
       sections.forEach(section => {
         initialCollapsedState[section.id] = true;
       });
-      
-      // Then, ensure Favorites is expanded if it exists
-      if (sections.find(s => s.id === 'favourites')) {
-        initialCollapsedState['favourites'] = false;
-      }
       
       // Find the first non-favorites section and expand it
       const firstNonFavSection = sections.find(s => s.id !== 'favourites');

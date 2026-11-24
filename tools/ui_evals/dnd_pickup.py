@@ -132,6 +132,11 @@ def run(url: str, phone: bool) -> int:
         for s in screens:
             page.locator(f"button[data-tab-id='{s}']").click()
             try:
+                # Favourites open folded (owner, 24 Nov): open it
+                fav = page.locator("button.expand-toggle", has_text="Favourites (").first
+                fav.wait_for(timeout=8000)
+                if not page.locator("[data-section-variant=favourites] .drag-grid > div").count():
+                    fav.click()
                 page.wait_for_selector("[data-section-variant=favourites] .drag-grid > div", timeout=8000)
                 source = s
                 break
