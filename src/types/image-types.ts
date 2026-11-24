@@ -26,6 +26,10 @@ export interface ImageItem extends ImageMeta {
   id: string;
   /** Optional unique key used for React key props - combines id with batchId to ensure no collisions */
   uniqueKey?: string;
+  /** Its drag-and-drop id, where the page shows the same file twice (a favourite's copy in its date group is
+   *  `<file>#dup`). dnd-kit keeps one entry per id: two cards with the same id share it, and when one goes (a section
+   *  folding) the entry goes with it, so the other can't be picked up (owner, 24 Nov: favourites wouldn't drag). */
+  dragId?: string;
   /** Raw URL for the image, used for direct access */
   raw_url?: string;
   /** Optional custom component to render instead of the image */

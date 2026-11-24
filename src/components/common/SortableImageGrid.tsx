@@ -70,9 +70,9 @@ export const SortableImageGrid: React.FC<SortableImageGridProps> = ({
   onFullscreenClick,
   onInfo,
 }) => {
-  const [items, setItems] = React.useState<string[]>(images.map((i) => i.id));
+  const [items, setItems] = React.useState<string[]>(images.map((i) => i.dragId ?? i.id));
 
-  React.useEffect(() => setItems(images.map((i) => i.id)), [images]);
+  React.useEffect(() => setItems(images.map((i) => i.dragId ?? i.id)), [images]);
 
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
@@ -202,7 +202,7 @@ const SortableImage: React.FC<ImageProps> = ({
     transition,
     isDragging,
   } = useSortable({ 
-    id: image.id,
+    id: image.dragId ?? image.id,
     data: {
       raw_url: image.raw_url || image.urlFull,
       thumbnail_url: image.urlThumb,
@@ -299,7 +299,7 @@ const DraggableImage: React.FC<ImageProps> = ({
     transform,
     isDragging,
   } = useDraggable({ 
-    id: image.id,
+    id: image.dragId ?? image.id,
     data: {
       raw_url: image.raw_url || image.urlFull,
       thumbnail_url: image.urlThumb,
@@ -311,7 +311,7 @@ const DraggableImage: React.FC<ImageProps> = ({
   const {
     setNodeRef: setDropNodeRef,
     isOver,
-  } = useDroppable({ id: image.id });
+  } = useDroppable({ id: image.dragId ?? image.id });
 
   const mergedRef = (node: HTMLElement | null) => {
     setNodeRef(node);

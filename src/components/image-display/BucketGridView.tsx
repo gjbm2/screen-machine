@@ -1486,7 +1486,8 @@ export const BucketGridView = ({
     });
 
     // Determine current images list based on sort direction for dated sections
-    let sectionImages: ImageItem[] = section.images.map(toImageItem);
+    // the grid keeps a favourite's date-group copy apart for drag and drop (`#dup`); everything else uses the real file
+    let sectionImages: ImageItem[] = section.images.map((img) => ({ ...toImageItem(img), dragId: img.id }));
     if (section.variant === 'dated' && sectionImages.length > 1) {
       const dir = sectionSortMap[section.id] || 'desc';
       if (dir === 'asc') {

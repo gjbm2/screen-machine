@@ -643,6 +643,7 @@ export function ImageDisplay(props: ImageDisplayProps) {
     if (typeof activeId === 'string' && activeId.startsWith('selected:')) {
       activeId = activeId.slice('selected:'.length);
     }
+    activeId = activeId.split('#dup')[0];   // a favourite's date-group copy is the same file (SortableImageGrid dragId)
 
     // Tab drop handling – IDs prefixed with DROP_ZONES.TAB_PREFIX
     if (typeof over.id === 'string' && (over.id as string).startsWith(DROP_ZONES.TAB_PREFIX)) {

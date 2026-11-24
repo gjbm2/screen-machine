@@ -8,7 +8,7 @@ This is a **site-specific test rig in the owner's own building**, on the LAN. Op
 1. **Build straight into production.** No labs, forks, staging copies, side "preview" servers, worktrees or release holds. When a feature is done, deploy it and say so.
 2. **Frontend deploy:**
    - Run `git status src/` first; everything in the working tree ships.
-   - Then: `npx vite build --outDir dist_next --emptyOutDir && rm -rf dist_prev && mv dist dist_prev && mv dist_next dist`.
+   - Then: `scripts/deploy-frontend`. It builds to `dist_next`, swaps only if the build worked, then runs the standing drag-and-drop check (`tools/ui_evals/dnd_pickup.py`, owner 24 Nov). If the check fails, fix it.
    - Flask serves `dist/` with a no-cache index, so no Flask restart is needed. `dist_prev/` is the rollback.
 3. **Services:**
    - **room_service runs inside the Flask process** (`room_in_app.py`): :8700 is the LAN door, with `deployments/finsbury/room/room.yaml`, logs in `logs/room_service.log`, and the show bus on :8701. Restarting Flask restarts it. Tell the other sessions before you restart Flask, because several of them edit room_service.

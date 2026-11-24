@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# scripts/deploy-frontend — build the app and put it live (CLAUDE.md "Frontend deploy"), then run the standing checks.
+#
+# Everything in the working tree ships: `git status src/` first. The old build stays in dist/../dist_prev as the
+# rollback (`mv dist dist_bad && mv dist_prev dist`). Flask serves dist/ with a no-cache index: no restart.
+#
+# A build that fails changes nothing (24 Nov: a piped build hid its failure and the swap took the live app away).
+# After the swap it runs tools/ui_evals/dnd_pickup.py (owner, 24 Nov: drag and drop is fragile; catch regressions):
+# a picture is picked up and carried onto a screen's tab, on a phone and a desktop, without dropping. Exit 1 and a
+# loud line if it fails; the new build stays live (roll back by hand if it matters more than the fix it carries).
+#
+# Usage: scripts/deploy-frontend [--no-check]
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+log=$(mktemp)
+if ! nice -n 10 npx vite build --outDir dist_next --emptyOutDir >"$log" 2>&1; then
+  tail -30 "$log"
+  echo "deploy-frontend: BUILD FAILED, nothing changed (dist/ is still the live build)" >&2
+  rm -rf dist_next
+  exit 1
+fi
+tail -1 "$log"
+[ -f dist_next/index.html ] || { echo "deploy-frontend: no dist_next/index.html, nothing changed" >&2; exit 1; }
+rm -rf dist_prev
+mv dist dist_prev
+mv dist_next dist
+echo "deploy-frontend: live ($(ls dist/assets | grep -m1 '^index-.*\.js$'))"
+
+[ "${1:-}" = "--no-check" ] && exit 0
+py="${HOME}/.venvs/sm-room/bin/python"
+[ -x "$py" ] || py=python3
+if ! nice -n 10 "$py" tools/ui_evals/dnd_pickup.py; then
+  echo "deploy-frontend: DRAG AND DROP CHECK FAILED on the live build (tools/ui_evals/dnd_pickup.py)" >&2
+  exit 1
+fi
