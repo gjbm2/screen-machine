@@ -7,7 +7,6 @@
 // Film has no workflow to choose (its own fixed one): the button is the refiner's and opens just its list.
 import React, { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '@/components/ui/hover-card';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Segmented } from '@/components/ui/segmented';
 import { useIsMobile, useWindowSize } from '@/hooks/use-mobile';
@@ -53,7 +52,7 @@ const MakeSelector: React.FC<{
   useEffect(() => { if (isOpen) setTab(film ? 'refiner' : 'workflow'); }, [isOpen, film]);
 
   useEffect(() => {
-    if (isMobile && isOpen && buttonRef.current) {
+    if (isOpen && buttonRef.current) {
       const rect = buttonRef.current.getBoundingClientRect();
       setMaxContentHeight(Math.max(viewportHeight - rect.bottom - 16, 150));
     }
@@ -71,7 +70,6 @@ const MakeSelector: React.FC<{
       aria-label={label}
       title={label}
       data-make-selector
-      onClick={() => setIsOpen((prev) => !prev)}
     >
       {film ? refinerIcon(refiner?.icon) : (
         <span className="relative inline-flex">
@@ -100,23 +98,15 @@ const MakeSelector: React.FC<{
 
   return (
     <div className="flex items-center h-[48px]">
-      {isMobile ? (
-        <Popover open={isOpen} onOpenChange={setIsOpen}>
-          <PopoverTrigger asChild>{trigger}</PopoverTrigger>
-          <PopoverContent align="start" side="bottom" sideOffset={8} collisionPadding={8} avoidCollisions
-            className="w-72 p-2 overflow-y-auto" style={{ maxHeight: maxContentHeight }}>
-            {content}
-          </PopoverContent>
-        </Popover>
-      ) : (
-        <HoverCard open={isOpen} onOpenChange={setIsOpen} openDelay={100} closeDelay={100}>
-          <HoverCardTrigger asChild>{trigger}</HoverCardTrigger>
-          <HoverCardContent align="start" side="bottom" sideOffset={4} collisionPadding={8} avoidCollisions
-            className="w-72 p-2 overflow-y-auto max-h-[60vh]">
-            {content}
-          </HoverCardContent>
-        </HoverCard>
-      )}
+      {/* opens on a click, on a desktop as on a phone (owner, 24 Nov: a hover card opened under the arriving pointer and
+          the click then closed and reopened it) */}
+      <Popover open={isOpen} onOpenChange={setIsOpen}>
+        <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+        <PopoverContent align="start" side="bottom" sideOffset={isMobile ? 8 : 4} collisionPadding={8} avoidCollisions
+          className="w-72 p-2 overflow-y-auto" style={{ maxHeight: maxContentHeight }}>
+          {content}
+        </PopoverContent>
+      </Popover>
     </div>
   );
 };

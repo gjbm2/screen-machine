@@ -6,11 +6,6 @@ import {
   DropdownMenuContent,
   DropdownMenuPortal,
 } from '@/components/ui/dropdown-menu';
-import {
-  HoverCard,
-  HoverCardTrigger,
-  HoverCardContent,
-} from '@/components/ui/hover-card';
 import { Share2, ScreenShareOff } from 'lucide-react';
 import * as LucideIcons from 'lucide-react';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -136,54 +131,36 @@ const PublishSelector: React.FC<PublishSelectorProps> = ({
 
   return (
     <div className="flex items-center h-[48px]">
-      {isMobile ? (
-        <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen} modal={false}>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="outline"
-              className={`h-[36px] border border-input flex items-center px-3 text-sm ${
-                menuOpen ? 'bg-purple-500/10 text-purple-700' : 'hover:bg-purple-500/10 text-purple-700'
-              }`}
-              aria-label="Select publish destination"
-            >
-              {getDisplayIcons()}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuPortal>
-            <DropdownMenuContent
-              key={selectedDestinations.join(',')}
-              align="start"
-              className="bg-white w-64 p-2"
-              onCloseAutoFocus={e => e.preventDefault()} // 👈 prevent auto-close on item click
-            >
-              {renderDestinationList()}
-            </DropdownMenuContent>
-          </DropdownMenuPortal>
-        </DropdownMenu>
-      ) : (
-        <HoverCard openDelay={100} closeDelay={100}>
-          <HoverCardTrigger asChild>
-            <Button
-              variant="outline"
-              className="h-[36px] border border-input hover:bg-purple-500/10 text-purple-700 flex items-center px-3 text-sm"
-              aria-label="Select publish destination"
-            >
-              {getDisplayIcons()}
+      {/* a menu that opens on a click, on a desktop as on a phone (owner, 24 Nov: on a desktop it opened on hover and the
+          click then closed and reopened it) */}
+      <DropdownMenu open={menuOpen} onOpenChange={setMenuOpen} modal={false}>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="outline"
+            className={`h-[36px] border border-input flex items-center px-3 text-sm ${
+              menuOpen ? 'bg-purple-500/10 text-purple-700' : 'hover:bg-purple-500/10 text-purple-700'
+            }`}
+            aria-label="Select publish destination"
+          >
+            {getDisplayIcons()}
+            {!isMobile && (
               <span className="ml-2 text-sm truncate max-w-[150px]">
                 {getDisplayText()}
               </span>
-            </Button>
-          </HoverCardTrigger>
-          <HoverCardContent
+            )}
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuPortal>
+          <DropdownMenuContent
+            key={selectedDestinations.join(',')}
             align="start"
-            side="bottom"
-            sideOffset={4}
-            className="w-64 p-2 max-h-[60vh] overflow-y-auto"
+            className="bg-white w-64 p-2 max-h-[60vh] overflow-y-auto"
+            onCloseAutoFocus={e => e.preventDefault()} // 👈 prevent auto-close on item click
           >
             {renderDestinationList()}
-          </HoverCardContent>
-        </HoverCard>
-      )}
+          </DropdownMenuContent>
+        </DropdownMenuPortal>
+      </DropdownMenu>
     </div>
   );
 };
