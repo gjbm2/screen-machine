@@ -359,7 +359,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
       externalRefinerChange?.(recipe.refiner);
       externalParamsChange?.(recipe.params);
     }
-    setTimeout(() => document.querySelector('[data-generator-mode]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
+    setTimeout(() => document.querySelector('[data-prompt-form]')?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
   };
   useEffect(() => {
     const onStartAgain = (e: Event) => startAgainRef.current((e as CustomEvent<Recipe>).detail);
@@ -881,6 +881,31 @@ const PromptForm: React.FC<PromptFormProps> = ({
     handleSubmit(e);
   };
 
+  // Image / Film, first in the toolbar's row (owner, 24 Nov: on a row of its own it was "very expensive in real estate
+  // terms"). The app's one look for a choice of a few (components/ui/segmented.tsx); icons only on a phone.
+  const modeSwitch = (
+    <div className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-stone-200/70 p-0.5" role="tablist" aria-label="What to make">
+      {([['create', 'Image', Sparkles], ['film', 'Film', Clapperboard]] as const).map(([id, label, Icon]) => (
+        <button
+          key={id}
+          type="button"
+          role="tab"
+          aria-selected={mode === id}
+          aria-label={label}
+          title={label}
+          data-generator-mode={id}
+          onClick={() => chooseMode(id)}
+          className={`flex h-8 items-center gap-1.5 rounded-full px-2.5 text-sm transition-colors sm:px-3 ${
+            mode === id ? 'bg-white font-medium text-teal-800 shadow-sm ring-1 ring-stone-200' : 'text-stone-600 hover:text-stone-900'
+          }`}
+        >
+          <Icon className="h-4 w-4" />
+          <span className="hidden sm:inline">{label}</span>
+        </button>
+      ))}
+    </div>
+  );
+
   return (
     <div 
       className="w-full mb-8"
@@ -890,31 +915,12 @@ const PromptForm: React.FC<PromptFormProps> = ({
       // dialog's scroll lock, which then refused every swipe (19 Nov: couldn't scroll the artworks by thumb).
       onTouchStart={isMobile ? (e) => { if (e.currentTarget.contains(e.target as Node)) e.stopPropagation(); } : undefined}
     >
-      <Card className="p-4 relative">
+      <Card className="p-4 relative" data-prompt-form>
         {generationOff && (
           <div role="note" className="mb-3 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900">
             Generation is off in this deployment. Buckets and publishing still work.
           </div>
         )}
-        {/* the app's one look for a choice of a few (components/ui/segmented.tsx; owner, 24 Nov: black "too prominent") */}
-        <div className="mb-3 inline-flex items-center gap-0.5 rounded-full bg-stone-200/70 p-0.5" role="tablist" aria-label="What to make">
-          {([['create', 'Image', Sparkles], ['film', 'Film', Clapperboard]] as const).map(([id, label, Icon]) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={mode === id}
-              data-generator-mode={id}
-              onClick={() => chooseMode(id)}
-              className={`flex h-8 items-center gap-1.5 rounded-full px-3 text-sm transition-colors ${
-                mode === id ? 'bg-white font-medium text-teal-800 shadow-sm ring-1 ring-stone-200' : 'text-stone-600 hover:text-stone-900'
-              }`}
-            >
-              <Icon className="h-3.5 w-3.5" />
-              {label}
-            </button>
-          ))}
-        </div>
         {mode === 'film' ? (
           <>
             {!film.isEmpty && (
@@ -948,6 +954,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
               hasUploadedImages={film.canMake}
               estimate={film.estimate}
               onRestoreFormState={handleRestoreFormState}
+              modeSwitch={modeSwitch}
             />
             <AdvancedOptions
               fixedWorkflow
@@ -999,6 +1006,7 @@ const PromptForm: React.FC<PromptFormProps> = ({
           refinerParams={refinerParams}
           globalParams={globalParams}
           onRestoreFormState={handleRestoreFormState}
+          modeSwitch={modeSwitch}
         />
         </>)}
       </Card>

@@ -63,7 +63,7 @@ def run(args) -> int:
         page.wait_for_selector("[data-film-strip]")
         check(page.locator("textarea[data-prompt-input]").count() == 0, "Film replaces the prompt box")
         check(page.locator("[data-film-slot]").count() == 2, "two slots to start with")
-        check(page.locator('[data-generator-mode="create"]').inner_text().strip() == "Image", "the other mode is called Image")
+        check(page.locator('[data-generator-mode="create"]').get_attribute("aria-label") == "Image", "the other mode is called Image")
         row_text = page.locator("[data-film-row]").inner_text().split()
         check(row_text == ["A", "5", "s", "B"], f"no words among the slots but their letters and the seconds ({row_text})")
         nudges = [t.strip() for t in page.locator("[data-film-nudges] span.text-xs").all_inner_texts()]
@@ -145,7 +145,8 @@ def run(args) -> int:
             card_el = page.locator('[data-section-variant="dated"] .drag-grid > div').first
             card = None
             if card_el.count():
-                card_el.scroll_into_view_if_needed()
+                # mid-screen: held near the bottom edge, the drag scrolls the page down by itself and the wheel up loses
+                card_el.evaluate("e => e.scrollIntoView({block: 'center'})")
                 page.wait_for_timeout(800)
                 card = card_el.bounding_box()
             if not card:
@@ -158,6 +159,9 @@ def run(args) -> int:
                 page.wait_for_function("window.__dnd && window.__dnd.active != null", timeout=5000)
                 page.mouse.wheel(0, -100000)
                 page.wait_for_timeout(800)
+                # the page may still be scrolling: aim once the slot has come to rest in view
+                page.wait_for_function("(() => { const r = document.querySelector('[data-film-slot=\"B\"]').getBoundingClientRect(); return r.top >= 0; })()", timeout=5000)
+                page.wait_for_timeout(300)
                 t = target.bounding_box()
                 page.mouse.move(t["x"] + t["width"] / 2, t["y"] + t["height"] / 2, steps=12)
                 page.wait_for_timeout(300)

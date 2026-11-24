@@ -72,6 +72,8 @@ export interface ToolbarProps {
   film?: boolean;
   /** About how long it will take, under the button ("About 2 minutes"). */
   estimate?: string;
+  /** Image / Film, first in the row (PromptForm; owner, 24 Nov: its own row was "very expensive"). */
+  modeSwitch?: ReactNode;
 }
 
 export interface AdvancedOptionsPanelProps {

@@ -3,8 +3,7 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Settings, ArrowUp, Image } from 'lucide-react';
 import ImageUploader from '@/components/prompt/ImageUploader';
-import WorkflowIconSelector from '@/components/prompt/WorkflowIconSelector';
-import RefinerSelector from '@/components/prompt/RefinerSelector';
+import MakeSelector from '@/components/prompt/MakeSelector';
 import PublishSelector from './PublishSelector';
 import { ToolbarProps, WorkflowProps } from './types';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -32,6 +31,7 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
   onRestoreFormState,
   film = false,
   estimate,
+  modeSwitch,
 }) => {
   const isMobile = useIsMobile();
   
@@ -56,6 +56,7 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
   return (
     <div className="flex items-center justify-between overflow-x-auto py-1">
       <div className="flex flex-nowrap items-center gap-1 sm:gap-2">
+        {modeSwitch}
 		<ImageUploader
 		  isLoading={isLoading}
 		  onImageUpload={onImageUpload}
@@ -64,19 +65,14 @@ const PromptFormToolbar: React.FC<ToolbarProps> = ({
 		  onRestoreFormState={onRestoreFormState}
 		/>
         
-        {!film && (
-        <WorkflowIconSelector
+        <MakeSelector
           workflows={workflows}
           selectedWorkflow={selectedWorkflow}
           onWorkflowChange={onWorkflowChange}
-          hideWorkflowName={isMobile}
-        />
-        )}
-        
-        <RefinerSelector
           selectedRefiner={selectedRefiner}
           onRefinerChange={onRefinerChange}
-          only={film ? ['none'] : undefined}
+          film={film}
+          refinerOnly={film ? ['none'] : undefined}
         />
         
         <PublishSelector 
