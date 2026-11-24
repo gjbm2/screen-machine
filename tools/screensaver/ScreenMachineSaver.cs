@@ -74,37 +74,30 @@ namespace ScreenMachine.Screensaver
     {
         public static string Path { get { return Application.ExecutablePath; } }
 
-        static Dictionary<string, object> trailer;
+        static Dictionary<string, object> config;
 
-        /// The download's own settings: [utf-8 JSON][int32 length]["SMSS"] appended to the file by the server.
+        /// The download's own settings (server, screen), written by the server into this fixed slot inside the program
+        /// (routes/screensaver.py stamp()). Inside, not appended: Defender's model reads data after the end of a
+        /// program as a script hidden in it (Trojan:Script/Wacatac.B!ml, 24 Nov).
+        static readonly string Slot = "[[SMSS-CONFIG                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    ]]";
+
         public static string Trailer(string key)
         {
-            if (trailer == null) trailer = ReadTrailer();
+            if (config == null) config = ReadSlot();
             object v;
-            return trailer.TryGetValue(key, out v) ? v as string : null;
+            return config.TryGetValue(key, out v) ? v as string : null;
         }
 
-        static Dictionary<string, object> ReadTrailer()
+        static Dictionary<string, object> ReadSlot()
         {
             var none = new Dictionary<string, object>();
             try
             {
-                using (var f = File.OpenRead(Path))
-                {
-                    if (f.Length < 8) return none;
-                    var tail = new byte[8];
-                    f.Seek(-8, SeekOrigin.End);
-                    f.Read(tail, 0, 8);
-                    if (Encoding.ASCII.GetString(tail, 4, 4) != "SMSS") return none;
-                    int n = BitConverter.ToInt32(tail, 0);
-                    if (n <= 0 || n > 65536 || n > f.Length - 8) return none;
-                    var body = new byte[n];
-                    f.Seek(-8 - n, SeekOrigin.End);
-                    f.Read(body, 0, n);
-                    return new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(Encoding.UTF8.GetString(body)) ?? none;
-                }
+                string body = Slot.Substring(13, Slot.Length - 15).Trim();
+                if (!body.StartsWith("{")) return none;
+                return new JavaScriptSerializer().Deserialize<Dictionary<string, object>>(body) ?? none;
             }
-            catch (Exception e) { Log.Write("trailer: " + e.Message); return none; }
+            catch (Exception e) { Log.Write("config: " + e.Message); return none; }
         }
     }
 
@@ -1260,8 +1253,8 @@ namespace ScreenMachine.Screensaver
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(Target));
-                if (!IsInstalledCopy) File.Copy(Self.Path, Target, true);
-                Native.DeleteFile(Target + ":Zone.Identifier");  // the download's mark, or Windows asks before each start
+                // the bytes only: the copy doesn't carry the download's mark, or Windows would ask before each start
+                if (!IsInstalledCopy) File.WriteAllBytes(Target, File.ReadAllBytes(Self.Path));
             }
             catch (IOException e) { return "Couldn't copy the screensaver (is it running?): " + e.Message; }
             catch (UnauthorizedAccessException e) { return "Couldn't copy the screensaver: " + e.Message; }
@@ -1489,7 +1482,6 @@ namespace ScreenMachine.Screensaver
         [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hWnd);
         [DllImport("user32.dll")] public static extern bool SystemParametersInfo(uint action, uint param, IntPtr pv, uint winIni);
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern uint GetShortPathName(string path, StringBuilder sb, int size);
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern bool DeleteFile(string path);
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] public static extern uint GetLongPathName(string path, StringBuilder sb, int size);
     }
 }

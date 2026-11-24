@@ -44,8 +44,10 @@ input.
     page, and the windows of monitors that went away close.
   - Mirrored monitors share one window.
 - **Preview:** the little monitor in Windows' dialog shows the main monitor's screen thumbnail, filled or fitted, without a browser.
-- **What it shows:** each download carries its server (the page's origin) and screen as a trailer appended by
-  `routes/screensaver.py`: `[JSON][int32 length]["SMSS"]`. Settings stores choices in `HKCU\Software\ScreenMachine\Screensaver`: the server, the default (`Screen`, `Fit`), and `Monitors\<id>` for each monitor.
+- **What it shows:** each download carries its server (the page's origin) and screen, written by
+  `routes/screensaver.py` (`stamp()`) into a fixed slot inside the program: a string literal `[[SMSS-CONFIG ... ]]`,
+  overwritten at the same length. Nothing goes after the end of the file: Defender flagged that as a hidden script
+  (Trojan:Script/Wacatac.B!ml). Settings stores choices in `HKCU\Software\ScreenMachine\Screensaver`: the server, the default (`Screen`, `Fit`), and `Monitors\<id>` for each monitor.
 - **Log:** `%LOCALAPPDATA%\ScreenMachine\Screensaver\screensaver.log`.
 
 ## Build and check (from WSL on a Windows PC)

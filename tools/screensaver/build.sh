@@ -31,15 +31,11 @@ mv "$here/out/ScreenMachine-screensaver.exe.new" "$here/out/ScreenMachine-screen
 echo "built $here/out/ScreenMachine-screensaver.exe ($(stat -c %s "$here/out/ScreenMachine-screensaver.exe") bytes)"
 
 if [ "${1:-}" = "--test" ]; then
-  # a copy with a trailer, as the download has (server and screen from SM_SCREENSAVER_TEST_SERVER/_SCREEN)
+  # a stamped copy, as the download is (server and screen from SM_SCREENSAVER_TEST_SERVER/_SCREEN)
   server="${SM_SCREENSAVER_TEST_SERVER:?set SM_SCREENSAVER_TEST_SERVER, e.g. the https address of the app}"
   screen="${SM_SCREENSAVER_TEST_SCREEN:?set SM_SCREENSAVER_TEST_SCREEN, a screen id}"
-  python3 -I - "$here/out/ScreenMachine-screensaver.exe" "$wtmp/test.exe" "$server" "$screen" <<'PY'
-import json, struct, sys
-src, dst, server, screen = sys.argv[1:]
-body = json.dumps({"server": server, "screen": screen}).encode()
-open(dst, "wb").write(open(src, "rb").read() + body + struct.pack("<i", len(body)) + b"SMSS")
-PY
+  (cd "$here/../.." && .venv/bin/python -c 'import sys; from routes.screensaver import stamp; open(sys.argv[2], "wb").write(stamp(open(sys.argv[1], "rb").read(), sys.argv[3], sys.argv[4]))' \
+    "$here/out/ScreenMachine-screensaver.exe" "$wtmp/test.exe" "$server" "$screen")
   rm -rf "$wtmp/selftest"
   (cd "$wtmp" && ./test.exe /selftest "$(wslpath -w "$wtmp/selftest")") || true
   rm -rf "$here/out/selftest" && cp -r "$wtmp/selftest" "$here/out/selftest"
