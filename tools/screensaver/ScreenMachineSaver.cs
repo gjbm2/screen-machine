@@ -107,6 +107,17 @@ namespace ScreenMachine.Screensaver
         }
     }
 
+    /// What one monitor shows: a screen ("" = nothing, black) and how its picture meets the monitor's shape.
+    sealed class Choice
+    {
+        public string Screen = "";
+        public bool Fill = true;  // fill crops the overhang; fit shows all of it, with black bars
+    }
+
+    /// Settings live in HKCU\Software\ScreenMachine\Screensaver: Server, the default choice (Screen, Fit) for monitors
+    /// with none of their own, and Monitors\<id> (Path, Name, Screen, Fit) for each monitor someone chose for. A monitor
+    /// is known by its device path (the physical monitor on its connector), so a laptop's choices come back each time
+    /// the same monitor is plugged in, whatever Windows numbers it that day.
     static class Settings
     {
         const string Key = @"Software\ScreenMachine\Screensaver";
@@ -118,37 +129,153 @@ namespace ScreenMachine.Screensaver
 
         public static string Server
         {
-            get { return (Get("Server") ?? Self.Trailer("server") ?? "").Trim().TrimEnd('/'); }
-            set { Set("Server", (value ?? "").Trim().TrimEnd('/')); }
+            get { return (Get(Key, "Server") ?? Self.Trailer("server") ?? "").Trim().TrimEnd('/'); }
+            set { Set(Key, "Server", (value ?? "").Trim().TrimEnd('/')); }
         }
 
-        public static string Screen
+        /// For monitors with no choice of their own (and the ones plugged in later). The download's screen at first.
+        public static Choice Default
         {
-            get { return Get("Screen") ?? Self.Trailer("screen") ?? ""; }
-            set { Set("Screen", value ?? ""); }
+            get { return Read(Key) ?? new Choice { Screen = Self.Trailer("screen") ?? "" }; }
+            set { Write(Key, value); }
         }
 
-        public static bool Ready { get { return Server != "" && Screen != ""; } }
+        public static Choice For(Monitor m)
+        {
+            return Read(MonitorKey(m)) ?? Default;
+        }
+
+        public static void Remember(Monitor m, Choice c)
+        {
+            string k = MonitorKey(m);
+            Write(k, c);
+            Set(k, "Path", m.Key);
+            Set(k, "Name", m.Name);
+        }
 
         /// The TV's own page, as a viewer (never drives the screen), at full brightness (no room light mask).
-        public static string DisplayUrl(string server, string screen)
+        public static string DisplayUrl(string server, Choice c)
         {
-            return server + "/display/" + Uri.EscapeDataString(screen) + "?kiosk=viewer&nomask&nocolour";
+            if (server == "" || c.Screen == "") return null;
+            return server + "/display/" + Uri.EscapeDataString(c.Screen) + "?kiosk=viewer&nomask&nocolour" + (c.Fill ? "&display=fill" : "");
         }
 
-        static string Get(string name)
+        static string MonitorKey(Monitor m)
         {
-            using (var k = Registry.CurrentUser.OpenSubKey(Key)) return k == null ? null : k.GetValue(name) as string;
+            using (var sha = System.Security.Cryptography.SHA1.Create())
+            {
+                var h = sha.ComputeHash(Encoding.UTF8.GetBytes(m.Key.ToLowerInvariant()));
+                return Key + @"\Monitors\" + BitConverter.ToString(h, 0, 6).Replace("-", "").ToLowerInvariant();
+            }
         }
 
-        static void Set(string name, string value)
+        static Choice Read(string key)
         {
-            using (var k = Registry.CurrentUser.CreateSubKey(Key)) k.SetValue(name, value);
+            string screen = Get(key, "Screen");
+            if (screen == null) return null;
+            return new Choice { Screen = screen, Fill = Get(key, "Fit") != "fit" };
+        }
+
+        static void Write(string key, Choice c)
+        {
+            Set(key, "Screen", c.Screen ?? "");
+            Set(key, "Fit", c.Fill ? "fill" : "fit");
+        }
+
+        static string Get(string key, string name)
+        {
+            using (var k = Registry.CurrentUser.OpenSubKey(key)) return k == null ? null : k.GetValue(name) as string;
+        }
+
+        static void Set(string key, string name, string value)
+        {
+            using (var k = Registry.CurrentUser.CreateSubKey(key)) k.SetValue(name, value);
         }
 
         public static void Forget()
         {
             Registry.CurrentUser.DeleteSubKeyTree(@"Software\ScreenMachine", false);
+        }
+    }
+
+    // ------------------------------------------------------------------ monitors
+
+    sealed class Monitor
+    {
+        public string Key;      // the monitor's device path (stable), else Windows' display name
+        public string Name;     // "Built-in display", "DELL U2723QE", else "Monitor 2"
+        public string Device;   // \\.\DISPLAY1 (today's number)
+        public Rectangle Bounds;
+        public bool Primary;
+
+        public string Describe()
+        {
+            return Bounds.Width + " × " + Bounds.Height + (Primary ? " · main" : "");
+        }
+    }
+
+    /// The monitors attached right now, read fresh every time (a laptop's set changes through the day): Windows'
+    /// screens, named and keyed by the display configuration (QueryDisplayConfig).
+    static class Monitors
+    {
+        public static List<Monitor> Now()
+        {
+            var ids = Identify();
+            var list = new List<Monitor>();
+            int n = 0;
+            foreach (Screen s in Screen.AllScreens)
+            {
+                n++;
+                string[] id;
+                ids.TryGetValue(s.DeviceName, out id);
+                list.Add(new Monitor
+                {
+                    Key = id != null && id[0] != "" ? id[0] : s.DeviceName,
+                    Name = id != null && id[1] != "" ? id[1] : "Monitor " + n,
+                    Device = s.DeviceName,
+                    Bounds = s.Bounds,
+                    Primary = s.Primary,
+                });
+            }
+            // the main one first, then left to right
+            list.Sort((a, b) => a.Primary != b.Primary ? (a.Primary ? -1 : 1) : a.Bounds.X != b.Bounds.X ? a.Bounds.X.CompareTo(b.Bounds.X) : a.Bounds.Y.CompareTo(b.Bounds.Y));
+            return list;
+        }
+
+        /// \\.\DISPLAYn -> [device path, friendly name]; empty when Windows won't say.
+        static Dictionary<string, string[]> Identify()
+        {
+            var map = new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase);
+            try
+            {
+                uint np, nm;
+                if (Native.GetDisplayConfigBufferSizes(2, out np, out nm) != 0) return map;  // QDC_ONLY_ACTIVE_PATHS
+                var paths = new Native.PATH[np];
+                var modes = new Native.MODE[nm];
+                if (Native.QueryDisplayConfig(2, ref np, paths, ref nm, modes, IntPtr.Zero) != 0) return map;
+                for (int i = 0; i < np; i++)
+                {
+                    var src = new Native.SOURCE_NAME();
+                    src.header.type = 1;  // DISPLAYCONFIG_DEVICE_INFO_GET_SOURCE_NAME
+                    src.header.size = (uint)Marshal.SizeOf(typeof(Native.SOURCE_NAME));
+                    src.header.adapterLow = paths[i].sourceAdapterLow;
+                    src.header.adapterHigh = paths[i].sourceAdapterHigh;
+                    src.header.id = paths[i].sourceId;
+                    if (Native.DisplayConfigGetDeviceInfo(ref src) != 0) continue;
+                    var tgt = new Native.TARGET_NAME();
+                    tgt.header.type = 2;  // DISPLAYCONFIG_DEVICE_INFO_GET_TARGET_NAME
+                    tgt.header.size = (uint)Marshal.SizeOf(typeof(Native.TARGET_NAME));
+                    tgt.header.adapterLow = paths[i].targetAdapterLow;
+                    tgt.header.adapterHigh = paths[i].targetAdapterHigh;
+                    tgt.header.id = paths[i].targetId;
+                    if (Native.DisplayConfigGetDeviceInfo(ref tgt) != 0) continue;
+                    bool builtIn = tgt.outputTechnology == 0x80000000 || tgt.outputTechnology == 11 || tgt.outputTechnology == 13;  // internal, embedded DP/UDI
+                    string name = builtIn ? "Built-in display" : (tgt.friendlyName ?? "");
+                    if (!map.ContainsKey(src.gdiName)) map[src.gdiName] = new[] { tgt.devicePath ?? "", name };
+                }
+            }
+            catch (Exception e) { Log.Write("monitors: " + e.Message); }
+            return map;
         }
     }
 
@@ -274,6 +401,8 @@ namespace ScreenMachine.Screensaver
             if (saver) c.IsVisible = false;  // shown once the page has loaded (and is black under its cover)
             c.Bounds = host.ClientRectangle;
             host.Resize += delegate { c.Bounds = host.ClientRectangle; };
+            host.Move += delegate { c.NotifyParentWindowPositionChanged(); };  // moved to a monitor of another scale
+            host.Disposed += delegate { c.Close(); };
             var w = c.CoreWebView2;
             if (saver)
             {
@@ -286,7 +415,8 @@ namespace ScreenMachine.Screensaver
                 w.NewWindowRequested += delegate(object s, CoreWebView2NewWindowRequestedEventArgs a) { a.Handled = true; };
                 await w.AddScriptToExecuteOnDocumentCreatedAsync(Smooth);
                 var retry = new Timer { Interval = 30000 };
-                retry.Tick += delegate { retry.Stop(); w.Navigate(url); };
+                retry.Tick += delegate { retry.Stop(); if (!host.IsDisposed) w.Navigate(url); };
+                host.Disposed += delegate { retry.Dispose(); };
                 w.NavigationCompleted += delegate(object s, CoreWebView2NavigationCompletedEventArgs a)
                 {
                     c.IsVisible = a.IsSuccess;
@@ -300,28 +430,68 @@ namespace ScreenMachine.Screensaver
 
     // ------------------------------------------------------------------ the screensaver (/s)
 
+    /// One window per monitor, each with its own page (or black, for a monitor set to show nothing). The monitors are
+    /// read when Windows starts it and again whenever they change while it runs (a laptop docked or a lid shut): a
+    /// window whose monitor stays keeps its page and just moves; a new monitor gets its window; a gone one's closes.
     static class Saver
     {
+        static readonly Dictionary<string, SaverForm> windows = new Dictionary<string, SaverForm>();
+        static Control ui;
+        static Timer settle;
+
         public static void Run()
         {
-            string url = Settings.Ready ? Settings.DisplayUrl(Settings.Server, Settings.Screen) : null;
-            Log.Write("saver " + (url ?? "(not set up)"));
             Input.Start();
-            foreach (Screen s in Screen.AllScreens) new SaverForm(s.Bounds, url).Show();
+            ui = new Control();
+            ui.CreateControl();  // marshals Windows' display-change event onto this thread
+            settle = new Timer { Interval = 1000 };  // a dock or undock changes things several times over a second
+            settle.Tick += delegate { settle.Stop(); Arrange(); };
+            SystemEvents.DisplaySettingsChanged += delegate { ui.BeginInvoke((Action)(() => { settle.Stop(); settle.Start(); })); };
+            Arrange();
             Cursor.Hide();
             Application.Run();
             Input.Stop();
             Environment.Exit(0);  // the browser processes go with us
         }
+
+        static void Arrange()
+        {
+            string server = Settings.Server;
+            var now = Monitors.Now();
+            bool anything = false;
+            foreach (var m in now) if (Settings.DisplayUrl(server, Settings.For(m)) != null) anything = true;
+            var seen = new HashSet<string>();
+            foreach (var m in now)
+            {
+                if (!seen.Add(m.Key)) continue;  // mirrored monitors: one window covers both
+                string url = Settings.DisplayUrl(server, Settings.For(m));
+                string note = anything ? null : "Choose a screen in the Screen Machine screensaver's settings.";
+                SaverForm w;
+                if (windows.TryGetValue(m.Key, out w) && w.Url == url)
+                {
+                    if (w.Bounds != m.Bounds) w.Bounds = m.Bounds;
+                    continue;
+                }
+                if (w != null) w.Close();
+                Log.Write("monitor " + m.Name + " (" + m.Describe() + ", " + m.Key + "): " + (url ?? "black"));
+                w = new SaverForm(m.Bounds, url, note);
+                windows[m.Key] = w;
+                w.Show();
+            }
+            foreach (var k in new List<string>(windows.Keys))
+                if (!seen.Contains(k)) { Log.Write("monitor gone: " + k); windows[k].Close(); windows.Remove(k); }
+        }
     }
 
     sealed class SaverForm : Form
     {
-        readonly string url;
+        public readonly string Url;
+        readonly string note;
 
-        public SaverForm(Rectangle bounds, string url)
+        public SaverForm(Rectangle bounds, string url, string note)
         {
-            this.url = url;
+            Url = url;
+            this.note = note;
             FormBorderStyle = FormBorderStyle.None;
             StartPosition = FormStartPosition.Manual;
             Bounds = bounds;
@@ -344,17 +514,17 @@ namespace ScreenMachine.Screensaver
             base.OnShown(e);
             Refresh();
             Native.Cloak(Handle, false);
-            if (url == null) return;
-            try { await Web.Attach(this, url, true, "WebView2", null); }
+            if (Url == null) return;
+            try { await Web.Attach(this, Url, true, "WebView2", null); }
             catch (Exception x) { Log.Write("webview: " + x.Message); }
         }
 
         protected override void OnPaint(PaintEventArgs e)
         {
             base.OnPaint(e);
-            if (url != null) return;
-            TextRenderer.DrawText(e.Graphics, "Choose a screen in the Screen Machine screensaver's settings.", new Font("Segoe UI", 14f),
-                ClientRectangle, ForeColor, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
+            if (note == null) return;
+            TextRenderer.DrawText(e.Graphics, note, new Font("Segoe UI", 14f), ClientRectangle, ForeColor,
+                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter);
         }
     }
 
@@ -429,6 +599,7 @@ namespace ScreenMachine.Screensaver
     {
         readonly IntPtr parent;
         Image picture;
+        Choice choice;
 
         public PreviewForm(IntPtr parent)
         {
@@ -451,8 +622,12 @@ namespace ScreenMachine.Screensaver
             var alive = new Timer { Interval = 500 };
             alive.Tick += delegate { if (!Native.IsWindow(parent)) Close(); };
             alive.Start();
-            if (!Settings.Ready) return;
-            string server = Settings.Server, screen = Settings.Screen;
+            var mons = Monitors.Now();
+            if (mons.Count == 0) return;
+            string server = Settings.Server;
+            choice = Settings.For(mons[0]);  // the main monitor's
+            if (server == "" || choice.Screen == "") return;
+            string screen = choice.Screen;
             Task.Run(() => Thumbnail(server, screen)).ContinueWith(t =>
             {
                 if (t.Result != null && !IsDisposed) BeginInvoke((Action)(() => { picture = t.Result; Invalidate(); }));
@@ -483,8 +658,9 @@ namespace ScreenMachine.Screensaver
             base.OnPaint(e);
             if (picture != null)
             {
-                // fill the little screen, cropping what overhangs (the TV page fills its screen the same way)
-                float s = Math.Max((float)Width / picture.Width, (float)Height / picture.Height);
+                // as the monitor will: filled (cropping the overhang) or fitted (black bars)
+                float sx = (float)Width / picture.Width, sy = (float)Height / picture.Height;
+                float s = choice.Fill ? Math.Max(sx, sy) : Math.Min(sx, sy);
                 float w = picture.Width * s, h = picture.Height * s;
                 e.Graphics.InterpolationMode = System.Drawing.Drawing2D.InterpolationMode.HighQualityBicubic;
                 e.Graphics.DrawImage(picture, (Width - w) / 2, (Height - h) / 2, w, h);
@@ -503,14 +679,27 @@ namespace ScreenMachine.Screensaver
         public override string ToString() { return Name; }
     }
 
-    /// The one window: which screen to show, and from where. Run from the download it installs; run from Windows'
+    /// One row of Settings: a monitor attached now (or, with no monitor, the ones plugged in later) and its choice.
+    sealed class MonitorRow
+    {
+        public Monitor Monitor;  // null: monitors plugged in later
+        public Choice Was;
+        public ComboBox Screen = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 230, Enabled = false };
+        public ComboBox Fit = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 140 };
+    }
+
+    /// The one window: what each monitor shows, and from where. Run from the download it installs; run from Windows'
     /// dialog ("Settings...") it saves. Both keep the screensaver set up the Windows way (Windows' dialog sets the wait
-    /// and the lock).
+    /// and the lock). The monitors are the ones attached as it opens; each one's choice is kept for the next time that
+    /// monitor is attached, and "plugged in later" covers any other.
     sealed class SettingsForm : Form
     {
-        readonly ComboBox screens = new ComboBox { DropDownStyle = ComboBoxStyle.DropDownList, Width = 340 };
-        readonly TextBox server = new TextBox { Width = 340 };
-        readonly Label note = new Label { AutoSize = true, MaximumSize = new Size(360, 0), ForeColor = Color.DimGray };
+        static readonly ScreenChoice Nothing = new ScreenChoice { Id = "", Name = "Nothing (black)", Access = "guest" };
+        const string FillWords = "Fill (crops edges)", FitWords = "Fit (black bars)";
+
+        readonly List<MonitorRow> rows = new List<MonitorRow>();
+        readonly TextBox server = new TextBox { Width = 380 };
+        readonly Label note = new Label { AutoSize = true, MaximumSize = new Size(480, 0), ForeColor = Color.DimGray };
         readonly LinkLabel signIn = new LinkLabel { AutoSize = true, Text = "Sign in", Visible = false };
         readonly Button ok = new Button { AutoSize = true, Padding = new Padding(8, 2, 8, 2) };
         readonly Button remove = new Button { AutoSize = true, Text = "Remove", Padding = new Padding(8, 2, 8, 2) };
@@ -533,8 +722,32 @@ namespace ScreenMachine.Screensaver
             CancelButton = cancel;
 
             var col = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, WrapContents = false };
-            col.Controls.Add(new Label { AutoSize = true, Text = "Show this screen when the computer is idle", Font = new Font("Segoe UI Semibold", 11f), Margin = new Padding(0, 0, 0, 8) });
-            col.Controls.Add(screens);
+            var head = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, 0, 0, 8) };
+            head.Controls.Add(new Label { AutoSize = true, Text = "When the computer is idle, show", Font = new Font("Segoe UI Semibold", 11f) });
+            var which = new LinkLabel { AutoSize = true, Text = "Which monitor is which?", Margin = new Padding(12, 4, 0, 0) };
+            which.LinkClicked += delegate { Identify(); };
+            head.Controls.Add(which);
+            col.Controls.Add(head);
+
+            var grid = new TableLayoutPanel { AutoSize = true, ColumnCount = 3, Margin = new Padding(0) };
+            var mons = Monitors.Now();
+            foreach (var m in mons) rows.Add(new MonitorRow { Monitor = m, Was = Settings.For(m) });
+            rows.Add(new MonitorRow { Monitor = null, Was = Settings.Default });
+            int n = 0;
+            foreach (var r in rows)
+            {
+                n++;
+                var name = new Label { AutoSize = true, Margin = new Padding(0, 6, 16, 6), MaximumSize = new Size(230, 0) };
+                name.Text = r.Monitor == null ? "Monitors plugged in later" : n + "  " + r.Monitor.Name + "\n    " + r.Monitor.Describe();
+                if (r.Monitor == null) name.ForeColor = Color.DimGray;
+                r.Fit.Items.AddRange(new object[] { FillWords, FitWords });
+                r.Fit.SelectedIndex = r.Was.Fill ? 0 : 1;
+                r.Screen.SelectedIndexChanged += delegate { ShowAccess(); };
+                grid.Controls.Add(name);
+                grid.Controls.Add(r.Screen);
+                grid.Controls.Add(r.Fit);
+            }
+            col.Controls.Add(grid);
             var noteRow = new FlowLayoutPanel { AutoSize = true, WrapContents = false, Margin = new Padding(0, 6, 0, 12) };
             noteRow.Controls.Add(note);
             noteRow.Controls.Add(signIn);
@@ -551,7 +764,6 @@ namespace ScreenMachine.Screensaver
             ok.Text = installing ? "Use as screensaver" : "Save";
             server.Text = Settings.Server;
             server.Leave += delegate { LoadScreens(); };
-            screens.SelectedIndexChanged += delegate { ShowAccess(); };
             ok.Click += delegate { Save(); };
             remove.Click += delegate
             {
@@ -563,10 +775,31 @@ namespace ScreenMachine.Screensaver
             Shown += delegate { LoadScreens(); };
         }
 
+        /// A big number on each monitor for two seconds, matching the rows.
+        void Identify()
+        {
+            int n = 0;
+            foreach (var r in rows)
+            {
+                if (r.Monitor == null) continue;
+                n++;
+                var tag = new Form
+                {
+                    FormBorderStyle = FormBorderStyle.None, StartPosition = FormStartPosition.Manual, ShowInTaskbar = false, TopMost = true,
+                    BackColor = Color.FromArgb(17, 94, 89), ForeColor = Color.White, Size = new Size(220, 220),
+                };
+                tag.Location = new Point(r.Monitor.Bounds.Left + 40, r.Monitor.Bounds.Top + 40);
+                tag.Controls.Add(new Label { Dock = DockStyle.Fill, Text = n.ToString(), Font = new Font("Segoe UI Semibold", 96f), TextAlign = ContentAlignment.MiddleCenter });
+                var t = new Timer { Interval = 2000 };
+                t.Tick += delegate { t.Dispose(); tag.Close(); };
+                tag.Show(this);
+                t.Start();
+            }
+        }
+
         void LoadScreens()
         {
             string from = server.Text.Trim().TrimEnd('/');
-            string want = screens.SelectedItem is ScreenChoice ? ((ScreenChoice)screens.SelectedItem).Id : Settings.Screen;
             int ticket = ++loading;
             note.Text = from == "" ? "Type the Screen Machine address below." : "Finding the screens...";
             signIn.Visible = false;
@@ -577,14 +810,23 @@ namespace ScreenMachine.Screensaver
                 BeginInvoke((Action)(() =>
                 {
                     if (ticket != loading) return;
-                    screens.Items.Clear();
                     if (t.Result == null) { note.Text = "Couldn't reach " + from + "."; return; }
-                    foreach (var s in t.Result)
+                    foreach (var r in rows)
                     {
-                        screens.Items.Add(s);
-                        if (s.Id == want) screens.SelectedItem = s;
+                        // keep what's picked (a second load after signing in), else what was saved
+                        var picked = r.Screen.SelectedItem as ScreenChoice;
+                        string want = picked != null ? picked.Id : r.Was.Screen;
+                        r.Screen.Items.Clear();
+                        r.Screen.Items.Add(Nothing);
+                        foreach (var s in t.Result)
+                        {
+                            r.Screen.Items.Add(s);
+                            if (s.Id == want) r.Screen.SelectedItem = s;
+                        }
+                        if (want == "") r.Screen.SelectedItem = Nothing;
+                        if (r.Screen.SelectedIndex < 0) r.Screen.SelectedIndex = r.Screen.Items.Count > 1 ? 1 : 0;
+                        r.Screen.Enabled = true;
                     }
-                    if (screens.SelectedIndex < 0 && screens.Items.Count > 0) screens.SelectedIndex = 0;
                     ShowAccess();
                 }));
             });
@@ -616,18 +858,33 @@ namespace ScreenMachine.Screensaver
 
         void ShowAccess()
         {
-            var s = screens.SelectedItem as ScreenChoice;
-            bool open = s == null || s.Access == "guest";
-            note.Text = open ? "Shows whatever that screen shows, live included." : "This screen is for signed-in people.";
+            bool open = true;
+            foreach (var r in rows)
+            {
+                var s = r.Screen.SelectedItem as ScreenChoice;
+                if (s != null && s.Access != "guest") open = false;
+            }
+            note.Text = open ? "Each shows whatever that screen shows, live included." : "A screen you chose is for signed-in people.";
             signIn.Visible = !open;
+        }
+
+        static Choice Of(MonitorRow r)
+        {
+            var s = r.Screen.SelectedItem as ScreenChoice;
+            return new Choice { Screen = s == null ? r.Was.Screen : s.Id, Fill = r.Fit.SelectedIndex != 1 };
         }
 
         void Save()
         {
-            var s = screens.SelectedItem as ScreenChoice;
-            if (s == null) { MessageBox.Show(this, "Choose a screen first.", Text); return; }
+            bool any = false;
+            foreach (var r in rows) if (Of(r).Screen != "") any = true;
+            if (!any) { MessageBox.Show(this, "Choose a screen for at least one monitor.", Text); return; }
             Settings.Server = server.Text;
-            Settings.Screen = s.Id;
+            foreach (var r in rows)
+            {
+                if (r.Monitor == null) Settings.Default = Of(r);
+                else Settings.Remember(r.Monitor, Of(r));
+            }
             if (installing)
             {
                 string err = Installer.Install();
@@ -780,7 +1037,14 @@ namespace ScreenMachine.Screensaver
         {
             Directory.CreateDirectory(outDir);
             var report = new StringBuilder();
-            report.AppendLine("server=" + Settings.Server + " screen=" + Settings.Screen + " trailer.server=" + Self.Trailer("server") + " trailer.screen=" + Self.Trailer("screen"));
+            report.AppendLine("server=" + Settings.Server + " trailer.server=" + Self.Trailer("server") + " trailer.screen=" + Self.Trailer("screen"));
+            var mons = Monitors.Now();
+            foreach (var m in mons)
+            {
+                var c = Settings.For(m);
+                report.AppendLine("monitor " + m.Name + " | " + m.Describe() + " | " + m.Device + " | " + m.Key + " -> " + (c.Screen == "" ? "nothing" : c.Screen) + (c.Fill ? " fill" : " fit"));
+            }
+            var first = mons.Count > 0 ? Settings.For(mons[0]) : Settings.Default;
             report.AppendLine("installed=" + Installer.IsInstalled + " current=" + Installer.IsCurrentScreensaver + " target=" + Installer.Target);
             report.AppendLine("webview2 runtime=" + SafeVersion());
 
@@ -798,11 +1062,11 @@ namespace ScreenMachine.Screensaver
             shot.Start();
             Application.Run(form);
 
-            var thumb = PreviewForm.Thumbnail(Settings.Server, Settings.Screen);
+            var thumb = PreviewForm.Thumbnail(Settings.Server, first.Screen);
             report.AppendLine("thumbnail=" + (thumb == null ? "none" : thumb.Width + "x" + thumb.Height));
             if (thumb != null) thumb.Save(Path.Combine(outDir, "preview.png"));
 
-            string url = Settings.DisplayUrl(Settings.Server, Settings.Screen);
+            string url = Settings.DisplayUrl(Settings.Server, first) ?? "about:blank";
             report.AppendLine("url=" + url);
             var page = new Form
             {
@@ -824,7 +1088,7 @@ namespace ScreenMachine.Screensaver
                     report.AppendLine("readyAfterMs=" + await c.CoreWebView2.ExecuteScriptAsync("window.__smSaverReadyAfterMs"));
                     await Task.Delay(12000);
                     string state = await c.CoreWebView2.ExecuteScriptAsync(
-                        "JSON.stringify({title:document.title,imgs:[...document.images].map(i=>i.currentSrc).slice(0,4)," +
+                        "JSON.stringify({title:document.title,imgs:[...document.images].map(i=>i.currentSrc+' '+getComputedStyle(i).objectFit).slice(0,4)," +
                         "videos:[...document.querySelectorAll('video')].map(v=>({src:v.currentSrc,paused:v.paused,w:v.videoWidth})),cursor:getComputedStyle(document.body).cursor})");
                     report.AppendLine("page=" + state);
                     using (var f = File.Create(Path.Combine(outDir, "page.png")))
@@ -877,6 +1141,33 @@ namespace ScreenMachine.Screensaver
         [StructLayout(LayoutKind.Sequential)] public struct MSLLHOOKSTRUCT { public int x, y; public uint mouseData, flags, time; public IntPtr extra; }
 
         [DllImport("user32.dll")] public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+
+        // QueryDisplayConfig: which physical monitor (device path, EDID name) is behind each \\.\DISPLAYn
+        [StructLayout(LayoutKind.Sequential)]
+        public struct PATH
+        {
+            public uint sourceAdapterLow; public int sourceAdapterHigh; public uint sourceId, sourceModeIdx, sourceStatus;
+            public uint targetAdapterLow; public int targetAdapterHigh; public uint targetId, targetModeIdx, outputTechnology, rotation, scaling,
+                refreshNum, refreshDen, scanLineOrdering; public int targetAvailable; public uint targetStatus;
+            public uint flags;
+        }
+        [StructLayout(LayoutKind.Sequential)]
+        public struct MODE { public uint infoType, id, adapterLow; public int adapterHigh; public long u0, u1, u2, u3, u4, u5; }
+        [StructLayout(LayoutKind.Sequential)]
+        public struct HEADER { public uint type, size, adapterLow; public int adapterHigh; public uint id; }
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct SOURCE_NAME { public HEADER header; [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string gdiName; }
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        public struct TARGET_NAME
+        {
+            public HEADER header; public uint flags, outputTechnology; public ushort edidManufactureId, edidProductCodeId; public uint connectorInstance;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)] public string friendlyName;
+            [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 128)] public string devicePath;
+        }
+        [DllImport("user32.dll")] public static extern int GetDisplayConfigBufferSizes(uint flags, out uint numPaths, out uint numModes);
+        [DllImport("user32.dll")] public static extern int QueryDisplayConfig(uint flags, ref uint numPaths, [Out] PATH[] paths, ref uint numModes, [Out] MODE[] modes, IntPtr topology);
+        [DllImport("user32.dll")] public static extern int DisplayConfigGetDeviceInfo(ref SOURCE_NAME info);
+        [DllImport("user32.dll")] public static extern int DisplayConfigGetDeviceInfo(ref TARGET_NAME info);
         [DllImport("dwmapi.dll")] static extern int DwmSetWindowAttribute(IntPtr hWnd, int attr, ref int value, int size);
 
         public static void Cloak(IntPtr hWnd, bool on)

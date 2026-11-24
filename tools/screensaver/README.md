@@ -9,10 +9,16 @@ input.
 - **Get it:** in the app's menu, under Screens, each screen has a **Windows screensaver** chip (on computers only). It
   downloads `ScreenMachine-screensaver.exe`.
 - **Install:** run the download. Unsigned, so SmartScreen asks first: "More info", then "Run anyway". Pick the
-  screen, then press **Use as screensaver**. It copies itself to `%LOCALAPPDATA%\Programs\ScreenMachine\ScreenMachine.scr`,
+  screen for each monitor, then press **Use as screensaver**. It copies itself to `%LOCALAPPDATA%\Programs\ScreenMachine\ScreenMachine.scr`,
   makes that the current user's screensaver (no admin needed), adds an entry under Apps for removal, and opens
   Windows' Screen saver settings, where you set the wait and the lock.
-- **Change the screen:** use the **Settings...** button in Windows' Screen saver settings.
+- **Choose per monitor:** use the **Settings...** button in Windows' Screen saver settings. It lists the monitors
+  attached now, and for each one you choose:
+  - a screen, or Nothing (black);
+  - Fill (crops the edges) or Fit (black bars). Fit only applies to the art; live video is always fitted.
+
+  A row for **monitors plugged in later** covers any monitor without a choice of its own. "Which monitor is which?"
+  puts a number on each monitor.
 - **Screens for signed-in people only** (those whose `access` isn't `guest`): use **Sign in** in Settings. It opens
   the app on the screensaver's own browser profile, and the sign-in cookie lasts a year.
 - **Remove:** use Apps, or **Remove** in Settings.
@@ -27,9 +33,16 @@ input.
   screen, so the app's light background is never seen.
 - **Exit:** low-level keyboard and mouse hooks end it on any key, click or wheel, or on a move of more than 12 px.
   A cursor-watching timer backs them up.
-- **Preview:** the little monitor in Windows' dialog shows the screen's current thumbnail, without a browser.
+- **Monitors:** one window and one page per monitor. Each monitor is known by its device path from
+  QueryDisplayConfig, which is that physical monitor on that connector. A laptop's choice therefore comes back
+  whenever the same monitor is plugged in again, whatever number Windows gives it that day.
+  - The monitors are read each time the screensaver starts.
+  - While it runs, a display change (dock, undock, lid) re-arranges after 1 s: windows move, new monitors get a
+    page, and the windows of monitors that went away close.
+  - Mirrored monitors share one window.
+- **Preview:** the little monitor in Windows' dialog shows the main monitor's screen thumbnail, filled or fitted, without a browser.
 - **What it shows:** each download carries its server (the page's origin) and screen as a trailer appended by
-  `routes/screensaver.py`: `[JSON][int32 length]["SMSS"]`. Settings stores any change in `HKCU\Software\ScreenMachine`.
+  `routes/screensaver.py`: `[JSON][int32 length]["SMSS"]`. Settings stores choices in `HKCU\Software\ScreenMachine\Screensaver`: the server, the default (`Screen`, `Fit`), and `Monitors\<id>` for each monitor.
 - **Log:** `%LOCALAPPDATA%\ScreenMachine\Screensaver\screensaver.log`.
 
 ## Build and check (from WSL on a Windows PC)
@@ -55,4 +68,3 @@ Results go to `out/selftest/`.
 - **Displays may stay on:** Windows may keep a display on while it plays video, so with a clip or live on the page the
   monitor may not sleep at its usual time.
 - **Managed PCs:** a group policy that fixes the screensaver overrides this one, and the installer says so.
-- **Multiple monitors:** every monitor shows the same screen.
