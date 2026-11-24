@@ -300,7 +300,9 @@ def handle_generate(instruction, context, now, output, publish_destination):
                     if path:
                         image_paths.append(path)
         
-        # If publish is False, we need to manually save to bucket using publish_to_destination
+        # If publish is False, we need to manually save to bucket using publish_to_destination: this scheduler's,
+        # or the one named in save_to (e.g. the cloud filing a day's picture with the screen that shows it first)
+        save_to = (instruction.get("save_to") or "").strip() or publish_destination
         if not publish and image_paths:
             saved_paths = []
             
@@ -329,7 +331,7 @@ def handle_generate(instruction, context, now, output, publish_destination):
                 # Call publish_to_destination with silent=True to save to bucket without display
                 pub_result = publish_to_destination(
                     source=path,
-                    publish_destination_id=publish_destination,
+                    publish_destination_id=save_to,
                     silent=True,  # This prevents overlays but still saves to bucket
                     metadata=image_metadata,
                     batch_id=batch_id,
@@ -341,7 +343,7 @@ def handle_generate(instruction, context, now, output, publish_destination):
                     if "meta" in pub_result and "filename" in pub_result["meta"]:
                         # Store the full bucket path, not just the filename
                         from routes.bucketer import bucket_path
-                        full_path = str(bucket_path(publish_destination) / pub_result["meta"]["filename"])
+                        full_path = str(bucket_path(save_to) / pub_result["meta"]["filename"])
                         saved_paths.append(full_path)
                     else:
                         saved_paths.append(path)
@@ -378,7 +380,10 @@ def handle_generate(instruction, context, now, output, publish_destination):
             if len(stored_prompt) > 50:
                 stored_prompt = stored_prompt[:47] + "..."
                 
-            # Append entry to history with standardized fields
+            # Append entry to history with standardized fields; with the refiner's prompt, so a schedule can feed
+            # the recent pictures back in (e.g. "unlike these")
+            refined = next((r.get("actual_refined_prompt") for r in response or [] if isinstance(r, dict)
+                            and r.get("actual_refined_prompt")), None)
             context["vars"][history_var].append({
                 "timestamp": now.strftime("%Y-%m-%d %H:%M:%S"),
                 "type": "generation",
@@ -386,14 +391,16 @@ def handle_generate(instruction, context, now, output, publish_destination):
                 "refiner": refiner,
                 "workflow": workflow,
                 "image_paths": image_paths,
-                "published": publish
+                "published": publish,
+                **({"refined_prompt": str(refined)[:400]} if refined else {}),
             })
             
-            # Cap history size to prevent unlimited growth
-            if len(context["vars"][history_var]) > MAX_HISTORY_SIZE:
-                # Remove oldest entries first (keeping most recent MAX_HISTORY_SIZE entries)
-                context["vars"][history_var] = context["vars"][history_var][-MAX_HISTORY_SIZE:]
-                debug(f"Capped {history_var} at {MAX_HISTORY_SIZE} entries")
+            # Cap history size to prevent unlimited growth (history_size: this history's own cap)
+            cap = int(instruction.get("history_size") or MAX_HISTORY_SIZE)
+            if len(context["vars"][history_var]) > cap:
+                # Remove oldest entries first (keeping the most recent entries)
+                context["vars"][history_var] = context["vars"][history_var][-cap:]
+                debug(f"Capped {history_var} at {cap} entries")
         
         success_msg = f"Generated {len(image_paths)} image(s) from: '{prompt}'"
         if not publish:

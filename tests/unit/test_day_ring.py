@@ -33,9 +33,9 @@ def at(monkeypatch, hh, mm):
     monkeypatch.setattr(su, "datetime", Fixed)
 
 
-def run(block, ctx, important=False):
+def run(block, ctx, important=False, generate=None):
     """Run a block as the scheduler loop does (queue, front-pushed for_each rounds, terminate), skipping imports and
-    recording waits and publishes instead of doing them."""
+    recording waits and publishes instead of doing them (generate(instruction, ctx) stands in for a generation)."""
     q = get_instruction_queue(DEST)
     q.clear()
     q.push_block(block, important=important)
@@ -46,6 +46,8 @@ def run(block, ctx, important=False):
             continue
         if ins.get("action") in ("wait", "publish", "animate", "generate"):
             done.append(su.process_instruction_jinja(ins, ctx, DEST))
+            if generate and ins["action"] == "generate":
+                generate(done[-1], ctx)
             continue
         if sch.run_instruction(ins, ctx, real_datetime.now(), [], DEST) == "EXIT_BLOCK":
             q.remove_non_important()
@@ -161,6 +163,11 @@ def test_a_published_picture_keeps_its_origin_and_drops_an_old_transition(monkey
     import routes.publisher as pub
     src = buckets / "cloud" / "b.jpg"
     src.write_bytes(b"x")
+    tmp = buckets / "_inline" / "w.jpg"                                           # a generator's temp file: no origin
+    tmp.parent.mkdir()
+    tmp.write_bytes(b"x")
+    assert "origin" not in pub._with_origin_and_transition(tmp, "north-screen", {"id": "north-screen"}, {}, True, False)
+    (buckets / "cloud" / "bucket.json").write_text("{}")
     meta = pub._with_origin_and_transition(src, "north-screen", {"id": "north-screen"},
                                            {"prompt": "p", "transition": {"url": "old"}}, True, False)
     assert meta == {"prompt": "p", "origin": "cloud/b.jpg"}
@@ -266,6 +273,99 @@ def test_a_replay_takes_turns_and_shows_every_transition_once(monkeypatch):
     assert pairs == {(f"p{i}", f"p{(i + 1) % 8}") for i in range(8)}               # each transition once
 
 
+def _event_block(screen, value):
+    for layer in json.loads((SCHEDULES / f"{screen}.json").read_text())["schedule_stack"]:
+        for t in layer["triggers"]:
+            if t.get("value") == value:
+                return t["trigger_actions"]["instructions_block"]
+    pytest.skip(f"{screen} has no {value} yet")
+
+
+def test_the_cloud_makes_two_takes_and_chooses_them_as_a_set(monkeypatch):
+    import routes.openai
+    blk = _event_block("cloud", "Commission_day")
+    seen = {}
+
+    def llm(**k):
+        if "two takes" in str(k.get("system_prompt")):
+            seen["images"] = k.get("images")
+            return {"outputs": ["1", "0", "1", "0", "1", "0", "1", "0"]}
+        return {"outputs": [f"prompt {i}" for i in range(8)]}
+    monkeypatch.setattr(routes.openai, "openai_prompt", llm)
+    at(monkeypatch, 10, 10)                                                         # north is on p3, next p4
+    ctx = {"vars": {"ring_n": 8, "ring_step_min": 30, "ring_screens": 2, "day_set": [f"old{i}" for i in range(8)],
+                    "ring_buckets": ["north-screen", "south-screen"]}}
+    takes = lambda ins, c: c["vars"].__setitem__(ins["output_var"], [ins["input"]["prompt"] + " A", ins["input"]["prompt"] + " B"])
+    done = run([x for x in blk if x.get("action") != "export_var"], ctx, important=True, generate=takes)
+    gens = [d for d in done if d["action"] == "generate"]
+    assert [d["input"]["prompt"] for d in gens] == [f"prompt {i}" for i in (4, 5, 6, 7, 0, 1, 2, 3)]
+    assert "batch=2" in gens[0]["additionalProperties"]
+    assert [d["save_to"] for d in gens] == ["south-screen"] * 4 + ["north-screen"] * 4  # filed with its first screen
+    assert seen["images"][:4] == ["prompt 0 A", "prompt 0 B", "prompt 1 A", "prompt 1 B"]      # in ring order
+    assert ctx["vars"]["day_set"] == [f"prompt {i} {'B' if i % 2 == 0 else 'A'}" for i in range(8)]
+    ahead = [(d["image"], d.get("to")) for d in done if d["action"] == "animate"]
+    assert ("prompt 3 A", "prompt 4 B") in ahead and ahead[-1] == ("prompt 3 A", "prompt 4 B")  # wrap: back to start
+    assert len([a for a in ahead if a[1]]) == 9
+
+
+def test_the_beast_keeps_its_safety_check_and_tries_again(monkeypatch):
+    import routes.openai
+    blk = _event_block("the-beast", "Commission_day")
+    verdicts = iter(["REJECT", "APPROVE"] + ["APPROVE"] * 8 + ["REJECT"] * 3)
+
+    def llm(**k):
+        if "compliance reviewer" in str(k.get("system_prompt")):
+            return {"outputs": [next(verdicts), "90%", "ok"]}
+        return {"outputs": ["2", "90%", "the clearest text"]}
+    monkeypatch.setattr(routes.openai, "openai_prompt", llm)
+    at(monkeypatch, 6, 0)
+    ctx = {"vars": {"ring_n": 10, "ring_step_min": 30, "ring_screens": 1, "ring_day_starts": "08:00",
+                    "day_set": [f"old{i}" for i in range(10)]}}
+    n = iter(range(100))
+
+    def batch(ins, c):
+        b = next(n)
+        c["vars"]["set_of_images"] = [f"b{b}-{k}" for k in range(4)]
+    done = run(blk, ctx, important=True, generate=batch)
+    gens = [d for d in done if d["action"] == "generate"]
+    assert all("batch=4" in d["additionalProperties"] and d["refiner"] == "nous_values" for d in gens)
+    assert len(gens) == 2 + 8 + 3                                                   # a retry; the last never passes
+    day = ctx["vars"]["day_set"]
+    assert day[0] == "b1-2" and day[1] == "b2-2" and day[9] == "old9"              # the chosen of a passing batch
+    assert len([d for d in done if d["action"] == "animate" and d.get("to")]) == 11
+    clips = [d["image"] for d in done if d["action"] == "animate" and not d.get("to")]
+    assert clips[:2] == ["b1-2", "b2-2"] and clips[-1] == ""                    # a clip of each passing picture
+    assert "unlike these recent" not in gens[0]["input"]["prompt"]                # nothing seen yet
+
+
+def test_the_beast_feeds_back_its_recent_pictures(monkeypatch):
+    blk = _event_block("the-beast", "Commission_day")
+    gen = next(x for x in json.dumps(blk) and _walk(blk) if x.get("action") == "generate")
+    ctx = {"vars": {"inspiration": "see through",
+                    "beast_history": [{"refined_prompt": f"idea {k}"} for k in range(60)] + [{"prompt": "old, unrefined"}]}}
+    p = su.process_instruction_jinja(gen, ctx, DEST)["input"]["prompt"]
+    assert p.startswith("see through") and "idea 59" in p and "idea 11" in p and "idea 10" not in p
+    assert gen["history_size"] == 50 and gen["history_var"] == "beast_history"
+
+
+def _walk(block):
+    for x in block:
+        yield x
+        yield from _walk(x.get("instructions_block") or [])
+
+
+def test_the_beast_changes_every_half_hour_round_its_ten(monkeypatch):
+    blk = _rotation("the-beast")
+    slots = []
+    for h, m in ((8, 0), (8, 30), (9, 0), (12, 59), (13, 0), (7, 59)):
+        at(monkeypatch, h, m)
+        ctx = {"vars": {"day_set": [f"p{i}" for i in range(10)], "ring_step_min": 30, "ring_screens": 1,
+                        "ring_day_starts": "08:00"}}
+        run(blk, ctx)
+        slots.append(ctx["vars"]["_ring_slot"])
+    assert slots == [0, 1, 2, 9, 0, 9]                                              # 300 minutes round, then again
+
+
 def test_the_cloud_commissions_from_the_north_screens_next_turn(monkeypatch):
     blk = None
     for layer in json.loads((SCHEDULES / "cloud.json").read_text())["schedule_stack"]:
@@ -283,5 +383,4 @@ def test_the_cloud_commissions_from_the_north_screens_next_turn(monkeypatch):
     done = run([x for x in blk if x.get("action") != "export_var"], ctx, important=True)
     gens = [d["input"]["prompt"] for d in done if d["action"] == "generate"]
     assert gens == [f"prompt {i}" for i in (4, 5, 6, 7, 0, 1, 2, 3)]
-    ahead = [(d["image"], d.get("to")) for d in done if d["action"] == "animate"]
-    assert ahead[0] == ("", None) and ahead[1] == ("old3", "")                  # no picture made in the test: nothing
+    assert ctx["vars"]["day_set"] == [f"old{i}" for i in range(8)]                 # nothing made: the old ones stay

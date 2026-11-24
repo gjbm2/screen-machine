@@ -380,6 +380,16 @@
               "title": "Output Variable",
               "description": "Optional: variable name to store the generated image path(s). If batch > 1, stores a list of paths."
             },
+            "save_to": {
+              "type": "string",
+              "title": "Save to",
+              "description": "Optional, with publish off: the destination whose bucket the pictures are filed in (default this one's). Supports Jinja."
+            },
+            "history_size": {
+              "type": ["integer", "string"],
+              "title": "History size",
+              "description": "Optional: how many entries the history variable keeps (default 20). Each entry has the refiner's prompt (refined_prompt)."
+            },
             "history_var": {
               "type": "string",
               "title": "History Variable",

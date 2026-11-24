@@ -416,7 +416,7 @@ def _with_origin_and_transition(source: Path, dest_id: str, dest: dict, metadata
     for, the one made ahead from what the screen shows to it (routes/transitions.py)."""
     try:
         root = Path(bucket_path(dest_id)).parent.resolve()
-        if not metadata.get("origin") and source.resolve().parent.parent == root:
+        if not metadata.get("origin") and source.resolve().parent.parent == root and (source.parent / "bucket.json").exists():
             metadata = {**metadata, "origin": f"{source.parent.name}/{source.name}"}
         if from_sidecar and "transition" in metadata:
             metadata = {k: v for k, v in metadata.items() if k != "transition"}
