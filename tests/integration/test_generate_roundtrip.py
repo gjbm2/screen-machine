@@ -1447,6 +1447,7 @@ def test_a_picture_that_could_not_be_fitted_goes_up_whole_with_its_overlay(house
 # ---------------------------------------------------------------------------- a video for a screen is AI-upscaled (23 Nov)
 # The video model draws 1344x768; for a 4K screen its drawn frames get RealESRGAN x2 before the interpolation, so moving
 # pictures are as detailed as the stills; inline in the generator the drawn size is fine and quicker (owner, 23 Nov).
+# 24 Nov: x4 (the video is drawn under half the screen's size) and one lanczos shrink to the screen's frame.
 
 def _sent_graph(house, workflow, destination):
     fake = FakeRunPod(inline("PNG", "out_00001_.png"))
@@ -1467,12 +1468,19 @@ def test_a_video_for_a_screen_is_upscaled_and_inline_it_is_not(house, workflow):
     graph, job = _sent_graph(house, workflow, SCREEN)
     ups = [k for k, n in graph.items() if n["class_type"] == "ImageUpscaleWithModel"]
     assert len(ups) == 1, "a video for the 4K screen lost its AI upscale"
+    # x4 then one shrink to the screen's size (24 Nov: the 16:9 reference comes back at the screen's exact frame)
+    fin = next(k for k, n in graph.items() if "{{VIDEO-FINISH}}" in n.get("_meta", {}).get("title", ""))
+    assert graph[fin]["inputs"]["image"] == [ups[0], 0]
+    assert (graph[fin]["inputs"]["width"], graph[fin]["inputs"]["height"]) == (_destination()["maxwidth"], _destination()["maxheight"])
+    loader = next(n for n in graph.values() if n["class_type"] == "UpscaleModelLoader")
+    assert loader["inputs"]["model_name"] == "RealESRGAN_x4plus.pth"
     rife = next(n for n in graph.values() if n["class_type"] == "FrameInterpolate")
-    assert rife["inputs"]["images"] == [ups[0], 0], "the in-betweens should be made from the upscaled frames"
+    assert rife["inputs"]["images"] == [fin, 0], "the in-betweens should be made from the finished frames"
     assert "Upscaling" in (job["stages"] or [])
 
     graph, job = _sent_graph(house, workflow, None)
     assert not [n for n in graph.values() if n["class_type"] in ("ImageUpscaleWithModel", "UpscaleModelLoader")]
+    assert not [n for n in graph.values() if "{{VIDEO-FINISH}}" in n.get("_meta", {}).get("title", "")]
     decode = next(k for k, n in graph.items() if n["class_type"] == "VAEDecode")
     rife = next(n for n in graph.values() if n["class_type"] == "FrameInterpolate")
     assert rife["inputs"]["images"] == [decode, 0]

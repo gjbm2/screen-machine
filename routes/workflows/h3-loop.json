@@ -218,7 +218,7 @@
     0
    ],
    "images": [
-    "22",
+    "23",
     0
    ],
    "multiplier": 3
@@ -266,6 +266,22 @@
   "class_type": "ImageUpscaleWithModel",
   "_meta": {
    "title": "AI upscale the drawn frames {{UPSCALE_FLAG}}"
+  }
+ },
+ "23": {
+  "inputs": {
+   "image": [
+    "22",
+    0
+   ],
+   "upscale_method": "lanczos",
+   "width": 2688,
+   "height": 1536,
+   "crop": "disabled"
+  },
+  "class_type": "ImageScale",
+  "_meta": {
+   "title": "Finish to the screen's size {{UPSCALE_FLAG}} {{VIDEO-FINISH}}"
   }
  }
 }

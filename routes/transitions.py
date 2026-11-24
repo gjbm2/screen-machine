@@ -106,6 +106,12 @@ def draw(a: bytes, b: bytes, prompt: str, job_id: str, deadline: float, upscale:
     for n in graph.values():
         if "noise_seed" in n.get("inputs", {}):
             n["inputs"]["noise_seed"] = int(time.time()) % 100_000_000
+    if upscale:          # finished at the new picture's size (as it is shown, at most 4K), as a screen clip is
+        from argparse import Namespace
+        from routes.generate import image_size, video_finish
+        w, h = image_size({"image": _b64(b)}) or (3840, 2160)
+        k = min(1.0, 3840 / max(w, h))
+        video_finish(graph, Namespace(width=None, height=None, images=[{"image": _b64(b)}]), (round(w * k), round(h * k)))
     if not upscale:      # {{UPSCALE_FLAG}} nodes out, the in-betweens from the decoded frames
         ups = [k for k, n in graph.items() if "{{UPSCALE_FLAG}}" in n.get("_meta", {}).get("title", "")]
         decode = next(k for k, n in graph.items() if n.get("class_type") == "VAEDecode")

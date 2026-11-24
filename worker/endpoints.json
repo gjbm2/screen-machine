@@ -85,12 +85,12 @@
       "workers_max": 3,
       "idle_timeout": 5,
       "execution_timeout_s": 1800,
-      "bundle": "https://huggingface.co/gjbm2/sm-h3-bundle:4bc6c6b7d9e7b982012a4fe1b96112e45d4b7c92",
+      "bundle": "https://huggingface.co/gjbm2/sm-h3-bundle:945a72ecda99f0e73700674bdb8d2cf82a16b79e",
       "env": {
         "COMFY_ARGS": "--disable-dynamic-vram",
         "SM_PREFETCH": "1"
       },
-      "note": "Video (plan step 6, 19 Nov): MiniMax H3 FL2VA, h3-i2v.json and h3-fl2v.json; 5 s at 1344x768 drawn, RealESRGAN x2 to 2688x1536 (23 Nov: moving pictures as detailed as the stills), RIFE x3 to 15 s at 24 fps for the TV's slow eased loop, no sound; ~2 min a clip on a PRO 6000. Image 2026-11-19-1 maps the frame_interpolation folder. One model, no dwell. Max 3 (owner, 23 Nov: a film's segments render side by side, docs/FILM_MODE.md; the account quota is 10, so sm-krea2 and sm-qwen went from 3 to 2: nothing had needed three at once). h3-film.json: one film segment, first picture to last at real speed, with its sound.",
+      "note": "Video (plan step 6, 19 Nov): MiniMax H3 FL2VA, h3-i2v.json and h3-fl2v.json; 5 s at 1344x768 drawn, RealESRGAN x2 to 2688x1536 (23 Nov: moving pictures as detailed as the stills; 24 Nov: x4 then a lanczos shrink to a 4K screen, bundle 945a72ec), RIFE x3 to 15 s at 24 fps for the TV's slow eased loop, no sound; ~2 min a clip on a PRO 6000. Image 2026-11-19-1 maps the frame_interpolation folder. One model, no dwell. Max 3 (owner, 23 Nov: a film's segments render side by side, docs/FILM_MODE.md; the account quota is 10, so sm-krea2 and sm-qwen went from 3 to 2: nothing had needed three at once). h3-film.json: one film segment, first picture to last at real speed, with its sound.",
       "id": "srxuhd77ow2yco"
     }
   }

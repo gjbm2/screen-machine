@@ -359,6 +359,28 @@ def finish_size(picture, box, turn=False):
     return max(1, round(box_h * shape)), box_h
 
 
+def video_finish(graph, args_namespace, box):
+    """A video for a screen ends at the screen's size, as a still does (owner's design, 22 Nov: the AI upscaler does the
+    enlarging, x2 when the video is drawn at least half the size, x4 below that, and one lanczos shrink to the finish;
+    24 Nov: x4 then the shrink to 3840x2160 measured no slower than x2). The finish is the source picture's shape
+    inside the screen, so a 16:9 still's clip (drawn 1344x768) comes back at exactly 3840x2160, on the still's frame."""
+    node = next((n for n in graph.values() if isinstance(n, dict) and "{{VIDEO-FINISH}}" in n.get("_meta", {}).get("title", "")), None)
+    loader = next((n for n in graph.values() if isinstance(n, dict) and n.get("class_type") == "UpscaleModelLoader"
+                   and "{{UPSCALE_FLAG}}" in n.get("_meta", {}).get("title", "")), None)
+    video = next((n["inputs"] for n in graph.values() if isinstance(n, dict)
+                  and {"width", "height", "length"} <= set(n.get("inputs", {}))), {})
+    drawn = (int(args_namespace.width or video.get("width") or 0), int(args_namespace.height or video.get("height") or 0))
+    if not (node and loader and box and drawn[0] and drawn[1]):
+        return None
+    pic = image_size(args_namespace.images[0]) if getattr(args_namespace, "images", None) else None
+    w, h = finish_size(pic or drawn, box)
+    need = max(w / drawn[0], h / drawn[1])
+    loader["inputs"]["model_name"] = "RealESRGAN_x4plus.pth" if need > 2 else "RealESRGAN_x2plus.pth"
+    node["inputs"]["width"], node["inputs"]["height"] = w, h
+    info(f"Video finish: drawn {drawn[0]}x{drawn[1]} -> {loader['inputs']['model_name']} -> {w}x{h}")
+    return w, h
+
+
 def update_workflow(json_data, replacements):
     """
     Updates 'inputs' of matching nodes in a workflow JSON based on regex matches
@@ -911,6 +933,8 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
                     int(args_namespace.height or video.get("height") or 0))
         vars(args_namespace)["skip-upscaling"] = not (screen_box and drawn and max(screen_box) > 1.25 * drawn)
         info(f"Video upscale: {'off' if vars(args_namespace)['skip-upscaling'] else 'on'} (drawn {drawn}, screen {screen_box})")
+        if not vars(args_namespace)["skip-upscaling"]:
+            video_finish(workflow_data, args_namespace, screen_box)
     workflow_data = apply_workflow_mutations(workflow_data, workflow_config, args_namespace)
 
     # A video's pictures go at the size it is drawn at, resized here (Lanczos), not as 4K for the worker to shrink:
