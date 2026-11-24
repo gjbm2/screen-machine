@@ -173,6 +173,53 @@ def note_published(screen: str, to_name: str, transition: dict) -> None:
     for name in (transition.get("from"), to_name):
         if name and (folder / name).exists():
             _note(folder / name, entry)
+    # its own record, for the review page (records): the writer's working, cost and time, and later its score
+    try:
+        (folder / (transition["file"] + ".json")).write_text(json.dumps({**entry, "screen": screen}, indent=2), "utf-8")
+    except Exception as e:
+        warning(f"[transition] could not write its record: {e}")
+
+
+def records(screen: str) -> dict:
+    """The screen's transitions for the review page, newest first (each with its pictures' URLs), and the ones that
+    weren't made."""
+    from routes.bucketer import bucket_path
+    folder = bucket_path(screen) / FOLDER
+    out = []
+    for sc in sorted(folder.glob("*.mp4.json"), reverse=True):
+        try:
+            r = json.loads(sc.read_text("utf-8"))
+        except Exception:
+            continue
+        for end in ("from", "to"):
+            name = r.get(end)
+            if name:
+                r[end + "_url"] = f"/output/{screen}/{name}"
+                r[end + "_thumb"] = f"/output/{screen}/thumbnails/{name}.jpg"
+        out.append({**r, "name": sc.name[:-len(".json")], "screen": screen})
+    failed = []
+    try:
+        failed = [json.loads(l) for l in (folder / "failed.jsonl").read_text("utf-8").splitlines() if l.strip()]
+    except Exception:
+        pass
+    return {"transitions": out, "failed": failed[::-1]}
+
+
+def set_score(screen: str, name: str, score: int | None, note: str | None) -> dict:
+    """The review page's score (1-5, or None to clear) and note on one transition."""
+    from routes.bucketer import bucket_path
+    if "/" in name or not name.endswith(".mp4"):
+        raise FileNotFoundError(name)
+    sc = bucket_path(screen) / FOLDER / (name + ".json")
+    r = json.loads(sc.read_text("utf-8"))
+    if score is not None and not (1 <= int(score) <= 5):
+        raise ValueError("a score is 1 to 5")
+    r["score"] = int(score) if score is not None else None
+    if note is not None:
+        r["note"] = note.strip()[:2000]
+    r["scored_at"] = round(time.time(), 1)
+    sc.write_text(json.dumps(r, indent=2), "utf-8")
+    return r
 
 
 def before_publish(screen: str, source: str, job_id: str, tracker=None, meta_b: dict | None = None,
@@ -206,10 +253,24 @@ def before_publish(screen: str, source: str, job_id: str, tracker=None, meta_b: 
         name = time.strftime("%Y%m%d-%H%M%S") + f"-{job_id[-8:]}.mp4"
         ease(drawn, folder / name, deadline)
         out = {"file": f"{FOLDER}/{name}", "url": f"/output/{screen}/{FOLDER}/{name}", "from": showing,
-               "connection": words.get("connection"), "device": words.get("device"), "idea": words.get("idea"), "prompt": prompt, "at": round(time.time(), 1), "play_s": PLAY_S,
+               "connection": words.get("connection"), "device": words.get("device"), "idea": words.get("idea"), "prompt": prompt,
+               "writer": {k: words.get(k) for k in ("link_a", "link_b", "motion", "rest")}, "at": round(time.time(), 1), "play_s": PLAY_S,
                "cost_usd": usd, "made_s": round(time.time() - t0, 1)}
         info(f"[transition] {screen}: {showing} -> new picture in {out['made_s']} s: {out['idea']}")
         return out
     except Exception as e:
         warning(f"[transition] {screen}: none this time ({e}); the new picture cross-fades")
+        _failed(screen, {"at": round(time.time(), 1), "error": str(e)[:300], "made_s": round(time.time() - t0, 1)})
         return None
+
+
+def _failed(screen: str, row: dict) -> None:
+    """A transition that wasn't made, for the review page (transitions/failed.jsonl)."""
+    try:
+        from routes.bucketer import bucket_path
+        folder = bucket_path(screen) / FOLDER
+        folder.mkdir(parents=True, exist_ok=True)
+        with open(folder / "failed.jsonl", "a", encoding="utf-8") as f:
+            f.write(json.dumps(row) + "\n")
+    except Exception:
+        pass

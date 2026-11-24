@@ -48,3 +48,39 @@ def test_both_pictures_list_the_transition(monkeypatch, tmp_path):
     assert a["transitions"] == b["transitions"] == [{**made, "to": "b.jpg"}]
     tr.note_published("north-screen", "b.jpg", made)            # once each, however often it's noted
     assert len(json.loads((tmp_path / "b.jpg.json").read_text())["transitions"]) == 1
+
+
+def test_the_review_page_lists_a_transition_and_keeps_its_score(monkeypatch, tmp_path):
+    import routes.bucketer
+    import pytest
+    monkeypatch.setattr(routes.bucketer, "bucket_path", lambda screen: tmp_path)
+    (tmp_path / "a.jpg").write_bytes(b"a")
+    (tmp_path / "b.jpg").write_bytes(b"b")
+    (tmp_path / "transitions").mkdir()
+    (tmp_path / "transitions" / "x.mp4").write_bytes(b"v")
+    made = {"file": "transitions/x.mp4", "url": "/output/north-screen/transitions/x.mp4", "from": "a.jpg",
+            "connection": "device", "device": "page turn", "writer": {"motion": "folds from the right"}}
+    tr.note_published("north-screen", "b.jpg", made)
+    r = tr.records("north-screen")["transitions"][0]
+    assert r["name"] == "x.mp4" and r["device"] == "page turn" and r["to"] == "b.jpg"
+    assert r["from_thumb"] == "/output/north-screen/thumbnails/a.jpg.jpg"
+    tr.set_score("north-screen", "x.mp4", 4, "nice fold")
+    r = tr.records("north-screen")["transitions"][0]
+    assert r["score"] == 4 and r["note"] == "nice fold"
+    with pytest.raises(ValueError):
+        tr.set_score("north-screen", "x.mp4", 9, None)
+    with pytest.raises(FileNotFoundError):
+        tr.set_score("north-screen", "../a.jpg", 3, None)
+
+
+def test_a_transition_that_was_not_made_is_logged(monkeypatch, tmp_path):
+    import routes.bucketer
+    import routes.clips
+    monkeypatch.setattr(routes.bucketer, "bucket_path", lambda screen: tmp_path)
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "output").mkdir()
+    (tmp_path / "output" / "north-screen.jpg").write_bytes(b"x")
+    monkeypatch.setattr(routes.clips, "published_still", lambda screen: "a.jpg")
+    monkeypatch.setattr(tr, "write", lambda *a, **k: {"full_prompt": ""})
+    assert tr.before_publish("north-screen", str(tmp_path / "output" / "north-screen.jpg"), "job_test_3") is None
+    assert tr.records("north-screen")["failed"][0]["error"]

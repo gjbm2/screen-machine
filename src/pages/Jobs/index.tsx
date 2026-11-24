@@ -178,6 +178,11 @@ export default function JobsPage() {
 
         <Costs />
 
+        <a href="/transitions" className={cn(CARD_CLASS, "mt-4 flex min-h-11 items-center justify-between px-4 py-3 text-[15px]")}>
+          <span>Screen transitions: review and score them</span>
+          <span aria-hidden className="text-muted-foreground">›</span>
+        </a>
+
         <section aria-labelledby="jobs-history" className="mt-8">
           <h2 id="jobs-history" className="mb-2 text-[17px] font-semibold">
             History

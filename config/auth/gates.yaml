@@ -26,6 +26,7 @@ rules:
   - {path: '^/api/buckets/reindex$', role: admin}
   - {path: '^/api/buckets/[^/]+/(purge|reindex|extractjson)$', role: admin}
   - {path: '^/api/buckets/_recent/(items|info)$', role: admin}   # the whole of everyone's Generated
+  - {path: '^/api/buckets/[^/]+/transitions(/|$)', role: admin}   # the transitions' review page (scores)
   - {path: '^/api/buckets/add_image_to_new_bucket$', role: guest, body: [source_publish_destination, target_publish_destination]}
 
   # --- publishing: to and from destinations the caller may use

@@ -44,6 +44,7 @@ const SchemaEdit = page(() => import("./pages/SchemaEdit"));
 const SchemaDynamicForm = page(() => import("./pages/SchemaDynamicForm"));
 const Scheduler = page(() => import("./pages/scheduler.tsx"));
 const JobsPage = page(() => import("./pages/Jobs"));
+const TransitionsPage = page(() => import("./pages/Transitions"));
 const LightSense = page(() => import("./pages/LightSense"));
 const AndroidApp = page(() => import("./pages/AndroidApp"));
 const AdminPanel = page(() => import("./pages/AdminPanel"));
@@ -77,6 +78,7 @@ const App = () => (
             <Route path="/schema-dynamic-form" element={<AdminOnly><SchemaDynamicForm /></AdminOnly>} />
             <Route path="/scheduler" element={<AdminOnly><Scheduler /></AdminOnly>} />
             <Route path="/jobs" element={<AdminOnly><JobsPage /></AdminOnly>} />
+            <Route path="/transitions" element={<AdminOnly><TransitionsPage /></AdminOnly>} />
             <Route path="/lightsense" element={<AdminOnly><LightSense /></AdminOnly>} />
             <Route path="/androidapp" element={<AndroidApp />} />
             <Route path="/app" element={<AndroidApp />} />

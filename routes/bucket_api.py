@@ -308,6 +308,27 @@ def published_info(bucket_id: str):
         "clips": clips,
     })
 
+# -- transitions (routes/transitions.py): the review page ----------------------
+
+@buckets_bp.route("/buckets/<bucket_id>/transitions", methods=["GET"])
+def transitions_list(bucket_id: str):
+    """A screen's transitions, newest first, and the ones that weren't made."""
+    from routes.transitions import records
+    return jsonify(records(bucket_id))
+
+
+@buckets_bp.route("/buckets/<bucket_id>/transitions/<name>/score", methods=["POST"])
+def transitions_score(bucket_id: str, name: str):
+    """Score a transition (1-5, null to clear) and note why: {"score", "note"}."""
+    from routes.transitions import set_score
+    body = request.get_json(silent=True) or {}
+    try:
+        return jsonify(set_score(bucket_id, name, body.get("score"), body.get("note")))
+    except FileNotFoundError:
+        abort(404, "no such transition")
+    except ValueError as e:
+        abort(400, str(e))
+
 # -- favourites --------------------------------------------------------------
 
 @buckets_bp.route("/buckets/<bucket_id>/favorite/<filename>", methods=["POST"])
