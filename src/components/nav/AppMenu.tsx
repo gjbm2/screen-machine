@@ -4,13 +4,14 @@
 //   Go to       Room · Music · Lights setup · Generator · Schedules · Settings ("Here" marks this page; Room, Music
 //               and Lights only while the room answers; Schedules, Settings, Tools and Developer for admins only)
 //   <this page> whatever the page passes as children (the Room page: its connection, last mode change, activity log)
-//   Screens     folded ("7 screens"): each screen's live badge and its Room, Generator, Schedule and TV page links
+//   Screens     folded ("7 screens"): each screen's live badge and its Room, Generator, Schedule and TV page links, and on
+//               a computer its Windows screensaver (a download: tools/screensaver/)
 //   Tools       LAN only, each in a new tab: the scene library, the DSP monitor (never Spectre: owner, it is not reachable from this app)
 //   Developer   folded: the page's technical extras (`dev`), then the developer pages
 // Links are AppLinks (inside the app: no reload, the dock and the socket stay), and a tap closes the menu.
 
 import type { ReactNode } from "react";
-import { CalendarClock, ExternalLink, Lightbulb, Music, Settings, SlidersHorizontal, Sparkles } from "lucide-react";
+import { CalendarClock, Download, ExternalLink, Lightbulb, Music, Settings, SlidersHorizontal, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDeployment } from "@/hooks/useDeployment";
 import { usePublishDestinations } from "@/hooks/usePublishDestinations";
@@ -24,6 +25,7 @@ import { modeLabel } from "@/pages/Room/words";
 import { AppLink } from "./AppLink";
 import { useRoomGlance } from "./useRoomGlance";
 import { AccountRow } from "@/components/auth/AccountRow";
+import { apiUrl } from "@/shared/http/client";
 import { atLeast, useViewer } from "@/shared/auth/viewer";
 import {
   DEV_LINKS,
@@ -103,6 +105,29 @@ function Chip({ href, children, newTab, small, onGo }: { href: string; children:
     </AppLink>
   );
 }
+
+/** The Windows screensaver showing this screen (routes/screensaver.py): a file to save, so a plain link, not an AppLink. */
+function ScreensaverChip({ screen, onGo }: { screen: string; onGo: () => void }) {
+  const q = new URLSearchParams({ screen, origin: window.location.origin });
+  return (
+    <a
+      href={apiUrl(`/screensaver/download?${q}`)}
+      download="ScreenMachine-screensaver.exe"
+      onClick={onGo}
+      title="Shows this screen on a Windows PC when it's idle"
+      className="inline-flex h-8 items-center gap-1 rounded-full border border-stone-200 bg-white px-2.5 text-[13px] font-medium text-stone-500 hover:bg-stone-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <Download className="h-3 w-3 shrink-0 text-stone-400" aria-hidden />
+      Windows screensaver
+    </a>
+  );
+}
+
+// phones and tablets can't run it (an iPad says it is a Mac with a touch screen)
+const ON_A_COMPUTER =
+  typeof navigator !== "undefined" &&
+  !/Android|iPhone|iPad|Mobile/i.test(navigator.userAgent) &&
+  !(/Macintosh/.test(navigator.userAgent) && navigator.maxTouchPoints > 1);
 
 function Heading({ children }: { children: ReactNode }) {
   return <h3 className="px-1 text-sm font-semibold text-muted-foreground">{children}</h3>;
@@ -248,6 +273,7 @@ function MenuBody({
                       <Chip href={displayUrl(d.id)} newTab small onGo={close}>
                         TV page
                       </Chip>
+                      {ON_A_COMPUTER && <ScreensaverChip screen={d.id} onGo={close} />}
                     </div>
                   </li>
                 );

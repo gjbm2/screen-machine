@@ -86,3 +86,6 @@ media-server/local-scripts/.env
 # A deployment's private config: adult-content workflows, their routing text, tests and notes. It is site config
 # (merged in by routes/utils, vite.config.ts and worker/endpoints.py) and stays out of this public repo (owner, 19 Nov 2026).
 deployments/*/private/
+
+# The Windows screensaver build (tools/screensaver/build.sh)
+/tools/screensaver/out/

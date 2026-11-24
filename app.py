@@ -50,6 +50,7 @@ import routes.art_tags
 from routes.deployment_api import deployment_api
 from routes.bakeoff_api import bakeoff_api
 from routes.auth.api import auth_api
+from routes.screensaver import screensaver_api
 import routes.auth
 import smconfig
 
@@ -84,6 +85,7 @@ app.register_blueprint(art_tags_api, url_prefix=API_PREFIX)  # AI art tags + tag
 app.register_blueprint(deployment_api, url_prefix=API_PREFIX)  # GET /api/deployment (deployments/README.md)
 app.register_blueprint(bakeoff_api, url_prefix=API_PREFIX)  # blind model bake-off page (docs/genai-review/PROJECT_PLAN.md)
 app.register_blueprint(auth_api, url_prefix=API_PREFIX)  # Google sign-in (docs/ACCOUNTS.md)
+app.register_blueprint(screensaver_api, url_prefix=API_PREFIX)  # the Windows screensaver download (tools/screensaver/)
 
 # Accounts (docs/ACCOUNTS.md): config/auth/gates.yaml decides which API calls need which role; inert until the
 # deployment turns accounts on with a Google client ID. after_request sets a new browser's space cookie.
