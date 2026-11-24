@@ -287,6 +287,10 @@ def handle_image_generation(input_obj, wait=False, source="api", job_ids_out=Non
     input_dict = {"prompt": prompt}
     if workflow:
         input_dict["workflow"] = workflow
+    # a video's length and its sound, so the helper paces the action to the time and writes the sound asked for
+    for key, name in (("video_seconds", "seconds"), ("sound", "sound")):
+        if kwargs.get(key) not in (None, ""):
+            input_dict[name] = kwargs[key]
 
     utils.logger.debug(f"****input_dict {input_dict}")
     utils.logger.info(f"Resolved refiner: {refiner}, workflow: {workflow}")

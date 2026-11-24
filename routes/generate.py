@@ -214,6 +214,29 @@ def fit_for_video(image, aspect, mode="auto"):
     return {**image, "image": base64.b64encode(buf.getvalue()).decode()}
 
 
+NO_MUSIC = "No music: only the sounds of the action and the place."
+
+
+def silence(graph):
+    """A video graph without its sound (a film's Advanced: Sound, silent): the audio decode and its VAE go, and the video
+    is made with no audio track."""
+    gone = {k for k, n in graph.items() if n.get("class_type") == "VAEDecodeAudio"}
+    vaes = {str(graph[k]["inputs"]["vae"][0]) for k in gone if isinstance(graph[k]["inputs"].get("vae"), list)}
+    for node in graph.values():
+        ins = node.get("inputs", {})
+        for key, v in list(ins.items()):
+            if isinstance(v, list) and len(v) == 2 and str(v[0]) in gone:
+                del ins[key]
+    for k in gone:
+        del graph[k]
+    for k in vaes:
+        used = any(isinstance(v, list) and len(v) == 2 and str(v[0]) == k
+                   for n in graph.values() for v in n.get("inputs", {}).values())
+        if k in graph and not used:
+            del graph[k]
+    return graph
+
+
 MAX_VIDEO_S = 30          # the longest video asked for (Advanced: Length)
 SEGMENT_FRAMES = 244      # one H3 pass, at most (10 s at 24 fps); a longer video is made of passes in a chain
 
@@ -574,6 +597,7 @@ def start(
         video_shape: str | None = None,
         video_fit: str | None = None,
         video_aspect: float | None = None,
+        sound: str | None = None,
         cli_args=None,
         publish_destination: str | None = None,
         batch_id: str | None = None,
@@ -598,7 +622,8 @@ def start(
             timeout=timeout, suppress=suppress, metaprompt=metaprompt, images=images,
             negativeprompt=negativeprompt, interpolate_frames=interpolate_frames, upscaler=upscaler,
             lora=lora, video_length=video_length, lora_strength=lora_strength, shape=shape, fill=fill,
-            video_seconds=video_seconds, video_shape=video_shape, video_fit=video_fit, video_aspect=video_aspect),
+            video_seconds=video_seconds, video_shape=video_shape, video_fit=video_fit, video_aspect=video_aspect,
+            sound=sound),
             cli_args=cli_args, publish_destination=publish_destination, batch_id=batch_id,
             silent=silent, kwargs=kwargs)
     except JobCancelled as e:
@@ -758,6 +783,14 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
                 vars(args_namespace)["video_length"] = 17 * max(1, round((24 * seconds - 5) / 17)) + 5
         if vars(args_namespace).get("interpolate_frames"):
             fps = 24 * int(vars(args_namespace)["interpolate_frames"])
+        # the sound the model draws with the picture (Advanced: Sound): left to it, no music, or none at all; done here so
+        # a prompt helper's rewrite can't drop it
+        sound = vars(args_namespace).get("sound")
+        if any(n.get("class_type") == "VAEDecodeAudio" for n in workflow_data.values()):
+            if sound == "silent":
+                workflow_data = silence(workflow_data)
+            elif sound == "no_music":
+                args_namespace.prompt = f"{(args_namespace.prompt or '').rstrip()} {NO_MUSIC}"
 
     unique_video_name = f"output_video{str(uuid.uuid4())[:8]}"
     json_replacements = {
