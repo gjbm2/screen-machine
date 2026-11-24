@@ -12,7 +12,8 @@ import { Notice, Spinner } from "@/pages/Room/bits";
 import { CARD_CLASS, RoomThemeStyle, THEME_CLASS } from "@/pages/Room/theme";
 import { getTransitions, scoreTransition, type Transition, type TransitionFailure } from "@/shared/api/transitions";
 
-const SCREENS = ["north-screen", "south-screen"];
+// the screens' own (made as a picture went up) and the day's set's (made ahead by the cloud's schedule)
+const SCREENS = ["north-screen", "south-screen", "cloud"];
 const GBP_PER_USD = 1 / 1.3;
 
 function kindOf(t: Transition): string {
@@ -200,7 +201,7 @@ export default function TransitionsPage() {
                     screen === s ? "border-foreground bg-foreground text-background" : "border-stone-300 bg-card",
                   )}
                 >
-                  {s ? nameOf(s) : "Both screens"}
+                  {s === "cloud" ? "The day's set" : s ? nameOf(s) : "All"}
                 </button>
               ))}
             </div>
@@ -223,7 +224,7 @@ export default function TransitionsPage() {
             )}
             {shown.length === 0 && (
               <p className="rounded-2xl border border-dashed border-stone-300 px-4 py-4 text-[15px] text-muted-foreground">
-                No transitions yet. They're made with the screens' scheduled pictures.
+                No transitions yet. They're made with the day's pictures.
               </p>
             )}
             {days.map(([d, list]) => (
@@ -233,7 +234,7 @@ export default function TransitionsPage() {
                   {list.map((t) => (
                     <Card
                       key={t.screen + t.name}
-                      t={{ ...t, idea: screen ? t.idea : `${nameOf(t.screen)} · ${t.idea ?? ""}` }}
+                      t={{ ...t, idea: screen ? t.idea : `${t.screen === "cloud" ? "Day's set" : nameOf(t.screen)} · ${t.idea ?? ""}` }}
                       onSaved={(n) =>
                         setItems((all) => (all ?? []).map((x) => (x.screen === n.screen && x.name === n.name ? { ...x, score: n.score, note: n.note } : x)))
                       }

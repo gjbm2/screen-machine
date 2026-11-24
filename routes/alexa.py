@@ -37,6 +37,7 @@ import utils.logger
 from routes.jobs import get_tracker
 from typing import Dict, Any
 import uuid
+from datetime import datetime
 from routes.generate_handler import throw_user_interacting_event, handle_image_generation, async_amimate, async_adapt, async_combine
 from routes import room_client
 import smconfig
@@ -45,6 +46,26 @@ from routes.samsung_utils import device_wake, device_sleep, device_sync
 _GENERATION_INTENTS = ("generate_image", "animate", "adapt", "combine")
 _ROOM_INTENTS = ("set_mode", "set_auto", "set_listening", "cue_scene", "set_effect")
 
+
+
+_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+
+def _day_said(said: str):
+    """The date a spoken day means: today (the default), yesterday, the day before yesterday, or the latest such
+    weekday (today's own name is today; "last Tuesday" the one before that)."""
+    from datetime import timedelta
+    today = datetime.now().date()
+    s = (said or "").lower()
+    if "day before yesterday" in s:
+        return today - timedelta(days=2)
+    if "yesterday" in s or "last night" in s:
+        return today - timedelta(days=1)
+    for i, name in enumerate(_WEEKDAYS):
+        if name in s:
+            back = (today.weekday() - i) % 7
+            return today - timedelta(days=back or (7 if "last" in s else 0))
+    return today
 
 def Brianize(text: str) -> str:
     # Already contains Brian *and* prosody — leave untouched
@@ -560,6 +581,13 @@ def process(data):
                 result = {"intent": "set_listening", "data": {"on": on}}
                 response_ssml = Brianize("AI listening on. Now something cleverer than you is listening." if on
                                          else "AI listening off. I'll just listen myself, then.")
+            case "review_day":
+                # replay a day's pictures on the screens, with their transitions (the screens' Replay_day trigger)
+                said = data.get("request", {}).get("intent", {}).get("slots", {}).get("day", {}).get("value") or ""
+                day = _day_said(said)
+                throw_event(scope="drawing-room", key="Replay_day", payload={"day": day.isoformat()}, ttl="120s")
+                when = "today" if day == datetime.now().date() else day.strftime("%A")
+                response_ssml = Brianize(f"Replaying {when}'s pictures. Do pay attention.")
             case "which_mode":
                 response_ssml = Brianize(f"We're in {subs['ROOM_MODE_CURRENT']} mode, and Auto is {subs['ROOM_AUTO']}.")
             case "sleep":

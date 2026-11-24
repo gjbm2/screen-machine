@@ -13,7 +13,7 @@ from routes.scheduler_handlers import (
     handle_sleep, handle_wait, handle_unload, handle_device_media_sync,
     handle_device_wake, handle_device_sleep, handle_set_var, handle_terminate,
     handle_random_choice, handle_generate, handle_animate, handle_display,
-    handle_import_var, handle_export_var, handle_reason, handle_log, handle_throw_event, handle_device_standby, handle_purge, handle_publish, handle_overlay,
+    handle_import_var, handle_export_var, handle_reason, handle_log, handle_throw_event, handle_device_standby, handle_purge, handle_publish, handle_overlay, handle_for_each,
     handle_set_mode, handle_set_auto, handle_room_state
 )
 from routes.scheduler_utils import (
@@ -571,6 +571,9 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
             result = handle_purge(processed_instruction, context, now, output, publish_destination)
         elif action == "publish":
             result = handle_publish(processed_instruction, context, now, output, publish_destination)
+        elif action == "for_each":
+            # as written: its block is templated round by round as it runs
+            result = handle_for_each(instruction, context, now, output, publish_destination)
         elif action == "overlay":
             # For overlay, pass the raw instruction to avoid double Jinja processing
             result = handle_overlay(instruction, context, now, output, publish_destination)

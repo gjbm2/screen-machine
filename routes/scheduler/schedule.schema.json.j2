@@ -101,6 +101,11 @@
               "title": "Value or Reference",
               "description": "Fill in either a literal value or a variable name to copy.",
               "properties": {
+                "var_ref": {
+                  "type": "string",
+                  "title": "Copy of variable",
+                  "description": "The name of a variable whose value (a list or a dict included) is copied."
+                },
                 "value": {
                   "oneOf": [
                     {
@@ -161,6 +166,20 @@
               ],
               "title": "Fallback Value",
               "description": "Fallback value to use if referenced variables don't exist. Supports Jinja expressions."
+            },
+            "value": {
+              "title": "Value",
+              "description": "The value to assign (as input.value)."
+            },
+            "index": {
+              "type": ["string", "number"],
+              "title": "Element",
+              "description": "Optional: set one element of the variable instead of the whole: a list's position (0 first; the list grows to reach it) or a dict's key. The rest is kept. Supports Jinja."
+            },
+            "length": {
+              "type": ["string", "number"],
+              "title": "Cut to length",
+              "description": "Optional: cut the list to this many elements. Supports Jinja."
             }
           },
           "required": [
@@ -441,6 +460,11 @@
               },
               "minItems": 1
             },
+            "output_list": {
+              "type": "string",
+              "title": "Output List",
+              "description": "Optional: a variable that gets all the results as one list (e.g. a day's prompts), instead of or as well as output_vars."
+            },
             "history_var": {
               "type": "string",
               "title": "History Variable",
@@ -450,8 +474,7 @@
           },
           "required": [
             "action",
-            "reasoner",
-            "output_vars"
+            "reasoner"
           ],
           "additionalProperties": false
         },
@@ -629,6 +652,16 @@
               "uniforms": {
                 "hidden": true
               }
+            },
+            "image": {
+              "type": "string",
+              "title": "Picture",
+              "description": "Optional: a picture in a bucket (a path) to animate instead of the screen's. Without 'to': its clip, made in the background and filed with it, if the screens' triage says something in it should move. Supports Jinja."
+            },
+            "to": {
+              "type": "string",
+              "title": "To picture",
+              "description": "Optional, with 'image': make the transition from 'image' to this picture instead (a short video, kept with both pictures: a publish asking for a transition from one to the other plays it). Supports Jinja."
             },
             "prompt": {
               "type": "string",
@@ -933,6 +966,53 @@
           "additionalProperties": false
         },
         {
+          "title": "For Each",
+          "description": "Run a block of instructions once for each item of a list, in order (waits and all), with the item and its position in variables.",
+          "type": "object",
+          "properties": {
+            "action": {
+              "type": "string",
+              "const": "for_each",
+              "default": "for_each",
+              "description": "Fixed to 'for_each' to select this instruction type.",
+              "uniforms": {
+                "hidden": true
+              }
+            },
+            "items": {
+              "type": ["string", "array"],
+              "title": "Items",
+              "description": "A list, a list variable's name, or a Jinja expression giving a list (e.g. range(n), day_set[2:5])."
+            },
+            "as": {
+              "type": "string",
+              "title": "Item variable",
+              "description": "The variable each item is put in (default item).",
+              "default": "item"
+            },
+            "index_as": {
+              "type": "string",
+              "title": "Position variable",
+              "description": "The variable its position (0 first) is put in (default index).",
+              "default": "index"
+            },
+            "instructions_block": {
+              "title": "Instructions block",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/instruction"
+              },
+              "description": "The instructions run for each item."
+            }
+          },
+          "required": [
+            "action",
+            "items",
+            "instructions_block"
+          ],
+          "additionalProperties": false
+        },
+        {
           "title": "Publish Images",
           "description": "Publish images from variables to output devices.",
           "type": "object",
@@ -965,6 +1045,18 @@
               "title": "Silent Mode",
               "description": "If true, suppress overlay display when publishing.",
               "default": false
+            },
+            "transition": {
+              "type": "boolean",
+              "title": "Transition",
+              "description": "Change to the picture with the transition made ahead from what the screen shows to it (animate with 'to'), if there is one; otherwise the plain cross-fade.",
+              "default": false
+            },
+            "clips": {
+              "type": "boolean",
+              "title": "With its clips",
+              "description": "False: the picture goes up without its clips (e.g. a replay, one thing to look at at a time).",
+              "default": true
             }
           },
           "required": [

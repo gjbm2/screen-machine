@@ -18,7 +18,7 @@ const REST_WAIT_MS = 40_000;
 
 /**
  * The transition to play for a new base `src`, or null: from the new picture's sidecar (`transition`), when it is
- * fresh and not already played on this page (an upscaled copy of B carries it again). Waits for a moving clip on
+ * fresh and not already played on this page for this publish. Waits for a moving clip on
  * screen to come to rest first.
  */
 export async function transitionFor(src: string, played: Set<string>, media: () => ArtMediaHandle | null): Promise<{ url: string; aspect: number | null } | null> {
@@ -28,8 +28,10 @@ export async function transitionFor(src: string, played: Set<string>, media: () 
     const r = await fetch(page.origin + page.pathname + ".json", { cache: "no-store" });
     if (!r.ok) return null;
     const t = (await r.json())?.transition;
-    if (!t?.url || played.has(t.url) || !(Date.now() / 1000 - Number(t.at) < FRESH_S)) return null;
-    played.add(t.url);
+    // once per publish (`at`): an upscaled copy of B carries it again, but a replay of the day publishes it anew
+    const key = `${t?.url}@${t?.at}`;
+    if (!t?.url || played.has(key) || !(Date.now() / 1000 - Number(t.at) < FRESH_S)) return null;
+    played.add(key);
     const until = Date.now() + REST_WAIT_MS;
     for (;;) {
       const m = media();

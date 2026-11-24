@@ -2843,6 +2843,29 @@ def process_jinja_template(value: Any, context: Dict[str, Any], publish_destinat
     # Default case
     return value
 
+def jinja_value(value: Any, context: Dict[str, Any], publish_destination: str = None) -> Any:
+    """A Jinja expression's value as itself, not as text (a list stays a list): "{{ expr }}" or a bare expression,
+    with the context's vars, _event, now() and timedelta, as process_jinja_template has them. None when it fails."""
+    if not isinstance(value, str):
+        return value
+    expr = value.strip()
+    if expr.startswith("{{") and expr.endswith("}}"):
+        expr = expr[2:-2].strip()
+    env = jinja2.sandbox.SandboxedEnvironment(autoescape=False, undefined=jinja2.Undefined)
+    env.globals["now"] = datetime.now
+    env.globals["timedelta"] = timedelta
+    template_vars = dict(context.get("vars", {}))
+    if publish_destination:
+        template_vars["_current_destination"] = publish_destination
+    if "_event" in context:
+        template_vars["_event"] = template_vars["event"] = context["_event"]
+    try:
+        return env.compile_expression(expr, undefined_to_none=True)(**template_vars)
+    except Exception as e:
+        error(f"Error evaluating Jinja expression {expr!r}: {e}")
+        return None
+
+
 def process_instruction_jinja(instruction: Dict[str, Any], context: Dict[str, Any], publish_destination: str) -> Dict[str, Any]:
     """
     Process an entire instruction object with Jinja templating.

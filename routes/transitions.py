@@ -10,7 +10,13 @@ makes B, then here, before B goes up:
      AI-upscaled x2 and RIFE x3 on the worker;
   3. the ease (routes/clip_ease.py, on the renderer's GPU when it can) slows it to PLAY_S, rising from stillness on A
      and coming to rest on B.
-The file goes in the screen's bucket under transitions/ (never an item of the bucket, never in a picture's clips that
+A day's pictures (the cloud's set, routes/scheduler/cloud.json) have theirs made ahead instead (commission, from a
+scheduler `animate` with `to`): each is a cached object kept with B and listed on both pictures, and a publish that
+asks for a transition (routes/publisher.py: the screen knows what it shows, A, and what it is putting up, B) plays the
+one for that pair if there is one (cached), else cross-fades. A picture is known by its origin ("bucket/name", kept
+on its copies), so a copy on a screen finds the transitions made for the original.
+
+At publish time, the file goes in the screen's bucket under transitions/ (never an item of the bucket, never in a picture's clips that
 play on other occasions) and is named in B's metadata (`transition`), which the TV page reads from the screen's
 sidecar when B lands: it plays the transition once over A, swaps to B under it and fades it away. Both pictures'
 sidecars list it (`transitions`), and B's publish history entry carries it, so a day can be replayed with its
@@ -32,6 +38,7 @@ WORKFLOW = "h3-fl2v.json"
 DRAW_S = 4.0                # drawn; H3 draws 17k + 5 frames, so 90 (3.75 s)
 PLAY_S, RAMP_S = 15.0, 3.5  # on screen: eased in from A and out onto B
 DEADLINE_S = 540            # the new picture waits no longer than this for its transition (a cold GPU included)
+AHEAD_S = 900               # a transition made ahead (commission) is given up after this
 FOLDER = "transitions"
 WRITER = "refiner-transition.txt"
 SCHEMA_FILE = "refiner-transition.schema.json"   # the answer's fields, next to the brief: both read on every call
@@ -180,6 +187,80 @@ def note_published(screen: str, to_name: str, transition: dict) -> None:
         warning(f"[transition] could not write its record: {e}")
 
 
+def origin(path: Path, meta: dict | None = None) -> str:
+    """What a picture is known by: the origin its sidecar carries (a copy's original), else "bucket/name"."""
+    path = Path(path)
+    got = (meta if meta is not None else _sidecar(path)).get("origin")
+    return got if isinstance(got, str) and got else f"{path.parent.name}/{path.name}"
+
+
+def _origin_file(o: str) -> Path:
+    from routes.bucketer import bucket_path
+    bucket, _, name = o.partition("/")
+    return bucket_path(bucket) / name
+
+
+def _made(o_from: str, o_to: str) -> dict | None:
+    """The transition already made from one picture to the other (by origin), its file still there."""
+    to = _origin_file(o_to)
+    for t in _sidecar(to).get("transitions") or []:
+        if t.get("from") == o_from and t.get("to") == o_to and (to.parent / str(t.get("file"))).exists():
+            return t
+    return None
+
+
+def cached(screen: str, b_path: Path, meta_b: dict) -> dict | None:
+    """The transition to play as `screen` changes from what it shows to the picture b_path (its metadata meta_b), as
+    B's `transition` for the TV page (stamped with the publish time), or None: the plain cross-fade."""
+    from routes.bucketer import bucket_path
+    from routes.clips import published_still
+    showing = published_still(screen)
+    if not showing:
+        return None
+    t = _made(origin(bucket_path(screen) / showing), origin(b_path, meta_b))
+    return {**t, "at": round(time.time(), 1)} if t else None
+
+
+def commission(a: str | Path, b: str | Path) -> dict | None:
+    """Make the transition from picture a to picture b (files in buckets) ahead of time and keep it with b
+    (transitions/ in b's bucket), listed on both pictures' sidecars: a publish from a to b plays it (cached). The one
+    already made for the pair if there is one; None if it couldn't be made (logged for the review page)."""
+    import uuid
+    a, b = Path(a), Path(b)
+    oa, ob = origin(a), origin(b)
+    if (t := _made(oa, ob)):
+        info(f"[transition] {oa} -> {ob} already made")
+        return t
+    t0 = time.time()
+    deadline = t0 + AHEAD_S
+    job_id = f"transition-{uuid.uuid4().hex[:8]}"
+    try:
+        meta_a, meta_b = _sidecar(a), _sidecar(b)
+        words = write(a.read_bytes(), b.read_bytes(), meta_a, meta_b)
+        prompt = (words.get("full_prompt") or "").strip()
+        if not prompt:
+            raise RuntimeError("the writer gave no prompt")
+        drawn, usd = draw(a.read_bytes(), b.read_bytes(), prompt, job_id, deadline)
+        folder = b.parent / FOLDER
+        folder.mkdir(parents=True, exist_ok=True)
+        name = time.strftime("%Y%m%d-%H%M%S") + f"-{job_id[-8:]}.mp4"
+        ease(drawn, folder / name, deadline)
+        entry = {"file": f"{FOLDER}/{name}", "url": f"/output/{b.parent.name}/{FOLDER}/{name}", "from": oa, "to": ob,
+                 "connection": words.get("connection"), "device": words.get("device"), "idea": words.get("idea"),
+                 "prompt": prompt, "writer": {k: words.get(k) for k in ("link_a", "link_b", "motion", "rest")},
+                 "at": round(time.time(), 1), "play_s": PLAY_S, "cost_usd": usd, "made_s": round(time.time() - t0, 1)}
+        for path in (a, b):
+            _note(path, entry)
+        (folder / (name + ".json")).write_text(json.dumps({**entry, "screen": b.parent.name}, indent=2), "utf-8")
+        info(f"[transition] {oa} -> {ob} made in {entry['made_s']} s: {entry['idea']}")
+        return entry
+    except Exception as e:
+        warning(f"[transition] {oa} -> {ob}: not made ({e}); that change cross-fades")
+        _failed(b.parent.name, {"at": round(time.time(), 1), "error": str(e)[:300], "made_s": round(time.time() - t0, 1),
+                                "from": oa, "to": ob})
+        return None
+
+
 def records(screen: str) -> dict:
     """The screen's transitions for the review page, newest first (each with its pictures' URLs), and the ones that
     weren't made."""
@@ -193,9 +274,11 @@ def records(screen: str) -> dict:
             continue
         for end in ("from", "to"):
             name = r.get(end)
-            if name:
-                r[end + "_url"] = f"/output/{screen}/{name}"
-                r[end + "_thumb"] = f"/output/{screen}/thumbnails/{name}.jpg"
+            if name:     # a name in this bucket, or an origin ("bucket/name") for one made ahead
+                bucket, _, file = name.rpartition("/")
+                bucket = bucket or screen
+                r[end + "_url"] = f"/output/{bucket}/{file}"
+                r[end + "_thumb"] = f"/output/{bucket}/thumbnails/{file}.jpg"
         out.append({**r, "name": sc.name[:-len(".json")], "screen": screen})
     failed = []
     try:

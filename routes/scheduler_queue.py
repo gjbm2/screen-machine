@@ -13,6 +13,7 @@ class InstructionQueue:
         """Initialize an empty instruction queue."""
         self.queue = deque()
         self._last_urgent_log_time = 0  # Store rate-limiting state as instance variable
+        self.running = None  # the entry being run (pop_next): a for_each runs its block with the same flags
 
     def push_block(self, instructions: List[Dict[str, Any]], important: bool = False, urgent: bool = False) -> None:
         """
@@ -71,19 +72,29 @@ class InstructionQueue:
                 
                 # If it's the first item, use popleft for efficiency
                 if urgent_index == 0:
-                    return self.queue.popleft()
+                    self.running = self.queue.popleft()
+                    return self.running
                 else:
                     # Otherwise, we need to remove it by position
                     # Convert to list, remove item, convert back to deque
                     queue_list = list(self.queue)
                     result = queue_list.pop(urgent_index)
                     self.queue = deque(queue_list)
+                    self.running = result
                     debug(f"Removed urgent instruction at position {urgent_index} (not at front of queue)")
                     return result
             return None  # No urgent entries found when urgent_only=True
             
         # Normal case - just get the next instruction
-        return self.queue.popleft()
+        self.running = self.queue.popleft()
+        return self.running
+
+    def push_front(self, instructions: List[Dict[str, Any]]) -> None:
+        """Run these next, with the flags of the entry being run (a for_each's block, in order)."""
+        important = bool(self.running and self.running.get("important"))
+        urgent = bool(self.running and self.running.get("urgent"))
+        for instr in reversed(instructions):
+            self.queue.appendleft(self.make_instruction_entry(instr, important, urgent))
 
     def peek_next_urgent(self) -> Optional[Dict[str, Any]]:
         """

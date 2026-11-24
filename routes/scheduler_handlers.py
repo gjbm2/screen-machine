@@ -414,9 +414,44 @@ def handle_generate(instruction, context, now, output, publish_destination):
         import traceback
         error(traceback.format_exc())
 
+def _animate_ahead(image, to, prompt, pace, publish_destination, now, output):
+    """animate with an `image` (a picture in a bucket): with `to`, the transition from it to that picture, made now
+    and kept with both (routes/transitions.commission: a publish from one to the other plays it); without, its clip,
+    if the screens' triage says something in it should move (else none), made in the background and filed with it."""
+    from pathlib import Path
+    if not image or not Path(image).exists() or (to is not None and (not to or not Path(to).exists())):
+        log_schedule(f"animate: nothing to do ({image!r} to {to!r})", publish_destination, now, output)
+        return None
+    if to is not None:
+        from routes.transitions import commission
+        if Path(image).resolve() == Path(to).resolve():
+            return None
+        made = commission(image, to)
+        log_schedule(f"ANIMATE: transition {os.path.basename(image)} -> {os.path.basename(to)}: "
+                     + ((made.get("idea") or "made") if made else "not made (that change cross-fades)"),
+                     publish_destination, now, output)
+        return None
+    import threading
+    from routes.generate_handler import animate_still, triage_motion
+    path = Path(image)
+
+    def run():
+        brief, chosen = (prompt, pace) if prompt else triage_motion(str(path))
+        if not brief:
+            info(f"[animate] {path.name}: the triage says still, so no clip")
+            return
+        animate_still(path.parent.name, path.name, brief, pace or chosen, source="scheduler")
+    threading.Thread(target=run, name=f"animate-ahead-{path.name[:16]}", daemon=True).start()
+    log_schedule(f"ANIMATE: a clip of {path.name}, if it should move", publish_destination, now, output)
+    return None
+
+
 def handle_animate(instruction, context, now, output, publish_destination):
     if _generation_refused("animate", publish_destination, now, output):
         return
+    if instruction.get("image"):
+        return _animate_ahead(instruction.get("image"), instruction.get("to"), instruction.get("prompt") or "",
+                              (instruction.get("pace") or "").strip().lower() or None, publish_destination, now, output)
     # Extract the prompt - no need to process with Jinja again
     prompt = instruction.get("prompt") or ""   # the schema's field (an old schedule may carry input.prompt)
 
@@ -781,6 +816,32 @@ def handle_device_standby(instruction, context, now, output, publish_destination
         import traceback
         error(traceback.format_exc())
 
+def handle_for_each(instruction, context, now, output, publish_destination):
+    """Run instructions_block once for each of `items` (a list, a var's name, or a Jinja expression such as
+    "range(n)" or "day_set[2:5]"), with the item in `as` (default "item") and its place in `index_as` (default
+    "index"). Each round's instructions go to the front of the queue, so a wait or a generate inside it behaves as
+    anywhere else. The instruction arrives as written (run_instruction): its block is templated as it runs."""
+    import copy
+    from routes.scheduler_queue import get_instruction_queue
+    from routes.scheduler_utils import jinja_value
+    raw = instruction.get("items")
+    vars_ = context.get("vars", {})
+    items = vars_[raw] if isinstance(raw, str) and raw in vars_ else jinja_value(raw, context, publish_destination)
+    if isinstance(items, (str, dict)) or items is None:
+        items = [items] if items else []
+    items = list(items)
+    as_, index_as = instruction.get("as") or "item", instruction.get("index_as") or "index"
+    block = instruction.get("instructions_block") or []
+    expanded = []
+    for i, item in enumerate(items):
+        expanded += [{"action": "set_var", "var": as_, "value": item},
+                     {"action": "set_var", "var": index_as, "value": i},
+                     *copy.deepcopy(block)]
+    get_instruction_queue(publish_destination).push_front(expanded)
+    log_schedule(f"For each of {len(items)} items: {len(block)} instructions each", publish_destination, now, output)
+    return False
+
+
 def handle_set_var(instruction, context, now, output, publish_destination):
     # Process Jinja templates in the instruction at execution time
     from routes.scheduler_utils import process_jinja_template
@@ -826,6 +887,25 @@ def handle_set_var(instruction, context, now, output, publish_destination):
     # Fix: Check for top-level default if no value was found through other methods
     if value is None and "default" in processed_instruction:
         value = processed_instruction["default"]
+
+    # One element of a list (a number) or a dict (a key), or a list cut to a length: the rest is kept
+    index, length = processed_instruction.get("index"), processed_instruction.get("length")
+    if index not in (None, "") or length not in (None, ""):
+        cur = context["vars"].get(var_name)
+        if index not in (None, ""):
+            if isinstance(cur, dict) or not str(index).strip().isdigit():
+                cur = dict(cur) if isinstance(cur, dict) else {}
+                cur[str(index)] = value
+            else:
+                cur, i = list(cur) if isinstance(cur, list) else [], int(str(index).strip())
+                cur.extend([None] * (i + 1 - len(cur)))
+                cur[i] = value
+        if length not in (None, "") and isinstance(cur, list):
+            cur = cur[:int(length)]
+        context["vars"][var_name] = cur
+        log_schedule(f"Set {var_name}[{index if index not in (None, '') else ':' + str(length)}] to {value}.",
+                     publish_destination, now, output)
+        return False
     
     if value is None and not ("input" in processed_instruction and isinstance(processed_instruction["input"], dict) and len(processed_instruction["input"]) == 0):
         error_msg = f"Error in set_var: could not determine value"
@@ -1328,6 +1408,7 @@ def handle_reason(instruction, context, now, output, publish_destination):
     image_inputs = instruction.get("image_inputs", [])
     reasoner_id = instruction.get("reasoner", "default")
     output_vars = instruction.get("output_vars", [])
+    output_list = instruction.get("output_list")   # the whole outputs list in one var (e.g. a day's prompts)
 
     # text_input should already be processed with Jinja at instruction level
     # No need for additional processing here
@@ -1378,7 +1459,7 @@ def handle_reason(instruction, context, now, output, publish_destination):
         image_inputs = []
 
     # Validate that we have at least one output variable
-    if not output_vars:
+    if not output_vars and not output_list:
         error_msg = "No output variables specified in reason instruction."
         log_schedule(error_msg, publish_destination, now, output)
         return False
@@ -1441,6 +1522,8 @@ def handle_reason(instruction, context, now, output, publish_destination):
         if not result or "outputs" not in result or not isinstance(result["outputs"], list):
             error_msg = f"Reasoning with '{reasoner_id}' failed to return valid outputs array."
             log_schedule(error_msg, publish_destination, now, output)
+            if output_list:     # a list var keeps what it had rather than a fallback's placeholders
+                return False
 
             # Fallback: choose the first image (if any) or NONE so execution can continue
             fallback_output = image_inputs[0] if image_inputs else "NONE"
@@ -1472,6 +1555,11 @@ def handle_reason(instruction, context, now, output, publish_destination):
                 var_error = f"Reasoner didn't return enough values for output variable '{var_name}' (position {i+1})."
                 log_schedule(var_error, publish_destination, now, output)
         
+        if output_list:
+            context["vars"][output_list] = [str(o) for o in result["outputs"]]
+            log_schedule(f"Set {output_list} to the {len(result['outputs'])} results from '{reasoner_id}'.",
+                         publish_destination, now, output)
+
         # Handle history if specified
         history_var = instruction.get("history_var")
         if history_var:
@@ -1758,7 +1846,9 @@ def handle_publish(instruction, context, now, output, publish_destination):
                 result = publish_to_destination(
                     source=image_path,
                     publish_destination_id=target,
-                    silent=silent
+                    silent=silent,
+                    transition=bool(instruction.get("transition")),   # the one made ahead for this change, if any
+                    clips=instruction.get("clips", True) is not False,
                 )
                 
                 if result.get("success"):

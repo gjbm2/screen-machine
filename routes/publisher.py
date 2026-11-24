@@ -121,11 +121,15 @@ def publish_to_destination(
     update_published: bool = True,
     is_history_navigation: bool = False,
     fit: str | None = None,
+    transition: bool = False,
+    clips: bool = True,
 ) -> dict:
     """
     Publish an image to a destination, optionally saving to a bucket. fit: how a still of another shape than the
     screen's is fitted to it, as the person chose when publishing (auto, crop, frame, adapt; routes/reframe.py); None
-    for the screen's own setting.
+    for the screen's own setting. transition: change to it with the transition made ahead from what the screen shows
+    to it, if there is one (routes/transitions.cached), else the plain cross-fade. clips: False leaves its clips
+    behind (a replay of the day: one thing to look at at a time).
 
     Args:
         source: URL or local file path to the image
@@ -181,6 +185,7 @@ def publish_to_destination(
         
         info(f"[publish_to_destination] Source type: {'URL' if is_url else 'Local file'}")
         
+        from_sidecar = metadata is None
         # Check for metadata. If none provided, try to get it from sidecar if source is a local file
         if metadata is None and not is_url:
             # Convert string path to Path object if needed
@@ -375,7 +380,9 @@ def publish_to_destination(
         try:
             # Convert source to Path if it's a string
             source_path = Path(source) if isinstance(source, str) else source
-            
+            metadata = _with_origin_and_transition(source_path, publish_destination_id, dest, metadata or {},
+                                                   from_sidecar, transition and update_published)
+
             # Publish the local file
             result = _publish_to_destination(
                 source=source_path,
@@ -390,7 +397,7 @@ def publish_to_destination(
                 fit=fit,
             )
             placing = (result.get("meta") or {}).pop("placing", None)
-            if result.get("success") and update_published:
+            if result.get("success") and update_published and clips:
                 _publish_clip_of(source_path, publish_destination_id, result, placing, batch_id, is_history_navigation,
                                  skip_bucket, cross_bucket_mode)
             
@@ -401,6 +408,28 @@ def publish_to_destination(
     except Exception as e:
         error(f"Publish failed: {e}")
         return {"success": False, "error": str(e)}
+
+def _with_origin_and_transition(source: Path, dest_id: str, dest: dict, metadata: dict, from_sidecar: bool,
+                                transition: bool) -> dict:
+    """The metadata a local picture goes up with: its origin ("bucket/name") kept on every copy, so a copy finds the
+    transitions made for the original; a `transition` left in its sidecar by an earlier change dropped; and, asked
+    for, the one made ahead from what the screen shows to it (routes/transitions.py)."""
+    try:
+        root = Path(bucket_path(dest_id)).parent.resolve()
+        if not metadata.get("origin") and source.resolve().parent.parent == root:
+            metadata = {**metadata, "origin": f"{source.parent.name}/{source.name}"}
+        if from_sidecar and "transition" in metadata:
+            metadata = {k: v for k, v in metadata.items() if k != "transition"}
+        if transition and not dest.get("headless") and source.suffix.lower() not in {".mp4", ".webm", ".mov"}:
+            from routes.transitions import cached
+            t = cached(dest_id, source, metadata)
+            if t:
+                info(f"[publish] {dest_id}: changing with the transition {t.get('file')} ({t.get('idea')})")
+                metadata = {**metadata, "transition": t}
+    except Exception as e:
+        warning(f"[publish] {dest_id}: no transition looked up ({e})")
+    return metadata
+
 
 def _publish_clip_of(still: Path, publish_destination_id: str, result: dict, placing: str | None, batch_id,
                      is_history_navigation: bool, skip_bucket, cross_bucket_mode: bool) -> None:
