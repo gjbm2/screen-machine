@@ -15,14 +15,18 @@ def test_the_writer_answers_in_steps_ending_with_the_prompt():
     assert fields[0] == "connection" and fields[-1] == "full_prompt"
 
 
-def test_nothing_on_the_screen_means_no_transition(monkeypatch):
+def test_nothing_on_the_screen_means_no_transition(monkeypatch, tmp_path):
+    import routes.bucketer
     import routes.clips
+    monkeypatch.setattr(routes.bucketer, "bucket_path", lambda screen: tmp_path)
     monkeypatch.setattr(routes.clips, "published_still", lambda screen: None)
     assert tr.before_publish("north-screen", "/nowhere/b.jpg", "job_test_1") is None
 
 
 def test_any_failure_means_no_transition_and_never_raises(monkeypatch, tmp_path):
+    import routes.bucketer
     import routes.clips
+    monkeypatch.setattr(routes.bucketer, "bucket_path", lambda screen: tmp_path / "bucket")   # its failure log too
     monkeypatch.chdir(tmp_path)
     (tmp_path / "output").mkdir()
     (tmp_path / "output" / "north-screen.jpg").write_bytes(b"not really a jpeg")
