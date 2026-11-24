@@ -171,6 +171,23 @@ def video_size(aspect):
             max(256, round(math.sqrt(VIDEO_AREA / aspect) / 32) * 32))
 
 
+def at_size(image, size):
+    """A request image ({"name", "image": base64}) resized to exactly `size` (Lanczos), as a JPEG; unreadable, as given."""
+    import base64
+    from PIL import Image, ImageOps
+    try:
+        with Image.open(BytesIO(base64.b64decode(image.get("image") or ""))) as img:
+            img = ImageOps.exif_transpose(img).convert("RGB")
+            if img.size != tuple(size):
+                img = img.resize(tuple(size), Image.LANCZOS)
+            buf = BytesIO()
+            img.save(buf, "JPEG", quality=95)
+    except Exception as e:
+        warning(f"Could not size a video input ({e}); sending it as given")
+        return image
+    return {**image, "image": base64.b64encode(buf.getvalue()).decode()}
+
+
 def fit_for_video(image, aspect, mode="auto"):
     """A request image ({"name", "image": base64}) fitted to the video's shape the way a picture is fitted to a screen
     of another shape (routes/reframe.py): auto (the AI plans a crop and an extension), crop (the AI picks the part)
@@ -862,7 +879,18 @@ def _run(tracker, job_id, provided_args, cli_args, publish_destination, batch_id
         vars(args_namespace)["skip-upscaling"] = not (screen_box and drawn and max(screen_box) > 1.25 * drawn)
         info(f"Video upscale: {'off' if vars(args_namespace)['skip-upscaling'] else 'on'} (drawn {drawn}, screen {screen_box})")
     workflow_data = apply_workflow_mutations(workflow_data, workflow_config, args_namespace)
-    
+
+    # A video's pictures go at the size it is drawn at, resized here (Lanczos), not as 4K for the worker to shrink:
+    # anything larger is lost in the model's own resize, unpredictably, and is a slow upload (owner, 24 Nov). A plain
+    # resize, as the model stretches its input to its size (the shape was matched above, within 3%)
+    if workflow_config.get("async") and args_namespace.images:
+        node = next((n["inputs"] for n in workflow_data.values() if isinstance(n, dict)
+                     and {"width", "height", "length"} <= set(n.get("inputs", {}))), {})
+        drawn = (int(args_namespace.width or node.get("width") or 0), int(args_namespace.height or node.get("height") or 0))
+        if all(drawn):
+            args_namespace.images = [at_size(im, drawn) for im in args_namespace.images]
+            info(f"Video inputs at the drawn size {drawn[0]}x{drawn[1]}")
+
     # Compile the final object to submit
     input_payload = {
       "input": {

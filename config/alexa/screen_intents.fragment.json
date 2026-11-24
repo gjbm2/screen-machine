@@ -1,0 +1,20 @@
+{
+  "_note": "Alexa interaction-model additions for the screens (routes/alexa.py). Phrased to follow the skill's own pattern, \"computer, use AI to ...\". No config in the model: the day is free text, read on the server (today, yesterday, last Tuesday...). review_day replays a screen's pictures for that day, with the transitions between them (owner, 24 Nov). Merge into languageModel.intents (Alexa console > Build > Interaction Model > JSON Editor), then Save Model and Build Model.",
+  "intents": [
+    {
+      "name": "review_day",
+      "slots": [
+        {"name": "day", "type": "AMAZON.SearchQuery"}
+      ],
+      "samples": [
+        "review {day}",
+        "replay {day}",
+        "play back {day}",
+        "go over {day}",
+        "show me {day} again",
+        "show me the pictures from {day}",
+        "replay the pictures from {day}"
+      ]
+    }
+  ]
+}
