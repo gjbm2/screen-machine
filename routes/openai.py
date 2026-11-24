@@ -30,7 +30,13 @@ def hash_schema(schema):
     return hashlib.md5(json.dumps(schema, sort_keys=True).encode()).hexdigest()
 
 
-def _image_to_base64_data_url(image_input, index=0, max_dim=1536, quality=90):
+# A picture sent with a prompt is shrunk to this many pixels on its long side: enough to say what it shows, its style
+# and where its subject is, at about a quarter of the tokens 1536 cost (owner, 24 Nov: "multi-models aren't free").
+# A call that needs fine detail passes image_px.
+IMAGE_PX = 768
+
+
+def _image_to_base64_data_url(image_input, index=0, max_dim=IMAGE_PX, quality=90):
     """Convert an image input (file path, dict, or raw base64 string) to a
     base64 data URL suitable for the Chat Completions vision API.
     Returns the data URL string, or None on failure."""
@@ -146,9 +152,11 @@ def openai_prompt(
     images=None,
     verbose=True,
     task="prompt",
+    image_px=IMAGE_PX,
 ):
     """One prompt on config/llm.yaml's ``task`` ("prompt"; "alexa" for Alexa's intents, on a short timeout).
-    ``model_name`` is ignored (kept for old callers): llm.yaml picks the models."""
+    ``model_name`` is ignored (kept for old callers): llm.yaml picks the models. ``images`` are shrunk to
+    ``image_px`` on their long side."""
     if model_name:
         debug(f"[openai_prompt] model_name={model_name!r} ignored: config/llm.yaml's {task!r} task picks the models")
     system_message = _system_message(system_prompt)
@@ -159,7 +167,7 @@ def openai_prompt(
             info(f"[openai_prompt] > Vision mode with {len(images)} image(s)")
         image_content_parts = []
         for i, image_input in enumerate(images):
-            data_url = _image_to_base64_data_url(image_input, index=i)
+            data_url = _image_to_base64_data_url(image_input, index=i, max_dim=image_px)
             if data_url:
                 image_content_parts.append({"type": "image_url", "image_url": {"url": data_url, "detail": "high"}})
 
