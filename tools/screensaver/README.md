@@ -17,8 +17,8 @@ input.
   - a screen, or Nothing (black);
   - Fill (crops the edges) or Fit (black bars). Fit only applies to the art; live video is always fitted.
 
-  A row for **monitors plugged in later** covers any monitor without a choice of its own. "Which monitor is which?"
-  puts a number on each monitor.
+  A row for **monitors plugged in later** covers any monitor without a choice of its own. **Identify monitors**
+  puts each row\'s number on its monitor.
 - **Screens for signed-in people only** (those whose `access` isn't `guest`): use **Sign in** in Settings. It opens
   the app on the screensaver's own browser profile, and the sign-in cookie lasts a year.
 - **Remove:** use Apps, or **Remove from this PC** in Settings.
