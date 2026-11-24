@@ -21,7 +21,7 @@ input.
   puts a number on each monitor.
 - **Screens for signed-in people only** (those whose `access` isn't `guest`): use **Sign in** in Settings. It opens
   the app on the screensaver's own browser profile, and the sign-in cookie lasts a year.
-- **Remove:** use Apps, or **Remove** in Settings.
+- **Remove:** use Apps, or **Remove from this PC** in Settings.
 
 ## How it works
 
