@@ -57,6 +57,20 @@ ISO_NOW     = lambda: datetime.utcnow().isoformat() + "Z"
 PUBLISH_DESTINATIONS_FILE = str(smconfig.path("publish-destinations.json"))
 publish_destinations = {}
 
+def _video_frame_url(raw_url):
+    """A published video's picture: same-origin, so it shows on every page that asks (the https app, a phone, the
+    TVs). It was `VITE_API_URL` + path, the public IP's plain-http :5000, which an https page never loads (owner,
+    24 Nov: a video published to south-screen showed a broken picture)."""
+    return f"/api/generate/jpg_from_mp4?file={raw_url}"
+
+
+def _same_origin(url):
+    """A video picture's URL saved before _video_frame_url: its path only."""
+    if isinstance(url, str) and url.startswith("http") and "/api/generate/jpg_from_mp4" in url:
+        return url[url.index("/api/generate/jpg_from_mp4"):]
+    return url
+
+
 def _load_publish_destinations():
     """Load publish destinations from JSON file"""
     global publish_destinations
@@ -473,12 +487,6 @@ def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict
         file_extension: Explicit file extension to use (including the dot, e.g. '.mp4')
         is_history_navigation: True if this is an undo/redo operation, False for new publishes
     """
-    # Get API URL from environment
-    VITE_API_URL = os.environ.get("VITE_API_URL", f"http://localhost:{smconfig.port('flask')}/api").rstrip("/")
-    
-    # Determine if running in test mode
-    is_test_mode = 'pytest' in sys.modules
-    
     # Determine the extension to use for building URLs
     extension = ".jpg"  # Default
     bucket_dir = bucket_path(bucket)
@@ -502,11 +510,7 @@ def _record_publish(bucket: str, filename: str, when: str, source_metadata: dict
         if extension.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
             thumbnail_url = raw_url
         elif extension.lower() in ['.mp4', '.webm', '.mov']:
-            if is_test_mode:
-                thumbnail_url = f"/api/generate/jpg_from_mp4?file={raw_url}"
-            else:
-                thumbnail_url = f"{VITE_API_URL}/generate/jpg_from_mp4?file={raw_url}"
-            info(f"Using API URL for thumbnail: {thumbnail_url}")
+            thumbnail_url = _video_frame_url(raw_url)
         else:
             thumbnail_url = "/static/placeholder.jpg"
     
@@ -1133,8 +1137,6 @@ def get_published_info(publish_destination_id: str) -> dict:
     """
     debug(f"get_published_info called for destination: {publish_destination_id}")
     try:
-        VITE_API_URL = os.environ.get("VITE_API_URL", f"http://localhost:{smconfig.port('flask')}/api").rstrip("/")
-        
         dest = get_destination(publish_destination_id)
         
         from routes.bucketer import meta_path
@@ -1153,7 +1155,7 @@ def get_published_info(publish_destination_id: str) -> dict:
                         published_file = published_meta.get("filename")
                         published_at = published_meta.get("published_at", "")
                         raw_url = published_meta.get("raw_url")
-                        thumbnail_url = published_meta.get("thumbnail_url")
+                        thumbnail_url = _same_origin(published_meta.get("thumbnail_url"))
                         
                         debug(f"Found published file in published_meta: {published_file}")
                         debug(f"URLs from published_meta: raw_url={raw_url}, thumbnail_url={thumbnail_url}")
@@ -1245,7 +1247,7 @@ def get_published_info(publish_destination_id: str) -> dict:
             if file_suffix in ['.jpg', '.jpeg', '.png', '.gif', '.webp']:
                 thumbnail_url = raw_url
             elif file_suffix in ['.mp4', '.webm', '.mov']:
-                thumbnail_url = f"{VITE_API_URL}/generate/jpg_from_mp4?file={raw_url}"
+                thumbnail_url = _video_frame_url(raw_url)
                 info(f"Using API URL for thumbnail: {thumbnail_url}")
             else:
                 thumbnail_url = "/static/placeholder.jpg"
