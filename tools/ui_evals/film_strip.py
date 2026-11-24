@@ -25,7 +25,6 @@ import json
 import subprocess
 import sys
 import time
-import urllib.request
 from pathlib import Path
 
 from playwright.sync_api import sync_playwright
@@ -208,7 +207,8 @@ def run(args) -> int:
             batch = None
             while time.time() - started < args.wait:
                 page.wait_for_timeout(5000)
-                jobs = json.load(urllib.request.urlopen(f"{args.url.rstrip('/')}/api/jobs?state=all&limit=10"))["jobs"]
+                # through the page's own session: over https a guest sees only its own jobs
+                jobs = page.request.get(f"{args.url.rstrip('/')}/api/jobs?state=all&limit=10").json()["jobs"]
                 mine = [j for j in jobs if j.get("workflow") == "h3-film.json" and j["created_at"] >= started - 5]
                 batch = batch or (min(mine, key=lambda j: j["created_at"])["batch_id"] if mine else None)
                 mine = [j for j in mine if j["batch_id"] == batch]      # not a film someone else makes meanwhile

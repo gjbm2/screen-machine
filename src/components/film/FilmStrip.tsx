@@ -13,7 +13,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { ArtworkPicker } from '@/components/artworks/ArtworkPicker';
 import { DROP_ZONES } from '@/dnd/dropZones';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { isActive } from '@/shared/api/jobs';
+import { isActive, type Job } from '@/shared/api/jobs';
 import { useJobs } from '@/shared/jobs/store';
 import { useJobProgress } from '@/shared/jobs/estimate';
 import { progressLine, STAGE_WORDS } from '@/shared/jobs/words';
@@ -140,7 +140,11 @@ const SlotBox: React.FC<SlotBoxProps> = ({ slot, index, canRemove, onChoose, onF
 /** The video being made for a link: its stage and the time left, or why it failed. */
 const SegmentStatus: React.FC<{ placeholderId: string; batchId: string }> = ({ placeholderId, batchId }) => {
   const { jobs, clockOffset } = useJobs();
-  const job = findPlaceholderJob(jobs, { placeholderId, batchId }, clockOffset);
+  // the page's job list lets a finished job go after 10 minutes: the link keeps the last it saw of it (it went back to
+  // "Imagining", 24 Nov)
+  const seen = useRef<Job | null>(null);
+  const job = findPlaceholderJob(jobs, { placeholderId, batchId }, clockOffset) ?? seen.current;
+  seen.current = job;
   const progress = useJobProgress(job, clockOffset, !!job && isActive(job));
   if (!job) return <span>{STAGE_WORDS.preparing}</span>;
   if (job.status === 'failed') return <span className="text-destructive">{job.error || STAGE_WORDS.failed}</span>;
