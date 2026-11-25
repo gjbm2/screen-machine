@@ -360,7 +360,9 @@ def resolve_schedule(schedule: Dict[str, Any], now: datetime, publish_destinatio
                         "payload": event_entry.payload,
                         "unique_id": event_entry.unique_id,
                         "created_at": event_entry.created_at.isoformat() if event_entry.created_at else None,
-                        "display_name": event_entry.display_name
+                        "display_name": event_entry.display_name,
+                        # where it was thrown: this destination alone, or a group / global (a broadcast)
+                        "scope": getattr(event_entry, "scope", None),
                     }
                     # Also store at top level for process_jinja_template to find it
                     context["_event"] = context["vars"]["_event"]

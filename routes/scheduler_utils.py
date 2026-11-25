@@ -42,6 +42,7 @@ class EventEntry:
     consumed_by: str = None        # Who/what consumed this event (scheduler ID, "expiration", etc.)
     consumed_at: datetime = None   # When the event was consumed
     status: str = "ACTIVE"         # Status: "ACTIVE", "CONSUMED", "EXPIRED"
+    scope: str = None              # Where it was thrown: a destination (to it alone), a group or global (a broadcast)
 
 scheduler_logs: Dict[str, List[str]] = {}
 scheduler_schedule_stacks: Dict[str, List[Dict[str, Any]]] = {}  # Store stacks of schedules by destination
@@ -683,7 +684,8 @@ def throw_event(
             single_consumer=single_consumer,
             created_at=now,
             unique_id=dest_event_uuid,
-            status="ACTIVE"
+            status="ACTIVE",
+            scope=scope,
         )
         active_events[dest][key].append(dest_entry)
         result["unique_ids"].append(dest_event_uuid)
@@ -932,6 +934,7 @@ def get_events_for_destination(dest_id: str, include_group_events: bool = True) 
                         "expires": entry.expires.isoformat(),
                         "has_payload": entry.payload is not None,
                         "single_consumer": entry.single_consumer,
+                        "scope": entry.scope,
                         "created_at": entry.created_at.isoformat(),
                         "unique_id": entry.unique_id,
                         "status": entry.status
@@ -963,6 +966,7 @@ def get_events_for_destination(dest_id: str, include_group_events: bool = True) 
                 "expires": entry.expires.isoformat(),
                 "has_payload": entry.payload is not None,
                 "single_consumer": entry.single_consumer,
+                        "scope": entry.scope,
                 "created_at": entry.created_at.isoformat(),
                 "unique_id": entry.unique_id,
                 "status": entry.status
@@ -1150,6 +1154,7 @@ def load_scheduler_state(publish_destination: str) -> Dict[str, Any]:
                                     display_name=event_data.get("display_name"),
                                     payload=event_data.get("payload"),
                                     single_consumer=event_data.get("single_consumer", False),
+                                    scope=event_data.get("scope"),
                                     created_at=created_at,
                                     unique_id=event_data.get("unique_id"),
                                     status=event_data.get("status", "ACTIVE"),
@@ -1186,6 +1191,7 @@ def load_scheduler_state(publish_destination: str) -> Dict[str, Any]:
                                 display_name=event_data.get("display_name"),
                                 payload=event_data.get("payload"),
                                 single_consumer=event_data.get("single_consumer", False),
+                                    scope=event_data.get("scope"),
                                 created_at=created_at,
                                 unique_id=event_data.get("unique_id"),
                                 status=event_data.get("status", "ACTIVE"),
@@ -1313,6 +1319,7 @@ def save_scheduler_state(publish_destination: str, state: Dict[str, Any] = None)
                         "display_name": event.display_name,
                         "payload": event.payload,
                         "single_consumer": event.single_consumer,
+                        "scope": event.scope,
                         "created_at": event.created_at.isoformat(),
                         "unique_id": event.unique_id,
                         "status": event.status,
@@ -1333,6 +1340,7 @@ def save_scheduler_state(publish_destination: str, state: Dict[str, Any] = None)
                     "display_name": event.display_name,
                     "payload": event.payload,
                     "single_consumer": event.single_consumer,
+                        "scope": event.scope,
                     "created_at": event.created_at.isoformat(),
                     "unique_id": event.unique_id,
                     "status": event.status,
@@ -2743,6 +2751,12 @@ def process_jinja_template(value: Any, context: Dict[str, Any], publish_destinat
                         # The raw_url might point to output/destination.jpg which gets overwritten
                         bucket_dir = bucket_path(publish_destination)
                         bucket_image_path = bucket_dir / published_filename
+                        # a still's own clip, published just after it, is not the picture: the still is (and
+                        # publishing the still brings its clip with it; routes/screen_state.py)
+                        still = (published_info.get("meta") or {}).get("still")
+                        if Path(published_filename).suffix.lower() in (".mp4", ".m4v", ".mov", ".webm") and still \
+                                and (bucket_dir / Path(str(still)).name).exists():
+                            bucket_image_path = bucket_dir / Path(str(still)).name
                         
                         if bucket_image_path.exists():
                             # Use the bucket path - this is the immutable file

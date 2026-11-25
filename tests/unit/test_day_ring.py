@@ -199,7 +199,7 @@ def test_a_copy_on_a_screen_remembers_its_original_and_the_screen_gets_the_trans
 # --- the live schedules' arithmetic ---------------------------------------------------------------------------------
 
 def _trigger(screen, pick):
-    for layer in json.loads((SCHEDULES / f"{screen}.json").read_text())["schedule_stack"]:
+    for layer in reversed(json.loads((SCHEDULES / f"{screen}.json").read_text())["schedule_stack"]):   # the top runs
         for t in layer["triggers"]:
             for sa in t.get("scheduled_actions", []) or [t]:
                 blk = (sa.get("trigger_actions") or {}).get("instructions_block") or []
@@ -250,22 +250,41 @@ def test_the_ring_publishes_only_when_the_turn_comes(monkeypatch):
     assert run(_rotation("north-screen"), ctx) == []                              # live: the ring waits
 
 
-def test_a_replay_takes_turns_and_shows_every_transition_once(monkeypatch):
+def _on_screen(monkeypatch, tmp_path):
+    """The screen shows start.jpg (what _current_image reads: the published file in the screen's bucket)."""
+    import routes.bucketer as bk
+    import routes.publisher as pub
+    (tmp_path / "start.jpg").write_bytes(b"x")
+    monkeypatch.setattr(pub, "get_published_info", lambda d: {"published": "start.jpg", "meta": {}})
+    monkeypatch.setattr(bk, "bucket_path", lambda d: tmp_path)
+    return str(tmp_path / "start.jpg")
+
+
+def _replay(monkeypatch, tmp_path, screen, scope):
+    """The screen's Replay_day block run as the loop runs it, thrown to `scope`: [(seconds in, picture)] published."""
     at(monkeypatch, 15, 0)
-    pick = lambda t, blk: t.get("value") == "Replay_day"
+    _on_screen(monkeypatch, tmp_path)
+    ctx = {"vars": {"day_set": [], "day_sets": {"2026-11-23": [f"p{i}" for i in range(8)]}, "replay_turn_s": 25,
+                    "ring_screens": 2},
+           "_event": {"payload": {"day": "2026-11-23"}, "scope": scope}}
+    done = run(_trigger(screen, lambda t, blk: t.get("value") == "Replay_day"), ctx, important=True)
+    clock, out = 0, []
+    for d in done:
+        if d["action"] == "publish":
+            out.append((clock, d["source"], d))
+        else:
+            clock += int(d["duration"].rstrip("s"))
+    return out
+
+
+def test_a_room_replay_takes_turns_shows_every_transition_once_and_puts_back_the_picture(monkeypatch, tmp_path):
     steps = {}
     for screen in ("north-screen", "south-screen"):
-        ctx = {"vars": {"day_set": [], "day_sets": {"2026-11-23": [f"p{i}" for i in range(8)]},
-                        "replay_turn_s": 25, "ring_screens": 2}, "_event": {"payload": {"day": "2026-11-23"}}}
-        done = run(_trigger(screen, pick), ctx, important=True)
-        clock, out = 0, []
-        for d in done:
-            if d["action"] == "publish":
-                assert d["clips"] is False and d["transition"] is True
-                out.append((clock, d["source"]))
-            else:
-                clock += int(d["duration"].rstrip("s"))
-        steps[screen] = out
+        out = _replay(monkeypatch, tmp_path, screen, "drawing-room")
+        *played, back = out
+        assert back[1].endswith("start.jpg") and back[2]["transition"] is True, "the picture it started on goes back"
+        assert all(d["clips"] is False and d["transition"] is True for _, _, d in played)
+        steps[screen] = [(t, p) for t, p, _ in played]
     changes = sorted([(t, s, p) for s, xs in steps.items() for t, p in xs if t > 0])
     assert [t for t, _, _ in changes] == [25 * k for k in range(1, 9)]             # one change at a time, 25 s apart
     assert [s for _, s, _ in changes] == ["north-screen", "south-screen"] * 4
@@ -273,8 +292,25 @@ def test_a_replay_takes_turns_and_shows_every_transition_once(monkeypatch):
     assert pairs == {(f"p{i}", f"p{(i + 1) % 8}") for i in range(8)}               # each transition once
 
 
+def test_a_replay_thrown_at_one_screen_plays_the_whole_set_there_and_puts_back_the_picture(monkeypatch, tmp_path):
+    out = _replay(monkeypatch, tmp_path, "south-screen", DEST)                      # this screen's own event button
+    *played, back = out
+    assert [p for _, p, _ in played] == [f"p{i}" for i in range(8)] + ["p0"]       # the whole ring, round to the start
+    assert [t for t, _, _ in played] == [25 * k for k in range(9)]                  # a change every 25 s, no gaps
+    assert back[1].endswith("start.jpg")
+
+
+def test_a_replay_with_no_set_still_puts_back_the_picture(monkeypatch, tmp_path):
+    at(monkeypatch, 15, 0)
+    start = _on_screen(monkeypatch, tmp_path)
+    ctx = {"vars": {"day_set": [], "day_sets": {}, "ring_screens": 2},
+           "_event": {"payload": {"day": "2026-11-23"}, "scope": DEST}}
+    done = run(_trigger("north-screen", lambda t, blk: t.get("value") == "Replay_day"), ctx, important=True)
+    assert [d.get("source") for d in done if d["action"] == "publish"] == [start]
+
+
 def _event_block(screen, value):
-    for layer in json.loads((SCHEDULES / f"{screen}.json").read_text())["schedule_stack"]:
+    for layer in reversed(json.loads((SCHEDULES / f"{screen}.json").read_text())["schedule_stack"]):   # the top runs
         for t in layer["triggers"]:
             if t.get("value") == value:
                 return t["trigger_actions"]["instructions_block"]
