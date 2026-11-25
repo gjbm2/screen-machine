@@ -198,3 +198,43 @@ def test_update_imported_variables(temp_registry_file, clean_scheduler_state):
     assert dest2 in updates
     assert var_name in updates[dest2]
     assert clean_scheduler_state["contexts"][dest2][0]["vars"][var_name] == "new_value" 
+def test_unreadable_registry_is_never_saved_over_the_file(temp_registry_file):
+    """25 Nov: a torn read came back empty and the next import saved it, wiping the room's variables."""
+    register_exported_var("a_theme", "A theme", "drawing-room", "cloud", datetime.now().isoformat())
+    good = open(temp_registry_file).read()
+    with open(temp_registry_file, "w") as f:
+        f.write("")  # what a reader saw mid-write
+    register_imported_var("a_theme", "a_theme", "group:drawing-room", "north-screen", datetime.now().isoformat())
+    assert open(temp_registry_file).read() == ""  # left alone, not replaced by an empty registry
+    with open(temp_registry_file, "w") as f:
+        f.write(good)
+    assert "a_theme" in load_vars_registry()["groups"]["drawing-room"]
+
+def test_concurrent_imports_and_exports_lose_nothing(temp_registry_file):
+    """Scheduler threads import and export at once: every entry survives, and no read sees a torn file."""
+    import threading
+    names = [f"v{i}" for i in range(40)]
+    for n in names:
+        register_exported_var(n, n, "drawing-room", "cloud", datetime.now().isoformat())
+    bad_reads = []
+
+    def importer(dest):
+        for n in names:
+            register_imported_var(n, n, "group:drawing-room", dest, datetime.now().isoformat())
+            if load_vars_registry().get("_unreadable"):
+                bad_reads.append(n)
+
+    def exporter():
+        for n in names:
+            register_exported_var(n + "_x", n, "drawing-room", "cloud", datetime.now().isoformat())
+
+    threads = [threading.Thread(target=importer, args=(d,)) for d in ("north-screen", "south-screen", "the-beast")]
+    threads.append(threading.Thread(target=exporter))
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    registry = load_vars_registry()
+    assert not bad_reads
+    assert set(registry["groups"]["drawing-room"]) == set(names) | {n + "_x" for n in names}
+    assert all(set(registry["imports"][n]) == {"north-screen", "south-screen", "the-beast"} for n in names)

@@ -965,12 +965,14 @@ def api_set_exported_var(var_name):
         # owner's schedule exports it again (register_exported_var replaces the entry).
         set_by = data.get("set_by")
         if isinstance(set_by, str) and set_by.strip():
-            for scope_vars in [registry.get("global", {})] + list(registry.get("groups", {}).values()):
-                if actual_var_name in scope_vars and scope_vars[actual_var_name].get("owner") == owner_id:
-                    scope_vars[actual_var_name]["edited_by"] = set_by.strip()[:60]
-                    scope_vars[actual_var_name]["edited_at"] = datetime.now().isoformat()
-            from routes.scheduler_utils import save_vars_registry
-            save_vars_registry(registry)
+            from routes.scheduler_utils import save_vars_registry, _vars_registry_lock
+            with _vars_registry_lock:
+                registry = load_vars_registry()
+                for scope_vars in [registry.get("global", {})] + list(registry.get("groups", {}).values()):
+                    if actual_var_name in scope_vars and scope_vars[actual_var_name].get("owner") == owner_id:
+                        scope_vars[actual_var_name]["edited_by"] = set_by.strip()[:60]
+                        scope_vars[actual_var_name]["edited_at"] = datetime.now().isoformat()
+                save_vars_registry(registry)
         
         # Update the context stack in memory and on disk
         update_scheduler_state(

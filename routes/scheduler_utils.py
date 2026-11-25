@@ -98,55 +98,84 @@ _last_debug_log_time = {}
 
 from config import VARS_REGISTRY_PATH
 
+# Every scheduler thread imports and exports through this one file, many times a minute. A torn read once came back
+# empty and the next import saved that, wiping the room's variables (25 Nov: the e-ink tag lost today's art, the
+# ring its settings). So: every read-modify-write holds this lock, saves are atomic, and a registry that could not
+# be read is never saved over the file.
+_vars_registry_lock = threading.RLock()
+
+def vars_registry_locked(fn):
+    """Decorator: fn loads, changes and saves the registry as one step."""
+    def wrapper(*args, **kwargs):
+        with _vars_registry_lock:
+            return fn(*args, **kwargs)
+    wrapper.__name__, wrapper.__doc__ = fn.__name__, fn.__doc__
+    return wrapper
+
 def load_vars_registry() -> Dict[str, Any]:
     """Load the exported variables registry from disk."""
-    if not os.path.exists(VARS_REGISTRY_PATH):
-        # Create default registry structure if it doesn't exist
-        registry = {
-            "global": {},
-            "groups": {},
-            "imports": {},  # Track which destinations have imported which variables
-            "last_updated": datetime.now().isoformat()
-        }
-        save_vars_registry(registry)
-        return registry
-    
-    try:
-        with open(VARS_REGISTRY_PATH, 'r') as f:
-            registry = json.load(f)
-            
-        # Add imports tracking if it doesn't exist (for backwards compatibility)
-        if "imports" not in registry:
-            registry["imports"] = {}
+    with _vars_registry_lock:
+        if not os.path.exists(VARS_REGISTRY_PATH):
+            # Create default registry structure if it doesn't exist
+            registry = {
+                "global": {},
+                "groups": {},
+                "imports": {},  # Track which destinations have imported which variables
+                "last_updated": datetime.now().isoformat()
+            }
             save_vars_registry(registry)
-            
-        return registry
-    except Exception as e:
-        from utils.logger import error
-        error(f"Error loading variables registry: {str(e)}")
-        # Return default registry on error
-        return {
-            "global": {},
-            "groups": {},
-            "imports": {},
-            "last_updated": datetime.now().isoformat()
-        }
+            return registry
+
+        try:
+            with open(VARS_REGISTRY_PATH, 'r') as f:
+                registry = json.load(f)
+
+            # Add imports tracking if it doesn't exist (for backwards compatibility)
+            if "imports" not in registry:
+                registry["imports"] = {}
+                save_vars_registry(registry)
+
+            return registry
+        except Exception as e:
+            from utils.logger import error
+            error(f"Error loading variables registry: {str(e)}")
+            # An empty registry for this read only: marked so save_vars_registry never writes it over the file
+            return {
+                "global": {},
+                "groups": {},
+                "imports": {},
+                "last_updated": datetime.now().isoformat(),
+                "_unreadable": True
+            }
 
 def save_vars_registry(registry: Dict[str, Any]) -> None:
-    """Save the exported variables registry to disk."""
+    """Save the exported variables registry to disk (atomically: readers see the old file or the new one)."""
+    if registry.get("_unreadable"):
+        from utils.logger import error
+        error("Not saving the variables registry: it was loaded from an unreadable file")
+        return
+
     # Ensure directory exists
     os.makedirs(os.path.dirname(VARS_REGISTRY_PATH), exist_ok=True)
-    
+
     # Update last updated timestamp
     registry["last_updated"] = datetime.now().isoformat()
-    
+
+    tmp = f"{VARS_REGISTRY_PATH}.{os.getpid()}.{threading.get_ident()}.tmp"
     try:
-        with open(VARS_REGISTRY_PATH, 'w') as f:
-            json.dump(registry, f, indent=2)
+        with _vars_registry_lock:
+            with open(tmp, 'w') as f:
+                json.dump(registry, f, indent=2)
+            os.replace(tmp, VARS_REGISTRY_PATH)
     except Exception as e:
         from utils.logger import error
         error(f"Error saving variables registry: {str(e)}")
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
 
+@vars_registry_locked
 def register_exported_var(var_name: str, friendly_name: str, scope: str, 
                           publish_destination: str, timestamp: str) -> None:
     """
@@ -176,6 +205,7 @@ def register_exported_var(var_name: str, friendly_name: str, scope: str,
     
     save_vars_registry(registry)
 
+@vars_registry_locked
 def register_imported_var(var_name: str, imported_as: str, source_dest_id: str, 
                         importing_dest_id: str, timestamp: str) -> None:
     """
@@ -2284,6 +2314,7 @@ def catch_up_on_important_actions(publish_destination: str, schedule: Dict[str, 
             # Use the same logic as for day_of_week trigger for the time_schedules
             # Since the code would be identical, it's omitted here 
 
+@vars_registry_locked
 def remove_exported_var(var_name: str, publish_destination: str) -> bool:
     """
     Remove an exported variable from the registry.
@@ -2326,6 +2357,7 @@ def remove_exported_var(var_name: str, publish_destination: str) -> bool:
     
     return removed
 
+@vars_registry_locked
 def remove_imported_var(var_name: str, importing_dest_id: str) -> bool:
     """
     Remove an imported variable entry from the registry.
@@ -2356,6 +2388,7 @@ def remove_imported_var(var_name: str, importing_dest_id: str) -> bool:
     
     return removed
 
+@vars_registry_locked
 def clean_registry_for_destination(publish_destination: str) -> Dict[str, int]:
     """
     Clean up registry entries for a destination when it's being reset/stopped.
