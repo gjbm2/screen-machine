@@ -28,3 +28,15 @@ async def test_a_screen_with_no_pages_is_fine(harness: Harness):
 async def test_a_body_that_is_not_a_state_is_refused(harness: Harness):
     status, _ = await harness.api("POST", "/api/v1/screens/devtest/art-state", {"still": {}}, token=None)
     assert status == 400
+
+
+async def test_a_video_to_play_reaches_every_page_of_the_screen(harness: Harness):
+    tv = await harness.page()
+    viewer = await harness.page(role="viewer")
+    status, body = await harness.api("POST", "/api/v1/screens/devtest/art-play",
+                                     {"url": "/output/north-screen/transitions/x.mp4"}, token=None)
+    assert status == 200 and body["sent"] == 2
+    for p in (tv, viewer):
+        assert (await p.wait_for("art.play"))["url"] == "/output/north-screen/transitions/x.mp4"
+    status, _ = await harness.api("POST", "/api/v1/screens/devtest/art-play", {"url": "http://elsewhere/x.mp4"}, token=None)
+    assert status == 400

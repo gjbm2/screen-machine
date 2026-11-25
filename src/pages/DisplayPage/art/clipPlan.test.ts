@@ -119,3 +119,27 @@ test("a new picture's clip (or none) ends the playing one", () => {
   assert.equal(r.plan.phase, "none");
   r.done();
 });
+
+test("another video played once over the still: then the still's own clip rests as usual", () => {
+  const r = rig({ random: 0 });
+  r.plan.setClip(CLIP);
+  assert.equal(r.plan.playOnce("/t/into.mp4"), true);
+  assert.equal(r.plan.playingUrl, "/t/into.mp4");
+  assert.equal(r.plan.playOnce("/t/other.mp4"), false, "one at a time");
+  r.plan.played();
+  assert.equal(r.plan.playingUrl, CLIP.url);
+  r.s(35.1);
+  assert.deepEqual(r.log, ["start", "start"], "its own clip after its rest");
+  r.done();
+});
+
+test("a still with no clip can still play a transition once", () => {
+  const r = rig({ random: 0 });
+  r.plan.setClip(null);
+  assert.equal(r.plan.playOnce("/t/out.mp4"), true);
+  r.plan.played();
+  r.s(600);
+  assert.deepEqual(r.log, ["start"]);
+  assert.equal(r.plan.phase, "none");
+  r.done();
+});

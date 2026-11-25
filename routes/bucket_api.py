@@ -271,6 +271,23 @@ def thumbnail(bucket_id: str, filename: str):
     return send_from_directory(thumb_dir, thumb_name)
 
 # Provide current publish info (filename, when, raw URL, thumbnail URL)
+@buckets_bp.route("/buckets/<bucket_id>/play", methods=["POST"])
+def play_on_screen(bucket_id: str):
+    """Play a video once over what the screen shows, on every page of it (the TV and anyone viewing it): one of its
+    picture's clips, or a transition into or out of it (owner, 25 Nov). room_service passes it on (art.play); a page
+    plays it in its clip layer and falls back to the picture."""
+    url = str((request.get_json(silent=True) or {}).get("url") or "")
+    if not url.startswith("/output/") or ".." in url or not url.lower().endswith((".mp4", ".webm", ".mov")):
+        abort(400, "url must be a video under /output/")
+    import requests as _rq
+    import smconfig
+    try:
+        r = _rq.post(smconfig.url("room").rstrip("/") + f"/api/v1/screens/{bucket_id}/art-play", json={"url": url}, timeout=3)
+        return jsonify(r.json()), r.status_code
+    except Exception as e:
+        return jsonify({"error": f"room_service didn't answer: {e}"}), 502
+
+
 @buckets_bp.route("/buckets/<bucket_id>/info", methods=["GET"])
 def published_info(bucket_id: str):
     """Get published info for a bucket"""
@@ -299,13 +316,35 @@ def published_info(bucket_id: str):
             clip = _meta(c).get("clip") or {}
             clips.append({"filename": c.name, "pace": clip.get("pace"), "play_s": clip.get("play_s"),
                           "thumbnail_url": f"/output/{bucket_id}/thumbnails/{c.name}.jpg"})
+    # and the transitions into and out of it (routes/transitions.py: each is listed on both of its pictures), so the
+    # display page's controls can play any of them (owner, 25 Nov: "most images will have a transition to and
+    # transition from clip associated with them, which should also thereby be exposed")
+    transitions = []
+    if still and (folder / still).is_file():
+        from routes.transitions import origin as _origin, _origin_file
+        here = _origin(folder / still, _meta(folder / still))
+        listed = list(_meta(folder / still).get("transitions") or [])
+        try:                                     # a copy carries its original's list as it was when copied
+            listed += _meta(_origin_file(here)).get("transitions") or []
+        except Exception:
+            pass
+        seen = set()
+        for t in listed:
+            if not isinstance(t, dict) or not t.get("url") or t["url"] in seen:
+                continue
+            seen.add(t["url"])
+            into = t.get("to") == here
+            other = t.get("from") if into else t.get("to")
+            transitions.append({"url": t["url"], "direction": "in" if into else "out", "idea": t.get("idea"),
+                                "other": other, "play_s": t.get("play_s"), "at": t.get("at")})
     return jsonify({
         "filename": filename,
         "published_at": published_at,
         "raw_url": raw_url,
         "thumbnail_url": thumb_url,
-        "still": still if clips else None,
+        "still": still if (clips or transitions) else None,
         "clips": clips,
+        "transitions": transitions,
     })
 
 # -- transitions (routes/transitions.py): the review page ----------------------

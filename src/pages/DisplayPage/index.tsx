@@ -15,7 +15,7 @@ import { extractEventTriggers } from "@/utils/scheduleUtils";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { LayerBoundary } from "./common/LayerBoundary";
 import { ControlsPanel, type NextAction, type PanelClip, type SchedulerStatus } from "./ControlsPanel";
-import { chooseClip, getPublishedInfo, publishOwnClip, type PublishedClip } from "@/shared/api/buckets";
+import { chooseClip, getPublishedInfo, playOnScreen, publishOwnClip, type PublishedClip, type PublishedTransition } from "@/shared/api/buckets";
 import { LegacyMaskLayers } from "./LegacyMaskLayers";
 import { ArtOnlyPage } from "./art/ArtOnlyPage";
 import { ArtMedia, type ArtMediaHandle } from "./art/ArtMedia";
@@ -390,6 +390,8 @@ function DisplayPage() {
   const artMediaRef = useRef<ArtMediaHandle>(null);
   // A still's own clip, played over it now and then (art/ClipLayer.tsx; state documents only)
   const clipLayerRef = useRef<ClipLayerHandle>(null);
+  // A video to play once over what the screen shows (the controls panel's Play, on every page of the screen)
+  useEffect(() => ctl?.onArtPlay((url) => void clipLayerRef.current?.playUrl(url)), [ctl]);
   // Each state document by its base, so a transition knows the picture it starts from (art/screenState.ts)
   const statesByBase = useRef(new Map<string, ScreenState>());
   useEffect(() => {
@@ -402,7 +404,7 @@ function DisplayPage() {
   shownSrcRef.current = shownSrc;
 
   // The published picture's clips, for the controls panel's Play (read while it is open)
-  const [published, setPublished] = useState<{ filename: string; clips: PublishedClip[] } | null>(null);
+  const [published, setPublished] = useState<{ filename: string; clips: PublishedClip[]; transitions: PublishedTransition[] } | null>(null);
   const [canPlayNow, setCanPlayNow] = useState(false);
   const [easedOnScreen, setEasedOnScreen] = useState(false);
   const [startingClip, setStartingClip] = useState<string | null>(null);
@@ -411,7 +413,7 @@ function DisplayPage() {
     if (!screenId || !showControls) return;
     let live = true;
     const read = () =>
-      getPublishedInfo(screenId).then((r) => live && setPublished({ filename: r.filename, clips: r.clips ?? [] }), () => live && setPublished(null));
+      getPublishedInfo(screenId).then((r) => live && setPublished({ filename: r.filename, clips: r.clips ?? [], transitions: r.transitions ?? [] }), () => live && setPublished(null));
     read();
     const t = setInterval(read, 15000);
     const poll = () => {
@@ -433,13 +435,30 @@ function DisplayPage() {
   const listed: PanelClip[] = (published?.clips ?? []).map((c) => ({ ...c, onScreen: c.filename === published?.filename && (isClip(shownSrc ?? "") || !!screenState?.clip) }));
   // The clip on screen plays here whatever the list says: the list (the picture's other clips) needs the screen's
   // access, which a page on plain http can't carry for an admins-only screen such as devtest (owner, 24 Nov)
-  const panelClips: PanelClip[] =
+  const clipsListed: PanelClip[] =
     easedOnScreen && !listed.some((c) => c.onScreen) ? [{ filename: shownSrc ?? "", onScreen: true }, ...listed] : listed;
+  // and the transitions into and out of the picture, played once over it on the screen (owner, 25 Nov)
+  const panelClips: PanelClip[] = [
+    ...clipsListed,
+    ...(published?.transitions ?? [])
+      .slice()
+      .sort((a, b) => (a.direction === b.direction ? 0 : a.direction === "in" ? -1 : 1))
+      .map((t): PanelClip => ({ filename: t.url, url: t.url, kind: t.direction, idea: t.idea, play_s: t.play_s, onScreen: false })),
+  ];
 
   /** Play the clip on screen now; another of the picture's clips is chosen, put up, and played as soon as it lands
    *  (rather than after its first short rest). */
   const playClip = async (clip: PanelClip) => {
     if (!screenId) return;
+    if ((clip.kind === "in" || clip.kind === "out") && clip.url) {
+      // to every page of the screen (the TV too), through room_service; it plays in each page's clip layer
+      try {
+        await playOnScreen(screenId, clip.url);
+      } catch (e) {
+        console.warn("[play] could not play the transition", e);
+      }
+      return;
+    }
     if (clip.onScreen) {
       if (clipLayerRef.current?.url() ? clipLayerRef.current.playNow() : artMediaRef.current?.playNow()) setCanPlayNow(false);
       return;

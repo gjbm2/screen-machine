@@ -29,6 +29,8 @@ export interface ClipPlanHooks {
 export class ClipPlan {
   phase: ClipPhase = "none";
   private clip: { url: string; rest: [number, number]; play_s: number } | null = null;
+  /** A video played once over the still instead of its clip (the controls panel: another clip, a transition). */
+  private onceUrl: string | null = null;
   private quiet = false;
   private hidden = false;
   private timer: ReturnType<typeof setTimeout> | null = null;
@@ -44,6 +46,11 @@ export class ClipPlan {
 
   get url(): string | null {
     return this.clip?.url ?? null;
+  }
+
+  /** What the current play shows: a video played once, else the still's clip. */
+  get playingUrl(): string | null {
+    return this.onceUrl ?? this.clip?.url ?? null;
   }
 
   /** The still's clip (null: none). A new clip starts with the short first rest. */
@@ -82,10 +89,20 @@ export class ClipPlan {
     return true;
   }
 
+  /** Play `url` once over the still now (another of its clips, or a transition into or out of it): when nothing is
+   *  playing, the page isn't quiet or hidden and no transition has the screen. The still's own clip then rests. */
+  playOnce(url: string): boolean {
+    if (this.phase === "playing" || this.phase === "stopping" || this.quiet || this.hidden || !this.hooks.slotFree()) return false;
+    this.onceUrl = url;
+    this.begin();
+    return true;
+  }
+
   /** The play has faded out and the video is gone. */
   played(): void {
     if (this.phase !== "playing" && this.phase !== "stopping") return;
     this.clearGuard();
+    this.onceUrl = null;
     this.phase = "resting";
     this.rest(this.clip?.rest ?? DEFAULT_REST_S);
   }

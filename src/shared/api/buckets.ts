@@ -53,8 +53,22 @@ export interface PublishedClip {
 }
 
 /** What a screen has published, with the published picture's clips (a published clip stands for its still). */
-export async function getPublishedInfo(bucketId: string): Promise<{ filename: string; still: string | null; clips: PublishedClip[] }> {
+/** A transition into or out of the published picture (routes/transitions.py). */
+export interface PublishedTransition {
+  url: string;
+  direction: "in" | "out";
+  idea?: string | null;
+  other?: string | null;
+  play_s?: number | null;
+}
+
+export async function getPublishedInfo(bucketId: string): Promise<{ filename: string; still: string | null; clips: PublishedClip[]; transitions?: PublishedTransition[] }> {
   return requestJson(`/buckets/${bucketId}/info`, undefined, (r) => `Could not read what's on the screen: ${r.statusText}`);
+}
+
+/** Play a video once over what the screen shows, on every page of it (the TV too): a clip or a transition. */
+export async function playOnScreen(bucketId: string, url: string): Promise<unknown> {
+  return requestJson(`/buckets/${bucketId}/play`, jsonInit('POST', { url }), (r) => `Could not play it: ${r.statusText}`);
 }
 
 /** Put one of the published picture's clips on its screen (a clip has its still's shape, so no fit is asked). */

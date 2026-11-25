@@ -30,6 +30,8 @@ export interface ClipLayerHandle {
   /** Resolves once no play is on screen (a freeze waits for the fade back to the still). */
   settled(): Promise<void>;
   url(): string | null;
+  /** Play another video once over the still (a clip of it, a transition into or out of it): false if it can't now. */
+  playUrl(url: string): boolean;
 }
 
 interface Props {
@@ -61,7 +63,7 @@ export const ClipLayer = forwardRef<ClipLayerHandle, Props>(function ClipLayer(
   if (!planRef.current) {
     planRef.current = new ClipPlan({
       start: () => {
-        const url = planRef.current?.url;
+        const url = planRef.current?.playingUrl;
         if (!url) return planRef.current?.played();
         setFadeMs(FADE_IN_MS);
         setShown(false);
@@ -105,6 +107,7 @@ export const ClipLayer = forwardRef<ClipLayerHandle, Props>(function ClipLayer(
         ? new Promise<void>((res) => waiters.current.push(res))
         : Promise.resolve(),
     url: () => plan.url,
+    playUrl: (url: string) => plan.playOnce(url),
   }));
 
   useEffect(() => {

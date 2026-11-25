@@ -8,6 +8,10 @@ import type { PublishedClip } from "@/shared/api/buckets";
 export interface PanelClip extends PublishedClip {
   /** It is the one this page shows (Play plays it at once; another is put up first). */
   onScreen: boolean;
+  /** A transition into or out of the picture (played once over it on the screen), else one of its clips. */
+  kind?: "clip" | "in" | "out";
+  url?: string;
+  idea?: string | null;
 }
 
 export interface SchedulerStatus {
@@ -42,6 +46,8 @@ interface Props {
 }
 
 function clipLabel(c: PanelClip, several: boolean): string {
+  if (c.kind === "in") return "Transition in";
+  if (c.kind === "out") return "Transition out";
   if (!several) return "Play";
   const pace = c.pace ? c.pace[0].toUpperCase() + c.pace.slice(1) : "Clip";
   return `${pace}${c.play_s ? ` (${Math.round(c.play_s)} s)` : ""}${c.onScreen ? " · on screen" : ""}`;
@@ -104,10 +110,10 @@ export function ControlsPanel({
           up and plays as soon as it lands */}
       {clips.length > 0 && (
         <div style={{marginBottom: 8}}>
-          <div style={{fontWeight: 600, fontSize: 15, marginBottom: 4}}>{clips.length > 1 ? 'Clips:' : 'Clip:'}</div>
+          <div style={{fontWeight: 600, fontSize: 15, marginBottom: 4}}>{clips.some(c => c.kind === 'in' || c.kind === 'out') ? 'Play on the screen:' : clips.length > 1 ? 'Clips:' : 'Clip:'}</div>
           <div style={{display: 'flex', flexWrap: 'wrap', gap: 8}}>
             {clips.map(c => {
-              const playing = c.onScreen && !canPlayNow && startingClip !== c.filename;
+              const playing = c.onScreen && c.kind !== 'in' && c.kind !== 'out' && !canPlayNow && startingClip !== c.filename;
               const starting = startingClip === c.filename;
               return (
                 <button
@@ -126,7 +132,7 @@ export function ControlsPanel({
                     opacity: playing || starting ? 0.6 : 1,
                     fontWeight: 500,
                   }}
-                  title={c.onScreen ? 'Play it now' : 'Put this clip up and play it'}
+                  title={c.kind === 'in' || c.kind === 'out' ? (c.idea || 'Play it on the screen') : c.onScreen ? 'Play it now' : 'Put this clip up and play it'}
                 >
                   <Play size={16} style={{marginRight: 4}} />
                   {starting ? 'Starting…' : playing ? 'Playing' : clipLabel(c, clips.length > 1)}

@@ -276,6 +276,13 @@ export class DisplayController {
     return () => this.artStateListeners.delete(fn);
   }
   private readonly artStateListeners = new Set<(state: unknown | null) => void>();
+
+  /** A video to play once over what the screen shows (`art.play`: the controls panel's Play, via room_service). */
+  onArtPlay(fn: (url: string) => void): () => void {
+    this.artPlayListeners.add(fn);
+    return () => this.artPlayListeners.delete(fn);
+  }
+  private readonly artPlayListeners = new Set<(url: string) => void>();
   private tellArtState(state: unknown | null): void {
     for (const fn of this.artStateListeners) {
       try {
@@ -366,6 +373,9 @@ export class DisplayController {
         break;
       case "art.state":
         this.tellArtState(d);
+        break;
+      case "art.play":
+        if (typeof d.url === "string") for (const fn of this.artPlayListeners) fn(d.url);
         break;
       case "hb":
         break;

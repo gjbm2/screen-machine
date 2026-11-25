@@ -276,6 +276,15 @@ def build_app(svc: "RoomService") -> web.Application:
         sent = svc.pages.broadcast(request.match_info["id"], "art.state", body)
         return web.json_response({"screen": request.match_info["id"], "sent": sent})
 
+    async def art_play(request: web.Request) -> web.Response:
+        # Play a video once over what the screen shows (the display page's controls, via Flask): to every page of it.
+        body = await read_json(request)
+        url = body.get("url") if isinstance(body, dict) else None
+        if not isinstance(url, str) or not url.startswith("/output/"):
+            return err(400, "bad_request", "body must be {url: '/output/...'}")
+        sent = svc.pages.broadcast(request.match_info["id"], "art.play", {"url": url})
+        return web.json_response({"screen": request.match_info["id"], "sent": sent})
+
     async def events_ws(request: web.Request) -> web.StreamResponse:
         return await svc.events.handle(request)
 
@@ -293,6 +302,7 @@ def build_app(svc: "RoomService") -> web.Application:
     app.router.add_put("/api/v1/screens/{id}", put_screen)
     app.router.add_patch("/api/v1/screens/{id}/live", patch_live)
     app.router.add_post("/api/v1/screens/{id}/art-state", art_state)
+    app.router.add_post("/api/v1/screens/{id}/art-play", art_play)
     app.router.add_get("/api/v1/catalog", catalog)
     app.router.add_get(r"/api/v1/screens/{id}/snapshots/{kind:(anchor|target)}.png", snapshot_png)
     app.router.add_get("/api/v1/events", events_ws)
