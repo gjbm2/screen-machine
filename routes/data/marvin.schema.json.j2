@@ -58,6 +58,9 @@
             "type": "string",
             "description": "The name of the scheduler script to load when intent is load_schedule."
           },
+{% if SCRIPT_VARS_SCHEMA and SCRIPT_VARS_SCHEMA.properties %}
+          "vars": {{ SCRIPT_VARS_SCHEMA | tojson }},
+{% endif %}
           "mode": {
             "type": "string",
             "description": "For set_mode: the mode the user named, as one of the room's mode names (e.g. 'Party', 'Disco', 'Normal')."

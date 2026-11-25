@@ -1,0 +1,110 @@
+{
+  "description": "Show a bucket's favourites on this screen (the Library's paintings, a screen's, the Cloud's): one now, then the next every 3 minutes, each with its clip when it has one; someone using the screen holds it for a while, as the screen's own schedule does. It runs until it is unloaded, or until 03:00, so the screen's own schedule is back by morning.",
+  "inputs": {
+    "bucket": {
+      "description": "the bucket whose favourites to show (empty: this screen's own)",
+      "choices": "buckets"
+    }
+  },
+  "initial_actions": {
+    "instructions_block": [
+      {
+        "action": "set_var",
+        "var": "_fav_bucket",
+        "input": {
+          "value": "{{ bucket | default(_current_destination, true) }}"
+        }
+      },
+      {
+        "action": "set_var",
+        "var": "_fav_every",
+        "value": 3
+      },
+      {
+        "action": "set_var",
+        "var": "_fav_m0",
+        "input": {
+          "value": "{{ now().hour * 60 + now().minute }}"
+        }
+      },
+      {
+        "action": "log",
+        "message": "** Favourites from {{ _fav_bucket }}, one every {{ _fav_every }} minutes **"
+      },
+      {
+        "action": "display",
+        "show": "Next",
+        "bucket": "{{ _fav_bucket }}"
+      }
+    ]
+  },
+  "triggers": [
+    {
+      "type": "day_of_week",
+      "days": [
+        "Monday",
+        "Tuesday",
+        "Wednesday",
+        "Thursday",
+        "Friday",
+        "Saturday",
+        "Sunday"
+      ],
+      "scheduled_actions": [
+        {
+          "time": "00:00",
+          "repeat_schedule": {
+            "every": "1",
+            "until": "23:59"
+          },
+          "trigger_actions": {
+            "instructions_block": [
+              {
+                "action": "terminate",
+                "mode": "block",
+                "test": "{% set d = (now().hour * 60 + now().minute - (_fav_m0 | int)) % 1440 %}{{ d == 0 or d % (_fav_every | int) != 0 }}"
+              },
+              {
+                "action": "display",
+                "show": "Next",
+                "bucket": "{{ _fav_bucket }}"
+              }
+            ]
+          }
+        },
+        {
+          "time": "03:00",
+          "trigger_actions": {
+            "important": true,
+            "instructions_block": [
+              {
+                "action": "log",
+                "message": "** 03:00: favourites from {{ _fav_bucket }} done; back to this screen's own schedule **"
+              },
+              {
+                "action": "unload"
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "value": "_user_interacting",
+      "trigger_actions": {
+        "urgent": true,
+        "instructions_block": [
+          {
+            "action": "log",
+            "message": "Someone is using this screen ({{ _event.payload.action | default('unknown') }}): the next favourite waits {{ _event.payload.wait | default('2m') }}"
+          },
+          {
+            "action": "wait",
+            "duration": "{{ _event.payload.wait | default('2m') }}"
+          }
+        ]
+      }
+    }
+  ]
+}

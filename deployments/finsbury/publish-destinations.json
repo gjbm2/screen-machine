@@ -176,6 +176,16 @@
     "description": "Hidden until unlocked"
   },
   {
+    "id": "library",
+    "access": "guest",
+    "name": "Library",
+    "icon": "Library",
+    "headless": true,
+    "type": "output_file",
+    "has_bucket": true,
+    "description": "Famous paintings (public domain, tools/artworks/fetch.py): favourite them, show them, put them in films"
+  },
+  {
     "id": "greg-mobile",
     "name": "Greg's mobile",
     "icon": "MonitorSmartphone",

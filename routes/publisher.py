@@ -1344,7 +1344,8 @@ def get_published_info(publish_destination_id: str) -> dict:
 def display_from_bucket(
     publish_destination_id: str,
     mode: str,
-    silent: bool = False
+    silent: bool = False,
+    bucket: str | None = None,
 ) -> dict:
     """
     Display an image from a bucket based on the specified mode.
@@ -1353,10 +1354,13 @@ def display_from_bucket(
         publish_destination_id: ID of the destination to display to
         mode: Display mode - "Next", "Random", "Previous", or "Blank"
         silent: If True, suppress overlay display
+        bucket: whose favourites (default the destination's own), e.g. the Library's (owner, 25 Nov: "show
+            favourites from library"); a still's clip comes with it as from any bucket
         
     Returns:
         dict with success status and optional error message
     """
+    bucket = bucket or publish_destination_id
     debug(f"display_from_bucket called for {publish_destination_id} with mode={mode}, silent={silent}")
     
     if mode not in ["Next", "Random", "Previous", "Blank"]:
@@ -1373,13 +1377,13 @@ def display_from_bucket(
         )
 
     from routes.bucket_api import load_meta
-    meta = load_meta(publish_destination_id)
+    meta = load_meta(bucket)
     favorites = meta.get("favorites", [])
-    debug(f"Found {len(favorites)} favorites in bucket {publish_destination_id}")
+    debug(f"Found {len(favorites)} favorites in bucket {bucket}")
     
     if not favorites:
-        error(f"No favorites found in bucket {publish_destination_id}.")
-        return {"success": False, "error": f"No favorites found in bucket {publish_destination_id}."}
+        error(f"No favorites found in bucket {bucket}.")
+        return {"success": False, "error": f"No favorites found in bucket {bucket}."}
 
     published_info = get_published_info(publish_destination_id)
     current_image = published_info.get("published")
@@ -1417,7 +1421,7 @@ def display_from_bucket(
         debug(f"Random mode - selected: {filename}")
 
     from routes.bucket_api import bucket_path
-    image_path = bucket_path(publish_destination_id) / filename
+    image_path = bucket_path(bucket) / filename
     debug(f"Image path constructed: {image_path}")
 
     if not image_path.exists():

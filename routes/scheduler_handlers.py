@@ -566,10 +566,13 @@ def handle_display(instruction, context, now, output, publish_destination):
     # Use the display service from the factory
     display_service = get_display_service()
     
+    # bucket: another bucket's favourites (the Library's), else this screen's own
+    bucket = (instruction.get("bucket") or "").strip() or None
     result = display_service(
         publish_destination_id=publish_destination,
         mode=show,
-        silent=instruction.get("silent", False)
+        silent=instruction.get("silent", False),
+        **({"bucket": bucket} if bucket else {}),
     )
 
     if not result.get("success"):
@@ -578,7 +581,7 @@ def handle_display(instruction, context, now, output, publish_destination):
         return False
 
     show_type = show.lower()
-    message = f"Displayed {show_type} favorite"
+    message = f"Displayed {show_type} favorite" + (f" from {bucket}" if bucket else "")
     log_schedule(message, publish_destination, now, output)
     return False
 

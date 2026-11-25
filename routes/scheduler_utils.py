@@ -3153,7 +3153,7 @@ LATE_EXECUTION_GRACE_PERIOD_SECONDS = 5 * 60
     
 # === Schedule Stack Management ===
 
-def push_schedule(publish_destination: str, new_schedule: Dict[str, Any]) -> Dict[str, Any]:
+def push_schedule(publish_destination: str, new_schedule: Dict[str, Any], vars: Dict[str, Any] | None = None) -> Dict[str, Any]:
     """
     Push a new schedule onto the schedule stack and create a corresponding context.
     This preserves the existing schedule and context by pushing them onto their stacks,
@@ -3162,6 +3162,9 @@ def push_schedule(publish_destination: str, new_schedule: Dict[str, Any]) -> Dic
     Args:
         publish_destination: The destination ID
         new_schedule: The new schedule to load on top of existing
+        vars: variables the new schedule starts with, over the inherited ones (a script's `inputs`, as Alexa
+            heard them: "show favourites from library" loads favourites with bucket=library); its initial actions
+            see them
         
     Returns:
         Dictionary with operation status and details
@@ -3208,6 +3211,8 @@ def push_schedule(publish_destination: str, new_schedule: Dict[str, Any]) -> Dic
         # No existing context, create default
         new_context = default_context()
         debug(f"push_schedule: Created new default context")
+    if vars:
+        new_context.setdefault("vars", {}).update(vars)
     
     # If we have an existing context, push it onto the context stack
     if current_context is not None:
@@ -3372,7 +3377,7 @@ def pop_schedule(publish_destination: str) -> Dict[str, Any]:
         "scheduler_stopped": False
     }
 
-def load_schedule_on_stack(publish_destination: str, schedule: Dict[str, Any]) -> Dict[str, Any]:
+def load_schedule_on_stack(publish_destination: str, schedule: Dict[str, Any], vars: Dict[str, Any] | None = None) -> Dict[str, Any]:
     """
     Load a new schedule on top of any existing schedule using proper stack management.
     This is the main entry point for loading schedules that should stack properly.
@@ -3380,6 +3385,7 @@ def load_schedule_on_stack(publish_destination: str, schedule: Dict[str, Any]) -
     Args:
         publish_destination: The destination ID
         schedule: The schedule to load
+        vars: variables it starts with (push_schedule)
         
     Returns:
         Dictionary with operation status and details
@@ -3401,7 +3407,7 @@ def load_schedule_on_stack(publish_destination: str, schedule: Dict[str, Any]) -
             }
         
         # Push the new schedule onto the stack
-        push_result = push_schedule(publish_destination, schedule)
+        push_result = push_schedule(publish_destination, schedule, vars)
         if push_result["status"] != "success":
             return push_result
         

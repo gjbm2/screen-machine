@@ -1,8 +1,9 @@
 # Famous artworks the generator's Upload menu offers as reference pictures (owner, 19 Nov: take a photo and put it
 # into a historic picture, or make something in a picture's style). Public domain only: every artist here died
 # before 1955. The pictures themselves are not in git: tools/artworks/fetch.py downloads each from Wikimedia Commons
-# (the lead image of its English Wikipedia article) into output/_artworks/, scaled for 4K, and writes the list the
-# page reads (output/_artworks/library.json).
+# (the lead image of its English Wikipedia article) into output/library/, scaled for 4K, and writes the list the
+# picker reads (output/library/library.json). The same folder is the Library bucket (owner, 25 Nov): favourite the
+# works, show them on a screen ("show favourites from library"), drag them into films, give them clips.
 #
 # Fields: id (file name), title, artist, year, movement, genre, medium, people (none | one | two | group: who could be
 # swapped or joined), tags (extra search words), aka (other names), wiki (the English Wikipedia article, when its

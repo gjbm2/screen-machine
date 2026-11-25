@@ -6,8 +6,8 @@ This version is activated when the user appears to be asking to load a scheduler
 
 Your job is to:
 
-1. Identify which scheduler script the user wants to load from this list of available scripts:
-   {{AVAILABLE_SCHEDULER_SCRIPTS}}
+1. Identify which scheduler script the user wants to load from this list of available scripts (each with what it does, and the inputs it takes):
+{{SCHEDULER_SCRIPTS}}
    
 2. Match the user's input generously to one of the available scripts:
    - Handle variations in naming (e.g., "show case" should match "showcase")
@@ -21,7 +21,9 @@ Your job is to:
    - If the user explicitly mentions a target, use that (choose from: {{ALEXA_TARGETS}})
    - If no target is mentioned, default to {{ALEXA_CLOSEST_TARGET}}
    
-4. If successful in matching a script, set intent to "load_schedule"
+4. Fill the script's inputs from what the user said (e.g. "load favourites from library": data.vars.bucket is "library"). Leave out an input the user didn't mention.
+
+5. If successful in matching a script, set intent to "load_schedule"
 
 ---
 
@@ -32,6 +34,7 @@ Your JSON response must include:
 - If intent is "load_schedule", include:
   - `data.script_name`: The actual script filename (without .json extension)
   - `data.targets`: Array of target screen IDs where the schedule should be loaded
+  - `data.vars`: the script's inputs the user gave, by name
 
 Do not include prompt, workflow, or other fields in the data object.
 

@@ -1,12 +1,20 @@
-"""Download the famous-artworks library (config/artworks/catalogue.yaml) for the generator's Upload menu.
+"""Download the famous-artworks library (config/artworks/catalogue.yaml): the Library bucket, and the generator's and
+films' "Famous artworks" picker.
 
 Each work's picture is the lead image of its English Wikipedia article (the `wiki` title, else the best search hit for
 `search` or "<title> <artist>"), a Wikimedia Commons file; failing that the article's Wikidata image, and for a work
 without one (or whose article names none), the first Commons file found by its `commons` words or title and artist. It is fetched at most 3840 px on its long edge (no
 upscaling; a 4K frame's width), saved as JPEG under 4.5 MB, with a 512 px thumbnail for the picker, into
-output/_artworks/ (served by Flask as /output/_artworks/, not in git). library.json there is what the page reads.
+output/library/ (served by Flask as /output/library/, not in git). library.json there is what the picker reads.
+
+The folder is also the Library bucket (owner, 25 Nov: "a class of bucket ... favourite some of them and drag/drop them
+into films", clips made for them; its entry in each deployment's publish-destinations.json): each work gets a sidecar
+(<id>.jpg.json: what it is, as "artwork", and "<title>, <artist>, <year>" as its prompt) and a bucket thumbnail, and is
+added to bucket.json's sequence in catalogue order. Favourites, clips, art tags and anything else put in the bucket
+are kept. The folder was output/_artworks/ until 25 Nov: it is moved here on the first run, with a link left behind.
 
     ~/.venvs/sm-room/bin/python tools/artworks/fetch.py              # fetch what's missing, rewrite library.json
+    ~/.venvs/sm-room/bin/python tools/artworks/fetch.py --index      # no downloads: library.json and the bucket only
     ~/.venvs/sm-room/bin/python tools/artworks/fetch.py --only vermeer-pearl --refresh
     ~/.venvs/sm-room/bin/python tools/artworks/fetch.py --sheet      # also a contact sheet to check them by eye
 
@@ -17,6 +25,8 @@ from __future__ import annotations
 import argparse
 import io
 import json
+import os
+import shutil
 import sys
 import time
 from pathlib import Path
@@ -27,7 +37,9 @@ from PIL import Image, ImageDraw, ImageOps
 
 REPO = Path(__file__).resolve().parents[2]
 CATALOGUE = REPO / "config" / "artworks" / "catalogue.yaml"
-OUT = REPO / "output" / "_artworks"
+BUCKET = "library"
+OUT = REPO / "output" / BUCKET
+OLD_OUT = REPO / "output" / "_artworks"
 API = "https://en.wikipedia.org/w/api.php"
 # Wikimedia's robot policy: a named client with a way to reach its owner, else it throttles hard (429)
 UA = f"screen-machine-artworks/1.0 (https://screen.finsburybankforsavings.com) python-requests/{requests.__version__}"
@@ -193,13 +205,64 @@ def contact_sheet(entries: list[dict], path: Path) -> None:
     sheet.save(path, quality=80)
 
 
+def year_text(y) -> str:
+    return f"{-y} BC" if isinstance(y, int) and y < 0 else str(y)
+
+
+def _write_json(path: Path, data) -> None:
+    """In one step (a temp file, then os.replace): Flask reads and writes the bucket's files at any time."""
+    tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False), "utf-8")
+    os.replace(tmp, path)
+
+
+def move_old_folder() -> None:
+    """output/_artworks/ (before 25 Nov) becomes output/library/, with a link from the old name for old addresses."""
+    if OLD_OUT.is_dir() and not OLD_OUT.is_symlink() and not OUT.exists():
+        OLD_OUT.rename(OUT)
+        OLD_OUT.symlink_to(BUCKET)
+        print(f"moved {OLD_OUT} to {OUT} (the old name links to it)")
+
+
+def write_bucket(entries: list[dict]) -> None:
+    """The works as the Library bucket's items: a sidecar each (its art tags and anything else in it kept), a bucket
+    thumbnail, and its place in bucket.json's sequence (new works after the rest, in catalogue order)."""
+    thumbs = OUT / "thumbnails"
+    thumbs.mkdir(exist_ok=True)
+    for e in entries:
+        name = f"{e['id']}.jpg"
+        sidecar = OUT / f"{name}.json"
+        try:
+            meta = json.loads(sidecar.read_text("utf-8")) if sidecar.exists() else {}
+        except ValueError:
+            meta = {}
+        meta["prompt"] = f"{e['title']}, {e['artist']}, {year_text(e['year'])}"
+        meta["artwork"] = {k: e[k] for k in ("id", "title", "artist", "year", "movement", "genre", "medium", "people",
+                                             "period", "tags", "aka", "source")}
+        meta["width"], meta["height"] = e["width"], e["height"]
+        _write_json(sidecar, meta)
+        thumb = thumbs / f"{name}.jpg"
+        if not thumb.exists():
+            shutil.copy2(OUT / "thumbs" / name, thumb)
+    path = OUT / "bucket.json"
+    meta = json.loads(path.read_text("utf-8")) if path.exists() else {}
+    seq = meta.get("sequence") or []
+    have = {x.get("file") if isinstance(x, dict) else x for x in seq}
+    seq += [f"{e['id']}.jpg" for e in entries if f"{e['id']}.jpg" not in have]
+    meta["sequence"] = seq
+    meta.setdefault("favorites", [])
+    _write_json(path, meta)
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--only", nargs="*", help="just these ids")
     ap.add_argument("--refresh", action="store_true", help="fetch again even if already here")
-    ap.add_argument("--sheet", action="store_true", help="write output/_artworks/contact-sheet.jpg")
+    ap.add_argument("--sheet", action="store_true", help="write output/library/thumbs/contact-sheet.jpg")
+    ap.add_argument("--index", action="store_true", help="download nothing: rewrite library.json and the bucket only")
     a = ap.parse_args()
 
+    move_old_folder()
     works = yaml.safe_load(CATALOGUE.read_text())["works"]
     (OUT / "thumbs").mkdir(parents=True, exist_ok=True)
     sources_path = OUT / "sources.json"
@@ -211,7 +274,7 @@ def main() -> None:
         dest, thumb = OUT / f"{wid}.jpg", OUT / "thumbs" / f"{wid}.jpg"
         if a.only and wid not in a.only:
             continue
-        if dest.exists() and thumb.exists() and wid in sources and not a.refresh:
+        if a.index or (dest.exists() and thumb.exists() and wid in sources and not a.refresh):
             continue
         try:
             page = None if work.get("commons") else article(work)
@@ -249,17 +312,19 @@ def main() -> None:
             "period": PERIOD_OF.get(work["movement"], "Other"),
             "tags": work.get("tags", []), "aka": work.get("aka", []),
             "width": src["saved"][0], "height": src["saved"][1],
-            "image": f"/output/_artworks/{wid}.jpg", "thumb": f"/output/_artworks/thumbs/{wid}.jpg",
+            "image": f"/output/{BUCKET}/{wid}.jpg", "thumb": f"/output/{BUCKET}/thumbs/{wid}.jpg",
             "source": {"article": src["article"], "file": src["file"], "license": src["license"]},
         })
     (OUT / "library.json").write_text(json.dumps(
         {"periods": list(PERIODS), "works": entries}, indent=1, ensure_ascii=False))
     print(f"library.json: {len(entries)} of {len(works)} works")
+    write_bucket(entries)
+    print(f"the {BUCKET} bucket: {len(entries)} works")
     for wid, why in failed:
         print(f"FAIL {wid}: {why}")
-    if a.sheet:
-        contact_sheet(entries, OUT / "contact-sheet.jpg")
-        print(f"contact sheet: {OUT / 'contact-sheet.jpg'}")
+    if a.sheet:   # with the thumbnails, not among the bucket's pictures
+        contact_sheet(entries, OUT / "thumbs" / "contact-sheet.jpg")
+        print(f"contact sheet: {OUT / 'thumbs' / 'contact-sheet.jpg'}")
     sys.exit(1 if failed else 0)
 
 

@@ -1,7 +1,8 @@
 // Famous artworks to use as reference pictures (owner, 19 Nov): put a photo into a historic picture, or make one in
 // its style. Search by anything (artist, title, nickname, subject, movement, century) with type-ahead; narrow by
 // period, kind of picture, or pictures with people in them; tap up to three and use them. The pictures (up to
-// 3840 px, under 5 MB) come from output/_artworks/ (tools/artworks/fetch.py) and go to the form like an upload.
+// 3840 px, under 5 MB) come from output/library/ (tools/artworks/fetch.py; it is the Library bucket too) and go
+// to the form like an upload.
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Loader2, Search, Users, X } from 'lucide-react';
 import { toast } from 'sonner';
@@ -9,7 +10,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { cn } from '@/lib/utils';
 import { indexLibrary, searchArtworks, suggest, type Artwork, type Library } from './search';
 
-const LIBRARY_URL = '/output/_artworks/library.json';
+const LIBRARY_URL = '/output/library/library.json';
 const MAX_PICKS = 3;
 
 const GENRE_WORDS: Record<string, string> = {

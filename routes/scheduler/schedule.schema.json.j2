@@ -32,6 +32,23 @@
       "title": "Final actions",
       "description": "Steps to execute after all trigger blocks have fired."
     },
+    "description": {
+      "type": "string",
+      "title": "Description",
+      "description": "What this script does, for the people (and Alexa) choosing a script to load."
+    },
+    "inputs": {
+      "type": "object",
+      "title": "Inputs",
+      "description": "Variables the script is loaded with (Alexa fills them from what was said): name -> {description, choices}. choices 'buckets' means one of the buckets.",
+      "additionalProperties": {
+        "type": "object",
+        "properties": {
+          "description": {"type": "string"},
+          "choices": {"type": "string", "enum": ["buckets"]}
+        }
+      }
+    },
     "prevent_unload": {
       "type": "boolean",
       "title": "Prevent Unload",
@@ -490,7 +507,7 @@
         },
         {
           "title": "Display",
-          "description": "Show the next or a random picture in the bucket for this screen.",
+          "description": "Show the next or a random favourite in the bucket for this screen, or in another bucket.",
           "type": "object",
           "properties": {
             "action": {
@@ -517,6 +534,11 @@
                 "Previous"
               ],
               "description": "Choose whether to display the next item in order, the previous item, pick one at random, or display a blank screen."
+            },
+            "bucket": {
+              "type": "string",
+              "title": "Bucket",
+              "description": "Optional: show another bucket's favourites (e.g. library, or {{ '{{ bucket }}' }}); empty for this screen's own."
             }
           },
           "required": [

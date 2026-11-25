@@ -26,7 +26,9 @@ import routes.display
 import utils.logger
 from utils.logger import info, error, warning, debug
 import utils
+import copy
 import json
+import os
 import re
 import time
 import threading
@@ -49,6 +51,65 @@ _ROOM_INTENTS = ("set_mode", "set_auto", "set_listening", "cue_scene", "set_effe
 
 
 _WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+_SCRIPT_DIR = os.path.join("routes", "scheduler", "scripts")
+
+
+def _voice_buckets() -> dict:
+    """The buckets a voice may name, id -> name: not the hidden or locked ones, nor a person's own cloud."""
+    return {d["id"]: d.get("name") or d["id"] for d in _load_json_once("destination", "publish-destinations.json")
+            if d.get("has_bucket") and not d.get("hidden") and not d.get("locked") and not d.get("owner")}
+
+
+def _scripts() -> dict:
+    """The scripts Alexa may load (routes/scheduler/scripts/*.json, not the _ ones): name -> the script."""
+    out = {}
+    for filename in sorted(os.listdir(_SCRIPT_DIR)) if os.path.isdir(_SCRIPT_DIR) else []:
+        if filename.endswith(".json") and not filename.startswith("_"):
+            try:
+                with open(os.path.join(_SCRIPT_DIR, filename)) as f:
+                    out[filename[:-5]] = json.load(f)
+            except Exception as e:
+                warning(f"[alexa] script {filename} unreadable: {e}")
+    return out
+
+
+def _scripts_for_ai(scripts: dict, buckets: dict) -> str:
+    """One line per script for the AI choosing one: its name, what it does and the inputs it is loaded with
+    (a script's "description" and "inputs"; owner, 25 Nov: "show favourites from library" loads favourites with
+    bucket=library)."""
+    lines = []
+    for name, script in scripts.items():
+        line = f"- {name}" + (f": {script['description']}" if script.get("description") else "")
+        for var, spec in (script.get("inputs") or {}).items():
+            line += f"\n    input data.vars.{var}: {spec.get('description') or var}"
+            if spec.get("choices") == "buckets":
+                line += "; one of " + ", ".join(f"{i} ({n})" for i, n in buckets.items())
+        lines.append(line)
+    return "\n".join(lines) or "(none)"
+
+
+def _script_vars_schema(scripts: dict, buckets: dict) -> dict:
+    """data.vars for the AI's answer: every script input, a bucket input as one of the buckets' ids."""
+    props = {}
+    for script in scripts.values():
+        for var, spec in (script.get("inputs") or {}).items():
+            props[var] = {"type": "string", "description": spec.get("description") or var}
+            if spec.get("choices") == "buckets":
+                props[var]["enum"] = list(buckets)
+    return {"type": "object", "description": "For load_schedule: the script's inputs, by name.", "properties": props}
+
+
+def _script_vars(script: dict, said: dict, buckets: dict) -> dict:
+    """The inputs the AI heard for a script, as it declares them: a bucket by its id or its name."""
+    out = {}
+    for var, spec in (script.get("inputs") or {}).items():
+        value = str((said or {}).get(var) or "").strip()
+        if value and spec.get("choices") == "buckets":
+            value = next((i for i, n in buckets.items() if value.lower() in (i.lower(), n.lower())), "")
+        if value:
+            out[var] = value
+    return out
 
 
 def _day_said(said: str):
@@ -506,17 +567,12 @@ def process(data):
             subs["EXPORTED_VARS"] = {}
             subs["FRIENDLY_TO_VAR_NAMES"] = {}
         
-        # Add available scheduler scripts for load_schedule intent
-        import os
-        script_dir = os.path.join("routes", "scheduler", "scripts")
-        available_scripts = []
-        if os.path.exists(script_dir):
-            for filename in os.listdir(script_dir):
-                if filename.endswith(".json") and not filename.startswith("_"):
-                    script_name = filename[:-5]  # Remove .json extension
-                    available_scripts.append(script_name)
-        subs["AVAILABLE_SCHEDULER_SCRIPTS"] = available_scripts
-        utils.logger.debug(f"Added {len(available_scripts)} available scheduler scripts to subs: {available_scripts}")
+        # The scheduler scripts the load_schedule intent may load: what each does and the inputs it takes
+        scripts, voice_buckets = _scripts(), _voice_buckets()
+        subs["AVAILABLE_SCHEDULER_SCRIPTS"] = list(scripts)
+        subs["SCHEDULER_SCRIPTS"] = _scripts_for_ai(scripts, voice_buckets)
+        subs["SCRIPT_VARS_SCHEMA"] = _script_vars_schema(scripts, voice_buckets)
+        utils.logger.debug(f"Added {len(scripts)} available scheduler scripts to subs: {list(scripts)}")
         
         # Fall back to a default response
         result = None
@@ -728,26 +784,29 @@ def process(data):
                     response_ssml = Brianize("I couldn't understand which event to trigger.")
             # User wants to load a scheduler script
             case "load_schedule":
-                import os
                 from routes.scheduler_utils import load_schedule_on_stack
                 
-                script_data = result.get("data", {})
+                script_data = result.get("data") or {}
                 script_name = script_data.get("script_name")
-                targets = script_data.get("targets", [])
+                targets = script_data.get("targets") or ([subs["ALEXA_CLOSEST_TARGET"]] if subs.get("ALEXA_CLOSEST_TARGET") else [])
                 
-                utils.logger.debug(f"Load schedule intent data: script_name={script_name}, targets={targets}")
+                utils.logger.debug(f"Load schedule intent data: script_name={script_name}, targets={targets}, vars={script_data.get('vars')}")
                 
                 if script_name and targets:
                     # Expand groups to individual destinations
                     expanded_targets = expand_alexa_targets_to_destinations(targets) if targets else []
                     
-                    # Try to load the schedule for each target
-                    script_path = os.path.join("routes", "scheduler", "scripts", f"{script_name}.json")
-                    
-                    if os.path.exists(script_path):
-                        # Load the schedule JSON
-                        with open(script_path, 'r') as f:
-                            schedule_data = json.load(f)
+                    if script_name in scripts:
+                        schedule_data = scripts[script_name]
+                        # the inputs it was asked for ("favourites from library": bucket=library)
+                        script_vars = _script_vars(schedule_data, script_data.get("vars"), voice_buckets)
+                        from routes.bucketer import load_meta
+                        empty = [voice_buckets[v] for k, v in script_vars.items()
+                                 if (schedule_data.get("inputs") or {}).get(k, {}).get("choices") == "buckets"
+                                 and not load_meta(v).get("favorites")]
+                        if empty:
+                            expanded_targets = []
+                            response_ssml = Brianize(f"{empty[0]} has no favourites yet. Star some first. Then ask me again.")
                         
                         success_count = 0
                         error_count = 0
@@ -755,7 +814,7 @@ def process(data):
                         for target in expanded_targets:
                             try:
                                 # Use proper stack-based loading
-                                result = load_schedule_on_stack(target, schedule_data)
+                                result = load_schedule_on_stack(target, copy.deepcopy(schedule_data), script_vars)
                                 if result["status"] == "success":
                                     success_count += 1
                                     utils.logger.info(f"Successfully loaded schedule '{script_name}' on {target} (stack size: {result['stack_size']}, inherited vars: {result['inherited_vars']})")
@@ -767,7 +826,9 @@ def process(data):
                                 utils.logger.error(f"Exception loading schedule on {target}: {str(e)}")
                         
                         # Generate response based on results
-                        if success_count > 0 and error_count == 0:
+                        if empty:
+                            pass
+                        elif success_count > 0 and error_count == 0:
                             if success_count == 1:
                                 response_ssml = Brianize(f"Loaded {script_name} schedule successfully.")
                             else:
@@ -784,8 +845,8 @@ def process(data):
             case "unload_schedule":
                 from routes.scheduler_utils import unload_schedule_from_stack
                 
-                unload_data = result.get("data", {})
-                targets = unload_data.get("targets", [])
+                unload_data = result.get("data") or {}
+                targets = unload_data.get("targets") or ([subs["ALEXA_CLOSEST_TARGET"]] if subs.get("ALEXA_CLOSEST_TARGET") else [])
                 
                 utils.logger.debug(f"Unload schedule intent data: targets={targets}")
                 
