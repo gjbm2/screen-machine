@@ -711,3 +711,41 @@ def test_publish_changing_metadata(patch_publisher_functions):
     # Verify metadata was updated
     published_info2 = get_published_info("bucket_a")
     assert published_info2["meta"]["prompt"] == "Updated metadata", "Metadata was not updated" 
+
+def _state_after(output_dir, seq, timeout=60):
+    """The screen's state document once it is past `seq` (what follows a placing runs just after it lands)."""
+    import time
+    end = time.time() + timeout
+    while time.time() < end:
+        try:
+            s = json.loads((output_dir / "bucket_a.state.json").read_text())
+            if s["seq"] > seq:
+                return s
+        except (OSError, ValueError):
+            pass
+        time.sleep(0.05)
+    raise AssertionError(f"no state document past #{seq}")
+
+
+def test_a_publish_writes_what_the_screen_shows_and_a_still_keeps_its_clip(patch_publisher_functions):
+    """The real publish path writes the screen's state document beside its file (routes/screen_state.py): a still, then
+    its own clip (named by the still's screen copy) as the still's clip, never as the picture; then a video someone
+    published as the picture itself."""
+    output_dir = patch_publisher_functions["output_dir"]
+    still = _append_to_bucket("bucket_a", output_dir / TEST_JPG_FILENAME, metadata={"type": "image"})
+    assert publish_to_destination(source=still, publish_destination_id="bucket_a", skip_bucket=True, clips=False)["success"]
+    s1 = _state_after(output_dir, 0)
+    assert s1["still"]["url"].startswith("/output/_screens/bucket_a/") and s1["clip"] is None and s1["video"] is None
+    assert (output_dir / "_screens" / "bucket_a" / Path(s1["still"]["url"]).name).exists()
+
+    clip = {"type": "video", "still": still.name, "clip": {"eased": True, "pace": "slow", "play_s": 30, "rest_s": [35, 55]}}
+    mp4 = _append_to_bucket("bucket_a", output_dir / TEST_MP4_FILENAME, metadata=clip)
+    assert publish_to_destination(source=mp4, publish_destination_id="bucket_a", metadata=clip, skip_bucket=True)["success"]
+    s2 = _state_after(output_dir, s1["seq"])
+    assert s2["seq"] == s1["seq"] + 1 and s2["still"] == s1["still"], "the still stays the picture"
+    assert s2["clip"] and s2["clip"]["url"].endswith(".mp4") and s2["video"] is None
+
+    video = {"type": "video", "clip": {"eased": True, "returns": False, "pace": "natural"}}
+    assert publish_to_destination(source=mp4, publish_destination_id="bucket_a", metadata=video, skip_bucket=True)["success"]
+    s3 = _state_after(output_dir, s2["seq"])
+    assert s3["video"] and s3["still"] is None and s3["clip"] is None

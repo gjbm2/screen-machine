@@ -35,20 +35,20 @@ def output_root() -> Path:
     return Path(BASE_OUTPUT)
 
 
-def path(screen: str) -> Path:
-    return output_root() / f"{screen}.state.json"
+def path(screen: str, root: Path | None = None) -> Path:
+    return (root or output_root()) / f"{screen}.state.json"
 
 
-def read(screen: str) -> dict | None:
+def read(screen: str, root: Path | None = None) -> dict | None:
     try:
-        return json.loads(path(screen).read_text("utf-8"))
+        return json.loads(path(screen, root).read_text("utf-8"))
     except Exception:
         return None
 
 
 def _keep(screen: str, shown: Path, seq: int) -> str:
-    """A never-changing copy of the shown file (a hard link: no bytes copied), as its /output URL."""
-    folder = output_root() / FOLDER / screen
+    """A never-changing copy of the shown file (a hard link: no bytes copied), beside it, as its /output URL."""
+    folder = shown.parent / FOLDER / screen
     folder.mkdir(parents=True, exist_ok=True)
     dst = folder / f"{seq:06d}{shown.suffix.lower()}"
     tmp = folder / f".{dst.name}.tmp"
@@ -61,8 +61,8 @@ def _keep(screen: str, shown: Path, seq: int) -> str:
     return f"/output/{FOLDER}/{screen}/{dst.name}"
 
 
-def _prune(screen: str, state: dict) -> None:
-    folder = output_root() / FOLDER / screen
+def _prune(screen: str, state: dict, root: Path) -> None:
+    folder = root / FOLDER / screen
     named = {Path(str((state.get(k) or {}).get("url") or "")).name for k in ("still", "clip", "video")}
     files = sorted((p for p in folder.iterdir() if p.is_file() and not p.name.startswith(".")), reverse=True)
     for p in files[KEEP:]:
@@ -126,14 +126,16 @@ def decide(prev: dict | None, shown: Path, meta: dict, keep=None) -> dict:
 def placed(screen: str, shown: Path, meta: dict | None) -> dict | None:
     """The screen's file `shown` has just landed: write its document in one step and push it to the screen's pages."""
     try:
+        shown = Path(shown)
+        root = shown.parent           # the output folder the screen's file is in: the document goes beside it
         with _LOCK:
-            prev = read(screen)
-            state = decide(prev, Path(shown), meta or {}, keep=lambda p: _keep(screen, p, int((prev or {}).get("seq") or 0) + 1))
+            prev = read(screen, root)
+            state = decide(prev, shown, meta or {}, keep=lambda p: _keep(screen, p, int((prev or {}).get("seq") or 0) + 1))
             state["screen"] = screen
-            tmp = path(screen).with_name(f".{screen}.state.json.{os.getpid()}.{threading.get_ident()}.tmp")
+            tmp = path(screen, root).with_name(f".{screen}.state.json.{os.getpid()}.{threading.get_ident()}.tmp")
             tmp.write_text(json.dumps(state, indent=1, ensure_ascii=False), "utf-8")
-            os.replace(tmp, path(screen))
-            _prune(screen, state)
+            os.replace(tmp, path(screen, root))
+            _prune(screen, state, root)
         kind = "video" if state["video"] else "still + clip" if state["clip"] else "still"
         info(f"[screen_state] {screen} #{state['seq']}: {kind}" + (" (with its transition)" if state["transition"] and not state["clip"] else ""))
         threading.Thread(target=push, args=(screen, state), name=f"state-{screen}", daemon=True).start()

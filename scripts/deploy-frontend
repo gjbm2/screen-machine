@@ -6,8 +6,9 @@
 #
 # A build that fails changes nothing (24 Nov: a piped build hid its failure and the swap took the live app away).
 # After the swap it runs tools/ui_evals/dnd_pickup.py (owner, 24 Nov: drag and drop is fragile; catch regressions):
-# a picture is picked up and carried onto a screen's tab, on a phone and a desktop, without dropping. Exit 1 and a
-# loud line if it fails; the new build stays live (roll back by hand if it matters more than the fix it carries).
+# a picture is picked up and carried onto a screen's tab, on a phone and a desktop, without dropping; then
+# tools/ui_evals/display_layers.py (the TV page renders the screen's state document). Exit 1 and a
+# loud line if either fails; the new build stays live (roll back by hand if it matters more than the fix it carries).
 #
 # Usage: scripts/deploy-frontend [--no-check]
 set -euo pipefail
@@ -32,5 +33,11 @@ py="${HOME}/.venvs/sm-room/bin/python"
 [ -x "$py" ] || py=python3
 if ! nice -n 10 "$py" tools/ui_evals/dnd_pickup.py; then
   echo "deploy-frontend: DRAG AND DROP CHECK FAILED on the live build (tools/ui_evals/dnd_pickup.py)" >&2
+  exit 1
+fi
+# The TV page's layers (24 Nov: the publish pipeline's suite): a still, its clip and a transition on a throwaway screen;
+# never more than one <video>, none at rest, the clip never the base.
+if ! nice -n 10 "$py" tools/ui_evals/display_layers.py; then
+  echo "deploy-frontend: DISPLAY LAYERS CHECK FAILED on the live build (tools/ui_evals/display_layers.py)" >&2
   exit 1
 fi
