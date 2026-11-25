@@ -485,6 +485,10 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
         should_log_debug = True
         run_instruction._last_debug_log_time[publish_destination] = current_time
     
+    # the stack as it was before this instruction (an unload or a load changes it; see the write-back below)
+    _stack = get_context_stack(publish_destination) or []
+    stack_before = (len(_stack), id(_stack[-1]) if _stack else None)
+
     # An instruction queued by an event trigger carries that event (resolve_schedule stamps "_event_ctx"): restore it,
     # so a block always reads ITS event even when several events matched in the same tick (_event is one slot)
     if isinstance(instruction, dict) and "_event_ctx" in instruction:
@@ -602,8 +606,11 @@ def run_instruction(instruction: Dict[str, Any], context: Dict[str, Any], now: d
     # Update global context after execution
     context_stack = get_context_stack(publish_destination)
     if context_stack and len(context_stack) > 0:
-        # Store the updated context back in the context stack
-        context_stack[-1] = context
+        # Store the updated context back in the context stack, unless this instruction changed the stack (an unload
+        # popped it, a load pushed onto it): writing it back then put the script's context over the schedule under it
+        # (25 Nov e2e: after an unload the base schedule had the script's variables)
+        if (len(context_stack), id(context_stack[-1])) == stack_before or context_stack[-1] is context:
+            context_stack[-1] = context
         if should_log_debug:
             debug(f"[PERSISTENCE] After instruction {action}, saving context for {publish_destination}")
             if "vars" in context:
@@ -1028,6 +1035,333 @@ def resume_scheduler(publish_destination: str, schedule: Dict[str, Any]) -> None
         import traceback
         error(traceback.format_exc())
 
+class LoopState:
+    """What one scheduler loop carries from one step to the next (scheduler_step)."""
+
+    def __init__(self, instruction_queue):
+        self.instruction_queue = instruction_queue
+        self.last_check_time = None  # epoch second of the last trigger evaluation
+        self.last_debug_log_time = 0  # Track when we last did debug logging
+        self.last_expiration_check_time = 0  # Track when we last checked for expired events
+        self.is_in_wait_state = False  # Track if the scheduler is in a waiting state
+        self.should_log_debug = True
+
+
+def scheduler_step(publish_destination: str, st: LoopState):
+    """One pass of a destination's scheduler loop: evaluate the triggers when a tick is due, then run (or, waiting,
+    hold) the next instruction. Returns the seconds to pause before the next pass, or None when the loop should end.
+    run_scheduler_loop runs it on the scheduler's thread; the e2e tests run it on a simulated clock
+    (tests/unit/scheduler_sim.py), so what they exercise is the loop itself."""
+
+    # Check if scheduler is stopped
+    if publish_destination not in running_schedulers:
+        scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M:%S')}] Scheduler stopped")
+        return None
+
+    # Check if scheduler is paused
+    if scheduler_states.get(publish_destination) == "paused":
+        # Rate-limit debug logging
+        current_time = time.time()
+        if current_time - st.last_debug_log_time > 30:
+            debug(f"Preserving context while scheduler is paused: {len(scheduler_contexts_stacks.get(publish_destination, []))} context(s)")
+            st.last_debug_log_time = current_time
+
+        return 2.0  # sleep during pause state
+
+    now = datetime.now()
+    # Use epoch seconds to avoid negative deltas when the day rolls over
+    current_epoch_second = time.time()
+
+    # Get current context
+    current_context = get_current_context(publish_destination)
+
+    # Check if we're in waiting state (wait instruction is being executed)
+    st.is_in_wait_state = current_context and "wait_until" in current_context
+
+    # Rate-limit debug logging
+    st.should_log_debug = False
+    current_time = time.time()
+    if current_time - st.last_debug_log_time > 30:
+        st.should_log_debug = True
+        st.last_debug_log_time = current_time
+
+    # Periodically check for expired events (every 30 seconds)
+    # This ensures expired events are properly moved to history even if not explicitly requested
+    if current_time - st.last_expiration_check_time > 30:
+        try:
+            from routes.scheduler_utils import check_all_expired_events
+            expired_counts = check_all_expired_events()
+            if expired_counts and st.should_log_debug:
+                debug(f"Checked for expired events: {expired_counts}")
+            st.last_expiration_check_time = current_time
+        except Exception as e:
+            error(f"Error checking expired events: {str(e)}")
+
+    # If this is our first loop or at least one tick interval has elapsed since the
+    # previous schedule evaluation, process triggers and update the queue
+    if st.last_check_time is None or (current_epoch_second - st.last_check_time) >= SCHEDULER_TICK_INTERVAL:
+        # Get current schedule and context from top of stacks
+        current_schedule = scheduler_schedule_stacks[publish_destination][-1]
+        current_context = get_current_context(publish_destination)
+
+        try:
+            # 1. Process triggers and add to queue
+            triggers = process_triggers(current_schedule, now, publish_destination, current_context)
+            for trigger in triggers:
+                block = trigger.get("block", [])
+                is_urgent = trigger.get("urgent", False)
+                is_important = trigger.get("important", False)
+                source = trigger.get("source", "unknown")
+
+                # During wait state:
+                # 1. URGENT triggers queue immediately and interrupt the wait
+                # 2. IMPORTANT (but non-urgent) triggers queue for execution after wait completes
+                # 3. Normal triggers (neither urgent nor important) are skipped during wait
+                #
+                # This applies to all trigger types: time-based, events, etc.
+                if st.is_in_wait_state and not is_urgent and not is_important:
+                    if st.should_log_debug:
+                        debug(
+                            f"WAIT STATE: Skipping normal trigger from {source} (will reevaluate after wait)"
+                        )
+                    # Add to scheduler logs (visible in UI)
+                    log_schedule(
+                        f"Skipping normal trigger from {source} during wait (will check again after wait finishes)",
+                        publish_destination, now
+                    )
+                    continue
+                elif st.is_in_wait_state and is_important and not is_urgent:
+                    if st.should_log_debug:
+                        debug(
+                            f"WAIT STATE: Queuing important (non-urgent) trigger from {source} (will execute after wait)"
+                        )
+                    # Add to scheduler logs (visible in UI)
+                    log_schedule(
+                        f"Queued important trigger from {source} (will execute after wait completes)",
+                        publish_destination, now
+                    )
+
+                # Debug log exactly what we're pushing to the queue
+                flags = []
+                if is_urgent:
+                    flags.append("URGENT")
+                if is_important:
+                    flags.append("IMPORTANT")
+                flags_str = f" [{', '.join(flags)}]" if flags else ""
+                debug(f"Adding instruction block from {source}{flags_str} to the queue with {len(block)} instructions")
+
+                st.instruction_queue.push_block(
+                    block,
+                    important=is_important,
+                    urgent=is_urgent
+                )
+
+            # 2. Check for urgent events
+            urgent_event = check_urgent_events(publish_destination)
+            if urgent_event:
+                debug(f"Found special urgent event: {urgent_event['key']}")
+                st.instruction_queue.push_block(
+                    urgent_event["block"],
+                    important=True,
+                    urgent=True
+                )
+        except Exception as e:
+            error_msg = f"Error processing triggers: {str(e)}"
+            scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
+            import traceback
+            error(traceback.format_exc())
+
+        # Store the epoch second so that the next trigger check isn't too soon
+        st.last_check_time = current_epoch_second
+
+    # 3. Execute instructions with special handling for wait state
+    # If we're in waiting state, only process urgent instructions
+    entry = None
+
+    if st.is_in_wait_state:
+        # Rate limit debug logs during wait states
+        if not hasattr(run_scheduler_loop, '_wait_debug_logs'):
+            run_scheduler_loop._wait_debug_logs = {}
+
+        wait_debug_key = f"wait_state_{publish_destination}"
+        current_time = time.time()
+        should_log_wait_state = False
+
+        if wait_debug_key not in run_scheduler_loop._wait_debug_logs or \
+           (current_time - run_scheduler_loop._wait_debug_logs.get(wait_debug_key, 0)) > 30.0:
+            should_log_wait_state = True
+            run_scheduler_loop._wait_debug_logs[wait_debug_key] = current_time
+
+            # When logging wait state, tell update_scheduler_state to also log (throttled)
+            if not hasattr(update_scheduler_state, '_last_wait_log_times'):
+                update_scheduler_state._last_wait_log_times = {}
+            update_scheduler_state._last_wait_log_times[publish_destination] = current_time
+
+            # And also silence run_instruction debug logs except at intervals
+            if not hasattr(run_instruction, '_wait_debug_logs'):
+                run_instruction._wait_debug_logs = {}
+            run_instruction._wait_debug_logs[publish_destination] = current_time
+
+        if should_log_wait_state:
+            debug(f"Scheduler in wait state, checking for urgent instructions that could interrupt")
+
+        # First, update the wait to reflect passage of time
+        if should_log_wait_state:
+            debug(f"Updating wait state status")
+        should_unload = run_instruction({"action": "wait", "duration": 0}, current_context, now, 
+                                      scheduler_logs[publish_destination], publish_destination)
+
+        # Check if the wait has completed normally
+        if should_unload:
+            debug(f"Wait completed normally")
+            st.is_in_wait_state = False
+
+            # Now we can process next instruction as normal
+            entry = st.instruction_queue.pop_next()
+        else:
+            # We're still in wait state - only check for urgent instructions
+            urgent_entry = st.instruction_queue.peek_next_urgent()
+
+            # Log wait interrupt status for debugging
+            if urgent_entry:
+                # Found an urgent instruction - interrupt the wait
+                action_name = urgent_entry['instruction'].get('action', 'unknown')
+                # Always log wait interruptions regardless of rate limiting
+                debug(f"WAIT INTERRUPT: Found urgent instruction {action_name} that will interrupt wait state")
+
+                # Clear the wait state, keeping the rest of it: it resumes in front of its block's next step, so the
+                # waiting block carries on at its own pace once the interruption is done
+                if "wait_until" in current_context:
+                    previous_wait_until = current_context["wait_until"]
+                    del current_context["wait_until"]
+                    waiting_entry = st.instruction_queue.running
+                    if isinstance(waiting_entry, dict) and (waiting_entry.get("instruction") or {}).get("action") == "wait":
+                        left = (previous_wait_until - now).total_seconds() if hasattr(previous_wait_until, "__sub__") else 0
+                        if left > 0.5:
+                            st.instruction_queue.resume_wait(waiting_entry, left)
+                    log_message = f"Wait interrupted by urgent {action_name} instruction (was waiting until {previous_wait_until.strftime('%H:%M:%S')})"
+                    log_schedule(log_message, publish_destination, now, scheduler_logs[publish_destination])
+
+                    # Also remove last_wait_log if it exists
+                    if "last_wait_log" in current_context:
+                        del current_context["last_wait_log"]
+
+                    # Save context changes immediately
+                    debug(f"Saving context after clearing wait state")
+                    update_scheduler_state(publish_destination, context_stack=scheduler_contexts_stacks[publish_destination])
+
+                # Get the entry that will be processed - ONLY get urgent instruction
+                entry = st.instruction_queue.pop_next(urgent_only=True)
+                if entry:
+                    debug(f"Popped urgent instruction for immediate execution: {action_name}")
+                    st.is_in_wait_state = False
+                else:
+                    if should_log_wait_state:
+                        debug(f"WARNING: Failed to pop urgent instruction that was previously found - something went wrong")
+                    # We'll keep the wait state in this case since we couldn't pop the urgent entry
+            else:
+                if should_log_wait_state:
+                    debug(f"No urgent instructions found that could interrupt the wait")
+                # Important: Don't process ANY instructions when in wait state, not even if queue appears empty
+                # This prevents normal instructions from being processed during wait
+    else:
+        # Normal operation - process next instruction
+        entry = st.instruction_queue.pop_next()
+
+    # Execute the instruction if we have one
+    if entry:
+        try:
+            instr = entry["instruction"]
+            important = entry["important"]
+            urgent = entry["urgent"]
+
+            # Log what we're about to run
+            if st.should_log_debug:
+                flags = []
+                if important:
+                    flags.append("important")
+                if urgent:
+                    flags.append("urgent")
+                flags_str = f" ({', '.join(flags)})" if flags else ""
+                debug(f"Running instruction {instr.get('action', 'unknown')}{flags_str} from queue")
+
+            # Run the instruction
+            should_unload = run_instruction(instr, current_context, now, scheduler_logs[publish_destination], publish_destination)
+
+            # Check if we're entering wait state
+            if instr.get("action") == "wait" and not should_unload:
+                st.is_in_wait_state = "wait_until" in current_context
+
+            # Handle stop/unload logic based on the return value
+            if should_unload == "EXIT_BLOCK":
+                # For EXIT_BLOCK, we remove all remaining non-important instructions from the queue
+                debug(f"EXIT_BLOCK signal received, breaking out of current instruction block")
+                # the rest of ITS block goes, important or not (25 Nov e2e: an important block, e.g. the cloud's
+                # Commission_day, ran on past its terminate)
+                st.instruction_queue.remove_block(entry.get("block"))
+            elif should_unload:
+                # The unload instruction already handled the stack management
+                # We should NOT call pop_schedule again here as that would cause a double-unload
+                debug(f"Unload signal received - unload instruction already handled stack management")
+                clear_instruction_queue(publish_destination)
+
+                # Check if the scheduler should stop (no more schedules on stack)
+                if (publish_destination not in scheduler_schedule_stacks or 
+                    not scheduler_schedule_stacks[publish_destination]):
+                    scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] No more schedules on stack, stopping scheduler")
+                    return None
+                else:
+                    scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] Schedule unloaded, continuing with remaining schedules")
+                    # Continue running with the remaining schedules on the stack
+        except Exception as e:
+            error_msg = f"Error running instruction: {str(e)}"
+            scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
+            import traceback
+            error(traceback.format_exc())
+
+        # After running an instruction, clean up any _event variables
+        # Only remove _event data if:
+        # 1. We're not in a wait state (already handled) AND
+        # 2. There are no more instructions in the queue from this event
+        # This ensures event data persists throughout the entire event-triggered instruction block
+        if ("vars" in current_context and "_event" in current_context["vars"] and
+            not (instr and instr.get("action") == "wait" and not should_unload) and
+            st.instruction_queue.is_empty()):
+            payload_debug = "unknown"
+            if "_event" in current_context and isinstance(current_context["_event"], dict):
+                payload_debug = current_context["_event"].get("payload", "no payload")
+            debug(f"Removing temporary _event from context - instruction block complete. Payload was: {payload_debug}")
+            del current_context["vars"]["_event"]
+            if "_event" in current_context:
+                del current_context["_event"]
+            update_scheduler_state(publish_destination, context_stack=scheduler_contexts_stacks[publish_destination])
+
+    # Sleep after processing (either running an instruction or finding none to run)
+    # Wait a small amount of time to allow for urgent events to be processed quickly
+    # Use a shorter sleep when in wait state to be more responsive to urgent interruptions
+    sleep_time = 0.05 if st.is_in_wait_state else 0.1
+
+    # Add wait state debug logging rate limiting
+    if not hasattr(run_scheduler_loop, '_wait_debug_logs'):
+        run_scheduler_loop._wait_debug_logs = {}
+
+    # Use the publish_destination as the key for rate limiting
+    wait_debug_key = f"wait_state_{publish_destination}"
+
+    # Throttle debug logs during wait state - during wait, we silence most debugging
+    # except at 30 second intervals or when actual events occur
+    if st.is_in_wait_state:
+        # Reset counter when wait state completes
+        if wait_debug_key in run_scheduler_loop._wait_debug_logs:
+            del run_scheduler_loop._wait_debug_logs[wait_debug_key]
+    else:
+        # Set logging level back to normal when not in wait state
+        if wait_debug_key in run_scheduler_loop._wait_debug_logs:
+            del run_scheduler_loop._wait_debug_logs[wait_debug_key]
+            debug(f"Normal debug logging resumed after wait state ended")
+    return sleep_time
+
+
 async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str, step_minutes: int = 1):
     """
     Main scheduler loop that processes instructions and handles events.
@@ -1047,318 +1381,17 @@ async def run_scheduler_loop(schedule: Dict[str, Any], publish_destination: str,
         
         # We no longer need to wait for start of next minute - this allows for sub-minute scheduling 
         
-        last_check_time = None
-        last_debug_log_time = 0  # Track when we last did debug logging
-        last_expiration_check_time = 0  # Track when we last checked for expired events
-        
-        # Track if the scheduler is in a waiting state
-        is_in_wait_state = False
-        
+        st = LoopState(instruction_queue)
+
         while True:
             # Heartbeat for wedge detection and the healthchecks.io gate
             alerts_health.tick(publish_destination)
-
-            # Check if scheduler is stopped
-            if publish_destination not in running_schedulers:
-                scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M:%S')}] Scheduler stopped")
+            pause = scheduler_step(publish_destination, st)
+            should_log_debug = st.should_log_debug
+            if pause is None:
                 break
-                
-            # Check if scheduler is paused
-            if scheduler_states.get(publish_destination) == "paused":
-                # Rate-limit debug logging
-                current_time = time.time()
-                if current_time - last_debug_log_time > 30:
-                    debug(f"Preserving context while scheduler is paused: {len(scheduler_contexts_stacks.get(publish_destination, []))} context(s)")
-                    last_debug_log_time = current_time
-                
-                await asyncio.sleep(2.0)  # Sleep during pause state
-                continue
-                
-            now = datetime.now()
-            # Use epoch seconds to avoid negative deltas when the day rolls over
-            current_epoch_second = time.time()
-            
-            # Get current context
-            current_context = get_current_context(publish_destination)
-            
-            # Check if we're in waiting state (wait instruction is being executed)
-            is_in_wait_state = current_context and "wait_until" in current_context
-            
-            # Rate-limit debug logging
-            should_log_debug = False
-            current_time = time.time()
-            if current_time - last_debug_log_time > 30:
-                should_log_debug = True
-                last_debug_log_time = current_time
-            
-            # Periodically check for expired events (every 30 seconds)
-            # This ensures expired events are properly moved to history even if not explicitly requested
-            if current_time - last_expiration_check_time > 30:
-                try:
-                    from routes.scheduler_utils import check_all_expired_events
-                    expired_counts = check_all_expired_events()
-                    if expired_counts and should_log_debug:
-                        debug(f"Checked for expired events: {expired_counts}")
-                    last_expiration_check_time = current_time
-                except Exception as e:
-                    error(f"Error checking expired events: {str(e)}")
-            
-            # If this is our first loop or at least one tick interval has elapsed since the
-            # previous schedule evaluation, process triggers and update the queue
-            if last_check_time is None or (current_epoch_second - last_check_time) >= SCHEDULER_TICK_INTERVAL:
-                # Get current schedule and context from top of stacks
-                current_schedule = scheduler_schedule_stacks[publish_destination][-1]
-                current_context = get_current_context(publish_destination)
-                
-                try:
-                    # 1. Process triggers and add to queue
-                    triggers = process_triggers(current_schedule, now, publish_destination, current_context)
-                    for trigger in triggers:
-                        block = trigger.get("block", [])
-                        is_urgent = trigger.get("urgent", False)
-                        is_important = trigger.get("important", False)
-                        source = trigger.get("source", "unknown")
+            await asyncio.sleep(pause)
 
-                        # During wait state:
-                        # 1. URGENT triggers queue immediately and interrupt the wait
-                        # 2. IMPORTANT (but non-urgent) triggers queue for execution after wait completes
-                        # 3. Normal triggers (neither urgent nor important) are skipped during wait
-                        #
-                        # This applies to all trigger types: time-based, events, etc.
-                        if is_in_wait_state and not is_urgent and not is_important:
-                            if should_log_debug:
-                                debug(
-                                    f"WAIT STATE: Skipping normal trigger from {source} (will reevaluate after wait)"
-                                )
-                            # Add to scheduler logs (visible in UI)
-                            log_schedule(
-                                f"Skipping normal trigger from {source} during wait (will check again after wait finishes)",
-                                publish_destination, now
-                            )
-                            continue
-                        elif is_in_wait_state and is_important and not is_urgent:
-                            if should_log_debug:
-                                debug(
-                                    f"WAIT STATE: Queuing important (non-urgent) trigger from {source} (will execute after wait)"
-                                )
-                            # Add to scheduler logs (visible in UI)
-                            log_schedule(
-                                f"Queued important trigger from {source} (will execute after wait completes)",
-                                publish_destination, now
-                            )
-                        
-                        # Debug log exactly what we're pushing to the queue
-                        flags = []
-                        if is_urgent:
-                            flags.append("URGENT")
-                        if is_important:
-                            flags.append("IMPORTANT")
-                        flags_str = f" [{', '.join(flags)}]" if flags else ""
-                        debug(f"Adding instruction block from {source}{flags_str} to the queue with {len(block)} instructions")
-
-                        instruction_queue.push_block(
-                            block,
-                            important=is_important,
-                            urgent=is_urgent
-                        )
-
-                    # 2. Check for urgent events
-                    urgent_event = check_urgent_events(publish_destination)
-                    if urgent_event:
-                        debug(f"Found special urgent event: {urgent_event['key']}")
-                        instruction_queue.push_block(
-                            urgent_event["block"],
-                            important=True,
-                            urgent=True
-                        )
-                except Exception as e:
-                    error_msg = f"Error processing triggers: {str(e)}"
-                    scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
-                    import traceback
-                    error(traceback.format_exc())
-                
-                # Store the epoch second so that the next trigger check isn't too soon
-                last_check_time = current_epoch_second
-            
-            # 3. Execute instructions with special handling for wait state
-            # If we're in waiting state, only process urgent instructions
-            entry = None
-            
-            if is_in_wait_state:
-                # Rate limit debug logs during wait states
-                if not hasattr(run_scheduler_loop, '_wait_debug_logs'):
-                    run_scheduler_loop._wait_debug_logs = {}
-                
-                wait_debug_key = f"wait_state_{publish_destination}"
-                current_time = time.time()
-                should_log_wait_state = False
-                
-                if wait_debug_key not in run_scheduler_loop._wait_debug_logs or \
-                   (current_time - run_scheduler_loop._wait_debug_logs.get(wait_debug_key, 0)) > 30.0:
-                    should_log_wait_state = True
-                    run_scheduler_loop._wait_debug_logs[wait_debug_key] = current_time
-                    
-                    # When logging wait state, tell update_scheduler_state to also log (throttled)
-                    if not hasattr(update_scheduler_state, '_last_wait_log_times'):
-                        update_scheduler_state._last_wait_log_times = {}
-                    update_scheduler_state._last_wait_log_times[publish_destination] = current_time
-                    
-                    # And also silence run_instruction debug logs except at intervals
-                    if not hasattr(run_instruction, '_wait_debug_logs'):
-                        run_instruction._wait_debug_logs = {}
-                    run_instruction._wait_debug_logs[publish_destination] = current_time
-                
-                if should_log_wait_state:
-                    debug(f"Scheduler in wait state, checking for urgent instructions that could interrupt")
-                
-                # First, update the wait to reflect passage of time
-                if should_log_wait_state:
-                    debug(f"Updating wait state status")
-                should_unload = run_instruction({"action": "wait", "duration": 0}, current_context, now, 
-                                              scheduler_logs[publish_destination], publish_destination)
-
-                # Check if the wait has completed normally
-                if should_unload:
-                    debug(f"Wait completed normally")
-                    is_in_wait_state = False
-                    
-                    # Now we can process next instruction as normal
-                    entry = instruction_queue.pop_next()
-                else:
-                    # We're still in wait state - only check for urgent instructions
-                    urgent_entry = instruction_queue.peek_next_urgent()
-                    
-                    # Log wait interrupt status for debugging
-                    if urgent_entry:
-                        # Found an urgent instruction - interrupt the wait
-                        action_name = urgent_entry['instruction'].get('action', 'unknown')
-                        # Always log wait interruptions regardless of rate limiting
-                        debug(f"WAIT INTERRUPT: Found urgent instruction {action_name} that will interrupt wait state")
-                        
-                        # Clear the wait state
-                        if "wait_until" in current_context:
-                            previous_wait_until = current_context["wait_until"]
-                            del current_context["wait_until"]
-                            log_message = f"Wait interrupted by urgent {action_name} instruction (was waiting until {previous_wait_until.strftime('%H:%M:%S')})"
-                            log_schedule(log_message, publish_destination, now, scheduler_logs[publish_destination])
-                            
-                            # Also remove last_wait_log if it exists
-                            if "last_wait_log" in current_context:
-                                del current_context["last_wait_log"]
-                            
-                            # Save context changes immediately
-                            debug(f"Saving context after clearing wait state")
-                            update_scheduler_state(publish_destination, context_stack=scheduler_contexts_stacks[publish_destination])
-                            
-                        # Get the entry that will be processed - ONLY get urgent instruction
-                        entry = instruction_queue.pop_next(urgent_only=True)
-                        if entry:
-                            debug(f"Popped urgent instruction for immediate execution: {action_name}")
-                            is_in_wait_state = False
-                        else:
-                            if should_log_wait_state:
-                                debug(f"WARNING: Failed to pop urgent instruction that was previously found - something went wrong")
-                            # We'll keep the wait state in this case since we couldn't pop the urgent entry
-                    else:
-                        if should_log_wait_state:
-                            debug(f"No urgent instructions found that could interrupt the wait")
-                        # Important: Don't process ANY instructions when in wait state, not even if queue appears empty
-                        # This prevents normal instructions from being processed during wait
-            else:
-                # Normal operation - process next instruction
-                entry = instruction_queue.pop_next()
-            
-            # Execute the instruction if we have one
-            if entry:
-                try:
-                    instr = entry["instruction"]
-                    important = entry["important"]
-                    urgent = entry["urgent"]
-                    
-                    # Log what we're about to run
-                    if should_log_debug:
-                        flags = []
-                        if important:
-                            flags.append("important")
-                        if urgent:
-                            flags.append("urgent")
-                        flags_str = f" ({', '.join(flags)})" if flags else ""
-                        debug(f"Running instruction {instr.get('action', 'unknown')}{flags_str} from queue")
-                    
-                    # Run the instruction
-                    should_unload = run_instruction(instr, current_context, now, scheduler_logs[publish_destination], publish_destination)
-                    
-                    # Check if we're entering wait state
-                    if instr.get("action") == "wait" and not should_unload:
-                        is_in_wait_state = "wait_until" in current_context
-                    
-                    # Handle stop/unload logic based on the return value
-                    if should_unload == "EXIT_BLOCK":
-                        # For EXIT_BLOCK, we remove all remaining non-important instructions from the queue
-                        debug(f"EXIT_BLOCK signal received, breaking out of current instruction block")
-                        instruction_queue.remove_non_important()
-                    elif should_unload:
-                        # The unload instruction already handled the stack management
-                        # We should NOT call pop_schedule again here as that would cause a double-unload
-                        debug(f"Unload signal received - unload instruction already handled stack management")
-                        clear_instruction_queue(publish_destination)
-                        
-                        # Check if the scheduler should stop (no more schedules on stack)
-                        if (publish_destination not in scheduler_schedule_stacks or 
-                            not scheduler_schedule_stacks[publish_destination]):
-                            scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] No more schedules on stack, stopping scheduler")
-                            return
-                        else:
-                            scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] Schedule unloaded, continuing with remaining schedules")
-                            # Continue running with the remaining schedules on the stack
-                except Exception as e:
-                    error_msg = f"Error running instruction: {str(e)}"
-                    scheduler_logs[publish_destination].append(f"[{now.strftime('%H:%M:%S')}] {error_msg}")
-                    import traceback
-                    error(traceback.format_exc())
-            
-                # After running an instruction, clean up any _event variables
-                # Only remove _event data if:
-                # 1. We're not in a wait state (already handled) AND
-                # 2. There are no more instructions in the queue from this event
-                # This ensures event data persists throughout the entire event-triggered instruction block
-                if ("vars" in current_context and "_event" in current_context["vars"] and
-                    not (instr and instr.get("action") == "wait" and not should_unload) and
-                    instruction_queue.is_empty()):
-                    payload_debug = "unknown"
-                    if "_event" in current_context and isinstance(current_context["_event"], dict):
-                        payload_debug = current_context["_event"].get("payload", "no payload")
-                    debug(f"Removing temporary _event from context - instruction block complete. Payload was: {payload_debug}")
-                    del current_context["vars"]["_event"]
-                    if "_event" in current_context:
-                        del current_context["_event"]
-                    update_scheduler_state(publish_destination, context_stack=scheduler_contexts_stacks[publish_destination])
-                
-            # Sleep after processing (either running an instruction or finding none to run)
-            # Wait a small amount of time to allow for urgent events to be processed quickly
-            # Use a shorter sleep when in wait state to be more responsive to urgent interruptions
-            sleep_time = 0.05 if is_in_wait_state else 0.1
-            await asyncio.sleep(sleep_time)
-            
-            # Add wait state debug logging rate limiting
-            if not hasattr(run_scheduler_loop, '_wait_debug_logs'):
-                run_scheduler_loop._wait_debug_logs = {}
-
-            # Use the publish_destination as the key for rate limiting
-            wait_debug_key = f"wait_state_{publish_destination}"
-            
-            # Throttle debug logs during wait state - during wait, we silence most debugging
-            # except at 30 second intervals or when actual events occur
-            if is_in_wait_state:
-                # Reset counter when wait state completes
-                if wait_debug_key in run_scheduler_loop._wait_debug_logs:
-                    del run_scheduler_loop._wait_debug_logs[wait_debug_key]
-            else:
-                # Set logging level back to normal when not in wait state
-                if wait_debug_key in run_scheduler_loop._wait_debug_logs:
-                    del run_scheduler_loop._wait_debug_logs[wait_debug_key]
-                    debug(f"Normal debug logging resumed after wait state ended")
-            
     except asyncio.CancelledError:
         scheduler_logs[publish_destination].append(f"[{datetime.now().strftime('%H:%M:%S')}] Scheduler cancelled")
         raise

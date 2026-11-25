@@ -844,6 +844,11 @@ def handle_for_each(instruction, context, now, output, publish_destination):
         expanded += [{"action": "set_var", "var": as_, "value": item},
                      {"action": "set_var", "var": index_as, "value": i},
                      *copy.deepcopy(block)]
+    # the rounds read their block's event, as its other steps do (run_instruction restores _event_ctx), even when
+    # another event's block runs between them (25 Nov e2e: a round read the newer event)
+    ev = (context.get("vars") or {}).get("_event")
+    if isinstance(ev, dict):
+        expanded = [dict(x, _event_ctx=ev) if isinstance(x, dict) else x for x in expanded]
     get_instruction_queue(publish_destination).push_front(expanded)
     log_schedule(f"For each of {len(items)} items: {len(block)} instructions each", publish_destination, now, output)
     return False
@@ -1040,10 +1045,11 @@ def handle_terminate(instruction, context, now, output, publish_destination):
     # Get the terminate mode - 'normal' (default), 'immediate', or 'block'
     terminate_mode = instruction.get("mode", "normal")
     
-    # Check test condition if provided
+    # Check test condition if provided. A test that is there but renders empty (it read a variable that isn't set) is
+    # false, not missing: taken as missing it terminated unconditionally (25 Nov e2e: every replay ended at its guard)
     test_expr = instruction.get("test")
-    if test_expr:
-        test_result = jinja_string_to_bool(test_expr)
+    if "test" in instruction and test_expr is not None:
+        test_result = bool(str(test_expr).strip()) and jinja_string_to_bool(test_expr)
             
         if not test_result:
             msg = f"Terminate instruction test condition evaluated to false: '{test_expr}'"

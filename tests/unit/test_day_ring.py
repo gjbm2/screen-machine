@@ -50,7 +50,7 @@ def run(block, ctx, important=False, generate=None):
                 generate(done[-1], ctx)
             continue
         if sch.run_instruction(ins, ctx, real_datetime.now(), [], DEST) == "EXIT_BLOCK":
-            q.remove_non_important()
+            q.remove_block(e.get("block"))                                       # as the loop does
     return done
 
 
@@ -285,9 +285,9 @@ def test_a_room_replay_takes_turns_shows_every_transition_once_and_puts_back_the
         assert back[1].endswith("start.jpg") and back[2]["transition"] is True, "the picture it started on goes back"
         assert all(d["clips"] is False and d["transition"] is True for _, _, d in played)
         steps[screen] = [(t, p) for t, p, _ in played]
-    changes = sorted([(t, s, p) for s, xs in steps.items() for t, p in xs if t > 0])
-    assert [t for t, _, _ in changes] == [25 * k for k in range(1, 9)]             # one change at a time, 25 s apart
-    assert [s for _, s, _ in changes] == ["north-screen", "south-screen"] * 4
+    changes = sorted([(t, s, p) for s, xs in steps.items() for t, p in xs])
+    assert [t for t, _, _ in changes] == [25 * k for k in range(10)]               # one change at a time, 25 s apart
+    assert [s for _, s, _ in changes] == ["north-screen", "south-screen"] * 5     # south starts one turn later
     pairs = {(a[1], b[1]) for xs in steps.values() for a, b in zip(xs, xs[1:])}
     assert pairs == {(f"p{i}", f"p{(i + 1) % 8}") for i in range(8)}               # each transition once
 

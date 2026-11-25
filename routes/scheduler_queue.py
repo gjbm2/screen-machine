@@ -15,6 +15,7 @@ class InstructionQueue:
         self.queue = deque()
         self._last_urgent_log_time = 0  # Store rate-limiting state as instance variable
         self.running = None  # the entry being run (pop_next): a for_each runs its block with the same flags
+        self._seq = 0  # blocks in the order they came: a wait is interrupted only by a block newer than its own
 
     def push_block(self, instructions: List[Dict[str, Any]], important: bool = False, urgent: bool = False) -> None:
         """
@@ -29,7 +30,8 @@ class InstructionQueue:
             return
             
         block = uuid.uuid4().hex   # the block's own entries never interrupt its own waits (peek_next_urgent)
-        entries = [self.make_instruction_entry(instr, important, urgent, block) for instr in instructions]
+        self._seq += 1
+        entries = [self.make_instruction_entry(instr, important, urgent, block, self._seq) for instr in instructions]
         
         if urgent:
             # If urgent, remove all non-important instructions and insert at front
@@ -96,8 +98,18 @@ class InstructionQueue:
         important = bool(self.running and self.running.get("important"))
         urgent = bool(self.running and self.running.get("urgent"))
         block = (self.running or {}).get("block")
+        seq = (self.running or {}).get("seq")
         for instr in reversed(instructions):
-            self.queue.appendleft(self.make_instruction_entry(instr, important, urgent, block))
+            self.queue.appendleft(self.make_instruction_entry(instr, important, urgent, block, seq))
+
+    def resume_wait(self, waiting: Dict[str, Any], seconds: float) -> None:
+        """A newer urgent block interrupted `waiting` (a wait entry) with `seconds` of it left: the rest of the wait goes
+        back in front of its block's next step, so its block carries on at its own pace once the interruption is done
+        (25 Nov e2e: an urgent event cut a replay's step short)."""
+        entry = dict(waiting, instruction={"action": "wait", "duration": f"{max(0.0, seconds):.1f}s"})
+        block = waiting.get("block")
+        at = next((i for i, e in enumerate(self.queue) if block and e.get("block") == block), len(self.queue))
+        self.queue.insert(at, entry)
 
     def peek_next_urgent(self) -> Optional[Dict[str, Any]]:
         """
@@ -126,8 +138,11 @@ class InstructionQueue:
         urgent_entry = None
         
         own = (self.running or {}).get('block')
+        own_seq = (self.running or {}).get('seq')
         for i, entry in enumerate(self.queue):
-            is_urgent = entry.get('urgent', False) and not (own and entry.get('block') == own)
+            # urgent and newer than the waiting block (not its own steps, nor an older block queued behind it)
+            newer = entry.get('seq') is None or own_seq is None or entry.get('seq') > own_seq
+            is_urgent = entry.get('urgent', False) and newer and not (own and entry.get('block') == own)
             action = entry.get('instruction', {}).get('action', 'unknown')
             if is_urgent:
                 urgent_found = True
@@ -152,6 +167,16 @@ class InstructionQueue:
         self.queue = deque([entry for entry in self.queue if entry['important']])
         debug(f"Removed {old_size - len(self.queue)} non-important instructions from queue")
 
+    def remove_block(self, block: Optional[str]) -> None:
+        """Remove the rest of one block (terminate, mode block: "exits current instruction block only"), whatever its
+        flags; an entry with no block (made before blocks were tracked) goes as remove_non_important would."""
+        if not block:
+            self.remove_non_important()
+            return
+        old_size = len(self.queue)
+        self.queue = deque([e for e in self.queue if e.get('block') != block])
+        debug(f"Removed {old_size - len(self.queue)} instructions of the exited block from queue")
+
     def clear(self) -> None:
         """Clear the queue (e.g., on unload)."""
         self.queue.clear()
@@ -166,7 +191,8 @@ class InstructionQueue:
         return len(self.queue)
 
     @staticmethod
-    def make_instruction_entry(instruction: Dict[str, Any], important: bool, urgent: bool, block: str | None = None) -> Dict[str, Any]:
+    def make_instruction_entry(instruction: Dict[str, Any], important: bool, urgent: bool, block: str | None = None,
+                               seq: int | None = None) -> Dict[str, Any]:
         """
         Create an instruction entry for the queue.
         
@@ -184,6 +210,7 @@ class InstructionQueue:
             'important': important,
             'urgent': urgent,
             'block': block,
+            'seq': seq,
         }
 
 # Per-destination instruction queues
