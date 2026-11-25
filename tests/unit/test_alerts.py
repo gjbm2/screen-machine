@@ -106,12 +106,13 @@ def test_critical_reminder_reports_suppressed_count(fake):
     dispatcher._process(_record(), now)
     for i in range(10):
         dispatcher._process(_record(), now + 1 + i)
+    dispatcher._process(_record(), now + CRIT_REMINDER)  # still recurring
     assert len(fake.sent) == 1
     # incident still live (last occurrence recent relative to reminder check)
     dispatcher._critical_reminders(now + CRIT_REMINDER + 5)
     assert len(fake.sent) == 2
     assert "STILL FAILING" in fake.sent[1][0]
-    assert "10 time(s)" in fake.sent[1][1]
+    assert "11 time(s)" in fake.sent[1][1]
 
 
 def test_no_reminder_for_stopped_incident(fake):
@@ -124,6 +125,18 @@ def test_no_reminder_for_stopped_incident(fake):
     assert len(fake.sent) == 1
     entry = dispatcher._get_state().keys["openai.quota"]
     assert entry["count_since_sent"] == 0
+
+
+def test_no_still_failing_for_an_incident_that_stopped_hours_ago(fake):
+    """25 Nov: cloud's wedge cleared at 04:00 and a STILL FAILING reminder
+    went out at 09:29, inside the 6-h window. Not seen for an hour = over."""
+    now = time.time()
+    dispatcher._process(_record(), now)
+    for i in range(40):  # recurring for 40 min, then it stops
+        dispatcher._process(_record(), now + 60 * (i + 1))
+    dispatcher._critical_reminders(now + CRIT_REMINDER + 5)
+    assert len(fake.sent) == 1
+    assert dispatcher._get_state().keys["openai.quota"]["count_since_sent"] == 0
 
 
 def test_error_resends_after_cooldown_with_count(fake):

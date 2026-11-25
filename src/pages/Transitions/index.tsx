@@ -1,7 +1,8 @@
 // /transitions: the screens' transitions for review (routes/transitions.py; owner, 24 Nov: "compile those into a
 // review page so we can score and/or hone the logic"). Newest first, by day: the two pictures, the transition, how the
 // writer briefed it (a link between the pictures, or a device), a 1-5 score and a note. At the top, how each kind
-// of transition scores, and the ones that weren't made.
+// of transition scores, and the ones that weren't made. With a screen chosen, each day's run can be watched here, in
+// order, without sending anything to the screen (RunPlayer.tsx).
 import { useEffect, useMemo, useState } from "react";
 import { AppMenu } from "@/components/nav/AppMenu";
 import { jobsUrl } from "@/components/nav/appNav";
@@ -10,6 +11,7 @@ import { usePublishDestinations } from "@/hooks/usePublishDestinations";
 import { cn } from "@/lib/utils";
 import { Notice, Spinner } from "@/pages/Room/bits";
 import { CARD_CLASS, RoomThemeStyle, THEME_CLASS } from "@/pages/Room/theme";
+import { RunPlayer } from "./RunPlayer";
 import { getTransitions, scoreTransition, type Transition, type TransitionFailure } from "@/shared/api/transitions";
 
 // the screens' own (made as a picture went up), the day's set's (made ahead by the cloud's schedule) and the-beast's
@@ -153,6 +155,7 @@ export default function TransitionsPage() {
   const [items, setItems] = useState<Transition[] | null>(null);
   const [failed, setFailed] = useState<Array<TransitionFailure & { screen: string }>>([]);
   const [error, setError] = useState<string | null>(null);
+  const [run, setRun] = useState<{ title: string; list: Transition[] } | null>(null);
 
   useEffect(() => {
     document.title = "Transitions · screen/machine";
@@ -229,7 +232,19 @@ export default function TransitionsPage() {
             )}
             {days.map(([d, list]) => (
               <section key={d} className="space-y-3">
-                <h2 className="text-[17px] font-semibold">{d}</h2>
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-[17px] font-semibold">{d}</h2>
+                  {screen && (
+                    // played here only, in the order they were made (nothing goes to the screen)
+                    <button
+                      type="button"
+                      onClick={() => setRun({ title: `${screen === "cloud" ? "The day's set" : nameOf(screen)} · ${d}`, list: list.slice().reverse() })}
+                      className="h-11 rounded-xl border border-stone-300 bg-card px-4 text-base"
+                    >
+                      Watch the run
+                    </button>
+                  )}
+                </div>
                 <ul className="space-y-4">
                   {list.map((t) => (
                     <Card
@@ -246,6 +261,7 @@ export default function TransitionsPage() {
           </>
         )}
       </div>
+      {run && <RunPlayer title={run.title} list={run.list} onClose={() => setRun(null)} />}
       <AppMenu open={menuOpen} onOpenChange={setMenuOpen} current="other" />
     </div>
   );

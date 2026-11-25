@@ -320,6 +320,10 @@ def _flush_warnings(now):
     # storm-suppressed: keep the batch; retried next iteration
 
 
+# A reminder says STILL FAILING only if the incident recurred this recently
+STILL_FAILING_WITHIN_S = 3600
+
+
 def _critical_reminders(now):
     st = _get_state()
     reminder_s = _throttle_cfg("critical").get("reminder_s")
@@ -338,8 +342,9 @@ def _critical_reminders(now):
         if now - last_attempt < float(reminder_s):
             continue
         last_seen = float(entry.get("last_seen") or 0.0)
-        if now - last_seen > float(reminder_s) and not undelivered:
-            # incident stopped while suppressed; close it quietly
+        if now - last_seen > STILL_FAILING_WITHIN_S and not undelivered:
+            # incident stopped while suppressed; close it quietly (a wedge
+            # that cleared at 04:00 isn't "STILL FAILING" at 09:29)
             _log.info("[alert:incident-closed] %s stopped recurring "
                       "(%d unreported occurrences)", key,
                       entry.get("count_since_sent", 0))

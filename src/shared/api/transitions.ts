@@ -7,6 +7,8 @@ export interface Transition {
   url: string;
   from?: string;
   to?: string;
+  from_url?: string;
+  to_url?: string;
   from_thumb?: string;
   to_thumb?: string;
   connection?: 'link' | 'device' | null;
