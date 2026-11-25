@@ -160,7 +160,9 @@ def ease(source: str, dst: Path, deadline: float) -> None:
         part = str(dst) + ".part.mp4"
         subprocess.run(["nice", "-n", "10", sys.executable, "-m", "routes.clip_ease", src, part, str(PLAY_S),
                         str(RAMP_S), "0"], check=True, capture_output=True, text=True,
-                       timeout=max(30, deadline - time.time()), cwd=Path(__file__).resolve().parent.parent)
+                       # an ease under way gets its time (25 Nov: the deadline killed one at 04:01:00 that the GPU
+                       # finished at 04:01:35); the deadline is for a drawing that never comes
+                       timeout=max(300, deadline - time.time()), cwd=Path(__file__).resolve().parent.parent)
         tag = {"clip": {"eased": True, "transition": True, "play_s": PLAY_S, "returns": False}}
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", part, "-c", "copy", "-metadata",
                         "comment=" + json.dumps(tag), "-movflags", "+faststart", str(dst)], check=True, timeout=120)

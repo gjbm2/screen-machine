@@ -12,8 +12,8 @@ import { Notice, Spinner } from "@/pages/Room/bits";
 import { CARD_CLASS, RoomThemeStyle, THEME_CLASS } from "@/pages/Room/theme";
 import { getTransitions, scoreTransition, type Transition, type TransitionFailure } from "@/shared/api/transitions";
 
-// the screens' own (made as a picture went up) and the day's set's (made ahead by the cloud's schedule)
-const SCREENS = ["north-screen", "south-screen", "cloud"];
+// the screens' own (made as a picture went up), the day's set's (made ahead by the cloud's schedule) and the-beast's
+const SCREENS = ["north-screen", "south-screen", "cloud", "the-beast"];
 const GBP_PER_USD = 1 / 1.3;
 
 function kindOf(t: Transition): string {

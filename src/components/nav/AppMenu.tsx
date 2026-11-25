@@ -11,7 +11,7 @@
 // Links are AppLinks (inside the app: no reload, the dock and the socket stay), and a tap closes the menu.
 
 import type { ReactNode } from "react";
-import { CalendarClock, Download, ExternalLink, Lightbulb, Music, Settings, SlidersHorizontal, Sparkles } from "lucide-react";
+import { CalendarClock, Download, ExternalLink, Film, Lightbulb, Music, Settings, SlidersHorizontal, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDeployment } from "@/hooks/useDeployment";
 import { usePublishDestinations } from "@/hooks/usePublishDestinations";
@@ -221,6 +221,9 @@ function MenuBody({
         <NavRow href={generatorUrl()} icon={<Sparkles className="h-5 w-5" />} label="Generator" hint="Make art for each screen" current={current === "generator"} onGo={close} />
         {admin && (
           <NavRow href={schedulerUrl()} icon={<CalendarClock className="h-5 w-5" />} label="Schedules" hint="What each screen does through the day" current={current === "scheduler"} onGo={close} />
+        )}
+        {admin && (
+          <NavRow href="/transitions" icon={<Film className="h-5 w-5" />} label="Transitions" hint="Watch and score the screens' transitions" current={false} onGo={close} testId="menu-transitions" />
         )}
         {admin && (
           <NavRow href={settingsUrl()} icon={<Settings className="h-5 w-5" />} label="Settings" hint="Things you set once in a while" current={current === "settings"} onGo={close} testId="menu-settings" />

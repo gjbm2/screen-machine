@@ -421,6 +421,10 @@ def handle_generate(instruction, context, now, output, publish_destination):
         import traceback
         error(traceback.format_exc())
 
+import threading as _threading
+_TRANSITIONS_AT_ONCE = _threading.BoundedSemaphore(2)   # transitions drawn at once (the video endpoint has 3 workers)
+
+
 def _animate_ahead(image, to, prompt, pace, publish_destination, now, output):
     """animate with an `image` (a picture in a bucket): with `to`, the transition from it to that picture, made now
     and kept with both (routes/transitions.commission: a publish from one to the other plays it); without, its clip,
@@ -433,9 +437,18 @@ def _animate_ahead(image, to, prompt, pace, publish_destination, now, output):
         from routes.transitions import commission
         if Path(image).resolve() == Path(to).resolve():
             return None
-        made = commission(image, to)
-        log_schedule(f"ANIMATE: transition {os.path.basename(image)} -> {os.path.basename(to)}: "
-                     + ((made.get("idea") or "made") if made else "not made (that change cross-fades)"),
+
+        # in the background, two at a time: made in line, each held the schedule's loop for minutes (25 Nov 03:19-04:01:
+        # the cloud's loop didn't tick for over 10 min, "scheduler wedged" alerts); a publish that comes before it is
+        # made cross-fades, as it always did for a transition not made yet
+        def run_transition(a=str(image), b=str(to)):
+            with _TRANSITIONS_AT_ONCE:
+                made = commission(a, b)
+            info(f"[animate] transition {os.path.basename(a)} -> {os.path.basename(b)}: "
+                 + ((made.get("idea") or "made") if made else "not made (that change cross-fades)"))
+        import threading
+        threading.Thread(target=run_transition, name=f"transition-{Path(to).name[:16]}", daemon=True).start()
+        log_schedule(f"ANIMATE: the transition {os.path.basename(image)} -> {os.path.basename(to)}, made in the background",
                      publish_destination, now, output)
         return None
     import threading
