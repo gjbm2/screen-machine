@@ -280,3 +280,12 @@
     }
   }
 }
+
+/* A bucket's Grid tiles (BucketGridView, owner 25 Nov): every picture cropped to the same square, so a bucket of mixed
+   shapes (the Library's paintings) lines up. Over ImageCard's own inline shape, hence !important. */
+.uniform-tiles > div img,
+.uniform-tiles > div video {
+  aspect-ratio: 1 / 1 !important;
+  height: auto;
+  object-fit: cover;
+}

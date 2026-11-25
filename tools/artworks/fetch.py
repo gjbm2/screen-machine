@@ -10,13 +10,14 @@ output/library/ (served by Flask as /output/library/, not in git). library.json 
 The folder is also the Library bucket (owner, 25 Nov: "a class of bucket ... favourite some of them and drag/drop them
 into films", clips made for them; its entry in each deployment's publish-destinations.json): each work gets a sidecar
 (<id>.jpg.json: what it is, as "artwork", and "<title>, <artist>, <year>" as its prompt) and a bucket thumbnail, and is
-added to bucket.json's sequence in catalogue order. Favourites, clips, art tags and anything else put in the bucket
-are kept. The folder was output/_artworks/ until 25 Nov: it is moved here on the first run, with a link left behind.
+added to bucket.json's sequence in catalogue order, and its catalogue facts as its known art tags (artist,
+movement, period, genre, medium, its subject words: routes/art_tags/sidecar.apply_known; the AI tags it as well).
+Favourites, clips, the AI's tags, people's tag edits and anything else put in the bucket are kept. The folder was output/_artworks/ until 25 Nov: it is moved here on the first run, with a link left behind.
 
-    ~/.venvs/sm-room/bin/python tools/artworks/fetch.py              # fetch what's missing, rewrite library.json
-    ~/.venvs/sm-room/bin/python tools/artworks/fetch.py --index      # no downloads: library.json and the bucket only
-    ~/.venvs/sm-room/bin/python tools/artworks/fetch.py --only vermeer-pearl --refresh
-    ~/.venvs/sm-room/bin/python tools/artworks/fetch.py --sheet      # also a contact sheet to check them by eye
+    .venv/bin/python tools/artworks/fetch.py              # fetch what's missing, rewrite library.json
+    .venv/bin/python tools/artworks/fetch.py --index      # no downloads: library.json and the bucket only
+    .venv/bin/python tools/artworks/fetch.py --only vermeer-pearl --refresh
+    .venv/bin/python tools/artworks/fetch.py --sheet      # also a contact sheet to check them by eye
 
 A work that can't be resolved is reported and left out of library.json; fix its `wiki`/`search` and run again.
 """
@@ -36,6 +37,8 @@ import yaml
 from PIL import Image, ImageDraw, ImageOps
 
 REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO))
+from routes.art_tags.sidecar import apply_known  # noqa: E402  (the repo's venv: it brings Flask)
 CATALOGUE = REPO / "config" / "artworks" / "catalogue.yaml"
 BUCKET = "library"
 OUT = REPO / "output" / BUCKET
@@ -224,6 +227,11 @@ def move_old_folder() -> None:
         print(f"moved {OLD_OUT} to {OUT} (the old name links to it)")
 
 
+def known_words(e: dict) -> list[str]:
+    """A work's catalogue facts as art-tag words (people's words: "leonardo-da-vinci", "high-renaissance")."""
+    return [e["artist"], e["movement"], e["period"], e["genre"], e["medium"], *e.get("tags", [])]
+
+
 def write_bucket(entries: list[dict]) -> None:
     """The works as the Library bucket's items: a sidecar each (its art tags and anything else in it kept), a bucket
     thumbnail, and its place in bucket.json's sequence (new works after the rest, in catalogue order)."""
@@ -240,6 +248,7 @@ def write_bucket(entries: list[dict]) -> None:
         meta["artwork"] = {k: e[k] for k in ("id", "title", "artist", "year", "movement", "genre", "medium", "people",
                                              "period", "tags", "aka", "source")}
         meta["width"], meta["height"] = e["width"], e["height"]
+        apply_known(meta, known_words(e))
         _write_json(sidecar, meta)
         thumb = thumbs / f"{name}.jpg"
         if not thumb.exists():

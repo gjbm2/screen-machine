@@ -56,7 +56,7 @@ import { Switch } from "@/components/ui/switch";
 import { Download } from 'lucide-react';
 import { ReferenceImageService } from '@/services/reference-image-service';
 import { usePublishDestinations } from '@/hooks/usePublishDestinations';
-import { Tag as TagIcon } from 'lucide-react';
+import { LayoutGrid, Tag as TagIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { TagFilterBar } from '@/components/tags/TagFilterBar';
 import { ITEM_REMOVED_EVENT, ITEM_UPDATED_EVENT, type ItemUpdatedDetail } from '@/components/tags/events';
@@ -74,6 +74,19 @@ type BucketViewMode = 'date' | 'tags';
 const VIEW_MODE_KEY = 'screenmachine_bucket_view';
 /** While the Tags view shows images the tagger hasn't reached, re-read the bucket this often. */
 const TAG_POLL_MS = 30_000;
+
+/** Grid (every tile the same square) or Whole (each picture its own shape), remembered per viewer (owner, 25 Nov: a
+ * bucket of mixed shapes, the Library's paintings, "is a real mess visually" as whole pictures). Grid unless chosen. */
+type TileMode = 'grid' | 'whole';
+const TILE_MODE_KEY = 'screenmachine_bucket_tiles';
+
+function readTileMode(): TileMode {
+  try {
+    return localStorage.getItem(TILE_MODE_KEY) === 'whole' ? 'whole' : 'grid';
+  } catch {
+    return 'grid';
+  }
+}
 
 function readViewMode(): BucketViewMode {
   try {
@@ -262,6 +275,7 @@ export const BucketGridView = ({
   const [sectionSortMap, setSectionSortMap] = useState<Record<string, 'desc' | 'asc'>>({});
   const [hasBucket, setHasBucket] = useState<boolean>(true);
   const [viewMode, setViewMode] = useState<BucketViewMode>(readViewMode);
+  const [tileMode, setTileMode] = useState<TileMode>(readTileMode);
   const [chosenChips, setChosenChips] = useState<string[]>([]);
   const [lexicon, setLexicon] = useState<TagLexicon | null>(null);
   
@@ -840,6 +854,15 @@ export const BucketGridView = ({
     }));
   }, [viewMode, chosenChips, bucketImages, facets, tagChips]);
   const shownSections: Section[] = viewMode === 'tags' ? tagSections : sections;
+
+  const chooseTileMode = (mode: TileMode) => {
+    setTileMode(mode);
+    try {
+      localStorage.setItem(TILE_MODE_KEY, mode);
+    } catch {
+      /* private window: just not remembered */
+    }
+  };
 
   const chooseViewMode = (mode: BucketViewMode) => {
     setViewMode(mode);
@@ -1583,6 +1606,7 @@ export const BucketGridView = ({
           >
             <SortableImageGrid
               images={sectionImages}
+              className={tileMode === 'grid' ? 'uniform-tiles' : ''}
               sortable={section.variant === 'favourites'}
               onToggleFavorite={(img) => {
                 const originalId = getOriginalId(img.id);
@@ -1826,7 +1850,7 @@ export const BucketGridView = ({
     // By date | By tag, right above the pictures and labelled on every screen (owner, 28 Oct: a toolbar toggle went
     // unnoticed - "not exposed whatsoever on the generator page")
     const browseBar = (
-      <div className="pt-2">
+      <div className="pt-2 flex flex-wrap items-center gap-2">
         <Segmented
           ariaLabel="Browse pictures"
           value={viewMode}
@@ -1834,6 +1858,15 @@ export const BucketGridView = ({
           options={[
             { value: 'date', label: 'By date' },
             { value: 'tags', label: 'By tag', icon: TagIcon },
+          ]}
+        />
+        <Segmented
+          ariaLabel="Tile shape"
+          value={tileMode}
+          onChange={chooseTileMode}
+          options={[
+            { value: 'grid', label: 'Grid', icon: LayoutGrid, title: 'Every tile the same square' },
+            { value: 'whole', label: 'Whole', title: 'Each picture whole, its own shape' },
           ]}
         />
       </div>

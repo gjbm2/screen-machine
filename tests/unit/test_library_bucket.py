@@ -73,7 +73,9 @@ def test_the_catalogue_becomes_a_bucket_and_keeps_what_people_did_with_it(monkey
     # what people did since the last run: a favourite, a clip made from it, art tags, one picture of their own
     (out / "bucket.json").write_text(json.dumps({"sequence": ["mona.jpg", {"file": "mona-clip.mp4"}, "mine.jpg"],
                                                  "favorites": ["mona.jpg"], "published_meta": {"filename": "mona.jpg"}}))
-    (out / "mona.jpg.json").write_text(json.dumps({"tags": ["smile"], "tagging": {"status": "done"}}))
+    ai = {"subject": ["people"], "medium": "painting", "moods": ["calm"]}
+    (out / "mona.jpg.json").write_text(json.dumps({"tags": ["people", "painting", "calm", "smile"], "tagging": {
+        "status": "done", "ai": ai, "added": ["smile"], "removed": ["calm"]}}))
     fetch = _fetch(monkeypatch, out)
     fetch.write_bucket([_entry("mona"), _entry("venus", year=-50), _entry("hare")])
 
@@ -81,7 +83,12 @@ def test_the_catalogue_becomes_a_bucket_and_keeps_what_people_did_with_it(monkey
     assert meta["sequence"] == ["mona.jpg", {"file": "mona-clip.mp4"}, "mine.jpg", "venus.jpg", "hare.jpg"]
     assert meta["favorites"] == ["mona.jpg"] and meta["published_meta"] == {"filename": "mona.jpg"}
     mona = json.loads((out / "mona.jpg.json").read_text())
-    assert mona["tags"] == ["smile"] and mona["tagging"] == {"status": "done"}, "art tags kept"
+    t = mona["tagging"]
+    assert t["status"] == "done" and t["ai"] == ai and t["added"] == ["smile"] and t["removed"] == ["calm"], "kept"
+    assert t["known"] == ["someone", "high-renaissance", "renaissance", "portrait", "oil"]
+    assert mona["tags"] == ["people", "painting", "someone", "high-renaissance", "renaissance", "portrait", "oil",
+                            "smile"], "the AI's words, the catalogue's, the person's; what they removed stays out"
+    assert "status" not in json.loads((out / "hare.jpg.json").read_text())["tagging"], "still due its AI pass"
     assert mona["prompt"] == "Mona, Someone, 1503" and mona["artwork"]["id"] == "mona"
     assert json.loads((out / "venus.jpg.json").read_text())["prompt"].endswith("50 BC")
     assert (out / "thumbnails" / "hare.jpg.jpg").read_bytes() == b"thumb"
@@ -99,3 +106,15 @@ def test_the_old_folder_moves_once_and_its_name_still_works(monkeypatch, tmp_pat
     fetch.move_old_folder()
     assert (tmp_path / "library" / "mona.jpg").exists() and (tmp_path / "_artworks").is_symlink()
     assert (tmp_path / "_artworks" / "mona.jpg").read_bytes() == b"picture"
+
+
+def test_a_known_word_can_be_removed_and_put_back_and_a_retag_keeps_them():
+    from routes.art_tags.sidecar import apply_ai, apply_edits, apply_known
+    d = apply_known({}, ["Leonardo da Vinci", "portrait"])
+    assert d["tags"] == ["leonardo-da-vinci", "portrait"]
+    d = apply_edits(d, remove=["portrait"])
+    assert d["tags"] == ["leonardo-da-vinci"] and d["tagging"]["added"] == []
+    d = apply_edits(d, add=["portrait"])
+    assert d["tags"] == ["leonardo-da-vinci", "portrait"] and d["tagging"]["added"] == [], "back, not added twice"
+    d = apply_ai(d, {"subject": ["people"], "medium": "painting", "moods": []}, "m", 0.001, 1)
+    assert d["tags"] == ["people", "painting", "leonardo-da-vinci", "portrait"]

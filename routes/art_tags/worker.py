@@ -70,7 +70,8 @@ def scan(skip: Optional[set] = None) -> list[dict]:
     base = sidecar.output_base()
     skip = _skip_buckets() if skip is None else skip
     try:
-        names = [p.name for p in base.iterdir() if p.is_dir() and (p / "bucket.json").is_file()]
+        # not a link to a bucket under another name (output/_artworks -> library): its pictures would be queued twice
+        names = [p.name for p in base.iterdir() if p.is_dir() and not p.is_symlink() and (p / "bucket.json").is_file()]
     except OSError:
         return []
     names = [n for n in names if n not in skip and not n.startswith(".")]

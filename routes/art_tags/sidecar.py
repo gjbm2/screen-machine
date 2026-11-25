@@ -97,11 +97,13 @@ def ai_words(tagging: dict) -> list[str]:
 
 
 def effective_tags(tagging: Optional[dict]) -> list[str]:
-    """Contract §1: the AI's subject words, the medium, the moods, then ``added``; ``removed`` dropped; normalised,
-    de-duplicated, in that order."""
+    """Contract §1: the AI's subject words, the medium, the moods, then ``known``, then ``added``; ``removed``
+    dropped; normalised, de-duplicated, in that order. ``known``: what the picture's own record says it is, not seen
+    by the AI (the Library's catalogue: artist, movement, period, genre, its subject words; owner, 25 Nov)."""
     t = tagging or {}
     removed = set(_dedupe(t.get("removed") or []))
-    return [w for w in _dedupe(ai_words(t) + list(t.get("added") or [])) if w not in removed]
+    return [w for w in _dedupe(ai_words(t) + list(t.get("known") or []) + list(t.get("added") or []))
+            if w not in removed]
 
 
 def _tagging(d: dict) -> dict:
@@ -111,14 +113,18 @@ def _tagging(d: dict) -> dict:
     t.setdefault("v", TAGGING_V)
     t["added"] = _dedupe(t.get("added") or [])
     t["removed"] = _dedupe(t.get("removed") or [])
+    if t.get("known"):
+        t["known"] = _dedupe(t["known"])
     return t
 
 
 def apply_ai(d: dict, ai: dict, model: Optional[str], cost_usd: Optional[float], lexicon_v: int) -> dict:
-    """The AI's answer into the sidecar dict: status done; a person's added/removed kept (a retag too)."""
+    """The AI's answer into the sidecar dict: status done; the known words and a person's added/removed kept (a
+    retag too)."""
     old = _tagging(d)
     t = {"v": TAGGING_V, "status": "done", "at": now_iso(), "model": model,
          "cost_usd": round(float(cost_usd or 0.0), 6), "lexicon": lexicon_v, "ai": ai,
+         **({"known": old["known"]} if old.get("known") else {}),
          "added": old["added"], "removed": old["removed"]}
     d["tagging"] = t
     d["tags"] = effective_tags(t)
@@ -140,7 +146,7 @@ def apply_edits(d: dict, add: Iterable[Any] = (), remove: Iterable[Any] = ()) ->
     any other new word goes to ``added``. Removing an AI word puts it in ``removed``; removing an added word drops it.
     Favourite words are ignored: favourites live in bucket.json (the UI calls the favourite endpoint)."""
     t = _tagging(d)
-    ai = ai_words(t)
+    ai = ai_words(t) + list(t.get("known") or [])     # removable like the AI's words; re-adding one un-removes it
     for w in _dedupe(add):
         if w in FAVOURITE_WORDS:
             continue
@@ -155,6 +161,17 @@ def apply_edits(d: dict, add: Iterable[Any] = (), remove: Iterable[Any] = ()) ->
             t["added"].remove(w)
         if w in ai and w not in t["removed"]:
             t["removed"].append(w)
+    d["tagging"] = t
+    d["tags"] = effective_tags(t)
+    return d
+
+
+def apply_known(d: dict, words: Iterable[Any]) -> dict:
+    """What the picture's own record says it is (``known``), set again each time the record is read (the Library's
+    catalogue, tools/artworks/fetch.py). The AI's answer and a person's edits stay; the tagging status is untouched,
+    so a picture not yet seen by the AI still gets its AI pass."""
+    t = _tagging(d)
+    t["known"] = _dedupe(words)
     d["tagging"] = t
     d["tags"] = effective_tags(t)
     return d
