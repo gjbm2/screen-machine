@@ -1107,6 +1107,7 @@ def scheduler_step(publish_destination: str, st: LoopState):
         try:
             # 1. Process triggers and add to queue
             triggers = process_triggers(current_schedule, now, publish_destination, current_context)
+            idle_at_tick = st.instruction_queue.is_empty() and not st.is_in_wait_state
             for trigger in triggers:
                 block = trigger.get("block", [])
                 is_urgent = trigger.get("urgent", False)
@@ -1153,7 +1154,8 @@ def scheduler_step(publish_destination: str, st: LoopState):
                 st.instruction_queue.push_block(
                     block,
                     important=is_important,
-                    urgent=is_urgent
+                    urgent=is_urgent,
+                    due_together=idle_at_tick,
                 )
 
             # 2. Check for urgent events

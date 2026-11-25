@@ -244,3 +244,15 @@ def test_a_terminate_test_that_renders_empty_is_false_not_missing(sim):
     sim.throw("north", "Stop")
     sim.run(seconds=5)
     assert names(sim.shown("north")) == ["ran"], "an empty test is false; no test at all still terminates"
+
+
+def test_normal_triggers_due_in_the_same_tick_all_run(sim):
+    """25 Nov: the-beast's 06:00 commission and its every-minute ring fell due in the same tick; the queue took the
+    first normal block and dropped the second (normal blocks are only added to an empty queue), so the day's set was
+    never made. Blocks that fall due together on an idle destination all run; a busy one still drops normal work."""
+    at_six = {"type": "day_of_week", "days": ["Wednesday"], "scheduled_actions": [
+        {"time": "15:01", "trigger_actions": {"instructions_block": [pub("daily")]}}]}
+    sim.install("north", {"triggers": [every_minute(pub("{{ 'minute-' ~ now().strftime('%H%M') }}")), at_six]})
+    sim.run(seconds=90)
+    got = names(sim.shown("north"))
+    assert "daily" in got and "minute-1501" in got

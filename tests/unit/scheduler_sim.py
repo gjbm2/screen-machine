@@ -146,7 +146,10 @@ class Sim:
 
     def _recorder(self, action):
         def record(instruction, context, now, output, dest):
-            self.actions.append((self.clock.t, dest, action, copy.deepcopy(instruction)))
+            ins = copy.deepcopy(instruction)
+            if action == "overlay":                     # the overlay handler renders its own text: so do we
+                ins["text"] = su.process_jinja_template(ins.get("text", ""), context, dest)
+            self.actions.append((self.clock.t, dest, action, ins))
             return False
         return record
 

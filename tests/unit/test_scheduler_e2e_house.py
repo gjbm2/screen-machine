@@ -40,11 +40,17 @@ def live(screen):
     return json.loads(p.read_text())["schedule_stack"][-1]
 
 
+def live_vars(screen):
+    """The screen's own saved variables (the top context of its live state)."""
+    return json.loads((SCHEDULES / f"{screen}.json").read_text())["context_stack"][-1].get("vars", {})
+
+
 def house(monkeypatch, tmp_path, start, day_set=SET, day="2026-11-25"):
     sim = Sim(monkeypatch, tmp_path, start, {"north-screen": ["drawing-room", "home"], "south-screen": ["drawing-room", "home"],
                                              "cloud": ["drawing-room"], "the-beast": ["work"]})
     sim.install("cloud", {"triggers": []})
     for var, value in (("day_set", day_set), ("day_sets", {day: day_set}), ("ring_step_min", 30),
+                       ("day_themes", {day: "Today's art theme is 'Intricate Webs.' Drawing on St. Catherine's Day. More words here."}),
                        ("ring_day_starts", "07:00"), ("ring_screens", 2), ("replay_turn_s", TURN)):
         sim.export("cloud", var, value, "drawing-room")
     for s in SCREENS:
@@ -240,3 +246,32 @@ def test_a_replay_over_a_still_with_its_clip_puts_back_the_still(monkeypatch, tm
     sim.throw("north-screen", "Replay_day")
     sim.run(minutes=5)
     assert sim.shown("north-screen")[-1][1] == "pic.jpg"
+
+
+def test_the_beasts_daily_commission_starts_at_six_though_its_ring_ticks_that_minute(monkeypatch, tmp_path):
+    """25 Nov: the 06:00 throw and the every-minute ring were due in one tick; the commission was dropped and the-beast
+    made no pictures (or transitions) that day."""
+    beast = live("the-beast")
+    sim = Sim(monkeypatch, tmp_path, datetime(2026, 11, 25, 5, 59, 30), {"the-beast": ["work"]})
+    ring = {k: v for k, v in live_vars("the-beast").items() if k.startswith("ring_")}
+    sim.install("the-beast", beast, vars={**ring, "ring_n": 1})          # one picture: it starts, that's the point
+    sim.run(minutes=2)
+    assert any(d == "the-beast" and a == "generate" for _, d, a, _ in sim.actions), "the day's set was commissioned"
+
+
+
+def test_a_replay_opens_with_an_overlay_saying_what_we_are_about_to_see(monkeypatch, tmp_path):
+    sim = house(monkeypatch, tmp_path, datetime(2026, 11, 25, 15, 5, 0))
+    settle(sim)
+    sim.throw("drawing-room", "Replay_day", payload={"day": "2026-11-25"})
+    sim.run(seconds=10)
+    shown = {d: ins["text"] for _, d, a, ins in sim.actions if a == "overlay"}
+    assert set(shown) == {"north-screen", "south-screen"}, "on each screen taking part"
+    text = shown["north-screen"]
+    assert text.startswith("Today's art theme is 'Intricate Webs.' Drawing on St. Catherine's Day.")
+    assert "Playing 8 pictures across both screens, taking turns: about 5 minutes." in text
+    sim.run(minutes=6)                                        # the room's replay is over
+    sim.throw("north-screen", "Replay_day")
+    sim.run(seconds=10)
+    solo = [ins["text"] for _, d, a, ins in sim.actions if a == "overlay" and d == "north-screen"][-1]
+    assert "Playing 8 pictures on this screen: about 4 minutes." in solo

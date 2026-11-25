@@ -17,7 +17,8 @@ class InstructionQueue:
         self.running = None  # the entry being run (pop_next): a for_each runs its block with the same flags
         self._seq = 0  # blocks in the order they came: a wait is interrupted only by a block newer than its own
 
-    def push_block(self, instructions: List[Dict[str, Any]], important: bool = False, urgent: bool = False) -> None:
+    def push_block(self, instructions: List[Dict[str, Any]], important: bool = False, urgent: bool = False,
+                   due_together: bool = False) -> None:
         """
         Push a block of instructions onto the queue with appropriate flags.
         
@@ -44,10 +45,12 @@ class InstructionQueue:
             # If important but not urgent, append to the end of the queue
             self.queue.extend(entries)
             debug(f"Added {len(entries)} important instructions to end of queue (now size {len(self.queue)})")
-        elif not self.queue:
-            # If not important and not urgent, only add if queue is empty
+        elif not self.queue or due_together:
+            # If not important and not urgent, only add if queue is empty, or if it was empty when this tick's
+            # triggers fell due (several due together all run: 25 Nov, the-beast's 06:00 commission and its
+            # every-minute ring were due in one tick and the commission was dropped)
             self.queue.extend(entries)
-            debug(f"Added {len(entries)} normal instructions to empty queue")
+            debug(f"Added {len(entries)} normal instructions to {'an empty queue' if not due_together else 'the queue (due together)'}")
         else:
             debug(f"Skipped {len(entries)} non-important instructions (queue not empty)")
 
