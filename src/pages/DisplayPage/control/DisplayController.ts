@@ -188,7 +188,7 @@ export class DisplayController {
       url: opts.ctlUrl,
       hello: () => {
         const h: Hello = {
-          role: opts.role,
+          role: this.connectedRole(),
           screen: opts.screenId,
           page_load_id: this.pageLoadId,
           build: buildId(),
@@ -439,18 +439,37 @@ export class DisplayController {
     this.rejoinTimer = null;
   }
 
-  // A hidden tab can't hold the control socket (Chrome throttles its timers to about once a minute,
-  // so its heartbeats stop and room closes it as dead) or show live (it renders no frames, so the
-  // handshake fails). After HIDDEN_RELEASE_MS hidden it lets go: room runs the screen without a page
-  // (headless live). Visible again, it reconnects at once and the welcome joins whatever is live.
+  // A hidden tab can't show live (it renders no frames, so the handshake fails), so after HIDDEN_RELEASE_MS hidden
+  // it stops being the screen's own page: it reconnects as a viewer (room runs the screen without a page, headless
+  // live, as before) but stays connected, so pushes still reach it and it is current the moment it is seen (25 Nov:
+  // it used to close the socket and stay away until visible; its heartbeats now keep time in a hidden tab,
+  // ticker.ts). Visible again, it reconnects as what it was and the welcome joins whatever is live.
   // The TVs' kiosk pages are always visible (checked 15 Oct), so this never touches them.
   private releaseHidden = (): void => {
     this.hiddenTimer = null;
     if (!this.started || document.visibilityState !== "hidden" || this.releasedHidden) return;
     this.releasedHidden = true;
-    this.event("hidden-release");
-    this.client.stop(1001, "tab hidden");
+    if (this.opts.role === "viewer") return; // a viewer already is one
+    this.event("hidden-as-viewer");
+    this.client.setUrl(this.urlFor(this.connectedRole()));
+    this.client.restart();
   };
+
+  /** The role this page connects as: its own, or a viewer while it is hidden. */
+  private connectedRole(): Role {
+    return this.releasedHidden ? "viewer" : this.opts.role;
+  }
+
+  /** The control socket's address for `role` (the page's own address with its role swapped). */
+  private urlFor(role: Role): string {
+    try {
+      const u = new URL(this.opts.ctlUrl);
+      u.searchParams.set("role", role);
+      return u.toString();
+    } catch {
+      return this.opts.ctlUrl;
+    }
+  }
 
   private onVisibility = (e?: Event): void => {
     if (e) {
@@ -464,8 +483,11 @@ export class DisplayController {
       this.hiddenTimer = null;
       if (this.releasedHidden && this.started) {
         this.releasedHidden = false;
-        this.event("visible-reconnect");
-        this.client.start();
+        if (this.opts.role !== "viewer") {
+          this.event("visible-reconnect");
+          this.client.setUrl(this.urlFor(this.opts.role));
+          this.client.restart();
+        }
       }
     }
     const p = this.pendingRejoin;

@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { DisplayController } from "../control/DisplayController";
 import { isState, newer, POLL_MS, type ScreenState } from "../art/screenState";
+import { startTicker } from "../control/ticker";
 
 export default function useScreenState(name: string | null, ctl: DisplayController | null) {
   const [state, setState] = useState<ScreenState | null>(null);
@@ -37,7 +38,7 @@ export default function useScreenState(name: string | null, ctl: DisplayControll
       }
     };
     void read();
-    const t = setInterval(() => void read(), POLL_MS);
+    const stopTicker = startTicker(POLL_MS, () => void read());     // keeps time in a hidden tab too
     const onVisible = () => document.visibilityState === "visible" && void read();
     const onOnline = () => void read();
     document.addEventListener("visibilitychange", onVisible);
@@ -45,7 +46,7 @@ export default function useScreenState(name: string | null, ctl: DisplayControll
     const off = ctl.onArtState((pushed) => (pushed ? take(pushed) : void read()));
     return () => {
       alive = false;
-      clearInterval(t);
+      stopTicker();
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", onOnline);
       off();
