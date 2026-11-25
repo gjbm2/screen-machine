@@ -42,7 +42,8 @@ MediaDisplay.tsx       today's still/clip layer (default mode only, untouched)
 OverlayContainer.tsx   overlays (both modes)
 JobIndicator.tsx       generation-job pill, top-left (both modes; job tracker stream, docs/JOBS.md;
                        hidden while live/frozen, not part of settle)
-ControlsPanel.tsx      hover/tap panel (both modes): file, scheduler, Replay today, clips' Play, event triggers, toggles
+ControlsPanel.tsx      hover/tap panel (both modes): file, scheduler, clips' Play, the screen's event triggers
+                       (each thrown to this screen), toggles
 secureUrls.ts          over HTTPS (Caddy): room socket via /rs, media sockets via /rs/renderer; http URLs unchanged
 LegacyMaskLayers.tsx   today's brightness/warm layers (default mode)
 hooks/                 useScreenState (the state document), useFilePolling (only without one),
@@ -126,10 +127,6 @@ overlays z 9999, controls panel).
 - **Transitions** (24 Nov): from the document. One plays only for a new still this page saw arrive, within 10 min of
   the publish, from the picture shown (a page that missed a change in between just cross-fades), once. It waits
   for a playing clip to finish (at most 40 s); the new still lands under it.
-- **Replay today** (controls panel, 25 Nov): shown when the screen's schedule has a `Replay_day` trigger; throws
-  `Replay_day` to the screen's room (its first group, e.g. `drawing-room`) with today's date, as "computer, use AI
-  to replay the day" does, so both screens take turns. It replaces the raw `Replay_day` trigger button, which went to
-  one screen alone.
 - **New picture** (23 Nov): a 1.6 s cross-fade, not through black. The new base is mounted invisible on top,
   `prime()`d (still decoded; a published video paused on frame 0, so only one video decodes at a time), faded in on `opacity`
   only (compositor work, cheap on the N95), then the old layer and its decoder go and the new clip starts its loop.

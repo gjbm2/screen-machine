@@ -685,38 +685,6 @@ function DisplayPage() {
     navigate({ search: params.toString() }, { replace: true });
   };
 
-  // Replay today (the controls panel): the day's set replayed on the room's screens, taking turns, as Alexa's "replay
-  // the day" does (the screens' Replay_day trigger reads the day from the event). The room is the screen's first group.
-  const [replayScope, setReplayScope] = useState<string | null>(null);
-  const [replaySent, setReplaySent] = useState(false);
-  useEffect(() => {
-    if (!screenId || !showControls) return;
-    let live = true;
-    new Api().getPublishDestinations().then(
-      (all) => {
-        const groups = (all.find((d) => d.id === screenId) as { groups?: string[] } | undefined)?.groups;
-        if (live) setReplayScope(groups?.[0] ?? screenId);
-      },
-      () => live && setReplayScope(screenId),
-    );
-    return () => {
-      live = false;
-    };
-  }, [screenId, showControls]);
-  const handleReplayToday = async () => {
-    const d = new Date();
-    const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-    setReplaySent(true);
-    setTimeout(() => setReplaySent(false), 20_000);
-    try {
-      await new Api().throwEvent({ event: "Replay_day", scope: replayScope ?? screenId, payload: { day }, ttl: "120s" });
-    } catch (e) {
-      console.warn("[replay] could not start it", e);
-      setReplaySent(false);
-    }
-  };
-  const replay: "none" | "ready" | "sent" = !eventTriggers.includes("Replay_day") ? "none" : replaySent ? "sent" : "ready";
-
   // Handle throw event
   const handleThrowEvent = async (eventKey: string) => {
     const api = new Api();
@@ -794,8 +762,6 @@ function DisplayPage() {
             canPlayNow={canPlayNow}
             startingClip={startingClip}
             onPlayClip={playClip}
-            replay={replay}
-            onReplayToday={handleReplayToday}
           />
         </LayerBoundary>
       )}
