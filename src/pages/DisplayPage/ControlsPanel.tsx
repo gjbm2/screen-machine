@@ -1,7 +1,7 @@
 // The hover/tap controls panel of the display page (file info, scheduler status, event triggers,
-// the published picture's clips, fit/fill and mask toggles). Moved out of index.tsx unchanged so that its own error
+// the published picture's clips, Replay today, fit/fill and mask toggles). Moved out of index.tsx unchanged so that its own error
 // boundary can catch a crash in it (JSX evaluated in the parent's render would take the whole page down).
-import { Play, Zap } from "lucide-react";
+import { History, Play, Zap } from "lucide-react";
 import type { PublishedClip } from "@/shared/api/buckets";
 
 /** A clip of the published picture, for the Play buttons. */
@@ -39,6 +39,10 @@ interface Props {
   /** The clip being put up to play, if any. */
   startingClip: string | null;
   onPlayClip: (clip: PanelClip) => void;
+  /** The screen's schedule replays a day's pictures (its Replay_day trigger): "ready", just "sent", or "none". */
+  replay: "none" | "ready" | "sent";
+  /** Replay today's pictures on the room's screens (both take turns, as "computer, use AI to replay the day" does). */
+  onReplayToday: () => void;
 }
 
 function clipLabel(c: PanelClip, several: boolean): string {
@@ -64,7 +68,12 @@ export function ControlsPanel({
   canPlayNow,
   startingClip,
   onPlayClip,
+  replay,
+  onReplayToday,
 }: Props) {
+  // Replay today has its own button (it goes to the whole room, with today's date); the raw trigger would replay one
+  // screen alone
+  const triggers = eventTriggers.filter((t) => !(replay !== "none" && t === "Replay_day"));
   return (
     <div
       data-sm-controls=""
@@ -89,6 +98,30 @@ export function ControlsPanel({
         ...(isMobile ? { maxHeight: '80vh', overflowY: 'auto' as const } : {}),
       }}
     >
+      {replay !== "none" && (
+        <button
+          onClick={(e) => {
+            e.stopPropagation();
+            if (replay === "ready") onReplayToday();
+          }}
+          disabled={replay === "sent"}
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
+            background: 'rgba(144, 202, 249, 0.16)',
+            border: '1px solid #90caf977',
+            color: '#bbdefb',
+            borderRadius: 8,
+            padding: isMobile ? '10px 16px' : '6px 14px',
+            fontSize: isMobile ? 17 : 16,
+            fontWeight: 600,
+            cursor: replay === "sent" ? 'default' : 'pointer',
+            opacity: replay === "sent" ? 0.65 : 1,
+          }}
+          title="Play back today's pictures on the room's screens, with their transitions"
+        >
+          <History size={18} /> {replay === "sent" ? "Replaying today…" : "Replay today"}
+        </button>
+      )}
       {/* File info */}
       <div style={{fontSize: 15, opacity: 0.85, marginBottom: 8}}>
         <div><b>File:</b> {fileName || '—'}</div>
@@ -137,11 +170,11 @@ export function ControlsPanel({
         </div>
       )}
       {/* Event triggers */}
-      {eventTriggers.length > 0 && (
+      {triggers.length > 0 && (
         <div style={{marginBottom: 8}}>
           <div style={{fontWeight: 600, fontSize: 15, marginBottom: 4}}>Event Triggers:</div>
           <div style={{display: 'flex', flexWrap: 'wrap', gap: 8}}>
-            {eventTriggers.map(trigger => (
+            {triggers.map(trigger => (
               <button
                 key={trigger}
                 onClick={e => { e.stopPropagation(); handleThrowEvent(trigger); }}

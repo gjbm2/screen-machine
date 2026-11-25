@@ -2,7 +2,9 @@
 // POLL_MS (a conditional request: nothing comes back unless it changed), when the tab wakes, when the network comes
 // back and after the control socket (re)connects, and taken from room_service's `art.state` push when that arrives
 // first. Whatever arrives is the whole state; the newer one wins. `available` stays false while the screen has no
-// document yet (nothing published since it was introduced): the page then reads the screen's files as before.
+// document yet (nothing published since it was introduced): the page then reads the screen's files as before, but
+// only once `checked` (the first read has answered), so a page never starts on the screen's old files first (25 Nov:
+// a page load mounted the screen's .mp4 for a moment before the document arrived).
 import { useEffect, useRef, useState } from "react";
 import type { DisplayController } from "../control/DisplayController";
 import { isState, newer, POLL_MS, type ScreenState } from "../art/screenState";
@@ -10,6 +12,7 @@ import { isState, newer, POLL_MS, type ScreenState } from "../art/screenState";
 export default function useScreenState(name: string | null, ctl: DisplayController | null) {
   const [state, setState] = useState<ScreenState | null>(null);
   const [available, setAvailable] = useState(false);
+  const [checked, setChecked] = useState(false);
   const reading = useRef(false);
 
   useEffect(() => {
@@ -30,6 +33,7 @@ export default function useScreenState(name: string | null, ctl: DisplayControll
         // offline or the server restarting: the next read (or a push) brings it
       } finally {
         reading.current = false;
+        if (alive) setChecked(true);
       }
     };
     void read();
@@ -48,5 +52,5 @@ export default function useScreenState(name: string | null, ctl: DisplayControll
     };
   }, [name, ctl]);
 
-  return { state, available };
+  return { state, available, checked };
 }

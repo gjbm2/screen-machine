@@ -3,6 +3,7 @@ from typing import Dict, Any, List, Optional, Union, Tuple
 from datetime import datetime, timedelta
 from utils.logger import debug, info, error
 import time
+import uuid
 
 class InstructionQueue:
     """
@@ -27,7 +28,8 @@ class InstructionQueue:
         if not instructions:
             return
             
-        entries = [self.make_instruction_entry(instr, important, urgent) for instr in instructions]
+        block = uuid.uuid4().hex   # the block's own entries never interrupt its own waits (peek_next_urgent)
+        entries = [self.make_instruction_entry(instr, important, urgent, block) for instr in instructions]
         
         if urgent:
             # If urgent, remove all non-important instructions and insert at front
@@ -93,12 +95,15 @@ class InstructionQueue:
         """Run these next, with the flags of the entry being run (a for_each's block, in order)."""
         important = bool(self.running and self.running.get("important"))
         urgent = bool(self.running and self.running.get("urgent"))
+        block = (self.running or {}).get("block")
         for instr in reversed(instructions):
-            self.queue.appendleft(self.make_instruction_entry(instr, important, urgent))
+            self.queue.appendleft(self.make_instruction_entry(instr, important, urgent, block))
 
     def peek_next_urgent(self) -> Optional[Dict[str, Any]]:
         """
-        Look at the next urgent instruction without removing it.
+        Look at the next urgent instruction without removing it: one that can interrupt the wait being run, so never one
+        of the waiting block's own instructions (24 Nov: an urgent block's later steps cut through its own waits, and a
+        day's replay went by in four seconds).
         
         Returns:
             The first urgent instruction entry, or None if no urgent entries are in the queue
@@ -120,8 +125,9 @@ class InstructionQueue:
         urgent_index = -1
         urgent_entry = None
         
+        own = (self.running or {}).get('block')
         for i, entry in enumerate(self.queue):
-            is_urgent = entry.get('urgent', False)
+            is_urgent = entry.get('urgent', False) and not (own and entry.get('block') == own)
             action = entry.get('instruction', {}).get('action', 'unknown')
             if is_urgent:
                 urgent_found = True
@@ -160,7 +166,7 @@ class InstructionQueue:
         return len(self.queue)
 
     @staticmethod
-    def make_instruction_entry(instruction: Dict[str, Any], important: bool, urgent: bool) -> Dict[str, Any]:
+    def make_instruction_entry(instruction: Dict[str, Any], important: bool, urgent: bool, block: str | None = None) -> Dict[str, Any]:
         """
         Create an instruction entry for the queue.
         
@@ -168,14 +174,16 @@ class InstructionQueue:
             instruction: The instruction dictionary to execute
             important: Whether this instruction is important and should not be removed by urgent preemption
             urgent: Whether this instruction is urgent and should be executed immediately
+            block: The block it came in with (push_block); a for_each's rounds keep their block's
             
         Returns:
-            A dictionary with keys 'instruction', 'important', 'urgent'
+            A dictionary with keys 'instruction', 'important', 'urgent', 'block'
         """
         return {
             'instruction': instruction,
             'important': important,
-            'urgent': urgent
+            'urgent': urgent,
+            'block': block,
         }
 
 # Per-destination instruction queues

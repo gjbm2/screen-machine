@@ -355,6 +355,7 @@ exactly the objects it always did. `room_service/tests/test_golden.py` checks th
   `service.sweep_orphans`, `timeouts.{create_session_s, page_behind_s,
   page_behind_bytes, policy_ack_s, sweep_delay_s}`.
 * `desired` also accepts the programme's short form `{live: "fractal-zoom", in: …, out: …}`.
+* `POST /api/v1/screens/<id>/art-state`: what the screen now shows (Flask's `routes/screen_state.py` writes `output/<screen>.state.json` when a screen's file lands, then posts it here). It is passed on to every page of that screen as `art.state` (latest-only, like `mask.set`; `{screen, sent}`). It's a speed-up only: the TV page reads the document itself at start, on waking, on reconnecting and every 10 s (`src/pages/DisplayPage/README.md`).
 * `/renderer/<path>` (`renderer_proxy.py`) passes everything through to stream_service's `/<path>` (any method; HTTP streamed both ways, and WebSocket relayed), so `/renderer/dev`, `/renderer/api/*` and `/renderer/api/events` work on room_service's origin. No auth; the Host check and CORS apply; the upstream's status is relayed; 502 `stream_unreachable` / 504 `stream_timeout`.
 
 ## Live controls (`live_api.py`)

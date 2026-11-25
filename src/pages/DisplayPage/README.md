@@ -8,7 +8,7 @@ additive changes only). Design: `docs/AV_PROGRAMME.md` §3.1–3.3, `docs/DISPLA
 
 | URL | Mode | What runs |
 |---|---|---|
-| `/display/<id>` | **controlled** (the default since 14 Oct; the TVs' kiosk URLs never change) | Connects by itself to room_service (`VITE_ROOM_URL`, http→ws, e.g. `ws://192.168.1.205:8700`; over HTTPS same-origin `/rs`, `secureUrls.ts`) as `/v1/screen/<id>?role=kiosk`: mask push (no 3 s poll while pushed), freeze/unfreeze, the live layer, `kiosk.state` every 5 s (with `viewport`, which room uses for the live render's shape). Art until a live cutover, then the MP4 stream, and back. |
+| `/display/<id>` | **controlled** (the default since 14 Oct; the TVs' kiosk URLs never change) | Connects by itself to room_service (`VITE_ROOM_URL`, http→ws, e.g. `ws://192.168.1.205:8700`; over HTTPS same-origin `/rs`, `secureUrls.ts`) as `/v1/screen/<id>?role=kiosk`: mask push (no 3 s poll while pushed), freeze/unfreeze, the live layer, `kiosk.state` every 5 s (with `viewport`, which room uses for the live render's shape). Art (what the screen's state document says: the still, its clip played over it now and then, the transition into it; below) until a live cutover, then the MP4 stream, and back. |
 | `/display/<id>?ctl=off` | **legacy** | Today's old page: 1 s file poll, 3 s mask poll, legacy overlay socket, controls panel, 4-hourly reloads. `?ctl=ws://host:port` points the socket elsewhere. |
 | `/display/<id>?artonly=1` | **art-only** (snapshotter) | Only the art stack (still/clip + brightness + warm) on black. No polling, sockets, overlays, controls or live layer. `window.__smArtReady`, `window.__smRenderArt(state)`. |
 
@@ -42,21 +42,25 @@ MediaDisplay.tsx       today's still/clip layer (default mode only, untouched)
 OverlayContainer.tsx   overlays (both modes)
 JobIndicator.tsx       generation-job pill, top-left (both modes; job tracker stream, docs/JOBS.md;
                        hidden while live/frozen, not part of settle)
-ControlsPanel.tsx      hover/tap panel (both modes; moved out of index.tsx unchanged)
+ControlsPanel.tsx      hover/tap panel (both modes): file, scheduler, Replay today, clips' Play, event triggers, toggles
 secureUrls.ts          over HTTPS (Caddy): room socket via /rs, media sockets via /rs/renderer; http URLs unchanged
 LegacyMaskLayers.tsx   today's brightness/warm layers (default mode)
-hooks/                 useFilePolling, useBaseFileName, useMask (fail-hold fix), useOverlayWebSocket
+hooks/                 useScreenState (the state document), useFilePolling (only without one),
+                       useBaseFileName, useMask (fail-hold fix), useOverlayWebSocket
                        (optional accept gate; html frames only), useScreenJobs, useBlackBody
 common/LayerBoundary   per-layer error boundary
 control/               protocol types, ControlClient (socket), store (reducer), MaskPoller, caps,
                        DisplayController (the controlled page's brain, outside React render)
-art/                   ArtMedia + ClipCycle (holdable port of MediaDisplay), MaskController (rAF/ref
-                       mask writes), MaskLayers, ArtOnlyPage, shared styles
+art/                   screenState (the document: types, newer-wins, which transition plays), ClipLayer +
+                       clipPlan (a still's clip over it: when, and the one <video> while it plays),
+                       TransitionLayer, ArtMedia + ClipCycle (the base: a still, or a published video's
+                       loop), MaskController (rAF/ref mask writes), MaskLayers, ArtOnlyPage, shared styles
 live/                  MseLivePlayer (media WS → MSE), LiveController (cuts, timeouts), LiveLayer
 ```
 
 Layer stack (controlled mode, bottom to top): body (black) → `LiveLayer` (z 1, the MSE `<video>` is
-added imperatively) → art stack `[data-sm-art]` (z 2, opaque black: media, brightness z 5, warm z 6,
+added imperatively) → art stack `[data-sm-art]` (z 2, opaque black: the base (two slots for a cross-fade),
+the transition or the still's clip (z 1, one `<video>` at most, only while it plays), brightness z 5, warm z 6,
 overlays z 9999, controls panel).
 
 ## Controlled mode in short
@@ -100,8 +104,34 @@ overlays z 9999, controls panel).
   more than 2× target ahead (`edge_jumps`); holes are skipped (`gap_skips`). Teardown: close socket,
   `SourceBuffer.abort()`, `removeAttribute('src')`, `load()`, remove the element.
   While a session is mounted, `html[data-sm-live]` hides everything else in the app (e.g. toasts).
+- **What the screen shows** (24 Nov, `art/screenState.ts`, `hooks/useScreenState.ts`): one document per screen,
+  `output/<screen>.state.json`, written in one step by the publisher when the screen's file lands
+  (`routes/screen_state.py`). It names the still (with its size and origin), its own clip with its play settings,
+  the transition into it, or a video someone published as the picture itself. Every URL in it is a file that never
+  changes (`/output/_screens/<screen>/<seq>.<ext>`). The page reads it at start, every 10 s (a conditional request),
+  when the tab wakes, when the network comes back and after the socket (re)connects, and takes room_service's
+  `art.state` push. Each copy is the whole state, and the newer one wins (`seq`), so a page that slept or lost its
+  socket is right on its next read. A screen with no document yet (nothing published to it since) falls back to
+  polling its files, only once the first read has said so. The base is the still (or the published video); a still's
+  clip is never the base.
+- **A still's clip** (24 Nov, `art/ClipLayer.tsx`, `art/clipPlan.ts`): no `<video>` exists at rest, so the kiosk
+  holds no decoder or frames. A play mounts the clip invisible over the still, in the still's exact frame (the
+  clip was drawn squeezed to the video model's shape and is stretched back). It waits until it can play through,
+  starts, fades in over 0.7 s while still all but at rest (its ease is rendered into the file), and when it ends,
+  back on its first frame, fades out over 2 s and lets the video go (`removeAttribute('src')`, `load()`). Fades are
+  opacity only. The first play comes 5–20 s after the clip arrives, then it rests for the clip's own `rest_s`.
+  Nothing plays while frozen, live, hidden (a sleeping tab or screensaver: on waking a fresh rest, never a backlog)
+  or while the base changes. A freeze waits for the fade back, so a frozen screen is a still. Anything that goes
+  wrong just ends the play.
+- **Transitions** (24 Nov): from the document. One plays only for a new still this page saw arrive, within 10 min of
+  the publish, from the picture shown (a page that missed a change in between just cross-fades), once. It waits
+  for a playing clip to finish (at most 40 s); the new still lands under it.
+- **Replay today** (controls panel, 25 Nov): shown when the screen's schedule has a `Replay_day` trigger; throws
+  `Replay_day` to the screen's room (its first group, e.g. `drawing-room`) with today's date, as "computer, use AI
+  to replay the day" does, so both screens take turns. It replaces the raw `Replay_day` trigger button, which went to
+  one screen alone.
 - **New picture** (23 Nov): a 1.6 s cross-fade, not through black. The new base is mounted invisible on top,
-  `prime()`d (still decoded; a clip paused on frame 0, so only one clip decodes at a time), faded in on `opacity`
+  `prime()`d (still decoded; a published video paused on frame 0, so only one video decodes at a time), faded in on `opacity`
   only (compositor work, cheap on the N95), then the old layer and its decoder go and the new clip starts its loop.
   The publisher's caption (`with_base` on the overlay message) waits for that (`art/baseLanding.ts`), then eases in
   over 1.2 s; the old caption fades with the old picture, and a `clear` fades replaced overlays instead of cutting
@@ -142,6 +172,17 @@ VITE_API_URL=http://127.0.0.1:5000/api npx vite --port 5174 --strictPort
 ```
 Note `/api` on `VITE_API_URL`: the API client appends paths such as `/<id>/mask` to it directly, as the
 production build does with its baked `…:5000/api`. Without `/api` the mask fetch hits the SPA and fails.
+
+## Tests of the state document and layers (24–25 Nov)
+
+- `node --experimental-strip-types --test src/pages/DisplayPage/art/screenState.test.ts src/pages/DisplayPage/art/clipPlan.test.ts`:
+  newer-wins, the base is never the clip, when a transition plays; when a clip plays and rests, quiet, hidden, the
+  slot, Play now, the stuck-play guard (11).
+- `tools/ui_evals/display_layers.py`, headless Chromium on the live app, run by `scripts/deploy-frontend` after
+  every deploy. A throwaway screen gets a still, then its clip, then a transition to a new still. Throughout: never
+  more than one `<video>`, none at rest, the clip never the base.
+- Server side: `tests/unit/test_screen_state.py`, `tests/integration/test_publisher.py` (the real publish path),
+  `room_service/tests/test_art_state.py` (the push).
 
 ## Tests (13–14 Oct 2026)
 

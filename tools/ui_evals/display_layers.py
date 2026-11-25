@@ -104,7 +104,7 @@ def run(base: str, headed: bool) -> list[str]:
         # 1. the still
         s = wait(lambda s: any(u and url(fx["a"]) in u for u in s["imgs"]), 15)
         check(bool(s), "1. the still is the base")
-        check(bool(s) and s["videos"] == 0, "1. no <video> at rest")
+        check(bool(s) and s["videos"] == 0, "1. no <video> at rest" + (f" (found {s['srcs']})" if s and s["videos"] else ""))
 
         # 2. its clip, played over it and let go
         write(doc(2, fx["a"], clip={"url": url(fx["clip"]), "eased": True, "play_s": 6, "rest_s": [600, 600]}))
