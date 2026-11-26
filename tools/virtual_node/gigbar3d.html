@@ -47,15 +47,15 @@
   <b>Virtual GigBAR · 3D</b>
   <span id="link" class="pill dim">connecting…</span>
   <span id="artnet" class="pill dim">Art-Net: –</span>
-  <span id="src" class="dim"></span>
   <span style="flex:1"></span>
-  <label class="tog"><input type="checkbox" id="realHaze"> beams as the haze allows</label>
+  <label class="tog" title="draw beams only as visible as the simulated haze makes them"><input type="checkbox" id="realHaze"> haze-true</label>
   <button data-view="front">Front</button><button data-view="side">Side</button><button data-view="above">Above</button>
+  <button id="vjBtn" title="capture the real display window (localhost:5000/display/vj) onto the wall">VJ on the wall</button>
   <a class="pill" href="./">Board</a>
 </header>
 <div id="banner"></div>
 <div id="side"></div>
-<div id="help">drag: orbit · wheel: zoom · set the units up on the Board · pan, tilt and wheel speeds are estimates</div>
+<div id="help">drag: orbit · wheel: zoom · set the units up on the Board · pan, tilt and wheel speeds are estimates · <span id="perf"></span></div>
 <script src="gigbar_model.js"></script>
 <script type="module">
 import * as THREE from "./vendor/three/three.module.js";
@@ -63,7 +63,7 @@ import * as THREE from "./vendor/three/three.module.js";
 // ---- renderer, scene, camera -------------------------------------------------------------------------------------------
 const canvas = document.getElementById("gl");
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+renderer.setPixelRatio(1);                         // 1:1 pixels: a 2x canvas is 4x the shading
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
 renderer.shadowMap.enabled = true;                 // a spot's gobo is projected through its shadow camera
@@ -82,8 +82,8 @@ addEventListener("resize", resize); resize();
 // The room (metres), seen facing east (the bars' wall): x to the right (south), y up, z towards the viewer (west).
 // space.yaml's room [5, 10, 4] (x east, y north): x = 5 - y_north, z = 2.5 - x_east.
 const ROOM = { x0: -5, x1: 5, y0: 0, y1: 4, z0: -2.5, z1: 2.5 };
-const wallMat = new THREE.MeshStandardMaterial({ color: 0x3a3d46, roughness: 0.95, metalness: 0 });
-const floorMat = new THREE.MeshStandardMaterial({ color: 0x2e3038, roughness: 0.9, metalness: 0 });
+const wallMat = new THREE.MeshLambertMaterial({ color: 0x3a3d46 });       // matte and cheap: the walls are most of the pixels
+const floorMat = new THREE.MeshLambertMaterial({ color: 0x2e3038 });
 function plane(w, h, mat, pos, rot) {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
   m.position.set(...pos); m.rotation.set(...rot); m.receiveShadow = true; scene.add(m); return m;
@@ -182,7 +182,7 @@ function makeBar(bi, x0) {
   PART_X.derby.forEach((px) => {
     const l = lens(0.05); l.position.set(px, BAR_Y, front + 0.001); g.add(l);
     const axis = new THREE.Vector3(0, 0.55, 1).normalize(), beams = [];
-    for (let i = 0; i < 24; i++) { const b = beam(0.035, 5); b.position.set(px, BAR_Y, front + 0.02); g.add(b); beams.push({ mesh: b, dot: dot(0.11), ci: i % 4, i }); }
+    for (let i = 0; i < 12; i++) { const b = beam(0.035, 5); b.position.set(px, BAR_Y, front + 0.02); g.add(b); beams.push({ mesh: b, dot: dot(0.11), ci: i % 4, i }); }
     P.derbies.push({ lens: l, axis, beams, origin: new THREE.Vector3(px, BAR_Y, front + 0.02) });
   });
   // strobes: four white panels along the lower front
@@ -235,6 +235,36 @@ const screenTex = (() => { const c = document.createElement("canvas"); c.width =
   const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
 const screenMesh = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 1.125), new THREE.MeshBasicMaterial({ map: screenTex, color: 0x9a9aa8 }));
 screenMesh.position.set(0, 2.0, ROOM.z0 + 0.01); scene.add(screenMesh);
+// The picture also lights the room a little, as a projected image does: a soft light in front of it, in its average colour.
+const screenLight = new THREE.PointLight(0xffffff, 0, 0, 1.8); screenLight.position.set(0, 2.0, ROOM.z0 + 0.8); scene.add(screenLight);
+// "Show the VJ output": capture the real display window (localhost:5000/display/vj, the one the projector shows) and put
+// it on the wall. Video only: the browser asks which window; its sound is never taken.
+const VJ = { video: null, tex: null, sample: document.createElement("canvas"), at: 0 };
+VJ.sample.width = 8; VJ.sample.height = 5;
+document.getElementById("vjBtn").addEventListener("click", async () => {
+  if (VJ.video) { stopVj(); return; }
+  try {
+    const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 30 }, audio: false });
+    const v = document.createElement("video"); v.muted = true; v.playsInline = true; v.srcObject = stream; await v.play();
+    VJ.video = v; VJ.tex = new THREE.VideoTexture(v); VJ.tex.colorSpace = THREE.SRGBColorSpace;
+    screenMesh.material.map = VJ.tex; screenMesh.material.color.set(0xffffff); screenMesh.material.needsUpdate = true;
+    stream.getVideoTracks()[0].addEventListener("ended", stopVj);
+    document.getElementById("vjBtn").textContent = "VJ off the wall";
+  } catch (e) { /* the person closed the picker */ }
+});
+function stopVj() {
+  if (VJ.video) { VJ.video.srcObject?.getTracks().forEach((t) => t.stop()); VJ.video = null; }
+  screenMesh.material.map = screenTex; screenMesh.material.color.set(0x9a9aa8); screenMesh.material.needsUpdate = true;
+  screenLight.intensity = 0; document.getElementById("vjBtn").textContent = "VJ on the wall";
+}
+function vjLight(t) {
+  if (!VJ.video || t - VJ.at < 0.2) return;
+  VJ.at = t;
+  const x = VJ.sample.getContext("2d", { willReadFrequently: true }); x.drawImage(VJ.video, 0, 0, 8, 5);
+  const d = x.getImageData(0, 0, 8, 5).data; let r = 0, g = 0, b = 0;
+  for (let i = 0; i < d.length; i += 4) { r += d[i]; g += d[i + 1]; b += d[i + 2]; }
+  const n = d.length / 4; screenLight.color.copy(srgb([r / n, g / n, b / n])); screenLight.intensity = 2.5 * (r + g + b) / (n * 765);
+}
 
 // ---- each frame: the DMX into the model ----------------------------------------------------------------------------------
 const realHaze = document.getElementById("realHaze");
@@ -261,7 +291,7 @@ function update(t) {
       d.beams.forEach((bm) => {
         const a = lv[bm.ci];
         // each beam: a fixed angle out from the lens's axis, spun round that axis by the motor
-        const off = 0.35 + 0.55 * hash(bm.i * 3.1 + k), around = rot + bm.i * 2.39996;
+        const off = 0.35 + 0.55 * hash(bm.i * 3.1 + k), around = rot + bm.i * 2.39996 * 2;
         const dir = new THREE.Vector3(Math.sin(off) * Math.cos(around), Math.sin(off) * Math.sin(around), Math.cos(off));
         q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), d.axis); dir.applyQuaternion(q).normalize();
         bm.mesh.quaternion.setFromUnitVectors(UP, dir);
@@ -368,7 +398,8 @@ place();
 let last = performance.now(), wordsAt = 0;
 function frame(now) {
   const dt = Math.min(0.1, (now - last) / 1000), t = now / 1000; last = now;
-  stepSim(dt, t); update(t);
+  stepSim(dt, t); update(t); vjLight(t);
+  perf(now);
   if (t - wordsAt > 0.2) { wordsAt = t; sideText(); }
   const banner = document.getElementById("banner"), stale = !linkOk || performance.now() - dmxAt > 1500;
   banner.style.display = stale || nodeLost ? "block" : "none";
@@ -379,7 +410,19 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.__gb = { THREE, scene, camera, BARS };   // for a test harness: read-only use
+window.__gb = { THREE, scene, camera, BARS };
+// which GPU the browser is drawing with, and the frame rate: "slow" is a number, not a feeling
+const GPU = (() => { const gl = renderer.getContext(), ext = gl.getExtension("WEBGL_debug_renderer_info");
+  return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER); })();
+let frames = 0, fpsAt = performance.now();
+function perf(now) {
+  frames++;
+  if (now - fpsAt < 1000) return;
+  const fps = frames * 1000 / (now - fpsAt); frames = 0; fpsAt = now;
+  const soft = /swiftshader|software|llvmpipe|basic render/i.test(GPU);
+  document.getElementById("perf").innerHTML = `${fps.toFixed(0)} fps · GPU: ${GPU.replace(/^ANGLE \(|\)$/g, "")}` +
+    (soft ? ` <span class="bad">(software: turn on Brave's hardware acceleration)</span>` : "");
+}   // for a test harness: read-only use
 </script>
 </body>
 </html>

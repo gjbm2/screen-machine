@@ -59,7 +59,8 @@ async function pollStatus() {
   art.className = "pill " + (a.age_s === null ? "dim" : live ? (a.merging ? "warn" : "ok") : "bad");
   const src = Object.entries(a.sources).map(([ip, s]) => `${ip} (${s.age_s.toFixed(1)} s ago)`).join(", ");
   const other = Object.keys(a.other_universes).length ? ` · also heard universes ${Object.keys(a.other_universes).join(", ")}` : "";
-  document.getElementById("src").textContent = (src ? "from " + src : "") + ` · polls answered ${a.replies}` + other;
+  const srcEl = document.getElementById("src");          // the board shows it; the 3D view has no room for it
+  if (srcEl) srcEl.textContent = (src ? "from " + src : "") + ` · polls answered ${a.replies}` + other;
 }
 setInterval(pollStatus, 1000); pollStatus();
 
