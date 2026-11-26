@@ -257,69 +257,91 @@ gallery-ambient-kaleidoscope:
     weight: 1.0
     modes: [ambient]
 
-# Song photos (owner, 26 Nov): the karaoke song's artist pictures (song_photos.py; found, vetted and kept per
-# artist by routes/karaoke/pictures.py), each with one picture effect on top. Only picked while the playing karaoke
-# song has its pictures (listens "pictures": director.PICTURES_MIN), then upweighted (director.PICTURES_BOOST);
-# ``sections``: the karaoke sections each look suits (director.SECTION_FIT).
+# Song photos (owner, 26 Nov): the karaoke song's artist photos (song_photos.py; found, vetted and kept per
+# artist by routes/karaoke/pictures.py), always moving (owner: "we can't just have a static image on screen for
+# ages"): a drifting push-in, floating prints, a film strip or a flipping mosaic, some with a picture effect on top.
+# Only picked while the playing karaoke song has enough engaging photos (listens "pictures": director.PICTURES_MIN),
+# then about 40% of the looks (director.PICTURES_SHARE); ``sections``: the karaoke sections each suits.
+song-photos-drift:
+  label: "Song photos: drift"
+  source: song_photos
+  params: {layout: drift, bars: 2.0, bars_fast: 1.0, zoom: 0.4,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
+  tags: {energy: [0.0, 0.8], moods: [warm, elegant, dreamy, calm, mellow], sections: [verse, outro], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 1.0}
+
+song-photos-floating:
+  label: "Song photos: floating prints"
+  source: song_photos
+  params: {layout: float, motion: 1.0, zoom: 0.25,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
+  tags: {energy: [0.0, 0.7], moods: [dreamy, warm, mellow, elegant, calm], sections: [verse, instrumental, outro], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 1.0}
+
+song-photos-film-strip:
+  label: "Song photos: film strip"
+  source: song_photos
+  params: {layout: strip, motion: 1.0, zoom: 0.3,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
+  tags: {energy: [0.2, 0.9], moods: [playful, bright, retro, warm], sections: [verse, chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 1.0}
+
+song-photos-mosaic:
+  label: "Song photos: mosaic"
+  source: song_photos
+  params: {layout: mosaic, bars: 1.0, bars_fast: 0.5, zoom: 0.3,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
+  tags: {energy: [0.4, 1.0], moods: [euphoric, playful, bright, geometric, aggressive], sections: [chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 1.0}
+
 song-photos-sketchbook:
   label: "Song photos: sketchbook"
   source: song_photos
-  params: {fit: cover, hold_s: 11.0, hold_fast_s: 5.0, transition_s: 2.0, zoom: 0.12, focus: 0.8,
-           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 0.4]}}
+  params: {layout: drift, bars: 2.0, bars_fast: 1.0, zoom: 0.35,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
   effects: [sketch_hatch-ink-sketchbook]
-  tags: {energy: [0.0, 0.65], moods: [elegant, mellow, warm, calm, dreamy], family: photo, dims: 2d, technique: [projection], modes: [karaoke], sections: [verse], weight: 1.0}
+  tags: {energy: [0.0, 0.65], moods: [elegant, mellow, warm, calm, dreamy], sections: [verse], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.9}
 
 song-photos-video-wall:
   label: "Song photos: video wall"
   source: song_photos
-  params: {fit: cover, hold_s: 6.0, hold_fast_s: 2.5, transition_s: 0.6, zoom: 0.1, focus: 0.7,
-           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 0.8]}}
+  params: {layout: drift, bars: 1.0, bars_fast: 0.5, zoom: 0.3,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
   effects: [tile-split-video-wall]
-  tags: {energy: [0.45, 1.0], moods: [euphoric, playful, bright, aggressive], family: photo, dims: 2d, technique: [projection], modes: [karaoke], sections: [chorus], weight: 1.0}
+  tags: {energy: [0.45, 1.0], moods: [euphoric, playful, bright, aggressive], sections: [chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 1.0}
 
 song-photos-cube-wall:
   label: "Song photos: cube wall"
   source: song_photos
-  params: {fit: cover, hold_s: 7.0, hold_fast_s: 3.0, transition_s: 0.8, zoom: 0.08, focus: 0.7,
-           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 0.8]}}
+  params: {layout: drift, bars: 1.0, bars_fast: 0.5, zoom: 0.3,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
   effects: [cube-grid-diagonal-wall]
-  tags: {energy: [0.4, 0.95], moods: [playful, geometric, euphoric, aggressive], family: photo, dims: 3d, technique: [projection], modes: [karaoke], sections: [chorus], weight: 1.0}
+  tags: {energy: [0.4, 0.95], moods: [playful, geometric, euphoric, aggressive], sections: [chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.9}
 
 song-photos-globe:
   label: "Song photos: globe"
   source: song_photos
-  params: {fit: cover, hold_s: 14.0, hold_fast_s: 7.0, transition_s: 2.5, zoom: 0.0, focus: 0.5,
-           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 0.4]}}
+  params: {layout: float, motion: 1.2, zoom: 0.2,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
   effects: [globe-wrap-world]
-  tags: {energy: [0.1, 0.6], moods: [dreamy, cosmic, elegant], family: photo, dims: 3d, technique: [projection], modes: [karaoke], sections: [instrumental, outro, verse], weight: 0.8}
+  tags: {energy: [0.1, 0.6], moods: [dreamy, cosmic, elegant], sections: [instrumental, outro, verse], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.7}
 
 song-photos-landscape:
   label: "Song photos: photo landscape"
   source: song_photos
-  params: {fit: cover, hold_s: 14.0, hold_fast_s: 7.0, transition_s: 3.0, zoom: 0.1, focus: 0.6,
-           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 0.3]}}
+  params: {layout: drift, bars: 2.0, bars_fast: 1.0, zoom: 0.3,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
   effects: [luma-terrain-misty-peaks]
-  tags: {energy: [0.15, 0.7], moods: [dreamy, cosmic, calm], family: photo, dims: 3d, technique: [projection], modes: [karaoke], sections: [instrumental, outro], weight: 0.7}
+  tags: {energy: [0.15, 0.7], moods: [dreamy, cosmic, calm], sections: [instrumental, outro], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.6}
 
 song-photos-echo:
   label: "Song photos: echo trails"
   source: song_photos
-  params: {fit: cover, hold_s: 7.0, hold_fast_s: 3.0, transition_s: 1.0, zoom: 0.25, focus: 0.8,
-           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 0.7]}}
+  params: {layout: float, motion: 1.6, zoom: 0.3,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
   effects: [feedback-echo-tunnel]
-  tags: {energy: [0.45, 1.0], moods: [euphoric, hypnotic, tense, dark], family: photo, dims: 2d, technique: [projection], modes: [karaoke], sections: [chorus], weight: 0.9}
+  tags: {energy: [0.45, 1.0], moods: [euphoric, hypnotic, tense, dark], sections: [chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.9}
 
 song-photos-pop-art:
   label: "Song photos: pop art"
   source: song_photos
-  params: {fit: cover, hold_s: 6.0, hold_fast_s: 2.5, transition_s: 0.3, zoom: 0.15, focus: 0.8,
-           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 0.6]}}
+  params: {layout: mosaic, bars: 1.0, bars_fast: 0.5, zoom: 0.3,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
   effects: [halftone-pop-art]
-  tags: {energy: [0.35, 0.9], moods: [playful, retro, bright], family: photo, dims: 2d, technique: [projection], modes: [karaoke], sections: [verse, chorus], weight: 1.0}
-
-song-photos-framed:
-  label: "Song photos: framed, slowly"
-  source: song_photos
-  params: {fit: framed, hold_s: 12.0, hold_fast_s: 6.0, transition_s: 2.5, zoom: 0.2, focus: 0.5, vignette: 0.2,
-           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 0.3]}}
-  tags: {energy: [0.0, 0.55], moods: [warm, mellow, elegant, calm], family: photo, dims: 2d, technique: [projection], modes: [karaoke], sections: [verse, outro], weight: 0.8}
+  tags: {energy: [0.35, 0.9], moods: [playful, retro, bright], sections: [verse, chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.9}

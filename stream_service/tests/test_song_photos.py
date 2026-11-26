@@ -115,7 +115,8 @@ def test_on_the_real_catalogue_medium_often_for_every_kind_of_song():
     p = Presets(REPO / "config" / "live", reg)
     tab = reg.table("source")
     photos = [n for n, s in p.scenes.items() if s.get("source") == "song_photos"]
-    assert len(photos) >= 6 and all(p.resolve_scene(n).effects or "framed" in n for n in photos)
+    assert len(photos) >= 8 and {p.resolve_scene(n).params.get("layout") for n in photos} >= {"drift", "float", "strip",
+                                                                                           "mosaic"}
     for moods, energy in ((["warm", "elegant", "dreamy"], 0.35), (["bright", "playful", "euphoric"], 0.7),
                           (["aggressive", "tense", "dark"], 0.8)):
         d = Director(dict(AUTO_DEFAULTS, seed=5, avoid_repeat=2), dict(DIRECTION_DEFAULTS, energy=energy, moods=moods))
@@ -131,34 +132,27 @@ def test_on_the_real_catalogue_medium_often_for_every_kind_of_song():
         assert not any(d.pick_scene(p.scenes, None, 0.0)[0] in photos for _ in range(100))
 
 
-def shot(face, w=1000, h=1000, kind="portrait", fit=False, zoom=0.2):
-    pic = sp.picture_set if False else None
-    from stream_service.lyric_feed import Picture
-    pic = Picture("a/1", "/p", w, h, kind, 0.9, face, None)
-    slot = (np.zeros((h, w, 4), np.uint8), None)
-    return sp._Shot(pic, slot, 1920, 1080, {"zoom": zoom, "focus": 1.0}, True, fit)
+def test_the_framing_holds_the_faces_above_the_lyrics_and_stays_inside():
+    for z in (1.0, 1.2, 1.4):
+        s, cx, cy = sp.frame_view(1000, 1500, 1920, 1080, (0.5, 0.3, 0.2), z, 1.0)
+        vw, vh = 1920 * s, 1080 * s
+        assert vw / 2 - 1e-6 <= cx <= 1000 - vw / 2 + 1e-6 and vh / 2 - 1e-6 <= cy <= 1500 - vh / 2 + 1e-6
+        face_y = (450 - cy) / s + 540                            # where the face lands on screen
+        assert face_y < 0.62 * 1080                              # above the display page's lyrics
+    wide = sp.frame_view(1920, 1080, 600, 400, None, 1.0, 0.5)   # a panel of another shape: still inside
+    assert wide[0] * 600 <= 1920 + 1e-6 and wide[0] * 400 <= 1080 + 1e-6
 
 
-def test_the_cover_fit_holds_the_faces_above_the_lyrics_and_stays_inside():
-    s = shot((0.5, 0.3, 0.2))
-    for life in (0.0, 0.5, 1.0):
-        sc, cx, cy = s.view(life)
-        vw, vh = 1920 * sc, 1080 * sc
-        assert vw / 2 - 1e-6 <= cx <= 1000 - vw / 2 + 1e-6 and vh / 2 - 1e-6 <= cy <= 1000 - vh / 2 + 1e-6
-    sc, cx, cy = s.view(1.0)
-    face_y = (300 - cy) / sc + 540                               # where the face lands on screen
-    assert face_y < 0.62 * 1080                                  # above the display page's lyrics
-    cover = shot(None, kind="cover")
-    assert cover.framed and cover.view(0.0)[0] > 1000 / 1080 / sp.FRAME_FILL * 0.99   # covers are framed whole
-
-
-def test_the_scene_picks_by_section_and_never_repeats_until_all_shown():
+def test_the_scene_picks_engaging_ones_most_and_never_repeats_until_all_shown():
     s = sp.SongPhotos.__new__(sp.SongPhotos)
     from stream_service.lyric_feed import Picture
-    s.pics = {f"p{i}": Picture(f"p{i}", "/x", 100, 100, k, 0.8, None, None)
-              for i, k in enumerate(["portrait", "live", "group", "cover", "live", "portrait"])}
-    s.order, s.bag, s.used, s.cur = list(s.pics), [], {}, None
+    s.pics = {f"p{i}": Picture(f"p{i}", "/x", 100, 100, k, 0.8, None, None, (), a)
+              for i, (k, a) in enumerate([("portrait", 0.6), ("live", 0.9), ("group", 0.7), ("live", 0.8),
+                                          ("live", 0.6), ("portrait", 0.95)])}
+    s.order, s.bag, s.shown = list(s.pics), [], 0
     s.rng = np.random.default_rng(1)
     s.sound = None
-    seen = [s._choose() for _ in range(6)]
+    seen = [s._choose(set()) for _ in range(6)]
     assert sorted(seen) == sorted(s.pics)
+    s.bag = list(s.order)
+    assert s._choose({"p1", "p2", "p3"}) not in {"p1", "p2", "p3"}      # never what's on screen when another will do
