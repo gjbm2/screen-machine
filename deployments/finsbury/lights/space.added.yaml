@@ -27,6 +27,24 @@ appliances:
     at: [4.89, 2.92, 3.58]
   hue.sw:
     at: [0.0, 3.18, 3.89]
+  gigbar.south:
+    at: [0.45, 1.35, 2.0]
+    mount: floor
+    plane:
+      normal: [0.680597, 0.705397, -0.197999]
+      up: [0.137479, 0.142489, 0.980202]
+      size: [1.185, 0.387]
+    kind: gigbar-2
+    label: GigBAR (south)
+  gigbar.north:
+    at: [0.45, 8.9, 2.0]
+    mount: floor
+    plane:
+      normal: [0.663019, -0.723321, -0.192906]
+      up: [0.130348, -0.142204, 0.981217]
+      size: [1.185, 0.387]
+    kind: gigbar-2
+    label: GigBAR (north)
 points:
   mirror-ball:
     label: Mirror ball

@@ -6,13 +6,14 @@
 // status and colour come from room_service (it drives them). Lights are grouped by room (rooms.json), each row with its
 // kind; names drop their room's name; where a light is comes from the Room map once it's placed there. Each row has
 // Identify. Add a light is the page's main action (LightForm.tsx; Move it inside it).
-// "Lights | Room map" at the top (?tab=map, else remembered on this device) switches to the Room map (RoomMap.tsx).
+// "Lights | Room map | 3D" at the top (?tab=map or ?tab=3d, else remembered on this device) switches to the Room map
+// (RoomMap.tsx) or the room in 3D with its planned GigBARs (Room3D.tsx, loaded with three.js only when shown).
 // ?light=<id> opens that light's row (from a light's "Set up this light ›"). What a light does is chosen on /lights and
 // the Room page, not here. Same light, warm skin as /room (its theme and pieces).
 // Under the lights, Appliances worked by remote (RemoteControls.tsx): added from a device type (glitterball, pinspot),
 // each button learned and tested through the RM4 Pro, removed.
 
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { AppMenu } from "@/components/nav/AppMenu";
@@ -50,12 +51,15 @@ import { RemoteControls } from "./RemoteControls";
 import { RoomMap } from "./RoomMap";
 import { useLightTypes, useRig, useRoomFacts, useSpace } from "./useRig";
 
-type Tab = "lights" | "map";
+const Room3D = lazy(() => import("./Room3D"));
+
+type Tab = "lights" | "map" | "3d";
 const TAB_KEY = "lights.tab";
 
 /** The tab last shown on this device (Room's storage helpers: a blocked store reads as none). */
 function storedTab(): Tab {
-  return storageGet(TAB_KEY) === "map" ? "map" : "lights";
+  const t = storageGet(TAB_KEY);
+  return t === "map" || t === "3d" ? t : "lights";
 }
 
 /** The tab title while on this page, put back on the way out. */
@@ -95,21 +99,24 @@ export default function LightsPage() {
   const [editing, setEditing] = useState<LightRow | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const focusId = params.get("light");
-  const [tab, setTabState] = useState<Tab>(() => (focusId ? "lights" : params.get("tab") === "map" ? "map" : storedTab()));
+  const [tab, setTabState] = useState<Tab>(() => {
+    const asked = params.get("tab");
+    return focusId ? "lights" : asked === "map" || asked === "3d" ? asked : storedTab();
+  });
   const [mapSelect, setMapSelect] = useState<string | null>(null);
   const setTab = (t: Tab) => {
     setTabState(t);
     storageSet(TAB_KEY, t);
     const next = new URLSearchParams(params);
     next.delete("light");
-    if (t === "map") next.set("tab", "map");
+    if (t !== "lights") next.set("tab", t);
     else next.delete("tab");
     setParams(next, { replace: true });
   };
   // The map's words change when something is moved there: read the room again when coming back to the list.
   const reloadSpace = space.reload;
   useEffect(() => {
-    if (tab === "lights") reloadSpace();
+    if (tab !== "map") reloadSpace();
   }, [tab, reloadSpace]);
 
   const rows = useMemo(() => rig.rows ?? [], [rig.rows]);
@@ -120,6 +127,7 @@ export default function LightsPage() {
     return m;
   }, [fixtures.view]);
   const bridge = fixtures.view?.hue?.bridge ?? null;
+  const lampColours = useMemo(() => Object.fromEntries([...hueById].map(([id, f]) => [id, fixtureSwatch(f)])), [hueById]);
 
   const spots = useMemo(() => screenSpots(space.space, rig.all, facts.screenNames), [space.space, rig.all, facts.screenNames]);
   const describe = facts.describe;
@@ -209,11 +217,12 @@ export default function LightsPage() {
         />
 
         <main className="space-y-5 pt-2">
-          <div role="tablist" aria-label="Show" className="grid grid-cols-2 rounded-full border border-stone-200 bg-card p-1 shadow-sm" data-testid="lights-tabs">
+          <div role="tablist" aria-label="Show" className="grid grid-cols-3 rounded-full border border-stone-200 bg-card p-1 shadow-sm" data-testid="lights-tabs">
             {(
               [
                 ["lights", "Lights"],
                 ["map", "Room map"],
+                ["3d", "3D"],
               ] as [Tab, string][]
             ).map(([t, words]) => (
               <button
@@ -234,6 +243,16 @@ export default function LightsPage() {
 
           {tab === "map" ? (
             <RoomMap api={api} things={mapThings} selectedId={mapSelect} />
+          ) : tab === "3d" ? (
+            <Suspense
+              fallback={
+                <p className="flex items-center gap-2 py-3 text-base text-muted-foreground">
+                  <Spinner /> Drawing the room…
+                </p>
+              }
+            >
+              <Room3D api={api} space={space} things={mapThings} lamps={lampColours} />
+            </Suspense>
           ) : (
             <>
               <div className="space-y-2">

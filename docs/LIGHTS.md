@@ -1435,6 +1435,27 @@ is remembered in localStorage (wrapped in try/catch).
 Cancelling after step 3 leaves the light registered; the sheet offers "Remove this light". **Edit** shows the same
 panels on one sheet, with Move it as a collapsible section ("Move it and set it up").
 
+**3D** (`Room3D.tsx`, `room3d.ts`; owner, 26 Nov: "a 3d view of this pc22 setup assuming 2x gigbars in the drawing
+room"). The third tab, `?tab=3d`; three.js loads with this tab only.
+- It draws the same space as the Room map: the room's box, each screen showing its current picture
+  (`/output/<screen>.jpg`, read again every minute), the lamps in their live colours, the mirror ball, the piano's area
+  as a grand piano, and each registered light's beam from `GET /rig/live`.
+- **Planned lights** are space appliances with `kind: gigbar-2` that aren't registered lights. finsbury has two,
+  `gigbar.south` and `gigbar.north` (space.added.yaml, seeded 26 Nov on stands by the west wall either side of the
+  screens, at 2.0 m). Each is drawn as a Chauvet GigBAR 2 (OFL chauvet-dj/gigbar-2) with derbies, pars, laser and
+  strobes. Nothing drives them, so the page plays a preview (Off, Calm, Party) in the lamps' colours and says so.
+- Tap a bar or its chip to move it: distance from the west wall, distance from the south wall, height, turn and tilt.
+  Each change is saved with `PUT /rig/space/appliances/<id>` (at, mount, plane: the plane's normal is the bar's aim).
+- Under the bars, what each place means: how much of the pars' light and the derby dots lands on the screens, and how
+  much of the laser passes through head height (1.0 to 1.9 m).
+- **When the GigBARs arrive:**
+  - show_service drives only the GigBAR 2's **3-channel** mode (auto, sound and show programs). Its 11- and
+    23-channel modes are OFL matrix modes, which are inert here (§13): the type loads, but nothing is sent.
+  - Direct control of the pars, derbies, laser and strobes needs matrix support in `ofl.py` first.
+  - Each bar also needs an Art-Net box: no node is configured yet (fixtures.yaml `nodes: {}`).
+  - Once a bar is registered, move its planned place onto its new light id (or place the light on the Room map) and
+    remove the plan entry, so the 3D view doesn't draw it twice.
+
 ### 8.3 Move it (MoveIt.tsx, JogPad.tsx, CapControls.tsx, Preview.tsx, jog.ts)
 
 - **On open** it holds the light (`POST jog {}`). The banner reads: "The show leaves this light alone while this is
