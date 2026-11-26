@@ -142,4 +142,5 @@ budgets:
   tag: 3.00                                 # art tags: $0.00125 a picture (measured 27 Oct), so the ~2,000-picture
                                             # backfill is ~$2.50; reaching it pauses the tagging queue until local
                                             # midnight (the backfill may spill into a second day)
-  song_picture: 1.00                        # about $0.001 a picture, ~15 an artist: a party's 40 artists ~ $0.60
+  song_picture: 5.00                        # about $0.001 a picture, up to ~70 looked at an artist: a party's 40
+                                            # new artists ~ $3

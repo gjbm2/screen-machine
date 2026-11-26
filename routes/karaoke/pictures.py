@@ -14,7 +14,11 @@ this is a children's party):
   * Wikimedia Commons (no key, freely licensed): file searches for the artist in concert / live / performing (and
     in the song's year, so a 1985 song can show 1985), then any picture of them, stage titles first; MusicBrainz ->
     Wikidata's own picture of the artist first;
-  * fanart.tv (FANARTTV_API_KEY in .env, optional): screen-shaped 1920x1080 artist backgrounds, by MusicBrainz id.
+  * fanart.tv (FANARTTV_API_KEY in .env, optional): screen-shaped 1920x1080 artist backgrounds, by MusicBrainz id;
+  * TheAudioDB (its free public key): the artist's fanart (1280x720) and photo;
+  * YouTube (owner, 26 Nov: "surely there are photos trivially available. we're not broadcasting -- this is just for
+    a private party"): frames from the artist's concert films and live videos (the song's year first), taken from a
+    2 s clip yt-dlp fetches (the karaoke venv), and those videos' thumbnails.
 
 The vetting (task ``song_picture`` in config/llm.yaml: Gemini, one 768 px look per picture): does it show this artist
 or their album's cover, is it sharp, is it suitable for a children's party (strict), where are the faces, what era,
@@ -53,14 +57,20 @@ TIMEOUT_S = 20
 DEEZER = "https://api.deezer.com"
 COMMONS = "https://commons.wikimedia.org/w/api.php"
 FANART = "https://webservice.fanart.tv/v3/music"
+AUDIODB = "https://www.theaudiodb.com/api/v1/json/123"     # TheAudioDB's free public key
+YT_VIDEOS = 4            # live videos per artist whose frames are looked at
+YT_FRAMES_LONG = 6       # frames from a concert film (20 min or more)
+YT_FRAMES_SHORT = 3      # frames from a single live song
+YT_WORDS = re.compile(r"\b(live|concert|tour|performance|performing|unplugged|festival|gig|session|stage)\b")
 TASK = "song_picture"
-VERSION = 2               # 2: people only, performing first (owner, 26 Nov: covers aren't charismatic)
+VERSION = 3               # 2: people only, performing first (owner, 26 Nov: covers aren't charismatic); 3: YouTube
+                          # concert frames, TheAudioDB, band members
 
 TARGET = 14              # kept pictures of the artist an artist's deck aims for
 PORTRAITS_MAX = 5        # of which posed portraits at most: the rest performing (live) or the band (group)
 PEOPLE = ("live", "group", "portrait")   # what the photo scenes show (owner, 26 Nov: "album cover art isn't a very
                                          # charismatic thing to show ... we need artists performing etc.")
-CANDIDATES_MAX = 60      # pictures looked at per artist per fetch
+CANDIDATES_MAX = 70      # pictures looked at per artist per fetch
 STAGE = re.compile(r"\b(concert|live|tour|performing|performs|performance|stage|festival|gig|on stage|in concert)\b")
 MIN_SHORT_SIDE = 560     # smaller is too soft even under the effects
 MAX_BYTES = 15 << 20
@@ -74,6 +84,8 @@ MIN_APPEAL = 0.35        # duller than this on a big screen: not kept (owner, 26
 RETRY_S = 1800.0
 LOOP_S = 10.0
 ERA_FETCH = True         # a Commons search for the song's year as well (pictures of that era)
+SPLIT_MIN_FANS = 20000   # an artist named by splitting a line ("A feat. B") must be this well known on Deezer
+MEMBERS_MAX = 4          # a band's members searched for by name on Commons (their photos are filed under them)
 SPLIT = re.compile(r"\s+(?:feat\.?|ft\.?|featuring|with|vs\.?|x)\s+|\s*[,;/]\s*|\s+&\s+", re.I)
 # Deezer's explicit_content_cover: 0 not explicit, 3 edited ("clean"). Anything else needs the AI's look.
 CLEAN_COVER = (0, 3)
@@ -148,12 +160,18 @@ def resolve_artists(artist: str) -> list[dict]:
     if not artist:
         return []
     whole = deezer_artist(artist)
+    if whole is None:
+        m = re.fullmatch(r"([^,&/;]+),\s*([^,&/;]+)", artist)        # "Williams, Pharrell": a catalogue's surname first
+        if m and len(m.group(1).split()) <= 2 and len(m.group(2).split()) <= 2:
+            whole = deezer_artist(f"{m.group(2).strip()} {m.group(1).strip()}")
     if whole is not None:
         return [{"name": whole["name"], "deezer": whole}]
     out = []
     for part in [p.strip() for p in SPLIT.split(artist) if p and p.strip()][:3]:
         a = deezer_artist(part)
-        out.append({"name": a["name"] if a else part, "deezer": a})
+        # a split-off name only when Deezer knows a well-known artist by it ("Williams" alone is someone else)
+        if a is not None and (a.get("nb_fan") or 0) >= SPLIT_MIN_FANS:
+            out.append({"name": a["name"], "deezer": a})
     return out
 
 
@@ -164,10 +182,30 @@ def _mbid(name: str) -> Optional[str]:
     return max(same, key=lambda a: a.get("score") or 0)["id"] if same else None
 
 
-def _wikidata_image(mbid: str) -> Optional[str]:
-    """Wikidata's own picture of the artist (P18), as a Commons file title, via MusicBrainz's link."""
+def _mb_artist(mbid: str) -> dict:
     from .sources import _mb
-    d = _mb(f"artist/{mbid}", inc="url-rels") or {}
+    return _mb(f"artist/{mbid}", inc="url-rels+artist-rels") or {}
+
+
+def members(d: dict) -> list[str]:
+    """A band's members (MusicBrainz "member of band"), the longest-serving first, at most MEMBERS_MAX."""
+    if d.get("type") != "Group":
+        return []
+    rows = []
+    for r in d.get("relations") or []:
+        if r.get("type") == "member of band" and r.get("direction") == "backward" and (r.get("artist") or {}).get("name"):
+            y0 = int(str(r.get("begin") or "9999")[:4] or 9999)
+            y1 = int(str(r.get("end") or "2100")[:4] or 2100)
+            rows.append((-(y1 - y0), r["artist"]["name"]))
+    out = []
+    for _, n in sorted(rows, key=lambda r: r[0]):        # longest-serving first, else MusicBrainz's order
+        if n not in out:
+            out.append(n)
+    return out[:MEMBERS_MAX]
+
+
+def _wikidata_image(d: dict) -> Optional[str]:
+    """Wikidata's own picture of the artist (P18), as a Commons file title, via MusicBrainz's link."""
     q = next((r["url"]["resource"].rsplit("/", 1)[-1] for r in d.get("relations") or []
               if r.get("type") == "wikidata" and (r.get("url") or {}).get("resource")), None)
     if not q:
@@ -231,7 +269,9 @@ def _commons_rows(params: dict) -> list[dict]:
     return out
 
 
-def commons_candidates(name: str, year: Optional[int], wikidata_file: Optional[str]) -> list[dict]:
+def commons_candidates(name: str, year: Optional[int], wikidata_file: Optional[str],
+                       band: tuple = ()) -> list[dict]:
+    """``band``: the members' names (a band's photos are mostly filed under its members)."""
     out = []
     if wikidata_file:
         try:
@@ -242,12 +282,13 @@ def commons_candidates(name: str, year: Optional[int], wikidata_file: Optional[s
     queries = [f'"{name}" {w} filetype:bitmap' for w in ("concert", "live", "performing")] + [f'"{name}" filetype:bitmap']
     if ERA_FETCH and isinstance(year, int) and year > 1900:
         queries[:0] = [f'"{name}" {year} concert filetype:bitmap', f'"{name}" {year} filetype:bitmap']
+    queries[len(queries) - 1:len(queries) - 1] = [f'"{m}" {w} filetype:bitmap' for m in band for w in ("concert", "live")]
     for q in queries:
         try:
             out += _commons_rows({"generator": "search", "gsrsearch": q, "gsrnamespace": 6, "gsrlimit": 30})
         except Exception as e:                          # noqa: BLE001
             error(f"karaoke pictures: Commons search for {name}: {e}")
-    nk = set(norm(name).split())
+    nk = set(norm(name).split()) | {w for m in band for w in norm(m).split() if len(w) > 3}
     keep, seen = [], set()
     for c in out:
         t = norm(re.sub(r"\((?:[^)]*crop[^)]*|enhanced[^)]*|\d+)\)", "", c["title"]))
@@ -275,6 +316,100 @@ def fanart_candidates(mbid: Optional[str]) -> list[dict]:
                 out.append({"url": x["url"], "source": "fanart.tv", "kind_hint": hint, "credit": "fanart.tv",
                             "license": "fanart.tv", "title": f"{d.get('name') or ''} ({kind})", "trusted": False})
     return out
+
+
+def audiodb_candidates(name: str) -> list[dict]:
+    try:
+        d = _get(f"{AUDIODB}/search.php", {"s": name}) or {}
+    except Exception:                                   # noqa: BLE001
+        return []
+    a = next((x for x in d.get("artists") or [] if norm(x.get("strArtist")) == norm(name)), None)
+    if a is None:
+        return []
+    out = []
+    for k, hint in (("strArtistFanart", "live"), ("strArtistFanart2", "live"), ("strArtistFanart3", "live"),
+                    ("strArtistFanart4", "live"), ("strArtistWideThumb", "live"), ("strArtistThumb", "portrait")):
+        if a.get(k):
+            out.append({"url": a[k], "source": "theaudiodb", "kind_hint": hint, "credit": "TheAudioDB",
+                        "license": "theaudiodb", "title": f"{name} ({k[9:]})", "trusted": False})
+    return out
+
+
+def youtube_candidates(name: str, year: Optional[int]) -> list[dict]:
+    """Frames from the artist's live videos (concert films first, the song's year first), then their thumbnails."""
+    from .sources import _run, _ytdlp_cmd
+    queries = ([f"{name} live {year}"] if isinstance(year, int) and year > 1900 else []) + [
+        f"{name} live concert", f"{name} live performance"]
+    vids: dict[str, dict] = {}
+    nk = set(norm(name).split())
+    for q in queries:
+        try:
+            out = _run(_ytdlp_cmd() + ["--flat-playlist", "-j", f"ytsearch8:{q}"], 25)
+        except Exception as e:                          # noqa: BLE001
+            error(f"karaoke pictures: YouTube search for {name}: {e}")
+            continue
+        for line in out.splitlines():
+            try:
+                v = json.loads(line)
+            except ValueError:
+                continue
+            t = norm(v.get("title"))
+            if v.get("id") and v["id"] not in vids and nk <= set(t.split()) and YT_WORDS.search(t) \
+                    and not re.search(r"\b(karaoke|cover|tribute|reaction|lyrics|tutorial|lesson)\b", t) \
+                    and float(v.get("duration") or 0) >= 120:
+                vids[v["id"]] = v
+    ranked = sorted(vids.values(), key=lambda v: -min(float(v.get("duration") or 0), 3600.0))[:YT_VIDEOS]
+    frames, thumbs = [], []
+    for v in ranked:
+        dur = float(v.get("duration") or 0)
+        n = YT_FRAMES_LONG if dur >= 1200 else YT_FRAMES_SHORT
+        for i in range(n):
+            sec = int(dur * (0.12 + 0.76 * i / max(1, n - 1)))
+            frames.append((i, {"url": f"yt:{v['id']}@{sec}", "source": "youtube", "kind_hint": "live",
+                               "credit": "YouTube", "license": "youtube",
+                               "title": f"a frame from the video '{v.get('title')}'", "trusted": False}))
+        thumbs.append({"url": f"https://i.ytimg.com/vi/{v['id']}/maxresdefault.jpg", "source": "youtube",
+                       "kind_hint": "live", "credit": "YouTube", "license": "youtube",
+                       "title": f"the thumbnail of the video '{v.get('title')}'", "trusted": False})
+    return [c for _, c in sorted(frames, key=lambda x: x[0])] + thumbs     # one from each video in turn
+
+
+def _yt_frame(spec: str) -> bytes:
+    """``yt:<id>@<sec>`` -> one frame as JPEG bytes (a 2 s clip fetched by yt-dlp, the frame taken locally)."""
+    import subprocess
+    import tempfile
+    from .sources import _run, _ytdlp_cmd
+    vid, sec = spec[3:].split("@")
+    with tempfile.TemporaryDirectory() as d:
+        try:
+            _run(_ytdlp_cmd() + ["-f", "bv*[height<=1080][protocol=https]/bv*[height<=1080]", "--download-sections",
+                                 f"*{sec}-{int(sec) + 2}", "-o", f"{d}/clip.%(ext)s",
+                                 f"https://www.youtube.com/watch?v={vid}"], 90)
+        except Exception as e:                          # noqa: BLE001 - busy, blocked or gone: try later
+            raise Later(f"YouTube: {e}"[:80]) from None
+        clip = next(Path(d).glob("clip.*"), None)
+        if clip is None:
+            raise ValueError("no clip")
+        subprocess.run(["ffmpeg", "-v", "error", "-i", str(clip), "-frames:v", "1", "-q:v", "2", "-y", f"{d}/f.jpg"],
+                       capture_output=True, timeout=30)
+        f = Path(d) / "f.jpg"
+        if not f.is_file():
+            raise ValueError("no frame")
+        return f.read_bytes()
+
+
+def _trim(im):
+    """Cut dark bars (a 4:3 concert film in a 16:9 frame, letterboxing) off a picture."""
+    import numpy as np
+    g = np.asarray(im.convert("L").resize((max(1, im.width // 8), max(1, im.height // 8))), np.float32)
+    cols, rows = np.where(g.mean(axis=0) > 14)[0], np.where(g.mean(axis=1) > 14)[0]
+    if not len(cols) or not len(rows):
+        return im
+    l, r, t, b = cols[0] * 8, (cols[-1] + 1) * 8, rows[0] * 8, (rows[-1] + 1) * 8
+    if (r - l) < 0.5 * im.width or (b - t) < 0.5 * im.height or (l <= 8 and t <= 8 and r >= im.width - 8
+                                                                and b >= im.height - 8):
+        return im
+    return im.crop((l, t, min(r, im.width), min(b, im.height)))
 
 
 # ---------------------------------------------------------------- the AI's look
@@ -344,10 +479,12 @@ def ai_ready() -> bool:
         return False
 
 
-def vet(path: Path, artist: str, c: dict) -> Optional[dict]:
+def vet(path: Path, artist: str, c: dict, band: Any = ()) -> Optional[dict]:
     """The AI's look at one saved picture -> its answer (cleaned), or None when the AI couldn't answer."""
     import utils.llm as llm
-    text = (f"Artist: {artist}\nFound on: {c.get('source')}\nIts title there: {c.get('title') or '-'}\n"
+    who = (f"{artist} (a band; a picture of one of its members, {', '.join(band)}, counts as the band)"
+           if band else artist)
+    text = (f"Artist: {who}\nFound on: {c.get('source')}\nIts title there: {c.get('title') or '-'}\n"
             f"{'Deezer gave it as the artist picture.' if c.get('kind_hint') == 'portrait' and c.get('source') == 'deezer' else ''}"
             f"{'Deezer gave it as an album cover.' if c.get('kind_hint') == 'cover' else ''}")
     res = llm.call_json(TASK, system=SYSTEM, tool=tool(), lenient=True,
@@ -402,7 +539,7 @@ def _save(url: str, folder: Path) -> tuple[str, int, int]:
         time.sleep(max(0.0, _commons["last"] + COMMONS_GAP_S - now))
         _commons["last"] = time.time()
     try:
-        data = _get(url, raw=True)
+        data = _yt_frame(url) if url.startswith("yt:") else _get(url, raw=True)
     except urllib.error.HTTPError as e:
         if e.code == 429 or e.code >= 500:
             if commons:
@@ -421,7 +558,7 @@ def _save(url: str, folder: Path) -> tuple[str, int, int]:
         im = im.convert("RGBA")
         bg = Image.new("RGBA", im.size, (0, 0, 0, 255))
         im = Image.alpha_composite(bg, im)
-    im = im.convert("RGB")
+    im = _trim(im.convert("RGB"))
     if min(im.size) < MIN_SHORT_SIDE:
         raise ValueError(f"small ({im.size[0]}x{im.size[1]})")
     im.thumbnail((SAVE_PX, SAVE_PX), Image.LANCZOS)
@@ -460,15 +597,22 @@ def fetch_artist(name: str, dz: Optional[dict], *, album: Optional[str] = None, 
                 error(f"karaoke pictures: MusicBrainz for {name}: {e}")
         idx["mbid"] = mbid
         wd = None
-        if mbid and not idx["pictures"]:
+        if mbid and (not idx["pictures"] or idx.get("members") is None):
             try:
-                wd = _wikidata_image(mbid)
+                md = _mb_artist(mbid)
+                idx["members"] = members(md)
+                wd = _wikidata_image(md) if not idx["pictures"] else None
             except Exception:                           # noqa: BLE001
                 wd = None
         cands += fanart_candidates(mbid) if not idx["pictures"] else []
+        cands += audiodb_candidates(name) if not idx["pictures"] else []
         dec = _decade(year)
         era = year if dec and (dec not in idx["decades"] or idx.get("incomplete")) else None
-        cands += commons_candidates(name, era, wd)
+        try:
+            cands += youtube_candidates(name, era)
+        except Exception as e:                          # noqa: BLE001 - no karaoke venv here: the rest still work
+            error(f"karaoke pictures: YouTube for {name}: {e}")
+        cands += commons_candidates(name, era, wd, tuple(idx.get("members") or ()))
         if dec and dec not in idx["decades"]:
             idx["decades"].append(dec)
         cands = [c for c in cands if c.get("url") and c["url"] not in known][:CANDIDATES_MAX]
@@ -494,7 +638,7 @@ def fetch_artist(name: str, dz: Optional[dict], *, album: Optional[str] = None, 
             v = None
             if ai:
                 try:
-                    v = vet(folder / fname, name, c)
+                    v = vet(folder / fname, name, c, idx.get("members") or ())
                 except Exception as e:                  # noqa: BLE001
                     error(f"karaoke pictures: vetting {fname}: {e}")
                 if v is None and not c.get("trusted"):
@@ -546,7 +690,7 @@ def revet(s: str) -> None:
         if p.get("vetted") and p.get("appeal") is not None:
             continue
         v = vet(folder / p["file"], idx.get("artist") or s, {"source": p["source"], "title": p.get("title"),
-                                                             "kind_hint": p.get("kind")})
+                                                             "kind_hint": p.get("kind")}, idx.get("members") or ())
         if v is None:
             break
         changed = True
@@ -656,7 +800,7 @@ def step() -> bool:
                 continue
             idx = artist_index(s)
             dec = _decade(song.get("year"))
-            again = (idx.get("incomplete") and time.time() >= _commons["pause_until"]
+            again = ((idx.get("incomplete") or idx.get("members") is None) and time.time() >= _commons["pause_until"]
                      and now - float(idx.get("fetched_at") or 0) > 60)
             if (not idx or idx.get("version") != VERSION or again
                     or (ERA_FETCH and dec and dec not in (idx.get("decades") or []))):

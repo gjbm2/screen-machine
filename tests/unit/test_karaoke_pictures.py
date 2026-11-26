@@ -25,12 +25,17 @@ def root(tmp_path, monkeypatch):
 
 
 def test_a_band_name_with_an_ampersand_is_one_artist_and_feat_splits(monkeypatch):
-    known = {"simon garfunkel": {"id": 1, "name": "Simon & Garfunkel"}, "calvin harris": {"id": 2, "name": "Calvin Harris"},
-             "rihanna": {"id": 3, "name": "Rihanna"}}
+    known = {"simon garfunkel": {"id": 1, "name": "Simon & Garfunkel"},
+             "calvin harris": {"id": 2, "name": "Calvin Harris", "nb_fan": 9e6}, "rihanna": {"id": 3, "name": "Rihanna",
+                                                                                      "nb_fan": 9e6},
+             "pharrell williams": {"id": 4, "name": "Pharrell Williams"}, "williams": {"id": 5, "name": "Williams",
+                                                                                     "nb_fan": 12}}
     monkeypatch.setattr(pic, "deezer_artist", lambda n: known.get(pic.norm(n)))
     assert [a["name"] for a in pic.resolve_artists("Simon & Garfunkel")] == ["Simon & Garfunkel"]
     assert [a["name"] for a in pic.resolve_artists("Calvin Harris feat. Rihanna")] == ["Calvin Harris", "Rihanna"]
     assert pic.resolve_artists("") == []
+    assert [a["name"] for a in pic.resolve_artists("Williams, Pharrell")] == ["Pharrell Williams"]   # surname first
+    assert pic.resolve_artists("Williams & Nobody Known") == []          # a little-known split-off name: no one
 
 
 def test_deezer_artist_is_strict_about_the_name(monkeypatch):
@@ -75,7 +80,7 @@ def test_covers_objects_dull_pictures_and_a_sixth_portrait_are_not_kept():
 
 
 def fake_vet(answers):
-    def vet(path, artist, c):
+    def vet(path, artist, c, band=()):
         a = answers.get(c["title"], {})
         return {"shows": "the_artist", "kind": "live", "quality": 0.9, "child_safe": True, "faces": [], "era": "2010s",
                 "moods": [], "caption": "", "model": "m", "cost_usd": 0.0, **a}
@@ -86,8 +91,10 @@ def test_the_vetting_keeps_the_good_and_remembers_the_rest(root, monkeypatch):
     cands = [{"url": f"https://x/{i}.jpg", "source": "commons", "kind_hint": None, "title": t, "trusted": False}
              for i, t in enumerate(["good", "unsafe", "someone else", "blurry", "tiny"])]
     monkeypatch.setattr(pic, "deezer_candidates", lambda a, album: [])
-    monkeypatch.setattr(pic, "commons_candidates", lambda n, y, wd: list(cands))
+    monkeypatch.setattr(pic, "commons_candidates", lambda n, y, wd, band=(): list(cands))
     monkeypatch.setattr(pic, "fanart_candidates", lambda m: [])
+    monkeypatch.setattr(pic, "audiodb_candidates", lambda n: [])
+    monkeypatch.setattr(pic, "youtube_candidates", lambda n, y: [])
     monkeypatch.setattr(pic, "_mbid", lambda n: None)
     monkeypatch.setattr(pic, "ai_ready", lambda: True)
     monkeypatch.setattr(pic, "_get", lambda url, params=None, raw=False, **k: jpeg(300, 200) if "4" in url else jpeg())
@@ -104,9 +111,11 @@ def test_without_the_ai_only_the_catalogues_own_pictures(root, monkeypatch):
     monkeypatch.setattr(pic, "deezer_candidates", lambda a, album: [
         {"url": "https://d/a.jpg", "source": "deezer", "kind_hint": "portrait", "title": "a", "trusted": True},
         {"url": "https://d/b.jpg", "source": "deezer", "kind_hint": "cover", "title": "b", "trusted": False}])
-    monkeypatch.setattr(pic, "commons_candidates", lambda n, y, wd: [
+    monkeypatch.setattr(pic, "commons_candidates", lambda n, y, wd, band=(): [
         {"url": "https://c/c.jpg", "source": "commons", "kind_hint": None, "title": "c", "trusted": False}])
     monkeypatch.setattr(pic, "fanart_candidates", lambda m: [])
+    monkeypatch.setattr(pic, "audiodb_candidates", lambda n: [])
+    monkeypatch.setattr(pic, "youtube_candidates", lambda n, y: [])
     monkeypatch.setattr(pic, "_mbid", lambda n: None)
     monkeypatch.setattr(pic, "ai_ready", lambda: False)
     monkeypatch.setattr(pic, "_get", lambda url, params=None, raw=False, **k: jpeg())
@@ -121,10 +130,12 @@ def test_a_rate_limit_is_for_later_not_a_rejection(root, monkeypatch):
     def get(url, params=None, raw=False, **k):
         raise urllib.error.HTTPError(url, 429, "slow down", {"Retry-After": "600"}, None)
     monkeypatch.setattr(pic, "deezer_candidates", lambda a, album: [])
-    monkeypatch.setattr(pic, "commons_candidates", lambda n, y, wd: [
+    monkeypatch.setattr(pic, "commons_candidates", lambda n, y, wd, band=(): [
         {"url": "https://upload.wikimedia.org/x.jpg", "source": "commons", "title": "x", "trusted": False},
         {"url": "https://upload.wikimedia.org/y.jpg", "source": "commons", "title": "y", "trusted": False}])
     monkeypatch.setattr(pic, "fanart_candidates", lambda m: [])
+    monkeypatch.setattr(pic, "audiodb_candidates", lambda n: [])
+    monkeypatch.setattr(pic, "youtube_candidates", lambda n, y: [])
     monkeypatch.setattr(pic, "_mbid", lambda n: None)
     monkeypatch.setattr(pic, "ai_ready", lambda: True)
     monkeypatch.setattr(pic, "_get", get)
@@ -154,3 +165,21 @@ def test_a_songs_list_merges_its_artists_hides_and_puts_its_era_first(root, monk
     (root / "a" / "index.json").write_text(json.dumps(idx))
     assert len(pic.song_pictures("s1")["pictures"]) == 2
     assert pic.song_pictures("nope")["state"] == "none"
+
+
+def test_a_bands_members_longest_serving_first():
+    rel = lambda n, b, e: {"type": "member of band", "direction": "backward", "artist": {"name": n}, "begin": b, "end": e}   # noqa: E731
+    d = {"type": "Group", "relations": [rel("Drummer One", "1987", "1988"), rel("Singer", "1987", "1994"),
+                                        rel("Bassist", "1987", "1994"), rel("Drummer Two", "1990", "1994"),
+                                        {"type": "wikidata", "url": {"resource": "https://www.wikidata.org/wiki/Q1"}}]}
+    assert pic.members(d) == ["Singer", "Bassist", "Drummer Two", "Drummer One"]
+    assert pic.members({**d, "type": "Person"}) == []
+
+
+def test_dark_bars_are_trimmed():
+    from PIL import Image
+    im = Image.new("RGB", (1920, 1080), (0, 0, 0))
+    im.paste(Image.new("RGB", (1440, 1080), (150, 90, 60)), (240, 0))
+    assert pic._trim(im).size == (1440, 1080)
+    full = Image.new("RGB", (800, 600), (150, 90, 60))
+    assert pic._trim(full).size == (800, 600)
