@@ -67,14 +67,17 @@ renderer.setPixelRatio(1);                         // 1:1 pixels: a 2x canvas is
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.15;
 renderer.shadowMap.enabled = true;                 // a spot's gobo is projected through its shadow camera
-renderer.shadowMap.type = THREE.PCFShadowMap;
+renderer.shadowMap.type = THREE.BasicShadowMap;     // one tap per pixel: enough for a gobo at this scale
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05060a);
 const camera = new THREE.PerspectiveCamera(80, 1, 0.05, 60);
 const SIDE_W = 330;                                // the words panel on the right: the 3D stops at it
+// Adaptive resolution: the 3D is drawn at SCALE of the window's pixels and stretched to fit, so a full-screen window
+// costs no more than the GPU can keep up with (perf() lowers SCALE under ~50 fps and raises it again with headroom).
+let SCALE = 1;
 function resize() {
   const w = Math.max(200, innerWidth - SIDE_W), h = innerHeight;
-  renderer.setSize(w, h, false); canvas.style.width = w + "px"; canvas.style.height = h + "px";
+  renderer.setSize(Math.round(w * SCALE), Math.round(h * SCALE), false); canvas.style.width = w + "px"; canvas.style.height = h + "px";
   camera.aspect = w / h; camera.updateProjectionMatrix();
 }
 addEventListener("resize", resize); resize();
@@ -410,7 +413,7 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
-window.__gb = { THREE, scene, camera, BARS };
+window.__gb = { THREE, scene, camera, BARS };   // for a test harness: read-only use
 // which GPU the browser is drawing with, and the frame rate: "slow" is a number, not a feeling
 const GPU = (() => { const gl = renderer.getContext(), ext = gl.getExtension("WEBGL_debug_renderer_info");
   return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER); })();
@@ -419,11 +422,15 @@ function perf(now) {
   frames++;
   if (now - fpsAt < 1000) return;
   const fps = frames * 1000 / (now - fpsAt); frames = 0; fpsAt = now;
+  const was = SCALE;
+  if (fps < 48 && SCALE > 0.4) SCALE = Math.max(0.4, SCALE * Math.max(0.6, fps / 55));
+  else if (fps > 58 && SCALE < 1) SCALE = Math.min(1, SCALE * 1.12);
+  if (SCALE !== was) resize();
   const soft = /swiftshader|software|llvmpipe|basic render/i.test(GPU);
   const hidden = /^brave$/i.test(String(GPU).trim());   // Brave's Shields hide the card's name from pages
-  document.getElementById("perf").innerHTML = `${fps.toFixed(0)} fps · GPU: ${hidden ? "in use (Brave hides its name: see brave://gpu)" : GPU.replace(/^ANGLE \(|\)$/g, "")}` +
+  document.getElementById("perf").innerHTML = `${fps.toFixed(0)} fps · drawn at ${Math.round(SCALE * 100)}% · GPU: ${hidden ? "in use (Brave hides its name: see brave://gpu)" : GPU.replace(/^ANGLE \(|\)$/g, "")}` +
     (soft ? ` <span class="bad">(software: turn on Brave's hardware acceleration)</span>` : "");
-}   // for a test harness: read-only use
+}
 </script>
 </body>
 </html>
