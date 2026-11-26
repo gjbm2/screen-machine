@@ -110,6 +110,7 @@ class Mic:
         self._room_fn: Optional[Callable[[], Any]] = None
         self._notify: Optional[Callable[[str, Optional[dict]], None]] = None
         self._stream_claims: dict[str, tuple[str, str]] = {}   # claim_stream: by -> (stream, label)
+        self._wants: list[tuple[str, str, Callable[[], Optional[bool]]]] = []   # add_want: (by, label, fn)
         self.muted = False
         self.mode = False
         self.error: Optional[str] = None
@@ -148,6 +149,11 @@ class Mic:
         """The AI listening switch now (the listener's ``on``: any thread, no side effects); the listener wakes the
         mic when it is set (``Listener.add_on_listener``)."""
         self._listening_fn = fn
+
+    def add_want(self, by: str, label: str, fn: Callable[[], Optional[bool]]) -> None:
+        """Before start: another reason the mic is wanted, read live like AI listening's (``fn() is True``; e.g. the
+        karaoke player while a song plays, karaoke_feed.py). It shows in ``claims`` and the words as ``label``."""
+        self._wants.append((str(by), str(label or by), fn))
 
     def claim_stream(self, stream: str, *, by: str, label: str, on: bool) -> dict:
         """Hold (``on``) or release a stream claim (module docstring; any thread): ``stream`` captures too while it is
@@ -253,7 +259,8 @@ class Mic:
             h = self._h()
             auto = self._auto() is True
             listening = self._listening() is True
-            wanted = auto or self.mode or listening
+            wants = [(by, lab) for by, lab, fn in self._wants if self._read(fn) is True]
+            wanted = auto or self.mode or listening or bool(wants)
             on = wanted and not self.muted
             if on and self._on_since is None:
                 self._on_since = now
@@ -298,7 +305,7 @@ class Mic:
             off = [s for s in room if s not in capturing]
             covered = sorted(set(covered) | set(room))
             self._tell(off, covered)
-            body = self._build(on or bool(extra), auto, self._mode_label(), capturing, off, listening)
+            body = self._build(on or bool(extra), auto, self._mode_label(), capturing, off, listening, wants)
             if broken and (wanted or self._stream_claims) and not self.muted:
                 body["why"] = "Off: the room's mics can't be listed (see the log)"
             changed = body != self._body
@@ -334,15 +341,16 @@ class Mic:
                 self._failed("rings.set_off")
 
     def _build(self, on: bool, auto: bool, label: Optional[str], capturing: list[str], off: list[str],
-               listening: bool = False) -> dict:
+               listening: bool = False, wants: Any = ()) -> dict:
         side = [{"by": by, "label": lab, "stream": st} for by, (st, lab) in self._stream_claims.items()]
-        wanted = auto or self.mode or listening or bool(side)
+        want = [{"by": by, "label": lab} for by, lab in wants]
+        wanted = auto or self.mode or listening or bool(side) or bool(want)
         claims = ([{"by": "auto", "label": "Auto"}] if auto else []) + \
                  ([{"by": "mode", "label": label or THIS_MODE}] if self.mode else []) + \
-                 ([{"by": "listening", "label": "AI listening"}] if listening else []) + side
+                 ([{"by": "listening", "label": "AI listening"}] if listening else []) + want + side
         return {"on": bool(on), "muted": self.muted, "wanted": bool(wanted),
                 "why": why_words(bool(on), self.muted, auto, self.mode, label, listening,
-                                 [c["label"] for c in side]), "claims": claims,
+                                 [c["label"] for c in want + side]), "claims": claims,
                 "mode": self.mode,
                 "streams": {"capturing": list(capturing), "off": list(off)}, "error": self.error}
 

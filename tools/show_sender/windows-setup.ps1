@@ -17,7 +17,9 @@ param(
     [string]$Stream = "room-mic",
     [string]$Python = "$env:LOCALAPPDATA\Programs\Python\Python312\pythonw.exe",
     [string]$AgentDir = "$env:LOCALAPPDATA\screen-machine\audio-agent",
-    [string]$FromAddresses = "172.16.0.0/12"     # WSL's NAT range
+    [string]$FromAddresses = "172.16.0.0/12",    # WSL's NAT range
+    [switch]$Raw                                 # the mic without Windows' echo cancelling / noise suppression
+                                                 # (pc22_agent.py --raw; the karaoke laptop, 25 Nov)
 )
 $ErrorActionPreference = "Stop"
 if (-not (Test-Path $Python)) { throw "No pythonw at $Python (install Python 3.12, then: py -3.12 -m pip install --user sounddevice numpy)" }
@@ -37,7 +39,8 @@ Write-Host "firewall: allowed UDP $Port from $FromAddresses to $Python"
 $startup = [Environment]::GetFolderPath("Startup")
 $vbs = Join-Path $startup "screen-machine-audio-agent.vbs"
 $q = '""'
-$cmd = "$q$Python$q $q$AgentDir\pc22_agent.py$q --port $Port --stream $Stream --log $q$AgentDir\agent.log$q"
+$rawArg = if ($Raw) { " --raw" } else { "" }
+$cmd = "$q$Python$q $q$AgentDir\pc22_agent.py$q --port $Port --stream $Stream$rawArg --log $q$AgentDir\agent.log$q"
 Set-Content -Path $vbs -Encoding ASCII -Value @(
     "' screen-machine audio agent: this machine's default mic to show_service (stream $Stream, udp $Port).",
     "' Made by tools/show_sender/windows-setup.ps1. Log: $AgentDir\agent.log",

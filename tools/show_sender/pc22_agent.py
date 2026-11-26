@@ -28,7 +28,7 @@ import logging
 import queue
 import threading
 import time
-from typing import Optional
+from typing import Any, Optional
 
 import numpy as np
 
@@ -191,17 +191,34 @@ class ListedStream(AudioStream):
         self._cnt = 0
 
 
-def run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: str) -> None:
+def run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: str, raw: bool = False) -> None:
     """The capture thread, restarted on any error (logged): it must never die and leave the agent silent."""
     while not stop.is_set():
         try:
-            _run_wasapi(out, stop, match, stream)
+            _run_wasapi(out, stop, match, stream, raw)
         except Exception:                                   # noqa: BLE001
             log.exception("mic: capture failed; restarting in %.0f s", RETRY_S)
             stop.wait(RETRY_S)
 
 
-def _run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: str) -> None:
+def _open_raw(sd: Any, idx: int, info: dict, period: int, cb: Any) -> Any:
+    """--raw (owner, 25 Nov, the karaoke laptop: the mic "is not seeing any of the stuff coming out of the speaker" and
+    "lots of e.g. key tap noise suppression"): WASAPI exclusive mode, which skips Windows' capture effects (the
+    Intel Smart Sound / Voice Clarity echo cancelling and noise suppression). Measured 25 Nov on the laptop with a
+    song on its speakers: shared -89 dBFS (cancelled), exclusive -55 dBFS with the song in it (envelope r 0.41).
+    Exclusive wants the device's own channel count (the array: 2, not its 4 shared ones). None if it won't open."""
+    for ch in dict.fromkeys((2, int(info["max_input_channels"]), 1)):
+        if ch < 1:
+            continue
+        try:
+            return sd.InputStream(device=idx, samplerate=FS, channels=ch, dtype="float32", blocksize=period,
+                                  latency="low", callback=cb, extra_settings=sd.WasapiSettings(exclusive=True))
+        except Exception as e:                              # noqa: BLE001
+            log.info("mic: exclusive %d ch: %s", ch, e)
+    return None
+
+
+def _run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: str, raw: bool = False) -> None:
     import sounddevice as sd
 
     choice = Choice(out)
@@ -273,8 +290,13 @@ def _run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: s
         au.dev = name
         au.restart_sess()                                    # a device (re)open is a new sess
         try:
-            st = sd.InputStream(device=idx, samplerate=FS, channels=chans, dtype="float32", blocksize=period,
-                                latency="low", callback=cb)
+            st = _open_raw(sd, idx, info, period, cb) if raw else None
+            excl = st is not None
+            if raw and st is None:
+                log.warning("mic %s: exclusive (raw) mode won't open; shared, with Windows' effects", name)
+            if st is None:
+                st = sd.InputStream(device=idx, samplerate=FS, channels=chans, dtype="float32", blocksize=period,
+                                    latency="low", callback=cb)
         except Exception as e:
             log.warning("mic %s: %s", name, e)
             stop.wait(RETRY_S)
@@ -282,7 +304,8 @@ def _run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: s
         in_lat_ms = 1000.0 * float(st.latency)
         endpoints = capture_endpoints()
         opened_at = time.monotonic()
-        log.info("mic: %s (WASAPI #%d, %d ch, %.1f ms in; %d inputs)", name, idx, chans, in_lat_ms, len(au.devices))
+        log.info("mic: %s (WASAPI #%d%s, %d ch, %.1f ms in; %d inputs)", name, idx, ", exclusive: raw" if excl else "",
+                 st.channels, in_lat_ms, len(au.devices))
         next_check = time.monotonic() + CHECK_S
         with st:
             while not stop.is_set():
@@ -431,6 +454,8 @@ def main(argv: Optional[list] = None) -> None:
     ap.add_argument("--bind", default="0.0.0.0")
     ap.add_argument("--mic-match", default=None, help="WASAPI input name substring (default: the Windows default)")
     ap.add_argument("--stream", default="pc22-mic")
+    ap.add_argument("--raw", action="store_true",
+                    help="WASAPI exclusive: the mic without Windows' echo cancelling and noise suppression")
     ap.add_argument("--log", default=None, help="log to this file (rotated at 1 MB) instead of stderr (pythonw)")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args(argv)
@@ -443,7 +468,7 @@ def main(argv: Optional[list] = None) -> None:
     out = Out(a.port, a.bind)
     stop = threading.Event()
     threads = [threading.Thread(target=out.serve, args=(stop,), name="net", daemon=True),
-               threading.Thread(target=run_wasapi, args=(out, stop, a.mic_match, a.stream), name="mic", daemon=True)]
+               threading.Thread(target=run_wasapi, args=(out, stop, a.mic_match, a.stream, a.raw), name="mic", daemon=True)]
     for t in threads:
         t.start()
     log.info("pc22-agent on udp %s:%d (%s, vban %s)", a.bind, a.port, a.stream, vban.__name__)

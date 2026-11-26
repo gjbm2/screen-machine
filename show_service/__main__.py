@@ -243,6 +243,7 @@ class Show:
         self.ml: Any = None                          # Stage 4: the MLLink component
         self.rig: Any = None                         # Stage 5: outputs.Rig (the rig component), with the brain only
         self.recorder: Any = None                    # recorder.Recorder (the Room page's Record; on_midi's tap)
+        self.karaoke: Any = None                     # karaoke_feed.KaraokeFeed (docs/KARAOKE.md): Flask's karaoke player
         self._runtime_offsets: dict[str, float] = {}   # sources.py's (a rendered test-piano run), over latency.json's
         self._offsets_lock = threading.Lock()        # main thread (latency.json) vs show-brain (sources)
         self._out_cfg: dict = {}                     # artnet_out's config (the rig's neutral colour, patch.yaml)
@@ -454,6 +455,8 @@ class Show:
                 log.exception("Art-Net out did not start: running without it")
         if self.mic is not None:
             self.mic.start()                             # show-mic: re-decides at 2 Hz and on a wake
+        if getattr(self, "karaoke", None) is not None:
+            self.karaoke.start()                         # show-karaoke: Flask's karaoke player, once a second
         if self.brain is not None:
             try:
                 self.brain.start()
@@ -656,6 +659,7 @@ class Show:
             if name == "recorder" and callable(getattr(got, "on_midi", None)):
                 self.recorder = got                      # on_midi's tap (show-rx), after NoteTap
         self._wire_sources()
+        self._wire_karaoke()
         stage3 = ("api", "ring", "situations", "brain") + BRAIN_MODULES
         self.brain.modules = {k: v for k, v in self.modules.items() if k in stage3}
 
@@ -680,6 +684,23 @@ class Show:
                 log.exception("sources: the mic claim seam wasn't wired: a test piano on Sonos is heard by its room's "
                               "mic only if something else turns it on")
 
+    def _wire_karaoke(self) -> None:
+        """docs/KARAOKE.md (owner, 25 Nov): while the deployment has karaoke, Flask's karaoke player is a music source
+        like the Music page's: karaoke_feed.KaraokeFeed's song goes in ctx.now_playing after the player's piece (its
+        end arms and fires the director's transition, via "player"), and a song playing wants the mic (_wire_mic)."""
+        try:
+            import smconfig
+            if smconfig.enabled("karaoke") is not True or self.ctx is None:
+                return
+            from . import karaoke_feed
+            self.karaoke = karaoke_feed.KaraokeFeed(smconfig.url("flask"))
+            self.ctx.now_playing = karaoke_feed.chain_now_playing(self.ctx.now_playing, self.karaoke.now_playing)
+            self.modules["karaoke"] = "ok"
+        except Exception as e:
+            self.karaoke = None
+            self.modules["karaoke"] = f"failed: {type(e).__name__}: {e}"
+            log.exception("karaoke: not followed: its songs' ends don't reach the director")
+
     def _wire_mic(self) -> None:
         """README S5.16: the mic's brain-side inputs (each optional): the ring, Auto's live on/off (and its wake on a
         toggle), the AI listening switch (and its wake), the room view for the mode's label, the card's refresh."""
@@ -700,6 +721,10 @@ class Show:
             if lis is not None and callable(getattr(lis, "add_on_listener", None)):
                 mic.set_listening(lambda: lis.on is True)    # owner, 21 Oct: AI listening on claims the mic
                 lis.add_on_listener(mic.wake)
+            kf = getattr(self, "karaoke", None)
+            if kf is not None:
+                mic.add_want("karaoke", "Karaoke", kf.playing)   # owner, 25 Nov: the room is heard while one sings
+                kf.add_on_change(mic.wake)
             ctx = self.ctx
             mic.set_room(lambda: ctx.room() if ctx is not None and ctx.room is not None else None)
             mic.set_notify(getattr(self.api, "notify", None))
@@ -784,6 +809,11 @@ class Show:
                 "mic_state": self.mic.state() if self.mic is not None else None}
 
     def stop(self) -> None:
+        if getattr(self, "karaoke", None) is not None:
+            try:
+                self.karaoke.stop()
+            except Exception:
+                log.exception("karaoke feed stop failed")
         if self.mic is not None:
             try:
                 self.mic.stop()

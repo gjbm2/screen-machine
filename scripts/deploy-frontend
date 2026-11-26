@@ -29,7 +29,9 @@ mv dist_next dist
 echo "deploy-frontend: live ($(ls dist/assets | grep -m1 '^index-.*\.js$'))"
 
 [ "${1:-}" = "--no-check" ] && exit 0
+# The checks need Playwright: room_service's venv (PC22), else the repo's .venv (the laptop rig), else python3.
 py="${HOME}/.venvs/sm-room/bin/python"
+[ -x "$py" ] || py="$PWD/.venv/bin/python"
 [ -x "$py" ] || py=python3
 if ! nice -n 10 "$py" tools/ui_evals/dnd_pickup.py; then
   echo "deploy-frontend: DRAG AND DROP CHECK FAILED on the live build (tools/ui_evals/dnd_pickup.py)" >&2

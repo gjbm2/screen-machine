@@ -68,6 +68,7 @@ CAPABILITIES: dict[str, str] = {
     "rf": "Broadlink RM4 Pro RF devices (room/rf/*.json): glitterball, pinspots",
     "blinds": "the Bloc iQ blinds hub (room/rf/blinds.json)",
     "sonos": "Sonos zones (room/sonos.json)",
+    "karaoke": "karaoke: song requests, vocal removal (host.karaoke_python venv) and lyrics on the display page (docs/KARAOKE.md)",
     "accounts": "sign-in, roles and per-person Generated spaces (client ID and people in private/accounts.yaml, "
                 "rules in config/auth/gates.yaml; docs/ACCOUNTS.md)",
 }

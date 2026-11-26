@@ -54,6 +54,7 @@ const LightsControlPage = page(() => import("./pages/Lights/Control"));
 const MusicPage = page(() => import("./pages/Music"));
 const SettingsPage = page(() => import("./pages/Settings"));
 const StartPage = page(() => import("./pages/Settings/Start"));
+const KaraokePage = page(() => import("./pages/Karaoke"));
 
 const queryClient = new QueryClient();
 
@@ -87,6 +88,8 @@ const App = () => (
             <Route path="/lights" element={<LightsControlPage />} />
             <Route path="/settings/lights" element={<AdminOnly><LightsPage /></AdminOnly>} />
             <Route path="/music" element={<MusicPage />} />
+            {/* karaoke: songs, queue and player from a phone (docs/KARAOKE.md) */}
+            <Route path="/karaoke" element={<KaraokePage />} />
             <Route path="/settings" element={<AdminOnly><SettingsPage /></AdminOnly>} />
             {/* where the app opens: this device's choice in Settings (Room or Music) */}
             <Route path="/start" element={<StartPage />} />

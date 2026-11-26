@@ -51,6 +51,7 @@ from routes.deployment_api import deployment_api
 from routes.bakeoff_api import bakeoff_api
 from routes.auth.api import auth_api
 from routes.screensaver import screensaver_api
+import routes.karaoke
 import routes.auth
 import smconfig
 
@@ -86,6 +87,7 @@ app.register_blueprint(deployment_api, url_prefix=API_PREFIX)  # GET /api/deploy
 app.register_blueprint(bakeoff_api, url_prefix=API_PREFIX)  # blind model bake-off page (docs/genai-review/PROJECT_PLAN.md)
 app.register_blueprint(auth_api, url_prefix=API_PREFIX)  # Google sign-in (docs/ACCOUNTS.md)
 app.register_blueprint(screensaver_api, url_prefix=API_PREFIX)  # the Windows screensaver download (tools/screensaver/)
+app.register_blueprint(routes.karaoke.karaoke_api, url_prefix=API_PREFIX)  # karaoke: songs, queue, player (docs/KARAOKE.md)
 
 # Accounts (docs/ACCOUNTS.md): config/auth/gates.yaml decides which API calls need which role; inert until the
 # deployment turns accounts on with a Google client ID. after_request sets a new browser's space cookie.
@@ -267,6 +269,13 @@ if __name__ == '__main__':
         routes.art_tags.startup()
     except Exception as e:
         error(f"art tags could not be started: {e}")
+
+    # Karaoke (docs/KARAOKE.md): the worker that downloads requested songs, fetches their lyrics and removes the lead
+    # vocal. Only with the deployment's karaoke capability. Never blocks or breaks start-up.
+    try:
+        routes.karaoke.start()
+    except Exception as e:
+        error(f"karaoke could not be started: {e}")
 
     # Room control: room_service runs in this process on its own thread, event loop and LAN port
     # (the deployment's ports.room, 8700); this app door has no room routes. Never blocks or breaks start-up:

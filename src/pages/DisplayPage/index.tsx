@@ -25,6 +25,7 @@ import { BaseLanding } from "./art/baseLanding";
 import { MaskLayers } from "./art/MaskLayers";
 import { isClip, mediaContainerStyle, mediaStyle } from "./art/styles";
 import { LiveLayer } from "./live/LiveLayer";
+import { KaraokeLayer } from "./karaoke/KaraokeLayer";
 import {
   DisplayController,
   controlSocketUrl,
@@ -94,7 +95,7 @@ function roleFromParams(p: URLSearchParams): Role {
 // teardown, before any cut) so nothing else in the app (e.g. a toast) can draw over the video.
 const ART_GUARD_CSS = [
   "[data-sm-art][data-hidden],[data-sm-art][data-hidden] *{visibility:hidden !important}",
-  "html[data-sm-live] body>:not(#root),html[data-sm-live] #root>:not([data-sm-live-layer]):not([data-sm-art]){visibility:hidden !important}",
+  "html[data-sm-live] body>:not(#root),html[data-sm-live] #root>:not([data-sm-live-layer]):not([data-sm-art]):not([data-sm-karaoke]){visibility:hidden !important}",
 ].join("\n");
 
 function DisplayPage() {
@@ -875,14 +876,29 @@ function DisplayPage() {
     </div>
   );
 
+  // Karaoke's lyrics (and, with output "screen", its sound) over everything, on the karaoke screen only (the panel's
+  // Settings): karaoke/KaraokeLayer.tsx. Renders nothing unless the deployment's karaoke capability is on.
+  const karaokeLayer = (
+    <LayerBoundary name="karaoke" fallback={null}>
+      <KaraokeLayer screen={screenId} />
+    </LayerBoundary>
+  );
+
   // Default page: the art stack alone, exactly as before. Controlled page: the live layer under it.
-  if (!ctl) return artStack;
+  if (!ctl)
+    return (
+      <>
+        {artStack}
+        {karaokeLayer}
+      </>
+    );
   return (
     <>
       <LayerBoundary name="live" onError={() => ctl.onLiveLayerError()}>
         <LiveLayer containerRef={ctl.attachLiveLayer} />
       </LayerBoundary>
       {artStack}
+      {karaokeLayer}
     </>
   );
 }
