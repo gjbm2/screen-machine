@@ -1109,6 +1109,36 @@ def test_the_lamps_brightness_scales_every_following_lamp_and_nothing_else():
         e.set_level(float("nan"))
 
 
+def test_a_mode_change_fades_a_dmx_light_and_leaves_a_hue_lamp_to_room():
+    """MODE_FADE_S (owner, 26 Nov: "why don't things fade between states?"): a DMX light taken off the music (a house
+    light off, say) eases there over MODE_FADE_S and back again; a Hue lamp on the same output is room's to fade."""
+    box = {"f": feats(10.0)}
+    e = LookEngine(palette_fn=lambda t: {"par.0": (1.0, 1.0, 1.0), "lamp.0": (1.0, 1.0, 1.0)}, look_fn=lambda: look(),
+                   features_fn=lambda: box["f"], clock=SnapClock(anchor=10.0, period=0.5), light_scenes=False)
+    par = par_type()
+    rig = rigview([fx("par.0", par, "o", address=1), fx("lamp.0", HUE_T, "o")], [par, HUE_T], [out("o", "artnet")])
+    assert e.configure({"layers": []}, rig) == []
+
+    def at(t):
+        box["f"] = feats(t)
+        return e.evaluate("o", t, DMX_CAPS)
+
+    full = inten(at(10.0), "par.0")
+    assert full > 0.5
+    e.set_follow({"par.0": "off", "lamp.0": "off"})
+    t0 = 10.1
+    fr = at(t0)
+    assert inten(fr, "par.0") == pytest.approx(full) and inten(fr, "lamp.0") == 0.0   # the Hue lamp: at once
+    mid = at(t0 + lk.MODE_FADE_S / 2)
+    assert 0.0 < inten(mid, "par.0") < full and max(mid["fixtures"]["par.0"]["dmx"]) > 0
+    assert inten(at(t0 + lk.MODE_FADE_S + 0.05), "par.0") == 0.0
+    e.set_follow({})                                                 # back to the music: eases up again
+    t1 = t0 + lk.MODE_FADE_S + 0.1
+    assert inten(at(t1), "par.0") == 0.0
+    assert 0.0 < inten(at(t1 + lk.MODE_FADE_S / 2), "par.0") < full
+    assert inten(at(t1 + lk.MODE_FADE_S + 0.05), "par.0") == pytest.approx(full)
+
+
 def test_a_follow_colour_still_rises_through_the_hue_rise_limit():
     e = LookEngine(palette_fn=lambda t: {"lamp.0": (0.0, 0.0, 0.0)}, light_scenes=False)
     assert e.configure({"layers": []}, lamps_rig(1)) == []
