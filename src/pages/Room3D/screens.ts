@@ -15,6 +15,11 @@ import { roomSocketBase } from "@/pages/DisplayPage/secureUrls";
 const HB_MS = 2000;
 const RETRY_MS = 3000;
 const ART_REFRESH_MS = 15000;
+// The live picture must keep moving: a browser can pause a hidden muted video, and a stream can stall (the screen's
+// own page reconnecting). Every WATCH_MS: a paused video is played again; a picture that hasn't moved for STALL_MS
+// rejoins the stream (a fresh viewer socket: room_service hands the running session's attach again).
+const WATCH_MS = 1000;
+const STALL_MS = 4000;
 
 export type ScreenState = "connecting" | "art" | "live" | "down";
 
@@ -30,6 +35,10 @@ export class ScreenFeed {
   private holder: HTMLDivElement;
   private timers: number[] = [];
   private closed = false;
+  private lastT = -1;
+  private movedAt = 0;
+  /** How many times the live picture stalled and was rejoined (the side panel shows it). */
+  rejoins = 0;
 
   constructor(private room: string, readonly screen: string) {
     this.holder = document.createElement("div");
@@ -43,6 +52,7 @@ export class ScreenFeed {
     };
     this.loadArt();
     this.timers.push(window.setInterval(() => !this.player && this.loadArt(), ART_REFRESH_MS));
+    this.timers.push(window.setInterval(() => this.watch(), WATCH_MS));
     this.connect();
   }
 
@@ -83,6 +93,21 @@ export class ScreenFeed {
     };
   }
 
+  private watch() {
+    const p = this.player;
+    if (!p || !p.started) return;
+    const v = p.video, now = performance.now();
+    if (v.paused) void v.play().catch(() => undefined);
+    if (v.currentTime !== this.lastT) { this.lastT = v.currentTime; this.movedAt = now; return; }
+    if (now - this.movedAt < STALL_MS) return;
+    this.rejoins++;                                         // stalled: rejoin as a viewer
+    this.stopPlayer();
+    this.session = null;
+    this.state = "connecting";
+    this.movedAt = now;
+    try { this.ws?.close(); } catch { /* closed */ }        // onclose reconnects
+  }
+
   private play(a: LiveAttach) {
     if (this.session === a.session && this.player) return;
     this.stopPlayer();
@@ -99,6 +124,7 @@ export class ScreenFeed {
       log: () => undefined,
     }, "viewer");
     this.player = p;
+    this.lastT = -1; this.movedAt = performance.now();
     p.start();
   }
 

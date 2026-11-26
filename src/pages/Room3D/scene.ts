@@ -652,7 +652,7 @@ export class RoomSim {
     }
     for (const [id, s] of this.screens) {
       const f = m.fixtures.find((x) => x.id === id);
-      out.set("Screens", [...(out.get("Screens") ?? []), [f?.label ?? id, s.feed.state === "live" ? `live (${s.feed.session})` : s.feed.state]]);
+      out.set("Screens", [...(out.get("Screens") ?? []), [f?.label ?? id, (s.feed.state === "live" ? `live (${s.feed.session})` : s.feed.state) + (s.feed.rejoins ? ` · rejoined ${s.feed.rejoins}×` : "")]]);
     }
     return [...out].map(([unit, rows]) => ({ unit, rows }));
   }
