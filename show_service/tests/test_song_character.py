@@ -155,3 +155,20 @@ def test_a_quiet_room_never_flattens_a_playing_karaoke_song(tmp_path):
     r.run(20.0)
     assert r.d._relax < 0.1 and r.d.lv > 0.9
     assert last_dir(r)["energy"] == pytest.approx(r.d.music["band_energy"], abs=0.02)   # the song's, not the centre
+
+
+def test_a_quiet_opening_reads_low_and_the_swell_after_it_high(tmp_path):
+    """The track against itself (director._intensity; owner, 26 Nov: "failed to 'feel' the swell and then climax of
+    'My Way'"): a quiet first minute is not "average" (there is headroom for what's to come), and a swell 12 dB up
+    reaches well above the song's base."""
+    r = karaoke_rig(tmp_path)
+    r.lufs = -40.0
+    r.run(60.0)
+    quiet = last_dir(r)["energy"]
+    r.lufs = -28.0
+    r.run(25.0)
+    swell = last_dir(r)["energy"]
+    assert quiet < 0.5 and swell > quiet + 0.3, (quiet, swell)
+    r.lufs = -40.0
+    r.run(25.0)
+    assert last_dir(r)["energy"] < swell - 0.2                         # and back down when it falls back

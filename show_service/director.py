@@ -182,6 +182,8 @@ import time
 import urllib.parse
 from typing import Any, Callable, Optional
 
+import numpy as np
+
 from . import compose as comp
 from . import contract
 from . import appliances as appmod
@@ -342,6 +344,26 @@ REL_MIN_SPREAD_DB = 2.0    # a flat song's spread is at least this
 REL_SWING = 0.2            # rel 1 (a spread and a half over its median) lifts the band energy this much...
 REL_SWING_DOWN = 0.15      # ...and rel -1 lowers it at most this much
 REL_TAU_S = 1.5
+# Track-relative intensity (owner, 26 Nov: "a.d. really failed to 'feel' the swell and then climax of 'My Way'";
+# "as much of this live based on audio feed as poss because then our work also benefits live set vj work"):
+# where the music is now within ITS OWN range so far (a track: the karaoke song, else structure's track, else the
+# last INT_WINDOW_S), from the live features: short-term loudness (dB, any mic gain) INT_LOUD_W and busyness (the
+# drive and onset lanes) the rest, each placed between its track's INT_LO_PCT and INT_HI_PCT percentiles (before
+# INT_LEARN_S of it, a prior round its median).  The band energy is then the base (genre / the song's character)
+# +- INT_SPAN by that position: a ballad's whisper and its climax span the screen's range, not +-0.2.
+# tools/room/shape_eval scores it against each karaoke song's measured shape (utils/song_shape.py).
+INT_LOUD_W = 0.75
+INT_LO_PCT, INT_HI_PCT = 10, 95
+INT_MIN_SPREAD_DB = 4.0
+INT_PRIOR_DB = (-6.0, 3.0)     # before the track's range is learned: its median -6 dB .. +3 dB
+INT_LEARN_S = 20
+INT_HEAD_DB = 8.0              # early in a track, room above what has sounded so far (the swell to come), fading
+INT_HEAD_S = 150.0             # ... over this many seconds of it (a quiet opening reads quiet, not "average")
+INT_FOOT_DB = 4.0              # and the bottom of the range at least this far under its median
+INT_WINDOW_S = 240.0           # no track known: the last four minutes are the range
+INT_TAU_S = 1.2
+INT_SPAN = 0.34                # the band energy: base -INT_SPAN .. base +INT_SPAN_UP (more room up: the climax)
+INT_SPAN_UP = 0.45
 KARAOKE_DWELL_MAX_S = (30.0, 90.0)
 SECTION_ENERGY = {"verse": -0.08, "chorus": 0.15, "instrumental": 0.05, "outro": -0.15}
 from .song_character import SONG_GENRES  # noqa: E402  (Deezer's genres -> the vocabulary; shared with the feed)
@@ -2406,30 +2428,61 @@ class Director:
             return max(-0.25, min(0.25, 0.5 * (float(curve[kind]) - sum(vals) / len(vals))))
         return SECTION_ENERGY.get(kind, 0.0)
 
-    def _rel_loudness(self, now_s: float) -> Optional[float]:
-        """A karaoke song's loudness against itself: (lufs_s - its median) / (1.5 x its spread), -1..1, eased over
-        REL_TAU_S; None until REL_MIN_N seconds of it have sounded, or with no karaoke song."""
+    @staticmethod
+    def _int_swing(inten: float) -> float:
+        """The band energy's offset from its base for an intensity 0..1: -INT_SPAN .. +INT_SPAN_UP."""
+        x = 2.0 * inten - 1.0
+        return x * (INT_SPAN_UP if x > 0 else INT_SPAN)
+
+    def _track_key(self) -> Optional[str]:
         np_ = self._karaoke_np()
-        key = str(np_["key"]) if np_ is not None else None
-        if key != getattr(self, "_rel_key", None):
-            self._rel_key, self._rel_hist, self._rel_ema, self._rel_t = key, collections.deque(maxlen=900), None, None
-        if key is None:
-            return None
+        if np_ is not None:
+            return str(np_["key"])
+        tr = (self._mc or {}).get("track") if isinstance((self._mc or {}).get("track"), dict) else None
+        return f"track:{tr.get('id')}" if tr is not None and tr.get("id") is not None else None
+
+    def _intensity(self, now_s: float) -> Optional[float]:
+        """Where the music is now within its track's own range so far, 0..1 (INT_* above); None until there is
+        sound, or while the features are stale."""
+        key = self._track_key()
+        if key != getattr(self, "_int_key", None) or not hasattr(self, "_int_hist"):
+            self._int_key, self._int_hist, self._int_ema, self._int_t = key, collections.deque(), None, None
+            self._int_l = None
         f = getattr(self, "_feat_now", None)
         lv = _num(f.get("lufs_s")) if isinstance(f, dict) else None
-        h = self._rel_hist
-        if lv is not None and lv > REL_FLOOR_LUFS and (not h or now_s - h[-1][0] >= 1.0):
-            h.append((now_s, lv))
-        if len(h) < REL_MIN_N or lv is None or lv <= REL_FLOOR_LUFS:
-            return self._rel_ema
-        vals = sorted(x for _, x in h)
-        n = len(vals)
-        med, spread = vals[n // 2], max(REL_MIN_SPREAD_DB, vals[(3 * n) // 4] - vals[n // 4])
-        r = max(-1.0, min(1.0, (lv - med) / (1.5 * spread)))
-        dt = 0.0 if self._rel_t is None else max(0.0, now_s - self._rel_t)
-        self._rel_t = now_s
-        self._rel_ema = r if self._rel_ema is None else _ema(self._rel_ema, r, dt, REL_TAU_S)
-        return self._rel_ema
+        if lv is None or lv <= REL_FLOOR_LUFS:
+            return self._int_ema
+        dt = 0.0 if self._int_t is None else max(0.0, min(1.0, now_s - self._int_t))
+        self._int_t = now_s
+        self._int_l = lv if self._int_l is None else _ema(self._int_l, lv, dt, 2.0)
+        busy = _c01(0.5 * _c01(_num(f.get("drive"), 0.0)) + 0.5 * (self._onset or 0.0))
+        h = self._int_hist
+        if not h or now_s - h[-1][0] >= 1.0:
+            h.append((now_s, self._int_l, busy))
+        while h and (len(h) > 1200 or (key is None and now_s - h[0][0] > INT_WINDOW_S)):
+            h.popleft()
+        ls = np.fromiter((x[1] for x in h), float, len(h))
+        bs = np.fromiter((x[2] for x in h), float, len(h))
+        if len(h) < INT_LEARN_S:
+            med = float(np.median(ls))
+            lo, hi = med + INT_PRIOR_DB[0], med + max(INT_PRIOR_DB[1], INT_HEAD_DB)
+            blo, bhi = 0.0, 1.0
+        else:
+            lo, hi = float(np.percentile(ls, INT_LO_PCT)), float(np.percentile(ls, INT_HI_PCT))
+            med = float(np.median(ls))
+            hi = max(hi, med + INT_HEAD_DB * max(0.0, 1.0 - len(h) / INT_HEAD_S))
+            lo = min(lo, med - INT_FOOT_DB)
+            if hi - lo < INT_MIN_SPREAD_DB:
+                mid = 0.5 * (hi + lo)
+                lo, hi = mid - INT_MIN_SPREAD_DB / 2, mid + INT_MIN_SPREAD_DB / 2
+            blo, bhi = float(np.percentile(bs, INT_LO_PCT)), float(np.percentile(bs, INT_HI_PCT))
+            if bhi - blo < 0.1:
+                blo, bhi = 0.5 * (blo + bhi) - 0.05, 0.5 * (blo + bhi) + 0.05
+        loud = _c01((self._int_l - lo) / (hi - lo))
+        bz = _c01((busy - blo) / (bhi - blo))
+        x = INT_LOUD_W * loud + (1.0 - INT_LOUD_W) * bz
+        self._int_ema = x if self._int_ema is None else _ema(self._int_ema, x, dt, INT_TAU_S)
+        return self._int_ema
 
     def _song_genre(self) -> Optional[str]:
         """The karaoke song's catalogue genre as a vocabulary word (SONG_GENRES), while it plays; else None."""
@@ -3907,10 +3960,10 @@ class Director:
         its terms: 0.5 + conf x (music - 0.5)."""
         heard = 0.5 + conf * (music - 0.5)
         bc = (self.cfg.get("bands") or {}).get("base")
-        rel = self._rel_loudness(now_s)                  # a karaoke song's own loudness, -1..1 (None: not known)
+        inten = self._intensity(now_s)                   # the track against itself, 0..1 (None: not known yet)
         if not bc:
-            if rel is not None:
-                heard = 0.5 + max(-REL_SWING_DOWN, min(REL_SWING, REL_SWING * rel))
+            if inten is not None:
+                return _c01(0.5 + self._int_swing(inten))
             return _c01(heard + self._section_lift())
         h = self._swing_hist
         if not h or now_s - h[-1][0] >= 1.0:
@@ -3964,10 +4017,10 @@ class Director:
         self._band_base = round(base, 3)
         med = statistics.median(m for _, m in h) if h else music
         sw = max(-bc["swing_max_down"], min(bc["swing_max"], bc["swing"] * conf * (music - med)))
-        if rel is not None:                              # the song against itself, in dB: any mic gain
-            sw = max(-REL_SWING_DOWN, min(REL_SWING, REL_SWING * rel))
         sec = (self._mc or {}).get("section") if isinstance((self._mc or {}).get("section"), dict) else {}
         lift = bc["phase_lift"].get(sec.get("phase"), 0.0) if isinstance(sec.get("phase"), str) else 0.0
+        if inten is not None:                            # the track against itself: base +- INT_SPAN (any mic gain)
+            return _c01(base + self._int_swing(inten) + lift)
         return _c01(base + sw + lift + self._section_lift())
 
     def _band_words(self, e: float) -> Optional[dict]:
@@ -4360,8 +4413,8 @@ class Director:
         e_dir = e if feel_on else _c01(_num(m.get("band_energy"), e) or 0.0)
         lplan = msec.get("plan") if msec is not None and isinstance(msec.get("plan"), dict) else None
         lkind = msec.get("kind") if lplan is not None and isinstance(msec.get("kind"), str) else None
-        if lkind is not None and feel_on:                # the karaoke section's shape (no feel: in the band energy)
-            e_dir = _c01(e_dir + self._section_lift())
+        if lkind is not None and feel_on and getattr(self, "_int_ema", None) is None:
+            e_dir = _c01(e_dir + self._section_lift())   # the karaoke section's shape, until the music's own is known
         sc = self._song_char()
         if section_ref is not None and lkind is not None:
             section_ref["kind"] = lkind
