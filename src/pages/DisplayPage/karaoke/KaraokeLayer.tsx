@@ -1332,7 +1332,7 @@ const cornerStyle: CSSProperties = {
   fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
 };
 /** A soft dark pool behind the lyrics (owner, 25 Nov: "20% dark blurry area behind them (no sharp edges) to improve
- *  legibility on complex dynamic rendered backgrounds"; 26 Nov: deeper, for the busy photo scenes): darker in the middle, to nothing at the edges, sized to the
+ *  legibility on complex dynamic rendered backgrounds"; 26 Nov: deeper, over every scene): darker in the middle, to nothing at the edges, sized to the
  *  lines it sits behind (a wrapped line, the next line). Darkens only: no backdrop blur over the live render. */
 const backdropStyle: CSSProperties = {
   position: "absolute",
@@ -1346,9 +1346,9 @@ const backdropStyle: CSSProperties = {
   pointerEvents: "none",
   transition: "opacity 0.6s ease",
 };
-/** The lyrics' part of the screen, a shade darker (owner, 26 Nov: the busy photo scenes want "more local contrast for
- *  the lyrics ... a black faded area for the lyric area of the screen -- not too conspicuous"): from the bottom edge,
- *  fading to nothing above the lines; the pool (backdropStyle) darkens the words' own place more. */
+/** The lyrics' part of the screen, a shade darker, over every scene (owner, 26 Nov: "more local contrast for the
+ *  lyrics ... a black faded area for the lyric area of the screen -- not too conspicuous"; "it's a general problem"):
+ *  from the bottom edge, fading to nothing above the lines; the pool (backdropStyle) darkens the words' own place more. */
 const bandStyle: CSSProperties = {
   position: "absolute",
   zIndex: -1,
