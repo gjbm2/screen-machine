@@ -5181,7 +5181,10 @@ class Director:
         p = self._pic
         if p is None or self._mono() - p["at"] > PICTURE_STALE_S:
             return None
-        return self.pic_facts.of(p.get(which) or p.get("now"))
+        f = self.pic_facts.of(p.get(which) or p.get("now"))
+        if which != "now" and f is not None and all(f.get(k) is None for k in ("dir", "pace", "busy")):
+            f = self.pic_facts.of(p.get("now")) or f      # nothing known of the queued scene: the one showing
+        return f
 
     def _picture_view(self) -> Optional[dict]:
         p = self._pic
