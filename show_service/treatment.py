@@ -639,7 +639,7 @@ class Treatments:
         fam_ok = set(opts["families"])
         fams = [f for f in data.get("families") or [] if isinstance(f, str) and f in fam_ok][:3] or old["families"]
         avoid = [f for f in data.get("avoid_families") or [] if isinstance(f, str) and f in fam_ok
-                 and f not in fams][:3]
+                 and f not in fams and f != "photo"][:3]   # the photo looks' share is the photos' own (director)
         pal = data.get("palette") if data.get("palette") in opts["palettes"] and not ev.get("palette_pick") else None
         lights = {}
         for row in data.get("lights") or []:

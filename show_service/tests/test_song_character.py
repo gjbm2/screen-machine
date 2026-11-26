@@ -146,3 +146,12 @@ def test_the_ais_section_curve_shapes_the_lift(tmp_path):
     r.d.treat.plan = {"sections": None}
     assert r.d._section_lift() == dmod.SECTION_ENERGY["chorus"]
     r.d.treat.plan = real
+
+
+def test_a_quiet_room_never_flattens_a_playing_karaoke_song(tmp_path):
+    """The laptop's mic barely hears the screen: "quiet" must not relax the director to the centre while a song plays."""
+    r = karaoke_rig(tmp_path)
+    r.ctx.situations = lambda: {"quiet": {"value": True}, "talking": {"value": False}}
+    r.run(20.0)
+    assert r.d._relax < 0.1 and r.d.lv > 0.9
+    assert last_dir(r)["energy"] == pytest.approx(r.d.music["band_energy"], abs=0.02)   # the song's, not the centre

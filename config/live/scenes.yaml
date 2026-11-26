@@ -267,28 +267,28 @@ song-photos-drift:
   source: song_photos
   params: {layout: drift, bars: 2.0, bars_fast: 1.0, zoom: 0.4,
            energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
-  tags: {energy: [0.0, 0.8], moods: [warm, elegant, dreamy, calm, mellow], sections: [verse, outro], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 1.0}
+  tags: {energy: [0.2, 0.85], moods: [warm, elegant, dreamy, calm, mellow], sections: [verse, chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 1.0}
 
 song-photos-floating:
   label: "Song photos: floating prints"
   source: song_photos
   params: {layout: float, motion: 1.0, zoom: 0.25,
            energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
-  tags: {energy: [0.0, 0.7], moods: [dreamy, warm, mellow, elegant, calm], sections: [verse, instrumental, outro], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 1.0}
+  tags: {energy: [0.0, 0.6], moods: [dreamy, warm, mellow, elegant, calm], sections: [verse, instrumental, outro], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 1.0}
 
 song-photos-film-strip:
   label: "Song photos: film strip"
   source: song_photos
   params: {layout: strip, motion: 1.0, zoom: 0.3,
            energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
-  tags: {energy: [0.2, 0.9], moods: [playful, bright, retro, warm], sections: [verse, chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 1.0}
+  tags: {energy: [0.3, 0.9], moods: [playful, bright, retro, warm], sections: [verse, chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 1.0}
 
 song-photos-mosaic:
   label: "Song photos: mosaic"
   source: song_photos
   params: {layout: mosaic, bars: 1.0, bars_fast: 0.5, zoom: 0.3,
            energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
-  tags: {energy: [0.4, 1.0], moods: [euphoric, playful, bright, geometric, aggressive], sections: [chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 1.0}
+  tags: {energy: [0.45, 1.0], moods: [euphoric, playful, bright, geometric, aggressive], sections: [chorus, verse], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 1.0}
 
 song-photos-sketchbook:
   label: "Song photos: sketchbook"
@@ -296,7 +296,7 @@ song-photos-sketchbook:
   params: {layout: drift, bars: 2.0, bars_fast: 1.0, zoom: 0.35,
            energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
   effects: [sketch_hatch-ink-sketchbook]
-  tags: {energy: [0.0, 0.65], moods: [elegant, mellow, warm, calm, dreamy], sections: [verse], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.9}
+  tags: {energy: [0.0, 0.5], moods: [elegant, mellow, warm, calm, dreamy], sections: [verse], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.9}
 
 song-photos-video-wall:
   label: "Song photos: video wall"
@@ -304,7 +304,7 @@ song-photos-video-wall:
   params: {layout: drift, bars: 1.0, bars_fast: 0.5, zoom: 0.3,
            energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
   effects: [tile-split-video-wall]
-  tags: {energy: [0.45, 1.0], moods: [euphoric, playful, bright, aggressive], sections: [chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 1.0}
+  tags: {energy: [0.5, 1.0], moods: [euphoric, playful, bright, aggressive], sections: [chorus, verse], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 1.0}
 
 song-photos-cube-wall:
   label: "Song photos: cube wall"
@@ -312,7 +312,7 @@ song-photos-cube-wall:
   params: {layout: drift, bars: 1.0, bars_fast: 0.5, zoom: 0.3,
            energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
   effects: [cube-grid-diagonal-wall]
-  tags: {energy: [0.4, 0.95], moods: [playful, geometric, euphoric, aggressive], sections: [chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.9}
+  tags: {energy: [0.45, 1.0], moods: [playful, geometric, euphoric, aggressive], sections: [chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.9}
 
 song-photos-globe:
   label: "Song photos: globe"
@@ -320,7 +320,7 @@ song-photos-globe:
   params: {layout: float, motion: 1.2, zoom: 0.2,
            energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
   effects: [globe-wrap-world]
-  tags: {energy: [0.1, 0.6], moods: [dreamy, cosmic, elegant], sections: [instrumental, outro, verse], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.7}
+  tags: {energy: [0.1, 0.5], moods: [dreamy, cosmic, elegant], sections: [instrumental, outro], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.7}
 
 song-photos-landscape:
   label: "Song photos: photo landscape"
@@ -328,7 +328,7 @@ song-photos-landscape:
   params: {layout: drift, bars: 2.0, bars_fast: 1.0, zoom: 0.3,
            energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
   effects: [luma-terrain-misty-peaks]
-  tags: {energy: [0.15, 0.7], moods: [dreamy, cosmic, calm], sections: [instrumental, outro], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.6}
+  tags: {energy: [0.1, 0.5], moods: [dreamy, cosmic, calm], sections: [instrumental, outro], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.6}
 
 song-photos-echo:
   label: "Song photos: echo trails"
@@ -336,7 +336,7 @@ song-photos-echo:
   params: {layout: float, motion: 1.6, zoom: 0.3,
            energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
   effects: [feedback-echo-tunnel]
-  tags: {energy: [0.45, 1.0], moods: [euphoric, hypnotic, tense, dark], sections: [chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.9}
+  tags: {energy: [0.5, 1.0], moods: [euphoric, hypnotic, tense, dark], sections: [chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.9}
 
 song-photos-pop-art:
   label: "Song photos: pop art"
@@ -344,4 +344,4 @@ song-photos-pop-art:
   params: {layout: mosaic, bars: 1.0, bars_fast: 0.5, zoom: 0.3,
            energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
   effects: [halftone-pop-art]
-  tags: {energy: [0.35, 0.9], moods: [playful, retro, bright], sections: [verse, chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.9}
+  tags: {energy: [0.35, 0.95], moods: [playful, retro, bright], sections: [verse, chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.9}

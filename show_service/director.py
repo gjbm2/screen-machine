@@ -1616,6 +1616,13 @@ class Director:
                 if self.lv <= 0.0:
                     self._cold = True
             gate, drive = 0.0, 0.0
+        # a karaoke song playing IS live music, however little of it the room mic hears (26 Nov: on the laptop the
+        # mic barely hears the screen's speakers, so the director read the room as quiet, relaxed and held every
+        # song at the feel's centre energy, 0.5; the song's own character and loudness then never reached the looks)
+        karaoke_on = self._karaoke_np() is not None
+        if karaoke_on:
+            self.lv = min(1.0, self.lv + dt / RECOVER_S) if not self._cold else 1.0
+            self._cold = False
         # silence -> a new song when the sound comes back
         if not fresh or gate < SILENT_GATE:
             if self._silent_since is None:
@@ -1662,8 +1669,8 @@ class Director:
         # relax (§8.5): quiet or talking, unless the vibe says otherwise; and no audio at all (liveness run down after
         # the hold and the fade, nobody playing): drift to the base look and stop changing, whatever the vibe says
         no_audio = not fresh and self.lv <= 0.0 and not playing
-        relax_want = 1.0 if (no_audio or (vs["relax_on_talk"] and (self._situation("quiet")
-                                                                     or self._situation("talking")))) else 0.0
+        relax_want = 1.0 if not karaoke_on and (no_audio or (vs["relax_on_talk"] and (self._situation("quiet")
+                                                                                       or self._situation("talking")))) else 0.0
         self._relax = _ema(self._relax, relax_want, dt, RELAX_TAU_S)
         was = self._relaxed
         self._relaxed = self._relax > 0.5
