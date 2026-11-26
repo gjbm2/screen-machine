@@ -453,6 +453,22 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
     return () => cancelAnimationFrame(raf);
   }, [active]);
 
+  // A song that ends in the dark (its outro, Curtain) keeps the screen dark a little past its end (Handover), while
+  // the art director takes the scene down to black on its own (the song's end: a fade-dark), so the two fades read as
+  // one: without it the veil went with the song and the scene showed again, mid-fade (owner, 26 Nov: "double fade").
+  type Frame = { key: string; t: number; dur: number | null };
+  const lastFrame = useRef<Frame | null>(null);
+  const endedFrame = useRef<Frame | null>(null); // the song before's last frame, once the next one has drawn
+  const [handover, setHandover] = useState<number | null>(null);
+  const songKey = active && song ? `${song.id}:${p?.qid ?? ""}` : null;
+  useEffect(() => {
+    const prev = lastFrame.current;
+    const last = endedFrame.current ?? (prev && prev.key !== songKey ? prev : null);
+    endedFrame.current = null;
+    if (!songKey) lastFrame.current = null;
+    if (last?.dur && last.t >= last.dur - HANDOVER_NEAR_S) setHandover(Date.now());
+  }, [songKey]);
+
   if (!on || !now) return null;
   if (screen && screen !== karaokeScreen(depRef.current, now.settings.screen)) return null; // not the karaoke screen
 
@@ -484,9 +500,14 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
   if (!held) heldSince.current = null;
   else if (heldSince.current === null) heldSince.current = Date.now();
   const soundHeld = held && heldSince.current !== null && Date.now() - heldSince.current > 1000;
+  if (songKey && song) {
+    if (lastFrame.current && lastFrame.current.key !== songKey) endedFrame.current = lastFrame.current; // a new song
+    lastFrame.current = { key: songKey, t, dur: song.audio_s ?? song.duration ?? null };
+  }
 
   return (
     <div data-sm-karaoke="" style={layerStyle}>
+      {handover !== null && <Handover key={handover} onDone={() => setHandover(null)} />}
       {active && song && (
         <>
           <Curtain t={t} song={song} doc={lyrics?.id === song.id ? lyrics.doc : null} />
@@ -551,6 +572,7 @@ const INTRO_MIN_S = 3; // the intro card stays at least this long (a song that s
 const INTRO_MAX_S = 12; // ...and at most this long, else until a second before the first line
 const FADE_UP_S = 2.5; // the scene fades up from dark at the start
 const OUTRO_S = 10; // and down to dark over the song's last seconds
+const OUTRO_VEIL = 0.92; // how dark
 const BALANCE = { textWrap: "balance" } as CSSProperties;
 const ramp = (x: number, a: number, b: number) => Math.max(0, Math.min(1, (x - a) / Math.max(1e-6, b - a)));
 
@@ -558,6 +580,34 @@ const ramp = (x: number, a: number, b: number) => Math.max(0, Math.min(1, (x - a
 function bigArt(url: string | null | undefined): string | null {
   if (!url) return null;
   return url.replace(/\/\d+x\d+bb\./, "/600x600bb.").replace(/\/\d+x\d+-000000-80-0-0\./, "/500x500-000000-80-0-0.");
+}
+
+const HANDOVER_NEAR_S = 2.5; // a song that ended this close to its end ended in the dark (the outro's veil)...
+const HANDOVER_HOLD_S = 3.2; // ...which stays this long (the art director's fade-dark: 2.5 s)...
+const HANDOVER_FADE_S = 2.5; // ...then lifts, onto the black the scene went to
+
+/** The dark across a song's end (KaraokeLayer): the outro's veil held, then lifted. Its own animation (the frame loop
+ *  stops with the song). */
+function Handover({ onDone }: { onDone: () => void }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const done = useRef(onDone);
+  done.current = onDone;
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const total = HANDOVER_HOLD_S + HANDOVER_FADE_S;
+    const anim = el.animate(
+      [
+        { opacity: OUTRO_VEIL, offset: 0 },
+        { opacity: OUTRO_VEIL, offset: HANDOVER_HOLD_S / total, easing: "ease-in-out" },
+        { opacity: 0, offset: 1 },
+      ],
+      { duration: total * 1000, fill: "forwards" },
+    );
+    anim.onfinish = () => done.current();
+    return () => anim.cancel();
+  }, []);
+  return <div ref={ref} style={{ position: "absolute", inset: 0, background: "#000", opacity: OUTRO_VEIL }} />;
 }
 
 function Curtain({ t, song, doc }: { t: number; song: KaraokeSong; doc: KaraokeLyrics | null }) {
@@ -580,7 +630,7 @@ function Curtain({ t, song, doc }: { t: number; song: KaraokeSong; doc: KaraokeL
     outro = ramp(t, dur - OUTRO_S, dur);
     cornerAt = Math.min(dur - OUTRO_S, (lastEnd ?? dur) + 1);
   }
-  const veil = Math.max(0.92 * fadeUp, 0.5 * card, 0.92 * outro * outro * (3 - 2 * outro));
+  const veil = Math.max(OUTRO_VEIL * fadeUp, 0.5 * card, OUTRO_VEIL * outro * outro * (3 - 2 * outro));
   const corner = ramp(t, cornerAt, cornerAt + 1);
   const art = bigArt(song.art);
   const writers = (song.writers ?? []).filter(Boolean);
@@ -875,6 +925,7 @@ function Lyrics({
 
   return (
     <div style={lyricsBoxStyle}>
+      <div aria-hidden style={{ ...bandStyle, opacity: bigLine || small ? 1 : 0 }} />
       <div
         style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.8vh" }}
       >
@@ -1281,7 +1332,7 @@ const cornerStyle: CSSProperties = {
   fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
 };
 /** A soft dark pool behind the lyrics (owner, 25 Nov: "20% dark blurry area behind them (no sharp edges) to improve
- *  legibility on complex dynamic rendered backgrounds"): darker in the middle, to nothing at the edges, sized to the
+ *  legibility on complex dynamic rendered backgrounds"; 26 Nov: deeper, for the busy photo scenes): darker in the middle, to nothing at the edges, sized to the
  *  lines it sits behind (a wrapped line, the next line). Darkens only: no backdrop blur over the live render. */
 const backdropStyle: CSSProperties = {
   position: "absolute",
@@ -1291,9 +1342,23 @@ const backdropStyle: CSSProperties = {
   top: "-6vh",
   bottom: "-5vh",
   background:
-    "radial-gradient(closest-side, rgba(0,0,0,0.3), rgba(0,0,0,0.22) 45%, rgba(0,0,0,0.08) 75%, rgba(0,0,0,0))",
+    "radial-gradient(closest-side, rgba(0,0,0,0.42), rgba(0,0,0,0.32) 45%, rgba(0,0,0,0.12) 75%, rgba(0,0,0,0))",
   pointerEvents: "none",
   transition: "opacity 0.6s ease",
+};
+/** The lyrics' part of the screen, a shade darker (owner, 26 Nov: the busy photo scenes want "more local contrast for
+ *  the lyrics ... a black faded area for the lyric area of the screen -- not too conspicuous"): from the bottom edge,
+ *  fading to nothing above the lines; the pool (backdropStyle) darkens the words' own place more. */
+const bandStyle: CSSProperties = {
+  position: "absolute",
+  zIndex: -1,
+  left: 0,
+  right: 0,
+  bottom: "-7vh",
+  height: "52vh",
+  background: "linear-gradient(to top, rgba(0,0,0,0.36), rgba(0,0,0,0.28) 30%, rgba(0,0,0,0.1) 68%, rgba(0,0,0,0))",
+  pointerEvents: "none",
+  transition: "opacity 0.8s ease",
 };
 /** The leaving line: just above the big one, out of the layout. */
 const leaveStyle: CSSProperties = {
