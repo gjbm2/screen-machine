@@ -11,6 +11,9 @@
   * listener   the listener's trajectory at conf >= the director's LLM_CONF -> the ``listener`` map, weight
                ``sources.listener`` x conf;
   * moods      room.direction's first three moods -> the ``moods`` map, ``sources.moods`` / 3 each.
+  * screen     the direction the scene on the screens travels (picture.py: a tunnel inward, a kaleidoscope cw, fire
+               up), weight ``sources.screen`` x how sure the read is (owner, 26 Nov: the lights' motion matches the
+               scenes).
 
 **The decision** (``step``). net[d] = score[d] - score[opposite d]; the leader is the largest net, or ``still`` under
 ``min_score`` (or the energy under ``still_below_energy``). A new leader must beat the current dir by ``margin`` and
@@ -39,7 +42,7 @@ _OPP = getattr(contract, "FLOW_OPPOSITE", {"up": "down", "left": "right", "cw": 
 FLOW_OPPOSITE: dict[str, str] = {**_OPP, **{v: k for k, v in _OPP.items()}}
 STILL = FLOW_DIRS[0]
 SYMMETRIES: tuple[str, ...] = getattr(contract, "FLOW_SYMMETRY", ("none", "mirror"))
-SOURCES: tuple[str, ...] = ("structure", "pitch", "listener", "moods")   # the voting FLOW_SOURCES (show.yaml sources)
+SOURCES: tuple[str, ...] = ("structure", "pitch", "listener", "moods", "screen")   # the voting FLOW_SOURCES (show.yaml sources)
 EVENT_KEYS = frozenset({"dir", "bars", "then", "sweep_beats"})
 #: the why's words for a section phase or a music event (contract.SECTION_PHASES / MUSIC_EVENT_KINDS words)
 PHASE_WHY = {"calm": "a calm passage", "build": "the song builds", "peak": "the peak", "drop": "a drop",
@@ -54,7 +57,7 @@ NO_GRID_BAR_S = 2.0                 # an event's bars with no clock grid: the di
 #: (docs/LIGHTS.md §12; the file's values win). The maps are empty: with no lights block nothing votes (still), and
 #: the mirror ball and the blinds are off.
 FLOW_FALLBACK: dict[str, Any] = {
-    "centre": None, "sources": {"structure": 1.0, "pitch": 0.6, "listener": 0.5, "moods": 0.3},
+    "centre": None, "sources": {"structure": 1.0, "pitch": 0.6, "listener": 0.5, "moods": 0.3, "screen": 0.0},
     "structure": {}, "listener": {}, "moods": {}, "pitch": {"window_s": 4.0, "slope": 0.03, "min_conf": 0.5},
     "events": {}, "min_score": 0.25, "margin": 0.15, "dwell_s": 8.0, "still_below_energy": 0.15,
     "cross_beats": [16.0, 2.0], "cross_s": [8.0, 1.0], "speed": {"pace": 0.6, "energy": 0.4}, "spread": "look.spread",
@@ -345,9 +348,11 @@ class FlowDecider:
 
     # -- votes ----------------------------------------------------------------------------------------------------
     def votes(self, *, phase: Optional[str], register: Optional[tuple[float, float, float]],
-              trajectory: Optional[dict], moods: list[str], energy: float) -> dict[str, float]:
+              trajectory: Optional[dict], moods: list[str], energy: float,
+              screen: Optional[tuple[str, float, str]] = None) -> dict[str, float]:
         """This tick's score per dir (module docstring). ``register``: (t_s, register 0..1, conf) while harmony is
-        fresh and the gate open, else None."""
+        fresh and the gate open, else None. ``screen``: (dir, how sure 0..1, the scene's name): the direction the
+        picture on the screens travels (picture.py), weight ``sources.screen`` x sure."""
         c = self.cfg
         src = c["sources"]
         self._phase, self._energy = phase, energy
@@ -388,6 +393,9 @@ class FlowDecider:
         for m in [x for x in (moods or []) if isinstance(x, str)][:3]:
             if m in c["moods"]:
                 add("moods", c["moods"][m], float(src.get("moods", 0.0)) / 3.0, f"{m} mood")
+        if screen is not None:
+            add("screen", screen[0], float(src.get("screen", 0.0)) * _c01(float(screen[1])),
+                f"the picture ({screen[2]}) moves that way")
         self.last_votes, self._by = scores, by
         return scores
 

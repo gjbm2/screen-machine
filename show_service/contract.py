@@ -583,7 +583,7 @@ class LightSceneDrop(TypedDict):
 
 # -- light programs and flow (docs/LIGHTS.md §4, §7; the catalogue builder's, 18 Oct) ---------------------------------
 #: FlowData.source: what decided the flow (flow.py). "event": a drop, a build or a new song bypassed the dwell
-FLOW_SOURCES: tuple[str, ...] = ("structure", "event", "pitch", "listener", "moods", "none")
+FLOW_SOURCES: tuple[str, ...] = ("structure", "event", "pitch", "listener", "moods", "screen", "none")
 FLOW_SYMMETRY: tuple[str, ...] = ("none", "mirror")      # FlowData.symmetry (show.yaml lights.flow.symmetry)
 LIGHT_TRANSITION_KINDS: tuple[str, ...] = ("cut", "dark_move", "crossfade", "fade_dark", "sweep")
 LIGHT_EFFECT_TRIGGERS: tuple[str, ...] = ("drop", "build", "breakdown", "peak", "section_change", "track_change",

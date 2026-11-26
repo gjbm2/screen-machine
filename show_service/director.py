@@ -188,6 +188,7 @@ from . import compose as comp
 from . import contract
 from . import appliances as appmod
 from . import atmosphere as atmod
+from . import picture as picmod
 from . import flow as flowmod
 from . import light_scenes as lscenes
 from . import palette as pal
@@ -208,6 +209,10 @@ SCREEN_KIND = "screen"              # patch.yaml device kind (room_service/dmx/p
 LAMP_KIND = "lamp"                  # contract.FIXTURE_KINDS: a fixtures.yaml type's kind for a lamp (Stage 5)
 COLOUR_ATTR = "colour"              # contract TypeInfo.attrs: a type the engine can colour
 RGB_FIELDS = ("r", "g", "b")
+RENDERER_SESSIONS_PATH = "/renderer/api/sessions"    # what each screen shows now and next (picture.py), the same door
+PICTURE_POLL_S = 1.0                # how often, while the show drives (pal_on); PICTURE_IDLE_POLL_S otherwise
+PICTURE_IDLE_POLL_S = 10.0
+PICTURE_STALE_S = 15.0              # a picture not heard of for this long says nothing
 RENDERER_CATALOG_PATH = "/renderer/api/catalog"      # stream_service's catalog through room's one front door
 ART_PATHS = ("/api/v1/screens/{id}/art",                 # the live art feed: the TV's art now, as on the glass
              "/api/v1/screens/{id}/snapshots/anchor.png")  # else the still room took at the last cut
@@ -957,6 +962,11 @@ class Director:
         self._art_error: Optional[str] = None
         self._cat_next = 0.0
         self._cat_busy = False
+        # the picture on the screens (picture.py; owner, 26 Nov): what shows now and what is queued next
+        self.pic_facts = picmod.Facts()
+        self._pic: Optional[dict] = None                 # {"at": mono s, "screen", "now", "next", "fx": [names]}
+        self._pic_next = 0.0
+        self._pic_busy = False
         self._tasks: set = set()
         self._reload_next = 0.0
         # outputs
@@ -1552,6 +1562,10 @@ class Director:
             self._poll_light_scenes()
             self._poll_space()
             self._poll_interplays()
+            try:
+                self.pic_facts.poll()
+            except Exception:                             # a broken facts file never fails the tick
+                log.debug("picture: facts poll failed", exc_info=True)
         self._check_rig()
         self._fetches(now_s)
 
@@ -2856,10 +2870,15 @@ class Director:
                 continue
             try:
                 want = ((self.treat.plan or {}).get("lights") or {}).get(gid)   # README S5.33: the plan's
+                pic = self._picture("next")                # the picture this look shows (picture.py)
+                prefer = picmod.prefer(self.light_scenes.scenes, pic)
+                pwhy = {n: f"fits the picture ({pic['name']})" for n, f in prefer.items() if f > 1.0}
+                if want:
+                    prefer[want] = prefer.get(want, 1.0) * float(self.treat.cfg["light_prefer"])
+                    pwhy[want] = "the plan's pick"
                 got = self.light_scenes.pick_for(g, self.direction, self._flow, self._ls_rng,
                                                  avoid=old.get("scene") if old else None, tags=self._light_tags,
-                                                 hard_avoid=human,
-                                                 prefer={want: float(self.treat.cfg["light_prefer"])} if want else None)
+                                                 hard_avoid=human, prefer=prefer or None, prefer_why=pwhy)
             except Exception:                             # a broken catalogue never fails the tick
                 log.exception("light scenes: pick failed")
                 got = None
@@ -3353,9 +3372,11 @@ class Director:
         traj = b.get("trajectory") if isinstance(b, dict) and b.get("state") in ("fresh", "holding") else None
         d = self.direction or {}
         e = _num(d.get("energy"), _num(m.get("energy")))
+        pic = self._picture("now")
         votes = self._flow_dec.votes(phase=self._phase_eff(now_s), register=reg,
                                      trajectory=traj if isinstance(traj, dict) else None,
-                                     moods=list(d.get("moods") or []), energy=e if e is not None else 0.5)
+                                     moods=list(d.get("moods") or []), energy=e if e is not None else 0.5,
+                                     screen=(pic["dir"], pic["sure"], pic["name"]) if pic and pic.get("dir") else None)
         self._flow_dec.step(now_s, votes)
 
     def _look_value(self, word: Any, energy: float) -> Optional[float]:
@@ -5095,6 +5116,10 @@ class Director:
         loop, get = self.ctx.loop, self.ctx.room_get
         if loop is None or get is None:
             return
+        if not self._pic_busy and now_s >= self._pic_next:
+            self._pic_next = now_s + (PICTURE_POLL_S if self.pal_on else PICTURE_IDLE_POLL_S)
+            self._pic_busy = True
+            self._spawn(loop, self._fetch_picture())
         if not self._cat_busy and now_s >= self._cat_next:
             self._cat_next = now_s + CATALOG_POLL_S
             self._cat_busy = True
@@ -5120,6 +5145,51 @@ class Director:
             return
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
+
+    async def _fetch_picture(self) -> None:
+        """What the first live screen shows and has queued next (the renderer's GET /api/sessions, through room)."""
+        try:
+            st, body = await self.ctx.room_get(RENDERER_SESSIONS_PATH)
+            if st != 200 or not body:
+                return
+            got = json.loads(body)
+            ss = got.get("sessions") if isinstance(got, dict) else got
+            live = sorted((x for x in ss or [] if isinstance(x, dict) and x.get("state") in ("live", "entering")),
+                          key=lambda x: str(x.get("screen")))
+            if not live:
+                self._pic = None
+                return
+            x = live[0]
+            up = x.get("upnext") if isinstance(x.get("upnext"), dict) else {}
+            nxt = next((u.get("scene") for u in up.get("scenes") or [] if isinstance(u, dict) and u.get("scene")),
+                       None)
+            fx = x.get("fx") if isinstance(x.get("fx"), dict) else {}
+            names = [str(e.get("effect") or e.get("name") or e.get("preset")) for e in fx.get("stack") or []
+                     if isinstance(e, dict)]
+            self._pic = {"at": self._mono(), "screen": x.get("screen"), "now": x.get("scene"), "next": nxt,
+                         "fx": names}
+        except asyncio.CancelledError:
+            raise
+        except Exception:                                 # noqa: BLE001 - no picture: the lights go by the music
+            log.debug("picture: fetch failed", exc_info=True)
+        finally:
+            self._pic_busy = False
+
+    def _picture(self, which: str = "now") -> Optional[dict]:
+        """The facts (picture.Facts.of) of the scene the screens show ``now`` or have queued ``next`` (``next`` falls
+        back to now); None with no fresh picture."""
+        p = self._pic
+        if p is None or self._mono() - p["at"] > PICTURE_STALE_S:
+            return None
+        return self.pic_facts.of(p.get(which) or p.get("now"))
+
+    def _picture_view(self) -> Optional[dict]:
+        p = self._pic
+        if p is None:
+            return None
+        return {"screen": p.get("screen"), "now": self.pic_facts.of(p.get("now")),
+                "next": self.pic_facts.of(p.get("next")), "fx": list(p.get("fx") or ()),
+                "age_s": round(self._mono() - p["at"], 1), "facts_error": self.pic_facts.error}
 
     async def _fetch_catalog(self) -> None:
         try:
@@ -5578,6 +5648,7 @@ class Director:
                             "catalogue": self.light_scenes.view()},
             "lights": self._lights_view(now_s),                  # docs/LIGHTS.md §7.3
             "atmosphere": self.haze_view(),                     # the haze (atmosphere.py)
+            "picture": self._picture_view(),                    # what the screens show, for the lights (picture.py)
             "ensemble": self.ensemble.view(now_s) if self.ensemble is not None else None,   # docs/ENSEMBLE.md §5.6
             "treatment": self.treat.view(now_s),                 # README S5.33
             "reasoning": self._reasoning(now_s)}                 # the Room page's "How it's deciding"

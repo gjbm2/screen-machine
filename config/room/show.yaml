@@ -1076,7 +1076,10 @@ lights:
     effect_gap_bars: 4                      # a new effect at most this often per group (a drop always may)
   flow:
     centre: null                            # a Room map name the flow turns round / bursts from; null: the room's centre
-    sources: {structure: 1.0, pitch: 0.6, listener: 0.5, moods: 0.3}
+    # screen (owner, 26 Nov): the direction the picture on the screens travels (show_service/picture.py: a tunnel is
+    # inward, a kaleidoscope cw, fire up; config/live/scene_motion.generated.json, corrected by hand in
+    # scene_motion.yaml). Just under the music's own structure, so a build or a drop still wins its moment.
+    sources: {structure: 1.0, pitch: 0.6, listener: 0.5, moods: 0.3, screen: 0.9}
     structure: {build: up, peak: cw, drop: outward, breakdown: inward, outro: down, calm: still}
     listener: {building: up, peak: outward, releasing: down, winding_down: inward}
     moods: {euphoric: up, bright: up, cosmic: cw, hypnotic: cw, liquid: right, dreamy: still, calm: still,

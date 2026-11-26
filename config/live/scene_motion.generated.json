@@ -1,0 +1,5005 @@
+{
+ "format": 1,
+ "gen": "2026-11-26T18:21:43+0000",
+ "scenes": {
+  "apollonian-foam-coral": {
+   "bright": 0.289,
+   "busy": 0.583,
+   "dir": "cw",
+   "pace": 0.341,
+   "said": [
+    "orbits"
+   ]
+  },
+  "apollonian-foam-dusk": {
+   "bright": 0.356,
+   "busy": 0.274,
+   "dir": "up",
+   "pace": 0.2,
+   "said": [
+    "bubbles"
+   ]
+  },
+  "black-hole-gargantua": {
+   "bright": 0.556,
+   "busy": 0.444,
+   "dir": null,
+   "pace": 0.256,
+   "said": []
+  },
+  "black-hole-neon-maw": {
+   "bright": 0.671,
+   "busy": 0.432,
+   "dir": "cw",
+   "pace": 0.251,
+   "said": [
+    "rotates",
+    "swirling"
+   ]
+  },
+  "caustic-depths-kelp-cathedral": {
+   "bright": 0.639,
+   "busy": 0.14,
+   "dir": "down",
+   "pace": 0.346,
+   "said": [
+    "snow"
+   ]
+  },
+  "caustic-depths-turquoise-shallows": {
+   "bright": 0.781,
+   "busy": 0.177,
+   "dir": null,
+   "pace": 0.315,
+   "said": []
+  },
+  "chladni-ember-sand": {
+   "bright": 0.096,
+   "busy": 0.49,
+   "dir": null,
+   "pace": 0.121,
+   "said": []
+  },
+  "chladni-ice-rings": {
+   "bright": 0.071,
+   "busy": 0.65,
+   "dir": null,
+   "pace": 0.089,
+   "said": []
+  },
+  "chladni-prism-lattice": {
+   "bright": 0.089,
+   "busy": 0.594,
+   "dir": "cw",
+   "pace": 0.096,
+   "said": [
+    "rotated"
+   ]
+  },
+  "cloud-flyover-euphoric-peaks": {
+   "bright": 0.911,
+   "busy": 0.395,
+   "dir": "inward",
+   "pace": 0.389,
+   "said": [
+    "flight"
+   ]
+  },
+  "cloud-flyover-golden-dawn": {
+   "bright": 0.801,
+   "busy": 0.463,
+   "dir": "up",
+   "pace": 0.286,
+   "said": [
+    "rising"
+   ]
+  },
+  "copper_bars-amiga-chrome": {
+   "bright": 0.219,
+   "busy": 0.463,
+   "dir": "right",
+   "pace": 0.734,
+   "said": [
+    "horizontal"
+   ]
+  },
+  "copper_bars-kefrens-wall": {
+   "bright": 0.256,
+   "busy": 0.884,
+   "dir": "cw",
+   "pace": 0.931,
+   "said": [
+    "twisting"
+   ]
+  },
+  "crystal-mirror-candy-prism": {
+   "bright": 0.384,
+   "busy": 0.451,
+   "dir": "cw",
+   "pace": 0.168,
+   "said": [
+    "tumbling"
+   ]
+  },
+  "crystal-mirror-ice-jewel": {
+   "bright": 0.229,
+   "busy": 0.481,
+   "dir": "cw",
+   "pace": 0.229,
+   "said": [
+    "tumbling"
+   ]
+  },
+  "curl-particles-silk-wind": {
+   "bright": 0.306,
+   "busy": 0.714,
+   "dir": "cw",
+   "pace": 0.134,
+   "said": [
+    "swirling"
+   ]
+  },
+  "curl-particles-vortex-mandala": {
+   "bright": 0.391,
+   "busy": 0.626,
+   "dir": "outward",
+   "pace": 0.114,
+   "said": [
+    "outward"
+   ]
+  },
+  "demo-fire-blue-ring": {
+   "bright": 0.481,
+   "busy": 0.186,
+   "dir": "up",
+   "pace": 0.484,
+   "said": [
+    "fire",
+    "flame",
+    "rising"
+   ]
+  },
+  "demo-fire-doom": {
+   "bright": 0.724,
+   "busy": 0.216,
+   "dir": "up",
+   "pace": 0.864,
+   "said": [
+    "fire",
+    "flames",
+    "upward"
+   ]
+  },
+  "drift-clouds-dusk-drift": {
+   "bright": 0.681,
+   "busy": 0.064,
+   "dir": "right",
+   "pace": 0.311,
+   "said": [
+    "drifting across"
+   ]
+  },
+  "drift-clouds-neon-night": {
+   "bright": 0.464,
+   "busy": 0.444,
+   "dir": null,
+   "pace": 0.495,
+   "said": []
+  },
+  "dune-sea-golden-hour": {
+   "bright": 0.929,
+   "busy": 0.064,
+   "dir": "outward",
+   "pace": 0.168,
+   "said": [
+    "ripples"
+   ]
+  },
+  "dune-sea-moonlit-stars": {
+   "bright": 0.334,
+   "busy": 0.177,
+   "dir": null,
+   "pace": 0.079,
+   "said": []
+  },
+  "earth-aurora-crimson-dawn": {
+   "bright": 0.274,
+   "busy": 0.689,
+   "dir": "down",
+   "pace": 0.204,
+   "said": [
+    "downward"
+   ]
+  },
+  "earth-aurora-polar-night": {
+   "bright": 0.221,
+   "busy": 0.624,
+   "dir": "cw",
+   "pace": 0.239,
+   "said": [
+    "orbit"
+   ]
+  },
+  "electric-storm-horizon": {
+   "bright": 0.019,
+   "busy": 0.164,
+   "dir": "right",
+   "pace": 0.193,
+   "said": [
+    "horizontal"
+   ]
+  },
+  "electric-storm-plasma-ring": {
+   "bright": 0.016,
+   "busy": 0.099,
+   "dir": null,
+   "pace": 0.085,
+   "said": []
+  },
+  "electric-storm-tempest": {
+   "bright": 0.101,
+   "busy": 0.451,
+   "dir": null,
+   "pace": 0.306,
+   "said": []
+  },
+  "fireflies-sync-forest-chorus": {
+   "bright": 0.421,
+   "busy": 0.506,
+   "dir": null,
+   "pace": 0.631,
+   "said": []
+  },
+  "fireflies-sync-meadow": {
+   "bright": 0.496,
+   "busy": 0.524,
+   "dir": "right",
+   "pace": 0.655,
+   "said": [
+    "sweeping across"
+   ]
+  },
+  "firework-show-golden-willows": {
+   "bright": 0.309,
+   "busy": 0.284,
+   "dir": "outward",
+   "pace": 0.111,
+   "said": [
+    "bursts",
+    "firework"
+   ]
+  },
+  "firework-show-harbour-night": {
+   "bright": 0.354,
+   "busy": 0.314,
+   "dir": "outward",
+   "pace": 0.176,
+   "said": [
+    "bursting",
+    "firework",
+    "fireworks"
+   ]
+  },
+  "fluid-ink-neon-swirl": {
+   "bright": 0.436,
+   "busy": 0.524,
+   "dir": "cw",
+   "pace": 0.676,
+   "said": [
+    "orbiting",
+    "swirl",
+    "swirling"
+   ]
+  },
+  "fluid-ink-paint-splash": {
+   "bright": 0.336,
+   "busy": 0.412,
+   "dir": "cw",
+   "pace": 0.671,
+   "said": [
+    "swirling"
+   ]
+  },
+  "fluid-ink-silk": {
+   "bright": 0.314,
+   "busy": 0.239,
+   "dir": null,
+   "pace": 0.338,
+   "said": []
+  },
+  "flurry-classic": {
+   "bright": 0.024,
+   "busy": 0.096,
+   "dir": "outward",
+   "pace": 0.081,
+   "said": [
+    "bursts"
+   ]
+  },
+  "flurry-tiedye-mandala": {
+   "bright": 0.251,
+   "busy": 0.329,
+   "dir": "up",
+   "pace": 0.274,
+   "said": [
+    "smoke"
+   ]
+  },
+  "fractal-dendrite": {
+   "bright": 0.664,
+   "busy": 0.809,
+   "dir": "inward",
+   "pace": 0.524,
+   "said": [
+    "zoom"
+   ]
+  },
+  "fractal-flame-ember-sheep": {
+   "bright": 0.136,
+   "busy": 0.424,
+   "dir": "up",
+   "pace": 0.092,
+   "said": [
+    "flame"
+   ]
+  },
+  "fractal-rabbit": {
+   "bright": 0.286,
+   "busy": 0.876,
+   "dir": "inward",
+   "pace": 0.544,
+   "said": [
+    "endless zoom",
+    "zoom"
+   ]
+  },
+  "fractal-seahorse": {
+   "bright": 0.689,
+   "busy": 0.994,
+   "dir": "inward",
+   "pace": 0.979,
+   "said": [
+    "endless zoom",
+    "inward",
+    "zoom"
+   ]
+  },
+  "fractal-zoom": {
+   "bright": 0.549,
+   "busy": 0.911,
+   "dir": "inward",
+   "pace": 0.812,
+   "said": [
+    "endless zoom",
+    "zoom"
+   ]
+  },
+  "gallery-contact-sheet": {
+   "bright": 0.855,
+   "busy": 0.63,
+   "dir": null,
+   "pace": 0.366,
+   "said": []
+  },
+  "gallery-favourites": {
+   "bright": 0.604,
+   "busy": 0.765,
+   "dir": null,
+   "pace": 0.141,
+   "said": []
+  },
+  "gallery-ghosts": {
+   "bright": 0.864,
+   "busy": 0.89,
+   "dir": null,
+   "pace": 0.284,
+   "said": []
+  },
+  "gallery-kaleidoscope": {
+   "bright": 0.649,
+   "busy": 0.821,
+   "dir": "cw",
+   "pace": 0.386,
+   "said": [
+    "kaleidoscope"
+   ]
+  },
+  "gallery-little-planets": {
+   "bright": 0.709,
+   "busy": 0.886,
+   "dir": null,
+   "pace": 0.215,
+   "said": []
+  },
+  "gallery-on-the-bar": {
+   "bright": 0.616,
+   "busy": 0.746,
+   "dir": null,
+   "pace": 0.328,
+   "said": []
+  },
+  "gallery-rush": {
+   "bright": 0.589,
+   "busy": 0.724,
+   "dir": "inward",
+   "pace": 0.559,
+   "said": [
+    "zoom"
+   ]
+  },
+  "gallery-show-colours": {
+   "bright": 0.601,
+   "busy": 0.853,
+   "dir": null,
+   "pace": 0.372,
+   "said": []
+  },
+  "geodesic-pulse-chrome-spidroball": {
+   "bright": 0.484,
+   "busy": 0.726,
+   "dir": "cw",
+   "pace": 0.666,
+   "said": [
+    "twisted"
+   ]
+  },
+  "geodesic-pulse-neon-eq": {
+   "bright": 0.609,
+   "busy": 0.671,
+   "dir": null,
+   "pace": 0.613,
+   "said": []
+  },
+  "glow-tunnel-liquid-ember": {
+   "bright": 0.676,
+   "busy": 0.34,
+   "dir": "inward",
+   "pace": 0.739,
+   "said": [
+    "flying",
+    "inward",
+    "tunnel",
+    "vortex"
+   ]
+  },
+  "glow-tunnel-neon-rush": {
+   "bright": 0.836,
+   "busy": 0.278,
+   "dir": "inward",
+   "pace": 0.718,
+   "said": [
+    "inward",
+    "tunnel"
+   ]
+  },
+  "gyroid-cave-diamond-lattice": {
+   "bright": 0.759,
+   "busy": 0.718,
+   "dir": "inward",
+   "pace": 0.846,
+   "said": [
+    "fly through",
+    "vortex"
+   ]
+  },
+  "gyroid-cave-dream": {
+   "bright": 0.554,
+   "busy": 0.345,
+   "dir": "inward",
+   "pace": 0.465,
+   "said": [
+    "flight",
+    "flight through"
+   ]
+  },
+  "harmonograph-3d-laser-weave": {
+   "bright": 0.046,
+   "busy": 0.164,
+   "dir": "cw",
+   "pace": 0.062,
+   "said": [
+    "rotating"
+   ]
+  },
+  "harmonograph-3d-silk-pendulum": {
+   "bright": 0.004,
+   "busy": 0.034,
+   "dir": "cw",
+   "pace": 0.005,
+   "said": [
+    "twisting"
+   ]
+  },
+  "harmony-spiral-fifths": {
+   "bright": null,
+   "busy": null,
+   "dir": "inward",
+   "pace": null,
+   "said": [
+    "inward",
+    "tunnels"
+   ]
+  },
+  "harmony-spiral-night": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "spiral"
+   ]
+  },
+  "hyper-lattice-deep-fold": {
+   "bright": 0.779,
+   "busy": 0.644,
+   "dir": "outward",
+   "pace": 0.629,
+   "said": [
+    "blooming"
+   ]
+  },
+  "hyper-lattice-neon-bloom": {
+   "bright": 0.821,
+   "busy": 0.606,
+   "dir": "outward",
+   "pace": 0.344,
+   "said": [
+    "bloom"
+   ]
+  },
+  "hyperspace-jump-light-speed": {
+   "bright": 0.381,
+   "busy": 0.421,
+   "dir": "inward",
+   "pace": 0.515,
+   "said": [
+    "hyperspace",
+    "warp speed"
+   ]
+  },
+  "hyperspace-jump-neon-vortex": {
+   "bright": 0.739,
+   "busy": 0.385,
+   "dir": "inward",
+   "pace": 0.776,
+   "said": [
+    "hyperspace",
+    "vortex"
+   ]
+  },
+  "infinite-arcs-ember-bands": {
+   "bright": 0.106,
+   "busy": 0.417,
+   "dir": "inward",
+   "pace": 0.18,
+   "said": [
+    "zooming",
+    "zooming into"
+   ]
+  },
+  "infinite-arcs-neon-tunnel": {
+   "bright": 0.091,
+   "busy": 0.549,
+   "dir": "inward",
+   "pace": 0.251,
+   "said": [
+    "inward",
+    "tunnel",
+    "zooming"
+   ]
+  },
+  "infinite-arcs-rainbow-lattice": {
+   "bright": 0.151,
+   "busy": 0.729,
+   "dir": "inward",
+   "pace": 0.366,
+   "said": [
+    "zoom",
+    "zoom in"
+   ]
+  },
+  "infinite-boxes-mondrian": {
+   "bright": 0.466,
+   "busy": 0.471,
+   "dir": "inward",
+   "pace": 0.246,
+   "said": [
+    "endless zoom",
+    "zoom"
+   ]
+  },
+  "infinite-boxes-neon-outlines": {
+   "bright": 0.395,
+   "busy": 0.733,
+   "dir": "inward",
+   "pace": 0.509,
+   "said": [
+    "zoom",
+    "zooming"
+   ]
+  },
+  "infinity-room-black-water": {
+   "bright": 0.036,
+   "busy": 0.177,
+   "dir": "inward",
+   "pace": 0.046,
+   "said": [
+    "receding"
+   ]
+  },
+  "infinity-room-souls": {
+   "bright": 0.184,
+   "busy": 0.535,
+   "dir": "outward",
+   "pace": 0.186,
+   "said": [
+    "outward"
+   ]
+  },
+  "ink-marbling-ebru": {
+   "bright": 0.614,
+   "busy": 0.838,
+   "dir": "cw",
+   "pace": 0.109,
+   "said": [
+    "swirls"
+   ]
+  },
+  "ink-marbling-ember-night": {
+   "bright": 0.519,
+   "busy": 0.776,
+   "dir": null,
+   "pace": 0.124,
+   "said": []
+  },
+  "isf-301-s-fire-shader-remix-gpt-modified": {
+   "bright": 0.624,
+   "busy": 0.302,
+   "dir": "up",
+   "pace": 0.844,
+   "said": [
+    "fire",
+    "flames",
+    "lick up"
+   ]
+  },
+  "isf-color-history": {
+   "bright": null,
+   "busy": null,
+   "dir": "right",
+   "pace": null,
+   "said": [
+    "scrolling"
+   ]
+  },
+  "isf-domain-warped-fbm-noise": {
+   "bright": 0.389,
+   "busy": 0.576,
+   "dir": "cw",
+   "pace": 0.299,
+   "said": [
+    "swirling"
+   ]
+  },
+  "isf-doodler": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "isf-dubstep-my-ass-ms-xgr2": {
+   "bright": 0.311,
+   "busy": 0.843,
+   "dir": "cw",
+   "pace": 0.889,
+   "said": [
+    "rotating"
+   ]
+  },
+  "isf-endless-living-creature": {
+   "bright": 0.561,
+   "busy": 0.806,
+   "dir": "right",
+   "pace": 0.921,
+   "said": [
+    "scrolling"
+   ]
+  },
+  "isf-fft-color-lines": {
+   "bright": 0.241,
+   "busy": 0.691,
+   "dir": "right",
+   "pace": 0.834,
+   "said": [
+    "oscilloscope",
+    "waveform"
+   ]
+  },
+  "isf-fft-filled-waveform": {
+   "bright": null,
+   "busy": null,
+   "dir": "up",
+   "pace": null,
+   "said": [
+    "rising"
+   ]
+  },
+  "isf-fft-spectrogram": {
+   "bright": null,
+   "busy": null,
+   "dir": "right",
+   "pace": null,
+   "said": [
+    "scrolling"
+   ]
+  },
+  "isf-grid-move": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "in a circle"
+   ]
+  },
+  "isf-im-3-meta-ball-problem": {
+   "bright": 0.684,
+   "busy": 0.771,
+   "dir": "cw",
+   "pace": 0.659,
+   "said": [
+    "orbiting",
+    "swirl"
+   ]
+  },
+  "isf-im-ascend": {
+   "bright": 0.919,
+   "busy": 0.314,
+   "dir": "up",
+   "pace": 0.774,
+   "said": [
+    "ascend",
+    "rising"
+   ]
+  },
+  "isf-im-atera-field-candid1": {
+   "bright": 0.419,
+   "busy": 0.499,
+   "dir": "cw",
+   "pace": 0.605,
+   "said": [
+    "swirling"
+   ]
+  },
+  "isf-im-cosmic-ray-marcher": {
+   "bright": 0.542,
+   "busy": 0.794,
+   "dir": "right",
+   "pace": 0.752,
+   "said": [
+    "marcher"
+   ]
+  },
+  "isf-im-elcosmo-final-opt": {
+   "bright": 0.916,
+   "busy": 0.043,
+   "dir": "inward",
+   "pace": 0.706,
+   "said": [
+    "fly through",
+    "tunnel"
+   ]
+  },
+  "isf-im-emo-cube-complex": {
+   "bright": 0.401,
+   "busy": 0.356,
+   "dir": "inward",
+   "pace": 0.429,
+   "said": [
+    "receding",
+    "tunnel"
+   ]
+  },
+  "isf-im-emo-cube-complex-2": {
+   "bright": 0.339,
+   "busy": 0.404,
+   "dir": "cw",
+   "pace": 0.781,
+   "said": [
+    "tumbling"
+   ]
+  },
+  "isf-im-emo-cube1": {
+   "bright": 0.351,
+   "busy": 0.159,
+   "dir": "cw",
+   "pace": 0.599,
+   "said": [
+    "tumbling"
+   ]
+  },
+  "isf-im-ethernal-waves-star": {
+   "bright": 0.726,
+   "busy": 0.17,
+   "dir": null,
+   "pace": 0.465,
+   "said": []
+  },
+  "isf-im-filter-precalculated-voronoi-heightma": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "isf-im-flowers": {
+   "bright": 0.579,
+   "busy": 0.861,
+   "dir": null,
+   "pace": 0.455,
+   "said": []
+  },
+  "isf-im-fold-v3-final": {
+   "bright": 0.031,
+   "busy": 0.09,
+   "dir": "cw",
+   "pace": 0.207,
+   "said": [
+    "rotating",
+    "tumbling"
+   ]
+  },
+  "isf-im-fold-v3-serpinski-final": {
+   "bright": 0.021,
+   "busy": 0.004,
+   "dir": "cw",
+   "pace": 0.059,
+   "said": [
+    "tumbling"
+   ]
+  },
+  "isf-im-fork-truchet-final": {
+   "bright": 0.824,
+   "busy": 0.984,
+   "dir": "cw",
+   "pace": 0.999,
+   "said": [
+    "rotating"
+   ]
+  },
+  "isf-im-fractal-demon2": {
+   "bright": 0.711,
+   "busy": 0.856,
+   "dir": "inward",
+   "pace": 0.613,
+   "said": [
+    "zoom"
+   ]
+  },
+  "isf-im-fractal-mage-final-correction-lic-mit": {
+   "bright": 0.469,
+   "busy": 0.922,
+   "dir": "inward",
+   "pace": 0.866,
+   "said": [
+    "into the centre",
+    "tunnel"
+   ]
+  },
+  "isf-im-fractal-mountain-optimized": {
+   "bright": 0.656,
+   "busy": 0.666,
+   "dir": "cw",
+   "pace": 0.909,
+   "said": [
+    "spiral"
+   ]
+  },
+  "isf-im-fractal-speed-smooth": {
+   "bright": 0.094,
+   "busy": 0.385,
+   "dir": "inward",
+   "pace": 0.647,
+   "said": [
+    "inward",
+    "zooming"
+   ]
+  },
+  "isf-im-fractal-symetry": {
+   "bright": 0.764,
+   "busy": 0.779,
+   "dir": "inward",
+   "pace": 0.986,
+   "said": [
+    "zooms"
+   ]
+  },
+  "isf-im-fractal-torbulance-double-final": {
+   "bright": 0.714,
+   "busy": 0.401,
+   "dir": "inward",
+   "pace": 0.434,
+   "said": [
+    "flight"
+   ]
+  },
+  "isf-im-fractal1": {
+   "bright": 0.761,
+   "busy": 0.869,
+   "dir": "inward",
+   "pace": 0.896,
+   "said": [
+    "inward"
+   ]
+  },
+  "isf-im-gfractl-blobl": {
+   "bright": 0.186,
+   "busy": 0.039,
+   "dir": "cw",
+   "pace": 0.537,
+   "said": [
+    "tumbling"
+   ]
+  },
+  "isf-im-glass-fractal-flight-twist": {
+   "bright": 0.551,
+   "busy": 0.843,
+   "dir": "inward",
+   "pace": 0.691,
+   "said": [
+    "flight",
+    "flight through"
+   ]
+  },
+  "isf-im-glow-heart": {
+   "bright": 0.434,
+   "busy": 0.075,
+   "dir": null,
+   "pace": 0.406,
+   "said": []
+  },
+  "isf-im-kailedo-frac": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "turning"
+   ]
+  },
+  "isf-im-kaleido-knot": {
+   "bright": 0.646,
+   "busy": 0.769,
+   "dir": "cw",
+   "pace": 0.881,
+   "said": [
+    "kaleido",
+    "kaleidoscope"
+   ]
+  },
+  "isf-im-kbmarcher-dampening": {
+   "bright": 0.386,
+   "busy": 0.916,
+   "dir": "cw",
+   "pace": 0.906,
+   "said": [
+    "rotating"
+   ]
+  },
+  "isf-im-lopyfrac": {
+   "bright": 0.404,
+   "busy": 0.89,
+   "dir": "up",
+   "pace": 0.251,
+   "said": [
+    "bubble"
+   ]
+  },
+  "isf-im-lopyfrac3-d-ortho": {
+   "bright": 0.564,
+   "busy": 0.919,
+   "dir": "cw",
+   "pace": 0.879,
+   "said": [
+    "tumbling"
+   ]
+  },
+  "isf-im-lopyfrac3-d-ortho-fractal-evolution": {
+   "bright": 0.119,
+   "busy": 0.113,
+   "dir": "cw",
+   "pace": 0.189,
+   "said": [
+    "rotating"
+   ]
+  },
+  "isf-im-noise-texture-landscape-fractal-cloud": {
+   "bright": 0.906,
+   "busy": 0.292,
+   "dir": "outward",
+   "pace": 0.515,
+   "said": [
+    "rippled"
+   ]
+  },
+  "isf-im-origami-final-correctopacity": {
+   "bright": 0.956,
+   "busy": 0.134,
+   "dir": "cw",
+   "pace": 0.547,
+   "said": [
+    "rotating"
+   ]
+  },
+  "isf-im-pixel-tunnel": {
+   "bright": 0.621,
+   "busy": 0.958,
+   "dir": "inward",
+   "pace": 0.994,
+   "said": [
+    "inward",
+    "tunnel"
+   ]
+  },
+  "isf-im-ray-lab": {
+   "bright": 0.999,
+   "busy": 0.014,
+   "dir": "inward",
+   "pace": 0.268,
+   "said": [
+    "corridor",
+    "rushing past"
+   ]
+  },
+  "isf-im-ray-tunnel-metal": {
+   "bright": 0.446,
+   "busy": 0.427,
+   "dir": "inward",
+   "pace": 0.807,
+   "said": [
+    "corridor",
+    "tunnel"
+   ]
+  },
+  "isf-im-relentless-struss": {
+   "bright": 0.521,
+   "busy": 0.516,
+   "dir": "cw",
+   "pace": 0.951,
+   "said": [
+    "spinning"
+   ]
+  },
+  "isf-im-rhodium-lquid-carbon": {
+   "bright": 0.226,
+   "busy": 0.34,
+   "dir": null,
+   "pace": 0.48,
+   "said": []
+  },
+  "isf-im-spiked-ball": {
+   "bright": 0.371,
+   "busy": 0.802,
+   "dir": "outward",
+   "pace": 0.616,
+   "said": [
+    "outward",
+    "radiating"
+   ]
+  },
+  "isf-im-sqr": {
+   "bright": 0.839,
+   "busy": 0.966,
+   "dir": "cw",
+   "pace": 0.779,
+   "said": [
+    "rotates"
+   ]
+  },
+  "isf-im-sunset-xor-dev": {
+   "bright": 0.716,
+   "busy": 0.412,
+   "dir": null,
+   "pace": 0.436,
+   "said": []
+  },
+  "isf-im-swirl-smooth-transition": {
+   "bright": 0.786,
+   "busy": 0.427,
+   "dir": "cw",
+   "pace": 0.554,
+   "said": [
+    "swirl",
+    "swirling"
+   ]
+  },
+  "isf-im-the-weave-chronos-xor-final1": {
+   "bright": 0.934,
+   "busy": 0.546,
+   "dir": "inward",
+   "pace": 0.816,
+   "said": [
+    "flight",
+    "flight through"
+   ]
+  },
+  "isf-im-trunchan-tran-voroni-final-release": {
+   "bright": 0.644,
+   "busy": 0.946,
+   "dir": "cw",
+   "pace": 0.966,
+   "said": [
+    "kaleidoscopic",
+    "rotating"
+   ]
+  },
+  "isf-im-vohel-head-icosahedron": {
+   "bright": 0.981,
+   "busy": 0.228,
+   "dir": null,
+   "pace": 0.589,
+   "said": []
+  },
+  "isf-im-volt": {
+   "bright": 0.271,
+   "busy": 0.406,
+   "dir": null,
+   "pace": 0.443,
+   "said": []
+  },
+  "isf-im-xor-circle-advance": {
+   "bright": 0.699,
+   "busy": 0.284,
+   "dir": "cw",
+   "pace": 0.469,
+   "said": [
+    "spinning"
+   ]
+  },
+  "isf-im-xorcoridor337": {
+   "bright": 0.056,
+   "busy": 0.016,
+   "dir": "down",
+   "pace": 0.055,
+   "said": [
+    "rainbow"
+   ]
+  },
+  "isf-im-yonim-tunnel-fix-multipath-audioreact": {
+   "bright": 0.424,
+   "busy": 0.146,
+   "dir": "inward",
+   "pace": 0.459,
+   "said": [
+    "tunnel"
+   ]
+  },
+  "isf-laser-circle-v2": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "rotating"
+   ]
+  },
+  "isf-laser-circle-v3": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "rotating"
+   ]
+  },
+  "isf-laser-shader-01": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "in a circle"
+   ]
+  },
+  "isf-laser-shader-02": {
+   "bright": 0.026,
+   "busy": 0.036,
+   "dir": "right",
+   "pace": 0.092,
+   "said": [
+    "oscilloscope",
+    "scrolling",
+    "sideways"
+   ]
+  },
+  "isf-line-move-alpha-v1-p-o": {
+   "bright": null,
+   "busy": null,
+   "dir": "right",
+   "pace": null,
+   "said": [
+    "scrolling",
+    "sideways"
+   ]
+  },
+  "isf-noise": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "isf-quasi-infinite-zoom-voronoi-xl-bxww": {
+   "bright": 0.451,
+   "busy": 0.662,
+   "dir": "inward",
+   "pace": 0.926,
+   "said": [
+    "infinite zoom",
+    "inward",
+    "zoom",
+    "zooming"
+   ]
+  },
+  "isf-radial-spectrogram": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "isf-random-shape-blast": {
+   "bright": 0.479,
+   "busy": 0.069,
+   "dir": null,
+   "pace": 0.876,
+   "said": []
+  },
+  "isf-strange-cloud": {
+   "bright": 0.524,
+   "busy": 0.369,
+   "dir": "cw",
+   "pace": 0.376,
+   "said": [
+    "turning"
+   ]
+  },
+  "isf-the-road-to-hell-mds3-rn": {
+   "bright": 0.291,
+   "busy": 0.871,
+   "dir": "inward",
+   "pace": 0.929,
+   "said": [
+    "flight",
+    "flight down",
+    "tunnel"
+   ]
+  },
+  "isf-the-weave": {
+   "bright": 0.946,
+   "busy": 0.594,
+   "dir": "inward",
+   "pace": 0.861,
+   "said": [
+    "flight",
+    "flight through"
+   ]
+  },
+  "isf-zebra-lines-projectile-objects": {
+   "bright": 0.459,
+   "busy": 0.68,
+   "dir": null,
+   "pace": 0.709,
+   "said": []
+  },
+  "jellyfish-abyss-bioluminescent-bloom": {
+   "bright": 0.104,
+   "busy": 0.191,
+   "dir": "outward",
+   "pace": 0.066,
+   "said": [
+    "bloom"
+   ]
+  },
+  "jellyfish-abyss-midnight-drift": {
+   "bright": 0.06,
+   "busy": 0.151,
+   "dir": "down",
+   "pace": 0.043,
+   "said": [
+    "snow"
+   ]
+  },
+  "kaliset-nebula-dusk-veils": {
+   "bright": 0.051,
+   "busy": 0.058,
+   "dir": "outward",
+   "pace": 0.207,
+   "said": [
+    "radiating"
+   ]
+  },
+  "kaliset-nebula-ice-lotus": {
+   "bright": 0.316,
+   "busy": 0.146,
+   "dir": "cw",
+   "pace": 0.361,
+   "said": [
+    "orbit"
+   ]
+  },
+  "kifs-crystal-ice-gem": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "rotating"
+   ]
+  },
+  "kifs-crystal-neon-reliquary": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "laser-fans-arena": {
+   "bright": 0.264,
+   "busy": 0.669,
+   "dir": null,
+   "pace": 0.669,
+   "said": []
+  },
+  "laser-fans-ice-scanner": {
+   "bright": 0.395,
+   "busy": 0.824,
+   "dir": "up",
+   "pace": 0.752,
+   "said": [
+    "fire"
+   ]
+  },
+  "laser-fans-liquid-sky": {
+   "bright": 0.216,
+   "busy": 0.255,
+   "dir": "outward",
+   "pace": 0.154,
+   "said": [
+    "outward"
+   ]
+  },
+  "lava-lake-caldera": {
+   "bright": 0.266,
+   "busy": 0.866,
+   "dir": "up",
+   "pace": 0.684,
+   "said": [
+    "rising"
+   ]
+  },
+  "lava-lake-sulphur-night": {
+   "bright": 0.231,
+   "busy": 0.811,
+   "dir": "up",
+   "pace": 0.499,
+   "said": [
+    "flame"
+   ]
+  },
+  "lichtenberg-blue-lightning": {
+   "bright": 0.239,
+   "busy": 0.481,
+   "dir": null,
+   "pace": 0.236,
+   "said": []
+  },
+  "lichtenberg-coral-bloom": {
+   "bright": 0.486,
+   "busy": 0.838,
+   "dir": "outward",
+   "pace": 0.131,
+   "said": [
+    "bloom",
+    "outward"
+   ]
+  },
+  "life_generations-brain-fireworks": {
+   "bright": 0.224,
+   "busy": 0.929,
+   "dir": "outward",
+   "pace": 0.647,
+   "said": [
+    "fireworks"
+   ]
+  },
+  "life_generations-life-mandala": {
+   "bright": 0.506,
+   "busy": 0.974,
+   "dir": "cw",
+   "pace": 0.694,
+   "said": [
+    "kaleidoscopic"
+   ]
+  },
+  "light-cathedral-nave": {
+   "bright": 0.651,
+   "busy": 0.604,
+   "dir": null,
+   "pace": 0.351,
+   "said": []
+  },
+  "light-cathedral-neon-vespers": {
+   "bright": 0.814,
+   "busy": 0.565,
+   "dir": null,
+   "pace": 0.431,
+   "said": []
+  },
+  "live-art": {
+   "bright": 0.001,
+   "busy": 0.001,
+   "dir": null,
+   "pace": 0.001,
+   "said": []
+  },
+  "live-score-night": {
+   "bright": 0.041,
+   "busy": 0.514,
+   "dir": null,
+   "pace": 0.029,
+   "said": []
+  },
+  "live-score-paper": {
+   "bright": 0.964,
+   "busy": 0.495,
+   "dir": "right",
+   "pace": 0.021,
+   "said": [
+    "left to right"
+   ]
+  },
+  "live-score-scroll-night": {
+   "bright": 0.044,
+   "busy": 0.524,
+   "dir": "right",
+   "pace": 0.005,
+   "said": [
+    "scroll",
+    "scrolling"
+   ]
+  },
+  "live-score-scroll-paper": {
+   "bright": 0.961,
+   "busy": 0.531,
+   "dir": "right",
+   "pace": 0.009,
+   "said": [
+    "scroll",
+    "scrolling"
+   ]
+  },
+  "live-score-v2-book-night": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "live-score-v2-book-paper": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "turning"
+   ]
+  },
+  "live-score-v2-page-night": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "live-score-v2-page-paper": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "turning"
+   ]
+  },
+  "live-score-v2-page-wide-paper": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "live-score-v2-scroll-night": {
+   "bright": null,
+   "busy": null,
+   "dir": "right",
+   "pace": null,
+   "said": [
+    "scroll",
+    "scrolling"
+   ]
+  },
+  "mandelbox-dusk-cathedral": {
+   "bright": 0.164,
+   "busy": 0.125,
+   "dir": "inward",
+   "pace": 0.244,
+   "said": [
+    "flight",
+    "flight through"
+   ]
+  },
+  "mandelbox-ice-city": {
+   "bright": 0.559,
+   "busy": 0.251,
+   "dir": "inward",
+   "pace": 0.366,
+   "said": [
+    "flight"
+   ]
+  },
+  "mandelbulb-cosmic-orbit": {
+   "bright": 0.359,
+   "busy": 0.594,
+   "dir": "cw",
+   "pace": 0.263,
+   "said": [
+    "orbit",
+    "turning"
+   ]
+  },
+  "mandelbulb-ember-chambers": {
+   "bright": 0.514,
+   "busy": 0.345,
+   "dir": "inward",
+   "pace": 0.421,
+   "said": [
+    "flight"
+   ]
+  },
+  "matrix-maelstrom-classic": {
+   "bright": 0.111,
+   "busy": 0.684,
+   "dir": "cw",
+   "pace": 0.662,
+   "said": [
+    "clockwise",
+    "spiral",
+    "whirlpool"
+   ]
+  },
+  "matrix-maelstrom-downpour": {
+   "bright": 0.121,
+   "busy": 0.744,
+   "dir": "down",
+   "pace": 0.605,
+   "said": [
+    "falling",
+    "rain"
+   ]
+  },
+  "matrix-maelstrom-neon-drain": {
+   "bright": 0.134,
+   "busy": 0.695,
+   "dir": "cw",
+   "pace": 0.724,
+   "said": [
+    "swirling"
+   ]
+  },
+  "megastructure-necropolis": {
+   "bright": 0.594,
+   "busy": 0.699,
+   "dir": "inward",
+   "pace": 0.729,
+   "said": [
+    "flight",
+    "flight down"
+   ]
+  },
+  "megastructure-neon-citadel": {
+   "bright": 0.626,
+   "busy": 0.705,
+   "dir": "inward",
+   "pace": 0.761,
+   "said": [
+    "fly through"
+   ]
+  },
+  "menger-flythrough-dusk-cathedral": {
+   "bright": 0.276,
+   "busy": 0.609,
+   "dir": "inward",
+   "pace": 0.741,
+   "said": [
+    "corridors",
+    "flythrough"
+   ]
+  },
+  "menger-flythrough-neon-space-base": {
+   "bright": 0.846,
+   "busy": 0.739,
+   "dir": "inward",
+   "pace": 0.859,
+   "said": [
+    "corridors",
+    "flythrough",
+    "rush past"
+   ]
+  },
+  "mercury-blobs-neon-mercury": {
+   "bright": 0.129,
+   "busy": 0.125,
+   "dir": null,
+   "pace": 0.231,
+   "said": []
+  },
+  "mercury-blobs-studio-chrome": {
+   "bright": 0.409,
+   "busy": 0.186,
+   "dir": null,
+   "pace": 0.215,
+   "said": []
+  },
+  "moire-opart-current": {
+   "bright": 0.719,
+   "busy": 0.996,
+   "dir": "right",
+   "pace": 0.796,
+   "said": [
+    "horizontal",
+    "scroll",
+    "sideways"
+   ]
+  },
+  "moire-opart-steel-rings": {
+   "bright": 0.661,
+   "busy": 0.999,
+   "dir": "inward",
+   "pace": 0.564,
+   "said": [
+    "vortex"
+   ]
+  },
+  "moire-opart-vortex": {
+   "bright": 0.741,
+   "busy": 0.991,
+   "dir": "cw",
+   "pace": 0.626,
+   "said": [
+    "spiral",
+    "swirls"
+   ]
+  },
+  "murmuration-dusk": {
+   "bright": 0.214,
+   "busy": 0.289,
+   "dir": null,
+   "pace": 0.16,
+   "said": []
+  },
+  "murmuration-shoal": {
+   "bright": 0.269,
+   "busy": 0.196,
+   "dir": "cw",
+   "pace": 0.2,
+   "said": [
+    "swirls"
+   ]
+  },
+  "mushroom-glade-foxfire": {
+   "bright": 0.144,
+   "busy": 0.371,
+   "dir": null,
+   "pace": 0.226,
+   "said": []
+  },
+  "mushroom-glade-parasol-moonmist": {
+   "bright": 0.146,
+   "busy": 0.319,
+   "dir": null,
+   "pace": 0.171,
+   "said": []
+  },
+  "neon-city-night-flight": {
+   "bright": 0.406,
+   "busy": 0.789,
+   "dir": "inward",
+   "pace": 0.976,
+   "said": [
+    "flight",
+    "fly through"
+   ]
+  },
+  "neon-city-rooftops": {
+   "bright": 0.536,
+   "busy": 0.791,
+   "dir": "inward",
+   "pace": 0.959,
+   "said": [
+    "flight"
+   ]
+  },
+  "neon-signs-brick-alley": {
+   "bright": 0.259,
+   "busy": 0.524,
+   "dir": null,
+   "pace": 0.105,
+   "said": []
+  },
+  "neon-signs-tiled-diner": {
+   "bright": 0.461,
+   "busy": 0.646,
+   "dir": null,
+   "pace": 0.145,
+   "said": []
+  },
+  "note-fluid-dusk-pool": {
+   "bright": 0.009,
+   "busy": 0.021,
+   "dir": "cw",
+   "pace": 0.016,
+   "said": [
+    "swirling"
+   ]
+  },
+  "note-fluid-ice-silk": {
+   "bright": 0.011,
+   "busy": 0.03,
+   "dir": "cw",
+   "pace": 0.019,
+   "said": [
+    "swirls"
+   ]
+  },
+  "note-fluid-prism": {
+   "bright": 0.006,
+   "busy": 0.019,
+   "dir": "up",
+   "pace": 0.013,
+   "said": [
+    "rise",
+    "smoke"
+   ]
+  },
+  "ocean-flyover-golden-hour": {
+   "bright": 0.894,
+   "busy": 0.336,
+   "dir": null,
+   "pace": 0.291,
+   "said": []
+  },
+  "ocean-flyover-storm-front": {
+   "bright": 0.951,
+   "busy": 0.378,
+   "dir": "inward",
+   "pace": 0.4,
+   "said": [
+    "flight"
+   ]
+  },
+  "penrose_tiling-dusk-arcs": {
+   "bright": 0.345,
+   "busy": 0.934,
+   "dir": null,
+   "pace": 0.591,
+   "said": []
+  },
+  "penrose_tiling-ice-ribbons": {
+   "bright": 0.674,
+   "busy": 0.979,
+   "dir": "cw",
+   "pace": 0.759,
+   "said": [
+    "tumbling"
+   ]
+  },
+  "physarum-ember-veins": {
+   "bright": 0.064,
+   "busy": 0.6,
+   "dir": null,
+   "pace": 0.037,
+   "said": []
+  },
+  "physarum-neural-web": {
+   "bright": 0.141,
+   "busy": 0.656,
+   "dir": null,
+   "pace": 0.069,
+   "said": []
+  },
+  "physarum-rival-tides": {
+   "bright": 0.2,
+   "busy": 0.718,
+   "dir": null,
+   "pace": 0.1,
+   "said": []
+  },
+  "piano-strings-gold": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "piano-strings-harmony": {
+   "bright": null,
+   "busy": null,
+   "dir": "down",
+   "pace": null,
+   "said": [
+    "rainbow"
+   ]
+  },
+  "piano-waterfall-classic": {
+   "bright": 0.19,
+   "busy": 0.611,
+   "dir": "up",
+   "pace": 0.043,
+   "said": [
+    "rise"
+   ]
+  },
+  "piano-waterfall-ember": {
+   "bright": 0.076,
+   "busy": 0.456,
+   "dir": "up",
+   "pace": 0.013,
+   "said": [
+    "rise",
+    "smoke"
+   ]
+  },
+  "piano-waterfall-harmony": {
+   "bright": 0.039,
+   "busy": 0.186,
+   "dir": "up",
+   "pace": 0.034,
+   "said": [
+    "rise"
+   ]
+  },
+  "piston-field-arcade": {
+   "bright": 0.734,
+   "busy": 0.733,
+   "dir": null,
+   "pace": 0.789,
+   "said": []
+  },
+  "piston-field-neon-foundry": {
+   "bright": 0.324,
+   "busy": 0.6,
+   "dir": null,
+   "pace": 0.718,
+   "said": []
+  },
+  "plasma-globe-ice-storm": {
+   "bright": 0.489,
+   "busy": 0.365,
+   "dir": null,
+   "pace": 0.28,
+   "said": []
+  },
+  "plasma-globe-tesla": {
+   "bright": 0.254,
+   "busy": 0.261,
+   "dir": "cw",
+   "pace": 0.085,
+   "said": [
+    "swirling"
+   ]
+  },
+  "plexus-network-deep-ocean": {
+   "bright": 0.234,
+   "busy": 0.474,
+   "dir": "inward",
+   "pace": 0.139,
+   "said": [
+    "zooming"
+   ]
+  },
+  "plexus-network-neon-synapse": {
+   "bright": 0.294,
+   "busy": 0.63,
+   "dir": "inward",
+   "pace": 0.219,
+   "said": [
+    "zoom"
+   ]
+  },
+  "point-morph-ice-gyroid": {
+   "bright": 0.034,
+   "busy": 0.085,
+   "dir": "cw",
+   "pace": 0.05,
+   "said": [
+    "turning"
+   ]
+  },
+  "point-morph-neon-knots": {
+   "bright": 0.081,
+   "busy": 0.14,
+   "dir": "outward",
+   "pace": 0.062,
+   "said": [
+    "burst"
+   ]
+  },
+  "polyhedra-morph-crystal-octa": {
+   "bright": 0.206,
+   "busy": 0.292,
+   "dir": "cw",
+   "pace": 0.357,
+   "said": [
+    "rotating"
+   ]
+  },
+  "polyhedra-morph-neon-nest": {
+   "bright": 0.411,
+   "busy": 0.378,
+   "dir": "cw",
+   "pace": 0.306,
+   "said": [
+    "rotating"
+   ]
+  },
+  "quasicrystal-ice-lens": {
+   "bright": 0.599,
+   "busy": 0.986,
+   "dir": null,
+   "pace": 0.819,
+   "said": []
+  },
+  "quasicrystal-prism-rosette": {
+   "bright": 0.429,
+   "busy": 0.976,
+   "dir": null,
+   "pace": 0.714,
+   "said": []
+  },
+  "quaternion-julia-coral": {
+   "bright": 0.581,
+   "busy": 0.269,
+   "dir": "cw",
+   "pace": 0.071,
+   "said": [
+    "turning"
+   ]
+  },
+  "quaternion-julia-ember-flame": {
+   "bright": 0.279,
+   "busy": 0.278,
+   "dir": "cw",
+   "pace": 0.05,
+   "said": [
+    "turning"
+   ]
+  },
+  "radial-spectrum-led-floor": {
+   "bright": 0.099,
+   "busy": 0.654,
+   "dir": "down",
+   "pace": 0.129,
+   "said": [
+    "falling"
+   ]
+  },
+  "radial-spectrum-neon-ring": {
+   "bright": 0.069,
+   "busy": 0.444,
+   "dir": "outward",
+   "pace": 0.105,
+   "said": [
+    "radiating"
+   ]
+  },
+  "reaction_diffusion-dusk-coral": {
+   "bright": 0.596,
+   "busy": 0.954,
+   "dir": "cw",
+   "pace": 0.223,
+   "said": [
+    "swirling"
+   ]
+  },
+  "reaction_diffusion-ocean-cells": {
+   "bright": 0.416,
+   "busy": 0.894,
+   "dir": "cw",
+   "pace": 0.241,
+   "said": [
+    "swirl"
+   ]
+  },
+  "ripple-tank-double-slit": {
+   "bright": 0.414,
+   "busy": 0.65,
+   "dir": "outward",
+   "pace": 0.559,
+   "said": [
+    "blooms",
+    "ripple"
+   ]
+  },
+  "ripple-tank-mirror-pool": {
+   "bright": 0.379,
+   "busy": 0.896,
+   "dir": "outward",
+   "pace": 0.924,
+   "said": [
+    "ripple",
+    "ripples"
+   ]
+  },
+  "sacred-mandala-metatron-gold": {
+   "bright": 0.2,
+   "busy": 0.784,
+   "dir": "outward",
+   "pace": 0.519,
+   "said": [
+    "outward"
+   ]
+  },
+  "sacred-mandala-neon-flower": {
+   "bright": 0.261,
+   "busy": 0.802,
+   "dir": "inward",
+   "pace": 0.619,
+   "said": [
+    "inward",
+    "zooming"
+   ]
+  },
+  "sakura-storm-moonlit": {
+   "bright": 0.345,
+   "busy": 0.511,
+   "dir": null,
+   "pace": 0.381,
+   "said": []
+  },
+  "sakura-storm-neon-gale": {
+   "bright": 0.431,
+   "busy": 0.476,
+   "dir": null,
+   "pace": 0.321,
+   "said": []
+  },
+  "score-ribbon-night": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "score-ribbon-night-wide": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "score-ribbon-paper": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "sdf-demo-ember-cathedral": {
+   "bright": 0.149,
+   "busy": 0.49,
+   "dir": "cw",
+   "pace": 0.41,
+   "said": [
+    "spirals"
+   ]
+  },
+  "sdf-demo-ice-twist": {
+   "bright": 0.534,
+   "busy": 0.831,
+   "dir": "inward",
+   "pace": 0.804,
+   "said": [
+    "fast flight",
+    "flight"
+   ]
+  },
+  "sdf-demo-neon-hall": {
+   "bright": 0.476,
+   "busy": 0.765,
+   "dir": "inward",
+   "pace": 0.696,
+   "said": [
+    "flight",
+    "flight down"
+   ]
+  },
+  "smith-bands-ember-stack": {
+   "bright": 0.501,
+   "busy": 0.104,
+   "dir": null,
+   "pace": 0.037,
+   "said": []
+  },
+  "smith-bands-sweet": {
+   "bright": 0.321,
+   "busy": 0.071,
+   "dir": "cw",
+   "pace": 0.024,
+   "said": [
+    "rotate"
+   ]
+  },
+  "smith-bands-tide": {
+   "bright": 0.629,
+   "busy": 0.054,
+   "dir": null,
+   "pace": 0.026,
+   "said": []
+  },
+  "splat-demo-ember-drift": {
+   "bright": 0.014,
+   "busy": 0.051,
+   "dir": null,
+   "pace": 0.031,
+   "said": []
+  },
+  "splat-demo-ice-lattice": {
+   "bright": 0.194,
+   "busy": 0.432,
+   "dir": "cw",
+   "pace": 0.421,
+   "said": [
+    "orbits",
+    "spins",
+    "tumbling"
+   ]
+  },
+  "splat-demo-neon-core": {
+   "bright": 0.109,
+   "busy": 0.104,
+   "dir": "up",
+   "pace": 0.1,
+   "said": [
+    "fire"
+   ]
+  },
+  "st-04-3-d-raymarching-metaballs": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "orbiting"
+   ]
+  },
+  "st-15-edits-of-something-by": {
+   "bright": null,
+   "busy": null,
+   "dir": "down",
+   "pace": null,
+   "said": [
+    "rainbow"
+   ]
+  },
+  "st-290-min-char-hyper-swirls": {
+   "bright": 0.06,
+   "busy": 0.117,
+   "dir": "cw",
+   "pace": 0.117,
+   "said": [
+    "spin",
+    "swirl",
+    "swirls"
+   ]
+  },
+  "st-2d-obj-space-ship-form": {
+   "bright": 0.079,
+   "busy": 0.211,
+   "dir": "cw",
+   "pace": 0.075,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-3-d-evergreen": {
+   "bright": 0.994,
+   "busy": 0.574,
+   "dir": "cw",
+   "pace": 0.551,
+   "said": [
+    "orbiting"
+   ]
+  },
+  "st-3-d-raymarcher": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-3-d-wavelet-noise": {
+   "bright": 0.636,
+   "busy": 0.048,
+   "dir": "cw",
+   "pace": 0.443,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-4-d-lava-lamp": {
+   "bright": 0.811,
+   "busy": 0.662,
+   "dir": null,
+   "pace": 0.68,
+   "said": []
+  },
+  "st-4-d-rounded-box": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-5-point-star": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-a-battered-alien-planet": {
+   "bright": 0.874,
+   "busy": 0.736,
+   "dir": null,
+   "pace": 0.839,
+   "said": []
+  },
+  "st-abstract-galaxy": {
+   "bright": 0.281,
+   "busy": 0.569,
+   "dir": "cw",
+   "pace": 0.15,
+   "said": [
+    "spiral",
+    "turning"
+   ]
+  },
+  "st-airplane-modelling-exercise": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "spinning",
+    "turning"
+   ]
+  },
+  "st-alien-waterworld": {
+   "bright": 0.546,
+   "busy": 0.463,
+   "dir": "down",
+   "pace": 0.393,
+   "said": [
+    "descending"
+   ]
+  },
+  "st-alpha-tower": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-analytical-filter-kernel-box-tri": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-apollian-with-a-twist": {
+   "bright": 0.531,
+   "busy": 0.495,
+   "dir": "cw",
+   "pace": 0.486,
+   "said": [
+    "rotating",
+    "twist"
+   ]
+  },
+  "st-apollonian-fractures": {
+   "bright": 0.441,
+   "busy": 0.314,
+   "dir": null,
+   "pace": 0.321,
+   "said": []
+  },
+  "st-arc-circle-segment-2-d-sdf": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "rotate"
+   ]
+  },
+  "st-arc-distance": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-arc-distance-l-inf": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-arc-gradient-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-arrow-distance": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-ascending-onions": {
+   "bright": 0.246,
+   "busy": 0.048,
+   "dir": "up",
+   "pace": 0.259,
+   "said": [
+    "ascending",
+    "rising"
+   ]
+  },
+  "st-atmospheric-scattering-explained": {
+   "bright": 0.399,
+   "busy": 0.064,
+   "dir": "up",
+   "pace": 0.268,
+   "said": [
+    "rises"
+   ]
+  },
+  "st-bandlimited-fbm-box-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-ben-s-first-sdf-shader": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-bending-an-sdf": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "turning"
+   ]
+  },
+  "st-biomorph": {
+   "bright": 0.974,
+   "busy": 0.874,
+   "dir": null,
+   "pace": 0.184,
+   "said": []
+  },
+  "st-blobby-cross-distance-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-blotting": {
+   "bright": 0.654,
+   "busy": 0.365,
+   "dir": "down",
+   "pace": 0.455,
+   "said": [
+    "rainbow"
+   ]
+  },
+  "st-bouncing-gradient-light": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-box-closest-3-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-box-fog-density": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "rotates"
+   ]
+  },
+  "st-box-gradient-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-box-intersection": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-box-parametrization": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "circling"
+   ]
+  },
+  "st-box-sdf-from-i-q-s-website": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-boy-s-surface-implicit": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "orbiting"
+   ]
+  },
+  "st-breaking-raymarching": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-brmlab-logo": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-cable-nest": {
+   "bright": 0.331,
+   "busy": 0.826,
+   "dir": "inward",
+   "pace": 0.949,
+   "said": [
+    "fly through",
+    "tunnel"
+   ]
+  },
+  "st-capped-cylinder-closest-3-d-y28": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-capsule-distance-l-inf-2": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-circle-cross-distance-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-circle-distance-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": "outward",
+   "pace": null,
+   "said": [
+    "outward"
+   ]
+  },
+  "st-circle-of-circles-2d-sdf": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-circle-parametrization": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-circuits": {
+   "bright": 0.329,
+   "busy": 0.395,
+   "dir": null,
+   "pace": 0.651,
+   "said": []
+  },
+  "st-clean-first-shader-sdf": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "orbiting",
+    "orbits",
+    "twisting"
+   ]
+  },
+  "st-clouds-from-above": {
+   "bright": 0.426,
+   "busy": 0.239,
+   "dir": "right",
+   "pace": 0.294,
+   "said": [
+    "sideways"
+   ]
+  },
+  "st-colorful-flowing-thing": {
+   "bright": 0.566,
+   "busy": 0.914,
+   "dir": "down",
+   "pace": 0.981,
+   "said": [
+    "rainbow"
+   ]
+  },
+  "st-colorful-metaballs": {
+   "bright": 0.529,
+   "busy": 0.08,
+   "dir": null,
+   "pace": 0.448,
+   "said": []
+  },
+  "st-combination-sdf": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-commented-mandelbrot-flashes": {
+   "bright": null,
+   "busy": null,
+   "dir": "inward",
+   "pace": null,
+   "said": [
+    "zooms",
+    "zooms in"
+   ]
+  },
+  "st-compositing": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-cone-distance": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "tumbling"
+   ]
+  },
+  "st-conic-gradient": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-cool-raymarching-effect": {
+   "bright": 0.504,
+   "busy": 0.155,
+   "dir": null,
+   "pace": 0.414,
+   "said": []
+  },
+  "st-corroding-arbitrary-sdf": {
+   "bright": 0.154,
+   "busy": 0.224,
+   "dir": null,
+   "pace": 0.296,
+   "said": []
+  },
+  "st-corroding-arbitrary-sdf-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "turning"
+   ]
+  },
+  "st-cosine-distance-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-cosmic-2": {
+   "bright": 0.456,
+   "busy": 0.409,
+   "dir": null,
+   "pace": 0.451,
+   "said": []
+  },
+  "st-cross-distance-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-crown-fractal": {
+   "bright": 0.844,
+   "busy": 0.399,
+   "dir": null,
+   "pace": 0.306,
+   "said": []
+  },
+  "st-crumpled-noise": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-crystal-skull": {
+   "bright": 0.756,
+   "busy": 0.247,
+   "dir": null,
+   "pace": 0.529,
+   "said": []
+  },
+  "st-cube-sphere-sdf": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-cube-thingy": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "spinning"
+   ]
+  },
+  "st-cyclic-redundancy-engine": {
+   "bright": 0.749,
+   "busy": 0.54,
+   "dir": "cw",
+   "pace": 0.701,
+   "said": [
+    "spinning",
+    "turning"
+   ]
+  },
+  "st-cylinder-distance": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "tumbling"
+   ]
+  },
+  "st-dancing-sinus": {
+   "bright": 0.179,
+   "busy": 0.205,
+   "dir": "right",
+   "pace": 0.752,
+   "said": [
+    "scrolling"
+   ]
+  },
+  "st-dawn-at-a-distant-world": {
+   "bright": 0.729,
+   "busy": 0.741,
+   "dir": "up",
+   "pace": 0.752,
+   "said": [
+    "rise"
+   ]
+  },
+  "st-diffuse-basic-subtraction": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "tumbles"
+   ]
+  },
+  "st-distance-field-tutorial-part-2": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "circling"
+   ]
+  },
+  "st-distorted-rings": {
+   "bright": 0.971,
+   "busy": 0.941,
+   "dir": "cw",
+   "pace": 0.936,
+   "said": [
+    "twisting"
+   ]
+  },
+  "st-dog-bone-2-d-sdf": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-doodle-4-d-rendering": {
+   "bright": 0.349,
+   "busy": 0.08,
+   "dir": "cw",
+   "pace": 0.354,
+   "said": [
+    "tumbling"
+   ]
+  },
+  "st-double-ended-truchet-hex-tiling": {
+   "bright": 0.571,
+   "busy": 0.922,
+   "dir": null,
+   "pace": 0.766,
+   "said": []
+  },
+  "st-doyle-spirals": {
+   "bright": 0.721,
+   "busy": 0.901,
+   "dir": "cw",
+   "pace": 0.886,
+   "said": [
+    "rotating",
+    "spiral",
+    "spirals"
+   ]
+  },
+  "st-dr-kr-mtgen-s-cell-music-vis": {
+   "bright": 0.066,
+   "busy": 0.011,
+   "dir": null,
+   "pace": 0.055,
+   "said": []
+  },
+  "st-dragon-eye-ii": {
+   "bright": 0.374,
+   "busy": 0.636,
+   "dir": "inward",
+   "pace": 0.274,
+   "said": [
+    "zooming"
+   ]
+  },
+  "st-drink-the-water": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "spinning",
+    "spiral"
+   ]
+  },
+  "st-elemental-ring": {
+   "bright": 0.831,
+   "busy": 0.255,
+   "dir": "cw",
+   "pace": 0.579,
+   "said": [
+    "orbits"
+   ]
+  },
+  "st-elemental-ring-slimy-remix": {
+   "bright": 0.866,
+   "busy": 0.155,
+   "dir": "cw",
+   "pace": 0.569,
+   "said": [
+    "orbits"
+   ]
+  },
+  "st-ellipse-gradient-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-ellipsoid-distance": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "orbits"
+   ]
+  },
+  "st-engage-warp": {
+   "bright": 0.641,
+   "busy": 0.351,
+   "dir": "outward",
+   "pace": 0.891,
+   "said": [
+    "from the centre"
+   ]
+  },
+  "st-exclamation-point": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-exodus": {
+   "bright": 0.791,
+   "busy": 0.359,
+   "dir": "cw",
+   "pace": 0.841,
+   "said": [
+    "swirl",
+    "twisting"
+   ]
+  },
+  "st-first-try-at-domain-warping": {
+   "bright": 0.996,
+   "busy": 0.085,
+   "dir": null,
+   "pace": 0.145,
+   "said": []
+  },
+  "st-five-pointed-star-polar-form": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-five-sides-should-be-enough": {
+   "bright": 0.591,
+   "busy": 0.439,
+   "dir": null,
+   "pace": 0.534,
+   "said": []
+  },
+  "st-flux-core": {
+   "bright": 0.586,
+   "busy": 0.639,
+   "dir": "inward",
+   "pace": 0.807,
+   "said": [
+    "fly through",
+    "tunnel"
+   ]
+  },
+  "st-fly-on-buckaroo": {
+   "bright": null,
+   "busy": null,
+   "dir": "up",
+   "pace": null,
+   "said": [
+    "bubble"
+   ]
+  },
+  "st-fly-on-buckaroo-live-version": {
+   "bright": 0.941,
+   "busy": 0.025,
+   "dir": null,
+   "pace": 0.64,
+   "said": []
+  },
+  "st-flying-through-glowing-stars": {
+   "bright": 0.731,
+   "busy": 0.39,
+   "dir": "inward",
+   "pace": 0.784,
+   "said": [
+    "flight",
+    "flight along",
+    "flying",
+    "flying through"
+   ]
+  },
+  "st-flying-through-psychedelic-mist": {
+   "bright": 0.679,
+   "busy": 0.104,
+   "dir": "inward",
+   "pace": 0.529,
+   "said": [
+    "flying",
+    "flying through"
+   ]
+  },
+  "st-foam-noise": {
+   "bright": null,
+   "busy": null,
+   "dir": "right",
+   "pace": null,
+   "said": [
+    "scrolling"
+   ]
+  },
+  "st-folded-disc-pseudo-sdf": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-fork-analys-cub-nikola-erce-538": {
+   "bright": 0.896,
+   "busy": 0.971,
+   "dir": "cw",
+   "pace": 0.996,
+   "said": [
+    "spinning",
+    "swirls",
+    "twists"
+   ]
+  },
+  "st-fork-raymarchin-malie77-360": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "orbiting"
+   ]
+  },
+  "st-fortress-harkonnen": {
+   "bright": 0.576,
+   "busy": 0.899,
+   "dir": "cw",
+   "pace": 0.404,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-fruit-machine": {
+   "bright": null,
+   "busy": null,
+   "dir": "down",
+   "pace": null,
+   "said": [
+    "rainbow"
+   ]
+  },
+  "st-ghostly-cavern": {
+   "bright": 0.744,
+   "busy": 0.264,
+   "dir": "inward",
+   "pace": 0.801,
+   "said": [
+    "flight",
+    "flight through"
+   ]
+  },
+  "st-gimbal-harmonics": {
+   "bright": 0.859,
+   "busy": 0.296,
+   "dir": "cw",
+   "pace": 0.547,
+   "said": [
+    "spinning"
+   ]
+  },
+  "st-golden-apollian": {
+   "bright": 0.706,
+   "busy": 0.641,
+   "dir": null,
+   "pace": 0.894,
+   "said": []
+  },
+  "st-gradient-isolines": {
+   "bright": null,
+   "busy": null,
+   "dir": "down",
+   "pace": null,
+   "said": [
+    "rainbow"
+   ]
+  },
+  "st-hashcraft": {
+   "bright": 0.826,
+   "busy": 0.989,
+   "dir": null,
+   "pace": 0.989,
+   "said": []
+  },
+  "st-hexagon-gradient-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-high-quality-hash-and-visualizer": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-homogeneous-shadow-volumes": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-house-in-a-box": {
+   "bright": 0.969,
+   "busy": 0.09,
+   "dir": "up",
+   "pace": 0.726,
+   "said": [
+    "rises"
+   ]
+  },
+  "st-hsv-and-hsl": {
+   "bright": null,
+   "busy": null,
+   "dir": "down",
+   "pace": null,
+   "said": [
+    "downward"
+   ]
+  },
+  "st-hydrogen-orbits": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "orbital",
+    "orbits"
+   ]
+  },
+  "st-hyperspace-perlin-red": {
+   "bright": 0.181,
+   "busy": 0.006,
+   "dir": "inward",
+   "pace": 0.16,
+   "said": [
+    "hyperspace",
+    "receding",
+    "tunnel"
+   ]
+  },
+  "st-hyperspace-streaks": {
+   "bright": 0.686,
+   "busy": 0.829,
+   "dir": "inward",
+   "pace": 0.912,
+   "said": [
+    "hyperspace"
+   ]
+  },
+  "st-hyperspace-tunnel-simplex-noise": {
+   "bright": 0.509,
+   "busy": 0.164,
+   "dir": "inward",
+   "pace": 0.849,
+   "said": [
+    "hyperspace",
+    "rushing toward",
+    "tunnel"
+   ]
+  },
+  "st-icecream-warped-fbm": {
+   "bright": 0.979,
+   "busy": 0.571,
+   "dir": "cw",
+   "pace": 0.576,
+   "said": [
+    "swirls",
+    "turning"
+   ]
+  },
+  "st-implicit-motion-gradients": {
+   "bright": null,
+   "busy": null,
+   "dir": "right",
+   "pace": null,
+   "said": [
+    "sweeping across"
+   ]
+  },
+  "st-iq-s-distance-2-d-from-3-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-islamic-ornaments00": {
+   "bright": 0.806,
+   "busy": 0.981,
+   "dir": null,
+   "pace": 0.504,
+   "said": []
+  },
+  "st-islandshapes3d": {
+   "bright": 0.924,
+   "busy": 0.17,
+   "dir": null,
+   "pace": 0.64,
+   "said": []
+  },
+  "st-isosceles-triangle-gradient-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-jewel-room": {
+   "bright": 0.871,
+   "busy": 0.674,
+   "dir": "inward",
+   "pace": 0.902,
+   "said": [
+    "corridor",
+    "fly through"
+   ]
+  },
+  "st-julia-triangle-inequality": {
+   "bright": 0.949,
+   "busy": 0.659,
+   "dir": "inward",
+   "pace": 0.731,
+   "said": [
+    "zooming",
+    "zooming in"
+   ]
+  },
+  "st-julia-variations": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-jump-to-lightspeed-star-wars": {
+   "bright": 0.159,
+   "busy": 0.125,
+   "dir": "inward",
+   "pace": 0.416,
+   "said": [
+    "hyperspace"
+   ]
+  },
+  "st-jungle-gym": {
+   "bright": 0.829,
+   "busy": 0.949,
+   "dir": null,
+   "pace": 0.964,
+   "said": []
+  },
+  "st-koch-curve": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-laplacian": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-lava-planet": {
+   "bright": 0.084,
+   "busy": 0.146,
+   "dir": "cw",
+   "pace": 0.193,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-lemon-sdf": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "turning"
+   ]
+  },
+  "st-lens-distance": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-lensing": {
+   "bright": 0.249,
+   "busy": 0.481,
+   "dir": null,
+   "pace": 0.289,
+   "said": []
+  },
+  "st-lightning-fragment-shader": {
+   "bright": 0.139,
+   "busy": 0.351,
+   "dir": null,
+   "pace": 0.912,
+   "said": []
+  },
+  "st-lindenmayer-systems": {
+   "bright": 0.116,
+   "busy": 0.544,
+   "dir": null,
+   "pace": 0.234,
+   "said": []
+  },
+  "st-line-segment-sdf": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "spins"
+   ]
+  },
+  "st-link-distance": {
+   "bright": null,
+   "busy": null,
+   "dir": "up",
+   "pace": null,
+   "said": [
+    "upward"
+   ]
+  },
+  "st-lucky-buggy-galaxy": {
+   "bright": 0.789,
+   "busy": 0.247,
+   "dir": "cw",
+   "pace": 0.48,
+   "said": [
+    "rotating",
+    "spiral",
+    "swirl"
+   ]
+  },
+  "st-mad-wall": {
+   "bright": 0.301,
+   "busy": 0.926,
+   "dir": "cw",
+   "pace": 0.944,
+   "said": [
+    "rotation",
+    "twists"
+   ]
+  },
+  "st-mandelbox-crystal": {
+   "bright": 0.299,
+   "busy": 0.62,
+   "dir": "cw",
+   "pace": 0.393,
+   "said": [
+    "orbit"
+   ]
+  },
+  "st-mandelbox-slices": {
+   "bright": 0.369,
+   "busy": 0.756,
+   "dir": null,
+   "pace": 0.721,
+   "said": []
+  },
+  "st-mandelbrot-variations": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-mandelbrot-zoom": {
+   "bright": 0.124,
+   "busy": 0.378,
+   "dir": "inward",
+   "pace": 0.471,
+   "said": [
+    "zoom",
+    "zoom in"
+   ]
+  },
+  "st-manhattan": {
+   "bright": 0.631,
+   "busy": 0.043,
+   "dir": null,
+   "pace": 0.426,
+   "said": []
+  },
+  "st-menger-sponge-space-base": {
+   "bright": 0.376,
+   "busy": 0.586,
+   "dir": null,
+   "pace": 0.506,
+   "said": []
+  },
+  "st-menger-spongen1": {
+   "bright": 0.834,
+   "busy": 0.749,
+   "dir": "cw",
+   "pace": 0.799,
+   "said": [
+    "orbiting"
+   ]
+  },
+  "st-metal-kaleidoscope": {
+   "bright": 0.499,
+   "busy": 0.906,
+   "dir": "cw",
+   "pace": 0.537,
+   "said": [
+    "kaleidoscope",
+    "rotating"
+   ]
+  },
+  "st-metal-kaleidoscope-2": {
+   "bright": 0.209,
+   "busy": 0.701,
+   "dir": "cw",
+   "pace": 0.334,
+   "said": [
+    "kaleidoscope",
+    "rotation"
+   ]
+  },
+  "st-modified-star-nest": {
+   "bright": 0.774,
+   "busy": 0.705,
+   "dir": null,
+   "pace": 0.794,
+   "said": []
+  },
+  "st-modified-star-nest-2": {
+   "bright": 0.691,
+   "busy": 0.686,
+   "dir": null,
+   "pace": 0.812,
+   "said": []
+  },
+  "st-moon-distance-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-moving-without-travelling": {
+   "bright": 0.494,
+   "busy": 0.554,
+   "dir": "inward",
+   "pace": 0.939,
+   "said": [
+    "fly through"
+   ]
+  },
+  "st-my-first-shader-toy-learning-sdf": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "orbiting"
+   ]
+  },
+  "st-negative-light": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-neon-warbler": {
+   "bright": 0.751,
+   "busy": 0.54,
+   "dir": "cw",
+   "pace": 0.495,
+   "said": [
+    "swirl"
+   ]
+  },
+  "st-neonwave-style": {
+   "bright": 0.244,
+   "busy": 0.233,
+   "dir": "right",
+   "pace": 0.274,
+   "said": [
+    "scrolling"
+   ]
+  },
+  "st-neural-cat-3-d": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-neural-clothes-3d": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-neural-gimme-five": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-neural-teddy-bear-yes": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "turning"
+   ]
+  },
+  "st-neural-walt-disney": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-newton-fractal-dual-complex": {
+   "bright": 0.939,
+   "busy": 0.299,
+   "dir": "inward",
+   "pace": 0.744,
+   "said": [
+    "zooming"
+   ]
+  },
+  "st-noise-raymarching": {
+   "bright": 0.966,
+   "busy": 0.266,
+   "dir": "cw",
+   "pace": 0.624,
+   "said": [
+    "orbits"
+   ]
+  },
+  "st-northern-elves": {
+   "bright": 0.876,
+   "busy": 0.535,
+   "dir": "cw",
+   "pace": 0.68,
+   "said": [
+    "swirling"
+   ]
+  },
+  "st-northern-melter": {
+   "bright": 0.841,
+   "busy": 0.502,
+   "dir": "cw",
+   "pace": 0.836,
+   "said": [
+    "swirls"
+   ]
+  },
+  "st-northern-stream-maybe-clean": {
+   "bright": 0.899,
+   "busy": 0.196,
+   "dir": null,
+   "pace": 0.636,
+   "said": []
+  },
+  "st-nr-fractal-transitions": {
+   "bright": 0.776,
+   "busy": 0.117,
+   "dir": null,
+   "pace": 0.541,
+   "said": []
+  },
+  "st-nv15-2001-space-station": {
+   "bright": 0.796,
+   "busy": 0.561,
+   "dir": "cw",
+   "pace": 0.609,
+   "said": [
+    "turning"
+   ]
+  },
+  "st-octahedron-distance": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-okay-ish-looking-3-d-sine-fbm": {
+   "bright": 0.569,
+   "busy": 0.486,
+   "dir": "cw",
+   "pace": 0.4,
+   "said": [
+    "turning"
+   ]
+  },
+  "st-omas-kueche": {
+   "bright": 0.366,
+   "busy": 0.818,
+   "dir": null,
+   "pace": 0.263,
+   "said": []
+  },
+  "st-onward-to-thule": {
+   "bright": 0.766,
+   "busy": 0.075,
+   "dir": null,
+   "pace": 0.491,
+   "said": []
+  },
+  "st-orange-tunnel": {
+   "bright": 0.156,
+   "busy": 0.239,
+   "dir": "cw",
+   "pace": 0.934,
+   "said": [
+    "in a circle",
+    "spiral"
+   ]
+  },
+  "st-oval-gradient-3-d": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-packed-spheres-sdf": {
+   "bright": 0.696,
+   "busy": 0.334,
+   "dir": "cw",
+   "pace": 0.571,
+   "said": [
+    "circling"
+   ]
+  },
+  "st-parabola-segment-distance-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-parabola-segment-no-trig": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-parallelogram-distance-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-parallelogram-gradient-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-party-concert-visuals-2020": {
+   "bright": 0.931,
+   "busy": 0.68,
+   "dir": "cw",
+   "pace": 0.919,
+   "said": [
+    "spinning"
+   ]
+  },
+  "st-patiently": {
+   "bright": 0.736,
+   "busy": 0.469,
+   "dir": "cw",
+   "pace": 0.946,
+   "said": [
+    "swirls"
+   ]
+  },
+  "st-penumbra-shadows": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-perlin-noise-fire": {
+   "bright": 0.319,
+   "busy": 0.03,
+   "dir": "up",
+   "pace": 0.223,
+   "said": [
+    "fire",
+    "flame",
+    "rising"
+   ]
+  },
+  "st-pie-distance-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-pie-gradient-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-planet-shader": {
+   "bright": 0.049,
+   "busy": 0.094,
+   "dir": null,
+   "pace": 0.075,
+   "said": []
+  },
+  "st-plant-or-starfish": {
+   "bright": 0.944,
+   "busy": 0.109,
+   "dir": "cw",
+   "pace": 0.674,
+   "said": [
+    "turns"
+   ]
+  },
+  "st-plasma-box": {
+   "bright": 0.809,
+   "busy": 0.859,
+   "dir": "cw",
+   "pace": 0.856,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-plasma-tree": {
+   "bright": 0.236,
+   "busy": 0.351,
+   "dir": "cw",
+   "pace": 0.328,
+   "said": [
+    "orbiting",
+    "rotating"
+   ]
+  },
+  "st-polygon-distance-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-polygon-parametrization": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-pretty-flower": {
+   "bright": 0.891,
+   "busy": 0.751,
+   "dir": "cw",
+   "pace": 0.559,
+   "said": [
+    "rotating",
+    "spiral"
+   ]
+  },
+  "st-prism-sdf-test": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "orbiting"
+   ]
+  },
+  "st-procedural-football-stadium": {
+   "bright": 0.816,
+   "busy": 0.864,
+   "dir": null,
+   "pace": 0.874,
+   "said": []
+  },
+  "st-procedural-urban-landscape": {
+   "bright": 0.904,
+   "busy": 0.676,
+   "dir": null,
+   "pace": 0.871,
+   "said": []
+  },
+  "st-protophore": {
+   "bright": 0.855,
+   "busy": 0.331,
+   "dir": "cw",
+   "pace": 0.489,
+   "said": [
+    "spinning"
+   ]
+  },
+  "st-psychedelic-burning-wheel-2-d": {
+   "bright": 0.936,
+   "busy": 0.904,
+   "dir": "cw",
+   "pace": 0.826,
+   "said": [
+    "kaleidoscopic",
+    "turning"
+   ]
+  },
+  "st-psychedelic-eye": {
+   "bright": 0.909,
+   "busy": 0.614,
+   "dir": null,
+   "pace": 0.595,
+   "said": []
+  },
+  "st-psychedelic-tunnel": {
+   "bright": 0.746,
+   "busy": 0.113,
+   "dir": "cw",
+   "pace": 0.476,
+   "said": [
+    "rotating",
+    "swirling"
+   ]
+  },
+  "st-quad-distance-3-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-quad-gradient-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-quadratic-bezier-distance-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-quilt": {
+   "bright": 0.304,
+   "busy": 0.209,
+   "dir": "cw",
+   "pace": 0.315,
+   "said": [
+    "spinning"
+   ]
+  },
+  "st-rainbow-flower": {
+   "bright": 0.474,
+   "busy": 0.22,
+   "dir": "down",
+   "pace": 0.301,
+   "said": [
+    "rainbow"
+   ]
+  },
+  "st-random-little-fractal": {
+   "bright": 0.819,
+   "busy": 0.709,
+   "dir": null,
+   "pace": 0.634,
+   "said": []
+  },
+  "st-random-saturday-shader": {
+   "bright": 0.171,
+   "busy": 0.451,
+   "dir": "cw",
+   "pace": 0.396,
+   "said": [
+    "orbits"
+   ]
+  },
+  "st-random-sunday-fractal": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-randon-friday-fractal": {
+   "bright": 0.196,
+   "busy": 0.524,
+   "dir": "cw",
+   "pace": 0.529,
+   "said": [
+    "turning"
+   ]
+  },
+  "st-ray-cast-glow": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "orbiting"
+   ]
+  },
+  "st-ray-marching-shadows-001": {
+   "bright": null,
+   "busy": null,
+   "dir": "right",
+   "pace": null,
+   "said": [
+    "marching"
+   ]
+  },
+  "st-ray-marching-starting-point": {
+   "bright": null,
+   "busy": null,
+   "dir": "right",
+   "pace": null,
+   "said": [
+    "marching"
+   ]
+  },
+  "st-raymarch-sampler-2d-displace-01": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-raymarcher-template": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "orbits"
+   ]
+  },
+  "st-raymarching-workshop-2-d-rings": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-reflecting-toruses": {
+   "bright": 0.526,
+   "busy": 0.361,
+   "dir": "cw",
+   "pace": 0.655,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-retro-cube-effect-with-twist": {
+   "bright": 0.539,
+   "busy": 0.781,
+   "dir": "cw",
+   "pace": 0.764,
+   "said": [
+    "orbits",
+    "tumbling",
+    "twist"
+   ]
+  },
+  "st-rhombus-3-d-distance": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "turning"
+   ]
+  },
+  "st-rippling-fractal": {
+   "bright": 0.921,
+   "busy": 0.39,
+   "dir": null,
+   "pace": 0.474,
+   "said": []
+  },
+  "st-rotational-symmetry": {
+   "bright": 0.704,
+   "busy": 0.881,
+   "dir": "cw",
+   "pace": 0.829,
+   "said": [
+    "kaleidoscope",
+    "rotational",
+    "spinning"
+   ]
+  },
+  "st-rounded-x-distance-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-rymrch-wksp-3-d-sphere-shadows": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-sdf-2-d-convex-polygon-shape": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-sdf-basics-work-in-progress": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "orbits",
+    "twisting"
+   ]
+  },
+  "st-sdf-gradient-lighting-test": {
+   "bright": null,
+   "busy": null,
+   "dir": "right",
+   "pace": null,
+   "said": [
+    "sweeping across"
+   ]
+  },
+  "st-sdf-quadratic-b-zier-shape": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-sdf-reflection-light-bounce-test": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "orbits",
+    "twisting"
+   ]
+  },
+  "st-segment-distance-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-segment-gradient-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-segment-gradient-3-d": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "rotates"
+   ]
+  },
+  "st-segment-parametrization": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-sh-directional-lights": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-sh-visualizer": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "orbital",
+    "rotating"
+   ]
+  },
+  "st-signed-distance-teddy": {
+   "bright": 0.991,
+   "busy": 0.025,
+   "dir": null,
+   "pace": 0.321,
+   "said": []
+  },
+  "st-simiancraft-nebula-v2": {
+   "bright": 0.166,
+   "busy": 0.306,
+   "dir": null,
+   "pace": 0.16,
+   "said": []
+  },
+  "st-simple-egg-distance-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-simple-function-vizualizer": {
+   "bright": null,
+   "busy": null,
+   "dir": "right",
+   "pace": null,
+   "said": [
+    "scrolls"
+   ]
+  },
+  "st-simple-hexagonal-truchet-pattern": {
+   "bright": 0.029,
+   "busy": 0.228,
+   "dir": null,
+   "pace": 0.117,
+   "said": []
+  },
+  "st-sine-sdf-no-root-finding": {
+   "bright": null,
+   "busy": null,
+   "dir": "outward",
+   "pace": null,
+   "said": [
+    "outward"
+   ]
+  },
+  "st-slicing-a-4-d-apollian": {
+   "bright": 0.954,
+   "busy": 0.196,
+   "dir": "cw",
+   "pace": 0.644,
+   "said": [
+    "turning"
+   ]
+  },
+  "st-slightly-more-complex-plane-marc": {
+   "bright": 0.341,
+   "busy": 0.695,
+   "dir": "inward",
+   "pace": 0.869,
+   "said": [
+    "fly through",
+    "tunnel"
+   ]
+  },
+  "st-smooth-kaleidoscope": {
+   "bright": 0.471,
+   "busy": 0.958,
+   "dir": "cw",
+   "pace": 0.821,
+   "said": [
+    "kaleidoscope",
+    "rotating"
+   ]
+  },
+  "st-smoothed-line-segment-but-jank": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-snake-deform": {
+   "bright": 0.959,
+   "busy": 0.774,
+   "dir": "right",
+   "pace": 0.831,
+   "said": [
+    "scrolling"
+   ]
+  },
+  "st-soft-flesh-sdf": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-soft-sphere-shadows": {
+   "bright": 0.984,
+   "busy": 0.309,
+   "dir": "cw",
+   "pace": 0.699,
+   "said": [
+    "orbit"
+   ]
+  },
+  "st-solid-angle-distance": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "turning"
+   ]
+  },
+  "st-sommarhack-warped-fbm": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "swirling"
+   ]
+  },
+  "st-sound-visualizer-with-hexagons": {
+   "bright": 0.574,
+   "busy": 0.058,
+   "dir": "cw",
+   "pace": 0.421,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-sphere-fbm": {
+   "bright": 0.491,
+   "busy": 0.634,
+   "dir": "cw",
+   "pace": 0.574,
+   "said": [
+    "turning"
+   ]
+  },
+  "st-spiral-galaxy": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "spiral"
+   ]
+  },
+  "st-sponge-fractal-modificado2": {
+   "bright": 0.889,
+   "busy": 0.417,
+   "dir": null,
+   "pace": 0.791,
+   "said": []
+  },
+  "st-springs-of-arbitrary-profile": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-square-circle-sdf": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-square-minus-circle-distance": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-squishy-mouse-toy": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-star-nest-cross-section": {
+   "bright": 0.976,
+   "busy": 0.589,
+   "dir": "cw",
+   "pace": 0.771,
+   "said": [
+    "kaleidoscopic"
+   ]
+  },
+  "st-star-nest-retro": {
+   "bright": 0.454,
+   "busy": 0.302,
+   "dir": null,
+   "pace": 0.338,
+   "said": []
+  },
+  "st-star-nest-vr": {
+   "bright": 0.362,
+   "busy": 0.324,
+   "dir": null,
+   "pace": 0.381,
+   "said": []
+  },
+  "st-star-nest-with-more-explains": {
+   "bright": 0.362,
+   "busy": 0.324,
+   "dir": null,
+   "pace": 0.381,
+   "said": []
+  },
+  "st-starry-background-with-nebula": {
+   "bright": 0.176,
+   "busy": 0.554,
+   "dir": null,
+   "pace": 0.501,
+   "said": []
+  },
+  "st-starry-night-background": {
+   "bright": 0.054,
+   "busy": 0.616,
+   "dir": "cw",
+   "pace": 0.521,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-starry-space": {
+   "bright": 0.989,
+   "busy": 0.62,
+   "dir": "cw",
+   "pace": 0.704,
+   "said": [
+    "swirling"
+   ]
+  },
+  "st-stars-over-lake-remix": {
+   "bright": 0.19,
+   "busy": 0.22,
+   "dir": "outward",
+   "pace": 0.211,
+   "said": [
+    "ripple"
+   ]
+  },
+  "st-stateless-fizzlefade": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-stractium": {
+   "bright": 0.986,
+   "busy": 0.201,
+   "dir": "cw",
+   "pace": 0.461,
+   "said": [
+    "orbit"
+   ]
+  },
+  "st-striped-2-d-waves": {
+   "bright": 0.669,
+   "busy": 0.131,
+   "dir": null,
+   "pace": 0.448,
+   "said": []
+  },
+  "st-sunday-fractals": {
+   "bright": 0.634,
+   "busy": 0.944,
+   "dir": "inward",
+   "pace": 0.736,
+   "said": [
+    "zoom"
+   ]
+  },
+  "st-sunday-fractals-2": {
+   "bright": 0.666,
+   "busy": 0.797,
+   "dir": "cw",
+   "pace": 0.581,
+   "said": [
+    "kaleidoscope",
+    "rotating"
+   ]
+  },
+  "st-svg-debug-aid": {
+   "bright": null,
+   "busy": null,
+   "dir": "inward",
+   "pace": null,
+   "said": [
+    "zooms",
+    "zooms in"
+   ]
+  },
+  "st-symmetric-ellipsoid-distance": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "orbiting"
+   ]
+  },
+  "st-symmetric-origins": {
+   "bright": 0.606,
+   "busy": 0.818,
+   "dir": "cw",
+   "pace": 0.884,
+   "said": [
+    "rotate"
+   ]
+  },
+  "st-symmetric-smooth-staircase": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-t-cube-backwards": {
+   "bright": 0.161,
+   "busy": 0.583,
+   "dir": null,
+   "pace": 0.331,
+   "said": []
+  },
+  "st-tether-blur-effect": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-the-family-shader": {
+   "bright": 0.799,
+   "busy": 0.849,
+   "dir": "inward",
+   "pace": 0.941,
+   "said": [
+    "fly through"
+   ]
+  },
+  "st-the-ghosts-of-numbers": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-the-lost-self": {
+   "bright": 0.914,
+   "busy": 0.177,
+   "dir": "inward",
+   "pace": 0.956,
+   "said": [
+    "zooms"
+   ]
+  },
+  "st-thick-orbits": {
+   "bright": 0.881,
+   "busy": 0.969,
+   "dir": "cw",
+   "pace": 0.688,
+   "said": [
+    "orbit",
+    "orbits"
+   ]
+  },
+  "st-thrax-sdf-test": {
+   "bright": 0.886,
+   "busy": 0.786,
+   "dir": "cw",
+   "pace": 0.769,
+   "said": [
+    "orbits"
+   ]
+  },
+  "st-tileable-textures-collection": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-toon-water-with-fbm": {
+   "bright": 0.794,
+   "busy": 0.136,
+   "dir": null,
+   "pace": 0.595,
+   "said": []
+  },
+  "st-topologica": {
+   "bright": 0.869,
+   "busy": 0.964,
+   "dir": null,
+   "pace": 0.902,
+   "said": []
+  },
+  "st-torus-gradient-3-d": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "turning"
+   ]
+  },
+  "st-trapezoid-distance": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-trapezoid-sdf-flickering-fix": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-treasure": {
+   "bright": 0.804,
+   "busy": 0.853,
+   "dir": null,
+   "pace": 0.899,
+   "said": []
+  },
+  "st-triangle-distance-3-d": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "tumbling"
+   ]
+  },
+  "st-triangle-gradient-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-tribute-to-my-old-atari": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "swirling"
+   ]
+  },
+  "st-tunnel-distance": {
+   "bright": null,
+   "busy": null,
+   "dir": "inward",
+   "pace": null,
+   "said": [
+    "tunnel"
+   ]
+  },
+  "st-tunnel-tryout-001": {
+   "bright": 0.884,
+   "busy": 0.565,
+   "dir": "inward",
+   "pace": 0.984,
+   "said": [
+    "fly through",
+    "tunnel"
+   ]
+  },
+  "st-tunneling-through-apollian-frac": {
+   "bright": 0.754,
+   "busy": 0.721,
+   "dir": "inward",
+   "pace": 0.971,
+   "said": [
+    "tunneling"
+   ]
+  },
+  "st-tunneling-through-golden-fractal": {
+   "bright": 0.784,
+   "busy": 0.754,
+   "dir": "inward",
+   "pace": 0.961,
+   "said": [
+    "tunneling"
+   ]
+  },
+  "st-tunnely-torus-thingy": {
+   "bright": 0.439,
+   "busy": 0.436,
+   "dir": "cw",
+   "pace": 0.824,
+   "said": [
+    "spiralling",
+    "swirl"
+   ]
+  },
+  "st-twisty-torus-dudes": {
+   "bright": 0.861,
+   "busy": 0.233,
+   "dir": "cw",
+   "pace": 0.601,
+   "said": [
+    "orbiting",
+    "twisting",
+    "twisty"
+   ]
+  },
+  "st-twitch-ps1-singularity-jorts": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-underground-disposal-facility": {
+   "bright": 0.701,
+   "busy": 0.759,
+   "dir": null,
+   "pace": 0.916,
+   "said": []
+  },
+  "st-vector-phase-space": {
+   "bright": 0.659,
+   "busy": 0.579,
+   "dir": "down",
+   "pace": 0.711,
+   "said": [
+    "rainbow"
+   ]
+  },
+  "st-vesica-distance-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-vesica-gradient-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-volumetric-particles-186-c": {
+   "bright": 0.879,
+   "busy": 0.125,
+   "dir": "up",
+   "pace": 0.621,
+   "said": [
+    "upward"
+   ]
+  },
+  "st-vorofbm": {
+   "bright": 0.611,
+   "busy": 0.559,
+   "dir": null,
+   "pace": 0.439,
+   "said": []
+  },
+  "st-voronoi-distance-field-vis": {
+   "bright": 0.77,
+   "busy": 0.554,
+   "dir": null,
+   "pace": 0.585,
+   "said": []
+  },
+  "st-warm-mild-color-adjustment": {
+   "bright": null,
+   "busy": null,
+   "dir": "down",
+   "pace": null,
+   "said": [
+    "snow"
+   ]
+  },
+  "st-warped-liquid-metal": {
+   "bright": 0.211,
+   "busy": 0.214,
+   "dir": "cw",
+   "pace": 0.136,
+   "said": [
+    "swirling"
+   ]
+  },
+  "st-warpy-squiggly-thingy": {
+   "bright": 0.444,
+   "busy": 0.961,
+   "dir": "right",
+   "pace": 0.991,
+   "said": [
+    "sideways"
+   ]
+  },
+  "st-water-2-d": {
+   "bright": 0.901,
+   "busy": 0.378,
+   "dir": "right",
+   "pace": 0.585,
+   "said": [
+    "horizontally"
+   ]
+  },
+  "st-wave-distance": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-wedge-distance-2-d": {
+   "bright": null,
+   "busy": null,
+   "dir": "cw",
+   "pace": null,
+   "said": [
+    "rotating"
+   ]
+  },
+  "st-weird-machine-that-does-nothing": {
+   "bright": 0.516,
+   "busy": 0.509,
+   "dir": "cw",
+   "pace": 0.662,
+   "said": [
+    "twisting"
+   ]
+  },
+  "st-wind-of-change": {
+   "bright": 0.851,
+   "busy": 0.009,
+   "dir": "right",
+   "pace": 0.566,
+   "said": [
+    "drifting across"
+   ]
+  },
+  "st-wobbletunnel": {
+   "bright": 0.849,
+   "busy": 0.814,
+   "dir": "outward",
+   "pace": 0.969,
+   "said": [
+    "outward"
+   ]
+  },
+  "st-wst1-positive-energy-in-wroclaw": {
+   "bright": null,
+   "busy": null,
+   "dir": "inward",
+   "pace": null,
+   "said": [
+    "zooming"
+   ]
+  },
+  "st-zcam-and-oklab-gamut": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "st-zcam-color-palette-generation": {
+   "bright": null,
+   "busy": null,
+   "dir": null,
+   "pace": null,
+   "said": []
+  },
+  "staff-roll-night": {
+   "bright": null,
+   "busy": null,
+   "dir": "right",
+   "pace": null,
+   "said": [
+    "left to right"
+   ]
+  },
+  "staff-roll-paper": {
+   "bright": null,
+   "busy": null,
+   "dir": "right",
+   "pace": null,
+   "said": [
+    "left to right"
+   ]
+  },
+  "stained_glass-cathedral": {
+   "bright": 0.584,
+   "busy": 0.761,
+   "dir": "down",
+   "pace": 0.15,
+   "said": [
+    "rainbow"
+   ]
+  },
+  "stained_glass-cooling-lava": {
+   "bright": 0.619,
+   "busy": 0.951,
+   "dir": null,
+   "pace": 0.41,
+   "said": []
+  },
+  "star-nest-classic": {
+   "bright": 0.284,
+   "busy": 0.271,
+   "dir": "inward",
+   "pace": 0.28,
+   "said": [
+    "flight",
+    "flight through"
+   ]
+  },
+  "star-nest-ember-voids": {
+   "bright": 0.542,
+   "busy": 0.463,
+   "dir": "inward",
+   "pace": 0.372,
+   "said": [
+    "flight",
+    "flight through"
+   ]
+  },
+  "strange-attractors-lorenz-silk": {
+   "bright": 0.326,
+   "busy": 0.324,
+   "dir": "cw",
+   "pace": 0.196,
+   "said": [
+    "orbiting"
+   ]
+  },
+  "strange-attractors-thomas-flight": {
+   "bright": 0.174,
+   "busy": 0.205,
+   "dir": "inward",
+   "pace": 0.126,
+   "said": [
+    "flight",
+    "fly through"
+   ]
+  },
+  "synthwave_canyon-cyber-grid": {
+   "bright": 0.926,
+   "busy": 0.711,
+   "dir": "inward",
+   "pace": 0.851,
+   "said": [
+    "flight",
+    "flight down"
+   ]
+  },
+  "synthwave_canyon-sunset-run": {
+   "bright": 0.77,
+   "busy": 0.797,
+   "dir": "inward",
+   "pace": 0.854,
+   "said": [
+    "flight",
+    "flight down"
+   ]
+  },
+  "truchet-flow-c64-print": {
+   "bright": 0.169,
+   "busy": 0.936,
+   "dir": null,
+   "pace": 0.511,
+   "said": []
+  },
+  "truchet-flow-neon-arcs": {
+   "bright": 0.086,
+   "busy": 0.846,
+   "dir": null,
+   "pace": 0.349,
+   "said": []
+  },
+  "voxel-tunnel-ember-cave": {
+   "bright": 0.449,
+   "busy": 0.879,
+   "dir": "inward",
+   "pace": 0.954,
+   "said": [
+    "flight",
+    "flight down",
+    "tunnel"
+   ]
+  },
+  "voxel-tunnel-neon-rush": {
+   "bright": 0.694,
+   "busy": 0.909,
+   "dir": "inward",
+   "pace": 0.974,
+   "said": [
+    "fast flight",
+    "flight",
+    "tunnel"
+   ]
+  },
+  "warp-cells": {
+   "bright": 0.204,
+   "busy": 0.834,
+   "dir": "outward",
+   "pace": 0.746,
+   "said": [
+    "outward"
+   ]
+  },
+  "warp-ink-tunnel": {
+   "bright": 0.114,
+   "busy": 0.931,
+   "dir": "inward",
+   "pace": 0.688,
+   "said": [
+    "flying",
+    "tunnel"
+   ]
+  },
+  "warp-kaleido": {
+   "bright": 0.296,
+   "busy": 0.244,
+   "dir": "cw",
+   "pace": 0.16,
+   "said": [
+    "kaleido",
+    "kaleidoscope",
+    "swirling"
+   ]
+  },
+  "warp-liquid": {
+   "bright": 0.511,
+   "busy": 0.502,
+   "dir": null,
+   "pace": 0.18,
+   "said": []
+  },
+  "warp-smoke": {
+   "bright": 0.126,
+   "busy": 0.939,
+   "dir": "cw",
+   "pace": 0.786,
+   "said": [
+    "rotating",
+    "swirl"
+   ]
+  },
+  "wire-terrain-outrun-grid": {
+   "bright": 0.074,
+   "busy": 0.259,
+   "dir": null,
+   "pace": 0.174,
+   "said": []
+  },
+  "wire-terrain-unknown-pleasures": {
+   "bright": 0.131,
+   "busy": 0.284,
+   "dir": "outward",
+   "pace": 0.357,
+   "said": [
+    "ripples"
+   ]
+  }
+ }
+}
