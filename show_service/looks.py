@@ -245,17 +245,15 @@ DEFAULT_LIFT_M = 1.0            # starting point: a lift layer without ``lift`` 
 SPEED_FIT = 0.95                # §5.5: a pattern's peak speed is kept under this share of the light's
 FIT_SAMPLES = 64                # samples per cycle when a pattern's peak speed is measured
 MAX_DOUBLINGS = 6               # a pattern or hop slows at most 2^6 times (then runs as fast as it can: never refused)
-#: the show stopping (no feel, a quiet room): each light fades from its last frame to its house state over this long,
-#: keeping its colour and where it points; a mover glides home after (owner, 26 Nov: "why does switching to normal just
-#: hard-kill the lights ... we do a fade")
-HOUSE_FADE_S = 5.0
-#: a mode change crossfades (owner, 26 Nov: "why don't things fade between states? ... that's the whole point of mode
-#: changes"): when the room changes who follows the music (set_follow: a house light on or off, lights handed to the
-#: show or taken back) or the show starts on an output, each light affected goes from what was last sent to the new
-#: frame over this long (a smoothstep on intensity; colour blends, or jumps while dark): the DMX lights' match for the
-#: Hue lamps' own join/leave fade (room_service/hue/output.py FADE_S). The show stopping keeps its own HOUSE_FADE_S;
-#: the music coming back after a silence doesn't fade. Movers keep their own speed; identify never fades.
-MODE_FADE_S = 3.0
+#: One transition for every change of state on a DMX output (owner, 26 Nov: "why don't things fade between states?
+#: ... that's the whole point of mode changes"; "one transition machinery"): the room taking a light off the music or
+#: handing it back (set_follow), the show starting (a feel arriving) and the show stopping each ease every light it
+#: moves from what was last sent to the new frame (a smoothstep on intensity; colour blends, or jumps while dark).
+#: How long: the room's, with the change (set_follow over_s; set_transition for the show starting or stopping: a
+#: mode's transition_s, room_service's opts.over_s), else this. A mover going dark dims where it points, then glides
+#: home. Hue lamps (no DMX channels) are room_service's HueOutput's to fade; the music coming back after a silence
+#: doesn't fade; identify and a hold never fade.
+TRANSITION_S = 3.0
 ARRIVED_DEG = 0.5               # a move has arrived within this (dark moves, busy)
 DT_MAX_S = 0.25                 # the motion stage's longest step between two frames
 FIT_CACHE_MAX = 512             # pattern speed fits kept per output (cleared whole when full)
@@ -823,14 +821,12 @@ class _OutState:
         self.programs: dict[str, Optional[str]] = {}     # group -> the scene showing (stats)
         self.busy = False
         self.prog: Any = None                    # the program the caches above were filled from
-        self.last_out: dict[str, tuple] = {}     # fixture -> (intensity, colour, attrs) of the last active frame
-        self.out_t0: Optional[float] = None      # when the show stopped driving this output (HOUSE_FADE_S)
-        self.sent: dict[str, tuple] = {}         # fixture -> (intensity, colour) of the last frame sent (MODE_FADE_S)
+        self.sent: dict[str, tuple] = {}         # fixture -> (intensity, colour) of the last frame sent (TRANSITION_S)
         self.was_active: Optional[bool] = None
         self.vibe_now = False                    # this frame's look has a feel (a palette): the show is on
         self.had_vibe = False
         self.follow_rev = 0                      # the set_follow change this output last saw
-        self.mx: Optional[tuple] = None          # a mode crossfade: (t0, {fixture: (intensity, colour)}, ids | None)
+        self.mx: Optional[tuple] = None          # a transition: (t0, {fixture: (intensity, colour)}, ids | None, s, stop)
 
     def caches_for(self, prog: Any) -> None:
         """A new program (configure, a catalogue change): every per-light cache is filled again."""
@@ -1019,7 +1015,8 @@ class LookEngine:
         # identify and follow (any thread; each swapped by reference, read once per frame)
         self._ident: dict[str, tuple[float, list[float]]] = {}       # fixture -> (until, colour at full value)
         self._follow: dict[str, tuple[float, list[float]]] = {}      # fixture -> (intensity, colour): not following
-        self._follow_change: tuple[int, frozenset] = (0, frozenset())   # (revision, the ids the last change moved)
+        self._follow_change: tuple[int, frozenset, float] = (0, frozenset(), TRANSITION_S)   # (rev, ids moved, s)
+        self._show_over_s = TRANSITION_S                                # set_transition: the show starting/stopping
         self._follow_view: dict[str, Any] = {}                       # fixture -> "off" | {hex, bri}, as accepted
         self._level = 1.0                                            # set_level: the lamps' brightness (a mode's)
         # drop lines (trigger_hit; any thread)
@@ -2210,11 +2207,19 @@ class LookEngine:
         self._ident = new
         return any(s.id == fixture_id for op in self._program.outputs.values() for s in op.slots)
 
-    def set_follow(self, mapping: Mapping[str, Any], *, merge: bool = False) -> dict[str, Any]:
+    def set_transition(self, over_s: Any) -> float:
+        """How long the show starting or stopping takes from now on (the room's mode transition_s; TRANSITION_S).
+        Returns what holds."""
+        if _isnum(over_s) and over_s >= 0:
+            self._show_over_s = float(over_s)
+        return self._show_over_s
+
+    def set_follow(self, mapping: Mapping[str, Any], *, merge: bool = False, over_s: Any = None) -> dict[str, Any]:
         """Who follows the music (room's DMX-lights adapter, through outputs.Rig, which hands its whole mapping):
         {fixture id: "dmx" (follows the look) | "off" (dark) | {"hex": "#rrggbb", "bri": 0..100} (that colour,
         steady)}. An id not in it follows (so nothing changes until room sends one); ``merge``: only the ids given
-        change. Returns what was accepted ("dmx" included); a value that doesn't read is left out."""
+        change. ``over_s``: how long the lights it moves take to get there (TRANSITION_S when not given). Returns
+        what was accepted ("dmx" included); a value that doesn't read is left out."""
         if not isinstance(mapping, Mapping):
             return {}
         cur = dict(self._follow) if merge else {}
@@ -2242,7 +2247,8 @@ class LookEngine:
         changed = {k for k in set(cur) | set(self._follow) if cur.get(k) != self._follow.get(k)}
         self._follow, self._follow_view = cur, view
         if changed:
-            self._follow_change = (self._follow_change[0] + 1, frozenset(changed))   # MODE_FADE_S (one assignment)
+            dur = float(over_s) if _isnum(over_s) and over_s >= 0 else TRANSITION_S
+            self._follow_change = (self._follow_change[0] + 1, frozenset(changed), dur)   # TRANSITION_S (one assignment)
         return accepted
 
     def set_level(self, level: float) -> float:
@@ -2687,13 +2693,13 @@ class LookEngine:
         self._atmos = {str(k): dict(v) for k, v in (values or {}).items() if isinstance(v, Mapping)}
 
     def evaluate(self, output_id: str, t_send_s: float, caps: Mapping[str, Any]) -> dict:
-        """``_evaluate``, then a mode change's crossfade (MODE_FADE_S), then the atmosphere's bytes (set_atmosphere)
-        over its fixtures."""
+        """``_evaluate``, then a change of state's transition (TRANSITION_S), then the atmosphere's bytes
+        (set_atmosphere) over its fixtures."""
         frame = self._evaluate(output_id, t_send_s, caps)
         try:
-            self._mode_fade(output_id, float(t_send_s), frame)
-        except Exception:                                        # never lose a frame to the crossfade
-            log.exception("looks: mode crossfade")
+            self._transition(output_id, float(t_send_s), frame)
+        except Exception:                                        # never lose a frame to a transition
+            log.exception("looks: transition")
         atm = self._atmos
         if atm:
             fx = frame.get("fixtures") if isinstance(frame, dict) else None
@@ -2709,27 +2715,29 @@ class LookEngine:
                             ff["dmx"] = fn(s.info, s.type, ff["dmx"], vals)
         return frame
 
-    def _mode_fade(self, output_id: str, t: float, frame: Any) -> None:
-        """MODE_FADE_S: start a crossfade when set_follow moved a light or the show started on this output; blend each
-        affected DMX light (one with channels: a Hue lamp's fade is room_service's HueOutput's) from its last sent
-        (intensity, colour) to this frame's, re-encoding its bytes; remember what was sent."""
+    def _transition(self, output_id: str, t: float, frame: Any) -> None:
+        """TRANSITION_S: start one when set_follow moved a light, or the show started (a feel arriving) or stopped on
+        this output; blend each DMX light it moves (one with channels: a Hue lamp's fade is room_service's
+        HueOutput's) from its last sent (intensity, colour) to this frame's, re-encoding its bytes, the output busy
+        meanwhile; remember what was sent."""
         st = self._outs.get(output_id)
         fx = frame.get("fixtures") if isinstance(frame, dict) else None
         if st is None or not isinstance(fx, dict):
             return
         active = bool(frame.get("active"))
-        rev, ids = self._follow_change
-        # the show starting (a feel arriving: a mode), not the music coming back after a silence
-        start = active and st.was_active is False and st.vibe_now and not st.had_vibe
-        if st.sent and (rev != st.follow_rev or start):
-            ids_now = None if start else ids
-            if st.mx is not None:                                # a new change mid-fade: from what is showing now
-                ids_now = None if ids_now is None or st.mx[2] is None else ids_now | st.mx[2]
-            st.mx = (t, dict(st.sent), ids_now)
+        rev, ids, dur = self._follow_change
+        start = active and st.was_active is False and st.vibe_now and not st.had_vibe   # not the music coming back
+        stop = not active and st.was_active is True
+        if st.sent and (rev != st.follow_rev or start or stop):
+            whole = start or stop
+            only = None if whole else ids
+            if st.mx is not None and not whole:                  # a new change mid-transition: both sets go on
+                only = None if st.mx[2] is None else only | st.mx[2]
+            st.mx = (t, dict(st.sent), only, self._show_over_s if whole else dur, stop)
         st.follow_rev, st.was_active, st.had_vibe = rev, active, st.vibe_now
         if st.mx is not None:
-            t0, snap, only = st.mx
-            x = (t - t0) / MODE_FADE_S
+            t0, snap, only, span, _stop = st.mx
+            x = (t - t0) / span if span > 0 else 1.0
             if x >= 1.0:
                 st.mx = None
             else:
@@ -2737,15 +2745,15 @@ class LookEngine:
                 x = x * x * (3.0 - 2.0 * x)
                 op = (getattr(self._program, "outputs", None) or {}).get(output_id)
                 slots = {sl.id: sl for sl in op.slots} if op is not None else {}
-                ident = self._ident
+                ident, holds = self._ident, self._holds
                 for fid, ff in fx.items():
                     if (only is not None and fid not in only) or fid not in snap or not isinstance(ff, dict):
                         continue
                     sl = slots.get(fid)
                     if sl is None or not sl.channels:                # DMX lights only: Hue lamps fade room-side
                         continue
-                    i = ident.get(fid)
-                    if i is not None and t < i[0]:
+                    i, h = ident.get(fid), holds.get(fid)
+                    if (i is not None and t < i[0]) or (h is not None and t < h.until_s):   # identify, a hold: as is
                         continue
                     li, lc = snap[fid]
                     ni = float(ff.get("intensity", 0.0)) if _isnum(ff.get("intensity")) else 0.0
@@ -2755,9 +2763,14 @@ class LookEngine:
                     ff["intensity"], ff["colour"], ff["rgb"] = inten, list(col), [c * inten for c in col]
                     if ff.get("dmx") is not None:
                         ff["dmx"] = self._encode(sl, inten, list(col), ff.get("attrs"))
+                frame["busy"] = st.busy = True                   # keep sending until it lands
         st.sent = {k: (float(f.get("intensity", 0.0)) if _isnum(f.get("intensity")) else 0.0,
                        list(f["colour"]) if isinstance(f.get("colour"), list) and len(f["colour"]) == 3 else [1.0, 1.0, 1.0])
                    for k, f in fx.items() if isinstance(f, dict)}
+
+    def _stopping(self, st: "_OutState") -> bool:
+        """The show is stopping on this output: this is its first inactive frame, or the transition to dark runs."""
+        return st.was_active is True or (st.mx is not None and bool(st.mx[4]))
 
     def _evaluate(self, output_id: str, t_send_s: float, caps: Mapping[str, Any]) -> dict:
         """The Frame for ``output_id`` sent at ``t_send_s`` (README S5.5; module docstring). Only from that output's
@@ -2807,7 +2820,7 @@ class LookEngine:
             return v
 
         p0 = pal_at(t)
-        st.vibe_now = isinstance(p0, Mapping)                    # MODE_FADE_S: the show starting
+        st.vibe_now = isinstance(p0, Mapping)                    # TRANSITION_S: the show starting
         feats = self._call("features", self.features_fn)
         active, why, held = self._activity(t, p0, feats)
         if active and caps.get("idle_without_vibe") and (not isinstance(p0, Mapping) or self._no_feel()):
@@ -2821,11 +2834,7 @@ class LookEngine:
         busy = False
         if not active:
             te = t * 1000.0
-            if st.out_t0 is None and st.last_out:
-                st.out_t0 = t
-            fx = (t - st.out_t0) / HOUSE_FADE_S if st.out_t0 is not None else 1.0
-            if fx >= 1.0 and st.last_out:
-                st.last_out = {}
+            stopping = self._stopping(st)                        # the transition dims it; a mover glides home after
             for s in op.slots:
                 if holds:
                     h = holds.get(s.id)
@@ -2841,19 +2850,19 @@ class LookEngine:
                     fixtures[s.id] = self._fixed(s, o[0], o[1], te, fs, o[2])
                     continue
                 hi, hcol, hrgb, hdmx = s.house
-                lo = st.last_out.get(s.id) if fx < 1.0 else None
-                if lo is not None:                               # fading to the house state (HOUSE_FADE_S)
-                    fixtures[s.id] = self._fade_out(s, lo, max(0.0, fx), te)
-                    if s.moves:                                  # standing still: the glide home starts from now
-                        fs = st.fixstate(s.id)
-                        fs.t_m, fs.vel = t, [0.0, 0.0]
-                    busy = True
-                    continue
                 ff = {"intensity": hi, "colour": list(hcol), "rgb": list(hrgb), "t_eval_ms": te}
                 if s.enc:
                     attrs = dict(s.neutral)
-                    if s.moves:                                  # a mover glides home at its speed (§5.1, 4)
-                        fs = st.fixstate(s.id)
+                    fs = st.fixstate(s.id) if s.moves else None
+                    if fs is not None and stopping and fs.last_attrs:   # dims where it points (a strobe opens)
+                        attrs = dict(fs.last_attrs)
+                        sh = attrs.get("shutter")
+                        if isinstance(sh, Mapping) and sh.get("mode") not in (None, "open", "closed"):
+                            attrs["shutter"] = {"mode": "open"}
+                        fs.t_m, fs.vel = t, [0.0, 0.0]           # standing still: the glide home starts after
+                        hdmx = self._encode(s, hi, hcol, attrs)
+                        busy = True
+                    elif fs is not None:                         # a mover glides home at its speed (§5.1, 4)
                         pan, tilt, _dk = self._move(s, fs, t, s.home, mc)
                         attrs["pan"], attrs["tilt"] = pan, tilt
                         if abs(pan - s.home[0]) > ARRIVED_DEG or abs(tilt - s.home[1]) > ARRIVED_DEG:
@@ -3062,32 +3071,9 @@ class LookEngine:
             if s.channels:
                 ff["dmx"] = self._encode(s, inten, colour, ff.get("attrs"))
             fixtures[s.id] = ff
-        st.last_out = {k: (f.get("intensity", 0.0), f.get("colour"), f.get("attrs")) for k, f in fixtures.items()}
-        st.out_t0 = None
         frame["busy"] = st.busy = busy
         self._record(st, c0)
         return frame
-
-    def _fade_out(self, s: _Slot, lo: tuple, x: float, te: float) -> dict:
-        """A fixture ``x`` (0..1) of the way from its last active frame ``lo`` to its house state: the intensity
-        falls, the colour stays (or blends to a house colour that has one), a mover keeps where it points and its
-        beam (a strobe opens), then glides home once the fade is done."""
-        hi, hcol, _, _ = s.house
-        li, lc, la = lo
-        li = float(li) if _isnum(li) else 0.0
-        inten = li + (hi - li) * x
-        lc = list(lc) if isinstance(lc, (list, tuple)) and len(lc) == 3 else list(hcol)
-        col = lc if hi <= 0.0 else [a + (b - a) * x for a, b in zip(lc, hcol)]
-        ff: dict = {"intensity": inten, "colour": col, "rgb": [c * inten for c in col], "t_eval_ms": te}
-        if s.enc:
-            attrs = dict(la) if isinstance(la, Mapping) else dict(s.neutral)
-            sh = attrs.get("shutter")
-            if isinstance(sh, Mapping) and sh.get("mode") not in (None, "open", "closed"):
-                attrs["shutter"] = {"mode": "open"}
-            ff["attrs"] = attrs
-        if s.channels:
-            ff["dmx"] = self._encode(s, inten, col, ff.get("attrs"))
-        return ff
 
     # -- one frame's pieces --------------------------------------------------------------------------------------------
     def _idle_clock(self, look: Any) -> dict:

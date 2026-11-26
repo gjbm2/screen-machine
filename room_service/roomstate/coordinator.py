@@ -775,6 +775,8 @@ class Coordinator:
         for sub, vals in by_sub.items():          # a hint: these values are put back (a retrieve), not set afresh
             if back := sorted(m for m in vals if f"{sub}.{m}" in slots):
                 opts[sub]["put_back"] = back
+            if mode is not None and mode.transition_s is not None:   # the mode's transition: every device eases
+                opts[sub].setdefault("over_s", mode.transition_s)    # over it (an entry's own over_s wins)
         sends = [self._send(sub, vals, tr, opts[sub]) for sub, vals in by_sub.items()]
         outs = await asyncio.gather(*([_eager(c) for c in sends] if eager else sends))
         out = {t: o for d in outs for t, o in d.items()}  # gather re-raises a cancel even if an adapter swallows it

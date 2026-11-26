@@ -49,7 +49,7 @@ class FakeOutput:
     def __init__(self, client):
         self.client, self.wanted, self.state = client, set(), "idle"
 
-    def set_wanted(self, devices, fade_to=None):
+    def set_wanted(self, devices, fade_to=None, fade_s=None):
         self.wanted = set(devices)
         self.state = "waiting_input" if devices else "idle"
 

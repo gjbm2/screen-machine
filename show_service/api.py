@@ -238,6 +238,11 @@ def _clamp01(x: Optional[float]) -> float:
     return 0.0 if x is None else min(1.0, max(0.0, x))
 
 
+def _over_s(v: Any) -> Optional[float]:
+    """A transition length from the room (seconds, 0 or more), else None (the engine's own)."""
+    return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) and v >= 0 else None
+
+
 def _code(e: BaseException, default: str) -> tuple[str, str]:
     """``ValueError("unknown_vibe: party2")`` -> ("unknown_vibe", "party2"); anything else -> (default, text)."""
     s = str(e).strip()
@@ -1512,6 +1517,12 @@ class Api:
             return bad
         if body is None:
             return _err(400, "bad_target", 'Say which feel: {"vibe": <name> | null, "listening": true|false}.')
+        if isinstance(body, dict) and "over_s" in body:          # the room's mode transition: how long the lights
+            body = dict(body)                                    # take to start or stop (looks.TRANSITION_S)
+            over_s = _over_s(body.pop("over_s"))
+            rig = _components(brain).get(RIG)
+            if over_s is not None and rig is not None and callable(getattr(rig, "set_transition", None)):
+                await self._call(brain, rig.set_transition, over_s)
         return await self._set_vibe(request, brain, body)
 
     async def _vibe_delete(self, request: web.Request, brain: Any) -> web.Response:
@@ -1847,8 +1858,9 @@ class Api:
         rig = _components(brain).get(RIG)
         if rig is None or not callable(getattr(rig, "set_follow", None)):
             return _err(503, "unavailable", NO_RIG)
+        over_s = body.get("over_s")                              # the room's mode transition (TRANSITION_S)
         try:
-            return _json(await self._call(brain, rig.set_follow, fixtures))
+            return _json(await self._call(brain, rig.set_follow, fixtures, _over_s(over_s)))
         except ValueError as e:
             code, detail = _code(e, "bad_follow")
             return _err(400, code, detail or "That isn't something a light can follow.", choices=FOLLOW_CHOICES)

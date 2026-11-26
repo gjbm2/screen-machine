@@ -1110,8 +1110,8 @@ def test_the_lamps_brightness_scales_every_following_lamp_and_nothing_else():
 
 
 def test_a_mode_change_fades_a_dmx_light_and_leaves_a_hue_lamp_to_room():
-    """MODE_FADE_S (owner, 26 Nov: "why don't things fade between states?"): a DMX light taken off the music (a house
-    light off, say) eases there over MODE_FADE_S and back again; a Hue lamp on the same output is room's to fade."""
+    """TRANSITION_S (owner, 26 Nov: "why don't things fade between states?"): a DMX light taken off the music (a house
+    light off, say) eases there over TRANSITION_S and back again; a Hue lamp on the same output is room's to fade."""
     box = {"f": feats(10.0)}
     e = LookEngine(palette_fn=lambda t: {"par.0": (1.0, 1.0, 1.0), "lamp.0": (1.0, 1.0, 1.0)}, look_fn=lambda: look(),
                    features_fn=lambda: box["f"], clock=SnapClock(anchor=10.0, period=0.5), light_scenes=False)
@@ -1129,14 +1129,19 @@ def test_a_mode_change_fades_a_dmx_light_and_leaves_a_hue_lamp_to_room():
     t0 = 10.1
     fr = at(t0)
     assert inten(fr, "par.0") == pytest.approx(full) and inten(fr, "lamp.0") == 0.0   # the Hue lamp: at once
-    mid = at(t0 + lk.MODE_FADE_S / 2)
+    mid = at(t0 + lk.TRANSITION_S / 2)
     assert 0.0 < inten(mid, "par.0") < full and max(mid["fixtures"]["par.0"]["dmx"]) > 0
-    assert inten(at(t0 + lk.MODE_FADE_S + 0.05), "par.0") == 0.0
+    assert inten(at(t0 + lk.TRANSITION_S + 0.05), "par.0") == 0.0
     e.set_follow({})                                                 # back to the music: eases up again
-    t1 = t0 + lk.MODE_FADE_S + 0.1
+    t1 = t0 + lk.TRANSITION_S + 0.1
     assert inten(at(t1), "par.0") == 0.0
-    assert 0.0 < inten(at(t1 + lk.MODE_FADE_S / 2), "par.0") < full
-    assert inten(at(t1 + lk.MODE_FADE_S + 0.05), "par.0") == pytest.approx(full)
+    assert 0.0 < inten(at(t1 + lk.TRANSITION_S / 2), "par.0") < full
+    assert inten(at(t1 + lk.TRANSITION_S + 0.05), "par.0") == pytest.approx(full)
+    t2 = t1 + lk.TRANSITION_S + 0.1                                  # the room's own length: over_s
+    e.set_follow({"par.0": "off"}, over_s=1.0)
+    at(t2)
+    assert 0.0 < inten(at(t2 + 0.5), "par.0") < full and inten(at(t2 + 1.05), "par.0") == 0.0
+    assert e.set_transition(7) == 7.0 and e.set_transition(-1) == 7.0   # the show starting or stopping
 
 
 def test_a_follow_colour_still_rises_through_the_hue_rise_limit():

@@ -68,9 +68,14 @@ RESTORE_SLOT = "_restore"
 RETRIEVE_ONLY = {"else", "max_age_s"}
 # store_if: value patterns (as in a rule's `when`); store only when the current value matches one, e.g.
 # ["favourite", "uri"] stores Sonos music only while something is playing, so a retrieve then has nothing to undo.
-TOP_KEYS = {"default", "labels", "groups", "modes", "transitions", "description", "autopilot", "put_back_max_age_s"}
+TOP_KEYS = {"default", "labels", "groups", "modes", "transitions", "description", "autopilot", "put_back_max_age_s",
+            "transition_s"}
 MODE_KEYS = {"label", "extends", "abstract", "state", "on_enter", "on_exit", "description", "autopilot", "icon", "voice",
-             "on_room_page", "karaoke"}
+             "on_room_page", "karaoke", "transition_s"}
+# "transition_s": how long a change of mode takes (owner, 26 Nov: "one transition machinery"): every change the mode
+# makes is sent with opts {"over_s": transition_s} (an entry's own opts.over_s wins), so each adapter eases its device
+# over the same time: the DMX lights and the show starting or stopping (show_service), the Hue lamps, Sonos volume.
+# Inherited through extends; the top-level "transition_s" is the default; absent everywhere, each adapter's own.
 # "karaoke": true on the mode that is karaoke (owner, 26 Nov: "karaoke mode is essentially a switch on every mode, but
 # it's false on every mode apart from one"). A plain per-mode field, read by the karaoke player (routes/karaoke/
 # live_view.py): entering such a mode starts karaoke, leaving it stops it. Absent: false.
@@ -138,6 +143,11 @@ def revision(raw: dict) -> str:
     """A stable id for a config's content: the editor's etag for conflicting saves. Key order is kept (an editor
     shows it), so reordering counts as a change."""
     return hashlib.sha256(json.dumps(raw, separators=(",", ":")).encode()).hexdigest()[:12]
+
+
+def _seconds(v: object) -> bool:
+    """A finite number of seconds, 0 or more (not a bool)."""
+    return isinstance(v, (int, float)) and not isinstance(v, bool) and v == v and 0 <= v < float("inf")
 
 
 def _integer_like(key: str) -> bool:
@@ -210,6 +220,7 @@ class Mode:
     icon: str | None = None
     voice: str = ""
     on_room_page: str = "main"
+    transition_s: float | None = None    # how long its changes take (opts.over_s); None: each adapter's own
 
 
 @dataclass
@@ -269,6 +280,11 @@ class RoomConfig:
             self._fail(ptr("put_back_max_age_s"), "put_back_max_age_s must be a positive number")
             pb = None
         self.put_back_max_age_s: float | None = pb
+        ts = raw.get("transition_s")
+        if ts is not None and not _seconds(ts):
+            self._fail(ptr("transition_s"), "transition_s must be a number of seconds, 0 or more")
+            ts = None
+        self.transition_s: float | None = float(ts) if ts is not None else None
         raw_groups = self._object(raw.get("groups"), ptr("groups"))
         valid = []
         for name in raw_groups:
@@ -667,6 +683,11 @@ class RoomConfig:
             place = "main"
         if "karaoke" in raw and not isinstance(raw["karaoke"], bool):
             self._fail(ptr("modes", name, "karaoke"), "karaoke is true or false")
+        ts = raw.get("transition_s")
+        if ts is not None and not _seconds(ts):
+            self._fail(ptr("modes", name, "transition_s"), "transition_s must be a number of seconds, 0 or more")
+            ts = None
+        ts = float(ts) if ts is not None else parent.transition_s if parent else getattr(self, "transition_s", None)
         voice = raw.get("voice")
         if voice is not None and not (isinstance(voice, str) and len(voice.strip()) <= VOICE_MAX):
             self._fail(ptr("modes", name, "voice"), f"voice is a short name (up to {VOICE_MAX} letters)")
@@ -678,7 +699,7 @@ class RoomConfig:
                     {t: origin[t] for t in self.targets if t in origin},
                     signals["on_enter"], signals["on_exit"],
                     description=str(raw.get("description") or ""), icon=icon,
-                    voice=" ".join(str(voice or "").split()), on_room_page=place)
+                    voice=" ".join(str(voice or "").split()), on_room_page=place, transition_s=ts)
         self.modes[name] = mode
         return mode
 

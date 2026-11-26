@@ -100,7 +100,9 @@ class HueOutput:
         self._changed = asyncio.Event()
         self._house: dict[str, tuple] = {}      # device -> its (x, y, bri) just before the stream started
         self._sent_dev: dict[str, tuple] = {}   # device -> the (x, y, bri) last streamed to it
-        self._fades: dict[str, tuple] = {}      # device -> (t0, from, to); to None = the music (a fade in)
+        self._fades: dict[str, tuple] = {}      # device -> (t0, from, to, s); to None = the music (a fade in);
+                                                # s: its length (None: hue.fade_s)
+        self._join_fade_s: float | None = None  # the last set_wanted's fade_s: the stream starting eases in over it
         self._stale = False                     # Art-Net went stale: fading back to the house before the stop
 
     @property
@@ -119,8 +121,10 @@ class HueOutput:
                 pass
         await self._stop_stream("room_service stopping")
 
-    def set_wanted(self, devices: set[str], fade_to: dict | None = None) -> None:
-        """fade_to: {device: the state it goes to next} for lamps leaving, so the stream eases them there first."""
+    def set_wanted(self, devices: set[str], fade_to: dict | None = None, fade_s: float | None = None) -> None:
+        """fade_to: {device: the state it goes to next} for lamps leaving, so the stream eases them there first.
+        fade_s: how long this change's fades take (a mode's transition, opts.over_s); None: patch.yaml hue.fade_s."""
+        self._join_fade_s = fade_s
         if devices != self.wanted:
             if self.state == "streaming" and self.streamer.is_connected:
                 now = time.monotonic()
@@ -128,11 +132,11 @@ class HueOutput:
                     frm = self._sent_dev.get(d)
                     to = state_xyb((fade_to or {}).get(d), frm) or self._house.get(d)
                     if frm is not None and to is not None:
-                        self._fades[d] = (now, frm, to)
+                        self._fades[d] = (now, frm, to, fade_s)
                 for d in devices - self.wanted:
                     frm = self._sent_dev.get(d) or self._house.get(d)
                     if frm is not None:
-                        self._fades[d] = (now, frm, None)
+                        self._fades[d] = (now, frm, None, fade_s)
             self.wanted = set(devices)
             if self.state == "taken_over" and frozenset(devices) != self._taken_wanted:
                 self.state, self.detail = "idle", ""
@@ -180,7 +184,7 @@ class HueOutput:
                         for d in self.wanted:
                             frm, to = self._sent_dev.get(d), self._house.get(d)
                             if frm is not None and to is not None:
-                                self._fades[d] = (now, frm, to)
+                                self._fades[d] = (now, frm, to, None)
                     if streaming and self.fading_out():
                         self._send()
                         continue
@@ -195,7 +199,7 @@ class HueOutput:
                     self._stale, now = False, time.monotonic()
                     for d in self.wanted:
                         if d in self._sent_dev:
-                            self._fades[d] = (now, self._sent_dev[d], None)
+                            self._fades[d] = (now, self._sent_dev[d], None, None)
                 self._send()
                 now = time.monotonic()
                 if now >= next_status:
@@ -223,7 +227,7 @@ class HueOutput:
         self._house = {d.id: state_xyb(lights[d.extra["light"]]) for d in self.patch.of_kind("hue")
                        if d.extra.get("light") in lights}
         self._sent_dev, self._stale, now = {}, False, time.monotonic()
-        self._fades = {d: (now, self._house[d], None) for d in self.wanted if d in self._house}
+        self._fades = {d: (now, self._house[d], None, self._join_fade_s) for d in self.wanted if d in self._house}
         await self.client.put("entertainment_configuration", self.area_id, {"action": "start"})
         loop = asyncio.get_running_loop()
         await loop.run_in_executor(None, self.streamer.connect, self.secrets.host, self.secrets.app_key,
@@ -281,8 +285,9 @@ class HueOutput:
             val = (x, y, round(bri * lv))
             fade = self._fades.get(dev.id)
             if fade is not None:
-                t0, frm, to = fade
-                k = 1.0 if fade_s <= 0 else min(1.0, (now - t0) / fade_s)
+                t0, frm, to, own = fade
+                span = fade_s if own is None else max(0.0, own)
+                k = 1.0 if span <= 0 else min(1.0, (now - t0) / span)
                 val = _mix(frm, val if to is None else to, k * k * (3 - 2 * k))
                 if k >= 1.0:
                     del self._fades[dev.id]

@@ -423,3 +423,23 @@ def test_status_is_additive_to_live_v1(tmp_path):
         assert json.loads(json.dumps(st)) == st
     asyncio.run(body())
 
+
+
+def test_a_modes_transition_reaches_every_device_as_over_s(tmp_path):
+    """transition_s (owner, 26 Nov: "one transition machinery"): a mode's changes go out with opts over_s, inherited
+    through extends, the top-level default under it; an entry's own over_s wins; a bad value is refused."""
+    def patch(raw):
+        raw["transition_s"] = 2
+        raw["modes"]["live"]["transition_s"] = 4                  # disco extends live
+    async def body():
+        r = make_room(tmp_path, example(patch))
+        await boot(r)
+        assert r.cfg.modes["disco"].transition_s == 4.0 and r.cfg.modes["normal"].transition_s == 2.0
+        await go(r, "disco")
+        assert r.tv.commands[-1]["opts"].get("over_s") == 4.0
+        assert r.sonos.commands[-1]["opts"]["over_s"] == 5          # its entry's own
+        await go(r, "normal")
+        assert r.tv.commands[-1]["opts"].get("over_s") == 2.0
+    asyncio.run(body())
+    with pytest.raises(ConfigError):
+        make_room(tmp_path, example(lambda raw: raw["modes"]["disco"].update(transition_s=-1)))

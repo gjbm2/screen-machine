@@ -325,9 +325,9 @@ class LightsAdapter(Adapter):
 
     async def apply(self, desired: dict[str, Any], opts: dict) -> Outcome:
         async with self._lock:
-            return await self._apply(desired)
+            return await self._apply(desired, opts)
 
-    async def _apply(self, desired: dict[str, Any]) -> Outcome:
+    async def _apply(self, desired: dict[str, Any], opts: dict | None = None) -> Outcome:
         results = {m: Outcome("failed", f"{m} isn't a registered light any more", retry=False)
                    for m in desired if m not in self.members}
         ours = {m: v for m, v in desired.items() if m in self.members}
@@ -343,7 +343,11 @@ class LightsAdapter(Adapter):
             return every("unconfirmed", str(e))
         mapping = {**base, **ours}
         try:
-            status, body = await self._http("POST", FOLLOW, {"fixtures": mapping})
+            send: dict[str, Any] = {"fixtures": mapping}
+            over = (opts or {}).get("over_s")                   # the mode's transition: the lights ease over it
+            if isinstance(over, (int, float)) and not isinstance(over, bool) and over >= 0:
+                send["over_s"] = float(over)
+            status, body = await self._http("POST", FOLLOW, send)
         except asyncio.CancelledError:
             raise
         except (aiohttp.ClientError, OSError, asyncio.TimeoutError) as e:

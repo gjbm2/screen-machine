@@ -560,7 +560,8 @@ class ShowAdapter(Adapter):
         asked = [m for m in self.members if m in desired]
         if not asked:
             return Outcome("ok")
-        one = {"main": self._apply_main, **{m: functools.partial(self._apply_claim if self.zones else self._apply_flag, m)
+        one = {"main": functools.partial(self._apply_main, over_s=(opts or {}).get("over_s")),
+               **{m: functools.partial(self._apply_claim if self.zones else self._apply_flag, m)
                                             for m in self.members if self._flag(m)}}
         if len(asked) == 1:
             return await one[asked[0]](desired[asked[0]])
@@ -721,13 +722,16 @@ class ShowAdapter(Adapter):
         sub = o.members.get(flag, o)
         return Outcome(o.status, o.detail, {member: Outcome(sub.status, sub.detail, retry=sub.retry)}, retry=o.retry)
 
-    async def _apply_main(self, value: Any) -> Outcome:
+    async def _apply_main(self, value: Any, over_s: Any = None) -> Outcome:
         try:
             want = canonical(value)
         except ValueError as e:
             return _failed(str(e), retry=False)
+        send = dict(want) if isinstance(want, dict) else want
+        if isinstance(send, dict) and isinstance(over_s, (int, float)) and not isinstance(over_s, bool) and over_s >= 0:
+            send["over_s"] = float(over_s)              # the mode's transition: how long the show takes to start or stop
         try:
-            status, body = await self._http("PUT", "/api/v1/vibe", want, timeout=self.change_time_s + self.read_timeout_s)
+            status, body = await self._http("PUT", "/api/v1/vibe", send, timeout=self.change_time_s + self.read_timeout_s)
         except asyncio.CancelledError:
             raise
         except Exception as e:                      # refused, reset, timeout: show_service is down or busy

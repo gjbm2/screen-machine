@@ -575,7 +575,7 @@ def test_the_hold_overrides_everything_and_hands_back_through_a_glide():
     assert e.hold("mv", {"pan": 45.0}, idle_s=5.0, free=True)["target"]["pan"] == 45.0   # free: the full range
     a = at(run(e, box, 12.02, 13.0)[-1][1], "mv")
     assert a["pan"] == pytest.approx(45.0, abs=0.01)
-    e.set_follow({})
+    e.set_follow({}, over_s=0)                                           # no transition: this is the hold's test
     e.identify("mv", 0)
     assert e.release("mv") is True and e.release("mv") is False
     frames = run(e, box, 13.02, 14.0)
@@ -615,10 +615,10 @@ def test_an_inactive_mover_glides_home_busy_until_it_lands():
     caps = {**DMX_CAPS, "idle_without_vibe": True}
     assert at(run(e, box, 10.0, 11.5, caps=caps)[-1][1], "mv")["pan"] == 90.0
     box["pal"] = None                                                    # no vibe: inactive on an Art-Net output
-    fade = run(e, box, 11.52, 11.52 + lk.HOUSE_FADE_S - 0.05, caps=caps)   # first it dims where it points
+    fade = run(e, box, 11.52, 11.52 + lk.TRANSITION_S - 0.05, caps=caps)   # first it dims where it points
     assert all(at(fr, "mv")["pan"] == 90.0 and fr["active"] is False and fr["busy"] for _t, fr in fade)
     assert fade[-1][1]["fixtures"]["mv"]["intensity"] < fade[0][1]["fixtures"]["mv"]["intensity"]
-    frames = run(e, box, 11.52 + lk.HOUSE_FADE_S, 13.0 + lk.HOUSE_FADE_S, caps=caps)   # then glides home
+    frames = run(e, box, 11.52 + lk.TRANSITION_S, 13.0 + lk.TRANSITION_S, caps=caps)   # then glides home
     assert frames[0][1]["active"] is False and frames[0][1]["busy"] is True
     prev = 90.0
     for _t, fr in frames:

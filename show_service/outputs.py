@@ -1142,11 +1142,18 @@ class Rig:
         """GET /api/v1/rig/follow (any thread): ``{fixtures: {id: value}}``."""
         return {"fixtures": dict(self._follow)}
 
-    def set_follow(self, fixtures: Any) -> dict:
+    def set_transition(self, over_s: Any) -> Optional[float]:
+        """How long the show starting or stopping takes (the room's mode transition_s): the look engine's
+        ``set_transition``; None when it has none."""
+        fn = getattr(self.engine, "set_transition", None)
+        return self._guard("engine.set_transition", fn, over_s) if callable(fn) else None
+
+    def set_follow(self, fixtures: Any, over_s: Any = None) -> dict:
         """POST /api/v1/rig/follow (show-brain): ``fixtures`` {id: "dmx" | "off" | {hex, bri} | null (forget it)} is
         merged into the mapping (all or nothing: one bad value is a ValueError and nothing changes), saved, and handed
-        whole to the look engine; every runner re-plans. ``{accepted: true, fixtures: the whole mapping, unknown: ids
-        not in the registry (kept), saved}``."""
+        whole to the look engine; every runner re-plans. ``over_s``: how long the lights it moves take (the room's
+        mode transition; the engine's TRANSITION_S when None). ``{accepted: true, fixtures: the whole mapping,
+        unknown: ids not in the registry (kept), saved}``."""
         if not isinstance(fixtures, Mapping) or not all(isinstance(k, str) for k in fixtures):
             raise ValueError('bad_request: fixtures must be {<fixture id>: "dmx" | "off" | {"hex": "#rrggbb", '
                              '"bri": 0..100}}')
@@ -1162,17 +1169,21 @@ class Rig:
         if new != self._follow:
             self._follow = new
             self._save_follow()
-        self._apply_follow()
+        self._apply_follow(over_s)
         known = (self._view or {}).get("fixtures") or {}
         return {"accepted": True, "fixtures": dict(self._follow), "unknown": sorted(k for k in fixtures
                                                                                      if k not in known),
                 "saved": self.follow_file is not None and self.follow_error is None}
 
-    def _apply_follow(self) -> None:
-        """The whole mapping to the look engine (``LookEngine.set_follow``, when it has it), then every runner wakes."""
+    def _apply_follow(self, over_s: Any = None) -> None:
+        """The whole mapping to the look engine (``LookEngine.set_follow``, when it has it; ``over_s`` its transition
+        when given), then every runner wakes."""
         fn = getattr(self.engine, "set_follow", None)
         if callable(fn):
-            self._guard("engine.set_follow", fn, dict(self._follow))
+            if over_s is None:
+                self._guard("engine.set_follow", fn, dict(self._follow))
+            else:
+                self._guard("engine.set_follow", fn, dict(self._follow), over_s=over_s)
         for o in list(self._outs.values()):
             if o.runner is not None:
                 o.runner.wake.set()

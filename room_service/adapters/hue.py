@@ -441,12 +441,14 @@ class HueAdapter(Adapter):
         wanted = (out.wanted - leaving) | dmx
         was_streaming = out.state == "streaming" and bool(out.wanted & leaving)
         self._fading = dict(rest)
-        out.set_wanted(wanted, fade_to={self.devices[m].id: v for m, v in rest.items()})
+        over = opts.get("over_s") if isinstance(opts, dict) else None   # the mode's transition, if it has one
+        over = float(over) if isinstance(over, (int, float)) and not isinstance(over, bool) and over >= 0 else None
+        out.set_wanted(wanted, fade_to={self.devices[m].id: v for m, v in rest.items()}, fade_s=over)
         self._keep()
 
         if rest:
             if was_streaming:                          # eased to the new state, then the stream stops (or goes on)
-                fade_s = float(self.patch.hue.get("fade_s", FADE_S))
+                fade_s = over if over is not None else float(self.patch.hue.get("fade_s", FADE_S))
                 await self._wait(lambda: not out.fading_out(leaving) and (out.state != "streaming" or bool(out.wanted)),
                                  fade_s + 5.0)
                 await asyncio.sleep(1.0)               # the bridge writes its post-entertainment state first
