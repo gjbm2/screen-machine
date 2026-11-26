@@ -32,14 +32,14 @@ Left to right on the front: **Par 1, Spot 1, Derby 1, laser, Derby 2, Spot 2, Pa
 | 2 pars | RGBAW + UV LEDs (3 x 6 W), 22° beam | a colour-mixing lamp: R, G, B, amber, white, UV, and a strobe |
 | 2 derbies | RGBW LEDs (2 x 6.5 W each colour), 131° coverage, motorised | colour mixing, strobe; the motor is pinned |
 | 2 spots (moving heads) | 32 W cool-white LED, 17° beam, pan 540°, tilt 180°, 16-bit | a mover: pan/tilt, speed, a 10-slot colour wheel, a 9-gobo wheel with shake and scroll, a dimmer, a shutter |
-| 4 strobe zones | cool-white LEDs, 5 W each | **not patched** (see below) |
-| laser | class 3R: red 650 nm, green 520 nm, blue 450 nm | **not patched**; the type makes every channel a page-only macro |
+| 4 strobe zones | cool-white LEDs, 5 W each | four intensity channels and a strobe (one fixture per bar) |
+| laser | class 3R: red 650 nm, green 520 nm, blue 450 nm | **not patched** (owner: tbc); the type makes every channel a page-only macro |
 
-show_service drives one colour and one pan/tilt per fixture, so each bar is **patched part by part**: six fixtures
+show_service drives one colour and one pan/tilt per fixture, so each bar is **patched part by part**: seven fixtures
 per bar at the bar's start address plus each part's offset.
-- **The strobe zones are left unpatched.** There is no strobe-only role yet; patched, they would glow white with
-  every look. Their channels stay at 0, which is dark.
-- **The laser is left unpatched too.** The manual requires 3 m between the floor and the lowest beam, and 3 m
+- **The strobe zones are patched** (owner, 26 Nov). They have intensity channels and no colour, so they light white
+  at every look's level (191 of 255 in a typical look), not only on hits. Watch that on the virtual GigBAR (§7).
+- **The laser is left unpatched (owner: tbc).** The manual requires 3 m between the floor and the lowest beam, and 3 m
   between the beams and the audience. A room party can't meet that, so keep it off. Its channels stay at 0, which is
   blackout.
 
@@ -203,3 +203,64 @@ file). Then:
 - check that the fixture ids don't clash with the ones already there;
 - give the parts `placement` (`above`, `opposite`) or `role` as they sit in the drawing room;
 - run `python -m smconfig check`.
+
+## 7. The virtual GigBAR: a second Art-Net node on the Windows side
+
+A real Art-Net node, run as Windows Python on this laptop, with a view of the two bars and the hazer that a Windows
+browser opens. It hears the rig exactly as the Pknight will: show_service polls it and sends it the same ArtDmx
+packets, byte for byte, frame for frame, as `node-dmx` (`outputs.dmx-a.also_nodes`). Nothing in it makes up DMX.
+
+```
+show_service (WSL 172.24.x)  --unicast ArtDmx, ArtPoll-->  node-dmx    192.168.50.10:6454  (the Pknight, via Windows NAT)
+                             --the same packets-------->  gigbar-view  windows:6454        (the virtual node)
+                             <--ArtPollReply------------  (each node answers; show_service matches it by name)
+virtual node: Art-Net in -> DMX out at 40 Hz (holds the last frame when Art-Net stops) -> /dmx -> the view
+```
+
+- **Run it:** `tools/virtual_node/run-windows.sh start` (also `stop`, `status`, `log`). Then open
+  **http://127.0.0.1:8705/** in Brave on Windows.
+- **What it is:**
+  - `virtual_node.py` listens on Windows udp 0.0.0.0:6454 and answers ArtPoll with an Art-Net 4 ArtPollReply (short
+    name "SM Virtual Node", universe 1). show_service shows it under `GET /show/api/v1/rig` `.nodes.gigbar-view`.
+  - It takes ArtDmx for Port-Address 1 and honours ArtAddress failsafe commands.
+  - Its DMX side refreshes at 40 Hz whatever rate Art-Net arrives at. After 4 s without Art-Net it holds
+    (`--failsafe zero` to black out instead).
+  - Flags: `--port 6455` (PC22), `--universe`, `--reply-to-6454` (answer polls on port 6454, as some nodes do).
+- **The view** reads only that DMX output. Set each bar there as you set the real one: start address, 52CH or 50CH,
+  pan/tilt range and reverse. Set the hazer's DIP address too. A patch mistake then shows as it would in the room.
+  - It draws each part from what its channels mean in the manuals: pars and derbies, the strobe zones, the laser, the
+    spots' pan/tilt, colour wheel, gobos and shutter, and haze building in the air (beams show in haze).
+  - It also shows each bar's raw channels and the node's state: packets a second, sources, sequence jumps, merging,
+    polls answered.
+  - **The mechanical speeds are estimates** (the manuals don't give them): pan, tilt and wheel travel, the derby and
+    laser motors, and the hazer's 4.5 min warm-up (set-up can skip it).
+- **What it proves:** show_service's packets and timing, the patch, both nodes on one universe, and real Art-Net
+  over a real (virtual) Ethernet segment between two hosts.
+- **What it doesn't prove:** Windows routing out of the USB adapter, the Pknight's settings, the cables, or the
+  bars' firmware and menu settings. The view follows our reading of the manual, as the type files do. See the list of
+  failure points below.
+- **Stop sending to it:** remove `gigbar-view` from `outputs.dmx-a.also_nodes`. It's re-read within 2 s, and the
+  real node's frames don't change.
+
+### 7.1 What the virtual test can't catch (check these with the real kit)
+
+1. **Path:**
+   - Windows routing to 192.168.50.10 out of the USB adapter: the Wi-Fi's /19 (192.168.0.0-31.255), Tailscale.
+   - The adapter's static IP, which Windows drops when there's no link.
+   - USB selective suspend during a long run.
+2. **The Pknight CR011R** (its manual; set on its OLED, hold Enter 3 s to save each setting):
+   - Transmit mode **Artnet -> dmx** (the blue LED steady).
+   - Port universe **1**, SubNet 0, Net 0.
+   - Local IP 192.168.50.10, mask 255.255.255.0.
+   - If its default IP is inside the Wi-Fi's /19, set it with Wi-Fi off.
+   - If it mishandles short frames, set `full_512: true` on `node-dmx`.
+3. **Cables:**
+   - Halo's three 3-pin leads (2 x 10 m, 1 x 3 m) are exactly the chain node → A → B → hazer, with no spare.
+   - The node's socket is 3-pin female (the normal output).
+   - Check the hazer's socket is 3-pin.
+4. **The bars:**
+   - The menu's mode list (52CH, 50CH or 51CH: ask Halo for a photo).
+   - The §4 assumptions.
+   - The bars in DMX mode, with RF, FOOT and D-Fi off: Halo's quote includes RF remotes and foot controllers.
+   - The laser key left out.
+

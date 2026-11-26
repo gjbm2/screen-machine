@@ -18,12 +18,19 @@ nodes:
     last_ip: 192.168.50.10
     # failsafe: hold                        # ArtAddress AcFail: set only if the node honours it (the bars hold the
                                             # last frame on DMX loss by themselves)
+  gigbar-view:
+    # The virtual node on this laptop's Windows side (tools/virtual_node: a real Art-Net node on udp 6454 there, with
+    # the GigBAR view at http://127.0.0.1:8705/ in a Windows browser). "windows" is WSL's gateway, resolved by
+    # show_service. It gets the same packets as node-dmx (outputs.dmx-a.also_nodes); drop it there to stop.
+    match: {short_name: "SM Virtual Node"}
+    last_ip: windows
 
 outputs:
   dmx-a:
     driver: artnet
     enabled: true
     node: node-dmx
+    also_nodes: [gigbar-view]               # the same universe, the same packets, to the virtual node as well
     port_address: 1                         # Art-Net Net 0, Sub-Net 0, Universe 1 on the node's DMX port (0 is
                                             # refused: room_service's virtual universe)
 
@@ -34,17 +41,16 @@ types:
   gigbar-par:   {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-par.json, mode: part}     # RGBAW + UV, strobe
   gigbar-derby: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-derby.json, mode: part}   # RGBW, strobe, motor
   gigbar-spot:  {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-spot.json, mode: part}    # moving head
-  # Declared for the Lights page, not patched: the four white strobes (no strobe-only role yet: patched, they would
-  # glow white with every look) and the class 3R laser (the manual wants 3 m above the floor and 3 m from people).
-  # Their channels stay at 0, which is dark.
-  gigbar-flash: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-flash.json, mode: part}
+  gigbar-flash: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-flash.json, mode: part}   # 4 white strobes
+  # Declared for the Lights page, not patched (owner, 26 Nov: "tbc"): the class 3R laser (the manual wants 3 m above
+  # the floor and 3 m from people). Its channels stay at 0, which is blackout.
   gigbar-laser: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-laser.json, mode: part-52ch}
   # gigbar-laser-50: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-laser.json, mode: part-50ch}
   z-350: {source: ofl, file: ofl/antari/z-350.json, mode: 2-channel}   # haze, fan: never driven by a look
 
 # Address plan (universe 1): bar A at 1 (1-52), bar B at 101 (101-152), the hazer at 201 (201-202).
-# Part offsets in a 52CH bar: par 1 +0, par 2 +7, derby 1 +14, derby 2 +20, strobes +26 (unpatched), laser +31
-# (unpatched), spot 1 +34, spot 2 +43. "A" is the bar on the left as the room faces the screen (swap the start
+# Part offsets in a 52CH bar: par 1 +0, par 2 +7, derby 1 +14, derby 2 +20, strobes +26, laser +31 (unpatched),
+# spot 1 +34, spot 2 +43. "A" is the bar on the left as the room faces the screen (swap the start
 # addresses on the bars if they end up the other way round). The derby motors are pinned to a slow clockwise turn
 # (a starting point: 0 stops them, 1-127 is slow to fast).
 fixtures:
@@ -54,6 +60,7 @@ fixtures:
                     pin: {Rotation: 16}}
   gigbar-a.derby2: {label: Bar A derby 2, type: gigbar-derby, output: dmx-a, address: 21,  tags: [gigbar, bar-a, derby],
                     pin: {Rotation: 16}}
+  gigbar-a.strobe: {label: Bar A strobes, type: gigbar-flash, output: dmx-a, address: 27,  tags: [gigbar, bar-a, strobe]}
   gigbar-a.spot1:  {label: Bar A spot 1,  type: gigbar-spot,  output: dmx-a, address: 35,  tags: [gigbar, bar-a, spot]}
   gigbar-a.spot2:  {label: Bar A spot 2,  type: gigbar-spot,  output: dmx-a, address: 44,  tags: [gigbar, bar-a, spot]}
 
@@ -63,6 +70,7 @@ fixtures:
                     pin: {Rotation: 16}}
   gigbar-b.derby2: {label: Bar B derby 2, type: gigbar-derby, output: dmx-a, address: 121, tags: [gigbar, bar-b, derby],
                     pin: {Rotation: 16}}
+  gigbar-b.strobe: {label: Bar B strobes, type: gigbar-flash, output: dmx-a, address: 127, tags: [gigbar, bar-b, strobe]}
   gigbar-b.spot1:  {label: Bar B spot 1,  type: gigbar-spot,  output: dmx-a, address: 135, tags: [gigbar, bar-b, spot]}
   gigbar-b.spot2:  {label: Bar B spot 2,  type: gigbar-spot,  output: dmx-a, address: 144, tags: [gigbar, bar-b, spot]}
 
@@ -78,3 +86,4 @@ groups:
   pars: {select: "tag:par"}
   derbies: {select: "tag:derby"}
   spots: {select: "tag:spot"}
+  strobes: {select: "tag:strobe"}

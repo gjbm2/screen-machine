@@ -1072,3 +1072,65 @@ def test_lan_host_reads_env_file(tmp_path):
     assert al.lan_host({}, f) == "192.168.7.20"
     assert al.lan_host({"SM_LAN_HOST": "10.1.2.3"}, tmp_path / "missing") == "10.1.2.3"
     assert al.lan_host({}, tmp_path / "missing") is None
+
+
+# -- also_nodes: one universe to several nodes (Art-Net 4 unicast to each), and the windows alias ------------------------
+def test_also_nodes_get_the_same_packet_and_are_polled(tmp_path):
+    sim, sock = Sim(), FakeSock()
+    sim.sock = sock
+    nodes = [node_cfg("n1", port=40000), node_cfg("n2", port=40001)]
+    out = out_cfg(also_nodes=["n2"])
+    d = make(sim, sock, tmp_path, out=out, nodes=nodes, fixtures=[fixture("p1", "par", 1)])
+    run(d, sim, sim.t + 0.5, fr=frame(p1=[1, 2, 3, 4, 5, 6]))
+    dmx = sock.ops(0x5000)
+    to_main = [p for _, a, p in dmx if a == ("127.0.0.1", 40000)]
+    to_also = [p for _, a, p in dmx if a == ("127.0.0.1", 40001)]
+    assert to_main and to_main == to_also                     # byte for byte, frame for frame (seq included)
+    assert parse_dmx(to_also[0])[2][:6] == bytes([1, 2, 3, 4, 5, 6])
+    d.tick(sim.t + 10)
+    polled = {a for _, a, _ in sock.ops(0x2000)}
+    assert {("127.0.0.1", 40000), ("127.0.0.1", 40001)} <= polled
+    st = d.status()
+    assert st["state"] == "sending" and [n["id"] for n in st["extra"]["also_nodes"]] == ["n2"]
+    assert d.universe_view()["also_to"] == ["127.0.0.1:40001"]
+
+
+def test_an_also_node_failing_never_fails_the_output(tmp_path):
+    sim, sock = Sim(), FakeSock()
+    nodes = [node_cfg("n1", port=40000), node_cfg("n2", ip=None, port=40001)]   # no address: nothing to send to
+    d = make(sim, sock, tmp_path, out=out_cfg(also_nodes=["n2"]), nodes=nodes, fixtures=[fixture("p1", "par", 1)])
+    run(d, sim, sim.t + 0.5)
+    assert d.status()["state"] == "sending" and d.send_errors == 0 and d.also_errors > 0
+
+
+def test_last_ip_windows_resolves_to_the_gateway(tmp_path, monkeypatch):
+    from show_service import receiver
+    monkeypatch.setattr(receiver, "windows_host", lambda: "127.0.0.9")
+    sim, sock = Sim(), FakeSock()
+    d = make(sim, sock, tmp_path, nodes=[node_cfg("n1", ip="windows", port=40000)], fixtures=[fixture("p1", "par", 1)])
+    run(d, sim, sim.t + 0.2)
+    assert {a for _, a, _ in sock.ops(0x5000)} == {("127.0.0.9", 40000)}
+
+
+def test_fixtures_reads_also_nodes_and_the_alias(tmp_path):
+    from show_service import fixtures
+    f = tmp_path / "fixtures.yaml"
+    f.write_text("version: 1\n"
+                 "nodes:\n  a: {last_ip: 192.168.50.10}\n  b: {last_ip: windows}\n  c: {last_ip: nowhere}\n"
+                 "outputs:\n  o: {driver: artnet, enabled: true, node: a, port_address: 1, also_nodes: [b, a, zz]}\n")
+    r = fixtures.load(f, types_dir=tmp_path)
+    assert r["nodes"]["b"]["last_ip"] == "windows" and r["nodes"]["c"]["last_ip"] is None
+    assert r["outputs"]["o"]["also_nodes"] == ["b"]
+    words = " ".join(r["problems"])
+    assert "'a' is already named" in words and "'zz' isn't in nodes" in words and "'nowhere'" in words
+
+
+def test_a_windows_node_answering_at_the_gateway_has_not_moved(tmp_path, monkeypatch):
+    from show_service import receiver
+    monkeypatch.setattr(receiver, "windows_host", lambda: "127.0.0.9")
+    sim, sock = Sim(), FakeSock()
+    nodes = [node_cfg("n1", ip="windows", port=40000, match={"short_name": "SM Virtual Node"})]
+    d = make(sim, sock, tmp_path, nodes=nodes, fixtures=[fixture("p1", "par", 1)])
+    d.nodes.on_reply(make_reply(ip="127.0.0.9", short="SM Virtual Node", long="v"), ("127.0.0.9", 6454))
+    st = d.nodes.status("n1")
+    assert st["matched"] is True and "moved" not in (st["detail"] or "") and st["ip"] == "127.0.0.9"

@@ -91,8 +91,11 @@ SELECTOR_KEYS: tuple[str, ...] = ("id", "kind", "type", "output", "driver", "zon
 SPATIAL_KEYS: tuple[str, ...] = ("side", "height")   # answered by ``select``'s ``spatial`` (space.spatial_fn)
 HEIGHT_WORDS: tuple[str, ...] = ("low", "mid", "high")   # height:<word>: the room's thirds, floor to ceiling
 TOP_KEYS: tuple[str, ...] = ("version", "outputs", "nodes", "types", "fixtures", "groups")
-OUTPUT_KEYS: tuple[str, ...] = ("driver", "enabled", "node", "port_address", "latency_key", "latency", "hits",
-                                "min_attack_ms", "rate_hz")
+OUTPUT_KEYS: tuple[str, ...] = ("driver", "enabled", "node", "also_nodes", "port_address", "latency_key", "latency",
+                                "hits", "min_attack_ms", "rate_hz")
+#: a node's ``last_ip`` may name this host alias instead of an address: the Windows machine this WSL runs on (show_service
+#: resolves it to WSL's default gateway when it builds the node's destination; receiver.WINDOWS_HOST, the senders' word)
+HOST_ALIASES: tuple[str, ...] = ("windows",)
 NODE_KEYS: tuple[str, ...] = ("match", "last_ip", "port", "full_512", "failsafe", "virtual")
 TYPE_KEYS: tuple[str, ...] = ("source", "file", "mode", "emitters", "curve")
 FIXTURE_KEYS: tuple[str, ...] = ("type", "label", "output", "address", "light", "screen", "zone", "placement", "role",
@@ -690,11 +693,14 @@ class _Builder:
                                          f": unset (any reply at last_ip counts)")
             last_ip = None
             ip = n.get("last_ip")
-            if ip is not None:
+            if isinstance(ip, str) and ip.strip().lower() in HOST_ALIASES:
+                last_ip = ip.strip().lower()                # resolved by the sender (artnet_lan.Nodes)
+            elif ip is not None:
                 try:
                     last_ip = str(ipaddress.IPv4Address(str(ip).strip()))
                 except ValueError:
-                    self.problems.append(f"{where}.last_ip: {ip!r} isn't an IPv4 address: unset (nothing is sent)")
+                    self.problems.append(f"{where}.last_ip: {ip!r} isn't an IPv4 address or "
+                                         f"{' / '.join(HOST_ALIASES)}: unset (nothing is sent)")
             port = _int(n.get("port", ARTNET_PORT))
             if port is None or not 1 <= port <= 65535:
                 self.problems.append(f"{where}.port: {n.get('port')!r} isn't a UDP port: {ARTNET_PORT}")
@@ -705,7 +711,8 @@ class _Builder:
                                      f"unset (the node's own)")
                 fs = None
             virtual = self._bool(where, n, "virtual", False)
-            if last_ip and ipaddress.IPv4Address(last_ip).is_loopback and port == ARTNET_PORT and not virtual:
+            if (last_ip and last_ip not in HOST_ALIASES and ipaddress.IPv4Address(last_ip).is_loopback
+                    and port == ARTNET_PORT and not virtual):
                 self.problems.append(f"{where}: {last_ip}:{port} is room_service's own Art-Net receiver: never sent "
                                      f"to (treated as virtual)")
                 virtual = True
@@ -771,6 +778,17 @@ class _Builder:
             if node is not None and node not in nodes:
                 probs.append(f"{where}.node: {node!r} isn't in nodes: unset (the output can't start)")
                 node = None
+            also: list[str] = []                        # more nodes that take this universe (Art-Net 4: the
+            av = o.get("also_nodes")                    # controller unicasts it to each node that outputs it)
+            if av is not None and not isinstance(av, list):
+                probs.append(f"{where}.also_nodes: {av!r} isn't a list of node ids: none")
+            for a in (av if isinstance(av, list) else []):
+                if a not in nodes:
+                    probs.append(f"{where}.also_nodes: {a!r} isn't in nodes: left out")
+                elif a == node or a in also:
+                    probs.append(f"{where}.also_nodes: {a!r} is already named: once is enough")
+                else:
+                    also.append(a)
             pa = o.get("port_address")
             if pa is not None:
                 pai = _int(pa)
@@ -816,7 +834,7 @@ class _Builder:
             hand = self._hand_latency(o.get("latency"), where, probs)
             self.problems.extend(probs)
             out[oid] = {"id": oid, "driver": drv, "enabled": enabled, "built": drv in contract.DRIVERS_BUILT,
-                        "node": node, "port_address": pa, "latency_key": lk, "latency": hand,
+                        "node": node, "also_nodes": also, "port_address": pa, "latency_key": lk, "latency": hand,
                         "hits": hits, "min_attack_ms": _num(mam) if mam is not None else None,
                         "rate_hz": _num(rate) if rate is not None else None, "settings": settings, "problems": probs}
         return out

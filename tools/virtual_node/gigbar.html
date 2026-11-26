@@ -1,0 +1,487 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Virtual GigBAR</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  The virtual GigBAR MOVE + ILS rig (docs/GIGBAR_RIG.md §7). Served by virtual_node.py, it reads that node's DMX output
+  (GET /dmx: one event per DMX refresh, 512 slots) and nothing else: no rig file, no show_service. Each bar is set
+  up here as a real one is on its menu (start address, 52CH or 50CH, pan/tilt range and reverse), and the hazer by its
+  DIP address. The fixtures are drawn from what their channels mean in the Chauvet and Antari manuals; the mechanical
+  speeds (pan, tilt, wheels, motors) aren't in the manuals, so they are estimates (MECH below), and the page says so.
+-->
+<style>
+  :root { color-scheme: dark; --fg: #d8dbe2; --dim: #8a90a0; --bad: #ff6b6b; --ok: #6bd38a; --warn: #ffc857; }
+  html, body { margin: 0; height: 100%; background: #07080b; color: var(--fg);
+               font: 13px/1.35 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  #top { position: fixed; inset: 0 0 auto 0; display: flex; gap: 14px; align-items: center; padding: 6px 10px;
+         background: #0d0f14cc; border-bottom: 1px solid #1c2030; z-index: 2; flex-wrap: wrap; }
+  #top b { font-weight: 600; }
+  .pill { padding: 1px 8px; border-radius: 10px; background: #1a1e2a; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); } .dim { color: var(--dim); }
+  button { background: #1a1e2a; color: var(--fg); border: 1px solid #2a3044; border-radius: 6px; padding: 3px 10px;
+           cursor: pointer; }
+  #cfg { position: fixed; top: 38px; right: 10px; z-index: 3; background: #10131bf2; border: 1px solid #2a3044;
+         border-radius: 8px; padding: 10px 12px; display: none; max-width: 460px; }
+  #cfg h3 { margin: 6px 0 4px; font-size: 13px; }
+  #cfg label { display: inline-flex; gap: 4px; align-items: center; margin: 2px 10px 2px 0; }
+  #cfg input[type=number] { width: 64px; background: #07080b; color: var(--fg); border: 1px solid #2a3044;
+                            border-radius: 4px; padding: 1px 4px; }
+  #cfg select { background: #07080b; color: var(--fg); border: 1px solid #2a3044; border-radius: 4px; }
+  #cfg p { margin: 6px 0 0; color: var(--dim); }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+</style>
+</head>
+<body>
+<div id="top">
+  <b>Virtual GigBAR</b>
+  <span id="link" class="pill dim">connecting…</span>
+  <span id="artnet" class="pill dim">Art-Net: –</span>
+  <span id="src" class="dim"></span>
+  <span style="flex:1"></span>
+  <span class="dim">motion speeds are estimates</span>
+  <button id="cfgBtn">Set up the units</button>
+</div>
+<div id="cfg"></div>
+<canvas id="c"></canvas>
+<script>
+"use strict";
+
+// ---- set-up: as on each unit's own menu or DIP switch (kept in this browser) -----------------------------------------
+const DEFAULTS = {
+  bars: [
+    { name: "Bar A", address: 1, mode: 52, panRange: 540, tiltRange: 180, rev: [false, false, false, false] },
+    { name: "Bar B", address: 101, mode: 52, panRange: 540, tiltRange: 180, rev: [false, false, false, false] },
+  ],
+  hazer: { address: 201, skipWarmup: false },
+};
+let CFG = load();
+function load() {
+  try { const c = JSON.parse(localStorage.getItem("vgb.cfg")); if (c && c.bars && c.hazer) return c; } catch (e) {}
+  return JSON.parse(JSON.stringify(DEFAULTS));
+}
+function save() { localStorage.setItem("vgb.cfg", JSON.stringify(CFG)); }
+
+// Part offsets in a bar's personality (manual Rev. 10: 52CH; Rev. 8: 50CH, a one-channel laser).
+const LAYOUT = {
+  52: { par: [0, 7], derby: [14, 20], flash: 26, laser: 31, laserCh: 3, spot: [34, 43], size: 52 },
+  50: { par: [0, 7], derby: [14, 20], flash: 26, laser: 31, laserCh: 1, spot: [32, 41], size: 50 },
+};
+// Mechanical speeds: NOT in the manuals. Estimates for a budget LED mover and its effects; tune by eye on the day.
+const MECH = { panDps: 220, tiltDps: 150, accel: 900, wheelSlotsPerS: 9, goboSlotsPerS: 8, derbyRps: 1.2,
+               laserRps: 0.8, warmupS: 270 };
+
+// ---- the node's DMX output --------------------------------------------------------------------------------------------
+let DMX = new Uint8Array(512), dmxAt = 0, frames = 0, nodeLost = true, nodeAge = null, linkOk = false;
+function connect() {
+  const es = new EventSource("/dmx");
+  es.onopen = () => { linkOk = true; };
+  es.onerror = () => { linkOk = false; };
+  es.onmessage = (ev) => {
+    const m = JSON.parse(ev.data);
+    const bin = atob(m.d), u = new Uint8Array(512);
+    for (let i = 0; i < 512; i++) u[i] = bin.charCodeAt(i);
+    DMX = u; dmxAt = performance.now(); frames = m.f; nodeLost = m.lost; nodeAge = m.age_s;
+  };
+}
+connect();
+const ch = (a) => (a >= 1 && a <= 512 ? DMX[a - 1] : 0);         // 1-based DMX address
+
+let STATUS = null;
+async function pollStatus() {
+  try { STATUS = await (await fetch("/status", { cache: "no-store" })).json(); } catch (e) { STATUS = null; }
+  const a = STATUS && STATUS.artnet, link = document.getElementById("link"), art = document.getElementById("artnet");
+  const fresh = linkOk && performance.now() - dmxAt < 1500;
+  link.textContent = fresh ? `node ${STATUS ? STATUS.node.udp : ""} · universe ${STATUS ? STATUS.node.universe : "?"}`
+                           : "can't reach the node's DMX output";
+  link.className = "pill " + (fresh ? "ok" : "bad");
+  if (a) {
+    const live = a.age_s !== null && a.age_s < (STATUS.node.loss_s || 4);
+    art.textContent = a.age_s === null ? "Art-Net: none yet"
+      : live ? `Art-Net: ${a.pps}/s · ${a.length} ch · seq jumps ${a.seq_jumps}${a.merging ? " · MERGING" : ""}`
+             : `Art-Net: none for ${a.age_s.toFixed(0)} s · output ${STATUS.node.failsafe}`;
+    art.className = "pill " + (a.age_s === null ? "dim" : live ? (a.merging ? "warn" : "ok") : "bad");
+    const src = Object.entries(a.sources).map(([ip, s]) => `${ip}:${s.port} (${s.age_s.toFixed(1)} s)`).join(", ");
+    const other = Object.keys(a.other_universes).length ? ` · other universes: ${JSON.stringify(a.other_universes)}` : "";
+    document.getElementById("src").textContent =
+      (src ? "from " + src : "") + ` · polls answered ${a.replies}` + other;
+  }
+}
+setInterval(pollStatus, 1000); pollStatus();
+
+// ---- channel meanings (the manuals) ------------------------------------------------------------------------------------
+const lerp = (a, b, t) => a + (b - a) * t;
+const inv = (v, lo, hi) => (v - lo) / Math.max(1, hi - lo);
+// Par / derby / flash strobe channel: 000-250 strobe slow to fast, 251-255 to sound (0-5 read as no strobe: §4).
+function barStrobe(v) {
+  if (v <= 5) return { mode: "open" };
+  if (v <= 250) return { mode: "strobe", hz: lerp(1, 30, inv(v, 6, 250)) };
+  return { mode: "sound" };
+}
+// Spot shutter: 0-3 closed, 4-7 open, 8-76 strobe, 77-145 pulse, 146-215 random, 216-255 open.
+function spotShutter(v) {
+  if (v <= 3) return { mode: "closed" };
+  if (v <= 7 || v >= 216) return { mode: "open" };
+  if (v <= 76) return { mode: "strobe", hz: lerp(1, 30, inv(v, 8, 76)) };
+  if (v <= 145) return { mode: "pulse", hz: lerp(1, 30, inv(v, 77, 145)) };
+  return { mode: "random", hz: lerp(1, 30, inv(v, 146, 215)) };
+}
+function shutterGain(s, t, seed) {
+  switch (s.mode) {
+    case "closed": return 0;
+    case "open": return 1;
+    case "strobe": return ((t * s.hz) % 1) < 0.18 ? 1 : 0;
+    case "pulse": return 1 - ((t * s.hz) % 1);
+    case "random": { const k = Math.floor(t * s.hz * 1.3); return hash(k * 7 + seed) < 0.45 && ((t * s.hz * 1.3) % 1) < 0.25 ? 1 : 0; }
+    case "sound": return ((t * 2.1) % 1) < 0.12 ? 1 : 0;      // strobe to sound: the bar's own mic (not modelled)
+  }
+  return 1;
+}
+function hash(n) { const x = Math.sin(n * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
+// Derby / laser motor: 0 stop, 1-127 CW slow to fast, 128 stop, 129-255 CCW slow to fast (revolutions a second).
+function motor(v, rps) {
+  if (v === 0 || v === 128) return 0;
+  return v < 128 ? lerp(0.03, rps, inv(v, 1, 127)) : -lerp(0.03, rps, inv(v, 129, 255));
+}
+const COLOUR_SLOTS = [["Open", "#ffffff"], ["Red", "#ff2020"], ["Orange", "#ff8a1a"], ["Yellow", "#ffe81a"],
+  ["Green", "#22ff44"], ["Blue", "#2a4bff"], ["CTO", "#ffc58f"], ["Cyan", "#1ae8ff"], ["Magenta", "#ff2aff"],
+  ["Lime", "#bfff1a"]];
+const COLOUR_RANGES = [[0, 6], [7, 13], [14, 20], [21, 27], [28, 34], [35, 41], [42, 48], [49, 55], [56, 62], [63, 64]];
+// colour wheel channel -> {target slot position (fractional), or spin (slots/s)}
+function colourWheel(v) {
+  for (let i = 0; i < COLOUR_RANGES.length; i++) if (v <= COLOUR_RANGES[i][1]) return { pos: i };
+  if (v <= 189) return { pos: inv(v, 65, 189) * 10 };          // colour index: anywhere round the wheel
+  if (v <= 221) return { spin: lerp(MECH.wheelSlotsPerS, 0.3, inv(v, 190, 221)) };     // CW fast to slow
+  if (v <= 223) return { spin: 0 };
+  return { spin: -lerp(0.3, MECH.wheelSlotsPerS, inv(v, 224, 255)) };                 // CCW slow to fast
+}
+// gobo wheel: open 0-5, gobos 1-9 (6 wide; 9 is 54-63), shakes 64-117 (gobo 9 first), open 118-127, scroll
+function goboWheel(v) {
+  if (v <= 53) return { slot: Math.floor(v / 6) };              // 0 open .. 8 gobo 8
+  if (v <= 63) return { slot: 9 };
+  if (v <= 117) { const k = Math.floor((v - 64) / 6); return { slot: 9 - k, shake: lerp(1, 8, ((v - 64) % 6) / 5) }; }
+  if (v <= 127) return { slot: 0 };
+  if (v <= 189) return { spin: lerp(0.2, MECH.goboSlotsPerS, inv(v, 128, 189)) };
+  if (v <= 193) return { spin: 0 };
+  return { spin: -lerp(0.2, MECH.goboSlotsPerS, inv(v, 194, 255)) };
+}
+const LASER_V2 = [[5, null], [41, "R"], [77, "G"], [113, "B"], [149, "RG"], [185, "RB"], [221, "GB"], [255, "RGB"]];
+const LASER_V1 = [[0, null], [36, "IMG"], [71, "R"], [73, null], [107, "G"], [110, null], [143, "B"], [147, null],
+                  [179, "RG"], [184, null], [215, "RB"], [221, null], [255, "GB"]];
+const pick = (table, v) => table.find(([hi]) => v <= hi)[1];
+
+// ---- the moving parts' physical state (per bar, per spot) --------------------------------------------------------------
+const SIM = CFG.bars.map(() => ({
+  spots: [0, 1].map(() => ({ pan: 0, tilt: 0, vp: 0, vt: 0, wheel: 0, gobo: 0, goboSpin: 0 })),
+  derbyRot: [0, 0], laserRot: 0,
+}));
+const HAZE = { firstDmx: null, density: 0, lastSeen: null };
+function wrapDelta(from, to, n) { let d = (to - from) % n; if (d > n / 2) d -= n; if (d < -n / 2) d += n; return d; }
+function slew(cur, vel, target, vmax, dt) {
+  const err = target - cur;
+  const want = Math.max(-vmax, Math.min(vmax, err * 6));
+  const dv = Math.max(-MECH.accel * dt, Math.min(MECH.accel * dt, want - vel));
+  vel += dv; cur += vel * dt;
+  if (Math.abs(err) < 0.05 && Math.abs(vel) < 1) { cur = target; vel = 0; }
+  return [cur, vel];
+}
+function stepSim(dt, t) {
+  CFG.bars.forEach((bar, bi) => {
+    const L = LAYOUT[bar.mode], S = SIM[bi], a0 = bar.address;
+    [0, 1].forEach((k) => {
+      const base = a0 + L.spot[k], s = S.spots[k];
+      const pan16 = ch(base) * 256 + ch(base + 1), tilt16 = ch(base + 2) * 256 + ch(base + 3);
+      let pt = (pan16 / 65535 - 0.5) * bar.panRange, tt = (tilt16 / 65535 - 0.5) * bar.tiltRange;
+      if (bar.rev[k * 2]) pt = -pt;
+      if (bar.rev[k * 2 + 1]) tt = -tt;
+      const sp = 1 - (ch(base + 4) / 255) * 0.96;               // pan/tilt speed: 0 fastest (assumed, §4)
+      [s.pan, s.vp] = slew(s.pan, s.vp, pt, MECH.panDps * sp, dt);
+      [s.tilt, s.vt] = slew(s.tilt, s.vt, tt, MECH.tiltDps * sp, dt);
+      const cw = colourWheel(ch(base + 5));
+      if (cw.spin !== undefined) s.wheel = (s.wheel + cw.spin * dt + 100) % 10;
+      else { const d = wrapDelta(s.wheel, cw.pos, 10), m = MECH.wheelSlotsPerS * dt;
+             s.wheel = (s.wheel + Math.max(-m, Math.min(m, d)) + 10) % 10; }
+      const gw = goboWheel(ch(base + 6));
+      if (gw.spin !== undefined) { s.gobo = (s.gobo + gw.spin * dt + 100) % 10; s.shake = 0; }
+      else { const d = wrapDelta(s.gobo, gw.slot, 10), m = MECH.goboSlotsPerS * dt;
+             s.gobo = (s.gobo + Math.max(-m, Math.min(m, d)) + 10) % 10; s.shake = gw.shake || 0; }
+    });
+    [0, 1].forEach((k) => { S.derbyRot[k] += motor(ch(a0 + L.derby[k] + 5), MECH.derbyRps) * dt * Math.PI * 2; });
+    if (L.laserCh === 3) S.laserRot += motor(ch(a0 + L.laser + 2), MECH.laserRps) * dt * Math.PI * 2;
+  });
+  // the hazer: it heats once DMX arrives (about 4.5 min, manual), hazes on channel 1, sleeps when DMX stops
+  const h = CFG.hazer, haveDmx = linkOk && performance.now() - dmxAt < 1500;
+  if (haveDmx) { if (HAZE.firstDmx === null) HAZE.firstDmx = t; HAZE.lastSeen = t; }
+  else if (HAZE.lastSeen !== null && t - HAZE.lastSeen > 3) HAZE.firstDmx = null;    // self-clean, then sleep
+  const ready = HAZE.firstDmx !== null && (h.skipWarmup || t - HAZE.firstDmx >= MECH.warmupS);
+  const hv = ch(h.address), fv = ch(h.address + 1);
+  const out = ready && hv >= 5 ? lerp(0.01, 1, inv(hv, 5, 255)) : 0;
+  const fan = fv <= 4 ? 0.2 : lerp(0.21, 1, inv(fv, 5, 255));
+  HAZE.out = out; HAZE.fan = fan; HAZE.ready = ready;
+  HAZE.density = Math.min(1, HAZE.density + out * (0.02 + 0.03 * fan) * dt) * Math.exp(-dt / 150);
+}
+
+// ---- drawing -------------------------------------------------------------------------------------------------------------
+const cv = document.getElementById("c"), cx = cv.getContext("2d");
+let W = 0, H = 0, DPR = 1;
+function resize() { DPR = window.devicePixelRatio || 1; W = innerWidth; H = innerHeight;
+                    cv.width = W * DPR; cv.height = H * DPR; cx.setTransform(DPR, 0, 0, DPR, 0, 0); }
+addEventListener("resize", resize); resize();
+const rgba = (r, g, b, a) => `rgba(${r | 0},${g | 0},${b | 0},${Math.max(0, Math.min(1, a))})`;
+function hexRgb(h) { return [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]; }
+function mixPar(r, g, b, am, w, uv) {         // RGBAW + UV to a display colour (additive, then tone-mapped)
+  const c = [r + am + w * 1.0 + uv * 0.35, g + am * 0.62 + w * 0.95, b + w * 0.88 + uv * 0.95].map((x) => x / 255);
+  const m = Math.max(1, ...c);
+  return [c[0] / m * 255, c[1] / m * 255, c[2] / m * 255, Math.min(1, Math.max(...c))];
+}
+function glow(x, y, rad, col, a) {
+  const g = cx.createRadialGradient(x, y, 0, x, y, rad);
+  g.addColorStop(0, rgba(...col, a)); g.addColorStop(1, rgba(...col, 0));
+  cx.fillStyle = g; cx.beginPath(); cx.arc(x, y, rad, 0, Math.PI * 2); cx.fill();
+}
+function beam(x0, y0, x1, y1, w0, w1, col, a) {
+  const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy) || 1, nx = -dy / len, ny = dx / len;
+  const g = cx.createLinearGradient(x0, y0, x1, y1);
+  g.addColorStop(0, rgba(...col, a)); g.addColorStop(1, rgba(...col, a * 0.25));
+  cx.fillStyle = g; cx.beginPath();
+  cx.moveTo(x0 + nx * w0, y0 + ny * w0); cx.lineTo(x1 + nx * w1, y1 + ny * w1);
+  cx.lineTo(x1 - nx * w1, y1 - ny * w1); cx.lineTo(x0 - nx * w0, y0 - ny * w0); cx.fill();
+}
+// a direction from pan/tilt (degrees, centred; tilt 0 = straight up), projected on the front view
+function project(panDeg, tiltDeg) {
+  const p = panDeg * Math.PI / 180, t = tiltDeg * Math.PI / 180;
+  return { x: Math.sin(t) * Math.sin(p), y: Math.cos(t), z: Math.sin(t) * Math.cos(p) };
+}
+function drawGobo(x, y, r, slot, rot, col, a) {
+  cx.save(); cx.translate(x, y); cx.rotate(rot);
+  cx.fillStyle = rgba(...col, a);
+  const k = Math.round(slot) % 10;
+  if (k === 0) { cx.beginPath(); cx.arc(0, 0, r, 0, Math.PI * 2); cx.fill(); cx.restore(); return; }
+  const n = [0, 6, 5, 4, 8, 3, 4, 1, 12, 7][k];
+  for (let i = 0; i < n; i++) {
+    const ang = i * Math.PI * 2 / n;
+    cx.beginPath();
+    if (k === 3 || k === 6) cx.rect(-r * 0.12 + Math.cos(ang) * 0, -r, r * 0.24, r * 2), cx.rotate(Math.PI / n);
+    else if (k === 7) { cx.arc(0, 0, r * 0.9, 0, Math.PI * 2); cx.arc(0, 0, r * 0.55, 0, Math.PI * 2, true); }
+    else cx.arc(Math.cos(ang) * r * (k === 8 ? 0.7 : 0.58), Math.sin(ang) * r * (k === 8 ? 0.7 : 0.58),
+                r * (k === 2 ? 0.34 : k === 5 ? 0.4 : 0.2), 0, Math.PI * 2);
+    cx.fill();
+  }
+  cx.restore();
+}
+
+function draw(t) {
+  const roomH = H * 0.62, top = 34, floorY = top + roomH;
+  cx.globalCompositeOperation = "source-over";
+  cx.fillStyle = "#07080b"; cx.fillRect(0, 0, W, H);
+  const wall = cx.createLinearGradient(0, top, 0, floorY);
+  wall.addColorStop(0, "#0b0d13"); wall.addColorStop(1, "#11131a");
+  cx.fillStyle = wall; cx.fillRect(0, top, W, roomH);
+  cx.strokeStyle = "#1c2030"; cx.beginPath(); cx.moveTo(0, floorY); cx.lineTo(W, floorY); cx.stroke();
+  const hz = HAZE.density, air = 0.06 + 0.94 * hz;            // beams show in the air only with haze
+
+  const barW = Math.min(W * 0.42, 620), barH = 34, gap = (W - 2 * barW) / 3;
+  CFG.bars.forEach((bar, bi) => {
+    const L = LAYOUT[bar.mode], S = SIM[bi], a0 = bar.address;
+    const bx = gap + bi * (barW + gap), by = floorY - 120, cyBar = by + barH / 2;
+    const at = (f) => bx + f * barW;
+    cx.globalCompositeOperation = "lighter";
+    // pars: a wide wash up the wall
+    [[0, 0.06], [1, 0.94]].forEach(([k, f]) => {
+      const b0 = a0 + L.par[k];
+      const st = barStrobe(ch(b0 + 6)), gain = shutterGain(st, t, bi * 10 + k);
+      const [r, g, b, lv] = mixPar(ch(b0), ch(b0 + 1), ch(b0 + 2), ch(b0 + 3), ch(b0 + 4), ch(b0 + 5));
+      const a = lv * gain;
+      if (a > 0.003) {
+        const x = at(f), lean = (k ? 1 : -1) * 0.18;
+        beam(x, cyBar, x + lean * roomH, top + 30, 10, roomH * 0.3, [r, g, b], 0.22 * a * air);
+        glow(x + lean * roomH, top + 70, roomH * 0.42, [r, g, b], 0.33 * a);
+        glow(x, cyBar, 26, [r, g, b], 0.9 * a);
+      }
+      S["par" + k] = { col: [r, g, b], a, st };
+    });
+    // derbies: many narrow beams turning with the motor
+    [[0, 0.36], [1, 0.64]].forEach(([k, f]) => {
+      const b0 = a0 + L.derby[k];
+      const comp = [[ch(b0), [255, 40, 40]], [ch(b0 + 1), [40, 255, 60]], [ch(b0 + 2), [50, 80, 255]],
+                    [ch(b0 + 3), [255, 245, 230]]];
+      const gain = shutterGain(barStrobe(ch(b0 + 4)), t, bi * 10 + 4 + k), x = at(f);
+      for (let i = 0; i < 16; i++) {
+        const [lv, col] = comp[i % 4], a = (lv / 255) * gain;
+        if (a < 0.003) continue;
+        const el = 22 + 48 * hash(i * 3 + k), az = S.derbyRot[k] + i * 2.39;
+        const d = project(az * 180 / Math.PI, el), len = roomH * 0.9;
+        const x1 = x + d.x * len, y1 = cyBar - d.y * len;
+        beam(x, cyBar, x1, y1, 1.2, 5, col, 0.35 * a * air);
+        glow(x1, Math.max(top + 6, y1), 9 + 6 * Math.max(0, d.z), col, 0.7 * a);
+      }
+      const lit = comp.reduce((s, [lv]) => s + lv, 0) / 255;
+      glow(x, cyBar, 18, [255, 255, 255], Math.min(1, lit) * 0.5 * gain);
+    });
+    // the four white strobe zones
+    const f0 = a0 + L.flash, fst = barStrobe(ch(f0 + 4)), fg = shutterGain(fst, t, bi * 10 + 8);
+    [0.13, 0.43, 0.57, 0.87].forEach((f, i) => {
+      const a = (ch(f0 + i) / 255) * fg;
+      if (a > 0.003) { glow(at(f), cyBar + 8, 70, [235, 240, 255], 0.8 * a);
+                       cx.fillStyle = rgba(255, 255, 255, a); cx.fillRect(at(f) - 18, by + barH - 9, 36, 6); }
+      if (a > 0.2) { cx.fillStyle = rgba(200, 210, 255, 0.05 * a); cx.fillRect(0, top, W, roomH); }
+    });
+    // the laser (class 3R): dots on the ceiling, turning
+    const lv = ch(a0 + L.laser), lcol = L.laserCh === 3 ? pick(LASER_V2, lv) : pick(LASER_V1, lv);
+    if (lcol) {
+      const lst = L.laserCh === 3 ? ch(a0 + L.laser + 1) : 0;
+      const lg = lst > 0 ? (((t * lerp(1, 15, lst / 255)) % 1) < 0.5 ? 1 : 0) : 1;
+      const cols = (lcol === "IMG" ? "RGB" : lcol).split("").map((c) => ({ R: [255, 0, 0], G: [0, 255, 40], B: [40, 60, 255] }[c]));
+      for (let i = 0; i < 60; i++) {
+        const az = S.laserRot + i * 0.71, el = 15 + 70 * hash(i + 99), d = project(az * 180 / Math.PI, el);
+        const x1 = at(0.5) + d.x * roomH * 1.1, y1 = cyBar - d.y * roomH * 1.1, col = cols[i % cols.length];
+        if (hz > 0.02) { cx.strokeStyle = rgba(...col, 0.25 * hz * lg); cx.lineWidth = 0.8;
+                         cx.beginPath(); cx.moveTo(at(0.5), cyBar); cx.lineTo(x1, y1); cx.stroke(); }
+        cx.fillStyle = rgba(...col, 0.9 * lg); cx.fillRect(x1 - 1.5, Math.max(top + 2, y1) - 1.5, 3, 3);
+      }
+    }
+    // the two spots: pan/tilt beam, colour wheel, gobo, dimmer, shutter
+    [[0, 0.2], [1, 0.8]].forEach(([k, f]) => {
+      const b0 = a0 + L.spot[k], s = S.spots[k];
+      const dim = ch(b0 + 7) / 255, sh = spotShutter(ch(b0 + 8)), a = dim * shutterGain(sh, t, bi * 10 + 12 + k);
+      const wl = Math.floor(s.wheel) % 10, wr = (wl + 1) % 10, frac = s.wheel - Math.floor(s.wheel);
+      const c1 = hexRgb(COLOUR_SLOTS[wl][1]), c2 = hexRgb(COLOUR_SLOTS[wr][1]);
+      const col = frac < 0.3 ? c1 : frac > 0.7 ? c2 : c1.map((v, i) => lerp(v, c2[i], (frac - 0.3) / 0.4));
+      const x = at(f), y = cyBar - 4, d = project(s.pan, s.tilt), len = roomH * 0.95;
+      const x1 = x + d.x * len, y1 = y - d.y * len, spread = 0.15 * len;
+      if (a > 0.003) {
+        beam(x, y, x1, y1, 4, spread * (0.6 + 0.4 * (1 - Math.abs(d.z))), col, 0.42 * a * air);
+        const sz = spread * (0.8 + 0.6 * Math.max(0, d.z));
+        const shake = s.shake ? Math.sin(t * s.shake * Math.PI * 2) * 0.35 : 0;
+        drawGobo(x1, Math.max(top + sz * 0.5, y1), sz, s.gobo + shake, t * 0 + s.gobo * 0.6, col, 0.85 * a);
+        glow(x, y, 16, col, 0.9 * a);
+      }
+      s.view = { a, col, sh, dim };
+    });
+
+    // the bar itself, on its stand
+    cx.globalCompositeOperation = "source-over";
+    cx.fillStyle = "#1a1d26"; cx.fillRect(bx + barW / 2 - 3, by + barH, 6, floorY - by - barH + 40);
+    cx.fillStyle = "#20242f"; cx.strokeStyle = "#343a4c";
+    cx.beginPath(); cx.roundRect(bx, by, barW, barH, 6); cx.fill(); cx.stroke();
+    const lens = (f, col, a, r = 9) => { cx.fillStyle = "#0c0e13"; cx.beginPath(); cx.arc(at(f), cyBar, r + 2, 0, Math.PI * 2); cx.fill();
+                                         cx.fillStyle = rgba(...col, 0.15 + 0.85 * a); cx.beginPath(); cx.arc(at(f), cyBar, r, 0, Math.PI * 2); cx.fill(); };
+    lens(0.06, S.par0.col, S.par0.a, 11); lens(0.94, S.par1.col, S.par1.a, 11);
+    [0, 1].forEach((k) => { const v = S.spots[k].view; lens(k ? 0.8 : 0.2, v.col, v.a, 8);
+      // the head's yoke, turned by pan/tilt
+      const x = at(k ? 0.8 : 0.2), d = project(S.spots[k].pan, S.spots[k].tilt);
+      cx.strokeStyle = "#5a6278"; cx.lineWidth = 3; cx.beginPath(); cx.moveTo(x, cyBar - 4); cx.lineTo(x + d.x * 20, cyBar - 4 - d.y * 20); cx.stroke(); cx.lineWidth = 1; });
+    cx.fillStyle = "#2c3140"; [0.36, 0.64].forEach((f) => { cx.beginPath(); cx.arc(at(f), cyBar, 12, 0, Math.PI * 2); cx.fill(); });
+    cx.fillStyle = "#3a1414"; cx.fillRect(at(0.5) - 7, cyBar - 7, 14, 14);
+    // labels: what each part is doing, in DMX words
+    cx.font = "11px system-ui, sans-serif"; cx.textAlign = "center";
+    const label = (f, txt, yy) => { cx.fillStyle = "#9aa1b3"; cx.fillText(txt, at(f), yy); };
+    label(0.5, `${bar.name} · ${bar.mode}CH @ ${String(bar.address).padStart(3, "0")}`, by - 8);
+    [0, 1].forEach((k) => {
+      const s = S.spots[k], v = s.view, b0 = a0 + L.spot[k];
+      label(k ? 0.8 : 0.2, `pan ${s.pan.toFixed(0)}° tilt ${s.tilt.toFixed(0)}°`, by + barH + 14);
+      label(k ? 0.8 : 0.2, `${COLOUR_SLOTS[Math.round(s.wheel) % 10][0]} · gobo ${Math.round(s.gobo) % 10 || "open"} · ${(v.dim * 100).toFixed(0)}% · ${v.sh.mode}`, by + barH + 27);
+      label(k ? 0.8 : 0.2, `speed ${ch(b0 + 4)}`, by + barH + 40);
+    });
+    [0, 1].forEach((k) => { const p = S["par" + k];
+      label(k ? 0.94 : 0.06, p.st.mode === "open" ? "" : p.st.mode === "sound" ? "strobe: sound" : `strobe ${p.st.hz.toFixed(0)} Hz`, by + barH + 14); });
+    [0, 1].forEach((k) => { const m = motor(ch(a0 + L.derby[k] + 5), MECH.derbyRps);
+      label(k ? 0.64 : 0.36, m ? `motor ${m > 0 ? "CW" : "CCW"} ${Math.abs(m).toFixed(2)} rps` : "motor stopped", by + barH + 14); });
+    label(0.5, lcol ? `LASER ${lcol}` : "laser off", by + barH + 53);
+
+    // the bar's channels, raw, as its DMX input sees them
+    const sy = floorY + 52, cw = barW / L.size, colours = partColours(L);
+    for (let i = 0; i < L.size; i++) {
+      const v = ch(a0 + i), hgt = (v / 255) * 52;
+      cx.fillStyle = "#151821"; cx.fillRect(bx + i * cw + 1, sy, cw - 2, 52);
+      cx.fillStyle = colours[i]; cx.fillRect(bx + i * cw + 1, sy + 52 - hgt, cw - 2, hgt);
+    }
+    cx.fillStyle = "#6c7386"; cx.textAlign = "left";
+    cx.fillText(`${a0}`, bx, sy + 66); cx.textAlign = "right"; cx.fillText(`${a0 + L.size - 1}`, bx + barW, sy + 66);
+    cx.textAlign = "center";
+    for (const [nm, o, n] of partSpans(L)) cx.fillText(nm, bx + (o + n / 2) * cw, sy + 66);
+  });
+
+  // the hazer: haze in the air, and its status LED
+  cx.globalCompositeOperation = "source-over";
+  if (hz > 0.005) {
+    const g = cx.createLinearGradient(0, floorY, 0, top);
+    g.addColorStop(0, `rgba(160,170,190,${0.22 * hz})`); g.addColorStop(1, `rgba(160,170,190,${0.06 * hz})`);
+    cx.fillStyle = g; cx.fillRect(0, top, W, roomH);
+  }
+  const hx = W - 210, hy = floorY + 20, h = CFG.hazer;
+  cx.fillStyle = "#151821"; cx.strokeStyle = "#2a3044"; cx.beginPath(); cx.roundRect(hx, hy, 196, 92, 6); cx.fill(); cx.stroke();
+  const led = !HAZE.firstDmx ? ["#333", "asleep (no DMX)"] : !HAZE.ready ? [((t % 1) < 0.5 ? "#2f2" : "#030"),
+      `heating · ${Math.max(0, MECH.warmupS - (t - HAZE.firstDmx)).toFixed(0)} s`] : HAZE.out > 0 ? [((t % 0.6) < 0.3 ? "#fb2" : "#320"), "hazing"] : ["#fb2", "DMX received, ready"];
+  cx.fillStyle = led[0]; cx.beginPath(); cx.arc(hx + 16, hy + 18, 6, 0, Math.PI * 2); cx.fill();
+  cx.fillStyle = "#d8dbe2"; cx.textAlign = "left"; cx.font = "12px system-ui, sans-serif";
+  cx.fillText(`Hazer @ ${h.address}: ${led[1]}`, hx + 30, hy + 22);
+  cx.fillStyle = "#9aa1b3"; cx.font = "11px system-ui, sans-serif";
+  cx.fillText(`haze ch ${ch(h.address)} → ${(HAZE.out * 100).toFixed(0)}% · fan ${(HAZE.fan * 100).toFixed(0)}%`, hx + 12, hy + 46);
+  cx.fillText(`in the air: ${(hz * 100).toFixed(0)}%`, hx + 12, hy + 62);
+  cx.fillText(h.skipWarmup ? "warm-up skipped (set-up)" : "warm-up 4.5 min from first DMX", hx + 12, hy + 78);
+
+  // the node: Art-Net lost (its failsafe holds or zeroes the DMX output)
+  if (!linkOk || performance.now() - dmxAt > 1500) banner("No DMX from the virtual node (is virtual_node.py running?)", "#ff6b6b");
+  else if (nodeLost) banner(nodeAge === null ? "The node has had no Art-Net yet: its DMX output is all zeros"
+                                             : `No Art-Net for ${nodeAge.toFixed(0)} s: the node's failsafe holds its output`, "#ffc857");
+}
+function banner(txt, col) {
+  cx.fillStyle = "rgba(0,0,0,0.6)"; cx.fillRect(0, 40, W, 28);
+  cx.fillStyle = col; cx.font = "bold 14px system-ui, sans-serif"; cx.textAlign = "center"; cx.fillText(txt, W / 2, 59);
+}
+function partSpans(L) {
+  return [["par 1", L.par[0], 7], ["par 2", L.par[1], 7], ["derby 1", L.derby[0], 6], ["derby 2", L.derby[1], 6],
+          ["strobes", L.flash, 5], ["laser", L.laser, L.laserCh], ["spot 1", L.spot[0], 9], ["spot 2", L.spot[1], 9]];
+}
+function partColours(L) {
+  const out = new Array(L.size).fill("#555");
+  const pal = ["#e8604c", "#e8604c", "#c86bf0", "#c86bf0", "#e8e8f0", "#ff3b3b", "#4cc3e8", "#4cc3e8"];
+  partSpans(L).forEach(([, o, n], i) => { for (let j = 0; j < n; j++) out[o + j] = pal[i]; });
+  return out;
+}
+
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000); last = now;
+  const t = now / 1000;
+  stepSim(dt, t); draw(t);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+
+// ---- the set-up panel ----------------------------------------------------------------------------------------------------
+function renderCfg() {
+  const el = document.getElementById("cfg");
+  const bars = CFG.bars.map((b, i) => `
+    <h3>${b.name}</h3>
+    <label>start address <input type="number" min="1" max="512" data-k="bars.${i}.address" value="${b.address}"></label>
+    <label>DMX mode <select data-k="bars.${i}.mode"><option ${b.mode == 52 ? "selected" : ""}>52</option><option ${b.mode == 50 ? "selected" : ""}>50</option></select>CH</label><br>
+    <label>Pan Range <select data-k="bars.${i}.panRange">${[540, 360, 180].map((v) => `<option ${b.panRange == v ? "selected" : ""}>${v}</option>`).join("")}</select></label>
+    <label>Tilt Range <select data-k="bars.${i}.tiltRange">${[270, 180, 90].map((v) => `<option ${b.tiltRange == v ? "selected" : ""}>${v}</option>`).join("")}</select></label><br>
+    ${["Pan1", "Tilt1", "Pan2", "Tilt2"].map((n, j) => `<label><input type="checkbox" data-k="bars.${i}.rev.${j}" ${b.rev[j] ? "checked" : ""}>${n} Reverse</label>`).join("")}`).join("");
+  el.innerHTML = bars + `
+    <h3>Hazer (Z-350)</h3>
+    <label>DIP address <input type="number" min="1" max="511" data-k="hazer.address" value="${CFG.hazer.address}"></label>
+    <label><input type="checkbox" data-k="hazer.skipWarmup" ${CFG.hazer.skipWarmup ? "checked" : ""}>skip the 4.5 min warm-up</label>
+    <p>Set these as the real units are set (their menus and DIP switches), not from the rig file: a patch mistake
+       then shows up here as it would in the room. Kept in this browser.</p>
+    <button id="reset">Back to the defaults</button>`;
+  el.querySelectorAll("[data-k]").forEach((inp) => inp.addEventListener("change", () => {
+    const path = inp.dataset.k.split("."); let o = CFG;
+    for (let i = 0; i < path.length - 1; i++) o = o[path[i]];
+    const k = path[path.length - 1];
+    o[k] = inp.type === "checkbox" ? inp.checked : Number(inp.value);
+    save();
+  }));
+  document.getElementById("reset").onclick = () => { CFG = JSON.parse(JSON.stringify(DEFAULTS)); save(); renderCfg(); };
+}
+document.getElementById("cfgBtn").onclick = () => {
+  const el = document.getElementById("cfg");
+  el.style.display = el.style.display === "block" ? "none" : "block";
+  if (el.style.display === "block") renderCfg();
+};
+</script>
+</body>
+</html>

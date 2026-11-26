@@ -93,6 +93,20 @@ NO_CHANGE = 0x7F                                          # ArtAddress NetSwitch
 ACN_NO_CHANGE = 0xFF                                      # ArtAddress AcnPriority
 BIND_ROOT = 1                                             # ArtAddress BindIndex: 1 = the root device
 
+HOST_WINDOWS = "windows"        # a node last_ip alias (fixtures.HOST_ALIASES): WSL's default gateway, resolved at
+                                # each destination build (receiver.windows_host, as the senders do)
+
+def resolve_alias(last_ip: Any) -> tuple[Optional[str], Optional[str]]:
+    """A node's last_ip with its host alias resolved: (address, None), or (None, why) when it can't be."""
+    if last_ip != HOST_WINDOWS:
+        return last_ip, None
+    try:
+        from .receiver import windows_host
+        return windows_host(), None
+    except OSError as e:
+        return None, str(e)
+
+
 # -- show.yaml rig.artnet (fallbacks; the same numbers as show.yaml, with their §) --------------------------------------
 POLL_S = 3.0                    # §9.3: a unicast ArtPoll every 3 s to each node an enabled output uses
 KEEPALIVE_S = 1.0               # §9.3: an unchanged universe goes out again at least this often
@@ -615,6 +629,10 @@ class Nodes:
                 dests[nid] = _Dest(None, port, True, "virtual")
                 continue
             raw_ip = n.get("last_ip")
+            if raw_ip == HOST_WINDOWS:                      # the Windows machine this WSL runs on: its gateway now
+                raw_ip, err = resolve_alias(raw_ip)
+                if err:
+                    pr.append(f"nodes.{nid}: last_ip windows: {err}: nothing sent")
             ip = unicast_ip(raw_ip) if raw_ip not in (None, "") else None
             if raw_ip not in (None, "") and ip is None:
                 pr.append(f"nodes.{nid}: last_ip {raw_ip!r} isn't a unicast IPv4 address: nothing sent")
@@ -721,7 +739,7 @@ class Nodes:
 
     def _found_at(self, nid: str, n: Mapping[str, Any], ip: str, r: dict) -> None:
         """A matching reply: at last_ip, forget any discovery; elsewhere, use that address (nodes.json)."""
-        cfg_ip = unicast_ip(n.get("last_ip")) if n.get("last_ip") else None
+        cfg_ip = unicast_ip(resolve_alias(n.get("last_ip"))[0]) if n.get("last_ip") else None
         port = n.get("port", PORT) if isinstance(n.get("port"), int) else PORT
         if ip == cfg_ip:
             if nid in self._found:
@@ -795,6 +813,7 @@ class _Universe:
     """What configure compiles for the runner, swapped by reference."""
     port_address: Optional[int]
     node_id: Optional[str]
+    also: tuple[str, ...]                            # outputs.<id>.also_nodes: the same packet goes to each, after
     length: int
     base: bytes                                      # 512: defaults, then pins
     spans: tuple[tuple[str, int, int], ...]          # (fixture id, 0-based offset, footprint), by address
@@ -888,6 +907,7 @@ class ArtNetLan:
         self.skipped = 0                                # idle evaluations with nothing new to send
         self.too_soon = 0
         self.send_errors = 0
+        self.also_errors = 0                             # frames an also_nodes node didn't take
         self._err_run = 0
         self.last_send_error: Optional[str] = None
         self.callback_errors = 0
@@ -925,9 +945,9 @@ class ArtNetLan:
         out = out or {}
         rig = rig or {}
         nodes = rig.get("nodes") or {}
-        used = {o.get("node") for o in (rig.get("outputs") or {}).values()
+        used = {nid for o in (rig.get("outputs") or {}).values()
                 if isinstance(o, Mapping) and o.get("driver") == self.kind and o.get("enabled") is True
-                and o.get("node")}
+                for nid in (o.get("node"), *(o.get("also_nodes") or ())) if nid}
         self.nodes.configure(nodes, used)
         self._enabled = out.get("enabled") is True
         problems: list[str] = []
@@ -942,6 +962,7 @@ class ArtNetLan:
             why = why or f"no node: set outputs.{self.output_id}.node in fixtures.yaml"
         elif not isinstance(node, Mapping):
             why = why or f"node {node_id} isn't in fixtures.yaml nodes"
+        also = tuple(a for a in (out.get("also_nodes") or ()) if isinstance(nodes.get(a), Mapping) and a != node_id)
         types = rig.get("types") or {}
         mine = sorted((f for f in (rig.get("fixtures") or {}).values()
                        if isinstance(f, Mapping) and f.get("output") == self.output_id),
@@ -990,7 +1011,8 @@ class ArtNetLan:
         caps["rate_hz"] = min(MAX_HZ, rate) if rate is not None and rate > 0 else MAX_HZ
         caps["keepalive_s"] = self.settings.keepalive_s
         self.caps = caps                                 # type: ignore[assignment]
-        self._u = _Universe(port_address=pa, node_id=node_id, length=length, base=bytes(base), spans=tuple(spans),
+        self._u = _Universe(port_address=pa, node_id=node_id, also=also, length=length, base=bytes(base),
+                            spans=tuple(spans),
                             lead_s=lead_ms / 1000.0, lead_from=lead_from, max_hz=max_hz, gap_s=gap,
                             keepalive_s=self.settings.keepalive_s, idle_dt=1.0 / self.settings.idle_eval_hz,
                             why=why, problems=tuple(problems))
@@ -1146,6 +1168,9 @@ class ArtNetLan:
         self._buf[12] = self.seq
         pkt = memoryview(self._buf)[:HEADER + n]
         ok = self.nodes.send(u.node_id, pkt)
+        for nid in u.also:                               # Art-Net 4: unicast to every node that takes the universe.
+            if not self.nodes.send(nid, pkt):            # Their own errors are theirs (Nodes' per-node counts):
+                self.also_errors += 1                    # the main node's send decides the output's state
         t_sent = self._mono()
         self._sent_at = t_sent
         if self._upcoming is not None and self._planned is not None and self._planned >= self._upcoming - 1e-9:
@@ -1185,8 +1210,10 @@ class ArtNetLan:
         data = self._last_data
         d = self.nodes.dest(u.node_id) if u.node_id else None
         sent = self._sent_at
+        also = [self.nodes.dest(a) for a in u.also]
         return {"port_address": u.port_address, "length": u.length, "channels": list(data) if data else [],
                 "to": f"{d[0]}:{d[1]}" if d else None,
+                "also_to": [f"{a[0]}:{a[1]}" if a else None for a in also],
                 "virtual": bool(u.node_id and self.nodes.is_virtual(u.node_id)), "seq": self.seq,
                 "age_s": None if sent is None else round(self._mono() - sent, 3)}
 
@@ -1221,7 +1248,8 @@ class ArtNetLan:
                 "late_ms": {"p50": round(late[len(late) // 2], 2) if late else None,
                             "p95": round(late[min(len(late) - 1, int(0.95 * len(late)))], 2) if late else None},
                 "errors": self.send_errors, "last_frame_age_s": None if sent is None else round(now - sent, 3),
-                "extra": {"node": node, "port_address": u.port_address if u else None,
+                "extra": {"node": node, "also_nodes": [self.nodes.status(a) for a in (u.also if u else ())],
+                          "also_errors": self.also_errors, "port_address": u.port_address if u else None,
                           "length": u.length if u else None, "seq": self.seq,
                           "lead_ms": round(u.lead_s * 1000.0, 1) if u else None,
                           "lead_from": u.lead_from if u else None,

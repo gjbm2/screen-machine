@@ -5245,6 +5245,7 @@ S3.0 and S4.0 still hold. For Stage 5:
 | `driver` | `showbus` \| `hue` \| `artnet` \| `ddp` | required (else left out) | `contract.DRIVERS`; only `hue` and `artnet` are built in Stage 5 |
 | `enabled` | bool | **false** | the output's on switch (hot-reloaded); a non-bool is false, with a problem line |
 | `node` | node id | none | artnet: its node |
+| `also_nodes` | list of node ids | `[]` | artnet: more nodes that take the same universe (Art-Net 4: unicast to each). Each frame's packet goes to `node`, then to each of these, byte for byte; they are polled like `node`. Their send errors count in `extra.also_errors` and never change the output's state (26 Nov: the virtual node, tools/virtual_node) |
 | `port_address` | 1..32767 | none | artnet: the 15-bit Port-Address. **0 is refused** (room_service's virtual universe), with a problem line; the output then can't start (`no_config`) |
 | `latency_key` | str | the output id | latency.json `outputs.<key>` for the output as a whole |
 | `latency` | `{intensity: {rise_ms, fall_ms}, colour_ms, position_ms}` | `{}` | hand-set ms, used only where latency.json has nothing |
@@ -5258,7 +5259,7 @@ S3.0 and S4.0 still hold. For Stage 5:
 | Key | Type | Unset | Meaning |
 |---|---|---|---|
 | `match` | `{mac: "aa:bb:cc:dd:ee:ff"}` or `{short_name: str}` | `{}` (no check) | what an ArtPollReply must say for the node to count as found |
-| `last_ip` | IPv4 | none (nothing is sent, `no_config`) | where frames and ArtPolls go. Discovery confirms it; a matching reply from another address is kept in `nodes.json` (state dir) and used, and the status says "moved: update last_ip". **Code never writes fixtures.yaml.** |
+| `last_ip` | IPv4, or `windows` | none (nothing is sent, `no_config`) | where frames and ArtPolls go. `windows` is the Windows machine this WSL runs on (WSL's default gateway, resolved at each destination build, as the senders' alias is). Discovery confirms it; a matching reply from another address is kept in `nodes.json` (state dir) and used, and the status says "moved: update last_ip". **Code never writes fixtures.yaml.** |
 | `port` | int | 6454 | only tests set it (an ephemeral sink) |
 | `full_512` | bool | false | always 512 channels; otherwise up to the highest patched channel, even (§5.4) |
 | `failsafe` | `hold` \| `zero` \| `full` \| `scene` | none (the node's own) | sent once as ArtAddress (S5.7) |

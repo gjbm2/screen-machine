@@ -2006,6 +2006,7 @@ class OutputConfig(TypedDict):
     enabled: bool                  # False unless fixtures.yaml says true
     built: bool                    # driver in DRIVERS_BUILT and its module imported
     node: Optional[str]            # artnet: the nodes entry
+    also_nodes: list[str]          # artnet: more nodes the same universe goes to, after ``node`` (the same packet each)
     port_address: Optional[int]    # artnet: 15-bit Port-Address, >= 1 (0 is refused: room's universe)
     latency_key: str               # latency.json outputs key for the output as a whole (default: the id)
     latency: dict[str, Any]        # hand-set ms as written ({} when unset): {intensity: {rise_ms, fall_ms}, colour_ms,
@@ -2023,7 +2024,8 @@ class NodeConfig(TypedDict):
     discovery last matched it at: nodes.json)."""
     id: str
     match: dict[str, str]          # {"mac": "aa:bb:cc:dd:ee:ff"} | {"short_name": "..."} (ArtPollReply's)
-    last_ip: Optional[str]         # the address in config; None: virtual, or unknown (nothing is sent)
+    last_ip: Optional[str]         # the address in config, or a host alias ("windows": the sender resolves it); None:
+                                   # virtual, or unknown (nothing is sent)
     port: int                      # 6454 (tests: an ephemeral port; a loopback address on 6454 is never sent to)
     full_512: bool                 # send all 512 channels (default false: up to the highest patched channel, even)
     failsafe: Optional[str]        # FAILSAFE_MODES, sent once as ArtAddress; None: leave the node's own setting
