@@ -82,8 +82,10 @@ fixtures:
   gigbar-b.spot1:  {label: Bar B spot 1,  type: gigbar-spot,  output: dmx-a, address: 135, tags: [gigbar, bar-b, spot]}
   gigbar-b.spot2:  {label: Bar B spot 2,  type: gigbar-spot,  output: dmx-a, address: 144, tags: [gigbar, bar-b, spot]}
 
-  # The hazer: both channels hold their pin (0 = no haze, fan 20%). For haze, raise Haze here (5-255 = 1-100%; start
-  # around 40) or pick it on the Lights page's More. It heats for about 4.5 min once DMX arrives.
+  # The hazer: the feel's haze runs it (show_service/atmosphere.py; show.yaml lights.atmosphere): the Karaoke mode's
+  # singalong feel holds a light haze, filling then holding from the room's size and space.yaml haze_half_life_s.
+  # While the feel's haze is off, both channels hold this pin (0 = no haze, fan 20%) and the Lights page's More can
+  # pick a level by hand. It heats for about 4.5 min after power-on and hazes nothing until then.
   hazer:           {label: Hazer, type: z-350, output: dmx-a, address: 201, tags: [haze], pin: {Haze: 0, Fan: 0}}
 
 groups:
