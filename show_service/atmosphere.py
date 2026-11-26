@@ -46,9 +46,12 @@ LEVELS: tuple[str, ...] = ("off", "light", "medium", "thick")     # contract.HAZ
 FALLBACK: dict[str, Any] = {
     "select": "tag:haze",
     "types": {},
-    # Starting points, from a 200 m³ room with a 150 s half-life and a 3 ml/min hazer: thick holds at ~37 % output,
-    # light at ~9 %; a fill from clear air to medium takes about a minute at full output. Tune by eye.
-    "levels": {"off": 0.0, "light": 0.005, "medium": 0.01, "thick": 0.02},
+    # Starting points. The words are looks, by how far you can see (owner, 26 Nov: thick is "a fog: fuzzy,
+    # semi-opaque"): light ~60 m (beams show, the room looks clear), medium ~20 m, thick ~5 m. Extinction is linear
+    # in density, so they stand 1 : 3 : 12. The size is a guess to calibrate in the room: light = 6 ml of fluid in a
+    # 200 m³ room, about 2 min of a 3 ml/min hazer at full output (0.005, the first guess, was 20 s of output:
+    # nothing to see). Thick is beyond a small hazer in a room that leaks: the view's ``why`` says when it can't hold.
+    "levels": {"off": 0.0, "light": 0.03, "medium": 0.09, "thick": 0.36},
     "max": "thick",
     "half_life_s": 150.0,
     "volume_m3": 200.0,

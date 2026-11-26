@@ -88,7 +88,11 @@ scroll CW 128-189, stop 190-193, scroll CCW 194-255.
     30 s at a time, so a crash mid-fill can't leave the hazer at full.
   - `GET /show/api/v1/haze` shows the estimate, the output and the phase. `PUT {"level": "medium"}` (or `null` for
     the feel's) sets a person's level until the mode changes.
-  - The estimate assumes the hazer is warm and filled. There is no readback.
+  - The levels are looks, by how far you can see: light about 60 m (beams show, the room looks clear), medium about
+    20 m, thick about 5 m (a fog). Their sizes in show.yaml are a guess. **Calibrate on the day:** set haze to
+    light, and when the air looks right read `estimate_ml_m3`; that is `light`, medium is 3 x it, thick 12 x.
+  - There is no readback. Say what the room is by eye with `PUT /show/api/v1/haze/now {"level": "light"}`, and
+    `{"warm": false}` when the hazer has just been switched on. The estimate is kept across a restart.
 - While the haze is off, the fixture's `pin` holds both channels (Haze 0 = off), and the Lights page's More can pick a
   level by hand.
 - **Facts from the manual and flyer:**

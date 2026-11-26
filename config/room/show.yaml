@@ -1055,8 +1055,12 @@ lights:
         output: {channel: Haze, range: [5, 255], "off": 0}
         fan: {channel: Fan, range: [5, 255], "off": 0}  # "off": the fan's least (20 %)
         fluid_ml_min: 3.0                   # at full output (the manual)
-    levels: {"off": 0.0, light: 0.005, medium: 0.01, thick: 0.02}   # ml of fluid in the air per m³ ("off" quoted:
-                                                                    # YAML reads a bare off as false)
+    # ml of fluid in the air per m³ ("off" quoted: YAML reads a bare off as false). The words are looks, by how far
+    # you can see: light ~60 m (beams show, the room looks clear), medium ~20 m, thick ~5 m (owner, 26 Nov: "a fog:
+    # fuzzy, semi-opaque"), so 1 : 3 : 12. The size is a guess (light = about 2 min of the Z-350 at full in 200 m³).
+    # CALIBRATE in the room: set haze to light, and when the air looks right ("beams show, room clear") read
+    # GET /show/api/v1/haze estimate_ml_m3: that is light; medium is 3 x it, thick 12 x.
+    levels: {"off": 0.0, light: 0.03, medium: 0.09, thick: 0.36}
     max: thick                              # the thickest allowed here (a site can lower it for its smoke alarms)
     half_life_s: 150                        # when space.yaml doesn't say
     volume_m3: 200                          # when space.yaml has no room size

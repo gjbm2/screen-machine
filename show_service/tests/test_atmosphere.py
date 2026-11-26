@@ -10,6 +10,7 @@ HAZER = [("hazer", "z-350")]
 def _air(**more):
     probs: list[str] = []
     air = a.Air()
+    more.setdefault("levels", {"off": 0.0, "light": 0.005, "medium": 0.01, "thick": 0.02})   # the tests' own sizes
     air.configure(a.parse({"types": TYPES, **more}, probs))
     assert probs == []
     return air
