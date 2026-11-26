@@ -7,7 +7,13 @@
       "state": {
         "screens": "art",
         "page": true,
-        "sensor_mask": "follow"
+        "sensor_mask": "follow",
+        "light.house-*": {
+          "set": {
+            "hex": "#ffffff",
+            "bri": 100
+          }
+        }
       }
     },
     "live": {
@@ -45,7 +51,8 @@
           },
           "restore": true,
           "policy": "ignore"
-        }
+        },
+        "light.house-*": "off"
       },
       "karaoke": true
     }

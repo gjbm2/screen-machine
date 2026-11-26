@@ -51,8 +51,10 @@ types:
   gigbar-laser: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-laser.json, mode: part-52ch}
   # gigbar-laser-50: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-laser.json, mode: part-50ch}
   z-350: {source: ofl, file: ofl/antari/z-350.json, mode: 2-channel}   # haze, fan: never driven by a look
+  generic-dimmer: {source: builtin}         # one channel: the house lights' dimmers
 
-# Address plan (universe 1): bar A at 1 (1-52), bar B at 101 (101-152), the hazer at 201 (201-202).
+# Address plan (universe 1): bar A at 1 (1-52), bar B at 101 (101-152), the hazer at 201 (201-202), the house
+# lights at 211-214.
 # Part offsets in a 52CH bar: par 1 +0, par 2 +7, derby 1 +14, derby 2 +20, strobes +26, laser +31 (unpatched),
 # spot 1 +34, spot 2 +43. "A" is the bar on the left as the room faces the screen (swap the start
 # addresses on the bars if they end up the other way round). The derby motors are pinned to a slow clockwise turn
@@ -87,6 +89,14 @@ fixtures:
   # While the feel's haze is off, both channels hold this pin (0 = no haze, fan 20%) and the Lights page's More can
   # pick a level by hand. It heats for about 4.5 min after power-on and hazes nothing until then.
   hazer:           {label: Hazer, type: z-350, output: dmx-a, address: 201, tags: [haze], pin: {Haze: 0, Fan: 0}}
+
+  # House lights (owner, 26 Nov: "on in normal, off in Karaoke"): the room's ceiling downlights, one DMX dimmer channel
+  # each at 211-214. The modes set them (room/modes.json "light.house-*"). At a venue whose house lights are on wall
+  # switches these address nothing; patch a dimmer pack there to drive real ones.
+  house-1:         {label: House light 1, type: generic-dimmer, output: dmx-a, address: 211, tags: [house]}
+  house-2:         {label: House light 2, type: generic-dimmer, output: dmx-a, address: 212, tags: [house]}
+  house-3:         {label: House light 3, type: generic-dimmer, output: dmx-a, address: 213, tags: [house]}
+  house-4:         {label: House light 4, type: generic-dimmer, output: dmx-a, address: 214, tags: [house]}
 
 groups:
   around:                                   # light scenes chase and wave round this order: left to right along the bars

@@ -12,8 +12,9 @@ import { BEAM_LAYER, beamShared, BOX_PATH_GLSL, HazePost } from "./fog";
 import { beamVisibility } from "./haze";
 import {
   barStrobe, COLOUR_SLOTS, colourName, DERBY_RGB, hash, HazeState, laserColours, LASER_RGB, lerp, mixPar, motor, MECH,
-  shutterGain, SpotMotion, spotShutter,
+  pct, shutterGain, SpotMotion, spotShutter,
 } from "./decode";
+const HOUSE_RGB = 0xffd9b0;                       // the house lights' warm white
 import type { Fixture, RoomModel, Vec3 } from "./model";
 import { ScreenFeed } from "./screens";
 
@@ -196,7 +197,8 @@ export class RoomSim {
     this.clear();
     this.buildRoom(m);
     const byBar = new Map<string, Fixture[]>();
-    for (const f of m.fixtures) if (f.part) byBar.set(f.bar, [...(byBar.get(f.bar) ?? []), f]);
+    for (const f of m.fixtures) if (f.part && f.part !== "dimmer") byBar.set(f.bar, [...(byBar.get(f.bar) ?? []), f]);
+    for (const f of m.fixtures) if (f.part === "dimmer" && f.at) this.parts.push(this.houseLight(f));
     for (const [, fs] of byBar) this.buildUnit(fs, m);
     for (const f of m.fixtures) {
       if (f.kind === "screen" && f.screen && f.plane && f.at) this.buildScreen(f);
@@ -495,6 +497,28 @@ export class RoomSim {
   }
 
   private lampMeshes = new Map<string, { m: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>; l: THREE.PointLight }>();
+  /** A house light: a ceiling downlight on one dimmer channel, warm white, lighting the room below it. */
+  private houseLight(f: Fixture): Part {
+    const at = v3(f.at!);
+    const down = new THREE.Vector3(0, 0, -1);
+    const rim = new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.1, 0.03, 24), dark);
+    aimY(rim, down); rim.position.copy(at); this.built.add(rim);
+    const face = new THREE.Mesh(new THREE.CircleGeometry(0.08, 24), new THREE.MeshBasicMaterial({ color: 0x000000 }));
+    aimZ(face, down); face.position.copy(at).add(new THREE.Vector3(0, 0, -0.017)); this.built.add(face);
+    const light = new THREE.SpotLight(HOUSE_RGB, 0, 0, THREE.MathUtils.degToRad(60), 0.9, 1.4);
+    light.position.copy(at).add(new THREE.Vector3(0, 0, -0.05)); light.target.position.copy(at).add(new THREE.Vector3(0, 0, -1));
+    this.built.add(light, light.target);
+    return {
+      f,
+      update: (c) => {
+        const a = c.ch(f, 0) / 255, k = a * a;                 // a dimmer's curve: roughly square law
+        face.material.color.set(HOUSE_RGB).multiplyScalar(0.05 + 3 * k);
+        light.intensity = 45 * k;
+      },
+      words: (c) => (c.ch(f, 0) ? `on ${pct(c.ch(f, 0))}` : "off"),
+    };
+  }
+
   private buildLamp(f: Fixture) {
     const m = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 12), new THREE.MeshBasicMaterial({ color: 0x111111 }));
     m.position.copy(v3(f.at!)); this.built.add(m);
@@ -618,7 +642,7 @@ export class RoomSim {
           w = cols ? `ON: ${cols.join(" + ")}` : "off";
         }
       }
-      const unit = f.part === "hazer" ? "Hazer" : f.bar;
+      const unit = f.part === "hazer" ? "Hazer" : f.part === "dimmer" ? "House lights" : f.bar;
       out.set(unit, [...(out.get(unit) ?? []), [f.label.replace(/^Bar [A-Z] /, ""), w]]);
     }
     for (const [id, lm] of this.lampMeshes) {

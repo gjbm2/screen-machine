@@ -51,6 +51,10 @@ appliances:
            rms_deg: 0.0, worst_deg: 0.0, samples: 0, solved_at: "hand-set 2026-11-26 (provisional: upright on the bar, facing the room centre)"}
   gigbar-b.par2: {at: [4.145, 0.192, 2.5]}
   hazer: {at: [4.7, 1.2, 0.2]}         # on the floor by bar B
+  house-1: {at: [1.25, 2.5, 3.95]}     # the ceiling downlights: a 2 x 2 grid
+  house-2: {at: [3.75, 2.5, 3.95]}
+  house-3: {at: [1.25, 7.5, 3.95]}
+  house-4: {at: [3.75, 7.5, 3.95]}
   screen.vj:                          # the projected picture: ~2 m wide on the east wall between the bars, facing west
     at: [5.0, 5.0, 2.0]               # (16:9 and its centre 2 m up assumed)
     plane: {normal: [-1.0, 0.0, 0.0], up: [0.0, 0.0, 1.0], size: [2.0, 1.125]}

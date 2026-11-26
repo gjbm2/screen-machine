@@ -84,7 +84,7 @@ export async function loadRoom(room: string): Promise<RoomModel> {
       label: row.label ?? row.id,
       kind: row.kind ?? "lamp",
       driver: row.driver ?? null,
-      part: partOf(t.file, t.mode),
+      part: partOf(t.file, t.mode, row.type),
       universe: typeof row.universe === "number" ? row.universe : null,
       address: typeof row.address === "number" ? row.address : null,
       panRange: span(caps.pan, t.physical?.pan_deg ?? 540),
