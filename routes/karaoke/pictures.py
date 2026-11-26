@@ -62,6 +62,8 @@ COMMONS = "https://commons.wikimedia.org/w/api.php"
 FANART = "https://webservice.fanart.tv/v3/music"
 AUDIODB = "https://www.theaudiodb.com/api/v1/json/123"     # TheAudioDB's free public key
 BRAVE = "https://api.search.brave.com/res/v1/images/search"
+STOCK = re.compile(r"(gettyimages|alamy|shutterstock|istockphoto|dreamstime|depositphotos|123rf|agefotostock|"
+                   r"bigstockphoto|stock\.adobe|pond5|mediastorehouse|photoshelter)\.", re.I)   # watermarked previews
 BRAVE_MONTH_MAX = 500    # Brave searches a calendar month at most: half its $5 monthly credit, so it never bills
 POOL = 10                # pictures downloaded and vetted at once (the fast sources)
 YT_POOL = 3              # live-video frames fetched at once (a 2 s clip each)
@@ -372,7 +374,7 @@ def brave_candidates(name: str, year: Optional[int]) -> list[dict]:
             continue
         for x in d.get("results") or []:
             url = ((x.get("properties") or {}).get("url") or "").strip()
-            if not url.startswith("http") or url in seen:
+            if not url.startswith("http") or url in seen or STOCK.search(url):
                 continue
             seen.add(url)
             out.append({"url": url, "source": "brave", "kind_hint": "live", "credit": x.get("source") or "the web",
@@ -913,7 +915,7 @@ def _work(sid: str, song: dict, now: float) -> bool:
             continue
         idx = artist_index(s)
         dec = _decade(song.get("year"))
-        again = ((idx.get("incomplete") or idx.get("members") is None) and time.time() >= _commons["pause_until"]
+        again = (idx.get("incomplete") and time.time() >= _commons["pause_until"]
                  and now - float(idx.get("fetched_at") or 0) > 60)
         if (not idx or idx.get("version") != VERSION or again
                 or (ERA_FETCH and dec and dec not in (idx.get("decades") or []))):
