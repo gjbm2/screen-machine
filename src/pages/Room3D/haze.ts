@@ -19,7 +19,7 @@ function table(levels: HazeLevels | null | undefined): [number, number][] {
     const ml = levels?.[w];
     if (typeof ml === "number" && ml > pts[pts.length - 1][0]) pts.push([ml, 3 / LEVEL_VISIBILITY_M[w]]);
   }
-  return pts.length > 1 ? pts : [[0, 0], [0.02, 3 / LEVEL_VISIBILITY_M.thick]];
+  return pts.length > 1 ? pts : [[0, 0], [0.36, 3 / LEVEL_VISIBILITY_M.thick]];   // no levels read: show_service's thick
 }
 
 /** Extinction (per metre) for ``ml`` ml/m3 of haze. */
