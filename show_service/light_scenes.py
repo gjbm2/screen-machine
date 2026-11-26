@@ -169,10 +169,15 @@ def drives(entry: Mapping[str, Any]) -> list[str]:
 
 
 def on_beat(entry: Mapping[str, Any]) -> bool:
-    """The entry shows the beat: a brightness layer on ``phase: beat``, or music.hit flashes in some accent style."""
+    """The entry shows the beat: a brightness layer on ``phase: beat``, a movement locked to the beat grid (a
+    position layer on beats, or on bars with ``needs: grid``), or music.hit flashes in some accent style."""
     for L in entry.get("layers") or ():
-        if isinstance(L, Mapping) and L.get("enabled", True) is not False and layer_kind(L) == "intensity" \
-                and L.get("phase") == "beat":
+        if not isinstance(L, Mapping) or L.get("enabled", True) is False:
+            continue
+        kind = layer_kind(L)
+        if kind == "intensity" and L.get("phase") == "beat":
+            return True
+        if kind == "position" and (L.get("phase") == "beat" or (L.get("phase") == "bar" and L.get("needs") == "grid")):
             return True
     h = entry.get("hits")
     return isinstance(h, Mapping) and bool(h.get("styles"))

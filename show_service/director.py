@@ -1622,6 +1622,7 @@ class Director:
             except Exception:                             # a broken facts or moves file never fails the tick
                 log.debug("picture / moves: poll failed", exc_info=True)
         self._check_rig()
+        self._groove_seed(now_s)                          # a new song: its own remembered groove, before any pick
         self._fetches(now_s)
 
         vs, known = self._effective()
@@ -2987,14 +2988,7 @@ class Director:
     def _groove_song(self, now_s: float, gv: Optional[float]) -> None:
         """A new song (the players' key: its source and id or title) starts from the groove it measured last time; a
         song that sounds adds to its own average, kept after GROOVE_SONG_MIN_S of it and saved now and then."""
-        np_ = _call(getattr(self.ctx, "now_playing", None))
-        key = None
-        if isinstance(np_, dict) and np_.get("key"):
-            key = ":".join(str(np_["key"]).split(":")[:2])    # "karaoke:<song>" (the queue entry left off)
-        if key != self._groove_key:
-            self._groove_key, self._groove_acc = key, [0.0, 0]
-            if key is not None and key in self._groove_songs:
-                self._groove, self._groove_t = self._groove_songs[key], now_s
+        key = self._groove_seed(now_s)
         if key is None or gv is None or self._moment != "song" or self._relaxed:
             return
         acc = self._groove_acc
@@ -3010,6 +3004,19 @@ class Director:
                     os.replace(tmp, self._groove_path)
                 except OSError:
                     log.debug("groove: save failed", exc_info=True)
+
+    def _groove_seed(self, now_s: float) -> Optional[str]:
+        """The players' song key; a new one starts the groove from what that song measured before. Called first in
+        the tick, so a new song's first scenes are already drawn on its own groove."""
+        np_ = _call(getattr(self.ctx, "now_playing", None))
+        key = None
+        if isinstance(np_, dict) and np_.get("key"):
+            key = ":".join(str(np_["key"]).split(":")[:2])    # "karaoke:<song>" (the queue entry left off)
+        if key != self._groove_key:
+            self._groove_key, self._groove_acc = key, [0.0, 0]
+            if key is not None and key in self._groove_songs:
+                self._groove, self._groove_t = self._groove_songs[key], now_s
+        return key
 
     def _accent_fit(self) -> Optional[dict[str, float]]:
         """lights.programs.accent_fit for the feel's accents style, read at the music's groove (``_groove``: the
