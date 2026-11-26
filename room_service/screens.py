@@ -2171,6 +2171,11 @@ class ScreenController:
         sid = sess["id"]
         page = self._page()
         if page is None or self.layer != "live" or sess.get("headless"):
+            # No driven page. Subscribers may be showing it (a rig whose pages are all viewers; the Room page's live
+            # picture): they get the same crossfade into the art as a TV does, then cut on the held frame (owner,
+            # 26 Nov: "why does switching to normal just hard-kill the ... screen ... we do a fade").
+            if self.layer == "live" and await self._exit_subscribers(sess):
+                return
             # Nobody is showing it (a headless session: at most a page still joining it): just end the session.
             if page is not None and sess.get("headless") and self._join_cid == page.cid:
                 try:
@@ -2279,6 +2284,63 @@ class ScreenController:
             dl.cancel()
             self._handshake = None
             self._changed()
+
+    SUBSCRIBER_LEAVE_TAIL_S = 2.0      # after live.leave: the stream's delay to a page, before the session goes
+
+    async def _exit_subscribers(self, sess: dict) -> bool:
+        """The exit with no driven page but subscribers on the session: the out transition into the current art (a
+        snapshot; black if there is none), live.leave{hold_pts} to the subscribers (no ack is read), a short tail for
+        the held frame to reach them, then the session goes. All inside switch_to_art_s. False (nothing sent to the
+        pages, the session untouched or still running) when there are no subscribers or it failed: the caller ends
+        the session the old way (live.abort)."""
+        sid = sess["id"]
+        if (self._sub or {}).get("session") != sid or sess.get("gone") or not any(
+                c is not self._driven and c.welcomed for c in self.mgr.pages.hello_clients(self.id)):
+            return False
+        t = self.t
+        out_spec = ((sess.get("live") or {}).get("transitions") or {}).get("out")
+        self._handshake = "exit"
+        mark = self.box.mark()
+
+        async def run() -> None:
+            await self.mgr.refresh_catalog()
+            out_s = self.mgr.transition_seconds(out_spec)
+            target = await self._headless_anchor()
+            self._set_phase("exiting", f"{sid} (no page)")
+            transition = out_spec if out_spec != sess.get("created_out") else None
+            try:
+                await self.mgr.stream.exit(sid, target, transition, timeout=t.exit_session_s)
+            except StreamError as e:
+                raise HandshakeError("exit", str(e)) from None
+            held = await self._wait(mark, lambda i: self._is_stream(i, ("session.held",), sid),
+                                    out_s + t.held_extra_s, "session.held", sid=sid)
+            hold_pts = held.get("hold_pts")
+            self._set_phase("leaving", f"hold_pts {hold_pts} (no page)")
+            n = self._to_subscribers("live.leave", {"session": sid, "hold_pts": hold_pts})
+            self._sub = None                              # they were told: no live.abort follows
+            log.info("%s: live.leave %s to %d subscriber page(s)", self.id, sid, n)
+            await asyncio.sleep(self.SUBSCRIBER_LEAVE_TAIL_S)
+
+        try:
+            await asyncio.wait_for(run(), t.switch_to_art_s)
+        except (HandshakeError, StreamUnreachable, asyncio.TimeoutError) as e:
+            self._handshake = None
+            self._log("warning", f"exit with no page failed ({e or 'deadline'}); cutting to art")
+            return False
+        except BaseException:
+            self._handshake = None
+            raise
+        self._handshake = None
+        self._join_cid = None
+        self.session = None
+        self.layer = "art"
+        self._publish("left live")
+        if not sess.get("gone"):
+            await self._delete_session(sid)
+        self._set_phase("idle", "exit complete (no page)")
+        self._log("info", f"back to art from {sid} (no page)")
+        self._changed()
+        return True
 
     async def _exit_hard_cut(self, sid: str, what: str) -> None:
         """The exit's last resort: the page cuts to its art now (live.abort), the session goes, the page unfreezes."""
