@@ -180,7 +180,7 @@ import random
 import statistics
 import time
 import urllib.parse
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, Mapping
 
 import numpy as np
 
@@ -240,6 +240,7 @@ LOOK_REASON_WORDS = {"phrase": "a new phrase", "section": "a new section", "repe
 #: room.look's light_scene_why: the light scene's own reasons, beside LOOK_REASON_WORDS (README S5.24)
 LIGHT_REASON_WORDS = {"feel": "a new feel", "first": "the first light scene", "scenes": "the light scenes changed",
                       "room": "the mode changed what the lights may do", "moment": "the moment changed"}
+GROOVE_TAU_S = 15.0                 # the groove the lights' draw reads: the direction's, averaged over this long
 MOMENT_TRIGGERS = ("lead_in", "waiting", "lull", "song_end")   # the effect triggers a moment fires (never gapped)
 MOMENTS_FALLBACK = {"lull_after_s": 180.0}   # show.yaml lights.moments
 LIGHT_SCENE_SEED = 0                # the light-scene draw's seed (a fixed seed, as palette.from_image's k-means)
@@ -1026,6 +1027,8 @@ class Director:
         self._tokens: collections.deque = collections.deque()   # peak-token spends (monotonic s), the last hour
         self._armed: Optional[dict] = None               # a reserved token at a drop line: {"at_s", "section_id"}
         self._strobe_paid: Optional[float] = None        # the line of the last big moment a strobe was paid for
+        self._groove = 0.0                               # the direction's groove, averaged (GROOVE_TAU_S)
+        self._groove_t: Optional[float] = None
         self._moment = contract.MOMENTS[0]               # the room's moment (contract.MOMENTS): what the lights' scenes
         self._moment_since = 0.0                         # and effects are commissioned for, besides the music
         self._moments_cfg = dict(MOMENTS_FALLBACK)
@@ -2893,7 +2896,8 @@ class Director:
                 got = self.light_scenes.pick_for(g, self.direction, self._flow, self._ls_rng,
                                                  avoid=old.get("scene") if old else None, tags=self._light_tags,
                                                  hard_avoid=human, prefer=prefer or None, prefer_why=pwhy,
-                                                 moment=self._moment)
+                                                 moment=self._moment,
+                                                 accent_fit=self._accent_fit())
             except Exception:                             # a broken catalogue never fails the tick
                 log.exception("light scenes: pick failed")
                 got = None
@@ -2905,6 +2909,8 @@ class Director:
             picked.append(gid)
         if not picked:
             return None
+        if reason not in ("first", "scenes", "room"):     # a change of scene: the transition's own gesture across it
+            self._transition_gesture(tr, picked, at, now_s)
         for gid in self._groups:                          # a follower runs its leader's program
             lead = self._root(gid)
             if lead != gid and lead in new and self._groups[gid]["members"]:
@@ -2912,6 +2918,50 @@ class Director:
                 if lead in picked:
                     picked.append(gid)
         return new, picked
+
+    def _accent_fit(self) -> Optional[dict[str, float]]:
+        """lights.programs.accent_fit for the feel's accents style, read at the music's groove (``_groove``: the
+        direction's groove, the DSP's rhythmic drive x how sure the beat clock is, averaged over GROOVE_TAU_S): a song
+        that drives hard draws beat scenes; one that doesn't, the scenes that move on bars and phrases."""
+        af = (self.lights_cfg["programs"].get("accent_fit") or {}).get(self.vs.get("accents"))
+        if not af:
+            return None
+        g = _c01(self._groove)
+        return {k: lo + (hi - lo) * g for k, (lo, hi) in af.items()}
+
+    def _transition_gesture(self, tr: Mapping[str, Any], gids: list[str], at_s: float, now_s: float) -> None:
+        """The drawn light transition's ``gesture`` (light_transitions.yaml: every head flies up, a strobe, a sweep),
+        started on each changing group it fits, from its before_beats ahead of the line ``at_s`` to its after_beats
+        past it. Never under House, Low or Keep; a strobing one only where strobes may fire (``_strobe_ok``)."""
+        t = self.light_scenes.transitions.get(tr.get("name")) if isinstance(tr, Mapping) else None
+        g = t.get("gesture") if isinstance(t, dict) else None
+        if not g or self.house or self.low or self.keep_until is not None:
+            return
+        name = lscenes.gesture_name(tr["name"])
+        fx = self.light_scenes.effects.get(name)
+        if fx is None:
+            return
+        if name in self._strobe_fx():
+            if not self._strobe_ok(now_s, at_s):
+                return
+            self._strobe_spend(now_s, at_s, "transition")
+        grid = self._grid(now_s)
+        beat = grid.beat_s if grid.has_grid and grid.beat_s else 0.5
+        start = max(now_s, at_s - g["before_beats"] * beat)
+        until = at_s + g["after_beats"] * beat
+        for gid in gids:
+            grp = self._groups.get(gid)
+            if grp is None or grp.get("follows") or not self.light_scenes.fits(fx, grp):
+                continue
+            self._fx_n += 1
+            run: contract.LightEffectRun = {
+                "id": f"fx:{self._fx_n}", "name": name, "label": fx["label"], "at_ms": round(start * 1000.0, 1),
+                "until_ms": round(until * 1000.0, 1), "strength": 1.0, "why": "the change of scene"}
+            self._fx_meta[run["id"]] = {"phase": None, "moment": None, "out_s": float(fx["fade"]["out_beats"]) * beat}
+            self._fx.setdefault(gid, []).append(run)
+            self._fx_log.append({"group": gid, **run})
+            self._lp_rev += 1
+            self._log_event("light_effect", {"group": gid, "run": dict(run), "trigger": "transition", "bar": None})
 
     def _commit_programs(self, got: tuple[dict, list[str]], now_s: float) -> None:
         """The programs show from now on (their at_ms); ``light_scene`` (compat) is the scene group's."""
@@ -3106,6 +3156,11 @@ class Director:
                     got = self._pick_programs(self._ls_reason, now_s, only=missing)
                     if got is not None:
                         self._commit_programs(got, now_s)
+            gv = _num((self.direction or {}).get("groove"))
+            if gv is not None:
+                dt = 0.0 if self._groove_t is None else min(1.0, max(0.0, now_s - self._groove_t))
+                self._groove = gv if self._groove_t is None else _ema(self._groove, gv, dt, GROOVE_TAU_S)
+                self._groove_t = now_s
             self._moment_tick(now_s, grid)
             self._fx_tick(now_s, grid)
             self._flow_tick(now_s, grid)
@@ -3124,8 +3179,9 @@ class Director:
             return
         if kind in self.lights_cfg["flow"]["events"] and self._flow_heard(ev):
             self._flow_dec.event(kind, at_s, grid.bar_s if grid.has_grid else None)
-        if kind == "section_change" and ev.get("section_kind") == "chorus":    # a karaoke song's lyric plan: first,
-            self._fx_trigger("final_chorus" if ev.get("final") else "chorus", at_s, now_s, grid)   # so it wins the line
+        sk = ev.get("section_kind") if kind == "section_change" else None      # a karaoke song's lyric plan: first,
+        if sk in ("chorus", "verse", "instrumental"):                          # so it wins the line
+            self._fx_trigger("final_chorus" if sk == "chorus" and ev.get("final") else sk, at_s, now_s, grid)
         if kind in contract.LIGHT_EFFECT_TRIGGERS:
             self._fx_trigger(kind, at_s, now_s, grid, strength=_num(ev.get("strength")))
         if kind in contract.TRACK_EVENT_KINDS:
@@ -5710,6 +5766,7 @@ class Director:
             "atmosphere": self.haze_view(),                     # the haze (atmosphere.py)
             "picture": self._picture_view(),                    # what the screens show, for the lights (picture.py)
             "moment": {"now": self._moment, "for_s": round(now_s - self._moment_since, 1)},   # contract.MOMENTS
+            "groove": round(self._groove, 3),                   # what the lights' draw reads (accent_fit)
             "ensemble": self.ensemble.view(now_s) if self.ensemble is not None else None,   # docs/ENSEMBLE.md §5.6
             "treatment": self.treat.view(now_s),                 # README S5.33
             "reasoning": self._reasoning(now_s)}                 # the Room page's "How it's deciding"

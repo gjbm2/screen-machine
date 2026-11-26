@@ -20,3 +20,63 @@ transitions:
   sweep:      {label: A sweep across the room, kind: sweep, beats: 2, wave_beats: 4, dark_move: true,
                tags: {transition_style: [lively], energy: [0.3, 0.9], flow: {dirs: [up, down, left, right, cw, ccw,
                outward, inward], honours: true}}}
+  # -- Transitions with a gesture of their own (owner, 26 Nov: "gigbar transitions might be all the lights fly up, or
+  # all strobe, or all sweep ... scenes with effects over them, and then transitions between scenes"). kind is how
+  # the two scenes swap underneath; gesture is what the lights do across the change, in an effect's words (needs,
+  # layers, hits, fade), from before_beats ahead of the change's line to after_beats past it. A group the gesture
+  # doesn't fit (its needs) just swaps. A strobing gesture fires only where the feel lets strobes fire.
+  fly-up:
+    label: Every head flies up, and the new scene comes down
+    kind: crossfade
+    beats: 2
+    seconds: 1.5
+    gesture:
+      before_beats: 2
+      after_beats: 2
+      fade: {in_beats: 2, out_beats: 2}
+      needs: [pan, tilt]
+      layers:
+        - {id: fly, kind: position, mode: lift, lift: 3.0, flow_dir: up, depth: 1.0}
+        - {id: beam, kind: beam, zoom: narrow}
+    tags: {transition_style: [lively, wild, gentle], energy: [0.3, 1.0], weight: 1.0}
+  sweep-through:
+    label: Every head sweeps across the room into the new scene
+    kind: crossfade
+    beats: 2
+    seconds: 1.5
+    gesture:
+      before_beats: 2
+      after_beats: 2
+      fade: {in_beats: 1, out_beats: 2}
+      needs: [pan, tilt]
+      layers:
+        - {id: across, kind: position, mode: sweep, on: floor, centre: [dance-floor, centre], along: flow, size: 3.0,
+           size_deg: 45, ease: sine, phase: bar, period_bars: [1, 1], needs: none, spread_mode: chase, spread: 0.25}
+        - {id: beam, kind: beam, zoom: 12}
+    tags: {transition_style: [lively, wild], energy: [0.35, 1.0], weight: 1.0,
+           flow: {dirs: [left, right, cw, ccw, outward, inward], honours: true}}
+  strobe-through:
+    label: A strobe across the change
+    kind: crossfade
+    beats: 1
+    seconds: 1
+    gesture:
+      before_beats: 1
+      after_beats: 1
+      fade: {in_beats: 0, out_beats: 0.5}
+      needs: [shutter]
+      layers: [{id: strobe, kind: shutter, mode: strobe, hz: [4, 8]}]
+    tags: {transition_style: [wild, lively], energy: [0.65, 1.0], weight: 0.6}
+  pump-through:
+    label: The bars pump hard through the change
+    kind: crossfade
+    beats: 2
+    seconds: 1.5
+    gesture:
+      before_beats: 2
+      after_beats: 2
+      fade: {in_beats: 1, out_beats: 1}
+      layers:
+        - {id: pump, fx: swell, phase: beat, subdivide: true, depth: 0.85, needs: none, without_beat: energy,
+           attack_ms: 30, decay_ms: 180}
+    tags: {transition_style: [lively, wild], energy: [0.4, 1.0], weight: 0.8}

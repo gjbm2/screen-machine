@@ -1087,6 +1087,17 @@ lights:
   programs:
     effects_max: 2                          # effects running at once per group
     effect_gap_bars: 4                      # a new effect at most this often per group (a drop always may)
+    # The feel's accents style and the song's groove steer the draw (owner, 26 Nov: "I don't feel the gigbar lighting
+    # is really responding to the beat"; "a song like dancing queen I'd expect to have much clearer, stronger
+    # beat-driven lighting scenes ... than 'my way'"). A scene that shows the beat (a brightness layer on the beat, or
+    # hit flashes) x beat, any other x other; each is [with no groove, at full groove] (the direction's groove: the
+    # rhythmic drive x how sure the beat clock is, averaged over 15 s). Starting points.
+    accent_fit:
+      none:     {beat: [0.3, 0.5], other: [1.0, 1.0]}
+      soft:     {beat: [0.4, 1.2], other: [1.0, 0.9]}
+      downbeat: {beat: [0.4, 2.5], other: [1.2, 0.6]}
+      beat:     {beat: [0.3, 5.0], other: [1.5, 0.3]}
+      full:     {beat: [0.3, 7.0], other: [1.5, 0.2]}
   flow:
     centre: null                            # a Room map name the flow turns round / bursts from; null: the room's centre
     # screen (owner, 26 Nov): the direction the picture on the screens travels (show_service/picture.py: a tunnel is

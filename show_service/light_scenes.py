@@ -73,7 +73,20 @@ NAME_RE = re.compile(r"^[a-z0-9][a-z0-9_-]{0,63}$")    # a scene name (fixtures.
 SCENE_KEYS = frozenset({"label", "needs", "layers", "hits", "caps", "tags", "appliances"})
 EFFECT_KEYS = frozenset({"label", "on", "every_bars", "chance", "length", "fade", "needs", "layers", "hits", "caps",
                          "tags", "appliances"})
-TRANSITION_KEYS = frozenset({"label", "kind", "beats", "seconds", "out_s", "in_s", "wave_beats", "dark_move", "tags"})
+TRANSITION_KEYS = frozenset({"label", "kind", "beats", "seconds", "out_s", "in_s", "wave_beats", "dark_move", "tags",
+                             "gesture"})
+#: a transition's ``gesture`` (owner, 26 Nov: "gigbar transitions might be all the lights fly up, or all strobe, or all
+#: sweep ... scenes with effects over them, and then transitions between scenes"): what the lights do across the
+#: change, in an effect's own words (needs, layers, hits, fade), from ``before_beats`` before the change's line to
+#: ``after_beats`` after it. It is kept as the effect ``gesture_name(<transition>)``, so the look engine plays it as
+#: any effect; the director starts it on each group it fits when that transition is drawn.
+GESTURE_KEYS = frozenset({"before_beats", "after_beats", "needs", "layers", "hits", "caps", "fade", "appliances"})
+GESTURE_BEATS = (2.0, 2.0)                       # before_beats, after_beats when the entry leaves them out
+
+
+def gesture_name(transition: str) -> str:
+    return f"via-{transition}"
+
 TRANSITION_NUMBERS = ("beats", "seconds", "out_s", "in_s", "wave_beats")
 FLOW_TAG_KEYS = frozenset({"dirs", "honours"})
 LENGTH_KEYS = ("bars", "beats", "seconds")
@@ -103,7 +116,8 @@ CHANNEL_CAPS = {"intensity": "intensity", "emitter": "colour", "wheel": "colour_
 TRIGGER_WHY = {"drop": "the drop", "build": "the song builds", "breakdown": "a breakdown", "peak": "the peak",
                "section_change": "a new section", "track_change": "a new song", "outro": "the song ends",
                "chorus": "the chorus", "final_chorus": "the last chorus", "lead_in": "the next song is cued",
-               "waiting": "the room waits", "lull": "a long wait", "song_end": "the song has ended"}
+               "waiting": "the room waits", "lull": "a long wait", "song_end": "the song has ended",
+               "verse": "a verse", "instrumental": "an instrumental break", "transition": "the change of scene"}
 # -- groups (show.yaml lights; docs/LIGHTS.md §7.1, §12) ----------------------------------------------------------------
 OTHER_GROUP = "*"                                # the lamps no group takes
 OTHER_LABEL = "Other lights"
@@ -115,6 +129,11 @@ LIGHTS_KEYS = frozenset({"scene_group", "groups", "programs", "flow", "motion", 
                          "atmosphere", "moments"})   # atmosphere, moments: the director's
 #: lights.programs' starting points (docs/LIGHTS.md §12; the file's values win)
 PROGRAMS_FALLBACK = {"effects_max": 2, "effect_gap_bars": 4.0}
+#: lights.programs.accent_fit (optional): {accent style: {beat: x, other: y}}: a scene's weight x ``beat`` when it
+#: shows the beat (``on_beat``), x ``other`` when it doesn't, by the feel's accents style. Each is a number or [with no
+#: groove, at full groove]: the director reads between them by the music's groove (owner, 26 Nov: "I don't feel the
+#: gigbar lighting is really responding to the beat"; "a song like dancing queen I'd expect to have much clearer,
+#: stronger beat-driven lighting scenes ... than 'my way'").
 
 
 def _num01(v: Any) -> Optional[float]:
@@ -147,6 +166,16 @@ def drives(entry: Mapping[str, Any]) -> list[str]:
     if entry.get("hits") is not None and "intensity" not in out:
         out.append("intensity")
     return out
+
+
+def on_beat(entry: Mapping[str, Any]) -> bool:
+    """The entry shows the beat: a brightness layer on ``phase: beat``, or music.hit flashes in some accent style."""
+    for L in entry.get("layers") or ():
+        if isinstance(L, Mapping) and L.get("enabled", True) is not False and layer_kind(L) == "intensity" \
+                and L.get("phase") == "beat":
+            return True
+    h = entry.get("hits")
+    return isinstance(h, Mapping) and bool(h.get("styles"))
 
 
 class _Loader(yaml.SafeLoader):
@@ -339,7 +368,9 @@ class Catalogue:
             if any(doc.values()) else ""
         if rev == self.revision:
             return False
-        self.scenes, self.effects, self.transitions = doc["scenes"], doc["effects"], doc["transitions"]
+        self.scenes, self.transitions = doc["scenes"], doc["transitions"]
+        self.effects = {**doc["effects"], **{gesture_name(n): t["gesture"]["effect"]       # the transitions' gestures
+                                             for n, t in doc["transitions"].items() if t.get("gesture")}}
         self.revision = rev
         log.info("light catalogue: %d scenes, %d effects, %d transitions (revision %s)", len(self.scenes),
                  len(self.effects), len(self.transitions), rev or "none")
@@ -463,6 +494,7 @@ class Catalogue:
              "appliances": appmod.parse_states(sc.get("appliances"), where, probs)}
         e["for_lights"] = e["appliances"] is None or "layers" in sc or hc[0] is not None
         e["drives"] = drives(e)
+        e["on_beat"] = on_beat(e)
         return e
 
     def _parse_effect(self, name: str, sc: dict, where: str, probs: list[str], tags: Any, vocab: dict
@@ -520,6 +552,7 @@ class Catalogue:
              "caps": hc[1], "tags": t, "appliances": states}
         e["for_lights"] = states is None or bool(layers) or hc[0] is not None
         e["drives"] = drives(e)
+        e["on_beat"] = on_beat(e)
         return e
 
     @staticmethod
@@ -559,6 +592,29 @@ class Catalogue:
         if t is None:
             return None
         e["tags"] = t
+        e["gesture"] = None
+        g = sc.get("gesture")
+        if g is not None:
+            gw = f"{where}.gesture"
+            if not isinstance(g, dict):
+                probs.append(f"{gw}: isn't a mapping: the transition has no gesture")
+                return e
+            self._keys(g, GESTURE_KEYS, "a gesture", gw, probs)
+            beats = []
+            for k, dflt in zip(("before_beats", "after_beats"), GESTURE_BEATS):
+                v = g.get(k, dflt)
+                if _num(v) is None or v < 0:
+                    probs.append(f"{gw}.{k}: {v!r} isn't beats >= 0: {dflt:g}")
+                    v = dflt
+                beats.append(float(v))
+            if beats[0] + beats[1] <= 0:
+                beats = list(GESTURE_BEATS)
+            fx = self._parse_effect(gesture_name(name), {
+                "label": e["label"], "on": ["transition"], "length": {"beats": beats[0] + beats[1]},
+                **{k: g[k] for k in ("needs", "layers", "hits", "caps", "fade", "appliances") if k in g}},
+                gw, probs, tags, vocab)
+            if fx is not None:
+                e["gesture"] = {"before_beats": beats[0], "after_beats": beats[1], "effect": fx}
         return e
 
     @staticmethod
@@ -776,7 +832,8 @@ class Catalogue:
                  avoid: Optional[str] = None, tags: Any = None, hard_avoid: bool = False,
                  prefer: Optional[Mapping[str, float]] = None,
                  prefer_why: Optional[Mapping[str, str]] = None,
-                 moment: Optional[str] = None) -> Optional[tuple[str, str, dict[str, float]]]:
+                 moment: Optional[str] = None,
+                 accent_fit: Optional[Mapping[str, float]] = None) -> Optional[tuple[str, str, dict[str, float]]]:
         """A group's scene: a weighted draw over its pool (``pool_for``: the scenes that fit it, within the mode's
         ``tags``), never ``avoid`` (the one it shows) while another is there, unless the group's ``repeat_weight``
         (show.yaml; e.g. appliances that may rest twice running) lets it stay at that share of its weight
@@ -791,7 +848,9 @@ class Catalogue:
         if avoid in names and len(names) > 1 and rw <= 0.0:
             names.remove(avoid)
         ws = {n: self.score(self.scenes[n], group, direction, flow) * (rw if n == avoid and len(names) > 1 else 1.0)
-              * (float(prefer.get(n, 1.0)) if prefer else 1.0) for n in names}
+              * (float(prefer.get(n, 1.0)) if prefer else 1.0)
+              * (float(accent_fit.get("beat" if self.scenes[n].get("on_beat") else "other", 1.0)) if accent_fit
+                 else 1.0) for n in names}
         got = _draw(ws, names, rng)
         why = self.why(got, direction)
         if prefer_why is not None:                       # the caller says why it favoured each (the picture, the plan)
@@ -978,7 +1037,26 @@ def parse_lights(raw: Any, probs: list[str]) -> dict:
         if not isinstance(pr, dict):
             probs.append("lights.programs: not a mapping")
         else:
+            af = pr.get("accent_fit")
+            if af is not None:
+                def pair(x: Any) -> Optional[list[float]]:      # a factor, or [with no groove, at full groove]
+                    if _num(x) is not None and x >= 0:
+                        return [float(x), float(x)]
+                    if isinstance(x, list) and len(x) == 2 and all(_num(y) is not None and y >= 0 for y in x):
+                        return [float(x[0]), float(x[1])]
+                    return None
+                ok = isinstance(af, dict) and all(
+                    k in contract.ACCENT_STYLES and isinstance(v, dict) and set(v) <= {"beat", "other"}
+                    and all(pair(x) is not None for x in v.values()) for k, v in af.items())
+                if ok:
+                    out["programs"]["accent_fit"] = {k: {"beat": pair(v.get("beat", 1.0)),
+                                                         "other": pair(v.get("other", 1.0))} for k, v in af.items()}
+                else:
+                    probs.append("lights.programs.accent_fit: needs {<accent style>: {beat: x | [x0, x1], other: "
+                                 "y | [y0, y1]}}: ignored")
             for k, v in pr.items():
+                if k == "accent_fit":
+                    continue
                 if k not in PROGRAMS_FALLBACK:
                     probs.append(f"lights.programs.{k}: not a programs key: ignored")
                 elif _num(v) is None or v < 0:

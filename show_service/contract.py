@@ -588,7 +588,11 @@ FLOW_SYMMETRY: tuple[str, ...] = ("none", "mirror")      # FlowData.symmetry (sh
 LIGHT_TRANSITION_KINDS: tuple[str, ...] = ("cut", "dark_move", "crossfade", "fade_dark", "sweep")
 LIGHT_EFFECT_TRIGGERS: tuple[str, ...] = ("drop", "build", "breakdown", "peak", "section_change", "track_change",
                                           "outro", "every_bars", "chorus", "final_chorus",
-                                          "lead_in", "waiting", "lull", "song_end")
+                                          "lead_in", "waiting", "lull", "song_end", "verse", "instrumental",
+                                          "transition")
+#: verse / instrumental: as chorus, from a karaoke song's lyric plan. transition: never fired by the music: the
+#: trigger of a light transition's own gesture (light_transitions.yaml ``gesture``), which the director plays across
+#: the change it was drawn for.
 #: the room's MOMENT: what is happening besides the music's own shape (owner, 26 Nov: the silent state, the changeover
 #: and the rest are "all scenes, but expressed on the gigbar objects ... the a.d. is meant to commission scenes &
 #: effects"). The director only names the moment; what the lights do in it is the catalogue's: a light scene's
