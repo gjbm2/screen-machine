@@ -12,13 +12,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { resolveRoomUrl } from "@/pages/Room/api";
 import { loadRoom, type RoomModel } from "./model";
-import { hazeVisibility, RoomSim } from "./scene";
+import { hazeWords, LEVEL_VISIBILITY_M, mlOf, sigmaOf, sigmaOfSlider, sliderOf } from "./haze";
+import { RoomSim } from "./scene";
 
 const ROOM_POLL_MS = 5000;
 const NODE_DEFAULT = "http://127.0.0.1:8705";
 const SIDE_W = 340;
 
-type Haze = { pick?: string | null; feel?: string | null; want?: string | null; phase?: string; estimate_ml_m3?: number; target_ml_m3?: number; output?: number; fan?: number };
+type Haze = { levels?: Record<string, number>; pick?: string | null; feel?: string | null; want?: string | null; phase?: string; estimate_ml_m3?: number; target_ml_m3?: number; output?: number; fan?: number };
 
 type NodeStatus = { node?: { udp?: string; universe?: number }; artnet?: { pps?: number; age_s?: number | null; merging?: boolean; length?: number } };
 
@@ -36,6 +37,9 @@ export default function Room3DPage() {
   const [perf, setPerf] = useState("");
   const [showPaths, setShowPaths] = useState(false);
   const [haze, setHaze] = useState<Haze | null>(null);
+  const [hazeDrag, setHazeDrag] = useState<number | null>(null);   // the bar's position while it's dragged (0-1)
+  const hazeDragRef = useRef<number | null>(null);
+  const hazeBar = useRef<HTMLSpanElement | null>(null);
 
   // the scene
   useEffect(() => {
@@ -117,8 +121,8 @@ export default function Room3DPage() {
         const h: Haze = await (await fetch(`${room.replace(/\/+$/, "")}/show/api/v1/haze`, { cache: "no-store" })).json();
         if (dead) return;
         setHaze(h);
-        if (simRef.current) simRef.current.hazeMl = typeof h.estimate_ml_m3 === "number" ? h.estimate_ml_m3 : null;
-      } catch { if (!dead) { setHaze(null); if (simRef.current) simRef.current.hazeMl = null; } }
+        if (simRef.current && hazeDragRef.current == null) simRef.current.sigma = sigmaOf(h.estimate_ml_m3, h.levels);
+      } catch { if (!dead) setHaze(null); }
     };
     void get();
     const t = window.setInterval(get, 1000);
@@ -141,30 +145,36 @@ export default function Room3DPage() {
           {!dmxLive ? `no DMX from the virtual node (${node})` : artLive ? `Art-Net ${a?.pps}/s · universe ${nodeSt?.node?.universe}${a?.merging ? " · MERGING" : ""}` : "node up, no Art-Net (holding)"}
         </span>
         <span className="flex-1" />
-        <span className={`${pill} flex items-center gap-1.5`} title={haze ? `${(haze.estimate_ml_m3 ?? 0).toFixed(4)} ml/m³ in the air (modelled)` : "no haze reading"}>
-          Haze
-          <span className="inline-block h-2 w-16 overflow-hidden rounded bg-[#2c3346]">
-            <span className="block h-full bg-[#cfd4dc]" style={{ width: `${Math.round(hazeVisibility(haze?.estimate_ml_m3 ?? null) * 100)}%` }} />
-          </span>
-        </span>
-        <select className={`${pill} cursor-pointer border-0`} value="" disabled={haze == null}
-          title="Set how hazy the room is now, by eye. The model carries on from here."
-          onChange={async (e) => {
-            const level = e.target.value;
-            if (!level) return;
+        {(() => {
+          // the haze in the air now (show_service's model): drag the bar to say what the room is, by eye
+          const live = sigmaOf(haze?.estimate_ml_m3, haze?.levels);
+          const pos = hazeDrag ?? sliderOf(live);
+          const at = (x: number) => { const r = hazeBar.current!.getBoundingClientRect(); return Math.max(0, Math.min(1, (x - r.left) / r.width)); };
+          const preview = (p: number) => { hazeDragRef.current = p; setHazeDrag(p); if (simRef.current) simRef.current.sigma = sigmaOfSlider(p); };
+          const commit = async (p: number) => {
             try {
               const r = await fetch(`${room.replace(/\/+$/, "")}/show/api/v1/haze/now`, { method: "PUT",
-                headers: { "Content-Type": "application/json" }, body: JSON.stringify({ level }) });
+                headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ml_m3: mlOf(sigmaOfSlider(p), haze?.levels) }) });
               if (r.ok) setHaze(await r.json());
-              else window.alert(`Couldn't set the haze: ${r.status}`);
-            } catch { window.alert("Couldn't reach show_service to set the haze"); }
-          }}>
-          <option value="">Set haze now…</option>
-          <option value="off">Clear</option>
-          <option value="light">Light</option>
-          <option value="medium">Medium</option>
-          <option value="thick">Thick</option>
-        </select>
+            } catch { /* the next read shows what holds */ }
+            hazeDragRef.current = null; setHazeDrag(null);
+          };
+          return (
+            <span className={`${pill} flex items-center gap-2`} title="The haze in the air now (modelled). Drag to set it by eye; the model carries on from there.">
+              Haze
+              <span ref={hazeBar} className="relative inline-block h-3 w-32 cursor-ew-resize touch-none rounded bg-[#2c3346]"
+                onPointerDown={(e) => { if (!haze) return; e.currentTarget.setPointerCapture(e.pointerId); preview(at(e.clientX)); }}
+                onPointerMove={(e) => { if (hazeDragRef.current != null) preview(at(e.clientX)); }}
+                onPointerUp={() => { if (hazeDragRef.current != null) void commit(hazeDragRef.current); }}>
+                <span className="absolute inset-y-0 left-0 rounded bg-[#cfd4dc]" style={{ width: `${pos * 100}%` }} />
+                {Object.entries(LEVEL_VISIBILITY_M).map(([w, v]) => (
+                  <span key={w} className="absolute inset-y-0 w-px bg-[#6b7183]" style={{ left: `${sliderOf(3 / v) * 100}%` }} title={w} />
+                ))}
+              </span>
+              <span className="w-20 text-[#8d93a5]">{haze ? hazeWords(hazeDrag != null ? sigmaOfSlider(hazeDrag) : live) : "no reading"}</span>
+            </span>
+          );
+        })()}
         <label className={`${pill} cursor-pointer`} title="An aid for aiming, not what the room looks like: draws every beam half-visible whatever the haze.">
           <input type="checkbox" checked={showPaths} onChange={(e) => setShowPaths(e.target.checked)} /> Show beam paths
         </label>
