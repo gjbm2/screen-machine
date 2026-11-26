@@ -710,3 +710,15 @@ def test_group_sway_parses_and_wanders_gently():
     assert a != b                                                                  # each light its own path
     speed = max(math.hypot(a[i + 1][0] - a[i][0], a[i + 1][1] - a[i][1]) * 10 for i in range(len(a) - 1))
     assert speed < 2 * math.pi * 7.0 / 9.0 * 1.6                                   # gentle: a few deg/s
+
+
+def test_a_grid_needs_a_live_beat_not_a_remembered_one():
+    """Owner, 26 Nov: "why are the lights going crazy when nothing is playing?": in silence the clock keeps the last
+    song's grid with gate "none"; "needs: grid" layers count it only until GRID_HOLD_S after the gate last read above
+    none."""
+    from show_service import looks
+    e = looks.LookEngine()
+    assert not e._grid_live(100.0)                              # never seen a live beat
+    e._grid_seen_t = 100.0
+    assert e._grid_live(100.0 + looks.GRID_HOLD_S - 0.1)       # a dip mid-song: still the grid
+    assert not e._grid_live(100.0 + looks.GRID_HOLD_S + 0.1)   # silence: no grid

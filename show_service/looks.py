@@ -254,6 +254,7 @@ LAYER_KINDS: tuple[str, ...] = ("intensity", "position", "beam", "gobo", "prism"
 POSITION_MODES: tuple[str, ...] = ("aim", "fan", "sweep", "circle", "figure8", "drift", "ballyhoo", "bounce", "lift",
                                    "tilt_wave", "home")
 PATTERN_MODES = frozenset({"fan", "sweep", "circle", "figure8", "drift", "ballyhoo"})
+GRID_HOLD_S = 4.0   # a "needs: grid" layer keeps the grid this long after the clock's gate last read above "none"
 SWAY_RATIOS = ((1.0, 0.6), (1.37, 0.4), (0.83, 0.6), (1.71, 0.4))   # pan: two sines, tilt: two (period x, weight)
 
 
@@ -892,7 +893,7 @@ class _Hold:
 
 class _Ctx:
     """What every per-fixture step of one frame reads (built once per evaluate)."""
-    __slots__ = ("t", "dt", "look", "snap", "src", "beat_s", "bpb", "bar_anchor", "phrase_bars", "trans_s",
+    __slots__ = ("t", "dt", "look", "snap", "grid", "src", "beat_s", "bpb", "bar_anchor", "phrase_bars", "trans_s",
                  "min_period_s", "energy", "vibe", "st", "prog", "op", "sm", "view", "cyc", "flow_key", "look_n",
                  # docs/ENSEMBLE.md §7.2 (None without an ensemble): per light its role's motion scale and canon's
                  # offset (s), filled as each light is evaluated; the palette roles at full value (a colour pop's)
@@ -991,6 +992,10 @@ class LookEngine:
         self._scenes_err: Optional[str] = None
         self._configured: Optional[tuple] = None
         self._configuring = False
+        # when the clock's gate last read above "none": "needs: grid" layers run on its grid until GRID_HOLD_S after
+        # (owner, 26 Nov: "why are the lights going crazy when nothing is playing?": in silence the clock keeps the last
+        # song's grid with gate "none", and the movers' bar patterns ran on that phantom beat)
+        self._grid_seen_t = -math.inf
         # identify and follow (any thread; each swapped by reference, read once per frame)
         self._ident: dict[str, tuple[float, list[float]]] = {}       # fixture -> (until, colour at full value)
         self._follow: dict[str, tuple[float, list[float]]] = {}      # fixture -> (intensity, colour): not following
@@ -2782,6 +2787,8 @@ class LookEngine:
 
         snap = self._snapshot()
         gate = (snap.get("gate") or "none") if snap is not None else "none"
+        if snap is not None and gate != "none":
+            self._grid_seen_t = t
         trans_s = self._transition_s(look, snap)
         # House lights and Lights low are steady, like a held frame: no layer and no hit moves the lamps (README
         # S5.14; the director's own swell depth and drop hit are already off under them); a mover rests at home
@@ -2958,10 +2965,16 @@ class LookEngine:
         return frame
 
     # -- one frame's pieces --------------------------------------------------------------------------------------------
+    def _grid_live(self, t: float) -> bool:
+        """The clock's grid counts for "needs: grid": its gate read above "none" within GRID_HOLD_S (a dip mid-song
+        doesn't stop the patterns; silence does)."""
+        return t - self._grid_seen_t <= GRID_HOLD_S
+
     def _ctx(self, t: float, look: Any, snap: Optional[Mapping[str, Any]], trans_s: float, min_period_s: float,
              energy: float, vibe: bool, st: _OutState, prog: _Program, op: _OutProg) -> _Ctx:
         cx = _Ctx()
         cx.t, cx.look, cx.snap, cx.trans_s, cx.min_period_s = t, look, snap, trans_s, min_period_s
+        cx.grid = snap is not None and self._grid_live(t)
         cx.energy, cx.vibe, cx.st, cx.prog, cx.op = energy, vibe, st, prog, op
         src = snap if snap is not None else self._free_run()
         cx.src = src
@@ -3524,8 +3537,8 @@ class LookEngine:
             k = L.kind
             p = L.p
             if k == "position":
-                if pos is None:
-                    continue
+                if pos is None or (L.needs == "grid" and not cx.grid):
+                    continue                                     # a bar pattern with no live beat: stay put (+ sway)
                 got = self._position(L, m, s, fs, cx, gn, tp, pos, q)
                 if got is None:
                     fs.unresolved.add(L.id)
@@ -4359,7 +4372,7 @@ class LookEngine:
             else:
                 mode = L.without_beat
         elif L.needs == "grid":
-            mode = "osc" if snap is not None else L.without_beat
+            mode = "osc" if snap is not None and self._grid_live(t) else L.without_beat
         else:
             mode = "osc"
         beat_locked = L.needs == "beat" and mode == "osc"
