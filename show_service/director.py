@@ -3338,7 +3338,7 @@ class Director:
                     if got is not None:
                         self._commit_programs(got, now_s)
             gv = _num((self.direction or {}).get("groove"))
-            self._groove_song(now_s, gv)
+            self._groove_song(now_s, gv if grid.gate != "none" else None)   # (only while the beat clock hears one)
             if gv is not None:
                 dt = 0.0 if self._groove_t is None else min(1.0, max(0.0, now_s - self._groove_t))
                 self._groove = gv if self._groove_t is None else _ema(self._groove, gv, dt, GROOVE_TAU_S)

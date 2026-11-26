@@ -17,4 +17,5 @@ lights:
   groups:
     lamps: {label: Pars, select: "kind:lamp !tag:derby !tag:strobe !tag:haze"}
     derbies: {label: Derbies, select: "tag:derby", dark_level: floor}
-    flashes: {label: Strobe zones, select: "tag:strobe", dark_level: 0, scenes_for: [flash]}
+    flashes: {label: Strobe zones, select: "tag:strobe", dark_level: 0, scenes_for: [flash],
+              repeat_weight: 1.0}             # they may keep their scene across a change (resting stays resting)
