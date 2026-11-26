@@ -794,11 +794,21 @@ class Director:
         name, p, n = got
         return name, f"{name} (p {p:.2f} of {n}{why_extra(notes, tasted(scenes[name].get('source')))})"
 
-    def pick_transition(self, transitions: dict[str, dict], prev: Optional[str] = None) -> Optional[tuple[str, str]]:
-        """``prev``: the transition queued just before this one (upnext.py), else the last one played."""
+    def pick_transition(self, transitions: dict[str, dict], prev: Optional[str] = None,
+                        want: Optional[list] = None) -> Optional[tuple[str, str]]:
+        """``prev``: the transition queued just before this one (upnext.py), else the last one played.  ``want``: the
+        art director's move asks for one of these (a preset's name, or a tag word / facet:word of its tags): the
+        draw is among the ones that match, by this director's own weights; none matching: among all, as ever."""
         auto = self.auto or AUTO_DEFAULTS
         names = [n for n in resolve_pool(auto["transitions"], transitions)
                  if n not in self.bad_transitions and self._vetted("transition", transitions[n].get("transition"))]
+        if want:
+            names_w = [n for n in transitions if n in want and n not in self.bad_transitions]   # by name: any preset
+            words = [w for w in want if isinstance(w, str) and w not in transitions]
+            if words:
+                names_w += [n for n in names if n not in names_w
+                            and any(tag_matches(tag_words(transitions[n].get("tags") or {}), w) for w in words)]
+            names = names_w or names
         avoid = {prev} if prev else set(list(self.recent_transitions)[-1:])
         got = weighted_pick(names, lambda n: transition_weight(transitions[n].get("tags") or {}, self.direction)
                             * self._rated("transition", transitions[n].get("transition")), self.rng_transition, avoid)

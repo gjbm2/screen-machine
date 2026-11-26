@@ -189,6 +189,7 @@ from . import contract
 from . import appliances as appmod
 from . import atmosphere as atmod
 from . import picture as picmod
+from . import moves as movesmod
 from . import flow as flowmod
 from . import light_scenes as lscenes
 from . import palette as pal
@@ -1025,6 +1026,12 @@ class Director:
         self._track_id: Optional[int] = None
         self._ctx_track: Optional[tuple] = None          # (id, via, at_s): a new track id seen in the context
         self._sec_mem: dict[str, dict] = {}              # letter -> {"palette", "variation", "look_id"} (this track)
+        # moves (moves.py; owner, 26 Nov): a change of scene composed across the layers
+        self.moves = movesmod.Moves()
+        self._move: Optional[dict] = None                # the pending look change's: {"key", "name", "why", "move"}
+        self._move_apply: Optional[dict] = None          # set while that change's programs are picked
+        self._sec_kind: Optional[str] = None             # the section playing, by a lyric plan (moves.SECTION_KINDS)
+        self._sec_kinds: tuple[Optional[str], Optional[str]] = (None, None)   # the last boundary: (from, into)
         self._last_boundary_s: Optional[float] = None
         self._e_hist: collections.deque = collections.deque(maxlen=E_HIST_N)   # (t_s, smoothed energy)
         self._x = (0.0, 0.0, 0.0, 0.0)                   # the section's expression: (from, to, t0, t1), in u units
@@ -1596,8 +1603,9 @@ class Director:
             self._poll_interplays()
             try:
                 self.pic_facts.poll()
-            except Exception:                             # a broken facts file never fails the tick
-                log.debug("picture: facts poll failed", exc_info=True)
+                self.moves.poll()
+            except Exception:                             # a broken facts or moves file never fails the tick
+                log.debug("picture / moves: poll failed", exc_info=True)
         self._check_rig()
         self._fetches(now_s)
 
@@ -1963,11 +1971,21 @@ class Director:
                                   "land": float(self.cfg["land"]["human" if by == "human" else "default"])}
         if section and section.get("section_kind"):
             ev["section_kind"] = section["section_kind"]
+        mv = self._move_for(look_id, reason, by, now_s, at_s)     # the change, composed across the layers (moves.py)
+        if mv is not None:
+            ev["move"] = mv["name"]
+            scr = mv["move"]["screen"]
+            if scr:
+                ev["transition"] = {**ev["transition"], "via": list(scr["via"])}
+            if mv["move"]["land"] is not None and by != "human":
+                ev["land"] = mv["move"]["land"]
+        self._move_apply = mv
         if grid.has_grid:
             ev["beat"] = round(grid.beat_at(at_s), 3)
             ev["bar"] = grid.bar_at(at_s + 1e-6)
             ev["phrase"] = math.floor(ev["bar"] / grid.pb)
         self._announce_programs(ev, now_s, reason, by, at_s, transition, section)   # docs/LIGHTS.md §7.3
+        self._move_apply = None
         self._ensemble_announce(ev, now_s, reason, by, at_s, grid)                  # docs/ENSEMBLE.md §5.2
         self._publish(contract.ROOM_EVENT, ev)
         self.events += 1
@@ -2051,6 +2069,7 @@ class Director:
         self._build = None
         self._drop_inside_s = None
         self._sec_mem.clear()
+        self._sec_kind, self._sec_kinds = None, (None, None)
         self._x = (0.0, 0.0, 0.0, 0.0)
         self._cut_mark = None
         self._song_dip = None
@@ -2599,6 +2618,7 @@ class Director:
         tr = ev.get("transition") if isinstance(ev.get("transition"), dict) else None
         n = len(self._sec_mem)
         self._sec_mem.clear()
+        self._sec_kind, self._sec_kinds = None, (None, None)
         self._song_change = (tr or {}).get("change") != "small"
         tp = self.treat.plan
         plan = tp if (tp is not None and tid is not None and tp.get("song") == f"track:{tid}") else \
@@ -2636,6 +2656,12 @@ class Director:
         """§8.5: a predicted section (a known repeat) lands on its line with that letter's look; a confirmed one lands
         at its at_ms unless that is more than max_late_bars into the section: then it shows inside the look."""
         info = self._section_info(ev)
+        sk = ev.get("section_kind")                       # a lyric plan's: verse | chorus | instrumental | outro
+        if isinstance(sk, str) and sk:
+            into = "final_chorus" if sk == "chorus" and ev.get("final") else sk
+            self._sec_kinds, self._sec_kind = (self._sec_kind, into), into
+        else:
+            self._sec_kinds = (None, None)
         predicted = bool(ev.get("predicted"))
         boundary_s = (_num(ev.get("boundary_ms"), at_s * 1000.0) or at_s * 1000.0) / 1000.0
         prev_b = self._last_boundary_s
@@ -2934,6 +2960,7 @@ class Director:
             return None
         if reason not in ("first", "scenes", "room"):     # a change of scene: the transition's own gesture across it
             self._transition_gesture(tr, picked, at, now_s)
+            self._move_accents(picked, at, now_s)         # and the move's accents around the line
         for gid in self._groups:                          # a follower runs its leader's program
             lead = self._root(gid)
             if lead != gid and lead in new and self._groups[gid]["members"]:
@@ -2955,36 +2982,119 @@ class Director:
     def _transition_gesture(self, tr: Mapping[str, Any], gids: list[str], at_s: float, now_s: float) -> None:
         """The drawn light transition's ``gesture`` (light_transitions.yaml: every head flies up, a strobe, a sweep),
         started on each changing group it fits, from its before_beats ahead of the line ``at_s`` to its after_beats
-        past it. Never under House, Low or Keep; a strobing one only where strobes may fire (``_strobe_ok``)."""
+        past it."""
         t = self.light_scenes.transitions.get(tr.get("name")) if isinstance(tr, Mapping) else None
         g = t.get("gesture") if isinstance(t, dict) else None
-        if not g or self.house or self.low or self.keep_until is not None:
+        if not g:
             return
-        name = lscenes.gesture_name(tr["name"])
+        beat = self._beat_s(now_s)
+        self._fx_play(lscenes.gesture_name(tr["name"]), gids, at_s - g["before_beats"] * beat,
+                      at_s + g["after_beats"] * beat, now_s, at_s, "the change of scene")
+
+    def _beat_s(self, now_s: float) -> float:
+        grid = self._grid(now_s)
+        return grid.beat_s if grid.has_grid and grid.beat_s else 0.5
+
+    def _move_accents(self, gids: list[str], at_s: float, now_s: float) -> None:
+        """The pending move's accents (moves.yaml lights.accents): each effect at its at_beats from the line, for
+        its own length, on each changing group it fits."""
+        mv = self._move_apply
+        li = (mv["move"].get("lights") or {}) if mv else {}
+        beat = self._beat_s(now_s)
+        for a in li.get("accents") or ():
+            fx = self.light_scenes.effects.get(a["effect"])
+            if fx is None or fx["length"] == lscenes.LENGTH_WHILE:
+                continue
+            (k, n), = fx["length"].items()
+            dur = float(n) * (self._grid(now_s).bar_s or 4 * beat if k == "bars" else beat if k == "beats" else 1.0)
+            start = at_s + a["at_beats"] * beat
+            self._fx_play(a["effect"], gids, start, start + dur, now_s, at_s, f"the move ({mv['name']})")
+
+    def _fx_play(self, name: str, gids: list[str], start_s: float, until_s: float, now_s: float, line_s: float,
+                 why: str) -> None:
+        """Commission the effect ``name`` on each of ``gids`` it fits, from ``start_s`` (never before now) to
+        ``until_s``: a transition's gesture, a move's accent. Never under House, Low or Keep; a strobing one only
+        where strobes may fire at ``line_s`` (``_strobe_ok``; it shares that moment's token). An effect already
+        commissioned on a group (a re-announced change) moves with the line."""
         fx = self.light_scenes.effects.get(name)
-        if fx is None:
+        if fx is None or self.house or self.low or self.keep_until is not None:
             return
         if name in self._strobe_fx():
-            if not self._strobe_ok(now_s, at_s):
+            if not self._strobe_ok(now_s, line_s):
                 return
-            self._strobe_spend(now_s, at_s, "transition")
-        grid = self._grid(now_s)
-        beat = grid.beat_s if grid.has_grid and grid.beat_s else 0.5
-        start = max(now_s, at_s - g["before_beats"] * beat)
-        until = at_s + g["after_beats"] * beat
+            self._strobe_spend(now_s, line_s, "transition")
+        beat = self._beat_s(now_s)
+        start = max(now_s, start_s)
         for gid in gids:
             grp = self._groups.get(gid)
             if grp is None or grp.get("follows") or not self.light_scenes.fits(fx, grp):
                 continue
+            runs = self._fx.setdefault(gid, [])
+            old = next((r for r in runs if r["name"] == name and r["until_ms"] is not None
+                        and r["until_ms"] > now_s * 1000.0), None)
+            if old is not None:
+                old["at_ms"], old["until_ms"] = round(start * 1000.0, 1), round(until_s * 1000.0, 1)
+                self._lp_rev += 1
+                continue
             self._fx_n += 1
             run: contract.LightEffectRun = {
                 "id": f"fx:{self._fx_n}", "name": name, "label": fx["label"], "at_ms": round(start * 1000.0, 1),
-                "until_ms": round(until * 1000.0, 1), "strength": 1.0, "why": "the change of scene"}
+                "until_ms": round(until_s * 1000.0, 1), "strength": 1.0, "why": why}
             self._fx_meta[run["id"]] = {"phase": None, "moment": None, "out_s": float(fx["fade"]["out_beats"]) * beat}
-            self._fx.setdefault(gid, []).append(run)
+            runs.append(run)
             self._fx_log.append({"group": gid, **run})
             self._lp_rev += 1
             self._log_event("light_effect", {"group": gid, "run": dict(run), "trigger": "transition", "bar": None})
+
+    def _move_for(self, look_id: str, reason: str, by: str, now_s: float, at_s: float) -> Optional[dict]:
+        """The move for a look change (moves.Moves.pick), drawn once per change (a re-announced one keeps it): by the
+        look's reason, the section boundary it crosses (a lyric plan's kinds), and the music (the transitions' own
+        tag rule). A big move needs a big moment left (peak_tokens_per_hour) and spends it; a move whose lights part
+        names something this catalogue doesn't have, or a strobe where none may fire, is left out."""
+        key = (look_id, reason, by)
+        if self._move is not None and self._move["key"] == key:
+            return self._move
+        self._move = None
+        if not self.moves.moves or not self.pal_on:
+            return None
+        frm, into = self._sec_kinds if reason in ("section", "repeat") else (None, None)
+        strobes = self._strobe_fx()
+        strobe_ok = self._strobe_ok(now_s, at_s)
+
+        def usable(m: dict) -> bool:
+            li = m.get("lights") or {}
+            names = [a["effect"] for a in li.get("accents") or ()]
+            tr = li.get("transition")
+            if tr is not None:
+                if tr not in self.light_scenes.transitions:
+                    return False
+                if self.light_scenes.transitions[tr].get("gesture"):
+                    names.append(lscenes.gesture_name(tr))
+            if any(n not in self.light_scenes.effects for n in names):
+                return False
+            return strobe_ok or not any(n in strobes for n in names)
+
+        try:
+            got = self.moves.pick(reason, into, frm, self._fx_rng, big_ok=self._tokens_left(self.vs, now_s)[1] > 0,
+                                  weight=lambda t: self.light_scenes._tag_weight(dict(t), self.direction,
+                                                                                 transition=True),
+                                  usable=usable)
+        except Exception:                                 # a broken catalogue never fails the tick
+            log.exception("moves: pick failed")
+            got = None
+        if got is None:
+            return None
+        name, why = got
+        m = self.moves.moves[name]
+        if m["size"] == "big" and not self._moment_paid(at_s):
+            self._tokens.append(now_s)
+            self._strobe_paid = at_s                      # its own strobes are part of this one moment
+            n, left = self._tokens_left(self.vs, now_s)
+            self._log_event("token", {"decision": "spent", "on": "move", "move": name, "left": left, "per_hour": n})
+        self._move = {"key": key, "name": name, "why": why, "move": m}
+        self._log_event("move", {"move": name, "why": why, "reason": reason, "from": frm, "into": into,
+                                 "size": m["size"], "at_ms": round(at_s * 1000.0, 1)})
+        return self._move
 
     def _commit_programs(self, got: tuple[dict, list[str]], now_s: float) -> None:
         """The programs show from now on (their at_ms); ``light_scene`` (compat) is the scene group's."""
@@ -3062,12 +3172,17 @@ class Director:
         lt = look_tr if isinstance(look_tr, dict) else {}
         src = track if isinstance(track, dict) else lt
         kinds = LIGHT_KINDS_FOR.get(src.get("style")) or LIGHT_KINDS_FOR["crossfade"]
-        try:
-            name = self.light_scenes.pick_transition(kinds, (self.direction or {}).get("transition_style"),
-                                                     self.direction, self._flow, self._fx_rng)
-        except Exception:                                 # a broken catalogue never fails the tick
-            log.exception("light transitions: pick failed")
+        mv = self._move_apply                             # the move's own way across for the lights (moves.py)
+        name = ((mv["move"].get("lights") or {}).get("transition") if mv else None) if track is None else None
+        if name is not None and name not in self.light_scenes.transitions:
             name = None
+        if name is None:
+            try:
+                name = self.light_scenes.pick_transition(kinds, (self.direction or {}).get("transition_style"),
+                                                         self.direction, self._flow, self._fx_rng)
+            except Exception:                             # a broken catalogue never fails the tick
+                log.exception("light transitions: pick failed")
+                name = None
         e = self.light_scenes.transitions.get(name) if name else None
         kind = e["kind"] if e else kinds[0]
         at_ms = round(at_s * 1000.0, 1)
@@ -5792,6 +5907,8 @@ class Director:
             "picture": self._picture_view(),                    # what the screens show, for the lights (picture.py)
             "moment": {"now": self._moment, "for_s": round(now_s - self._moment_since, 1)},   # contract.MOMENTS
             "groove": round(self._groove, 3),                   # what the lights' draw reads (accent_fit)
+            "move": {"last": {k: self._move[k] for k in ("name", "why")} if self._move else None,
+                     "catalogue": self.moves.view()},           # moves.py: the changes, composed across the layers
             "ensemble": self.ensemble.view(now_s) if self.ensemble is not None else None,   # docs/ENSEMBLE.md §5.6
             "treatment": self.treat.view(now_s),                 # README S5.33
             "reasoning": self._reasoning(now_s)}                 # the Room page's "How it's deciding"

@@ -1,0 +1,87 @@
+# Moves: a change of scene, composed across the layers (show_service/moves.py; owner, 26 Nov 2026: "there should be
+# one controlling visual logic ... e.g. chorus ends, lights fly up, screen transitions, brief strobe, and bang we're
+# back in verse scene"). Hot-reloaded (GET /show/api/v1/state director.move.catalogue shows the problems).
+#
+# Every layer changes scene on the art director's one cue. A move is what that cue IS: at each change the director
+# draws one, and it gives each layer its part around the line:
+#   into, from   the kind of section it goes into / comes from: verse | chorus | final_chorus | instrumental | outro |
+#                any (a karaoke song's lyrics name them; with none, only "any" moves fit)
+#   reasons      the look changes it is for (default [section, repeat]); also dwell, track, next, drop
+#   size         small | medium | big: a big move spends one of the feel's big moments, and is left out with none left
+#   lights       transition: a light_transitions.yaml name (its gesture leads into the line)
+#                accents: [{effect: a light_effects.yaml name, at_beats: n}]: fired n beats from the line
+#   screen       via: [a renderer transition preset, or a tag word / facet:word of its tags]: the screens' transition
+#                is drawn from those that match
+#   land         0..1: where the line falls in the screens' transition (1: the new scene is fully there on the line)
+#   tags         energy, transition_style, weight (scored as every transition is)
+# A part left out leaves that layer to its own draw. Every entry is a STARTING POINT, written on paper: watch the
+# room and change them.
+version: 1
+moves:
+  lift-and-land:                              # the owner's own example
+    label: The lights fly up, the screen turns over, a flash of strobe, and we're back in the verse
+    from: [chorus, final_chorus]
+    into: [verse]
+    size: medium
+    lights:
+      transition: fly-up-snap
+      accents: [{effect: strobe-hit, at_beats: -1}]
+    screen: {via: ["family:warp", "family:3d", melt-2s]}
+    land: 1.0
+    tags: {energy: [0.3, 1.0], weight: 1.0}
+  open-out:
+    label: The heads sweep out across the room and the bars pump as the chorus opens
+    from: [verse, instrumental, any]
+    into: [chorus]
+    size: medium
+    lights:
+      transition: sweep-through
+      accents: [{effect: bars-kick, at_beats: 0}]
+    screen: {via: ["family:light", "family:wipe"]}
+    land: 1.0
+    tags: {energy: [0.35, 1.0], weight: 1.0}
+  last-chorus:
+    label: A beat of strobe, a hard cut, and everything at once for the last chorus
+    into: [final_chorus]
+    size: big
+    lights:
+      transition: strobe-snap
+      accents: [{effect: bars-kick, at_beats: 0}, {effect: last-chorus-strobe, at_beats: 0}]
+    screen: {via: [cut]}
+    land: 1.0
+    tags: {energy: [0.0, 1.0], weight: 3.0}
+  breathe:
+    label: Through the dark into the break
+    into: [instrumental, outro]
+    size: small
+    lights: {transition: fade-dark}
+    screen: {via: [luma-3s, crossfade-3s, "family:organic", "family:blend"]}
+    land: 0.5
+    tags: {energy: [0.0, 1.0], weight: 1.0}
+  settle:
+    label: A slow glide down into the verse
+    into: [verse]
+    size: small
+    lights: {transition: glide}
+    screen: {via: [luma-3s, crossfade-3s, "family:blend"]}
+    land: 1.0
+    tags: {energy: [0.0, 0.5], transition_style: [gentle], weight: 1.0}
+  pump-across:
+    label: The bars pump across the change
+    reasons: [section, repeat, dwell, next]
+    size: small
+    lights: {transition: pump-snap}
+    land: 1.0
+    tags: {energy: [0.45, 1.0], transition_style: [lively, wild], weight: 0.6}
+  heads-up:
+    label: Every head flies up and comes down on the new scene
+    reasons: [section, repeat, dwell, next]
+    size: small
+    lights: {transition: fly-up}
+    land: 1.0
+    tags: {energy: [0.3, 1.0], weight: 0.6}
+  plain:
+    label: Each layer its own way
+    reasons: [section, repeat, dwell, next, track, drop]
+    size: small
+    tags: {energy: [0.0, 1.0], weight: 0.3}

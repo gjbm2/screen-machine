@@ -318,6 +318,7 @@ class Session(EngineListener):
         self._fill_retry = {"scene": 0.0, "effect": 0.0}   # a queue that could not be filled waits this long
         self._event_hint: Optional[float] = None   # a room.event's glass time for the next cut (G9)
         self._event_land = 0.0                      # an a.d. change's ``land``: where its line falls in the transition
+        self._event_via: Optional[list] = None      # an a.d. move's screen part: the transitions it asks for
         # A karaoke song's sections from its lyrics (show_service structure, room.event section_change detail
         # "lyrics"; owner, 26 Nov): each letter's first scene in this song, so every chorus comes back to the chorus's
         self._letter_scene: dict = {}                # (track_n, letter) -> scene preset
@@ -2125,6 +2126,8 @@ class Session(EngineListener):
                 self._event_hint = at_s
                 self._event_land = max(0.0, min(1.0, float(data["land"]))) \
                     if isinstance(data.get("land"), (int, float)) else 0.0
+                via = (data.get("transition") or {}).get("via") if isinstance(data.get("transition"), dict) else None
+                self._event_via = [x for x in via if isinstance(x, str)][:16] if isinstance(via, list) else None
                 self._event_sweep = False
             return
         self.fx_director.on_event(kind, now,
@@ -2607,20 +2610,34 @@ class Session(EngineListener):
             if self._pick_task is not None:             # a pre-prepare is in flight: use it
                 await asyncio.shield(self._pick_task)
             at, photon_at, stagger = (self.director.auto or AUTO_DEFAULTS)["snap"], None, True
+            via = None
             if reason == "room_event":              # show_service's section / drop / track: on its time, or the bar
                 at, hint, self._event_hint = "bar", self._event_hint, None
                 land, self._event_land = self._event_land, 0.0
+                want, self._event_via = self._event_via, None
                 stagger, self._event_sweep = not self._event_sweep, False
                 earliest = time.monotonic() + self.sampler.lead + EVENT_MARGIN_S
+                via_dur = None
+                if want:                              # the a.d.'s move asks for a way in: one of its, by our weights
+                    try:
+                        got = self.director.pick_transition(self.mgr.presets.transitions, want=want)
+                        if got is not None:
+                            via = got[0]
+                            d = (self.mgr.presets.transitions[via].get("params") or {}).get("duration_s")
+                            via_dur = float(d) if isinstance(d, (int, float)) else None
+                    except Exception:                 # (degrade, never refuse: its own transition stays)
+                        log.debug("[%s] a move's transition could not be drawn", self.id, exc_info=True)
+                        via = None
                 if hint is not None and land > 0.0:   # the a.d.'s change: its line falls ``land`` of the way through
                     pk = self.prepared_pick           # the transition, so the new scene ARRIVES on the line
-                    dur = float(getattr((pk or {}).get("trans"), "duration_s", 0.0) or 0.0)
+                    dur = via_dur if via_dur is not None else \
+                        float(getattr((pk or {}).get("trans"), "duration_s", 0.0) or 0.0)
                     if hint >= earliest:
                         photon_at = max(earliest, hint - land * dur)
                 elif hint is not None and hint >= earliest:
                     photon_at = hint
-            res = await self.cue({"to": "auto", "at": at}, cause="auto", reason=reason, detail=detail,
-                                 photon_at=photon_at, stagger=stagger)
+            res = await self.cue({"to": "auto", "at": at, **({"via": via} if via else {})}, cause="auto",
+                                 reason=reason, detail=detail, photon_at=photon_at, stagger=stagger)
             ll, self._lyric_letter = self._lyric_letter, None
             if reason == "room_event" and ll is not None and ll[0] == getattr(self, "track_n", 0):
                 got = res.get("scene") if isinstance(res, dict) and not res.get("skipped") else None

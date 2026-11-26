@@ -160,3 +160,22 @@ effects:
          order: flow, spread: 1.0}
       - {id: bump, kind: colour, role: highlight, depth: {fx: swell, phase: beat, between: [0.0, 0.8]}}
     tags: {energy: [0.0, 1.0]}
+  # -- commissioned only (on: [transition] never fires by itself): a move's accents (config/live/moves.yaml) --
+  strobe-hit:
+    label: A beat of strobe
+    on: [transition]
+    length: {beats: 1}
+    fade: {in_beats: 0, out_beats: 0.25}
+    needs: [shutter]
+    layers: [{id: strobe, kind: shutter, mode: strobe, hz: [4, 8]}]
+    tags: {energy: [0.0, 1.0]}
+  bars-kick:
+    label: The bars kick on every beat for two bars
+    on: [transition]
+    length: {bars: 2}
+    fade: {in_beats: 0, out_beats: 2}
+    layers:
+      - {id: kick, fx: swell, phase: beat, depth: 0.85, needs: none, without_beat: energy, attack_ms: 30,
+         decay_ms: 200}
+      - {id: bump, kind: colour, role: highlight, depth: {fx: swell, phase: beat, between: [0.0, 0.8]}}
+    tags: {energy: [0.0, 1.0]}
