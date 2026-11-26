@@ -296,7 +296,7 @@ vibes:
   singalong:
     label: Karaoke
     description: The room's look as before, plus beat flashes on the bars and a few strobe moments an hour.
-    # The laptop rig's Live mode (owner, 26 Nov: "strobes etc. on the gigbars ... don't feel they're really getting
+    # The laptop rig's Karaoke mode (owner, 26 Nov: "strobes etc. on the gigbars ... don't feel they're really getting
     # any use"). Everything but accents, strobe and peak_tokens_per_hour is the neutral look it had with no feel.
     palettes: [art, ember, gold, dusk]   # show.yaml director.no_feel's list: the same colours as before
     accents: beat                   # the beat swell, and the GigBARs flash on the music's hits (show.yaml looks.hits)
