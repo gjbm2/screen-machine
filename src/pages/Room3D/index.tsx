@@ -18,6 +18,8 @@ const ROOM_POLL_MS = 5000;
 const NODE_DEFAULT = "http://127.0.0.1:8705";
 const SIDE_W = 340;
 
+type Haze = { want?: string | null; phase?: string; estimate_ml_m3?: number; target_ml_m3?: number; output?: number; fan?: number };
+
 type NodeStatus = { node?: { udp?: string; universe?: number }; artnet?: { pps?: number; age_s?: number | null; merging?: boolean; length?: number } };
 
 export default function Room3DPage() {
@@ -32,7 +34,8 @@ export default function Room3DPage() {
   const [dmxLive, setDmxLive] = useState(false);
   const [words, setWords] = useState<{ unit: string; rows: [string, string][] }[]>([]);
   const [perf, setPerf] = useState("");
-  const [realHaze, setRealHaze] = useState(false);
+  const [showPaths, setShowPaths] = useState(false);
+  const [haze, setHaze] = useState<Haze | null>(null);
 
   // the scene
   useEffect(() => {
@@ -104,7 +107,23 @@ export default function Room3DPage() {
     return () => { es.close(); window.clearInterval(st); };
   }, [node]);
 
-  useEffect(() => { if (simRef.current) simRef.current.realHaze = realHaze; }, [realHaze]);
+  useEffect(() => { if (simRef.current) simRef.current.showPaths = showPaths; }, [showPaths]);
+
+  // the haze in the room: show_service's own estimate (atmosphere.py), which is what drives the hazer
+  useEffect(() => {
+    let dead = false;
+    const get = async () => {
+      try {
+        const h: Haze = await (await fetch(`${room.replace(/\/+$/, "")}/show/api/v1/haze`, { cache: "no-store" })).json();
+        if (dead) return;
+        setHaze(h);
+        if (simRef.current) simRef.current.hazeMl = typeof h.estimate_ml_m3 === "number" ? h.estimate_ml_m3 : null;
+      } catch { if (!dead) { setHaze(null); if (simRef.current) simRef.current.hazeMl = null; } }
+    };
+    void get();
+    const t = window.setInterval(get, 1000);
+    return () => { dead = true; window.clearInterval(t); };
+  }, [room]);
 
   // drag to orbit, wheel to zoom
   const drag = useRef<{ x: number; y: number } | null>(null);
@@ -122,8 +141,13 @@ export default function Room3DPage() {
           {!dmxLive ? `no DMX from the virtual node (${node})` : artLive ? `Art-Net ${a?.pps}/s · universe ${nodeSt?.node?.universe}${a?.merging ? " · MERGING" : ""}` : "node up, no Art-Net (holding)"}
         </span>
         <span className="flex-1" />
-        <label className={`${pill} cursor-pointer`} title="Off: every beam is drawn half-visible, as if the room were always hazy. On: a beam shows only as much as the simulated haze from the hazer's DMX allows (none without haze).">
-          <input type="checkbox" checked={realHaze} onChange={(e) => setRealHaze(e.target.checked)} /> Beams: only as visible as the haze
+        <span className={pill} title="show_service's estimate of the haze in the room (it drives the hazer). Beams show in the air only as much as this haze lets them; with none you see only the pools of light on the walls and floor.">
+          {haze == null ? "haze: unknown" : !haze.want || haze.want === "off"
+            ? `haze off${haze.estimate_ml_m3 ? ` · clearing, ${haze.estimate_ml_m3.toFixed(3)} ml/m³ left` : ""}`
+            : `haze ${haze.want} · ${haze.phase ?? ""} · ${(haze.estimate_ml_m3 ?? 0).toFixed(3)} of ${(haze.target_ml_m3 ?? 0).toFixed(3)} ml/m³`}
+        </span>
+        <label className={`${pill} cursor-pointer`} title="An aid for aiming, not what the room looks like: draws every beam half-visible whatever the haze.">
+          <input type="checkbox" checked={showPaths} onChange={(e) => setShowPaths(e.target.checked)} /> Show beam paths
         </label>
         {(["front", "side", "above"] as const).map((v) => (
           <button key={v} className="rounded border border-[#2c3346] bg-[#1a1e2a] px-2 py-0.5 capitalize" onClick={() => simRef.current?.view(v)}>{v}</button>

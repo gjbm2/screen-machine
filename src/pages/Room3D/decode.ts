@@ -190,6 +190,6 @@ export class HazeState {
   words(t: number): string {
     const s = this.firstDmx === null ? "asleep (no DMX)" : !this.ready
       ? `heating, ${Math.max(0, MECH.hazeWarmupS - (t - this.firstDmx)).toFixed(0)} s to go` : this.out > 0 ? "making haze" : "ready";
-    return `${s} · output ${Math.round(this.out * 100)}% · fan ${Math.round(this.fan * 100)}% · in the air ${Math.round(this.density * 100)}%`;
+    return `${s} · output ${Math.round(this.out * 100)}% · fan ${Math.round(this.fan * 100)}%`;
   }
 }

@@ -116,6 +116,13 @@ function hitRoom(o: THREE.Vector3, d: THREE.Vector3, size: Vec3): THREE.Vector3 
   return o.clone().addScaledVector(d, t * 0.995);
 }
 
+// How visible a beam is in haze of d ml/m³: light scattered over a beam's path, 1 - e^(-k d). k puts show_service's
+// light haze (0.005) at about 0.45, medium (0.01) at 0.7, thick (0.02) at 0.9. No haze: nothing in the air.
+const HAZE_SCATTER = 120;
+export function hazeVisibility(ml: number | null): number {
+  return ml && ml > 0 ? 1 - Math.exp(-HAZE_SCATTER * ml) : 0;
+}
+
 export interface RoomSimOptions { canvas: HTMLCanvasElement; room: string }
 
 export class RoomSim {
@@ -134,7 +141,11 @@ export class RoomSim {
   dmx = new Uint8Array(512);
   dmxAt = 0;
   universe: number | null = null;
-  realHaze = false;
+  /** The haze show_service holds in the room (GET /api/v1/haze estimate_ml_m3), null until read: what makes a beam
+   *  visible in the air. With none, only the pools it lights on the walls and floor show, as in a real room. */
+  hazeMl: number | null = null;
+  /** An aid, not the room: draw every beam's path half-visible whatever the haze, to see where the heads aim. */
+  showPaths = false;
   scale = 1;
   private orbit = { th: 0, ph: 1.2, r: 6 };
   private target = new THREE.Vector3();
@@ -383,7 +394,7 @@ export class RoomSim {
           const dir = front.clone().multiplyScalar(Math.cos(off)).addScaledVector(axis, Math.sin(off) * Math.cos(around))
             .addScaledVector(e2, Math.sin(off) * Math.sin(around) * 0.6 + 0.35).normalize();
           const end = hitRoom(at, dir, c.size), rgb = cols ? LASER_RGB[cols[i % cols.length]] : [0, 0, 0];
-          const la = on * (0.08 + 0.6 * c.air);
+          const la = on * 0.7 * c.air;
           pos.setXYZ(i * 2, at.x, at.y, at.z); pos.setXYZ(i * 2 + 1, end.x, end.y, end.z);
           col.setXYZ(i * 2, (rgb[0] / 255) * la, (rgb[1] / 255) * la, (rgb[2] / 255) * la);
           col.setXYZ(i * 2 + 1, (rgb[0] / 255) * la * 0.4, (rgb[1] / 255) * la * 0.4, (rgb[2] / 255) * la * 0.4);
@@ -431,7 +442,7 @@ export class RoomSim {
         light.color.copy(srgb(rgb)); light.intensity = 160 * a;
         hl.material.color.copy(srgb(rgb)).multiplyScalar(0.1 + 2.5 * a);
         setBeam(b, rgb, 0.75 * a * c.air);
-        setBeam(core, rgb, 1.6 * a * Math.max(c.air, 0.35));
+        setBeam(core, rgb, 1.6 * a * c.air);
       },
       words: (c) => {
         const dim = c.ch(f, 7), sh = spotShutter(c.ch(f, 8));
@@ -507,7 +518,7 @@ export class RoomSim {
     this.last = now;
     const m = this.model;
     if (!m) return;
-    const air = this.realHaze ? 0.03 + 0.97 * this.haze.density : 0.55;
+    const air = this.showPaths ? 0.55 : hazeVisibility(this.hazeMl);
     const ch = (f: Fixture, i: number) => {
       if (f.address == null || (this.universe != null && f.universe != null && f.universe !== this.universe)) return 0;
       const a = f.address - 1 + i;
