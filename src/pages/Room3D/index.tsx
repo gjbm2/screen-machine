@@ -147,6 +147,24 @@ export default function Room3DPage() {
             <span className="block h-full bg-[#cfd4dc]" style={{ width: `${Math.round(hazeVisibility(haze?.estimate_ml_m3 ?? null) * 100)}%` }} />
           </span>
         </span>
+        <select className={`${pill} cursor-pointer border-0`} value="" disabled={haze == null}
+          title="Set how hazy the room is now, by eye. The model carries on from here."
+          onChange={async (e) => {
+            const level = e.target.value;
+            if (!level) return;
+            try {
+              const r = await fetch(`${room.replace(/\/+$/, "")}/show/api/v1/haze/now`, { method: "PUT",
+                headers: { "Content-Type": "application/json" }, body: JSON.stringify({ level }) });
+              if (r.ok) setHaze(await r.json());
+              else window.alert(`Couldn't set the haze: ${r.status}`);
+            } catch { window.alert("Couldn't reach show_service to set the haze"); }
+          }}>
+          <option value="">Set haze now…</option>
+          <option value="off">Clear</option>
+          <option value="light">Light</option>
+          <option value="medium">Medium</option>
+          <option value="thick">Thick</option>
+        </select>
         <label className={`${pill} cursor-pointer`} title="An aid for aiming, not what the room looks like: draws every beam half-visible whatever the haze.">
           <input type="checkbox" checked={showPaths} onChange={(e) => setShowPaths(e.target.checked)} /> Show beam paths
         </label>
