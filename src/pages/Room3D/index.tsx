@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { resolveRoomUrl } from "@/pages/Room/api";
 import { loadRoom, type RoomModel } from "./model";
-import { RoomSim } from "./scene";
+import { hazeVisibility, RoomSim } from "./scene";
 
 const ROOM_POLL_MS = 5000;
 const NODE_DEFAULT = "http://127.0.0.1:8705";
@@ -141,17 +141,14 @@ export default function Room3DPage() {
           {!dmxLive ? `no DMX from the virtual node (${node})` : artLive ? `Art-Net ${a?.pps}/s · universe ${nodeSt?.node?.universe}${a?.merging ? " · MERGING" : ""}` : "node up, no Art-Net (holding)"}
         </span>
         <span className="flex-1" />
-        <span className={pill} title="show_service's estimate of the haze in the room (it drives the hazer). Beams show in the air only as much as this haze lets them; with none you see only the pools of light on the walls and floor.">
-          {haze == null ? "haze in the air: unknown" : (() => {
-            const now = haze.estimate_ml_m3 ?? 0, want = haze.target_ml_m3 ?? 0, pc = (x?: number) => `${Math.round((x ?? 0) * 100)}%`;
-            const air = `haze in the air now ${now.toFixed(4)} ml/m³`;
-            return !haze.want || haze.want === "off"
-              ? `${air} · aiming for none${now > 1e-4 ? " (clearing by itself)" : ""} · hazer off`
-              : `${air} = ${pc(want ? now / want : 0)} of ${haze.want} · ${haze.phase ?? ""} · hazer ${pc(haze.output)}, fan ${pc(haze.fan)}`;
-          })()}
+        <span className={`${pill} flex items-center gap-1.5`} title={haze ? `${(haze.estimate_ml_m3 ?? 0).toFixed(4)} ml/m³ in the air (modelled)` : "no haze reading"}>
+          Haze
+          <span className="inline-block h-2 w-16 overflow-hidden rounded bg-[#2c3346]">
+            <span className="block h-full bg-[#cfd4dc]" style={{ width: `${Math.round(hazeVisibility(haze?.estimate_ml_m3 ?? null) * 100)}%` }} />
+          </span>
         </span>
         <select className={`${pill} cursor-pointer border-0`} value={haze?.pick ?? ""} disabled={haze == null}
-          title="How thick the hazer keeps the room. Auto: what the mode's feel asks for. A pick holds until the mode changes."
+          title="Auto: the scene and art director set it. A pick holds until the mode changes."
           onChange={async (e) => {
             const level = e.target.value || null;
             try {
@@ -160,7 +157,7 @@ export default function Room3DPage() {
               if (r.ok) setHaze(await r.json());
             } catch { /* the next poll shows what holds */ }
           }}>
-          <option value="">Auto{haze?.feel ? ` (${haze.feel})` : ""}</option>
+          <option value="">Auto</option>
           {["off", "light", "medium", "thick"].map((l) => <option key={l} value={l} className="capitalize">{l[0].toUpperCase() + l.slice(1)}</option>)}
         </select>
         <label className={`${pill} cursor-pointer`} title="An aid for aiming, not what the room looks like: draws every beam half-visible whatever the haze.">
