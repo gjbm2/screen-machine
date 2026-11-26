@@ -94,14 +94,16 @@ for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`;
   band ... cached for any taylor swift track"). A thread (`karaoke-pictures`) works through the playing song's
   artists, then the queue's, then the library's, one artist at a time, and keeps each artist's pictures in
   `~/.local/state/screen-machine/karaoke/pictures/<artist>/` (never a screen's bucket, never in git):
-  - from Deezer (the artist's photo, the song's album cover and up to 3 more of their albums' covers, one per album),
-    Wikimedia Commons (freely licensed photos, searched by name and by the song's year, so a 1985 song can show
-    1985 pictures) and fanart.tv when `FANARTTV_API_KEY` is in `.env` (its free personal key: screen-shaped
-    backgrounds). By catalogue identity, never a loose web image search.
-  - Each picture gets one Gemini look (`song_picture` in config/llm.yaml, about $0.001): is it really this artist or
-    their album's cover, is it good, is it fine for a children's party (strict: no alcohol as the subject, no
-    gestures, no near-nudity), where are the heads, what era, which moods. One that fails is deleted and
-    remembered. Without the AI, only Deezer's own artist photo and covers it marks clean.
+  - from Deezer (the artist's photo), Wikimedia Commons (freely licensed photos: them in concert / live /
+    performing first, in the song's year first, so a 1985 song can show 1985) and fanart.tv when `FANARTTV_API_KEY`
+    is in `.env` (its free personal key: screen-shaped backgrounds). By catalogue identity, never a loose web image
+    search. People only (owner, 26 Nov: "album cover art isn't a very charismatic thing to show ... we need artists
+    performing"): performing and the band, at most 5 posed portraits; no covers.
+  - Each picture gets one Gemini look (`song_picture` in config/llm.yaml, about $0.001): is it really this artist,
+    what kind (performing, the band, a portrait), is it good, how ENGAGING is it on a big screen (appeal: a striking
+    moment on stage high, a distant or ordinary snapshot low; under 0.35 not kept), is it fine for a children's
+    party (strict: no alcohol as the subject, no gestures, no near-nudity), where are the heads, what era, which
+    moods. One that fails is deleted and remembered. Without the AI, only Deezer's own artist photo.
   - Commons serves only its standard thumbnail widths to us without a 10-minute 429, and only slowly: one download
     every 12 s, so an artist's Commons photos arrive over a few minutes; a 429 pauses Commons and the artist is
     finished later.
@@ -109,8 +111,9 @@ for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`;
     /api/karaoke/pictures/<artist>/<file>`, `POST .../hide {hidden}`.
   - The renderer reads the playing song's list (`stream_service/lyric_feed.py`) and the photo scenes
     (`song-photos-*` in config/live/scenes.yaml: sketchbook, video wall, cube wall, globe, landscape, echo, pop
-    art, framed) only play while it has at least 4; then they get about a fifth to a third of the scene picks,
-    the verse looks in verses and the chorus looks in choruses.
+    art, framed) only play while it has at least 4 ENGAGING ones (appeal 0.6 and up); then about 40% of the looks
+    involve the artist with 10 or more of them (owner: "around 30-50% ... providing the pics are ok"), fewer with a
+    handful; verse looks in verses, chorus looks in choruses; the most engaging pictures most often.
 
 ## The karaoke venv (per machine)
 
