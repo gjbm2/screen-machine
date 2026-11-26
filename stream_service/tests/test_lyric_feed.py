@@ -56,6 +56,8 @@ class Flask:
     def __call__(self, url):
         if url.endswith("/api/karaoke/now"):
             return self.now
+        if url.endswith("/pictures"):                    # the song's artist pictures (test_song_photos.py)
+            return {"state": "none", "pictures": []}
         self.lyrics_reads += 1
         return SONG
 
@@ -116,6 +118,8 @@ def test_child_mode_fetches_the_masked_lyrics_and_starts_again():
     def fetch(url):
         if url.endswith("/api/karaoke/now"):
             return fl.now
+        if url.endswith("/pictures"):
+            return {"state": "none", "pictures": []}
         fl.lyrics_reads += 1
         return masked if fl.now["settings"].get("child_mode") else SONG
     feed = L.LyricFeed("http://x", fetch=fetch)

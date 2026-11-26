@@ -90,6 +90,17 @@ NOTES_RECENT_S = (30.0, 120.0)
 # well (>= 0.7).  At 3: 7% poor, 73% good, still about 17 scenes in real rotation (catalog of 24 Oct, 415 auto presets).
 STYLE_POWER = 3.0
 NOTES_NONE = 0.0     # owner, 28 Oct: score scenes "shouldn't really trigger if there's no midi" (was 0.05)
+# A scene drawn from the karaoke song's artist pictures (its plug-in listens "pictures": the photo scenes; owner,
+# 26 Nov: "upweight them like we do lyrics effects") is never picked with fewer than PICTURES_MIN pictures for the
+# playing song, and x PICTURES_BOOST when there are; and since the style fit swings their share from 2% (rock: no
+# photo look is "aggressive") to 50% (bright pop), they then get at least PICTURES_SHARE of the pick between them
+# (medium often, not always; not straight after another photo scene, nor when the song's treatment shuns the photo
+# family; tests/test_song_photos.py measures it on the real catalogue).  A scene tagged ``sections`` (verse / chorus / instrumental / outro) is x SECTION_FIT
+# in one of its kinds of karaoke section and x SECTION_MISS in another (no karaoke section: no opinion).
+PICTURES_MIN = 4
+PICTURES_BOOST = 3.0
+PICTURES_SHARE = 0.22
+SECTION_FIT, SECTION_MISS = 2.0, 0.4
 # The fewest scenes an auto pick keeps in real rotation: the effective number ((sum w)^2 / sum w^2) of the weights,
 # at most MIN_ROTATION_SHARE of the scenes that fit at all.  With the music's words, genre and axes all multiplying
 # the fit before STYLE_POWER, a Disco pick had 2-6 (owner, 28 Oct: "frequently returns to a small number of
@@ -448,6 +459,17 @@ def why_extra(notes: list[str], taste: float = 1.0) -> str:
     return "; " + "; ".join(parts) if parts else ""
 
 
+def floor_share(w: list[float], mask: list[bool], share: float) -> list[float]:
+    """Scale the masked weights up so that together they are at least ``share`` of the total (never down; nothing
+    masked with weight, or nothing else: as is)."""
+    a = sum(x for x, m in zip(w, mask) if m)
+    b = sum(x for x, m in zip(w, mask) if not m)
+    if a <= 0.0 or b <= 0.0 or a / (a + b) >= share:
+        return w
+    k = share * b / ((1.0 - share) * a)
+    return [x * k if m else x for x, m in zip(w, mask)]
+
+
 def weighted_pick(names: list[str], weight: Callable[[str], float], rng: random.Random,
                   avoid: Any = (), rotation: Optional[float] = None,
                   adjust: Optional[Callable[[list[str], list[float]], list[float]]] = None
@@ -499,15 +521,22 @@ class Director:
         self.rate: Optional[Callable[[str, Optional[str]], float]] = None  # (kind, plug-in) -> owner-rating weight
         self.listens: Optional[Callable[[Optional[str]], tuple]] = None   # plug-in -> what it draws from the sound
         self.notes_age: Optional[Callable[[], Optional[float]]] = None     # s since the piano last played (None: never)
+        self.pictures_n: Optional[Callable[[], int]] = None   # the playing karaoke song's artist pictures (0: none)
+        self.section: Optional[Callable[[], Optional[str]]] = None   # the karaoke section now (verse | chorus | ...)
         self.taste: Optional[Callable[[Optional[str], dict], float]] = None   # (plug-in, direction) -> the room's
                                                                               # taste multiplier (taste.py)
 
     def _heard(self, plugin: Optional[str]) -> float:
-        """x a scene's weight by whether there is what it draws: a notes scene with no MIDI is not picked."""
-        if self.listens is None or self.notes_age is None:
+        """x a scene's weight by whether there is what it draws: a notes scene with no MIDI is not picked, nor a
+        photo scene without the song's pictures (and with them it is upweighted)."""
+        if self.listens is None:
             return 1.0
         try:
-            if "notes" not in (self.listens(plugin) or ()):
+            heard = self.listens(plugin) or ()
+            if "pictures" in heard:
+                n = self.pictures_n() if self.pictures_n is not None else 0
+                return PICTURES_BOOST if n >= PICTURES_MIN else 0.0
+            if "notes" not in heard or self.notes_age is None:
                 return 1.0
             age = self.notes_age()
         except Exception:
@@ -515,6 +544,30 @@ class Director:
         lo, hi = NOTES_RECENT_S
         h = 0.0 if age is None else max(0.0, min(1.0, (hi - age) / (hi - lo)))
         return NOTES_NONE + (1.0 - NOTES_NONE) * h
+
+    def _listens_pictures(self, plugin: Optional[str]) -> bool:
+        try:
+            return self.listens is not None and "pictures" in (self.listens(plugin) or ())
+        except Exception:
+            return False
+
+    def _heard_pictures(self) -> bool:
+        try:
+            return self.pictures_n is not None and self.pictures_n() >= PICTURES_MIN
+        except Exception:
+            return False
+
+    def _section_fit(self, tags: dict) -> float:
+        want = tags.get("sections")
+        if not want or self.section is None:
+            return 1.0
+        try:
+            kind = self.section()
+        except Exception:
+            return 1.0
+        if not kind:
+            return 1.0
+        return SECTION_FIT if kind in want else SECTION_MISS
 
     def _rated(self, kind: str, plugin: Optional[str]) -> float:
         if self.rate is None:
@@ -684,17 +737,24 @@ class Director:
 
         favour, shun = self.treatment()
         notes: list[str] = []
+        photo = lambda n: n in scenes and self._listens_pictures(scenes[n].get("source"))   # noqa: E731
+        floor = (self._heard_pictures() and not (prev and photo(prev))
+                 and not any("photo" in str(t) for t in ((shun or {}).get("tags") or ())))
 
         def adjust(cands: list[str], w: list[float]) -> list[float]:
-            w, ns = steer(w, [tag_words(scenes[c].get("tags") or {}) for c in cands], favour, shun)
-            notes.extend(ns)
+            if favour or shun:
+                w, ns = steer(w, [tag_words(scenes[c].get("tags") or {}) for c in cands], favour, shun)
+                notes.extend(ns)
+            if floor:
+                w = floor_share(w, [photo(c) for c in cands], PICTURES_SHARE)
             return w
 
         got = weighted_pick(names, lambda n: scene_weight(scenes[n].get("tags") or {}, self.direction) ** STYLE_POWER
                             * self._rated("source", scenes[n].get("source")) * tasted(scenes[n].get("source"))
                             * tasted(scene_key(n))
-                            * self._heard(scenes[n].get("source")), self.rng_scene, avoid, MIN_ROTATION,
-                            adjust if favour or shun else None)
+                            * self._heard(scenes[n].get("source"))
+                            * self._section_fit(scenes[n].get("tags") or {}), self.rng_scene, avoid, MIN_ROTATION,
+                            adjust if favour or shun or floor else None)
         if got is None:
             return None
         name, p, n = got

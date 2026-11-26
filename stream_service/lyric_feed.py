@@ -42,6 +42,8 @@ LINE_HOLD_S = 1.2       # ... and stays until this long after its last (or until
 GAP_KEEP_S = 4.0        # a gap between lines shorter than this keeps ``active`` at 1
 FADE_OUT_S = 1.5        # a longer gap: ``active`` falls over this after the last word ...
 FADE_IN_S = 1.0         # ... and rises over this before the next line's first word
+PICS_POLL_S = 15.0      # a song's pictures are read again this often while Flask is still finding them
+PICS_ENOUGH = 10        # ... until there are this many (or Flask says it is done)
 
 
 @dataclass(frozen=True)
@@ -158,6 +160,66 @@ def build_song(key: str, title: str, lyr: Any) -> Optional[Song]:
 
 
 @dataclass(frozen=True)
+class Picture:
+    """One of the song's artist pictures (routes/karaoke/pictures.py): a local JPEG, vetted (or the catalogue's own).
+    ``face``: (cx, cy, h) of the main faces' box as fractions of the picture (None: unknown)."""
+    id: str
+    path: str
+    w: int
+    h: int
+    kind: str                # portrait | live | group | cover | other
+    quality: float
+    face: Optional[tuple]
+    era: Optional[str]
+    moods: tuple = ()
+
+
+@dataclass(frozen=True)
+class PictureSet:
+    """The playing song's pictures, best first (the song's era first).  ``key`` changes when the list does."""
+    key: str
+    song: str
+    era: Optional[str]
+    pictures: tuple
+
+
+def _face(faces: Any) -> Optional[tuple]:
+    """The box round every main face (the largest few), as (cx, cy, h); None without faces."""
+    boxes = []
+    for f in faces or []:
+        try:
+            x, y, w, h = (float(f[k]) for k in ("x", "y", "w", "h"))
+        except (KeyError, TypeError, ValueError):
+            continue
+        if w > 0 and h > 0:
+            boxes.append((x, y, x + w, y + h))
+    if not boxes:
+        return None
+    x0, y0 = min(b[0] for b in boxes), min(b[1] for b in boxes)
+    x1, y1 = max(b[2] for b in boxes), max(b[3] for b in boxes)
+    return (0.5 * (x0 + x1), 0.5 * (y0 + y1), max(0.02, y1 - y0))
+
+
+def picture_set(sid: str, o: Any) -> Optional[PictureSet]:
+    """GET /api/karaoke/songs/<sid>/pictures -> a PictureSet (None: nothing usable)."""
+    if not isinstance(o, dict):
+        return None
+    out = []
+    for p in o.get("pictures") or []:
+        try:
+            out.append(Picture(str(p["id"]), str(p["path"]), int(p["w"]), int(p["h"]), str(p.get("kind") or "other"),
+                               float(p.get("quality") if p.get("quality") is not None else 0.7), _face(p.get("faces")),
+                               p.get("era") if isinstance(p.get("era"), str) else None,
+                               tuple(m for m in p.get("moods") or [] if isinstance(m, str))))
+        except (KeyError, TypeError, ValueError):
+            continue
+    if not out:
+        return None
+    return PictureSet(f"{sid}:{len(out)}:{out[0].id}", sid, o.get("era") if isinstance(o.get("era"), str) else None,
+                      tuple(out))
+
+
+@dataclass(frozen=True)
 class Snapshot:
     """What the feed read last (immutable, swapped by reference)."""
     song: Optional[Song]
@@ -166,6 +228,7 @@ class Snapshot:
     at: float
     shift_s: float           # speaker delay + the song's offsets: lyric time = song position - shift_s
     read_mono: float
+    pictures: Optional[PictureSet] = None    # the song's artist pictures (the photo scenes; listens "pictures")
 
 
 class LyricFeed:
@@ -180,6 +243,7 @@ class LyricFeed:
         self._songs: dict[str, Optional[Song]] = {}      # song id + child mode -> built song (None: no synced lyrics)
         self._failing = False
         self._unloaded: set[str] = set()                 # songs whose lyrics failed to load (logged once each)
+        self._pics: dict[str, tuple] = {}                # song id -> (PictureSet | None, read at mono, done)
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
@@ -207,7 +271,33 @@ class LyricFeed:
             pos, at = float(p.get("pos_s") or 0.0), float(p.get("at") or time.time())
         except (TypeError, ValueError, AttributeError):
             shift, pos, at = 0.0, 0.0, time.time()
-        self.snap = Snapshot(song, state, pos, at, shift, self._mono())
+        pics = self._pictures(str(sid)) if state != "stopped" and sid else None
+        self.snap = Snapshot(song, state, pos, at, shift, self._mono(), pics)
+
+    def _pictures(self, sid: str) -> Optional[PictureSet]:
+        """The song's pictures: read on a new song, then every PICS_POLL_S while Flask is still fetching them."""
+        have = self._pics.get(sid)
+        now = self._mono()
+        if have is not None and (have[2] or now - have[1] < PICS_POLL_S):
+            return have[0]
+        try:
+            o = self._fetch(f"{self.base}/api/karaoke/songs/{urllib.parse.quote(sid)}/pictures")
+        except Exception:                                # noqa: BLE001 - an older Flask, or restarting: later
+            o = None
+        ps = picture_set(sid, o)
+        done = isinstance(o, dict) and o.get("state") in ("ready", "none") and (
+            ps is None or len(ps.pictures) >= PICS_ENOUGH)
+        if len(self._pics) > 64:
+            self._pics.clear()
+        if ps is not None and (have is None or have[0] is None or have[0].key != ps.key):
+            log.info("pictures: %s: %d", sid, len(ps.pictures))
+        self._pics[sid] = (ps, now, done)
+        return ps
+
+    def pictures(self) -> Optional[PictureSet]:
+        """The playing (or paused) song's pictures, if fresh."""
+        sn = self.fresh()
+        return sn.pictures if sn is not None and sn.state != "stopped" else None
 
     def _song(self, sid: str, s: dict, child: bool = False) -> Optional[Song]:
         """The song's lyrics as Flask serves them NOW.  Child mode (settings.child_mode; owner, 26 Nov): Flask masks
@@ -282,6 +372,13 @@ def shared() -> Optional[LyricFeed]:
                 log.exception("lyrics: no feed (the karaoke effects stay off)")
                 _SHARED = None
     return _SHARED
+
+
+def pictures_playing() -> int:
+    """How many artist pictures the PLAYING karaoke song has (the scene director's gate for the photo scenes)."""
+    f = shared()
+    sn = f.fresh() if f is not None else None
+    return len(sn.pictures.pictures) if sn is not None and sn.state == "playing" and sn.pictures else 0
 
 
 # -- per session, on the render thread -----------------------------------------------------------------------------

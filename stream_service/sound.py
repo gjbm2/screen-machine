@@ -38,6 +38,9 @@ The karaoke song's lyrics (listens "lyrics"; lyric_feed.py, owner 25 Nov):
   sound.lyrics       lyric_feed.LyricFrame: present (a song with synced lyrics plays), t (lyric time at photon time),
                      song (every line and word with its t0 / t1, known ahead), line, word, active (0..1: multiply
                      the amount by it).  Never None; ``present`` False on a deployment without karaoke.
+  sound.pictures     lyric_feed.PictureSet or None: the playing karaoke song's artist pictures (listens "pictures";
+                     routes/karaoke/pictures.py, owner 26 Nov): local JPEG paths, kind, quality, face box, era;
+                     best first.  The photo scenes (plugins/sources/song_photos.py) draw them.
 
 Ages are evaluated at photon time (the frame's time plus the session's measured lead), so what a scene draws for
 a note matches what the ear hears at the TV.  Read-only for plug-ins; both scenes of a transition see the same
@@ -89,6 +92,7 @@ class Sound(ScopeFields):
             log.exception("lyrics: no view")
             self.lyric_view = None
         self.lyrics: Any = LyricFrame()
+        self.pictures: Any = None             # lyric_feed.PictureSet: the playing song's artist pictures, or None
 
     @property
     def present(self) -> bool:
@@ -128,6 +132,8 @@ class Sound(ScopeFields):
         if self.lyric_view is not None:
             try:
                 self.lyrics = self.lyric_view.update(photon_s)
+                feed = self.lyric_view.feed
+                self.pictures = feed.pictures() if feed is not None else None
             except Exception:
                 log.exception("lyrics view failed; the karaoke effects see none from here on")
                 self.lyric_view = None

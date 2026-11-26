@@ -103,6 +103,13 @@ tasks:
     timeout_s: 30                           # per call; the queue retries a timeout later
     max_output_tokens: 800                  # the answer is ~250 tokens of JSON
 
+  song_picture:                             # karaoke pictures (routes/karaoke/pictures.py; owner, 26 Nov): one 768 px
+    models:                                 # look at a picture found for a song's artist -> is it them, is it good,
+      - {provider: gemini, model: gemini-3.1-flash-lite}   # is it fine for children, where are the faces, era, moods.
+      # No OpenAI fallback, like tag: a Gemini 429 waits, it never sends pictures to a 10x dearer model.
+    timeout_s: 30
+    max_output_tokens: 500
+
 # USD per 1M tokens. text_in, text_out, and optionally audio_in and cached_in (each defaults to text_in when left out).
 # A key may be a glob (gemini-*-flash): an exact id wins; a glob prices an id the listener discovered.
 # OpenAI rows: retrieved 16 Oct 2026 from https://developers.openai.com/api/docs/pricing ("Realtime and audio
@@ -135,3 +142,4 @@ budgets:
   tag: 3.00                                 # art tags: $0.00125 a picture (measured 27 Oct), so the ~2,000-picture
                                             # backfill is ~$2.50; reaching it pauses the tagging queue until local
                                             # midnight (the backfill may spill into a second day)
+  song_picture: 1.00                        # about $0.001 a picture, ~15 an artist: a party's 40 artists ~ $0.60

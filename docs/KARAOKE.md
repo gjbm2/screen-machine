@@ -67,6 +67,7 @@ for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`;
 | Vocal removal | `tools/karaoke/separate.py`, run in the karaoke venv (never in Flask) |
 | Display layer | `src/pages/DisplayPage/karaoke/KaraokeLayer.tsx`: Web Audio (backing + vocal at the guide gain), lyrics |
 | Control panel | `src/pages/Karaoke/index.tsx` (`fuzzy.ts`: the library's spelling-forgiving match; `RoomMic.tsx`), `src/shared/api/karaoke.ts` |
+| Artist pictures | `routes/karaoke/pictures.py`: each song's artists' pictures, found, vetted and kept per artist (below); `src/pages/Karaoke/SongPictures.tsx` hides one |
 
 - **The recording:** LRCLIB's artist, title and length choose the YouTube recording (closest length, no covers,
   karaoke, live or sped-up versions), so the lyrics' timings fit. Spotify audio is DRM'd: a Spotify link gives the
@@ -88,6 +89,28 @@ for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`;
   more than 1 s. The lyrics follow the sound itself. (25 Nov: chasing the server's clock jumped the audio every few
   seconds: the laptop's WSL clock ran 7.6% slow, the PC22 fault of 11 Oct, fixed the same way:
   docs/KIOSK_INFRASTRUCTURE_NOTES.md §6. `python3 scripts/wsl_clock_check.py` checks it.)
+
+- **The pictures** (owner, 26 Nov: the photo scenes, "publicly-available-from-the-web images of the singer and/or
+  band ... cached for any taylor swift track"). A thread (`karaoke-pictures`) works through the playing song's
+  artists, then the queue's, then the library's, one artist at a time, and keeps each artist's pictures in
+  `~/.local/state/screen-machine/karaoke/pictures/<artist>/` (never a screen's bucket, never in git):
+  - from Deezer (the artist's photo, the song's album cover and up to 3 more of their albums' covers, one per album),
+    Wikimedia Commons (freely licensed photos, searched by name and by the song's year, so a 1985 song can show
+    1985 pictures) and fanart.tv when `FANARTTV_API_KEY` is in `.env` (its free personal key: screen-shaped
+    backgrounds). By catalogue identity, never a loose web image search.
+  - Each picture gets one Gemini look (`song_picture` in config/llm.yaml, about $0.001): is it really this artist or
+    their album's cover, is it good, is it fine for a children's party (strict: no alcohol as the subject, no
+    gestures, no near-nudity), where are the heads, what era, which moods. One that fails is deleted and
+    remembered. Without the AI, only Deezer's own artist photo and covers it marks clean.
+  - Commons serves only its standard thumbnail widths to us without a 10-minute 429, and only slowly: one download
+    every 12 s, so an artist's Commons photos arrive over a few minutes; a 429 pauses Commons and the artist is
+    finished later.
+  - `GET /api/karaoke/songs/<id>/pictures` (the song's artists merged, its era first), `GET
+    /api/karaoke/pictures/<artist>/<file>`, `POST .../hide {hidden}`.
+  - The renderer reads the playing song's list (`stream_service/lyric_feed.py`) and the photo scenes
+    (`song-photos-*` in config/live/scenes.yaml: sketchbook, video wall, cube wall, globe, landscape, echo, pop
+    art, framed) only play while it has at least 4; then they get about a fifth to a third of the scene picks,
+    the verse looks in verses and the chorus looks in choruses.
 
 ## The karaoke venv (per machine)
 

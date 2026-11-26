@@ -157,7 +157,28 @@ async function call<T>(path: string, init?: RequestInit): Promise<T> {
 
 const post = (body: unknown): RequestInit => ({ method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 
+/** One of a song's artist pictures (routes/karaoke/pictures.py): found, vetted and kept per artist. */
+export interface SongPicture {
+  id: string; // "<artist-slug>/<file>"
+  artist: string;
+  url: string; // the JPEG, same origin
+  kind: 'portrait' | 'live' | 'group' | 'cover' | 'other';
+  era: string | null;
+  caption: string | null;
+  source: string;
+  credit: string | null;
+  license: string | null;
+}
+
+export interface SongPictures {
+  state: 'ready' | 'fetching' | 'none';
+  artists: string[];
+  pictures: SongPicture[];
+}
+
 export const karaoke = {
+  pictures: (sid: string) => call<SongPictures>(`/songs/${encodeURIComponent(sid)}/pictures`),
+  hidePicture: (id: string, hidden = true) => call<{ ok: boolean }>(`/pictures/${id}/hide`, post({ hidden })),
   state: () => call<KaraokeState>('/state'),
   now: () => call<KaraokeNow>('/now'),
   search: (q: string) => call<{ results: SearchHit[] }>(`/search?q=${encodeURIComponent(q)}`),

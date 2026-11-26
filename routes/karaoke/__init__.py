@@ -9,6 +9,7 @@ import smconfig
 from utils.logger import error
 
 from .api import karaoke_api, store
+from . import pictures  # noqa: F401 - its routes join karaoke_api; its thread starts in start()
 from .store import song_dir
 from .worker import Worker, audio_seconds
 
@@ -41,6 +42,7 @@ def start() -> None:
     _worker.start()
     threading.Thread(target=_clock, args=(st,), name="karaoke-clock", daemon=True).start()
     threading.Thread(target=_facts, args=(st,), name="karaoke-facts", daemon=True).start()
+    pictures.start()                                # the artists' pictures for the photo scenes
     if smconfig.enabled("sonos"):                       # karaoke on a Sonos room (sonos_out.py)
         global _sonos
         from .sonos_out import KaraokeSonos

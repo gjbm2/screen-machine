@@ -202,6 +202,9 @@ class FxSound(ScopeFields):
         lyric_text.SYNC_BAKE = True                     # short renders: the text is there from the first frame
         self._lyr_view, self._lyr_song = LyricView(), demo_song()
         self.lyrics = LyricFrame()
+        self.pictures = demo_pictures()                 # listens "pictures": the karaoke cache, else art stills
+        from stream_service.plugins.sources import song_photos
+        song_photos.SYNC_DECODE = True
 
     @property
     def present(self) -> bool:
@@ -526,6 +529,35 @@ def video_transition(cls, preset, ctx, outdir, seconds):
 
 
 # ----------------------------------------------------------------------------- effects
+def demo_pictures():
+    """A PictureSet for the photo scenes: the karaoke pictures cache's first artist with pictures, else art stills."""
+    import json as _json
+    from stream_service.lyric_feed import Picture, PictureSet, _face
+    root = pathlib.Path.home() / ".local/state/screen-machine/karaoke/pictures"
+    for idx in sorted(root.glob("*/index.json")):
+        try:
+            rows = _json.loads(idx.read_text()).get("pictures") or []
+        except (OSError, ValueError):
+            continue
+        pics = tuple(Picture(f"{idx.parent.name}/{r['file']}", str(idx.parent / r["file"]), r["w"], r["h"],
+                             r.get("kind") or "other", float(r.get("quality") or 0.7), _face(r.get("faces")),
+                             r.get("era"), tuple(r.get("moods") or ())) for r in rows
+                     if (idx.parent / r["file"]).is_file() and not r.get("hidden"))
+        kinds = os.environ.get("FX_PICTURE_KINDS")         # e.g. "portrait,live": only those (a fit check)
+        if kinds:
+            pics = tuple(p for p in pics if p.kind in kinds.split(","))
+        if len(pics) >= 1:
+            return PictureSet(f"demo:{idx.parent.name}", "demo", None, pics)
+    from PIL import Image
+    files = sorted(ART.glob("*.jpg"))[:6]
+    pics = []
+    for i, f in enumerate(files):
+        with Image.open(f) as im:
+            w, h = im.size
+        pics.append(Picture(f"art/{f.name}", str(f), w, h, ["portrait", "live", "cover"][i % 3], 0.8, None, None))
+    return PictureSet("demo:art", "demo", None, tuple(pics)) if pics else None
+
+
 def art_frame(ctx, k: int = 1):
     """An art still from assets/art<k>.jpg, letterboxed to the frame (the effect must look right on art too)."""
     from PIL import Image

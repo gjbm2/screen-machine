@@ -92,6 +92,10 @@ NEEDS: dict[str, tuple[Need, ...]] = {
     "dot": (
         Need("file", "dot.json", "the Dot. cloud API key"),
     ),
+    "karaoke": (
+        Need("env", "FANARTTV_API_KEY", "screen-shaped artist pictures for the photo scenes (fanart.tv)", shareable=True,
+             optional=True),
+    ),
 }
 
 

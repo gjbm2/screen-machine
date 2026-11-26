@@ -94,6 +94,7 @@ import {
 } from "@/shared/api/karaoke";
 import { fuzzyFilter } from "./fuzzy";
 import { LivePicture } from "./LivePicture";
+import { SongPictures } from "./SongPictures";
 import { RoomMicCheck } from "./RoomMic";
 
 const POLL_MS = 1500;
@@ -343,6 +344,7 @@ export default function KaraokePage() {
         <div className="mt-4 space-y-4 lg:mt-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
           <LivePicture screen={st ? karaokeScreen(dep, st.settings.screen) : null} />
           {st && <Settings st={st} songs={songs} act={act} dep={dep} />}
+          {st?.player.song_id && <SongPictures songId={st.player.song_id} />}
         </div>
       </div>
       {/* The library: a tray from the foot of the screen, opened from the search bar's icon. */}
