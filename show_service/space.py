@@ -82,7 +82,14 @@ FRONTS: dict[str, Vec3] = {"north": (0.0, 1.0, 0.0), "east": (1.0, 0.0, 0.0), "s
                            "west": (-1.0, 0.0, 0.0)}
 FRONT_ALIASES: dict[str, str] = {"n": "north", "e": "east", "s": "south", "w": "west"}
 DEFAULT_FRONT = "north"                     # the frame's convention (§3.1), not a room fact
-ROOM_SURFACES: tuple[str, ...] = ("floor", "ceiling", "wall-n", "wall-e", "wall-s", "wall-w")
+#: walls named from where the room faces (its ``front``), so a scene works in any room (owner, 26 Nov: the movers swung
+#: hard to one side in the laptop room on a scene aimed at "wall-n", a drawing-room fact): front, back, and left and
+#: right as you face the front
+RELATIVE_WALLS: tuple[str, ...] = ("wall-front", "wall-back", "wall-left", "wall-right")
+_WALL_OF = {"north": "wall-n", "east": "wall-e", "south": "wall-s", "west": "wall-w"}
+_LEFT_OF = {"north": "west", "west": "south", "south": "east", "east": "north"}
+_OPPOSITE = {"north": "south", "south": "north", "east": "west", "west": "east"}
+ROOM_SURFACES: tuple[str, ...] = ("floor", "ceiling", "wall-n", "wall-e", "wall-s", "wall-w") + RELATIVE_WALLS
 SURFACE_LABELS: dict[str, str] = {"floor": "Floor", "ceiling": "Ceiling", "wall-n": "North wall",
                                   "wall-e": "East wall", "wall-s": "South wall", "wall-w": "West wall"}
 SIDES: dict[str, str] = {"n": "north", "e": "east", "s": "south", "w": "west"}   # side:<n|e|s|w> as compass words
@@ -547,6 +554,13 @@ def build_view(hand: Any, added: Any = None, *, error: Optional[str] = None,
             "volume_m3": round(size[0] * size[1] * size[2], 2) if size else None,
             "haze_half_life_s": m["room"].get("haze_half_life_s")}
     surfaces: dict[str, dict] = _room_surfaces(size)
+    if size is not None:                                         # the relative walls: the same planes, by the front
+        rel = {"wall-front": front, "wall-back": _OPPOSITE[front], "wall-left": _LEFT_OF[front],
+               "wall-right": _OPPOSITE[_LEFT_OF[front]]}
+        for alias, compass in rel.items():
+            base = surfaces[_WALL_OF[compass]]
+            surfaces[alias] = {**base, "name": alias,
+                               "label": f"{alias[5:].capitalize()} wall ({base['label'].split()[0].lower()})"}
     for name, e in m["surfaces"].items():
         n, upv = _v3(e["normal"]), _v3(e["up"])
         surfaces[name] = {"name": name, "label": e.get("label") or humanise(name), "origin": e["origin"],

@@ -338,7 +338,7 @@ scenes:
     label: Soft walls with a wave
     needs: [pan, tilt]
     layers:
-      - {id: walls, kind: position, mode: fan, centre: centre, on: wall-n, along: flow, size: 2.5, size_deg: 40,
+      - {id: walls, kind: position, mode: fan, centre: centre, on: wall-back, along: flow, size: 2.5, size_deg: 40,
          fan: 1.0}
       - {id: beam, kind: beam, zoom: wide, frost: 0.6}
       - {id: wave, fx: sine, phase: bar, period_bars: [4, 1], depth: 0.5, needs: grid, order: flow, spread: 1.0}
@@ -391,7 +391,7 @@ scenes:
     label: Turning patterns on the walls
     needs: [pan, tilt]
     layers:
-      - {id: walls, kind: position, mode: fan, centre: centre, on: wall-n, along: right, size: 2.0, size_deg: 35,
+      - {id: walls, kind: position, mode: fan, centre: centre, on: wall-back, along: right, size: 2.0, size_deg: 35,
          fan: 0.8}
       - {id: gobo, kind: gobo, slot: auto, change_on: section, spin: flow, spin_scale: 0.2}
       - {id: beam, kind: beam, zoom: mid, focus: default, frost: 0.0}
