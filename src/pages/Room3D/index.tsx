@@ -142,9 +142,13 @@ export default function Room3DPage() {
         </span>
         <span className="flex-1" />
         <span className={pill} title="show_service's estimate of the haze in the room (it drives the hazer). Beams show in the air only as much as this haze lets them; with none you see only the pools of light on the walls and floor.">
-          {haze == null ? "haze: unknown" : !haze.want || haze.want === "off"
-            ? `haze off${haze.estimate_ml_m3 ? ` · clearing, ${haze.estimate_ml_m3.toFixed(3)} ml/m³ left` : ""}`
-            : `haze ${haze.want} · ${haze.phase ?? ""} · ${(haze.estimate_ml_m3 ?? 0).toFixed(3)} of ${(haze.target_ml_m3 ?? 0).toFixed(3)} ml/m³`}
+          {haze == null ? "haze in the air: unknown" : (() => {
+            const now = haze.estimate_ml_m3 ?? 0, want = haze.target_ml_m3 ?? 0, pc = (x?: number) => `${Math.round((x ?? 0) * 100)}%`;
+            const air = `haze in the air now ${now.toFixed(4)} ml/m³`;
+            return !haze.want || haze.want === "off"
+              ? `${air} · aiming for none${now > 1e-4 ? " (clearing by itself)" : ""} · hazer off`
+              : `${air} = ${pc(want ? now / want : 0)} of ${haze.want} · ${haze.phase ?? ""} · hazer ${pc(haze.output)}, fan ${pc(haze.fan)}`;
+          })()}
         </span>
         <select className={`${pill} cursor-pointer border-0`} value={haze?.pick ?? ""} disabled={haze == null}
           title="How thick the hazer keeps the room. Auto: what the mode's feel asks for. A pick holds until the mode changes."
