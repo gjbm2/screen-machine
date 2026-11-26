@@ -135,6 +135,12 @@ If the bars end up the other way round, swap their start addresses on the bars; 
    - **no gateway and no DNS**, so Windows never sends internet traffic that way.
 2. **The node:** static IP `192.168.50.10`, mask `255.255.255.0`. Protocol Art-Net. Its DMX port is an **output** on
    universe 1 (Port-Address 1).
+   - **Done on the laptop, 26 Nov, over the network** (`tools/artnet_node_setup.py`; no OLED menus). The Pknight
+     (`CR011R_001`) came at **10.201.6.100/8, Port-Address 0**. ArtIpProg moved it to 192.168.50.10/24, and ArtAddress
+     moved it to Port-Address 1. It then reported "outputting". The adapter's 192.168.50.1/24 was set from an elevated
+     PowerShell: `Set-NetIPInterface -Dhcp Disabled` and `New-NetIPAddress` on the ASIX AX88179 adapter.
+   - If the node comes back on its factory settings after a power cycle, run the tool again: `find`, then `ip` from a
+     temporary 10.0.0.250/8 on the adapter, then `universe`.
    - If its page counts universes from 1 (as sACN does), check what it reports: after step 4, `GET
      /show/api/v1/rig` `.nodes.node-dmx` lists its replies, and `GET /show/api/v1/rig/frame?output=dmx-a` shows what
      is sent.
