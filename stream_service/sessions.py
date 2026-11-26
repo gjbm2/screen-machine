@@ -2625,6 +2625,17 @@ class Session(EngineListener):
                             via = got[0]
                             d = (self.mgr.presets.transitions[via].get("params") or {}).get("duration_s")
                             via_dur = float(d) if isinstance(d, (int, float)) else None
+                            pk = self.prepared_pick
+                            if pk is not None:        # make it ready now, on the warmed scene: its REAL length (its
+                                spec = self.mgr.presets.resolve_transition(via)   # music mappings move it) times
+                                trans = await self._transition_ready(spec)        # the landing on the line
+                                if self.prepared_pick is pk:
+                                    self._retire(pk["trans"])
+                                    pk.update(trans_spec=spec, trans=trans,
+                                              why=f"{pk['why'].split(' via ')[0]} via {spec.name} (the move's)")
+                                    via_dur, via = float(trans.duration_s), None
+                                else:
+                                    self._retire(trans)
                     except Exception:                 # (degrade, never refuse: its own transition stays)
                         log.debug("[%s] a move's transition could not be drawn", self.id, exc_info=True)
                         via = None
