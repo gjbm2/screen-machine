@@ -1332,17 +1332,18 @@ const cornerStyle: CSSProperties = {
   fontFamily: "'Segoe UI', 'Helvetica Neue', Arial, sans-serif",
 };
 /** A soft dark pool behind the lyrics (owner, 25 Nov: "20% dark blurry area behind them (no sharp edges) to improve
- *  legibility on complex dynamic rendered backgrounds"; 26 Nov: deeper, over every scene): darker in the middle, to nothing at the edges, sized to the
+ *  legibility on complex dynamic rendered backgrounds"; 26 Nov: deeper, over every scene; "more spread out and a bit more
+ *  pronounced"): darker in the middle, to nothing at the edges, sized to the
  *  lines it sits behind (a wrapped line, the next line). Darkens only: no backdrop blur over the live render. */
 const backdropStyle: CSSProperties = {
   position: "absolute",
   zIndex: -1,
-  left: "-10vw",
-  right: "-10vw",
-  top: "-6vh",
-  bottom: "-5vh",
+  left: "-22vw",
+  right: "-22vw",
+  top: "-16vh",
+  bottom: "-12vh",
   background:
-    "radial-gradient(closest-side, rgba(0,0,0,0.42), rgba(0,0,0,0.32) 45%, rgba(0,0,0,0.12) 75%, rgba(0,0,0,0))",
+    "radial-gradient(closest-side, rgba(0,0,0,0.5), rgba(0,0,0,0.42) 40%, rgba(0,0,0,0.24) 68%, rgba(0,0,0,0.08) 86%, rgba(0,0,0,0))",
   pointerEvents: "none",
   transition: "opacity 0.6s ease",
 };
@@ -1355,8 +1356,9 @@ const bandStyle: CSSProperties = {
   left: 0,
   right: 0,
   bottom: "-7vh",
-  height: "52vh",
-  background: "linear-gradient(to top, rgba(0,0,0,0.36), rgba(0,0,0,0.28) 30%, rgba(0,0,0,0.1) 68%, rgba(0,0,0,0))",
+  height: "72vh",
+  background:
+    "linear-gradient(to top, rgba(0,0,0,0.5), rgba(0,0,0,0.44) 30%, rgba(0,0,0,0.26) 55%, rgba(0,0,0,0.1) 78%, rgba(0,0,0,0))",
   pointerEvents: "none",
   transition: "opacity 0.8s ease",
 };
