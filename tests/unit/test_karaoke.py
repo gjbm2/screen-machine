@@ -727,9 +727,9 @@ def test_karaoke_as_a_room_mode_enters_it_with_a_song_and_puts_the_old_mode_back
     assert puts == ["singalong", "gallery", "singalong"]
 
 
-def test_the_karaoke_switch_on_a_mode_starts_and_stops_the_player(tmp_path, monkeypatch):
+def test_the_karaoke_switch_on_a_mode_readies_it_and_leaving_stops_the_player(tmp_path, monkeypatch):
     """Owner, 26 Nov: "karaoke mode is essentially a switch on every mode, but it's false on every mode apart from one":
-    choosing the karaoke mode starts the player; choosing any other stops it."""
+    choosing the karaoke mode readies it without playing (owner: "user needs to press play"); any other stops it."""
     from routes.karaoke import live_view
     from routes.karaoke.live_view import LiveView
     monkeypatch.setattr(live_view, "info", lambda *a, **k: None)
@@ -749,8 +749,9 @@ def test_the_karaoke_switch_on_a_mode_starts_and_stops_the_player(tmp_path, monk
     st.queue_add(a); st.queue_add(b); st.control("stop")          # songs waiting, the player stopped, still Normal
     lv._seen = (st.s["player"]["rev"], "stopped", "you"); lv.step()
     assert st.s["player"]["state"] == "stopped"
-    mode["current"] = "singalong"; lv.step()                      # Karaoke chosen on the Room page: it plays
-    assert st.s["player"]["state"] == "playing" and puts == []
+    mode["current"] = "singalong"; lv.step()                      # Karaoke chosen on the Room page: ready, no music
+    assert st.s["player"]["state"] == "stopped" and puts == []
+    st.play(); lv._seen = (st.s["player"]["rev"], "playing", None); lv.step()   # the singers press Play
     mode["current"] = "live"; lv.step()                           # another mode: it stops, and nothing is pushed back
     assert st.s["player"]["state"] == "stopped" and st.s["player"]["stop"] == "mode"
     lv.step()

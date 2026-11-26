@@ -9,8 +9,10 @@ think live view should trigger too. when we hit karaoke stop, I think live view 
 * **Karaoke is a switch on every mode** (owner, 26 Nov: "karaoke mode is essentially a switch on every mode, but
   it's false on every mode apart from one that happens also to be labelled 'karaoke'"): a mode with ``"karaoke":
   true`` in the deployment's room/modes.json is a karaoke mode.
-  - Entering one (from the Room page or anywhere) starts the player: it carries on, else plays the next ready song
-    (nothing ready: it waits). Leaving it for a mode without the switch stops the player.
+  - Entering one (from the Room page or anywhere) readies the room for karaoke (the mode's own state: the screen
+    live, the mic, its feel) and leaves the music to the singers: nothing plays until Play (owner, 26 Nov: "turning
+    on a karaoke mode shouldn't start playing music immediately. user needs to press play"). Leaving it for a mode
+    without the switch stops the player.
   - A song started from the panel while the room is in another mode takes the room into the karaoke mode
     (room_service ``PUT /api/v1/mode``), remembering the mode it was in; Stop puts that one back (the modes' default
     after a Flask restart) while the room is still in it.
@@ -114,21 +116,14 @@ class LiveView:
                 self._set(setting, "art", "karaoke stopped")
 
     def _follow_mode(self, kmodes: list[str]) -> None:
-        """The room's mode switches karaoke: into a karaoke mode starts the player, out of one stops it."""
+        """The room's mode switches karaoke off: out of a karaoke mode stops the player (into one plays nothing)."""
         cur, _default = self._mode_now()
         was, self._mode_seen = self._mode_seen, cur
         if was is None or cur is None or cur == was:
             return                                    # the first look, or no change
         ours, self._moving_to = self._moving_to == cur, None
         if cur in kmodes and was not in kmodes and not ours:
-            with self.store.lock:
-                state = self.store.s["player"]["state"]
-            if state != "playing":
-                try:
-                    self.store.play()
-                    info(f"karaoke: on ({cur})")
-                except (LookupError, KeyError):
-                    info(f"karaoke: on ({cur}); nothing ready to play yet")
+            info(f"karaoke: on ({cur}): ready, waiting for Play")
         elif was in kmodes and cur not in kmodes and not ours:
             with self.store.lock:
                 state = self.store.s["player"]["state"]
