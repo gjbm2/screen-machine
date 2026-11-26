@@ -254,6 +254,34 @@ LAYER_KINDS: tuple[str, ...] = ("intensity", "position", "beam", "gobo", "prism"
 POSITION_MODES: tuple[str, ...] = ("aim", "fan", "sweep", "circle", "figure8", "drift", "ballyhoo", "bounce", "lift",
                                    "tilt_wave", "home")
 PATTERN_MODES = frozenset({"fan", "sweep", "circle", "figure8", "drift", "ballyhoo"})
+SWAY_RATIOS = ((1.0, 0.6), (1.37, 0.4), (0.83, 0.6), (1.71, 0.4))   # pan: two sines, tilt: two (period x, weight)
+
+
+def _group_sway(groups: dict, lights: Optional[Mapping[str, Any]], probs: list[str]) -> None:
+    """show.yaml ``lights.groups.<g>.sway: {size_deg, period_s}`` (owner, 26 Nov: calm scenes should have "some, gentle
+    movement"): put on each group's info as ``sway`` (size_deg, period_s) for ``_sway``."""
+    cfg = lights.get("groups") if isinstance(lights, Mapping) else None
+    if not isinstance(cfg, Mapping):
+        return
+    for gid, g in groups.items():
+        raw = cfg.get(gid)
+        sw = raw.get("sway") if isinstance(raw, Mapping) else None
+        if sw is None:
+            continue
+        size, per = (sw.get("size_deg"), sw.get("period_s")) if isinstance(sw, Mapping) else (None, None)
+        if not (_isnum(size) and _isnum(per) and float(size) >= 0.0 and float(per) > 0.0):
+            probs.append(f"lights.groups.{gid}.sway: needs size_deg (>= 0) and period_s (> 0): none")
+            continue
+        g["sway"] = (float(size), float(per))
+
+
+def _sway(fid: str, t: float, size_deg: float, period_s: float) -> tuple[float, float]:
+    """(pan, tilt) offsets in degrees at time ``t``: a slow wander that never repeats quickly (incommensurate sines),
+    each light on its own phases (from its id), within about +-size_deg. Peak speed ~ 2 pi size / period."""
+    seed = zlib.crc32(fid.encode())
+    ph = [((seed >> (8 * k)) & 0xFF) / 256.0 * 2.0 * math.pi for k in range(4)]
+    w = [wt * math.sin(2.0 * math.pi * t / (period_s * r) + ph[k]) for k, (r, wt) in enumerate(SWAY_RATIOS)]
+    return size_deg * (w[0] + w[1]), size_deg * 0.6 * (w[2] + w[3])
 ORDERS: tuple[str, ...] = ("group", "flow", "mirror")
 SPREAD_MODES: tuple[str, ...] = ("unison", "chase", "mirror")
 EASES: tuple[str, ...] = ("linear", "sine", "smooth")
@@ -1041,6 +1069,7 @@ class LookEngine:
         infos = {fid: f for fid, f in fixtures.items() if isinstance(f, Mapping)}
         lamp_ids = [fid for fid in sorted(infos) if self._is_lamp(infos[fid], types)]
         groups, group_of = self._groups(lights, rig, lamps, space, space_mod, lamp_ids, probs)
+        _group_sway(groups, lights, probs)
         gidx: dict[str, tuple[int, int]] = {}
         for g in groups.values():
             mem = [m for m in g.get("members") or () if m in group_of]
@@ -3435,6 +3464,10 @@ class LookEngine:
             return None, None, col, False, None
         if s.moves and pos is None:
             pos = list(s.home)
+        sw = (cx.prog.groups.get(gn.gid) or {}).get("sway") if s.moves else None
+        if sw and pos is not None and sw[0] > 0.0:              # a gentle sway on whatever the scene settled on
+            dp, dt = _sway(s.id, tp, sw[0], sw[1])
+            pos = [pos[0] + dp, pos[1] + dt]
         return attrs, pos if s.moves else None, col, dark_ok, light_at
 
     @staticmethod

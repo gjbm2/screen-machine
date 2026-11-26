@@ -105,7 +105,8 @@ TRIGGER_WHY = {"drop": "the drop", "build": "the song builds", "breakdown": "a b
 # -- groups (show.yaml lights; docs/LIGHTS.md §7.1, §12) ----------------------------------------------------------------
 OTHER_GROUP = "*"                                # the lamps no group takes
 OTHER_LABEL = "Other lights"
-GROUP_KEYS = frozenset({"label", "select", "follows", "dark_level", "appliances", "repeat_weight"})
+GROUP_KEYS = frozenset({"label", "select", "follows", "dark_level", "appliances", "repeat_weight",
+                        "sway"})   # sway: the look engine's (looks._group_sway)
 DARK_FLOOR = "floor"                             # dark_level: the look's floor
 #: show.yaml ``lights`` keys: the catalogue builder's, and the other builders' (read where they are used)
 LIGHTS_KEYS = frozenset({"scene_group", "groups", "programs", "flow", "motion", "jog", "calibration", "appliances"})

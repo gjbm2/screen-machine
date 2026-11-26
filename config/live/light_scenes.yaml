@@ -271,11 +271,11 @@ scenes:
 
   # -- movers (docs/LIGHTS.md §6.2). Targets are Room map names: a light with no such place keeps the layers below. --
   movers-still-pools:
-    label: Still pools of light
+    label: Pools of light, drifting slowly    # owner, 26 Nov: calm still moves, gently (was a static fan)
     needs: [pan, tilt]
     layers:
-      - {id: aim, kind: position, mode: fan, centre: [dance-floor, piano, centre], on: floor, size: 1.5, size_deg: 25,
-         fan: 1.0, along: right}
+      - {id: aim, kind: position, mode: drift, centre: [dance-floor, piano, centre], on: floor, size: 0.8, size_deg: 10,
+         phase: phrase, needs: none, spread_mode: chase, spread: 0.5}
       - {id: beam, kind: beam, zoom: wide, frost: 0.3, iris: 1.0}
       - {id: breathe, fx: sine, phase: bar, period_bars: [8, 4], depth: 0.25, needs: none}
     tags: {energy: [0.0, 0.35], moods: [calm, warm, elegant, dreamy], genre_fit: {classical: 0.9, piano: 0.9, jazz: 0.8,

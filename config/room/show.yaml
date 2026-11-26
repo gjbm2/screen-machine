@@ -1033,6 +1033,11 @@ lights:
       label: Moving lights
       select: "cap:pan"
       dark_level: 0                         # fade_dark goes to this (0..1), or floor (the look's floor)
+      # Owner, 26 Nov: calm scenes should have "some, gentle movement". On top of wherever a scene puts them (its own
+      # moves, a still fan or aim, or their rest when it only breathes), the movers sway: a slow wander of about this
+      # many degrees, each on its own path (looks._sway; peak ~2 pi size / period deg/s). Never while held, House or
+      # Low. 0 stops it. Starting point.
+      sway: {size_deg: 7, period_s: 9}
     lamps:
       label: Lamps
       select: "kind:lamp"

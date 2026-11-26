@@ -691,3 +691,22 @@ def test_live_view_shows_where_each_beam_lands():
     assert mv["gobo"] == "Stars" and mv["prism"] is False and mv["held"] is False
     assert lv["fixtures"]["hue"]["at"] == [1.0, 1.0, 1.0] and lv["fixtures"]["hue"]["dir"] is None
     assert lv["flow"]["dir"] == "up"
+
+
+
+def test_group_sway_parses_and_wanders_gently():
+    """Owner, 26 Nov: calm scenes should have "some, gentle movement" (show.yaml lights.groups.<g>.sway)."""
+    import math
+    from show_service import looks
+    groups = {"movers": {"id": "movers"}, "lamps": {"id": "lamps"}}
+    probs: list = []
+    looks._group_sway(groups, {"groups": {"movers": {"sway": {"size_deg": 7, "period_s": 9}},
+                                          "lamps": {"sway": {"size_deg": -1}}}}, probs)
+    assert groups["movers"]["sway"] == (7.0, 9.0) and "sway" not in groups["lamps"] and len(probs) == 1
+    a = [looks._sway("head.a", t / 10.0, 7.0, 9.0) for t in range(0, 600)]
+    b = [looks._sway("head.b", t / 10.0, 7.0, 9.0) for t in range(0, 600)]
+    assert max(abs(p) for p, _ in a) <= 7.0 + 1e-9 and max(abs(t) for _, t in a) <= 4.2 + 1e-9
+    assert max(p for p, _ in a) - min(p for p, _ in a) > 4.0                      # it really moves
+    assert a != b                                                                  # each light its own path
+    speed = max(math.hypot(a[i + 1][0] - a[i][0], a[i + 1][1] - a[i][1]) * 10 for i in range(len(a) - 1))
+    assert speed < 2 * math.pi * 7.0 / 9.0 * 1.6                                   # gentle: a few deg/s
