@@ -70,7 +70,10 @@ RETRIEVE_ONLY = {"else", "max_age_s"}
 # ["favourite", "uri"] stores Sonos music only while something is playing, so a retrieve then has nothing to undo.
 TOP_KEYS = {"default", "labels", "groups", "modes", "transitions", "description", "autopilot", "put_back_max_age_s"}
 MODE_KEYS = {"label", "extends", "abstract", "state", "on_enter", "on_exit", "description", "autopilot", "icon", "voice",
-             "on_room_page"}
+             "on_room_page", "karaoke"}
+# "karaoke": true on the mode that is karaoke (owner, 26 Nov: "karaoke mode is essentially a switch on every mode, but
+# it's false on every mode apart from one"). A plain per-mode field, read by the karaoke player (routes/karaoke/
+# live_view.py): entering such a mode starts karaoke, leaving it stops it. Absent: false.
 # "on_room_page": where the mode's tile sits on the Room page, "main" (the mode row, the default) or "more" (behind
 # the row's "More modes" chip). A plain per-mode field (owner, 24 Oct), read by the page only.
 # "voice": the mode's short name for Alexa (owner 18 Oct; routes/alexa.py feeds only these to its AI step); "" = none.
@@ -662,6 +665,8 @@ class RoomConfig:
         if place not in ROOM_PAGE_PLACES:
             self._fail(ptr("modes", name, "on_room_page"), f"on_room_page must be one of {list(ROOM_PAGE_PLACES)}")
             place = "main"
+        if "karaoke" in raw and not isinstance(raw["karaoke"], bool):
+            self._fail(ptr("modes", name, "karaoke"), "karaoke is true or false")
         voice = raw.get("voice")
         if voice is not None and not (isinstance(voice, str) and len(voice.strip()) <= VOICE_MAX):
             self._fail(ptr("modes", name, "voice"), f"voice is a short name (up to {VOICE_MAX} letters)")

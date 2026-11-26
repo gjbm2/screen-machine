@@ -6,11 +6,15 @@ think live view should trigger too. when we hit karaoke stop, I think live view 
   does), unless it is live already.
 * **Stop** (the panel's Stop button: ``Store.control("stop")`` with ``by="you"``): back to art. The queue running out
   (Store.tick's stop, ``by="end"``) leaves it live: the next singer is choosing.
-* **Karaoke as a room mode** (owner, 26 Nov: "karaoke should be a mode, right? like disco or ambient"): with
-  deployment.yaml ``karaoke.room_mode`` set, a song starting from stopped puts the room in that mode instead
-  (room_service ``PUT /api/v1/mode``: the mode brings the live picture, the mic and its feel together), remembering
-  the mode it was in; Stop puts that one back (the mode's default after a Flask restart), only while the room is
-  still in the karaoke mode (a person's own mode change in between is theirs). Unset: the screen alone, as above.
+* **Karaoke is a switch on every mode** (owner, 26 Nov: "karaoke mode is essentially a switch on every mode, but
+  it's false on every mode apart from one that happens also to be labelled 'karaoke'"): a mode with ``"karaoke":
+  true`` in the deployment's room/modes.json is a karaoke mode.
+  - Entering one (from the Room page or anywhere) starts the player: it carries on, else plays the next ready song
+    (nothing ready: it waits). Leaving it for a mode without the switch stops the player.
+  - A song started from the panel while the room is in another mode takes the room into the karaoke mode
+    (room_service ``PUT /api/v1/mode``), remembering the mode it was in; Stop puts that one back (the modes' default
+    after a Flask restart) while the room is still in it.
+  - With no karaoke mode in the file: the screen alone, as above.
 * Pause, resume and song changes leave it be, and so does a person's own Go live / Back to art in between: only the
   player's own changes move it.
 
@@ -54,16 +58,24 @@ def _room(method: str, path: str, body: Any = None) -> Any:
         return json.loads(r.read() or b"null")
 
 
+def modes_with_karaoke() -> list[str]:
+    """The deployment's karaoke modes: room/modes.json's modes with ``"karaoke": true`` (file order)."""
+    try:
+        modes = json.loads(smconfig.path("room", "modes.json").read_text()).get("modes") or {}
+    except (OSError, ValueError):
+        return []
+    return [name for name, m in modes.items() if isinstance(m, dict) and m.get("karaoke") is True]
+
+
 class LiveView:
     def __init__(self, store: Store, *, room: Callable[..., Any] = _room,
                  screen_of: Callable[[Optional[str]], Optional[str]] = karaoke_screen,
-                 room_mode: Any = "deployment") -> None:
+                 karaoke_modes: Optional[Callable[[], list[str]]] = None) -> None:
         self.store, self._room, self._screen_of = store, room, screen_of
-        if room_mode == "deployment":                 # deployment.yaml karaoke.room_mode (unset: the screen alone)
-            kar = smconfig.deployment().section("karaoke")
-            room_mode = kar.get("room_mode") if isinstance(kar, dict) else None
-        self.room_mode: Optional[str] = room_mode
+        self._karaoke_modes = karaoke_modes or modes_with_karaoke
+        self._mode_seen: Optional[str] = None         # the room mode last looked at (None: not yet)
         self._before: Optional[str] = None            # the room mode a song took the room from (Stop puts it back)
+        self._moving_to: Optional[str] = None         # a mode change of our own, not to be answered
         self._seen: Optional[tuple] = None            # (rev, state, stop) of the player last looked at
         self._stop = threading.Event()
 
@@ -79,6 +91,9 @@ class LiveView:
             self._stop.wait(POLL_S)
 
     def step(self) -> None:
+        kmodes = self._karaoke_modes()
+        if kmodes:
+            self._follow_mode(kmodes)
         with self.store.lock:
             p = dict(self.store.s["player"])
             setting = self.store.s["settings"].get("screen")
@@ -87,15 +102,39 @@ class LiveView:
         if was is None or was[0] == now[0]:
             return                                    # the first look (a Flask restart) or nothing new: leave it be
         if now[1] == "playing" and was[1] == "stopped":
-            if self.room_mode:
-                self._enter()
+            if kmodes:
+                self._enter(kmodes)
             else:
                 self._set(setting, LIVE, "a song started")
-        elif now[1] == "stopped" and now[2] == "you":   # Stop pressed (even on a stopped player: the show ends)
-            if self.room_mode:
-                self._leave()
+        elif now[1] == "stopped" and now[2] in ("you", "mode"):   # Stop pressed, or the mode left karaoke
+            if kmodes:
+                if now[2] == "you":
+                    self._leave(kmodes)
             else:
                 self._set(setting, "art", "karaoke stopped")
+
+    def _follow_mode(self, kmodes: list[str]) -> None:
+        """The room's mode switches karaoke: into a karaoke mode starts the player, out of one stops it."""
+        cur, _default = self._mode_now()
+        was, self._mode_seen = self._mode_seen, cur
+        if was is None or cur is None or cur == was:
+            return                                    # the first look, or no change
+        ours, self._moving_to = self._moving_to == cur, None
+        if cur in kmodes and was not in kmodes and not ours:
+            with self.store.lock:
+                state = self.store.s["player"]["state"]
+            if state != "playing":
+                try:
+                    self.store.play()
+                    info(f"karaoke: on ({cur})")
+                except (LookupError, KeyError):
+                    info(f"karaoke: on ({cur}); nothing ready to play yet")
+        elif was in kmodes and cur not in kmodes and not ours:
+            with self.store.lock:
+                state = self.store.s["player"]["state"]
+            if state != "stopped":
+                self.store.control("stop", by="mode")
+                info(f"karaoke: off ({cur})")
 
     def _mode_now(self) -> tuple[Optional[str], Optional[str]]:
         m = (self._room("GET", "/api/v1/status") or {}).get("mode") or {}
@@ -108,20 +147,22 @@ class LiveView:
         except urllib.error.HTTPError as e:           # an unknown mode, a refusal: not ours to push
             error(f"karaoke mode: {mode}: {e.code} {e.read()[:200]!r}")
 
-    def _enter(self) -> None:
+    def _enter(self, kmodes: list[str]) -> None:
         cur, _default = self._mode_now()
-        if cur == self.room_mode:
-            return                                    # already in it
+        if cur in kmodes:
+            return                                    # already in one
         self._before = cur
-        self._put_mode(self.room_mode, "a song started")
+        self._moving_to = self._mode_seen = kmodes[0]
+        self._put_mode(kmodes[0], "a song started")
 
-    def _leave(self) -> None:
+    def _leave(self, kmodes: list[str]) -> None:
         cur, default = self._mode_now()
-        if cur != self.room_mode:
+        if cur not in kmodes:
             return                                    # someone changed the mode in between: theirs
-        back = self._before if self._before and self._before != self.room_mode else default
+        back = self._before if self._before and self._before not in kmodes else default
         self._before = None
-        if back:
+        if back and back not in kmodes:
+            self._moving_to = self._mode_seen = back
             self._put_mode(back, "karaoke stopped")
 
     def _set(self, setting: Optional[str], desired: Any, why: str) -> None:

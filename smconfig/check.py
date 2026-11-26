@@ -1,8 +1,6 @@
 """Validation and the effective-config dump of a deployment (python -m smconfig check | dump)."""
 from __future__ import annotations
 
-import json
-
 import hashlib
 from pathlib import Path
 from typing import Any
@@ -13,7 +11,7 @@ from . import _ROOM_ID_RE as _ROOM_FILE_ID   # a room id usable in room/modes.<r
 from .legacy import MOVES
 
 MANIFEST_KEYS = {"id", "name", "description", "location", "capabilities", "ports", "default_room", "kiosk", "host",
-                 "art_director", "wording", "karaoke"}
+                 "art_director", "wording"}
 
 # Files a capability needs to start (relative to the deployment directory).
 REQUIRED: dict[str | None, tuple[str, ...]] = {
@@ -298,17 +296,6 @@ def check(dep: Deployment) -> tuple[list[str], list[str]]:
     for k in m:
         if k not in MANIFEST_KEYS:
             problems.append(f"deployment.yaml: unknown key {k!r} (known: {', '.join(sorted(MANIFEST_KEYS))})")
-    kar = m.get("karaoke")                   # karaoke: {room_mode}: the room mode a song starting enters (docs/KARAOKE.md)
-    if kar is not None:
-        if not isinstance(kar, dict) or set(kar) - {"room_mode"}:
-            problems.append("deployment.yaml: karaoke must be a mapping {room_mode: <a mode in room/modes.json>}")
-        elif kar.get("room_mode") is not None:
-            try:
-                modes = json.loads(dep.path("room", "modes.json").read_text()).get("modes") or {}
-            except (OSError, ValueError):
-                modes = {}
-            if kar["room_mode"] not in modes:
-                problems.append(f"deployment.yaml: karaoke.room_mode {kar['room_mode']!r} isn't a mode in room/modes.json")
     for k in (m.get("capabilities") or {}):
         if k not in CAPABILITIES:
             problems.append(f"deployment.yaml: unknown capability {k!r}")

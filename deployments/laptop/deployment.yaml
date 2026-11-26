@@ -29,7 +29,3 @@ host:
   chrome: ~/.cache/ms-playwright/chromium-1200/chrome-linux64/chrome   # the snapshotter's headless Chromium
   karaoke_python: ~/.venvs/sm-karaoke/bin/python   # torch (cu128) + audio-separator + yt-dlp: docs/KARAOKE.md
   karaoke_js_runtime: node:/home/reg/.nvm/versions/node/v22.22.0/bin/node   # yt-dlp's YouTube JS runtime
-# The room mode a karaoke song starting from stopped enters, and Stop leaves for the mode before it (owner, 26 Nov:
-# "karaoke should be a mode, right? like disco or ambient"): room/modes.json's singalong ("Karaoke": the screen live,
-# the mic, the singalong feel). Unset: the song only puts the karaoke screen live.
-karaoke: {room_mode: singalong}
