@@ -43,7 +43,6 @@ GAP_KEEP_S = 4.0        # a gap between lines shorter than this keeps ``active``
 FADE_OUT_S = 1.5        # a longer gap: ``active`` falls over this after the last word ...
 FADE_IN_S = 1.0         # ... and rises over this before the next line's first word
 PICS_POLL_S = 15.0      # a song's pictures are read again this often while Flask is still finding them
-PICS_ENOUGH = 10        # ... until there are this many (or Flask says it is done)
 
 
 @dataclass(frozen=True)
@@ -285,8 +284,7 @@ class LyricFeed:
         except Exception:                                # noqa: BLE001 - an older Flask, or restarting: later
             o = None
         ps = picture_set(sid, o)
-        done = isinstance(o, dict) and o.get("state") in ("ready", "none") and (
-            ps is None or len(ps.pictures) >= PICS_ENOUGH)
+        done = isinstance(o, dict) and o.get("state") in ("ready", "none")    # Flask has finished this song's artists
         if len(self._pics) > 64:
             self._pics.clear()
         if ps is not None and (have is None or have[0] is None or have[0].key != ps.key):

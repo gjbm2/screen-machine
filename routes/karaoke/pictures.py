@@ -515,6 +515,7 @@ def fetch_artist(name: str, dz: Optional[dict], *, album: Optional[str] = None, 
                 "moods": (v or {}).get("moods") or [], "caption": (v or {}).get("caption"),
                 "hidden": False, "at": time.time()})
             kept_now += 1
+            _write(folder / "index.json", {**idx, "version": VERSION})   # the song has it now, not when all are done
         full = len(idx["pictures"]) >= TARGET
         idx.update(fetched_at=time.time(), ai=ai, version=VERSION, incomplete=bool(later) and not full)
         _write(folder / "index.json", idx)
@@ -577,8 +578,8 @@ def _resolve_song(sid: str, song: dict) -> list[dict]:
 
 
 def song_pictures(sid: str) -> dict:
-    """What the renderer and the Room page read: {state, artists, pictures}. ``state``: "ready" (pictures kept),
-    "fetching" (not done yet), or "none" (nothing found)."""
+    """What the renderer and the Room page read: {state, artists, era, pictures}. ``state``: "fetching" (more may come:
+    the pictures so far are listed), "ready" (done, pictures kept) or "none" (done, nothing found)."""
     st = store()
     with st.lock:
         song = dict(st.s["songs"].get(sid) or {})
@@ -590,8 +591,7 @@ def song_pictures(sid: str) -> dict:
     out, pending = [], False
     for a in arts:
         idx = artist_index(a["slug"])
-        if not idx or a["slug"] in _busy:
-            pending = pending or not idx or a["slug"] in _busy
+        pending = pending or not idx.get("fetched_at") or a["slug"] in _busy or bool(idx.get("incomplete"))
         for p in idx.get("pictures") or []:
             if p.get("hidden"):
                 continue
@@ -605,7 +605,7 @@ def song_pictures(sid: str) -> dict:
     year = song.get("year")
     dec = _decade(year)
     out.sort(key=lambda p: (p.get("era") != dec, -(p.get("quality") or 0.5)))      # the song's era first
-    return {"state": "ready" if out else ("fetching" if pending else "none"),
+    return {"state": "fetching" if pending else ("ready" if out else "none"),
             "artists": [a["name"] for a in arts], "era": dec, "pictures": out}
 
 
