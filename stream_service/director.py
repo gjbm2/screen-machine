@@ -43,6 +43,7 @@ import collections
 import math
 import random
 import secrets
+import time
 from typing import Any, Callable, Optional
 
 from .inputs import FOLLOW_ATTRS, Snapshot
@@ -517,6 +518,12 @@ class Director:
         self.latched: Optional[str] = None            # a dmx_change (or room_event) seen inside min dwell
         self.latched_kind = "dmx_change"
         self.urgent = False                           # a drop: it may cut at URGENT_DWELL of min dwell
+        # The room's art director owns the scene changes (owner, 26 Nov: "there should be one controlling visual logic
+        # -- the a.d. has to have dominion"): while its room.direction says ``cues: director`` (kept fresh by the
+        # session: ``ad_until``), this director only moves when it is told (a look_change: ``forced``), whatever the
+        # dwell, and never on its own max dwell.
+        self.forced = False
+        self.ad_until = 0.0                           # monotonic s: the a.d. drives until then (0: it doesn't)
         self.was_fresh = False
         self.quarantine: dict[str, float] = {}        # preset -> until (monotonic s)
         self.bad_transitions: set[str] = set()        # transition presets that failed to prepare
@@ -638,13 +645,18 @@ class Director:
     def scene_done(self, now: float) -> None:
         self.dwell_start = now
 
-    def hint(self, text: str, urgent: bool = False) -> bool:
+    def hint(self, text: str, urgent: bool = False, forced: bool = False) -> bool:
         """show_service's room.event (a section change, a drop, a new track): a trigger like the desk's GOBO
-        step, honoured once min dwell is reached (``urgent``, a drop: URGENT_DWELL of it).  -> latched?"""
-        if not (self.armed and self.enabled) or (self.latched is not None and not urgent):
+        step, honoured once min dwell is reached (``urgent``, a drop: URGENT_DWELL of it).  ``forced``: the art
+        director's own change (its look_change): honoured whatever the dwell.  -> latched?"""
+        if not (self.armed and self.enabled) or (self.latched is not None and not (urgent or forced)):
             return False
         self.latched, self.latched_kind, self.urgent = text, "room_event", urgent
+        self.forced = forced
         return True
+
+    def ad_drives(self, now: float) -> bool:
+        return now < self.ad_until
 
     def observe(self, snap: Optional[Snapshot], fresh: bool, follow_desk: bool = True) -> None:
         """follow_dmx bookkeeping on each tick (armed or not: disarmed, changes are discarded).  ``follow_desk``
@@ -673,18 +685,25 @@ class Director:
             return None
         dwell = now - self.dwell_start
         lo, hi, _ = self.window()
+        if self.latched and self.forced:                 # the art director's change: now, whatever the dwell
+            return self.latched_kind, f"{self.latched}; the art director's change"
         if dwell < (lo * URGENT_DWELL if self.latched and self.urgent else lo):
             return None
         if self.latched:
             return self.latched_kind, f"{self.latched}; dwell {dwell:.1f} s ≥ min {lo:.1f} s"
+        if self.ad_drives(time.monotonic()):             # its dwell is the art director's: never this one's own
+            return None
         if dwell >= hi:
             return "max_dwell", f"dwell {dwell:.1f} s ≥ max {hi:.1f} s"
         return None
 
     def prepare_due(self, now: float) -> bool:
-        """Time to choose and prepare the next pick (>= 2 s before min dwell)."""
+        """Time to choose and prepare the next pick (>= 2 s before min dwell; at once while the art director drives:
+        its change can come at any time, and the pick must be ready for it)."""
         if not (self.armed and self.enabled) or self.dwell_start is None:
             return False
+        if self.ad_drives(time.monotonic()):
+            return True
         return now - self.dwell_start >= self.window()[0] - PREPARE_AHEAD_S
 
     def next_eligible(self, now: float) -> dict:
@@ -702,7 +721,7 @@ class Director:
             self.recent_scenes.append(scene)
         if transition:
             self.recent_transitions.append(transition)
-        self.latched, self.urgent = None, False
+        self.latched, self.urgent, self.forced = None, False, False
         if snap is not None:
             self.baseline = dict(snap.stable)
 

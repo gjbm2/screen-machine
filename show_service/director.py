@@ -396,6 +396,10 @@ MIDDLE_DEPTH = 0.5                  # show.yaml looks.middle_depth's starting po
 #: file's values win.
 DIRECTOR_FALLBACK = {
     "steps": {"size_from": "step_size", "max_from": "max_steps"}, "keep_s": 900.0,
+    # One controlling logic (owner, 26 Nov: "the a.d. has to have dominion"): "director" = while a feel plays, every
+    # scene change on every layer is this director's look_change (room.direction ``cues``: the renderer then cuts on
+    # nothing else, and never on its own dwell); "structure" = as before (the screens cut on structure's events).
+    "cues": "director", "land": {"default": 1.0, "human": 0.0},
     "low": {"level": 0.10, "fade_s": 2.0}, "house": {"white_k": 2700.0, "level": 0.8}, "next_max_wait_s": 4.0,
     "art": {"poll_s": 60.0, "colours": 5, "sources": list(ART_SOURCES), "min_chroma": 0.03, "min_lightness": 0.3},
     "republish_s": 5.0, "accent_depth": {}, "bands": None, "genre_min_conf": GENRE_MIN_CONF,
@@ -1250,6 +1254,17 @@ class Director:
                     cfg[key] = v
                 else:
                     probs.append(f"director.{key}: {d[key]!r} is not a positive number")
+        if "cues" in d:
+            if d["cues"] in contract.CUES_OWNERS:
+                cfg["cues"] = d["cues"]
+            else:
+                probs.append(f"director.cues: {d['cues']!r} isn't {' or '.join(contract.CUES_OWNERS)}: director")
+        if isinstance(d.get("land"), dict):
+            for k, v in d["land"].items():
+                if k in cfg["land"] and _num(v) is not None and 0.0 <= v <= 1.0:
+                    cfg["land"][k] = float(v)
+                else:
+                    probs.append(f"director.land.{k}: {v!r} isn't default | human: 0..1")
         ad = d.get("art") if isinstance(d.get("art"), dict) else {}
         if "sources" in ad:
             src = ad["sources"]
@@ -1941,7 +1956,13 @@ class Director:
         look_id = f"L{self.look_n + 1}"                   # re-announcing a pending change keeps its id (04, 17 Oct)
         ev: contract.EventData = {"kind": "look_change", "id": f"look_change:{look_id}",
                                   "at_ms": round(at_s * 1000.0, 1), "t_ms": round(now_s * 1000.0, 1),
-                                  "seq": self._next_ev(), "look_id": look_id, "detail": reason}
+                                  "seq": self._next_ev(), "look_id": look_id, "detail": reason,
+                                  # the one cue every layer changes on: by whom, via what, and where its line falls
+                                  # in a layer's transition (1: the new scene is fully there on the line)
+                                  "by": by, "transition": dict(transition or self._transition(self.vs)),
+                                  "land": float(self.cfg["land"]["human" if by == "human" else "default"])}
+        if section and section.get("section_kind"):
+            ev["section_kind"] = section["section_kind"]
         if grid.has_grid:
             ev["beat"] = round(grid.beat_at(at_s), 3)
             ev["bar"] = grid.bar_at(at_s + 1e-6)
@@ -2133,7 +2154,8 @@ class Director:
 
     def _section_info(self, ev: dict) -> dict:
         return {k: ev.get(k) for k in ("kind", "section_id", "letter", "repeat_of", "predicted", "at_ms", "boundary_ms",
-                                       "eta_beats", "track_id", "via", "prev_track_id") if k in ev}
+                                       "eta_beats", "track_id", "via", "prev_track_id", "section_kind", "final")
+                if k in ev}
 
     def _on_track_end(self, ev: dict, now_s: float, vs: dict) -> None:
         """README S5.17: a track_end that fades through dark starts the outgoing half on the lamps (down to the
@@ -2622,7 +2644,8 @@ class Director:
             return
         letter = ev.get("letter") if isinstance(ev.get("letter"), str) and ev.get("letter") else None
         mode = vs["change_looks"]
-        if mode == "phrase" and not grid.ok:
+        lyrics = ev.get("detail") == "lyrics"             # a karaoke song's own sections: exact, whatever the clock
+        if mode == "phrase" and not grid.ok and not lyrics:
             mode = "time"                                 # the clock unsure: as time (§8.5)
         pd = self.pending
         cm = self._cut_mark
@@ -2662,9 +2685,9 @@ class Director:
         recall = self._sec_mem.get(letter) if letter else None
         at = at_s
         if at < now_s + 0.25:                             # too close to announce: the next bar line
-            at = grid.next_line(now_s + LOOK_MIN_LEAD_S, 1)[0]
+            at = grid.next_line(now_s + LOOK_MIN_LEAD_S, 1)[0] if grid.ok else now_s + LOOK_MIN_LEAD_S
         self._announce(now_s, "repeat" if predicted else "section", "director", grid, at_s=at,
-                       bar=grid.bar_at(at + 1e-6), recall=recall, section=info)
+                       bar=grid.bar_at(at + 1e-6) if grid.ok else None, recall=recall, section=info)
         self._log_event("section_look", {"section": info, "at_ms": round(at * 1000.0, 1), "recall": recall,
                                          "context": self._ctx_brief()})
 
@@ -4737,7 +4760,9 @@ class Director:
                           "scene_favour": (self.treat.plan or {}).get("favour"),
                           "scene_avoid": (self.treat.plan or {}).get("avoid"),
                           "dwell_s": (self._karaoke_dwell(lplan) if lplan is not None
-                                      else self._screens_dwell(vs) if feel_on else None)}
+                                      else self._screens_dwell(vs) if feel_on else None),
+                          # who cues the scene changes: this director's look_change, on every layer (contract.CUES)
+                          "cues": "director" if feel_on and self.cfg["cues"] == "director" else None}
         if self.ensemble is not None:
             self.direction["ensemble"] = self.ensemble.block()   # docs/ENSEMBLE.md §8: roles, staggers per screen
         if self.cfg["compose"]["mode"] == comp.DRIVE:

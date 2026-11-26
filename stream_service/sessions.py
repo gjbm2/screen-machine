@@ -100,6 +100,12 @@ MAX_SCENE_TRANSITIONS = 2     # in / scene transitions running at once; one more
 BEAT_MARGIN_S = 0.05          # a beat-snapped cue starts at least this far ahead of now
 EVENT_MARGIN_S = 0.25         # a room.event's own time is used when it is at least this far past lead (G9)
 CUT_EVENTS = ("section_change", "drop", "track_change")      # show_service's room.events that cue a scene change
+# One controlling logic (owner, 26 Nov: "the a.d. has to have dominion"): while show_service's room.direction says
+# ``cues: director``, the art director's own look_change is the ONLY scene cue. It carries ``land`` (0..1: where its
+# line falls in the transition: 1 = the new scene is fully there on the line) and the transition it asked for.
+# Structure's raw section_change and drop still reach the FX director and the chorus recall, and cut nothing.
+AD_CUE = "look_change"
+AD_CUES = "director"            # room.direction ``cues``
 TRACK_EVENTS = ("track_end_armed", "track_end", "track_change")   # its song ends (c8, SHOW_ENGINE §8.5 "Song ends")
 DARK_SCENE = "black"          # fade-dark's dark: the scene preset shown across the gap between songs
 # A small change at a new song ("a variant for the next song": another preset of the plug-in on screen) may keep one
@@ -311,6 +317,7 @@ class Session(EngineListener):
         self._upnext_sent = -1
         self._fill_retry = {"scene": 0.0, "effect": 0.0}   # a queue that could not be filled waits this long
         self._event_hint: Optional[float] = None   # a room.event's glass time for the next cut (G9)
+        self._event_land = 0.0                      # an a.d. change's ``land``: where its line falls in the transition
         # A karaoke song's sections from its lyrics (show_service structure, room.event section_change detail
         # "lyrics"; owner, 26 Nov): each letter's first scene in this song, so every chorus comes back to the chorus's
         self._letter_scene: dict = {}                # (track_n, letter) -> scene preset
@@ -1996,6 +2003,8 @@ class Session(EngineListener):
             if self.prepared_pick is None and self._pick_task is None and d.prepare_due(now):
                 self._pick_task = asyncio.create_task(self._prepare_next())
             held = self._dark is not None or self.mgr.room_hold(now, self)
+            rd = self.mgr.room_direction_now(now, self)      # the art director owns the scene changes while its
+            d.ad_until = now + 2.0 if rd and rd.get("cues") == AD_CUES else 0.0   # direction is fresh and says so
             due, self._energy_due = (None if held else self._energy_due), None   # an Energy step: now (C5)
             if due is None:
                 due = None if self.music.settling(now) or held else d.due(now)   # a section change:
@@ -2104,11 +2113,24 @@ class Session(EngineListener):
         # the bus follows the song too (fx_director.py), on the screen that directs it: a follower does while the
         # ensemble makes it the lead (29 Oct: north led deaf to the song and its effects stayed; a mirroring
         # screen's director is disarmed, so it ignores the event)
-        self.fx_director.on_event(kind, time.monotonic(),
-                                  (data or {}).get("section_kind") if (data or {}).get("detail") == "lyrics" else None)
+        data = data or {}
+        now = time.monotonic()
+        rd = self.mgr.room_direction_now(now, self)
+        ad = bool(rd and rd.get("cues") == AD_CUES)      # the art director owns the scene changes
+        if kind == AD_CUE:
+            if not ad or self.following() is not None:
+                return
+            if self.director.hint(f"the art director's change ({detail or 'a new look'})", forced=True) \
+                    or self.director.forced:             # (a re-announced change: its line moved)
+                self._event_hint = at_s
+                self._event_land = max(0.0, min(1.0, float(data["land"]))) \
+                    if isinstance(data.get("land"), (int, float)) else 0.0
+                self._event_sweep = False
+            return
+        self.fx_director.on_event(kind, now,
+                                  data.get("section_kind") if data.get("detail") == "lyrics" else None)
         if self.following() is not None:
             return
-        data = data or {}
         if kind in TRACK_EVENTS and (data.get("transition") is not None or data.get("held")
                                      or kind != "track_change" or detail in ("disarmed", "sound_back")):
             self._track_event(kind, at_s, detail, data)
@@ -2116,6 +2138,8 @@ class Session(EngineListener):
         if kind not in CUT_EVENTS or self.mgr.room_hold(time.monotonic(), self):
             return
         recall = self._lyric_section(data) if kind == "section_change" and detail == "lyrics" else False
+        if ad:
+            return                                   # the art director's look_change cuts, not structure's events
         if self.director.hint(f"{kind.replace('_', ' ')} (the room's music{': ' + detail if detail else ''})",
                               urgent=kind == "drop" or recall):
             self._event_hint = at_s
@@ -2585,8 +2609,15 @@ class Session(EngineListener):
             at, photon_at, stagger = (self.director.auto or AUTO_DEFAULTS)["snap"], None, True
             if reason == "room_event":              # show_service's section / drop / track: on its time, or the bar
                 at, hint, self._event_hint = "bar", self._event_hint, None
+                land, self._event_land = self._event_land, 0.0
                 stagger, self._event_sweep = not self._event_sweep, False
-                if hint is not None and hint >= time.monotonic() + self.sampler.lead + EVENT_MARGIN_S:
+                earliest = time.monotonic() + self.sampler.lead + EVENT_MARGIN_S
+                if hint is not None and land > 0.0:   # the a.d.'s change: its line falls ``land`` of the way through
+                    pk = self.prepared_pick           # the transition, so the new scene ARRIVES on the line
+                    dur = float(getattr((pk or {}).get("trans"), "duration_s", 0.0) or 0.0)
+                    if hint >= earliest:
+                        photon_at = max(earliest, hint - land * dur)
+                elif hint is not None and hint >= earliest:
                     photon_at = hint
             res = await self.cue({"to": "auto", "at": at}, cause="auto", reason=reason, detail=detail,
                                  photon_at=photon_at, stagger=stagger)
@@ -3328,13 +3359,14 @@ class SessionManager:
         self.room_direction = {"direction": d, "vibe": data.get("vibe") or None, "section": data.get("section"),
                                "groove": float(groove) if isinstance(groove, (int, float)) else None,
                                "beat_lock": data.get("beat_lock"), "hold": data.get("hold") is True,
+                               "cues": data.get("cues") if isinstance(data.get("cues"), str) else None,
                                "seq": data.get("seq"), "t": time.monotonic(),
                                "ensemble": data.get("ensemble") if isinstance(data.get("ensemble"), dict) else None}
 
     def _room_event(self, data: dict) -> None:
         kind = data.get("kind")
-        if kind not in CUT_EVENTS and kind not in FX_EVENT_P and kind not in TRACK_EVENTS:   # breakdown: FX only
-            return
+        if kind not in CUT_EVENTS and kind not in FX_EVENT_P and kind not in TRACK_EVENTS and kind != AD_CUE:
+            return                                   # (breakdown: FX only)
         if kind == "section_change" and data.get("detail") == "track":
             return                                   # the same junction as the track_change: one cut, not two
         try:

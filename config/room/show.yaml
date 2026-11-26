@@ -139,6 +139,12 @@ director:
   steps:
     size_from: step_size                    # one Calmer/Wilder step: the vibe's step_size, within its energy range
     max_from: max_steps
+  # One controlling logic (owner, 26 Nov: "the a.d. has to have dominion"). director: while a feel plays, every scene
+  # change on every layer (screens, lights) is this director's look_change: the renderer cuts on nothing else and
+  # never on its own dwell. structure: as before (the screens cut on the music's raw section events and their timer).
+  cues: director
+  land: {default: 1.0, human: 0.0}          # where a change's line falls in a screen's transition: 1 = the new scene
+                                            # is fully there on the line; a person's Next starts at once
   keep_s: 900                               # starting point (§8.4): Keep this look, 15 minutes
   low: {level: 0.10, fade_s: 2.0}           # starting point (§8.4): Lights low
   house: {white_k: 2700, level: 0.8}        # starting point (§8.4): House lights when the room has no stored house

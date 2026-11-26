@@ -135,3 +135,23 @@ def test_quarantine_and_empty_pool(presets):
     d.set_auto(validate_auto({"pool": {"tags": {"moods": ["nonexistent"]}}}))
     assert d.pick_scene(presets.scenes, None, 0.0) is None
     assert AUTO_DEFAULTS["snap"] == "beat"
+
+
+def test_while_the_art_director_drives_only_its_change_cuts_and_at_once():
+    """Owner, 26 Nov: "there should be one controlling visual logic -- the a.d. has to have dominion"."""
+    import time
+    d = Director(validate_auto({"dwell_s": [6, 12]}), dict(DIRECTION_DEFAULTS))
+    d.scene_done(100.0)
+    d.arm(True)
+    d.ad_until = time.monotonic() + 60.0                            # room.direction says cues: director, and is fresh
+    assert d.ad_drives(time.monotonic()) and d.prepare_due(100.5)   # the next pick is prepared at once
+    assert d.due(200.0) is None                                     # never on its own max dwell
+    assert d.hint("the art director's change (section)", forced=True)
+    reason, detail = d.due(100.5)                                   # ... and its change cuts whatever the dwell
+    assert reason == "room_event" and "the art director's change" in detail
+    d.note_cue("warp-cells", "melt-2s", None)
+    assert d.forced is False and d.due(101.0) is None
+    d.ad_until = 0.0                                                # show_service gone quiet: its own dwell again
+    d.scene_done(102.0)
+    assert d.due(120.0)[0] == "max_dwell"
+    assert d.hint("section change") and d.due(105.0) is None        # an ordinary hint still waits for min dwell

@@ -603,6 +603,7 @@ LIGHT_EFFECT_TRIGGERS: tuple[str, ...] = ("drop", "build", "breakdown", "peak", 
 #:   lull      it has waited longer than show.yaml lights.moments.lull_after_s
 #: ``song_end`` is an effect trigger only: the moment a song gives way to waiting (the applause).
 MOMENTS: tuple[str, ...] = ("song", "lead_in", "waiting", "lull")
+CUES_OWNERS: tuple[str, ...] = ("director", "structure")   # show.yaml director.cues; room.direction ``cues``
 #: chorus / final_chorus: a karaoke song's lyric plan says a chorus starts there (structure's section_change with
 #: section_kind "chorus"; ``final_chorus``: no chorus follows it in the song), fired with the section_change (owner,
 #: 26 Nov: strobes that get used, on moments karaoke really has)
@@ -744,6 +745,8 @@ class DirectionData(TypedDict):
     section: Optional[SectionRef]
     density: float                 # onset density
     groove: float                  # drive x beat confidence
+    cues: Optional[str]            # CUES_OWNERS: "director" = every layer changes scene on this director's
+                                   # look_change and on nothing else (owner, 26 Nov: one controlling visual logic)
     hold: bool                     # a person holds the look (Keep this look, or their change pending; owner 17 Oct:
                                    # the renderer's directors change nothing, effects included, while it is true)
     genres: dict[str, float]       # soft genre: vocab genre word -> share (the top few, summing to 1; {} with none):
