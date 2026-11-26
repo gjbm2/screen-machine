@@ -2651,6 +2651,13 @@ class LookEngine:
         return p if isinstance(p, Mapping) else None
 
     # -- the runner ----------------------------------------------------------------------------------------------------
+    def _no_feel(self) -> bool:
+        """The mode sets no feel (room.look's ``vibe`` is None). The director still resolves a palette then (no_feel's,
+        for the screens: 17 Oct), so a palette alone doesn't mean the room asked for a show (owner, 26 Nov: "I changed
+        to normal mode. why are all the gigbar lights etc. still on?"). No look at all: as before, the palette decides."""
+        look = self._call("look", self.look_fn) if self.look_fn is not None else None
+        return isinstance(look, Mapping) and "vibe" in look and look.get("vibe") is None
+
     def set_atmosphere(self, values: Mapping[str, Any]) -> None:
         """Any thread: {fixture id: {channel name: byte}} written over those fixtures' bytes in every frame
         (atmosphere.py: the hazers), whatever the look, House, holds or the show's activity; {} ends it."""
@@ -2724,7 +2731,7 @@ class LookEngine:
         p0 = pal_at(t)
         feats = self._call("features", self.features_fn)
         active, why, held = self._activity(t, p0, feats)
-        if active and not isinstance(p0, Mapping) and caps.get("idle_without_vibe"):
+        if active and caps.get("idle_without_vibe") and (not isinstance(p0, Mapping) or self._no_feel()):
             active, why, held = False, "no_vibe", None           # nothing room-side gates this output (§8.6)
         st.held, st.why = held, why
         fixtures: dict[str, dict] = frame["fixtures"]
