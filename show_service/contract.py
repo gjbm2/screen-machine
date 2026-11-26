@@ -1983,7 +1983,9 @@ OUTPUT_STATES: tuple[str, ...] = (
     "releasing",     # hue: stopping the area for POST /api/v1/hue/release
     "taken_over",    # hue: another app stopped or holds the area; nothing restarts until the wanted set changes
     "error")         # retried after a backoff; ``detail`` says what
-FX_SHAPES: tuple[str, ...] = ("sine", "saw", "square", "triangle", "swell")   # looks.py oscillators (README S5.5)
+FX_SHAPES: tuple[str, ...] = ("sine", "saw", "square", "triangle", "swell", "dim")   # looks.py oscillators (README
+#: S5.5); dim: no oscillator, a steady 0: an intensity layer of it holds its lights at 1 - depth (a scene's own dimmer:
+#: depth 1 is dark, so only the layer's hits and the effects over it show: the strobe zones as accents, 26 Nov)
 FX_PHASES: tuple[str, ...] = ("beat", "bar", "phrase", "time")                # the phase an oscillator runs on
 FX_NEEDS: tuple[str, ...] = ("beat", "grid", "none")   # beat: the clock's gate beat (dmx: hit outputs only, reduced);
                                                     # grid: any clock grid; none: free-runs on time without one

@@ -122,7 +122,7 @@ TRIGGER_WHY = {"drop": "the drop", "build": "the song builds", "breakdown": "a b
 OTHER_GROUP = "*"                                # the lamps no group takes
 OTHER_LABEL = "Other lights"
 GROUP_KEYS = frozenset({"label", "select", "follows", "dark_level", "appliances", "repeat_weight",
-                        "sway", "scenes_drive"})   # sway: the look engine's (looks._group_sway)
+                        "sway", "scenes_drive", "scenes_for"})   # sway: the look engine's (looks._group_sway)
 DARK_FLOOR = "floor"                             # dark_level: the look's floor
 #: show.yaml ``lights`` keys: the catalogue builder's, and the other builders' (read where they are used)
 LIGHTS_KEYS = frozenset({"scene_group", "groups", "programs", "flow", "motion", "jog", "calibration", "appliances",
@@ -808,6 +808,11 @@ class Catalogue:
         moment given, the scenes that name no moment at all (they are for any; a scene made for a moment never stands
         in for another). A group's ``scenes_drive`` narrows first (show.yaml lights.groups)."""
         names = [n for n, sc in self.scenes.items() if self.fits(sc, group)]
+        # a scene's tags.parts says which kind of light it is written for (flash: strobe zones, ...); a group's
+        # scenes_for (show.yaml lights.groups) takes those; a scene made for a part never goes to another group
+        parts = set(group.get("scenes_for") or ())
+        mine = [n for n in names if parts & set(self.parts_of(n))] if parts else []
+        names = mine or [n for n in names if not self.parts_of(n)] or names
         want = set(group.get("scenes_drive") or ())      # show.yaml lights.groups.<g>.scenes_drive: only scenes that
         if want:                                         # work one of these (movers: scenes that aim them)
             only = [n for n in names if want & set(self.scenes[n].get("drives") or ())]
@@ -821,6 +826,12 @@ class Catalogue:
         if mine:
             return mine
         return [n for n in names if not self.moments_of(n)] or names   # no moment given: the scenes for any
+
+    def parts_of(self, name: str) -> tuple[str, ...]:
+        """The kinds of light a scene is written for (its ``tags.parts`` words); () for any."""
+        m = ((self.scenes.get(name) or {}).get("tags") or {}).get("parts")
+        m = [m] if isinstance(m, str) else m if isinstance(m, (list, tuple)) else []
+        return tuple(w for w in m if isinstance(w, str))
 
     def moments_of(self, name: str) -> tuple[str, ...]:
         """The moments a scene is made for (its ``tags.moments``, contract.MOMENTS words); () for any."""
@@ -1011,10 +1022,14 @@ def parse_lights(raw: Any, probs: list[str]) -> dict:
             if not isinstance(sd, list) or not all(isinstance(x, str) and x in contract.ATTRS for x in sd):
                 probs.append(f"{w}.scenes_drive: {sd!r} isn't a list of what a light can do (pan, tilt, ...): any scene")
                 sd = []
+            sf = g.get("scenes_for") or []
+            if not isinstance(sf, list) or not all(isinstance(x, str) and x for x in sf):
+                probs.append(f"{w}.scenes_for: {sf!r} isn't a list of part words (a scene's tags.parts): any scene")
+                sf = []
             groups[gid] = {"label": label, "select": sel, "follows": fo,
                            "dark_level": float(dl) if dl != DARK_FLOOR else DARK_FLOOR,
                            "appliances": [x for x in ap if x in out["appliances"]], "repeat_weight": float(rw),
-                           "scenes_drive": list(sd)}
+                           "scenes_drive": list(sd), "scenes_for": list(sf)}
     for gid, g in groups.items():                    # follows: another group, and no loop
         fo, seen = g["follows"], {gid}
         while fo is not None:
@@ -1182,5 +1197,7 @@ def group_members(groups_cfg: Optional[Mapping[str, Any]], rig: Optional[Mapping
         out[str(gid)]["repeat_weight"] = rw if rw is not None else 0.0
         sd = g.get("scenes_drive")
         out[str(gid)]["scenes_drive"] = [x for x in sd if isinstance(x, str)] if isinstance(sd, list) else []
+        sf = g.get("scenes_for")
+        out[str(gid)]["scenes_for"] = [x for x in sf if isinstance(x, str)] if isinstance(sf, list) else []
     out[OTHER_GROUP] = info(OTHER_GROUP, OTHER_LABEL, [fid for fid in lamp_ids if fid not in taken], None, DARK_FLOOR)
     return out

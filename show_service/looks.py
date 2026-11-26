@@ -408,6 +408,8 @@ def _vec3(v: Any) -> Optional[tuple[float, float, float]]:
 def shape(fx: str, cycles: float, period_s: float = 0.0, attack_s: float = HUE_ATTACK_S,
           decay_s: float = HUE_DECAY_S) -> float:
     """An oscillator's value 0..1 at ``cycles`` (1 at each whole cycle); ``swell`` needs the cycle's length in s."""
+    if fx == "dim":                                              # a steady 0: the layer is a dimmer (1 - depth)
+        return 0.0
     p = cycles - math.floor(cycles)
     if fx == "sine":
         return 0.5 + 0.5 * math.cos(2.0 * math.pi * p)

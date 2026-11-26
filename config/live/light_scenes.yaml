@@ -552,6 +552,38 @@ scenes:
            jazz: 0.7, downtempo: 0.75, classical: 0.6, "*": 0.45}, valence: 0.6, organic: 0.5, density: 0.4,
            flow: {dirs: [outward, inward, left, right], honours: true}}
 
+  # -- Scenes for one kind of light (tags.parts; a group's scenes_for in show.yaml takes them, no other group does).
+  # flash: the strobe zones (owner, 26 Nov: they glowed at every look's level, "not really getting any use"). Each
+  # holds them dark (fx: dim) and lets only its accents show.
+  flash-on-the-beat:
+    label: A white flash on every beat
+    layers:
+      - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
+    hits: {styles: [beat, full, downbeat], min_strength: 0.25, depth: 1.0, decay_ms: 90, drop: {depth: 1.0, decay_ms: 400}}
+    tags: {parts: [flash], energy: [0.6, 1.0], moods: [euphoric, aggressive, bright, playful],
+           genre_fit: {"*": 0.6}, valence: 0.6, organic: 0.3, density: 0.8}
+  flash-on-the-bar:
+    label: A white flash on the kick drum
+    layers:
+      - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
+    hits: {styles: [beat, full, downbeat], bands: [sub, bass], min_strength: 0.5, depth: 0.8, decay_ms: 120,
+           drop: {depth: 1.0, decay_ms: 400}}
+    tags: {parts: [flash], energy: [0.35, 0.8], moods: [playful, bright, warm, hypnotic], genre_fit: {"*": 0.6},
+           valence: 0.6, organic: 0.4, density: 0.5}
+  flash-resting:
+    label: The strobe zones rest (a drop still flashes them)
+    layers:
+      - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
+    hits: {styles: [], drop: {depth: 1.0, decay_ms: 500}}
+    tags: {parts: [flash], energy: [0.0, 0.5], moods: [calm, mellow, dreamy, elegant, warm, dark],
+           genre_fit: {"*": 0.6}, valence: 0.5, organic: 0.6, density: 0.1}
+  flash-waits:
+    label: The strobe zones stay dark while the room waits
+    layers:
+      - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
+    tags: {parts: [flash], moments: [waiting, lull, lead_in], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5,
+           organic: 0.5, density: 0.1}
+
   # -- The room's moments (contract.MOMENTS; owner, 26 Nov: the silent state and the changeover are "all scenes, but
   # expressed on the gigbar objects"). tags.moments: [song | lead_in | waiting | lull] says when a scene is for: in
   # that moment only these are drawn; a scene with no moments is for any moment none of these claims (every scene

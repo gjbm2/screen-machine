@@ -8,3 +8,13 @@ senders:
     port: 6984
     streams: [room-mic]                     # this rig's room mic: Auto listens to room-mic first
     label: Laptop                           # the Room page's Mic list groups this sender's inputs under it
+
+# The GigBARs' parts as their own surfaces (owner, 26 Nov: scenes, effects and transitions "across each of the gigbar
+# components"). The shared file has movers (the spots) and lamps (every other light); here the derbies and the strobe
+# zones leave lamps for groups of their own, so each part draws its own scene: the pars wash, the derbies their own
+# pattern, and the strobe zones only the scenes written for them (tags.parts: [flash]: dark but for accents).
+lights:
+  groups:
+    lamps: {label: Pars, select: "kind:lamp !tag:derby !tag:strobe !tag:haze"}
+    derbies: {label: Derbies, select: "tag:derby", dark_level: floor}
+    flashes: {label: Strobe zones, select: "tag:strobe", dark_level: 0, scenes_for: [flash]}
