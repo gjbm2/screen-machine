@@ -47,7 +47,8 @@ class KaraokeFeed:
         self._read_at = -1e18
         self._failing = False
         self._wakes: list[Callable[[], None]] = []
-        self._sections: tuple[Optional[str], list] = (None, [])   # (song id, lyric_sections) for structure's plan
+        self._sections: tuple[Optional[str], list] = (None, [])   # (song key, lyric_sections) for structure's plan
+        self._lyrics: tuple[Optional[str], str, str] = (None, "", "")   # (song key, all the words, an excerpt)
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
@@ -81,17 +82,24 @@ class KaraokeFeed:
         the next poll."""
         p, s = o.get("player") or {}, o.get("song") or {}
         sid = p.get("song_id") if isinstance(p, dict) else None
-        if not sid or sid == self._sections[0] or not isinstance(s, dict):
+        child = bool((o.get("settings") or {}).get("child_mode"))
+        key = f"{sid}:child" if child else sid           # child mode's lyrics are masked: read again on a switch
+        if not sid or key == self._sections[0] or not isinstance(s, dict):
             return
         try:
             from .lyric_sections import sections_from_lyrics
             lyr = self._fetch(f"{self.url.rsplit('/now', 1)[0]}/songs/{sid}/lyrics")
             dur = s.get("audio_s") or s.get("duration")
             secs = sections_from_lyrics(lyr, float(dur) if dur else None)
+            from .song_character import excerpt
+            lines = [str(x.get("text") or "") for x in (lyr.get("lines") or []) if isinstance(x, dict)] \
+                if isinstance(lyr, dict) else []
         except Exception as e:                           # noqa: BLE001 - next poll
             log.info("karaoke: %s's sections not read (%s)", sid, type(e).__name__)
             return
-        self._sections = (sid, secs)
+        self._sections = (key, secs)
+        # the words too, for the song's character (song_character.py) and the treatment's AI (an excerpt)
+        self._lyrics = (key, " ".join(lines), excerpt(lines))
         log.info("karaoke: %s: %s", s.get("title") or sid,
                  " ".join(f"{x['kind']}@{x['start_s']:.0f}" for x in secs) or "no sections (lyrics not synced)")
 
@@ -124,7 +132,10 @@ class KaraokeFeed:
         artist = str(s.get("artist") or "").strip()
         # Its sections (lyric_sections.py), each at the player position where the ROOM hears it begin: the lyrics'
         # time + the song's lyric offsets + the delay to the room (settings.audio_delay_ms), as the display page.
-        secs = self._sections[1] if self._sections[0] == p["song_id"] else []
+        k = self._sections[0]
+        secs = self._sections[1] if k is not None and k.split(":")[0] == p["song_id"] else []
+        lk = self._lyrics[0]
+        lyr = self._lyrics if lk is not None and lk.split(":")[0] == p["song_id"] else (None, "", "")
         try:
             st = o.get("settings") or {}
             shift = (float(s.get("offset_ms") or 0.0) + float(s.get("user_offset_ms") or 0.0)
@@ -137,6 +148,7 @@ class KaraokeFeed:
                 # the song's catalogue facts (Deezer, routes/karaoke/store.py FACTS): the director's genre while it
                 # plays (director._song_genre; owner, 26 Nov: song context "should be doing more work")
                 "artist": artist or None, "genre": s.get("genre") or None, "year": s.get("year") or None,
+                "lyrics_text": lyr[1], "lyrics_excerpt": lyr[2],
                 "sections": [{"pos_s": round(x["start_s"] + shift, 3), "kind": x["kind"], "letter": x["letter"]}
                              for x in secs]}
 

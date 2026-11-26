@@ -332,16 +332,20 @@ SCREENS_DWELL_MIN_S = 15.0          # while a feel changes the looks, the render
 # section, within KARAOKE_DWELL_MAX_S]), the energy is shaped by the section (SECTION_ENERGY: verses calmer,
 # choruses lifted), and the song's catalogue genre (Deezer's, SONG_GENRES -> the vocabulary) leads the room's guess.
 KARAOKE_DWELL_MIN_S = 8.0
+# The song's own loudness (owner, 26 Nov: the a.d. "isn't using the live audio feed data smartly enough"): while a
+# karaoke song plays, the band energy's swing is the room's short-term loudness (features.lufs_s) against THIS song's
+# own median, in units of its spread (dB), not the absolute 0..1 energy (a quiet mic read 0.015 through a whole song
+# and the swing never moved). REL_* are starting points.
+REL_MIN_N = 15             # seconds of sound before the song's own level is known
+REL_FLOOR_LUFS = -65.0     # quieter than this is silence, not the song
+REL_MIN_SPREAD_DB = 2.0    # a flat song's spread is at least this
+REL_SWING = 0.2            # rel 1 (a spread and a half over its median) lifts the band energy this much...
+REL_SWING_DOWN = 0.15      # ...and rel -1 lowers it at most this much
+REL_TAU_S = 1.5
 KARAOKE_DWELL_MAX_S = (30.0, 90.0)
 SECTION_ENERGY = {"verse": -0.08, "chorus": 0.15, "instrumental": 0.05, "outro": -0.15}
-SONG_GENRES = {"pop": "pop", "rock": "rock", "alternative": "indie", "indie pop": "indie", "indie rock": "indie",
-               "metal": "metal", "punk": "punk", "dance": "electronic", "electro": "electronic",
-               "techno/house": "house", "rap/hip hop": "hip-hop", "hip hop": "hip-hop", "r&b": "rnb",
-               "soul & funk": "soul", "soul": "soul", "funk": "funk", "disco": "disco", "jazz": "jazz",
-               "blues": "blues", "reggae": "reggae", "latin music": "latin", "latin": "latin", "country": "country",
-               "folk": "folk", "singer & songwriter": "singer-songwriter", "classical": "classical",
-               "films/games": "soundtrack", "film scores": "soundtrack", "african music": "afrobeat",
-               "brazilian music": "world", "asian music": "world", "kids": "pop", "christian": "gospel"}
+from .song_character import SONG_GENRES  # noqa: E402  (Deezer's genres -> the vocabulary; shared with the feed)
+from . import song_character as songc  # noqa: E402
 # Practice (PianoView.practice 0..1; owner, 1 Nov). The Room page says "Sounds like practice" from PRACTICE_ON until it
 # falls to PRACTICE_OFF. The screens' dwell min follows it in PRACTICE_STEP steps, moving to a new step only once
 # practice is PRACTICE_HYST of a step away from the one it holds, so room.direction isn't republished for a wobble.
@@ -2154,6 +2158,7 @@ class Director:
               "palettes": self._candidates(getattr(self, "vp", vs)) if getattr(self, "pal_on", False) else [],
               "palette_now": self.palette_name, "palette_pick": self.palette_pick != contract.PALETTE_AUTO,
               "change": change, "light_pools": pools, "forms": forms, "appliances": apps, "song_words": song,
+              "song_facts": self._song_facts(),
               "based_on": based, "ai_on": bool(ai_on),
               "character": b.get("character") if ai_on and isinstance(b.get("character"), str) else None,
               "piano_playing": bool(m.get("playing")),
@@ -2337,6 +2342,87 @@ class Director:
         hi = KARAOKE_DWELL_MAX_S[1] if med is None else max(KARAOKE_DWELL_MAX_S[0],
                                                             min(KARAOKE_DWELL_MAX_S[1], 1.5 * med))
         return [KARAOKE_DWELL_MIN_S, round(hi, 1)]
+
+    def _karaoke_np(self) -> Optional[dict]:
+        np_ = _call(getattr(self.ctx, "now_playing", None))
+        if isinstance(np_, dict) and np_.get("source") == "karaoke" and np_.get("state") == "playing" and np_.get("key"):
+            return np_
+        return None
+
+    def _song_char(self) -> Optional[dict]:
+        """The karaoke song's character (song_character.py: genre, era, the lyrics' words -> moods, valence,
+        arousal, organic), once per song (and again once its lyrics arrive); None with no karaoke song."""
+        np_ = self._karaoke_np()
+        if np_ is None:
+            return None
+        text = str(np_.get("lyrics_text") or "")
+        key = (str(np_["key"]), bool(text))
+        if getattr(self, "_songc_key", None) == key:
+            return self._songc
+        try:
+            mm, moods = songc.vocab_moods(self.vibes.vocab_path)
+            c = songc.character(self._song_genre(), np_.get("year"), text, mm, moods)
+        except Exception:                                 # noqa: BLE001 - no character: the usual chain
+            log.debug("song character failed", exc_info=True)
+            c = None
+        self._songc_key, self._songc = key, c
+        if c is not None:
+            self._log_event("song_character", {"song": np_.get("title"), **c})
+            self._why(f"The song: {', '.join(c['moods']) or 'no moods'} ({c['why'] or 'no facts'})")
+        return c
+
+    def _song_facts(self) -> Optional[dict]:
+        """The treatment's song facts while a karaoke song plays (treatment.py: its AI then needs no AI listening):
+        title, artist, catalogue genre, year, the character read here, its sections and a lyrics excerpt."""
+        np_ = self._karaoke_np()
+        if np_ is None:
+            return None
+        c = self._song_char() or {}
+        secs = np_.get("sections") if isinstance(np_.get("sections"), list) else []
+        pos = _num(np_.get("pos_s"), 0.0) or 0.0
+        return {"title": np_.get("title"), "artist": np_.get("artist"), "genre": np_.get("genre"),
+                "year": np_.get("year"), "character": {k: c.get(k) for k in ("words", "theme", "valence", "arousal")},
+                "sections": ", ".join(f"{x.get('kind')} {int(_num(x.get('pos_s'), 0.0) or 0) // 60}:"
+                                      f"{int(_num(x.get('pos_s'), 0.0) or 0) % 60:02d}" for x in secs[:16]),
+                "position_s": round(pos), "lyrics": str(np_.get("lyrics_excerpt") or "")[:1200] or None}
+
+    def _section_lift(self) -> float:
+        """The karaoke section's energy offset: the song's own curve when its treatment gave one (plan
+        ``sections``: verse / chorus / instrumental / outro 0..1, offset from their mean), else SECTION_ENERGY."""
+        sec = (self._mc or {}).get("section") if isinstance((self._mc or {}).get("section"), dict) else None
+        kind = sec.get("kind") if sec is not None and isinstance(sec.get("plan"), dict) else None
+        if not isinstance(kind, str):
+            return 0.0
+        curve = (self.treat.plan or {}).get("sections")
+        if isinstance(curve, dict) and _num(curve.get(kind)) is not None:
+            vals = [float(v) for v in curve.values() if _num(v) is not None]
+            return max(-0.25, min(0.25, 0.5 * (float(curve[kind]) - sum(vals) / len(vals))))
+        return SECTION_ENERGY.get(kind, 0.0)
+
+    def _rel_loudness(self, now_s: float) -> Optional[float]:
+        """A karaoke song's loudness against itself: (lufs_s - its median) / (1.5 x its spread), -1..1, eased over
+        REL_TAU_S; None until REL_MIN_N seconds of it have sounded, or with no karaoke song."""
+        np_ = self._karaoke_np()
+        key = str(np_["key"]) if np_ is not None else None
+        if key != getattr(self, "_rel_key", None):
+            self._rel_key, self._rel_hist, self._rel_ema, self._rel_t = key, collections.deque(maxlen=900), None, None
+        if key is None:
+            return None
+        f = getattr(self, "_feat_now", None)
+        lv = _num(f.get("lufs_s")) if isinstance(f, dict) else None
+        h = self._rel_hist
+        if lv is not None and lv > REL_FLOOR_LUFS and (not h or now_s - h[-1][0] >= 1.0):
+            h.append((now_s, lv))
+        if len(h) < REL_MIN_N or lv is None or lv <= REL_FLOOR_LUFS:
+            return self._rel_ema
+        vals = sorted(x for _, x in h)
+        n = len(vals)
+        med, spread = vals[n // 2], max(REL_MIN_SPREAD_DB, vals[(3 * n) // 4] - vals[n // 4])
+        r = max(-1.0, min(1.0, (lv - med) / (1.5 * spread)))
+        dt = 0.0 if self._rel_t is None else max(0.0, now_s - self._rel_t)
+        self._rel_t = now_s
+        self._rel_ema = r if self._rel_ema is None else _ema(self._rel_ema, r, dt, REL_TAU_S)
+        return self._rel_ema
 
     def _song_genre(self) -> Optional[str]:
         """The karaoke song's catalogue genre as a vocabulary word (SONG_GENRES), while it plays; else None."""
@@ -3814,8 +3900,11 @@ class Director:
         its terms: 0.5 + conf x (music - 0.5)."""
         heard = 0.5 + conf * (music - 0.5)
         bc = (self.cfg.get("bands") or {}).get("base")
+        rel = self._rel_loudness(now_s)                  # a karaoke song's own loudness, -1..1 (None: not known)
         if not bc:
-            return heard
+            if rel is not None:
+                heard = 0.5 + max(-REL_SWING_DOWN, min(REL_SWING, REL_SWING * rel))
+            return _c01(heard + self._section_lift())
         h = self._swing_hist
         if not h or now_s - h[-1][0] >= 1.0:
             h.append((now_s, music))
@@ -3833,7 +3922,9 @@ class Director:
         # else its confident genre word's genre_energy; slewed from what the term was. The ML's words are the fallback
         gd = self._guide
         tpi = _num((self.treat.plan or {}).get("intensity"))
+        sg = self._song_genre()
         want, src = ((tpi, "plan") if tpi is not None
+                     else (ge[sg], "the song's genre") if sg in ge
                      else (gd["intensity"], "listener approach") if gd.get("intensity") is not None
                      else (ge[gd["genre"]], "listener genre") if gd.get("genre") in ge else (None, None))
         if want is not None:
@@ -3853,7 +3944,10 @@ class Director:
                 terms["rate"] = _c01(r["onset_rate"] / bc["rate_full"])
             if _num(r.get("pulse_clarity")) is not None:
                 terms["clarity"] = _c01(r["pulse_clarity"])
-        if _num((self._mc or {}).get("mood_energy")) is not None:
+        sc = self._song_char()
+        if sc is not None and _num(sc.get("arousal")) is not None:
+            terms["moods"] = _c01(sc["arousal"])          # the song's character, not the mic model's mood energy
+        elif _num((self._mc or {}).get("mood_energy")) is not None:
             terms["moods"] = _c01(self._mc["mood_energy"])
         wsum = sum(bc["weights"][k] for k in terms)
         if wsum <= 0:
@@ -3863,9 +3957,11 @@ class Director:
         self._band_base = round(base, 3)
         med = statistics.median(m for _, m in h) if h else music
         sw = max(-bc["swing_max_down"], min(bc["swing_max"], bc["swing"] * conf * (music - med)))
+        if rel is not None:                              # the song against itself, in dB: any mic gain
+            sw = max(-REL_SWING_DOWN, min(REL_SWING, REL_SWING * rel))
         sec = (self._mc or {}).get("section") if isinstance((self._mc or {}).get("section"), dict) else {}
         lift = bc["phase_lift"].get(sec.get("phase"), 0.0) if isinstance(sec.get("phase"), str) else 0.0
-        return _c01(base + sw + lift)
+        return _c01(base + sw + lift + self._section_lift())
 
     def _band_words(self, e: float) -> Optional[dict]:
         b = self.cfg.get("bands")
@@ -3981,6 +4077,8 @@ class Director:
             moods, src = list(self.moods), "human"
         elif tp.get("moods"):
             moods, src = list(tp["moods"]), "plan"         # the song's treatment (README S5.33)
+        elif (self._song_char() or {}).get("moods"):
+            moods, src = list(self._song_char()["moods"]), "song"   # a karaoke song's genre, era and lyrics
         elif llm_moods:
             moods, src = llm_moods, "listener"
         elif band and band["moods"]:
@@ -4255,8 +4353,9 @@ class Director:
         e_dir = e if feel_on else _c01(_num(m.get("band_energy"), e) or 0.0)
         lplan = msec.get("plan") if msec is not None and isinstance(msec.get("plan"), dict) else None
         lkind = msec.get("kind") if lplan is not None and isinstance(msec.get("kind"), str) else None
-        if lkind is not None:                            # the karaoke section's shape (verse calmer, chorus up)
-            e_dir = _c01(e_dir + SECTION_ENERGY.get(lkind, 0.0))
+        if lkind is not None and feel_on:                # the karaoke section's shape (no feel: in the band energy)
+            e_dir = _c01(e_dir + self._section_lift())
+        sc = self._song_char()
         if section_ref is not None and lkind is not None:
             section_ref["kind"] = lkind
         cr = vs["change_rate"] if feel_on or words.get("change_rate") is None else words["change_rate"]
@@ -4274,8 +4373,8 @@ class Director:
                           "section": section_ref,
                           "density": round(dens, 3),
                           "hold": self._held(),
-                          "valence": _r3((self._mc or {}).get("valence")),
-                          "organic": _r3((self._mc or {}).get("acoustic")),
+                          "valence": _r3((sc or {}).get("valence", (self._mc or {}).get("valence"))),
+                          "organic": _r3((sc or {}).get("organic", (self._mc or {}).get("acoustic"))),
                           "art": words.get("art"),
                           "groove": round(_c01(m["drive"] * (grid.conf if grid.gate != "none" else 0.0)), 3),
                           "beat_lock": beat_lock, "loose": bool(vs["beat_lock"]) and m["fresh"] and grid.gate != "beat",

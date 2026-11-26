@@ -38,7 +38,7 @@ def test_the_song_is_the_players_shape_at_the_servers_position_now():
     np_ = f.now_playing()
     assert np_ == {"key": "karaoke:k1:q1", "state": "playing", "pos_s": pytest.approx(12.5), "dur_s": 200.0,
                    "speed": 1.0, "title": "Happy — Pharrell Williams", "source": "karaoke",
-                   "artist": "Pharrell Williams", "genre": None, "year": None,
+                   "artist": "Pharrell Williams", "genre": None, "year": None, "lyrics_text": "", "lyrics_excerpt": "",
                    "sections": []}                               # its lyrics aren't synced here: no sections
     assert f.playing() is True
     rs[0] = reply(state="paused", pos=30.0)

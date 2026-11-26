@@ -349,6 +349,10 @@ TOOL: dict = {
             "moods": {"type": "array", "items": {"type": "string"}, "maxItems": 3},
             "transition_style": {"type": ["string", "null"]},
             "intensity": {"type": ["number", "null"], "minimum": 0, "maximum": 1},
+            "sections": {"type": ["object", "null"], "description": "karaoke songs only: intensity 0-1 per kind of "
+                         "section the song has, so its choruses can lift above its verses",
+                         "properties": {k: {"type": "number", "minimum": 0, "maximum": 1}
+                                        for k in ("verse", "chorus", "instrumental", "outro")}},
             "why": {"type": "string"},
         },
         "required": ["families", "avoid_families", "palette", "lights", "form", "moods", "transition_style",
@@ -370,7 +374,10 @@ SYSTEM = (
     "people liked or skipped; pick a palette from the list; for each light group pick one scene from its pool or "
     "leave it out; pick an interplay form or null; moods from the vocabulary; intensity 0 (gentle) to 1 (wild) for "
     "how hard the room should go. 'why' is one plain sentence for the owner, under 20 words, no jargon, no names "
-    "of files or ids. Answer with the tool only.")
+    "of files or ids. When 'song_facts' are given (a karaoke song: its title, artist, catalogue genre, year, its "
+    "character and its lyrics), they are the truth about the song: let its genre, its era and what the lyrics say "
+    "set the families, palette, moods and intensity; 'heard' is then only a room mic's weak guess. For such a song "
+    "also give 'sections': an intensity 0-1 for each kind of section it has. Answer with the tool only.")
 
 
 def _short(v: Any, n: int = 80) -> Optional[str]:
@@ -491,7 +498,8 @@ class Treatments:
     def _plan(self, now_s: float, song: str, by: str, why: str, ev: dict, ctx: str, *, families: list[str],
               avoid: list[str], palette: Optional[str], why_line: str, fams: Optional[dict] = None,
               lights: Optional[dict] = None, form: Optional[str] = None, moods: Optional[list] = None,
-              style: Optional[str] = None, intensity: Optional[float] = None, model: Optional[str] = None) -> dict:
+              style: Optional[str] = None, intensity: Optional[float] = None, model: Optional[str] = None,
+              sections: Optional[dict] = None) -> dict:
         self._n += 1
         share = float(self.cfg["favour_share"])
         return {"id": f"T{self._n}", "song": song, "by": by, "model": model, "at_s": now_s,
@@ -503,6 +511,7 @@ class Treatments:
                 "palette": palette, "palette_used": palette or ev.get("palette_now"),
                 "lights": dict(lights or {}), "form": form, "moods": list(moods) if moods else None,
                 "transition_style": style, "intensity": intensity, "bias": round(self.taste.bias(ctx), 3),
+                "sections": dict(sections) if sections else None,   # a karaoke song's energy per section kind
                 "why": why_line, "song_words": ev.get("song_words"),
                 "based_on": list(ev.get("based_on") or []),
                 "fit": ({f: {"fit": fams[f]["fit"], "stars": fams[f]["stars"]} for f in families if f in fams}
@@ -528,7 +537,8 @@ class Treatments:
             self._log("treatment", {"plan": self._log_view(q), "why": "the music became clearer"})
             return False
         ac = self.cfg["ai"]
-        if (spawn is None or not ev.get("ai_on") or self._ai_busy or p["by"] == BY_AI
+        # a karaoke song's facts are known (title, genre, year, lyrics): its one call needs no AI listening
+        if (spawn is None or not (ev.get("ai_on") or ev.get("song_facts")) or self._ai_busy or p["by"] == BY_AI
                 or self._ai_calls >= int(ac["max_per_song"]) or not self.index.families):
             return False
         if self._ai_last_s is not None and now_s - self._ai_last_s < float(ac["min_gap_s"]):
@@ -583,6 +593,7 @@ class Treatments:
                           "valence": d.get("valence"), "acoustic": d.get("organic"), "bpm": ev.get("bpm"),
                           "ai_character": ev.get("character"), "piano_playing": ev.get("piano_playing")},
                 "appliances_on": ev.get("appliances"), "last_songs": hist,
+                **({"song_facts": ev["song_facts"]} if ev.get("song_facts") else {}),
                 "people_before": self.taste.lines(ctx), "options": opts}
         return json.dumps(body, separators=(",", ":"), default=str)
 
@@ -638,11 +649,14 @@ class Treatments:
         moods = [w for w in data.get("moods") or [] if isinstance(w, str) and w in opts["moods"]][:3] or None
         style = data.get("transition_style") if data.get("transition_style") in opts["transition_styles"] else None
         inten = _num(data.get("intensity"))
+        sc = data.get("sections") if isinstance(data.get("sections"), dict) else {}
+        secs = {k: _c01(float(v)) for k, v in sc.items() if k in ("verse", "chorus", "instrumental", "outro")
+                and _num(v) is not None} if ev.get("song_facts") else {}
         why = _short(data.get("why"), 160) or old["why"]
         return self._plan(now_s, song, BY_AI, old["change_why"], ev, ctx, families=fams, avoid=avoid,
                           palette=pal, why_line=why, lights=lights, form=form, moods=moods, style=style,
                           intensity=None if inten is None else _c01(inten), model=model,
-                          fams=self._family_scores(ev, ctx))
+                          fams=self._family_scores(ev, ctx), sections=secs or None)
 
     # -- people ---------------------------------------------------------------------------------------------------------
     def feedback(self, kind: str, *, palette: Optional[str] = None, steps: int = 0, ev: Optional[dict] = None
