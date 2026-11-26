@@ -102,7 +102,9 @@ function aimZ(o: THREE.Object3D, dir: THREE.Vector3) {
 }
 
 // ---- the parts' live objects -------------------------------------------------------------------------------------
-interface Ctx { ch: (f: Fixture, i: number) => number; t: number; dt: number; air: number; haze: HazeState; size: Vec3 }
+interface Ctx { ch: (f: Fixture, i: number) => number; t: number; dt: number; air: number; haze: HazeState; size: Vec3;
+  /** Light put into the room's air this frame (rgb 0-255, a weight for how much): lit haze takes its colour. */
+  lit: (rgb: RGB, w: number) => void }
 interface Part { f: Fixture; update(c: Ctx): void; words?(c: Ctx): string }
 
 /** Where a ray from inside the room meets a wall, the floor or the ceiling (room frame). */
@@ -123,6 +125,34 @@ export function hazeVisibility(ml: number | null): number {
   return ml && ml > 0 ? 1 - Math.exp(-HAZE_SCATTER * ml) : 0;
 }
 
+// ---- haze on the room's look ---------------------------------------------------------------------------------------
+// In haze a bright picture scatters light in the air in front of it: it glows past its edges and its own picture goes
+// soft and veiled (owner, 26 Nov: "tv should be fuzzy if haze is thick"). Each screen gets a glow: a plane GLOW_GROW
+// times its size, drawn additively from a tiny, blurred copy of the picture, fading away from the picture's edge; its
+// strength is the haze's visibility. Distant surfaces lose contrast: the scene's fog, from the same haze.
+type ScreenObj = { feed: ScreenFeed; mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>; light: THREE.PointLight;
+  src: unknown; tex: THREE.Texture | null; sampledAt: number;
+  glow: THREE.Mesh<THREE.PlaneGeometry, THREE.ShaderMaterial>; glowCv: HTMLCanvasElement; glowTex: THREE.CanvasTexture; glowAt: number };
+const GLOW_GROW = 2.2;
+const GLOW_MS = 80;                               // the blurred copy's refresh
+const FOG_PER_HAZE = 0.09;
+const AIR_GLOW = 0.12;                            // how far the room's light lifts the fog's colour                        // fog density (per metre) at full haze visibility
+const glowMaterial = (tex: THREE.Texture, aspect: number) => new THREE.ShaderMaterial({
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false,
+  uniforms: { map: { value: tex }, strength: { value: 0 }, grow: { value: GLOW_GROW }, aspect: { value: aspect } },
+  vertexShader: "varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }",
+  fragmentShader: `uniform sampler2D map; uniform float strength, grow, aspect; varying vec2 vUv;
+    void main(){
+      vec2 p = (vUv - 0.5) * grow;                          // in picture units: the picture is |p| <= 0.5
+      vec2 out2 = max(abs(p) - 0.5, 0.0) * vec2(aspect, 1.0);
+      float d = length(out2);                               // how far outside the picture (in picture heights)
+      vec3 c = texture2D(map, clamp(p + 0.5, 0.0, 1.0)).rgb;
+      float inside = step(d, 0.0);
+      float k = mix(exp(-d * 5.5) * 0.55, 0.5, inside);     // a veil over the picture, a halo fading off it
+      gl_FragColor = vec4(c * k * strength, 1.0);
+    }`,
+});
+
 export interface RoomSimOptions { canvas: HTMLCanvasElement; room: string }
 
 export class RoomSim {
@@ -133,8 +163,7 @@ export class RoomSim {
   private built = new THREE.Group();
   private parts: Part[] = [];
   private beams: THREE.Mesh[] = [];                 // every beam in the air: each frame cut to the surface it meets
-  private screens = new Map<string, { feed: ScreenFeed; mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
-    light: THREE.PointLight; src: unknown; tex: THREE.Texture | null; sampledAt: number }>();
+  private screens = new Map<string, ScreenObj>();
   private model: RoomModel | null = null;
   private revision = "";
   haze = new HazeState();
@@ -144,6 +173,7 @@ export class RoomSim {
   /** The haze show_service holds in the room (GET /api/v1/haze estimate_ml_m3), null until read: what makes a beam
    *  visible in the air. With none, only the pools it lights on the walls and floor show, as in a real room. */
   hazeMl: number | null = null;
+  private fog = new THREE.FogExp2(0x2a2d36, 0);        // haze greys what's far off (its density: the haze's)
   /** An aid, not the room: draw every beam's path half-visible whatever the haze, to see where the heads aim. */
   showPaths = false;
   scale = 1;
@@ -159,6 +189,7 @@ export class RoomSim {
     this.renderer.shadowMap.enabled = true;          // a spot's gobo is projected through its shadow camera
     this.renderer.shadowMap.type = THREE.BasicShadowMap;
     this.scene.background = new THREE.Color(0x05060a);
+    this.scene.fog = this.fog;
     this.root.matrixAutoUpdate = false;              // (x, y, z) room -> (x, z, -y) three
     this.root.matrix.set(1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1);
     this.root.updateMatrixWorld(true);
@@ -209,7 +240,7 @@ export class RoomSim {
   }
 
   private clear() {
-    for (const s of this.screens.values()) s.feed.close();
+    for (const s of this.screens.values()) { s.feed.close(); s.glowTex.dispose(); }
     this.screens.clear();
     this.parts = [];
     this.root.remove(this.built);
@@ -311,6 +342,7 @@ export class RoomSim {
         l.material.color.copy(srgb(rgb)).multiplyScalar(0.15 + 2.2 * a);
         light.color.copy(srgb(rgb)); light.intensity = 26 * a;
         setBeam(b, rgb, 0.22 * a * c.air);
+        c.lit(rgb, 1.0 * a);                                  // a wash: the most light into the air
       },
     };
   }
@@ -339,6 +371,7 @@ export class RoomSim {
             .addScaledVector(e1, Math.sin(off) * Math.cos(around)).addScaledVector(e2, Math.sin(off) * Math.sin(around)).normalize();
           aimZ(bm.m, dir);
           setBeam(bm.m, DERBY_RGB[bm.ci], 0.22 * a * c.air);
+          c.lit(DERBY_RGB[bm.ci], 0.12 * a);
           bm.d.position.copy(hitRoom(at, dir, c.size));
           bm.d.material.color.copy(srgb(DERBY_RGB[bm.ci])).multiplyScalar(a * 1.1);
           bm.d.visible = a > 0.01;
@@ -365,6 +398,7 @@ export class RoomSim {
         let sum = 0;
         panels.forEach((p, i) => { const a = (c.ch(f, i) / 255) * g; sum += a; p.material.color.setRGB(a * 2, a * 2, a * 2.1); });
         glow.intensity = 1.4 * sum;
+        c.lit([240, 244, 255], 0.9 * sum);
       },
     };
   }
@@ -443,6 +477,7 @@ export class RoomSim {
         hl.material.color.copy(srgb(rgb)).multiplyScalar(0.1 + 2.5 * a);
         setBeam(b, rgb, 0.75 * a * c.air);
         setBeam(core, rgb, 1.6 * a * c.air);
+        c.lit(rgb, 0.35 * a);
       },
       words: (c) => {
         const dim = c.ch(f, 7), sh = spotShutter(c.ch(f, 8));
@@ -483,7 +518,15 @@ export class RoomSim {
     const light = new THREE.PointLight(0xffffff, 0, 0, 1.8);
     light.position.copy(v3(f.at!)).addScaledVector(n, 0.8);
     this.built.add(light);
-    this.screens.set(f.id, { feed: new ScreenFeed(this.o.room, f.screen!), mesh, light, src: null, tex: null, sampledAt: 0 });
+    const glowCv = document.createElement("canvas"); glowCv.width = 32; glowCv.height = 18;
+    const glowTex = new THREE.CanvasTexture(glowCv); glowTex.colorSpace = THREE.SRGBColorSpace;
+    const glow = new THREE.Mesh(new THREE.PlaneGeometry(pl.size[0] * GLOW_GROW, pl.size[1] * GLOW_GROW), glowMaterial(glowTex, pl.size[0] / pl.size[1]));
+    glow.quaternion.copy(mesh.quaternion);
+    glow.position.copy(mesh.position).addScaledVector(n, 0.01);
+    glow.visible = false; glow.renderOrder = 2;
+    this.built.add(glow);
+    this.screens.set(f.id, { feed: new ScreenFeed(this.o.room, f.screen!), mesh, light, src: null, tex: null, sampledAt: 0,
+      glow, glowCv, glowTex, glowAt: 0 });
   }
 
   private lampMeshes = new Map<string, { m: THREE.Mesh<THREE.SphereGeometry, THREE.MeshBasicMaterial>; l: THREE.PointLight }>();
@@ -524,15 +567,22 @@ export class RoomSim {
       const a = f.address - 1 + i;
       return a >= 0 && a < 512 ? this.dmx[a] : 0;
     };
-    const c: Ctx = { ch, t: now / 1000, dt, air, haze: this.haze, size: m.size };
+    const acc = [0, 0, 0];
+    const lit = (rgb: RGB, w: number) => { acc[0] += rgb[0] * w; acc[1] += rgb[1] * w; acc[2] += rgb[2] * w; };
+    const c: Ctx = { ch, t: now / 1000, dt, air, haze: this.haze, size: m.size, lit };
     for (const p of this.parts) p.update(c);
     this.fitBeams(m.size);
-    for (const s of this.screens.values()) this.screenFrame(s, now);
+    const hv = hazeVisibility(this.hazeMl);
+    this.fog.density = FOG_PER_HAZE * hv;
+    for (const s of this.screens.values()) this.screenFrame(s, now, hv);
+    for (const s of this.screens.values()) lit([s.light.color.r * 255, s.light.color.g * 255, s.light.color.b * 255], 0.8 * s.light.intensity);
+    // the air glows in the room's light: what all the lights and screens put into it, over a dark base
+    const lift = (v: number) => Math.min(0.5, (AIR_GLOW * v) / 255);
+    this.fog.color.setRGB(0.02 + lift(acc[0]), 0.022 + lift(acc[1]), 0.028 + lift(acc[2]), THREE.SRGBColorSpace);
     this.renderer.render(this.scene, this.camera);
   }
 
-  private screenFrame(s: { feed: ScreenFeed; mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>; light: THREE.PointLight;
-    src: unknown; tex: THREE.Texture | null; sampledAt: number }, now: number) {
+  private screenFrame(s: ScreenObj, now: number, hv: number) {
     const src = s.feed.source;
     if (src !== s.src) {
       s.src = src;
@@ -547,6 +597,17 @@ export class RoomSim {
     } else if (src instanceof HTMLImageElement && s.tex && s.tex.image !== src) {
       s.tex.needsUpdate = true;
     }
+    s.glow.visible = !!src && hv > 0.01;
+    if (s.glow.visible && now - s.glowAt > GLOW_MS) {         // the picture, tiny and blurred, for the glow
+      s.glowAt = now;
+      try {
+        const x = s.glowCv.getContext("2d")!;
+        x.filter = "blur(1.5px)";
+        x.drawImage(src as CanvasImageSource, 0, 0, s.glowCv.width, s.glowCv.height);
+        s.glowTex.needsUpdate = true;
+      } catch { s.glow.visible = false; }
+    }
+    s.glow.material.uniforms.strength.value = hv;
     if (src && now - s.sampledAt > 250) {                     // the picture lights the room a little, in its colour
       s.sampledAt = now;
       try {
@@ -587,7 +648,7 @@ export class RoomSim {
     if (!m) return [];
     const t = performance.now() / 1000;
     const ch = (f: Fixture, i: number) => (f.address == null ? 0 : this.dmx[f.address - 1 + i] ?? 0);
-    const c: Ctx = { ch, t, dt: 0, air: 1, haze: this.haze, size: m.size };
+    const c: Ctx = { ch, t, dt: 0, air: 1, haze: this.haze, size: m.size, lit: () => undefined };
     const out = new Map<string, [string, string][]>();
     for (const p of this.parts) {
       const f = p.f;
