@@ -575,7 +575,9 @@ scenes:
     layers:
       - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
     hits: {styles: [], drop: {depth: 1.0, decay_ms: 500}}
-    tags: {parts: [flash], energy: [0.0, 0.5], moods: [calm, mellow, dreamy, elegant, warm, dark],
+    # every energy: whether the zones rest or flash is the feel's accents and the song's groove (accent_fit), not how
+    # loud the song is against itself
+    tags: {parts: [flash], energy: [0.0, 1.0], moods: [calm, mellow, dreamy, elegant, warm, dark],
            genre_fit: {"*": 0.6}, valence: 0.5, organic: 0.6, density: 0.1}
   flash-waits:
     label: The strobe zones stay dark while the room waits

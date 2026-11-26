@@ -241,6 +241,7 @@ LOOK_REASON_WORDS = {"phrase": "a new phrase", "section": "a new section", "repe
 #: room.look's light_scene_why: the light scene's own reasons, beside LOOK_REASON_WORDS (README S5.24)
 LIGHT_REASON_WORDS = {"feel": "a new feel", "first": "the first light scene", "scenes": "the light scenes changed",
                       "room": "the mode changed what the lights may do", "moment": "the moment changed"}
+GROOVE_SONG_MIN_S = 20.0            # a song's own groove is kept once this much of it has sounded
 GROOVE_TAU_S = 15.0                 # the groove the lights' draw reads: the direction's, averaged over this long
 MOMENT_TRIGGERS = ("lead_in", "waiting", "lull", "song_end")   # the effect triggers a moment fires (never gapped)
 MOMENTS_FALLBACK = {"lull_after_s": 180.0}   # show.yaml lights.moments
@@ -1040,6 +1041,20 @@ class Director:
         self._strobe_paid: Optional[float] = None        # the line of the last big moment a strobe was paid for
         self._groove = 0.0                               # the direction's groove, averaged (GROOVE_TAU_S)
         self._groove_t: Optional[float] = None
+        # each song's own groove, remembered (state dir groove.json): a song's first scenes are drawn before its
+        # groove can be heard, so a song played before starts from what it measured then (sync_eval, 26 Nov: Dancing
+        # Queen drew its first scene on the last song's groove)
+        self._groove_path = self.log_path.parent / "groove.json" if self.log_path is not None else None
+        self._groove_songs: dict[str, float] = {}
+        self._groove_key: Optional[str] = None
+        self._groove_acc = [0.0, 0]                      # this song's sum and count while it sounds
+        self._groove_saved = 0.0
+        try:
+            if self._groove_path is not None and self._groove_path.exists():
+                got = json.loads(self._groove_path.read_text())
+                self._groove_songs = {str(k): float(v) for k, v in got.items() if _num(v) is not None}
+        except (OSError, ValueError):
+            pass
         self._moment = contract.MOMENTS[0]               # the room's moment (contract.MOMENTS): what the lights' scenes
         self._moment_since = 0.0                         # and effects are commissioned for, besides the music
         self._moments_cfg = dict(MOMENTS_FALLBACK)
@@ -2969,6 +2984,33 @@ class Director:
                     picked.append(gid)
         return new, picked
 
+    def _groove_song(self, now_s: float, gv: Optional[float]) -> None:
+        """A new song (the players' key: its source and id or title) starts from the groove it measured last time; a
+        song that sounds adds to its own average, kept after GROOVE_SONG_MIN_S of it and saved now and then."""
+        np_ = _call(getattr(self.ctx, "now_playing", None))
+        key = None
+        if isinstance(np_, dict) and np_.get("key"):
+            key = ":".join(str(np_["key"]).split(":")[:2])    # "karaoke:<song>" (the queue entry left off)
+        if key != self._groove_key:
+            self._groove_key, self._groove_acc = key, [0.0, 0]
+            if key is not None and key in self._groove_songs:
+                self._groove, self._groove_t = self._groove_songs[key], now_s
+        if key is None or gv is None or self._moment != "song" or self._relaxed:
+            return
+        acc = self._groove_acc
+        acc[0] += gv
+        acc[1] += 1
+        if acc[1] >= GROOVE_SONG_MIN_S * contract.BRAIN_TICK_HZ and acc[1] % 50 == 0:
+            self._groove_songs[key] = round(acc[0] / acc[1], 3)
+            if self._groove_path is not None and now_s - self._groove_saved >= 30.0:
+                self._groove_saved = now_s
+                try:
+                    tmp = self._groove_path.with_suffix(".tmp")
+                    tmp.write_text(json.dumps(self._groove_songs))
+                    os.replace(tmp, self._groove_path)
+                except OSError:
+                    log.debug("groove: save failed", exc_info=True)
+
     def _accent_fit(self) -> Optional[dict[str, float]]:
         """lights.programs.accent_fit for the feel's accents style, read at the music's groove (``_groove``: the
         direction's groove, the DSP's rhythmic drive x how sure the beat clock is, averaged over GROOVE_TAU_S): a song
@@ -3296,6 +3338,7 @@ class Director:
                     if got is not None:
                         self._commit_programs(got, now_s)
             gv = _num((self.direction or {}).get("groove"))
+            self._groove_song(now_s, gv)
             if gv is not None:
                 dt = 0.0 if self._groove_t is None else min(1.0, max(0.0, now_s - self._groove_t))
                 self._groove = gv if self._groove_t is None else _ema(self._groove, gv, dt, GROOVE_TAU_S)
