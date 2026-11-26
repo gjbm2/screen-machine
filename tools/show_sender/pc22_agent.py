@@ -12,6 +12,11 @@ WASAPI through ``sounddevice`` (pip install --user sounddevice), 48 kHz mono.
   no_device and it retries.
 - Clock: time.perf_counter_ns() (QueryPerformanceCounter, the clock WASAPI's time_info uses), never monotonic_ns
   (GetTickCount64, 15.6 ms steps) (§3.1, "Sender clock").
+- Loopback (owner, 26 Nov: "I don't want to have to listen to music all the time while I'm testing"): the device list
+  also offers LOOPBACK, "What this computer plays (loopback)", when the ``soundcard`` library is installed (py -3.12 -m
+  pip install --user soundcard). Chosen on the Room page (or the default with --loopback), the stream carries the
+  default speakers' output, captured digitally (WASAPI loopback: the volume can be at zero), instead of a mic: same
+  stream, packets and heartbeats. In silence it carries zeros. Choosing a mic again switches back.
 - show_service (WSL) reaches it at PC22's LAN address; the reply goes back to WSL's own address, so no portproxy.
   Its udp port takes an inbound Windows firewall rule from the WSL subnet only.
 
@@ -44,6 +49,7 @@ MISSING_RESCAN_S = 10.0                                      # the chosen mic is
 MISSING_RESCANS = 3                                          # this many times, then only when Windows' inputs change
                                                              # (each rescan reopens: a gap and a new sess for show_service)
 now_ns = time.perf_counter_ns
+LOOPBACK = "What this computer plays (loopback)"             # the device list's loopback entry (the Room page's words)
 ss.now_ns = now_ns                                           # one clock for everything this process stamps
 
 
@@ -82,6 +88,20 @@ def wasapi_inputs(sd) -> list[tuple[int, str]]:
     devs = sd.query_devices()
     wasapi = next((i for i, h in enumerate(sd.query_hostapis()) if "WASAPI" in h["name"]), None)
     return [(i, d["name"]) for i, d in enumerate(devs) if d["max_input_channels"] > 0 and d["hostapi"] == wasapi]
+
+
+def loopback_ok() -> bool:
+    """The ``soundcard`` library is there (WASAPI loopback; sounddevice's PortAudio here has none)."""
+    try:
+        import soundcard  # noqa: F401
+        return True
+    except Exception:                                       # noqa: BLE001
+        return False
+
+
+def device_names(sd) -> list[str]:
+    """What the Room page may choose from: every WASAPI input, then the loopback when it can be captured."""
+    return [n for _, n in wasapi_inputs(sd)] + ([LOOPBACK] if loopback_ok() else [])
 
 
 def find_input(sd, want: Optional[str], match: Optional[str]) -> Optional[tuple[int, str]]:
@@ -191,11 +211,12 @@ class ListedStream(AudioStream):
         self._cnt = 0
 
 
-def run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: str, raw: bool = False) -> None:
+def run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: str, raw: bool = False,
+               loopback: bool = False) -> None:
     """The capture thread, restarted on any error (logged): it must never die and leave the agent silent."""
     while not stop.is_set():
         try:
-            _run_wasapi(out, stop, match, stream, raw)
+            _run_wasapi(out, stop, match, stream, raw, loopback)
         except Exception:                                   # noqa: BLE001
             log.exception("mic: capture failed; restarting in %.0f s", RETRY_S)
             stop.wait(RETRY_S)
@@ -218,7 +239,8 @@ def _open_raw(sd: Any, idx: int, info: dict, period: int, cb: Any) -> Any:
     return None
 
 
-def _run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: str, raw: bool = False) -> None:
+def _run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: str, raw: bool = False,
+                loopback: bool = False) -> None:
     import sounddevice as sd
 
     choice = Choice(out)
@@ -245,7 +267,7 @@ def _run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: s
                 try:
                     sd._terminate()
                     sd._initialize()
-                    au.devices = [n for _, n in wasapi_inputs(sd)]
+                    au.devices = device_names(sd)
                 except Exception as e:                      # noqa: BLE001
                     log.warning("devices: %s", e)
                 last_scan = time.monotonic()
@@ -254,10 +276,15 @@ def _run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: s
                 last_hb = time.monotonic()
             stop.wait(0.1)
             continue
+        want = choice.want(stream) or (LOOPBACK if loopback else None)
+        if want == LOOPBACK and loopback_ok():
+            last_hb = _run_loopback(au, choice, stream, stop, loopback, last_hb)
+            stop.wait(0.2)
+            continue
         try:
             sd._terminate()                                  # re-scan devices (a replug, a new default)
             sd._initialize()
-            au.devices = [n for _, n in wasapi_inputs(sd)]
+            au.devices = device_names(sd)
             dev = find_input(sd, choice.want(stream), match)
         except Exception as e:                              # PortAudio itself failing: retry
             log.warning("devices: %s", e)
@@ -352,6 +379,50 @@ def _run_wasapi(out: Out, stop: threading.Event, match: Optional[str], stream: s
                         missing_tries = 0
                         break
         stop.wait(0.2)
+
+
+def _run_loopback(au: "ListedStream", choice: "Choice", stream: str, stop: threading.Event, default: bool,
+                  last_hb: float) -> float:
+    """Capture the default speakers' output (WASAPI loopback, ``soundcard``) into ``au`` until the stream isn't wanted,
+    another device is chosen, or the default speakers change. Returns the last heartbeat time."""
+    import warnings
+
+    import soundcard as sc
+    warnings.simplefilter("ignore", category=getattr(sc, "SoundcardRuntimeWarning", RuntimeWarning))
+    spk = sc.default_speaker()
+    mic = sc.get_microphone(id=str(spk.name), include_loopback=True)
+    period = au.frames
+    line = _StampLine()
+    au.dev = LOOPBACK
+    au.restart_sess()                                        # a new source is a new sess
+    log.info("mic: %s (%s)", LOOPBACK, spk.name)
+    next_check = time.monotonic() + CHECK_S
+    with mic.recorder(samplerate=FS, channels=1, blocksize=period) as rec:
+        while not stop.is_set():
+            if choice.mode(stream) != "on":
+                log.info("mic: closing the loopback")
+                break
+            want = choice.want(stream) or (LOOPBACK if default else None)
+            if want != LOOPBACK:
+                log.info("mic: %s chosen; leaving the loopback", want or "the default mic")
+                break
+            pcm = rec.record(numframes=period)               # zeros while nothing plays (soundcard fills the gap)
+            t_cap = line.stamp(now_ns(), period, False)
+            if pcm.ndim == 1:
+                pcm = pcm.reshape(-1, 1)
+            au.packet(np.ascontiguousarray(pcm[:, :1], dtype=np.float32), t_cap)
+            if time.monotonic() - last_hb >= HEARTBEAT_S:
+                au.heartbeat("ok", 1000.0 * period / FS)
+                last_hb = time.monotonic()
+            if time.monotonic() >= next_check:
+                next_check = time.monotonic() + CHECK_S
+                try:
+                    if sc.default_speaker().name != spk.name:
+                        log.info("mic: the default speakers changed; reopening the loopback")
+                        break
+                except Exception:                           # noqa: BLE001
+                    pass
+    return last_hb
 
 
 class _StampLine:
@@ -456,6 +527,8 @@ def main(argv: Optional[list] = None) -> None:
     ap.add_argument("--stream", default="pc22-mic")
     ap.add_argument("--raw", action="store_true",
                     help="WASAPI exclusive: the mic without Windows' echo cancelling and noise suppression")
+    ap.add_argument("--loopback", action="store_true",
+                    help="send what this computer plays (WASAPI loopback) until the Room page chooses a mic")
     ap.add_argument("--log", default=None, help="log to this file (rotated at 1 MB) instead of stderr (pythonw)")
     ap.add_argument("-v", "--verbose", action="store_true")
     a = ap.parse_args(argv)
@@ -468,7 +541,8 @@ def main(argv: Optional[list] = None) -> None:
     out = Out(a.port, a.bind)
     stop = threading.Event()
     threads = [threading.Thread(target=out.serve, args=(stop,), name="net", daemon=True),
-               threading.Thread(target=run_wasapi, args=(out, stop, a.mic_match, a.stream, a.raw), name="mic", daemon=True)]
+               threading.Thread(target=run_wasapi, args=(out, stop, a.mic_match, a.stream, a.raw, a.loopback), name="mic",
+                                daemon=True)]
     for t in threads:
         t.start()
     log.info("pc22-agent on udp %s:%d (%s, vban %s)", a.bind, a.port, a.stream, vban.__name__)
