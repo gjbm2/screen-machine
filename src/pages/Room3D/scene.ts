@@ -22,11 +22,16 @@ const srgb = (c: RGB) => new THREE.Color().setRGB(c[0] / 255, c[1] / 255, c[2] /
 const v3 = (a: Vec3) => new THREE.Vector3(a[0], a[1], a[2]);
 
 // ---- shared pieces -------------------------------------------------------------------------------------------------
-const beamVS = `varying float vY; varying vec3 vN; varying vec3 vV; uniform float len;
+// A beam is clipped to the room's box per pixel (owner, 26 Nov: "edges of your conic haze sections still render past
+// the incident wall"): it ends exactly on the wall, floor or ceiling it meets, however steeply it meets it.
+const beamVS = `varying float vY; varying vec3 vN; varying vec3 vV; varying vec3 vW; uniform float len;
   void main() { vY = position.y / len; vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vW = (modelMatrix * vec4(position, 1.0)).xyz;
     vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`;
-const beamFS = `uniform vec3 color; uniform float opacity; varying float vY; varying vec3 vN; varying vec3 vV;
-  void main() { float core = pow(abs(dot(vN, vV)), 1.6); float fade = 1.0 - 0.55 * clamp(vY, 0.0, 1.0);
+const beamFS = `uniform vec3 color; uniform float opacity; uniform vec3 boxMin; uniform vec3 boxMax;
+  varying float vY; varying vec3 vN; varying vec3 vV; varying vec3 vW;
+  void main() { if (any(lessThan(vW, boxMin)) || any(greaterThan(vW, boxMax))) discard;
+    float core = pow(abs(dot(vN, vV)), 1.6); float fade = 1.0 - 0.55 * clamp(vY, 0.0, 1.0);
     gl_FragColor = vec4(color * opacity * core * fade, 1.0); }`;
 /** An open cone in the air, apex at the origin, along +z (a lens's axis), brightest at its core and near the lens. */
 function beam(radius: number, length: number): THREE.Mesh<THREE.ConeGeometry, THREE.ShaderMaterial> {
@@ -34,7 +39,8 @@ function beam(radius: number, length: number): THREE.Mesh<THREE.ConeGeometry, TH
   g.rotateX(Math.PI);
   g.translate(0, length / 2, 0);
   const m = new THREE.ShaderMaterial({
-    uniforms: { color: { value: new THREE.Color(1, 1, 1) }, opacity: { value: 0 }, len: { value: length } },
+    uniforms: { color: { value: new THREE.Color(1, 1, 1) }, opacity: { value: 0 }, len: { value: length },
+      boxMin: { value: new THREE.Vector3(-1e4, -1e4, -1e4) }, boxMax: { value: new THREE.Vector3(1e4, 1e4, 1e4) } },
     vertexShader: beamVS, fragmentShader: beamFS, transparent: true, depthWrite: false,
     blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
   });
@@ -182,6 +188,12 @@ export class RoomSim {
     for (const p of m.points) if (p.device === "mirror_ball") this.buildBall(v3(p.at));
     this.beams = [];
     this.built.traverse((o) => { if ((o as THREE.Object3D).userData?.beamLen) this.beams.push(o as THREE.Mesh); });
+    const [X, Y, H] = m.size, eps = 0.01;
+    for (const b of this.beams) {
+      const u = (b.material as THREE.ShaderMaterial).uniforms;
+      u.boxMin.value.set(-eps, -eps, -Y - eps);
+      u.boxMax.value.set(X + eps, H + eps, eps);
+    }
     if (first) this.view("side");                          // across the beams: the most readable start
   }
 
@@ -554,7 +566,7 @@ export class RoomSim {
       tip.set(0, 0, 1); b.localToWorld(tip); this.root.worldToLocal(tip);
       const d = tip.sub(o).normalize();
       const hit = hitRoom(o, d, size);
-      b.scale.setScalar(Math.max(0.05, hit.distanceTo(o)) / len);
+      b.scale.setScalar((Math.max(0.05, hit.distanceTo(o)) * 1.8) / len);   // past the wall; the clip cuts it there
     }
   }
 
