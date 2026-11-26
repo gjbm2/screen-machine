@@ -290,6 +290,7 @@ CONTEXT_STALE_S = 3.0               # music.context comes at 1 Hz
 RHYTHM_STALE_S = 1.0                # README S4.6: a music.rhythm frame over 1 s old is stale
 E_HIST_N = 6000                     # energy samples kept for section energies (10 min at 10 Hz)
 SUBDIVISIONS = (0.5, 0.25, 0.125)   # §8.5: a build steps the accent subdivision 1/2 -> 1/4 -> 1/8
+GAP_FREE_TRIGGERS = ("drop", "final_chorus")   # big moments: never held back by lights.programs.effect_gap_bars
 STROBE_MOMENT_S = 4.0               # strobes within this of a spent token are the same big moment (one token)
 TOKEN_WINDOW_S = 3600.0             # peak_tokens_per_hour: at most that many spends in any 60 minutes
 STRUCTURE_REASONS = ("section", "repeat", "drop", "track")   # look changes structure's events caused
@@ -3085,10 +3086,10 @@ class Director:
             return
         if kind in self.lights_cfg["flow"]["events"] and self._flow_heard(ev):
             self._flow_dec.event(kind, at_s, grid.bar_s if grid.has_grid else None)
+        if kind == "section_change" and ev.get("section_kind") == "chorus":    # a karaoke song's lyric plan: first,
+            self._fx_trigger("final_chorus" if ev.get("final") else "chorus", at_s, now_s, grid)   # so it wins the line
         if kind in contract.LIGHT_EFFECT_TRIGGERS:
             self._fx_trigger(kind, at_s, now_s, grid, strength=_num(ev.get("strength")))
-        if kind == "section_change" and ev.get("section_kind") == "chorus":    # a karaoke song's lyric plan
-            self._fx_trigger("final_chorus" if ev.get("final") else "chorus", at_s, now_s, grid)
         if kind in contract.TRACK_EVENT_KINDS:
             self._blinds_follow(ev)
 
@@ -3096,7 +3097,7 @@ class Director:
                     bar: Optional[int] = None) -> None:
         """Fire an effect on each live leading group for ``trigger`` at its line ``at_s`` (Catalogue.pick_effect: its
         chance, its fit), at most lights.programs.effects_max at once and effect_gap_bars apart per group (a drop
-        always may). Never while neutral, House, Low or Keep (owner, 17 Oct). One trigger a beat."""
+        or the last chorus always may). Never while neutral, House, Low or Keep (owner, 17 Oct). One trigger a beat."""
         if not self.pal_on or self.house or self.low or self.keep_until is not None or not self.light_scenes.effects:
             return
         beat = grid.beat_s if grid.has_grid and grid.beat_s else 0.5
@@ -3118,7 +3119,8 @@ class Director:
             if len(active) >= int(pc["effects_max"]):
                 continue
             last = self._fx_last.get(gid)
-            if trigger != "drop" and last is not None and at_s - last < float(pc["effect_gap_bars"]) * bar_s - 1e-6:
+            if trigger not in GAP_FREE_TRIGGERS and last is not None and \
+                    at_s - last < float(pc["effect_gap_bars"]) * bar_s - 1e-6:
                 continue
             try:
                 got = self.light_scenes.pick_effect(g, trigger, self.direction, self._flow, self._fx_rng,

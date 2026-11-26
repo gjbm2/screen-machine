@@ -16,7 +16,7 @@ version: 1
 effects:
   strobe-burst:
     label: Strobe burst
-    on: [drop, final_chorus]
+    on: [drop]
     length: {bars: 1}
     fade: {in_beats: 0, out_beats: 0.5}
     needs: [shutter]
@@ -25,7 +25,7 @@ effects:
     tags: {energy: [0.7, 1.0], moods: [euphoric, aggressive, glitchy], weight: 1.0}
   drop-flash:
     label: Flash on the drop
-    on: [drop, final_chorus]
+    on: [drop]
     length: {beats: 2}
     layers: []
     hits: {styles: [], drop: {depth: 1.0, decay_ms: 600}}
@@ -127,3 +127,12 @@ effects:
     needs: [shutter]
     layers: [{id: strobe, kind: shutter, mode: strobe, hz: [4, 8]}]
     tags: {energy: [0.8, 1.0], moods: [euphoric, aggressive, fiery]}
+  last-chorus-strobe:
+    label: Strobe into the last chorus
+    on: [final_chorus]                      # the only effect on it, so the last chorus always lands (one moment)
+    length: {bars: 2}
+    fade: {in_beats: 0, out_beats: 1}
+    needs: [shutter]
+    layers: [{id: strobe, kind: shutter, mode: strobe, hz: [4, 8]}]
+    hits: {styles: [], drop: {depth: 1.0, decay_ms: 600}}
+    tags: {energy: [0.0, 1.0], weight: 1.0}
