@@ -660,3 +660,8 @@ def test_a_silent_lead_stem_is_separated_again_with_every_voice_out(tmp_path, mo
     assert not (d / "vocals.m4a").exists() and not (d / "sung.json").exists()
     w.check_lead(s["id"], d, d / "source.wav")
     assert len(seps) == 1                                        # once
+
+
+def test_title_cleanup_keeps_a_title_that_ends_in_a_number():
+    assert src._clean_title("9 to 5") == "9 to 5" and src._clean_title("Song 2") == "Song 2"
+    assert src._clean_title("Dancing Queen_copy") == "Dancing Queen" and src._clean_title("Dancing Queen_2") == "Dancing Queen"

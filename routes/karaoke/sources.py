@@ -486,7 +486,7 @@ NOISE = re.compile(r"\s*[\(\[][^\)\]]*\b(official|video|audio|lyrics?|lyric vide
 
 def _clean_title(t: str) -> str:
     t = NOISE.sub("", t)
-    t = re.sub(r"[_ ](copy|\d)$", "", t, flags=re.I)        # LRCLIB uploads: 'Dancing Queen_copy'
+    t = re.sub(r"_(copy|\d)$|\s+copy$", "", t, flags=re.I)  # LRCLIB uploads: "Dancing Queen_copy", "_2" (not "9 to 5", "Song 2")
     t = re.sub(r"^\d{1,2}\s*[-.]\s+", "", t)                 # '01 - Dancing Queen'
     return re.sub(r"\s{2,}", " ", t).strip(" -–—|")
 
