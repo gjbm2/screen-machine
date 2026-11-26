@@ -667,8 +667,9 @@ def test_the_real_catalogue_compiles_against_a_rig_of_movers_and_lamps():
     assert e._program.scene_problems == (), e._program.scene_problems
     for name, sc in e._program.scenes.items():
         for L in sc.layers:                                              # a mover layer reaches the movers only
-            if L.kind == "position":
-                assert set(L.members) == {"mv0", "mv1"}, (name, L.id)
+            if L.kind == "position":                                     # (a layer with its own select: some of them)
+                assert set(L.members) <= {"mv0", "mv1"}, (name, L.id)
+                assert L.members or "-path" in L.id or "-head" in L.id or L.id.endswith(("/hold", "/roam")), (name, L.id)
     box = {"look": look()}
     e.look_fn = lambda: box["look"]
     e.palette_fn = lambda t: {"*": (1.0, 1.0, 1.0)}

@@ -71,8 +71,8 @@ fixtures:
   gigbar-a.derby2: {label: Bar A derby 2, type: gigbar-derby, output: dmx-a, address: 21,  tags: [gigbar, bar-a, derby],
                     pin: {Rotation: 16}}
   gigbar-a.strobe: {label: Bar A strobes, type: gigbar-flash, output: dmx-a, address: 27,  tags: [gigbar, bar-a, strobe]}
-  gigbar-a.spot1:  {label: Bar A spot 1,  type: gigbar-spot,  output: dmx-a, address: 35,  tags: [gigbar, bar-a, spot]}
-  gigbar-a.spot2:  {label: Bar A spot 2,  type: gigbar-spot,  output: dmx-a, address: 44,  tags: [gigbar, bar-a, spot]}
+  gigbar-a.spot1:  {label: Bar A spot 1,  type: gigbar-spot,  output: dmx-a, address: 35,  tags: [gigbar, bar-a, spot, spot-1]}
+  gigbar-a.spot2:  {label: Bar A spot 2,  type: gigbar-spot,  output: dmx-a, address: 44,  tags: [gigbar, bar-a, spot, spot-2]}
 
   gigbar-b.par1:   {label: Bar B par 1,   type: gigbar-par,   output: dmx-a, address: 101, tags: [gigbar, bar-b, par]}
   gigbar-b.par2:   {label: Bar B par 2,   type: gigbar-par,   output: dmx-a, address: 108, tags: [gigbar, bar-b, par]}
@@ -81,8 +81,8 @@ fixtures:
   gigbar-b.derby2: {label: Bar B derby 2, type: gigbar-derby, output: dmx-a, address: 121, tags: [gigbar, bar-b, derby],
                     pin: {Rotation: 16}}
   gigbar-b.strobe: {label: Bar B strobes, type: gigbar-flash, output: dmx-a, address: 127, tags: [gigbar, bar-b, strobe]}
-  gigbar-b.spot1:  {label: Bar B spot 1,  type: gigbar-spot,  output: dmx-a, address: 135, tags: [gigbar, bar-b, spot]}
-  gigbar-b.spot2:  {label: Bar B spot 2,  type: gigbar-spot,  output: dmx-a, address: 144, tags: [gigbar, bar-b, spot]}
+  gigbar-b.spot1:  {label: Bar B spot 1,  type: gigbar-spot,  output: dmx-a, address: 135, tags: [gigbar, bar-b, spot, spot-1]}
+  gigbar-b.spot2:  {label: Bar B spot 2,  type: gigbar-spot,  output: dmx-a, address: 144, tags: [gigbar, bar-b, spot, spot-2]}
 
   # The hazer: the feel's haze runs it (show_service/atmosphere.py; show.yaml lights.atmosphere): the Karaoke mode's
   # singalong feel holds a light haze, filling then holding from the room's size and space.yaml haze_half_life_s.

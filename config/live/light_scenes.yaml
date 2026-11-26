@@ -484,6 +484,74 @@ scenes:
            genre_fit: {disco: 0.9, house: 0.9, techno: 0.9, electronic: 0.85, trance: 0.85, rock: 0.8, pop: 0.7,
                        "*": 0.45}, valence: 0.7, organic: 0.3, density: 0.85, weight: 0.5}
 
+  # -- Movers that don't move in step (owner, 26 Nov: "do gigbars have to move their moving spots in the same
+  # direction at all times? feels like they're always moving in lock step"). Nothing in the rig makes them: every head
+  # is its own light. The scenes above give every head one path with a small lag; these give them different jobs.
+  # A layer's select picks which heads it moves (fixtures.yaml tags: bar-a | bar-b, the two bars; spot-1 | spot-2, the
+  # two heads on each bar); spread_mode: mirror turns one bar's path over. A rig without those tags keeps the layers
+  # it can select.
+  movers-crossing:
+    label: The two bars sweep across each other
+    needs: [pan, tilt]
+    layers:
+      - {id: bar-a-path, kind: position, mode: sweep, select: "tag:bar-a", on: floor, centre: [dance-floor, centre], along: left,
+         size: 2.5, size_deg: 35, ease: sine, phase: bar, period_bars: [4, 2], needs: grid}
+      - {id: bar-b-path, kind: position, mode: sweep, select: "tag:bar-b", on: floor, centre: [dance-floor, centre], along: right,
+         size: 2.5, size_deg: 35, ease: sine, phase: bar, period_bars: [4, 2], needs: grid}
+      - {id: beam, kind: beam, zoom: 12}
+    tags: {energy: [0.4, 0.9], moods: [playful, bright, euphoric, geometric], genre_fit: {pop: 0.85, house: 0.8,
+           disco: 0.8, funk: 0.75, rock: 0.7, "*": 0.4}, valence: 0.7, organic: 0.3, density: 0.6,
+           flow: {dirs: [left, right, inward, outward], honours: false}}
+  movers-counter-circles:
+    label: Circles turning against each other
+    needs: [pan, tilt]
+    layers:
+      - {id: bar-a-path, kind: position, mode: circle, select: "tag:bar-a", on: ceiling, centre: centre, size: 1.2,
+         size_deg: 20, rotate: cw, phase: bar, period_bars: [4, 1], needs: grid, spread_mode: chase, spread: 0.5}
+      - {id: bar-b-path, kind: position, mode: circle, select: "tag:bar-b", on: ceiling, centre: centre, size: 1.2,
+         size_deg: 20, rotate: ccw, phase: bar, period_bars: [4, 1], needs: grid, spread_mode: chase, spread: 0.5}
+      - {id: gobo, kind: gobo, slot: auto, change_on: phrase, spin: flow, spin_scale: 0.4}
+    tags: {energy: [0.3, 0.8], moods: [hypnotic, cosmic, geometric, playful], genre_fit: {house: 0.8, techno: 0.8,
+           disco: 0.8, pop: 0.7, electronic: 0.8, "*": 0.4}, valence: 0.6, organic: 0.3, density: 0.55,
+           flow: {dirs: [cw, ccw], honours: false}}
+  movers-two-hold-two-roam:
+    label: Two heads hold the floor, two roam the ceiling
+    needs: [pan, tilt]
+    layers:
+      - {id: hold, kind: position, mode: drift, select: "tag:spot-1", on: floor, centre: [singer, dance-floor, centre],
+         size: 0.5, size_deg: 6, phase: phrase, needs: none, spread_mode: chase, spread: 0.5}
+      - {id: roam, kind: position, mode: circle, select: "tag:spot-2", on: ceiling, centre: centre, size: 1.5,
+         size_deg: 25, rotate: flow, phase: bar, period_bars: [4, 2], needs: grid, spread_mode: mirror}
+      - {id: beam, kind: beam, zoom: 14}
+    tags: {energy: [0.25, 0.75], moods: [warm, playful, elegant, bright], genre_fit: {pop: 0.85, soul: 0.8, rnb: 0.8,
+           rock: 0.7, folk: 0.7, singer-songwriter: 0.8, "*": 0.45}, valence: 0.6, organic: 0.5, density: 0.4,
+           flow: {dirs: [still, cw, ccw, inward], honours: false}}
+  movers-scissors:
+    label: Each bar's two heads scissor against each other
+    needs: [pan, tilt]
+    layers:
+      - {id: first-head, kind: position, mode: sweep, select: "tag:spot-1", on: floor, centre: [dance-floor, centre], along: left,
+         size: 2.0, size_deg: 30, ease: sine, phase: bar, period_bars: [2, 1], needs: grid}
+      - {id: second-head, kind: position, mode: sweep, select: "tag:spot-2", on: floor, centre: [dance-floor, centre],
+         along: right, size: 2.0, size_deg: 30, ease: sine, phase: bar, period_bars: [2, 1], needs: grid}
+      - {id: beam, kind: beam, zoom: narrow}
+      - {id: pulse, fx: swell, phase: beat, depth: 0.5, needs: beat, without_beat: energy, attack_ms: 40, decay_ms: 220}
+    tags: {energy: [0.55, 1.0], moods: [euphoric, playful, bright, aggressive], genre_fit: {pop: 0.8, house: 0.85,
+           techno: 0.8, rock: 0.8, disco: 0.8, "*": 0.45}, valence: 0.7, organic: 0.25, density: 0.75,
+           flow: {dirs: [left, right, outward, inward], honours: false}}
+  movers-mirror-fans:
+    label: The bars fan open and closed like a mirror
+    needs: [pan, tilt]
+    layers:
+      - {id: fan, kind: position, mode: sweep, on: floor, centre: [dance-floor, centre], along: flow, size: 2.0,
+         size_deg: 30, ease: sine, phase: bar, period_bars: [4, 2], needs: grid, spread_mode: mirror}
+      - {id: lift, kind: position, mode: tilt_wave, size_deg: 12, fx: sine, phase: bar, period_bars: [8, 4], needs: none,
+         spread_mode: chase, spread: 0.5, depth: 0.5}
+      - {id: beam, kind: beam, zoom: 16}
+    tags: {energy: [0.2, 0.7], moods: [elegant, warm, dreamy, liquid, mellow], genre_fit: {soul: 0.8, pop: 0.75,
+           jazz: 0.7, downtempo: 0.75, classical: 0.6, "*": 0.45}, valence: 0.6, organic: 0.5, density: 0.4,
+           flow: {dirs: [outward, inward, left, right], honours: true}}
+
   # -- The room's moments (contract.MOMENTS; owner, 26 Nov: the silent state and the changeover are "all scenes, but
   # expressed on the gigbar objects"). tags.moments: [song | lead_in | waiting | lull] says when a scene is for: in
   # that moment only these are drawn; a scene with no moments is for any moment none of these claims (every scene

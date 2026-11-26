@@ -220,7 +220,11 @@ def test_the_three_real_files_load_clean_and_compile_against_movers_and_lamps(tm
             assert len(sc.layers) == len(c.scenes[name]["layers"]), name
         heads = {f"head.{i}" for i in range(2)}
         for name in [n for n, s in c.scenes.items() if s["needs"]]:
-            assert all(set(L.members) == heads for L in movers[name].layers), name   # each runs on the movers
+            for L, raw in zip(movers[name].layers, c.scenes[name]["layers"]):
+                if raw.get("select") in (None, "*"):
+                    assert set(L.members) == heads, name                 # each runs on the movers
+                else:                                                    # a layer for some of them (a bar, a head)
+                    assert set(L.members) <= heads, name
     groups = ls.group_members(sh["lights"]["groups"], view, lamps=sh.get("lamps"))
     assert groups["lamps"]["members"] == [f"lamp.{i}" for i in range(4)] and groups["*"]["members"] == []
     if "cap" in __import__("show_service.fixtures", fromlist=["x"]).SELECTOR_KEYS:
