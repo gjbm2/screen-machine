@@ -304,6 +304,30 @@ def _repo() -> Path:
     return Path(stream_service.__file__).resolve().parent.parent
 
 
+_HAS: dict = {}
+
+
+def has_pictures(screen: str, ttl_s: float = 60.0) -> bool:
+    """Does this screen's bucket hold any picture the gallery could show?  (the directors' vet: a gallery look on a
+    screen with no bucket draws black; 26 Nov, the laptop's vj during The Sound of Silence).  Cached ttl_s."""
+    import time as _t
+    hit = _HAS.get(screen)
+    now = _t.monotonic()
+    if hit is not None and now - hit[0] < ttl_s:
+        return hit[1]
+    ok = False
+    try:
+        d = output_dir() / screen
+        b = json.loads((d / "bucket.json").read_text())
+        files = [e.get("file") if isinstance(e, dict) else e for e in (b.get("sequence") or [])]
+        files += list(b.get("favorites") or [])
+        ok = any(isinstance(f, str) and (d / f).is_file() for f in files[:400])
+    except Exception:                                    # noqa: BLE001 - no bucket: nothing to show
+        ok = False
+    _HAS[screen] = (now, ok)
+    return ok
+
+
 def output_dir() -> Path:
     """The art directory: SM_OUTPUT_DIR, else the renderer's own --art-dir (stream_service/__main__.py), else its
     default (<repo>/output)."""

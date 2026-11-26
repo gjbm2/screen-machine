@@ -648,7 +648,15 @@ class Session(EngineListener):
         return trip_budget_ms(self.profile.fps) / max(1e-6, self.pixels_ratio())
 
     def auto_ok(self, kind: str, plugin: Optional[str]) -> bool:
-        """May the directors pick this plug-in on their own?  (the vetted pool; manual cues may pick anything)"""
+        """May the directors pick this plug-in on their own?  (the vetted pool; manual cues may pick anything)  The
+        gallery only where this screen's bucket has pictures (none: it draws black)."""
+        if kind == "source" and plugin == "gallery":
+            try:
+                from .plugins.sources.gallery import has_pictures
+                if not has_pictures(self.screen):
+                    return False
+            except Exception:                            # noqa: BLE001 - can't tell: as before
+                pass
         return self.mgr.auto_ok(kind, plugin, self.gpu, self.trip_budget_4k())
 
     # -- room-level direction (rooms.py): one director per room, the room's other screens follow it ----------
