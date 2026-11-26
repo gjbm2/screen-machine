@@ -79,7 +79,7 @@ scroll CW 128-189, stop 190-193, scroll CCW 194-255.
 
 - **The look engine never drives haze; the room's atmosphere does** (owner, 26 Nov; `show_service/atmosphere.py`,
   show.yaml `lights.atmosphere`). The feel says how thick the air should be (vibes.yaml `haze`: off, light, medium
-  or thick; the laptop's Live mode plays the `singalong` feel, which is `light`). The director then holds that density
+  or thick; the laptop's Karaoke mode plays the `singalong` feel, which is `light`). The director then holds that density
   from a model of the air:
   - the room's volume, from space.yaml `room.size`;
   - how fast it clears, from space.yaml `room.haze_half_life_s`. To set it, haze the room, stop the hazer, and time
@@ -201,7 +201,7 @@ The derby motors are pinned to a slow clockwise turn (`Rotation: 16`). 0 stops t
 - Ventilate the room, keep the machine 50 cm from anything, and keep an adult with it at all times (Antari).
 - **No lasers** (§1.1).
 - **Strobes:** light effects can strobe the spots' shutters and the par and derby strobe channels. They fire only in a
-  feel with `strobe: true`. The `singalong` feel (the laptop's Live mode) spends one of its 6 big moments an hour on
+  feel with `strobe: true`. The `singalong` feel (the laptop's Karaoke mode) spends one of its 6 big moments an hour on
   each one: the last chorus, a peak or a drop (owner, 26 Nov). If anyone may be photosensitive, set each light's
   strobe limit (`strobe_hz_max`, which must be above 0) low on the Lights page: about 3 Hz at most, or 1-2 Hz to be
   safe.
