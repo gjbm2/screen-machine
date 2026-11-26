@@ -420,7 +420,8 @@ function perf(now) {
   if (now - fpsAt < 1000) return;
   const fps = frames * 1000 / (now - fpsAt); frames = 0; fpsAt = now;
   const soft = /swiftshader|software|llvmpipe|basic render/i.test(GPU);
-  document.getElementById("perf").innerHTML = `${fps.toFixed(0)} fps · GPU: ${GPU.replace(/^ANGLE \(|\)$/g, "")}` +
+  const hidden = /^brave$/i.test(String(GPU).trim());   // Brave's Shields hide the card's name from pages
+  document.getElementById("perf").innerHTML = `${fps.toFixed(0)} fps · GPU: ${hidden ? "in use (Brave hides its name: see brave://gpu)" : GPU.replace(/^ANGLE \(|\)$/g, "")}` +
     (soft ? ` <span class="bad">(software: turn on Brave's hardware acceleration)</span>` : "");
 }   // for a test harness: read-only use
 </script>
