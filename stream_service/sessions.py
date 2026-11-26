@@ -2620,7 +2620,9 @@ class Session(EngineListener):
                 via_dur = None
                 if want:                              # the a.d.'s move asks for a way in: one of its, by our weights
                     try:
-                        got = self.director.pick_transition(self.mgr.presets.transitions, want=want)
+                        room = (hint - earliest) / land if hint is not None and land > 0.0 else None
+                        got = self.director.pick_transition(self.mgr.presets.transitions, want=want,
+                                                            max_s=max(0.5, room) if room is not None else None)
                         if got is not None:
                             via = got[0]
                             d = (self.mgr.presets.transitions[via].get("params") or {}).get("duration_s")

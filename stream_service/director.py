@@ -795,10 +795,11 @@ class Director:
         return name, f"{name} (p {p:.2f} of {n}{why_extra(notes, tasted(scenes[name].get('source')))})"
 
     def pick_transition(self, transitions: dict[str, dict], prev: Optional[str] = None,
-                        want: Optional[list] = None) -> Optional[tuple[str, str]]:
+                        want: Optional[list] = None, max_s: Optional[float] = None) -> Optional[tuple[str, str]]:
         """``prev``: the transition queued just before this one (upnext.py), else the last one played.  ``want``: the
         art director's move asks for one of these (a preset's name, or a tag word / facet:word of its tags): the
-        draw is among the ones that match, by this director's own weights; none matching: among all, as ever."""
+        draw is among the ones that match, by this director's own weights; none matching: among all, as ever.
+        ``max_s``: of those, the ones whose preset length is at most this (the time left before the line)."""
         auto = self.auto or AUTO_DEFAULTS
         names = [n for n in resolve_pool(auto["transitions"], transitions)
                  if n not in self.bad_transitions and self._vetted("transition", transitions[n].get("transition"))]
@@ -809,6 +810,11 @@ class Director:
                 names_w += [n for n in names if n not in names_w
                             and any(tag_matches(tag_words(transitions[n].get("tags") or {}), w) for w in words)]
             names = names_w or names
+        if max_s is not None:                            # it must fit before the art director's line: the ones no
+            fit = [n for n in names                      # longer than that (by their preset length), when any is
+                   if isinstance((transitions[n].get("params") or {}).get("duration_s"), (int, float))
+                   and transitions[n]["params"]["duration_s"] <= max_s]
+            names = fit or names
         avoid = {prev} if prev else set(list(self.recent_transitions)[-1:])
         got = weighted_pick(names, lambda n: transition_weight(transitions[n].get("tags") or {}, self.direction)
                             * self._rated("transition", transitions[n].get("transition")), self.rng_transition, avoid)

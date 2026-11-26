@@ -155,3 +155,16 @@ def test_while_the_art_director_drives_only_its_change_cuts_and_at_once():
     d.scene_done(102.0)
     assert d.due(120.0)[0] == "max_dwell"
     assert d.hint("section change") and d.due(105.0) is None        # an ordinary hint still waits for min dwell
+
+
+def test_a_moves_transition_is_drawn_from_what_it_asks_for_and_fits_before_the_line():
+    d = Director(validate_auto({"dwell_s": [6, 12]}), dict(DIRECTION_DEFAULTS))
+    tr = {"melt-2s": {"transition": "melt", "params": {"duration_s": 2.0}, "tags": {"family": "warp"}},
+          "hole-5s": {"transition": "hole", "params": {"duration_s": 5.0}, "tags": {"family": "warp"}},
+          "luma-3s": {"transition": "luma", "params": {"duration_s": 3.0}, "tags": {"family": "blend"}},
+          "cut": {"transition": "cut", "params": {"duration_s": 0.0}, "tags": {}}}
+    for _ in range(20):
+        assert d.pick_transition(tr, want=["family:warp"])[0] in ("melt-2s", "hole-5s")
+        assert d.pick_transition(tr, want=["family:warp"], max_s=3.0)[0] == "melt-2s"     # it fits before the line
+        assert d.pick_transition(tr, want=["cut"])[0] == "cut"                             # by name
+        assert d.pick_transition(tr, want=["family:nothing"]) is not None                  # none match: its own pick
