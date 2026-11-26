@@ -11,7 +11,7 @@
 // Links are AppLinks (inside the app: no reload, the dock and the socket stay), and a tap closes the menu.
 
 import type { ReactNode } from "react";
-import { CalendarClock, Download, ExternalLink, Film, Lightbulb, Music, Settings, SlidersHorizontal, Sparkles } from "lucide-react";
+import { CalendarClock, Download, ExternalLink, Film, Lightbulb, Mic2, Music, Settings, SlidersHorizontal, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDeployment } from "@/hooks/useDeployment";
 import { usePublishDestinations } from "@/hooks/usePublishDestinations";
@@ -31,6 +31,7 @@ import {
   DEV_LINKS,
   displayUrl,
   generatorUrl,
+  karaokePageUrl,
   lightsPageUrl,
   musicPageUrl,
   roomPageUrl,
@@ -217,6 +218,9 @@ function MenuBody({
         )}
         {(room.onLan || current === "lights") && (
           <NavRow href={lightsPageUrl()} icon={<Lightbulb className="h-5 w-5" />} label="Lights" hint={lightsHint} current={current === "lights"} onGo={close} testId="menu-lights" />
+        )}
+        {(deployment?.capabilities?.karaoke === true || current === "karaoke") && (
+          <NavRow href={karaokePageUrl()} icon={<Mic2 className="h-5 w-5" />} label="Karaoke" hint="Songs, the queue and the player" current={current === "karaoke"} onGo={close} />
         )}
         <NavRow href={generatorUrl()} icon={<Sparkles className="h-5 w-5" />} label="Generator" hint="Make art for each screen" current={current === "generator"} onGo={close} />
         {admin && (

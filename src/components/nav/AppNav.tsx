@@ -14,26 +14,29 @@
 
 import { useEffect, useLayoutEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
-import { Lamp, Music2, SlidersHorizontal, Sparkles, type LucideIcon } from "lucide-react";
+import { Lamp, Mic2, Music2, SlidersHorizontal, Sparkles, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useRoomGlance } from "./useRoomGlance";
 import { AppLink } from "./AppLink";
 import { RoomThemeStyle, THEME_CLASS } from "@/pages/Room/theme";
-import { PLACES, type AppPage } from "./appNav";
+import { visiblePlaces, type AppPage } from "./appNav";
+import { useDeployment } from "@/hooks/useDeployment";
 import { ModeMenu } from "./ModeMenu";
 
-const NAV_PATHS = /^\/(room|music|lights|settings|scheduler|jobs)?\/?$/;
+const NAV_PATHS = /^\/(room|music|lights|karaoke|settings|scheduler|jobs)?\/?$/;
 const ICONS: Partial<Record<AppPage, LucideIcon>> = {
   room: SlidersHorizontal,
   music: Music2,
   lights: Lamp,
+  karaoke: Mic2,
   generator: Sparkles,
 };
 
 function currentPage(pathname: string): AppPage {
   const top = pathname.split("/")[1] ?? "";
   if (top === "") return "generator";
-  if (top === "room" || top === "music" || top === "lights" || top === "settings" || top === "scheduler" || top === "jobs") return top;
+  if (top === "room" || top === "music" || top === "lights" || top === "karaoke" || top === "settings" || top === "scheduler" || top === "jobs")
+    return top;
   return "other";
 }
 
@@ -49,7 +52,8 @@ export function AppNav() {
   const shown = NAV_PATHS.test(pathname);
   const glance = useRoomGlance();
   const here = currentPage(pathname);
-  const places = PLACES.filter((p) => !p.lan || glance.onLan || p.page === here);
+  const { deployment } = useDeployment();
+  const places = visiblePlaces(here, !!glance.onLan, deployment?.capabilities);
   const topRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLElement>(null);
 

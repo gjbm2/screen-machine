@@ -62,7 +62,6 @@ import {
   Library as LibraryIcon,
   ListEnd,
   ListStart,
-  Mic2,
   Pause,
   Play,
   RotateCcw,
@@ -73,6 +72,8 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { AppMenu } from "@/components/nav/AppMenu";
+import { PageHeader } from "@/components/nav/PageHeader";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Drawer, DrawerContent, DrawerDescription, DrawerHeader, DrawerTitle } from "@/components/ui/drawer";
@@ -143,6 +144,7 @@ export default function KaraokePage() {
   const [err, setErr] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [libOpen, setLibOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   // On a phone, once the player has scrolled out of sight, a slim copy of it rides the top of the screen (laid over
   // the page: nothing in the page changes size, so the scroll never jumps; 26 Nov the in-page version flickered).
   const playerRef = useRef<HTMLDivElement>(null);
@@ -307,11 +309,7 @@ export default function KaraokePage() {
     <div className={cn(THEME_CLASS, "min-h-screen bg-background text-base text-foreground antialiased")}>
       <RoomThemeStyle />
       <div className="mx-auto w-full max-w-3xl px-4 pb-16 sm:px-6 lg:max-w-7xl">
-        <header className="flex items-center gap-2 pb-3 pt-5">
-          <h1 className="flex items-center gap-2 text-2xl font-semibold">
-            <Mic2 className="h-6 w-6 text-primary" /> Karaoke
-          </h1>
-        </header>
+        <PageHeader title="Karaoke" current="karaoke" onMenu={() => setMenuOpen(true)} />
         {err && (
           <Notice tone="bad" className="mb-3">
             Can't reach the karaoke: {err}
@@ -358,15 +356,16 @@ export default function KaraokePage() {
         </DrawerContent>
       </Drawer>
       {st && pinned && (
-        <div className="fixed inset-x-0 top-0 z-40 px-3 pt-[max(0.5rem,env(safe-area-inset-top))] motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-2 lg:hidden">
+        <div className="fixed inset-x-0 top-[var(--app-nav-top,0px)] z-40 px-3 pt-[max(0.5rem,env(safe-area-inset-top))] motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-2 lg:hidden">
           <div className="mx-auto max-w-3xl">
             <NowPlaying st={st} skew={skewRef.current} songs={songs} act={act} compact />
           </div>
         </div>
       )}
+      <AppMenu open={menuOpen} onOpenChange={setMenuOpen} current="karaoke" />
       {st && artist && <ArtistSongs name={artist} songs={st.songs} act={act} onClose={() => setArtist(null)} />}
       {toast && (
-        <div className="fixed inset-x-0 bottom-[calc(max(0.75rem,env(safe-area-inset-bottom))+4.75rem)] z-50 mx-auto w-fit max-w-[calc(100vw-2rem)] rounded-full bg-stone-900/90 px-4 py-2.5 text-[15px] font-medium text-white shadow-lg">
+        <div className="fixed inset-x-0 bottom-[calc(max(0.75rem,env(safe-area-inset-bottom))+4.75rem+var(--app-nav-bottom,0px))] z-50 mx-auto w-fit max-w-[calc(100vw-2rem)] rounded-full bg-stone-900/90 px-4 py-2.5 text-[15px] font-medium text-white shadow-lg">
           {toast}
         </div>
       )}
@@ -1170,7 +1169,7 @@ function Find({
   // bottom of viewport": CSS sticky does exactly that). The results open upwards over the page; the library icon
   // opens the library as a tray.
   return (
-    <div className="sticky bottom-0 z-40 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1">
+    <div className="sticky bottom-[calc(var(--dock-h,0px)+var(--app-nav-bottom,0px))] z-40 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1">
       <div className="relative">
         {open && (
           <section

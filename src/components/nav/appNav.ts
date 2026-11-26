@@ -7,7 +7,7 @@
 
 import { rendererConsoleUrl, roomApi, roomPageUrl, roomStatusUrl } from "@/components/room/roomLink";
 
-export type AppPage = "generator" | "room" | "music" | "lights" | "settings" | "scheduler" | "jobs" | "other";
+export type AppPage = "generator" | "room" | "music" | "lights" | "karaoke" | "settings" | "scheduler" | "jobs" | "other";
 
 /** The generator (home page), opened on a screen's tab with ?publish=<id>. */
 export function generatorUrl(screen?: string | null): string {
@@ -40,6 +40,11 @@ export function lightsPageUrl(): string {
   return "/lights";
 }
 
+/** Karaoke: the songs, the queue and the player (docs/KARAOKE.md). Only where the deployment has karaoke. */
+export function karaokePageUrl(): string {
+  return "/karaoke";
+}
+
 /** Light setup, inside Settings: add, name and place lights, add and learn remote-controlled appliances. `light`
  *  opens that light's row. */
 export function lightSetupUrl(opts: { tab?: "map" | null; light?: string | null } = {}): string {
@@ -61,13 +66,23 @@ export function dspMonitorUrl(): string {
 }
 
 /** The places row under every page's title (PageHeader.tsx), in this order. `lan`: shown only while the room
- *  answers (or on that page itself). */
-export const PLACES: Array<{ page: AppPage; label: string; href: () => string; lan?: boolean }> = [
+ *  answers (or on that page itself). `capability`: shown only where the deployment has it on (or on that page). */
+export type Place = { page: AppPage; label: string; href: () => string; lan?: boolean; capability?: string };
+export const PLACES: Place[] = [
   { page: "generator", label: "Generator", href: () => generatorUrl() },
   { page: "room", label: "Room", href: () => roomPageUrl(), lan: true },
   { page: "music", label: "Music", href: () => musicPageUrl(), lan: true },
   { page: "lights", label: "Lights", href: () => lightsPageUrl(), lan: true },
+  { page: "karaoke", label: "Karaoke", href: () => karaokePageUrl(), capability: "karaoke" },
 ];
+
+/** The places to show: the room's only while it answers, a capability's only where it is on (unknown while the
+ *  deployment loads: hidden), and always the page you are on. */
+export function visiblePlaces(here: AppPage, onLan: boolean, capabilities: Record<string, boolean> | undefined): Place[] {
+  return PLACES.filter(
+    (p) => p.page === here || ((!p.lan || onLan) && (!p.capability || capabilities?.[p.capability] === true)),
+  );
+}
 
 /** Tools for the house PC, LAN only, each in a new tab. */
 export const TOOL_LINKS: Array<{ label: string; hint: string; href: () => string }> = [

@@ -39,7 +39,8 @@ import { NoteLine, useShowFeed } from "@/pages/Room/MusicCard";
 import { TopToggleButtons, topToggleWords, useTopToggles, type TopToggles } from "@/pages/Room/TopToggles";
 import type { PcLoad } from "@/pages/Room/usePcLoad";
 import { AppLink } from "./AppLink";
-import { PLACES, roomPageUrl, type AppPage } from "./appNav";
+import { roomPageUrl, visiblePlaces as placesFor, type AppPage } from "./appNav";
+import { useDeployment } from "@/hooks/useDeployment";
 import { APP_NAV_ACTIONS_ID, useAppNavShown } from "./AppNav";
 import { BackLink, placeName } from "./BackLink";
 import { ModeMenu } from "./ModeMenu";
@@ -251,7 +252,8 @@ function HeaderBody({
   const pcBusy = !!pc?.busy;
   const statusShown = !!status && status.tone !== "ok";
 
-  const visiblePlaces = places ? PLACES.filter((p) => !p.lan || glance.onLan || p.page === current) : [];
+  const { deployment } = useDeployment();
+  const visiblePlaces = places ? placesFor(current, !!glance.onLan, deployment?.capabilities) : [];
   // the tabs are on the places themselves, where this page's highlighted tab is the title (no second "Room" beside
   // the Room tab); a sub-page has its back link and title instead ("‹ Room" beside a Room tab said it twice), and the
   // menu has every place
