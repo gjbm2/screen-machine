@@ -45,7 +45,7 @@ SCENES = {
 def test_the_movers_pick_favours_what_fits_the_picture():
     f = pic.prefer(SCENES, {"name": "t", "dir": "inward", "pace": 0.75, "busy": 0.9})
     assert f["converge"] > 1.5 and f["fan-out"] < 0.7          # with the picture / against it
-    assert f["wave"] > 1.0                                      # honours the flow: fits any direction
+    assert 1.0 < f["wave"] < f["converge"]                      # honours the flow: fits, but isn't the shape itself
     assert f["ballyhoo"] < 0.7                                  # busy movement over a busy picture
     assert "pulse" not in f                                     # it doesn't move: left alone
     sparse = pic.prefer(SCENES, {"name": "t", "dir": None, "pace": 0.9, "busy": 0.1})

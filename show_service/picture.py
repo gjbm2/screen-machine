@@ -21,8 +21,8 @@ words and the preset's name (WORDS below): a first pass, on paper. config/live/s
   * the flow: the scene showing votes its ``dir`` into the room's flow (show.yaml lights.flow.sources.screen), so the
     movers' flow-following scenes, the glitterball and every wave turn the way the picture travels;
   * the movers' pick (``prefer``): at a look change each light scene's weight is multiplied by how well it fits the
-    scene queued NEXT (the one this look will show): x ``DIR_FIT`` when its flow tags name the picture's dir (or it
-    honours the flow), x ``DIR_AGAINST`` when they name only the opposite; closer to the picture's pace is better
+    scene queued NEXT (the one this look will show): x ``DIR_FIT`` when its flow tags name the picture's dir, x
+    ``DIR_AGAINST`` for its opposite, x ``DIR_HONOURS`` when it only follows the room's flow, x ``DIR_OTHER`` else; closer to the picture's pace is better
     (x 1 .. ``PACE_FAR``); and complexity contrasts: a busy picture wants simple movement, a sparse one lets the
     lights carry more (``BUSY_*``).
 """
@@ -83,8 +83,10 @@ WORDS: tuple[tuple[str, float, str], ...] = (
 _WORDS = tuple((d, w, re.compile(p, re.I)) for d, w, p in WORDS)
 MIN_SCORE = 1.0                 # a direction needs this much to be read at all
 #: ``prefer``'s factors (starting points)
-DIR_FIT = 1.8                   # the light scene's flow tags name the picture's direction (or it honours the flow)
-DIR_AGAINST = 0.6               # they name only its opposite
+DIR_FIT = 2.5                   # the light scene's flow tags name the picture's direction: its own shape
+DIR_AGAINST = 0.5               # they name its opposite
+DIR_HONOURS = 1.2               # they name neither, but its layers follow the room's flow (which the picture leads)
+DIR_OTHER = 0.8                 # they name other directions only
 PACE_FAR = 0.5                  # the scene's energy band is a whole scale away from the picture's pace
 BUSY_HIGH, BUSY_LOW = 0.7, 0.3  # a busy picture / a sparse one (busy_pct)
 BUSY_ON_BUSY = 0.6              # busy movement over a busy picture
@@ -213,10 +215,14 @@ def prefer(scenes: Mapping[str, Mapping[str, Any]], pic: Optional[Mapping[str, A
         fl = tags.get("flow") if isinstance(tags.get("flow"), Mapping) else {}
         dirs = set(fl.get("dirs") or ())
         if d:
-            if d in dirs or fl.get("honours"):
+            if d in dirs:
                 f *= DIR_FIT
             elif OPPOSITE.get(d) in dirs:
                 f *= DIR_AGAINST
+            elif fl.get("honours"):
+                f *= DIR_HONOURS
+            elif dirs:
+                f *= DIR_OTHER
         band = tags.get("energy")
         if pace is not None and isinstance(band, (list, tuple)) and len(band) == 2:
             mid = (float(band[0]) + float(band[1])) / 2.0
