@@ -1,0 +1,278 @@
+{
+  "$schema": "https://raw.githubusercontent.com/OpenLightingProject/open-fixture-library/master/schemas/fixture.json",
+  "name": "GigBAR MOVE + ILS laser (part)",
+  "shortName": "GigBAR Move laser",
+  "categories": [
+    "Laser"
+  ],
+  "meta": {
+    "authors": [
+      "screen-machine (hand-written from the maker's manual; not from open-fixture-library.org)"
+    ],
+    "createDate": "2026-11-26",
+    "lastModifyDate": "2026-11-26"
+  },
+  "comment": "One part of the Chauvet DJ GigBAR MOVE + ILS, patched as its own fixture at the bar's start address plus the part's offset (docs/GIGBAR_RIG.md). The bar itself must be in its 52CH (Version 2) or 50CH DMX mode. CLASS 3R LASER: the manual requires 3 m between the floor and the lowest beam and 3 m from the audience. Not patched by default; never let the look engine drive it.",
+  "links": {
+    "manual": [
+      "https://www.farnell.com/datasheets/4127597.pdf",
+      "https://goknight.com/content/documentation/GigBAR_MOVE_ILS_US_UM_ML5_Rev8.pdf"
+    ]
+  },
+  "physical": {
+    "bulb": {
+      "type": "Laser"
+    },
+    "lens": {
+      "degreesMinMax": [
+        93,
+        93
+      ]
+    }
+  },
+  "availableChannels": {
+    "Laser": {
+      "capabilities": [
+        {
+          "dmxRange": [
+            0,
+            5
+          ],
+          "type": "Effect",
+          "effectName": "Blackout"
+        },
+        {
+          "dmxRange": [
+            6,
+            41
+          ],
+          "type": "Effect",
+          "effectName": "Red"
+        },
+        {
+          "dmxRange": [
+            42,
+            77
+          ],
+          "type": "Effect",
+          "effectName": "Green"
+        },
+        {
+          "dmxRange": [
+            78,
+            113
+          ],
+          "type": "Effect",
+          "effectName": "Blue"
+        },
+        {
+          "dmxRange": [
+            114,
+            149
+          ],
+          "type": "Effect",
+          "effectName": "Red + green"
+        },
+        {
+          "dmxRange": [
+            150,
+            185
+          ],
+          "type": "Effect",
+          "effectName": "Red + blue"
+        },
+        {
+          "dmxRange": [
+            186,
+            221
+          ],
+          "type": "Effect",
+          "effectName": "Green + blue"
+        },
+        {
+          "dmxRange": [
+            222,
+            255
+          ],
+          "type": "Effect",
+          "effectName": "Red + green + blue"
+        }
+      ]
+    },
+    "Laser strobe": {
+      "capabilities": [
+        {
+          "dmxRange": [
+            0,
+            255
+          ],
+          "type": "Effect",
+          "effectName": "Laser strobe",
+          "speedStart": "slow",
+          "speedEnd": "fast"
+        }
+      ]
+    },
+    "Laser rotation": {
+      "capabilities": [
+        {
+          "dmxRange": [
+            0,
+            0
+          ],
+          "type": "Rotation",
+          "speed": "stop",
+          "comment": "Laser stop"
+        },
+        {
+          "dmxRange": [
+            1,
+            127
+          ],
+          "type": "Rotation",
+          "speedStart": "slow CW",
+          "speedEnd": "fast CW"
+        },
+        {
+          "dmxRange": [
+            128,
+            128
+          ],
+          "type": "Rotation",
+          "speed": "stop",
+          "comment": "Laser stop"
+        },
+        {
+          "dmxRange": [
+            129,
+            255
+          ],
+          "type": "Rotation",
+          "speedStart": "slow CCW",
+          "speedEnd": "fast CCW"
+        }
+      ]
+    },
+    "Laser (old)": {
+      "capabilities": [
+        {
+          "dmxRange": [
+            0,
+            0
+          ],
+          "type": "Effect",
+          "effectName": "Blackout"
+        },
+        {
+          "dmxRange": [
+            1,
+            36
+          ],
+          "type": "Effect",
+          "effectName": "Image color"
+        },
+        {
+          "dmxRange": [
+            37,
+            71
+          ],
+          "type": "Effect",
+          "effectName": "Red"
+        },
+        {
+          "dmxRange": [
+            72,
+            73
+          ],
+          "type": "NoFunction"
+        },
+        {
+          "dmxRange": [
+            74,
+            107
+          ],
+          "type": "Effect",
+          "effectName": "Green"
+        },
+        {
+          "dmxRange": [
+            108,
+            110
+          ],
+          "type": "NoFunction"
+        },
+        {
+          "dmxRange": [
+            111,
+            143
+          ],
+          "type": "Effect",
+          "effectName": "Blue"
+        },
+        {
+          "dmxRange": [
+            144,
+            147
+          ],
+          "type": "NoFunction"
+        },
+        {
+          "dmxRange": [
+            148,
+            179
+          ],
+          "type": "Effect",
+          "effectName": "Red + green"
+        },
+        {
+          "dmxRange": [
+            180,
+            184
+          ],
+          "type": "NoFunction"
+        },
+        {
+          "dmxRange": [
+            185,
+            215
+          ],
+          "type": "Effect",
+          "effectName": "Red + blue"
+        },
+        {
+          "dmxRange": [
+            216,
+            221
+          ],
+          "type": "NoFunction"
+        },
+        {
+          "dmxRange": [
+            222,
+            255
+          ],
+          "type": "Effect",
+          "effectName": "Green + blue"
+        }
+      ]
+    }
+  },
+  "modes": [
+    {
+      "name": "part-52ch",
+      "shortName": "3ch",
+      "channels": [
+        "Laser",
+        "Laser strobe",
+        "Laser rotation"
+      ]
+    },
+    {
+      "name": "part-50ch",
+      "shortName": "1ch",
+      "channels": [
+        "Laser (old)"
+      ]
+    }
+  ]
+}

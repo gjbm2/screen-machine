@@ -1,0 +1,120 @@
+{
+  "$schema": "https://raw.githubusercontent.com/OpenLightingProject/open-fixture-library/master/schemas/fixture.json",
+  "name": "GigBAR MOVE + ILS par (part)",
+  "shortName": "GigBAR Move par",
+  "categories": [
+    "Color Changer"
+  ],
+  "meta": {
+    "authors": [
+      "screen-machine (hand-written from the maker's manual; not from open-fixture-library.org)"
+    ],
+    "createDate": "2026-11-26",
+    "lastModifyDate": "2026-11-26"
+  },
+  "comment": "One part of the Chauvet DJ GigBAR MOVE + ILS, patched as its own fixture at the bar's start address plus the part's offset (docs/GIGBAR_RIG.md). The bar itself must be in its 52CH (Version 2) or 50CH DMX mode.",
+  "links": {
+    "manual": [
+      "https://www.farnell.com/datasheets/4127597.pdf",
+      "https://goknight.com/content/documentation/GigBAR_MOVE_ILS_US_UM_ML5_Rev8.pdf"
+    ]
+  },
+  "physical": {
+    "bulb": {
+      "type": "LED"
+    },
+    "lens": {
+      "degreesMinMax": [
+        22,
+        22
+      ]
+    }
+  },
+  "availableChannels": {
+    "Red": {
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "Red"
+      }
+    },
+    "Green": {
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "Green"
+      }
+    },
+    "Blue": {
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "Blue"
+      }
+    },
+    "Amber": {
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "Amber"
+      }
+    },
+    "White": {
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "White"
+      }
+    },
+    "UV": {
+      "capability": {
+        "type": "ColorIntensity",
+        "color": "UV"
+      }
+    },
+    "Strobe": {
+      "capabilities": [
+        {
+          "dmxRange": [
+            0,
+            5
+          ],
+          "type": "ShutterStrobe",
+          "shutterEffect": "Open",
+          "comment": "Par: no strobe (assumed; the manual starts strobe at 000)"
+        },
+        {
+          "dmxRange": [
+            6,
+            250
+          ],
+          "type": "ShutterStrobe",
+          "shutterEffect": "Strobe",
+          "speedStart": "1Hz",
+          "speedEnd": "30Hz",
+          "comment": "spec sheet: strobe rate 0-30 Hz"
+        },
+        {
+          "dmxRange": [
+            251,
+            255
+          ],
+          "type": "ShutterStrobe",
+          "shutterEffect": "Strobe",
+          "soundControlled": true,
+          "comment": "Strobe to sound"
+        }
+      ]
+    }
+  },
+  "modes": [
+    {
+      "name": "part",
+      "shortName": "7ch",
+      "channels": [
+        "Red",
+        "Green",
+        "Blue",
+        "Amber",
+        "White",
+        "UV",
+        "Strobe"
+      ]
+    }
+  ]
+}

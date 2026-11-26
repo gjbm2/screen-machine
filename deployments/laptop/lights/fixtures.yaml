@@ -1,0 +1,80 @@
+# deployments/laptop/lights/fixtures.yaml: the laptop rig's lights (show_service/README.md S5.2 is the schema;
+# docs/GIGBAR_RIG.md is the walkthrough). Two Chauvet DJ GigBAR MOVE + ILS and an Antari Z-350 Fazer on one Ethernet
+# DMX node, wired straight to the laptop's USB-C Ethernet adapter. show_service re-reads this file every 2 s; a bad
+# edit keeps the last good one (GET /show/api/v1/rig shows the problems). The Lights page writes its own lights to
+# fixtures.added.yaml beside this one; this file wins on an id clash.
+# YAML note: on/off/yes/no are booleans in this parser, so write true/false.
+#
+# The types are shared (config/room/fixture-types/ofl/, hand-written from the makers' manuals), so PC22 or any other
+# deployment can patch the same lights: copy the types, fixtures and groups blocks and change the node and output.
+
+version: 1
+
+nodes:
+  node-dmx:
+    # The laptop's own link: the adapter is 192.168.50.1/24, the node 192.168.50.10/24 (both static, set by hand;
+    # docs/GIGBAR_RIG.md §2). Unicast from WSL goes out through Windows' NAT, so no broadcast and no firewall rule.
+    # match: {short_name: "<as the node reports it>"}   # unset: any ArtPollReply from last_ip counts
+    last_ip: 192.168.50.10
+    # failsafe: hold                        # ArtAddress AcFail: set only if the node honours it (the bars hold the
+                                            # last frame on DMX loss by themselves)
+
+outputs:
+  dmx-a:
+    driver: artnet
+    enabled: true
+    node: node-dmx
+    port_address: 1                         # Art-Net Net 0, Sub-Net 0, Universe 1 on the node's DMX port (0 is
+                                            # refused: room_service's virtual universe)
+
+types:
+  # GigBAR MOVE + ILS, patched part by part (show_service drives one colour and one pan/tilt per fixture). Each bar is
+  # in its 52CH DMX mode (Version 2 units, manual Rev. 10). An older 50CH unit: the same parts, with the spots at
+  # +32 and +41 instead of +34 and +43, and the laser one channel (gigbar-laser-50).
+  gigbar-par:   {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-par.json, mode: part}     # RGBAW + UV, strobe
+  gigbar-derby: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-derby.json, mode: part}   # RGBW, strobe, motor
+  gigbar-spot:  {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-spot.json, mode: part}    # moving head
+  # Declared for the Lights page, not patched: the four white strobes (no strobe-only role yet: patched, they would
+  # glow white with every look) and the class 3R laser (the manual wants 3 m above the floor and 3 m from people).
+  # Their channels stay at 0, which is dark.
+  gigbar-flash: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-flash.json, mode: part}
+  gigbar-laser: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-laser.json, mode: part-52ch}
+  # gigbar-laser-50: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-laser.json, mode: part-50ch}
+  z-350: {source: ofl, file: ofl/antari/z-350.json, mode: 2-channel}   # haze, fan: never driven by a look
+
+# Address plan (universe 1): bar A at 1 (1-52), bar B at 101 (101-152), the hazer at 201 (201-202).
+# Part offsets in a 52CH bar: par 1 +0, par 2 +7, derby 1 +14, derby 2 +20, strobes +26 (unpatched), laser +31
+# (unpatched), spot 1 +34, spot 2 +43. "A" is the bar on the left as the room faces the screen (swap the start
+# addresses on the bars if they end up the other way round). The derby motors are pinned to a slow clockwise turn
+# (a starting point: 0 stops them, 1-127 is slow to fast).
+fixtures:
+  gigbar-a.par1:   {label: Bar A par 1,   type: gigbar-par,   output: dmx-a, address: 1,   tags: [gigbar, bar-a, par]}
+  gigbar-a.par2:   {label: Bar A par 2,   type: gigbar-par,   output: dmx-a, address: 8,   tags: [gigbar, bar-a, par]}
+  gigbar-a.derby1: {label: Bar A derby 1, type: gigbar-derby, output: dmx-a, address: 15,  tags: [gigbar, bar-a, derby],
+                    pin: {Rotation: 16}}
+  gigbar-a.derby2: {label: Bar A derby 2, type: gigbar-derby, output: dmx-a, address: 21,  tags: [gigbar, bar-a, derby],
+                    pin: {Rotation: 16}}
+  gigbar-a.spot1:  {label: Bar A spot 1,  type: gigbar-spot,  output: dmx-a, address: 35,  tags: [gigbar, bar-a, spot]}
+  gigbar-a.spot2:  {label: Bar A spot 2,  type: gigbar-spot,  output: dmx-a, address: 44,  tags: [gigbar, bar-a, spot]}
+
+  gigbar-b.par1:   {label: Bar B par 1,   type: gigbar-par,   output: dmx-a, address: 101, tags: [gigbar, bar-b, par]}
+  gigbar-b.par2:   {label: Bar B par 2,   type: gigbar-par,   output: dmx-a, address: 108, tags: [gigbar, bar-b, par]}
+  gigbar-b.derby1: {label: Bar B derby 1, type: gigbar-derby, output: dmx-a, address: 115, tags: [gigbar, bar-b, derby],
+                    pin: {Rotation: 16}}
+  gigbar-b.derby2: {label: Bar B derby 2, type: gigbar-derby, output: dmx-a, address: 121, tags: [gigbar, bar-b, derby],
+                    pin: {Rotation: 16}}
+  gigbar-b.spot1:  {label: Bar B spot 1,  type: gigbar-spot,  output: dmx-a, address: 135, tags: [gigbar, bar-b, spot]}
+  gigbar-b.spot2:  {label: Bar B spot 2,  type: gigbar-spot,  output: dmx-a, address: 144, tags: [gigbar, bar-b, spot]}
+
+  # The hazer: both channels hold their pin (0 = no haze, fan 20%). For haze, raise Haze here (5-255 = 1-100%; start
+  # around 40) or pick it on the Lights page's More. It heats for about 4.5 min once DMX arrives.
+  hazer:           {label: Hazer, type: z-350, output: dmx-a, address: 201, tags: [haze], pin: {Haze: 0, Fan: 0}}
+
+groups:
+  around:                                   # light scenes chase and wave round this order: left to right along the bars
+    select: "tag:par | tag:derby"
+    order: [gigbar-a.par1, gigbar-a.derby1, gigbar-a.derby2, gigbar-a.par2,
+            gigbar-b.par1, gigbar-b.derby1, gigbar-b.derby2, gigbar-b.par2]
+  pars: {select: "tag:par"}
+  derbies: {select: "tag:derby"}
+  spots: {select: "tag:spot"}

@@ -1,0 +1,84 @@
+{
+  "$schema": "https://raw.githubusercontent.com/OpenLightingProject/open-fixture-library/master/schemas/fixture.json",
+  "name": "Z-350 Fazer",
+  "categories": [
+    "Hazer"
+  ],
+  "meta": {
+    "authors": [
+      "screen-machine (hand-written from the maker's manual; not from open-fixture-library.org)"
+    ],
+    "createDate": "2026-11-26",
+    "lastModifyDate": "2026-11-26"
+  },
+  "comment": "Antari Z-350 Fazer. DMX address on the rear DIP switch; 3-pin XLR DMX in. Warm-up about 4.5 min. With DMX present it heats on its own; when DMX stops it runs a self-clean and sleeps (Antari's flyer).",
+  "links": {
+    "manual": [
+      "https://antari.com/wp-content/uploads/Z-350.pdf"
+    ]
+  },
+  "physical": {
+    "dimensions": [
+      320,
+      391,
+      153
+    ],
+    "weight": 8.5,
+    "power": 750
+  },
+  "availableChannels": {
+    "Haze": {
+      "capabilities": [
+        {
+          "dmxRange": [
+            0,
+            4
+          ],
+          "type": "FogOutput",
+          "fogOutput": "off",
+          "comment": "Haze off"
+        },
+        {
+          "dmxRange": [
+            5,
+            255
+          ],
+          "type": "FogOutput",
+          "fogOutputStart": "1%",
+          "fogOutputEnd": "100%",
+          "comment": "Haze 1-100%"
+        }
+      ]
+    },
+    "Fan": {
+      "capabilities": [
+        {
+          "dmxRange": [
+            0,
+            4
+          ],
+          "type": "Generic",
+          "comment": "Fan 20%"
+        },
+        {
+          "dmxRange": [
+            5,
+            255
+          ],
+          "type": "Generic",
+          "comment": "Fan 21-100%"
+        }
+      ]
+    }
+  },
+  "modes": [
+    {
+      "name": "2-channel",
+      "shortName": "2ch",
+      "channels": [
+        "Haze",
+        "Fan"
+      ]
+    }
+  ]
+}
