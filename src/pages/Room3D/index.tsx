@@ -122,8 +122,8 @@ export default function Room3DPage() {
           {!dmxLive ? `no DMX from the virtual node (${node})` : artLive ? `Art-Net ${a?.pps}/s · universe ${nodeSt?.node?.universe}${a?.merging ? " · MERGING" : ""}` : "node up, no Art-Net (holding)"}
         </span>
         <span className="flex-1" />
-        <label className={`${pill} cursor-pointer`} title="draw beams only as visible as the simulated haze makes them">
-          <input type="checkbox" checked={realHaze} onChange={(e) => setRealHaze(e.target.checked)} /> haze-true
+        <label className={`${pill} cursor-pointer`} title="Off: every beam is drawn half-visible, as if the room were always hazy. On: a beam shows only as much as the simulated haze from the hazer's DMX allows (none without haze).">
+          <input type="checkbox" checked={realHaze} onChange={(e) => setRealHaze(e.target.checked)} /> Beams: only as visible as the haze
         </label>
         {(["front", "side", "above"] as const).map((v) => (
           <button key={v} className="rounded border border-[#2c3346] bg-[#1a1e2a] px-2 py-0.5 capitalize" onClick={() => simRef.current?.view(v)}>{v}</button>
