@@ -274,3 +274,27 @@ virtual node: Art-Net in -> DMX out at 40 Hz (holds the last frame when Art-Net 
    - The bars in DMX mode, with RF, FOOT and D-Fi off: Halo's quote includes RF remotes and foot controllers.
    - The laser key left out.
 
+## 8. The laptop rig's room (provisional, 26 Nov)
+
+`deployments/laptop/lights/space.yaml` (hand file):
+- **The room:** 5 m east–west by 10 m north–south, with a 4 m ceiling.
+- **The bars:** on tripods in the east corners, A NE and B SE, 10 m apart. The bar bodies are at 2.5 m, 0.4 m in from
+  the walls, each turned to the room's centre.
+- **The karaoke picture:** about 2 m wide, projected on the east wall between the bars (assumed 16:9, centre 2 m up).
+- **The heads:** hand-set poses, standing upright with pan 0 facing the room's centre (not taught).
+- **Their rest** (`fixtures.setup.yaml` `home`, set through the setup API): the middle of the west wall at 3 m,
+  opposite the picture and above people's heads.
+
+**Tilt finding:** with the spec sheet's 180° tilt, an upright head reaches only from straight up down to horizontal
+(2.68 m). It can never light the floor: the dance floor's centre is about 28° below horizontal. The director's floor
+scenes ("Still pools of light") therefore clamp the heads at horizontal. The menu's Tilt Range 270 would reach 45°
+below horizontal. Check what the real bars do, then set the menu and the spot type's tilt (`gigbar-move-ils-spot.json`
+`tiltMax`, and the Tilt channel's `angleEnd`) to match.
+
+The 3D view (§7) uses the same room. Its default view is a cutaway from above the west wall.
+
+**Testing without music in the room:** show_service's silent test source plays a file straight into its ears, with
+no speakers and no mic (`POST /show/api/v1/test {"source": "audio", "piece": "<id>"}`; the pieces are listed by
+`GET /show/api/v1/test`). A Windows loopback (what the laptop plays) needs the `soundcard` library on the Windows side:
+not installed.
+

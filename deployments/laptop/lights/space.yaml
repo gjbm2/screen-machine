@@ -1,0 +1,60 @@
+# deployments/laptop/lights/space.yaml: the laptop rig's room, in metres (docs/LIGHTS.md §3: x east, y north, z up; the
+# origin is the south-west floor corner). Hand-written; the Lights page's Room map writes space.added.yaml beside it
+# (merged under this file: this file wins, and what is set here shows as fixed on the map).
+#
+# PROVISIONAL (owner, 26 Nov: "a sensible neutral configuration for now ... NE and SE, 10M apart ... ceiling height is
+# 4M"): a room 5 m east-west by 10 m north-south with a 4 m ceiling; the two GigBARs on their tripods in the east
+# corners, bar A NE and bar B SE (A on the left as the room faces them), their bars at 2.5 m, 0.4 m in from each wall,
+# each turned to face the room's centre. Each part sits where it is along its bar (par 1, spot 1, derby 1, the strobes,
+# derby 2, spot 2, par 2, left to right as you face the bar). The moving heads stand upright on the bar: their poses
+# are hand-set (pan axis straight up, tilt 0 = straight up, + tilt towards the room centre at pan 0), not taught.
+# Measure the real room and bars on the day: comment a line out here to move it on the map, and "Point it at…" three
+# places per head to teach its real pose (docs/LIGHTS.md §3.6).
+version: 1
+room:
+  size: [5.0, 10.0, 4.0]
+  front: east                       # the wall people face: the bars' wall
+
+# bar A: the NE corner, bar centre [4.6, 9.6, 2.5], facing -114.5° from east (the room centre)
+# bar B: the SE corner, bar centre [4.6, 0.4, 2.5], facing 114.5° from east (the room centre)
+appliances:
+  gigbar-a.par1: {at: [4.145, 9.808, 2.5]}
+  gigbar-a.spot1:
+    at: [4.3, 9.737, 2.68]
+    mount: floor
+    pose: {at: [4.3, 9.737, 2.68], rot: [0.0, 0.0, -1.99906], tilt_offset_deg: 0.0, pan_sign: 1, tilt_sign: 1,
+           rms_deg: 0.0, worst_deg: 0.0, samples: 0, solved_at: "hand-set 2026-11-26 (provisional: upright on the bar, facing the room centre)"}
+  gigbar-a.derby1: {at: [4.454, 9.666, 2.5]}
+  gigbar-a.strobe: {at: [4.6, 9.6, 2.5]}
+  gigbar-a.derby2: {at: [4.746, 9.534, 2.5]}
+  gigbar-a.spot2:
+    at: [4.9, 9.463, 2.68]
+    mount: floor
+    pose: {at: [4.9, 9.463, 2.68], rot: [0.0, 0.0, -1.99906], tilt_offset_deg: 0.0, pan_sign: 1, tilt_sign: 1,
+           rms_deg: 0.0, worst_deg: 0.0, samples: 0, solved_at: "hand-set 2026-11-26 (provisional: upright on the bar, facing the room centre)"}
+  gigbar-a.par2: {at: [5.055, 9.392, 2.5]}
+  gigbar-b.par1: {at: [5.055, 0.608, 2.5]}
+  gigbar-b.spot1:
+    at: [4.9, 0.537, 2.68]
+    mount: floor
+    pose: {at: [4.9, 0.537, 2.68], rot: [0.0, 0.0, 1.99906], tilt_offset_deg: 0.0, pan_sign: 1, tilt_sign: 1,
+           rms_deg: 0.0, worst_deg: 0.0, samples: 0, solved_at: "hand-set 2026-11-26 (provisional: upright on the bar, facing the room centre)"}
+  gigbar-b.derby1: {at: [4.746, 0.466, 2.5]}
+  gigbar-b.strobe: {at: [4.6, 0.4, 2.5]}
+  gigbar-b.derby2: {at: [4.454, 0.334, 2.5]}
+  gigbar-b.spot2:
+    at: [4.3, 0.263, 2.68]
+    mount: floor
+    pose: {at: [4.3, 0.263, 2.68], rot: [0.0, 0.0, 1.99906], tilt_offset_deg: 0.0, pan_sign: 1, tilt_sign: 1,
+           rms_deg: 0.0, worst_deg: 0.0, samples: 0, solved_at: "hand-set 2026-11-26 (provisional: upright on the bar, facing the room centre)"}
+  gigbar-b.par2: {at: [4.145, 0.192, 2.5]}
+  hazer: {at: [4.7, 1.2, 0.2]}         # on the floor by bar B
+points:
+  dance-floor: {label: Dance floor, at: [2.5, 5.0, 0.0]}
+  screen: {label: Karaoke screen, at: [5.0, 5.0, 2.0]}   # projected on the east wall between the bars,
+                                    # ~2 m wide (owner, 26 Nov); 16:9, centre 2 m up assumed
+  west-wall: {label: West wall above heads, at: [0.0, 5.0, 3.0]}   # the heads' rest: upright with a 180° tilt they
+                                    # reach only down to horizontal (2.68 m), never the floor
+regions:
+  dance-floor: {label: Dance floor, surface: floor, centre: [2.5, 5.0, 0.0], size: [3.0, 5.0]}
+surfaces: {}

@@ -5,7 +5,10 @@
 <title>Virtual GigBAR · 3D</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <!--
-  The virtual GigBAR rig in 3D (docs/GIGBAR_RIG.md §7): the two bars on their tripods at the far wall of a plain room,
+  The virtual GigBAR rig in 3D (docs/GIGBAR_RIG.md §7), in the laptop rig's provisional room (deployments/laptop/lights/
+  space.yaml, owner 26 Nov): 5 m east-west by 10 m north-south, a 4 m ceiling, the bars on tripods in the NE and SE
+  corners at 2.5 m, each turned to the room's centre, and the karaoke picture (~2 m wide) projected on the east wall
+  between them. The view faces east (the bars' wall); x runs south, z west. The two bars
   driven by the virtual node's DMX output and nothing else (gigbar_model.js: the set-up, the channel meanings and the
   parts' motion, shared with the board at /). The spots pan on their yokes and tilt in them (tilt centre = straight
   up, + towards the room; pan + to the room's right: an assumption until the real bars are seen); each projects its
@@ -67,16 +70,18 @@ renderer.shadowMap.enabled = true;                 // a spot's gobo is projected
 renderer.shadowMap.type = THREE.PCFShadowMap;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x05060a);
-const camera = new THREE.PerspectiveCamera(62, 1, 0.05, 60);
+const camera = new THREE.PerspectiveCamera(80, 1, 0.05, 60);
+const SIDE_W = 330;                                // the words panel on the right: the 3D stops at it
 function resize() {
-  const w = innerWidth - 330, h = innerHeight;
-  renderer.setSize(innerWidth, h, false); canvas.style.width = innerWidth + "px"; canvas.style.height = h + "px";
-  camera.aspect = innerWidth / h; camera.setViewOffset(innerWidth, h, 165, 0, innerWidth, h); camera.updateProjectionMatrix();
+  const w = Math.max(200, innerWidth - SIDE_W), h = innerHeight;
+  renderer.setSize(w, h, false); canvas.style.width = w + "px"; canvas.style.height = h + "px";
+  camera.aspect = w / h; camera.updateProjectionMatrix();
 }
 addEventListener("resize", resize); resize();
 
-// The room (metres): x to the right as the room faces the bars, y up, z towards the room; the bars at the far wall.
-const ROOM = { x0: -5, x1: 5, y0: 0, y1: 3, z0: -3, z1: 5 };
+// The room (metres), seen facing east (the bars' wall): x to the right (south), y up, z towards the viewer (west).
+// space.yaml's room [5, 10, 4] (x east, y north): x = 5 - y_north, z = 2.5 - x_east.
+const ROOM = { x0: -5, x1: 5, y0: 0, y1: 4, z0: -2.5, z1: 2.5 };
 const wallMat = new THREE.MeshStandardMaterial({ color: 0x3a3d46, roughness: 0.95, metalness: 0 });
 const floorMat = new THREE.MeshStandardMaterial({ color: 0x2e3038, roughness: 0.9, metalness: 0 });
 function plane(w, h, mat, pos, rot) {
@@ -90,7 +95,7 @@ plane(RW, RH, wallMat, [CX, RH / 2, ROOM.z0], [0, 0, 0]);
 plane(RW, RH, wallMat, [CX, RH / 2, ROOM.z1], [0, Math.PI, 0]);
 plane(RD, RH, wallMat, [ROOM.x0, RH / 2, CZ], [0, Math.PI / 2, 0]);
 plane(RD, RH, wallMat, [ROOM.x1, RH / 2, CZ], [0, -Math.PI / 2, 0]);
-const grid = new THREE.GridHelper(10, 20, 0x22252e, 0x22252e); grid.position.set(CX, 0.002, CZ); scene.add(grid);
+const grid = new THREE.GridHelper(10, 20, 0x22252e, 0x22252e); grid.scale.z = 0.5; grid.position.set(CX, 0.002, CZ); scene.add(grid);
 scene.add(new THREE.HemisphereLight(0x8890a8, 0x202228, 0.35));
 
 // ---- shared bits -----------------------------------------------------------------------------------------------------------
@@ -147,10 +152,12 @@ const GOBO_TEX = [...Array(10).keys()].map((slot) => {
 });
 
 // ---- a GigBAR on its tripod --------------------------------------------------------------------------------------------
-const BAR_Y = 1.95, BAR_Z = ROOM.z0 + 0.8;
+const BAR_Y = 2.5, BAR_Z = ROOM.z0 + 0.4;
 const PART_X = { par: [-0.5, 0.5], spot: [-0.33, 0.33], derby: [-0.16, 0.16], laser: 0, strobe: [-0.4, -0.13, 0.13, 0.4] };
 function makeBar(bi, x0) {
   const g = new THREE.Group(); g.position.set(x0, 0, BAR_Z); scene.add(g);
+  g.rotation.y = Math.atan2(-x0, -BAR_Z);           // turned to face the room's centre
+  g.updateMatrixWorld(true);
   // tripod
   const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, BAR_Y - 0.1, 12), dark); pole.position.y = (BAR_Y - 0.1) / 2; g.add(pole);
   for (let i = 0; i < 3; i++) {
@@ -191,7 +198,7 @@ function makeBar(bi, x0) {
   lg.setAttribute("color", new THREE.BufferAttribute(new Float32Array(40 * 6), 3));
   const lines = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
   lines.frustumCulled = false; scene.add(lines);
-  P.laser = { window: lw, lines, dots: [...Array(40)].map(() => dot(0.07)), origin: new THREE.Vector3(x0, BAR_Y, BAR_Z + front + 0.02) };
+  P.laser = { window: lw, lines, dots: [...Array(40)].map(() => dot(0.07)), origin: g.localToWorld(new THREE.Vector3(0, BAR_Y, front + 0.02)) };
   // the moving heads, on top of the bar: a yoke that pans, a head that tilts in it
   PART_X.spot.forEach((px) => {
     const yoke = new THREE.Group(); yoke.position.set(px, BAR_Y + 0.075, 0); g.add(yoke);
@@ -205,20 +212,29 @@ function makeBar(bi, x0) {
     light.castShadow = true; light.shadow.mapSize.set(512, 512); light.shadow.camera.near = 0.1; light.shadow.camera.far = 20;
     light.map = GOBO_TEX[0];
     const b = beam(0.75, 5.5); b.position.y = 0.08; head.add(b);
-    P.spots.push({ yoke, head, lens: hl, light, beam: b });
+    const core = beam(0.07, 5.5); core.position.y = 0.08; head.add(core);   // a bright core: the beam's direction at a glance
+    P.spots.push({ yoke, head, lens: hl, light, beam: b, core });
   });
   // label
   const lab = document.createElement("div"); lab.className = "lab"; document.body.appendChild(lab);
   P.label = lab; P.group = g;
   return P;
 }
-const BARS = CFG.bars.map((b, i) => makeBar(i, i === 0 ? -1.5 : 1.5));
+const BARS = CFG.bars.map((b, i) => makeBar(i, i === 0 ? ROOM.x0 + 0.4 : ROOM.x1 - 0.4));   // A in the NE corner (left), B SE
 // the hazer, on the floor by bar B
-const hazer = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.39, 0.15), darker); hazer.position.set(2.6, 0.2, ROOM.z0 + 0.5); scene.add(hazer);
+const hazer = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.39, 0.15), darker); hazer.position.set(3.8, 0.2, ROOM.z0 + 0.3); scene.add(hazer);
 const hazerLed = new THREE.Mesh(new THREE.CircleGeometry(0.015, 12), new THREE.MeshBasicMaterial({ color: 0x111111 }));
-hazerLed.position.set(2.6, 0.3, ROOM.z0 + 0.576); scene.add(hazerLed);
+hazerLed.position.set(3.8, 0.3, ROOM.z0 + 0.376); scene.add(hazerLed);
 const hazeCloud = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshBasicMaterial({ color: 0x9aa2b5, transparent: true, opacity: 0, depthWrite: false }));
-hazeCloud.scale.set(4.5, 1.4, 3.5); hazeCloud.position.set(0, 1.4, 0.5); scene.add(hazeCloud);
+hazeCloud.scale.set(4.6, 1.8, 2.3); hazeCloud.position.set(0, 1.8, 0); scene.add(hazeCloud);
+// the karaoke picture, projected on the east wall between the bars (~2 m wide, 16:9, centre 2 m up: assumed)
+const screenTex = (() => { const c = document.createElement("canvas"); c.width = 512; c.height = 288; const x = c.getContext("2d");
+  const g = x.createLinearGradient(0, 0, 512, 288); g.addColorStop(0, "#1d2440"); g.addColorStop(1, "#3a2a48"); x.fillStyle = g; x.fillRect(0, 0, 512, 288);
+  x.fillStyle = "rgba(255,255,255,0.85)"; x.font = "bold 30px system-ui"; x.textAlign = "center"; x.fillText("karaoke picture", 256, 135);
+  x.font = "20px system-ui"; x.fillStyle = "rgba(255,255,255,0.55)"; x.fillText("(projected, ~2 m wide)", 256, 170);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+const screenMesh = new THREE.Mesh(new THREE.PlaneGeometry(2.0, 1.125), new THREE.MeshBasicMaterial({ map: screenTex, color: 0x9a9aa8 }));
+screenMesh.position.set(0, 2.0, ROOM.z0 + 0.01); scene.add(screenMesh);
 
 // ---- each frame: the DMX into the model ----------------------------------------------------------------------------------
 const realHaze = document.getElementById("realHaze");
@@ -250,8 +266,8 @@ function update(t) {
         q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), d.axis); dir.applyQuaternion(q).normalize();
         bm.mesh.quaternion.setFromUnitVectors(UP, dir);
         setBeam(bm.mesh, COMP[bm.ci], 0.22 * a * air);
-        const o = d.origin.clone().add(P.group.position);
-        bm.dot.position.copy(hit(o, dir)); bm.dot.material.color.copy(srgb(COMP[bm.ci])).multiplyScalar(a * 1.1); bm.dot.visible = a > 0.01;
+        const o = P.group.localToWorld(d.origin.clone()), wdir = dir.clone().applyQuaternion(P.group.quaternion);
+        bm.dot.position.copy(hit(o, wdir)); bm.dot.material.color.copy(srgb(COMP[bm.ci])).multiplyScalar(a * 1.1); bm.dot.visible = a > 0.01;
       });
     });
     // strobes
@@ -266,7 +282,8 @@ function update(t) {
     const pos = P.laser.lines.geometry.attributes.position, col = P.laser.lines.geometry.attributes.color;
     for (let i = 0; i < 40; i++) {
       const around = S.laserRot + i * 0.71, off = 0.15 + 0.9 * hash(i + 99);
-      const dir = new THREE.Vector3(Math.sin(off) * Math.cos(around), Math.sin(off) * Math.sin(around) * 0.6 + 0.35, Math.cos(off)).normalize();
+      const dir = new THREE.Vector3(Math.sin(off) * Math.cos(around), Math.sin(off) * Math.sin(around) * 0.6 + 0.35, Math.cos(off)).normalize()
+        .applyQuaternion(P.group.quaternion);
       const end = hit(P.laser.origin, dir), c = lcol ? LASER_RGB[cols[i % cols.length]] : [0, 0, 0];
       pos.setXYZ(i * 2, ...P.laser.origin.toArray()); pos.setXYZ(i * 2 + 1, end.x, end.y, end.z);
       const la = lgain * (0.08 + 0.6 * air);
@@ -287,10 +304,11 @@ function update(t) {
       sp.light.color.copy(srgb(rgb)); sp.light.intensity = 160 * a;
       sp.lens.material.color.copy(srgb(rgb)).multiplyScalar(0.1 + 2.5 * a);
       setBeam(sp.beam, rgb, 0.75 * a * air);
+      setBeam(sp.core, rgb, 1.6 * a * Math.max(air, 0.35));
     });
     // label above the bar
-    tmp.set(P.group.position.x, 0.02, P.group.position.z + 0.7).project(camera);
-    P.label.style.left = ((tmp.x + 1) / 2 * innerWidth) + "px"; P.label.style.top = ((1 - tmp.y) / 2 * innerHeight) + "px";
+    tmp.set(P.group.position.x * 0.8, 0.02, P.group.position.z + 0.9).project(camera);
+    P.label.style.left = ((tmp.x + 1) / 2 * (innerWidth - SIDE_W)) + "px"; P.label.style.top = ((1 - tmp.y) / 2 * innerHeight) + "px";
     P.label.textContent = `${bar.name} · ${bar.mode}CH @ ${String(a0).padStart(3, "0")}`;
   });
   hazerLed.material.color.set(!HAZE.firstDmx ? 0x111111 : !HAZE.ready ? ((t % 1) < 0.5 ? 0x22ff22 : 0x002200) : HAZE.out > 0 ? ((t % 0.6) < 0.3 ? 0xffbb22 : 0x332200) : 0xffbb22);
@@ -329,18 +347,18 @@ function sideText() {
 }
 
 // ---- camera: orbit and zoom by hand, three set views -----------------------------------------------------------------------
-const target = new THREE.Vector3(0, 1.85, ROOM.z0 + 1.6);
-const orbit = { th: 0.38, ph: 1.5, r: 5.6 };
-const VIEWS = { front: { th: 0.0, ph: 1.52, r: 5.6 }, side: { th: 1.2, ph: 1.45, r: 5.4 }, above: { th: 0.0, ph: 0.3, r: 6.2 } };
+const target = new THREE.Vector3(0, 1.2, -0.6);
+const orbit = { th: 0.0, ph: 0.78, r: 4.3 };    // a cutaway from above the west wall, looking down at the bars
+const VIEWS = { front: { th: 0.0, ph: 1.45, r: 2.9 }, side: { th: -0.9, ph: 1.0, r: 4.3 }, above: { th: 0.0, ph: 0.78, r: 4.3 } };
 function place() {
-  orbit.ph = Math.max(0.15, Math.min(1.62, orbit.ph)); orbit.r = Math.max(1.5, Math.min(9, orbit.r));
+  orbit.ph = Math.max(0.15, Math.min(1.62, orbit.ph)); orbit.r = Math.max(1.0, Math.min(7, orbit.r));
   camera.position.set(target.x + orbit.r * Math.sin(orbit.ph) * Math.sin(orbit.th), target.y + orbit.r * Math.cos(orbit.ph),
                       target.z + orbit.r * Math.sin(orbit.ph) * Math.cos(orbit.th));
   camera.lookAt(target);
 }
 let drag = null;
 canvas.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
-canvas.addEventListener("pointermove", (e) => { if (!drag) return; orbit.th -= (e.clientX - drag.x) * 0.006; orbit.ph -= (e.clientY - drag.y) * 0.006; drag = { x: e.clientX, y: e.clientY }; place(); });
+canvas.addEventListener("pointermove", (e) => { if (!drag) return;  orbit.th -= (e.clientX - drag.x) * 0.006; orbit.ph -= (e.clientY - drag.y) * 0.006; drag = { x: e.clientX, y: e.clientY }; place(); });
 canvas.addEventListener("pointerup", () => { drag = null; });
 canvas.addEventListener("wheel", (e) => { e.preventDefault(); orbit.r *= Math.exp(e.deltaY * 0.001); place(); }, { passive: false });
 document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => { Object.assign(orbit, VIEWS[b.dataset.view]); place(); }));
@@ -361,6 +379,7 @@ function frame(now) {
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
+window.__gb = { THREE, scene, camera, BARS };   // for a test harness: read-only use
 </script>
 </body>
 </html>
