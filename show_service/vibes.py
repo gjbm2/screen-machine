@@ -85,6 +85,7 @@ _SPECS: dict[str, dict] = {
     "level": {"kind": "range", "min": 0.0, "max": 1.0},
     "floor": {"kind": "num", "min": 0.0, "max": 1.0},
     "motion": {"kind": "range", "min": 0.0, "max": 1.0},
+    "idle_motion": {"kind": "num", "min": 0.0, "max": 1.0},
     "accents": {"kind": "enum", "choices": contract.ACCENT_STYLES},
     "strobe": {"kind": "bool"},
     "peak_tokens_per_hour": {"kind": "int", "min": 0, "max": 1000},
@@ -109,7 +110,7 @@ NEUTRAL: contract.VibeSettings = {
     "follow": ["energy"], "follow_amount": 0.5, "beat_lock": True, "change_looks": "phrase", "change_rate": 0.5,
     "dwell_s": [45.0, 180.0], "relax_on_talk": True, "palettes": [], "key_cct": 2700.0,
     "lamp_chroma_max": 0.05, "chroma_max": 0.37, "saturation": [0.5, 1.0], "contrast": [0.3, 0.7],
-    "level": [0.5, 1.0], "floor": 0.1, "motion": [0.1, 0.5], "accents": "none", "strobe": False,
+    "level": [0.5, 1.0], "floor": 0.1, "motion": [0.1, 0.5], "idle_motion": 0.2, "accents": "none", "strobe": False,
     "peak_tokens_per_hour": 0, "haze": "off", "moods": [], "genre": None, "transition_style": None, "palette_family": None,
     "step_size": 0.1, "max_steps": 3, "persona": ""}
 assert tuple(NEUTRAL) == contract.VIBE_FIELDS
@@ -179,6 +180,8 @@ FIELD_SCHEMAS: dict[str, dict] = {
     "level": _range_schema("level", "Lamp level (never the screens)"),
     "floor": _num_schema("floor", "Lamp floor (never the screens)"),
     "motion": _range_schema("motion", "Movement"),
+    "idle_motion": {**_num_schema("idle_motion", "Movement with no beat"),
+                    "x-ui": _ui("Movement with no beat", "slider", unset_label="a little (0.2)")},
     # accents: what each style does today is the depth of the lamps' beat swell (show.yaml director.accent_depth);
     # the labels say so. strobe and peak tokens are carried and published but nothing acts on them yet, so the form
     # keeps them behind "More" and says "(not built yet)".

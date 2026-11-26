@@ -9,6 +9,10 @@
 #
 # strobe (owner, 26 Nov): false = no light effect strobes (light_effects.yaml); true = they may, and with
 # peak_tokens_per_hour set each strobe moment spends one of those tokens (unset: the effects' own gaps limit them).
+# idle_motion (owner, 26 Nov: the mode sets the silent state, "not completely static, but ... not extremely
+# energetic"; disco in silence can be livelier than ambient with music): with no live beat, the lights' bar patterns
+# run on a slow free clock (50 + 50 x this bpm) at this share of their size and depth. 0: still (plus the movers'
+# sway). Unset: 0.2.
 # accents today sets only how deep the
 # lamps' beat swell goes (show.yaml director.accent_depth). peak_tokens_per_hour IS spent (Stage 4): a drop after a
 # build costs one token (a lamp dip, a hard look cut and a unison hit); left unset (0), drops never cut or hit and only
@@ -73,6 +77,7 @@ vibes:
     level: [0.4, 0.7]
     floor: 0.3
     motion: [0.05, 0.2]
+    idle_motion: 0.25                # with no live beat (silence, between songs), the bar patterns keep this share
     accents: none
     strobe: false
     peak_tokens_per_hour: 0
@@ -112,6 +117,7 @@ vibes:
     level: [0.35, 0.6]
     floor: 0.25
     motion: [0.02, 0.12]
+    idle_motion: 0.15                # with no live beat (silence, between songs), the bar patterns keep this share
     accents: none
     strobe: false
     peak_tokens_per_hour: 0
@@ -150,6 +156,7 @@ vibes:
     level: [0.4, 0.8]
     floor: 0.2
     motion: [0.1, 0.35]
+    idle_motion: 0.15                # with no live beat (silence, between songs), the bar patterns keep this share
     accents: soft
     strobe: false
     peak_tokens_per_hour: 0
@@ -189,6 +196,7 @@ vibes:
     level: [0.45, 0.8]
     floor: 0.3
     motion: [0.05, 0.3]
+    idle_motion: 0.1                # with no live beat (silence, between songs), the bar patterns keep this share
     accents: none
     strobe: false
     peak_tokens_per_hour: 0
@@ -227,6 +235,7 @@ vibes:
     level: [0.6, 1.0]
     floor: 0.15
     motion: [0.4, 0.9]
+    idle_motion: 0.6                # with no live beat (silence, between songs), the bar patterns keep this share
     accents: downbeat
     strobe: true                    # as before the switch worked (strobes on drops and peaks); false stops them
     # peak_tokens_per_hour: 5       # §8.5: Party 4-6 an hour. Spent since Stage 4; unset (the owner's call) = drops
@@ -266,6 +275,7 @@ vibes:
     level: [0.65, 1.0]
     floor: 0.1
     motion: [0.5, 1.0]
+    idle_motion: 0.7                # with no live beat (silence, between songs), the bar patterns keep this share
     accents: beat
     strobe: true                    # as before the switch worked; false stops them
     # peak_tokens_per_hour: 6       # spent since Stage 4; unset (the owner's call) = drops never cut or hit
@@ -293,6 +303,7 @@ vibes:
     strobe: true
     peak_tokens_per_hour: 6         # big moments an hour: the last chorus, a peak, a drop (each strobe moment is one)
     haze: light                     # the hazer holds a light haze (show.yaml lights.atmosphere); beams show in it
+    idle_motion: 0.4                # between songs the bars keep a moderate, slow movement (owner, 26 Nov)
     persona: >-
       A karaoke party at home. The singer is the star: keep the lyrics readable and the room lively, and save the
       big moments for the last chorus and the loudest peaks.

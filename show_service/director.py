@@ -4475,7 +4475,8 @@ class Director:
                      "floor": round(floor, 3), "house": self.house, "low": self.low, "key_cct": vs["key_cct"],
                      "chroma_max": vs["chroma_max"], "lamp_chroma_max": vs["lamp_chroma_max"],
                      "saturation": round(sat, 3), "contrast": round(contrast, 3),
-                     "motion": {"speed": round(speed, 3), "amount": round(amount, 3)}, "accents": accents,
+                     "motion": {"speed": round(speed, 3), "amount": round(amount, 3),
+                                "idle": vs["idle_motion"]}, "accents": accents,   # idle: with no live beat
                      "spread": round(spread, 3), "change_rate": vs["change_rate"], "transition": tr,
                      "lamps": lamps, "screens": screens,
                      "dip": bool(pal_on and (dip is not None or song_dip is not None) and not self.house

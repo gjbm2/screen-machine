@@ -399,7 +399,8 @@ PALETTE_ART = "art"          # from the on-glass stills (room's snapshots), in a
 VIBE_FIELDS: tuple[str, ...] = (
     "label", "description", "energy", "energy_centre", "loudness_ref_lufs", "follow", "follow_amount", "beat_lock",
     "change_looks", "change_rate", "dwell_s", "relax_on_talk", "palettes", "key_cct", "lamp_chroma_max",
-    "chroma_max", "saturation", "contrast", "level", "floor", "motion", "accents", "strobe", "peak_tokens_per_hour",
+    "chroma_max", "saturation", "contrast", "level", "floor", "motion", "idle_motion", "accents", "strobe",
+    "peak_tokens_per_hour",
     "haze", "moods", "genre", "transition_style", "palette_family", "step_size", "max_steps", "persona")
 
 
@@ -427,6 +428,9 @@ class VibeSettings(TypedDict, total=False):
     level: list[float]             # [lo, hi] 0..1: lamps and DMX only, never screens
     floor: float                   # 0..1: the lamps' background floor, never screens
     motion: list[float]            # [lo, hi] 0..1: movement speed/amount within a look
+    idle_motion: float             # 0..1: how much the lights keep moving with no live beat (silence, between songs):
+                                   # bar patterns run on a slow free clock at this share (owner, 26 Nov: the mode sets
+                                   # the silent state; "not completely static, but ... not extremely energetic")
     accents: str                   # ACCENT_STYLES
     strobe: bool                   # strobe allowed (L5 caps; default off)
     peak_tokens_per_hour: int      # drops that may spend a peak (§8.5)
@@ -542,7 +546,8 @@ class LookData(TypedDict):
     lamp_chroma_max: float
     saturation: float              # 0..1, the current value inside the vibe's range
     contrast: float
-    motion: dict[str, float]       # {"speed": 0..1, "amount": 0..1}
+    motion: dict[str, float]       # {"speed": 0..1, "amount": 0..1, "idle": 0..1 (the vibe's idle_motion: how much the
+                                   # bar patterns keep moving with no live beat, on a slow free clock)}
     accents: dict[str, Any]        # {"style": ACCENT_STYLES, "density": 0..1, "subdivision": 1|0.5|0.25|0.125,
                                    #  "strobe": bool, "beat_lock": bool}
     spread: float                  # 0..1 spatial spread of roles across lamps

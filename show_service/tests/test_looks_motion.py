@@ -722,3 +722,14 @@ def test_a_grid_needs_a_live_beat_not_a_remembered_one():
     e._grid_seen_t = 100.0
     assert e._grid_live(100.0 + looks.GRID_HOLD_S - 0.1)       # a dip mid-song: still the grid
     assert not e._grid_live(100.0 + looks.GRID_HOLD_S + 0.1)   # silence: no grid
+
+
+def test_silence_runs_on_a_slow_clock_set_by_the_vibe():
+    """Owner, 26 Nov: the mode sets how lively the room is with no sound ("disco mode may be more energetic even in
+    silence than ambient with music playing"): the vibe's idle_motion picks the idle clock's tempo."""
+    from show_service import looks
+    e = looks.LookEngine()
+    calm = e._idle_clock({"motion": {"idle": 0.1}})
+    disco = e._idle_clock({"motion": {"idle": 0.7}})
+    none = e._idle_clock(None)
+    assert none["bpm"] == looks.IDLE_BPM[0] < calm["bpm"] < disco["bpm"] and disco["gate"] == "none"

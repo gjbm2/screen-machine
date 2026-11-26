@@ -255,6 +255,7 @@ POSITION_MODES: tuple[str, ...] = ("aim", "fan", "sweep", "circle", "figure8", "
                                    "tilt_wave", "home")
 PATTERN_MODES = frozenset({"fan", "sweep", "circle", "figure8", "drift", "ballyhoo"})
 GRID_HOLD_S = 4.0   # a "needs: grid" layer keeps the grid this long after the clock's gate last read above "none"
+IDLE_BPM = (50.0, 50.0)   # with no live beat the bar patterns run on a free clock of 50 + 50 x the vibe's idle_motion bpm
 SWAY_RATIOS = ((1.0, 0.6), (1.37, 0.4), (0.83, 0.6), (1.71, 0.4))   # pan: two sines, tilt: two (period x, weight)
 
 
@@ -893,7 +894,7 @@ class _Hold:
 
 class _Ctx:
     """What every per-fixture step of one frame reads (built once per evaluate)."""
-    __slots__ = ("t", "dt", "look", "snap", "grid", "src", "beat_s", "bpb", "bar_anchor", "phrase_bars", "trans_s",
+    __slots__ = ("t", "dt", "look", "snap", "grid", "idle", "src", "beat_s", "bpb", "bar_anchor", "phrase_bars", "trans_s",
                  "min_period_s", "energy", "vibe", "st", "prog", "op", "sm", "view", "cyc", "flow_key", "look_n",
                  # docs/ENSEMBLE.md §7.2 (None without an ensemble): per light its role's motion scale and canon's
                  # offset (s), filled as each light is evaluated; the palette roles at full value (a colour pop's)
@@ -2789,6 +2790,8 @@ class LookEngine:
         gate = (snap.get("gate") or "none") if snap is not None else "none"
         if snap is not None and gate != "none":
             self._grid_seen_t = t
+        if snap is not None and not self._grid_live(t):
+            snap = self._idle_clock(look)                        # silence: not the last song's grid, a slow free one
         trans_s = self._transition_s(look, snap)
         # House lights and Lights low are steady, like a held frame: no layer and no hit moves the lamps (README
         # S5.14; the director's own swell depth and drop hit are already off under them); a mover rests at home
@@ -2965,6 +2968,15 @@ class LookEngine:
         return frame
 
     # -- one frame's pieces --------------------------------------------------------------------------------------------
+    def _idle_clock(self, look: Any) -> dict:
+        """The clock with no live beat (silence, between songs): a slow free grid, slower in calmer vibes (owner, 26
+        Nov: "what level of latent 'pre-state' energy is appropriate when no sound source is active probably depends on
+        the mode selected"). Gate "none": nothing beat-locked or hit-driven runs on it."""
+        idle = self._look_value(look, "motion.idle")
+        return {"bpm": IDLE_BPM[0] + IDLE_BPM[1] * idle, "anchor_ms": 0.0, "beat_at_anchor": 0,
+                "beats_per_bar": FREE_RUN_BEATS_PER_BAR, "bar_anchor_beat": 0, "phrase_bars": FREE_RUN_PHRASE_BARS,
+                "gate": "none", "idle": True}
+
     def _grid_live(self, t: float) -> bool:
         """The clock's grid counts for "needs: grid": its gate read above "none" within GRID_HOLD_S (a dip mid-song
         doesn't stop the patterns; silence does)."""
@@ -2975,6 +2987,7 @@ class LookEngine:
         cx = _Ctx()
         cx.t, cx.look, cx.snap, cx.trans_s, cx.min_period_s = t, look, snap, trans_s, min_period_s
         cx.grid = snap is not None and self._grid_live(t)
+        cx.idle = self._look_value(look, "motion.idle")
         cx.energy, cx.vibe, cx.st, cx.prog, cx.op = energy, vibe, st, prog, op
         src = snap if snap is not None else self._free_run()
         cx.src = src
@@ -3537,8 +3550,9 @@ class LookEngine:
             k = L.kind
             p = L.p
             if k == "position":
-                if pos is None or (L.needs == "grid" and not cx.grid):
-                    continue                                     # a bar pattern with no live beat: stay put (+ sway)
+                quiet = L.needs == "grid" and not cx.grid        # a bar pattern with no live beat: the vibe's idle
+                if pos is None or (quiet and (cx.idle <= 0.0 or p["mode"] == "lift")):   # share of it (0: stay put)
+                    continue
                 got = self._position(L, m, s, fs, cx, gn, tp, pos, q)
                 if got is None:
                     fs.unresolved.add(L.id)
@@ -3547,7 +3561,7 @@ class LookEngine:
                 if p["mode"] == "lift":
                     pos, q = [own[0], own[1]], oq
                 else:
-                    d = _c01(self._val(L.depth, L, s, m, cx, gn, tp) * L.depth_scale)
+                    d = _c01(self._val(L.depth, L, s, m, cx, gn, tp) * L.depth_scale) * (cx.idle if quiet else 1.0)
                     pos = [pos[0] + (own[0] - pos[0]) * d, pos[1] + (own[1] - pos[1]) * d]
                     if d >= 0.5:
                         q = oq
@@ -4372,7 +4386,13 @@ class LookEngine:
             else:
                 mode = L.without_beat
         elif L.needs == "grid":
-            mode = "osc" if snap is not None and self._grid_live(t) else L.without_beat
+            idle = self._look_value(look, "motion.idle")
+            if snap is not None and self._grid_live(t):
+                mode = "osc"
+            elif snap is not None and idle > 0.0:                # no live beat: the vibe's idle share, on the idle clock
+                mode, scale = "osc", idle
+            else:
+                mode = L.without_beat
         else:
             mode = "osc"
         beat_locked = L.needs == "beat" and mode == "osc"
