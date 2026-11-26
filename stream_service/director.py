@@ -90,16 +90,20 @@ NOTES_RECENT_S = (30.0, 120.0)
 # well (>= 0.7).  At 3: 7% poor, 73% good, still about 17 scenes in real rotation (catalog of 24 Oct, 415 auto presets).
 STYLE_POWER = 3.0
 NOTES_NONE = 0.0     # owner, 28 Oct: score scenes "shouldn't really trigger if there's no midi" (was 0.05)
-# A scene drawn from the karaoke song's artist pictures (its plug-in listens "pictures": the photo scenes; owner,
-# 26 Nov: "upweight them like we do lyrics effects") is never picked with fewer than PICTURES_MIN pictures for the
-# playing song, and x PICTURES_BOOST when there are; and since the style fit swings their share from 2% (rock: no
-# photo look is "aggressive") to 50% (bright pop), they then get at least PICTURES_SHARE of the pick between them
-# (medium often, not always; not straight after another photo scene, nor when the song's treatment shuns the photo
-# family; tests/test_song_photos.py measures it on the real catalogue).  A scene tagged ``sections`` (verse / chorus / instrumental / outro) is x SECTION_FIT
+# A scene drawn from the karaoke song's artist pictures (its plug-in listens "pictures": the photo scenes) is never
+# picked with fewer than PICTURES_MIN ENGAGING pictures for the playing song (lyric_feed.APPEAL_GOOD: the vetting's
+# appeal score), and x PICTURES_BOOST when there are.  Owner, 26 Nov: "around 30-50% of [the looks] involve the
+# artist -- providing the pics are ok ... because they're engaging photos to look at": since the style fit swings
+# their share from 2% (rock) to 50% (bright pop), they get at least PICTURES_SHARE of a pick between them
+# (PICTURES_SHARE_AGAIN straight after another photo scene), scaled by min(1, engaging / PICTURES_FULL): ~40% of the
+# looks with a full set, fewer with a handful.  Not when the song's treatment shuns the photo family.
+# tests/test_song_photos.py measures it on the real catalogue.  A scene tagged ``sections`` (verse / chorus / instrumental / outro) is x SECTION_FIT
 # in one of its kinds of karaoke section and x SECTION_MISS in another (no karaoke section: no opinion).
 PICTURES_MIN = 4
 PICTURES_BOOST = 3.0
-PICTURES_SHARE = 0.22
+PICTURES_SHARE = 0.5
+PICTURES_SHARE_AGAIN = 0.25
+PICTURES_FULL = 10
 SECTION_FIT, SECTION_MISS = 2.0, 0.4
 # The fewest scenes an auto pick keeps in real rotation: the effective number ((sum w)^2 / sum w^2) of the weights,
 # at most MIN_ROTATION_SHARE of the scenes that fit at all.  With the music's words, genre and axes all multiplying
@@ -551,11 +555,14 @@ class Director:
         except Exception:
             return False
 
-    def _heard_pictures(self) -> bool:
+    def _pictures_good(self) -> int:
         try:
-            return self.pictures_n is not None and self.pictures_n() >= PICTURES_MIN
+            return int(self.pictures_n()) if self.pictures_n is not None else 0
         except Exception:
-            return False
+            return 0
+
+    def _heard_pictures(self) -> bool:
+        return self._pictures_good() >= PICTURES_MIN
 
     def _section_fit(self, tags: dict) -> float:
         want = tags.get("sections")
@@ -738,15 +745,18 @@ class Director:
         favour, shun = self.treatment()
         notes: list[str] = []
         photo = lambda n: n in scenes and self._listens_pictures(scenes[n].get("source"))   # noqa: E731
-        floor = (self._heard_pictures() and not (prev and photo(prev))
-                 and not any("photo" in str(t) for t in ((shun or {}).get("tags") or ())))
+        share = 0.0
+        if self._heard_pictures() and not any("photo" in str(t) for t in ((shun or {}).get("tags") or ())):
+            share = ((PICTURES_SHARE_AGAIN if prev and photo(prev) else PICTURES_SHARE)
+                     * min(1.0, self._pictures_good() / PICTURES_FULL))
+        floor = share > 0.0
 
         def adjust(cands: list[str], w: list[float]) -> list[float]:
             if favour or shun:
                 w, ns = steer(w, [tag_words(scenes[c].get("tags") or {}) for c in cands], favour, shun)
                 notes.extend(ns)
             if floor:
-                w = floor_share(w, [photo(c) for c in cands], PICTURES_SHARE)
+                w = floor_share(w, [photo(c) for c in cands], share)
             return w
 
         got = weighted_pick(names, lambda n: scene_weight(scenes[n].get("tags") or {}, self.direction) ** STYLE_POWER

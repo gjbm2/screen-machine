@@ -171,6 +171,7 @@ class Picture:
     face: Optional[tuple]
     era: Optional[str]
     moods: tuple = ()
+    appeal: float = 0.5      # how engaging on a big screen (the vetting's score, 0..1)
 
 
 @dataclass(frozen=True)
@@ -209,7 +210,8 @@ def picture_set(sid: str, o: Any) -> Optional[PictureSet]:
             out.append(Picture(str(p["id"]), str(p["path"]), int(p["w"]), int(p["h"]), str(p.get("kind") or "other"),
                                float(p.get("quality") if p.get("quality") is not None else 0.7), _face(p.get("faces")),
                                p.get("era") if isinstance(p.get("era"), str) else None,
-                               tuple(m for m in p.get("moods") or [] if isinstance(m, str))))
+                               tuple(m for m in p.get("moods") or [] if isinstance(m, str)),
+                               float(p.get("appeal") if p.get("appeal") is not None else 0.5)))
         except (KeyError, TypeError, ValueError):
             continue
     if not out:
@@ -372,11 +374,20 @@ def shared() -> Optional[LyricFeed]:
     return _SHARED
 
 
+APPEAL_GOOD = 0.6       # a picture this engaging counts towards the photo scenes' share (owner, 26 Nov: "not just
+                        # because they're pics but because they're engaging photos to look at")
+
+
+def good_pictures(ps: Optional["PictureSet"]) -> int:
+    return sum(1 for p in ps.pictures if p.appeal >= APPEAL_GOOD) if ps is not None else 0
+
+
 def pictures_playing() -> int:
-    """How many artist pictures the PLAYING karaoke song has (the scene director's gate for the photo scenes)."""
+    """How many ENGAGING artist pictures the playing karaoke song has (the scene director's gate and share for the
+    photo scenes)."""
     f = shared()
     sn = f.fresh() if f is not None else None
-    return len(sn.pictures.pictures) if sn is not None and sn.state == "playing" and sn.pictures else 0
+    return good_pictures(sn.pictures) if sn is not None and sn.state == "playing" else 0
 
 
 # -- per session, on the render thread -----------------------------------------------------------------------------

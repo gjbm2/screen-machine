@@ -15,12 +15,12 @@ director.PICTURES_MIN pictures for the playing song, and upweights it when there
 
 * fit: ``cover`` fills the frame, cropped round the faces (the vetting's face boxes; none: the upper third), with the
   faces held at FACE_Y of the height, above the display page's lyrics; ``framed`` shows the whole picture over a
-  dark blurred copy of itself, a little above centre.  Album covers are always framed (their words stay whole).
+  dark blurred copy of itself, a little above centre.  Album covers are always framed (their words stay whole), though Flask no longer keeps covers.
 * Each picture drifts (Ken Burns): it zooms in or out by ``zoom`` (alternating) while the view moves towards the
   faces by ``face_focus``.  The next picture fades in over ``transition_s`` and both keep moving.
 * When: after the hold (``hold_s`` calm .. ``hold_fast_s`` at energy 1), the next lyric line's start, else the next
   beat (pulse), else HOLD_SLACK_S later.  Which: a shuffled bag, no repeat until all have shown; in a chorus line
-  live and group pictures are twice as likely, in a verse portraits.
+  performing (live) and band (group) pictures are favoured (KIND_WEIGHT), more so in a chorus; portraits in a verse.
 * Decoding is a daemon thread (PIL, draft-sized, at most LOAD_PX); the render thread uploads at most one picture a
   frame and keeps MAX_SLOTS on the GPU.  No pictures (picked by hand with no song): a dark palette wash.
 * ``tint`` washes the picture with the palette (a duotone by luminance); vignette; pulse adds a small brightness
@@ -57,7 +57,8 @@ FRAME_Y = 0.45           # ... centred this far down
 HOLD_SLACK_S = 2.0       # no line and no beat came: change anyway this long after the hold
 NO_FACE = (0.5, 0.3, 0.25)   # a picture with no face box: assume its subject in the upper third
 SYNC_DECODE = False      # tools/fxtest: decode on the render thread (short renders have the picture from frame 1)
-KIND_FIT = {"chorus": {"live": 2.0, "group": 2.0}, "verse": {"portrait": 2.0}}
+KIND_WEIGHT = {"live": 2.5, "group": 2.0, "portrait": 1.0}   # performing first (owner, 26 Nov); covers never come
+KIND_FIT = {"chorus": {"live": 1.6, "group": 1.6}, "verse": {"portrait": 1.5}}
 
 # P layout per layer (base k = 0 current, 16 previous): 0 s (image px per out px) | 1 cx | 2 cy (image px) |
 # 3 framed (0/1) | 4 image w | 5 image h | 6 frame alpha.   Global from 32: 32..43 palette | 44 period | 45 drift |
@@ -310,7 +311,8 @@ class SongPhotos(Source):
                 self.bag.append(self.bag.pop(0))
         fit = KIND_FIT.get(self._section() or "", {})
         cands = self.bag[:4]
-        w = np.array([fit.get(self.pics[i].kind, 1.0) * (1.0 + 0.5 * self.pics[i].quality) * (0.7 ** k)
+        w = np.array([KIND_WEIGHT.get(self.pics[i].kind, 0.5) * fit.get(self.pics[i].kind, 1.0)
+                      * (0.15 + self.pics[i].appeal) ** 2 * (0.7 ** k)
                       for k, i in enumerate(cands)], np.float64)
         pid = cands[int(self.rng.choice(len(cands), p=w / w.sum()))]
         self.bag.remove(pid)

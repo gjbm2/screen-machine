@@ -60,18 +60,18 @@ def test_commons_rows_use_standard_thumbnails_and_free_licences(monkeypatch):
     assert rows[0]["credit"] == "Jo Photo" and rows[0]["license"] == "CC BY-SA 4.0"
 
 
-def test_one_cover_per_album_the_songs_first(monkeypatch):
-    albums = [{"title": t, "cover_xl": f"https://c/{i}", "record_type": "album", "fans": f, "explicit_content_cover": 0}
-              for i, (t, f) in enumerate([("Big Hits", 900), ("Fearless (Platinum Edition)", 50),
-                                          ("Fearless (Taylor's Version)", 400), ("Other", 100)])]
-    monkeypatch.setattr(pic, "_get", lambda url, params=None, **k: {"data": albums})
+def test_deezer_gives_only_the_artists_own_photo():
     got = pic.deezer_candidates({"id": 7, "name": "T", "picture_xl": "https://p/artist/abc/1000x1000-000000-80-0-0.jpg"},
                                 "Fearless")
-    titles = [c["title"] for c in got]
-    assert titles[0] == "T (Deezer)" and titles[1].startswith("Fearless")
-    assert sum(t.startswith("Fearless") for t in titles) == 1 and "Big Hits (album cover)" in titles
-    blank = pic.deezer_candidates({"id": 7, "name": "T", "picture_xl": "https://p/images/artist//1000x1000.jpg"}, None)
-    assert all(c["kind_hint"] == "cover" for c in blank)
+    assert [c["title"] for c in got] == ["T (Deezer)"]                   # no album covers (owner, 26 Nov)
+    assert pic.deezer_candidates({"id": 7, "name": "T", "picture_xl": "https://p/images/artist//1000x1000.jpg"}, None) == []
+
+
+def test_covers_objects_dull_pictures_and_a_sixth_portrait_are_not_kept():
+    v = {"shows": "the_artist", "kind": "live", "quality": 0.9, "appeal": 0.8, "child_safe": True}
+    assert pic.keep(v) == (True, "ok")
+    assert pic.keep({**v, "shows": "album_cover"})[0] is False and pic.keep({**v, "kind": "other"})[0] is False
+    assert pic.keep({**v, "appeal": 0.2}) == (False, "appeal 0.2")
 
 
 def fake_vet(answers):
@@ -141,7 +141,7 @@ def test_a_songs_list_merges_its_artists_hides_and_puts_its_era_first(root, monk
             (root / s / f"{f * 16}.jpg").write_bytes(jpeg())
         (root / s / "index.json").write_text(json.dumps({"fetched_at": 1.0, "pictures": [
             {"file": f"{f * 16}.jpg", "url": f, "w": 1200, "h": 900, "kind": "live", "era": e, "quality": q,
-             "hidden": f == "2" and False, "faces": []} for f, e, q in rows]}))
+             "appeal": q, "hidden": False, "faces": []} for f, e, q in rows]}))
     (root / "songs.json").write_text(json.dumps({"s1": {"artist": "A & B", "artists": [
         {"name": "A", "slug": "a"}, {"name": "B", "slug": "b"}]}}))
     st = types.SimpleNamespace(lock=__import__("threading").RLock(), s={"songs": {"s1": {"artist": "A & B", "year": 1986}}})

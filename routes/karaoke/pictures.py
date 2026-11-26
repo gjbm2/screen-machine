@@ -9,15 +9,18 @@ karaoke screen only.
 
 Where they come from (looked up by catalogue identity, never a loose web image search: wrong people, rights, and
 this is a children's party):
-  * Deezer (no key): the artist's own picture, the song's album cover and the artist's best-known album covers;
-  * Wikimedia Commons (no key, freely licensed): a file search for the artist's name, and one for the song's year
-    (so a 1985 song can show 1985 pictures); MusicBrainz -> Wikidata's own picture of the artist first;
+  * Deezer (no key): the artist's own picture (no album covers: owner, 26 Nov, "album cover art isn't a very
+    charismatic thing to show ... we need artists performing");
+  * Wikimedia Commons (no key, freely licensed): file searches for the artist in concert / live / performing (and
+    in the song's year, so a 1985 song can show 1985), then any picture of them, stage titles first; MusicBrainz ->
+    Wikidata's own picture of the artist first;
   * fanart.tv (FANARTTV_API_KEY in .env, optional): screen-shaped 1920x1080 artist backgrounds, by MusicBrainz id.
 
 The vetting (task ``song_picture`` in config/llm.yaml: Gemini, one 768 px look per picture): does it show this artist
 or their album's cover, is it sharp, is it suitable for a children's party (strict), where are the faces, what era,
 which moods.  A picture that fails is deleted and remembered (never fetched again).  Without the AI (no key, over the
-day's budget), only Deezer's own pictures of the artist and covers Deezer marks clean are used until it can look.
+day's budget), only Deezer's own picture of the artist is used until it can look.  Kept: the artist performing
+(live), the band (group), and at most PORTRAITS_MAX posed portraits; never covers, objects or other people.
 
 One background thread (``run``): the playing song's and the queue's artists first, then the library's; one artist
 at a time; an artist that failed is tried again after RETRY_S.
@@ -51,11 +54,14 @@ DEEZER = "https://api.deezer.com"
 COMMONS = "https://commons.wikimedia.org/w/api.php"
 FANART = "https://webservice.fanart.tv/v3/music"
 TASK = "song_picture"
-VERSION = 1
+VERSION = 2               # 2: people only, performing first (owner, 26 Nov: covers aren't charismatic)
 
-TARGET = 14              # kept pictures an artist's deck aims for
-COVERS_MAX = 4           # of which album covers at most
-CANDIDATES_MAX = 40      # pictures looked at per artist per fetch
+TARGET = 14              # kept pictures of the artist an artist's deck aims for
+PORTRAITS_MAX = 5        # of which posed portraits at most: the rest performing (live) or the band (group)
+PEOPLE = ("live", "group", "portrait")   # what the photo scenes show (owner, 26 Nov: "album cover art isn't a very
+                                         # charismatic thing to show ... we need artists performing etc.")
+CANDIDATES_MAX = 60      # pictures looked at per artist per fetch
+STAGE = re.compile(r"\b(concert|live|tour|performing|performs|performance|stage|festival|gig|on stage|in concert)\b")
 MIN_SHORT_SIDE = 560     # smaller is too soft even under the effects
 MAX_BYTES = 15 << 20
 SAVE_PX = 2048
@@ -64,6 +70,7 @@ COMMONS_STEPS = (1920, 1280, 960)   # Wikimedia's standard thumbnail widths: onl
 COMMONS_GAP_S = 12.0   # between two Commons downloads: an unnamed client gets a slow trickle, a burst a 429 and 10 min
 VET_PX = 768
 MIN_QUALITY = 0.45
+MIN_APPEAL = 0.35        # duller than this on a big screen: not kept (owner, 26 Nov: "engaging photos to look at")
 RETRY_S = 1800.0
 LOOP_S = 10.0
 ERA_FETCH = True         # a Commons search for the song's year as well (pictures of that era)
@@ -184,32 +191,12 @@ def _big(url: Optional[str]) -> Optional[str]:
 
 
 def deezer_candidates(a: dict, album: Optional[str]) -> list[dict]:
-    out = []
+    out: list[dict] = []
     pic = a.get("picture_xl") or ""
     if pic and "/artist//" not in pic:                      # Deezer's blank silhouette has no image hash
         out.append({"url": pic, "source": "deezer", "kind_hint": "portrait", "credit": "Deezer",
                     "license": "catalogue", "title": f"{a.get('name')} (Deezer)", "trusted": True})
-    try:
-        albums = (_get(f"{DEEZER}/artist/{a['id']}/albums", {"limit": 100}) or {}).get("data") or []
-    except Exception:                                   # noqa: BLE001
-        albums = []
-    seen: set[str] = set()
-    ranked = sorted([x for x in albums if x.get("cover_xl")],
-                    key=lambda x: (not album or norm(album) not in norm(x.get("title")), x.get("record_type") != "album",
-                                   -(x.get("fans") or 0)))
-    for x in ranked:
-        k = re.sub(r"\b(deluxe|edition|remaster(ed)?|version|expanded|anniversary|platinum|international|the more|"
-                   r"chapter|taylor s|live|acoustic|collection|\d+)\b", "",
-                   norm(re.sub(r"[\(\[].*?[\)\]]", "", x["title"]))).strip()
-        if not k or any(k in o or o in k for o in seen):     # one cover per album (its editions are the same)
-            continue
-        seen.add(k)
-        out.append({"url": x["cover_xl"], "source": "deezer", "kind_hint": "cover", "credit": "Deezer",
-                    "license": "catalogue", "title": f"{x.get('title')} (album cover)",
-                    "trusted": x.get("explicit_content_cover") in CLEAN_COVER, "year": (x.get("release_date") or "")[:4]})
-        if len(seen) >= COVERS_MAX + 2:
-            break
-    return out
+    return out                                          # no album covers (owner, 26 Nov)
 
 
 def _strip_html(s: Any) -> str:
@@ -251,9 +238,10 @@ def commons_candidates(name: str, year: Optional[int], wikidata_file: Optional[s
             out += _commons_rows({"titles": wikidata_file})
         except Exception:                               # noqa: BLE001
             pass
-    queries = [f'"{name}" filetype:bitmap']
+    # performing first: the song's year on stage, then on stage at any time, then anything of them
+    queries = [f'"{name}" {w} filetype:bitmap' for w in ("concert", "live", "performing")] + [f'"{name}" filetype:bitmap']
     if ERA_FETCH and isinstance(year, int) and year > 1900:
-        queries.insert(0, f'"{name}" {year} filetype:bitmap')     # the song's year first: pictures of its era
+        queries[:0] = [f'"{name}" {year} concert filetype:bitmap', f'"{name}" {year} filetype:bitmap']
     for q in queries:
         try:
             out += _commons_rows({"generator": "search", "gsrsearch": q, "gsrnamespace": 6, "gsrlimit": 30})
@@ -268,6 +256,7 @@ def commons_candidates(name: str, year: Optional[int], wikidata_file: Optional[s
             continue
         seen.add(base)
         keep.append(c)
+    keep.sort(key=lambda c: not STAGE.search(norm(c["title"])))       # stable: stage titles first, in search order
     return keep
 
 
@@ -305,9 +294,17 @@ def tool() -> dict:
             "parameters": {"type": "object", "properties": {
                 "shows": {"type": "string", "enum": ["the_artist", "album_cover", "other_people", "no_people",
                                                      "logo_or_text", "unsure"]},
-                "kind": {"type": "string", "enum": ["portrait", "live", "group", "cover", "other"]},
+                "kind": {"type": "string", "enum": ["live", "group", "portrait", "cover", "other"],
+                         "description": "live: performing (on stage, singing, playing); group: the band or several "
+                                        "members; portrait: one person posing (red carpet, press, close-up); cover: "
+                                        "an album cover; other: objects, merchandise, fans, places."},
                 "quality": {"type": "number", "minimum": 0, "maximum": 1,
                             "description": "Sharp, well lit, well framed, no watermark: 1. Blurry, tiny, cluttered: 0."},
+                "appeal": {"type": "number", "minimum": 0, "maximum": 1,
+                           "description": "How engaging it is to look at on a big screen at a party: a striking, "
+                                          "dynamic, well-lit moment of them performing, or a great close portrait "
+                                          "with character: near 1. Distant, dull, cluttered, awkward or ordinary "
+                                          "snapshots: low."},
                 "child_safe": {"type": "boolean"},
                 "faces": {"type": "array", "items": box, "maxItems": 4,
                           "description": "Each main person's head (hair included) as [ymin, xmin, ymax, xmax] on a "
@@ -315,12 +312,12 @@ def tool() -> dict:
                 "era": {"type": "string", "description": "The decade it was taken, like 1980s; empty if unknown."},
                 "moods": {"type": "array", "items": {"type": "string", "enum": _moods() or ["warm"]}, "maxItems": 3},
                 "caption": {"type": "string", "description": "At most 12 words."}},
-                "required": ["shows", "kind", "quality", "child_safe", "faces", "moods"]}}
+                "required": ["shows", "kind", "quality", "appeal", "child_safe", "faces", "moods"]}}
 
 
 SYSTEM = ("You check pictures for a family karaoke screen at a child's birthday party. Each picture was found for "
-          "one music artist (a singer or a band). Say whether it really shows that artist (or its members), or is "
-          "one of their album covers; how good it is; and whether it is suitable for young children. child_safe "
+          "one music artist (a singer or a band). Say whether it really shows that artist (or its members), and "
+          "what kind of picture it is; how good it is; and whether it is suitable for young children. child_safe "
           "is false for any nudity or near-nudity, sexual poses, violence, weapons, drugs, alcohol as the subject, "
           "rude gestures, or offensive words. When unsure about safety, say false. Find the main faces.")
 
@@ -372,6 +369,7 @@ def vet(path: Path, artist: str, c: dict) -> Optional[dict]:
     return {"shows": d.get("shows"), "kind": d.get("kind") if d.get("kind") in ("portrait", "live", "group", "cover",
                                                                                  "other") else "other",
             "quality": round(min(1.0, max(0.0, float(d.get("quality") or 0.0))), 2),
+            "appeal": round(min(1.0, max(0.0, float(d.get("appeal") if d.get("appeal") is not None else 0.5))), 2),
             "child_safe": d.get("child_safe") is True, "faces": faces[:4],
             "era": era if re.fullmatch(r"(19|20)\d0s", era) else None,
             "moods": [m for m in d.get("moods") or [] if m in moods][:3],
@@ -381,10 +379,14 @@ def vet(path: Path, artist: str, c: dict) -> Optional[dict]:
 def keep(v: dict) -> tuple[bool, str]:
     if not v["child_safe"]:
         return False, "not for children"
-    if v["shows"] not in ("the_artist", "album_cover"):
+    if v["shows"] != "the_artist":
         return False, f"shows {v['shows']}"
+    if v["kind"] not in PEOPLE:
+        return False, f"a {v['kind']}"
     if v["quality"] < MIN_QUALITY:
         return False, f"quality {v['quality']}"
+    if v.get("appeal", 1.0) < MIN_APPEAL:
+        return False, f"appeal {v['appeal']}"
     return True, "ok"
 
 
@@ -471,15 +473,14 @@ def fetch_artist(name: str, dz: Optional[dict], *, album: Optional[str] = None, 
             idx["decades"].append(dec)
         cands = [c for c in cands if c.get("url") and c["url"] not in known][:CANDIDATES_MAX]
         ai = ai_ready()
-        covers = sum(1 for p in idx["pictures"] if p.get("kind") == "cover")
+        people = sum(1 for p in idx["pictures"] if p.get("kind") in PEOPLE and not p.get("hidden"))
+        portraits = sum(1 for p in idx["pictures"] if p.get("kind") == "portrait")
         kept_now, later = 0, 0
         with _lock:
             _busy[s] = "vetting"
         for c in cands:
-            if len(idx["pictures"]) >= TARGET + (4 if era else 0):
+            if people >= TARGET + (4 if era else 0):
                 break
-            if c.get("kind_hint") == "cover" and covers >= COVERS_MAX:
-                continue
             if not ai and not c.get("trusted"):
                 continue                                # only the catalogue's own until the AI can look
             try:
@@ -501,16 +502,20 @@ def fetch_artist(name: str, dz: Optional[dict], *, album: Optional[str] = None, 
                     continue
             if v is not None:
                 ok, why = keep(v)
+                if ok and v["kind"] == "portrait" and portraits >= PORTRAITS_MAX:
+                    ok, why = False, "enough portraits"
                 if not ok:
                     (folder / fname).unlink(missing_ok=True)
                     idx.setdefault("rejected", {})[c["url"]] = why
                     continue
             kind = (v or {}).get("kind") or c.get("kind_hint") or "other"
-            covers += kind == "cover"
+            people += kind in PEOPLE
+            portraits += kind == "portrait"
             idx["pictures"].append({
                 "file": fname, "url": c["url"], "source": c["source"], "credit": c.get("credit"),
                 "license": c.get("license"), "page": c.get("page"), "title": c.get("title"), "w": w, "h": h,
                 "kind": kind, "vetted": v is not None, "quality": (v or {}).get("quality"),
+                "appeal": (v or {}).get("appeal"),
                 "faces": (v or {}).get("faces") or [], "era": (v or {}).get("era") or _decade(c.get("year")),
                 "moods": (v or {}).get("moods") or [], "caption": (v or {}).get("caption"),
                 "hidden": False, "at": time.time()})
@@ -528,7 +533,8 @@ def fetch_artist(name: str, dz: Optional[dict], *, album: Optional[str] = None, 
 
 
 def _unvetted(idx: dict) -> bool:
-    return any(not p.get("vetted") for p in idx.get("pictures") or [])
+    """Pictures the AI hasn't looked at, or looked at before it scored appeal."""
+    return any(not p.get("vetted") or p.get("appeal") is None for p in idx.get("pictures") or [])
 
 
 def revet(s: str) -> None:
@@ -537,7 +543,7 @@ def revet(s: str) -> None:
     folder = pictures_root() / s
     changed = False
     for p in list(idx.get("pictures") or []):
-        if p.get("vetted"):
+        if p.get("vetted") and p.get("appeal") is not None:
             continue
         v = vet(folder / p["file"], idx.get("artist") or s, {"source": p["source"], "title": p.get("title"),
                                                              "kind_hint": p.get("kind")})
@@ -550,7 +556,8 @@ def revet(s: str) -> None:
             idx["pictures"].remove(p)
             idx.setdefault("rejected", {})[p["url"]] = why
             continue
-        p.update(vetted=True, kind=v["kind"], quality=v["quality"], faces=v["faces"], era=v["era"] or p.get("era"),
+        p.update(vetted=True, kind=v["kind"], quality=v["quality"], appeal=v["appeal"], faces=v["faces"],
+                 era=v["era"] or p.get("era"),
                  moods=v["moods"], caption=v["caption"])
     if changed:
         _write(folder / "index.json", idx)
@@ -593,18 +600,19 @@ def song_pictures(sid: str) -> dict:
         idx = artist_index(a["slug"])
         pending = pending or not idx.get("fetched_at") or a["slug"] in _busy or bool(idx.get("incomplete"))
         for p in idx.get("pictures") or []:
-            if p.get("hidden"):
+            if p.get("hidden") or p.get("kind") not in PEOPLE:
                 continue
             path = pictures_root() / a["slug"] / p["file"]
             if not path.is_file():
                 continue
             out.append({"id": f"{a['slug']}/{p['file']}", "artist": a["name"], "path": str(path),
                         "url": f"/api/karaoke/pictures/{a['slug']}/{p['file']}",
-                        **{k: p.get(k) for k in ("w", "h", "kind", "quality", "faces", "era", "moods", "caption",
+                        **{k: p.get(k) for k in ("w", "h", "kind", "quality", "appeal", "faces", "era", "moods", "caption",
                                                  "source", "credit", "license", "vetted")}})
     year = song.get("year")
     dec = _decade(year)
-    out.sort(key=lambda p: (p.get("era") != dec, -(p.get("quality") or 0.5)))      # the song's era first
+    out.sort(key=lambda p: (p.get("era") != dec, -(p.get("appeal") if p.get("appeal") is not None else 0.4)))
+    # the song's era first, then the most engaging
     return {"state": "fetching" if pending else ("ready" if out else "none"),
             "artists": [a["name"] for a in arts], "era": dec, "pictures": out}
 

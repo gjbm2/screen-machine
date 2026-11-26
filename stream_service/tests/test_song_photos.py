@@ -74,10 +74,17 @@ def share(d, prefix="photo", n=600):
     return sum(d.pick_scene(SCENES, None, 0.0)[0].startswith(prefix) for _ in range(n)) / n
 
 
-def test_no_pictures_no_photo_scenes_and_with_them_the_floor():
+def test_no_engaging_pictures_no_photo_scenes_and_with_them_the_floor():
     assert share(director(0)) == 0.0 and share(director(dm.PICTURES_MIN - 1)) == 0.0
-    s = share(director(10))
-    assert dm.PICTURES_SHARE - 0.06 < s < 0.4
+    full = share(director(dm.PICTURES_FULL))
+    assert dm.PICTURES_SHARE - 0.06 < full < dm.PICTURES_SHARE + 0.08
+    assert share(director(dm.PICTURES_FULL // 2)) < full - 0.1          # a handful of good ones: less often
+
+
+def test_only_engaging_pictures_count():
+    from stream_service.lyric_feed import good_pictures
+    ps = picture_set("s1", {"pictures": [row(i, appeal=a) for i, a in enumerate([0.9, 0.7, 0.5, None, 0.2])]})
+    assert good_pictures(ps) == 2 and good_pictures(None) == 0
 
 
 def test_the_section_picks_the_look():
@@ -89,7 +96,7 @@ def test_the_section_picks_the_look():
 def test_not_two_photo_scenes_running_nor_against_the_treatment():
     d = director(10)
     after = sum(d.pick_scene(SCENES, "photo-verse", 0.0)[0].startswith("photo") for _ in range(600)) / 600
-    assert after < dm.PICTURES_SHARE / 2
+    assert after < dm.PICTURES_SHARE_AGAIN + 0.08                      # straight after one: less likely
     shun = director(10, direction=dict(DIRECTION_DEFAULTS, moods=[],
                                        scene_avoid={"tags": ["family:photo"], "factor": 0.3}))
     assert share(shun) < dm.PICTURES_SHARE / 2
@@ -113,13 +120,13 @@ def test_on_the_real_catalogue_medium_often_for_every_kind_of_song():
                           (["aggressive", "tense", "dark"], 0.8)):
         d = Director(dict(AUTO_DEFAULTS, seed=5, avoid_repeat=2), dict(DIRECTION_DEFAULTS, energy=energy, moods=moods))
         d.listens = lambda src: tuple(getattr(tab.get(src or ""), "listens", ()) or ())
-        d.pictures_n = lambda: 10
+        d.pictures_n = lambda: dm.PICTURES_FULL
         cur, hits = None, 0
         for _ in range(250):
             cur = d.pick_scene(p.scenes, cur, 0.0)[0]
             d.note_cue(cur, None, None)
             hits += cur in photos
-        assert 0.1 < hits / 250 < 0.45, (moods, hits / 250)
+        assert 0.3 < hits / 250 < 0.5, (moods, hits / 250)                 # owner: "around 30-50%"
         d.pictures_n = lambda: 0
         assert not any(d.pick_scene(p.scenes, None, 0.0)[0] in photos for _ in range(100))
 
