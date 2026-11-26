@@ -147,19 +147,6 @@ export default function Room3DPage() {
             <span className="block h-full bg-[#cfd4dc]" style={{ width: `${Math.round(hazeVisibility(haze?.estimate_ml_m3 ?? null) * 100)}%` }} />
           </span>
         </span>
-        <select className={`${pill} cursor-pointer border-0`} value={haze?.pick ?? ""} disabled={haze == null}
-          title="Auto: the scene and art director set it. A pick holds until the mode changes."
-          onChange={async (e) => {
-            const level = e.target.value || null;
-            try {
-              const r = await fetch(`${room.replace(/\/+$/, "")}/show/api/v1/haze`, { method: "PUT",
-                headers: { "Content-Type": "application/json" }, body: JSON.stringify({ level }) });
-              if (r.ok) setHaze(await r.json());
-            } catch { /* the next poll shows what holds */ }
-          }}>
-          <option value="">Auto</option>
-          {["off", "light", "medium", "thick"].map((l) => <option key={l} value={l} className="capitalize">{l[0].toUpperCase() + l.slice(1)}</option>)}
-        </select>
         <label className={`${pill} cursor-pointer`} title="An aid for aiming, not what the room looks like: draws every beam half-visible whatever the haze.">
           <input type="checkbox" checked={showPaths} onChange={(e) => setShowPaths(e.target.checked)} /> Show beam paths
         </label>
