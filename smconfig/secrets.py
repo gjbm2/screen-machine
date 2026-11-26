@@ -95,6 +95,8 @@ NEEDS: dict[str, tuple[Need, ...]] = {
     "karaoke": (
         Need("env", "FANARTTV_API_KEY", "screen-shaped artist pictures for the photo scenes (fanart.tv)", shareable=True,
              optional=True),
+        Need("env", "BRAVE_SEARCH_API_KEY", "web image search for the photo scenes' artist pictures (Brave)",
+             shareable=True, optional=True),
     ),
 }
 

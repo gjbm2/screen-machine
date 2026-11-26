@@ -15,6 +15,9 @@ this is a children's party):
     in the song's year, so a 1985 song can show 1985), then any picture of them, stage titles first; MusicBrainz ->
     Wikidata's own picture of the artist first;
   * fanart.tv (FANARTTV_API_KEY in .env, optional): screen-shaped 1920x1080 artist backgrounds, by MusicBrainz id;
+  * Brave image search (BRAVE_SEARCH_API_KEY in .env; strict safe search; at most BRAVE_MONTH_MAX searches a
+    month): the artist live in concert, as a web image search finds them (owner, 26 Nov: "If I do a google search
+    thousands of them show up");
   * TheAudioDB (its free public key): the artist's fanart (1280x720) and photo;
   * YouTube (owner, 26 Nov: "surely there are photos trivially available. we're not broadcasting -- this is just for
     a private party"): frames from the artist's concert films and live videos (the song's year first), taken from a
@@ -58,6 +61,8 @@ DEEZER = "https://api.deezer.com"
 COMMONS = "https://commons.wikimedia.org/w/api.php"
 FANART = "https://webservice.fanart.tv/v3/music"
 AUDIODB = "https://www.theaudiodb.com/api/v1/json/123"     # TheAudioDB's free public key
+BRAVE = "https://api.search.brave.com/res/v1/images/search"
+BRAVE_MONTH_MAX = 500    # Brave searches a calendar month at most: half its $5 monthly credit, so it never bills
 POOL = 10                # pictures downloaded and vetted at once (the fast sources)
 YT_POOL = 3              # live-video frames fetched at once (a 2 s clip each)
 YT_VIDEOS = 4            # live videos per artist whose frames are looked at
@@ -65,8 +70,8 @@ YT_FRAMES_LONG = 6       # frames from a concert film (20 min or more)
 YT_FRAMES_SHORT = 3      # frames from a single live song
 YT_WORDS = re.compile(r"\b(live|concert|tour|performance|performing|unplugged|festival|gig|session|stage)\b")
 TASK = "song_picture"
-VERSION = 3               # 2: people only, performing first (owner, 26 Nov: covers aren't charismatic); 3: YouTube
-                          # concert frames, TheAudioDB, band members
+VERSION = 4               # 2: people only, performing first (owner, 26 Nov: covers aren't charismatic); 3: YouTube
+                          # concert frames, TheAudioDB, band members; 4: fanart.tv's key, Brave image search
 
 TARGET = 14              # kept pictures of the artist an artist's deck aims for
 PORTRAITS_MAX = 5        # of which posed portraits at most: the rest performing (live) or the band (group)
@@ -179,16 +184,27 @@ def resolve_artists(artist: str) -> list[dict]:
     return out
 
 
-def _mbid(name: str) -> Optional[str]:
+def _mb_retry(path: str, **q: Any) -> Any:
+    """MusicBrainz, once more after a pause when it says it's busy (503: two of our threads at once)."""
     from .sources import _mb
-    d = _mb("artist", query=f'artist:"{name}"', limit=5) or {}
+    for i in range(3):
+        try:
+            return _mb(path, **q)
+        except urllib.error.HTTPError as e:
+            if e.code != 503 or i == 2:
+                raise
+            time.sleep(2.0 + 2.0 * i)
+    return None
+
+
+def _mbid(name: str) -> Optional[str]:
+    d = _mb_retry("artist", query=f'artist:"{name}"', limit=5) or {}
     same = [a for a in d.get("artists") or [] if norm(a.get("name")) == norm(name) and (a.get("score") or 0) >= 90]
     return max(same, key=lambda a: a.get("score") or 0)["id"] if same else None
 
 
 def _mb_artist(mbid: str) -> dict:
-    from .sources import _mb
-    return _mb(f"artist/{mbid}", inc="url-rels+artist-rels") or {}
+    return _mb_retry(f"artist/{mbid}", inc="url-rels+artist-rels") or {}
 
 
 def members(d: dict) -> list[str]:
@@ -319,6 +335,49 @@ def fanart_candidates(mbid: Optional[str]) -> list[dict]:
             if x.get("url"):
                 out.append({"url": x["url"], "source": "fanart.tv", "kind_hint": hint, "credit": "fanart.tv",
                             "license": "fanart.tv", "title": f"{d.get('name') or ''} ({kind})", "trusted": False})
+    return out
+
+
+def _brave_take() -> bool:
+    """One Brave search allowed this month (counted in brave_usage.json)?  Counts it if so."""
+    month = time.strftime("%Y-%m")
+    with _lock:
+        path = pictures_root() / "brave_usage.json"
+        u = _read(path, {})
+        n = int(u.get(month) or 0)
+        if n >= BRAVE_MONTH_MAX:
+            return False
+        _write(path, {month: n + 1})
+        return True
+
+
+def brave_candidates(name: str, year: Optional[int]) -> list[dict]:
+    key = smconfig.env("BRAVE_SEARCH_API_KEY")
+    if not key:
+        return []
+    queries = ([f"{name} live {year}"] if isinstance(year, int) and year > 1900 else []) + [f"{name} live concert"]
+    out, seen = [], set()
+    for q in queries:
+        if not _brave_take():
+            info("karaoke pictures: Brave's monthly cap reached; the other sources only until next month")
+            break
+        try:
+            req = urllib.request.Request(f"{BRAVE}?{urllib.parse.urlencode({'q': q, 'count': 50, 'safesearch': 'strict'})}",
+                                         headers={"Accept": "application/json", "X-Subscription-Token": key,
+                                                  "User-Agent": UA})
+            with urllib.request.urlopen(req, timeout=TIMEOUT_S) as r:   # noqa: S310 - the official API
+                d = json.loads(r.read().decode("utf-8"))
+        except Exception as e:                          # noqa: BLE001
+            error(f"karaoke pictures: Brave search for {name}: {e}")
+            continue
+        for x in d.get("results") or []:
+            url = ((x.get("properties") or {}).get("url") or "").strip()
+            if not url.startswith("http") or url in seen:
+                continue
+            seen.add(url)
+            out.append({"url": url, "source": "brave", "kind_hint": "live", "credit": x.get("source") or "the web",
+                        "license": "web", "title": str(x.get("title") or "")[:160], "page": x.get("url"),
+                        "trusted": False})
     return out
 
 
@@ -685,6 +744,7 @@ def fetch_artist(name: str, dz: Optional[dict], *, album: Optional[str] = None, 
         if dz:
             idx["deezer_id"] = dz.get("id")
             fast += deezer_candidates(dz, album)
+        fast += brave_candidates(name, era if era else year)
         fast += audiodb_candidates(name)
         try:
             yt = youtube_candidates(name, era)

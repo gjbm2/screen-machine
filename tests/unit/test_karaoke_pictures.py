@@ -94,6 +94,7 @@ def test_the_vetting_keeps_the_good_and_remembers_the_rest(root, monkeypatch):
     monkeypatch.setattr(pic, "commons_candidates", lambda n, y, wd, band=(): list(cands))
     monkeypatch.setattr(pic, "fanart_candidates", lambda m: [])
     monkeypatch.setattr(pic, "audiodb_candidates", lambda n: [])
+    monkeypatch.setattr(pic, "brave_candidates", lambda n, y: [])
     monkeypatch.setattr(pic, "youtube_candidates", lambda n, y: [])
     monkeypatch.setattr(pic, "_mbid", lambda n: None)
     monkeypatch.setattr(pic, "ai_ready", lambda: True)
@@ -115,6 +116,7 @@ def test_without_the_ai_only_the_catalogues_own_pictures(root, monkeypatch):
         {"url": "https://c/c.jpg", "source": "commons", "kind_hint": None, "title": "c", "trusted": False}])
     monkeypatch.setattr(pic, "fanart_candidates", lambda m: [])
     monkeypatch.setattr(pic, "audiodb_candidates", lambda n: [])
+    monkeypatch.setattr(pic, "brave_candidates", lambda n, y: [])
     monkeypatch.setattr(pic, "youtube_candidates", lambda n, y: [])
     monkeypatch.setattr(pic, "_mbid", lambda n: None)
     monkeypatch.setattr(pic, "ai_ready", lambda: False)
@@ -135,6 +137,7 @@ def test_a_rate_limit_is_for_later_not_a_rejection(root, monkeypatch):
         {"url": "https://upload.wikimedia.org/y.jpg", "source": "commons", "title": "y", "trusted": False}])
     monkeypatch.setattr(pic, "fanart_candidates", lambda m: [])
     monkeypatch.setattr(pic, "audiodb_candidates", lambda n: [])
+    monkeypatch.setattr(pic, "brave_candidates", lambda n, y: [])
     monkeypatch.setattr(pic, "youtube_candidates", lambda n, y: [])
     monkeypatch.setattr(pic, "_mbid", lambda n: None)
     monkeypatch.setattr(pic, "ai_ready", lambda: True)
@@ -183,3 +186,10 @@ def test_dark_bars_are_trimmed():
     assert pic._trim(im).size == (1440, 1080)
     full = Image.new("RGB", (800, 600), (150, 90, 60))
     assert pic._trim(full).size == (800, 600)
+
+
+def test_brave_never_goes_past_its_monthly_cap(root, monkeypatch):
+    monkeypatch.setattr(pic, "BRAVE_MONTH_MAX", 3)
+    assert [pic._brave_take() for _ in range(5)] == [True, True, True, False, False]
+    monkeypatch.setattr(pic.smconfig, "env", lambda k, d="": "")
+    assert pic.brave_candidates("Singer", 1999) == []                    # no key: no search
