@@ -68,6 +68,8 @@ BRAVE_MONTH_MAX = 500    # Brave searches a calendar month at most: half its $5 
 POOL = 10                # pictures downloaded and vetted at once (the fast sources)
 YT_POOL = 3              # live-video frames fetched at once (a 2 s clip each)
 YT_VIDEOS = 4            # live videos per artist whose frames are looked at
+CLIPS = 3                # video clips kept per artist (the song_video scenes)
+CLIP_S = 30              # seconds each (720p, silent: ~4 MB; played slowed, so a minute or more before it loops)
 YT_FRAMES_LONG = 6       # frames from a concert film (20 min or more)
 YT_FRAMES_SHORT = 3      # frames from a single live song
 YT_WORDS = re.compile(r"\b(live|concert|tour|performance|performing|unplugged|festival|gig|session|stage)\b")
@@ -400,8 +402,9 @@ def audiodb_candidates(name: str) -> list[dict]:
     return out
 
 
-def youtube_candidates(name: str, year: Optional[int]) -> list[dict]:
-    """Frames from the artist's live videos (concert films first, the song's year first), then their thumbnails."""
+def youtube_videos(name: str, year: Optional[int]) -> list[dict]:
+    """The artist's live videos on YouTube, concert films first (the song's year searched first): [{id, title,
+    duration}], at most YT_VIDEOS."""
     from .sources import _run, _ytdlp_cmd
     queries = ([f"{name} live {year}"] if isinstance(year, int) and year > 1900 else []) + [
         f"{name} live concert", f"{name} live performance"]
@@ -423,7 +426,12 @@ def youtube_candidates(name: str, year: Optional[int]) -> list[dict]:
                     and not re.search(r"\b(karaoke|cover|tribute|reaction|lyrics|tutorial|lesson)\b", t) \
                     and float(v.get("duration") or 0) >= 120:
                 vids[v["id"]] = v
-    ranked = sorted(vids.values(), key=lambda v: -min(float(v.get("duration") or 0), 3600.0))[:YT_VIDEOS]
+    return sorted(vids.values(), key=lambda v: -min(float(v.get("duration") or 0), 3600.0))[:YT_VIDEOS]
+
+
+def youtube_candidates(name: str, year: Optional[int], ranked: Optional[list] = None) -> list[dict]:
+    """Frames from the artist's live videos (concert films first, the song's year first), then their thumbnails."""
+    ranked = youtube_videos(name, year) if ranked is None else ranked
     frames, thumbs = [], []
     for v in ranked:
         dur = float(v.get("duration") or 0)
@@ -749,7 +757,9 @@ def fetch_artist(name: str, dz: Optional[dict], *, album: Optional[str] = None, 
         fast += brave_candidates(name, era if era else year)
         fast += audiodb_candidates(name)
         try:
-            yt = youtube_candidates(name, era)
+            vids = youtube_videos(name, era)
+            idx["videos"] = [{"id": v["id"], "title": v.get("title"), "duration": v.get("duration")} for v in vids]
+            yt = youtube_candidates(name, era, vids)
         except Exception as e:                          # noqa: BLE001 - no karaoke venv here: the rest still work
             error(f"karaoke pictures: YouTube for {name}: {e}")
             yt = []
@@ -824,6 +834,136 @@ def revet(s: str) -> None:
         _write(folder / "index.json", idx)
 
 
+# ---------------------------------------------------------------- video clips (the song_video scenes)
+def _clip(vid: str, start: int, folder: Path) -> Path:
+    """A CLIP_S silent 720p clip of a video from ``start`` s (yt-dlp fetches only that section)."""
+    from .sources import _run, _ytdlp_cmd
+    folder.mkdir(parents=True, exist_ok=True)
+    out = folder / f"{vid}_{start}.mp4"
+    if not out.is_file():
+        tmp = folder / f".{vid}_{start}"
+        _run(_ytdlp_cmd() + ["-f", "bv*[height<=720][vcodec^=avc1][protocol=https]/bv*[height<=720][protocol=https]",
+                             "--download-sections", f"*{start}-{start + CLIP_S}", "-o", f"{tmp}.%(ext)s",
+                             f"https://www.youtube.com/watch?v={vid}"], 240)
+        got = next(folder.glob(f".{vid}_{start}.*"), None)
+        if got is None:
+            raise ValueError("no clip")
+        if got.suffix != ".mp4":                        # a webm: remux is not enough for the renderer's decoder;
+            import subprocess                           # re-encode to H.264 (fast, small)
+            subprocess.run(["ffmpeg", "-v", "error", "-i", str(got), "-an", "-c:v", "libx264", "-preset", "veryfast",
+                            "-crf", "23", "-y", str(out)], capture_output=True, timeout=240)
+            got.unlink(missing_ok=True)
+        else:
+            os.replace(got, out)
+    return out
+
+
+def clip_crop(path: Path) -> Optional[list[int]]:
+    """The picture inside a clip's baked-in black bars (a 4:3 concert film in a 16:9 video): [w, h, x, y], or None
+    when it fills the frame."""
+    import subprocess
+    r = subprocess.run(["ffmpeg", "-v", "info", "-ss", "3", "-i", str(path), "-t", "8", "-vf", "cropdetect=24:2:0",
+                        "-an", "-f", "null", "-"], capture_output=True, text=True, timeout=60)
+    found = re.findall(r"crop=(\d+):(\d+):(\d+):(\d+)", r.stderr or "")
+    if not found:
+        return None
+    w, h, x, y = (int(v) for v in found[-1])
+    p = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
+                        "-of", "csv=p=0", str(path)], capture_output=True, text=True, timeout=30)
+    try:
+        fw, fh = (int(v) for v in p.stdout.strip().split(",")[:2])
+    except ValueError:
+        return None
+    if w >= fw - 8 and h >= fh - 8:
+        return None
+    if w < fw * 0.5 or h < fh * 0.5:                    # a dark scene, not bars
+        return None
+    return [w, h, x, y]
+
+
+def _clip_frames(path: Path) -> list[Path]:
+    import subprocess
+    outs = []
+    for i, t in enumerate((CLIP_S * 0.15, CLIP_S * 0.5, CLIP_S * 0.85)):
+        f = path.with_name(f".{path.stem}_f{i}.jpg")
+        subprocess.run(["ffmpeg", "-v", "error", "-ss", f"{t:.1f}", "-i", str(path), "-frames:v", "1", "-q:v", "3",
+                        "-y", str(f)], capture_output=True, timeout=60)
+        if f.is_file():
+            outs.append(f)
+    return outs
+
+
+def _vet_clip(path: Path, name: str, title: str, band: Any) -> tuple[bool, float, str]:
+    """Three frames through the vetting: every one fit for children, at least one of them the artist performing.
+    -> (keep, mean appeal, why)."""
+    frames = _clip_frames(path)
+    try:
+        if len(frames) < 2:
+            return False, 0.0, "no frames"
+        vs = [vet(f, name, {"source": "youtube", "title": f"a frame from the video '{title}'", "kind_hint": "live"},
+                  band) for f in frames]
+        if any(v is None for v in vs):
+            return False, 0.0, "the AI didn't answer"
+        if not all(v["child_safe"] for v in vs):
+            return False, 0.0, "not for children"
+        if not any(v["shows"] == "the_artist" for v in vs):
+            return False, 0.0, "not them"
+        return True, round(sum(v.get("appeal", 0.5) for v in vs) / len(vs), 2), "ok"
+    finally:
+        for f in frames:
+            f.unlink(missing_ok=True)
+
+
+def fetch_clips(name: str, year: Optional[int] = None) -> dict:
+    """CLIPS clips from the artist's live videos (two from the first, one each from the next), vetted, kept with the
+    artist's pictures; at once, in parallel."""
+    from concurrent.futures import ThreadPoolExecutor
+    s = slug(name)
+    folder = pictures_root() / s
+    idx = artist_index(s)
+    if not idx or not ai_ready() or not _claim(s, "clips"):
+        return idx
+    try:
+        vids = idx.get("videos")
+        if vids is None:
+            vids = [{"id": v["id"], "title": v.get("title"), "duration": v.get("duration")}
+                    for v in youtube_videos(name, year)]
+        plan = []
+        for k, v in enumerate(vids[:CLIPS]):
+            dur = float(v.get("duration") or 0)
+            if dur < CLIP_S * 2:
+                continue
+            for f in ((0.3, 0.6) if k == 0 and dur >= 600 else (0.45,)):
+                plan.append((v, int(max(10, min(dur - CLIP_S - 5, dur * f)))))
+        plan = plan[:CLIPS]
+
+        def one(job):
+            v, start = job
+            try:
+                p = _clip(v["id"], start, folder / "clips")
+            except Exception as e:                      # noqa: BLE001
+                return None, f"download: {e}"[:80]
+            ok, appeal, why = _vet_clip(p, name, str(v.get("title") or ""), tuple(idx.get("members") or ()))
+            if not ok:
+                p.unlink(missing_ok=True)
+                return None, why
+            return {"file": f"clips/{p.name}", "video": v["id"], "start": start, "dur": CLIP_S,
+                    "title": v.get("title"), "appeal": appeal, "hidden": False, "crop": clip_crop(p)}, "ok"
+        with ThreadPoolExecutor(len(plan) or 1, thread_name_prefix="karaoke-clip") as ex:
+            res = list(ex.map(one, plan))
+        idx = artist_index(s)                           # the photos may have moved on meanwhile
+        have = {c["file"] for c in idx.get("clips") or []}
+        idx["clips"] = (idx.get("clips") or []) + [c for c, _ in res if c and c["file"] not in have]
+        idx["clips_at"] = time.time()
+        _write(folder / "index.json", idx)
+        info(f"karaoke pictures: {name}: {sum(1 for c, _ in res if c)} video clips kept of {len(plan)} "
+             f"({', '.join(w for c, w in res if not c) or 'all good'})")
+        return idx
+    finally:
+        with _lock:
+            _busy.pop(s, None)
+
+
 # ---------------------------------------------------------------- a song's pictures
 def song_artists(sid: str, song: dict) -> Optional[list[dict]]:
     """The song's artists (resolved once, kept in songs.json): [{name, slug, deezer}], or None if not resolved yet."""
@@ -870,11 +1010,21 @@ def song_pictures(sid: str) -> dict:
                         "url": f"/api/karaoke/pictures/{a['slug']}/{p['file']}",
                         **{k: p.get(k) for k in ("w", "h", "kind", "quality", "appeal", "faces", "era", "moods", "caption",
                                                  "source", "credit", "license", "vetted")}})
+    clips = []
+    for a in arts:
+        for c in artist_index(a["slug"]).get("clips") or []:
+            path = pictures_root() / a["slug"] / c["file"]
+            if not c.get("hidden") and path.is_file():
+                clips.append({"id": f"{a['slug']}/{c['file']}", "artist": a["name"], "path": str(path),
+                              "dur": c.get("dur"), "appeal": c.get("appeal"), "title": c.get("title"),
+                              "crop": c.get("crop")})
     year = song.get("year")
     dec = _decade(year)
     out.sort(key=lambda p: (p.get("era") != dec, -(p.get("appeal") if p.get("appeal") is not None else 0.4)))
     # the song's era first, then the most engaging
-    return {"state": "fetching" if pending else ("ready" if out else "none"),
+    clips.sort(key=lambda c: -(c.get("appeal") or 0.5))
+    pending = pending or any(not artist_index(a["slug"]).get("clips_at") for a in arts) and ai_ready()
+    return {"clips": clips, "state": "fetching" if pending else ("ready" if out or clips else "none"),
             "artists": [a["name"] for a in arts], "era": dec, "pictures": out}
 
 
@@ -924,6 +1074,23 @@ def _work(sid: str, song: dict, now: float) -> bool:
             except Exception as e:                      # noqa: BLE001
                 _failed[s] = now
                 error(f"karaoke pictures: {a['name']}: {e}")
+            return True
+        if any("crop" not in c for c in idx.get("clips") or []) and _claim(s, "cropping"):
+            try:
+                for c in idx["clips"]:
+                    if "crop" not in c:
+                        c["crop"] = clip_crop(pictures_root() / s / c["file"])
+                _write(pictures_root() / s / "index.json", idx)
+            finally:
+                with _lock:
+                    _busy.pop(s, None)
+            return True
+        if not idx.get("clips_at") and ai_ready():
+            try:
+                fetch_clips(a["name"], song.get("year"))
+            except Exception as e:                      # noqa: BLE001
+                _failed[s] = now
+                error(f"karaoke pictures: clips for {a['name']}: {e}")
             return True
         if _unvetted(idx) and ai_ready() and _claim(s, "re-vetting"):
             try:

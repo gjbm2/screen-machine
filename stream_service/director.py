@@ -526,6 +526,7 @@ class Director:
         self.listens: Optional[Callable[[Optional[str]], tuple]] = None   # plug-in -> what it draws from the sound
         self.notes_age: Optional[Callable[[], Optional[float]]] = None     # s since the piano last played (None: never)
         self.pictures_n: Optional[Callable[[], int]] = None   # the playing karaoke song's artist pictures (0: none)
+        self.clips_n: Optional[Callable[[], int]] = None      # ... and its video clips of them live (0: none)
         self.section: Optional[Callable[[], Optional[str]]] = None   # the karaoke section now (verse | chorus | ...)
         self.taste: Optional[Callable[[Optional[str], dict], float]] = None   # (plug-in, direction) -> the room's
                                                                               # taste multiplier (taste.py)
@@ -537,6 +538,9 @@ class Director:
             return 1.0
         try:
             heard = self.listens(plugin) or ()
+            if "video" in heard:                          # the song's clips of the artist live (song_video)
+                n = self.clips_n() if self.clips_n is not None else 0
+                return PICTURES_BOOST if n >= 1 else 0.0
             if "pictures" in heard:
                 n = self.pictures_n() if self.pictures_n is not None else 0
                 return PICTURES_BOOST if n >= PICTURES_MIN else 0.0
@@ -550,8 +554,9 @@ class Director:
         return NOTES_NONE + (1.0 - NOTES_NONE) * h
 
     def _listens_pictures(self, plugin: Optional[str]) -> bool:
+        """A look of the artist (photos or video clips): together they make the artist's share."""
         try:
-            return self.listens is not None and "pictures" in (self.listens(plugin) or ())
+            return self.listens is not None and bool({"pictures", "video"} & set(self.listens(plugin) or ()))
         except Exception:
             return False
 

@@ -345,3 +345,69 @@ song-photos-pop-art:
            energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
   effects: [halftone-pop-art]
   tags: {energy: [0.35, 0.95], moods: [playful, retro, bright], sections: [verse, chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.9}
+
+# Song video (owner, 26 Nov: "live youtube feed would be fun -- we aren't going to be lip syncing so ... only moving
+# surfaces ... slowed / styled"): short vetted clips of the karaoke song's artist live (routes/karaoke/pictures.py
+# fetch_clips), slowed and blended (song_video.py), mostly with a picture effect on top. Only with the song's clips
+# (listens "video"); they share the artist's share with the photo looks (director.PICTURES_SHARE).
+song-video-slow-motion:
+  label: "Song video: slow motion"
+  source: song_video
+  params: {speed_x: 0.4, bars: 8.0, bars_fast: 4.0, zoom: 0.15,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
+  tags: {energy: [0.2, 0.75], moods: [dreamy, warm, elegant, mellow], sections: [verse, instrumental], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 1.0}
+
+song-video-echo-trails:
+  label: "Song video: echo trails"
+  source: song_video
+  params: {speed_x: 0.55, bars: 8.0, bars_fast: 4.0, contrast: 1.2,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
+  effects: [feedback-echo-liquid]
+  tags: {energy: [0.45, 1.0], moods: [euphoric, hypnotic, cosmic, tense], sections: [chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 1.0}
+
+song-video-kaleidoscope:
+  label: "Song video: kaleidoscope"
+  source: song_video
+  params: {speed_x: 0.5, bars: 8.0, bars_fast: 4.0, zoom: 0.1,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
+  effects: [isf-kaleidoscope]
+  tags: {energy: [0.5, 1.0], moods: [euphoric, hypnotic, playful, geometric], sections: [chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.9}
+
+song-video-colour-wash:
+  label: "Song video: colour wash"
+  source: song_video
+  params: {speed_x: 0.45, bars: 8.0, bars_fast: 4.0, contrast: 1.25, tint: 0.55,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
+  tags: {energy: [0.3, 0.9], moods: [dreamy, warm, bright, euphoric], sections: [verse, chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 1.0}
+
+song-video-vhs:
+  label: "Song video: old tape"
+  source: song_video
+  params: {speed_x: 0.7, bars: 8.0, bars_fast: 4.0,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
+  effects: [vhs-worn-tape]
+  tags: {energy: [0.35, 0.9], moods: [retro, playful, warm], sections: [verse, chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.9}
+
+song-video-pop-art:
+  label: "Song video: pop art"
+  source: song_video
+  params: {speed_x: 0.6, bars: 6.0, bars_fast: 3.0, contrast: 1.2,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
+  effects: [halftone-pop-art]
+  tags: {energy: [0.45, 1.0], moods: [playful, bright, retro], sections: [chorus, verse], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.9}
+
+song-video-wall:
+  label: "Song video: video wall"
+  source: song_video
+  params: {speed_x: 0.6, bars: 6.0, bars_fast: 3.0,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
+  effects: [tile-split-video-wall]
+  tags: {energy: [0.55, 1.0], moods: [euphoric, playful, bright, aggressive], sections: [chorus], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.9}
+
+song-video-mirror:
+  label: "Song video: mirror"
+  source: song_video
+  params: {speed_x: 0.35, bars: 8.0, bars_fast: 4.0, mirror: 1, zoom: 0.2,
+           energy: {bind: activity_slow, range: [0.0, 1.0]}, pulse: {bind: beat, range: [0.0, 1.0]}}
+  effects: [afterimage-ghost-dream]
+  tags: {energy: [0.2, 0.7], moods: [dreamy, hypnotic, mellow], sections: [verse, instrumental, outro], family: photo, dims: 2d, technique: [projection], modes: [karaoke], weight: 0.8}

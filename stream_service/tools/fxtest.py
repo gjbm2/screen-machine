@@ -203,8 +203,9 @@ class FxSound(ScopeFields):
         self._lyr_view, self._lyr_song = LyricView(), demo_song()
         self.lyrics = LyricFrame()
         self.pictures = demo_pictures()                 # listens "pictures": the karaoke cache, else art stills
-        from stream_service.plugins.sources import song_photos
+        from stream_service.plugins.sources import song_photos, song_video
         song_photos.SYNC_DECODE = True
+        song_video.SYNC_START_S = 4.0                   # a clip's first frames before the first render
 
     @property
     def present(self) -> bool:
@@ -532,7 +533,7 @@ def video_transition(cls, preset, ctx, outdir, seconds):
 def demo_pictures():
     """A PictureSet for the photo scenes: the karaoke pictures cache's first artist with pictures, else art stills."""
     import json as _json
-    from stream_service.lyric_feed import Picture, PictureSet, _face
+    from stream_service.lyric_feed import Clip, Picture, PictureSet, _face
     root = pathlib.Path.home() / ".local/state/screen-machine/karaoke/pictures"
     for idx in sorted(root.glob("*/index.json")):
         try:
@@ -546,8 +547,13 @@ def demo_pictures():
         kinds = os.environ.get("FX_PICTURE_KINDS")         # e.g. "portrait,live": only those (a fit check)
         if kinds:
             pics = tuple(p for p in pics if p.kind in kinds.split(","))
+        clips = tuple(Clip(f"{idx.parent.name}/{c['file']}", str(idx.parent / c["file"]), float(c.get("dur") or 30),
+                           float(c.get("appeal") or 0.5), tuple(c["crop"]) if c.get("crop") else None)
+                      for c in (_json.loads(idx.read_text()).get("clips") or []) if (idx.parent / c["file"]).is_file())
+        if os.environ.get("FX_ARTIST") and idx.parent.name != os.environ["FX_ARTIST"]:
+            continue
         if len(pics) >= 1:
-            return PictureSet(f"demo:{idx.parent.name}", "demo", None, pics)
+            return PictureSet(f"demo:{idx.parent.name}", "demo", None, pics, clips)
     from PIL import Image
     files = sorted(ART.glob("*.jpg"))[:6]
     pics = []

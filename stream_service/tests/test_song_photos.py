@@ -10,6 +10,7 @@ import pytest
 
 from stream_service import director as dm
 from stream_service.director import AUTO_DEFAULTS, DIRECTION_DEFAULTS, Director, floor_share
+DEFAULT_DIRECTION = dict(DIRECTION_DEFAULTS, moods=[])
 from stream_service.lyric_feed import LyricFeed, _face, picture_set
 from stream_service.plugins.sources import song_photos as sp
 
@@ -156,3 +157,24 @@ def test_the_scene_picks_engaging_ones_most_and_never_repeats_until_all_shown():
     assert sorted(seen) == sorted(s.pics)
     s.bag = list(s.order)
     assert s._choose({"p1", "p2", "p3"}) not in {"p1", "p2", "p3"}      # never what's on screen when another will do
+
+
+def test_clips_ride_the_feed_with_their_crop():
+    ps = picture_set("s1", {"pictures": [], "clips": [
+        {"id": "a/clips/x.mp4", "path": "/p/x.mp4", "dur": 30, "appeal": 0.7, "crop": [922, 720, 178, 0]},
+        {"id": "a/clips/y.mp4", "path": "/p/y.mp4", "dur": 30}, {"id": "bad"}]})
+    assert ps is not None and ps.pictures == () and len(ps.clips) == 2
+    assert ps.clips[0].crop == (922, 720, 178, 0) and ps.clips[1].crop is None and ps.clips[1].appeal == 0.5
+
+
+def test_video_looks_need_a_clip_and_share_the_artists_floor():
+    scenes = {"vid": {"source": "song_video", "tags": {"family": "photo"}},
+              **{f"plasma-{i}": {"source": "plasma", "tags": {"family": "x"}} for i in range(30)}}
+    d = Director(dict(AUTO_DEFAULTS, seed=3, avoid_repeat=0), dict(DEFAULT_DIRECTION))
+    d.listens = lambda src: ("video",) if src == "song_video" else ()
+    d.pictures_n = lambda: dm.PICTURES_FULL
+    d.clips_n = lambda: 0
+    assert not any(d.pick_scene(scenes, None, 0.0)[0] == "vid" for _ in range(300))
+    d.clips_n = lambda: 3
+    hits = sum(d.pick_scene(scenes, None, 0.0)[0] == "vid" for _ in range(600)) / 600
+    assert dm.PICTURES_SHARE - 0.08 < hits < dm.PICTURES_SHARE + 0.08

@@ -175,12 +175,24 @@ class Picture:
 
 
 @dataclass(frozen=True)
+class Clip:
+    """A short silent clip of the artist live (routes/karaoke/pictures.py fetch_clips): a local MP4, its frames vetted."""
+    id: str
+    path: str
+    dur: float
+    appeal: float = 0.5
+    crop: Optional[tuple] = None   # (w, h, x, y): the picture inside baked-in black bars
+
+
+@dataclass(frozen=True)
 class PictureSet:
-    """The playing song's pictures, best first (the song's era first).  ``key`` changes when the list does."""
+    """The playing song's pictures, best first (the song's era first), and its video clips (most engaging first).
+    ``key`` changes when either list does."""
     key: str
     song: str
     era: Optional[str]
     pictures: tuple
+    clips: tuple = ()
 
 
 def _face(faces: Any) -> Optional[tuple]:
@@ -214,10 +226,19 @@ def picture_set(sid: str, o: Any) -> Optional[PictureSet]:
                                float(p.get("appeal") if p.get("appeal") is not None else 0.5)))
         except (KeyError, TypeError, ValueError):
             continue
-    if not out:
+    clips = []
+    for c in o.get("clips") or []:
+        try:
+            cr = c.get("crop")
+            clips.append(Clip(str(c["id"]), str(c["path"]), float(c.get("dur") or 30.0),
+                              float(c.get("appeal") if c.get("appeal") is not None else 0.5),
+                              tuple(int(v) for v in cr) if isinstance(cr, list) and len(cr) == 4 else None))
+        except (KeyError, TypeError, ValueError):
+            continue
+    if not out and not clips:
         return None
-    return PictureSet(f"{sid}:{len(out)}:{out[0].id}", sid, o.get("era") if isinstance(o.get("era"), str) else None,
-                      tuple(out))
+    return PictureSet(f"{sid}:{len(out)}:{out[0].id if out else ''}:{len(clips)}", sid,
+                      o.get("era") if isinstance(o.get("era"), str) else None, tuple(out), tuple(clips))
 
 
 @dataclass(frozen=True)
@@ -380,6 +401,13 @@ APPEAL_GOOD = 0.6       # a picture this engaging counts towards the photo scene
 
 def good_pictures(ps: Optional["PictureSet"]) -> int:
     return sum(1 for p in ps.pictures if p.appeal >= APPEAL_GOOD) if ps is not None else 0
+
+
+def clips_playing() -> int:
+    """How many vetted video clips of the artist the playing karaoke song has (the song_video scenes' gate)."""
+    f = shared()
+    sn = f.fresh() if f is not None else None
+    return len(sn.pictures.clips) if sn is not None and sn.state == "playing" and sn.pictures else 0
 
 
 def pictures_playing() -> int:

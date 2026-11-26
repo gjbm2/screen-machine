@@ -115,6 +115,13 @@ for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`;
     involve the artist with 10 or more of them (owner: "around 30-50% ... providing the pics are ok"), fewer with a
     handful; verse looks in verses, chorus looks in choruses; the most engaging pictures most often.
 
+- **Video clips** (owner, 26 Nov: "live youtube feed would be fun ... only moving surfaces ... slowed / styled"):
+  after an artist's photos, three 30 s silent 720p clips from their concert films on YouTube (yt-dlp fetches only
+  that section, ~40 s for all three, in parallel), each checked by three of its frames (the artist on stage, fit
+  for children) and its baked-in black bars measured (ffmpeg cropdetect), kept in `<artist>/clips/`. The renderer's
+  `song-video-*` looks (`stream_service/plugins/sources/song_video.py`: slowed, frames blended, drifting, with an
+  effect on top) play only with the song's clips, and share the artist's share with the photo looks.
+
 ## The karaoke venv (per machine)
 
 ```

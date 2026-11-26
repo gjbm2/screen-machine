@@ -356,8 +356,9 @@ class Session(EngineListener):
         self.director.rate = self.fx_director.rate = self.mgr.rating_weight     # the owner's stars (ratings.py)
         self.director.listens = self._source_listens      # a notes scene with no MIDI: nearly never picked
         self.director.notes_age = self._notes_age
-        from .lyric_feed import pictures_playing
+        from .lyric_feed import clips_playing, pictures_playing
         self.director.pictures_n = pictures_playing        # the photo scenes: only with the song's pictures
+        self.director.clips_n = clips_playing              # the video scenes: only with its clips of the artist live
         self.director.section = lambda: self.fx_director.section_kind   # the karaoke section (scenes' sections tag)
         self.director.taste = getattr(self.mgr, "taste_weight", None)   # the room's Next / by-hand / Keep (taste.py)
         self.fx_director.taste = lambda preset: self.mgr.fx_taste_weight(preset, self.current_name,
@@ -3161,8 +3162,9 @@ class SessionManager:
                 d.rate = self.rating_weight
                 d.listens = self.source_listens      # no MIDI heard: notes scenes nearly never (d1543b06)
                 d.notes_age = self.notes_age
-                from .lyric_feed import pictures_playing
+                from .lyric_feed import clips_playing, pictures_playing
                 d.pictures_n = pictures_playing
+                d.clips_n = clips_playing
                 d.taste = self.taste_weight          # the room's taste (taste.py)
                 got = d.pick_scene(self.presets.scenes, None, time.monotonic())
                 if got is not None:

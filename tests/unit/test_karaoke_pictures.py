@@ -153,7 +153,7 @@ def test_a_songs_list_merges_its_artists_hides_and_puts_its_era_first(root, monk
         (root / s).mkdir(parents=True)
         for f, _, _ in rows:
             (root / s / f"{f * 16}.jpg").write_bytes(jpeg())
-        (root / s / "index.json").write_text(json.dumps({"fetched_at": 1.0, "pictures": [
+        (root / s / "index.json").write_text(json.dumps({"fetched_at": 1.0, "clips_at": 1.0, "pictures": [
             {"file": f"{f * 16}.jpg", "url": f, "w": 1200, "h": 900, "kind": "live", "era": e, "quality": q,
              "appeal": q, "hidden": False, "faces": []} for f, e, q in rows]}))
     (root / "songs.json").write_text(json.dumps({"s1": {"artist": "A & B", "artists": [
