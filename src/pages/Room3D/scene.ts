@@ -26,7 +26,7 @@ const beamVS = `varying float vY; varying vec3 vN; varying vec3 vV; uniform floa
   void main() { vY = position.y / len; vec4 mv = modelViewMatrix * vec4(position, 1.0);
     vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`;
 const beamFS = `uniform vec3 color; uniform float opacity; varying float vY; varying vec3 vN; varying vec3 vV;
-  void main() { float core = pow(abs(dot(vN, vV)), 1.6); float fade = pow(clamp(1.0 - vY, 0.0, 1.0), 1.4);
+  void main() { float core = pow(abs(dot(vN, vV)), 1.6); float fade = 1.0 - 0.55 * clamp(vY, 0.0, 1.0);
     gl_FragColor = vec4(color * opacity * core * fade, 1.0); }`;
 /** An open cone in the air, apex at the origin, along +z (a lens's axis), brightest at its core and near the lens. */
 function beam(radius: number, length: number): THREE.Mesh<THREE.ConeGeometry, THREE.ShaderMaterial> {
@@ -41,6 +41,7 @@ function beam(radius: number, length: number): THREE.Mesh<THREE.ConeGeometry, TH
   g.rotateX(Math.PI / 2);                                       // +y -> +z: the cone runs along the lens's axis
   const mesh = new THREE.Mesh(g, m);
   mesh.frustumCulled = false;
+  mesh.userData.beamLen = length;                               // fitBeams scales it to end on the surface it meets
   return mesh;
 }
 function setBeam(mesh: THREE.Mesh<THREE.ConeGeometry, THREE.ShaderMaterial>, c: RGB, a: number) {
@@ -118,6 +119,7 @@ export class RoomSim {
   private root = new THREE.Group();                 // room frame -> three.js
   private built = new THREE.Group();
   private parts: Part[] = [];
+  private beams: THREE.Mesh[] = [];                 // every beam in the air: each frame cut to the surface it meets
   private screens = new Map<string, { feed: ScreenFeed; mesh: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial>;
     light: THREE.PointLight; src: unknown; tex: THREE.Texture | null; sampledAt: number }>();
   private model: RoomModel | null = null;
@@ -178,6 +180,8 @@ export class RoomSim {
       else if (!f.part && f.kind === "lamp" && f.at) this.buildLamp(f);
     }
     for (const p of m.points) if (p.device === "mirror_ball") this.buildBall(v3(p.at));
+    this.beams = [];
+    this.built.traverse((o) => { if ((o as THREE.Object3D).userData?.beamLen) this.beams.push(o as THREE.Mesh); });
     if (first) this.view("side");                          // across the beams: the most readable start
   }
 
@@ -499,6 +503,7 @@ export class RoomSim {
     };
     const c: Ctx = { ch, t: now / 1000, dt, air, haze: this.haze, size: m.size };
     for (const p of this.parts) p.update(c);
+    this.fitBeams(m.size);
     for (const s of this.screens.values()) this.screenFrame(s, now);
     this.renderer.render(this.scene, this.camera);
   }
@@ -531,6 +536,25 @@ export class RoomSim {
         s.light.color.copy(srgb([r / k, g / k, b / k]));
         s.light.intensity = (2.5 * (r + g + b)) / (k * 765);
       } catch { s.light.intensity = 0; }
+    }
+  }
+
+  /** Each visible beam runs from its lens to the wall, floor or ceiling its axis meets (owner, 26 Nov: "lighting
+   *  cones should be shown transecting the surface they arrive on, not just rendered as fixed-length cones"): its
+   *  axis is found in the room's frame and the cone scaled to that distance (uniformly, so its angle stays). */
+  private fitBeams(size: Vec3) {
+    this.root.updateMatrixWorld(true);
+    const o = new THREE.Vector3(), tip = new THREE.Vector3();
+    for (const b of this.beams) {
+      if (!b.visible) continue;
+      const len = b.userData.beamLen as number;
+      b.scale.setScalar(1);
+      b.updateMatrixWorld(true);
+      b.getWorldPosition(o); this.root.worldToLocal(o);
+      tip.set(0, 0, 1); b.localToWorld(tip); this.root.worldToLocal(tip);
+      const d = tip.sub(o).normalize();
+      const hit = hitRoom(o, d, size);
+      b.scale.setScalar(Math.max(0.05, hit.distanceTo(o)) / len);
     }
   }
 
