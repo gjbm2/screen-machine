@@ -1818,13 +1818,14 @@ class Structure:
                 if abs(nb - b) <= 0.5 * grid.bar_s and nb >= now_s + lead:
                     line = nb
             pl["done"].add(i)
+            final = x.get("kind") == "chorus" and not any(y.get("kind") == "chorus" for y in pl["secs"][i + 1:])
             prev = next((s for s in reversed(self.sections) if s.get("letter") == x["letter"]), None)
             sid = self._next_id
             self._pred = {"line": line, "letter": x["letter"], "repeat_of": prev["id"] if prev else None,
                           "from": self._cur_id(), "id": sid, "lyrics": x.get("kind")}
             self._emit("section_change", line, now_s, section_id=sid, letter=x["letter"],
                        repeat_of=self._pred["repeat_of"], predicted=True, boundary_ms=round(line * 1000.0, 1),
-                       detail="lyrics", section_kind=x.get("kind"))
+                       detail="lyrics", section_kind=x.get("kind"), final=final)
             self._gobo_at(line, ("section", sid))
             return
 

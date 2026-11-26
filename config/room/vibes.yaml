@@ -7,7 +7,9 @@
 # add, rename, duplicate or delete them freely. Nothing in code knows these names: a mode that names a missing vibe
 # gets the neutral look, and the Feel card says so (the read-back's known: false and problems).
 #
-# Not built yet: strobe is only published (false everywhere, its neutral). accents today sets only how deep the
+# strobe (owner, 26 Nov): false = no light effect strobes (light_effects.yaml); true = they may, and with
+# peak_tokens_per_hour set each strobe moment spends one of those tokens (unset: the effects' own gaps limit them).
+# accents today sets only how deep the
 # lamps' beat swell goes (show.yaml director.accent_depth). peak_tokens_per_hour IS spent (Stage 4): a drop after a
 # build costs one token (a lamp dip, a hard look cut and a unison hit); left unset (0), drops never cut or hit and only
 # show inside the look. The owner sets it (§8.5 suggests Party 4-6 an hour).
@@ -226,7 +228,7 @@ vibes:
     floor: 0.15
     motion: [0.4, 0.9]
     accents: downbeat
-    strobe: false                   # caps are off by default (§1); only allow strobes in a mode that lowers the blinds
+    strobe: true                    # as before the switch worked (strobes on drops and peaks); false stops them
     # peak_tokens_per_hour: 5       # §8.5: Party 4-6 an hour. Spent since Stage 4; unset (the owner's call) = drops
                                     # never cut or hit, they show inside the look
     moods: [euphoric, playful, bright]   # the Party mode's own direction words today (modes.json)
@@ -265,7 +267,7 @@ vibes:
     floor: 0.1
     motion: [0.5, 1.0]
     accents: beat
-    strobe: false
+    strobe: true                    # as before the switch worked; false stops them
     # peak_tokens_per_hour: 6       # spent since Stage 4; unset (the owner's call) = drops never cut or hit
     moods: [euphoric, geometric]    # the Disco mode's own direction words today (modes.json)
     transition_style: lively
@@ -280,3 +282,17 @@ vibes:
     persona: >-
       A disco: glitterball, four-on-the-floor, everyone dancing. Bright, rhythmic and playful, with colour that moves
       on every beat.
+
+  singalong:
+    label: Karaoke
+    description: The room's look as before, plus beat flashes on the bars and a few strobe moments an hour.
+    # The laptop rig's Live mode (owner, 26 Nov: "strobes etc. on the gigbars ... don't feel they're really getting
+    # any use"). Everything but accents, strobe and peak_tokens_per_hour is the neutral look it had with no feel.
+    palettes: [art, ember, gold, dusk]   # show.yaml director.no_feel's list: the same colours as before
+    accents: beat                   # the beat swell, and the GigBARs flash on the music's hits (show.yaml looks.hits)
+    strobe: true
+    peak_tokens_per_hour: 6         # big moments an hour: the last chorus, a peak, a drop (each strobe moment is one)
+    haze: light                     # the hazer holds a light haze (show.yaml lights.atmosphere); beams show in it
+    persona: >-
+      A karaoke party at home. The singer is the star: keep the lyrics readable and the room lively, and save the
+      big moments for the last chorus and the loudest peaks.

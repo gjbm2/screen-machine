@@ -14,6 +14,8 @@ version: 1
 room:
   size: [5.0, 10.0, 4.0]
   front: east                       # the wall people face: the bars' wall
+  haze_half_life_s: 150             # provisional: haze the room, stop the hazer, and time how long it takes to halve
+                                    # (show_service/atmosphere.py holds the haze from this and the room's size)
 
 # bar A: the NE corner, bar centre [4.6, 9.6, 2.5], facing -114.5° from east (the room centre)
 # bar B: the SE corner, bar centre [4.6, 0.4, 2.5], facing 114.5° from east (the room centre)

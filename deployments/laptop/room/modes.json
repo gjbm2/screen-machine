@@ -22,6 +22,14 @@
         "show.mic": {
           "set": true,
           "restore": true
+        },
+        "show.main": {
+          "set": {
+            "vibe": "singalong",
+            "listening": false
+          },
+          "restore": true,
+          "policy": "ignore"
         }
       }
     }

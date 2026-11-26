@@ -1006,6 +1006,7 @@ class LookEngine:
         self._space_src = space_mod
         self.modules: dict[str, str] = {}
         self._holds: dict[str, _Hold] = {}                           # swapped whole under _hold_lock
+        self._atmos: dict[str, dict] = {}                            # set_atmosphere's (swapped whole)
         self._hold_lock = threading.Lock()
         self._hold_seq = itertools.count(1)
         # docs/ENSEMBLE.md §7.2: the gesture ring (swapped whole under _drop_lock), each id's last seq taken, the last
@@ -2644,7 +2645,30 @@ class LookEngine:
         return p if isinstance(p, Mapping) else None
 
     # -- the runner ----------------------------------------------------------------------------------------------------
+    def set_atmosphere(self, values: Mapping[str, Any]) -> None:
+        """Any thread: {fixture id: {channel name: byte}} written over those fixtures' bytes in every frame
+        (atmosphere.py: the hazers), whatever the look, House, holds or the show's activity; {} ends it."""
+        self._atmos = {str(k): dict(v) for k, v in (values or {}).items() if isinstance(v, Mapping)}
+
     def evaluate(self, output_id: str, t_send_s: float, caps: Mapping[str, Any]) -> dict:
+        """``_evaluate``, then the atmosphere's bytes (set_atmosphere) over its fixtures."""
+        frame = self._evaluate(output_id, t_send_s, caps)
+        atm = self._atmos
+        if atm:
+            fx = frame.get("fixtures") if isinstance(frame, dict) else None
+            if isinstance(fx, dict):
+                op = (getattr(self._program, "outputs", None) or {}).get(output_id)
+                slots = {s.id: s for s in op.slots if s.id in atm} if op is not None else {}
+                for fid, vals in atm.items():
+                    ff, s = fx.get(fid), slots.get(fid)
+                    if isinstance(ff, dict) and s is not None and ff.get("dmx") is not None:
+                        enc = self._program.enc_mod
+                        fn = getattr(enc, "with_macros", None) if enc is not None else None
+                        if fn is not None:
+                            ff["dmx"] = fn(s.info, s.type, ff["dmx"], vals)
+        return frame
+
+    def _evaluate(self, output_id: str, t_send_s: float, caps: Mapping[str, Any]) -> dict:
         """The Frame for ``output_id`` sent at ``t_send_s`` (README S5.5; module docstring). Only from that output's
         runner thread."""
         c0 = time.perf_counter()

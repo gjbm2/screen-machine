@@ -341,7 +341,8 @@ class Show:
         self._g = {k: _Guard(k) for k in ("features.process", "clock.process", "clock.observe_hit", "on_midi",
                                           "piano.tick", "features.tick", "harmony.tick", "clock.tick", "snapshot",
                                           "ring.write", "notetap", "piano.view", "ml.feed", "rig.hit",
-                                          "artnet.set_look", "rig.set_look", "recorder", "piano_live")}
+                                          "artnet.set_look", "rig.set_look", "rig.set_atmosphere", "recorder",
+                                          "piano_live")}
 
     # -- building (main thread) ----------------------------------------------------------------------------------
     def _read_show_file(self) -> dict:
@@ -435,6 +436,8 @@ class Show:
         if self.ctx is not None and (getattr(self.artnet, "set_look", None) is not None
                                      or getattr(self.rig, "set_look", None) is not None):
             self.ctx.set_look_out = self._set_look_out     # Stage 5: Art-Net out's set_look, then the rig's
+        if self.ctx is not None and callable(getattr(self.rig, "set_atmosphere", None)):
+            self.ctx.set_atmosphere = self._set_atmosphere   # the hazers (atmosphere.py, via the director)
         if freeze_gc:
             t = time.perf_counter()
             gc.collect()
@@ -748,6 +751,13 @@ class Show:
                 rs(**rkw)
             except Exception:
                 self._g["rig.set_look"].failed()
+
+    def _set_atmosphere(self, values: dict) -> None:
+        """``ctx.set_atmosphere``: the rig's, under its own guard."""
+        try:
+            self.rig.set_atmosphere(values)
+        except Exception:
+            self._g["rig.set_atmosphere"].failed()
 
     def _clock_action(self, word: str, t_s: float) -> None:
         """contract.ClockAction (any thread; the clock queues it for show-rx)."""

@@ -77,10 +77,20 @@ scroll CW 128-189, stop 190-193, scroll CCW 194-255.
 | 1 | haze: 0-4 off, 5-255 output 1-100% |
 | 2 | fan: 0-4 is 20%, 5-255 is 21-100% |
 
-- **The look engine never drives haze.** Both channels are macros; the fixture's `pin` holds them (Haze 0 = off).
-- To haze, set `pin: {Haze: <5-255>, Fan: <0-255>}` on `hazer` in fixtures.yaml. It is re-read within 2 s. Start
-  around Haze 40.
-- The Lights page's More can also pick a level by hand.
+- **The look engine never drives haze; the room's atmosphere does** (owner, 26 Nov; `show_service/atmosphere.py`,
+  show.yaml `lights.atmosphere`). The feel says how thick the air should be (vibes.yaml `haze`: off, light, medium
+  or thick; the laptop's Live mode plays the `singalong` feel, which is `light`). The director then holds that density
+  from a model of the air:
+  - the room's volume, from space.yaml `room.size`;
+  - how fast it clears, from space.yaml `room.haze_half_life_s`. To set it, haze the room, stop the hazer, and time
+    how long the haze takes to halve. 150 s is provisional.
+  - It fills fast, with the fan up, then holds at a low output; off sends 0. It never runs above 60 % for more than
+    30 s at a time, so a crash mid-fill can't leave the hazer at full.
+  - `GET /show/api/v1/haze` shows the estimate, the output and the phase. `PUT {"level": "medium"}` (or `null` for
+    the feel's) sets a person's level until the mode changes.
+  - The estimate assumes the hazer is warm and filled. There is no readback.
+- While the haze is off, the fixture's `pin` holds both channels (Haze 0 = off), and the Lights page's More can pick a
+  level by hand.
 - **Facts from the manual and flyer:**
   - It warms up for about 4.5 min. Status LED: green flashing = heating, solid green = ready, amber flashing =
     hazing, solid amber = DMX received, solid red = overheating.
@@ -190,9 +200,11 @@ The derby motors are pinned to a slow clockwise turn (`Rotation: 16`). 0 stops t
   low.
 - Ventilate the room, keep the machine 50 cm from anything, and keep an adult with it at all times (Antari).
 - **No lasers** (§1.1).
-- **Strobes:** light effects can strobe the spots' shutters and the par and derby strobe channels. If anyone may be
-  photosensitive, set each light's strobe limit (`strobe_hz_max`, which must be above 0) low on the Lights page,
-  for example 1-2 Hz.
+- **Strobes:** light effects can strobe the spots' shutters and the par and derby strobe channels. They fire only in a
+  feel with `strobe: true`. The `singalong` feel (the laptop's Live mode) spends one of its 6 big moments an hour on
+  each one: the last chorus, a peak or a drop (owner, 26 Nov). If anyone may be photosensitive, set each light's
+  strobe limit (`strobe_hz_max`, which must be above 0) low on the Lights page: about 3 Hz at most, or 1-2 Hz to be
+  safe.
 
 ## 6. Moving the rig to PC22
 

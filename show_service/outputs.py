@@ -697,6 +697,12 @@ class Rig:
             else:
                 e.set_look(hue_depth=hue_depth, beat_lock=beat_lock, reset=reset, beat_depth=beat_depth)
 
+    def set_atmosphere(self, values: Mapping[str, Any]) -> None:
+        """ctx.set_atmosphere (show-brain): the hazers' channel bytes, to the look engine (atmosphere.py)."""
+        e = self.engine
+        if e is not None and callable(getattr(e, "set_atmosphere", None)):
+            e.set_atmosphere(values)
+
     def on_hit(self, d: Mapping[str, Any]) -> None:
         """A music.hit body (show-rx): the engine's ring, then wake each hits-capable runner the engine would flash
         it on now (``engine.takes_hit(d, output)``: the look, and that output's fixtures in the hits selection), a

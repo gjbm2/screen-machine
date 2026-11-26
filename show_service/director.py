@@ -187,6 +187,7 @@ import numpy as np
 from . import compose as comp
 from . import contract
 from . import appliances as appmod
+from . import atmosphere as atmod
 from . import flow as flowmod
 from . import light_scenes as lscenes
 from . import palette as pal
@@ -289,6 +290,7 @@ CONTEXT_STALE_S = 3.0               # music.context comes at 1 Hz
 RHYTHM_STALE_S = 1.0                # README S4.6: a music.rhythm frame over 1 s old is stale
 E_HIST_N = 6000                     # energy samples kept for section energies (10 min at 10 Hz)
 SUBDIVISIONS = (0.5, 0.25, 0.125)   # §8.5: a build steps the accent subdivision 1/2 -> 1/4 -> 1/8
+STROBE_MOMENT_S = 4.0               # strobes within this of a spent token are the same big moment (one token)
 TOKEN_WINDOW_S = 3600.0             # peak_tokens_per_hour: at most that many spends in any 60 minutes
 STRUCTURE_REASONS = ("section", "repeat", "drop", "track")   # look changes structure's events caused
 EVENTS_LEAD_S = 1.1                 # show.yaml structure.events.min_lead_s (starting point, §5.4): a drop's or a new
@@ -1010,6 +1012,11 @@ class Director:
         self._x = (0.0, 0.0, 0.0, 0.0)                   # the section's expression: (from, to, t0, t1), in u units
         self._tokens: collections.deque = collections.deque()   # peak-token spends (monotonic s), the last hour
         self._armed: Optional[dict] = None               # a reserved token at a drop line: {"at_s", "section_id"}
+        self._strobe_paid: Optional[float] = None        # the line of the last big moment a strobe was paid for
+        self._air = atmod.Air()                          # the room's haze (atmosphere.py)
+        self.haze_pick: Optional[str] = None             # a person's haze level (set_haze), until the mode changes
+        self._air_next = 0.0
+        self._air_hazers: tuple[Any, list] = (None, [])  # (the rig view they came from, [(fixture id, type)])
         self._last_line_s: Optional[float] = None        # the last armed line that spent its token
         self._hit: Optional[tuple] = None                # (t0, t1, {lamp: rgb}, predicted): the unison hit, in
                                                          # LookData.hit and maestro_palette_fn (README S5.14)
@@ -1374,6 +1381,8 @@ class Director:
         self.lamps_cfg = {"placement_roles": {str(k): v for k, v in pr.items() if v in clean_roles},
                           "default_role": dr if dr in clean_roles else None, "roles": clean_roles}
         self.lights_cfg = lscenes.parse_lights(s.get("lights"), probs)     # docs/LIGHTS.md §12
+        self._air.configure(atmod.parse((s.get("lights") or {}).get("atmosphere")
+                                        if isinstance(s.get("lights"), dict) else None, probs))   # the hazers
         if self.ensemble is not None:                     # docs/ENSEMBLE.md §10
             ens_probs: list[str] = []
             self.ensemble.configure(ensmod.parse_settings(s.get("ensemble"), ens_probs), ens_probs)
@@ -3063,6 +3072,7 @@ class Director:
             self._flow_tick(now_s, grid)
             self._appliances_tick(now_s, room)
         self._flow_build(now_s, grid)
+        self._atmos_tick(now_s)
         self._mirror_ball(now_s, grid, room)
         if self._lp_rev != self._lp_rev_pub:
             self._lp_rev_pub = self._lp_rev
@@ -3077,6 +3087,8 @@ class Director:
             self._flow_dec.event(kind, at_s, grid.bar_s if grid.has_grid else None)
         if kind in contract.LIGHT_EFFECT_TRIGGERS:
             self._fx_trigger(kind, at_s, now_s, grid, strength=_num(ev.get("strength")))
+        if kind == "section_change" and ev.get("section_kind") == "chorus":    # a karaoke song's lyric plan
+            self._fx_trigger("final_chorus" if ev.get("final") else "chorus", at_s, now_s, grid)
         if kind in contract.TRACK_EVENT_KINDS:
             self._blinds_follow(ev)
 
@@ -3096,6 +3108,8 @@ class Director:
             self._fx_seen[trigger] = at_s
         pc = self.lights_cfg["programs"]
         now_ms = now_s * 1000.0
+        strobes = self._strobe_fx()
+        no_strobe = sorted(strobes) if strobes and not self._strobe_ok(now_s, at_s) else []
         for gid, g in self._groups.items():
             if g.get("follows") or not self._group_live(gid):
                 continue
@@ -3108,7 +3122,7 @@ class Director:
                 continue
             try:
                 got = self.light_scenes.pick_effect(g, trigger, self.direction, self._flow, self._fx_rng,
-                                                    running=[r["name"] for r in active], bar=bar)
+                                                    running=[r["name"] for r in active] + no_strobe, bar=bar)
             except Exception:                             # a broken catalogue never fails the tick
                 log.exception("light effects: pick failed")
                 got = None
@@ -3116,6 +3130,8 @@ class Director:
                 continue
             name, why = got
             fx = self.light_scenes.effects[name]
+            if name in strobes:
+                self._strobe_spend(now_s, at_s, trigger)
             until = None
             if fx["length"] != lscenes.LENGTH_WHILE:
                 (k, n), = fx["length"].items()
@@ -3133,6 +3149,98 @@ class Director:
             self._fx_log.append({"group": gid, **run})
             self._lp_rev += 1
             self._log_event("light_effect", {"group": gid, "run": dict(run), "trigger": trigger, "bar": bar})
+
+    # -- the haze (atmosphere.py; owner, 26 Nov) ------------------------------------------------------------------------
+    def _hazers(self) -> list[tuple[str, str]]:
+        """[(fixture id, type)] of the fixtures lights.atmosphere.select takes (cached per rig view)."""
+        rig = self._rig_seen if isinstance(self._rig_seen, dict) else None
+        if self._air_hazers[0] is rig and rig is not None:
+            return self._air_hazers[1]
+        out: list[tuple[str, str]] = []
+        if rig is not None:
+            try:
+                g = lscenes.group_members({"haze": {"select": self._air.cfg["select"]}}, rig)
+                fx = rig.get("fixtures") or {}
+                out = [(fid, str((fx.get(fid) or {}).get("type"))) for fid in g.get("haze", {}).get("members", [])]
+            except Exception:                             # a bad selector never fails the tick: no hazers
+                log.debug("atmosphere: hazers failed", exc_info=True)
+        self._air_hazers = (rig, out)
+        return out
+
+    def haze_want(self) -> str:
+        """A person's pick, else the feel's."""
+        if self.haze_pick is not None:
+            return self.haze_pick
+        w = self.vs.get("haze") if isinstance(self.vs, dict) else None
+        return w if w in contract.HAZE_LEVELS else "off"
+
+    def set_haze(self, level: Optional[str]) -> dict:
+        """PUT /api/v1/haze: a person's level (contract.HAZE_LEVELS) until the mode changes; None: the feel's."""
+        if level is not None and level not in contract.HAZE_LEVELS:
+            raise ValueError(f"bad_request: level must be one of {', '.join(contract.HAZE_LEVELS)} or null")
+        self.haze_pick = level
+        self._air_next = 0.0                              # at the next tick
+        self._log_event("nudge", {"nudge": "haze", "level": level})
+        return self.haze_view()
+
+    def haze_view(self) -> dict:
+        return {**self._air.view(), "pick": self.haze_pick,
+                "feel": (self.vs.get("haze") if isinstance(self.vs, dict) else None) or "off"}
+
+    def _atmos_tick(self, now_s: float) -> None:
+        if now_s < self._air_next:
+            return
+        self._air_next = now_s + 1.0
+        _, view = self._space_now()
+        try:
+            self._air.step(now_s, self.haze_want(), self._hazers(), (view or {}).get("room"))
+        except Exception:                                 # the model's own bug: the hazers go to 0
+            log.exception("atmosphere: step failed")
+            self._air.channels = {}
+        fn = getattr(self.ctx, "set_atmosphere", None)
+        if callable(fn):
+            fn(dict(self._air.channels))
+
+    # -- strobes: allowed by the feel, paid from its big moments (owner, 26 Nov) ---------------------------------------
+    def _strobe_fx(self) -> set[str]:
+        """The catalogue's effects that strobe: a shutter layer, or an appliance's shutter set to strobe."""
+        out = set()
+        for n, fx in (self.light_scenes.effects or {}).items():
+            lays = fx.get("layers") or []
+            apps = fx.get("appliances") if isinstance(fx.get("appliances"), dict) else {}
+            if any(isinstance(l, dict) and "shutter" in (l.get("kind"), l.get("attr")) for l in lays) \
+                    or apps.get("shutter") == "strobe":
+                out.add(n)
+        return out
+
+    def _moment_paid(self, at_s: float) -> bool:
+        """A token is already spent (or reserved, at a drop line) for the moment at ``at_s``."""
+        a = self._armed
+        return any(x is not None and abs(at_s - x) <= STROBE_MOMENT_S
+                   for x in (self._strobe_paid, self._tokens[-1] if self._tokens else None,
+                             a.get("at_s") if isinstance(a, dict) else None))
+
+    def _strobe_ok(self, now_s: float, at_s: float) -> bool:
+        """A strobe may fire at ``at_s`` while the feel allows strobes (``strobe``) and, when the feel has a budget
+        (peak_tokens_per_hour), it is a big moment: one just paid for (a token spent within STROBE_MOMENT_S: the
+        drop's own, or another group's strobe on the same line), or one a token is left for."""
+        vs = self.vs
+        if not isinstance(vs, dict) or not vs.get("strobe"):
+            return False
+        n, left = self._tokens_left(vs, now_s)
+        return n == 0 or self._moment_paid(at_s) or left > 0        # no budget set: the effect gaps alone limit it
+
+    def _strobe_spend(self, now_s: float, at_s: float, trigger: str) -> None:
+        if self._tokens_left(self.vs, now_s)[0] == 0:
+            return
+        if self._moment_paid(at_s):                       # the drop's token, or this line's first strobe
+            self._strobe_paid = at_s
+            return
+        self._tokens.append(now_s)
+        self._strobe_paid = at_s
+        n, left = self._tokens_left(self.vs, now_s)
+        self._log_event("token", {"decision": "spent", "on": "strobe", "trigger": trigger, "left": left,
+                                  "per_hour": n})
 
     def _fx_tick(self, now_s: float, grid: Grid) -> None:
         """``while`` effects end when the phase that fired them leaves (then fade out); finished ones go; the phase
@@ -5250,6 +5358,7 @@ class Director:
         if new == self.mode:
             return
         cleared = self.clear("all", why="the mode changed")
+        self.haze_pick = None                             # the haze goes back to the new mode's feel
         self._log_event("mode", {"from": old, "to": new, "cleared": cleared})
         self.mode = new
         if self.ensemble is not None:                     # docs/ENSEMBLE.md §5.2: a new mode starts all at once
@@ -5417,6 +5526,7 @@ class Director:
                             "drop": dict(self._ls_drop) if self._ls_drop else None, **self._ls_stats,
                             "catalogue": self.light_scenes.view()},
             "lights": self._lights_view(now_s),                  # docs/LIGHTS.md §7.3
+            "atmosphere": self.haze_view(),                     # the haze (atmosphere.py)
             "ensemble": self.ensemble.view(now_s) if self.ensemble is not None else None,   # docs/ENSEMBLE.md §5.6
             "treatment": self.treat.view(now_s),                 # README S5.33
             "reasoning": self._reasoning(now_s)}                 # the Room page's "How it's deciding"

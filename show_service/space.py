@@ -68,7 +68,7 @@ _WORD = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")    # an appliance's kind ("scr
 _DEVICE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")   # a room device a place belongs to ("mirror_ball")
 TOP_KEYS: tuple[str, ...] = ("version", "room", "appliances", "points", "regions", "surfaces")
 SECTIONS: tuple[str, ...] = ("room", "appliances", "points", "regions", "surfaces")   # the added file, in this order
-ROOM_KEYS: tuple[str, ...] = ("size", "front")
+ROOM_KEYS: tuple[str, ...] = ("size", "front", "haze_half_life_s")   # haze_half_life_s: atmosphere.py
 PLACE_KEYS: tuple[str, ...] = ("at", "kind", "label", "mount", "plane")   # an appliance's place (editable on the map)
 APPLIANCE_KEYS: tuple[str, ...] = PLACE_KEYS + ("teach", "pose")
 POINT_KEYS: tuple[str, ...] = ("label", "at", "device", "from")
@@ -427,6 +427,13 @@ def _room(raw: Any, where: str, probs: list[str]) -> dict:
                          f"unset")
         else:
             out["size"] = size
+    if raw.get("haze_half_life_s") is not None:
+        h = raw["haze_half_life_s"]
+        if isinstance(h, bool) or not isinstance(h, (int, float)) or not math.isfinite(h) or h <= 0:
+            probs.append(f"{where}.haze_half_life_s: {h!r} isn't seconds (how long the haze takes to halve once the "
+                         f"hazer stops): show.yaml lights.atmosphere's is used")
+        else:
+            out["haze_half_life_s"] = float(h)
     if raw.get("front") is not None:
         f = _front_word(raw["front"])
         if f is None:
@@ -536,7 +543,9 @@ def build_view(hand: Any, added: Any = None, *, error: Optional[str] = None,
     front = m["room"].get("front", DEFAULT_FRONT)
     fv = FRONTS[front]
     room = {"size": size, "front": front, "centre": [size[0] / 2, size[1] / 2, size[2] / 2] if size else None,
-            "right": [round(x, 6) for x in _cross(fv, UP)], "front_vec": list(fv)}
+            "right": [round(x, 6) for x in _cross(fv, UP)], "front_vec": list(fv),
+            "volume_m3": round(size[0] * size[1] * size[2], 2) if size else None,
+            "haze_half_life_s": m["room"].get("haze_half_life_s")}
     surfaces: dict[str, dict] = _room_surfaces(size)
     for name, e in m["surfaces"].items():
         n, upv = _v3(e["normal"]), _v3(e["up"])

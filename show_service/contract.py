@@ -390,6 +390,7 @@ EV_PONG = "pong"             # answer to {"type": "ping"}
 FOLLOW_INPUTS: tuple[str, ...] = ("dynamics", "register", "harmony", "energy", "onsets")
 CHANGE_LOOKS: tuple[str, ...] = ("phrase", "between_pieces", "time")
 ACCENT_STYLES: tuple[str, ...] = ("none", "soft", "downbeat", "beat", "full")
+HAZE_LEVELS: tuple[str, ...] = ("off", "light", "medium", "thick")   # a vibe's haze (atmosphere.py)
 PALETTE_ROLES: tuple[str, ...] = ("base", "accent", "highlight")
 PALETTE_AUTO = "auto"        # a palette pick: the vibe's ranked list (the director chooses)
 PALETTE_ART = "art"          # from the on-glass stills (room's snapshots), in a vibe's list or as a pick
@@ -399,7 +400,7 @@ VIBE_FIELDS: tuple[str, ...] = (
     "label", "description", "energy", "energy_centre", "loudness_ref_lufs", "follow", "follow_amount", "beat_lock",
     "change_looks", "change_rate", "dwell_s", "relax_on_talk", "palettes", "key_cct", "lamp_chroma_max",
     "chroma_max", "saturation", "contrast", "level", "floor", "motion", "accents", "strobe", "peak_tokens_per_hour",
-    "moods", "genre", "transition_style", "palette_family", "step_size", "max_steps", "persona")
+    "haze", "moods", "genre", "transition_style", "palette_family", "step_size", "max_steps", "persona")
 
 
 class VibeSettings(TypedDict, total=False):
@@ -429,6 +430,7 @@ class VibeSettings(TypedDict, total=False):
     accents: str                   # ACCENT_STYLES
     strobe: bool                   # strobe allowed (L5 caps; default off)
     peak_tokens_per_hour: int      # drops that may spend a peak (§8.5)
+    haze: str                      # HAZE_LEVELS: how thick the room's haze is held (atmosphere.py; owner, 26 Nov)
     moods: list[str]               # vocab.yaml moods: the vibe's own words (lowest priority, §8.2)
     genre: Optional[str]           # vocab.yaml genre, or None
     transition_style: Optional[str]   # vocab.yaml transition_style, or None (the music's band decides)
@@ -580,7 +582,10 @@ FLOW_SOURCES: tuple[str, ...] = ("structure", "event", "pitch", "listener", "moo
 FLOW_SYMMETRY: tuple[str, ...] = ("none", "mirror")      # FlowData.symmetry (show.yaml lights.flow.symmetry)
 LIGHT_TRANSITION_KINDS: tuple[str, ...] = ("cut", "dark_move", "crossfade", "fade_dark", "sweep")
 LIGHT_EFFECT_TRIGGERS: tuple[str, ...] = ("drop", "build", "breakdown", "peak", "section_change", "track_change",
-                                          "outro", "every_bars")
+                                          "outro", "every_bars", "chorus", "final_chorus")
+#: chorus / final_chorus: a karaoke song's lyric plan says a chorus starts there (structure's section_change with
+#: section_kind "chorus"; ``final_chorus``: no chorus follows it in the song), fired with the section_change (owner,
+#: 26 Nov: strobes that get used, on moments karaoke really has)
 #: a light layer's ``kind`` (docs/LIGHTS.md §5.2; a layer without one takes its ``attr``, else intensity). Shutter
 #: layers live in light_effects.yaml only (a scene never strobes)
 LIGHT_LAYER_KINDS: tuple[str, ...] = ("intensity", "position", "beam", "gobo", "prism", "colour", "colour_wheel",
@@ -1340,6 +1345,7 @@ class BrainContext:
     section_change: Optional[Callable[[], None]] = None               # VirtualMaestro.section_change (GOBO +1)
     set_look_out: Optional[Callable[..., None]] = None                # VirtualMaestro.set_look (hue_depth, beat_lock, reset,
                                                                        # plan: README S5.18's drive mode)
+    set_atmosphere: Optional[Callable[[dict], None]] = None           # outputs.Rig.set_atmosphere: the hazers' bytes
     set_gate_ref: Optional[Callable[[float], None]] = None            # Features.gate_ref_lufs = lufs
     set_senders: Optional[Callable[[tuple[Sender, ...]], None]] = None   # Receiver.set_senders
     set_priority: Optional[Callable[[tuple[str, ...]], None]] = None     # Receiver.set_priority
@@ -2478,7 +2484,8 @@ class SpaceView(TypedDict):
     error: Optional[str]           # the last load error (the last good view stays)
     problems: list[str]            # page words, one per thing it couldn't use as written
     room: dict                     # {"size": [X, Y, Z] | None, "front": "north"|"east"|"south"|"west",
-                                   #  "centre": [x, y, z] | None, "right": [x, y, z], "front_vec": [x, y, z]}
+                                   #  "centre": [x, y, z] | None, "right": [x, y, z], "front_vec": [x, y, z],
+                                   #  "volume_m3": float | None, "haze_half_life_s": float | None}
     surfaces: dict[str, Surface]
     points: dict[str, dict]        # name -> {"label", "at", "device"?, "from": "hand" | "page" | <fixture id>}
     regions: dict[str, dict]       # name -> {"label", "surface", "centre", "size"}

@@ -7,12 +7,16 @@
 # At most show.yaml lights.programs.effects_max run at once on a group, a new one at most every effect_gap_bars (a drop
 # always may). None fire with no feel, under House lights or Lights low, or while Keep this look holds.
 # Strobe only lives here. Each light's own strobe_hz_max (set on the Lights page) caps it; Hue never strobes.
+# A strobe (a shutter layer, or appliances shutter: strobe) fires only while the feel allows strobes (vibes.yaml
+# strobe: true) and pays one of its big moments (peak_tokens_per_hour); strobes on the same line as a paid drop, or
+# on another group at the same moment, share that one token (owner, 26 Nov).
+# chorus / final_chorus: a karaoke song's choruses, from its lyrics (final_chorus: the last one in the song).
 # Every number below is a STARTING POINT, chosen on paper: tune by watching the room.
 version: 1
 effects:
   strobe-burst:
     label: Strobe burst
-    on: [drop]
+    on: [drop, final_chorus]
     length: {bars: 1}
     fade: {in_beats: 0, out_beats: 0.5}
     needs: [shutter]
@@ -21,7 +25,7 @@ effects:
     tags: {energy: [0.7, 1.0], moods: [euphoric, aggressive, glitchy], weight: 1.0}
   drop-flash:
     label: Flash on the drop
-    on: [drop]
+    on: [drop, final_chorus]
     length: {beats: 2}
     layers: []
     hits: {styles: [], drop: {depth: 1.0, decay_ms: 600}}
@@ -55,7 +59,7 @@ effects:
     tags: {energy: [0.5, 1.0], moods: [tense, glitchy, playful]}
   prism-burst:
     label: Split beams
-    on: [section_change]
+    on: [section_change, chorus]
     chance: 0.6
     length: {bars: 2}
     fade: {in_beats: 0, out_beats: 1}
@@ -64,7 +68,7 @@ effects:
     tags: {energy: [0.45, 1.0], moods: [euphoric, cosmic, glitchy], flow: {dirs: [cw, ccw], honours: true}}
   colour-bump:
     label: Colour kick on the beats
-    on: [section_change, every_bars]
+    on: [section_change, every_bars, chorus]
     every_bars: 16
     chance: 0.5
     length: {bars: 1}
@@ -114,4 +118,12 @@ effects:
     length: {bars: 4}
     needs: [shutter]
     appliances: {shutter: strobe}
+    tags: {energy: [0.8, 1.0], moods: [euphoric, aggressive, fiery]}
+  strobe-peak-lights:
+    label: Strobe hit at the peak
+    on: [peak]
+    length: {bars: 1}
+    fade: {in_beats: 0, out_beats: 0.5}
+    needs: [shutter]
+    layers: [{id: strobe, kind: shutter, mode: strobe, hz: [4, 8]}]
     tags: {energy: [0.8, 1.0], moods: [euphoric, aggressive, fiery]}

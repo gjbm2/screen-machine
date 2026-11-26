@@ -500,6 +500,18 @@ def _macro(buf: bytearray, p: EncodePlan, m: Any) -> None:
             buf[c.off] = word                                   # a raw coarse value
 
 
+def with_macros(f: Mapping[str, Any], t: Mapping[str, Any], dmx: bytes, values: Mapping[str, Any]) -> bytes:
+    """``dmx`` (a fixture's footprint bytes) with ``values`` ({channel name: range word | raw byte}) written over it,
+    as ``macro`` writes them (atmosphere.py: the hazers' output and fan). Never raises: a bad value is skipped."""
+    try:
+        p, _ = _fixture(f, t)
+        buf = bytearray(dmx)
+        _macro(buf, p, values)
+        return bytes(buf)
+    except Exception:                                            # a type that doesn't plan: the bytes as they were
+        return bytes(dmx)
+
+
 # -- the bytes ---------------------------------------------------------------------------------------------------------
 def encode(f: Mapping[str, Any], t: Mapping[str, Any], intensity: float, colour: Sequence[float],
            attrs: Optional[Mapping[str, Any]] = None) -> bytes:

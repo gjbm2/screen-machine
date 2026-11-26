@@ -88,6 +88,7 @@ _SPECS: dict[str, dict] = {
     "accents": {"kind": "enum", "choices": contract.ACCENT_STYLES},
     "strobe": {"kind": "bool"},
     "peak_tokens_per_hour": {"kind": "int", "min": 0, "max": 1000},
+    "haze": {"kind": "enum", "choices": contract.HAZE_LEVELS},
     "moods": {"kind": "words", "facet": "moods"},
     "genre": {"kind": "word", "facet": "genre"},
     "transition_style": {"kind": "word", "facet": "transition_style"},
@@ -109,7 +110,7 @@ NEUTRAL: contract.VibeSettings = {
     "dwell_s": [45.0, 180.0], "relax_on_talk": True, "palettes": [], "key_cct": 2700.0,
     "lamp_chroma_max": 0.05, "chroma_max": 0.37, "saturation": [0.5, 1.0], "contrast": [0.3, 0.7],
     "level": [0.5, 1.0], "floor": 0.1, "motion": [0.1, 0.5], "accents": "none", "strobe": False,
-    "peak_tokens_per_hour": 0, "moods": [], "genre": None, "transition_style": None, "palette_family": None,
+    "peak_tokens_per_hour": 0, "haze": "off", "moods": [], "genre": None, "transition_style": None, "palette_family": None,
     "step_size": 0.1, "max_steps": 3, "persona": ""}
 assert tuple(NEUTRAL) == contract.VIBE_FIELDS
 
@@ -187,12 +188,18 @@ FIELD_SCHEMAS: dict[str, dict] = {
                                     "beat": "Strong swell", "full": "Full swell"},
                             help="How deep the lamps breathe on the beat (show.yaml director.accent_depth); only "
                                  "while the beat is locked and the vibe locks to it")},
-    "strobe": {**_bool_schema("strobe", "Strobe allowed (not built yet)"),
-               "x-ui": _ui("Strobe allowed (not built yet)", "checkbox", advanced=True, not_built=True)},
+    "strobe": {**_bool_schema("strobe", "Strobe allowed"),
+               "x-ui": _ui("Strobe allowed", "checkbox", advanced=True,
+                           help="Light effects may strobe; with big moments set, each strobe spends one")},
     "peak_tokens_per_hour": {"type": "integer", "minimum": 0, "maximum": 1000, "default": 0,
                              "x-ui": _ui("Big moments per hour", "number", advanced=True,
                                          help="Drops after a build that may cut the look and hit the lamps, at most "
                                               "this many in any hour (0: none; a drop then shows inside the look)")},
+    "haze": {"type": "string", "enum": list(contract.HAZE_LEVELS), "default": NEUTRAL["haze"],
+             "x-ui": _ui("Haze", "select", labels={"off": "Off", "light": "Light", "medium": "Medium",
+                                                   "thick": "Thick"},
+                         help="How thick the hazer keeps the air (show.yaml lights.atmosphere; the room's "
+                              "haze_half_life_s in space.yaml)")},
     "moods": {"type": "array", "items": {"type": "string"}, "default": [], "x-ui": _ui("Moods", "select")},
     "genre": {"type": "string", "x-ui": _ui("Genre", "select", unset_label="the music decides",
                                             labels={WORD_AUTO: "The music decides"})},
@@ -257,6 +264,8 @@ def check_field(field: str, value: Any, *, vocab: Optional[dict[str, list[str]]]
             return None, [f"{_fmt(value)} is not true or false"], False
         return value, [], True
     if k == "enum":
+        if value is False and "off" in s["choices"]:
+            value = "off"                                    # YAML's bare off (haze: off) reads as false
         if value not in s["choices"]:
             return None, [f"{_fmt(value)} is not one of {', '.join(s['choices'])}"], False
         return value, [], True

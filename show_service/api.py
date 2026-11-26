@@ -182,7 +182,7 @@ BUSY = "show_service is busy; try again in a moment."
 ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", "/api/v1/card"), ("GET", EVENTS_PATH),
     ("POST", "/api/v1/step"), ("PUT", "/api/v1/palette"), ("POST", "/api/v1/action"),
-    ("DELETE", "/api/v1/nudge/{id}"),
+    ("DELETE", "/api/v1/nudge/{id}"), ("GET", "/api/v1/haze"), ("PUT", "/api/v1/haze"),
     ("GET", "/api/v1/vibes"), ("GET", "/api/v1/vibe"), ("PUT", "/api/v1/vibe"), ("DELETE", "/api/v1/vibe"),
     ("POST", "/api/v1/describe"),
     ("GET", "/api/v1/listening"), ("PUT", "/api/v1/listening"), ("GET", "/api/v1/listening/clips/{name}"),
@@ -1113,6 +1113,8 @@ class Api:
             ("PUT", "/api/v1/palette", self._palette),
             ("POST", "/api/v1/action", self._action),
             ("DELETE", "/api/v1/nudge/{id}", self._nudge),
+            ("GET", "/api/v1/haze", self._haze_get),
+            ("PUT", "/api/v1/haze", self._haze_put),
             ("GET", "/api/v1/vibes", self._vibes),
             ("GET", "/api/v1/vibe", self._vibe_get),
             ("PUT", "/api/v1/vibe", self._vibe_put),
@@ -1427,6 +1429,30 @@ class Api:
         if cleared:
             self._changed()
         return _json({"cleared": cleared, "chips": chips})
+
+    # -- the haze (atmosphere.py) -----------------------------------------------------------------------------------------
+    async def _haze_get(self, request: web.Request, brain: Any) -> web.Response:
+        director = _components(brain).get(DIRECTOR)
+        if director is None:
+            return _json({"detail": MISSING[DIRECTOR]})
+        return _json(await self._call(brain, director.haze_view))
+
+    async def _haze_put(self, request: web.Request, brain: Any) -> web.Response:
+        """{"level": "off" | "light" | "medium" | "thick" | null}: a person's haze until the mode changes (null: the
+        feel's)."""
+        body, bad = await self._body(request)
+        if bad:
+            return bad
+        levels = list(contract.HAZE_LEVELS)
+        if not isinstance(body, dict) or "level" not in body or not (body["level"] is None or body["level"] in levels):
+            return _err(400, "bad_request", 'Say how thick: {"level": "off" | "light" | "medium" | "thick" | null}.',
+                        choices=levels)
+        director = _components(brain).get(DIRECTOR)
+        if director is None:
+            return _json({"detail": MISSING[DIRECTOR]})
+        out = await self._call(brain, director.set_haze, body["level"])
+        self._changed()
+        return _json(out)
 
     # -- vibes ---------------------------------------------------------------------------------------------------------------
     async def _vibes(self, request: web.Request, brain: Any) -> web.Response:
