@@ -1018,6 +1018,9 @@ class Director:
         self.haze_pick: Optional[str] = None             # a person's haze level (set_haze), until the mode changes
         self._air_next = 0.0
         self._air_hazers: tuple[Any, list] = (None, [])  # (the rig view they came from, [(fixture id, type)])
+        self._air_path = self.log_path.parent / "atmosphere.json" if self.log_path is not None else None
+        self._air_saved = 0.0                            # when the estimate was last written (monotonic s)
+        self._air_load()
         self._last_line_s: Optional[float] = None        # the last armed line that spent its token
         self._hit: Optional[tuple] = None                # (t0, t1, {lamp: rgb}, predicted): the unison hit, in
                                                          # LookData.hit and maestro_palette_fn (README S5.14)
@@ -3185,6 +3188,50 @@ class Director:
         self._log_event("nudge", {"nudge": "haze", "level": level})
         return self.haze_view()
 
+    def set_haze_now(self, *, level: Any = None, ml_m3: Any = None, warm: Any = None) -> dict:
+        """PUT /api/v1/haze/now: a person says what the room IS (the model's current haze, never the target: owner,
+        26 Nov): ``level`` a contract.HAZE_LEVELS word or ``ml_m3``; ``warm`` false: the hazer was just switched on
+        (nothing counted for lights.atmosphere.warmup_s), true: it is warm."""
+        if level is None and ml_m3 is None and warm is None:
+            raise ValueError("bad_request: say level, ml_m3 or warm")
+        if level is not None or ml_m3 is not None:
+            den = self._air.level_density(level) if level is not None else _num(ml_m3)
+            if den is None or den < 0:
+                raise ValueError("bad_request: level is off, light, medium or thick; ml_m3 a number from 0")
+            self._air.set_now(den)
+        if warm is not None:
+            if not isinstance(warm, bool):
+                raise ValueError("bad_request: warm is true or false")
+            self._air.set_warming(0.0 if warm else float(self._air.cfg["warmup_s"]))
+        self._air_next = 0.0
+        self._air_save(force=True)
+        self._log_event("nudge", {"nudge": "haze_now", "level": level, "ml_m3": ml_m3, "warm": warm})
+        return self.haze_view()
+
+    def _air_load(self) -> None:
+        if self._air_path is None:
+            return
+        try:
+            got = json.loads(self._air_path.read_text())
+        except (OSError, ValueError):
+            return
+        if self._air.load(got, time.time()):
+            log.info("atmosphere: the haze estimate from before the restart: %.4f ml/m3", self._air.density)
+
+    def _air_save(self, force: bool = False) -> None:
+        """The estimate to atmosphere.json every 10 s while there is any haze (and once as it reaches 0)."""
+        now = self._mono()
+        if self._air_path is None or (not force and now - self._air_saved < 10.0):
+            return
+        self._air_saved = now
+        try:
+            self._air_path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+            tmp = self._air_path.with_suffix(".tmp")
+            tmp.write_text(json.dumps(self._air.dump(time.time())))
+            os.replace(tmp, self._air_path)
+        except OSError:
+            log.debug("atmosphere: save failed", exc_info=True)
+
     def haze_view(self) -> dict:
         return {**self._air.view(), "pick": self.haze_pick,
                 "feel": (self.vs.get("haze") if isinstance(self.vs, dict) else None) or "off"}
@@ -3202,6 +3249,7 @@ class Director:
         fn = getattr(self.ctx, "set_atmosphere", None)
         if callable(fn):
             fn(dict(self._air.channels))
+        self._air_save()
 
     # -- strobes: allowed by the feel, paid from its big moments (owner, 26 Nov) ---------------------------------------
     def _strobe_fx(self) -> set[str]:

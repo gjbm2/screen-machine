@@ -1067,6 +1067,8 @@ lights:
     burst_above: 0.6                        # never above this output for longer than burst_s, then rest_s at the
     burst_s: 30                             # hold rate: if show_service stops, a node holding its last frame leaves
     rest_s: 15                              # the hazer at a burst's level at most
+    warmup_s: 270                           # a hazer just switched on (PUT /api/v1/haze/now {"warm": false}) puts
+                                            # nothing out for this long: its output isn't counted until then
   # appliances: this site's remote-worked appliances and the room targets that work them (deployments/<id>/show.yaml;
   # show_service/appliances.py has the form). A group above names them in its "appliances" list.
   programs:

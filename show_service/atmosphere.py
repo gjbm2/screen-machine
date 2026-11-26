@@ -21,14 +21,20 @@ filling (below ``fill_until`` of the target), else ``hold_fan``. Off: 0 out (the
 above ``burst_above`` for longer than ``burst_s``: then it rests at the hold rate for ``rest_s``. If show_service
 stops mid-fill, the machine is left at most at a burst's level, for the time the node keeps the frame.
 
-**What it doesn't know.** There is no readback: the density is an estimate, and it assumes the machine is warm and
-filled (the Z-350 heats for about 4.5 min after power-on and outputs nothing until then).
+**What it doesn't know, and how a person tells it** (owner, 26 Nov: "you can't control a hazer unit to achieve a
+consistent outcome state if you don't have state of current level"). There is no readback: the density is an estimate.
+  * ``set_now(density)``: a person says how hazy the room IS now (by eye); the model carries on from there. The
+    target stays the feel's.
+  * ``set_warming(seconds)``: the hazer was just switched on (the Z-350 heats for about 4.5 min and outputs nothing
+    until then): its output isn't counted until the time is up (0: it is warm). The phase reads "warming".
+  * ``dump()`` / ``load()``: the estimate is kept across a restart (the director saves it), with the room's decay
+    applied for the time away. A restart in a hazy room no longer reads as clear air.
 
 Config (show.yaml ``lights.atmosphere``, ``parse``): ``select`` (the hazers: a fixtures.yaml selector), ``types``
 ({fixture type: {output: {channel, range: [lo, hi]}, fan: {channel, range}, fluid_ml_min}}: how each type's channels
 take 0..1; nothing here knows a channel name), ``levels`` ({word: ml per m³}), ``max`` (the thickest word allowed
 here, e.g. for the smoke alarms), ``half_life_s`` and ``volume_m3`` (used when the room doesn't say), ``gain``,
-``fill_until``, ``fill_fan``, ``hold_fan``, ``burst_above``, ``burst_s``, ``rest_s``.
+``fill_until``, ``fill_fan``, ``hold_fan``, ``burst_above``, ``burst_s``, ``rest_s``, ``warmup_s``.
 """
 
 from __future__ import annotations
@@ -53,6 +59,7 @@ FALLBACK: dict[str, Any] = {
     "burst_above": 0.6,
     "burst_s": 30.0,
     "rest_s": 15.0,
+    "warmup_s": 270.0,                # a hazer just switched on outputs nothing for this long (set_warming)
 }
 DT_MAX_S = 5.0                       # a step longer than this (a stalled tick) is taken as this
 
@@ -130,7 +137,8 @@ def parse(raw: Any, probs: list[str]) -> dict:
             probs.append(f"{w}.max: {raw['max']!r} isn't {', '.join(LEVELS)}: thick")
     for k, lo, hi in (("half_life_s", 1.0, 36000.0), ("volume_m3", 1.0, 100000.0), ("gain", 0.0, 100.0),
                       ("fill_until", 0.0, 1.0), ("fill_fan", 0.0, 1.0), ("hold_fan", 0.0, 1.0),
-                      ("burst_above", 0.0, 1.0), ("burst_s", 1.0, 3600.0), ("rest_s", 0.0, 3600.0)):
+                      ("burst_above", 0.0, 1.0), ("burst_s", 1.0, 3600.0), ("rest_s", 0.0, 3600.0),
+                      ("warmup_s", 0.0, 3600.0)):
         if raw.get(k) is None:
             continue
         v = _num(raw[k])
@@ -169,9 +177,42 @@ class Air:
         self.rate_ml_s = 0.0
         self.channels: dict[str, dict[str, int]] = {}
         self.why: Optional[str] = None
+        self.warm_left = 0.0                 # seconds until the hazers are warm (set_warming): no output counted
+        self.set_by: Optional[str] = None    # "person" once someone said what the room is (set_now)
 
     def configure(self, cfg: dict) -> None:
         self.cfg = cfg
+
+    def level_density(self, level: Any) -> Optional[float]:
+        """A LEVELS word (YAML's bare off too) -> its ml per m³; None for anything else."""
+        w = "off" if level is False else level
+        return float(self.cfg["levels"].get(w, 0.0)) if w in LEVELS else None
+
+    def set_now(self, density: float) -> None:
+        """A person's reading of the room, ml per m³ (0: clear)."""
+        self.density = max(0.0, float(density))
+        self.high_since = self.rest_until = None
+        self.set_by = "person"
+
+    def set_warming(self, seconds: float) -> None:
+        self.warm_left = max(0.0, float(seconds))
+
+    def dump(self, wall_s: float) -> dict:
+        return {"density": round(self.density, 6), "half_life_s": self.half_life, "warm_left_s": round(self.warm_left, 1),
+                "wall_s": round(wall_s, 1)}
+
+    def load(self, d: Any, wall_s: float) -> bool:
+        """A dump from before a restart: the density decayed for the time away, the warm-up run down. False when it
+        doesn't read."""
+        if not isinstance(d, Mapping):
+            return False
+        den, hl, at = _num(d.get("density")), _num(d.get("half_life_s")), _num(d.get("wall_s"))
+        if den is None or den < 0 or hl is None or hl <= 0 or at is None:
+            return False
+        away = max(0.0, wall_s - at)
+        self.density = den * math.exp(-math.log(2.0) * away / hl)
+        self.warm_left = max(0.0, (_num(d.get("warm_left_s")) or 0.0) - away)
+        return True
 
     def _room(self, room: Any) -> None:
         c = self.cfg
@@ -192,7 +233,10 @@ class Air:
         self.rate_ml_s = sum(t["fluid_ml_min"] for _, t in known) / 60.0
         # the air: what last step's output added, less what the room lost
         k = math.log(2.0) / self.half_life
-        self.density = self.density * math.exp(-k * dt) + self.out * self.rate_ml_s * dt / self.volume
+        warming = self.warm_left > 0.0
+        self.warm_left = max(0.0, self.warm_left - dt)
+        added = 0.0 if warming else self.out * self.rate_ml_s * dt / self.volume   # a cold hazer puts nothing out
+        self.density = self.density * math.exp(-k * dt) + added
         w = want if want in LEVELS else "off"
         cap = c["max"]
         if LEVELS.index(w) > LEVELS.index(cap):
@@ -225,6 +269,8 @@ class Air:
                     out, phase = min(out, hold), "resting"
             else:
                 self.high_since = None
+            if self.warm_left > 0.0:
+                phase = "warming"
         self.out, self.fan, self.phase = out, fan, phase
         ch: dict[str, dict[str, int]] = {}
         for fid, t in known if self.target > 0.0 else ():   # off: the fixture's own pin (and the Lights page) again
@@ -244,4 +290,5 @@ class Air:
                 "volume_m3": round(self.volume, 1), "half_life_s": round(self.half_life, 1),
                 "fluid_ml_min": round(self.rate_ml_s * 60.0, 2), "channels": {k: dict(v) for k, v in
                                                                               self.channels.items()},
-                "max": self.cfg["max"], "why": self.why}
+                "max": self.cfg["max"], "why": self.why, "warming_s": round(self.warm_left),
+                "levels": dict(self.cfg["levels"])}

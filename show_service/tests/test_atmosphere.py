@@ -58,3 +58,35 @@ def test_bad_config_lines():
     cfg = a.parse({"types": {"x": {"output": {"channel": ""}}}, "max": "huge", "gain": -1, "nope": 1}, probs)
     assert cfg["types"] == {} and cfg["max"] == "thick" and cfg["gain"] == a.FALLBACK["gain"]
     assert len(probs) == 4
+
+
+def test_a_person_sets_what_the_room_is_and_the_model_carries_on():
+    air = _air()
+    air.set_now(air.level_density("thick"))                 # by eye: already thick; the feel wants light
+    v = air.step(0.0, "light", HAZER, ROOM)
+    assert v["estimate_ml_m3"] == 0.02 and v["output"] == 0.0 and v["want"] == "light"   # nothing added: it clears
+    air.set_now(0.0)                                        # by eye: clear after all
+    v = air.step(1.0, "light", HAZER, ROOM)
+    assert v["phase"] == "filling" and v["output"] > 0.3
+    assert air.level_density(False) == 0.0 and air.level_density("fog") is None
+
+
+def test_a_cold_hazer_counts_nothing_until_it_is_warm():
+    air = _air(warmup_s=60)
+    air.set_warming(air.cfg["warmup_s"])
+    for t in range(60):
+        v = air.step(float(t), "medium", HAZER, ROOM)
+    assert v["estimate_ml_m3"] == 0.0 and v["phase"] == "warming" and v["output"] > 0.5   # it still asks for haze
+    for t in range(60, 120):
+        v = air.step(float(t), "medium", HAZER, ROOM)
+    assert v["estimate_ml_m3"] > 0.0 and v["phase"] != "warming" and v["warming_s"] == 0
+
+
+def test_the_estimate_survives_a_restart_with_the_time_away_decayed():
+    air = _air()
+    air.set_now(0.02)
+    air.step(0.0, "off", HAZER, ROOM)
+    saved = air.dump(1000.0)
+    back = _air()
+    assert back.load(saved, 1150.0) and abs(back.density - 0.01) < 1e-4        # one half-life (150 s) away
+    assert not _air().load({"density": "x"}, 0.0) and not _air().load(None, 0.0)

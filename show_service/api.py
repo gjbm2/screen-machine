@@ -183,6 +183,7 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", "/api/v1/card"), ("GET", EVENTS_PATH),
     ("POST", "/api/v1/step"), ("PUT", "/api/v1/palette"), ("POST", "/api/v1/action"),
     ("DELETE", "/api/v1/nudge/{id}"), ("GET", "/api/v1/haze"), ("PUT", "/api/v1/haze"),
+    ("PUT", "/api/v1/haze/now"),
     ("GET", "/api/v1/vibes"), ("GET", "/api/v1/vibe"), ("PUT", "/api/v1/vibe"), ("DELETE", "/api/v1/vibe"),
     ("POST", "/api/v1/describe"),
     ("GET", "/api/v1/listening"), ("PUT", "/api/v1/listening"), ("GET", "/api/v1/listening/clips/{name}"),
@@ -1115,6 +1116,7 @@ class Api:
             ("DELETE", "/api/v1/nudge/{id}", self._nudge),
             ("GET", "/api/v1/haze", self._haze_get),
             ("PUT", "/api/v1/haze", self._haze_put),
+            ("PUT", "/api/v1/haze/now", self._haze_now),
             ("GET", "/api/v1/vibes", self._vibes),
             ("GET", "/api/v1/vibe", self._vibe_get),
             ("PUT", "/api/v1/vibe", self._vibe_put),
@@ -1451,6 +1453,24 @@ class Api:
         if director is None:
             return _json({"detail": MISSING[DIRECTOR]})
         out = await self._call(brain, director.set_haze, body["level"])
+        self._changed()
+        return _json(out)
+
+    async def _haze_now(self, request: web.Request, brain: Any) -> web.Response:
+        """What the room IS, by eye (the model's current haze, not the target): {"level": "off" | "light" | "medium"
+        | "thick"} or {"ml_m3": x}; {"warm": false} the hazer was just switched on, true it is warm."""
+        body, bad = await self._body(request)
+        if bad:
+            return bad
+        director = _components(brain).get(DIRECTOR)
+        if director is None:
+            return _json({"detail": MISSING[DIRECTOR]})
+        b = body if isinstance(body, dict) else {}
+        try:
+            out = await self._call(brain, lambda: director.set_haze_now(level=b.get("level"), ml_m3=b.get("ml_m3"),
+                                                                         warm=b.get("warm")))
+        except ValueError as e:
+            return _err(400, "bad_request", str(e).split(": ", 1)[-1], choices=list(contract.HAZE_LEVELS))
         self._changed()
         return _json(out)
 
