@@ -142,19 +142,27 @@ export default function KaraokePage() {
   const [err, setErr] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [libOpen, setLibOpen] = useState(false);
-  // The player pinned at the top (a phone, scrolled down): its slim version.
+  // On a phone, once the player has scrolled out of sight, a slim copy of it rides the top of the screen (laid over
+  // the page: nothing in the page changes size, so the scroll never jumps; 26 Nov the in-page version flickered).
+  const playerRef = useRef<HTMLDivElement>(null);
   const [pinned, setPinned] = useState(false);
   useEffect(() => {
+    const el = playerRef.current;
+    if (!el) return;
     const wide = window.matchMedia("(min-width: 1024px)");
-    const f = () => setPinned(!wide.matches && window.scrollY > 140);
-    f();
-    window.addEventListener("scroll", f, { passive: true });
-    wide.addEventListener("change", f);
+    let gone = false;
+    const set = () => setPinned(gone && !wide.matches);
+    const io = new IntersectionObserver(([e]) => {
+      gone = !e.isIntersecting;
+      set();
+    });
+    io.observe(el);
+    wide.addEventListener("change", set);
     return () => {
-      window.removeEventListener("scroll", f);
-      wide.removeEventListener("change", f);
+      io.disconnect();
+      wide.removeEventListener("change", set);
     };
-  }, []);
+  }, [st != null]); // eslint-disable-line react-hooks/exhaustive-deps
   const [dep, setDep] = useState<DeploymentInfo | null>(null);
   useEffect(() => {
     getDeploymentRelative().then(setDep, () => undefined);
@@ -312,10 +320,10 @@ export default function KaraokePage() {
         {/* Now playing first (sticky beside the lists on a wide screen), then the queue, then the search (Add puts a song
             at the queue's end) with the library under its icon; the picture and the settings below. */}
         <main className="space-y-4 lg:grid lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] lg:items-start lg:gap-6 lg:space-y-0">
-          {/* Pinned to the top as the page scrolls (owner, 26 Nov: "player component should probably pin to top on
-              mobile"); beside the lists on a wide screen. */}
-          <div className="sticky top-0 z-30 -mx-1 bg-background px-1 pb-2 pt-1 lg:top-4 lg:m-0 lg:bg-transparent lg:p-0">
-            {st && <NowPlaying st={st} skew={skewRef.current} songs={songs} act={act} compact={pinned} />}
+          {/* Beside the lists on a wide screen (sticky); on a phone it scrolls away and its slim copy takes the top
+              (owner, 26 Nov: "player component should probably pin to top on mobile"). */}
+          <div ref={playerRef} className="lg:sticky lg:top-4">
+            {st && <NowPlaying st={st} skew={skewRef.current} songs={songs} act={act} />}
           </div>
           <DndContext
             sensors={sensors}
@@ -347,6 +355,13 @@ export default function KaraokePage() {
           </div>
         </DrawerContent>
       </Drawer>
+      {st && pinned && (
+        <div className="fixed inset-x-0 top-0 z-40 px-3 pt-[max(0.5rem,env(safe-area-inset-top))] motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-2 lg:hidden">
+          <div className="mx-auto max-w-3xl">
+            <NowPlaying st={st} skew={skewRef.current} songs={songs} act={act} compact />
+          </div>
+        </div>
+      )}
       {st && artist && <ArtistSongs name={artist} songs={st.songs} act={act} onClose={() => setArtist(null)} />}
       {toast && (
         <div className="fixed inset-x-0 bottom-[calc(max(0.75rem,env(safe-area-inset-bottom))+4.75rem)] z-50 mx-auto w-fit max-w-[calc(100vw-2rem)] rounded-full bg-stone-900/90 px-4 py-2.5 text-[15px] font-medium text-white shadow-lg">
@@ -409,13 +424,21 @@ function NowPlaying({
     return (
       <section className={cn(CARD_CLASS, "overflow-hidden p-2")}>
         <div className="flex items-center gap-2.5">
-          <Cover src={showing ? song?.art : null} />
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-sm font-semibold leading-tight">
-              {showing ? song!.title : anyReady ? "Stopped" : "Nothing ready yet"}
+          {/* The song: back up to the full player (owner, 26 Nov: "clicking current song should scroll to top"). */}
+          <button
+            type="button"
+            className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+            aria-label="Back to the player"
+          >
+            <Cover src={showing ? song?.art : null} />
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold leading-tight">
+                {showing ? song!.title : anyReady ? "Stopped" : "Nothing ready yet"}
+              </div>
+              <div className="truncate text-xs text-muted-foreground">{showing ? song!.artist : ""}</div>
             </div>
-            <div className="truncate text-xs text-muted-foreground">{showing ? song!.artist : ""}</div>
-          </div>
+          </button>
           <RoundBtn
             label={playing ? "Pause" : "Play"}
             big
