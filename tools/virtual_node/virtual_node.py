@@ -316,6 +316,11 @@ class Handler(http.server.BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def end_headers(self) -> None:
+        # The app's 3D room (/lights/room, another origin) reads /dmx and /status: read-only, so any origin may.
+        self.send_header("Access-Control-Allow-Origin", "*")
+        super().end_headers()
+
     def json(self, obj: dict) -> None:
         body = json.dumps(obj).encode()
         self.send_response(200)

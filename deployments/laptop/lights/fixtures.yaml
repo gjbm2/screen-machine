@@ -26,6 +26,9 @@ nodes:
     last_ip: windows
 
 outputs:
+  screens:
+    driver: showbus                         # the screens' own path (as finsbury's): never driven from here
+    enabled: false
   dmx-a:
     driver: artnet
     enabled: true
@@ -35,6 +38,7 @@ outputs:
                                             # refused: room_service's virtual universe)
 
 types:
+  sm-screen: {source: builtin}              # a screen: colour only, kind screen (never dimmed)
   # GigBAR MOVE + ILS, patched part by part (show_service drives one colour and one pan/tilt per fixture). Each bar is
   # in its 52CH DMX mode (Version 2 units, manual Rev. 10). An older 50CH unit: the same parts, with the spots at
   # +32 and +41 instead of +34 and +43, and the laser one channel (gigbar-laser-50).
@@ -54,6 +58,10 @@ types:
 # addresses on the bars if they end up the other way round). The derby motors are pinned to a slow clockwise turn
 # (a starting point: 0 stops them, 1-127 is slow to fast).
 fixtures:
+  # The VJ screen: the karaoke picture projected on the east wall between the bars (owner, 26 Nov; its place and size
+  # in space.yaml). The renderer's fixture id, as finsbury's screen.north / screen.south.
+  screen.vj: {label: VJ screen, type: sm-screen, output: screens, screen: vj}
+
   gigbar-a.par1:   {label: Bar A par 1,   type: gigbar-par,   output: dmx-a, address: 1,   tags: [gigbar, bar-a, par]}
   gigbar-a.par2:   {label: Bar A par 2,   type: gigbar-par,   output: dmx-a, address: 8,   tags: [gigbar, bar-a, par]}
   gigbar-a.derby1: {label: Bar A derby 1, type: gigbar-derby, output: dmx-a, address: 15,  tags: [gigbar, bar-a, derby],

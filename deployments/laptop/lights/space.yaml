@@ -49,6 +49,9 @@ appliances:
            rms_deg: 0.0, worst_deg: 0.0, samples: 0, solved_at: "hand-set 2026-11-26 (provisional: upright on the bar, facing the room centre)"}
   gigbar-b.par2: {at: [4.145, 0.192, 2.5]}
   hazer: {at: [4.7, 1.2, 0.2]}         # on the floor by bar B
+  screen.vj:                          # the projected picture: ~2 m wide on the east wall between the bars, facing west
+    at: [5.0, 5.0, 2.0]               # (16:9 and its centre 2 m up assumed)
+    plane: {normal: [-1.0, 0.0, 0.0], up: [0.0, 0.0, 1.0], size: [2.0, 1.125]}
 points:
   dance-floor: {label: Dance floor, at: [2.5, 5.0, 0.0]}
   screen: {label: Karaoke screen, at: [5.0, 5.0, 2.0]}   # projected on the east wall between the bars,

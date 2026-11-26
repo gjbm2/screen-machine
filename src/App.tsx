@@ -51,6 +51,7 @@ const AdminPanel = page(() => import("./pages/AdminPanel"));
 const RoomPage = page(() => import("./pages/Room"));
 const LightsPage = page(() => import("./pages/Lights"));
 const LightsControlPage = page(() => import("./pages/Lights/Control"));
+const Room3DPage = page(() => import("./pages/Room3D"));
 const MusicPage = page(() => import("./pages/Music"));
 const SettingsPage = page(() => import("./pages/Settings"));
 const StartPage = page(() => import("./pages/Settings/Start"));
@@ -87,6 +88,8 @@ const App = () => (
             <Route path="/room" element={<RoomPage />} />
             <Route path="/lights" element={<LightsControlPage />} />
             <Route path="/settings/lights" element={<AdminOnly><LightsPage /></AdminOnly>} />
+            {/* the room in 3D: as configured, the lights from the Art-Net wire, the screens' own streams */}
+            <Route path="/lights/room" element={<Room3DPage />} />
             <Route path="/music" element={<MusicPage />} />
             {/* karaoke: songs, queue and player from a phone (docs/KARAOKE.md) */}
             <Route path="/karaoke" element={<KaraokePage />} />
