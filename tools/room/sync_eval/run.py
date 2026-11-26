@@ -109,7 +109,8 @@ def read(t0: float, t1: float) -> dict:
             scr.setdefault(e.get("cue_id"), {"transition": e.get("transition"), "scene": e.get("scene"),
                                              "reason": e.get("reason")})[e["phase"]] = ts
     moves, lines, parts = [], [], []
-    for ln in open(HOME + "/show/director.jsonl", errors="ignore"):
+    logs = [p for p in (HOME + "/show/director.jsonl.1", HOME + "/show/director.jsonl") if os.path.exists(p)]
+    for ln in (x for p in logs for x in open(p, errors="ignore")):   # (the log rotates: the last one too)
         try:
             e = json.loads(ln)
         except ValueError:
