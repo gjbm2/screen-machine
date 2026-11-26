@@ -212,7 +212,7 @@ export function fxFixed(density: number | undefined): boolean {
 }
 
 /** The effect presets as picker tiles, with one chip per kind of effect (warp, trails, colour…). */
-const HEARS_WORDS: Record<string, string> = { piano: "The piano", music: "The music" };
+const HEARS_WORDS: Record<string, string> = { piano: "The piano", music: "The music", lyrics: "The lyrics" };
 
 /** The effects for the pickers, filtered by what they play to (owner, 29 Oct: the MIDI-sensitive ones) and by kind. */
 export function useEffectItems(lib: Library | null, api: RoomApi): { items: PickItem[]; chips: PickChip[]; facets: PickFacet[] } {
@@ -227,7 +227,7 @@ export function useEffectItems(lib: Library | null, api: RoomApi): { items: Pick
         thumb: api.thumbUrl(e.thumb),
         tags: [e.stage ?? ""],
         facets: { hears: e.hears ?? [], stage: e.stage ? [e.stage] : [] },
-        search: [e.label, e.name, e.effect, e.stage, e.tags?.family, ...(e.tags?.moods ?? []), ...(e.hears?.includes("piano") ? ["piano", "midi"] : [])]
+        search: [e.label, e.name, e.effect, e.stage, e.tags?.family, ...(e.tags?.moods ?? []), ...(e.hears?.includes("piano") ? ["piano", "midi"] : []), ...(e.hears?.includes("lyrics") ? ["lyrics", "karaoke"] : [])]
           .join(" ")
           .toLowerCase(),
       })),

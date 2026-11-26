@@ -1,0 +1,35 @@
+lyric-stamp-slam:
+  label: Slam (each word lands full-screen on its beat)
+  effect: lyric_stamp
+  params: {amount: 0.9, size: 0.45, opacity: 0.85, slam: 0.6, chaos: 0.35, invert: 0.0, shade: 0.4, punch: 0.5,
+           font: black}
+  bindings:
+    pulse: {kick: beat, amount: 0.8}
+  tags:
+    energy: [0.5, 1.0]
+    moods: [euphoric, aggressive, playful]
+    style: wild
+    family: overlay
+    dims: 2d
+    technique: [light]
+    sections: [chorus]            # the karaoke sections it suits (fx_director._section_fit)
+    modes: [karaoke]
+    weight: 1.0
+
+lyric-stamp-negative:
+  label: Negative (words cut the scene into its negative)
+  effect: lyric_stamp
+  params: {amount: 0.9, size: 0.5, opacity: 0.95, slam: 0.4, chaos: 0.2, invert: 1.0, shade: 0.2, punch: 0.3,
+           font: black}
+  bindings:
+    pulse: {kick: beat, amount: 0.6}
+  tags:
+    energy: [0.4, 1.0]
+    moods: [tense, glitchy, aggressive]
+    style: wild
+    family: overlay
+    dims: 2d
+    technique: [colour]
+    sections: [chorus]            # the karaoke sections it suits (fx_director._section_fit)
+    modes: [karaoke]
+    weight: 0.8

@@ -41,6 +41,7 @@ STATS_FILE = "look_stats.generated.json"
 ROLES = ("grade", "light", "texture", "reshape", "trails", "corrupt", "reframe", "camera", "add")
 SCENE_PROPS = ("busy", "motion", "brightness", "symmetric", "self_coloured", "legible", "own_trails", "own_glitch")
 CHECK_S = 1.0
+SOLO_DRAWS = ("lyrics",)   # an effect drawing one of these never joins another that does (karaoke, owner 25 Nov)
 DEFAULTS: dict = {"level_min": 0.35, "multiplier_range": [0.25, 1.5], "tag_prior": 1.0, "refit_below": 0.5,
                   "symmetric_from": [0.3, 0.9], "scene_props": {}, "roles": {}, "pairs": {}, "role_overrides": {},
                   "load": {}, "genre_groups": {}, "roles_by_music": {}, "roles_by_piano": {}, "listens": {}}
@@ -254,7 +255,8 @@ class Interplay:
         used = float(load.get("scene", 0.5)) * props.get("busy", 0.5)
         used += sum(self.strength(o) or 0.5 for o, _ in others)
         heard = {k: _c01(v) for k, v in (heard or {}).items() if _num(v) is not None}
-        return Ctx(per_role, budget, used, float(cfg.get("level_min", DEFAULTS["level_min"])), heard)
+        solo = {k for _, pl in others for k in self.draws(pl) if k in SOLO_DRAWS}
+        return Ctx(per_role, budget, used, float(cfg.get("level_min", DEFAULTS["level_min"])), heard, solo)
 
     def heard_mult(self, ctx: "Ctx", plugin: Optional[str]) -> float:
         """x the weight of an effect drawn from the sound, by how much of it there is (the best of its kinds)."""
@@ -263,14 +265,16 @@ class Interplay:
         kinds = self.draws(plugin)
         table = self.cfg.get("listens") or {}
         got = [_lerp_pair(table[k], ctx.heard[k]) for k in kinds if k in table and k in ctx.heard]
-        got = [v for v in got if v is not None and v > 0.0]
-        return max(got) if got else 1.0
+        got = [v for v in got if v is not None and v >= 0.0]
+        return max(got) if got else 1.0      # 0: nothing it draws is there (lyrics: [0, x]): never picked
 
     def fit_in(self, ctx: "Ctx", preset: str, entry: dict) -> Fit:
         """One candidate effect against a pick's context."""
         role = self.role(entry.get("effect"))
         f = Fit(role=role)
         m_heard = self.heard_mult(ctx, entry.get("effect"))
+        if ctx.solo.intersection(self.draws(entry.get("effect"))):
+            m_heard = 0.0                    # one lyric effect at a time: two sets of words fight
         if m_heard != 1.0:
             f.parts["heard"] = f.mult = m_heard
         if role is None:
@@ -303,6 +307,7 @@ class Ctx:
     used: float
     level_min: float
     heard: dict = field(default_factory=dict)   # listens kind -> 0..1
+    solo: set = field(default_factory=set)      # SOLO_DRAWS kinds an effect already on the bus draws
 
 
 _SHARED: dict[str, Interplay] = {}

@@ -1811,6 +1811,9 @@ class SectionInfo(TypedDict):
     expected_bars: Optional[int]       # a known repeat's length, from its first time through
     chorus: bool                       # its letter is the probable chorus (most repeated x most energetic)
     label: Optional[str]               # the listener's SECTION_LABELS word when its verdict for this section agrees
+    # A karaoke song's sections from its lyrics (structure._lyric_plan; owner, 26 Nov), else absent / None:
+    kind: NotRequired[Optional[str]]   # verse | chorus | instrumental | outro (this section's, from the lyrics)
+    plan: NotRequired[Optional[dict]]  # {next_kind, next_in_s, median_s}: what comes next and the song's section length
 
 
 class TrackInfo(TypedDict):

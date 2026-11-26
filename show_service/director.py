@@ -326,6 +326,22 @@ WHY_LOG_N = 12                      # the reasoning's recent decisions kept for 
 SCREENS_DWELL_MIN_S = 15.0          # while a feel changes the looks, the renderer's own dwell window starts here (its
                                     # own fastest minimum, stream_service DWELL_AT_1) and ends at the feel's dwell max:
                                     # the show decides when, the renderer's timer is only the fallback
+# A karaoke song's sections from its lyrics (structure's lyric plan, music.context section.kind / .plan; owner,
+# 26 Nov: "verse / chorus etc. triggers ... to help it control pacing", "song context ... should be doing more
+# work"). While it runs: the screens change on the song's sections (dwell [KARAOKE_DWELL_MIN_S, 1.5 x its typical
+# section, within KARAOKE_DWELL_MAX_S]), the energy is shaped by the section (SECTION_ENERGY: verses calmer,
+# choruses lifted), and the song's catalogue genre (Deezer's, SONG_GENRES -> the vocabulary) leads the room's guess.
+KARAOKE_DWELL_MIN_S = 8.0
+KARAOKE_DWELL_MAX_S = (30.0, 90.0)
+SECTION_ENERGY = {"verse": -0.08, "chorus": 0.15, "instrumental": 0.05, "outro": -0.15}
+SONG_GENRES = {"pop": "pop", "rock": "rock", "alternative": "indie", "indie pop": "indie", "indie rock": "indie",
+               "metal": "metal", "punk": "punk", "dance": "electronic", "electro": "electronic",
+               "techno/house": "house", "rap/hip hop": "hip-hop", "hip hop": "hip-hop", "r&b": "rnb",
+               "soul & funk": "soul", "soul": "soul", "funk": "funk", "disco": "disco", "jazz": "jazz",
+               "blues": "blues", "reggae": "reggae", "latin music": "latin", "latin": "latin", "country": "country",
+               "folk": "folk", "singer & songwriter": "singer-songwriter", "classical": "classical",
+               "films/games": "soundtrack", "film scores": "soundtrack", "african music": "afrobeat",
+               "brazilian music": "world", "asian music": "world", "kids": "pop", "christian": "gospel"}
 # Practice (PianoView.practice 0..1; owner, 1 Nov). The Room page says "Sounds like practice" from PRACTICE_ON until it
 # falls to PRACTICE_OFF. The screens' dwell min follows it in PRACTICE_STEP steps, moving to a new step only once
 # practice is PRACTICE_HYST of a step away from the one it holds, so room.direction isn't republished for a wobble.
@@ -2078,7 +2094,7 @@ class Director:
         np_ = _call(getattr(self.ctx, "now_playing", None))
         if isinstance(np_, dict) and np_.get("key") and np_.get("state") == "playing":
             song = str(np_.get("title") or np_["key"])[:80]
-            based.append(f"the Music page: {song}")
+            based.append(f"{'Karaoke' if np_.get('source') == 'karaoke' else 'the Music page'}: {song}")
         sp = self._situation("sonos_playing")
         if song is None and sp and isinstance(room, dict) and self._np_target:
             m = (room.get("members") or {}).get(self._np_target)
@@ -2312,6 +2328,23 @@ class Director:
         vs = self.vs if self.known and self._vibe_name is not None else None
         dmin = self._screens_dwell(vs, 1.0 if flip else 0.0)[0] if vs else None
         self._log_event("practice", {"on": flip, "practice": round(pr, 2), "dwell_min_s": dmin})
+
+    @staticmethod
+    def _karaoke_dwell(plan: dict) -> list[float]:
+        """room.direction dwell_s while a karaoke song's lyric plan runs: short enough that each section's boundary
+        can change the scene, long enough not to change inside one (1.5 x the song's typical section)."""
+        med = _num(plan.get("median_s"))
+        hi = KARAOKE_DWELL_MAX_S[1] if med is None else max(KARAOKE_DWELL_MAX_S[0],
+                                                            min(KARAOKE_DWELL_MAX_S[1], 1.5 * med))
+        return [KARAOKE_DWELL_MIN_S, round(hi, 1)]
+
+    def _song_genre(self) -> Optional[str]:
+        """The karaoke song's catalogue genre as a vocabulary word (SONG_GENRES), while it plays; else None."""
+        np_ = _call(getattr(self.ctx, "now_playing", None))
+        if not isinstance(np_, dict) or np_.get("source") != "karaoke" or np_.get("state") != "playing":
+            return None
+        g = np_.get("genre")
+        return SONG_GENRES.get(g.strip().lower()) if isinstance(g, str) else None
 
     def _screens_dwell(self, vs: dict, q: Optional[float] = None) -> list[float]:
         """room.direction dwell_s while a feel changes the looks: [min, max] seconds. The min starts at
@@ -3928,12 +3961,14 @@ class Director:
         if (ml_on and isinstance(mg.get("word"), str)
                 and mg["word"] and (_num(mg.get("conf"), 0.0) or 0.0) >= float(self.cfg["genre_min_conf"])):
             ml_genre = mg["word"]
-        genre, genre_from = ((llm_genre, "listener") if llm_genre else (ml_genre, "ml") if ml_genre
+        song_genre = self._song_genre()
+        genre, genre_from = ((song_genre, "song") if song_genre else (llm_genre, "listener") if llm_genre
+                             else (ml_genre, "ml") if ml_genre
                              else (vs["genre"], "vibe") if vs["genre"] else (None, None))
         # room.direction's genres (soft: word -> share): the listener's word while it leads, else the local ML's
         # while it reads one (even a mixed one, under genre_min_conf), else the chosen word's
         mw = mg.get("words") if ml_on and isinstance(mg.get("words"), dict) else None
-        genres = ({llm_genre: 1.0} if llm_genre
+        genres = ({song_genre: 1.0} if song_genre else {llm_genre: 1.0} if llm_genre
                   else {str(w): round(_c01(_num(p, 0.0) or 0.0), 3) for w, p in mw.items()} if mw
                   else {genre: 1.0} if genre else {})
         # the art wish beside the genre (owner, 28 Oct): the listener's when confident, else music_art for the
@@ -4218,6 +4253,12 @@ class Director:
         # director.bands.words.*.change_rate). The lamps keep e.
         feel_on = self.known and self._vibe_name is not None
         e_dir = e if feel_on else _c01(_num(m.get("band_energy"), e) or 0.0)
+        lplan = msec.get("plan") if msec is not None and isinstance(msec.get("plan"), dict) else None
+        lkind = msec.get("kind") if lplan is not None and isinstance(msec.get("kind"), str) else None
+        if lkind is not None:                            # the karaoke section's shape (verse calmer, chorus up)
+            e_dir = _c01(e_dir + SECTION_ENERGY.get(lkind, 0.0))
+        if section_ref is not None and lkind is not None:
+            section_ref["kind"] = lkind
         cr = vs["change_rate"] if feel_on or words.get("change_rate") is None else words["change_rate"]
         self.direction = {"t_ms": round(now_s * 1000.0, 1), "seq": self._dir_seq, "source": "show_service",
                           "note": f"show_service · {self._vibe_name}" if self._vibe_name else None,
@@ -4243,7 +4284,8 @@ class Director:
                           # and, while a feel changes the looks, its dwell window (the show decides when)
                           "scene_favour": (self.treat.plan or {}).get("favour"),
                           "scene_avoid": (self.treat.plan or {}).get("avoid"),
-                          "dwell_s": self._screens_dwell(vs) if feel_on else None}
+                          "dwell_s": (self._karaoke_dwell(lplan) if lplan is not None
+                                      else self._screens_dwell(vs) if feel_on else None)}
         if self.ensemble is not None:
             self.direction["ensemble"] = self.ensemble.block()   # docs/ENSEMBLE.md §8: roles, staggers per screen
         if self.cfg["compose"]["mode"] == comp.DRIVE:

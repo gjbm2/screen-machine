@@ -1,0 +1,35 @@
+lyric-float-drift:
+  label: Drift (a slow cloud of the song's words)
+  effect: lyric_float
+  params: {amount: 0.9, size: 0.14, life: 7.0, rise: 0.05, sway: 0.4, depth: 0.6, opacity: 0.8, halo: 0.45,
+           shade: 0.2, warm: 0.7, hue: 0.1, font: bold}
+  bindings:
+    pulse: {kick: beat, amount: 0.3}
+  tags:
+    energy: [0.0, 0.6]
+    moods: [dreamy, elegant, mellow]
+    style: gentle
+    family: overlay
+    dims: 2d
+    technique: [light]
+    sections: [verse]            # the karaoke sections it suits (fx_director._section_fit)
+    modes: [karaoke]
+    weight: 1.0
+
+lyric-float-lanterns:
+  label: Lanterns (big serif words rising like lanterns)
+  effect: lyric_float
+  params: {amount: 0.9, size: 0.2, life: 10.0, rise: 0.035, sway: 0.25, depth: 0.8, opacity: 0.75, halo: 0.8,
+           shade: 0.1, warm: 1.0, hue: 0.08, font: serif}
+  bindings:
+    pulse: {kick: beat, amount: 0.2}
+  tags:
+    energy: [0.0, 0.45]
+    moods: [dreamy, warm, calm]
+    style: gentle
+    family: overlay
+    dims: 2d
+    technique: [light]
+    sections: [verse]            # the karaoke sections it suits (fx_director._section_fit)
+    modes: [karaoke]
+    weight: 0.9

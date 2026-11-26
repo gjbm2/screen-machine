@@ -103,3 +103,4 @@ listens:
   spectrum: [0.3, 1.5]
   scope:    [0.3, 1.5]
   fft:      [0.3, 1.5]
+  lyrics:   [0.0, 4.0]      # the karaoke effects: never without a song's synced lyrics; with one, about 1 pick in 4 (owner, 25 Nov: "medium often (but not always)"), one at a time (fx_interplay.SOLO_DRAWS)

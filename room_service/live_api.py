@@ -125,7 +125,8 @@ def _plain(v: Any) -> bool:
 # notes (stream_service fx_interplay draws "notes") or a parameter follows a piano signal; the music when it draws
 # the room's sound ("fft", "scope").
 PIANO_BINDS = {"note_on", "chord_change", "note_rate", "velocity", "register", "spread", "pedal", "tension"}
-DRAWS_HEARS = {"notes": "piano", "fft": "music", "scope": "music"}
+DRAWS_HEARS = {"notes": "piano", "fft": "music", "scope": "music",
+               "lyrics": "lyrics"}   # the karaoke effects (stream_service/lyric_feed.py; owner, 26 Nov: "how do I find them?")
 
 
 def _binds(v: Any) -> set[str]:

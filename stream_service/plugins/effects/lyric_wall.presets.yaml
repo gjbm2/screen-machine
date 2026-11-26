@@ -1,0 +1,33 @@
+lyric-wall-chorus:
+  label: Chorus wall (faint rows of the chorus, crossing ways)
+  effect: lyric_wall
+  params: {amount: 0.9, rows: 6, opacity: 0.22, speed: 0.8, ink: 0.0, verses: 0.0, font: black}
+  bindings:
+    pulse: {kick: beat, amount: 0.5}
+  tags:
+    energy: [0.3, 1.0]
+    moods: [euphoric, hypnotic, playful]
+    style: lively
+    family: overlay
+    dims: 2d
+    technique: [tiling]
+    sections: [chorus]            # the karaoke sections it suits (fx_director._section_fit)
+    modes: [karaoke]
+    weight: 1.0
+
+lyric-wall-print:
+  label: Print (dense dark type in the chorus, a little in the verses)
+  effect: lyric_wall
+  params: {amount: 0.9, rows: 9, opacity: 0.3, speed: 0.5, ink: 1.0, verses: 0.3, font: bold}
+  bindings:
+    pulse: {kick: beat, amount: 0.3}
+  tags:
+    energy: [0.2, 0.8]
+    moods: [hypnotic, retro, geometric]
+    style: lively
+    family: overlay
+    dims: 2d
+    technique: [tiling]
+    sections: [chorus, verse]            # the karaoke sections it suits (fx_director._section_fit)
+    modes: [karaoke]
+    weight: 0.8

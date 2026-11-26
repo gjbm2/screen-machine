@@ -21,7 +21,7 @@ CFG = {
     "load": {"scene": 0.5, "by_energy": [[0.0, 0.25], [1.0, 0.95]], "genre_bias": {"techno": 0.15}},
     "genre_groups": {"ambient": ["ambient"], "techno": ["techno", "electronic"], "house": ["house", "electronic"]},
     "roles_by_music": {"default": {}, "ambient": {"corrupt": 0.3, "light": 1.2}, "techno": {"corrupt": 1.2}},
-    "listens": {"notes": [0.15, 3.0], "fft": [0.3, 1.5]},
+    "listens": {"notes": [0.15, 3.0], "fft": [0.3, 1.5], "lyrics": [0.0, 4.0]},
 }
 ROLES = {"halftone": "texture", "bloom": "light", "kaleido": "reshape", "warp": "reshape", "echo": "trails",
          "mosh": "corrupt", "grade": "grade"}
@@ -183,3 +183,48 @@ def test_a_pick_carries_its_level(looks):
     d.arm(True, 0.0)
     move = d.plan(0.0, [], {"mosh": PRESETS["mosh"]}, lambda n: 0.5)
     assert move.level == pytest.approx(0.35) and "level 0.35 (budget)" in move.why
+
+
+# -- the karaoke effects (lyric_feed.py; owner, 25 Nov: "should only play when there is a lyric stream") ---------------
+def test_a_lyric_effect_needs_a_song_and_plays_alone(looks):
+    for pl in ("marquee", "stamp"):
+        looks.roles[pl] = {"role": "add", "draws": ["lyrics"]}
+    def mult(pl, heard, others=()):
+        return looks.fit_in(looks.context(scene("ink"), [(o, o) for o in others], {"energy": 0.5}, heard), pl,
+                            {"effect": pl}).mult
+    assert mult("marquee", {"lyrics": 0.0}) == 0.0                     # no lyric stream: never
+    assert mult("marquee", {"lyrics": 1.0}) == pytest.approx(4.0)      # a song with synced lyrics: favoured
+    assert mult("marquee", {"lyrics": 1.0}, others=["stamp"]) == 0.0   # one set of words at a time
+    assert mult("marquee", {"lyrics": 1.0}, others=["bloom"]) > 0.0
+    assert mult("bloom", {"lyrics": 1.0}, others=["stamp"]) > 0.0      # others don't mind
+
+
+def test_the_director_never_picks_a_lyric_effect_without_lyrics(looks):
+    looks.roles["marquee"] = {"role": "add", "draws": ["lyrics"]}
+    presets = {"marquee": {"effect": "marquee", "stage": "overlay", "tags": {"weight": 1.0}},
+               "bloom": {"effect": "bloom", "stage": "light", "tags": {"weight": 1.0}}}
+    d = fxd(looks, ["ink"])
+    d.heard = lambda: {"lyrics": 0.0}
+    assert {d._pick(["marquee", "bloom"], presets)[0] for _ in range(200)} == {"bloom"}
+    assert d._pick(["marquee"], presets) is None
+    d.heard = lambda: {"lyrics": 1.0}
+    assert "marquee" in {d._pick(["marquee", "bloom"], presets)[0] for _ in range(200)}
+
+
+def test_lyric_sections_steer_the_lyric_effects(looks):
+    """A karaoke section from the lyrics (section_kind): every one brings a move; presets tagged ``sections`` fit
+    their kinds, and none plays in a break (owner, 26 Nov)."""
+    presets = {"float": {"effect": "float", "stage": "overlay", "tags": {"weight": 1.0, "sections": ["verse"]}},
+               "stamp": {"effect": "stamp", "stage": "overlay", "tags": {"weight": 1.0, "sections": ["chorus"]}},
+               "bloom": {"effect": "bloom", "stage": "light", "tags": {"weight": 1.0}}}
+    d = fxd(looks, ["ink"])
+    d.arm(True, 0.0)
+    d.direction["fx"]["follow"] = 1.0
+    assert d.on_event("section_change", 100.0, "chorus") and d.section_kind == "chorus"   # always a move
+    picks = [d._pick(list(presets), presets)[0] for _ in range(400)]
+    assert picks.count("stamp") > 3 * picks.count("float")
+    d.on_event("section_change", 200.0, "instrumental")
+    assert {d._pick(list(presets), presets)[0] for _ in range(200)} == {"bloom"}       # no words: no lyric effect
+    assert d._pick(["float", "stamp"], presets) is None
+    d.on_event("track_change", 300.0)
+    assert d.section_kind is None and d._section_fit(presets["float"]["tags"]) == 1.0

@@ -197,6 +197,11 @@ class FxSound(ScopeFields):
             self._bins.append((a, max(a + 1, b)))
         self._last_t = None
         self._ticks = 0
+        from stream_service.lyric_feed import LyricFrame, LyricView, demo_song   # listens "lyrics": a demo song
+        from stream_service.plugins._lib import lyric_text
+        lyric_text.SYNC_BAKE = True                     # short renders: the text is there from the first frame
+        self._lyr_view, self._lyr_song = LyricView(), demo_song()
+        self.lyrics = LyricFrame()
 
     @property
     def present(self) -> bool:
@@ -238,6 +243,7 @@ class FxSound(ScopeFields):
         dt = 0.0 if self._last_t is None else max(0.0, t_s - self._last_t)
         self._last_t = t_s
         self._ticks += 1
+        self.lyrics = self._lyr_view.step(self._lyr_song, t_s % 24.0, t_s)   # the demo song, looping every 24 s
         wave, bands, pk = self._synth(t_s)
         self.scope.update(t_s, (t_s, wave, bands, pk), self.frame.spectrum, dt)
         self.scope_upload()
@@ -523,7 +529,11 @@ def video_transition(cls, preset, ctx, outdir, seconds):
 def art_frame(ctx, k: int = 1):
     """An art still from assets/art<k>.jpg, letterboxed to the frame (the effect must look right on art too)."""
     from PIL import Image
-    im = Image.open(ART / ["north-screen.jpg", "south-screen.jpg", "cloud.jpg"][(k - 1) % 3]).convert("RGBA")
+    f = ART / ["north-screen.jpg", "south-screen.jpg", "cloud.jpg"][(k - 1) % 3]
+    if not f.is_file():                                  # another deployment's screens (the laptop: vj.jpg)
+        have = sorted(ART.glob("*.jpg"))
+        f = have[(k - 1) % len(have)] if have else f
+    im = Image.open(f).convert("RGBA")
     im.thumbnail((ctx.width, ctx.height))
     canvas = Image.new("RGBA", (ctx.width, ctx.height), (0, 0, 0, 255))
     canvas.paste(im, ((ctx.width - im.width) // 2, (ctx.height - im.height) // 2))

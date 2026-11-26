@@ -116,6 +116,12 @@ Maestro is coming out. show_service (docs/SHOW_ENGINE.md) now hears the room mic
   - **All zeros is normal** (no mic, a quiet room). Look fine with no audio: an effect passes the scene through untouched.
   - The GPU arrays may be `None` if the session could not allocate them: check before launching. Pass them and `fft_row` / `wave_trigger` straight to your kernel.
 
+- **`"lyrics"`: the karaoke song's words** (25 Nov; `stream_service/lyric_feed.py`). `self.sound.lyrics` is a `LyricFrame`, refreshed once per frame at photon time:
+  - `present` (a song with synced lyrics is playing), `t` (lyric time, s), `song` (every `Line` and `Word` with `t0`/`t1`, known AHEAD, so a word can land exactly on time), `line`, `word`, and `active` (0–1: multiply your amount by it; it fades in long instrumental gaps).
+  - The fx director picks a lyric effect only while there is a song (`fx_interplay.yaml` `listens.lyrics`), and never two at once (`fx_interplay.SOLO_DRAWS`). Tag its presets `modes: [karaoke]` and its `effect_roles.generated.json` entry `draws: [lyrics]`.
+  - Text: `plugins/_lib/lyric_text.py` (lines baked ahead into a GPU atlas, drawn crisp at any size) and `plugins/_lib/lyric_fx.py` (the base class and line layout). The six `lyric_*` effects are the references.
+  - fxtest plays a demo song (`lyric_feed.demo_song`) to anything that listens.
+
 ## 3. Parameters: tiers and the standard macro interface
 
 **Every parameter declares `x-tier`** using the helpers in `stream_service/plugins/_lib/params.py` (`num`, `enum`, `flag`):

@@ -311,6 +311,10 @@ class Session(EngineListener):
         self._upnext_sent = -1
         self._fill_retry = {"scene": 0.0, "effect": 0.0}   # a queue that could not be filled waits this long
         self._event_hint: Optional[float] = None   # a room.event's glass time for the next cut (G9)
+        # A karaoke song's sections from its lyrics (show_service structure, room.event section_change detail
+        # "lyrics"; owner, 26 Nov): each letter's first scene in this song, so every chorus comes back to the chorus's
+        self._letter_scene: dict = {}                # (track_n, letter) -> scene preset
+        self._lyric_letter: Optional[tuple] = None   # (track_n, letter) of the lyric section the next cut is for
         self._building = False                     # a build is on: the next scene is the peak one, prepared (G10)
         self._dark: Optional[dict] = None          # fade-dark between songs: {since, in_s, prev, task}
         self.hud_wanted = False                    # the details panel on this screen's stream (hud.py)
@@ -493,6 +497,8 @@ class Session(EngineListener):
         snd = self.sound
         if snd is not None:
             out["notes"] = out["chroma"] = 1.0 if snd.present else 0.0
+            lyr = getattr(snd, "lyrics", None)       # the karaoke song's words (lyric_feed.py): 0 = never picked
+            out["lyrics"] = 1.0 if lyr is not None and lyr.present else 0.0
         music = self.mgr.music_feed.presence(time.monotonic())
         if music is not None:
             out["spectrum"] = out["scope"] = out["fft"] = music
@@ -1737,7 +1743,7 @@ class Session(EngineListener):
                 and spec.name != DARK_SCENE:            # a person chose this scene by hand: the room's taste
             self.mgr.taste_signal("like", spec.source, self.direction_effective, spec.name)
         resp = {"session": self.id, "state": self.state, "cue_id": cue["cue_id"], "at_pts": cue["at_pts"],
-                "duration_s": cue["duration_s"]}
+                "duration_s": cue["duration_s"], "scene": spec.name}
         if outcome == "skipped":
             resp["skipped"] = True
         if key is not None:
@@ -2086,7 +2092,8 @@ class Session(EngineListener):
         # the bus follows the song too (fx_director.py), on the screen that directs it: a follower does while the
         # ensemble makes it the lead (29 Oct: north led deaf to the song and its effects stayed; a mirroring
         # screen's director is disarmed, so it ignores the event)
-        self.fx_director.on_event(kind, time.monotonic())
+        self.fx_director.on_event(kind, time.monotonic(),
+                                  (data or {}).get("section_kind") if (data or {}).get("detail") == "lyrics" else None)
         if self.following() is not None:
             return
         data = data or {}
@@ -2096,10 +2103,39 @@ class Session(EngineListener):
             return
         if kind not in CUT_EVENTS or self.mgr.room_hold(time.monotonic(), self):
             return
+        recall = self._lyric_section(data) if kind == "section_change" and detail == "lyrics" else False
         if self.director.hint(f"{kind.replace('_', ' ')} (the room's music{': ' + detail if detail else ''})",
-                              urgent=kind == "drop"):
+                              urgent=kind == "drop" or recall):
             self._event_hint = at_s
             self._event_sweep = bool(data.get("sweep_beats"))   # a sweep's change: never staggered (rooms.py)
+
+    def _lyric_section(self, data: dict) -> bool:
+        """A karaoke section from the lyrics (verse A / chorus B / break C): its letter's scene in this song goes to
+        the head of up next (unless a person's pick is there), so the chorus returns to the chorus's scene.  -> True
+        when it recalls one (the cut is then urgent: a repeat should land on its line)."""
+        letter = data.get("letter") if isinstance(data.get("letter"), str) else None
+        tn = getattr(self, "track_n", 0)
+        if len(self._letter_scene) > 64 or any(k[0] != tn for k in self._letter_scene):
+            self._letter_scene = {k: v for k, v in self._letter_scene.items() if k[0] == tn}
+        self._lyric_letter = (tn, letter) if letter else None
+        want = self._letter_scene.get((tn, letter)) if letter else None
+        if not want or want == self.current_name or want not in self.mgr.presets.scenes \
+                or want in self.director.quarantine:
+            return False
+        head = self.upnext.head("scene")
+        if head is not None and head.get("origin") == "you":
+            return False                             # a person's pick comes first
+        for e in list(self.upnext.items("scene")):
+            if e["scene"] == want:
+                self.upnext.remove(e["id"])
+        kind = data.get("section_kind") or "section"
+        self.upnext.add("scene", {"scene": want, "transition": None, "origin": "auto", "transition_origin": None,
+                                  "why": f"{want} (the {kind} again: its scene, from the lyrics)",
+                                  "why_words": f"The {kind} again"}, at=0)
+        pk = self.prepared_pick
+        if pk is not None and pk.get("scene") != want:
+            self._drop_prepared()                    # it prepares the recalled scene instead
+        return True
 
     # -- song ends (c8's room.events; SHOW_ENGINE §8.5 "Song ends") ------------------------------------------------
     def _track_event(self, kind: str, at_s: Optional[float], detail: str, data: dict) -> None:
@@ -2538,8 +2574,13 @@ class Session(EngineListener):
                 stagger, self._event_sweep = not self._event_sweep, False
                 if hint is not None and hint >= time.monotonic() + self.sampler.lead + EVENT_MARGIN_S:
                     photon_at = hint
-            await self.cue({"to": "auto", "at": at}, cause="auto", reason=reason, detail=detail, photon_at=photon_at,
-                           stagger=stagger)
+            res = await self.cue({"to": "auto", "at": at}, cause="auto", reason=reason, detail=detail,
+                                 photon_at=photon_at, stagger=stagger)
+            ll, self._lyric_letter = self._lyric_letter, None
+            if reason == "room_event" and ll is not None and ll[0] == getattr(self, "track_n", 0):
+                got = res.get("scene") if isinstance(res, dict) and not res.get("skipped") else None
+                if isinstance(got, str):
+                    self._letter_scene.setdefault(ll, got)   # the letter's first scene in this song stays its own
         except SessionError as e:
             if self.state == "live":
                 log.warning("[%s] auto cue failed: %s", self.id, e.detail)

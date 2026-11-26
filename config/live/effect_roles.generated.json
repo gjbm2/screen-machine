@@ -1527,6 +1527,60 @@
    "draws": [
     "notes"
    ]
+  },
+  "lyric_marquee": {
+   "role": "add",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "The song's words race right to left over the picture, each crossing as it is sung (karaoke, 25 Nov)",
+   "draws": [
+    "lyrics"
+   ]
+  },
+  "lyric_float": {
+   "role": "add",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "Sung words appear and drift up over the picture at depth (karaoke, 25 Nov)",
+   "draws": [
+    "lyrics"
+   ]
+  },
+  "lyric_stamp": {
+   "role": "add",
+   "secondary": null,
+   "changes_over_time": true,
+   "_why": "Each sung word slams onto the picture and recedes (karaoke, 25 Nov)",
+   "draws": [
+    "lyrics"
+   ]
+  },
+  "lyric_knockout": {
+   "role": "light",
+   "secondary": "add",
+   "changes_over_time": true,
+   "_why": "Dims the picture except through the sung line's letters (karaoke, 25 Nov)",
+   "draws": [
+    "lyrics"
+   ]
+  },
+  "lyric_wall": {
+   "role": "texture",
+   "secondary": "add",
+   "changes_over_time": true,
+   "_why": "Faint scrolling rows of the chorus line over the picture (karaoke, 25 Nov)",
+   "draws": [
+    "lyrics"
+   ]
+  },
+  "lyric_glass": {
+   "role": "reshape",
+   "secondary": "add",
+   "changes_over_time": true,
+   "_why": "The sung line as glass lettering that bends the picture (karaoke, 25 Nov)",
+   "draws": [
+    "lyrics"
+   ]
   }
  }
 }

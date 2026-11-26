@@ -1,0 +1,35 @@
+lyric-marquee-freight:
+  label: Freight (huge see-through words racing across the top two-thirds)
+  effect: lyric_marquee
+  params: {amount: 0.9, size: 0.8, opacity: 0.4, lead: 0.55, height: 0.36, blur: 0.7, shade: 0.25, glow: 0.3,
+           highlight: 0.6, hue: 0.11, font: black}
+  bindings:
+    pulse: {kick: beat, amount: 0.6}
+  tags:
+    energy: [0.4, 1.0]
+    moods: [euphoric, playful, bright]
+    style: lively
+    family: overlay
+    dims: 2d
+    technique: [light, analytic]
+    sections: [chorus]            # the karaoke sections it suits (fx_director._section_fit)
+    modes: [karaoke]
+    weight: 1.0
+
+lyric-marquee-ticker:
+  label: Ticker (a band of words along the top, crisper)
+  effect: lyric_marquee
+  params: {amount: 0.9, size: 0.26, opacity: 0.6, lead: 0.5, height: 0.15, blur: 0.4, shade: 0.45, glow: 0.2,
+           highlight: 0.8, hue: 0.55, font: bold}
+  bindings:
+    pulse: {kick: beat, amount: 0.4}
+  tags:
+    energy: [0.2, 0.9]
+    moods: [playful, retro, bright]
+    style: lively
+    family: overlay
+    dims: 2d
+    technique: [light, analytic]
+    sections: [verse, chorus]            # the karaoke sections it suits (fx_director._section_fit)
+    modes: [karaoke]
+    weight: 0.8

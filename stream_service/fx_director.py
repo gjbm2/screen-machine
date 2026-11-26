@@ -62,6 +62,12 @@ FX_FOLLOW_DEFAULT = 0.8        # direction.fx.follow when unset: how much the ro
 FX_EVENT_P = {"drop": 1.0, "track_change": 1.0, "section_change": 0.5, "breakdown": 0.6}   # x follow
 FX_LIFTS = ("drop", "section_change", "track_change")   # the music lifts: a breakdown's thinning ends
 FX_EVENT_GAP_S = 8.0           # no event move this soon after the last move
+# A karaoke song's sections from its lyrics (show_service structure's section_change detail "lyrics", with
+# section_kind; owner, 26 Nov): every such boundary brings a move, and a preset tagged ``sections`` (the lyric
+# effects: verse / chorus) is x SECTION_FIT when the section is one of its kinds, x SECTION_MISS when not, and never
+# picked in a break or the outro (no words to draw).
+SECTION_FIT, SECTION_MISS = 2.0, 0.25
+WORDLESS_SECTIONS = ("instrumental", "outro")
 FX_THIN_S = 90.0               # a breakdown's thinning lasts at most this long
 FX_DROP_FADE_S = 0.5           # a drop's fade-in with no clock
 SECTION_WAIT_S = 4.0           # a section change: the scene director moves first; if it did, only re-check the bus
@@ -132,6 +138,7 @@ class FxDirector:
         self.grid: Optional[tuple[float, int]] = None         # the clock at the last tick (arm)
         self.event: Optional[str] = None                      # the room.event the pending move answers
         self.thin_until: Optional[float] = None               # a breakdown thins the bus until a lift or then
+        self.section_kind: Optional[str] = None               # the karaoke section now (verse | chorus | ...)
         self.last_move_at: Optional[float] = None
         self.looks: Any = None      # fx_interplay.Interplay (set by the session): roles, measured looks, the table
         self.scene: Optional[Callable[[], tuple[Optional[str], Optional[dict]]]] = None   # the scene on screen
@@ -219,13 +226,17 @@ class FxDirector:
         self.next_at = now + self._gap(0.5) if armed else None
         return True
 
-    def on_event(self, kind: str, now: float) -> bool:
+    def on_event(self, kind: str, now: float, section_kind: Optional[str] = None) -> bool:
         """show_service's room.event (loop thread), by ``follow``: a drop or a new track makes a move due now, a
         section change sometimes; a breakdown thins the bus by one auto effect (a move due now when that leaves one
         too many) until the music lifts.  Never this soon after the last move (FX_EVENT_GAP_S).  -> a move is due"""
         if kind in FX_LIFTS:
             self.thin_until = None
-        p = FX_EVENT_P.get(kind, 0.0) * self.follow
+        if kind == "track_change":
+            self.section_kind = None
+        elif kind == "section_change":
+            self.section_kind = section_kind             # None: not from the lyrics (the ear's), no section kind
+        p = (1.0 if section_kind else FX_EVENT_P.get(kind, 0.0)) * self.follow
         if not (self.armed and self.enabled) or p <= 0.0 or self.rng.random() >= p:
             return False
         if kind == "breakdown":
@@ -238,6 +249,16 @@ class FxDirector:
             self._event_scene = self._scene_seen
             self.next_at = now + SECTION_WAIT_S
         return True
+
+    def _section_fit(self, tags: dict) -> float:
+        """x a preset's weight by the karaoke section now (its ``sections`` tag; none: no opinion)."""
+        want = tags.get("sections")
+        kind = getattr(self, "section_kind", None)
+        if not want or not kind:
+            return 1.0
+        if kind in WORDLESS_SECTIONS:
+            return 0.0
+        return SECTION_FIT if kind in want else SECTION_MISS
 
     def due(self, now: float) -> bool:
         return self.armed and self.enabled and self.next_at is not None and now >= self.next_at
@@ -425,8 +446,16 @@ class FxDirector:
         prior = self._prior()
         ctx = self._ctx(stack, freed)
         fits = [self.fit(n, presets, ctx=ctx) for n in names]
+        keep = [k for k, f in enumerate(fits) if f.mult > 0.0]   # 0: what it draws isn't there (no lyric stream)
+        if not keep:
+            return None
+        if len(keep) < len(names):
+            names, fits = [names[k] for k in keep], [fits[k] for k in keep]
         w = [max(1e-6, self.weight(presets[n].get("tags") or {}) ** prior * f.mult
                  * self._rated(presets[n].get("effect")) * self._tasted(n)) for n, f in zip(names, fits)]
+        w = [x * self._section_fit(presets[n].get("tags") or {}) for n, x in zip(names, w)]
+        if not any(x > 1e-6 for x in w):
+            return None
         w = favoured(w, [presets[n].get("tags") or {} for n in names], self.fxd.get("favour"))
         w = [x * (NOVELTY_WEIGHT if n in recent else 1.0) for n, x in zip(names, w)]
         i = names.index(self.rng.choices(names, weights=w)[0])

@@ -180,6 +180,8 @@ ARM_MIN_BEATS = 2.0             # S4.7: drop_armed at least 2 beats ahead
 LINE_MOVED_BEATS = 0.25         # an armed line that moves more than this is re-armed
 NO_GRID_BAR_S = 2.0             # GOBO's "never twice within one bar" without a grid: a 4/4 bar at 120 bpm
 MIN_BACKGROUND = 5              # novelty values needed before the median + k x MAD threshold applies
+PLAN_LEAD_S = 4.0               # a lyric-plan section is announced this far ahead (at least; events.min_lead_s)
+PLAN_SEEK_S = 1.5               # the player's clock moved this far from the plan's: a seek, a restart
 PREDICT_SLACK_S = 2.0           # a predicted line counts as missed this long after the latest a boundary could confirm
 NOVELTY_KEEP_S = 120.0          # snapshot: the novelty curve's last 120 s
 STAT_N = 600
@@ -874,6 +876,9 @@ class Structure:
         self.cur: Optional[dict] = None
         self.boundaries: collections.deque = getattr(self, "boundaries", None) or collections.deque(maxlen=20)
         self.chorus: Optional[str] = None
+        # A karaoke song's sections, known ahead from its lyrics (karaoke_feed -> ctx.now_playing "sections";
+        # lyric_sections.py; owner, 26 Nov): {key, start (monotonic s of player position 0), secs, done, paused}
+        self._plan: Optional[dict] = None
         self._pred: Optional[dict] = None
         self._pending_gap: Optional[dict] = None
         self.phase = "calm"
@@ -987,6 +992,7 @@ class Structure:
         self._vouch_now = self._vouch(now_s)
         self._phases(now_s, grid)
         self._predict(now_s, grid)
+        self._lyric_plan(now_s, grid)
         sec = math.floor(now_s)
         second_ms = 0.0
         if self._last_second is None or sec != self._last_second:
@@ -1192,6 +1198,7 @@ class Structure:
         Oct: the pieces ran back to back with no gap, so nothing told the art director a piece had ended). True
         while the player has a piece (Sonos waits)."""
         np_ = _call(self.ctx.now_playing) if self.ctx.now_playing is not None else None
+        self._plan_read(now_s, np_)
         if not isinstance(np_, dict) or not np_.get("key"):
             if self._np_via == contract.TRACK_VIA_PLAYER:                 # the player stopped: its song-end path ends with it
                 self._sonos_stopped(now_s)
@@ -1753,6 +1760,74 @@ class Structure:
             self._bd_fail = None
             self._emit("breakdown", self._bd_since, now_s, section_id=self._cur_id(), phase="breakdown")
 
+    # -- a karaoke song's lyric plan (owner, 26 Nov: "verse / chorus etc. triggers ... to the a.d.") --------------------
+    def _plan_read(self, now_s: float, np_: Any) -> None:
+        """ctx.now_playing's ``sections`` (karaoke_feed: [{pos_s, kind, letter}], pos_s the player position where the
+        room hears it begin): the plan, its clock from the player's position (exact, as _player's song end).  Any
+        other source, no sections, or the player stopped: no plan."""
+        secs = np_.get("sections") if isinstance(np_, dict) else None
+        if not isinstance(secs, list) or not secs or not np_.get("key"):
+            self._plan = None
+            return
+        try:
+            pos = float(np_.get("pos_s"))
+            sp = float(np_.get("speed") or 1.0) or 1.0
+            ok = [x for x in secs if isinstance(x, dict) and isinstance(x.get("letter"), str)
+                  and _f(x.get("pos_s"), None) is not None]
+        except (TypeError, ValueError):
+            self._plan = None
+            return
+        key = str(np_["key"])
+        pl = self._plan if self._plan is not None and self._plan["key"] == key else None
+        start = now_s - pos / sp
+        if pl is None:
+            pl = self._plan = {"key": key, "start": start, "secs": ok, "done": set(), "paused": False}
+        elif abs(start - pl["start"]) > PLAN_SEEK_S:     # a seek or a restart: announce from here on
+            pl.update(start=start, done=set())
+            self._cancel_pred()
+        pl["secs"] = ok
+        pl["paused"] = np_.get("state") != "playing"
+        if not pl["paused"]:
+            pl["start"] = start
+
+    def _plan_on(self) -> bool:
+        return self._plan is not None and not self._plan["paused"]
+
+    def _lyric_plan(self, now_s: float, grid: _Grid) -> None:
+        """Announce the plan's next section as a predicted section_change (detail "lyrics", with its letter and
+        ``section_kind``: verse | chorus | instrumental | outro) once it is within reach: on the nearest bar line
+        while the clock is sure (within half a bar), else at the lyrics' own time.  At the line _predict starts the
+        section with that letter, so every chorus is the chorus's letter and the director brings its look back."""
+        pl = self._plan
+        if pl is None or pl["paused"] or self._pred is not None:
+            return
+        lead = self.cfg["events"]["min_lead_s"]
+        reach = max(PLAN_LEAD_S, lead + 0.5, self.cfg["predict_lead_bars"] * grid.bar_s if grid.ok else 0.0)
+        for i, x in enumerate(pl["secs"]):
+            if i in pl["done"]:
+                continue
+            b = pl["start"] + float(x["pos_s"])
+            if b < now_s + lead:                         # passed, or too close to land on time (a seek): skipped
+                pl["done"].add(i)
+                continue
+            if b - now_s > reach:
+                return
+            line = b
+            if grid.ok and grid.bar_s:
+                nb = grid.nearest_bar(b)
+                if abs(nb - b) <= 0.5 * grid.bar_s and nb >= now_s + lead:
+                    line = nb
+            pl["done"].add(i)
+            prev = next((s for s in reversed(self.sections) if s.get("letter") == x["letter"]), None)
+            sid = self._next_id
+            self._pred = {"line": line, "letter": x["letter"], "repeat_of": prev["id"] if prev else None,
+                          "from": self._cur_id(), "id": sid, "lyrics": x.get("kind")}
+            self._emit("section_change", line, now_s, section_id=sid, letter=x["letter"],
+                       repeat_of=self._pred["repeat_of"], predicted=True, boundary_ms=round(line * 1000.0, 1),
+                       detail="lyrics", section_kind=x.get("kind"))
+            self._gobo_at(line, ("section", sid))
+            return
+
     # -- known repeats: the predicted line (README S4.7 step 5) ----------------------------------------------------------
     def _predict(self, now_s: float, grid: _Grid) -> None:
         lead = self.cfg["events"]["min_lead_s"]
@@ -1763,8 +1838,12 @@ class Structure:
                 sec = self._start_section(p["line"], "predicted", now_s, emit=False)
                 sec["letter"], sec["repeat_of"] = p["letter"], p["repeat_of"]
                 sec["provisional"] = True
+                if p.get("lyrics"):                      # the lyric plan's: its letter stands (no re-identifying)
+                    sec.update(identified=True, provisional=False, lyrics=p["lyrics"])
                 self._boundary_record(p["line"], None, p["line"], "predicted", sec["id"])
             return
+        if self._plan_on():
+            return                                       # the lyrics say where sections are: no guessing by ear
         cur = self.cur
         if cur is None or not cur.get("expected_bars") or cur.get("predicted_done") or not grid.ok:
             return
@@ -2023,6 +2102,10 @@ class Structure:
                 rec.update(same_as=b["section_id"])
                 self.boundaries.append(rec)
                 return True
+        if self._plan_on():                              # a karaoke song's lyrics place its sections: heard, not used
+            rec["dropped"] = "lyrics plan"
+            self.boundaries.append(rec)
+            return False
         jump = self._track_jump(now_s, tau, nov_v, thr, grid)
         if jump is not None:
             rec["kind"] = "track"
@@ -2172,6 +2255,10 @@ class Structure:
             sec["space"] = self.source
 
     def _chorus(self) -> None:
+        if self._plan_on():
+            letters = {x["letter"] for x in self._plan["secs"] if x.get("kind") == "chorus"}
+            self.chorus = next(iter(letters)) if letters else None
+            return
         stats: dict[str, list] = {}
         for s in self.sections:
             if not s.get("identified") or not s.get("letter"):
@@ -2670,7 +2757,22 @@ class Structure:
                 "bars_in_section": bars_in, "started_ms": round(cur["start_s"] * 1000.0, 1),
                 "expected_bars": cur.get("expected_bars"),
                 "chorus": bool(cur.get("letter") and cur.get("letter") == self.chorus),
-                "label": self._label(now_s, cur)}
+                "label": self._label(now_s, cur),
+                "kind": cur.get("lyrics") if self._plan_on() else None,
+                "plan": self._plan_view(now_s)}
+
+    def _plan_view(self, now_s: float) -> Optional[dict]:
+        """music.context section.plan while a karaoke song's lyric plan runs: the next section's kind and how soon,
+        and the song's typical section length (the director paces the screens by it)."""
+        pl = self._plan
+        if pl is None or pl["paused"] or not pl["secs"]:
+            return None
+        starts = [pl["start"] + float(x["pos_s"]) for x in pl["secs"]]
+        gaps = sorted(b - a for a, b in zip(starts, starts[1:]) if b > a)
+        nxt = next(((b, x) for b, x in zip(starts, pl["secs"]) if b > now_s), None)
+        return {"next_kind": nxt[1].get("kind") if nxt else None,
+                "next_in_s": round(nxt[0] - now_s, 2) if nxt else None,
+                "median_s": round(gaps[len(gaps) // 2], 1) if gaps else None}
 
     def _label(self, now_s: float, cur: dict) -> Optional[str]:
         b = self._ctx_parts.get("beliefs")

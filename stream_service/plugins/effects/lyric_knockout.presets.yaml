@@ -1,0 +1,33 @@
+lyric-knockout-window:
+  label: Window (the scene shows through the sung line)
+  effect: lyric_knockout
+  params: {amount: 0.9, dim: 0.72, desat: 0.75, lift: 0.15, preview: 0.3, rim: 0.35, fill: 0.88, font: black}
+  bindings:
+    pulse: {kick: beat, amount: 0.3}
+  tags:
+    energy: [0.0, 0.8]
+    moods: [elegant, dreamy, hypnotic]
+    style: gentle
+    family: overlay
+    dims: 2d
+    technique: [light, optical]
+    sections: [verse, chorus]            # the karaoke sections it suits (fx_director._section_fit)
+    modes: [karaoke]
+    weight: 1.0
+
+lyric-knockout-blackout:
+  label: Blackout (only the letters lit, words open as sung)
+  effect: lyric_knockout
+  params: {amount: 0.95, dim: 0.92, desat: 1.0, lift: 0.3, preview: 0.12, rim: 0.6, fill: 0.92, font: black}
+  bindings:
+    pulse: {kick: beat, amount: 0.4}
+  tags:
+    energy: [0.3, 1.0]
+    moods: [tense, euphoric, bright]
+    style: lively
+    family: overlay
+    dims: 2d
+    technique: [light, optical]
+    sections: [chorus]            # the karaoke sections it suits (fx_director._section_fit)
+    modes: [karaoke]
+    weight: 0.8

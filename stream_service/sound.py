@@ -33,6 +33,12 @@ The room ensemble's register (docs/ENSEMBLE.md §8.6; register_split: low notes 
                      screens.  None: no ensemble, or this screen is its only one (draw the whole picture).  Set by
                      the engine each frame (``stream_service.ensemble.segment``, from room.direction.ensemble).
 
+The karaoke song's lyrics (listens "lyrics"; lyric_feed.py, owner 25 Nov):
+
+  sound.lyrics       lyric_feed.LyricFrame: present (a song with synced lyrics plays), t (lyric time at photon time),
+                     song (every line and word with its t0 / t1, known ahead), line, word, active (0..1: multiply
+                     the amount by it).  Never None; ``present`` False on a deployment without karaoke.
+
 Ages are evaluated at photon time (the frame's time plus the session's measured lead), so what a scene draws for
 a note matches what the ear hears at the TV.  Read-only for plug-ins; both scenes of a transition see the same
 frame.  Every music.* and show.state message reaches each session's view (``on_message``, any thread, append only).
@@ -76,6 +82,13 @@ class Sound(ScopeFields):
         self._scope_t: Optional[float] = None
         self._scope_errors = 0
         self._scope_logged = -1e9
+        from .lyric_feed import LyricFrame, LyricView, shared
+        try:
+            self.lyric_view: Any = LyricView(shared())
+        except Exception:                     # noqa: BLE001 - no lyrics, never no sound
+            log.exception("lyrics: no view")
+            self.lyric_view = None
+        self.lyrics: Any = LyricFrame()
 
     @property
     def present(self) -> bool:
@@ -112,6 +125,14 @@ class Sound(ScopeFields):
                 self._failed = True
                 log.exception("sound view failed; scenes hear nothing from here on")
         self._scope_step()
+        if self.lyric_view is not None:
+            try:
+                self.lyrics = self.lyric_view.update(photon_s)
+            except Exception:
+                log.exception("lyrics view failed; the karaoke effects see none from here on")
+                self.lyric_view = None
+                from .lyric_feed import LyricFrame
+                self.lyrics = LyricFrame()
 
     def _scope_step(self) -> None:
         """Render thread: the fast feed's newest frame (a lock-free read) through this session's ScopeState.  An error

@@ -1,0 +1,33 @@
+lyric-glass-clear:
+  label: Clear glass (the sung line as glass lettering)
+  effect: lyric_glass
+  params: {amount: 0.9, bend: 0.5, shine: 0.6, tint: 0.06, shadow: 0.25, fill: 0.8, font: black}
+  bindings:
+    pulse: {kick: beat, amount: 0.3}
+  tags:
+    energy: [0.0, 0.7]
+    moods: [elegant, liquid, dreamy]
+    style: gentle
+    family: overlay
+    dims: 2d
+    technique: [optical, displacement]
+    sections: [verse]            # the karaoke sections it suits (fx_director._section_fit)
+    modes: [karaoke]
+    weight: 1.0
+
+lyric-glass-ice:
+  label: Ice (thick, strongly bending lettering)
+  effect: lyric_glass
+  params: {amount: 0.95, bend: 0.9, shine: 0.9, tint: 0.14, shadow: 0.4, fill: 0.9, font: black}
+  bindings:
+    pulse: {kick: beat, amount: 0.5}
+  tags:
+    energy: [0.2, 0.9]
+    moods: [icy, liquid, cosmic]
+    style: lively
+    family: overlay
+    dims: 2d
+    technique: [optical, displacement]
+    sections: [verse, chorus]            # the karaoke sections it suits (fx_director._section_fit)
+    modes: [karaoke]
+    weight: 0.8
