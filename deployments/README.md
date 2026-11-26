@@ -346,6 +346,12 @@ subscribes to every sender its `show.yaml` lists.
 
 PC22 does the Windows side through Spectre's audio-agent card instead of the script.
 
+## Picking up the laptop's rig work on PC22
+
+`docs/PICKUP_FROM_LAPTOP.md` (26 Nov): what changes on PC22 after a pull with no config edit, and what to add to
+finsbury's own files: a mode `transition_s`, a Karaoke mode, the GigBARs, and PC22's own 3D room with the screens,
+the Hue lamps and the glitterball.
+
 ## Migrating PC22 (finsbury) from the old layout
 
 The old layout kept these files in `config/room/`, `routes/data/` and `deploy/`.
