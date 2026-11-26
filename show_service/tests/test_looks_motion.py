@@ -615,15 +615,19 @@ def test_an_inactive_mover_glides_home_busy_until_it_lands():
     caps = {**DMX_CAPS, "idle_without_vibe": True}
     assert at(run(e, box, 10.0, 11.5, caps=caps)[-1][1], "mv")["pan"] == 90.0
     box["pal"] = None                                                    # no vibe: inactive on an Art-Net output
-    frames = run(e, box, 11.52, 13.0, caps=caps)
+    fade = run(e, box, 11.52, 11.52 + lk.HOUSE_FADE_S - 0.05, caps=caps)   # first it dims where it points
+    assert all(at(fr, "mv")["pan"] == 90.0 and fr["active"] is False and fr["busy"] for _t, fr in fade)
+    assert fade[-1][1]["fixtures"]["mv"]["intensity"] < fade[0][1]["fixtures"]["mv"]["intensity"]
+    frames = run(e, box, 11.52 + lk.HOUSE_FADE_S, 13.0 + lk.HOUSE_FADE_S, caps=caps)   # then glides home
     assert frames[0][1]["active"] is False and frames[0][1]["busy"] is True
     prev = 90.0
     for _t, fr in frames:
         p = at(fr, "mv")["pan"]
         assert abs(p - prev) <= 180.0 * FRAME + 1e-9
         prev = p
-    landed = next(i for i, (_t, fr) in enumerate(frames) if at(fr, "mv")["pan"] == 0.0)
-    assert all(fr["busy"] for _t, fr in frames[:landed - 1]) and frames[-1][1]["busy"] is False
+    assert any(at(fr, "mv")["pan"] == 0.0 for _t, fr in frames)                       # it lands
+    assert all(fr["busy"] for _t, fr in frames if abs(at(fr, "mv")["pan"]) > lk.ARRIVED_DEG)   # busy until there
+    assert frames[-1][1]["busy"] is False
 
 
 # -- configuration (§5.2, §12) -----------------------------------------------------------------------------------------

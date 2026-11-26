@@ -245,6 +245,10 @@ DEFAULT_LIFT_M = 1.0            # starting point: a lift layer without ``lift`` 
 SPEED_FIT = 0.95                # §5.5: a pattern's peak speed is kept under this share of the light's
 FIT_SAMPLES = 64                # samples per cycle when a pattern's peak speed is measured
 MAX_DOUBLINGS = 6               # a pattern or hop slows at most 2^6 times (then runs as fast as it can: never refused)
+#: the show stopping (no feel, a quiet room): each light fades from its last frame to its house state over this long,
+#: keeping its colour and where it points; a mover glides home after (owner, 26 Nov: "why does switching to normal just
+#: hard-kill the lights ... we do a fade")
+HOUSE_FADE_S = 5.0
 ARRIVED_DEG = 0.5               # a move has arrived within this (dark moves, busy)
 DT_MAX_S = 0.25                 # the motion stage's longest step between two frames
 FIT_CACHE_MAX = 512             # pattern speed fits kept per output (cleared whole when full)
@@ -812,6 +816,8 @@ class _OutState:
         self.programs: dict[str, Optional[str]] = {}     # group -> the scene showing (stats)
         self.busy = False
         self.prog: Any = None                    # the program the caches above were filled from
+        self.last_out: dict[str, tuple] = {}     # fixture -> (intensity, colour, attrs) of the last active frame
+        self.out_t0: Optional[float] = None      # when the show stopped driving this output (HOUSE_FADE_S)
 
     def caches_for(self, prog: Any) -> None:
         """A new program (configure, a catalogue change): every per-light cache is filled again."""
@@ -2742,6 +2748,11 @@ class LookEngine:
         busy = False
         if not active:
             te = t * 1000.0
+            if st.out_t0 is None and st.last_out:
+                st.out_t0 = t
+            fx = (t - st.out_t0) / HOUSE_FADE_S if st.out_t0 is not None else 1.0
+            if fx >= 1.0 and st.last_out:
+                st.last_out = {}
             for s in op.slots:
                 if holds:
                     h = holds.get(s.id)
@@ -2757,6 +2768,14 @@ class LookEngine:
                     fixtures[s.id] = self._fixed(s, o[0], o[1], te, fs, o[2])
                     continue
                 hi, hcol, hrgb, hdmx = s.house
+                lo = st.last_out.get(s.id) if fx < 1.0 else None
+                if lo is not None:                               # fading to the house state (HOUSE_FADE_S)
+                    fixtures[s.id] = self._fade_out(s, lo, max(0.0, fx), te)
+                    if s.moves:                                  # standing still: the glide home starts from now
+                        fs = st.fixstate(s.id)
+                        fs.t_m, fs.vel = t, [0.0, 0.0]
+                    busy = True
+                    continue
                 ff = {"intensity": hi, "colour": list(hcol), "rgb": list(hrgb), "t_eval_ms": te}
                 if s.enc:
                     attrs = dict(s.neutral)
@@ -2970,9 +2989,32 @@ class LookEngine:
             if s.channels:
                 ff["dmx"] = self._encode(s, inten, colour, ff.get("attrs"))
             fixtures[s.id] = ff
+        st.last_out = {k: (f.get("intensity", 0.0), f.get("colour"), f.get("attrs")) for k, f in fixtures.items()}
+        st.out_t0 = None
         frame["busy"] = st.busy = busy
         self._record(st, c0)
         return frame
+
+    def _fade_out(self, s: _Slot, lo: tuple, x: float, te: float) -> dict:
+        """A fixture ``x`` (0..1) of the way from its last active frame ``lo`` to its house state: the intensity
+        falls, the colour stays (or blends to a house colour that has one), a mover keeps where it points and its
+        beam (a strobe opens), then glides home once the fade is done."""
+        hi, hcol, _, _ = s.house
+        li, lc, la = lo
+        li = float(li) if _isnum(li) else 0.0
+        inten = li + (hi - li) * x
+        lc = list(lc) if isinstance(lc, (list, tuple)) and len(lc) == 3 else list(hcol)
+        col = lc if hi <= 0.0 else [a + (b - a) * x for a, b in zip(lc, hcol)]
+        ff: dict = {"intensity": inten, "colour": col, "rgb": [c * inten for c in col], "t_eval_ms": te}
+        if s.enc:
+            attrs = dict(la) if isinstance(la, Mapping) else dict(s.neutral)
+            sh = attrs.get("shutter")
+            if isinstance(sh, Mapping) and sh.get("mode") not in (None, "open", "closed"):
+                attrs["shutter"] = {"mode": "open"}
+            ff["attrs"] = attrs
+        if s.channels:
+            ff["dmx"] = self._encode(s, inten, col, ff.get("attrs"))
+        return ff
 
     # -- one frame's pieces --------------------------------------------------------------------------------------------
     def _idle_clock(self, look: Any) -> dict:
