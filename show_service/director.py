@@ -239,7 +239,9 @@ LOOK_REASON_WORDS = {"phrase": "a new phrase", "section": "a new section", "repe
                      "next": "someone pressed Next look", "palette": "someone picked a palette"}
 #: room.look's light_scene_why: the light scene's own reasons, beside LOOK_REASON_WORDS (README S5.24)
 LIGHT_REASON_WORDS = {"feel": "a new feel", "first": "the first light scene", "scenes": "the light scenes changed",
-                      "room": "the mode changed what the lights may do"}
+                      "room": "the mode changed what the lights may do", "moment": "the moment changed"}
+MOMENT_TRIGGERS = ("lead_in", "waiting", "lull", "song_end")   # the effect triggers a moment fires (never gapped)
+MOMENTS_FALLBACK = {"lull_after_s": 180.0}   # show.yaml lights.moments
 LIGHT_SCENE_SEED = 0                # the light-scene draw's seed (a fixed seed, as palette.from_image's k-means)
 LIGHT_FX_SEED = 1                   # the effects' and transitions' draws (their own, so effects never shift the scenes')
 ENSEMBLE_SEED = 2                   # the interplay forms' draw (docs/ENSEMBLE.md §4.2: its own, beside the lights')
@@ -295,7 +297,7 @@ CONTEXT_STALE_S = 3.0               # music.context comes at 1 Hz
 RHYTHM_STALE_S = 1.0                # README S4.6: a music.rhythm frame over 1 s old is stale
 E_HIST_N = 6000                     # energy samples kept for section energies (10 min at 10 Hz)
 SUBDIVISIONS = (0.5, 0.25, 0.125)   # §8.5: a build steps the accent subdivision 1/2 -> 1/4 -> 1/8
-GAP_FREE_TRIGGERS = ("drop", "final_chorus")   # big moments: never held back by lights.programs.effect_gap_bars
+GAP_FREE_TRIGGERS = ("drop", "final_chorus") + MOMENT_TRIGGERS   # big moments: never held back by lights.programs.effect_gap_bars
 STROBE_MOMENT_S = 4.0               # strobes within this of a spent token are the same big moment (one token)
 TOKEN_WINDOW_S = 3600.0             # peak_tokens_per_hour: at most that many spends in any 60 minutes
 STRUCTURE_REASONS = ("section", "repeat", "drop", "track")   # look changes structure's events caused
@@ -1024,6 +1026,9 @@ class Director:
         self._tokens: collections.deque = collections.deque()   # peak-token spends (monotonic s), the last hour
         self._armed: Optional[dict] = None               # a reserved token at a drop line: {"at_s", "section_id"}
         self._strobe_paid: Optional[float] = None        # the line of the last big moment a strobe was paid for
+        self._moment = contract.MOMENTS[0]               # the room's moment (contract.MOMENTS): what the lights' scenes
+        self._moment_since = 0.0                         # and effects are commissioned for, besides the music
+        self._moments_cfg = dict(MOMENTS_FALLBACK)
         self._air = atmod.Air()                          # the room's haze (atmosphere.py)
         self.haze_pick: Optional[str] = None             # a person's haze level (set_haze), until the mode changes
         self._air_next = 0.0
@@ -1397,6 +1402,15 @@ class Director:
         self.lights_cfg = lscenes.parse_lights(s.get("lights"), probs)     # docs/LIGHTS.md §12
         self._air.configure(atmod.parse((s.get("lights") or {}).get("atmosphere")
                                         if isinstance(s.get("lights"), dict) else None, probs))   # the hazers
+        mo = (s.get("lights") or {}).get("moments") if isinstance(s.get("lights"), dict) else None
+        self._moments_cfg = dict(MOMENTS_FALLBACK)
+        if isinstance(mo, dict):
+            la = _num(mo.get("lull_after_s"))
+            if la is not None and la > 0:
+                self._moments_cfg["lull_after_s"] = la
+            elif mo.get("lull_after_s") is not None:
+                probs.append(f"lights.moments.lull_after_s: {mo.get('lull_after_s')!r} isn't seconds: "
+                             f"{MOMENTS_FALLBACK['lull_after_s']:g}")
         if self.ensemble is not None:                     # docs/ENSEMBLE.md §10
             ens_probs: list[str] = []
             self.ensemble.configure(ensmod.parse_settings(s.get("ensemble"), ens_probs), ens_probs)
@@ -2194,7 +2208,7 @@ class Director:
             if g.get("follows") or not self._group_live(gid):
                 continue
             try:
-                pools[gid] = list(self.light_scenes.pool_for(g, self._light_tags))
+                pools[gid] = list(self.light_scenes.pool_for(g, self._light_tags, self._moment))
             except Exception:                             # noqa: BLE001 - a broken catalogue: no light options
                 continue
         forms: list[str] = []
@@ -2878,7 +2892,8 @@ class Director:
                     pwhy[want] = "the plan's pick"
                 got = self.light_scenes.pick_for(g, self.direction, self._flow, self._ls_rng,
                                                  avoid=old.get("scene") if old else None, tags=self._light_tags,
-                                                 hard_avoid=human, prefer=prefer or None, prefer_why=pwhy)
+                                                 hard_avoid=human, prefer=prefer or None, prefer_why=pwhy,
+                                                 moment=self._moment)
             except Exception:                             # a broken catalogue never fails the tick
                 log.exception("light scenes: pick failed")
                 got = None
@@ -3091,6 +3106,7 @@ class Director:
                     got = self._pick_programs(self._ls_reason, now_s, only=missing)
                     if got is not None:
                         self._commit_programs(got, now_s)
+            self._moment_tick(now_s, grid)
             self._fx_tick(now_s, grid)
             self._flow_tick(now_s, grid)
             self._appliances_tick(now_s, room)
@@ -3167,12 +3183,52 @@ class Director:
                 "strength": round(_c01(strength if strength is not None else 1.0), 3), "why": why}
             self._fx_meta[run["id"]] = {"phase": trigger if trigger in contract.SECTION_PHASES
                                         else self._phase_eff(now_s),
+                                        "moment": self._moment if trigger in MOMENT_TRIGGERS else None,
                                         "out_s": float(fx["fade"]["out_beats"]) * beat}
             runs.append(run)
             self._fx_last[gid] = at_s
             self._fx_log.append({"group": gid, **run})
             self._lp_rev += 1
             self._log_event("light_effect", {"group": gid, "run": dict(run), "trigger": trigger, "bar": bar})
+
+    # -- the room's moment (contract.MOMENTS; owner, 26 Nov) ------------------------------------------------------------
+    def _moment_now(self, now_s: float) -> str:
+        """What is happening besides the music's shape, from what the room's players say (ctx.now_playing: karaoke,
+        the Music page, Sonos) and, with none, whether the room has relaxed into silence."""
+        np_ = _call(getattr(self.ctx, "now_playing", None))
+        if isinstance(np_, dict) and np_.get("state") == "playing":
+            pos = _num(np_.get("pos_s"))
+            return "lead_in" if pos is not None and pos < 0.0 else "song"
+        if isinstance(np_, dict) or self._relaxed:           # paused, or nothing sounding
+            waited = now_s - self._moment_since if self._moment in ("waiting", "lull") else 0.0
+            return "lull" if waited >= float(self._moments_cfg["lull_after_s"]) or self._moment == "lull" \
+                else "waiting"
+        return "song"
+
+    def _moment_tick(self, now_s: float, grid: Grid) -> None:
+        """A new moment: its effect trigger fires (``song_end`` too, as a song gives way to waiting), and every group
+        whose scene isn't in the moment's pool gets one that is (light_scenes.Catalogue.pool_for)."""
+        new = self._moment_now(now_s)
+        old = self._moment
+        if new == old:
+            return
+        if not (old == "waiting" and new == "lull"):         # the lull's wait counts from when the waiting began
+            self._moment_since = now_s
+        self._moment = new
+        self._log_event("moment", {"from": old, "to": new})
+        at = now_s + self._lead_s()
+        if old == "song" and new == "waiting":
+            self._fx_trigger("song_end", at, now_s, grid)
+        if new in MOMENT_TRIGGERS:
+            self._fx_trigger(new, at, now_s, grid)
+        if not self.light_scenes.scenes:
+            return
+        stale = {gid for gid, g in self._groups.items() if not g.get("follows") and self._group_live(gid)
+                 and (self._lp.get(gid) or {}).get("scene") not in self.light_scenes.pool_for(g, self._light_tags, new)}
+        if stale and self.keep_until is None:
+            got = self._pick_programs("moment", now_s, only=stale)
+            if got is not None:
+                self._commit_programs(got, now_s)
 
     # -- the haze (atmosphere.py; owner, 26 Nov) ------------------------------------------------------------------------
     def _hazers(self) -> list[tuple[str, str]]:
@@ -3320,7 +3376,8 @@ class Director:
             keep = []
             for r in runs:
                 meta = self._fx_meta.get(r["id"]) or {}
-                if r["until_ms"] is None and now_ms >= r["at_ms"] and phase != meta.get("phase"):
+                over = (self._moment != meta["moment"]) if meta.get("moment") else (phase != meta.get("phase"))
+                if r["until_ms"] is None and now_ms >= r["at_ms"] and over:   # a while effect: its moment, or phase
                     r["until_ms"] = round(now_ms, 1)
                     self._lp_rev += 1
                 if r["until_ms"] is not None and now_ms > r["until_ms"] + 1000.0 * float(meta.get("out_s", 0.0)):
@@ -3601,7 +3658,7 @@ class Director:
             if g.get("follows") or not self._group_live(gid):
                 continue
             p = self._lp.get(gid)
-            if p is None or not p.get("scene") or p["scene"] not in self.light_scenes.pool_for(g, tags):
+            if p is None or not p.get("scene") or p["scene"] not in self.light_scenes.pool_for(g, tags, self._moment):
                 stale.add(gid)                            # a group that just came on, or one out of its new pool
         if stale:
             got = self._pick_programs("room", now_s, only=stale)
@@ -5652,6 +5709,7 @@ class Director:
             "lights": self._lights_view(now_s),                  # docs/LIGHTS.md §7.3
             "atmosphere": self.haze_view(),                     # the haze (atmosphere.py)
             "picture": self._picture_view(),                    # what the screens show, for the lights (picture.py)
+            "moment": {"now": self._moment, "for_s": round(now_s - self._moment_since, 1)},   # contract.MOMENTS
             "ensemble": self.ensemble.view(now_s) if self.ensemble is not None else None,   # docs/ENSEMBLE.md §5.6
             "treatment": self.treat.view(now_s),                 # README S5.33
             "reasoning": self._reasoning(now_s)}                 # the Room page's "How it's deciding"

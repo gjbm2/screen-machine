@@ -62,3 +62,19 @@ def test_the_picture_votes_in_the_flow():
     v = dec.votes(phase=None, register=None, trajectory=None, moods=[], energy=0.6, screen=("inward", 0.6, "tunnel"))
     assert abs(v["inward"] - 0.54) < 1e-9
     assert dec.votes(phase=None, register=None, trajectory=None, moods=[], energy=0.6) == {}
+
+
+def test_a_moments_scenes_are_its_pool_and_the_rest_are_for_any_other(tmp_path):
+    from show_service import light_scenes as ls
+    c = ls.Catalogue.__new__(ls.Catalogue)
+    c.scenes = {"sweep": {"tags": {}}, "pools": {"tags": {"moods": ["calm"]}},
+                "stage-waits": {"tags": {"moments": ["waiting"]}}, "glow": {"tags": {"moments": ["waiting", "lull"]}},
+                "next-up": {"tags": {"moments": "lead_in"}}}
+    g = {"members": ["a"]}
+    assert c.pool_for(g, None, "waiting") == ["stage-waits", "glow"]
+    assert c.pool_for(g, None, "lull") == ["glow"] and c.pool_for(g, None, "lead_in") == ["next-up"]
+    assert c.pool_for(g, None, "song") == ["sweep", "pools"]            # no scene claims it: those for any moment
+    assert c.pool_for(g, None, None) == ["sweep", "pools"]              # no moment given: never a moment's scene
+    c.scenes["sweep"]["drives"], c.scenes["pools"]["drives"] = ["pan", "tilt"], ["intensity"]
+    assert c.pool_for({**g, "scenes_drive": ["pan", "tilt"]}, None, "song") == ["sweep"]   # a group's own narrowing
+    assert c.moments_of("next-up") == ("lead_in",) and c.moments_of("sweep") == ()

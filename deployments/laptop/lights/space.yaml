@@ -62,6 +62,8 @@ points:
   dance-floor: {label: Dance floor, at: [2.5, 5.0, 0.0]}
   screen: {label: Karaoke screen, at: [5.0, 5.0, 2.0]}   # projected on the east wall between the bars,
                                     # ~2 m wide (owner, 26 Nov); 16:9, centre 2 m up assumed
+  singer: {label: Singer's spot, at: [3.8, 5.0, 1.2]}   # provisional: 1.2 m in front of the picture, chest height
+                                    # (the lights' "stage-waits" and "next-up" scenes aim here)
   west-wall: {label: West wall above heads, at: [0.0, 5.0, 3.0]}   # the heads' rest: upright with a 180° tilt they
                                     # reach only down to horizontal (2.68 m), never the floor
 regions:

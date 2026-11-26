@@ -483,3 +483,44 @@ scenes:
     tags: {modes: [disco], energy: [0.7, 1.0], moods: [euphoric, aggressive, fiery, tense, glitchy],
            genre_fit: {disco: 0.9, house: 0.9, techno: 0.9, electronic: 0.85, trance: 0.85, rock: 0.8, pop: 0.7,
                        "*": 0.45}, valence: 0.7, organic: 0.3, density: 0.85, weight: 0.5}
+
+  # -- The room's moments (contract.MOMENTS; owner, 26 Nov: the silent state and the changeover are "all scenes, but
+  # expressed on the gigbar objects"). tags.moments: [song | lead_in | waiting | lull] says when a scene is for: in
+  # that moment only these are drawn; a scene with no moments is for any moment none of these claims (every scene
+  # above: the song). The director only names the moment; everything the lights do in it is written here.
+  stage-waits:
+    label: The stage waits (a soft pool on the singer's spot)
+    needs: [pan, tilt]
+    layers:
+      - {id: spot, kind: position, mode: drift, centre: [singer, dance-floor, centre], on: floor, size: 0.4, size_deg: 6,
+         phase: phrase, needs: none, spread_mode: chase, spread: 0.5}
+      - {id: beam, kind: beam, zoom: wide, frost: 0.4, iris: 1.0}
+      - {id: breathe, fx: sine, phase: bar, period_bars: [8, 4], depth: 0.2, needs: none}
+    tags: {moments: [waiting], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5, density: 0.3, flow: {dirs: [still], honours: false}}
+  glow-waits:
+    label: A slow glow along the bars while the room waits
+    layers:
+      - {id: glow, fx: sine, phase: bar, period_bars: [8, 4], depth: 0.35, needs: none, order: flow, spread: 0.5}
+    tags: {moments: [waiting, lull], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5, density: 0.3}
+  lull-ceiling:
+    label: Quiet light drifting on the ceiling (a long wait)
+    needs: [pan, tilt]
+    layers:
+      - {id: drift, kind: position, mode: drift, on: ceiling, centre: centre, size: 1.5, size_deg: 20, phase: phrase,
+         needs: none, spread_mode: chase, spread: 0.5}
+      - {id: beam, kind: beam, zoom: wide, frost: 0.5}
+      - {id: gobo, kind: gobo, slot: auto, change_on: section, spin: flow, spin_scale: 0.1}
+    tags: {moments: [lull], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5, density: 0.3, flow: {dirs: [still, cw, ccw], honours: false}}
+  next-up:
+    label: Every head on the singer's spot (the next song's title is up)
+    needs: [pan, tilt]
+    layers:
+      - {id: gather, kind: position, mode: aim, centre: [singer, dance-floor, centre]}
+      - {id: beam, kind: beam, zoom: narrow, frost: 0.0, iris: 0.8}
+      - {id: lift, fx: sine, phase: bar, period_bars: [2, 1], depth: 0.3, needs: none}
+    tags: {moments: [lead_in], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5, density: 0.3, flow: {dirs: [inward, towards], honours: false}}
+  next-up-rise:
+    label: The bars rise towards the first line
+    layers:
+      - {id: climb, fx: saw, phase: bar, period_bars: [1, 1], depth: 0.5, needs: none, order: flow, spread: 1.0}
+    tags: {moments: [lead_in], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5, density: 0.3}

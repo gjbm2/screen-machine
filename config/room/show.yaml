@@ -1038,12 +1038,21 @@ lights:
       # many degrees, each on its own path (looks._sway; peak ~2 pi size / period deg/s). Never while held, House or
       # Low. 0 stops it. Starting point.
       sway: {size_deg: 7, period_s: 9}
+      # Owner, 26 Nov: "the lights just point in vaguely the same direction all the time": this group drew from every
+      # scene, and about a third of its picks never aim a head (it then rests where it is, with the sway). With this,
+      # it draws only scenes that work one of these; with none such in its pool, any scene as before.
+      scenes_drive: [pan, tilt]
     lamps:
       label: Lamps
       select: "kind:lamp"
       dark_level: floor
     # remote-lights: this site's appliances as a group (deployments/<id>/show.yaml), after the groups above
     # movers-north: {label: North movers, select: "cap:pan side:north", follows: movers}   # put above movers
+  # The room's moment (contract.MOMENTS; owner, 26 Nov): song | lead_in (a song is cued, its title up) | waiting
+  # (nothing plays) | lull (a long wait). The director only names it; what the lights do in each is the catalogue's:
+  # light_scenes.yaml tags.moments, and light_effects.yaml on: [lead_in | waiting | lull | song_end].
+  moments:
+    lull_after_s: 180                       # waiting this long is a lull
   # The haze (show_service/atmosphere.py; owner, 26 Nov): the feel says how thick (vibes.yaml haze: off | light |
   # medium | thick; PUT /api/v1/haze for a person's pick until the mode changes), and this holds it from a model of
   # the room's air: its volume (space.yaml room.size) and how fast it clears (space.yaml room.haze_half_life_s: time

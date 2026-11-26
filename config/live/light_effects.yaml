@@ -11,6 +11,8 @@
 # strobe: true) and pays one of its big moments (peak_tokens_per_hour); strobes on the same line as a paid drop, or
 # on another group at the same moment, share that one token (owner, 26 Nov).
 # chorus / final_chorus: a karaoke song's choruses, from its lyrics (final_chorus: the last one in the song).
+# lead_in | waiting | lull: the room's moment begins (contract.MOMENTS: a song is cued; nothing plays; a long wait);
+# song_end: a song has just given way to waiting (the applause). length: while lasts as long as that moment.
 # Every number below is a STARTING POINT, chosen on paper: tune by watching the room.
 version: 1
 effects:
@@ -136,3 +138,25 @@ effects:
     layers: [{id: strobe, kind: shutter, mode: strobe, hz: [4, 8]}]
     hits: {styles: [], drop: {depth: 1.0, decay_ms: 600}}
     tags: {energy: [0.0, 1.0], weight: 1.0}
+  # -- the room's moments (owner, 26 Nov: commissioned like any effect, written here, not in code) --
+  song-end-open:
+    label: The heads open out to the room as a song ends
+    on: [song_end]
+    length: {seconds: 6}
+    fade: {in_beats: 2, out_beats: 6}
+    needs: [pan, tilt]
+    layers:
+      - {id: out, kind: position, mode: fan, centre: [dance-floor, centre], on: floor, along: flow, size: 2.5,
+         size_deg: 40, fan: 1.0}
+      - {id: beam, kind: beam, zoom: wide}
+    tags: {energy: [0.0, 1.0]}
+  song-end-twinkle:
+    label: A twinkle along the bars for the applause
+    on: [song_end]
+    length: {seconds: 5}
+    fade: {in_beats: 0, out_beats: 4}
+    layers:
+      - {id: twinkle, fx: square, phase: beat, subdivide: true, depth: 0.6, needs: none, without_beat: energy,
+         order: flow, spread: 1.0}
+      - {id: bump, kind: colour, role: highlight, depth: {fx: swell, phase: beat, between: [0.0, 0.8]}}
+    tags: {energy: [0.0, 1.0]}

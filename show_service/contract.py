@@ -587,7 +587,18 @@ FLOW_SOURCES: tuple[str, ...] = ("structure", "event", "pitch", "listener", "moo
 FLOW_SYMMETRY: tuple[str, ...] = ("none", "mirror")      # FlowData.symmetry (show.yaml lights.flow.symmetry)
 LIGHT_TRANSITION_KINDS: tuple[str, ...] = ("cut", "dark_move", "crossfade", "fade_dark", "sweep")
 LIGHT_EFFECT_TRIGGERS: tuple[str, ...] = ("drop", "build", "breakdown", "peak", "section_change", "track_change",
-                                          "outro", "every_bars", "chorus", "final_chorus")
+                                          "outro", "every_bars", "chorus", "final_chorus",
+                                          "lead_in", "waiting", "lull", "song_end")
+#: the room's MOMENT: what is happening besides the music's own shape (owner, 26 Nov: the silent state, the changeover
+#: and the rest are "all scenes, but expressed on the gigbar objects ... the a.d. is meant to commission scenes &
+#: effects"). The director only names the moment; what the lights do in it is the catalogue's: a light scene's
+#: ``tags.moments`` says which moments it is for, and an effect's ``on`` may name one (it fires as the moment begins).
+#:   song      music is playing (the default: every scene that names no moment)
+#:   lead_in   a song is cued and its title is up, its sound not yet started (the singers change over)
+#:   waiting   nothing is playing: the room waits for the next song
+#:   lull      it has waited longer than show.yaml lights.moments.lull_after_s
+#: ``song_end`` is an effect trigger only: the moment a song gives way to waiting (the applause).
+MOMENTS: tuple[str, ...] = ("song", "lead_in", "waiting", "lull")
 #: chorus / final_chorus: a karaoke song's lyric plan says a chorus starts there (structure's section_change with
 #: section_kind "chorus"; ``final_chorus``: no chorus follows it in the song), fired with the section_change (owner,
 #: 26 Nov: strobes that get used, on moments karaoke really has)

@@ -102,16 +102,17 @@ CHANNEL_CAPS = {"intensity": "intensity", "emitter": "colour", "wheel": "colour_
 #: an effect's why, by its trigger (contract.LIGHT_EFFECT_TRIGGERS)
 TRIGGER_WHY = {"drop": "the drop", "build": "the song builds", "breakdown": "a breakdown", "peak": "the peak",
                "section_change": "a new section", "track_change": "a new song", "outro": "the song ends",
-               "chorus": "the chorus", "final_chorus": "the last chorus"}
+               "chorus": "the chorus", "final_chorus": "the last chorus", "lead_in": "the next song is cued",
+               "waiting": "the room waits", "lull": "a long wait", "song_end": "the song has ended"}
 # -- groups (show.yaml lights; docs/LIGHTS.md §7.1, §12) ----------------------------------------------------------------
 OTHER_GROUP = "*"                                # the lamps no group takes
 OTHER_LABEL = "Other lights"
 GROUP_KEYS = frozenset({"label", "select", "follows", "dark_level", "appliances", "repeat_weight",
-                        "sway"})   # sway: the look engine's (looks._group_sway)
+                        "sway", "scenes_drive"})   # sway: the look engine's (looks._group_sway)
 DARK_FLOOR = "floor"                             # dark_level: the look's floor
 #: show.yaml ``lights`` keys: the catalogue builder's, and the other builders' (read where they are used)
 LIGHTS_KEYS = frozenset({"scene_group", "groups", "programs", "flow", "motion", "jog", "calibration", "appliances",
-                         "atmosphere"})   # atmosphere: the director's (atmosphere.parse)
+                         "atmosphere", "moments"})   # atmosphere, moments: the director's
 #: lights.programs' starting points (docs/LIGHTS.md §12; the file's values win)
 PROGRAMS_FALLBACK = {"effects_max": 2, "effect_gap_bars": 4.0}
 
@@ -744,20 +745,38 @@ class Catalogue:
         w = self._tag_weight(entry.get("tags") or {}, direction, transition=transition)
         return max(1e-6, w * self.cap_fit(entry, group) * self.flow_fit(entry, flow))
 
-    def pool_for(self, group: Mapping[str, Any], tags: Any = None) -> list[str]:
+    def pool_for(self, group: Mapping[str, Any], tags: Any = None, moment: Optional[str] = None) -> list[str]:
         """The scenes a group may show: those that fit it, and of those the ones tagged with any of ``tags`` (a mode's
-        light scene tags), unless none of them is (then every one that fits: the mode didn't mean this group)."""
+        light scene tags), unless none of them is (then every one that fits: the mode didn't mean this group).
+        ``moment`` (contract.MOMENTS): then only the scenes whose ``tags.moments`` names it; when none does, or with no
+        moment given, the scenes that name no moment at all (they are for any; a scene made for a moment never stands
+        in for another). A group's ``scenes_drive`` narrows first (show.yaml lights.groups)."""
         names = [n for n, sc in self.scenes.items() if self.fits(sc, group)]
+        want = set(group.get("scenes_drive") or ())      # show.yaml lights.groups.<g>.scenes_drive: only scenes that
+        if want:                                         # work one of these (movers: scenes that aim them)
+            only = [n for n in names if want & set(self.scenes[n].get("drives") or ())]
+            if only:
+                names = only
         if tags:
             only = [n for n in names if self.tagged(self.scenes[n], tags)]
             if only:
-                return only
-        return names
+                names = only
+        mine = [n for n in names if moment in self.moments_of(n)] if moment else []
+        if mine:
+            return mine
+        return [n for n in names if not self.moments_of(n)] or names   # no moment given: the scenes for any
+
+    def moments_of(self, name: str) -> tuple[str, ...]:
+        """The moments a scene is made for (its ``tags.moments``, contract.MOMENTS words); () for any."""
+        m = ((self.scenes.get(name) or {}).get("tags") or {}).get("moments")
+        m = [m] if isinstance(m, str) else m if isinstance(m, (list, tuple)) else []
+        return tuple(w for w in m if w in contract.MOMENTS)
 
     def pick_for(self, group: Mapping[str, Any], direction: Optional[Mapping[str, Any]], flow: Any, rng: Any, *,
                  avoid: Optional[str] = None, tags: Any = None, hard_avoid: bool = False,
                  prefer: Optional[Mapping[str, float]] = None,
-                 prefer_why: Optional[Mapping[str, str]] = None) -> Optional[tuple[str, str, dict[str, float]]]:
+                 prefer_why: Optional[Mapping[str, str]] = None,
+                 moment: Optional[str] = None) -> Optional[tuple[str, str, dict[str, float]]]:
         """A group's scene: a weighted draw over its pool (``pool_for``: the scenes that fit it, within the mode's
         ``tags``), never ``avoid`` (the one it shows) while another is there, unless the group's ``repeat_weight``
         (show.yaml; e.g. appliances that may rest twice running) lets it stay at that share of its weight
@@ -765,7 +784,7 @@ class Catalogue:
         song's treatment, README S5.33; a name outside the pool does nothing); ``prefer_why``: {name: words} put before
         the pick's why (without it a preferred pick reads "the plan's pick"). (name, why, {name: weight}), or None
         when none fits."""
-        names = self.pool_for(group, tags)
+        names = self.pool_for(group, tags, moment)
         if not names:
             return None
         rw = float(group.get("repeat_weight") or 0.0) if not hard_avoid else 0.0
@@ -929,9 +948,14 @@ def parse_lights(raw: Any, probs: list[str]) -> dict:
             if _num01(rw) is None or not 0.0 <= rw <= 1.0:
                 probs.append(f"{w}.repeat_weight: {rw!r} isn't a number in 0..1: 0 (never twice running)")
                 rw = 0.0
+            sd = g.get("scenes_drive") or []
+            if not isinstance(sd, list) or not all(isinstance(x, str) and x in contract.ATTRS for x in sd):
+                probs.append(f"{w}.scenes_drive: {sd!r} isn't a list of what a light can do (pan, tilt, ...): any scene")
+                sd = []
             groups[gid] = {"label": label, "select": sel, "follows": fo,
                            "dark_level": float(dl) if dl != DARK_FLOOR else DARK_FLOOR,
-                           "appliances": [x for x in ap if x in out["appliances"]], "repeat_weight": float(rw)}
+                           "appliances": [x for x in ap if x in out["appliances"]], "repeat_weight": float(rw),
+                           "scenes_drive": list(sd)}
     for gid, g in groups.items():                    # follows: another group, and no loop
         fo, seen = g["follows"], {gid}
         while fo is not None:
@@ -1078,5 +1102,7 @@ def group_members(groups_cfg: Optional[Mapping[str, Any]], rig: Optional[Mapping
         out[str(gid)]["appliance_caps"] = {a: list(apps[a].get("caps") or ()) for a in ga}
         rw = _num01(g.get("repeat_weight"))
         out[str(gid)]["repeat_weight"] = rw if rw is not None else 0.0
+        sd = g.get("scenes_drive")
+        out[str(gid)]["scenes_drive"] = [x for x in sd if isinstance(x, str)] if isinstance(sd, list) else []
     out[OTHER_GROUP] = info(OTHER_GROUP, OTHER_LABEL, [fid for fid in lamp_ids if fid not in taken], None, DARK_FLOOR)
     return out
