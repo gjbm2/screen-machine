@@ -42,7 +42,7 @@ LINE_HOLD_S = 1.2       # ... and stays until this long after its last (or until
 GAP_KEEP_S = 4.0        # a gap between lines shorter than this keeps ``active`` at 1
 FADE_OUT_S = 1.5        # a longer gap: ``active`` falls over this after the last word ...
 FADE_IN_S = 1.0         # ... and rises over this before the next line's first word
-PICS_POLL_S = 15.0      # a song's pictures are read again this often while Flask is still finding them
+PICS_POLL_S = 5.0       # a song's pictures are read again this often while Flask is still finding them
 
 
 @dataclass(frozen=True)

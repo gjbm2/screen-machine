@@ -46,7 +46,7 @@ def test_the_feed_polls_pictures_until_flask_has_enough():
     f = LyricFeed("http://x", fetch=fetch, mono=lambda: clock[0])
     f.poll_once()
     assert len(f.snap.pictures.pictures) == 2
-    clock[0] = 5.0
+    clock[0] = 3.0
     f.poll_once()
     assert sum(u.endswith("/pictures") for u in calls) == 1          # not again until PICS_POLL_S
     clock[0] = 21.0

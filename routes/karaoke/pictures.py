@@ -58,6 +58,8 @@ DEEZER = "https://api.deezer.com"
 COMMONS = "https://commons.wikimedia.org/w/api.php"
 FANART = "https://webservice.fanart.tv/v3/music"
 AUDIODB = "https://www.theaudiodb.com/api/v1/json/123"     # TheAudioDB's free public key
+POOL = 10                # pictures downloaded and vetted at once (the fast sources)
+YT_POOL = 3              # live-video frames fetched at once (a 2 s clip each)
 YT_VIDEOS = 4            # live videos per artist whose frames are looked at
 YT_FRAMES_LONG = 6       # frames from a concert film (20 min or more)
 YT_FRAMES_SHORT = 3      # frames from a single live song
@@ -83,6 +85,7 @@ MIN_QUALITY = 0.45
 MIN_APPEAL = 0.35        # duller than this on a big screen: not kept (owner, 26 Nov: "engaging photos to look at")
 RETRY_S = 1800.0
 LOOP_S = 10.0
+NOW_POLL_S = 1.0         # the playing song is checked this often
 ERA_FETCH = True         # a Commons search for the song's year as well (pictures of that era)
 SPLIT_MIN_FANS = 20000   # an artist named by splitting a line ("A feat. B") must be this well known on Deezer
 MEMBERS_MAX = 4          # a band's members searched for by name on Commons (their photos are filed under them)
@@ -94,6 +97,7 @@ _lock = threading.RLock()
 _thread: Optional[threading.Thread] = None
 _failed: dict[str, float] = {}
 _busy: dict[str, str] = {}            # slug -> what it is doing now ("fetching", "vetting")
+_commons_lock = threading.Lock()
 _commons = {"pause_until": 0.0, "last": 0.0}   # Wikimedia's rate limit: no Commons download until pause_until
 
 
@@ -533,11 +537,12 @@ def _save(url: str, folder: Path) -> tuple[str, int, int]:
     Image.MAX_IMAGE_PIXELS = 80_000_000
     commons = "wikimedia.org" in url
     if commons:
-        now = time.time()
-        if now < _commons["pause_until"]:
-            raise Later("Commons is pausing us")
-        time.sleep(max(0.0, _commons["last"] + COMMONS_GAP_S - now))
-        _commons["last"] = time.time()
+        with _commons_lock:
+            now = time.time()
+            if now < _commons["pause_until"]:
+                raise Later("Commons is pausing us")
+            time.sleep(max(0.0, _commons["last"] + COMMONS_GAP_S - now))
+            _commons["last"] = time.time()
     try:
         data = _yt_frame(url) if url.startswith("yt:") else _get(url, raw=True)
     except urllib.error.HTTPError as e:
@@ -575,101 +580,151 @@ def _decade(v: Any) -> Optional[str]:
         return None
 
 
+def _claim(s: str, what: str) -> bool:
+    """Mark an artist as being worked on; False if another thread already is."""
+    with _lock:
+        if s in _busy:
+            return False
+        _busy[s] = what
+        return True
+
+
+def _look(c: dict, folder: Path, name: str, band: Any, ai: bool) -> tuple:
+    """One candidate: download it, and the AI's look -> ("keep", fname, w, h, v) | ("reject", why) | ("later",) |
+    ("skip",). Runs on a pool thread."""
+    try:
+        fname, w, h = _save(c["url"], folder)
+    except Later:
+        return ("later",)
+    except Exception as e:                              # noqa: BLE001
+        return ("reject", f"download: {type(e).__name__}"[:80])
+    v = None
+    if ai:
+        try:
+            v = vet(folder / fname, name, c, band)
+        except Exception as e:                          # noqa: BLE001
+            error(f"karaoke pictures: vetting {fname}: {e}")
+        if v is None and not c.get("trusted"):
+            (folder / fname).unlink(missing_ok=True)     # unvetted and untrusted: later, when the AI answers
+            return ("skip",)
+    if v is not None:
+        ok, why = keep(v)
+        if not ok:
+            (folder / fname).unlink(missing_ok=True)
+            return ("reject", why)
+    return ("keep", fname, w, h, v)
+
+
 def fetch_artist(name: str, dz: Optional[dict], *, album: Optional[str] = None, year: Optional[int] = None) -> dict:
-    """Fetch, vet and keep one artist's pictures (more of them if the index already has some). Returns the index."""
+    """Fetch, vet and keep one artist's pictures (more of them if the index already has some). Returns the index.
+
+    Fast sources first (Deezer, TheAudioDB, fanart.tv, YouTube's thumbnails: plain image files), POOL at once, each
+    kept picture written to the index as it is kept (the song has it at once); then the slow ones (frames from live
+    videos: a clip each; Wikimedia Commons: throttled) fill the set.  Stops once the set is full."""
+    from concurrent.futures import ThreadPoolExecutor, as_completed
     s = slug(name)
     folder = pictures_root() / s
     idx = artist_index(s) or {"artist": name, "slug": s, "version": VERSION, "pictures": [], "rejected": {}}
     idx.setdefault("decades", [])
     known = {p["url"] for p in idx["pictures"]} | set(idx.get("rejected") or {})
-    with _lock:
-        _busy[s] = "fetching"
+    if not _claim(s, "fetching"):
+        return idx
     try:
-        cands: list[dict] = []
+        ai = ai_ready()
+        dec = _decade(year)
+        era = year if dec and (dec not in idx["decades"] or idx.get("incomplete")) else None
+        target = TARGET + (4 if era else 0)
+        state = {"people": sum(1 for p in idx["pictures"] if p.get("kind") in PEOPLE and not p.get("hidden")),
+                 "portraits": sum(1 for p in idx["pictures"] if p.get("kind") == "portrait"),
+                 "kept": 0, "later": 0, "looked": 0}
+
+        def run(cands: list[dict], workers: int) -> None:
+            cands = [c for c in cands if c.get("url") and c["url"] not in known]
+            for c in cands:
+                known.add(c["url"])
+            if not cands or state["people"] >= target:
+                return
+            if not ai:
+                cands = [c for c in cands if c.get("trusted")]      # only the catalogue's own until the AI can look
+            ex = ThreadPoolExecutor(workers, thread_name_prefix="karaoke-pic")
+            futs = {ex.submit(_look, c, folder, name, tuple(idx.get("members") or ()), ai): c for c in cands}
+            try:
+                for f in as_completed(futs):
+                    c, r = futs[f], f.result()
+                    state["looked"] += 1
+                    if r[0] == "later":
+                        state["later"] += 1
+                    elif r[0] == "reject":
+                        idx.setdefault("rejected", {})[c["url"]] = r[1]
+                    elif r[0] == "keep":
+                        _, fname, w, h, v = r
+                        kind = (v or {}).get("kind") or c.get("kind_hint") or "other"
+                        if v is not None and kind == "portrait" and state["portraits"] >= PORTRAITS_MAX:
+                            (folder / fname).unlink(missing_ok=True)
+                            idx.setdefault("rejected", {})[c["url"]] = "enough portraits"
+                            continue
+                        state["people"] += kind in PEOPLE
+                        state["portraits"] += kind == "portrait"
+                        state["kept"] += 1
+                        idx["pictures"].append({
+                            "file": fname, "url": c["url"], "source": c["source"], "credit": c.get("credit"),
+                            "license": c.get("license"), "page": c.get("page"), "title": c.get("title"), "w": w,
+                            "h": h, "kind": kind, "vetted": v is not None, "quality": (v or {}).get("quality"),
+                            "appeal": (v or {}).get("appeal"), "faces": (v or {}).get("faces") or [],
+                            "era": (v or {}).get("era") or _decade(c.get("year")),
+                            "moods": (v or {}).get("moods") or [], "caption": (v or {}).get("caption"),
+                            "hidden": False, "at": time.time()})
+                        _write(folder / "index.json", {**idx, "version": VERSION, "incomplete": True})
+                    if state["people"] >= target:
+                        break
+            finally:
+                ex.shutdown(wait=True, cancel_futures=True)
+
+        # 1. fast: the catalogues and YouTube's thumbnails (no MusicBrainz needed)
+        fast: list[dict] = []
         if dz:
             idx["deezer_id"] = dz.get("id")
-            cands += deezer_candidates(dz, album)
+            fast += deezer_candidates(dz, album)
+        fast += audiodb_candidates(name)
+        try:
+            yt = youtube_candidates(name, era)
+        except Exception as e:                          # noqa: BLE001 - no karaoke venv here: the rest still work
+            error(f"karaoke pictures: YouTube for {name}: {e}")
+            yt = []
+        fast += [c for c in yt if not c["url"].startswith("yt:")]
+        with _lock:
+            _busy[s] = "vetting"
+        run(fast, POOL)
+        # 2. MusicBrainz: fanart.tv (screen-shaped), Wikidata's picture, a band's members
         mbid = idx.get("mbid")
-        if mbid is None:
+        if mbid is None and state["people"] < target:
             try:
                 mbid = _mbid(name)
-            except Exception as e:                      # noqa: BLE001 - MusicBrainz busy: Commons still works
+            except Exception as e:                      # noqa: BLE001 - MusicBrainz busy: next time
                 error(f"karaoke pictures: MusicBrainz for {name}: {e}")
         idx["mbid"] = mbid
         wd = None
-        if mbid and (not idx["pictures"] or idx.get("members") is None):
+        if mbid and idx.get("members") is None and state["people"] < target:
             try:
                 md = _mb_artist(mbid)
                 idx["members"] = members(md)
-                wd = _wikidata_image(md) if not idx["pictures"] else None
+                wd = _wikidata_image(md)
             except Exception:                           # noqa: BLE001
                 wd = None
-        cands += fanart_candidates(mbid) if not idx["pictures"] else []
-        cands += audiodb_candidates(name) if not idx["pictures"] else []
-        dec = _decade(year)
-        era = year if dec and (dec not in idx["decades"] or idx.get("incomplete")) else None
-        try:
-            cands += youtube_candidates(name, era)
-        except Exception as e:                          # noqa: BLE001 - no karaoke venv here: the rest still work
-            error(f"karaoke pictures: YouTube for {name}: {e}")
-        cands += commons_candidates(name, era, wd, tuple(idx.get("members") or ()))
+        run(fanart_candidates(mbid), POOL)
+        # 3. slow: frames from live videos (a clip each, a few at once), then Commons (throttled: one at a time)
+        run([c for c in yt if c["url"].startswith("yt:")], YT_POOL)
+        if state["people"] < target and time.time() >= _commons["pause_until"]:
+            run(commons_candidates(name, era, wd, tuple(idx.get("members") or ())), 1)
         if dec and dec not in idx["decades"]:
             idx["decades"].append(dec)
-        cands = [c for c in cands if c.get("url") and c["url"] not in known][:CANDIDATES_MAX]
-        ai = ai_ready()
-        people = sum(1 for p in idx["pictures"] if p.get("kind") in PEOPLE and not p.get("hidden"))
-        portraits = sum(1 for p in idx["pictures"] if p.get("kind") == "portrait")
-        kept_now, later = 0, 0
-        with _lock:
-            _busy[s] = "vetting"
-        for c in cands:
-            if people >= TARGET + (4 if era else 0):
-                break
-            if not ai and not c.get("trusted"):
-                continue                                # only the catalogue's own until the AI can look
-            try:
-                fname, w, h = _save(c["url"], folder)
-            except Later:
-                later += 1
-                continue
-            except Exception as e:                      # noqa: BLE001
-                idx.setdefault("rejected", {})[c["url"]] = f"download: {type(e).__name__}"[:80]
-                continue
-            v = None
-            if ai:
-                try:
-                    v = vet(folder / fname, name, c, idx.get("members") or ())
-                except Exception as e:                  # noqa: BLE001
-                    error(f"karaoke pictures: vetting {fname}: {e}")
-                if v is None and not c.get("trusted"):
-                    (folder / fname).unlink(missing_ok=True)    # unvetted and untrusted: later, when the AI answers
-                    continue
-            if v is not None:
-                ok, why = keep(v)
-                if ok and v["kind"] == "portrait" and portraits >= PORTRAITS_MAX:
-                    ok, why = False, "enough portraits"
-                if not ok:
-                    (folder / fname).unlink(missing_ok=True)
-                    idx.setdefault("rejected", {})[c["url"]] = why
-                    continue
-            kind = (v or {}).get("kind") or c.get("kind_hint") or "other"
-            people += kind in PEOPLE
-            portraits += kind == "portrait"
-            idx["pictures"].append({
-                "file": fname, "url": c["url"], "source": c["source"], "credit": c.get("credit"),
-                "license": c.get("license"), "page": c.get("page"), "title": c.get("title"), "w": w, "h": h,
-                "kind": kind, "vetted": v is not None, "quality": (v or {}).get("quality"),
-                "appeal": (v or {}).get("appeal"),
-                "faces": (v or {}).get("faces") or [], "era": (v or {}).get("era") or _decade(c.get("year")),
-                "moods": (v or {}).get("moods") or [], "caption": (v or {}).get("caption"),
-                "hidden": False, "at": time.time()})
-            kept_now += 1
-            _write(folder / "index.json", {**idx, "version": VERSION})   # the song has it now, not when all are done
-        full = len(idx["pictures"]) >= TARGET
-        idx.update(fetched_at=time.time(), ai=ai, version=VERSION, incomplete=bool(later) and not full)
+        idx.update(fetched_at=time.time(), ai=ai, version=VERSION,
+                   incomplete=bool(state["later"]) and state["people"] < target)
         _write(folder / "index.json", idx)
-        info(f"karaoke pictures: {name}: kept {kept_now} new ({len(idx['pictures'])} in all, "
-             f"{len(cands)} looked at{f', {later} for later' if later else ''}{'' if ai else ', no AI: catalogue pictures only'})")
+        later = f", {state['later']} for later" if state["later"] else ""
+        noai = "" if ai else ", no AI: catalogue pictures only"
+        info(f"karaoke pictures: {name}: kept {state['kept']} new ({state['people']} of them in all, "
+             f"{state['looked']} looked at{later}{noai})")
         return idx
     finally:
         with _lock:
@@ -780,47 +835,63 @@ def _todo() -> list[tuple[str, dict]]:
     return out
 
 
-def step() -> bool:
-    """One unit of work (one song resolved, or one artist fetched or re-vetted). True if something was done."""
-    now = time.time()
-    for sid, song in _todo():
-        if not song.get("artist") or now - _failed.get(f"song:{sid}", 0) < RETRY_S:
+def _work(sid: str, song: dict, now: float) -> bool:
+    """The next unit of work for one song (resolve its artists, fetch or re-vet one of them). True if done."""
+    if not song.get("artist") or now - _failed.get(f"song:{sid}", 0) < RETRY_S:
+        return False
+    arts = song_artists(sid, song)
+    if arts is None:
+        try:
+            _resolve_song(sid, song)
+        except Exception as e:                          # noqa: BLE001 - Deezer down: later
+            _failed[f"song:{sid}"] = now
+            error(f"karaoke pictures: who sings {song.get('title')}: {e}")
+        return True
+    for a in arts:
+        s = a["slug"]
+        if now - _failed.get(s, 0) < RETRY_S or s in _busy:
             continue
-        arts = song_artists(sid, song)
-        if arts is None:
+        idx = artist_index(s)
+        dec = _decade(song.get("year"))
+        again = ((idx.get("incomplete") or idx.get("members") is None) and time.time() >= _commons["pause_until"]
+                 and now - float(idx.get("fetched_at") or 0) > 60)
+        if (not idx or idx.get("version") != VERSION or again
+                or (ERA_FETCH and dec and dec not in (idx.get("decades") or []))):
             try:
-                _resolve_song(sid, song)
-            except Exception as e:                      # noqa: BLE001 - Deezer down: later
-                _failed[f"song:{sid}"] = now
-                error(f"karaoke pictures: who sings {song.get('title')}: {e}")
+                fetch_artist(a["name"], a.get("deezer"), album=song.get("album"), year=song.get("year"))
+            except Exception as e:                      # noqa: BLE001
+                _failed[s] = now
+                error(f"karaoke pictures: {a['name']}: {e}")
             return True
-        for a in arts:
-            s = a["slug"]
-            if now - _failed.get(s, 0) < RETRY_S:
-                continue
-            idx = artist_index(s)
-            dec = _decade(song.get("year"))
-            again = ((idx.get("incomplete") or idx.get("members") is None) and time.time() >= _commons["pause_until"]
-                     and now - float(idx.get("fetched_at") or 0) > 60)
-            if (not idx or idx.get("version") != VERSION or again
-                    or (ERA_FETCH and dec and dec not in (idx.get("decades") or []))):
-                try:
-                    fetch_artist(a["name"], a.get("deezer"), album=song.get("album"), year=song.get("year"))
-                except Exception as e:                  # noqa: BLE001
-                    _failed[s] = now
-                    error(f"karaoke pictures: {a['name']}: {e}")
-                return True
-            if _unvetted(idx) and ai_ready():
-                try:
-                    revet(s)
-                except Exception as e:                  # noqa: BLE001
-                    _failed[s] = now
-                    error(f"karaoke pictures: re-vetting {a['name']}: {e}")
-                return True
+        if _unvetted(idx) and ai_ready() and _claim(s, "re-vetting"):
+            try:
+                revet(s)
+            except Exception as e:                      # noqa: BLE001
+                _failed[s] = now
+                error(f"karaoke pictures: re-vetting {a['name']}: {e}")
+            finally:
+                with _lock:
+                    _busy.pop(s, None)
+            return True
     return False
 
 
+def step() -> bool:
+    """One unit of work for the first song that needs it (the playing one, the queue, then the library)."""
+    now = time.time()
+    return any(_work(sid, song, now) for sid, song in _todo())
+
+
+def _playing() -> Optional[tuple[str, dict]]:
+    st = store()
+    with st.lock:
+        sid = (st.s["player"] or {}).get("song_id")
+        song = dict(st.s["songs"].get(sid) or {}) if sid else None
+    return (sid, song) if sid and song else None
+
+
 def run() -> None:
+    """The library: the queue's artists, then the rest, one unit of work at a time."""
     while True:
         try:
             if not step():
@@ -830,11 +901,25 @@ def run() -> None:
             time.sleep(LOOP_S)
 
 
+def run_now() -> None:
+    """The playing song's artists, the moment it starts (owner, 26 Nov: "start commissioning when the song plays,
+    then add images"), alongside whatever the library thread is doing."""
+    while True:
+        try:
+            cur = _playing()
+            if cur is None or not _work(cur[0], cur[1], time.time()):
+                time.sleep(NOW_POLL_S)
+        except Exception as e:                          # noqa: BLE001
+            error(f"karaoke pictures (now): {e}")
+            time.sleep(NOW_POLL_S)
+
+
 def start() -> None:
     global _thread
     if _thread is None:
         _thread = threading.Thread(target=run, name="karaoke-pictures", daemon=True)
         _thread.start()
+        threading.Thread(target=run_now, name="karaoke-pictures-now", daemon=True).start()
 
 
 # ---------------------------------------------------------------- routes (on the karaoke blueprint)
