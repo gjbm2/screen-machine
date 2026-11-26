@@ -18,7 +18,7 @@ const ROOM_POLL_MS = 5000;
 const NODE_DEFAULT = "http://127.0.0.1:8705";
 const SIDE_W = 340;
 
-type Haze = { want?: string | null; phase?: string; estimate_ml_m3?: number; target_ml_m3?: number; output?: number; fan?: number };
+type Haze = { pick?: string | null; feel?: string | null; want?: string | null; phase?: string; estimate_ml_m3?: number; target_ml_m3?: number; output?: number; fan?: number };
 
 type NodeStatus = { node?: { udp?: string; universe?: number }; artnet?: { pps?: number; age_s?: number | null; merging?: boolean; length?: number } };
 
@@ -146,6 +146,19 @@ export default function Room3DPage() {
             ? `haze off${haze.estimate_ml_m3 ? ` · clearing, ${haze.estimate_ml_m3.toFixed(3)} ml/m³ left` : ""}`
             : `haze ${haze.want} · ${haze.phase ?? ""} · ${(haze.estimate_ml_m3 ?? 0).toFixed(3)} of ${(haze.target_ml_m3 ?? 0).toFixed(3)} ml/m³`}
         </span>
+        <select className={`${pill} cursor-pointer border-0`} value={haze?.pick ?? ""} disabled={haze == null}
+          title="How thick the hazer keeps the room. Auto: what the mode's feel asks for. A pick holds until the mode changes."
+          onChange={async (e) => {
+            const level = e.target.value || null;
+            try {
+              const r = await fetch(`${room.replace(/\/+$/, "")}/show/api/v1/haze`, { method: "PUT",
+                headers: { "Content-Type": "application/json" }, body: JSON.stringify({ level }) });
+              if (r.ok) setHaze(await r.json());
+            } catch { /* the next poll shows what holds */ }
+          }}>
+          <option value="">Auto{haze?.feel ? ` (${haze.feel})` : ""}</option>
+          {["off", "light", "medium", "thick"].map((l) => <option key={l} value={l} className="capitalize">{l[0].toUpperCase() + l.slice(1)}</option>)}
+        </select>
         <label className={`${pill} cursor-pointer`} title="An aid for aiming, not what the room looks like: draws every beam half-visible whatever the haze.">
           <input type="checkbox" checked={showPaths} onChange={(e) => setShowPaths(e.target.checked)} /> Show beam paths
         </label>
