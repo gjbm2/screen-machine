@@ -26,6 +26,10 @@ for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`;
   calibration/latency.json, then its own position as it plays). Changing the voice level or child mode mid-song mixes
   again from where the song is. Calibrate is for the screen's own sound only. The picture card on the panel follows
   the same screen.
+- **The live picture follows the player** (`routes/karaoke/live_view.py`): a song starting from stopped puts the
+  karaoke screen live (the art director picking its scenes), the panel's Stop puts it back to art. The queue running
+  out leaves it live (the next singer is choosing); pause, song changes and a Go live / Back to art by hand in between
+  are left alone.
 - **The output window:** any browser window on `http://localhost:5000/display/vj` plays the backing track and shows
   the lyrics over the screen's art. It takes no input. Any number can be open, or none: the server runs the player.
   Browsers only let a page make sound once it has been clicked or the site is allowed to autoplay, so either click the

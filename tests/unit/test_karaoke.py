@@ -665,3 +665,32 @@ def test_a_silent_lead_stem_is_separated_again_with_every_voice_out(tmp_path, mo
 def test_title_cleanup_keeps_a_title_that_ends_in_a_number():
     assert src._clean_title("9 to 5") == "9 to 5" and src._clean_title("Song 2") == "Song 2"
     assert src._clean_title("Dancing Queen_copy") == "Dancing Queen" and src._clean_title("Dancing Queen_2") == "Dancing Queen"
+
+
+def test_the_karaoke_screen_goes_live_with_a_song_and_back_to_art_on_stop_only(tmp_path, monkeypatch):
+    import time
+    from routes.karaoke import live_view
+    from routes.karaoke.live_view import LIVE, LiveView
+    monkeypatch.setattr(live_view, "info", lambda *a, **k: None)     # not into the app's own log
+    st = Store(tmp_path / "state.json")
+    a, b = (ready(st, x, 60.0) for x in "ab")
+    screen = {"desired": "art"}
+    calls = []
+
+    def room(method, path, body=None):
+        if method == "GET":
+            return {"screens": {"vj": dict(screen)}}
+        calls.append(body["desired"])
+        screen["desired"] = body["desired"]
+
+    lv = LiveView(st, room=room, screen_of=lambda s: s or "vj")
+    lv.step()                                                     # the first look: nothing
+    st.queue_add(a); lv.step()                                    # an idle add starts it: live
+    assert calls == [LIVE]
+    st.queue_add(b); st.control("next"); lv.step()                # song changes leave it be
+    st.control("pause"); lv.step(); st.control("resume"); lv.step()
+    assert calls == [LIVE]
+    st.tick(time.time() + 3600); lv.step()                        # the queue ran out: still live
+    assert st.s["player"]["state"] == "stopped" and calls == [LIVE]
+    st.control("restart"); lv.step(); st.control("stop"); lv.step()   # Stop: back to art
+    assert calls == [LIVE, "art"]

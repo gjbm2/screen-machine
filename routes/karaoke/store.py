@@ -361,7 +361,8 @@ class Store:
             self.commit()
             return p
 
-    def control(self, action: str, pos_s: float | None = None) -> dict:
+    def control(self, action: str, pos_s: float | None = None, by: str = "you") -> dict:
+        """``by``: who stops it: "you" (the panel) or "end" (the queue ran out: tick); live_view.py reads it."""
         with self.lock:
             self._autostart = None                       # the person took over
             p, cur = self.s["player"], self.current_entry()
@@ -377,6 +378,7 @@ class Store:
             elif action == "stop":
                 p = self._set_player("stopped", None)
                 p["qid"] = cur["qid"] if cur else None       # Play carries on from here
+                p["stop"] = by
             elif action == "next":
                 nxt = self.next_ready(p.get("qid"))
                 p = self._set_player("playing", nxt, -self.lead_in(nxt)) if nxt else self._set_player("stopped", None)
@@ -406,7 +408,7 @@ class Store:
                 if self.s["settings"].get("autoplay") and self.next_ready(p.get("qid")):
                     self.control("next")
                 else:
-                    self.control("stop")
+                    self.control("stop", by="end")
 
     def settings(self, **kw: Any) -> dict:
         with self.lock:

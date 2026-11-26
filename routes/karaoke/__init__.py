@@ -43,6 +43,8 @@ def start() -> None:
     threading.Thread(target=_clock, args=(st,), name="karaoke-clock", daemon=True).start()
     threading.Thread(target=_facts, args=(st,), name="karaoke-facts", daemon=True).start()
     pictures.start()                                # the artists' pictures for the photo scenes
+    from .live_view import LiveView                 # the karaoke screen goes live with a song, back to art on Stop
+    LiveView(st).start()
     if smconfig.enabled("sonos"):                       # karaoke on a Sonos room (sonos_out.py)
         global _sonos
         from .sonos_out import KaraokeSonos
