@@ -9,8 +9,8 @@
 // ---- set-up: as on each unit's own menu or DIP switch (kept in this browser) -----------------------------------------
 const DEFAULTS = {
   bars: [
-    { name: "Bar A", address: 1, mode: 52, panRange: 540, tiltRange: 180, rev: [false, false, false, false] },
-    { name: "Bar B", address: 101, mode: 52, panRange: 540, tiltRange: 180, rev: [false, false, false, false] },
+    { name: "Bar A", address: 1, mode: 52, panRange: 540, tiltRange: 270, rev: [false, false, false, false] },
+    { name: "Bar B", address: 101, mode: 52, panRange: 540, tiltRange: 270, rev: [false, false, false, false] },
   ],
   hazer: { address: 201, skipWarmup: false },
 };

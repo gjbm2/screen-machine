@@ -95,7 +95,7 @@ import {
 import { fuzzyFilter } from "./fuzzy";
 import { LivePicture } from "./LivePicture";
 import { SongPictures } from "./SongPictures";
-import { RoomMicCheck } from "./RoomMic";
+import { LoopbackToggle, RoomMicCheck } from "./RoomMic";
 
 const POLL_MS = 1500;
 const QUEUE_DROP = "queue-drop";
@@ -1779,6 +1779,7 @@ function Settings({
               </div>
             </div>
           )}
+          <LoopbackToggle />
           {/* For checking the room mic (it comes on while a song plays): rolled up, nothing runs until opened. */}
           <Unroll title="Room mic and levels" className="-mx-1" testId="karaoke-mic">
             <RoomMicCheck />

@@ -33,7 +33,7 @@
     "focus": {
       "type": "Head",
       "panMax": 540,
-      "tiltMax": 180
+      "tiltMax": 270
     }
   },
   "wheels": {
@@ -169,7 +169,7 @@
       "capability": {
         "type": "Tilt",
         "angleStart": "0deg",
-        "angleEnd": "180deg"
+        "angleEnd": "270deg"
       }
     },
     "Pan/Tilt Speed": {

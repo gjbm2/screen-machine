@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState } from "react";
 import { resolveRoomUrl } from "@/pages/Room/api";
 import { LevelTrace } from "@/pages/Room/LevelTrace";
 import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
 
 type MicState = { on: boolean; muted: boolean; why: string };
 type Input = { stream: string; label?: string; device?: string | null; state?: string; rms_dbfs?: number | null; silent?: boolean };
@@ -109,5 +110,85 @@ function InputRow({ input, on }: { input: Input; on: boolean }) {
         <div className="h-full rounded-full bg-emerald-500 transition-[width] duration-500" style={{ width: `${pct}%` }} />
       </div>
     </li>
+  );
+}
+
+/** The audio agent's loopback (tools/show_sender/pc22_agent.py LOOPBACK): the device name it offers in its list. */
+export const LOOPBACK = "What this computer plays (loopback)";
+
+/**
+ * Loopback on/off (owner, 26 Nov: "I don't want to have to listen to music all the time while I'm testing";
+ * "loopback on/off should be in karaoke settings"): the room's ears hear this computer's own sound, captured
+ * digitally, so the lights and the live picture follow the song with the volume down. It is the Room page's mic
+ * choice (PUT /show/api/v1/input {stream, device}), set to the agent's loopback entry or back to that sender's
+ * default mic. Shown only when a room mic offers the loopback. Off for the party: the lights should hear the room.
+ */
+export function LoopbackToggle() {
+  const [baseUrl] = useState(() => resolveRoomUrl(window.location.search));
+  const [stream, setStream] = useState<string | null>(null);
+  const [on, setOn] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  const read = useMemo(
+    () => async () => {
+      const r = await fetch(`${baseUrl}/show/api/v1/inputs`);
+      if (!r.ok) throw new Error(String(r.status));
+      const d = await r.json();
+      const ins: (Input & { devices?: string[] })[] = Array.isArray(d?.inputs) ? d.inputs : [];
+      const hit = ins.find((i) => Array.isArray(i.devices) && i.devices.includes(LOOPBACK));
+      setStream(hit ? hit.stream : null);
+      setOn(!!hit && hit.device === LOOPBACK);
+    },
+    [baseUrl],
+  );
+
+  useEffect(() => {
+    let dead = false;
+    const tick = () => {
+      if (document.visibilityState === "visible") read().catch(() => !dead && setStream(null));
+    };
+    tick();
+    const t = window.setInterval(tick, POLL_MS * 2);
+    return () => {
+      dead = true;
+      window.clearInterval(t);
+    };
+  }, [read]);
+
+  if (!stream) return null;
+  const flip = async (want: boolean) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const r = await fetch(`${baseUrl}/show/api/v1/input`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ stream, device: want ? LOOPBACK : null }),
+      });
+      if (!r.ok) throw new Error(`${r.status}`);
+      setOn(want);
+      window.setTimeout(() => void read().catch(() => undefined), 3000);   // the agent switches within ~2 s
+    } catch (e) {
+      setErr(`That didn't work (${e instanceof Error ? e.message : String(e)}).`);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <div className="space-y-1" data-testid="karaoke-loopback">
+      <label className="flex items-center justify-between gap-3">
+        <span className="min-w-0">
+          Hear this laptop's own sound <span className="text-muted-foreground">(loopback)</span>
+        </span>
+        <Switch checked={on} disabled={busy} onCheckedChange={(v) => void flip(v)} />
+      </label>
+      <p className={cn("text-xs", on ? "text-amber-700" : "text-muted-foreground")}>
+        {on
+          ? "On: the lights and picture follow what this laptop plays, even with the volume down. Turn it off for the party, so they hear the room."
+          : "For testing with the volume down. Off: the lights and picture listen to the room mic."}
+      </p>
+      {err && <p className="text-xs text-red-700">{err}</p>}
+    </div>
   );
 }

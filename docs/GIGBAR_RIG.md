@@ -31,7 +31,7 @@ Left to right on the front: **Par 1, Spot 1, Derby 1, laser, Derby 2, Spot 2, Pa
 |---|---|---|
 | 2 pars | RGBAW + UV LEDs (3 x 6 W), 22° beam | a colour-mixing lamp: R, G, B, amber, white, UV, and a strobe |
 | 2 derbies | RGBW LEDs (2 x 6.5 W each colour), 131° coverage, motorised | colour mixing, strobe; the motor is pinned |
-| 2 spots (moving heads) | 32 W cool-white LED, 17° beam, pan 540°, tilt 180°, 16-bit | a mover: pan/tilt, speed, a 10-slot colour wheel, a 9-gobo wheel with shake and scroll, a dimmer, a shutter |
+| 2 spots (moving heads) | 32 W cool-white LED, 17° beam, pan 540°, tilt 270° (menu; spec sheet 180°), 16-bit | a mover: pan/tilt, speed, a 10-slot colour wheel, a 9-gobo wheel with shake and scroll, a dimmer, a shutter |
 | 4 strobe zones | cool-white LEDs, 5 W each | four intensity channels and a strobe (one fixture per bar) |
 | laser | class 3R: red 650 nm, green 520 nm, blue 450 nm | **not patched** (owner: tbc); the type makes every channel a page-only macro |
 
@@ -148,8 +148,9 @@ If the bars end up the other way round, swap their start addresses on the bars; 
    - If it offers 51CH, stop: that chart isn't verified here.
    - The value shows yellow while DMX arrives and white without it.
 2. MENU → **SETUP**:
-   - **Pan Range 540** and **Tilt Range 180**, to match the type file (the spec sheet's 540° x 180°). If you prefer
-     270° tilt, set the spot's tilt range on the Lights page instead.
+   - **Pan Range 540** and **Tilt Range 270**, to match the type file. The spec sheet says 540° x 180°, but the
+     menu offers 270, and upright heads at 180 can't reach below horizontal, so not the floor (§8). If a real bar
+     won't do 270, set 180 here and in the spot type.
    - Pan/Tilt Reverse OFF for now; fix aiming on the Lights page.
    - **DFI OFF**, and RF and FOOT **OFF**, so a remote or another bar can't take it over.
 3. With DMX, the bar **holds the last frame when the signal is lost** (manual). In master/slave mode it blacks out.
@@ -173,7 +174,7 @@ These are **assumptions in the type files**, because the manuals are vague:
    needs a pin on that channel (tell the show session).
 2. **Pan/tilt speed: 0 = fastest** (Chauvet's usual). The manual doesn't say which way it runs. If the heads crawl,
    flip it in `gigbar-move-ils-spot.json`.
-3. **Tilt 180°**, with Tilt Range 180 in the menu (above).
+3. **Tilt 270°**, with Tilt Range 270 in the menu (above), and that a head at tilt centre points straight up.
 4. The colour-wheel hexes are nominal. Name or rename slots on the Lights page if they look off.
 
 Then set up the spots on the Lights page (Move it and set it up, docs/LIGHTS.md §2.6):
@@ -286,10 +287,11 @@ virtual node: Art-Net in -> DMX out at 40 Hz (holds the last frame when Art-Net 
   opposite the picture and above people's heads.
 
 **Tilt finding:** with the spec sheet's 180° tilt, an upright head reaches only from straight up down to horizontal
-(2.68 m). It can never light the floor: the dance floor's centre is about 28° below horizontal. The director's floor
-scenes ("Still pools of light") therefore clamp the heads at horizontal. The menu's Tilt Range 270 would reach 45°
-below horizontal. Check what the real bars do, then set the menu and the spot type's tilt (`gigbar-move-ils-spot.json`
-`tiltMax`, and the Tilt channel's `angleEnd`) to match.
+(2.68 m). It could never light the floor: the dance floor's centre is about 28° below horizontal. Most moving-head
+scenes work on the floor (pools, sweeps, figure-of-eight, ballyhoo), so they clamped the heads at horizontal and they
+sat still. **The spot type now assumes the menu's Tilt Range 270** (45° below horizontal; owner, 26 Nov). Set 270 on
+each bar's menu. If a real bar won't do it, put 180 back in `gigbar-move-ils-spot.json` (`tiltMax`, and the Tilt
+channel's `angleEnd`) and on the virtual board.
 
 The 3D view (§7) uses the same room. Its default view is a cutaway from above the west wall.
 
