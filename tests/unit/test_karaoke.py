@@ -683,7 +683,7 @@ def test_the_karaoke_screen_goes_live_with_a_song_and_back_to_art_on_stop_only(t
         calls.append(body["desired"])
         screen["desired"] = body["desired"]
 
-    lv = LiveView(st, room=room, screen_of=lambda s: s or "vj")
+    lv = LiveView(st, room=room, screen_of=lambda s: s or "vj", room_mode=None)
     lv.step()                                                     # the first look: nothing
     st.queue_add(a); lv.step()                                    # an idle add starts it: live
     assert calls == [LIVE]
@@ -694,3 +694,34 @@ def test_the_karaoke_screen_goes_live_with_a_song_and_back_to_art_on_stop_only(t
     assert st.s["player"]["state"] == "stopped" and calls == [LIVE]
     st.control("restart"); lv.step(); st.control("stop"); lv.step()   # Stop: back to art
     assert calls == [LIVE, "art"]
+
+
+def test_karaoke_as_a_room_mode_enters_it_with_a_song_and_puts_the_old_mode_back_on_stop(tmp_path, monkeypatch):
+    """Owner, 26 Nov: "karaoke should be a mode, right? like disco or ambient" (deployment.yaml karaoke.room_mode)."""
+    import time
+    from routes.karaoke import live_view
+    from routes.karaoke.live_view import LiveView
+    monkeypatch.setattr(live_view, "info", lambda *a, **k: None)
+    st = Store(tmp_path / "state.json")
+    a = ready(st, "a", 60.0)
+    mode = {"current": "gallery", "target": None, "default": "gallery"}
+    puts = []
+
+    def room(method, path, body=None):
+        if method == "GET":
+            return {"mode": dict(mode)}
+        assert path == "/api/v1/mode"
+        puts.append(body["mode"])
+        mode["current"] = body["mode"]
+
+    lv = LiveView(st, room=room, screen_of=lambda s: "vj", room_mode="singalong")
+    lv.step()
+    st.queue_add(a); lv.step()                                    # a song starts: the room goes Karaoke
+    assert puts == ["singalong"]
+    st.tick(time.time() + 3600); lv.step()                        # the queue ran out: still Karaoke
+    assert puts == ["singalong"]
+    st.control("stop"); lv.step()                                 # Stop: back to the mode before
+    assert puts == ["singalong", "gallery"]
+    mode["current"] = "disco"                                     # a person's own mode in between is theirs
+    st.queue_add(a); lv.step(); mode["current"] = "disco"; st.control("stop"); lv.step()
+    assert puts == ["singalong", "gallery", "singalong"]

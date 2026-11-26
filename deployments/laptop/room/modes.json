@@ -1,5 +1,5 @@
 {
-  "_note": "Room modes (docs/av/ROOM_STATE_MODEL.md). The smallest set: art, and the screen live.",
+  "_note": "Room modes (docs/av/ROOM_STATE_MODEL.md): art, the screen live, and Karaoke (owner, 26 Nov: \"karaoke should be a mode, like disco or ambient\"; a song starting from stopped enters it and Stop leaves it: deployment.yaml karaoke.room_mode).",
   "default": "gallery",
   "modes": {
     "gallery": {
@@ -12,6 +12,29 @@
     },
     "live": {
       "label": "Live",
+      "state": {
+        "screens": {
+          "live": {
+            "auto": true
+          }
+        },
+        "page": true,
+        "show.mic": {
+          "set": true,
+          "restore": true
+        },
+        "show.main": {
+          "set": {
+            "vibe": "singalong",
+            "listening": false
+          },
+          "restore": true,
+          "policy": "ignore"
+        }
+      }
+    },
+    "singalong": {
+      "label": "Karaoke",
       "state": {
         "screens": {
           "live": {
