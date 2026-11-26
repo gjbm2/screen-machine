@@ -47,6 +47,23 @@ WebSocket fan-out with drop-to-keyframe are reused here.
   step up doubles its wait. Frozen across entry and exit. Reported as `degrade{level, step, why, since, text, ...}` in
   `/api/sessions`, a `session.degrade` event and one line on the details panel ("60 -> 30 fps: computer busy").
 
+## Who cues a scene change (26 Nov 2026, by screen-machine-cb; for screen-machine-04)
+
+Owner, 26 Nov: "there should be one controlling visual logic -- the a.d. has to have dominion". While show_service's
+`room.direction` is fresh and says `cues: "director"` (it does whenever a feel plays; show.yaml `director.cues`):
+
+- a session changes scene **only** on the art director's `look_change` room.event (`Director.hint(forced=True)`:
+  whatever the dwell), and never on its own max dwell (`Director.ad_drives`);
+- the next pick is prepared at once, since the change can come at any time;
+- `look_change` carries `land` (0..1): the transition starts `land x its duration` before the event's time, so with 1
+  the new scene is fully there on the line (`_auto_cue`); it also carries `by` and the `transition` the director
+  asked for (not used here yet);
+- structure's `section_change` and `drop` still reach the FX director and the chorus recall, and cut nothing. Track
+  events are unchanged.
+
+With no fresh direction, or `cues` unset, everything is as before. Code: `sessions.py` (`AD_CUE`, `room_event`,
+`_auto_cue`), `director.py` (`forced`, `ad_until`); test `test_while_the_art_director_drives_only_its_change_cuts_and_at_once`.
+
 ## Run
 
 ```bash
