@@ -2113,15 +2113,17 @@ class Session(EngineListener):
             self._event_sweep = bool(data.get("sweep_beats"))   # a sweep's change: never staggered (rooms.py)
 
     def _lyric_section(self, data: dict) -> bool:
-        """A karaoke section from the lyrics (verse A / chorus B / break C): its letter's scene in this song goes to
-        the head of up next (unless a person's pick is there), so the chorus returns to the chorus's scene.  -> True
-        when it recalls one (the cut is then urgent: a repeat should land on its line)."""
+        """A karaoke section from the lyrics (verse A / chorus B / break C): a CHORUS's scene in this song goes to the
+        head of up next (unless a person's pick is there), so the chorus returns to the chorus's scene.  Verses and
+        breaks pick afresh (26 Nov: recalling every letter alternated two scenes for a whole song, and nothing new,
+        the photo scenes included, ever got a turn).  -> True when it recalls one (the cut is then urgent: a repeat
+        should land on its line)."""
         letter = data.get("letter") if isinstance(data.get("letter"), str) else None
         tn = getattr(self, "track_n", 0)
         if len(self._letter_scene) > 64 or any(k[0] != tn for k in self._letter_scene):
             self._letter_scene = {k: v for k, v in self._letter_scene.items() if k[0] == tn}
         self._lyric_letter = (tn, letter) if letter else None
-        want = self._letter_scene.get((tn, letter)) if letter else None
+        want = self._letter_scene.get((tn, letter)) if letter and data.get("section_kind") == "chorus" else None
         if not want or want == self.current_name or want not in self.mgr.presets.scenes \
                 or want in self.director.quarantine:
             return False
