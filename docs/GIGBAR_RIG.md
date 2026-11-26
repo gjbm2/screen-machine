@@ -219,6 +219,16 @@ virtual node: Art-Net in -> DMX out at 40 Hz (holds the last frame when Art-Net 
 
 - **Run it:** `tools/virtual_node/run-windows.sh start` (also `stop`, `status`, `log`). Then open
   **http://127.0.0.1:8705/** in Brave on Windows.
+- **Two views** of the same DMX (both read `gigbar_model.js`: the set-up, the channel meanings, the parts' motion):
+  - **the board** (`/`): one panel per part, in the bar's order, with what it shows, what it's doing in words, and its
+    raw channels;
+  - **3D** (`/3d`, three.js 0.187 vendored in `tools/virtual_node/vendor/three`, MIT, so it works offline): the bars on
+    tripods at the far wall of a plain room. The heads pan on their yokes and tilt in them, and each one projects its
+    colour and gobo. The pars wash, the derbies throw turning beam fans, the strobes glow, and the laser draws lines.
+    A side panel says what each part is doing. Drag to orbit and use the wheel to zoom; there are Front, Side and
+    Above views. Beams show plainly by default; tick "beams as the haze allows" to see them as the room would.
+  - The head orientation is an assumption: tilt centre is straight up, + tilts towards the room, and + pan turns to
+    the room's right. Check it against the real bars and use the Board's reverse switches.
 - **What it is:**
   - `virtual_node.py` listens on Windows udp 0.0.0.0:6454 and answers ArtPoll with an Art-Net 4 ArtPollReply (short
     name "SM Virtual Node", universe 1). show_service shows it under `GET /show/api/v1/rig` `.nodes.gigbar-view`.

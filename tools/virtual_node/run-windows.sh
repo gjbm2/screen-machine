@@ -32,7 +32,9 @@ case "$cmd" in
   start)
     mkdir -p "$dest"
     stop >/dev/null
-    cp "$here/virtual_node.py" "$here/gigbar.html" "$dest/"
+    mkdir -p "$dest/vendor/three"
+    cp "$here/virtual_node.py" "$here/gigbar.html" "$here/gigbar3d.html" "$here/gigbar_model.js" "$dest/"
+    cp "$here/vendor/three/"* "$dest/vendor/three/"
     extra=""; for a in "$@"; do extra+=", '$a'"; done
     p="$(ps "\$py = (py -3.12 -c 'import sys; print(sys.executable)'); \$p = Start-Process -FilePath \$py -WorkingDirectory '$windest' -PassThru -WindowStyle Hidden -ArgumentList @('$windest\\virtual_node.py', '--log', '$windest\\node.log'$extra); \$p.Id" | tail -1)"
     echo "$p" > "$dest/node.pid"

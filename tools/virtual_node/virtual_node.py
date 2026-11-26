@@ -17,7 +17,7 @@ the 512 slots. Nothing here makes up DMX: with no Art-Net arriving, the output h
     py -3.12 virtual_node.py --reply-to-6454         # answer polls on the poller's 6454 (some nodes do): tests the
                                                      # "no replies" path of a controller behind NAT
 
-The view: http://127.0.0.1:8705/ (gigbar.html beside this file). GET /status is the node's state as JSON.
+The views: http://127.0.0.1:8705/ (the board, gigbar.html) and /3d (gigbar3d.html, three.js), beside this file. GET /status is the node's state as JSON.
 Standard library only (Windows Python 3.12).
 """
 
@@ -45,6 +45,9 @@ PROT_VER = 14
 ESTA_PROTOTYPE = 0x7FF0             # ESTA's range for prototypes and experiments
 AC_FAIL = {0x08: "hold", 0x09: "zero", 0x0A: "full", 0x0B: "scene"}
 VERSION = "1.0"
+#: the views' scripts, served from beside this file (three.js vendored: tools/virtual_node/vendor/three, MIT)
+STATIC = {"/gigbar_model.js": "gigbar_model.js", "/vendor/three/three.module.js": "vendor/three/three.module.js",
+          "/vendor/three/three.core.js": "vendor/three/three.core.js"}
 
 log = logging.getLogger("virtual-node")
 
@@ -291,6 +294,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
         path = self.path.split("?", 1)[0]
         if path in ("/", "/gigbar", "/gigbar.html"):
             return self.file(HERE / "gigbar.html", "text/html; charset=utf-8")
+        if path in ("/3d", "/gigbar3d.html"):
+            return self.file(HERE / "gigbar3d.html", "text/html; charset=utf-8")
+        if path in STATIC:
+            return self.file(HERE / STATIC[path], "text/javascript; charset=utf-8")
         if path == "/status":
             return self.json(self.node.status())
         if path == "/dmx":

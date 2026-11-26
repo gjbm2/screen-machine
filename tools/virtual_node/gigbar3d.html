@@ -1,0 +1,366 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Virtual GigBAR · 3D</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!--
+  The virtual GigBAR rig in 3D (docs/GIGBAR_RIG.md §7): the two bars on their tripods at the far wall of a plain room,
+  driven by the virtual node's DMX output and nothing else (gigbar_model.js: the set-up, the channel meanings and the
+  parts' motion, shared with the board at /). The spots pan on their yokes and tilt in them (tilt centre = straight
+  up, + towards the room; pan + to the room's right: an assumption until the real bars are seen); each projects its
+  colour and gobo onto the room. Pars wash, derbies throw turning beam fans, strobes flash, the laser draws lines.
+  Beams are drawn plainly visible by default (to read them); "as the haze allows" draws them as the room would show.
+  three.js 0.187 (MIT), vendored in vendor/three.
+-->
+<style>
+  :root { color-scheme: dark; --fg: #e3e6ee; --dim: #8d93a5; --line: #252a38; --bad: #ff6b6b; --ok: #6bd38a; --warn: #ffc857; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #06070a; color: var(--fg);
+               font: 13px/1.4 system-ui, "Segoe UI", sans-serif; }
+  header { position: fixed; inset: 0 0 auto 0; z-index: 3; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+           padding: 7px 12px; background: #0d1017e6; border-bottom: 1px solid var(--line); }
+  header b { font-size: 15px; }
+  .pill { padding: 2px 9px; border-radius: 10px; background: #1a1e2a; color: inherit; text-decoration: none; }
+  .ok { color: var(--ok); } .bad { color: var(--bad); } .warn { color: var(--warn); } .dim { color: var(--dim); }
+  button, label.tog { background: #1a1e2a; color: var(--fg); border: 1px solid #2c3346; border-radius: 6px; padding: 3px 9px;
+           cursor: pointer; font: inherit; }
+  #gl { position: fixed; inset: 0; display: block; }
+  #side { position: fixed; top: 44px; right: 0; bottom: 0; width: 330px; z-index: 2; overflow: auto;
+          background: #0b0d13e8; border-left: 1px solid var(--line); padding: 8px 12px; }
+  #side h2 { margin: 8px 0 4px; font-size: 14px; }
+  #side .row { display: grid; grid-template-columns: 64px 1fr; gap: 6px; padding: 3px 0; border-bottom: 1px solid #161a24; }
+  #side .row span:first-child { color: var(--dim); }
+  .sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px;
+        border: 1px solid #3a4054; }
+  .lab { position: fixed; z-index: 1; pointer-events: none; transform: translate(-50%, 0); background: #0b0d13cc; padding: 1px 7px; border-radius: 8px; font-weight: 600;
+         font-size: 12px; color: #cfd4e2; text-shadow: 0 1px 3px #000; white-space: nowrap; }
+  #banner { position: fixed; top: 44px; left: 0; right: 330px; z-index: 2; display: none; padding: 6px 12px; font-weight: 600; }
+  #help { position: fixed; left: 10px; bottom: 8px; z-index: 2; color: var(--dim); font-size: 12px; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<header>
+  <b>Virtual GigBAR · 3D</b>
+  <span id="link" class="pill dim">connecting…</span>
+  <span id="artnet" class="pill dim">Art-Net: –</span>
+  <span id="src" class="dim"></span>
+  <span style="flex:1"></span>
+  <label class="tog"><input type="checkbox" id="realHaze"> beams as the haze allows</label>
+  <button data-view="front">Front</button><button data-view="side">Side</button><button data-view="above">Above</button>
+  <a class="pill" href="./">Board</a>
+</header>
+<div id="banner"></div>
+<div id="side"></div>
+<div id="help">drag: orbit · wheel: zoom · set the units up on the Board · pan, tilt and wheel speeds are estimates</div>
+<script src="gigbar_model.js"></script>
+<script type="module">
+import * as THREE from "./vendor/three/three.module.js";
+
+// ---- renderer, scene, camera -------------------------------------------------------------------------------------------
+const canvas = document.getElementById("gl");
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+renderer.setPixelRatio(Math.min(2, devicePixelRatio || 1));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+renderer.shadowMap.enabled = true;                 // a spot's gobo is projected through its shadow camera
+renderer.shadowMap.type = THREE.PCFShadowMap;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x05060a);
+const camera = new THREE.PerspectiveCamera(62, 1, 0.05, 60);
+function resize() {
+  const w = innerWidth - 330, h = innerHeight;
+  renderer.setSize(innerWidth, h, false); canvas.style.width = innerWidth + "px"; canvas.style.height = h + "px";
+  camera.aspect = innerWidth / h; camera.setViewOffset(innerWidth, h, 165, 0, innerWidth, h); camera.updateProjectionMatrix();
+}
+addEventListener("resize", resize); resize();
+
+// The room (metres): x to the right as the room faces the bars, y up, z towards the room; the bars at the far wall.
+const ROOM = { x0: -5, x1: 5, y0: 0, y1: 3, z0: -3, z1: 5 };
+const wallMat = new THREE.MeshStandardMaterial({ color: 0x3a3d46, roughness: 0.95, metalness: 0 });
+const floorMat = new THREE.MeshStandardMaterial({ color: 0x2e3038, roughness: 0.9, metalness: 0 });
+function plane(w, h, mat, pos, rot) {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mat);
+  m.position.set(...pos); m.rotation.set(...rot); m.receiveShadow = true; scene.add(m); return m;
+}
+const RW = ROOM.x1 - ROOM.x0, RH = ROOM.y1 - ROOM.y0, RD = ROOM.z1 - ROOM.z0, CX = (ROOM.x0 + ROOM.x1) / 2, CZ = (ROOM.z0 + ROOM.z1) / 2;
+plane(RW, RD, floorMat, [CX, 0, CZ], [-Math.PI / 2, 0, 0]);
+plane(RW, RD, wallMat, [CX, RH, CZ], [Math.PI / 2, 0, 0]);
+plane(RW, RH, wallMat, [CX, RH / 2, ROOM.z0], [0, 0, 0]);
+plane(RW, RH, wallMat, [CX, RH / 2, ROOM.z1], [0, Math.PI, 0]);
+plane(RD, RH, wallMat, [ROOM.x0, RH / 2, CZ], [0, Math.PI / 2, 0]);
+plane(RD, RH, wallMat, [ROOM.x1, RH / 2, CZ], [0, -Math.PI / 2, 0]);
+const grid = new THREE.GridHelper(10, 20, 0x22252e, 0x22252e); grid.position.set(CX, 0.002, CZ); scene.add(grid);
+scene.add(new THREE.HemisphereLight(0x8890a8, 0x202228, 0.35));
+
+// ---- shared bits -----------------------------------------------------------------------------------------------------------
+const UP = new THREE.Vector3(0, 1, 0);
+const srgb = (rgb) => new THREE.Color().setRGB(rgb[0] / 255, rgb[1] / 255, rgb[2] / 255, THREE.SRGBColorSpace);
+const dark = new THREE.MeshStandardMaterial({ color: 0x1b1d23, roughness: 0.6, metalness: 0.3 });
+const darker = new THREE.MeshStandardMaterial({ color: 0x0e0f13, roughness: 0.7, metalness: 0.2 });
+function lens(r) { return new THREE.Mesh(new THREE.CircleGeometry(r, 32), new THREE.MeshBasicMaterial({ color: 0x000000 })); }
+// a beam in the air: an open cone, apex at the lens, along +Y, brightest at its core and near the lens
+const beamVS = `varying float vY; varying vec3 vN; varying vec3 vV; uniform float len;
+  void main() { vY = position.y / len; vec4 mv = modelViewMatrix * vec4(position, 1.0);
+    vN = normalize(normalMatrix * normal); vV = normalize(-mv.xyz); gl_Position = projectionMatrix * mv; }`;
+const beamFS = `uniform vec3 color; uniform float opacity; varying float vY; varying vec3 vN; varying vec3 vV;
+  void main() { float core = pow(abs(dot(vN, vV)), 1.6); float fade = pow(clamp(1.0 - vY, 0.0, 1.0), 1.4);
+    gl_FragColor = vec4(color * opacity * core * fade, 1.0); }`;
+function beam(radius, length) {
+  const g = new THREE.ConeGeometry(radius, length, 36, 1, true);
+  g.rotateX(Math.PI); g.translate(0, length / 2, 0);
+  const m = new THREE.ShaderMaterial({ uniforms: { color: { value: new THREE.Color(1, 1, 1) }, opacity: { value: 0 }, len: { value: length } },
+    vertexShader: beamVS, fragmentShader: beamFS, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide });
+  const mesh = new THREE.Mesh(g, m); mesh.frustumCulled = false; return mesh;
+}
+function setBeam(mesh, rgb, a) { mesh.material.uniforms.color.value.copy(srgb(rgb)); mesh.material.uniforms.opacity.value = a; mesh.visible = a > 0.002; }
+// where a ray from inside the room meets a wall, floor or ceiling
+function hit(o, d) {
+  let t = Infinity;
+  for (const [ax, lo, hi] of [["x", ROOM.x0, ROOM.x1], ["y", ROOM.y0, ROOM.y1], ["z", ROOM.z0, ROOM.z1]]) {
+    if (d[ax] > 1e-6) t = Math.min(t, (hi - o[ax]) / d[ax]); else if (d[ax] < -1e-6) t = Math.min(t, (lo - o[ax]) / d[ax]);
+  }
+  return o.clone().addScaledVector(d, t * 0.995);
+}
+const dotTex = (() => { const c = document.createElement("canvas"); c.width = c.height = 64; const x = c.getContext("2d");
+  const g = x.createRadialGradient(32, 32, 0, 32, 32, 32); g.addColorStop(0, "rgba(255,255,255,1)"); g.addColorStop(0.35, "rgba(255,255,255,0.7)");
+  g.addColorStop(1, "rgba(255,255,255,0)"); x.fillStyle = g; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+function dot(size) {
+  const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: dotTex, color: 0xffffff, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+  s.scale.setScalar(size); scene.add(s); return s;
+}
+// gobo textures (white = light passes), one per slot; the light's colour tints them
+const GOBO_TEX = [...Array(10).keys()].map((slot) => {
+  const c = document.createElement("canvas"); c.width = c.height = 128; const x = c.getContext("2d");
+  x.fillStyle = "#000"; x.fillRect(0, 0, 128, 128);
+  const soft = (cx, cy, r) => { const g = x.createRadialGradient(cx, cy, r * 0.75, cx, cy, r); g.addColorStop(0, "#fff"); g.addColorStop(1, "#000");
+    x.fillStyle = g; x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.fill(); };
+  if (slot === 0) soft(64, 64, 62);
+  else {
+    const n = [0, 6, 5, 4, 8, 3, 4, 1, 12, 7][slot];
+    for (let i = 0; i < n; i++) { const a = i * Math.PI * 2 / n, rr = slot === 8 ? 40 : 30;
+      soft(64 + Math.cos(a) * rr, 64 + Math.sin(a) * rr, slot === 2 ? 20 : slot === 5 ? 22 : 11); }
+    if (slot === 7) { soft(64, 64, 58); x.globalCompositeOperation = "destination-out"; x.fillStyle = "#000";
+                      x.beginPath(); x.arc(64, 64, 34, 0, Math.PI * 2); x.fill(); x.globalCompositeOperation = "source-over"; }
+  }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+});
+
+// ---- a GigBAR on its tripod --------------------------------------------------------------------------------------------
+const BAR_Y = 1.95, BAR_Z = ROOM.z0 + 0.8;
+const PART_X = { par: [-0.5, 0.5], spot: [-0.33, 0.33], derby: [-0.16, 0.16], laser: 0, strobe: [-0.4, -0.13, 0.13, 0.4] };
+function makeBar(bi, x0) {
+  const g = new THREE.Group(); g.position.set(x0, 0, BAR_Z); scene.add(g);
+  // tripod
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, BAR_Y - 0.1, 12), dark); pole.position.y = (BAR_Y - 0.1) / 2; g.add(pole);
+  for (let i = 0; i < 3; i++) {
+    const a = i * Math.PI * 2 / 3 + Math.PI / 2, foot = new THREE.Vector3(Math.cos(a) * 0.55, 0, Math.sin(a) * 0.55);
+    const hub = new THREE.Vector3(0, 0.75, 0), dir = hub.clone().sub(foot), len = dir.length();
+    const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.014, len, 8), dark);
+    leg.position.copy(foot).addScaledVector(dir, 0.5); leg.quaternion.setFromUnitVectors(UP, dir.normalize()); g.add(leg);
+  }
+  // the bar
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.12, 0.15, 0.17), darker); body.position.y = BAR_Y; g.add(body);
+  const front = 0.0855, P = { pars: [], derbies: [], spots: [], strobes: [] };
+  // pars: on the front, aimed up into the room
+  PART_X.par.forEach((px) => {
+    const l = lens(0.055); l.position.set(px, BAR_Y, front + 0.001); g.add(l);
+    const aim = new THREE.Vector3(px * 1.2, 0.45, 1).normalize();
+    const light = new THREE.SpotLight(0xffffff, 0, 0, THREE.MathUtils.degToRad(17), 0.55, 1.6);
+    light.position.set(px, BAR_Y, front + 0.02); light.target.position.copy(light.position.clone().add(aim)); g.add(light, light.target);
+    const b = beam(0.9, 4.2); b.position.copy(light.position); b.quaternion.setFromUnitVectors(UP, aim); g.add(b);
+    P.pars.push({ lens: l, light, beam: b });
+  });
+  // derbies: on the front, many narrow beams in a fan that the motor turns about the lens's axis
+  PART_X.derby.forEach((px) => {
+    const l = lens(0.05); l.position.set(px, BAR_Y, front + 0.001); g.add(l);
+    const axis = new THREE.Vector3(0, 0.55, 1).normalize(), beams = [];
+    for (let i = 0; i < 24; i++) { const b = beam(0.035, 5); b.position.set(px, BAR_Y, front + 0.02); g.add(b); beams.push({ mesh: b, dot: dot(0.11), ci: i % 4, i }); }
+    P.derbies.push({ lens: l, axis, beams, origin: new THREE.Vector3(px, BAR_Y, front + 0.02) });
+  });
+  // strobes: four white panels along the lower front
+  PART_X.strobe.forEach((px) => {
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.03), new THREE.MeshBasicMaterial({ color: 0x000000 }));
+    m.position.set(px, BAR_Y - 0.055, front + 0.001); g.add(m); P.strobes.push(m);
+  });
+  P.strobeLight = new THREE.PointLight(0xf0f4ff, 0, 0, 1.6); P.strobeLight.position.set(0, BAR_Y - 0.1, front + 0.9); g.add(P.strobeLight);
+  // the laser: a small window in the middle
+  const lw = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.04), new THREE.MeshBasicMaterial({ color: 0x220808 }));
+  lw.position.set(0, BAR_Y, front + 0.001); g.add(lw);
+  const lg = new THREE.BufferGeometry(); lg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(40 * 6), 3));
+  lg.setAttribute("color", new THREE.BufferAttribute(new Float32Array(40 * 6), 3));
+  const lines = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+  lines.frustumCulled = false; scene.add(lines);
+  P.laser = { window: lw, lines, dots: [...Array(40)].map(() => dot(0.07)), origin: new THREE.Vector3(x0, BAR_Y, BAR_Z + front + 0.02) };
+  // the moving heads, on top of the bar: a yoke that pans, a head that tilts in it
+  PART_X.spot.forEach((px) => {
+    const yoke = new THREE.Group(); yoke.position.set(px, BAR_Y + 0.075, 0); g.add(yoke);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.06, 0.03, 20), dark); base.position.y = 0.015; yoke.add(base);
+    for (const s of [-1, 1]) { const arm = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.12, 0.05), dark); arm.position.set(s * 0.058, 0.09, 0); yoke.add(arm); }
+    const head = new THREE.Group(); head.position.y = 0.11; yoke.add(head);
+    const can = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.13, 20), darker); can.position.y = 0.01; head.add(can);
+    const hl = lens(0.038); hl.position.y = 0.076; hl.rotation.x = -Math.PI / 2; head.add(hl);
+    const light = new THREE.SpotLight(0xffffff, 0, 0, THREE.MathUtils.degToRad(8.5), 0.35, 1.5);
+    light.position.y = 0.08; light.target.position.y = 3; head.add(light, light.target);
+    light.castShadow = true; light.shadow.mapSize.set(512, 512); light.shadow.camera.near = 0.1; light.shadow.camera.far = 20;
+    light.map = GOBO_TEX[0];
+    const b = beam(0.75, 5.5); b.position.y = 0.08; head.add(b);
+    P.spots.push({ yoke, head, lens: hl, light, beam: b });
+  });
+  // label
+  const lab = document.createElement("div"); lab.className = "lab"; document.body.appendChild(lab);
+  P.label = lab; P.group = g;
+  return P;
+}
+const BARS = CFG.bars.map((b, i) => makeBar(i, i === 0 ? -1.5 : 1.5));
+// the hazer, on the floor by bar B
+const hazer = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.39, 0.15), darker); hazer.position.set(2.6, 0.2, ROOM.z0 + 0.5); scene.add(hazer);
+const hazerLed = new THREE.Mesh(new THREE.CircleGeometry(0.015, 12), new THREE.MeshBasicMaterial({ color: 0x111111 }));
+hazerLed.position.set(2.6, 0.3, ROOM.z0 + 0.576); scene.add(hazerLed);
+const hazeCloud = new THREE.Mesh(new THREE.SphereGeometry(1, 24, 16), new THREE.MeshBasicMaterial({ color: 0x9aa2b5, transparent: true, opacity: 0, depthWrite: false }));
+hazeCloud.scale.set(4.5, 1.4, 3.5); hazeCloud.position.set(0, 1.4, 0.5); scene.add(hazeCloud);
+
+// ---- each frame: the DMX into the model ----------------------------------------------------------------------------------
+const realHaze = document.getElementById("realHaze");
+const COMP = [[255, 40, 40], [40, 255, 70], [60, 90, 255], [255, 250, 240]];
+const tmp = new THREE.Vector3(), q = new THREE.Quaternion();
+function update(t) {
+  const air = realHaze.checked ? 0.03 + 0.97 * HAZE.density : 0.55;   // how much of a beam shows in the air
+  CFG.bars.forEach((bar, bi) => {
+    const L = LAYOUT[bar.mode], S = SIM[bi], P = BARS[bi], a0 = bar.address;
+    // pars
+    P.pars.forEach((p, k) => {
+      const b0 = a0 + L.par[k], v = [0, 1, 2, 3, 4, 5].map((i) => ch(b0 + i));
+      const { rgb, level } = mixPar(...v), a = level * shutterGain(barStrobe(ch(b0 + 6)), t, bi * 3 + k);
+      p.lens.material.color.copy(srgb(rgb)).multiplyScalar(0.15 + 2.2 * a);
+      p.light.color.copy(srgb(rgb)); p.light.intensity = 26 * a;
+      setBeam(p.beam, rgb, 0.22 * a * air);
+    });
+    // derbies
+    P.derbies.forEach((d, k) => {
+      const b0 = a0 + L.derby[k], g = shutterGain(barStrobe(ch(b0 + 4)), t, bi * 3 + 5 + k);
+      const lv = [0, 1, 2, 3].map((i) => (ch(b0 + i) / 255) * g);
+      d.lens.material.color.setRGB(lv[0] + lv[3] * 0.8, lv[1] + lv[3] * 0.8, lv[2] + lv[3] * 0.8).multiplyScalar(1.2);
+      const rot = S.derbyRot[k];
+      d.beams.forEach((bm) => {
+        const a = lv[bm.ci];
+        // each beam: a fixed angle out from the lens's axis, spun round that axis by the motor
+        const off = 0.35 + 0.55 * hash(bm.i * 3.1 + k), around = rot + bm.i * 2.39996;
+        const dir = new THREE.Vector3(Math.sin(off) * Math.cos(around), Math.sin(off) * Math.sin(around), Math.cos(off));
+        q.setFromUnitVectors(new THREE.Vector3(0, 0, 1), d.axis); dir.applyQuaternion(q).normalize();
+        bm.mesh.quaternion.setFromUnitVectors(UP, dir);
+        setBeam(bm.mesh, COMP[bm.ci], 0.22 * a * air);
+        const o = d.origin.clone().add(P.group.position);
+        bm.dot.position.copy(hit(o, dir)); bm.dot.material.color.copy(srgb(COMP[bm.ci])).multiplyScalar(a * 1.1); bm.dot.visible = a > 0.01;
+      });
+    });
+    // strobes
+    const f0 = a0 + L.flash, fg = shutterGain(barStrobe(ch(f0 + 4)), t, bi * 9);
+    let sum = 0;
+    P.strobes.forEach((m, i) => { const a = (ch(f0 + i) / 255) * fg; sum += a; m.material.color.setRGB(a * 2, a * 2, a * 2.1); });
+    P.strobeLight.intensity = 1.4 * sum;
+    // laser
+    const lv = ch(a0 + L.laser), lcol = L.laserCh === 3 ? pick(LASER_V2, lv) : pick(LASER_V1, lv);
+    const lst = L.laserCh === 3 ? ch(a0 + L.laser + 1) : 0, lgain = lcol && (!lst || ((t * lerp(1, 15, lst / 255)) % 1) < 0.5) ? 1 : 0;
+    const cols = lcol ? (lcol === "image colour" ? ["red", "green", "blue"] : lcol.split(" + ")) : [];
+    const pos = P.laser.lines.geometry.attributes.position, col = P.laser.lines.geometry.attributes.color;
+    for (let i = 0; i < 40; i++) {
+      const around = S.laserRot + i * 0.71, off = 0.15 + 0.9 * hash(i + 99);
+      const dir = new THREE.Vector3(Math.sin(off) * Math.cos(around), Math.sin(off) * Math.sin(around) * 0.6 + 0.35, Math.cos(off)).normalize();
+      const end = hit(P.laser.origin, dir), c = lcol ? LASER_RGB[cols[i % cols.length]] : [0, 0, 0];
+      pos.setXYZ(i * 2, ...P.laser.origin.toArray()); pos.setXYZ(i * 2 + 1, end.x, end.y, end.z);
+      const la = lgain * (0.08 + 0.6 * air);
+      col.setXYZ(i * 2, c[0] / 255 * la, c[1] / 255 * la, c[2] / 255 * la); col.setXYZ(i * 2 + 1, c[0] / 255 * la * 0.4, c[1] / 255 * la * 0.4, c[2] / 255 * la * 0.4);
+      const dd = P.laser.dots[i]; dd.position.copy(end); dd.material.color.copy(srgb(c)).multiplyScalar(lgain * 1.5); dd.visible = !!lcol && lgain > 0;
+    }
+    pos.needsUpdate = true; col.needsUpdate = true;
+    P.laser.window.material.color.set(lcol ? 0xff3030 : 0x220808);
+    // spots: the yoke pans, the head tilts (tilt 0 = straight up, + towards the room)
+    P.spots.forEach((sp, k) => {
+      const s = S.spots[k], b0 = a0 + L.spot[k];
+      sp.yoke.rotation.y = THREE.MathUtils.degToRad(s.pan);
+      sp.head.rotation.x = THREE.MathUtils.degToRad(s.tilt);
+      const dim = ch(b0 + 7) / 255, a = dim * shutterGain(spotShutter(ch(b0 + 8)), t, bi * 3 + 9 + k);
+      const wl = Math.round(s.wheel) % 10, rgb = hexRgb(COLOUR_SLOTS[wl][1]);
+      const gslot = Math.round(s.gobo + (s.shake ? Math.sin(t * s.shake * 6.28) * 0.3 : 0)) % 10;
+      if (sp.light.map !== GOBO_TEX[gslot]) { sp.light.map = GOBO_TEX[gslot]; }
+      sp.light.color.copy(srgb(rgb)); sp.light.intensity = 160 * a;
+      sp.lens.material.color.copy(srgb(rgb)).multiplyScalar(0.1 + 2.5 * a);
+      setBeam(sp.beam, rgb, 0.75 * a * air);
+    });
+    // label above the bar
+    tmp.set(P.group.position.x, 0.02, P.group.position.z + 0.7).project(camera);
+    P.label.style.left = ((tmp.x + 1) / 2 * innerWidth) + "px"; P.label.style.top = ((1 - tmp.y) / 2 * innerHeight) + "px";
+    P.label.textContent = `${bar.name} · ${bar.mode}CH @ ${String(a0).padStart(3, "0")}`;
+  });
+  hazerLed.material.color.set(!HAZE.firstDmx ? 0x111111 : !HAZE.ready ? ((t % 1) < 0.5 ? 0x22ff22 : 0x002200) : HAZE.out > 0 ? ((t % 0.6) < 0.3 ? 0xffbb22 : 0x332200) : 0xffbb22);
+  hazeCloud.material.opacity = 0.18 * HAZE.density;
+}
+
+// ---- the words (side panel) ------------------------------------------------------------------------------------------------
+const sw = (rgb) => `<span class="sw" style="background:rgb(${rgb.map((v) => v | 0).join(",")})"></span>`;
+function sideText() {
+  let h = "";
+  CFG.bars.forEach((bar, bi) => {
+    const L = LAYOUT[bar.mode], S = SIM[bi], a0 = bar.address;
+    h += `<h2>${bar.name} <span class="dim">${bar.mode}CH · ${a0}–${a0 + L.size - 1}</span></h2>`;
+    const row = (n, txt) => { h += `<div class="row"><span>${n}</span><span>${txt}</span></div>`; };
+    const par = (k) => { const b0 = a0 + L.par[k], v = [0, 1, 2, 3, 4, 5].map((i) => ch(b0 + i)), { rgb, level } = mixPar(...v);
+      return level < 0.004 ? `<span class="dim">off</span>` : `${sw(rgb)}${colourName(rgb)} ${Math.round(level * 100)}% · ${shutterWords(barStrobe(ch(b0 + 6)))}`; };
+    const derby = (k) => { const b0 = a0 + L.derby[k], names = ["red", "green", "blue", "white"];
+      const lit = names.map((n, i) => [n, ch(b0 + i)]).filter(([, v]) => v > 0).map(([n, v], i) => `${sw(COMP[names.indexOf(n)])}${n} ${pct(v)}`);
+      return (lit.length ? lit.join(" ") : `<span class="dim">off</span>`) + ` · ${motorWords(motor(ch(b0 + 5), MECH.derbyRps))}`; };
+    const spot = (k) => { const s = S.spots[k], b0 = a0 + L.spot[k], dim = ch(b0 + 7), sh = spotShutter(ch(b0 + 8));
+      const c = COLOUR_SLOTS[Math.round(s.wheel) % 10], gb = Math.round(s.gobo) % 10;
+      const aim = `pan ${s.targetPan.toFixed(0)}°, tilt ${s.targetTilt.toFixed(0)}°`;
+      const moving = Math.abs(s.pan - s.targetPan) > 1 || Math.abs(s.tilt - s.targetTilt) > 1 ? ` <span class="warn">moving</span>` : "";
+      return (dim === 0 || sh.mode === "closed" ? `<span class="dim">dark</span>` : `${sw(hexRgb(c[1]))}${c[0]} ${pct(dim)} · ${gb ? "gobo " + gb : "no gobo"} · ${shutterWords(sh)}`) + `<br>${aim}${moving}`; };
+    const f0 = a0 + L.flash, fl = [0, 1, 2, 3].map((i) => ch(f0 + i));
+    const lv = ch(a0 + L.laser), lcol = L.laserCh === 3 ? pick(LASER_V2, lv) : pick(LASER_V1, lv);
+    row("Par 1", par(0)); row("Spot 1", spot(0)); row("Derby 1", derby(0));
+    row("Laser", lcol ? `<span class="bad">ON: ${lcol}</span>` : `<span class="dim">off</span>`);
+    row("Derby 2", derby(1)); row("Spot 2", spot(1)); row("Par 2", par(1));
+    row("Strobes", Math.max(...fl) ? `${sw([240, 244, 255])}white ${pct(Math.max(...fl))} · ${shutterWords(barStrobe(ch(f0 + 4)))}` : `<span class="dim">off</span>`);
+  });
+  const hz = CFG.hazer;
+  h += `<h2>Hazer <span class="dim">${hz.address}–${hz.address + 1}</span></h2><div class="row"><span>state</span><span>${
+    !HAZE.firstDmx ? "asleep (no DMX)" : !HAZE.ready ? "heating" : HAZE.out > 0 ? "making haze" : "ready"} · output ${Math.round(HAZE.out * 100)}% · fan ${Math.round(HAZE.fan * 100)}% · in the air ${Math.round(HAZE.density * 100)}%</span></div>`;
+  document.getElementById("side").innerHTML = h;
+}
+
+// ---- camera: orbit and zoom by hand, three set views -----------------------------------------------------------------------
+const target = new THREE.Vector3(0, 1.85, ROOM.z0 + 1.6);
+const orbit = { th: 0.38, ph: 1.5, r: 5.6 };
+const VIEWS = { front: { th: 0.0, ph: 1.52, r: 5.6 }, side: { th: 1.2, ph: 1.45, r: 5.4 }, above: { th: 0.0, ph: 0.3, r: 6.2 } };
+function place() {
+  orbit.ph = Math.max(0.15, Math.min(1.62, orbit.ph)); orbit.r = Math.max(1.5, Math.min(9, orbit.r));
+  camera.position.set(target.x + orbit.r * Math.sin(orbit.ph) * Math.sin(orbit.th), target.y + orbit.r * Math.cos(orbit.ph),
+                      target.z + orbit.r * Math.sin(orbit.ph) * Math.cos(orbit.th));
+  camera.lookAt(target);
+}
+let drag = null;
+canvas.addEventListener("pointerdown", (e) => { drag = { x: e.clientX, y: e.clientY }; canvas.setPointerCapture(e.pointerId); });
+canvas.addEventListener("pointermove", (e) => { if (!drag) return; orbit.th -= (e.clientX - drag.x) * 0.006; orbit.ph -= (e.clientY - drag.y) * 0.006; drag = { x: e.clientX, y: e.clientY }; place(); });
+canvas.addEventListener("pointerup", () => { drag = null; });
+canvas.addEventListener("wheel", (e) => { e.preventDefault(); orbit.r *= Math.exp(e.deltaY * 0.001); place(); }, { passive: false });
+document.querySelectorAll("[data-view]").forEach((b) => b.addEventListener("click", () => { Object.assign(orbit, VIEWS[b.dataset.view]); place(); }));
+place();
+
+// ---- loop ------------------------------------------------------------------------------------------------------------------
+let last = performance.now(), wordsAt = 0;
+function frame(now) {
+  const dt = Math.min(0.1, (now - last) / 1000), t = now / 1000; last = now;
+  stepSim(dt, t); update(t);
+  if (t - wordsAt > 0.2) { wordsAt = t; sideText(); }
+  const banner = document.getElementById("banner"), stale = !linkOk || performance.now() - dmxAt > 1500;
+  banner.style.display = stale || nodeLost ? "block" : "none";
+  if (stale) { banner.textContent = "No DMX from the virtual node: is virtual_node.py running?"; banner.style.background = "#3a1418"; banner.style.color = "#ff9b9b"; }
+  else if (nodeLost) { banner.textContent = nodeAge === null ? "The node has had no Art-Net yet: its DMX output is all zeros"
+    : `No Art-Net for ${nodeAge.toFixed(0)} s: the node is holding its last frame`; banner.style.background = "#3a2f10"; banner.style.color = "#ffd77a"; }
+  renderer.render(scene, camera);
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
