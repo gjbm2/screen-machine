@@ -2976,7 +2976,8 @@ class Director:
         af = (self.lights_cfg["programs"].get("accent_fit") or {}).get(self.vs.get("accents"))
         if not af:
             return None
-        g = _c01(self._groove)
+        g0, g1 = self.lights_cfg["programs"].get("accent_groove") or (0.0, 1.0)
+        g = _c01((self._groove - g0) / (g1 - g0))         # the groove read as none .. as full (accent_groove)
         return {k: lo + (hi - lo) * g for k, (lo, hi) in af.items()}
 
     def _transition_gesture(self, tr: Mapping[str, Any], gids: list[str], at_s: float, now_s: float) -> None:

@@ -1098,12 +1098,16 @@ lights:
     # beat-driven lighting scenes ... than 'my way'"). A scene that shows the beat (a brightness layer on the beat, or
     # hit flashes) x beat, any other x other; each is [with no groove, at full groove] (the direction's groove: the
     # rhythmic drive x how sure the beat clock is, averaged over 15 s). Starting points.
+    # Measured 26 Nov (tools/room/sync_eval): "Dancing Queen" reads groove 0.76, "My Way" 0.41 (their directed
+    # energy is the same, 0.7: a karaoke song's energy is its own range). So a groove at or under the first number
+    # reads as none, at or over the second as full.
+    accent_groove: [0.45, 0.72]
     accent_fit:
       none:     {beat: [0.3, 0.5], other: [1.0, 1.0]}
       soft:     {beat: [0.4, 1.2], other: [1.0, 0.9]}
       downbeat: {beat: [0.4, 2.5], other: [1.2, 0.6]}
-      beat:     {beat: [0.3, 5.0], other: [1.5, 0.3]}
-      full:     {beat: [0.3, 7.0], other: [1.5, 0.2]}
+      beat:     {beat: [0.15, 5.0], other: [2.0, 0.3]}
+      full:     {beat: [0.15, 7.0], other: [2.0, 0.2]}
   flow:
     centre: null                            # a Room map name the flow turns round / bursts from; null: the room's centre
     # screen (owner, 26 Nov): the direction the picture on the screens travels (show_service/picture.py: a tunnel is

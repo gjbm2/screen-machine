@@ -45,6 +45,56 @@ def api(path: str, body: dict | None = None) -> dict:
         return json.loads(r.read() or b"{}")
 
 
+SHOW = "http://127.0.0.1:8703"
+
+
+def watch(dur: float) -> dict:
+    """Sample the director and the DMX frame while the stretch plays (4 Hz): the groove and energy it directs, the
+    share of time each light group is on a scene that shows the beat (the catalogue's ``on_beat``), how far the first
+    par's brightness swings (p90 - p10 of its intensity), and how fast the heads travel (mean deg/s over pan and
+    tilt)."""
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+    from show_service import light_scenes
+    cat = light_scenes.shared()
+    cat.poll(force=True)
+    groove, energy, par = [], [], []
+    on: dict[str, list[int]] = {}
+    travel, last = 0.0, None
+    t_end = time.time() + dur
+    n = 0
+    while time.time() < t_end:
+        try:
+            with urllib.request.urlopen(SHOW + "/api/v1/rig/frame?output=dmx-a", timeout=2) as r:
+                fx = json.loads(r.read()).get("fixtures") or {}
+            pars = sorted(k for k in fx if k.endswith(".par1"))
+            if pars:
+                par.append(float(fx[pars[0]].get("intensity", 0.0)))
+            heads = {k: (v["attrs"].get("pan"), v["attrs"].get("tilt")) for k, v in fx.items()
+                     if isinstance(v.get("attrs"), dict) and v["attrs"].get("pan") is not None}
+            if last is not None:
+                travel += sum(abs(heads[k][0] - last[k][0]) + abs(heads[k][1] - last[k][1])
+                              for k in heads if k in last) / max(1, len(heads))
+            last = heads
+            if n % 4 == 0:
+                with urllib.request.urlopen(SHOW + "/api/v1/state", timeout=3) as r:
+                    dr = json.loads(r.read())["brain"]["components"]["director"]
+                groove.append(float(dr.get("groove") or 0.0))
+                energy.append(float((dr.get("direction") or {}).get("energy") or 0.0))
+                for g, p in ((dr.get("look") or {}).get("light_programs") or {}).items():
+                    if g != "*" and p.get("scene"):
+                        on.setdefault(g, []).append(int(bool((cat.scenes.get(p["scene"]) or {}).get("on_beat"))))
+        except Exception:                                 # noqa: BLE001 - a missed sample
+            pass
+        n += 1
+        time.sleep(0.25)
+    q = (lambda v, x: sorted(v)[min(len(v) - 1, int(x * len(v)))]) if par else None
+    return {"groove": round(statistics.mean(groove), 2) if groove else None,
+            "energy": round(statistics.mean(energy), 2) if energy else None,
+            "beat_share": {g: round(sum(v) / len(v), 2) for g, v in on.items()},
+            "swing": round(q(par, 0.9) - q(par, 0.1), 2) if par else None,
+            "travel_deg_s": round(travel / dur, 1)}
+
+
 def read(t0: float, t1: float) -> dict:
     scr: dict = {}
     for ln in open(HOME + "/logs/stream_service.log", errors="ignore"):
@@ -116,13 +166,14 @@ def main() -> None:
     time.sleep(14.0)                                    # the room goes to Karaoke and the screen live
     t0 = time.time()
     api("/api/karaoke/player", {"action": "seek", "pos_s": a.pos})
-    time.sleep(a.dur)
+    feel = watch(a.dur)
     api("/api/karaoke/player", {"action": "stop"})
     time.sleep(1.0)
     d = read(t0, t0 + a.dur)
     s = score(d)
     if a.json:
-        print(json.dumps({"song": hit.get("title"), "from_s": a.pos, "for_s": a.dur, "score": s, **d}, indent=1))
+        print(json.dumps({"song": hit.get("title"), "from_s": a.pos, "for_s": a.dur, "score": s, "feel": feel, **d},
+                         indent=1))
         return
     print(f"{hit.get('title')}: {a.pos:g} s .. {a.pos + a.dur:g} s")
     for m in d["moves"]:
@@ -137,6 +188,9 @@ def main() -> None:
     print(f"  screen changes {s['screen_changes']}, lights changes {s['lights_changes']}; together within "
           f"{COINCIDE_S:g} s: {s['screen_with_lights']}/{s['screen_changes']} and "
           f"{s['lights_with_screen']}/{s['lights_changes']}; strays {s['strays']}")
+    print(f"  the song as the lights took it: groove {feel['groove']}, energy {feel['energy']}; time on a scene that "
+          f"shows the beat: " + ", ".join(f"{g} {v:.0%}" for g, v in feel["beat_share"].items())
+          + f"; pars' brightness swing {feel['swing']}; heads' travel {feel['travel_deg_s']} deg/s")
     print(f"  landing: median {s['landing_median_s']} s, worst {s['landing_worst_s']} s ({s['landing_s']}); "
           f"moves made for the boundary: {s['moves_for_a_boundary']}/{s['moves']}")
 

@@ -1069,8 +1069,16 @@ def parse_lights(raw: Any, probs: list[str]) -> dict:
                 else:
                     probs.append("lights.programs.accent_fit: needs {<accent style>: {beat: x | [x0, x1], other: "
                                  "y | [y0, y1]}}: ignored")
+            ag = pr.get("accent_groove")
+            if ag is not None:
+                if isinstance(ag, list) and len(ag) == 2 and all(_num(x) is not None and 0.0 <= x <= 1.0 for x in ag) \
+                        and ag[0] < ag[1]:
+                    out["programs"]["accent_groove"] = [float(ag[0]), float(ag[1])]
+                else:
+                    probs.append("lights.programs.accent_groove: needs [the groove read as none, as full] in 0..1: "
+                                 "[0, 1]")
             for k, v in pr.items():
-                if k == "accent_fit":
+                if k in ("accent_fit", "accent_groove"):
                     continue
                 if k not in PROGRAMS_FALLBACK:
                     probs.append(f"lights.programs.{k}: not a programs key: ignored")
