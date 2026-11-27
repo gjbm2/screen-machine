@@ -150,8 +150,10 @@ const elevationWords = (e: number) => (Math.abs(e - 90) < 0.25 ? "straight up" :
 
 /** One angle: a slider for the feel of it, the number for exactness; kept when the slider is let go or the number
  *  is entered. */
-function Angle({ label, value, min, max, words, disabled, onKeep, testid }: {
+function Angle({ label, value, min, max, words, disabled, onKeep, onLive, testid }: {
   label: string; value: number; min: number; max: number; words: string; disabled?: boolean; onKeep: (v: number) => void; testid?: string;
+  /** As the slider moves (before it is let go and kept): the view shows it at once. */
+  onLive?: (v: number) => void;
 }) {
   const [v, setV] = useState(value);
   useEffect(() => setV(value), [value]);
@@ -160,7 +162,7 @@ function Angle({ label, value, min, max, words, disabled, onKeep, testid }: {
     <div className="py-1" data-testid={testid}>
       <Num label={label} unit="°" step={0.5} value={value} disabled={disabled} onKeep={(x) => onKeep(Math.max(min, Math.min(max, x)))} />
       <input type="range" min={min} max={max} step={0.5} value={v} disabled={disabled} aria-label={`${label} slider`}
-        onChange={(e) => setV(Number(e.target.value))}
+        onChange={(e) => { const x = Number(e.target.value); setV(x); onLive?.(x); }}
         onPointerUp={() => keep(v)} onKeyUp={() => keep(v)}
         className="w-full accent-teal-600" />
       <div className="flex justify-between text-[11px] text-stone-400"><span>{min}°</span><span>0°</span><span>{max}°</span></div>
@@ -471,7 +473,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   }, [show, colour, scene, room, energy, bpm, modes, asMode]);
   // undo and redo: every change is a step that knows how to put things back (owner, 27 Nov: "need undo etc. in case of
   // unintended fiddles")
-  type Step = { label: string; undo: () => Promise<unknown>; redo: () => Promise<unknown> };
+  type Step = { label: string; undo: () => Promise<unknown>; redo: () => Promise<unknown>; group?: string };
   const [past, setPast] = useState<Step[]>([]);
   const [future, setFuture] = useState<Step[]>([]);
 
@@ -518,9 +520,19 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   }, [read]);
 
   /** Make a change that can be undone: ``redo`` makes it, ``undo`` puts things back as they were. */
+  // one undo step for each thing being edited (owner, 27 Nov: "undo points should be taken before all moves, not each
+  // move on the light"): changes to the selected thing join the step it began with, until something else is selected;
+  // undo then puts it back as it was before the first of them
+  const editing = useRef<{ key: string | null; seq: number }>({ key: null, seq: 0 });
   const act = useCallback(async (label: string, redo: () => Promise<unknown>, undo: () => Promise<unknown>) => {
     await keep(redo);
-    setPast((p) => [...p.slice(-49), { label, undo, redo }]);
+    const g = editing.current;
+    setPast((p) => {
+      const top = p[p.length - 1];
+      if (top && g.key && top.group === `${g.key}#${g.seq}`)      // the same thing, still selected: one step
+        return [...p.slice(0, -1), { ...top, label, redo }];
+      return [...p.slice(-49), { label, undo, redo, group: g.key ? `${g.key}#${g.seq}` : undefined }];
+    });
     setFuture([]);
   }, [keep]);
   const undo = useCallback(() => {
@@ -615,6 +627,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   const place = kind === "place" ? bits?.room.points.find((p) => p.name === id) : undefined;
   const area = kind === "area" ? bits?.room.regions.find((a) => a.name === id) : undefined;
   const [roomName, setRoomName] = useState("The room");
+  const [liveAim, setLiveAim] = useState<{ id: string; dir: Vec3 } | null>(null);   // a light's aim as its slider moves
   // the library (GET /rig/library): what can be added; the rig's rows: which lights are real, where they are patched
   const [lib, setLib] = useState<LibItem[]>([]);
   const [rig, setRig] = useState<RigRow[]>([]);
@@ -639,6 +652,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   // the owner's own scrolling: "scrolling hierarchy jumps up while I'm still scrolling"), and not when it was clicked
   // in the list (it is in view already)
   const fromList = useRef(false);
+  useEffect(() => { editing.current = { key: selected, seq: editing.current.seq + 1 }; setLiveAim(null); }, [selected]);
   useEffect(() => {
     if (fromList.current) { fromList.current = false; return; }
     if (!selected) return;
@@ -1112,8 +1126,10 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
                 {light.turns ? (
                   <>
                     <Angle label="Direction (+ right, − left)" min={-180} max={180} value={a.direction} words={directionWords(a.direction)} disabled={busy} testid="aim-direction"
+                      onLive={(v) => { const lt = leanTurnOf(v, a.elevation); setLiveAim({ id: light.id, dir: aimDirOf(lightBar!.front, lt.lean_deg, lt.turn_deg) }); }}
                       onKeep={(v) => void changeLight(light, leanTurnOf(v, a.elevation), `turn ${light.label}`)} />
                     <Angle label="Elevation (+ up, − down)" min={-90} max={90} value={a.elevation} words={elevationWords(a.elevation)} disabled={busy} testid="aim-elevation"
+                      onLive={(v) => { const lt = leanTurnOf(a.direction, v); setLiveAim({ id: light.id, dir: aimDirOf(lightBar!.front, lt.lean_deg, lt.turn_deg) }); }}
                       onKeep={(v) => void changeLight(light, leanTurnOf(a.direction, v), `tilt ${light.label}`)} />
                   </>
                 ) : (
@@ -1121,6 +1137,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
                   // why lasers don't face the same way??": two angles hid that one was tilted back over its bar)
                   <>
                     <Angle label="Tilt (− back, + forward)" min={-90} max={180} value={Math.round(light.lean_deg * 2) / 2} words={tiltWords(light.lean_deg)} disabled={busy} testid="aim-tilt"
+                      onLive={(v) => setLiveAim({ id: light.id, dir: aimDirOf(lightBar!.front, v, 0) })}
                       onKeep={(v) => void changeLight(light, { lean_deg: v, turn_deg: null }, `tilt ${light.label}`)} />
                     <div className="text-[12px] text-stone-500">It sits in a U-bracket, so it only tilts, about the bar's length: it faces where {lightBar?.label ?? "its bar"} faces. Turn the bar to turn it.</div>
                   </>
@@ -1391,7 +1408,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
     <div className="space-y-3" data-testid="room-tab">
       {adding && <AddPicker items={lib} anchor={addAnchor.current} onClose={() => setAdding(false)}
         onPick={(x) => { setAdding(false); void addThing(x); }} />}
-      <Room3DPage embedded refresh={refresh} editables={editables} selected={selected} mode={mode} picked={region?.name ?? null} startNav={plan ? "plan" : undefined}
+      <Room3DPage embedded refresh={refresh} liveAim={liveAim} editables={editables} selected={selected} mode={mode} picked={region?.name ?? null} startNav={plan ? "plan" : undefined}
         onSelect={(k) => { select(k); if (k) setFrame((n) => n + 1); }} onEdit={onEdit} onDuplicate={duplicate} panel={panel} frame={frame}
         feed={feed} toolbar={toolbar} />
       <p className="text-[15px] text-muted-foreground">

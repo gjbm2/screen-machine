@@ -34,13 +34,15 @@ type NodeStatus = { node?: { udp?: string; universe?: number }; artnet?: { pps?:
  *  its box and leaves the readout to the page around it. ``picked``: the keep-out region being edited there;
  *  ``regions``: the page's own (unsaved) copy of the regions, drawn in place of the room's saved ones. */
 export default function Room3DPage({ embedded = false, picked = null, regions, refresh = 0, editables, selected = null,
-  mode, onSelect, onEdit, onDuplicate, panel, frame = 0, feed, toolbar, startNav }: {
+  mode, onSelect, onEdit, onDuplicate, panel, frame = 0, feed, toolbar, startNav, liveAim = null }: {
   embedded?: boolean; picked?: string | null; regions?: KeepRegion[];
   /** Bump it to read the room again at once (the page around it has just saved a change). */
   refresh?: number;
   /** The editor (editor.ts): the things that can be clicked and moved, which one is selected, the gizmo's mode, and
    *  what the page does when one is picked or changed. ``panel``: the page's inspector, shown beside the view. */
   editables?: Editable[]; selected?: string | null; mode?: GizmoMode;
+  /** A light being aimed from the panel (a slider moving): drawn that way at once. */
+  liveAim?: { id: string; dir: [number, number, number] } | null;
   /** Ctrl+drag let go: copy that thing to there. */
   onDuplicate?: (key: string, at: [number, number, number]) => void;
   onSelect?: (key: string | null) => void; onEdit?: (key: string, change: EditChange) => void; panel?: ReactNode;
@@ -152,6 +154,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
     const ed = new RoomEditor(sim.overlayRoot, sim.overlayScene, sim.camera, canvas);
     ed.onChange = (key, change) => cb.current.onEdit?.(key, change);
     ed.onDuplicate = (key, at) => cb.current.onDuplicate?.(key, at);
+    ed.onAimLive = (key, dir) => sim.liveAim(key.slice(key.indexOf(":") + 1), dir);   // a light turns as it is dragged
     ed.onPick = (key) => { fromView.current = true; cb.current.onSelect?.(key); };
     onNav(sim.nav);
     ed.onDragging = (on) => sim.hold(on);                         // a handle being dragged holds the camera still
@@ -301,7 +304,8 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
     const ed = edRef.current;
     if (ed && ed.selected !== selected) ed.select(selected);
   }, [selected, editables, model]);
-  useEffect(() => { simRef.current?.highlight(selected); }, [selected, model]);   // what is selected lights up
+  useEffect(() => { simRef.current?.highlight(selected); }, [selected, model]);
+  useEffect(() => { if (liveAim) simRef.current?.liveAim(liveAim.id, liveAim.dir); }, [liveAim]);   // what is selected lights up
   useEffect(() => { if (model) edRef.current?.setRoom(model.size); }, [model]);
   useEffect(() => {
     const it = (editables ?? []).find((x) => x.key === selected);

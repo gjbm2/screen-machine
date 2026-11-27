@@ -111,7 +111,10 @@ function aimZ(o: THREE.Object3D, dir: THREE.Vector3) {
 // ---- the parts' live objects -------------------------------------------------------------------------------------
 /** air: is there haze to show a beam in. room: where each part reports the lumens it sends into the room. */
 interface Ctx { ch: (f: Fixture, i: number) => number; t: number; dt: number; air: boolean; haze: HazeState; size: Vec3; room: RoomLight }
-interface Part { f: Fixture; update(c: Ctx): void; words?(c: Ctx): string }
+interface Part { f: Fixture; update(c: Ctx): void; words?(c: Ctx): string;
+  /** Point a fixed light another way while it is being aimed (a slider or a handle being dragged): drawn at once,
+   *  before the change is saved and the room is built again. */
+  aim?(dir: THREE.Vector3): void }
 
 /** Where a ray from inside the room meets a wall, the floor or the ceiling (room frame). */
 /** The bar's laser (two kinds: laser() below). lift: its tilt above the bar's front when the room model gives no aim.
@@ -352,6 +355,7 @@ export class RoomSim {
     for (const s of this.screens.values()) s.feed.close();
     this.screens.clear();
     this.parts = [];
+    this.housings.clear();
     this.root.remove(this.built);
     this.built.traverse((o) => {
       const any = o as any;
@@ -457,9 +461,10 @@ export class RoomSim {
       cyl(0.011, 0.02, dark, [pv.x, from + side * 0.01, 0], "y");     // the clamp knob on the bar
     };
     /** A housing that tilts about the bar's length at a pivot, pointing along ``dir`` (room frame). */
-    const tilting = (pv: THREE.Vector3, dir: THREE.Vector3) => {
+    const tilting = (pv: THREE.Vector3, dir: THREE.Vector3, id?: string) => {
       const t = new THREE.Group(); t.position.copy(pv);
       t.rotation.x = -Math.atan2(dir.dot(up), dir.dot(front));     // +z (forward) turned up to the light's elevation
+      if (id) this.housings.set(id, (d) => { t.rotation.x = -Math.atan2(d.dot(up), d.dot(front)); });
       unit.add(t); return t;
     };
     for (const f of placed) {
@@ -467,7 +472,7 @@ export class RoomSim {
       if (f.part === "par") {
         const dir = this.fixedDir(f, front, axis, pv.x < 0 ? -1 : 1, 0.45);
         yoke(pv, 0.085, -1);
-        const t = tilting(pv, dir);
+        const t = tilting(pv, dir, f.id);
         cyl(0.074, 0.075, darker, [0, 0, -0.005], "z", t, 32);
         cyl(0.06, 0.02, dark, [0, 0, -0.05], "z", t, 24);          // its back, with the fins
         const rim = new THREE.Mesh(new THREE.TorusGeometry(0.068, 0.006, 6, 32), dark); rim.position.z = 0.033; t.add(rim);
@@ -475,7 +480,7 @@ export class RoomSim {
       } else if (f.part === "derby") {
         const dir = this.fixedDir(f, front, axis, 0, 0.55);
         yoke(pv, 0.1, 1);
-        const t = tilting(pv, dir);
+        const t = tilting(pv, dir, f.id);
         cyl(0.05, 0.17, darker, [0, 0, 0], "x", t, 28);
         for (const x of [-0.06, -0.02, 0.02, 0.06]) {
           const rib = new THREE.Mesh(new THREE.TorusGeometry(0.051, 0.004, 6, 28), dark); rib.rotation.y = Math.PI / 2; rib.position.x = x; t.add(rib);
@@ -492,7 +497,7 @@ export class RoomSim {
       } else if (f.part === "laser" || f.part === "laser50" || f.part === "laser51") {
         const w = this.laserAxes(f, at, front, axis).w;
         yoke(pv, 0.104, 1);
-        const t = tilting(pv, w);
+        const t = tilting(pv, w, f.id);
         box(0.19, 0.088, 0.12, darker, [0, 0, 0], t);
         box(0.1, 0.05, 0.004, new THREE.MeshStandardMaterial({ color: 0x2a3140, roughness: 0.15, metalness: 0.6 }), [0, -0.008, 0.061], t);
         for (const x of [-0.02, 0.02]) {
@@ -547,8 +552,14 @@ export class RoomSim {
     this.built.add(light, light.target);
     const b = airCone(ang, 1); aimZ(b, dir); b.position.copy(at); this.built.add(b);
     const pool = this.pool(), cd = new THREE.Vector3(), lm = new THREE.Vector3();
+    const pivot = at.clone().addScaledVector(dir, -0.034);
     return {
       f,
+      aim: (d) => {
+        dir.copy(d).normalize(); at.copy(pivot).addScaledVector(dir, 0.034);
+        aimZ(l, dir); l.position.copy(at); aimZ(b, dir); b.position.copy(at);
+        light.position.copy(at); light.target.position.copy(at).add(dir);
+      },
       update: (c) => {
         parCd([0, 1, 2, 3, 4, 5].map((i) => c.ch(f, i)), cd).multiplyScalar(shutterGain(barStrobe(c.ch(f, 6)), c.t, hash(f.id.length)));
         setLight(light, cd); setFace(l, cd, area); setCone(b, cd);
@@ -578,8 +589,16 @@ export class RoomSim {
     });
     const cd = new THREE.Vector3(), lm = new THREE.Vector3(), hit = new THREE.Vector3(), n = new THREE.Vector3();
     let rot = 0;
+    const pivot = at.clone().addScaledVector(ax, -0.051);
     return {
       f,
+      aim: (d) => {
+        ax.copy(d).normalize(); at.copy(pivot).addScaledVector(ax, 0.051);
+        e2.crossVectors(ax, e1).normalize();
+        l.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(axis, new THREE.Vector3().crossVectors(ax, axis), ax));
+        l.position.copy(at);
+        for (const bm of beams) bm.m.position.copy(at);
+      },
       update: (c) => {
         const g = shutterGain(barStrobe(c.ch(f, 4)), c.t, hash(f.id.length + 3));
         const lv = [0, 1, 2, 3].map((i) => (c.ch(f, i) / 255) * g);
@@ -683,7 +702,7 @@ export class RoomSim {
     const dots = new THREE.Points(dg, new THREE.PointsMaterial({ size: LASER.dot_m, map: dotSprite(), vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, sizeAttenuation: true }));
     dots.frustumCulled = false;
     this.built.add(dots);
-    const { w, u0, v0 } = this.laserAxes(f, at, front, axis);
+    let { w, u0, v0 } = this.laserAxes(f, at, front, axis);
     const step0 = Math.sin(LASER.cover_deg * Math.PI / 360) / M;       // red's step per order, as a sine
     // No beam outside the maker's coverage (93 degrees: 46.5 off the laser's axis): the grid's corners are cut off,
     // so the burst is round. The room model aims the laser by this edge (space.yaml: no beam past 45 degrees forward).
@@ -701,6 +720,11 @@ export class RoomSim {
     let rot = 0;
     return {
       f,
+      aim: (d: THREE.Vector3) => {                   // tilted another way: its axes again
+        w = d.clone().normalize();
+        u0 = (Math.abs(w.dot(axis)) < 0.95 ? axis.clone() : front.clone()).addScaledVector(w, -w.dot(axis)).normalize();
+        v0 = new THREE.Vector3().crossVectors(w, u0).normalize();
+      },
       update: (c) => {
         const cols = laserColours(c.ch(f, 0), false);
         const st = c.ch(f, 1);
@@ -755,13 +779,18 @@ export class RoomSim {
     this.built.add(lines);
     const rays = airLines(slots * R, at), rg = rays.geometry;     // the swept beam in the air (beams.ts)
     this.built.add(rays);
-    const { w, u0, v0 } = this.laserAxes(f, at, front, axis);
+    let { w, u0, v0 } = this.laserAxes(f, at, front, axis);
     const span = Math.tan(LASER.span_deg * Math.PI / 360) * 0.55;
     const tints = names.map((nm) => perLumen(LASER_RGB[nm]));
     const dir = new THREE.Vector3(), prev = new THREE.Vector3(), lm = new THREE.Vector3();
     let morph = hash(f.address ?? 7) * 10;
     return {
       f,
+      aim: (d: THREE.Vector3) => {                   // tilted another way: its axes again
+        w = d.clone().normalize();
+        u0 = (Math.abs(w.dot(axis)) < 0.95 ? axis.clone() : front.clone()).addScaledVector(w, -w.dot(axis)).normalize();
+        v0 = new THREE.Vector3().crossVectors(w, u0).normalize();
+      },
       update: (c) => {
         const cols = laserColours(c.ch(f, 0), true);
         lines.visible = !!cols;
@@ -1291,6 +1320,19 @@ export class RoomSim {
   private vhl = new Map<number, number>();                    // the same for planned lights' virtual slots
   /** The preview's planned lights: each one's channels by its id (preview.py's frames' ``p``); null: none sent. */
   plannedDmx: Map<string, Uint8Array> | null = null;
+  // -- aiming as it is dragged (owner, 27 Nov: "scrubbing a tilt or whatever should update immediately not only on
+  // mouseup"): the light, its beam and its housing turn as the slider or handle moves; the room is built again with
+  // the saved aim once the change is kept
+  private housings = new Map<string, (d: THREE.Vector3) => void>();
+  liveAim(id: string, dir: Vec3 | null) {
+    const p = this.parts.find((x) => x.f.id === id);
+    const d = dir ? v3(dir) : p?.f.aimDir ? v3(p.f.aimDir) : null;     // null: back to how the room has it
+    if (!p || !d || d.lengthSq() < 1e-9) return;
+    d.normalize();
+    p.aim?.(d);
+    this.housings.get(id)?.(d);
+  }
+
   /** A light's channel as the wire (or the preview, or the selection lighting it up) has it. */
   private chRaw(f: Fixture, i: number, hl: Map<number, number>, vhl: Map<number, number>): number {
     if (f.planned) {                                                                 // planned: nothing on the wire

@@ -38,7 +38,7 @@ export interface Editable {
   tiltOnly?: boolean;       // a light in a one-axis bracket (a U-yoke): it only tilts, facing where its bar faces
 }
 export interface EditChange { at?: Vec3; facing_deg?: number; lean_deg?: number; turn_deg?: number; size?: Vec3; normal?: Vec3 }
-type Handle = "move" | "ring" | "lift" | "turn" | "tilt";
+type Handle = "move" | "base" | "ring" | "lift" | "turn" | "tilt";
 
 const CYAN = 0x35e0ff, AMBER = 0xffb020;
 const RING_R = 0.75, LIFT_H = 0.55;
@@ -114,6 +114,8 @@ export class RoomEditor {
   setSnap(on: boolean) { this.ctrl = on; }
   /** A Ctrl+drag let go: the page makes the copy (the original stays where it was). */
   onDuplicate: (key: string, at: Vec3) => void = () => {};
+  /** A light's aim as its handle is dragged (the page draws the light turning at once). */
+  onAimLive: (key: string, dir: Vec3) => void = () => {};
 
   /** The things that can be picked. The selected one is drawn again where the room now has it (not mid-drag). */
   setItems(items: Editable[]) {
@@ -204,6 +206,24 @@ export class RoomEditor {
       handle(grab, "lift");
     }
     if (it.kind === "bar") {
+      // its base on the floor (owner, 27 Nov: "why isn't there a control to move a gigbar (e.g. at its base) X / Y?"):
+      // a ring round the tripod's feet with four arrows; drag it to slide the bar across the floor
+      const B = new THREE.Vector3(it.at[0], it.at[1], 0.015);
+      const foot = new THREE.Mesh(new THREE.RingGeometry(0.42, 0.47, 48), mat(CYAN, 0.9));
+      foot.position.copy(B);
+      const pad = new THREE.Mesh(new THREE.CircleGeometry(0.47, 32), mat(CYAN, 0.12));
+      pad.position.copy(B);
+      this.ui.add(foot, pad);
+      for (let k = 0; k < 4; k++) {
+        const a = (k * Math.PI) / 2 + (it.yaw ?? 0);
+        const arrow = new THREE.Mesh(new THREE.ConeGeometry(0.06, 0.14, 12), mat(CYAN));
+        arrow.position.set(B.x + Math.cos(a) * 0.58, B.y + Math.sin(a) * 0.58, 0.02);
+        arrow.rotation.z = a - Math.PI / 2;                    // its tip outward, flat on the floor
+        this.ui.add(arrow);
+      }
+      const grabBase = new THREE.Mesh(new THREE.CylinderGeometry(0.66, 0.66, 0.06, 32), unseen());
+      grabBase.rotation.x = Math.PI / 2; grabBase.position.set(B.x, B.y, 0.03);
+      handle(grabBase, "base");
       // one ring round it, flat at its height, a knob at its front: turn it
       const ring = new THREE.Mesh(new THREE.TorusGeometry(RING_R, 0.01, 8, 96), mat(CYAN, 0.9));
       ring.position.set(it.at[0], it.at[1], it.at[2]);
@@ -393,7 +413,9 @@ export class RoomEditor {
     const r = this.roomRay(x, y);
     const p0 = new THREE.Vector3(...it.at);
     let ref: number | undefined;
-    if (h === "move" && this.dragPlane) {
+    if (h === "base") {
+      r.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), 0), p0);
+    } else if (h === "move" && this.dragPlane) {
       r.intersectPlane(new THREE.Plane().setFromNormalAndCoplanarPoint(this.dragPlane, new THREE.Vector3(...it.at)), p0);
     } else if (h === "move" || h === "ring") {
       r.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), -it.at[2]), p0);
@@ -461,7 +483,12 @@ export class RoomEditor {
       const p = new THREE.Vector3();
       return r.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), -z), p) ? p : null;
     };
-    if (d.handle === "move") {
+    if (d.handle === "base") {                          // across the floor, by its base
+      const p = floorAt(0);
+      if (!p) return;
+      it.at = [Math.max(0, Math.min(this.room[0], s.at[0] + p.x - d.p0.x)),
+               Math.max(0, Math.min(this.room[1], s.at[1] + p.y - d.p0.y)), s.at[2]];
+    } else if (d.handle === "move") {
       let p: THREE.Vector3 | null;
       if (this.dragPlane) {                               // an elevation: across the wall and up or down
         p = new THREE.Vector3();
@@ -511,6 +538,7 @@ export class RoomEditor {
       const lim = THREE.MathUtils.degToRad(89.5);              // never quite vertical: the direction would be lost
       it.dir = fromAngles(h, Math.max(-lim, Math.min(lim, e + a - d.ref)));
     }
+    if ((d.handle === "turn" || d.handle === "tilt") && it.dir) this.onAimLive(it.key, it.dir);   // the light turns with it
     this.build();
   }
 
@@ -537,7 +565,7 @@ export class RoomEditor {
       this.onDuplicate(it.key, at);
       return;
     }
-    if (d.handle === "move" || d.handle === "lift") {
+    if (d.handle === "move" || d.handle === "lift" || d.handle === "base") {
       this.onChange(it.key, it.kind === "region" ? { at: it.at.map(r2) as Vec3, size: it.size }
         : it.kind === "screen" ? { at: it.at.map(r2) as Vec3, normal: it.normal } : { at: it.at.map(r2) as Vec3 });
     } else if (d.handle === "ring") {
