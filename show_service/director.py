@@ -1029,6 +1029,10 @@ class Director:
         self._sec_mem: dict[str, dict] = {}              # letter -> {"palette", "variation", "look_id"} (this track)
         # moves (moves.py; owner, 26 Nov): a change of scene composed across the layers
         self.moves = movesmod.Moves()
+        # the line-up (light_scenes.pick_lineup; show.yaml lights.lineups): which light groups play, which rest
+        self._lineup: Optional[str] = None               # the one playing (its name)
+        self._lineup_next: Optional[tuple] = None        # ((look id, reason, by), name): drawn for a pending change
+        self._lineup_apply: Optional[str] = None         # set while that change's programs are picked
         self._move: Optional[dict] = None                # the pending look change's: {"key", "name", "why", "move"}
         self._move_apply: Optional[dict] = None          # set while that change's programs are picked
         self._sec_kind: Optional[str] = None             # the section playing, by a lyric plan (moves.SECTION_KINDS)
@@ -2002,12 +2006,16 @@ class Director:
             if mv["move"]["land"] is not None and by != "human":
                 ev["land"] = mv["move"]["land"]
         self._move_apply = mv
+        self._lineup_apply = self._lineup_for(look_id, reason, by, now_s)
         if grid.has_grid:
             ev["beat"] = round(grid.beat_at(at_s), 3)
             ev["bar"] = grid.bar_at(at_s + 1e-6)
             ev["phrase"] = math.floor(ev["bar"] / grid.pb)
+        if self._lineup_apply is not None:
+            ev["lineup"] = self._lineup_apply
         self._announce_programs(ev, now_s, reason, by, at_s, transition, section)   # docs/LIGHTS.md §7.3
         self._move_apply = None
+        self._lineup_apply = None
         self._ensemble_announce(ev, now_s, reason, by, at_s, grid)                  # docs/ENSEMBLE.md §5.2
         self._publish(contract.ROOM_EVENT, ev)
         self.events += 1
@@ -2021,6 +2029,8 @@ class Director:
         self._log_event("variation", {"why": why, "variation": self.variation})
 
     def _land(self, pd: dict, now_s: float, vs: dict, grid: Grid) -> None:
+        if self._lineup_next is not None and self._lineup_next[0][0] == f"L{self.look_n + 1}":
+            self._lineup = self._lineup_next[1] or self._lineup     # the change's line-up plays from here
         self.pending = None
         self.next_pending = False
         self.look_n += 1
@@ -2971,6 +2981,7 @@ class Director:
                                                  # lands IN the song, whatever the moment is while it is announced
                                                  # (trace, 27 Nov: a new song's lasers kept the lead-in's scene)
                                                  moment="song" if reason in STRUCTURE_REASONS else self._moment,
+                                                 rest=self._rests(gid),
                                                  accent_fit=self._accent_fit())
             except Exception:                             # a broken catalogue never fails the tick
                 log.exception("light scenes: pick failed")
@@ -3104,6 +3115,48 @@ class Director:
             self._fx_log.append({"group": gid, **run})
             self._lp_rev += 1
             self._log_event("light_effect", {"group": gid, "run": dict(run), "trigger": "transition", "bar": None})
+
+    # -- line-ups: which parts play (owner, 27 Nov; docs/GIGBAR_RIG.md §1.4) ----------------------------------------
+    def _drive(self) -> float:
+        """The music's drive for a line-up, 0..1: its directed energy and its groove (read between the accent_groove
+        marks) in equal parts. A karaoke song's energy is its own range; the groove tells one song from another."""
+        d = self.direction or {}
+        e = _c01(_num(d.get("energy"), 0.5) or 0.5)
+        g0, g1 = self.lights_cfg["programs"].get("accent_groove") or (0.0, 1.0)
+        return 0.5 * e + 0.5 * _c01((self._groove - g0) / (g1 - g0))
+
+    def _lineup_for(self, look_id: str, reason: str, by: str, now_s: float) -> Optional[str]:
+        """The line-up a look change brings (light_scenes.pick_lineup), drawn once per change: by the section it goes
+        into (a lyric plan's kind) and the music's drive, never the one playing while another fits. A change that
+        isn't the music's own or a person's Next (a moment, the room) keeps the one playing."""
+        lus = self.lights_cfg.get("lineups") or {}
+        if not lus:
+            return None
+        key = (look_id, reason, by)
+        if self._lineup_next is not None and self._lineup_next[0] == key:
+            return self._lineup_next[1]
+        if reason not in STRUCTURE_REASONS and reason not in ("dwell", "next", "feel"):
+            return self._lineup
+        into = self._sec_kinds[1] if reason in ("section", "repeat") else None
+        try:
+            name = lscenes.pick_lineup(lus, into, self._drive(), self._fx_rng, avoid=self._lineup)
+        except Exception:                                 # a broken catalogue never fails the tick
+            log.exception("line-ups: pick failed")
+            name = None
+        self._lineup_next = (key, name)
+        if name is not None:
+            self._log_event("lineup", {"lineup": name, "plays": list(lus[name]["plays"]), "into": into,
+                                       "drive": round(self._drive(), 3), "reason": reason})
+        return name
+
+    def _rests(self, gid: str) -> Optional[bool]:
+        """Whether a light group rests under the line-up being applied (or playing): True / False for a group some
+        line-up names, None for one no line-up governs (it always plays)."""
+        lus = self.lights_cfg.get("lineups") or {}
+        name = self._lineup_apply if self._lineup_apply is not None else self._lineup
+        if not lus or name not in lus or not any(gid in e["plays"] for e in lus.values()):
+            return None
+        return gid not in lus[name]["plays"]
 
     def _move_for(self, look_id: str, reason: str, by: str, now_s: float, at_s: float) -> Optional[dict]:
         """The move for a look change (moves.Moves.pick), drawn once per change (a re-announced one keeps it): by the
@@ -3405,6 +3458,8 @@ class Director:
         no_strobe = sorted(strobes) if strobes and not self._strobe_ok(now_s, at_s) else []
         for gid, g in self._groups.items():
             if g.get("follows") or not self._group_live(gid):
+                continue
+            if self._rests(gid) and trigger not in GAP_FREE_TRIGGERS:   # a resting part wakes only for a big moment
                 continue
             runs = self._fx.setdefault(gid, [])
             active = [r for r in runs if r["until_ms"] is None or r["until_ms"] > now_ms]
@@ -5972,6 +6027,8 @@ class Director:
             "picture": self._picture_view(),                    # what the screens show, for the lights (picture.py)
             "moment": {"now": self._moment, "for_s": round(now_s - self._moment_since, 1)},   # contract.MOMENTS
             "groove": round(self._groove, 3),                   # what the lights' draw reads (accent_fit)
+            "lineup": {"now": self._lineup, "plays": list(((self.lights_cfg.get("lineups") or {}).get(self._lineup)
+                                                          or {}).get("plays") or [])},
             "move": {"last": {k: self._move[k] for k in ("name", "why")} if self._move else None,
                      "catalogue": self.moves.view()},           # moves.py: the changes, composed across the layers
             "ensemble": self.ensemble.view(now_s) if self.ensemble is not None else None,   # docs/ENSEMBLE.md §5.6

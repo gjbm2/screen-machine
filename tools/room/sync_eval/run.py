@@ -108,7 +108,7 @@ def read(t0: float, t1: float) -> dict:
         if t0 <= ts <= t1 and e.get("phase") in ("started", "done"):
             scr.setdefault(e.get("cue_id"), {"transition": e.get("transition"), "scene": e.get("scene"),
                                              "reason": e.get("reason")})[e["phase"]] = ts
-    moves, lines, parts = [], [], []
+    moves, lines, parts, lineups = [], [], [], []
     logs = [p for p in (HOME + "/show/director.jsonl.1", HOME + "/show/director.jsonl") if os.path.exists(p)]
     for ln in (x for p in logs for x in open(p, errors="ignore")):   # (the log rotates: the last one too)
         try:
@@ -118,7 +118,10 @@ def read(t0: float, t1: float) -> dict:
         if not t0 <= e.get("t", 0) <= t1:
             continue
         k = e.get("kind")
-        if k == "move":
+        if k == "lineup":
+            lineups.append({"t": e["t"], "lineup": e["lineup"], "plays": e.get("plays"), "into": e.get("into"),
+                            "drive": e.get("drive")})
+        elif k == "move":
             moves.append({"t": e["t"], "move": e["move"], "from": e.get("from"), "into": e.get("into"),
                           "size": e.get("size")})
         elif k == "light_program":
@@ -127,7 +130,8 @@ def read(t0: float, t1: float) -> dict:
                           "why": next(iter(e["groups"].values())).get("why", "").split(":")[0]})
         elif k == "light_effect" and e.get("trigger") == "transition":
             parts.append({"t": e["t"], "group": e.get("group"), "name": e["run"]["name"]})
-    return {"screen": [v for v in scr.values() if "started" in v], "moves": moves, "lines": lines, "parts": parts}
+    return {"screen": [v for v in scr.values() if "started" in v], "moves": moves, "lines": lines, "parts": parts,
+            "lineups": lineups}
 
 
 def score(d: dict) -> dict:
@@ -181,7 +185,10 @@ def main() -> None:
         ln = min((x for x in d["lines"] if x["t"] >= m["t"]), key=lambda x: x["t"], default=None)
         sc = min((x for x in d["screen"] if "done" in x), key=lambda x: abs(x["done"] - (ln or m)["t"]), default=None)
         ps = sorted({p["name"] for p in d["parts"] if abs(p["t"] - m["t"]) < 0.5})
-        print(f"  {m['t'] - t0:5.1f}s  {m['move']:14} {m.get('from')} -> {m.get('into')}")
+        lu = min((x for x in d["lineups"] if abs(x["t"] - m["t"]) < 1.0), key=lambda x: abs(x["t"] - m["t"]), default=None)
+        print(f"  {m['t'] - t0:5.1f}s  {m['move']:14} {m.get('from')} -> {m.get('into')}"
+              + (f"   line-up: {lu['lineup']} ({len(lu['plays'])} parts: {', '.join(lu['plays'])}; drive {lu['drive']})"
+                 if lu else ""))
         if ln is not None:
             print(f"          lights: {ln['groups']}")
             print(f"          parts: {ps}; screen via {sc['transition'] if sc else None}, finished "

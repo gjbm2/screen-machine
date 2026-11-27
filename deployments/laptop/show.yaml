@@ -20,3 +20,32 @@ lights:
     derbies: {label: Derbies, select: "tag:derby", dark_level: floor, scenes_for: [derby]}
     flashes: {label: Strobe zones, select: "tag:strobe", dark_level: 0, scenes_for: [flash],
               repeat_weight: 1.0}             # they may keep their scene across a change (resting stays resting)
+  # Line-ups: which parts of the bars play (owner, 27 Nov; docs/GIGBAR_RIG.md §1.4: the unit's own shows are line-ups
+  # of its parts, and footage of it lights two or three against a dark room). At each change of scene the art
+  # director draws one: the groups it names play, the others rest (their scenes tagged rest: dark, or a low glow).
+  #   into   the kind of section it is for (a karaoke song's lyrics name them): verse | chorus | final_chorus |
+  #          instrumental | outro | any
+  #   drive  the band of the music's drive it is for (0..1: its energy and groove together)
+  # A verse is two parts, a chorus three or four, the last chorus everything, a break the laser and the heads.
+  # Starting points, chosen by reasoning, never seen on the lights.
+  lineups:
+    spots-alone:        {label: The two pairs of heads alone, plays: [movers], into: [verse, outro, any], drive: [0.0, 0.45]}
+    pars-alone:         {label: The pars alone, plays: [lamps], into: [verse, outro, any], drive: [0.0, 0.4]}
+    pars-and-spots:     {label: Pars and heads, plays: [lamps, movers], into: [verse, any], drive: [0.2, 0.75], weight: 1.5}
+    pars-and-derbies:   {label: Pars and derbies, plays: [lamps, derbies], into: [verse, any], drive: [0.3, 0.8]}
+    derbies-and-spots:  {label: Derbies and heads, plays: [derbies, movers], into: [verse, chorus, any], drive: [0.4, 0.9]}
+    spots-and-laser:    {label: Heads and the laser, plays: [movers, lasers], into: [instrumental, any], drive: [0.2, 0.8],
+                         weight: 0.7}
+    derbies-and-laser:  {label: Derbies and the laser, plays: [derbies, lasers], into: [instrumental], drive: [0.3, 0.9]}
+    pars-spots-derbies: {label: "Pars, heads and derbies", plays: [lamps, movers, derbies], into: [chorus, any],
+                         drive: [0.5, 1.0], weight: 1.5}
+    pars-derbies-flash: {label: Pars and derbies with the strobes, plays: [lamps, derbies, flashes], into: [chorus, any],
+                         drive: [0.6, 1.0]}
+    pars-spots-flash:   {label: Pars and heads with the strobes, plays: [lamps, movers, flashes], into: [chorus, any],
+                         drive: [0.6, 1.0]}
+    spots-derbies-laser: {label: Heads and derbies with the laser, plays: [movers, derbies, lasers], into: [chorus],
+                          drive: [0.55, 1.0], weight: 0.7}
+    everything:         {label: Everything, plays: [lamps, movers, derbies, flashes, lasers], into: [final_chorus],
+                         drive: [0.0, 1.0], weight: 3.0}
+    everything-but-laser: {label: Everything but the laser, plays: [lamps, movers, derbies, flashes], into: [chorus, any],
+                           drive: [0.8, 1.0], weight: 0.6}

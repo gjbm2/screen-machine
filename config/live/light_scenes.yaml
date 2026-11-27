@@ -576,8 +576,8 @@ scenes:
     hits: {styles: [], drop: {depth: 1.0, decay_ms: 500}}
     # every energy: whether the zones rest or flash is the feel's accents and the song's groove (accent_fit), not how
     # loud the song is against itself
-    tags: {parts: [flash], energy: [0.0, 1.0], moods: [calm, mellow, dreamy, elegant, warm, dark],
-           genre_fit: {"*": 0.6}, valence: 0.5, organic: 0.6, density: 0.1}
+    tags: {parts: [flash], rest: true, energy: [0.0, 1.0], genre_fit: {"*": 0.6}, valence: 0.5, organic: 0.6,
+           density: 0.1}
   flash-waits:
     label: The strobe zones stay dark while the room waits
     layers:
@@ -603,8 +603,8 @@ scenes:
     label: The laser rests
     layers:
       - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
-    tags: {parts: [laser], shows_beat: false, energy: [0.0, 1.0], moods: [calm, mellow, elegant, warm, dreamy],
-           genre_fit: {"*": 0.6}, valence: 0.5, organic: 0.7, density: 0.1, weight: 2.5}
+    tags: {parts: [laser], rest: true, shows_beat: false, energy: [0.0, 1.0], genre_fit: {"*": 0.6}, valence: 0.5,
+           organic: 0.7, density: 0.1}
   laser-figure-still:
     label: The figure hangs still, in the look's colour
     layers:
@@ -685,6 +685,29 @@ scenes:
       - {id: glow, fx: sine, phase: bar, period_bars: [8, 4], depth: 0.35, needs: none}
     tags: {parts: [derby], moments: [waiting, lull, lead_in], energy: [0.0, 1.0], genre_fit: {"*": 0.5},
            valence: 0.5, organic: 0.5, density: 0.1}
+
+  # -- Resting (tags.rest: true). A line-up (show.yaml lights.lineups) names the light groups that PLAY; every other
+  # group it governs draws only from these. The footage of the unit lights two or three parts against a dark room,
+  # and its own shows are line-ups of its parts (docs/GIGBAR_RIG.md §1.4): a part that rests is what makes the others
+  # read, and gives the song somewhere to go.
+  rest-dark:
+    label: Resting, dark
+    layers:
+      - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
+    tags: {rest: true, energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5, density: 0.0}
+  rest-glow:
+    label: Resting, a low glow in the look's colour
+    layers:
+      - {id: low, fx: dim, phase: time, period_s: 1, depth: 0.82, needs: none}
+    tags: {rest: true, energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5, density: 0.0,
+           weight: 0.6}
+  derby-resting:
+    label: The derbies rest, dark and still
+    layers:
+      - {id: motor, kind: macro, set: {Rotation: 0}}
+      - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
+    tags: {parts: [derby], rest: true, energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5,
+           density: 0.0}
 
   # -- The room's moments (contract.MOMENTS; owner, 26 Nov: the silent state and the changeover are "all scenes, but
   # expressed on the gigbar objects"). tags.moments: [song | lead_in | waiting | lull] says when a scene is for: in

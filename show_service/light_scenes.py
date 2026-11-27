@@ -126,7 +126,7 @@ GROUP_KEYS = frozenset({"label", "select", "follows", "dark_level", "appliances"
 DARK_FLOOR = "floor"                             # dark_level: the look's floor
 #: show.yaml ``lights`` keys: the catalogue builder's, and the other builders' (read where they are used)
 LIGHTS_KEYS = frozenset({"scene_group", "groups", "programs", "flow", "motion", "jog", "calibration", "appliances",
-                         "atmosphere", "moments"})   # atmosphere, moments: the director's
+                         "atmosphere", "moments", "lineups"})   # atmosphere, moments: the director's
 #: lights.programs' starting points (docs/LIGHTS.md §12; the file's values win)
 PROGRAMS_FALLBACK = {"effects_max": 2, "effect_gap_bars": 4.0}
 #: lights.programs.accent_fit (optional): {accent style: {beat: x, other: y}}: a scene's weight x ``beat`` when it
@@ -166,6 +166,84 @@ def drives(entry: Mapping[str, Any]) -> list[str]:
     if entry.get("hits") is not None and "intensity" not in out:
         out.append("intensity")
     return out
+
+
+#: Line-ups (owner, 27 Nov; docs/GIGBAR_RIG.md §1.4: the unit's own shows are line-ups of its parts, and the footage
+#: lights two or three of them against a dark room). show.yaml ``lights.lineups``: {name: {label, plays: [light
+#: groups], into: [a section kind | any], drive: [lo, hi], weight}}. At each change the director draws one: the groups
+#: it names PLAY (their ordinary scenes), every other group a line-up governs RESTS (its scenes tagged ``rest``). A
+#: group no line-up names is not governed: it always plays. ``into``: as a move's; ``drive``: the band of the music's
+#: drive (its energy and groove together, 0..1) the line-up is for.
+LINEUP_KEYS = frozenset({"label", "plays", "into", "drive", "weight"})
+LINEUP_INTO: tuple[str, ...] = ("verse", "chorus", "final_chorus", "instrumental", "outro", "any")
+LINEUP_OFF_DRIVE = 0.1                           # a line-up's weight outside its drive band
+
+
+def parse_lineups(raw: Any, groups: set, probs: list[str]) -> dict[str, dict]:
+    out: dict[str, dict] = {}
+    if raw is None:
+        return out
+    if not isinstance(raw, Mapping):
+        probs.append("lights.lineups: not a mapping: none")
+        return out
+    for name, e in raw.items():
+        w = f"lights.lineups.{name}"
+        if not isinstance(e, Mapping):
+            probs.append(f"{w}: not a mapping: left out")
+            continue
+        for k in e:
+            if k not in LINEUP_KEYS:
+                probs.append(f"{w}.{k}: not a line-up key ({', '.join(sorted(LINEUP_KEYS))}): ignored")
+        plays = e.get("plays")
+        if not isinstance(plays, list) or not plays or not all(isinstance(x, str) for x in plays):
+            probs.append(f"{w}.plays: needs a list of light groups: left out")
+            continue
+        bad = [x for x in plays if x not in groups]
+        if bad:
+            probs.append(f"{w}.plays: {', '.join(bad)} isn't a light group here: ignored")
+        plays = [x for x in plays if x in groups]
+        if not plays:
+            continue
+        into = e.get("into", ["any"])
+        into = [into] if isinstance(into, str) else into
+        if not isinstance(into, list) or not all(x in LINEUP_INTO for x in into):
+            probs.append(f"{w}.into: {into!r} isn't of {', '.join(LINEUP_INTO)}: any")
+            into = ["any"]
+        dr = e.get("drive", [0.0, 1.0])
+        if not (isinstance(dr, list) and len(dr) == 2 and all(_num(x) is not None and 0.0 <= x <= 1.0 for x in dr)
+                and dr[0] <= dr[1]):
+            probs.append(f"{w}.drive: {dr!r} isn't [lo, hi] in 0..1: [0, 1]")
+            dr = [0.0, 1.0]
+        wt = _num(e.get("weight", 1.0))
+        out[str(name)] = {"label": str(e.get("label") or name), "plays": plays, "into": list(into),
+                          "drive": [float(dr[0]), float(dr[1])], "weight": wt if wt is not None and wt >= 0 else 1.0}
+    return out
+
+
+def pick_lineup(lineups: Mapping[str, Mapping[str, Any]], into: Optional[str], drive: float, rng: Any,
+                avoid: Optional[str] = None) -> Optional[str]:
+    """A line-up for a section of kind ``into`` (None: unknown) at the music's ``drive``: a weighted draw over the
+    ones whose ``into`` names that section (with none, or no known section, the ``any`` ones), x LINEUP_OFF_DRIVE
+    outside their drive band; never ``avoid`` (the one playing) while another fits. None with none."""
+    named = [n for n, e in lineups.items() if into is not None and into in e["into"]]
+    pool = named or [n for n, e in lineups.items() if "any" in e["into"]]    # the section's own, when it has any
+    ws: dict[str, float] = {}
+    for name in pool:
+        e = lineups[name]
+        lo, hi = e["drive"]
+        f = float(e["weight"]) * (1.0 if lo <= drive <= hi else LINEUP_OFF_DRIVE)
+        if f > 0:
+            ws[name] = f
+    if avoid in ws and len(ws) > 1:
+        del ws[avoid]
+    if not ws:
+        return None
+    x = rng.random() * sum(ws.values())
+    for name, f in ws.items():
+        x -= f
+        if x <= 0:
+            return name
+    return name
 
 
 def on_beat(entry: Mapping[str, Any]) -> bool:
@@ -809,7 +887,8 @@ class Catalogue:
         w = self._tag_weight(entry.get("tags") or {}, direction, transition=transition)
         return max(1e-6, w * self.cap_fit(entry, group) * self.flow_fit(entry, flow))
 
-    def pool_for(self, group: Mapping[str, Any], tags: Any = None, moment: Optional[str] = None) -> list[str]:
+    def pool_for(self, group: Mapping[str, Any], tags: Any = None, moment: Optional[str] = None,
+                 rest: Optional[bool] = None) -> list[str]:
         """The scenes a group may show: those that fit it, and of those the ones tagged with any of ``tags`` (a mode's
         light scene tags), unless none of them is (then every one that fits: the mode didn't mean this group).
         ``moment`` (contract.MOMENTS): then only the scenes whose ``tags.moments`` names it; when none does, or with no
@@ -821,6 +900,10 @@ class Catalogue:
         parts = set(group.get("scenes_for") or ())
         mine = [n for n in names if parts & set(self.parts_of(n))] if parts else []
         names = mine or [n for n in names if not self.parts_of(n)] or names
+        if not (moment and moment != "song"):            # a line-up: this group rests (its scenes tagged rest), or
+            keep = [n for n in names                     # it plays (every other scene); no line-up: it plays
+                    if bool((self.scenes[n].get("tags") or {}).get("rest")) == bool(rest)]
+            names = keep or names
         want = set(group.get("scenes_drive") or ())      # show.yaml lights.groups.<g>.scenes_drive: only scenes that
         if want:                                         # work one of these (movers: scenes that aim them)
             only = [n for n in names if want & set(self.scenes[n].get("drives") or ())]
@@ -861,7 +944,8 @@ class Catalogue:
                  prefer: Optional[Mapping[str, float]] = None,
                  prefer_why: Optional[Mapping[str, str]] = None,
                  moment: Optional[str] = None,
-                 accent_fit: Optional[Mapping[str, float]] = None) -> Optional[tuple[str, str, dict[str, float]]]:
+                 accent_fit: Optional[Mapping[str, float]] = None,
+                 rest: Optional[bool] = None) -> Optional[tuple[str, str, dict[str, float]]]:
         """A group's scene: a weighted draw over its pool (``pool_for``: the scenes that fit it, within the mode's
         ``tags``), never ``avoid`` (the one it shows) while another is there, unless the group's ``repeat_weight``
         (show.yaml; e.g. appliances that may rest twice running) lets it stay at that share of its weight
@@ -869,7 +953,7 @@ class Catalogue:
         song's treatment, README S5.33; a name outside the pool does nothing); ``prefer_why``: {name: words} put before
         the pick's why (without it a preferred pick reads "the plan's pick"). (name, why, {name: weight}), or None
         when none fits."""
-        names = self.pool_for(group, tags, moment)
+        names = self.pool_for(group, tags, moment, rest)
         if not names:
             return None
         rw = float(group.get("repeat_weight") or 0.0) if not hard_avoid else 0.0
@@ -1047,6 +1131,8 @@ def parse_lights(raw: Any, probs: list[str]) -> dict:
                            "dark_level": float(dl) if dl != DARK_FLOOR else DARK_FLOOR,
                            "appliances": [x for x in ap if x in out["appliances"]], "repeat_weight": float(rw),
                            "scenes_drive": list(sd), "scenes_for": list(sf)}
+    if raw.get("lineups") is not None:
+        out["lineups"] = parse_lineups(raw.get("lineups"), set(groups), probs)
     for gid, g in groups.items():                    # follows: another group, and no loop
         fo, seen = g["follows"], {gid}
         while fo is not None:
