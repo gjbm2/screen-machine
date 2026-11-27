@@ -51,8 +51,8 @@ DEFAULT_WEIGHTS = {
     "weights": {"beat": 1.0, "contour": 1.0, "sections": 1.0, "form": 1.0, "contrast": 1.0, "proportion": 1.0,
                 "arc": 1.0, "peak": 0.5, "release": 1.0, "ending": 0.5},
     "set_weights": {"character": 0.15},
-    "gates": {"palette": 0.5, "kit": 0.75, "flourish": 0.75, "stillness": 0.5},
-    "design": dict(design_mod.DEFAULTS),
+    "gates": {"palette": 0.5, "kit": 0.75, "flourish": 0.75, "stillness": 0.75},
+    "design": {**design_mod.DEFAULTS, "still_by_liveliness": [0.85, 0.65, 0.45, 0.25, 0.1]},
     "form": {},
     "controls": {"margin": 0.05, "p": 0.05},
     "tol_beat_s": 0.07, "smooth_s": 2.0, "snap_smooth_s": 0.5, "max_lag_s": 5.0, "snap_scale_s": 2.0, "snap_min_corr": 0.2,
@@ -253,6 +253,13 @@ def score(tl: dict, ref: dict, W: Optional[dict] = None) -> dict:
     m.update(design_mod.design(tl, W=W))
     m.update(form_mod.measure(tl, ref, W))
     m["key_agree"] = (ref.get("sim") or {}).get("agree")
+    # how still the heads should be depends on the song (keys.yaml's liveliness): a hushed one nearly always, a
+    # club track hardly; design.py's one bar for every song called a ballad and an anthem alike
+    lv = (ref.get("character") or {}).get("liveliness")
+    bars = (W.get("design") or {}).get("still_by_liveliness")
+    if lv is not None and bars and m.get("still_share") is not None:
+        bar = float(bars[max(0, min(len(bars) - 1, int(round(float(lv)))))])
+        m["stillness"] = round(min(1.0, m["still_share"] / bar), 3) if bar > 0 else 1.0
     # overall: the goals, held to the limits
     ws = W["weights"]
     parts = [(float(ws[k]), m[k]) for k in ws if m.get(k) is not None and float(ws[k]) > 0.0]

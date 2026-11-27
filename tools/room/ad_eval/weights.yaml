@@ -9,7 +9,7 @@ weights: {beat: 1.0, contour: 1.0, sections: 1.0, form: 1.0, contrast: 1.0, prop
 set_weights: {character: 0.15}
 # gate: restraint is a limit, not a goal. Each of these at or over its bar counts 1 (more restraint earns nothing:
 # one static look kept every limit); under it, in proportion. The gate is their mean.
-gates: {palette: 0.5, kit: 0.75, flourish: 0.75, stillness: 0.5}
+gates: {palette: 0.5, kit: 0.75, flourish: 0.75, stillness: 0.75}
 tol_beat_s: 0.07            # a pulse within this of a reference beat is on the beat
 smooth_s: 2.0               # contour: both curves smoothed over this
 snap_smooth_s: 0.5          # snap (reported only): both curves smoothed over this before the cross-correlation
@@ -25,6 +25,9 @@ design:
   kit_size: 3               # kit: a group of lights showing this many different scenes in a song, or fewer, scores 1
   flourish_budget: 3        # flourish: this many light changes with a gesture in a song, or fewer, scores 1
   still_share: 0.6          # stillness: the heads holding still or drifting for this share of the song scores 1
+  # ... for a song keys.yaml has no word on. For one it has, by its liveliness 0..4 (a hushed song's heads hold still
+  # nearly always; a club track's hardly): the share of the song that scores 1
+  still_by_liveliness: [0.85, 0.65, 0.45, 0.25, 0.1]
 # form.py: what the lights showed in each section, against the song's shape.
 form:
   settle: 0.4               # a section's look is read after this share of it has passed
@@ -40,7 +43,8 @@ form:
   # a difference this big in a descriptor is a full-size one (level 0..1, shares 0..1, deg/s, level/s, colour 0..1, deg)
   scales: {level: 0.5, lit: 1.0, heads: 1.0, move: 60.0, flicker: 2.0, strobe: 1.0, r: 1.0, g: 1.0, b: 1.0,
            variety: 0.5, tilt: 60.0, spread: 60.0, gobo: 1.0}
-  size: {level: 1.0, lit: 1.0, move: 60.0, flicker: 2.0}      # what makes a look big, each as a share of this
+  # what makes a look big, each as a share of this (level_env: how bright the lamps get, their highest level in 0.6 s)
+  size: {level_env: 1.0, lit: 1.0, move: 60.0, flicker: 2.0}
 # controls.py: the score is trusted only while the real show beats every deliberately wrong show.
 controls:
   margin: 0.05              # ... by this much in overall, on average over the songs

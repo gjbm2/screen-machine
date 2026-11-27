@@ -63,6 +63,14 @@ tasks:
       - {provider: openai, model: gpt-6-luna, options: {reasoning_effort: none}}   # the OpenAI fallback (see prompt)
     timeout_s: 10                          # then the director's own plan stays for the song
     max_output_tokens: 400
+  brief:                                    # a karaoke song's brief (show_service/brief.py; owner, 27 Nov): its
+    models:                                 # lyrics with their times, its loudness and tempo -> the idiom, palette
+      - provider: gemini                    # and section map the art director then performs. Once a song, before it
+        model: gemini-3.8-flash             # plays, kept beside it: so the better model, with some thinking.
+        options: {reasoning_effort: low, max_completion_tokens: 6000}
+      - {provider: openai, model: gpt-6-luna, options: {reasoning_effort: low}}
+    timeout_s: 60                           # then the local brief (the lyric sections, the idiom by the sound) stays
+    max_output_tokens: 6000
   describe:                                 # Describe it (§7.4): the guest's words -> the card's own settings
     models:
       - {provider: openai, model: gpt-6-luna, options: {reasoning_effort: none}}   # was gpt-4.1-mini (shuts down
@@ -137,6 +145,7 @@ budgets:
   listen: 15.00                             # starting point, the owner's call. At one call every 20 s for 4 h the
                                             # estimate is about $3 on Gemini 3.8 Flash and about $10 on gpt-audio-1.5
                                             # (GET /api/v1/listening "estimate" shows the live figure)
+  brief: 3.00                               # about 3,000 tokens in and 1,500 out a song, once per song
   treatment: 1.00                           # README S5.33: ~$0.0007 a song (2,000 in, 300 out on Flash-Lite), so a
                                             # long evening is cents; reaching it, the director's own plans carry on
   tag: 3.00                                 # art tags: $0.00125 a picture (measured 27 Oct), so the ~2,000-picture

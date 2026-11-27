@@ -195,6 +195,8 @@ from . import light_scenes as lscenes
 from . import roomlight
 from . import palette as pal
 from . import treatment as treatmod
+from . import idiom as idiommod
+from . import phrasing
 from .structure import STRUCTURE_FALLBACK, piano_rest, practice_of
 from .vibes import Vibes
 
@@ -258,6 +260,7 @@ ROOM_LIGHT_SCENES = "light_scenes"
 #: a look's transition style -> the light transition kinds it may pick among (docs/LIGHTS.md §7.3); a song change's
 #: style (contract.TRANSITION_STYLES) maps the same way, fade-dark to fade_dark
 LIGHT_KINDS_FOR = {"cut": ("cut", "dark_move"), "crossfade": ("crossfade", "sweep"), "fade-dark": ("fade_dark",)}
+LIFT_KINDS = ("dark_move", "cut")   # into a lift: the heads placed in the dark and lit on the line, else a cut
 BAND_BASE_TERMS = ("genre", "rate", "clarity", "moods")   # director.bands.base.weights' keys (README S5.21)
 GENRE_MIN_CONF = 0.4                # the local ML's genre word counts at this confidence (director.genre_min_conf;
                                     # structure's style rule: a leader's share, 0.5-0.95 on clear tracks, ~0.3 mixed)
@@ -445,6 +448,12 @@ DIRECTOR_FALLBACK = {
     # through): after one, the next flourish_gap section changes go across plainly, and a karaoke song has at most
     # flourish_per_song of them, the last kept for its big moment (a big move is never held back). Starting points.
     "design": {"song_palette": True, "flourish_per_song": 3.0, "flourish_gap": 2.0},
+    # a karaoke song's brief (brief.py): on = the director is held to its idiom, palette and section map; wind_bars /
+    # settle_bars: how long before a lift the lights pull in, and how long a landing takes to settle (phrasing.py);
+    # lift_min: a section this much bigger than the one before is a lift
+    # heard_min: with no brief (music nobody laid out ahead), a section predicted while the music builds is a lift
+    # once structure's build_progress has reached this
+    "brief": {"enabled": True, "wind_bars": 2.0, "settle_bars": 1.0, "lift_min": 0.12, "heard_min": 0.3},
     # song ends (README S5.17)
     "track_transitions": TRACK_TRANSITIONS,
     # composition and balance (README S5.18; compose.py): observe | drive, the loudness, range, headroom and limits
@@ -458,11 +467,15 @@ STAGE4_KEYS: dict[str, dict[str, Any]] = {
     "breakdown": {"floor_add": (0.0, 1.0), "motion_scale": (0.0, 1.0), "saturation_scale": (0.0, 1.0)},
     "screens": {"send_palette": bool, "palette_transition_s": (0.0, 60.0), "hold_hand_picks": bool,
                 "own_echo_s": (0.0, 60.0)},
-    "design": {"song_palette": bool, "flourish_per_song": (0.0, 50.0), "flourish_gap": (0.0, 16.0)}}
+    "design": {"song_palette": bool, "flourish_per_song": (0.0, 50.0), "flourish_gap": (0.0, 16.0)},
+    "brief": {"enabled": bool, "wind_bars": (0.0, 16.0), "settle_bars": (0.0, 8.0), "lift_min": (0.0, 1.0),
+              "heard_min": (0.0, 1.0)}}
 
 
 #: The look changes whose moves the design's flourish pacing governs (a new song, a drop and a person's Next are
 #: their own occasions)
+#: A scene outside the song's idiom: its weight x this (never drawn while one inside it fits the group).
+IDIOM_OUT = 1e-9
 FLOURISH_REASONS = ("section", "repeat", "dwell")
 
 
@@ -982,6 +995,15 @@ class Director:
         self._song_first_look = False                    # a new song's first look hasn't landed yet
         self._song_pal_locked = False                    # design.song_palette: this song has its palette
         self._fl_n, self._fl_since = 0, 99               # design: flourishes this song, changes since the last one
+        self._idioms: dict = idiommod.load()             # config/live/idioms.yaml (read again at each new song)
+        self._idiom_out: dict[str, frozenset] = {}       # idiom -> the scenes outside it
+        self._scene_traits: dict[str, dict] = {}         # scene -> idiom.traits (read again at each new song)
+        self._sec_brief: Optional[dict] = None           # the brief's word on the section being landed
+        self._sec_size: Optional[float] = None           # ... and the size of the one before it
+        self._arrival: Optional[dict] = None             # the lift being wound up to or settled from (phrasing.py)
+        self._brief_said: Optional[str] = None
+        self._bpal: tuple[Optional[str], Optional[str]] = (None, None)   # (song, the brief palette settled for it)
+        self._prev_song_pal: Optional[str] = None        # the palette the song before this one played in
         self._emphasis = 0
         self._band: Optional[int] = None
         self._split_hi = False
@@ -2125,6 +2147,10 @@ class Director:
         self.look_bar = grid.bar_at(now_s + 1e-6) if grid.ok else None
         self._var_mark_bar, self._var_mark_s = self.look_bar, now_s
         rec = pd.get("recall")
+        bf = self._brief()
+        bpal = self._brief_palette(bf, vs) if bf is not None else None
+        if bpal is not None and pd["by"] == "director" and self.palette_pick == contract.PALETTE_AUTO:
+            pd["palette"] = bpal                          # the song's one palette is its brief's
         if not pd.get("palette") and rec is None and self._treat_pal and pd["by"] == "director" \
                 and self.palette_pick == contract.PALETTE_AUTO and self._treat_pal in self._candidates(vs):
             pd["palette"] = self._treat_pal              # a later plan's palette (README S5.33)
@@ -2587,19 +2613,88 @@ class Director:
             return np_
         return None
 
+    def _brief(self) -> Optional[dict]:
+        """The playing karaoke song's brief (brief.py, with the feed's now_playing) and its idiom's ``entry``
+        (config/live/idioms.yaml); None with no song, no brief, an idiom the file doesn't have, or
+        director.brief.enabled off. The strategy the director performs (owner, 27 Nov: "the a.d.'s job is then to
+        execute that strategy properly")."""
+        if not self.cfg["brief"]["enabled"]:
+            return None
+        np_ = self._karaoke_np()
+        b = np_.get("brief") if np_ else None
+        if not isinstance(b, dict):
+            return None
+        e = (self._idioms.get("idioms") or {}).get(b.get("idiom"))
+        if e is None:
+            return None
+        key = f"{np_.get('key')}:{b.get('idiom')}"
+        if self._brief_said != key:
+            self._brief_said = key
+            self._log_event("brief", {"song": np_.get("title"), **b})
+            self._why(f"The brief ({b.get('by')}): {e.get('label')}, {b.get('palette') or 'no palette'}. "
+                      f"{b.get('tone') or b.get('why') or ''}")
+        return {**b, "entry": e}
+
+    def _brief_palette(self, bf: Mapping[str, Any], vs: dict) -> Optional[str]:
+        """The brief's palette for this song, settled once: its first choice, or its second when the song before
+        played in the first (two songs running in one palette look like one); None when the feel has neither."""
+        np_ = self._karaoke_np()
+        key = str((np_ or {}).get("key"))
+        if self._bpal[0] != key:
+            cands = self._candidates(vs)
+            first, alt = bf.get("palette"), bf.get("palette_alt")
+            pick = first if first in cands else alt if alt in cands else None
+            if pick is not None and pick == self._prev_song_pal and alt in cands and alt != pick:
+                pick = alt
+            self._bpal = (key, pick)
+        return self._bpal[1]
+
+    def _sec_class(self) -> Optional[str]:
+        """The section being landed, for idiom.plays: verse | chorus | peak; None when the brief says nothing."""
+        sb = self._sec_brief
+        if not sb:
+            return None
+        if sb.get("peak"):
+            return "peak"
+        return "chorus" if sb.get("brief_kind") == "chorus" or (sb.get("size") or 0.0) >= 0.7 else "verse"
+
+    def _idiom_rests(self, gid: str) -> bool:
+        """The song's idiom holds this group of lights back in the section being landed (a ballad's strobe zones
+        until its peak; a hushed song's derbies always)."""
+        b = self._brief()
+        if b is None:
+            return False
+        names = {gid, self._root(gid), *((self._groups.get(gid) or {}).get("scenes_for") or ())}
+        lv = self._sec_class()
+        return any(not idiommod.plays(b["entry"], n, lv) for n in names)
+
+    def _idiom_scenes_out(self, b: Mapping[str, Any]) -> frozenset:
+        """The light scenes outside the brief's idiom (too much movement, too hard a pulse)."""
+        name = str(b.get("idiom"))
+        out = self._idiom_out.get(name)
+        if out is None:
+            out = self._idiom_out[name] = frozenset(
+                n for n, sc in self.light_scenes.scenes.items() if not idiommod.allows(b["entry"], sc))
+        return out
+
     def _song_char(self) -> Optional[dict]:
         """The karaoke song's character (song_character.py: genre, era, the lyrics' words -> moods, valence,
-        arousal, organic), once per song (and again once its lyrics arrive); None with no karaoke song."""
+        arousal, organic), once per song (and again once its lyrics or its brief arrive); None with no karaoke
+        song. A brief's mood words replace the ones counted from the lyrics: it read the song itself."""
         np_ = self._karaoke_np()
         if np_ is None:
             return None
         text = str(np_.get("lyrics_text") or "")
-        key = (str(np_["key"]), bool(text))
+        b = np_.get("brief") if self.cfg["brief"]["enabled"] and isinstance(np_.get("brief"), dict) else None
+        words = tuple(b.get("moods") or ()) if b else ()
+        key = (str(np_["key"]), bool(text), words)
         if getattr(self, "_songc_key", None) == key:
             return self._songc
         try:
             mm, moods = songc.vocab_moods(self.vibes.vocab_path)
             c = songc.character(self._song_genre(), np_.get("year"), text, mm, moods)
+            if c is not None and words:
+                c = {**c, "moods": list(words)[:3], "why": f"the brief: {b.get('tone') or b.get('idiom')}"}
         except Exception:                                 # noqa: BLE001 - no character: the usual chain
             log.debug("song character failed", exc_info=True)
             c = None
@@ -2719,6 +2814,9 @@ class Director:
         np_ = _call(getattr(self.ctx, "now_playing", None))
         if not isinstance(np_, dict) or np_.get("source") != "karaoke" or np_.get("state") != "playing":
             return None
+        b = np_.get("brief") if self.cfg["brief"]["enabled"] else None
+        if isinstance(b, dict) and b.get("genre"):       # its brief read the song itself (brief.py)
+            return str(b["genre"])
         g = np_.get("genre")
         return SONG_GENRES.get(g.strip().lower()) if isinstance(g, str) else None
 
@@ -2769,6 +2867,9 @@ class Director:
         self._song_change = (tr or {}).get("change") != "small"
         self._song_first_look, self._song_pal_locked = True, False
         self._fl_n, self._fl_since = 0, int(self.cfg["design"]["flourish_gap"]) - 1   # its first change: plainly
+        self._idioms, self._idiom_out, self._scene_traits = idiommod.load(), {}, {}
+        self._prev_song_pal = self.palette_name
+        self._sec_brief, self._sec_size, self._arrival = None, None, None
         tp = self.treat.plan
         plan = tp if (tp is not None and tid is not None and tp.get("song") == f"track:{tid}") else \
             self._plan_song(now_s, "a new song", change=(tr or {}).get("change"),
@@ -2823,10 +2924,17 @@ class Director:
         if into is not None:
             self._sec_kinds, self._sec_kind = (self._sec_kind, into), into
             self._sec_level = _num(ev.get("level"))
+            was = (self._sec_brief or {}).get("size", self._sec_size)
+            self._sec_size = was
+            self._sec_brief = {"size": _num(ev.get("size")), "arrive": ev.get("arrive"), "peak": bool(ev.get("peak")),
+                               "brief_kind": ev.get("brief_kind")} if _num(ev.get("size")) is not None else None
+            self._arrive(at_s, grid)
             self._sec_letter = ev.get("letter") if isinstance(ev.get("letter"), str) and ev.get("letter") else None
         else:
             self._sec_kinds = (None, None)
             self._sec_level, self._sec_letter = None, None
+            self._sec_brief = None
+            self._arrive_heard(ev, at_s, now_s, grid)
         predicted = bool(ev.get("predicted"))
         boundary_s = (_num(ev.get("boundary_ms"), at_s * 1000.0) or at_s * 1000.0) / 1000.0
         prev_b = self._last_boundary_s
@@ -3136,6 +3244,19 @@ class Director:
                 if want:
                     prefer[want] = prefer.get(want, 1.0) * float(self.treat.cfg["light_prefer"])
                     pwhy[want] = "the plan's pick"
+                bf = self._brief()
+                if bf is not None:                        # the song's idiom (idiom.py): outside it, not drawn;
+                    out, lv = self._idiom_scenes_out(bf), self._sec_class()   # inside it, by how close to the look
+                    for n, sc in self.light_scenes.scenes.items():            # it wants for this size of section
+                        if n in out:
+                            prefer[n] = prefer.get(n, 1.0) * IDIOM_OUT
+                        elif not ((sc.get("tags") or {}).get("rest") or (sc.get("tags") or {}).get("moments")):
+                            traits = self._scene_traits.get(n)
+                            if traits is None:
+                                traits = self._scene_traits[n] = idiommod.traits(sc)
+                            k = idiommod.closeness(bf["entry"], traits, lv)
+                            if k != 1.0:
+                                prefer[n] = prefer.get(n, 1.0) * k
                 if into is not None:                      # scenes written for this kind of section (tags.sections)
                     kinds = {into, "chorus"} if into in BIG_SECTIONS else {into}
                     for n in self.light_scenes.scenes:
@@ -3396,9 +3517,71 @@ class Director:
                                        else None, "how": how, "reason": reason})
         return name
 
+    def _arrive(self, at_s: float, grid: Grid) -> None:
+        """A section that is a lift (the brief: bigger than the one before, and the music arrives at it) gets its
+        wind-up and landing (phrasing.py), published in the look as ``arrival`` for the look engine. Every real lift
+        gets one, sized by how much bigger the section is: it is the song's phrasing, not a flourish."""
+        sb, b = self._sec_brief, self._brief()
+        if not sb or b is None or sb.get("size") is None:
+            return
+        bc = self.cfg["brief"]
+        rise = float(sb["size"]) - float(self._sec_size if self._sec_size is not None else sb["size"])
+        kind = sb.get("arrive") if sb.get("arrive") in idiommod.ARRIVE else "none"
+        if rise <= 0.0:
+            return                                        # down, or level: a change, not a lift
+        if kind != "none":
+            amount = _c01(0.6 + rise)                     # the brief named it: a real arrival, bigger with the rise
+        elif rise >= float(bc["lift_min"]):
+            kind = b["entry"]["arrive"]                   # a lift the brief didn't name: the idiom's way,
+            amount = _c01(rise / 0.5)                     # by its size (half the song's range is a full one)
+        else:
+            return
+        self._arrival_set(at_s, kind, b["entry"], amount, grid, rise=round(rise, 3), into=sb.get("brief_kind"))
+
+    def _arrival_set(self, at_s: float, kind: str, entry: Mapping[str, Any], amount: float, grid: Grid,
+                     wind_s: Optional[float] = None, **said: Any) -> None:
+        bc = self.cfg["brief"]
+        bar = grid.bar_s or 2.0
+        self._arrival = {"at_s": at_s, "kind": kind, "wind": round(float(entry["wind"]) * amount, 3),
+                         "lift": round(float(entry["lift"]) * amount, 3),
+                         "wind_s": round(float(bc["wind_bars"]) * bar if wind_s is None else wind_s, 3),
+                         "settle_s": round(float(bc["settle_bars"]) * bar, 3), "beat_s": grid.beat_s or bar / 4.0}
+        self._log_event("arrival", {**self._arrival, **said})
+
+    def _arrive_heard(self, ev: Mapping[str, Any], at_s: float, now_s: float, grid: Grid) -> None:
+        """With no brief (music nobody laid out ahead: the room mic, a stream) a narrative can't be planned, so a
+        lift is only what is heard coming (owner, 27 Nov: "the a.d. needs to degrade gracefully to emergent audio
+        cues"): a section predicted while the music builds (structure's build phase) gets the same wind-up and
+        landing, sized by how far the build has got and as long as the warning allows. An armed drop keeps the
+        build grammar's own dip and hit."""
+        bc = self.cfg["brief"]
+        if not bc["enabled"] or self._armed is not None or not ev.get("predicted") or at_s - now_s < 1.0:
+            return
+        if self._phase_eff(now_s) != "build":
+            return
+        bp = self._build_progress()
+        if bp < float(bc["heard_min"]):
+            return
+        self._arrival_set(at_s, idiommod.OPEN["arrive"], idiommod.OPEN, _c01(0.4 + 0.6 * bp), grid,
+                          wind_s=min(float(bc["wind_bars"]) * (grid.bar_s or 2.0), at_s - now_s),
+                          heard=True, build_progress=round(bp, 3))
+
+    def _arrival_view(self, now_s: float) -> Optional[dict]:
+        a = self._arrival
+        if a is None:
+            return None
+        if now_s > a["at_s"] + a["settle_s"] + 0.5:
+            self._arrival = None
+            return None
+        return {"at_ms": round(a["at_s"] * 1000.0, 1), "kind": a["kind"], "wind": a["wind"], "lift": a["lift"],
+                "wind_ms": round(a["wind_s"] * 1000.0, 1), "settle_ms": round(a["settle_s"] * 1000.0, 1),
+                "beat_ms": round(a["beat_s"] * 1000.0, 1)}
+
     def _rests(self, gid: str) -> Optional[bool]:
         """Whether a light group rests under the line-up being applied (or playing): True / False for a group some
         line-up names, None for one no line-up governs (it always plays)."""
+        if self._idiom_rests(gid):                        # the song's idiom holds it back (idioms.yaml groups)
+            return True
         lus = self.lights_cfg.get("lineups") or {}
         name = self._lineup_apply if self._lineup_apply is not None else self._lineup
         if not lus or name not in lus or not any(gid in e["plays"] for e in lus.values()):
@@ -3432,7 +3615,9 @@ class Director:
         dz = self.cfg["design"]
         paced = reason in FLOURISH_REASONS
         # held back: a move with a gesture is left out of this draw (a big move goes through whatever the count)
-        tight = flourish_held(reason, self._fl_n, self._fl_since, dz["flourish_per_song"], dz["flourish_gap"],
+        bf = self._brief()
+        per_song = float(bf["entry"]["flourishes"]) + 1.0 if bf is not None else dz["flourish_per_song"]
+        tight = flourish_held(reason, self._fl_n, self._fl_since, per_song, dz["flourish_gap"],
                               self._karaoke_np() is not None)
 
         def flourish(m: dict) -> bool:
@@ -3445,6 +3630,10 @@ class Director:
             li = m.get("lights") or {}
             names = [a["effect"] for a in li.get("accents") or ()]
             tr = li.get("transition")
+            if bf is not None and not idiommod.transition_ok(bf["entry"], tr):
+                return False                              # not this song's way across (idioms.yaml transitions)
+            if bf is not None and int(bf["entry"]["flourishes"]) == 0 and m["size"] != "big" and flourish(m):
+                return False
             if tr is not None:
                 if tr not in self.light_scenes.transitions:
                     return False
@@ -3573,6 +3762,18 @@ class Director:
             except Exception:                             # a broken catalogue never fails the tick
                 log.exception("light transitions: pick failed")
                 name = None
+        bf = self._brief() if track is None else None
+        if bf is not None and (name is None or not idiommod.transition_ok(bf["entry"], name)):
+            # the song's own ways across (idioms.yaml), the plain ones: into a lift a cut (the wind-up and the
+            # landing are phrasing.py's), else the first that is a kind this change can be
+            ok = [n for n in bf["entry"]["transitions"] or () if n in self.light_scenes.transitions
+                  and not self.light_scenes.transitions[n].get("gesture")]
+            lift = self._arrival is not None and abs(self._arrival["at_s"] - at_s) < 0.5 \
+                and self._arrival["kind"] in idiommod.LANDS
+            want = LIFT_KINDS if lift else kinds
+            first = sorted((n for n in ok if self.light_scenes.transitions[n]["kind"] in want),
+                           key=lambda n: want.index(self.light_scenes.transitions[n]["kind"]))
+            name = (first or ok or [name])[0]
         e = self.light_scenes.transitions.get(name) if name else None
         kind = e["kind"] if e else kinds[0]
         at_ms = round(at_s * 1000.0, 1)
@@ -5068,8 +5269,11 @@ class Director:
         band = self._band_words(self.music.get("band_energy", self.music.get("energy", vs["energy_centre"]))) \
             if self.music else None
         tp = self.treat.plan or {}
+        bf = self._brief()
         if self.moods:
             moods, src = list(self.moods), "human"
+        elif bf is not None and bf.get("moods"):
+            moods, src = list(bf["moods"])[:3], "brief"    # the karaoke song's own brief (brief.py) leads
         elif tp.get("moods"):
             moods, src = list(tp["moods"]), "plan"         # the song's treatment (README S5.33)
         elif (self._song_char() or {}).get("moods"):
@@ -5085,6 +5289,8 @@ class Director:
         # feel's own change_rate always wins there)
         if vs["transition_style"]:
             style, style_from = vs["transition_style"], "feel"
+        elif bf is not None and bf["entry"].get("screen_style"):
+            style, style_from = bf["entry"]["screen_style"], "brief"   # the song's idiom (idioms.yaml)
         elif tp.get("transition_style"):
             style, style_from = tp["transition_style"], "plan"
         elif gd.get("transitions"):
@@ -5214,6 +5420,10 @@ class Director:
         gr = _c01((self._groove - g0) / (g1 - g0))
         speed = _lerp(vs["motion"], (1.0 - mg) * arousal + mg * gr)
         amount = _lerp(vs["motion"], (1.0 - mg) * u + mg * gr)
+        bf = self._brief()
+        if bf is not None:                                # the song's idiom caps its movement (idioms.yaml motion_cap):
+            cap = float(bf["entry"]["motion_cap"])        # a hushed song's patterns stay slow however loud it gets
+            speed, amount = min(speed, cap), min(amount, cap)
         density = ux
         spread = _c01(amount + xpr)
         beat_lock = bool(vs["beat_lock"]) and grid.gate == "beat"
@@ -5319,6 +5529,7 @@ class Director:
                      "dip": bool(pal_on and (dip is not None or song_dip is not None) and not self.house
                                  and not self.low),
                      "hit": self._hit_view(), "compose": self._cblock,
+                     "arrival": self._arrival_view(now_s),      # a lift's wind-up and landing (phrasing.py)
                      "light_scene": self.light_scene, "light_scene_why": self.light_scene_why,
                      "light_scene_drop": dict(self._ls_drop) if self._ls_drop else None,
                      "flow": self._flow, "light_programs": self._programs_view()}      # docs/LIGHTS.md §7.2

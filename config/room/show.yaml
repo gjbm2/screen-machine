@@ -177,6 +177,18 @@ director:
     flourish_per_song: 3                    # moves whose lights carry a gesture (heads fly up, a pump, a sweep through)
                                             # in one karaoke song, the last kept for its big moment
     flourish_gap: 2                         # after a flourish, this many section changes go across plainly
+  # A karaoke song's brief (show_service/brief.py; owner, 27 Nov: "throw the song to AI and ask it for tonal context
+  # to pick the type of scene and pacing pattern ... the a.d.'s job is then to execute that strategy properly"). Made
+  # before the song plays and kept beside it: its idiom (config/live/idioms.yaml: the scenes, lights and transitions
+  # the song may use, as limits), its one palette, its own section map with each section's size, and how the music
+  # arrives at each. Off: the lyric sections and the feel's whole catalogue, as before.
+  brief:
+    enabled: true
+    wind_bars: 2                            # a lift's wind-up: the lights pull in over this many bars before its line
+    settle_bars: 1                          # ... and its landing settles over this many after (phrasing.py)
+    lift_min: 0.12                          # a section this much bigger than the one before (of the song's range) is a lift
+    heard_min: 0.3                          # music nobody laid out ahead (the mic, a stream) has no brief: a section
+                                            # predicted while the music builds is a lift once the build has got this far
   no_feel:                                  # owner, 17 Oct: the director always resolves a palette. With no feel set
     palettes: [art, ember, gold, dusk]      # it picks from these (the home feel's list; art = the screens' own art); [] = the old neutral
   emphasis_edges: [0.4, 0.75]               # arousal where the screens' emphasis moves base -> accent -> highlight (§8.3)

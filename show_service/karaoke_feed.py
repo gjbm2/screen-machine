@@ -132,12 +132,50 @@ def library_shape(song_id: str) -> Optional[dict]:
                                       smconfig.state("show", "shapes", f"{song_id}.json"))
 
 
+def library_song(song_id: str) -> Optional[dict]:
+    """A karaoke library song's record (title, artist, year, genre, audio_s), or None."""
+    import smconfig
+    try:
+        s = (json.loads(smconfig.state("karaoke", "state.json").read_text()).get("songs") or {}).get(song_id)
+    except (OSError, ValueError):
+        return None
+    return s if isinstance(s, dict) else None
+
+
+def library_brief(song_id: str, shape: Optional[dict] = None, ai: bool = False) -> Optional[dict]:
+    """A karaoke library song's brief (brief.py: its idiom, palette and section map), kept beside the song. The saved
+    one; else, with ``ai`` off, one made here from the facts alone (instant, no network), and with it on the AI's
+    (a call of up to a minute: never on the path a playing song waits on). None when the song isn't in the library."""
+    import smconfig
+    from . import brief
+    s = library_song(song_id)
+    d = smconfig.state("karaoke", "songs", song_id)
+    if s is None or not d.is_dir():
+        return None
+    kw: dict = {}
+    if ai:
+        try:
+            import yaml
+            from . import idiom
+            vocab = yaml.safe_load((idiom.PATH.parent / "vocab.yaml").read_text()) or {}
+            vibes = yaml.safe_load((idiom.PATH.parents[1] / "room" / "vibes.yaml").read_text()) or {}
+            kw = {"feel_palettes": ((vibes.get("vibes") or {}).get("singalong") or {}).get("palettes"),
+                  "moods": vocab.get("moods"), "genres": vocab.get("genre")}
+        except Exception:                                # noqa: BLE001 - the idioms' own palettes, no mood words
+            kw = {}
+    return brief.make(d, s, shape=shape, ai=ai, log=log.info, **kw)
+
+
 class KaraokeFeed:
     def __init__(self, base_url: str, *, fetch: Callable[[str], Any] = _fetch_json,
                  clock: Callable[[], float] = time.time, mono: Callable[[], float] = time.monotonic,
                  shape_fn: Optional[Callable[[str], Optional[dict]]] = None,
-                 grid_fn: Optional[Callable[[str], Optional[FileGrid]]] = None) -> None:
+                 grid_fn: Optional[Callable[[str], Optional[FileGrid]]] = None,
+                 brief_fn: Optional[Callable[..., Optional[dict]]] = None) -> None:
         self.url = base_url.rstrip("/") + "/api/karaoke/now"
+        self._brief_fn = brief_fn                        # (song id, shape, ai) -> its brief (library_brief), or None
+        self._brief: tuple[Optional[str], Optional[dict]] = (None, None)                   # (song, its brief)
+        self._brief_asked: set[str] = set()              # songs whose AI brief was asked for (once a run)
         self._shape_fn = shape_fn                        # a song id -> its measured shape (library_shape), or None
         self._grid_fn = grid_fn                          # a song id -> its beat grid (library_grid), or None
         self._grid: tuple[Optional[str], Optional[FileGrid], float] = (None, None, -1e18)   # (song, grid, tried at)
@@ -174,6 +212,9 @@ class KaraokeFeed:
         self._last, self._read_at = o, self._mono()
         self._read_sections(o)
         self._read_grid(o)
+        nxt = o.get("up_next")                           # the song after this one: its AI brief, before it starts
+        if isinstance(nxt, dict) and nxt.get("id"):
+            self.brief_ahead(str(nxt["id"]))
         if self.playing() != was:
             for fn in list(self._wakes):
                 try:
@@ -244,10 +285,31 @@ class KaraokeFeed:
                     shape = self._shape_fn(sid)
                 except Exception as e:                   # noqa: BLE001 - no shape: the sections alone
                     log.info("karaoke: %s's shape not read (%s)", title, type(e).__name__)
-            plan = songplan.lay_out(secs, shape, dur)
+            b = None
+            if self._brief_fn is not None:               # the song's brief (brief.py): its own map and idiom
+                try:
+                    b = self._brief_fn(sid, shape, False)
+                except Exception as e:                   # noqa: BLE001 - no brief: the lyric sections
+                    log.info("karaoke: %s's brief not read (%s: %s)", title, type(e).__name__, e)
+            plan = None
+            if b is not None and len(b.get("sections") or ()) >= 2:
+                try:
+                    from . import brief as briefmod, idiom
+                    plan = briefmod.plan(b, idiom.load().get("idioms"), shape, dur)
+                except Exception as e:                   # noqa: BLE001
+                    log.info("karaoke: %s's brief not laid out (%s: %s)", title, type(e).__name__, e)
+                    b = None
+            if plan is None:
+                b, plan = None, songplan.lay_out(secs, shape, dur)
             if self._sections[0] == key:
                 self._sections = (key, plan)
                 self._shape = (sid, shape)
+                self._brief = (sid, b)
+            if b is not None:
+                log.info("karaoke: %s: brief by %s: %s, %s. %s", title, b.get("by"), b.get("idiom"), b.get("palette"),
+                         b.get("tone") or "")
+            if b is None or b.get("by") != "ai":
+                self.brief_ahead(sid)                    # the AI's, for the next time it is sung
             log.info("karaoke: %s: %s", title, " ".join(
                 f"{x['kind']}@{x['start_s']:.0f}" + (f"={x['level']:.2f}" if x.get("level") is not None else "")
                 + ("*" if x.get("peak") else "") for x in plan) or "no sections (lyrics not synced)")
@@ -256,6 +318,20 @@ class KaraokeFeed:
             work()
         else:
             threading.Thread(target=work, name="karaoke-shape", daemon=True).start()
+
+    def brief_ahead(self, sid: Optional[str]) -> None:
+        """Ask for a song's AI brief off every thread that matters, once a run: the song that is up next (so it is
+        there before its first note), or one playing on a local brief (for the next time)."""
+        if not sid or self._brief_fn is None or sid in self._brief_asked:
+            return
+        self._brief_asked.add(sid)
+
+        def work() -> None:
+            try:
+                self._brief_fn(sid, self._shape_fn(sid) if self._shape_fn is not None else None, True)
+            except Exception as e:                       # noqa: BLE001 - the local brief stands
+                log.info("karaoke: %s's AI brief not made (%s: %s)", sid, type(e).__name__, e)
+        threading.Thread(target=work, name="karaoke-brief", daemon=True).start()
 
     def _fresh(self) -> Optional[dict]:
         o = self._last
@@ -305,8 +381,19 @@ class KaraokeFeed:
                 # plays (director._song_genre; owner, 26 Nov: song context "should be doing more work")
                 "artist": artist or None, "genre": s.get("genre") or None, "year": s.get("year") or None,
                 "lyrics_text": lyr[1], "lyrics_excerpt": lyr[2],
+                # its brief (brief.py; None: the lyric sections as they were): the idiom, tone and palette, and on
+                # each section its size, how the music arrives there and whether it is the last chorus
+                "brief": self._brief_view(p["song_id"]),
                 "sections": [{"pos_s": round(sec_at(x), 3), "kind": x["kind"], "letter": x["letter"],
-                              "level": x.get("level"), "peak": x.get("peak")} for x in secs]}
+                              "level": x.get("level"), "peak": x.get("peak"),
+                              **{k: x[k] for k in ("size", "arrive", "brief_kind", "final") if k in x}}
+                             for x in secs]}
+
+    def _brief_view(self, sid: Any) -> Optional[dict]:
+        if self._brief[0] != sid or self._brief[1] is None:
+            return None
+        from . import brief
+        return brief.view(self._brief[1])
 
     @staticmethod
     def _shifts(o: dict) -> tuple[float, float]:

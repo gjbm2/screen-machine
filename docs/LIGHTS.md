@@ -1068,6 +1068,41 @@ while its group plays alone in the line-up (director `_alone`; written for a dar
 
 **Tests:** show_service/tests/test_staging.py (the planners in a made-up room), test_looks_staging.py (the engine).
 
+### 5.11 The song brief, its idiom and its phrasing (owner, 27 Nov)
+
+Three things the owner asked for on 27 Nov, as one mechanism. "A serious ballad should just feel different from an
+ABBA track"; "in a build / release moment ... lights don't seem to follow the pacing / mood / tension build &
+release"; and "for karaoke songs, we could literally just throw the song to AI and ask it for tonal context ... the
+a.d.'s job is then to execute that strategy properly".
+
+- **The brief** (`show_service/brief.py`, `brief.json` beside each karaoke song). Made before the song plays: when it
+  becomes ready (the karaoke worker), when it is up next (`karaoke_feed.brief_ahead`), or by hand
+  (`python -m show_service.brief <id> | --all [--force] [--local]`). An AI (llm.yaml task `brief`) is given the title,
+  artist, timed lyrics, loudness through time and tempo, and answers from named options: the **idiom**, up to three
+  mood words, the **palette**, the song's own **sections** (intro, verse, prechorus, chorus, bridge, instrumental,
+  outro; each with a `size` 0..1 within this song and how the music `arrive`s there: none, swell, bump or snap), which
+  section is the last full chorus and which is the peak, and how the song ends. Every part is checked (`parse`). With
+  no answer, `local` makes one from the lyric sections, the catalogue genre and the recording's own measures. It
+  carries what it was made from, so a change of lyrics makes it again.
+- **The idiom** (`config/live/idioms.yaml`, `show_service/idiom.py`) is a vocabulary, held as limits and not weights:
+  how far heads may travel (`motion_max`), how hard levels may show the beat (`pulse_max`), which kinds of light play
+  and from which size of section (`groups`), which transitions a change may use, how many flourishes the song may
+  have, and how a lift lands. A scene's motion and pulse are read from its own layers (`idiom.traits`), so a new scene
+  needs no tag. A scene outside the idiom is not drawn while one inside it fits.
+- **What the director does with it** (`director._brief`): the brief's section map replaces the lyric one
+  (`brief.plan`; sections of the same kind share a letter, so the look comes back); every look of the song takes the
+  brief's palette; the mood words lead the scene draws; groups the idiom holds back rest (`_idiom_rests`); moves and
+  the lights' own transition stay within the idiom's list; the flourish budget is the idiom's.
+- **Phrasing** (`show_service/phrasing.py`). A section that is bigger than the one before (`director.brief.lift_min`)
+  is a lift, and every lift is phrased, sized by how big it is: over `wind_bars` before the line the running looks
+  pull in (levels down, the heads' shapes smaller), and on the line everything lands above its steady level with the
+  shapes opened wide, settling over `settle_bars`. A `snap` is dark for the last beat; a `swell` does not pull in. The
+  director publishes it as the look's `arrival`; the look engine multiplies it into every level and pattern size, so
+  it works under any scene and transition. A gesture (heads fly up, a strobe) is still a move's to add, rarely.
+
+The eval measures both: `release` (do the lights lift where the music lifts) and `character` (do songs that sound
+different get shows that look different), in `tools/room/ad_eval/form.py`.
+
 ## 6. Catalogues (builder: catalogue)
 
 ### 6.1 Shared rules

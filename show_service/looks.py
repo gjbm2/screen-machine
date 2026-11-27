@@ -187,7 +187,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Optional, Sequence
 
-from . import colour_mix, contract, motion
+from . import colour_mix, contract, motion, phrasing
 from .artnet_out import (DEFAULT_RGB, NEUTRAL_RGB, HUE_ATTACK_S, HUE_DECAY_S, HUE_DEPTH, IDLE_AFTER_S, QUIET_AFTER_S,
                          QUIET_GATE_OFF, QUIET_GATE_ON, TAU_ENERGY_S)
 from .clock import beat_at
@@ -941,7 +941,10 @@ class _Ctx:
                  "min_period_s", "energy", "vibe", "st", "prog", "op", "sm", "view", "cyc", "flow_key", "look_n",
                  # docs/ENSEMBLE.md §7.2 (None without an ensemble): per light its role's motion scale and canon's
                  # offset (s), filled as each light is evaluated; the palette roles at full value (a colour pop's)
-                 "ms", "co", "roles")
+                 "ms", "co", "roles",
+                 # a lift's wind-up and landing (phrasing.py, the look's ``arrival``): every level x ph_level, every
+                 # moving head's pattern size x ph_size; 1.0 with none
+                 "ph_level", "ph_size")
 
 
 class _GPart:
@@ -3139,7 +3142,7 @@ class LookEngine:
                 if x > 0.0:
                     inten += (gn.dark_abs - inten) * x
             # master and caps (lamps only; screens never reach here); the group's level takes its flashes down too
-            inten = _c01(inten * master * gn.level)
+            inten = _c01(inten * master * gn.level * cx.ph_level)
             # the motion stage (§5.5): commanded pan and tilt within the light's speed and limits; a dark move
             if pan_tilt is not None:
                 pan, tilt, dark = self._move(s, fs, t, pan_tilt, mc, dark_ok=dark_ok, light_at=light_at)
@@ -3223,6 +3226,9 @@ class LookEngine:
         cx.look_n = int(digits) if digits else 0
         cx.flow_key = (prog.revision, (prog.space or {}).get("revision"))
         cx.ms = cx.co = cx.roles = None
+        cx.ph_level, cx.ph_size = 1.0, 1.0
+        if isinstance(look, Mapping) and look.get("arrival") and not (look.get("house") or look.get("low")):
+            cx.ph_level, cx.ph_size = phrasing.envelope(t, look.get("arrival"))
         return cx
 
     # -- the ensemble per light (docs/ENSEMBLE.md §7.2) ---------------------------------------------------------------
@@ -4233,7 +4239,8 @@ class LookEngine:
         if mode == "home":
             return (s.home[0], s.home[1]), None
         if mode == "tilt_wave":
-            sz = p["size_deg"] * self._fit(L, m, s, fs, cx, gn, tp, None)[0] * (cx.ms.get(s.id, 1.0) if cx.ms else 1.0)
+            sz = p["size_deg"] * self._fit(L, m, s, fs, cx, gn, tp, None)[0] \
+                * (cx.ms.get(s.id, 1.0) if cx.ms else 1.0) * cx.ph_size
             mc = cx.prog.motion
             w, _per = self._phase(L, s, m, cx, gn, tp + motion.lag_s(mc.ramp_s, mc.jerk_s))
             return (prev[0], prev[1] + sz * (2.0 * shape(p["fx"], w) - 1.0)), prev_q
@@ -4388,7 +4395,8 @@ class LookEngine:
 
     def _run_pattern(self, L: _Layer, m: tuple[int, int], s: _Slot, fs: _FixState, cx: _Ctx, gn: _Group, tp: float,
                      at: Callable, mode: str) -> Optional[tuple]:
-        ms = cx.ms.get(s.id, 1.0) if cx.ms else 1.0             # docs/ENSEMBLE.md §7.2: its role's motion x the size
+        ms = (cx.ms.get(s.id, 1.0) if cx.ms else 1.0) * cx.ph_size   # docs/ENSEMBLE.md §7.2: its role's motion x the
+                                                                 # size; and a lift's wind-up and landing (phrasing.py)
         if mode == "fan":
             return at(0.0, 0.0, ms)
         share, factor = self._fit(L, m, s, fs, cx, gn, tp, at)

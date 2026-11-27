@@ -301,6 +301,11 @@ class Sim:
             kw["shape_fn"] = kfm.library_shape
         if hasattr(kfm, "library_grid"):
             kw["grid_fn"] = kfm.library_grid
+        if hasattr(kfm, "library_brief") and os.environ.get("SM_AD_EVAL_BRIEF", "1") != "0":
+            from show_service import brief as briefmod       # the saved brief only (no AI in a replay): the one
+            import smconfig                                  # the room would play this song by; SM_AD_EVAL_BRIEF=0
+            kw["brief_fn"] = lambda sid_, _shape=None, _ai=False: briefmod.load(   # replays without it
+                smconfig.state("karaoke", "songs", sid_))
         try:
             kf = kfm.KaraokeFeed("http://eval.invalid", **kw)
         except TypeError:

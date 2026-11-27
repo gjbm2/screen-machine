@@ -28,14 +28,15 @@ little late is still that section's look). Four questions of the song's shape (d
               look (level, lights on, movement, flicker)
   peak        the biggest look is kept for the high point: the share of the other sections whose look is smaller
               than the climax's
-  release     where the music lifts across a boundary (louder in the two bars after it than the two before, by
-              LIFT_MIN), the lights lift on the line: the bar after is bigger than the bar before by LIFT_BAR
+  release     where the music lifts across a boundary (an annotated key: where it says the music arrives at a bigger
+              section; else louder in the two bars after it than the two before, by LIFT_MIN), the lights lift on
+              the line: the bar after is bigger than the bar before by LIFT_BAR
               (owner, 27 Nov: "in a build / release moment ... lights don't seem to follow the pacing / mood / tension
               build & release"). ``wind``, reported: how far the lights pull in over the bar before those lines.
 
-and one of the whole song set (``character``; run.py): songs that are different kinds of recording get shows that
-look different: the rank correlation, over every pair of songs, of how far apart their sound is (the reference's
-``character``, from the audio alone) and how far apart their shows' looks are (owner, 27 Nov: "a serious ballad
+and one of the whole song set (``character``; run.py): songs of different kinds get shows that look different: the
+rank correlation, over every pair of songs, of how far apart they are in kind (keys.yaml's ``liveliness``, judged by
+ear; for songs without one, the reference's own measures of the sound) and how far apart their shows' looks are (owner, 27 Nov: "a serious ballad
 should just feel different from an ABBA track").
 
     python tools/room/ad_eval/form.py <timeline.json> [...]
@@ -60,14 +61,15 @@ KEYS = ("lit", "heads", "move", "flicker", "strobe", "r", "g", "b", "variety", "
 FAMILIES = {"brightness": ("level",), "extent": ("lit", "heads"), "movement": ("move", "tilt", "spread"),
             "colour": ("r", "g", "b", "variety"), "texture": ("flicker", "strobe", "gobo")}
 LIT = 0.05                  # a light under this level isn't on
+ENV_S = 0.6                 # level_env: the lamps' highest level within this (about a beat)
 FLICKER_CAP = 20.0          # one light's level can't count for more than this a second (a strobe's edge)
 DEFAULTS = {
     # a difference this big in a descriptor is a full-size one
     "scales": {"level": 0.5, "lit": 1.0, "heads": 1.0, "move": 60.0, "flicker": 2.0, "strobe": 1.0, "r": 1.0, "g": 1.0,
                "b": 1.0, "variety": 0.5, "tilt": 60.0, "spread": 60.0, "gobo": 1.0},
-    # what makes a look big, each as a share of this (level and lights-on are 0..1 already; the distance's level
-    # scale of 0.5 would call every bright look full size)
-    "size": {"level": 1.0, "lit": 1.0, "move": 60.0, "flicker": 2.0},
+    # what makes a look big, each as a share of this. level_env is how bright the lamps GET (their level's highest
+    # over ENV_S around each moment): a chorus pulsing on the beat is bigger than a steady glow of the same mean.
+    "size": {"level_env": 1.0, "lit": 1.0, "move": 60.0, "flicker": 2.0},
     "settle": 0.4,          # a section's look is read after this share of it has passed
     "min_section_s": 6.0,   # a shorter section isn't judged
     "contrast_bar": 0.15,   # unlike-sounding sections this much further apart than like-sounding ones, in the
@@ -153,7 +155,7 @@ def _w(W: Optional[dict]) -> dict:
 
 
 def shown(tl: dict) -> Optional[tuple[np.ndarray, np.ndarray, list[str]]]:
-    """(frame times, one row a frame, the columns' names): the lamps' level, then the Describer's KEYS. None for a
+    """(frame times, one row a frame, the columns' names): the lamps' level, the Describer's KEYS, then level_env. None for a
     timeline made before replay.py recorded them."""
     out = tl.get("outputs") or {}
     sh = out.get("shown") or {}
@@ -161,9 +163,14 @@ def shown(tl: dict) -> Optional[tuple[np.ndarray, np.ndarray, list[str]]]:
     if not v or not lamp:
         return None
     n = min(len(v), len(lamp))
-    A = np.column_stack([np.asarray(lamp[:n], float), np.asarray(v[:n], float)])
-    tt = float(out.get("t0_s") or 0.0) + np.arange(n) * float(out.get("hop_s") or 0.05)
-    return tt, A, ["level", *list(sh.get("keys") or KEYS)]
+    hop = float(out.get("hop_s") or 0.05)
+    lv = np.asarray(lamp[:n], float)
+    k = max(1, int(round(ENV_S / hop)))                      # the level's highest over ENV_S, centred
+    pad = np.pad(lv, (k // 2, k - 1 - k // 2), mode="edge")
+    env = np.max(np.lib.stride_tricks.sliding_window_view(pad, k), axis=1) if k > 1 and n >= k else lv
+    A = np.column_stack([lv, np.asarray(v[:n], float), env[:n]])
+    tt = float(out.get("t0_s") or 0.0) + np.arange(n) * hop
+    return tt, A, ["level", *list(sh.get("keys") or KEYS), "level_env"]
 
 
 def section_looks(tl: dict, ref: dict, W: Optional[dict] = None) -> list[dict]:
@@ -222,19 +229,24 @@ def character(rows: list[tuple[Optional[dict], Optional[dict]]], W: Optional[dic
     get shows that look different? {character 0..1 or None, character_rho, songs}."""
     w = _w(W)
     keys = [k for k in w["character_keys"]]
-    ok = [(c, lk) for c, lk in rows if isinstance(c, dict) and isinstance(lk, dict)
-          and all(isinstance(c.get(k), (int, float)) for k in keys)]
-    out: dict[str, Any] = {"character": None, "character_rho": None, "songs": len(ok)}
+    judged = [(c, lk) for c, lk in rows if isinstance(c, dict) and isinstance(lk, dict)
+              and isinstance(c.get("liveliness"), (int, float))]
+    if len(judged) >= 6:                                 # the songs' kinds as judged by ear (keys.yaml): the better
+        ok, keys = judged, ["liveliness"]                # word on how unlike two songs are than five measures
+    else:
+        ok = [(c, lk) for c, lk in rows if isinstance(c, dict) and isinstance(lk, dict)
+              and all(isinstance(c.get(k), (int, float)) for k in keys)]
+    out: dict[str, Any] = {"character": None, "character_rho": None, "songs": len(ok), "character_by": keys}
     if len(ok) < 6:
         return out
     C = np.array([[float(c[k]) for k in keys] for c, _lk in ok])
     C = (C - C.mean(axis=0)) / (C.std(axis=0) + 1e-9)
-    sc = {**w["scales"], "size": 1.0}
     dm, dv = [], []
     for i in range(len(ok)):
         for j in range(i + 1, len(ok)):
             dm.append(float(np.linalg.norm(C[i] - C[j])))
-            dv.append(distance(ok[i][1], ok[j][1], sc))
+            d = distances(ok[i][1], ok[j][1], w["scales"])       # how busy and big the shows are, not their hue:
+            dv.append(sum(v for f, v in d.items() if f != "colour") / (len(d) - 1))   # a palette is a song's own
     rho = spearman(dm, dv)
     out["character_rho"] = round(rho, 3) if rho is not None else None
     out["character"] = round(max(0.0, rho), 3) if rho is not None else 0.0
@@ -404,6 +416,14 @@ def arrivals(ref: dict, w: dict) -> list[dict]:
     bt = ref.get("beats") or []
     bar = float(np.median(np.diff(db))) if len(db) > 2 else (4.0 * float(np.median(np.diff(bt))) if len(bt) > 2 else 2.0)
     out = []
+    secs = ref.get("sections") or []
+    if any("arrive" in s for s in secs):                 # an annotated key says where the music arrives, and how
+        for a, b in zip(secs, secs[1:]):
+            rise = float(b.get("size") or 0.0) - float(a.get("size") or 0.0)
+            if b.get("arrive") in ("swell", "bump", "snap") and rise > 0.0 and bar > 0.0:
+                out.append({"t_s": float(b["start_s"]), "bar_s": bar, "lift": round(max(0.05, rise), 4),
+                            "kind": b["arrive"]})
+        return out
     if len(v) < 10 or bar <= 0.0:
         return out
 

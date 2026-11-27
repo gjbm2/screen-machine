@@ -65,6 +65,8 @@ Where things live:
 | Looks, sections, tokens, the music numbers | `show_service/director.py` |
 | Section starts (live) | `show_service/structure.py` |
 | Lyric plan (karaoke) | `lyric_sections.py`, `songplan.py`, `karaoke_feed.py` |
+| A karaoke song's brief: its idiom, palette, own section map and how each section arrives (made before it plays, kept as `brief.json` beside the song; `python -m show_service.brief <id> [--force]`) | `show_service/brief.py`, `idiom.py`, `config/live/idioms.yaml` |
+| A lift's wind-up and landing | `show_service/phrasing.py` (the look's `arrival`), `show.yaml director.brief` |
 | Beat and bpm | `show_service/clock.py` |
 | Moves | `config/live/moves.yaml` + `show_service/moves.py` |
 | Light scenes and line-ups | `config/live/light_scenes.yaml`, `show.yaml lights.lineups`, `light_scenes.py` |

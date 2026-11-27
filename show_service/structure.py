@@ -1848,6 +1848,8 @@ class Structure:
                     line = nb
             pl["done"].add(i)
             final = x.get("kind") == "chorus" and not any(y.get("kind") == "chorus" for y in pl["secs"][i + 1:])
+            if any("final" in y for y in pl["secs"]):          # the song's brief says which chorus is the last full
+                final = bool(x.get("final"))                   # one (brief.py); a tag of it after that is not
             prev = next((s for s in reversed(self.sections) if s.get("letter") == x["letter"]), None)
             sid = self._next_id
             self._pred = {"line": line, "letter": x["letter"], "repeat_of": prev["id"] if prev else None,
@@ -1855,7 +1857,10 @@ class Structure:
             self._emit("section_change", line, now_s, section_id=sid, letter=x["letter"],
                        repeat_of=self._pred["repeat_of"], predicted=True, boundary_ms=round(line * 1000.0, 1),
                        detail="lyrics", section_kind=x.get("kind"), final=final,
-                       level=x.get("level"), peak=x.get("peak"))   # songplan.py: how big it will be; the climax
+                       level=x.get("level"), peak=x.get("peak"),   # songplan.py: how big it will be; the climax
+                       # brief.py, when the song has one: its size in the song, how the music arrives at it
+                       # (none | swell | bump | snap) and the brief's own kind (prechorus, bridge ...)
+                       size=x.get("size"), arrive=x.get("arrive"), brief_kind=x.get("brief_kind"))
             self._gobo_at(line, ("section", sid))
             return
 

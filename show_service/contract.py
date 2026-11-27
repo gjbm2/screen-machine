@@ -558,6 +558,8 @@ class LookData(TypedDict):
     # Stage 5 review fixes (README S5.14): lamps and DMX only, never a screen
     dip: bool                      # the pre-drop dip is on (§8.5): no music.hit flashes over it
     hit: Optional["LookHit"]       # the drop's unison hit, applied per output from its caps (looks.py); None: none
+    arrival: Optional[dict]          # a lift's wind-up and landing (phrasing.py): {at_ms, kind, wind, lift, wind_ms,
+                                     # settle_ms, beat_ms}; None with none. Lamps and DMX only.
     # README S5.18 (17 Oct): the composer's plan, for monitoring (dsp_monitor), never the Room page
     compose: "ComposeView"
     # README S5.24 (18 Oct): the lamps' light scene (config/live/light_scenes.yaml), lamps and DMX only

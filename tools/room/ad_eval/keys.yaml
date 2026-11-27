@@ -1,0 +1,268 @@
+# The eval songs' sections, annotated by reading each song's timed lyrics against its known form (27 Nov 2026;
+# two annotators over the 21 songs, checked against the AI briefs made separately from the same lyrics: starts agree
+# within a few seconds). reference.py takes these in place of its audio-novelty boundaries, which cut most songs in
+# the wrong places (Dancing Queen mid-chorus). start_s is the lyrics' own time (before a song's offsets); kind is
+# intro | verse | prechorus | chorus | bridge | instrumental | outro; size is how big the section should feel within
+# the song (0..1); arrive is how the music gets there (none | swell | bump | snap); final marks the last full chorus
+# and peak the song's one high point. Where a lyric file's line was more than 2 s off the recording, the annotators
+# used the audible onset (Freed from Desire, Hallelujah's choruses, Shallow's bridge, Uptown Funk, Bohemian Rhapsody).
+# Correct a line here when a song is found to be wrong, on purpose: its reference is made again on the next run, and
+# runs before and after are no longer comparable for that song.
+# liveliness: what kind of song each is, on one scale, judged by ear and not by any measure: 0 hushed (a voice and
+# little else), 1 a ballad that builds, 2 a mid-tempo or dark song with drive, 3 a dance-floor or stadium song, 4 club.
+# form.character asks whether songs far apart on it got shows that look far apart.
+liveliness:
+  k1dea67b2c8: 3
+  k2391aca5e1: 4
+  k29ba2bc4a9: 3
+  k2ac0ba67bb: 3
+  k304eb89f31: 1
+  k39b61912c8: 0
+  k3af014dbda: 2
+  k3c5071eff2: 0
+  k83b0027cdd: 3
+  k85c2587838: 1
+  k87d4afc219: 3
+  k94db54a10b: 1
+  k97353cd010: 3
+  k9a08ce5c5a: 3
+  ka6f578a9f3: 2
+  kb794839ade: 0
+  kbcdec40eab: 3
+  kca10aa5347: 3
+  kd236a11f1c: 1
+  kee31811294: 2
+  kf730226e87: 2
+keys:
+  k1dea67b2c8:        # Happy - Williams, Pharrell
+    - {start_s: 0.0, kind: verse, size: 0.45, arrive: none, text: "It might seem crazy what"}
+    - {start_s: 26.0, kind: chorus, size: 0.75, arrive: bump, text: "(Because I'm happy) clap along if"}
+    - {start_s: 50.2, kind: verse, size: 0.50, arrive: none, text: "Here come bad news, talkin' this"}
+    - {start_s: 72.0, kind: chorus, size: 0.80, arrive: bump, text: "(Because I'm happy) clap along if"}
+    - {start_s: 97.7, kind: bridge, size: 0.50, arrive: none, text: "(Happy) bring me down"}
+    - {start_s: 119.7, kind: chorus, size: 0.85, arrive: bump, text: "(Because I'm happy) clap along if"}
+    - {start_s: 146.0, kind: chorus, size: 0.90, arrive: none, text: "(Because I'm happy) clap along if"}
+    - {start_s: 168.6, kind: bridge, size: 0.55, arrive: none, text: "(Happy, happy, happy, happy) bring me"}
+    - {start_s: 180.4, kind: chorus, size: 0.95, arrive: bump, text: "(Because I'm happy) clap along if"}
+    - {start_s: 206.0, kind: chorus, size: 1.00, arrive: none, final: true, peak: true, text: "(Because I'm happy) clap along if"}
+    - {start_s: 233.5, kind: outro, size: 0.20, arrive: snap, text: "(Because I'm happy) clap along if"}
+  k2391aca5e1:        # Freed from Desire - Gala
+    - {start_s: 0.0, kind: intro, size: 0.20, arrive: none, text: ""}
+    - {start_s: 14.0, kind: verse, size: 0.30, arrive: none, text: "My love has got no money"}
+    - {start_s: 29.4, kind: prechorus, size: 0.35, arrive: none, text: "Want more and more"}
+    - {start_s: 45.0, kind: chorus, size: 0.50, arrive: none, text: "Freed from desire"}
+    - {start_s: 58.7, kind: chorus, size: 0.90, arrive: snap, text: "Na na na na na na"}
+    - {start_s: 74.8, kind: instrumental, size: 0.85, arrive: none, text: ""}
+    - {start_s: 88.5, kind: verse, size: 0.65, arrive: none, text: "My love has got no money"}
+    - {start_s: 103.9, kind: prechorus, size: 0.70, arrive: none, text: "Want more and more"}
+    - {start_s: 118.4, kind: chorus, size: 0.75, arrive: none, text: "Freed from desire"}
+    - {start_s: 133.1, kind: chorus, size: 0.95, arrive: snap, text: "Na na na na na na"}
+    - {start_s: 149.3, kind: instrumental, size: 0.90, arrive: none, text: ""}
+    - {start_s: 164.2, kind: instrumental, size: 0.45, arrive: snap, text: ""}
+    - {start_s: 177.8, kind: chorus, size: 1.00, arrive: snap, final: true, peak: true, text: "Na na na na na na"}
+    - {start_s: 193.9, kind: outro, size: 0.35, arrive: snap, text: "Na na na na na na"}
+  k29ba2bc4a9:        # Don't Stop Me Now - Queen
+    - {start_s: 0.0, kind: intro, size: 0.25, arrive: none, text: "Tonight I'm gonna have myself"}
+    - {start_s: 39.8, kind: verse, size: 0.65, arrive: bump, text: "I'm a shooting star leaping"}
+    - {start_s: 56.9, kind: prechorus, size: 0.70, arrive: none, text: "I'm burnin' through the sky, yeah"}
+    - {start_s: 69.1, kind: chorus, size: 0.80, arrive: bump, text: "(Don't stop me now)"}
+    - {start_s: 93.4, kind: verse, size: 0.70, arrive: none, text: "I'm a rocket ship on"}
+    - {start_s: 109.7, kind: prechorus, size: 0.75, arrive: none, text: "I'm burnin' through the sky, yeah"}
+    - {start_s: 124.3, kind: bridge, size: 0.60, arrive: snap, text: "(Don't stop me, don't stop me,"}
+    - {start_s: 142.5, kind: instrumental, size: 0.95, arrive: bump, text: ""}
+    - {start_s: 153.3, kind: prechorus, size: 0.90, arrive: none, text: "Oh, I'm burnin' through the sky"}
+    - {start_s: 166.8, kind: chorus, size: 1.00, arrive: bump, final: true, peak: true, text: "(Don't stop me now)"}
+    - {start_s: 193.1, kind: outro, size: 0.20, arrive: snap, text: "Ah, da, da, da, da"}
+  k2ac0ba67bb:        # Dancing Queen - ABBA
+    - {start_s: 0.0, kind: intro, size: 0.45, arrive: none, text: ""}
+    - {start_s: 19.4, kind: chorus, size: 0.70, arrive: swell, text: "You can dance, you can jive"}
+    - {start_s: 43.9, kind: verse, size: 0.35, arrive: none, text: "Friday night and the lights are"}
+    - {start_s: 85.7, kind: chorus, size: 0.90, arrive: bump, text: "You are the Dancing Queen"}
+    - {start_s: 123.8, kind: instrumental, size: 0.55, arrive: none, text: ""}
+    - {start_s: 134.6, kind: verse, size: 0.40, arrive: none, text: "You're a teaser, you turn 'em"}
+    - {start_s: 157.3, kind: chorus, size: 1.00, arrive: bump, final: true, peak: true, text: "You are the Dancing Queen"}
+    - {start_s: 195.4, kind: outro, size: 0.25, arrive: none, text: "Dig in the Dancing Queen"}
+  k304eb89f31:        # Shallow - Lady Gaga
+    - {start_s: 0.0, kind: intro, size: 0.20, arrive: none, text: ""}
+    - {start_s: 15.8, kind: verse, size: 0.25, arrive: none, text: "Tell me something, girl"}
+    - {start_s: 35.3, kind: prechorus, size: 0.30, arrive: none, text: "I'm falling"}
+    - {start_s: 55.3, kind: instrumental, size: 0.20, arrive: none, text: ""}
+    - {start_s: 65.7, kind: verse, size: 0.30, arrive: none, text: "Tell me something, boy"}
+    - {start_s: 85.6, kind: prechorus, size: 0.50, arrive: bump, text: "I'm falling"}
+    - {start_s: 105.3, kind: chorus, size: 0.75, arrive: bump, text: "I'm off the deep end, watch"}
+    - {start_s: 125.8, kind: chorus, size: 0.80, arrive: none, text: "In the sha-, shallow"}
+    - {start_s: 147.5, kind: bridge, size: 1.00, arrive: none, peak: true, text: "Oh, ha-ah-ah"}
+    - {start_s: 165.3, kind: chorus, size: 0.95, arrive: swell, final: true, text: "I'm off the deep end, watch"}
+    - {start_s: 185.7, kind: chorus, size: 0.90, arrive: none, text: "In the sha-ha, sha-ha-llow"}
+    - {start_s: 205.0, kind: outro, size: 0.20, arrive: none, text: ""}
+  k39b61912c8:        # Hallelujah - Leonard Cohen
+    - {start_s: 0.0, kind: verse, size: 0.25, arrive: none, text: "Now I've heard there was a"}
+    - {start_s: 38.3, kind: chorus, size: 0.65, arrive: bump, text: "Hallelujah, Hallelujah"}
+    - {start_s: 60.3, kind: verse, size: 0.30, arrive: none, text: "Your faith was strong but you"}
+    - {start_s: 93.5, kind: chorus, size: 0.70, arrive: bump, text: "Hallelujah, Hallelujah"}
+    - {start_s: 115.5, kind: verse, size: 0.30, arrive: none, text: "You say I took the name"}
+    - {start_s: 148.2, kind: chorus, size: 0.80, arrive: bump, text: "Hallelujah, Hallelujah"}
+    - {start_s: 170.0, kind: verse, size: 0.35, arrive: none, text: "I did my best, it wasn't"}
+    - {start_s: 202.7, kind: chorus, size: 0.95, arrive: bump, text: "Hallelujah, Hallelujah"}
+    - {start_s: 223.7, kind: chorus, size: 1.00, arrive: none, final: true, peak: true, text: "Hallelujah, Hallelujah"}
+    - {start_s: 244.7, kind: outro, size: 0.50, arrive: none, text: "Hallelujah, Hallelujah"}
+  k3af014dbda:        # Jolene - Dolly Parton
+    - {start_s: 0.0, kind: intro, size: 0.30, arrive: none, text: ""}
+    - {start_s: 9.5, kind: chorus, size: 0.70, arrive: bump, text: "Jolene, Jolene, Jolene, Jolene"}
+    - {start_s: 33.4, kind: verse, size: 0.45, arrive: none, text: "Your beauty is beyond compare"}
+    - {start_s: 55.3, kind: verse, size: 0.50, arrive: none, text: "He talks about you in his"}
+    - {start_s: 77.2, kind: chorus, size: 0.85, arrive: bump, text: "Jolene, Jolene, Jolene, Jolene"}
+    - {start_s: 101.3, kind: verse, size: 0.50, arrive: none, text: "You could have your choice of"}
+    - {start_s: 122.8, kind: chorus, size: 1.00, arrive: bump, final: true, peak: true, text: "Jolene, Jolene, Jolene, Jolene"}
+    - {start_s: 147.0, kind: outro, size: 0.25, arrive: none, text: "Jolene, Jolene"}
+  k3c5071eff2:        # The Sound of Silence - Simon & Garfunkel
+    - {start_s: 0.0, kind: verse, size: 0.20, arrive: none, text: "Hello darkness, my old friend"}
+    - {start_s: 37.6, kind: verse, size: 0.60, arrive: bump, text: "In restless dreams, I walked alone"}
+    - {start_s: 72.0, kind: verse, size: 0.75, arrive: none, text: "And in the naked light, I"}
+    - {start_s: 106.9, kind: verse, size: 0.85, arrive: none, text: "\"Fools\", said I, \"You do not"}
+    - {start_s: 141.3, kind: verse, size: 1.00, arrive: none, peak: true, text: "And the people bowed and prayed"}
+  k83b0027cdd:        # Valerie - Mark Ronson & Amy Winehouse
+    - {start_s: 0.0, kind: intro, size: 0.45, arrive: none, text: "(Right, it's rolling)"}
+    - {start_s: 12.2, kind: verse, size: 0.50, arrive: none, text: "Well, sometimes I go out by"}
+    - {start_s: 30.7, kind: prechorus, size: 0.60, arrive: none, text: "'Cause since I've come home"}
+    - {start_s: 40.1, kind: chorus, size: 0.80, arrive: bump, text: "Oh, won't you come on over?"}
+    - {start_s: 66.6, kind: verse, size: 0.55, arrive: none, text: "Did you have to go to"}
+    - {start_s: 103.3, kind: prechorus, size: 0.65, arrive: none, text: "Since I've come home"}
+    - {start_s: 112.7, kind: chorus, size: 0.90, arrive: bump, text: "Won't you come on over?"}
+    - {start_s: 139.2, kind: verse, size: 0.30, arrive: snap, text: "Well, sometimes I go out by"}
+    - {start_s: 157.8, kind: prechorus, size: 0.70, arrive: none, text: "'Cause since I've come home"}
+    - {start_s: 167.3, kind: chorus, size: 1.00, arrive: bump, final: true, peak: true, text: "Oh, won't you come on over?"}
+    - {start_s: 193.8, kind: outro, size: 0.85, arrive: none, text: "Valerie"}
+  k85c2587838:        # Let It Go - Idina Menzel
+    - {start_s: 0.0, kind: intro, size: 0.20, arrive: none, text: ""}
+    - {start_s: 13.8, kind: verse, size: 0.25, arrive: none, text: "The snow glows white on the"}
+    - {start_s: 42.6, kind: prechorus, size: 0.40, arrive: none, text: "Don't let them in"}
+    - {start_s: 59.1, kind: chorus, size: 0.65, arrive: bump, text: "Let it go"}
+    - {start_s: 91.6, kind: verse, size: 0.50, arrive: none, text: "It's funny how some distance"}
+    - {start_s: 105.7, kind: prechorus, size: 0.60, arrive: none, text: "It's time to see"}
+    - {start_s: 120.5, kind: chorus, size: 0.80, arrive: bump, text: "Let it go"}
+    - {start_s: 145.5, kind: instrumental, size: 0.70, arrive: none, text: ""}
+    - {start_s: 153.0, kind: bridge, size: 0.85, arrive: none, text: "My power flurries through the air"}
+    - {start_s: 181.7, kind: chorus, size: 1.00, arrive: swell, final: true, peak: true, text: "Let it go"}
+    - {start_s: 210.3, kind: outro, size: 0.20, arrive: snap, text: "The cold never bothered me anyway"}
+  k87d4afc219:        # Livin' On a Prayer - Bon Jovi
+    - {start_s: 0.0, kind: intro, size: 0.20, arrive: none, text: ""}
+    - {start_s: 22.0, kind: intro, size: 0.60, arrive: bump, text: "Once upon a time"}
+    - {start_s: 46.4, kind: verse, size: 0.50, arrive: none, text: "Tommy used to work on the"}
+    - {start_s: 76.7, kind: prechorus, size: 0.65, arrive: none, text: "She says, \"We've gotta hold on"}
+    - {start_s: 94.7, kind: chorus, size: 0.85, arrive: bump, text: "Whoa, we're half way there"}
+    - {start_s: 113.0, kind: verse, size: 0.55, arrive: none, text: "Tommy's got his six-string in hock"}
+    - {start_s: 143.5, kind: prechorus, size: 0.70, arrive: none, text: "We've gotta hold on to what"}
+    - {start_s: 160.8, kind: chorus, size: 0.90, arrive: bump, text: "Oh, we're half way there"}
+    - {start_s: 179.2, kind: instrumental, size: 0.85, arrive: none, text: ""}
+    - {start_s: 194.7, kind: prechorus, size: 0.75, arrive: none, text: "Ooh, we gotta hold on, ready"}
+    - {start_s: 205.4, kind: chorus, size: 1.00, arrive: snap, peak: true, text: "Whoa, we're half way there"}
+    - {start_s: 221.2, kind: chorus, size: 0.95, arrive: none, final: true, text: "Whoa, we're half way there"}
+    - {start_s: 236.1, kind: outro, size: 0.40, arrive: none, text: "Whoa, we're half way there"}
+  k94db54a10b:        # My Way - Frank Sinatra
+    - {start_s: 0.0, kind: intro, size: 0.20, arrive: none, text: ""}
+    - {start_s: 6.3, kind: verse, size: 0.25, arrive: none, text: "And now, the end is near"}
+    - {start_s: 56.5, kind: verse, size: 0.35, arrive: none, text: "Regrets, I've had a few"}
+    - {start_s: 105.9, kind: bridge, size: 0.70, arrive: swell, text: "Yes, there were times, I'm sure"}
+    - {start_s: 144.4, kind: verse, size: 0.50, arrive: none, text: "I've loved, I've laughed and cried"}
+    - {start_s: 193.8, kind: bridge, size: 1.00, arrive: swell, peak: true, text: "For what is a man, what"}
+    - {start_s: 234.6, kind: instrumental, size: 0.90, arrive: none, text: ""}
+    - {start_s: 253.8, kind: outro, size: 0.45, arrive: none, text: "Yes, it was my way"}
+  k97353cd010:        # Mr. Brightside - The Killers
+    - {start_s: 0.0, kind: intro, size: 0.20, arrive: none, text: ""}
+    - {start_s: 8.0, kind: verse, size: 0.50, arrive: bump, text: "Coming out of my cage"}
+    - {start_s: 32.1, kind: prechorus, size: 0.65, arrive: none, text: "But she's touching his chest now"}
+    - {start_s: 59.5, kind: chorus, size: 0.90, arrive: bump, text: "Jealousy  turning saints into the"}
+    - {start_s: 86.6, kind: instrumental, size: 0.80, arrive: none, text: ""}
+    - {start_s: 98.7, kind: verse, size: 0.60, arrive: none, text: "I'm coming out of my cage"}
+    - {start_s: 123.0, kind: prechorus, size: 0.70, arrive: none, text: "But she's touching his chest now"}
+    - {start_s: 150.3, kind: chorus, size: 1.00, arrive: bump, final: true, peak: true, text: "Jealousy  turning saints into the"}
+    - {start_s: 176.7, kind: instrumental, size: 0.90, arrive: none, text: ""}
+    - {start_s: 189.2, kind: outro, size: 0.85, arrive: none, text: "I never"}
+  k9a08ce5c5a:        # Uptown Funk - Mark Ronson
+    - {start_s: 0.0, kind: intro, size: 0.20, arrive: none, text: ""}
+    - {start_s: 17.2, kind: verse, size: 0.50, arrive: bump, text: "This hit, that ice-cold"}
+    - {start_s: 33.4, kind: prechorus, size: 0.60, arrive: bump, text: "I'm too hot (hot damn), uh"}
+    - {start_s: 50.6, kind: prechorus, size: 0.45, arrive: snap, text: "Girls, hit your hallelujah (ooh)"}
+    - {start_s: 67.3, kind: chorus, size: 0.90, arrive: snap, text: "Don't believe me, just watch, uh"}
+    - {start_s: 92.3, kind: verse, size: 0.50, arrive: snap, text: "Stop, wait a minute"}
+    - {start_s: 108.3, kind: prechorus, size: 0.60, arrive: bump, text: "I'm too hot (hot damn)"}
+    - {start_s: 125.8, kind: prechorus, size: 0.45, arrive: snap, text: "Girls, hit your hallelujah (ooh)"}
+    - {start_s: 142.5, kind: chorus, size: 0.90, arrive: snap, text: "Don't believe me, just watch, uh"}
+    - {start_s: 171.2, kind: bridge, size: 0.40, arrive: snap, text: "Before we leave"}
+    - {start_s: 192.5, kind: prechorus, size: 0.65, arrive: bump, text: "Come on, dance, jump on it"}
+    - {start_s: 209.2, kind: chorus, size: 1.00, arrive: snap, final: true, peak: true, text: "Don't believe me, just watch, uh"}
+    - {start_s: 233.4, kind: outro, size: 0.95, arrive: none, text: "Uptown funk you up"}
+  ka6f578a9f3:        # Bohemian Rhapsody - Queen
+    - {start_s: 0.0, kind: intro, size: 0.25, arrive: none, text: "Is this the real life?"}
+    - {start_s: 48.7, kind: verse, size: 0.40, arrive: none, text: "Mama"}
+    - {start_s: 105.1, kind: instrumental, size: 0.25, arrive: none, text: ""}
+    - {start_s: 114.7, kind: verse, size: 0.55, arrive: bump, text: "Too late, my time has come"}
+    - {start_s: 158.0, kind: instrumental, size: 0.75, arrive: swell, text: ""}
+    - {start_s: 186.2, kind: bridge, size: 0.65, arrive: snap, text: "I see a little silhouetto of"}
+    - {start_s: 248.0, kind: verse, size: 1.00, arrive: snap, peak: true, text: "So you think you can stop"}
+    - {start_s: 290.8, kind: instrumental, size: 0.50, arrive: none, text: ""}
+    - {start_s: 311.7, kind: outro, size: 0.20, arrive: none, text: "Nothing really matters, anyone can see"}
+  kb794839ade:        # Can't Help Falling In Love - Elvis Presley
+    - {start_s: 0.0, kind: intro, size: 0.20, arrive: none, text: ""}
+    - {start_s: 7.6, kind: verse, size: 0.30, arrive: none, text: "Wise men say"}
+    - {start_s: 36.4, kind: verse, size: 0.40, arrive: none, text: "Shall I stay?"}
+    - {start_s: 65.1, kind: bridge, size: 0.55, arrive: none, text: "Like a river flows"}
+    - {start_s: 83.0, kind: verse, size: 0.70, arrive: none, text: "Take my hand"}
+    - {start_s: 111.5, kind: bridge, size: 0.65, arrive: none, text: "Like a river flows"}
+    - {start_s: 129.1, kind: verse, size: 1.00, arrive: none, peak: true, text: "Take my hand"}
+    - {start_s: 157.3, kind: outro, size: 0.80, arrive: none, text: "For I can't help"}
+  kbcdec40eab:        # I Will Survive - Gloria Gaynor
+    - {start_s: 0.0, kind: intro, size: 0.20, arrive: none, text: ""}
+    - {start_s: 7.0, kind: verse, size: 0.25, arrive: none, text: "At first I was afraid, I"}
+    - {start_s: 22.9, kind: verse, size: 0.55, arrive: bump, text: "And so you're back from outer"}
+    - {start_s: 39.5, kind: chorus, size: 0.85, arrive: bump, text: "Go on now, go"}
+    - {start_s: 74.9, kind: instrumental, size: 0.70, arrive: none, text: ""}
+    - {start_s: 89.4, kind: verse, size: 0.65, arrive: none, text: "It took all the strength I"}
+    - {start_s: 122.3, kind: chorus, size: 0.90, arrive: bump, text: "Go on now, go"}
+    - {start_s: 159.5, kind: chorus, size: 1.00, arrive: snap, final: true, peak: true, text: "Go on now, go"}
+  kca10aa5347:        # Golden - HUNTR/X, EJAE, AUDREY NUNA, REI AMI & KPop Demon Hunters Cast
+    - {start_s: 0.0, kind: intro, size: 0.20, arrive: none, text: ""}
+    - {start_s: 16.2, kind: verse, size: 0.50, arrive: bump, text: "I was a ghost, I was"}
+    - {start_s: 31.0, kind: verse, size: 0.60, arrive: bump, text: "I lived two lives, tried\u205fto"}
+    - {start_s: 46.7, kind: prechorus, size: 0.45, arrive: snap, text: "I'm done hidin', now I'm shinin'"}
+    - {start_s: 61.6, kind: chorus, size: 0.90, arrive: bump, text: "We're goin' up, up, up, it's"}
+    - {start_s: 95.2, kind: verse, size: 0.25, arrive: snap, text: "Waited so long to break these"}
+    - {start_s: 111.9, kind: prechorus, size: 0.45, arrive: swell, text: "No more hiding, I'll be shining"}
+    - {start_s: 127.0, kind: chorus, size: 1.00, arrive: bump, final: true, peak: true, text: "We're goin' up, up, up, it's"}
+    - {start_s: 158.3, kind: outro, size: 0.95, arrive: none, text: "You know we're gonna be, gonna"}
+    - {start_s: 174.0, kind: outro, size: 0.20, arrive: snap, text: ""}
+  kd236a11f1c:        # Hey Jude - The Beatles
+    - {start_s: 0.0, kind: verse, size: 0.20, arrive: none, text: "Hey Jude, don't make it bad"}
+    - {start_s: 26.0, kind: verse, size: 0.30, arrive: none, text: "Hey Jude, don't be afraid"}
+    - {start_s: 53.4, kind: bridge, size: 0.45, arrive: bump, text: "And anytime you feel the pain,"}
+    - {start_s: 92.3, kind: verse, size: 0.45, arrive: none, text: "Hey Jude, don't let me down"}
+    - {start_s: 119.3, kind: bridge, size: 0.50, arrive: none, text: "So let it out and let"}
+    - {start_s: 160.0, kind: verse, size: 0.60, arrive: none, text: "Hey Jude, don't make it bad"}
+    - {start_s: 190.5, kind: outro, size: 1.00, arrive: swell, peak: true, text: "Na, na, na, na-na-na-naa"}
+    - {start_s: 319.8, kind: outro, size: 0.70, arrive: none, text: "Na, na, na, na-na-na-naa"}
+    - {start_s: 359.7, kind: outro, size: 0.35, arrive: none, text: "Na, na, na, na-na-na-naa"}
+  kee31811294:        # Creep - Radiohead
+    - {start_s: 0.0, kind: intro, size: 0.30, arrive: none, text: ""}
+    - {start_s: 19.1, kind: verse, size: 0.30, arrive: none, text: "When you were here before"}
+    - {start_s: 60.3, kind: chorus, size: 0.80, arrive: snap, text: "But I'm a creep"}
+    - {start_s: 81.2, kind: verse, size: 0.35, arrive: none, text: "I don't care if it hurts"}
+    - {start_s: 123.1, kind: chorus, size: 0.85, arrive: snap, text: "But I'm a creep"}
+    - {start_s: 145.5, kind: bridge, size: 1.00, arrive: none, peak: true, text: "She's running out the door"}
+    - {start_s: 185.4, kind: verse, size: 0.20, arrive: snap, text: "Whatever makes you happy"}
+    - {start_s: 206.0, kind: chorus, size: 0.35, arrive: none, final: true, text: "But I'm a creep"}
+  kf730226e87:        # Common People - Pulp
+    - {start_s: 0.0, kind: intro, size: 0.20, arrive: none, text: ""}
+    - {start_s: 8.1, kind: verse, size: 0.25, arrive: none, text: "She came from Greece"}
+    - {start_s: 35.0, kind: chorus, size: 0.30, arrive: none, text: "\"I want to live like common"}
+    - {start_s: 60.5, kind: verse, size: 0.40, arrive: none, text: "I took her to a supermarket"}
+    - {start_s: 86.9, kind: chorus, size: 0.45, arrive: none, text: "You want to live like common"}
+    - {start_s: 109.3, kind: verse, size: 0.60, arrive: swell, text: "Rent a flat above a shop"}
+    - {start_s: 136.1, kind: chorus, size: 0.70, arrive: none, text: "You'll never live like common people"}
+    - {start_s: 157.1, kind: instrumental, size: 0.85, arrive: bump, text: ""}
+    - {start_s: 184.3, kind: chorus, size: 0.80, arrive: none, text: "Sing along with the common people"}
+    - {start_s: 206.1, kind: verse, size: 0.30, arrive: snap, text: "Like a dog lying in a"}
+    - {start_s: 230.2, kind: verse, size: 1.00, arrive: swell, peak: true, text: "You will never understand"}
+    - {start_s: 251.9, kind: verse, size: 0.95, arrive: none, text: "Rent a flat above a shop"}
+    - {start_s: 276.2, kind: chorus, size: 0.95, arrive: none, final: true, text: "You'll never live like common people"}
+    - {start_s: 305.1, kind: outro, size: 0.90, arrive: none, text: "I want to live with common"}

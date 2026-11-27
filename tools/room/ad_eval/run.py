@@ -239,6 +239,14 @@ def main() -> int:
         ctl["pass"] = bool(ctl["pass"] and res.get("pass"))
         ctl["margins"][mode] = res.get("margins") or {}
     del by_mode
+    # a replay in which the show itself raised (a director tick that threw: 27 Nov, a clobbered variable made every
+    # tick fail and the run still scored) is not a run to steer by, whatever its numbers
+    broken = {k: v["errors"] for k, v in songs.items() if any(str(e).startswith(("director.", "structure.", "cues."))
+                                                              for e in (v.get("errors") or {}))}
+    if broken:
+        ctl["pass"] = False
+        ctl["why"] = f"the show raised errors in {len(broken)} of {len(songs)} replays"
+        errors["replay"] = f"{ctl['why']}: {dict(list(broken.items())[:3])}"
     ov = [agg[m].get("overall") for m in a.modes if agg.get(m, {}).get("overall") is not None]
     hist = [h for h in history() if set(h.get("songs") or []) >= set(ids) and h.get("modes") == a.modes
             and h.get("score_version") == scoremod.SCORE_VERSION]
@@ -270,7 +278,9 @@ def main() -> int:
     for mode in a.modes:
         for ln in controlsmod.show(ctl[mode], mode):
             print(ln)
-    if not ctl["pass"]:
+    if ctl.get("why"):
+        print(f"THE RUN IS BROKEN: {ctl['why']}. Don't steer by it.")
+    elif not ctl["pass"]:
         print("THE SCORE FAILS ITS CONTROLS: it can't tell the real show from a wrong one. Don't steer by it.")
     for ln in diff(card, prev, "previous"):
         print(ln)

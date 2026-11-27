@@ -55,7 +55,9 @@ def analyse_later(sid: str, d: Path) -> None:
     track, in the show's ML venv) and its shape (utils/song_shape.py, in the show venv), both on the CPU at nice 19,
     one thread, on a thread of their own so the next song's preparation never waits. The show's clock plays the grid
     along the player (show_service/karaoke_feed.py) and the director follows the shape. Lyrics don't enter either, so
-    the careful pass never redoes them. A failure only leaves the show on the room mic for that song."""
+    the careful pass never redoes them. Then the song's brief (show_service/brief.py), which does read the lyrics: it
+    carries what it was made from, and the show makes it again itself when the lyrics have changed since
+    (karaoke_feed.brief_ahead). A failure only leaves the show on the room mic for that song."""
     dep = smconfig.deployment()
     ml_py = dep.host_path("show_ml_python", "~/.venvs/sm-show-ml/bin/python")
     show_py = dep.host_path("show_python", "~/.venvs/sm-show/bin/python")
@@ -67,6 +69,10 @@ def analyse_later(sid: str, d: Path) -> None:
             jobs.append(("beats", ["nice", "-n", "19", str(ml_py), "-I", str(BEATS), str(d)]))
         if show_py and show_py.exists():
             jobs.append(("shape", ["nice", "-n", "19", str(show_py), "-m", "utils.song_shape", sid]))
+            # its brief for the show (show_service/brief.py): the idiom, palette and section map the art director
+            # performs it by, from an AI given its lyrics and shape (the local one when none answers); after the
+            # shape, which it reads. A brief already there for these lyrics is kept.
+            jobs.append(("brief", ["nice", "-n", "19", str(show_py), "-m", "show_service.brief", sid]))
         for name, cmd in jobs:
             t0 = time.time()
             try:

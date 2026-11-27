@@ -3,11 +3,16 @@
 
     ~/.venvs/sm-show/bin/python tools/room/ad_eval/reference.py <song id> [...] [--force]
 
-Writes ~/.cache/sm-ad-eval/ref/<id>.v3.json:
+Writes ~/.cache/sm-ad-eval/ref/<id>.v4.json:
   beats, downbeats   madmom's offline RNN downbeat model + DBN (3 or 4 beats a bar) over the whole mix. A different
                      model from the show's (Beat This!, causal madmom), so a disagreement is real evidence.
   energy             the mix's level every 0.1 s (RMS over 0.4 s, in dB, the song's p05..p98 -> 0..1).
-  sections           boundaries from a self-similarity matrix of beat-synchronous timbre + chroma (a checkerboard
+  sections           for a song in keys.yaml (the eval's set): its sections as annotated by reading its timed lyrics
+                     against its known form (kind, size within the song, how the music arrives at each, the peak),
+                     each start moved to the nearest downbeat; ``sections_from`` says "key". The first key cut songs
+                     by audio novelty alone and was wrong about most of them (Dancing Queen cut mid-chorus), which
+                     made every measure that reads sections a measure of the key. For any other song ("novelty"):
+                     boundaries from a self-similarity matrix of beat-synchronous timbre + chroma (a checkerboard
                      novelty over the whole track, peaks snapped to downbeats); letters by clustering the sections'
                      sound; kinds from the lyrics (lines sung again elsewhere: chorus; other lines: verse; none: intro,
                      instrumental or outro by place).
@@ -34,6 +39,7 @@ import pathlib
 import re
 import sys
 import time
+from typing import Optional
 
 os.environ.setdefault("OMP_NUM_THREADS", "1")
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
@@ -42,7 +48,8 @@ import numpy as np  # noqa: E402
 
 import common  # noqa: E402
 
-VERSION = 3            # 2: sim. 3: character. (An older key is completed, its beats and sections kept.)
+VERSION = 4            # 2: sim. 3: character. 4: annotated sections (keys.yaml). (An older key is completed: its
+                       # beats kept.)
 FS = 44100
 HOP_E = 0.1            # energy hop (s)
 WIN_E = 0.4            # energy window (s): momentary, like EBU's 400 ms
@@ -330,23 +337,93 @@ def analyse(sid: str) -> dict:
     d = np.diff(db, prepend=db[0])
     strong = (d > 6.0) & (db > np.percentile(db, 50))
     last_hit = float(np.where(strong)[0][-1] * HOP_E) if strong.any() else end_s
-    return {"version": VERSION, "song": common.song_meta(sid, lib), "made_at": time.time(),
+    out = {"version": VERSION, "song": common.song_meta(sid, lib), "made_at": time.time(),
             "beats": [round(b, 4) for b in beats], "downbeats": [round(b, 4) for b in downs],
             "sections": secs, "sim": sim, "character": sound_character(x, beats), "energy": {"hop_s": HOP_E, "v": [round(float(v), 4) for v in e]},
             "climax": climax, "last_hit_s": round(last_hit, 2), "end_s": round(end_s, 2),
             "cost_s": {"beats": round(t_beats, 1), "all": round(time.time() - t0, 1)}}
+    return complete(out, sid) if annotated(sid) else {**out, "sections_from": "novelty", "key_rev": ""}
+
+
+KEYS_YAML = common.HERE / "keys.yaml"
+KEY_SNAP_S = 1.5       # an annotated start moves to a downbeat within this
+
+
+def annotated(sid: str) -> list[dict]:
+    """A song's sections as annotated in keys.yaml ([] for a song not in it): [{start_s (the lyrics' own time), kind,
+    size, arrive, final?, peak?}]."""
+    try:
+        import yaml
+        rows = ((yaml.safe_load(KEYS_YAML.read_text()) or {}).get("keys") or {}).get(sid) or []
+    except (OSError, ValueError):
+        return []
+    return [x for x in rows if isinstance(x, dict) and isinstance(x.get("start_s"), (int, float))]
+
+
+def liveliness(sid: str) -> Optional[float]:
+    """keys.yaml's word on what kind of song this is (0 hushed .. 4 club), or None."""
+    try:
+        import yaml
+        v = ((yaml.safe_load(KEYS_YAML.read_text()) or {}).get("liveliness") or {}).get(sid)
+    except (OSError, ValueError):
+        return None
+    return float(v) if isinstance(v, (int, float)) else None
+
+
+def key_rev(rows: list[dict]) -> str:
+    """What a reference's annotated sections were made from ("" for none): a change to a song's lines in keys.yaml
+    makes its reference again."""
+    import hashlib
+    return hashlib.sha1(json.dumps(rows, sort_keys=True, default=str).encode()).hexdigest()[:10] if rows else ""
+
+
+def key_sections(rows: list[dict], off: float, downs: list[float], dur: float, e: np.ndarray) -> list[dict]:
+    """Annotated sections as the reference's: starts in the audio's time (the lyrics' own + the song's offsets),
+    moved to the nearest downbeat within KEY_SNAP_S; a letter per kind; the recording's loudness over each."""
+    starts = []
+    for i, x in enumerate(rows):
+        t = 0.0 if i == 0 else float(x["start_s"]) + off
+        if i and downs:
+            near = min(downs, key=lambda d: abs(d - t))
+            t = near if abs(near - t) <= KEY_SNAP_S else t
+        starts.append(max(0.0, t))
+    letters: dict[str, str] = {}
+    secs = []
+    for i, x in enumerate(rows):
+        a, b = starts[i], (starts[i + 1] if i + 1 < len(rows) else dur)
+        if b - a < 1.0:
+            continue
+        k = str(x.get("kind") or "verse")
+        secs.append({"start_s": round(a, 3), "end_s": round(b, 3), "label": letters.setdefault(k, chr(65 + len(letters))),
+                     "kind": k, "energy": round(float(e[int(a / HOP_E):max(int(a / HOP_E) + 1, int(b / HOP_E))].mean()), 3),
+                     "size": float(x.get("size") or 0.5), "arrive": str(x.get("arrive") or "none"),
+                     "final": bool(x.get("final")), "peak": bool(x.get("peak"))})
+    return secs
 
 
 def complete(r: dict, sid: str) -> dict:
     """An older key made whole: its ``sim`` and ``character``, from its own beats and sections (no beat tracking
     again)."""
     lib = common.library()
-    beats, secs = r.get("beats") or [], r.get("sections") or []
+    meta = lib.get(sid) or {}
     x = common.room_mix(sid, FS)
+    beats = r.get("beats") or []
+    rows = annotated(sid)
+    r["sections_from"] = r.get("sections_from") or "novelty"
+    r["key_rev"] = key_rev(rows)
+    if rows:
+        off = (float(meta.get("offset_ms") or 0) + float(meta.get("user_offset_ms") or 0)) / 1000.0
+        e, _db = energy_curve(x)
+        r["sections"] = key_sections(rows, off, r.get("downbeats") or [], len(x) / FS, e)
+        r["sections_from"] = "key"
+        pk = next((s_ for s_ in r["sections"] if s_.get("peak")), None)
+        if pk is not None:                               # the annotated high point (20 s of it at most)
+            r["climax"] = [pk["start_s"], round(min(pk["end_s"], pk["start_s"] + CLIMAX_S), 2)]
+    secs = r.get("sections") or []
     r["sim"] = {}
     if secs and len(beats) > 4 * KERNEL_BEATS:
         r["sim"] = sim_of(beat_features(x, beats), beats, secs, lyric_lines(sid, lib.get(sid) or {}))
-    r["character"] = sound_character(x, beats)
+    r["character"] = {**sound_character(x, beats), "liveliness": liveliness(sid)}
     r["version"] = VERSION
     return r
 
@@ -356,11 +433,16 @@ def load(sid: str, force: bool = False) -> dict:
     if p.is_file() and not force:
         r = json.loads(p.read_text())
         if r.get("version") == VERSION:
+            if r.get("key_rev", "") != key_rev(annotated(sid)) or \
+                    (r.get("character") or {}).get("liveliness") != liveliness(sid):   # keys.yaml changed: again
+                r = complete(r, sid)
+                common.write_json(p, r)
             return r
-    for old in (common.CACHE / "ref" / f"{sid}.v2.json", common.CACHE / "ref" / f"{sid}.json"):
+    for old in (common.CACHE / "ref" / f"{sid}.v3.json", common.CACHE / "ref" / f"{sid}.v2.json",
+                common.CACHE / "ref" / f"{sid}.json"):
         if old.is_file() and not force:
             r = json.loads(old.read_text())
-            if r.get("version") in (1, 2):
+            if r.get("version") in (1, 2, 3):
                 r = complete(r, sid)
                 common.write_json(p, r)
                 return r
