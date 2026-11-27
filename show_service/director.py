@@ -196,6 +196,7 @@ from . import roomlight
 from . import palette as pal
 from . import treatment as treatmod
 from . import idiom as idiommod
+from . import moments as momentsmod
 from . import phrasing
 from .structure import STRUCTURE_FALLBACK, piano_rest, practice_of
 from .vibes import Vibes
@@ -996,6 +997,11 @@ class Director:
         self._song_pal_locked = False                    # design.song_palette: this song has its palette
         self._fl_n, self._fl_since = 0, 99               # design: flourishes this song, changes since the last one
         self._idioms: dict = idiommod.load()             # config/live/idioms.yaml (read again at each new song)
+        self._smom_cfg: dict = momentsmod.load()         # config/live/moments.yaml: the song's moments (each new song)
+        self._mom_song: Optional[str] = None             # the karaoke song (its key) whose moments are chosen ...
+        self._mom_chosen: list[dict] = []                # ... which they are (moments.choose)
+        self._mom_done: set[str] = set()                 # ... and which were handed on (logged, hit, flashed)
+        self._mom_env: list[dict] = []                   # the envelopes in the look now (LookData.moments)
         self._idiom_out: dict[str, frozenset] = {}       # idiom -> the scenes outside it
         self._scene_traits: dict[str, dict] = {}         # scene -> idiom.traits (read again at each new song)
         self._sec_brief: Optional[dict] = None           # the brief's word on the section being landed
@@ -2868,6 +2874,7 @@ class Director:
         self._song_first_look, self._song_pal_locked = True, False
         self._fl_n, self._fl_since = 0, int(self.cfg["design"]["flourish_gap"]) - 1   # its first change: plainly
         self._idioms, self._idiom_out, self._scene_traits = idiommod.load(), {}, {}
+        self._smom_cfg = momentsmod.load()                # config/live/moments.yaml, again at each new song
         self._prev_song_pal = self.palette_name
         self._sec_brief, self._sec_size, self._arrival = None, None, None
         tp = self.treat.plan
@@ -3580,6 +3587,55 @@ class Director:
         self._arrival_set(at_s, idiommod.OPEN["arrive"], idiommod.OPEN, _c01(0.4 + 0.6 * bp), grid,
                           wind_s=min(float(bc["wind_bars"]) * (grid.bar_s or 2.0), at_s - now_s),
                           heard=True, build_progress=round(bp, 3))
+
+    def _moments_tick(self, now_s: float, grid: Grid) -> None:
+        """The karaoke song's moments (moments.py; config/live/moments.yaml): chosen once a song by its idiom, then
+        each handed to the look engine lead_s ahead, as an envelope (LookData.moments), a unison hit known ahead and
+        the running scene's drop flash, as its kind's recipe says. Nothing under House lights or Lights low, or with
+        no karaoke song."""
+        np_ = self._karaoke_np()
+        if np_ is None or self.house or self.low or not self.pal_on:
+            self._mom_env = []
+            if np_ is None:
+                self._mom_song = None
+            return
+        key = str(np_.get("key"))
+        bf = self._brief()
+        idiom = bf.get("idiom") if bf else None
+        beat = _num(np_.get("moments_beat_s")) or (grid.beat_s if grid.has_grid and grid.beat_s else 0.5)
+        if key != self._mom_song:
+            ms = np_.get("moments")
+            if not ms:
+                self._mom_env = []
+                return                                    # not read yet: chosen once they are
+            self._mom_song, self._mom_done = key, set()
+            self._mom_chosen = momentsmod.choose(ms, idiom, beat, self._smom_cfg)
+            self._log_event("song_moments", {"song": np_.get("title"), "idiom": idiom, "found": len(ms),
+                                             "chosen": [{k: m.get(k) for k in ("t", "end", "kind", "style", "salience")}
+                                                        for m in self._mom_chosen]})
+        pos = _num(np_.get("pos_s"))
+        if pos is None or not self._mom_chosen:
+            self._mom_env = []
+            return
+        got = momentsmod.perform(self._mom_chosen, pos, now_s, beat, self._smom_cfg, idiom)
+        self._mom_env = got["envelopes"]
+        for e in got["envelopes"]:
+            k = str(e.get("key"))
+            if k in self._mom_done:
+                continue
+            self._mom_done.add(k)
+            m = next((x for x in self._mom_chosen if f"{x.get('kind')}:{x.get('n')}" == k), {})
+            self._log_event("song_moment", {"key": k, "kind": m.get("kind"), "style": m.get("style"),
+                                            "salience": m.get("salience"), "envelope": e.get("kind"),
+                                            "at_s": round(float(e["at_ms"]) / 1000.0, 3),
+                                            "ahead_s": round(float(e["at_ms"]) / 1000.0 - now_s, 3), "why": m.get("why")})
+            for t0, t1 in got["hits"]:
+                if self._hit is None and self._hit_want is None and abs(t0 - float(e["at_ms"]) / 1000.0) < 0.05:
+                    self._hit_want = (t0, t1, True)
+            for fk, at in got["flashes"]:
+                if fk == k:
+                    self._ls_n += 1
+                    self._ls_drop = {"id": f"moment:{self._ls_n}", "at_ms": round(at * 1000.0, 1), "strength": 1.0}
 
     def _arrival_view(self, now_s: float) -> Optional[dict]:
         a = self._arrival
@@ -5508,6 +5564,7 @@ class Director:
                 c = pal.full(pal.rgb_of(roles[emphasis]["hex"]))          # the screens rule: never scaled
                 colours[did] = c
                 screens[did] = {"hex": pal.hex_of(c), "rgb": [round(x, 4) for x in c]}
+            self._moments_tick(now_s, grid)               # the song's stabs, stops and ending (moments.py)
             # the unison hit: an armed line's (from the line: predicted), or an unarmed drop's (now: nobody predicted
             # it); lamps only, never under House lights or Lights low. It goes out in LookData.hit, never in
             # palette_fn: each output takes it from its driver's caps (§5.4: Hue swells for an unforeseen drop)
@@ -5519,8 +5576,9 @@ class Director:
                 if now_s >= a_s - max(1.0, float(self.cfg["build"]["dip_bars"]) * (grid.bar_s or 2.0)):
                     # coloured from the dip on (it starts exactly at the line)
                     self._hit = (a_s, a_s + hb, self._hit_colours(look_pal, vs, now_s), True) if hb > 0 else None
-            elif self._hit_want is not None:
-                self._hit = (self._hit_want[0], self._hit_want[1], self._hit_colours(look_pal, vs, now_s), False)
+            elif self._hit_want is not None:              # a moment's is known ahead (predicted: a step on its line)
+                self._hit = (self._hit_want[0], self._hit_want[1], self._hit_colours(look_pal, vs, now_s),
+                             bool(self._hit_want[2]) if len(self._hit_want) > 2 else False)
                 self._hit_want = None
         accents = {"style": vs["accents"], "density": round(_c01(density), 3), "subdivision": sub,
                    "strobe": bool(vs["strobe"]), "beat_lock": beat_lock}
@@ -5545,6 +5603,7 @@ class Director:
                                  and not self.low),
                      "hit": self._hit_view(), "compose": self._cblock,
                      "arrival": self._arrival_view(now_s),      # a lift's wind-up and landing (phrasing.py)
+                     "moments": self._mom_env or None,          # the song's stabs, stops and ending (moments.py)
                      "light_scene": self.light_scene, "light_scene_why": self.light_scene_why,
                      "light_scene_drop": dict(self._ls_drop) if self._ls_drop else None,
                      "flow": self._flow, "light_programs": self._programs_view()}      # docs/LIGHTS.md §7.2

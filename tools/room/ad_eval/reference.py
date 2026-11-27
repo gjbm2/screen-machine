@@ -428,7 +428,28 @@ def complete(r: dict, sid: str) -> dict:
     return r
 
 
+def moments(sid: str) -> Optional[list]:
+    """The song's moments (utils/song_moments.py, from its backing stem and mix), cached beside the references. The
+    show finds them with the same detector: the ``moments`` goal checks that the lights answer them, and the blind
+    pairs check, by eye, that they are worth answering."""
+    if str(common.REPO) not in sys.path:
+        sys.path.insert(0, str(common.REPO))
+    from utils import song_moments
+    p = common.CACHE / "ref" / f"{sid}.moments.v{song_moments.VERSION}.json"
+    if p.is_file():
+        return json.loads(p.read_text()).get("moments")
+    m = song_moments.for_song(common.song_dir(sid), write=False)
+    if m is None:
+        return None
+    common.write_json(p, m)
+    return m.get("moments")
+
+
 def load(sid: str, force: bool = False) -> dict:
+    return {**_load(sid, force), "moments": moments(sid)}
+
+
+def _load(sid: str, force: bool = False) -> dict:
     p = ref_path(sid)
     if p.is_file() and not force:
         r = json.loads(p.read_text())

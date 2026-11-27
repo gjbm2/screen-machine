@@ -312,6 +312,8 @@ class Sim:
             import smconfig                                  # the room would play this song by; SM_AD_EVAL_BRIEF=0
             kw["brief_fn"] = lambda sid_, _shape=None, _ai=False: briefmod.load(   # replays without it
                 smconfig.state("karaoke", "songs", sid_))
+        if hasattr(kfm, "library_moments") and os.environ.get("SM_AD_EVAL_MOMENTS", "1") != "0":
+            kw["moments_fn"] = kfm.library_moments           # its moments (SM_AD_EVAL_MOMENTS=0: without them)
         try:
             kf = kfm.KaraokeFeed("http://eval.invalid", **kw)
         except TypeError:

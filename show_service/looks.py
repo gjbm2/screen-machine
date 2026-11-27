@@ -3263,8 +3263,9 @@ class LookEngine:
         cx.flow_key = (prog.revision, (prog.space or {}).get("revision"))
         cx.ms = cx.co = cx.roles = None
         cx.ph_level, cx.ph_size = 1.0, 1.0
-        if isinstance(look, Mapping) and look.get("arrival") and not (look.get("house") or look.get("low")):
-            cx.ph_level, cx.ph_size = phrasing.envelope(t, look.get("arrival"))
+        if isinstance(look, Mapping) and (look.get("arrival") or look.get("moments")) \
+                and not (look.get("house") or look.get("low")):
+            cx.ph_level, cx.ph_size = phrasing.envelopes(t, look.get("arrival"), look.get("moments"))
         return cx
 
     # -- the ensemble per light (docs/ENSEMBLE.md §7.2) ---------------------------------------------------------------

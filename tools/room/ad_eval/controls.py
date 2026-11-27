@@ -51,7 +51,7 @@ import score as scoremod  # noqa: E402
 WRONG = ("wrong song", "late", "backwards", "shuffled", "static")
 BOX = "loudness box"
 TABLE = ("overall", "goals", "gate", "beat", "contour", "sections", "form", "contrast", "proportion", "arc", "peak",
-         "release", "ending")
+         "release", "ending", "moments")
 TKEYS = ("t_s", "land_s")
 ONCE = ("look_change", "light_program", "lineup", "light_scene")
 NEVER = ("move", "token", "transition")

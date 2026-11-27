@@ -142,6 +142,22 @@ def library_song(song_id: str) -> Optional[dict]:
     return s if isinstance(s, dict) else None
 
 
+def library_moments(song_id: str) -> Optional[dict]:
+    """A karaoke library song's moments (utils/song_moments.py: its stabs, stops, drum sections and how it ends),
+    kept beside the song as moments.json: read, or measured (a few seconds: never on a playing song's path) and
+    kept. None when its audio isn't there."""
+    import smconfig
+    from utils import song_moments
+    d = smconfig.state("karaoke", "songs", song_id)
+    try:
+        m = json.loads((d / "moments.json").read_text())
+        if isinstance(m, dict) and m.get("version") == song_moments.VERSION:
+            return m
+    except (OSError, ValueError):
+        pass
+    return song_moments.for_song(d) if d.is_dir() else None
+
+
 def library_brief(song_id: str, shape: Optional[dict] = None, ai: bool = False) -> Optional[dict]:
     """A karaoke library song's brief (brief.py: its idiom, palette and section map), kept beside the song. The saved
     one; else, with ``ai`` off, one made here from the facts alone (instant, no network), and with it on the AI's
@@ -171,12 +187,15 @@ class KaraokeFeed:
                  clock: Callable[[], float] = time.time, mono: Callable[[], float] = time.monotonic,
                  shape_fn: Optional[Callable[[str], Optional[dict]]] = None,
                  grid_fn: Optional[Callable[[str], Optional[FileGrid]]] = None,
-                 brief_fn: Optional[Callable[..., Optional[dict]]] = None) -> None:
+                 brief_fn: Optional[Callable[..., Optional[dict]]] = None,
+                 moments_fn: Optional[Callable[[str], Optional[dict]]] = None) -> None:
         self.url = base_url.rstrip("/") + "/api/karaoke/now"
         self._brief_fn = brief_fn                        # (song id, shape, ai) -> its brief (library_brief), or None
         self._brief: tuple[Optional[str], Optional[dict]] = (None, None)                   # (song, its brief)
         self._brief_asked: set[str] = set()              # songs whose AI brief was asked for (once a run)
         self._shape_fn = shape_fn                        # a song id -> its measured shape (library_shape), or None
+        self._moments_fn = moments_fn                    # a song id -> its moments (library_moments), or None
+        self._moments: tuple[Optional[str], Optional[dict]] = (None, None)                 # (song, its moments)
         self._grid_fn = grid_fn                          # a song id -> its beat grid (library_grid), or None
         self._grid: tuple[Optional[str], Optional[FileGrid], float] = (None, None, -1e18)   # (song, grid, tried at)
         self._shape: tuple[Optional[str], Optional[dict]] = (None, None)                   # (song, its shape)
@@ -285,6 +304,16 @@ class KaraokeFeed:
                     shape = self._shape_fn(sid)
                 except Exception as e:                   # noqa: BLE001 - no shape: the sections alone
                     log.info("karaoke: %s's shape not read (%s)", title, type(e).__name__)
+            if self._moments_fn is not None:             # its stabs, stops and ending (utils/song_moments.py)
+                try:
+                    mo = self._moments_fn(sid)
+                    self._moments = (sid, mo if isinstance(mo, dict) else None)
+                    if isinstance(mo, dict):
+                        log.info("karaoke: %s: moments %s", title, " ".join(
+                            f"{m['kind']}{'/' + m['style'] if m.get('style') else ''}@{m['t']:.1f}"
+                            for m in mo.get("moments") or ()) or "none")
+                except Exception as e:                   # noqa: BLE001 - no moments: the sections alone
+                    log.info("karaoke: %s's moments not read (%s: %s)", title, type(e).__name__, e)
             b = None
             if self._brief_fn is not None:               # the song's brief (brief.py): its own map and idiom
                 try:
@@ -384,6 +413,10 @@ class KaraokeFeed:
                 # its brief (brief.py; None: the lyric sections as they were): the idiom, tone and palette, and on
                 # each section its size, how the music arrives there and whether it is the last chorus
                 "brief": self._brief_view(p["song_id"]),
+                # its moments (utils/song_moments.py), in the song's own audio time as pos_s: what the music does that
+                # the lights should hit (show_service/moments.py chooses and performs them)
+                "moments": (self._moments[1] or {}).get("moments") if self._moments[0] == p["song_id"] else None,
+                "moments_beat_s": (self._moments[1] or {}).get("beat_s") if self._moments[0] == p["song_id"] else None,
                 "sections": [{"pos_s": round(sec_at(x), 3), "kind": x["kind"], "letter": x["letter"],
                               "level": x.get("level"), "peak": x.get("peak"),
                               **{k: x[k] for k in ("size", "arrive", "brief_kind", "final") if k in x}}

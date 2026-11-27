@@ -36,7 +36,7 @@ RUNS = common.CACHE / "runs"
 FEEDBACK = pathlib.Path.home() / ".local" / "state" / "screen-machine" / "show" / "ad_feedback.jsonl"
 MODES = ("karaoke", "live")
 HEADLINE = ("overall", "goals", "gate", "beat", "contour", "sections", "form", "contrast", "proportion", "arc", "peak",
-            "release", "ending", "character",                                  # the goals (character: of the set)
+            "release", "ending", "moments", "character",                               # the goals (character: of the set)
             "palette", "kit", "flourish", "stillness",                         # the gate's parts (design.py)
             "snap", "climax", "coherence", "design", "reserve")                # reported only
 REGRESSION = 0.01             # a score falling by more than this is flagged (the run is deterministic: starting point)

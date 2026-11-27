@@ -4,7 +4,7 @@
 # overall = goals x gate.
 # goals: the weighted mean of these.
 weights: {beat: 1.0, contour: 1.0, sections: 1.0, form: 1.0, contrast: 1.0, proportion: 1.0, arc: 1.0, peak: 0.5,
-          release: 1.0, ending: 0.5}
+          release: 1.0, ending: 0.5, moments: 0.5}
 # of the whole song set, in a run's overall: (1 - x) of the songs' mean overall + x of this
 set_weights: {character: 0.15}
 # gate: restraint is a limit, not a goal. Each of these at or over its bar counts 1 (more restraint earns nothing:
@@ -45,6 +45,12 @@ form:
            variety: 0.5, tilt: 60.0, spread: 60.0, gobo: 1.0}
   # what makes a look big, each as a share of this (level_env: how bright the lamps get, their highest level in 0.6 s)
   size: {level_env: 1.0, lit: 1.0, move: 60.0, flicker: 2.0}
+# score.moments_measure: does the show answer the song's moments (utils/song_moments.py)?
+moments:
+  min_salience: 0.5         # a moment under this isn't one (as config/live/moments.yaml's choose.min_salience)
+  stabs: 2                  # the song's strongest stabs judged (the show plays a few, by its idiom; every stop is judged)
+  stab_rise: 0.06           # a stab answered: the lamps up this much within 0.3 s, against the 1.5 s before
+  stop_drop: 0.5            # a stop answered: the lamps down by this share of where they were, through the gap
 # controls.py: the score is trusted only while the real show beats every deliberately wrong show.
 controls:
   margin: 0.05              # ... by this much in overall, on average over the songs

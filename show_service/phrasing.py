@@ -15,6 +15,11 @@ before its line), so it is phrased, the same way every time, sized by how big th
            shapes opened wide (by half of it), and settles over ``settle_s``
   kinds    bump: as above.  snap: the same wind, the last beat before the line dark, then the landing at full.
            swell: no pulling in (a slow song doesn't flinch): the landing only, soft and long.
+           stop: the band cuts out and comes back on a hit (a song's moment, utils/song_moments.py): no wind, the
+           lights down to ``floor`` for the gap (``dark_ms`` before the line), then the landing.
+           out: the song's last light (its ending): down to ``floor`` by the line, over ``fade_ms``, and staying there.
+  moments  a song's stabs and stops (LookData.moments): each its own envelope (a stab is a bump with no wind and a
+           short settle), multiplied with the section's (``envelopes``).
 
 ``envelope`` is that as two factors for one moment, (level, size), 1.0 = the look as it is. Pure: the look engine
 multiplies them into every group's level and every moving head's pattern size (looks.py), so it works under any
@@ -41,8 +46,21 @@ def envelope(t_s: float, arrival: Optional[Mapping[str, Any]]) -> tuple[float, f
     if not isinstance(arrival, Mapping):
         return 1.0, 1.0
     kind = arrival.get("kind")
-    if kind not in ("bump", "snap", "swell"):
+    if kind not in ("bump", "snap", "swell", "stop", "out"):
         return 1.0, 1.0
+    if kind == "out":                                            # the song's last light: down by at_ms, and stays
+        try:
+            line = float(arrival["at_ms"]) / 1000.0
+            fade_s = max(0.0, float(arrival.get("fade_ms") or 0.0) / 1000.0)
+            floor = max(0.0, min(1.0, float(arrival.get("floor") or 0.0)))
+        except (KeyError, TypeError, ValueError):
+            return 1.0, 1.0
+        if t_s >= line:
+            return floor, 1.0
+        if fade_s <= 0.0 or t_s < line - fade_s:
+            return 1.0, 1.0
+        x = (t_s - (line - fade_s)) / fade_s
+        return 1.0 - (1.0 - floor) * x, 1.0
     try:
         line = float(arrival["at_ms"]) / 1000.0
         wind, lift = float(arrival.get("wind") or 0.0), float(arrival.get("lift") or 0.0)
@@ -53,6 +71,13 @@ def envelope(t_s: float, arrival: Optional[Mapping[str, Any]]) -> tuple[float, f
         return 1.0, 1.0
     if kind == "swell":
         settle_s *= SWELL_SETTLE
+    if kind == "stop" and t_s < line:
+        try:
+            dark_s = max(0.0, float(arrival.get("dark_ms") or 0.0) / 1000.0)
+            floor = float(arrival.get("floor") if arrival.get("floor") is not None else SNAP_DARK)
+        except (TypeError, ValueError):
+            return 1.0, 1.0
+        return (max(0.0, min(1.0, floor)), 1.0) if t_s >= line - dark_s else (1.0, 1.0)
     if t_s < line:
         if kind == "swell" or wind_s <= 0.0 or t_s < line - wind_s:
             return 1.0, 1.0
@@ -66,3 +91,13 @@ def envelope(t_s: float, arrival: Optional[Mapping[str, Any]]) -> tuple[float, f
     y = 1.0 - (t_s - line) / settle_s                            # 1 on the line, 0 once settled
     y = _smooth(y) if kind == "swell" else y * y
     return 1.0 + lift * y, 1.0 + SIZE_LIFT * lift * y
+
+
+def envelopes(t_s: float, arrival: Optional[Mapping[str, Any]], moments: Any = None) -> tuple[float, float]:
+    """The section's arrival and every moment's, multiplied: (level factor, size factor) at ``t_s``."""
+    level, size = envelope(t_s, arrival)
+    if isinstance(moments, (list, tuple)):
+        for m in moments:
+            lv, sz = envelope(t_s, m)
+            level, size = level * lv, size * sz
+    return level, size

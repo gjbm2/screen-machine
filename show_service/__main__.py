@@ -726,7 +726,8 @@ class Show:
             from . import karaoke_feed
             self.karaoke = karaoke_feed.KaraokeFeed(smconfig.url("flask"), shape_fn=karaoke_feed.library_shape,
                                                     grid_fn=karaoke_feed.library_grid,
-                                                    brief_fn=karaoke_feed.library_brief)
+                                                    brief_fn=karaoke_feed.library_brief,
+                                                    moments_fn=karaoke_feed.library_moments)
             self.ctx.now_playing = karaoke_feed.chain_now_playing(self.ctx.now_playing, self.karaoke.now_playing)
             if self.clock is not None and hasattr(self.clock, "set_override"):
                 self.clock.set_override(self.karaoke.clock_override)   # a song's own beats drive music.clock

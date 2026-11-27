@@ -45,7 +45,7 @@ import form as form_mod  # noqa: E402
 
 #: What ``overall`` means. 2 (27 Nov 2026): goals x gate; form, contrast, proportion, arc and peak in; snap, climax,
 #: coherence and design out of the mean; sections weighted by the size of each boundary.
-SCORE_VERSION = 2
+SCORE_VERSION = 3
 LIGHT_KINDS = ("light_scene", "lineup", "light_program")
 DEFAULT_WEIGHTS = {
     "weights": {"beat": 1.0, "contour": 1.0, "sections": 1.0, "form": 1.0, "contrast": 1.0, "proportion": 1.0,
@@ -148,6 +148,43 @@ def ibi(ref: dict) -> float:
 
 
 # -- the metrics ----------------------------------------------------------------------------------------------------
+def moments_measure(moments: Any, lamp: np.ndarray, tt: np.ndarray, W: dict) -> dict:
+    """``moments``: the share of the song's chosen stabs and stops the lamps answered. A stab: the lamps up by
+    moments.stab_rise within 0.3 s of it, against the 1.5 s before. A stop: the lamps down by moments.stop_drop
+    (a share of where they were) through the gap. Judged on every stop and the song's moments.stabs strongest stabs
+    (the show plays a few of a song's stabs, not all: its idiom says how many). None for a song with none."""
+    w = W.get("moments") or {}
+    rise, drop, n_stab = float(w.get("stab_rise", 0.06)), float(w.get("stop_drop", 0.5)), int(w.get("stabs", 2))
+    if not isinstance(moments, list) or not len(tt):
+        return {"moments": None, "moments_n": 0}
+    hop = float(tt[1] - tt[0]) if len(tt) > 1 else 0.1
+
+    def mean(a: float, b: float) -> Optional[float]:
+        i, j = int(round(a / hop)), int(round(b / hop))
+        i, j = max(0, i), min(len(lamp), max(j, i + 1))
+        return float(np.mean(lamp[i:j])) if j > i else None
+
+    def peak(a: float, b: float) -> Optional[float]:
+        i, j = max(0, int(round(a / hop))), min(len(lamp), int(round(b / hop)) + 1)
+        return float(np.max(lamp[i:j])) if j > i else None
+    floor = float(w.get("min_salience", 0.5))
+    stabs = sorted((x for x in moments if x.get("kind") == "stab" and float(x.get("salience") or 0) >= floor),
+                   key=lambda x: -float(x.get("salience") or 0))[:n_stab]
+    stops = [x for x in moments if x.get("kind") == "stop" and float(x.get("salience") or 0) >= floor]
+    got = []
+    for x in stabs:
+        t = float(x["t"])
+        before, at = mean(t - 1.5, t - 0.3), peak(t, t + 0.3)
+        if before is not None and at is not None:
+            got.append(1.0 if at - before >= rise else 0.0)
+    for x in stops:
+        t, e = float(x["t"]), float(x.get("end", x["t"]))
+        before, gap = mean(t - 1.5, t - 0.1), mean(t + 0.05, max(t + 0.1, e - 0.05))
+        if before is not None and gap is not None and before > 0.05:
+            got.append(1.0 if gap <= (1.0 - drop) * before else 0.0)
+    return {"moments": round(float(np.mean(got)), 3) if got else None, "moments_n": len(got)}
+
+
 def score(tl: dict, ref: dict, W: Optional[dict] = None) -> dict:
     W = W or weights()
     dur = float(ref.get("end_s") or (tl.get("song") or {}).get("duration_s") or 0.0)
@@ -244,6 +281,8 @@ def score(tl: dict, ref: dict, W: Optional[dict] = None) -> dict:
         m["ending"] = round(max(0.0, 1.0 - abs(t_dark - end) / float(W["ending_scale_s"])), 3)
     else:
         m["dark_err_s"] = m["ending"] = None
+    # moments: do the lights answer the song's stabs and stops (utils/song_moments.py)?
+    m.update(moments_measure(ref.get("moments"), lamp, tt, W))
     # coherence (approximate: decisions in the same tick)
     dec = tl.get("decisions") or []
     lt = [float(d["t_s"]) for d in dec if d.get("kind") in LIGHT_KINDS]
