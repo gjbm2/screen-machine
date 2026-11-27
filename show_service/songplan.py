@@ -27,9 +27,10 @@ from typing import Any, Mapping, Optional
 #: is in. peak_margin: the climax section's level must be this far over the song's middle (median) section for the
 #: song to have a peak at all (a song that is level all the way through has none). peak_after: and it must begin
 #: after this share of the song (an early loud intro is not the climax of the show). Starting points.
-#: spread_w: how much of each section's level is its place in the song's own range (the rest is the absolute level);
+#: spread_w: contrast added round each section's level by its place in the song's range (+-spread_w/2); 0 (27 Nov:
+#: any downward contrast darkened every song's first verse; the shape is already the song's own range);
 #: spread_min: a song whose sections lie closer together than this keeps its absolute levels (it really is level).
-FALLBACK: dict[str, float] = {"split_min_s": 12.0, "peak_margin": 0.12, "peak_after": 0.35, "spread_w": 0.6,
+FALLBACK: dict[str, float] = {"split_min_s": 12.0, "peak_margin": 0.12, "peak_after": 0.35, "spread_w": 0.0,
                               "spread_min": 0.05}
 
 
@@ -90,12 +91,15 @@ def lay_out(secs: Any, shape: Optional[Mapping[str, Any]], dur: Optional[float],
         peak = peak_of()
     # Levels spread within the song (27 Nov: an 8 s-smoothed, percentile-normalised curve leaves section means bunched
     # near the top, 0.82-0.97 in Don't Stop Me Now): part the song's own range, part the absolute.
+    # The contrast is added round each section's own level, at most +-spread_w/2 (27 Nov: mapping onto the song's
+    # whole range put every song's quietest section near 0, so a loud song's first verse got the smallest line-up and
+    # the lamps sat dark through it: Common People's first 1:48).
     raw = [float(x["level"]) for x in out]
     lo, hi = min(raw), max(raw)
     for x, r in zip(out, raw):
         x["level_raw"] = round(r, 3)
         x["level"] = round(r if hi - lo < c["spread_min"] else
-                           (1.0 - c["spread_w"]) * r + c["spread_w"] * (r - lo) / (hi - lo), 3)
+                           min(1.0, max(0.0, r + c["spread_w"] * ((r - lo) / (hi - lo) - 0.5))), 3)
     for i, x in enumerate(out):
         x["peak"] = (i == peak) if peak is not None else None
     return out

@@ -1353,7 +1353,9 @@ class Structure:
         e = self._end
         w = {"since_s": now_s, "junction_s": e["at_s"] if natural and e is not None else now_s, "natural": natural,
              "old_artist": old_artist, "artist": artist}
-        if self._silent_since is not None and tr["first_sound_s"] > 0:
+        # the karaoke player knows its song starts now: no waiting for the room mic to hear it (27 Nov: a quiet intro
+        # held the new song's look 7 s, until it landed over the first section's and dragged the lights dark)
+        if self._silent_since is not None and tr["first_sound_s"] > 0 and self._np_via != contract.TRACK_VIA_PLAYER:
             self._np_wait = w
             self.ends["waited"] += 1
             return

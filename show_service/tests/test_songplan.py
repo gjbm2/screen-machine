@@ -32,7 +32,7 @@ def test_each_section_gets_its_level_and_the_last_chorus_is_the_peak():
     out = sp.lay_out(SECS, shape, 200.0)
     assert [x["level_raw"] for x in out] == [0.2, 0.6, 0.3, 0.95]
     lv = [x["level"] for x in out]
-    assert lv[0] < lv[2] < lv[1] < lv[3] and lv[0] < 0.15 and lv[3] >= 0.95   # spread over the song's own range
+    assert lv == [0.2, 0.6, 0.3, 0.95]                                    # the song's own levels, as measured (spread_w 0)
     assert [x["peak"] for x in out] == [False, False, False, True]
 
 

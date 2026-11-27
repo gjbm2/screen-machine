@@ -290,6 +290,7 @@ LOG_MEM = 500
 LOG_MAX_BYTES = 32 << 20
 KARAOKE_LAMP_AHEAD_S = 0.25        # a karaoke song's file energy is read this far ahead for the lamps (a tick + their latency)
 KARAOKE_FILE_W = 0.8               # ... and weighs this much against the mic's onsets (starting point)
+TRACK_LEVEL_AHEAD_S = 4.0         # a karaoke song's line-up at its start: its file energy this far in (starting point)
 # Starting points, overridable in show.yaml (director.transitions): how a look change crosses over for each vocab.yaml
 # transition_style word. A style with no entry, or no style, crossfades over TIME_FADE_S.
 TRANSITIONS = {"gentle": {"style": "crossfade", "beats": 4.0, "seconds": 4.0},
@@ -3323,6 +3324,9 @@ class Director:
         sec = reason in ("section", "repeat")
         into = self._sec_kinds[1] if sec else None
         level = self._sec_level if sec else None
+        if reason == "track" and level is None and self._karaoke_np() is not None:
+            level = self._karaoke_energy(TRACK_LEVEL_AHEAD_S)   # the new song's own opening, not the energy left
+                                                                # over from the last one (27 Nov: 0.09 -> spots alone)
         drive = self._drive_at(level)
         # A section that comes round again (its letter: every chorus is one) brings its line-up back, so the chorus
         # looks like the chorus; once the song's level for it has risen by grow_step it takes a bigger one that keeps
