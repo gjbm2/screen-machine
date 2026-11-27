@@ -3000,7 +3000,10 @@ class Director:
         picked: list[str] = []
         sec = reason in ("section", "repeat")
         into = self._sec_kinds[1] if sec else None
-        mem = self._light_mem.get(self._sec_letter) if sec and self._sec_letter else None
+        mem = self._light_mem.get(self._mem_key(into)) if sec and self._sec_letter else None
+        if mem is not None and self._sec_level is not None and mem.get("level") is not None \
+                and mem["level"] - self._sec_level >= self._prog("grow_step", GROW_STEP):
+            mem = None                                    # it has dropped back: its scenes are drawn afresh too
         # One light group carries the beat in a look (owner, 27 Nov: "reason extensively about the way that the
         # layers interact"): every part pulsing on the beat at once is mush. Drawn among the groups that play and may
         # carry it (lights.groups.<g>.carries_beat), the same one when the section comes round again; the others'
@@ -3079,11 +3082,13 @@ class Director:
             picked.append(gid)
         if not picked:
             return None
-        if sec and self._sec_letter and only is None and not held:   # the lights' look for this section, for next time
+        if sec and self._sec_letter and only is None and not held and into not in BIG_SECTIONS:
+            # the lights' look for this section, for next time (the song's big section is its own look: a verse that
+            # holds the climax doesn't make every verse after it the climax)
             name = self._lineup_apply if self._lineup_apply is not None else self._lineup
-            was = self._light_mem.get(self._sec_letter)
+            was = self._light_mem.get(self._mem_key(into))
             kept = was is not None and getattr(self, "_lineup_how", None) == "recalled" and was.get("lineup") == name
-            self._light_mem[self._sec_letter] = {
+            self._light_mem[self._mem_key(into)] = {
                 # the level the line-up was chosen at: a section that creeps up over several returns still grows
                 "lineup": name, "level": was.get("level") if kept else self._sec_level, "carrier": carrier,
                 "scenes": {gid: new[gid]["scene"] for gid in picked if new[gid].get("scene")}}
@@ -3226,6 +3231,11 @@ class Director:
         k = _c01(self._prog("drive_level", DRIVE_LEVEL))  # the song's own arc sizes its line-ups; the groove adds
         return k * _c01(level) + (1.0 - k) * g
 
+    def _mem_key(self, into: Optional[str]) -> Optional[str]:
+        """The lights' memory of a section: by its letter and its kind (an instrumental break and the outro share a
+        letter and are not the same look)."""
+        return f"{self._sec_letter}:{into}" if self._sec_letter else None
+
     def _prog(self, key: str, default: float) -> float:
         """One of lights.programs' optional numbers (light_scenes.PROGRAMS_OPTIONAL), else the director's own."""
         v = _num(self.lights_cfg["programs"].get(key))
@@ -3253,12 +3263,14 @@ class Director:
         # A section that comes round again (its letter: every chorus is one) brings its line-up back, so the chorus
         # looks like the chorus; once the song's level for it has risen by grow_step it takes a bigger one that keeps
         # every part it had. The song's big section draws its own (everything).
-        mem = self._light_mem.get(self._sec_letter) if sec and self._sec_letter else None
+        mem = self._light_mem.get(self._mem_key(into)) if sec and self._sec_letter else None
         how, name = "drawn", None
         try:
-            if mem is not None and mem.get("lineup") in lus and into not in BIG_SECTIONS:
-                grown = level is not None and mem.get("level") is not None \
-                    and level - mem["level"] >= self._prog("grow_step", GROW_STEP)
+            step = self._prog("grow_step", GROW_STEP)
+            fallen = mem is not None and level is not None and mem.get("level") is not None \
+                and mem["level"] - level >= step          # it has dropped back since: drawn afresh for what it is now
+            if mem is not None and mem.get("lineup") in lus and into not in BIG_SECTIONS and not fallen:
+                grown = level is not None and mem.get("level") is not None and level - mem["level"] >= step
                 if grown:
                     name = lscenes.pick_lineup(lus, into, drive, self._fx_rng, over=set(lus[mem["lineup"]]["plays"]))
                     how = "grown" if name is not None else how

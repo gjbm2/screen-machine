@@ -51,6 +51,16 @@ moves:
     screen: {via: [cut]}
     land: 1.0
     tags: {energy: [0.0, 1.0], weight: 3.0}
+  crown:                                      # the big section of a song with no beat to strobe on (a ballad)
+    label: Every head flies up and everything comes on together for the song's biggest section
+    into: [final_chorus, climax]
+    size: big
+    lights:
+      transition: fly-up
+      accents: [{effect: laser-sweep-in, at_beats: 0}]
+    screen: {via: ["family:light", "family:blend", crossfade-3s]}
+    land: 1.0
+    tags: {energy: [0.0, 1.0], weight: 2.0}
   breathe:
     label: Through the dark into the break
     into: [instrumental, outro]

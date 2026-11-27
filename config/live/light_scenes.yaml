@@ -582,6 +582,14 @@ scenes:
            drop: {depth: 1.0, decay_ms: 400}}
     tags: {sections: [verse, chorus], parts: [flash], energy: [0.35, 0.8], moods: [playful, bright, warm, hypnotic], genre_fit: {"*": 0.6},
            valence: 0.6, organic: 0.4, density: 0.5}
+  flash-swell:
+    label: The strobe zones glow white, swelling slowly (a song with no beat to flash on)
+    layers:
+      - {id: low, fx: dim, phase: time, period_s: 1, depth: 0.45, needs: none}
+      - {id: swell, fx: sine, phase: bar, period_bars: [8, 4], depth: 0.6, needs: none, order: flow, spread: 0.5}
+    hits: {styles: [], drop: {depth: 1.0, decay_ms: 500}}
+    tags: {parts: [flash], shows_beat: false, sections: [chorus, verse, instrumental], energy: [0.2, 1.0],
+           moods: [warm, elegant, dreamy, euphoric], genre_fit: {"*": 0.6}, valence: 0.6, organic: 0.6, density: 0.3}
   flash-resting:
     label: The strobe zones rest (a drop still flashes them)
     layers:
