@@ -814,6 +814,12 @@ class Director:
             fit = [n for n in names                      # longer than that (by their preset length), when any is
                    if isinstance((transitions[n].get("params") or {}).get("duration_s"), (int, float))
                    and transitions[n]["params"]["duration_s"] <= max_s]
+            if not fit and want:                         # none of the move's fits: its shortest, not its luck
+                known = [n for n in names if isinstance((transitions[n].get("params") or {}).get("duration_s"),
+                                                        (int, float))]
+                if known:
+                    lo = min(transitions[n]["params"]["duration_s"] for n in known)
+                    fit = [n for n in known if transitions[n]["params"]["duration_s"] <= lo + 0.25]
             names = fit or names
         avoid = {prev} if prev else set(list(self.recent_transitions)[-1:])
         got = weighted_pick(names, lambda n: transition_weight(transitions[n].get("tags") or {}, self.direction)

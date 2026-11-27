@@ -180,7 +180,9 @@ ARM_MIN_BEATS = 2.0             # S4.7: drop_armed at least 2 beats ahead
 LINE_MOVED_BEATS = 0.25         # an armed line that moves more than this is re-armed
 NO_GRID_BAR_S = 2.0             # GOBO's "never twice within one bar" without a grid: a 4/4 bar at 120 bpm
 MIN_BACKGROUND = 5              # novelty values needed before the median + k x MAD threshold applies
-PLAN_LEAD_S = 4.0               # a lyric-plan section is announced this far ahead (at least; events.min_lead_s)
+PLAN_LEAD_S = 8.0               # a lyric-plan section is announced this far ahead (at least; events.min_lead_s): room
+                                # for a move's gesture before the line and a screen transition that lands on it
+                                # (sync_eval, 26 Nov: at 4 s a 3 s transition finished up to 2 s after the line)
 PLAN_SEEK_S = 1.5               # the player's clock moved this far from the plan's: a seek, a restart
 PREDICT_SLACK_S = 2.0           # a predicted line counts as missed this long after the latest a boundary could confirm
 NOVELTY_KEEP_S = 120.0          # snapshot: the novelty curve's last 120 s

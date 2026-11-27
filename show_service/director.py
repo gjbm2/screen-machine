@@ -401,7 +401,7 @@ DIRECTOR_FALLBACK = {
     # One controlling logic (owner, 26 Nov: "the a.d. has to have dominion"): "director" = while a feel plays, every
     # scene change on every layer is this director's look_change (room.direction ``cues``: the renderer then cuts on
     # nothing else, and never on its own dwell); "structure" = as before (the screens cut on structure's events).
-    "cues": "director", "land": {"default": 1.0, "human": 0.0},
+    "cues": "director", "land": {"default": 1.0, "human": 0.0}, "motion_groove": 0.0,
     "low": {"level": 0.10, "fade_s": 2.0}, "house": {"white_k": 2700.0, "level": 0.8}, "next_max_wait_s": 4.0,
     "art": {"poll_s": 60.0, "colours": 5, "sources": list(ART_SOURCES), "min_chroma": 0.03, "min_lightness": 0.3},
     "republish_s": 5.0, "accent_depth": {}, "bands": None, "genre_min_conf": GENRE_MIN_CONF,
@@ -1276,6 +1276,12 @@ class Director:
                     cfg[key] = v
                 else:
                     probs.append(f"director.{key}: {d[key]!r} is not a positive number")
+        if "motion_groove" in d:
+            v = _num(d["motion_groove"])
+            if v is not None and 0.0 <= v <= 1.0:
+                cfg["motion_groove"] = v
+            else:
+                probs.append(f"director.motion_groove: {d['motion_groove']!r} isn't 0..1: 0")
         if "cues" in d:
             if d["cues"] in contract.CUES_OWNERS:
                 cfg["cues"] = d["cues"]
@@ -4753,8 +4759,13 @@ class Director:
         contrast = _lerp(vs["contrast"], u)
         level = _lerp(vs["level"], ux)
         floor = vs["floor"]
-        speed = _lerp(vs["motion"], arousal)
-        amount = _lerp(vs["motion"], u)
+        # how much the lights move follows the song's groove too (owner, 26 Nov: Dancing Queen against My Way; their
+        # arousal and energy read alike, their groove doesn't): director.motion_groove of it, the rest as before
+        mg = float(self.cfg["motion_groove"])
+        g0, g1 = self.lights_cfg["programs"].get("accent_groove") or (0.0, 1.0)
+        gr = _c01((self._groove - g0) / (g1 - g0))
+        speed = _lerp(vs["motion"], (1.0 - mg) * arousal + mg * gr)
+        amount = _lerp(vs["motion"], (1.0 - mg) * u + mg * gr)
         density = ux
         spread = _c01(amount + xpr)
         beat_lock = bool(vs["beat_lock"]) and grid.gate == "beat"
