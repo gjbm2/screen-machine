@@ -1007,7 +1007,13 @@ export class RoomSim {
         frame.quaternion.copy(panel.quaternion); frame.position.copy(at).addScaledVector(zN, 0.005); this.built.add(frame);
         break;
       }
-      default: break;
+      default:
+        if (/glitter|mirror/.test(f.device ?? "")) { this.buildBall(at); break; }      // a remote-worked mirror ball
+        if ((f.device ?? "").startsWith("rf-")) {                                       // another remote-worked thing
+          const can = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.12, 16), darker);
+          aimY(can, up); can.position.copy(at); this.built.add(can);
+        }
+        break;
     }
   }
 

@@ -47,7 +47,16 @@ type BarPartBits = { part: string; id: string; label: string; at: Vec3 | null; a
  *  until it is connected. ``dev``: a room device's kind (screen, hue-lamp, mirror-ball, mic, light-sensor);
  *  ``typeId``: a planned light's type; ``connect``: what a device stands for, once connected. */
 type PThing = Placeable & { planned?: boolean; dev?: string | null; connect?: string | null; typeId?: string | null };
-type LibItem = { id: string; label: string; group: string; what: "bar" | "light" | "device"; footprint?: number | null };
+type LibItem = { id: string; label: string; group: string; what: "bar" | "light" | "device"; footprint?: number | null; note?: string };
+/** Other words people use for a thing, so the search finds it by any of them (owner, 27 Nov: "where is glitterball?"). */
+const ALSO: Record<string, string> = {
+  "mirror-ball": "glitterball glitter ball disco ball mirrorball", "rf-glitterball": "mirror ball disco ball mirrorball glitter",
+  "rf-pinspot": "pin spot spotlight colour light", screen: "tv television display projector monitor picture",
+  "hue-lamp": "philips hue bulb lamp light", mic: "microphone mike audio sound", "light-sensor": "lux sensor light meter brightness",
+  "z-350": "hazer haze fog smoke machine", "gigbar-move": "gigbar bar light bar chauvet",
+};
+/** A library thing's own name: "gigbar-par (part, 7 channels)" -> "gigbar-par"; an id alone -> words. */
+const libName = (x: LibItem) => { const p = x.label.replace(/\s*\([^)]*\)\s*$/, "").trim(); return p && p !== x.id ? p : nameWords(x.id); };
 type RigRow = { id: string; label: string; type: string | null; node_ip: string | null; universe: number | null; address: number | null;
   footprint: number | null; editable: boolean };
 const DEVICES = new Set(["screen", "hue-lamp", "mirror-ball", "mic", "light-sensor"]);
@@ -193,6 +202,63 @@ function NameField({ value, disabled, onKeep }: { value: string; disabled?: bool
   );
 }
 
+/** The "Add to the room" picker (owner, 27 Nov: "'add to this room' is scrollable area inside a scrollable area??
+ *  disaster and unusable. Also it should be a pinwheel search + pick list"): a search box over the view with one list
+ *  under it, filtered as you type (names, kinds and the other words people use: ALSO), ↑ ↓ to move, Enter to add, Esc
+ *  to close. It floats over the page (fixed), so its list is the only thing that scrolls. */
+function AddPicker({ items, anchor, onPick, onClose }: {
+  items: LibItem[]; anchor: DOMRect | null; onPick: (x: LibItem) => void; onClose: () => void;
+}) {
+  const [q, setQ] = useState("");
+  const [at, setAt] = useState(0);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const words = (x: LibItem) => `${libName(x)} ${x.label} ${x.id} ${x.group} ${x.note ?? ""} ${ALSO[x.id] ?? ""}`.toLowerCase();
+  const terms = q.toLowerCase().split(/\s+/).filter(Boolean);
+  // best first: its name starts with what is typed, then has it, then another word for it has it, then the rest
+  const rank = (x: LibItem) => {
+    const n = libName(x).toLowerCase(), qq = terms.join(" ");
+    return !qq ? 0 : n.startsWith(qq) || n.replace(/\s+/g, "").startsWith(qq.replace(/\s+/g, "")) ? 0
+      : terms.every((t) => n.includes(t)) ? 1 : terms.every((t) => (ALSO[x.id] ?? "").includes(t)) ? 2 : 3;
+  };
+  const shown = items.filter((x) => terms.every((t) => words(x).includes(t)))
+    .map((x, i) => ({ x, i, r: rank(x) })).sort((a, b) => a.r - b.r || a.i - b.i).map((e) => e.x);
+  useEffect(() => setAt(0), [q]);
+  useEffect(() => { listRef.current?.querySelector(`[data-i="${at}"]`)?.scrollIntoView({ block: "nearest" }); }, [at]);
+  const w = 380;
+
+  // over the view, beside the panel the button is in
+  const left = anchor ? Math.max(8, anchor.left - w - 12) : 120;
+  const topAt = anchor ? Math.max(8, Math.min(anchor.top, window.innerHeight - 320)) : 120;
+  return (
+    <>
+      <div className="fixed inset-0 z-40" onClick={onClose} />
+      <div className="fixed z-50 flex flex-col rounded-xl border border-stone-200 bg-white shadow-2xl" style={{ top: topAt, left, width: w, maxHeight: `calc(100vh - ${topAt + 16}px)` }}
+        data-testid="add-menu" role="dialog" aria-label="Add to the room">
+        <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search: a par, a screen, glitterball…" data-testid="add-search"
+          className="m-2 h-9 rounded-lg border border-stone-300 px-3 text-[14px] outline-none focus:border-teal-500"
+          onKeyDown={(e) => {
+            if (e.key === "ArrowDown") { e.preventDefault(); setAt((i) => Math.min(shown.length - 1, i + 1)); }
+            else if (e.key === "ArrowUp") { e.preventDefault(); setAt((i) => Math.max(0, i - 1)); }
+            else if (e.key === "Enter") { e.preventDefault(); if (shown[at]) onPick(shown[at]); }
+            else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); onClose(); }
+          }} />
+        <div ref={listRef} className="min-h-0 flex-1 overflow-auto px-1 pb-1" role="listbox">
+          {shown.length === 0 && <div className="px-3 py-2 text-stone-500">Nothing called that in the library.</div>}
+          {shown.map((x, i) => (
+            <button key={x.id} data-i={i} role="option" aria-selected={i === at} data-testid={`add-${x.id}`}
+              onMouseEnter={() => setAt(i)} onClick={() => onPick(x)}
+              className={`flex w-full items-baseline justify-between gap-2 rounded-lg px-3 py-1.5 text-left ${i === at ? "bg-teal-50 text-teal-900" : ""}`}>
+              <span className="truncate">{libName(x)}{/\(([^)]*)\)\s*$/.test(x.label) && <span className="text-stone-500"> · {x.label.match(/\(([^)]*)\)\s*$/)![1]}</span>}</span>
+              <span className="shrink-0 text-[11px] uppercase tracking-wide text-stone-400">{x.group}</span>
+            </button>
+          ))}
+        </div>
+        <div className="border-t border-stone-100 px-3 py-1.5 text-[12px] text-stone-500">It goes in planned: drawn and placed, driving nothing until you connect it.</div>
+      </div>
+    </>
+  );
+}
+
 /** What a planned device can stand for, read from where each kind lives: a microphone a sound source (show_service's
  *  senders), a light sensor a room's sensor, a mirror ball a remote-controlled device (room_service). Screens and Hue
  *  lamps are things of the rig: those are offered by the panel itself. */
@@ -213,9 +279,11 @@ function DeviceConnect({ kind, room, value, busy, onConnect }: {
           const st: any = await (await fetch(`${room}/api/v1/status`, { cache: "no-store" })).json();
           out = (st?.rooms ?? []).flatMap((r: any) => (Array.isArray(r?.sensors) ? r.sensors : []).map((x: any) =>
             ({ id: String(x?.id ?? x), label: String(x?.label ?? x?.id ?? x) })));
-        } else if (kind === "mirror-ball") {
+        } else if (kind === "mirror-ball" || kind.startsWith("rf-")) {
           const d: any = await (await fetch(`${room}/api/v1/remotes`, { cache: "no-store" })).json();
-          out = (d?.remotes ?? []).map((x: any) => ({ id: String(x?.id), label: String(x?.label ?? x?.id) }));
+          const model = kind.startsWith("rf-") ? kind.slice(3) : null;
+          out = (d?.remotes ?? []).filter((x: any) => !model || x?.model === model || x?.type === model)
+            .map((x: any) => ({ id: String(x?.id), label: String(x?.label ?? x?.id) }));
         }
         if (!dead) setOpts(out);
       } catch { if (!dead) setOpts([]); }
@@ -490,7 +558,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
     const extra: PThing[] = Object.entries(bits.room.appliances)
       .filter(([id, a]) => a.at && !known.has(id) && !bits.partIds.has(id))
       .map(([id, a]) => {
-        const k = a.kind ?? null, dev = k && DEVICES.has(k) ? k : null;
+        const k = a.kind ?? null, dev = k && (DEVICES.has(k) || k.startsWith("rf-")) ? k : null;
         return { id, label: a.label ?? nameWords(id), kind: k === "screen" || (!k && a.plane) ? "screen" : "lamp", zone: null, screen: null,
                  planned: !!k && !(dev && a.connect), dev, connect: a.connect ?? null, typeId: k && !dev ? k : null };
       });
@@ -551,9 +619,21 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   const [lib, setLib] = useState<LibItem[]>([]);
   const [rig, setRig] = useState<RigRow[]>([]);
   const [adding, setAdding] = useState(false);
+  const addAnchor = useRef<DOMRect | null>(null);
   useEffect(() => {
-    fetch(`${room}/show/api/v1/rig/library`, { cache: "no-store" }).then((r) => r.json())
-      .then((d: any) => setLib(Array.isArray(d?.items) ? d.items : [])).catch(() => setLib([]));
+    void (async () => {
+      const got: LibItem[] = [];
+      try {
+        const d: any = await (await fetch(`${room}/show/api/v1/rig/library`, { cache: "no-store" })).json();
+        if (Array.isArray(d?.items)) got.push(...d.items);
+      } catch { /* the room devices below still list */ }
+      try {                                                 // things worked by a remote (room_service's device types)
+        const d: any = await (await fetch(`${room}/api/v1/remotes`, { cache: "no-store" })).json();
+        for (const t of d?.types ?? []) if (typeof t?.id === "string")
+          got.push({ id: `rf-${t.id}`, label: String(t.label ?? t.id), group: "Worked by a remote", what: "device", note: String(t.description ?? "") });
+      } catch { /* none */ }
+      setLib(got);
+    })();
   }, [room, refresh]);
   // the list shows the selected row: scrolled to once when the selection changes (not on every redraw, which fought
   // the owner's own scrolling: "scrolling hierarchy jumps up while I'm still scrolling"), and not when it was clicked
@@ -649,7 +729,8 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       const w = snapToWall(bits.size, ...frontMiddle(bits.size, bits.room.front));
       body = { at: at ?? [w.x, w.y, 1.6], plane: { normal: w.normal, up: [0, 0, 1], size: [1.2, 0.68] } };
     } else {
-      const z = x.id === "mic" ? 1.5 : x.id === "light-sensor" ? Z - 0.02 : x.id === "mirror-ball" ? Z - 0.6
+      const z = x.id === "mic" ? 1.5 : x.id === "light-sensor" ? Z - 0.02 : x.id === "mirror-ball" || /glitter|mirror/.test(x.id) ? Z - 0.6
+        : x.id.startsWith("rf-") ? Z - 0.3
         : x.id === "hue-lamp" ? Z - 0.1 : /hazer|z-350/.test(x.id) ? 0.2 : 2.2;
       body = { at: at ?? [mid[0], mid[1], r2(z)] };
     }
@@ -667,7 +748,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       const a = bits.room.appliances[i], t = placedThings.find((x) => x.id === i);
       const typeId = a?.kind ?? rig.find((r) => r.id === i)?.type ?? null;
       if (!typeId || !t) return;
-      const what = DEVICES.has(typeId) ? "device" : "light";
+      const what = DEVICES.has(typeId) || typeId.startsWith("rf-") ? "device" : "light";
       void addThing({ id: typeId, label: t.label, group: "", what }, at.map(r2) as Vec3, a?.plane?.normal ? { plane: placedBody(a).plane } : {}, `${t.label} copy`);
     } else if (k === "place") {
       const p = bits.room.points.find((x) => x.name === i);
@@ -902,28 +983,9 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   // the outliner: everything in the room that can be edited, always there, the selected thing highlighted
   const outliner = !bits ? null : (
     <div className="overflow-auto" data-testid="outliner">
-      <div className="relative mb-1">
-        <button className={`${btn} w-full border-teal-600 text-teal-800`} onClick={() => setAdding((a) => !a)} aria-expanded={adding} data-testid="add">
-          ＋ Add to the room…</button>
-        {adding && (
-          <>
-            <div className="fixed inset-0 z-10" onClick={() => setAdding(false)} />
-            <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-[60vh] overflow-auto rounded-lg border border-stone-200 bg-white p-1 shadow-lg" data-testid="add-menu">
-              <div className="px-2 py-1 text-[12px] text-stone-500">It goes in planned: drawn and placed, driving nothing until you connect it.</div>
-              {["Light bars", "Lights", "Room"].map((g) => lib.some((x) => x.group === g) && (
-                <div key={g}>
-                  <H>{g}</H>
-                  {lib.filter((x) => x.group === g).map((x) => (
-                    <button key={x.id} className="block w-full rounded px-2 py-1 text-left hover:bg-stone-100" data-testid={`add-${x.id}`}
-                      onClick={() => { setAdding(false); void addThing(x); }}>{(() => { const p = x.label.replace(/\s*\(([^)]*)\)\s*$/, ""); return p === x.id ? nameWords(x.id) : p; })()}
-                      {/\(([^)]*)\)\s*$/.test(x.label) && <span className="text-stone-500"> · {x.label.match(/\(([^)]*)\)\s*$/)![1]}</span>}</button>
-                  ))}
-                </div>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
+      <button className={`${btn} mb-1 w-full border-teal-600 text-teal-800`} aria-expanded={adding} data-testid="add"
+        onClick={(e) => { addAnchor.current = (e.currentTarget as HTMLElement).getBoundingClientRect(); setAdding((x) => !x); }}>
+        ＋ Add to the room…</button>
       {row("room:main", roomName, `${bits.size[0]} × ${bits.size[1]} m, ${bits.size[2]} m high · faces ${bits.room.front}`)}
       <div className="ml-3 border-l border-stone-200 pl-1">
       <H>Bars</H>
@@ -1152,7 +1214,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
         <>
           <NameField value={thing.label} disabled={busy} onKeep={(v) => void renameLight(thing.id, thing.label, v)} />
           <div className="mb-2 text-stone-500">
-            {thing.dev ? DEVICE_WORDS[thing.dev] : thing.kind === "screen" ? `A screen on the ${wallOf(thingAt.plane?.normal) ?? "front"} wall: drag it along the walls` : thing.kind === "mover" ? "A moving light" : "A light"}
+            {thing.dev ? DEVICE_WORDS[thing.dev] ?? `${libName(lib.find((x) => x.id === thing.dev) ?? { id: thing.dev, label: thing.dev, group: "", what: "device" })}, worked by a remote` : thing.kind === "screen" ? `A screen on the ${wallOf(thingAt.plane?.normal) ?? "front"} wall: drag it along the walls` : thing.kind === "mover" ? "A moving light" : "A light"}
             {thing.typeId ? ` (${lib.find((x) => x.id === thing.typeId)?.label ?? thing.typeId})` : ""}
           </div>
           {(() => {
@@ -1327,6 +1389,8 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
 
   return (
     <div className="space-y-3" data-testid="room-tab">
+      {adding && <AddPicker items={lib} anchor={addAnchor.current} onClose={() => setAdding(false)}
+        onPick={(x) => { setAdding(false); void addThing(x); }} />}
       <Room3DPage embedded refresh={refresh} editables={editables} selected={selected} mode={mode} picked={region?.name ?? null} startNav={plan ? "plan" : undefined}
         onSelect={(k) => { select(k); if (k) setFrame((n) => n + 1); }} onEdit={onEdit} onDuplicate={duplicate} panel={panel} frame={frame}
         feed={feed} toolbar={toolbar} />
