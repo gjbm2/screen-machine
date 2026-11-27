@@ -1552,10 +1552,21 @@ class Registrar:
     def add(self, body: Any) -> tuple[str, list[str], contract.RigView]:
         """POST /api/v1/rig/fixtures: (the new light's id, its problem lines, the view as the loader now builds it)."""
         hand, added = self._read()
+        # ``id`` (optional): the id it is to have, as a thing planned in the room has it (a bar's part is
+        # "<bar>.<part>"), so connecting it keeps its place, its setup and its bar
+        want = body.pop("id", None) if isinstance(body, dict) else None
+        body = dict(body) if isinstance(body, dict) else body
         spec, probs = self._spec(body, self._build(hand, added), partial=False)
         new = copy.deepcopy(added)
-        fid = self._free(ADDED_ID_PREFIX + (_SLUG.sub("-", spec["label"].lower()).strip("-")[:48] or "light"),
-                         dict(self._items(hand, new, "fixtures")))
+        taken = dict(self._items(hand, new, "fixtures"))
+        if want is not None:
+            if not isinstance(want, str) or not _ID.match(want):
+                raise Refused("bad_request", f"id: {want!r} isn't an id (lower case letters, digits, . _ -)")
+            if want in taken:
+                raise Refused("bad_request", f"There's already a light {want!r}.")
+            fid = want
+        else:
+            fid = self._free(ADDED_ID_PREFIX + (_SLUG.sub("-", spec["label"].lower()).strip("-")[:48] or "light"), taken)
         oid = self._place(hand, new, spec["node_ip"], spec["universe"], probs)
         entry: dict[str, Any] = {"label": spec["label"], "type": spec["type"], "output": oid,
                                  "address": spec["address"]}

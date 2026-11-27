@@ -102,9 +102,10 @@ BAR_KEYS: tuple[str, ...] = ("label", "at", "facing_deg", "layout")
 #: only tilts, about the bar's length, and faces where the bar faces), and how the part points as it ships: lean_deg
 #: (degrees forward from straight up: 90 is level) and turn_deg (to the right of the bar's front). A light's own setup
 #: (fixtures.setup.yaml lean_deg, turn_deg: the Lights page) overrides those two.
-LAYOUT_PART_KEYS: tuple[str, ...] = ("along", "up", "head", "hang", "turns", "lean_deg", "turn_deg", "type")
+LAYOUT_PART_KEYS: tuple[str, ...] = ("along", "up", "head", "hang", "turns", "lean_deg", "turn_deg", "type", "offset")
 #: type: the part's light type (a fixtures.yaml type id), so a bar placed before its lights are registered (a planned
-#: bar) can be drawn part by part
+#: bar) can be drawn part by part; offset: its DMX channel offset from the bar's start address, so connecting a planned
+#: bar registers each part at its own address
 SURFACE_KEYS: tuple[str, ...] = ("label", "origin", "normal", "up", "size")
 PLANE_KEYS: tuple[str, ...] = ("normal", "up", "size")
 POSE_KEYS: tuple[str, ...] = ("at", "rot", "tilt_offset_deg", "pan_sign", "tilt_sign", "rms_deg", "worst_deg",
@@ -495,6 +496,8 @@ def _layout(raw: Any, where: str, probs: list[str]) -> Optional[dict]:
                              "turns": sp.get("turns") is not False}
         if isinstance(sp.get("type"), str) and _WORD.match(sp["type"]):
             e["type"] = sp["type"]
+        if isinstance(sp.get("offset"), int) and not isinstance(sp.get("offset"), bool) and 0 <= sp["offset"] < 512:
+            e["offset"] = sp["offset"]
         for k in ("lean_deg", "turn_deg"):
             if sp.get(k) is not None:
                 if _num(sp.get(k)) is None:
@@ -1251,6 +1254,10 @@ class Store:
 
     def remove_keep_out(self, name: str) -> None:
         self._remove("keep_out", _check_id(name, "keep-out region"))
+
+    def remove_bar(self, name: str) -> None:
+        """Take a bar placed on the page out of the room (a planned bar, or one being moved to the hand file)."""
+        self._remove("bars", _check_id(name, "bar"))
 
     def set_bar(self, name: str, at: Any = None, facing_deg: Any = None, layout: Optional[str] = None,
                 label: Optional[str] = None) -> dict:

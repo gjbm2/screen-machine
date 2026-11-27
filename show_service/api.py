@@ -205,7 +205,7 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("PUT", "/api/v1/rig/space/points/{name}"), ("DELETE", "/api/v1/rig/space/points/{name}"),
     ("PUT", "/api/v1/rig/space/regions/{name}"), ("DELETE", "/api/v1/rig/space/regions/{name}"),
     ("PUT", "/api/v1/rig/space/keep_out/{name}"), ("DELETE", "/api/v1/rig/space/keep_out/{name}"),
-    ("PUT", "/api/v1/rig/space/bars/{name}"),
+    ("PUT", "/api/v1/rig/space/bars/{name}"), ("DELETE", "/api/v1/rig/space/bars/{name}"),
     ("GET", "/api/v1/rig/preview/status"), ("GET", "/api/v1/rig/preview/dmx"),
     ("GET", "/api/v1/rig/live"),
     ("GET", "/api/v1/autopilot"), ("PUT", "/api/v1/autopilot"), ("POST", "/api/v1/autopilot/undo"),
@@ -1200,6 +1200,7 @@ class Api:
             ("PUT", "/api/v1/rig/space/keep_out/{name}", self._space_keep_put),
             ("DELETE", "/api/v1/rig/space/keep_out/{name}", self._space_keep_delete),
             ("PUT", "/api/v1/rig/space/bars/{name}", self._space_bar_put),
+            ("DELETE", "/api/v1/rig/space/bars/{name}", self._space_bar_delete),
             # the Light setup's 3D view: the rig as it WOULD look (preview.py), never sent to a light
             ("GET", "/api/v1/rig/preview/status", previewmod.status),
             ("GET", "/api/v1/rig/preview/dmx", previewmod.dmx),
@@ -2587,6 +2588,15 @@ class Api:
         name = request.match_info["name"]
         return await self._space_write(brain, lambda st: st.set_bar(name, body.get("at"), body.get("facing_deg"),
                                                                     body.get("layout"), body.get("label")))
+
+    async def _space_bar_delete(self, request: web.Request, brain: Any) -> web.Response:
+        name = request.match_info["name"]
+
+        def write(store: Any) -> dict:
+            store.remove_bar(name)
+            return {"removed": name}
+
+        return await self._space_write(brain, write)
 
     async def _space_keep_delete(self, request: web.Request, brain: Any) -> web.Response:
         name = request.match_info["name"]
