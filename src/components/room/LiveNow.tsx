@@ -6,7 +6,7 @@
 // renderer's up-next plan (useUpNext). Comments: routes/screen_notes.py.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, MessageSquare, RotateCw, ThumbsUp, Undo2 } from "lucide-react";
+import { Check, MessageSquare, RotateCw, Shuffle, ThumbsUp, Undo2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { addScreenNote, screenNotes, type ScreenNote } from "@/shared/api/screenNotes";
 import { storageGet, storageSet, type RoomApi } from "@/pages/Room/api";
@@ -205,6 +205,7 @@ export function WasNowNext({
     nowFx,
     prevFx,
     nextFx,
+    nextFxId: nextFxPlan?.id ?? null,
     sceneEta: eta(nextScene?.eta_s?.[0]),
     fxEta: eta(nextFxPlan?.eta_s),
   };
@@ -223,6 +224,10 @@ export function WasNowNext({
   const stale =
     !!frozen &&
     (frozen.nowInfo?.key !== liveView.nowInfo?.key || frozen.nextScene?.id !== liveView.nextScene?.id || fxSig(frozen.nowFx) !== fxSig(liveView.nowFx));
+  const again = (planId: string) => {
+    release();
+    void un.edit({ op: "reroll", id: planId }).catch(() => undefined);
+  };
   const sceneEta = frozen ? null : v.sceneEta;
   const fxEta = frozen ? null : v.fxEta;
 
@@ -240,6 +245,10 @@ export function WasNowNext({
         <span className="pt-4 text-sm font-medium text-muted-foreground">{WHEN_WORDS[when]}</span>
         <div className="min-w-0 space-y-0.5">
           <SceneButton info={info} caption={caption} onClick={onClick} disabled={!lib || busy} testId={when === "now" ? `scene-${screenId}` : undefined} />
+          {when === "next" ? (
+            // what hasn't played can't be scored (owner, 27 Nov): only picked again
+            v.nextScene && <PickAgain onClick={() => again(v.nextScene!.id)} testId={`again-scene-${screenId}`} />
+          ) : (
           <div className="flex items-center gap-1">
             <RatingRow bare api={api} ratingKey={rate} what="scene" className="min-w-0" testId={when === "now" ? `rate-${screenId}` : undefined} />
             {session && info.key && (
@@ -253,7 +262,8 @@ export function WasNowNext({
             )}
             {rate && <CommentButton onKeep={(words) => keep({ kind: "scene", key: rate, label: info.label, when, words })} />}
           </div>
-          <NoteLine note={lastNote(rate)} />
+          )}
+          {when !== "next" && <NoteLine note={lastNote(rate)} />}
         </div>
       </div>
     );
@@ -265,6 +275,12 @@ export function WasNowNext({
       <div className="flex min-h-9 flex-wrap items-center gap-1.5">
         {items.length === 0 && <span className="text-sm text-muted-foreground">–</span>}
         {items.map((it) => {
+          if (when === "next")
+            return (
+              <span key={`${it.effect}:${it.label}`} className="inline-flex h-9 items-center whitespace-nowrap rounded-full border border-dashed border-stone-300 bg-white px-3 text-sm">
+                {shortLabel(it.label)}
+              </span>
+            );
           const on = fxSel?.when === when && fxSel.item.effect === it.effect && fxSel.item.label === it.label;
           return (
             <button
@@ -283,6 +299,7 @@ export function WasNowNext({
           );
         })}
         {extra && <span className="text-sm tabular-nums text-muted-foreground">{extra}</span>}
+        {when === "next" && v.nextFxId && <PickAgain onClick={() => again(v.nextFxId!)} testId={`again-fx-${screenId}`} />}
       </div>
     </div>
   );
@@ -389,6 +406,19 @@ function GoodButton({ api, session, scene, effects }: { api: RoomApi; session: s
         </button>
       )}
     </span>
+  );
+}
+
+function PickAgain({ onClick, testId }: { onClick: () => void; testId?: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      data-testid={testId}
+      className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 text-sm text-stone-600 hover:bg-stone-100 hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+    >
+      <Shuffle className="h-4 w-4" aria-hidden /> Pick again
+    </button>
   );
 }
 
