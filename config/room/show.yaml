@@ -169,6 +169,14 @@ director:
   novelty: 0.12                             # |fast - slow| energy that counts as a change point when changing by time
   variation_bars: 64                        # while Keep this look holds: a new allocation after this many bars
   entry_fade_s: 8.0                         # entering a vibe: the lamps fade in from the house light (§8.6)
+  # Restraint and coherence within a song (docs/LIGHT_DESIGN_NOTES.md; owner, 27 Nov: "a system that feels the music and
+  # expresses it well", not one that "flashes like a school disco"). The eval scores these (tools/room/ad_eval/design.py).
+  design:
+    song_palette: true                      # a karaoke song keeps the palette its first look landed with: its sections
+                                            # re-allocate the roles, and a later plan's palette waits for the next song
+    flourish_per_song: 3                    # moves whose lights carry a gesture (heads fly up, a pump, a sweep through)
+                                            # in one karaoke song, the last kept for its big moment
+    flourish_gap: 2                         # after a flourish, this many section changes go across plainly
   no_feel:                                  # owner, 17 Oct: the director always resolves a palette. With no feel set
     palettes: [art, ember, gold, dusk]      # it picks from these (the home feel's list; art = the screens' own art); [] = the old neutral
   emphasis_edges: [0.4, 0.75]               # arousal where the screens' emphasis moves base -> accent -> highlight (§8.3)

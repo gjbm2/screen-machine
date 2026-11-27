@@ -70,3 +70,39 @@ def test_song_genres_map_into_the_vocabulary():
     import yaml, pathlib
     vocab = yaml.safe_load((pathlib.Path(__file__).parents[2] / "config/live/vocab.yaml").read_text())["genre"]
     assert set(dmod.SONG_GENRES.values()) <= set(vocab)
+
+
+def test_flourishes_are_spaced_and_few_a_song():
+    """show.yaml director.design (owner, 27 Nov: restraint, "not a school disco"): after a flourish the next
+    flourish_gap section changes go across plainly; a karaoke song has flourish_per_song of them at most, the last
+    kept for its big moment; a new song, a drop and a person's Next are their own occasions."""
+    held = dmod.flourish_held
+    assert held("section", 0, 0, 3, 2, True) and held("repeat", 0, 1, 3, 2, True)      # just had one
+    assert not held("section", 0, 2, 3, 2, True) and not held("section", 1, 5, 3, 2, True)
+    assert held("section", 2, 9, 3, 2, True)                          # two spent: the third is the big moment's
+    assert not held("section", 9, 9, 3, 2, False)                     # no song to count in: only the spacing
+    assert held("dwell", 9, 1, 3, 2, False)
+    assert not any(held(r, 9, 0, 3, 2, True) for r in ("track", "drop", "next"))
+    assert not held("section", 0, 0, 3, 0, True) and held("section", 0, 9, 1, 0, True)
+
+
+def test_a_karaoke_song_keeps_one_palette(tmp_path):
+    """design.song_palette: once the song's first look has landed, a later plan's palette waits for the next song
+    (the sections re-allocate the roles instead)."""
+    r = karaoke_rig(tmp_path)
+    r.run(3.0)
+    d = r.d
+    d.pending, d._treat_pal = None, None
+    d._song_pal_locked = False
+    d._apply_plan({"palette": "another"}, r.t, landed=True)
+    assert d._treat_pal == "another"                                 # the song has no look of its own yet
+    d._treat_pal, d._song_pal_locked = None, True
+    d._apply_plan({"palette": "another"}, r.t, landed=True)
+    assert d._treat_pal is None                                      # it has: the palette holds
+    d.cfg["design"]["song_palette"] = False
+    d._apply_plan({"palette": "another"}, r.t, landed=True)
+    assert d._treat_pal == "another"
+    d.cfg["design"]["song_palette"], d._treat_pal = True, None
+    r.ctx.now_playing = lambda: None                                 # no karaoke song: plans change it as before
+    d._apply_plan({"palette": "another"}, r.t, landed=True)
+    assert d._treat_pal == "another"

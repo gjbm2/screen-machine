@@ -438,6 +438,13 @@ DIRECTOR_FALLBACK = {
     # vibe's list (art = the screens' own stills). [] keeps the old neutral (artnet_out's fixed colour). Only the
     # colours: every other behaviour stays neutral until a feel is set.
     "no_feel": {"palettes": []},
+    # design: restraint and coherence within a song (docs/LIGHT_DESIGN_NOTES.md; owner, 27 Nov: "a system that feels
+    # the music and expresses it well", not one that "flashes like a school disco"). song_palette: a karaoke song
+    # keeps the palette its first look landed with (its sections re-allocate the roles; a later plan's palette waits
+    # for the next song). A flourish is a move whose lights carry a gesture (every head flies up, a pump, a sweep
+    # through): after one, the next flourish_gap section changes go across plainly, and a karaoke song has at most
+    # flourish_per_song of them, the last kept for its big moment (a big move is never held back). Starting points.
+    "design": {"song_palette": True, "flourish_per_song": 3.0, "flourish_gap": 2.0},
     # song ends (README S5.17)
     "track_transitions": TRACK_TRANSITIONS,
     # composition and balance (README S5.18; compose.py): observe | drive, the loudness, range, headroom and limits
@@ -450,7 +457,22 @@ STAGE4_KEYS: dict[str, dict[str, Any]] = {
               "dip_bars": (0.0, 16.0), "hit_beats": (0.0, 16.0), "hit_swell_ms": (300.0, 10000.0)},
     "breakdown": {"floor_add": (0.0, 1.0), "motion_scale": (0.0, 1.0), "saturation_scale": (0.0, 1.0)},
     "screens": {"send_palette": bool, "palette_transition_s": (0.0, 60.0), "hold_hand_picks": bool,
-                "own_echo_s": (0.0, 60.0)}}
+                "own_echo_s": (0.0, 60.0)},
+    "design": {"song_palette": bool, "flourish_per_song": (0.0, 50.0), "flourish_gap": (0.0, 16.0)}}
+
+
+#: The look changes whose moves the design's flourish pacing governs (a new song, a drop and a person's Next are
+#: their own occasions)
+FLOURISH_REASONS = ("section", "repeat", "dwell")
+
+
+def flourish_held(reason: str, n: int, since: int, per_song: float, gap: float, in_song: bool) -> bool:
+    """Whether a change of ``reason`` goes across plainly (show.yaml director.design): within ``gap`` changes of the
+    last flourish, or once a karaoke song (``in_song``) has had all but the one kept for its big moment. ``n``:
+    flourishes this song; ``since``: changes since the last one."""
+    if reason not in FLOURISH_REASONS:
+        return False
+    return since < int(gap) or (in_song and n >= max(0, int(per_song) - 1))
 
 
 def _c01(x: float) -> float:
@@ -957,6 +979,9 @@ class Director:
         self._relax_done = False
         self._silent_since: Optional[float] = None
         self._song_change = False
+        self._song_first_look = False                    # a new song's first look hasn't landed yet
+        self._song_pal_locked = False                    # design.song_palette: this song has its palette
+        self._fl_n, self._fl_since = 0, 99               # design: flourishes this song, changes since the last one
         self._emphasis = 0
         self._band: Optional[int] = None
         self._split_hi = False
@@ -2111,6 +2136,8 @@ class Director:
         elif pd["advance"] or self._song_change:
             self._advance_palette(vs)
         self._song_change = False
+        if self._song_first_look:                        # the song's first look: it keeps this palette (design)
+            self._song_first_look, self._song_pal_locked = False, True
         if rec is not None:
             self.variation = int(_num(rec.get("variation"), self.variation) or 0)
         elif not pd.get("palette") and not pd["advance"]:
@@ -2420,6 +2447,8 @@ class Director:
             self.ensemble.prefer_k = float(self.treat.cfg["form_prefer"])
         if not landed or plan is None or not plan.get("palette") or self.palette_pick != contract.PALETTE_AUTO:
             return
+        if self._song_pal_locked and self.cfg["design"]["song_palette"] and self._karaoke_np() is not None:
+            return                                        # one palette a song: its sections re-allocate the roles
         pd = self.pending
         if pd is not None and pd["by"] == "director" and not pd.get("palette") and not pd.get("recall"):
             pd["palette"] = plan["palette"]               # the song's look hasn't landed yet: it takes the plan's
@@ -2738,6 +2767,8 @@ class Director:
         self._sec_level, self._sec_letter = None, None
         self._light_mem.clear()
         self._song_change = (tr or {}).get("change") != "small"
+        self._song_first_look, self._song_pal_locked = True, False
+        self._fl_n, self._fl_since = 0, int(self.cfg["design"]["flourish_gap"]) - 1   # its first change: plainly
         tp = self.treat.plan
         plan = tp if (tp is not None and tid is not None and tp.get("song") == f"track:{tid}") else \
             self._plan_song(now_s, "a new song", change=(tr or {}).get("change"),
@@ -3387,8 +3418,19 @@ class Director:
         frm, into = self._sec_kinds if reason in ("section", "repeat") else (None, None)
         strobes = self._strobe_fx()
         strobe_ok = self._strobe_ok(now_s, at_s)
+        dz = self.cfg["design"]
+        paced = reason in FLOURISH_REASONS
+        # held back: a move with a gesture is left out of this draw (a big move goes through whatever the count)
+        tight = flourish_held(reason, self._fl_n, self._fl_since, dz["flourish_per_song"], dz["flourish_gap"],
+                              self._karaoke_np() is not None)
+
+        def flourish(m: dict) -> bool:
+            tr = (m.get("lights") or {}).get("transition")
+            return tr is not None and bool((self.light_scenes.transitions.get(tr) or {}).get("gesture"))
 
         def usable(m: dict) -> bool:
+            if tight and m["size"] != "big" and flourish(m):
+                return False
             li = m.get("lights") or {}
             names = [a["effect"] for a in li.get("accents") or ()]
             tr = li.get("transition")
@@ -3410,9 +3452,16 @@ class Director:
             log.exception("moves: pick failed")
             got = None
         if got is None:
+            if paced:
+                self._fl_since += 1
             return None
         name, why = got
         m = self.moves.moves[name]
+        if paced:
+            if flourish(m):
+                self._fl_n, self._fl_since = self._fl_n + 1, 0
+            else:
+                self._fl_since += 1
         if m["size"] == "big" and not self._moment_paid(at_s):
             self._tokens.append(now_s)
             self._strobe_paid = at_s                      # its own strobes are part of this one moment
