@@ -36,6 +36,8 @@ export interface Editable {
   parent?: string;          // a light on a bar: the bar's key (they are one unit: outlined together)
   normal?: Vec3;            // a screen: which way it faces out of its wall
   tiltOnly?: boolean;       // a light in a one-axis bracket (a U-yoke): it only tilts, facing where its bar faces
+  locked?: boolean;         // locked (owner, 27 Nov): the view clicks through it and never drags it; selected from the
+                            // page's list it is outlined (amber), with no handles
 }
 export interface EditChange { at?: Vec3; facing_deg?: number; lean_deg?: number; turn_deg?: number; size?: Vec3; normal?: Vec3 }
 type Handle = "move" | "base" | "ring" | "lift" | "turn" | "tilt";
@@ -176,7 +178,7 @@ export class RoomEditor {
     this.handles = [];
     const it = this.live;
     if (!it) return;
-    const line = new THREE.LineBasicMaterial({ color: CYAN, depthTest: false, transparent: true });
+    const line = new THREE.LineBasicMaterial({ color: it.locked ? AMBER : CYAN, depthTest: false, transparent: true });
     const outline = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(it.size[0], it.size[1], it.size[2])), line);
     outline.position.set(it.at[0], it.at[1], it.at[2]);
     if (it.yaw !== undefined) outline.rotation.z = it.yaw;
@@ -193,6 +195,7 @@ export class RoomEditor {
       if (k.yaw !== undefined) o.rotation.z = k.yaw;
       this.ui.add(o);
     }
+    if (it.locked) return;                            // locked: seen, not handled
     if (LIFTS.includes(it.kind)) {
       // one arrow above it: raise or lower it
       const top = it.at[2] + it.size[2] / 2;
@@ -345,13 +348,13 @@ export class RoomEditor {
     const out: string[] = [];
     for (const h of hs) {
       const k = h.object.userData.key as string, it = this.items.find((i) => i.key === k);
-      if (it?.parent === parent && !out.includes(k)) out.push(k);
+      if (it?.parent === parent && !it.locked && !out.includes(k)) out.push(k);
     }
     return out;
   }
   /** The nearest thing under a point of the view, a light before the bar it is on. */
   private pickPart(x: number, y: number): string | null {
-    const hs = this.hits(x, y, [...this.picks.values()]);
+    const hs = this.hits(x, y, [...this.picks.values()]).filter((h) => !this.items.find((i) => i.key === h.object.userData.key)?.locked);
     if (!hs.length) return null;
     const item = (k: string) => this.items.find((i) => i.key === k);
     // a part of a unit (a light, a head, a strobe LED) before the bar it is on: the nearest such part
@@ -366,6 +369,7 @@ export class RoomEditor {
 
   /** What a press there would grab: one of the selected thing's handles, or the selected thing itself (to move it). */
   private grabbable(x: number, y: number): Handle | null {
+    if (this.live?.locked) return null;
     const h = this.hits(x, y, this.handles)[0];
     if (h) return h.object.userData.handle as Handle;
     const it = this.live;
@@ -402,7 +406,7 @@ export class RoomEditor {
   /** A press on a thing's name (the page's label for it): pick it up as a press on the thing itself would. */
   grabItem(key: string, x: number, y: number): boolean {
     const k = this.items.find((i) => i.key === key);
-    if (!k || !MOVES.includes(k.kind)) return false;
+    if (!k || k.locked || !MOVES.includes(k.kind)) return false;
     this.select(key);
     const it = this.live!;
     const r = this.roomRay(x, y), p0 = new THREE.Vector3(...it.at);

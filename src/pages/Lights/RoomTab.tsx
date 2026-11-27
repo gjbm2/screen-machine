@@ -411,6 +411,18 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
 }) {
   const [bits, setBits] = useState<SpaceBits | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
+  // Locked things (owner, 27 Nov: "add a 'lock' / 'unlock' toggle to lights and other items in the studio"): the view
+  // clicks through them and never drags them (a bar's lights with it); the list still selects them and the panel
+  // still edits them, as design tools do. Kept on this device.
+  const [locks, setLocks] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("room3d.locked") ?? "[]")); } catch { return new Set(); }
+  });
+  const toggleLock = (key: string) => setLocks((was) => {
+    const next = new Set(was);
+    if (next.has(key)) next.delete(key); else next.add(key);
+    try { localStorage.setItem("room3d.locked", JSON.stringify([...next])); } catch { /* this visit */ }
+    return next;
+  });
   const [mode, setMode] = useState<GizmoMode>("translate");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -665,8 +677,9 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
     for (const a of bits.room.regions) {
       if (a.surface === "floor") out.push({ key: `area:${a.name}`, kind: "area", label: a.label, at: [a.centre[0], a.centre[1], 0.02], size: [a.size[0], a.size[1], 0.04] });
     }
-    return out.filter((e) => !bits.locked.has(e.key));                 // set in the room file: not moved here
-  }, [bits, placedThings]);
+    return out.filter((e) => !bits.locked.has(e.key))                  // set in the room file: not moved here
+      .map((x) => (locks.has(x.key) || (x.parent && locks.has(x.parent)) ? { ...x, locked: true } : x));   // locked here
+  }, [bits, placedThings, locks]);
 
   const kind = selected ? kindOf(selected) : null, id = selected ? idOf(selected) : null;
   const bar = kind === "bar" ? bits?.bars.find((b) => b.id === id) : undefined;
@@ -1045,15 +1058,36 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       ))}
     </div>
   );
+  const lockable = (key: string) => !key.startsWith("room:");
+  const barOf = (key: string) => {
+    if (!bits || !(key.startsWith("light:") || key.startsWith("part:"))) return null;
+    const id = key.slice(key.indexOf(":") + 1);
+    const b = bits.bars.find((x) => x.parts.some((p) => p.id === id) || x.aims.some((p) => p.id === id));
+    return b ? `bar:${b.id}` : null;
+  };
+  const lockedBy = (key: string) => locks.has(key) ? key : (() => { const pk = barOf(key); return pk && locks.has(pk) ? pk : null; })();
+  const lockBtn = (key: string, always = false) => {
+    const by = lockedBy(key), own = locks.has(key);
+    return (
+      <button className={`shrink-0 rounded px-1 text-[12px] ${by ? "text-amber-600" : "text-stone-400 hover:text-stone-700"} ${by || always ? "" : "opacity-0 group-hover:opacity-100 focus:opacity-100"}`}
+        onClick={(e) => { e.stopPropagation(); toggleLock(by && !own ? by : key); }} aria-pressed={!!by} data-testid={`lock-${key}`}
+        title={by && !own ? "Locked with its bar: click to unlock the bar" : own ? "Locked: the view won't select or move it. Click to unlock" : "Lock it: the view won't select or move it"}>
+        {by ? "🔒" : "🔓"}
+      </button>
+    );
+  };
   const row = (key: string, label: string, sub?: string) => bits?.locked.has(key) ? (
     <div key={key} className="px-2 py-1 text-stone-500" title="Set in the deployment's space.yaml: change it there">{label} · set in the room file</div>
   ) : (
-    <button key={key} onClick={() => go(key)} data-testid={`pick-${key}`}
-      aria-current={selected === key ? "true" : undefined}
-      className={`block w-full rounded px-2 py-1 text-left ${selected === key
-        ? "bg-teal-50 font-medium text-teal-900 ring-1 ring-teal-300" : "hover:bg-stone-100"}`}>
-      {label}{sub ? <span className={selected === key ? "text-teal-700" : "text-stone-500"}> · {sub}</span> : null}
-    </button>
+    <div key={key} className="group flex items-center">
+      <button onClick={() => go(key)} data-testid={`pick-${key}`}
+        aria-current={selected === key ? "true" : undefined}
+        className={`block min-w-0 flex-1 rounded px-2 py-1 text-left ${selected === key
+          ? "bg-teal-50 font-medium text-teal-900 ring-1 ring-teal-300" : "hover:bg-stone-100"} ${lockedBy(key) ? "text-stone-500" : ""}`}>
+        {label}{sub ? <span className={selected === key ? "text-teal-700" : "text-stone-500"}> · {sub}</span> : null}
+      </button>
+      {lockable(key) && lockBtn(key)}
+    </div>
   );
   /** A light's name without its bar's ("Bar A par 1" under "Bar A": "par 1"). */
   const short = (p: { label: string }, b: BarBits) => {
@@ -1201,6 +1235,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
           </button>
           <button className={`${btn} px-2`} aria-label="The next thing" title="The next thing (↓)"
             onClick={() => { const i = order.indexOf(selected); if (i < order.length - 1) go(order[i + 1]); }}>›</button>
+          {lockable(selected) && <span className="rounded-lg border border-stone-300 bg-white px-1 py-1">{lockBtn(selected, true)}</span>}
 
           {treeOpen && (
             <>
