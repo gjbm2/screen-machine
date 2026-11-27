@@ -1201,7 +1201,8 @@ export class RoomSim {
     }
     this.animStep(dt);
     this.pushStep();
-    if (this.nav === "walk") this.walkStep(dt);
+    if (this.anim?.c) { /* a change of lens: animStep turns the camera itself */ }
+    else if (this.nav === "walk") this.walkStep(dt);
     else if (this.flat || this.anim) this.camera.lookAt(this.controls.target);   // (orbit's update would clamp a glide)
     else this.controls.update();
     this.keepCamera();
@@ -1343,7 +1344,22 @@ export class RoomSim {
   // / ease-out move)"): the field of view and how much of the room is framed change together (a dolly zoom), the
   // camera swings from one direction to the other, its up turns, all eased in and out.
   private anim: { t: number; dur: number; t0: THREE.Vector3; t1: THREE.Vector3; tEnd: THREE.Vector3; p0: THREE.Vector3; p1: THREE.Vector3;
-    f0: number; f1: number; s0: number; s1: number; d0: THREE.Vector3; d1: THREE.Vector3; u0: THREE.Vector3; u1: THREE.Vector3 } | null = null;
+    f0: number; f1: number; s0: number; s1: number; d0: THREE.Vector3; d1: THREE.Vector3; u0: THREE.Vector3; u1: THREE.Vector3;
+    c?: THREE.Vector3; n0?: [number, number]; n1?: [number, number]; r0?: THREE.Quaternion; r1?: THREE.Quaternion } | null = null;
+  /** A camera at ``eye`` turned so ``at`` lands at ``n`` on screen (-1..1) with a lens ``fov`` wide, ``up`` up. */
+  private static framing(eye: THREE.Vector3, at: THREE.Vector3, up: THREE.Vector3, n: [number, number], fov: number, aspect: number): THREE.Quaternion {
+    const tn = Math.tan(THREE.MathUtils.degToRad(fov) / 2);
+    const v = new THREE.Vector3(n[0] * tn * aspect, n[1] * tn, -1).normalize();
+    return new THREE.Quaternion().setFromRotationMatrix(new THREE.Matrix4().lookAt(eye, at, up))
+      .multiply(new THREE.Quaternion().setFromUnitVectors(v, new THREE.Vector3(0, 0, -1)));
+  }
+  /** OrbitControls' leftover momentum (its damping): cleared when a glide takes the camera and when it hands it
+   *  back, or the last drag's spin carried on after the glide arrived (a jerk at its end). */
+  private stillControls() {
+    const oc = this.controls as unknown as { _sphericalDelta?: { set(a: number, b: number, c: number): void }; _panOffset?: THREE.Vector3; _scale?: number };
+    oc._sphericalDelta?.set(0, 0, 0); oc._panOffset?.set(0, 0, 0);
+    if (typeof oc._scale === "number") oc._scale = 1;
+  }
   /** The lens the next glide arrives at (lens()); applied at once with no glide. */
   private lensTo: { fov: number; up: THREE.Vector3 } | null = null;
 
@@ -1370,12 +1386,40 @@ export class RoomSim {
     const was = this.anim;
     const f0 = c.fov, f1 = lt?.fov ?? was?.f1 ?? f0, half = (f: number) => Math.tan(THREE.MathUtils.degToRad(f) / 2);
     if (Math.abs(f1 - f0) > 1) {
-      // a change of lens swings the camera round its pivot: a walking eye's pivot is a metre ahead of it, so the swing
-      // spun on the spot and then flew out. Each end's pivot goes out along its own line of sight (the picture there
-      // is the same) as far as the other end is, so the swing is round the room; the real pivot is set on arrival.
-      const reach = p0.distanceTo(pos) * 0.5 + Math.max(p0.distanceTo(t0), pos.distanceTo(target));
-      const out = (p: THREE.Vector3, t: THREE.Vector3) => p.clone().add(t.clone().sub(p).normalize().multiplyScalar(Math.max(p.distanceTo(t), reach)));
-      t0 = out(p0, t0); t1 = out(pos, target);
+      // A change of lens (into or out of the plan or an elevation; owner, 27 Nov: "cycling between 3D view and plan
+      // view still a complete ... mess"): the camera swings round ONE point in the room, the flat view's centre (where
+      // the plan or elevation looks), so the room stays in the picture all the way; the lens and the distance change
+      // together so the room keeps its size on screen; and the camera's turn is one smooth rotation from exactly how
+      // it looks at the start to exactly how it looks at the end (no aiming at a moving point, no roll from an up
+      // vector being blended). A pivot pushed out along each line of sight (as far as 160 m, under the floor) swung
+      // the room across the screen.
+      const c0 = (f1 < f0 ? target : t0).clone();               // the flat end's centre
+      const u1 = (lt?.up ?? was?.u1 ?? c.up).clone();
+      // Where the centre is ON SCREEN at each end (-1..1 across and up). In between, that point slides straight from
+      // one to the other, and the camera turns each frame so the centre lands there with the lens of that frame.
+      // (Blending the turn as an angle doesn't hold: half way the lens is about 14 degrees wide, so a 15-degree turn
+      // put the room off the screen.)
+      const onScreen = (cam: THREE.PerspectiveCamera): [number, number] => {
+        cam.updateMatrixWorld(); cam.updateProjectionMatrix();
+        const v = c0.clone().applyMatrix4(cam.matrixWorldInverse);
+        if (v.z > -1e-3) return [0, 0];                         // behind it: the middle (no better place)
+        const n = c0.clone().project(cam);
+        return [Math.max(-1.5, Math.min(1.5, n.x)), Math.max(-1.5, Math.min(1.5, n.y))];
+      };
+      const end = c.clone(); end.fov = f1; end.position.copy(pos); end.up.copy(u1); end.lookAt(target);
+      const n0 = onScreen(c), n1 = onScreen(end);
+      // what framing the centre leaves out at each end (the turn about the line to it: how the picture is rolled): the
+      // real start and end orientations, less the framing's; blended on the way, so the glide starts exactly as the
+      // view was and lands exactly as the new one is (no snap in its last frame)
+      const fr = RoomSim.framing;
+      const rot0 = fr(p0, c0, c.up, n0, f0, c.aspect).invert().multiply(c.quaternion.clone());
+      const rot1 = fr(pos, c0, u1, n1, f1, c.aspect).invert().multiply(end.quaternion.clone());
+      const r0 = Math.max(1e-3, p0.distanceTo(c0)), r1 = Math.max(1e-3, pos.distanceTo(c0));
+      this.stillControls();
+      this.anim = { t: 0, dur: Math.max(dur, 0.9), t0, t1, tEnd: target.clone(), p0, p1: pos.clone(), f0, f1,
+        s0: 2 * r0 * half(f0), s1: 2 * r1 * half(f1), d0: p0.clone().sub(c0).normalize(), d1: pos.clone().sub(c0).normalize(),
+        u0: c.up.clone(), u1, c: c0, n0, n1, r0: rot0, r1: rot1 };
+      return;
     }
     const dist0 = Math.max(1e-3, p0.distanceTo(t0)), dist1 = Math.max(1e-3, pos.distanceTo(t1));
     this.anim = { t: 0, dur: Math.abs(f1 - f0) > 1 ? Math.max(dur, 1.0) : dur, t0, t1, tEnd: target.clone(), p0, p1: pos.clone(),
@@ -1397,6 +1441,24 @@ export class RoomSim {
     this.controls.target.lerpVectors(a.t0, a.t1, k);
     if (Math.abs(a.f1 - a.f0) < 0.01) {
       this.camera.position.lerpVectors(a.p0, a.p1, k);       // the same lens: a plain glide
+    } else if (a.c && a.n0 && a.n1) {
+      // a new lens (glide()): round the flat view's centre, the lens log-eased, the framed size eased, the turn slerped
+      const fov = Math.exp(Math.log(a.f0) + (Math.log(a.f1) - Math.log(a.f0)) * k);
+      const size = Math.exp(Math.log(a.s0) + (Math.log(a.s1) - Math.log(a.s0)) * k);
+      const dist = size / (2 * Math.tan(THREE.MathUtils.degToRad(fov) / 2));
+      const dir = a.d0.clone().applyQuaternion(new THREE.Quaternion().slerpQuaternions(new THREE.Quaternion(),
+        new THREE.Quaternion().setFromUnitVectors(a.d0, a.d1), k));
+      const cam = this.camera;
+      cam.position.copy(a.c).addScaledVector(dir, dist);
+      const up = a.u0.clone().lerp(a.u1, k);
+      if (up.lengthSq() < 1e-6) up.copy(a.u1);
+      // look at the centre, then turn so it sits at this frame's place on screen, for this frame's lens
+      const n: [number, number] = [a.n0[0] + (a.n1[0] - a.n0[0]) * k, a.n0[1] + (a.n1[1] - a.n0[1]) * k];
+      cam.quaternion.copy(RoomSim.framing(cam.position, a.c, up.normalize(), n, fov, cam.aspect));
+      if (a.r0 && a.r1) cam.quaternion.multiply(new THREE.Quaternion().slerpQuaternions(a.r0, a.r1, k));
+      this.camera.fov = fov;
+      this.camera.near = Math.max(0.02, Math.min(2, dist * 0.004)); this.camera.far = Math.max(80, dist * 2 + 60);
+      this.camera.updateProjectionMatrix();
     } else {
       // a new lens: the view widens or narrows (log-eased) while the framed size eases, so the room never jumps; the
       // camera swings round from one direction to the other at the distance that keeps that framing
@@ -1413,6 +1475,7 @@ export class RoomSim {
       this.controls.target.copy(a.tEnd);
       this.setLens(a.f1, a.u1, a.p1.distanceTo(a.tEnd));
       this.anim = null;
+      this.stillControls();
       if (this.nav === "orbit") this.controls.update();       // OrbitControls takes up the pose it arrived at
       else this.camera.lookAt(a.tEnd);
     }
