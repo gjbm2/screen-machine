@@ -1150,6 +1150,41 @@ Built in steps. **Step 2 (17 Oct)** is the composition core (show_service/compos
 
 Later steps: the picture on the screens' INTENSITY channel with APL headroom (3), one clock for changes (4), figure and ground (5). As built: show_service/README.md S5.18.
 
+### 8.20 One show across the layers (owner, 26-27 Nov 2026)
+
+"There should be one controlling visual logic: the a.d. has to have dominion and make a reasoned set of judgments
+about the total experience." How the art director does that, layer by layer, and where each rule lives. Everything
+numeric is a starting point chosen by reasoning and checked only in the simulator and with `tools/room/sync_eval`.
+
+- **One change clock.** Every layer changes scene on the director's `look_change` (`director.cues: director`). The
+  screens start their transition so it lands on the line (`land`).
+- **A move** (`config/live/moves.yaml`, `moves.py`) is that change composed across the layers: the lights'
+  transition and its gesture, effects fired around the line, the screens' transition. Chosen by what the change goes
+  from and into (verse, chorus, the last chorus, the climax, a break, a new song, a drop).
+- **A line-up** (`lights.lineups`, the deployment's `show.yaml`) is which light groups play in a section; the others
+  rest dark or at a low glow. A verse is one or two parts, a chorus three, the song's biggest section everything.
+- **A song laid out ahead** (`songplan.py`, karaoke): each lyric section carries the song's measured level over it,
+  and the section holding the measured climax is marked (and split out of a long section). The line-up's size comes
+  from that level (`drive_level`), known before the section arrives.
+- **Recall** (`director._light_mem`): a section that comes round again (same letter and kind) brings back its
+  line-up and each group's scene. It takes a bigger line-up once the song's level for it has risen by `grow_step`,
+  and is drawn afresh when the level has dropped back. The big section is its own look.
+- **Section fit**: a light scene's `tags.sections` says the kinds of section it is written for.
+- **One beat carrier**: in a look one group pulses on the beat (`lights.groups.<g>.carries_beat`); the others'
+  pulsing scenes draw at `carrier_others`. Groove (`accent_groove`, `accent_fit`) decides how much beat there is.
+- **Colour**: one hue family per look. A light whose LEDs show as separate beams (a derby: type `streaks`) lights
+  only the look's main colour; a laser lights the one diode nearest it.
+- **The pre-state** (nothing playing, any mode): the moment (`waiting`, `lull`, `lead_in`) is in `room.direction`
+  with a low energy of its own (`lights.moments.energy`), and one look change takes every layer there. A light group
+  draws the mode's own scenes for the moment (`tags.moments` with `tags.modes`), else that kind of light's quiet
+  scene, else the catalogue's calm scenes. A quiet room keeps its free-running layers (`needs: none`).
+- **The picture** steers the moving lights' draw (`lights.picture`, `picture.py`).
+- **The room** (docs/LIGHTS.md §3.6a, §3.6b): bars and each fixed light's tilt and turn are settings; a moving
+  light's aim steps round keep-out regions.
+- **Not there yet:** the screens can't name a mode's own waiting scene (they follow the low energy and the look
+  change); nothing chooses the screens' scene and the lights' scenes jointly; key changes and last hits have no
+  trigger of their own.
+
 ## 9. Outputs
 
 ### 9.1 Look engine (v1: intensity and colour only)
