@@ -323,7 +323,7 @@ NEUTRAL_ROLE = {"palette_role": "base", "follow_screen": False, "chroma_max": "c
 # "beat" (a cut on the first downbeat while the clock is at segue.cut_gate or better, else a crossfade), "always"
 # (a cut; on the downbeat when the clock allows, else now); ``scale`` multiplies every length.
 TRACK_TRANSITIONS = {
-    "gap": {"out_s": 2.5, "in_s": 2.0, "min_s": 1.5, "max_s": 4.0, "dark_max_s": 8.0},
+    "gap": {"out_s": 2.5, "in_s": 2.0, "min_s": 1.5, "max_s": 4.0, "dark_max_s": 8.0, "skip_out_s": 1.6},
     "segue": {"cut_gate": "beat", "crossfade_s": 2.0},
     "styles": {"gentle": {"cut": "never", "scale": 1.5}, "lively": {"cut": "beat", "scale": 1.0},
                "wild": {"cut": "always", "scale": 0.6}, "default": {"cut": "beat", "scale": 1.0}},
@@ -711,6 +711,10 @@ def choose_track_transition(cfg: dict, kind: str, ev: dict, facts: dict, style_w
     if kind == "track_end" and ev.get("detail") == "sound_back" and isinstance(last, dict):
         return dict(last)
     gap = cfg["gap"]
+    if kind == "track_end" and ev.get("detail") == "skip":     # a person skipped: down with the player's fade, up
+        return {"style": "fade-dark", "out_s": round(float(gap.get("skip_out_s", 1.6)), 3),   # with the new song
+                "in_s": round(max(float(gap["min_s"]), min(float(gap["max_s"]), float(gap["in_s"]) * scale)), 3),
+                "seconds": None, "on": "now", "change": change, "dark_max_s": round(float(gap["dark_max_s"]), 3)}
     if kind == "track_change":
         through_dark = dark and not facts.get("back")
     elif kind == "track_end" and ev.get("via") == "dsp":

@@ -1460,6 +1460,33 @@ def test_the_music_players_piece_end_is_armed_ends_and_changes_track_with_no_gap
     json.dumps(r.s.snapshot(), allow_nan=False)
 
 
+def test_a_karaoke_skip_ends_the_song_with_a_fade_and_the_new_song_changes_after_its_lead_in():
+    """Owner, 27 Nov: "when I hit 'next' in karaoke, why don't we see the lighting transition?" A skip mid-song is a
+    short end (track_end "skip", at once) and the track change waits for the fade and the new song's lead-in."""
+    r = Rig(lambda t: {"vec": "A"})
+    songs = [(-60.0, 200.0, "karaoke:a:q1"), (23.0, 180.0, "karaoke:b:q2")]   # b starts 3 s after a skip at 20 s
+
+    def now_playing():
+        if r.t < 20.0:
+            start, dur, key = songs[0]
+        else:
+            start, dur, key = songs[1]
+        return {"key": key, "state": "playing", "pos_s": r.t - start, "dur_s": dur, "speed": 1.0}
+    r.ctx.now_playing = now_playing
+    r.run(19.0)
+    assert not r.kinds("track_end") and not r.kinds("track_change")
+    r.run(21.0)
+    te = r.kinds("track_end")
+    assert len(te) == 1 and te[0].get("detail") == "skip" and te[0]["via"] == "player"
+    assert not r.kinds("track_change")                                    # not yet: the fade, then the lead-in
+    r.run(22.5)
+    assert not r.kinds("track_change") and not [e for e in r.kinds("track_end") if e.get("detail") == "sound_back"]
+    r.run(24.0)
+    tc = r.kinds("track_change")
+    assert len(tc) == 1 and tc[0]["at_ms"] / 1000.0 == pytest.approx(23.0, abs=0.3)
+    json.dumps(r.s.snapshot(), allow_nan=False)
+
+
 # -- 29 Oct: silence relative to what plays; the song's own source holds identity and ends; the forecast hint --
 def _quiet_music(t: float) -> dict:
     """The room mic on 28 Oct: Sonos low, music at -62..-64 LUFS over the mic's -70 floor, the dsp gate ~0 (its bottom
