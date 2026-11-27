@@ -665,6 +665,19 @@ _SLUG = re.compile(r"[^a-z0-9]+")
 _ARTICLE = re.compile(r"^(the|a|an)\s+")
 
 
+
+def _standard_outputs(rows: Any) -> Any:
+    """The piano's outputs in the app's standard shape and words, each with its latency (smsound.outputs.standard;
+    docs/SOUND.md): the same rows every sound picker shows. Anything wrong: as they were."""
+    if not isinstance(rows, list):
+        return rows
+    try:
+        from smsound import outputs as so
+        return so.standard(rows)
+    except Exception:  # noqa: BLE001
+        log.debug("standard outputs failed", exc_info=True)
+        return rows
+
 class Refusal(ValueError):
     """A moving-light route's own refusal, shaped like fixtures.Refused (``code``, ``detail``, ``extra``)."""
 
@@ -2808,7 +2821,9 @@ class Api:
         if not callable(fn):
             return dict(NO_TEST_CHOICES)
         got = _d(await self._call(brain, fn))
-        return {k: got.get(k, v) for k, v in NO_TEST_CHOICES.items()}
+        out = {k: got.get(k, v) for k, v in NO_TEST_CHOICES.items()}
+        out["outputs"] = _standard_outputs(out.get("outputs"))
+        return out
 
     async def _test_post(self, request: web.Request, brain: Any) -> web.Response:
         body, bad = await self._body(request)

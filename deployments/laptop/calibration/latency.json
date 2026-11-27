@@ -1,0 +1,15 @@
+{
+ "screens": {},
+ "outputs": {
+  "screen:vj": {
+   "sound": {
+    "delay_ms": 134.0,
+    "method": "chirp",
+    "measured_at": "2026-11-27T11:05:23+00:00",
+    "note": "karaoke's calibration, moved 27 Nov"
+   }
+  }
+ },
+ "sources": {},
+ "version": 2
+}

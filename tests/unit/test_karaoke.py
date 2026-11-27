@@ -305,11 +305,6 @@ def test_an_artists_songs_are_the_best_known_artists_most_popular_first(monkeypa
     assert o["artist"] == "Taylor Swift" and [r["title"] for r in o["results"]] == ["Shake It Off", "Love Story"]   # one row a song
 
 
-def test_the_calibration_listens_on_show_services_websocket(tmp_path):
-    from routes.karaoke.calibrate import Calibrator
-    assert Calibrator(Store(tmp_path / "s.json"), "http://127.0.0.1:8703").levels_url == "ws://127.0.0.1:8703/v1/levels?wave=2048"
-
-
 def test_each_chirp_reads_the_delay_on_its_own_so_long_delays_and_lost_chirps_are_fine():
     from routes.karaoke import calibrate as cal
     clicks = [500.0 + o for o in cal.OFFSETS_S]
@@ -456,15 +451,17 @@ def test_adding_after_a_stop_mid_queue_does_not_start_and_clear_keeps_the_song_p
     assert st.s["queue"] == [] and st.s["player"]["state"] == "stopped"
 
 
-def test_the_karaoke_screen_and_sound_are_settings(tmp_path):
+def test_the_karaoke_screen_and_sound_are_settings(tmp_path, monkeypatch):
+    from routes.karaoke import live_view
+    monkeypatch.setattr(live_view, "karaoke_screen", lambda setting: setting or "vj")
     st = Store(tmp_path / "state.json")
-    assert st.s["settings"]["screen"] is None and st.s["settings"]["output"] == "screen"
+    assert st.s["settings"]["screen"] is None and st.s["settings"]["output"] is None and st.output() == "screen:vj"
     st.settings(screen="north", output="none")
-    assert (st.s["settings"]["screen"], st.s["settings"]["output"]) == ("north", "none")
+    assert (st.s["settings"]["screen"], st.output()) == ("north", "none")
     st.settings(screen=None)
     assert st.s["settings"]["screen"] is None
     st.settings(output="sonos:living")                       # a Sonos room (the api checks it is the deployment's)
-    assert st.s["settings"]["output"] == "sonos:living"
+    assert st.output() == "sonos:living"
     for bad in ({"screen": "../x"}, {"output": "sonos:"}, {"output": "loud"}):
         with pytest.raises(ValueError):
             st.settings(**bad)

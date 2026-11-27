@@ -67,7 +67,8 @@ def _only_when_on():
 def state():
     from . import sonos_driver
     d = sonos_driver()
-    return jsonify({**store().snapshot(), "sonos_error": d.error if d is not None else None})
+    return jsonify({**store().snapshot(), "calibration": calibration_view(),
+                    "sonos_error": d.error if d is not None else None})
 
 
 @karaoke_api.get("/karaoke/now")
@@ -75,7 +76,9 @@ def now():
     from . import room_in_karaoke
     from .join import join_url
     # join: the panel's address for a phone and whether the room is in a karaoke mode (the screens' QR code at rest)
-    return jsonify({**store().now_playing(), "join": {"url": join_url(), "room_karaoke": room_in_karaoke()}})
+    c = calibration_view()
+    return jsonify({**store().now_playing(), "calibration": c if (c or {}).get("state") == "running" else None,
+                    "join": {"url": join_url(), "room_karaoke": room_in_karaoke()}})
 
 
 @karaoke_api.get("/karaoke/search")
@@ -323,42 +326,44 @@ def player():
     return jsonify({"player": p})
 
 
-_calibrator = None
+def calibration_view() -> dict | None:
+    """The app's speaker calibration (routes/sound/calibrate.py), as /now and /state carry it: the panel shows its
+    progress, show_service's karaoke feed keeps the mic on while it runs. None when there has been none."""
+    from routes.sound import calibrator
+    c = calibrator().state()
+    return None if c.get("state") in (None, "idle") else c
 
 
 @karaoke_api.post("/karaoke/calibrate")
 def calibrate():
-    """Measure the speaker delay with the room mic (calibrate.py): starts a run; its progress is in /state."""
-    global _calibrator
-    if str(store().s["settings"].get("output") or "").startswith("sonos:"):
-        return _err(409, "A Sonos room keeps its own timing (the Music page's: its start delay in latency.json and "
-                         "the Sonos's own position as it plays): there's nothing to calibrate here.")
-    if _calibrator is None:
-        from .calibrate import Calibrator
-        _calibrator = Calibrator(store(), smconfig.url("show"))
-    return jsonify({"calibration": _calibrator.start()})
+    """Measure the karaoke output's delay with the room mic: the app's calibration (POST /api/sound/calibrate) of
+    the output the karaoke plays on; its progress is in /state's calibration."""
+    from routes.sound import calibrator
+    try:
+        return jsonify({"calibration": calibrator().start(store().output())})
+    except ValueError as e:
+        return _err(409, str(e))
 
 
 @karaoke_api.get("/karaoke/outputs")
 def outputs():
-    """Where the karaoke sound can play: the karaoke screen's own page, nowhere, or a Sonos room of the deployment
-    (the Music page's Play on Sonos rooms: room/sonos.json, labelled as there)."""
-    from .sonos_out import sonos_zones
-    rows = [{"id": "screen", "label": "From the screen's own page"}, {"id": "none", "label": "No sound (screens only)"}]
-    rows += [{"id": f"sonos:{z}", "label": f"Sonos ({room})"} for z, room in sonos_zones().items()]
-    return jsonify({"outputs": rows})
+    """Where the karaoke sound can play: the app's sound outputs (GET /api/sound/outputs?for=karaoke), each with
+    its delay; the ones karaoke can't play to are marked."""
+    from routes.sound.api import output_rows
+    return jsonify({"outputs": output_rows("karaoke")})
 
 
 @karaoke_api.post("/karaoke/settings")
 def settings():
     b = _body()
     o = b.get("output")
-    if isinstance(o, str) and o.startswith("sonos:"):
-        from .sonos_out import sonos_zones
-        if o[len("sonos:"):] not in sonos_zones():
-            return _err(400, "There's no such Sonos room here.")
+    if isinstance(o, str) and o != "screen":
+        from smsound import outputs as O
+        if not O.known(o):
+            return _err(400, "That isn't one of this deployment's sound outputs.")
     try:
         return jsonify({"settings": store().settings(**{k: b[k] for k in ("guide", "autoplay", "audio_delay_ms", "highlight", "child_mode", "screen", "output") if k in b})})
     except (TypeError, ValueError):
         return _err(400, "guide is 0..1, autoplay true/false, audio_delay_ms a number, highlight words | dot | both, "
-                         "screen a screen's id (or null), output screen | none | sonos:<zone>.")
+                         "screen a screen's id (or null), output a sound output karaoke can play to (screen:<id> | sonos:<zone> | none, "
+                         "null: the karaoke screen's page).")

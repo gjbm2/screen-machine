@@ -194,49 +194,6 @@ class Engine {
     this.pausedAt = 0;
   }
 
-  /** The speaker-delay calibration's chirps (routes/karaoke/calibrate.py chirp: Hann-windowed linear sweeps, each
-   *  click its own), each
-   *  rendered at its server time (`clicks`, seconds; `skew`: server - this clock), as the song's sound is: the delay
-   *  measured is then the whole delay the lyrics wait. Under them, from now, a quiet noise bed keeps the speaker
-   *  awake (an idle Sonos buffers more as it wakes: 25 Nov, 987 ms after a pause against 410 ms while playing). */
-  chirps(clicks: number[], specs: { f0: number; f1: number; dur_s: number }[], skew: number): number {
-    const ctx = this.context();
-    if (ctx.state !== "running" || !specs.length) return 0;
-    const sr = ctx.sampleRate;
-    const sweep = (spec: { f0: number; f1: number; dur_s: number }) => {
-      const n = Math.max(8, Math.round(spec.dur_s * sr));
-      const buf = ctx.createBuffer(1, n, sr);
-      const d = buf.getChannelData(0);
-      for (let k = 0; k < n; k++) {
-        const t = k / sr;
-        const ph = 2 * Math.PI * (spec.f0 * t + ((spec.f1 - spec.f0) * t * t) / (2 * spec.dur_s));
-        d[k] = 0.9 * Math.sin(ph) * (0.5 - 0.5 * Math.cos((2 * Math.PI * k) / (n - 1)));
-      }
-      return buf;
-    };
-    const toCtx = (T: number) => ctx.currentTime + (T - (Date.now() / 1000 + skew));
-    const bedEnd = toCtx(clicks[clicks.length - 1]) + 1.6;
-    const bedLen = Math.max(0.5, bedEnd - ctx.currentTime);
-    const bed = ctx.createBuffer(1, Math.round(bedLen * sr), sr);
-    const b = bed.getChannelData(0);
-    for (let k = 0; k < b.length; k++) b[k] = (Math.random() * 2 - 1) * 0.01; // about -45 dBFS
-    const bs = ctx.createBufferSource();
-    bs.buffer = bed;
-    bs.connect(ctx.destination);
-    bs.start();
-    let made = 0;
-    for (let i = 0; i < clicks.length; i++) {
-      const when = toCtx(clicks[i]);
-      if (when <= ctx.currentTime + 0.02) continue;
-      const s = ctx.createBufferSource();
-      s.buffer = sweep(specs[i % specs.length]);
-      s.connect(ctx.destination);
-      s.start(when);
-      made++;
-    }
-    return made;
-  }
-
   /** Child mode's mutes (song seconds), applied to the lead vocal from now on; the same list again changes nothing. */
   setMutes(spans: [number, number][]): void {
     const key = JSON.stringify(spans);
@@ -312,6 +269,13 @@ class Engine {
   }
 }
 
+/** The karaoke's sound plays on this page: its output is this screen's ("screen:<id>"), or any screen's on a page
+ *  without one. */
+function soundHere(n: KaraokeNow, screen: string | undefined): boolean {
+  const out = n.settings.output ?? "";
+  return out.startsWith("screen:") && (!screen || out === `screen:${screen}`);
+}
+
 /** The song's position by the server's clock, at this moment. */
 function serverPosition(n: KaraokeNow, skew: number): number {
   const p = n.player;
@@ -375,7 +339,6 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
     let dead = false;
     let busy = false;
     let placed: string | null = null; // the player's song + rev the sound was last placed for
-    let chirped: string | null = null; // the calibration run whose chirps are scheduled
     let placedAt = { wall: 0, pos: 0 }; // where, by this machine's clock
     const eng = engine.current;
     // The background music: its own engine, quiet; the song it is on; whether it is wanted now (read after a load).
@@ -432,10 +395,9 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
       setNow(n);
       const e = engine.current;
       const p = n.player;
-      // Not the karaoke screen, or the sound isn't the screen's: no sound here.
-      const mine = !screen || screen === karaokeScreen(depRef.current, n.settings.screen);
-      // Sound here only with output "screen" (a Sonos room plays it itself: routes/karaoke/sonos_out.py).
-      if (!mine || (n.settings.output ?? "screen") !== "screen") {
+      // Sound here only when the karaoke's output is this screen's page (docs/SOUND.md: "screen:<id>"; a Sonos plays
+      // it itself: routes/karaoke/sonos_out.py; a page without a screen plays any screen output).
+      if (!soundHere(n, screen)) {
         e.stop();
         bg.stop();
         bgWanted = false;
@@ -451,16 +413,6 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
       else if (bg.playing) bg.stop(FADE_S);
       e.setGuide(n.settings.guide);
       e.setMutes(mutesRef.current);
-      // The speaker-delay calibration: its chirps, once per run (they're scheduled ahead, at the server's times).
-      const cal = n.calibration;
-      if (cal?.state === "running" && cal.clicks?.length && cal.chirps?.length && chirped !== cal.id) {
-        if (e.ctx?.state !== "running")
-          void e
-            .context()
-            .resume()
-            .catch(() => undefined);
-        if (e.chirps(cal.clicks, cal.chirps, skew.current) > 0) chirped = cal.id;
-      }
       if (p.state === "stopped" || !p.song_id) {
         e.stop(FADE_S);
         return;
@@ -565,15 +517,16 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
     ) : null; // not the karaoke screen
 
   // The position: the sound's own while it plays here, else the server's clock; less the delay to the room: the
-  // measured one (Settings → Calibrate: the whole delay from the player's clock to the room), else the browser's own
-  // idea of its output latency.
+  // output's (settings.audio_delay_ms: its measured delay from the app's one store, smsound.latency; 0 on a Sonos,
+  // whose clock the server already anchors to what the room hears), else, when this page plays it and it was never
+  // measured, the browser's own idea of its output latency. The lyrics on another screen follow the same delay.
   const e = engine.current;
   const audioPos = e.playing && e.running && e.songId === song?.id ? e.position() : serverPosition(now, skew.current);
-  // On a Sonos room the server's clock is already what the room hears (sonos_out.py anchors it): no delay of our own.
-  const ownSound = (now.settings.output ?? "screen") === "screen";
-  const delay = ownSound ? (now.settings.audio_delay_ms ?? 0) / 1000 : 0;
+  const ownSound = soundHere(now, screen);
+  const measured = now.settings.audio_delay_ms;
+  const lag = measured != null ? measured / 1000 : ownSound ? e.outputLatency() : 0;
   const shift = ((song?.offset_ms ?? 0) + (song?.user_offset_ms ?? 0)) / 1000;
-  const t = audioPos - (delay > 0 ? delay : ownSound ? e.outputLatency() : 0) - shift;
+  const t = audioPos - lag - shift;
   // Read by the sync evals (tools/karaoke/evals/): the clocks this frame was drawn with. Nothing reads it in use.
   (window as unknown as { __smKaraoke?: object }).__smKaraoke = {
     t,
@@ -586,8 +539,7 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
   };
   // Should be sounding but the browser holds it (the context exists, the song is loaded, and it isn't running), for
   // over a second: the "Click for sound" prompt (no flash while a song loads or a resume is on its way).
-  const shouldSound =
-    (p?.state === "playing" && !!song && e.songId === song.id) || now.calibration?.state === "running";
+  const shouldSound = p?.state === "playing" && !!song && e.songId === song.id;
   const held = shouldSound && !!e.ctx && e.ctx.state !== "running";
   if (!held) heldSince.current = null;
   else if (heldSince.current === null) heldSince.current = Date.now();

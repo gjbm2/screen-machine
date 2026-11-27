@@ -99,6 +99,9 @@ import { LivePicture } from "./LivePicture";
 import { SongPictures } from "./SongPictures";
 import { LoopbackToggle, RoomMicCheck } from "./RoomMic";
 import { SingerBox, SingerTag, singersNow } from "./Singer";
+import { OutputTiming } from "@/components/sound/OutputTiming";
+import { SoundOutputSelect } from "@/components/sound/SoundOutputSelect";
+import type { SoundOutput } from "@/shared/api/sound";
 
 const POLL_MS = 1500;
 const QUEUE_DROP = "queue-drop";
@@ -1652,16 +1655,18 @@ function Settings({
   dep: DeploymentInfo | null;
 }) {
   const screens = (dep?.screens ?? []).filter((s) => s.live);
-  // Where the sound can go: the screen, nowhere, or this installation's Sonos rooms (the Music page's).
-  const [outputs, setOutputs] = useState<{ id: string; label: string }[] | null>(null);
-  useEffect(() => {
+  // Where the sound can go: the app's sound outputs (docs/SOUND.md), each with its delay; the ones karaoke can't play
+  // to are greyed. Fetched again after a calibration or a trim.
+  const [outputs, setOutputs] = useState<SoundOutput[] | null>(null);
+  const loadOutputs = useCallback(() => {
     karaoke.outputs().then(
       (o) => setOutputs(o.outputs),
       () => undefined,
     );
   }, []);
+  useEffect(loadOutputs, [loadOutputs]);
   const target = karaokeScreen(dep, st.settings.screen);
-  const d = st.settings.audio_delay_ms ?? 0;
+  const current = outputs?.find((o) => o.id === st.settings.output) ?? null;
   const cal = st.calibration;
   const calRunning = cal?.state === "starting" || cal?.state === "running";
   const song = st.player.song_id && st.player.state !== "stopped" ? (songs.get(st.player.song_id) ?? null) : null;
@@ -1713,23 +1718,12 @@ function Settings({
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <span>Sound</span>
-            <select
-              value={st.settings.output ?? "screen"}
-              onChange={(e) => act(() => karaoke.settings({ output: e.target.value }))}
-              aria-label="Karaoke sound"
-              className="rounded-lg border border-stone-200 bg-card px-2.5 py-1.5 text-sm"
-            >
-              {(
-                outputs ?? [
-                  { id: "screen", label: "From the screen's own page" },
-                  { id: "none", label: "No sound (screens only)" },
-                ]
-              ).map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            <SoundOutputSelect
+              value={st.settings.output}
+              outputs={outputs ?? []}
+              ariaLabel="Karaoke sound"
+              onChange={(id) => act(() => karaoke.settings({ output: id }))}
+            />
           </div>
           <label className="flex items-center justify-between gap-3">
             <span>
@@ -1750,49 +1744,23 @@ function Settings({
               onCheckedChange={(v) => act(() => karaoke.settings({ autoplay: v }))}
             />
           </label>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span>
-              Speaker delay <span className="text-muted-foreground">(Bluetooth: the lyrics wait this long)</span>
-            </span>
-            <div className="flex items-center gap-2">
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={calRunning}
-                title="Plays ten chirps on the speaker and times them with the room mic"
-                onClick={() =>
-                  window.confirm(
-                    "Calibrate the speaker delay? The song pauses, and the speaker plays ten chirps (about 10 s). Keep the room quiet.",
-                  ) && act(() => karaoke.calibrate())
-                }
-              >
-                {calRunning ? <Spinner className="mr-1" /> : <Gauge className="mr-1 h-4 w-4" />} Calibrate
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => act(() => karaoke.settings({ audio_delay_ms: d - 20 }))}
-              >
-                −
-              </Button>
-              <span className="w-16 text-center tabular-nums">{d} ms</span>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => act(() => karaoke.settings({ audio_delay_ms: d + 20 }))}
-              >
-                +
-              </Button>
+          {/* The sound's delay: the output's own (Settings › Sound & timing shows them all), measured with the room
+              mic; the lyrics wait this long. */}
+          {current && current.kind !== "none" && (
+            <div className="space-y-1">
+              <span>
+                Speaker delay <span className="text-muted-foreground">(the lyrics wait this long)</span>
+              </span>
+              <OutputTiming
+                output={current}
+                compact
+                onChanged={loadOutputs}
+                confirmText="Calibrate the speaker delay? The song pauses, and the speaker plays ten chirps (about 12 s). Keep the room quiet."
+              />
             </div>
-          </div>
+          )}
           {st.sonos_error && (st.settings.output ?? "").startsWith("sonos:") && (
             <p className="text-sm text-red-700">Sonos: {st.sonos_error}</p>
-          )}
-          {cal?.message && (
-            <p className={cn("text-sm", cal.state === "failed" ? "text-red-700" : "text-muted-foreground")}>
-              {calRunning ? "Calibrating: " : ""}
-              {cal.message}
-            </p>
           )}
           {song?.lyrics?.kind === "synced" && (
             <div className="flex flex-wrap items-center justify-between gap-2">

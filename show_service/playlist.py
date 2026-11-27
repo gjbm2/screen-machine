@@ -707,7 +707,7 @@ class Player:
                 "upcoming": upcoming, "progress": self.progress if self.state == "preparing" else None,
                 "elapsed_s": elapsed, "duration_s": _num((cur_item or {}).get("duration_s")),
                 "instrument": inst, "output": out, "repeat": self.repeat, "shuffle": self.shuffle,
-                "speed": self.speed, "error": self.error, "choices": ch,
+                "speed": self.speed, "error": self.error, "choices": _standard_choices(ch),
                 # when elapsed_s was true (wall ms): the score page carries it on between polls at ``speed``
                 "at_ms": int(time.time() * 1000)}
 
@@ -932,6 +932,16 @@ class Player:
                       "playlist": self.q_playlist, "repeat": self.repeat, "shuffle": self.shuffle,
                       "error": self.error, "run": dict(self._run) if self._run else None,
                       "playlists": len(self.playlists), "problems": list(self._problems)}
+
+
+def _standard_choices(ch: dict) -> dict:
+    """``choices`` with its outputs in the app's standard shape and words, each with its latency
+    (smsound.outputs.standard; docs/SOUND.md). Anything wrong: as they were."""
+    try:
+        from smsound import outputs as so
+        return {**ch, "outputs": so.standard(ch.get("outputs") or [])}
+    except Exception:  # noqa: BLE001
+        return ch
 
 
 def _is_device(output: Any) -> bool:

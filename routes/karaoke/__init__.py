@@ -55,6 +55,8 @@ def start() -> None:
     global _live
     _live = LiveView(st)
     _live.start()
+    from routes.sound import calibrator             # a speaker being measured: no song over the chirps
+    calibrator().before.append(lambda _output: st.pause_for_calibration())
     if smconfig.enabled("sonos"):                       # karaoke on a Sonos room (sonos_out.py)
         global _sonos
         from .sonos_out import KaraokeSonos

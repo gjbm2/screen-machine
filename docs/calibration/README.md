@@ -28,3 +28,8 @@ Notes for the lighting calibration and the portable rig, from how this repo work
 - **WSL and Art-Net discovery.** WSL2's default NAT lets show_service send unicast Art-Net out but not hear ArtPoll
   replies or broadcasts on the lighting subnet; on a laptop, WSL's mirrored networking mode or running show_service
   natively on Windows has to be proven with the real node (the brief's 2.3 asks for exactly that check).
+
+## Sound outputs
+
+Every sound output's delay (screens' own pages, Sonos zones) is measured from the app: Settings › Sound & timing, or
+`POST /api/sound/calibrate`. It is stored in `latency.json` `outputs[<output id>].sound`. See [../SOUND.md](../SOUND.md).

@@ -244,6 +244,7 @@ class Show:
         self.rig: Any = None                         # Stage 5: outputs.Rig (the rig component), with the brain only
         self.recorder: Any = None                    # recorder.Recorder (the Room page's Record; on_midi's tap)
         self.karaoke: Any = None                     # karaoke_feed.KaraokeFeed (docs/KARAOKE.md): Flask's karaoke player
+        self.sound_cal: Any = None                   # sound_cal_feed.SoundCalFeed (docs/SOUND.md): the speaker calibration
         self._runtime_offsets: dict[str, float] = {}   # sources.py's (a rendered test-piano run), over latency.json's
         self._offsets_lock = threading.Lock()        # main thread (latency.json) vs show-brain (sources)
         self._out_cfg: dict = {}                     # artnet_out's config (the rig's neutral colour, patch.yaml)
@@ -471,6 +472,8 @@ class Show:
             self.mic.start()                             # show-mic: re-decides at 2 Hz and on a wake
         if getattr(self, "karaoke", None) is not None:
             self.karaoke.start()                         # show-karaoke: Flask's karaoke player, once a second
+        if getattr(self, "sound_cal", None) is not None:
+            self.sound_cal.start()                       # show-soundcal: Flask's speaker calibration, once a second
         if self.brain is not None:
             try:
                 self.brain.start()
@@ -674,6 +677,7 @@ class Show:
                 self.recorder = got                      # on_midi's tap (show-rx), after NoteTap
         self._wire_sources()
         self._wire_karaoke()
+        self._wire_sound_cal()
         stage3 = ("api", "ring", "situations", "brain") + BRAIN_MODULES
         self.brain.modules = {k: v for k, v in self.modules.items() if k in stage3}
 
@@ -697,6 +701,19 @@ class Show:
             except Exception:
                 log.exception("sources: the mic claim seam wasn't wired: a test piano on Sonos is heard by its room's "
                               "mic only if something else turns it on")
+
+    def _wire_sound_cal(self) -> None:
+        """docs/SOUND.md (27 Nov): the app's speaker calibration (Flask, routes/sound/calibrate.py) wants the room mic
+        while it measures an output (_wire_mic), on every deployment."""
+        try:
+            import smconfig
+            from . import sound_cal_feed
+            self.sound_cal = sound_cal_feed.SoundCalFeed(smconfig.url("flask"))
+            self.modules["sound_cal"] = "ok"
+        except Exception as e:
+            self.sound_cal = None
+            self.modules["sound_cal"] = f"failed: {type(e).__name__}: {e}"
+            log.exception("sound calibration: not followed: the mic won't come on for it")
 
     def _wire_karaoke(self) -> None:
         """docs/KARAOKE.md (owner, 25 Nov): while the deployment has karaoke, Flask's karaoke player is a music source
@@ -739,6 +756,10 @@ class Show:
             if kf is not None:
                 mic.add_want("karaoke", "Karaoke", kf.playing)   # owner, 25 Nov: the room is heard while one sings
                 kf.add_on_change(mic.wake)
+            sc = getattr(self, "sound_cal", None)
+            if sc is not None:
+                mic.add_want("calibration", "Measuring a speaker", sc.running)   # docs/SOUND.md
+                sc.add_on_change(mic.wake)
             ctx = self.ctx
             mic.set_room(lambda: ctx.room() if ctx is not None and ctx.room is not None else None)
             mic.set_notify(getattr(self.api, "notify", None))
@@ -830,6 +851,11 @@ class Show:
                 "mic_state": self.mic.state() if self.mic is not None else None}
 
     def stop(self) -> None:
+        if getattr(self, "sound_cal", None) is not None:
+            try:
+                self.sound_cal.stop()
+            except Exception:
+                log.exception("sound calibration feed stop failed")
         if getattr(self, "karaoke", None) is not None:
             try:
                 self.karaoke.stop()

@@ -179,9 +179,11 @@ def _num(v: Any) -> Optional[float]:
 
 
 def start_ms_for(zone: str, latency_file: Path = LATENCY_FILE) -> float:
-    """latency.json ``outputs["sonos:<zone>"].start_ms`` (0..20000), else START_MS_DEFAULT."""
-    ent = (_read_json(latency_file).get("outputs") or {}).get(f"sonos:{zone}")
-    v = _num(ent.get("start_ms")) if isinstance(ent, dict) else None
+    """The zone's start delay (PUT -> the room hears file t=0): the app's one latency store (smsound.latency, 27 Nov:
+    ``outputs["sonos:<zone>"].sound`` measured by Settings › Sound & timing, plus its trim; else this file's older
+    ``start_ms``), 0..20000; else START_MS_DEFAULT."""
+    from smsound import latency as sl
+    v = sl.effective_ms(f"sonos:{zone}", doc=sl.normalise(_read_json(latency_file)))
     return v if v is not None and 0.0 <= v <= 20000.0 else START_MS_DEFAULT
 
 

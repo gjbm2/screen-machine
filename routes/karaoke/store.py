@@ -27,6 +27,8 @@ from pathlib import Path
 from typing import Any
 
 import smconfig
+from smsound import latency as L
+from smsound import outputs as O
 
 STATUSES = ("queued", "fetching", "lyrics", "separating", "ready", "failed")
 WORKING = ("queued", "fetching", "lyrics", "separating")
@@ -35,12 +37,15 @@ GUIDE_LEVELS = (0.0, 0.25, 1.0)          # the lead vocal under the backing trac
 STATUS_WORDS = {"queued": "waiting its turn", "fetching": "getting the song", "lyrics": "finding the lyrics",
                 "separating": "removing the lead vocal", "failed": "it didn't work"}
 
-DEFAULT_SETTINGS = {"guide": 0.0, "autoplay": True, "audio_delay_ms": 0, "highlight": "words", "child_mode": False,
-                    "screen": None, "output": "screen"}
+DEFAULT_SETTINGS = {"guide": 0.0, "autoplay": True, "highlight": "words", "child_mode": False,
+                    "screen": None, "output": None}
 #: Where the karaoke sound plays (owner, 26 Nov: "specify which screen we're outputting to ... and living room sonos
-#: audio"): "screen", the karaoke screen's own page (its browser: speakers, HDMI, Bluetooth); "none", the screens only.
-#: "sonos:<zone>", a Sonos room playing it itself (sonos_out.py; the api checks the zone is the deployment's).
-OUTPUTS = ("screen", "none")
+#: audio"): one of the app's sound outputs (smsound.outputs; owner, 27 Nov: "generalise this ... in a consistent
+#: standard way"), of the kinds karaoke can play: ``screen:<id>`` (that screen's own page: its browser, speakers, HDMI,
+#: Bluetooth), ``sonos:<zone>`` (a Sonos playing it itself: sonos_out.py), ``none``. None: the karaoke screen's own
+#: page (``output()``). Its delay is the output's, in smsound.latency (the one store); /now carries it as
+#: settings.audio_delay_ms for the display page and the lyric feeds.
+KINDS = ("screen", "sonos", "none")
 SONOS_OUTPUT = "sonos:"
 #: How the words show as they're sung (owner, 25 Nov): yellow as they're sung, a bouncing dot, or both.
 HIGHLIGHTS = ("words", "dot", "both")
@@ -131,6 +136,7 @@ class Store:
                 if one and not e.get("singers"):
                     e["singers"] = [one]
         self.s["settings"] = {**DEFAULT_SETTINGS, **(d.get("settings") or {})}
+        self._migrate_output()
         self.s["singers"] = {k: float(v) for k, v in (d.get("singers") or {}).items() if isinstance(v, (int, float))}
         if d.get("last_song") in self.s["songs"]:
             self.s["last_song"] = d["last_song"]
@@ -518,8 +524,11 @@ class Store:
                 st["guide"] = min(1.0, max(0.0, float(kw["guide"])))
             if "autoplay" in kw:
                 st["autoplay"] = bool(kw["autoplay"])
-            if "audio_delay_ms" in kw:
-                st["audio_delay_ms"] = int(min(5000, max(-2000, int(kw["audio_delay_ms"]))))
+            if "audio_delay_ms" in kw:                   # the old setting: now the output's own delay (smsound)
+                oid = self.output()
+                if O.kind(oid) != "screen":
+                    raise ValueError("audio_delay_ms")
+                L.set_manual(oid, float(min(5000, max(-2000, int(kw["audio_delay_ms"])))))
             if "screen" in kw:                           # the karaoke screen; None: the deployment's own choice
                 v = kw["screen"]
                 if v is not None and not (isinstance(v, str) and 0 < len(v) <= 64 and v.replace("-", "").replace("_", "").isalnum()):
@@ -527,9 +536,11 @@ class Store:
                 st["screen"] = v
             if "output" in kw:
                 o = kw["output"]
-                if not (o in OUTPUTS or (isinstance(o, str) and o.startswith(SONOS_OUTPUT) and len(o) > len(SONOS_OUTPUT))):
+                if o == "screen":                        # the old word: the karaoke screen's page
+                    o = None
+                if o is not None and O.kind(o) not in KINDS:
                     raise ValueError("output")
-                st["output"] = kw["output"]
+                st["output"] = o
             if "child_mode" in kw:
                 st["child_mode"] = bool(kw["child_mode"])
             if "highlight" in kw:
@@ -537,7 +548,45 @@ class Store:
                     raise ValueError("highlight")
                 st["highlight"] = kw["highlight"]
             self.commit()
-            return dict(st)
+            return self.settings_view()
+
+    # ---- where the sound plays (smsound)
+    def output(self) -> str:
+        """The output the sound plays on: the setting, else the karaoke screen's own page (else none)."""
+        o = self.s["settings"].get("output")
+        if isinstance(o, str) and O.kind(o) in KINDS:
+            return o
+        from .live_view import karaoke_screen
+        scr = karaoke_screen(self.s["settings"].get("screen"))
+        return O.SCREEN_PREFIX + scr if scr else O.NONE
+
+    def settings_view(self) -> dict:
+        """The settings as the pages and feeds read them: ``output`` resolved, and ``audio_delay_ms`` the delay from
+        the player's clock to the room for the lyrics: the screen output's (smsound; null when not measured: the
+        display page uses its browser's own figure), 0 on a Sonos (its clock is anchored to what the room hears:
+        sonos_out.py) or with no sound."""
+        st = dict(self.s["settings"])
+        oid = self.output()
+        st["output"] = oid
+        st["output_set"] = self.s["settings"].get("output") is not None
+        st["audio_delay_ms"] = L.effective_ms(oid) if O.kind(oid) == "screen" else 0
+        return st
+
+    def _migrate_output(self) -> None:
+        """Before smsound (27 Nov): output "screen" and the delay in settings.audio_delay_ms. The output becomes
+        None (the karaoke screen's page, as it meant); a measured delay moves to that screen's output in
+        smsound.latency, unless one is there already."""
+        st = self.s["settings"]
+        if st.get("output") == "screen":
+            st["output"] = None
+        old = st.pop("audio_delay_ms", None)
+        if isinstance(old, (int, float)) and old:
+            try:
+                oid = self.output()
+                if O.kind(oid) == "screen" and not L.sound(oid).get("delay_ms"):
+                    L.record(oid, float(old), method="chirp", extra={"note": "karaoke's calibration, moved 27 Nov"})
+            except Exception:  # noqa: BLE001 - a deployment without screens or files: the delay is measured again
+                pass
 
     def anchor(self, rev: int, pos_s: float, at: float) -> None:
         """The song is at ``pos_s`` at server time ``at`` (sonos_out.py: what the room hears), without a new rev (no
@@ -565,7 +614,7 @@ class Store:
             songs = sorted(self.s["songs"].values(), key=lambda s: -(s.get("created_at") or 0))
             return {"songs": [public_song(s) for s in songs], "queue": [dict(e) for e in self.s["queue"]],
                     "player": {**self.s["player"], "position_s": round(self.position(), 2)},
-                    "settings": dict(self.s["settings"]), "calibration": self.calibration, "now": time.time(),
+                    "settings": self.settings_view(), "calibration": self.calibration, "now": time.time(),
                     "singers": self.singers()}
 
     def now_playing(self) -> dict:
@@ -577,7 +626,7 @@ class Store:
             nsong = self.s["songs"].get(nxt["song_id"]) if nxt else None
             cur = next((e for e in self.s["queue"] if e["qid"] == p.get("qid")), None) if p.get("qid") else None
             child = bool(self.s["settings"].get("child_mode"))
-            return {"player": p, "settings": dict(self.s["settings"]),
+            return {"player": p, "settings": self.settings_view(),
                     "song": (child_song(public_song(song)) if child else public_song(song)) if song else None,
                     "up_next": {"id": nsong["id"], "title": nsong.get("title"), "artist": nsong.get("artist"),
                                 "singers": nxt.get("singers") or []} if nsong else None,

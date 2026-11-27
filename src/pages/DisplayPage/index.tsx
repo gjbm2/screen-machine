@@ -26,6 +26,7 @@ import { MaskLayers } from "./art/MaskLayers";
 import { isClip, mediaContainerStyle, mediaStyle } from "./art/styles";
 import { LiveLayer } from "./live/LiveLayer";
 import { KaraokeLayer } from "./karaoke/KaraokeLayer";
+import { SoundCalibration } from "./SoundCalibration";
 import {
   DisplayController,
   controlSocketUrl,
@@ -878,10 +879,16 @@ function DisplayPage() {
 
   // Karaoke's lyrics (and, with output "screen", its sound) over everything, on the karaoke screen only (the panel's
   // Settings): karaoke/KaraokeLayer.tsx. Renders nothing unless the deployment's karaoke capability is on.
+  // And this screen's sound being measured (docs/SOUND.md): the calibration's chirps, played here. SoundCalibration.tsx.
   const karaokeLayer = (
-    <LayerBoundary name="karaoke" fallback={null}>
-      <KaraokeLayer screen={screenId} />
-    </LayerBoundary>
+    <>
+      <LayerBoundary name="karaoke" fallback={null}>
+        <KaraokeLayer screen={screenId} />
+      </LayerBoundary>
+      <LayerBoundary name="sound-calibration" fallback={null}>
+        <SoundCalibration screen={screenId} />
+      </LayerBoundary>
+    </>
   );
 
   // Default page: the art stack alone, exactly as before. Controlled page: the live layer under it.

@@ -2,6 +2,7 @@
 // and from a phone on the tailnet alike, and the display page's lyrics layer from wherever it is served.
 
 import { sendRelative } from '@/shared/http/client';
+import type { SoundOutput } from '@/shared/api/sound';
 
 export type SongStatus = 'queued' | 'fetching' | 'lyrics' | 'separating' | 'ready' | 'failed';
 
@@ -69,17 +70,21 @@ export interface KaraokeSettings {
   /** The lead vocal under the backing track: 0 off, 0.25 quiet, 1 full. */
   guide: number;
   autoplay: boolean;
-  /** How late the speaker plays (Bluetooth): the lyrics are shown this much later. */
-  audio_delay_ms: number;
+  /** The delay from the player's clock to the room for the lyrics: the output's own (docs/SOUND.md: smsound.latency,
+   *  measured + trim; 0 on a Sonos or with no sound); null: a screen output never measured (the page that plays it uses
+   *  its browser's output latency). Read only: set it on the output (Settings › Sound & timing, or Calibrate). */
+  audio_delay_ms: number | null;
   /** How the words show as they're sung: yellow, a bouncing dot, or both. */
   highlight?: 'words' | 'dot' | 'both';
   /** Child mode: swear words as dashes and muted (routes/karaoke/profanity.py). */
   child_mode?: boolean;
   /** The karaoke screen (its display page shows the lyrics; null: karaokeScreen's own choice). */
   screen?: string | null;
-  /** Where the sound plays: the karaoke screen's own page, nowhere (the screens only), or a Sonos room ("sonos:<zone>":
-   *  it plays the song itself and the player's clock follows what the room hears). */
+  /** Where the sound plays: one of the app's sound outputs (docs/SOUND.md) karaoke can play to: "screen:<id>" (that
+   *  screen's own page), "sonos:<zone>" (it plays the song itself and the player's clock follows what the room hears)
+   *  or "none". Always resolved here; `output_set` false: it's the karaoke screen's page by default. */
   output?: string;
+  output_set?: boolean;
 }
 
 /** One place in the queue. The same song can be queued more than once. */
@@ -251,7 +256,8 @@ export const karaoke = {
   /** Every song of a Spotify playlist or album into the library (and, with queue, into the queue). */
   importList: (url: string, queue = false) =>
     call<{ name: string; added: number; had: number; total: number }>('/import', post({ url, queue })),
-  outputs: () => call<{ outputs: { id: string; label: string }[] }>('/outputs'),
+  /** The app's sound outputs, marked for karaoke (GET /api/sound/outputs?for=karaoke). */
+  outputs: () => call<{ outputs: SoundOutput[] }>('/outputs'),
   calibrate: () => call<{ calibration: KaraokeCalibration }>('/calibrate', post({})),
   settings: (s: Partial<KaraokeSettings>) => call<{ settings: KaraokeSettings }>('/settings', post(s)),
   lyrics: (id: string) => call<KaraokeLyrics>(`/songs/${id}/lyrics`),
