@@ -28,7 +28,8 @@ import score as scoremod  # noqa: E402
 RUNS = common.CACHE / "runs"
 FEEDBACK = pathlib.Path.home() / ".local" / "state" / "screen-machine" / "show" / "ad_feedback.jsonl"
 MODES = ("karaoke", "live")
-HEADLINE = ("overall", "beat", "snap", "contour", "sections", "climax", "ending", "coherence")
+HEADLINE = ("overall", "beat", "snap", "contour", "sections", "climax", "ending", "coherence",
+            "design", "palette", "kit", "flourish", "stillness", "reserve")     # design.py's, after the music's
 REGRESSION = 0.01             # a score falling by more than this is flagged (the run is deterministic: starting point)
 
 
