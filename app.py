@@ -51,6 +51,8 @@ from routes.deployment_api import deployment_api
 from routes.bakeoff_api import bakeoff_api
 from routes.auth.api import auth_api
 from routes.screensaver import screensaver_api
+from routes.perf_api import perf_api
+from routes.screen_notes import screen_notes_api
 import routes.karaoke
 import routes.sound
 import routes.auth
@@ -88,6 +90,8 @@ app.register_blueprint(deployment_api, url_prefix=API_PREFIX)  # GET /api/deploy
 app.register_blueprint(bakeoff_api, url_prefix=API_PREFIX)  # blind model bake-off page (docs/genai-review/PROJECT_PLAN.md)
 app.register_blueprint(auth_api, url_prefix=API_PREFIX)  # Google sign-in (docs/ACCOUNTS.md)
 app.register_blueprint(screensaver_api, url_prefix=API_PREFIX)  # the Windows screensaver download (tools/screensaver/)
+app.register_blueprint(perf_api, url_prefix=API_PREFIX)  # GET /api/perf/gpu: who uses the GPU (utils/gpu_watch.py)
+app.register_blueprint(screen_notes_api, url_prefix=API_PREFIX)  # comments on what a screen showed
 app.register_blueprint(routes.karaoke.karaoke_api, url_prefix=API_PREFIX)  # karaoke: songs, queue, player (docs/KARAOKE.md)
 app.register_blueprint(routes.sound.sound_api, url_prefix=API_PREFIX)  # sound outputs, latency, calibration (docs/SOUND.md)
 
@@ -278,6 +282,20 @@ if __name__ == '__main__':
         routes.karaoke.start()
     except Exception as e:
         error(f"karaoke could not be started: {e}")
+
+    # Who uses the GPU and the CPU, every 2 s, kept an hour in memory and a day in logs/gpu_watch.jsonl
+    # (utils/gpu_watch.py). Does nothing where there is no nvidia-smi. Never blocks or breaks start-up.
+    try:
+        from utils import gpu_watch
+
+        def _song_name(sid):
+            st = routes.karaoke.api._store
+            song = st.s["songs"].get(sid) if st is not None else None
+            return song.get("title") if song else None
+
+        gpu_watch.start(_song_name)
+    except Exception as e:
+        error(f"gpu watch could not be started: {e}")
 
     # Room control: room_service runs in this process on its own thread, event loop and LAN port
     # (the deployment's ports.room, 8700); this app door has no room routes. Never blocks or breaks start-up:

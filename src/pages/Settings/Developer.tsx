@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { ADMIN_TOKEN_KEY } from "@/shared/api/admin";
 import { storageGet, storageSet, type RoomApi } from "@/pages/Room/api";
 import { TestShowSection } from "@/pages/Room/TestShow";
+import { GpuCard } from "@/components/perf/GpuCard";
 import type { NewLogEntry } from "@/pages/Room/useRoomConnection";
 import { Group, LinkRow, Row, Sub } from "./Group";
 
@@ -31,8 +32,11 @@ export function DeveloperGroup({
   const [hasKey, setHasKey] = useState(() => !!storageGet(ADMIN_TOKEN_KEY));
 
   return (
-    <Group id="developer" title="Developer" icon={<Wrench />} summary="Test music, tools and raw data">
+    <Group id="developer" title="Developer" icon={<Wrench />} summary="Test music, GPU, tools and raw data">
       <TestShowSection api={api} connected={connected} liveNow={liveNow} addLog={addLog} reportError={reportError} />
+
+      <Sub>GPU</Sub>
+      <GpuCard />
 
       <Sub>Admin page</Sub>
       <Row label="Admin key on this device" hint={hasKey ? "Kept here, for the admin page." : "None: the admin page asks for it."}>
