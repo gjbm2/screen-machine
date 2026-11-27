@@ -249,7 +249,8 @@ export default function LightsPage() {
                 </p>
               }
             >
-              <RoomTab api={api} space={space} things={mapThings} lamps={lampColours} selectId={mapSelect} plan={mapNav || !!mapSelect} />
+              <RoomTab api={api} space={space} things={mapThings} lamps={lampColours} selectId={mapSelect} plan={mapNav || !!mapSelect}
+                onSettings={(id) => { const r = rows.find((x) => x.id === id); if (r) openEdit(r); }} />
             </Suspense>
           ) : (
             <>

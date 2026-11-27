@@ -248,7 +248,7 @@ export class LightsApi {
   }
 
   /** A light bar as one thing: where its middle is (its height is at[2]) and which way it faces; its parts follow. */
-  putBar(id: string, body: { at?: number[]; facing_deg?: number }) {
+  putBar(id: string, body: { at?: number[]; facing_deg?: number; label?: string }) {
     return this.json<unknown>("PUT", `/space/bars/${encodeURIComponent(id)}`, body);
   }
 

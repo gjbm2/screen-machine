@@ -641,8 +641,8 @@ JOG_UI: dict[str, Any] = {"send_hz": 20.0, "idle_s": 60.0, "nudge_deg": {"fine":
                           "drag_deg_per_px": {"fine": 0.1, "coarse": 0.5}}
 #: POST .../setup's keys. PASS_KEYS go to fixtures.SetupStore.patch as sent (it validates them).
 SETUP_BODY_KEYS: tuple[str, ...] = ("home", "beam", "limit", "limits", "slots", "max_speed", "range", "jog_flip",
-                                    "strobe_hz_max", "lean_deg", "turn_deg")
-PASS_KEYS: tuple[str, ...] = ("slots", "max_speed", "range", "jog_flip", "strobe_hz_max", "lean_deg", "turn_deg")
+                                    "strobe_hz_max", "lean_deg", "turn_deg", "label")
+PASS_KEYS: tuple[str, ...] = ("slots", "max_speed", "range", "jog_flip", "strobe_hz_max", "lean_deg", "turn_deg", "label")
 BEAM_ATTRS: tuple[str, ...] = ("zoom", "focus", "iris", "frost")     # setup ``beam: "here"`` keeps these
 AXES: tuple[str, ...] = ("pan", "tilt")
 LIMIT_ENDS: tuple[str, ...] = ("here", "low", "high")   # here: the end nearer the held value (docs/LIGHTS.md §8.1)

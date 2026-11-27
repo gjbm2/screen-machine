@@ -1781,7 +1781,9 @@ class Registrar:
 # -- the setup file (the Lights page's per-light settings; docs/LIGHTS.md §2.6) ----------------------------------------
 SETUP_NAME = "fixtures.setup.yaml"
 SETUP_KEYS: tuple[str, ...] = ("home", "limits", "max_speed", "range", "beam", "slots", "positions", "strobe_hz_max",
-                               "jog_flip", "lean_deg", "turn_deg")
+                               "jog_flip", "lean_deg", "turn_deg", "label")
+#: label (owner, 27 Nov: "need to be able to rename objects"): the light's name as set on the Lights page's room
+#: editor, in place of its file's label wherever the light is named (a hand-written light can't be edited, its setup can).
 #: lean_deg (owner, 27 Nov: "laser angle should be a config setting in the light set up screen ... a de facto user
 #: param we'll physically control but will drive the simulation"): how a fixed light that throws a spread of beams (a
 #: bar's laser) is tilted by hand: degrees forward (towards the middle of the room) from straight up; negative: back.
@@ -1967,7 +1969,14 @@ _SETUP_CHECK: dict[str, Callable[[Any, str], Any]] = {
     "jog_flip": lambda v, w: _axes(v, w, _flip),
     "lean_deg": lambda v, w: _finite(v, w, lo=LEAN_DEG[0], hi=LEAN_DEG[1]),
     "turn_deg": lambda v, w: _finite(v, w, lo=TURN_DEG[0], hi=TURN_DEG[1]),
+    "label": lambda v, w: _label(v, w),
 }
+
+
+def _label(v: Any, where: str) -> str:
+    if not isinstance(v, str) or not v.strip() or len(v.strip()) > 60:
+        raise ValueError(f"{where}: a name of 1 to 60 characters")
+    return v.strip()
 
 
 def clean_setup(entry: Any) -> tuple[contract.FixtureSetup, list[str]]:
@@ -2030,6 +2039,8 @@ def attach_setup(view: contract.RigView, setups: dict[str, Any], problems: list[
         clean, probs = clean_setup(entry)
         problems.extend(f"{SETUP_NAME}: {fid}.{p}: ignored" for p in probs)
         fixtures[fid]["setup"] = clean
+        if clean.get("label"):                            # renamed on the page: that name wherever it is named
+            fixtures[fid]["label"] = clean["label"]
 
 
 def merge_setup(cur: Any, patch: dict) -> dict:

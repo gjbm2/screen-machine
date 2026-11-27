@@ -2236,6 +2236,7 @@ class FixtureSetup(TypedDict, total=False):
     jog_flip: dict                 # {"pan": bool, "tilt": bool}: the page's drag direction (page convenience only)
     lean_deg: float                # a fixed light's tilt, set by hand on the real unit: degrees forward from straight up
     turn_deg: float                # ... and its turn to the right of its bar's front (as you face the bar)
+    label: str                     # its name, set on the Lights page's room editor (replaces the file's label)
 
 
 # -- frames (looks.py -> drivers) -----------------------------------------------------------------------------------------
