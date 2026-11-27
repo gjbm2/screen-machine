@@ -236,8 +236,10 @@ export default function KaraokePage() {
   const queue = st?.queue ?? [];
   const curIdx = queue.findIndex((e) => e.qid === st?.player.qid);
   const upcoming = curIdx < 0 ? queue.length : queue.length - curIdx;
+  // Only what is still to come counts as "in the queue": the songs before the one playing are history (owner, 27 Nov).
   const queuedCount = new Map<string, number>();
-  for (const e of queue) queuedCount.set(e.song_id, (queuedCount.get(e.song_id) ?? 0) + 1);
+  const sungUpTo = Math.max(0, queue.findIndex((e) => e.qid === st?.player.qid));
+  for (const e of queue.slice(sungUpTo)) queuedCount.set(e.song_id, (queuedCount.get(e.song_id) ?? 0) + 1);
 
   const addToQueue = (s: KaraokeSong, at: QueueAt) =>
     void act(
