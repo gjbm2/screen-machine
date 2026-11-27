@@ -2967,7 +2967,10 @@ class Director:
                 got = self.light_scenes.pick_for(g, self.direction, self._flow, self._ls_rng,
                                                  avoid=old.get("scene") if old else None, tags=self._light_tags,
                                                  hard_avoid=human, prefer=prefer or None, prefer_why=pwhy,
-                                                 moment=self._moment,
+                                                 # a change the music's structure causes (a new song, a section)
+                                                 # lands IN the song, whatever the moment is while it is announced
+                                                 # (trace, 27 Nov: a new song's lasers kept the lead-in's scene)
+                                                 moment="song" if reason in STRUCTURE_REASONS else self._moment,
                                                  accent_fit=self._accent_fit())
             except Exception:                             # a broken catalogue never fails the tick
                 log.exception("light scenes: pick failed")
