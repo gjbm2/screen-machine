@@ -75,8 +75,8 @@ export function itemsFor(space: RoomSpace, things: Placeable[]): { placed: DrawI
   for (const [id, a] of Object.entries(space.appliances)) {
     if (!a.at) continue;
     const t = byId.get(id);
-    const kind = t?.kind ?? (a.plane ? "screen" : "lamp");
-    placed.push({ key: `t:${id}`, label: t?.label ?? nameWords(id), kind, at: a.at, size: a.plane?.size ?? null, normal: a.plane?.normal ?? null });
+    const kind = t?.kind ?? (a.plane && (!a.kind || a.kind === "screen") ? "screen" : "lamp");
+    placed.push({ key: `t:${id}`, label: t?.label ?? a.label ?? nameWords(id), kind, at: a.at, size: a.plane?.size ?? null, normal: a.plane?.normal ?? null });
   }
   const unplaced = things.filter((t) => !space.appliances[t.id]?.at);
   return { placed, unplaced };
