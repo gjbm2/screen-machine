@@ -2526,8 +2526,9 @@ class SpaceView(TypedDict):
     regions: dict[str, dict]       # name -> {"label", "surface", "centre", "size"}
     bars: dict[str, dict]          # id -> {"label", "at": [x, y, z] (its middle), "facing_deg", "layout", "front",
                                    # "axis" (level unit vectors), "parts": {<part>: {"id": "<bar>.<part>", "head",
-                                   # "own_place", "lean_deg"?, "turn_deg"?}}, "editable"}: a light bar as one thing;
-                                   # its parts' places (and its heads' upright poses) come from it
+                                   # "hang", "turns", "own_place", "lean_deg"?, "turn_deg"?}}, "editable"}: a light
+                                   # bar as one thing; its parts' places (and its heads' poses: upright, or hanging)
+                                   # come from it; "turns" False: a one-axis bracket, it only tilts
     keep_out: dict[str, dict]      # name -> {"label", "centre": [x, y, z], "size": [x, y, z], "groups": [light
                                    # group, ...] (none: every light), "editable"}: boxes no beam should cross. A
                                    # moving light's aim steps aside (looks._aim); a fixed laser's tilt is checked

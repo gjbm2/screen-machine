@@ -32,11 +32,13 @@ import type PlannedView from "./Room3D";
 
 const Planned = lazy(() => import("./Room3D"));
 const POLL_MS = 4000;
-const BAR_BOX: Vec3 = [0.3, 1.2, 0.32];          // a bar's pick box: front to back, end to end, top to bottom (m)
+const BAR_BOX: Vec3 = [0.2, 1.16, 0.46];         // a bar's pick box: front to back, end to end, top to bottom (m)
 const LIGHT_BOX: Vec3 = [0.2, 0.2, 0.2];
 
 type Vec3 = [number, number, number];
-type PartAim = { part: string; id: string; label: string; at: Vec3 | null; lean_deg: number; turn_deg: number; own: boolean };
+type PartAim = { part: string; id: string; label: string; at: Vec3 | null; lean_deg: number; turn_deg: number; own: boolean;
+  /** false: a one-axis bracket (a U-yoke): it only tilts, and faces where its bar faces */
+  turns: boolean };
 type BarBits = { id: string; label: string; at: Vec3; facing_deg: number; front: Vec3; editable: boolean; aims: PartAim[] };
 type SpaceBits = ReturnType<typeof keepOutOf> & { size: Vec3; bars: BarBits[]; room: RoomSpace; partIds: Set<string>;
   /** What the deployment's own space.yaml sets ("screen:<id>", "place:<name>", ...): the page can't move it. */
@@ -67,7 +69,7 @@ function barsFrom(s: any): BarBits[] {
            aims: Object.entries(b.parts ?? {}).flatMap(([part, p]: [string, any]) =>
              p?.aim && typeof p.aim.lean_deg === "number"
                ? [{ part, id: String(p.id), label: String(p.label ?? p.id), at: isV3(s?.appliances?.[p.id]?.at) ? s.appliances[p.id].at : null,
-                    lean_deg: p.aim.lean_deg, turn_deg: Number(p.aim.turn_deg) || 0, own: p.aim.own === true }]
+                    lean_deg: p.aim.lean_deg, turn_deg: Number(p.aim.turn_deg) || 0, own: p.aim.own === true, turns: p.turns !== false }]
                : []) }]
       : []);
 }
@@ -287,7 +289,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       if (b.editable) out.push({ key: `bar:${b.id}`, kind: "bar", label: b.label, at: b.at, size: BAR_BOX, yaw: (b.facing_deg * Math.PI) / 180 });
       for (const p of b.aims) {
         if (p.at) out.push({ key: `light:${p.id}`, kind: "light", label: p.label, at: p.at, size: LIGHT_BOX, dir: aimDirOf(b.front, p.lean_deg, p.turn_deg), front: b.front,
-          parent: b.editable ? `bar:${b.id}` : undefined });
+          tiltOnly: !p.turns, parent: b.editable ? `bar:${b.id}` : undefined });
       }
     }
     for (const r of bits.keepOut) if (r.editable) out.push({ key: `region:${r.name}`, kind: "region", label: r.label, at: r.centre, size: r.size });
@@ -621,11 +623,22 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
             const a = aimOf(light);
             return (
               <>
-                <Angle label="Direction (+ right, − left)" min={-180} max={180} value={a.direction} words={directionWords(a.direction)} disabled={busy} testid="aim-direction"
-                  onKeep={(v) => void changeLight(light, leanTurnOf(v, a.elevation), `turn ${light.label}`)} />
+                {light.turns ? (
+                  <Angle label="Direction (+ right, − left)" min={-180} max={180} value={a.direction} words={directionWords(a.direction)} disabled={busy} testid="aim-direction"
+                    onKeep={(v) => void changeLight(light, leanTurnOf(v, a.elevation), `turn ${light.label}`)} />
+                ) : (
+                  <div className="py-1" data-testid="aim-direction">
+                    <div className="text-stone-600">Direction</div>
+                    <div className="text-stone-500">It sits in a U-bracket, so it only tilts: it faces where {lightBar?.label ?? "its bar"} faces. Turn the bar to turn it.</div>
+                    {Math.abs(light.turn_deg) > 0.05 && (
+                      <button className={`${btn} mt-1`} disabled={busy} onClick={() => void changeLight(light, { turn_deg: null }, `straighten ${light.label}`)}>
+                        Straighten it (it is set {Math.abs(a.direction)}° {a.direction > 0 ? "right" : "left"})</button>
+                    )}
+                  </div>
+                )}
                 <Angle label="Elevation (+ up, − down)" min={-90} max={90} value={a.elevation} words={elevationWords(a.elevation)} disabled={busy} testid="aim-elevation"
                   onKeep={(v) => void changeLight(light, leanTurnOf(a.direction, v), `tilt ${light.label}`)} />
-                <div className="mb-2 text-[12px] text-stone-500">In the view: drag the blue ring to turn it, the amber arc to raise or lower it.</div>
+                <div className="mb-2 text-[12px] text-stone-500">{light.turns ? "In the view: drag the blue ring to turn it, the amber arc to raise or lower it." : "In the view: drag the amber arc to tilt it."}</div>
               </>
             );
           })()}

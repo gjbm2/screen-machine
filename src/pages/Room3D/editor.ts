@@ -35,6 +35,7 @@ export interface Editable {
   front?: Vec3;             // a light: its bar's front (level unit): tilt and turn are read back against it
   parent?: string;          // a light on a bar: the bar's key (they are one unit: outlined together)
   normal?: Vec3;            // a screen: which way it faces out of its wall
+  tiltOnly?: boolean;       // a light in a one-axis bracket (a U-yoke): it only tilts, facing where its bar faces
 }
 export interface EditChange { at?: Vec3; facing_deg?: number; lean_deg?: number; turn_deg?: number; size?: Vec3; normal?: Vec3 }
 type Handle = "move" | "ring" | "lift" | "turn" | "tilt";
@@ -228,8 +229,7 @@ export class RoomEditor {
         new THREE.LineBasicMaterial({ color: CYAN, depthTest: false, transparent: true }));
       const knobT = new THREE.Mesh(new THREE.SphereGeometry(0.035, 16, 12), mat(CYAN));
       knobT.position.copy(P).addScaledVector(hv, TURN_R);
-      this.ui.add(ring, tick, knobT);
-      handle(fatRing, "turn");
+      if (!it.tiltOnly) { this.ui.add(ring, tick, knobT); handle(fatRing, "turn"); }
       // elevation: an upright half circle from straight down to straight up on that side, its knob where it points
       const arcPts: THREE.Vector3[] = [];
       for (let i = 0; i <= 48; i++) {

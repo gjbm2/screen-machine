@@ -136,6 +136,10 @@ function dotSprite(): THREE.Texture {
 }
 
 /** The moving heads' shadow maps (their gobos) are redrawn every this many frames. */
+/** The GigBAR's bar (m): length, height, depth (the maker's picture: 1.1 m; the section estimated). */
+const BAR = { len: 1.1, h: 0.048, d: 0.06 };
+/** Its four strobe lenses: where along the bar (m from its middle) and their radius. */
+const STROBE_ALONG = [-0.49, -0.16, 0.16, 0.49], STROBE_R = 0.014;
 export type Nav = "walk" | "orbit" | "plan";
 const PLAN_FOV_DEG = 3;     // the plan's long lens: as good as no perspective
 const EYE_M = 1.6;          // where you stand, walking: eye height (m)
@@ -362,34 +366,57 @@ export class RoomSim {
   }
 
   // -- a GigBAR: its parts on one bar, on a tripod ----------------------------------------------------------------
+  // As the maker's datasheet picture of the GigBAR MOVE + ILS shows it (docs/GIGBAR_RIG.md §1.1; the unit 1100 x 144
+  // x 449 mm): a flat bar 1.1 m long with a tripod sleeve under its middle; the two moving heads hang under its ends,
+  // the two pars hang under it in U-yokes, the two derbies (ribbed drums) stand on it in U-yokes, the laser's box sits
+  // on it in the middle in its own bracket, and the four strobes are round lenses in the bar's face. The pars, derbies
+  // and laser tilt about the bar's length only (a U-yoke has one axis). Places come from the room model (the layout);
+  // the housings are drawn here in the bar's frame: x along it (to the right as you face it), y up, z forward.
   private buildUnit(fs: Fixture[], m: RoomModel) {
     const placed = fs.filter((f) => f.at);
     if (!placed.length) return;
-    const pars = placed.filter((f) => f.part === "par").sort((a, b) => a.id.localeCompare(b.id));
-    const centre = placed.reduce((s, f) => s.add(v3(f.at!)), new THREE.Vector3()).multiplyScalar(1 / placed.length);
-    const spot = placed.find((f) => f.part === "spot" && f.pose);
-    // the bar's front: its heads' pan-0 direction (the pose's x), else towards the room's centre
-    let front = spot ? new THREE.Vector3(1, 0, 0).applyQuaternion(rotQ(spot.pose!.rot)) : v3(m.centre).sub(centre);
-    front.z = 0;
+    const up = new THREE.Vector3(0, 0, 1);
+    const bar = m.bars.find((b) => b.id === placed[0].bar);
+    let front: THREE.Vector3, mid: THREE.Vector3;
+    if (bar) {
+      front = v3(bar.front).setZ(0);
+      mid = v3(bar.at);
+    } else {                                                     // a unit with no bar in the room model: its parts' middle
+      const spot = placed.find((f) => f.part === "spot" && f.pose);
+      const c = placed.reduce((acc, f) => acc.add(v3(f.at!)), new THREE.Vector3()).multiplyScalar(1 / placed.length);
+      front = spot ? new THREE.Vector3(1, 0, 0).applyQuaternion(rotQ(spot.pose!.rot)) : v3(m.centre).sub(c);
+      front.z = 0;
+      mid = c;
+    }
     if (front.lengthSq() < 1e-6) front = new THREE.Vector3(0, 1, 0);
     front.normalize();
-    // the bar's axis: par 1 -> par 2 (left to right as you face it), else across the front
-    let axis = pars.length >= 2 ? v3(pars[1].at!).sub(v3(pars[0].at!)) : new THREE.Vector3(front.y, -front.x, 0).negate();
-    axis.z = 0;
-    axis = axis.lengthSq() > 1e-6 ? axis.normalize() : new THREE.Vector3(-front.y, front.x, 0);
-    const len = pars.length >= 2 ? v3(pars[1].at!).distanceTo(v3(pars[0].at!)) + 0.12 : 1.12;
-    const barZ = (pars[0]?.at ?? placed[0].at!)[2];
-    const mid = new THREE.Vector3(centre.x, centre.y, barZ);
-    const up = new THREE.Vector3(0, 0, 1);
-    // body, tripod
-    const body = new THREE.Mesh(new THREE.BoxGeometry(len, 0.17, 0.15), darker);
-    // a proper rotation: axis x front is down here, so the box's third axis is that (a mirrored basis, with up, turned
-    // the body askew whenever the bar wasn't square to the room)
-    body.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(axis, front, new THREE.Vector3().crossVectors(axis, front)));
-    body.position.copy(mid);
-    this.built.add(body);
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, barZ - 0.08, 12), dark);
-    aimY(pole, up); pole.position.set(mid.x, mid.y, (barZ - 0.08) / 2);
+    const axis = new THREE.Vector3(-front.y, front.x, 0);       // space.py's: + is to the right as you face the bar
+    // the bar's frame (right-handed: axis x up = front)
+    const unit = new THREE.Group();
+    unit.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(axis, up, front));
+    unit.position.copy(mid);
+    this.built.add(unit);
+    const local = (p: THREE.Vector3) => { const d = p.clone().sub(mid); return new THREE.Vector3(d.dot(axis), d.dot(up), d.dot(front)); };
+    const box = (w: number, h: number, d: number, mat: THREE.Material, at: [number, number, number], parent: THREE.Object3D = unit) => {
+      const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat); o.position.set(...at); o.castShadow = false; parent.add(o); return o;
+    };
+    const cyl = (r: number, len: number, mat: THREE.Material, at: [number, number, number], along: "x" | "y" | "z", parent: THREE.Object3D = unit, seg = 24) => {
+      const o = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, seg), mat); o.position.set(...at);
+      if (along === "x") o.rotation.z = Math.PI / 2; else if (along === "z") o.rotation.x = Math.PI / 2;
+      parent.add(o); return o;
+    };
+    const H = BAR.h / 2;
+    // the bar, its end caps, the knobs that clamp the brackets, the tripod sleeve and its gusset
+    box(BAR.len, BAR.h, BAR.d, darker, [0, 0, 0]);
+    for (const s of [-1, 1]) box(0.012, BAR.h + 0.008, BAR.d + 0.008, dark, [s * (BAR.len / 2 + 0.006), 0, 0]);
+    cyl(0.026, 0.13, dark, [0, -H - 0.065, 0], "y");
+    const g = new THREE.Shape([new THREE.Vector2(-0.075, -H), new THREE.Vector2(0.075, -H), new THREE.Vector2(0, -H - 0.09)]);
+    const gusset = new THREE.Mesh(new THREE.ShapeGeometry(g), new THREE.MeshStandardMaterial({ color: 0x1b1d23, roughness: 0.6, metalness: 0.3, side: THREE.DoubleSide }));
+    unit.add(gusset);
+    // the stand: a pole down from the sleeve, three legs
+    const poleTop = mid.z - H - 0.13;
+    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.0175, 0.02, Math.max(0.1, poleTop), 12), dark);
+    aimY(pole, up); pole.position.set(mid.x, mid.y, poleTop / 2);
     this.built.add(pole);
     for (let i = 0; i < 3; i++) {
       const a = (i * Math.PI * 2) / 3 + Math.PI / 2;
@@ -399,17 +426,66 @@ export class RoomSim {
       aimY(leg, d); leg.position.copy(foot).addScaledVector(d, 0.5);
       this.built.add(leg);
     }
-    const frontOff = 0.086;
+    /** A U-yoke from the bar's top (``side`` +1) or bottom (-1) to a pivot, ``half`` wide, with its clamp knobs. */
+    const yoke = (pv: THREE.Vector3, half: number, side: 1 | -1) => {
+      const from = side * H, len = Math.abs(pv.y - from);
+      for (const s of [-1, 1]) {
+        box(0.008, len, 0.022, dark, [pv.x + s * half, (pv.y + from) / 2, pv.z]);
+        cyl(0.013, 0.016, dark, [pv.x + s * (half + 0.01), pv.y, pv.z], "x");
+      }
+      box(2 * half, 0.008, 0.022, dark, [pv.x, from + side * 0.004, pv.z]);
+      cyl(0.011, 0.02, dark, [pv.x, from + side * 0.01, 0], "y");     // the clamp knob on the bar
+    };
+    /** A housing that tilts about the bar's length at a pivot, pointing along ``dir`` (room frame). */
+    const tilting = (pv: THREE.Vector3, dir: THREE.Vector3) => {
+      const t = new THREE.Group(); t.position.copy(pv);
+      t.rotation.x = -Math.atan2(dir.dot(up), dir.dot(front));     // +z (forward) turned up to the light's elevation
+      unit.add(t); return t;
+    };
     for (const f of placed) {
-      const at = v3(f.at!);
-      const side = at.clone().sub(mid).dot(axis) < 0 ? -1 : 1;           // left or right of the bar's middle
-      if (f.part === "par") this.parts.push(this.par(f, at.addScaledVector(front, frontOff), front, axis, side));
-      else if (f.part === "derby") this.parts.push(this.derby(f, at.addScaledVector(front, frontOff), front, axis));
-      else if (f.part === "flash") this.parts.push(this.strobe(f, at.addScaledVector(front, frontOff), front, axis));
-      else if (f.part === "laser" || f.part === "laser50" || f.part === "laser51") this.parts.push(this.laser(f, at.addScaledVector(front, frontOff), front, axis));
-      else if (f.part === "spot") this.parts.push(this.spot(f, front));
+      const at = v3(f.at!), pv = local(at);
+      if (f.part === "par") {
+        const dir = this.fixedDir(f, front, axis, pv.x < 0 ? -1 : 1, 0.45);
+        yoke(pv, 0.085, -1);
+        const t = tilting(pv, dir);
+        cyl(0.074, 0.075, darker, [0, 0, -0.005], "z", t, 32);
+        cyl(0.06, 0.02, dark, [0, 0, -0.05], "z", t, 24);          // its back, with the fins
+        const rim = new THREE.Mesh(new THREE.TorusGeometry(0.068, 0.006, 6, 32), dark); rim.position.z = 0.033; t.add(rim);
+        this.parts.push(this.par(f, at.clone().addScaledVector(dir, 0.034), dir));
+      } else if (f.part === "derby") {
+        const dir = this.fixedDir(f, front, axis, 0, 0.55);
+        yoke(pv, 0.1, 1);
+        const t = tilting(pv, dir);
+        cyl(0.05, 0.17, darker, [0, 0, 0], "x", t, 28);
+        for (const x of [-0.06, -0.02, 0.02, 0.06]) {
+          const rib = new THREE.Mesh(new THREE.TorusGeometry(0.051, 0.004, 6, 28), dark); rib.rotation.y = Math.PI / 2; rib.position.x = x; t.add(rib);
+        }
+        for (const s of [-1, 1]) cyl(0.052, 0.006, dark, [s * 0.088, 0, 0], "x", t, 28);   // its end plates
+        this.parts.push(this.derby(f, at.clone().addScaledVector(dir, 0.051), dir, axis));
+      } else if (f.part === "flash") {
+        this.parts.push(this.strobe(f, mid.clone().addScaledVector(front, BAR.d / 2 + 0.002), front, axis));
+      } else if (f.part === "laser" || f.part === "laser50" || f.part === "laser51") {
+        const w = this.laserAxes(f, at, front, axis).w;
+        yoke(pv, 0.104, 1);
+        const t = tilting(pv, w);
+        box(0.19, 0.088, 0.12, darker, [0, 0, 0], t);
+        box(0.1, 0.05, 0.004, new THREE.MeshStandardMaterial({ color: 0x2a3140, roughness: 0.15, metalness: 0.6 }), [0, -0.008, 0.061], t);
+        for (const x of [-0.02, 0.02]) {
+          const ap = new THREE.Mesh(new THREE.CircleGeometry(0.011, 20), new THREE.MeshBasicMaterial({ color: 0x0a0c10 }));
+          ap.position.set(x, -0.008, 0.0635); t.add(ap);
+        }
+        this.parts.push(this.laser(f, at.clone().addScaledVector(w, 0.064), front, axis));
+      } else if (f.part === "spot") this.parts.push(this.spot(f, front));
       else if (f.part === "hazer") this.parts.push(this.hazer(f));
     }
+    unit.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).receiveShadow = true; });
+  }
+
+  /** How a fixed light on a bar points: its own tilt and turn (the Lights page), else its bar layout's (both in
+   *  ``aimDir``), else this view's guess (``lift`` up from the bar's front, ``side`` of the bar's middle). */
+  private fixedDir(f: Fixture, front: THREE.Vector3, axis: THREE.Vector3, side: number, lift: number): THREE.Vector3 {
+    return f.aimDir ? v3(f.aimDir).normalize()
+      : front.clone().addScaledVector(new THREE.Vector3(0, 0, 1), lift).addScaledVector(axis, side * 0.5).normalize();
   }
 
   /** The pool a wash or a mover makes on a surface, as the light it throws back into the room (light.ts §2). */
@@ -437,9 +513,8 @@ export class RoomSim {
   }
 
   // A par: the maker's 1,205 lux at 2 m with everything on, beam 22 / field 33 degrees.
-  private par(f: Fixture, at: THREE.Vector3, front: THREE.Vector3, axis: THREE.Vector3, side: number): Part {
-    // how it points: its own tilt and turn (the Lights page), else its bar layout's, else this view's guess
-    const dir = f.aimDir ? v3(f.aimDir) : front.clone().addScaledVector(new THREE.Vector3(0, 0, 1), 0.45).addScaledVector(axis, side * 0.5).normalize();
+  /** ``at``: its lens (the front of its can); ``dir``: which way it points (fixedDir). */
+  private par(f: Fixture, at: THREE.Vector3, dir: THREE.Vector3): Part {
     const ang = rad(PHOTO.par.field_deg / 2), omega = coneOmega(ang, 1), area = Math.PI * 0.055 ** 2;
     const l = face(new THREE.CircleGeometry(0.055, 32), PHOTO.par.beam_deg / 2, PHOTO.par.field_deg); aimZ(l, dir); l.position.copy(at); this.built.add(l);
     const light = new THREE.SpotLight(0xffffff, 0, 0, ang, 1, 2);
@@ -461,11 +536,14 @@ export class RoomSim {
   // A derby: each colour's LEDs are split by its lens into separate narrow beams, each landing as a blob. The maker
   // gives no output for it: PHOTO.derby is an estimate. Three of each colour's beams are drawn, each with one real
   // beam's light; all of the derby's light counts towards the room's.
-  private derby(f: Fixture, at: THREE.Vector3, front: THREE.Vector3, axis: THREE.Vector3): Part {
+  /** ``at``: the front of its drum; ``ax``: which way it points (fixedDir); ``axis``: the bar's length. */
+  private derby(f: Fixture, at: THREE.Vector3, ax: THREE.Vector3, axis: THREE.Vector3): Part {
     const D = PHOTO.derby, half = rad(D.beam_deg / 2), omega = 2 * Math.PI * (1 - Math.cos(half));
-    const ax = f.aimDir ? v3(f.aimDir) : front.clone().addScaledVector(new THREE.Vector3(0, 0, 1), 0.55).normalize();   // its tilt and turn
-    const l = face(new THREE.CircleGeometry(0.05, 32), 40, 75); aimZ(l, ax); l.position.copy(at); this.built.add(l);
-    const faceOmega = 2 * Math.PI * (1 - Math.cos(rad(131 / 2))), faceArea = Math.PI * 0.05 ** 2;   // the maker's coverage
+    // its lens: the drum's front, a strip along the bar
+    const l = face(new THREE.PlaneGeometry(0.15, 0.055), 40, 75);
+    l.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(axis, new THREE.Vector3().crossVectors(ax, axis), ax));
+    l.position.copy(at); this.built.add(l);
+    const faceOmega = 2 * Math.PI * (1 - Math.cos(rad(131 / 2))), faceArea = 0.15 * 0.055;   // the maker's coverage
     const e1 = axis.clone(), e2 = new THREE.Vector3().crossVectors(ax, e1).normalize();
     const tints = DERBY_RGB.map((c) => perLumen(c));
     const beams = Array.from({ length: 12 }, (_, i) => {
@@ -508,11 +586,14 @@ export class RoomSim {
   // The strobes: four cool-white LEDs, the maker's 130 lux at 2 m together, beam 30 / field 62 degrees.
   private strobe(f: Fixture, at: THREE.Vector3, front: THREE.Vector3, axis: THREE.Vector3): Part {
     const ang = rad(PHOTO.strobe.field_deg / 2), omega = coneOmega(ang, 1), white = perLumen([238, 243, 255]);
-    const panels = [-0.4, -0.13, 0.13, 0.4].map((o) => {
-      const p = face(new THREE.PlaneGeometry(0.12, 0.03), PHOTO.strobe.beam_deg / 2, 80);
+    // four round lenses in the bar's face (``at``: its middle), where the maker's picture has them
+    const panels = STROBE_ALONG.map((o) => {
+      const p = face(new THREE.CircleGeometry(STROBE_R, 24), PHOTO.strobe.beam_deg / 2, 80);
       p.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(axis, new THREE.Vector3(0, 0, 1), front));
-      p.position.copy(at).addScaledVector(axis, o).add(new THREE.Vector3(0, 0, -0.055));
-      this.built.add(p);
+      p.position.copy(at).addScaledVector(axis, o);
+      const rim = new THREE.Mesh(new THREE.TorusGeometry(STROBE_R + 0.003, 0.003, 6, 24), dark);
+      rim.quaternion.copy(p.quaternion); rim.position.copy(p.position);
+      this.built.add(p, rim);
       return p;
     });
     const light = new THREE.SpotLight(0xffffff, 0, 0, ang, 1, 2);
@@ -527,7 +608,7 @@ export class RoomSim {
         let sum = 0;
         panels.forEach((p, i) => {
           const a = (c.ch(f, i) / 255) * g; sum += a;
-          setFace(p, one.copy(white).multiplyScalar((PHOTO.strobe.cd / 4) * a), 0.12 * 0.03);
+          setFace(p, one.copy(white).multiplyScalar((PHOTO.strobe.cd / 4) * a), Math.PI * STROBE_R ** 2);
         });
         cd.copy(white).multiplyScalar((PHOTO.strobe.cd / 4) * sum);
         setLight(light, cd); setCone(b, cd);
@@ -708,17 +789,25 @@ export class RoomSim {
     base.quaternion.copy(rotQ(pose.rot));
     this.built.add(base);
     const yoke = new THREE.Group(); base.add(yoke);
-    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.06, 0.03, 20), dark);
-    foot.rotation.x = Math.PI / 2; foot.position.z = -0.095; yoke.add(foot);
+    // its base against the bar (or the floor), the yoke's two arms from it, the head between them (the maker's
+    // picture: about 0.21 m across the yoke); the pose's z is the pan axis, away from the base
+    const baseBox = new THREE.Mesh(new THREE.BoxGeometry(0.13, 0.12, 0.032), dark);
+    baseBox.position.z = -0.09; base.add(baseBox);
+    const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.014, 24), darker);
+    foot.rotation.x = Math.PI / 2; foot.position.z = -0.068; yoke.add(foot);
     for (const s of [-1, 1]) {
-      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.05, 0.014, 0.12), dark);
-      arm.position.set(0, s * 0.058, -0.02); yoke.add(arm);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.014, 0.1), dark);
+      arm.position.set(0, s * 0.072, -0.02); yoke.add(arm);
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.01, 16), darker);
+      hub.position.set(0, s * 0.081, 0); yoke.add(hub);
     }
     const head = new THREE.Group(); yoke.add(head);
-    const can = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.13, 20), darker);
-    can.rotation.x = Math.PI / 2; can.position.z = 0.01; head.add(can);
+    const can = new THREE.Mesh(new THREE.BoxGeometry(0.1, 0.12, 0.13), darker);
+    can.position.z = 0.008; head.add(can);
+    const bezel = new THREE.Mesh(new THREE.CylinderGeometry(0.043, 0.046, 0.012, 28), dark);
+    bezel.rotation.x = Math.PI / 2; bezel.position.z = 0.074; head.add(bezel);
     const ang = rad(PHOTO.spot.beam_deg / 2), pen = 0.25, omega = coneOmega(ang, pen), area = Math.PI * 0.038 ** 2;
-    const hl = face(new THREE.CircleGeometry(0.038, 32), PHOTO.spot.beam_deg / 2, PHOTO.spot.beam_deg * 1.5); hl.position.z = 0.077; head.add(hl);
+    const hl = face(new THREE.CircleGeometry(0.038, 32), PHOTO.spot.beam_deg / 2, PHOTO.spot.beam_deg * 1.5); hl.position.z = 0.0805; head.add(hl);
     const light = new THREE.SpotLight(0xffffff, 0, 0, ang, pen, 2);
     light.position.z = 0.08; light.target.position.z = 3; head.add(light, light.target);
     light.castShadow = true; light.shadow.mapSize.set(512, 512); light.shadow.camera.near = 0.1; light.shadow.camera.far = 25;

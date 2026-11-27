@@ -87,11 +87,13 @@ KEEP_KEYS: tuple[str, ...] = ("label", "centre", "size", "groups")
 #: bar; a part placed by hand under appliances keeps its own place.
 BAR_KEYS: tuple[str, ...] = ("label", "at", "facing_deg", "layout")
 #: layouts.<name>.parts.<part> (the hand file only: what the unit is, not where it stands): along (m from the bar's
-#: middle, + to the right as you face the bar), up (m above the bar), head (a moving head standing on the bar: it gets
-#: an upright pose facing the bar's front until it is taught), and how the part points as it ships: lean_deg (degrees
-#: forward from straight up: 90 is level) and turn_deg (to the right of the bar's front). A light's own setup
+#: middle, + to the right as you face the bar), up (m above the bar's centre line; - below it), head (a moving head on
+#: the bar: it gets a pose facing the bar's front until it is taught), hang (that head hangs under the bar, upside
+#: down, as a GigBAR MOVE's do: its pan axis points down), turns (false: a one-axis bracket, as a U-yoke is: the part
+#: only tilts, about the bar's length, and faces where the bar faces), and how the part points as it ships: lean_deg
+#: (degrees forward from straight up: 90 is level) and turn_deg (to the right of the bar's front). A light's own setup
 #: (fixtures.setup.yaml lean_deg, turn_deg: the Lights page) overrides those two.
-LAYOUT_PART_KEYS: tuple[str, ...] = ("along", "up", "head", "lean_deg", "turn_deg")
+LAYOUT_PART_KEYS: tuple[str, ...] = ("along", "up", "head", "hang", "turns", "lean_deg", "turn_deg")
 SURFACE_KEYS: tuple[str, ...] = ("label", "origin", "normal", "up", "size")
 PLANE_KEYS: tuple[str, ...] = ("normal", "up", "size")
 POSE_KEYS: tuple[str, ...] = ("at", "rot", "tilt_offset_deg", "pan_sign", "tilt_sign", "rms_deg", "worst_deg",
@@ -473,7 +475,8 @@ def _layout(raw: Any, where: str, probs: list[str]) -> Optional[dict]:
             continue
         _unknown(sp, LAYOUT_PART_KEYS, w, probs)
         e: dict[str, Any] = {"along": float(sp["along"]), "up": float(_num(sp.get("up")) or 0.0),
-                             "head": sp.get("head") is True}
+                             "head": sp.get("head") is True, "hang": sp.get("hang") is True,
+                             "turns": sp.get("turns") is not False}
         for k in ("lean_deg", "turn_deg"):
             if sp.get(k) is not None:
                 if _num(sp.get(k)) is None:
@@ -834,7 +837,8 @@ def build_view(hand: Any, added: Any = None, *, error: Optional[str] = None,
         a["editable"] = not (hand_keys.get(aid, set()) & set(PLACE_KEYS))
         appliances[aid] = a
     # the bars: each part (the fixture "<bar>.<part>") where the layout puts it along the bar, unless it has a place
-    # of its own; a head standing on the bar gets an upright pose facing the bar's front until it is taught
+    # of its own; a head on the bar gets a pose facing the bar's front until it is taught: upright standing on it, or
+    # upside down hanging under it (a half turn about the bar's front: the pan axis points down)
     bars: dict[str, dict] = {}
     for bid, b in m["bars"].items():
         lay = m["layouts"].get(b["layout"])
@@ -855,12 +859,16 @@ def build_view(hand: Any, added: Any = None, *, error: Optional[str] = None,
                 a["at"] = at
                 a["bar"] = bid
             if sp["head"] and a.get("pose") is None:
-                a.setdefault("mount", "floor")
-                a["pose"] = {"at": list(a["at"]), "rot": [0.0, 0.0, round(yaw, 6)], "tilt_offset_deg": 0.0,
+                hang = sp.get("hang", False)
+                a.setdefault("mount", "ceiling" if hang else "floor")
+                rot = ([round(math.pi * math.cos(yaw / 2), 6), round(math.pi * math.sin(yaw / 2), 6), 0.0] if hang
+                       else [0.0, 0.0, round(yaw, 6)])
+                a["pose"] = {"at": list(a["at"]), "rot": rot, "tilt_offset_deg": 0.0,
                              "pan_sign": 1, "tilt_sign": 1, "rms_deg": 0.0, "worst_deg": 0.0, "samples": 0,
-                             "solved_at": "from the bar (upright on it, facing its front): not taught"}
-            parts[pn] = {"id": fid, "own_place": own, "head": sp["head"],
-                         **{k: sp[k] for k in ("lean_deg", "turn_deg") if k in sp}}
+                             "solved_at": (f"from the bar ({'hanging under it' if hang else 'upright on it'}, facing its "
+                                           f"front): not taught")}
+            parts[pn] = {"id": fid, "own_place": own, "head": sp["head"], "hang": sp.get("hang", False),
+                         "turns": sp.get("turns", True), **{k: sp[k] for k in ("lean_deg", "turn_deg") if k in sp}}
         bars[bid] = {"label": b.get("label") or humanise(bid), "at": b["at"], "facing_deg": b["facing_deg"],
                      "layout": b["layout"], "front": [round(x, 6) for x in front], "axis": [round(x, 6) for x in axis],
                      "parts": parts, "editable": b.get("_src") != "hand"}

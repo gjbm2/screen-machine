@@ -29,7 +29,18 @@ manuals below and checked with `tools/show/add_fixture.py --file <file>` (show_s
 
 ### 1.1 GigBAR MOVE + ILS: what is on the bar
 
-Left to right on the front: **Par 1, Spot 1, Derby 1, laser, Derby 2, Spot 2, Par 2**, plus four white strobe zones.
+As the maker's datasheet picture shows it (Chauvet DJ "GigBAR Move + ILS" datasheet: 1100 x 144 x 449 mm, the bar
+14 kg; corrected 27 Nov: the order here before came from pictures of another unit). Left to right as you face it:
+- **Spot 1** hangs under the bar's left end (about -0.46 m along, its pivot 0.13 m below the bar), upside down.
+- **Derby 1** stands on the bar in a U-yoke (-0.35 m, 0.13 m up): a ribbed drum.
+- **Par 1** hangs under the bar in a U-yoke (-0.16 m, 0.15 m down): a round can with three LEDs.
+- **The laser**: a box on the bar's middle in its own bracket (0.12 m up), two round apertures behind a glass panel.
+- **Par 2** (+0.16 m), **Derby 2** (+0.35 m) and **Spot 2** (+0.46 m), the same on the right.
+- **Four strobes**: round cool-white lenses in the bar's face at -0.49, -0.16, +0.16 and +0.49 m (DMX 27-30 their
+  four dimmers, 31 one strobe speed).
+- A tripod sleeve under the middle. The pars, derbies and laser are in one-axis brackets: they **only tilt**, about
+  the bar's length, and face where the bar faces (`turns: false` in space.yaml's layout).
+Measured off the picture (690 px of bar = 1100 mm); `deployments/laptop/lights/space.yaml` layouts.gigbar-move.
 
 | Part | Light | show_service sees |
 |---|---|---|
@@ -349,11 +360,13 @@ virtual node: Art-Net in -> DMX out at 40 Hz (holds the last frame when Art-Net 
 - **The bars:** on tripods in the east corners, A NE and B SE, 10 m apart. The bar bodies are at 2.5 m, 0.4 m in from
   the walls, each turned to the room's centre.
 - **The karaoke picture:** about 2 m wide, projected on the east wall between the bars (assumed 16:9, centre 2 m up).
-- **The heads:** hand-set poses, standing upright with pan 0 facing the room's centre (not taught).
-- **Their rest** (`fixtures.setup.yaml` `home`, set through the setup API): the middle of the west wall at 3 m,
-  opposite the picture and above people's heads.
+- **The heads:** poses from the bar until taught: **hanging** under it, upside down, pan 0 facing the bar's front
+  (corrected 27 Nov from the datasheet picture: they were drawn and aimed as standing upright).
+- **Their rest** (`fixtures.setup.yaml` `home`, set through the setup API): the middle of the dance floor. A hanging
+  head reaches the floor and nothing much above level, so the old rest (the west wall at 3 m) was out of reach.
 
-**Tilt finding:** with the spec sheet's 180° tilt, an upright head reaches only from straight up down to horizontal
+**Tilt finding** (written when the heads were thought to stand upright; hanging, as they do, they reach the floor
+with either range): with the spec sheet's 180° tilt, an upright head reaches only from straight up down to horizontal
 (2.68 m). It could never light the floor: the dance floor's centre is about 28° below horizontal. Most moving-head
 scenes work on the floor (pools, sweeps, figure-of-eight, ballyhoo), so they clamped the heads at horizontal and they
 sat still. **The spot type now assumes the menu's Tilt Range 270** (45° below horizontal; owner, 26 Nov). Set 270 on
