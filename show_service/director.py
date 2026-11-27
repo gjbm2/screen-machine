@@ -192,6 +192,7 @@ from . import picture as picmod
 from . import moves as movesmod
 from . import flow as flowmod
 from . import light_scenes as lscenes
+from . import roomlight
 from . import palette as pal
 from . import treatment as treatmod
 from .structure import STRUCTURE_FALLBACK, piano_rest, practice_of
@@ -850,6 +851,12 @@ class Director:
         self._apx = appmod.Executor()
         self._apx_st: dict[str, Any] = {"busy": False, "error": None, "sends": 0}
         self._lp: dict[str, dict] = {}                    # group -> its program (scene, why, transition, since, at)
+        # the light in the room (roomlight.py; docs/LIGHTS.md §7.5): each light type's output, the level each group
+        # is brought down to while it plays with a featured low-power light, and the sums behind it (the snapshot)
+        self._photo: dict = roomlight.load()
+        self._group_level: dict[str, float] = {}
+        self._room_light_view: dict = {}
+        self._room_light_logged: Optional[tuple] = None
         self._lp_next: Optional[dict] = None              # an announced look's programs, until it lands
         self._lp_rev = 0                                  # +1 per change a reader must see (room.look goes at once)
         self._lp_rev_pub = 0
@@ -1464,6 +1471,7 @@ class Director:
         self.lamps_cfg = {"placement_roles": {str(k): v for k, v in pr.items() if v in clean_roles},
                           "default_role": dr if dr in clean_roles else None, "roles": clean_roles}
         self.lights_cfg = lscenes.parse_lights(s.get("lights"), probs)     # docs/LIGHTS.md §12
+        self._photo = roomlight.load(problems=probs)                       # config/room/photometry.yaml
         self._air.configure(atmod.parse((s.get("lights") or {}).get("atmosphere")
                                         if isinstance(s.get("lights"), dict) else None, probs))   # the hazers
         mo = (s.get("lights") or {}).get("moments") if isinstance(s.get("lights"), dict) else None
@@ -3055,6 +3063,16 @@ class Director:
                 if back is not None:                      # the section comes round again: its scene comes back
                     prefer[back] = prefer.get(back, 1.0) * self._prog("recall_weight", RECALL_WEIGHT)
                     pwhy[back] = "this section's scene, back again"
+                # a featured low-power light (the line-up's features; docs/LIGHTS.md §7.5): the other groups' scenes
+                # that land on the surface it lands on (a head's pool on the laser's ceiling) draw less often
+                feats = self._features(applying=True)
+                if feats and gid not in feats:
+                    on = {x for f in feats for x in (self.lights_cfg["groups"].get(f) or {}).get("lands_on", ())}
+                    clear = float((self.lights_cfg.get("room_light") or {}).get(
+                        "clear_of_feature", roomlight.ROOM_LIGHT_FALLBACK["clear_of_feature"]))
+                    for n, sc in self.light_scenes.scenes.items():
+                        if on & lscenes.lands_of(sc):
+                            prefer[n] = prefer.get(n, 1.0) * clear
                 af = self._accent_fit()
                 if carrier is not None and gid in cands and gid != carrier:
                     oth = self._prog("carrier_others", CARRIER_OTHERS)
@@ -4036,8 +4054,73 @@ class Director:
                         "scene": p["scene"], "scene_label": self.light_scenes.label(p["scene"]),
                         "scene_why": p["scene_why"], "effects": [dict(r) for r in self._fx.get(self._root(gid), ())],
                         "transition": p["transition"], "flow": self._program_flow(p["scene"]),
-                        "since_ms": p["since_ms"], "at_ms": p["at_ms"], "why": p["why"]}
+                        "since_ms": p["since_ms"], "at_ms": p["at_ms"], "why": p["why"],
+                        "level": self._group_level.get(self._root(gid), 1.0)}
         return out
+
+    # -- the light in the room (roomlight.py; docs/LIGHTS.md §7.5; owner, 27 Nov) ---------------------------------------
+    def _features(self, applying: bool = False) -> list[str]:
+        """The low-power groups the line-up playing (``applying``: the one being drawn for) features: the groups it
+        names under ``features`` that say what room light they read under."""
+        lus = self.lights_cfg.get("lineups") or {}
+        name = self._lineup_apply if applying and self._lineup_apply is not None else self._lineup
+        gcfg = self.lights_cfg.get("groups") or {}
+        return [g for g in (lus.get(name) or {}).get("features", ())
+                if isinstance((gcfg.get(g) or {}).get("reads_under_lux"), float)]
+
+    def _room_light(self, lamps: Mapping[str, Any]) -> None:
+        """How much light each group now puts in the room (its lights' real output in the colours and level they
+        show, by its scene's average), and from that the level of each group playing WITH a featured low-power light:
+        down far enough that the room stays under what the featured light needs. Nothing is featured (most line-ups,
+        House lights, Lights low, no feel): every level is 1."""
+        cfg = {**roomlight.ROOM_LIGHT_FALLBACK, **{k: v for k, v in (self.lights_cfg.get("room_light") or {}).items()
+                                                   if isinstance(v, (int, float)) and not isinstance(v, bool)}}
+        photo = self._photo
+        rig = self._rig_seen if isinstance(self._rig_seen, dict) else {}
+        fixtures = rig.get("fixtures") if isinstance(rig.get("fixtures"), dict) else {}
+        types = rig.get("types") if isinstance(rig.get("types"), dict) else {}
+        _sp, view = self._space_now()
+        size = ((view or {}).get("room") or {}).get("size")
+        if not (isinstance(size, (list, tuple)) and len(size) == 3 and all(isinstance(x, (int, float)) and x > 0
+                                                                           for x in size)):
+            size = photo["size"]
+        reflect = roomlight.reflect_of((self.lights_cfg.get("room_light") or {}).get("reflect"), photo["reflect"])
+        per_lm = roomlight.lux_per_lumen(size, reflect)
+        by: dict[str, float] = {}
+        for gid, g in self._groups.items():
+            p = self._lp.get(self._root(gid)) or {}
+            sc = self.light_scenes.scenes.get(p.get("scene")) if p.get("scene") else None
+            share = roomlight.scene_share((sc or {}).get("layers")) if sc is not None else 1.0
+            lm = 0.0
+            for fid in g["members"]:
+                la = lamps.get(fid)
+                if not isinstance(la, Mapping) or not isinstance(la.get("rgb"), (list, tuple)):
+                    continue
+                t = types.get((fixtures.get(fid) or {}).get("type")) or {}
+                entry = photo["types"].get(t.get("file")) or photo["types"].get((fixtures.get(fid) or {}).get("type"))
+                lm += roomlight.lumens(entry, [255.0 * float(x) for x in la["rgb"][:3]])
+            by[gid] = lm * share * per_lm
+        feats = self._features() if (self._vibe_name is not None and not self.house and not self.low) else []
+        gcfg = self.lights_cfg.get("groups") or {}
+        levels: dict[str, float] = {}
+        target = level = None
+        if feats:
+            target = min(gcfg[g]["reads_under_lux"] for g in feats)
+            others = [g for g in by if g not in feats and by[g] > 1e-6]
+            level = roomlight.headroom(target, float(cfg["other_lux"]), sum(by.get(g, 0.0) for g in feats),
+                                       sum(by[g] for g in others), float(cfg["min_level"]))
+            if level < 0.999:
+                levels = {self._root(g): round(level, 3) for g in others}
+        self._group_level = levels
+        lux = float(cfg["other_lux"]) + sum(v * levels.get(self._root(g), 1.0) for g, v in by.items())
+        self._room_light_view = {"lux": round(lux, 1), "by_group": {g: round(v, 2) for g, v in by.items()},
+                                 "other_lux": float(cfg["other_lux"]), "features": feats,
+                                 "target_lux": target, "level": round(level, 3) if level is not None else None,
+                                 "levels": dict(levels), "lumens_per_lux": round(1.0 / per_lm, 1)}
+        key = (tuple(feats), round(level, 1) if level is not None else None)
+        if key != self._room_light_logged:               # a new feature, or its level moved by a tenth
+            self._room_light_logged = key
+            self._log_event("room_light", dict(self._room_light_view))
 
     # -- the room's space (space.py: the space builder's) ---------------------------------------------------------------
     def _space_mod(self) -> Any:
@@ -5075,6 +5158,11 @@ class Director:
                    "strobe": bool(vs["strobe"]), "beat_lock": beat_lock}
         if not pal_on and self.light_scene is not None:   # neutral: hands off, the lamps run show.yaml's looks.layers
             self.light_scene, self.light_scene_why, self._ls_reason = None, None, "first"
+        try:
+            self._room_light(lamps)                      # the groups' levels, for _programs_view below (§7.5)
+        except Exception:                                # never fail the tick: nothing is brought down
+            log.exception("room light: failed")
+            self._group_level = {}
         tr = self._look_transition or self._transition(vs)
         self.look = {"t_ms": round(now_s * 1000.0, 1), "seq": self._look_seq, "look_id": f"L{self.look_n}",
                      "vibe": self._vibe_name, "mode": self.mode, "palette": look_pal, "level": round(level, 3),
@@ -6183,6 +6271,7 @@ class Director:
             "stats": {"tick_ms_p95": p95, "looks": self.looks, "events": self.events, "published": self.published,
                       "gobo_steps": self.gobo_steps, "log_error": self._log_error},
             "compose": self._compose_view(),
+            "room_light": dict(self._room_light_view),   # docs/LIGHTS.md §7.5: the light in the room, and who makes room
             "light_scene": {"name": self.light_scene, "label": self.light_scenes.label(self.light_scene),
                             "why": self.light_scene_why,
                             "age_s": int(max(0.0, now_s - self._ls_at)) if self._ls_at is not None else None,

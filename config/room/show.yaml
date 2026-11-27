@@ -1096,6 +1096,20 @@ lights:
     rest_s: 15                              # the hazer at a burst's level at most
     warmup_s: 270                           # a hazer just switched on (PUT /api/v1/haze/now {"warm": false}) puts
                                             # nothing out for this long: its output isn't counted until then
+  # The light in the room (show_service/roomlight.py; docs/LIGHTS.md §7.5; owner, 27 Nov: "scenes which depend on e.g.
+  # laser and derby effects also drop down the effective total light levels to allow those lower power lights to be
+  # seen"). A line-up may name the low-power groups it FEATURES (lineups.<name>.features); such a group says what
+  # room light it reads under (groups.<g>.reads_under_lux) and where it lands (lands_on). While it is featured, the
+  # other groups come down to the level that keeps the room under that, worked out from their lights' real output
+  # (config/room/photometry.yaml) in the colours they show: blue heads cost an eighth of white ones, so they come
+  # down far less. Their flashes come down with them. Never under House lights or Lights low.
+  room_light:
+    min_level: 0.12                         # ... but never under this share of their level (they still read)
+    other_lux: 1.0                          # what the screens and anything else leave in the room whatever the lights
+                                            # do (the laptop room's projected picture: about 1 lux). Starting point.
+    clear_of_feature: 0.2                   # a scene that lands on the featured light's surface draws at this share
+    # reflect: {ceiling: 0.7, wall: 0.5, floor: 0.2}   # this room's surfaces (deployments/<id>/show.yaml): dark walls
+    #                                                    bounce less, so less needs to come down
   # appliances: this site's remote-worked appliances and the room targets that work them (deployments/<id>/show.yaml;
   # show_service/appliances.py has the form). A group above names them in its "appliances" list.
   programs:

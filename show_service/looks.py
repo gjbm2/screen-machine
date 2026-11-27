@@ -254,6 +254,7 @@ MAX_DOUBLINGS = 6               # a pattern or hop slows at most 2^6 times (then
 #: mode's transition_s, room_service's opts.over_s), else this. A mover going dark dims where it points, then glides
 #: home. Hue lamps (no DMX channels) are room_service's HueOutput's to fade; the music coming back after a silence
 #: doesn't fade; identify and a hold never fade.
+LEVEL_GLIDE_S = 2.0              # a program's level (LightProgram.level, §7.5) moves over this long
 TRANSITION_S = 3.0
 ARRIVED_DEG = 0.5               # a move has arrived within this (dark moves, busy)
 DT_MAX_S = 0.25                 # the motion stage's longest step between two frames
@@ -894,7 +895,7 @@ class _Part:
 
 class _Group:
     """One group of one output for one frame (§5.6): its scenes' parts, effects, hits, flow and transition."""
-    __slots__ = ("gid", "parts", "effects", "blocks", "flash_hz", "flow", "pf", "dark_abs", "dom", "amembers")
+    __slots__ = ("gid", "parts", "effects", "blocks", "flash_hz", "flow", "pf", "dark_abs", "dom", "amembers", "level")
 
     def __init__(self, gid: str) -> None:
         self.gid = gid
@@ -907,6 +908,7 @@ class _Group:
         self.dark_abs = 0.0
         self.dom: Optional[_Scene] = None
         self.amembers: frozenset = frozenset()  # every light a non-intensity layer of its scenes or effects reaches
+        self.level = 1.0                        # the program's level (§7.5): the group's whole brightness
 
 
 class _Hold:
@@ -3068,8 +3070,8 @@ class LookEngine:
                 x = gn.pf.darkness(ti, mc.dark_max_s)
                 if x > 0.0:
                     inten += (gn.dark_abs - inten) * x
-            # master and caps (lamps only; screens never reach here)
-            inten = _c01(inten * master)
+            # master and caps (lamps only; screens never reach here); the group's level takes its flashes down too
+            inten = _c01(inten * master * gn.level)
             # the motion stage (§5.5): commanded pan and tilt within the light's speed and limits; a dark move
             if pan_tilt is not None:
                 pan, tilt, dark = self._move(s, fs, t, pan_tilt, mc, dark_ok=dark_ok, light_at=light_at)
@@ -3360,6 +3362,11 @@ class LookEngine:
             gn.dark_abs = self._look_value(look, "floor") if dl == "floor" else _c01(float(dl)) if _isnum(dl) else 0.0
             gn.pf = pf
             st.programs[gid] = pf.new
+            # the program's level (§7.5: the group makes room for a featured low-power light), reached over a
+            # couple of seconds; never under House lights or Lights low, which set their own level
+            lv = p.get("level")
+            gn.level = st.glide((gid, "program-level"), _c01(float(lv)) if _isnum(lv) and not house_low else 1.0, t,
+                                LEVEL_GLIDE_S)
         elif scenes or key in st.fades:
             sname = look.get("light_scene") if look is not None else None
             mix = st.fade(key, sname if sname in scenes else None, t, trans_s)

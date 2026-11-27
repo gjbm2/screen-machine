@@ -123,11 +123,14 @@ TRIGGER_WHY = {"drop": "the drop", "build": "the song builds", "breakdown": "a b
 OTHER_GROUP = "*"                                # the lamps no group takes
 OTHER_LABEL = "Other lights"
 GROUP_KEYS = frozenset({"label", "select", "follows", "dark_level", "appliances", "repeat_weight", "carries_beat",
-                        "sway", "scenes_drive", "scenes_for"})   # sway: the look engine's (looks._group_sway)
+                        "sway", "scenes_drive", "scenes_for",    # sway: the look engine's (looks._group_sway)
+                        "reads_under_lux", "lands_on"})          # a low-power light: the room light it reads under,
+                                                                 # and the surfaces it lands on (docs/LIGHTS.md §7.5)
 DARK_FLOOR = "floor"                             # dark_level: the look's floor
 #: show.yaml ``lights`` keys: the catalogue builder's, and the other builders' (read where they are used)
 LIGHTS_KEYS = frozenset({"scene_group", "groups", "programs", "flow", "motion", "jog", "calibration", "appliances",
-                         "atmosphere", "moments", "lineups"})   # atmosphere, moments: the director's
+                         "atmosphere", "moments", "lineups", "room_light"})   # atmosphere, moments, room_light: the
+                                                                              # director's
 #: lights.programs' starting points (docs/LIGHTS.md §12; the file's values win)
 PROGRAMS_FALLBACK = {"effects_max": 2, "effect_gap_bars": 4.0}
 #: lights.programs keys that are only there when show.yaml gives them (the director's own starting points stand in):
@@ -187,7 +190,10 @@ def drives(entry: Mapping[str, Any]) -> list[str]:
 #: it names PLAY (their ordinary scenes), every other group a line-up governs RESTS (its scenes tagged ``rest``). A
 #: group no line-up names is not governed: it always plays. ``into``: as a move's; ``drive``: the band of the music's
 #: drive (its energy and groove together, 0..1) the line-up is for.
-LINEUP_KEYS = frozenset({"label", "plays", "into", "drive", "weight"})
+#: ``features`` (docs/LIGHTS.md §7.5): the low-power groups among ``plays`` this line-up is FOR (the laser, the
+#: derbies). The other groups it plays come down to the level that keeps the room under what those need
+#: (lights.groups.<g>.reads_under_lux), and draw scenes that land elsewhere (lands_on). None: nothing comes down.
+LINEUP_KEYS = frozenset({"label", "plays", "into", "drive", "weight", "features"})
 LINEUP_INTO: tuple[str, ...] = ("verse", "chorus", "final_chorus", "climax", "instrumental", "outro", "any")
 LINEUP_OFF_DRIVE = 0.1                           # a line-up's weight outside its drive band
 
@@ -228,9 +234,27 @@ def parse_lineups(raw: Any, groups: set, probs: list[str]) -> dict[str, dict]:
             probs.append(f"{w}.drive: {dr!r} isn't [lo, hi] in 0..1: [0, 1]")
             dr = [0.0, 1.0]
         wt = _num(e.get("weight", 1.0))
+        ft = e.get("features") or []
+        if not isinstance(ft, list) or not all(isinstance(x, str) for x in ft):
+            probs.append(f"{w}.features: needs a list of the groups it plays: none")
+            ft = []
+        bad = [x for x in ft if x not in plays]
+        if bad:
+            probs.append(f"{w}.features: {', '.join(bad)} isn't among the groups it plays: ignored")
         out[str(name)] = {"label": str(e.get("label") or name), "plays": plays, "into": list(into),
-                          "drive": [float(dr[0]), float(dr[1])], "weight": wt if wt is not None and wt >= 0 else 1.0}
+                          "drive": [float(dr[0]), float(dr[1])], "weight": wt if wt is not None and wt >= 0 else 1.0,
+                          "features": [x for x in ft if x in plays]}
     return out
+
+
+def lands_of(entry: Any) -> frozenset:
+    """The surfaces a scene's moves land on (its position layers' ``on``: ceiling, floor, wall-back, ...); none for
+    a scene that doesn't aim a head at a surface."""
+    out = set()
+    for ln in (entry or {}).get("layers") or () if isinstance(entry, Mapping) else ():
+        if isinstance(ln, Mapping) and ln.get("kind") == "position" and isinstance(ln.get("on"), str):
+            out.add(ln["on"])
+    return frozenset(out)
 
 
 def pick_lineup(lineups: Mapping[str, Mapping[str, Any]], into: Optional[str], drive: float, rng: Any,
@@ -1184,6 +1208,18 @@ def parse_lights(raw: Any, probs: list[str]) -> dict:
                            "dark_level": float(dl) if dl != DARK_FLOOR else DARK_FLOOR,
                            "appliances": [x for x in ap if x in out["appliances"]], "repeat_weight": float(rw),
                            "scenes_drive": list(sd), "scenes_for": list(sf)}
+            rl = g.get("reads_under_lux")                # a low-power light: the room light it reads under (§7.5)
+            if rl is not None:
+                if _num(rl) is None or rl <= 0:
+                    probs.append(f"{w}.reads_under_lux: {rl!r} isn't a number of lux above 0: ignored")
+                else:
+                    groups[gid]["reads_under_lux"] = float(rl)
+            lo = g.get("lands_on")                       # ... and the surfaces it lands on (a scene's position on:)
+            if lo is not None:
+                if not isinstance(lo, list) or not all(isinstance(x, str) and x for x in lo):
+                    probs.append(f"{w}.lands_on: {lo!r} isn't a list of surfaces (ceiling, floor, wall-back): none")
+                else:
+                    groups[gid]["lands_on"] = list(lo)
             cb = g.get("carries_beat")                   # its weight in the draw for the look's beat carrier
             if cb is not None:
                 if _num(cb) is None or cb < 0:
@@ -1192,6 +1228,11 @@ def parse_lights(raw: Any, probs: list[str]) -> dict:
                     groups[gid]["carries_beat"] = float(cb)
     if raw.get("lineups") is not None:
         out["lineups"] = parse_lineups(raw.get("lineups"), set(groups), probs)
+    rl = raw.get("room_light")                       # the director's (director._room_light; roomlight.py)
+    if rl is not None and not isinstance(rl, dict):
+        probs.append("lights.room_light: not a mapping: the starting points")
+    elif rl is not None:
+        out["room_light"] = dict(rl)
     for gid, g in groups.items():                    # follows: another group, and no loop
         fo, seen = g["follows"], {gid}
         while fo is not None:

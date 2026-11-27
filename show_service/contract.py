@@ -674,6 +674,8 @@ class LightProgram(TypedDict):
     since_ms: float                # when the scene was picked
     at_ms: float                   # when it lands (the look change's at_ms: the screens' too)
     why: str
+    level: float                   # 0..1, absent = 1: the group's whole brightness, brought down while it plays with
+                                   # a featured low-power light (docs/LIGHTS.md §7.5; the engine glides to it)
 
 
 class GroupInfo(TypedDict):
@@ -2233,6 +2235,7 @@ class FixtureSetup(TypedDict, total=False):
     strobe_hz_max: float           # owner-set, per light; absent = none
     jog_flip: dict                 # {"pan": bool, "tilt": bool}: the page's drag direction (page convenience only)
     lean_deg: float                # a fixed light's tilt, set by hand on the real unit: degrees forward from straight up
+    turn_deg: float                # ... and its turn to the right of its bar's front (as you face the bar)
 
 
 # -- frames (looks.py -> drivers) -----------------------------------------------------------------------------------------
@@ -2521,6 +2524,10 @@ class SpaceView(TypedDict):
     surfaces: dict[str, Surface]
     points: dict[str, dict]        # name -> {"label", "at", "device"?, "from": "hand" | "page" | <fixture id>}
     regions: dict[str, dict]       # name -> {"label", "surface", "centre", "size"}
+    bars: dict[str, dict]          # id -> {"label", "at": [x, y, z] (its middle), "facing_deg", "layout", "front",
+                                   # "axis" (level unit vectors), "parts": {<part>: {"id": "<bar>.<part>", "head",
+                                   # "own_place", "lean_deg"?, "turn_deg"?}}, "editable"}: a light bar as one thing;
+                                   # its parts' places (and its heads' upright poses) come from it
     keep_out: dict[str, dict]      # name -> {"label", "centre": [x, y, z], "size": [x, y, z], "groups": [light
                                    # group, ...] (none: every light), "editable"}: boxes no beam should cross. A
                                    # moving light's aim steps aside (looks._aim); a fixed laser's tilt is checked

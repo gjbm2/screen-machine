@@ -1375,6 +1375,87 @@ look_change and the track events.
 - Lockstep: a program's at_ms equals the look_change event's at_ms.
 - room.direction.flow is published.
 
+### 7.5 The light in the room: making room for low-power lights (owner, 27 Nov)
+
+> "given how much reflected light changes the visual dynamics of the room, we need to reason through how we've built
+> the lighting scenes to ensure that scenes which depend on e.g. laser and derby effects also drop down the effective
+> total light levels to allow those lower power lights to be seen"
+
+**The sums** (the 3D room's model, src/pages/Room3D/light.ts; the laptop room, 5 x 10 x 4 m with pale surfaces: 1 lux
+of room light per 115 lumens sent into it, direct and bounced):
+
+| Group at full | Room light it makes |
+|---|---|
+| 4 moving heads | 5 lux in blue, 9 red, 12 magenta, 25 cyan, 28 green, 30 yellow, 39 open white |
+| 4 pars | 0.8 lux in blue, 2.3 red, 8 green, 11 red + green + blue, 21 with everything on |
+| 4 derbies | about 4 (an estimate: the maker gives no figure) |
+| 2 strobes, while lit | 4 |
+| 2 lasers | 0.3 |
+| the VJ screen | about 1 |
+
+| The effect | What it is worth | What it needs |
+|---|---|---|
+| A laser's **dots** | 700 to 4,500 lux each, on a spot 1.5 cm across | Nothing of the room: tens of lux don't touch them. Only a moving head's pool on the same surface (800 lux and up) covers them. |
+| A laser's **beams in the air** | 0.03 to 0.2 cd/m2 in a light haze, three times that in a medium one | The wall behind under about 1 lux (light haze) or 3 to 4 (medium). |
+| A derby's **blobs** | about 90 lux each at 5 m | The room under about 20 lux, and no wash pool on them (a par's pool in the same colour is about 70 lux). |
+
+So three things decide whether a low-power light is seen, and total level is only one of them: **who else is
+playing** (the heads are most of the room's light), **in what colour** (blue heads are an eighth of white ones), and
+**where they land** (a head's pool on the laser's ceiling). A fixed "dim the others" would be wrong most of the time.
+
+**How each layer plays its part** (lowest first, as the engine applies them):
+
+1. **The look** (its colours and level) is not changed. It is read: every tick the director sums what each group's
+   lights put out in the colours and level they now show (`roomlight.lumens`, from config/room/photometry.yaml), so a
+   palette gliding from blue to yellow moves the answer with it.
+2. **The line-up** (§7.1's groups; show.yaml `lights.lineups`) already decides who plays and who rests: a resting
+   group's scene is `fx: dim`, so it counts for nothing (`roomlight.scene_share`). New: a line-up names the groups it
+   **features** (`features: [lasers]`). That is the intent, in one place: "Heads and the laser" is FOR the laser;
+   "Everything" (the last chorus) is for nothing in particular, so nothing in it is brought down.
+3. **Each group's scene** is drawn as before, with one more weight: while a group is featured, the other groups'
+   scenes that land on the surface it lands on (`lights.groups.<g>.lands_on` against a scene's position layers'
+   `on:`) draw at `lights.room_light.clear_of_feature` (0.2). Under a featured laser the heads work the floor.
+4. **The group's level** (new: `LightProgram.level`). While a group is featured, every other lit group gets the one
+   level that keeps the room at what the featured group reads under (`lights.groups.<g>.reads_under_lux`):
+   `level = (target - other_lux - the featured lights' own) / the others' light at full`, never under
+   `lights.room_light.min_level` (0.12) and never over 1. The engine applies it to the group's whole brightness, after
+   its scene's layers, effects, hits, gestures and a fade through dark, and before the master and the caps, gliding
+   over 2 s (`looks.LEVEL_GLIDE_S`). It follows the line-up that has LANDED, not the one announced, so it moves with
+   the change, not ahead of it.
+5. **Effects** ride inside the level: a strobe or a chase on a group that has made room is brought down with it (it
+   would otherwise undo the room it made). Effects on the featured group are untouched. The big moments are not
+   starved: the last chorus's line-up features nothing.
+6. **Hits and gestures** (HTP flashes) are inside the level too, for the same reason.
+7. **Transitions**: a crossfade and the level's glide run side by side; a fade through dark goes to the group's dark
+   level and back, and the level multiplies after it. Coming out of a bright look the eye takes two or three seconds
+   to open up (the 3D room shows this), so a featured line-up reads fully a few seconds in: a fade through dark
+   into it helps and costs nothing.
+8. **House lights and Lights low** set their own level: nothing is featured under them.
+9. **Screens** are never dimmed (SHOW_ENGINE §8.3's screens rule). Their light is `lights.room_light.other_lux`
+   (1 lux here): the floor nothing can go under. It is why the laser's beams in the air only really show in a medium
+   haze in this room.
+10. **Haze** is the feel's (vibes.yaml `haze`), and slow (minutes): a line-up can't ask for more. Beams in the air
+    need it; dots and blobs don't.
+11. **Ensemble roles** (docs/ENSEMBLE.md: lead, accompany) set a lamp's level inside the look, before all of this.
+    They multiply; neither knows the other.
+
+**What it does on the laptop rig** (deployments/laptop/show.yaml): the lasers read under 3 lux and land on the
+ceiling; the derbies read under 20. "Heads and the laser": blue heads come down to about 0.6, magenta to 0.15, cyan
+or white to 0.12, and they favour floor scenes. "Derbies and heads", "Pars and derbies" and the chorus's "Heads and
+derbies with the laser" feature the derbies: only cyan, green, yellow or white heads at full are brought down, to
+between 0.4 (open white) and 0.75 (in that chorus the laser reads as dots, not beams: its heads stay up). "Everything": unchanged.
+
+**Seeing it**: `GET /show/api/v1/state` → director `room_light` (`lux`, `by_group`, `features`, `target_lux`,
+`level`, `levels`); a `room_light` line in director.jsonl each time a feature starts or its level moves by a tenth;
+the 3D room's footer shows the room's light in lux as drawn.
+
+**Not built**: an effect that makes room by itself (the laser spinning up through a build with everything else
+pulled down: today that needs the line-up to feature it); the screens' own light measured from the picture rather
+than a fixed `other_lux`; a head's pool avoided by where it really lands rather than by its scene's `on:` word.
+
+**Tests**: show_service/tests/test_roomlight.py (the sums against the real photometry file, the parser's new keys,
+the engine's glide, the director's levels with a featured laser).
+
 ## 8. The page (builder: page; api.py, src/pages/Lights/*)
 
 ### 8.1 Routes (show_service api.py; through room's `/show/*` pass-through)
