@@ -76,6 +76,9 @@ export class RoomEditor {
   private marks = new THREE.Group();              // places and areas, which have no body in the room: always drawn
   /** Plan view: a press on any thing that moves picks it up at once (as on a map); elsewhere it is clicked first. */
   grabAny = false;
+  /** An elevation: which way it looks (room frame). A drag moves a thing in the plane across it: along the wall and
+   *  up or down, not to and fro. null: across the floor. */
+  dragPlane: THREE.Vector3 | null = null;
   /** A press picked up a thing that was not selected: the page selects it. */
   onPick: (key: string) => void = () => {};
   private items: Editable[] = [];
@@ -357,7 +360,9 @@ export class RoomEditor {
     const r = this.roomRay(x, y);
     const p0 = new THREE.Vector3(...it.at);
     let ref: number | undefined;
-    if (h === "move" || h === "ring") {
+    if (h === "move" && this.dragPlane) {
+      r.intersectPlane(new THREE.Plane().setFromNormalAndCoplanarPoint(this.dragPlane, new THREE.Vector3(...it.at)), p0);
+    } else if (h === "move" || h === "ring") {
       r.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), -it.at[2]), p0);
       if (h === "ring") ref = Math.atan2(p0.y - it.at[1], p0.x - it.at[0]);
     } else if (h === "lift") {
@@ -415,14 +420,19 @@ export class RoomEditor {
       return r.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), -z), p) ? p : null;
     };
     if (d.handle === "move") {
-      const p = floorAt(s.at[2]);
+      let p: THREE.Vector3 | null;
+      if (this.dragPlane) {                               // an elevation: across the wall and up or down
+        p = new THREE.Vector3();
+        if (!r.intersectPlane(new THREE.Plane().setFromNormalAndCoplanarPoint(this.dragPlane, new THREE.Vector3(...s.at)), p)) p = null;
+      } else p = floorAt(s.at[2]);
       if (!p) return;
+      const z = this.dragPlane && LIFTS.includes(it.kind) ? Math.max(it.kind === "place" ? 0 : 0.1, Math.min(this.room[2] - 0.05, s.at[2] + p.z - d.p0.z)) : s.at[2];
       it.at = [Math.max(0, Math.min(this.room[0], s.at[0] + p.x - d.p0.x)),
-               Math.max(0, Math.min(this.room[1], s.at[1] + p.y - d.p0.y)), s.at[2]];
+               Math.max(0, Math.min(this.room[1], s.at[1] + p.y - d.p0.y)), z];
       if (it.kind === "screen") {                     // a screen hangs on the nearest wall, facing into the room
         const [X, Y] = this.room, [x0, y0] = it.at;
-        const walls: [number, Vec3, Vec3][] = [[x0, [0, y0, s.at[2]], [1, 0, 0]], [X - x0, [X, y0, s.at[2]], [-1, 0, 0]],
-          [y0, [x0, 0, s.at[2]], [0, 1, 0]], [Y - y0, [x0, Y, s.at[2]], [0, -1, 0]]];
+        const walls: [number, Vec3, Vec3][] = [[x0, [0, y0, z], [1, 0, 0]], [X - x0, [X, y0, z], [-1, 0, 0]],
+          [y0, [x0, 0, z], [0, 1, 0]], [Y - y0, [x0, Y, z], [0, -1, 0]]];
         const w = walls.reduce((a, b) => (b[0] < a[0] ? b : a));
         it.at = w[1]; it.normal = w[2]; it.yaw = Math.atan2(w[2][1], w[2][0]);
       }

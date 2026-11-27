@@ -140,8 +140,11 @@ function dotSprite(): THREE.Texture {
 const BAR = { len: 1.1, h: 0.048, d: 0.06 };
 /** Its four strobe lenses: where along the bar (m from its middle) and their radius. */
 const STROBE_ALONG = [-0.49, -0.16, 0.16, 0.49], STROBE_R = 0.014;
-export type Nav = "walk" | "orbit" | "plan";
-const PLAN_FOV_DEG = 3;     // the plan's long lens: as good as no perspective
+export type Nav = "walk" | "orbit" | "plan" | "elev";
+/** Which wall an elevation looks at: the one people face (front), the one behind them (back), or a side wall (left /
+ *  right as people face the front). */
+export type Elev = "front" | "back" | "left" | "right";
+const FLAT_FOV_DEG = 3;     // the plan's and elevations' long lens: as good as no perspective
 const EYE_M = 1.6;          // where you stand, walking: eye height (m)
 const WALL_GAP = 0.25;      // and how near a wall
 const SHADOW_EVERY = 3;
@@ -323,7 +326,7 @@ export class RoomSim {
     this.light.setRoom(m.size);
     if (first) {                                                 // walking: in at the back; orbiting: across the beams
       if (this.nav === "walk") this.standAt("back", true);
-      else if (this.nav === "plan") { this.lens(true); this.planFit(true); }
+      else if (this.flat) { this.lens(true); this.flatFit(true); }
       else this.view("side", true);
     }
   }
@@ -948,22 +951,23 @@ export class RoomSim {
     this.animStep(dt);
     this.pushStep();
     if (this.nav === "walk") this.walkStep(dt);
-    else if (this.nav === "plan") this.camera.lookAt(this.controls.target);
+    else if (this.flat) this.camera.lookAt(this.controls.target);
     else this.controls.update();
     this.keepCamera();
     if (++this.frameNo % SHADOW_EVERY === 0) this.renderer.shadowMap.needsUpdate = true;
     const m = this.model;
     if (!m) return;
     // "Show beam paths" (an aid): every beam is drawn as in a medium haze that takes nothing out of the light
-    const sig = this.nav === "plan" ? 0 : this.sigma;           // the plan is a map: no air between it and you
+    const sig = this.flat ? 0 : this.sigma;                     // a plan or an elevation is a drawing: no air in it
     const air = this.showPaths || sig > 1e-4;
     beamShared.on.value = air;
     beamShared.scatter.value = this.showPaths ? Math.max(sig, 0.3) : sig;
     beamShared.sigma.value = this.showPaths ? 0 : sig;
+    const hl = this.hl;
     const ch = (f: Fixture, i: number) => {
       if (f.address == null || (this.universe != null && f.universe != null && f.universe !== this.universe)) return 0;
       const a = f.address - 1 + i;
-      return a >= 0 && a < 512 ? this.dmx[a] : 0;
+      return a >= 0 && a < 512 ? hl.get(a) ?? this.dmx[a] : 0;
     };
     // every part reports the lumens it sends into the room; their bounce is the fill and what lights the haze
     this.light.begin();
@@ -1022,7 +1026,7 @@ export class RoomSim {
     const m = this.model;
     if (!m) return [];
     const t = performance.now() / 1000;
-    const ch = (f: Fixture, i: number) => (f.address == null ? 0 : this.dmx[f.address - 1 + i] ?? 0);
+    const ch = (f: Fixture, i: number) => (f.address == null ? 0 : this.hl.get(f.address - 1 + i) ?? this.dmx[f.address - 1 + i] ?? 0);
     const c: Ctx = { ch, t, dt: 0, air: true, haze: this.haze, size: m.size, room: this.light };
     const out = new Map<string, [string, string][]>();
     for (const p of this.parts) {
@@ -1115,7 +1119,7 @@ export class RoomSim {
     this.glide(tgt, this.orbitPos(tgt, th, ph, r), now);
   }
   /** Back to the start (Home, or a double-click on nothing): walking, at the back of the room; orbiting, the side. */
-  home() { if (this.nav === "walk") this.standAt("back"); else if (this.nav === "plan") this.planFit(); else this.view("side"); }
+  home() { if (this.nav === "walk") this.standAt("back"); else if (this.flat) this.flatFit(); else this.view("side"); }
 
   /** Frame a place in the room (F, or picking a thing): the camera glides to look at it from the room's middle side,
    *  ``dist`` metres away, so what is being edited is in front of you. */
@@ -1125,10 +1129,9 @@ export class RoomSim {
     const tgt = this.world(p);
     const from = this.world(c.clone().sub(p).setZ(0));
     const th = from.lengthSq() > 1e-6 ? Math.atan2(from.x, from.z) : 0;
-    if (this.nav === "plan") {                                // the plan: slide it to the middle, at the same scale
-      const d = this.camera.position.y - this.controls.target.y;
-      const t = new THREE.Vector3(tgt.x, 0, tgt.z);
-      this.glide(t, t.clone().setY(d));
+    if (this.flat) {                                          // a flat view: slide it to the middle, at the same scale
+      const d = this.camera.position.distanceTo(this.controls.target), look = this.flatLook();
+      this.glide(tgt, tgt.clone().addScaledVector(look, -d));
       return;
     }
     this.setNav("orbit", false);                              // one thing, looked at from all round it
@@ -1155,7 +1158,7 @@ export class RoomSim {
    *  it. Nothing under the cursor: by the distance to the pivot. Spread over a few frames (smooth). */
   wheelAt(delta: number, nx: number, ny: number) {
     this.anim = null;
-    if (this.nav === "plan") { this.planZoom(delta, nx, ny); return; }
+    if (this.flat) { this.flatZoom(delta, nx, ny); return; }
     const ray = new THREE.Raycaster();
     ray.setFromCamera(new THREE.Vector2(nx, ny), this.camera);
     const hit = ray.intersectObjects(this.built.children, true).find((h) => (h.object as THREE.Mesh).isMesh && h.object.visible);
@@ -1186,6 +1189,35 @@ export class RoomSim {
     this.controls.target.add(v);
   }
 
+  // -- the selection lights up (owner, 27 Nov: "If I select a component, it should (at least temporarily) light up.
+  // Otherwise I can't see what its beam / cone looks like"). While a light is selected (or a bar: all its parts),
+  // this view drives it itself: bright open white (a par's and a derby's white, a head's open white, a strobe LED
+  // full, the laser's three diodes), its strobe off; where it points and how it turns are left to the wire. Drawn
+  // here only: nothing is sent to a light. The rest go on showing what the preview or the wire says.
+  private hl = new Map<number, number>();                     // DMX slot (0-based) -> the value drawn instead
+  highlight(key: string | null) {
+    this.hl = new Map();
+    const m = this.model;
+    if (!key || !m) return;
+    const id = key.slice(key.indexOf(":") + 1), kind = key.slice(0, key.indexOf(":"));
+    const fs = kind === "bar" ? m.fixtures.filter((f) => f.bar === id && f.part) : m.fixtures.filter((f) => f.id === id);
+    for (const f of fs) {
+      if (f.address == null) continue;
+      const set = (vals: Record<number, number>) => { for (const [i, v] of Object.entries(vals)) this.hl.set(f.address! - 1 + Number(i), v); };
+      switch (f.part) {
+        case "par": set({ 0: 0, 1: 0, 2: 0, 3: 0, 4: 255, 5: 0, 6: 0 }); break;        // white, no strobe
+        case "derby": set({ 0: 0, 1: 0, 2: 0, 3: 255, 4: 0 }); break;               // white, no strobe (it keeps turning)
+        case "flash": set({ 0: 255, 1: 255, 2: 255, 3: 255, 4: 0 }); break;
+        case "flashled": set({ 0: 255 }); break;
+        case "spot": set({ 5: 0, 6: 0, 7: 255, 8: 255 }); break;                    // open white, no gobo, full, open
+        case "laser": set({ 0: 240, 1: 0 }); break;                                 // red + green + blue, no strobe
+        case "laser50": case "laser51": set({ 0: 20 }); break;                      // its image colour
+        case "dimmer": set({ 0: 255 }); break;
+        default: break;
+      }
+    }
+  }
+
   // -- walking (owner, 27 Nov: "mouse just doesn't help me traverse this room in any way I can conventionally relate
   // to"). The first-person way of moving through a room that Matterport, Street View and Sketchfab's first-person
   // mode use: you stand at eye height in the room; dragging turns your head where you stand (the room moves with the
@@ -1212,9 +1244,10 @@ export class RoomSim {
     this.keys.clear();
     this.controls.enabled = mode === "orbit" && !this.held;
     this.marker.visible = false;
-    this.lens(mode === "plan");
-    if (mode === "plan") { if (place) this.planFit(); return; }
-    if (was === "plan" && place) {                            // up out of the plan: into the room, or over it
+    const flat = mode === "plan" || mode === "elev";
+    this.lens(flat);
+    if (flat) { if (place) this.flatFit(); return; }
+    if ((was === "plan" || was === "elev") && place) {        // out of a flat view: into the room, or over it
       if (mode === "orbit") this.view("above"); else this.standAt("back");
       return;
     }
@@ -1372,11 +1405,11 @@ export class RoomSim {
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
       drag.x = e.clientX; drag.y = e.clientY;
       const perPx = THREE.MathUtils.degToRad(this.camera.fov) / Math.max(1, this.h);   // the room stays under the pointer
-      if (this.nav === "plan") {                             // the plan: any drag slides the map under the pointer
-        const m = (2 * (this.camera.position.y - this.controls.target.y) * Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2)) / Math.max(1, this.h);
+      if (this.flat) {                                       // a flat view: any drag slides the drawing under the pointer
+        const m = (2 * this.camera.position.distanceTo(this.controls.target) * Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2)) / Math.max(1, this.h);
         const ax = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
         const ay = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1);
-        const v = ax.multiplyScalar(-dx * m).addScaledVector(ay, dy * m).setY(0);
+        const v = ax.multiplyScalar(-dx * m).addScaledVector(ay, dy * m);
         this.camera.position.add(v);
         this.controls.target.add(v);
         return;
@@ -1398,50 +1431,81 @@ export class RoomSim {
     el.addEventListener("pointercancel", end);
   }
 
-  // -- the plan (owner, 27 Nov: "wouldn't a 3D view from above with objects selectable and draggable make more sense
-  // (and then just make the perspective infinite) -- so map becomes a special case of 3D mode"). The same camera, far
-  // above the room with a long lens (PLAN_FOV_DEG: walls drawn all but edge-on, as a plan), the wall people face at
-  // the top. Any drag slides the plan; the wheel zooms to the cursor; the editor picks things up straight away.
-  private lens(plan: boolean) {
+  // -- the flat views: the plan and the elevations (owner, 27 Nov: "wouldn't a 3D view from above with objects
+  // selectable and draggable make more sense (and then just make the perspective infinite)"; "Don't I need X and Y
+  // elevation as well as Plan?"). The same camera, far off with a long lens (FLAT_FOV_DEG: as good as no perspective,
+  // as a drawing is): the plan from above with the wall people face at the top; an elevation level, looking at one
+  // wall (front, back, left, right), the floor at the bottom. Any drag slides the drawing; the wheel zooms to the
+  // cursor; the editor picks things up straight away (in an elevation, across and up the wall's plane).
+  elev: Elev = "front";
+  get flat(): boolean { return this.nav === "plan" || this.nav === "elev"; }
+  /** Show the plan, or an elevation looking at ``side``'s wall. */
+  showFlat(which: "plan" | Elev) {
+    if (which === "plan") { this.setNav("plan"); this.flatFit(); return; }
+    const was = this.nav;
+    this.elev = which;
+    if (was !== "elev") this.setNav("elev");
+    else { this.lens(true); this.flatFit(); this.onNav("elev"); }
+  }
+  /** The room's directions on the floor: forward (towards the wall people face) and to the right as they face it. */
+  private roomAxes(): { f: THREE.Vector3; r: THREE.Vector3 } {
+    const m = this.model;
+    const f = m ? v3(m.frontVec).setZ(0) : new THREE.Vector3(0, 1, 0);
+    if (f.lengthSq() < 1e-6) f.set(0, 1, 0);
+    f.normalize();
+    return { f, r: new THREE.Vector3(f.y, -f.x, 0) };
+  }
+  /** Which way a flat view looks, in the room's frame. */
+  flatLookRoom(): THREE.Vector3 {
+    if (this.nav === "plan") return new THREE.Vector3(0, 0, -1);
+    const { f, r } = this.roomAxes();
+    return this.elev === "front" ? f : this.elev === "back" ? f.clone().negate() : this.elev === "right" ? r : r.clone().negate();
+  }
+  private flatLook(): THREE.Vector3 { return this.world(this.flatLookRoom()).normalize(); }
+  private lens(flat: boolean) {
     const c = this.camera;
-    if (plan) {
-      c.fov = PLAN_FOV_DEG; c.near = 2; c.far = 4000;
-      const m = this.model;
-      const f = m ? this.world(v3(m.frontVec).setZ(0)) : new THREE.Vector3(0, 0, -1);
-      c.up.copy(f.lengthSq() > 1e-6 ? f.normalize() : new THREE.Vector3(0, 0, -1));
+    if (flat) {
+      c.fov = FLAT_FOV_DEG; c.near = 2; c.far = 4000;
+      if (this.nav === "plan") c.up.copy(this.world(this.roomAxes().f).normalize());   // the front wall at the top
+      else c.up.set(0, 1, 0);
     } else {
       c.fov = 70; c.near = 0.02; c.far = 80;
       c.up.set(0, 1, 0);
     }
     c.updateProjectionMatrix();
   }
-  /** How far up the plan's camera is to show ``span`` metres across the shorter side of the view. */
-  private planDist(span: number): number {
-    const t = Math.tan(THREE.MathUtils.degToRad(PLAN_FOV_DEG) / 2);
-    return span / (2 * t * Math.min(1, this.camera.aspect));
+  /** How far off a flat view's camera is to show ``w`` x ``h`` metres. */
+  private flatDist(w: number, h: number): number {
+    const t = 2 * Math.tan(THREE.MathUtils.degToRad(FLAT_FOV_DEG) / 2);
+    return Math.max(h / t, w / (t * Math.max(0.1, this.camera.aspect)));
   }
-  /** The whole room in the plan. */
-  planFit(now = false) {
+  /** The whole room in the flat view. */
+  flatFit(now = false) {
     const m = this.model;
     if (!m) return;
-    const [X, Y] = m.size;
-    const t = new THREE.Vector3(X / 2, 0, -Y / 2);
-    this.glide(t, t.clone().setY(this.planDist(Math.max(X, Y) * 1.12)), now, 0.5);
+    const [X, Y, H] = m.size;
+    const ext = (u: THREE.Vector3) => Math.abs(u.x) * X + Math.abs(u.y) * Y;
+    const { f, r } = this.roomAxes();
+    const plan = this.nav === "plan";
+    const across = plan ? ext(r) : ext(new THREE.Vector3().crossVectors(this.flatLookRoom(), new THREE.Vector3(0, 0, 1)));
+    const tall = plan ? ext(f) : H;
+    const t = this.world(new THREE.Vector3(X / 2, Y / 2, plan ? 0 : H / 2));
+    this.glide(t, t.clone().addScaledVector(this.flatLook(), -this.flatDist(across * 1.12, tall * 1.12)), now, 0.5);
   }
-  private planZoom(delta: number, nx: number, ny: number) {
+  private flatZoom(delta: number, nx: number, ny: number) {
     const m = this.model;
-    const p = this.camera.position, t = this.controls.target;
-    const d = p.y - t.y;
+    const p = this.camera.position, t = this.controls.target, look = this.flatLook();
+    const d = p.distanceTo(t);
     const ray = new THREE.Raycaster();
     ray.setFromCamera(new THREE.Vector2(nx, ny), this.camera);
     const at = new THREE.Vector3();
-    if (!ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), at)) return;
+    if (!ray.ray.intersectPlane(new THREE.Plane().setFromNormalAndCoplanarPoint(look, t), at)) return;
     const notch = Math.max(-3, Math.min(3, -delta / 100));
-    const big = m ? Math.max(m.size[0], m.size[1]) * 3 : 30;
-    const d2 = Math.max(this.planDist(0.8), Math.min(this.planDist(big), d * Math.pow(0.82, notch)));
+    const big = m ? Math.max(...m.size) * 3 : 30;
+    const d2 = Math.max(this.flatDist(0.8, 0.8), Math.min(this.flatDist(big, big), d * Math.pow(0.82, notch)));
     const k = d2 / d;                                        // the point under the cursor stays there
-    const nt = new THREE.Vector3(at.x + (t.x - at.x) * k, 0, at.z + (t.z - at.z) * k);
-    t.copy(nt); p.set(nt.x, d2, nt.z);
+    t.copy(at).addScaledVector(t.clone().sub(at), k);
+    p.copy(t).addScaledVector(look, -d2);
   }
 
   /** Keep the camera out of the floor always (owner, 27 Nov: "not sure it should be possible for me to move my pov
@@ -1449,7 +1513,7 @@ export class RoomSim {
   keepInside = false;
   private keepCamera() {
     const m = this.model;
-    if (!m || this.nav === "plan") return;
+    if (!m || this.flat) return;
     const [X, Y, H] = m.size, e = 0.12;                    // three's frame: x east, y up, z = -north
     const p = this.camera.position, t = this.controls.target;
     let moved = false;

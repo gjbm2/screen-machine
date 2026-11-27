@@ -15,7 +15,7 @@ import { resolveRoomUrl } from "@/pages/Room/api";
 import { RoomEditor, type Editable, type EditChange, type GizmoMode } from "./editor";
 import { loadRoom, type KeepRegion, type RoomModel } from "./model";
 import { hazeWords, LEVEL_VISIBILITY_M, mlOf, sigmaOf, sigmaOfSlider, sliderOf } from "./haze";
-import { RoomSim, type Nav } from "./scene";
+import { RoomSim, type Elev, type Nav } from "./scene";
 
 const ROOM_POLL_MS = 5000;
 /** A part's name without its bar's ("Bar A par 1" on Bar A: "Par 1"). */
@@ -88,11 +88,32 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
   const [fps, setFps] = useState(0);
   const [showPaths, setShowPaths] = useState(false);
   const [opts, setOpts] = useState(false);              // the editor header's "more" menu
-  const storedNav = (): Nav => { try { const v = localStorage.getItem("room3d.nav"); return v === "orbit" || v === "plan" ? v : "walk"; } catch { return "walk"; } };
+  const storedNav = (): Nav => { try { const v = localStorage.getItem("room3d.nav"); return v === "orbit" || v === "plan" || v === "elev" ? v : "walk"; } catch { return "walk"; } };
+  const [elev, setElev] = useState<Elev>(() => { try { const v = localStorage.getItem("room3d.elev"); return v === "back" || v === "left" || v === "right" ? v : "front"; } catch { return "front"; } });
+  const last3d = useRef<"walk" | "orbit">((() => { try { return localStorage.getItem("room3d.move") === "orbit" ? "orbit" : "walk"; } catch { return "walk"; } })());
+  /** A view from the header or a key: 3D (in the last way of moving), the plan, or an elevation (Front / Side keep
+   *  which of the pair they last looked from). */
+  const showView = (v: "3d" | "plan" | "front" | "side") => {
+    const sim = simRef.current;
+    if (!sim) return;
+    if (v === "3d") { chooseNav(last3d.current); return; }
+    if (v === "plan") { sim.showFlat("plan"); remember("plan", elev); return; }
+    const pair: Elev[] = v === "front" ? ["front", "back"] : ["left", "right"];
+    const e = pair.includes(elev) ? elev : pair[0];
+    sim.showFlat(e); remember("elev", e);
+  };
+  const flipElev = () => {
+    const sim = simRef.current;
+    if (!sim) return;
+    const e: Elev = ({ front: "back", back: "front", left: "right", right: "left" } as const)[sim.elev];
+    sim.showFlat(e); remember("elev", e);
+  };
+  const remember = (n: Nav, e: Elev) => { try { localStorage.setItem("room3d.nav", n); localStorage.setItem("room3d.elev", e); } catch { /* this visit */ } };
   const [nav, setNavState] = useState<Nav>(() => startNav ?? storedNav());
   /** Walk, orbit or the plan, from the header (remembered); the view also switches by itself to orbit a thing being
    *  edited while walking. */
   const chooseNav = (m: Nav) => {
+    if (m === "walk" || m === "orbit") { last3d.current = m; try { localStorage.setItem("room3d.move", m); } catch { /* this visit */ } }
     simRef.current?.setNav(m);
     try { localStorage.setItem("room3d.nav", m); } catch { /* this visit only */ }
   };
@@ -114,12 +135,18 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
     simRef.current = sim;
     try { sim.keepInside = localStorage.getItem("room3d.inside") === "1"; } catch { /* default: free */ }
     const n0 = startNav ?? storedNav();
+    try { const e = localStorage.getItem("room3d.elev"); if (e === "back" || e === "left" || e === "right") sim.elev = e; } catch { /* front */ }
     if (n0 !== "walk") sim.setNav(n0);
-    sim.onNav = (m) => { setNavState(m); if (edRef.current) edRef.current.grabAny = m === "plan"; };
+    const onNav = (m: Nav) => {
+      setNavState(m); setElev(sim.elev);
+      const ed = edRef.current;
+      if (ed) { ed.grabAny = m === "plan" || m === "elev"; ed.dragPlane = m === "elev" ? sim.flatLookRoom() : null; }
+    };
+    sim.onNav = onNav;
     const ed = new RoomEditor(sim.overlayRoot, sim.overlayScene, sim.camera, canvas);
     ed.onChange = (key, change) => cb.current.onEdit?.(key, change);
     ed.onPick = (key) => { fromView.current = true; cb.current.onSelect?.(key); };
-    ed.grabAny = sim.nav === "plan";
+    onNav(sim.nav);
     ed.onDragging = (on) => sim.hold(on);                         // a handle being dragged holds the camera still
     edRef.current = ed;
     const fit = () => sim.resize(host.clientWidth, host.clientHeight);
@@ -138,7 +165,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
       const all = itemsRef.current, sel = selRef.current;
       const unit = sel ? (all.find((x) => x.key === sel)?.parent ?? sel) : null;
       const parts = unit ? all.filter((x) => x.parent === unit && x.label) : [];
-      const plan = sim.nav === "plan";
+      const plan = sim.nav === "plan" || sim.nav === "elev";
       const items = [...(plan ? all.filter((x) => x.label && !x.parent && x.kind !== "light") : []), ...parts];
       el.style.display = items.length ? "" : "none";
       if (!items.length) return;
@@ -222,12 +249,13 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
     const ed = edRef.current;
     if (ed && ed.selected !== selected) ed.select(selected);
   }, [selected, editables, model]);
+  useEffect(() => { simRef.current?.highlight(selected); }, [selected, model]);   // what is selected lights up
   useEffect(() => { if (model) edRef.current?.setRoom(model.size); }, [model]);
   useEffect(() => {
     const it = (editables ?? []).find((x) => x.key === selected);
     const here = fromView.current;
     fromView.current = false;
-    if (here && simRef.current?.nav === "plan") return;          // picked on the plan: the plan stays put
+    if (here && simRef.current?.flat) return;                    // picked on a flat view: the drawing stays put
     if (frame > 0 && it) simRef.current?.focus(it.at, Math.max(1.2, 2.2 * Math.max(...it.size)));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frame]);
@@ -286,6 +314,8 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
   // double-click focuses on the place clicked (on nothing: back to the start), Home goes back to the start, and Ctrl
   // held while a handle is dragged snaps.
   const drag = useRef(false);
+  const viewRef = useRef<(v: "3d" | "plan" | "front" | "side") => void>(() => {});
+  const flipRef = useRef<() => void>(() => {});
   const hover = useRef(false);
   const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null);   // the name by the cursor
   const [cursor, setCursor] = useState("default");
@@ -299,6 +329,11 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
       if (e.key === "Control" || e.key === "Meta") edRef.current?.setSnap(true);   // snap while a handle is dragged
       if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "Home" && hover.current) { e.preventDefault(); simRef.current?.home(); }
+      else if (hover.current && ["5", "7", "1", "3", "9"].includes(e.key) && embedded) {
+        e.preventDefault();
+        if (e.key === "9") { if (simRef.current?.nav === "elev") flipRef.current(); }
+        else viewRef.current(({ "5": "3d", "7": "plan", "1": "front", "3": "side" } as const)[e.key as "5" | "7" | "1" | "3"]);
+      }
       else if (hover.current && simRef.current?.key(e.code, true)) e.preventDefault();   // walking: W A S D, arrows, Q E
     };
     const up = (e: KeyboardEvent) => {
@@ -331,38 +366,49 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
   // How you move round the room: walk (you stand in it) or orbit (round a point), and the places to go to.
   const dark = !embedded;
   const seg = (on: boolean) => `h-8 px-3 ${on ? (dark ? "bg-[#2c3346] text-white" : "bg-stone-800 text-white") : dark ? "hover:bg-[#1a1e2a]" : "hover:bg-stone-50"}`;
+  // Views and moving are separate (owner, 27 Nov: "are navigation styles distinct from views, maybe?"): the VIEW is
+  // where you look from: 3D, the Plan (from above) or an elevation (Front: the wall people face; Side: a side wall; ⇄
+  // looks from the opposite wall). The flat views only slide and zoom. MOVING (Walk or Orbit) is how you move in 3D,
+  // and only shows there, with the places to stand. ⌂: the whole room in the view you are in. Keys while the pointer
+  // is over the view, as Blender's: 5 3D, 7 Plan, 1 Front, 3 Side, 9 the opposite wall.
+  const flat = nav === "plan" || nav === "elev";
+  const bd = dark ? "border-[#2c3346]" : "border-stone-300";
+  const view = nav === "plan" ? "plan" : nav === "elev" ? (elev === "front" || elev === "back" ? "front" : "side") : "3d";
+  const VIEWS: [string, string, string][] = [["3d", "3D", "The room in 3D: walk through it or orbit round (5)"],
+    ["plan", "Plan", "From straight above, as a map (7)"], ["front", "Front", "An elevation: looking at the wall people face (1)"],
+    ["side", "Side", "An elevation: looking at a side wall (3)"]];
+  viewRef.current = showView;
+  flipRef.current = flipElev;
   const navControls = (
     <div className="flex items-center gap-2" data-testid="nav-controls">
-      <div className={`inline-flex overflow-hidden rounded-lg border ${dark ? "border-[#2c3346]" : "border-stone-300"}`} role="group" aria-label="How to move">
-        <button className={seg(nav === "walk")} aria-pressed={nav === "walk"} data-testid="nav-walk" onClick={() => chooseNav("walk")}
-          title="Stand in the room: drag to look round, click the floor to walk there, wheel or W/S to walk, A/D to step aside, Q/E lower/higher">Walk</button>
-        <button className={`${seg(nav === "orbit")} border-l ${dark ? "border-[#2c3346]" : "border-stone-300"}`} aria-pressed={nav === "orbit"} data-testid="nav-orbit" onClick={() => chooseNav("orbit")}
-          title="Turn round a point: drag to orbit, right-drag to pan, wheel to zoom to the cursor">Orbit</button>
-        <button className={`${seg(nav === "plan")} border-l ${dark ? "border-[#2c3346]" : "border-stone-300"}`} aria-pressed={nav === "plan"} data-testid="nav-plan" onClick={() => chooseNav("plan")}
-          title="The room from straight above, as a map: drag things to place them, drag the floor to slide the map, wheel to zoom">Plan</button>
+      <div className={`inline-flex overflow-hidden rounded-lg border ${bd}`} role="group" aria-label="View">
+        {VIEWS.map(([v, words, title], i) => (
+          <button key={v} className={`${seg(view === v)} ${i ? `border-l ${bd}` : ""}`} aria-pressed={view === v} data-testid={`view-${v}`} title={title}
+            onClick={() => showView(v as "3d" | "plan" | "front" | "side")}>{words}</button>
+        ))}
       </div>
-      <select value="" aria-label="Go to" data-testid="go-to"
-        className={`h-8 rounded-lg border px-2 ${dark ? "border-[#2c3346] bg-[#1a1e2a] text-[#e3e6ee]" : "border-stone-300 bg-white text-stone-800"}`}
-        onChange={(e) => {
-          const v = e.target.value, sim = simRef.current;
-          if (!sim || !v) return;
-          if (v === "plan") chooseNav("plan");
-          else if (v.startsWith("orbit:")) sim.view(v.slice(6) as "front" | "side" | "above");
-          else sim.standAt(v);
-        }}>
-        <option value="">Go to…</option>
-        <optgroup label="Stand in the room">
-          {(simRef.current?.standPlaces() ?? []).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
-        </optgroup>
-        <optgroup label="Look at the whole room">
-          <option value="plan">The plan (from straight above)</option>
-          <option value="orbit:front">From the front</option>
-          <option value="orbit:side">From the side</option>
-          <option value="orbit:above">From above (plan)</option>
-        </optgroup>
-      </select>
-      <button className={`h-8 rounded-lg border px-2.5 ${dark ? "border-[#2c3346]" : "border-stone-300 hover:bg-stone-50"}`} title="Back to the start (Home)" aria-label="Start view"
-        onClick={() => simRef.current?.home()}>⌂</button>
+      {nav === "elev" && (
+        <button className={`h-8 rounded-lg border px-2.5 ${bd} ${dark ? "" : "hover:bg-stone-50"}`} data-testid="view-flip"
+          title={`Look from the other side: now at the ${elev} wall (9)`} onClick={() => flipElev()}>⇄ {elev}</button>
+      )}
+      {!flat && (
+        <>
+          <div className={`inline-flex overflow-hidden rounded-lg border ${bd}`} role="group" aria-label="How to move">
+            <button className={seg(nav === "walk")} aria-pressed={nav === "walk"} data-testid="nav-walk" onClick={() => chooseNav("walk")}
+              title="Stand in the room: drag to look round, click the floor to walk there, wheel or W/S to walk, A/D to step aside, Q/E lower/higher">Walk</button>
+            <button className={`${seg(nav === "orbit")} border-l ${bd}`} aria-pressed={nav === "orbit"} data-testid="nav-orbit" onClick={() => chooseNav("orbit")}
+              title="Turn round a point: drag to orbit, right-drag to pan, wheel to zoom to the cursor">Orbit</button>
+          </div>
+          <select value="" aria-label="Go to" data-testid="go-to"
+            className={`h-8 rounded-lg border px-2 ${bd} ${dark ? "bg-[#1a1e2a] text-[#e3e6ee]" : "bg-white text-stone-800"}`}
+            onChange={(e) => { const v = e.target.value; if (v) simRef.current?.standAt(v); }}>
+            <option value="">Stand at…</option>
+            {(simRef.current?.standPlaces() ?? []).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </select>
+        </>
+      )}
+      <button className={`h-8 rounded-lg border px-2.5 ${bd} ${dark ? "" : "hover:bg-stone-50"}`} title="The whole room in this view (Home)" aria-label="The whole room"
+        data-testid="home" onClick={() => simRef.current?.home()}>⌂</button>
     </div>
   );
   return (
@@ -556,10 +602,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
                       className="rounded-lg bg-white/95 px-3 py-1.5 text-[13px] font-medium text-stone-800 shadow hover:bg-white">← Back to the room</button>
                   </span>
                 );
-              })() : (
-                <button onClick={() => simRef.current?.home()} title="The whole room (Home)"
-                  className="rounded-lg bg-white/90 px-3 py-1.5 text-[13px] text-stone-800 shadow hover:bg-white">⌂ Whole room</button>
-              )}
+              })() : null}
             </div>
           )}
           {embedded && !shot && (
@@ -580,6 +623,8 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
             {embedded
               ? (selected
                 ? "Editing: drag to look round it · a bar: drag it, its ring to turn it, its arrow to raise it; click one of its lights to edit that · a light: the amber arc tilts it · Esc: up a level · click empty space: back"
+                : nav === "elev"
+                  ? `Elevation, looking at the ${elev} wall: drag a thing across and up or down · drag the wall to slide the view · wheel: zoom to the cursor · ⇄ (9): the other side · click: edit it, again for a light on a bar`
                 : nav === "plan"
                   ? "Plan: drag a thing to place it (a screen goes onto the nearest wall; a bar moves whole) · drag the floor to slide the plan · wheel: zoom to the cursor · click: edit it, again (or double-click) for a light on a bar"
                 : nav === "walk"
