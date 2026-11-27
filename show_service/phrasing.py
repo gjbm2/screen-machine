@@ -18,6 +18,9 @@ before its line), so it is phrased, the same way every time, sized by how big th
            stop: the band cuts out and comes back on a hit (a song's moment, utils/song_moments.py): no wind, the
            lights down to ``floor`` for the gap (``dark_ms`` before the line), then the landing.
            out: the song's last light (its ending): down to ``floor`` by the line, over ``fade_ms``, and staying there.
+           in: back from a song's end: from ``floor`` at the line to the look over ``fade_ms``.
+  junction the song junction (director._junction_envs; README S5.17) is out and in: the lamps and the rig read the
+           same envelopes, timed as the screens' fade-dark transition.
   moments  a song's stabs and stops (LookData.moments): each its own envelope (a stab is a bump with no wind and a
            short settle), multiplied with the section's (``envelopes``).
 
@@ -46,8 +49,20 @@ def envelope(t_s: float, arrival: Optional[Mapping[str, Any]]) -> tuple[float, f
     if not isinstance(arrival, Mapping):
         return 1.0, 1.0
     kind = arrival.get("kind")
-    if kind not in ("bump", "snap", "swell", "stop", "out"):
+    if kind not in ("bump", "snap", "swell", "stop", "out", "in"):
         return 1.0, 1.0
+    if kind == "in":                                             # back from a song's end: floor -> 1 over fade_ms
+        try:
+            t0 = float(arrival["at_ms"]) / 1000.0
+            fade_s = max(0.0, float(arrival.get("fade_ms") or 0.0) / 1000.0)
+            floor = max(0.0, min(1.0, float(arrival.get("floor") or 0.0)))
+        except (KeyError, TypeError, ValueError):
+            return 1.0, 1.0
+        if t_s < t0:
+            return floor, 1.0
+        if fade_s <= 0.0 or t_s >= t0 + fade_s:
+            return 1.0, 1.0
+        return floor + (1.0 - floor) * (t_s - t0) / fade_s, 1.0
     if kind == "out":                                            # the song's last light: down by at_ms, and stays
         try:
             line = float(arrival["at_ms"]) / 1000.0

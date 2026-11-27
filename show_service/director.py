@@ -330,7 +330,8 @@ NEUTRAL_ROLE = {"palette_role": "base", "follow_screen": False, "chroma_max": "c
 # "beat" (a cut on the first downbeat while the clock is at segue.cut_gate or better, else a crossfade), "always"
 # (a cut; on the downbeat when the clock allows, else now); ``scale`` multiplies every length.
 TRACK_TRANSITIONS = {
-    "gap": {"out_s": 2.5, "in_s": 2.0, "min_s": 1.5, "max_s": 4.0, "dark_max_s": 8.0, "skip_out_s": 1.6},
+    "gap": {"out_s": 2.5, "in_s": 2.0, "min_s": 1.5, "max_s": 4.0, "dark_max_s": 8.0, "skip_out_s": 1.6,
+            "lights_floor": 0.15},
     "segue": {"cut_gate": "beat", "crossfade_s": 2.0},
     "styles": {"gentle": {"cut": "never", "scale": 1.5}, "lively": {"cut": "beat", "scale": 1.0},
                "wild": {"cut": "always", "scale": 0.6}, "default": {"cut": "beat", "scale": 1.0}},
@@ -786,7 +787,8 @@ def parse_track_transitions(raw: Any, probs: list[str]) -> dict:
         probs.append("director.track_transitions: not a mapping: the starting points used")
         return out
     p = "director.track_transitions"
-    for sec, keys in (("gap", ("out_s", "in_s", "min_s", "max_s", "dark_max_s")), ("segue", ("crossfade_s",))):
+    for sec, keys in (("gap", ("out_s", "in_s", "min_s", "max_s", "dark_max_s", "lights_floor")),
+                      ("segue", ("crossfade_s",))):
         got = raw.get(sec)
         if got is None:
             continue
@@ -1002,6 +1004,7 @@ class Director:
         self._mom_chosen: list[dict] = []                # ... which they are (moments.choose)
         self._mom_done: set[str] = set()                 # ... and which were handed on (logged, hit, flashed)
         self._mom_env: list[dict] = []                   # the envelopes in the look now (LookData.moments)
+        self._junction_env: list[dict] = []              # the song junction's envelopes now (_junction_envs)
         self._idiom_out: dict[str, frozenset] = {}       # idiom -> the scenes outside it
         self._scene_traits: dict[str, dict] = {}         # scene -> idiom.traits (read again at each new song)
         self._sec_brief: Optional[dict] = None           # the brief's word on the section being landed
@@ -1179,6 +1182,8 @@ class Director:
         # song ends (README S5.17), all on show-brain
         self._junction: Optional[dict] = None            # the song now ending: {"track_id", "dark", "transition",
                                                          # "kind", "held"}, until its track_change
+        self._dip_in: Optional[dict] = None              # ... and its way back in: {"t0", "in_s", "floor"}
+        self._mom_hold: Optional[dict] = None            # a karaoke song's ending, held dark past the song: {"env", "until"}
         self._song_dip: Optional[dict] = None            # fade-dark's outgoing half on the lamps: {"t0", "out_s",
                                                          # "in_s", "until", "track_id"} (to the vibe's floor, never off)
         self.ends_stats: dict[str, Any] = {"chosen": {}, "held": 0, "dips": 0, "dip_released": 0}
@@ -2176,7 +2181,7 @@ class Director:
             self.variation += 1                          # the director's own change: a new allocation of roles
         tr = pd.get("transition") or self._transition(vs)
         self._look_transition = tr
-        self._song_dip = None                            # a new look ends a song's outgoing half (S5.17)
+        self._dip_back(now_s, "the new look landed")     # a new look ends a song's outgoing half (S5.17): back in
         # GOBO +1, the screens' scene change: while a vibe plays the director owns it (structure steps it only while
         # we are neutral), so it comes with every look that actually lands, and with nothing the vibe holds back
         _call(self.ctx.section_change)
@@ -2226,7 +2231,7 @@ class Director:
         self._light_mem.clear()
         self._x = (0.0, 0.0, 0.0, 0.0)
         self._cut_mark = None
-        self._song_dip = None
+        self._song_dip = self._dip_in = self._mom_hold = None
         self._scr["sent"].clear()
         self._scr["retry"].clear()
 
@@ -2350,12 +2355,53 @@ class Director:
                                      "context": self._ctx_brief()})
 
     def _release_dip(self, now_s: float, why: str) -> None:
-        d, self._song_dip = self._song_dip, None
+        d = self._song_dip
         if d is None:
             return
-        self._fade_s = float(d["in_s"])                  # the lamps come back over in_s
+        self._dip_back(now_s, why)
+        self._fade_s = float(d["in_s"])                  # the lamps' colours come back over in_s too
         self.ends_stats["dip_released"] += 1
         self._log_event("song_end", {"released": why, "track_id": d["track_id"]})
+
+    def _dip_back(self, now_s: float, why: str) -> None:
+        """The junction's way back (owner, 27 Nov: "screens fade but lights don't typically. I thought we had
+        consolidated the logic across both?"): the lights come back in over the transition's in_s from wherever the
+        song's end took them, as the screens do. Ends the outgoing half and a karaoke ending's hold."""
+        d, h = self._song_dip, self._mom_hold
+        if d is None and h is None:
+            return
+        gap = self.cfg["track_transitions"]["gap"]
+        in_s = float(d["in_s"]) if d is not None else float(gap["in_s"])
+        floor = float(gap["lights_floor"]) if d is not None else float((h or {}).get("env", {}).get("floor") or 0.0)
+        self._song_dip, self._mom_hold = None, None
+        self._dip_in = {"t0": now_s, "in_s": max(0.05, in_s), "floor": floor}
+        self._log_event("song_end", {"back_in": why, "in_s": round(in_s, 3), "from": floor})
+
+    def _junction_envs(self, now_s: float) -> list[dict]:
+        """The song junction as envelopes (phrasing.py), the one rule every light output reads: lamps and the rig
+        alike, timed as the screens' transition is. Out to gap.lights_floor (a share of the look's level) over out_s;
+        a karaoke song's ending held dark through the gap; back in over in_s once the next look lands, the sound
+        comes back, or dark_max_s passes."""
+        out: list[dict] = []
+        sd = self._song_dip
+        if sd is not None:
+            out.append({"kind": "out", "at_ms": round((sd["t0"] + sd["out_s"]) * 1000.0, 1),
+                        "fade_ms": round(sd["out_s"] * 1000.0, 1),
+                        "floor": float(self.cfg["track_transitions"]["gap"]["lights_floor"]), "key": "junction"})
+        h = self._mom_hold
+        if h is not None:
+            if now_s >= h["until"]:
+                self._dip_back(now_s, "dark_max_s passed")
+            else:
+                out.append(h["env"])
+        di = self._dip_in
+        if di is not None:
+            if now_s >= di["t0"] + di["in_s"]:
+                self._dip_in = None
+            else:
+                out.append({"kind": "in", "at_ms": round(di["t0"] * 1000.0, 1),
+                            "fade_ms": round(di["in_s"] * 1000.0, 1), "floor": di["floor"], "key": "junction-in"})
+        return out
 
     # -- the song's treatment (treatment.py, README S5.33; owner, 29 Oct) -------------------------------------------
     def _song_words(self, room: Any) -> tuple[Optional[str], list[str]]:
@@ -3594,6 +3640,16 @@ class Director:
         the running scene's drop flash, as its kind's recipe says. Nothing under House lights or Lights low, or with
         no karaoke song."""
         np_ = self._karaoke_np()
+        if np_ is None and self._mom_song is not None:
+            # the song has gone (ended, or the player stopped): an ending that has started stays down through the
+            # gap with the screens, until the next look lands (_dip_back), never past dark_max_s
+            ended = [e for e in self._mom_env or () if e.get("kind") == "out"
+                     and float(e["at_ms"]) / 1000.0 - float(e.get("fade_ms") or 0.0) / 1000.0 <= now_s]
+            if ended and self._mom_hold is None:
+                dm = float(self.cfg["track_transitions"]["gap"]["dark_max_s"])
+                self._mom_hold = {"env": dict(ended[0], at_ms=round(now_s * 1000.0, 1), fade_ms=0.0, key="ending"),
+                                  "until": now_s + dm}
+                self._log_event("song_end", {"held": "the song's ending", "until_s": round(dm, 1)})
         if np_ is None or self.house or self.low or not self.pal_on:
             self._mom_env = []
             if np_ is None:
@@ -3603,6 +3659,8 @@ class Director:
         bf = self._brief()
         idiom = bf.get("idiom") if bf else None
         beat = _num(np_.get("moments_beat_s")) or (grid.beat_s if grid.has_grid and grid.beat_s else 0.5)
+        if key != self._mom_song and self._mom_hold is not None:
+            self._dip_back(now_s, "the next song")
         if key != self._mom_song:
             ms = np_.get("moments")
             if not ms:
@@ -5527,6 +5585,7 @@ class Director:
             sd = None
         if sd is not None and pal_on:
             song_dip = _c01((now_s - sd["t0"]) / sd["out_s"])
+        self._junction_env = self._junction_envs(now_s) if pal_on else []   # the one envelope lamps and rig read
         roles_key = (look_pal["name"], emphasis, tuple(r["hex"] for r in look_pal["roles"].values()),
                      tuple((sid, tuple(r["hex"] for r in sr.values())) for sid, sr in sorted(screen_roles.items())))
         roles_changed = self._roles_key is not None and roles_key != self._roles_key
@@ -5539,8 +5598,10 @@ class Director:
             lamp_level = max(floor, level)
             if dip is not None:
                 lamp_level = min(lamp_level, dip)        # pre-drop: the lamps dip (screens never do)
-            if song_dip is not None:                     # a song's outgoing half (S5.17): down to the floor, never off
-                lamp_level += (min(lamp_level, floor) - lamp_level) * song_dip
+            # the song's junction and its moments (S5.17; moments.py): the same envelopes the rig's look engine reads,
+            # so the lamps fade with the screens and the rig, and black out with them at a cold ending
+            jf, _sz = phrasing.envelopes(now_s, None, list(self._junction_env) + list(self._mom_env or ()))
+            lamp_level = _c01(lamp_level * jf)
             for i, (did, dev) in enumerate(sorted(self.lamps.items())):
                 rname, rc = self._lamp_role(dev)
                 if self.house:
@@ -5603,7 +5664,8 @@ class Director:
                                  and not self.low),
                      "hit": self._hit_view(), "compose": self._cblock,
                      "arrival": self._arrival_view(now_s),      # a lift's wind-up and landing (phrasing.py)
-                     "moments": self._mom_env or None,          # the song's stabs, stops and ending (moments.py)
+                     # the song's stabs, stops and ending (moments.py), and the song junction (S5.17), as envelopes
+                     "moments": (list(self._mom_env or ()) + list(self._junction_env or ())) or None,
                      "light_scene": self.light_scene, "light_scene_why": self.light_scene_why,
                      "light_scene_drop": dict(self._ls_drop) if self._ls_drop else None,
                      "flow": self._flow, "light_programs": self._programs_view()}      # docs/LIGHTS.md §7.2
