@@ -154,6 +154,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
     if (!canvas || !host) return;
     const sim = new RoomSim({ canvas, room });
     simRef.current = sim;
+    if (new URLSearchParams(window.location.search).has("debug")) (window as unknown as { __room3d?: RoomSim }).__room3d = sim;   // perf work
     try { sim.keepInside = localStorage.getItem("room3d.inside") === "1"; } catch { /* default: free */ }
     const n0 = startNav ?? storedNav();
     try { const e = localStorage.getItem("room3d.elev"); if (e === "back" || e === "left" || e === "right") sim.elev = e; } catch { /* front */ }
@@ -181,9 +182,15 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
     const ext = gl.getExtension("WEBGL_debug_renderer_info");
     const gpu = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
     const v = new THREE.Vector3();
+    let namesKey = "";
     const placeNames = () => {
       const el = namesRef.current;
       if (!el) return;
+      // only when the view, the things or the selection changed: moving every name each frame made the page lay
+      // itself out again every frame (owner, 27 Nov: "why has simulation performance suddenly gone to shit")
+      const e = sim.camera.matrixWorld.elements, key = `${e.map((x) => x.toFixed(4)).join(",")}|${host.clientWidth}x${host.clientHeight}|${itemsRef.current.length}|${selRef.current}|${sim.nav}|${itemsRef.current.map((x) => x.at.join(",")).join(";")}`;
+      if (key === namesKey) return;
+      namesKey = key;
       // the plan: every thing's name; any view: the names of the selected bar's parts (what a click there selects)
       const all = itemsRef.current, sel = selRef.current;
       const unit = sel ? (all.find((x) => x.key === sel)?.parent ?? sel) : null;

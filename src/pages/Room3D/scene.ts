@@ -335,7 +335,7 @@ export class RoomSim {
     this.buildRoom(m);
     const byBar = new Map<string, Fixture[]>();
     for (const f of m.fixtures) if (f.part && f.part !== "dimmer") byBar.set(f.bar, [...(byBar.get(f.bar) ?? []), f]);
-    for (const f of m.fixtures) if (f.part === "dimmer" && f.at) this.parts.push(this.houseLight(f));
+    for (const f of m.fixtures) if (f.part === "dimmer" && f.at) this.parts.push(this.owned(f.id, () => this.houseLight(f)));
     for (const [bar, fs] of byBar) {
       // a bar (in the room model) or several parts of one unit: the bar; a light on its own: its own mount
       if (fs.length === 1 && !m.bars.some((b) => b.id === bar)) this.buildLone(fs[0], m);
@@ -350,6 +350,8 @@ export class RoomSim {
     // every cone in the air reaches across the room (its mesh only marks where to work the beam out: beams.ts)
     const reach = Math.hypot(...m.size) * 1.05;
     this.built.traverse((o) => { if (o.userData?.airCone) o.scale.setScalar(reach); });
+    this.cones = [];
+    this.built.traverse((o) => { if (o.userData?.airCone || o.userData?.airLines) this.cones.push(o); });
     const [X, Y, H] = m.size, eps = 0.01;
     this.post.boxMin.set(-eps, -eps, -Y - eps);
     this.post.boxMax.set(X + eps, H + eps, eps);
@@ -487,7 +489,7 @@ export class RoomSim {
         cyl(0.074, 0.075, darker, [0, 0, -0.005], "z", t, 32);
         cyl(0.06, 0.02, dark, [0, 0, -0.05], "z", t, 24);          // its back, with the fins
         const rim = new THREE.Mesh(new THREE.TorusGeometry(0.068, 0.006, 6, 32), dark); rim.position.z = 0.033; t.add(rim);
-        this.parts.push(this.par(f, at.clone().addScaledVector(dir, 0.034), dir));
+        this.parts.push(this.owned(f.id, () => this.par(f, at.clone().addScaledVector(dir, 0.034), dir)));
       } else if (f.part === "derby") {
         const dir = this.fixedDir(f, front, axis, 0, 0.55);
         yoke(pv, 0.1, 1);
@@ -497,14 +499,14 @@ export class RoomSim {
           const rib = new THREE.Mesh(new THREE.TorusGeometry(0.051, 0.004, 6, 28), dark); rib.rotation.y = Math.PI / 2; rib.position.x = x; t.add(rib);
         }
         for (const s of [-1, 1]) cyl(0.052, 0.006, dark, [s * 0.088, 0, 0], "x", t, 28);   // its end plates
-        this.parts.push(this.derby(f, at.clone().addScaledVector(dir, 0.051), dir, axis));
+        this.parts.push(this.owned(f.id, () => this.derby(f, at.clone().addScaledVector(dir, 0.051), dir, axis)));
       } else if (f.part === "flash") {
-        this.parts.push(this.strobe(f, mid.clone().addScaledVector(front, BAR.d / 2 + 0.002), front, axis));
+        this.parts.push(this.owned(f.id, () => this.strobe(f, mid.clone().addScaledVector(front, BAR.d / 2 + 0.002), front, axis)));
       } else if (f.part === "flashled") {
         // the four LEDs patched one by one: drawn once, from the first, whose address starts the bar's five
         // channels (four dimmers, then the shared strobe), as the one-light patch was
         const first = placed.filter((x) => x.part === "flashled").reduce((a, b) => ((a.address ?? 1e9) <= (b.address ?? 1e9) ? a : b));
-        if (f === first) this.parts.push(this.strobe(f, mid.clone().addScaledVector(front, BAR.d / 2 + 0.002), front, axis));
+        if (f === first) this.parts.push(this.owned(f.id, () => this.strobe(f, mid.clone().addScaledVector(front, BAR.d / 2 + 0.002), front, axis)));
       } else if (f.part === "laser" || f.part === "laser50" || f.part === "laser51") {
         const w = this.laserAxes(f, at, front, axis).w;
         yoke(pv, 0.104, 1);
@@ -515,9 +517,9 @@ export class RoomSim {
           const ap = new THREE.Mesh(new THREE.CircleGeometry(0.011, 20), new THREE.MeshBasicMaterial({ color: 0x0a0c10 }));
           ap.position.set(x, -0.008, 0.0635); t.add(ap);
         }
-        this.parts.push(this.laser(f, at.clone().addScaledVector(w, 0.064), front, axis));
-      } else if (f.part === "spot") this.parts.push(this.spot(f, front));
-      else if (f.part === "hazer") this.parts.push(this.hazer(f));
+        this.parts.push(this.owned(f.id, () => this.laser(f, at.clone().addScaledVector(w, 0.064), front, axis)));
+      } else if (f.part === "spot") this.parts.push(this.owned(f.id, () => this.spot(f, front)));
+      else if (f.part === "hazer") this.parts.push(this.owned(f.id, () => this.hazer(f)));
     }
     unit.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).receiveShadow = true; });
   }
@@ -527,6 +529,14 @@ export class RoomSim {
   private fixedDir(f: Fixture, front: THREE.Vector3, axis: THREE.Vector3, side: number, lift: number): THREE.Vector3 {
     return f.aimDir ? v3(f.aimDir).normalize()
       : front.clone().addScaledVector(new THREE.Vector3(0, 0, 1), lift).addScaledVector(axis, side * 0.5).normalize();
+  }
+
+  /** Build one light's part, its beams in the air marked as its own (userData.fid). */
+  private owned<T>(fid: string, make: () => T): T {
+    const n0 = this.built.children.length;
+    const out = make();
+    for (const o of this.built.children.slice(n0)) o.traverse((x) => { if (x.userData?.airCone || x.userData?.airLines) x.userData.fid = fid; });
+    return out;
   }
 
   /** The pool a wash or a mover makes on a surface, as the light it throws back into the room (light.ts §2). */
@@ -1013,15 +1023,15 @@ export class RoomSim {
       }
     }
     const dir = f.aim ? v3(f.aim).sub(at).normalize() : this.fixedDir(f, front, axis, 0, 0.35);   // its point, if given one
-    if (f.part === "par") this.parts.push(this.par(f, at.clone().addScaledVector(dir, 0.04), dir));
-    else if (f.part === "derby") this.parts.push(this.derby(f, at.clone().addScaledVector(dir, 0.05), dir, axis));
-    else if (f.part === "spot") this.parts.push(this.spot(f, front));
-    else if (f.part === "laser" || f.part === "laser50" || f.part === "laser51") this.parts.push(this.laser(f, at, front, axis));
-    else if (f.part === "flash" || f.part === "flashled") this.parts.push(this.strobe(f, at, front, axis));
+    if (f.part === "par") this.parts.push(this.owned(f.id, () => this.par(f, at.clone().addScaledVector(dir, 0.04), dir)));
+    else if (f.part === "derby") this.parts.push(this.owned(f.id, () => this.derby(f, at.clone().addScaledVector(dir, 0.05), dir, axis)));
+    else if (f.part === "spot") this.parts.push(this.owned(f.id, () => this.spot(f, front)));
+    else if (f.part === "laser" || f.part === "laser50" || f.part === "laser51") this.parts.push(this.owned(f.id, () => this.laser(f, at, front, axis)));
+    else if (f.part === "flash" || f.part === "flashled") this.parts.push(this.owned(f.id, () => this.strobe(f, at, front, axis)));
     else if (f.part === "hazer") {
       if (f.planned) {                                           // a planned hazer: its box only (it hazes nothing)
         const box = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.15, 0.39), darker); box.position.copy(at); this.built.add(box);
-      } else this.parts.push(this.hazer(f));
+      } else this.parts.push(this.owned(f.id, () => this.hazer(f)));
     }
     const body = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.12, 20), darker);   // the light's own body
     aimY(body, dir); body.position.copy(at).addScaledVector(dir, -0.03);
@@ -1094,11 +1104,13 @@ export class RoomSim {
     dots.frustumCulled = false; this.built.add(dots);
     const nr = new THREE.Vector3(), rd = new THREE.Vector3(), hit = new THREE.Vector3(), hn = new THREE.Vector3(), din = new THREE.Vector3();
     const toBall = new THREE.Vector3(), lm = new THREE.Vector3();
-    let spin = 0;
+    let spin = 0, tick = 0;
+    const from = new THREE.Vector3(), per = new THREE.Vector3();
     this.afterParts.push({ f: { id: "mirror_ball" } as Fixture, update: (c) => {   // after every light: their beams are in
       const st = id ? this.devState(id) : undefined;
       if (!id || st?.spin !== false) spin += c.dt * BALL.rps * Math.PI * 2;   // its motor: as the mode has it (still: off)
       ball.rotation.z = spin;
+      if (++tick % 2) return;                                  // the spots every other frame (a slow ball: no one sees it)
       const pos = g.attributes.position as THREE.BufferAttribute, col = g.attributes.color as THREE.BufferAttribute;
       let k = 0;
       const cos = Math.cos(spin), sin = Math.sin(spin);
@@ -1118,13 +1130,13 @@ export class RoomSim {
         let facing = 0;
         for (const n0 of normals) if (-(n0.x * cos - n0.y * sin) * din.x - (n0.x * sin + n0.y * cos) * din.y - n0.z * din.z > 0) facing++;
         if (!facing) continue;
-        const per = lm.clone().multiplyScalar(1 / facing);                   // each facing facet's share (lumens)
+        per.copy(lm).multiplyScalar(1 / facing);                             // each facing facet's share (lumens)
         for (const n0 of normals) {
           nr.set(n0.x * cos - n0.y * sin, n0.x * sin + n0.y * cos, n0.z);
           const dn = din.dot(nr);
           if (dn >= 0) continue;                                             // facing away from the light
           rd.copy(din).addScaledVector(nr, -2 * dn);                         // the reflection
-          const rho = hitFace(at.clone().addScaledVector(nr, BALL.r), rd, c.size, hit, hn);
+          const rho = hitFace(from.copy(at).addScaledVector(nr, BALL.r), rd, c.size, hit, hn);
           const L = hit.distanceTo(at), rad = BALL.facet_m + L * BALL.spread;
           const lum = (rho / Math.PI) / (Math.PI * rad * rad);              // cd/m2 per lumen landing there
           pos.setXYZ(k, hit.x + hn.x * 0.005, hit.y + hn.y * 0.005, hit.z + hn.z * 0.005);
@@ -1160,6 +1172,7 @@ export class RoomSim {
     const ang = rad(PINSPOT.beam_deg / 2), lensAt = at.clone().addScaledVector(d, 0.03);
     const l = face(new THREE.CircleGeometry(0.035, 20), PINSPOT.beam_deg / 2, 30); aimZ(l, d); l.position.copy(lensAt); this.built.add(l);
     const b = airCone(ang, 1); aimZ(b, d); b.position.copy(lensAt); this.built.add(b);
+    b.userData.fid = f.id;
     const cd = new THREE.Vector3(), white = perLumen([255, 250, 240]);
     this.parts.push({ f, update: (c) => {
       const st = this.devState(f.id);
@@ -1199,6 +1212,13 @@ export class RoomSim {
     // editing a light: its beam's path shows whatever the haze (owner, 27 Nov: "when I'm pointing a pinspot and/or
     // editing it, why can't I see its haze cone"); the others are dimmed then, so theirs hardly show
     const paths = this.showPaths || !!this.solo;
+    // on only for the light being edited (no haze, no "Show beam paths"): its beams alone go through the air pass,
+    // never every light's (owner, 27 Nov: "why has simulation performance suddenly gone to shit")
+    const soloOnly = !!this.solo && !this.showPaths && sig <= 1e-4;
+    if (soloOnly || this.conesSolo) {
+      for (const o of this.cones) o.visible = !soloOnly || this.solo!.has(o.userData.fid);
+      this.conesSolo = soloOnly;
+    }
     const air = paths || sig > 1e-4;
     beamShared.on.value = air;
     beamShared.scatter.value = paths ? Math.max(sig, 0.3) : sig;
@@ -1478,6 +1498,9 @@ export class RoomSim {
   // here only: nothing is sent to a light. The rest go on showing what the preview or the wire says.
   /** This frame's narrow beams (moving heads, pinspots): where from, which way, their candela, their half angle. */
   private afterParts: Part[] = [];
+  /** Every beam drawn in the air (cones and laser lines), with the light it belongs to (userData.fid). */
+  private cones: THREE.Object3D[] = [];
+  private conesSolo = false;
   /** The remote-worked things as the previewed mode has them, by id (the page's): unknown -> off (a pinspot), still. */
   deviceStates: Record<string, { on: boolean; spin?: boolean; rgb?: [number, number, number]; level?: number; cycle?: boolean; flash?: boolean; byShow?: boolean }> = {};
   /** The show's scene for the remote-worked things now (the preview's ``a``: pan_spin, intensity, colour_slot, shutter). */

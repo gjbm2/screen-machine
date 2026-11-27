@@ -133,5 +133,6 @@ export function airLines(segments: number, origin: THREE.Vector3): THREE.LineSeg
   const lines = new THREE.LineSegments(g, m);
   lines.frustumCulled = false;
   lines.layers.set(BEAM_LAYER);
+  lines.userData.airLines = true;          // a beam in the air (scene.ts: drawn only for the light edited, sometimes)
   return lines;
 }
