@@ -70,7 +70,10 @@ TOP_KEYS: tuple[str, ...] = ("version", "room", "appliances", "points", "regions
                               "layouts")
 SECTIONS: tuple[str, ...] = ("room", "appliances", "points", "regions", "surfaces", "keep_out", "bars")   # the added file, in this order
 ROOM_KEYS: tuple[str, ...] = ("size", "front", "haze_half_life_s")   # haze_half_life_s: atmosphere.py
-PLACE_KEYS: tuple[str, ...] = ("at", "kind", "label", "mount", "plane", "aim", "connect")   # an appliance's place (editable on
+PLACE_KEYS: tuple[str, ...] = ("at", "kind", "label", "mount", "plane", "aim", "connect", "modes")
+#: modes (a planned room device): what each room mode is to do with it, {mode id: "on" | "off" | "spinning" |
+#: "stopped"}, until it is connected and the modes themselves say (owner, 27 Nov: "why are my pinspots on by default
+#: in normal? what is a good way to allow user to control things like that through the studio mode?")   # an appliance's place (editable on
 #: the map). aim: [x, y, z], the place in the room a fixed light points at (a bar's laser turned up at the ceiling;
 #: owner, 27 Nov): the 3D room draws its beams from ``at`` towards it
 APPLIANCE_KEYS: tuple[str, ...] = PLACE_KEYS + ("teach", "pose")
@@ -355,6 +358,12 @@ def _place_value(k: str, v: Any, where: str, probs: list[str]) -> Any:
         if out is None:
             probs.append(f"{where}: three numbers in metres ([x, y, z], the place it points at): left unset")
         return out
+    if k == "modes":
+        if isinstance(v, dict) and all(isinstance(m, str) and _WORD.match(m) and w in ("on", "off", "spinning", "stopped")
+                                       for m, w in v.items()):
+            return dict(v)
+        probs.append(f"{where}: {{mode: on | off | spinning | stopped}}: left unset")
+        return None
     if k == "connect":
         if isinstance(v, str) and _DEVICE.match(v):
             return v
@@ -850,7 +859,7 @@ def build_view(hand: Any, added: Any = None, *, error: Optional[str] = None,
     appliances = {}
     for aid, e in m["appliances"].items():
         a: dict[str, Any] = {"at": e.get("at")}
-        for k in ("kind", "label", "mount", "plane", "aim", "connect"):
+        for k in ("kind", "label", "mount", "plane", "aim", "connect", "modes"):
             if k in e:
                 a[k] = e[k]
         a["teach"] = list(e.get("teach") or [])
@@ -1139,12 +1148,12 @@ class Store:
         return self._view
 
     def set_appliance(self, aid: str, *, at: Any = ..., mount: Any = ..., plane: Any = ..., kind: Any = ...,
-                      label: Any = ..., connect: Any = ..., aim: Any = ...) -> dict:
+                      label: Any = ..., connect: Any = ..., aim: Any = ..., modes: Any = ...) -> dict:
         """Place an appliance (a fixture id, or a room device): a key left out is unchanged, a key given as None
         clears it. Its taught places and pose stay. Returns its entry in the new view."""
         aid = _check_id(aid, "light or device")
         given = {k: v for k, v in (("at", at), ("mount", mount), ("plane", plane), ("kind", kind), ("label", label),
-                                   ("connect", connect), ("aim", aim)) if v is not ...}
+                                   ("connect", connect), ("aim", aim), ("modes", modes)) if v is not ...}
         val = {k: (None if v is None else _one(lambda p, k=k, v=v: _place_value(k, v, f"{aid} {k}", p), k))
                for k, v in given.items()}
 

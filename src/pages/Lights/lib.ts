@@ -824,6 +824,8 @@ export interface PlacedThing {
   connect?: string | null;
   /** The place in the room it points at (a lone light, a pinspot: "Point at…"). */
   aim?: Vec3 | null;
+  /** A planned room device: what each mode does with it ({mode: on | off | spinning | stopped}). */
+  modes?: Record<string, string> | null;
   mount: string | null;
   plane: { normal: Vec3 | null; up: Vec3 | null; size: [number, number] | null } | null;
   teach: Sample[];
@@ -911,6 +913,7 @@ export function parseSpace(v: unknown): RoomSpace {
         label: str(a.label),
         connect: str(a.connect),
         aim: vec3(a.aim),
+        modes: isObj(a.modes) ? Object.fromEntries(Object.entries(a.modes).filter(([, w]) => typeof w === "string")) as Record<string, string> : null,
         mount: str(a.mount),
         plane: pl ? { normal: vec3(pl.normal), up: vec3(pl.up), size: size2(pl.size) } : null,
         teach: Array.isArray(a.teach)

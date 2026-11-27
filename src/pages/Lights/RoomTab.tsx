@@ -62,6 +62,9 @@ type RigRow = { id: string; label: string; type: string | null; node_ip: string 
 const DEVICES = new Set(["screen", "hue-lamp", "mirror-ball", "mic", "light-sensor"]);
 const DEVICE_WORDS: Record<string, string> = { screen: "A screen or TV", "hue-lamp": "A Hue lamp", "mirror-ball": "A mirror ball",
   mic: "A microphone", "light-sensor": "A light sensor" };
+/** A remote light's colour words (the RF types' values) as a colour to draw. */
+const COLOUR_WORDS: Record<string, [number, number, number]> = { white: [255, 250, 240], red: [255, 40, 30], green: [40, 255, 60],
+  blue: [50, 80, 255], yellow: [255, 220, 40], cyan: [40, 230, 255], magenta: [255, 50, 220], purple: [170, 60, 255], orange: [255, 140, 30], pink: [255, 120, 180] };
 const FRONT_VEC: Record<string, [number, number]> = { north: [0, 1], east: [1, 0], south: [0, -1], west: [-1, 0] };
 type BarBits = { id: string; label: string; at: Vec3; facing_deg: number; front: Vec3; editable: boolean; aims: PartAim[]; parts: BarPartBits[];
   layout: string | null };
@@ -435,7 +438,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   // Mode (owner, 27 Nov: "It's ... confusing if it is meant to simulate a mode, but it doesn't do that. fix it"): the
   // whole rig as the mode drives it (show_service preview what=mode): its feel (state.show.main.vibe; a mode that
   // doesn't set one leaves the room's feel as it is: "@current"), its light scene tags, and the lights it sets itself.
-  const [modes, setModes] = useState<{ id: string; label: string; lights: Record<string, number>; vibe: string; tags: string[] }[]>([]);
+  const [modes, setModes] = useState<{ id: string; label: string; lights: Record<string, number>; vibe: string; tags: string[]; raw: any }[]>([]);
   const [asMode, setAsMode] = useState<string>(() => { try { return localStorage.getItem("room3d.previewMode") ?? ""; } catch { return ""; } });
   useEffect(() => {
     let dead = false;
@@ -447,7 +450,8 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
           lights: Object.fromEntries(Object.entries(m?.state?.light ?? {}).map(([lid, v]: [string, any]) =>
             [lid, v === "off" ? 0 : v === "on" ? 1 : typeof v?.bri === "number" ? Math.max(0, Math.min(1, v.bri / 100)) : 1])),
           vibe: m?.state?.show && "main" in m.state.show ? String(m.state.show.main?.vibe ?? "") : "@current",
-          tags: (m?.state?.director?.light_scenes?.scene_tags ?? []).filter((t: any) => typeof t === "string") }));
+          tags: (m?.state?.director?.light_scenes?.scene_tags ?? []).filter((t: any) => typeof t === "string"),
+          raw: m?.state ?? {} }));
         if (dead) return;
         setModes(ms);
         const rs = Array.isArray(st?.rooms) ? st.rooms : [];
@@ -577,6 +581,34 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
     const all = [...mine, ...extra];
     return { placedThings: all.filter((t) => bits.room.appliances[t.id]?.at), unplacedThings: all.filter((t) => !bits.room.appliances[t.id]?.at) };
   }, [bits, things]);
+
+  // The remote-worked things (pinspots, mirror balls) as the room would have them (owner, 27 Nov: "why are my pinspots on
+  // by default in normal?"): in Mode, as the chosen mode sets them (a connected one: the mode's own state for its
+  // remote, e.g. pinspots.main on / off, colour, level, or the director's when the mode gives them to it; a planned
+  // one: what its "In each mode" says), and off (stopped) where nothing turns them on; the aiming views: lit.
+  const deviceStates = useMemo(() => {
+    const out: Record<string, { on: boolean; spin?: boolean; rgb?: [number, number, number]; level?: number }> = {};
+    const m = modes.find((x) => x.id === asMode);
+    for (const t of placedThings) {
+      if (!t.dev || !/pinspot|mirror|glitter/.test(t.dev)) continue;
+      const ball = /mirror|glitter/.test(t.dev);
+      if (show !== "mode" || !m) { out[t.id] = { on: true, spin: true }; continue; }
+      const a = bits?.room.appliances[t.id];
+      if (!t.connect) {
+        const w = a?.modes?.[m.id];
+        out[t.id] = ball ? { on: true, spin: w === "spinning" } : { on: w === "on" };
+        continue;
+      }
+      const st = m.raw?.[t.connect], dir = m.raw?.director?.[ball ? "glitterball" : "pinspots"];
+      const main = typeof st === "string" ? st : st?.main;
+      const directed = dir === true || dir?.set === true;
+      if (ball) { out[t.id] = { on: true, spin: main === "spinning" || main === "on" || directed }; continue; }
+      const on = main === "on" || (main?.set === "on") || directed;
+      const col = st?.colour?.set ?? st?.colour, lvl = st?.level?.set ?? st?.level;
+      out[t.id] = { on, rgb: COLOUR_WORDS[String(col ?? "white")] ?? [255, 250, 240], level: typeof lvl === "number" ? Math.max(0.1, Math.min(1, lvl / 10)) : 1 };
+    }
+    return out;
+  }, [modes, asMode, show, placedThings, bits]);
 
   // what can be clicked in the view
   const editables = useMemo<Editable[]>(() => {
@@ -1137,7 +1169,8 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       )}
       <div className={selected ? "min-h-0 flex-1 overflow-auto" : "shrink-0 border-t border-stone-200 pt-2"}>
       {(bar || light || part || (thing && (thing.typeId || rig.some((r) => r.id === thing.id && r.node_ip) || /pinspot/.test(thing.dev ?? "")))) && (
-        <div className="mb-2 flex items-center gap-1.5" data-testid="edit-show">
+        <div className="mb-2 flex flex-wrap items-center gap-1.5" data-testid="edit-show">
+          <span className="text-[12px] text-stone-500" title="How it shows in the view while you edit it: nothing is saved or sent">While editing:</span>
           <div className="inline-flex overflow-hidden rounded-lg border border-stone-300" role="group" aria-label="In the view">
             {([["on", "On", "Lit bright while you edit it"], ["off", "Off", "Dark, to see the room without it"], ["show", "As the scene", "As the preview's scene has it"]] as const).map(([v, w, t], i) => (
               <button key={v} title={`${t} (in the view only)`} aria-pressed={editShow === v} onClick={() => setEditShow(v)} data-testid={`edit-show-${v}`}
@@ -1342,6 +1375,45 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
               </div>
             );
           })()}
+          {thing.dev && /pinspot|mirror|glitter/.test(thing.dev) && modes.length > 0 && (() => {
+            // what each room mode does with it (owner, 27 Nov: "why are my pinspots on by default in normal? ... why
+            // when I turn them off don't they stay off?"): planned, kept with it; connected, the modes say
+            const ball = /mirror|glitter/.test(thing.dev);
+            const a = bits.room.appliances[thing.id], mine = a?.modes ?? {};
+            const words: [string, string][] = ball ? [["stopped", "Still"], ["spinning", "Spinning"]] : [["off", "Off"], ["on", "On"]];
+            const setMode = (mid: string, w: string) => {
+              const next = { ...mine, [mid]: w };
+              void act(`${thing.label} in ${modes.find((x) => x.id === mid)?.label ?? mid}`, () => api.place(thing.id, { modes: next }),
+                () => api.place(thing.id, { modes: Object.keys(mine).length ? mine : null }));
+            };
+            return (
+              <div className="mb-2" data-testid="in-each-mode">
+                <H>In each mode</H>
+                {modes.map((m) => {
+                  const st = deviceStates[thing.id];
+                  const cur = thing.connect ? (m.id === asMode && show === "mode" ? (ball ? (st?.spin ? "spinning" : "stopped") : (st?.on ? "on" : "off")) : null)
+                    : mine[m.id] ?? (ball ? "stopped" : "off");
+                  return (
+                    <div key={m.id} className={`flex items-center justify-between py-0.5 ${m.id === asMode ? "font-medium" : ""}`}>
+                      <span>{m.label}{m.id === asMode ? " · previewing" : ""}</span>
+                      {thing.connect ? <span className="text-stone-500">{cur ? words.find(([w]) => w === cur)?.[1] : "as the mode says"}</span> : (
+                        <div className="inline-flex overflow-hidden rounded-lg border border-stone-300">
+                          {words.map(([w, t], i) => (
+                            <button key={w} disabled={busy} aria-pressed={cur === w} data-testid={`mode-${m.id}-${w}`} onClick={() => setMode(m.id, w)}
+                              className={`h-7 px-2 text-[12px] ${i ? "border-l border-stone-300" : ""} ${cur === w ? "bg-teal-600 text-white" : "bg-white hover:bg-stone-50"}`}>{t}</button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                <div className="mt-1 text-[12px] text-stone-500">
+                  {thing.connect ? <>What the modes do with it is set in <a className="text-teal-700 hover:underline" href={settingsUrl("modes")}>Settings › Modes</a>.</>
+                    : "Planned: kept with it, and what the preview shows under Lights › Mode. Off unless a mode turns it on."}
+                </div>
+              </div>
+            );
+          })()}
           <H>Where it is</H>
           {(["East–west", "North–south", "Height"] as const).map((w, i) => (
             <Num key={w} label={w} unit="m" value={thingAt.at![i]} disabled={busy}
@@ -1482,7 +1554,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
     <div className="space-y-3" data-testid="room-tab">
       {adding && <AddPicker items={lib} anchor={addAnchor.current} onClose={() => setAdding(false)}
         onPick={(x) => { setAdding(false); setPointing(false); setPlacing(x); }} />}
-      <Room3DPage embedded refresh={refresh} liveAim={liveAim} editShow={editShow} pointing={pointing || !!placing}
+      <Room3DPage embedded refresh={refresh} liveAim={liveAim} editShow={editShow} deviceStates={deviceStates} pointing={pointing || !!placing}
         pointWords={placing ? `Click where ${libName(placing)} goes · Esc: cancel` : undefined}
         pointThings={!placing}
         onPointAt={(to) => { if (placing) { const x = placing; setPlacing(null); void addThing(x, to); } else pointAt(to); }} editables={editables} selected={selected} mode={mode} picked={region?.name ?? null} startNav={plan ? "plan" : undefined}

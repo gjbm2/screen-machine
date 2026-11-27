@@ -1027,7 +1027,7 @@ export class RoomSim {
   private buildDevice(f: Fixture) {
     const at = v3(f.at!), up = new THREE.Vector3(0, 0, 1);
     switch (f.device) {
-      case "mirror-ball": this.buildBall(at); break;
+      case "mirror-ball": this.buildBall(at, f.id); break;
       case "hue-lamp": this.buildLamp({ ...f, kind: "lamp" }); break;
       case "mic": {
         const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, Math.max(0.1, at.z - 0.05), 8), dark);
@@ -1056,7 +1056,7 @@ export class RoomSim {
         break;
       }
       default:
-        if (/glitter|mirror/.test(f.device ?? "")) { this.buildBall(at); break; }      // a remote-worked mirror ball
+        if (/glitter|mirror/.test(f.device ?? "")) { this.buildBall(at, f.id); break; }   // a remote-worked mirror ball
         if (/pinspot/.test(f.device ?? "") && this.model) { this.buildPinspot(f, this.model); break; }
         if ((f.device ?? "").startsWith("rf-")) {                                       // another remote-worked thing
           const can = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.12, 16), darker);
@@ -1071,7 +1071,7 @@ export class RoomSim {
   // thrown back off its facets as spots on the walls, ceiling and floor, each spot as bright as its share of the light
   // the ball catches (the ball's cross-section seen from the light, BALL.reflect of it back, among the facets facing
   // the light), turning with the ball.
-  private buildBall(at: THREE.Vector3) {
+  private buildBall(at: THREE.Vector3, id?: string) {
     const ball = new THREE.Mesh(new THREE.SphereGeometry(BALL.r, 24, 16),
       new THREE.MeshStandardMaterial({ color: 0xcfd4dc, metalness: 1, roughness: 0.15, flatShading: true }));
     ball.position.copy(at); this.built.add(ball);
@@ -1091,7 +1091,8 @@ export class RoomSim {
     const toBall = new THREE.Vector3(), lm = new THREE.Vector3();
     let spin = 0;
     this.afterParts.push({ f: { id: "mirror_ball" } as Fixture, update: (c) => {   // after every light: their beams are in
-      spin += c.dt * BALL.rps * Math.PI * 2;
+      const st = id ? this.deviceStates[id] : undefined;
+      if (!id || st?.spin !== false) spin += c.dt * BALL.rps * Math.PI * 2;   // its motor: as the mode has it (still: off)
       ball.rotation.z = spin;
       const pos = g.attributes.position as THREE.BufferAttribute, col = g.attributes.color as THREE.BufferAttribute;
       let k = 0;
@@ -1156,8 +1157,11 @@ export class RoomSim {
     const b = airCone(ang, 1); aimZ(b, d); b.position.copy(lensAt); this.built.add(b);
     const cd = new THREE.Vector3(), white = perLumen([255, 250, 240]);
     this.parts.push({ f, update: (c) => {
-      const on = !(this.solo?.has(f.id) && this.editShow === "off");
-      cd.copy(white).multiplyScalar(on ? PINSPOT.cd : 0);
+      const st = this.deviceStates[f.id];
+      const edited = this.solo?.has(f.id) ? this.editShow : null;      // While editing: on / off / as the mode has it
+      const on = edited === "on" ? true : edited === "off" ? false : !!st?.on;
+      const tint = st?.rgb ? perLumen(st.rgb) : white;
+      cd.copy(tint).multiplyScalar(on ? PINSPOT.cd * (st?.level ?? 1) : 0);
       setFace(l, cd, Math.PI * 0.035 ** 2); setCone(b, cd);
       if (on) { this.beamsNow.push({ o: lensAt, d, cd: cd.clone(), half: ang }); c.room.add(cd.clone().multiplyScalar(coneOmega(ang, 1))); }
     } });
@@ -1420,7 +1424,9 @@ export class RoomSim {
   // full, the laser's three diodes), its strobe off; where it points and how it turns are left to the wire. Drawn
   // here only: nothing is sent to a light. The rest go on showing what the preview or the wire says.
   /** This frame's narrow beams (moving heads, pinspots): where from, which way, their candela, their half angle. */
-  private afterParts: Part[] = [];                            // what reads the frame's beams (mirror balls)
+  private afterParts: Part[] = [];
+  /** The remote-worked things as the previewed mode has them, by id (the page's): unknown -> off (a pinspot), still. */
+  deviceStates: Record<string, { on: boolean; spin?: boolean; rgb?: [number, number, number]; level?: number }> = {};                            // what reads the frame's beams (mirror balls)
   private beamsNow: { o: THREE.Vector3; d: THREE.Vector3; cd: THREE.Vector3; half: number }[] = [];
   private hl = new Map<number, number>();                     // DMX slot (0-based) -> the value drawn instead
   private vhl = new Map<number, number>();                    // the same for planned lights' virtual slots

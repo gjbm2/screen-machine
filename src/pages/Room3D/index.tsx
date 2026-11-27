@@ -35,7 +35,7 @@ type NodeStatus = { node?: { udp?: string; universe?: number }; artnet?: { pps?:
  *  ``regions``: the page's own (unsaved) copy of the regions, drawn in place of the room's saved ones. */
 export default function Room3DPage({ embedded = false, picked = null, regions, refresh = 0, editables, selected = null,
   mode, onSelect, onEdit, onDuplicate, panel, frame = 0, feed, toolbar, startNav, liveAim = null, editShow = "on",
-  pointing = false, onPointAt, pointWords, pointThings = true }: {
+  pointing = false, onPointAt, pointWords, pointThings = true, deviceStates }: {
   embedded?: boolean; picked?: string | null; regions?: KeepRegion[];
   /** Bump it to read the room again at once (the page around it has just saved a change). */
   refresh?: number;
@@ -46,6 +46,8 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
    *  ceiling) and hands it to onPointAt (room metres). */
   pointing?: boolean;
   onPointAt?: (at: [number, number, number]) => void;
+  /** The remote-worked things' state as the previewed mode has them (on, spinning, colour, level), by id. */
+  deviceStates?: Record<string, { on: boolean; spin?: boolean; rgb?: [number, number, number]; level?: number }>;
   /** False: the spot clicked, never a thing's middle (putting a new thing down). */
   pointThings?: boolean;
   /** The words over the view while it waits for that click (default: pointing a light). */
@@ -334,7 +336,8 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
     if (ed && ed.selected !== selected) ed.select(selected);
   }, [selected, editables, model]);
   useEffect(() => { simRef.current?.highlight(selected, editShow); }, [selected, model, editShow]);
-  useEffect(() => { if (liveAim) simRef.current?.liveAim(liveAim.id, liveAim.dir); }, [liveAim]);   // what is selected lights up
+  useEffect(() => { if (liveAim) simRef.current?.liveAim(liveAim.id, liveAim.dir); }, [liveAim]);
+  useEffect(() => { if (simRef.current) simRef.current.deviceStates = deviceStates ?? {}; }, [deviceStates]);   // what is selected lights up
   useEffect(() => { if (model) edRef.current?.setRoom(model.size); }, [model]);
   useEffect(() => {
     const it = (editables ?? []).find((x) => x.key === selected);
