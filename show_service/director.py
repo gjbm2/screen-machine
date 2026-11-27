@@ -1486,6 +1486,11 @@ class Director:
             elif mo.get("lull_after_s") is not None:
                 probs.append(f"lights.moments.lull_after_s: {mo.get('lull_after_s')!r} isn't seconds: "
                              f"{MOMENTS_FALLBACK['lull_after_s']:g}")
+            ss = _num(mo.get("screen_share"))             # the screens' scenes tagged for the moment: their share
+            if ss is not None and 0.0 <= ss <= 1.0:
+                self._moments_cfg["screen_share"] = ss
+            elif mo.get("screen_share") is not None:
+                probs.append("lights.moments.screen_share: needs 0..1: none")
             en = mo.get("energy")                         # the most energy the director directs in each moment
             if isinstance(en, dict):
                 self._moments_cfg["energy"] = {k: _c01(float(v)) for k, v in en.items()
@@ -3683,6 +3688,16 @@ class Director:
         cap = _num((self._moments_cfg.get("energy") or {}).get(moment or self._moment))
         return min(e, cap) if cap is not None else e
 
+    def _moment_favour(self) -> Optional[dict]:
+        """The screens' side of a mode's own pre-state: while nothing plays, the renderer's scenes tagged for the
+        moment (a scene's tags ``moments: [waiting]``, within the mode's own pool) take ``lights.moments.screen_share``
+        of its draw (room.direction scene_favour). None in a song, with no share set, or with no feel: with no scene
+        tagged so the renderer just draws at the moment's low energy."""
+        share = _num(self._moments_cfg.get("screen_share"))
+        if self._moment == "song" or not share or self._vibe_name is None:
+            return None
+        return {"tags": [f"moments:{self._moment}"], "share": _c01(share)}
+
     def _direction_now(self, moment: Optional[str] = None) -> Optional[dict]:
         """room.direction as the lights' draws read it: with the moment's energy already in (a moment's first pick
         comes before the direction is next published)."""
@@ -5249,7 +5264,8 @@ class Director:
                           "flow": self._flow,                    # docs/LIGHTS.md §4.1
                           # the song's treatment (README S5.33): the renderer's favoured and rested scene families,
                           # and, while a feel changes the looks, its dwell window (the show decides when)
-                          "scene_favour": (self.treat.plan or {}).get("favour"),
+                          # (while nothing plays: the screens' own scenes for the moment, when any is tagged so)
+                          "scene_favour": self._moment_favour() or (self.treat.plan or {}).get("favour"),
                           "scene_avoid": (self.treat.plan or {}).get("avoid"),
                           "dwell_s": (self._karaoke_dwell(lplan) if lplan is not None
                                       else self._screens_dwell(vs) if feel_on else None),

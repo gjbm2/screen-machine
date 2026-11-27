@@ -1181,8 +1181,9 @@ numeric is a starting point chosen by reasoning and checked only in the simulato
 - **The picture** steers the moving lights' draw (`lights.picture`, `picture.py`).
 - **The room** (docs/LIGHTS.md §3.6a, §3.6b): bars and each fixed light's tilt and turn are settings; a moving
   light's aim steps round keep-out regions.
-- **Not there yet:** the screens can't name a mode's own waiting scene (they follow the low energy and the look
-  change); nothing chooses the screens' scene and the lights' scenes jointly; key changes and last hits have no
+  On the screens, a renderer scene tagged `moments: [waiting]` in the mode's pool takes `lights.moments.screen_share`
+  of the draw (sent as `scene_favour`); none is tagged so yet.
+- **Not there yet:** nothing chooses the screens' scene and the lights' scenes jointly; key changes and last hits have no
   trigger of their own.
 
 ## 9. Outputs

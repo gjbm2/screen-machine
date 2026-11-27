@@ -1080,6 +1080,10 @@ lights:
     # group draw from their own catalogues against it: their low-energy scenes. A mode's own scenes for the moment
     # come first (a light scene's tags.moments with tags.modes: one of the mode's director.light_scenes tags).
     energy: {lead_in: 0.45, waiting: 0.2, lull: 0.1}
+    # The screens' side of a mode's own pre-state: a renderer scene tagged for the moment (its tags: moments:
+    # [waiting]) and in the mode's pool takes this share of the screens' draw while that moment lasts (sent as
+    # room.direction scene_favour). No scene is tagged so yet: until one is, the screens draw their calm scenes.
+    screen_share: 0.8
   # The haze (show_service/atmosphere.py; owner, 26 Nov): the feel says how thick (vibes.yaml haze: off | light |
   # medium | thick; PUT /api/v1/haze for a person's pick until the mode changes), and this holds it from a model of
   # the room's air: its volume (space.yaml room.size) and how fast it clears (space.yaml room.haze_half_life_s: time
