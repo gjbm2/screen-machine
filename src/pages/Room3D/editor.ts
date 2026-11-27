@@ -3,8 +3,10 @@
 // settings need, and the thing itself is a handle:
 //   - a bar:      drag it to slide it across the floor; drag the ring round it to turn it; drag the arrow above it to
 //                 raise or lower it;
-//   - a light:    drag the spot where its beam lands, over the walls, floor and ceiling: it aims there (as lighting
-//                 design tools aim a fixture at a focus point);
+//   - a light:    two handles, each setting one angle only (owner, 27 Nov: "there's no way unambiguously to express
+//                 what direction I want it to point unless you expose angle and elevation as separate controls"): a
+//                 flat ring round it turns its direction (its elevation stays), an upright arc on the side it points
+//                 changes its elevation (its direction stays). Its beam is drawn to where it lands, as a guide only;
 //   - a keep-out box: drag it to slide it across the room; drag the arrow above it to raise or lower it (its size is
 //                 typed in the panel).
 // Hovering anything that can be dragged outlines it. While a drag goes on the thing's outline follows; letting go
@@ -26,10 +28,28 @@ export interface Editable {
   front?: Vec3;             // a light: its bar's front (level unit): tilt and turn are read back against it
 }
 export interface EditChange { at?: Vec3; facing_deg?: number; lean_deg?: number; turn_deg?: number; size?: Vec3 }
-type Handle = "move" | "ring" | "lift" | "aim";
+type Handle = "move" | "ring" | "lift" | "turn" | "tilt";
 
-const CYAN = 0x35e0ff;
+const CYAN = 0x35e0ff, AMBER = 0xffb020;
 const RING_R = 0.75, LIFT_H = 0.55;
+const TURN_R = 0.3, TILT_R = 0.42;          // a light's direction ring and elevation arc (m)
+const D = THREE.MathUtils.radToDeg;
+/** A direction in the room as a heading (radians anticlockwise from east, seen from above) and an elevation
+ *  (radians above level). */
+function angles(d: Vec3, front?: Vec3): { h: number; e: number } {
+  const flat = Math.hypot(d[0], d[1]) < 1e-6;                 // straight up or down: it faces its bar's front
+  return { h: flat && front ? Math.atan2(front[1], front[0]) : Math.atan2(d[1], d[0]), e: Math.asin(Math.max(-1, Math.min(1, d[2]))) };
+}
+function fromAngles(h: number, e: number): Vec3 {
+  return [Math.cos(e) * Math.cos(h), Math.cos(e) * Math.sin(h), Math.sin(e)];
+}
+/** A light's aim as the panel says it: degrees right of its bar's front looking out (- left), degrees above level. */
+export function aimWords(dir: Vec3, front: Vec3 = [1, 0, 0]): { direction: number; elevation: number } {
+  const { h, e } = angles(dir, front);
+  let rel = D(h - Math.atan2(front[1], front[0]));
+  rel = ((rel + 180) % 360 + 360) % 360 - 180;
+  return { direction: Math.round(-rel * 2) / 2 || 0, elevation: Math.round(D(e) * 2) / 2 || 0 };
+}
 const r2 = (x: number) => Math.round(x * 100) / 100;
 
 function mat(color: number, opacity = 1) {
@@ -136,20 +156,45 @@ export class RoomEditor {
       handle(fat, "ring");
     }
     if (it.kind === "light" && it.dir) {
-      // its beam's line, and the spot where it lands: drag the spot to aim it
+      const P = new THREE.Vector3(...it.at);
+      const { h, e } = angles(it.dir, it.front);
+      const hv = new THREE.Vector3(Math.cos(h), Math.sin(h), 0);
+      const up = new THREE.Vector3(0, 0, 1);
+      // its beam, to where it lands: a guide, not a handle
       const spot = this.landing(it.at, it.dir);
-      const beam = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(...it.at), spot]),
-        new THREE.LineDashedMaterial({ color: CYAN, dashSize: 0.08, gapSize: 0.05, depthTest: false, transparent: true }));
+      const beam = new THREE.Line(new THREE.BufferGeometry().setFromPoints([P, spot]),
+        new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 0.08, gapSize: 0.05, depthTest: false, transparent: true, opacity: 0.8 }));
       beam.computeLineDistances();
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.13, 0.012, 8, 40), mat(CYAN, 0.9));
-      ring.position.copy(spot);
-      ring.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), new THREE.Vector3(...it.at).sub(spot).normalize());
-      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.06, 20, 14), mat(CYAN));
+      const dot = new THREE.Mesh(new THREE.SphereGeometry(0.04, 16, 12), mat(0xffffff, 0.9));
       dot.position.copy(spot);
-      const fat = new THREE.Mesh(new THREE.SphereGeometry(0.18, 8, 6), unseen());
-      fat.position.copy(spot);
-      this.ui.add(beam, ring, dot);
-      handle(fat, "aim");
+      this.ui.add(beam, dot);
+      // direction: a flat ring round it, its knob on the side it points
+      const ring = new THREE.Mesh(new THREE.TorusGeometry(TURN_R, 0.009, 8, 96), mat(CYAN, 0.95));
+      ring.position.copy(P);
+      const fatRing = new THREE.Mesh(new THREE.TorusGeometry(TURN_R, 0.05, 6, 48), unseen());
+      fatRing.position.copy(P);
+      const tick = new THREE.Line(new THREE.BufferGeometry().setFromPoints([P, P.clone().addScaledVector(hv, TURN_R)]),
+        new THREE.LineBasicMaterial({ color: CYAN, depthTest: false, transparent: true }));
+      const knobT = new THREE.Mesh(new THREE.SphereGeometry(0.035, 16, 12), mat(CYAN));
+      knobT.position.copy(P).addScaledVector(hv, TURN_R);
+      this.ui.add(ring, tick, knobT);
+      handle(fatRing, "turn");
+      // elevation: an upright half circle from straight down to straight up on that side, its knob where it points
+      const arcPts: THREE.Vector3[] = [];
+      for (let i = 0; i <= 48; i++) {
+        const a = -Math.PI / 2 + (Math.PI * i) / 48;
+        arcPts.push(P.clone().addScaledVector(hv, TILT_R * Math.cos(a)).addScaledVector(up, TILT_R * Math.sin(a)));
+      }
+      const curve = new THREE.CatmullRomCurve3(arcPts);
+      const arc = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, 0.009, 6, false), mat(AMBER, 0.95));
+      const fatArc = new THREE.Mesh(new THREE.TubeGeometry(curve, 24, 0.05, 6, false), unseen());
+      const level = new THREE.Line(new THREE.BufferGeometry().setFromPoints([P, P.clone().addScaledVector(hv, TILT_R)]),
+        new THREE.LineDashedMaterial({ color: AMBER, dashSize: 0.03, gapSize: 0.03, depthTest: false, transparent: true, opacity: 0.6 }));
+      level.computeLineDistances();
+      const knobE = new THREE.Mesh(new THREE.SphereGeometry(0.035, 16, 12), mat(AMBER));
+      knobE.position.copy(P).addScaledVector(hv, TILT_R * Math.cos(e)).addScaledVector(up, TILT_R * Math.sin(e));
+      this.ui.add(arc, level, knobE);
+      handle(fatArc, "tilt");
     }
     this.ui.updateMatrixWorld(true);
   }
@@ -237,6 +282,12 @@ export class RoomEditor {
     } else if (h === "lift") {
       const p = this.liftPoint(r, it.at);
       if (p) ref = p.z;
+    } else if (h === "turn" && it.dir) {
+      const p = new THREE.Vector3();
+      if (r.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), -it.at[2]), p)) ref = Math.atan2(p.y - it.at[1], p.x - it.at[0]);
+    } else if (h === "tilt" && it.dir) {
+      const a = this.tiltAngle(r, it.at, angles(it.dir, it.front).h);
+      if (a !== null) ref = a;
     }
     this.drag = { handle: h, p0, start: { ...it }, ref };
     this.dragging = true;
@@ -251,6 +302,26 @@ export class RoomEditor {
     if (n.lengthSq() < 1e-6) return null;
     const p = new THREE.Vector3();
     return r.intersectPlane(new THREE.Plane().setFromNormalAndCoplanarPoint(n.normalize(), new THREE.Vector3(...at)), p) ? p : null;
+  }
+
+  /** The angle above level of where the cursor's ray meets the upright plane through ``at`` along heading ``h``. */
+  private tiltAngle(r: THREE.Ray, at: Vec3, h: number): number | null {
+    const n = new THREE.Vector3(-Math.sin(h), Math.cos(h), 0);
+    const P = new THREE.Vector3(...at), q = new THREE.Vector3();
+    if (Math.abs(n.dot(r.direction)) < 0.03) return null;           // the arc seen edge on: no sure reading
+    if (!r.intersectPlane(new THREE.Plane().setFromNormalAndCoplanarPoint(n, P), q)) return null;
+    q.sub(P);
+    return Math.atan2(q.z, q.x * Math.cos(h) + q.y * Math.sin(h));
+  }
+
+  /** While a light's handle is dragged: its direction and elevation in words, for the page to show by the cursor. */
+  readout(): string | null {
+    const d = this.drag, it = this.live;
+    if (!d || !it || !it.dir || (d.handle !== "turn" && d.handle !== "tilt")) return null;
+    const w = aimWords(it.dir, it.front);
+    const dirTxt = Math.abs(w.direction) < 0.25 ? "straight ahead" : `${Math.abs(w.direction)}° ${w.direction > 0 ? "right" : "left"}`;
+    const elTxt = Math.abs(w.elevation - 90) < 0.25 ? "straight up" : Math.abs(w.elevation) < 0.25 ? "level" : `${Math.abs(w.elevation)}° ${w.elevation > 0 ? "above" : "below"} level`;
+    return d.handle === "turn" ? `Direction ${dirTxt}` : `Elevation ${elTxt}`;
   }
 
   /** The pointer moves while dragging: the thing's outline and handles follow. */
@@ -275,26 +346,19 @@ export class RoomEditor {
       const p = floorAt(s.at[2]);
       if (!p) return;
       it.yaw = (s.yaw ?? 0) + Math.atan2(p.y - s.at[1], p.x - s.at[0]) - (d.ref ?? 0);
-    } else {
-      // aim: the spot follows the cursor over the room's walls, floor and ceiling; the light points at it
-      let best = Infinity;
-      const hit = new THREE.Vector3();
-      for (let i = 0; i < 3; i++) {
-        const di = r.direction.getComponent(i);
-        if (Math.abs(di) < 1e-9) continue;
-        for (const wall of [0, this.room[i]]) {
-          const t = (wall - r.origin.getComponent(i)) / di;
-          if (t <= 1e-3 || t >= best) continue;
-          const q = r.origin.clone().addScaledVector(r.direction, t);
-          if ([0, 1, 2].every((k) => k === i || (q.getComponent(k) >= -1e-3 && q.getComponent(k) <= this.room[k] + 1e-3))) {
-            best = t;
-            hit.copy(q);
-          }
-        }
-      }
-      if (!Number.isFinite(best)) return;
-      const dir = hit.sub(new THREE.Vector3(...s.at)).normalize();
-      it.dir = [dir.x, dir.y, dir.z];
+    } else if (d.handle === "turn" && s.dir) {
+      // direction only: the cursor's angle round the light on its own level, from where the drag began
+      const p = floorAt(s.at[2]);
+      if (!p || d.ref === undefined) return;
+      const { h, e } = angles(s.dir, s.front);
+      it.dir = fromAngles(h + Math.atan2(p.y - s.at[1], p.x - s.at[0]) - d.ref, e);
+    } else if (d.handle === "tilt" && s.dir) {
+      // elevation only: the cursor's angle on the upright arc, from straight down to straight up
+      const { h, e } = angles(s.dir, s.front);
+      const a = this.tiltAngle(r, s.at, h);
+      if (a === null || d.ref === undefined) return;
+      const lim = THREE.MathUtils.degToRad(89.5);              // never quite vertical: the direction would be lost
+      it.dir = fromAngles(h, Math.max(-lim, Math.min(lim, e + a - d.ref)));
     }
     this.build();
   }

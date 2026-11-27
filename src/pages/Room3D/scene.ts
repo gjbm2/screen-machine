@@ -136,6 +136,8 @@ function dotSprite(): THREE.Texture {
 }
 
 /** The moving heads' shadow maps (their gobos) are redrawn every this many frames. */
+const EYE_M = 1.6;          // where you stand, walking: eye height (m)
+const WALL_GAP = 0.25;      // and how near a wall
 const SHADOW_EVERY = 3;
 
 function hitRoom(o: THREE.Vector3, d: THREE.Vector3, size: Vec3): THREE.Vector3 {
@@ -258,6 +260,15 @@ export class RoomSim {
     oc.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
     oc.addEventListener("start", () => { this.anim = null; this.push.set(0, 0, 0); });   // a hand on the controls stops a glide
     this.controls = oc;
+    oc.enabled = false;                              // walking is the start (setNav)
+    this.walkPointer(o.canvas);
+    const ring = new THREE.Mesh(new THREE.RingGeometry(0.16, 0.2, 40), new THREE.MeshBasicMaterial({ color: 0xffffff,
+      transparent: true, opacity: 0.85, depthTest: false, depthWrite: false, side: THREE.DoubleSide }));
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(0.16, 40), new THREE.MeshBasicMaterial({ color: 0xffffff,
+      transparent: true, opacity: 0.18, depthTest: false, depthWrite: false, side: THREE.DoubleSide }));
+    this.marker.add(ring, disc);
+    this.marker.visible = false;
+    this.keepRoot.add(this.marker);
     o.canvas.addEventListener("wheel", (e) => {      // not passive: the page mustn't scroll under the view
       e.preventDefault();
       const r = o.canvas.getBoundingClientRect();
@@ -304,7 +315,9 @@ export class RoomSim {
     this.post.boxMin.set(-eps, -eps, -Y - eps);
     this.post.boxMax.set(X + eps, H + eps, eps);
     this.light.setRoom(m.size);
-    if (first) this.view("side", true);                          // across the beams: the most readable start
+    if (first) {                                                 // walking: in at the back; orbiting: across the beams
+      if (this.nav === "walk") this.standAt("back", true); else this.view("side", true);
+    }
   }
 
   private clear() {
@@ -836,7 +849,8 @@ export class RoomSim {
     this.last = now;
     this.animStep(dt);
     this.pushStep();
-    this.controls.update();
+    if (this.nav === "walk") this.walkStep(dt);
+    else this.controls.update();
     this.keepCamera();
     if (++this.frameNo % SHADOW_EVERY === 0) this.renderer.shadowMap.needsUpdate = true;
     const m = this.model;
@@ -860,7 +874,7 @@ export class RoomSim {
     this.light.end();
     this.fill.color.setRGB(this.light.fill.x, this.light.fill.y, this.light.fill.z);
     this.post.render(this.scene, this.camera, this.sigma, this.light.mean, dt);
-    if (this.keepBoxes.children.length || this.overlayOn) {   // the setup aids, over the picture
+    if (this.keepBoxes.children.length || this.overlayOn || this.marker.visible) {   // the setup aids, over the picture
       const ac = this.renderer.autoClear;
       this.renderer.autoClear = false;
       this.renderer.setRenderTarget(null);
@@ -996,10 +1010,11 @@ export class RoomSim {
     const th0 = Math.atan2(-wf.x, -wf.z);                      // looking along the front: the camera behind the target
     const r = depth * 0.62;
     const [th, ph] = which === "front" ? [th0, 1.45] : which === "side" ? [th0 + 0.85, 1.15] : [th0, 0.8];
+    this.setNav("orbit", false);
     this.glide(tgt, this.orbitPos(tgt, th, ph, r), now);
   }
-  /** Back to the start (Home, or a double-click on nothing). */
-  home() { this.view("side"); }
+  /** Back to the start (Home, or a double-click on nothing): walking, at the back of the room; orbiting, the side. */
+  home() { if (this.nav === "walk") this.standAt("back"); else this.view("side"); }
 
   /** Frame a place in the room (F, or picking a thing): the camera glides to look at it from the room's middle side,
    *  ``dist`` metres away, so what is being edited is in front of you. */
@@ -1009,6 +1024,7 @@ export class RoomSim {
     const tgt = this.world(p);
     const from = this.world(c.clone().sub(p).setZ(0));
     const th = from.lengthSq() > 1e-6 ? Math.atan2(from.x, from.z) : 0;
+    this.setNav("orbit", false);                              // one thing, looked at from all round it
     this.glide(tgt, this.orbitPos(tgt, th, 1.15, Math.max(0.3, dist)));
   }
   /** What a point of the view (nx, ny: -1..1) lands on in the room: a wall, the floor, a light, a screen. */
@@ -1035,8 +1051,19 @@ export class RoomSim {
     const ray = new THREE.Raycaster();
     ray.setFromCamera(new THREE.Vector2(nx, ny), this.camera);
     const hit = ray.intersectObjects(this.built.children, true).find((h) => (h.object as THREE.Mesh).isMesh && h.object.visible);
-    const far = hit ? hit.distance : this.camera.position.distanceTo(this.controls.target);
     const notch = Math.max(-3, Math.min(3, -delta / 100));               // + in, - out (a mouse notch is about 100)
+    if (this.nav === "walk") {
+      // walking: a step along the floor towards what is under the cursor (or back), at the same height
+      const d = ray.ray.direction.clone().setY(0);
+      if (d.lengthSq() < 1e-6) d.copy(this.lookDir()).setY(0);
+      d.normalize();
+      const flat = hit ? Math.hypot(hit.point.x - this.camera.position.x, hit.point.z - this.camera.position.z) : 4;
+      let st = Math.max(0.25, Math.min(1.2, flat * 0.2)) * notch;
+      if (st > 0) st = Math.min(st, Math.max(0, flat - 0.5));          // stop half a metre short
+      this.push.addScaledVector(d, st);
+      return;
+    }
+    const far = hit ? hit.distance : this.camera.position.distanceTo(this.controls.target);
     let step = far * 0.22 * notch;
     if (step > 0) step = Math.min(step, Math.max(0, far - 0.15));      // stop 15 cm short of the surface
     else step = Math.max(step, -6);
@@ -1049,6 +1076,202 @@ export class RoomSim {
     this.push.sub(v);
     this.camera.position.add(v);
     this.controls.target.add(v);
+  }
+
+  // -- walking (owner, 27 Nov: "mouse just doesn't help me traverse this room in any way I can conventionally relate
+  // to"). The first-person way of moving through a room that Matterport, Street View and Sketchfab's first-person
+  // mode use: you stand at eye height in the room; dragging turns your head where you stand (the room moves with the
+  // pointer, as a photo sphere does); a click on the floor walks you there, on a wall walks you up to it facing it;
+  // the wheel steps you towards what is under the cursor or back; W/S or ↑/↓ walk, A/D step aside, ←/→ turn, Q/E go
+  // lower and higher (Shift: faster); right-drag (or Ctrl / Shift + drag) slides you sideways and up or down. The
+  // camera's pivot is kept a metre ahead of the eye, so the glides, Home and the editing views work unchanged.
+  // Orbiting (round a pivot, three.js's OrbitControls) stays for looking at one thing from all round it.
+  nav: "walk" | "orbit" = "walk";
+  /** An editor handle is being dragged: the camera holds still. */
+  private held = false;
+  hold(on: boolean) { this.held = on; this.controls.enabled = !on && this.nav === "orbit"; }
+  private keys = new Set<string>();
+  private marker = new THREE.Group();
+  private lookDir(): THREE.Vector3 { return this.controls.target.clone().sub(this.camera.position).normalize(); }
+
+  /** Walk or orbit. ``place``: walking from outside the room, go in to stand at its back first. */
+  onNav: (mode: "walk" | "orbit") => void = () => {};
+  setNav(mode: "walk" | "orbit", place = true) {
+    if (mode === this.nav) return;
+    this.nav = mode;
+    this.onNav(mode);
+    this.keys.clear();
+    this.controls.enabled = mode === "orbit" && !this.held;
+    this.marker.visible = false;
+    if (mode === "orbit") {
+      // the pivot goes on what is straight ahead, so orbiting turns round what you were looking at
+      const ray = new THREE.Raycaster(this.camera.position.clone(), this.lookDir());
+      const hit = ray.intersectObjects(this.built.children, true).find((h) => (h.object as THREE.Mesh).isMesh && h.object.visible);
+      this.controls.target.copy(hit ? hit.point : this.camera.position.clone().addScaledVector(this.lookDir(), 3));
+      this.controls.update();
+      return;
+    }
+    const m = this.model;
+    if (!m || !place) return;
+    const p = this.camera.position, [X, Y, H] = m.size;
+    const inside = p.x > 0 && p.x < X && p.z < 0 && p.z > -Y && p.y < H;
+    if (!inside) { this.standAt("back"); return; }
+    // already in the room: down to eye height where you are, looking level the way you were
+    const d = this.lookDir().setY(0);
+    if (d.lengthSq() < 1e-6) d.set(0, 0, -1);
+    const to = new THREE.Vector3(p.x, Math.min(EYE_M, H - 0.2), p.z);
+    this.glide(to.clone().add(d.normalize()), to);
+  }
+
+  /** The places to stand, for the view's list: each at eye height, looking across the room. */
+  standPlaces(): { id: string; label: string }[] {
+    return [{ id: "back", label: "The back of the room, looking forward" }, { id: "front", label: "The front, looking back" },
+      { id: "middle", label: "The middle" }, { id: "back-left", label: "Back left corner" }, { id: "back-right", label: "Back right corner" },
+      { id: "front-left", label: "Front left corner" }, { id: "front-right", label: "Front right corner" }];
+  }
+  standAt(id: string, now = false) {
+    const m = this.model;
+    if (!m) return;
+    this.setNav("walk", false);
+    const [X, Y, H] = m.size;
+    const f = v3(m.frontVec).setZ(0);
+    if (f.lengthSq() < 1e-6) f.set(0, 1, 0);
+    f.normalize();
+    const side = new THREE.Vector3(f.y, -f.x, 0);             // to the right as you look forward
+    const c = new THREE.Vector3(X / 2, Y / 2, 0);
+    const reach = (dir: THREE.Vector3) => {                   // how far from the middle to the wall that way, less a gap
+      let best = Infinity;
+      for (const [i, L] of [[0, X], [1, Y]] as const) {
+        const di = dir.getComponent(i);
+        if (Math.abs(di) > 1e-6) best = Math.min(best, ((di > 0 ? L : 0) - c.getComponent(i)) / di);
+      }
+      return Math.max(0, best - 0.6);
+    };
+    const along = (d: THREE.Vector3) => c.clone().addScaledVector(d, reach(d));
+    const fb = id.startsWith("front") ? 1 : id.startsWith("back") ? -1 : 0;
+    const lr = id.endsWith("left") ? -1 : id.endsWith("right") ? 1 : 0;
+    let at = c.clone();
+    if (fb && lr) at = along(f.clone().multiplyScalar(fb).addScaledVector(side, lr).normalize());
+    else if (fb) at = along(f.clone().multiplyScalar(fb));
+    const look = id === "front" ? f.clone().negate() : fb && lr ? c.clone().sub(at).setZ(0) : f.clone();   // a corner: across the room
+    at.z = Math.min(EYE_M, H - 0.2);
+    const pos = this.world(at), tgt = this.world(at.clone().add(look.normalize()));
+    this.glide(tgt, pos, now, 0.7);
+  }
+
+  /** A click in the view that picked nothing, while walking: walk there (the floor), or up to it (a wall, the
+   *  ceiling, a thing), facing it. False: nothing there. */
+  walkTo(nx: number, ny: number): boolean {
+    const m = this.model;
+    const p = this.surfaceAt(nx, ny);
+    if (!m || !p) return false;
+    const eye = this.camera.position.y;
+    const here = this.camera.position.clone().setY(0);
+    const [X, Y] = m.size;
+    let dest = p.clone().setY(0);
+    let face: THREE.Vector3;
+    if (p.y < 0.05) face = this.lookDir().setY(0);                    // the floor: go there, still looking the same way
+    else {
+      face = p.clone().setY(0).sub(here);
+      const dist = face.length();
+      dest = here.clone().addScaledVector(face.normalize(), Math.max(0, dist - 1.2));   // up to it, a step short
+      face = p.clone().sub(dest.clone().setY(eye));
+    }
+    dest.x = Math.max(WALL_GAP, Math.min(X - WALL_GAP, dest.x));
+    dest.z = Math.max(-Y + WALL_GAP, Math.min(-WALL_GAP, dest.z));
+    dest.y = eye;
+    if (face.lengthSq() < 1e-6) face.copy(this.lookDir());
+    this.glide(dest.clone().add(face.normalize()), dest, false, Math.min(1.1, 0.35 + dest.distanceTo(this.camera.position) * 0.12));
+    this.marker.visible = false;
+    return true;
+  }
+
+  /** While walking, the cursor over the floor shows where a click would take you. */
+  walkHint(nx: number | null, ny = 0) {
+    if (this.nav !== "walk" || nx === null) { this.marker.visible = false; return; }
+    const p = this.surfaceAt(nx, ny);
+    if (!p || p.y > 0.05) { this.marker.visible = false; return; }
+    this.marker.position.set(p.x, -p.z, 0.01);              // the room's frame (x east, y north, z up)
+    this.marker.visible = true;
+  }
+
+  /** A key held while the pointer is over the view (the page sends them): true when walking uses it. */
+  key(code: string, down: boolean): boolean {
+    if (this.nav !== "walk") return false;
+    const used = ["KeyW", "KeyA", "KeyS", "KeyD", "KeyQ", "KeyE", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "ShiftLeft", "ShiftRight"];
+    if (!used.includes(code)) return false;
+    if (down) { this.keys.add(code); this.anim = null; } else this.keys.delete(code);
+    return true;
+  }
+  clearKeys() { this.keys.clear(); }
+
+  /** Turn the head where you stand: ``yaw`` left (+) about the vertical, ``pitch`` up (+), radians. */
+  private turnHead(yaw: number, pitch: number) {
+    const d = this.lookDir();
+    const up = new THREE.Vector3(0, 1, 0);
+    d.applyAxisAngle(up, yaw);
+    const el = Math.asin(Math.max(-1, Math.min(1, d.y)));
+    const lim = THREE.MathUtils.degToRad(85);
+    const e2 = Math.max(-lim, Math.min(lim, el + pitch));
+    const flat = d.clone().setY(0).normalize();
+    d.copy(flat.multiplyScalar(Math.cos(e2))).setY(Math.sin(e2));
+    this.controls.target.copy(this.camera.position).add(d);
+    this.camera.lookAt(this.controls.target);
+  }
+  private walkStep(dt: number) {
+    const k = this.keys;
+    if (k.size) {
+      const fast = k.has("ShiftLeft") || k.has("ShiftRight") ? 2.2 : 1;
+      const fwd = this.lookDir().setY(0);
+      if (fwd.lengthSq() < 1e-6) fwd.set(0, 0, -1);
+      fwd.normalize();
+      const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
+      const v = new THREE.Vector3();
+      if (k.has("KeyW") || k.has("ArrowUp")) v.add(fwd);
+      if (k.has("KeyS") || k.has("ArrowDown")) v.sub(fwd);
+      if (k.has("KeyD")) v.add(right);
+      if (k.has("KeyA")) v.sub(right);
+      if (v.lengthSq() > 0) v.normalize().multiplyScalar(1.6 * fast * dt);
+      if (k.has("KeyE")) v.y += 0.9 * fast * dt;
+      if (k.has("KeyQ")) v.y -= 0.9 * fast * dt;
+      this.camera.position.add(v);
+      this.controls.target.add(v);
+      const turn = (k.has("ArrowLeft") ? 1 : 0) - (k.has("ArrowRight") ? 1 : 0);
+      if (turn) this.turnHead(turn * 1.6 * fast * dt, 0);
+    }
+    this.camera.lookAt(this.controls.target);
+  }
+
+  /** The pointer, while walking: left-drag turns the head (the room follows the pointer); right-drag, or Ctrl / ⌘ /
+   *  Shift + left-drag, slides you sideways and up or down. A press that does not move is a click (the page's). */
+  private walkPointer(el: HTMLCanvasElement) {
+    let drag: { x: number; y: number; slide: boolean; id: number } | null = null;
+    el.addEventListener("pointerdown", (e) => {
+      if (this.nav !== "walk" || this.held || (e.button !== 0 && e.button !== 2)) return;
+      this.anim = null;
+      drag = { x: e.clientX, y: e.clientY, slide: e.button === 2 || e.ctrlKey || e.metaKey || e.shiftKey, id: e.pointerId };
+      try { el.setPointerCapture(e.pointerId); } catch { /* not ours to capture */ }
+    });
+    el.addEventListener("pointermove", (e) => {
+      if (!drag || this.held || e.pointerId !== drag.id) return;
+      const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+      drag.x = e.clientX; drag.y = e.clientY;
+      const perPx = THREE.MathUtils.degToRad(this.camera.fov) / Math.max(1, this.h);   // the room stays under the pointer
+      if (drag.slide) {
+        const fwd = this.lookDir().setY(0).normalize();
+        const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
+        const v = right.multiplyScalar(-dx * 0.006).add(new THREE.Vector3(0, dy * 0.006, 0));
+        this.camera.position.add(v);
+        this.controls.target.add(v);
+      } else this.turnHead(dx * perPx, dy * perPx);
+    });
+    const end = (e: PointerEvent) => {
+      if (!drag || e.pointerId !== drag.id) return;
+      drag = null;
+      try { el.releasePointerCapture(e.pointerId); } catch { /* already gone */ }
+    };
+    el.addEventListener("pointerup", end);
+    el.addEventListener("pointercancel", end);
   }
 
   /** Keep the camera out of the floor always (owner, 27 Nov: "not sure it should be possible for me to move my pov
@@ -1065,7 +1288,11 @@ export class RoomSim {
       v.set(Math.max(lo[0], Math.min(hi[0], v.x)), Math.max(lo[1], Math.min(hi[1], v.y)), Math.max(lo[2], Math.min(hi[2], v.z)));
       if (!was.equals(v)) moved = true;
     };
-    if (this.keepInside) {
+    if (this.nav === "walk") {
+      const was = p.clone();
+      clamp(p, [WALL_GAP, 0.25, -Y + WALL_GAP], [X - WALL_GAP, H - 0.15, -WALL_GAP]);
+      if (moved) { t.add(p.clone().sub(was)); return; }      // the view keeps its direction against a wall
+    } else if (this.keepInside) {
       clamp(p, [e, e, -Y + e], [X - e, H - e, -e]);
       clamp(t, [0, 0, -Y], [X, H, 0]);
     } else {
@@ -1075,10 +1302,13 @@ export class RoomSim {
   }
 
   /** Where the camera is (to come back to after editing). */
-  pose(): { target: THREE.Vector3; pos: THREE.Vector3 } {
-    return { target: this.controls.target.clone(), pos: this.camera.position.clone() };
+  pose(): { target: THREE.Vector3; pos: THREE.Vector3; nav: "walk" | "orbit" } {
+    return { target: this.controls.target.clone(), pos: this.camera.position.clone(), nav: this.nav };
   }
-  restore(p: { target: THREE.Vector3; pos: THREE.Vector3 }) { this.glide(p.target, p.pos); }
+  restore(p: { target: THREE.Vector3; pos: THREE.Vector3; nav?: "walk" | "orbit" }) {
+    if (p.nav) this.setNav(p.nav, false);
+    this.glide(p.target, p.pos);
+  }
 
   dispose() {
     this.controls.dispose();

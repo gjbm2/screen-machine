@@ -74,6 +74,12 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
   const [fps, setFps] = useState(0);
   const [showPaths, setShowPaths] = useState(false);
   const [opts, setOpts] = useState(false);              // the editor header's "more" menu
+  const [nav, setNavState] = useState<"walk" | "orbit">(() => { try { return localStorage.getItem("room3d.nav") === "orbit" ? "orbit" : "walk"; } catch { return "walk"; } });
+  /** Walk or orbit, from the header (remembered); the view also switches by itself to orbit a thing being edited. */
+  const chooseNav = (m: "walk" | "orbit") => {
+    simRef.current?.setNav(m);
+    try { localStorage.setItem("room3d.nav", m); } catch { /* this visit only */ }
+  };
   const [inside, setInside] = useState(() => { try { return localStorage.getItem("room3d.inside") === "1"; } catch { return false; } });
   useEffect(() => {
     if (simRef.current) simRef.current.keepInside = inside;
@@ -91,9 +97,11 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
     const sim = new RoomSim({ canvas, room });
     simRef.current = sim;
     try { sim.keepInside = localStorage.getItem("room3d.inside") === "1"; } catch { /* default: free */ }
+    try { if (localStorage.getItem("room3d.nav") === "orbit") sim.setNav("orbit"); } catch { /* walking */ }
+    sim.onNav = setNavState;
     const ed = new RoomEditor(sim.overlayRoot, sim.overlayScene, sim.camera, canvas);
     ed.onChange = (key, change) => cb.current.onEdit?.(key, change);
-    ed.onDragging = (on) => { sim.controls.enabled = !on; };      // a handle being dragged holds the camera still
+    ed.onDragging = (on) => sim.hold(on);                         // a handle being dragged holds the camera still
     edRef.current = ed;
     const fit = () => sim.resize(host.clientWidth, host.clientHeight);
     const ro = new ResizeObserver(fit);
@@ -234,11 +242,17 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
       if (e.key === "Control" || e.key === "Meta") edRef.current?.setSnap(true);   // snap while a handle is dragged
       if (typing(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
       if (e.key === "Home" && hover.current) { e.preventDefault(); simRef.current?.home(); }
+      else if (hover.current && simRef.current?.key(e.code, true)) e.preventDefault();   // walking: W A S D, arrows, Q E
     };
-    const up = (e: KeyboardEvent) => { if (e.key === "Control" || e.key === "Meta") edRef.current?.setSnap(false); };
+    const up = (e: KeyboardEvent) => {
+      if (e.key === "Control" || e.key === "Meta") edRef.current?.setSnap(false);
+      simRef.current?.key(e.code, false);
+    };
+    const blur = () => simRef.current?.clearKeys();
     window.addEventListener("keydown", down);
     window.addEventListener("keyup", up);
-    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); };
+    window.addEventListener("blur", blur);
+    return () => { window.removeEventListener("keydown", down); window.removeEventListener("keyup", up); window.removeEventListener("blur", blur); };
   }, []);
   const a = nodeSt?.artnet;
   const artLive = a && a.age_s != null && a.age_s < 4;
@@ -257,6 +271,39 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
         aside: "w-[300px] shrink-0 overflow-auto border-l border-[#252a38] bg-[#0b0d13] px-3 py-2 text-[13px]" };
   const pill = T.pill;
   const previewing = !!feed && !feed.live;
+  // How you move round the room: walk (you stand in it) or orbit (round a point), and the places to go to.
+  const dark = !embedded;
+  const seg = (on: boolean) => `h-8 px-3 ${on ? (dark ? "bg-[#2c3346] text-white" : "bg-stone-800 text-white") : dark ? "hover:bg-[#1a1e2a]" : "hover:bg-stone-50"}`;
+  const navControls = (
+    <div className="flex items-center gap-2" data-testid="nav-controls">
+      <div className={`inline-flex overflow-hidden rounded-lg border ${dark ? "border-[#2c3346]" : "border-stone-300"}`} role="group" aria-label="How to move">
+        <button className={seg(nav === "walk")} aria-pressed={nav === "walk"} data-testid="nav-walk" onClick={() => chooseNav("walk")}
+          title="Stand in the room: drag to look round, click the floor to walk there, wheel or W/S to walk, A/D to step aside, Q/E lower/higher">Walk</button>
+        <button className={`${seg(nav === "orbit")} border-l ${dark ? "border-[#2c3346]" : "border-stone-300"}`} aria-pressed={nav === "orbit"} data-testid="nav-orbit" onClick={() => chooseNav("orbit")}
+          title="Turn round a point: drag to orbit, right-drag to pan, wheel to zoom to the cursor">Orbit</button>
+      </div>
+      <select value="" aria-label="Go to" data-testid="go-to"
+        className={`h-8 rounded-lg border px-2 ${dark ? "border-[#2c3346] bg-[#1a1e2a] text-[#e3e6ee]" : "border-stone-300 bg-white text-stone-800"}`}
+        onChange={(e) => {
+          const v = e.target.value, sim = simRef.current;
+          if (!sim || !v) return;
+          if (v.startsWith("orbit:")) sim.view(v.slice(6) as "front" | "side" | "above");
+          else sim.standAt(v);
+        }}>
+        <option value="">Go to…</option>
+        <optgroup label="Stand in the room">
+          {(simRef.current?.standPlaces() ?? []).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+        </optgroup>
+        <optgroup label="Look at the whole room">
+          <option value="orbit:front">From the front</option>
+          <option value="orbit:side">From the side</option>
+          <option value="orbit:above">From above (plan)</option>
+        </optgroup>
+      </select>
+      <button className={`h-8 rounded-lg border px-2.5 ${dark ? "border-[#2c3346]" : "border-stone-300 hover:bg-stone-50"}`} title="Back to the start (Home)" aria-label="Start view"
+        onClick={() => simRef.current?.home()}>⌂</button>
+    </div>
+  );
   return (
     <div className={T.root} style={{ fontSize: 13 }} data-testid="room-sim">
       {embedded ? (
@@ -264,12 +311,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
         <header className={shot ? "hidden" : "flex items-center gap-2 border-b border-stone-200 bg-white px-3 py-2"} data-testid="sim-header">
           {toolbar}
           <span className="flex-1" />
-          <div className="inline-flex overflow-hidden rounded-lg border border-stone-300" role="group" aria-label="View">
-            {(["front", "side", "above"] as const).map((v, i) => (
-              <button key={v} className={`h-8 px-3 capitalize hover:bg-stone-50 ${i ? "border-l border-stone-300" : ""}`} onClick={() => simRef.current?.view(v)}>{v}</button>
-            ))}
-            <button className="h-8 border-l border-stone-300 px-2.5 hover:bg-stone-50" title="Back to the start view (Home)" aria-label="Start view" onClick={() => simRef.current?.home()}>⌂</button>
-          </div>
+          {navControls}
           <div className="relative">
             <button className="h-8 rounded-lg border border-stone-300 px-2.5 hover:bg-stone-50" aria-expanded={opts} aria-label="More" title="Haze, beam paths"
               onClick={() => setOpts((o) => !o)} data-testid="sim-more">⋯</button>
@@ -367,9 +409,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
         <label className={`${pill} cursor-pointer`} title="An aid for aiming, not what the room looks like: draws every beam half-visible whatever the haze.">
           <input type="checkbox" checked={showPaths} onChange={(e) => setShowPaths(e.target.checked)} /> Show beam paths
         </label>
-        {(["front", "side", "above"] as const).map((v) => (
-          <button key={v} className={T.btn} onClick={() => simRef.current?.view(v)}>{v}</button>
-        ))}
+        {navControls}
         {!embedded && <a className={pill} href={`${node}/`} target="_blank" rel="noreferrer">Board</a>}
         {!embedded && <a className={pill} href="/settings/lights?tab=3d">Lights setup</a>}
       </header>
@@ -377,7 +417,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
       <div className="relative flex min-h-0 flex-1">
         <div ref={hostRef} className="relative min-w-0 flex-1"
           onPointerEnter={() => { hover.current = true; }}
-          onPointerLeave={() => { hover.current = false; edRef.current?.clearHover(); setTip(null); }}
+          onPointerLeave={() => { hover.current = false; edRef.current?.clearHover(); simRef.current?.walkHint(null); simRef.current?.clearKeys(); setTip(null); }}
           onContextMenu={(e) => e.preventDefault()}
           onPointerDownCapture={(e) => {
             // before the camera's controls see it: a press on the selected thing or one of its handles is a drag of
@@ -394,37 +434,46 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
             setCursor(e.button === 0 && !(e.shiftKey || e.ctrlKey || e.metaKey) ? "grabbing" : "move");
             setTip(null);
             edRef.current?.clearHover();
+            simRef.current?.walkHint(null);
           }}
           onPointerMove={(e) => {
-            const ed = edRef.current;
-            if (!ed || !ed.active) return;
+            const ed = edRef.current, sim = simRef.current;
             const [x, y] = ndc(e, e.currentTarget);
-            if (ed.dragging) { ed.dragTo(x, y); return; }               // the thing being dragged follows
-            if (drag.current) return;
-            const it = ed.hover(x, y);                                   // over a thing: outline it, name it
             const r = e.currentTarget.getBoundingClientRect();
+            if (ed?.dragging) {                                          // the thing being dragged follows
+              ed.dragTo(x, y);
+              const w = ed.readout();
+              setTip(w ? { x: e.clientX - r.left, y: e.clientY - r.top, text: w } : null);
+              return;
+            }
+            if (drag.current) return;
+            const it = ed && ed.active ? ed.hover(x, y) : null;          // over a thing: outline it, name it
             const tipText = it && it.label ? it.label : null;
             setTip((t) => (tipText ? { x: e.clientX - r.left, y: e.clientY - r.top, text: tipText } : t ? null : t));
-            const c = ed.cursorAt(x, y) ?? "default";
+            sim?.walkHint(it || selected ? null : x, y);                // over the floor, walking: where a click goes
+            const c = (ed && ed.active ? ed.cursorAt(x, y) : null) ?? "default";
             setCursor((was) => (was === c ? was : c));
           }}
           onDoubleClick={(e) => {
             const [x, y] = ndc(e, e.currentTarget), ed = edRef.current;
             const key = ed && ed.active ? ed.pick(x, y) : null;
             if (key) cb.current.onSelect?.(key);                       // a thing: select it (the page frames it)
-            else simRef.current?.goTo(x, y);                           // a wall, the floor: orbit round that spot
+            else if (simRef.current?.nav === "orbit") simRef.current.goTo(x, y);   // orbiting: round that spot
           }}
           onPointerUp={(e) => {
             drag.current = false;
             setCursor("default");
-            if (edRef.current?.dragging) { edRef.current.release(); return; }
-            const ed = edRef.current, p = press.current;
+            const ed = edRef.current, sim = simRef.current, p = press.current;
+            if (ed?.dragging) { ed.release(); setTip(null); return; }
             press.current = null;
-            if (!ed || !ed.active || !p) return;
-            if (ed.justDragged) { ed.justDragged = false; return; }    // the end of a gizmo drag is not a click
+            if (!p) return;
+            if (ed?.justDragged) { ed.justDragged = false; return; }   // the end of a handle drag is not a click
             if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > 4) return;   // the view was turned, nothing was clicked
             const [x, y] = ndc(e, e.currentTarget);
-            cb.current.onSelect?.(ed.pick(x, y));
+            const key = ed && ed.active ? ed.pick(x, y) : null;
+            if (key) { cb.current.onSelect?.(key); return; }           // a thing: edit it
+            if (selected) { cb.current.onSelect?.(null); return; }     // nothing, while editing: back to the room
+            if (sim?.nav === "walk") sim.walkTo(x, y);                 // nothing, walking: walk there
           }}>
           <canvas ref={canvasRef} className="absolute inset-0 block" style={{ cursor }} />
           {embedded && !shot && (
@@ -454,8 +503,12 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
           )}
           <div className={shot ? "hidden" : "pointer-events-none absolute bottom-1.5 left-2.5 right-2.5 text-xs text-[#aab0c0]"}>
             {embedded
-              ? "Drag the room: orbit · right-drag: pan · wheel: zoom to the cursor · click a light or bar: edit it, then drag it, its ring, its arrow or its beam's spot · double-click: focus there"
-              : `drag: orbit · right-drag: pan · wheel: zoom · double-click: focus there · the lights read the Art-Net wire, at their makers' brightness; the picture adapts as an eye does · ${perf}`}
+              ? (selected
+                ? "Editing: drag to look round it · a bar: drag it, its ring to turn it, its arrow to raise it · a light: the blue ring turns it, the amber arc raises or lowers it · click empty space or Esc: back"
+                : nav === "walk"
+                  ? "Walking: drag to look round · click the floor to go there · wheel or W/S: forward / back · A/D: step aside · Q/E: lower / higher · click a light or bar to edit it"
+                  : "Orbiting: drag to turn round · right-drag: pan · wheel: zoom to the cursor · double-click: turn round that spot · click a light or bar to edit it")
+              : `${nav === "walk" ? "drag: look round · click the floor: walk there · wheel / W S: forward, back · A D: aside · Q E: lower, higher" : "drag: orbit · right-drag: pan · wheel: zoom · double-click: focus there"} · the lights read the Art-Net wire, at their makers' brightness; the picture adapts as an eye does · ${perf}`}
           </div>
         </div>
         {embedded && panel ? (

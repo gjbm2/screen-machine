@@ -59,15 +59,50 @@ function barsFrom(s: any): BarBits[] {
       : []);
 }
 
-/** A tilt in words: degrees forward from straight up, said the way you would set it on the bracket. */
-function tiltWords(lean: number): string {
-  if (Math.abs(lean) < 0.05) return "straight up";
-  if (lean < 0) return `${(-lean).toFixed(1)}° back from straight up`;
-  if (lean <= 45) return `${lean.toFixed(1)}° forward of straight up`;
-  if (Math.abs(lean - 90) < 0.05) return "level";
-  return lean < 90 ? `${(90 - lean).toFixed(1)}° above level` : `${(lean - 90).toFixed(1)}° below level`;
+
+// A light's aim as two separate angles (owner, 27 Nov: "expose angle and elevation as separate controls"):
+//   Direction: degrees to the right (+) or left (-) of its bar's front, as you stand behind the bar looking out;
+//   Elevation: degrees above level (+90 straight up, 0 level, - below level).
+// Stored as the setup's lean_deg (forward from straight up) and turn_deg (anticlockwise seen from above): a light
+// pointing more than 90° to a side leans back over its bar instead of being turned round.
+function aimOf(p: { lean_deg: number; turn_deg: number }): { direction: number; elevation: number } {
+  const r = (x: number) => Math.round(x * 2) / 2 || 0;
+  if (p.lean_deg >= 0) return { direction: r(-p.turn_deg), elevation: r(90 - p.lean_deg) };
+  let d = -p.turn_deg + 180;
+  d = ((d + 180) % 360 + 360) % 360 - 180;
+  return { direction: r(d), elevation: r(90 + p.lean_deg) };
 }
-const turnWords = (t: number) => (Math.abs(t) < 0.05 ? "straight ahead" : `${Math.abs(t).toFixed(1)}° to its ${t > 0 ? "right" : "left"}`);
+function leanTurnOf(direction: number, elevation: number): { lean_deg: number; turn_deg: number } {
+  let rel = -direction;
+  rel = ((rel + 180) % 360 + 360) % 360 - 180;
+  const e = Math.max(-90, Math.min(90, elevation));
+  if (Math.abs(rel) <= 90) return { lean_deg: 90 - e, turn_deg: rel };
+  return { lean_deg: -(90 - e), turn_deg: rel - Math.sign(rel) * 180 };
+}
+const directionWords = (d: number) => (Math.abs(d) < 0.25 ? "straight ahead, the way the bar faces" : `${Math.abs(d)}° to the ${d > 0 ? "right" : "left"} of the way the bar faces`);
+const elevationWords = (e: number) => (Math.abs(e - 90) < 0.25 ? "straight up" : Math.abs(e) < 0.25 ? "level"
+  : e > 0 ? `${e}° above level (${90 - e}° from straight up)` : `${-e}° below level`);
+
+/** One angle: a slider for the feel of it, the number for exactness; kept when the slider is let go or the number
+ *  is entered. */
+function Angle({ label, value, min, max, words, disabled, onKeep, testid }: {
+  label: string; value: number; min: number; max: number; words: string; disabled?: boolean; onKeep: (v: number) => void; testid?: string;
+}) {
+  const [v, setV] = useState(value);
+  useEffect(() => setV(value), [value]);
+  const keep = (x: number) => { if (x !== value) onKeep(x); };
+  return (
+    <div className="py-1" data-testid={testid}>
+      <Num label={label} unit="°" step={0.5} value={value} disabled={disabled} onKeep={(x) => onKeep(Math.max(min, Math.min(max, x)))} />
+      <input type="range" min={min} max={max} step={0.5} value={v} disabled={disabled} aria-label={`${label} slider`}
+        onChange={(e) => setV(Number(e.target.value))}
+        onPointerUp={() => keep(v)} onKeyUp={() => keep(v)}
+        className="w-full accent-teal-600" />
+      <div className="flex justify-between text-[11px] text-stone-400"><span>{min}°</span><span>0°</span><span>{max}°</span></div>
+      <div className="text-stone-500">{words}</div>
+    </div>
+  );
+}
 
 /** One number in the inspector: typed, then kept on Enter or on leaving the box. */
 function Num({ label, value, step = 0.05, unit, disabled, onKeep }: {
@@ -416,7 +451,7 @@ export default function RoomTab({ api, space, things, lamps }: PlannedProps & { 
           <Num label="Height of the bar" unit="m" value={bar.at[2]} disabled={busy} onKeep={(v) => void changeBar(bar, { at: [bar.at[0], bar.at[1], v] }, `raise ${bar.label}`)} />
           <Num label="Faces (0 east, 90 north)" unit="°" step={1} value={bar.facing_deg} disabled={busy} onKeep={(v) => void changeBar(bar, { facing_deg: v }, `turn ${bar.label}`)} />
           <H>Lights on it</H>
-          {bar.aims.map((p) => row(`light:${p.id}`, short(p, bar), tiltWords(p.lean_deg)))}
+          {bar.aims.map((p) => row(`light:${p.id}`, short(p, bar), elevationWords(aimOf(p).elevation)))}
         </>
       )}
       {light && (
@@ -429,10 +464,18 @@ export default function RoomTab({ api, space, things, lamps }: PlannedProps & { 
             {light.own && <button className="text-[12px] text-teal-700 hover:underline disabled:opacity-50" disabled={busy}
               onClick={() => void changeLight(light, { lean_deg: null, turn_deg: null }, `put ${light.label} back`)}>Reset to how it ships</button>}
           </div>
-          <Num label="Tilt from straight up" unit="°" step={0.5} value={light.lean_deg} disabled={busy} onKeep={(v) => void changeLight(light, { lean_deg: v }, `tilt ${light.label}`)} />
-          <div className="mb-1 text-right text-stone-500">{tiltWords(light.lean_deg)}</div>
-          <Num label="Turn (+ to its right)" unit="°" step={0.5} value={light.turn_deg} disabled={busy} onKeep={(v) => void changeLight(light, { turn_deg: v }, `turn ${light.label}`)} />
-          <div className="mb-2 text-right text-stone-500">{turnWords(light.turn_deg)}</div>
+          {(() => {
+            const a = aimOf(light);
+            return (
+              <>
+                <Angle label="Direction (+ right, − left)" min={-180} max={180} value={a.direction} words={directionWords(a.direction)} disabled={busy} testid="aim-direction"
+                  onKeep={(v) => void changeLight(light, leanTurnOf(v, a.elevation), `turn ${light.label}`)} />
+                <Angle label="Elevation (+ up, − down)" min={-90} max={90} value={a.elevation} words={elevationWords(a.elevation)} disabled={busy} testid="aim-elevation"
+                  onKeep={(v) => void changeLight(light, leanTurnOf(a.direction, v), `tilt ${light.label}`)} />
+                <div className="mb-2 text-[12px] text-stone-500">In the view: drag the blue ring to turn it, the amber arc to raise or lower it.</div>
+              </>
+            );
+          })()}
           {check && (
             <>
               <H>Its beams and the keep-out regions</H>
@@ -441,7 +484,7 @@ export default function RoomTab({ api, space, things, lamps }: PlannedProps & { 
               )}
               {check.crosses.length > 0 && (check.clear_lean_deg === null ? <div>No tilt clears it: move the region or the bar.</div> : (
                 <button className={`${btn} mt-1`} disabled={busy} onClick={() => void changeLight(light, { lean_deg: check.clear_lean_deg }, `tilt ${light.label} clear`)}>
-                  Tilt it clear ({tiltWords(check.clear_lean_deg)})
+                  Tilt it clear ({elevationWords(aimOf({ lean_deg: check.clear_lean_deg, turn_deg: light.turn_deg }).elevation)})
                 </button>
               ))}
             </>
@@ -537,8 +580,9 @@ export default function RoomTab({ api, space, things, lamps }: PlannedProps & { 
         feed={feed} toolbar={toolbar} />
       <p className="text-[15px] text-muted-foreground">
         Click a light, a bar or a keep-out box to edit it. Then drag it to move it, drag the ring round a bar to turn it,
-        the arrow above it to raise it, or the spot where a light's beam lands to aim the light. ← Room (or Esc) goes back
-        to the whole room; Ctrl+Z undoes. Moving round: drag to orbit, right-drag to pan, the wheel to zoom.
+        the arrow above it to raise it. A light has a blue ring that turns its direction and an amber arc that sets its
+        elevation; both are numbers in the panel too. ← Room (or Esc) goes back to the whole room; Ctrl+Z undoes. Moving
+        round: Walk (drag to look, click the floor to go there, wheel or W/S to walk) or Orbit (drag to turn round a point).
       </p>
       {err && <Notice tone="bad">{err}</Notice>}
       {hasPlanned && (
