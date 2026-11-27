@@ -924,3 +924,25 @@ def test_with_no_lights_block_every_lamp_is_one_group_as_before(tmp_path):
     r.run(1.0)
     progs = last_look(r)["light_programs"]
     assert list(progs) == ["*"] and progs["*"]["scene"] == r.d.light_scene and progs["*"]["label"] == "Other lights"
+
+
+def test_the_real_scenes_use_gobos_with_restraint():
+    """The house style (config/live/light_scenes.yaml's header; owner, 27 Nov: "sensible artistic restraint and coherent
+    execution"): a scene that uses a gobo holds one, by name, and no scene's standing look shakes, scrolls or snaps it;
+    most scenes that move the heads leave the beam open."""
+    import yaml
+    scenes = yaml.safe_load(ls.LIGHT_SCENES_FILE.read_text())["scenes"]
+    with_gobo, movers = [], 0
+    for name, sc in scenes.items():
+        layers = sc.get("layers") or []
+        movers += any(l.get("kind") == "position" for l in layers)
+        gobos = [l for l in layers if l.get("kind") == "gobo"]
+        if not gobos:
+            continue
+        with_gobo.append(name)
+        assert len(gobos) == 1, f"{name}: one gobo layer (the same gobo on every head it is on)"
+        g = gobos[0]
+        assert isinstance(g.get("slot"), str) and g["slot"] != "auto", f"{name}: one gobo, by name"
+        assert not ({"shake", "scroll", "spin", "change", "change_on"} & set(g)), \
+            f"{name}: a scene holds its gobo still for as long as it runs"
+    assert len(with_gobo) <= movers // 2, f"gobos in {len(with_gobo)} of {movers} mover scenes: the open beam is the default"
