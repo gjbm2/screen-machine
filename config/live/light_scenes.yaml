@@ -49,6 +49,8 @@
 #   * Shake, scroll and a lit snap (the gobo layer's shake, scroll, change: live) are accents for a rare moment: no
 #     scene's standing look uses them. show_service/tests/test_light_scenes.py holds this file to these two rules.
 #   * Movement is paced by the music and drawn within what a head can do gracefully (show_service/motion.py).
+# docs/LIGHT_DESIGN_NOTES.md has what working lighting designers say about combining these (researched 27 Nov, with
+# sources): check a new or changed scene against its principles, its section table and its list of anti-patterns.
 
 version: 1
 
