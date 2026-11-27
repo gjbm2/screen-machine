@@ -51,7 +51,7 @@ type LibItem = { id: string; label: string; group: string; what: "bar" | "light"
 /** Other words people use for a thing, so the search finds it by any of them (owner, 27 Nov: "where is glitterball?"). */
 const ALSO: Record<string, string> = {
   "mirror-ball": "glitterball glitter ball disco ball mirrorball", "rf-glitterball": "mirror ball disco ball mirrorball glitter",
-  "rf-pinspot": "pin spot spotlight colour light", screen: "tv television display projector monitor picture",
+  "rf-pinspot": "pin spot pinspot glitter spot glitterspot spotlight colour light mirror ball light", screen: "tv television display projector monitor picture",
   "hue-lamp": "philips hue bulb lamp light", mic: "microphone mike audio sound", "light-sensor": "lux sensor light meter brightness",
   "z-350": "hazer haze fog smoke machine", "gigbar-move": "gigbar bar light bar chauvet",
 };
@@ -631,6 +631,12 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   // the light being edited, in the view: on (bright, the default), off, or as the scene has it (owner, 27 Nov: "i should
   // be able to turn a selected light object on and off etc."); drawn only, never sent
   const [editShow, setEditShow] = useState<"on" | "off" | "show">("on");
+  // "Point at…" (owner, 27 Nov: "when we're pointing lights, we need a 'point at' option and then user can use
+  // crosshairs to click another object or a spot on the wall / floor / ceiling"): the next click in the view aims it
+  const [pointing, setPointing] = useState(false);
+  // a new thing from the library waits to be put where it is clicked (owner, 27 Nov: "you're dropping new items in
+  // the middle of the plan which is a pain ... better to let me place them")
+  const [placing, setPlacing] = useState<LibItem | null>(null);
   // the library (GET /rig/library): what can be added; the rig's rows: which lights are real, where they are patched
   const [lib, setLib] = useState<LibItem[]>([]);
   const [rig, setRig] = useState<RigRow[]>([]);
@@ -655,7 +661,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   // the owner's own scrolling: "scrolling hierarchy jumps up while I'm still scrolling"), and not when it was clicked
   // in the list (it is in view already)
   const fromList = useRef(false);
-  useEffect(() => { editing.current = { key: selected, seq: editing.current.seq + 1 }; setLiveAim(null); setEditShow("on"); }, [selected]);
+  useEffect(() => { editing.current = { key: selected, seq: editing.current.seq + 1 }; setLiveAim(null); setEditShow("on"); setPointing(false); }, [selected]);
   useEffect(() => {
     if (fromList.current) { fromList.current = false; return; }
     if (!selected) return;
@@ -697,6 +703,31 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       () => api.setup(p.id, p.own ? { lean_deg: p.lean_deg, turn_deg: p.turn_deg } : { lean_deg: null, turn_deg: null })), [act, api]);
   const changeRegion = useCallback((r: KeepRegion, over: Partial<KeepRegion>, label: string) =>
     act(label, () => putRegion(r, over), () => putRegion(r, {})), [act, putRegion]);
+  /** Point the selected light at a place in the room: a bar's light by its tilt (and turn, if its bracket turns); a
+   *  light on its own or a pinspot by keeping the place it points at. */
+  const pointAt = (to: Vec3) => {
+    setPointing(false);
+    if (!bits || !selected) return;
+    const k = kindOf(selected), i = idOf(selected);
+    if (k === "light") {
+      const b = bits.bars.find((x) => x.aims.some((p) => p.id === i)), p = b?.aims.find((x) => x.id === i);
+      if (!b || !p?.at) return;
+      const d = [to[0] - p.at[0], to[1] - p.at[1], to[2] - p.at[2]], n = Math.hypot(...d) || 1;
+      const f = b.front, fwd = (d[0] * f[0] + d[1] * f[1]) / n, side = (d[0] * -f[1] + d[1] * f[0]) / n, up = d[2] / n;
+      if (!p.turns) {                                      // a U-bracket: as near as its one axis gets
+        const lean = Math.max(-90, Math.min(180, (Math.atan2(fwd, up) * 180) / Math.PI));
+        void changeLight(p, { lean_deg: Math.round(lean * 2) / 2, turn_deg: null }, `point ${p.label}`);
+      } else {
+        let lean = (Math.acos(Math.max(-1, Math.min(1, up))) * 180) / Math.PI, turn = (Math.atan2(side, fwd) * 180) / Math.PI;
+        if (Math.abs(turn) > 90) { lean = -lean; turn -= Math.sign(turn) * 180; }
+        void changeLight(p, { lean_deg: Math.round(lean * 2) / 2, turn_deg: Math.round(turn * 2) / 2 }, `point ${p.label}`);
+      }
+    } else if (k === "thing" || k === "screen") {
+      const a = bits.room.appliances[i], was = a?.aim ?? null;
+      void act(`point ${placedThings.find((t) => t.id === i)?.label ?? i}`, () => api.place(i, { aim: to }), () => api.place(i, { aim: was }));
+    }
+  };
+
   /** Rename a light, screen or part: its setup's label (the file's stays as it was); undo puts the old name back. */
   const renameLight = (id: string, was: string, to: string) => {
     const a = bits?.room.appliances[id];
@@ -740,7 +771,9 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       const taken = new Set([...rigIds, ...Object.keys(bits.room.appliances), ...bits.bars.map((b) => b.id)]);
       const id = !taken.has(`bar-${letter.toLowerCase()}`) ? `bar-${letter.toLowerCase()}` : freeId(`bar-${letter.toLowerCase()}`).id;
       const depth = Math.abs(fv[0]) * X + Math.abs(fv[1]) * Y;
-      const where: Vec3 = at ?? [r2(X / 2 + fv[0] * (depth / 2 - 0.6)), r2(Y / 2 + fv[1] * (depth / 2 - 0.6)), 2.5];
+      const keepBarZ = extra.keepZ === true;
+      delete extra.keepZ;
+      const where: Vec3 = at ? [r2(at[0]), r2(at[1]), keepBarZ ? r2(at[2]) : 2.5] : [r2(X / 2 + fv[0] * (depth / 2 - 0.6)), r2(Y / 2 + fv[1] * (depth / 2 - 0.6)), 2.5];
       const facing = Math.round((Math.atan2(-fv[1], -fv[0]) * 180) / Math.PI);
       const lab = label ?? `Bar ${letter}`;
       await act(`add ${lab}`, () => api.putBar(id, { at: where, facing_deg: facing, layout: x.id, label: lab, ...extra }), () => api.removeBar(id));
@@ -753,14 +786,19 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
     const plain = x.label.replace(/\s*\([^)]*\)\s*$/, "").trim();                 // "gigbar-par (part, 7 channels)" -> "gigbar-par"
     const lab = label ?? `${plain && plain !== x.id ? plain : nameWords(x.id)} ${n}`;
     let body: Record<string, unknown>;
+    const keepZ = extra.keepZ === true;
+    delete extra.keepZ;
     if (x.what === "device" && x.id === "screen") {
-      const w = snapToWall(bits.size, ...frontMiddle(bits.size, bits.room.front));
-      body = { at: at ?? [w.x, w.y, 1.6], plane: { normal: w.normal, up: [0, 0, 1], size: [1.2, 0.68] } };
+      // on the wall nearest the click, at the height clicked (a wall), else 1.6 m
+      const w = at ? snapToWall(bits.size, at[0], at[1]) : snapToWall(bits.size, ...frontMiddle(bits.size, bits.room.front));
+      const z = at && at[2] > 0.3 && at[2] < Z - 0.3 ? r2(at[2]) : 1.6;
+      body = { at: [w.x, w.y, z], plane: { normal: w.normal, up: [0, 0, 1], size: [1.2, 0.68] } };
     } else {
       const z = x.id === "mic" ? 1.5 : x.id === "light-sensor" ? Z - 0.02 : x.id === "mirror-ball" || /glitter|mirror/.test(x.id) ? Z - 0.6
         : x.id.startsWith("rf-") ? Z - 0.3
         : x.id === "hue-lamp" ? Z - 0.1 : /hazer|z-350/.test(x.id) ? 0.2 : 2.2;
-      body = { at: at ?? [mid[0], mid[1], r2(z)] };
+      // where it was clicked, at the height its kind sits at (a copy: the height it was dropped at)
+      body = { at: at ? [r2(at[0]), r2(at[1]), keepZ ? r2(at[2]) : r2(z)] : [mid[0], mid[1], r2(z)] };
     }
     await act(`add ${lab}`, () => api.place(id, { ...body, kind: x.id, label: lab, ...extra }), () => api.unplace(id));
     setSelected(`${x.id === "screen" ? "screen" : "thing"}:${id}`); setFrame((k) => k + 1);
@@ -771,13 +809,13 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
     const k = kindOf(key), i = idOf(key);
     if (k === "bar") {
       const b = bits.bars.find((x) => x.id === i), lay = b?.layout ?? lib.find((x) => x.what === "bar")?.id;
-      if (b && lay) void addThing({ id: lay, label: "", group: "", what: "bar" }, [r2(at[0]), r2(at[1]), b.at[2]], { facing_deg: b.facing_deg }, `${b.label} copy`);
+      if (b && lay) void addThing({ id: lay, label: "", group: "", what: "bar" }, [r2(at[0]), r2(at[1]), b.at[2]], { facing_deg: b.facing_deg, keepZ: true }, `${b.label} copy`);
     } else if (k === "thing" || k === "screen") {
       const a = bits.room.appliances[i], t = placedThings.find((x) => x.id === i);
       const typeId = a?.kind ?? rig.find((r) => r.id === i)?.type ?? null;
       if (!typeId || !t) return;
       const what = DEVICES.has(typeId) || typeId.startsWith("rf-") ? "device" : "light";
-      void addThing({ id: typeId, label: t.label, group: "", what }, at.map(r2) as Vec3, a?.plane?.normal ? { plane: placedBody(a).plane } : {}, `${t.label} copy`);
+      void addThing({ id: typeId, label: t.label, group: "", what }, at.map(r2) as Vec3, { ...(a?.plane?.normal ? { plane: placedBody(a).plane } : {}), keepZ: true }, `${t.label} copy`);
     } else if (k === "place") {
       const p = bits.room.points.find((x) => x.name === i);
       if (!p) return;
@@ -926,6 +964,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
       const want = ({ w: "translate", e: "rotate", r: "scale" } as Record<string, GizmoMode>)[e.key.toLowerCase()];
       if (e.key === "Escape") {                    // up one level: a light to its bar, anything else to the room
+        if (pointing || placing) { setPointing(false); setPlacing(null); return; }
         if (treeOpen) { setTreeOpen(false); return; }
         const up = kindOf(selected) === "light" || kindOf(selected) === "part"
           ? bits?.bars.find((b) => b.editable && b.parts.some((p) => p.id === idOf(selected))) : undefined;
@@ -940,7 +979,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selected, bits, act, api, putRegion, treeOpen]);
+  }, [selected, bits, act, api, putRegion, treeOpen, pointing, placing]);
 
   const hasPlanned = Object.values(space.space?.appliances ?? {}).some((a) => !!a.kind);
   if (planned) {
@@ -1097,7 +1136,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
         </div>
       )}
       <div className={selected ? "min-h-0 flex-1 overflow-auto" : "shrink-0 border-t border-stone-200 pt-2"}>
-      {(bar || light || part || (thing && (thing.typeId || rig.some((r) => r.id === thing.id && r.node_ip)))) && (
+      {(bar || light || part || (thing && (thing.typeId || rig.some((r) => r.id === thing.id && r.node_ip) || /pinspot/.test(thing.dev ?? "")))) && (
         <div className="mb-2 flex items-center gap-1.5" data-testid="edit-show">
           <div className="inline-flex overflow-hidden rounded-lg border border-stone-300" role="group" aria-label="In the view">
             {([["on", "On", "Lit bright while you edit it"], ["off", "Off", "Dark, to see the room without it"], ["show", "As the scene", "As the preview's scene has it"]] as const).map(([v, w, t], i) => (
@@ -1105,6 +1144,10 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
                 className={`h-7 px-2 text-[12px] ${i ? "border-l border-stone-300" : ""} ${editShow === v ? "bg-teal-600 text-white" : "bg-white hover:bg-stone-50"}`}>{w}</button>
             ))}
           </div>
+          {(light || (thing && !thing.dev && (thing.typeId || rig.some((r) => r.id === thing.id && r.node_ip))) || (thing?.dev && /pinspot/.test(thing.dev))) && (
+            <button className={`${btn} h-7 px-2 py-0 text-[12px] ${pointing ? "border-teal-600 bg-teal-50 text-teal-800" : ""}`} data-testid="point-at"
+              title="Click a thing, or a spot on a wall, the floor or the ceiling, in the view: it points there" onClick={() => setPointing((x) => !x)}>⌖ Point at…</button>
+          )}
           {(() => {
             const rid = light?.id ?? part?.id ?? thing?.id ?? null;
             const real = rid && rig.some((r) => r.id === rid && r.node_ip);
@@ -1438,8 +1481,11 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   return (
     <div className="space-y-3" data-testid="room-tab">
       {adding && <AddPicker items={lib} anchor={addAnchor.current} onClose={() => setAdding(false)}
-        onPick={(x) => { setAdding(false); void addThing(x); }} />}
-      <Room3DPage embedded refresh={refresh} liveAim={liveAim} editShow={editShow} editables={editables} selected={selected} mode={mode} picked={region?.name ?? null} startNav={plan ? "plan" : undefined}
+        onPick={(x) => { setAdding(false); setPointing(false); setPlacing(x); }} />}
+      <Room3DPage embedded refresh={refresh} liveAim={liveAim} editShow={editShow} pointing={pointing || !!placing}
+        pointWords={placing ? `Click where ${libName(placing)} goes · Esc: cancel` : undefined}
+        pointThings={!placing}
+        onPointAt={(to) => { if (placing) { const x = placing; setPlacing(null); void addThing(x, to); } else pointAt(to); }} editables={editables} selected={selected} mode={mode} picked={region?.name ?? null} startNav={plan ? "plan" : undefined}
         onSelect={(k) => { select(k); if (k) setFrame((n) => n + 1); }} onEdit={onEdit} onDuplicate={duplicate} panel={panel} frame={frame}
         feed={feed} toolbar={toolbar} />
       <p className="text-[15px] text-muted-foreground">

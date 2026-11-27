@@ -1139,12 +1139,12 @@ class Store:
         return self._view
 
     def set_appliance(self, aid: str, *, at: Any = ..., mount: Any = ..., plane: Any = ..., kind: Any = ...,
-                      label: Any = ..., connect: Any = ...) -> dict:
+                      label: Any = ..., connect: Any = ..., aim: Any = ...) -> dict:
         """Place an appliance (a fixture id, or a room device): a key left out is unchanged, a key given as None
         clears it. Its taught places and pose stay. Returns its entry in the new view."""
         aid = _check_id(aid, "light or device")
         given = {k: v for k, v in (("at", at), ("mount", mount), ("plane", plane), ("kind", kind), ("label", label),
-                                   ("connect", connect)) if v is not ...}
+                                   ("connect", connect), ("aim", aim)) if v is not ...}
         val = {k: (None if v is None else _one(lambda p, k=k, v=v: _place_value(k, v, f"{aid} {k}", p), k))
                for k, v in given.items()}
 

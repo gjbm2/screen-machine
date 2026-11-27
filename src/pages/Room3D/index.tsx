@@ -34,13 +34,22 @@ type NodeStatus = { node?: { udp?: string; universe?: number }; artnet?: { pps?:
  *  its box and leaves the readout to the page around it. ``picked``: the keep-out region being edited there;
  *  ``regions``: the page's own (unsaved) copy of the regions, drawn in place of the room's saved ones. */
 export default function Room3DPage({ embedded = false, picked = null, regions, refresh = 0, editables, selected = null,
-  mode, onSelect, onEdit, onDuplicate, panel, frame = 0, feed, toolbar, startNav, liveAim = null, editShow = "on" }: {
+  mode, onSelect, onEdit, onDuplicate, panel, frame = 0, feed, toolbar, startNav, liveAim = null, editShow = "on",
+  pointing = false, onPointAt, pointWords, pointThings = true }: {
   embedded?: boolean; picked?: string | null; regions?: KeepRegion[];
   /** Bump it to read the room again at once (the page around it has just saved a change). */
   refresh?: number;
   /** The editor (editor.ts): the things that can be clicked and moved, which one is selected, the gizmo's mode, and
    *  what the page does when one is picked or changed. ``panel``: the page's inspector, shown beside the view. */
   editables?: Editable[]; selected?: string | null; mode?: GizmoMode;
+  /** "Point at…": the next click in the view picks a place (a thing's middle, or the spot on a wall, the floor, the
+   *  ceiling) and hands it to onPointAt (room metres). */
+  pointing?: boolean;
+  onPointAt?: (at: [number, number, number]) => void;
+  /** False: the spot clicked, never a thing's middle (putting a new thing down). */
+  pointThings?: boolean;
+  /** The words over the view while it waits for that click (default: pointing a light). */
+  pointWords?: string;
   /** How the selected light is drawn: on (bright), off, or as the scene has it. */
   editShow?: "on" | "off" | "show";
   /** A light being aimed from the panel (a slider moving): drawn that way at once. */
@@ -64,9 +73,9 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
   itemsRef.current = editables ?? [];
   const selRef = useRef<string | null>(null);
   selRef.current = selected;
-  const cb = useRef({ onSelect, onEdit, onDuplicate });
+  const cb = useRef({ onSelect, onEdit, onDuplicate, onPointAt, pointing, pointThings });
   const fromView = useRef(false);                                 // the last selection was made in the view
-  cb.current = { onSelect, onEdit, onDuplicate };
+  cb.current = { onSelect, onEdit, onDuplicate, onPointAt, pointing, pointThings };
   const press = useRef<{ x: number; y: number } | null>(null);
   const room = useMemo(() => resolveRoomUrl(window.location.search), []);
   const nodeParam = useMemo(() => (new URLSearchParams(window.location.search).get("node") || NODE_DEFAULT).replace(/\/+$/, ""), []);
@@ -631,6 +640,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
           onContextMenu={(e) => e.preventDefault()}
           onPointerDownCapture={(e) => {
             if ((e.target as HTMLElement).dataset?.key) return;          // a name label: its own click selects
+            if (cb.current.pointing) return;                             // pointing: a click picks a place, it grabs nothing
             // before the camera's controls see it: a press on the selected thing or one of its handles is a drag of
             // that thing (the camera holds still: onDragging), anything else is the camera's
             const ed = edRef.current;
@@ -685,6 +695,13 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
             if (ed?.justDragged) { ed.justDragged = false; return; }   // the end of a handle drag is not a click
             if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > 4) return;   // the view was turned, nothing was clicked
             const [x, y] = ndc(e, e.currentTarget);
+            if (cb.current.pointing) {                                 // "Point at…": a thing's middle, else the spot hit
+              const k = cb.current.pointThings && ed && ed.active ? ed.pick(x, y, true) : null;
+              const it = k ? (editables ?? []).find((q) => q.key === k && q.key !== selected) : undefined;
+              const p3 = it ? it.at : (() => { const w = sim?.surfaceAt(x, y); return w ? [w.x, -w.z, w.y] as [number, number, number] : null; })();
+              if (p3) cb.current.onPointAt?.([Math.round(p3[0] * 100) / 100, Math.round(p3[1] * 100) / 100, Math.round(p3[2] * 100) / 100]);
+              return;
+            }
             const key = ed && ed.active ? ed.pick(x, y) : null;
             if (key) {                                                 // a thing: edit it
               fromView.current = true; cb.current.onSelect?.(key);
@@ -696,7 +713,12 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
             if (selected) { cb.current.onSelect?.(null); return; }     // nothing, while editing: back to the room
             if (sim?.nav === "walk") sim.walkTo(x, y);                 // nothing, walking: walk there
           }}>
-          <canvas ref={canvasRef} className="absolute inset-0 block" style={{ cursor }} />
+          <canvas ref={canvasRef} className="absolute inset-0 block" style={{ cursor: pointing ? "crosshair" : cursor }} />
+          {pointing && (
+            <div className="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-lg bg-teal-700/95 px-3 py-1.5 text-[13px] text-white shadow" data-testid="pointing">
+              {pointWords ?? "Point at: click a thing, or a spot on a wall, the floor or the ceiling · Esc: cancel"}
+            </div>
+          )}
           <div ref={namesRef} className="pointer-events-none absolute inset-0 overflow-hidden" data-testid="plan-names" />
           {embedded && !shot && (
             <div className="absolute left-2.5 top-2 z-10" data-testid="sim-back">

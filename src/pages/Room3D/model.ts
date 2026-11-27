@@ -212,7 +212,7 @@ export async function loadRoom(room: string): Promise<RoomModel> {
     const pose = a?.pose && isVec3(a.pose.at) && isVec3(a.pose.rot) ? (a.pose as Pose) : null;
     return { id, label, kind: "lamp", driver: null, part: partOf(t.file, t.mode, typeId), universe: null, address,
       panRange: t.physical?.pan_deg ?? 540, tiltRange: t.physical?.tilt_deg ?? 270, screen: null, lastRgb: null,
-      at: isVec3(a?.at) ? a.at : pose ? pose.at : null, pose, plane: null, aimDir: dirOnBar({ id, setup: {} }), aim: null,
+      at: isVec3(a?.at) ? a.at : pose ? pose.at : null, pose, plane: null, aimDir: dirOnBar({ id, setup: {} }), aim: isVec3(a?.aim) ? a.aim : null,
       bar: barId, planned: true, device: null, connect: null };
   };
   const layouts: Record<string, any> = space?.layouts ?? {};
@@ -236,7 +236,7 @@ export async function loadRoom(room: string): Promise<RoomModel> {
     const pl = a.plane && isVec3(a.plane.normal) && isVec3(a.plane.up) && Array.isArray(a.plane.size) ? a.plane : null;
     fixtures.push({ id, label, kind: a.kind === "screen" ? "screen" : "device", driver: null, part: null, universe: null,
       address: null, panRange: 0, tiltRange: 0, screen: null, lastRgb: null, at: a.at, pose: null,
-      plane: pl ? { normal: pl.normal, up: pl.up, size: [pl.size[0], pl.size[1]] } : null, aimDir: null, aim: null, bar: id,
+      plane: pl ? { normal: pl.normal, up: pl.up, size: [pl.size[0], pl.size[1]] } : null, aimDir: null, aim: isVec3(a.aim) ? a.aim : null, bar: id,
       planned: !a.connect, device: a.kind, connect: typeof a.connect === "string" ? a.connect : null });
   }
   const points: Point[] = Object.entries(space?.points ?? {}).flatMap(([name, p]: [string, any]) =>

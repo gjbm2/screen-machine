@@ -151,6 +151,11 @@ export type Elev = "front" | "back" | "left" | "right";
 const FLAT_FOV_DEG = 3;     // the plan's and elevations' long lens: as good as no perspective
 const EYE_M = 1.6;          // where you stand, walking: eye height (m)
 const WALL_GAP = 0.25;      // and how near a wall
+/** A mirror ball: radius (m), facets drawn, turns a second, the share of light its mirrors throw back, a facet's size
+ *  and how much a spot spreads per metre (ESTIMATES: a 40 cm ball on a slow motor). */
+const BALL = { r: 0.2, facets: 220, rps: 0.1, reflect: 0.8, facet_m: 0.02, spread: 0.008, dot_m: 0.06 };
+/** A pinspot (ESTIMATE: a 10 W LED in a 6-degree lens): its beam and on-axis candela. */
+const PINSPOT = { beam_deg: 6, cd: 3000 };
 /** Editing a light: how bright the others are drawn (their level channels x this). */
 const SOLO_DIM = 0.12;
 /** A level channel of a light that is not being edited, drawn dimmed: a par's and a derby's colours, the strobe LEDs, a
@@ -355,6 +360,7 @@ export class RoomSim {
     for (const s of this.screens.values()) s.feed.close();
     this.screens.clear();
     this.parts = [];
+    this.afterParts = [];
     this.housings.clear();
     this.root.remove(this.built);
     this.built.traverse((o) => {
@@ -887,6 +893,7 @@ export class RoomSim {
         this.root.worldToLocal(d.set(0, 0, 1.08).applyMatrix4(head.matrixWorld)).sub(o).normalize();
         lm.copy(cd).multiplyScalar(omega * GOBO_OPEN[g]);
         c.room.add(lm, this.setPool(pool, o, d, lm, c.size));
+        if (cd.lengthSq() > 1e-6) this.beamsNow.push({ o: o.clone(), d: d.clone(), cd: cd.clone(), half: ang });
       },
       words: (c) => {
         const dim = c.ch(f, 7), sh = spotShutter(c.ch(f, 8));
@@ -1000,7 +1007,7 @@ export class RoomSim {
         aimY(foot, up); foot.position.set(at.x, at.y, 0.01); this.built.add(foot);
       }
     }
-    const dir = this.fixedDir(f, front, axis, 0, 0.35);
+    const dir = f.aim ? v3(f.aim).sub(at).normalize() : this.fixedDir(f, front, axis, 0, 0.35);   // its point, if given one
     if (f.part === "par") this.parts.push(this.par(f, at.clone().addScaledVector(dir, 0.04), dir));
     else if (f.part === "derby") this.parts.push(this.derby(f, at.clone().addScaledVector(dir, 0.05), dir, axis));
     else if (f.part === "spot") this.parts.push(this.spot(f, front));
@@ -1050,6 +1057,7 @@ export class RoomSim {
       }
       default:
         if (/glitter|mirror/.test(f.device ?? "")) { this.buildBall(at); break; }      // a remote-worked mirror ball
+        if (/pinspot/.test(f.device ?? "") && this.model) { this.buildPinspot(f, this.model); break; }
         if ((f.device ?? "").startsWith("rf-")) {                                       // another remote-worked thing
           const can = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.12, 16), darker);
           aimY(can, up); can.position.copy(at); this.built.add(can);
@@ -1058,11 +1066,101 @@ export class RoomSim {
     }
   }
 
+  // A mirror ball (owner, 27 Nov: "your simulation needs to accommodate them if pointed at a glitterball (and other
+  // things) ... does it?"): it turns, and every narrow beam that lands on it this frame (a pinspot, a moving head) is
+  // thrown back off its facets as spots on the walls, ceiling and floor, each spot as bright as its share of the light
+  // the ball catches (the ball's cross-section seen from the light, BALL.reflect of it back, among the facets facing
+  // the light), turning with the ball.
   private buildBall(at: THREE.Vector3) {
-    const ball = new THREE.Mesh(new THREE.SphereGeometry(0.2, 24, 16),
+    const ball = new THREE.Mesh(new THREE.SphereGeometry(BALL.r, 24, 16),
       new THREE.MeshStandardMaterial({ color: 0xcfd4dc, metalness: 1, roughness: 0.15, flatShading: true }));
     ball.position.copy(at); this.built.add(ball);
-    this.parts.push({ f: { id: "mirror_ball" } as Fixture, update: (c) => { ball.rotation.z += c.dt * 0.6; } });
+    const K = BALL.facets, normals: THREE.Vector3[] = [];
+    for (let i = 0; i < K; i++) {                          // facets spread evenly over the ball (a Fibonacci sphere)
+      const z = 1 - (2 * (i + 0.5)) / K, r = Math.sqrt(1 - z * z), a = i * Math.PI * (3 - Math.sqrt(5));
+      normals.push(new THREE.Vector3(Math.cos(a) * r, Math.sin(a) * r, z));
+    }
+    const MAXB = 6, n = K * MAXB;
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    g.setAttribute("color", new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    const dots = new THREE.Points(g, new THREE.PointsMaterial({ size: BALL.dot_m, map: dotSprite(), vertexColors: true,
+      blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, sizeAttenuation: true }));
+    dots.frustumCulled = false; this.built.add(dots);
+    const nr = new THREE.Vector3(), rd = new THREE.Vector3(), hit = new THREE.Vector3(), hn = new THREE.Vector3(), din = new THREE.Vector3();
+    const toBall = new THREE.Vector3(), lm = new THREE.Vector3();
+    let spin = 0;
+    this.afterParts.push({ f: { id: "mirror_ball" } as Fixture, update: (c) => {   // after every light: their beams are in
+      spin += c.dt * BALL.rps * Math.PI * 2;
+      ball.rotation.z = spin;
+      const pos = g.attributes.position as THREE.BufferAttribute, col = g.attributes.color as THREE.BufferAttribute;
+      let k = 0;
+      const cos = Math.cos(spin), sin = Math.sin(spin);
+      for (const b of this.beamsNow.slice(0, MAXB)) {
+        toBall.copy(at).sub(b.o);
+        const D = toBall.length();
+        if (D < BALL.r * 1.5) continue;
+        const along = toBall.dot(b.d);
+        if (along <= 0) continue;
+        const miss = Math.sqrt(Math.max(0, D * D - along * along));         // how far the beam's axis passes from it
+        if (miss > BALL.r + along * Math.tan(b.half)) continue;              // the ball isn't in this beam
+        din.copy(toBall).normalize();
+        // the light the ball catches: the beam's candela x the ball's solid angle seen from the light
+        const omega = (Math.PI * BALL.r * BALL.r) / (D * D);
+        lm.copy(b.cd).multiplyScalar(omega * BALL.reflect);
+        c.room.add(lm);
+        let facing = 0;
+        for (const n0 of normals) if (-(n0.x * cos - n0.y * sin) * din.x - (n0.x * sin + n0.y * cos) * din.y - n0.z * din.z > 0) facing++;
+        if (!facing) continue;
+        const per = lm.clone().multiplyScalar(1 / facing);                   // each facing facet's share (lumens)
+        for (const n0 of normals) {
+          nr.set(n0.x * cos - n0.y * sin, n0.x * sin + n0.y * cos, n0.z);
+          const dn = din.dot(nr);
+          if (dn >= 0) continue;                                             // facing away from the light
+          rd.copy(din).addScaledVector(nr, -2 * dn);                         // the reflection
+          const rho = hitFace(at.clone().addScaledVector(nr, BALL.r), rd, c.size, hit, hn);
+          const L = hit.distanceTo(at), rad = BALL.facet_m + L * BALL.spread;
+          const lum = (rho / Math.PI) / (Math.PI * rad * rad);              // cd/m2 per lumen landing there
+          pos.setXYZ(k, hit.x + hn.x * 0.005, hit.y + hn.y * 0.005, hit.z + hn.z * 0.005);
+          col.setXYZ(k, per.x * lum, per.y * lum, per.z * lum);
+          k++;
+        }
+      }
+      g.setDrawRange(0, k);
+      dots.visible = k > 0;
+      pos.needsUpdate = true; col.needsUpdate = true;
+    } });
+  }
+
+  /** A pinspot ("glitter spot"): a small can throwing a narrow white beam at what it points at (its aim, else the
+   *  nearest mirror ball). No wire tells its state (a radio remote works it): drawn on, unless it is being edited Off. */
+  private buildPinspot(f: Fixture, m: RoomModel) {
+    const at = v3(f.at!);
+    const ball = m.fixtures.find((x) => /mirror|glitter/.test(x.device ?? "") && x.at);
+    const pt = m.points.find((p) => p.device === "mirror_ball");
+    const tgt = f.aim ? v3(f.aim) : ball ? v3(ball.at!) : pt ? v3(pt.at) : v3(m.centre);
+    const d = tgt.clone().sub(at);
+    if (d.lengthSq() < 1e-6) d.set(0, 0, -1);
+    d.normalize();
+    // a can about the size of a real one (10 cm across, 16 long), on a bracket up to the ceiling (or down to the floor)
+    const can = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.06, 0.16, 20), darker);
+    aimY(can, d); can.position.copy(at).addScaledVector(d, -0.05); this.built.add(can);
+    const H = m.size[2], up = at.z > H / 2;
+    const rodLen = Math.max(0.03, up ? H - at.z : at.z);
+    const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, rodLen, 8), dark);
+    rod.position.set(at.x, at.y, up ? at.z + rodLen / 2 : rodLen / 2); rod.rotation.x = Math.PI / 2; this.built.add(rod);
+    const plate = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.01, 16), dark);
+    plate.position.set(at.x, at.y, up ? H - 0.005 : 0.005); plate.rotation.x = Math.PI / 2; this.built.add(plate);
+    const ang = rad(PINSPOT.beam_deg / 2), lensAt = at.clone().addScaledVector(d, 0.03);
+    const l = face(new THREE.CircleGeometry(0.035, 20), PINSPOT.beam_deg / 2, 30); aimZ(l, d); l.position.copy(lensAt); this.built.add(l);
+    const b = airCone(ang, 1); aimZ(b, d); b.position.copy(lensAt); this.built.add(b);
+    const cd = new THREE.Vector3(), white = perLumen([255, 250, 240]);
+    this.parts.push({ f, update: (c) => {
+      const on = !(this.solo?.has(f.id) && this.editShow === "off");
+      cd.copy(white).multiplyScalar(on ? PINSPOT.cd : 0);
+      setFace(l, cd, Math.PI * 0.035 ** 2); setCone(b, cd);
+      if (on) { this.beamsNow.push({ o: lensAt, d, cd: cd.clone(), half: ang }); c.room.add(cd.clone().multiplyScalar(coneOmega(ang, 1))); }
+    } });
   }
 
   // -- each frame --------------------------------------------------------------------------------------------------
@@ -1081,10 +1179,13 @@ export class RoomSim {
     if (!m) return;
     // "Show beam paths" (an aid): every beam is drawn as in a medium haze that takes nothing out of the light
     const sig = this.flat ? 0 : this.sigma;                     // a plan or an elevation is a drawing: no air in it
-    const air = this.showPaths || sig > 1e-4;
+    // editing a light: its beam's path shows whatever the haze (owner, 27 Nov: "when I'm pointing a pinspot and/or
+    // editing it, why can't I see its haze cone"); the others are dimmed then, so theirs hardly show
+    const paths = this.showPaths || !!this.solo;
+    const air = paths || sig > 1e-4;
     beamShared.on.value = air;
-    beamShared.scatter.value = this.showPaths ? Math.max(sig, 0.3) : sig;
-    beamShared.sigma.value = this.showPaths ? 0 : sig;
+    beamShared.scatter.value = paths ? Math.max(sig, 0.3) : sig;
+    beamShared.sigma.value = paths ? 0 : sig;
     const hl = this.hl, vhl = this.vhl, solo = this.solo;
     const ch = (f: Fixture, i: number) => {
       const v = this.chRaw(f, i, hl, vhl);
@@ -1093,7 +1194,9 @@ export class RoomSim {
     // every part reports the lumens it sends into the room; their bounce is the fill and what lights the haze
     this.light.begin();
     const c: Ctx = { ch, t: now / 1000, dt, air, haze: this.haze, size: m.size, room: this.light };
+    this.beamsNow.length = 0;                                  // the narrow beams this frame (a mirror ball catches them)
     for (const p of this.parts) p.update(c);
+    for (const p of this.afterParts) p.update(c);
     for (const s of this.screens.values()) this.screenFrame(s, now);
     for (const lm of this.lampMeshes.values()) this.light.add(lm.lm);
     this.light.end();
@@ -1316,6 +1419,9 @@ export class RoomSim {
   // this view drives it itself: bright open white (a par's and a derby's white, a head's open white, a strobe LED
   // full, the laser's three diodes), its strobe off; where it points and how it turns are left to the wire. Drawn
   // here only: nothing is sent to a light. The rest go on showing what the preview or the wire says.
+  /** This frame's narrow beams (moving heads, pinspots): where from, which way, their candela, their half angle. */
+  private afterParts: Part[] = [];                            // what reads the frame's beams (mirror balls)
+  private beamsNow: { o: THREE.Vector3; d: THREE.Vector3; cd: THREE.Vector3; half: number }[] = [];
   private hl = new Map<number, number>();                     // DMX slot (0-based) -> the value drawn instead
   private vhl = new Map<number, number>();                    // the same for planned lights' virtual slots
   /** The preview's planned lights: each one's channels by its id (preview.py's frames' ``p``); null: none sent. */
@@ -1360,7 +1466,7 @@ export class RoomSim {
     if (!key || !m) { if (wasSolo && m) this.refreshLamps(m); return; }
     const id = key.slice(key.indexOf(":") + 1), kind = key.slice(0, key.indexOf(":"));
     const fs = kind === "bar" ? m.fixtures.filter((f) => f.bar === id && f.part) : m.fixtures.filter((f) => f.id === id);
-    const lights = fs.filter((f) => f.part || f.kind === "lamp" || f.device === "hue-lamp");
+    const lights = fs.filter((f) => f.part || f.kind === "lamp" || f.device === "hue-lamp" || /pinspot/.test(f.device ?? ""));
     this.solo = lights.length ? new Set(lights.map((f) => f.id)) : null;
     if (wasSolo || this.solo) this.refreshLamps(m);
     for (const f of fs) {

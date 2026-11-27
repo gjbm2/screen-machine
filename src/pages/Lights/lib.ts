@@ -822,6 +822,8 @@ export interface PlacedThing {
   label?: string | null;
   /** A planned room device: the real thing it stands for, once connected (a screen, a lamp, a source, a sensor). */
   connect?: string | null;
+  /** The place in the room it points at (a lone light, a pinspot: "Point at…"). */
+  aim?: Vec3 | null;
   mount: string | null;
   plane: { normal: Vec3 | null; up: Vec3 | null; size: [number, number] | null } | null;
   teach: Sample[];
@@ -908,6 +910,7 @@ export function parseSpace(v: unknown): RoomSpace {
         kind: str(a.kind),
         label: str(a.label),
         connect: str(a.connect),
+        aim: vec3(a.aim),
         mount: str(a.mount),
         plane: pl ? { normal: vec3(pl.normal), up: vec3(pl.up), size: size2(pl.size) } : null,
         teach: Array.isArray(a.teach)
