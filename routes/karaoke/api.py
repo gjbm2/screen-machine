@@ -13,6 +13,7 @@
   DELETE /karaoke/songs/<id>               forget it (files too)
   GET    /karaoke/songs/<id>/lyrics        {kind, lines: [{start, end, text}], ...}
   GET    /karaoke/songs/<id>/<stem>.m4a    instrumental | vocals
+  POST   /karaoke/heard                    {rev, song_id, pos_s}: the playing page's sound position (re-anchors the clock)
   POST   /karaoke/singers                  {add?: [names], remove?: [names]}: tonight's names before anyone sings
   POST   /karaoke/session                  {op: new}: forget tonight's names and the songs already sung
   POST   /karaoke/queue                    {op: add, song_id, index?, singers?} | {op: remove, qid} | {op: move, qid, index}
@@ -312,6 +313,17 @@ def queue():
     except (TypeError, ValueError):
         return _err(400, "index is a number.")
     return jsonify({"queue": st.snapshot()["queue"]})
+
+
+@karaoke_api.post("/karaoke/heard")
+def heard():
+    """{rev, song_id, pos_s}: where the page playing the sound has it now (store.heard) -> {ok}."""
+    b = _body()
+    try:
+        ok = store().heard(int(b.get("rev")), str(b.get("song_id")), float(b.get("pos_s")))
+    except (TypeError, ValueError):
+        return _err(400, "rev, song_id and pos_s.")
+    return jsonify({"ok": ok})
 
 
 @karaoke_api.post("/karaoke/singers")

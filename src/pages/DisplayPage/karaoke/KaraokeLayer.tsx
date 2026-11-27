@@ -501,6 +501,10 @@ export function KaraokeLayer({ screen, device }: { screen?: string; device?: str
           e.play(at);
           placed = want;
           placedAt = { wall: Date.now(), pos: at };
+        } else if (soundHere(n, screen, device)) {
+          // In place and sounding: tell the server where the sound really is, so its clock (the lights' grid, the
+          // other screens) follows this one rather than drifting on its own (a8's audit, 27 Nov).
+          void karaoke.heard(p.rev, p.song_id, e.position()).catch(() => undefined);
         }
       } else if (e.playing || Math.abs(e.position() - target) > 0.05) {
         e.pause(target);

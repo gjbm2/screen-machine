@@ -516,6 +516,20 @@ class Store:
             self.commit()
             return p
 
+    def heard(self, rev: int, song_id: str, pos_s: float) -> bool:
+        """Where the page playing the sound has it now (a8's audit, 27 Nov): the player's clock is re-anchored there,
+        so the lights' grid and the other screens extrapolate from the real sound, not from this machine's clock
+        alone (the laptop's WSL clock ran 7.6% slow: seconds off by a song's end). Same rev, playing, and a page or
+        browser output only (a Sonos anchors itself: sonos_out.py); no new rev (the page doesn't re-place)."""
+        with self.lock:
+            p = self.s["player"]
+            if (p.get("rev") != rev or p.get("state") != "playing" or p.get("song_id") != song_id
+                    or O.kind(self.output()) not in ("screen", "device")):
+                return False
+            p["pos_s"], p["at"] = float(pos_s), time.time()
+            self.changed.notify_all()
+            return True
+
     def control(self, action: str, pos_s: float | None = None, by: str = "you") -> dict:
         """``by``: who stops it: "you" (the panel) or "end" (the queue ran out: tick); live_view.py reads it."""
         with self.lock:

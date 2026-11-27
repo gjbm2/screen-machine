@@ -997,3 +997,14 @@ def test_of_uploads_matching_about_as_much_the_one_with_fewest_unsung_words_wins
     assert lyr.credit_line("Written by：Brandon Flowers/Dave Keuning")
     assert lyr.credit_line("Mr. Brightside - The Killers", "Mr. Brightside", "The Killers")
     assert not lyr.credit_line("Hey Jude, don't make it bad", "Hey Jude", "The Beatles")
+
+
+def test_the_page_playing_the_sound_re_anchors_the_players_clock(tmp_path):
+    st = Store(tmp_path / "state.json")
+    a = ready(st, "a", 200.0)
+    st.queue_add(a)
+    p = st.play()
+    assert st.heard(p["rev"], a, 42.0) is True
+    assert st.position() == pytest.approx(42.0, abs=0.2)
+    assert st.s["player"]["rev"] == p["rev"]                 # no new rev: the page doesn't re-place
+    assert st.heard(p["rev"] - 1, a, 10.0) is False          # an old rev is ignored

@@ -262,6 +262,9 @@ export const karaoke = {
   /** The app's sound outputs, marked for karaoke (GET /api/sound/outputs?for=karaoke). */
   outputs: () => call<{ outputs: SoundOutput[] }>('/outputs'),
   calibrate: () => call<{ calibration: KaraokeCalibration }>('/calibrate', post({})),
+  /** Where this page's sound is now (the page that plays it): the server's player clock re-anchors there. */
+  heard: (rev: number, song_id: string, pos_s: number) =>
+    call<{ ok: boolean }>('/heard', post({ rev, song_id, pos_s })),
   /** Tonight's names, set before anyone sings. */
   roster: (body: { add?: string[]; remove?: string[] }) => call<{ singers: string[] }>('/singers', post(body)),
   /** A new session: tonight's names and the songs already sung are cleared. */
