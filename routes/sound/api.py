@@ -8,6 +8,8 @@
   GET  /sound/latency                       every latency the deployment knows (smsound.latency.overview): sound
                                             outputs, screens, lights, sound sources
   PUT  /sound/outputs/<id>/latency          {trim_ms} | {delay_ms} (typed in) | {forget: true}: -> the output's latency
+  PUT  /sound/latency/lights/<key>          {rise_ms, fall_ms?, also?, evidence?}: a light's measured response (the
+                                            camera calibration, Settings › Sound & timing) -> {saved}
   GET  /sound/outputs/<id>/eq               its graphic EQ (smsound.eq.describe): {applies, preset, gains, bands,
                                             presets, range_db}
   PUT  /sound/outputs/<id>/eq               {preset} | {gains: [dB x 7]}: -> the same
@@ -110,6 +112,23 @@ def set_latency(oid: str):
     except (TypeError, ValueError) as e:
         return _err(400, str(e))
     return jsonify({"id": oid, "latency": L.describe(oid)})
+
+
+@sound_api.put("/sound/latency/lights/<path:key>")
+def set_light_latency(key: str):
+    """{rise_ms, fall_ms?, also?: [keys], evidence?: {...}}: a light's measured response (the camera calibration),
+    saved for it and for each of ``also`` (the same model on the same output) -> {saved: {key: entry}}."""
+    b: Any = request.get_json(silent=True) or {}
+    keys = [key] + [k for k in (b.get("also") or []) if isinstance(k, str) and k and k != key]
+    ev = b.get("evidence") if isinstance(b.get("evidence"), dict) else {}
+    try:
+        saved = {k: L.record_light(k, float(b["rise_ms"]),
+                                   None if b.get("fall_ms") is None else float(b["fall_ms"]),
+                                   method="camera", extra={"evidence": ev, **({"from": key} if k != key else {})})
+                 for k in keys}
+    except (KeyError, TypeError, ValueError) as e:
+        return _err(400, f"rise_ms (and fall_ms) in ms: {e}")
+    return jsonify({"saved": saved})
 
 
 @sound_api.get("/sound/outputs/<path:oid>/eq")

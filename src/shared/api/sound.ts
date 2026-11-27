@@ -110,6 +110,11 @@ export const sound = {
     call<{ id: string; eq: OutputEq }>(`/outputs/${encodeURIComponent(id)}/eq`, send('PUT', body)),
   calibrate: (output: string) => call<CalibrationRun>('/calibrate', send('POST', { output })),
   calibration: () => call<CalibrationRun>('/calibrate'),
+  /** A light's response measured with the camera (CameraCalibration), for it and `also` (the same model). */
+  setLightLatency: (
+    id: string,
+    body: { rise_ms: number; fall_ms?: number | null; also?: string[]; evidence?: Record<string, number> },
+  ) => call<{ saved: Record<string, unknown> }>(`/latency/lights/${encodeURIComponent(id)}`, send('PUT', body)),
 };
 
 /** "134 ms", "about 0.5 s"; null: "not measured". */

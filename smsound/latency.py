@@ -191,6 +191,35 @@ def set_manual(oid: str, delay_ms: Optional[float], dep: Optional[smconfig.Deplo
     return record(oid, float(delay_ms), method="manual", dep=dep)
 
 
+LIGHT_RANGE = (0.0, 2000.0)
+
+
+def record_light(key: str, rise_ms: float, fall_ms: Optional[float] = None, *, attr: str = "intensity",
+                 method: str = "camera", extra: Optional[dict] = None,
+                 dep: Optional[smconfig.Deployment] = None) -> dict:
+    """A light's measured response (``key``: a fixture id, or an output's latency_key) as the show engine reads it:
+    ``outputs.<key>.<attr>`` {rise: {t50}, fall: {t50}} (show_service fixtures.resolve_latency; + = seen that long
+    after the frame was sent). The trim and the entry's other attributes are kept."""
+    if not isinstance(key, str) or not key or O.parse(key) is not None:
+        raise ValueError(f"not a light: {key!r}")
+    r, f = _num(rise_ms), _num(fall_ms) if fall_ms is not None else None
+    if r is None or not LIGHT_RANGE[0] <= r <= LIGHT_RANGE[1]:
+        raise ValueError(f"rise out of range: {rise_ms!r}")
+    if fall_ms is not None and (f is None or not LIGHT_RANGE[0] <= f <= LIGHT_RANGE[1]):
+        raise ValueError(f"fall out of range: {fall_ms!r}")
+    with _lock:
+        doc = read(dep)
+        ent = dict(doc["outputs"].get(key) or {}) if isinstance(doc["outputs"].get(key), dict) else {}
+        old = ent.get(attr) if isinstance(ent.get(attr), dict) else {}
+        e = {"rise": {"t50": round(r, 1)}, **({"fall": {"t50": round(f, 1)}} if f is not None else {}),
+             **({"trim_ms": old["trim_ms"]} if _num(old.get("trim_ms")) else {}),
+             "method": method, "measured_at": _now_iso(), **(extra or {})}
+        ent[attr] = e
+        doc["outputs"][key] = ent
+        _write(doc, dep)
+        return e
+
+
 # ---------------------------------------------------------------- every latency, for the Settings page
 
 def _edge_ms(ent: Any) -> Optional[float]:
@@ -230,7 +259,8 @@ def overview(dep: Optional[smconfig.Deployment] = None, extra_outputs: Optional[
             lights.append({"key": f"{key}.{attr}", "label": f"{key}: {attr}", "value_ms": _edge_ms(e),
                            "trim_ms": _num(e.get("trim_ms")) or 0.0, "measured_at": e.get("measured_at"),
                            "method": e.get("method"), "measures": f"the command sent to the {attr} seen (rise, t50)",
-                           "how": "tools/room/latency_cal (hue_cal.py for Hue; calibrate.py for a screen)",
+                           "how": ("the camera (Calibrate, here)" if e.get("method") == "camera" else
+                                   "tools/room/latency_cal (hue_cal.py for Hue; calibrate.py for a screen)"),
                            "used_by": "show_service: each light is driven this much ahead"})
     for stream, ent in doc["sources"].items():
         v = _num(ent.get("acoustic_offset_ms")) if isinstance(ent, dict) else None

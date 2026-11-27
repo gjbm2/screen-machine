@@ -193,3 +193,21 @@ def test_a_sonos_is_measured_from_its_play_request_and_its_delay_corrected(lat, 
     st = c.state()
     assert st["state"] == "done", st
     assert abs(L.effective_ms("sonos:living") - 620) <= 5, (L.sound("sonos:living"), st)
+
+
+def test_a_lights_camera_measurement_is_stored_as_the_show_engine_reads_it(lat):
+    from show_service import fixtures
+    L.set_trim("screen:vj", 5.0)                                   # a sound output's entry stays as it was
+    L.record_light("bar.par1", 42.4, 30.0, extra={"evidence": {"trials": 8}})
+    L.record_light("bar.par1", 40.0, 28.0)                       # again: replaced
+    doc = L.read()
+    e = doc["outputs"]["bar.par1"]["intensity"]
+    assert e["rise"] == {"t50": 40.0} and e["fall"] == {"t50": 28.0} and e["method"] == "camera"
+    assert doc["outputs"]["screen:vj"]["sound"]["trim_ms"] == 5.0
+    lv = fixtures.resolve_latency("bar.par1", None, doc)
+    assert lv["rise_ms"] == 40.0 and lv["fall_ms"] == 28.0 and lv["source"]["rise"].startswith("latency.json")
+    with pytest.raises(ValueError):
+        L.record_light("screen:vj", 40.0)                          # a sound output isn't a light
+    with pytest.raises(ValueError):
+        L.record_light("bar.par1", -5.0)
+    assert any(r["key"] == "bar.par1.intensity" and r["value_ms"] == 40.0 for r in L.overview()["lights"])

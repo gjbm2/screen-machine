@@ -9,6 +9,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Timer } from "lucide-react";
 import { OutputTiming } from "@/components/sound/OutputTiming";
 import { OutputEq } from "@/components/sound/OutputEq";
+import { CameraCalibration } from "@/components/sound/CameraCalibration";
 import { msText, sound, type LatencyOverview, type LatencyRow } from "@/shared/api/sound";
 import { Group, Hint, ReadRow, Sub } from "./Group";
 
@@ -40,7 +41,7 @@ function SoundBody() {
   const other = (rows: LatencyRow[], title: string) =>
     rows.length > 0 && (
       <>
-        <Sub>{title}</Sub>
+        {title && <Sub>{title}</Sub>}
         {rows.map((r) => (
           <ReadRow
             key={r.key}
@@ -69,7 +70,9 @@ function SoundBody() {
         Karaoke's lyrics and the piano on Sonos follow these figures.
       </Hint>
       {other(o.screens, "Screens: picture to light")}
-      {other(o.lights, "Lights: command to light")}
+      <Sub>Lights: command to light</Sub>
+      <CameraCalibration onSaved={load} />
+      {other(o.lights, "")}
       {other(o.sources, "Sound coming in")}
       <Hint className="text-sm">
         All in {o.file}: {o.rule}.
