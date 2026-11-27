@@ -5,12 +5,13 @@
 // Types are recognised by their fixture-type file (config/room/fixture-types/ofl/...), so a deployment can name its
 // types anything: chauvet-dj/gigbar-move-ils-{par,derby,flash,laser,spot}.json and antari/z-350.json.
 
-export type PartKind = "par" | "derby" | "flash" | "laser" | "laser50" | "laser51" | "spot" | "hazer" | "dimmer";
+export type PartKind = "par" | "derby" | "flash" | "flashled" | "laser" | "laser50" | "laser51" | "spot" | "hazer" | "dimmer";
 
 /** The part a fixture type is, from its file (and, for the laser, its mode), or null for a type this view can't draw. */
 export function partOf(file: string | null | undefined, mode?: string | null, type?: string | null): PartKind | null {
   if (type === "generic-dimmer") return "dimmer";             // a house light: one dimmer channel
   if (!file) return null;
+  if (/gigbar-move-ils-flash-cell\.json$/.test(file)) return "flashled";    // one of the four strobe LEDs, its own light
   const m = /gigbar-move-ils-(par|derby|flash|laser|spot)\.json$/.exec(file);
   if (m) return m[1] === "laser" && mode === "part-50ch" ? "laser50" : m[1] === "laser" && mode === "part-51ch" ? "laser51" : (m[1] as PartKind);
   if (/antari\/z-350\.json$/.test(file)) return "hazer";

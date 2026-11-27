@@ -47,13 +47,18 @@ Measured off the picture (690 px of bar = 1100 mm); `deployments/laptop/lights/s
 | 2 pars | RGBAW + UV LEDs (3 x 6 W), 22° beam | a colour-mixing lamp: R, G, B, amber, white, UV, and a strobe |
 | 2 derbies | RGBW LEDs (2 x 6.5 W each colour), 131° coverage, motorised | colour mixing, strobe; the motor is pinned |
 | 2 spots (moving heads) | 32 W cool-white LED, 17° beam, pan 540°, tilt 270° (menu; spec sheet 180°), 16-bit | a mover: pan/tilt, speed, a 10-slot colour wheel, a 9-gobo wheel with shake and scroll, a dimmer, a shutter |
-| 4 strobe zones | cool-white LEDs, 5 W each | four intensity channels and a strobe (one fixture per bar) |
+| 4 strobe zones | cool-white LEDs, 5 W each | four lights per bar, one per LED (`<bar>.strobe1`-`4`); LED 4 also carries the shared strobe |
 | laser | class 3R: red 650 nm, green 520 nm, blue 450 nm | **not patched** (owner: tbc); the type makes every channel a page-only macro |
 
 show_service drives one colour and one pan/tilt per fixture, so each bar is **patched part by part**: seven fixtures
 per bar at the bar's start address plus each part's offset.
-- **The strobe zones are patched** (owner, 26 Nov). They have intensity channels and no colour, so they light white
-  at every look's level (191 of 255 in a typical look), not only on hits. Watch that on the virtual GigBAR (§7).
+- **The strobe zones are patched** (owner, 26 Nov), and since 27 Nov **each LED is its own light** (owner: "L-R or R-L
+  or ping pong"): `gigbar-strobe-led` (one dimmer) for LEDs 1-3 and `gigbar-strobe-led-s` (its dimmer and the four's
+  shared strobe) for LED 4, at the bar's +26..+29. In the group's order, bar A's 1-4 then bar B's, they run as a line:
+  light_scenes.yaml flash-run-right, flash-run-left, flash-ping-pong (looks.py `spread_mode: bounce`), flash-burst-out
+  (from the middle) and flash-each-bar-runs. LED 1 is taken to be the left as you face the bar: check on the real bar
+  and swap the four addresses if a "left to right" run goes the other way. The scenes for them hold them dark but for
+  their accents (light_scenes.yaml tags.parts: [flash]).
 - **The laser is left unpatched (owner: tbc).** The manual requires 3 m between the floor and the lowest beam, and 3 m
   between the beams and the audience. A room party can't meet that, so keep it off. Its channels stay at 0, which is
   blackout.

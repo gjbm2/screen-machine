@@ -47,7 +47,11 @@ types:
   # only the LEDs at least this share of the strongest light: one look colour, one or two colours of streak
   gigbar-derby: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-derby.json, mode: part, streaks: 0.6}
   gigbar-spot:  {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-spot.json, mode: part}    # moving head
-  gigbar-flash: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-flash.json, mode: part}   # 4 white strobes
+  # the four white strobe LEDs, each its own light (owner, 27 Nov: run them "L-R or R-L or ping pong"): LEDs 1-3 a
+  # dimmer each, LED 4 its dimmer and the four's shared strobe. LED 1 is taken to be the left as you face the bar
+  # (as par 1 is): check on the real bar, and swap the addresses if it runs the other way.
+  gigbar-strobe-led:   {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-flash-cell.json, mode: led}
+  gigbar-strobe-led-s: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-flash-cell.json, mode: led-strobe}
   # The laser (red 650 nm, green 520 nm, blue 450 nm): its own surface since 27 Nov (owner: "ensure we have the
   # display layering & logic"): colour, strobe and rotation, worked by the lights' macro layers (light_scenes.yaml
   # tags.parts: [laser]). All three channels rest at 0 (off).
@@ -73,7 +77,10 @@ fixtures:
                     pin: {Rotation: 16}}
   gigbar-a.derby2: {label: Bar A derby 2, type: gigbar-derby, output: dmx-a, address: 21,  tags: [gigbar, bar-a, derby],
                     pin: {Rotation: 16}}
-  gigbar-a.strobe: {label: Bar A strobes, type: gigbar-flash, output: dmx-a, address: 27,  tags: [gigbar, bar-a, strobe]}
+  gigbar-a.strobe1: {label: Bar A strobe 1, type: gigbar-strobe-led, output: dmx-a, address: 27, tags: [gigbar, bar-a, strobe, strobe-1]}
+  gigbar-a.strobe2: {label: Bar A strobe 2, type: gigbar-strobe-led, output: dmx-a, address: 28, tags: [gigbar, bar-a, strobe, strobe-2]}
+  gigbar-a.strobe3: {label: Bar A strobe 3, type: gigbar-strobe-led, output: dmx-a, address: 29, tags: [gigbar, bar-a, strobe, strobe-3]}
+  gigbar-a.strobe4: {label: Bar A strobe 4, type: gigbar-strobe-led-s, output: dmx-a, address: 30, tags: [gigbar, bar-a, strobe, strobe-4]}
   gigbar-a.laser:  {label: Bar A laser,   type: gigbar-laser, output: dmx-a, address: 32,  tags: [gigbar, bar-a, laser]}
   gigbar-a.spot1:  {label: Bar A spot 1,  type: gigbar-spot,  output: dmx-a, address: 35,  tags: [gigbar, bar-a, spot, spot-1]}
   gigbar-a.spot2:  {label: Bar A spot 2,  type: gigbar-spot,  output: dmx-a, address: 44,  tags: [gigbar, bar-a, spot, spot-2]}
@@ -84,7 +91,10 @@ fixtures:
                     pin: {Rotation: 16}}
   gigbar-b.derby2: {label: Bar B derby 2, type: gigbar-derby, output: dmx-a, address: 121, tags: [gigbar, bar-b, derby],
                     pin: {Rotation: 16}}
-  gigbar-b.strobe: {label: Bar B strobes, type: gigbar-flash, output: dmx-a, address: 127, tags: [gigbar, bar-b, strobe]}
+  gigbar-b.strobe1: {label: Bar B strobe 1, type: gigbar-strobe-led, output: dmx-a, address: 127, tags: [gigbar, bar-b, strobe, strobe-1]}
+  gigbar-b.strobe2: {label: Bar B strobe 2, type: gigbar-strobe-led, output: dmx-a, address: 128, tags: [gigbar, bar-b, strobe, strobe-2]}
+  gigbar-b.strobe3: {label: Bar B strobe 3, type: gigbar-strobe-led, output: dmx-a, address: 129, tags: [gigbar, bar-b, strobe, strobe-3]}
+  gigbar-b.strobe4: {label: Bar B strobe 4, type: gigbar-strobe-led-s, output: dmx-a, address: 130, tags: [gigbar, bar-b, strobe, strobe-4]}
   gigbar-b.laser:  {label: Bar B laser,   type: gigbar-laser, output: dmx-a, address: 132, tags: [gigbar, bar-b, laser]}
   gigbar-b.spot1:  {label: Bar B spot 1,  type: gigbar-spot,  output: dmx-a, address: 135, tags: [gigbar, bar-b, spot, spot-1]}
   gigbar-b.spot2:  {label: Bar B spot 2,  type: gigbar-spot,  output: dmx-a, address: 144, tags: [gigbar, bar-b, spot, spot-2]}

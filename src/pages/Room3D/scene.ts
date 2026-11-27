@@ -464,6 +464,11 @@ export class RoomSim {
         this.parts.push(this.derby(f, at.clone().addScaledVector(dir, 0.051), dir, axis));
       } else if (f.part === "flash") {
         this.parts.push(this.strobe(f, mid.clone().addScaledVector(front, BAR.d / 2 + 0.002), front, axis));
+      } else if (f.part === "flashled") {
+        // the four LEDs patched one by one: drawn once, from the first, whose address starts the bar's five
+        // channels (four dimmers, then the shared strobe), as the one-light patch was
+        const first = placed.filter((x) => x.part === "flashled").reduce((a, b) => ((a.address ?? 1e9) <= (b.address ?? 1e9) ? a : b));
+        if (f === first) this.parts.push(this.strobe(f, mid.clone().addScaledVector(front, BAR.d / 2 + 0.002), front, axis));
       } else if (f.part === "laser" || f.part === "laser50" || f.part === "laser51") {
         const w = this.laserAxes(f, at, front, axis).w;
         yoke(pv, 0.104, 1);
@@ -1033,9 +1038,9 @@ export class RoomSim {
           const lit = names.map((n, i) => [n, ch(f, i)] as const).filter(([, v]) => v > 0).map(([n, v]) => `${n} ${Math.round(v / 2.55)}%`);
           const r = motor(ch(f, 5), MECH.derbyRps);
           w = `${lit.length ? lit.join(", ") : "off"} · ${r ? (r > 0 ? "turning clockwise" : "turning anticlockwise") : "still"}`;
-        } else if (f.part === "flash") {
-          const top = Math.max(...[0, 1, 2, 3].map((i) => ch(f, i)));
-          w = top ? `white ${Math.round(top / 2.55)}%${barStrobe(ch(f, 4)).mode !== "open" ? " · strobing" : ""}` : "off";
+        } else if (f.part === "flash" || f.part === "flashled") {
+          const lv = [0, 1, 2, 3].map((i) => ch(f, i));             // the four LEDs, left to right
+          w = Math.max(...lv) ? `white ${lv.map((v) => (v ? `${Math.round(v / 2.55)}%` : "·")).join(" ")}${barStrobe(ch(f, 4)).mode !== "open" ? " · strobing" : ""}` : "off";
         } else if (f.part === "laser" || f.part === "laser50" || f.part === "laser51") {
           const cols = laserColours(ch(f, 0), f.part !== "laser");
           const how = f.part === "laser" ? ` · ${motorWords(motor(ch(f, 2), MECH.laserRps))}${ch(f, 1) ? " · strobing" : ""}`

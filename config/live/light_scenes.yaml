@@ -590,6 +590,52 @@ scenes:
     hits: {styles: [], drop: {depth: 1.0, decay_ms: 500}}
     tags: {parts: [flash], shows_beat: false, sections: [chorus, verse, instrumental], energy: [0.2, 1.0],
            moods: [warm, elegant, dreamy, euphoric], genre_fit: {"*": 0.6}, valence: 0.6, organic: 0.6, density: 0.3}
+  # Running the strobes in order (owner, 27 Nov: "L-R or R-L or ping pong or whatever"). Each bar's four strobe LEDs
+  # are lights of their own, in the group's order: bar A's 1-4 then bar B's 1-4, left to right as the room faces the
+  # bars. A swell with a short attack and decay is one quick flash per light per cycle; spread 1 spaces the eight
+  # flashes evenly over the cycle, so one LED at a time runs along the line. No dim layer: the run is the only light.
+  flash-run-right:
+    label: The strobes run left to right, one at a time
+    layers:
+      - {id: run, fx: swell, phase: bar, period_bars: [2, 1], depth: 1.0, spread: 1.0, order: group, spread_mode: chase,
+         attack_ms: 10, decay_ms: 110, needs: none}
+    hits: {styles: [], drop: {depth: 1.0, decay_ms: 400}}
+    tags: {sections: [chorus, instrumental], parts: [flash], energy: [0.55, 1.0], moods: [euphoric, playful, bright, aggressive],
+           genre_fit: {"*": 0.6}, valence: 0.65, organic: 0.3, density: 0.7, flow: {dirs: [right, still], honours: false}}
+  flash-run-left:
+    label: The strobes run right to left, one at a time
+    layers:
+      - {id: run, fx: swell, phase: bar, period_bars: [2, 1], depth: 1.0, spread: 1.0, order: group, spread_mode: chase,
+         flow_dir: left, attack_ms: 10, decay_ms: 110, needs: none}
+    hits: {styles: [], drop: {depth: 1.0, decay_ms: 400}}
+    tags: {sections: [chorus, instrumental], parts: [flash], energy: [0.55, 1.0], moods: [euphoric, playful, bright, aggressive],
+           genre_fit: {"*": 0.6}, valence: 0.65, organic: 0.3, density: 0.7, flow: {dirs: [left, still], honours: false}}
+  flash-ping-pong:
+    label: The strobes run there and back (ping-pong)
+    layers:
+      - {id: bounce, fx: swell, phase: bar, period_bars: [4, 2], depth: 1.0, spread: 1.0, order: group, spread_mode: bounce,
+         attack_ms: 10, decay_ms: 110, needs: none}
+    hits: {styles: [], drop: {depth: 1.0, decay_ms: 400}}
+    tags: {sections: [chorus, instrumental, final_chorus], parts: [flash], energy: [0.6, 1.0], moods: [euphoric, playful, aggressive, bright],
+           genre_fit: {"*": 0.6}, valence: 0.65, organic: 0.25, density: 0.8}
+  flash-burst-out:
+    label: The strobes burst out from the middle on every bar
+    layers:
+      - {id: out, fx: swell, phase: bar, period_bars: 1, depth: 1.0, spread: 1.0, order: group, flow_dir: outward,
+         spread_mode: mirror, attack_ms: 10, decay_ms: 140, needs: none}    # the line's middle (A4, B1) first
+    hits: {styles: [], drop: {depth: 1.0, decay_ms: 400}}
+    tags: {sections: [chorus, final_chorus, climax], parts: [flash], energy: [0.7, 1.0], moods: [euphoric, aggressive],
+           genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.2, density: 0.85, flow: {dirs: [outward, still], honours: false}}
+  flash-each-bar-runs:
+    label: Each bar's strobes run left to right together, on the beat
+    layers:
+      - {id: run-a, select: "tag:bar-a", fx: swell, phase: bar, period_bars: 1, depth: 1.0, spread: 1.0, order: group,
+         spread_mode: chase, attack_ms: 10, decay_ms: 150, needs: none}
+      - {id: run-b, select: "tag:bar-b", fx: swell, phase: bar, period_bars: 1, depth: 1.0, spread: 1.0, order: group,
+         spread_mode: chase, attack_ms: 10, decay_ms: 150, needs: none}
+    hits: {styles: [], drop: {depth: 1.0, decay_ms: 400}}
+    tags: {sections: [verse, chorus], parts: [flash], energy: [0.45, 0.9], moods: [playful, bright, hypnotic, euphoric],
+           genre_fit: {"*": 0.6}, valence: 0.65, organic: 0.35, density: 0.6}
   flash-resting:
     label: The strobe zones rest (a drop still flashes them)
     layers:

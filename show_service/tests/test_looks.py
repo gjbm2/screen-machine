@@ -362,6 +362,46 @@ def test_phase_spread_walks_the_group_in_order():
     assert [round(inten(fr, f), 6) for f in order] == [0.5, 1.0, 0.5, 0.0]
 
 
+def _walk(order, **kw):
+    """The four lamps' intensities at each quarter bar of a sine walk with these layer keys (a bar = 2 s)."""
+    rig = {**lamps_rig(4), "groups": {"ring": order}}
+    e = LookEngine(palette_fn=lambda t: {f"lamp.{i}": (1, 1, 1) for i in range(4)}, clock=SnapClock(anchor=10.0, period=0.5),
+                   look_fn=lambda: look(spread=1.0))
+    e.configure({"layers": [layer(fx="sine", phase="bar", period_bars=1, needs="none", spread=1.0, select="group:ring",
+                                  **kw)]}, rig)
+    return [[round(inten(e.evaluate("hue", 12.0 + q * 0.5, DMX_CAPS), f), 6) for f in order] for q in range(4)]
+
+
+def test_a_group_walk_runs_backwards_for_a_backwards_flow_dir():
+    order = ["lamp.0", "lamp.1", "lamp.2", "lamp.3"]
+    fwd, back = _walk(order), _walk(order, flow_dir="left")
+    assert [r.index(1.0) for r in fwd] == [0, 1, 2, 3]          # the peak walks first to last
+    assert [r.index(1.0) for r in back] == [3, 2, 1, 0]         # and last to first
+
+
+def test_a_mirrored_group_walk_can_start_in_the_middle():
+    order = ["lamp.0", "lamp.1", "lamp.2", "lamp.3"]
+    ends_in = _walk(order, spread_mode="mirror")
+    middle_out = _walk(order, spread_mode="mirror", flow_dir="outward")
+    assert ends_in[0] == [1.0, 0.5, 0.5, 1.0]                   # the ends together, then the middle
+    assert middle_out[0] == [0.5, 1.0, 1.0, 0.5]                # the middle together, then the ends
+
+
+def test_bounce_runs_the_line_there_and_back():
+    order = ["lamp.0", "lamp.1", "lamp.2", "lamp.3"]
+    rig = {**lamps_rig(4), "groups": {"ring": order}}
+    e = LookEngine(palette_fn=lambda t: {f"lamp.{i}": (1, 1, 1) for i in range(4)}, clock=SnapClock(anchor=10.0, period=0.5),
+                   look_fn=lambda: look(spread=1.0))
+    e.configure({"layers": [layer(fx="saw", phase="bar", period_bars=1, needs="none", spread=1.0, select="group:ring",
+                                  spread_mode="bounce")]}, rig)
+    # a saw is 1 at its cycle's start: each lamp's starts are its passes, at c/2 and 1 - c/2 of the round trip
+    # (c = 0, 1/3, 2/3, 1): going 0, 1/6, 1/3, 1/2 and coming back 5/6, 2/3 (the ends pass once)
+    def lit(frac):
+        fr = e.evaluate("hue", 12.0 + frac * 2.0 + 1e-6, DMX_CAPS)
+        return [i for i, f in enumerate(order) if inten(fr, f) > 0.999]
+    assert [lit(x) for x in (0.0, 1 / 6, 1 / 3, 0.5, 2 / 3, 5 / 6)] == [[0], [1], [2], [3], [2], [1]]
+
+
 def test_parameter_changes_glide_over_the_transition_in_beats():
     clk = SnapClock(anchor=10.0, period=0.5)                     # 4 beats = 2 s
     box = {"look": look(motion={"speed": 0.0, "amount": 0.2},

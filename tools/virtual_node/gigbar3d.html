@@ -165,52 +165,82 @@ const BAR_Y = 2.5, BAR_Z = ROOM.z0 + 0.4;
 const LASER_LEAN_DEG = 45 - LASER.cover_deg / 2;
 const LASER_LIN = Object.fromEntries(LASER_DIODES.map((nm) => [nm, srgb(LASER_RGB[nm])]));
 const LASER_SEGS = Math.max(3 * (2 * LASER.orders + 1) ** 2, 6 * (LASER.points + LASER.rays));   // most lines either laser draws
-const PART_X = { par: [-0.5, 0.5], spot: [-0.33, 0.33], derby: [-0.16, 0.16], laser: 0, strobe: [-0.4, -0.13, 0.13, 0.4] };
+// Where the parts sit, as the maker's datasheet picture of the GigBAR MOVE + ILS shows them (docs/GIGBAR_RIG.md §1.1,
+// the app's space.yaml layout): x along the bar (m from its middle, + to the right as you face it), y from its centre
+// line (the pivot), the heads and pars hanging under it, the derbies and the laser's box on top, the four strobes in
+// its face.
+const PART_X = { par: [-0.16, 0.16], spot: [-0.46, 0.46], derby: [-0.35, 0.35], laser: 0, strobe: [-0.49, -0.16, 0.16, 0.49] };
+const PART_Y = { par: -0.15, spot: -0.13, derby: 0.13, laser: 0.12 };
+const BAR_H = 0.048, BAR_D = 0.06;
 function makeBar(bi, x0) {
   const g = new THREE.Group(); g.position.set(x0, 0, BAR_Z); scene.add(g);
   g.rotation.y = Math.atan2(-x0, -BAR_Z);           // turned to face the room's centre
   g.updateMatrixWorld(true);
-  // tripod
-  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, BAR_Y - 0.1, 12), dark); pole.position.y = (BAR_Y - 0.1) / 2; g.add(pole);
+  const box = (w, h, d, m, x, y, z, parent = g) => { const o = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), m); o.position.set(x, y, z); parent.add(o); return o; };
+  const cyl = (r, len, m, x, y, z, along, parent = g) => { const o = new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 24), m);
+    o.position.set(x, y, z); if (along === "x") o.rotation.z = Math.PI / 2; else if (along === "z") o.rotation.x = Math.PI / 2; parent.add(o); return o; };
+  // tripod: the pole up into a sleeve under the bar's middle
+  const top = BAR_Y - BAR_H / 2 - 0.13;
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.0175, 0.02, top, 12), dark); pole.position.y = top / 2; g.add(pole);
+  cyl(0.026, 0.13, dark, 0, BAR_Y - BAR_H / 2 - 0.065, 0, "y");
   for (let i = 0; i < 3; i++) {
     const a = i * Math.PI * 2 / 3 + Math.PI / 2, foot = new THREE.Vector3(Math.cos(a) * 0.55, 0, Math.sin(a) * 0.55);
     const hub = new THREE.Vector3(0, 0.75, 0), dir = hub.clone().sub(foot), len = dir.length();
     const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.014, len, 8), dark);
     leg.position.copy(foot).addScaledVector(dir, 0.5); leg.quaternion.setFromUnitVectors(UP, dir.normalize()); g.add(leg);
   }
-  // the bar
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.12, 0.15, 0.17), darker); body.position.y = BAR_Y; g.add(body);
-  const front = 0.0855, P = { pars: [], derbies: [], spots: [], strobes: [] };
-  // pars: on the front, aimed up into the room
+  // the bar and its end caps
+  box(1.1, BAR_H, BAR_D, darker, 0, BAR_Y, 0);
+  for (const s of [-1, 1]) box(0.012, BAR_H + 0.008, BAR_D + 0.008, dark, s * 0.556, BAR_Y, 0);
+  const front = BAR_D / 2, P = { pars: [], derbies: [], spots: [], strobes: [] };
+  // a U-yoke from the bar's top (side 1) or bottom (-1) to a pivot at height y, half wide
+  const yoke = (x, y, half, side) => {
+    const from = BAR_Y + side * BAR_H / 2, len = Math.abs(y - from);
+    for (const s of [-1, 1]) { box(0.008, len, 0.022, dark, x + s * half, (y + from) / 2, 0); cyl(0.013, 0.016, dark, x + s * (half + 0.01), y, 0, "x"); }
+    box(2 * half, 0.008, 0.022, dark, x, from + side * 0.004, 0);
+  };
+  // a housing that tilts about the bar's length at a pivot, its +z along aim (in the bar's frame)
+  const tilting = (x, y, aim) => { const t = new THREE.Group(); t.position.set(x, y, 0); t.rotation.x = -Math.atan2(aim.y, aim.z); g.add(t); return t; };
+  // pars: round cans hanging in U-yokes, tilted a little up into the room (the real ones are tilted by hand)
   PART_X.par.forEach((px) => {
-    const l = lens(0.055); l.position.set(px, BAR_Y, front + 0.001); g.add(l);
-    const aim = new THREE.Vector3(px * 1.2, 0.45, 1).normalize();
+    const y = BAR_Y + PART_Y.par, aim = new THREE.Vector3(0, 0.25, 1).normalize();
+    yoke(px, y, 0.085, -1);
+    const t = tilting(px, y, aim);
+    cyl(0.074, 0.075, darker, 0, 0, -0.005, "z", t); cyl(0.06, 0.02, dark, 0, 0, -0.05, "z", t);
+    const l = lens(0.055); l.position.z = 0.034; t.add(l);
+    const at = new THREE.Vector3(px, y, 0).addScaledVector(aim, 0.04);
     const light = new THREE.SpotLight(0xffffff, 0, 0, THREE.MathUtils.degToRad(17), 0.55, 1.6);
-    light.position.set(px, BAR_Y, front + 0.02); light.target.position.copy(light.position.clone().add(aim)); g.add(light, light.target);
-    const b = beam(0.9, 4.2); b.position.copy(light.position); b.quaternion.setFromUnitVectors(UP, aim); g.add(b);
+    light.position.copy(at); light.target.position.copy(at.clone().add(aim)); g.add(light, light.target);
+    const b = beam(0.9, 4.2); b.position.copy(at); b.quaternion.setFromUnitVectors(UP, aim); g.add(b);
     P.pars.push({ lens: l, light, beam: b });
   });
-  // derbies: on the front, many narrow beams in a fan that the motor turns about the lens's axis
+  // derbies: ribbed drums standing in U-yokes; many narrow beams in a fan the motor turns about the lens's axis
   PART_X.derby.forEach((px) => {
-    const l = lens(0.05); l.position.set(px, BAR_Y, front + 0.001); g.add(l);
-    const axis = new THREE.Vector3(0, 0.55, 1).normalize(), beams = [];
-    for (let i = 0; i < 12; i++) { const b = beam(0.035, 5); b.position.set(px, BAR_Y, front + 0.02); g.add(b); beams.push({ mesh: b, dot: dot(0.11), ci: i % 4, i }); }
-    P.derbies.push({ lens: l, axis, beams, origin: new THREE.Vector3(px, BAR_Y, front + 0.02) });
+    const y = BAR_Y + PART_Y.derby, axis = new THREE.Vector3(0, 0.55, 1).normalize();
+    yoke(px, y, 0.1, 1);
+    const t = tilting(px, y, axis);
+    cyl(0.05, 0.17, darker, 0, 0, 0, "x", t);
+    for (const x of [-0.06, -0.02, 0.02, 0.06]) { const rib = new THREE.Mesh(new THREE.TorusGeometry(0.051, 0.004, 6, 28), dark); rib.rotation.y = Math.PI / 2; rib.position.x = x; t.add(rib); }
+    const l = new THREE.Mesh(new THREE.PlaneGeometry(0.15, 0.055), new THREE.MeshBasicMaterial({ color: 0x000000 })); l.position.z = 0.052; t.add(l);
+    const origin = new THREE.Vector3(px, y, 0).addScaledVector(axis, 0.06), beams = [];
+    for (let i = 0; i < 12; i++) { const b = beam(0.035, 5); b.position.copy(origin); g.add(b); beams.push({ mesh: b, dot: dot(0.11), ci: i % 4, i }); }
+    P.derbies.push({ lens: l, axis, beams, origin });
   });
-  // strobes: four white panels along the lower front
+  // strobes: four round white lenses in the bar's face
   PART_X.strobe.forEach((px) => {
-    const m = new THREE.Mesh(new THREE.PlaneGeometry(0.12, 0.03), new THREE.MeshBasicMaterial({ color: 0x000000 }));
-    m.position.set(px, BAR_Y - 0.055, front + 0.001); g.add(m); P.strobes.push(m);
+    const m = new THREE.Mesh(new THREE.CircleGeometry(0.014, 24), new THREE.MeshBasicMaterial({ color: 0x000000 }));
+    m.position.set(px, BAR_Y, front + 0.001); g.add(m); P.strobes.push(m);
   });
-  P.strobeLight = new THREE.PointLight(0xf0f4ff, 0, 0, 1.6); P.strobeLight.position.set(0, BAR_Y - 0.1, front + 0.9); g.add(P.strobeLight);
-  // the laser: a small housing in the middle, tilted by hand (LASER_LEAN_DEG), its window on the face the light leaves by.
-  // Its lines are the beams in the air (and, for the figure lasers, the figures where they land); its points are the
-  // grating's dots where its beams land.
-  const lean = THREE.MathUtils.degToRad(LASER_LEAN_DEG), lh = new THREE.Group();
-  lh.position.set(0, BAR_Y + 0.07, front - 0.01); lh.rotation.x = lean - Math.PI / 2; g.add(lh);
-  lh.add(new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.06, 0.06), dark));
-  const lw = new THREE.Mesh(new THREE.PlaneGeometry(0.05, 0.04), new THREE.MeshBasicMaterial({ color: 0x220808 }));
-  lw.position.z = 0.031; lh.add(lw);
+  P.strobeLight = new THREE.PointLight(0xf0f4ff, 0, 0, 1.6); P.strobeLight.position.set(0, BAR_Y, front + 0.9); g.add(P.strobeLight);
+  // the laser: a box on the bar's middle in its own bracket, tilted by hand (LASER_LEAN_DEG), two apertures behind a
+  // glass panel on the face the light leaves by. Its lines are the beams in the air (and, for the figure lasers, the
+  // figures where they land); its points are the grating's dots where its beams land.
+  const lean = THREE.MathUtils.degToRad(LASER_LEAN_DEG), ly = BAR_Y + PART_Y.laser;
+  yoke(0, ly, 0.104, 1);
+  const lh = new THREE.Group(); lh.position.set(0, ly, 0); lh.rotation.x = lean - Math.PI / 2; g.add(lh);
+  lh.add(new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.088, 0.12), darker));
+  const lw = new THREE.Mesh(new THREE.PlaneGeometry(0.1, 0.05), new THREE.MeshBasicMaterial({ color: 0x220808 }));
+  lw.position.set(0, -0.008, 0.061); lh.add(lw);
   const lg = new THREE.BufferGeometry(); lg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(LASER_SEGS * 6), 3));
   lg.setAttribute("color", new THREE.BufferAttribute(new Float32Array(LASER_SEGS * 6), 3));
   const lines = new THREE.LineSegments(lg, new THREE.LineBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
@@ -221,16 +251,19 @@ function makeBar(bi, x0) {
   dots.frustumCulled = false; scene.add(dots);
   // its axis (w) and two axes across it (u along the bar, v = w x u), in the room's frame
   const lax = (x, y, z) => new THREE.Vector3(x, y, z).applyQuaternion(g.quaternion);
-  P.laser = { window: lw, lines, dots, origin: g.localToWorld(new THREE.Vector3(0, BAR_Y + 0.07 + 0.05 * Math.cos(lean), front - 0.01 + 0.05 * Math.sin(lean))),
+  P.laser = { window: lw, lines, dots, origin: g.localToWorld(new THREE.Vector3(0, ly + 0.064 * Math.cos(lean), 0.064 * Math.sin(lean))),
               w: lax(0, Math.cos(lean), Math.sin(lean)), u: lax(1, 0, 0), v: lax(0, Math.sin(lean), -Math.cos(lean)) };
-  // the moving heads, on top of the bar: a yoke that pans, a head that tilts in it
+  // the moving heads, hanging under the bar's ends (a half turn about the bar's front: the pan axis points down, pan
+  // 0 still faces the room): a base on the bar's underside, a yoke that pans, a head that tilts in it
   PART_X.spot.forEach((px) => {
-    const yoke = new THREE.Group(); yoke.position.set(px, BAR_Y + 0.075, 0); g.add(yoke);
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.055, 0.06, 0.03, 20), dark); base.position.y = 0.015; yoke.add(base);
-    for (const s of [-1, 1]) { const arm = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.12, 0.05), dark); arm.position.set(s * 0.058, 0.09, 0); yoke.add(arm); }
-    const head = new THREE.Group(); head.position.y = 0.11; yoke.add(head);
-    const can = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.05, 0.13, 20), darker); can.position.y = 0.01; head.add(can);
-    const hl = lens(0.038); hl.position.y = 0.076; hl.rotation.x = -Math.PI / 2; head.add(hl);
+    const hang = new THREE.Group(); hang.position.set(px, BAR_Y + PART_Y.spot, 0); hang.rotation.z = Math.PI; g.add(hang);
+    box(0.13, 0.032, 0.12, dark, 0, -0.09, 0, hang);
+    const yoke = new THREE.Group(); hang.add(yoke);
+    const base = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.055, 0.014, 24), darker); base.position.y = -0.068; yoke.add(base);
+    for (const s of [-1, 1]) { const arm = new THREE.Mesh(new THREE.BoxGeometry(0.014, 0.1, 0.06), dark); arm.position.set(s * 0.072, -0.02, 0); yoke.add(arm); }
+    const head = new THREE.Group(); yoke.add(head);
+    const can = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.13, 0.1), darker); can.position.y = 0.008; head.add(can);
+    const hl = lens(0.038); hl.position.y = 0.0805; hl.rotation.x = -Math.PI / 2; head.add(hl);
     const light = new THREE.SpotLight(0xffffff, 0, 0, THREE.MathUtils.degToRad(8.5), 0.35, 1.5);
     light.position.y = 0.08; light.target.position.y = 3; head.add(light, light.target);
     light.castShadow = true; light.shadow.mapSize.set(512, 512); light.shadow.camera.near = 0.1; light.shadow.camera.far = 20;
@@ -364,7 +397,7 @@ function update(t) {
     lz.lines.visible = nl > 0; lz.dots.visible = nd > 0;
     pos.needsUpdate = col.needsUpdate = dpos.needsUpdate = dcol.needsUpdate = true;
     lz.window.material.color.set(ls.on ? 0xff3030 : 0x220808);
-    // spots: the yoke pans, the head tilts (tilt 0 = straight up, + towards the room)
+    // spots: the yoke pans, the head tilts (tilt 0 = along the pan axis: straight down, hanging; + towards the room)
     P.spots.forEach((sp, k) => {
       const s = S.spots[k], b0 = a0 + L.spot[k];
       sp.yoke.rotation.y = THREE.MathUtils.degToRad(s.pan);

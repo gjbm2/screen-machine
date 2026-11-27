@@ -112,9 +112,14 @@ the ``light_scene`` path above.
     ``colour_wheel``, ``cct`` and ``shutter`` (effects only). A layer reaches only the members that can show what it
     sets (capability-aware: the rest are skipped silently, counted in stats). ``select`` defaults to ``"*"``. Any
     continuous value may be an oscillator ``{fx, phase, period_bars | period_s, subdivide, between: [a, b], spread,
-    order}``. Spread follows ``order`` (group | flow | mirror) and ``spread_mode`` (unison | chase | mirror): with
-    ``order: flow`` a wave travels the room along the flow (space.flow_coord of each light's position, else its
-    place in the group), latency compensated because each light evaluates at its own time.
+    order}``. Spread follows ``order`` (group | flow | mirror) and ``spread_mode`` (unison | chase | mirror |
+    bounce): with ``order: flow`` a wave travels the room along the flow (space.flow_coord of each light's position,
+    else its place in the group), latency compensated because each light evaluates at its own time. With ``order:
+    group`` the walk is in the layer's order (its selection's), backwards for a ``flow_dir`` of left, down, ccw,
+    inward or away; with ``order: mirror`` in group order the two halves walk together, from the ends in (or from the
+    middle out for ``flow_dir: outward``). ``bounce`` is a ping-pong: the wave runs along the line and back each
+    cycle, so each light fires once going and once coming back (owner, 27 Nov: the bar's four strobes "L-R or R-L or
+    ping pong").
   * **Precedence per fixture**, each frame: held (the Lights page's Move it: ``hold``/``release``) > identify > not
     following > inactive, House or Low (house look; a mover glides home) > the group's program (its scene, crossfading
     per group, then its effects, hits, master and caps), then the motion stage, then encode.
@@ -302,7 +307,7 @@ def _sway(fid: str, t: float, size_deg: float, period_s: float) -> tuple[float, 
     w = [wt * math.sin(2.0 * math.pi * t / (period_s * r) + ph[k]) for k, (r, wt) in enumerate(SWAY_RATIOS)]
     return size_deg * (w[0] + w[1]), size_deg * 0.6 * (w[2] + w[3])
 ORDERS: tuple[str, ...] = ("group", "flow", "mirror")
-SPREAD_MODES: tuple[str, ...] = ("unison", "chase", "mirror")
+SPREAD_MODES: tuple[str, ...] = ("unison", "chase", "mirror", "bounce")
 EASES: tuple[str, ...] = ("linear", "sine", "smooth")
 CHANGE_ON: tuple[str, ...] = ("none", "bar", "phrase", "section", "look")
 HOP_ON: tuple[str, ...] = ("beat", "bar")
@@ -3528,17 +3533,25 @@ class LookEngine:
                 val = energy
             else:
                 L = ln.layer
-                if L.spread_mode == "chase" and L.order == "group":     # today's walk in the group's order
-                    lag = ln.spread * m[0] / m[1] if ln.spread and m[1] else 0.0
+                lag2: Optional[float] = None
+                if L.spread_mode == "bounce":                           # there and back: two passes a cycle
+                    c = self._place(L, s, m, cx, gn)
+                    lag, lag2 = ln.spread * c / 2.0, ln.spread * (1.0 - c / 2.0)
+                elif L.spread_mode == "chase" and L.order == "group":   # today's walk in the group's order
+                    i = m[1] - 1 - m[0] if L.flow_dir in FLOW_BACK else m[0]
+                    lag = ln.spread * i / m[1] if ln.spread and m[1] else 0.0
                 else:
                     lag = self._lag(L, ln.spread, s, m, cx, gn)
-                key = (id(ln), to, lag)
+                key = (id(ln), to, lag, lag2)
                 val = memo.get(key)
                 if val is None:
                     val = 0.0
                     for vw, src, off, div, per in ln.variants:
                         cyc = ((beat_at(src, to) - off) / div if src is not None else to / div) - lag
-                        val += vw * shape(ln.layer.fx, cyc, per, ln.attack_s, ln.layer.decay_s)
+                        v1 = shape(ln.layer.fx, cyc, per, ln.attack_s, ln.layer.decay_s)
+                        if lag2 is not None:                            # the pass coming back: the brighter of the two
+                            v1 = max(v1, shape(ln.layer.fx, cyc + lag - lag2, per, ln.attack_s, ln.layer.decay_s))
+                        val += vw * v1
                     memo[key] = val
             dd = ln.d * w
             if rs is not None:
@@ -3559,11 +3572,25 @@ class LookEngine:
             return spread * m[0] / m[1] if m[1] else 0.0
         if L.order == "group":                                   # mirror in group order: halves walk together
             i, n = m
-            return spread * (min(i, n - 1 - i) / n if n else 0.0)
+            k = min(i, n - 1 - i)
+            if L.flow_dir == "outward":                          # from the middle out, not the ends in
+                k = (n - 1) // 2 - k
+            return spread * (k / n if n else 0.0)
         flow = gn.flow if gn is not None else None
         if not mirror and flow is not None and flow.get("symmetry") == "mirror":
             mirror = True
         return spread * self._coord(cx, s, flow, L.flow_dir, mirror)
+
+    def _place(self, L: _Layer, s: _Slot, m: tuple[int, int], cx: _Ctx, gn: Optional[_Group]) -> float:
+        """A member's place 0..1 along a bounce's line: its place in the layer's order (first 0, last 1; reversed for
+        a backwards flow_dir), else along the flow."""
+        if L.order == "group":
+            i, n = m
+            if n <= 1:
+                return 0.0
+            return (n - 1 - i) / (n - 1) if L.flow_dir in FLOW_BACK else i / (n - 1)
+        flow = gn.flow if gn is not None else None
+        return self._coord(cx, s, flow, L.flow_dir, L.order == "mirror")
 
     def _coord(self, cx: _Ctx, s: _Slot, flow: Optional[Mapping[str, Any]], dir_: Optional[str], mirror: bool
                ) -> float:
