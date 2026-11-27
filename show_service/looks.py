@@ -335,7 +335,7 @@ _KIND_KEYS: dict[str, frozenset] = {
     "position": frozenset({"mode", "on", "centre", "size", "size_deg", "along", "rotate", "fan", "ease", "points",
                            "hop", "lift", "dark_move"}),
     "beam": frozenset({"zoom", "focus", "iris", "frost"}),
-    "gobo": frozenset({"wheel", "slot", "change_on", "spin", "spin_scale", "shake"}),
+    "gobo": frozenset({"wheel", "slot", "change_on", "spin", "spin_scale", "shake", "scroll"}),
     "prism": frozenset({"in", "spin", "spin_scale"}),
     "colour": frozenset({"role"}),
     "colour_wheel": frozenset({"mode", "step_on", "spin"}),
@@ -1628,6 +1628,13 @@ class LookEngine:
                 bad.append(f"change_on {ch!r} isn't one of {', '.join(CHANGE_ON)}")
             p["change_on"] = ch
             self._spin_keys(raw, p, where, bad)
+            # scroll: the whole wheel turning, its gobos sliding through the beam (a wheel whose gobos can't turn in
+            # their holes, as the GigBAR's: owner, 27 Nov: "scenes should enjoy the gobos"); -1..1, flow or pace,
+            # times spin_scale. While it scrolls the wheel shows no one slot.
+            scr = raw.get("scroll")
+            if scr is not None and not ((_isnum(scr) and -1.0 <= scr <= 1.0) or scr in ("flow", "pace")):
+                bad.append(f"scroll {scr!r} isn't -1..1, flow or pace")
+            p["scroll"] = float(scr) if _isnum(scr) else scr
             if "shake" in raw:
                 ok, p["shake"] = self._value(raw["shake"], f"{where}.shake", probs, f"{lid}#shake", lo=0.0, hi=1.0)
                 if not ok:
@@ -3775,7 +3782,11 @@ class LookEngine:
                     ck = (L.id, s.id)
                     cands = cx.st.slotc.get(ck)
                     if cands is None:
-                        cands = cx.st.slotc[ck] = self._slots(p["slot"], slots)
+                        # gobos named for one rig (the GigBAR's flower, pinwheel...) are a preference: a light with
+                        # none of them shows its own gobos instead (auto), never nothing
+                        cands = self._slots(p["slot"], slots) or (self._slots("auto", slots) if p["slot"] != "auto" and
+                                                                    not isinstance(p["slot"], int) else [])
+                        cx.st.slotc[ck] = cands
                     if not cands:
                         fs.unresolved.add(L.id)
                     else:
@@ -3783,6 +3794,10 @@ class LookEngine:
                 sp = self._spin(p, cx, gn)
                 if sp is not None and f"{wheel}_spin" in s.attrs:
                     attrs[f"{wheel}_spin"] = sp
+                if p.get("scroll") is not None and wheel == "gobo" and "gobo_scroll" in s.attrs:
+                    sc = self._spin({"spin": p["scroll"], "spin_scale": p["spin_scale"]}, cx, gn)
+                    if sc is not None:
+                        attrs["gobo_scroll"] = sc
                 if p.get("shake") is not None and f"{wheel}_shake" in s.attrs:
                     attrs[f"{wheel}_shake"] = _c01(self._val(p["shake"], L, s, m, cx, gn, tp))
             elif k == "prism":

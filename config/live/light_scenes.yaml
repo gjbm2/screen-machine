@@ -291,6 +291,7 @@ scenes:
          phase: phrase, needs: none, spread_mode: chase, spread: 0.5}
       - {id: beam, kind: beam, zoom: wide, frost: 0.3, iris: 1.0}
       - {id: breathe, fx: sine, phase: bar, period_bars: [8, 4], depth: 0.25, needs: none}
+      - {id: gobo, kind: gobo, slot: [Flower, Linked rings, Broken ring], change_on: section}
     tags: {sections: [verse, outro], energy: [0.0, 0.35], moods: [calm, warm, elegant, dreamy], genre_fit: {classical: 0.9, piano: 0.9, jazz: 0.8,
            ambient: 0.8, "*": 0.3}, valence: 0.5, organic: 0.8, density: 0.1, flow: {dirs: [still, inward], honours: false}}
 
@@ -301,7 +302,7 @@ scenes:
       - {id: drift, kind: position, mode: drift, on: ceiling, centre: centre, size: 1.5, size_deg: 20, phase: phrase,
          needs: none, spread_mode: chase, spread: 0.5}
       - {id: beam, kind: beam, zoom: wide, frost: 0.2}
-      - {id: gobo, kind: gobo, slot: auto, change_on: section, spin: flow, spin_scale: 0.15}
+      - {id: gobo, kind: gobo, slot: [Swirl, Starburst], change_on: section, scroll: flow, spin_scale: 0.12}
     tags: {sections: [instrumental], energy: [0.05, 0.45], moods: [dreamy, liquid, cosmic, calm], genre_fit: {ambient: 0.9, downtempo: 0.85,
            soundtrack: 0.8, classical: 0.6, "*": 0.3}, valence: 0.5, organic: 0.5, density: 0.2,
            flow: {dirs: [still, left, right, cw, ccw], honours: true}}
@@ -312,10 +313,10 @@ scenes:
     layers:
       - {id: circle, kind: position, mode: circle, on: ceiling, centre: [mirror-ball, centre], size: 1.0, size_deg: 18,
          rotate: flow, phase: bar, period_bars: [4, 1], needs: grid, spread_mode: chase, spread: 0.5, order: flow}
-      - {id: gobo, kind: gobo, slot: auto, change_on: phrase, spin: flow, spin_scale: 0.4}
       - {id: beam, kind: beam, zoom: 15}
       - {id: pulse, fx: swell, phase: beat, subdivide: true, depth: swell, needs: beat, without_beat: energy,
          attack_ms: 60, decay_ms: 300}
+      - {id: gobo, kind: gobo, slot: [Starburst, Ring of dots, Four holes], change_on: phrase, spin: flow, spin_scale: 0.4}
     tags: {sections: [instrumental], energy: [0.35, 0.8], moods: [cosmic, hypnotic, dreamy, geometric], genre_fit: {trance: 0.9, techno: 0.85,
            electronic: 0.85, house: 0.8, ambient: 0.6, "*": 0.35}, valence: 0.55, organic: 0.25, density: 0.55,
            flow: {dirs: [cw, ccw], honours: true}}
@@ -343,6 +344,7 @@ scenes:
       - {id: beam, kind: beam, zoom: 12}
       - {id: chase, fx: swell, phase: beat, depth: 0.5, needs: beat, without_beat: energy, order: flow, spread: 1.0,
          attack_ms: 40, decay_ms: 250}
+      - {id: gobo, kind: gobo, slot: [Ring of dots, Flower, Pinwheel], change_on: phrase}
     tags: {sections: [chorus], energy: [0.45, 0.9], moods: [playful, bright, geometric, hypnotic], genre_fit: {house: 0.85, techno: 0.8,
            pop: 0.75, funk: 0.75, latin: 0.75, "*": 0.35}, valence: 0.7, organic: 0.3, density: 0.65,
            flow: {dirs: [left, right], honours: true}}
@@ -355,6 +357,7 @@ scenes:
          fan: 1.0}
       - {id: beam, kind: beam, zoom: wide, frost: 0.6}
       - {id: wave, fx: sine, phase: bar, period_bars: [4, 1], depth: 0.5, needs: grid, order: flow, spread: 1.0}
+      - {id: gobo, kind: gobo, slot: [Swirl, Linked rings], change_on: section}
     tags: {sections: [verse], energy: [0.2, 0.6], moods: [warm, elegant, mellow, liquid], genre_fit: {soul: 0.85, jazz: 0.8, rnb: 0.8,
            downtempo: 0.75, gospel: 0.7, "*": 0.35}, valence: 0.6, organic: 0.6, density: 0.35,
            flow: {dirs: [left, right, cw, ccw], honours: true}}
@@ -370,6 +373,7 @@ scenes:
       - {id: beam, kind: beam, zoom: narrow}
       - {id: build, fx: swell, phase: beat, subdivide: true, depth: swell, needs: beat, without_beat: energy,
          attack_ms: 60, decay_ms: 200}
+      - {id: gobo, kind: gobo, slot: [Four holes, Starburst], change_on: phrase}
     tags: {sections: [chorus], energy: [0.45, 0.95], moods: [tense, euphoric, bright], genre_fit: {trance: 0.9, house: 0.8, electronic: 0.8,
            pop: 0.7, gospel: 0.6, "*": 0.35}, valence: 0.65, organic: 0.3, density: 0.6,
            flow: {dirs: [up, outward], honours: true}}
@@ -381,6 +385,7 @@ scenes:
       - {id: eight, kind: position, mode: figure8, on: floor, centre: [dance-floor, centre], size: 1.2, size_deg: 18,
          phase: bar, period_bars: [2, 1], needs: grid, spread_mode: mirror}
       - {id: beam, kind: beam, zoom: 14}
+      - {id: gobo, kind: gobo, slot: [Ring of dots, Flower, Swirl], change_on: phrase}
     tags: {sections: [instrumental], energy: [0.4, 0.85], moods: [playful, retro, bright], genre_fit: {disco: 0.9, funk: 0.85, pop: 0.8,
            latin: 0.8, afrobeat: 0.75, "*": 0.35}, valence: 0.8, organic: 0.35, density: 0.6,
            flow: {dirs: [still, left, right], honours: false}}
@@ -391,9 +396,9 @@ scenes:
     layers:
       - {id: bally, kind: position, mode: ballyhoo, on: floor, centre: centre, size: 2.5, size_deg: 45, phase: bar,
          period_bars: [2, 1], needs: grid, spread_mode: chase, spread: 0.25, order: flow}
-      - {id: gobo, kind: gobo, slot: auto, change_on: bar, spin: flow, spin_scale: 0.8}
       - {id: prism, kind: prism, in: accents, spin: flow, spin_scale: 0.6}
       - {id: stab, fx: square, phase: beat, depth: 0.5, needs: beat, without_beat: energy}
+      - {id: gobo, kind: gobo, slot: [Pinwheel, Four holes, Starburst, Ovals], change_on: bar, spin: flow, spin_scale: 0.8, shake: 0.3}
     hits: {styles: [beat, full], min_strength: 0.2, depth: 0.8, decay_ms: 80, drop: {depth: 1.0, decay_ms: 400}}
     tags: {sections: [chorus], energy: [0.75, 1.0], moods: [euphoric, aggressive, fiery, glitchy], genre_fit: {techno: 0.9,
            drum-and-bass: 0.9, dubstep: 0.85, trance: 0.85, metal: 0.8, rock: 0.7, "*": 0.2}, valence: 0.6,
@@ -405,9 +410,9 @@ scenes:
     layers:
       - {id: walls, kind: position, mode: fan, centre: centre, on: wall-back, along: right, size: 2.0, size_deg: 35,
          fan: 0.8}
-      - {id: gobo, kind: gobo, slot: auto, change_on: section, spin: flow, spin_scale: 0.2}
       - {id: beam, kind: beam, zoom: mid, focus: default, frost: 0.0}
       - {id: breathe, fx: sine, phase: bar, period_bars: [8, 4], depth: 0.2, needs: none}
+      - {id: gobo, kind: gobo, slot: [Linked rings, Swirl, Ovals, Broken ring], change_on: section, spin: flow, spin_scale: 0.2}
     tags: {sections: [verse], energy: [0.15, 0.55], moods: [mellow, elegant, dark, hypnotic], genre_fit: {jazz: 0.8, soul: 0.75,
            downtempo: 0.8, blues: 0.75, ambient: 0.6, "*": 0.35}, valence: 0.45, organic: 0.5, density: 0.3,
            flow: {dirs: [cw, ccw, still], honours: true}}
@@ -421,6 +426,7 @@ scenes:
       - {id: beam, kind: beam, zoom: narrow}
       - {id: pulse, fx: swell, phase: beat, depth: 0.6, needs: beat, without_beat: energy, attack_ms: 30,
          decay_ms: 220}
+      - {id: gobo, kind: gobo, slot: [Flower, Ring of dots, Pinwheel], change_on: bar}
     tags: {sections: [chorus], energy: [0.55, 0.95], moods: [playful, bright, retro, euphoric], genre_fit: {funk: 0.9, disco: 0.85,
            pop: 0.8, latin: 0.8, hip-hop: 0.7, "*": 0.3}, valence: 0.8, organic: 0.35, density: 0.75,
            flow: {dirs: [still], honours: false}}
@@ -433,6 +439,7 @@ scenes:
          needs: grid, order: flow, spread: 1.0}
       - {id: beam, kind: beam, zoom: 12}
       - {id: glow, fx: sine, phase: bar, period_bars: [2, 1], depth: 0.4, needs: grid, order: flow, spread: 1.0}
+      - {id: gobo, kind: gobo, slot: [Ovals, Swirl], change_on: phrase}
     tags: {sections: [instrumental], energy: [0.35, 0.8], moods: [playful, hypnotic, liquid, geometric], genre_fit: {house: 0.8, pop: 0.8,
            electronic: 0.75, latin: 0.7, "*": 0.35}, valence: 0.7, organic: 0.35, density: 0.55,
            flow: {dirs: [left, right, cw, ccw, outward, inward], honours: true}}
@@ -511,6 +518,8 @@ scenes:
       - {id: bar-b-path, kind: position, mode: sweep, select: "tag:bar-b", on: floor, centre: [dance-floor, centre], along: right,
          size: 2.5, size_deg: 35, ease: sine, phase: bar, period_bars: [4, 2], needs: grid}
       - {id: beam, kind: beam, zoom: 12}
+      - {id: gobo-a, kind: gobo, select: "tag:bar-a", slot: [Four holes, Pinwheel], change_on: phrase}
+      - {id: gobo-b, kind: gobo, select: "tag:bar-b", slot: [Pinwheel, Four holes], change_on: phrase}
     tags: {sections: [chorus], energy: [0.4, 0.9], moods: [playful, bright, euphoric, geometric], genre_fit: {pop: 0.85, house: 0.8,
            disco: 0.8, funk: 0.75, rock: 0.7, "*": 0.4}, valence: 0.7, organic: 0.3, density: 0.6,
            flow: {dirs: [left, right, inward, outward], honours: false}}
@@ -522,7 +531,8 @@ scenes:
          size_deg: 20, rotate: cw, phase: bar, period_bars: [4, 1], needs: grid, spread_mode: chase, spread: 0.5}
       - {id: bar-b-path, kind: position, mode: circle, select: "tag:bar-b", on: ceiling, centre: centre, size: 1.2,
          size_deg: 20, rotate: ccw, phase: bar, period_bars: [4, 1], needs: grid, spread_mode: chase, spread: 0.5}
-      - {id: gobo, kind: gobo, slot: auto, change_on: phrase, spin: flow, spin_scale: 0.4}
+      - {id: gobo-a, kind: gobo, select: "tag:bar-a", slot: [Starburst, Pinwheel], change_on: phrase, spin: flow, spin_scale: 0.4}
+      - {id: gobo-b, kind: gobo, select: "tag:bar-b", slot: [Ring of dots, Four holes], change_on: phrase, spin: flow, spin_scale: -0.4}
     tags: {sections: [instrumental], energy: [0.3, 0.8], moods: [hypnotic, cosmic, geometric, playful], genre_fit: {house: 0.8, techno: 0.8,
            disco: 0.8, pop: 0.7, electronic: 0.8, "*": 0.4}, valence: 0.6, organic: 0.3, density: 0.55,
            flow: {dirs: [cw, ccw], honours: false}}
@@ -535,6 +545,8 @@ scenes:
       - {id: roam, kind: position, mode: circle, select: "tag:spot-2", on: ceiling, centre: centre, size: 1.5,
          size_deg: 25, rotate: flow, phase: bar, period_bars: [4, 2], needs: grid, spread_mode: mirror}
       - {id: beam, kind: beam, zoom: 14}
+      - {id: gobo-hold, kind: gobo, select: "tag:spot-1", slot: [Flower, Broken ring], change_on: section}
+      - {id: gobo-roam, kind: gobo, select: "tag:spot-2", slot: [Starburst, Swirl], change_on: section}
     tags: {sections: [verse], energy: [0.25, 0.75], moods: [warm, playful, elegant, bright], genre_fit: {pop: 0.85, soul: 0.8, rnb: 0.8,
            rock: 0.7, folk: 0.7, singer-songwriter: 0.8, "*": 0.45}, valence: 0.6, organic: 0.5, density: 0.4,
            flow: {dirs: [still, cw, ccw, inward], honours: false}}
@@ -548,6 +560,8 @@ scenes:
          along: right, size: 2.0, size_deg: 30, ease: sine, phase: bar, period_bars: [2, 1], needs: grid}
       - {id: beam, kind: beam, zoom: narrow}
       - {id: pulse, fx: swell, phase: beat, depth: 0.5, needs: beat, without_beat: energy, attack_ms: 40, decay_ms: 220}
+      - {id: gobo-1, kind: gobo, select: "tag:spot-1", slot: [Pinwheel, Four holes], change_on: phrase, shake: 0.2}
+      - {id: gobo-2, kind: gobo, select: "tag:spot-2", slot: [Ovals, Starburst], change_on: phrase, shake: 0.2}
     tags: {sections: [chorus], energy: [0.55, 1.0], moods: [euphoric, playful, bright, aggressive], genre_fit: {pop: 0.8, house: 0.85,
            techno: 0.8, rock: 0.8, disco: 0.8, "*": 0.45}, valence: 0.7, organic: 0.25, density: 0.75,
            flow: {dirs: [left, right, outward, inward], honours: false}}
@@ -560,6 +574,7 @@ scenes:
       - {id: lift, kind: position, mode: tilt_wave, size_deg: 12, fx: sine, phase: bar, period_bars: [8, 4], needs: none,
          spread_mode: chase, spread: 0.5, depth: 0.5}
       - {id: beam, kind: beam, zoom: 16}
+      - {id: gobo, kind: gobo, slot: [Linked rings, Flower, Swirl], change_on: section}
     tags: {sections: [verse], energy: [0.2, 0.7], moods: [elegant, warm, dreamy, liquid, mellow], genre_fit: {soul: 0.8, pop: 0.75,
            jazz: 0.7, downtempo: 0.75, classical: 0.6, "*": 0.45}, valence: 0.6, organic: 0.5, density: 0.4,
            flow: {dirs: [outward, inward, left, right], honours: true}}
@@ -800,6 +815,7 @@ scenes:
          phase: phrase, needs: none, spread_mode: chase, spread: 0.5}
       - {id: beam, kind: beam, zoom: wide, frost: 0.4, iris: 1.0}
       - {id: breathe, fx: sine, phase: bar, period_bars: [8, 4], depth: 0.2, needs: none}
+      - {id: gobo, kind: gobo, slot: "Broken ring"}
     tags: {modes: [singalong], moments: [waiting], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5, density: 0.3, flow: {dirs: [still], honours: false}}
   glow-waits:
     label: A slow glow along the bars
@@ -814,7 +830,7 @@ scenes:
       - {id: drift, kind: position, mode: drift, on: ceiling, centre: centre, size: 1.5, size_deg: 20, phase: phrase,
          needs: none, spread_mode: chase, spread: 0.5}
       - {id: beam, kind: beam, zoom: wide, frost: 0.5}
-      - {id: gobo, kind: gobo, slot: auto, change_on: section, spin: flow, spin_scale: 0.1}
+      - {id: gobo, kind: gobo, slot: [Swirl, Starburst], change_on: section, scroll: pace, spin_scale: 0.08}
     tags: {energy: [0.0, 0.25], moods: [calm, dreamy, cosmic, dark], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5, density: 0.3, flow: {dirs: [still, cw, ccw], honours: false}}
   next-up:
     label: Every head on the singer's spot (the next song's title is up)
