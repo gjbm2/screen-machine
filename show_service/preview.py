@@ -37,6 +37,7 @@ import base64
 import copy
 import json
 import logging
+import random
 import time
 from typing import Any, Optional
 
@@ -120,6 +121,8 @@ class Preview:
         self.groups = ls.group_members(self.lights["groups"], self.view, lamps=show.get("lamps"))
         self.t0 = self.now = time.monotonic()
         self.vibe, self.tags, self.phrase = vibe, tuple(tags), -1
+        self._last_scene: dict[str, str] = {}
+        self._lineup: Optional[str] = None
         self.vs: Optional[dict] = None                    # the mode's feel's settings (what=mode with a feel)
         self.pal_cols: list[list[tuple[float, float, float]]] = []
         self.pal: dict = {}
@@ -207,12 +210,32 @@ class Preview:
         cols = self.pal_cols[k % len(self.pal_cols)] if self.pal_cols else [PLAIN["other"]]
         pal: dict = {}
         progs = {}
+        # The phrase's line-up, as the director draws one at a change (light_scenes.pick_lineup at the music's drive):
+        # the kinds of light that play; the others rest (their rest scenes: the strobe zones mostly dark).
+        lus = self.lights.get("lineups") or {}
+        plays: Optional[set] = None
+        if lus:
+            name = ls.pick_lineup(lus, None, e, random.Random(f"{self.vibe}|lineup|{k}"), avoid=self._lineup)
+            self._lineup = name
+            plays = set(lus[name]["plays"]) if name else None
         for i, (gid, g) in enumerate(self.groups.items()):
             c = cols[(i + k) % len(cols)]
             for fid in g["members"]:
                 pal[fid] = c
-            pool = [n for n in self.cat.pool_for(g, self.tags or None) if not n.startswith("preview-")]
-            sc = pool[(k + i) % len(pool)] if pool and g["members"] else "preview-low"
+            # As the director draws them (light_scenes.pick_for: the mode's pool, weighted by how each fits the energy),
+            # one draw a phrase, so the preview shows what the show would, not every scene in the pool in turn (owner,
+            # 27 Nov: the room "flickered" every few seconds: a strobe run the show would rarely choose here).
+            sc = "preview-low"
+            if g["members"]:
+                rng = random.Random(f"{self.vibe}|{gid}|{k}")
+                got = self.cat.pick_for(g, {"energy": e}, None, rng, avoid=self._last_scene.get(gid),
+                                        tags=self.tags or None,
+                                        rest=None if plays is None else gid not in plays,
+                                        alone=None if plays is None else plays == {gid},
+                                        prefer={n: 0.0 for n in ("preview-steady", "preview-low", "preview-dark")})
+                if got and not got[0].startswith("preview-"):
+                    sc = got[0]
+            self._last_scene[gid] = sc
             progs[gid] = {"group": gid, "label": g.get("label") or gid, "members": list(g["members"]),
                           "caps": list(g.get("caps") or ()), "scene": sc, "effects": [],
                           "transition": {"name": "cut", "kind": "cut", "params": {}, "at_ms": at}, "at_ms": at,
