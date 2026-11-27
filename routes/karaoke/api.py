@@ -2,7 +2,7 @@
 
   GET    /karaoke/state                    the library, the queue, the player and the player page's last report
   GET    /karaoke/now                      what the display page needs (polled every second), + join {url, room_karaoke}
-  GET    /karaoke/search?q=                LRCLIB songs matching the text: [{artist, title, duration, synced}]
+  GET    /karaoke/search?q=&limit=              LRCLIB songs matching the text: [{artist, title, duration, synced}]
   POST   /karaoke/requests                 {q} | {url} | {artist, title, duration}: a song into the library
                                            (+ queue: true also puts it at the end of the queue; + singers)
   POST   /karaoke/songs/<id>/retry         a failed song again
@@ -87,7 +87,11 @@ def search():
     if not q:
         return jsonify({"results": []})
     try:
-        rows = src.catalog_search(q)
+        limit = max(1, min(40, int(request.args.get("limit") or 8)))
+    except ValueError:
+        limit = 8
+    try:
+        rows = src.catalog_search(q, limit)
     except Exception as e:  # noqa: BLE001
         return _err(502, f"The song search didn't answer: {e}")
     for r in rows:

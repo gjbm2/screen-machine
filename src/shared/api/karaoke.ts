@@ -212,7 +212,8 @@ export const karaoke = {
   hidePicture: (id: string, hidden = true) => call<{ ok: boolean }>(`/pictures/${id}/hide`, post({ hidden })),
   state: () => call<KaraokeState>('/state'),
   now: () => call<KaraokeNow>('/now'),
-  search: (q: string) => call<{ results: SearchHit[] }>(`/search?q=${encodeURIComponent(q)}`),
+  search: (q: string, limit = 8) =>
+    call<{ results: SearchHit[] }>(`/search?q=${encodeURIComponent(q)}&limit=${limit}`),
   artist: (name: string) =>
     call<{ artist: string; picture: string | null; fans: number | null; results: SearchHit[] }>(`/artist?name=${encodeURIComponent(name)}`),
   request: (body: {

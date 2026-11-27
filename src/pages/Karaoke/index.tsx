@@ -30,7 +30,7 @@
 // window's (DisplayPage/karaoke/KaraokeLayer.tsx). Drag and drop: dnd-kit with the app's sensors (src/pages/Index.tsx:
 // mouse after 8 px, touch after a 200 ms press), by a grip so a phone still scrolls; polling pauses during a drag.
 
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   DndContext,
   DragOverlay,
@@ -1109,6 +1109,9 @@ function RowFace({
 
 const SEARCH_DEBOUNCE_MS = 280;
 const LIB_SHOWN = 6;
+const WEB_FIRST = 8;
+const WEB_MORE = 12;
+const WEB_MAX = 40;
 
 /** The one search (owner, 25 Nov: "pinwheel search for current library and new songs through same search interface
  *  ... live / dynamic ... add directly to top of songs queue"): the library matches at once as you type (fuzzy:
@@ -1139,6 +1142,41 @@ function Find({
   const seq = useRef(0);
   const text = q.trim();
   const link = isLink(text);
+  // More results (owner, 27 Nov: "need 'see more' or endless scroll"): the library shows more on a click; the web
+  // asks again for a longer list when its end scrolls into view, and only songs it hadn't shown are added, at the end.
+  const [libMax, setLibMax] = useState(LIB_SHOWN);
+  const [webMax, setWebMax] = useState(WEB_FIRST);
+  const [moreBusy, setMoreBusy] = useState(false);
+  const [webEnd, setWebEnd] = useState(false);
+  useEffect(() => {
+    setLibMax(LIB_SHOWN);
+    setWebMax(WEB_FIRST);
+    setWebEnd(false);
+  }, [text]);
+  const loadMore = () => {
+    if (moreBusy || webEnd || !hits || hits.q !== text || busy) return;
+    const n = seq.current, want = webMax + WEB_MORE;
+    setMoreBusy(true);
+    karaoke
+      .search(text, want)
+      .then((r) => {
+        if (n !== seq.current) return;
+        setHits((h) => {
+          if (!h || h.q !== text) return h;
+          const seen = new Set(h.rows.map((x) => x.key));
+          const add = r.results.filter((x) => !seen.has(x.key));
+          if (add.length === 0) setWebEnd(true);
+          return { q: h.q, rows: [...h.rows, ...add] };
+        });
+        setWebMax(want);
+        if (want >= WEB_MAX) setWebEnd(true);
+      })
+      .catch(() => setWebEnd(true))
+      .finally(() => setMoreBusy(false));
+  };
+  const webFoot = useRef<HTMLDivElement>(null);
+  const loadMoreRef = useRef(loadMore);
+  loadMoreRef.current = loadMore;
 
   useEffect(() => {
     const n = ++seq.current;
@@ -1151,7 +1189,7 @@ function Find({
     setBusy(true);
     const t = window.setTimeout(async () => {
       try {
-        const r = await karaoke.search(text);
+        const r = await karaoke.search(text, WEB_FIRST);
         if (n === seq.current) setHits({ q: text, rows: r.results });
       } catch (err) {
         if (n === seq.current) setMsg(String((err as Error).message || err));
@@ -1181,6 +1219,8 @@ function Find({
   const [over, setOver] = useState(false);
   const held = useRef(liveView);
   if (!over || held.current.text !== text) held.current = liveView;
+  else if (held.current.web.every((h, i) => liveView.web[i]?.key === h.key))
+    held.current = { ...held.current, web: liveView.web, hits: liveView.hits };   // rows added at the end: fine
   const { libRows, web } = held.current;
   const shownHits = held.current.hits, shownBusy = held.current.busy, shownMsg = held.current.msg;
   const clear = () => {
@@ -1216,25 +1256,30 @@ function Find({
   const anchor = useRef<HTMLDivElement>(null);
   const [roomAbove, setRoomAbove] = useState<number | null>(null);
   useEffect(() => {
+    const el = webFoot.current;
+    if (!el) return;
+    const io = new IntersectionObserver((es) => es.some((e) => e.isIntersecting) && loadMoreRef.current());
+    io.observe(el);
+    return () => io.disconnect();
+  });
+  useLayoutEffect(() => {
     if (!open) return;
     const measure = () => {
       const el = anchor.current;
       if (!el) return;
       const navTop = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--app-nav-top")) || 0;
       const vvTop = window.visualViewport?.offsetTop ?? 0;
-      setRoomAbove(Math.max(96, Math.floor(el.getBoundingClientRect().top - vvTop - navTop - 16)));
+      const h = Math.max(96, Math.floor(el.getBoundingClientRect().top - vvTop - navTop - 16));
+      setRoomAbove((was) => (was === h ? was : h));
     };
-    measure();
-    window.addEventListener("resize", measure);
-    window.addEventListener("scroll", measure, true);
-    window.visualViewport?.addEventListener("resize", measure);
-    window.visualViewport?.addEventListener("scroll", measure);
-    return () => {
-      window.removeEventListener("resize", measure);
-      window.removeEventListener("scroll", measure, true);
-      window.visualViewport?.removeEventListener("resize", measure);
-      window.visualViewport?.removeEventListener("scroll", measure);
+    // every frame while open: the page under it moves without any event (the queue loads, the bar sticks or unsticks)
+    let raf = 0;
+    const tick = () => {
+      measure();
+      raf = requestAnimationFrame(tick);
     };
+    tick();
+    return () => cancelAnimationFrame(raf);
   }, [open]);
   // Under the queue, held to the foot of the screen while its place is further down (owner, 25-26 Nov: "the dominant
   // pathway when you're in a hurry"; "if you scroll down past bottom of queue etc. then search can detach from
@@ -1272,7 +1317,7 @@ function Find({
                   <div>
                     <SectionWord>In the library</SectionWord>
                     <ul className="divide-y divide-stone-200/70">
-                      {libRows.slice(0, LIB_SHOWN).map((s) => {
+                      {libRows.slice(0, libMax).map((s) => {
                         const n = queuedCount.get(s.id) ?? 0;
                         return (
                           <li key={s.id}>
@@ -1296,10 +1341,14 @@ function Find({
                         );
                       })}
                     </ul>
-                    {libRows.length > LIB_SHOWN && (
-                      <p className="px-1 text-xs text-muted-foreground">
-                        and {libRows.length - LIB_SHOWN} more: type a little more
-                      </p>
+                    {libRows.length > libMax && (
+                      <button
+                        type="button"
+                        className="px-1 py-1 text-sm text-primary underline-offset-2 hover:underline"
+                        onClick={() => setLibMax((m) => m + 20)}
+                      >
+                        {libRows.length - libMax} more
+                      </button>
                     )}
                   </div>
                 )}
@@ -1345,6 +1394,21 @@ function Find({
                         </li>
                       ))}
                     </ul>
+                    {shownHits && shownHits.q === text && !shownBusy && web.length > 0 && !webEnd && (
+                      <div ref={webFoot} className="flex h-9 items-center px-1">
+                        {moreBusy ? (
+                          <Spinner className="h-4 w-4 text-muted-foreground" />
+                        ) : (
+                          <button
+                            type="button"
+                            className="text-sm text-primary underline-offset-2 hover:underline"
+                            onClick={loadMore}
+                          >
+                            More
+                          </button>
+                        )}
+                      </div>
+                    )}
                     {shownHits && shownHits.q === text && !shownBusy && (
                       <button
                         type="button"
