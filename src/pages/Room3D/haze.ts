@@ -50,10 +50,6 @@ export const SIGMA_MAX = 1.0;                       // visibility 3 m
 export const sliderOf = (sigma: number) => Math.sqrt(Math.max(0, Math.min(1, sigma / SIGMA_MAX)));
 export const sigmaOfSlider = (p: number) => SIGMA_MAX * p * p;
 
-/** How visible a beam is in the air, 0-1: light caught over a beam's few metres of path. */
-export const BEAM_PATH_M = 6;
-export const beamVisibility = (sigma: number) => (sigma > 0 ? 1 - Math.exp(-sigma * BEAM_PATH_M) : 0);
-
 /** In words: "clear", or how far you can see. */
 export function hazeWords(sigma: number): string {
   if (sigma < 0.003) return "clear";

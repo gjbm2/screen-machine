@@ -66,7 +66,8 @@ export default function Room3DPage() {
         else if (fps > 58 && sim.scale < 1) sim.scale = Math.min(1, sim.scale * 1.12);
         if (sim.scale !== was) fit();
         const hidden = /^brave$/i.test(gpu.trim()), soft = /swiftshader|software|llvmpipe/i.test(gpu);
-        setPerf(`${fps.toFixed(0)} fps · drawn at ${Math.round(sim.scale * 100)}% · GPU: ${hidden ? "in use (Brave hides its name)" : gpu.replace(/^ANGLE \(|\)$/g, "")}${soft ? " (software!)" : ""}`);
+        const lux = sim.light.lux;                             // the light in the room now (light.ts): direct and bounced
+        setPerf(`light in the room ≈ ${lux < 1 ? lux.toFixed(1) : lux < 10 ? lux.toFixed(0) : String(Math.round(lux / 5) * 5)} lux · ${fps.toFixed(0)} fps · drawn at ${Math.round(sim.scale * 100)}% · GPU: ${hidden ? "in use (Brave hides its name)" : gpu.replace(/^ANGLE \(|\)$/g, "")}${soft ? " (software!)" : ""}`);
       }
       raf = requestAnimationFrame(loop);
     };
@@ -192,7 +193,7 @@ export default function Room3DPage() {
           onWheel={(e) => simRef.current?.zoomBy(e.deltaY)}>
           <canvas ref={canvasRef} className="absolute inset-0 block" />
           <div className="pointer-events-none absolute bottom-1.5 left-2.5 text-xs text-[#8d93a5]">
-            drag: orbit · wheel: zoom · the lights read the Art-Net wire; moving-head and wheel speeds are estimates · {perf}
+            drag: orbit · wheel: zoom · the lights read the Art-Net wire, at their makers' brightness; the picture adapts as an eye does · {perf}
           </div>
         </div>
         <aside className="overflow-auto border-l border-[#252a38] bg-[#0b0d13] px-3 py-2" style={{ width: SIDE_W }}>
