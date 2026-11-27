@@ -6,7 +6,7 @@
 // `shown` is false and the strip leaves the live parts out. It reads the room link through selectors (one value
 // each), so a room status frame re-renders the strip only when something it shows changes.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { explainError, storageGet, storageSet } from "@/pages/Room/api";
 import { LookControls, SceneButton, ScenePicker } from "@/pages/Room/LivePanel";
 import { sceneInfo, sceneRatingKey, type SceneInfo } from "@/pages/Room/liveLib";
@@ -28,6 +28,9 @@ import {
 /** The room's default live scene (the deployment's room/modes.json, the live modes). */
 const DEFAULT_SCENE_KEY = "preset:fractal-zoom";
 const LAST_SCENE_KEY = (id: string) => `sm_home_live_scene:${id}`;
+/** The scene shown before the one on glass now (owner, 27 Nov: "if you miss scoring the previous scene you can't see
+ *  what it was anywhere"): kept by this browser as it watches the screen change. */
+const PREV_SCENE_KEY = (id: string) => `sm_home_prev_scene:${id}`;
 const noop = () => {};
 
 export function useScreenLive(screenId: string) {
@@ -70,6 +73,19 @@ export function useScreenLive(screenId: string) {
   const nextInfo: SceneInfo | null = sceneInfo(lib, api, lastKey);
   // The scene on glass, as the renderer says (Auto changes it by itself), else the one asked for.
   const nowInfo: SceneInfo | null = sceneInfo(lib, api, (liveNow && lv.look?.current_scene) || sceneKey);
+  // The one before it: when what is on glass changes, the one it replaced.
+  const [prevKey, setPrevKey] = useState<string | null>(() => storageGet(PREV_SCENE_KEY(screenId)));
+  const seen = useRef<string | null>(null);
+  const curKey = lib ? (nowInfo?.key ?? null) : null;
+  useEffect(() => {
+    if (!curKey) return;
+    if (seen.current && seen.current !== curKey) {
+      storageSet(PREV_SCENE_KEY(screenId), seen.current);
+      setPrevKey(seen.current);
+    }
+    seen.current = curKey;
+  }, [screenId, curKey]);
+  const prevInfo: SceneInfo | null = prevKey && prevKey !== curKey ? sceneInfo(lib, api, prevKey) : null;
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
     setBusy(label);
@@ -102,6 +118,7 @@ export function useScreenLive(screenId: string) {
     lastKey,
     nextInfo,
     nowInfo,
+    prevInfo,
     pageMissing,
     detail,
     lastError,
@@ -118,7 +135,7 @@ export type ScreenLive = ReturnType<typeof useScreenLive>;
 
 /** While live: the scene on glass (tap to change it) and the Room page's look controls. */
 export function LiveLookPanel({ live }: { live: ScreenLive }) {
-  const { screenId, lv, lib, api, nowInfo } = live;
+  const { screenId, lv, lib, api, nowInfo, prevInfo } = live;
   return (
     <div className="space-y-3">
       <SceneButton
@@ -129,6 +146,17 @@ export function LiveLookPanel({ live }: { live: ScreenLive }) {
         testId={`home-scene-${screenId}`}
       />
       <RatingRow api={api} ratingKey={sceneRatingKey(lib, lv.look?.current_scene)} what="scene" className="-mt-2" testId={`home-rate-${screenId}`} />
+      {prevInfo && (
+        <div className="space-y-1" data-testid={`home-prev-${screenId}`}>
+          <SceneButton
+            info={prevInfo}
+            caption="Last scene · tap to go back"
+            onClick={() => void lv.cue(`back to ${prevInfo.label}`, { to: sceneSpecOf(prevInfo.key), at: "now" })}
+            disabled={!lib || !!lv.busy}
+          />
+          <RatingRow api={api} ratingKey={sceneRatingKey(lib, prevInfo.key)} what="scene" className="-mt-1" />
+        </div>
+      )}
       <LookControls screenId={screenId} lv={lv} lib={lib} api={api} />
     </div>
   );
