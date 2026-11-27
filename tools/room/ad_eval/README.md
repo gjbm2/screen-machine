@@ -1,5 +1,7 @@
 # ad_eval: score the art director against the songs themselves
 
+The design, the reasons for it, where it stands and the shared workplan are in [docs/AD_EVAL.md](../../../docs/AD_EVAL.md).
+
 A fixed set of 20 karaoke songs (`songs.yaml`), plus any song an owner note names, runs through the real show code on simulated time, in two modes. `karaoke` knows the song, as the karaoke player gives it. `live` hears the music cold. Each run is scored against an answer key made from the whole file with hindsight, and the same code always gives the same scores.
 
     ~/.venvs/sm-show/bin/python tools/room/ad_eval/run.py            # everything, nice 19, 4 jobs
