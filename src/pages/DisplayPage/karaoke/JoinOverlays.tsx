@@ -4,8 +4,9 @@
 //   The address is the server's (routes/karaoke/join.py: the machine's LAN address when .env says localhost).
 // - NextUp: towards the end of a song, who and what is next, so the next singer gets ready. Gentle: one banner that
 //   fades in NEXT_UP_S before the end and stays, no ticking count (owner: "we don't want to be TOO aggressive about
-//   countdowns, just enough to get the next person ready to roll"); a thin bar along its foot shows how much of the
-//   song playing is left (owner, 27 Nov: "a countdown bar probably so next singer knows how long they have").
+//   countdowns, just enough to get the next person ready to roll"); a thin bar along its foot drains over the last
+//   NEXT_UP_S, and as a song starts it says how long until the next singer is on (owner, 27 Nov: "a countdown bar
+//   probably so next singer knows how long they have").
 
 import type { CSSProperties } from "react";
 import { QRCodeSVG } from "qrcode.react";
@@ -75,13 +76,16 @@ export function NextUp({
   singers,
   opacity,
   left,
+  inS,
 }: {
   title: string;
   artist: string;
   singers?: string[];
   opacity: number;
-  /** How much of the song playing is left, 0-1: the bar; null: none. */
+  /** The bar: how much of the last NEXT_UP_S is left, 0-1; null: none. */
   left?: number | null;
+  /** Seconds until the song playing ends, while that is further off than the bar's span: said as m:ss. */
+  inS?: number | null;
 }) {
   const singer = namesText(singers);
   const song = artist ? `${title} (${artist})` : title;
@@ -106,11 +110,17 @@ export function NextUp({
     >
       <div style={{ fontSize: "min(2.3vw, 38px)", fontWeight: 800, lineHeight: 1.15 }}>
         {singer ? `${singer}, you're up next` : "Up next"}
+        {inS != null && (
+          <span style={{ fontWeight: 600, opacity: 0.85, fontVariantNumeric: "tabular-nums" }}>
+            {" "}
+            · in {Math.floor(inS / 60)}:{String(Math.floor(inS % 60)).padStart(2, "0")}
+          </span>
+        )}
       </div>
       <div style={{ fontSize: "min(1.7vw, 28px)", opacity: 0.92, marginTop: "0.25em" }}>
         {singer ? `Get ready for ${song}` : song}
       </div>
-      {left != null && (
+      {left != null && inS == null && (
         <div
           data-sm-karaoke-next-bar=""
           style={{ marginTop: "1.1vh", height: "0.6vh", borderRadius: "0.3vh", background: "rgba(255,255,255,0.22)", overflow: "hidden" }}

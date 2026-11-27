@@ -381,8 +381,14 @@ export class RoomApi {
 
   /** "This is good" (owner, 29 Oct): the scene on screen, its effects and the two together come up more often
    *  (stream_service taste.py). Nothing changes on screen. */
-  good(session: string) {
-    return this.json<{ scene?: string; effects?: string[] }>("POST", `/renderer/api/sessions/${encodeURIComponent(session)}/good`, {});
+  good(session: string, what: { scene?: SceneSpec; effects?: string[]; undo?: boolean } = {}) {
+    // `what`: the scene and effects the person was looking at (credited even if the screen has moved on); undo takes
+    // a press back (owner, 27 Nov)
+    return this.json<{ scene?: string; effects?: string[]; undo?: boolean }>(
+      "POST",
+      `/renderer/api/sessions/${encodeURIComponent(session)}/good`,
+      what,
+    );
   }
 
   /** Take effects off every screen in the session's room (screen-machine-04, 17 Oct): all, or {effect: a preset or a

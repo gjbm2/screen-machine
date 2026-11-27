@@ -49,7 +49,8 @@ STATE_DIR = pathlib.Path(os.environ.get("STREAM_STATE_DIR") or "~/.local/state/s
 FILE_NAME = "taste.json"
 
 # Starting points (screen-machine-63, 29 Oct): to be tuned from what the room does with them.
-SIGNALS = {"skip": -1.0, "like": 1.0, "keep": 0.5, "good": 1.5}
+SIGNALS = {"skip": -1.0, "like": 1.0, "keep": 0.5, "good": 1.5,
+           "ungood": -1.5}         # a "This is good" taken back (owner, 27 Nov: "there's no way to undo")
 SKIP_S = 60.0              # Next on a scene the director picked, sooner than this: a skip (later: it had its turn)
 KEEP_S = 120.0             # held (Keep this look) this long in all on one showing: a keep
 HALF_LIFE_DAYS = 14.0

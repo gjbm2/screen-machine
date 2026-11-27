@@ -682,8 +682,10 @@ async def fx_next(request: web.Request) -> web.Response:
 
 
 async def good(request: web.Request) -> web.Response:
-    """POST /api/sessions/{sid}/good: "This is good" (taste.py): what is on screen now comes up more often."""
-    return web.json_response(_session(request).good())
+    """POST /api/sessions/{sid}/good: "This is good" (taste.py): what is on screen now comes up more often; or
+    {"scene", "effects"}: what the person was looking at; {"undo": true}: taken back."""
+    body = await read_json(request) if request.can_read_body else None
+    return web.json_response(_session(request).good(body if isinstance(body, dict) else None))
 
 
 async def fx_clear(request: web.Request) -> web.Response:

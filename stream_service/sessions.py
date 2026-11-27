@@ -1313,24 +1313,30 @@ class Session(EngineListener):
             sh["kept"] = True
             self.mgr.taste_signal("keep", sh["plugin"], self.direction_effective, sh["scene"])
 
-    def good(self) -> dict:
+    def good(self, body: Optional[dict] = None) -> dict:
         """POST /good, a person's "This is good" (taste.py; owner, 29 Oct): the scene on screen (its plug-in and its
-        preset), each effect on the bus and each scene + effect pair come up more often.  Nothing changes on screen."""
-        self._require("live")
-        spec = self.scene_spec
-        if spec is None or spec.name == DARK_SCENE:
-            raise SessionError(409, "nothing_on_screen", "no scene on screen just now")
+        preset), each effect on the bus and each scene + effect pair come up more often.  Nothing changes on screen.
+        ``body``: {"scene": a scene spec, "effects": [effect presets]} names what the person was looking at, so a
+        press lands on that even when the screen has moved on since (owner, 27 Nov: "you advance the scene before you
+        get to the score ... and end up rating the wrong thing"); {"undo": true} takes the press back."""
+        body = body or {}
+        signal = "ungood" if body.get("undo") else "good"
         d, sig = self.direction_effective, self.mgr.taste_signal
-        sig("good", spec.source, d, spec.name)
-        sig("good", scene_key(spec.name), d, spec.name)
-        effects = []
-        for st in self.fx.stack:
-            if st.bypass or st.origin == GESTURE:
-                continue
-            effects.append(st.spec.name)
-            sig("good", fx_key(st.spec.name), d, spec.name)
-            sig("good", pair_key(spec.name, st.spec.name), d, spec.name)
-        return {"session": self.id, "scene": spec.name, "effects": effects}
+        if body.get("scene"):
+            spec = self.mgr.presets.resolve_scene(body["scene"])            # 400 when unknown
+            effects = [str(x) for x in (body.get("effects") or []) if x][:8]
+        else:
+            self._require("live")
+            spec = self.scene_spec
+            if spec is None or spec.name == DARK_SCENE:
+                raise SessionError(409, "nothing_on_screen", "no scene on screen just now")
+            effects = [st.spec.name for st in self.fx.stack if not st.bypass and st.origin != GESTURE]
+        sig(signal, spec.source, d, spec.name)
+        sig(signal, scene_key(spec.name), d, spec.name)
+        for fx in effects:
+            sig(signal, fx_key(fx), d, spec.name)
+            sig(signal, pair_key(spec.name, fx), d, spec.name)
+        return {"session": self.id, "scene": spec.name, "effects": effects, "undo": signal == "ungood"}
 
     def _taste_skip(self, source: Optional[str]) -> None:
         """A person's Next on a scene the director picked, under SKIP_S on screen: a skip for its plug-in."""

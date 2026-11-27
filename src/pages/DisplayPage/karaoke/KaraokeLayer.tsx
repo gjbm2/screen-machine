@@ -657,7 +657,8 @@ export function KaraokeLayer({ screen, device }: { screen?: string; device?: str
           artist={now.up_next.artist}
           singers={now.up_next.singers}
           opacity={nextUp}
-          left={left != null && dur ? left / dur : null}
+          left={left != null ? Math.min(1, left / NEXT_UP_S) : null}
+          inS={left != null && left > NEXT_UP_S ? left : null}
         />
       )}
       {low > 0.001 && joinUrl && <JoinCard url={joinUrl} small opacity={low} />}
