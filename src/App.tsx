@@ -10,6 +10,7 @@ import { LoopeViewProvider } from "@/contexts/LoopeViewContext";
 import { DarkMode } from './darkMode';
 import { AppPlayerProvider } from "@/components/player/appPlayer";
 import { DockedPlayer } from "@/components/player/DockedPlayer";
+import { KaraokeHere } from "@/components/player/KaraokeHere";
 import { AppNav } from "@/components/nav/AppNav";
 import { AdminOnly } from "@/components/auth/AdminOnly";
 
@@ -102,6 +103,8 @@ const App = () => (
           </Suspense>
           {/* the music player, docked at the foot of the pages people use while music plays */}
           <DockedPlayer />
+          {/* the karaoke's sound, on a browser that chose This device for it */}
+          <KaraokeHere />
           </AppPlayerProvider>
         </LoopeViewProvider>
       </ReferenceImagesProvider>

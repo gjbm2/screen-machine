@@ -270,9 +270,10 @@ class Engine {
 }
 
 /** The karaoke's sound plays on this page: its output is this screen's ("screen:<id>"), or any screen's on a page
- *  without one. */
-function soundHere(n: KaraokeNow, screen: string | undefined): boolean {
+ *  without one; on a browser's own player (``device``: the app's KaraokeHere), only its own "device:<id>". */
+function soundHere(n: KaraokeNow, screen: string | undefined, device?: string): boolean {
   const out = n.settings.output ?? "";
+  if (device) return out === device;
   return out.startsWith("screen:") && (!screen || out === `screen:${screen}`);
 }
 
@@ -282,7 +283,9 @@ function serverPosition(n: KaraokeNow, skew: number): number {
   return p.state === "playing" ? p.pos_s + Math.max(0, Date.now() / 1000 + skew - p.at) : p.pos_s;
 }
 
-export function KaraokeLayer({ screen }: { screen?: string } = {}) {
+/** The karaoke layer. ``device``: a browser's own player (This device, owner 27 Nov): it plays the sound when the
+ *  karaoke's output is that id, and shows nothing (the lyrics stay on the karaoke screen). */
+export function KaraokeLayer({ screen, device }: { screen?: string; device?: string } = {}) {
   const [on, setOn] = useState(false);
   // The deployment (its screens): which screen is the karaoke screen (karaokeScreen). Only that screen's page shows
   // the lyrics and, with output "screen", plays the sound; on any other screen this layer stays empty and silent.
@@ -397,7 +400,7 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
       const p = n.player;
       // Sound here only when the karaoke's output is this screen's page (docs/SOUND.md: "screen:<id>"; a Sonos plays
       // it itself: routes/karaoke/sonos_out.py; a page without a screen plays any screen output).
-      if (!soundHere(n, screen)) {
+      if (!soundHere(n, screen, device)) {
         e.stop();
         bg.stop();
         bgWanted = false;
@@ -444,7 +447,7 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
       eng.stop();
       bg.stop();
     };
-  }, [on]);
+  }, [on, device]);
 
   const song = now?.song ?? null;
   const p = now?.player;
@@ -478,7 +481,7 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
   // Redraw every frame while a song is up.
   const active = on && !!p && p.state !== "stopped" && !!song;
   useEffect(() => {
-    if (!active) return;
+    if (!active || device) return; // a browser's own player draws nothing
     let raf = 0;
     const loop = () => {
       setTick((x) => (x + 1) % 1_000_000);
@@ -486,7 +489,7 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [active]);
+  }, [active, device]);
 
   // A song that ends in the dark (its outro, Curtain) keeps the screen dark a little past its end (Handover), while
   // the art director takes the scene down to black on its own (the song's end: a fade-dark), so the two fades read as
@@ -504,7 +507,7 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
     if (last?.dur && last.t >= last.dur - HANDOVER_NEAR_S) setHandover(Date.now());
   }, [songKey]);
 
-  if (!on || !now) return null;
+  if (!on || !now || device) return null;
   // At rest (the room in a karaoke mode, nothing playing) every screen shows the code that opens the panel on a phone
   // (JoinOverlays.tsx); the other screens show nothing else.
   const joinUrl = now.join?.url ?? null;

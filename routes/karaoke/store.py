@@ -42,10 +42,12 @@ DEFAULT_SETTINGS = {"guide": 0.0, "autoplay": True, "highlight": "words", "child
 #: Where the karaoke sound plays (owner, 26 Nov: "specify which screen we're outputting to ... and living room sonos
 #: audio"): one of the app's sound outputs (smsound.outputs; owner, 27 Nov: "generalise this ... in a consistent
 #: standard way"), of the kinds karaoke can play: ``screen:<id>`` (that screen's own page: its browser, speakers, HDMI,
-#: Bluetooth), ``sonos:<zone>`` (a Sonos playing it itself: sonos_out.py), ``none``. None: the karaoke screen's own
+#: Bluetooth), ``device:<id>`` (a browser playing it itself: the Karaoke page's This device, the same player as a
+#: screen's page; owner, 27 Nov: "'this device' is always a meaningful notion in any device that can host a browser"),
+#: ``sonos:<zone>`` (a Sonos playing it itself: sonos_out.py), ``none``. None: the karaoke screen's own
 #: page (``output()``). Its delay is the output's, in smsound.latency (the one store); /now carries it as
 #: settings.audio_delay_ms for the display page and the lyric feeds.
-KINDS = ("screen", "sonos", "none")
+KINDS = ("screen", "device", "sonos", "none")
 SONOS_OUTPUT = "sonos:"
 #: How the words show as they're sung (owner, 25 Nov): yellow as they're sung, a bouncing dot, or both.
 HIGHLIGHTS = ("words", "dot", "both")
@@ -526,7 +528,7 @@ class Store:
                 st["autoplay"] = bool(kw["autoplay"])
             if "audio_delay_ms" in kw:                   # the old setting: now the output's own delay (smsound)
                 oid = self.output()
-                if O.kind(oid) != "screen":
+                if O.kind(oid) not in ("screen", "device"):
                     raise ValueError("audio_delay_ms")
                 L.set_manual(oid, float(min(5000, max(-2000, int(kw["audio_delay_ms"])))))
             if "screen" in kw:                           # the karaoke screen; None: the deployment's own choice
@@ -569,7 +571,7 @@ class Store:
         oid = self.output()
         st["output"] = oid
         st["output_set"] = self.s["settings"].get("output") is not None
-        st["audio_delay_ms"] = L.effective_ms(oid) if O.kind(oid) == "screen" else 0
+        st["audio_delay_ms"] = L.effective_ms(oid) if O.kind(oid) in ("screen", "device") else 0
         return st
 
     def _migrate_output(self) -> None:

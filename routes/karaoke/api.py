@@ -365,5 +365,5 @@ def settings():
         return jsonify({"settings": store().settings(**{k: b[k] for k in ("guide", "autoplay", "audio_delay_ms", "highlight", "child_mode", "screen", "output") if k in b})})
     except (TypeError, ValueError):
         return _err(400, "guide is 0..1, autoplay true/false, audio_delay_ms a number, highlight words | dot | both, "
-                         "screen a screen's id (or null), output a sound output karaoke can play to (screen:<id> | sonos:<zone> | none, "
+                         "screen a screen's id (or null), output a sound output karaoke can play to (screen:<id> | device:<id> | sonos:<zone> | none, "
                          "null: the karaoke screen's page).")

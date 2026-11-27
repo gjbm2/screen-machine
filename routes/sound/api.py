@@ -33,7 +33,7 @@ sound_api = Blueprint("sound_api", __name__)
 
 #: What each consumer can play to (the consumers' own modules say why).
 CONSUMERS: dict[str, tuple[set[str], str]] = {
-    "karaoke": ({"screen", "sonos", "none"}, "Karaoke plays from a screen's page or a Sonos"),
+    "karaoke": ({"screen", "device", "sonos", "none"}, "Karaoke plays from a screen's page, a browser or a Sonos"),
     "music": ({"pc22", "sonos", "device", "none"}, "The piano plays on the PC, a Sonos or a phone"),
 }
 DEVICES_TIMEOUT_S = 0.8

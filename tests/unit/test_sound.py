@@ -132,7 +132,9 @@ def test_karaoke_plays_on_a_sound_output_and_carries_its_delay(tmp_path, lat, mo
     assert st.output() == "none"
     st.settings(output="screen")                                        # the old word: the karaoke screen
     assert st.output() == "screen:vj"
-    for bad in ("pc22", "device:x", "loud"):
+    st.settings(output="device:abc")                                    # This device: a browser plays it itself
+    assert st.output() == "device:abc" and st.settings_view()["audio_delay_ms"] is None   # unmeasured: its own figure
+    for bad in ("pc22", "device:", "loud"):
         with pytest.raises(ValueError):
             st.settings(output=bad)
 
