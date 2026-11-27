@@ -76,6 +76,16 @@ export interface LatencyOverview {
   sources: LatencyRow[];
 }
 
+/** An output's graphic EQ (smsound/eq.py). `applies`: its player shapes the sound (a screen's page, a browser). */
+export interface OutputEq {
+  applies: boolean;
+  preset: string | null;
+  gains: number[];
+  bands: number[];
+  presets: { id: string; label: string; gains: number[] }[];
+  range_db: number;
+}
+
 async function call<T>(path: string, init?: RequestInit): Promise<T> {
   const r = await sendRelative(`/sound${path}`, init);
   const body = await r.json().catch(() => ({}));
@@ -95,6 +105,9 @@ export const sound = {
   latency: () => call<LatencyOverview>('/latency'),
   setLatency: (id: string, body: { trim_ms?: number; delay_ms?: number | null; forget?: boolean }) =>
     call<{ id: string; latency: OutputLatency }>(`/outputs/${encodeURIComponent(id)}/latency`, send('PUT', body)),
+  eq: (id: string) => call<{ id: string; eq: OutputEq }>(`/outputs/${encodeURIComponent(id)}/eq`),
+  setEq: (id: string, body: { preset: string } | { gains: number[] }) =>
+    call<{ id: string; eq: OutputEq }>(`/outputs/${encodeURIComponent(id)}/eq`, send('PUT', body)),
   calibrate: (output: string) => call<CalibrationRun>('/calibrate', send('POST', { output })),
   calibration: () => call<CalibrationRun>('/calibrate'),
 };

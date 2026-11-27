@@ -27,6 +27,7 @@ from pathlib import Path
 from typing import Any
 
 import smconfig
+from smsound import eq as EQ
 from smsound import latency as L
 from smsound import outputs as O
 
@@ -572,6 +573,7 @@ class Store:
         st["output"] = oid
         st["output_set"] = self.s["settings"].get("output") is not None
         st["audio_delay_ms"] = L.effective_ms(oid) if O.kind(oid) in ("screen", "device") else 0
+        st["eq"] = EQ.gains(oid) if O.kind(oid) in EQ.APPLIES else None   # the page that plays it shapes the sound
         return st
 
     def _migrate_output(self) -> None:

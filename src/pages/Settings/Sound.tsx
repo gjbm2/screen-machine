@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Timer } from "lucide-react";
 import { OutputTiming } from "@/components/sound/OutputTiming";
+import { OutputEq } from "@/components/sound/OutputEq";
 import { msText, sound, type LatencyOverview, type LatencyRow } from "@/shared/api/sound";
 import { Group, Hint, ReadRow, Sub } from "./Group";
 
@@ -60,6 +61,7 @@ function SoundBody() {
           </p>
           {r.hint && <p className="text-sm leading-snug text-muted-foreground">{r.hint}</p>}
           <OutputTiming output={r} onChanged={load} />
+          <OutputEq output={r.id} folded />
         </div>
       ))}
       <Hint>

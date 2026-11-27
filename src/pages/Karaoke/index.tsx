@@ -101,6 +101,7 @@ import { SongPictures } from "./SongPictures";
 import { LoopbackToggle, RoomMicCheck } from "./RoomMic";
 import { SingerAsk, SingerTag, askSingers } from "./Singer";
 import { OutputTiming } from "@/components/sound/OutputTiming";
+import { OutputEq } from "@/components/sound/OutputEq";
 import { SoundOutputSelect } from "@/components/sound/SoundOutputSelect";
 import { setKaraokeHere } from "@/components/player/KaraokeHere";
 import { myOutput } from "@/pages/Room/listenStream";
@@ -1988,6 +1989,12 @@ function Settings({
                 onChanged={loadOutputs}
                 confirmText="Calibrate the speaker delay? The song pauses, and the speaker plays ten chirps (about 12 s). Keep the room quiet."
               />
+            </div>
+          )}
+          {current && current.kind !== "none" && st.settings.eq != null && (
+            <div className="space-y-1">
+              <span>EQ</span>
+              <OutputEq output={current.id} />
             </div>
           )}
           {st.sonos_error && (st.settings.output ?? "").startsWith("sonos:") && (

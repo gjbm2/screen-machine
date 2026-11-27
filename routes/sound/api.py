@@ -8,6 +8,9 @@
   GET  /sound/latency                       every latency the deployment knows (smsound.latency.overview): sound
                                             outputs, screens, lights, sound sources
   PUT  /sound/outputs/<id>/latency          {trim_ms} | {delay_ms} (typed in) | {forget: true}: -> the output's latency
+  GET  /sound/outputs/<id>/eq               its graphic EQ (smsound.eq.describe): {applies, preset, gains, bands,
+                                            presets, range_db}
+  PUT  /sound/outputs/<id>/eq               {preset} | {gains: [dB x 7]}: -> the same
   POST /sound/calibrate                     {output, mic?}: measure it (routes/sound/calibrate.py) -> the run's state;
                                             400 {error} when it can't be measured from here
   GET  /sound/calibrate                     the run's state: {id, state: idle|running|done|failed, output, label,
@@ -24,6 +27,7 @@ from typing import Any
 from flask import Blueprint, jsonify, request
 
 import smconfig
+from smsound import eq as EQ
 from smsound import latency as L
 from smsound import outputs as O
 
@@ -106,6 +110,23 @@ def set_latency(oid: str):
     except (TypeError, ValueError) as e:
         return _err(400, str(e))
     return jsonify({"id": oid, "latency": L.describe(oid)})
+
+
+@sound_api.get("/sound/outputs/<path:oid>/eq")
+def get_eq(oid: str):
+    if O.parse(oid) is None or O.kind(oid) == "none":
+        return _err(404, "Not a sound output.")
+    return jsonify({"id": oid, "eq": EQ.describe(oid)})
+
+
+@sound_api.put("/sound/outputs/<path:oid>/eq")
+def put_eq(oid: str):
+    b: Any = request.get_json(silent=True) or {}
+    try:
+        d = EQ.set_eq(oid, preset=b.get("preset"), gains_db=b.get("gains"))
+    except ValueError as e:
+        return _err(400, str(e))
+    return jsonify({"id": oid, "eq": d})
 
 
 @sound_api.post("/sound/calibrate")

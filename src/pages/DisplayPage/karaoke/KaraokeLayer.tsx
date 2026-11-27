@@ -61,6 +61,8 @@ const FADE_S = 1.6;
 // karaoke screen with the room in a karaoke mode. It fades in, and out when a song starts.
 const BG_LEVEL = 0.28;
 const BG_FADE_IN_S = 4;
+/** The graphic EQ's bands (Hz): smsound/eq.py BANDS. */
+const EQ_HZ = [60, 150, 400, 1000, 2400, 6000, 15000];
 const PREVIEW_S = 3.6; // after a long break, the next line is in place this long before it starts: then the count-in
 
 /** Web Audio playback of one song: two buffers started together, the vocal through its own gain. */
@@ -146,7 +148,7 @@ class Engine {
     }
     const when = ctx.currentTime + LEAD_S + Math.max(0, -at0);
     const out = ctx.createGain();
-    out.connect(ctx.destination);
+    out.connect(this.eqInput(ctx));
     if (fadeIn > 0) {
       out.gain.setValueAtTime(0, when);
       out.gain.linearRampToValueAtTime(this.level, when + fadeIn);
@@ -222,6 +224,47 @@ class Engine {
       c.setValueAtTime(0, Math.max(now, cb));
       c.linearRampToValueAtTime(1, Math.max(now, cb) + R);
     }
+  }
+
+  // The output's graphic EQ (smsound/eq.py; settings.eq): one chain per context that every play goes through, a low
+  // shelf, five peaks and a high shelf at EQ_HZ, after a level lowered by the largest boost so a boost never clips.
+  private eqIn: GainNode | null = null;
+  private eqBands: BiquadFilterNode[] = [];
+  private eqGains: number[] = EQ_HZ.map(() => 0);
+
+  private eqInput(ctx: AudioContext): AudioNode {
+    if (this.eqIn) return this.eqIn;
+    const pre = ctx.createGain();
+    let at: AudioNode = pre;
+    this.eqBands = EQ_HZ.map((hz, i) => {
+      const f = ctx.createBiquadFilter();
+      f.type = i === 0 ? "lowshelf" : i === EQ_HZ.length - 1 ? "highshelf" : "peaking";
+      f.frequency.value = hz;
+      f.Q.value = 1.1;
+      at.connect(f);
+      at = f;
+      return f;
+    });
+    at.connect(ctx.destination);
+    this.eqIn = pre;
+    this.applyEq(true);
+    return pre;
+  }
+
+  setEq(g: number[] | null | undefined): void {
+    const next = EQ_HZ.map((_, i) => (g && Number.isFinite(g[i]) ? Math.max(-12, Math.min(12, g[i])) : 0));
+    if (next.every((v, i) => v === this.eqGains[i])) return;
+    this.eqGains = next;
+    this.applyEq(false);
+  }
+
+  private applyEq(now: boolean): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.eqIn) return;
+    const t = ctx.currentTime;
+    const set = (p: AudioParam, v: number) => (now ? (p.value = v) : p.setTargetAtTime(v, t, 0.08));
+    this.eqBands.forEach((f, i) => set(f.gain, this.eqGains[i]));
+    set(this.eqIn.gain, Math.pow(10, -Math.max(0, ...this.eqGains) / 20));
   }
 
   setGuide(g: number): void {
@@ -415,6 +458,8 @@ export function KaraokeLayer({ screen, device }: { screen?: string; device?: str
       if (bgWanted) void background(n.background ?? [], !!n.settings.child_mode);
       else if (bg.playing) bg.stop(FADE_S);
       e.setGuide(n.settings.guide);
+      e.setEq(n.settings.eq);
+      bg.setEq(n.settings.eq);
       e.setMutes(mutesRef.current);
       if (p.state === "stopped" || !p.song_id) {
         e.stop(FADE_S);

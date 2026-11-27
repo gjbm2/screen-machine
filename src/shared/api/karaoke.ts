@@ -85,6 +85,8 @@ export interface KaraokeSettings {
    *  or "none". Always resolved here; `output_set` false: it's the karaoke screen's page by default. */
   output?: string;
   output_set?: boolean;
+  /** The output's graphic EQ (dB per band, smsound/eq.py), for a page or browser that plays it; null: not applied. */
+  eq?: number[] | null;
 }
 
 /** One place in the queue. The same song can be queued more than once. */
