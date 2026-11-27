@@ -343,7 +343,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   const [frame, setFrame] = useState(0);                             // bumped to turn the camera to the selection
   const [treeOpen, setTreeOpen] = useState(false);                   // the object picker's dropdown
   // what the lights show in the view: a preview (nothing sent to the lights) or the live wire
-  const [show, setShow] = useState<"plain" | "colour" | "scene" | "live">("plain");
+  const [show, setShow] = useState<"mode" | "plain" | "colour" | "scene" | "live">("mode");
   const [colour, setColour] = useState("#ff7a2e");
   const [scene, setScene] = useState("");
   const [energy, setEnergy] = useState(0.6);                        // the preview's music: how hard it drives
@@ -362,7 +362,10 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   // mode is that they would be off"): the lights a mode sets itself (light.<id> in modes.json: the house lights) show
   // as the chosen mode sets them. Default: the mode the room is in when that is a show mode, else the first mode that
   // turns lights off for a show; then the last one picked here.
-  const [modes, setModes] = useState<{ id: string; label: string; lights: Record<string, number> }[]>([]);
+  // Mode (owner, 27 Nov: "It's ... confusing if it is meant to simulate a mode, but it doesn't do that. fix it"): the
+  // whole rig as the mode drives it (show_service preview what=mode): its feel (state.show.main.vibe; a mode that
+  // doesn't set one leaves the room's feel as it is: "@current"), its light scene tags, and the lights it sets itself.
+  const [modes, setModes] = useState<{ id: string; label: string; lights: Record<string, number>; vibe: string; tags: string[] }[]>([]);
   const [asMode, setAsMode] = useState<string>(() => { try { return localStorage.getItem("room3d.previewMode") ?? ""; } catch { return ""; } });
   useEffect(() => {
     let dead = false;
@@ -372,7 +375,9 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
         const st: any = await (await fetch(`${room}/api/v1/status`, { cache: "no-store" })).json().catch(() => ({}));
         const ms = Object.entries(d?.modes ?? {}).map(([id, m]: [string, any]) => ({ id, label: String(m?.label ?? id),
           lights: Object.fromEntries(Object.entries(m?.state?.light ?? {}).map(([lid, v]: [string, any]) =>
-            [lid, v === "off" ? 0 : v === "on" ? 1 : typeof v?.bri === "number" ? Math.max(0, Math.min(1, v.bri / 100)) : 1])) }));
+            [lid, v === "off" ? 0 : v === "on" ? 1 : typeof v?.bri === "number" ? Math.max(0, Math.min(1, v.bri / 100)) : 1])),
+          vibe: m?.state?.show && "main" in m.state.show ? String(m.state.show.main?.vibe ?? "") : "@current",
+          tags: (m?.state?.director?.light_scenes?.scene_tags ?? []).filter((t: any) => typeof t === "string") }));
         if (dead) return;
         setModes(ms);
         const rs = Array.isArray(st?.rooms) ? st.rooms : [];
@@ -386,11 +391,14 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   }, [room]);
   const feed = useMemo(() => {
     if (show === "live") return { base: "", live: true };
-    const lights = modes.find((m) => m.id === asMode)?.lights ?? {};
-    const sets = Object.entries(lights).map(([id, v]) => `${id}:${v}`).join(",");
-    const q = (show === "colour" ? `?what=colour&colour=${encodeURIComponent(colour)}`
-      : show === "scene" && scene ? `?what=scene:${encodeURIComponent(scene)}&energy=${energy}&bpm=${bpm}` : "?what=plain")
-      + (sets ? `&set=${encodeURIComponent(sets)}` : "");
+    const m = modes.find((x) => x.id === asMode);
+    const sets = Object.entries(m?.lights ?? {}).map(([id, v]) => `${id}:${v}`).join(",");
+    // Mode: the room as that mode drives it; Plain, Colour, Scene: aiming views, every light, no mode
+    const q = show === "mode" && m
+      ? `?what=mode&vibe=${encodeURIComponent(m.vibe)}&tags=${encodeURIComponent(m.tags.join(","))}&energy=${energy}&bpm=${bpm}`
+        + (sets ? `&set=${encodeURIComponent(sets)}` : "")
+      : show === "colour" ? `?what=colour&colour=${encodeURIComponent(colour)}`
+      : show === "scene" && scene ? `?what=scene:${encodeURIComponent(scene)}&energy=${energy}&bpm=${bpm}` : "?what=plain";
     return { base: `${room}/show/api/v1/rig/preview`, query: q };
   }, [show, colour, scene, room, energy, bpm, modes, asMode]);
   // undo and redo: every change is a step that knows how to put things back (owner, 27 Nov: "need undo etc. in case of
@@ -1273,7 +1281,8 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   );
 
   const sel = "h-8 rounded-lg border border-stone-300 bg-white px-2 text-[13px] text-stone-800";
-  const SHOW: [typeof show, string, string][] = [["plain", "Plain", "Every light steady in plain light: for aiming"],
+  const SHOW: [typeof show, string, string][] = [["mode", "Mode", "The room as a mode runs it: its feel's scenes and colours, and the lights it sets"],
+    ["plain", "Plain", "Every light steady in plain light: for aiming"],
     ["colour", "Colour", "Every light in one colour"], ["scene", "Scene", "A lighting scene from the library"],
     ["live", "Live", "What the room's lights are doing now"]];
   const toolbar = (
@@ -1292,25 +1301,26 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       {show === "colour" && (
         <input type="color" value={colour} onChange={(e) => setColour(e.target.value)} aria-label="Colour" className="h-8 w-10 rounded-lg border border-stone-300 bg-white" />
       )}
+      {show === "mode" && modes.length > 0 && (
+        <select value={asMode} aria-label="Which mode" data-testid="as-mode" className={`${sel} w-[150px] min-w-[90px] shrink`}
+          title="The room as this mode runs it"
+          onChange={(e) => { setAsMode(e.target.value); try { localStorage.setItem("room3d.previewMode", e.target.value); } catch { /* this visit */ } }}>
+          {modes.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+        </select>
+      )}
       {show === "scene" && (
-        <>
           <select value={scene} onChange={(e) => setScene(e.target.value)} className={`${sel} w-[180px] min-w-[90px] shrink`} aria-label="Lighting scene">
             {scenes.map((x) => <option key={x.name} value={x.name}>{x.label}</option>)}
           </select>
+      )}
+      {(show === "scene" || (show === "mode" && !!modes.find((x) => x.id === asMode && x.vibe))) && (
+        <>
           <span className="hidden items-center gap-3 [@container(min-width:1650px)]:flex">
             <PreviewKnob label="Energy" value={energy} min={0} max={1} step={0.05} show={(v) => `${Math.round(v * 100)}%`} onCommit={setEnergy} />
             <PreviewKnob label="Tempo" value={bpm} min={60} max={180} step={2} show={(v) => `${Math.round(v)} bpm`} onCommit={setBpm} />
           </span>
           <span className="[@container(min-width:1650px)]:hidden"><PreviewFeel energy={energy} bpm={bpm} setEnergy={setEnergy} setBpm={setBpm} /></span>
         </>
-      )}
-      {/* last: it comes and goes with Live, and moves nothing before it */}
-      {show !== "live" && modes.length > 0 && (
-        <select value={asMode} aria-label="The room as in" data-testid="as-mode" className={`${sel} w-[150px] min-w-[90px] shrink`}
-          title="The lights a mode sets itself (the house lights) show as this mode sets them"
-          onChange={(e) => { setAsMode(e.target.value); try { localStorage.setItem("room3d.previewMode", e.target.value); } catch { /* this visit */ } }}>
-          {modes.map((m) => <option key={m.id} value={m.id}>Room as in {m.label}</option>)}
-        </select>
       )}
     </>
   );

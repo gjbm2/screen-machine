@@ -9,6 +9,13 @@ model, config/live/light_*.yaml), run on its own steady 120 bpm clock, one per v
   colour:<hex>     every light steady in that colour
   scene:<name>     a light scene from the catalogue on every light group that can play it, in the plain light
                    (``colour`` with it: in that colour); the other groups glow low
+  mode             the rig as a room mode drives it (owner, 27 Nov: "It's ... confusing if it is meant to simulate a
+                   mode, but it doesn't do that"): ``vibe`` is the feel the mode sets (its show.main), ``@current`` the
+                   room's feel now (a mode that leaves the feel alone), empty: no feel. No feel: the DMX lights are
+                   held as the real output holds them (``idle_without_vibe``: each at its house look, else dark). A
+                   feel: each light group plays from its pool for the mode's ``tags`` (director.light_scenes
+                   scene_tags; light_scenes.pool_for, as the director draws), a new scene each phrase, in the feel's
+                   palettes, at its level and motion for ``energy``; never a strobe
 
 and the music it plays to: ``energy`` (0..1: how hard it drives, which is how far and fast the heads move, how dense
 the accents are, how bright the look is) and ``bpm`` (its tempo; the beat is steady).
@@ -88,7 +95,8 @@ class Preview:
     """One viewer's preview: the engine, what it shows, and the 512 slots it would send."""
 
     def __init__(self, what: str, colour: Optional[tuple[float, float, float]], energy: float = ENERGY,
-                 bpm: float = BPM, sets: Optional[dict[str, float]] = None) -> None:
+                 bpm: float = BPM, sets: Optional[dict[str, float]] = None, vibe: Optional[str] = None,
+                 tags: tuple[str, ...] = ()) -> None:
         self.energy, self.bpm = max(0.0, min(1.0, energy)), max(40.0, min(220.0, bpm))
         from .looks import LookEngine
         from . import space as sp
@@ -105,6 +113,9 @@ class Preview:
         self.lights = ls.parse_lights(show.get("lights"), probs)
         self.groups = ls.group_members(self.lights["groups"], self.view, lamps=show.get("lamps"))
         self.t0 = self.now = time.monotonic()
+        self.vibe, self.tags, self.phrase = vibe, tuple(tags), -1
+        self.vs: Optional[dict] = None                    # the mode's feel's settings (what=mode with a feel)
+        self.pal_cols: list[list[tuple[float, float, float]]] = []
         self.pal: dict = {}
         self.look: dict = {}
         self.engine = LookEngine(palette_fn=lambda t: self.pal, look_fn=lambda: self.look, clock=_Clock(self.t0, self.bpm),
@@ -152,13 +163,75 @@ class Preview:
                        0 if sp_[1] == 1 else None)
             if off is not None:
                 self.sets[sp_[0] + off] = max(0, min(255, round(255 * lvl)))
+        self.what = what
+        if what == "mode" and vibe:
+            from . import palette as palmod, vibes as vibesmod
+            vb = vibesmod.Vibes()
+            vb.poll(force=True)
+            self.vs = dict(vb.get(vibe) or vb.effective({"vibe": vibe, "listening": False})[0])
+            cat = palmod.Catalog()
+            cat.poll()
+            names = [n for n in self.vs.get("palettes") or () if cat.has(n)] or cat.names()[:1]
+            self.pal_cols = [cat.colours(n, 5) for n in names]
         self._show(what, colour)
 
     def _kind(self, gid: str) -> str:
         cfg = self.lights["groups"].get(gid) or {}
         return next((p for p in cfg.get("scenes_for") or () if p in PLAIN), "other")
 
+    def _phrase(self) -> int:
+        """Which phrase (8 bars of 4) of the preview's steady clock it is: a mode's preview changes scene on each."""
+        return int((self.now - self.t0) * self.bpm / 60.0 // 32)
+
+    @staticmethod
+    def _span(v: Any, e: float, default: float) -> float:
+        """A feel's [lo, hi] (or one number) at energy ``e``."""
+        if isinstance(v, (list, tuple)) and len(v) == 2 and all(isinstance(x, (int, float)) for x in v):
+            return float(v[0]) + (float(v[1]) - float(v[0])) * e
+        return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else default
+
+    def _show_mode(self) -> None:
+        """what=mode: the rig as the mode drives it (the module docstring)."""
+        self.phrase = self._phrase()
+        at = self.now * 1000.0
+        if self.vs is None:                               # no feel: the engine's own no-vibe hold (house look or dark)
+            self.pal, self.look = None, {}                # type: ignore[assignment]
+            return
+        vs, e, k = self.vs, self.energy, self.phrase
+        cols = self.pal_cols[k % len(self.pal_cols)] if self.pal_cols else [PLAIN["other"]]
+        pal: dict = {}
+        progs = {}
+        for i, (gid, g) in enumerate(self.groups.items()):
+            c = cols[(i + k) % len(cols)]
+            for fid in g["members"]:
+                pal[fid] = c
+            pool = [n for n in self.cat.pool_for(g, self.tags or None) if not n.startswith("preview-")]
+            sc = pool[(k + i) % len(pool)] if pool and g["members"] else "preview-low"
+            progs[gid] = {"group": gid, "label": g.get("label") or gid, "members": list(g["members"]),
+                          "caps": list(g.get("caps") or ()), "scene": sc, "effects": [],
+                          "transition": {"name": "cut", "kind": "cut", "params": {}, "at_ms": at}, "at_ms": at,
+                          "since_ms": at, "why": "a preview of a mode",
+                          "flow": {"dir": "cw", "speed": 0.5, "spread": 0.5, "id": "preview", "at_ms": at,
+                                   "screens": {}}}
+        pal["*"] = cols[0]
+        self.pal = pal
+        motion = self._span(vs.get("motion"), e, 0.4)
+        self.look = {"t_ms": at, "seq": 1 + k, "look_id": f"preview-{k}", "vibe": self.vibe, "mode": None, "palette": {},
+                     "level": self._span(vs.get("level"), e, 0.8), "floor": self._span(vs.get("floor"), 0.0, 0.0),
+                     "house": False, "low": False, "key_cct": float(vs.get("key_cct") or 4000.0),
+                     "chroma_max": float(vs.get("chroma_max") or 1.0), "lamp_chroma_max": 1.0,
+                     "saturation": self._span(vs.get("saturation"), e, 1.0), "contrast": self._span(vs.get("contrast"), e, 0.5),
+                     "motion": {"speed": motion, "amount": motion, "idle": float(vs.get("idle_motion") or 0.2)},
+                     "accents": {"style": vs.get("accents") or "beat", "density": e, "subdivision": 2 if e > 0.85 else 1,
+                                 "strobe": False, "beat_lock": True},
+                     "spread": 0.0, "change_rate": 0.5, "transition": {"style": "cut", "beats": None, "seconds": None},
+                     "lamps": {}, "screens": {}, "light_programs": progs,
+                     "flow": {"dir": "cw", "speed": 0.5, "spread": 0.5, "id": "preview", "at_ms": at, "screens": {}}}
+
     def _show(self, what: str, colour: Optional[tuple[float, float, float]]) -> None:
+        if what == "mode":
+            self._show_mode()
+            return
         scene = what[len("scene:"):] if what.startswith("scene:") else None
         if scene is not None and scene not in self.cat.scenes:
             raise ValueError(f"There's no light scene {scene!r}.")
@@ -203,6 +276,8 @@ class Preview:
     def frame(self) -> bytes:
         """The 512 slots now."""
         self.now = time.monotonic()
+        if self.what == "mode" and self.vs is not None and self._phrase() != self.phrase:
+            self._show_mode()                             # a new phrase: the next scenes and colours
         fr = self.engine.evaluate(self.output, self.now, artnet_lan.CAPS)
         buf = bytearray(self.base)
         for fid, f in (fr.get("fixtures") or {}).items():
@@ -213,6 +288,17 @@ class Preview:
         for a, v in self.sets.items():
             buf[a] = v
         return bytes(buf)
+
+
+def _current_vibe(brain: Any) -> Optional[str]:
+    """The room's feel now (the director's target vibe), None without one or without a director."""
+    try:
+        from .api import DIRECTOR, _components
+        t = getattr(_components(brain).get(DIRECTOR), "target", None)
+        v = t.get("vibe") if isinstance(t, dict) else None
+        return v if isinstance(v, str) and v else None
+    except Exception:                                     # noqa: BLE001 - no brain (a test): no feel
+        return None
 
 
 def _cors(resp: web.StreamResponse) -> None:
@@ -229,8 +315,9 @@ async def status(_request: web.Request, _brain: Any = None) -> web.Response:
 
 
 async def dmx(request: web.Request, _brain: Any = None) -> web.StreamResponse:
-    """GET /api/v1/rig/preview/dmx?what=plain|colour|scene:<name>&colour=#rrggbb&energy=0..1&bpm=n&set=<id>:<0..1>,...:
-    the preview's frames, as SSE. ``set``: lights a mode sets (house lights), held at those levels."""
+    """GET /api/v1/rig/preview/dmx?what=plain|colour|scene:<name>|mode&colour=#rrggbb&energy=0..1&bpm=n
+    &set=<id>:<0..1>,...&vibe=<name>|@current|&tags=<tag>,...: the preview's frames, as SSE. ``set``: lights a mode
+    sets (house lights), held at those levels; ``vibe`` and ``tags``: a mode's feel and light scene tags (what=mode)."""
     global _live
     what = request.query.get("what") or "plain"
     colour = _hex(request.query.get("colour"))
@@ -249,8 +336,12 @@ async def dmx(request: web.Request, _brain: Any = None) -> web.StreamResponse:
             raise ValueError("set is <light id>:<level 0..1>, comma separated.") from None
     if what == "colour" and colour is None:
         raise ValueError("A colour preview needs colour=#rrggbb.")
-    if what not in ("plain", "colour") and not what.startswith("scene:"):
-        raise ValueError("what is plain, colour or scene:<name>.")
+    if what not in ("plain", "colour", "mode") and not what.startswith("scene:"):
+        raise ValueError("what is plain, colour, scene:<name> or mode.")
+    vibe: Optional[str] = (request.query.get("vibe") or "").strip() or None
+    if vibe == "@current":                                # a mode that leaves the feel alone: the room's feel now
+        vibe = _current_vibe(_brain)
+    tags = tuple(t.strip() for t in (request.query.get("tags") or "").split(",") if t.strip())
     if _live >= MAX_LIVE:
         r = web.json_response({"error": "busy", "detail": "Too many previews at once: close one."}, status=503)
         _cors(r)
@@ -258,7 +349,7 @@ async def dmx(request: web.Request, _brain: Any = None) -> web.StreamResponse:
     loop = asyncio.get_running_loop()
     _live += 1
     try:
-        pv = await loop.run_in_executor(None, Preview, what, colour, energy, bpm, sets)
+        pv = await loop.run_in_executor(None, lambda: Preview(what, colour, energy, bpm, sets, vibe, tags))
         resp = web.StreamResponse(headers={"Content-Type": "text/event-stream"})
         _cors(resp)
         await resp.prepare(request)

@@ -47,3 +47,27 @@ def test_a_mode_set_light_holds_its_level_whatever_the_look():
     a = pv.spans[one][0]
     assert preview.Preview("plain", None, sets={one: 0.0}).frame()[a] == 0
     assert preview.Preview("plain", None, sets={one: 0.5}).frame()[a] == 128
+
+
+def test_a_mode_with_no_feel_holds_the_rig_and_one_with_a_feel_plays_its_pool():
+    """what=mode: no feel is the real output's no-vibe hold (the rig at rest); a feel plays scenes from the mode's
+    pool in its colours, and moves on each phrase."""
+    try:
+        rest = preview.Preview("mode", None)
+    except ValueError as e:
+        if "no DMX lights" in str(e):
+            pytest.skip("this deployment has no DMX lights")
+        raise
+    assert rest.pal is None and _slots(rest.frame()) * 2 < _slots(_make("plain").frame())   # at rest, not lit
+    vibe = next(iter(__import__("show_service.vibes", fromlist=["Vibes"]).Vibes().names()), None)
+    if vibe is None:
+        pytest.skip("no vibes")
+    pv = preview.Preview("mode", None, vibe=vibe)
+    d = pv.frame()
+    assert _slots(d) > _slots(rest.frame())
+    scenes = {p["scene"] for p in pv.look["light_programs"].values()}
+    assert scenes and not scenes <= {"preview-low"}
+    first = dict(pv.look["light_programs"])
+    pv.t0 -= 60.0 * 32 / pv.bpm                                     # a phrase later
+    pv.frame()
+    assert pv.look["light_programs"] != first or len(scenes) == 1
