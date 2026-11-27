@@ -652,7 +652,7 @@ AXIS_WORDS: dict[str, str] = {"pan": "turn", "tilt": "tilt"}
 UNKNOWN_RANGE_DEG: dict[str, float] = {"pan": 540.0, "tilt": 270.0}
 FRONTS: tuple[str, ...] = ("north", "east", "south", "west")
 ROOM_KEYS: tuple[str, ...] = ("size", "front")
-APPLIANCE_KEYS: tuple[str, ...] = ("at", "mount", "plane")
+APPLIANCE_KEYS: tuple[str, ...] = ("at", "mount", "plane", "kind", "label", "connect")
 POINT_KEYS: tuple[str, ...] = ("at", "label", "device")
 REGION_KEYS: tuple[str, ...] = ("surface", "centre", "size", "label")
 NO_SPACE = "The Room map isn't available yet (show_service needs updating)."
@@ -816,7 +816,7 @@ def neutral_space(why: Optional[str]) -> dict:
     """GET /api/v1/rig/space with no room space: contract.SpaceView's shape, empty (the frame's own default front)."""
     return {"revision": "", "error": why, "problems": [],
             "room": {"size": None, "front": "north", "centre": None, "right": [1.0, 0.0, 0.0]},
-            "surfaces": {}, "points": {}, "regions": {}, "keep_out": {}, "bars": {}, "appliances": {}, "extent": None,
+            "surfaces": {}, "points": {}, "regions": {}, "keep_out": {}, "bars": {}, "layouts": {}, "appliances": {}, "extent": None,
             "targets": [], "light_groups": {}, "lasers": {}, "lean_rule_deg": None}
 
 
@@ -1173,6 +1173,7 @@ class Api:
             ("POST", "/api/v1/rig/nodes/{id}/record-failsafe", self._record_failsafe),
             ("GET", "/api/v1/rig/nodes/find", self._rig_nodes_find),
             ("GET", "/api/v1/rig/types", self._rig_types),
+            ("GET", "/api/v1/rig/library", self._rig_library),
             ("POST", "/api/v1/rig/fixtures", self._rig_add),
             ("PUT", "/api/v1/rig/fixtures/{id}", self._rig_update),
             ("DELETE", "/api/v1/rig/fixtures/{id}", self._rig_remove),
@@ -1838,6 +1839,36 @@ class Api:
             return bad
         return await self._rig_write(request, brain, "add_fixture", body)
 
+    async def _rig_library(self, request: web.Request, brain: Any) -> web.Response:
+        """GET /api/v1/rig/library: everything the room editor can put in the room (owner, 27 Nov: "create new objects
+        easily from this view (of any class ... anything in our library)"): {items: [{id, label, group, what}]}:
+        what "bar" (a whole light bar of a layout: id is the layout), "light" (a light type: id is the type) or
+        "device" (a room device: space.ROOM_DEVICE_KINDS)."""
+        from . import space as spacemod
+        rig = _components(brain).get(RIG)
+        fn = getattr(rig, "types_view", None) if rig is not None else None
+        try:
+            if callable(fn):
+                types = fn()
+            else:
+                from . import fixtures as fx
+                types = fx.type_rows(None)
+        except Exception:                                # noqa: BLE001 - the room devices still list
+            types = []
+        items: list[dict] = []
+        try:
+            lays = (spacemod.shared().view() or {}).get("layouts") or {}
+        except Exception:                                # noqa: BLE001
+            lays = {}
+        for lay in sorted(lays):
+            items.append({"id": lay, "label": spacemod.humanise(lay), "group": "Light bars", "what": "bar"})
+        for row in types if isinstance(types, list) else []:
+            if isinstance(row, dict) and isinstance(row.get("id"), str):
+                items.append({"id": row["id"], "label": row.get("label") or row["id"], "group": "Lights", "what": "light"})
+        for kind, words in spacemod.ROOM_DEVICE_KINDS.items():
+            items.append({"id": kind, "label": words, "group": "Room", "what": "device"})
+        return _json({"items": items})
+
     async def _rig_update(self, request: web.Request, brain: Any) -> web.Response:
         body, bad = await self._body(request)
         if bad is not None:
@@ -2469,7 +2500,9 @@ class Api:
         return await self._space_write(brain, write)
 
     async def _space_appliance_put(self, request: web.Request, brain: Any) -> web.Response:
-        """PUT /api/v1/rig/space/appliances/{id} ``{at?, mount?, plane?}`` (null clears one) -> the appliance."""
+        """PUT /api/v1/rig/space/appliances/{id} ``{at?, mount?, plane?, kind?, label?, connect?}`` (null clears one) ->
+        the appliance. With a ``kind`` (a light type or a room device, GET .../rig/library) and no light of that id it
+        is a PLANNED thing (space.ROOM_DEVICE_KINDS)."""
         body, bad = await self._body(request)
         if bad is not None:
             return bad

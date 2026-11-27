@@ -70,10 +70,19 @@ TOP_KEYS: tuple[str, ...] = ("version", "room", "appliances", "points", "regions
                               "layouts")
 SECTIONS: tuple[str, ...] = ("room", "appliances", "points", "regions", "surfaces", "keep_out", "bars")   # the added file, in this order
 ROOM_KEYS: tuple[str, ...] = ("size", "front", "haze_half_life_s")   # haze_half_life_s: atmosphere.py
-PLACE_KEYS: tuple[str, ...] = ("at", "kind", "label", "mount", "plane", "aim")   # an appliance's place (editable on
+PLACE_KEYS: tuple[str, ...] = ("at", "kind", "label", "mount", "plane", "aim", "connect")   # an appliance's place (editable on
 #: the map). aim: [x, y, z], the place in the room a fixed light points at (a bar's laser turned up at the ceiling;
 #: owner, 27 Nov): the 3D room draws its beams from ``at`` towards it
 APPLIANCE_KEYS: tuple[str, ...] = PLACE_KEYS + ("teach", "pose")
+#: The room editor as a studio (owner, 27 Nov: "I can create new objects easily from this view (of any class ...) ...
+#: not all of these objects are 'connected' (i.e. real). Only if they end up connected ... do they actually drive real
+#: output channels / states"). An appliance with a ``kind`` and no light of that id in the rig is PLANNED: drawn and
+#: placed, driving nothing. Its kind is a light type's id (types in fixtures.yaml: a planned light) or one of these room
+#: devices; ``connect`` names the real thing a planned device stands for (a screen, a Hue lamp, a microphone source, a
+#: light sensor, a remote-controlled device), and it is connected once that is set. A planned light is connected by
+#: registering it (the Lights page's Add a light), and the placement moves to the new light's id.
+ROOM_DEVICE_KINDS: dict[str, str] = {"screen": "Screen or TV", "hue-lamp": "Hue lamp", "mirror-ball": "Mirror ball",
+                                     "mic": "Microphone", "light-sensor": "Light sensor"}
 POINT_KEYS: tuple[str, ...] = ("label", "at", "device", "from")
 REGION_KEYS: tuple[str, ...] = ("label", "surface", "centre", "size")
 #: keep_out.<name> (owner, 27 Nov: "we need configurable 'keep out' regions in the room"): a box of the room no light
@@ -93,7 +102,9 @@ BAR_KEYS: tuple[str, ...] = ("label", "at", "facing_deg", "layout")
 #: only tilts, about the bar's length, and faces where the bar faces), and how the part points as it ships: lean_deg
 #: (degrees forward from straight up: 90 is level) and turn_deg (to the right of the bar's front). A light's own setup
 #: (fixtures.setup.yaml lean_deg, turn_deg: the Lights page) overrides those two.
-LAYOUT_PART_KEYS: tuple[str, ...] = ("along", "up", "head", "hang", "turns", "lean_deg", "turn_deg")
+LAYOUT_PART_KEYS: tuple[str, ...] = ("along", "up", "head", "hang", "turns", "lean_deg", "turn_deg", "type")
+#: type: the part's light type (a fixtures.yaml type id), so a bar placed before its lights are registered (a planned
+#: bar) can be drawn part by part
 SURFACE_KEYS: tuple[str, ...] = ("label", "origin", "normal", "up", "size")
 PLANE_KEYS: tuple[str, ...] = ("normal", "up", "size")
 POSE_KEYS: tuple[str, ...] = ("at", "rot", "tilt_offset_deg", "pan_sign", "tilt_sign", "rms_deg", "worst_deg",
@@ -343,6 +354,11 @@ def _place_value(k: str, v: Any, where: str, probs: list[str]) -> Any:
         if out is None:
             probs.append(f"{where}: three numbers in metres ([x, y, z], the place it points at): left unset")
         return out
+    if k == "connect":
+        if isinstance(v, str) and _DEVICE.match(v):
+            return v
+        probs.append(f"{where}: {v!r} isn't the id of a screen, lamp, source or device: left unset")
+        return None
     if k == "mount":
         if v in contract.MOUNTS:
             return v
@@ -477,6 +493,8 @@ def _layout(raw: Any, where: str, probs: list[str]) -> Optional[dict]:
         e: dict[str, Any] = {"along": float(sp["along"]), "up": float(_num(sp.get("up")) or 0.0),
                              "head": sp.get("head") is True, "hang": sp.get("hang") is True,
                              "turns": sp.get("turns") is not False}
+        if isinstance(sp.get("type"), str) and _WORD.match(sp["type"]):
+            e["type"] = sp["type"]
         for k in ("lean_deg", "turn_deg"):
             if sp.get(k) is not None:
                 if _num(sp.get(k)) is None:
@@ -829,7 +847,7 @@ def build_view(hand: Any, added: Any = None, *, error: Optional[str] = None,
     appliances = {}
     for aid, e in m["appliances"].items():
         a: dict[str, Any] = {"at": e.get("at")}
-        for k in ("kind", "label", "mount", "plane", "aim"):
+        for k in ("kind", "label", "mount", "plane", "aim", "connect"):
             if k in e:
                 a[k] = e[k]
         a["teach"] = list(e.get("teach") or [])
@@ -868,7 +886,7 @@ def build_view(hand: Any, added: Any = None, *, error: Optional[str] = None,
                              "solved_at": (f"from the bar ({'hanging under it' if hang else 'upright on it'}, facing its "
                                            f"front): not taught")}
             parts[pn] = {"id": fid, "own_place": own, "head": sp["head"], "hang": sp.get("hang", False),
-                         "turns": sp.get("turns", True), **{k: sp[k] for k in ("lean_deg", "turn_deg") if k in sp}}
+                         "turns": sp.get("turns", True), **{k: sp[k] for k in ("lean_deg", "turn_deg", "type") if k in sp}}
         bars[bid] = {"label": b.get("label") or humanise(bid), "at": b["at"], "facing_deg": b["facing_deg"],
                      "layout": b["layout"], "front": [round(x, 6) for x in front], "axis": [round(x, 6) for x in axis],
                      "parts": parts, "editable": b.get("_src") != "hand"}
@@ -882,8 +900,9 @@ def build_view(hand: Any, added: Any = None, *, error: Optional[str] = None,
     keep = {name: {"label": e.get("label") or humanise(name), "centre": e["centre"], "size": e["size"],
                    "groups": list(e.get("groups") or []), "editable": e.get("_src") != "hand"}
             for name, e in m["keep_out"].items()}
+    layouts = {n: {"parts": copy.deepcopy(lay["parts"])} for n, lay in m["layouts"].items() if isinstance(lay, dict)}
     body = {"room": room, "surfaces": surfaces, "points": points, "regions": regions, "appliances": appliances,
-            "keep_out": keep, "bars": bars, "extent": extent}
+            "keep_out": keep, "bars": bars, "layouts": layouts, "extent": extent}
     rev = hashlib.sha1(json.dumps(body, sort_keys=True).encode()).hexdigest()[:12]
     return {"revision": rev, "error": error, "problems": list(dict.fromkeys(probs)),   # type: ignore[typeddict-item]
             **body}
@@ -1117,12 +1136,12 @@ class Store:
         return self._view
 
     def set_appliance(self, aid: str, *, at: Any = ..., mount: Any = ..., plane: Any = ..., kind: Any = ...,
-                      label: Any = ...) -> dict:
+                      label: Any = ..., connect: Any = ...) -> dict:
         """Place an appliance (a fixture id, or a room device): a key left out is unchanged, a key given as None
         clears it. Its taught places and pose stay. Returns its entry in the new view."""
         aid = _check_id(aid, "light or device")
-        given = {k: v for k, v in (("at", at), ("mount", mount), ("plane", plane), ("kind", kind), ("label", label))
-                 if v is not ...}
+        given = {k: v for k, v in (("at", at), ("mount", mount), ("plane", plane), ("kind", kind), ("label", label),
+                                   ("connect", connect)) if v is not ...}
         val = {k: (None if v is None else _one(lambda p, k=k, v=v: _place_value(k, v, f"{aid} {k}", p), k))
                for k, v in given.items()}
 

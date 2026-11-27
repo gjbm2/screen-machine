@@ -2525,6 +2525,8 @@ class SpaceView(TypedDict):
     surfaces: dict[str, Surface]
     points: dict[str, dict]        # name -> {"label", "at", "device"?, "from": "hand" | "page" | <fixture id>}
     regions: dict[str, dict]       # name -> {"label", "surface", "centre", "size"}
+    layouts: dict[str, dict]       # name -> {"parts": {<part>: {"along", "up", "head", "hang", "turns", "type"?, ...}}}:
+                                   # what each kind of bar is (space.yaml layouts), for a bar placed before its lights
     bars: dict[str, dict]          # id -> {"label", "at": [x, y, z] (its middle), "facing_deg", "layout", "front",
                                    # "axis" (level unit vectors), "parts": {<part>: {"id": "<bar>.<part>", "head",
                                    # "hang", "turns", "own_place", "lean_deg"?, "turn_deg"?}}, "editable"}: a light
