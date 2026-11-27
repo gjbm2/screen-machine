@@ -290,8 +290,9 @@ function DeviceConnect({ kind, room, value, busy, onConnect }: {
         } else if (kind === "mirror-ball" || kind.startsWith("rf-")) {
           const d: any = await (await fetch(`${room}/api/v1/remotes`, { cache: "no-store" })).json();
           const model = kind.startsWith("rf-") ? kind.slice(3) : null;
+          // the remote's first subsystem: the name the modes set it by (finsbury: mirror_ball, pinspots)
           out = (d?.remotes ?? []).filter((x: any) => !model || x?.model === model || x?.type === model)
-            .map((x: any) => ({ id: String(x?.id), label: String(x?.label ?? x?.id) }));
+            .map((x: any) => ({ id: String((Array.isArray(x?.subsystems) && x.subsystems[0]) || x?.id), label: String(x?.label ?? x?.id) }));
         }
         if (!dead) setOpts(out);
       } catch { if (!dead) setOpts([]); }
@@ -441,6 +442,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   // Mode (owner, 27 Nov: "It's ... confusing if it is meant to simulate a mode, but it doesn't do that. fix it"): the
   // whole rig as the mode drives it (show_service preview what=mode): its feel (state.show.main.vibe; a mode that
   // doesn't set one leaves the room's feel as it is: "@current"), its light scene tags, and the lights it sets itself.
+  const [remoteOf, setRemoteOf] = useState<Record<string, string>>({});   // a remote's subsystem -> its id
   const [modes, setModes] = useState<{ id: string; label: string; lights: Record<string, number>; vibe: string; tags: string[]; raw: any }[]>([]);
   const [asMode, setAsMode] = useState<string>(() => { try { return localStorage.getItem("room3d.previewMode") ?? ""; } catch { return ""; } });
   useEffect(() => {
@@ -604,17 +606,20 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
           : { on: w === "on", rgb: col && col !== "fade" ? COLOUR_WORDS[col] : undefined, cycle: col === "fade", flash: more.includes("flash") };
         continue;
       }
-      const st = m.raw?.[t.connect], dir = m.raw?.director?.[ball ? "glitterball" : "pinspots"];
-      const main = typeof st === "string" ? st : st?.main;
-      const directed = dir === true || dir?.set === true;
+      // the mode's own state for it (by the subsystem it was connected to), and whether the mode gives it to the
+      // show's director (director.<the remote's id>, or its subsystem's name)
+      const st = m.raw?.[t.connect], dir = m.raw?.director?.[remoteOf[t.connect] ?? t.connect] ?? m.raw?.director?.[t.connect];
+      const val = (x: any) => (x && typeof x === "object" && "set" in x ? x.set : x);   // a mode's {set, restore}: its set
+      const main = val(typeof st === "string" ? st : st?.main);
+      const directed = val(dir) === true;
       if (ball) { out[t.id] = { on: true, spin: main === "spinning" || main === "on" || directed }; continue; }
-      const on = main === "on" || (main?.set === "on") || directed;
-      const col = st?.colour?.set ?? st?.colour, lvl = st?.level?.set ?? st?.level, fl = st?.flash?.set ?? st?.flash;
+      const on = main === "on" || directed;
+      const col = val(st?.colour), lvl = val(st?.level), fl = val(st?.flash);
       out[t.id] = { on, rgb: COLOUR_WORDS[String(col ?? "white")] ?? [255, 250, 240], cycle: col === "fade",
         level: typeof lvl === "number" ? Math.max(1 / 8, Math.min(1, lvl / 8)) : 1, flash: fl === "on" || fl === true };
     }
     return out;
-  }, [modes, asMode, show, placedThings, bits]);
+  }, [modes, asMode, show, placedThings, bits, remoteOf]);
 
   // what can be clicked in the view
   const editables = useMemo<Editable[]>(() => {
@@ -689,6 +694,9 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       } catch { /* the room devices below still list */ }
       try {                                                 // things worked by a remote (room_service's device types)
         const d: any = await (await fetch(`${room}/api/v1/remotes`, { cache: "no-store" })).json();
+        const map: Record<string, string> = {};
+        for (const r of d?.remotes ?? []) for (const sub of Array.isArray(r?.subsystems) ? r.subsystems : []) map[String(sub)] = String(r.id);
+        setRemoteOf(map);
         for (const t of d?.types ?? []) if (typeof t?.id === "string")
           got.push({ id: `rf-${t.id}`, label: String(t.label ?? t.id), group: "Worked by a remote", what: "device", note: String(t.description ?? "") });
       } catch { /* none */ }
