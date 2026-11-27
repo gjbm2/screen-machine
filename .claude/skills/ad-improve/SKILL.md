@@ -31,6 +31,7 @@ The goal: the numbers in `tools/room/ad_eval` go up night after night, and the o
      `utils/song_shape.py`, and tests.
    - **Never edit:** the eval itself (`tools/room/ad_eval/`), the feedback file, CLAUDE.md, auth, ports, deployments' site
      facts.
+   - A fix must agree with `docs/LIGHT_DESIGN_NOTES.md`. For example: one palette of 2–3 colours per song; palette, positions and gobo held through a song while level, groups and speed escalate; the full rig kept for the high point; derby, laser and ball as a rare layer.
    - Keep to a file's own house rules: its header, and the tests that hold it. For example, `light_scenes.yaml`
      keeps gobos to a few slow scenes (test_the_real_scenes_use_gobos_with_restraint). Light effects stay sparse
      across the room (director FX_PER_MOMENT and FX_ROOM_MAX): restraint is the owner's, not a metric to beat.

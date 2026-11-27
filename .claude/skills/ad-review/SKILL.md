@@ -48,6 +48,8 @@ Go through the song in order. For each dimension, find the moments that matter:
 | Coherence | Do lights and screens change on the same line? |
 | Ending | Do the screens go dark at the last sound, not before it? Is a skip handled cleanly? |
 
+Judge it the way a lighting designer would: `docs/LIGHT_DESIGN_NOTES.md` has the principles, the table of what leads, supports and rests in each section, and the school-disco anti-patterns. Name the principle a finding breaks.
+
 Grade each dimension 1–5. A 3 means "fine, nothing felt". Only a 5 if you'd show it to a client.
 
 ## 3. Find the cause
