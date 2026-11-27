@@ -728,6 +728,33 @@ class ScreenController:
         att = self._attach_fields(s)
         return {"session": s["id"], "attach": att, "phase": self.phase} if att else None
 
+    MAX_REOFFERS = 3                     # a driven page that keeps losing the picture: then the old fallback
+
+    def _reoffer(self, page: PageClient | None, why: str) -> bool:
+        """The driven page shows art while its session is still live (a hidden tab back in view, a stall): the
+        renderer never stopped, so the page is offered the running session again (attach, rejoin) instead of the
+        session being ended and a new one entered (owner, 27 Nov: "why does the browser not being in focus affect
+        whether the renderer runs?"). At most MAX_REOFFERS a session. -> offered?"""
+        sess = self.session
+        if (page is None or sess is None or sess.get("gone") or self.layer != "live" or self.desired == "art"
+                or self._handshake is not None or self._adopting()
+                or sess.get("reoffers", 0) >= self.MAX_REOFFERS):
+            return False
+        att = self._attach_fields(sess)
+        if att is None:
+            return False
+        try:
+            page.send("live.attach", {"session": sess["id"], **att, "rejoin": True})
+        except PageGone:
+            return False
+        sess["reoffers"] = sess.get("reoffers", 0) + 1
+        sess["headless"] = True              # it runs on its own until the page shows it again (_joined)
+        self._join_cid = page.cid
+        self._log("info", f"{page.cid} {why} while {sess['id']} runs: offered it the session again "
+                          f"({sess['reoffers']}/{self.MAX_REOFFERS})")
+        self._changed()
+        return True
+
     def _join_page(self) -> None:
         """A headless session and a driven page that hasn't been given it yet: attach it (the welcome normally does)."""
         page = self._page()
@@ -1306,6 +1333,11 @@ class ScreenController:
             self.on_subscriber_message(client, mtype, data)   # it drives nothing
             return                       # only the driven glass client counts
         if mtype == "kiosk.state":
+            prev = self.kiosk_state or {}
+            # the page was hidden since it last reported (the same page load: its count only grows)
+            pv, nv = prev.get("visibility_changes"), data.get("visibility_changes")
+            self._was_hidden = (isinstance(pv, int) and isinstance(nv, int) and nv > pv
+                                and prev.get("page_load_id", data.get("page_load_id")) == data.get("page_load_id"))
             self.kiosk_state = {**data, "received_at": utc_iso()}
             self._prefetch(client, data)
         elif mtype == "ack":
@@ -1349,6 +1381,8 @@ class ScreenController:
             if page_layer == "art":
                 return                   # not joined (yet): the session runs on regardless
         if page_layer == "art" and self.layer == "live" and self.session:
+            if getattr(self, "_was_hidden", False) and self._reoffer(self._page(), "is back from a hidden tab in art"):
+                return
             self.layer = "art"
             self._fallback_pending = "kiosk.state reports art"
             self.wake()

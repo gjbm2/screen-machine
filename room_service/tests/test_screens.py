@@ -660,6 +660,24 @@ async def test_kiosk_state_art_while_live_is_a_fallback(harness: Harness):
     assert h.stream.calls_of("DELETE", f"/api/sessions/{sid}") and len(c.fallbacks) == 1
 
 
+async def test_a_page_back_from_a_hidden_tab_in_art_is_offered_the_running_session(harness: Harness):
+    """A hidden tab stops painting video; back in view it shows art. The renderer never stopped: the page is offered
+    the session again, which carries on (no DELETE, no new session, no fallback)."""
+    h = harness
+    page = await h.go_live()
+    c = h.screen()
+    await h.wait_phase("live")
+    sid = c.session["id"]
+    await page.send("kiosk.state", {"layer": "live", "frozen": False, "live": {"session": sid},
+                                    "visibility": "visible", "visibility_changes": 0})
+    await page.send("kiosk.state", {"layer": "art", "frozen": False, "live": None,
+                                    "visibility": "visible", "visibility_changes": 2})
+    await h.wait(lambda: any(d.get("session") == sid and d.get("rejoin") for d in page.of("live.attach")), 2,
+                 "offered again")
+    assert c.session["id"] == sid and not c.fallbacks
+    assert not h.stream.calls_of("DELETE", f"/api/sessions/{sid}")
+
+
 async def test_dead_page_socket_is_closed(harness: Harness):
     h = harness
     page = await h.page(hb_interval=100)        # never sends hb
