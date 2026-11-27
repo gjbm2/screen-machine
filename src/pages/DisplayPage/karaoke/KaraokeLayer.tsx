@@ -595,7 +595,12 @@ export function KaraokeLayer({ screen, device }: { screen?: string; device?: str
   // While a song plays: who is next, towards its end (NextUp); with nothing queued after it, the small join code.
   const dur = song?.audio_s ?? song?.duration ?? null;
   const left = active && dur ? dur - t : null;
-  const nextUp = now.up_next && left != null && left > 0 && left <= NEXT_UP_S ? ramp(NEXT_UP_S - left, 0, 1.2) : 0;
+  const nearEnd = now.up_next && left != null && left > 0 && left <= NEXT_UP_S ? ramp(NEXT_UP_S - left, 0, 1.2) : 0;
+  // ...and for a few seconds as a song starts, with its singer's card, so the next person knows early (owner, 27 Nov).
+  const t0 = -(song?.lead_in_s ?? 0);
+  const atStart =
+    active && now.up_next ? ramp(t, t0 + 1, t0 + 2.2) * (1 - ramp(t, t0 + 1 + NEXT_AT_START_S, t0 + 2.2 + NEXT_AT_START_S)) : 0;
+  const nextUp = Math.max(nearEnd, atStart);
   const low = active && joinUrl && now.queued_after === 0 ? ramp(t, LOW_FROM_S, LOW_FROM_S + 1.2) : 0;
   if (songKey && song) {
     if (lastFrame.current && lastFrame.current.key !== songKey) endedFrame.current = lastFrame.current; // a new song
@@ -672,6 +677,7 @@ if (typeof document !== "undefined" && !document.getElementById("sm-karaoke-soun
 // ---------------------------------------------------------------- the curtain: each song's start and end
 // (owner, 25 Nov: "introduce each song properly and signal end / beginning theatre ... singers will be changing over
 // at this point"). On the lyrics clock (the room's), so it lines up with what is heard.
+const NEXT_AT_START_S = 7; // the next-up banner also shows this long as a song starts
 const INTRO_MIN_S = 3; // the intro card stays at least this long (a song that starts singing at once)...
 const INTRO_MAX_S = 12; // ...and at most this long, else until a second before the first line
 const FADE_UP_S = 2.5; // the scene fades up from dark at the start
@@ -756,9 +762,13 @@ function Curtain({
         <div style={{ ...introStyle, opacity: card, transform: `translate(-50%, -50%) scale(${0.96 + 0.04 * card})` }}>
           {art && <img src={art} alt="" style={introArtStyle} />}
           <div style={{ minWidth: 0, ...baseTextStyle }}>
+            {/* The singer as big as the song (owner, 27 Nov: "show the name of the singer ... prominently"). */}
             {singer && (
-              <div style={{ fontSize: "min(2.6vw, 44px)", fontWeight: 700, color: "#ffd65a", marginBottom: "0.3em" }}>
-                {singer} {singer.includes(" & ") ? "sing" : "sings"}
+              <div
+                style={{ fontSize: "min(5vw, 84px)", fontWeight: 800, lineHeight: 1.05, color: "#ffd65a", marginBottom: "0.25em", ...BALANCE }}
+              >
+                <span aria-hidden style={{ fontSize: "0.8em", marginRight: "0.25em" }}>🎤</span>
+                {singer}
               </div>
             )}
             <div style={{ fontSize: "min(5.5vw, 92px)", fontWeight: 800, lineHeight: 1.05, ...BALANCE }}>
