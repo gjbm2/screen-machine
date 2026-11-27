@@ -1441,8 +1441,8 @@ room"). The third tab, `?tab=3d`; three.js loads with this tab only.
   (`/output/<screen>.jpg`, read again every minute), the lamps in their live colours, the mirror ball, the piano's area
   as a grand piano, and each registered light's beam from `GET /rig/live`.
 - **Planned lights** are space appliances with `kind: gigbar-2` that aren't registered lights. finsbury has two,
-  `gigbar.south` and `gigbar.north` (space.added.yaml, seeded 26 Nov on stands by the west wall either side of the
-  screens, at 2.0 m). Each is drawn as a Chauvet GigBAR 2 (OFL chauvet-dj/gigbar-2) with derbies, pars, laser and
+  `gigbar.se` and `gigbar.ne` (space.added.yaml: on stands in the SE and NE corners, facing into the room, at
+  2.0 m; owner, 27 Nov). Each is drawn as a Chauvet GigBAR 2 (OFL chauvet-dj/gigbar-2) with derbies, pars, laser and
   strobes. Nothing drives them, so the page plays a preview (Off, Calm, Party) in the lamps' colours and says so.
 - Tap a bar or its chip to move it: distance from the west wall, distance from the south wall, height, turn and tilt.
   Each change is saved with `PUT /rig/space/appliances/<id>` (at, mount, plane: the plane's normal is the bar's aim).
