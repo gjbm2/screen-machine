@@ -3,17 +3,30 @@
 
     python tools/room/ad_eval/score.py <timeline.json> [...]
 
-Every metric is per song; ``overall`` is the plain weighted mean of the 0..1 scores in weights.yaml. Numbers in the
-formulas (tolerances, scales) are starting points, all in weights.yaml.
+Every metric is per song, 0..1. ``overall`` = ``goals`` x ``gate`` (weights.yaml):
+  goals   the weighted mean of what the show should do with the song: be on its beat, follow its loudness, change on
+          its boundaries, have its form, and end with it
+  gate    restraint, as a limit and not a goal: each of design.py's parts over its bar counts 1 (under the limit
+          earns nothing more: one static look all song kept every limit and said nothing), under its bar in proportion
+What the score can and can't tell apart is itself tested: controls.py scores the real show against deliberately wrong
+ones (the wrong song, late, backwards, its looks dealt to the wrong sections, one static look, a loudness box), and a
+run whose score can't tell them apart says so (scorecard.json ``controls``). SCORE_VERSION changes when ``overall``
+means something else: runs are compared only within one version. Numbers in the formulas (tolerances, scales) are
+starting points, all in weights.yaml.
   beat        F-measure of the show's pulses vs the reference beats (± tol_beat_s); lock_s; octave share
   snap        the lag (s) at the peak cross-correlation of lamp level (and screen energy) vs the reference energy
   contour     Spearman of lamp level (and screen energy) vs reference energy, both smoothed
-  sections    share of reference boundaries with a look change within ± one beat; median lateness; strays a minute
-  climax      a big move or a spent token in the reference climax; the share of big moments that land there
+  sections    share of reference boundaries with a look change within ± one beat, each boundary counted by how big
+              a change in the music it is (form.music_change: the key cuts songs finely, and a boundary between two
+              parts that sound alike is hardly one); median lateness; strays a minute
+  form, contrast, proportion, arc, peak, release
+              what the lights showed in each section, and across each lift in the music, against the song's shape
+              (form.py). Of the whole set (run.py): ``character``, different songs get different shows
   ending      how far the lamps' fall to dark is from the song's end
-  coherence   share of screen look changes with a light change in the same tick
-  design      coherent and restrained, as well as on the music (design.py: one palette a song, a handful of looks,
-              rare flourishes, heads that hold still, the whole rig kept for the high point)
+  design      restraint (design.py: one palette a song, a handful of looks, rare flourishes, heads that hold still):
+              the gate
+Reported, not in ``overall``: snap (it scored a show played backwards 0.94), climax (the big moves' timing; peak
+reads the high point from the lights), coherence (1.0 for every show).
 """
 from __future__ import annotations
 
@@ -28,12 +41,20 @@ import numpy as np
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import common  # noqa: E402
 import design as design_mod  # noqa: E402
+import form as form_mod  # noqa: E402
 
+#: What ``overall`` means. 2 (27 Nov 2026): goals x gate; form, contrast, proportion, arc and peak in; snap, climax,
+#: coherence and design out of the mean; sections weighted by the size of each boundary.
+SCORE_VERSION = 2
 LIGHT_KINDS = ("light_scene", "lineup", "light_program")
 DEFAULT_WEIGHTS = {
-    "weights": {"beat": 1.0, "snap": 1.0, "contour": 1.0, "sections": 1.0, "climax": 0.5, "ending": 0.5,
-                "coherence": 0.5, "design": 1.0},
+    "weights": {"beat": 1.0, "contour": 1.0, "sections": 1.0, "form": 1.0, "contrast": 1.0, "proportion": 1.0,
+                "arc": 1.0, "peak": 0.5, "release": 1.0, "ending": 0.5},
+    "set_weights": {"character": 0.15},
+    "gates": {"palette": 0.5, "kit": 0.75, "flourish": 0.75, "stillness": 0.5},
     "design": dict(design_mod.DEFAULTS),
+    "form": {},
+    "controls": {"margin": 0.05, "p": 0.05},
     "tol_beat_s": 0.07, "smooth_s": 2.0, "snap_smooth_s": 0.5, "max_lag_s": 5.0, "snap_scale_s": 2.0, "snap_min_corr": 0.2,
     "stray_scale_per_min": 2.0, "ending_scale_s": 5.0, "dark_share": 0.3, "case_window_s": 10.0,
 }
@@ -175,6 +196,8 @@ def score(tl: dict, ref: dict, W: Optional[dict] = None) -> dict:
     beat = ibi(ref)
     if bnd:
         hit = [any(abs(c - b) <= beat for c in ch) for b in bnd]
+        size = dict(zip([float(x["start_s"]) for x in (ref.get("sections") or [])[1:]], form_mod.music_change(ref, W)))
+        wt = [max(0.05, float(size.get(b) if size.get(b) is not None else 1.0)) for b in bnd]
         late = []
         for b in bnd:
             after = [c - b for c in ch if -beat <= c - b <= 16.0]
@@ -182,7 +205,8 @@ def score(tl: dict, ref: dict, W: Optional[dict] = None) -> dict:
                 late.append(min(after, key=abs))
         stray = [c for c in ch if 0 <= c <= dur and not any(abs(c - b) <= beat for b in bnd)]
         per_min = len(stray) / max(1.0, dur / 60.0)
-        m["section_hit"] = round(float(np.mean(hit)), 3)
+        m["section_hit_plain"] = round(float(np.mean(hit)), 3)
+        m["section_hit"] = round(float(np.dot(hit, wt) / sum(wt)), 3)
         m["section_late_s"] = round(float(np.median(late)), 2) if late else None
         m["strays_per_min"] = round(per_min, 2)
         m["sections"] = round(m["section_hit"] / (1.0 + per_min / float(W["stray_scale_per_min"])), 3)
@@ -225,12 +249,19 @@ def score(tl: dict, ref: dict, W: Optional[dict] = None) -> dict:
     lt = [float(d["t_s"]) for d in dec if d.get("kind") in LIGHT_KINDS]
     lc = [float(d["t_s"]) for d in dec if d.get("kind") == "look_change" and d["t_s"] >= 0]
     m["coherence"] = round(float(np.mean([any(abs(a - b) <= 0.15 for b in lt) for a in lc])), 3) if lc else None
-    # design: coherent and restrained, as well as on the music
+    # design: restraint (the gate); form: what the lights showed against the song's shape
     m.update(design_mod.design(tl, W=W))
-    # overall
+    m.update(form_mod.measure(tl, ref, W))
+    m["key_agree"] = (ref.get("sim") or {}).get("agree")
+    # overall: the goals, held to the limits
     ws = W["weights"]
-    parts = [(float(ws[k]), m[k]) for k in ws if m.get(k) is not None]
-    m["overall"] = round(sum(w * v for w, v in parts) / sum(w for w, _ in parts), 3) if parts else None
+    parts = [(float(ws[k]), m[k]) for k in ws if m.get(k) is not None and float(ws[k]) > 0.0]
+    m["goals"] = round(sum(w * v for w, v in parts) / sum(w for w, _ in parts), 3) if parts else None
+    g = [min(1.0, float(m[k]) / float(bar)) for k, bar in (W.get("gates") or {}).items()
+         if m.get(k) is not None and float(bar) > 0.0]
+    m["gate"] = round(float(np.mean(g)), 3) if g else 1.0
+    m["overall"] = round(m["goals"] * m["gate"], 3) if m["goals"] is not None else None
+    m["score_version"] = SCORE_VERSION
     return m
 
 

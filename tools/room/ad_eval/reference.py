@@ -3,7 +3,7 @@
 
     ~/.venvs/sm-show/bin/python tools/room/ad_eval/reference.py <song id> [...] [--force]
 
-Writes ~/.cache/sm-ad-eval/ref/<id>.json:
+Writes ~/.cache/sm-ad-eval/ref/<id>.v3.json:
   beats, downbeats   madmom's offline RNN downbeat model + DBN (3 or 4 beats a bar) over the whole mix. A different
                      model from the show's (Beat This!, causal madmom), so a disagreement is real evidence.
   energy             the mix's level every 0.1 s (RMS over 0.4 s, in dB, the song's p05..p98 -> 0..1).
@@ -11,6 +11,16 @@ Writes ~/.cache/sm-ad-eval/ref/<id>.json:
                      novelty over the whole track, peaks snapped to downbeats); letters by clustering the sections'
                      sound; kinds from the lyrics (lines sung again elsewhere: chorus; other lines: verse; none: intro,
                      instrumental or outro by place).
+  sim                how alike each pair of sections sounds, without the letters' threshold: ``audio`` (the mean
+                     similarity of their beats at the best alignment of the shorter over the longer: a part that
+                     comes back keeps its order, a stripe in the self-similarity matrix), ``lyrics`` (the share of the
+                     shorter one's lines that the other sings too; null unless both are sung) and ``agree`` (the rank
+                     correlation of the two over the sung pairs: how far this key's idea of the form can be trusted).
+  character          what kind of recording it is, from the sound alone (never the catalogue's genre, which the
+                     show's own reading uses): bpm, punch (how hard its onsets hit: the mean rise of the log-mel
+                     spectrum), range_db (its loud parts over its quiet ones), bright (the octave of its spectral
+                     centroid) and low (the share of its power under 150 Hz). A ballad and a disco track differ in
+                     these whatever their loudness; form.character asks whether their shows differ too.
   climax             the 20 s window with the highest mean energy (smoothed over 4 s).
   last_hit_s, end_s  the last strong onset, and the last moment above -45 dBFS.
 Every number here is a starting point. CPU, nice 19.
@@ -32,7 +42,7 @@ import numpy as np  # noqa: E402
 
 import common  # noqa: E402
 
-VERSION = 1
+VERSION = 3            # 2: sim. 3: character. (An older key is completed, its beats and sections kept.)
 FS = 44100
 HOP_E = 0.1            # energy hop (s)
 WIN_E = 0.4            # energy window (s): momentary, like EBU's 400 ms
@@ -44,7 +54,8 @@ CLIMAX_S = 20.0
 
 
 def ref_path(sid: str) -> pathlib.Path:
-    return common.CACHE / "ref" / f"{sid}.json"
+    """This version's key (version 1's is <id>.json: a run of older code beside this one keeps its own)."""
+    return common.CACHE / "ref" / f"{sid}.v{VERSION}.json"
 
 
 # -- beats ----------------------------------------------------------------------------------------------------------
@@ -132,6 +143,82 @@ def novelty(B: np.ndarray, L: int = KERNEL_BEATS) -> np.ndarray:
     return nov / (nov.max() + 1e-9)
 
 
+def section_sim(B: np.ndarray, beats: list[float], bounds: list[float], ends: list[float]) -> list[list[float]]:
+    """How alike each pair of sections sounds, -1..1 (1 with itself): the mean cosine similarity of their beats (the
+    lag-embedded timbre + chroma of ``novelty``) along the best diagonal of one over the other."""
+    E = np.concatenate([B[:-1], B[1:]], axis=1) if len(B) > 1 else B
+    E = E / (np.linalg.norm(E, axis=1, keepdims=True) + 1e-9)
+    bt = np.asarray(beats[:len(E)])
+    rng = []
+    for a, b in zip(bounds, ends):
+        ix = np.where((bt >= a) & (bt < b))[0]
+        rng.append((int(ix[0]), int(ix[-1]) + 1) if len(ix) else None)
+    n = len(rng)
+    out = [[0.0] * n for _ in range(n)]
+    for i in range(n):
+        out[i][i] = 1.0
+        for j in range(i + 1, n):
+            v = 0.0
+            if rng[i] and rng[j]:
+                (a0, a1), (b0, b1) = sorted((rng[i], rng[j]), key=lambda r: r[1] - r[0])
+                S = E[a0:a1] @ E[b0:b1].T
+                k = np.arange(a1 - a0)
+                v = max(float(S[k, o + k].mean()) for o in range(0, (b1 - b0) - (a1 - a0) + 1))
+            out[i][j] = out[j][i] = round(v, 4)
+    return out
+
+
+def lyric_sim(lines: list[tuple[float, str]], bounds: list[float], ends: list[float]) -> list[list]:
+    """For each pair of sections that both have two lines or more: the share of the shorter one's lines that the
+    other sings too (a chorus coming back: 1). None for the rest."""
+    per = [[t for s, t in lines if a <= s < b] for a, b in zip(bounds, ends)]
+    n = len(per)
+    out: list[list] = [[None] * n for _ in range(n)]
+    for i in range(n):
+        for j in range(n):
+            if i != j and len(per[i]) >= 2 and len(per[j]) >= 2:
+                a, b = sorted((per[i], per[j]), key=len)
+                pool, hit = list(b), 0
+                for t in a:
+                    if t in pool:
+                        pool.remove(t)
+                        hit += 1
+                out[i][j] = round(hit / len(a), 3)
+    return out
+
+
+def sim_of(B: np.ndarray, beats: list[float], secs: list[dict], lines: list[tuple[float, str]]) -> dict:
+    bounds, ends = [float(s["start_s"]) for s in secs], [float(s["end_s"]) for s in secs]
+    A, L = section_sim(B, beats, bounds, ends), lyric_sim(lines, bounds, ends)
+    xa = [A[i][j] for i in range(len(secs)) for j in range(i + 1, len(secs)) if L[i][j] is not None]
+    xl = [L[i][j] for i in range(len(secs)) for j in range(i + 1, len(secs)) if L[i][j] is not None]
+    agree = None
+    if len(xa) >= 6 and np.std(xa) > 1e-9 and np.std(xl) > 1e-9:
+        ra, rl = np.argsort(np.argsort(xa)), np.argsort(np.argsort(xl))
+        agree = round(float(np.corrcoef(ra, rl)[0, 1]), 3)
+    return {"audio": A, "lyrics": L, "agree": agree}
+
+
+def sound_character(x: np.ndarray, beats: list[float]) -> dict:
+    """What kind of recording this is, from its sound: {bpm, punch, range_db, bright, low}."""
+    n_fft, hop = 2048, 512
+    S = stft_mag(x, n_fft, hop)
+    P = S.astype(np.float64) ** 2
+    tot = P.sum(axis=1) + 1e-12
+    on = tot > np.percentile(tot, 20)                    # the quietest fifth (gaps, the fade) says nothing
+    mel = np.log(S @ mel_fb(n_fft).T + 1e-6)
+    flux = np.concatenate([[0.0], np.clip(np.diff(mel, axis=0), 0, None).mean(axis=1)])
+    freqs = np.linspace(0, FS / 2, n_fft // 2 + 1)
+    _, db = energy_curve(x)
+    loud = db[db > -45.0]
+    ibi = float(np.median(np.diff(beats))) if len(beats) > 2 else 0.0
+    return {"bpm": round(60.0 / ibi, 1) if ibi > 0 else None,
+            "punch": round(float(flux[on].mean()), 4),
+            "range_db": round(float(np.percentile(loud, 95) - np.percentile(loud, 10)), 2) if len(loud) > 10 else None,
+            "bright": round(float(np.log2(((P @ freqs) / tot)[on].mean())), 3),
+            "low": round(float((P[:, freqs < 150.0].sum(axis=1) / tot)[on].mean()), 4)}
+
+
 # -- energy ---------------------------------------------------------------------------------------------------------
 def energy_curve(x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     """(0..1 per HOP_E, the raw dB)."""
@@ -179,6 +266,7 @@ def analyse(sid: str) -> dict:
     es = smooth(e, 4.0)
     # sections
     secs: list[dict] = []
+    sim: dict = {}
     if len(beats) > 4 * KERNEL_BEATS:
         B = beat_features(x, beats)
         nov = novelty(B)
@@ -230,6 +318,7 @@ def analyse(sid: str) -> dict:
             secs.append({"start_s": round(a, 3), "end_s": round(b, 3), "label": L, "kind": kind,
                          "energy": round(float(e[int(a / HOP_E):max(int(a / HOP_E) + 1, int(b / HOP_E))].mean()), 3)})
         del texts
+        sim = sim_of(B, beats, secs, lines)
     # climax
     k = int(CLIMAX_S / HOP_E)
     c = np.convolve(es, np.ones(k) / k, mode="valid") if len(es) > k else es
@@ -243,9 +332,23 @@ def analyse(sid: str) -> dict:
     last_hit = float(np.where(strong)[0][-1] * HOP_E) if strong.any() else end_s
     return {"version": VERSION, "song": common.song_meta(sid, lib), "made_at": time.time(),
             "beats": [round(b, 4) for b in beats], "downbeats": [round(b, 4) for b in downs],
-            "sections": secs, "energy": {"hop_s": HOP_E, "v": [round(float(v), 4) for v in e]},
+            "sections": secs, "sim": sim, "character": sound_character(x, beats), "energy": {"hop_s": HOP_E, "v": [round(float(v), 4) for v in e]},
             "climax": climax, "last_hit_s": round(last_hit, 2), "end_s": round(end_s, 2),
             "cost_s": {"beats": round(t_beats, 1), "all": round(time.time() - t0, 1)}}
+
+
+def complete(r: dict, sid: str) -> dict:
+    """An older key made whole: its ``sim`` and ``character``, from its own beats and sections (no beat tracking
+    again)."""
+    lib = common.library()
+    beats, secs = r.get("beats") or [], r.get("sections") or []
+    x = common.room_mix(sid, FS)
+    r["sim"] = {}
+    if secs and len(beats) > 4 * KERNEL_BEATS:
+        r["sim"] = sim_of(beat_features(x, beats), beats, secs, lyric_lines(sid, lib.get(sid) or {}))
+    r["character"] = sound_character(x, beats)
+    r["version"] = VERSION
+    return r
 
 
 def load(sid: str, force: bool = False) -> dict:
@@ -254,6 +357,13 @@ def load(sid: str, force: bool = False) -> dict:
         r = json.loads(p.read_text())
         if r.get("version") == VERSION:
             return r
+    for old in (common.CACHE / "ref" / f"{sid}.v2.json", common.CACHE / "ref" / f"{sid}.json"):
+        if old.is_file() and not force:
+            r = json.loads(old.read_text())
+            if r.get("version") in (1, 2):
+                r = complete(r, sid)
+                common.write_json(p, r)
+                return r
     r = analyse(sid)
     common.write_json(p, r)
     return r

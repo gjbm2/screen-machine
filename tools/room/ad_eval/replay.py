@@ -12,7 +12,8 @@ What runs, as show_service/__main__.py wires it, nothing re-implemented:
   at their rates; the director's target is the mode's feel (karaoke: singalong; live: party, both starting points).
 - karaoke mode: karaoke_feed.KaraokeFeed on a fake Flask (the song plays from sample 0 of the song; no lead-in, no
   speaker delay), with its sections, shape, and beat grid / clock override where the code has them.
-- the look engine (looks.LookEngine) over the deployment's fixtures, every 50 ms: the mean DMX intensity.
+- the look engine (looks.LookEngine) over the deployment's fixtures, every 50 ms: the mean DMX intensity, and what
+  the lights show (form.Describer: how many are on, how the heads move, flicker, colour ...).
 Stubbed: the LLM listener (absent), the room (no screens reported live), the screens' renderer (its input, room.direction,
 is recorded; its own lag is not modelled), the AI calls (the fake loop never runs a coroutine). Deterministic.
 Nothing binds a port or sends a packet.
@@ -40,6 +41,7 @@ sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import numpy as np  # noqa: E402
 
 import common  # noqa: E402
+import form  # noqa: E402
 
 common.add_repo_path()
 
@@ -332,6 +334,8 @@ class Sim:
     def _engine(self) -> None:
         self.engine = None
         self.output = None
+        self.describer = None
+        self.shown: list[list[float]] = []
         try:
             from show_service import artnet_lan, light_scenes as ls
             from show_service import space as sp
@@ -354,6 +358,7 @@ class Sim:
             self.output = outs[0] if outs else None
             self.caps = artnet_lan.CAPS
             self.engine = eng
+            self.describer = form.Describer()                # what the lights show, frame by frame (form.py)
         except Exception as e:                               # noqa: BLE001
             print(f"  look engine not built: {type(e).__name__}: {e}", file=sys.stderr)
 
@@ -482,14 +487,16 @@ class Sim:
                 self.events.append((t_p, m.get("data") or {}))
 
     def _lamp(self, h: float) -> float:
-        if self.engine is None or self.output is None:
-            return 0.0
-        try:
-            fr = self.engine.evaluate(self.output, h, self.caps)
-        except Exception:                                    # noqa: BLE001
-            self.errors["engine.evaluate"] = self.errors.get("engine.evaluate", 0) + 1
-            return 0.0
-        fx = fr.get("fixtures") if isinstance(fr, dict) else None
+        """The lamps' mean level at ``h``; and one row of what the lights show (form.Describer) into ``shown``."""
+        fx = None
+        if self.engine is not None and self.output is not None:
+            try:
+                fr = self.engine.evaluate(self.output, h, self.caps)
+                fx = fr.get("fixtures") if isinstance(fr, dict) else None
+            except Exception:                                # noqa: BLE001
+                self.errors["engine.evaluate"] = self.errors.get("engine.evaluate", 0) + 1
+        if self.describer is not None:
+            self.shown.append(self.describer.row(fx if isinstance(fx, dict) else {}, h))
         if not isinstance(fx, dict) or not fx:
             return 0.0
         v = [float(f.get("intensity") or 0.0) for f in fx.values() if isinstance(f, dict)]
@@ -533,7 +540,9 @@ class Sim:
                             "lamp_level": [round(v, 4) for v in lamp[i0:]],
                             "screen_energy": [round(x[1], 4) for x in direction[i0:]],
                             "screen_intensity": [round(x[2], 4) for x in direction[i0:]],
-                            "pulse_depth": [round(x[3], 4) for x in direction[i0:]]},
+                            "pulse_depth": [round(x[3], 4) for x in direction[i0:]],
+                            **({"shown": {"keys": list(form.KEYS), "v": self.shown[i0:]}}
+                               if len(self.shown) == len(out_t) else {})},
                 "show": {"beats": [b for b in beats if b >= -1.0], "sections": secs, "lock_s": lock,
                          "bpm": [[self._s(h), b.get("bpm"), b.get("gate")] for h, b in self.clock_bodies]},
                 "errors": self.errors}
