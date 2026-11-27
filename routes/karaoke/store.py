@@ -75,16 +75,29 @@ def new_qid() -> str:
     return "q" + os.urandom(5).hex()
 
 
-#: Who sings: a queue entry's optional ``singer`` (owner, 27 Nov: "note who is singing which song ... you don't want to
-#: have to type out everyone's name repeatedly"). The names used in the last SESSION_S are the panel's suggestions.
+#: Who sings: a queue entry's optional ``singers``, one or more names (owner, 27 Nov: "note who is singing which song
+#: ... you don't want to have to type out everyone's name repeatedly"; "needs to be poss. to add more than 1 singer").
+#: The names used in the last SESSION_S are the panel's suggestions.
 SESSION_S = 12 * 3600
 SINGER_MAX = 30
+SINGERS_MAX = 8
 
 
 def clean_singer(name: Any) -> str | None:
     """A singer's name as typed, tidied (spaces, length); None for none."""
     n = " ".join(str(name or "").split())[:SINGER_MAX].strip()
     return n or None
+
+
+def clean_singers(names: Any) -> list[str]:
+    """One name or a list of them, tidied, each once (any case), at most SINGERS_MAX."""
+    raw = names if isinstance(names, (list, tuple)) else [names]
+    out: list[str] = []
+    for x in raw:
+        n = clean_singer(x)
+        if n and n.lower() not in (o.lower() for o in out):
+            out.append(n)
+    return out[:SINGERS_MAX]
 
 
 def new_id(seed: str) -> str:
@@ -112,6 +125,11 @@ class Store:
         q = d.get("queue") or []
         self.s["queue"] = [e if isinstance(e, dict) else {"qid": new_qid(), "song_id": e} for e in q]   # old: bare ids
         self.s["queue"] = [e for e in self.s["queue"] if e.get("song_id") in self.s["songs"]]
+        for e in self.s["queue"]:                       # the first version: one name
+            if "singer" in e:
+                one = e.pop("singer")
+                if one and not e.get("singers"):
+                    e["singers"] = [one]
         self.s["settings"] = {**DEFAULT_SETTINGS, **(d.get("settings") or {})}
         self.s["singers"] = {k: float(v) for k, v in (d.get("singers") or {}).items() if isinstance(v, (int, float))}
         p = d.get("player") or {}
@@ -224,15 +242,15 @@ class Store:
                 return None
             return dict(min(waiting, key=lambda s: (s.get("refine") or {}).get("asked_at") or 0))
 
-    def _singer(self, name: Any) -> str | None:
-        """``name`` tidied, spelt as it was last time (Clare, not clare), and remembered as used now. Lock held."""
-        n = clean_singer(name)
-        if not n:
-            return None
+    def _singers(self, names: Any) -> list[str]:
+        """``names`` tidied, each spelt as it was last time (Clare, not clare), and remembered as used now. Lock held."""
         known = self.s.setdefault("singers", {})
-        n = next((k for k in known if k.lower() == n.lower()), n)
-        known[n] = time.time()
-        return n
+        out = []
+        for n in clean_singers(names):
+            n = next((k for k in known if k.lower() == n.lower()), n)
+            known[n] = time.time()
+            out.append(n)
+        return out
 
     def singers(self) -> list[str]:
         """The names given songs in the last SESSION_S, most recent first: the panel's suggestions."""
@@ -241,31 +259,31 @@ class Store:
             known = self.s.get("singers") or {}
             return [k for k, t in sorted(known.items(), key=lambda kv: -kv[1]) if t >= cut]
 
-    def queue_singer(self, qid: str, singer: Any) -> dict:
-        """Who sings a queue entry (None: nobody said)."""
+    def queue_singers(self, qid: str, singers: Any) -> dict:
+        """Who sings a queue entry: a name or a list ([] or None: nobody said)."""
         with self.lock:
             e = next((e for e in self.s["queue"] if e["qid"] == qid), None)
             if e is None:
                 raise KeyError(qid)
-            n = self._singer(singer)
-            if n:
-                e["singer"] = n
+            ns = self._singers(singers)
+            if ns:
+                e["singers"] = ns
             else:
-                e.pop("singer", None)
+                e.pop("singers", None)
             self.commit()
             return dict(e)
 
-    def queue_add(self, sid: str, index: int | None = None, next: bool = False, singer: Any = None) -> dict:
+    def queue_add(self, sid: str, index: int | None = None, next: bool = False, singers: Any = None) -> dict:
         """A new entry for song ``sid`` at ``index`` (default: the end); ``next``: up next, right after the entry the
-        player is on (playing, paused or stopped there: Play carries on after it), else at the top. ``singer``: who
-        sings it (optional)."""
+        player is on (playing, paused or stopped there: Play carries on after it), else at the top. ``singers``: who
+        sing it (a name or a list; optional)."""
         with self.lock:
             if sid not in self.s["songs"]:
                 raise KeyError(sid)
             e = {"qid": new_qid(), "song_id": sid}
-            n = self._singer(singer)
-            if n:
-                e["singer"] = n
+            ns = self._singers(singers)
+            if ns:
+                e["singers"] = ns
             q = self.s["queue"]
             p = self.s["player"]
             # Nothing playing and nothing waiting: the song added plays (as soon as it is ready). Owner, 25 Nov: "without
@@ -539,8 +557,8 @@ class Store:
             return {"player": p, "settings": dict(self.s["settings"]),
                     "song": (child_song(public_song(song)) if child else public_song(song)) if song else None,
                     "up_next": {"id": nsong["id"], "title": nsong.get("title"), "artist": nsong.get("artist"),
-                                "singer": nxt.get("singer")} if nsong else None,
-                    "singer": cur.get("singer") if cur else None,
+                                "singers": nxt.get("singers") or []} if nsong else None,
+                    "singers": (cur.get("singers") or []) if cur else [],
                     # entries after this one, ready or still being made: the screens ask for more when it is 0
                     "queued_after": len(self._upcoming(p.get("qid"))),
                     "calibration": self.calibration if (self.calibration or {}).get("state") == "running" else None,

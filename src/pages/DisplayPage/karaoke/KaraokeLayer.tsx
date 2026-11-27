@@ -25,7 +25,7 @@ import {
   type KaraokeSong,
   type LyricLine,
 } from "@/shared/api/karaoke";
-import { JoinCard, LOW_FROM_S, NEXT_UP_S, NextUp } from "./JoinOverlays";
+import { JoinCard, LOW_FROM_S, NEXT_UP_S, NextUp, namesText } from "./JoinOverlays";
 
 const POLL_MS = 1000;
 const LYRICS_RETRY_MS = 4000;
@@ -526,7 +526,7 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
       {handover !== null && <Handover key={handover} onDone={() => setHandover(null)} />}
       {active && song && (
         <>
-          <Curtain t={t} song={song} doc={lyrics?.id === song.id ? lyrics.doc : null} singer={now.singer} />
+          <Curtain t={t} song={song} doc={lyrics?.id === song.id ? lyrics.doc : null} singer={namesText(now.singers)} />
           <Lyrics
             t={t}
             doc={lyrics?.id === song.id ? lyrics.doc : null}
@@ -536,11 +536,11 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
         </>
       )}
       {!active && now.up_next && (
-        <UpNext title={now.up_next.title} artist={now.up_next.artist} singer={now.up_next.singer} />
+        <UpNext title={now.up_next.title} artist={now.up_next.artist} singer={namesText(now.up_next.singers)} />
       )}
       {resting && joinUrl && <JoinCard url={joinUrl} />}
       {nextUp > 0.001 && now.up_next && (
-        <NextUp title={now.up_next.title} artist={now.up_next.artist} singer={now.up_next.singer} opacity={nextUp} />
+        <NextUp title={now.up_next.title} artist={now.up_next.artist} singers={now.up_next.singers} opacity={nextUp} />
       )}
       {low > 0.001 && joinUrl && <JoinCard url={joinUrl} small opacity={low} />}
       {soundHeld && <SoundPrompt />}
@@ -677,7 +677,7 @@ function Curtain({
           <div style={{ minWidth: 0, ...baseTextStyle }}>
             {singer && (
               <div style={{ fontSize: "min(2.6vw, 44px)", fontWeight: 700, color: "#ffd65a", marginBottom: "0.3em" }}>
-                {singer} sings
+                {singer} {singer.includes(" & ") ? "sing" : "sings"}
               </div>
             )}
             <div style={{ fontSize: "min(5.5vw, 92px)", fontWeight: 800, lineHeight: 1.05, ...BALANCE }}>

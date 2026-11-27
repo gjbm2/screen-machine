@@ -4,7 +4,7 @@
   GET    /karaoke/now                      what the display page needs (polled every second), + join {url, room_karaoke}
   GET    /karaoke/search?q=                LRCLIB songs matching the text: [{artist, title, duration, synced}]
   POST   /karaoke/requests                 {q} | {url} | {artist, title, duration}: a song into the library
-                                           (+ queue: true also puts it at the end of the queue; + singer)
+                                           (+ queue: true also puts it at the end of the queue; + singers)
   POST   /karaoke/songs/<id>/retry         a failed song again
   POST   /karaoke/songs/<id>/refine          {note?}: lyrics off: the careful pass over them (in the background, after
                                            songs being prepared) | {undo: true}: the first pass's lyrics back
@@ -13,10 +13,10 @@
   DELETE /karaoke/songs/<id>               forget it (files too)
   GET    /karaoke/songs/<id>/lyrics        {kind, lines: [{start, end, text}], ...}
   GET    /karaoke/songs/<id>/<stem>.m4a    instrumental | vocals
-  POST   /karaoke/queue                    {op: add, song_id, index?, singer?} | {op: remove, qid} | {op: move, qid, index}
-                                           | {op: singer, qid, singer} | {op: clear}: entries; the same song can be
-                                           queued more than once. singer: who sings it (optional; the names of the
-                                           last 12 h are /state's singers)
+  POST   /karaoke/queue                    {op: add, song_id, index?, singers?} | {op: remove, qid} | {op: move, qid, index}
+                                           | {op: singers, qid, singers} | {op: clear}: entries; the same song can be
+                                           queued more than once. singers: who sing it, [names] (optional; the names
+                                           of the last 12 h are /state's singers)
   POST   /karaoke/player                   {action: play [qid | song_id]|pause|resume|restart|stop|next|prev|seek [pos_s]}
                                            (play song_id: a new entry right after the current one, played now)
   POST   /karaoke/settings                 {guide 0..1, autoplay, audio_delay_ms, highlight words|dot|both, child_mode,
@@ -172,7 +172,7 @@ def add_request():
         return _err(400, "Say which song: {q}, {url} or {artist, title, duration}.")
     song = dup or st.add_song(req)
     if b.get("queue"):                                   # true or "end": the end; "next": up next
-        st.queue_add(song["id"], next=b.get("queue") == "next", singer=b.get("singer"))
+        st.queue_add(song["id"], next=b.get("queue") == "next", singers=_singers(b))
     return jsonify({"song_id": song["id"], "existing": bool(dup)})
 
 
@@ -274,6 +274,11 @@ def song_audio(sid: str, stem: str):
     return send_file(f, mimetype="audio/mp4", conditional=True, max_age=3600)
 
 
+def _singers(b: dict) -> Any:
+    """The body's singers: [names], or the first version's one {singer}."""
+    return b.get("singers") if b.get("singers") is not None else b.get("singer")
+
+
 @karaoke_api.post("/karaoke/queue")
 def queue():
     b = _body()
@@ -282,9 +287,9 @@ def queue():
     try:
         if op == "add":
             st.queue_add(str(b.get("song_id")), None if idx is None else int(idx), next=bool(b.get("next")),
-                         singer=b.get("singer"))
-        elif op == "singer":
-            st.queue_singer(str(b.get("qid")), b.get("singer"))
+                         singers=_singers(b))
+        elif op in ("singers", "singer"):
+            st.queue_singers(str(b.get("qid")), _singers(b))
         elif op == "remove":
             st.queue_remove(str(b.get("qid")))
         elif op == "move":
@@ -292,7 +297,7 @@ def queue():
         elif op == "clear":
             st.queue_clear()
         else:
-            return _err(400, "op is add, remove, move, singer or clear.")
+            return _err(400, "op is add, remove, move, singers or clear.")
     except KeyError:
         return _err(404, "No such song or queue entry.")
     except (TypeError, ValueError):

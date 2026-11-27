@@ -86,8 +86,8 @@ export interface KaraokeSettings {
 export interface QueueEntry {
   qid: string;
   song_id: string;
-  /** Who sings it, if anyone said. */
-  singer?: string;
+  /** Who sing it, if anyone said (one or more). */
+  singers?: string[];
 }
 
 export interface KaraokeState {
@@ -124,9 +124,9 @@ export interface KaraokeNow {
   player: KaraokePlayer;
   settings: KaraokeSettings;
   song: KaraokeSong | null;
-  up_next: { id: string; title: string; artist: string; singer?: string | null } | null;
-  /** Who sings the song on now, if anyone said. */
-  singer?: string | null;
+  up_next: { id: string; title: string; artist: string; singers?: string[] } | null;
+  /** Who sing the song on now, if anyone said. */
+  singers?: string[];
   /** Entries after the one on now, ready or still being made (0: the screens ask for more). */
   queued_after?: number;
   /** The panel's address for a phone (null: unknown) and whether the room is in a karaoke mode: the screens' QR. */
@@ -215,7 +215,7 @@ export const karaoke = {
     title?: string;
     duration?: number | null;
     queue?: QueueAt;
-    singer?: string | null;
+    singers?: string[];
     genre?: string | null;
     year?: number | null;
     rank?: number | null;
@@ -230,11 +230,11 @@ export const karaoke = {
   nudge: (id: string, user_offset_ms: number) =>
     call<{ id: string; user_offset_ms: number }>(`/songs/${id}`, { ...post({ user_offset_ms }), method: 'PATCH' }),
   remove: (id: string) => call<{ ok: boolean }>(`/songs/${id}`, { method: 'DELETE' }),
-  queueAdd: (song_id: string, index?: number, next?: boolean, singer?: string | null) =>
-    call<{ queue: QueueEntry[] }>('/queue', post({ op: 'add', song_id, index, next, singer })),
-  /** Who sings a queue entry ("" or null: nobody said). */
-  queueSinger: (qid: string, singer: string | null) =>
-    call<{ queue: QueueEntry[] }>('/queue', post({ op: 'singer', qid, singer })),
+  queueAdd: (song_id: string, index?: number, next?: boolean, singers?: string[]) =>
+    call<{ queue: QueueEntry[] }>('/queue', post({ op: 'add', song_id, index, next, singers })),
+  /** Who sing a queue entry ([]: nobody said). */
+  queueSingers: (qid: string, singers: string[]) =>
+    call<{ queue: QueueEntry[] }>('/queue', post({ op: 'singers', qid, singers })),
   queueRemove: (qid: string) => call<{ queue: QueueEntry[] }>('/queue', post({ op: 'remove', qid })),
   /** Clears the queue, except the song playing (or paused) now. */
   queueClear: () => call<{ queue: QueueEntry[] }>('/queue', post({ op: 'clear' })),

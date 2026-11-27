@@ -864,22 +864,32 @@ def test_a_careful_pass_cut_short_by_a_restart_waits_again(tmp_path):
 def test_singers_are_remembered_spelt_once_and_shown_with_whats_next(tmp_path, monkeypatch):
     st = Store(tmp_path / "state.json")
     a, b = ready(st, "a", 100.0), ready(st, "b", 50.0)
-    ea = st.queue_add(a, singer="  Clare ")
-    eb = st.queue_add(b, singer="clare")                 # the spelling given first stays
-    assert ea["singer"] == "Clare" and eb["singer"] == "Clare"
-    st.queue_singer(eb["qid"], "Tom")
+    ea = st.queue_add(a, singers="  Clare ")             # one name, as a string
+    eb = st.queue_add(b, singers=["clare", "Tom", "CLARE", ""])   # a duet: each once, the spelling given first stays
+    assert ea["singers"] == ["Clare"] and eb["singers"] == ["Clare", "Tom"]
+    st.queue_singers(eb["qid"], ["Ann", "Tom"])
     st.play()
     n = st.now_playing()
-    assert n["singer"] == "Clare" and n["up_next"]["singer"] == "Tom" and n["queued_after"] == 1
-    assert st.singers() == ["Tom", "Clare"]              # most recent first
-    st.queue_singer(eb["qid"], "")                       # nobody said
-    assert "singer" not in st.s["queue"][1]
-    assert Store(tmp_path / "state.json").singers() == ["Tom", "Clare"]   # a restart keeps tonight's names
+    assert n["singers"] == ["Clare"] and n["up_next"]["singers"] == ["Ann", "Tom"] and n["queued_after"] == 1
+    assert st.singers()[-1] == "Clare" and set(st.singers()) == {"Ann", "Tom", "Clare"}   # most recent first
+    st.queue_singers(eb["qid"], [])                      # nobody said
+    assert "singers" not in st.s["queue"][1]
+    assert set(Store(tmp_path / "state.json").singers()) == {"Ann", "Tom", "Clare"}   # a restart keeps tonight's names
     import sys
     store_mod = sys.modules["routes.karaoke.store"]   # (the package's store() shadows the module name)
     real = store_mod.time.time
     monkeypatch.setattr(store_mod.time, "time", lambda: real() + store_mod.SESSION_S + 60)
     assert st.singers() == []                            # yesterday's party's names aren't offered
+
+
+def test_a_first_version_single_singer_loads_as_a_list(tmp_path):
+    st = Store(tmp_path / "state.json")
+    e = st.queue_add(ready(st, "a", 10.0))
+    with st.lock:
+        st.s["queue"][0]["singer"] = "Clare"
+        st.commit()
+    assert Store(tmp_path / "state.json").s["queue"][0]["singers"] == ["Clare"]
+    assert e["qid"] == Store(tmp_path / "state.json").s["queue"][0]["qid"]
 
 
 def test_join_url_picks_the_adapter_with_a_gateway():

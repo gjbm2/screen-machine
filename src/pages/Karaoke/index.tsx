@@ -98,7 +98,7 @@ import { fuzzyFilter } from "./fuzzy";
 import { LivePicture } from "./LivePicture";
 import { SongPictures } from "./SongPictures";
 import { LoopbackToggle, RoomMicCheck } from "./RoomMic";
-import { SingerBox, SingerTag, singerNow } from "./Singer";
+import { SingerBox, SingerTag, singersNow } from "./Singer";
 
 const POLL_MS = 1500;
 const QUEUE_DROP = "queue-drop";
@@ -236,7 +236,7 @@ export default function KaraokePage() {
 
   const addToQueue = (s: KaraokeSong, at: QueueAt) =>
     void act(
-      () => karaoke.queueAdd(s.id, undefined, at === "next", singerNow()),
+      () => karaoke.queueAdd(s.id, undefined, at === "next", singersNow()),
       at === "next" ? `“${s.title}” is up next` : `“${s.title}” added to the queue`,
     );
   const focusFind = () => {
@@ -262,9 +262,9 @@ export default function KaraokePage() {
     if (id.startsWith(LIB)) {
       const songId = id.slice(LIB.length);
       const q = [...queue];
-      q.splice(overIndex, 0, { qid: `pending-${Date.now()}`, song_id: songId, singer: singerNow() ?? undefined });
+      q.splice(overIndex, 0, { qid: `pending-${Date.now()}`, song_id: songId, singers: singersNow() });
       setSt({ ...st, queue: q });
-      void act(() => karaoke.queueAdd(songId, overIndex, undefined, singerNow()));
+      void act(() => karaoke.queueAdd(songId, overIndex, undefined, singersNow()));
       return;
     }
     const from = queue.findIndex((e) => e.qid === id);
@@ -730,9 +730,9 @@ function QueueRow({
       >
         {where !== "played" && (
           <SingerTag
-            singer={entry.singer}
+            singers={entry.singers ?? []}
             names={singers}
-            onChange={(n) => act(() => karaoke.queueSinger(entry.qid, n))}
+            onChange={(n) => act(() => karaoke.queueSingers(entry.qid, n))}
           />
         )}
         {song.status === "ready" && where !== "current" && (
@@ -1058,8 +1058,14 @@ function RowFace({
       {grip ?? (lifted ? <GripVertical className="h-4 w-4 text-muted-foreground" /> : null)}
       {working ? <Ring song={song} /> : (lead ?? art)}
       <div className="min-w-0 flex-1">
-        <div className="truncate font-medium">{song.title}</div>
-        <div className={cn("truncate text-sm", song.status === "failed" ? "text-red-700" : "text-muted-foreground")}>
+        {/* A notch smaller on a phone (owner, 27 Nov: "make fonts slightly smaller for mobile display"). */}
+        <div className="truncate text-[15px] font-medium sm:text-base">{song.title}</div>
+        <div
+          className={cn(
+            "truncate text-[13px] sm:text-sm",
+            song.status === "failed" ? "text-red-700" : "text-muted-foreground",
+          )}
+        >
           {song.artist ? (
             <>
               {onArtist ? (
@@ -1169,14 +1175,14 @@ function Find({
 
   const queueSong = (s: KaraokeSong, at: QueueAt) =>
     void act(
-      () => karaoke.queueAdd(s.id, undefined, at === "next", singerNow()),
+      () => karaoke.queueAdd(s.id, undefined, at === "next", singersNow()),
       at === "next" ? `“${s.title}” is up next` : `“${s.title}” added to the queue`,
     ).then(clear);
   const said = (at: QueueAt | null) =>
     at === "next" ? "is up next" : at === "end" ? "added to the queue" : "added to the library";
   const addWeb = (h: SearchHit, at: QueueAt | null) =>
     void act(
-      () => karaoke.request({ ...hitFacts(h), ...(at ? { queue: at, singer: singerNow() } : {}) }),
+      () => karaoke.request({ ...hitFacts(h), ...(at ? { queue: at, singers: singersNow() } : {}) }),
       `“${h.title}” ${said(at)}: getting it ready`,
     ).then(clear);
   const addText = (at: QueueAt | null) =>
@@ -1184,7 +1190,7 @@ function Find({
       () =>
         karaoke.request({
           ...(link ? { url: text } : { q: text }),
-          ...(at ? { queue: at, singer: singerNow() } : {}),
+          ...(at ? { queue: at, singers: singersNow() } : {}),
         }),
       `${link ? "The link" : `“${text}”`} ${said(at)}: getting it ready`,
     ).then(clear);
@@ -1412,8 +1418,8 @@ function ArtistSongs({
     void act(
       () =>
         mine && at
-          ? karaoke.queueAdd(mine.id, undefined, at === "next", singerNow())
-          : karaoke.request({ ...hitFacts(h), ...(at ? { queue: at, singer: singerNow() } : {}) }),
+          ? karaoke.queueAdd(mine.id, undefined, at === "next", singersNow())
+          : karaoke.request({ ...hitFacts(h), ...(at ? { queue: at, singers: singersNow() } : {}) }),
       `“${h.title}” ${said(at)}${mine ? "" : ": getting it ready"}`,
     ).then(() => setAdded((x) => new Set(x).add(h.key)));
   };

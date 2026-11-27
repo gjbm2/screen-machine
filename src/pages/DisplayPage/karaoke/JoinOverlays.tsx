@@ -18,6 +18,12 @@ const textStyle: CSSProperties = {
   textShadow: "0 0 0.12em #000, 0 0 0.3em rgba(0,0,0,0.85), 0 0.05em 0.1em #000",
 };
 
+/** Names as said aloud: "Clare", "Clare & Tom", "Clare, Tom & Ann". */
+export function namesText(names: string[] | undefined | null): string {
+  const n = (names ?? []).filter(Boolean);
+  return n.length < 2 ? (n[0] ?? "") : `${n.slice(0, -1).join(", ")} & ${n[n.length - 1]}`;
+}
+
 /** The address without its scheme, for reading off the screen. */
 const shortUrl = (url: string) => url.replace(/^https?:\/\//, "");
 
@@ -65,14 +71,15 @@ export function JoinCard({ url, small = false, opacity = 1 }: { url: string; sma
 export function NextUp({
   title,
   artist,
-  singer,
+  singers,
   opacity,
 }: {
   title: string;
   artist: string;
-  singer?: string | null;
+  singers?: string[];
   opacity: number;
 }) {
+  const singer = namesText(singers);
   const song = artist ? `${title} (${artist})` : title;
   return (
     <div
