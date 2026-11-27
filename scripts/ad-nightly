@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# The art director's overnight loop (.claude/skills/ad-improve): score the show on the fixed song set, then let a
+# headless Claude make fixes that score better, keep them (committed, own paths) and write a morning report.
+#   scripts/ad-nightly            run now (what the timer runs)
+#   scripts/ad-nightly --score    just score HEAD (no fixes)
+#   scripts/ad-nightly --install  install the systemd user timer (03:00 nightly)
+# Logs: ~/.cache/sm-ad-eval/nightly.log. Reports: ~/.cache/sm-ad-eval/reports/<date>.md
+set -uo pipefail
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUT="$HOME/.cache/sm-ad-eval"
+mkdir -p "$OUT/reports"
+LOG="$OUT/nightly.log"
+
+if [[ "${1:-}" == "--install" ]]; then
+  mkdir -p "$HOME/.config/systemd/user"
+  cat > "$HOME/.config/systemd/user/sm-ad-nightly.service" <<EOF
+[Unit]
+Description=screen-machine: the art director's overnight eval and improvement loop
+
+[Service]
+Type=oneshot
+WorkingDirectory=$REPO
+ExecStart=$REPO/scripts/ad-nightly
+Nice=19
+TimeoutStartSec=4h
+EOF
+  cat > "$HOME/.config/systemd/user/sm-ad-nightly.timer" <<EOF
+[Unit]
+Description=screen-machine: the art director's overnight loop at 03:00
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target
+EOF
+  systemctl --user daemon-reload && systemctl --user enable --now sm-ad-nightly.timer && \
+    systemctl --user list-timers sm-ad-nightly.timer --no-pager
+  exit $?
+fi
+
+cd "$REPO" || exit 1
+{
+  echo "=== $(date -Is) ad-nightly ${1:-} (HEAD $(git rev-parse --short HEAD))"
+  nice -n 19 "$HOME/.venvs/sm-show/bin/python" tools/room/ad_eval/run.py
+  rc=$?
+  echo "--- score exit $rc"
+  if [[ "${1:-}" == "--score" || $rc -ne 0 ]]; then
+    exit $rc
+  fi
+  AD_IMPROVE_UNTIL="${AD_IMPROVE_UNTIL:-06:30}" nice -n 19 "$HOME/.local/bin/claude" -p \
+    "Run the ad-improve skill now (the overnight loop). Today is $(date +%F); stop by ${AD_IMPROVE_UNTIL:-06:30}." \
+    --permission-mode acceptEdits \
+    --allowedTools "Bash" "Read" "Edit" "Write" "Grep" "Glob" "Skill" \
+    --output-format text
+  echo "--- improve exit $?"
+} >> "$LOG" 2>&1

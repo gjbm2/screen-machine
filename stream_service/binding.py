@@ -519,8 +519,20 @@ def _piece(x: float, x0: float, lo_end: float, pivot: float, hi_end: float) -> f
     return pivot if x0 >= 1.0 else pivot + (hi_end - pivot) * ((x - x0) / (1.0 - x0))
 
 
+BAR_QUANT_BEATS = 3.0           # quant beat: a duration this many beats or longer goes to whole bars (when known)
+
+
+def quant_beats(v: float, period: float, beats_per_bar: int = 0) -> float:
+    """A cue duration on the beat: whole beats, and whole bars once it is BAR_QUANT_BEATS or longer and the bar is
+    known (``beats_per_bar`` > 0; 27 Nov: a 3-6 s transition rounded to beats ended mid-bar)."""
+    n = v / period
+    if beats_per_bar > 0 and n >= BAR_QUANT_BEATS:
+        return max(1, round(n / beats_per_bar)) * beats_per_bar * period
+    return max(1, round(n)) * period
+
+
 def sample_cue(props: dict, bindings: dict, params: dict, sig: dict, avail: Optional[dict], depth: float,
-               item: str = "", period: Optional[float] = None) -> dict:
+               item: str = "", period: Optional[float] = None, beats_per_bar: int = 0) -> dict:
     """The cue-mode bindings' values now (sessions.py, before setup): {param: value}."""
     out: dict = {}
     for key, b in bindings.items():
@@ -530,7 +542,7 @@ def sample_cue(props: dict, bindings: dict, params: dict, sig: dict, avail: Opti
             bd = Bound(key, props[key], b, item)
             v = bd.held(sig, avail, params.get(key, props[key].get("default")), depth)
             if bd.quant == "beat" and period and _num(v):
-                v = max(1, round(v / period)) * period
+                v = quant_beats(float(v), period, beats_per_bar)
             if bd.is_int and _num(v):
                 v = int(round(v))
             out[key] = v

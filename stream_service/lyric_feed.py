@@ -43,6 +43,15 @@ GAP_KEEP_S = 4.0        # a gap between lines shorter than this keeps ``active``
 FADE_OUT_S = 1.5        # a longer gap: ``active`` falls over this after the last word ...
 FADE_IN_S = 1.0         # ... and rises over this before the next line's first word
 PICS_POLL_S = 5.0       # a song's pictures are read again this often while Flask is still finding them
+SHAPE_POLL_S = 5.0      # a song with no measured shape yet (show_service measures it at first play): looked again
+# The song's energy from its own audio (owner, 27 Nov: "feel the music"; docs/AD_MUSIC_FIT_REVIEW_2026-11.md §1.2):
+# show_service's measured shape (utils/song_shape.py: ``v`` the 8 s contour, ``loud`` short-term LUFS over 3 s, every
+# hop) read at the song position at photon time, so the screens rise INTO a chorus, not ~1 s after the room mic hears
+# it.  The 3 s loudness window is centred LOUD_SHIFT_S back (a little less than half: a rise leads by a few hundred ms,
+# never lags), lightly smoothed, and mixed with the contour.
+LOUD_SHIFT_S = 1.2
+LOUD_SMOOTH_HOPS = 1
+SHAPE_LOUD_W = 0.55     # the snappier loudness vs the 8 s contour
 
 
 @dataclass(frozen=True)
@@ -251,6 +260,50 @@ class Snapshot:
     shift_s: float           # speaker delay + the song's offsets: lyric time = song position - shift_s
     read_mono: float
     pictures: Optional[PictureSet] = None    # the song's artist pictures (the photo scenes; listens "pictures")
+    song_id: Optional[str] = None
+    delay_s: float = 0.0     # the speaker's delay alone: what the room hears = song position - delay_s
+    curve: Optional[tuple] = None            # (hop_s, energies 0..1): the song's measured energy (energy_curve)
+
+
+def energy_curve(shape: Any) -> Optional[tuple]:
+    """show_service's measured shape -> (hop_s, tuple of 0..1 energies at song time k x hop_s), or None."""
+    try:
+        v = [float(x) for x in shape.get("v") or ()]
+        loud = [float(x) for x in shape.get("loud") or ()]
+        hop = float(shape.get("hop") or 0.5)
+    except (AttributeError, TypeError, ValueError):
+        return None
+    if len(v) < 8 or hop <= 0.0:
+        return None
+    if len(loud) == len(v):
+        srt = sorted(loud)
+        lo, hi = srt[int(0.05 * (len(srt) - 1))], srt[int(0.98 * (len(srt) - 1))]
+        ln = [min(1.0, max(0.0, (x - lo) / max(hi - lo, 1e-6))) for x in loud]
+        k = LOUD_SMOOTH_HOPS
+        ln = [sum(ln[max(0, i - k):i + k + 1]) / len(ln[max(0, i - k):i + k + 1]) for i in range(len(ln))]
+        sh = LOUD_SHIFT_S / hop                    # loud[i] is the 3 s ending at (i + 1) x hop: read it later
+        def at(i: int) -> float:
+            x = min(max(i + sh - 1.0, 0.0), len(ln) - 1.0)
+            a = int(x)
+            b = min(a + 1, len(ln) - 1)
+            return ln[a] + (ln[b] - ln[a]) * (x - a)
+        e = [SHAPE_LOUD_W * at(i) + (1.0 - SHAPE_LOUD_W) * v[i] for i in range(len(v))]
+    else:
+        e = v
+    return hop, tuple(round(min(1.0, max(0.0, x)), 4) for x in e)
+
+
+def curve_at(curve: Optional[tuple], t: float) -> Optional[float]:
+    """The curve's energy at song time ``t`` (s), linear between hops; None without one, or past its end."""
+    if not curve:
+        return None
+    hop, e = curve
+    if t > len(e) * hop + 2.0:
+        return None
+    x = min(max(t / hop, 0.0), len(e) - 1.0)
+    i = int(x)
+    j = min(i + 1, len(e) - 1)
+    return e[i] + (e[j] - e[i]) * (x - i)
 
 
 class LyricFeed:
@@ -266,6 +319,8 @@ class LyricFeed:
         self._failing = False
         self._unloaded: set[str] = set()                 # songs whose lyrics failed to load (logged once each)
         self._pics: dict[str, tuple] = {}                # song id -> (PictureSet | None, read at mono, done)
+        self._shapes: dict[str, tuple] = {}              # song id -> (energy curve | None, read at mono)
+        self.shape_dir: Optional[str] = None             # show_service's shapes (None: smconfig's state dir)
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
@@ -292,9 +347,43 @@ class LyricFeed:
             shift = delay + (float(s.get("offset_ms") or 0.0) + float(s.get("user_offset_ms") or 0.0)) / 1000.0
             pos, at = float(p.get("pos_s") or 0.0), float(p.get("at") or time.time())
         except (TypeError, ValueError, AttributeError):
-            shift, pos, at = 0.0, 0.0, time.time()
+            delay, shift, pos, at = 0.0, 0.0, 0.0, time.time()
         pics = self._pictures(str(sid)) if state != "stopped" and sid else None
-        self.snap = Snapshot(song, state, pos, at, shift, self._mono(), pics)
+        curve = self._curve(str(sid)) if state != "stopped" and sid else None
+        self.snap = Snapshot(song, state, pos, at, shift, self._mono(), pics, str(sid) if sid else None, delay, curve)
+
+    def _curve(self, sid: str) -> Optional[tuple]:
+        """The song's energy curve from show_service's measured shape (read on a new song; while it has none yet,
+        again every SHAPE_POLL_S)."""
+        have = self._shapes.get(sid)
+        now = self._mono()
+        if have is not None and (have[0] is not None or now - have[1] < SHAPE_POLL_S):
+            return have[0]
+        curve = None
+        try:
+            base = self.shape_dir
+            if base is None:
+                import smconfig
+                base = str(smconfig.state("show", "shapes"))
+            with open(os.path.join(base, f"{sid}.json")) as f:
+                curve = energy_curve(json.load(f))
+        except (OSError, ValueError, ImportError):
+            curve = None
+        if len(self._shapes) > 64:
+            self._shapes.clear()
+        if curve is not None and (have is None or have[0] is None):
+            log.info("lyrics: %s: the song's measured energy (%d s)", sid, int(len(curve[1]) * curve[0]))
+        self._shapes[sid] = (curve, now)
+        return curve
+
+    def song_energy(self, photon_s: float) -> Optional[float]:
+        """The playing song's measured energy (0..1) at photon time ``photon_s`` (monotonic s): what the room hears
+        then, from the file; None while nothing plays, paused, or the song has no measured shape."""
+        sn = self.fresh()
+        if sn is None or sn.state != "playing" or sn.curve is None:
+            return None
+        wall = time.time() + (photon_s - self._mono())
+        return curve_at(sn.curve, sn.pos_s + max(0.0, wall - sn.at) - sn.delay_s)
 
     def _pictures(self, sid: str) -> Optional[PictureSet]:
         """The song's pictures: read on a new song, then every PICS_POLL_S while Flask is still fetching them."""
@@ -396,6 +485,27 @@ def shared() -> Optional[LyricFeed]:
                 log.exception("lyrics: no feed (the karaoke effects stay off)")
                 _SHARED = None
     return _SHARED
+
+
+SONG_ENERGY_W = 0.75    # the screens' energy while a karaoke song plays: this much the file's, the rest the room mic's
+
+
+def karaoke_energy(fast: Optional[float], wf: float, photon_s: float) -> tuple[Optional[float], float]:
+    """The bindings' fast energy (MusicFeed.energy_now) and its weight (the feed's liveness) -> the same, with the
+    playing karaoke song's measured energy at the frame's photon time mixed in (SONG_ENERGY_W; the mic's ~1 s lag on
+    glass gone for the file's part), at full weight; as they were with no song (or a song with no shape).  Reads the
+    process's feed only once something else started it (Sound does): never starts a poller itself."""
+    f = _SHARED if _SHARED_DONE else None
+    if f is None:
+        return fast, wf
+    try:
+        e = f.song_energy(photon_s)
+    except Exception:                                    # noqa: BLE001 - never breaks a frame
+        e = None
+    if e is None:
+        return fast, wf
+    mic = fast if fast is not None and wf > 0.0 else e
+    return SONG_ENERGY_W * e + (1.0 - SONG_ENERGY_W) * mic, 1.0
 
 
 APPEAL_GOOD = 0.6       # a picture this engaging counts towards the photo scenes' share (owner, 26 Nov: "not just

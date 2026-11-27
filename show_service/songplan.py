@@ -27,7 +27,10 @@ from typing import Any, Mapping, Optional
 #: is in. peak_margin: the climax section's level must be this far over the song's middle (median) section for the
 #: song to have a peak at all (a song that is level all the way through has none). peak_after: and it must begin
 #: after this share of the song (an early loud intro is not the climax of the show). Starting points.
-FALLBACK: dict[str, float] = {"split_min_s": 12.0, "peak_margin": 0.12, "peak_after": 0.35}
+#: spread_w: how much of each section's level is its place in the song's own range (the rest is the absolute level);
+#: spread_min: a song whose sections lie closer together than this keeps its absolute levels (it really is level).
+FALLBACK: dict[str, float] = {"split_min_s": 12.0, "peak_margin": 0.12, "peak_after": 0.35, "spread_w": 0.6,
+                              "spread_min": 0.05}
 
 
 def lay_out(secs: Any, shape: Optional[Mapping[str, Any]], dur: Optional[float],
@@ -52,21 +55,47 @@ def lay_out(secs: Any, shape: Optional[Mapping[str, Any]], dur: Optional[float],
         i1 = max(i0 + 1, min(len(v), int(t1 / hop)))
         return sum(float(x) for x in v[i0:i1]) / (i1 - i0)
 
-    if cl is not None:
-        for i, x in enumerate(out):
-            if x["start_s"] + c["split_min_s"] <= cl[0] <= end(i) - c["split_min_s"]:
-                out.insert(i + 1, {**x, "start_s": round(cl[0], 3), "line": None, "split": True})
-                break
-    for i, x in enumerate(out):
-        x["level"] = round(mean(float(x["start_s"]), end(i)), 3)
-    peak = None
-    if cl is not None:
+    def peak_of() -> Optional[int]:
+        """The section holding most of the climax, if it stands out over the song's middle section and comes late
+        enough; else None (the song is level, or its loudest stretch is an early intro)."""
+        if cl is None:
+            return None
         over = [max(0.0, min(end(i), cl[1]) - max(float(x["start_s"]), cl[0])) for i, x in enumerate(out)]
         bi = max(range(len(out)), key=lambda i: over[i])
         mid = sorted(x["level"] for x in out)[len(out) // 2]
         if over[bi] > 0 and out[bi]["level"] - mid >= c["peak_margin"] \
                 and float(out[bi]["start_s"]) >= c["peak_after"] * end_all:
-            peak = bi
+            return bi
+        return None
+
+    def levels() -> None:
+        for i, x in enumerate(out):
+            x["level"] = mean(float(x["start_s"]), end(i))
+
+    # The climax that begins well inside a section is tried as a section of its own; the split is kept only if that
+    # part is then the song's peak (27 Nov: the split came before the peak test and left false same-letter boundaries
+    # in songs with no peak: Happy at 186 s, The Elements at 22 s, Common People at 274 s).
+    split_at = None
+    if cl is not None:
+        for i, x in enumerate(out):
+            if x["start_s"] + c["split_min_s"] <= cl[0] <= end(i) - c["split_min_s"]:
+                out.insert(i + 1, {**x, "start_s": round(cl[0], 3), "line": None, "split": True})
+                split_at = i + 1
+                break
+    levels()
+    peak = peak_of()
+    if split_at is not None and peak != split_at:
+        del out[split_at]
+        levels()
+        peak = peak_of()
+    # Levels spread within the song (27 Nov: an 8 s-smoothed, percentile-normalised curve leaves section means bunched
+    # near the top, 0.82-0.97 in Don't Stop Me Now): part the song's own range, part the absolute.
+    raw = [float(x["level"]) for x in out]
+    lo, hi = min(raw), max(raw)
+    for x, r in zip(out, raw):
+        x["level_raw"] = round(r, 3)
+        x["level"] = round(r if hi - lo < c["spread_min"] else
+                           (1.0 - c["spread_w"]) * r + c["spread_w"] * (r - lo) / (hi - lo), 3)
     for i, x in enumerate(out):
         x["peak"] = (i == peak) if peak is not None else None
     return out

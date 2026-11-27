@@ -64,6 +64,21 @@ TEMPO_SMOOTH_S = 1.0      # tempo lock: the pace it snaps is this slow an averag
 TEMPO_EASE_S = 0.4        # ... and its scale eases in and out: the clock comes or goes, a new division
 
 
+BUILD_LIFT = 0.4          # a build (show_service's build_progress, 0..1) raises each bus effect's amount up to x1.4
+
+
+def build_lift(runtime: Any) -> float:
+    """1 + BUILD_LIFT x the room's build progress now (music_feed.building), else 1; never raises."""
+    try:
+        feed = getattr(runtime, "feed", None)
+        if feed is None:
+            return 1.0
+        b = float(feed.building(float(runtime.now)))
+        return 1.0 + BUILD_LIFT * min(1.0, max(0.0, b)) if math.isfinite(b) else 1.0
+    except Exception:
+        return 1.0
+
+
 def beat_clock(runtime: Any) -> Optional[BeatClock]:
     """The session's beat clock at this frame's photon time while it is sure, else None: show_service's clock while
     fresh, gate "beat", locked or holding (what cuts use: SessionManager.music_grid), else the lighting desk's
@@ -250,7 +265,7 @@ class EffectSlot:
         else:
             self.level = max(self.target, self.level - step)
 
-    def frame(self, fc: FrameCtx, outer_gain: float = 1.0, pulse_gain: float = 1.0) -> bool:
+    def frame(self, fc: FrameCtx, outer_gain: float = 1.0, pulse_gain: float = 1.0, lift: float = 1.0) -> bool:
         """Once per rendered frame, even when skipped: step the envelope and the params.  -> render this frame?"""
         self.install()
         if self.last_n is None:
@@ -286,6 +301,8 @@ class EffectSlot:
             amount = g
         else:
             amount = float(p.get("amount", 1.0)) * g
+            if lift > 1.0 and amount < 1.0:      # a build raises what the bus is doing, never past full
+                amount = min(1.0, amount * lift)
             p["amount"] = amount
         if "pulse" in p and pulse_gain != 1.0:
             p["pulse"] = float(p["pulse"]) * pulse_gain
@@ -406,8 +423,8 @@ class EffectChain:
                 s.set_target(u.target, cmd.fade_s)
 
     def render(self, fc: FrameCtx, draw_input: Callable[[Any], None], out: Any, *, gain: float = 1.0,
-               pulse_gain: float = 1.0) -> None:
-        active = [s for s in self.slots if s.frame(fc, gain, pulse_gain)]
+               pulse_gain: float = 1.0, lift: float = 1.0) -> None:
+        active = [s for s in self.slots if s.frame(fc, gain, pulse_gain, lift)]
         if not active:
             draw_input(out)            # zero extra cost: an empty or silent chain is a passthrough
             return
@@ -562,7 +579,8 @@ class MasterBus:
         self.master_now = m
         gain = 0.0 if self.sealed else smoothstep(self.level) * float(m.get("amount", 1.0))
         self.gain_now = gain
-        self.chain.render(fc, draw_root, out, gain=gain, pulse_gain=float(m.get("pulse", 1.0)))
+        self.chain.render(fc, draw_root, out, gain=gain, pulse_gain=float(m.get("pulse", 1.0)),
+                          lift=build_lift(self.runtime))
 
     def idle(self) -> bool:
         return self.sealed or not self.chain.slots or (self.level <= 0.0 and self.target <= 0.0)

@@ -33,6 +33,7 @@ from .sources import SourceError
 from .store import Store, song_dir, song_key
 
 SEPARATE = smconfig.REPO_ROOT / "tools" / "karaoke" / "separate.py"
+BEATS = smconfig.REPO_ROOT / "tools" / "karaoke" / "beats.py"
 ALIGN = smconfig.REPO_ROOT / "tools" / "karaoke" / "align.py"
 TRANSCRIBE = smconfig.REPO_ROOT / "tools" / "karaoke" / "transcribe.py"
 REFINE = smconfig.REPO_ROOT / "tools" / "karaoke" / "refine.py"
@@ -47,6 +48,34 @@ STOCK_HEARD = ("thank you", "thanks for watching", "thank you for watching", "su
 QUIET_VOCAL_GAP_DB = 35.0
 QUIET_VOCAL_DB = -60.0
 ALL_VOCALS_MODEL = "model_bs_roformer_ep_317_sdr_12.9755.ckpt"   # BS-Roformer Viperx 1297: every voice out
+
+
+def analyse_later(sid: str, d: Path) -> None:
+    """Once a song is ready (it plays meanwhile): its beat grid (tools/karaoke/beats.py, Beat This! on the backing
+    track, in the show's ML venv) and its shape (utils/song_shape.py, in the show venv), both on the CPU at nice 19,
+    one thread, on a thread of their own so the next song's preparation never waits. The show's clock plays the grid
+    along the player (show_service/karaoke_feed.py) and the director follows the shape. Lyrics don't enter either, so
+    the careful pass never redoes them. A failure only leaves the show on the room mic for that song."""
+    dep = smconfig.deployment()
+    ml_py = dep.host_path("show_ml_python", "~/.venvs/sm-show-ml/bin/python")
+    show_py = dep.host_path("show_python", "~/.venvs/sm-show/bin/python")
+    env = {**os.environ, "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"}
+
+    def run() -> None:
+        jobs = []
+        if ml_py and ml_py.exists() and not (d / "beats.json").is_file():
+            jobs.append(("beats", ["nice", "-n", "19", str(ml_py), "-I", str(BEATS), str(d)]))
+        if show_py and show_py.exists():
+            jobs.append(("shape", ["nice", "-n", "19", str(show_py), "-m", "utils.song_shape", sid]))
+        for name, cmd in jobs:
+            t0 = time.time()
+            try:
+                subprocess.run(cmd, check=True, capture_output=True, timeout=900, env=env, cwd=str(smconfig.REPO_ROOT))
+                info(f"karaoke: {sid} {name} measured in {time.time() - t0:.0f} s")
+            except Exception as e:  # noqa: BLE001  the show falls back to the room mic for this song
+                info(f"karaoke: {sid} {name} not measured: {e}")
+
+    threading.Thread(target=run, name=f"karaoke-analyse-{sid}", daemon=True).start()
 
 
 def real_heard(sung: list[dict], duration: float | None) -> list[dict]:
@@ -389,6 +418,7 @@ class Worker:
         self.store.update_song(sid, status="ready", detail="", lyrics={"kind": lyrics_doc["kind"],
                                "lines": lyrics_doc["lines"]}, ready_at=time.time())
         info(f"karaoke: {sid} ready ({lyrics_doc['kind']} lyrics, {lyrics_doc.get('source', 'as looked up')})")
+        analyse_later(sid, d)
 
     # ------------------------------------------------------------ the careful pass (docs/KARAOKE.md)
     def refine(self, song: dict) -> None:

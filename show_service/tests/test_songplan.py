@@ -30,7 +30,9 @@ def test_no_shape_leaves_the_sections_with_nothing_known():
 def test_each_section_gets_its_level_and_the_last_chorus_is_the_peak():
     shape = _shape([(50, 0.2), (80, 0.6), (150, 0.3), (200, 0.95)], (160, 180))
     out = sp.lay_out(SECS, shape, 200.0)
-    assert [x["level"] for x in out] == [0.2, 0.6, 0.3, 0.95]
+    assert [x["level_raw"] for x in out] == [0.2, 0.6, 0.3, 0.95]
+    lv = [x["level"] for x in out]
+    assert lv[0] < lv[2] < lv[1] < lv[3] and lv[0] < 0.15 and lv[3] >= 0.95   # spread over the song's own range
     assert [x["peak"] for x in out] == [False, False, False, True]
 
 
@@ -42,6 +44,14 @@ def test_a_climax_inside_a_long_verse_starts_its_own_section():
         (150.0, "chorus", "B")]
     assert [x["peak"] for x in out] == [False, False, False, True, False]
     assert out[3]["level"] > 0.9 and out[2]["level"] < 0.35
+
+
+def test_a_loud_stretch_that_is_not_a_peak_splits_nothing():
+    # the climax window inside a long verse, but the song is near-level: no peak, so no false same-letter boundary
+    shape = _shape([(80, 0.7), (120, 0.72), (150, 0.76), (200, 0.7)], (120, 140))
+    out = sp.lay_out(SECS, shape, 200.0)
+    assert [x["start_s"] for x in out] == [10.0, 50.0, 80.0, 150.0]
+    assert all(x["peak"] is None for x in out) and not any(x.get("split") for x in out)
 
 
 def test_a_level_song_has_no_peak():

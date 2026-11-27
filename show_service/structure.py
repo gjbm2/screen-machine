@@ -1788,7 +1788,13 @@ class Structure:
             pl.update(start=start, done=set())
             self._cancel_pred()
         pl["secs"] = ok
-        pl["paused"] = np_.get("state") != "playing"
+        paused = np_.get("state") != "playing"
+        if paused and not pl["paused"] and self._pred is not None and self._pred.get("lyrics"):
+            # a pause with a lyric section announced: it mustn't start during the pause; it is announced again on
+            # resume (from the player's position then), and nothing that already started is announced twice
+            pl["done"].discard(self._pred.get("plan_i"))
+            self._cancel_pred()
+        pl["paused"] = paused
         if not pl["paused"]:
             pl["start"] = start
 
@@ -1824,7 +1830,7 @@ class Structure:
             prev = next((s for s in reversed(self.sections) if s.get("letter") == x["letter"]), None)
             sid = self._next_id
             self._pred = {"line": line, "letter": x["letter"], "repeat_of": prev["id"] if prev else None,
-                          "from": self._cur_id(), "id": sid, "lyrics": x.get("kind")}
+                          "from": self._cur_id(), "id": sid, "lyrics": x.get("kind"), "plan_i": i}
             self._emit("section_change", line, now_s, section_id=sid, letter=x["letter"],
                        repeat_of=self._pred["repeat_of"], predicted=True, boundary_ms=round(line * 1000.0, 1),
                        detail="lyrics", section_kind=x.get("kind"), final=final,
@@ -1837,6 +1843,8 @@ class Structure:
         lead = self.cfg["events"]["min_lead_s"]
         p = self._pred
         if p is not None:
+            if p.get("lyrics") and self._plan is not None and self._plan["paused"]:
+                return                                   # paused: _plan_read cancels it (belt and braces)
             if now_s >= p["line"] - 1e-6:
                 self._pred = None
                 sec = self._start_section(p["line"], "predicted", now_s, emit=False)

@@ -176,6 +176,12 @@ def _mix(cp, kmix, a, b, out, t: float) -> None:
 
 log = logging.getLogger("stream_service.plugins.glsl")
 
+# The music's bar and phrase in every shader scene (GlslScene._structure; owner, 27 Nov "feel the music"): on each
+# downbeat the scene's clock surges and its gain lifts a little; on each phrase line (show_service's phrase_bars) the
+# clock takes a bigger step; a build speeds it and adds contrast.  Modest: the beat's own pulse stays the main move.
+DB_RATE, DB_GAIN, DB_DECAY_S = 0.5, 0.12, 0.18
+PHRASE_RATE, PHRASE_DECAY_S = 1.2, 0.45
+BUILD_RATE, BUILD_CONTRAST = 0.35, 0.12
 # Frame-time thresholds (GPU ms per render call).  Imported shaders are untrusted for cost: a shader over its
 # "slow" threshold is shrunk (render scale) until it fits.  At the minimum scale it keeps running (owner, 15 Oct:
 # degrade, never refuse; 18 Oct: no gates): the engine then lowers a scene's frame rate (layers.py rate_div); its
@@ -391,7 +397,11 @@ class GlslSource(_FastMixin, Source):
         if abs(scale - self.scale) > 0.02:
             self._alloc(scale)
         energy, pulse = p["energy"], p["pulse"]
-        rate = p["speed"] * (0.35 + 1.3 * energy) * (1.0 + 0.8 * pulse)
+        db, ph, bu = self._structure()
+        self._db = db
+        self._bu = bu
+        rate = p["speed"] * (0.35 + 1.3 * energy) * (1.0 + 0.8 * pulse + DB_RATE * db + PHRASE_RATE * ph) \
+            * (1.0 + BUILD_RATE * bu)
         step = dt * rate
         self.t += step
         self.drift += p["drift_speed"] * p["speed"] * dt
@@ -427,8 +437,8 @@ class GlslSource(_FastMixin, Source):
         rows = self.session_palette()
         coeffs = palette_coeffs(p["palette"]) if rows is None else np.asarray(rows, np.float32).ravel()
         self._pal.set(np.asarray(coeffs, np.float32))
-        gain = p["intensity"] * (1.0 + 0.35 * pulse)
-        contrast = 0.85 + 0.3 * energy
+        gain = p["intensity"] * (1.0 + 0.35 * pulse + DB_GAIN * getattr(self, "_db", 0.0))
+        contrast = 0.85 + 0.3 * energy + BUILD_CONTRAST * getattr(self, "_bu", 0.0)
         W, H = self.ctx.width, self.ctx.height
         launch_2d(self._post, W, H, (self.buf, out, np.int32(self.w), np.int32(self.h), np.int32(W), np.int32(H),
                                      np.float32(gain), np.float32(contrast), np.float32(p["palette_mix"]),
@@ -459,8 +469,8 @@ class GlslSource(_FastMixin, Source):
         rows = self.session_palette()
         coeffs = palette_coeffs(p["palette"]) if rows is None else np.asarray(rows, np.float32).ravel()
         f.pal[:] = np.asarray(coeffs, np.float32)
-        gain = p["intensity"] * (1.0 + 0.35 * pulse)
-        contrast = 0.85 + 0.3 * energy
+        gain = p["intensity"] * (1.0 + 0.35 * pulse + DB_GAIN * getattr(self, "_db", 0.0))
+        contrast = 0.85 + 0.3 * energy + BUILD_CONTRAST * getattr(self, "_bu", 0.0)
         W, H = self.ctx.width, self.ctx.height
         grid, block = grid_2d(W, H)
         plan.node(self._post, grid, block, (np.uint64(self.buf.data.ptr), np.uint64(out.data.ptr), np.int32(self.w),
@@ -469,6 +479,35 @@ class GlslSource(_FastMixin, Source):
                                             np.float32(p["palette_period"]), np.float32(self.drift), f.pal_ptr))
         plan.run()
         self.frame += 1
+
+    def _structure(self) -> tuple[float, float, float]:
+        """The bar and the phrase as every shader scene feels them (27 Nov: scenes only sped up and flashed on the
+        beat, the same on every beat): (downbeat envelope 0..1 at photon time, phrase-line surge 0..1, build 0..1),
+        from show_service's sure clock (effects.beat_clock) and its build progress; zeros without them."""
+        try:
+            from stream_service.effects import beat_clock
+            rt = getattr(getattr(self, "modulation", None), "runtime", None)
+            if rt is None:
+                return 0.0, 0.0, 0.0
+            feed = getattr(rt, "feed", None)
+            now = float(rt.now)
+            bu = float(feed.building(now)) if feed is not None else 0.0
+            bu = min(1.0, max(0.0, bu)) if math.isfinite(bu) else 0.0
+            bc = beat_clock(rt)
+            if bc is None or bc.source != "show" or bc.bpm <= 0.0:
+                return 0.0, 0.0, bu
+            beat_s = 60.0 / bc.bpm
+            bpb = max(1, int(bc.beats_per_bar))
+            c = feed.clock(now) if feed is not None else None
+            bars = max(1, int((c or {}).get("phrase_bars") or 4))
+            rel = bc.beats - bc.bar_beat
+            in_bar = rel % bpb
+            in_phrase = rel % (bpb * bars)
+            db = math.exp(-in_bar * beat_s / DB_DECAY_S) if in_bar < 1.0 else 0.0
+            ph = math.exp(-in_phrase * beat_s / PHRASE_DECAY_S) if in_phrase < 2.0 else 0.0
+            return db, ph, bu
+        except Exception:                         # never breaks a frame
+            return 0.0, 0.0, 0.0
 
     def _isf_inputs(self, k: Program, pulse: float) -> None:
         for u in k.tr.params:

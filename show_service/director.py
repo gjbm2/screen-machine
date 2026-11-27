@@ -287,7 +287,9 @@ CATALOG_POLL_S = 300.0
 COLOUR_CACHE = 512                  # lamp colours by their quantised inputs (the tick's budget is 1 ms p95)
 QUANT = 0.005                       # saturation and drift depth are quantised to this for the cache
 LOG_MEM = 500
-LOG_MAX_BYTES = 1 << 20
+LOG_MAX_BYTES = 32 << 20
+KARAOKE_LAMP_AHEAD_S = 0.25        # a karaoke song's file energy is read this far ahead for the lamps (a tick + their latency)
+KARAOKE_FILE_W = 0.8               # ... and weighs this much against the mic's onsets (starting point)
 # Starting points, overridable in show.yaml (director.transitions): how a look change crosses over for each vocab.yaml
 # transition_style word. A style with no entry, or no style, crossfades over TIME_FADE_S.
 TRANSITIONS = {"gentle": {"style": "crossfade", "beats": 4.0, "seconds": 4.0},
@@ -1817,6 +1819,14 @@ class Director:
             conf = sum(c for _, c in inputs.values()) / len(inputs)
         else:
             music, conf = 0.5, 0.0
+        # a karaoke song's own measured energy where the lamps will show it (the file is known ahead: no mic lag, no
+        # 2 s smoothing, and the room mic's chatter and singers don't move it). The mic's onsets keep a share, so a
+        # crowd going for it still lifts the room; harmony's dissonance doesn't brighten a song we have measured.
+        ke = self._karaoke_energy(KARAOKE_LAMP_AHEAD_S) if karaoke_on else None
+        if ke is not None:
+            other = [v for k, (v, _) in inputs.items() if k in ("onsets", "dynamics")]
+            music = KARAOKE_FILE_W * ke + (1.0 - KARAOKE_FILE_W) * (sum(other) / len(other) if other else ke)
+            conf = 1.0
         # relax (§8.5): quiet or talking, unless the vibe says otherwise; and no audio at all (liveness run down after
         # the hold and the fade, nobody playing): drift to the base look and stop changing, whatever the vibe says
         no_audio = not fresh and self.lv <= 0.0 and not playing
@@ -1932,6 +1942,13 @@ class Director:
             self._phrase_passed = True
         if grid.ok and self.look_bar is None:
             self.look_bar = grid.bar_at(now_s)
+        # a karaoke pause: a section's look announced before it was paused doesn't land in the pause (structure
+        # announces it again on resume)
+        if self.pending is not None and self.pending.get("structure") and self.pending["by"] == "director" and \
+                self.pending.get("reason") not in ("track",) and self._karaoke_paused():
+            self._log_event("look_skipped", {"why": "the song is paused", "reason": self.pending["reason"]})
+            self.pending = None
+            return
         # land a change that is due
         if self.pending is not None and now_s >= self.pending["at_s"] - 1e-6:
             pd = self.pending
@@ -2598,7 +2615,12 @@ class Director:
 
     def _intensity(self, now_s: float) -> Optional[float]:
         """Where the music is now within its track's own range so far, 0..1 (INT_* above); None until there is
-        sound, or while the features are stale."""
+        sound, or while the features are stale. A karaoke song with a measured shape: the file's own, where the
+        screens will show it (their lead ahead)."""
+        if self._karaoke_np() is not None:
+            ke = self._karaoke_energy(self._lead_s())
+            if ke is not None:
+                return ke
         key = self._track_key()
         if key != getattr(self, "_int_key", None) or not hasattr(self, "_int_hist"):
             self._int_key, self._int_hist, self._int_ema, self._int_t = key, collections.deque(), None, None
@@ -2638,6 +2660,22 @@ class Director:
         x = INT_LOUD_W * loud + (1.0 - INT_LOUD_W) * bz
         self._int_ema = x if self._int_ema is None else _ema(self._int_ema, x, dt, INT_TAU_S)
         return self._int_ema
+
+    def _karaoke_energy(self, ahead_s: float) -> Optional[float]:
+        """The playing karaoke song's measured intensity (0..1 in its own range) where the room will be in
+        ``ahead_s``; None with no song or no shape (karaoke_feed.energy_ahead via ctx.karaoke_energy)."""
+        fn = getattr(self.ctx, "karaoke_energy", None)
+        if fn is None:
+            return None
+        try:
+            v = fn(max(0.0, float(ahead_s)))
+        except Exception:                                 # noqa: BLE001 - the song's shape never stops the show
+            return None
+        return _c01(v) if isinstance(v, (int, float)) else None
+
+    def _karaoke_paused(self) -> bool:
+        np_ = _call(getattr(self.ctx, "now_playing", None))
+        return isinstance(np_, dict) and np_.get("source") == "karaoke" and np_.get("state") == "paused"
 
     def _song_genre(self) -> Optional[str]:
         """The karaoke song's catalogue genre as a vocabulary word (SONG_GENRES), while it plays; else None."""
@@ -6185,6 +6223,9 @@ class Director:
                  "music": {k: (round(m[k], 3) if isinstance(m.get(k), float) else m.get(k))
                            for k in ("energy", "arousal", "gate", "liveness", "bpm", "clock_gate", "relax")} if m
                  else None}
+        song = self._log_song()
+        if song is not None:
+            entry["song"] = song
         self._log.append(entry)
         try:
             w = self._why_words(kind, detail)
@@ -6207,6 +6248,20 @@ class Director:
             self._log_error = None
         except Exception as e:                          # a full disk never stops the show
             self._log_error = f"{type(e).__name__}: {e}"
+
+    def _log_song(self) -> Optional[dict]:
+        """The karaoke song and where the room is in it, on every log line: tools/room/ad_review places each decision
+        in the song by this (song seconds as heard)."""
+        try:
+            np_ = _call(getattr(self.ctx, "now_playing", None))
+        except Exception:                                 # noqa: BLE001 - the log never stops the show
+            return None
+        if not isinstance(np_, dict) or np_.get("source") != "karaoke" or not np_.get("key"):
+            return None
+        parts = str(np_["key"]).split(":")
+        pos = _num(np_.get("pos_s"))
+        return {"id": parts[1] if len(parts) > 1 else None, "pos_s": round(pos, 3) if pos is not None else None,
+                "state": np_.get("state"), "title": np_.get("title")}
 
     def _palette_view(self) -> dict:
         key = (id(self.vs), self.known, self._roles_key, self.palette_pick, len(self.palettes.names()),

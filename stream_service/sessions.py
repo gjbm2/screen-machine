@@ -57,7 +57,7 @@ from typing import Any, Callable, Optional
 
 import smconfig
 
-from . import binding, ensemble, fx_interplay, palettes, rooms
+from . import binding, ensemble, fx_interplay, lyric_feed, palettes, rooms
 from .bodies import PngData
 from .director import AUTO_DEFAULTS, AUTO_FX_DEFAULTS, AUTO_FX_MAX, DIRECTION_DEFAULTS, FX_DIRECTION_DEFAULTS, \
     Director, steer, validate_auto, validate_direction, weighted_pick, why_extra
@@ -98,6 +98,7 @@ LOOK_FIELDS = ("direction", "palette", "palette_transition_s", "auto", "beat_fol
 LOOK_SCOPES = ("room", "screen")    # owner 17 Oct: a control acts where it sits (a screen card: that screen only)
 MAX_SCENE_TRANSITIONS = 2     # in / scene transitions running at once; one more cue waits (R6)
 BEAT_MARGIN_S = 0.05          # a beat-snapped cue starts at least this far ahead of now
+HOT_SECTION_ENERGY = 0.75     # a section change this energetic (room.direction) may cut, as a drop does
 EVENT_MARGIN_S = 0.25         # a room.event's own time is used when it is at least this far past lead (G9)
 CUT_EVENTS = ("section_change", "drop", "track_change")      # show_service's room.events that cue a scene change
 # One controlling logic (owner, 26 Nov: "the a.d. has to have dominion"): while show_service's room.direction says
@@ -126,6 +127,19 @@ PALETTE_NOT_PICKED = ("art", "neutral")          # ... except From the art / no 
 ROOM_LOOK_STALE_S = 15.0      # room.look comes on change and every 5 s: older than this, the pick is not known
 ENERGY_REPICK = 0.3           # an Energy step this big (Calm -> Lively ...) arms the next scene pick at once (C5)
 ROOM_NEXT_DEDUPE_S = 1.0      # a manual "next" for another screen of the room this soon after one moved it: the same move
+
+
+def event_via(kind: str, rd: Optional[dict]) -> Optional[list]:
+    """The way in for structure's own events (no art director): a drop cuts; a section change at high energy draws
+    among a cut and the wild transitions; else None (the director's own draw).  27 Nov: 139 of 144 changes were
+    crossfades, and nothing in the automatic draw could ever cut."""
+    if kind == "drop":
+        return ["cut"]
+    try:
+        e = float((rd or {}).get("energy"))
+    except (TypeError, ValueError):
+        return None
+    return ["cut", "wild"] if kind == "section_change" and e >= HOT_SECTION_ENERGY else None
 
 
 class SessionError(Exception):
@@ -440,7 +454,10 @@ class Session(EngineListener):
         ex = self.runtime.extra or {}
         w = ex.get("music_w")
         fast = None if w is None else feed.energy_now(now)
-        music_signals(sig, ex, self.sampler.w if w is None else w, fast, wf)
+        wfe = wf
+        if fast is not None:                      # a karaoke song: its measured energy at photon time, as the frames
+            fast, wfe = lyric_feed.karaoke_energy(fast, wf, now + self.sampler.lead)
+        music_signals(sig, ex, self.sampler.w if w is None else w, fast, wfe)
         self.runtime.pivots.apply(sig)            # each level centred on its own norm, as the frames see it
         ensemble.apply_signals(sig, self._ens_lv)   # this screen's part: its energy bias, its pulse (as the frames)
         return sig
@@ -451,9 +468,13 @@ class Session(EngineListener):
         if not spec.bindings:
             return spec
         cls = self.mgr.registry.transition(spec.transition)
-        grid = self._beat_grid(time.monotonic())
+        now = time.monotonic()
+        grid = self._beat_grid(now)
+        clk = self.mgr.music_feed.clock(now) if grid is not None and self._music_grid(now) is not None else None
+        bpb = int(clk.get("beats_per_bar") or 0) if isinstance(clk, dict) and clk.get("gate") == "beat" else 0
         vals = binding.sample_cue(cls.param_props(), spec.bindings, spec.params, self._cue_signals(), None,
-                                  self.runtime.depth, f"transition/{spec.transition}", grid[1] if grid else None)
+                                  self.runtime.depth, f"transition/{spec.transition}", grid[1] if grid else None,
+                                  beats_per_bar=bpb)
         if not vals:
             return dataclasses.replace(spec, bindings={})
         try:
@@ -2129,6 +2150,7 @@ class Session(EngineListener):
                 via = (data.get("transition") or {}).get("via") if isinstance(data.get("transition"), dict) else None
                 self._event_via = [x for x in via if isinstance(x, str)][:16] if isinstance(via, list) else None
                 self._event_sweep = False
+                self.fx_director.hold_for_cut(at_s, now)   # one layer at a time: the bus waits for the cut
             return
         self.fx_director.on_event(kind, now,
                                   data.get("section_kind") if data.get("detail") == "lyrics" else None)
@@ -2147,6 +2169,7 @@ class Session(EngineListener):
                               urgent=kind == "drop" or recall):
             self._event_hint = at_s
             self._event_sweep = bool(data.get("sweep_beats"))   # a sweep's change: never staggered (rooms.py)
+            self._event_via = event_via(kind, rd)
 
     def _lyric_section(self, data: dict) -> bool:
         """A karaoke section from the lyrics (verse A / chorus B / break C): a CHORUS's scene in this song goes to the
@@ -2649,6 +2672,8 @@ class Session(EngineListener):
                         photon_at = max(earliest, hint - land * dur)
                 elif hint is not None and hint >= earliest:
                     photon_at = hint
+                if hint is not None and photon_at is None:
+                    at = "beat"                       # its line can't be met on glass: the next beat, not a bar late
             res = await self.cue({"to": "auto", "at": at, **({"via": via} if via else {})}, cause="auto",
                                  reason=reason, detail=detail, photon_at=photon_at, stagger=stagger)
             ll, self._lyric_letter = self._lyric_letter, None

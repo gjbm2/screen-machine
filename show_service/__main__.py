@@ -724,8 +724,12 @@ class Show:
             if smconfig.enabled("karaoke") is not True or self.ctx is None:
                 return
             from . import karaoke_feed
-            self.karaoke = karaoke_feed.KaraokeFeed(smconfig.url("flask"), shape_fn=karaoke_feed.library_shape)
+            self.karaoke = karaoke_feed.KaraokeFeed(smconfig.url("flask"), shape_fn=karaoke_feed.library_shape,
+                                                    grid_fn=karaoke_feed.library_grid)
             self.ctx.now_playing = karaoke_feed.chain_now_playing(self.ctx.now_playing, self.karaoke.now_playing)
+            if self.clock is not None and hasattr(self.clock, "set_override"):
+                self.clock.set_override(self.karaoke.clock_override)   # a song's own beats drive music.clock
+            self.ctx.karaoke_energy = self.karaoke.energy_ahead          # its measured shape, ahead (director)
             self.modules["karaoke"] = "ok"
         except Exception as e:
             self.karaoke = None

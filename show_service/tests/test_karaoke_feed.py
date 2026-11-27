@@ -147,3 +147,94 @@ def test_re_timed_lyrics_are_read_again_and_still_belong_to_the_song():
     now["song"]["lyrics_rev"] = 2
     f.poll_once()
     assert len(calls) == 2 and f.now_playing()["sections"]                 # read again, and still this song's
+
+
+# -- the song's own beat grid drives music.clock (docs/AD_MUSIC_FIT_REVIEW_2026-11.md §4 item 1) ---------------------
+def _grid(bpm=120.0, n=400, first=0.5, meter=4):
+    p = 60.0 / bpm
+    beats = [first + i * p for i in range(n)]
+    return K.FileGrid({"beats": beats, "downbeats": beats[::meter], "meter": meter, "model": "test"})
+
+
+def gfeed(c: Clock, replies: list, grid):
+    def fetch(url):
+        return replies[0]
+    return K.KaraokeFeed("http://127.0.0.1:5000/", fetch=fetch, clock=lambda: c.t, mono=lambda: c.t,
+                         grid_fn=lambda sid: grid)
+
+
+def test_the_file_grid_is_the_clock_from_the_first_beat_with_the_rooms_delay():
+    from show_service.clock import beat_at, position_at
+    c = Clock()
+    r = reply(pos=10.0)
+    r["settings"] = {"audio_delay_ms": 200}
+    f = gfeed(c, [r], _grid())
+    f.poll_once()
+    body = f.clock_override(c.t, None)
+    assert body is not None and body["gate"] == "beat" and body["state"] == "locked"
+    assert body["bpm"] == pytest.approx(120.0) and body["beats_per_bar"] == 4
+    # the room hears song time 9.8 now (0.2 s behind the player): beat 18.6 of the file (0.5 + 18.6 * 0.5 = 9.8)
+    assert beat_at(body, c.t) == pytest.approx(18.6, abs=1e-6)  # (no clock before it: the count starts at 0)
+    k0 = beat_at(body, c.t)
+    c.t += 1.0                                                    # a second later: two beats on, same line
+    b2 = f.clock_override(c.t, None)
+    assert beat_at(b2, c.t) == pytest.approx(k0 + 2.0, abs=1e-6) and b2["epoch"] == body["epoch"]
+    # a beat of the file lands exactly on an integer beat of the clock at the room's time
+    t_beat = c.t + (0.5 + 22 * 0.5 - (10.0 + 1.0 - 0.2))         # file beat 22 as the room hears it
+    assert beat_at(b2, t_beat) == pytest.approx(round(beat_at(b2, t_beat)), abs=1e-6)
+    assert position_at(b2, t_beat)["beat_in_bar"] == pytest.approx(round(position_at(b2, t_beat)["beat_in_bar"]) % 4,
+                                                                   abs=1e-6)
+
+
+def test_no_grid_paused_or_past_the_end_is_the_mics_clock():
+    c = Clock()
+    rs = [reply(pos=10.0)]
+    assert gfeed(c, rs, None).clock_override(c.t, None) is None   # not analysed yet
+    f = gfeed(c, rs, _grid())
+    f.poll_once()
+    assert f.clock_override(c.t, None) is not None
+    rs[0] = reply(state="paused", pos=10.0)
+    f.poll_once()
+    assert f.clock_override(c.t, None) is None                    # paused: the room's silence, the mic's clock
+    rs[0] = reply(pos=500.0)
+    f.poll_once()
+    assert f.clock_override(c.t, None) is None                    # past the last beat
+
+
+def test_a_seek_is_a_new_epoch_and_the_count_never_goes_back():
+    from show_service.clock import beat_at
+    c = Clock()
+    rs = [reply(pos=100.0)]
+    f = gfeed(c, rs, _grid())
+    f.poll_once()
+    b1 = f.clock_override(c.t, None)
+    k1 = beat_at(b1, c.t)
+    rs[0] = reply(pos=20.0)                                       # back to the start of the song
+    f.poll_once()
+    b2 = f.clock_override(c.t, b1)
+    assert b2["epoch"] > b1["epoch"] and beat_at(b2, c.t) > k1
+
+
+def test_the_rooms_position_and_sections_move_by_the_delay_not_the_lyric_offsets():
+    c = Clock()
+    r = reply(pos=10.0)
+    r["settings"] = {"audio_delay_ms": 300}
+    r["song"]["offset_ms"] = 1000
+    f = gfeed(c, [r], _grid())
+    f.poll_once()
+    f._sections = ("k1", [{"start_s": 30.2, "kind": "chorus", "letter": "B"},
+                          {"start_s": 60.0, "kind": "chorus", "letter": "B", "split": True}])
+    np_ = f.now_playing()
+    assert np_["pos_s"] == pytest.approx(9.7)                     # what the room hears now
+    # the lyric section at 31.2 s of audio snaps to the downbeat at 30.5 (within half a bar); the split (audio time)
+    # takes no lyric offset: 60.0 -> the downbeat at 60.5
+    assert [x["pos_s"] for x in np_["sections"]] == [pytest.approx(30.5), pytest.approx(60.5)]
+
+
+def test_energy_ahead_reads_the_songs_shape_where_the_room_will_be():
+    c = Clock()
+    f = gfeed(c, [reply(pos=10.0)], None)
+    f.poll_once()
+    f._shape = ("k1", {"hop": 0.5, "v": [i / 100.0 for i in range(100)]})
+    assert f.energy_ahead(0.0) == pytest.approx(0.2)              # 10 s = hop 20
+    assert f.energy_ahead(2.0) == pytest.approx(0.24)

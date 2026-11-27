@@ -1,0 +1,13 @@
+# tools/room/ad_eval: how the overall score weighs each metric, and the tolerances and scales in the formulas.
+# Every number is a starting point (27 Nov 2026), changed only on purpose: a change makes runs incomparable.
+weights: {beat: 1.0, snap: 1.0, contour: 1.0, sections: 1.0, climax: 0.5, ending: 0.5, coherence: 0.5}
+tol_beat_s: 0.07            # a pulse within this of a reference beat is on the beat
+smooth_s: 2.0               # contour: both curves smoothed over this
+snap_smooth_s: 0.5          # snap: both curves smoothed over this before the cross-correlation
+max_lag_s: 5.0              # snap: lags searched, lights behind the sound
+snap_scale_s: 2.0           # snap score = 1 - lag / this
+snap_min_corr: 0.2          # snap counts only where the peak correlation reaches this
+stray_scale_per_min: 2.0    # sections score = hit share / (1 + strays a minute / this)
+ending_scale_s: 5.0         # ending score = 1 - |dark - end| / this
+dark_share: 0.3             # the lamps count as dark under this share of their in-song median
+case_window_s: 10.0         # an owner note is measured over its time ± this
