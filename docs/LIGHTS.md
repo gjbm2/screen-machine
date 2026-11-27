@@ -817,7 +817,7 @@ between: [a, b], spread, order}`. The value is a + (b - a) × shape at the membe
 | `intensity` | today's, + `order` | intensity | multiply (as today), HTP for hits |
 | `position` | `mode`, `on`, `centre`, `size`, `size_deg`, `along`, `rotate`, `fan`, `ease`, `points`, `hop`, `lift`, `dark_move` | pan, tilt | LTP in file order: pos = lerp(previous, own, depth) in pan/tilt |
 | `beam` | `zoom` (deg, `narrow`/`wide`/`mid`, `default`, or an oscillator), `focus`, `iris`, `frost` | zoom, focus, iris, frost | LTP, glided over the transition |
-| `gobo` | `wheel` (`gobo`/`gobo2`), `slot`, `change_on`, `spin`, `spin_scale`, `shake` | gobo*, gobo*_spin, gobo*_shake | LTP |
+| `gobo` | `wheel` (`gobo`/`gobo2`), `slot` (a name, number, list or auto; names a light lacks fall back to its own gobos), `change_on`, `spin`, `spin_scale`, `shake`, `scroll` (the whole wheel turning: -1..1, flow or pace, times spin_scale; for gobos that can't turn, as the GigBAR's) | gobo*, gobo*_spin, gobo*_shake, gobo_scroll | LTP |
 | `prism` | `in` (bool, or `accents`: in while the accents style is beat/full), `spin`, `spin_scale` | prism, prism_spin | LTP |
 | `colour` | `role` (base/accent/highlight from LookData.palette.roles), `depth` (number or oscillator) | colour | OKLab mix toward the role colour, LTP |
 | `colour_wheel` | `mode`: `follow` (default: nearest slot, today) \| `step` (`step_on` beat/bar) \| `spin` (`spin`) | colour_slot, colour_spin | LTP |
