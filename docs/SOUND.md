@@ -86,8 +86,9 @@ figure: a browser's reported output latency.
 - **Karaoke › Settings:** the same control for the karaoke's output. `POST /api/karaoke/calibrate` measures the
   karaoke's output.
 
-**Still measured elsewhere** (read-only here):
-- Screens' picture-to-light and the lights' response: `tools/room/latency_cal` (calibrate.py, hue_cal.py) with the
-  light sensor.
+**Measured here with this device's camera** (`src/components/sound/CameraCalibration.tsx`; docs/calibration/README.md):
+each light's response and each screen's picture delay. **The sound coming in** (the beat clock's own lateness): the
+chirps from this device's speaker (`output: "in"`). **Still measured elsewhere**: Hue (`tools/room/latency_cal/hue_cal.py`)
+and the light-sensor screen run (`tools/room/latency_cal/calibrate.py`).
 - The piano's live sink delay: `piano_render/calibrate.py`.
 - Room audio levels: `tools/room/audio_cal`.
