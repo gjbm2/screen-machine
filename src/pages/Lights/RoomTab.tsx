@@ -660,7 +660,16 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
     if (fromList.current) { fromList.current = false; return; }
     if (!selected) return;
     const t = window.setTimeout(() => {
-      document.querySelector(`[data-testid="pick-${CSS.escape(selected)}"]`)?.scrollIntoView({ block: "nearest" });
+      // only the panel's own list scrolls, never the page: a page that scrolled under a drag in the view moved the
+      // view from under the pointer (owner, 27 Nov: "dragging / moving mirror ball isn't working ... interrupted")
+      const el = document.querySelector(`[data-testid="pick-${CSS.escape(selected)}"]`) as HTMLElement | null;
+      let box = el?.parentElement ?? null;
+      while (box && !(box.scrollHeight > box.clientHeight + 1 && /(auto|scroll)/.test(getComputedStyle(box).overflowY))) box = box.parentElement;
+      if (el && box && box !== document.scrollingElement && box !== document.body) {
+        const r = el.getBoundingClientRect(), b = box.getBoundingClientRect();
+        if (r.top < b.top) box.scrollTop -= b.top - r.top + 8;
+        else if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom + 8;
+      }
     }, 50);
     return () => window.clearTimeout(t);
   }, [selected]);     // room_service's room (one per deployment here)
@@ -738,7 +747,9 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       setSelected(`bar:${id}`); setFrame((k) => k + 1);
       return;
     }
-    const { id, n } = freeId(x.id);
+    // the first of a room device takes its plain name ("mirror-ball"): the name the scenes aim at
+    const taken = new Set([...rigIds, ...Object.keys(bits.room.appliances), ...bits.bars.map((b) => b.id), ...bits.room.points.map((p) => p.name)]);
+    const { id, n } = x.what === "device" && !taken.has(x.id) ? { id: x.id, n: 1 } : freeId(x.id);
     const plain = x.label.replace(/\s*\([^)]*\)\s*$/, "").trim();                 // "gigbar-par (part, 7 channels)" -> "gigbar-par"
     const lab = label ?? `${plain && plain !== x.id ? plain : nameWords(x.id)} ${n}`;
     let body: Record<string, unknown>;
@@ -864,6 +875,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
     const name = placeId(label);
     if (!name) return;
     if (bits.room.points.some((p) => p.name === name)) { setSelected(`place:${name}`); return; }
+    if (bits.room.regions.some((a) => a.name === name)) { setSelected(`area:${name}`); return; }   // an area is one already
     const [X, Y] = bits.size;
     void act(`add ${label.trim()}`, () => api.setPlace(name, { at: [r2(X / 2), r2(Y / 2), 0], label: label.trim() }), () => api.removePlace(name))
       .then(() => setSelected(`place:${name}`));
