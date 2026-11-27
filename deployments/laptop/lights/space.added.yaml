@@ -5,19 +5,56 @@
 # a mover's taught places and .pose its solved mounting (space.solve_pose).
 version: 1
 room: {}
-appliances: {}
-points: {}
-regions: {}
+appliances:
+  hazer:
+    at: [4.7, 1.2, 0.2]
+  house-1:
+    at: [1.25, 2.5, 3.95]
+  house-2:
+    at: [3.75, 2.5, 3.95]
+  house-3:
+    at: [1.25, 7.5, 3.95]
+  house-4:
+    at: [3.75, 7.5, 3.95]
+  screen.vj:
+    at: [5.0, 5.0, 2.0]
+    plane:
+      normal: [-1.0, 0.0, 0.0]
+      up: [0.0, 0.0, 1.0]
+      size: [2.0, 1.125]
+points:
+  dance-floor:
+    label: Dance floor
+    at: [2.5, 5.0, 0.0]
+    from: page
+  screen:
+    label: Karaoke screen
+    at: [5.0, 5.0, 2.0]
+    from: page
+  singer:
+    label: Singer's spot
+    at: [3.8, 5.0, 1.2]
+    from: page
+  west-wall:
+    label: West wall above heads
+    at: [0.0, 5.0, 3.0]
+    from: page
+regions:
+  dance-floor:
+    label: Dance floor
+    surface: floor
+    centre: [2.5, 5.0, 0.0]
+    size: [3.0, 5.0]
 surfaces: {}
 keep_out: {}
 bars:
   gigbar-a:
     label: Bar A
-    at: [4.6, 9.6, 2.5]
-    facing_deg: -114.5
+    at: [4.59, 9.61, 2.82]
+    facing_deg: -133.6
     layout: gigbar-move
   gigbar-b:
     label: Bar B
-    at: [4.6, 0.4, 2.5]
+    at: [4.56, 1.19, 2.5]
     facing_deg: 114.5
     layout: gigbar-move
