@@ -3,40 +3,18 @@
 # headless Claude make fixes that score better, keep them (committed, own paths) and write a morning report.
 #   scripts/ad-nightly            run now (what the timer runs)
 #   scripts/ad-nightly --score    just score HEAD (no fixes)
-#   scripts/ad-nightly --install  install the systemd user timer (03:00 nightly)
+#   scripts/ad-nightly --install  install the nightly cron entry (03:00)
 # Logs: ~/.cache/sm-ad-eval/nightly.log. Reports: ~/.cache/sm-ad-eval/reports/<date>.md
 set -uo pipefail
+export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 OUT="$HOME/.cache/sm-ad-eval"
 mkdir -p "$OUT/reports"
 LOG="$OUT/nightly.log"
 
-if [[ "${1:-}" == "--install" ]]; then
-  mkdir -p "$HOME/.config/systemd/user"
-  cat > "$HOME/.config/systemd/user/sm-ad-nightly.service" <<EOF
-[Unit]
-Description=screen-machine: the art director's overnight eval and improvement loop
-
-[Service]
-Type=oneshot
-WorkingDirectory=$REPO
-ExecStart=$REPO/scripts/ad-nightly
-Nice=19
-TimeoutStartSec=4h
-EOF
-  cat > "$HOME/.config/systemd/user/sm-ad-nightly.timer" <<EOF
-[Unit]
-Description=screen-machine: the art director's overnight loop at 03:00
-
-[Timer]
-OnCalendar=*-*-* 03:00:00
-Persistent=false
-
-[Install]
-WantedBy=timers.target
-EOF
-  systemctl --user daemon-reload && systemctl --user enable --now sm-ad-nightly.timer && \
-    systemctl --user list-timers sm-ad-nightly.timer --no-pager
+if [[ "${1:-}" == "--install" ]]; then          # cron (WSL here has no user systemd bus)
+  line="0 3 * * * $REPO/scripts/ad-nightly  # sm-ad-nightly"
+  { crontab -l 2>/dev/null | grep -v '# sm-ad-nightly'; echo "$line"; } | crontab - && crontab -l | grep sm-ad-nightly
   exit $?
 fi
 
