@@ -601,8 +601,30 @@ tilted and turned on its bracket. Those are settings, and the simulator and the 
   (degrees above level) are separate: a blue ring round the light turns only its direction, an amber arc only its
   elevation, and both are fields with sliders in the panel (owner, 27 Nov: "expose angle and elevation as separate
   controls"). Stored as the setup's lean_deg / turn_deg (a light pointing over 90° to a side leans back instead).
-- **Not there yet:** a control for the four strobe zones (they are in the bar's face and point where it does); the
-  moving heads' poses are still taught from the Lights tab ("Point it at…"), not turned in the view.
+- **Views apart from moving** (owner, 27 Nov): 3D | Plan | Front | Side (⇄: the opposite wall; keys 5 7 1 3 9). The
+  flat ones are the same camera through a 3° lens and only slide and zoom; in an elevation a drag moves a thing across
+  the wall and up or down. Walk / Orbit and the places to stand or look from are 3D's, and a click on either starts
+  afresh. The header runs from the left with a slot for every control (nothing jumps under the mouse).
+- **Picking:** a bar and its parts are one unit: a click selects the bar, a second click (or a double-click) the part,
+  Esc or ↑ goes up a level. A selected bar names its parts in the view (click a name to select it). What is selected
+  lights up in the view (open white; drawn only, nothing sent).
+- **Every object:** renamed in place (a light's name lives in its setup, so hand-written lights too); Settings › opens
+  a light's full settings; the room is the top of the list (its size, front and settings).
+- **A U-bracket light** (pars, derbies, the laser: `turns: false` in the layout) has one Tilt, from back over the top
+  to straight down, said towards or away from the room.
+- **The room as a studio** (owner, 27 Nov: "treat the studio like a studio, test layouts, configs etc., and then
+  'actually connect' them to real channels / objects, etc. only when I'm ready"):
+  - **＋ Add to the room…** offers everything in `GET /api/v1/rig/library`: light bars (space.yaml layouts), every
+    light type, and the room devices (screen or TV, Hue lamp, mirror ball, microphone, light sensor:
+    `space.ROOM_DEVICE_KINDS`). A new thing is **planned**: a space.added appliance with a `kind` and no light of
+    that id (a new bar: a bar whose parts are no lights yet). It is drawn and placed and drives nothing. Ctrl+drag
+    any thing to copy it, planned, where it is let go.
+  - **Connect:** a planned light or bar is registered at a DMX address (a bar's parts at its start address plus each
+    layout part's `offset`), keeping its id (`POST /rig/fixtures` takes `id`); a planned screen or Hue lamp hands its
+    place to one of the rig's; a microphone, light sensor or mirror ball gets `connect`: the source, sensor or remote
+    it stands for. **Disconnect** puts a light registered on the page back to planned. Every step undoes.
+- **Not there yet:** planned lights don't run the preview's scenes (they light up only when selected); the moving
+  heads' poses are still taught from the Lights tab ("Point it at…"), not turned in the view.
 
 ### 3.7 Tests (space): test_space.py (new)
 
