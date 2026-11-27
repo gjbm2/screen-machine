@@ -6,12 +6,16 @@
 // `shown` is false and the strip leaves the live parts out. It reads the room link through selectors (one value
 // each), so a room status frame re-renders the strip only when something it shows changes.
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Check, MessageSquare } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { addScreenNote, screenNotes, type ScreenNote } from "@/shared/api/screenNotes";
 import { explainError, storageGet, storageSet } from "@/pages/Room/api";
 import { LookControls, SceneButton, ScenePicker } from "@/pages/Room/LivePanel";
-import { sceneInfo, sceneRatingKey, type SceneInfo } from "@/pages/Room/liveLib";
-import { RatingRow } from "@/pages/Room/Rating";
+import { fxChips, presetLabel, sceneInfo, sceneRatingKey, type SceneInfo } from "@/pages/Room/liveLib";
+import { RatingBadge, RatingRow } from "@/pages/Room/Rating";
 import { useLiveLook } from "@/pages/Room/useLiveLook";
+import { useUpNext } from "@/pages/Room/useUpNext";
 import {
   isLiveCapable,
   liveSceneKey,
@@ -133,32 +137,226 @@ export function useScreenLive(screenId: string) {
 
 export type ScreenLive = ReturnType<typeof useScreenLive>;
 
-/** While live: the scene on glass (tap to change it) and the Room page's look controls. */
+/** While live: what was, what is and what is coming, scenes and effects, each to rate and comment on (owner, 27 Nov),
+ *  then the Room page's look controls. */
 export function LiveLookPanel({ live }: { live: ScreenLive }) {
-  const { screenId, lv, lib, api, nowInfo, prevInfo } = live;
+  const { screenId, lv, lib, api } = live;
   return (
     <div className="space-y-3">
-      <SceneButton
-        info={nowInfo}
-        caption="Tap to change scene"
-        onClick={() => live.setPicker("cue")}
-        disabled={!lib || !!lv.busy}
-        testId={`home-scene-${screenId}`}
-      />
-      <RatingRow api={api} ratingKey={sceneRatingKey(lib, lv.look?.current_scene)} what="scene" className="-mt-2" testId={`home-rate-${screenId}`} />
-      {prevInfo && (
-        <div className="space-y-1" data-testid={`home-prev-${screenId}`}>
-          <SceneButton
-            info={prevInfo}
-            caption="Last scene · tap to go back"
-            onClick={() => void lv.cue(`back to ${prevInfo.label}`, { to: sceneSpecOf(prevInfo.key), at: "now" })}
-            disabled={!lib || !!lv.busy}
-          />
-          <RatingRow api={api} ratingKey={sceneRatingKey(lib, prevInfo.key)} what="scene" className="-mt-1" />
-        </div>
-      )}
+      <WasNowNext live={live} />
       <LookControls screenId={screenId} lv={lv} lib={lib} api={api} />
     </div>
+  );
+}
+
+type When = "was" | "now" | "next";
+const WHEN_WORDS: Record<When, string> = { was: "Was", now: "Now", next: "Next" };
+/** The effects on before the ones on now: kept by this browser as it watches them change. */
+const PREV_FX_KEY = (id: string) => `sm_home_prev_fx:${id}`;
+interface FxItem {
+  label: string;
+  /** The effect plug-in: its rating is the plug-in's. */
+  effect: string;
+}
+/** "Rainbow isobars (dense per-line colours over the scene)" -> "Rainbow isobars". */
+const shortLabel = (s: string) => s.replace(/\s*\(.*\)\s*$/, "") || s;
+const fxSig = (xs: FxItem[]) => xs.map((x) => `${x.effect}:${x.label}`).sort().join("|");
+
+function readPrevFx(id: string): FxItem[] | null {
+  try {
+    const v = JSON.parse(storageGet(PREV_FX_KEY(id)) ?? "null");
+    return Array.isArray(v) ? v : null;
+  } catch {
+    return null;
+  }
+}
+
+function WasNowNext({ live }: { live: ScreenLive }) {
+  const { screenId, lv, lib, api, nowInfo, prevInfo } = live;
+  const un = useUpNext({ api, sessionId: lv.session, subscribe: lv.subscribe });
+  const [notes, setNotes] = useState<ScreenNote[]>([]);
+  const [fxSel, setFxSel] = useState<{ when: When; item: FxItem } | null>(null);
+  const [clock, setClock] = useState(() => Date.now());
+
+  useEffect(() => {
+    let alive = true;
+    void screenNotes(screenId).then((n) => alive && setNotes(n));
+    return () => {
+      alive = false;
+    };
+  }, [screenId]);
+  useEffect(() => {
+    const t = setInterval(() => document.visibilityState === "visible" && setClock(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  // Effects now, the set before them, and the next one.
+  const nowFx: FxItem[] = useMemo(() => fxChips(lv.look, lib).map((c) => ({ label: c.label, effect: c.effect })), [lv.look, lib]);
+  const [prevFx, setPrevFx] = useState<FxItem[] | null>(() => readPrevFx(screenId));
+  const seenFx = useRef<FxItem[] | null>(null);
+  const sig = lv.look ? fxSig(nowFx) : null;
+  useEffect(() => {
+    if (sig === null) return;
+    if (seenFx.current && fxSig(seenFx.current) !== sig) {
+      storageSet(PREV_FX_KEY(screenId), JSON.stringify(seenFx.current));
+      setPrevFx(seenFx.current);
+    }
+    seenFx.current = nowFx;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [screenId, sig]);
+
+  const plan = un.read?.plan;
+  const since = un.read ? (clock - un.read.at) / 1000 : 0;
+  const nextScene = plan?.scenes[0] ?? null;
+  const nextInfo = nextScene ? sceneInfo(lib, api, nextScene.scene) : null;
+  const nextFxPlan = plan?.effects[0] ?? null;
+  const nextFx: FxItem[] = nextFxPlan
+    ? [{ label: presetLabel(nextFxPlan.effect, lib), effect: lib?.effects.find((x) => x.name === nextFxPlan.effect)?.effect ?? nextFxPlan.effect }]
+    : [];
+  const eta = (s: number | null | undefined) => (s == null ? null : Math.max(0, Math.round(s - since)));
+  const sceneEta = eta(nextScene?.eta_s?.[0]);
+  const fxEta = eta(nextFxPlan?.eta_s);
+
+  const lastNote = (key: string | null) => (key ? notes.find((n) => n.key === key) : undefined);
+  const keep = async (n: Omit<ScreenNote, "at" | "song" | "screen">) => {
+    const saved = await addScreenNote({ ...n, screen: screenId });
+    setNotes((xs) => [saved, ...xs]);
+  };
+
+  const sceneTier = (when: When, info: SceneInfo | null, caption: string, onClick: () => void, rate: string | null) =>
+    info && (
+      <div className="grid grid-cols-[2.75rem_1fr] items-start gap-x-2" data-testid={`home-${when}-${screenId}`}>
+        <span className="pt-4 text-sm font-medium text-muted-foreground">{WHEN_WORDS[when]}</span>
+        <div className="min-w-0 space-y-0.5">
+          <SceneButton info={info} caption={caption} onClick={onClick} disabled={!lib || !!lv.busy} testId={when === "now" ? `home-scene-${screenId}` : undefined} />
+          <div className="flex items-center gap-1">
+            <RatingRow bare api={api} ratingKey={rate} what="scene" className="min-w-0" testId={when === "now" ? `home-rate-${screenId}` : undefined} />
+            {rate && <CommentButton onKeep={(words) => keep({ kind: "scene", key: rate, label: info.label, when, words })} />}
+          </div>
+          <NoteLine note={lastNote(rate)} />
+        </div>
+      </div>
+    );
+
+  const fxTier = (when: When, items: FxItem[], extra?: string | null) => (
+    <div className="grid grid-cols-[2.75rem_1fr] items-center gap-x-2" key={when}>
+      <span className="text-sm font-medium text-muted-foreground">{WHEN_WORDS[when]}</span>
+      <div className="flex min-h-9 flex-wrap items-center gap-1.5">
+        {items.length === 0 && <span className="text-sm text-muted-foreground">–</span>}
+        {items.map((it) => {
+          const on = fxSel?.when === when && fxSel.item.effect === it.effect && fxSel.item.label === it.label;
+          return (
+            <button
+              key={`${it.effect}:${it.label}`}
+              type="button"
+              aria-pressed={on}
+              onClick={() => setFxSel(on ? null : { when, item: it })}
+              className={cn(
+                "inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-sm",
+                on ? "border-stone-800 bg-stone-800 text-white" : "border-stone-300 bg-white hover:bg-stone-50",
+              )}
+            >
+              {shortLabel(it.label)}
+              <RatingBadge api={api} ratingKey={`effect/${it.effect}`} />
+            </button>
+          );
+        })}
+        {extra && <span className="text-sm tabular-nums text-muted-foreground">{extra}</span>}
+      </div>
+    </div>
+  );
+  const selKey = fxSel ? `effect/${fxSel.item.effect}` : null;
+
+  return (
+    <div className="space-y-3" data-testid={`home-timeline-${screenId}`}>
+      <div className="space-y-2">
+        {sceneTier("was", prevInfo, "Go back", () => prevInfo && void lv.cue(`back to ${prevInfo.label}`, { to: sceneSpecOf(prevInfo.key), at: "now" }), prevInfo ? sceneRatingKey(lib, prevInfo.key) : null)}
+        {sceneTier("now", nowInfo, "Change", () => live.setPicker("cue"), sceneRatingKey(lib, lv.look?.current_scene))}
+        {sceneTier(
+          "next",
+          nextInfo,
+          sceneEta ? `in ${sceneEta} s · Play now` : "Play now",
+          () => nextScene && void un.edit({ op: "play", id: nextScene.id }).catch(() => undefined),
+          nextScene ? sceneRatingKey(lib, nextScene.scene) : null,
+        )}
+      </div>
+      <div className="space-y-1 border-t border-stone-200/80 pt-2">
+        {prevFx && fxTier("was", prevFx)}
+        {fxTier("now", nowFx)}
+        {(nextFx.length > 0 || plan) && fxTier("next", nextFx, fxEta && nextFx.length ? `in ${fxEta} s` : null)}
+        {fxSel && selKey && (
+          <div className="ml-[3.25rem] space-y-0.5">
+            <div className="flex items-center gap-1">
+              <span className="shrink-0 text-sm font-medium">{shortLabel(fxSel.item.label)}</span>
+              <RatingRow bare api={api} ratingKey={selKey} what="effect" className="min-w-0" />
+              <CommentButton onKeep={(words) => keep({ kind: "effect", key: selKey, label: fxSel.item.label, when: fxSel.when, words })} />
+            </div>
+            <NoteLine note={lastNote(selKey)} />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function NoteLine({ note }: { note: ScreenNote | undefined }) {
+  if (!note) return null;
+  return (
+    <p className="truncate text-sm italic text-muted-foreground" title={note.words}>
+      “{note.words}”
+    </p>
+  );
+}
+
+/** A comment: the icon opens a one-line box; Enter keeps it, Esc closes it. */
+function CommentButton({ onKeep }: { onKeep: (words: string) => Promise<void> }) {
+  const [open, setOpen] = useState(false);
+  const [words, setWords] = useState("");
+  const [state, setState] = useState<"idle" | "saving" | "kept" | "failed">("idle");
+  const save = async () => {
+    const w = words.trim();
+    if (!w) return setOpen(false);
+    setState("saving");
+    try {
+      await onKeep(w);
+      setWords("");
+      setOpen(false);
+      setState("kept");
+      setTimeout(() => setState("idle"), 1500);
+    } catch {
+      setState("failed");
+    }
+  };
+  if (!open)
+    return (
+      <button
+        type="button"
+        aria-label="Comment"
+        title="Comment"
+        onClick={() => setOpen(true)}
+        className="grid h-11 w-9 shrink-0 place-items-center rounded-lg text-stone-500 hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        {state === "kept" ? <Check className="h-4 w-4 text-emerald-600" aria-hidden /> : <MessageSquare className="h-4 w-4" aria-hidden />}
+      </button>
+    );
+  return (
+    <input
+      autoFocus
+      value={words}
+      onChange={(e) => setWords(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") void save();
+        if (e.key === "Escape") setOpen(false);
+      }}
+      onBlur={() => !words.trim() && setOpen(false)}
+      disabled={state === "saving"}
+      placeholder="Comment"
+      aria-invalid={state === "failed"}
+      className={cn(
+        "h-9 min-w-0 flex-[2] rounded-lg border bg-white px-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        state === "failed" ? "border-rose-500" : "border-stone-300",
+      )}
+    />
   );
 }
 
