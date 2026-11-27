@@ -37,6 +37,7 @@ import urllib.request
 FLASK = "http://localhost:5000"
 HOME = os.path.expanduser("~/.local/state/screen-machine")
 COINCIDE_S = 2.0
+LAND_PAIR_S = 3.0                 # a screen change this near a lights line is that line's own
 
 
 def api(path: str, body: dict | None = None) -> dict:
@@ -178,10 +179,11 @@ def score(d: dict) -> dict:
     near = lambda t, arr, key: any(abs(t - a[key]) <= COINCIDE_S for a in arr)      # noqa: E731
     ends = [s for s in scr if "done" in s]
     land = []
-    for ln in lines:
-        s = min(ends, key=lambda x: abs(x["done"] - ln["t"]), default=None)
-        if s is not None and abs(s["done"] - ln["t"]) <= 6.0:
-            land.append(round(s["done"] - ln["t"], 2))
+    for ln in lines:                                  # a lights line and the screen change that goes with it: the
+        s = min(ends, key=lambda x: abs(x["done"] - ln["t"]), default=None)   # nearest one, within LAND_PAIR_S (a
+        if s is not None and abs(s["done"] - ln["t"]) <= LAND_PAIR_S:         # line with none near it is counted
+            land.append(round(s["done"] - ln["t"], 2))                        # under "together", not paired with
+                                                                              # some other change, as it was)
     made = [m for m in d["moves"] if m.get("into") or m.get("from")]
     return {"screen_changes": len(scr), "lights_changes": len(lines),
             "screen_with_lights": sum(near(s.get("done", s["started"]), lines, "t") for s in scr),
