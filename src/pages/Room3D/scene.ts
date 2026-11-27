@@ -1504,7 +1504,8 @@ export class RoomSim {
     const big = m ? Math.max(...m.size) * 3 : 30;
     const d2 = Math.max(this.flatDist(0.8, 0.8), Math.min(this.flatDist(big, big), d * Math.pow(0.82, notch)));
     const k = d2 / d;                                        // the point under the cursor stays there
-    t.copy(at).addScaledVector(t.clone().sub(at), k);
+    const off = t.clone().sub(at);                           // (worked out before the pivot moves)
+    t.copy(at).addScaledVector(off, k);
     p.copy(t).addScaledVector(look, -d2);
   }
 

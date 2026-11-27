@@ -88,7 +88,7 @@ class Preview:
     """One viewer's preview: the engine, what it shows, and the 512 slots it would send."""
 
     def __init__(self, what: str, colour: Optional[tuple[float, float, float]], energy: float = ENERGY,
-                 bpm: float = BPM) -> None:
+                 bpm: float = BPM, sets: Optional[dict[str, float]] = None) -> None:
         self.energy, self.bpm = max(0.0, min(1.0, energy)), max(40.0, min(220.0, bpm))
         from .looks import LookEngine
         from . import space as sp
@@ -138,6 +138,20 @@ class Preview:
             if "haze" in (f.get("tags") or ()):
                 self.hazers.add(str(fid))                 # a preview never runs the hazer
         self.base = bytes(base)
+        # the lights a mode sets (owner, 27 Nov: "why are house lights up in all of them? ... surely default in a live
+        # mode is that they would be off"): the page sends the chosen mode's levels; each such light shows that level
+        # on its dimmer (its first channel named like one, else a one-channel light's only channel), whatever the look
+        self.sets: dict[int, int] = {}
+        for fid, lvl in (sets or {}).items():
+            f, sp_ = fx.get(fid) or {}, self.spans.get(str(fid))
+            if not sp_:
+                continue
+            t = types.get(f.get("type")) or {}
+            off = next((ch.get("offset") for ch in t.get("channels") or []
+                        if isinstance(ch.get("offset"), int) and str(ch.get("name", "")).lower() in ("dimmer", "intensity", "master dimmer")),
+                       0 if sp_[1] == 1 else None)
+            if off is not None:
+                self.sets[sp_[0] + off] = max(0, min(255, round(255 * lvl)))
         self._show(what, colour)
 
     def _kind(self, gid: str) -> str:
@@ -196,6 +210,8 @@ class Preview:
             d = f.get("dmx")
             if sp_ and d and fid not in self.hazers:
                 buf[sp_[0]:sp_[0] + min(sp_[1], len(d))] = d[:sp_[1]]
+        for a, v in self.sets.items():
+            buf[a] = v
         return bytes(buf)
 
 
@@ -213,8 +229,8 @@ async def status(_request: web.Request, _brain: Any = None) -> web.Response:
 
 
 async def dmx(request: web.Request, _brain: Any = None) -> web.StreamResponse:
-    """GET /api/v1/rig/preview/dmx?what=plain|colour|scene:<name>&colour=#rrggbb&energy=0..1&bpm=n: the preview's
-    frames, as SSE."""
+    """GET /api/v1/rig/preview/dmx?what=plain|colour|scene:<name>&colour=#rrggbb&energy=0..1&bpm=n&set=<id>:<0..1>,...:
+    the preview's frames, as SSE. ``set``: lights a mode sets (house lights), held at those levels."""
     global _live
     what = request.query.get("what") or "plain"
     colour = _hex(request.query.get("colour"))
@@ -223,6 +239,14 @@ async def dmx(request: web.Request, _brain: Any = None) -> web.StreamResponse:
         bpm = float(request.query.get("bpm", BPM))
     except ValueError:
         raise ValueError("energy is 0..1 and bpm a tempo.") from None
+    sets: dict[str, float] = {}
+    for part in (request.query.get("set") or "").split(","):
+        fid, _, v = part.rpartition(":")
+        try:
+            if fid:
+                sets[fid] = max(0.0, min(1.0, float(v)))
+        except ValueError:
+            raise ValueError("set is <light id>:<level 0..1>, comma separated.") from None
     if what == "colour" and colour is None:
         raise ValueError("A colour preview needs colour=#rrggbb.")
     if what not in ("plain", "colour") and not what.startswith("scene:"):
@@ -234,7 +258,7 @@ async def dmx(request: web.Request, _brain: Any = None) -> web.StreamResponse:
     loop = asyncio.get_running_loop()
     _live += 1
     try:
-        pv = await loop.run_in_executor(None, Preview, what, colour, energy, bpm)
+        pv = await loop.run_in_executor(None, Preview, what, colour, energy, bpm, sets)
         resp = web.StreamResponse(headers={"Content-Type": "text/event-stream"})
         _cors(resp)
         await resp.prepare(request)

@@ -152,6 +152,34 @@ function Num({ label, value, step = 0.05, unit, disabled, onKeep }: {
 }
 
 /** A compact slider for the preview's music: it moves freely and the preview follows when it is let go. */
+/** The preview's energy and tempo folded into one button (a narrow header): the sliders open under it. */
+function PreviewFeel({ energy, bpm, setEnergy, setBpm }: {
+  energy: number; bpm: number; setEnergy: (v: number) => void; setBpm: (v: number) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => { if (!(e.target as Element | null)?.closest?.("[data-feel]")) setOpen(false); };
+    window.addEventListener("pointerdown", close);
+    return () => window.removeEventListener("pointerdown", close);
+  }, [open]);
+  return (
+    <div className="relative shrink-0" data-feel>
+      <button className="h-8 whitespace-nowrap rounded-lg border border-stone-300 bg-white px-2.5 tabular-nums hover:bg-stone-50" aria-expanded={open}
+        title="The preview's energy and tempo" data-testid="preview-feel" onClick={() => setOpen((o) => !o)}>
+        <span className="hidden [@container(min-width:860px)]:inline">{Math.round(energy * 100)}% · {Math.round(bpm)} bpm </span>
+        <span className="[@container(min-width:860px)]:hidden">♪ </span>▾
+      </button>
+      {open && (
+        <div className="absolute left-0 top-full z-30 mt-1 space-y-2 rounded-lg border border-stone-200 bg-white p-3 shadow-lg">
+          <PreviewKnob label="Energy" value={energy} min={0} max={1} step={0.05} show={(v) => `${Math.round(v * 100)}%`} onCommit={setEnergy} />
+          <PreviewKnob label="Tempo" value={bpm} min={60} max={180} step={2} show={(v) => `${Math.round(v)} bpm`} onCommit={setBpm} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PreviewKnob({ label, value, min, max, step, show, onCommit }: {
   label: string; value: number; min: number; max: number; step: number; show: (v: number) => string; onCommit: (v: number) => void;
 }) {
@@ -159,7 +187,7 @@ function PreviewKnob({ label, value, min, max, step, show, onCommit }: {
   useEffect(() => setV(value), [value]);
   return (
     <label className="flex shrink-0 items-center gap-1.5 text-stone-600" title={`The preview's ${label.toLowerCase()}`}>
-      {label}
+      <span className="w-12">{label}</span>
       <input type="range" min={min} max={max} step={step} value={v} aria-label={label} className="w-24 accent-teal-600"
         onChange={(e) => setV(Number(e.target.value))} onPointerUp={() => onCommit(v)} onKeyUp={() => onCommit(v)} />
       <span className="w-16 whitespace-nowrap tabular-nums text-stone-800">{show(v)}</span>
@@ -203,12 +231,39 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       if (xs.length) setScene((cur) => cur || xs[0].name);
     }).catch(() => setScenes([]));
   }, [room]);
+  // The room as a mode leaves it (owner, 27 Nov: "why are house lights up in all of them? ... surely default in a live
+  // mode is that they would be off"): the lights a mode sets itself (light.<id> in modes.json: the house lights) show
+  // as the chosen mode sets them. Default: the mode the room is in when that is a show mode, else the first mode that
+  // turns lights off for a show; then the last one picked here.
+  const [modes, setModes] = useState<{ id: string; label: string; lights: Record<string, number> }[]>([]);
+  const [asMode, setAsMode] = useState<string>(() => { try { return localStorage.getItem("room3d.previewMode") ?? ""; } catch { return ""; } });
+  useEffect(() => {
+    let dead = false;
+    void (async () => {
+      try {
+        const d: any = await (await fetch(`${room}/api/v1/modes`, { cache: "no-store" })).json();
+        const st: any = await (await fetch(`${room}/api/v1/status`, { cache: "no-store" })).json().catch(() => ({}));
+        const ms = Object.entries(d?.modes ?? {}).map(([id, m]: [string, any]) => ({ id, label: String(m?.label ?? id),
+          lights: Object.fromEntries(Object.entries(m?.state?.light ?? {}).map(([lid, v]: [string, any]) =>
+            [lid, v === "off" ? 0 : v === "on" ? 1 : typeof v?.bri === "number" ? Math.max(0, Math.min(1, v.bri / 100)) : 1])) }));
+        if (dead) return;
+        setModes(ms);
+        const darkens = (m?: { lights: Record<string, number> }) => !!m && Object.values(m.lights).some((x) => x === 0);
+        const cur = ms.find((m) => m.id === st?.mode?.current);
+        setAsMode((was) => (was && ms.some((m) => m.id === was) ? was : darkens(cur) ? cur!.id : ms.find(darkens)?.id ?? cur?.id ?? ""));
+      } catch { if (!dead) setModes([]); }
+    })();
+    return () => { dead = true; };
+  }, [room]);
   const feed = useMemo(() => {
     if (show === "live") return { base: "", live: true };
-    const q = show === "colour" ? `?what=colour&colour=${encodeURIComponent(colour)}`
-      : show === "scene" && scene ? `?what=scene:${encodeURIComponent(scene)}&energy=${energy}&bpm=${bpm}` : "?what=plain";
+    const lights = modes.find((m) => m.id === asMode)?.lights ?? {};
+    const sets = Object.entries(lights).map(([id, v]) => `${id}:${v}`).join(",");
+    const q = (show === "colour" ? `?what=colour&colour=${encodeURIComponent(colour)}`
+      : show === "scene" && scene ? `?what=scene:${encodeURIComponent(scene)}&energy=${energy}&bpm=${bpm}` : "?what=plain")
+      + (sets ? `&set=${encodeURIComponent(sets)}` : "");
     return { base: `${room}/show/api/v1/rig/preview`, query: q };
-  }, [show, colour, scene, room, energy, bpm]);
+  }, [show, colour, scene, room, energy, bpm, modes, asMode]);
   // undo and redo: every change is a step that knows how to put things back (owner, 27 Nov: "need undo etc. in case of
   // unintended fiddles")
   type Step = { label: string; undo: () => Promise<unknown>; redo: () => Promise<unknown> };
@@ -838,23 +893,37 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
     ["live", "Live", "What the room's lights are doing now"]];
   const toolbar = (
     <>
-      <span className="text-stone-500">Lights</span>
-      <div className="inline-flex shrink-0 overflow-hidden rounded-lg border border-stone-300" role="group" aria-label="What the lights show" data-testid="show-what">
+      <span className="hidden shrink-0 text-stone-500 [@container(min-width:1250px)]:inline">Lights</span>
+      <select value={show} onChange={(e) => setShow(e.target.value as typeof show)} aria-label="What the lights show"
+        className={`${sel} shrink-0 [@container(min-width:1100px)]:hidden`}>
+        {SHOW.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+      </select>
+      <div className="hidden shrink-0 overflow-hidden rounded-lg border border-stone-300 [@container(min-width:1100px)]:inline-flex" role="group" aria-label="What the lights show" data-testid="show-what">
         {SHOW.map(([v, label, title], i) => (
           <button key={v} title={title} aria-pressed={show === v} onClick={() => setShow(v)} data-testid={`show-${v}`}
             className={`h-8 whitespace-nowrap px-3 ${i ? "border-l border-stone-300" : ""} ${show === v ? "bg-teal-600 text-white" : "bg-white hover:bg-stone-50"}`}>{label}</button>
         ))}
       </div>
+      {show !== "live" && modes.length > 0 && (
+        <select value={asMode} aria-label="The room as in" data-testid="as-mode" className={`${sel} max-w-[150px]`}
+          title="The lights a mode sets itself (the house lights) show as this mode sets them"
+          onChange={(e) => { setAsMode(e.target.value); try { localStorage.setItem("room3d.previewMode", e.target.value); } catch { /* this visit */ } }}>
+          {modes.map((m) => <option key={m.id} value={m.id}>Room as in {m.label}</option>)}
+        </select>
+      )}
       {show === "colour" && (
         <input type="color" value={colour} onChange={(e) => setColour(e.target.value)} aria-label="Colour" className="h-8 w-10 rounded-lg border border-stone-300 bg-white" />
       )}
       {show === "scene" && (
         <>
-          <select value={scene} onChange={(e) => setScene(e.target.value)} className={`${sel} min-w-[120px] max-w-[220px] shrink`} aria-label="Lighting scene">
+          <select value={scene} onChange={(e) => setScene(e.target.value)} className={`${sel} w-[180px] min-w-[90px] shrink`} aria-label="Lighting scene">
             {scenes.map((x) => <option key={x.name} value={x.name}>{x.label}</option>)}
           </select>
-          <PreviewKnob label="Energy" value={energy} min={0} max={1} step={0.05} show={(v) => `${Math.round(v * 100)}%`} onCommit={setEnergy} />
-          <PreviewKnob label="Tempo" value={bpm} min={60} max={180} step={2} show={(v) => `${Math.round(v)} bpm`} onCommit={setBpm} />
+          <span className="hidden items-center gap-3 [@container(min-width:1650px)]:flex">
+            <PreviewKnob label="Energy" value={energy} min={0} max={1} step={0.05} show={(v) => `${Math.round(v * 100)}%`} onCommit={setEnergy} />
+            <PreviewKnob label="Tempo" value={bpm} min={60} max={180} step={2} show={(v) => `${Math.round(v)} bpm`} onCommit={setBpm} />
+          </span>
+          <span className="[@container(min-width:1650px)]:hidden"><PreviewFeel energy={energy} bpm={bpm} setEnergy={setEnergy} setBpm={setBpm} /></span>
         </>
       )}
     </>

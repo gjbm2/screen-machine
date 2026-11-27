@@ -33,3 +33,17 @@ def test_a_colour_and_a_scene_and_a_bad_scene():
     assert len(_make(f"scene:{some}").frame()) == 512
     with pytest.raises(ValueError, match="no light scene"):
         _make("scene:no-such-scene")
+
+
+def test_a_mode_set_light_holds_its_level_whatever_the_look():
+    import pytest
+    try:
+        pv = preview.Preview("plain", None)
+    except ValueError:
+        pytest.skip("no DMX lights in this deployment")
+    one = next((fid for fid, sp in pv.spans.items() if sp[1] == 1), None)
+    if one is None:
+        pytest.skip("no one-channel light here")
+    a = pv.spans[one][0]
+    assert preview.Preview("plain", None, sets={one: 0.0}).frame()[a] == 0
+    assert preview.Preview("plain", None, sets={one: 0.5}).frame()[a] == 128
