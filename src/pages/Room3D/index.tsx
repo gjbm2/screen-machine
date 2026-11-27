@@ -726,7 +726,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
               fromView.current = true; cb.current.onSelect?.(key);
               const lp = ed?.lastPick, r = e.currentTarget.getBoundingClientRect();
               const it = (editables ?? []).find((q) => q.key === key);
-              if (lp && lp.n > 1 && it?.label) setTip({ x: e.clientX - r.left, y: e.clientY - r.top, text: `${it.label} · ${lp.i + 1} of ${lp.n} here: click again for the next` });
+              if (lp && lp.n > 1 && it?.label) setTip({ x: e.clientX - r.left, y: e.clientY - r.top, text: `${it.label} · ${lp.i + 1}/${lp.n}` });
               return;
             }
             if (selected) { cb.current.onSelect?.(null); return; }     // nothing, while editing: back to the room
@@ -735,7 +735,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
           <canvas ref={canvasRef} className="absolute inset-0 block" style={{ cursor: pointing ? "crosshair" : cursor }} />
           {pointing && (
             <div className="pointer-events-none absolute left-1/2 top-2 z-10 -translate-x-1/2 rounded-lg bg-teal-700/95 px-3 py-1.5 text-[13px] text-white shadow" data-testid="pointing">
-              {pointWords ?? "Point at: click a thing, or a spot on a wall, the floor or the ceiling · Esc: cancel"}
+              {pointWords ?? "Pick a spot · Esc"}
             </div>
           )}
           <div ref={namesRef} className="pointer-events-none absolute inset-0 overflow-hidden" data-testid="plan-names" />
@@ -758,32 +758,18 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
           {embedded && !shot && (
             <div className="pointer-events-none absolute right-2.5 top-2 flex gap-1.5 text-[11px]" data-testid="sim-status">
               <span className="rounded bg-white/85 px-1.5 py-0.5 text-stone-700 shadow-sm">
-                {previewing ? (dmxLive ? "Preview · nothing is sent to the lights" : "Starting the preview…")
-                  : !dmxLive ? "Live · no picture from the virtual node" : artLive ? "Live · what the room is doing now" : "Live · the room has gone quiet"}
+                {previewing ? (dmxLive ? "Preview" : "Preview…")
+                  : !dmxLive ? "Live · no feed" : artLive ? "Live" : "Live · quiet"}
                 {fps ? ` · ${fps} fps` : ""}
               </span>
-              {(roomErr || model?.problems.length) ? <span className="rounded bg-rose-50/90 px-1.5 py-0.5 text-rose-700 shadow-sm">{roomErr ?? `${model?.problems.length} problems in the room set-up`}</span> : null}
+              {(roomErr || model?.problems.length) ? <span className="rounded bg-rose-50/90 px-1.5 py-0.5 text-rose-700 shadow-sm">{roomErr ?? `${model?.problems.length} problems`}</span> : null}
             </div>
           )}
           {tip && (
             <div className="pointer-events-none absolute z-10 rounded bg-black/75 px-2 py-0.5 text-xs text-white"
               style={{ left: tip.x + 14, top: tip.y + 12 }} data-testid="hover-tip">{tip.text}</div>
           )}
-          <div className={shot ? "hidden" : "pointer-events-none absolute bottom-1.5 left-2.5 right-2.5 text-xs text-[#aab0c0]"}>
-            {embedded
-              ? (selected && nav === "plan"
-                ? "Editing, from above: a bar's parts stand on and hang under it, so their names line up beside it: click a name, or click the same spot again for the next part down · Front (1) shows them apart · Esc: up a level"
-                : selected
-                ? "Editing: drag to look round it · a bar: drag it, its ring to turn it, its arrow to raise it; click one of its lights to edit that · a light: the amber arc tilts it · Esc: up a level · click empty space: back"
-                : nav === "elev"
-                  ? `Elevation, looking at the ${elev} wall: drag a thing across and up or down · drag the wall to slide the view · wheel: zoom to the cursor · ⇄ (9): the other side · click: edit it, again for a light on a bar`
-                : nav === "plan"
-                  ? "Plan: drag a thing to place it (a screen goes onto the nearest wall; a bar moves whole) · drag the floor to slide the plan · wheel: zoom to the cursor · click: edit it, again (or double-click) for a light on a bar"
-                : nav === "walk"
-                  ? "Walking: drag to look round · click the floor to go there · wheel or W/S: forward / back · A/D: step aside · Q/E: lower / higher · click a bar to edit it, again (or double-click) for one of its lights"
-                  : "Orbiting: drag to turn round · right-drag: pan · wheel: zoom to the cursor · double-click: turn round that spot · click a bar to edit it, again for one of its lights")
-              : `${nav === "walk" ? "drag: look round · click the floor: walk there · wheel / W S: forward, back · A D: aside · Q E: lower, higher" : "drag: orbit · right-drag: pan · wheel: zoom · double-click: focus there"} · the lights read the Art-Net wire, at their makers' brightness; the picture adapts as an eye does · ${perf}`}
-          </div>
+          {!embedded && !shot && <div className="pointer-events-none absolute bottom-1.5 left-2.5 text-xs text-[#aab0c0]">{perf}</div>}
         </div>
         {embedded && panel ? (
           <aside className={T.aside} data-testid="inspector">{panel}</aside>

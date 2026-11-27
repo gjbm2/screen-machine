@@ -1653,7 +1653,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       {adding && <AddPicker items={lib} anchor={addAnchor.current} onClose={() => setAdding(false)}
         onPick={(x) => { setAdding(false); setPointing(false); setPlacing(x); }} />}
       <Room3DPage embedded refresh={refresh} liveAim={liveAim} editShow={editShow} deviceStates={deviceStates} pointing={pointing || !!placing}
-        pointWords={placing ? `Click where ${libName(placing)} goes · Esc: cancel` : undefined}
+        pointWords={placing ? `Place ${libName(placing)} · Esc` : undefined}
         pointThings={!placing}
         onPointAt={(to) => { if (placing) { const x = placing; setPlacing(null); void addThing(x, to); } else pointAt(to); }} editables={editables} selected={selected} mode={mode} picked={region?.name ?? null} startNav={plan ? "plan" : undefined}
         onSelect={(k) => { select(k); if (k) setFrame((n) => n + 1); }} onEdit={onEdit} onDuplicate={duplicate} panel={panel} frame={frame}
