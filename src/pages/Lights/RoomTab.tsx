@@ -628,6 +628,9 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   const area = kind === "area" ? bits?.room.regions.find((a) => a.name === id) : undefined;
   const [roomName, setRoomName] = useState("The room");
   const [liveAim, setLiveAim] = useState<{ id: string; dir: Vec3 } | null>(null);   // a light's aim as its slider moves
+  // the light being edited, in the view: on (bright, the default), off, or as the scene has it (owner, 27 Nov: "i should
+  // be able to turn a selected light object on and off etc."); drawn only, never sent
+  const [editShow, setEditShow] = useState<"on" | "off" | "show">("on");
   // the library (GET /rig/library): what can be added; the rig's rows: which lights are real, where they are patched
   const [lib, setLib] = useState<LibItem[]>([]);
   const [rig, setRig] = useState<RigRow[]>([]);
@@ -652,7 +655,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   // the owner's own scrolling: "scrolling hierarchy jumps up while I'm still scrolling"), and not when it was clicked
   // in the list (it is in view already)
   const fromList = useRef(false);
-  useEffect(() => { editing.current = { key: selected, seq: editing.current.seq + 1 }; setLiveAim(null); }, [selected]);
+  useEffect(() => { editing.current = { key: selected, seq: editing.current.seq + 1 }; setLiveAim(null); setEditShow("on"); }, [selected]);
   useEffect(() => {
     if (fromList.current) { fromList.current = false; return; }
     if (!selected) return;
@@ -1082,6 +1085,22 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
         </div>
       )}
       <div className={selected ? "min-h-0 flex-1 overflow-auto" : "shrink-0 border-t border-stone-200 pt-2"}>
+      {(bar || light || part || (thing && (thing.typeId || rig.some((r) => r.id === thing.id && r.node_ip)))) && (
+        <div className="mb-2 flex items-center gap-1.5" data-testid="edit-show">
+          <div className="inline-flex overflow-hidden rounded-lg border border-stone-300" role="group" aria-label="In the view">
+            {([["on", "On", "Lit bright while you edit it"], ["off", "Off", "Dark, to see the room without it"], ["show", "As the scene", "As the preview's scene has it"]] as const).map(([v, w, t], i) => (
+              <button key={v} title={`${t} (in the view only)`} aria-pressed={editShow === v} onClick={() => setEditShow(v)} data-testid={`edit-show-${v}`}
+                className={`h-7 px-2 text-[12px] ${i ? "border-l border-stone-300" : ""} ${editShow === v ? "bg-teal-600 text-white" : "bg-white hover:bg-stone-50"}`}>{w}</button>
+            ))}
+          </div>
+          {(() => {
+            const rid = light?.id ?? part?.id ?? thing?.id ?? null;
+            const real = rid && rig.some((r) => r.id === rid && r.node_ip);
+            return real ? <button className={`${btn} h-7 px-2 py-0 text-[12px]`} title="Flash the real light for a few seconds, to find it in the room"
+              onClick={() => void api.identify(rid!, 5).catch(() => setErr("It didn't answer."))} data-testid="identify">Identify</button> : null;
+          })()}
+        </div>
+      )}
       {bar && (
         <>
           <NameField value={bar.label} disabled={busy} onKeep={(v) => void act(`rename ${bar.label}`, () => api.putBar(bar.id, { label: v }), () => api.putBar(bar.id, { label: bar.label }))} />
@@ -1408,7 +1427,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
     <div className="space-y-3" data-testid="room-tab">
       {adding && <AddPicker items={lib} anchor={addAnchor.current} onClose={() => setAdding(false)}
         onPick={(x) => { setAdding(false); void addThing(x); }} />}
-      <Room3DPage embedded refresh={refresh} liveAim={liveAim} editables={editables} selected={selected} mode={mode} picked={region?.name ?? null} startNav={plan ? "plan" : undefined}
+      <Room3DPage embedded refresh={refresh} liveAim={liveAim} editShow={editShow} editables={editables} selected={selected} mode={mode} picked={region?.name ?? null} startNav={plan ? "plan" : undefined}
         onSelect={(k) => { select(k); if (k) setFrame((n) => n + 1); }} onEdit={onEdit} onDuplicate={duplicate} panel={panel} frame={frame}
         feed={feed} toolbar={toolbar} />
       <p className="text-[15px] text-muted-foreground">

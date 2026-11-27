@@ -34,13 +34,15 @@ type NodeStatus = { node?: { udp?: string; universe?: number }; artnet?: { pps?:
  *  its box and leaves the readout to the page around it. ``picked``: the keep-out region being edited there;
  *  ``regions``: the page's own (unsaved) copy of the regions, drawn in place of the room's saved ones. */
 export default function Room3DPage({ embedded = false, picked = null, regions, refresh = 0, editables, selected = null,
-  mode, onSelect, onEdit, onDuplicate, panel, frame = 0, feed, toolbar, startNav, liveAim = null }: {
+  mode, onSelect, onEdit, onDuplicate, panel, frame = 0, feed, toolbar, startNav, liveAim = null, editShow = "on" }: {
   embedded?: boolean; picked?: string | null; regions?: KeepRegion[];
   /** Bump it to read the room again at once (the page around it has just saved a change). */
   refresh?: number;
   /** The editor (editor.ts): the things that can be clicked and moved, which one is selected, the gizmo's mode, and
    *  what the page does when one is picked or changed. ``panel``: the page's inspector, shown beside the view. */
   editables?: Editable[]; selected?: string | null; mode?: GizmoMode;
+  /** How the selected light is drawn: on (bright), off, or as the scene has it. */
+  editShow?: "on" | "off" | "show";
   /** A light being aimed from the panel (a slider moving): drawn that way at once. */
   liveAim?: { id: string; dir: [number, number, number] } | null;
   /** Ctrl+drag let go: copy that thing to there. */
@@ -232,6 +234,16 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
           n.className = "pointer-events-auto absolute -translate-x-1/2 cursor-pointer whitespace-nowrap rounded bg-white/85 px-1 text-[11px] leading-4 text-stone-800 shadow-sm hover:bg-white hover:ring-1 hover:ring-teal-500";
           const key = it.key;
           n.onclick = (ev) => { ev.stopPropagation(); fromView.current = true; cb.current.onSelect?.(key); };   // a name selects its thing
+          n.onpointerdown = (ev) => {                          // ... and a press-and-drag on it moves it, as on the thing
+            if (ev.button !== 0) return;
+            const r = host.getBoundingClientRect(), ed = edRef.current;
+            const x = ((ev.clientX - r.left) / r.width) * 2 - 1, y = -(((ev.clientY - r.top) / r.height) * 2 - 1);
+            if (ed?.grabItem(key, x, y)) {
+              ev.stopPropagation();
+              host.setPointerCapture(ev.pointerId);
+              fromView.current = true; cb.current.onSelect?.(key);
+            }
+          };
           el.appendChild(n);
         }
         const words = it.parent ? shortName(it.label!, all.find((x) => x.key === it.parent)?.label) : it.label!;
@@ -304,7 +316,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
     const ed = edRef.current;
     if (ed && ed.selected !== selected) ed.select(selected);
   }, [selected, editables, model]);
-  useEffect(() => { simRef.current?.highlight(selected); }, [selected, model]);
+  useEffect(() => { simRef.current?.highlight(selected, editShow); }, [selected, model, editShow]);
   useEffect(() => { if (liveAim) simRef.current?.liveAim(liveAim.id, liveAim.dir); }, [liveAim]);   // what is selected lights up
   useEffect(() => { if (model) edRef.current?.setRoom(model.size); }, [model]);
   useEffect(() => {

@@ -399,6 +399,24 @@ export class RoomEditor {
     return p ? "pointer" : null;
   }
 
+  /** A press on a thing's name (the page's label for it): pick it up as a press on the thing itself would. */
+  grabItem(key: string, x: number, y: number): boolean {
+    const k = this.items.find((i) => i.key === key);
+    if (!k || !MOVES.includes(k.kind)) return false;
+    this.select(key);
+    const it = this.live!;
+    const r = this.roomRay(x, y), p0 = new THREE.Vector3(...it.at);
+    const plane = this.dragPlane ? new THREE.Plane().setFromNormalAndCoplanarPoint(this.dragPlane, p0.clone())
+      : new THREE.Plane(new THREE.Vector3(0, 0, 1), -it.at[2]);
+    if (!r.intersectPlane(plane, p0)) return false;
+    this.drag = { handle: "move", p0, start: { ...it }, dup: this.ctrl };
+    this.dragging = true;
+    this.pickedUp = true;
+    this.hoverBox.visible = false;
+    this.onDragging(true);
+    return true;
+  }
+
   /** A press: starts a drag when it is on the selected thing or one of its handles (true: the page keeps the camera
    *  out of it). */
   grab(x: number, y: number): boolean {

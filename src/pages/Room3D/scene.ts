@@ -1348,7 +1348,10 @@ export class RoomSim {
    *  should show so I can see what I'm doing"): every other light's level channels are drawn at SOLO_DIM of what the
    *  wire or the preview says (a laser, whose colour channel can't be dimmed: off); null: nothing being edited. */
   private solo: Set<string> | null = null;
-  highlight(key: string | null) {
+  /** How the light being edited is drawn: on (bright, as it is by default), off, or as the scene has it. */
+  editShow: "on" | "off" | "show" = "on";
+  highlight(key: string | null, show: "on" | "off" | "show" = this.editShow) {
+    this.editShow = show;
     this.hl = new Map();
     this.vhl = new Map();
     const m = this.model;
@@ -1361,8 +1364,12 @@ export class RoomSim {
     this.solo = lights.length ? new Set(lights.map((f) => f.id)) : null;
     if (wasSolo || this.solo) this.refreshLamps(m);
     for (const f of fs) {
-      if (f.address == null) continue;
+      if (f.address == null || show === "show") continue;     // as the scene: its own channels, the others still dimmed
       const into = f.planned ? this.vhl : this.hl;
+      if (show === "off") {                                  // off: its level channels at 0, the rest as they are
+        for (let i = 0; i < 16; i++) if (dimmed(f.part, i, 255) !== 255) into.set(f.address - 1 + i, 0);
+        continue;
+      }
       const set = (vals: Record<number, number>) => { for (const [i, v] of Object.entries(vals)) into.set(f.address! - 1 + Number(i), v); };
       switch (f.part) {
         case "par": set({ 0: 0, 1: 0, 2: 0, 3: 0, 4: 255, 5: 0, 6: 0 }); break;        // white, no strobe
