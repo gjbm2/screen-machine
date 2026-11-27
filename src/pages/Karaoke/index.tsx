@@ -1167,12 +1167,22 @@ function Find({
     [songs, text, link],
   );
   const libIds = new Set(lib.map((s) => s.id));
-  const web = (hits?.rows ?? []).filter((h) => !(h.have && libIds.has(h.have)));
-  const haveMore = (hits?.rows ?? [])
-    .filter((h) => h.have && !libIds.has(h.have))
-    .map((h) => songs.find((s) => s.id === h.have))
-    .filter(Boolean) as KaraokeSong[];
-  const libRows = [...lib, ...haveMore];
+  // Nothing moves under the pointer (owner, 27 Nov: "you cannot move things out from under a mouse pointer"): web
+  // results only ever add below the library rows, the panel keeps one height while open, and while the pointer is
+  // over the results what they show is held until it leaves or the search text changes.
+  const liveView = {
+    text,
+    libRows: lib,
+    web: (hits?.rows ?? []).filter((h) => !(h.have && libIds.has(h.have))),
+    hits,
+    busy,
+    msg,
+  };
+  const [over, setOver] = useState(false);
+  const held = useRef(liveView);
+  if (!over || held.current.text !== text) held.current = liveView;
+  const { libRows, web } = held.current;
+  const shownHits = held.current.hits, shownBusy = held.current.busy, shownMsg = held.current.msg;
   const clear = () => {
     setQ("");
     inputRef.current?.focus();
@@ -1201,19 +1211,47 @@ function Find({
     ).then(clear);
 
   const open = link || text.length >= 1;
+  // The results open upwards, so their height is whatever room is left between the search box and the top of the
+  // screen (less any top nav), capped at 34rem: a fixed vh cap ran off the top in a short window (owner, 27 Nov).
+  const anchor = useRef<HTMLDivElement>(null);
+  const [roomAbove, setRoomAbove] = useState<number | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const measure = () => {
+      const el = anchor.current;
+      if (!el) return;
+      const navTop = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--app-nav-top")) || 0;
+      const vvTop = window.visualViewport?.offsetTop ?? 0;
+      setRoomAbove(Math.max(96, Math.floor(el.getBoundingClientRect().top - vvTop - navTop - 16)));
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+    window.visualViewport?.addEventListener("resize", measure);
+    window.visualViewport?.addEventListener("scroll", measure);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+      window.visualViewport?.removeEventListener("resize", measure);
+      window.visualViewport?.removeEventListener("scroll", measure);
+    };
+  }, [open]);
   // Under the queue, held to the foot of the screen while its place is further down (owner, 25-26 Nov: "the dominant
   // pathway when you're in a hurry"; "if you scroll down past bottom of queue etc. then search can detach from
   // bottom of viewport": CSS sticky does exactly that). The results open upwards over the page; the library icon
   // opens the library as a tray.
   return (
     <div className="sticky bottom-[calc(var(--dock-h,0px)+var(--app-nav-bottom,0px))] z-40 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1">
-      <div className="relative">
+      <div ref={anchor} className="relative">
         {open && (
           <section
             className={cn(
               CARD_CLASS,
-              "absolute inset-x-0 bottom-full mb-2 max-h-[min(60vh,34rem)] overflow-y-auto p-3 shadow-xl sm:p-4",
+              "absolute inset-x-0 bottom-full mb-2 h-[min(60vh,34rem)] overflow-y-auto overscroll-contain p-3 shadow-xl sm:p-4",
             )}
+            style={roomAbove != null ? { height: `min(${roomAbove}px, 34rem)`, maxHeight: "none" } : undefined}
+            onPointerEnter={(e) => e.pointerType === "mouse" && setOver(true)}
+            onPointerLeave={() => setOver(false)}
           >
             {link && SPOTIFY_LIST.test(text) && <SpotifyListRow url={text} act={act} onDone={clear} />}
             {link && !SPOTIFY_LIST.test(text) && (
@@ -1267,12 +1305,12 @@ function Find({
                 )}
                 {text.length >= 2 && (
                   <div>
-                    <SectionWord>From the web {busy && <Spinner className="ml-1 inline h-3 w-3" />}</SectionWord>
-                    {msg && <p className="px-1 py-2 text-sm text-red-700">{msg}</p>}
-                    {hits && hits.q === text && web.length === 0 && !busy && !msg && (
+                    <SectionWord>From the web {shownBusy && <Spinner className="ml-1 inline h-3 w-3" />}</SectionWord>
+                    {shownMsg && <p className="px-1 py-2 text-sm text-red-700">{shownMsg}</p>}
+                    {shownHits && shownHits.q === text && web.length === 0 && !shownBusy && !shownMsg && (
                       <p className="px-1 py-2 text-sm text-muted-foreground">Nothing new found.</p>
                     )}
-                    <ul className={cn("divide-y divide-stone-200/70 transition-opacity", busy && hits && "opacity-60")}>
+                    <ul className={cn("divide-y divide-stone-200/70 transition-opacity", shownBusy && shownHits && "opacity-60")}>
                       {web.map((h) => (
                         <li key={h.key} className="flex min-h-[3.25rem] items-center gap-2.5 py-1.5 pl-1 pr-1">
                           {h.art ? (
@@ -1307,7 +1345,7 @@ function Find({
                         </li>
                       ))}
                     </ul>
-                    {hits && hits.q === text && !busy && (
+                    {shownHits && shownHits.q === text && !shownBusy && (
                       <button
                         type="button"
                         className="mt-1 px-1 text-left text-sm text-primary underline-offset-2 hover:underline"
