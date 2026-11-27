@@ -33,6 +33,7 @@ export interface Fixture {
   at: Vec3 | null;
   pose: Pose | null;
   plane: { normal: Vec3; up: Vec3; size: [number, number] } | null;
+  aim: Vec3 | null;         // the place in the room a fixed light points at (space.yaml aim: a laser turned up)
   bar: string;              // the id before its last dot ("gigbar-a" for "gigbar-a.par1"): parts of one unit
 }
 
@@ -94,6 +95,7 @@ export async function loadRoom(room: string): Promise<RoomModel> {
       at: isVec3(a.at) ? a.at : pose ? pose.at : null,
       pose,
       plane: pl ? { normal: pl.normal, up: pl.up, size: [pl.size[0], pl.size[1]] } : null,
+      aim: isVec3(a.aim) ? a.aim : null,
       bar: row.id.includes(".") ? row.id.slice(0, row.id.lastIndexOf(".")) : row.id,
     };
   });

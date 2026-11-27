@@ -69,7 +69,9 @@ _DEVICE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")   # a room device a p
 TOP_KEYS: tuple[str, ...] = ("version", "room", "appliances", "points", "regions", "surfaces")
 SECTIONS: tuple[str, ...] = ("room", "appliances", "points", "regions", "surfaces")   # the added file, in this order
 ROOM_KEYS: tuple[str, ...] = ("size", "front", "haze_half_life_s")   # haze_half_life_s: atmosphere.py
-PLACE_KEYS: tuple[str, ...] = ("at", "kind", "label", "mount", "plane")   # an appliance's place (editable on the map)
+PLACE_KEYS: tuple[str, ...] = ("at", "kind", "label", "mount", "plane", "aim")   # an appliance's place (editable on
+#: the map). aim: [x, y, z], the place in the room a fixed light points at (a bar's laser turned up at the ceiling;
+#: owner, 27 Nov): the 3D room draws its beams from ``at`` towards it
 APPLIANCE_KEYS: tuple[str, ...] = PLACE_KEYS + ("teach", "pose")
 POINT_KEYS: tuple[str, ...] = ("label", "at", "device", "from")
 REGION_KEYS: tuple[str, ...] = ("label", "surface", "centre", "size")
@@ -316,6 +318,11 @@ def _place_value(k: str, v: Any, where: str, probs: list[str]) -> Any:
         out = _label(v)
         if out is None:
             probs.append(f"{where}: isn't a name: left unset")
+        return out
+    if k == "aim":
+        out = _vec(v, 3)
+        if out is None:
+            probs.append(f"{where}: three numbers in metres ([x, y, z], the place it points at): left unset")
         return out
     if k == "mount":
         if v in contract.MOUNTS:
@@ -584,7 +591,7 @@ def build_view(hand: Any, added: Any = None, *, error: Optional[str] = None,
     appliances = {}
     for aid, e in m["appliances"].items():
         a: dict[str, Any] = {"at": e.get("at")}
-        for k in ("kind", "label", "mount", "plane"):
+        for k in ("kind", "label", "mount", "plane", "aim"):
             if k in e:
                 a[k] = e[k]
         a["teach"] = list(e.get("teach") or [])

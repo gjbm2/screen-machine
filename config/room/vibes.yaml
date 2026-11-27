@@ -298,7 +298,11 @@ vibes:
     description: The room's look as before, plus beat flashes on the bars and a few strobe moments an hour.
     # The laptop rig's Karaoke mode (owner, 26 Nov: "strobes etc. on the gigbars ... don't feel they're really getting
     # any use"). Everything but accents, strobe and peak_tokens_per_hour is the neutral look it had with no feel.
-    palettes: [art, ember, gold, dusk]   # show.yaml director.no_feel's list: the same colours as before
+    # Vivid palettes, as Party's (owner, 27 Nov: "why are the gigbar spots orange such a large proportion of the
+    # time?": the warm, muted list this began with put every colour nearest the spots' Orange or warm-white wheel slot)
+    palettes: [neon, rainbow, acid, gold, art]
+    lamp_chroma_max: 0.3
+    saturation: [0.6, 1.0]
     motion: [0.1, 0.85]             # a ballad barely moves the lights, a dance song a lot (the song's groove decides)
     accents: beat                   # the beat swell, and the GigBARs flash on the music's hits (show.yaml looks.hits)
     strobe: true

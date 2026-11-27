@@ -116,6 +116,10 @@ interface Ctx { ch: (f: Fixture, i: number) => number; t: number; dt: number; ai
 interface Part { f: Fixture; update(c: Ctx): void; words?(c: Ctx): string }
 
 /** Where a ray from inside the room meets a wall, the floor or the ceiling (room frame). */
+/** The bar's laser: its grating's orders each side of the axis, green's first-order angle, how fast higher orders
+ *  fade, the diodes' wavelengths, and the lift above the bar's front when the room model gives no aim. Estimates. */
+const LASER = { orders: 5, step_deg: 7, falloff: 14, nm: { red: 650, green: 520, blue: 450 }, lift: 20 * Math.PI / 180 };
+
 function hitRoom(o: THREE.Vector3, d: THREE.Vector3, size: Vec3): THREE.Vector3 {
   let t = Infinity;
   const lo = [0, 0, 0], hi = size;
@@ -379,16 +383,41 @@ export class RoomSim {
     };
   }
 
+  // The bar's laser as it is built (owner, 27 Nov: "rendering the laser in the room simulator is likely to need a bit
+  // of reasoning"): three diodes (red 650 nm, green 520 nm, blue 450 nm) through one turning diffraction grating.
+  //   - Each colour leaves as a regular GRID of beams (the grating's orders m, n = -K..K), not a scatter: order m
+  //     leaves at asin(m x wavelength / pitch), so red's grid is the widest and blue's the tightest, and the three
+  //     only coincide on the axis (order 0, 0).
+  //   - The colours that are on show together (a "red + green" setting is both grids at once).
+  //   - The motor turns the whole grid about the laser's own axis.
+  //   - It points where the room model says (space.yaml aim: turned up at the ceiling, or 45 degrees up); without
+  //     an aim, along the bar's front lifted 20 degrees.
+  //   - A beam runs to the first wall, floor or ceiling it meets and leaves a dot there. The beam itself shows only
+  //     as much as the air scatters (the haze); the dot always shows. Higher orders are fainter.
+  // LASER.step_deg (green's first order) and LASER.orders are estimates until measured on the unit.
   private laser(f: Fixture, at: THREE.Vector3, front: THREE.Vector3, axis: THREE.Vector3): Part {
-    const n = 40;
+    const K = LASER.orders, side = 2 * K + 1, per = side * side, n = per * 3;
     const geo = new THREE.BufferGeometry();
     geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(n * 6), 3));
     geo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(n * 6), 3));
     const lines = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
     lines.frustumCulled = false;
     this.built.add(lines);
-    const dots = Array.from({ length: n }, () => { const d = dot(0.07); this.built.add(d); return d; });
-    const e2 = new THREE.Vector3(0, 0, 1);
+    const dgeo = new THREE.BufferGeometry();
+    dgeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    dgeo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    const dots = new THREE.Points(dgeo, new THREE.PointsMaterial({ size: 0.05, vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, sizeAttenuation: true }));
+    dots.frustumCulled = false;
+    this.built.add(dots);
+    // the laser's own frame: w along its aim, u and v across it
+    const up = new THREE.Vector3(0, 0, 1);
+    const w = f.aim ? v3(f.aim).sub(at).normalize()
+      : front.clone().multiplyScalar(Math.cos(LASER.lift)).addScaledVector(up, Math.sin(LASER.lift)).normalize();
+    const u0 = (Math.abs(w.dot(axis)) < 0.95 ? axis.clone() : front.clone()).addScaledVector(w, -w.dot(axis)).normalize();
+    const v0 = new THREE.Vector3().crossVectors(w, u0).normalize();
+    const names = ["red", "green", "blue"] as const;
+    const steps = names.map((c) => Math.sin(LASER.step_deg * Math.PI / 180) * LASER.nm[c] / LASER.nm.green);   // sin of order 1
+    const dir = new THREE.Vector3(), u = new THREE.Vector3(), v = new THREE.Vector3();
     let rot = 0;
     return {
       f,
@@ -398,19 +427,31 @@ export class RoomSim {
         const st = v1 ? 0 : c.ch(f, 1);
         const on = cols && (!st || (c.t * lerp(1, 15, st / 255)) % 1 < 0.5) ? 1 : 0;
         if (!v1) rot += motor(c.ch(f, 2), MECH.laserRps) * c.dt * Math.PI * 2;
+        u.copy(u0).multiplyScalar(Math.cos(rot)).addScaledVector(v0, Math.sin(rot));       // the grating, turned
+        v.copy(v0).multiplyScalar(Math.cos(rot)).addScaledVector(u0, -Math.sin(rot));
         const pos = geo.attributes.position as THREE.BufferAttribute, col = geo.attributes.color as THREE.BufferAttribute;
-        for (let i = 0; i < n; i++) {
-          const around = rot + i * 0.71, off = 0.15 + 0.9 * hash(i + 99);
-          const dir = front.clone().multiplyScalar(Math.cos(off)).addScaledVector(axis, Math.sin(off) * Math.cos(around))
-            .addScaledVector(e2, Math.sin(off) * Math.sin(around) * 0.6 + 0.35).normalize();
-          const end = hitRoom(at, dir, c.size), rgb = cols ? LASER_RGB[cols[i % cols.length]] : [0, 0, 0];
-          const la = on * 0.7 * c.air;
-          pos.setXYZ(i * 2, at.x, at.y, at.z); pos.setXYZ(i * 2 + 1, end.x, end.y, end.z);
-          col.setXYZ(i * 2, (rgb[0] / 255) * la, (rgb[1] / 255) * la, (rgb[2] / 255) * la);
-          col.setXYZ(i * 2 + 1, (rgb[0] / 255) * la * 0.4, (rgb[1] / 255) * la * 0.4, (rgb[2] / 255) * la * 0.4);
-          dots[i].position.copy(end); dots[i].material.color.copy(srgb(rgb as RGB)).multiplyScalar(on * 1.5); dots[i].visible = !!cols && on > 0;
+        const dp = dgeo.attributes.position as THREE.BufferAttribute, dc = dgeo.attributes.color as THREE.BufferAttribute;
+        let i = 0;
+        for (let ci = 0; ci < 3; ci++) {
+          const lit = on && cols ? (cols.includes(names[ci]) ? 1 : 0) : 0;
+          const rgb = LASER_RGB[names[ci]], s1 = steps[ci];
+          for (let m = -K; m <= K; m++) for (let k = -K; k <= K; k++, i++) {
+            const sx = m * s1, sy = k * s1, r2 = sx * sx + sy * sy;
+            const show = lit && r2 < 0.97 ? Math.exp(-(m * m + k * k) / LASER.falloff) : 0;   // past 90 degrees: no order
+            if (!show) {
+              pos.setXYZ(i * 2, at.x, at.y, at.z); pos.setXYZ(i * 2 + 1, at.x, at.y, at.z);
+              col.setXYZ(i * 2, 0, 0, 0); col.setXYZ(i * 2 + 1, 0, 0, 0); dc.setXYZ(i, 0, 0, 0); dp.setXYZ(i, at.x, at.y, at.z);
+              continue;
+            }
+            dir.copy(w).multiplyScalar(Math.sqrt(1 - r2)).addScaledVector(u, sx).addScaledVector(v, sy);
+            const end = hitRoom(at, dir, c.size);
+            const la = show * 0.55 * c.air, r = rgb[0] / 255, g = rgb[1] / 255, b = rgb[2] / 255;
+            pos.setXYZ(i * 2, at.x, at.y, at.z); pos.setXYZ(i * 2 + 1, end.x, end.y, end.z);
+            col.setXYZ(i * 2, r * la, g * la, b * la); col.setXYZ(i * 2 + 1, r * la * 0.5, g * la * 0.5, b * la * 0.5);
+            dp.setXYZ(i, end.x, end.y, end.z); dc.setXYZ(i, r * show * 1.6, g * show * 1.6, b * show * 1.6);
+          }
         }
-        pos.needsUpdate = true; col.needsUpdate = true;
+        pos.needsUpdate = true; col.needsUpdate = true; dp.needsUpdate = true; dc.needsUpdate = true;
       },
     };
   }

@@ -28,6 +28,8 @@ appliances:
            rms_deg: 0.0, worst_deg: 0.0, samples: 0, solved_at: "hand-set 2026-11-26 (provisional: upright on the bar, facing the room centre)"}
   gigbar-a.derby1: {at: [4.454, 9.666, 2.5]}
   gigbar-a.strobe: {at: [4.6, 9.6, 2.5]}
+  gigbar-a.laser: {at: [4.6, 9.6, 2.5], aim: [2.5, 7.0, 4.0]}   # provisional: turned up at the ceiling, its
+                                    # half of the room (aim: the place it points at; the 3D room draws from it)
   gigbar-a.derby2: {at: [4.746, 9.534, 2.5]}
   gigbar-a.spot2:
     at: [4.9, 9.463, 2.68]
@@ -43,6 +45,7 @@ appliances:
            rms_deg: 0.0, worst_deg: 0.0, samples: 0, solved_at: "hand-set 2026-11-26 (provisional: upright on the bar, facing the room centre)"}
   gigbar-b.derby1: {at: [4.746, 0.466, 2.5]}
   gigbar-b.strobe: {at: [4.6, 0.4, 2.5]}
+  gigbar-b.laser: {at: [4.6, 0.4, 2.5], aim: [2.5, 3.0, 4.0]}
   gigbar-b.derby2: {at: [4.454, 0.334, 2.5]}
   gigbar-b.spot2:
     at: [4.3, 0.263, 2.68]
