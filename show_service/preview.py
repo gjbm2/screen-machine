@@ -221,6 +221,7 @@ class Preview:
                                    "screens": {}}}
         pal["*"] = cols[0]
         self.pal = pal
+        self._pick_appliances()
         motion = self._span(vs.get("motion"), e, 0.4)
         self.look = {"t_ms": at, "seq": 1 + k, "look_id": f"preview-{k}", "vibe": self.vibe, "mode": None, "palette": {},
                      "level": self._span(vs.get("level"), e, 0.8), "floor": self._span(vs.get("floor"), 0.0, 0.0),
@@ -233,6 +234,34 @@ class Preview:
                      "spread": 0.0, "change_rate": 0.5, "transition": {"style": "cut", "beats": None, "seconds": None},
                      "lamps": {}, "screens": {}, "light_programs": progs,
                      "flow": {"dir": "cw", "speed": 0.5, "spread": 0.5, "id": "preview", "at_ms": at, "screens": {}}}
+
+    # The remote-worked things when the show runs them (owner, 27 Nov: "seems like pinspots always on during karaoke?
+    # ... shouldn't it be scene dependent?"): each phrase, one of the catalogue's scenes for them (an ``appliances``
+    # block: pan_spin, intensity, colour_slot, shutter), fitting the mode's tags and the energy, in turn; sent with the
+    # frames as ``a`` for the 3D room to draw a glitterball and pinspots the show has been given (as the director's
+    # _appliances_tick would set them).
+    appliances: Optional[dict] = None
+
+    def _pick_appliances(self) -> None:
+        modes = {t.split(":", 1)[1] for t in self.tags if isinstance(t, str) and t.startswith("modes:")}
+        fits = []
+        for name, e in (self.cat.scenes or {}).items():
+            ap = e.get("appliances") if isinstance(e, dict) else None
+            if not isinstance(ap, dict):
+                continue
+            tags = e.get("tags") or {}
+            want = set(tags.get("modes") or ())
+            if modes and want and not (modes & want):
+                continue
+            lo, hi = (tags.get("energy") or [0.0, 1.0])[:2] if isinstance(tags.get("energy"), list) else (0.0, 1.0)
+            if not (float(lo) - 1e-9 <= self.energy <= float(hi) + 1e-9):
+                continue
+            fits.append((name, e))
+        if not fits:
+            self.appliances = None
+            return
+        name, e = fits[max(0, self.phrase) % len(fits)]
+        self.appliances = {"scene": name, "label": e.get("label") or name, **e["appliances"]}
 
     def _show(self, what: str, colour: Optional[tuple[float, float, float]]) -> None:
         if what == "mode":
@@ -423,6 +452,8 @@ async def dmx(request: web.Request, _brain: Any = None) -> web.StreamResponse:
             d = await loop.run_in_executor(None, pv.frame)
             pl = await loop.run_in_executor(None, pv.planned_frame)
             msg: dict = {"d": base64.b64encode(d).decode()}
+            if pv.appliances is not None:                 # what the show would do with the remote-worked things now
+                msg["a"] = pv.appliances
             if pl:                                        # the room's planned lights: drawn only (Room3D's plannedDmx)
                 msg["p"] = {k: base64.b64encode(v).decode() for k, v in pl.items()}
             await resp.write(b"data: " + json.dumps(msg).encode() + b"\n\n")

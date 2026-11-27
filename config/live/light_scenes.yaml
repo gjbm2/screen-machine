@@ -465,20 +465,20 @@ scenes:
   appliances-resting:
     label: Glitterball and pinspots resting
     appliances: {pan_spin: 0, intensity: 0}
-    tags: {modes: [party], energy: [0.0, 1.0], genre_fit: {"*": 0.6}, valence: 0.5, organic: 0.5, density: 0.2,
+    tags: {modes: [party, singalong], energy: [0.0, 1.0], genre_fit: {"*": 0.6}, valence: 0.5, organic: 0.5, density: 0.2,
            weight: 3.0}                       # Party mostly rests them: the disco scenes come when the music asks
 
   glitter-slow:
     label: Slow glitter
     appliances: {pan_spin: {speed: 0.2, dir: flow}, intensity: 0.75, colour_slot: white, shutter: open}
-    tags: {modes: [disco, party], energy: [0.15, 0.6], moods: [dreamy, elegant, mellow, calm, cosmic, warm],
+    tags: {modes: [disco, party, singalong], energy: [0.15, 0.6], sections: [chorus, outro], moods: [dreamy, elegant, mellow, calm, cosmic, warm],
            genre_fit: {disco: 0.9, soul: 0.85, funk: 0.8, jazz: 0.7, pop: 0.7, rnb: 0.75, "*": 0.5}, valence: 0.6,
            organic: 0.5, density: 0.3, weight: 0.5}
 
   disco-classic:
     label: Classic disco
     appliances: {pan_spin: {speed: 0.5, dir: flow}, intensity: 1.0, colour_slot: white, shutter: open}
-    tags: {modes: [disco, party], energy: [0.4, 0.85], moods: [euphoric, playful, bright, warm, retro],
+    tags: {modes: [disco, party, singalong], energy: [0.4, 0.85], moods: [euphoric, playful, bright, warm, retro],
            genre_fit: {disco: 1.0, funk: 0.95, soul: 0.9, house: 0.9, pop: 0.85, rnb: 0.8, rock: 0.6, "*": 0.45},
            valence: 0.8, organic: 0.5, density: 0.55, weight: 0.5}
 

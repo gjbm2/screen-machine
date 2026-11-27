@@ -156,6 +156,9 @@ const WALL_GAP = 0.25;      // and how near a wall
 const BALL = { r: 0.2, facets: 220, rps: 0.1, reflect: 0.8, facet_m: 0.02, spread: 0.008, dot_m: 0.06 };
 /** A pinspot (ESTIMATE: a 10 W LED in a 6-degree lens): its beam and on-axis candela. */
 const PINSPOT = { beam_deg: 6, cd: 3000, flash_hz: 8, cycle_s: 1.5 };
+/** A remote light's colour words as a colour to draw (the show's scenes name them as the remote does). */
+const SHOW_COLOURS: Record<string, [number, number, number]> = { white: [255, 250, 240], red: [255, 40, 30], green: [40, 255, 60],
+  blue: [50, 80, 255], yellow: [255, 220, 40], purple: [170, 60, 255], cyan: [40, 230, 255] };
 /** The colour cycle ("fade") through the pinspots' remote's colours. */
 const PINSPOT_CYCLE: [number, number, number][] = [[255, 40, 30], [40, 255, 60], [50, 80, 255], [255, 220, 40], [170, 60, 255], [40, 230, 255], [255, 250, 240]];
 /** Editing a light: how bright the others are drawn (their level channels x this). */
@@ -1093,7 +1096,7 @@ export class RoomSim {
     const toBall = new THREE.Vector3(), lm = new THREE.Vector3();
     let spin = 0;
     this.afterParts.push({ f: { id: "mirror_ball" } as Fixture, update: (c) => {   // after every light: their beams are in
-      const st = id ? this.deviceStates[id] : undefined;
+      const st = id ? this.devState(id) : undefined;
       if (!id || st?.spin !== false) spin += c.dt * BALL.rps * Math.PI * 2;   // its motor: as the mode has it (still: off)
       ball.rotation.z = spin;
       const pos = g.attributes.position as THREE.BufferAttribute, col = g.attributes.color as THREE.BufferAttribute;
@@ -1159,7 +1162,7 @@ export class RoomSim {
     const b = airCone(ang, 1); aimZ(b, d); b.position.copy(lensAt); this.built.add(b);
     const cd = new THREE.Vector3(), white = perLumen([255, 250, 240]);
     this.parts.push({ f, update: (c) => {
-      const st = this.deviceStates[f.id];
+      const st = this.devState(f.id);
       const edited = this.solo?.has(f.id) ? this.editShow : null;      // While editing: on / off / as the mode has it
       const on = edited === "on" ? true : edited === "off" ? false : !!st?.on;
       // its colour (the colour cycle: the remote's seven in turn), its level (8 steps), its flash (a strobe: the remote
@@ -1476,7 +1479,20 @@ export class RoomSim {
   /** This frame's narrow beams (moving heads, pinspots): where from, which way, their candela, their half angle. */
   private afterParts: Part[] = [];
   /** The remote-worked things as the previewed mode has them, by id (the page's): unknown -> off (a pinspot), still. */
-  deviceStates: Record<string, { on: boolean; spin?: boolean; rgb?: [number, number, number]; level?: number; cycle?: boolean; flash?: boolean }> = {};                            // what reads the frame's beams (mirror balls)
+  deviceStates: Record<string, { on: boolean; spin?: boolean; rgb?: [number, number, number]; level?: number; cycle?: boolean; flash?: boolean; byShow?: boolean }> = {};
+  /** The show's scene for the remote-worked things now (the preview's ``a``: pan_spin, intensity, colour_slot, shutter). */
+  showAppliances: { pan_spin?: number | { speed?: number }; intensity?: number; colour_slot?: string; shutter?: string; label?: string } | null = null;
+  /** A remote-worked thing's state now: its own, or (the show runs it) the show's scene's. */
+  private devState(id: string) {
+    const st = this.deviceStates[id];
+    if (!st?.byShow) return st;
+    const a = this.showAppliances;
+    if (!a) return { on: false, spin: false };
+    const ps = a.pan_spin, speed = typeof ps === "number" ? ps : Number(ps?.speed ?? 0);
+    const lvl = Number(a.intensity ?? 0), col = a.colour_slot ?? "white";
+    return { on: lvl > 0, spin: Math.abs(speed) > 0, level: Math.max(1 / 8, Math.min(1, lvl)), cycle: col === "fade",
+      rgb: SHOW_COLOURS[col] ?? [255, 250, 240], flash: a.shutter === "strobe", byShow: true };
+  }                            // what reads the frame's beams (mirror balls)
   private beamsNow: { o: THREE.Vector3; d: THREE.Vector3; cd: THREE.Vector3; half: number }[] = [];
   private hl = new Map<number, number>();                     // DMX slot (0-based) -> the value drawn instead
   private vhl = new Map<number, number>();                    // the same for planned lights' virtual slots

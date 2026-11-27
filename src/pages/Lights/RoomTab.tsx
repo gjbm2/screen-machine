@@ -590,7 +590,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   // remote, e.g. pinspots.main on / off, colour, level, or the director's when the mode gives them to it; a planned
   // one: what its "In each mode" says), and off (stopped) where nothing turns them on; the aiming views: lit.
   const deviceStates = useMemo(() => {
-    const out: Record<string, { on: boolean; spin?: boolean; rgb?: [number, number, number]; level?: number; cycle?: boolean; flash?: boolean }> = {};
+    const out: Record<string, { on: boolean; spin?: boolean; rgb?: [number, number, number]; level?: number; cycle?: boolean; flash?: boolean; byShow?: boolean }> = {};
     const m = modes.find((x) => x.id === asMode);
     for (const t of placedThings) {
       if (!t.dev || !/pinspot|mirror|glitter/.test(t.dev)) continue;
@@ -599,6 +599,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       const a = bits?.room.appliances[t.id];
       if (!t.connect) {
         const [w, ...more] = String(a?.modes?.[m.id] ?? "").split("/");
+        if (w === "show") { out[t.id] = { on: true, byShow: true }; continue; }   // the show runs it: its scenes say
         const col = more.find((x) => x !== "flash");
         out[t.id] = ball ? { on: true, spin: w === "spinning" }
           : { on: w === "on", rgb: col && col !== "fade" ? COLOUR_WORDS[col] : undefined, cycle: col === "fade", flash: more.includes("flash") };
@@ -610,7 +611,8 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       const val = (x: any) => (x && typeof x === "object" && "set" in x ? x.set : x);   // a mode's {set, restore}: its set
       const main = val(typeof st === "string" ? st : st?.main);
       const directed = val(dir) === true;
-      if (ball) { out[t.id] = { on: true, spin: main === "spinning" || main === "on" || directed }; continue; }
+      if (directed) { out[t.id] = { on: true, byShow: true }; continue; }        // the mode gives it to the show
+      if (ball) { out[t.id] = { on: true, spin: main === "spinning" || main === "on" }; continue; }
       const on = main === "on" || directed;
       const col = val(st?.colour), lvl = val(st?.level), fl = val(st?.flash);
       out[t.id] = { on, rgb: COLOUR_WORDS[String(col ?? "white")] ?? [255, 250, 240], cycle: col === "fade",
@@ -1380,7 +1382,8 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
             // when I turn them off don't they stay off?"): planned, kept with it; connected, the modes say
             const ball = /mirror|glitter/.test(thing.dev);
             const a = bits.room.appliances[thing.id], mine = a?.modes ?? {};
-            const words: [string, string][] = ball ? [["stopped", "Still"], ["spinning", "Spinning"]] : [["off", "Off"], ["on", "On"]];
+            const words: [string, string][] = ball ? [["stopped", "Still"], ["spinning", "Spinning"], ["show", "Show"]]
+              : [["off", "Off"], ["on", "On"], ["show", "Show"]];
             const setMode = (mid: string, w: string) => {
               const next = { ...mine, [mid]: w };
               void act(`${thing.label} in ${modes.find((x) => x.id === mid)?.label ?? mid}`, () => api.place(thing.id, { modes: next }),
@@ -1399,7 +1402,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
                       {thing.connect ? <span className="text-stone-500">{cur ? words.find(([w]) => w === cur)?.[1] : "as the mode says"}</span> : (() => {
                         const [w0, ...more] = String(mine[m.id] ?? (ball ? "stopped" : "off")).split("/");
                         const col = more.find((x) => x !== "flash") ?? "white", fl = more.includes("flash");
-                        const word = (w: string, c = col, f = fl) => (ball || w === "off" ? w : `${w}/${c}${f ? "/flash" : ""}`);
+                        const word = (w: string, c = col, f = fl) => (ball || w === "off" || w === "show" ? w : `${w}/${c}${f ? "/flash" : ""}`);
                         return (
                           <span className="flex items-center gap-1">
                             {!ball && w0 === "on" && (
@@ -1427,7 +1430,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
                 })}
                 <div className="mt-1 text-[12px] text-stone-500">
                   {thing.connect ? <>What the modes do with it is set in <a className="text-teal-700 hover:underline" href={settingsUrl("modes")}>Settings › Modes</a>.</>
-                    : "Planned: kept with it, and what the preview shows under Lights › Mode. Off unless a mode turns it on."}
+                    : "Planned: kept with it, and what the preview shows under Lights › Mode. Off unless a mode turns it on. Show: the show's scenes run it (resting, glitter, disco), changing with the music."}
                 </div>
               </div>
             );

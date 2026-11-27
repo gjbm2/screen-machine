@@ -361,7 +361,7 @@ def _place_value(k: str, v: Any, where: str, probs: list[str]) -> Any:
     if k == "modes":
         # "on", "off", "spinning", "stopped", and for a colour light on a remote its colour and flash after it:
         # "on/red", "on/fade/flash" (the pinspots' remote: seven colours, the colour cycle, flash)
-        ok = re.compile(r"^(on|off|spinning|stopped)(/[a-z]+){0,3}$")
+        ok = re.compile(r"^(on|off|spinning|stopped|show)(/[a-z]+){0,3}$")
         if isinstance(v, dict) and all(isinstance(m, str) and _WORD.match(m) and isinstance(w, str) and ok.match(w)
                                        for m, w in v.items()):
             return dict(v)
