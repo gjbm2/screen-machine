@@ -1479,7 +1479,12 @@ the 3D room's footer shows the room's light in lux as drawn.
 lighting scenes as well as render scenes (with a suitable screen shot ...)"). The Scene library (the renderer's
 console, `/renderer/dev`, "Scene library" on the Room page) has a **Lighting** tab beside the screens' own:
 - every light scene, effect and transition as a tile with a picture, in the same grid, rated with the same stars
-  (kept in config/live/light_ratings.json; they don't steer the director's draw yet: `tags.weight` does);
+  (kept in config/live/light_ratings.json). **The stars steer the art director** (owner, 27 Nov: "why don't stars
+  steer? fix that"): every draw of a scene, an effect or a transition multiplies an item's weight by its stars, by
+  the screens' own table (config/live/rating_weights.json), taken against an unrated item: unrated as before, 3
+  stars about 4 times as often, 5 stars about 23 times, 1 star a seventh, and a reject never while anything else
+  fits (`light_scenes.LightRatings`; read again within a second of a rating, so the next draw has it). A pick the
+  stars favoured says so in its why ("your 4 stars; ...");
 - a tile opens what the item is: what it does in words (made from its layers), the light groups here that can show
   it, how much light it leaves in the room, where it lands, what it is written for, and **what it comes down to
   when the laser or the derbies are featured** (the same sum as above, for a plain look);

@@ -54,6 +54,7 @@ import math
 import pathlib
 import re
 import threading
+import time
 import weakref
 from typing import Any, Callable, Mapping, Optional
 
@@ -339,6 +340,91 @@ def load_yaml(text: str) -> Any:
     return yaml.load(text, Loader=_Loader)
 
 
+# -- the owner's stars (the Scene library's Lighting tab; light_library.py keeps them) ---------------------------------
+LIGHT_RATINGS_FILE = LIGHT_SCENES_FILE.with_name("light_ratings.json")
+RATING_WEIGHTS_FILE = LIGHT_SCENES_FILE.with_name("rating_weights.json")   # the screens' own table (stream_service/ratings.py)
+STAR_WEIGHT = {0: 0.35, 1: 0.05, 2: 0.3, 3: 1.5, 4: 4.0, 5: 8.0}           # that table's values when the file has none
+RATING_KINDS = {"scene": "light", "effect": "light_effect", "transition": "light_transition"}
+
+
+class LightRatings:
+    """How much the art director favours a light scene, effect or transition by the owner's stars (owner, 27 Nov: "why
+    don't stars steer? fix that"). The screens' rule and the screens' table (config/live/rating_weights.json: unrated
+    0.35, one star 0.05 ... five stars 8), taken against an unrated item: unrated draws as it always did, five stars
+    about 23 times as often, one star a seventh as often, and a reject never while anything else fits. Both files are
+    looked at again at most once a second, so a star given in the library steers the next draw."""
+    CHECK_S = 1.0
+
+    def __init__(self, ratings_path: pathlib.Path = LIGHT_RATINGS_FILE,
+                 weights_path: pathlib.Path = RATING_WEIGHTS_FILE) -> None:
+        self.ratings_path, self.weights_path = pathlib.Path(ratings_path), pathlib.Path(weights_path)
+        self._lock = threading.Lock()
+        self._checked = -math.inf
+        self._sig: Optional[tuple] = None
+        self._data: dict[str, dict] = {}
+        self._table: dict[int, float] = dict(STAR_WEIGHT)
+
+    @staticmethod
+    def _mtime(p: pathlib.Path) -> Optional[int]:
+        try:
+            return p.stat().st_mtime_ns
+        except OSError:
+            return None
+
+    def _load(self) -> None:
+        now = time.monotonic()
+        if now - self._checked < self.CHECK_S:
+            return
+        self._checked = now
+        sig = (self._mtime(self.ratings_path), self._mtime(self.weights_path))
+        if sig == self._sig:
+            return
+        self._sig = sig
+        try:
+            raw = json.loads(self.ratings_path.read_text(encoding="utf-8")) if sig[0] is not None else {}
+            self._data = {k: v for k, v in raw.items() if isinstance(v, dict)} if isinstance(raw, dict) else {}
+        except (OSError, ValueError):
+            pass                                         # a file half written: the last good stars stand
+        table = dict(STAR_WEIGHT)
+        try:
+            st = (json.loads(self.weights_path.read_text(encoding="utf-8")) or {}).get("stars") if sig[1] is not None else None
+            for k, v in (st or {}).items():
+                n = 0 if k == "unrated" else int(k) if str(k).isdigit() else None
+                if n in table and _num(v) is not None and v >= 0:
+                    table[n] = float(v)
+        except (OSError, ValueError, AttributeError):
+            pass
+        self._table = table
+
+    def stars(self, kind: str, name: str) -> int:
+        """The owner's stars for an item (0: unrated), -1 for a reject."""
+        with self._lock:
+            self._load()
+            e = self._data.get(f"{RATING_KINDS.get(kind, kind)}/{name}")
+        if not e:
+            return 0
+        if e.get("reject"):
+            return -1
+        s = e.get("stars")
+        return s if isinstance(s, int) and not isinstance(s, bool) and 1 <= s <= 5 else 0
+
+    def weight(self, kind: str, name: str) -> float:
+        """What the item's weight in a draw is multiplied by: 1 unrated, 0 a reject."""
+        s = self.stars(kind, name)
+        if s < 0:
+            return 0.0
+        with self._lock:
+            base = self._table.get(0) or 1.0
+            return (self._table.get(s, base) / base) if s else 1.0
+
+    def table(self) -> dict[str, float]:
+        """{stars: x an unrated item's weight}, for the library's words."""
+        with self._lock:
+            self._load()
+            base = self._table.get(0) or 1.0
+            return {str(n): round(self._table[n] / base, 2) for n in range(1, 6)}
+
+
 def _draw(ws: Mapping[str, float], names: list[str], rng: Any) -> str:
     x = rng.random() * sum(ws.values())
     for n in names:
@@ -406,7 +492,9 @@ class Catalogue:
 
     def __init__(self, path: pathlib.Path = LIGHT_SCENES_FILE, *, effects_path: Optional[pathlib.Path] = None,
                  transitions_path: Optional[pathlib.Path] = None, tags_path: pathlib.Path = TAGS_FILE,
-                 vocab_path: pathlib.Path = contract.VOCAB_FILE) -> None:
+                 vocab_path: pathlib.Path = contract.VOCAB_FILE, ratings: Optional["LightRatings"] = None) -> None:
+        self.ratings = ratings                           # the owner's stars (the shared catalogue's: shared()); None:
+                                                         # every item draws by its tags alone
         self.path = pathlib.Path(path)
         self.vocab_path = pathlib.Path(vocab_path)
         self._tags = _TagsModule(tags_path)
@@ -1039,9 +1127,12 @@ class Catalogue:
         ws = {n: self.score(self.scenes[n], group, direction, flow) * (rw if n == avoid and len(names) > 1 else 1.0)
               * (float(prefer.get(n, 1.0)) if prefer else 1.0)
               * (float(accent_fit.get("beat" if self.scenes[n].get("on_beat") else "other", 1.0)) if accent_fit
-                 else 1.0) for n in names}
+                 else 1.0) * self.rated("scene", n) for n in names}
         got = _draw(ws, names, rng)
         why = self.why(got, direction)
+        st = self.ratings.stars("scene", got) if self.ratings is not None else 0
+        if st >= 3:                                      # the owner's stars favoured it: say so
+            why = f"your {st} stars; {why}"
         if prefer_why is not None:                       # the caller says why it favoured each (the picture, the plan)
             return got, (f"{prefer_why[got]}; {why}" if got in prefer_why else why), ws
         return got, (f"the plan's pick; {why}" if prefer and got in prefer else why), ws
@@ -1060,7 +1151,7 @@ class Catalogue:
             names.append(n)
         if not names:
             return None
-        ws = {n: self.score(self.effects[n], group, direction, flow) for n in names}
+        ws = {n: self.score(self.effects[n], group, direction, flow) * self.rated("effect", n) for n in names}
         got = _draw(ws, names, rng)
         fx = self.effects[got]
         if fx["chance"] < 1.0 and rng.random() >= fx["chance"]:
@@ -1079,8 +1170,13 @@ class Catalogue:
         d = dict(direction or {})
         if style:
             d["transition_style"] = style
-        ws = {n: self.score(self.transitions[n], None, d, flow, transition=True) for n in names}
+        ws = {n: self.score(self.transitions[n], None, d, flow, transition=True) * self.rated("transition", n)
+              for n in names}
         return _draw(ws, names, rng)
+
+    def rated(self, kind: str, name: str) -> float:
+        """The owner's stars as a weight (LightRatings.weight): 1 with no stars to read."""
+        return self.ratings.weight(kind, name) if self.ratings is not None else 1.0
 
     def view(self) -> dict:
         """For snapshots: what is loaded and why not."""
@@ -1133,7 +1229,7 @@ def shared() -> Catalogue:
     global _SHARED
     with _SHARED_LOCK:
         if _SHARED is None:
-            _SHARED = Catalogue()
+            _SHARED = Catalogue(ratings=LightRatings())  # the running show's: the owner's stars steer its draws
         return _SHARED
 
 

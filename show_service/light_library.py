@@ -19,8 +19,9 @@ item has, among it how it sits in the layers (docs/LIGHTS.md §7.5): ``share`` (
 brightness layers leave on average), ``lands`` (the surfaces its moves land on), ``rest`` (a resting scene), and for
 each group that can show it the room light it makes at full in a plain look (``lux``).
 
-The ratings are the owner's view, kept in config/live/light_ratings.json. They don't steer the art director's draw
-yet: a scene's ``tags.weight`` in light_scenes.yaml does.
+The ratings are the owner's view, kept in config/live/light_ratings.json, and they steer the art director's draw of
+scenes, effects and transitions as the screens' stars steer the renderer's (light_scenes.LightRatings): the index's
+``star_weights`` says by how much.
 """
 from __future__ import annotations
 
@@ -39,7 +40,7 @@ from . import contract, light_scenes as ls, roomlight
 log = logging.getLogger("show.light_library")
 
 SHOTS_DIR = pathlib.Path.home() / ".cache" / "sm-lightshots" / contract.DEPLOYMENT.id
-RATINGS_FILE = contract.REPO_ROOT / "config" / "live" / "light_ratings.json"
+RATINGS_FILE = ls.LIGHT_RATINGS_FILE
 KINDS = {"scene": "light", "effect": "light_effect", "transition": "light_transition"}
 KEY_RE = re.compile(r"^(light|light_effect|light_transition)/[A-Za-z0-9@._#~-]{1,160}$")
 TAG_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 _-]{0,31}$")
@@ -233,6 +234,7 @@ class LightLibrary:
                 "lineups": {n: {"label": v["label"], "plays": v["plays"], "features": v.get("features") or []}
                             for n, v in lus.items()},
                 "room_light": dict(getattr(d, "_room_light_view", None) or {}),
+                "star_weights": (cat.ratings.table() if getattr(cat, "ratings", None) is not None else {}),
                 "problems": list(cat.problems)[:20]}
 
     # -- ratings ---------------------------------------------------------------------------------------------------

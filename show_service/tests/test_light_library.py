@@ -95,3 +95,69 @@ def test_ratings_are_kept_and_checked(tmp_path):
                 {"key": "light/x", "tags": ["a" * 40]}, "nope"):
         with pytest.raises(ValueError):
             L.rate(bad)
+
+
+# -- the stars steer the draw (light_scenes.LightRatings) ---------------------------------------------------------------
+class _Rng:
+    def __init__(self, x: float = 0.5) -> None:
+        self.x = x
+
+    def random(self) -> float:
+        return self.x
+
+
+def _rated(tmp_path, data: dict, table: dict | None = None) -> ls.LightRatings:
+    (tmp_path / "r.json").write_text(json.dumps(data))
+    if table is not None:
+        (tmp_path / "w.json").write_text(json.dumps({"stars": table}))
+    return ls.LightRatings(tmp_path / "r.json", tmp_path / "w.json")
+
+
+def test_stars_weigh_against_an_unrated_item_by_the_screens_table(tmp_path):
+    r = _rated(tmp_path, {"light/a": {"stars": 5}, "light/b": {"stars": 1}, "light/c": {"reject": True, "stars": 4},
+                          "light_effect/e": {"stars": 3}, "light/bad": {"stars": 9}, "junk": 3})
+    assert r.weight("scene", "a") == pytest.approx(8.0 / 0.35)
+    assert r.weight("scene", "b") == pytest.approx(0.05 / 0.35)
+    assert r.weight("scene", "c") == 0.0 and r.stars("scene", "c") == -1          # a reject, whatever its stars
+    assert r.weight("effect", "e") == pytest.approx(1.5 / 0.35)
+    assert r.weight("scene", "nobody-rated-this") == 1.0 and r.weight("scene", "bad") == 1.0
+    assert r.weight("transition", "a") == 1.0                                      # another kind's stars
+    assert r.table()["3"] == pytest.approx(4.29, abs=0.01)
+    own = _rated(tmp_path, {"light/a": {"stars": 5}}, {"unrated": 1.0, "5": 2.0})  # the file's own table wins
+    assert own.weight("scene", "a") == 2.0
+
+
+def test_no_ratings_file_and_a_half_written_one_change_nothing(tmp_path):
+    r = ls.LightRatings(tmp_path / "none.json", tmp_path / "none-w.json")
+    assert r.weight("scene", "a") == 1.0
+    (tmp_path / "r.json").write_text("{ not json")
+    assert ls.LightRatings(tmp_path / "r.json", tmp_path / "w.json").weight("scene", "a") == 1.0
+
+
+def test_the_draws_take_the_stars_and_a_plain_catalogue_takes_none(tmp_path):
+    group = _Dir()._groups["movers"]
+    plain = ls.Catalogue()
+    plain.poll()
+    _n, _why, base = plain.pick_for(group, None, None, _Rng())
+    names = sorted(base)
+    fav, out = names[0], names[1]
+    c = ls.Catalogue(ratings=_rated(tmp_path, {f"light/{fav}": {"stars": 5}, f"light/{out}": {"reject": True},
+                                               "light_effect/drop-flash": {"stars": 5},
+                                               "light_transition/cut": {"reject": True}}))
+    c.poll()
+    _n, _why, ws = c.pick_for(group, None, None, _Rng())
+    assert ws[fav] == pytest.approx(base[fav] * 8.0 / 0.35) and ws[out] == 0.0
+    assert all(ws[n] == pytest.approx(base[n]) for n in names[2:])                # the unrated ones: as before
+    got = {c.pick_for(group, None, None, _Rng(i / 50.0))[0] for i in range(50)}
+    assert out not in got                                                          # a reject is never drawn...
+    name, why, _ = c.pick_for(group, None, None, _Rng(0.5), prefer={fav: 1e9})
+    assert name == fav and "your 5 stars; " in why
+    only = {**group, "scenes_for": ["laser"], "caps": ["colour", "macro", "shutter"]}
+    rest = [n for n in c.pool_for(only, rest=True)]
+    r2 = ls.Catalogue(ratings=_rated(tmp_path, {f"light/{n}": {"reject": True} for n in rest}))
+    r2.poll()
+    assert r2.pick_for(only, None, None, _Rng(), rest=True)[0] in rest             # ...unless nothing else fits
+    for i in range(40):                                                            # effects and transitions too
+        assert c.pick_transition(("cut", "dark_move"), None, None, None, _Rng(i / 40.0)) != "cut"
+    assert c.rated("effect", "drop-flash") == pytest.approx(8.0 / 0.35) and plain.rated("effect", "drop-flash") == 1.0
+    assert ls.shared().ratings is not None                                         # the running show reads the stars

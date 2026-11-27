@@ -19,7 +19,7 @@ import { friendly } from "../words.js";
 
 const API = `${ROOM_BASE}/show/api/v1/lights`;
 const KINDS = [["light", "Scenes"], ["light_transition", "Transitions"], ["light_effect", "Effects"]];
-const L = { items: [], byKey: new Map(), groups: {}, lineups: {}, room: {}, loaded: false, error: null };
+const L = { items: [], byKey: new Map(), groups: {}, lineups: {}, room: {}, stars: {}, loaded: false, error: null };
 const ratings = new Map();
 const st = { kind: "light", q: "", group: null, unrated: false, role: null, sel: null };
 let root, grid, kindSeg, countEls = {}, quick, emptyHost, searchIn, sheet = null, loadedAt = 0;
@@ -62,7 +62,7 @@ export async function load() {
     for (const [k, v] of Object.entries(rt.ratings || {})) ratings.set(k, v);
     L.items = (lib.items || []).map(normalise);
     L.byKey = new Map(L.items.map((i) => [i.key, i]));
-    L.groups = lib.groups || {}; L.lineups = lib.lineups || {}; L.room = lib.room_light || {};
+    L.groups = lib.groups || {}; L.lineups = lib.lineups || {}; L.room = lib.room_light || {}; L.stars = lib.star_weights || {};
     L.loaded = true; L.error = null;
   } catch (e) {
     L.error = "The lighting catalogue couldn't be read (is the show service running?)";
@@ -143,6 +143,14 @@ function makesRoom(it) {
   }
   return out;
 }
+// What the stars do: the art director draws a rated item more or less often (show_service light_scenes.LightRatings).
+function starWords(it) {
+  if (it._reject) return "Rejected: the lights never draw it while anything else fits.";
+  const x = L.stars[String(it._rating || 0)];
+  if (!it._rating || !x) return "Unrated: the lights draw it by how well it fits the music. Your stars change how often.";
+  return x >= 1 ? `Your ${it._rating} stars: the lights draw it about ${x >= 10 ? Math.round(x) : x.toFixed(1).replace(/\.0$/, "")} times as often as an unrated one.`
+    : `Your ${it._rating} star${it._rating > 1 ? "s" : ""}: the lights draw it about ${x >= 0.5 ? "as often as" : `a ${Math.round(1 / x) === 7 ? "seventh" : `${Math.round(1 / x)}th`} as often as`} an unrated one.`;
+}
 let viewEl = null;
 function drawView(it) {
   if (!it || !viewEl) return;
@@ -167,7 +175,7 @@ function drawView(it) {
   facts.push(...makesRoom(it));
   const file = it.kind === "light" ? "light_scenes.yaml" : it.kind === "light_effect" ? "light_effects.yaml" : "light_transitions.yaml";
   put(viewEl, pic, h("h2", { class: "ltitle" }, it.title), h("p", { class: "ldesc" }, it.description || ""),
-      ratingStrip(it, rate, { size: "big" }), h("div", { class: "lfacts" }, ...facts),
+      ratingStrip(it, rate, { size: "big" }), h("p", { class: "lsrc", tid: "light-star-words" }, starWords(it)), h("div", { class: "lfacts" }, ...facts),
       h("p", { class: "lsrc" }, `config/live/${file} · ${it.name}`));
 }
 function open(it) {
