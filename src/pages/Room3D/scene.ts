@@ -1040,7 +1040,10 @@ export class RoomSim {
     beamShared.sigma.value = this.showPaths ? 0 : sig;
     const hl = this.hl, vhl = this.vhl;
     const ch = (f: Fixture, i: number) => {
-      if (f.planned) return f.address == null ? 0 : vhl.get(f.address - 1 + i) ?? 0;    // planned: nothing on the wire
+      if (f.planned) {                                                                 // planned: nothing on the wire
+        const own = f.address == null ? undefined : vhl.get(f.address - 1 + i);
+        return own ?? this.plannedDmx?.get(f.id)?.[i] ?? 0;                             // the preview's, when it runs them
+      }
       if (f.address == null || (this.universe != null && f.universe != null && f.universe !== this.universe)) return 0;
       const a = f.address - 1 + i;
       return a >= 0 && a < 512 ? hl.get(a) ?? this.dmx[a] : 0;
@@ -1273,6 +1276,8 @@ export class RoomSim {
   // here only: nothing is sent to a light. The rest go on showing what the preview or the wire says.
   private hl = new Map<number, number>();                     // DMX slot (0-based) -> the value drawn instead
   private vhl = new Map<number, number>();                    // the same for planned lights' virtual slots
+  /** The preview's planned lights: each one's channels by its id (preview.py's frames' ``p``); null: none sent. */
+  plannedDmx: Map<string, Uint8Array> | null = null;
   highlight(key: string | null) {
     this.hl = new Map();
     this.vhl = new Map();

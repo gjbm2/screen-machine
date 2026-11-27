@@ -284,6 +284,16 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
         const m = JSON.parse(ev.data), bin = atob(m.d), u = new Uint8Array(512);
         for (let i = 0; i < 512; i++) u[i] = bin.charCodeAt(i);
         sim.dmx = u; sim.dmxAt = performance.now();
+        // the preview's planned lights (drawn here only, never on a wire): each one's channels, by its id
+        if (m.p && typeof m.p === "object") {
+          const pm = new Map<string, Uint8Array>();
+          for (const [id, b64] of Object.entries(m.p as Record<string, string>)) {
+            const b = atob(b64), a = new Uint8Array(b.length);
+            for (let i = 0; i < b.length; i++) a[i] = b.charCodeAt(i);
+            pm.set(id, a);
+          }
+          sim.plannedDmx = pm;
+        } else sim.plannedDmx = null;
       } catch { /* a bad event: keep the last frame */ }
     };
     const st = window.setInterval(async () => {
