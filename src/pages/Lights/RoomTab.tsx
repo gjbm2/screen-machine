@@ -39,13 +39,17 @@ type Vec3 = [number, number, number];
 type PartAim = { part: string; id: string; label: string; at: Vec3 | null; lean_deg: number; turn_deg: number; own: boolean;
   /** false: a one-axis bracket (a U-yoke): it only tilts, and faces where its bar faces */
   turns: boolean };
-type BarBits = { id: string; label: string; at: Vec3; facing_deg: number; front: Vec3; editable: boolean; aims: PartAim[] };
+/** Every part of a bar, in order along it (left to right as you face it): the aimable ones are in ``aims`` too. */
+type BarPartBits = { part: string; id: string; label: string; at: Vec3 | null; along: number; head: boolean; hang: boolean; aimable: boolean };
+type BarBits = { id: string; label: string; at: Vec3; facing_deg: number; front: Vec3; editable: boolean; aims: PartAim[]; parts: BarPartBits[] };
 type SpaceBits = ReturnType<typeof keepOutOf> & { size: Vec3; bars: BarBits[]; room: RoomSpace; partIds: Set<string>;
   /** What the deployment's own space.yaml sets ("screen:<id>", "place:<name>", ...): the page can't move it. */
   locked: Set<string> };
 /** The older view's own props (the page's space state, the map's things, the lamps' colours): passed straight on. */
 type PlannedProps = Parameters<typeof PlannedView>[0];
-type Kind = "bar" | "light" | "region" | "screen" | "thing" | "place" | "area";
+type Kind = "bar" | "light" | "part" | "region" | "screen" | "thing" | "place" | "area";
+/** A part of a bar that is selected but not aimed here (a moving head, a strobe LED): its pick box. */
+const HEAD_BOX: Vec3 = [0.22, 0.22, 0.24], LED_BOX: Vec3 = [0.1, 0.1, 0.07];
 const THING_BOX: Vec3 = [0.3, 0.3, 0.3];
 const r2 = (x: number) => Math.round(x * 100) / 100;
 /** What PUT /rig/space/appliances/<id> needs to put a thing back as it was. */
@@ -59,6 +63,8 @@ const wallOf = (n: Vec3 | null | undefined) => (n ? WALL_WORDS[`${Math.round(n[0
 const isV3 = (v: unknown): v is Vec3 => Array.isArray(v) && v.length === 3 && v.every((x) => typeof x === "number");
 const kindOf = (key: string) => key.slice(0, key.indexOf(":")) as Kind;
 const idOf = (key: string) => key.slice(key.indexOf(":") + 1);
+/** A bar part's key: an aimable light ("light:<id>"), else a part that is only selected ("part:<id>"). */
+const partKey = (p: { id: string; aimable: boolean }) => `${p.aimable ? "light" : "part"}:${p.id}`;
 
 /** The bars and their aimable parts, from GET /rig/space. */
 function barsFrom(s: any): BarBits[] {
@@ -70,7 +76,14 @@ function barsFrom(s: any): BarBits[] {
              p?.aim && typeof p.aim.lean_deg === "number"
                ? [{ part, id: String(p.id), label: String(p.label ?? p.id), at: isV3(s?.appliances?.[p.id]?.at) ? s.appliances[p.id].at : null,
                     lean_deg: p.aim.lean_deg, turn_deg: Number(p.aim.turn_deg) || 0, own: p.aim.own === true, turns: p.turns !== false }]
-               : []) }]
+               : []),
+           parts: Object.entries(b.parts ?? {}).map(([part, p]: [string, any]) => {
+             const at: Vec3 | null = isV3(s?.appliances?.[p.id]?.at) ? s.appliances[p.id].at : null;
+             const ax = [-b.front[1], b.front[0]];           // space.py's: + to the right as you face the bar
+             return { part, id: String(p.id), label: String(p.label ?? p.id), at,
+                      along: at ? (at[0] - b.at[0]) * ax[0] + (at[1] - b.at[1]) * ax[1] : 0,
+                      head: p.head === true, hang: p.hang === true, aimable: !!p.aim && typeof p.aim.lean_deg === "number" };
+           }).sort((u, v) => u.along - v.along) }]
       : []);
 }
 
@@ -291,6 +304,14 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
         if (p.at) out.push({ key: `light:${p.id}`, kind: "light", label: p.label, at: p.at, size: LIGHT_BOX, dir: aimDirOf(b.front, p.lean_deg, p.turn_deg), front: b.front,
           tiltOnly: !p.turns, parent: b.editable ? `bar:${b.id}` : undefined });
       }
+      // its other parts (the moving heads, the strobe LEDs): selected to see what they are, not aimed here
+      for (const p of b.parts) {
+        if (p.aimable || !p.at) continue;
+        const led = !p.head;
+        const at: Vec3 = led ? [p.at[0] + b.front[0] * 0.03, p.at[1] + b.front[1] * 0.03, p.at[2]] : p.at;
+        out.push({ key: `part:${p.id}`, kind: "part", label: p.label, at, size: led ? LED_BOX : HEAD_BOX,
+          yaw: (b.facing_deg * Math.PI) / 180, parent: b.editable ? `bar:${b.id}` : undefined });
+      }
     }
     for (const r of bits.keepOut) if (r.editable) out.push({ key: `region:${r.name}`, kind: "region", label: r.label, at: r.centre, size: r.size });
     // the rest of the room (what the Room map placed): screens on walls, lights not on a bar, named places, floor areas
@@ -311,7 +332,8 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
 
   const kind = selected ? kindOf(selected) : null, id = selected ? idOf(selected) : null;
   const bar = kind === "bar" ? bits?.bars.find((b) => b.id === id) : undefined;
-  const lightBar = kind === "light" ? bits?.bars.find((b) => b.aims.some((p) => p.id === id)) : undefined;
+  const lightBar = kind === "light" || kind === "part" ? bits?.bars.find((b) => b.parts.some((p) => p.id === id)) : undefined;
+  const part = kind === "part" ? lightBar?.parts.find((p) => p.id === id) : undefined;
   const light = lightBar?.aims.find((p) => p.id === id);
   const region = kind === "region" ? bits?.keepOut.find((r) => r.name === id) : undefined;
   const check = light ? bits?.lasers[light.id] : undefined;
@@ -421,7 +443,8 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       const want = ({ w: "translate", e: "rotate", r: "scale" } as Record<string, GizmoMode>)[e.key.toLowerCase()];
       if (e.key === "Escape") {                    // up one level: a light to its bar, anything else to the room
         if (treeOpen) { setTreeOpen(false); return; }
-        const up = kindOf(selected) === "light" ? bits?.bars.find((b) => b.editable && b.aims.some((p) => p.id === idOf(selected))) : undefined;
+        const up = kindOf(selected) === "light" || kindOf(selected) === "part"
+          ? bits?.bars.find((b) => b.editable && b.parts.some((p) => p.id === idOf(selected))) : undefined;
         setSelected(up ? `bar:${up.id}` : null);
       }
       else if ((e.key === "Delete" || e.key === "Backspace") && kindOf(selected) === "region") {
@@ -466,21 +489,21 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
     </button>
   );
   /** A light's name without its bar's ("Bar A par 1" under "Bar A": "par 1"). */
-  const short = (p: PartAim, b: BarBits) => {
+  const short = (p: { label: string }, b: BarBits) => {
     const n = p.label.startsWith(b.label + " ") ? p.label.slice(b.label.length + 1) : p.label;
     return n.charAt(0).toUpperCase() + n.slice(1);
   };
   /** Everything in the outliner's order: each bar then its lights, then the keep-out regions. */
   const order: string[] = !bits ? [] : [
-    ...bits.bars.flatMap((b) => [...(b.editable ? [`bar:${b.id}`] : []), ...b.aims.map((p) => `light:${p.id}`)]),
+    ...bits.bars.flatMap((b) => [...(b.editable ? [`bar:${b.id}`] : []), ...b.parts.filter((p) => p.at).map((p) => partKey(p))]),
     ...placedThings.filter((t) => t.kind === "screen").map((t) => `screen:${t.id}`),
     ...placedThings.filter((t) => t.kind !== "screen").map((t) => `thing:${t.id}`),
     ...bits.room.points.map((p) => `place:${p.name}`),
     ...bits.room.regions.filter((a) => a.surface === "floor").map((a) => `area:${a.name}`),
     ...bits.keepOut.filter((r) => r.editable).map((r) => `region:${r.name}`)];
   const parentOf = (key: string) => {
-    if (kindOf(key) !== "light" || !bits) return null;
-    const b = bits.bars.find((x) => x.aims.some((p) => p.id === idOf(key)));
+    if ((kindOf(key) !== "light" && kindOf(key) !== "part") || !bits) return null;
+    const b = bits.bars.find((x) => x.parts.some((p) => p.id === idOf(key)));
     return b && b.editable ? `bar:${b.id}` : null;
   };
   const go = (key: string | null) => { select(key); setTreeOpen(false); if (key) setFrame((n) => n + 1); };
@@ -496,7 +519,8 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
     else if (e.key === "ArrowLeft") next = selected ? parentOf(selected) : undefined;
     else if (e.key === "ArrowRight" && selected && kindOf(selected) === "bar") {
       const b = bits?.bars.find((x) => x.id === idOf(selected));
-      next = b?.aims[0] ? `light:${b.aims[0].id}` : undefined;
+      const first = b?.parts.find((p) => p.at);
+      next = first ? partKey(first) : undefined;
     } else return;
     e.preventDefault();
     if (next !== undefined) go(next);
@@ -510,7 +534,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       {bits.bars.map((b) => (
         <div key={b.id}>
           {b.editable ? row(`bar:${b.id}`, b.label, `${b.at[2].toFixed(2)} m up`) : <div className="px-2 py-1">{b.label}<span className="text-stone-500"> · set in the room file</span></div>}
-          <div className="ml-3 border-l border-stone-200 pl-1">{b.aims.map((p) => row(`light:${p.id}`, short(p, b)))}</div>
+          <div className="ml-3 border-l border-stone-200 pl-1">{b.parts.filter((p) => p.at).map((p) => row(partKey(p), short(p, b)))}</div>
         </div>
       ))}
       {placedThings.some((t) => t.kind === "screen") && <H>Screens</H>}
@@ -574,7 +598,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
           <button className="flex min-w-0 flex-1 items-center justify-between gap-1 rounded-lg border border-stone-300 bg-white px-2 py-1.5 text-left hover:bg-stone-50"
             onClick={() => setTreeOpen((o) => !o)} aria-expanded={treeOpen} data-testid="breadcrumb">
             <span className="truncate">
-              {light && lightBar ? <><span className="text-stone-500">{lightBar.label} › </span>{short(light, lightBar)}</>
+              {(light || part) && lightBar ? <><span className="text-stone-500">{lightBar.label} › </span>{short((light ?? part)!, lightBar)}</>
                 : bar ? bar.label : region ? <><span className="text-stone-500">Keep out › </span>{region.label}</>
                 : thing ? <><span className="text-stone-500">{thing.kind === "screen" ? "Screens" : "Lights"} › </span>{thing.label}</>
                 : place ? <><span className="text-stone-500">Places › </span>{place.label}</>
@@ -610,7 +634,10 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
           <Num label="Height of the bar" unit="m" value={bar.at[2]} disabled={busy} onKeep={(v) => void changeBar(bar, { at: [bar.at[0], bar.at[1], v] }, `raise ${bar.label}`)} />
           <Num label="Faces (0 east, 90 north)" unit="°" step={1} value={bar.facing_deg} disabled={busy} onKeep={(v) => void changeBar(bar, { facing_deg: v }, `turn ${bar.label}`)} />
           <H>Lights on it</H>
-          {bar.aims.map((p) => row(`light:${p.id}`, short(p, bar), elevationWords(aimOf(p).elevation)))}
+          {bar.parts.filter((p) => p.at).map((p) => {
+            const a = bar.aims.find((x) => x.id === p.id);
+            return row(partKey(p), short(p, bar), a ? elevationWords(aimOf(a).elevation) : p.head ? "moving head" : "strobe LED");
+          })}
         </>
       )}
       {light && (
@@ -695,6 +722,20 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
             onClick={() => { const r = region; setSelected(null); void act(`remove ${r.label}`, () => api.removeKeepOut(r.name), () => putRegion(r, {})); }}>Remove this region</button>
         </>
       )}
+      {part && lightBar && (
+        <>
+          <div className="text-[15px] font-semibold">{part.label}</div>
+          <div className="mb-2 text-stone-500">
+            {part.head
+              ? `A moving head ${part.hang ? "hanging under" : "standing on"} ${lightBar.label}: it aims itself, so there is nothing to point here.`
+              : `A strobe LED in the face of ${lightBar.label}: it points where the bar faces. The scenes can run the four in order.`}
+          </div>
+          <div className="text-stone-600">{part.along < -0.01 ? `${Math.abs(part.along).toFixed(2)} m left of the bar's middle` : part.along > 0.01 ? `${part.along.toFixed(2)} m right of the bar's middle` : "in the bar's middle"} (as you face it)</div>
+          <a className="mt-3 inline-block text-teal-700 hover:underline" href={`/settings/lights?light=${encodeURIComponent(part.id)}`}>
+            {part.head ? "Its rest, limits and positions: set it up ›" : "Set it up ›"}</a>
+          <div className="mt-2 text-[12px] text-stone-500">It moves with its bar: select the bar (↑ or Esc) to move or turn it.</div>
+        </>
+      )}
       {thing && thingAt?.at && (
         <>
           <div className="text-[15px] font-semibold">{thing.label}</div>
@@ -771,7 +812,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
             Remove this area</button>
         </>
       )}
-      {!bar && !light && !region && !thing && !place && !area && (
+      {!bar && !light && !part && !region && !thing && !place && !area && (
         <>
           <div className="text-stone-600">Click a thing in the room or the list to edit it. Arrow keys step through.</div>
           {Object.values(bits.lasers).some((c) => c.crosses.length > 0) && (

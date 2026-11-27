@@ -20,7 +20,7 @@
 import * as THREE from "three";
 import type { Vec3 } from "./model";
 
-export type EditKind = "bar" | "light" | "region" | "screen" | "thing" | "place" | "area";
+export type EditKind = "bar" | "light" | "part" | "region" | "screen" | "thing" | "place" | "area";
 /** Kinds that slide across the room (a screen along the walls) and are raised by their arrow. */
 const MOVES: EditKind[] = ["bar", "region", "screen", "thing", "place", "area"];
 const LIFTS: EditKind[] = ["bar", "region", "screen", "thing", "place"];
@@ -297,9 +297,10 @@ export class RoomEditor {
   private pickPart(x: number, y: number): string | null {
     const hs = this.hits(x, y, [...this.picks.values()]);
     if (!hs.length) return null;
-    const kindOf = (k: string) => this.items.find((i) => i.key === k)?.kind;
-    const light = hs.find((h) => kindOf(h.object.userData.key) === "light");
-    return (light ?? hs[0]).object.userData.key as string;
+    const item = (k: string) => this.items.find((i) => i.key === k);
+    // a part of a unit (a light, a head, a strobe LED) before the bar it is on: the nearest such part
+    const part = hs.find((h) => !!item(h.object.userData.key)?.parent || item(h.object.userData.key)?.kind === "light");
+    return (part ?? hs[0]).object.userData.key as string;
   }
   /** The selected thing's unit: up one level (a light to its bar), else null. */
   parentOf(key: string | null): string | null {
@@ -322,7 +323,8 @@ export class RoomEditor {
   /** The thing under the cursor gets a light outline (not the selected one); returns it, for its name. */
   hover(x: number, y: number): Editable | null {
     if (this.dragging) return null;
-    const key = this.grabbable(x, y) ? this.selected : this.pick(x, y);
+    const p = this.pick(x, y);                        // inside a selected bar: its part under the cursor
+    const key = p && p !== this.selected ? p : this.grabbable(x, y) ? this.selected : p;
     const it = key ? this.items.find((i) => i.key === key) ?? null : null;
     if (!it || key === this.selected) { this.hoverBox.visible = false; return it; }
     this.hoverBox.visible = true;
@@ -335,8 +337,10 @@ export class RoomEditor {
   /** The cursor a point of the view should show: over a handle or the selected thing "grab", over another thing
    *  "pointer", else null (the view's own). */
   cursorAt(x: number, y: number): "grab" | "pointer" | null {
+    const p = this.pick(x, y);
+    if (p && p !== this.selected) return "pointer";      // a click selects it (a selected bar's part: drill in)
     if (this.grabbable(x, y)) return "grab";
-    return this.pick(x, y) ? "pointer" : null;
+    return p ? "pointer" : null;
   }
 
   /** A press: starts a drag when it is on the selected thing or one of its handles (true: the page keeps the camera

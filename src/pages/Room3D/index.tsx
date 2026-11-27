@@ -18,6 +18,11 @@ import { hazeWords, LEVEL_VISIBILITY_M, mlOf, sigmaOf, sigmaOfSlider, sliderOf }
 import { RoomSim, type Nav } from "./scene";
 
 const ROOM_POLL_MS = 5000;
+/** A part's name without its bar's ("Bar A par 1" on Bar A: "Par 1"). */
+const shortName = (label: string, bar?: string) => {
+  const n = bar && label.startsWith(bar + " ") ? label.slice(bar.length + 1) : label;
+  return n.charAt(0).toUpperCase() + n.slice(1);
+};
 const NODE_DEFAULT = "http://127.0.0.1:8705";
 const SIDE_W = 340;
 
@@ -51,6 +56,8 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
   const namesRef = useRef<HTMLDivElement | null>(null);          // the plan's names on things, placed each frame
   const itemsRef = useRef<Editable[]>([]);
   itemsRef.current = editables ?? [];
+  const selRef = useRef<string | null>(null);
+  selRef.current = selected;
   const cb = useRef({ onSelect, onEdit });
   const fromView = useRef(false);                                 // the last selection was made in the view
   cb.current = { onSelect, onEdit };
@@ -127,20 +134,29 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
     const placeNames = () => {
       const el = namesRef.current;
       if (!el) return;
-      const on = sim.nav === "plan";
-      el.style.display = on ? "" : "none";
-      if (!on) return;
-      const items = itemsRef.current.filter((x) => x.label && x.kind !== "light");
+      // the plan: every thing's name; any view: the names of the selected bar's parts (what a click there selects)
+      const all = itemsRef.current, sel = selRef.current;
+      const unit = sel ? (all.find((x) => x.key === sel)?.parent ?? sel) : null;
+      const parts = unit ? all.filter((x) => x.parent === unit && x.label) : [];
+      const plan = sim.nav === "plan";
+      const items = [...(plan ? all.filter((x) => x.label && !x.parent && x.kind !== "light") : []), ...parts];
+      el.style.display = items.length ? "" : "none";
+      if (!items.length) return;
       const have = new Map(Array.from(el.children).map((c) => [(c as HTMLElement).dataset.key!, c as HTMLElement]));
       for (const it of items) {
         let n = have.get(it.key);
         if (!n) {
           n = document.createElement("span");
           n.dataset.key = it.key;
-          n.className = "absolute -translate-x-1/2 whitespace-nowrap rounded bg-white/85 px-1 text-[11px] leading-4 text-stone-800 shadow-sm";
+          n.className = "pointer-events-auto absolute -translate-x-1/2 cursor-pointer whitespace-nowrap rounded bg-white/85 px-1 text-[11px] leading-4 text-stone-800 shadow-sm hover:bg-white hover:ring-1 hover:ring-teal-500";
+          const key = it.key;
+          n.onclick = (ev) => { ev.stopPropagation(); fromView.current = true; cb.current.onSelect?.(key); };   // a name selects its thing
           el.appendChild(n);
         }
-        if (n.textContent !== it.label) n.textContent = it.label!;
+        const words = it.parent ? shortName(it.label!, all.find((x) => x.key === it.parent)?.label) : it.label!;
+        if (n.textContent !== words) n.textContent = words;
+        const on = it.key === sel;
+        n.style.background = on ? "#0d9488" : ""; n.style.color = on ? "#fff" : "";
         v.set(it.at[0], it.at[2], -it.at[1]).project(sim.camera);   // room (x, y, z) -> three (x, z, -y)
         n.style.left = `${((v.x + 1) / 2) * host.clientWidth}px`;
         n.style.top = `${((1 - v.y) / 2) * host.clientHeight + 10}px`;
@@ -465,6 +481,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
           onPointerLeave={() => { hover.current = false; edRef.current?.clearHover(); simRef.current?.walkHint(null); simRef.current?.clearKeys(); setTip(null); }}
           onContextMenu={(e) => e.preventDefault()}
           onPointerDownCapture={(e) => {
+            if ((e.target as HTMLElement).dataset?.key) return;          // a name label: its own click selects
             // before the camera's controls see it: a press on the selected thing or one of its handles is a drag of
             // that thing (the camera holds still: onDragging), anything else is the camera's
             const ed = edRef.current;
@@ -473,6 +490,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
             if (ed.grab(x, y)) { e.currentTarget.setPointerCapture(e.pointerId); setCursor("grabbing"); setTip(null); }
           }}
           onPointerDown={(e) => {
+            if ((e.target as HTMLElement).dataset?.key) { press.current = null; return; }
             press.current = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
             if (edRef.current?.dragging) return;
             drag.current = true;
