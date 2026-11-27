@@ -129,7 +129,7 @@ GROUP_KEYS = frozenset({"label", "select", "follows", "dark_level", "appliances"
 DARK_FLOOR = "floor"                             # dark_level: the look's floor
 #: show.yaml ``lights`` keys: the catalogue builder's, and the other builders' (read where they are used)
 LIGHTS_KEYS = frozenset({"scene_group", "groups", "programs", "flow", "motion", "jog", "calibration", "appliances",
-                         "atmosphere", "moments", "lineups", "room_light"})   # atmosphere, moments, room_light: the
+                         "atmosphere", "moments", "lineups", "room_light", "picture"})   # atmosphere, moments, room_light: the
                                                                               # director's
 #: lights.programs' starting points (docs/LIGHTS.md §12; the file's values win)
 PROGRAMS_FALLBACK = {"effects_max": 2, "effect_gap_bars": 4.0}

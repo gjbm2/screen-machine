@@ -1060,6 +1060,19 @@ lights:
   # The room's moment (contract.MOMENTS; owner, 26 Nov): song | lead_in (a song is cued, its title up) | waiting
   # (nothing plays) | lull (a long wait). The director only names it; what the lights do in each is the catalogue's:
   # light_scenes.yaml tags.moments, and light_effects.yaml on: [lead_in | waiting | lull | song_end].
+  # How much the picture on the screens steers the moving lights' draw (show_service/picture.py; owner, 26 Nov:
+  # "none of this stuff should be hardcoded"). A scene that moves is weighted by how its movement sits with the
+  # picture queued next. Starting points.
+  picture:
+    dir_fit: 2.5                            # its flow tags name the picture's direction
+    dir_against: 0.5                        # ... name the opposite
+    dir_honours: 1.2                        # ... name neither, but its layers follow the room's flow
+    dir_other: 0.8                          # ... name other directions only
+    pace_far: 0.5                           # its energy band is a whole scale from the picture's pace (1: no effect)
+    busy_high: 0.7                          # a busy picture (its busy share at or over this) ...
+    busy_low: 0.3                           # ... a sparse one (at or under this)
+    busy_on_busy: 0.6                       # busy movement over a busy picture
+    busy_on_sparse: 1.3                     # busy movement over a sparse picture: the lights carry it
   moments:
     lull_after_s: 180                       # waiting this long is a lull
     # The pre-state is general, for every mode and every layer (owner, 27 Nov): while nothing plays the director

@@ -1083,6 +1083,7 @@ class Director:
         self._moment = contract.MOMENTS[0]               # the room's moment (contract.MOMENTS): what the lights' scenes
         self._moment_since = 0.0                         # and effects are commissioned for, besides the music
         self._moments_cfg = {**MOMENTS_FALLBACK, "energy": {}}
+        self._picture_fit: dict[str, float] = dict(picmod.FIT)   # show.yaml lights.picture
         self._air = atmod.Air()                          # the room's haze (atmosphere.py)
         self.haze_pick: Optional[str] = None             # a person's haze level (set_haze), until the mode changes
         self._air_next = 0.0
@@ -1474,6 +1475,8 @@ class Director:
         self._photo = roomlight.load(problems=probs)                       # config/room/photometry.yaml
         self._air.configure(atmod.parse((s.get("lights") or {}).get("atmosphere")
                                         if isinstance(s.get("lights"), dict) else None, probs))   # the hazers
+        self._picture_fit = picmod.parse_fit((s.get("lights") or {}).get("picture")
+                                             if isinstance(s.get("lights"), dict) else None, probs)
         mo = (s.get("lights") or {}).get("moments") if isinstance(s.get("lights"), dict) else None
         self._moments_cfg = {**MOMENTS_FALLBACK, "energy": {}}
         if isinstance(mo, dict):
@@ -3046,7 +3049,7 @@ class Director:
             try:
                 want = ((self.treat.plan or {}).get("lights") or {}).get(gid)   # README S5.33: the plan's
                 pic = self._picture("next")                # the picture this look shows (picture.py)
-                prefer = picmod.prefer(self.light_scenes.scenes, pic)
+                prefer = picmod.prefer(self.light_scenes.scenes, pic, self._picture_fit)
                 pwhy = {n: f"fits the picture ({pic['name']})" for n, f in prefer.items() if f > 1.0}
                 if want:
                     prefer[want] = prefer.get(want, 1.0) * float(self.treat.cfg["light_prefer"])
