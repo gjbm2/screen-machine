@@ -369,7 +369,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
     <div className={T.root} style={{ fontSize: 13 }} data-testid="room-sim">
       {embedded ? (
         // The editor's header: one row. Left, what the lights show (the page's); right, the views and a menu of the rest.
-        <header className={shot ? "hidden" : "flex items-center gap-2 border-b border-stone-200 bg-white px-3 py-2"} data-testid="sim-header">
+        <header className={shot ? "hidden" : "flex flex-wrap items-center gap-2 border-b border-stone-200 bg-white px-3 py-2"} data-testid="sim-header">
           {toolbar}
           <span className="flex-1" />
           {navControls}

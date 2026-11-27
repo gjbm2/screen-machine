@@ -158,11 +158,11 @@ function PreviewKnob({ label, value, min, max, step, show, onCommit }: {
   const [v, setV] = useState(value);
   useEffect(() => setV(value), [value]);
   return (
-    <label className="flex items-center gap-1.5 text-stone-600" title={`The preview's ${label.toLowerCase()}`}>
+    <label className="flex shrink-0 items-center gap-1.5 text-stone-600" title={`The preview's ${label.toLowerCase()}`}>
       {label}
       <input type="range" min={min} max={max} step={step} value={v} aria-label={label} className="w-24 accent-teal-600"
         onChange={(e) => setV(Number(e.target.value))} onPointerUp={() => onCommit(v)} onKeyUp={() => onCommit(v)} />
-      <span className="w-14 tabular-nums text-stone-800">{show(v)}</span>
+      <span className="w-16 whitespace-nowrap tabular-nums text-stone-800">{show(v)}</span>
     </label>
   );
 }
@@ -839,10 +839,10 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   const toolbar = (
     <>
       <span className="text-stone-500">Lights</span>
-      <div className="inline-flex overflow-hidden rounded-lg border border-stone-300" role="group" aria-label="What the lights show" data-testid="show-what">
+      <div className="inline-flex shrink-0 overflow-hidden rounded-lg border border-stone-300" role="group" aria-label="What the lights show" data-testid="show-what">
         {SHOW.map(([v, label, title], i) => (
           <button key={v} title={title} aria-pressed={show === v} onClick={() => setShow(v)} data-testid={`show-${v}`}
-            className={`h-8 px-3 ${i ? "border-l border-stone-300" : ""} ${show === v ? "bg-teal-600 text-white" : "bg-white hover:bg-stone-50"}`}>{label}</button>
+            className={`h-8 whitespace-nowrap px-3 ${i ? "border-l border-stone-300" : ""} ${show === v ? "bg-teal-600 text-white" : "bg-white hover:bg-stone-50"}`}>{label}</button>
         ))}
       </div>
       {show === "colour" && (
@@ -850,7 +850,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       )}
       {show === "scene" && (
         <>
-          <select value={scene} onChange={(e) => setScene(e.target.value)} className={`${sel} max-w-[220px]`} aria-label="Lighting scene">
+          <select value={scene} onChange={(e) => setScene(e.target.value)} className={`${sel} min-w-[120px] max-w-[220px] shrink`} aria-label="Lighting scene">
             {scenes.map((x) => <option key={x.name} value={x.name}>{x.label}</option>)}
           </select>
           <PreviewKnob label="Energy" value={energy} min={0} max={1} step={0.05} show={(v) => `${Math.round(v * 100)}%`} onCommit={setEnergy} />
