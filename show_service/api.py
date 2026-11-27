@@ -97,6 +97,7 @@ from typing import Any, Awaitable, Callable, Mapping, Optional
 
 from aiohttp import WSMsgType, web
 
+from . import preview as previewmod
 from . import contract
 from .contract import (CARD_HZ, CLOCK_ACTIONS, DIRECTOR_ACTIONS, EV_AUTO, EV_CARD, EV_DESCRIBE, EV_PONG, EV_WELCOME,
                        EVENTS_PATH, PALETTE_ART, PALETTE_AUTO, STEP_DIRS, TEST_SOURCES)
@@ -205,6 +206,7 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("PUT", "/api/v1/rig/space/regions/{name}"), ("DELETE", "/api/v1/rig/space/regions/{name}"),
     ("PUT", "/api/v1/rig/space/keep_out/{name}"), ("DELETE", "/api/v1/rig/space/keep_out/{name}"),
     ("PUT", "/api/v1/rig/space/bars/{name}"),
+    ("GET", "/api/v1/rig/preview/status"), ("GET", "/api/v1/rig/preview/dmx"),
     ("GET", "/api/v1/rig/live"),
     ("GET", "/api/v1/autopilot"), ("PUT", "/api/v1/autopilot"), ("POST", "/api/v1/autopilot/undo"),
     ("POST", "/api/v1/autopilot/resume"), ("GET", "/api/v1/autopilot/rules"), ("POST", "/api/v1/autopilot/check"),
@@ -1184,6 +1186,9 @@ class Api:
             ("PUT", "/api/v1/rig/space/keep_out/{name}", self._space_keep_put),
             ("DELETE", "/api/v1/rig/space/keep_out/{name}", self._space_keep_delete),
             ("PUT", "/api/v1/rig/space/bars/{name}", self._space_bar_put),
+            # the Light setup's 3D view: the rig as it WOULD look (preview.py), never sent to a light
+            ("GET", "/api/v1/rig/preview/status", previewmod.status),
+            ("GET", "/api/v1/rig/preview/dmx", previewmod.dmx),
             ("GET", "/api/v1/rig/live", self._rig_live),
             ("POST", "/api/v1/hue/stream", self._hue_stream),
             ("GET", "/api/v1/hue/status", self._hue_status),

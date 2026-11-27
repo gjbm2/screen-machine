@@ -11,6 +11,7 @@
 // its head tips from that axis by tilt_sign x tilt + tilt_offset (docs/LIGHTS.md §3.6).
 
 import * as THREE from "three";
+import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { airCone, airLines, setCone } from "./beams";
 import { beamShared, HazePost, SCREEN_ALPHA } from "./fog";
 import {
@@ -166,7 +167,7 @@ export interface RoomSimOptions { canvas: HTMLCanvasElement; room: string }
 export class RoomSim {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
-  readonly camera = new THREE.PerspectiveCamera(70, 1, 0.05, 80);
+  readonly camera = new THREE.PerspectiveCamera(70, 1, 0.02, 80);
   private root = new THREE.Group();                 // room frame -> three.js
   private built = new THREE.Group();
   private parts: Part[] = [];
@@ -187,8 +188,6 @@ export class RoomSim {
   /** An aid, not the room: draw every beam's path half-visible whatever the haze, to see where the heads aim. */
   showPaths = false;
   scale = 1;
-  private orbit = { th: 0, ph: 1.2, r: 6 };
-  private target = new THREE.Vector3();
   private w = 1; private h = 1;
 
   // The room's keep-out regions (space.yaml keep_out), drawn over the finished picture: they are a setup aid, not
@@ -240,6 +239,19 @@ export class RoomSim {
     this.keepRoot.add(this.keepBoxes);
     this.keepScene.add(this.keepRoot);
     this.scene.add(this.fill);                       // the light bouncing round the room (frame())
+    const oc = new OrbitControls(this.camera, o.canvas);
+    oc.enableDamping = true;
+    oc.dampingFactor = 0.12;
+    oc.zoomToCursor = true;                          // the wheel zooms towards what is under the cursor
+    oc.screenSpacePanning = true;
+    oc.minDistance = 0.15;
+    oc.maxDistance = 30;
+    oc.zoomSpeed = 1.2;
+    oc.rotateSpeed = 0.7;
+    oc.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
+    oc.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
+    oc.addEventListener("start", () => { this.anim = null; });   // a hand on the controls stops a glide
+    this.controls = oc;
   }
 
   /** The room in three.js world coordinates. */
@@ -280,7 +292,7 @@ export class RoomSim {
     this.post.boxMin.set(-eps, -eps, -Y - eps);
     this.post.boxMax.set(X + eps, H + eps, eps);
     this.light.setRoom(m.size);
-    if (first) this.view("side");                          // across the beams: the most readable start
+    if (first) this.view("side", true);                          // across the beams: the most readable start
   }
 
   private clear() {
@@ -808,6 +820,8 @@ export class RoomSim {
   frame(now: number) {
     const dt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
+    this.animStep(dt);
+    this.controls.update();
     const m = this.model;
     if (!m) return;
     // "Show beam paths" (an aid): every beam is drawn as in a medium haze that takes nothing out of the light
@@ -919,47 +933,90 @@ export class RoomSim {
   }
 
   // -- camera ------------------------------------------------------------------------------------------------------
-  view(which: "front" | "side" | "above") {
+  // -- the camera (owner, 27 Nov: "RESEARCH AND ADOPT BEST PRACTICE FOR 3D INTERACTION IN BROWSER"). three.js's own
+  // OrbitControls, set up as the browser's 3D tools agree (three.js, Sketchfab, PlayCanvas): left-drag orbits round
+  // the pivot; right-drag, middle-drag or Ctrl / ⌘ / Shift + left-drag pans; the wheel or a pinch zooms towards the
+  // cursor; one finger orbits and two pan and pinch on a touch screen; the motion is damped. Double-click focuses on
+  // the place clicked (the background: back to the start), F frames the selection: those glide (animStep).
+  readonly controls: OrbitControls;
+  private anim: { t: number; dur: number; t0: THREE.Vector3; t1: THREE.Vector3; p0: THREE.Vector3; p1: THREE.Vector3 } | null = null;
+
+  /** Put the camera on a sphere round ``target`` (three's frame): ``th`` round the vertical, ``ph`` down from it. */
+  private orbitPos(target: THREE.Vector3, th: number, ph: number, r: number): THREE.Vector3 {
+    return new THREE.Vector3(target.x + r * Math.sin(ph) * Math.sin(th), target.y + r * Math.cos(ph), target.z + r * Math.sin(ph) * Math.cos(th));
+  }
+  /** Glide the camera and its pivot to a new place (``now``: jump). */
+  private glide(target: THREE.Vector3, pos: THREE.Vector3, now = false, dur = 0.5) {
+    if (now) {
+      this.anim = null;
+      this.controls.target.copy(target);
+      this.camera.position.copy(pos);
+      this.controls.update();
+      return;
+    }
+    this.anim = { t: 0, dur, t0: this.controls.target.clone(), t1: target.clone(), p0: this.camera.position.clone(), p1: pos.clone() };
+  }
+  private animStep(dt: number) {
+    const a = this.anim;
+    if (!a) return;
+    a.t = Math.min(1, a.t + dt / a.dur);
+    const k = a.t * a.t * (3 - 2 * a.t);
+    this.controls.target.lerpVectors(a.t0, a.t1, k);
+    this.camera.position.lerpVectors(a.p0, a.p1, k);
+    if (a.t >= 1) this.anim = null;
+  }
+
+  /** The preset views: from the front, from a side, from above, each over the whole room. */
+  view(which: "front" | "side" | "above", now = false) {
     const m = this.model;
     if (!m) return;
     const f = v3(m.frontVec).setZ(0).normalize();
     const c = v3(m.centre);
     const depth = Math.abs(f.x) * m.size[0] + Math.abs(f.y) * m.size[1];
-    const tgt = c.clone().addScaledVector(f, depth * 0.25).setZ(Math.min(2, m.size[2] * 0.5));
-    this.target.copy(this.world(tgt));
+    const tgt = this.world(c.clone().addScaledVector(f, depth * 0.25).setZ(Math.min(2, m.size[2] * 0.5)));
     const wf = this.world(f).normalize();                     // the front, in three's frame
     const th0 = Math.atan2(-wf.x, -wf.z);                      // looking along the front: the camera behind the target
     const r = depth * 0.62;
-    if (which === "front") this.orbit = { th: th0, ph: 1.45, r };
-    else if (which === "side") this.orbit = { th: th0 + 0.85, ph: 1.15, r };
-    else this.orbit = { th: th0, ph: 0.8, r };
-    this.place();
+    const [th, ph] = which === "front" ? [th0, 1.45] : which === "side" ? [th0 + 0.85, 1.15] : [th0, 0.8];
+    this.glide(tgt, this.orbitPos(tgt, th, ph, r), now);
   }
-  orbitBy(dx: number, dy: number) { this.orbit.th -= dx * 0.006; this.orbit.ph -= dy * 0.006; this.place(); }
-  zoomBy(dy: number) { this.orbit.r *= Math.exp(dy * 0.001); this.place(); }
-  /** Frame a place in the room (a 3D studio's "frame selected"): the camera turns about it from the room's middle
-   *  side, close enough to work on it. */
-  focus(at: Vec3) {
+  /** Back to the start (Home, or a double-click on nothing). */
+  home() { this.view("side"); }
+
+  /** Frame a place in the room (F, or picking a thing): the camera glides to look at it from the room's middle side,
+   *  ``dist`` metres away, so what is being edited is in front of you. */
+  focus(at: Vec3, dist = 1.6) {
     const m = this.model;
     const p = v3(at), c = m ? v3(m.centre) : new THREE.Vector3();
-    this.target.copy(this.world(p));
-    const from = this.world(c.clone().sub(p).setZ(0));                  // look at it from the room's middle side
-    if (from.lengthSq() > 1e-6) this.orbit.th = Math.atan2(from.x, from.z);
-    this.orbit.ph = 1.2;
-    this.orbit.r = Math.min(this.orbit.r, 4.5);
-    this.place();
+    const tgt = this.world(p);
+    const from = this.world(c.clone().sub(p).setZ(0));
+    const th = from.lengthSq() > 1e-6 ? Math.atan2(from.x, from.z) : 0;
+    this.glide(tgt, this.orbitPos(tgt, th, 1.15, Math.max(0.3, dist)));
   }
-
-  private place() {
-    const o = this.orbit;
-    o.ph = Math.max(0.12, Math.min(1.62, o.ph));
-    o.r = Math.max(0.8, Math.min(20, o.r));
-    this.camera.position.set(this.target.x + o.r * Math.sin(o.ph) * Math.sin(o.th), this.target.y + o.r * Math.cos(o.ph),
-      this.target.z + o.r * Math.sin(o.ph) * Math.cos(o.th));
-    this.camera.lookAt(this.target);
+  /** What a point of the view (nx, ny: -1..1) lands on in the room: a wall, the floor, a light, a screen. */
+  surfaceAt(nx: number, ny: number): THREE.Vector3 | null {
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(nx, ny), this.camera);
+    const hit = ray.intersectObjects(this.built.children, true).find((h) => (h.object as THREE.Mesh).isMesh && h.object.visible);
+    return hit ? hit.point.clone() : null;
   }
+  /** Double-click on a wall or the floor: the pivot goes to the spot clicked (orbiting turns round it), the camera
+   *  keeping its direction and coming no nearer than 3 m; on nothing, back to the start. */
+  goTo(nx: number, ny: number) {
+    const p = this.surfaceAt(nx, ny);
+    if (!p) { this.home(); return; }
+    const dir = this.camera.position.clone().sub(this.controls.target).normalize();
+    const r = Math.min(this.camera.position.distanceTo(p), 3.0);   // no closer than it was, at most 3 m off
+    this.glide(p, p.clone().addScaledVector(dir, r));
+  }
+  /** Where the camera is (to come back to after editing). */
+  pose(): { target: THREE.Vector3; pos: THREE.Vector3 } {
+    return { target: this.controls.target.clone(), pos: this.camera.position.clone() };
+  }
+  restore(p: { target: THREE.Vector3; pos: THREE.Vector3 }) { this.glide(p.target, p.pos); }
 
   dispose() {
+    this.controls.dispose();
     this.clear();
     this.post.dispose();
     this.renderer.dispose();

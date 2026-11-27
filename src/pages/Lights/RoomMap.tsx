@@ -6,7 +6,8 @@
 //   - Tap a thing to select it, drag it to place it (screens snap to the nearest wall); the bar under the map sets its
 //     height, how a mover hangs, a screen's picture size, or takes it off the map.
 //   - Add a place: the piano, the mirror ball, the dance floor or anything named; it drops in the middle to be dragged.
-//   - Live: each light's beam to where it lands (GET /rig/live, 4 Hz while shown) and the flow, in words and an arrow.
+//   - Not live (owner, 27 Nov: "I'm not sure room map should be a live view. that's confusing"): the map is the room's
+//     layout only. What the lights are doing is the 3D tab's "Live now" and the live view (/lights/room).
 // RoomDrawing is the same picture for Move it's preview (Preview.tsx). Only the things themselves take the touch (the
 // page still scrolls over the rest of the map on a phone).
 
@@ -405,7 +406,7 @@ export function RoomMap({
   selectedId?: string | null;
 }) {
   const sp = useSpace(api);
-  const live = useLive(api, true);
+  const live = null;                                   // the layout only: no live beams, colours or flow here
   const [box, width] = useWidth();
   const [sel, setSel] = useState<string | null>(selectedId ? `t:${selectedId}` : null);
   const [drag, setDrag] = useState<{ key: string; part: "plan" | "side"; at: Vec3; normal?: Vec3 } | null>(null);
@@ -561,8 +562,6 @@ export function RoomMap({
     );
   }
 
-  const flow = live?.flow ?? null;
-  const atLabel = flow?.at ? space.targets.find((t) => t.name === flow.at)?.label ?? nameWords(flow.at) : null;
   return (
     <div className="space-y-3" data-testid="room-map">
       <div className="flex flex-wrap items-center gap-x-2 text-[15px] text-muted-foreground">
@@ -578,9 +577,6 @@ export function RoomMap({
       <div ref={box} className="rounded-2xl border border-stone-200 bg-stone-50/60 p-1">
         {fr && <RoomDrawing fr={fr} items={items} live={live} selected={sel} svgRef={svg} onItemDown={onItemDown} onPointerMove={onMove} onPointerUp={onUp} />}
       </div>
-      <p className="text-[15px] font-medium" data-testid="flow-words">
-        {flowWords(flow?.dir, atLabel)}
-      </p>
 
       {note && <Notice tone="bad" className="text-[15px]">{note}</Notice>}
 

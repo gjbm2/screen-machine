@@ -18,6 +18,7 @@ export type GizmoMode = "translate" | "rotate" | "scale";
 export interface Editable {
   key: string;
   kind: EditKind;
+  label?: string;           // shown by the cursor when it is over the thing
   at: Vec3;                 // where it is
   size: Vec3;               // the box that is picked and outlined (before a bar's turn)
   yaw?: number;             // a bar: its facing, radians anticlockwise from east
@@ -38,6 +39,8 @@ export class RoomEditor {
   private picks = new Map<string, THREE.Mesh>();
   private proxy = new THREE.Object3D();           // what the gizmo moves: the selected thing's stand-in
   private ghost = new THREE.Group();              // its outline (and a light's arrow), carried by the proxy
+  private hoverBox: THREE.LineSegments;           // the outline of the thing under the cursor
+  hovered: string | null = null;
   private tc: TransformControls;
   private helper: THREE.Object3D;
   private items: Editable[] = [];
@@ -47,21 +50,50 @@ export class RoomEditor {
   /** A drag has just ended: the click that ends it is not a pick. */
   justDragged = false;
   onChange: (key: string, change: EditChange) => void = () => {};
+  /** A handle is being dragged (true) or let go (false): the page holds the camera still meanwhile. */
+  onDragging: (on: boolean) => void = () => {};
 
   constructor(private root: THREE.Group, private scene: THREE.Scene, private camera: THREE.PerspectiveCamera, dom: HTMLElement) {
     root.add(this.group);
     this.group.add(this.proxy);
     this.proxy.add(this.ghost);
     this.proxy.visible = false;
+    this.hoverBox = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(1, 1, 1)),
+      new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.9 }));
+    this.hoverBox.visible = false;
+    this.group.add(this.hoverBox);
     this.tc = new TransformControls(camera, dom);
     this.tc.setSize(0.85);
     this.helper = this.tc.getHelper();
     scene.add(this.helper);
     this.tc.addEventListener("dragging-changed", (e) => {
       this.dragging = !!(e as unknown as { value: boolean }).value;
+      this.onDragging(this.dragging);
       if (!this.dragging) { this.justDragged = true; this.commit(); }
     });
   }
+
+  /** Hold Ctrl (or ⌘) while dragging a handle: moves snap to 5 cm, turns to 5°, sizes to 5 cm (as 3D studios do). */
+  setSnap(on: boolean) {
+    this.tc.setTranslationSnap(on ? 0.05 : null);
+    this.tc.setRotationSnap(on ? THREE.MathUtils.degToRad(5) : null);
+    this.tc.setScaleSnap(on ? 0.05 : null);
+  }
+
+  /** The thing under a point of the view gets a light outline (the selected one keeps its own); null: none. */
+  hover(x: number, y: number): Editable | null {
+    const key = this.dragging ? null : this.pick(x, y);
+    const it = key && key !== this.selected ? this.items.find((i) => i.key === key) ?? null : null;
+    this.hovered = key;
+    if (!it) { this.hoverBox.visible = false; return key ? this.items.find((i) => i.key === key) ?? null : null; }
+    const pad = 1.08;
+    this.hoverBox.visible = true;
+    this.hoverBox.position.set(it.at[0], it.at[1], it.at[2]);
+    this.hoverBox.rotation.set(0, 0, it.yaw ?? 0);
+    this.hoverBox.scale.set(it.size[0] * pad, it.size[1] * pad, it.size[2] * pad);
+    return it;
+  }
+  clearHover() { this.hovered = null; this.hoverBox.visible = false; }
 
   /** The pointer is on one of the gizmo's handles (so a press there is the gizmo's, not the camera's). */
   get onHandle(): boolean { return this.tc.axis !== null; }
