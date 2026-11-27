@@ -71,6 +71,8 @@ def room_mix(sid: str, fs: int = FS, guide: float = 1.0) -> np.ndarray:
 
 
 def git_sha() -> str:
+    if os.environ.get("SM_AD_EVAL_SHA"):                # a clean copy of HEAD (scripts/ad-nightly): no .git in it
+        return os.environ["SM_AD_EVAL_SHA"]
     try:
         return subprocess.run(["git", "-C", str(REPO), "rev-parse", "--short", "HEAD"], capture_output=True, text=True,
                               timeout=10).stdout.strip() or "nogit"

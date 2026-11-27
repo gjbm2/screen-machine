@@ -8,9 +8,18 @@ description: The overnight improvement loop for the art director. Score the show
 The goal: the numbers in `tools/room/ad_eval` go up night after night, and the owner's recorded verdicts
 (`~/.local/state/screen-machine/show/ad_feedback.jsonl`) keep holding. Short, careful steps. One idea per attempt.
 
+## Where you work
+
+Other sessions edit the real tree in place, and the replay imports whatever is on disk. So **every attempt is made
+and scored in the clean copy of HEAD** that scripts/ad-nightly makes: `$AD_EVAL_TREE`, normally `~/.cache/sm-ad-eval/tree`.
+- To make one by hand: `git archive HEAD | tar -x -C <dir>`, copy `.env`, and set `SM_AD_EVAL_SHA`.
+- Only a fix you keep goes into the real tree (step 6).
+- Never score in the real tree.
+
 ## Each attempt
 
-1. **Score.** `nice -n 19 ~/.venvs/sm-show/bin/python tools/room/ad_eval/run.py` (the fixed song set, both modes).
+1. **Score.** `cd $AD_EVAL_TREE && nice -n 19 ~/.venvs/sm-show/bin/python tools/room/ad_eval/run.py` (the fixed song
+   set, both modes).
    - If HEAD already has a run today, use it.
    - The diff against the best run is the starting point.
 2. **Pick.**
@@ -39,9 +48,13 @@ The goal: the numbers in `tools/room/ad_eval` go up night after night, and the o
 5. **Re-score** on the full set.
    - **Keep the fix** if the overall score rises, no dimension falls by more than 0.02, every `good` verdict still
      holds, and no `bad` verdict that passed before now fails.
-   - **Else undo exactly your own change** (`git diff -- <your files> > /tmp/attempt.patch; git apply -R
-     /tmp/attempt.patch`). Never stash, checkout, reset or clean.
+   - **Else undo your change in the copy:** restore the files from the real tree's HEAD, e.g.
+     `git -C <repo> show HEAD:<path> > $AD_EVAL_TREE/<path>`.
 6. **Kept:**
+   - Make the same diff in the real tree: `diff -u` each changed file against `git show HEAD:<path>`, then
+     `git apply` it in the repo.
+   - If it doesn't apply cleanly (another session has changed the file), don't force it: report it in the morning
+     report and leave it.
    - Commit only your own paths, with a message saying the metric change: "ad-improve: <what> (overall 0.61 → 0.64;
      sections 0.42 → 0.55)".
    - The show picks it up at its next restart.
