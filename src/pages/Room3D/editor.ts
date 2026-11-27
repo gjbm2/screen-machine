@@ -216,6 +216,8 @@ export class RoomEditor {
       const P = new THREE.Vector3(...it.at);
       const { h, e } = angles(it.dir, it.front);
       const hv = new THREE.Vector3(Math.cos(h), Math.sin(h), 0);
+      const fr = it.front ?? [Math.cos(h), Math.sin(h), 0];
+      const fv = new THREE.Vector3(fr[0], fr[1], 0).normalize();        // its bar's front (a U-bracket's plane)
       const up = new THREE.Vector3(0, 0, 1);
       // its beam, to where it lands: a guide, not a handle
       const spot = this.landing(it.at, it.dir);
@@ -236,19 +238,24 @@ export class RoomEditor {
       knobT.position.copy(P).addScaledVector(hv, TURN_R);
       if (!it.tiltOnly) { this.ui.add(ring, tick, knobT); handle(fatRing, "turn"); }
       // elevation: an upright half circle from straight down to straight up on that side, its knob where it points
+      // a U-bracket's light: its whole swing, from level backwards over the top to straight down, in the plane of its
+      // bar's front (it only tilts); else the half circle on the side it points
       const arcPts: THREE.Vector3[] = [];
-      for (let i = 0; i <= 48; i++) {
-        const a = -Math.PI / 2 + (Math.PI * i) / 48;
-        arcPts.push(P.clone().addScaledVector(hv, TILT_R * Math.cos(a)).addScaledVector(up, TILT_R * Math.sin(a)));
+      const [a0, a1] = it.tiltOnly ? [-Math.PI / 2, Math.PI] : [-Math.PI / 2, Math.PI / 2];   // tiltOnly: lean from up
+      for (let i = 0; i <= 64; i++) {
+        const a = a0 + ((a1 - a0) * i) / 64;
+        arcPts.push(it.tiltOnly
+          ? P.clone().addScaledVector(fv, TILT_R * Math.sin(a)).addScaledVector(up, TILT_R * Math.cos(a))
+          : P.clone().addScaledVector(hv, TILT_R * Math.cos(a)).addScaledVector(up, TILT_R * Math.sin(a)));
       }
       const curve = new THREE.CatmullRomCurve3(arcPts);
       const arc = new THREE.Mesh(new THREE.TubeGeometry(curve, 48, 0.009, 6, false), mat(AMBER, 0.95));
       const fatArc = new THREE.Mesh(new THREE.TubeGeometry(curve, 24, 0.05, 6, false), unseen());
-      const level = new THREE.Line(new THREE.BufferGeometry().setFromPoints([P, P.clone().addScaledVector(hv, TILT_R)]),
+      const level = new THREE.Line(new THREE.BufferGeometry().setFromPoints([P, P.clone().addScaledVector(it.tiltOnly ? fv : hv, TILT_R)]),
         new THREE.LineDashedMaterial({ color: AMBER, dashSize: 0.03, gapSize: 0.03, depthTest: false, transparent: true, opacity: 0.6 }));
       level.computeLineDistances();
       const knobE = new THREE.Mesh(new THREE.SphereGeometry(0.035, 16, 12), mat(AMBER));
-      knobE.position.copy(P).addScaledVector(hv, TILT_R * Math.cos(e)).addScaledVector(up, TILT_R * Math.sin(e));
+      knobE.position.copy(P).add(new THREE.Vector3(...it.dir).multiplyScalar(TILT_R));
       this.ui.add(arc, level, knobE);
       handle(fatArc, "tilt");
     }
@@ -372,7 +379,7 @@ export class RoomEditor {
       const p = new THREE.Vector3();
       if (r.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 0, 1), -it.at[2]), p)) ref = Math.atan2(p.y - it.at[1], p.x - it.at[0]);
     } else if (h === "tilt" && it.dir) {
-      const a = this.tiltAngle(r, it.at, angles(it.dir, it.front).h);
+      const a = this.tiltAngle(r, it.at, this.tiltHeading(it));
       if (a !== null) ref = a;
     }
     this.drag = { handle: h, p0, start: { ...it }, ref };
@@ -390,6 +397,11 @@ export class RoomEditor {
     return r.intersectPlane(new THREE.Plane().setFromNormalAndCoplanarPoint(n.normalize(), new THREE.Vector3(...at)), p) ? p : null;
   }
 
+  /** The heading a light's tilt arc stands on: a U-bracket's, its bar's front; else the way it points. */
+  private tiltHeading(it: Editable): number {
+    if (it.tiltOnly && it.front) return Math.atan2(it.front[1], it.front[0]);
+    return angles(it.dir ?? [1, 0, 0], it.front).h;
+  }
   /** The angle above level of where the cursor's ray meets the upright plane through ``at`` along heading ``h``. */
   private tiltAngle(r: THREE.Ray, at: Vec3, h: number): number | null {
     const n = new THREE.Vector3(-Math.sin(h), Math.cos(h), 0);
@@ -404,6 +416,10 @@ export class RoomEditor {
   readout(): string | null {
     const d = this.drag, it = this.live;
     if (!d || !it || !it.dir || (d.handle !== "turn" && d.handle !== "tilt")) return null;
+    if (it.tiltOnly && it.front) {                       // a U-bracket: its tilt from straight up, as on the bracket
+      const f = it.front, l = Math.round(D(Math.atan2(it.dir[0] * f[0] + it.dir[1] * f[1], it.dir[2])) * 2) / 2;
+      return `Tilt ${Math.abs(l) < 0.25 ? "straight up" : l < 0 ? `${-l}° back (away from the room)` : `${l}° forward (towards the room)`}`;
+    }
     const w = aimWords(it.dir, it.front);
     const dirTxt = Math.abs(w.direction) < 0.25 ? "straight ahead" : `${Math.abs(w.direction)}° ${w.direction > 0 ? "right" : "left"}`;
     const elTxt = Math.abs(w.elevation - 90) < 0.25 ? "straight up" : Math.abs(w.elevation) < 0.25 ? "level" : `${Math.abs(w.elevation)}° ${w.elevation > 0 ? "above" : "below"} level`;
@@ -452,6 +468,15 @@ export class RoomEditor {
       if (!p || d.ref === undefined) return;
       const { h, e } = angles(s.dir, s.front);
       it.dir = fromAngles(h + Math.atan2(p.y - s.at[1], p.x - s.at[0]) - d.ref, e);
+    } else if (d.handle === "tilt" && s.dir && s.tiltOnly) {
+      // a U-bracket: the tilt about its bar's length, from up (0) forward (+) or back (-), as far as straight down
+      const h = this.tiltHeading(s);
+      const a = this.tiltAngle(r, s.at, h);
+      if (a === null || d.ref === undefined) return;
+      const fv = new THREE.Vector3(Math.cos(h), Math.sin(h), 0);
+      const lean0 = Math.atan2(s.dir[0] * fv.x + s.dir[1] * fv.y, s.dir[2]);
+      const lean = Math.max(-Math.PI / 2, Math.min(Math.PI, lean0 - (a - d.ref)));
+      it.dir = [fv.x * Math.sin(lean), fv.y * Math.sin(lean), Math.cos(lean)];
     } else if (d.handle === "tilt" && s.dir) {
       // elevation only: the cursor's angle on the upright arc, from straight down to straight up
       const { h, e } = angles(s.dir, s.front);

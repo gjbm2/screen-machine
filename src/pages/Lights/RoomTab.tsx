@@ -110,6 +110,15 @@ function leanTurnOf(direction: number, elevation: number): { lean_deg: number; t
   if (Math.abs(rel) <= 90) return { lean_deg: 90 - e, turn_deg: rel };
   return { lean_deg: -(90 - e), turn_deg: rel - Math.sign(rel) * 180 };
 }
+/** A U-bracket's tilt in words: degrees from straight up, towards the room (its bar's front) or away from it. */
+const tiltWords = (lean: number) => {
+  const l = Math.round(lean * 2) / 2;
+  if (Math.abs(l) < 0.25) return "straight up";
+  if (Math.abs(l - 90) < 0.25) return "level, towards the room";
+  if (Math.abs(l - 180) < 0.25) return "straight down";
+  if (l < 0) return `${-l}° back from straight up: away from the room`;
+  return l < 90 ? `${l}° forward from straight up: towards the room` : `${l - 90}° below level, towards the room`;
+};
 const directionWords = (d: number) => (Math.abs(d) < 0.25 ? "straight ahead, the way the bar faces" : `${Math.abs(d)}° to the ${d > 0 ? "right" : "left"} of the way the bar faces`);
 const elevationWords = (e: number) => (Math.abs(e - 90) < 0.25 ? "straight up" : Math.abs(e) < 0.25 ? "level"
   : e > 0 ? `${e}° above level (${90 - e}° from straight up)` : `${-e}° below level`);
@@ -709,7 +718,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
           <H>Lights on it</H>
           {bar.parts.filter((p) => p.at).map((p) => {
             const a = bar.aims.find((x) => x.id === p.id);
-            return row(partKey(p), short(p, bar), a ? elevationWords(aimOf(a).elevation) : p.head ? "moving head" : "strobe LED");
+            return row(partKey(p), short(p, bar), a ? (a.turns ? elevationWords(aimOf(a).elevation) : tiltWords(a.lean_deg)) : p.head ? "moving head" : "strobe LED");
           })}
         </>
       )}
@@ -728,20 +737,21 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
             return (
               <>
                 {light.turns ? (
-                  <Angle label="Direction (+ right, − left)" min={-180} max={180} value={a.direction} words={directionWords(a.direction)} disabled={busy} testid="aim-direction"
-                    onKeep={(v) => void changeLight(light, leanTurnOf(v, a.elevation), `turn ${light.label}`)} />
+                  <>
+                    <Angle label="Direction (+ right, − left)" min={-180} max={180} value={a.direction} words={directionWords(a.direction)} disabled={busy} testid="aim-direction"
+                      onKeep={(v) => void changeLight(light, leanTurnOf(v, a.elevation), `turn ${light.label}`)} />
+                    <Angle label="Elevation (+ up, − down)" min={-90} max={90} value={a.elevation} words={elevationWords(a.elevation)} disabled={busy} testid="aim-elevation"
+                      onKeep={(v) => void changeLight(light, leanTurnOf(a.direction, v), `tilt ${light.label}`)} />
+                  </>
                 ) : (
-                  <div className="py-1" data-testid="aim-direction">
-                    <div className="text-stone-600">Direction</div>
-                    <div className="text-stone-500">It sits in a U-bracket, so it only tilts: it faces where {lightBar?.label ?? "its bar"} faces. Turn the bar to turn it.</div>
-                    {Math.abs(light.turn_deg) > 0.05 && (
-                      <button className={`${btn} mt-1`} disabled={busy} onClick={() => void changeLight(light, { turn_deg: null }, `straighten ${light.label}`)}>
-                        Straighten it (it is set {Math.abs(a.direction)}° {a.direction > 0 ? "right" : "left"})</button>
-                    )}
-                  </div>
+                  // a U-bracket: one angle, as you set it on the real bracket (owner, 27 Nov: "still don't understand
+                  // why lasers don't face the same way??": two angles hid that one was tilted back over its bar)
+                  <>
+                    <Angle label="Tilt (− back, + forward)" min={-90} max={180} value={Math.round(light.lean_deg * 2) / 2} words={tiltWords(light.lean_deg)} disabled={busy} testid="aim-tilt"
+                      onKeep={(v) => void changeLight(light, { lean_deg: v, turn_deg: null }, `tilt ${light.label}`)} />
+                    <div className="text-[12px] text-stone-500">It sits in a U-bracket, so it only tilts, about the bar's length: it faces where {lightBar?.label ?? "its bar"} faces. Turn the bar to turn it.</div>
+                  </>
                 )}
-                <Angle label="Elevation (+ up, − down)" min={-90} max={90} value={a.elevation} words={elevationWords(a.elevation)} disabled={busy} testid="aim-elevation"
-                  onKeep={(v) => void changeLight(light, leanTurnOf(a.direction, v), `tilt ${light.label}`)} />
                 <div className="mb-2 text-[12px] text-stone-500">{light.turns ? "In the view: drag the blue ring to turn it, the amber arc to raise or lower it." : "In the view: drag the amber arc to tilt it."}</div>
               </>
             );
@@ -754,7 +764,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
               )}
               {check.crosses.length > 0 && (check.clear_lean_deg === null ? <div>No tilt clears it: move the region or the bar.</div> : (
                 <button className={`${btn} mt-1`} disabled={busy} onClick={() => void changeLight(light, { lean_deg: check.clear_lean_deg }, `tilt ${light.label} clear`)}>
-                  Tilt it clear ({elevationWords(aimOf({ lean_deg: check.clear_lean_deg, turn_deg: light.turn_deg }).elevation)})
+                  Tilt it clear ({tiltWords(check.clear_lean_deg)})
                 </button>
               ))}
             </>
