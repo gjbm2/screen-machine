@@ -311,9 +311,14 @@ export class RoomSim {
     const byBar = new Map<string, Fixture[]>();
     for (const f of m.fixtures) if (f.part && f.part !== "dimmer") byBar.set(f.bar, [...(byBar.get(f.bar) ?? []), f]);
     for (const f of m.fixtures) if (f.part === "dimmer" && f.at) this.parts.push(this.houseLight(f));
-    for (const [, fs] of byBar) this.buildUnit(fs, m);
+    for (const [bar, fs] of byBar) {
+      // a bar (in the room model) or several parts of one unit: the bar; a light on its own: its own mount
+      if (fs.length === 1 && !m.bars.some((b) => b.id === bar)) this.buildLone(fs[0], m);
+      else this.buildUnit(fs, m);
+    }
     for (const f of m.fixtures) {
-      if (f.kind === "screen" && f.screen && f.plane && f.at) this.buildScreen(f);
+      if (f.device && f.at) this.buildDevice(f);
+      else if (f.kind === "screen" && f.screen && f.plane && f.at) this.buildScreen(f);
       else if (!f.part && f.kind === "lamp" && f.at) this.buildLamp(f);
     }
     for (const p of m.points) if (p.device === "mirror_ball") this.buildBall(v3(p.at));
@@ -936,6 +941,76 @@ export class RoomSim {
     lm.m.material.color.copy(lm.l.color).multiplyScalar(1 / (Math.PI * 0.09 ** 2));
   }
 
+  /** A light on its own (not a part of a bar): a stand from the floor to it, or a short drop from the ceiling above
+   *  it, and the light itself, facing the room's middle. */
+  private buildLone(f: Fixture, m: RoomModel) {
+    const at = v3(f.at!), up = new THREE.Vector3(0, 0, 1), H = m.size[2];
+    const front = v3(m.centre).sub(at).setZ(0);
+    if (front.lengthSq() < 1e-6) front.set(0, 1, 0);
+    front.normalize();
+    const axis = new THREE.Vector3(-front.y, front.x, 0);
+    if (f.part !== "hazer") {
+      const fromCeiling = at.z > H * 0.6;
+      const len = fromCeiling ? Math.max(0.05, H - at.z - 0.1) : Math.max(0.05, at.z - 0.15);
+      const rod = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, len, 8), dark);
+      aimY(rod, up); rod.position.set(at.x, at.y, fromCeiling ? at.z + 0.1 + len / 2 : len / 2); this.built.add(rod);
+      if (!fromCeiling) {
+        const foot = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.18, 0.02, 20), dark);
+        aimY(foot, up); foot.position.set(at.x, at.y, 0.01); this.built.add(foot);
+      }
+    }
+    const dir = this.fixedDir(f, front, axis, 0, 0.35);
+    if (f.part === "par") this.parts.push(this.par(f, at.clone().addScaledVector(dir, 0.04), dir));
+    else if (f.part === "derby") this.parts.push(this.derby(f, at.clone().addScaledVector(dir, 0.05), dir, axis));
+    else if (f.part === "spot") this.parts.push(this.spot(f, front));
+    else if (f.part === "laser" || f.part === "laser50" || f.part === "laser51") this.parts.push(this.laser(f, at, front, axis));
+    else if (f.part === "flash" || f.part === "flashled") this.parts.push(this.strobe(f, at, front, axis));
+    else if (f.part === "hazer") {
+      if (f.planned) {                                           // a planned hazer: its box only (it hazes nothing)
+        const box = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.15, 0.39), darker); box.position.copy(at); this.built.add(box);
+      } else this.parts.push(this.hazer(f));
+    }
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.08, 0.12, 20), darker);   // the light's own body
+    aimY(body, dir); body.position.copy(at).addScaledVector(dir, -0.03);
+    if (f.part !== "hazer" && f.part !== "spot") this.built.add(body);
+  }
+
+  /** A room device that isn't a light: a microphone on its stand, a light sensor, a mirror ball, a lamp, a screen. */
+  private buildDevice(f: Fixture) {
+    const at = v3(f.at!), up = new THREE.Vector3(0, 0, 1);
+    switch (f.device) {
+      case "mirror-ball": this.buildBall(at); break;
+      case "hue-lamp": this.buildLamp({ ...f, kind: "lamp" }); break;
+      case "mic": {
+        const stand = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, Math.max(0.1, at.z - 0.05), 8), dark);
+        aimY(stand, up); stand.position.set(at.x, at.y, Math.max(0.1, at.z - 0.05) / 2); this.built.add(stand);
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.12, 0.015, 20), dark);
+        aimY(base, up); base.position.set(at.x, at.y, 0.008); this.built.add(base);
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.03, 16, 12), new THREE.MeshStandardMaterial({ color: 0x6b7280, metalness: 0.6, roughness: 0.4 }));
+        head.position.copy(at); this.built.add(head);
+        break;
+      }
+      case "light-sensor": {
+        const puck = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.02, 20), new THREE.MeshStandardMaterial({ color: 0xe5e7eb, roughness: 0.6 }));
+        aimY(puck, up); puck.position.copy(at); this.built.add(puck);
+        const eye = new THREE.Mesh(new THREE.CircleGeometry(0.012, 16), new THREE.MeshBasicMaterial({ color: 0x1f2937 }));
+        eye.position.copy(at).add(new THREE.Vector3(0, 0, 0.011)); this.built.add(eye);
+        break;
+      }
+      case "screen": {
+        const pl = f.plane ?? { normal: [0, -1, 0] as Vec3, up: [0, 0, 1] as Vec3, size: [1.2, 0.7] as [number, number] };
+        const panel = new THREE.Mesh(new THREE.PlaneGeometry(pl.size[0], pl.size[1]), new THREE.MeshStandardMaterial({ color: 0x111318, roughness: 0.3 }));
+        const zN = v3(pl.normal).normalize(), yU = v3(pl.up).normalize(), xR = new THREE.Vector3().crossVectors(yU, zN);
+        panel.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(xR, yU, zN));
+        panel.position.copy(at).addScaledVector(zN, 0.02); this.built.add(panel);
+        const frame = new THREE.Mesh(new THREE.BoxGeometry(pl.size[0] + 0.04, pl.size[1] + 0.04, 0.03), dark);
+        frame.quaternion.copy(panel.quaternion); frame.position.copy(at).addScaledVector(zN, 0.005); this.built.add(frame);
+        break;
+      }
+      default: break;
+    }
+  }
+
   private buildBall(at: THREE.Vector3) {
     const ball = new THREE.Mesh(new THREE.SphereGeometry(0.2, 24, 16),
       new THREE.MeshStandardMaterial({ color: 0xcfd4dc, metalness: 1, roughness: 0.15, flatShading: true }));
@@ -963,8 +1038,9 @@ export class RoomSim {
     beamShared.on.value = air;
     beamShared.scatter.value = this.showPaths ? Math.max(sig, 0.3) : sig;
     beamShared.sigma.value = this.showPaths ? 0 : sig;
-    const hl = this.hl;
+    const hl = this.hl, vhl = this.vhl;
     const ch = (f: Fixture, i: number) => {
+      if (f.planned) return f.address == null ? 0 : vhl.get(f.address - 1 + i) ?? 0;    // planned: nothing on the wire
       if (f.address == null || (this.universe != null && f.universe != null && f.universe !== this.universe)) return 0;
       const a = f.address - 1 + i;
       return a >= 0 && a < 512 ? hl.get(a) ?? this.dmx[a] : 0;
@@ -1026,7 +1102,8 @@ export class RoomSim {
     const m = this.model;
     if (!m) return [];
     const t = performance.now() / 1000;
-    const ch = (f: Fixture, i: number) => (f.address == null ? 0 : this.hl.get(f.address - 1 + i) ?? this.dmx[f.address - 1 + i] ?? 0);
+    const ch = (f: Fixture, i: number) => (f.address == null ? 0 : f.planned ? this.vhl.get(f.address - 1 + i) ?? 0
+      : this.hl.get(f.address - 1 + i) ?? this.dmx[f.address - 1 + i] ?? 0);
     const c: Ctx = { ch, t, dt: 0, air: true, haze: this.haze, size: m.size, room: this.light };
     const out = new Map<string, [string, string][]>();
     for (const p of this.parts) {
@@ -1195,15 +1272,18 @@ export class RoomSim {
   // full, the laser's three diodes), its strobe off; where it points and how it turns are left to the wire. Drawn
   // here only: nothing is sent to a light. The rest go on showing what the preview or the wire says.
   private hl = new Map<number, number>();                     // DMX slot (0-based) -> the value drawn instead
+  private vhl = new Map<number, number>();                    // the same for planned lights' virtual slots
   highlight(key: string | null) {
     this.hl = new Map();
+    this.vhl = new Map();
     const m = this.model;
     if (!key || !m) return;
     const id = key.slice(key.indexOf(":") + 1), kind = key.slice(0, key.indexOf(":"));
     const fs = kind === "bar" ? m.fixtures.filter((f) => f.bar === id && f.part) : m.fixtures.filter((f) => f.id === id);
     for (const f of fs) {
       if (f.address == null) continue;
-      const set = (vals: Record<number, number>) => { for (const [i, v] of Object.entries(vals)) this.hl.set(f.address! - 1 + Number(i), v); };
+      const into = f.planned ? this.vhl : this.hl;
+      const set = (vals: Record<number, number>) => { for (const [i, v] of Object.entries(vals)) into.set(f.address! - 1 + Number(i), v); };
       switch (f.part) {
         case "par": set({ 0: 0, 1: 0, 2: 0, 3: 0, 4: 255, 5: 0, 6: 0 }); break;        // white, no strobe
         case "derby": set({ 0: 0, 1: 0, 2: 0, 3: 255, 4: 0 }); break;               // white, no strobe (it keeps turning)

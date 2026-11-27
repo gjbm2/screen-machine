@@ -1865,7 +1865,8 @@ class Api:
             items.append({"id": lay, "label": spacemod.humanise(lay), "group": "Light bars", "what": "bar"})
         for row in types if isinstance(types, list) else []:
             if isinstance(row, dict) and isinstance(row.get("id"), str):
-                items.append({"id": row["id"], "label": row.get("label") or row["id"], "group": "Lights", "what": "light"})
+                items.append({"id": row["id"], "label": row.get("label") or row["id"], "group": "Lights", "what": "light",
+                              "footprint": row.get("footprint")})
         for kind, words in spacemod.ROOM_DEVICE_KINDS.items():
             items.append({"id": kind, "label": words, "group": "Room", "what": "device"})
         return _json({"items": items})

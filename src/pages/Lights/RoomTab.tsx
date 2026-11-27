@@ -42,7 +42,20 @@ type PartAim = { part: string; id: string; label: string; at: Vec3 | null; lean_
   turns: boolean };
 /** Every part of a bar, in order along it (left to right as you face it): the aimable ones are in ``aims`` too. */
 type BarPartBits = { part: string; id: string; label: string; at: Vec3 | null; along: number; head: boolean; hang: boolean; aimable: boolean };
-type BarBits = { id: string; label: string; at: Vec3; facing_deg: number; front: Vec3; editable: boolean; aims: PartAim[]; parts: BarPartBits[] };
+/** A thing in the room: a light or screen of the rig, or a PLANNED one (owner, 27 Nov: "not all of these objects are
+ *  'connected' (i.e. real) ... this allows me to treat the studio like a studio"): placed and drawn, driving nothing
+ *  until it is connected. ``dev``: a room device's kind (screen, hue-lamp, mirror-ball, mic, light-sensor);
+ *  ``typeId``: a planned light's type; ``connect``: what a device stands for, once connected. */
+type PThing = Placeable & { planned?: boolean; dev?: string | null; connect?: string | null; typeId?: string | null };
+type LibItem = { id: string; label: string; group: string; what: "bar" | "light" | "device"; footprint?: number | null };
+type RigRow = { id: string; label: string; type: string | null; node_ip: string | null; universe: number | null; address: number | null;
+  footprint: number | null; editable: boolean };
+const DEVICES = new Set(["screen", "hue-lamp", "mirror-ball", "mic", "light-sensor"]);
+const DEVICE_WORDS: Record<string, string> = { screen: "A screen or TV", "hue-lamp": "A Hue lamp", "mirror-ball": "A mirror ball",
+  mic: "A microphone", "light-sensor": "A light sensor" };
+const FRONT_VEC: Record<string, [number, number]> = { north: [0, 1], east: [1, 0], south: [0, -1], west: [-1, 0] };
+type BarBits = { id: string; label: string; at: Vec3; facing_deg: number; front: Vec3; editable: boolean; aims: PartAim[]; parts: BarPartBits[];
+  layout: string | null };
 type SpaceBits = ReturnType<typeof keepOutOf> & { size: Vec3; bars: BarBits[]; room: RoomSpace; partIds: Set<string>;
   /** What the deployment's own space.yaml sets ("screen:<id>", "place:<name>", ...): the page can't move it. */
   locked: Set<string> };
@@ -74,16 +87,19 @@ function barsFrom(s: any): BarBits[] {
   return Object.entries(s?.bars ?? {}).flatMap(([id, b]: [string, any]) =>
     isV3(b?.at) && isV3(b?.front)
       ? [{ id, label: typeof b.label === "string" ? b.label : id, at: b.at, facing_deg: Number(b.facing_deg) || 0, front: b.front,
-           editable: b.editable !== false,
+           editable: b.editable !== false, layout: typeof b.layout === "string" ? b.layout : null,
            aims: Object.entries(b.parts ?? {}).flatMap(([part, p]: [string, any]) =>
              p?.aim && typeof p.aim.lean_deg === "number"
-               ? [{ part, id: String(p.id), label: String(p.label ?? p.id), at: isV3(s?.appliances?.[p.id]?.at) ? s.appliances[p.id].at : null,
+               ? [{ part, id: String(p.id), label: typeof p.label === "string" && p.label !== p.id ? p.label : `${typeof b.label === "string" ? b.label : id} ${part.replace(/(\d+)$/, " $1")}`,
+                    at: isV3(s?.appliances?.[p.id]?.at) ? s.appliances[p.id].at : null,
                     lean_deg: p.aim.lean_deg, turn_deg: Number(p.aim.turn_deg) || 0, own: p.aim.own === true, turns: p.turns !== false }]
                : []),
            parts: Object.entries(b.parts ?? {}).map(([part, p]: [string, any]) => {
              const at: Vec3 | null = isV3(s?.appliances?.[p.id]?.at) ? s.appliances[p.id].at : null;
              const ax = [-b.front[1], b.front[0]];           // space.py's: + to the right as you face the bar
-             return { part, id: String(p.id), label: String(p.label ?? p.id), at,
+             const own = typeof p.label === "string" && p.label !== p.id ? p.label : null;      // a planned part: no light's name yet
+             const barName = typeof b.label === "string" ? b.label : id;
+             return { part, id: String(p.id), label: own ?? `${barName} ${part.replace(/(\d+)$/, " $1")}`, at,
                       along: at ? (at[0] - b.at[0]) * ax[0] + (at[1] - b.at[1]) * ax[1] : 0,
                       head: p.head === true, hang: p.hang === true, aimable: !!p.aim && typeof p.aim.lean_deg === "number" };
            }).sort((u, v) => u.along - v.along) }]
@@ -174,6 +190,89 @@ function NameField({ value, disabled, onKeep }: { value: string; disabled?: bool
       onChange={(e) => setText(e.target.value)} onBlur={keep}
       onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") { e.stopPropagation(); setText(value); (e.target as HTMLInputElement).blur(); } }}
       className="-mx-1 w-full rounded border border-transparent bg-transparent px-1 py-0.5 text-[15px] font-semibold text-stone-900 hover:border-stone-300 focus:border-teal-500 focus:bg-white focus:outline-none" />
+  );
+}
+
+/** What a planned device can stand for, read from where each kind lives: a microphone a sound source (show_service's
+ *  senders), a light sensor a room's sensor, a mirror ball a remote-controlled device (room_service). Screens and Hue
+ *  lamps are things of the rig: those are offered by the panel itself. */
+function DeviceConnect({ kind, room, value, busy, onConnect }: {
+  kind: string; room: string; value: string | null; busy: boolean; onConnect: (to: string | null) => void;
+}) {
+  const [opts, setOpts] = useState<{ id: string; label: string }[] | null>(null);
+  useEffect(() => {
+    let dead = false;
+    void (async () => {
+      try {
+        let out: { id: string; label: string }[] = [];
+        if (kind === "mic") {
+          const st: any = await (await fetch(`${room}/show/api/v1/state`, { cache: "no-store" })).json();
+          out = Object.entries(st?.senders ?? {}).flatMap(([sid, x]: [string, any]) =>
+            (Array.isArray(x?.streams) ? x.streams : []).map((st2: string) => ({ id: String(st2), label: `${st2} (from ${sid})` })));
+        } else if (kind === "light-sensor") {
+          const st: any = await (await fetch(`${room}/api/v1/status`, { cache: "no-store" })).json();
+          out = (st?.rooms ?? []).flatMap((r: any) => (Array.isArray(r?.sensors) ? r.sensors : []).map((x: any) =>
+            ({ id: String(x?.id ?? x), label: String(x?.label ?? x?.id ?? x) })));
+        } else if (kind === "mirror-ball") {
+          const d: any = await (await fetch(`${room}/api/v1/remotes`, { cache: "no-store" })).json();
+          out = (d?.remotes ?? []).map((x: any) => ({ id: String(x?.id), label: String(x?.label ?? x?.id) }));
+        }
+        if (!dead) setOpts(out);
+      } catch { if (!dead) setOpts([]); }
+    })();
+    return () => { dead = true; };
+  }, [kind, room]);
+  const where = kind === "mic" ? "a microphone sending to the room (Settings › Listening)" : kind === "light-sensor"
+    ? "a light sensor in a room (Settings)" : "a remote-controlled device (Light setup › Appliances worked by remote)";
+  if (opts === null) return <div className="text-stone-500">Looking for what it can be…</div>;
+  return (
+    <div className="space-y-1.5">
+      {value && <div>Connected to <b>{opts.find((o) => o.id === value)?.label ?? value}</b>.</div>}
+      {opts.length ? (
+        <select className="h-8 w-full rounded border border-stone-300 bg-white px-2" value={value ?? ""} disabled={busy} data-testid="device-connect"
+          onChange={(e) => onConnect(e.target.value || null)}>
+          <option value="">{value ? "Disconnect (planned again)" : "Connect it to…"}</option>
+          {opts.map((o) => <option key={o.id} value={o.id}>{o.label}</option>)}
+        </select>
+      ) : <div className="text-stone-500">There is no {where} to connect it to yet.</div>}
+    </div>
+  );
+}
+
+/** Where a light (or a bar's first channel) is to be on the DMX wire: an Art-Net box, its universe, the address. */
+function DmxPick({ nodes, suggest, footprint, busy, onConnect, words }: {
+  nodes: { ip: string; universe: number }[]; suggest: number; footprint: number; busy: boolean;
+  onConnect: (ip: string, universe: number, address: number) => void; words: string;
+}) {
+  const [node, setNode] = useState(nodes[0] ? `${nodes[0].ip}|${nodes[0].universe}` : "");
+  const [ip, setIp] = useState(nodes[0]?.ip ?? "");
+  const [uni, setUni] = useState(String(nodes[0]?.universe ?? 1));
+  const [addr, setAddr] = useState(String(suggest));
+  useEffect(() => setAddr(String(suggest)), [suggest]);
+  const a = Number(addr), u = Number(uni);
+  const ok = /^\d{1,3}(\.\d{1,3}){3}$/.test(ip) && Number.isInteger(u) && u >= 0 && Number.isInteger(a) && a >= 1 && a + footprint - 1 <= 512;
+  const field = "h-8 w-full rounded border border-stone-300 bg-white px-2 text-stone-900";
+  return (
+    <div className="space-y-1.5" data-testid="dmx-pick">
+      {nodes.length > 0 && (
+        <select className={field} value={node} aria-label="Art-Net box"
+          onChange={(e) => { setNode(e.target.value); const [i, uu] = e.target.value.split("|"); if (i) { setIp(i); setUni(uu); } }}>
+          {nodes.map((n) => <option key={`${n.ip}|${n.universe}`} value={`${n.ip}|${n.universe}`}>Box {n.ip}, universe {n.universe}</option>)}
+          <option value="">Another box…</option>
+        </select>
+      )}
+      {(!nodes.length || !node) && (
+        <div className="grid grid-cols-[1fr_70px] gap-1.5">
+          <input className={field} value={ip} onChange={(e) => setIp(e.target.value)} placeholder="Box IP (192.168.1.50)" aria-label="Box IP" />
+          <input className={field} value={uni} onChange={(e) => setUni(e.target.value)} aria-label="Universe" placeholder="Universe" />
+        </div>
+      )}
+      <label className="grid grid-cols-[1fr_90px] items-center gap-2"><span className="text-stone-600">{words}</span>
+        <input className={field} value={addr} onChange={(e) => setAddr(e.target.value)} aria-label="DMX address" inputMode="numeric" /></label>
+      <div className="text-[12px] text-stone-500">Channels {a || "?"}–{a ? a + footprint - 1 : "?"} ({footprint}).</div>
+      <button className="w-full rounded-lg bg-teal-600 px-2.5 py-1.5 font-medium text-white hover:bg-teal-700 disabled:opacity-50" disabled={!ok || busy}
+        onClick={() => onConnect(ip, u, a)} data-testid="connect">Connect: make it a real light</button>
+    </div>
   );
 }
 
@@ -303,6 +402,14 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   const read = useCallback(async () => {
     try {
       const s: any = await api.space();
+      try {
+        const rr: any = await (await fetch(`${room}/show/api/v1/rig`, { cache: "no-store" })).json();
+        setRig((Array.isArray(rr?.fixtures) ? rr.fixtures : []).map((f: any) => ({ id: String(f.id), label: String(f.label ?? f.id),
+          type: f.type ?? null, node_ip: f.node_ip ?? null, universe: typeof f.universe === "number" ? f.universe : null,
+          address: typeof f.address === "number" ? f.address : null, footprint: typeof f.footprint === "number" ? f.footprint : null,
+          editable: f.editable === true })));
+      } catch { /* the rig's rows: next time */ }
+      layoutsOf.current = Object.fromEntries(Object.entries(s?.layouts ?? {}).map(([k, v]: [string, any]) => [k, v?.parts ?? {}]));
       const partIds = new Set<string>(Object.values(s?.bars ?? {}).flatMap((b: any) => Object.values(b?.parts ?? {}).map((p: any) => String(p?.id ?? ""))));
       const locked = new Set<string>([
         ...Object.entries(s?.appliances ?? {}).filter(([, a]: [string, any]) => a?.editable === false).flatMap(([id]) => [`screen:${id}`, `thing:${id}`]),
@@ -369,12 +476,16 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   // the room's other things (the old Room map's): every light and screen the rig knows that is not a part of a bar,
   // and any planned thing placed in the room; which of them are in the room and which are not yet
   const { placedThings, unplacedThings } = useMemo(() => {
-    if (!bits) return { placedThings: [] as Placeable[], unplacedThings: [] as Placeable[] };
-    const mine = things.filter((t) => !bits.partIds.has(t.id));
+    if (!bits) return { placedThings: [] as PThing[], unplacedThings: [] as PThing[] };
+    const mine: PThing[] = things.filter((t) => !bits.partIds.has(t.id));
     const known = new Set(mine.map((t) => t.id));
-    const extra: Placeable[] = Object.entries(bits.room.appliances)
-      .filter(([id, a]) => a.at && !known.has(id) && !bits.partIds.has(id) && !a.kind)
-      .map(([id, a]) => ({ id, label: a.label ?? nameWords(id), kind: a.plane ? "screen" : "lamp", zone: null, screen: null }));
+    const extra: PThing[] = Object.entries(bits.room.appliances)
+      .filter(([id, a]) => a.at && !known.has(id) && !bits.partIds.has(id))
+      .map(([id, a]) => {
+        const k = a.kind ?? null, dev = k && DEVICES.has(k) ? k : null;
+        return { id, label: a.label ?? nameWords(id), kind: k === "screen" || (!k && a.plane) ? "screen" : "lamp", zone: null, screen: null,
+                 planned: !!k && !(dev && a.connect), dev, connect: a.connect ?? null, typeId: k && !dev ? k : null };
+      });
     const all = [...mine, ...extra];
     return { placedThings: all.filter((t) => bits.room.appliances[t.id]?.at), unplacedThings: all.filter((t) => !bits.room.appliances[t.id]?.at) };
   }, [bits, things]);
@@ -405,8 +516,8 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       if (!a?.at) continue;
       if (t.kind === "screen") {
         const n = (a.plane?.normal ?? [0, -1, 0]) as Vec3, sz = a.plane?.size ?? [1, 0.6];
-        out.push({ key: `screen:${t.id}`, kind: "screen", label: t.label, at: a.at, size: [0.08, sz[0], sz[1]], yaw: Math.atan2(n[1], n[0]), normal: n });
-      } else out.push({ key: `thing:${t.id}`, kind: "thing", label: t.label, at: a.at, size: THING_BOX });
+        out.push({ key: `screen:${t.id}`, kind: "screen", label: t.planned ? `${t.label} (planned)` : t.label, at: a.at, size: [0.08, sz[0], sz[1]], yaw: Math.atan2(n[1], n[0]), normal: n });
+      } else out.push({ key: `thing:${t.id}`, kind: "thing", label: t.planned ? `${t.label} (planned)` : t.label, at: a.at, size: THING_BOX });
     }
     for (const p of bits.room.points) out.push({ key: `place:${p.name}`, kind: "place", label: p.label, at: p.at, size: [0.3, 0.3, 0.3] });
     for (const a of bits.room.regions) {
@@ -423,11 +534,19 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   const light = lightBar?.aims.find((p) => p.id === id);
   const region = kind === "region" ? bits?.keepOut.find((r) => r.name === id) : undefined;
   const check = light ? bits?.lasers[light.id] : undefined;
-  const thing = (kind === "screen" || kind === "thing") ? placedThings.find((t) => t.id === id) : undefined;
+  const thing: PThing | undefined = (kind === "screen" || kind === "thing") ? placedThings.find((t) => t.id === id) : undefined;
   const thingAt = thing ? bits?.room.appliances[thing.id] : undefined;
   const place = kind === "place" ? bits?.room.points.find((p) => p.name === id) : undefined;
   const area = kind === "area" ? bits?.room.regions.find((a) => a.name === id) : undefined;
   const [roomName, setRoomName] = useState("The room");
+  // the library (GET /rig/library): what can be added; the rig's rows: which lights are real, where they are patched
+  const [lib, setLib] = useState<LibItem[]>([]);
+  const [rig, setRig] = useState<RigRow[]>([]);
+  const [adding, setAdding] = useState(false);
+  useEffect(() => {
+    fetch(`${room}/show/api/v1/rig/library`, { cache: "no-store" }).then((r) => r.json())
+      .then((d: any) => setLib(Array.isArray(d?.items) ? d.items : [])).catch(() => setLib([]));
+  }, [room, refresh]);
   // the list shows the selected row: scrolled to once when the selection changes (not on every redraw, which fought
   // the owner's own scrolling: "scrolling hierarchy jumps up while I'm still scrolling"), and not when it was clicked
   // in the list (it is in view already)
@@ -465,8 +584,12 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   const changeRegion = useCallback((r: KeepRegion, over: Partial<KeepRegion>, label: string) =>
     act(label, () => putRegion(r, over), () => putRegion(r, {})), [act, putRegion]);
   /** Rename a light, screen or part: its setup's label (the file's stays as it was); undo puts the old name back. */
-  const renameLight = (id: string, was: string, to: string) =>
-    act(`rename ${was}`, () => api.setup(id, { label: to }), () => api.setup(id, { label: was }));
+  const renameLight = (id: string, was: string, to: string) => {
+    const a = bits?.room.appliances[id];
+    if (a?.kind && !rig.some((r) => r.id === id))             // planned: its placement's label (it has no setup yet)
+      return act(`rename ${was}`, () => api.place(id, { label: to }), () => api.place(id, { label: was }));
+    return act(`rename ${was}`, () => api.setup(id, { label: to }), () => api.setup(id, { label: was }));
+  };
   /** A light or screen's "Settings ›": its full settings on the Lights page's sheet. */
   const settingsBtn = (id: string) => onSettings ? (
     <button className={`${btn} mt-3`} onClick={() => onSettings(id)} data-testid="settings">Settings ›</button>
@@ -481,6 +604,143 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
     return act(label, () => api.setArea(a.name, { surface: n.surface, centre: n.centre, size: n.size, label: n.label }),
       () => api.setArea(a.name, { surface: a.surface, centre: a.centre, size: a.size, label: a.label }));
   }, [act, api]);
+  // -- the room as a studio: adding, duplicating, connecting ------------------------------------------------------
+  const rigIds = useMemo(() => new Set(rig.map((r) => r.id)), [rig]);
+  /** A bar none of whose parts is a light of the rig yet. */
+  const barPlanned = (b: BarBits) => rig.length > 0 && !b.parts.some((p) => rigIds.has(p.id));
+  /** An id not yet used by a light, a placed thing or a bar: ``base``-1, -2, ... */
+  const freeId = (base: string) => {
+    const taken = new Set([...rigIds, ...Object.keys(bits?.room.appliances ?? {}), ...(bits?.bars.map((b) => b.id) ?? [])]);
+    const b = base.toLowerCase().replace(/[^a-z0-9_.-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 56) || "thing";
+    for (let n = 1; ; n++) if (!taken.has(`${b}-${n}`)) return { id: `${b}-${n}`, n };
+  };
+  /** Put a library thing in the room, planned (owner, 27 Nov: "I can create new objects easily from this view (of any
+   *  class -- tvs, light objects, mirror balls, ... hazers, etc.)"), at ``at`` or a sensible place for its kind. */
+  const addThing = async (x: LibItem, at?: Vec3, extra: Record<string, unknown> = {}, label?: string) => {
+    if (!bits) return;
+    const [X, Y, Z] = bits.size, fv = FRONT_VEC[bits.room.front] ?? [0, 1];
+    const mid: Vec3 = [r2(X / 2), r2(Y / 2), 0];
+    if (x.what === "bar") {
+      const n = bits.bars.length;
+      const letter = String.fromCharCode(65 + (n % 26));
+      const taken = new Set([...rigIds, ...Object.keys(bits.room.appliances), ...bits.bars.map((b) => b.id)]);
+      const id = !taken.has(`bar-${letter.toLowerCase()}`) ? `bar-${letter.toLowerCase()}` : freeId(`bar-${letter.toLowerCase()}`).id;
+      const depth = Math.abs(fv[0]) * X + Math.abs(fv[1]) * Y;
+      const where: Vec3 = at ?? [r2(X / 2 + fv[0] * (depth / 2 - 0.6)), r2(Y / 2 + fv[1] * (depth / 2 - 0.6)), 2.5];
+      const facing = Math.round((Math.atan2(-fv[1], -fv[0]) * 180) / Math.PI);
+      const lab = label ?? `Bar ${letter}`;
+      await act(`add ${lab}`, () => api.putBar(id, { at: where, facing_deg: facing, layout: x.id, label: lab, ...extra }), () => api.removeBar(id));
+      setSelected(`bar:${id}`); setFrame((k) => k + 1);
+      return;
+    }
+    const { id, n } = freeId(x.id);
+    const plain = x.label.replace(/\s*\([^)]*\)\s*$/, "").trim();                 // "gigbar-par (part, 7 channels)" -> "gigbar-par"
+    const lab = label ?? `${plain && plain !== x.id ? plain : nameWords(x.id)} ${n}`;
+    let body: Record<string, unknown>;
+    if (x.what === "device" && x.id === "screen") {
+      const w = snapToWall(bits.size, ...frontMiddle(bits.size, bits.room.front));
+      body = { at: at ?? [w.x, w.y, 1.6], plane: { normal: w.normal, up: [0, 0, 1], size: [1.2, 0.68] } };
+    } else {
+      const z = x.id === "mic" ? 1.5 : x.id === "light-sensor" ? Z - 0.02 : x.id === "mirror-ball" ? Z - 0.6
+        : x.id === "hue-lamp" ? Z - 0.1 : /hazer|z-350/.test(x.id) ? 0.2 : 2.2;
+      body = { at: at ?? [mid[0], mid[1], r2(z)] };
+    }
+    await act(`add ${lab}`, () => api.place(id, { ...body, kind: x.id, label: lab, ...extra }), () => api.unplace(id));
+    setSelected(`${x.id === "screen" ? "screen" : "thing"}:${id}`); setFrame((k) => k + 1);
+  };
+  /** Ctrl+drag (the editor): a copy of the thing, planned, where it was dropped. */
+  const duplicate = useCallback((key: string, at: Vec3) => {
+    if (!bits) return;
+    const k = kindOf(key), i = idOf(key);
+    if (k === "bar") {
+      const b = bits.bars.find((x) => x.id === i), lay = b?.layout ?? lib.find((x) => x.what === "bar")?.id;
+      if (b && lay) void addThing({ id: lay, label: "", group: "", what: "bar" }, [r2(at[0]), r2(at[1]), b.at[2]], { facing_deg: b.facing_deg }, `${b.label} copy`);
+    } else if (k === "thing" || k === "screen") {
+      const a = bits.room.appliances[i], t = placedThings.find((x) => x.id === i);
+      const typeId = a?.kind ?? rig.find((r) => r.id === i)?.type ?? null;
+      if (!typeId || !t) return;
+      const what = DEVICES.has(typeId) ? "device" : "light";
+      void addThing({ id: typeId, label: t.label, group: "", what }, at.map(r2) as Vec3, a?.plane?.normal ? { plane: placedBody(a).plane } : {}, `${t.label} copy`);
+    } else if (k === "place") {
+      const p = bits.room.points.find((x) => x.name === i);
+      if (!p) return;
+      const { id: nm } = freeId(p.name);
+      void act(`copy ${p.label}`, () => api.setPlace(nm, { at: at.map(r2) as Vec3, label: `${p.label} copy` }), () => api.removePlace(nm)).then(() => setSelected(`place:${nm}`));
+    } else if (k === "region") {
+      const r = bits.keepOut.find((x) => x.name === i);
+      if (!r) return;
+      const { id: nm } = freeId(r.name);
+      void act(`copy ${r.label}`, () => api.putKeepOut(nm, { centre: at.map(r2), size: r.size, groups: r.groups, label: `${r.label} copy` }),
+        () => api.removeKeepOut(nm)).then(() => setSelected(`region:${nm}`));
+    }
+  }, [bits, lib, placedThings, rig, act, api]);
+
+  /** Connect a planned light: register it as a real light at a DMX address (it keeps its id, place and setup). */
+  const connectLight = async (t: PThing, ip: string, universe: number, address: number) => {
+    const a = bits?.room.appliances[t.id];
+    if (!a || !t.typeId) return;
+    const placed = placedBody(a);
+    await act(`connect ${t.label}`, async () => {
+      await api.unplace(t.id);
+      await api.add({ id: t.id, label: t.label, type: t.typeId!, node_ip: ip, universe, address });
+      await api.place(t.id, placed);
+    }, async () => {
+      await api.remove(t.id);
+      await api.place(t.id, { ...placed, kind: t.typeId, label: t.label });
+    });
+  };
+  /** Connect a planned bar: register each of its parts at the bar's start address plus the part's offset. */
+  const connectBar = async (b: BarBits, ip: string, universe: number, start: number) => {
+    const parts = (layoutsOf.current[b.layout ?? ""] ?? {}) as Record<string, any>;
+    const todo = b.parts.filter((p) => typeof parts[p.part]?.type === "string" && typeof parts[p.part]?.offset === "number" && !rigIds.has(p.id));
+    if (!todo.length) { setErr("Its layout doesn't say each part's type and DMX offset (space.yaml layouts)."); return; }
+    await act(`connect ${b.label}`, async () => {
+      for (const p of todo) await api.add({ id: p.id, label: `${b.label} ${p.part.replace(/(\d+)$/, " $1")}`, type: parts[p.part].type, node_ip: ip, universe, address: start + parts[p.part].offset });
+    }, async () => { for (const p of todo) await api.remove(p.id); });
+  };
+  /** Disconnect a light registered on this page: it goes back to planned, in the same place (owner: connect "only when
+   *  I'm ready"). A light in the deployment's own fixtures.yaml stays as it is. */
+  const disconnectLight = async (t: PThing) => {
+    const r = rig.find((x) => x.id === t.id), a = bits?.room.appliances[t.id];
+    if (!r || !r.editable || !a) return;
+    const placed = placedBody(a);
+    await act(`disconnect ${t.label}`, async () => {
+      await api.remove(t.id);
+      await api.place(t.id, { ...placed, kind: r.type, label: t.label });
+    }, async () => {
+      await api.unplace(t.id);
+      await api.add({ id: t.id, label: t.label, type: r.type ?? undefined, node_ip: r.node_ip ?? undefined, universe: r.universe ?? undefined, address: r.address ?? undefined });
+      await api.place(t.id, placed);
+    });
+  };
+  /** Connect (or disconnect, null) a planned device to the real thing it stands for. */
+  const connectDevice = (t: PThing, to: string | null) =>
+    act(to ? `connect ${t.label}` : `disconnect ${t.label}`, () => api.place(t.id, { connect: to }), () => api.place(t.id, { connect: t.connect ?? null }));
+  const layoutsOf = useRef<Record<string, any>>({});
+  /** The Art-Net boxes and universes the rig's lights are on (to connect another there), and the next free address. */
+  const nodes = useMemo(() => {
+    const seen = new Map<string, { ip: string; universe: number }>();
+    for (const r of rig) if (r.node_ip && r.universe !== null) seen.set(`${r.node_ip}|${r.universe}`, { ip: r.node_ip, universe: r.universe });
+    return [...seen.values()];
+  }, [rig]);
+  const nextFree = (n?: { ip: string; universe: number }) =>
+    !n ? 1 : Math.max(1, ...rig.filter((r) => r.node_ip === n.ip && r.universe === n.universe && r.address !== null)
+      .map((r) => r.address! + (r.footprint ?? 1)));
+  const footprintOf = (typeId: string | null | undefined) => lib.find((x) => x.id === typeId)?.footprint ?? 1;
+  const barFootprint = (b: BarBits) => {
+    const parts = (layoutsOf.current[b.layout ?? ""] ?? {}) as Record<string, any>;
+    return Math.max(1, ...Object.values(parts).map((p: any) => (typeof p?.offset === "number" ? p.offset + footprintOf(p.type) : 0)));
+  };
+  /** Connect a planned screen or Hue lamp to one of the rig's: the real one takes its place in the room. */
+  const connectReal = async (t: PThing, realId: string) => {
+    const a = bits?.room.appliances[t.id];
+    if (!a) return;
+    const placed = placedBody(a);
+    await act(`connect ${t.label}`, async () => { await api.place(realId, placed); await api.unplace(t.id); },
+      async () => { await api.unplace(realId); await api.place(t.id, { ...placed, kind: a.kind, label: t.label }); });
+    setSelected(`${t.dev === "screen" ? "screen" : "thing"}:${realId}`);
+  };
+
   /** Bring a thing into the room: the middle (a screen on the middle of the front wall), to be dragged where it is. */
   const putInRoom = (t: Placeable) => {
     if (!bits) return;
@@ -634,20 +894,42 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   // the outliner: everything in the room that can be edited, always there, the selected thing highlighted
   const outliner = !bits ? null : (
     <div className="overflow-auto" data-testid="outliner">
+      <div className="relative mb-1">
+        <button className={`${btn} w-full border-teal-600 text-teal-800`} onClick={() => setAdding((a) => !a)} aria-expanded={adding} data-testid="add">
+          ＋ Add to the room…</button>
+        {adding && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setAdding(false)} />
+            <div className="absolute left-0 right-0 top-full z-20 mt-1 max-h-[60vh] overflow-auto rounded-lg border border-stone-200 bg-white p-1 shadow-lg" data-testid="add-menu">
+              <div className="px-2 py-1 text-[12px] text-stone-500">It goes in planned: drawn and placed, driving nothing until you connect it.</div>
+              {["Light bars", "Lights", "Room"].map((g) => lib.some((x) => x.group === g) && (
+                <div key={g}>
+                  <H>{g}</H>
+                  {lib.filter((x) => x.group === g).map((x) => (
+                    <button key={x.id} className="block w-full rounded px-2 py-1 text-left hover:bg-stone-100" data-testid={`add-${x.id}`}
+                      onClick={() => { setAdding(false); void addThing(x); }}>{(() => { const p = x.label.replace(/\s*\(([^)]*)\)\s*$/, ""); return p === x.id ? nameWords(x.id) : p; })()}
+                      {/\(([^)]*)\)\s*$/.test(x.label) && <span className="text-stone-500"> · {x.label.match(/\(([^)]*)\)\s*$/)![1]}</span>}</button>
+                  ))}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
       {row("room:main", roomName, `${bits.size[0]} × ${bits.size[1]} m, ${bits.size[2]} m high · faces ${bits.room.front}`)}
       <div className="ml-3 border-l border-stone-200 pl-1">
       <H>Bars</H>
       {bits.bars.length === 0 && <div className="px-2 text-stone-500">No bars in the room model.</div>}
       {bits.bars.map((b) => (
         <div key={b.id}>
-          {b.editable ? row(`bar:${b.id}`, b.label, `${b.at[2].toFixed(2)} m up`) : <div className="px-2 py-1">{b.label}<span className="text-stone-500"> · set in the room file</span></div>}
+          {b.editable ? row(`bar:${b.id}`, b.label, barPlanned(b) ? "planned" : `${b.at[2].toFixed(2)} m up`) : <div className="px-2 py-1">{b.label}<span className="text-stone-500"> · set in the room file</span></div>}
           <div className="ml-3 border-l border-stone-200 pl-1">{b.parts.filter((p) => p.at).map((p) => row(partKey(p), short(p, b)))}</div>
         </div>
       ))}
       {placedThings.some((t) => t.kind === "screen") && <H>Screens</H>}
-      {placedThings.filter((t) => t.kind === "screen").map((t) => row(`screen:${t.id}`, t.label, wallOf(bits.room.appliances[t.id]?.plane?.normal) ? `${wallOf(bits.room.appliances[t.id]?.plane?.normal)} wall` : undefined))}
-      {placedThings.some((t) => t.kind !== "screen") && <H>Other lights</H>}
-      {placedThings.filter((t) => t.kind !== "screen").map((t) => row(`thing:${t.id}`, t.label, t.kind === "mover" ? "moving light" : undefined))}
+      {placedThings.filter((t) => t.kind === "screen").map((t) => row(`screen:${t.id}`, t.label, t.planned ? "planned" : wallOf(bits.room.appliances[t.id]?.plane?.normal) ? `${wallOf(bits.room.appliances[t.id]?.plane?.normal)} wall` : undefined))}
+      {placedThings.some((t) => t.kind !== "screen") && <H>Other lights and devices</H>}
+      {placedThings.filter((t) => t.kind !== "screen").map((t) => row(`thing:${t.id}`, t.label, t.planned ? "planned" : t.dev ? DEVICE_WORDS[t.dev]?.replace(/^An? /, "").toLowerCase() : t.kind === "mover" ? "moving light" : undefined))}
       <H>Places</H>
       {bits.room.points.length === 0 && <div className="px-2 text-stone-500">None yet.</div>}
       {bits.room.points.map((p) => row(`place:${p.name}`, p.label))}
@@ -693,7 +975,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
             <span className="truncate">
               {(light || part) && lightBar ? <><span className="text-stone-500">{lightBar.label} › </span>{short((light ?? part)!, lightBar)}</>
                 : roomSel ? roomName : bar ? bar.label : region ? <><span className="text-stone-500">Keep out › </span>{region.label}</>
-                : thing ? <><span className="text-stone-500">{thing.kind === "screen" ? "Screens" : "Lights"} › </span>{thing.label}</>
+                : thing ? <><span className="text-stone-500">{thing.kind === "screen" ? "Screens" : thing.dev ? "Room" : "Lights"} › </span>{thing.label}</>
                 : place ? <><span className="text-stone-500">Places › </span>{place.label}</>
                 : area ? <><span className="text-stone-500">Floor areas › </span>{area.label}</> : selected}
             </span>
@@ -719,7 +1001,17 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       {bar && (
         <>
           <NameField value={bar.label} disabled={busy} onKeep={(v) => void act(`rename ${bar.label}`, () => api.putBar(bar.id, { label: v }), () => api.putBar(bar.id, { label: bar.label }))} />
-          <div className="mb-2 text-stone-500">A bar on its stand</div>
+          <div className="mb-2 text-stone-500">A bar on its stand{bar.layout ? ` (${nameWords(bar.layout)})` : ""}</div>
+          {barPlanned(bar) && (
+            <div className="mb-2 space-y-1.5" data-testid="connection">
+              <div className="rounded-lg bg-amber-50 px-2 py-1.5 text-amber-900" data-testid="planned-state">Planned: drawn and placed here, its lights drive nothing yet.</div>
+              <DmxPick nodes={nodes} suggest={nextFree(nodes[0])} footprint={barFootprint(bar)} busy={busy} words="The bar's start address"
+                onConnect={(ip, u, ad) => void connectBar(bar, ip, u, ad)} />
+              <button className={`${btn} text-rose-700`} disabled={busy} data-testid="remove-bar"
+                onClick={() => { const b = bar; setSelected(null); void act(`remove ${b.label}`, () => api.removeBar(b.id),
+                  () => api.putBar(b.id, { at: b.at, facing_deg: b.facing_deg, layout: b.layout ?? undefined, label: b.label })); }}>Take this bar out of the room</button>
+            </div>
+          )}
           {modeRow("bar")}
           <H>Where it stands</H>
           <Num label="East–west" unit="m" value={bar.at[0]} disabled={busy} onKeep={(v) => void changeBar(bar, { at: [v, bar.at[1], bar.at[2]] }, `move ${bar.label}`)} />
@@ -852,8 +1144,43 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
         <>
           <NameField value={thing.label} disabled={busy} onKeep={(v) => void renameLight(thing.id, thing.label, v)} />
           <div className="mb-2 text-stone-500">
-            {thing.kind === "screen" ? `A screen on the ${wallOf(thingAt.plane?.normal) ?? "front"} wall: drag it along the walls` : thing.kind === "mover" ? "A moving light" : "A light"}
+            {thing.dev ? DEVICE_WORDS[thing.dev] : thing.kind === "screen" ? `A screen on the ${wallOf(thingAt.plane?.normal) ?? "front"} wall: drag it along the walls` : thing.kind === "mover" ? "A moving light" : "A light"}
+            {thing.typeId ? ` (${lib.find((x) => x.id === thing.typeId)?.label ?? thing.typeId})` : ""}
           </div>
+          {(() => {
+            const r = rig.find((x) => x.id === thing.id);
+            const real = !!r && !thing.planned;
+            return (
+              <div className="mb-2 space-y-1.5" data-testid="connection">
+                <div className={`rounded-lg px-2 py-1.5 ${thing.planned ? "bg-amber-50 text-amber-900" : "bg-teal-50 text-teal-900"}`} data-testid="planned-state">
+                  {thing.planned ? "Planned: drawn and placed here, it drives nothing and listens to nothing yet."
+                    : r ? (r.node_ip ? `Connected: a real light, DMX ${r.address}–${(r.address ?? 0) + (r.footprint ?? 1) - 1} on box ${r.node_ip}, universe ${r.universe}.` : "Connected: a real one.")
+                    : "Connected."}
+                </div>
+                {thing.planned && thing.typeId && (
+                  <DmxPick nodes={nodes} suggest={nextFree(nodes[0])} footprint={footprintOf(thing.typeId)} busy={busy} words="Its DMX address"
+                    onConnect={(ip, u, ad) => void connectLight(thing, ip, u, ad)} />
+                )}
+                {thing.dev && (thing.dev === "screen" || thing.dev === "hue-lamp") && thing.planned && (() => {
+                  const cands = unplacedThings.filter((u) => !u.planned && (thing.dev === "screen" ? u.kind === "screen" : u.kind === "lamp" && !rig.find((x) => x.id === u.id)?.node_ip));
+                  return cands.length ? (
+                    <select className="h-8 w-full rounded border border-stone-300 bg-white px-2" value="" disabled={busy} data-testid="device-connect"
+                      onChange={(e) => { if (e.target.value) void connectReal(thing, e.target.value); }}>
+                      <option value="">Connect it to…</option>
+                      {cands.map((c) => <option key={c.id} value={c.id}>{c.label}</option>)}
+                    </select>
+                  ) : <div className="text-stone-500">Every {thing.dev === "screen" ? "screen" : "Hue lamp"} the room has is placed already: add one in Settings, then connect this to it.</div>;
+                })()}
+                {thing.dev && thing.dev !== "screen" && thing.dev !== "hue-lamp" && (
+                  <DeviceConnect kind={thing.dev} room={room} value={thing.connect ?? null} busy={busy} onConnect={(to) => void connectDevice(thing, to)} />
+                )}
+                {real && r?.editable && r.node_ip && (
+                  <button className={btn} disabled={busy} onClick={() => void disconnectLight(thing)} data-testid="disconnect">Disconnect: back to planned</button>
+                )}
+                {real && r && !r.editable && r.node_ip && <div className="text-[12px] text-stone-500">Connected in the deployment's own fixtures.yaml: change it there.</div>}
+              </div>
+            );
+          })()}
           <H>Where it is</H>
           {(["East–west", "North–south", "Height"] as const).map((w, i) => (
             <Num key={w} label={w} unit="m" value={thingAt.at![i]} disabled={busy}
@@ -991,7 +1318,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   return (
     <div className="space-y-3" data-testid="room-tab">
       <Room3DPage embedded refresh={refresh} editables={editables} selected={selected} mode={mode} picked={region?.name ?? null} startNav={plan ? "plan" : undefined}
-        onSelect={(k) => { select(k); if (k) setFrame((n) => n + 1); }} onEdit={onEdit} panel={panel} frame={frame}
+        onSelect={(k) => { select(k); if (k) setFrame((n) => n + 1); }} onEdit={onEdit} onDuplicate={duplicate} panel={panel} frame={frame}
         feed={feed} toolbar={toolbar} />
       <p className="text-[15px] text-muted-foreground">
         Everything in the room is edited here: bars and their lights, screens, other lights, named places, floor areas

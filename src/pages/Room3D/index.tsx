@@ -34,13 +34,15 @@ type NodeStatus = { node?: { udp?: string; universe?: number }; artnet?: { pps?:
  *  its box and leaves the readout to the page around it. ``picked``: the keep-out region being edited there;
  *  ``regions``: the page's own (unsaved) copy of the regions, drawn in place of the room's saved ones. */
 export default function Room3DPage({ embedded = false, picked = null, regions, refresh = 0, editables, selected = null,
-  mode, onSelect, onEdit, panel, frame = 0, feed, toolbar, startNav }: {
+  mode, onSelect, onEdit, onDuplicate, panel, frame = 0, feed, toolbar, startNav }: {
   embedded?: boolean; picked?: string | null; regions?: KeepRegion[];
   /** Bump it to read the room again at once (the page around it has just saved a change). */
   refresh?: number;
   /** The editor (editor.ts): the things that can be clicked and moved, which one is selected, the gizmo's mode, and
    *  what the page does when one is picked or changed. ``panel``: the page's inspector, shown beside the view. */
   editables?: Editable[]; selected?: string | null; mode?: GizmoMode;
+  /** Ctrl+drag let go: copy that thing to there. */
+  onDuplicate?: (key: string, at: [number, number, number]) => void;
   onSelect?: (key: string | null) => void; onEdit?: (key: string, change: EditChange) => void; panel?: ReactNode;
   /** Bump it to turn the camera to the selected thing ("frame selected": picked from the list, or F). */
   frame?: number;
@@ -58,9 +60,9 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
   itemsRef.current = editables ?? [];
   const selRef = useRef<string | null>(null);
   selRef.current = selected;
-  const cb = useRef({ onSelect, onEdit });
+  const cb = useRef({ onSelect, onEdit, onDuplicate });
   const fromView = useRef(false);                                 // the last selection was made in the view
-  cb.current = { onSelect, onEdit };
+  cb.current = { onSelect, onEdit, onDuplicate };
   const press = useRef<{ x: number; y: number } | null>(null);
   const room = useMemo(() => resolveRoomUrl(window.location.search), []);
   const nodeParam = useMemo(() => (new URLSearchParams(window.location.search).get("node") || NODE_DEFAULT).replace(/\/+$/, ""), []);
@@ -149,6 +151,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
     sim.onNav = onNav;
     const ed = new RoomEditor(sim.overlayRoot, sim.overlayScene, sim.camera, canvas);
     ed.onChange = (key, change) => cb.current.onEdit?.(key, change);
+    ed.onDuplicate = (key, at) => cb.current.onDuplicate?.(key, at);
     ed.onPick = (key) => { fromView.current = true; cb.current.onSelect?.(key); };
     onNav(sim.nav);
     ed.onDragging = (on) => sim.hold(on);                         // a handle being dragged holds the camera still

@@ -60,6 +60,8 @@ export interface Draft {
 
 /** POST /show/api/v1/rig/fixtures (PUT takes any part of it). */
 export interface FixtureBody {
+  /** The id it is to have (a planned thing keeps its own when connected); left out: dmx.<its name>. */
+  id?: string;
   label?: string;
   type?: string;
   node_ip?: string;
@@ -818,6 +820,8 @@ export interface PlacedThing {
   /** A room device's own kind and name (a planned GigBAR: "gigbar-2"); a registered light's come from the rig. */
   kind?: string | null;
   label?: string | null;
+  /** A planned room device: the real thing it stands for, once connected (a screen, a lamp, a source, a sensor). */
+  connect?: string | null;
   mount: string | null;
   plane: { normal: Vec3 | null; up: Vec3 | null; size: [number, number] | null } | null;
   teach: Sample[];
@@ -903,6 +907,7 @@ export function parseSpace(v: unknown): RoomSpace {
         at: vec3(a.at),
         kind: str(a.kind),
         label: str(a.label),
+        connect: str(a.connect),
         mount: str(a.mount),
         plane: pl ? { normal: vec3(pl.normal), up: vec3(pl.up), size: size2(pl.size) } : null,
         teach: Array.isArray(a.teach)

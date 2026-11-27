@@ -84,7 +84,7 @@ export class RoomEditor {
   private items: Editable[] = [];
   private ray = new THREE.Raycaster();
   private room: Vec3 = [6, 6, 3];
-  private drag: { handle: Handle; p0: THREE.Vector3; start: Editable; ref?: number } | null = null;
+  private drag: { handle: Handle; p0: THREE.Vector3; start: Editable; ref?: number; dup?: boolean } | null = null;
   private live: Editable | null = null;           // the selected thing as the drag has it now
   selected: string | null = null;
   dragging = false;
@@ -109,8 +109,11 @@ export class RoomEditor {
   get active(): boolean { return this.items.length > 0; }
   /** The room's size (m), for where a light's beam lands and how far a thing can go. */
   setRoom(size: Vec3) { this.room = size; }
-  /** No snapping: a drag is free, and exact values are typed in the panel. */
-  setSnap(_on: boolean) { /* nothing */ }
+  /** Ctrl (or ⌘) held: a drag of a thing makes a copy where it is let go (owner, 27 Nov: "CTRL+DRAG to duplicate"). */
+  private ctrl = false;
+  setSnap(on: boolean) { this.ctrl = on; }
+  /** A Ctrl+drag let go: the page makes the copy (the original stays where it was). */
+  onDuplicate: (key: string, at: Vec3) => void = () => {};
 
   /** The things that can be picked. The selected one is drawn again where the room now has it (not mid-drag). */
   setItems(items: Editable[]) {
@@ -382,7 +385,7 @@ export class RoomEditor {
       const a = this.tiltAngle(r, it.at, this.tiltHeading(it));
       if (a !== null) ref = a;
     }
-    this.drag = { handle: h, p0, start: { ...it }, ref };
+    this.drag = { handle: h, p0, start: { ...it }, ref, dup: this.ctrl && h === "move" };
     this.dragging = true;
     this.hoverBox.visible = false;
     this.onDragging(true);
@@ -504,6 +507,13 @@ export class RoomEditor {
     const same = it.at.every((v, i) => Math.abs(v - s.at[i]) < 1e-3) && Math.abs((it.yaw ?? 0) - (s.yaw ?? 0)) < 1e-3
       && (!it.dir || !s.dir || it.dir.every((v, i) => Math.abs(v - s.dir![i]) < 1e-6));
     if (same) { if (!picked) this.justDragged = false; return; }
+    if (d.dup) {                                      // a copy where it was let go; the original goes back
+      const at = it.at.map(r2) as Vec3;
+      this.live = { ...s };
+      this.build();
+      this.onDuplicate(it.key, at);
+      return;
+    }
     if (d.handle === "move" || d.handle === "lift") {
       this.onChange(it.key, it.kind === "region" ? { at: it.at.map(r2) as Vec3, size: it.size }
         : it.kind === "screen" ? { at: it.at.map(r2) as Vec3, normal: it.normal } : { at: it.at.map(r2) as Vec3 });

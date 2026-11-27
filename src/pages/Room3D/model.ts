@@ -38,6 +38,13 @@ export interface Fixture {
   aimDir: Vec3 | null;      // which way a fixed light on a bar points (a unit vector): its own tilt and turn (the
                             // Lights page: setup lean_deg, turn_deg), else its bar layout's, from the bar's front
   bar: string;              // the id before its last dot ("gigbar-a" for "gigbar-a.par1"): parts of one unit
+  /** PLANNED (owner, 27 Nov: "not all of these objects are 'connected' (i.e. real)"): placed in the room but no light
+   *  of this id in the rig: drawn, driving nothing (its channels are the view's own: ``address`` is a virtual slot). */
+  planned?: boolean;
+  /** A room device's kind (screen, hue-lamp, mirror-ball, mic, light-sensor) for a planned thing that isn't a light. */
+  device?: string | null;
+  /** What a planned device stands for, once connected (a screen, a lamp, a source, a sensor). */
+  connect?: string | null;
 }
 
 export interface Point {
@@ -192,6 +199,46 @@ export async function loadRoom(room: string): Promise<RoomModel> {
       bar: row.id.includes(".") ? row.id.slice(0, row.id.lastIndexOf(".")) : row.id,
     };
   });
+  // planned things: appliances with a kind and no light of that id, and a bar's parts with no light yet (from its
+  // layout's part types). A light type is drawn as that light; a room device as itself. Their channels are the
+  // view's own virtual slots (from 1, in order), so selecting one can light it up.
+  const known = new Set(rows.map((r) => String(r.id)));
+  let vslot = 1;
+  const plannedLight = (id: string, typeId: string, label: string, a: any, barId: string): Fixture | null => {
+    const t = types[typeId];
+    if (!t) return null;
+    const fp = Number(t.footprint) || 1, address = vslot;
+    vslot += fp;
+    const pose = a?.pose && isVec3(a.pose.at) && isVec3(a.pose.rot) ? (a.pose as Pose) : null;
+    return { id, label, kind: "lamp", driver: null, part: partOf(t.file, t.mode, typeId), universe: null, address,
+      panRange: t.physical?.pan_deg ?? 540, tiltRange: t.physical?.tilt_deg ?? 270, screen: null, lastRgb: null,
+      at: isVec3(a?.at) ? a.at : pose ? pose.at : null, pose, plane: null, aimDir: dirOnBar({ id, setup: {} }), aim: null,
+      bar: barId, planned: true, device: null, connect: null };
+  };
+  const layouts: Record<string, any> = space?.layouts ?? {};
+  for (const b of bars) {
+    const parts = layouts[(space?.bars ?? {})[b.id]?.layout]?.parts ?? {};
+    for (const p of b.parts) {
+      if (known.has(p.id)) continue;
+      const pt = parts[p.part]?.type;
+      const f = typeof pt === "string" ? plannedLight(p.id, pt, `${b.label} ${p.part.replace(/(\d+)$/, " $1")}`, apps[p.id], b.id) : null;
+      if (f) fixtures.push(f);
+    }
+  }
+  for (const [id, a] of Object.entries(apps) as [string, any][]) {
+    if (known.has(id) || typeof a?.kind !== "string" || !isVec3(a.at) || fixtures.some((f) => f.id === id)) continue;
+    const label = typeof a.label === "string" ? a.label : id;
+    if (types[a.kind]) {
+      const f = plannedLight(id, a.kind, label, a, id);
+      if (f) fixtures.push(f);
+      continue;
+    }
+    const pl = a.plane && isVec3(a.plane.normal) && isVec3(a.plane.up) && Array.isArray(a.plane.size) ? a.plane : null;
+    fixtures.push({ id, label, kind: a.kind === "screen" ? "screen" : "device", driver: null, part: null, universe: null,
+      address: null, panRange: 0, tiltRange: 0, screen: null, lastRgb: null, at: a.at, pose: null,
+      plane: pl ? { normal: pl.normal, up: pl.up, size: [pl.size[0], pl.size[1]] } : null, aimDir: null, aim: null, bar: id,
+      planned: !a.connect, device: a.kind, connect: typeof a.connect === "string" ? a.connect : null });
+  }
   const points: Point[] = Object.entries(space?.points ?? {}).flatMap(([name, p]: [string, any]) =>
     isVec3(p?.at) ? [{ name, label: p.label ?? name, at: p.at, device: p.device ?? null }] : []);
   const r = space?.room ?? {};
