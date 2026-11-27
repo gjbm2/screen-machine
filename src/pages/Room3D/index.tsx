@@ -35,7 +35,7 @@ type NodeStatus = { node?: { udp?: string; universe?: number }; artnet?: { pps?:
  *  ``regions``: the page's own (unsaved) copy of the regions, drawn in place of the room's saved ones. */
 export default function Room3DPage({ embedded = false, picked = null, regions, refresh = 0, editables, selected = null,
   mode, onSelect, onEdit, onDuplicate, panel, frame = 0, feed, toolbar, startNav, liveAim = null, editShow = "on",
-  pointing = false, onPointAt, pointWords, pointThings = true, deviceStates }: {
+  pointing = false, onPointAt, pointWords, pointThings = true, deviceStates, frames, shotView }: {
   embedded?: boolean; picked?: string | null; regions?: KeepRegion[];
   /** Bump it to read the room again at once (the page around it has just saved a change). */
   refresh?: number;
@@ -68,7 +68,14 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
   toolbar?: ReactNode;
   /** Open in this way of moving (the plan, for "Show it on the map"), not the one remembered. */
   startNav?: Nav;
+  /** The lights' DMX from the page itself, read every drawn frame (a recording played to the page's own clock: the
+   *  blind pairs), in place of any feed; null: hold the last frame. */
+  frames?: () => Uint8Array | null;
+  /** The room alone from a fixed camera, as ?shot=1&view= draws it (but at the resolution the frame rate allows). */
+  shotView?: "front" | "side" | "above";
 } = {}) {
+  const framesRef = useRef(frames);
+  framesRef.current = frames;
   const edRef = useRef<RoomEditor | null>(null);
   const namesRef = useRef<HTMLDivElement | null>(null);          // the plan's names on things, placed each frame
   const itemsRef = useRef<Editable[]>([]);
@@ -87,12 +94,13 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
   // alone, at full size whatever the frame rate, from ?view=front|side|above, in ?haze=light|medium|thick (a fixed
   // haze, not the room's own reading).
   const shot = useMemo(() => {
+    if (shotView) return { view: shotView, sigma: null, full: false };
     const q = new URLSearchParams(window.location.search);
     if (!q.has("shot")) return null;
     const v = q.get("view"), hz = q.get("haze") || "";
     return { view: (v === "side" || v === "above" ? v : "front") as "front" | "side" | "above",
-      sigma: hz in LEVEL_VISIBILITY_M ? 3 / LEVEL_VISIBILITY_M[hz] : hz === "clear" ? 0 : null };
-  }, []);
+      sigma: hz in LEVEL_VISIBILITY_M ? 3 / LEVEL_VISIBILITY_M[hz] : hz === "clear" ? 0 : null, full: true };
+  }, [shotView]);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const simRef = useRef<RoomSim | null>(null);
@@ -285,6 +293,8 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
       for (const n of have.values()) n.remove();
     };
     const loop = (now: number) => {
+      const own = framesRef.current?.();
+      if (own) { sim.dmx = own; sim.dmxAt = performance.now(); }
       sim.frame(now);
       placeNames();
       frames++;
@@ -293,7 +303,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
         setFps(Math.round(fps));
         frames = 0; fpsAt = now;
         const was = sim.scale;
-        if (shot) sim.scale = 1;                               // a picture: full size, however slowly it draws
+        if (shot?.full) sim.scale = 1;                         // a picture: full size, however slowly it draws
         else if (fps < 48 && sim.scale > 0.4) sim.scale = Math.max(0.4, sim.scale * Math.max(0.6, fps / 55));
         else if (fps > 58 && sim.scale < 1) sim.scale = Math.min(1, sim.scale * 1.12);
         if (sim.scale !== was) fit();
@@ -363,7 +373,9 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
   }, [model, regions, picked]);
 
   // the wire: the virtual node's DMX output (one event per DMX refresh), and its status
+  const ownFrames = frames != null;
   useEffect(() => {
+    if (ownFrames) return;                                       // the page plays its own frames (``frames``)
     const es = new EventSource(`${node}/dmx${dmxQuery}`);
     es.onmessage = (ev) => {
       const sim = simRef.current;
@@ -394,7 +406,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
       setDmxLive(!!simRef.current && performance.now() - simRef.current.dmxAt < 1500);
     }, 1000);
     return () => { es.close(); window.clearInterval(st); };
-  }, [node, dmxQuery]);
+  }, [node, dmxQuery, ownFrames]);
 
   useEffect(() => { if (simRef.current) simRef.current.showPaths = showPaths; }, [showPaths]);
 

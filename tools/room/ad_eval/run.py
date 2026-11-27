@@ -68,10 +68,14 @@ def tl_name(sid: str, mode: str, seed: int) -> str:
     return f"{sid}.{mode}.json" if seed == 0 else f"{sid}.{mode}.s{seed}.json"
 
 
+DMX = False                                                   # --dmx: the replays record the wire's frames too
+
+
 def one(sid: str, mode: str, out_dir: pathlib.Path, seed: int = 0) -> tuple[str, str, Optional[str]]:
     out = out_dir / tl_name(sid, mode, seed)
+    env = {**({"SM_AD_EVAL_SEED": str(seed)} if seed else {}), **({"SM_AD_EVAL_DMX": "1"} if DMX else {})}
     rc, log = _sub([str(common.SHOW_PY), str(common.HERE / "replay.py"), sid, "--mode", mode, "--out", str(out)],
-                   timeout=3600, env={"SM_AD_EVAL_SEED": str(seed)} if seed else None)
+                   timeout=3600, env=env or None)
     return sid, mode, None if rc == 0 and out.is_file() else f"replay exit {rc}: {log[-1500:]}"
 
 
@@ -157,7 +161,11 @@ def main() -> int:
                     "between seeds of the same code, so a one-seed change of less than that is a reshuffle)")
     ap.add_argument("--rescore", metavar="DIR", help="score an earlier run's timelines again (no replay): after a "
                     "change to the scorer; writes that run's scorecard.json and a new line of history")
+    ap.add_argument("--dmx", action="store_true", help="also record each replay's DMX frames (<id>.<mode>.dmx.npz), "
+                    "for the blind pairs (pairs.py)")
     a = ap.parse_args()
+    global DMX
+    DMX = a.dmx
     try:
         os.nice(19)
     except OSError:

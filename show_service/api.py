@@ -98,6 +98,7 @@ from typing import Any, Awaitable, Callable, Mapping, Optional
 from aiohttp import WSMsgType, web
 
 from . import preview as previewmod
+from . import ad_pairs as pairsmod
 from . import contract
 from .contract import (CARD_HZ, CLOCK_ACTIONS, DIRECTOR_ACTIONS, EV_AUTO, EV_CARD, EV_DESCRIBE, EV_PONG, EV_WELCOME,
                        EVENTS_PATH, PALETTE_ART, PALETTE_AUTO, STEP_DIRS, TEST_SOURCES)
@@ -1209,6 +1210,7 @@ class Api:
             ("GET", "/api/v1/rig/live", self._rig_live),
             ("POST", "/api/v1/hue/stream", self._hue_stream),
             ("GET", "/api/v1/hue/status", self._hue_status),
+            *pairsmod.ROUTES,                             # the a.d. eval's blind pairs (ad_pairs.py; /lights/pairs)
         ]
         for method, path, fn in table:
             r.add_route(method, path, self._guard(fn))

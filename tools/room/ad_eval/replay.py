@@ -368,6 +368,8 @@ class Sim:
             outs = sorted({f.get("output") for f in fx.values() if isinstance(f.get("address"), int)} - {None})
             self.output = outs[0] if outs else None
             self.caps = artnet_lan.CAPS
+            if os.environ.get("SM_AD_EVAL_DMX") == "1" and self.output is not None:
+                self._dmx_layout(view)                       # the wire's frames too, for the blind pairs (pairs.py)
             self.engine = eng
             self.describer = form.Describer()                # what the lights show, frame by frame (form.py)
         except Exception as e:                               # noqa: BLE001
@@ -492,6 +494,43 @@ class Sim:
 
     events: list = []
 
+    def _dmx_layout(self, view: dict) -> None:
+        """The universe as artnet_lan lays it out (as show_service/preview.py does): each light's defaults and pins,
+        and where its channels go; the hazers are left out (a recording never runs one)."""
+        fx, types = view.get("fixtures") or {}, view.get("types") or {}
+        base = bytearray(512)
+        self.dmx_spans: dict[str, tuple[int, int]] = {}
+        for fid, f in fx.items():
+            t = types.get(f.get("type")) or {}
+            fp, a = int(t.get("footprint") or 0), f.get("address")
+            if f.get("output") != self.output or fp <= 0 or not isinstance(a, int) or a < 1 or a + fp - 1 > 512:
+                continue
+            if "haze" in (f.get("tags") or ()):
+                continue
+            names: dict[str, int] = {}
+            for ch in t.get("channels") or []:
+                o = ch.get("offset")
+                if isinstance(o, int) and 0 <= o < fp:
+                    base[a - 1 + o] = max(0, min(255, int(ch.get("default", 0) or 0)))
+                    names.setdefault(str(ch.get("name")), o)
+            for name, v in (f.get("pin") or {}).items():
+                if name in names:
+                    base[a - 1 + names[name]] = max(0, min(255, int(v)))
+            self.dmx_spans[str(fid)] = (a - 1, fp)
+        self.dmx_base = bytes(base)
+        self.dmx: list[bytes] = []
+
+    def _dmx_frame(self, fx: Optional[dict]) -> None:
+        if getattr(self, "dmx", None) is None:
+            return
+        buf = bytearray(self.dmx_base)
+        for fid, f in (fx or {}).items():
+            sp_ = self.dmx_spans.get(str(fid))
+            d = f.get("dmx") if isinstance(f, dict) else None
+            if sp_ and d:
+                buf[sp_[0]:sp_[0] + min(sp_[1], len(d))] = bytes(d[:sp_[1]])
+        self.dmx.append(bytes(buf))
+
     def _keep_events(self) -> None:
         for t_p, m in self.pubs:
             if m.get("type") in (contract.ROOM_EVENT,):
@@ -508,6 +547,7 @@ class Sim:
                 self.errors["engine.evaluate"] = self.errors.get("engine.evaluate", 0) + 1
         if self.describer is not None:
             self.shown.append(self.describer.row(fx if isinstance(fx, dict) else {}, h))
+        self._dmx_frame(fx if isinstance(fx, dict) else None)
         if not isinstance(fx, dict) or not fx:
             return 0.0
         v = [float(f.get("intensity") or 0.0) for f in fx.values() if isinstance(f, dict)]
@@ -556,7 +596,9 @@ class Sim:
                                if len(self.shown) == len(out_t) else {})},
                 "show": {"beats": [b for b in beats if b >= -1.0], "sections": secs, "lock_s": lock,
                          "bpm": [[self._s(h), b.get("bpm"), b.get("gate")] for h, b in self.clock_bodies]},
-                "errors": self.errors}
+                "errors": self.errors,
+                **({"_dmx": self.dmx[i0:]} if getattr(self, "dmx", None) is not None
+                   and len(self.dmx) == len(out_t) else {})}
 
 
 def flashes(bodies: list, h_end: float) -> list[tuple]:
@@ -596,6 +638,11 @@ def replay(sid: str, mode: str, gain_db: float = 0.0) -> dict:
         return tl
 
 
+def dmx_path(out: pathlib.Path) -> pathlib.Path:
+    """A timeline's recorded DMX: <id>.<mode>[.s<k>].json -> <id>.<mode>[.s<k>].dmx.npz beside it."""
+    return out.with_name(out.name[:-len(".json")] + ".dmx.npz" if out.name.endswith(".json") else out.name + ".dmx.npz")
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("sid")
@@ -613,6 +660,11 @@ def main() -> int:
         import reference
         tl["reference"] = {k: v for k, v in reference.load(a.sid).items() if k not in ("song", "version")}
     out = a.out or (common.CACHE / "replays" / f"{a.sid}.{a.mode}.json")
+    dmx = tl.pop("_dmx", None)
+    if dmx:                                                  # the wire's frames, one per hop from outputs.t0_s
+        out.parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(dmx_path(out), dmx=np.frombuffer(b"".join(dmx), dtype=np.uint8).reshape(len(dmx), 512),
+                            t0_s=np.float64(tl["outputs"]["t0_s"]), hop_s=np.float64(tl["outputs"]["hop_s"]))
     common.write_json(out, tl)
     print(f"{a.sid} {a.mode}: {len(tl['decisions'])} decisions, {len(tl['show']['beats'])} beats, lock "
           f"{tl['show']['lock_s']}, {tl['run']['wall_s']} s (rt {tl['run']['rt']}), errors {tl['errors']} -> {out}")

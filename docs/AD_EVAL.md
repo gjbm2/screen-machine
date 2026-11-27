@@ -130,6 +130,13 @@ struck through with its commit.
    from two replays: two commits, or the show against a control). The owner picks the better one, or "same". Each pick
    is saved, and the eval reports how often the score agrees with the owner. This is what answers the owner's question.
    Until it agrees on most pairs, the score is a guide, not a judge.
+   **Built (27 Nov):** `run.py --dmx` records each replay's DMX. `pairs.py make <run> [--vs <run>]` cuts 18 s around
+   a lift where the two sides look most different, puts them on random sides, and keeps the key hidden.
+   show_service/ad_pairs.py serves the batch and keeps the picks. The page is `/lights/pairs`: ← Left, ↓ Same,
+   → Right, Space plays the moment again. `pairs.py report` gives, for each measure, how often the side the owner
+   picked scores higher. First batch `draws-1`: 12 pairs of two draws of the same code, overall gaps of 0.03 to 0.27.
+   Still to do: the owner picks; then read the report, re-weight or drop the measures the eye disagrees with
+   (item 5), and make the next batches (`--vs` across commits, briefs on and off).
 2. **Arc and proportion.** Find why a section's size doesn't follow its energy when the brief sets its level: line-ups,
    level, movement, or the measure itself (the box wins arc with brightness alone). Then fix the show or the measure.
 3. **Character.** Make songs of different kinds look different: why quiet songs' heads move (motion_cap, drifts, moves
