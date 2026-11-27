@@ -421,10 +421,6 @@ def handle_generate(instruction, context, now, output, publish_destination):
         import traceback
         error(traceback.format_exc())
 
-import threading as _threading
-_TRANSITIONS_AT_ONCE = _threading.BoundedSemaphore(2)   # transitions drawn at once (the video endpoint has 3 workers)
-
-
 def _animate_ahead(image, to, prompt, pace, publish_destination, now, output):
     """animate with an `image` (a picture in a bucket): with `to`, the transition from it to that picture, made now
     and kept with both (routes/transitions.commission: a publish from one to the other plays it); without, its clip,
@@ -434,20 +430,14 @@ def _animate_ahead(image, to, prompt, pace, publish_destination, now, output):
         log_schedule(f"animate: nothing to do ({image!r} to {to!r})", publish_destination, now, output)
         return None
     if to is not None:
-        from routes.transitions import commission
+        from routes.transitions import commission_later
         if Path(image).resolve() == Path(to).resolve():
             return None
 
-        # in the background, two at a time: made in line, each held the schedule's loop for minutes (25 Nov 03:19-04:01:
-        # the cloud's loop didn't tick for over 10 min, "scheduler wedged" alerts); a publish that comes before it is
-        # made cross-fades, as it always did for a transition not made yet
-        def run_transition(a=str(image), b=str(to)):
-            with _TRANSITIONS_AT_ONCE:
-                made = commission(a, b)
-            info(f"[animate] transition {os.path.basename(a)} -> {os.path.basename(b)}: "
-                 + ((made.get("idea") or "made") if made else "not made (that change cross-fades)"))
-        import threading
-        threading.Thread(target=run_transition, name=f"transition-{Path(to).name[:16]}", daemon=True).start()
+        # in the background, two at a time, and made again after a restart (routes/transitions.commission_later): made
+        # in line, each held the schedule's loop for minutes (25 Nov 03:19-04:01: the cloud's loop didn't tick for over
+        # 10 min, "scheduler wedged" alerts); a publish that comes before it is made cross-fades
+        commission_later(image, to)
         log_schedule(f"ANIMATE: the transition {os.path.basename(image)} -> {os.path.basename(to)}, made in the background",
                      publish_destination, now, output)
         return None
@@ -1940,22 +1930,22 @@ def handle_overlay(instruction, context, now, output, publish_destination):
     log_schedule(msg, publish_destination, now, output)
     
     try:
-        # Build ALL substitutions like other parts of the scheduler system
-        from routes.utils import dict_substitute
+        # The schema's substitutions, then the context's variables, rendered as every other instruction is (now(),
+        # _event, _current_destination: process_jinja_template). dict_substitute had none of those, so a text using
+        # now() failed and went to the screens as raw {{ }} (27 Nov, the replay's overlay).
         subs = build_schema_subs()
-        
-        # Add context variables
-        if 'vars' in context:
-            subs.update(context['vars'])
-        
-        # Add contextual substitutions needed for text processing
+        subs.update(context.get('vars') or {})
         subs['QR_BASE64'] = get_qr(publish=publish_destination)
         subs['SCREEN_NAME'] = publish_destination
         subs['DURATION'] = duration // 1000
-        
-        # Process the text with ALL substitutions
-        processed_text = dict_substitute(text, subs)
-        
+        processed_text = process_jinja_template(text, {**context, 'vars': subs}, publish_destination)
+
+        # never put template code on a screen: a text that didn't render shows nothing
+        if not isinstance(processed_text, str) or '{{' in processed_text or '{%' in processed_text:
+            error(f"overlay on {publish_destination}: the text did not render, so no overlay: {text[:120]!r}")
+            log_schedule("Overlay not shown: its text did not render", publish_destination, now, output)
+            return False
+
         # Send the overlay with the processed text
         send_overlay(
             html="overlay_guidance.html.j2",

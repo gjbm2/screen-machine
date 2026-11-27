@@ -10,7 +10,9 @@ included. Only the edges are stood in for:
 - the clock: datetime.now() and time.time() in the scheduler modules read a simulated clock that only moves when the
   test says so (Sim.run), so hours of schedule run in milliseconds and every timing is exact;
 - the world: publish_to_destination records what each screen is shown (and keeps it as the screen's published file,
-  so _current_image reads it); generate / animate / reason / overlay / device actions are recorded, not done;
+  so _current_image reads it), and the transition it plays when one was made for the change (Sim.made); generate /
+  animate / reason / device actions are recorded, not done; an overlay runs the real handler (its text rendered as
+  on the screens) and only the send to the screen is recorded;
 - persistence: state files and the variable registry go to a temp folder; the site's destinations and groups are
   the test's own (no live state is read or written);
 - threads: no scheduler thread is started; Sim.run steps each destination's loop in turn, as many passes per
@@ -90,6 +92,7 @@ class Sim:
         self.loops: dict[str, sch.LoopState] = {}
         self.published: dict[str, list] = {d: [] for d in destinations}
         self.actions: list[tuple[float, str, str, dict]] = []   # (t, destination, action, instruction) not done
+        self.made: set[tuple[str, str]] = set()                  # transitions made: (from picture, to picture)
         self.ran = 0
         fake_dt = _fake_datetime(self.clock)
         for mod in (sch, su, sh, sq):
@@ -126,13 +129,24 @@ class Sim:
 
         # the world's other effects are recorded, not done
         for name, action in (("handle_generate", "generate"), ("handle_animate", "animate"), ("handle_reason", "reason"),
-                             ("handle_overlay", "overlay"), ("handle_device_wake", "device-wake"),
+                             ("handle_device_wake", "device-wake"),
                              ("handle_device_sleep", "device-sleep"), ("handle_device_standby", "device_standby"),
                              ("handle_device_media_sync", "device-media-sync"), ("handle_display", "display"),
                              ("handle_purge", "purge"), ("handle_set_mode", "set_mode"), ("handle_set_auto", "set_auto"),
                              ("handle_room_state", "room_state")):
             if hasattr(sch, name):
                 monkeypatch.setattr(sch, name, self._recorder(action))
+        # an overlay: the real handler renders its text; what it would send to the screen is recorded
+        import routes.display as display
+        monkeypatch.setattr(display, "send_overlay", self._send_overlay)
+        monkeypatch.setattr(sh, "get_qr", lambda **k: "")
+        self._overlay_dest = None
+        real_overlay = sch.handle_overlay
+
+        def overlay(instruction, context, now, output, dest):
+            self._overlay_dest = dest
+            return real_overlay(instruction, context, now, output, dest)
+        monkeypatch.setattr(sch, "handle_overlay", overlay)
 
         # a clean scheduler: no other test's stacks, events, queues or running loops
         for g in GLOBALS:
@@ -153,15 +167,24 @@ class Sim:
             return False
         return record
 
+    def _send_overlay(self, html=None, screens=None, duration=None, substitutions=None, clear=None, **kw):
+        for dest in screens or [self._overlay_dest]:
+            self.actions.append((self.clock.t, dest, "overlay", {"text": (substitutions or {}).get("TEXT"),
+                                                                 "duration_ms": duration, "html": html}))
+
     def _publish(self, source=None, publish_destination_id=None, **kw):
-        """A screen is shown `source`: recorded, and kept as the screen's published file (what _current_image reads)."""
+        """A screen is shown `source`: recorded, and kept as the screen's published file (what _current_image reads).
+        Asked for a transition, it plays the one made from what the screen shows to it (Sim.made), as the publisher's
+        cached() would; else it cross-fades (transition None)."""
         name = Path(str(source)).name
         f = self.dir / "buckets" / publish_destination_id / name
         if not f.exists():
             f.write_bytes(b"picture")
         meta = kw.get("metadata") or {}
+        before = (self.published.get(publish_destination_id) or [None])[-1]
+        played = (before.name, name) if kw.get("transition") and before and (before.name, name) in self.made else None
         self.published.setdefault(publish_destination_id, []).append(
-            SimpleNamespace(t=self.clock.t, source=str(source), name=name, kw=kw, meta=meta))
+            SimpleNamespace(t=self.clock.t, source=str(source), name=name, kw=kw, meta=meta, transition=played))
         return {"success": True, "meta": {"filename": name}}
 
     def _published_info(self, dest):
@@ -268,6 +291,11 @@ class Sim:
     def shown(self, dest, since=0.0):
         """[(seconds since start, picture name)] published to dest at or after `since`."""
         return [(round(p.t, 1), p.name) for p in self.published.get(dest, []) if p.t >= since]
+
+    def played(self, dest, since=0.0):
+        """[(seconds since start, picture, the transition into it or None)] published to dest at or after `since`."""
+        return [(round(p.t, 1), p.name, getattr(p, "transition", None)) for p in self.published.get(dest, [])
+                if p.t >= since]
 
     def published_kw(self, dest):
         return [p.kw for p in self.published.get(dest, []) if p.t >= 0]

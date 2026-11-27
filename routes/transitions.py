@@ -29,6 +29,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -267,6 +268,78 @@ def commission(a: str | Path, b: str | Path) -> dict | None:
         _failed(b.parent.name, {"at": round(time.time(), 1), "error": str(e)[:300], "made_s": round(time.time() - t0, 1),
                                 "from": oa, "to": ob})
         return None
+
+
+_AT_ONCE = threading.BoundedSemaphore(2)   # transitions drawn at once (the video endpoint has 3 workers)
+_PENDING_LOCK = threading.Lock()
+PENDING = "pending.json"                   # in B's transitions/: commissioned, not yet made
+TRIES = 3                                  # a commission cut short by restarts is made again up to this many times
+
+
+def _edit_pending(b: Path, change) -> None:
+    f = b.parent / FOLDER / PENDING
+    with _PENDING_LOCK:
+        try:
+            rows = json.loads(f.read_text("utf-8")) if f.exists() else []
+        except Exception:
+            rows = []
+        rows = change(rows)
+        try:
+            if rows:
+                f.parent.mkdir(parents=True, exist_ok=True)
+                f.write_text(json.dumps(rows, indent=2), "utf-8")
+            elif f.exists():
+                f.unlink()
+        except Exception as e:
+            warning(f"[transition] could not keep {f}: {e}")
+
+
+def commission_later(a: str | Path, b: str | Path, tries: int = 0) -> None:
+    """commission in the background, two at a time (made in line, each held the schedule's loop for minutes). It is
+    kept in B's transitions/pending.json until it has run, so one cut short by a Flask restart (its thread goes with
+    the process) is made again when Flask starts (resume_pending). 27 Nov: a restart at 07:57 dropped 7 of the day's 9
+    and the evening's replay cross-faded."""
+    a, b = str(a), str(b)
+    same = lambda r: (r.get("a"), r.get("b")) == (a, b)
+    _edit_pending(Path(b), lambda rows: [r for r in rows if not same(r)]
+                  + [{"a": a, "b": b, "at": round(time.time(), 1), "tries": tries + 1}])
+
+    def run():
+        try:
+            with _AT_ONCE:
+                made = commission(a, b)
+            info(f"[animate] transition {os.path.basename(a)} -> {os.path.basename(b)}: "
+                 + ((made.get("idea") or "made") if made else "not made (that change cross-fades)"))
+        finally:
+            _edit_pending(Path(b), lambda rows: [r for r in rows if not same(r)])
+    threading.Thread(target=run, name=f"transition-{Path(b).name[:16]}", daemon=True).start()
+
+
+def resume_pending() -> int:
+    """At Flask's start: each transition commissioned and not made when the last process stopped, made again (up to
+    TRIES times in all; one already made is found and kept). Returns how many were resumed."""
+    from routes.bucketer import BASE_OUTPUT
+    n = 0
+    for f in sorted(Path(BASE_OUTPUT).glob(f"*/{FOLDER}/{PENDING}")):
+        try:
+            rows = json.loads(f.read_text("utf-8"))
+        except Exception:
+            rows = []
+        f.unlink(missing_ok=True)
+        for r in rows:
+            a, b, tries = r.get("a"), r.get("b"), int(r.get("tries") or 0)
+            if not a or not b or not Path(a).exists() or not Path(b).exists():
+                continue
+            if tries >= TRIES:
+                warning(f"[transition] {origin(Path(a))} -> {origin(Path(b))}: given up after {tries} tries")
+                _failed(Path(b).parent.name, {"at": round(time.time(), 1), "error": f"cut short {tries} times",
+                                              "from": origin(Path(a)), "to": origin(Path(b))})
+                continue
+            commission_later(a, b, tries)
+            n += 1
+    if n:
+        info(f"[transition] {n} commissioned before the restart and not made: making them now")
+    return n
 
 
 def records(screen: str) -> dict:
