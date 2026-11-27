@@ -231,6 +231,7 @@ const fmtS = (s) => `${Number(s).toFixed(1).replace(/\.0$/, "")} s`;
 
 /** A tile's subtitle: "Fractal · 3D", "Warp · 1.5 s", "Feedback effect"; + variations and author. */
 export function subtitle(it) {
+  if (typeof it.sub === "string") return it.sub;       // an item that says its own (the Lighting tab's)
   const parts = [];
   const fam = it.facets?.family?.[0];
   const cap = (x) => (x ? friendly(x) : "");

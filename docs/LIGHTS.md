@@ -1469,6 +1469,23 @@ between 0.4 (open white) and 0.75 (in that chorus the laser reads as dots, not b
 `level`, `levels`); a `room_light` line in director.jsonl each time a feature starts or its level moves by a tenth;
 the 3D room's footer shows the room's light in lux as drawn.
 
+**Reviewing the catalogue** (owner, 27 Nov: "the scene, effect & transition library should also allow review of the
+lighting scenes as well as render scenes (with a suitable screen shot ...)"). The Scene library (the renderer's
+console, `/renderer/dev`, "Scene library" on the Room page) has a **Lighting** tab beside the screens' own:
+- every light scene, effect and transition as a tile with a picture, in the same grid, rated with the same stars
+  (kept in config/live/light_ratings.json; they don't steer the director's draw yet: `tags.weight` does);
+- a tile opens what the item is: what it does in words (made from its layers), the light groups here that can show
+  it, how much light it leaves in the room, where it lands, what it is written for, and **what it comes down to
+  when the laser or the derbies are featured** (the same sum as above, for a plain look);
+- served by show_service/light_library.py (`GET /show/api/v1/lights/library`, `/thumb/{kind}/{name}.jpg`,
+  `/ratings`, `POST /rate`); the tab is stream_service/static/console/lights/lights.js.
+- **The pictures** are taken by `tools/room/light_shots.py`: the real look engine, built from this deployment's
+  files and run on a made-up 120 bpm clock, plays one item at a time on the group it is written for (every other
+  group dark) in a plain look; its frames are fed to the 3D room (`/lights/room?shot=1`: the room alone, a medium
+  haze, the audience's view) in a headless browser, and photographed. Nothing is sent to the room. Run it again
+  after changing the catalogue: `.venv/bin/python tools/room/light_shots.py` takes only the missing and the changed
+  (`--all` for every one). Pictures: `~/.cache/sm-lightshots/<deployment>/`.
+
 **Not built**: an effect that makes room by itself (the laser spinning up through a build with everything else
 pulled down: today that needs the line-up to feature it); the screens' own light measured from the picture rather
 than a fixed `other_lux`; a head's pool avoided by where it really lands rather than by its scene's `on:` word.

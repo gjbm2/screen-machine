@@ -304,9 +304,18 @@ class Show:
         except Exception:
             log.exception("piano_live.py not loaded: no piano stream for devices (the show carries on)")
 
+        # the lighting half of the Scene library (27 Nov): GET /api/v1/lights/library, its pictures and ratings
+        self.light_library: Any = None
+        try:
+            from . import light_library as ll_mod
+            self.light_library = ll_mod.LightLibrary(
+                lambda: (self.brain.components.get("director") if self.brain is not None else None))
+        except Exception:
+            log.exception("light_library.py not loaded: no lighting scenes in the Scene library (the show carries on)")
+
         def _routes(app: Any, api: Any = self.api, lv: Any = self.levels, inp: Any = self.inputs,
                     mc: Any = self.mic, lib: Any = self.library, plm: Any = pl_mod, sh: Any = self.sheets,
-                    pv: Any = self.piano_live) -> None:
+                    pv: Any = self.piano_live, ll: Any = self.light_library) -> None:
             lv.routes(app)
             inp.routes(app)
             if mc is not None:
@@ -317,6 +326,8 @@ class Show:
                 sh.routes(app)
             if pv is not None:
                 pv.routes(app)
+            if ll is not None:
+                ll.routes(app)
             if plm is not None:
                 plm.routes(app, lambda: self.brain)
             if api is not None:
