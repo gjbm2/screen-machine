@@ -56,7 +56,9 @@ class SnapshotError(Exception):
 # against art_page_base (clips: against Flask). The rest of the state is clamped.
 # ---------------------------------------------------------------------------
 
-_OUTPUT_PATH = re.compile(r"/output/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)?", re.ASCII)
+# Up to three names deep: a screen's art is a hard link at /output/_screens/<screen>/<n>.jpg (routes/screen_state.py,
+# 24 Nov); with two the vj screen got no entry still and every live start was an unmatched cut from black (27 Nov).
+_OUTPUT_PATH = re.compile(r"/output/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+){0,2}", re.ASCII)
 _QUERY = re.compile(r"[A-Za-z0-9_.=&%-]{0,200}", re.ASCII)
 _HEX = re.compile(r"#[0-9A-Fa-f]{6}", re.ASCII)
 
@@ -67,7 +69,7 @@ def origin_of(url: str) -> str:
 
 
 def safe_base_url(url: Any, allowed_origins: set[str]) -> str:
-    """'/output/<name>[/<name>][?query]', or SnapshotError. A plain query is kept: it is the
+    """'/output/<name>[/<name>[/<name>]][?query]', or SnapshotError. A plain query is kept: it is the
     page's cache-buster (`?t=<ms>`), without which a changed still could be served stale
     from the snapshot page's cache. The fragment is dropped."""
     if not isinstance(url, str) or not url or len(url) > 1024:
