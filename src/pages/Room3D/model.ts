@@ -35,6 +35,8 @@ export interface Fixture {
   plane: { normal: Vec3; up: Vec3; size: [number, number] } | null;
   aim: Vec3 | null;         // the place in the room a fixed light points at: a laser's from its tilt (the Lights
                             // page's setup lean_deg, else the 45-degree rule), else space.yaml aim
+  aimDir: Vec3 | null;      // which way a fixed light on a bar points (a unit vector): its own tilt and turn (the
+                            // Lights page: setup lean_deg, turn_deg), else its bar layout's, from the bar's front
   bar: string;              // the id before its last dot ("gigbar-a" for "gigbar-a.par1"): parts of one unit
 }
 
@@ -52,6 +54,8 @@ export interface RoomModel {
   centre: Vec3;
   fixtures: Fixture[];
   points: Point[];
+  /** The light bars as things that can be moved (space bars): where each stands, its height, its facing, its parts. */
+  bars: Bar[];
   /** Boxes no beam should cross (space.yaml keep_out, the Lights setup's 3D tab). */
   keepOut: KeepRegion[];
   /** Each fixed laser's tilt checked against them (show_service space.laser_checks). */
@@ -60,6 +64,30 @@ export interface RoomModel {
   lightGroups: Record<string, { label: string; members: string[] }>;
   revision: string;
   problems: string[];
+}
+
+export interface BarPart { part: string; id: string; head: boolean; lean_deg: number | null; turn_deg: number | null }
+export interface Bar { id: string; label: string; at: Vec3; facing_deg: number; front: Vec3; parts: BarPart[]; editable: boolean }
+
+/** GET /rig/space's bars, read tolerantly. */
+export function barsOf(space: any): Bar[] {
+  return Object.entries(space?.bars ?? {}).flatMap(([id, b]: [string, any]) =>
+    isVec3(b?.at) && isVec3(b?.front)
+      ? [{ id, label: typeof b.label === "string" ? b.label : id, at: b.at as Vec3, facing_deg: Number(b.facing_deg) || 0,
+           front: b.front as Vec3, editable: b.editable !== false,
+           parts: Object.entries(b.parts ?? {}).map(([part, p]: [string, any]) => ({ part, id: String(p?.id ?? `${id}.${part}`),
+             head: p?.head === true, lean_deg: typeof p?.lean_deg === "number" ? p.lean_deg : null,
+             turn_deg: typeof p?.turn_deg === "number" ? p.turn_deg : null })) }]
+      : []);
+}
+
+/** Which way a fixed light points: ``lean`` degrees forward from straight up (90: level), towards its bar's ``front``
+ *  turned ``turn`` degrees to the right (show_service space.aim_dir, the same sum). */
+export function aimDirOf(front: Vec3, lean: number, turn: number): Vec3 {
+  const h = Math.hypot(front[0], front[1]) || 1, fx = front[0] / h, fy = front[1] / h, ax = -fy, ay = fx;
+  const t = (turn * Math.PI) / 180, a = (lean * Math.PI) / 180;
+  const hx = fx * Math.cos(t) + ax * Math.sin(t), hy = fy * Math.cos(t) + ay * Math.sin(t);
+  return [hx * Math.sin(a), hy * Math.sin(a), Math.cos(a)];
 }
 
 export interface KeepRegion { name: string; label: string; centre: Vec3; size: Vec3; groups: string[]; editable: boolean }
@@ -115,6 +143,19 @@ export async function loadRoom(room: string): Promise<RoomModel> {
     const dx = mid[0] - at[0], dy = mid[1] - at[1], h = Math.hypot(dx, dy) || 1;
     return [at[0] + (dx / h) * Math.sin(a), at[1] + (dy / h) * Math.sin(a), at[2] + Math.cos(a)];
   };
+  const bars = barsOf(space);
+  const onBar = new Map<string, { front: Vec3; lean: number | null; turn: number | null }>();
+  for (const b of bars) for (const p of b.parts) onBar.set(p.id, { front: b.front, lean: p.lean_deg, turn: p.turn_deg });
+  /** A fixed light's direction from its bar: its own tilt and turn, else the layout's; a laser with neither, the
+   *  45-degree rule. Null: not on a bar, or nothing says how it points (the view's own default then). */
+  const dirOnBar = (row: any): Vec3 | null => {
+    const b = onBar.get(row.id);
+    if (!b) return null;
+    const spread = typeof row.spread_deg === "number" ? row.spread_deg : null;
+    const lean = typeof row.setup?.lean_deg === "number" ? row.setup.lean_deg : b.lean ?? (spread !== null ? 45 - spread / 2 : null);
+    if (lean === null) return null;
+    return aimDirOf(b.front, lean, typeof row.setup?.turn_deg === "number" ? row.setup.turn_deg : b.turn ?? 0);
+  };
   const fixtures: Fixture[] = rows.map((row) => {
     const c = cfg[row.id] ?? {};
     const t = types[row.type] ?? {};
@@ -138,8 +179,11 @@ export async function loadRoom(room: string): Promise<RoomModel> {
       at: isVec3(a.at) ? a.at : pose ? pose.at : null,
       pose,
       plane: pl ? { normal: pl.normal, up: pl.up, size: [pl.size[0], pl.size[1]] } : null,
+      aimDir: dirOnBar(row),
       aim: (() => {
         const at = isVec3(a.at) ? (a.at as Vec3) : null;
+        const d = dirOnBar(row);
+        if (at && d) return [at[0] + d[0], at[1] + d[1], at[2] + d[2]] as Vec3;   // on a bar: from the bar's front
         const lean = typeof row.setup?.lean_deg === "number" ? row.setup.lean_deg : null;
         const spread = typeof row.spread_deg === "number" ? row.spread_deg : null;
         if (at && spread !== null && (lean !== null || !isVec3(a.aim))) return leanAim(at, spread, lean);
@@ -159,6 +203,7 @@ export async function loadRoom(room: string): Promise<RoomModel> {
     centre: isVec3(r.centre) ? r.centre : [size[0] / 2, size[1] / 2, size[2] / 2],
     fixtures,
     points,
+    bars,
     ...keepOutOf(space),
     revision: `${rig?.registry?.revision ?? ""}/${space?.revision ?? ""}`,
     problems: [...(rig?.registry?.problems ?? []), ...(space?.problems ?? [])],

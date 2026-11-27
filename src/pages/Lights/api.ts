@@ -247,6 +247,11 @@ export class LightsApi {
     return this.json<unknown>("PUT", `/space/keep_out/${encodeURIComponent(name)}`, body);
   }
 
+  /** A light bar as one thing: where its middle is (its height is at[2]) and which way it faces; its parts follow. */
+  putBar(id: string, body: { at?: number[]; facing_deg?: number }) {
+    return this.json<unknown>("PUT", `/space/bars/${encodeURIComponent(id)}`, body);
+  }
+
   removeKeepOut(name: string) {
     return this.json<unknown>("DELETE", `/space/keep_out/${encodeURIComponent(name)}`);
   }

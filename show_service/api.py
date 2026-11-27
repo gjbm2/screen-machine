@@ -85,6 +85,7 @@ import collections
 import datetime
 import inspect
 import json
+import copy
 import logging
 import math
 import os
@@ -203,6 +204,7 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("PUT", "/api/v1/rig/space/points/{name}"), ("DELETE", "/api/v1/rig/space/points/{name}"),
     ("PUT", "/api/v1/rig/space/regions/{name}"), ("DELETE", "/api/v1/rig/space/regions/{name}"),
     ("PUT", "/api/v1/rig/space/keep_out/{name}"), ("DELETE", "/api/v1/rig/space/keep_out/{name}"),
+    ("PUT", "/api/v1/rig/space/bars/{name}"),
     ("GET", "/api/v1/rig/live"),
     ("GET", "/api/v1/autopilot"), ("PUT", "/api/v1/autopilot"), ("POST", "/api/v1/autopilot/undo"),
     ("POST", "/api/v1/autopilot/resume"), ("GET", "/api/v1/autopilot/rules"), ("POST", "/api/v1/autopilot/check"),
@@ -637,8 +639,8 @@ JOG_UI: dict[str, Any] = {"send_hz": 20.0, "idle_s": 60.0, "nudge_deg": {"fine":
                           "drag_deg_per_px": {"fine": 0.1, "coarse": 0.5}}
 #: POST .../setup's keys. PASS_KEYS go to fixtures.SetupStore.patch as sent (it validates them).
 SETUP_BODY_KEYS: tuple[str, ...] = ("home", "beam", "limit", "limits", "slots", "max_speed", "range", "jog_flip",
-                                    "strobe_hz_max", "lean_deg")
-PASS_KEYS: tuple[str, ...] = ("slots", "max_speed", "range", "jog_flip", "strobe_hz_max", "lean_deg")
+                                    "strobe_hz_max", "lean_deg", "turn_deg")
+PASS_KEYS: tuple[str, ...] = ("slots", "max_speed", "range", "jog_flip", "strobe_hz_max", "lean_deg", "turn_deg")
 BEAM_ATTRS: tuple[str, ...] = ("zoom", "focus", "iris", "frost")     # setup ``beam: "here"`` keeps these
 AXES: tuple[str, ...] = ("pan", "tilt")
 LIMIT_ENDS: tuple[str, ...] = ("here", "low", "high")   # here: the end nearer the held value (docs/LIGHTS.md §8.1)
@@ -799,7 +801,7 @@ def neutral_space(why: Optional[str]) -> dict:
     """GET /api/v1/rig/space with no room space: contract.SpaceView's shape, empty (the frame's own default front)."""
     return {"revision": "", "error": why, "problems": [],
             "room": {"size": None, "front": "north", "centre": None, "right": [1.0, 0.0, 0.0]},
-            "surfaces": {}, "points": {}, "regions": {}, "keep_out": {}, "appliances": {}, "extent": None,
+            "surfaces": {}, "points": {}, "regions": {}, "keep_out": {}, "bars": {}, "appliances": {}, "extent": None,
             "targets": [], "light_groups": {}, "lasers": {}, "lean_rule_deg": None}
 
 
@@ -1181,6 +1183,7 @@ class Api:
             ("DELETE", "/api/v1/rig/space/regions/{name}", self._space_region_delete),
             ("PUT", "/api/v1/rig/space/keep_out/{name}", self._space_keep_put),
             ("DELETE", "/api/v1/rig/space/keep_out/{name}", self._space_keep_delete),
+            ("PUT", "/api/v1/rig/space/bars/{name}", self._space_bar_put),
             ("GET", "/api/v1/rig/live", self._rig_live),
             ("POST", "/api/v1/hue/stream", self._hue_stream),
             ("GET", "/api/v1/hue/status", self._hue_status),
@@ -2353,11 +2356,29 @@ class Api:
         try:
             from . import space as spacemod
             apps = v.get("appliances") or {}
+            bar_of = {pt["id"]: b for b in (v.get("bars") or {}).values() for pt in b["parts"].values()}
             lasers = [{"id": fid, "at": (apps.get(fid) or {}).get("at"), "spread_deg": r.get("spread_deg"),
-                       "lean_deg": (r.get("setup") or {}).get("lean_deg"), "group": of.get(fid)}
+                       "lean_deg": (r.get("setup") or {}).get("lean_deg"),
+                       "turn_deg": (r.get("setup") or {}).get("turn_deg"), "group": of.get(fid),
+                       "front": (bar_of.get(fid) or {}).get("front")}       # its bar's front, when it is on one
                       for fid, r in rows.items() if isinstance(r, dict) and r.get("spread_deg")]
             v["lasers"] = spacemod.laser_checks(v, lasers)
             v["lean_rule_deg"] = spacemod.LEAN_RULE_DEG
+            # each bar part as the page edits it: its name, and how it points now (its own tilt and turn from its
+            # setup, else the layout's; a laser with neither, the rule's)
+            bars = copy.deepcopy(v.get("bars") or {})
+            for b in bars.values():
+                for pt in b["parts"].values():
+                    r = rows.get(pt["id"]) if isinstance(rows.get(pt["id"]), dict) else {}
+                    su = r.get("setup") or {}
+                    lean = su.get("lean_deg", pt.get("lean_deg"))
+                    if lean is None and r.get("spread_deg"):
+                        lean = spacemod.LEAN_RULE_DEG - float(r["spread_deg"]) / 2.0
+                    pt["label"] = r.get("label") or pt["id"]
+                    pt["aim"] = None if lean is None or pt.get("head") else {
+                        "lean_deg": float(lean), "turn_deg": float(su.get("turn_deg", pt.get("turn_deg") or 0.0)),
+                        "own": su.get("lean_deg") is not None or su.get("turn_deg") is not None}
+            v["bars"] = bars
         except Exception:                                 # the page degrades: no checks shown
             log.debug("space: laser checks failed", exc_info=True)
             v["lasers"], v["lean_rule_deg"] = {}, None
@@ -2502,6 +2523,19 @@ class Api:
         name = request.match_info["name"]
         return await self._space_write(brain, lambda st: st.set_keep_out(name, body["centre"], body["size"],
                                                                          body.get("groups"), body.get("label")))
+
+    async def _space_bar_put(self, request: web.Request, brain: Any) -> web.Response:
+        """PUT /api/v1/rig/space/bars/{name} ``{at?: [x, y, z], facing_deg?, layout?, label?}`` -> the bar: where a
+        light bar's middle is, its height (at[2]) and which way it faces; its parts follow. A key left out keeps."""
+        body, bad = await self._body(request)
+        if bad is not None:
+            return bad
+        keys = ("at", "facing_deg", "layout", "label")
+        if not isinstance(body, dict) or not body or any(k not in keys for k in body):
+            return _err(400, "bad_request", 'A bar is {"at": [x, y, z], "facing_deg": 90}.', choices=list(keys))
+        name = request.match_info["name"]
+        return await self._space_write(brain, lambda st: st.set_bar(name, body.get("at"), body.get("facing_deg"),
+                                                                    body.get("layout"), body.get("label")))
 
     async def _space_keep_delete(self, request: web.Request, brain: Any) -> web.Response:
         name = request.match_info["name"]

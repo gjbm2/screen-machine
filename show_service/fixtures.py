@@ -1781,11 +1781,14 @@ class Registrar:
 # -- the setup file (the Lights page's per-light settings; docs/LIGHTS.md §2.6) ----------------------------------------
 SETUP_NAME = "fixtures.setup.yaml"
 SETUP_KEYS: tuple[str, ...] = ("home", "limits", "max_speed", "range", "beam", "slots", "positions", "strobe_hz_max",
-                               "jog_flip", "lean_deg")
+                               "jog_flip", "lean_deg", "turn_deg")
 #: lean_deg (owner, 27 Nov: "laser angle should be a config setting in the light set up screen ... a de facto user
 #: param we'll physically control but will drive the simulation"): how a fixed light that throws a spread of beams (a
 #: bar's laser) is tilted by hand: degrees forward (towards the middle of the room) from straight up; negative: back.
-LEAN_DEG = (-90.0, 90.0)
+#: turn_deg: and turned this far to the right of its bar's front (as you face the bar), for a light on a bracket that
+#: turns. lean_deg runs past level for a light pointed down (90: level, 120: 30 degrees below level).
+LEAN_DEG = (-90.0, 180.0)
+TURN_DEG = (-180.0, 180.0)
 SETUP_AXES: tuple[str, ...] = ("pan", "tilt")
 SETUP_BEAM: tuple[str, ...] = ("zoom", "focus", "iris", "frost")
 SETUP_SLOT_WHEELS: tuple[str, ...] = ("gobo", "gobo2", "colour", "prism")   # slots.<wheel>.<n>: its name
@@ -1963,6 +1966,7 @@ _SETUP_CHECK: dict[str, Callable[[Any, str], Any]] = {
     "strobe_hz_max": lambda v, w: _finite(v, w, lo=0.0, above=True),
     "jog_flip": lambda v, w: _axes(v, w, _flip),
     "lean_deg": lambda v, w: _finite(v, w, lo=LEAN_DEG[0], hi=LEAN_DEG[1]),
+    "turn_deg": lambda v, w: _finite(v, w, lo=TURN_DEG[0], hi=TURN_DEG[1]),
 }
 
 

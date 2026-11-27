@@ -388,7 +388,8 @@ export class RoomSim {
 
   // A par: the maker's 1,205 lux at 2 m with everything on, beam 22 / field 33 degrees.
   private par(f: Fixture, at: THREE.Vector3, front: THREE.Vector3, axis: THREE.Vector3, side: number): Part {
-    const dir = front.clone().addScaledVector(new THREE.Vector3(0, 0, 1), 0.45).addScaledVector(axis, side * 0.5).normalize();
+    // how it points: its own tilt and turn (the Lights page), else its bar layout's, else this view's guess
+    const dir = f.aimDir ? v3(f.aimDir) : front.clone().addScaledVector(new THREE.Vector3(0, 0, 1), 0.45).addScaledVector(axis, side * 0.5).normalize();
     const ang = rad(PHOTO.par.field_deg / 2), omega = coneOmega(ang, 1), area = Math.PI * 0.055 ** 2;
     const l = face(new THREE.CircleGeometry(0.055, 32), PHOTO.par.beam_deg / 2, PHOTO.par.field_deg); aimZ(l, dir); l.position.copy(at); this.built.add(l);
     const light = new THREE.SpotLight(0xffffff, 0, 0, ang, 1, 2);
@@ -412,9 +413,9 @@ export class RoomSim {
   // beam's light; all of the derby's light counts towards the room's.
   private derby(f: Fixture, at: THREE.Vector3, front: THREE.Vector3, axis: THREE.Vector3): Part {
     const D = PHOTO.derby, half = rad(D.beam_deg / 2), omega = 2 * Math.PI * (1 - Math.cos(half));
-    const l = face(new THREE.CircleGeometry(0.05, 32), 40, 75); aimZ(l, front); l.position.copy(at); this.built.add(l);
+    const ax = f.aimDir ? v3(f.aimDir) : front.clone().addScaledVector(new THREE.Vector3(0, 0, 1), 0.55).normalize();   // its tilt and turn
+    const l = face(new THREE.CircleGeometry(0.05, 32), 40, 75); aimZ(l, ax); l.position.copy(at); this.built.add(l);
     const faceOmega = 2 * Math.PI * (1 - Math.cos(rad(131 / 2))), faceArea = Math.PI * 0.05 ** 2;   // the maker's coverage
-    const ax = front.clone().addScaledVector(new THREE.Vector3(0, 0, 1), 0.55).normalize();
     const e1 = axis.clone(), e2 = new THREE.Vector3().crossVectors(ax, e1).normalize();
     const tints = DERBY_RGB.map((c) => perLumen(c));
     const beams = Array.from({ length: 12 }, (_, i) => {

@@ -551,6 +551,26 @@ A keep-out region is a box of the room no beam should cross: a mirror ball, the 
   be tilted to match.
 - **Not covered:** derbies and pars (their light isn't steered and isn't checked).
 
+### 3.6b Bars: a light bar as one thing (owner, 27 Nov)
+
+A bar on its stand is set up by hand: where it stands, how high, which way it faces, and how each light on it is
+tilted and turned on its bracket. Those are settings, and the simulator and the show's aim are drawn from them.
+
+- **`bars.<id>: {label, at: [x, y, z], facing_deg, layout}`** (`space.added.yaml` when set on the page; a bar in
+  `space.yaml` is fixed there). `at` is the bar's middle (its height is `at[2]`); `facing_deg` is the heading of its
+  front, anticlockwise from east. `PUT /api/v1/rig/space/bars/{id}`.
+- **`layouts.<name>.parts.<part>`** (`space.yaml` only: what the unit is): `along` (m from the middle, + to the right
+  as you face the bar), `up`, `head` (a moving head standing on the bar), and the part's tilt and turn as it ships
+  (`lean_deg`: degrees forward from straight up, 90 is level; `turn_deg`: to the right of the bar's front).
+- **Each part is the fixture `<bar id>.<part>`** and gets its place from the bar. A head gets an upright pose facing
+  the bar's front until it is taught (§3.6). A part with its own `at` under `appliances` keeps that place.
+- **A light's own tilt and turn** are in its setup (`fixtures.setup.yaml` `lean_deg`, `turn_deg`; §2.6) and override
+  the layout's. A laser with neither gets the 45-degree rule (`space.LEAN_RULE_DEG`).
+- **Where they are set:** the Light setup page's 3D tab, "The bars": sliders for each bar and each fixed light. A
+  change is saved when the slider is let go, and the simulator above reads the room again.
+- **Not there yet:** a control for the four strobe zones (they are in the bar's face and point where it does), and
+  dragging a bar in the 3D view itself.
+
 ### 3.7 Tests (space): test_space.py (new)
 
 - **Synthetic room** 6 × 8 × 3 (front north). flow_coord for every dir at known points: right gives the east wall 1

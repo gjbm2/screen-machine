@@ -26,11 +26,23 @@ type NodeStatus = { node?: { udp?: string; universe?: number }; artnet?: { pps?:
 /** The room in 3D. On its own (/lights/room) it fills the window; ``embedded`` (the Lights setup's 3D tab) it fills
  *  its box and leaves the readout to the page around it. ``picked``: the keep-out region being edited there;
  *  ``regions``: the page's own (unsaved) copy of the regions, drawn in place of the room's saved ones. */
-export default function Room3DPage({ embedded = false, picked = null, regions }: {
+export default function Room3DPage({ embedded = false, picked = null, regions, refresh = 0 }: {
   embedded?: boolean; picked?: string | null; regions?: KeepRegion[];
+  /** Bump it to read the room again at once (the page around it has just saved a change). */
+  refresh?: number;
 } = {}) {
   const room = useMemo(() => resolveRoomUrl(window.location.search), []);
   const node = useMemo(() => (new URLSearchParams(window.location.search).get("node") || NODE_DEFAULT).replace(/\/+$/, ""), []);
+  // Taking pictures (tools/room/light_shots.py: the library's picture of each lighting scene): ?shot=1 draws the room
+  // alone, at full size whatever the frame rate, from ?view=front|side|above, in ?haze=light|medium|thick (a fixed
+  // haze, not the room's own reading).
+  const shot = useMemo(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (!q.has("shot")) return null;
+    const v = q.get("view"), hz = q.get("haze") || "";
+    return { view: (v === "side" || v === "above" ? v : "front") as "front" | "side" | "above",
+      sigma: hz in LEVEL_VISIBILITY_M ? 3 / LEVEL_VISIBILITY_M[hz] : hz === "clear" ? 0 : null };
+  }, []);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const hostRef = useRef<HTMLDivElement | null>(null);
   const simRef = useRef<RoomSim | null>(null);
@@ -67,7 +79,8 @@ export default function Room3DPage({ embedded = false, picked = null, regions }:
         const fps = (frames * 1000) / (now - fpsAt);
         frames = 0; fpsAt = now;
         const was = sim.scale;
-        if (fps < 48 && sim.scale > 0.4) sim.scale = Math.max(0.4, sim.scale * Math.max(0.6, fps / 55));
+        if (shot) sim.scale = 1;                               // a picture: full size, however slowly it draws
+        else if (fps < 48 && sim.scale > 0.4) sim.scale = Math.max(0.4, sim.scale * Math.max(0.6, fps / 55));
         else if (fps > 58 && sim.scale < 1) sim.scale = Math.min(1, sim.scale * 1.12);
         if (sim.scale !== was) fit();
         const hidden = /^brave$/i.test(gpu.trim()), soft = /swiftshader|software|llvmpipe/i.test(gpu);
@@ -88,11 +101,12 @@ export default function Room3DPage({ embedded = false, picked = null, regions }:
       if (dead) return;
       setModel(m); setRoomErr(null);
       simRef.current?.setModel(m);
+      if (shot) simRef.current?.view(shot.view);
     }).catch((e) => !dead && setRoomErr(e instanceof Error ? e.message : String(e)));
     void get();
     const t = window.setInterval(get, ROOM_POLL_MS);
     return () => { dead = true; window.clearInterval(t); };
-  }, [room]);
+  }, [room, refresh]);
 
   // the keep-out regions: red when a laser's burst crosses one
   useEffect(() => {
@@ -134,7 +148,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions }:
         const h: Haze = await (await fetch(`${room.replace(/\/+$/, "")}/show/api/v1/haze`, { cache: "no-store" })).json();
         if (dead) return;
         setHaze(h);
-        if (simRef.current && hazeDragRef.current == null) simRef.current.sigma = sigmaOf(h.estimate_ml_m3, h.levels);
+        if (simRef.current && hazeDragRef.current == null) simRef.current.sigma = shot?.sigma ?? sigmaOf(h.estimate_ml_m3, h.levels);
       } catch { if (!dead) setHaze(null); }
     };
     void get();
@@ -150,7 +164,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions }:
   return (
     <div className={embedded ? "relative flex h-[70vh] min-h-[420px] flex-col overflow-hidden rounded-xl bg-[#06070a] text-[#e3e6ee]"
       : "fixed inset-0 flex flex-col bg-[#06070a] text-[#e3e6ee]"} style={{ fontSize: 13 }} data-testid="room-sim">
-      <header className="flex flex-wrap items-center gap-2 border-b border-[#252a38] bg-[#0d1017] px-3 py-1.5">
+      <header className={shot ? "hidden" : "flex flex-wrap items-center gap-2 border-b border-[#252a38] bg-[#0d1017] px-3 py-1.5"}>
         <b className="text-[15px]">Room in 3D</b>
         <span className={pill} style={{ color: roomErr ? "#ff6b6b" : "#6bd38a" }}>
           {roomErr ? `room: ${roomErr}` : model ? `room ${model.size.join(" × ")} m · ${model.fixtures.length} fixtures${model.problems.length ? ` · ${model.problems.length} problems` : ""}` : "room: loading"}
@@ -206,11 +220,11 @@ export default function Room3DPage({ embedded = false, picked = null, regions }:
           onPointerUp={() => { drag.current = null; }}
           onWheel={(e) => simRef.current?.zoomBy(e.deltaY)}>
           <canvas ref={canvasRef} className="absolute inset-0 block" />
-          <div className="pointer-events-none absolute bottom-1.5 left-2.5 text-xs text-[#8d93a5]">
+          <div className={shot ? "hidden" : "pointer-events-none absolute bottom-1.5 left-2.5 text-xs text-[#8d93a5]"}>
             drag: orbit · wheel: zoom · the lights read the Art-Net wire, at their makers' brightness; the picture adapts as an eye does · {perf}
           </div>
         </div>
-        <aside className={embedded ? "hidden" : "overflow-auto border-l border-[#252a38] bg-[#0b0d13] px-3 py-2"} style={{ width: SIDE_W }}>
+        <aside className={embedded || shot ? "hidden" : "overflow-auto border-l border-[#252a38] bg-[#0b0d13] px-3 py-2"} style={{ width: SIDE_W }}>
           {words.map((g) => (
             <div key={g.unit} className="mb-2">
               <h2 className="mb-1 mt-2 text-sm font-semibold">{g.unit}</h2>

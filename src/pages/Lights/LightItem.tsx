@@ -241,8 +241,8 @@ function LaserTilt({ row, api, onChanged }: { row: LightRow; api: LightsApi; onC
     <div className="space-y-2 rounded-xl border border-stone-200 bg-white p-3" data-testid="laser-tilt">
       <div className="text-[15px] font-medium">How it is tilted</div>
       <p className="text-[15px] text-muted-foreground">
-        Tilt the real laser by hand, then set the same here: the 3D room draws its beams from this. Forward is towards the
-        middle of the room.
+        Tilt the real laser by hand, then set the same here: the 3D room draws its beams from this. Forward is the way
+        its bar faces.
       </p>
       <div className="flex items-center gap-3">
         <Slider min={-60} max={60} step={0.5} value={[lean]} disabled={busy} onValueChange={(v) => setLean(v[0])}

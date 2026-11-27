@@ -50,3 +50,41 @@ def test_a_lasers_tilt_is_checked_and_the_clear_tilt_found():
     view["keep_out"]["ball"]["groups"] = ["movers"]                          # not for lasers: nothing to cross
     assert sp.laser_checks(view, [{"id": "l", "at": [4.6, 9.6, 2.5], "spread_deg": 93.0, "lean_deg": None,
                                    "group": "lasers"}])["l"]["crosses"] == []
+
+
+# -- bars: a light bar as one thing, its parts placed from its layout ---------------------------------------------------
+LAYOUT = {"gigbar": {"parts": {"par1": {"along": -0.5, "lean_deg": 68, "turn_deg": -27},
+                                "spot1": {"along": -0.33, "up": 0.18, "head": True}, "laser": {"along": 0.0}}}}
+
+
+def _bars_view(extra=None):
+    hand = {"version": 1, "room": {"size": [5.0, 10.0, 4.0], "front": "east"}, "layouts": LAYOUT,
+            "bars": {"a": {"at": [4.6, 9.6, 2.5], "facing_deg": -114.5, "layout": "gigbar"}}, **(extra or {})}
+    return sp.build_view(hand, None)
+
+
+def test_a_bars_parts_sit_where_its_layout_says_and_its_heads_face_its_front():
+    v = _bars_view()
+    assert v["problems"] == []
+    ap = v["appliances"]
+    assert [round(x, 3) for x in ap["a.par1"]["at"]] == [4.145, 9.807, 2.5]          # half a metre to the bar's left
+    assert [round(x, 3) for x in ap["a.spot1"]["at"]] == [4.3, 9.737, 2.68]          # a head, 18 cm above the bar
+    pose = ap["a.spot1"]["pose"]
+    assert round(pose["rot"][2], 4) == round(math.radians(-114.5), 4) and ap["a.spot1"]["mount"] == "floor"
+    b = v["bars"]["a"]
+    assert [round(x, 3) for x in b["front"]] == [-0.415, -0.91, 0.0] and b["parts"]["par1"]["lean_deg"] == 68
+
+
+def test_a_part_placed_by_hand_keeps_its_own_place_and_a_bar_without_its_layout_says_so():
+    v = _bars_view({"appliances": {"a.laser": {"at": [1.0, 1.0, 1.0]}}})
+    assert v["appliances"]["a.laser"]["at"] == [1.0, 1.0, 1.0] and v["bars"]["a"]["parts"]["laser"]["own_place"]
+    hand = {"version": 1, "bars": {"x": {"at": [1, 1, 1], "facing_deg": 0, "layout": "nope"}}}
+    v2 = sp.build_view(hand, None)
+    assert v2["bars"] == {} and any("layout" in p for p in v2["problems"])
+
+
+def test_which_way_a_fixed_light_points_from_its_tilt_and_turn():
+    front = (0.0, 1.0, 0.0)                                                          # the bar faces north
+    assert [round(x, 3) for x in sp.aim_dir(front, 0.0)] == [0.0, 0.0, 1.0]          # straight up
+    assert [round(x, 3) for x in sp.aim_dir(front, 90.0)] == [0.0, 1.0, 0.0]         # level, ahead
+    assert [round(x, 3) for x in sp.aim_dir(front, 90.0, 90.0)] == [-1.0, 0.0, 0.0]  # level, to the bar's right (west)

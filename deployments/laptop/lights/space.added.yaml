@@ -10,3 +10,14 @@ points: {}
 regions: {}
 surfaces: {}
 keep_out: {}
+bars:
+  gigbar-a:
+    label: Bar A
+    at: [4.6, 9.6, 2.5]
+    facing_deg: -114.5
+    layout: gigbar-move
+  gigbar-b:
+    label: Bar B
+    at: [4.6, 0.4, 2.5]
+    facing_deg: 114.5
+    layout: gigbar-move
