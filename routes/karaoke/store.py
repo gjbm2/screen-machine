@@ -468,6 +468,25 @@ class Store:
             return None
         return next((e for e in reversed(self.s["queue"][:i]) if self._ready(e)), None)
 
+    def needed_in(self, sid: str, now: float | None = None) -> float | None:
+        """Seconds until the song's next turn in the queue comes (what is left of the one playing, then each ready
+        song before it); 0 when nothing plays and it is next; None when it has no turn to come."""
+        with self.lock:
+            q = self.s["queue"]
+            p = self.s["player"]
+            i = self._index(p.get("qid"))
+            start = 0 if i is None else i + 1
+            t = 0.0
+            if i is not None and p.get("state") in ("playing", "paused"):
+                dur = (self.s["songs"].get(q[i]["song_id"]) or {}).get("audio_s") or 0.0
+                t = max(0.0, dur - self.position(now))
+            for e in q[start:]:
+                if e["song_id"] == sid:
+                    return t
+                if self._ready(e):
+                    t += (self.s["songs"].get(e["song_id"]) or {}).get("audio_s") or 0.0
+            return None
+
     def current_entry(self) -> dict | None:
         i = self._index(self.s["player"].get("qid"))
         return self.s["queue"][i] if i is not None else None

@@ -48,6 +48,8 @@ def main() -> int:
     a = ap.parse_args()
 
     import torch
+    import gpu_pace  # the worker slows it while something plays live (routes/karaoke/pace.py)
+    gpu_pace.install()
     import torchaudio
 
     t_start = time.perf_counter()

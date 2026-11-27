@@ -28,6 +28,7 @@ import smconfig
 from utils.logger import error, info
 
 from . import lyrics as lyr
+from . import pace
 from . import sources as src
 from .sources import SourceError
 from .store import Store, song_dir, song_key
@@ -116,7 +117,7 @@ def mean_db(wav: Path) -> float:
 def _venv_json(script: Path, args: list[str], timeout: float) -> dict:
     """Run a karaoke tool in the karaoke venv; its last stdout line is its JSON answer."""
     py = smconfig.deployment().host_path("karaoke_python")
-    p = subprocess.run([str(py), str(script), *args], capture_output=True, text=True, timeout=timeout)
+    p = pace.run([str(py), str(script), *args], text=True, timeout=timeout)
     last = (p.stdout or "").strip().splitlines()[-1:] or [""]
     if p.returncode != 0 or not last[0].startswith("{"):
         raise RuntimeError(((p.stderr or "").strip().splitlines() or ["no output"])[-1][:300])
@@ -186,8 +187,8 @@ def add_word_times(lines: list[dict], vocal: Path, shift: float) -> None:
         json.dump(lines, f)
         lines_file = f.name
     try:
-        p = subprocess.run([str(py), str(ALIGN), "--vocal", str(vocal), "--lines", lines_file, "--shift", str(shift)],
-                           capture_output=True, text=True, timeout=600)
+        p = pace.run([str(py), str(ALIGN), "--vocal", str(vocal), "--lines", lines_file, "--shift", str(shift)],
+                     text=True, timeout=600)
     finally:
         Path(lines_file).unlink(missing_ok=True)
     last = (p.stdout or "").strip().splitlines()[-1:] or [""]
@@ -287,6 +288,12 @@ class Worker:
                     continue
             job = job or careful
             self.current = job["id"]
+            # How much of the GPU its tools may take while something plays live (karaoke/pace.py)
+            sid = job["id"]
+            if careful is not None:
+                pace.current, pace.current_nice = self.careful_share, pace.CAREFUL_NICE
+            else:
+                pace.current, pace.current_nice = (lambda: self.prep_share(sid)), pace.NICE
             try:
                 if careful is not None:
                     self.refine(job)
@@ -314,6 +321,20 @@ class Worker:
                 if job["id"] in self._restart:          # restarted mid-run: from nothing, once this run has stopped
                     self._restart.discard(job["id"])
                     self._clear(job["id"])
+
+    # ------------------------------------------------------------ pace (karaoke/pace.py)
+    def live(self) -> bool:
+        """Something plays in real time: a stream session is live, or a song is playing."""
+        return self.store.s["player"].get("state") == "playing" or pace.screens_live()
+
+    def prep_share(self, sid: str) -> float:
+        if not self.live():
+            return 1.0
+        due = self.store.needed_in(sid)
+        return 1.0 if due is not None and due < pace.URGENT_S else pace.PREP_SHARE
+
+    def careful_share(self) -> float:
+        return pace.CAREFUL_SHARE if self.live() else 1.0
 
     # ------------------------------------------------------------ one song
     def step(self, sid: str, status: str, detail: str = "") -> None:
@@ -528,7 +549,7 @@ class Worker:
         """A karaoke tool in the karaoke venv, its last stdout line as JSON; None if it was ended because a song came
         to be prepared (that goes first). A restart of the song ends it too (Restarted)."""
         py = smconfig.deployment().host_path("karaoke_python")
-        p = subprocess.Popen([str(py), *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        p = pace.popen([str(py), *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         out: dict[str, str] = {}
         reader = threading.Thread(target=lambda: out.update(zip(("o", "e"), p.communicate())), daemon=True)
         reader.start()
@@ -586,8 +607,8 @@ class Worker:
         py = smconfig.deployment().host_path("karaoke_python")
         if not py or not Path(py).exists():
             raise SourceError("The karaoke tools aren't installed on this machine (deployment host.karaoke_python).")
-        p = subprocess.run([str(py), str(SEPARATE), "--in", str(audio), "--out-dir", str(d)] + (["--model", model] if model else []),
-                           capture_output=True, text=True, timeout=900)
+        p = pace.run([str(py), str(SEPARATE), "--in", str(audio), "--out-dir", str(d)] + (["--model", model] if model else []),
+                     text=True, timeout=1800)
         last = (p.stdout or "").strip().splitlines()[-1:] or [""]
         try:
             res = json.loads(last[0])

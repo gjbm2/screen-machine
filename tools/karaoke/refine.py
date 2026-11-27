@@ -72,6 +72,8 @@ def voices_stem(d: Path, work: Path) -> Path:
 
 def hear(wav: Path, model_name: str) -> list[dict]:
     import torch
+    import gpu_pace  # the worker slows it while something plays live (routes/karaoke/pace.py)
+    gpu_pace.install()
     import whisper
     dev = "cuda" if torch.cuda.is_available() else "cpu"
     model = whisper.load_model(model_name, device=dev,
@@ -87,6 +89,8 @@ def hear(wav: Path, model_name: str) -> list[dict]:
 def align_song(audio: np.ndarray, texts: list[str]) -> list:
     """One CTC path for the whole lyrics over the whole song (MMS_FA with the star token)."""
     import torch
+    import gpu_pace  # the worker slows it while something plays live (routes/karaoke/pace.py)
+    gpu_pace.install()
     import torchaudio
     import torchaudio.functional as F
 

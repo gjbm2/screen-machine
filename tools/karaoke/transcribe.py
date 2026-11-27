@@ -25,6 +25,8 @@ def main() -> int:
     a = ap.parse_args()
 
     import torch
+    import gpu_pace  # the worker slows it while something plays live (routes/karaoke/pace.py)
+    gpu_pace.install()
     import whisper
 
     t0 = time.perf_counter()

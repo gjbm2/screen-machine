@@ -4,7 +4,8 @@
 //   The address is the server's (routes/karaoke/join.py: the machine's LAN address when .env says localhost).
 // - NextUp: towards the end of a song, who and what is next, so the next singer gets ready. Gentle: one banner that
 //   fades in NEXT_UP_S before the end and stays, no ticking count (owner: "we don't want to be TOO aggressive about
-//   countdowns, just enough to get the next person ready to roll").
+//   countdowns, just enough to get the next person ready to roll"); a thin bar along its foot shows how much of the
+//   song playing is left (owner, 27 Nov: "a countdown bar probably so next singer knows how long they have").
 
 import type { CSSProperties } from "react";
 import { QRCodeSVG } from "qrcode.react";
@@ -73,11 +74,14 @@ export function NextUp({
   artist,
   singers,
   opacity,
+  left,
 }: {
   title: string;
   artist: string;
   singers?: string[];
   opacity: number;
+  /** How much of the song playing is left, 0-1: the bar; null: none. */
+  left?: number | null;
 }) {
   const singer = namesText(singers);
   const song = artist ? `${title} (${artist})` : title;
@@ -106,6 +110,21 @@ export function NextUp({
       <div style={{ fontSize: "min(1.7vw, 28px)", opacity: 0.92, marginTop: "0.25em" }}>
         {singer ? `Get ready for ${song}` : song}
       </div>
+      {left != null && (
+        <div
+          data-sm-karaoke-next-bar=""
+          style={{ marginTop: "1.1vh", height: "0.6vh", borderRadius: "0.3vh", background: "rgba(255,255,255,0.22)", overflow: "hidden" }}
+        >
+          <div
+            style={{
+              height: "100%",
+              width: `${Math.max(0, Math.min(1, left)) * 100}%`,
+              borderRadius: "0.3vh",
+              background: "rgba(255,214,90,0.95)",
+            }}
+          />
+        </div>
+      )}
     </div>
   );
 }
