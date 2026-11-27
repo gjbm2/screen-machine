@@ -31,6 +31,9 @@ The goal: the numbers in `tools/room/ad_eval` go up night after night, and the o
      `utils/song_shape.py`, and tests.
    - **Never edit:** the eval itself (`tools/room/ad_eval/`), the feedback file, CLAUDE.md, auth, ports, deployments' site
      facts.
+   - Keep to a file's own house rules: its header, and the tests that hold it. For example, `light_scenes.yaml`
+     keeps gobos to a few slow scenes (test_the_real_scenes_use_gobos_with_restraint). Light effects stay sparse
+     across the room (director FX_PER_MOMENT and FX_ROOM_MAX): restraint is the owner's, not a metric to beat.
    - Run the touched module's tests (`~/.venvs/sm-show/bin/python -m pytest -q show_service/tests/test_<x>.py`).
 5. **Re-score** on the full set.
    - **Keep the fix** if the overall score rises, no dimension falls by more than 0.02, every `good` verdict still
