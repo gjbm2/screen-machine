@@ -1341,7 +1341,7 @@ export class RoomSim {
   // re-build the view ... why not just transition smoothly from one to the other (e.g. perspective changes and ease-in
   // / ease-out move)"): the field of view and how much of the room is framed change together (a dolly zoom), the
   // camera swings from one direction to the other, its up turns, all eased in and out.
-  private anim: { t: number; dur: number; t0: THREE.Vector3; t1: THREE.Vector3; p0: THREE.Vector3; p1: THREE.Vector3;
+  private anim: { t: number; dur: number; t0: THREE.Vector3; t1: THREE.Vector3; tEnd: THREE.Vector3; p0: THREE.Vector3; p1: THREE.Vector3;
     f0: number; f1: number; s0: number; s1: number; d0: THREE.Vector3; d1: THREE.Vector3; u0: THREE.Vector3; u1: THREE.Vector3 } | null = null;
   /** The lens the next glide arrives at (lens()); applied at once with no glide. */
   private lensTo: { fov: number; up: THREE.Vector3 } | null = null;
@@ -1363,14 +1363,23 @@ export class RoomSim {
       else this.camera.lookAt(target);
       return;
     }
-    const c = this.camera, t0 = this.controls.target.clone(), p0 = c.position.clone();
-    // a glide replacing one under way still arrives at that one's lens (Plan: setNav, then the plan's fit, two glides)
+    const c = this.camera, p0 = c.position.clone();
+    let t0 = this.controls.target.clone(), t1 = target.clone();
+    // a glide replacing one under way still arrives at that one's lens
     const was = this.anim;
     const f0 = c.fov, f1 = lt?.fov ?? was?.f1 ?? f0, half = (f: number) => Math.tan(THREE.MathUtils.degToRad(f) / 2);
-    const dist0 = Math.max(1e-3, p0.distanceTo(t0)), dist1 = Math.max(1e-3, pos.distanceTo(target));
-    this.anim = { t: 0, dur: Math.abs(f1 - f0) > 1 ? Math.max(dur, 1.0) : dur, t0, t1: target.clone(), p0, p1: pos.clone(),
+    if (Math.abs(f1 - f0) > 1) {
+      // a change of lens swings the camera round its pivot: a walking eye's pivot is a metre ahead of it, so the swing
+      // spun on the spot and then flew out. Each end's pivot goes out along its own line of sight (the picture there
+      // is the same) as far as the other end is, so the swing is round the room; the real pivot is set on arrival.
+      const reach = p0.distanceTo(pos) * 0.5 + Math.max(p0.distanceTo(t0), pos.distanceTo(target));
+      const out = (p: THREE.Vector3, t: THREE.Vector3) => p.clone().add(t.clone().sub(p).normalize().multiplyScalar(Math.max(p.distanceTo(t), reach)));
+      t0 = out(p0, t0); t1 = out(pos, target);
+    }
+    const dist0 = Math.max(1e-3, p0.distanceTo(t0)), dist1 = Math.max(1e-3, pos.distanceTo(t1));
+    this.anim = { t: 0, dur: Math.abs(f1 - f0) > 1 ? Math.max(dur, 1.0) : dur, t0, t1, tEnd: target.clone(), p0, p1: pos.clone(),
       f0, f1, s0: 2 * dist0 * half(f0), s1: 2 * dist1 * half(f1),
-      d0: p0.clone().sub(t0).normalize(), d1: pos.clone().sub(target).normalize(), u0: c.up.clone(), u1: (lt?.up ?? was?.u1 ?? c.up).clone() };
+      d0: p0.clone().sub(t0).normalize(), d1: pos.clone().sub(t1).normalize(), u0: c.up.clone(), u1: (lt?.up ?? was?.u1 ?? c.up).clone() };
   }
   /** Set the lens: its field of view and up, and near / far planes that suit a camera ``dist`` from what it frames. */
   private setLens(fov: number, up: THREE.Vector3, dist: number) {
@@ -1400,8 +1409,11 @@ export class RoomSim {
     }
     if (a.t >= 1) {
       this.camera.position.copy(a.p1);
-      this.setLens(a.f1, a.u1, a.p1.distanceTo(a.t1));
+      this.controls.target.copy(a.tEnd);
+      this.setLens(a.f1, a.u1, a.p1.distanceTo(a.tEnd));
       this.anim = null;
+      if (this.nav === "orbit") this.controls.update();       // OrbitControls takes up the pose it arrived at
+      else this.camera.lookAt(a.tEnd);
     }
   }
 
@@ -1615,10 +1627,10 @@ export class RoomSim {
     const flat = mode === "plan" || mode === "elev";
     this.lens(flat);
     if (flat) { if (place) this.flatFit(); return; }
-    if ((was === "plan" || was === "elev") && place) {        // out of a flat view: into the room, or over it
-      if (mode === "orbit") this.view("above"); else this.standAt("back");
-      return;
-    }
+    if (was === "plan" || was === "elev") {                  // out of a flat view: into the room, or over it
+      if (place) { if (mode === "orbit") this.view("above"); else this.standAt("back"); }
+      return;                                                // (else the caller's glide moves the camera: a pivot
+    }                                                        // put here and OrbitControls' clamp jumped it first)
     if (mode === "orbit") {
       // the pivot goes on what is straight ahead, so orbiting turns round what you were looking at
       const ray = new THREE.Raycaster(this.camera.position.clone(), this.lookDir());
@@ -1847,7 +1859,7 @@ export class RoomSim {
   get flat(): boolean { return this.nav === "plan" || this.nav === "elev"; }
   /** Show the plan, or an elevation looking at ``side``'s wall. */
   showFlat(which: "plan" | Elev) {
-    if (which === "plan") { this.setNav("plan"); this.flatFit(); return; }
+    if (which === "plan") { if (this.nav === "plan") this.flatFit(); else this.setNav("plan"); return; }   // one glide
     const was = this.nav;
     this.elev = which;
     if (was !== "elev") this.setNav("elev");
