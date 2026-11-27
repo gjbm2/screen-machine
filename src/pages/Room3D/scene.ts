@@ -155,7 +155,9 @@ const WALL_GAP = 0.25;      // and how near a wall
  *  and how much a spot spreads per metre (ESTIMATES: a 40 cm ball on a slow motor). */
 const BALL = { r: 0.2, facets: 220, rps: 0.1, reflect: 0.8, facet_m: 0.02, spread: 0.008, dot_m: 0.06 };
 /** A pinspot (ESTIMATE: a 10 W LED in a 6-degree lens): its beam and on-axis candela. */
-const PINSPOT = { beam_deg: 6, cd: 3000 };
+const PINSPOT = { beam_deg: 6, cd: 3000, flash_hz: 8, cycle_s: 1.5 };
+/** The colour cycle ("fade") through the pinspots' remote's colours. */
+const PINSPOT_CYCLE: [number, number, number][] = [[255, 40, 30], [40, 255, 60], [50, 80, 255], [255, 220, 40], [170, 60, 255], [40, 230, 255], [255, 250, 240]];
 /** Editing a light: how bright the others are drawn (their level channels x this). */
 const SOLO_DIM = 0.12;
 /** A level channel of a light that is not being edited, drawn dimmed: a par's and a derby's colours, the strobe LEDs, a
@@ -1160,8 +1162,12 @@ export class RoomSim {
       const st = this.deviceStates[f.id];
       const edited = this.solo?.has(f.id) ? this.editShow : null;      // While editing: on / off / as the mode has it
       const on = edited === "on" ? true : edited === "off" ? false : !!st?.on;
-      const tint = st?.rgb ? perLumen(st.rgb) : white;
-      cd.copy(tint).multiplyScalar(on ? PINSPOT.cd * (st?.level ?? 1) : 0);
+      // its colour (the colour cycle: the remote's seven in turn), its level (8 steps), its flash (a strobe: the remote
+      // gives no rate, PINSPOT.flash_hz is an estimate)
+      const rgb = st?.cycle ? PINSPOT_CYCLE[Math.floor(c.t / PINSPOT.cycle_s) % PINSPOT_CYCLE.length] : st?.rgb;
+      const tint = rgb ? perLumen(rgb) : white;
+      const flash = st?.flash && edited !== "on" ? ((c.t * PINSPOT.flash_hz) % 1 < 0.2 ? 1 : 0) : 1;
+      cd.copy(tint).multiplyScalar(on ? PINSPOT.cd * (st?.level ?? 1) * flash : 0);
       setFace(l, cd, Math.PI * 0.035 ** 2); setCone(b, cd);
       if (on) { this.beamsNow.push({ o: lensAt, d, cd: cd.clone(), half: ang }); c.room.add(cd.clone().multiplyScalar(coneOmega(ang, 1))); }
     } });
@@ -1426,7 +1432,7 @@ export class RoomSim {
   /** This frame's narrow beams (moving heads, pinspots): where from, which way, their candela, their half angle. */
   private afterParts: Part[] = [];
   /** The remote-worked things as the previewed mode has them, by id (the page's): unknown -> off (a pinspot), still. */
-  deviceStates: Record<string, { on: boolean; spin?: boolean; rgb?: [number, number, number]; level?: number }> = {};                            // what reads the frame's beams (mirror balls)
+  deviceStates: Record<string, { on: boolean; spin?: boolean; rgb?: [number, number, number]; level?: number; cycle?: boolean; flash?: boolean }> = {};                            // what reads the frame's beams (mirror balls)
   private beamsNow: { o: THREE.Vector3; d: THREE.Vector3; cd: THREE.Vector3; half: number }[] = [];
   private hl = new Map<number, number>();                     // DMX slot (0-based) -> the value drawn instead
   private vhl = new Map<number, number>();                    // the same for planned lights' virtual slots

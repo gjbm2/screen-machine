@@ -62,6 +62,9 @@ type RigRow = { id: string; label: string; type: string | null; node_ip: string 
 const DEVICES = new Set(["screen", "hue-lamp", "mirror-ball", "mic", "light-sensor"]);
 const DEVICE_WORDS: Record<string, string> = { screen: "A screen or TV", "hue-lamp": "A Hue lamp", "mirror-ball": "A mirror ball",
   mic: "A microphone", "light-sensor": "A light sensor" };
+/** The pinspots' remote's colours (config/room/rf/types/pinspot.json: seven and the colour cycle). */
+const PINSPOT_COLOURS: Record<string, string> = { white: "White", red: "Red", green: "Green", blue: "Blue", yellow: "Yellow",
+  purple: "Purple", cyan: "Cyan", fade: "Colour cycle" };
 /** A remote light's colour words (the RF types' values) as a colour to draw. */
 const COLOUR_WORDS: Record<string, [number, number, number]> = { white: [255, 250, 240], red: [255, 40, 30], green: [40, 255, 60],
   blue: [50, 80, 255], yellow: [255, 220, 40], cyan: [40, 230, 255], magenta: [255, 50, 220], purple: [170, 60, 255], orange: [255, 140, 30], pink: [255, 120, 180] };
@@ -587,7 +590,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   // remote, e.g. pinspots.main on / off, colour, level, or the director's when the mode gives them to it; a planned
   // one: what its "In each mode" says), and off (stopped) where nothing turns them on; the aiming views: lit.
   const deviceStates = useMemo(() => {
-    const out: Record<string, { on: boolean; spin?: boolean; rgb?: [number, number, number]; level?: number }> = {};
+    const out: Record<string, { on: boolean; spin?: boolean; rgb?: [number, number, number]; level?: number; cycle?: boolean; flash?: boolean }> = {};
     const m = modes.find((x) => x.id === asMode);
     for (const t of placedThings) {
       if (!t.dev || !/pinspot|mirror|glitter/.test(t.dev)) continue;
@@ -595,8 +598,10 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       if (show !== "mode" || !m) { out[t.id] = { on: true, spin: true }; continue; }
       const a = bits?.room.appliances[t.id];
       if (!t.connect) {
-        const w = a?.modes?.[m.id];
-        out[t.id] = ball ? { on: true, spin: w === "spinning" } : { on: w === "on" };
+        const [w, ...more] = String(a?.modes?.[m.id] ?? "").split("/");
+        const col = more.find((x) => x !== "flash");
+        out[t.id] = ball ? { on: true, spin: w === "spinning" }
+          : { on: w === "on", rgb: col && col !== "fade" ? COLOUR_WORDS[col] : undefined, cycle: col === "fade", flash: more.includes("flash") };
         continue;
       }
       const st = m.raw?.[t.connect], dir = m.raw?.director?.[ball ? "glitterball" : "pinspots"];
@@ -604,8 +609,9 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       const directed = dir === true || dir?.set === true;
       if (ball) { out[t.id] = { on: true, spin: main === "spinning" || main === "on" || directed }; continue; }
       const on = main === "on" || (main?.set === "on") || directed;
-      const col = st?.colour?.set ?? st?.colour, lvl = st?.level?.set ?? st?.level;
-      out[t.id] = { on, rgb: COLOUR_WORDS[String(col ?? "white")] ?? [255, 250, 240], level: typeof lvl === "number" ? Math.max(0.1, Math.min(1, lvl / 10)) : 1 };
+      const col = st?.colour?.set ?? st?.colour, lvl = st?.level?.set ?? st?.level, fl = st?.flash?.set ?? st?.flash;
+      out[t.id] = { on, rgb: COLOUR_WORDS[String(col ?? "white")] ?? [255, 250, 240], cycle: col === "fade",
+        level: typeof lvl === "number" ? Math.max(1 / 8, Math.min(1, lvl / 8)) : 1, flash: fl === "on" || fl === true };
     }
     return out;
   }, [modes, asMode, show, placedThings, bits]);
@@ -1396,14 +1402,32 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
                   return (
                     <div key={m.id} className={`flex items-center justify-between py-0.5 ${m.id === asMode ? "font-medium" : ""}`}>
                       <span>{m.label}{m.id === asMode ? " · previewing" : ""}</span>
-                      {thing.connect ? <span className="text-stone-500">{cur ? words.find(([w]) => w === cur)?.[1] : "as the mode says"}</span> : (
-                        <div className="inline-flex overflow-hidden rounded-lg border border-stone-300">
-                          {words.map(([w, t], i) => (
-                            <button key={w} disabled={busy} aria-pressed={cur === w} data-testid={`mode-${m.id}-${w}`} onClick={() => setMode(m.id, w)}
-                              className={`h-7 px-2 text-[12px] ${i ? "border-l border-stone-300" : ""} ${cur === w ? "bg-teal-600 text-white" : "bg-white hover:bg-stone-50"}`}>{t}</button>
-                          ))}
-                        </div>
-                      )}
+                      {thing.connect ? <span className="text-stone-500">{cur ? words.find(([w]) => w === cur)?.[1] : "as the mode says"}</span> : (() => {
+                        const [w0, ...more] = String(mine[m.id] ?? (ball ? "stopped" : "off")).split("/");
+                        const col = more.find((x) => x !== "flash") ?? "white", fl = more.includes("flash");
+                        const word = (w: string, c = col, f = fl) => (ball || w === "off" ? w : `${w}/${c}${f ? "/flash" : ""}`);
+                        return (
+                          <span className="flex items-center gap-1">
+                            {!ball && w0 === "on" && (
+                              <>
+                                <select className="h-7 rounded border border-stone-300 bg-white px-1 text-[12px]" value={col} disabled={busy} aria-label="Colour"
+                                  data-testid={`mode-${m.id}-colour`} onChange={(e) => setMode(m.id, word("on", e.target.value))}>
+                                  {Object.keys(PINSPOT_COLOURS).map((c) => <option key={c} value={c}>{PINSPOT_COLOURS[c]}</option>)}
+                                </select>
+                                <button disabled={busy} aria-pressed={fl} title="Flash (strobe)" data-testid={`mode-${m.id}-flash`}
+                                  onClick={() => setMode(m.id, word("on", col, !fl))}
+                                  className={`h-7 rounded border border-stone-300 px-1.5 text-[12px] ${fl ? "bg-teal-600 text-white" : "bg-white hover:bg-stone-50"}`}>⚡</button>
+                              </>
+                            )}
+                            <span className="inline-flex overflow-hidden rounded-lg border border-stone-300">
+                              {words.map(([w, t], i) => (
+                                <button key={w} disabled={busy} aria-pressed={w0 === w} data-testid={`mode-${m.id}-${w}`} onClick={() => setMode(m.id, word(w))}
+                                  className={`h-7 px-2 text-[12px] ${i ? "border-l border-stone-300" : ""} ${w0 === w ? "bg-teal-600 text-white" : "bg-white hover:bg-stone-50"}`}>{t}</button>
+                              ))}
+                            </span>
+                          </span>
+                        );
+                      })()}
                     </div>
                   );
                 })}

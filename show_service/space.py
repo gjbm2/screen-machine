@@ -72,7 +72,7 @@ SECTIONS: tuple[str, ...] = ("room", "appliances", "points", "regions", "surface
 ROOM_KEYS: tuple[str, ...] = ("size", "front", "haze_half_life_s")   # haze_half_life_s: atmosphere.py
 PLACE_KEYS: tuple[str, ...] = ("at", "kind", "label", "mount", "plane", "aim", "connect", "modes")
 #: modes (a planned room device): what each room mode is to do with it, {mode id: "on" | "off" | "spinning" |
-#: "stopped"}, until it is connected and the modes themselves say (owner, 27 Nov: "why are my pinspots on by default
+#: "stopped", a colour light's colour and flash after it ("on/red/flash")}, until it is connected and the modes themselves say (owner, 27 Nov: "why are my pinspots on by default
 #: in normal? what is a good way to allow user to control things like that through the studio mode?")   # an appliance's place (editable on
 #: the map). aim: [x, y, z], the place in the room a fixed light points at (a bar's laser turned up at the ceiling;
 #: owner, 27 Nov): the 3D room draws its beams from ``at`` towards it
@@ -359,10 +359,13 @@ def _place_value(k: str, v: Any, where: str, probs: list[str]) -> Any:
             probs.append(f"{where}: three numbers in metres ([x, y, z], the place it points at): left unset")
         return out
     if k == "modes":
-        if isinstance(v, dict) and all(isinstance(m, str) and _WORD.match(m) and w in ("on", "off", "spinning", "stopped")
+        # "on", "off", "spinning", "stopped", and for a colour light on a remote its colour and flash after it:
+        # "on/red", "on/fade/flash" (the pinspots' remote: seven colours, the colour cycle, flash)
+        ok = re.compile(r"^(on|off|spinning|stopped)(/[a-z]+){0,3}$")
+        if isinstance(v, dict) and all(isinstance(m, str) and _WORD.match(m) and isinstance(w, str) and ok.match(w)
                                        for m, w in v.items()):
             return dict(v)
-        probs.append(f"{where}: {{mode: on | off | spinning | stopped}}: left unset")
+        probs.append(f"{where}: {{mode: on | off | spinning | stopped, a colour light's colour and flash after it: on/red/flash}}: left unset")
         return None
     if k == "connect":
         if isinstance(v, str) and _DEVICE.match(v):

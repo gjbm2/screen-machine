@@ -47,7 +47,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
   pointing?: boolean;
   onPointAt?: (at: [number, number, number]) => void;
   /** The remote-worked things' state as the previewed mode has them (on, spinning, colour, level), by id. */
-  deviceStates?: Record<string, { on: boolean; spin?: boolean; rgb?: [number, number, number]; level?: number }>;
+  deviceStates?: Record<string, { on: boolean; spin?: boolean; rgb?: [number, number, number]; level?: number; cycle?: boolean; flash?: boolean }>;
   /** False: the spot clicked, never a thing's middle (putting a new thing down). */
   pointThings?: boolean;
   /** The words over the view while it waits for that click (default: pointing a light). */
