@@ -417,6 +417,17 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   const [refresh, setRefresh] = useState(0);                         // bumped after a save: the simulator reads again
   const [frame, setFrame] = useState(0);                             // bumped to turn the camera to the selection
   const [treeOpen, setTreeOpen] = useState(false);                   // the object picker's dropdown
+  // the outliner's levels open and close (owner, 27 Nov: "hierarchy levels on studio editor should be open/closeable"):
+  // the closed ones, remembered on this device; a section or bar holding the selection always shows it
+  const [closed, setClosed] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("room3d.closed") ?? "[]")); } catch { return new Set(); }
+  });
+  const toggleOpen = (id: string) => setClosed((was) => {
+    const next = new Set(was);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    try { localStorage.setItem("room3d.closed", JSON.stringify([...next])); } catch { /* this visit */ }
+    return next;
+  });
   // what the lights show in the view: a preview (nothing sent to the lights) or the live wire
   const [show, setShow] = useState<"mode" | "plain" | "colour" | "scene" | "live">("mode");
   const [colour, setColour] = useState("#ff7a2e");
@@ -1049,6 +1060,27 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
     const n = p.label.startsWith(b.label + " ") ? p.label.slice(b.label.length + 1) : p.label;
     return n.charAt(0).toUpperCase() + n.slice(1);
   };
+  /** A level of the outliner: its toggle (▾ open, ▸ closed, with how many are in it) and, open, what is in it. */
+  const level = (id: string, title: ReactNode, count: number, holds: boolean, body: ReactNode, head?: (t: ReactNode) => ReactNode) => {
+    const open = !closed.has(id) || holds;
+    const t = (
+      <button className="flex w-5 shrink-0 items-center justify-center self-stretch rounded text-[11px] text-stone-500 hover:bg-stone-100"
+        onClick={() => toggleOpen(id)} aria-expanded={open} aria-label={open ? "Close" : "Open"} data-testid={`fold-${id}`}
+        title={holds && closed.has(id) ? "Kept open: what is selected is in it" : open ? "Close" : "Open"}>{open ? "▾" : "▸"}</button>
+    );
+    return (
+      <div key={id}>
+        <div className="flex items-center">
+          {t}
+          <div className="min-w-0 flex-1">{head ? head(title) : (
+            <button className="block w-full text-left" onClick={() => toggleOpen(id)}><H>{title}{!open && count ? <span className="font-normal normal-case tracking-normal text-stone-400"> · {count}</span> : null}</H></button>
+          )}</div>
+        </div>
+        {open && body}
+      </div>
+    );
+  };
+  const holds = (keys: string[]) => !!selected && keys.includes(selected);
   /** Everything in the outliner's order: each bar then its lights, then the keep-out regions. */
   const order: string[] = !bits ? [] : [
     ...bits.bars.flatMap((b) => [...(b.editable ? [`bar:${b.id}`] : []), ...b.parts.filter((p) => p.at).map((p) => partKey(p))]),
@@ -1090,29 +1122,43 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
         ＋ Add to the room…</button>
       {row("room:main", roomName, `${bits.size[0]} × ${bits.size[1]} m, ${bits.size[2]} m high · faces ${bits.room.front}`)}
       <div className="ml-3 border-l border-stone-200 pl-1">
-      <H>Bars</H>
-      {bits.bars.length === 0 && <div className="px-2 text-stone-500">No bars in the room model.</div>}
-      {bits.bars.map((b) => (
-        <div key={b.id}>
-          {b.editable ? row(`bar:${b.id}`, b.label, barPlanned(b) ? "planned" : `${b.at[2].toFixed(2)} m up`) : <div className="px-2 py-1">{b.label}<span className="text-stone-500"> · set in the room file</span></div>}
-          <div className="ml-3 border-l border-stone-200 pl-1">{b.parts.filter((p) => p.at).map((p) => row(partKey(p), short(p, b)))}</div>
-        </div>
-      ))}
-      {placedThings.some((t) => t.kind === "screen") && <H>Screens</H>}
-      {placedThings.filter((t) => t.kind === "screen").map((t) => row(`screen:${t.id}`, t.label, t.planned ? "planned" : wallOf(bits.room.appliances[t.id]?.plane?.normal) ? `${wallOf(bits.room.appliances[t.id]?.plane?.normal)} wall` : undefined))}
-      {placedThings.some((t) => t.kind !== "screen") && <H>Other lights and devices</H>}
-      {placedThings.filter((t) => t.kind !== "screen").map((t) => row(`thing:${t.id}`, t.label, t.planned ? "planned" : t.dev ? DEVICE_WORDS[t.dev]?.replace(/^An? /, "").toLowerCase() : t.kind === "mover" ? "moving light" : undefined))}
-      <H>Places</H>
-      {bits.room.points.length === 0 && <div className="px-2 text-stone-500">None yet.</div>}
-      {bits.room.points.map((p) => row(`place:${p.name}`, p.label))}
-      {bits.room.regions.some((a) => a.surface === "floor") && <H>Floor areas</H>}
-      {bits.room.regions.filter((a) => a.surface === "floor").map((a) => row(`area:${a.name}`, a.label, `${a.size[0]} × ${a.size[1]} m`))}
-      <H>Keep-out regions</H>
-      {bits.keepOut.length === 0 && <div className="px-2 text-stone-500">None yet.</div>}
-      {bits.keepOut.map((r) => (r.editable
-        ? row(`region:${r.name}`, r.label, r.groups.length ? r.groups.map((g) => bits.lightGroups[g]?.label ?? g).join(", ") : "every light")
-        : <div key={r.name} className="px-2 py-1">{r.label}<span className="text-stone-500"> · set in the room file</span></div>))}
-      <button className={`${btn} mt-2`} disabled={busy} onClick={addRegion} data-testid="add-keep-out">+ Add a keep-out region</button>
+      {(() => {
+        const barKeys = (b: BarBits) => [`bar:${b.id}`, ...b.parts.filter((p) => p.at).map((p) => partKey(p))];
+        const screens = placedThings.filter((t) => t.kind === "screen"), others = placedThings.filter((t) => t.kind !== "screen");
+        const floors = bits.room.regions.filter((a) => a.surface === "floor");
+        return (<>
+          {level("sec:bars", "Bars", bits.bars.length, holds(bits.bars.flatMap(barKeys)), <>
+            {bits.bars.length === 0 && <div className="px-2 text-stone-500">No bars in the room model.</div>}
+            {bits.bars.map((b) => {
+              const parts = b.parts.filter((p) => p.at);
+              return level(`bar:${b.id}`, b.label, parts.length, holds(parts.map((p) => partKey(p))),
+                <div className="ml-5 border-l border-stone-200 pl-1">{parts.map((p) => row(partKey(p), short(p, b)))}</div>,
+                () => b.editable ? row(`bar:${b.id}`, b.label, barPlanned(b) ? "planned" : `${b.at[2].toFixed(2)} m up`)
+                  : <div className="px-2 py-1">{b.label}<span className="text-stone-500"> · set in the room file</span></div>);
+            })}
+          </>)}
+          {screens.length > 0 && level("sec:screens", "Screens", screens.length, holds(screens.map((t) => `screen:${t.id}`)), <>
+            {screens.map((t) => row(`screen:${t.id}`, t.label, t.planned ? "planned" : wallOf(bits.room.appliances[t.id]?.plane?.normal) ? `${wallOf(bits.room.appliances[t.id]?.plane?.normal)} wall` : undefined))}
+          </>)}
+          {others.length > 0 && level("sec:others", "Other lights and devices", others.length, holds(others.map((t) => `thing:${t.id}`)), <>
+            {others.map((t) => row(`thing:${t.id}`, t.label, t.planned ? "planned" : t.dev ? DEVICE_WORDS[t.dev]?.replace(/^An? /, "").toLowerCase() : t.kind === "mover" ? "moving light" : undefined))}
+          </>)}
+          {level("sec:places", "Places", bits.room.points.length, holds(bits.room.points.map((p) => `place:${p.name}`)), <>
+            {bits.room.points.length === 0 && <div className="px-2 text-stone-500">None yet.</div>}
+            {bits.room.points.map((p) => row(`place:${p.name}`, p.label))}
+          </>)}
+          {floors.length > 0 && level("sec:floors", "Floor areas", floors.length, holds(floors.map((a) => `area:${a.name}`)), <>
+            {floors.map((a) => row(`area:${a.name}`, a.label, `${a.size[0]} × ${a.size[1]} m`))}
+          </>)}
+          {level("sec:keepout", "Keep-out regions", bits.keepOut.length, holds(bits.keepOut.map((r) => `region:${r.name}`)), <>
+            {bits.keepOut.length === 0 && <div className="px-2 text-stone-500">None yet.</div>}
+            {bits.keepOut.map((r) => (r.editable
+              ? row(`region:${r.name}`, r.label, r.groups.length ? r.groups.map((g) => bits.lightGroups[g]?.label ?? g).join(", ") : "every light")
+              : <div key={r.name} className="px-2 py-1">{r.label}<span className="text-stone-500"> · set in the room file</span></div>))}
+            <button className={`${btn} mt-2`} disabled={busy} onClick={addRegion} data-testid="add-keep-out">+ Add a keep-out region</button>
+          </>)}
+        </>);
+      })()}
       {unplacedThings.length > 0 && (
         <>
           <H>Not in the room yet</H>
