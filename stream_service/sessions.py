@@ -2178,7 +2178,7 @@ class Session(EngineListener):
         the photo scenes included, ever got a turn).  -> True when it recalls one (the cut is then urgent: a repeat
         should land on its line)."""
         letter = data.get("letter") if isinstance(data.get("letter"), str) else None
-        tn = getattr(self, "track_n", 0)
+        tn = getattr(self.mgr, "track_n", 0)   # the manager counts songs (room.event track_change)
         if len(self._letter_scene) > 64 or any(k[0] != tn for k in self._letter_scene):
             self._letter_scene = {k: v for k, v in self._letter_scene.items() if k[0] == tn}
         self._lyric_letter = (tn, letter) if letter else None
@@ -2677,7 +2677,7 @@ class Session(EngineListener):
             res = await self.cue({"to": "auto", "at": at, **({"via": via} if via else {})}, cause="auto",
                                  reason=reason, detail=detail, photon_at=photon_at, stagger=stagger)
             ll, self._lyric_letter = self._lyric_letter, None
-            if reason == "room_event" and ll is not None and ll[0] == getattr(self, "track_n", 0):
+            if reason == "room_event" and ll is not None and ll[0] == getattr(self.mgr, "track_n", 0):
                 got = res.get("scene") if isinstance(res, dict) and not res.get("skipped") else None
                 if isinstance(got, str):
                     self._letter_scene.setdefault(ll, got)   # the letter's first scene in this song stays its own
