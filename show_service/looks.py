@@ -322,6 +322,11 @@ FLOW_BACK = frozenset({"left", "down", "ccw", "inward", "away"})   # the second 
 KIND_ATTRS: dict[str, tuple[str, ...]] = {"position": ("pan",), "beam": ("zoom", "focus", "iris", "frost"),
                                           "prism": ("prism",), "colour": ("colour",), "colour_wheel": ("colour_slot",),
                                           "cct": ("cct",), "shutter": ("shutter",), "macro": ("macro",)}
+# A gobo change in the dark (_gobo_dark): the wheel's time per slot (a cheap head's wheel: about 8 slots a second,
+# as the 3D room's MECH has it), the margin either side, and the level below which a head counts as dark already.
+GOBO_SLOT_S = 0.125
+GOBO_SETTLE_S = 0.05
+GOBO_DARK_LEVEL = 0.02
 LERP_ATTRS = frozenset({"pan", "tilt", "zoom", "focus", "iris", "frost", "cct", "pt_speed", "gobo_spin", "gobo2_spin",
                         "gobo_shake", "gobo2_shake", "gobo_scroll", "prism_spin", "colour_spin", "pan_spin",
                         "tilt_spin"})
@@ -335,7 +340,7 @@ _KIND_KEYS: dict[str, frozenset] = {
     "position": frozenset({"mode", "on", "centre", "size", "size_deg", "along", "rotate", "fan", "ease", "points",
                            "hop", "lift", "dark_move"}),
     "beam": frozenset({"zoom", "focus", "iris", "frost"}),
-    "gobo": frozenset({"wheel", "slot", "change_on", "spin", "spin_scale", "shake", "scroll"}),
+    "gobo": frozenset({"wheel", "slot", "change_on", "change", "spin", "spin_scale", "shake", "scroll"}),
     "prism": frozenset({"in", "spin", "spin_scale"}),
     "colour": frozenset({"role"}),
     "colour_wheel": frozenset({"mode", "step_on", "spin"}),
@@ -783,7 +788,9 @@ class _FixState:
     __slots__ = ("prev", "t_prev", "low", "t_big",
                  # docs/LIGHTS.md §5.5: the motion stage and the last frame (a runner's own)
                  "cmd", "vel", "t_m", "tgt", "dark", "t_move", "t_light", "last_attrs", "last_inten", "last_colour",
-                 "slowed", "clamped", "unresolved", "unreachable", "held", "hold_now", "hold_seq")
+                 "slowed", "clamped", "unresolved", "unreachable", "held", "hold_now", "hold_seq",
+                 # a gobo change made in the dark (_gobo_dark)
+                 "g_shown", "g_pend", "g_phase", "g_until", "g_live")
 
     def __init__(self) -> None:
         self.prev: Optional[float] = None
@@ -795,6 +802,11 @@ class _FixState:
         self.t_m: Optional[float] = None
         self.tgt: Optional[list[float]] = None   # the last target (a pattern moves it every frame)
         self.dark = 0                            # 0 none, 1 going dark, 2 moving dark, 3 settling
+        self.g_shown: Any = None                 # the gobo on the wheel now (a slot, None = open), once known
+        self.g_pend: Any = None
+        self.g_phase = 0                         # 0 none, 1 going dark on the old gobo, 2 the wheel turning dark
+        self.g_until = 0.0
+        self.g_live = False                      # the layer snaps its changes in the light (change: live)
         self.t_move = 0.0
         self.t_light = 0.0
         self.last_attrs: Optional[dict] = None
@@ -1635,6 +1647,10 @@ class LookEngine:
             if scr is not None and not ((_isnum(scr) and -1.0 <= scr <= 1.0) or scr in ("flow", "pace")):
                 bad.append(f"scroll {scr!r} isn't -1..1, flow or pace")
             p["scroll"] = float(scr) if _isnum(scr) else scr
+            chg = raw.get("change", "dark")
+            if chg not in ("dark", "live"):
+                bad.append(f"change {chg!r} isn't dark or live")
+            p["change"] = chg
             if "shake" in raw:
                 ok, p["shake"] = self._value(raw["shake"], f"{where}.shake", probs, f"{lid}#shake", lo=0.0, hi=1.0)
                 if not ok:
@@ -3090,6 +3106,8 @@ class LookEngine:
                 attrs["pan"], attrs["tilt"] = pan, tilt
                 if dark:
                     inten = 0.0
+            if attrs is not None and "gobo" in attrs:
+                inten = self._gobo_dark(s, fs, t, attrs, inten)
             flash_hz = gn.flash_hz
             if flash_hz is not None:
                 if fs.low is None:
@@ -3790,7 +3808,17 @@ class LookEngine:
                     if not cands:
                         fs.unresolved.add(L.id)
                     else:
-                        attrs[wheel] = cands[self._counter(p["change_on"], cx, tp) % len(cands)]
+                        n = self._counter(p["change_on"], cx, tp)
+                        cur = cands[n % len(cands)]
+                        if p["change"] == "dark" and len(cands) > 1:
+                            # changed in the dark, ready for the line: the change starts as long before it as the
+                            # light's fall and the wheel's turn take, so the new gobo lights on the line itself
+                            nxt = cands[(n + 1) % len(cands)]
+                            lead = s.fall_s + GOBO_SLOT_S * abs(int(nxt) - int(cur)) + GOBO_SETTLE_S
+                            if self._counter(p["change_on"], cx, tp + lead) != n:
+                                cur = nxt
+                        attrs[wheel] = cur
+                    fs.g_live = p["change"] == "live"
                 sp = self._spin(p, cx, gn)
                 if sp is not None and f"{wheel}_spin" in s.attrs:
                     attrs[f"{wheel}_spin"] = sp
@@ -4400,6 +4428,38 @@ class LookEngine:
         if math.floor(hop(tp + tr - cx.dt * 0.5)) > k:
             return nxt
         return cur
+
+    # -- a gobo change in the dark ---------------------------------------------------------------------------------------
+    @staticmethod
+    def _gobo_dark(s: _Slot, fs: _FixState, t: float, attrs: dict, inten: float) -> float:
+        """A lit head's gobo change (owner, 27 Nov: "changing gobos while the light is on ... often just looks a bit
+        clumsy"): its wheel turns through every gobo between the two, so they flick past in the beam. The old gobo
+        holds while the light falls, the wheel turns in the dark, and the light comes back on the new one. A head
+        already dark, a scrolling wheel, or a layer with ``change: live`` (a snap between neighbours on the beat)
+        changes at once. Returns the intensity; ``attrs["gobo"]`` is set to what the wheel should show now."""
+        want = attrs.get("gobo")
+        if fs.g_phase == 0:
+            if fs.g_shown is None or want == fs.g_shown or fs.g_live or inten <= GOBO_DARK_LEVEL \
+                    or attrs.get("gobo_scroll"):
+                fs.g_shown = want
+                return inten
+            fs.g_phase, fs.g_until = 1, t + s.fall_s + GOBO_SETTLE_S
+        fs.g_pend = want
+        if fs.g_phase == 1:
+            if t < fs.g_until:
+                attrs["gobo"] = fs.g_shown
+                return 0.0
+            span = abs((fs.g_pend or 1) - (fs.g_shown or 1))
+            fs.g_phase, fs.g_until, fs.g_shown = 2, t + GOBO_SLOT_S * span + GOBO_SETTLE_S, fs.g_pend
+        if fs.g_phase == 2:
+            if fs.g_pend != fs.g_shown:                          # asked again while turning: turn on to that
+                fs.g_until += GOBO_SLOT_S * abs((fs.g_pend or 1) - (fs.g_shown or 1))
+                fs.g_shown = fs.g_pend
+            if t < fs.g_until:
+                attrs["gobo"] = fs.g_shown
+                return 0.0
+            fs.g_phase = 0
+        return inten
 
     # -- the motion stage (§5.5) ---------------------------------------------------------------------------------------
     def _move(self, s: _Slot, fs: _FixState, t: float, target: Sequence[float], mc: _Motion, *,

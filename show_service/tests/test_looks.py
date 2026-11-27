@@ -1194,3 +1194,24 @@ def test_a_follow_colour_still_rises_through_the_hue_rise_limit():
     assert inten(e.evaluate("hue", 10.02, HUE_CAPS), "lamp.0") == pytest.approx(lim)
     e.identify("lamp.0", 1.0)                                        # identify is never limited
     assert inten(e.evaluate("hue", 10.04, HUE_CAPS), "lamp.0") == 1.0
+
+
+def test_a_lit_gobo_change_is_made_in_the_dark():
+    """The old gobo holds while the light falls, the wheel turns dark (a slot's time per slot crossed), the light comes
+    back on the new one; a dark head, or change: live, changes at once (owner, 27 Nov: lit changes look clumsy)."""
+    from types import SimpleNamespace
+    from show_service.looks import GOBO_SETTLE_S, GOBO_SLOT_S, LookEngine, _FixState
+    s, fs = SimpleNamespace(fall_s=0.1), _FixState()
+    assert LookEngine._gobo_dark(s, fs, 0.0, {"gobo": 2}, 1.0) == 1.0         # the first: as it is
+    a = {"gobo": 5}
+    assert LookEngine._gobo_dark(s, fs, 1.0, a, 1.0) == 0.0 and a["gobo"] == 2   # falling, on the old gobo
+    a = {"gobo": 5}
+    t2 = 1.0 + 0.1 + GOBO_SETTLE_S
+    assert LookEngine._gobo_dark(s, fs, t2, a, 1.0) == 0.0 and a["gobo"] == 5    # turning, dark
+    back = t2 + GOBO_SLOT_S * 3 + GOBO_SETTLE_S
+    a = {"gobo": 5}
+    assert LookEngine._gobo_dark(s, fs, back - 0.01, a, 1.0) == 0.0
+    assert LookEngine._gobo_dark(s, fs, back, {"gobo": 5}, 1.0) == 1.0          # lit on the new gobo
+    assert LookEngine._gobo_dark(s, fs, back + 1, {"gobo": 7}, 0.0) == 0.0 and fs.g_shown == 7   # dark already
+    fs.g_live = True
+    assert LookEngine._gobo_dark(s, fs, back + 2, {"gobo": 8}, 1.0) == 1.0 and fs.g_shown == 8   # a live snap
