@@ -7,8 +7,8 @@
 //   tonight's names (the server's names of the last 12 h: KaraokeState.singers) as one-tap chips, filtered as you type.
 // - askSingers / SingerAsk: picking a song to queue asks "Who's singing?" there and then (owner, 27 Nov: a box of its
 //   own above the search read as orphaned; "better would be if after selecting the song, the 'who's singing' drop
-//   down menu appeared"). It starts with the names this phone used last; Nobody adds it unsung; closing it adds
-//   nothing. It remembers its names on this phone, so whoever adds from their own
+//   down menu appeared"). It starts empty (owner, 27 Nov: the same person rarely sings two in a row); Nobody adds it
+//   unsung; closing it adds nothing. It remembers its names on this phone, so whoever adds from their own
 //   phone sets them once; whoever adds for others taps each song's names from tonight's. Every song added from this
 //   page carries them (singersNow()).
 // - SingerTag: a queue entry's singers, tapped to change them (NamePicker in a dialog).
@@ -161,7 +161,7 @@ export function SingerAsk({ names }: { names: string[] }) {
   useEffect(() => {
     asker = (title) =>
       new Promise((done) => {
-        setDraft(singersNow());
+        setDraft([]);
         setQ({ title, done });
       });
     return () => {

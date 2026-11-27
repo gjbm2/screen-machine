@@ -241,10 +241,18 @@ export default function KaraokePage() {
   const sungUpTo = Math.max(0, queue.findIndex((e) => e.qid === st?.player.qid));
   for (const e of queue.slice(sungUpTo)) queuedCount.set(e.song_id, (queuedCount.get(e.song_id) ?? 0) + 1);
 
+  const queueBox = useRef<HTMLDivElement>(null);
+  const backToQueue = () => {
+    setArtist(null);
+    setLibOpen(false);
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    requestAnimationFrame(() => queueBox.current?.scrollIntoView({ block: "start", behavior: "smooth" }));
+  };
   const addToQueue = (s: KaraokeSong, at: QueueAt) =>
     void askSingers(s.title).then(
       (who) =>
         who &&
+        (backToQueue(), true) &&
         act(
           () => karaoke.queueAdd(s.id, undefined, at === "next", who),
           at === "next" ? `“${s.title}” is up next` : `“${s.title}” added to the queue`,
@@ -318,6 +326,7 @@ export default function KaraokePage() {
       onArtist={setArtist}
       libOpen={libOpen}
       onLibrary={() => setLibOpen(!libOpen)}
+      onAdded={backToQueue}
     />
   );
 
@@ -348,7 +357,7 @@ export default function KaraokePage() {
             onDragCancel={endDrag}
           >
             <div className="space-y-4">
-              {queueCard}
+              <div ref={queueBox} className="scroll-mt-20">{queueCard}</div>
               {findCard}
             </div>
             <DragOverlay>{dragSong ? <RowFace song={dragSong} lifted /> : null}</DragOverlay>
@@ -380,7 +389,7 @@ export default function KaraokePage() {
         </div>
       )}
       <AppMenu open={menuOpen} onOpenChange={setMenuOpen} current="karaoke" />
-      {st && artist && <ArtistSongs name={artist} songs={st.songs} act={act} onClose={() => setArtist(null)} />}
+      {st && artist && <ArtistSongs name={artist} songs={st.songs} act={act} onClose={() => setArtist(null)} onAdded={backToQueue} />}
       {toast && (
         <div className="fixed inset-x-0 bottom-[calc(max(0.75rem,env(safe-area-inset-bottom))+4.75rem+var(--app-nav-bottom,0px))] z-50 mx-auto w-fit max-w-[calc(100vw-2rem)] rounded-full bg-stone-900/90 px-4 py-2.5 text-[15px] font-medium text-white shadow-lg">
           {toast}
@@ -1135,6 +1144,7 @@ function Find({
   onArtist,
   libOpen,
   onLibrary,
+  onAdded,
 }: {
   songs: KaraokeSong[];
   queuedCount: Map<string, number>;
@@ -1143,6 +1153,7 @@ function Find({
   onArtist: (a: string) => void;
   libOpen: boolean;
   onLibrary: () => void;
+  onAdded: () => void;
 }) {
   const [q, setQ] = useState("");
   const [hits, setHits] = useState<{ q: string; rows: SearchHit[] } | null>(null);
@@ -1237,14 +1248,24 @@ function Find({
     inputRef.current?.focus();
   };
 
+  // Queued (a name picked): the search closes and the page goes back to the queue at once (owner, 27 Nov: "drop back
+  // to queue, not leave the selector open"); into the library only: the search clears when it's done.
+  const go = (at: QueueAt | null, run: () => Promise<unknown>) => {
+    if (!at) return void run().then(clear);
+    setQ("");
+    onAdded();
+    void run();
+  };
   const queueSong = (s: KaraokeSong, at: QueueAt) =>
     void askSingers(s.title).then(
       (who) =>
         who &&
-        act(
-          () => karaoke.queueAdd(s.id, undefined, at === "next", who),
-          at === "next" ? `“${s.title}” is up next` : `“${s.title}” added to the queue`,
-        ).then(clear),
+        go(at, () =>
+          act(
+            () => karaoke.queueAdd(s.id, undefined, at === "next", who),
+            at === "next" ? `“${s.title}” is up next` : `“${s.title}” added to the queue`,
+          ),
+        ),
     );
   const said = (at: QueueAt | null) =>
     at === "next" ? "is up next" : at === "end" ? "added to the queue" : "added to the library";
@@ -1252,23 +1273,27 @@ function Find({
     void (at ? askSingers(h.title) : Promise.resolve([])).then(
       (who) =>
         who &&
-        act(
-          () => karaoke.request({ ...hitFacts(h), ...(at ? { queue: at, singers: who } : {}) }),
-          `“${h.title}” ${said(at)}: getting it ready`,
-        ).then(clear),
+        go(at, () =>
+          act(
+            () => karaoke.request({ ...hitFacts(h), ...(at ? { queue: at, singers: who } : {}) }),
+            `“${h.title}” ${said(at)}: getting it ready`,
+          ),
+        ),
     );
   const addText = (at: QueueAt | null) =>
     void (at ? askSingers(link ? "This link" : text) : Promise.resolve([])).then(
       (who) =>
         who &&
-        act(
-          () =>
-            karaoke.request({
-              ...(link ? { url: text } : { q: text }),
-              ...(at ? { queue: at, singers: who } : {}),
-            }),
-          `${link ? "The link" : `“${text}”`} ${said(at)}: getting it ready`,
-        ).then(clear),
+        go(at, () =>
+          act(
+            () =>
+              karaoke.request({
+                ...(link ? { url: text } : { q: text }),
+                ...(at ? { queue: at, singers: who } : {}),
+              }),
+            `${link ? "The link" : `“${text}”`} ${said(at)}: getting it ready`,
+          ),
+        ),
     );
 
   const open = link || text.length >= 1;
@@ -1511,11 +1536,13 @@ function ArtistSongs({
   songs,
   act,
   onClose,
+  onAdded,
 }: {
   name: string;
   songs: KaraokeSong[];
   act: Act;
   onClose: () => void;
+  onAdded: () => void;
 }) {
   const [mobile] = useState(() => window.matchMedia("(max-width: 767px)").matches);
   const [o, setO] = useState<{
@@ -1546,6 +1573,7 @@ function ArtistSongs({
     void (at ? askSingers(h.title) : Promise.resolve([])).then(
       (who) =>
         who &&
+        (at && onAdded(), true) &&
         act(
           () =>
             mine && at
