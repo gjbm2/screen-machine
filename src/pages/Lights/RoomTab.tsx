@@ -260,7 +260,6 @@ function AddPicker({ items, anchor, onPick, onClose }: {
             </button>
           ))}
         </div>
-        <div className="border-t border-stone-100 px-3 py-1.5 text-[12px] text-stone-500">It goes in planned: drawn and placed, driving nothing until you connect it.</div>
       </div>
     </>
   );
@@ -1196,7 +1195,6 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       {unplacedThings.length > 0 && (
         <>
           <H>Not in the room yet</H>
-          <div className="mb-1 text-stone-500">Click one: it goes in the middle (a screen on the front wall), then drag it where it is.</div>
           <div className="flex flex-wrap gap-1.5" data-testid="unplaced">
             {unplacedThings.map((t) => (
               <button key={t.id} className={btn} disabled={busy} onClick={() => putInRoom(t)}>+ {t.label}</button>
@@ -1356,7 +1354,6 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       {roomSel && (
         <>
           <NameField value={roomName} disabled onKeep={() => {}} />
-          <div className="mb-2 text-stone-500">The room: everything in it is in the list below it. Its size and the wall people face:</div>
           <div className="[&_section]:border-0 [&_section]:p-0 [&_h3]:text-[13px] [&_input]:h-9" data-testid="room-form-inline">
             <RoomForm key={`${bits?.size.join(",")}${bits?.room.front}`} space={bits!.room}
               onSave={async (body) => {
@@ -1589,9 +1586,8 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       )}
       {!roomSel && !bar && !light && !part && !region && !thing && !place && !area && (
         <>
-          <div className="text-stone-600">Click a thing in the room or the list to edit it. Arrow keys step through.</div>
           {Object.values(bits.lasers).some((c) => c.crosses.length > 0) && (
-            <div className="mt-3 text-rose-700">A laser's beams cross a keep-out region: select the laser to tilt it clear.</div>
+            <div className="text-rose-700">⚠ Laser crosses keep-out</div>
           )}
         </>
       )}
@@ -1662,13 +1658,6 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
         onPointAt={(to) => { if (placing) { const x = placing; setPlacing(null); void addThing(x, to); } else pointAt(to); }} editables={editables} selected={selected} mode={mode} picked={region?.name ?? null} startNav={plan ? "plan" : undefined}
         onSelect={(k) => { select(k); if (k) setFrame((n) => n + 1); }} onEdit={onEdit} onDuplicate={duplicate} panel={panel} frame={frame}
         feed={feed} toolbar={toolbar} />
-      <p className="text-[15px] text-muted-foreground">
-        Everything in the room is edited here: bars and their lights, screens, other lights, named places, floor areas
-        and keep-out boxes. Click one to edit it, then drag it (a bar also has a ring to turn it, most things an arrow to
-        raise them); a light on a bar has a blue ring for its direction and an amber arc for its elevation. Plan shows
-        the room from above, as a map: drag things straight away. Walk puts you in the room; Orbit turns round a point.
-        ← Room (or Esc) goes back; Ctrl+Z undoes.
-      </p>
       {err && <Notice tone="bad">{err}</Notice>}
     </div>
   );
