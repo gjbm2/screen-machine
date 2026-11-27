@@ -16,6 +16,16 @@ and scored in the clean copy of HEAD** that scripts/ad-nightly makes: `$AD_EVAL_
 - Only a fix you keep goes into the real tree (step 6).
 - Never score in the real tree.
 
+## First: is the score worth optimising?
+
+The scorecard's `controls` check the scorer itself on known answers:
+- the real show must beat deliberately wrong shows (looks on the wrong sections, a static look, the wrong song, late,
+  backwards);
+- a plain loudness-to-light box must lose.
+
+If `controls.pass` is false, or missing, **make no show changes tonight**. Write "the eval fails its controls" and the
+margins in the morning report, then stop. Optimising a score that prefers the box would make the show worse.
+
 ## Each attempt
 
 1. **Score.** `cd $AD_EVAL_TREE && nice -n 19 ~/.venvs/sm-show/bin/python tools/room/ad_eval/run.py` (the fixed song
