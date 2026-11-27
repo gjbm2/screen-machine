@@ -33,9 +33,11 @@ chance (`controls.pass`).
    set, both modes).
    - If HEAD already has a run today, use it.
    - The diff against the best run is the starting point.
-2. **Pick.**
+2. **Pick.** First read `docs/AD_EVAL.md` §4, the shared workplan. Don't take an item another session owns
+   (bb: arc and proportion, character, live mode, the scorer). Pick the weakest dimension that isn't theirs, and
+   write "left for bb: <item>" in the report. Strike your own items through with their commit when done.
    - First, any owner verdict (`timeline.py notes`) that still fails.
-   - Else, the dimension with the lowest aggregate score.
+   - Else, the lowest-scoring dimension that no other session owns.
    - Then the 2–3 songs worst on it.
 3. **Review.** Use the ad-review skill on those songs' replay timelines (`timeline.py sheet <run>/<song>.<mode>.json
    --lyrics`) and find the one cause they share. Check it against `docs/AD_MUSIC_FIT_REVIEW_2026-11.md`.

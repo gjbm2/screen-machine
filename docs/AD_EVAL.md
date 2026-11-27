@@ -147,6 +147,23 @@ struck through with its commit.
 - Its picks follow the weakest dimension. Today that is form, proportion and arc, which overlap bb's items 2 and 3. So
   before working on one, check this list and tell bb, so two sessions don't fix the same thing two ways.
 
+- **How long it takes now:**
+  - A full run (21 songs × 2 modes × 3 draws, scored in a clean copy of HEAD at `~/.cache/sm-ad-eval/tree`) takes
+    about 30 min.
+  - 03:00–06:30 then holds the first score plus about 5 attempts.
+  - When time is tight, an attempt is checked on its own 2–3 songs first.
+- **Not run for real yet.** The first night is 28 Nov. It is a headless Claude, `acceptEdits` + Bash, run from cron
+  (WSL here has no user systemd bus). The log is `~/.cache/sm-ad-eval/nightly.log`, and reports are in
+  `~/.cache/sm-ad-eval/reports/`.
+- **A kept fix** goes into the real tree as a patch. If another session has changed the file meanwhile, it is left
+  out and reported, not forced.
+- **f2's own director items, not started** (docs/AD_MUSIC_FIT_REVIEW_2026-11.md §4):
+  - live-mic accents from the measured groove, not the metronome (review item 6);
+  - clock steadiness: hold the octave once chosen, cap the slew (item 10);
+  - an octave check on the karaoke file grid (k2b55b24fd2 reads 176 bpm in 3/4).
+- **The owner's verdict cases** (Common People's dark verse, Don't Stop Me Now's late new-song look) are checked in
+  every morning report.
+
 ### The owner
 - Blind pairs once they're up (a few minutes at a time).
 - Verdicts on songs through ad-review; tuning by eye in the room.
