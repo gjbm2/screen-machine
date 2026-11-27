@@ -105,6 +105,29 @@ scroll CW 128-189, stop 190-193, scroll CCW 194-255.
   - Antari's rules: adults only, **never leave it running unattended**, keep 50 cm of space round it, never add
     flammable liquid, and drain the tank before transport.
 
+### 1.4 What the unit really does (researched 27 Nov)
+
+From the Rev. 10 manual and footage of the unit ("Chauvet DJ Gigbar Move + and ILS Command Review" by tarekith on
+YouTube, from 31:45; Guitar Center's overview video). This is the reference for the lights' scenes, effects and
+transitions and for the 3D room. Read it before writing any.
+
+- **The laser draws one small figure.** A sharp line figure a few degrees across that never stops changing shape (a
+  loop, an X, a W, wavy strokes). It is not a field of dots and it cannot draw fans or shapes on demand.
+  - One colour at a time: two or three diodes together mix into one colour (magenta, cyan, yellow, white).
+  - The manual's laser data: every pulse is longer than 0.25 s (under 4 a second). Nothing gates it on the beat.
+  - Three channels: colour, strobe, rotation. Whether the figure still changes shape at rotation 0 is not known.
+  - The manual also says "each beam under 5 mW, each under 2 mrad, total light under 160 degrees". That reads like a
+    grating laser, but the footage shows a single figure. The footage wins until someone looks at the real unit.
+- **A derby throws a fan** of about a dozen soft streaks. With two colours on, they show as separate coloured streaks.
+- **Colour is one family per look.** In every look in the footage the pars, derbies and spots are one hue, and the
+  laser is the accent (white in a blue room, magenta in a purple one, red in a red one). The unit's own menu limits
+  its auto shows to 3, 4 or 6 colours ("Pars Color: Tri, Quad, Hex").
+- **The unit's own shows are line-ups.** Its AUTO menu is every combination of the parts: pars, derby, laser, strobe
+  and spots (for example "L+SP": laser and moving heads; "PD": pars and derby). In the footage two or three parts are
+  usually lit, against a dark room. Not every part plays all the time.
+- **Transitions between its programmes are snap or fade** ("Mode: Snap/Fade").
+- **The spots mirror each other:** crossing, splayed apart, level and opposite, in the look's colour.
+
 ## 2. Wiring and the network
 
 ### 2.1 DMX chain

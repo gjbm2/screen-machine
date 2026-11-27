@@ -368,7 +368,6 @@ scenes:
       - {id: eight, kind: position, mode: figure8, on: floor, centre: [dance-floor, centre], size: 1.2, size_deg: 18,
          phase: bar, period_bars: [2, 1], needs: grid, spread_mode: mirror}
       - {id: beam, kind: beam, zoom: 14}
-      - {id: colour, kind: colour_wheel, mode: step, step_on: bar}
     tags: {energy: [0.4, 0.85], moods: [playful, retro, bright], genre_fit: {disco: 0.9, funk: 0.85, pop: 0.8,
            latin: 0.8, afrobeat: 0.75, "*": 0.35}, valence: 0.8, organic: 0.35, density: 0.6,
            flow: {dirs: [still, left, right], honours: false}}
@@ -586,110 +585,71 @@ scenes:
     tags: {parts: [flash], moments: [waiting, lull, lead_in], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5,
            organic: 0.5, density: 0.1}
 
-  # laser: a bar's laser (owner, 27 Nov: "lasers also have sensible scene expression ... requires deep reasoning").
-  # To the engine it is an ordinary light: its colour channel is a wheel of the seven diode combinations (the look's
-  # colour picks the nearest; a colour_wheel layer steps through them), its strobe a shutter (effects only, under the
-  # feel's strobe rule), and with no dimmer it is DARK whenever its brightness is under 0.4 (the wheel's closed slot).
-  # So brightness layers gate it: a beat layer flashes it on the beat, order: flow alternates the two bars, fx: dim
-  # rests it; a fade through dark, House lights and a mode change switch it off as they dim every other light. Its
-  # rotation is the one function channel a macro layer sets ("Laser rotation": 0 stop, 1-127 clockwise slow to fast,
-  # 129-255 the other way; {cw, ccw, still}: by the way the room's flow turns).
-  # What it is for: texture in the air above. Scarce, so it means something: resting in calm songs and verses' draws,
-  # still stars while the room waits, turning and pulsing when the song drives.
+  # laser: a bar's laser, as the unit really is (owner, 27 Nov: "extensively research the device ... then reason
+  # through both issues from first principles"; the Rev. 10 manual and footage of the unit, docs/GIGBAR_RIG.md §1.4).
+  #   - Its picture is ONE small, sharp line figure that never stops changing shape. Not dots, not fans.
+  #   - ONE colour at a time: red, green, blue, or a pair or all three mixed into one colour (yellow, magenta, cyan,
+  #     white). The look's colour picks the nearest; a scene may ask for white (Laser: 240), the footage's own choice
+  #     in a blue room.
+  #   - Its pulses must be longer than 0.25 s (the manual's laser data), so NOTHING gates it on the beat: it comes
+  #     and goes by the bar, the phrase or the section, and its strobe (effects only) is under 4 a second.
+  #   - The one thing a scene moves is its rotation ("Laser rotation": 0 stop, 1-127 one way slow to fast, 129-255
+  #     the other; {cw, ccw, still} by the room's flow; {cycle, on} for the next value each bar or phrase).
+  #   - With no dimmer it is dark under 0.4 brightness (its colour channel's closed slot): a fx: dim layer rests it,
+  #     and a fade through dark, House lights and a mode change switch it off as they dim every other light.
+  # What it is for: one bright accent over a room held in one colour. Scarce: in the footage it is the smallest
+  # thing in the picture and the eye still goes to it. So it rests most of the time (the heaviest weight below).
   laser-resting:
-    label: The lasers rest
+    label: The laser rests
     layers:
       - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
-    tags: {parts: [laser], energy: [0.0, 1.0], moods: [calm, mellow, elegant, warm, dreamy],
-           genre_fit: {"*": 0.6}, valence: 0.5, organic: 0.7, density: 0.1, weight: 1.5}
-  laser-stars:
-    label: A still field of stars in the look's colour
+    tags: {parts: [laser], shows_beat: false, energy: [0.0, 1.0], moods: [calm, mellow, elegant, warm, dreamy],
+           genre_fit: {"*": 0.6}, valence: 0.5, organic: 0.7, density: 0.1, weight: 2.5}
+  laser-figure-still:
+    label: The figure hangs still, in the look's colour
     layers:
       - {id: still, kind: macro, set: {"Laser rotation": 0}}
     tags: {parts: [laser], shows_beat: false, energy: [0.0, 0.7], moods: [dreamy, cosmic, elegant, calm, dark],
            genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.4, density: 0.2}
-  laser-drifting:
-    label: The stars drift slowly round with the room
+  laser-figure-turning:
+    label: The figure turns slowly with the room, in the look's colour
     layers:
-      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 14, ccw: 142, still: 0}}}
-    tags: {parts: [laser], shows_beat: false, energy: [0.15, 0.8], moods: [dreamy, cosmic, hypnotic, liquid, warm],
+      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 18, ccw: 146, still: 10}}}
+    tags: {parts: [laser], shows_beat: false, energy: [0.2, 0.85], moods: [dreamy, cosmic, hypnotic, liquid, warm],
            genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.3, density: 0.35}
-  laser-on-the-beat:
-    label: The lasers flash on every beat, turning
+  laser-white:
+    label: A white figure over the room's colour, turning
     layers:
-      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 60, ccw: 190, still: 40}}}
-      - {id: gate, fx: swell, phase: beat, depth: 1.0, needs: beat, without_beat: none, attack_ms: 20, decay_ms: 160}
-    tags: {parts: [laser], energy: [0.45, 1.0], moods: [playful, bright, euphoric, hypnotic, retro],
-           genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.2, density: 0.7}
-  laser-side-to-side:
-    label: The two bars' lasers take turns, beat by beat
-    layers:
-      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 45, ccw: 175, still: 30}}}
-      - {id: take-turns, fx: square, phase: beat, depth: 1.0, needs: beat, without_beat: none,
-         order: flow, spread: 1.0}
-    tags: {parts: [laser], energy: [0.4, 0.95], moods: [playful, bright, geometric, hypnotic],
+      - {id: white, kind: macro, set: {Laser: 240, "Laser rotation": {cw: 45, ccw: 175, still: 30}}}
+    tags: {parts: [laser], shows_beat: true, energy: [0.4, 1.0], moods: [euphoric, bright, playful, cosmic, hypnotic],
            genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.2, density: 0.6}
-  laser-colour-steps:
-    label: A new colour each bar, turning with the room
+  laser-white-rocking:
+    label: A white figure rocking to and fro, a bar each way
     layers:
-      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 50, ccw: 180, still: 35}}}
-      - {id: colour-steps, kind: colour_wheel, mode: step, step_on: bar}
-    tags: {parts: [laser], shows_beat: true, energy: [0.4, 0.95], moods: [playful, bright, retro, cosmic, euphoric],
-           genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.2, density: 0.6}
-  laser-full:
-    label: Every colour at once, turning fast
+      - {id: white, kind: macro, set: {Laser: 240, "Laser rotation": {cycle: [30, 158], on: bar}}}
+    tags: {parts: [laser], shows_beat: true, energy: [0.35, 0.95], moods: [playful, hypnotic, retro, bright, liquid],
+           genre_fit: {"*": 0.6}, valence: 0.6, organic: 0.3, density: 0.55}
+  laser-taking-turns:
+    label: The two bars' figures take turns, two bars each
     layers:
-      - {id: all, kind: macro, set: {Laser: 240, "Laser rotation": {cw: 110, ccw: 240, still: 90}}}
-    tags: {parts: [laser], shows_beat: true, energy: [0.65, 1.0], moods: [euphoric, aggressive, fiery, glitchy, bright],
-           genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.1, density: 0.9, weight: 0.7}
-  # Not only turning (owner, 27 Nov: "lasers always seem to rotate ... aren't there other things they can do?"). This
-  # laser has no scanner: its picture is one fixed grid of dots, so it cannot draw fans or shapes. What it can vary:
-  # hold the grid still, rock it, turn it a step and hold, change its colours, gate it in time, and let the two bars
-  # differ. {cycle: [...], on: bar} gives the next value each bar.
-  laser-rocking:
-    label: The grid rocks to and fro, a bar each way
+      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 40, ccw: 170, still: 25}}}
+      - {id: take-turns, fx: square, phase: bar, period_bars: [4, 4], depth: 1.0, needs: grid, order: flow, spread: 1.0}
+    tags: {parts: [laser], shows_beat: true, energy: [0.4, 0.95], moods: [playful, bright, geometric, hypnotic],
+           genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.2, density: 0.5}
+  laser-fast:
+    label: A white figure, turning fast
     layers:
-      - {id: rock, kind: macro, set: {"Laser rotation": {cycle: [22, 150], on: bar}}}
-    tags: {parts: [laser], shows_beat: true, energy: [0.3, 0.9], moods: [playful, hypnotic, liquid, warm, retro],
-           genre_fit: {"*": 0.6}, valence: 0.6, organic: 0.4, density: 0.5}
-  laser-step-and-hold:
-    label: The grid turns a step each bar and holds
-    layers:
-      - {id: steps, kind: macro, set: {"Laser rotation": {cycle: [70, 0, 0, 0], on: beat}}}
-    tags: {parts: [laser], shows_beat: true, energy: [0.4, 1.0], moods: [geometric, playful, bright, glitchy, tense],
-           genre_fit: {"*": 0.6}, valence: 0.6, organic: 0.2, density: 0.6}
-  laser-still-colours:
-    label: A still grid, a new colour each bar
-    layers:
-      - {id: still, kind: macro, set: {"Laser rotation": 0}}
-      - {id: colour-steps, kind: colour_wheel, mode: step, step_on: bar}
-    tags: {parts: [laser], shows_beat: true, energy: [0.3, 0.9], moods: [geometric, bright, cosmic, elegant, playful],
-           genre_fit: {"*": 0.6}, valence: 0.6, organic: 0.3, density: 0.45}
-  laser-one-still-one-turning:
-    label: One bar's grid holds still while the other's turns, swapping each phrase
-    layers:
-      - {id: left-bar, kind: macro, select: "tag:bar-a", set: {"Laser rotation": {cycle: [0, 40], on: phrase}}}
-      - {id: right-bar, kind: macro, select: "tag:bar-b", set: {"Laser rotation": {cycle: [168, 0], on: phrase}}}
-    tags: {parts: [laser], shows_beat: false, energy: [0.25, 0.85], moods: [dreamy, cosmic, elegant, hypnotic, liquid],
-           genre_fit: {"*": 0.55}, valence: 0.5, organic: 0.4, density: 0.4}
-  laser-two-colours-apart:
-    label: Each bar its own colour, still, flashing in turn
-    layers:
-      - {id: left-bar, kind: macro, select: "tag:bar-a", set: {Laser: {cycle: [23, 95, 59], on: phrase},
-                                                                "Laser rotation": 0}}
-      - {id: right-bar, kind: macro, select: "tag:bar-b", set: {Laser: {cycle: [95, 59, 23], on: phrase},
-                                                                 "Laser rotation": 0}}
-      - {id: take-turns, fx: square, phase: bar, period_bars: [1, 1], depth: 1.0, needs: grid, order: flow, spread: 1.0}
-    tags: {parts: [laser], shows_beat: true, energy: [0.35, 0.95], moods: [playful, bright, retro, geometric],
-           genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.2, density: 0.55}
+      - {id: white, kind: macro, set: {Laser: 240, "Laser rotation": {cw: 110, ccw: 240, still: 90}}}
+    tags: {parts: [laser], shows_beat: true, energy: [0.7, 1.0], moods: [euphoric, aggressive, fiery, glitchy, bright],
+           genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.1, density: 0.9, weight: 0.6}
   laser-waits:
-    label: Still stars while the room waits
+    label: The figure hangs still while the room waits
     layers:
       - {id: still, kind: macro, set: {"Laser rotation": 0}}
     tags: {parts: [laser], shows_beat: false, moments: [waiting, lead_in], energy: [0.0, 1.0], genre_fit: {"*": 0.5},
            valence: 0.5, organic: 0.5, density: 0.1}
   laser-sleeps:
-    label: The lasers are off through a long wait
+    label: The laser is off through a long wait
     layers:
       - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
     tags: {parts: [laser], moments: [lull], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5,

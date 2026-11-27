@@ -126,9 +126,9 @@
           ],
           "type": "ShutterStrobe",
           "shutterEffect": "Strobe",
-          "speedStart": "1Hz",
-          "speedEnd": "20Hz",
-          "comment": "the manual gives no rates: an estimate"
+          "speedStart": "0.5Hz",
+          "speedEnd": "4Hz",
+          "comment": "the manual's laser data: all pulses longer than 0.25 s (under 4 a second)"
         }
       ]
     },

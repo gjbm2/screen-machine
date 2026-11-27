@@ -76,7 +76,6 @@ effects:
     length: {bars: 1}
     layers:
       - {id: bump, kind: colour, role: highlight, depth: {fx: swell, phase: beat, between: [0.0, 0.8]}}
-      - {id: wheel, kind: colour_wheel, mode: step, step_on: beat}
     tags: {energy: [0.45, 1.0], moods: [bright, playful, euphoric]}
   peak-chase:
     label: Fast chase
@@ -179,40 +178,39 @@ effects:
          decay_ms: 200}
       - {id: bump, kind: colour, role: highlight, depth: {fx: swell, phase: beat, between: [0.0, 0.8]}}
     tags: {energy: [0.0, 1.0]}
-  # -- the lasers' own (tags.parts: [laser]: they play on a group that takes that part, and no other) --
+  # -- the laser's own (tags.parts: [laser]: they play on a group that takes that part, and no other). One colour,
+  # no gating faster than its 0.25 s pulse, its strobe under 4 a second (light_scenes.yaml has the reasoning).
   laser-burst:
-    label: Every laser colour, strobing and spinning, for the big moment
+    label: A white figure, spinning and strobing, for the big moment
     on: [drop, final_chorus, transition]
     length: {bars: 2}
     fade: {in_beats: 0, out_beats: 1}
     needs: [shutter]
     layers:
-      - {id: all, kind: macro, set: {Laser: 240, "Laser rotation": {cw: 120, ccw: 250, still: 100}}}
-      - {id: strobe, kind: shutter, mode: strobe, hz: [5, 10]}
+      - {id: white, kind: macro, set: {Laser: 240, "Laser rotation": {cw: 120, ccw: 250, still: 100}}}
+      - {id: strobe, kind: shutter, mode: strobe, hz: [2, 4]}
     tags: {parts: [laser], energy: [0.5, 1.0], moods: [euphoric, aggressive, fiery, glitchy, bright]}
   laser-sweep-in:
-    label: The lasers come on, turning, for the chorus
+    label: The white figure comes on, turning, for the chorus
     on: [chorus, transition]
     length: {bars: 4}
     fade: {in_beats: 0, out_beats: 2}
     layers:
-      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 70, ccw: 200, still: 50}}}
-      - {id: colour-steps, kind: colour_wheel, mode: step, step_on: bar}
+      - {id: white, kind: macro, set: {Laser: 240, "Laser rotation": {cw: 70, ccw: 200, still: 50}}}
     tags: {parts: [laser], energy: [0.4, 1.0], moods: [euphoric, playful, bright, cosmic]}
   laser-cut-out:
-    label: The lasers cut out for a beat
+    label: The laser cuts out for two beats
     on: [transition]
-    length: {beats: 1}
+    length: {beats: 2}
     fade: {in_beats: 0, out_beats: 0}
     layers:
       - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
     tags: {parts: [laser], energy: [0.0, 1.0]}
   laser-spin-up:
-    label: The lasers spin up through a build
+    label: The figure spins up through a build
     on: [build]
     length: while
     fade: {in_beats: 1, out_beats: 1}
     layers:
       - {id: fast, kind: macro, set: {"Laser rotation": {cw: 127, ccw: 255, still: 127}}}
-      - {id: colour-steps, kind: colour_wheel, mode: step, step_on: beat}
     tags: {parts: [laser], energy: [0.5, 1.0], moods: [tense, euphoric, aggressive]}

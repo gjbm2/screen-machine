@@ -116,9 +116,10 @@ interface Ctx { ch: (f: Fixture, i: number) => number; t: number; dt: number; ai
 interface Part { f: Fixture; update(c: Ctx): void; words?(c: Ctx): string }
 
 /** Where a ray from inside the room meets a wall, the floor or the ceiling (room frame). */
-/** The bar's laser: its grating's orders each side of the axis, green's first-order angle, how fast higher orders
- *  fade, the diodes' wavelengths, and the lift above the bar's front when the room model gives no aim. Estimates. */
-const LASER = { orders: 5, step_deg: 7, falloff: 14, nm: { red: 650, green: 520, blue: 450 }, lift: 20 * Math.PI / 180 };
+/** The bar's laser: the size of its figure (read off footage of the unit: a few degrees), how many points the curve
+ *  is drawn with, how many positions of the swept beam show in haze, how fast its shape drifts (and how much faster
+ *  as it turns), and the lift above the bar's front when the room model gives no aim. Estimates. */
+const LASER = { span_deg: 5, points: 96, rays: 24, drift: 0.9, drift_turn: 2.5, lift: 20 * Math.PI / 180 };
 
 function hitRoom(o: THREE.Vector3, d: THREE.Vector3, size: Vec3): THREE.Vector3 {
   let t = Infinity;
@@ -383,75 +384,82 @@ export class RoomSim {
     };
   }
 
-  // The bar's laser as it is built (owner, 27 Nov: "rendering the laser in the room simulator is likely to need a bit
-  // of reasoning"): three diodes (red 650 nm, green 520 nm, blue 450 nm) through one turning diffraction grating.
-  //   - Each colour leaves as a regular GRID of beams (the grating's orders m, n = -K..K), not a scatter: order m
-  //     leaves at asin(m x wavelength / pitch), so red's grid is the widest and blue's the tightest, and the three
-  //     only coincide on the axis (order 0, 0).
-  //   - The colours that are on show together (a "red + green" setting is both grids at once).
-  //   - The motor turns the whole grid about the laser's own axis.
-  //   - It points where the room model says (space.yaml aim: turned up at the ceiling, or 45 degrees up); without
-  //     an aim, along the bar's front lifted 20 degrees.
-  //   - A beam runs to the first wall, floor or ceiling it meets and leaves a dot there. The beam itself shows only
-  //     as much as the air scatters (the haze); the dot always shows. Higher orders are fainter.
-  // LASER.step_deg (green's first order) and LASER.orders are estimates until measured on the unit.
+  // The bar's laser, from footage of the unit (owner, 27 Nov: "I think your simulation / depiction of the lasers isn't
+  // great"; a review video from 31:45, twelve close-ups): it is NOT a field of dots. It draws ONE small, sharp line
+  // figure, a few degrees across, that never stops changing shape (a loop, an X, a W, wavy strokes): a single beam
+  // swept fast round a closed curve whose shape drifts.
+  //   - One colour for the whole figure. Two or three diodes together mix into one colour (red + blue: magenta,
+  //     green + blue: cyan, all three: white), as the footage shows: a white figure in a blue room.
+  //   - The rotation channel turns the figure; its shape drifts by itself (the older one-channel units animate with
+  //     no rotation channel at all). Whether it still drifts at rotation 0 on this unit isn't known: it is drawn so.
+  //   - It points where the room model says (space.yaml aim), else along the bar's front lifted 20 degrees, and lands
+  //     as a bright line on the first surface it meets. In haze the swept beam shows as a thin, faint sheet from the
+  //     aperture to the figure. No haze: the figure alone.
+  // LASER.span_deg (the figure's size) and its harmonics are read off the footage, not measured.
   private laser(f: Fixture, at: THREE.Vector3, front: THREE.Vector3, axis: THREE.Vector3): Part {
-    const K = LASER.orders, side = 2 * K + 1, per = side * side, n = per * 3;
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(n * 6), 3));
-    geo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(n * 6), 3));
-    const lines = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
-    lines.frustumCulled = false;
-    this.built.add(lines);
-    const dgeo = new THREE.BufferGeometry();
-    dgeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(n * 3), 3));
-    dgeo.setAttribute("color", new THREE.BufferAttribute(new Float32Array(n * 3), 3));
-    const dots = new THREE.Points(dgeo, new THREE.PointsMaterial({ size: 0.05, vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, sizeAttenuation: true }));
-    dots.frustumCulled = false;
-    this.built.add(dots);
-    // the laser's own frame: w along its aim, u and v across it
+    const N = LASER.points;
+    const fig = new THREE.BufferGeometry();
+    fig.setAttribute("position", new THREE.BufferAttribute(new Float32Array((N + 1) * 3), 3));
+    const line = new THREE.Line(fig, new THREE.LineBasicMaterial({ color: 0xffffff, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+    line.frustumCulled = false;
+    this.built.add(line);
+    const glow = new THREE.Points(fig, new THREE.PointsMaterial({ size: 0.035, color: 0xffffff, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, sizeAttenuation: true, opacity: 0.6 }));
+    glow.frustumCulled = false;
+    this.built.add(glow);
+    const R = LASER.rays;                                        // the swept beam in the air: a few of its positions
+    const sheet = new THREE.BufferGeometry();
+    sheet.setAttribute("position", new THREE.BufferAttribute(new Float32Array(R * 6), 3));
+    const rays = new THREE.LineSegments(sheet, new THREE.LineBasicMaterial({ color: 0xffffff, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+    rays.frustumCulled = false;
+    this.built.add(rays);
     const up = new THREE.Vector3(0, 0, 1);
     const w = f.aim ? v3(f.aim).sub(at).normalize()
       : front.clone().multiplyScalar(Math.cos(LASER.lift)).addScaledVector(up, Math.sin(LASER.lift)).normalize();
     const u0 = (Math.abs(w.dot(axis)) < 0.95 ? axis.clone() : front.clone()).addScaledVector(w, -w.dot(axis)).normalize();
     const v0 = new THREE.Vector3().crossVectors(w, u0).normalize();
-    const names = ["red", "green", "blue"] as const;
-    const steps = names.map((c) => Math.sin(LASER.step_deg * Math.PI / 180) * LASER.nm[c] / LASER.nm.green);   // sin of order 1
+    const span = Math.tan(LASER.span_deg * Math.PI / 360);        // half the figure's size, as a tangent
+    const seed = hash(f.address ?? 7) * 10;
     const dir = new THREE.Vector3(), u = new THREE.Vector3(), v = new THREE.Vector3();
-    let rot = 0;
+    const tint = new THREE.Color();
+    let rot = 0, morph = seed;
     return {
       f,
       update: (c) => {
         const v1 = f.part === "laser50";
         const cols = laserColours(c.ch(f, 0), v1);
         const st = v1 ? 0 : c.ch(f, 1);
-        const on = cols && (!st || (c.t * lerp(1, 15, st / 255)) % 1 < 0.5) ? 1 : 0;
-        if (!v1) rot += motor(c.ch(f, 2), MECH.laserRps) * c.dt * Math.PI * 2;
-        u.copy(u0).multiplyScalar(Math.cos(rot)).addScaledVector(v0, Math.sin(rot));       // the grating, turned
+        const on = cols && (!st || (c.t * lerp(0.5, 4, st / 255)) % 1 < 0.5) ? 1 : 0;   // pulses: 4 a second at most
+        const turn = v1 ? 0 : motor(c.ch(f, 2), MECH.laserRps);
+        rot += turn * c.dt * Math.PI * 2;
+        morph += c.dt * (LASER.drift + Math.abs(turn) * LASER.drift_turn);              // it never holds one shape
+        line.visible = glow.visible = on > 0;
+        rays.visible = on > 0 && c.air > 0.01;
+        if (!on || !cols) return;
+        let r = 0, g = 0, b = 0;                                                         // the diodes mix into one colour
+        for (const name of cols) { const k = LASER_RGB[name]; r += k[0]; g += k[1]; b += k[2]; }
+        const mx = Math.max(r, g, b, 1);
+        tint.copy(srgb([255 * r / mx, 255 * g / mx, 255 * b / mx] as RGB));
+        (line.material as THREE.LineBasicMaterial).color.copy(tint).multiplyScalar(1.6);
+        (glow.material as THREE.PointsMaterial).color.copy(tint);
+        (rays.material as THREE.LineBasicMaterial).color.copy(tint).multiplyScalar(0.10 * c.air);
+        u.copy(u0).multiplyScalar(Math.cos(rot)).addScaledVector(v0, Math.sin(rot));
         v.copy(v0).multiplyScalar(Math.cos(rot)).addScaledVector(u0, -Math.sin(rot));
-        const pos = geo.attributes.position as THREE.BufferAttribute, col = geo.attributes.color as THREE.BufferAttribute;
-        const dp = dgeo.attributes.position as THREE.BufferAttribute, dc = dgeo.attributes.color as THREE.BufferAttribute;
-        let i = 0;
-        for (let ci = 0; ci < 3; ci++) {
-          const lit = on && cols ? (cols.includes(names[ci]) ? 1 : 0) : 0;
-          const rgb = LASER_RGB[names[ci]], s1 = steps[ci];
-          for (let m = -K; m <= K; m++) for (let k = -K; k <= K; k++, i++) {
-            const sx = m * s1, sy = k * s1, r2 = sx * sx + sy * sy;
-            const show = lit && r2 < 0.97 ? Math.exp(-(m * m + k * k) / LASER.falloff) : 0;   // past 90 degrees: no order
-            if (!show) {
-              pos.setXYZ(i * 2, at.x, at.y, at.z); pos.setXYZ(i * 2 + 1, at.x, at.y, at.z);
-              col.setXYZ(i * 2, 0, 0, 0); col.setXYZ(i * 2 + 1, 0, 0, 0); dc.setXYZ(i, 0, 0, 0); dp.setXYZ(i, at.x, at.y, at.z);
-              continue;
-            }
-            dir.copy(w).multiplyScalar(Math.sqrt(1 - r2)).addScaledVector(u, sx).addScaledVector(v, sy);
-            const end = hitRoom(at, dir, c.size);
-            const la = show * 0.55 * c.air, r = rgb[0] / 255, g = rgb[1] / 255, b = rgb[2] / 255;
-            pos.setXYZ(i * 2, at.x, at.y, at.z); pos.setXYZ(i * 2 + 1, end.x, end.y, end.z);
-            col.setXYZ(i * 2, r * la, g * la, b * la); col.setXYZ(i * 2 + 1, r * la * 0.5, g * la * 0.5, b * la * 0.5);
-            dp.setXYZ(i, end.x, end.y, end.z); dc.setXYZ(i, r * show * 1.6, g * show * 1.6, b * show * 1.6);
+        const pos = fig.attributes.position as THREE.BufferAttribute, sp = sheet.attributes.position as THREE.BufferAttribute;
+        // a closed curve of a few harmonics whose phases and weights drift: loops, crossings, pinches
+        const a2 = 0.55 * Math.sin(morph * 0.61), a3 = 0.4 * Math.sin(morph * 0.43 + 1.7), p2 = morph * 0.37, p3 = morph * 0.29 + 0.9;
+        for (let i = 0; i <= N; i++) {
+          const th = (i % N) / N * Math.PI * 2;
+          const x = (Math.cos(th) + a2 * Math.cos(2 * th + p2) + a3 * Math.cos(3 * th + p3)) * span * 0.55;
+          const y = (Math.sin(th) + a2 * Math.sin(2 * th - p2 * 1.3) + a3 * Math.sin(3 * th + p3 * 0.7)) * span * 0.55;
+          dir.copy(w).addScaledVector(u, x).addScaledVector(v, y).normalize();
+          const end = hitRoom(at, dir, c.size);
+          pos.setXYZ(i, end.x, end.y, end.z);
+          if (i < N && i % Math.floor(N / R) === 0) {
+            const k = Math.min(R - 1, Math.floor(i / Math.floor(N / R)));
+            sp.setXYZ(k * 2, at.x, at.y, at.z); sp.setXYZ(k * 2 + 1, end.x, end.y, end.z);
           }
         }
-        pos.needsUpdate = true; col.needsUpdate = true; dp.needsUpdate = true; dc.needsUpdate = true;
+        pos.needsUpdate = true; sp.needsUpdate = true;
       },
     };
   }
