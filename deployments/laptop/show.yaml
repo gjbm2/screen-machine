@@ -15,7 +15,7 @@ senders:
 # pattern, and the strobe zones only the scenes written for them (tags.parts: [flash]: dark but for accents).
 lights:
   groups:
-    lamps: {label: Pars, select: "kind:lamp !tag:derby !tag:strobe !tag:laser !tag:haze", carries_beat: 2}
+    lamps: {label: Pars, select: "kind:lamp !tag:derby !tag:strobe !tag:laser !tag:haze !tag:house", carries_beat: 2}
     lasers: {label: Lasers, select: "tag:laser", dark_level: 0, scenes_for: [laser], repeat_weight: 1.0}
     derbies: {label: Derbies, select: "tag:derby", dark_level: floor, scenes_for: [derby], carries_beat: 3}
     flashes: {label: Strobe zones, select: "tag:strobe", dark_level: 0, scenes_for: [flash],

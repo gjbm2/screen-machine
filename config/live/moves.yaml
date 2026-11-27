@@ -91,6 +91,33 @@ moves:
     lights: {transition: fly-up}
     land: 1.0
     tags: {energy: [0.3, 1.0], weight: 0.6}
+  # -- any music, not only a karaoke song: a new song and a drop (the director's reasons track and drop) --
+  new-song:
+    label: Through the dark, the picture melting into the next, as a new song starts
+    reasons: [track]
+    size: small
+    lights: {transition: fade-dark}
+    screen: {via: [luma-3s, crossfade-3s, "family:blend", "family:organic"]}
+    land: 0.5
+    tags: {energy: [0.0, 1.0], weight: 2.0}
+  new-song-lively:
+    label: Every head sweeps across and the picture wipes over as a lively new song starts
+    reasons: [track]
+    size: small
+    lights: {transition: sweep-through}
+    screen: {via: ["family:wipe", "family:light"]}
+    land: 1.0
+    tags: {energy: [0.5, 1.0], transition_style: [lively, wild], weight: 1.5}
+  on-the-drop:
+    label: A beat of strobe, a hard cut, and the bars kick as the drop lands
+    reasons: [drop]
+    size: medium
+    lights:
+      transition: strobe-snap
+      accents: [{effect: bars-kick, at_beats: 0}]
+    screen: {via: [cut]}
+    land: 1.0
+    tags: {energy: [0.55, 1.0], weight: 2.0}
   plain:
     label: Each layer its own way
     reasons: [section, repeat, dwell, next, track, drop]
