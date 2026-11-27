@@ -1194,7 +1194,9 @@ lights:
       # targets: {<room target>: {up: <value>, down: <value>}}   # from modes.json's blinds; set them first
   motion:
     default_max_speed_deg_s: {pan: 180, tilt: 120}   # until measured (each light's own max_speed wins)
-    accel_s: 0.12
+    accel_s: 0.12                           # from rest to full speed, easing included (show_service/motion.py)
+    ease: 0.5                               # the share of accel_s spent easing into the acceleration and out of it
+                                            # (0 = a plain trapezoid; 0.5 = the gentlest way to full speed)
     pt_speed: 1.0                           # the light's own pan/tilt speed channel (1 = fastest; the engine smooths)
     max_travel_share: 0.8                   # a beat-locked hop may spend at most this share of its period moving
     dark_move_min_deg: 30                   # a jump bigger than this travels dark when the transition says so

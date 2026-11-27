@@ -1215,3 +1215,24 @@ def test_a_lit_gobo_change_is_made_in_the_dark():
     assert LookEngine._gobo_dark(s, fs, back + 1, {"gobo": 7}, 0.0) == 0.0 and fs.g_shown == 7   # dark already
     fs.g_live = True
     assert LookEngine._gobo_dark(s, fs, back + 2, {"gobo": 8}, 1.0) == 1.0 and fs.g_shown == 8   # a live snap
+
+
+def test_a_lit_colour_wheel_turns_far_only_in_the_dark():
+    """One filter along snaps in the light; a longer turn holds the old colour while the light falls, turns dark and
+    comes back in the new colour (owner, 27 Nov: colour changes "artistically deliberate")."""
+    from types import SimpleNamespace
+    from show_service.looks import COLOUR_SLOT_S, GOBO_SETTLE_S, LookEngine, _FixState
+    slots = {(1.0, 1.0, 1.0): 0, (1.0, 0.0, 0.0): 1, (0.0, 0.0, 1.0): 5}
+    e = LookEngine.__new__(LookEngine)
+    e._wheel_slot = lambda s, inten, colour, attrs: slots[tuple(colour)]
+    s, fs = SimpleNamespace(fall_s=0.1, cw=(5, (3.0, 10.0, 38.0))), _FixState()
+    white, red, blue = [1.0, 1.0, 1.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]
+    assert e._wheel_dark(s, fs, 0.0, {}, 1.0, white) == (1.0, white)
+    assert e._wheel_dark(s, fs, 1.0, {}, 1.0, red) == (1.0, red)               # the next filter: a snap, lit
+    assert e._wheel_dark(s, fs, 2.0, {}, 1.0, blue) == (0.0, red)              # four along: dark, still red
+    t2 = 2.0 + 0.1 + GOBO_SETTLE_S
+    assert e._wheel_dark(s, fs, t2, {}, 1.0, blue) == (0.0, blue)              # turning, dark
+    back = t2 + COLOUR_SLOT_S * 4 + GOBO_SETTLE_S
+    assert e._wheel_dark(s, fs, back - 0.01, {}, 1.0, blue)[0] == 0.0
+    assert e._wheel_dark(s, fs, back, {}, 1.0, blue) == (1.0, blue)            # lit in the new colour
+    assert e._wheel_dark(s, fs, back + 1, {}, 0.0, white) == (0.0, white) and fs.c_slot == 0   # dark already: at once

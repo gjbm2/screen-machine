@@ -187,7 +187,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Optional, Sequence
 
-from . import colour_mix, contract
+from . import colour_mix, contract, motion
 from .artnet_out import (DEFAULT_RGB, NEUTRAL_RGB, HUE_ATTACK_S, HUE_DECAY_S, HUE_DEPTH, IDLE_AFTER_S, QUIET_AFTER_S,
                          QUIET_GATE_OFF, QUIET_GATE_ON, TAU_ENERGY_S)
 from .clock import beat_at
@@ -237,6 +237,10 @@ _BASE_MIX: list = [(1.0, None)]  # no light scene: looks.layers and looks.hits a
 DEFAULT_MAX_SPEED_DEG_S = (180.0, 120.0)   # starting point (lights.motion.default_max_speed_deg_s): pan, tilt, until
                                            # each light's own is measured (setup max_speed wins)
 DEFAULT_ACCEL_S = 0.12          # starting point (lights.motion.accel_s): from rest to full speed
+DEFAULT_EASE = 0.5              # lights.motion.ease: the share of accel_s a move spends easing into its acceleration
+                                # and out of it (motion.py's jerk_s; the rest is its ramp_s). 0 = a plain trapezoid;
+                                # 0.5 = the gentlest way to full speed in accel_s
+KEPT_MIN = 0.9                  # §5.5: a pattern the easing would draw smaller than this share of itself runs slower
 DEFAULT_PT_SPEED = 1.0          # lights.motion.pt_speed: the light's own pan/tilt speed channel (1 = its fastest)
 DEFAULT_MAX_TRAVEL_SHARE = 0.8  # starting point: a beat-locked hop may spend at most this share of its period moving
 DEFAULT_DARK_MOVE_MIN_DEG = 30.0   # starting point: a jump bigger than this travels dark when the transition says so
@@ -327,6 +331,8 @@ KIND_ATTRS: dict[str, tuple[str, ...]] = {"position": ("pan",), "beam": ("zoom",
 GOBO_SLOT_S = 0.125
 GOBO_SETTLE_S = 0.05
 GOBO_DARK_LEVEL = 0.02
+COLOUR_SLOT_S = 0.11            # a colour wheel's time per filter (about 9 a second, as the 3D room's MECH has it)
+WHEEL_DARK_SLOTS = 2            # a colour change this many filters along the wheel, or more, is made dark
 LERP_ATTRS = frozenset({"pan", "tilt", "zoom", "focus", "iris", "frost", "cct", "pt_speed", "gobo_spin", "gobo2_spin",
                         "gobo_shake", "gobo2_shake", "gobo_scroll", "prism_spin", "colour_spin", "pan_spin",
                         "tilt_spin"})
@@ -446,20 +452,6 @@ def shape(fx: str, cycles: float, period_s: float = 0.0, attack_s: float = HUE_A
     return up if up > down else down
 
 
-def travel_s(d: float, v: float, acc: float) -> float:
-    """How long the motion stage takes to move ``d`` degrees from rest to rest at top speed ``v`` (deg/s) and
-    acceleration ``acc`` (deg/s², inf: none): ``d/v + v/acc`` once it reaches ``v`` (with acc = v / accel_s that is
-    docs/LIGHTS.md §5.5's ``d/v + accel_s``), else a triangle ``2 sqrt(d/acc)``."""
-    d = abs(d)
-    if d <= 0.0 or v <= 0.0:
-        return 0.0
-    if not math.isfinite(acc):
-        return d / v
-    if d >= v * v / acc:
-        return d / v + v / acc
-    return 2.0 * math.sqrt(d / acc)
-
-
 def flow_wave(flow: Optional[Mapping[str, Any]], clock_body: Optional[Mapping[str, Any]], t_s: float,
               coord: float) -> float:
     """docs/LIGHTS.md §4.1's shared phase (0..1) at host time ``t_s`` for a place at ``coord`` (space.flow_coord):
@@ -479,35 +471,6 @@ def flow_wave(flow: Optional[Mapping[str, Any]], clock_body: Optional[Mapping[st
             return 0.0
         x = (t_s - (float(at) / 1000.0 if _isnum(at) else 0.0)) / float(ps) - sp * coord
     return x - math.floor(x)
-
-
-def _slew1(c: float, v: float, tgt: float, moving: bool, vmax: float, acc: float, dt: float
-           ) -> tuple[float, float]:
-    """One axis of the motion stage (§5.5) over one frame of ``dt`` s: (command, speed). Never faster than ``vmax``.
-    A moving target (a pattern) within this frame's reach is taken as is; otherwise the command runs the trapezoid
-    toward it (speeding up by ``acc`` per second, then slowing to stop on it), integrated at mid-frame speeds so it
-    takes exactly ``travel_s`` (the pre-roll's own number)."""
-    err = tgt - c
-    if dt <= 0.0:
-        return c, v
-    a = abs(err)
-    if a <= 1e-9:
-        return tgt, (err / dt if moving else 0.0)
-    v0 = abs(v) if (v > 0.0) == (err > 0.0) else 0.0
-    if not math.isfinite(acc):
-        if vmax * dt >= a:
-            return tgt, (err / dt if moving else 0.0)
-        return c + math.copysign(vmax * dt, err), math.copysign(vmax, err)
-    v1 = min(vmax, v0 + acc * dt)
-    if moving and a <= v1 * dt:
-        return tgt, err / dt
-    brake = math.sqrt(2.0 * acc * a) - 0.5 * acc * dt            # the mid-frame speed that still stops on it
-    mid = min(0.5 * (v0 + v1), brake)
-    step = mid * dt
-    if brake <= 0.0 or step >= a:
-        return tgt, (err / dt if moving else 0.0)
-    v_end = v1 if mid >= 0.5 * (v0 + v1) - 1e-12 else max(0.0, brake - 0.5 * acc * dt)
-    return c + math.copysign(step, err), math.copysign(v_end, err)
 
 
 # -- selectors (fixtures.py's: one copy of the grammar, README S5.2) -------------------------------------------------
@@ -607,6 +570,8 @@ class _Slot:
     house: tuple                                # (intensity, colour list, rgb list, dmx bytes | None): the idle look
     # docs/LIGHTS.md §5.1
     caps: Optional[Mapping[str, Any]] = None    # fixture_encode.caps (None: no encoder, intensity and colour only)
+    cw: Optional[tuple] = None                  # a real colour wheel behind a dimmer: (its channel's offset, the
+                                                # DMX value of each slot, in the wheel's order) (_wheel_dark)
     attrs: frozenset = frozenset(("intensity", "colour"))
     setup: Mapping[str, Any] = field(default_factory=dict)
     pos: Optional[tuple[float, float, float]] = None   # its room position (the space's, or its pose's)
@@ -656,7 +621,8 @@ class _Scene:
 class _Motion:
     """show.yaml ``lights.motion`` and ``lights.jog``, read (§12)."""
     max_speed: tuple[float, float] = DEFAULT_MAX_SPEED_DEG_S
-    accel_s: float = DEFAULT_ACCEL_S
+    accel_s: float = DEFAULT_ACCEL_S              # from rest to full speed, easing included
+    ease: float = DEFAULT_EASE
     pt_speed: float = DEFAULT_PT_SPEED
     max_travel_share: float = DEFAULT_MAX_TRAVEL_SHARE
     dark_move_min_deg: float = DEFAULT_DARK_MOVE_MIN_DEG
@@ -665,6 +631,14 @@ class _Motion:
     dark_max_s: float = DEFAULT_DARK_MAX_S
     jog_idle_s: float = DEFAULT_JOG_IDLE_S
     jog_smooth_s: float = DEFAULT_JOG_SMOOTH_MS / 1000.0
+
+    @property
+    def ramp_s(self) -> float:                    # motion.py's two averages: accel_s split by ease
+        return self.accel_s * (1.0 - self.ease)
+
+    @property
+    def jerk_s(self) -> float:
+        return self.accel_s * self.ease
 
 
 @dataclass(frozen=True)
@@ -790,7 +764,9 @@ class _FixState:
                  "cmd", "vel", "t_m", "tgt", "dark", "t_move", "t_light", "last_attrs", "last_inten", "last_colour",
                  "slowed", "clamped", "unresolved", "unreachable", "held", "hold_now", "hold_seq",
                  # a gobo change made in the dark (_gobo_dark)
-                 "g_shown", "g_pend", "g_phase", "g_until", "g_live")
+                 "g_shown", "g_pend", "g_phase", "g_until", "g_live",
+                 "sm",                           # its motion stage (motion.Smoother), once it has moved
+                 "c_key", "c_slot", "c_col", "c_phase", "c_until", "c_to")   # its colour wheel (_wheel_dark)
 
     def __init__(self) -> None:
         self.prev: Optional[float] = None
@@ -807,6 +783,13 @@ class _FixState:
         self.g_phase = 0                         # 0 none, 1 going dark on the old gobo, 2 the wheel turning dark
         self.g_until = 0.0
         self.g_live = False                      # the layer snaps its changes in the light (change: live)
+        self.sm: Optional[motion.Smoother] = None
+        self.c_key: Any = None                   # the colour last looked up on the wheel
+        self.c_slot: Optional[int] = None        # the wheel's place now (its index), once known
+        self.c_col: list = [1.0, 1.0, 1.0]       # the colour it shows there
+        self.c_phase = 0                         # 0 none, 1 going dark on the old colour, 2 the wheel turning dark
+        self.c_until = 0.0
+        self.c_to = 0
         self.t_move = 0.0
         self.t_light = 0.0
         self.last_attrs: Optional[dict] = None
@@ -1251,6 +1234,7 @@ class LookEngine:
         return _Motion(
             max_speed=speed,
             accel_s=self._num(m, "accel_s", DEFAULT_ACCEL_S, 0.0, 5.0, w, probs),
+            ease=self._num(m, "ease", DEFAULT_EASE, 0.0, 1.0, w, probs),
             pt_speed=self._num(m, "pt_speed", DEFAULT_PT_SPEED, 0.0, 1.0, w, probs),
             max_travel_share=self._num(m, "max_travel_share", DEFAULT_MAX_TRAVEL_SHARE, 0.0, 1.0, w, probs,
                                        positive=True),
@@ -1977,7 +1961,15 @@ class LookEngine:
             if enc:
                 got = self._call("fixture_encode.encode", enc_mod.encode, f, t, hi, hcol, dict(neutral))
                 hdmx = got if isinstance(got, (bytes, bytearray)) else hdmx
-        return _Slot(id=fid, info=f, type=t, rise_s=rise / 1000.0, colour_s=col / 1000.0, min_pulse_s=mp / 1000.0,
+        cw = None
+        wl = t.get("wheel")
+        if enc and chans and t.get("wheel_closed") is None and isinstance(wl, (list, tuple)) and len(wl) > 2:
+            off = next((c.get("offset") for c in t.get("channels") or () if isinstance(c, Mapping) and any(
+                isinstance(r, Mapping) and r.get("attr") == "colour_slot" for r in c.get("ranges") or ())), None)
+            dm = [w.get("dmx") for w in wl if isinstance(w, Mapping)]
+            if isinstance(off, int) and len(dm) == len(wl) and all(_isnum(x) for x in dm):
+                cw = (off, tuple(float(x) for x in dm))
+        return _Slot(id=fid, info=f, type=t, cw=cw, rise_s=rise / 1000.0, colour_s=col / 1000.0, min_pulse_s=mp / 1000.0,
                      role=role if isinstance(role, str) else None, screen=f.get("screen"), zone=f.get("zone"),
                      house_rgb=house_rgb, donors=tuple(d[-1] for d in donors), channels=chans,
                      house=(hi, hcol, list(hrgb), bytes(hdmx) if hdmx is not None else None), caps=caps, attrs=attrs,
@@ -3108,6 +3100,8 @@ class LookEngine:
                     inten = 0.0
             if attrs is not None and "gobo" in attrs:
                 inten = self._gobo_dark(s, fs, t, attrs, inten)
+            if s.cw is not None and attrs is not None:
+                inten, colour = self._wheel_dark(s, fs, t, attrs, inten, colour)
             flash_hz = gn.flash_hz
             if flash_hz is not None:
                 if fs.low is None:
@@ -3688,15 +3682,13 @@ class LookEngine:
                 jump = max(abs(nw[0] - o[0]), abs(nw[1] - o[1]))
                 kind = pf.kind if pf is not None else "crossfade"
                 mc = cx.prog.motion
+                xe = _smoothstep(xa)                          # a lit glide eases away and in over its whole length
                 if pf is None:
-                    pos = [o[0] + (nw[0] - o[0]) * xa, o[1] + (nw[1] - o[1]) * xa]
+                    pos = [o[0] + (nw[0] - o[0]) * xe, o[1] + (nw[1] - o[1]) * xe]
                 elif kind in ("cut", "dark_move"):
                     # pre-rolled: the move starts its travel time (plus the dark lead and settle) before the line
                     cur = fs.cmd or o
-                    ac = (s.max_speed[0] / mc.accel_s if mc.accel_s > 0 else math.inf,
-                          s.max_speed[1] / mc.accel_s if mc.accel_s > 0 else math.inf)
-                    tr = max(travel_s(nw[0] - cur[0], s.max_speed[0], ac[0]),
-                             travel_s(nw[1] - cur[1], s.max_speed[1], ac[1]))
+                    tr = motion.travel_s(nw[0] - cur[0], nw[1] - cur[1], s.max_speed, mc.ramp_s, mc.jerk_s)
                     lead = 0.0
                     if kind == "dark_move" and jump > mc.dark_move_min_deg:
                         lead = max(0.0, s.fall_s - s.pos_s) + cx.dt + mc.settle_s
@@ -3709,7 +3701,7 @@ class LookEngine:
                         pos = nw if xa > 0.0 else o
                         dark_ok = True
                     else:
-                        pos = [o[0] + (nw[0] - o[0]) * xa, o[1] + (nw[1] - o[1]) * xa]
+                        pos = [o[0] + (nw[0] - o[0]) * xe, o[1] + (nw[1] - o[1]) * xe]
             q = r_new[1] if xa >= 0.5 else r_old[1]
         # effects: latest takes precedence over the scene, blended by each run's envelope
         for ef, env, _inows in gn.effects:
@@ -4180,7 +4172,8 @@ class LookEngine:
             return (s.home[0], s.home[1]), None
         if mode == "tilt_wave":
             sz = p["size_deg"] * self._fit(L, m, s, fs, cx, gn, tp, None)[0] * (cx.ms.get(s.id, 1.0) if cx.ms else 1.0)
-            w, _per = self._phase(L, s, m, cx, gn, tp)
+            mc = cx.prog.motion
+            w, _per = self._phase(L, s, m, cx, gn, tp + motion.lag_s(mc.ramp_s, mc.jerk_s))
             return (prev[0], prev[1] + sz * (2.0 * shape(p["fx"], w) - 1.0)), prev_q
         if mode == "lift":
             if not cal:
@@ -4314,14 +4307,17 @@ class LookEngine:
         if mode == "fan":
             return at(0.0, 0.0, ms)
         share, factor = self._fit(L, m, s, fs, cx, gn, tp, at)
-        cyc, _per = self._phase(L, s, m, cx, gn, tp, factor)
+        mc = cx.prog.motion                                     # drawn the easing's lag ahead: on the beat when sent
+        cyc, _per = self._phase(L, s, m, cx, gn, tp + motion.lag_s(mc.ramp_s, mc.jerk_s), factor)
         return at(cyc - math.floor(cyc), cyc, share * ms)
 
     def _fit(self, L: _Layer, m: tuple[int, int], s: _Slot, fs: _FixState, cx: _Ctx, gn: _Group, tp: float,
              at: Optional[Callable]) -> tuple[float, float]:
-        """Degrade, never trip (§5.5): (size share, period factor) so the pattern's peak speed fits under SPEED_FIT x
-        the light's: first shrink (to min_size_share), then double the period on the grid and fit again. Measured
-        over one cycle when the pattern's period or size changes (cached per output)."""
+        """Degrade, never trip (§5.5): (size share, period factor) so the pattern can be drawn truly. Its peak speed
+        fits under SPEED_FIT x the light's (first shrink, to min_size_share, then double the period on the grid and
+        fit again), and the motion stage's easing keeps at least KEPT_MIN of its size (motion.kept: a pattern that
+        turns back on itself too quickly to keep its shape runs slower; shrinking wouldn't help it). Measured over
+        one cycle when the pattern's period or size changes (cached per output)."""
         _w, per = self._phase(L, s, m, cx, gn, tp)
         if per <= 0.0 or not s.moves:
             return 1.0, 1.0
@@ -4333,7 +4329,8 @@ class LookEngine:
             mc = cx.prog.motion
             vp, vt = s.max_speed[0] * SPEED_FIT, s.max_speed[1] * SPEED_FIT
 
-            def ratio(share: float, factor: float) -> float:
+            def measure(share: float, factor: float) -> tuple[float, float]:
+                """(its peak speed over the light's, the share of its size the easing keeps)."""
                 pts = []
                 cur = None
                 for k in range(FIT_SAMPLES + 1):
@@ -4343,26 +4340,30 @@ class LookEngine:
                     else:
                         r = at(w, w, share, cur)
                     if r is None:
-                        return 0.0
+                        return 0.0, 1.0
                     cur = r[0]
                     pts.append(r[0])
                 step = per * factor / FIT_SAMPLES
                 worst = 0.0
                 for a, b in zip(pts, pts[1:]):
                     worst = max(worst, abs(b[0] - a[0]) / step / vp, abs(b[1] - a[1]) / step / vt)
-                return worst
+                return worst, motion.kept(pts, per * factor, mc.ramp_s, mc.jerk_s)
             share, factor = 1.0, 1.0
-            r = ratio(1.0, 1.0)
+            r, kp = measure(1.0, 1.0)
+            n = 0
+            while kp < KEPT_MIN and n < MAX_DOUBLINGS:           # too quick to keep its shape: slower
+                factor *= 2.0
+                n += 1
+                r, kp = measure(1.0, factor)
             if r > 1.0:
                 share = max(mc.min_size_share, 1.0 / r)
-                r = ratio(share, 1.0)
-                n = 0
+                r = measure(share, factor)[0]
                 while r > 1.0 + 1e-6 and n < MAX_DOUBLINGS:
                     factor *= 2.0
                     n += 1
-                    r1 = ratio(1.0, factor)
+                    r1 = measure(1.0, factor)[0]
                     share = 1.0 if r1 <= 1.0 else max(mc.min_size_share, 1.0 / r1)
-                    r = ratio(share, factor)
+                    r = measure(share, factor)[0]
             got = (share, factor)
             if len(cx.st.fits) > FIT_CACHE_MAX:
                 cx.st.fits.clear()
@@ -4401,11 +4402,8 @@ class LookEngine:
         n = len(pts)
         if n == 1:
             return pts[0]
-        acc = (s.max_speed[0] / mc.accel_s if mc.accel_s > 0 else math.inf,
-               s.max_speed[1] / mc.accel_s if mc.accel_s > 0 else math.inf)
-
         def trav(a: Sequence[float], b: Sequence[float]) -> float:
-            return max(travel_s(b[0] - a[0], s.max_speed[0], acc[0]), travel_s(b[1] - a[1], s.max_speed[1], acc[1]))
+            return motion.travel_s(b[0] - a[0], b[1] - a[1], s.max_speed, mc.ramp_s, mc.jerk_s)
         hop_beats = 1.0 if p["hop"] == "beat" else float(cx.bpb)
         anchor = 0.0 if p["hop"] == "beat" else cx.bar_anchor
         worst = max(trav(pts[k][0], pts[(k + 1) % n][0]) for k in range(n))
@@ -4461,34 +4459,79 @@ class LookEngine:
             fs.g_phase = 0
         return inten
 
+    def _wheel_dark(self, s: _Slot, fs: _FixState, t: float, attrs: Mapping[str, Any], inten: float, colour: list
+                    ) -> tuple[float, list]:
+        """A lit head's colour change on a colour wheel (owner, 27 Nov: colour changes should be "artistically
+        deliberate"): a wheel can't fade between two colours, it turns through every filter between them. A change
+        to the next filter along snaps in the light (nothing passes between); a longer turn is made dark, as a
+        gobo's is: the old colour while the light falls, the turn, then the new colour. Lights that mix their colour
+        (pars, derbies) never come here: they fade. Returns (intensity, the colour to send)."""
+        key = (round(colour[0], 3), round(colour[1], 3), round(colour[2], 3))
+        if fs.c_phase == 0:
+            if key == fs.c_key:
+                return inten, colour
+            slot = self._wheel_slot(s, inten, colour, attrs)
+            if slot is None:
+                return inten, colour
+            if fs.c_slot is None or abs(slot - fs.c_slot) < WHEEL_DARK_SLOTS or inten <= GOBO_DARK_LEVEL \
+                    or attrs.get("colour_slot") is not None or attrs.get("colour_spin"):
+                fs.c_key, fs.c_slot, fs.c_col = key, slot, list(colour)
+                return inten, colour
+            fs.c_phase, fs.c_until, fs.c_to = 1, t + s.fall_s + GOBO_SETTLE_S, slot
+        if fs.c_phase == 1:
+            if t < fs.c_until:
+                return 0.0, fs.c_col
+            fs.c_phase = 2
+            fs.c_until = t + COLOUR_SLOT_S * abs(fs.c_to - (fs.c_slot or 0)) + GOBO_SETTLE_S
+        if t < fs.c_until:
+            return 0.0, colour
+        fs.c_phase = 0
+        slot = self._wheel_slot(s, inten, colour, attrs)
+        fs.c_key, fs.c_slot, fs.c_col = key, (slot if slot is not None else fs.c_to), list(colour)
+        return inten, colour
+
+    def _wheel_slot(self, s: _Slot, inten: float, colour: Sequence[float], attrs: Mapping[str, Any]) -> Optional[int]:
+        """Which filter of its colour wheel a light would show for ``colour`` (the encoder's own pick), as the
+        wheel's index."""
+        off, dm = s.cw
+        try:
+            v = self._encode(s, max(inten, 0.5), colour, attrs)[off]
+        except Exception:                                        # noqa: BLE001 - no wheel to speak of this frame
+            return None
+        return min(range(len(dm)), key=lambda k: abs(dm[k] - v))
+
     # -- the motion stage (§5.5) ---------------------------------------------------------------------------------------
     def _move(self, s: _Slot, fs: _FixState, t: float, target: Sequence[float], mc: _Motion, *,
               dark_ok: bool = False, light_at: Optional[float] = None) -> tuple[float, float, bool]:
-        """Commanded (pan, tilt) toward ``target`` within the light's speed, acceleration and soft limits, and
-        whether it must be dark now (a dark move: going dark, moving, or settling)."""
+        """Commanded (pan, tilt) toward ``target`` through the light's motion stage (motion.Smoother: both axes
+        together within its speed, eased over accel_s and jerk_s) and its soft limits, and whether it must be dark
+        now (a dark move: going dark, moving, or settling)."""
         tgt = [_clamp(target[0], s.limits[0], s.limits[1]), _clamp(target[1], s.limits[2], s.limits[3])]
         if abs(tgt[0] - target[0]) > 1e-9 or abs(tgt[1] - target[1]) > 1e-9:
             fs.clamped.add("limits")
+        sm = fs.sm
         if fs.cmd is None:
             fs.cmd, fs.vel, fs.t_m = [s.home[0], s.home[1]], [0.0, 0.0], t
+        if sm is None:
+            sm = fs.sm = motion.Smoother(fs.cmd)
+        elif fs.cmd[0] != sm.out[0] or fs.cmd[1] != sm.out[1]:   # something else placed it (a hold): on from there
+            sm.reset(fs.cmd)
         dt = 0.0 if fs.t_m is None else _clamp(t - fs.t_m, 0.0, DT_MAX_S)
         fs.t_m = t
-        acc = (s.max_speed[0] / mc.accel_s if mc.accel_s > 0 else math.inf,
-               s.max_speed[1] / mc.accel_s if mc.accel_s > 0 else math.inf)
-        cmd, vel = fs.cmd, fs.vel
+        cmd = fs.cmd
         jump = max(abs(tgt[0] - cmd[0]), abs(tgt[1] - cmd[1]))
         if fs.dark == 0 and dark_ok and jump > mc.dark_move_min_deg:
             fs.dark = 1                                          # dark first: the move waits out the fall
             fs.t_move = t + max(0.0, s.fall_s - s.pos_s) + dt
         if fs.dark == 1:
-            if t < fs.t_move:
-                fs.vel = [0.0, 0.0]
-                return cmd[0], cmd[1], True
+            if t < fs.t_move:                                    # standing where it has got to (easing to rest)
+                out = sm.step(dt, sm.raw, s.max_speed, mc.ramp_s, mc.jerk_s)
+                fs.cmd = [out[0], out[1]]
+                return out[0], out[1], True
             fs.dark = 2
-        prev = fs.tgt or tgt
         fs.tgt = tgt
-        cmd[0], vel[0] = _slew1(cmd[0], vel[0], tgt[0], abs(tgt[0] - prev[0]) > 1e-9, s.max_speed[0], acc[0], dt)
-        cmd[1], vel[1] = _slew1(cmd[1], vel[1], tgt[1], abs(tgt[1] - prev[1]) > 1e-9, s.max_speed[1], acc[1], dt)
+        out = sm.step(dt, tgt, s.max_speed, mc.ramp_s, mc.jerk_s)
+        cmd = fs.cmd = [out[0], out[1]]
         if fs.dark == 2:
             if max(abs(tgt[0] - cmd[0]), abs(tgt[1] - cmd[1])) <= ARRIVED_DEG:
                 fs.dark = 3                                      # arrived: light again after the settle

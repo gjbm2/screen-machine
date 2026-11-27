@@ -881,22 +881,38 @@ and v → tilt. Phase w = the member's oscillator cycle (`phase`, `period_*`, `n
 
 ### 5.5 Mechanical timing
 
-- **Slew.** Commanded pan and tilt move at most `max_speed` × dt per frame, with an acceleration allowance (a
-  smoothstep over `accel_s` from rest). The light is never asked to go faster than it can, so the latency model holds.
-  `pt_speed` is sent at `lights.motion.pt_speed` (the fixture's fastest; the engine does the smoothing).
+- **The motion stage** (`show_service/motion.py`, the maths; owner, 27 Nov: "all position delivery ... well constrained
+  by a good, well-engineered math logic layer about curvatures and pacing"). DMX gives a head a position, never a
+  speed: what is sent each frame is the movement. Every (pan, tilt) sent goes through two steps:
+  1. **a rate limiter, both axes together**: toward the target along the straight line in (pan, tilt), as fast as the
+     slower axis (for the distance it has to go) allows. Both axes leave and arrive together: one clean arc, no dog-leg.
+  2. **two moving averages**, `ramp_s` then `jerk_s` long (`lights.motion.accel_s` split by `lights.motion.ease`,
+     0.5 by default). A jump comes out as an S-curve: it eases away and eases in. A corner in a path (a sweep's turn,
+     a hop, a square wave) comes out as a blend that long. Nothing overshoots.
+
+  So whatever a scene asks: speed ≤ `max_speed`; acceleration ≤ max_speed / ramp_s from or to rest (twice that in a
+  full-speed turn-about); jerk bounded likewise by jerk_s. `accel_s: 0` is the plain speed limit.
+  - A pattern is drawn `(ramp_s + jerk_s) / 2` ahead (the averages' lag), so it is on the beat when sent.
+  - A lit glide between two scenes' positions (a crossfade, a sweep) eases over its whole length (smoothstep).
+  - `pt_speed` is sent at `lights.motion.pt_speed` (the fixture's fastest; the engine does the smoothing).
 - **Soft limits.** Every commanded value is clamped to `setup.limits` (when set) and the range. IK picks within them.
   A clamped layer is listed in stats as `clamped`; no light is refused.
 - **Pre-roll** for beat-locked moves (bounce, snaps, a cut that lands on a line):
-  - travel = max(|Δpan|/v_pan, |Δtilt|/v_tilt) + accel_s;
+  - travel = max(|Δpan|/v_pan, |Δtilt|/v_tilt) + accel_s (`motion.travel_s`: exact, for any distance);
   - the target switches at (the line - travel), evaluated at tp (the position latency is already in tp), so the beam
     **arrives** on the beat.
   - When travel > `max_travel_share` × the hop's period, the hop period doubles (on the grid) until it fits. The
     layer is listed under `slowed`.
-- **Degrade, never trip.** A pattern whose peak angular speed (sampled over one cycle at configure, and again when
-  its size or period changes) exceeds max_speed × 0.95:
-  - first shrinks, down to `min_size_share`;
-  - then doubles its period (on the grid) and re-fits.
+- **Degrade, never trip.** A pattern is sampled over one cycle (at configure, and again when its size or period
+  changes), in the light's own pan and tilt, so what the room's geometry does to it counts:
+  - one whose easing would draw it smaller than 0.9 of itself (`motion.kept`: it turns back on itself too quickly to
+    keep its shape) doubles its period (on the grid) until it keeps it;
+  - one whose peak speed exceeds max_speed × 0.95 first shrinks, down to `min_size_share`, then doubles its period
+    and re-fits.
   The commanded speed never exceeds the limit. Stats `slowed` lists each such layer with its size and period factor.
+- **Wheels turn in the dark.** A lit head's gobo change, or a colour-wheel change of two filters or more, holds the
+  old one while the light falls, turns unseen, and lights on the new one (`_gobo_dark`, `_wheel_dark`). A colour
+  change to the next filter along snaps lit. Lights that mix their colour fade (in OKLab).
 - **Dark moves.**
   - When the program's transition says dark moves, or a scene change asks a mover to jump more than
     `dark_move_min_deg`, intensity goes to 0 at least `rise/fall latency` before the move starts.
