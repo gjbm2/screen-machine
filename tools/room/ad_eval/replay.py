@@ -25,6 +25,7 @@ import hashlib
 import json
 import math
 import os
+import random
 import pathlib
 import subprocess
 import sys
@@ -199,7 +200,12 @@ class Sim:
         self.rig_view = self.registry.view()
         ctx.rig = lambda: self.rig_view
         from show_service import cues, director, structure
-        self.ml = mllink.attach(ctx, mono=lambda: self.now, log_path=pathlib.Path(os.devnull))
+        seed = int(os.environ.get("SM_AD_EVAL_SEED", "0") or 0)
+        if seed:                                             # another draw of the same show: a change is judged over
+            director.LIGHT_SCENE_SEED, director.LIGHT_FX_SEED, director.ENSEMBLE_SEED = (   # several, not one (a
+                1000 * seed, 1000 * seed + 1, 1000 * seed + 2)                             # changed draw count
+            random.seed(seed)                                                              # reshuffles the rest)
+        self.ml =mllink.attach(ctx, mono=lambda: self.now, log_path=pathlib.Path(os.devnull))
         self.structure = structure.attach(ctx, mono=lambda: self.now)
         self.cues = cues.attach(ctx, mono=lambda: self.now, wall=lambda: WALL0 + self.now - T0,
                                 log_path=tmp / "cues.jsonl")

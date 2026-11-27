@@ -391,7 +391,7 @@ KARAOKE_DWELL_MAX_S = (30.0, 90.0)
 SECTION_ENERGY = {"verse": -0.08, "chorus": 0.15, "instrumental": 0.05, "outro": -0.15}
 # A karaoke song laid out ahead (songplan.py; owner, 27 Nov: "informed by song structure and shape metadata"). The
 # director's own starting points for lights.programs' optional keys (light_scenes.PROGRAMS_OPTIONAL has the words).
-RECALL_WEIGHT = 40.0
+RECALL_WEIGHT = 1000.0
 GROW_STEP = 0.12
 SECTION_FIT, SECTION_AGAINST = 2.5, 0.35
 CARRIER_OTHERS = 0.25
@@ -3202,6 +3202,10 @@ class Director:
         sec = reason in ("section", "repeat")
         into = self._sec_kinds[1] if sec else None
         mem = self._light_mem.get(self._mem_key(into)) if sec and self._sec_letter else None
+        if mem is None and sec and self._sec_letter and into in BIG_SECTIONS:
+            # the last chorus is the chorus, biggest: its scenes come back, and what it adds is drawn (eval 27 Nov:
+            # a last chorus of all-new scenes read as another song, not the chorus at its height)
+            mem = self._light_mem.get(f"{self._sec_letter}:chorus")
         if mem is not None and self._sec_level is not None and mem.get("level") is not None \
                 and mem["level"] - self._sec_level >= self._prog("grow_step", GROW_STEP):
             mem = None                                    # it has dropped back: its scenes are drawn afresh too
@@ -3489,6 +3493,10 @@ class Director:
                                                           # a timed change inside one keeps it (the arc holds)
         sec = reason in ("section", "repeat")
         into = self._sec_kinds[1] if sec else None
+        draw_into = into
+        if into == "instrumental" and self._sec_class() in ("chorus", "peak"):
+            draw_into = "chorus"                          # a solo as big as a chorus plays like one (eval 27 Nov: a
+                                                          # guitar solo at 0.9 got the derbies and laser alone)
         level = self._sec_level if sec else None
         if reason == "track" and level is None and self._karaoke_np() is not None:
             level = self._karaoke_energy(TRACK_LEVEL_AHEAD_S)   # the new song's own opening, not the energy left
@@ -3506,12 +3514,13 @@ class Director:
             if mem is not None and mem.get("lineup") in lus and into not in BIG_SECTIONS and not fallen:
                 grown = level is not None and mem.get("level") is not None and level - mem["level"] >= step
                 if grown:
-                    name = lscenes.pick_lineup(lus, into, drive, self._fx_rng, over=set(lus[mem["lineup"]]["plays"]))
+                    name = lscenes.pick_lineup(lus, draw_into, drive, self._fx_rng,
+                                               over=set(lus[mem["lineup"]]["plays"]))
                     how = "grown" if name is not None else how
                 if name is None:
                     name, how = mem["lineup"], "recalled"
             if name is None:
-                name = lscenes.pick_lineup(lus, into, drive, self._fx_rng, avoid=self._lineup)
+                name = lscenes.pick_lineup(lus, draw_into, drive, self._fx_rng, avoid=self._lineup)
         except Exception:                                 # a broken catalogue never fails the tick
             log.exception("line-ups: pick failed")
             name = None

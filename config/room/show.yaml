@@ -1169,8 +1169,9 @@ lights:
       full:     {beat: [0.15, 7.0], other: [2.0, 0.2]}
     # A karaoke song is laid out before it plays (show_service/songplan.py: each lyric section with the song's
     # measured level over it, and its climax marked; owner, 27 Nov). Starting points, chosen by reasoning.
-    recall_weight: 40                       # a section that comes round again (the chorus) draws the scene each group
-                                            # showed for it last time at this many times its weight
+    recall_weight: 1000                     # a section that comes round again (the chorus) draws the scene each group
+                                            # showed for it last time at this many times its weight (at 40 a third
+                                            # of returns drew another: eval 27 Nov; a look book, not a suggestion)
     grow_step: 0.12                         # ... and a bigger line-up, once the song's level for it has risen this much
     section_fit: 2.5                        # a scene whose tags.sections names the kind of section coming, x this
     section_against: 0.35                   # ... one that names other kinds, x this (no tags.sections: for any)

@@ -123,7 +123,7 @@ def test_a_brief_with_no_ai_and_its_plan_for_structure(tmp_path):
         {"start_s": 20.0, "kind": "chorus", "size": 0.8}, {"start_s": 40.0, "kind": "verse", "size": 0.5},
         {"start_s": 60.0, "kind": "chorus", "size": 1.0}, {"start_s": 80.0, "kind": "bridge", "size": 0.6},
         {"start_s": 95.0, "kind": "outro", "size": 0.3}]}, idioms)
-    assert [p["letter"] for p in two] == ["A", "A", "B", "A", "B", "D", "C"]
+    assert [p["letter"] for p in two] == ["A", "E", "B", "A", "B", "D", "C"]
     assert two[1]["kind"] == "verse" and two[1]["level"] > two[0]["level"]
 
 

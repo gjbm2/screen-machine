@@ -52,9 +52,10 @@ SNAP_S = 1.5                           # a section's start may move this far to 
 DIRECTOR_KIND = {"intro": "instrumental", "verse": "verse", "prechorus": "verse", "chorus": "chorus",
                  "bridge": "verse", "instrumental": "instrumental", "outro": "outro"}
 #: The look each kind of section shares (structure's letter: a section with a letter seen before gets that look
-#: back). A song has four looks at most: the verse's (its prechorus is the same look, grown: bigger, not other),
-#: the chorus's, the bridge's, and one for where nobody sings.
-LETTER = {"verse": "A", "prechorus": "A", "chorus": "B", "intro": "C", "instrumental": "C", "outro": "C", "bridge": "D"}
+#: back). A song has five looks at most: the verse's, the prechorus's (its own: sharing the verse's, it grew the
+#: verse's memory into the build, so the second verse came back as the prechorus; eval 27 Nov), the chorus's, the
+#: bridge's, and one for where nobody sings.
+LETTER = {"verse": "A", "prechorus": "E", "chorus": "B", "intro": "C", "instrumental": "C", "outro": "C", "bridge": "D"}
 
 #: With no AI: the idioms a catalogue genre (Deezer's names, lower case, matched as a part) could be.
 GENRE_IDIOMS = {"singer": ("hush", "ballad", "story"), "folk": ("hush", "story"), "jazz": ("ballad", "hush", "groove"),

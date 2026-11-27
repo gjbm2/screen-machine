@@ -57,16 +57,21 @@ def notes() -> list[dict]:
     return out
 
 
-def _sub(args: list[str], timeout: float) -> tuple[int, str]:
+def _sub(args: list[str], timeout: float, env: Optional[dict] = None) -> tuple[int, str]:
     p = subprocess.run(["nice", "-n", "19", *args], capture_output=True, text=True, timeout=timeout,
-                       cwd=str(common.REPO))
+                       cwd=str(common.REPO), env={**os.environ, **env} if env else None)
     return p.returncode, (p.stdout[-2000:] + p.stderr[-3000:])
 
 
-def one(sid: str, mode: str, out_dir: pathlib.Path) -> tuple[str, str, Optional[str]]:
-    out = out_dir / f"{sid}.{mode}.json"
+def tl_name(sid: str, mode: str, seed: int) -> str:
+    """A timeline's file in a run: the first draw is <id>.<mode>.json, another seed's <id>.<mode>.s<k>.json."""
+    return f"{sid}.{mode}.json" if seed == 0 else f"{sid}.{mode}.s{seed}.json"
+
+
+def one(sid: str, mode: str, out_dir: pathlib.Path, seed: int = 0) -> tuple[str, str, Optional[str]]:
+    out = out_dir / tl_name(sid, mode, seed)
     rc, log = _sub([str(common.SHOW_PY), str(common.HERE / "replay.py"), sid, "--mode", mode, "--out", str(out)],
-                   timeout=3600)
+                   timeout=3600, env={"SM_AD_EVAL_SEED": str(seed)} if seed else None)
     return sid, mode, None if rc == 0 and out.is_file() else f"replay exit {rc}: {log[-1500:]}"
 
 
@@ -103,6 +108,9 @@ def diff(card: dict, other: Optional[dict], label: str) -> list[str]:
     if other is None:
         return [f"(no {label} run to compare with)"]
     lines = [f"vs {label} {other['run']['dir']} (overall {fmt(other['overall'])} -> {fmt(card['overall'])}):"]
+    k1, k0 = card["run"].get("seeds", 1), other["run"].get("seeds", 1)
+    if k1 != k0:
+        lines.append(f"  (draws per song {k0} -> {k1}: the scores move with the draw count, so this is not like for like)")
     for mode in MODES:
         a, b = card["aggregate"].get(mode) or {}, other["aggregate"].get(mode) or {}
         row = []
@@ -121,7 +129,7 @@ def diff(card: dict, other: Optional[dict], label: str) -> list[str]:
         if not o or s.get("overall") is None or o.get("overall") is None:
             continue
         d = s["overall"] - o["overall"]
-        if d < -REGRESSION:
+        if d < -max(REGRESSION, s.get("overall_spread") or 0.0, o.get("overall_spread") or 0.0):   # past its draws' own
             regress.append((d, key, s.get("title")))
     for d, key, t in sorted(regress)[:10]:
         lines.append(f"  REGRESSED {key} {str(t)[:30]}: overall {d:+.3f}")
@@ -144,6 +152,9 @@ def main() -> int:
     ap.add_argument("--modes", nargs="*", default=list(MODES), choices=MODES)
     ap.add_argument("--jobs", type=int, default=4)
     ap.add_argument("--label", default="")
+    ap.add_argument("--seeds", type=int, default=3,
+                    help="draws of the show per song, averaged (27 Nov: one draw's arc and character moved +-0.09 "
+                    "between seeds of the same code, so a one-seed change of less than that is a reshuffle)")
     ap.add_argument("--rescore", metavar="DIR", help="score an earlier run's timelines again (no replay): after a "
                     "change to the scorer; writes that run's scorecard.json and a new line of history")
     a = ap.parse_args()
@@ -164,9 +175,13 @@ def main() -> int:
     if a.rescore:
         out_dir = pathlib.Path(a.rescore) if pathlib.Path(a.rescore).is_dir() else RUNS / a.rescore
         name = out_dir.name
-        have = {tuple(p.name.split(".")[:2]) for p in out_dir.glob("*.*.json")}
-        ids = [i for i in dict.fromkeys(sid for sid, _m in sorted(have)) if i in lib]
-        todo = [(sid, m) for sid in ids for m in a.modes if (sid, m) in have]
+        have = set()
+        for p in out_dir.glob("*.*.json"):
+            parts = p.name.split(".")
+            if len(parts) == 3 or (len(parts) == 4 and parts[2][:1] == "s" and parts[2][1:].isdigit()):
+                have.add((parts[0], parts[1], int(parts[2][1:]) if len(parts) == 4 else 0))
+        ids = [i for i in dict.fromkeys(sid for sid, _m, _k in sorted(have)) if i in lib]
+        todo = [(sid, m, k) for sid, m, k in sorted(have) if sid in ids and m in a.modes]
         a.label = a.label or f"rescored {stamp}"
         print(f"ad_eval {name}: scoring again, {len(todo)} timelines", flush=True)
     else:
@@ -179,9 +194,10 @@ def main() -> int:
                 if err:
                     errors[f"{sid}:reference"] = err
                     print(f"  reference failed: {sid}", flush=True)
-        todo = [(sid, m) for sid in ids for m in a.modes if f"{sid}:reference" not in errors]
+        todo = [(sid, m, k) for k in range(max(1, a.seeds)) for sid in ids for m in a.modes
+                if f"{sid}:reference" not in errors]
         with cf.ThreadPoolExecutor(max(1, a.jobs)) as ex:
-            futs = [ex.submit(one, sid, m, out_dir) for sid, m in todo]
+            futs = [ex.submit(one, sid, m, out_dir, k) for sid, m, k in todo]
             for f in cf.as_completed(futs):
                 sid, mode, err = f.result()
                 if err:
@@ -192,8 +208,9 @@ def main() -> int:
     songs: dict[str, dict] = {}
     cases = []
     by_mode: dict[str, list[dict]] = {m: [] for m in a.modes}       # the timelines, for the controls
-    for sid, mode in todo:
-        p = out_dir / f"{sid}.{mode}.json"
+    draws: dict[str, list[dict]] = {}                               # each song's scores, one per seed
+    for sid, mode, seed in todo:
+        p = out_dir / tl_name(sid, mode, seed)
         if not p.is_file():
             continue
         tl = json.loads(p.read_text())
@@ -206,6 +223,9 @@ def main() -> int:
             continue
         tl["scores"] = m
         common.write_json(p, tl)
+        draws.setdefault(f"{sid}.{mode}", []).append(m)
+        if seed != 0:
+            continue                                          # the controls and the notes: one draw per song
         by_mode[mode].append(tl)
         songs[f"{sid}.{mode}"] = {"id": sid, "mode": mode, "title": (lib.get(sid) or {}).get("title"), **m,
                                   "character_of": r.get("character"),
@@ -213,6 +233,16 @@ def main() -> int:
         for n in nts:
             if n.get("song") == sid and (n.get("mode") in (None, mode)):
                 cases.append({"note": n, "mode": mode, "value": scoremod.case_value(tl, r, n, W)})
+    for key, ms in draws.items():                             # a song's score: the mean of its draws
+        if key not in songs or len(ms) < 2:
+            continue
+        num = {k for mm in ms for k, v in mm.items() if isinstance(v, (int, float)) and not isinstance(v, bool)}
+        for k in num:
+            vals = [float(mm[k]) for mm in ms if isinstance(mm.get(k), (int, float)) and not isinstance(mm.get(k), bool)]
+            songs[key][k] = round(sum(vals) / len(vals), 3)
+        ov = [float(mm["overall"]) for mm in ms if isinstance(mm.get("overall"), (int, float))]
+        songs[key]["seeds"] = len(ms)
+        songs[key]["overall_spread"] = round(max(ov) - min(ov), 3) if ov else None
     agg: dict[str, dict] = {}
     for mode in a.modes:
         rows = [s for s in songs.values() if s["mode"] == mode]
@@ -258,7 +288,8 @@ def main() -> int:
             c["prev_value"] = pv.get(note_key(c["note"]) + c["mode"])
     card = {"run": {"dir": name, "sha": sha, "stack": common.stack_id(), "dirty": common.dirty_files(),
                     "at": t_start, "wall_s": round(time.time() - t_start, 1), "label": a.label, "modes": a.modes,
-                    "songs": ids, "weights": W},
+                    "songs": ids, "weights": W, "seeds": max(1, a.seeds) if not a.rescore else max(
+                        (1 + k for _s, _m, k in todo), default=1)},
             "score_version": scoremod.SCORE_VERSION, "controls": ctl,
             "overall": round(sum(ov) / len(ov), 3) if ov else None, "aggregate": agg, "songs": songs,
             "cases": cases, "errors": errors}
@@ -270,7 +301,7 @@ def main() -> int:
                             "overall": card["overall"], "aggregate": {m: {k: agg[m].get(k) for k in HEADLINE}
                                                                        for m in agg},
                             "songs": ids, "modes": a.modes, "label": a.label, "errors": len(errors),
-                            "score_version": scoremod.SCORE_VERSION, "controls_pass": ctl["pass"]}) + "\n")
+                            "seeds": card["run"]["seeds"], "score_version": scoremod.SCORE_VERSION, "controls_pass": ctl["pass"]}) + "\n")
     print(f"\nscorecard {out_dir / 'scorecard.json'}  overall {fmt(card['overall'])}  "
           f"({card['run']['wall_s']:.0f} s, {len(errors)} errors)")
     for mode in a.modes:
