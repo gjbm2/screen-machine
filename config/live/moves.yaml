@@ -36,7 +36,7 @@ moves:
     size: medium
     lights:
       transition: sweep-through
-      accents: [{effect: bars-kick, at_beats: 0}]
+      accents: [{effect: bars-kick, at_beats: 0}, {effect: laser-sweep-in, at_beats: 0}]
     screen: {via: ["family:light", "family:wipe"]}
     land: 1.0
     tags: {energy: [0.35, 1.0], weight: 1.0}
@@ -46,7 +46,8 @@ moves:
     size: big
     lights:
       transition: strobe-snap
-      accents: [{effect: bars-kick, at_beats: 0}, {effect: last-chorus-strobe, at_beats: 0}]
+      accents: [{effect: bars-kick, at_beats: 0}, {effect: last-chorus-strobe, at_beats: 0},
+                {effect: laser-burst, at_beats: 0}]
     screen: {via: [cut]}
     land: 1.0
     tags: {energy: [0.0, 1.0], weight: 3.0}

@@ -46,8 +46,9 @@ types:
   gigbar-derby: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-derby.json, mode: part}   # RGBW, strobe, motor
   gigbar-spot:  {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-spot.json, mode: part}    # moving head
   gigbar-flash: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-flash.json, mode: part}   # 4 white strobes
-  # Declared for the Lights page, not patched (owner, 26 Nov: "tbc"): the class 3R laser (the manual wants 3 m above
-  # the floor and 3 m from people). Its channels stay at 0, which is blackout.
+  # The laser (red 650 nm, green 520 nm, blue 450 nm): its own surface since 27 Nov (owner: "ensure we have the
+  # display layering & logic"): colour, strobe and rotation, worked by the lights' macro layers (light_scenes.yaml
+  # tags.parts: [laser]). All three channels rest at 0 (off).
   gigbar-laser: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-laser.json, mode: part-52ch}
   # gigbar-laser-50: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-laser.json, mode: part-50ch}
   z-350: {source: ofl, file: ofl/antari/z-350.json, mode: 2-channel}   # haze, fan: never driven by a look
@@ -55,7 +56,7 @@ types:
 
 # Address plan (universe 1): bar A at 1 (1-52), bar B at 101 (101-152), the hazer at 201 (201-202), the house
 # lights at 211-214.
-# Part offsets in a 52CH bar: par 1 +0, par 2 +7, derby 1 +14, derby 2 +20, strobes +26, laser +31 (unpatched),
+# Part offsets in a 52CH bar: par 1 +0, par 2 +7, derby 1 +14, derby 2 +20, strobes +26, laser +31,
 # spot 1 +34, spot 2 +43. "A" is the bar on the left as the room faces the screen (swap the start
 # addresses on the bars if they end up the other way round). The derby motors are pinned to a slow clockwise turn
 # (a starting point: 0 stops them, 1-127 is slow to fast).
@@ -71,6 +72,7 @@ fixtures:
   gigbar-a.derby2: {label: Bar A derby 2, type: gigbar-derby, output: dmx-a, address: 21,  tags: [gigbar, bar-a, derby],
                     pin: {Rotation: 16}}
   gigbar-a.strobe: {label: Bar A strobes, type: gigbar-flash, output: dmx-a, address: 27,  tags: [gigbar, bar-a, strobe]}
+  gigbar-a.laser:  {label: Bar A laser,   type: gigbar-laser, output: dmx-a, address: 32,  tags: [gigbar, bar-a, laser]}
   gigbar-a.spot1:  {label: Bar A spot 1,  type: gigbar-spot,  output: dmx-a, address: 35,  tags: [gigbar, bar-a, spot, spot-1]}
   gigbar-a.spot2:  {label: Bar A spot 2,  type: gigbar-spot,  output: dmx-a, address: 44,  tags: [gigbar, bar-a, spot, spot-2]}
 
@@ -81,6 +83,7 @@ fixtures:
   gigbar-b.derby2: {label: Bar B derby 2, type: gigbar-derby, output: dmx-a, address: 121, tags: [gigbar, bar-b, derby],
                     pin: {Rotation: 16}}
   gigbar-b.strobe: {label: Bar B strobes, type: gigbar-flash, output: dmx-a, address: 127, tags: [gigbar, bar-b, strobe]}
+  gigbar-b.laser:  {label: Bar B laser,   type: gigbar-laser, output: dmx-a, address: 132, tags: [gigbar, bar-b, laser]}
   gigbar-b.spot1:  {label: Bar B spot 1,  type: gigbar-spot,  output: dmx-a, address: 135, tags: [gigbar, bar-b, spot, spot-1]}
   gigbar-b.spot2:  {label: Bar B spot 2,  type: gigbar-spot,  output: dmx-a, address: 144, tags: [gigbar, bar-b, spot, spot-2]}
 

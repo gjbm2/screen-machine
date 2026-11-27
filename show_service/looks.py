@@ -259,7 +259,11 @@ DT_MAX_S = 0.25                 # the motion stage's longest step between two fr
 FIT_CACHE_MAX = 512             # pattern speed fits kept per output (cleared whole when full)
 COMPAT = ""                     # the group key of the light_scene path (no light_programs: every lamp, one group)
 LAYER_KINDS: tuple[str, ...] = ("intensity", "position", "beam", "gobo", "prism", "colour", "colour_wheel", "cct",
-                                "shutter")
+                                "shutter", "macro")
+#: macro (owner, 27 Nov: the laser's "display layering & logic"; the derbies' motors): a layer that sets a light's named
+#: function channels (the type's macro channels: a laser's colour, strobe and rotation, a derby's motor). ``set``:
+#: {channel name: value}; a value is one of the channel's range words, a raw byte 0..255, or {cw, ccw, still}: one of
+#: those by the way the room's flow turns. A light without that channel skips it.
 POSITION_MODES: tuple[str, ...] = ("aim", "fan", "sweep", "circle", "figure8", "drift", "ballyhoo", "bounce", "lift",
                                    "tilt_wave", "home")
 PATTERN_MODES = frozenset({"fan", "sweep", "circle", "figure8", "drift", "ballyhoo"})
@@ -308,7 +312,7 @@ FLOW_BACK = frozenset({"left", "down", "ccw", "inward", "away"})   # the second 
 #: What a layer kind needs a fixture to show (any one of them), and the attributes it sets
 KIND_ATTRS: dict[str, tuple[str, ...]] = {"position": ("pan",), "beam": ("zoom", "focus", "iris", "frost"),
                                           "prism": ("prism",), "colour": ("colour",), "colour_wheel": ("colour_slot",),
-                                          "cct": ("cct",), "shutter": ("shutter",)}
+                                          "cct": ("cct",), "shutter": ("shutter",), "macro": ("macro",)}
 LERP_ATTRS = frozenset({"pan", "tilt", "zoom", "focus", "iris", "frost", "cct", "pt_speed", "gobo_spin", "gobo2_spin",
                         "gobo_shake", "gobo2_shake", "gobo_scroll", "prism_spin", "colour_spin", "pan_spin",
                         "tilt_spin"})
@@ -328,6 +332,7 @@ _KIND_KEYS: dict[str, frozenset] = {
     "colour_wheel": frozenset({"mode", "step_on", "spin"}),
     "cct": frozenset({"k"}),
     "shutter": frozenset({"mode", "hz"}),
+    "macro": frozenset({"set"}),
 }
 _OSC_KEYS = frozenset({"fx", "phase", "period_bars", "period_s", "subdivide", "between", "spread", "order"})
 _HIT_KEYS = frozenset({"select", "styles", "bands", "min_strength", "depth", "decay_ms", "drop"})
@@ -1657,6 +1662,16 @@ class LookEngine:
                 p["hz"] = (float(hz[0]), float(hz[1]))
             else:
                 bad.append(f"hz {hz!r} isn't a number above 0 or [lo, hi]")
+        elif kind == "macro":
+            def ok(v: Any) -> bool:
+                return isinstance(v, str) or (isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 255)
+            st = raw.get("set")
+            if not isinstance(st, Mapping) or not st or not all(
+                    isinstance(c, str) and (ok(v) or (isinstance(v, Mapping) and v and set(v) <= {"cw", "ccw", "still"}
+                                                      and all(ok(x) for x in v.values()))) for c, v in st.items()):
+                bad.append("a macro layer needs set: {<channel>: <range word> | 0..255 | {cw, ccw, still}}")
+            else:
+                p["set"] = {c: (dict(v) if isinstance(v, Mapping) else v) for c, v in st.items()}
         return p
 
     @staticmethod
@@ -3756,6 +3771,20 @@ class LookEngine:
                 if fz is not None:
                     hz = min(hz, fz)
                 attrs["shutter"] = {"mode": p["mode"], "hz": hz}
+            elif k == "macro":
+                turn = None
+                out = dict(attrs.get("macro") or {})
+                for ch, v in (p.get("set") or {}).items():
+                    if isinstance(v, Mapping):               # by the way the room's flow turns
+                        if turn is None:
+                            sp = self._spin({"spin": "flow", "spin_scale": 1.0}, cx, gn)
+                            turn = "cw" if sp is not None and sp > 0 else "ccw" if sp is not None and sp < 0 \
+                                else "still"
+                        v = v.get(turn, v.get("still"))
+                        if v is None:
+                            continue
+                    out[ch] = v
+                attrs["macro"] = out
         return pos, q, attrs, colour, dark_ok
 
     def _val(self, v: Any, L: _Layer, s: _Slot, m: tuple[int, int], cx: _Ctx, gn: _Group, tt: float) -> float:

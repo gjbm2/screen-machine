@@ -586,6 +586,75 @@ scenes:
     tags: {parts: [flash], moments: [waiting, lull, lead_in], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5,
            organic: 0.5, density: 0.1}
 
+  # laser: a bar's laser (owner, 27 Nov). Its three function channels are worked by macro layers: Laser (the colour:
+  # Blackout | Red | Green | Blue | Red + green | Red + blue | Green + blue | Red + green + blue), Laser strobe
+  # (0..255) and Laser rotation (0 stop, 1-127 clockwise slow to fast, 129-255 the other way). tags.shows_beat says
+  # whether the scene counts as showing the beat (the feel's accents and the song's groove then draw it or rest it).
+  laser-resting:
+    label: The lasers rest
+    layers:
+      - {id: off, kind: macro, set: {Laser: Blackout, "Laser strobe": 0, "Laser rotation": 0}}
+    tags: {parts: [laser], shows_beat: false, energy: [0.0, 1.0], moods: [calm, mellow, elegant, warm, dreamy],
+           genre_fit: {"*": 0.6}, valence: 0.5, organic: 0.7, density: 0.1}
+  laser-slow-turn:
+    label: One colour, turning slowly with the room
+    layers:
+      - {id: beams, kind: macro, set: {Laser: Green, "Laser strobe": 0,
+                                       "Laser rotation": {cw: 20, ccw: 150, still: 12}}}
+    tags: {parts: [laser], shows_beat: false, energy: [0.2, 0.8], moods: [dreamy, cosmic, hypnotic, liquid, dark],
+           genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.3, density: 0.4}
+  laser-two-colours:
+    label: Two colours, turning with the room
+    layers:
+      - {id: beams, kind: macro, set: {Laser: "Red + blue", "Laser strobe": 0,
+                                       "Laser rotation": {cw: 60, ccw: 190, still: 40}}}
+    tags: {parts: [laser], shows_beat: true, energy: [0.4, 0.9], moods: [playful, bright, hypnotic, cosmic, retro],
+           genre_fit: {"*": 0.6}, valence: 0.6, organic: 0.2, density: 0.6}
+  laser-full:
+    label: Every colour, turning fast
+    layers:
+      - {id: beams, kind: macro, set: {Laser: "Red + green + blue", "Laser strobe": 0,
+                                       "Laser rotation": {cw: 110, ccw: 240, still: 90}}}
+    tags: {parts: [laser], shows_beat: true, energy: [0.6, 1.0], moods: [euphoric, aggressive, fiery, glitchy, bright],
+           genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.1, density: 0.85}
+  laser-waits:
+    label: The lasers stay off while the room waits
+    layers:
+      - {id: off, kind: macro, set: {Laser: Blackout, "Laser strobe": 0, "Laser rotation": 0}}
+    tags: {parts: [laser], shows_beat: false, moments: [waiting, lull, lead_in], energy: [0.0, 1.0],
+           genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5, density: 0.1}
+  # derby: the derbies' motors, the same way (their Rotation channel: 0 stop, 1-127 clockwise, 129-255 the other way).
+  # These are whole scenes for the derbies group: colour from the look, the motor from the room's flow.
+  derby-turning:
+    label: The derbies turn with the room, pulsing on the beat
+    layers:
+      - {id: motor, kind: macro, set: {Rotation: {cw: 45, ccw: 175, still: 16}}}
+      - {id: pulse, fx: swell, phase: beat, depth: 0.5, needs: beat, without_beat: energy, attack_ms: 40, decay_ms: 220}
+    tags: {parts: [derby], energy: [0.35, 0.9], moods: [playful, bright, hypnotic, euphoric, retro],
+           genre_fit: {"*": 0.6}, valence: 0.6, organic: 0.3, density: 0.6}
+  derby-spinning:
+    label: The derbies spin fast and chase
+    layers:
+      - {id: motor, kind: macro, set: {Rotation: {cw: 110, ccw: 240, still: 90}}}
+      - {id: chase, fx: square, phase: beat, subdivide: true, depth: 0.7, needs: beat, without_beat: energy,
+         order: flow, spread: 1.0}
+    tags: {parts: [derby], energy: [0.6, 1.0], moods: [euphoric, aggressive, fiery, glitchy],
+           genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.2, density: 0.85}
+  derby-drifting:
+    label: The derbies drift slowly, breathing
+    layers:
+      - {id: motor, kind: macro, set: {Rotation: {cw: 8, ccw: 136, still: 6}}}
+      - {id: breathe, fx: sine, phase: bar, period_bars: [8, 4], depth: 0.3, needs: none}
+    tags: {parts: [derby], energy: [0.0, 0.6], moods: [calm, mellow, dreamy, warm, elegant, liquid],
+           genre_fit: {"*": 0.6}, valence: 0.5, organic: 0.6, density: 0.2}
+  derby-waits:
+    label: The derbies hold still and glow while the room waits
+    layers:
+      - {id: motor, kind: macro, set: {Rotation: 0}}
+      - {id: glow, fx: sine, phase: bar, period_bars: [8, 4], depth: 0.35, needs: none}
+    tags: {parts: [derby], moments: [waiting, lull, lead_in], energy: [0.0, 1.0], genre_fit: {"*": 0.5},
+           valence: 0.5, organic: 0.5, density: 0.1}
+
   # -- The room's moments (contract.MOMENTS; owner, 26 Nov: the silent state and the changeover are "all scenes, but
   # expressed on the gigbar objects"). tags.moments: [song | lead_in | waiting | lull] says when a scene is for: in
   # that moment only these are drawn; a scene with no moments is for any moment none of these claims (every scene

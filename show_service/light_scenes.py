@@ -108,7 +108,7 @@ FLOW_MISMATCH = 0.6                              # starting point (§6.1): an en
 KIND_ATTRS: dict[str, tuple[str, ...]] = {
     "intensity": ("intensity",), "position": ("pan", "tilt"), "beam": ("zoom", "focus", "iris", "frost"),
     "gobo": ("gobo",), "prism": ("prism",), "colour": ("colour",), "colour_wheel": ("colour_slot",),
-    "cct": ("cct",), "shutter": ("shutter",)}
+    "cct": ("cct",), "shutter": ("shutter",), "macro": ("macro",)}
 #: a fixture type's channel attr (contract.CHANNEL_ATTRS) -> what it lets a light show, until fixture_encode.caps is there
 CHANNEL_CAPS = {"intensity": "intensity", "emitter": "colour", "wheel": "colour_slot", "shutter": "shutter",
                 "pan": "pan", "tilt": "tilt"}
@@ -179,6 +179,9 @@ def on_beat(entry: Mapping[str, Any]) -> bool:
             return True
         if kind == "position" and (L.get("phase") == "beat" or (L.get("phase") == "bar" and L.get("needs") == "grid")):
             return True
+    sb = (entry.get("tags") or {}).get("shows_beat") if isinstance(entry.get("tags"), Mapping) else None
+    if isinstance(sb, bool):                                 # the entry says so itself (a laser's scenes: tags)
+        return sb
     h = entry.get("hits")
     return isinstance(h, Mapping) and bool(h.get("styles"))
 

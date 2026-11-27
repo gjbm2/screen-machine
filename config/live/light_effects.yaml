@@ -179,3 +179,23 @@ effects:
          decay_ms: 200}
       - {id: bump, kind: colour, role: highlight, depth: {fx: swell, phase: beat, between: [0.0, 0.8]}}
     tags: {energy: [0.0, 1.0]}
+  laser-burst:
+    label: Every laser colour, strobing, for the big moment
+    on: [drop, final_chorus, transition]
+    length: {bars: 2}
+    fade: {in_beats: 0, out_beats: 1}
+    needs: [macro]
+    layers:
+      - {id: burst, kind: macro, select: "tag:laser", set: {Laser: "Red + green + blue", "Laser strobe": 160,
+                                                              "Laser rotation": {cw: 120, ccw: 250, still: 100}}}
+    tags: {energy: [0.5, 1.0], moods: [euphoric, aggressive, fiery, glitchy, bright]}
+  laser-sweep-in:
+    label: The lasers come on for the chorus
+    on: [chorus, transition]
+    length: {bars: 4}
+    fade: {in_beats: 0, out_beats: 2}
+    needs: [macro]
+    layers:
+      - {id: on, kind: macro, select: "tag:laser", set: {Laser: "Green + blue", "Laser strobe": 0,
+                                                          "Laser rotation": {cw: 70, ccw: 200, still: 50}}}
+    tags: {energy: [0.4, 1.0], moods: [euphoric, playful, bright, cosmic]}

@@ -610,7 +610,7 @@ CUES_OWNERS: tuple[str, ...] = ("director", "structure")   # show.yaml director.
 #: a light layer's ``kind`` (docs/LIGHTS.md §5.2; a layer without one takes its ``attr``, else intensity). Shutter
 #: layers live in light_effects.yaml only (a scene never strobes)
 LIGHT_LAYER_KINDS: tuple[str, ...] = ("intensity", "position", "beam", "gobo", "prism", "colour", "colour_wheel",
-                                      "cct", "shutter")
+                                      "cct", "shutter", "macro")
 #: the attrs that make a light's look (cap_fit, docs/LIGHTS.md §6.1): an entry driving more of a group's wins there
 EXPRESSIVE_ATTRS: tuple[str, ...] = ("pan", "tilt", "gobo", "prism", "zoom", "colour_slot", "intensity")
 
