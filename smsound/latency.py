@@ -191,6 +191,24 @@ def set_manual(oid: str, delay_ms: Optional[float], dep: Optional[smconfig.Deplo
     return record(oid, float(delay_ms), method="manual", dep=dep)
 
 
+SOURCE_RANGE = (-1000.0, 1000.0)
+
+
+def record_source(stream: str, offset_ms: float, *, method: str = "chirp", extra: Optional[dict] = None,
+                  dep: Optional[smconfig.Deployment] = None) -> dict:
+    """A sound coming in: ``sources.<stream>.acoustic_offset_ms`` (show_service adds it to the stream's timestamps:
+    - = the beat clock had the sound later than the room heard it)."""
+    o = _num(offset_ms)
+    if not isinstance(stream, str) or not stream or o is None or not SOURCE_RANGE[0] <= o <= SOURCE_RANGE[1]:
+        raise ValueError(f"bad source offset: {stream!r} {offset_ms!r}")
+    with _lock:
+        doc = read(dep)
+        e = {"acoustic_offset_ms": round(o, 1), "method": method, "measured_at": _now_iso(), **(extra or {})}
+        doc["sources"][stream] = e
+        _write(doc, dep)
+        return e
+
+
 LIGHT_RANGE = (0.0, 2000.0)
 
 
@@ -265,8 +283,11 @@ def overview(dep: Optional[smconfig.Deployment] = None, extra_outputs: Optional[
     for stream, ent in doc["sources"].items():
         v = _num(ent.get("acoustic_offset_ms")) if isinstance(ent, dict) else None
         sources.append({"key": stream, "label": f"Sound in: {stream}", "value_ms": v,
+                        "measured_at": ent.get("measured_at") if isinstance(ent, dict) else None,
                         "measures": "the stream's timestamps to the sound in the room",
-                        "how": "set by hand in latency.json", "used_by": "show_service's beat clock"})
+                        "how": "chirps from this device (Calibrate, here)" if isinstance(ent, dict) and
+                        ent.get("method") == "chirp" else "set by hand in latency.json",
+                        "used_by": "show_service's beat clock"})
     return {"file": str(path(dep).relative_to(smconfig.REPO_ROOT)) if path(dep).is_relative_to(smconfig.REPO_ROOT)
             else str(path(dep)),
             "rule": "milliseconds; + = the room hears or sees it that much after the moment it is scheduled for",

@@ -16,7 +16,12 @@ A run (``Calibrator.start(output)``), on its own thread, one at a time:
      a piece or a song is. It says when the room will hear the file's start (t_audio0, by the zone's current start
      delay); the chirps are looked for around that, and the zone's delay is the current one plus what they were off
      by. Measured: room_service's play request -> room (piano_render/sonos.py ``start_ms``).
-4. **The result** goes into smsound.latency (``record``), or the run says why not and nothing changes.
+   * ``in`` (a sound coming in, not an output): the page that asked (Settings › Sound & timing) plays the chirps on
+     its own speaker, each leaving it at its time on show_service's clock (``clicks_mono``; the page's audio output
+     timestamps), and the mic's samples are timed by the beat clock's own time for them (levels ``k``). What they
+     are off by is how late the beat clock puts a sound: the stream's acoustic offset moves by minus that.
+4. **The result** goes into smsound.latency (``record``; an input: ``record_source``), or the run says why not and
+   nothing changes.
 """
 from __future__ import annotations
 
@@ -44,6 +49,8 @@ MIC_PATH_S = 0.005      # capture -> show_service arrival (the agent, measured 1
 SONOS_BED_S = 2.0       # the file's noise bed before its first chirp
 SONOS_WINDOW_S = (-1.5, 3.0)   # how far from the zone's current delay the chirps are looked for
 SR = 48000
+INPUT = "in"                   # the sound coming in (the beat clock's own lateness), not an output
+IN_WINDOW_S = (-0.3, 0.6)      # how far the beat clock may be off
 
 
 class Calibrator:
@@ -75,17 +82,20 @@ class Calibrator:
     def start(self, output: str, mic: Optional[str] = None) -> dict:
         """Start measuring ``output`` (ValueError: it can't be measured from here)."""
         k = O.kind(output)
-        if O.CALIBRATE.get(k or "") != "chirp":
+        if output == INPUT:
+            k = INPUT
+        elif O.CALIBRATE.get(k or "") != "chirp":
             raise ValueError({"pc22": "The PC's speakers are measured by the piano itself while it plays.",
                               "device": "A phone or tablet measures its own delay.",
                               "none": "There's no sound to measure."}.get(k or "", f"Not a sound output: {output}"))
-        if not O.known(output):
+        if output != INPUT and not O.known(output):
             raise ValueError(f"This deployment has no {output}.")
         if self.running():
             return self.state()
         cid = f"c{int(time.time() * 1000)}"
         with self._lock:
-            self._state = {"id": cid, "state": "running", "output": output, "label": O.label_of(output),
+            self._state = {"id": cid, "state": "running", "output": output,
+                           "label": "The sound coming in" if output == INPUT else O.label_of(output),
                            "phase": "mic", "message": "Turning the mic on…", "clicks": [], "chirps": [],
                            "started_at": time.time()}
         self._thread = threading.Thread(target=self._run, args=(cid, output, mic), name="sound-calibrate", daemon=True)
@@ -99,8 +109,15 @@ class Calibrator:
         except Exception as e:  # noqa: BLE001
             log.exception("calibration failed")
             res = {"ok": False, "why": f"The calibration broke: {e}"}
-        label = O.label_of(output)
-        if res.get("ok"):
+        label = "The sound coming in" if output == INPUT else O.label_of(output)
+        if res.get("ok") and output == INPUT:
+            stream = res.get("stream") or "?"
+            cur = float(((L.read()["sources"].get(stream) or {}).get("acoustic_offset_ms")) or 0.0)
+            new = round(cur - float(res["delay_ms"]), 1)
+            extra = {k: res[k] for k in ("spread_ms", "agree", "used", "of", "readings_ms", "peak_ratio") if k in res}
+            L.record_source(stream, new, method="chirp", extra={**extra, "was_ms": cur, "off_by_ms": res["delay_ms"]})
+            msg = f"{stream}: the beat clock was {res['delay_ms']:+.0f} ms off; its offset is now {new:+.0f} ms"
+        elif res.get("ok"):
             extra = {k: res[k] for k in ("spread_ms", "agree", "used", "of", "readings_ms", "peak_ratio") if k in res}
             if mic:
                 extra["mic"] = mic
@@ -128,6 +145,8 @@ class Calibrator:
 
     def _listen(self, output: str, mic: Optional[str]) -> dict:
         mono_to_wall = time.time() - time.monotonic()
+        if output == INPUT:
+            return self._listen_in(mic)
         ws = self._ws(mic)
         frames: list[tuple[float, np.ndarray]] = []
         out_obj = None
@@ -180,6 +199,48 @@ class Calibrator:
             res = {**res, "offset_ms": res["delay_ms"], "delay_ms": round(base_ms + res["delay_ms"])}
         return res
 
+    def _listen_in(self, mic: Optional[str]) -> dict:
+        """The sound coming in: chirps the asking page plays at show_service-clock times (``clicks_mono``), timed
+        in the mic's samples by the beat clock's own time for them (levels ``k``)."""
+        ws = self._ws(mic)
+        frames: list[tuple[float, np.ndarray]] = []
+        streams: dict[str, int] = {}
+        try:
+            deadline = time.monotonic() + MIC_WAIT_S
+            got = 0
+            while time.monotonic() < deadline and got < 10:
+                s = self._frame(ws, frames, 0.0, on_clock=True, streams=streams)
+                if s is not None:
+                    got += 1
+            if got < 10:
+                return {"ok": False, "why": "The room mic isn't sending, or its clock isn't settled yet: try again in "
+                                            "a minute."}
+            for fn in list(self.before):
+                try:
+                    fn(INPUT)
+                except Exception:  # noqa: BLE001
+                    log.exception("calibration: a before hook failed")
+            specs = C.chirp_specs(len(C.OFFSETS_S))
+            t_first = time.monotonic() + LEAD_S
+            clicks = [round(t_first + o, 4) for o in C.OFFSETS_S]
+            self._set(phase="listening", clicks_mono=clicks, chirps=specs,
+                      message="Listening: keep the room quiet for 12 seconds…")
+            end = clicks[-1] + IN_WINDOW_S[1] + 0.4
+            while time.monotonic() < end:
+                self._frame(ws, frames, 0.0, on_clock=True, streams=streams)
+        finally:
+            try:
+                ws.close()
+            except Exception:  # noqa: BLE001
+                pass
+        frames = [(t, w) for t, w in frames if t >= clicks[0] - 1.5]
+        if not frames:
+            return {"ok": False, "why": "The mic's samples stopped."}
+        t0, sig = C.assemble(frames, SR)
+        res = C.measure(t0, sig, SR, clicks, specs, min_delay_s=IN_WINDOW_S[0], max_delay_s=IN_WINDOW_S[1])
+        stream = max(streams, key=streams.get) if streams else None
+        return {**res, "stream": stream}
+
     def _play_sonos(self, zone: Optional[str], specs: list[dict]) -> tuple[Any, float]:
         """The chirps as a file on the zone: (the SonosOutput, t_audio0 on CLOCK_MONOTONIC)."""
         from smsound import files
@@ -194,8 +255,10 @@ class Calibrator:
         return out, float(t_audio0)
 
     @staticmethod
-    def _frame(ws: Any, frames: list, mono_to_wall: float) -> Optional[float]:
-        """One levels frame with a wave into ``frames`` as (wall capture time of its last sample, samples)."""
+    def _frame(ws: Any, frames: list, mono_to_wall: float, *, on_clock: bool = False,
+               streams: Optional[dict] = None) -> Optional[float]:
+        """One levels frame with a wave into ``frames`` as (wall capture time of its last sample, samples); with
+        ``on_clock``, the beat clock's own time for that sample (``k``: frames without one are skipped)."""
         try:
             raw = ws.recv()
         except Exception:  # noqa: BLE001 - a quiet moment (timeout): nothing this time
@@ -207,6 +270,14 @@ class Calibrator:
         if not isinstance(o, dict) or not o.get("wb") or o.get("a") is None:
             return None
         w = np.frombuffer(base64.b64decode(o["wb"]), dtype="<i2").astype(np.float64) / 32767.0
+        if on_clock:
+            if o.get("k") is None:
+                return None
+            t = float(o["k"])
+            if streams is not None and o.get("s"):
+                streams[o["s"]] = streams.get(o["s"], 0) + 1
+            frames.append((t, w))
+            return t
         t = float(o["a"]) + mono_to_wall - MIC_PATH_S
         frames.append((t, w))
         return t

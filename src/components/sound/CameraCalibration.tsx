@@ -15,9 +15,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Camera, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { resolveRoomUrl } from "@/pages/Room/api";
 import { sound } from "@/shared/api/sound";
-import { acceptable, clockOffset, edgeAfter, estimate, type ClockSample, type Estimate, type Frame, type Trial } from "./cameraCal";
+import { acceptable, edgeAfter, estimate, type Estimate, type Frame, type Trial } from "./cameraCal";
+import { showClockOffset, showJson } from "./showClock";
 
 const TRIALS = 8;
 const PERIOD_MS = 2400;            // one light flash and one screen flash per period, 1.2 s apart
@@ -35,22 +35,6 @@ interface RigLight {
 }
 
 type Phase = "idle" | "camera" | "running" | "done" | "failed";
-
-function showUrl(path: string): string {
-  return `${resolveRoomUrl(window.location.search)}/show${path}`;
-}
-
-async function showJson<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const r = await fetch(showUrl(path), {
-    method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
-    body: body ? JSON.stringify(body) : undefined,
-    cache: "no-store",
-  });
-  const j = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error((j as { detail?: string; error?: string }).detail || (j as { error?: string }).error || `show: ${r.status}`);
-  return j as T;
-}
 
 const sleep = (ms: number) => new Promise((res) => window.setTimeout(res, ms));
 
@@ -169,14 +153,7 @@ export function CameraCalibration({ onSaved }: { onSaved?: () => void }) {
       await sleep(500);
       setPhase("running");
       setMsg("Clock");
-      const samples: ClockSample[] = [];
-      for (let i = 0; i < CLOCK_SAMPLES; i++) {
-        const sent = performance.now();
-        const r = await showJson<{ mono_s: number }>("GET", "/api/v1/clock");
-        samples.push({ sent, got: performance.now(), server: r.mono_s * 1000 });
-      }
-      const co = clockOffset(samples);
-      if (!co) throw new Error("no clock");
+      const co = await showClockOffset(CLOCK_SAMPLES);
       const refresh = await refreshMs();
       const t0 = performance.now() + LEAD_MS;
       const lightOn = Array.from({ length: TRIALS }, (_, k) => t0 + k * PERIOD_MS);

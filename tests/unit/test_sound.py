@@ -211,3 +211,49 @@ def test_a_lights_camera_measurement_is_stored_as_the_show_engine_reads_it(lat):
     with pytest.raises(ValueError):
         L.record_light("bar.par1", -5.0)
     assert any(r["key"] == "bar.par1.intensity" and r["value_ms"] == 40.0 for r in L.overview()["lights"])
+
+
+def test_the_sound_in_run_moves_the_streams_offset_by_how_late_the_beat_clock_heard_the_chirps(lat, monkeypatch):
+    """A fake mic on the beat clock 30 ms late: the chirps the page plays at clicks_mono come back 30 ms late in the
+    levels frames' ``k`` times, and the stream's acoustic offset becomes -30 (from 0)."""
+    import base64
+    import time as _t
+    from routes.sound import calibrate as cal
+    sr, late = cal.SR, 0.030
+    monkeypatch.setattr(cal, "LEAD_S", 0.2)
+    monkeypatch.setattr(C, "OFFSETS_S", tuple(x * 0.25 for x in C.OFFSETS_S))   # a quick train
+    runner = {"c": None}
+
+    class FakeWs:
+        def __init__(self):
+            self.t = _t.monotonic() - 0.5
+            self.n = 2048
+
+        def recv(self):
+            _t.sleep(0.002)
+            st = runner["c"].state()
+            clicks = st.get("clicks_mono") or []
+            specs = st.get("chirps") or []
+            self.t += self.n / sr
+            ts = self.t - (self.n - 1) / sr + np.arange(self.n) / sr
+            w = np.random.default_rng(int(self.t * 1000) % 2**32).normal(0, 0.002, self.n)
+            for ck, sp in zip(clicks, specs):
+                c = C.chirp(sr, sp["f0"], sp["f1"], sp["dur_s"]) * 0.5
+                i0 = int(round((ck + late - ts[0]) * sr))
+                for j in range(len(c)):
+                    if 0 <= i0 + j < self.n:
+                        w[i0 + j] += c[j]
+            wb = base64.b64encode((np.clip(w, -1, 1) * 32767).astype("<i2").tobytes()).decode()
+            return json.dumps({"s": "laptop-mic", "a": self.t, "k": self.t, "wb": wb})
+
+        def close(self):
+            pass
+
+    c = cal.Calibrator("http://127.0.0.1:8703", connect=lambda url: FakeWs())
+    runner["c"] = c
+    st = c.start("in")
+    assert st["output"] == "in"
+    c._thread.join(30)
+    assert c.state()["state"] == "done", c.state()
+    src = L.read()["sources"]["laptop-mic"]
+    assert abs(src["acoustic_offset_ms"] - (-30.0)) <= 3 and src["method"] == "chirp"

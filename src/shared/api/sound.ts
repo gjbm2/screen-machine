@@ -47,6 +47,8 @@ export interface CalibrationRun {
   message?: string;
   /** Server times (s) of the chirps; with `chirps`, what the screen being measured plays. */
   clicks?: number[];
+  /** A sound-in run (output "in"): the chirps' times on show_service's clock (s), played by the page that asked. */
+  clicks_mono?: number[];
   chirps?: { f0: number; f1: number; dur_s: number }[];
   delay_ms?: number;
   spread_ms?: number;

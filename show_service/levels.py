@@ -15,7 +15,9 @@ sender's own clock (PC22: QPC = Python's perf_counter_ns) measures capture -> cl
 arrival time of that packet (time.monotonic). Pages reach it through room_service's pass-through at /show/v1/levels.
 Nothing is sent while no client is connected. A client may send ``{"ping": x}`` (any number of its own clock); the
 reply ``{"pong": x, "srv": <time.monotonic()>}`` lets it align clocks and show how far behind the room each sample
-reaches it (``a`` is on the same clock as ``srv``).
+reaches it (``a`` is on the same clock as ``srv``). ``k`` (once the stream's clock has its fit): the beat clock's own
+time for the newest packet's last sample (timeline: its sample index on host time, the stream's acoustic offset
+included): what the sound-in calibration measures (routes/sound/calibrate.py, kind "in").
 
 Opt-in waveform (18 Oct, for the renderer's scope effects: stream_service/scope_feed.py): a client that connects
 with ``?wave=N`` (an int, clamped to WAVE_MIN..WAVE_MAX) also gets ``"wb"`` in every frame: the newest N mono
@@ -67,7 +69,7 @@ class _Tap:
     lock, read on the bus loop."""
 
     def __init__(self) -> None:
-        self.slot: Optional[list] = None                 # [stream, counter, peak, packets, t_cap_ns, arrival]
+        self.slot: Optional[list] = None                 # [stream, counter, peak, packets, t_cap_ns, arrival, k]
         self.ring = np.zeros(RING_N, np.float32)        # the newest mono samples
         self.ring_w = 0
         self.ring_fill = 0
@@ -76,7 +78,7 @@ class _Tap:
         self.bins: Optional[list[tuple[int, int]]] = None
 
     def store(self, stream: str, counter: int, peak: float, t_cap_ns: Optional[float], arrival_s: float,
-              pcm: Any, sr: Optional[int]) -> None:
+              pcm: Any, sr: Optional[int], k_s: Optional[float] = None) -> None:
         if pcm is not None:                              # store the samples for the spectrum (no FFT here)
             m = pcm[:, 0] if getattr(pcm, "ndim", 1) == 2 else pcm
             if stream != self.ring_stream or (sr and sr != self.sr):
@@ -95,9 +97,9 @@ class _Tap:
             self.ring_fill = min(RING_N, self.ring_fill + k)
         s = self.slot
         if s is None or s[0] != stream:
-            self.slot = [stream, counter, peak, 1, t_cap_ns, arrival_s]
+            self.slot = [stream, counter, peak, 1, t_cap_ns, arrival_s, k_s]
         else:
-            s[1], s[2], s[3], s[4], s[5] = counter, max(s[2], peak), s[3] + 1, t_cap_ns, arrival_s
+            s[1], s[2], s[3], s[4], s[5], s[6] = counter, max(s[2], peak), s[3] + 1, t_cap_ns, arrival_s, k_s
 
 
 class LevelFeed:
@@ -135,17 +137,17 @@ class LevelFeed:
 
     # -- show-rx: store only ----------------------------------------------------------------------------------------
     def push(self, stream: str, counter: int, peak: float, t_cap_ns: Optional[float], arrival_s: float,
-             pcm: Any = None, sr: Optional[int] = None, active: bool = True) -> None:
+             pcm: Any = None, sr: Optional[int] = None, active: bool = True, k_s: Optional[float] = None) -> None:
         """One live packet (show-rx): the active stream's (``active``) to the default tap, and a watched stream's
         to its own tap (both, for an active stream someone also names)."""
         if not self._clients or self._loop is None:
             return
         with self._lock:
             if active:
-                self._taps[None].store(stream, counter, peak, t_cap_ns, arrival_s, pcm, sr)
+                self._taps[None].store(stream, counter, peak, t_cap_ns, arrival_s, pcm, sr, k_s)
             tap = self._taps.get(stream) if stream in self.watched else None
             if tap is not None:
-                tap.store(stream, counter, peak, t_cap_ns, arrival_s, pcm, sr)
+                tap.store(stream, counter, peak, t_cap_ns, arrival_s, pcm, sr, k_s)
             if self._scheduled:
                 return
             self._scheduled = True
@@ -223,10 +225,12 @@ class LevelFeed:
             tap = self._taps.get(key)
             if tap is None:
                 continue
-            stream, counter, peak, n, t, a = s
+            stream, counter, peak, n, t, a, k = s
             body: dict[str, Any] = {"s": stream, "c": counter, "n": n,
                                     "pk": round(20.0 * math.log10(peak), 1) if peak > 1e-6 else FLOOR_DBFS,
                                     "t": int(t) if t is not None and math.isfinite(t) else None, "a": round(a, 6)}
+            if k is not None and math.isfinite(k):
+                body["k"] = round(k, 6)
             spec = self._spectrum(tap)
             if spec is not None:
                 body["f"] = spec

@@ -10,6 +10,7 @@ import { Timer } from "lucide-react";
 import { OutputTiming } from "@/components/sound/OutputTiming";
 import { OutputEq } from "@/components/sound/OutputEq";
 import { CameraCalibration } from "@/components/sound/CameraCalibration";
+import { SoundInCalibration } from "@/components/sound/SoundInCalibration";
 import { msText, sound, type LatencyOverview, type LatencyRow } from "@/shared/api/sound";
 import { Group, Hint, ReadRow, Sub } from "./Group";
 
@@ -73,7 +74,9 @@ function SoundBody() {
       <Sub>Lights: command to light</Sub>
       <CameraCalibration onSaved={load} />
       {other(o.lights, "")}
-      {other(o.sources, "Sound coming in")}
+      <Sub>Sound coming in</Sub>
+      <SoundInCalibration onDone={load} />
+      {other(o.sources, "")}
       <Hint className="text-sm">
         All in {o.file}: {o.rule}.
       </Hint>
