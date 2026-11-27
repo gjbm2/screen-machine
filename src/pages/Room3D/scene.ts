@@ -85,6 +85,8 @@ function blob(): THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> {
 // confident are you that we have correctly understood the way that gobos work"), cut from the manual's page (white
 // passes light). Slot 0 is open: a soft-edged disc.
 const GOBO_URLS = [gobo1, gobo2, gobo3, gobo4, gobo5, gobo6, gobo7, gobo8, gobo9];
+/** The gobos' spacing on the wheel, in beam widths (the next gobo comes into the beam as one slides out). */
+const GOBO_PITCH = 1.15;
 /** Each gobo's name (the fixture type's wheel names them the same: gigbar-move-ils-spot.json). */
 const GOBO_NAMES = ["no gobo", "ring of dots", "pinwheel", "swirl", "starburst", "four holes", "ovals", "linked rings", "broken ring", "flower"];
 /** How much of the open beam each slot lets through (each picture's white share of its disc). */
@@ -891,6 +893,31 @@ export class RoomSim {
     const b = airCone(ang, pen); b.position.z = 0.08; head.add(b);
     const pool = this.pool(), cd = new THREE.Vector3(), lm = new THREE.Vector3(), o = new THREE.Vector3(), d = new THREE.Vector3();
     const mo = new SpotMotion();
+    // The wheel between slots (shaking, scrolling, travelling): this head's own picture of the aperture, the two
+    // gobos either side of it slid across by how far the wheel has turned (a shake is a rock either way of one).
+    let own: { x: CanvasRenderingContext2D; tex: THREE.CanvasTexture; pos: number } | null = null;
+    const goboMap = (pos: number): THREE.Texture => {
+      const i = Math.floor(pos), fr = pos - i;
+      if (fr < 0.01 || fr > 0.99) return GOBO_TEX[Math.round(pos) % 10];
+      if (!own) {
+        const cv = document.createElement("canvas");
+        cv.width = cv.height = 128;
+        const tex = new THREE.CanvasTexture(cv);
+        tex.colorSpace = THREE.SRGBColorSpace;
+        own = { x: cv.getContext("2d")!, tex, pos: -1 };
+      }
+      if (Math.abs(own.pos - pos) > 0.002) {
+        const x = own.x, W = 128, pitch = W * GOBO_PITCH;
+        x.fillStyle = "#000"; x.fillRect(0, 0, W, W);
+        for (const [k, dx] of [[i, -fr * pitch], [i + 1, (1 - fr) * pitch]] as const) {
+          const img = GOBO_TEX[((k % 10) + 10) % 10].image as CanvasImageSource | undefined;
+          if (img) x.drawImage(img, dx, 0, W, W);
+        }
+        own.tex.needsUpdate = true;
+        own.pos = pos;
+      }
+      return own.tex;
+    };
     const off = THREE.MathUtils.degToRad(pose.tilt_offset_deg || 0);
     return {
       f,
@@ -900,7 +927,8 @@ export class RoomSim {
         head.rotation.y = THREE.MathUtils.degToRad(pose.tilt_sign * mo.tilt) + off;   // tips z towards x (tilt)
         const dim = c.ch(f, 7) / 255, a = dim * shutterGain(spotShutter(c.ch(f, 8)), c.t, hash(f.id.length + 9));
         const rgb = mo.colour(), g = mo.goboSlot(c.t);
-        if (light.map !== GOBO_TEX[g]) light.map = GOBO_TEX[g];
+        const map = goboMap(mo.goboPos(c.t));                  // a gobo at rest: the shared picture; else this head's
+        if (light.map !== map) light.map = map;
         linear(rgb, cd).multiplyScalar(PHOTO.spot.cd * a);
         setLight(light, cd); setFace(hl, cd, area); setCone(b, cd);
         // where it points now, in the room's frame: its pool there lights the room back

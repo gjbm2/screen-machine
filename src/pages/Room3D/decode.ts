@@ -138,6 +138,9 @@ export function colourName([r, g, b]: number[]): string {
   return names.find(([hi]) => h < hi)?.[1] ?? "red";
 }
 
+/** How far a shaking gobo rocks either way, in slots (a slot's pitch on the wheel is a little over the beam's width). */
+const SHAKE_SLOTS = 0.14;
+
 // ---- a moving head's physical state: pan and tilt travel, the wheels turn (estimates: MECH) ------------------------
 export class SpotMotion {
   pan = 0; tilt = 0; vp = 0; vt = 0; wheel = 0; gobo = 0; shake = 0;
@@ -163,8 +166,13 @@ export class SpotMotion {
   colour(): [number, number, number] {
     return COLOUR_SLOTS[Math.round(this.wheel) % 10][1];
   }
+  /** Where the gobo wheel stands in the beam (slots, fractional): between two slots while it scrolls or travels, and
+   *  rocking either side of its slot while it shakes (the gobo judders in the beam; ``shake`` is its rate, Hz). */
+  goboPos(t: number): number {
+    return (this.gobo + (this.shake ? Math.sin(t * this.shake * Math.PI * 2) * SHAKE_SLOTS : 0) + 10) % 10;
+  }
   goboSlot(t: number): number {
-    return Math.round(this.gobo + (this.shake ? Math.sin(t * this.shake * 6.28) * 0.3 : 0)) % 10;
+    return Math.round(this.goboPos(t)) % 10;
   }
 }
 function slew(cur: number, vel: number, target: number, vmax: number, dt: number): [number, number] {
