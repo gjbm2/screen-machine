@@ -2932,6 +2932,7 @@ class LookEngine:
         # S5.14; the director's own swell depth and drop hit are already off under them); a mover rests at home
         house_low = look is not None and bool(look.get("house") or look.get("low"))
         steady = held is not None or house_low
+        feel = isinstance(look, Mapping) and bool(look.get("vibe"))   # a feel plays (not the no-feel look)
 
         cx = self._ctx(t, look, snap, trans_s, min_period_s, energy, vibe, st, prog, op)
         cx.dt = dt
@@ -3089,6 +3090,15 @@ class LookEngine:
                 lim = fs.prev + SLEW_PEAK * (t - fs.t_prev) / min_attack_s
                 if inten > lim:
                     inten = lim
+            if house_low or not feel:
+                # House lights, Lights low, or no feel playing (a mode on its way out): nothing strobes, and a light
+                # with no dimmer that is dark through its wheel (a laser) stays dark: it is no house light (trace,
+                # 27 Nov: House lights lit the lasers warm white, and a strobe ran on under them)
+                if attrs is not None and isinstance(attrs.get("shutter"), Mapping) \
+                        and attrs["shutter"].get("mode") not in (None, "open", "closed"):
+                    attrs = {**attrs, "shutter": {"mode": "open"}}
+                if s.type.get("wheel_closed") is not None:
+                    inten = 0.0
             fs.prev, fs.t_prev = inten, t
             ff = {"intensity": inten, "colour": colour,
                   "rgb": [colour[0] * inten, colour[1] * inten, colour[2] * inten], "t_eval_ms": ti * 1000.0}
