@@ -51,6 +51,7 @@ capabilities:
   blinds: true
   sonos: true
   accounts: true
+  karaoke: true      # docs/KARAOKE.md (owner, 27 Nov: the Karaoke mode on PC22 too)
 
 # Ports on this machine (these are the defaults; docs/PORTS.md is the register, Spectre mirrors it).
 ports: {flask: 5000, overlay_ws: 8765, room: 8700, show_bus: 8701, stream: 8702, show: 8703, dot: 8704}
@@ -69,4 +70,6 @@ kiosk:
 host:
   fonts_dir: /mnt/c/Windows/Fonts
   windows_python: /mnt/c/Windows/py.exe
+  karaoke_python: ~/.venvs/sm-karaoke/bin/python   # torch (cu128) + audio-separator + yt-dlp: docs/KARAOKE.md
+  karaoke_js_runtime: node:/home/gjbm2/.nvm/versions/node/v22.21.0/bin/node   # yt-dlp's YouTube JS runtime
   piano_audition_dir: "/mnt/c/Users/Greg/Music/Piano audition"

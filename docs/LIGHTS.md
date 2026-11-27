@@ -1639,26 +1639,17 @@ drawing Move it's preview uses, the room's size form and Add a place).
 Cancelling after step 3 leaves the light registered; the sheet offers "Remove this light". **Edit** shows the same
 panels on one sheet, with Move it as a collapsible section ("Move it and set it up").
 
-**3D** (`Room3D.tsx`, `room3d.ts`; owner, 26 Nov: "a 3d view of this pc22 setup assuming 2x gigbars in the drawing
-room"). The third tab, `?tab=3d`; three.js loads with this tab only.
-- It draws the same space as the Room map: the room's box, each screen showing its current picture
-  (`/output/<screen>.jpg`, read again every minute), the lamps in their live colours, the mirror ball, the piano's area
-  as a grand piano, and each registered light's beam from `GET /rig/live`.
-- **Planned lights** are space appliances with `kind: gigbar-2` that aren't registered lights. finsbury has two,
-  `gigbar.se` and `gigbar.ne` (space.added.yaml: on stands in the SE and NE corners, facing into the room, at
-  2.0 m; owner, 27 Nov). Each is drawn as a Chauvet GigBAR 2 (OFL chauvet-dj/gigbar-2) with derbies, pars, laser and
-  strobes. Nothing drives them, so the page plays a preview (Off, Calm, Party) in the lamps' colours and says so.
-- Tap a bar or its chip to move it: distance from the west wall, distance from the south wall, height, turn and tilt.
-  Each change is saved with `PUT /rig/space/appliances/<id>` (at, mount, plane: the plane's normal is the bar's aim).
-- Under the bars, what each place means: how much of the pars' light and the derby dots lands on the screens, and how
-  much of the laser passes through head height (1.0 to 1.9 m).
-- **When the GigBARs arrive:**
-  - show_service drives only the GigBAR 2's **3-channel** mode (auto, sound and show programs). Its 11- and
-    23-channel modes are OFL matrix modes, which are inert here (§13): the type loads, but nothing is sent.
-  - Direct control of the pars, derbies, laser and strobes needs matrix support in `ofl.py` first.
-  - Each bar also needs an Art-Net box: no node is configured yet (fixtures.yaml `nodes: {}`).
-  - Once a bar is registered, move its planned place onto its new light id (or place the light on the Room map) and
-    remove the plan entry, so the 3D view doesn't draw it twice.
+**3D** (`?tab=3d`): the room simulation, `/lights/room` (src/pages/Room3D; docs/GIGBAR_RIG.md §7), shown in the page.
+It is built from the deployment's config (show_service's rig and room model), so every light, screen and the
+glitterball appear as configured; its DMX lights play the virtual node's output.
+- finsbury (owner, 27 Nov: two GigBARs in the drawing room imminently): the GigBAR rig is in fixtures.yaml as
+  GIGBAR_RIG §6 says (types, both bars part by part, the hazer, groups), bar A in the SE corner and bar B in the NE
+  (space.added.yaml, the laptop room's corner placement and hand-set head poses). Output `dmx-a` goes to the
+  virtual node `previz` (frames kept in show_service) and to `gigbar-view`, the Windows virtual node (Spectre card
+  `screen-machine-virtual-node`, udp 6455, view http://127.0.0.1:8705). When the Art-Net box arrives, add its node
+  and point `dmx-a` at it.
+- The simulation reads the node at http://127.0.0.1:8705, so it shows DMX in a browser on PC22 itself; elsewhere
+  it shows the room and lights without their output.
 
 ### 8.3 Move it (MoveIt.tsx, JogPad.tsx, CapControls.tsx, Preview.tsx, jog.ts)
 

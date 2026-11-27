@@ -16,7 +16,6 @@
 // a light (preview.py: plain light for aiming, a colour, or a lighting scene); "Live now" shows the virtual node's
 // wire; "Pop out the live view" opens /lights/room. Every change can be undone (Ctrl+Z) and redone (Ctrl+Shift+Z).
 // The chrome is the app's own light theme; the view is the room.
-// A planned light (a room device not yet a registered light) is still placed in the older view: "Place a planned light".
 
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -29,9 +28,8 @@ import { settingsUrl } from "@/components/nav/appNav";
 import { explainLightsError, type LightsApi } from "./api";
 import { nameWords, parseSpace, placeId, snapToWall, type Placeable, type PlacedThing, type RoomSpace } from "./lib";
 import { AddPlace, frontMiddle, MOUNTS, RoomForm } from "./RoomMap";
-import type PlannedView from "./Room3D";
+import type { SpaceState } from "./useRig";
 
-const Planned = lazy(() => import("./Room3D"));
 const POLL_MS = 4000;
 const BAR_BOX: Vec3 = [0.2, 1.16, 0.46];         // a bar's pick box: front to back, end to end, top to bottom (m)
 const LIGHT_BOX: Vec3 = [0.2, 0.2, 0.2];
@@ -75,7 +73,8 @@ type SpaceBits = ReturnType<typeof keepOutOf> & { size: Vec3; bars: BarBits[]; r
   /** What the deployment's own space.yaml sets ("screen:<id>", "place:<name>", ...): the page can't move it. */
   locked: Set<string> };
 /** The older view's own props (the page's space state, the map's things, the lamps' colours): passed straight on. */
-type PlannedProps = Parameters<typeof PlannedView>[0];
+/** What the Lights page hands the room editor: its room space (reloaded on change), the rig's things, the lamps' colours. */
+type PlannedProps = { space: SpaceState; things: Placeable[]; lamps?: Record<string, unknown> };
 type Kind = "room" | "bar" | "light" | "part" | "region" | "screen" | "thing" | "place" | "area";
 /** A part of a bar that is selected but not aimed here (a moving head, a strobe LED): its pick box. */
 const HEAD_BOX: Vec3 = [0.22, 0.22, 0.24], LED_BOX: Vec3 = [0.1, 0.1, 0.07];
@@ -415,7 +414,6 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   const [mode, setMode] = useState<GizmoMode>("translate");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [planned, setPlanned] = useState(false);
   const [refresh, setRefresh] = useState(0);                         // bumped after a save: the simulator reads again
   const [frame, setFrame] = useState(0);                             // bumped to turn the camera to the selection
   const [treeOpen, setTreeOpen] = useState(false);                   // the object picker's dropdown
@@ -1027,18 +1025,6 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
     return () => window.removeEventListener("keydown", onKey);
   }, [selected, bits, act, api, putRegion, treeOpen, pointing, placing]);
 
-  const hasPlanned = Object.values(space.space?.appliances ?? {}).some((a) => !!a.kind);
-  if (planned) {
-    return (
-      <div className="space-y-3">
-        <Button variant="outline" onClick={() => setPlanned(false)} className="h-11 rounded-xl bg-white px-4 text-[15px]">‹ Back to the room</Button>
-        <Suspense fallback={<p className="flex items-center gap-2 py-3 text-base text-muted-foreground"><Spinner /> Drawing the room…</p>}>
-          <Planned api={api} space={space} things={things} lamps={lamps} />
-        </Suspense>
-      </div>
-    );
-  }
-
   const modeRow = (k: Exclude<Kind, "room">) => (
     <div className="mb-2 flex flex-wrap gap-1.5">
       {modesOf(k).map((m) => (
@@ -1600,11 +1586,6 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
         ← Room (or Esc) goes back; Ctrl+Z undoes.
       </p>
       {err && <Notice tone="bad">{err}</Notice>}
-      {hasPlanned && (
-        <Button variant="outline" onClick={() => setPlanned(true)} className="h-11 rounded-xl bg-white px-4 text-[15px]">
-          Place a planned light ›
-        </Button>
-      )}
     </div>
   );
 }

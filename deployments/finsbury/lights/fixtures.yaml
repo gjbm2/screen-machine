@@ -36,6 +36,19 @@ outputs:
     # rate_hz: 50                           # the driver's own (§9.4: continuous 50 Hz)
     # min_attack_ms: 80                     # the driver's own (§5.4: Hue beat pulses attack >= 80 ms)
 
+  # The GigBAR rig (owner, 26-27 Nov: two GigBAR MOVE + ILS and the hazer in the drawing room, imminently;
+  # docs/GIGBAR_RIG.md §6): its universe, on the virtual node until the Art-Net box is on the house LAN. Nothing leaves
+  # the machine: show_service keeps the frames (GET /show/api/v1/rig/dmx) and sends the same packets to the virtual node.
+  # When the box arrives: a nodes entry with its last_ip (§2.4) and node: <it> here; gigbar-view keeps getting the
+  # same packets.
+  dmx-a:
+    driver: artnet
+    enabled: true
+    node: previz
+    also_nodes: [gigbar-view]               # the same universe, the same packets, to the virtual node on Windows
+    port_address: 1                         # Art-Net Net 0, Sub-Net 0, Universe 1 (0 is room_service's virtual
+                                            # universe, Maestro's; GIGBAR_RIG §2.4)
+
   # An Art-Net universe on a node (artnet_lan.py; §9.3). One entry per universe. Example, for when a node is bought:
   # dmx-a:
   #   driver: artnet
@@ -44,7 +57,16 @@ outputs:
   #   port_address: 1                       # 15-bit Port-Address, at least 1 (0 is room_service's virtual universe)
 
 # Art-Net nodes. None is bought yet (§9.3: a wired node, measured for output on receipt). Example:
-nodes: {}
+nodes:
+  previz:
+    virtual: true                           # frames stay in memory: GET /show/api/v1/rig/dmx
+  gigbar-view:
+    # The virtual node on PC22's Windows side (tools/virtual_node; Spectre card screen-machine-virtual-node): a real
+    # Art-Net node, udp 6455 there (6454 is the Art-Net relay's), with the GigBAR view and the app's /lights/room
+    # reading its DMX at http://127.0.0.1:8705. "windows" is WSL's gateway, resolved by show_service.
+    match: {short_name: "SM Virtual Node"}
+    last_ip: windows
+    port: 6455
   # node-1:
   #   match: {short_name: "<as the node reports it>"}   # or {mac: "aa:bb:cc:dd:ee:ff"}: checked against ArtPollReply
   #   last_ip: <the node's LAN address>     # where frames go; discovery confirms it (nodes.json in the state dir)
@@ -56,6 +78,13 @@ nodes: {}
 types:
   sm-screen: {source: builtin}              # a Frame TV: colour only, kind screen (never dimmed)
   sm-hue: {source: builtin}                 # a Hue colour lamp: intensity and colour (the hue driver's xy + brightness)
+  # The GigBAR MOVE + ILS, part by part, and the Antari Z-350 (shared type files; docs/GIGBAR_RIG.md §1)
+  gigbar-par:   {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-par.json, mode: part}     # RGBAW + UV, strobe
+  gigbar-derby: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-derby.json, mode: part}   # RGBW, strobe, motor
+  gigbar-spot:  {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-spot.json, mode: part}    # moving head
+  gigbar-flash: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-flash.json, mode: part}   # 4 white strobes
+  gigbar-laser: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-laser.json, mode: part-52ch}
+  z-350: {source: ofl, file: ofl/antari/z-350.json, mode: 2-channel}   # haze, fan: never driven by a look
   # An Open Fixture Library type (MIT), file relative to config/room/fixture-types/. Example:
   # pinspot:
   #   source: ofl
@@ -83,6 +112,32 @@ fixtures:
            screen: south-screen, zone: south, placement: above}
   hue.sw: {label: Drawing room SW, type: sm-hue, output: hue, light: 014c5c6c-2d07-4315-ace7-d030a7086c29,
            screen: south-screen, zone: south, placement: opposite}
+  # The GigBAR rig (docs/GIGBAR_RIG.md; the laptop's blocks, §6). Each bar in 52CH mode, patched part by part at its
+  # start address plus the part's offset. Bar A is on the left as the room faces the screens (the SE corner), bar B
+  # on the right (NE); if they end up the other way round, swap the start addresses on the bars. Where they stand is
+  # space.added.yaml's (the Room map).
+  gigbar-a.par1:   {label: Bar A par 1,   type: gigbar-par,   output: dmx-a, address: 1,   tags: [gigbar, bar-a, par]}
+  gigbar-a.par2:   {label: Bar A par 2,   type: gigbar-par,   output: dmx-a, address: 8,   tags: [gigbar, bar-a, par]}
+  gigbar-a.derby1: {label: Bar A derby 1, type: gigbar-derby, output: dmx-a, address: 15,  tags: [gigbar, bar-a, derby],
+                    pin: {Rotation: 16}}
+  gigbar-a.derby2: {label: Bar A derby 2, type: gigbar-derby, output: dmx-a, address: 21,  tags: [gigbar, bar-a, derby],
+                    pin: {Rotation: 16}}
+  gigbar-a.strobe: {label: Bar A strobes, type: gigbar-flash, output: dmx-a, address: 27,  tags: [gigbar, bar-a, strobe]}
+  gigbar-a.laser:  {label: Bar A laser,   type: gigbar-laser, output: dmx-a, address: 32,  tags: [gigbar, bar-a, laser]}
+  gigbar-a.spot1:  {label: Bar A spot 1,  type: gigbar-spot,  output: dmx-a, address: 35,  tags: [gigbar, bar-a, spot, spot-1]}
+  gigbar-a.spot2:  {label: Bar A spot 2,  type: gigbar-spot,  output: dmx-a, address: 44,  tags: [gigbar, bar-a, spot, spot-2]}
+  gigbar-b.par1:   {label: Bar B par 1,   type: gigbar-par,   output: dmx-a, address: 101, tags: [gigbar, bar-b, par]}
+  gigbar-b.par2:   {label: Bar B par 2,   type: gigbar-par,   output: dmx-a, address: 108, tags: [gigbar, bar-b, par]}
+  gigbar-b.derby1: {label: Bar B derby 1, type: gigbar-derby, output: dmx-a, address: 115, tags: [gigbar, bar-b, derby],
+                    pin: {Rotation: 16}}
+  gigbar-b.derby2: {label: Bar B derby 2, type: gigbar-derby, output: dmx-a, address: 121, tags: [gigbar, bar-b, derby],
+                    pin: {Rotation: 16}}
+  gigbar-b.strobe: {label: Bar B strobes, type: gigbar-flash, output: dmx-a, address: 127, tags: [gigbar, bar-b, strobe]}
+  gigbar-b.laser:  {label: Bar B laser,   type: gigbar-laser, output: dmx-a, address: 132, tags: [gigbar, bar-b, laser]}
+  gigbar-b.spot1:  {label: Bar B spot 1,  type: gigbar-spot,  output: dmx-a, address: 135, tags: [gigbar, bar-b, spot, spot-1]}
+  gigbar-b.spot2:  {label: Bar B spot 2,  type: gigbar-spot,  output: dmx-a, address: 144, tags: [gigbar, bar-b, spot, spot-2]}
+  # The hazer: the feel's haze runs it (show_service/atmosphere.py); while that is off, the pin holds both channels.
+  hazer:           {label: Hazer, type: z-350, output: dmx-a, address: 201, tags: [haze], pin: {Haze: 0, Fan: 0}}
   # A DMX fixture (example, for when one is bought; §9.3: 1-2 LED pinspots on the mirror ball first):
   # spot.ball1:
   #   label: Ball pinspot 1
@@ -97,4 +152,14 @@ fixtures:
 groups:
   around:                                   # the lamps clockwise round the room, by their compass corners (the
     select: "kind:lamp"                     # patch.yaml labels): a phase spread across this group walks the room
-    order: [hue.ne, hue.se, hue.sw, hue.nw]
+    order: [hue.ne, gigbar-b.par2, gigbar-b.derby2, gigbar-b.derby1, gigbar-b.par1,   # the bars' pars and derbies are
+            gigbar-a.par2, gigbar-a.derby2, gigbar-a.derby1, gigbar-a.par1,           # lamps too: bar B in the NE
+            hue.se, hue.sw, hue.nw]                                                   # corner, bar A in the SE
+  bars:                                     # the bars' pars and derbies, left to right as the room faces the screens
+    select: "tag:par | tag:derby"
+    order: [gigbar-a.par1, gigbar-a.derby1, gigbar-a.derby2, gigbar-a.par2,
+            gigbar-b.par1, gigbar-b.derby1, gigbar-b.derby2, gigbar-b.par2]
+  pars: {select: "tag:par"}
+  derbies: {select: "tag:derby"}
+  spots: {select: "tag:spot"}
+  strobes: {select: "tag:strobe"}
