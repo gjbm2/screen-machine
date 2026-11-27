@@ -176,8 +176,52 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
       const items = [...(plan ? all.filter((x) => x.label && !x.parent && x.kind !== "light") : []), ...parts];
       el.style.display = items.length ? "" : "none";
       if (!items.length) return;
-      const have = new Map(Array.from(el.children).map((c) => [(c as HTMLElement).dataset.key!, c as HTMLElement]));
-      for (const it of items) {
+      const have = new Map(Array.from(el.children).filter((c) => (c as HTMLElement).dataset.key).map((c) => [(c as HTMLElement).dataset.key!, c as HTMLElement]));
+      const W = host.clientWidth, Hh = host.clientHeight;
+      const scr = (p: readonly number[]) => { v.set(p[0], p[2], -p[1]).project(sim.camera); return [((v.x + 1) / 2) * W, ((1 - v.y) / 2) * Hh] as const; };
+      // a selected bar's parts: where they would overlap on screen (the plan looks down on a bar whose heads and pars
+      // hang under it and whose derbies and laser stand on it), their names go in a row beside the bar instead, in
+      // order along it (then from the top down), each with a line to its part (owner, 27 Nov: "some are on top of
+      // each other, so I have no way to select them")
+      const chips = new Map<string, [number, number]>();
+      const pts = parts.map((it) => ({ it, p: scr(it.at) }));
+      const crowded = pts.some((a, i) => pts.some((b, j) => j > i && Math.abs(a.p[0] - b.p[0]) < 46 && Math.abs(a.p[1] - b.p[1]) < 16));
+      if (crowded && unit) {
+        const u = all.find((x) => x.key === unit);
+        const yaw = u?.yaw ?? 0, ax = [-Math.sin(yaw), Math.cos(yaw)];          // along the bar (its length)
+        const order = [...pts].sort((a, b) => {
+          const da = (a.it.at[0] - (u?.at[0] ?? 0)) * ax[0] + (a.it.at[1] - (u?.at[1] ?? 0)) * ax[1];
+          const db = (b.it.at[0] - (u?.at[0] ?? 0)) * ax[0] + (b.it.at[1] - (u?.at[1] ?? 0)) * ax[1];
+          return Math.abs(da - db) > 0.03 ? da - db : b.it.at[2] - a.it.at[2];
+        });
+        // left to right on screen as along the bar, whichever way it is seen
+        const p0 = scr([(u?.at[0] ?? 0) - ax[0], (u?.at[1] ?? 0) - ax[1], u?.at[2] ?? 0]), p1 = scr([(u?.at[0] ?? 0) + ax[0], (u?.at[1] ?? 0) + ax[1], u?.at[2] ?? 0]);
+        if (p1[0] < p0[0]) order.reverse();
+        const cx = order.reduce((a, o) => a + o.p[0], 0) / order.length, low = Math.max(...order.map((o) => o.p[1]));
+        const gap = 72, per = Math.max(1, Math.floor((W - 60) / gap));
+        order.forEach((o, i) => {
+          const row = Math.floor(i / per), inRow = Math.min(per, order.length - row * per), k = i % per;
+          const span = (inRow - 1) * gap;                      // the whole row shifts to fit the view, never squashed
+          const x0 = Math.max(40, Math.min(W - 40 - span, cx - span / 2));
+          const y = Math.min(Hh - 20 - row * 24, low + 46) + row * 24;
+          chips.set(o.it.key, [x0 + k * gap, y]);
+        });
+      }
+      // their leader lines: an svg under the names
+      let svg = el.querySelector("svg") as SVGSVGElement | null;
+      if (!svg) { svg = document.createElementNS("http://www.w3.org/2000/svg", "svg"); svg.setAttribute("class", "absolute inset-0 h-full w-full"); el.prepend(svg); }
+      const lines = new Map(Array.from(svg.children).map((c) => [(c as SVGLineElement).dataset.key!, c as SVGLineElement]));
+      for (const [key, [x, y]] of chips) {
+        let ln = lines.get(key);
+        if (!ln) { ln = document.createElementNS("http://www.w3.org/2000/svg", "line"); ln.dataset.key = key; ln.setAttribute("stroke", "#0d9488"); ln.setAttribute("stroke-width", "1"); ln.setAttribute("opacity", "0.7"); svg.appendChild(ln); }
+        const p = pts.find((o) => o.it.key === key)!.p;
+        ln.setAttribute("x1", String(x)); ln.setAttribute("y1", String(y)); ln.setAttribute("x2", String(p[0])); ln.setAttribute("y2", String(p[1]));
+        lines.delete(key);
+      }
+      for (const ln of lines.values()) ln.remove();
+      // while the parts' names line up beside the bar, the room's other names stand back (only the unit's own show)
+      const shownItems = chips.size ? items.filter((it) => it.parent === unit || it.key === unit) : items;
+      for (const it of shownItems) {
         let n = have.get(it.key);
         if (!n) {
           n = document.createElement("span");
@@ -191,9 +235,10 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
         if (n.textContent !== words) n.textContent = words;
         const on = it.key === sel;
         n.style.background = on ? "#0d9488" : ""; n.style.color = on ? "#fff" : "";
-        v.set(it.at[0], it.at[2], -it.at[1]).project(sim.camera);   // room (x, y, z) -> three (x, z, -y)
-        n.style.left = `${((v.x + 1) / 2) * host.clientWidth}px`;
-        n.style.top = `${((1 - v.y) / 2) * host.clientHeight + 10}px`;
+        const chip = chips.get(it.key);
+        const [nx, ny] = chip ? [chip[0], chip[1] - 8] : (() => { const q = scr(it.at); return [q[0], q[1] + 10]; })();
+        n.style.left = `${nx}px`;
+        n.style.top = `${ny}px`;
         have.delete(it.key);
       }
       for (const n of have.values()) n.remove();
@@ -625,7 +670,13 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
             if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > 4) return;   // the view was turned, nothing was clicked
             const [x, y] = ndc(e, e.currentTarget);
             const key = ed && ed.active ? ed.pick(x, y) : null;
-            if (key) { fromView.current = true; cb.current.onSelect?.(key); return; }   // a thing: edit it
+            if (key) {                                                 // a thing: edit it
+              fromView.current = true; cb.current.onSelect?.(key);
+              const lp = ed?.lastPick, r = e.currentTarget.getBoundingClientRect();
+              const it = (editables ?? []).find((q) => q.key === key);
+              if (lp && lp.n > 1 && it?.label) setTip({ x: e.clientX - r.left, y: e.clientY - r.top, text: `${it.label} · ${lp.i + 1} of ${lp.n} here: click again for the next` });
+              return;
+            }
             if (selected) { cb.current.onSelect?.(null); return; }     // nothing, while editing: back to the room
             if (sim?.nav === "walk") sim.walkTo(x, y);                 // nothing, walking: walk there
           }}>
@@ -663,7 +714,9 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
           )}
           <div className={shot ? "hidden" : "pointer-events-none absolute bottom-1.5 left-2.5 right-2.5 text-xs text-[#aab0c0]"}>
             {embedded
-              ? (selected
+              ? (selected && nav === "plan"
+                ? "Editing, from above: a bar's parts stand on and hang under it, so their names line up beside it: click a name, or click the same spot again for the next part down · Front (1) shows them apart · Esc: up a level"
+                : selected
                 ? "Editing: drag to look round it · a bar: drag it, its ring to turn it, its arrow to raise it; click one of its lights to edit that · a light: the amber arc tilts it · Esc: up a level · click empty space: back"
                 : nav === "elev"
                   ? `Elevation, looking at the ${elev} wall: drag a thing across and up or down · drag the wall to slide the view · wheel: zoom to the cursor · ⇄ (9): the other side · click: edit it, again for a light on a bar`

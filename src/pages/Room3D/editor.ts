@@ -304,7 +304,30 @@ export class RoomEditor {
     if (!parent) return key;
     const sel = this.selected ? this.items.find((i) => i.key === this.selected) : undefined;
     const inside = this.selected === parent || sel?.parent === parent;
-    return inside ? key : parent;
+    if (!inside) return parent;
+    // clicked again where it was clicked last, on a stack of parts (heads under pars under a laser, from above):
+    // the next one down the stack (owner, 27 Nov: "some are on top of each other, so I have no way to select them")
+    const stack = this.partsAt(x, y, parent);
+    const last = this.lastPick;
+    if (last && Math.abs(last.x - x) < 0.02 && Math.abs(last.y - y) < 0.02 && stack.length > 1 && this.selected && stack.includes(this.selected)) {
+      const next = stack[(stack.indexOf(this.selected) + 1) % stack.length];
+      this.lastPick = { x, y, n: stack.length, i: stack.indexOf(next) };
+      return next;
+    }
+    this.lastPick = { x, y, n: stack.length, i: Math.max(0, stack.indexOf(key)) };
+    return key;
+  }
+  /** The last click inside a unit: where, and which of how many stacked parts it gave (for "2 of 3 here"). */
+  lastPick: { x: number; y: number; n: number; i: number } | null = null;
+  /** A unit's parts under a point of the view, nearest first. */
+  private partsAt(x: number, y: number, parent: string): string[] {
+    const hs = this.hits(x, y, [...this.picks.values()]);
+    const out: string[] = [];
+    for (const h of hs) {
+      const k = h.object.userData.key as string, it = this.items.find((i) => i.key === k);
+      if (it?.parent === parent && !out.includes(k)) out.push(k);
+    }
+    return out;
   }
   /** The nearest thing under a point of the view, a light before the bar it is on. */
   private pickPart(x: number, y: number): string | null {
