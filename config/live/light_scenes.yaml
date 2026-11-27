@@ -611,7 +611,7 @@ scenes:
   laser-drifting:
     label: The stars drift slowly round with the room
     layers:
-      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 14, ccw: 142, still: 8}}}
+      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 14, ccw: 142, still: 0}}}
     tags: {parts: [laser], shows_beat: false, energy: [0.15, 0.8], moods: [dreamy, cosmic, hypnotic, liquid, warm],
            genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.3, density: 0.35}
   laser-on-the-beat:
@@ -642,6 +642,46 @@ scenes:
       - {id: all, kind: macro, set: {Laser: 240, "Laser rotation": {cw: 110, ccw: 240, still: 90}}}
     tags: {parts: [laser], shows_beat: true, energy: [0.65, 1.0], moods: [euphoric, aggressive, fiery, glitchy, bright],
            genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.1, density: 0.9, weight: 0.7}
+  # Not only turning (owner, 27 Nov: "lasers always seem to rotate ... aren't there other things they can do?"). This
+  # laser has no scanner: its picture is one fixed grid of dots, so it cannot draw fans or shapes. What it can vary:
+  # hold the grid still, rock it, turn it a step and hold, change its colours, gate it in time, and let the two bars
+  # differ. {cycle: [...], on: bar} gives the next value each bar.
+  laser-rocking:
+    label: The grid rocks to and fro, a bar each way
+    layers:
+      - {id: rock, kind: macro, set: {"Laser rotation": {cycle: [22, 150], on: bar}}}
+    tags: {parts: [laser], shows_beat: true, energy: [0.3, 0.9], moods: [playful, hypnotic, liquid, warm, retro],
+           genre_fit: {"*": 0.6}, valence: 0.6, organic: 0.4, density: 0.5}
+  laser-step-and-hold:
+    label: The grid turns a step each bar and holds
+    layers:
+      - {id: steps, kind: macro, set: {"Laser rotation": {cycle: [70, 0, 0, 0], on: beat}}}
+    tags: {parts: [laser], shows_beat: true, energy: [0.4, 1.0], moods: [geometric, playful, bright, glitchy, tense],
+           genre_fit: {"*": 0.6}, valence: 0.6, organic: 0.2, density: 0.6}
+  laser-still-colours:
+    label: A still grid, a new colour each bar
+    layers:
+      - {id: still, kind: macro, set: {"Laser rotation": 0}}
+      - {id: colour-steps, kind: colour_wheel, mode: step, step_on: bar}
+    tags: {parts: [laser], shows_beat: true, energy: [0.3, 0.9], moods: [geometric, bright, cosmic, elegant, playful],
+           genre_fit: {"*": 0.6}, valence: 0.6, organic: 0.3, density: 0.45}
+  laser-one-still-one-turning:
+    label: One bar's grid holds still while the other's turns, swapping each phrase
+    layers:
+      - {id: left-bar, kind: macro, select: "tag:bar-a", set: {"Laser rotation": {cycle: [0, 40], on: phrase}}}
+      - {id: right-bar, kind: macro, select: "tag:bar-b", set: {"Laser rotation": {cycle: [168, 0], on: phrase}}}
+    tags: {parts: [laser], shows_beat: false, energy: [0.25, 0.85], moods: [dreamy, cosmic, elegant, hypnotic, liquid],
+           genre_fit: {"*": 0.55}, valence: 0.5, organic: 0.4, density: 0.4}
+  laser-two-colours-apart:
+    label: Each bar its own colour, still, flashing in turn
+    layers:
+      - {id: left-bar, kind: macro, select: "tag:bar-a", set: {Laser: {cycle: [23, 95, 59], on: phrase},
+                                                                "Laser rotation": 0}}
+      - {id: right-bar, kind: macro, select: "tag:bar-b", set: {Laser: {cycle: [95, 59, 23], on: phrase},
+                                                                 "Laser rotation": 0}}
+      - {id: take-turns, fx: square, phase: bar, period_bars: [1, 1], depth: 1.0, needs: grid, order: flow, spread: 1.0}
+    tags: {parts: [laser], shows_beat: true, energy: [0.35, 0.95], moods: [playful, bright, retro, geometric],
+           genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.2, density: 0.55}
   laser-waits:
     label: Still stars while the room waits
     layers:

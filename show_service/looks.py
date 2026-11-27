@@ -262,8 +262,10 @@ LAYER_KINDS: tuple[str, ...] = ("intensity", "position", "beam", "gobo", "prism"
                                 "shutter", "macro")
 #: macro (owner, 27 Nov: the laser's "display layering & logic"; the derbies' motors): a layer that sets a light's named
 #: function channels (the type's macro channels: a laser's colour, strobe and rotation, a derby's motor). ``set``:
-#: {channel name: value}; a value is one of the channel's range words, a raw byte 0..255, or {cw, ccw, still}: one of
-#: those by the way the room's flow turns. A light without that channel skips it.
+#: {channel name: value}; a value is one of the channel's range words, a raw byte 0..255, {cw, ccw, still}: one of
+#: those by the way the room's flow turns, or {cycle: [values], on: beat | bar | phrase}: the next of them at each
+#: beat, bar or phrase (a grid that rocks back and forth, or turns a step and holds). A light without that channel
+#: skips it.
 POSITION_MODES: tuple[str, ...] = ("aim", "fan", "sweep", "circle", "figure8", "drift", "ballyhoo", "bounce", "lift",
                                    "tilt_wave", "home")
 PATTERN_MODES = frozenset({"fan", "sweep", "circle", "figure8", "drift", "ballyhoo"})
@@ -1665,11 +1667,19 @@ class LookEngine:
         elif kind == "macro":
             def ok(v: Any) -> bool:
                 return isinstance(v, str) or (isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 255)
+            def form(v: Any) -> bool:
+                if ok(v):
+                    return True
+                if not isinstance(v, Mapping) or not v:
+                    return False
+                if "cycle" in v:
+                    return set(v) <= {"cycle", "on"} and isinstance(v["cycle"], list) and len(v["cycle"]) > 0 \
+                        and all(ok(x) for x in v["cycle"]) and v.get("on", "bar") in ("beat", "bar", "phrase")
+                return set(v) <= {"cw", "ccw", "still"} and all(ok(x) for x in v.values())
             st = raw.get("set")
-            if not isinstance(st, Mapping) or not st or not all(
-                    isinstance(c, str) and (ok(v) or (isinstance(v, Mapping) and v and set(v) <= {"cw", "ccw", "still"}
-                                                      and all(ok(x) for x in v.values()))) for c, v in st.items()):
-                bad.append("a macro layer needs set: {<channel>: <range word> | 0..255 | {cw, ccw, still}}")
+            if not isinstance(st, Mapping) or not st or not all(isinstance(c, str) and form(v) for c, v in st.items()):
+                bad.append("a macro layer needs set: {<channel>: <range word> | 0..255 | {cw, ccw, still} | "
+                           "{cycle: [...], on: beat | bar | phrase}}")
             else:
                 p["set"] = {c: (dict(v) if isinstance(v, Mapping) else v) for c, v in st.items()}
         return p
@@ -3775,7 +3785,10 @@ class LookEngine:
                 turn = None
                 out = dict(attrs.get("macro") or {})
                 for ch, v in (p.get("set") or {}).items():
-                    if isinstance(v, Mapping):               # by the way the room's flow turns
+                    if isinstance(v, Mapping) and "cycle" in v:      # the next of them each beat, bar or phrase
+                        cyc = v["cycle"]
+                        v = cyc[self._counter(v.get("on", "bar"), cx, tp) % len(cyc)]
+                    elif isinstance(v, Mapping):             # by the way the room's flow turns
                         if turn is None:
                             sp = self._spin({"spin": "flow", "spin_scale": 1.0}, cx, gn)
                             turn = "cw" if sp is not None and sp > 0 else "ccw" if sp is not None and sp < 0 \
