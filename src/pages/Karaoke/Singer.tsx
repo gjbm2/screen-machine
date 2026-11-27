@@ -5,14 +5,17 @@
 //
 // - NamePicker: the names as chips (× takes one off), a box to type a new one (Enter or a comma adds it), and
 //   tonight's names (the server's names of the last 12 h: KaraokeState.singers) as one-tap chips, filtered as you type.
-// - SingerBox: "Who's singing?" above the search. It remembers its names on this phone, so whoever adds from their own
+// - askSingers / SingerAsk: picking a song to queue asks "Who's singing?" there and then (owner, 27 Nov: a box of its
+//   own above the search read as orphaned; "better would be if after selecting the song, the 'who's singing' drop
+//   down menu appeared"). It starts with the names this phone used last; Nobody adds it unsung; closing it adds
+//   nothing. It remembers its names on this phone, so whoever adds from their own
 //   phone sets them once; whoever adds for others taps each song's names from tonight's. Every song added from this
 //   page carries them (singersNow()).
 // - SingerTag: a queue entry's singers, tapped to change them (NamePicker in a dialog).
 // Small on a phone (owner, 27 Nov: "you may need to make fonts slightly smaller for mobile display"), sm: and up as
 // the rest of the panel.
 
-import { useState, type PointerEvent } from "react";
+import { useEffect, useState, type PointerEvent } from "react";
 import { MicVocal, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -136,23 +139,62 @@ function NamePicker({
   );
 }
 
-export function SingerBox({ names }: { names: string[] }) {
-  const [value, setValue] = useState<string[]>(singersNow);
-  const save = (v: string[]) => {
-    setValue(v);
-    try {
-      localStorage.setItem(KEY, JSON.stringify(v));
-      localStorage.removeItem(OLD_KEY);
-    } catch {
-      /* private mode: this page only */
-    }
+let asker: ((title: string) => Promise<string[] | null>) | null = null;
+
+/** Ask who sings a song about to be queued: the names ([] for nobody), or null if the person closed it (don't add). */
+export const askSingers = (title: string): Promise<string[] | null> =>
+  asker ? asker(title) : Promise.resolve(singersNow());
+
+const remember = (v: string[]) => {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(v));
+    localStorage.removeItem(OLD_KEY);
+  } catch {
+    /* private mode: this page only */
+  }
+};
+
+/** The one "Who's singing?" dialog askSingers opens (mounted once on the karaoke page). */
+export function SingerAsk({ names }: { names: string[] }) {
+  const [q, setQ] = useState<{ title: string; done: (v: string[] | null) => void } | null>(null);
+  const [draft, setDraft] = useState<string[]>([]);
+  useEffect(() => {
+    asker = (title) =>
+      new Promise((done) => {
+        setDraft(singersNow());
+        setQ({ title, done });
+      });
+    return () => {
+      asker = null;
+    };
+  }, []);
+  const finish = (v: string[] | null) => {
+    if (v) remember(v);
+    q?.done(v);
+    setQ(null);
   };
   return (
-    <div className="flex items-start gap-2 rounded-xl bg-card/80 px-3 py-2 ring-1 ring-stone-200/70">
-      <MicVocal className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-      <span className="mt-px shrink-0 text-xs text-muted-foreground sm:text-sm">Who's singing?</span>
-      <NamePicker value={value} onChange={save} names={names} alwaysSuggest max={6} />
-    </div>
+    <Dialog open={!!q} onOpenChange={(v) => !v && finish(null)}>
+      <DialogContent className={cn(THEME_CLASS, "w-[calc(100vw-2rem)] max-w-md gap-3 p-4 sm:p-5")}>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <MicVocal className="h-4 w-4 text-muted-foreground" aria-hidden /> Who's singing?
+          </DialogTitle>
+          <DialogDescription className="truncate text-xs sm:text-sm">{q?.title}</DialogDescription>
+        </DialogHeader>
+        <div className="rounded-xl px-3 py-2 ring-1 ring-stone-200/70">
+          <NamePicker value={draft} onChange={setDraft} names={names} alwaysSuggest />
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="ghost" size="sm" onClick={() => finish([])}>
+            Nobody
+          </Button>
+          <Button size="sm" onClick={() => finish(draft)} data-testid="singers-add">
+            Add
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -193,7 +235,7 @@ export function SingerTag({
           <DialogHeader>
             <DialogTitle className="text-base">Who's singing?</DialogTitle>
             <DialogDescription className="text-xs sm:text-sm">
-              Tap tonight's names or type a new one. One name or several.
+              {singers.length ? namesText(singers) : "Nobody yet"}
             </DialogDescription>
           </DialogHeader>
           <div className="rounded-xl px-3 py-2 ring-1 ring-stone-200/70">
