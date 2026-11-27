@@ -72,7 +72,15 @@ def does(entry: Mapping[str, Any]) -> list[str]:
         if not isinstance(ln, Mapping):
             continue
         kind = ln.get("kind", "intensity")
-        if kind == "position":
+        if kind == "position" and ln.get("mode") == "planned":     # a staging planner: its own words
+            try:
+                from . import staging
+                staging.parse(ln.get("plan"), None)
+                pl = staging.PLANNERS.get(ln.get("plan"))
+            except Exception:
+                pl = None
+            out.append(f"{pl.label[:1].lower()}{pl.label[1:]}, worked out for this room" if pl else "the heads move")
+        elif kind == "position":
             w = f"the heads {MOVES.get(ln.get('mode'), 'move')}"
             if isinstance(ln.get("on"), str):
                 w += f" {SURFACES.get(ln['on'], 'on ' + ln['on'].replace('-', ' '))}"
@@ -83,6 +91,8 @@ def does(entry: Mapping[str, Any]) -> list[str]:
             out.append("split beams")
         elif kind == "shutter":
             out.append("strobes")
+        elif kind == "colour" and ln.get("hex"):
+            out.append("white" if str(ln["hex"]).lower() in ("#ffffff", "#fff") else f"its own colour ({ln['hex']})")
         elif kind in ("colour", "colour_wheel"):
             out.append("a kick of colour")
         elif kind == "macro":

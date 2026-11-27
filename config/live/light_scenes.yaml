@@ -578,6 +578,76 @@ scenes:
            jazz: 0.7, downtempo: 0.75, classical: 0.6, "*": 0.45}, valence: 0.6, organic: 0.5, density: 0.4,
            flow: {dirs: [outward, inward, left, right], honours: true}}
 
+  # -- Staged: a planner works out how THIS room and these heads can do it (show_service/staging; docs/LIGHTS.md
+  # §5.10; owner, 27 Nov: "algebraic logic as part of the scene ... in the relevant room geometry (which is contingent
+  # and shouldn't be hard coded)"). mode: planned, plan: <planner>, with: {its settings}; the layer's period is one
+  # cycle of the plan, slowed on the grid until the heads can draw it. Nothing here names a wall, a bar or a length.
+  movers-wall-chase:
+    label: Two spots chase each other round the walls
+    # wall-run: every wall but the front (the bars and the picture) as one strip above head height; each spot is
+    # carried by whichever head draws it roundest there and handed on where two draw it alike; a head not carrying
+    # one goes ahead in the dark. Open beam: the chase is the one voice.
+    needs: [pan, tilt]
+    layers:
+      - {id: wall-path, kind: position, mode: planned, plan: wall-run, with: {spots: 2}, phase: bar, period_bars: [8, 4],
+         needs: grid}
+      - {id: beam, kind: beam, zoom: narrow, frost: 0.0}
+    tags: {sections: [instrumental, chorus], energy: [0.4, 0.85], moods: [playful, hypnotic, euphoric, geometric],
+           genre_fit: {house: 0.85, disco: 0.85, electronic: 0.8, techno: 0.75, pop: 0.75, funk: 0.75, "*": 0.4},
+           valence: 0.65, organic: 0.3, density: 0.55, flow: {dirs: [cw, ccw, left, right], honours: false}}
+  movers-floor-chase:
+    label: Spots chasing round the dance floor
+    # ring: a circle on the dance floor as big as it holds, with as many spots as fit without their pools running
+    # into each other, carried as the wall chase's are.
+    needs: [pan, tilt]
+    layers:
+      - {id: ring, kind: position, mode: planned, plan: ring, with: {centre: [dance-floor, centre]}, phase: bar,
+         period_bars: [4, 2], needs: grid}
+      - {id: beam, kind: beam, zoom: narrow, frost: 0.0}
+    tags: {sections: [chorus, instrumental], energy: [0.45, 0.9], moods: [playful, bright, euphoric, retro],
+           genre_fit: {disco: 0.9, funk: 0.85, house: 0.8, pop: 0.8, latin: 0.8, "*": 0.4}, valence: 0.75,
+           organic: 0.35, density: 0.65, flow: {dirs: [cw, ccw, still], honours: false}}
+  movers-twin-glide:
+    label: Two white dots glide along the back wall, stop and go out
+    # glide: the two heads of the one bar that keep their spots round along the longest stretch of the back wall;
+    # level, a little more than a spot apart; out where they stop, back in the dark. Written for a black room:
+    # alone, it is drawn only when the heads play on their own.
+    needs: [pan, tilt]
+    layers:
+      - {id: glide, kind: position, mode: planned, plan: glide, phase: bar, period_bars: [8, 4], needs: none}
+      - {id: white, kind: colour, hex: "#ffffff"}
+      - {id: beam, kind: beam, zoom: narrow, frost: 0.0}
+    tags: {alone: true, sections: [verse, instrumental, outro], energy: [0.1, 0.55], moods: [tense, elegant, dark, cosmic],
+           genre_fit: {soundtrack: 0.95, jazz: 0.8, soul: 0.7, rnb: 0.7, downtempo: 0.75, "*": 0.35}, valence: 0.4,
+           organic: 0.5, density: 0.2, flow: {dirs: [left, right, still], honours: false}}
+  next-up-twin-glide:
+    label: Two white dots glide in, stop, and swing onto the singer (the next song's title is up)
+    # the same glide, once, from the moment the title goes up: then both dots swing onto the singer's spot and stay
+    needs: [pan, tilt]
+    layers:
+      - {id: glide, kind: position, mode: planned, plan: glide, with: {end: [singer, dance-floor]}, phase: time,
+         period_s: 6, needs: none}
+      - {id: white, kind: colour, hex: "#ffffff"}
+      - {id: beam, kind: beam, zoom: narrow, frost: 0.0}
+    tags: {modes: [singalong], moments: [lead_in], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5,
+           organic: 0.5, density: 0.2, flow: {dirs: [inward, towards], honours: false}}
+  movers-heavy-cross:
+    label: Slow, heavy sweeps across each other, a white stab every other downbeat
+    # red and black with white highlights (owner, 27 Nov): the Crimson palette makes the room red (its highlight is
+    # white); here the heads cross slowly and the look's highlight stabs once every two bars. Any palette: its
+    # lightest colour is the stab.
+    needs: [pan, tilt]
+    layers:
+      - {id: bar-a-path, kind: position, mode: sweep, select: "tag:bar-a", on: floor, centre: [dance-floor, centre],
+         along: left, size: 2.5, size_deg: 35, ease: sine, phase: bar, period_bars: [8, 4], needs: grid}
+      - {id: bar-b-path, kind: position, mode: sweep, select: "tag:bar-b", on: floor, centre: [dance-floor, centre],
+         along: right, size: 2.5, size_deg: 35, ease: sine, phase: bar, period_bars: [8, 4], needs: grid}
+      - {id: beam, kind: beam, zoom: narrow, frost: 0.0}
+      - {id: stab, kind: colour, role: highlight, depth: {fx: swell, phase: bar, period_bars: 2, between: [0.0, 1.0]}}
+    tags: {sections: [chorus, verse], energy: [0.5, 0.95], moods: [aggressive, fiery, dark, tense],
+           genre_fit: {rock: 0.9, metal: 0.9, punk: 0.85, blues: 0.6, indie: 0.65, "*": 0.3}, valence: 0.35,
+           organic: 0.45, density: 0.55, flow: {dirs: [left, right, inward, outward], honours: false}}
+
   # -- Scenes for one kind of light (tags.parts; a group's scenes_for in show.yaml takes them, no other group does).
   # flash: the strobe zones (owner, 26 Nov: they glowed at every look's level, "not really getting any use"). Each
   # holds them dark (fx: dim) and lets only its accents show.
@@ -596,6 +666,16 @@ scenes:
            drop: {depth: 1.0, decay_ms: 400}}
     tags: {sections: [verse, chorus], parts: [flash], energy: [0.35, 0.8], moods: [playful, bright, warm, hypnotic], genre_fit: {"*": 0.6},
            valence: 0.6, organic: 0.4, density: 0.5}
+  flash-on-the-snare:
+    label: A white flash on the snare
+    # the backbeat's white highlight for red and black (owner, 27 Nov): the hits in the snare's bands only
+    layers:
+      - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
+    hits: {styles: [beat, full, downbeat], bands: [mid, high_mid], min_strength: 0.55, depth: 1.0, decay_ms: 90,
+           drop: {depth: 1.0, decay_ms: 400}}
+    tags: {sections: [chorus, verse], parts: [flash], energy: [0.45, 1.0], moods: [aggressive, fiery, dark, tense],
+           genre_fit: {rock: 0.9, metal: 0.9, punk: 0.9, indie: 0.7, "*": 0.4}, valence: 0.4, organic: 0.45,
+           density: 0.55}
   flash-swell:
     label: The strobe zones glow white, swelling slowly (a song with no beat to flash on)
     layers:

@@ -3173,6 +3173,7 @@ class Director:
                                                  # (trace, 27 Nov: a new song's lasers kept the lead-in's scene)
                                                  moment=mom,
                                                  rest=self._rests(gid),
+                                                 alone=self._alone(gid),
                                                  accent_fit=af)
             except Exception:                             # a broken catalogue never fails the tick
                 log.exception("light scenes: pick failed")
@@ -3403,6 +3404,16 @@ class Director:
         if not lus or name not in lus or not any(gid in e["plays"] for e in lus.values()):
             return None
         return gid not in lus[name]["plays"]
+
+    def _alone(self, gid: str) -> Optional[bool]:
+        """Whether the line-up being applied (or playing) plays this light group and no other (a scene tagged
+        ``alone``, written for a dark room, is drawn only then); None when no line-up governs it."""
+        lus = self.lights_cfg.get("lineups") or {}
+        name = self._lineup_apply if self._lineup_apply is not None else self._lineup
+        if not lus or name not in lus:
+            return None
+        plays = {self._root(g) for g in lus[name]["plays"]}
+        return plays == {self._root(gid)}
 
     def _move_for(self, look_id: str, reason: str, by: str, now_s: float, at_s: float) -> Optional[dict]:
         """The move for a look change (moves.Moves.pick), drawn once per change (a re-announced one keeps it): by the

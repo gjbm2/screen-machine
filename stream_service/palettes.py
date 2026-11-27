@@ -41,6 +41,11 @@ PALETTES: dict[str, dict] = {
     "acid": {"label": "Acid",
         "cosine": ((0.50, 0.50, 0.50), (0.50, 0.50, 0.50), (1.00, 1.00, 0.50), (0.80, 0.90, 0.30)),
         "tags": {"family": "vivid", "moods": ["tense", "playful"]}},
+    # red and black with white highlights (owner, 27 Nov): dark red, red, one white peak; the lights' base is red,
+    # their highlight white (show_service/palette.py roles_from)
+    "crimson": {"label": "Crimson",
+        "cosine": ((0.55, -0.45, -0.45), (0.45, 1.40, 1.40), (1.00, 1.25, 1.25), (-0.40, -0.50, -0.50)),
+        "tags": {"family": "warm", "moods": ["fiery", "dark"]}},
     "mono": {"label": "Mono",
         "cosine": ((0.50, 0.50, 0.50), (0.50, 0.50, 0.50), (1.00, 1.00, 1.00), (0.00, 0.00, 0.00)),
         "tags": {"family": "neutral", "moods": ["dark", "calm"]}},

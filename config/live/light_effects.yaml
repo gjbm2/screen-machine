@@ -138,6 +138,42 @@ effects:
     layers: [{id: strobe, kind: shutter, mode: strobe, hz: [4, 8]}]
     hits: {styles: [], drop: {depth: 1.0, decay_ms: 600}}
     tags: {energy: [0.0, 1.0], weight: 1.0}
+  # -- the frenzy (owner, 27 Nov: "crazy strobing -- everything on an aggressive strobe effect (white / black) maybe
+  # varying pacing / rhythm"): a song's top moment only (a peak or a drop, and the strobe's big-moment token), two
+  # bars. Every part flashes white against black, and no two parts keep the same time: the heads strobe at random
+  # while they sweep wide in the dark between flashes (each flash freezes the beams somewhere new), the pars and
+  # derbies strobe on their own clocks faster as the music is louder, the strobe zones flash on the music's own
+  # hits. Each light's strobe limit (Lights page: strobe_hz_max) caps all of it.
+  frenzy-heads:
+    label: The heads strobe white at random, sweeping wide between flashes
+    on: [peak, drop]
+    length: {bars: 2}
+    fade: {in_beats: 0, out_beats: 0.5}
+    needs: [pan, tilt, shutter]
+    layers:
+      - {id: frenzy-sweep, kind: position, mode: ballyhoo, on: floor, centre: centre, size: 2.5, size_deg: 45, phase: bar,
+         period_bars: 1, needs: grid, spread_mode: chase, spread: 0.5}
+      - {id: white, kind: colour, hex: "#ffffff"}
+      - {id: strobe, kind: shutter, mode: random, hz: [6, 10]}
+    tags: {energy: [0.8, 1.0], moods: [euphoric, aggressive, glitchy, fiery], weight: 1.0}
+  frenzy-wash:
+    label: White strobe on every par and derby, each on its own clock
+    on: [peak, drop]
+    length: {bars: 2}
+    fade: {in_beats: 0, out_beats: 0.5}
+    needs: [shutter]
+    layers:
+      - {id: white, kind: colour, hex: "#ffffff"}
+      - {id: strobe, kind: shutter, mode: strobe, hz: [5, 12]}
+    tags: {energy: [0.8, 1.0], moods: [euphoric, aggressive, glitchy, fiery], weight: 1.0}
+  frenzy-flashes:
+    label: The strobe zones flash on every hit in the music
+    on: [peak, drop]
+    length: {bars: 2}
+    fade: {in_beats: 0, out_beats: 0.5}
+    layers: []
+    hits: {styles: [beat, full, downbeat], min_strength: 0.15, depth: 1.0, decay_ms: 50, drop: {depth: 1.0, decay_ms: 300}}
+    tags: {parts: [flash], energy: [0.8, 1.0], moods: [euphoric, aggressive, glitchy, fiery], weight: 1.0}
   # -- the room's moments (owner, 26 Nov: commissioned like any effect, written here, not in code) --
   song-end-open:
     label: The heads open out to the room as a song ends

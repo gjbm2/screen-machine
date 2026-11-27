@@ -1035,14 +1035,17 @@ class Catalogue:
         return max(1e-6, w * self.cap_fit(entry, group) * self.flow_fit(entry, flow))
 
     def pool_for(self, group: Mapping[str, Any], tags: Any = None, moment: Optional[str] = None,
-                 rest: Optional[bool] = None) -> list[str]:
+                 rest: Optional[bool] = None, alone: Optional[bool] = None) -> list[str]:
         """The scenes a group may show: those that fit it, and of those the ones tagged with any of ``tags`` (a mode's
         light scene tags), unless none of them is (then every one that fits: the mode didn't mean this group).
         ``moment`` (contract.MOMENTS): the mode's own scenes for it (``tags.moments`` names it and ``tags.modes`` one of
         the mode's tags), else the scenes made for it in any mode (no ``tags.modes``); when there are none, or with no
         moment given, the scenes that name no moment at all (a scene made for a moment never stands in for another).
-        A group's ``scenes_drive`` narrows first (show.yaml lights.groups)."""
-        names = [n for n, sc in self.scenes.items() if self.fits(sc, group)]
+        A group's ``scenes_drive`` narrows first (show.yaml lights.groups). A scene tagged ``alone`` is drawn only
+        while its group plays alone (``alone``: the line-up plays only it; None: no line-up says, and it isn't drawn
+        either: it is written for a dark room)."""
+        names = [n for n, sc in self.scenes.items() if self.fits(sc, group)
+                 and (alone is True or not (sc.get("tags") or {}).get("alone"))]
         # a scene's tags.parts says which kind of light it is written for (flash: strobe zones, ...); a group's
         # scenes_for (show.yaml lights.groups) takes those; a scene made for a part never goes to another group
         parts = set(group.get("scenes_for") or ())
@@ -1110,7 +1113,8 @@ class Catalogue:
                  prefer_why: Optional[Mapping[str, str]] = None,
                  moment: Optional[str] = None,
                  accent_fit: Optional[Mapping[str, float]] = None,
-                 rest: Optional[bool] = None) -> Optional[tuple[str, str, dict[str, float]]]:
+                 rest: Optional[bool] = None,
+                 alone: Optional[bool] = None) -> Optional[tuple[str, str, dict[str, float]]]:
         """A group's scene: a weighted draw over its pool (``pool_for``: the scenes that fit it, within the mode's
         ``tags``), never ``avoid`` (the one it shows) while another is there, unless the group's ``repeat_weight``
         (show.yaml; e.g. appliances that may rest twice running) lets it stay at that share of its weight
@@ -1118,7 +1122,7 @@ class Catalogue:
         song's treatment, README S5.33; a name outside the pool does nothing); ``prefer_why``: {name: words} put before
         the pick's why (without it a preferred pick reads "the plan's pick"). (name, why, {name: weight}), or None
         when none fits."""
-        names = self.pool_for(group, tags, moment, rest)
+        names = self.pool_for(group, tags, moment, rest, alone)
         if not names:
             return None
         rw = float(group.get("repeat_weight") or 0.0) if not hard_avoid else 0.0

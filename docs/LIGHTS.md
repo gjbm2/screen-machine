@@ -1014,6 +1014,54 @@ Rig.live_view() -> LiveView         # any thread (§8.1): from the runners' last
   sides equal.
 - **Outputs.** jog through Rig on a fake runner: frames at the active rate while held; frame_view carries attrs.
 
+### 5.10 Staging: planners for the room's geometry (owner, 27 Nov)
+
+> "all of them require algebraic logic as part of the scene for implementation in the relevant room geometry (which is
+> contingent and shouldn't be hard coded) -- may be we need an additional architectural layer"
+
+The position modes above draw a shape round a centre. Some ideas need more than a shape: spots chasing round the
+walls must know which walls there are, which head draws each stretch roundest, and where one head hands to the next.
+That is a **planner**, `show_service/staging/`: pure Python, tested, no engine and no I/O. A scene names it:
+
+```yaml
+- {id: wall-path, kind: position, mode: planned, plan: wall-run, with: {spots: 2}, phase: bar, period_bars: [8, 4]}
+```
+
+- **In:** the room (space.build_view: size, which wall is the front, surfaces, regions, points, bars), the layer's
+  calibrated lights (where each is, its inverse kinematics within its range and soft limits, its lens angle from the
+  fixture type, its speed, its bar), and the motion stage's timing.
+- **Out:** a `Plan`: for each light a `Track` over one cycle (the room point it aims at and its level 0..1, as keys),
+  `min_period_s` (the shortest cycle every light can follow its track in: lit no faster than 0.95 of its speed; dark,
+  time to travel to where it lights next), a note in words, problems, and `once` (a track with an end).
+- **Played by** looks.py `mode: planned`: planned once per (layer, space revision, program), never per frame. Each
+  frame the track is sampled at the layer's phase, drawn the motion stage's lag ahead; the point goes through `_aim`
+  (keep-out regions included) and the motion stage like any pattern. The layer's period doubles on the grid until it
+  is at least `min_period_s` (`slowed`). The track's level multiplies the light's brightness after hits and gestures,
+  so a head between its spots stays dark. A `once` plan runs from the scene's landing and holds its end. The group's
+  sway is off on a planned light: its geometry is exact.
+- **Degrade:** a planner that can't fit the room plans nothing and says why; its lights keep the layers below
+  (`unresolved`). GET /show/api/v1/state → rig.engine `plans` has each planned layer's note.
+- **The shared tools** (`staging/__init__.py`, `geom.py`): `carry` (spots that travel, each carried by the light that
+  draws it best, kept until another draws it at under 0.8 of the score, handed on where they are alike, never
+  through a jump or an inverse-kinematics flip; a free light holds dark a moment, then goes ahead to where it lights
+  next, the one free longest taking the next spot); `spot_score` (a spot's long side x stretch^0.5; none nearer than
+  1.5 m or grazing); `strip` (walls opened out into one strip round the corners, the front left out); `footprint`.
+
+| planner | what it does | `with` |
+|---|---|---|
+| `wall-run` | spots chase each other round every wall but the front, above head height | spots 2, height 0.7 (of the ceiling), margin 0.4 m, direction cw/ccw |
+| `ring` | spots chase round a circle on the floor, as many as fit without their pools touching | centre [names], fill 0.8, spots 0 (auto), direction |
+| `glide` | two dots on one bar glide level along a wall a fixed gap apart, stop, go out, return dark; with `end`, once, then onto that place | wall back, height 0.6, gap 0 (auto), glide 0.6, hold 0.15, end [names], round 1.4, margin 0.3 |
+
+A new planner is a function in `staging/planners.py` registered with `@planner(name, label, defaults, words)`; its
+settings are checked by `staging.parse` at compile (a bad one is a problem line, its default used).
+
+**The scene keys that came with it:** a `colour` layer may take `hex: "#ffffff"` instead of a `role` (the scene's
+own colour, whatever the palette: a wheel head takes its nearest filter); a scene tagged `alone: true` is drawn only
+while its group plays alone in the line-up (director `_alone`; written for a dark room).
+
+**Tests:** show_service/tests/test_staging.py (the planners in a made-up room), test_looks_staging.py (the engine).
+
 ## 6. Catalogues (builder: catalogue)
 
 ### 6.1 Shared rules

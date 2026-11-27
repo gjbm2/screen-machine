@@ -732,7 +732,7 @@ def test_stats_shape():
         e.evaluate("hue", 10 + i * 0.02, DMX_CAPS)
     s = e.stats()
     po = s["per_output"]["hue"]
-    assert set(s) == {"program", "per_output", "errors", "identify", "follow", "drops", "motion", "holds",
+    assert set(s) == {"program", "per_output", "errors", "identify", "follow", "drops", "motion", "plans", "holds",
                       "gestures"}                                # docs/ENSEMBLE.md §7.2
     assert set(s["program"]) == {"revision", "layers", "problems", "scenes", "groups", "effects", "skipped",
                                  "modules"}

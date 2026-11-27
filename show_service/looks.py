@@ -254,6 +254,7 @@ DEFAULT_SIZE_DEG = 20.0         # starting point: ... without ``size_deg`` (an u
 DEFAULT_LIFT_M = 1.0            # starting point: a lift layer without ``lift`` (metres up or down)
 SPEED_FIT = 0.95                # §5.5: a pattern's peak speed is kept under this share of the light's
 FIT_SAMPLES = 64                # samples per cycle when a pattern's peak speed is measured
+PLAN_BEAM_DEG = 20.0            # a planned light's beam angle when its type gives no lens degrees
 MAX_DOUBLINGS = 6               # a pattern or hop slows at most 2^6 times (then runs as fast as it can: never refused)
 #: One transition for every change of state on a DMX output (owner, 26 Nov: "why don't things fade between states?
 #: ... that's the whole point of mode changes"; "one transition machinery"): the room taking a light off the music or
@@ -278,7 +279,7 @@ LAYER_KINDS: tuple[str, ...] = ("intensity", "position", "beam", "gobo", "prism"
 #: beat, bar or phrase (a grid that rocks back and forth, or turns a step and holds). A light without that channel
 #: skips it.
 POSITION_MODES: tuple[str, ...] = ("aim", "fan", "sweep", "circle", "figure8", "drift", "ballyhoo", "bounce", "lift",
-                                   "tilt_wave", "home")
+                                   "tilt_wave", "home", "planned")   # planned: a staging planner's tracks (§5.10)
 PATTERN_MODES = frozenset({"fan", "sweep", "circle", "figure8", "drift", "ballyhoo"})
 GRID_HOLD_S = 4.0   # a "needs: grid" layer keeps the grid this long after the clock's gate last read above "none"
 IDLE_BPM = (50.0, 50.0)   # with no live beat the bar patterns run on a free clock of 50 + 50 x the vibe's idle_motion bpm
@@ -344,11 +345,11 @@ _LAYER_KEYS = frozenset({"id", "enabled", "attr", "kind", "fx", "phase", "subdiv
 _KIND_KEYS: dict[str, frozenset] = {
     "intensity": frozenset(),
     "position": frozenset({"mode", "on", "centre", "size", "size_deg", "along", "rotate", "fan", "ease", "points",
-                           "hop", "lift", "dark_move"}),
+                           "hop", "lift", "dark_move", "plan", "with"}),
     "beam": frozenset({"zoom", "focus", "iris", "frost"}),
     "gobo": frozenset({"wheel", "slot", "change_on", "change", "spin", "spin_scale", "shake", "scroll"}),
     "prism": frozenset({"in", "spin", "spin_scale"}),
-    "colour": frozenset({"role"}),
+    "colour": frozenset({"role", "hex"}),
     "colour_wheel": frozenset({"mode", "step_on", "spin"}),
     "cct": frozenset({"k"}),
     "shutter": frozenset({"mode", "hz"}),
@@ -766,7 +767,8 @@ class _FixState:
                  # a gobo change made in the dark (_gobo_dark)
                  "g_shown", "g_pend", "g_phase", "g_until", "g_live",
                  "sm",                           # its motion stage (motion.Smoother), once it has moved
-                 "c_key", "c_slot", "c_col", "c_phase", "c_until", "c_to")   # its colour wheel (_wheel_dark)
+                 "c_key", "c_slot", "c_col", "c_phase", "c_until", "c_to",   # its colour wheel (_wheel_dark)
+                 "plv", "plv_now")               # a planned track's level: this frame's, and its layer's sample
 
     def __init__(self) -> None:
         self.prev: Optional[float] = None
@@ -802,6 +804,8 @@ class _FixState:
         self.held = False
         self.hold_now: Optional[dict] = None
         self.hold_seq = 0
+        self.plv = 1.0
+        self.plv_now = 1.0
 
 
 class _OutState:
@@ -829,6 +833,8 @@ class _OutState:
         self.targets: dict[tuple, Optional[tuple[float, float]]] = {}   # bounce points resolved per light
         self.frames: dict[tuple, tuple] = {}     # where each light draws each pattern (_pattern_frame)
         self.slotc: dict[tuple, list[int]] = {}  # a gobo layer's slot candidates per light
+        self.plans: dict[tuple, Any] = {}        # a planned layer's staging.Plan per (layer, space, program)
+        self.plan_t0: dict[tuple, float] = {}    # when a once-only plan started, per (layer, program change)
         self.programs: dict[str, Optional[str]] = {}     # group -> the scene showing (stats)
         self.busy = False
         self.prog: Any = None                    # the program the caches above were filled from
@@ -843,7 +849,7 @@ class _OutState:
         """A new program (configure, a catalogue change): every per-light cache is filled again."""
         if prog is not self.prog:
             self.prog = prog
-            for c in (self.coords, self.fits, self.targets, self.frames, self.slotc):
+            for c in (self.coords, self.fits, self.targets, self.frames, self.slotc, self.plans, self.plan_t0):
                 c.clear()
 
     def glide(self, key: tuple[str, str], v: float, t: float, dur: float) -> float:
@@ -1012,6 +1018,7 @@ class LookEngine:
         self._last_grid: Optional[Mapping[str, Any]] = None          # the last clock body with a tempo
         self._outs: dict[str, _OutState] = {}
         self.errors: dict[str, int] = {}
+        self._plan_notes: dict[str, str] = {}      # each planned layer's plan, in words (stats)
         self._log_next: dict[str, float] = {}
         # light scenes (README S5.24): the catalogue, resolved at the first configure; the last configure's inputs,
         # so a catalogue change recompiles the scenes on show-brain
@@ -1598,6 +1605,17 @@ class LookEngine:
                 bad.append(f"dark_move {dm!r} isn't true or false")
             p["dark_move"] = dm is True
             p["fx"] = raw.get("fx", "sine") if raw.get("fx", "sine") in contract.FX_SHAPES else "sine"
+            if mode == "planned":                                # a staging planner (docs/LIGHTS.md §5.10)
+                try:
+                    from . import staging
+                    prm, pp = staging.parse(raw.get("plan"), raw.get("with"))
+                except Exception as e:                           # degrade: the layer is left out
+                    prm, pp = None, [f"staging can't be imported: {type(e).__name__}: {e}"]
+                if prm is None:
+                    bad.extend(pp)
+                else:
+                    probs.extend(f"{where}.{x}" for x in pp)
+                    p["plan"], p["with"] = raw.get("plan"), prm
         elif kind == "beam":
             for a, words, lo, hi in (("zoom", ("narrow", "wide", "mid", "default"), 0.0, 180.0),
                                      ("focus", ("default",), 0.0, 1.0), ("iris", ("default",), 0.0, 1.0),
@@ -1646,9 +1664,18 @@ class LookEngine:
             p["in"] = pin
             self._spin_keys(raw, p, where, bad)
         elif kind == "colour":
-            role = raw.get("role")
-            if role not in ROLE_WORDS:
-                bad.append(f"a colour layer needs a role ({', '.join(ROLE_WORDS)}), not {role!r}")
+            role, hx = raw.get("role"), raw.get("hex")
+            if hx is not None:                                   # the scene's own colour, whatever the palette
+                rgb = _hex_rgb(hx) if isinstance(hx, str) else None
+                if rgb is None or max(rgb) <= 0.0:
+                    bad.append(f"hex {hx!r} isn't a colour like \"#ff0000\"")
+                else:
+                    m = max(rgb)
+                    p["rgb"] = (rgb[0] / m, rgb[1] / m, rgb[2] / m)
+                if role is not None:
+                    bad.append("a colour layer has a role or a hex, not both")
+            elif role not in ROLE_WORDS:
+                bad.append(f"a colour layer needs a role ({', '.join(ROLE_WORDS)}) or a hex, not {role!r}")
             p["role"] = role
         elif kind == "colour_wheel":
             mode = raw.get("mode", "follow")
@@ -2559,6 +2586,7 @@ class LookEngine:
                 "per_output": per, "errors": dict(self.errors),
                 "identify": {k: round(v[0] - now, 1) for k, v in self._ident.items() if v[0] > now},
                 "follow": dict(self._follow_view), "drops": self.drops, "motion": motion,
+                "plans": dict(self._plan_notes),
                 "holds": sorted(k for k, h in self._holds.items() if h.until_s > now),
                 "gestures": {**self._gstats, "by_kind": dict(self._gstats["by_kind"]), "parts": len(self._gring)}}
 
@@ -3046,6 +3074,7 @@ class LookEngine:
             attrs = None
             pan_tilt = None
             dark_ok, light_at = False, None
+            fs.plv = 1.0
             if s.enc or s.id in gn.amembers:
                 attrs, pan_tilt, colour, dark_ok, light_at = self._attrs(s, fs, gn, cx, t, colour, cs, house_low,
                                                                          so)
@@ -3085,6 +3114,9 @@ class LookEngine:
                 if gl:
                     inten, colour, pan_tilt = self._gestures(gl, s, fs, cx, gw, t, level, inten, colour, attrs,
                                                              pan_tilt, caps_hits, min_attack_s)
+            # a planned track's level (§5.10): a light between its spots is dark, whatever flashed it above
+            if fs.plv < 1.0:
+                inten *= max(0.0, fs.plv)
             # a fade_dark transition: toward the group's dark level and back (§5.6)
             if gn.pf is not None and gn.pf.kind == "fade_dark":
                 x = gn.pf.darkness(ti, mc.dark_max_s)
@@ -3659,12 +3691,16 @@ class LookEngine:
         fs.slowed.clear()
         base_pos = list(s.home) if s.moves else None
         res = []
+        lvs = []                                                 # each part's planned level (§5.10)
         for part in gn.parts:
+            fs.plv = 1.0
             if part.alayers and s.id in part.amembers:
                 r = self._apply(part.alayers, s, fs, cx, gn, tp, tc, base_pos, None, dict(s.neutral), colour)
             else:
                 r = (base_pos, None, dict(s.neutral), colour, False)
             res.append((part, r))
+            lvs.append(fs.plv)
+        lv = lvs[0] if lvs else 1.0
         dark_ok, light_at = False, None
         if len(res) == 1:
             pos, q, attrs, col, dark_ok = res[0][1]
@@ -3674,6 +3710,7 @@ class LookEngine:
             xa = p_new.w(tp - so, cs)                            # the new scene's share at its position time
             xc = p_new.w(tc - so, cs)
             attrs = self._mix_attrs(r_old[2], r_new[2], xa)
+            lv = lvs[0] + (lvs[1] - lvs[0]) * xa
             col = r_new[3] if xc >= 1.0 else r_old[3] if xc <= 0.0 else list(palette_mix(r_old[3], r_new[3], xc))
             dark_ok = r_new[4]
             pos = r_new[0]
@@ -3710,19 +3747,25 @@ class LookEngine:
             e = env(tp)
             if e <= 0.0:
                 continue
+            fs.plv = 1.0
             r = self._apply(tuple(L for L in ef.layers if L.kind != "intensity"), s, fs, cx, gn, tp, tc,
                             list(pos) if pos is not None else None, q, dict(attrs), col)
+            lv *= 1.0 - e + e * fs.plv
             if pos is not None and r[0] is not None:
                 pos = [pos[0] + (r[0][0] - pos[0]) * e, pos[1] + (r[0][1] - pos[1]) * e]
             attrs = self._mix_attrs(attrs, r[2], e)
             if r[3] is not col:
                 col = list(palette_mix(col, r[3], e))
             dark_ok = dark_ok or r[4]
+        fs.plv = lv
         if not s.enc:
             return None, None, col, False, None
         if s.moves and pos is None:
             pos = list(s.home)
         sw = (cx.prog.groups.get(gn.gid) or {}).get("sway") if s.moves else None
+        if sw and any(L.kind == "position" and L.p.get("mode") == "planned" and s.id in L.members
+                      for part in gn.parts for L in part.alayers):
+            sw = None                                            # a planner's geometry is exact: no sway on it
         if sw and pos is not None and sw[0] > 0.0:              # a gentle sway on whatever the scene settled on
             dp, dt = _sway(s.id, tp, sw[0], sw[1])
             pos = [pos[0] + dp, pos[1] + dt]
@@ -3773,6 +3816,8 @@ class LookEngine:
                     pos = [pos[0] + (own[0] - pos[0]) * d, pos[1] + (own[1] - pos[1]) * d]
                     if d >= 0.5:
                         q = oq
+                    if p["mode"] == "planned":                   # the track's level, at the layer's depth
+                        fs.plv *= 1.0 - d + d * fs.plv_now
                 if p.get("dark_move"):
                     dark_ok = True
             elif k == "beam":
@@ -3832,7 +3877,8 @@ class LookEngine:
                     attrs["prism_spin"] = sp if pin else 0.0
             elif k == "colour":
                 roles = ((look or {}).get("palette") or {}).get("roles") if isinstance(look, Mapping) else None
-                rc = _hex_rgb((roles.get(p["role"]) or {}).get("hex")) if isinstance(roles, Mapping) and \
+                rc = p["rgb"] if p.get("rgb") is not None else \
+                    _hex_rgb((roles.get(p["role"]) or {}).get("hex")) if isinstance(roles, Mapping) and \
                     isinstance(roles.get(p["role"]), Mapping) else None
                 if rc is None:
                     fs.unresolved.add(L.id)
@@ -4204,6 +4250,8 @@ class LookEngine:
             return (pt, tg[1]) if pt is not None else None
         if mode == "bounce":
             return self._bounce(L, m, s, fs, cx, gn, tp)
+        if mode == "planned":
+            return self._planned(L, m, s, fs, cx, gn, tp)
         # the patterns: in a surface's (u, v) metres through the pose, else in the light's own degrees. Where it is
         # drawn (centre, surface, axes) is worked out once per light, layer, space and flow; each frame moves w only
         fr = self._pattern_frame(L, m, s, fs, cx, gn)
@@ -4426,6 +4474,82 @@ class LookEngine:
         if math.floor(hop(tp + tr - cx.dt * 0.5)) > k:
             return nxt
         return cur
+
+    # -- planned positions (staging; docs/LIGHTS.md §5.10) ---------------------------------------------------------------
+    def _plan_of(self, L: _Layer, cx: _Ctx) -> Any:
+        """The layer's staging.Plan for this room and these lights: planned once per layer, space and program (the
+        rig), from every calibrated light the layer selects. None: nothing to plan with (a problem line says why)."""
+        key = (L.id, cx.flow_key)
+        if key in cx.st.plans:
+            return cx.st.plans[key]
+        plan = None
+        try:
+            from . import staging
+            lights = []
+            apps = (cx.view or {}).get("appliances") or {}
+            for s in cx.op.slots:
+                if s.id not in L.members or not self._calibrated(s, cx) or not s.moves:
+                    continue
+
+                def aim(q: Sequence[float], cur: Sequence[float], _s: _Slot = s) -> Optional[tuple]:
+                    got = cx.sm.aim(_s.pose, q, current=(cur[0], cur[1]), **_s.aimkw)
+                    return float(got["pan"]), float(got["tilt"]), got.get("reachable") is not False
+                lens = (s.type.get("physical") or {}).get("lens_deg") if isinstance(s.type, Mapping) else None
+                beam = sum(lens) / 2.0 if isinstance(lens, (list, tuple)) and len(lens) == 2 else PLAN_BEAM_DEG
+                lights.append(staging.Light(s.id, tuple(s.pos), float(beam), aim, tuple(s.max_speed),
+                                            bar=(apps.get(s.id) or {}).get("bar"), home=tuple(s.home)))
+            mc = cx.prog.motion
+            plan = staging.make(L.p["plan"], L.p["with"], cx.view or {}, lights, ramp_s=mc.ramp_s, jerk_s=mc.jerk_s)
+            msg = f"{L.id}: {plan.note or 'no plan'}" + (f" ({'; '.join(plan.problems)})" if plan.problems else "")
+            self._plan_notes[L.id] = msg
+            log.info("staging %s", msg)
+        except Exception:                                        # degrade: counted, the layers below stand
+            self._fail("staging.make")
+            plan = None
+        if len(cx.st.plans) > FIT_CACHE_MAX:
+            cx.st.plans.clear()
+        cx.st.plans[key] = plan
+        return plan
+
+    def _planned(self, L: _Layer, m: tuple[int, int], s: _Slot, fs: _FixState, cx: _Ctx, gn: _Group, tp: float
+                 ) -> Optional[tuple[tuple[float, float], Optional[tuple]]]:
+        """A planner's track for this light: where it points (drawn the motion stage's lag ahead, so it lands on the
+        beat) and its level (``fs.plv_now``: a light between its spots is dark). The layer's period is doubled on the
+        grid until it is at least the plan's ``min_period_s`` (``slowed``). A plan with an end runs once from the
+        scene's start and holds its end."""
+        fs.plv_now = 1.0
+        if not self._calibrated(s, cx):
+            return None
+        plan = self._plan_of(L, cx)
+        tr = plan.tracks.get(s.id) if plan is not None else None
+        if tr is None:
+            return None
+        _w, per = self._phase(L, s, m, cx, gn, tp)
+        factor, n = 1.0, 0
+        while per > 0.0 and per * factor < plan.min_period_s and n < MAX_DOUBLINGS:
+            factor *= 2.0
+            n += 1
+        if factor > 1.0:
+            fs.slowed[L.id] = f"period x{factor:g} (its plan needs {plan.min_period_s:.1f} s)"
+        mc = cx.prog.motion
+        ahead = motion.lag_s(mc.ramp_s, mc.jerk_s)
+        if plan.once:
+            t0 = None
+            pf = gn.pf
+            scene = L.id.split("/", 1)[0]
+            if pf is not None and pf.new == scene:
+                # the scene's landing; a group's first program has none: when this layer first played for it
+                t0 = pf.at if math.isfinite(pf.at) else cx.st.plan_t0.setdefault((L.id, pf.key), tp)
+            span = per * factor
+            w_at = (lambda tt: (tt - t0) / span) if t0 is not None and span > 0.0 else (lambda tt: 1.0)
+            q, _lv = tr.sample(w_at(tp + ahead), loop=False)
+            fs.plv_now = tr.sample(w_at(tp), loop=False)[1]
+        else:
+            cyc, _p = self._phase(L, s, m, cx, gn, tp + ahead, factor)
+            q, _lv = tr.sample(cyc, loop=True)
+            fs.plv_now = tr.sample(self._phase(L, s, m, cx, gn, tp, factor)[0], loop=True)[1]
+        pt = self._aim(s, fs, cx, q, L.id)
+        return (pt, q) if pt is not None else None
 
     # -- a gobo change in the dark ---------------------------------------------------------------------------------------
     @staticmethod

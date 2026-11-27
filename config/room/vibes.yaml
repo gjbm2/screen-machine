@@ -226,7 +226,7 @@ vibes:
     change_rate: 0.6
     dwell_s: [45, 150]
     relax_on_talk: true
-    palettes: [neon, rainbow, gold, acid, art]
+    palettes: [neon, rainbow, gold, acid, crimson, art]
     key_cct: 3000
     lamp_chroma_max: 0.3            # §8.8: full colour on the key lamps only in Party and Disco
     chroma_max: 0.37
@@ -302,7 +302,7 @@ vibes:
     # controlled use of colour"; footage of the unit: every look is one hue across the bar, the laser its accent).
     # Each of these palettes is one family; the song and its sections move between them. Never rainbow, neon or acid
     # here: those put a different hue on every light.
-    palettes: [ocean, ember, dusk, ice, aurora, gold]
+    palettes: [ocean, ember, dusk, ice, aurora, gold, crimson]
     lamp_chroma_max: 0.3
     saturation: [0.6, 1.0]
     motion: [0.1, 0.85]             # a ballad barely moves the lights, a dance song a lot (the song's groove decides)
