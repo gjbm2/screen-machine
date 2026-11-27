@@ -3471,6 +3471,12 @@ class Director:
         into (a lyric plan's kind) and the music's drive, never the one playing while another fits. A change that
         isn't the music's own or a person's Next (a moment, the room) keeps the one playing."""
         lus = self.lights_cfg.get("lineups") or {}
+        if lus and self._brief() is not None:
+            # the song's idiom holds some kinds of light back (idioms.yaml groups): a line-up that plays only those
+            # would leave the section with nobody playing (a hushed chorus smaller than its verse), and one that
+            # plays any of them isn't this song's. Those that play only what the idiom lets play; else all of them
+            ok = {n: e for n, e in lus.items() if not any(self._idiom_rests(g) for g in e["plays"])}
+            lus = ok or lus
         if not lus:
             return None
         key = (look_id, reason, by)
