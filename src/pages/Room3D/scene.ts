@@ -11,6 +11,15 @@
 // its head tips from that axis by tilt_sign x tilt + tilt_offset (docs/LIGHTS.md §3.6).
 
 import * as THREE from "three";
+import gobo1 from "./gobos/gobo1.png";
+import gobo2 from "./gobos/gobo2.png";
+import gobo3 from "./gobos/gobo3.png";
+import gobo4 from "./gobos/gobo4.png";
+import gobo5 from "./gobos/gobo5.png";
+import gobo6 from "./gobos/gobo6.png";
+import gobo7 from "./gobos/gobo7.png";
+import gobo8 from "./gobos/gobo8.png";
+import gobo9 from "./gobos/gobo9.png";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { airCone, airLines, setCone } from "./beams";
 import { beamShared, HazePost, SCREEN_ALPHA } from "./fog";
@@ -72,35 +81,27 @@ function blob(): THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> {
   return new THREE.Mesh(new THREE.PlaneGeometry(1, 1),
     new THREE.MeshBasicMaterial({ map: dotTex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
 }
-/** How much of the open beam each gobo lets through (filled in as the gobos are drawn). */
-const GOBO_OPEN: number[] = [];
-const GOBO_TEX = Array.from({ length: 10 }, (_, slot) => {
+// The spots' gobo wheel as the maker draws it (GigBAR MOVE + ILS manual, "Gobos": gobos 1-9; owner, 27 Nov: "how
+// confident are you that we have correctly understood the way that gobos work"), cut from the manual's page (white
+// passes light). Slot 0 is open: a soft-edged disc.
+const GOBO_URLS = [gobo1, gobo2, gobo3, gobo4, gobo5, gobo6, gobo7, gobo8, gobo9];
+/** Each gobo's name (the fixture type's wheel names them the same: gigbar-move-ils-spot.json). */
+const GOBO_NAMES = ["no gobo", "ring of dots", "pinwheel", "swirl", "starburst", "four holes", "ovals", "linked rings", "broken ring", "flower"];
+/** How much of the open beam each slot lets through (each picture's white share of its disc). */
+const GOBO_OPEN: number[] = [1, 0.252, 0.344, 0.376, 0.224, 0.413, 0.157, 0.233, 0.153, 0.329];
+const GOBO_TEX: THREE.Texture[] = (() => {
   const c = document.createElement("canvas");
   c.width = c.height = 128;
   const x = c.getContext("2d")!;
   x.fillStyle = "#000"; x.fillRect(0, 0, 128, 128);
-  const soft = (cx: number, cy: number, r: number) => {
-    const g = x.createRadialGradient(cx, cy, r * 0.75, cx, cy, r);
-    g.addColorStop(0, "#fff"); g.addColorStop(1, "#000");
-    x.fillStyle = g; x.beginPath(); x.arc(cx, cy, r, 0, Math.PI * 2); x.fill();
-  };
-  if (slot === 0) soft(64, 64, 62);
-  else {
-    const n = [0, 6, 5, 4, 8, 3, 4, 1, 12, 7][slot];
-    for (let i = 0; i < n; i++) {
-      const a = (i * Math.PI * 2) / n, rr = slot === 8 ? 40 : 30;
-      soft(64 + Math.cos(a) * rr, 64 + Math.sin(a) * rr, slot === 2 ? 20 : slot === 5 ? 22 : 11);
-    }
-  }
-  const px = x.getImageData(0, 0, 128, 128).data;
-  let sum = 0;
-  for (let i = 0; i < px.length; i += 4) sum += px[i];
-  GOBO_OPEN[slot] = slot === 0 ? sum : sum / GOBO_OPEN[0];
-  const t = new THREE.CanvasTexture(c);
-  t.colorSpace = THREE.SRGBColorSpace;
-  return t;
-});
-GOBO_OPEN[0] = 1;
+  const g = x.createRadialGradient(64, 64, 46, 64, 64, 62);
+  g.addColorStop(0, "#fff"); g.addColorStop(1, "#000");
+  x.fillStyle = g; x.beginPath(); x.arc(64, 64, 62, 0, Math.PI * 2); x.fill();
+  const open = new THREE.CanvasTexture(c);
+  open.colorSpace = THREE.SRGBColorSpace;
+  const loader = new THREE.TextureLoader();
+  return [open, ...GOBO_URLS.map((u) => { const t = loader.load(u); t.colorSpace = THREE.SRGBColorSpace; return t; })];
+})();
 const dark = new THREE.MeshStandardMaterial({ color: 0x1b1d23, roughness: 0.6, metalness: 0.3 });
 const darker = new THREE.MeshStandardMaterial({ color: 0x0e0f13, roughness: 0.7, metalness: 0.2 });
 /** A mesh or group whose local +z is turned onto ``dir`` (room frame). */
@@ -915,7 +916,7 @@ export class RoomSim {
         const name = COLOUR_SLOTS[Math.round(mo.wheel) % 10][0], gobo = Math.round(mo.gobo) % 10;
         const moving = Math.abs(mo.pan - mo.targetPan) > 1 || Math.abs(mo.tilt - mo.targetTilt) > 1 ? " · moving" : "";
         const aim = `pan ${mo.targetPan.toFixed(0)}°, tilt ${mo.targetTilt.toFixed(0)}°${moving}`;
-        return dim === 0 || sh.mode === "closed" ? `dark · ${aim}` : `${name} ${Math.round(dim / 2.55)}% · ${gobo ? `gobo ${gobo}` : "no gobo"} · ${aim}`;
+        return dim === 0 || sh.mode === "closed" ? `dark · ${aim}` : `${name} ${Math.round(dim / 2.55)}% · ${gobo ? `gobo ${gobo} (${GOBO_NAMES[gobo]})` : "no gobo"} · ${aim}`;
       },
     };
   }
