@@ -64,7 +64,7 @@ function SoundBody() {
       ))}
       <Hint>
         Calibrate plays ten chirps on that speaker and times them with the room mic; the trim nudges the result by ear.
-        Karaoke's lyrics, the piano on Sonos and the lights follow these figures.
+        Karaoke's lyrics and the piano on Sonos follow these figures.
       </Hint>
       {other(o.screens, "Screens: picture to light")}
       {other(o.lights, "Lights: command to light")}
