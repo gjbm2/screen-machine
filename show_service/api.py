@@ -1179,7 +1179,7 @@ class Api:
             ("DELETE", "/api/v1/rig/fixtures/{id}", self._rig_remove),
             ("POST", "/api/v1/rig/fixtures/{id}/identify", self._rig_identify),
             ("POST", "/api/v1/rig/fixtures/{id}/probe", self._rig_probe),
-            ("GET", "/api/v1/clock", self._clock),
+            ("GET", "/api/v1/clock", self._mono_clock),
             ("GET", "/api/v1/rig/follow", self._rig_follow_get),
             ("POST", "/api/v1/rig/follow", self._rig_follow_post),
             ("GET", "/api/v1/brightness", self._brightness_get),
@@ -1912,7 +1912,7 @@ class Api:
         except ValueError as e:
             return self._rig_refused(e)
 
-    async def _clock(self, request: web.Request, brain: Any) -> web.Response:
+    async def _mono_clock(self, request: web.Request, brain: Any) -> web.Response:
         """This process's monotonic clock (the look engine's and the probes'), for a page that times against it."""
         return _json({"mono_s": time.monotonic()})
 
