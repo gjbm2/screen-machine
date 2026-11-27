@@ -10,9 +10,9 @@
       "screen-machine (hand-written from the maker's manual; not from open-fixture-library.org)"
     ],
     "createDate": "2026-11-26",
-    "lastModifyDate": "2026-11-26"
+    "lastModifyDate": "2026-11-27"
   },
-  "comment": "One part of the Chauvet DJ GigBAR MOVE + ILS, patched as its own fixture at the bar's start address plus the part's offset (docs/GIGBAR_RIG.md). The bar itself must be in its 52CH (Version 2) or 50CH DMX mode. CLASS 3R LASER: the manual requires 3 m between the floor and the lowest beam and 3 m from the audience. Not patched by default; never let the look engine drive it. 27 Nov 2026: the colour channel is described as a wheel (its seven diode combinations as colours a look can match, 0-5 as its closed slot) and the strobe as a shutter, so the lights' scenes, effects and transitions work the laser as any light; the rotation stays a function channel.",
+  "comment": "One part of the Chauvet DJ GigBAR MOVE + ILS, patched as its own fixture at the bar's start address plus the part's offset (docs/GIGBAR_RIG.md). The bar itself must be in its 52CH (Version 2) or 50CH DMX mode. CLASS 3R LASER: the manual requires 3 m between the floor and the lowest beam and 3 m from the audience. Not patched by default; never let the look engine drive it. 27 Nov 2026: the colour channel is described as a wheel (its seven diode combinations as colours a look can match, 0-5 as its closed slot) and the strobe as a shutter, so the lights' scenes, effects and transitions work the laser as any light; the rotation stays a function channel. TWO LASERS are sold under this name: the EU unit (52CH chart: colour, strobe, rotation of a grating laser; mode part-52ch) and the US unit (51CH chart, manual Rev. 12: colour and one of 32 patterns; mode part-51ch). Two or three diodes together are that many colours of beams, not one mixed colour, so only the single-diode slots carry a colour for a look to match.",
   "links": {
     "manual": [
       "https://www.farnell.com/datasheets/4127597.pdf",
@@ -274,6 +274,379 @@
           "effectName": "Green + blue"
         }
       ]
+    },
+    "Laser control": {
+      "defaultValue": 0,
+      "capabilities": [
+        {
+          "dmxRange": [
+            0,
+            0
+          ],
+          "type": "WheelSlot",
+          "wheel": "Laser colours (51CH)",
+          "slotNumber": 1
+        },
+        {
+          "dmxRange": [
+            1,
+            36
+          ],
+          "type": "WheelSlot",
+          "wheel": "Laser colours (51CH)",
+          "slotNumber": 2
+        },
+        {
+          "dmxRange": [
+            37,
+            71
+          ],
+          "type": "WheelSlot",
+          "wheel": "Laser colours (51CH)",
+          "slotNumber": 3
+        },
+        {
+          "dmxRange": [
+            72,
+            73
+          ],
+          "type": "NoFunction"
+        },
+        {
+          "dmxRange": [
+            74,
+            107
+          ],
+          "type": "WheelSlot",
+          "wheel": "Laser colours (51CH)",
+          "slotNumber": 4
+        },
+        {
+          "dmxRange": [
+            108,
+            110
+          ],
+          "type": "NoFunction"
+        },
+        {
+          "dmxRange": [
+            111,
+            143
+          ],
+          "type": "WheelSlot",
+          "wheel": "Laser colours (51CH)",
+          "slotNumber": 5
+        },
+        {
+          "dmxRange": [
+            144,
+            147
+          ],
+          "type": "NoFunction"
+        },
+        {
+          "dmxRange": [
+            148,
+            179
+          ],
+          "type": "WheelSlot",
+          "wheel": "Laser colours (51CH)",
+          "slotNumber": 6
+        },
+        {
+          "dmxRange": [
+            180,
+            184
+          ],
+          "type": "NoFunction"
+        },
+        {
+          "dmxRange": [
+            185,
+            215
+          ],
+          "type": "WheelSlot",
+          "wheel": "Laser colours (51CH)",
+          "slotNumber": 7
+        },
+        {
+          "dmxRange": [
+            216,
+            221
+          ],
+          "type": "NoFunction"
+        },
+        {
+          "dmxRange": [
+            222,
+            255
+          ],
+          "type": "WheelSlot",
+          "wheel": "Laser colours (51CH)",
+          "slotNumber": 8
+        }
+      ]
+    },
+    "Laser patterns": {
+      "defaultValue": 0,
+      "capabilities": [
+        {
+          "dmxRange": [
+            0,
+            7
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 1"
+        },
+        {
+          "dmxRange": [
+            8,
+            15
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 2"
+        },
+        {
+          "dmxRange": [
+            16,
+            23
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 3"
+        },
+        {
+          "dmxRange": [
+            24,
+            31
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 4"
+        },
+        {
+          "dmxRange": [
+            32,
+            39
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 5"
+        },
+        {
+          "dmxRange": [
+            40,
+            47
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 6"
+        },
+        {
+          "dmxRange": [
+            48,
+            55
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 7"
+        },
+        {
+          "dmxRange": [
+            56,
+            63
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 8"
+        },
+        {
+          "dmxRange": [
+            64,
+            71
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 9"
+        },
+        {
+          "dmxRange": [
+            72,
+            79
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 10"
+        },
+        {
+          "dmxRange": [
+            80,
+            87
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 11"
+        },
+        {
+          "dmxRange": [
+            88,
+            95
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 12"
+        },
+        {
+          "dmxRange": [
+            96,
+            103
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 13"
+        },
+        {
+          "dmxRange": [
+            104,
+            111
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 14"
+        },
+        {
+          "dmxRange": [
+            112,
+            119
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 15"
+        },
+        {
+          "dmxRange": [
+            120,
+            127
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 16"
+        },
+        {
+          "dmxRange": [
+            128,
+            135
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 17"
+        },
+        {
+          "dmxRange": [
+            136,
+            143
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 18"
+        },
+        {
+          "dmxRange": [
+            144,
+            151
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 19"
+        },
+        {
+          "dmxRange": [
+            152,
+            159
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 20"
+        },
+        {
+          "dmxRange": [
+            160,
+            167
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 21"
+        },
+        {
+          "dmxRange": [
+            168,
+            175
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 22"
+        },
+        {
+          "dmxRange": [
+            176,
+            183
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 23"
+        },
+        {
+          "dmxRange": [
+            184,
+            191
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 24"
+        },
+        {
+          "dmxRange": [
+            192,
+            199
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 25"
+        },
+        {
+          "dmxRange": [
+            200,
+            207
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 26"
+        },
+        {
+          "dmxRange": [
+            208,
+            215
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 27"
+        },
+        {
+          "dmxRange": [
+            216,
+            223
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 28"
+        },
+        {
+          "dmxRange": [
+            224,
+            231
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 29"
+        },
+        {
+          "dmxRange": [
+            232,
+            239
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 30"
+        },
+        {
+          "dmxRange": [
+            240,
+            247
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 31"
+        },
+        {
+          "dmxRange": [
+            248,
+            255
+          ],
+          "type": "Effect",
+          "effectName": "Pattern 32"
+        }
+      ]
     }
   },
   "modes": [
@@ -291,6 +664,14 @@
       "shortName": "1ch",
       "channels": [
         "Laser (old)"
+      ]
+    },
+    {
+      "name": "part-51ch",
+      "shortName": "2ch",
+      "channels": [
+        "Laser control",
+        "Laser patterns"
       ]
     }
   ],
@@ -323,31 +704,63 @@
         },
         {
           "type": "Color",
-          "name": "Red + green",
+          "name": "Red + green"
+        },
+        {
+          "type": "Color",
+          "name": "Red + blue"
+        },
+        {
+          "type": "Color",
+          "name": "Green + blue"
+        },
+        {
+          "type": "Color",
+          "name": "Red + green + blue"
+        }
+      ]
+    },
+    "Laser colours (51CH)": {
+      "slots": [
+        {
+          "type": "Closed"
+        },
+        {
+          "type": "Color",
+          "name": "Image colour"
+        },
+        {
+          "type": "Color",
+          "name": "Red",
           "colors": [
-            "#ffff00"
+            "#ff0000"
           ]
         },
         {
           "type": "Color",
-          "name": "Red + blue",
+          "name": "Green",
           "colors": [
-            "#ff00ff"
+            "#00ff00"
           ]
         },
         {
           "type": "Color",
-          "name": "Green + blue",
+          "name": "Blue",
           "colors": [
-            "#00ffff"
+            "#0000ff"
           ]
         },
         {
           "type": "Color",
-          "name": "Red + green + blue",
-          "colors": [
-            "#ffffff"
-          ]
+          "name": "Red + green"
+        },
+        {
+          "type": "Color",
+          "name": "Red + blue"
+        },
+        {
+          "type": "Color",
+          "name": "Green + blue"
         }
       ]
     }

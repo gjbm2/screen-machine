@@ -178,25 +178,28 @@ effects:
          decay_ms: 200}
       - {id: bump, kind: colour, role: highlight, depth: {fx: swell, phase: beat, between: [0.0, 0.8]}}
     tags: {energy: [0.0, 1.0]}
-  # -- the laser's own (tags.parts: [laser]: they play on a group that takes that part, and no other). One colour,
-  # no gating faster than its 0.25 s pulse, its strobe under 4 a second (light_scenes.yaml has the reasoning).
+  # -- the laser's own (tags.parts: [laser]: they play on a group that takes that part, and no other). A grating
+  # burst (light_scenes.yaml has what it is): no gating faster than its 0.25 s pulse, its strobe under 4 a second.
+  # Only laser-burst lights more than one diode: every colour of beam at once, for the song's one big moment
+  # (Laser: 240 is the 52-channel chart's red + green + blue; Laser control: 20 the 51-channel chart's image colour).
   laser-burst:
-    label: A white figure, spinning and strobing, for the big moment
+    label: Every colour of beam at once, spinning and strobing, for the big moment
     on: [drop, final_chorus, transition]
     length: {bars: 2}
     fade: {in_beats: 0, out_beats: 1}
     needs: [shutter]
     layers:
-      - {id: white, kind: macro, set: {Laser: 240, "Laser rotation": {cw: 120, ccw: 250, still: 100}}}
+      - {id: all-diodes, kind: macro, set: {Laser: 240, "Laser control": 20,
+                                            "Laser rotation": {cw: 120, ccw: 250, still: 100}, "Laser patterns": 250}}
       - {id: strobe, kind: shutter, mode: strobe, hz: [2, 4]}
     tags: {parts: [laser], energy: [0.5, 1.0], moods: [euphoric, aggressive, fiery, glitchy, bright]}
   laser-sweep-in:
-    label: The white figure comes on, turning, for the chorus
+    label: The burst comes on, turning, as the chorus opens
     on: [chorus, transition]
     length: {bars: 4}
     fade: {in_beats: 0, out_beats: 2}
     layers:
-      - {id: white, kind: macro, set: {Laser: 240, "Laser rotation": {cw: 70, ccw: 200, still: 50}}}
+      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 70, ccw: 200, still: 50}, "Laser patterns": 140}}
     tags: {parts: [laser], energy: [0.4, 1.0], moods: [euphoric, playful, bright, cosmic]}
   laser-cut-out:
     label: The laser cuts out for two beats
@@ -207,7 +210,7 @@ effects:
       - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
     tags: {parts: [laser], energy: [0.0, 1.0]}
   laser-spin-up:
-    label: The figure spins up through a build
+    label: The burst spins up through a build
     on: [build]
     length: while
     fade: {in_beats: 1, out_beats: 1}

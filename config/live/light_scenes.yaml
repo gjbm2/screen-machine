@@ -585,67 +585,74 @@ scenes:
     tags: {parts: [flash], moments: [waiting, lull, lead_in], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5,
            organic: 0.5, density: 0.1}
 
-  # laser: a bar's laser, as the unit really is (owner, 27 Nov: "extensively research the device ... then reason
-  # through both issues from first principles"; the Rev. 10 manual and footage of the unit, docs/GIGBAR_RIG.md §1.4).
-  #   - Its picture is ONE small, sharp line figure that never stops changing shape. Not dots, not fans.
-  #   - ONE colour at a time: red, green, blue, or a pair or all three mixed into one colour (yellow, magenta, cyan,
-  #     white). The look's colour picks the nearest; a scene may ask for white (Laser: 240), the footage's own choice
-  #     in a blue room.
+  # laser: a bar's laser (owner, 27 Nov: "do you have any clue what the laser ACTUALLY shows in DMX mode"; the
+  # evidence and what is still unknown: docs/GIGBAR_RIG.md §1.4). The EU unit, on its 52-channel chart:
+  #   - A GRATING laser: each lit diode is split into a burst of thin beams over about 93 degrees: needles in haze,
+  #     a field of dots on the ceiling and walls. Not a drawn figure, and DMX has no pattern to choose.
+  #   - DMX gives it three things: which diodes are lit, a strobe, and the grating's rotation ("Laser rotation": 0
+  #     stop, 1-127 one way slow to fast, 129-255 the other; {cw, ccw, still} by the room's flow; {cycle, on} for
+  #     the next value each bar or phrase).
+  #   - Two diodes are two colours of beams side by side, never one mixed colour. So the look's colour lights the ONE
+  #     diode nearest it (red, green or blue), and more than one diode is an effect's deliberate moment.
   #   - Its pulses must be longer than 0.25 s (the manual's laser data), so NOTHING gates it on the beat: it comes
   #     and goes by the bar, the phrase or the section, and its strobe (effects only) is under 4 a second.
-  #   - The one thing a scene moves is its rotation ("Laser rotation": 0 stop, 1-127 one way slow to fast, 129-255
-  #     the other; {cw, ccw, still} by the room's flow; {cycle, on} for the next value each bar or phrase).
   #   - With no dimmer it is dark under 0.4 brightness (its colour channel's closed slot): a fx: dim layer rests it,
   #     and a fade through dark, House lights and a mode change switch it off as they dim every other light.
-  # What it is for: one bright accent over a room held in one colour. Scarce: in the footage it is the smallest
-  # thing in the picture and the eye still goes to it. So it rests most of the time (the heaviest weight below).
+  # What it is for: a sharp texture over the whole room in one colour, the only light here with hard points. It fills
+  # the room when it is on, so it rests most of the time (the line-ups, show.yaml) and is the feature when it plays.
+  # "Laser patterns" is the US unit's 51-channel chart (one of 32 figures, 8 values each): a unit without that
+  # channel skips it, as a US unit skips the rotation.
   laser-resting:
     label: The laser rests
     layers:
       - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
     tags: {parts: [laser], rest: true, shows_beat: false, energy: [0.0, 1.0], genre_fit: {"*": 0.6}, valence: 0.5,
            organic: 0.7, density: 0.1}
-  laser-figure-still:
-    label: The figure hangs still, in the look's colour
+  laser-still:
+    label: The burst hangs still, in the look's colour
     layers:
-      - {id: still, kind: macro, set: {"Laser rotation": 0}}
-    tags: {parts: [laser], shows_beat: false, energy: [0.0, 0.7], moods: [dreamy, cosmic, elegant, calm, dark],
+      - {id: still, kind: macro, set: {"Laser rotation": 0, "Laser patterns": 4}}
+    tags: {parts: [laser], shows_beat: false, energy: [0.0, 0.6], moods: [dreamy, cosmic, elegant, calm, dark],
            genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.4, density: 0.2}
-  laser-figure-turning:
-    label: The figure turns slowly with the room, in the look's colour
+  laser-turning:
+    label: The burst turns slowly with the room
     layers:
-      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 18, ccw: 146, still: 10}}}
-    tags: {parts: [laser], shows_beat: false, energy: [0.2, 0.85], moods: [dreamy, cosmic, hypnotic, liquid, warm],
+      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 14, ccw: 142, still: 8},
+                                          "Laser patterns": {cycle: [12, 44, 76], on: phrase}}}
+    tags: {parts: [laser], shows_beat: false, energy: [0.15, 0.8], moods: [dreamy, cosmic, hypnotic, liquid, warm],
            genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.3, density: 0.35}
-  laser-white:
-    label: A white figure over the room's colour, turning
+  laser-turning-brisk:
+    label: The burst turns briskly with the room
     layers:
-      - {id: white, kind: macro, set: {Laser: 240, "Laser rotation": {cw: 45, ccw: 175, still: 30}}}
+      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 45, ccw: 175, still: 30},
+                                          "Laser patterns": {cycle: [100, 132, 164], on: phrase}}}
     tags: {parts: [laser], shows_beat: true, energy: [0.4, 1.0], moods: [euphoric, bright, playful, cosmic, hypnotic],
            genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.2, density: 0.6}
-  laser-white-rocking:
-    label: A white figure rocking to and fro, a bar each way
+  laser-rocking:
+    label: The burst rocks to and fro, a bar each way
     layers:
-      - {id: white, kind: macro, set: {Laser: 240, "Laser rotation": {cycle: [30, 158], on: bar}}}
+      - {id: rotation, kind: macro, set: {"Laser rotation": {cycle: [30, 158], on: bar},
+                                          "Laser patterns": {cycle: [20, 52], on: bar}}}
     tags: {parts: [laser], shows_beat: true, energy: [0.35, 0.95], moods: [playful, hypnotic, retro, bright, liquid],
            genre_fit: {"*": 0.6}, valence: 0.6, organic: 0.3, density: 0.55}
   laser-taking-turns:
-    label: The two bars' figures take turns, two bars each
+    label: The two bars' bursts take turns, two bars each
     layers:
-      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 40, ccw: 170, still: 25}}}
+      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 40, ccw: 170, still: 25}, "Laser patterns": 84}}
       - {id: take-turns, fx: square, phase: bar, period_bars: [4, 4], depth: 1.0, needs: grid, order: flow, spread: 1.0}
     tags: {parts: [laser], shows_beat: true, energy: [0.4, 0.95], moods: [playful, bright, geometric, hypnotic],
            genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.2, density: 0.5}
   laser-fast:
-    label: A white figure, turning fast
+    label: The burst spins fast
     layers:
-      - {id: white, kind: macro, set: {Laser: 240, "Laser rotation": {cw: 110, ccw: 240, still: 90}}}
+      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 110, ccw: 240, still: 90},
+                                          "Laser patterns": {cycle: [196, 228, 244], on: bar}}}
     tags: {parts: [laser], shows_beat: true, energy: [0.7, 1.0], moods: [euphoric, aggressive, fiery, glitchy, bright],
            genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.1, density: 0.9, weight: 0.6}
   laser-waits:
-    label: The figure hangs still while the room waits
+    label: The burst hangs still while the room waits
     layers:
-      - {id: still, kind: macro, set: {"Laser rotation": 0}}
+      - {id: still, kind: macro, set: {"Laser rotation": 0, "Laser patterns": 4}}
     tags: {parts: [laser], shows_beat: false, moments: [waiting, lead_in], energy: [0.0, 1.0], genre_fit: {"*": 0.5},
            valence: 0.5, organic: 0.5, density: 0.1}
   laser-sleeps:

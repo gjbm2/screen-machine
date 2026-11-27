@@ -18,7 +18,11 @@ manuals below and checked with `tools/show/add_fixture.py --file <file>` (show_s
   https://www.farnell.com/datasheets/4127597.pdf
 - The same manual, **Rev. 8** (older units): 50/28/3-channel modes. Only the laser block differs (§1.2).
   https://goknight.com/content/documentation/GigBAR_MOVE_ILS_US_UM_ML5_Rev8.pdf
-- A US **Rev. 13** (07/2024) lists 51/29/3 channels. I could not get that PDF, so a 51CH unit is **not covered**.
+- The **US version** manual, **Rev. 12** (04/2024): 51/29/3-channel modes. Its laser is a different laser (§1.4):
+  colour and one of 32 patterns, no strobe or rotation. Patched as `mode: part-51ch` of the laser type.
+  https://www.chauvetdj.com/wp-content/uploads/2022/05/GigBAR_MOVE_ILS_UM_US_Rev12.pdf
+- The **EU version** manual, **Rev. 11** (12/2023): the same charts as Rev. 10.
+  https://www.chauvetdj.com/wp-content/uploads/2022/05/GigBAR_MOVE_ILS_UM_EU_Rev11.pdf
 - Antari Z-350 Fazer User Manual: https://antari.com/wp-content/uploads/Z-350.pdf, and Antari's Z-350 flyer.
 
 ## 1. The lights
@@ -107,20 +111,32 @@ scroll CW 128-189, stop 190-193, scroll CCW 194-255.
 
 ### 1.4 What the unit really does (researched 27 Nov)
 
-From the Rev. 10 manual and footage of the unit ("Chauvet DJ Gigbar Move + and ILS Command Review" by tarekith on
-YouTube, from 31:45; Guitar Center's overview video). This is the reference for the lights' scenes, effects and
+From the manuals and footage ("Chauvet DJ Gigbar Move + and ILS Command Review" by tarekith on YouTube, from 31:45;
+Guitar Center's overview video; both show US units). This is the reference for the lights' scenes, effects and
 transitions and for the 3D room. Read it before writing any.
 
-- **The laser draws one small figure.** A sharp line figure a few degrees across that never stops changing shape (a
-  loop, an X, a W, wavy strokes). It is not a field of dots and it cannot draw fans or shapes on demand.
-  - One colour at a time: two or three diodes together mix into one colour (magenta, cyan, yellow, white).
-  - The manual's laser data: every pulse is longer than 0.25 s (under 4 a second). Nothing gates it on the beat.
-  - Three channels: colour, strobe, rotation. Whether the figure still changes shape at rotation 0 is not known.
-  - The manual also says "each beam under 5 mW, each under 2 mrad, total light under 160 degrees". That reads like a
-    grating laser, but the footage shows a single figure. The footage wins until someone looks at the real unit.
+- **Two different lasers are sold under this bar's name, and the DMX chart tells them apart** (corrected 27 Nov;
+  the first write-up here described the US unit's figures and gave them the EU unit's controls).
+  - **EU unit: 52-channel chart (30CH, 3CH). Ours, as far as we know.** Colour, strobe, rotation. No patterns.
+    - It is a **grating laser**: each lit diode is split into a burst of thin beams. Needles in haze, a field of dots
+      on the ceiling and walls. The rotation channel turns the burst.
+    - Evidence: the EU chart has rotation and no pattern channel; a retailer's data sheet lists it as a grating laser
+      covering 93 degrees; its 80 mW diodes are Class 3R only because each beam is under 5 mW (the manual's laser
+      data); footage of the sibling GigBAR Move ILS shows exactly this burst.
+    - **Not confirmed:** nobody here has seen an EU unit's laser under DMX. How many beams, how fast it turns and
+      whether the burst is a square grid are estimates (the 3D room draws 9 x 9 beams a colour).
+  - **US unit: 51-channel chart (29CH, 3CH).** Colour (with an "image colour" setting) and one of 32 patterns, 8 DMX
+    values each. No strobe, no rotation.
+    - It throws a few fat beams from two apertures. Each lands as a small, sharp line figure, in mirrored pairs.
+    - Evidence: the review and overview videos below are all US units; a DMX tutorial for the unit shows the
+      "Laser Control" and "Laser Patterns" attributes ("Program The Chauvet Gigbar Move + ILS in SoundSwitch").
+  - **Both:** two or three diodes together are that many colours of beams side by side, not one mixed colour (a
+    grating bends each colour by its own angle). A look's colour lights the one diode nearest it.
+  - **Both:** every pulse is longer than 0.25 s (under 4 a second). Nothing gates the laser on the beat.
+  - **To tell which you have:** MENU → DMX. A list with 52CH and 30CH is the EU unit; 51CH and 29CH is the US one.
 - **A derby throws a fan** of about a dozen soft streaks. With two colours on, they show as separate coloured streaks.
 - **Colour is one family per look.** In every look in the footage the pars, derbies and spots are one hue, and the
-  laser is the accent (white in a blue room, magenta in a purple one, red in a red one). The unit's own menu limits
+  laser is one colour too (it looks white in the footage only where the camera is overexposed). The unit's own menu limits
   its auto shows to 3, 4 or 6 colours ("Pars Color: Tri, Quad, Hex").
 - **The unit's own shows are line-ups.** Its AUTO menu is every combination of the parts: pars, derby, laser, strobe
   and spots (for example "L+SP": laser and moving heads; "PD": pars and derby). In the footage two or three parts are
@@ -188,7 +204,8 @@ If the bars end up the other way round, swap their start addresses on the bars; 
 **GigBAR MOVE + ILS** (four buttons under the display):
 1. MENU → **DMX** → ENTER → ENTER → choose **52CH** → ENTER → **Address** → 001 (bar A) or 101 (bar B) → ENTER.
    - If the list offers 50CH and not 52CH, it is an older unit: patch the spots at +32 and +41 (§1.2).
-   - If it offers 51CH, stop: that chart isn't verified here.
+   - If it offers 51CH, it is the US unit (§1.4): its laser is two channels and the spots sit one channel lower
+     (+33 and +42). Patch the laser as `mode: part-51ch`; the rest of that chart isn't verified here.
    - The value shows yellow while DMX arrives and white without it.
 2. MENU → **SETUP**:
    - **Pan Range 540** and **Tilt Range 270**, to match the type file. The spec sheet says 540° x 180°, but the

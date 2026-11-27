@@ -5,14 +5,14 @@
 // Types are recognised by their fixture-type file (config/room/fixture-types/ofl/...), so a deployment can name its
 // types anything: chauvet-dj/gigbar-move-ils-{par,derby,flash,laser,spot}.json and antari/z-350.json.
 
-export type PartKind = "par" | "derby" | "flash" | "laser" | "laser50" | "spot" | "hazer" | "dimmer";
+export type PartKind = "par" | "derby" | "flash" | "laser" | "laser50" | "laser51" | "spot" | "hazer" | "dimmer";
 
 /** The part a fixture type is, from its file (and, for the laser, its mode), or null for a type this view can't draw. */
 export function partOf(file: string | null | undefined, mode?: string | null, type?: string | null): PartKind | null {
   if (type === "generic-dimmer") return "dimmer";             // a house light: one dimmer channel
   if (!file) return null;
   const m = /gigbar-move-ils-(par|derby|flash|laser|spot)\.json$/.exec(file);
-  if (m) return m[1] === "laser" && mode === "part-50ch" ? "laser50" : (m[1] as PartKind);
+  if (m) return m[1] === "laser" && mode === "part-50ch" ? "laser50" : m[1] === "laser" && mode === "part-51ch" ? "laser51" : (m[1] as PartKind);
   if (/antari\/z-350\.json$/.test(file)) return "hazer";
   return null;
 }
@@ -107,6 +107,10 @@ export function laserColours(v: number, v1: boolean): string[] | null {
   return w === "image colour" ? ["red", "green", "blue"] : w.split(" + ");
 }
 export const LASER_RGB: Record<string, [number, number, number]> = { red: [255, 30, 30], green: [30, 255, 60], blue: [60, 80, 255] };
+/** The laser diodes' wavelengths (nm; the EU manual's laser data): a grating bends each colour by its own angle. */
+export const LASER_NM: Record<string, number> = { red: 650, green: 520, blue: 450 };
+/** The 51-channel chart's pattern channel: 32 patterns, 8 DMX values each (US manual Rev. 12, "Laser Patterns"). */
+export const laserPattern = (v: number): number => Math.min(31, Math.floor(v / 8));
 export const DERBY_RGB: [number, number, number][] = [[255, 40, 40], [40, 255, 70], [60, 90, 255], [255, 250, 240]];
 
 /** An RGBAW+UV par's colour (0..255 each) and level (0..1). */

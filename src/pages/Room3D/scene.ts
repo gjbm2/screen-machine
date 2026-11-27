@@ -11,7 +11,7 @@ import * as THREE from "three";
 import { BEAM_LAYER, beamShared, BOX_PATH_GLSL, HazePost } from "./fog";
 import { beamVisibility } from "./haze";
 import {
-  barStrobe, COLOUR_SLOTS, colourName, DERBY_RGB, hash, HazeState, laserColours, LASER_RGB, lerp, mixPar, motor, MECH,
+  barStrobe, COLOUR_SLOTS, colourName, DERBY_RGB, hash, HazeState, laserColours, LASER_NM, laserPattern, LASER_RGB, lerp, mixPar, motor, motorWords, MECH,
   pct, shutterGain, SpotMotion, spotShutter,
 } from "./decode";
 const HOUSE_RGB = 0xffd9b0;                       // the house lights' warm white
@@ -116,10 +116,26 @@ interface Ctx { ch: (f: Fixture, i: number) => number; t: number; dt: number; ai
 interface Part { f: Fixture; update(c: Ctx): void; words?(c: Ctx): string }
 
 /** Where a ray from inside the room meets a wall, the floor or the ceiling (room frame). */
-/** The bar's laser: the size of its figure (read off footage of the unit: a few degrees), how many points the curve
- *  is drawn with, how many positions of the swept beam show in haze, how fast its shape drifts (and how much faster
- *  as it turns), and the lift above the bar's front when the room model gives no aim. Estimates. */
-const LASER = { span_deg: 5, points: 96, rays: 24, drift: 0.9, drift_turn: 2.5, lift: 20 * Math.PI / 180 };
+/** The bar's laser (two kinds: laser() below). lift: its tilt above the bar's front when the room model gives no aim.
+ *  Burst (grating): orders each way (9 x 9 beams a colour), the maker's coverage angle (the red grid's full width), how
+ *  fast the beams dim with their order, and how bright the beams (in haze) and dots draw. Figures (pattern laser): a
+ *  figure's size, the angle between the two apertures' figures and between the diodes', points per figure, rays shown
+ *  in haze, how fast a shape breathes. Estimates but for cover_deg. */
+const LASER = { lift: 20 * Math.PI / 180, orders: 4, cover_deg: 93, falloff: 0.3, beam: 0.22, dot: 2.2, dot_m: 0.03,
+  span_deg: 7, pair_deg: 4, diode_deg: 5, points: 48, rays: 8, drift: 0.9 };
+
+/** A round, soft-edged dot for the laser's landing points (a point sprite is a square without one). */
+let _dot: THREE.Texture | null = null;
+function dotSprite(): THREE.Texture {
+  if (_dot) return _dot;
+  const cv = document.createElement("canvas");
+  cv.width = cv.height = 32;
+  const g = cv.getContext("2d")!, gr = g.createRadialGradient(16, 16, 0, 16, 16, 16);
+  gr.addColorStop(0, "#fff"); gr.addColorStop(0.45, "#fff"); gr.addColorStop(1, "rgba(255,255,255,0)");
+  g.fillStyle = gr; g.fillRect(0, 0, 32, 32);
+  _dot = new THREE.CanvasTexture(cv);
+  return _dot;
+}
 
 function hitRoom(o: THREE.Vector3, d: THREE.Vector3, size: Vec3): THREE.Vector3 {
   let t = Infinity;
@@ -304,7 +320,7 @@ export class RoomSim {
       if (f.part === "par") this.parts.push(this.par(f, at.addScaledVector(front, frontOff), front, axis, side));
       else if (f.part === "derby") this.parts.push(this.derby(f, at.addScaledVector(front, frontOff), front, axis));
       else if (f.part === "flash") this.parts.push(this.strobe(f, at.addScaledVector(front, frontOff), front, axis));
-      else if (f.part === "laser" || f.part === "laser50") this.parts.push(this.laser(f, at.addScaledVector(front, frontOff), front, axis));
+      else if (f.part === "laser" || f.part === "laser50" || f.part === "laser51") this.parts.push(this.laser(f, at.addScaledVector(front, frontOff), front, axis));
       else if (f.part === "spot") this.parts.push(this.spot(f, front));
       else if (f.part === "hazer") this.parts.push(this.hazer(f));
     }
@@ -384,82 +400,155 @@ export class RoomSim {
     };
   }
 
-  // The bar's laser, from footage of the unit (owner, 27 Nov: "I think your simulation / depiction of the lasers isn't
-  // great"; a review video from 31:45, twelve close-ups): it is NOT a field of dots. It draws ONE small, sharp line
-  // figure, a few degrees across, that never stops changing shape (a loop, an X, a W, wavy strokes): a single beam
-  // swept fast round a closed curve whose shape drifts.
-  //   - One colour for the whole figure. Two or three diodes together mix into one colour (red + blue: magenta,
-  //     green + blue: cyan, all three: white), as the footage shows: a white figure in a blue room.
-  //   - The rotation channel turns the figure; its shape drifts by itself (the older one-channel units animate with
-  //     no rotation channel at all). Whether it still drifts at rotation 0 on this unit isn't known: it is drawn so.
-  //   - It points where the room model says (space.yaml aim), else along the bar's front lifted 20 degrees, and lands
-  //     as a bright line on the first surface it meets. In haze the swept beam shows as a thin, faint sheet from the
-  //     aperture to the figure. No haze: the figure alone.
-  // LASER.span_deg (the figure's size) and its harmonics are read off the footage, not measured.
+  // The bar's laser. Two different lasers are sold under this bar's name, and the DMX chart tells them apart
+  // (docs/GIGBAR_RIG.md §1.4; owner, 27 Nov: "do you have any clue what the laser ACTUALLY shows in DMX mode"):
+  //   - 52CH chart (the EU unit: colour, strobe, rotation; no patterns): a GRATING laser. Each lit diode is split
+  //     into a square grid of thin beams (laserBurst below), which the rotation channel turns.
+  //   - 51CH / 50CH chart (the US unit: colour and one of 32 patterns): a few fat beams, each landing as a small
+  //     line figure, in mirrored pairs from its two apertures (laserFigures).
   private laser(f: Fixture, at: THREE.Vector3, front: THREE.Vector3, axis: THREE.Vector3): Part {
-    const N = LASER.points;
-    const fig = new THREE.BufferGeometry();
-    fig.setAttribute("position", new THREE.BufferAttribute(new Float32Array((N + 1) * 3), 3));
-    const line = new THREE.Line(fig, new THREE.LineBasicMaterial({ color: 0xffffff, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
-    line.frustumCulled = false;
-    this.built.add(line);
-    const glow = new THREE.Points(fig, new THREE.PointsMaterial({ size: 0.035, color: 0xffffff, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, sizeAttenuation: true, opacity: 0.6 }));
-    glow.frustumCulled = false;
-    this.built.add(glow);
-    const R = LASER.rays;                                        // the swept beam in the air: a few of its positions
-    const sheet = new THREE.BufferGeometry();
-    sheet.setAttribute("position", new THREE.BufferAttribute(new Float32Array(R * 6), 3));
-    const rays = new THREE.LineSegments(sheet, new THREE.LineBasicMaterial({ color: 0xffffff, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
-    rays.frustumCulled = false;
-    this.built.add(rays);
+    return f.part === "laser" ? this.laserBurst(f, at, front, axis) : this.laserFigures(f, at, front, axis);
+  }
+
+  /** Where the laser points (space.yaml aim, else the bar's front lifted LASER.lift) and two axes across it. */
+  private laserAxes(f: Fixture, at: THREE.Vector3, front: THREE.Vector3, axis: THREE.Vector3) {
     const up = new THREE.Vector3(0, 0, 1);
     const w = f.aim ? v3(f.aim).sub(at).normalize()
       : front.clone().multiplyScalar(Math.cos(LASER.lift)).addScaledVector(up, Math.sin(LASER.lift)).normalize();
     const u0 = (Math.abs(w.dot(axis)) < 0.95 ? axis.clone() : front.clone()).addScaledVector(w, -w.dot(axis)).normalize();
     const v0 = new THREE.Vector3().crossVectors(w, u0).normalize();
-    const span = Math.tan(LASER.span_deg * Math.PI / 360);        // half the figure's size, as a tangent
-    const seed = hash(f.address ?? 7) * 10;
+    return { w, u0, v0 };
+  }
+
+  // The grating laser (EU unit, 52CH). What is known, and from where:
+  //   - Colour, strobe (under 4 a second) and rotation are all DMX gives it (EU manual Rev. 10 / 11). No patterns.
+  //   - It is sold as a grating laser covering 93 degrees (the maker's and a retailer's data), and its 80 mW diodes
+  //     are Class 3R only because the light is split into many beams of under 5 mW each (the manual's laser data).
+  //   - A grating bends each colour by its own angle (sin = order x wavelength / pitch): the red grid is the widest,
+  //     the blue the tightest, and only the centre beam of each lands on the same spot. Two diodes are two grids of
+  //     two colours, never one mixed colour.
+  //   - Footage of the sibling bar's grating laser shows it: a burst of dozens of needle beams in haze, dots on
+  //     the walls.
+  // NOT known (no footage of an EU unit under DMX): how many orders it throws (LASER.orders: 9 x 9 here), how fast
+  // the grating turns (MECH.laserRps), and whether the grid is square. Estimates, to check against the real bar.
+  private laserBurst(f: Fixture, at: THREE.Vector3, front: THREE.Vector3, axis: THREE.Vector3): Part {
+    const M = LASER.orders, side = 2 * M + 1, per = side * side, names = ["red", "green", "blue"], n = per * 3;
+    const bg = new THREE.BufferGeometry();
+    bg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(n * 6), 3));
+    bg.setAttribute("color", new THREE.BufferAttribute(new Float32Array(n * 6), 3));
+    const beams = new THREE.LineSegments(bg, new THREE.LineBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+    beams.frustumCulled = false;
+    this.built.add(beams);
+    const dg = new THREE.BufferGeometry();
+    dg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    dg.setAttribute("color", new THREE.BufferAttribute(new Float32Array(n * 3), 3));
+    const dots = new THREE.Points(dg, new THREE.PointsMaterial({ size: LASER.dot_m, map: dotSprite(), vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false, sizeAttenuation: true }));
+    dots.frustumCulled = false;
+    this.built.add(dots);
+    const { w, u0, v0 } = this.laserAxes(f, at, front, axis);
+    const step0 = Math.sin(LASER.cover_deg * Math.PI / 360) / M;       // red's step per order, as a sine
+    const tints = names.map((nm) => srgb(LASER_RGB[nm] as RGB));
     const dir = new THREE.Vector3(), u = new THREE.Vector3(), v = new THREE.Vector3();
-    const tint = new THREE.Color();
-    let rot = 0, morph = seed;
+    let rot = 0;
     return {
       f,
       update: (c) => {
-        const v1 = f.part === "laser50";
-        const cols = laserColours(c.ch(f, 0), v1);
-        const st = v1 ? 0 : c.ch(f, 1);
-        const on = cols && (!st || (c.t * lerp(0.5, 4, st / 255)) % 1 < 0.5) ? 1 : 0;   // pulses: 4 a second at most
-        const turn = v1 ? 0 : motor(c.ch(f, 2), MECH.laserRps);
-        rot += turn * c.dt * Math.PI * 2;
-        morph += c.dt * (LASER.drift + Math.abs(turn) * LASER.drift_turn);              // it never holds one shape
-        line.visible = glow.visible = on > 0;
-        rays.visible = on > 0 && c.air > 0.01;
+        const cols = laserColours(c.ch(f, 0), false);
+        const st = c.ch(f, 1);
+        const on = !!cols && (!st || (c.t * lerp(0.5, 4, st / 255)) % 1 < 0.5);        // pulses: 4 a second at most
+        rot += motor(c.ch(f, 2), MECH.laserRps) * c.dt * Math.PI * 2;                   // the grating turns
+        dots.visible = on;
+        beams.visible = on && c.air > 0.01;
         if (!on || !cols) return;
-        let r = 0, g = 0, b = 0;                                                         // the diodes mix into one colour
-        for (const name of cols) { const k = LASER_RGB[name]; r += k[0]; g += k[1]; b += k[2]; }
-        const mx = Math.max(r, g, b, 1);
-        tint.copy(srgb([255 * r / mx, 255 * g / mx, 255 * b / mx] as RGB));
-        (line.material as THREE.LineBasicMaterial).color.copy(tint).multiplyScalar(1.6);
-        (glow.material as THREE.PointsMaterial).color.copy(tint);
-        (rays.material as THREE.LineBasicMaterial).color.copy(tint).multiplyScalar(0.10 * c.air);
         u.copy(u0).multiplyScalar(Math.cos(rot)).addScaledVector(v0, Math.sin(rot));
         v.copy(v0).multiplyScalar(Math.cos(rot)).addScaledVector(u0, -Math.sin(rot));
-        const pos = fig.attributes.position as THREE.BufferAttribute, sp = sheet.attributes.position as THREE.BufferAttribute;
-        // a closed curve of a few harmonics whose phases and weights drift: loops, crossings, pinches
-        const a2 = 0.55 * Math.sin(morph * 0.61), a3 = 0.4 * Math.sin(morph * 0.43 + 1.7), p2 = morph * 0.37, p3 = morph * 0.29 + 0.9;
-        for (let i = 0; i <= N; i++) {
-          const th = (i % N) / N * Math.PI * 2;
-          const x = (Math.cos(th) + a2 * Math.cos(2 * th + p2) + a3 * Math.cos(3 * th + p3)) * span * 0.55;
-          const y = (Math.sin(th) + a2 * Math.sin(2 * th - p2 * 1.3) + a3 * Math.sin(3 * th + p3 * 0.7)) * span * 0.55;
-          dir.copy(w).addScaledVector(u, x).addScaledVector(v, y).normalize();
-          const end = hitRoom(at, dir, c.size);
-          pos.setXYZ(i, end.x, end.y, end.z);
-          if (i < N && i % Math.floor(N / R) === 0) {
-            const k = Math.min(R - 1, Math.floor(i / Math.floor(N / R)));
-            sp.setXYZ(k * 2, at.x, at.y, at.z); sp.setXYZ(k * 2 + 1, end.x, end.y, end.z);
+        const bp = bg.attributes.position as THREE.BufferAttribute, bc = bg.attributes.color as THREE.BufferAttribute;
+        const dp = dg.attributes.position as THREE.BufferAttribute, dc = dg.attributes.color as THREE.BufferAttribute;
+        names.forEach((nm, ci) => {
+          const lit = cols.includes(nm), step = step0 * LASER_NM[nm] / LASER_NM.red, t = tints[ci];
+          for (let j = 0; j < per; j++) {
+            const i = ci * per + j, om = (j % side) - M, on2 = Math.floor(j / side) - M;
+            const sx = om * step, sy = on2 * step, s2 = sx * sx + sy * sy;
+            if (!lit || s2 > 0.97) {                                                      // dark, or past the grating's reach
+              bc.setXYZ(i * 2, 0, 0, 0); bc.setXYZ(i * 2 + 1, 0, 0, 0); dc.setXYZ(i, 0, 0, 0);
+              continue;
+            }
+            dir.copy(w).multiplyScalar(Math.sqrt(1 - s2)).addScaledVector(u, sx).addScaledVector(v, sy);
+            const end = hitRoom(at, dir, c.size);
+            const gain = 1 / (1 + LASER.falloff * (om * om + on2 * on2));                 // the outer orders are dimmer
+            const a = LASER.beam * gain * c.air;
+            bp.setXYZ(i * 2, at.x, at.y, at.z); bp.setXYZ(i * 2 + 1, end.x, end.y, end.z);
+            bc.setXYZ(i * 2, t.r * a, t.g * a, t.b * a); bc.setXYZ(i * 2 + 1, t.r * a * 0.5, t.g * a * 0.5, t.b * a * 0.5);
+            dp.setXYZ(i, end.x, end.y, end.z);
+            const d = LASER.dot * (0.35 + 0.65 * gain);
+            dc.setXYZ(i, t.r * d, t.g * d, t.b * d);
+          }
+        });
+        bp.needsUpdate = bc.needsUpdate = dp.needsUpdate = dc.needsUpdate = true;
+      },
+    };
+  }
+
+  // The pattern laser (US unit, 51CH; the older one-channel 50CH chart too), from footage of US units: a few fat
+  // beams from two apertures, each landing as a small, sharp line figure a few degrees across, the two apertures'
+  // figures mirror images of each other. Each lit diode draws its own figure beside the others (they don't mix).
+  // The 51CH pattern channel picks one of 32 figures; what each number looks like isn't published, so each is
+  // given a shape of its own here that breathes slowly. LASER.span_deg and the spacings are read off the footage.
+  private laserFigures(f: Fixture, at: THREE.Vector3, front: THREE.Vector3, axis: THREE.Vector3): Part {
+    const N = LASER.points, names = ["red", "green", "blue"], slots = 6, R = LASER.rays;
+    const fg = new THREE.BufferGeometry();
+    fg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(slots * N * 6), 3));
+    fg.setAttribute("color", new THREE.BufferAttribute(new Float32Array(slots * N * 6), 3));
+    const lines = new THREE.LineSegments(fg, new THREE.LineBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+    lines.frustumCulled = false;
+    this.built.add(lines);
+    const rg = new THREE.BufferGeometry();
+    rg.setAttribute("position", new THREE.BufferAttribute(new Float32Array(slots * R * 6), 3));
+    rg.setAttribute("color", new THREE.BufferAttribute(new Float32Array(slots * R * 6), 3));
+    const rays = new THREE.LineSegments(rg, new THREE.LineBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+    rays.frustumCulled = false;
+    this.built.add(rays);
+    const { w, u0, v0 } = this.laserAxes(f, at, front, axis);
+    const span = Math.tan(LASER.span_deg * Math.PI / 360) * 0.55;
+    const tints = names.map((nm) => srgb(LASER_RGB[nm] as RGB));
+    const dir = new THREE.Vector3(), prev = new THREE.Vector3();
+    let morph = hash(f.address ?? 7) * 10;
+    return {
+      f,
+      update: (c) => {
+        const cols = laserColours(c.ch(f, 0), true);
+        lines.visible = !!cols;
+        rays.visible = !!cols && c.air > 0.01;
+        if (!cols) return;
+        morph += c.dt * LASER.drift;
+        const q = f.part === "laser51" ? laserPattern(c.ch(f, 1)) * 2.39996 + 0.25 * Math.sin(morph * 0.5) : morph;
+        const a2 = 0.55 * Math.sin(q * 0.61), a3 = 0.4 * Math.sin(q * 0.43 + 1.7), p2 = q * 0.37, p3 = q * 0.29 + 0.9;
+        const fp = fg.attributes.position as THREE.BufferAttribute, fc = fg.attributes.color as THREE.BufferAttribute;
+        const rp = rg.attributes.position as THREE.BufferAttribute, rc = rg.attributes.color as THREE.BufferAttribute;
+        for (let s = 0; s < slots; s++) {
+          const ap = s < 3 ? -1 : 1, d = s % 3, lit = cols.includes(names[d]), t = tints[d];
+          const off = Math.tan(ap * (LASER.pair_deg / 2 + (d - 1) * LASER.diode_deg) * Math.PI / 180);
+          const k = lit ? 1.6 : 0, ka = lit ? 0.10 * c.air : 0;
+          for (let i = 0; i <= N; i++) {
+            const th = (i % N) / N * Math.PI * 2;
+            const x = (Math.cos(th) + a2 * Math.cos(2 * th + p2) + a3 * Math.cos(3 * th + p3)) * span * ap;
+            const y = (Math.sin(th) + a2 * Math.sin(2 * th - p2 * 1.3) + a3 * Math.sin(3 * th + p3 * 0.7)) * span;
+            dir.copy(w).addScaledVector(u0, off + x).addScaledVector(v0, y).normalize();
+            const end = lit ? hitRoom(at, dir, c.size) : at;
+            if (i > 0) {
+              const j = (s * N + i - 1) * 2;
+              fp.setXYZ(j, prev.x, prev.y, prev.z); fp.setXYZ(j + 1, end.x, end.y, end.z);
+              fc.setXYZ(j, t.r * k, t.g * k, t.b * k); fc.setXYZ(j + 1, t.r * k, t.g * k, t.b * k);
+            }
+            prev.copy(end);
+            if (i < N && i % Math.floor(N / R) === 0) {
+              const j = (s * R + Math.min(R - 1, Math.floor(i / Math.floor(N / R)))) * 2;
+              rp.setXYZ(j, at.x, at.y, at.z); rp.setXYZ(j + 1, end.x, end.y, end.z);
+              rc.setXYZ(j, t.r * ka, t.g * ka, t.b * ka); rc.setXYZ(j + 1, t.r * ka, t.g * ka, t.b * ka);
+            }
           }
         }
-        pos.needsUpdate = true; sp.needsUpdate = true;
+        fp.needsUpdate = fc.needsUpdate = rp.needsUpdate = rc.needsUpdate = true;
       },
     };
   }
@@ -686,9 +775,11 @@ export class RoomSim {
         } else if (f.part === "flash") {
           const top = Math.max(...[0, 1, 2, 3].map((i) => ch(f, i)));
           w = top ? `white ${Math.round(top / 2.55)}%${barStrobe(ch(f, 4)).mode !== "open" ? " · strobing" : ""}` : "off";
-        } else if (f.part === "laser" || f.part === "laser50") {
-          const cols = laserColours(ch(f, 0), f.part === "laser50");
-          w = cols ? `ON: ${cols.join(" + ")}` : "off";
+        } else if (f.part === "laser" || f.part === "laser50" || f.part === "laser51") {
+          const cols = laserColours(ch(f, 0), f.part !== "laser");
+          const how = f.part === "laser" ? ` · ${motorWords(motor(ch(f, 2), MECH.laserRps))}${ch(f, 1) ? " · strobing" : ""}`
+            : f.part === "laser51" ? ` · pattern ${laserPattern(ch(f, 1)) + 1}` : "";
+          w = cols ? `ON: ${cols.join(" + ")}${how}` : "off";
         }
       }
       const unit = f.part === "hazer" ? "Hazer" : f.part === "dimmer" ? "House lights" : f.bar;
