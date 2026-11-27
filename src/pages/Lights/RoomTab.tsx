@@ -419,7 +419,11 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
       const t = e.target as HTMLElement | null;
       if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT")) return;
       const want = ({ w: "translate", e: "rotate", r: "scale" } as Record<string, GizmoMode>)[e.key.toLowerCase()];
-      if (e.key === "Escape") { if (treeOpen) setTreeOpen(false); else setSelected(null); }
+      if (e.key === "Escape") {                    // up one level: a light to its bar, anything else to the room
+        if (treeOpen) { setTreeOpen(false); return; }
+        const up = kindOf(selected) === "light" ? bits?.bars.find((b) => b.editable && b.aims.some((p) => p.id === idOf(selected))) : undefined;
+        setSelected(up ? `bar:${up.id}` : null);
+      }
       else if ((e.key === "Delete" || e.key === "Backspace") && kindOf(selected) === "region") {
         const r = bits?.keepOut.find((x) => x.name === idOf(selected));
         if (r) { e.preventDefault(); setSelected(null); void act(`remove ${r.label}`, () => api.removeKeepOut(r.name), () => putRegion(r, {})); }

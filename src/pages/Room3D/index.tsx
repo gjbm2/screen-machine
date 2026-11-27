@@ -501,15 +501,18 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
           }}
           onDoubleClick={(e) => {
             const [x, y] = ndc(e, e.currentTarget), ed = edRef.current;
-            const key = ed && ed.active ? ed.pick(x, y) : null;
-            if (key) cb.current.onSelect?.(key);                       // a thing: select it (the page frames it)
+            const key = ed && ed.active ? ed.pick(x, y, true) : null;   // straight to the part under the cursor
+            if (key) { fromView.current = true; cb.current.onSelect?.(key); }   // a thing: select it
             else if (simRef.current?.nav === "orbit") simRef.current.goTo(x, y);   // orbiting: round that spot
           }}
           onPointerUp={(e) => {
             drag.current = false;
             setCursor("default");
             const ed = edRef.current, sim = simRef.current, p = press.current;
-            if (ed?.dragging) { ed.release(); setTip(null); return; }
+            if (ed?.dragging) {
+              ed.release(); setTip(null);
+              if (ed.justDragged) return;                              // moved: a drag, not a click
+            }
             press.current = null;
             if (!p) return;
             if (ed?.justDragged) { ed.justDragged = false; return; }   // the end of a handle drag is not a click
@@ -524,10 +527,18 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
           <div ref={namesRef} className="pointer-events-none absolute inset-0 overflow-hidden" data-testid="plan-names" />
           {embedded && !shot && (
             <div className="absolute left-2.5 top-2 z-10" data-testid="sim-back">
-              {selected ? (
-                <button onClick={() => cb.current.onSelect?.(null)} title="Back to the whole room (Esc)" data-testid="back"
-                  className="rounded-lg bg-white/95 px-3 py-1.5 text-[13px] font-medium text-stone-800 shadow hover:bg-white">← Back to the room</button>
-              ) : (
+              {selected ? (() => {
+                // up one level: a light to its bar (they are one unit), anything else to the whole room
+                const up = (editables ?? []).find((x) => x.key === (editables ?? []).find((y) => y.key === selected)?.parent);
+                return (
+                  <span className="flex gap-1.5">
+                    {up && <button onClick={() => cb.current.onSelect?.(up.key)} title={`Up to ${up.label ?? "its bar"} (Esc)`} data-testid="up"
+                      className="rounded-lg bg-white/95 px-3 py-1.5 text-[13px] font-medium text-stone-800 shadow hover:bg-white">↑ {up.label ?? "Its bar"}</button>}
+                    <button onClick={() => cb.current.onSelect?.(null)} title={up ? "Back to the whole room" : "Back to the whole room (Esc)"} data-testid="back"
+                      className="rounded-lg bg-white/95 px-3 py-1.5 text-[13px] font-medium text-stone-800 shadow hover:bg-white">← Back to the room</button>
+                  </span>
+                );
+              })() : (
                 <button onClick={() => simRef.current?.home()} title="The whole room (Home)"
                   className="rounded-lg bg-white/90 px-3 py-1.5 text-[13px] text-stone-800 shadow hover:bg-white">⌂ Whole room</button>
               )}
@@ -550,12 +561,12 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
           <div className={shot ? "hidden" : "pointer-events-none absolute bottom-1.5 left-2.5 right-2.5 text-xs text-[#aab0c0]"}>
             {embedded
               ? (selected
-                ? "Editing: drag to look round it · a bar: drag it, its ring to turn it, its arrow to raise it · a light: the blue ring turns it, the amber arc raises or lowers it · click empty space or Esc: back"
+                ? "Editing: drag to look round it · a bar: drag it, its ring to turn it, its arrow to raise it; click one of its lights to edit that · a light: the amber arc tilts it · Esc: up a level · click empty space: back"
                 : nav === "plan"
-                  ? "Plan: drag a thing to place it (a screen goes onto the nearest wall) · drag the floor to slide the plan · wheel: zoom to the cursor · click a thing to edit it"
+                  ? "Plan: drag a thing to place it (a screen goes onto the nearest wall; a bar moves whole) · drag the floor to slide the plan · wheel: zoom to the cursor · click: edit it, again (or double-click) for a light on a bar"
                 : nav === "walk"
-                  ? "Walking: drag to look round · click the floor to go there · wheel or W/S: forward / back · A/D: step aside · Q/E: lower / higher · click a light or bar to edit it"
-                  : "Orbiting: drag to turn round · right-drag: pan · wheel: zoom to the cursor · double-click: turn round that spot · click a light or bar to edit it")
+                  ? "Walking: drag to look round · click the floor to go there · wheel or W/S: forward / back · A/D: step aside · Q/E: lower / higher · click a bar to edit it, again (or double-click) for one of its lights"
+                  : "Orbiting: drag to turn round · right-drag: pan · wheel: zoom to the cursor · double-click: turn round that spot · click a bar to edit it, again for one of its lights")
               : `${nav === "walk" ? "drag: look round · click the floor: walk there · wheel / W S: forward, back · A D: aside · Q E: lower, higher" : "drag: orbit · right-drag: pan · wheel: zoom · double-click: focus there"} · the lights read the Art-Net wire, at their makers' brightness; the picture adapts as an eye does · ${perf}`}
           </div>
         </div>

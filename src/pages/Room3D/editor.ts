@@ -87,6 +87,8 @@ export class RoomEditor {
   dragging = false;
   /** A drag has just ended: the click that ends it is not a pick. */
   justDragged = false;
+  /** This press picked the thing up (the plan): its click has been had, even if it didn't move. */
+  private pickedUp = false;
   onChange: (key: string, change: EditChange) => void = () => {};
   /** A drag starts (true) or ends (false): the page holds the camera still meanwhile. */
   onDragging: (on: boolean) => void = () => {};
@@ -277,13 +279,32 @@ export class RoomEditor {
     return this.ray.intersectObjects(objs, false);
   }
 
-  /** The thing under a point of the view (a light before the bar it is on); null: nothing. */
-  pick(x: number, y: number): string | null {
+  /** The thing a click there selects (null: nothing). A bar and its lights are one unit, picked as editors pick a
+   *  group (owner, 27 Nov: "hard to select a whole gigbar -- individual components win on mouse click too easily"):
+   *  from outside the unit a click on any of it selects the bar; once the bar or one of its lights is selected, a
+   *  click on a light selects that light (drilling in). ``deep``: the light at once (a double-click). */
+  pick(x: number, y: number, deep = false): string | null {
+    const key = this.pickPart(x, y);
+    if (!key || deep) return key;
+    const it = this.items.find((i) => i.key === key);
+    const parent = it?.parent && this.items.some((i) => i.key === it.parent) ? it.parent : null;
+    if (!parent) return key;
+    const sel = this.selected ? this.items.find((i) => i.key === this.selected) : undefined;
+    const inside = this.selected === parent || sel?.parent === parent;
+    return inside ? key : parent;
+  }
+  /** The nearest thing under a point of the view, a light before the bar it is on. */
+  private pickPart(x: number, y: number): string | null {
     const hs = this.hits(x, y, [...this.picks.values()]);
     if (!hs.length) return null;
     const kindOf = (k: string) => this.items.find((i) => i.key === k)?.kind;
     const light = hs.find((h) => kindOf(h.object.userData.key) === "light");
     return (light ?? hs[0]).object.userData.key as string;
+  }
+  /** The selected thing's unit: up one level (a light to its bar), else null. */
+  parentOf(key: string | null): string | null {
+    const it = key ? this.items.find((i) => i.key === key) : undefined;
+    return it?.parent && this.items.some((i) => i.key === it.parent) ? it.parent : null;
   }
 
   /** What a press there would grab: one of the selected thing's handles, or the selected thing itself (to move it). */
@@ -325,7 +346,7 @@ export class RoomEditor {
     if (!h && this.grabAny) {                         // plan view: pick it up straight away
       const key = this.pick(x, y);
       const k = key ? this.items.find((i) => i.key === key) : undefined;
-      if (k && MOVES.includes(k.kind)) { this.select(k.key); this.onPick(k.key); h = "move"; }
+      if (k && MOVES.includes(k.kind)) { this.select(k.key); this.onPick(k.key); h = "move"; this.pickedUp = true; }
     }
     const it = this.live;
     if (!h || !it) return false;
@@ -436,10 +457,15 @@ export class RoomEditor {
     this.dragging = false;
     this.justDragged = true;
     this.onDragging(false);
+    const picked = this.pickedUp;
+    this.pickedUp = false;
     if (!d || !it) return;
     const s = d.start;
+    // a press on the selected thing or a handle that changed nothing is a click (on a light of a selected bar: drill in)
+    const same = it.at.every((v, i) => Math.abs(v - s.at[i]) < 1e-3) && Math.abs((it.yaw ?? 0) - (s.yaw ?? 0)) < 1e-3
+      && (!it.dir || !s.dir || it.dir.every((v, i) => Math.abs(v - s.dir![i]) < 1e-6));
+    if (same) { if (!picked) this.justDragged = false; return; }
     if (d.handle === "move" || d.handle === "lift") {
-      if (it.at.every((v, i) => Math.abs(v - s.at[i]) < 1e-3)) return;
       this.onChange(it.key, it.kind === "region" ? { at: it.at.map(r2) as Vec3, size: it.size }
         : it.kind === "screen" ? { at: it.at.map(r2) as Vec3, normal: it.normal } : { at: it.at.map(r2) as Vec3 });
     } else if (d.handle === "ring") {
