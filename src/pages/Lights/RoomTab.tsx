@@ -942,7 +942,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
         ))}
       </div>
       {show !== "live" && modes.length > 0 && (
-        <select value={asMode} aria-label="The room as in" data-testid="as-mode" className={`${sel} max-w-[150px]`}
+        <select value={asMode} aria-label="The room as in" data-testid="as-mode" className={`${sel} w-[150px] min-w-[90px] shrink`}
           title="The lights a mode sets itself (the house lights) show as this mode sets them"
           onChange={(e) => { setAsMode(e.target.value); try { localStorage.setItem("room3d.previewMode", e.target.value); } catch { /* this visit */ } }}>
           {modes.map((m) => <option key={m.id} value={m.id}>Room as in {m.label}</option>)}

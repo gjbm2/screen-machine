@@ -1307,6 +1307,44 @@ export class RoomSim {
     this.glide(tgt, pos, now, 0.7);
   }
 
+  /** Where to look from when orbiting, for the view's list (owner, 27 Nov: "better nav options in Orbit mode"): the
+   *  whole room from each side, each corner and above, then round each bar and each screen (orbit that thing). */
+  orbitPlaces(): { id: string; label: string; group: "room" | "thing" }[] {
+    const room: [string, string][] = [["back", "From the back"], ["back-left", "From the back left"], ["back-right", "From the back right"],
+      ["left", "From the left"], ["right", "From the right"], ["front", "From the front, looking back"],
+      ["front-left", "From the front left"], ["front-right", "From the front right"], ["above", "From above"]];
+    const m = this.model;
+    const things = m ? [...m.bars.map((b) => ({ id: `bar:${b.id}`, label: `Round ${b.label}` })),
+      ...m.fixtures.filter((x) => x.kind === "screen" && x.at).map((x) => ({ id: `fixture:${x.id}`, label: `Round ${x.label}` }))] : [];
+    return [...room.map(([id, label]) => ({ id: `room:${id}`, label, group: "room" as const })),
+      ...things.map((t) => ({ ...t, group: "thing" as const }))];
+  }
+  orbitAt(id: string, now = false) {
+    const m = this.model;
+    if (!m) return;
+    const [kind, key] = [id.slice(0, id.indexOf(":")), id.slice(id.indexOf(":") + 1)];
+    if (kind === "bar" || kind === "fixture") {
+      const at = kind === "bar" ? m.bars.find((b) => b.id === key)?.at : m.fixtures.find((x) => x.id === key)?.at;
+      if (at) this.focus(at, 3);
+      return;
+    }
+    if (kind !== "room") return;
+    const f = v3(m.frontVec).setZ(0);
+    if (f.lengthSq() < 1e-6) f.set(0, 1, 0);
+    f.normalize();
+    const side = new THREE.Vector3(f.y, -f.x, 0);             // to the right as you look forward
+    const c = v3(m.centre);
+    const tgt = this.world(c.clone().setZ(Math.min(1.5, m.size[2] * 0.4)));
+    const r = Math.hypot(m.size[0], m.size[1]) * 0.75;
+    const fb = key.startsWith("front") ? 1 : key.startsWith("back") ? -1 : 0;   // where the camera is, from the middle
+    const lr = key.endsWith("left") ? -1 : key.endsWith("right") ? 1 : 0;
+    const d = f.clone().multiplyScalar(fb).addScaledVector(side, lr);
+    if (d.lengthSq() < 1e-6) d.copy(f).negate();               // above: from the back, nearly overhead
+    const w = this.world(d.normalize());
+    this.setNav("orbit", false);
+    this.glide(tgt, this.orbitPos(tgt, Math.atan2(w.x, w.z), key === "above" ? 0.12 : fb && lr ? 1.05 : 1.2, r), now, 0.7);
+  }
+
   /** A click in the view that picked nothing, while walking: walk there (the floor), or up to it (a wall, the
    *  ceiling, a thing), facing it. False: nothing there. */
   walkTo(nx: number, ny: number): boolean {

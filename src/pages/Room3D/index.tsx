@@ -380,8 +380,15 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
   viewRef.current = showView;
   flipRef.current = flipElev;
   const navControls = (
-    <div className="flex items-center gap-2" data-testid="nav-controls">
-      <div className={`inline-flex overflow-hidden rounded-lg border ${bd}`} role="group" aria-label="View">
+    <div className="flex shrink-0 items-center gap-2" data-testid="nav-controls">
+      {/* a narrow header (the embedded editor's, a container): the views as a dropdown */}
+      {embedded && (
+        <select value={view} aria-label="View" className={`h-8 rounded-lg border bg-white px-2 text-stone-800 ${bd} [@container(min-width:1100px)]:hidden`}
+          onChange={(e) => showView(e.target.value as "3d" | "plan" | "front" | "side")}>
+          {VIEWS.map(([v, words]) => <option key={v} value={v}>{words}</option>)}
+        </select>
+      )}
+      <div className={`${embedded ? "hidden [@container(min-width:1100px)]:inline-flex" : "inline-flex"} overflow-hidden rounded-lg border ${bd}`} role="group" aria-label="View">
         {VIEWS.map(([v, words, title], i) => (
           <button key={v} className={`${seg(view === v)} ${i ? `border-l ${bd}` : ""}`} aria-pressed={view === v} data-testid={`view-${v}`} title={title}
             onClick={() => showView(v as "3d" | "plan" | "front" | "side")}>{words}</button>
@@ -399,12 +406,27 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
             <button className={`${seg(nav === "orbit")} border-l ${bd}`} aria-pressed={nav === "orbit"} data-testid="nav-orbit" onClick={() => chooseNav("orbit")}
               title="Turn round a point: drag to orbit, right-drag to pan, wheel to zoom to the cursor">Orbit</button>
           </div>
+          {nav === "walk" ? (
           <select value="" aria-label="Go to" data-testid="go-to"
-            className={`h-8 rounded-lg border px-2 ${bd} ${dark ? "bg-[#1a1e2a] text-[#e3e6ee]" : "bg-white text-stone-800"}`}
+            className={`h-8 rounded-lg border px-2 ${bd} ${dark ? "bg-[#1a1e2a] text-[#e3e6ee]" : "bg-white text-stone-800"} ${embedded ? "w-[84px] [@container(min-width:900px)]:w-[100px] [@container(min-width:1250px)]:w-[150px]" : ""}`}
             onChange={(e) => { const v = e.target.value; if (v) simRef.current?.standAt(v); }}>
             <option value="">Stand at…</option>
             {(simRef.current?.standPlaces() ?? []).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+          </select>) : (
+          <select value="" aria-label="Look from" data-testid="look-from"
+            className={`h-8 rounded-lg border px-2 ${bd} ${dark ? "bg-[#1a1e2a] text-[#e3e6ee]" : "bg-white text-stone-800"} ${embedded ? "w-[84px] [@container(min-width:900px)]:w-[100px] [@container(min-width:1250px)]:w-[150px]" : ""}`}
+            onChange={(e) => { const v = e.target.value; if (v) simRef.current?.orbitAt(v); }}>
+            <option value="">Look from…</option>
+            <optgroup label="The room">
+              {(simRef.current?.orbitPlaces() ?? []).filter((p) => p.group === "room").map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+            </optgroup>
+            {(simRef.current?.orbitPlaces() ?? []).some((p) => p.group === "thing") && (
+              <optgroup label="Orbit round">
+                {(simRef.current?.orbitPlaces() ?? []).filter((p) => p.group === "thing").map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
+              </optgroup>
+            )}
           </select>
+          )}
         </>
       )}
       <button className={`h-8 rounded-lg border px-2.5 ${bd} ${dark ? "" : "hover:bg-stone-50"}`} title="The whole room in this view (Home)" aria-label="The whole room"
@@ -415,7 +437,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
     <div className={T.root} style={{ fontSize: 13 }} data-testid="room-sim">
       {embedded ? (
         // The editor's header: one row. Left, what the lights show (the page's); right, the views and a menu of the rest.
-        <header className={shot ? "hidden" : "flex flex-wrap items-center gap-2 border-b border-stone-200 bg-white px-3 py-2"} data-testid="sim-header">
+        <header className={shot ? "hidden" : "flex items-center gap-2 border-b border-stone-200 bg-white px-3 py-2 [container-type:inline-size]"} data-testid="sim-header">
           {toolbar}
           <span className="flex-1" />
           {navControls}
@@ -469,7 +491,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
             )}
           </div>
           <a href="/lights/room" target="_blank" rel="noreferrer" title="Open the live view in a new window" aria-label="Open the live view in a new window"
-            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-stone-300 text-[15px] hover:bg-stone-50" data-testid="pop-out">⧉</a>
+            className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-stone-300 text-[15px] hover:bg-stone-50 [@container(min-width:900px)]:inline-flex" data-testid="pop-out">⧉</a>
         </header>
       ) : (
       <header className={shot ? "hidden" : T.header}>
