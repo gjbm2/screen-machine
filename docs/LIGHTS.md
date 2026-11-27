@@ -623,8 +623,14 @@ tilted and turned on its bracket. Those are settings, and the simulator and the 
     layout part's `offset`), keeping its id (`POST /rig/fixtures` takes `id`); a planned screen or Hue lamp hands its
     place to one of the rig's; a microphone, light sensor or mirror ball gets `connect`: the source, sensor or remote
     it stands for. **Disconnect** puts a light registered on the page back to planned. Every step undoes.
-- **Not there yet:** planned lights don't run the preview's scenes (they light up only when selected); the moving
-  heads' poses are still taught from the Lights tab ("Point it at…"), not turned in the view.
+  - **＋ Add** is a search box over the view with one list, ranked as you type, with other words for things (ALSO in
+    RoomTab.tsx: glitterball / mirror ball / disco ball); room_service's remote-worked device types (rf-glitterball,
+    rf-pinspot) are in it too. Planned lights run in the preview like real ones, on a wire of their own
+    (preview.py's ``p``), joining the groups a real light of their type is in.
+  - **Stacked parts:** a selected bar's parts that overlap on screen get their names in a row beside it, with a line
+    to each; a click on the same spot again steps down the stack ("2 of 3 here").
+- **Not there yet:** the moving heads' poses are still taught from the Lights tab ("Point it at…"), not turned in the
+  view.
 
 ### 3.7 Tests (space): test_space.py (new)
 
