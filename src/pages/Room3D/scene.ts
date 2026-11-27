@@ -1178,10 +1178,14 @@ export class RoomSim {
   frame(now: number) {
     const dt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
+    if (this.lensTo && !this.anim) {                           // a new lens with no glide to ease it: at once
+      this.setLens(this.lensTo.fov, this.lensTo.up, this.camera.position.distanceTo(this.controls.target));
+      this.lensTo = null;
+    }
     this.animStep(dt);
     this.pushStep();
     if (this.nav === "walk") this.walkStep(dt);
-    else if (this.flat) this.camera.lookAt(this.controls.target);
+    else if (this.flat || this.anim) this.camera.lookAt(this.controls.target);   // (orbit's update would clamp a glide)
     else this.controls.update();
     this.keepCamera();
     if (++this.frameNo % SHADOW_EVERY === 0) this.renderer.shadowMap.needsUpdate = true;
@@ -1310,7 +1314,14 @@ export class RoomSim {
   // the place clicked (the background: back to the start), F frames the selection: those glide (animStep).
   readonly controls: OrbitControls;
   private frameNo = 0;
-  private anim: { t: number; dur: number; t0: THREE.Vector3; t1: THREE.Vector3; p0: THREE.Vector3; p1: THREE.Vector3 } | null = null;
+  // A glide from one view to the next eases the lens too (owner, 27 Nov: "if I flip between plan & 3D why does it
+  // re-build the view ... why not just transition smoothly from one to the other (e.g. perspective changes and ease-in
+  // / ease-out move)"): the field of view and how much of the room is framed change together (a dolly zoom), the
+  // camera swings from one direction to the other, its up turns, all eased in and out.
+  private anim: { t: number; dur: number; t0: THREE.Vector3; t1: THREE.Vector3; p0: THREE.Vector3; p1: THREE.Vector3;
+    f0: number; f1: number; s0: number; s1: number; d0: THREE.Vector3; d1: THREE.Vector3; u0: THREE.Vector3; u1: THREE.Vector3 } | null = null;
+  /** The lens the next glide arrives at (lens()); applied at once with no glide. */
+  private lensTo: { fov: number; up: THREE.Vector3 } | null = null;
 
   /** Put the camera on a sphere round ``target`` (three's frame): ``th`` round the vertical, ``ph`` down from it. */
   private orbitPos(target: THREE.Vector3, th: number, ph: number, r: number): THREE.Vector3 {
@@ -1318,7 +1329,10 @@ export class RoomSim {
   }
   /** Glide the camera and its pivot to a new place (``now``: jump). */
   private glide(target: THREE.Vector3, pos: THREE.Vector3, now = false, dur = 0.5) {
+    const lt = this.lensTo;
+    this.lensTo = null;
     if (now) {
+      if (lt) this.setLens(lt.fov, lt.up, pos.distanceTo(target));
       this.anim = null;
       this.controls.target.copy(target);
       this.camera.position.copy(pos);
@@ -1326,7 +1340,21 @@ export class RoomSim {
       else this.camera.lookAt(target);
       return;
     }
-    this.anim = { t: 0, dur, t0: this.controls.target.clone(), t1: target.clone(), p0: this.camera.position.clone(), p1: pos.clone() };
+    const c = this.camera, t0 = this.controls.target.clone(), p0 = c.position.clone();
+    // a glide replacing one under way still arrives at that one's lens (Plan: setNav, then the plan's fit, two glides)
+    const was = this.anim;
+    const f0 = c.fov, f1 = lt?.fov ?? was?.f1 ?? f0, half = (f: number) => Math.tan(THREE.MathUtils.degToRad(f) / 2);
+    const dist0 = Math.max(1e-3, p0.distanceTo(t0)), dist1 = Math.max(1e-3, pos.distanceTo(target));
+    this.anim = { t: 0, dur: Math.abs(f1 - f0) > 1 ? Math.max(dur, 1.0) : dur, t0, t1: target.clone(), p0, p1: pos.clone(),
+      f0, f1, s0: 2 * dist0 * half(f0), s1: 2 * dist1 * half(f1),
+      d0: p0.clone().sub(t0).normalize(), d1: pos.clone().sub(target).normalize(), u0: c.up.clone(), u1: (lt?.up ?? was?.u1 ?? c.up).clone() };
+  }
+  /** Set the lens: its field of view and up, and near / far planes that suit a camera ``dist`` from what it frames. */
+  private setLens(fov: number, up: THREE.Vector3, dist: number) {
+    const c = this.camera;
+    c.fov = fov; c.up.copy(up);
+    c.near = Math.max(0.02, Math.min(2, dist * 0.004)); c.far = Math.max(80, dist + 60);
+    c.updateProjectionMatrix();
   }
   private animStep(dt: number) {
     const a = this.anim;
@@ -1334,8 +1362,24 @@ export class RoomSim {
     a.t = Math.min(1, a.t + dt / a.dur);
     const k = a.t * a.t * (3 - 2 * a.t);
     this.controls.target.lerpVectors(a.t0, a.t1, k);
-    this.camera.position.lerpVectors(a.p0, a.p1, k);
-    if (a.t >= 1) this.anim = null;
+    if (Math.abs(a.f1 - a.f0) < 0.01) {
+      this.camera.position.lerpVectors(a.p0, a.p1, k);       // the same lens: a plain glide
+    } else {
+      // a new lens: the view widens or narrows (log-eased) while the framed size eases, so the room never jumps; the
+      // camera swings round from one direction to the other at the distance that keeps that framing
+      const fov = Math.exp(Math.log(a.f0) + (Math.log(a.f1) - Math.log(a.f0)) * k);
+      const size = Math.exp(Math.log(a.s0) + (Math.log(a.s1) - Math.log(a.s0)) * k);
+      const dist = size / (2 * Math.tan(THREE.MathUtils.degToRad(fov) / 2));
+      const dir = a.d0.clone().applyQuaternion(new THREE.Quaternion().slerpQuaternions(new THREE.Quaternion(),
+        new THREE.Quaternion().setFromUnitVectors(a.d0, a.d1), k));
+      this.camera.position.copy(this.controls.target).addScaledVector(dir, dist);
+      this.setLens(fov, a.u0.clone().lerp(a.u1, k).normalize(), dist);
+    }
+    if (a.t >= 1) {
+      this.camera.position.copy(a.p1);
+      this.setLens(a.f1, a.u1, a.p1.distanceTo(a.t1));
+      this.anim = null;
+    }
   }
 
   /** The preset views: from the front, from a side, from above, each over the whole room. */
@@ -1785,17 +1829,11 @@ export class RoomSim {
     return this.elev === "front" ? f : this.elev === "back" ? f.clone().negate() : this.elev === "right" ? r : r.clone().negate();
   }
   private flatLook(): THREE.Vector3 { return this.world(this.flatLookRoom()).normalize(); }
+  /** The lens the view is to arrive at: the flat views' long one (the plan with the front wall at the top), else the
+   *  3D one. The next glide eases into it (with none, frame() sets it at once). */
   private lens(flat: boolean) {
-    const c = this.camera;
-    if (flat) {
-      c.fov = FLAT_FOV_DEG; c.near = 2; c.far = 4000;
-      if (this.nav === "plan") c.up.copy(this.world(this.roomAxes().f).normalize());   // the front wall at the top
-      else c.up.set(0, 1, 0);
-    } else {
-      c.fov = 70; c.near = 0.02; c.far = 80;
-      c.up.set(0, 1, 0);
-    }
-    c.updateProjectionMatrix();
+    const up = flat && this.nav === "plan" ? this.world(this.roomAxes().f).normalize() : new THREE.Vector3(0, 1, 0);
+    this.lensTo = { fov: flat ? FLAT_FOV_DEG : 70, up };
   }
   /** How far off a flat view's camera is to show ``w`` x ``h`` metres. */
   private flatDist(w: number, h: number): number {
@@ -1837,7 +1875,7 @@ export class RoomSim {
   keepInside = false;
   private keepCamera() {
     const m = this.model;
-    if (!m || this.flat) return;
+    if (!m || this.flat || this.anim) return;                  // (a glide in from outside isn't pulled in mid-way)
     const [X, Y, H] = m.size, e = 0.12;                    // three's frame: x east, y up, z = -north
     const p = this.camera.position, t = this.controls.target;
     let moved = false;
