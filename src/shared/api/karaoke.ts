@@ -131,6 +131,8 @@ export interface KaraokeNow {
   queued_after?: number;
   /** The panel's address for a phone (null: unknown) and whether the room is in a karaoke mode: the screens' QR. */
   join?: { url: string | null; room_karaoke: boolean };
+  /** While nothing plays: songs for the quiet background music, in order (the last sung first). */
+  background?: string[];
   calibration?: KaraokeCalibration | null;
   now: number;
 }

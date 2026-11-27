@@ -76,8 +76,8 @@ def test_the_queue_plays_through_like_a_hifi(tmp_path):
     st.control("prev")                                   # at the start of c: back to b
     assert st.s["player"]["qid"] == eb["qid"]
     st.s["player"]["at"] -= 10                           # 10 s into b: prev restarts b first
-    st.control("prev")
-    assert st.s["player"]["qid"] == eb["qid"] and st.s["player"]["pos_s"] == 0
+    st.control("prev")                                   # (from the start, after the fade: CHANGE_GAP_S)
+    assert st.s["player"]["qid"] == eb["qid"] and st.s["player"]["pos_s"] == -2.0
     st.control("next"); st.tick(st.s["player"]["at"] + 61)   # c ends, nothing after it: stop
     assert st.s["player"]["state"] == "stopped"
     st2 = Store(tmp_path / "state.json")                 # a restart keeps the library and the queue
@@ -914,3 +914,23 @@ Ethernet adapter vEthernet (WSL (Hyper-V firewall)):
 """
     assert pick_ipconfig(out) == "192.168.0.228"
     assert pick_ipconfig(out.replace("192.168.0.1", "")) is None
+
+
+def test_a_song_changed_mid_song_waits_for_the_fade_and_the_last_one_leads_the_background(tmp_path):
+    from routes.karaoke.store import CHANGE_GAP_S
+    st = Store(tmp_path / "state.json")
+    a, b, c = ready(st, "a", 100.0), ready(st, "b", 50.0), ready(st, "c", 60.0)
+    ea, eb, ec = st.queue_add(a), st.queue_add(b), st.queue_add(c)
+    p = st.play()                                        # from stopped: just its own lead-in
+    assert p["pos_s"] == -st.lead_in(ea)
+    st.s["player"]["at"] -= 30                           # 30 s in, then Next: the old one fades first
+    p = st.control("next")
+    assert p["qid"] == eb["qid"] and p["pos_s"] <= -CHANGE_GAP_S
+    st.s["player"]["at"] -= 30
+    p = st.play(qid=ec["qid"])                           # Play on another, mid-song: the same
+    assert p["pos_s"] <= -CHANGE_GAP_S
+    assert st.now_playing()["background"] == []         # only while nothing plays
+    st.control("stop")
+    bg = st.now_playing()["background"]
+    assert bg[0] == c and set(bg) == {a, b, c}           # the last sung first
+    assert Store(tmp_path / "state.json").background()[0] == c

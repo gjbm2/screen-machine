@@ -51,6 +51,16 @@ const ANTICIPATE_S = 0.35; // the change starts this long before the next line (
 const EASE_OUT = "cubic-bezier(0.22, 1, 0.36, 1)"; // quick to start, a soft landing
 const EASE_IN_OUT = "cubic-bezier(0.4, 0, 0.6, 1)";
 const LONG_GAP_S = 8;
+// A song changed or stopped while it sounds fades out over FADE_S (owner, 27 Nov: "fade out / transition old one
+// before new one starts"); the server starts the next one at least CHANGE_GAP_S (2 s) into its silent lead-in, so
+// it is gone first (routes/karaoke/store.py _start_at).
+const FADE_S = 1.6;
+// Music while nothing plays (owner, 27 Nov: "if there's no song selected yet, we should play some (quiet) background
+// music -- maybe replay last song with lyrics audible but quietly"): the server's /now background (the last song sung,
+// then the rest of the library), one after another, quietly, vocals in (instrumental only in child mode), on the
+// karaoke screen with the room in a karaoke mode. It fades in, and out when a song starts.
+const BG_LEVEL = 0.28;
+const BG_FADE_IN_S = 4;
 const PREVIEW_S = 3.6; // after a long break, the next line is in place this long before it starts: then the count-in
 
 /** Web Audio playback of one song: two buffers started together, the vocal through its own gain. */
@@ -62,6 +72,9 @@ class Engine {
   loading: string | null = null;
   private srcs: AudioBufferSourceNode[] = [];
   private vocGain: GainNode | null = null;
+  private out: GainNode | null = null; // this play's own level (fades)
+  /** The whole sound's level (the background music's is low). */
+  level = 1;
   private startedCtx = 0; // ctx time when position 0 would have been
   private pausedAt = 0;
   playing = false;
@@ -80,7 +93,7 @@ class Engine {
   async load(songId: string): Promise<boolean> {
     if (this.songId === songId && this.inst) return true;
     if (this.loading === songId) return false;
-    this.stop();
+    this.stop(FADE_S); // another song: the one sounding fades out while this one loads
     this.inst = this.voc = null;
     this.songId = null;
     this.loading = songId;
@@ -113,7 +126,12 @@ class Engine {
     return (c?.outputLatency ?? 0) + (c?.baseLatency ?? 0);
   }
 
-  play(at: number): void {
+  /** Over: it played to its end. */
+  get ended(): boolean {
+    return !!this.inst && this.playing && this.position() >= this.inst.duration - 0.05;
+  }
+
+  play(at: number, fadeIn = 0): void {
     if (!this.inst) return;
     const ctx = this.context();
     this.stopSources();
@@ -127,12 +145,19 @@ class Engine {
       return;
     }
     const when = ctx.currentTime + LEAD_S + Math.max(0, -at0);
+    const out = ctx.createGain();
+    out.connect(ctx.destination);
+    if (fadeIn > 0) {
+      out.gain.setValueAtTime(0, when);
+      out.gain.linearRampToValueAtTime(this.level, when + fadeIn);
+    } else out.gain.value = this.level;
+    this.out = out;
     const mk = (buf: AudioBuffer, gain: number) => {
       const s = ctx.createBufferSource();
       s.buffer = buf;
       const g = ctx.createGain();
       g.gain.value = gain;
-      s.connect(g).connect(ctx.destination);
+      s.connect(g).connect(out);
       s.start(when, pos);
       this.srcs.push(s);
       return g;
@@ -145,7 +170,7 @@ class Engine {
       const censor = ctx.createGain();
       const g = ctx.createGain();
       g.gain.value = this.guide;
-      s.connect(censor).connect(g).connect(ctx.destination);
+      s.connect(censor).connect(g).connect(out);
       s.start(when, pos);
       this.srcs.push(s);
       this.vocGain = g;
@@ -158,12 +183,13 @@ class Engine {
 
   pause(at: number): void {
     this.pausedAt = at;
-    this.stopSources();
+    this.stopSources(0.08); // a breath of a fade: no click
     this.playing = false;
   }
 
-  stop(): void {
-    this.stopSources();
+  /** Silent, and back to the start; ``fade``: over that many seconds. */
+  stop(fade = 0): void {
+    this.stopSources(fade);
     this.playing = false;
     this.pausedAt = 0;
   }
@@ -250,16 +276,37 @@ class Engine {
   private mutes: [number, number][] = [];
   private mutesKey = "[]";
 
-  private stopSources(): void {
-    for (const s of this.srcs) {
-      try {
-        s.stop();
-      } catch {
-        /* already stopped */
+  private stopSources(fade = 0): void {
+    const ctx = this.ctx;
+    const out = this.out;
+    if (fade > 0 && ctx && out && this.srcs.length) {
+      // The sources fade out on their own (nothing else touches this play's gain again) and then stop.
+      const now = ctx.currentTime;
+      out.gain.cancelScheduledValues(now);
+      out.gain.setValueAtTime(out.gain.value, now);
+      out.gain.linearRampToValueAtTime(0, now + fade);
+      for (const s of this.srcs) {
+        s.onended = () => s.disconnect();
+        try {
+          s.stop(now + fade + 0.05);
+        } catch {
+          /* already stopped */
+        }
       }
-      s.disconnect();
+      window.setTimeout(() => out.disconnect(), (fade + 0.5) * 1000);
+    } else {
+      for (const s of this.srcs) {
+        try {
+          s.stop();
+        } catch {
+          /* already stopped */
+        }
+        s.disconnect();
+      }
+      out?.disconnect();
     }
     this.srcs = [];
+    this.out = null;
     this.vocGain = null;
     this.censor = null;
   }
@@ -284,6 +331,7 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
   } | null>(null);
   const [, setTick] = useState(0);
   const engine = useRef(new Engine());
+  const bgEngine = useRef(new Engine()); // the music while nothing plays
   const mutesRef = useRef<[number, number][]>([]);
   const skew = useRef(0); // server clock - this clock, seconds
   const heldSince = useRef<number | null>(null); // when the browser began holding the sound back (SoundPrompt)
@@ -330,6 +378,28 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
     let chirped: string | null = null; // the calibration run whose chirps are scheduled
     let placedAt = { wall: 0, pos: 0 }; // where, by this machine's clock
     const eng = engine.current;
+    // The background music: its own engine, quiet; the song it is on; whether it is wanted now (read after a load).
+    const bg = bgEngine.current;
+    bg.level = BG_LEVEL;
+    let bgSong: string | null = null;
+    let bgWanted = false;
+    let bgBusy = false;
+    const background = async (list: string[], child: boolean) => {
+      if (bgBusy || (bg.playing && !bg.ended)) return;
+      bgBusy = true;
+      if (!bg.ctx) bg.ctx = eng.context(); // the songs' own context: one sound, unlocked by the same click
+      try {
+        const i = bgSong ? (list.indexOf(bgSong) + 1) % list.length : 0; // the next one (gone from the list: the first)
+        const id = list[i];
+        if (!(await bg.load(id).catch(() => false)) || dead || !bgWanted) return;
+        bg.guide = child ? 0 : 1;
+        bg.play(0, BG_FADE_IN_S);
+        bgSong = id;
+        if (bg.ctx?.state !== "running") void bg.ctx?.resume().catch(() => undefined);
+      } finally {
+        bgBusy = false;
+      }
+    };
     // The server's clock minus this one, from the quickest of the last SKEW_N replies (its midpoint): a reply that
     // came back late would otherwise put the sound that much behind for as long as it was the latest.
     const samples: { rtt: number; skew: number }[] = [];
@@ -367,8 +437,18 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
       // Sound here only with output "screen" (a Sonos room plays it itself: routes/karaoke/sonos_out.py).
       if (!mine || (n.settings.output ?? "screen") !== "screen") {
         e.stop();
+        bg.stop();
+        bgWanted = false;
         return;
       }
+      // The background music: while nothing plays, the room in a karaoke mode, no calibration running.
+      bgWanted =
+        p.state === "stopped" &&
+        !!n.join?.room_karaoke &&
+        !!n.background?.length &&
+        n.calibration?.state !== "running";
+      if (bgWanted) void background(n.background ?? [], !!n.settings.child_mode);
+      else if (bg.playing) bg.stop(FADE_S);
       e.setGuide(n.settings.guide);
       e.setMutes(mutesRef.current);
       // The speaker-delay calibration: its chirps, once per run (they're scheduled ahead, at the server's times).
@@ -382,7 +462,7 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
         if (e.chirps(cal.clicks, cal.chirps, skew.current) > 0) chirped = cal.id;
       }
       if (p.state === "stopped" || !p.song_id) {
-        e.stop();
+        e.stop(FADE_S);
         return;
       }
       if (!(await e.load(p.song_id).catch(() => false)) || dead) return;
@@ -410,6 +490,7 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
       dead = true;
       window.clearInterval(t);
       eng.stop();
+      bg.stop();
     };
   }, [on]);
 

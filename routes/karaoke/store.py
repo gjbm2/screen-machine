@@ -132,6 +132,8 @@ class Store:
                     e["singers"] = [one]
         self.s["settings"] = {**DEFAULT_SETTINGS, **(d.get("settings") or {})}
         self.s["singers"] = {k: float(v) for k, v in (d.get("singers") or {}).items() if isinstance(v, (int, float))}
+        if d.get("last_song") in self.s["songs"]:
+            self.s["last_song"] = d["last_song"]
         p = d.get("player") or {}
         # The clock is wall time, so a restart carries on where the song is now (a hi-fi doesn't stop when the
         # control app reconnects). A song that is gone: stopped.
@@ -359,9 +361,30 @@ class Store:
     def _set_player(self, state: str, entry: dict | None, pos_s: float = 0.0) -> dict:
         p = {"rev": self.s["player"]["rev"] + 1, "state": state if entry else "stopped",
              "song_id": entry["song_id"] if entry else None, "qid": entry["qid"] if entry else None,
-             "pos_s": max(-LEAD_IN_S, float(pos_s)), "at": time.time()}
+             "pos_s": max(-max(LEAD_IN_S, CHANGE_GAP_S), float(pos_s)), "at": time.time()}
         self.s["player"] = p
+        if entry and state == "playing":
+            self.s["last_song"] = entry["song_id"]      # the background music starts with it
         return p
+
+    def _start_at(self, entry: dict | None, gap: bool = True) -> float:
+        """Where a song starts: -its lead-in, and at least CHANGE_GAP_S back while another is sounding (``gap``: a
+        person's change; a song that ended by itself has nothing to fade). Lock held."""
+        lead = self.lead_in(entry)
+        p = self.s["player"]
+        if gap and p["state"] == "playing" and self.position() > 0.5:
+            lead = max(lead, CHANGE_GAP_S)
+        return -lead
+
+    def background(self) -> list[str]:
+        """Songs for the music while nothing plays: the last sung first, then the ready ones, shuffled by the day."""
+        with self.lock:
+            ready = sorted(sid for sid, s in self.s["songs"].items() if s.get("status") == "ready")
+            last = self.s.get("last_song")
+        day = time.strftime("%Y-%m-%d")
+        ready.sort(key=lambda sid: hashlib.sha1(f"{day}|{sid}".encode()).hexdigest())
+        first = [last] if last in ready else []
+        return (first + [s for s in ready if s != last])[:BACKGROUND_N]
 
     def lead_in(self, entry: dict | None) -> float:
         """Silence before the song's music, so that its title is up for at least LEAD_IN_S before its first line
@@ -435,7 +458,7 @@ class Store:
             if song.get("status") != "ready":
                 self.commit()
                 raise LookupError(f"“{song.get('title')}” isn't ready yet: {STATUS_WORDS.get(song.get('status'), song.get('status'))}.")
-            p = self._set_player("playing", entry, -self.lead_in(entry))
+            p = self._set_player("playing", entry, self._start_at(entry))
             self.commit()
             return p
 
@@ -449,7 +472,7 @@ class Store:
             elif action == "resume" and p["state"] == "paused" and cur:
                 p = self._set_player("playing", cur, p["pos_s"])
             elif action == "restart" and cur:
-                p = self._set_player("playing", cur, -self.lead_in(cur))
+                p = self._set_player("playing", cur, self._start_at(cur))
             elif action == "seek" and cur and pos_s is not None:
                 dur = (self.s["songs"].get(cur["song_id"]) or {}).get("audio_s") or float("inf")
                 p = self._set_player(p["state"] if p["state"] != "stopped" else "paused", cur, min(float(pos_s), dur))
@@ -459,13 +482,13 @@ class Store:
                 p["stop"] = by
             elif action == "next":
                 nxt = self.next_ready(p.get("qid"))
-                p = self._set_player("playing", nxt, -self.lead_in(nxt)) if nxt else self._set_player("stopped", None)
+                p = self._set_player("playing", nxt, self._start_at(nxt, gap=by == "you")) if nxt else self._set_player("stopped", None)
             elif action == "prev":
                 prv = self.prev_ready(p.get("qid"))
                 if cur and (self.position() > 3.0 or prv is None):
-                    p = self._set_player("playing", cur, -self.lead_in(cur))   # like any player: back to the start first
+                    p = self._set_player("playing", cur, self._start_at(cur))   # like any player: back to the start first
                 elif prv:
-                    p = self._set_player("playing", prv, -self.lead_in(prv))
+                    p = self._set_player("playing", prv, self._start_at(prv))
                 else:
                     return p
             else:
@@ -484,7 +507,7 @@ class Store:
             dur = (self.s["songs"].get(p["song_id"] or "") or {}).get("audio_s")
             if dur and self.position(now) >= dur:
                 if self.s["settings"].get("autoplay") and self.next_ready(p.get("qid")):
-                    self.control("next")
+                    self.control("next", by="end")
                 else:
                     self.control("stop", by="end")
 
@@ -562,6 +585,8 @@ class Store:
                     # entries after this one, ready or still being made: the screens ask for more when it is 0
                     "queued_after": len(self._upcoming(p.get("qid"))),
                     "calibration": self.calibration if (self.calibration or {}).get("state") == "running" else None,
+                    # the music while nothing plays (song ids, in order): only then
+                    "background": self.background() if p.get("state") == "stopped" else [],
                     "now": time.time()}
 
 
@@ -571,6 +596,14 @@ FACTS = ("genre", "year", "rank", "art", "album")
 
 
 LEAD_IN_S = 8.0
+#: A song changed while another is sounding (Play on another, Next, Prev, Restart) starts at least this far into its
+#: silent lead-in, so the one before has faded out first (the display page's FADE_S; owner, 27 Nov: "we should fade
+#: out / transition old one before new one starts").
+CHANGE_GAP_S = 2.0
+#: Music while nothing plays (owner, 27 Nov: "if there's no song selected yet, we should play some (quiet) background
+#: music -- maybe replay last song"): /now's background, the last song sung first, then the ready songs in a shuffle
+#: that holds for the day. The display page plays it quietly, vocals in.
+BACKGROUND_N = 30
 
 
 def song_lead_in(s: dict) -> float:
