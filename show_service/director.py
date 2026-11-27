@@ -3554,8 +3554,11 @@ class Director:
             name = None
         if name is None:
             try:
+                # the lights' own way across is a plain one while there are moves: a gesture is a move's to give,
+                # and the design paces those (a "plain" move, or one held back, must not draw one here instead)
                 name = self.light_scenes.pick_transition(kinds, (self.direction or {}).get("transition_style"),
-                                                         self.direction, self._flow, self._fx_rng)
+                                                         self.direction, self._flow, self._fx_rng,
+                                                         gestures=not self.moves.moves)
             except Exception:                             # a broken catalogue never fails the tick
                 log.exception("light transitions: pick failed")
                 name = None

@@ -950,3 +950,18 @@ def test_the_real_scenes_use_gobos_with_restraint():
         assert not ({"shake", "scroll", "spin", "change", "change_on"} & set(g)), \
             f"{name}: a scene holds its gobo still for as long as it runs"
     assert len(with_gobo) <= movers // 2, f"gobos in {len(with_gobo)} of {movers} mover scenes: the open beam is the default"
+
+
+def test_the_lights_own_transition_can_leave_gestures_to_the_moves(tmp_path):
+    """pick_transition(gestures=False): only the plain ways across are drawn (a gesture is a move's to give, and the
+    director paces moves); with nothing plain of those kinds, a gesture still goes."""
+    import random
+    c = ls.Catalogue(ls.LIGHT_SCENES_FILE)
+    c.poll()
+    plain = {n for n, t in c.transitions.items() if t["kind"] == "crossfade" and not t.get("gesture")}
+    fancy = {n for n, t in c.transitions.items() if t["kind"] == "crossfade" and t.get("gesture")}
+    assert plain and fancy
+    rng = random.Random(1)
+    got = {c.pick_transition(("crossfade",), "lively", {"energy": 0.8}, None, rng, gestures=False) for _ in range(200)}
+    assert got <= plain
+    assert {c.pick_transition(("crossfade",), "lively", {"energy": 0.8}, None, rng) for _ in range(300)} & fancy

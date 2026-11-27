@@ -1161,10 +1161,13 @@ class Catalogue:
         return got, why
 
     def pick_transition(self, kinds: tuple[str, ...], style: Optional[str], direction: Optional[Mapping[str, Any]],
-                        flow: Any, rng: Any) -> Optional[str]:
+                        flow: Any, rng: Any, *, gestures: bool = True) -> Optional[str]:
         """A transition of one of ``kinds``, weighted by tags.transition_weight with the feel's ``style`` and by the
-        flow; None when there is none of those kinds."""
+        flow; None when there is none of those kinds. ``gestures`` False: only the plain ones (a gesture, every head
+        flying up, is a move's to give: the director paces those), unless every one of those kinds has a gesture."""
         names = [n for n, t in self.transitions.items() if t["kind"] in kinds]
+        if not gestures:
+            names = [n for n in names if not self.transitions[n].get("gesture")] or names
         if not names:
             return None
         d = dict(direction or {})
