@@ -136,9 +136,12 @@ PROGRAMS_FALLBACK = {"effects_max": 2, "effect_gap_bars": 4.0}
 #:   grow_step        ... and takes a bigger line-up than last time once the song's level for it has risen this much
 #:   section_fit, section_against   a scene's weight x these when its tags.sections names / doesn't name the kind of
 #:                    section the look goes into (a scene with no tags.sections is for any)
+#:   drive_level      how much of a line-up's drive is the song's measured level over the section coming (the rest
+#:                    its groove), when a karaoke song gives one: the song's own arc sizes its line-ups
 #:   carrier_others   one light group carries the beat in a look (lights.groups.<g>.carries_beat: its weight in that
 #:                    draw); the other groups that could have draw their beat scenes at this share
-PROGRAMS_OPTIONAL = frozenset({"recall_weight", "grow_step", "section_fit", "section_against", "carrier_others"})
+PROGRAMS_OPTIONAL = frozenset({"recall_weight", "grow_step", "section_fit", "section_against", "carrier_others",
+                               "drive_level"})
 #: lights.programs.accent_fit (optional): {accent style: {beat: x, other: y}}: a scene's weight x ``beat`` when it
 #: shows the beat (``on_beat``), x ``other`` when it doesn't, by the feel's accents style. Each is a number or [with no
 #: groove, at full groove]: the director reads between them by the music's groove (owner, 26 Nov: "I don't feel the
@@ -238,9 +241,12 @@ def pick_lineup(lineups: Mapping[str, Mapping[str, Any]], into: Optional[str], d
     play every group in it and at least one more (a section that has grown since it last came round). None with
     none."""
     named = [n for n, e in lineups.items() if into is not None and into in e["into"]]
-    pool = named or [n for n, e in lineups.items() if "any" in e["into"]]    # the section's own, when it has any
-    if over is not None:
-        pool = [n for n in pool if set(lineups[n]["plays"]) > set(over)]
+    anys = [n for n, e in lineups.items() if "any" in e["into"]]
+    if over is not None:                                   # grown: the section's own bigger ones, else any bigger one
+        bigger = lambda ns: [n for n in ns if set(lineups[n]["plays"]) > set(over)]   # noqa: E731
+        pool = bigger(named) or bigger(anys)
+    else:
+        pool = named or anys                               # the section's own, when it has any
     ws: dict[str, float] = {}
     for name in pool:
         e = lineups[name]
@@ -258,6 +264,21 @@ def pick_lineup(lineups: Mapping[str, Mapping[str, Any]], into: Optional[str], d
         if x <= 0:
             return name
     return name
+
+
+def carries_beat(entry: Mapping[str, Any]) -> bool:
+    """The entry pulses on the beat: a brightness layer on ``phase: beat``, a position layer that hops on beats, or
+    music.hit flashes. Narrower than ``on_beat`` (which also counts movement locked to the bars): this is what makes a
+    light group the beat's carrier in a look, and two groups doing it at once is what reads as mush."""
+    for L in entry.get("layers") or ():
+        if not isinstance(L, Mapping) or L.get("enabled", True) is False:
+            continue
+        if L.get("phase") == "beat" and layer_kind(L) in ("intensity", "position"):
+            return True
+        if layer_kind(L) == "position" and L.get("hop") == "beat":
+            return True
+    hits = entry.get("hits")
+    return isinstance(hits, Mapping) and bool(hits.get("styles"))
 
 
 def on_beat(entry: Mapping[str, Any]) -> bool:

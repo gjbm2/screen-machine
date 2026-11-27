@@ -1123,8 +1123,10 @@ lights:
     grow_step: 0.12                         # ... and a bigger line-up, once the song's level for it has risen this much
     section_fit: 2.5                        # a scene whose tags.sections names the kind of section coming, x this
     section_against: 0.35                   # ... one that names other kinds, x this (no tags.sections: for any)
+    drive_level: 0.75                       # a line-up's drive: this much the song's level over the section coming,
+                                            # the rest its groove (no laid-out song: energy and groove, half each)
     carrier_others: 0.25                    # one group carries the beat in a look (groups.<g>.carries_beat: its weight
-                                            # in that draw); the other groups' beat scenes draw at this share
+                                            # in that draw); the other groups' pulsing scenes draw at this share
   flow:
     centre: null                            # a Room map name the flow turns round / bursts from; null: the room's centre
     # screen (owner, 26 Nov): the direction the picture on the screens travels (show_service/picture.py: a tunnel is

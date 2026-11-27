@@ -25,6 +25,7 @@ It drives the live room (Karaoke mode comes on, the song plays, then stops): nev
 from __future__ import annotations
 
 import argparse
+import colorsys
 import datetime
 import json
 import os
@@ -57,7 +58,7 @@ def watch(dur: float) -> dict:
     from show_service import light_scenes
     cat = light_scenes.shared()
     cat.poll(force=True)
-    groove, energy, par = [], [], []
+    groove, energy, par, hues = [], [], [], []
     on: dict[str, list[int]] = {}
     travel, last = 0.0, None
     t_end = time.time() + dur
@@ -66,6 +67,14 @@ def watch(dur: float) -> dict:
         try:
             with urllib.request.urlopen(SHOW + "/api/v1/rig/frame?output=dmx-a", timeout=2) as r:
                 fx = json.loads(r.read()).get("fixtures") or {}
+            fams = set()                                # hue families (60 degree buckets) among the lit colours
+            for v in fx.values():
+                rgb = v.get("rgb")
+                if isinstance(rgb, list) and len(rgb) == 3 and float(v.get("intensity") or 0.0) > 0.15:
+                    h, sat, val = colorsys.rgb_to_hsv(*[max(0.0, min(1.0, float(c))) for c in rgb])
+                    if sat >= 0.25 and val > 0.1:
+                        fams.add(int(((h * 360.0 + 30.0) % 360.0) // 60.0))
+            hues.append(len(fams))
             pars = sorted(k for k in fx if k.endswith(".par1"))
             if pars:
                 par.append(float(fx[pars[0]].get("intensity", 0.0)))
@@ -92,6 +101,7 @@ def watch(dur: float) -> dict:
             "energy": round(statistics.mean(energy), 2) if energy else None,
             "beat_share": {g: round(sum(v) / len(v), 2) for g, v in on.items()},
             "swing": round(q(par, 0.9) - q(par, 0.1), 2) if par else None,
+            "hues": statistics.median(hues) if hues else None, "hues_max": max(hues) if hues else None,
             "travel_deg_s": round(travel / dur, 1)}
 
 
@@ -125,7 +135,7 @@ def read(t0: float, t1: float) -> dict:
         elif k == "move":
             moves.append({"t": e["t"], "move": e["move"], "from": e.get("from"), "into": e.get("into"),
                           "size": e.get("size")})
-        elif k == "light_program":
+        elif k == "light_program" and isinstance(e.get("groups"), dict):
             lines.append({"t": e["t"], "groups": {g: v.get("scene") for g, v in e["groups"].items()},
                           "via": {g: v.get("transition") for g, v in e["groups"].items()},
                           "why": next(iter(e["groups"].values())).get("why", "").split(":")[0]})
@@ -147,13 +157,12 @@ def looks(d: dict) -> dict:
     seen: dict[str, dict] = {}
     back, beat = [], []
     for lu in d["lineups"]:
-        ln = min((x for x in d["lines"] if abs(x["t"] - lu["t"]) < 1.5), key=lambda x: abs(x["t"] - lu["t"]),
-                 default=None)
+        ln = min((x for x in d["lines"] if 0.0 <= x["t"] - lu["t"] < 15.0), key=lambda x: x["t"], default=None)
         if ln is None:
             continue
         g = {k: v for k, v in ln["groups"].items() if k != "*" and v}
         tags = lambda n: (cat.scenes.get(n) or {}).get("tags") or {}                # noqa: E731
-        beat.append(sum(1 for k, n in g.items() if (cat.scenes.get(n) or {}).get("on_beat")
+        beat.append(sum(1 for k, n in g.items() if light_scenes.carries_beat(cat.scenes.get(n) or {})
                         and not tags(n).get("rest") and not tags(n).get("parts")))
         if lu.get("letter"):
             was = seen.get(lu["letter"])

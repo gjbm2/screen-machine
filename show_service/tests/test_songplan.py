@@ -98,3 +98,16 @@ def test_the_moment_holds_the_directed_energy_down():
     assert d._moment_energy(0.6) == 0.2 and d._moment_energy(0.1) == 0.1 and d._moment_energy(0.6, "song") == 0.6
     d.direction = {"energy": 0.55, "moods": ["calm"]}
     assert d._direction_now("lull")["energy"] == 0.1 and d._direction_now("song") == d.direction
+
+
+def test_a_section_with_no_bigger_line_up_of_its_own_grows_into_any_bigger_one():
+    lus = ls.parse_lineups({"v2": {"plays": ["a", "b"], "into": ["verse"]},
+                            "big": {"plays": ["a", "b", "c"], "into": ["chorus", "any"]}}, {"a", "b", "c"}, [])
+    assert ls.pick_lineup(lus, "verse", 0.5, random.Random(1), over={"a", "b"}) == "big"
+
+
+def test_what_carries_the_beat_is_a_pulse_not_bar_locked_movement():
+    assert ls.carries_beat({"layers": [{"id": "p", "fx": "swell", "phase": "beat"}]})
+    assert ls.carries_beat({"layers": [], "hits": {"styles": ["beat"]}})
+    assert not ls.carries_beat({"layers": [{"id": "s", "kind": "position", "mode": "sweep", "phase": "bar",
+                                            "needs": "grid"}], "hits": {"styles": []}})

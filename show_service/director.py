@@ -385,6 +385,7 @@ RECALL_WEIGHT = 40.0
 GROW_STEP = 0.12
 SECTION_FIT, SECTION_AGAINST = 2.5, 0.35
 CARRIER_OTHERS = 0.25
+DRIVE_LEVEL = 0.75
 BIG_SECTIONS = ("final_chorus", "climax")      # the song's one biggest section: scenes written for a chorus fit it
 from .song_character import SONG_GENRES  # noqa: E402  (Deezer's genres -> the vocabulary; shared with the feed)
 from . import song_character as songc  # noqa: E402
@@ -1049,6 +1050,7 @@ class Director:
         self._light_mem: dict[str, dict] = {}            # letter -> {"lineup", "level", "scenes": {group: scene},
                                                          # "carrier"}: the lights' look for it (this track)
         self._carrier: Optional[str] = None              # the light group that carries the beat in this look
+        self._lineup_how: Optional[str] = None           # how the last line-up was chosen: drawn | recalled | grown
         self._last_boundary_s: Optional[float] = None
         self._e_hist: collections.deque = collections.deque(maxlen=E_HIST_N)   # (t_s, smoothed energy)
         self._x = (0.0, 0.0, 0.0, 0.0)                   # the section's expression: (from, to, t0, t1), in u units
@@ -3052,8 +3054,10 @@ class Director:
                     pwhy[back] = "this section's scene, back again"
                 af = self._accent_fit()
                 if carrier is not None and gid in cands and gid != carrier:
-                    af = {**(af or {"other": 1.0}), "beat": (af or {}).get("beat", 1.0)
-                          * self._prog("carrier_others", CARRIER_OTHERS)}
+                    oth = self._prog("carrier_others", CARRIER_OTHERS)
+                    for n, sc in self.light_scenes.scenes.items():    # another group has the beat: this one's
+                        if lscenes.carries_beat(sc):                  # pulsing scenes draw less often
+                            prefer[n] = prefer.get(n, 1.0) * oth
                 got = self.light_scenes.pick_for(g, self._direction_now(mom), self._flow, self._ls_rng,
                                                  avoid=None if back is not None else old.get("scene") if old else None,
                                                  tags=self._light_tags,
@@ -3077,8 +3081,11 @@ class Director:
             return None
         if sec and self._sec_letter and only is None and not held:   # the lights' look for this section, for next time
             name = self._lineup_apply if self._lineup_apply is not None else self._lineup
+            was = self._light_mem.get(self._sec_letter)
+            kept = was is not None and getattr(self, "_lineup_how", None) == "recalled" and was.get("lineup") == name
             self._light_mem[self._sec_letter] = {
-                "lineup": name, "level": self._sec_level, "carrier": carrier,
+                # the level the line-up was chosen at: a section that creeps up over several returns still grows
+                "lineup": name, "level": was.get("level") if kept else self._sec_level, "carrier": carrier,
                 "scenes": {gid: new[gid]["scene"] for gid in picked if new[gid].get("scene")}}
         if reason not in ("first", "scenes", "room"):     # a change of scene: the transition's own gesture across it
             self._transition_gesture(tr, picked, at, now_s)
@@ -3212,9 +3219,12 @@ class Director:
         """``_drive`` for a section whose level in the song is known ahead (songplan.py): that level stands in for the
         energy being directed now, which describes the section that is ending."""
         d = self.direction or {}
-        e = _c01(level if level is not None else (_num(d.get("energy"), 0.5) or 0.5))
         g0, g1 = self.lights_cfg["programs"].get("accent_groove") or (0.0, 1.0)
-        return 0.5 * e + 0.5 * _c01((self._groove - g0) / (g1 - g0))
+        g = _c01((self._groove - g0) / (g1 - g0))
+        if level is None:
+            return 0.5 * _c01(_num(d.get("energy"), 0.5) or 0.5) + 0.5 * g
+        k = _c01(self._prog("drive_level", DRIVE_LEVEL))  # the song's own arc sizes its line-ups; the groove adds
+        return k * _c01(level) + (1.0 - k) * g
 
     def _prog(self, key: str, default: float) -> float:
         """One of lights.programs' optional numbers (light_scenes.PROGRAMS_OPTIONAL), else the director's own."""
@@ -3233,6 +3243,9 @@ class Director:
             return self._lineup_next[1]
         if reason not in STRUCTURE_REASONS and reason not in ("dwell", "next", "feel"):
             return self._lineup
+        if reason == "dwell" and self._sec_kind is not None and self._lineup is not None:
+            return self._lineup                           # a song laid out ahead: its sections change the line-up,
+                                                          # a timed change inside one keeps it (the arc holds)
         sec = reason in ("section", "repeat")
         into = self._sec_kinds[1] if sec else None
         level = self._sec_level if sec else None
@@ -3257,6 +3270,7 @@ class Director:
             log.exception("line-ups: pick failed")
             name = None
         self._lineup_next = (key, name)
+        self._lineup_how = how                            # recalled: the section's memory keeps the level it was set at
         if name is not None:
             self._log_event("lineup", {"lineup": name, "plays": list(lus[name]["plays"]), "into": into,
                                        "drive": round(drive, 3), "level": level, "letter": self._sec_letter if sec
