@@ -12,6 +12,8 @@ formulas (tolerances, scales) are starting points, all in weights.yaml.
   climax      a big move or a spent token in the reference climax; the share of big moments that land there
   ending      how far the lamps' fall to dark is from the song's end
   coherence   share of screen look changes with a light change in the same tick
+  design      coherent and restrained, as well as on the music (design.py: one palette a song, a handful of looks,
+              rare flourishes, heads that hold still, the whole rig kept for the high point)
 """
 from __future__ import annotations
 
@@ -25,11 +27,13 @@ import numpy as np
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import common  # noqa: E402
+import design as design_mod  # noqa: E402
 
 LIGHT_KINDS = ("light_scene", "lineup", "light_program")
 DEFAULT_WEIGHTS = {
     "weights": {"beat": 1.0, "snap": 1.0, "contour": 1.0, "sections": 1.0, "climax": 0.5, "ending": 0.5,
-                "coherence": 0.5},
+                "coherence": 0.5, "design": 1.0},
+    "design": dict(design_mod.DEFAULTS),
     "tol_beat_s": 0.07, "smooth_s": 2.0, "snap_smooth_s": 0.5, "max_lag_s": 5.0, "snap_scale_s": 2.0, "snap_min_corr": 0.2,
     "stray_scale_per_min": 2.0, "ending_scale_s": 5.0, "dark_share": 0.3, "case_window_s": 10.0,
 }
@@ -221,6 +225,8 @@ def score(tl: dict, ref: dict, W: Optional[dict] = None) -> dict:
     lt = [float(d["t_s"]) for d in dec if d.get("kind") in LIGHT_KINDS]
     lc = [float(d["t_s"]) for d in dec if d.get("kind") == "look_change" and d["t_s"] >= 0]
     m["coherence"] = round(float(np.mean([any(abs(a - b) <= 0.15 for b in lt) for a in lc])), 3) if lc else None
+    # design: coherent and restrained, as well as on the music
+    m.update(design_mod.design(tl, W=W))
     # overall
     ws = W["weights"]
     parts = [(float(ws[k]), m[k]) for k in ws if m.get(k) is not None]

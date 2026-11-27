@@ -1,6 +1,6 @@
 # tools/room/ad_eval: how the overall score weighs each metric, and the tolerances and scales in the formulas.
 # Every number is a starting point (27 Nov 2026), changed only on purpose: a change makes runs incomparable.
-weights: {beat: 1.0, snap: 1.0, contour: 1.0, sections: 1.0, climax: 0.5, ending: 0.5, coherence: 0.5}
+weights: {beat: 1.0, snap: 1.0, contour: 1.0, sections: 1.0, climax: 0.5, ending: 0.5, coherence: 0.5, design: 1.0}
 tol_beat_s: 0.07            # a pulse within this of a reference beat is on the beat
 smooth_s: 2.0               # contour: both curves smoothed over this
 snap_smooth_s: 0.5          # snap: both curves smoothed over this before the cross-correlation
@@ -11,3 +11,8 @@ stray_scale_per_min: 2.0    # sections score = hit share / (1 + strays a minute 
 ending_scale_s: 5.0         # ending score = 1 - |dark - end| / this
 dark_share: 0.3             # the lamps count as dark under this share of their in-song median
 case_window_s: 10.0         # an owner note is measured over its time ± this
+# design.py's bars (docs/LIGHT_DESIGN_NOTES.md; starting points from what lighting designers say, not measurements):
+design:
+  kit_size: 3               # kit: a group of lights showing this many different scenes in a song, or fewer, scores 1
+  flourish_budget: 3        # flourish: this many light changes with a gesture in a song, or fewer, scores 1
+  still_share: 0.6          # stillness: the heads holding still or drifting for this share of the song scores 1
