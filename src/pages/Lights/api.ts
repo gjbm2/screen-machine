@@ -242,6 +242,15 @@ export class LightsApi {
     return this.json<unknown>("DELETE", `/space/regions/${encodeURIComponent(name)}`);
   }
 
+  /** A keep-out region (a box no beam should cross): its centre and size in room metres, the light groups it is for. */
+  putKeepOut(name: string, body: { centre: number[]; size: number[]; groups?: string[]; label?: string }) {
+    return this.json<unknown>("PUT", `/space/keep_out/${encodeURIComponent(name)}`, body);
+  }
+
+  removeKeepOut(name: string) {
+    return this.json<unknown>("DELETE", `/space/keep_out/${encodeURIComponent(name)}`);
+  }
+
   /** Where every beam lands now, and the flow (read with lib.parseLive). */
   live(signal?: AbortSignal) {
     return this.json<unknown>("GET", "/live", undefined, signal);

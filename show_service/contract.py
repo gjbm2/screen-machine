@@ -2521,6 +2521,9 @@ class SpaceView(TypedDict):
     surfaces: dict[str, Surface]
     points: dict[str, dict]        # name -> {"label", "at", "device"?, "from": "hand" | "page" | <fixture id>}
     regions: dict[str, dict]       # name -> {"label", "surface", "centre", "size"}
+    keep_out: dict[str, dict]      # name -> {"label", "centre": [x, y, z], "size": [x, y, z], "groups": [light
+                                   # group, ...] (none: every light), "editable"}: boxes no beam should cross. A
+                                   # moving light's aim steps aside (looks._aim); a fixed laser's tilt is checked
     appliances: dict[str, dict]    # id -> {"at": [x, y, z] | None, "kind"?, "label"?, "mount"?, "plane"?: {normal,
                                    #        up, size}, "teach": [TeachSample], "pose": MoverPose | None,
                                    #        "editable": bool}  (editable: its place isn't set in the hand file)

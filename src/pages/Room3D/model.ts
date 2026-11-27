@@ -52,8 +52,39 @@ export interface RoomModel {
   centre: Vec3;
   fixtures: Fixture[];
   points: Point[];
+  /** Boxes no beam should cross (space.yaml keep_out, the Lights setup's 3D tab). */
+  keepOut: KeepRegion[];
+  /** Each fixed laser's tilt checked against them (show_service space.laser_checks). */
+  lasers: Record<string, LaserCheck>;
+  /** The light groups a region can be for (show.yaml lights.groups). */
+  lightGroups: Record<string, { label: string; members: string[] }>;
   revision: string;
   problems: string[];
+}
+
+export interface KeepRegion { name: string; label: string; centre: Vec3; size: Vec3; groups: string[]; editable: boolean }
+export interface LaserCheck { lean_deg: number; crosses: string[]; clear_lean_deg: number | null }
+
+/** GET /rig/space's keep-out regions, laser checks and light groups, read tolerantly. */
+export function keepOutOf(space: any): Pick<RoomModel, "keepOut" | "lasers" | "lightGroups"> {
+  const keepOut: KeepRegion[] = Object.entries(space?.keep_out ?? {}).flatMap(([name, e]: [string, any]) =>
+    isVec3(e?.centre) && isVec3(e?.size)
+      ? [{ name, label: typeof e.label === "string" ? e.label : name, centre: e.centre, size: e.size,
+           groups: Array.isArray(e.groups) ? e.groups.filter((g: unknown) => typeof g === "string") : [],
+           editable: e.editable !== false }]
+      : []);
+  const lasers: Record<string, LaserCheck> = {};
+  for (const [id, c] of Object.entries(space?.lasers ?? {}) as [string, any][]) {
+    if (typeof c?.lean_deg === "number") {
+      lasers[id] = { lean_deg: c.lean_deg, crosses: Array.isArray(c.crosses) ? c.crosses : [],
+        clear_lean_deg: typeof c.clear_lean_deg === "number" ? c.clear_lean_deg : null };
+    }
+  }
+  const lightGroups: Record<string, { label: string; members: string[] }> = {};
+  for (const [g, e] of Object.entries(space?.light_groups ?? {}) as [string, any][]) {
+    lightGroups[g] = { label: typeof e?.label === "string" ? e.label : g, members: Array.isArray(e?.members) ? e.members : [] };
+  }
+  return { keepOut, lasers, lightGroups };
 }
 
 const isVec3 = (v: unknown): v is Vec3 => Array.isArray(v) && v.length === 3 && v.every((x) => typeof x === "number");
@@ -128,6 +159,7 @@ export async function loadRoom(room: string): Promise<RoomModel> {
     centre: isVec3(r.centre) ? r.centre : [size[0] / 2, size[1] / 2, size[2] / 2],
     fixtures,
     points,
+    ...keepOutOf(space),
     revision: `${rig?.registry?.revision ?? ""}/${space?.revision ?? ""}`,
     problems: [...(rig?.registry?.problems ?? []), ...(space?.problems ?? [])],
   };

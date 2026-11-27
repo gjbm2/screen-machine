@@ -202,6 +202,7 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("PUT", "/api/v1/rig/space/appliances/{id}"), ("DELETE", "/api/v1/rig/space/appliances/{id}"),
     ("PUT", "/api/v1/rig/space/points/{name}"), ("DELETE", "/api/v1/rig/space/points/{name}"),
     ("PUT", "/api/v1/rig/space/regions/{name}"), ("DELETE", "/api/v1/rig/space/regions/{name}"),
+    ("PUT", "/api/v1/rig/space/keep_out/{name}"), ("DELETE", "/api/v1/rig/space/keep_out/{name}"),
     ("GET", "/api/v1/rig/live"),
     ("GET", "/api/v1/autopilot"), ("PUT", "/api/v1/autopilot"), ("POST", "/api/v1/autopilot/undo"),
     ("POST", "/api/v1/autopilot/resume"), ("GET", "/api/v1/autopilot/rules"), ("POST", "/api/v1/autopilot/check"),
@@ -798,7 +799,8 @@ def neutral_space(why: Optional[str]) -> dict:
     """GET /api/v1/rig/space with no room space: contract.SpaceView's shape, empty (the frame's own default front)."""
     return {"revision": "", "error": why, "problems": [],
             "room": {"size": None, "front": "north", "centre": None, "right": [1.0, 0.0, 0.0]},
-            "surfaces": {}, "points": {}, "regions": {}, "appliances": {}, "extent": None, "targets": []}
+            "surfaces": {}, "points": {}, "regions": {}, "keep_out": {}, "appliances": {}, "extent": None,
+            "targets": [], "light_groups": {}, "lasers": {}, "lean_rule_deg": None}
 
 
 def _surface_centre(s: Mapping[str, Any]) -> Optional[list[float]]:
@@ -1177,6 +1179,8 @@ class Api:
             ("DELETE", "/api/v1/rig/space/points/{name}", self._space_point_delete),
             ("PUT", "/api/v1/rig/space/regions/{name}", self._space_region_put),
             ("DELETE", "/api/v1/rig/space/regions/{name}", self._space_region_delete),
+            ("PUT", "/api/v1/rig/space/keep_out/{name}", self._space_keep_put),
+            ("DELETE", "/api/v1/rig/space/keep_out/{name}", self._space_keep_delete),
             ("GET", "/api/v1/rig/live", self._rig_live),
             ("POST", "/api/v1/hue/stream", self._hue_stream),
             ("GET", "/api/v1/hue/status", self._hue_status),
@@ -2336,10 +2340,38 @@ class Api:
             rows = []
         return {r["id"]: r for r in rows if isinstance(r, dict) and isinstance(r.get("id"), str)}
 
-    def _space_out(self, view: Any, rig: Any) -> dict:
+    def _space_out(self, view: Any, rig: Any, brain: Any = None) -> dict:
         v = dict(_d(view))
-        v["targets"] = space_targets(v, self._rows_by_id(rig))
+        rows = self._rows_by_id(rig)
+        v["targets"] = space_targets(v, rows)
+        # for the page's keep-out editor: the light groups a region can name, and each fixed laser's tilt checked
+        # against the regions (space.laser_checks)
+        groups = self._light_groups(brain)
+        v["light_groups"] = {g: {"label": e.get("label") or g, "members": list(e.get("members") or ())}
+                             for g, e in groups.items()}
+        of = {m: g for g, e in groups.items() for m in e.get("members") or ()}
+        try:
+            from . import space as spacemod
+            apps = v.get("appliances") or {}
+            lasers = [{"id": fid, "at": (apps.get(fid) or {}).get("at"), "spread_deg": r.get("spread_deg"),
+                       "lean_deg": (r.get("setup") or {}).get("lean_deg"), "group": of.get(fid)}
+                      for fid, r in rows.items() if isinstance(r, dict) and r.get("spread_deg")]
+            v["lasers"] = spacemod.laser_checks(v, lasers)
+            v["lean_rule_deg"] = spacemod.LEAN_RULE_DEG
+        except Exception:                                 # the page degrades: no checks shown
+            log.debug("space: laser checks failed", exc_info=True)
+            v["lasers"], v["lean_rule_deg"] = {}, None
         return v
+
+    @staticmethod
+    def _light_groups(brain: Any) -> dict:
+        """show.yaml lights.groups with their members, as the director has them ({} without one)."""
+        try:
+            d = _components(brain).get("director") if brain is not None else None
+        except Exception:                                 # noqa: BLE001
+            d = None
+        g = getattr(d, "_groups", None) if d is not None else None
+        return dict(g) if isinstance(g, dict) else {}
 
     async def _space_write(self, brain: Any, fn: Callable[[Any], Any]) -> web.Response:
         """A Room map write on show-brain: ``fn(store)``'s answer (the store writes space.added.yaml and polls), then
@@ -2369,7 +2401,7 @@ class Api:
         poll = getattr(st, "poll", None)
         if callable(poll):
             await self._call(brain, poll)
-        return _json(self._space_out(st.view(), rig))
+        return _json(self._space_out(st.view(), rig, brain))
 
     async def _space_room(self, request: web.Request, brain: Any) -> web.Response:
         """PUT /api/v1/rig/space/room ``{size?: [x, y, z] | null, front?: n | e | s | w | north ...}`` -> SpaceView (+
@@ -2393,7 +2425,7 @@ class Api:
         def write(st: Any) -> dict:
             # space.Store.set_room: None leaves that as it is, a size of [] clears it
             st.set_room((list(size) if size else []) if "size" in body else None, front)
-            return self._space_out(st.view(), rig)
+            return self._space_out(st.view(), rig, brain)
 
         return await self._space_write(brain, write)
 
@@ -2456,6 +2488,29 @@ class Api:
         name = request.match_info["name"]
         return await self._space_write(brain, lambda st: st.set_region(name, body["surface"], body["centre"],
                                                                        body["size"], body.get("label")))
+
+    async def _space_keep_put(self, request: web.Request, brain: Any) -> web.Response:
+        """PUT /api/v1/rig/space/keep_out/{name} ``{centre: [x, y, z], size: [x, y, z], groups?: [light group, ...],
+        label?}`` -> the keep-out region (owner, 27 Nov: "configurable 'keep out' regions in the room")."""
+        body, bad = await self._body(request)
+        if bad is not None:
+            return bad
+        keys = ("centre", "size", "groups", "label")
+        if not isinstance(body, dict) or "centre" not in body or "size" not in body or any(k not in keys for k in body):
+            return _err(400, "bad_request", 'A keep-out region is {"centre": [x, y, z], "size": [x, y, z], '
+                        '"groups": ["lasers"]}.', choices=list(keys))
+        name = request.match_info["name"]
+        return await self._space_write(brain, lambda st: st.set_keep_out(name, body["centre"], body["size"],
+                                                                         body.get("groups"), body.get("label")))
+
+    async def _space_keep_delete(self, request: web.Request, brain: Any) -> web.Response:
+        name = request.match_info["name"]
+
+        def write(store: Any) -> dict:
+            store.remove_keep_out(name)
+            return {"removed": name}
+
+        return await self._space_write(brain, write)
 
     async def _space_region_delete(self, request: web.Request, brain: Any) -> web.Response:
         name = request.match_info["name"]

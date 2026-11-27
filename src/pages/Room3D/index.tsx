@@ -11,7 +11,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { resolveRoomUrl } from "@/pages/Room/api";
-import { loadRoom, type RoomModel } from "./model";
+import { loadRoom, type KeepRegion, type RoomModel } from "./model";
 import { hazeWords, LEVEL_VISIBILITY_M, mlOf, sigmaOf, sigmaOfSlider, sliderOf } from "./haze";
 import { RoomSim } from "./scene";
 
@@ -23,7 +23,12 @@ type Haze = { levels?: Record<string, number>; pick?: string | null; feel?: stri
 
 type NodeStatus = { node?: { udp?: string; universe?: number }; artnet?: { pps?: number; age_s?: number | null; merging?: boolean; length?: number } };
 
-export default function Room3DPage() {
+/** The room in 3D. On its own (/lights/room) it fills the window; ``embedded`` (the Lights setup's 3D tab) it fills
+ *  its box and leaves the readout to the page around it. ``picked``: the keep-out region being edited there;
+ *  ``regions``: the page's own (unsaved) copy of the regions, drawn in place of the room's saved ones. */
+export default function Room3DPage({ embedded = false, picked = null, regions }: {
+  embedded?: boolean; picked?: string | null; regions?: KeepRegion[];
+} = {}) {
   const room = useMemo(() => resolveRoomUrl(window.location.search), []);
   const node = useMemo(() => (new URLSearchParams(window.location.search).get("node") || NODE_DEFAULT).replace(/\/+$/, ""), []);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -89,6 +94,13 @@ export default function Room3DPage() {
     return () => { dead = true; window.clearInterval(t); };
   }, [room]);
 
+  // the keep-out regions: red when a laser's burst crosses one
+  useEffect(() => {
+    const crossed = new Set(Object.values(model?.lasers ?? {}).flatMap((c) => c.crosses));
+    simRef.current?.setKeepOut((regions ?? model?.keepOut ?? []).map((r) => (
+      { centre: r.centre, size: r.size, crossed: crossed.has(r.name), picked: r.name === picked })));
+  }, [model, regions, picked]);
+
   // the wire: the virtual node's DMX output (one event per DMX refresh), and its status
   useEffect(() => {
     const es = new EventSource(`${node}/dmx`);
@@ -136,7 +148,8 @@ export default function Room3DPage() {
   const artLive = a && a.age_s != null && a.age_s < 4;
   const pill = "rounded-full bg-[#1a1e2a] px-2.5 py-0.5";
   return (
-    <div className="fixed inset-0 flex flex-col bg-[#06070a] text-[#e3e6ee]" style={{ fontSize: 13 }}>
+    <div className={embedded ? "relative flex h-[70vh] min-h-[420px] flex-col overflow-hidden rounded-xl bg-[#06070a] text-[#e3e6ee]"
+      : "fixed inset-0 flex flex-col bg-[#06070a] text-[#e3e6ee]"} style={{ fontSize: 13 }} data-testid="room-sim">
       <header className="flex flex-wrap items-center gap-2 border-b border-[#252a38] bg-[#0d1017] px-3 py-1.5">
         <b className="text-[15px]">Room in 3D</b>
         <span className={pill} style={{ color: roomErr ? "#ff6b6b" : "#6bd38a" }}>
@@ -183,7 +196,8 @@ export default function Room3DPage() {
           <button key={v} className="rounded border border-[#2c3346] bg-[#1a1e2a] px-2 py-0.5 capitalize" onClick={() => simRef.current?.view(v)}>{v}</button>
         ))}
         <a className={pill} href={`${node}/`} target="_blank" rel="noreferrer">Board</a>
-        <a className={pill} href="/settings/lights">Lights setup</a>
+        {embedded ? <a className={pill} href="/lights/room" target="_blank" rel="noreferrer">Full window</a>
+          : <a className={pill} href="/settings/lights?tab=3d">Lights setup</a>}
       </header>
       <div className="relative flex min-h-0 flex-1">
         <div ref={hostRef} className="relative min-w-0 flex-1"
@@ -196,7 +210,7 @@ export default function Room3DPage() {
             drag: orbit · wheel: zoom · the lights read the Art-Net wire, at their makers' brightness; the picture adapts as an eye does · {perf}
           </div>
         </div>
-        <aside className="overflow-auto border-l border-[#252a38] bg-[#0b0d13] px-3 py-2" style={{ width: SIDE_W }}>
+        <aside className={embedded ? "hidden" : "overflow-auto border-l border-[#252a38] bg-[#0b0d13] px-3 py-2"} style={{ width: SIDE_W }}>
           {words.map((g) => (
             <div key={g.unit} className="mb-2">
               <h2 className="mb-1 mt-2 text-sm font-semibold">{g.unit}</h2>

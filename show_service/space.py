@@ -66,8 +66,8 @@ ID_RE = r"^[a-z0-9][a-z0-9_.-]{0,63}$"     # fixtures.py's: appliance ids, place
 _ID = re.compile(ID_RE)
 _WORD = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")    # an appliance's kind ("screen", "mover")
 _DEVICE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")   # a room device a place belongs to ("mirror_ball")
-TOP_KEYS: tuple[str, ...] = ("version", "room", "appliances", "points", "regions", "surfaces")
-SECTIONS: tuple[str, ...] = ("room", "appliances", "points", "regions", "surfaces")   # the added file, in this order
+TOP_KEYS: tuple[str, ...] = ("version", "room", "appliances", "points", "regions", "surfaces", "keep_out")
+SECTIONS: tuple[str, ...] = ("room", "appliances", "points", "regions", "surfaces", "keep_out")   # the added file, in this order
 ROOM_KEYS: tuple[str, ...] = ("size", "front", "haze_half_life_s")   # haze_half_life_s: atmosphere.py
 PLACE_KEYS: tuple[str, ...] = ("at", "kind", "label", "mount", "plane", "aim")   # an appliance's place (editable on
 #: the map). aim: [x, y, z], the place in the room a fixed light points at (a bar's laser turned up at the ceiling;
@@ -75,6 +75,10 @@ PLACE_KEYS: tuple[str, ...] = ("at", "kind", "label", "mount", "plane", "aim")  
 APPLIANCE_KEYS: tuple[str, ...] = PLACE_KEYS + ("teach", "pose")
 POINT_KEYS: tuple[str, ...] = ("label", "at", "device", "from")
 REGION_KEYS: tuple[str, ...] = ("label", "surface", "centre", "size")
+#: keep_out.<name> (owner, 27 Nov: "we need configurable 'keep out' regions in the room"): a box of the room no light
+#: of the named groups should throw a beam through (a mirror ball, the projected picture). centre [x, y, z] and size
+#: [x, y, z] in metres, along the room's axes; groups: light group names (show.yaml lights.groups), none: every light.
+KEEP_KEYS: tuple[str, ...] = ("label", "centre", "size", "groups")
 SURFACE_KEYS: tuple[str, ...] = ("label", "origin", "normal", "up", "size")
 PLANE_KEYS: tuple[str, ...] = ("normal", "up", "size")
 POSE_KEYS: tuple[str, ...] = ("at", "rot", "tilt_offset_deg", "pan_sign", "tilt_sign", "rms_deg", "worst_deg",
@@ -405,6 +409,28 @@ def _region(raw: Any, where: str, probs: list[str]) -> Optional[dict]:
     return out
 
 
+def _keep_out(raw: Any, where: str, probs: list[str]) -> Optional[dict]:
+    if not isinstance(raw, dict):
+        probs.append(f"{where}: needs centre and size: left out")
+        return None
+    _unknown(raw, KEEP_KEYS, where, probs)
+    centre, size = _vec(raw.get("centre"), 3), _sizes(raw.get("size"), 3)
+    if centre is None or size is None:
+        probs.append(f"{where}: needs centre ([x, y, z] m) and size ([x, y, z] m): left out")
+        return None
+    out: dict[str, Any] = {"centre": centre, "size": size}
+    g = raw.get("groups")
+    if g is not None:
+        if isinstance(g, list) and all(isinstance(x, str) and x for x in g):
+            out["groups"] = list(dict.fromkeys(g))
+        else:
+            probs.append(f"{where}.groups: isn't a list of light groups: every light")
+    lab = _label(raw.get("label"))
+    if lab is not None:
+        out["label"] = lab
+    return out
+
+
 def _surface(name: str, raw: Any, where: str, probs: list[str]) -> Optional[dict]:
     if name in ROOM_SURFACES:
         probs.append(f"{where}: {name} comes from the room's size: left out (use another name)")
@@ -461,7 +487,8 @@ def _room(raw: Any, where: str, probs: list[str]) -> dict:
 def parse_doc(doc: Any, fname: str, probs: list[str]) -> dict[str, dict]:
     """A space file's mapping -> its sections, every value checked and normalised (bad ones dropped with a problem
     line). Pure."""
-    out: dict[str, dict] = {"room": {}, "appliances": {}, "points": {}, "regions": {}, "surfaces": {}}
+    out: dict[str, dict] = {"room": {}, "appliances": {}, "points": {}, "regions": {}, "surfaces": {},
+                            "keep_out": {}}
     if doc is None:
         return out
     if not isinstance(doc, dict):
@@ -473,7 +500,8 @@ def parse_doc(doc: Any, fname: str, probs: list[str]) -> dict[str, dict]:
         ("appliances", lambda n, r, w: _appliance(r, w, probs) or None),
         ("points", lambda n, r, w: _point(r, w, probs)),
         ("regions", lambda n, r, w: _region(r, w, probs)),
-        ("surfaces", lambda n, r, w: _surface(n, r, w, probs)))
+        ("surfaces", lambda n, r, w: _surface(n, r, w, probs)),
+        ("keep_out", lambda n, r, w: _keep_out(r, w, probs)))
     for sec, parse in parts:
         raw = doc.get(sec)
         if raw is None:
@@ -492,6 +520,143 @@ def parse_doc(doc: Any, fname: str, probs: list[str]) -> dict[str, dict]:
 
 
 # -- the view (merge and build; pure) --------------------------------------------------------------------------------
+def ray_crosses_box(o: Sequence[float], d: Sequence[float], centre: Sequence[float], size: Sequence[float],
+                    reach: float = 1e9) -> bool:
+    """A ray from ``o`` along ``d`` passes through the box (centre, size, along the room's axes) within ``reach``
+    metres (the slab test). Pure."""
+    t0, t1 = 0.0, reach
+    for i in range(3):
+        lo, hi = centre[i] - size[i] / 2.0, centre[i] + size[i] / 2.0
+        if abs(d[i]) < 1e-12:
+            if not lo <= o[i] <= hi:
+                return False
+            continue
+        a, b = (lo - o[i]) / d[i], (hi - o[i]) / d[i]
+        if a > b:
+            a, b = b, a
+        t0, t1 = max(t0, a), min(t1, b)
+        if t0 > t1:
+            return False
+    return True
+
+
+def cone_crosses_box(o: Sequence[float], axis: Sequence[float], half_deg: float, centre: Sequence[float],
+                     size: Sequence[float], rings: int = 8, around: int = 48) -> bool:
+    """Any beam of a solid cone (apex ``o``, unit ``axis``, half angle ``half_deg``: a grating laser's burst, which
+    its rotation sweeps through the whole cone) passes through the box. Sampled: ``rings`` x ``around`` rays and the
+    axis (a box a beam's width across could be missed between samples; a mirror ball can't). Pure."""
+    ax = _unit(axis)
+    ref = (1.0, 0.0, 0.0) if abs(ax[0]) < 0.9 else (0.0, 1.0, 0.0)
+    u = _unit(_cross(ax, ref))
+    v = _cross(ax, u)
+    if ray_crosses_box(o, ax, centre, size):
+        return True
+    for r in range(1, rings + 1):
+        a = math.radians(half_deg) * r / rings
+        ca, sa = math.cos(a), math.sin(a)
+        for k in range(around):
+            ph = 2.0 * math.pi * k / around
+            cp, sp = math.cos(ph), math.sin(ph)
+            d = tuple(ca * ax[i] + sa * (cp * u[i] + sp * v[i]) for i in range(3))
+            if ray_crosses_box(o, d, centre, size):
+                return True
+    return False
+
+
+def lean_axis(at: Sequence[float], towards: Sequence[float], lean_deg: float) -> tuple[float, float, float]:
+    """The direction a fixed light points when it leans ``lean_deg`` forward from straight up, forward being the
+    horizontal way from ``at`` to ``towards`` (the middle of the room). Pure."""
+    dx, dy = towards[0] - at[0], towards[1] - at[1]
+    h = math.hypot(dx, dy) or 1.0
+    a = math.radians(lean_deg)
+    return (dx / h * math.sin(a), dy / h * math.sin(a), math.cos(a))
+
+
+def keep_boxes(view: Any, group: Optional[str]) -> tuple[tuple[Any, Any], ...]:
+    """The keep-out boxes (centre, size) that hold for a light of ``group``: those naming it, and those naming no
+    group (every light)."""
+    ko = view.get("keep_out") if isinstance(view, Mapping) else None
+    if not ko:
+        return ()
+    return tuple((e["centre"], e["size"]) for e in ko.values()
+                 if not e.get("groups") or (group is not None and group in e["groups"]))
+
+
+def clear_target(o: Sequence[float], q: Sequence[float], boxes: Sequence[tuple[Any, Any]], *, step: float = 0.25,
+                 tries: int = 16, margin: float = 0.1) -> tuple[tuple[float, float, float], bool]:
+    """Where a light at ``o`` should point instead of ``q`` so its beam misses every keep-out box: ``q`` moved, in
+    ``step`` metre steps, straight away from the box the beam crosses (from the box's centre through the nearest
+    point of the beam; a beam through the very centre goes up). (the point, whether it had to move). A beam that
+    can't be cleared in ``tries`` steps keeps ``q``. Pure."""
+    q0 = (float(q[0]), float(q[1]), float(q[2]))
+    if not boxes:
+        return q0, False
+
+    def crossing(pt: Sequence[float]) -> Optional[tuple[Any, Any]]:
+        d = tuple(pt[i] - o[i] for i in range(3))
+        if math.sqrt(sum(x * x for x in d)) < 1e-9:
+            return None
+        for c, sz in boxes:
+            if ray_crosses_box(o, d, c, [x + 2.0 * margin for x in sz]):
+                return c, sz
+        return None
+
+    hit = crossing(q0)
+    if hit is None:
+        return q0, False
+    d = _unit(tuple(q0[i] - o[i] for i in range(3)))
+    c = hit[0]
+    t = sum((c[i] - o[i]) * d[i] for i in range(3))
+    n = tuple(o[i] + d[i] * t - c[i] for i in range(3))
+    if math.sqrt(sum(x * x for x in n)) < 1e-6:
+        n = (0.0, 0.0, 1.0)
+    n = _unit(n)
+    for k in range(1, tries + 1):
+        pt = tuple(q0[i] + n[i] * step * k for i in range(3))
+        if crossing(pt) is None:
+            return pt, True                               # type: ignore[return-value]
+    return q0, False
+
+
+#: A fixed laser's tilt when none is set: its most forward beam this far off vertical (owner, 27 Nov: "angle the gigbar
+#: lasers so that no beam leans forward more than 45 degrees").
+LEAN_RULE_DEG = 45.0
+
+
+def laser_checks(view: Any, lasers: Sequence[Mapping[str, Any]]) -> dict[str, dict]:
+    """For each fixed laser ({id, at, spread_deg, lean_deg | None, group}): the tilt it has (its own, else the rule's),
+    the keep-out regions its burst crosses at that tilt, and the most forward tilt at which it crosses none
+    (``clear_lean_deg``; None: no tilt down to straight back clears). Forward is towards the room's centre. Pure."""
+    out: dict[str, dict] = {}
+    ko = view.get("keep_out") if isinstance(view, Mapping) else None
+    room = view.get("room") if isinstance(view, Mapping) else None
+    mid = (room or {}).get("centre")
+    for L in lasers:
+        at, spread = L.get("at"), L.get("spread_deg")
+        if not at or not spread or not mid:
+            continue
+        half = float(spread) / 2.0
+        lean = float(L["lean_deg"]) if L.get("lean_deg") is not None else LEAN_RULE_DEG - half
+        mine = {n: e for n, e in (ko or {}).items()
+                if not e.get("groups") or (L.get("group") is not None and L["group"] in e["groups"])}
+
+        def crosses(deg: float) -> list[str]:
+            ax = lean_axis(at, mid, deg)
+            return [n for n, e in mine.items() if cone_crosses_box(at, ax, half, e["centre"], e["size"])]
+
+        now = crosses(lean)
+        clear: Optional[float] = lean if not now else None
+        if now:
+            deg = math.floor(lean * 2.0) / 2.0
+            while deg >= -90.0:
+                if not crosses(deg):
+                    clear = deg
+                    break
+                deg -= 0.5
+        out[str(L["id"])] = {"lean_deg": round(lean, 2), "crosses": now, "clear_lean_deg": clear}
+    return out
+
+
 def _room_surfaces(size: Optional[list[float]]) -> dict[str, dict]:
     """floor (always: z = 0 is the frame's floor), then the ceiling and walls once the size is known (§3.1)."""
     def s(name: str, origin: Vec3, normal: Vec3, u: Vec3, v: Vec3, wh: Optional[list[float]]) -> dict:
@@ -512,14 +677,15 @@ def _room_surfaces(size: Optional[list[float]]) -> dict[str, dict]:
 def _merge(hand: dict, added: dict, probs: list[str]) -> tuple[dict, dict[str, set]]:
     """The two files' sections merged (the hand file wins: §3.2). Returns (sections, appliance id -> the place keys
     the hand file sets)."""
-    out: dict[str, dict] = {"room": dict(hand["room"]), "appliances": {}, "points": {}, "regions": {}, "surfaces": {}}
+    out: dict[str, dict] = {"room": dict(hand["room"]), "appliances": {}, "points": {}, "regions": {}, "surfaces": {},
+                            "keep_out": {}}
     for k, v in added["room"].items():
         if k in out["room"]:
             if out["room"][k] != v:
                 probs.append(f"{ADDED_NAME}: room.{k} is set in {HAND_NAME} too: {HAND_NAME}'s is used")
         else:
             out["room"][k] = v
-    for sec in ("points", "regions", "surfaces"):
+    for sec in ("points", "regions", "surfaces", "keep_out"):
         out[sec] = {n: {**e, "_src": "hand"} for n, e in hand[sec].items()}
         for n, e in added[sec].items():
             if n in out[sec]:
@@ -605,8 +771,11 @@ def build_view(hand: Any, added: Any = None, *, error: Optional[str] = None,
         for a in appliances.values():
             placed += [x for x in (a["at"], (a["pose"] or {}).get("at")) if x]
         extent = _box(placed)
+    keep = {name: {"label": e.get("label") or humanise(name), "centre": e["centre"], "size": e["size"],
+                   "groups": list(e.get("groups") or []), "editable": e.get("_src") != "hand"}
+            for name, e in m["keep_out"].items()}
     body = {"room": room, "surfaces": surfaces, "points": points, "regions": regions, "appliances": appliances,
-            "extent": extent}
+            "keep_out": keep, "extent": extent}
     rev = hashlib.sha1(json.dumps(body, sort_keys=True).encode()).hexdigest()[:12]
     return {"revision": rev, "error": error, "problems": list(dict.fromkeys(probs)),   # type: ignore[typeddict-item]
             **body}
@@ -929,6 +1098,32 @@ class Store:
 
     def remove_region(self, name: str) -> None:
         self._remove("regions", _check_id(name, "area"))
+
+    def set_keep_out(self, name: str, centre: Any, size: Any, groups: Any = None, label: Optional[str] = None) -> dict:
+        """A keep-out box (KEEP_KEYS): its centre and size in room metres, and the light groups it is for (none:
+        every light)."""
+        name = _check_id(name, "keep-out region")
+        c = _one(lambda p: _vec(centre, 3) or p.append("Its centre is three numbers in metres."), "centre")
+        sz = _one(lambda p: _sizes(size, 3) or p.append("Its size is three lengths in metres."), "size")
+        if groups is not None and not (isinstance(groups, list) and all(isinstance(x, str) and x for x in groups)):
+            raise Refused("bad_request", "The lights it is for are a list of light group names (none: every light).")
+        lab = None
+        if label is not None:
+            lab = _one(lambda p: _label(label) or p.append("That isn't a name."), "label")
+
+        def mutate(hand: dict, new: dict) -> None:
+            if name in hand["keep_out"]:
+                raise Refused("in_hand_file", f"{name} is set in {HAND_NAME}: change it there")
+            old = dict(new["keep_out"].get(name) or {})
+            e: dict[str, Any] = {"label": lab or old.get("label") or humanise(name), "centre": c, "size": sz}
+            if groups:
+                e["groups"] = list(dict.fromkeys(groups))
+            new["keep_out"][name] = e
+        self._write(mutate)
+        return copy.deepcopy(self._view["keep_out"].get(name)) or {}
+
+    def remove_keep_out(self, name: str) -> None:
+        self._remove("keep_out", _check_id(name, "keep-out region"))
 
     def _remove(self, sec: str, name: str) -> None:
         def mutate(hand: dict, new: dict) -> None:

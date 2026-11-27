@@ -533,6 +533,24 @@ surfaces) and returns the nearest hit along d > 0.
 (§8.1) casts `ray_hit` from its pose. When the ray lands on a surface, `set_point(name, hit, source=<fixture id>)`
 makes it a room point every calibrated mover can aim at.
 
+### 3.6a Keep-out regions (owner, 27 Nov)
+
+A keep-out region is a box of the room no beam should cross: a mirror ball, the projected picture.
+
+- **Where it lives:** `keep_out.<name>: {label, centre: [x, y, z], size: [x, y, z], groups: [<light group>, ...]}` in
+  `space.yaml` (by hand) or `space.added.yaml` (written by the page). `groups` names show.yaml `lights.groups`
+  groups; none means every light. `PUT` / `DELETE /api/v1/rig/space/keep_out/{name}`; `GET /api/v1/rig/space` carries
+  `keep_out`, `light_groups` and `lasers` (the checks below).
+- **Where it is set:** the Light setup page's 3D tab (`/settings/lights?tab=3d`): the room simulator with the regions
+  drawn in it and an editor under it. A region shows live while it is edited.
+- **A moving light** steers round a region that is for its group: the look engine's aim (`looks._aim`) moves the
+  target the least way that clears it (`space.clear_target`). The scene, the effect and the transition don't know.
+- **A bar's laser** can't be steered: its burst goes where the unit is tilted (its setup `lean_deg`, §2.6). Each
+  laser's burst is checked against the regions for its group (`space.laser_checks`); when it crosses one the page
+  says so, gives the tilt that clears it and can set that tilt. Nothing switches the laser off: the real unit must
+  be tilted to match.
+- **Not covered:** derbies and pars (their light isn't steered and isn't checked).
+
 ### 3.7 Tests (space): test_space.py (new)
 
 - **Synthetic room** 6 × 8 × 3 (front north). flow_coord for every dir at known points: right gives the east wall 1

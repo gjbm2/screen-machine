@@ -191,6 +191,30 @@ export class RoomSim {
   private target = new THREE.Vector3();
   private w = 1; private h = 1;
 
+  // The room's keep-out regions (space.yaml keep_out), drawn over the finished picture: they are a setup aid, not
+  // light in the room, so they don't pass through the exposure and always show (through walls too).
+  private keepScene = new THREE.Scene();
+  private keepRoot = new THREE.Group();
+
+  /** The keep-out boxes to draw: amber, red when a laser's burst crosses one, stronger when it is the one picked. */
+  setKeepOut(boxes: { centre: Vec3; size: Vec3; crossed?: boolean; picked?: boolean }[]) {
+    for (const c of [...this.keepRoot.children]) {
+      this.keepRoot.remove(c);
+      const m = c as THREE.Mesh;
+      m.geometry?.dispose();
+      (m.material as THREE.Material | undefined)?.dispose();
+    }
+    for (const b of boxes) {
+      const g = new THREE.BoxGeometry(b.size[0], b.size[1], b.size[2]);
+      const col = b.crossed ? 0xff4545 : 0xffb020;
+      const fill = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: b.picked ? 0.28 : 0.12, depthWrite: false, depthTest: false }));
+      const edge = new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: b.picked ? 1 : 0.7, depthTest: false }));
+      fill.position.set(b.centre[0], b.centre[1], b.centre[2]);
+      edge.position.copy(fill.position);
+      this.keepRoot.add(fill, edge);
+    }
+  }
+
   constructor(private o: RoomSimOptions) {
     this.renderer = new THREE.WebGLRenderer({ canvas: o.canvas, antialias: true });
     this.renderer.setPixelRatio(1);
@@ -204,6 +228,10 @@ export class RoomSim {
     this.root.updateMatrixWorld(true);
     this.scene.add(this.root);
     this.root.add(this.built);
+    this.keepRoot.matrixAutoUpdate = false;          // the same room -> three frame
+    this.keepRoot.matrix.copy(this.root.matrix);
+    this.keepRoot.updateMatrixWorld(true);
+    this.keepScene.add(this.keepRoot);
     this.scene.add(this.fill);                       // the light bouncing round the room (frame())
   }
 
@@ -793,6 +821,13 @@ export class RoomSim {
     this.light.end();
     this.fill.color.setRGB(this.light.fill.x, this.light.fill.y, this.light.fill.z);
     this.post.render(this.scene, this.camera, this.sigma, this.light.mean, dt);
+    if (this.keepRoot.children.length) {             // the setup aid, over the picture
+      const ac = this.renderer.autoClear;
+      this.renderer.autoClear = false;
+      this.renderer.setRenderTarget(null);
+      this.renderer.render(this.keepScene, this.camera);
+      this.renderer.autoClear = ac;
+    }
   }
 
   private screenFrame(s: ScreenObj, now: number) {

@@ -3958,6 +3958,15 @@ class LookEngine:
         fn = getattr(cx.sm, "aim", None)
         if fn is None:
             return None
+        # keep-out regions (space.yaml keep_out; owner, 27 Nov): a beam that would cross one that holds for this
+        # light's group points beside it instead (space.clear_target: the nearest clear place, away from the region)
+        kb = getattr(cx.sm, "keep_boxes", None)
+        boxes = kb(cx.view, s.group) if kb is not None and s.pos is not None else ()
+        if boxes:
+            try:
+                q, _moved = cx.sm.clear_target(s.pos, q, boxes)
+            except Exception:                                    # degrade: counted, the aim as asked
+                self._fail("space.clear_target")
         cur = current if current is not None else (fs.cmd or s.home)
         try:
             got = fn(s.pose, q, current=(cur[0], cur[1]), **s.aimkw)

@@ -7,7 +7,8 @@
 // kind; names drop their room's name; where a light is comes from the Room map once it's placed there. Each row has
 // Identify. Add a light is the page's main action (LightForm.tsx; Move it inside it).
 // "Lights | Room map | 3D" at the top (?tab=map or ?tab=3d, else remembered on this device) switches to the Room map
-// (RoomMap.tsx) or the room in 3D with its planned GigBARs (Room3D.tsx, loaded with three.js only when shown).
+// (RoomMap.tsx) or the room in 3D (RoomTab.tsx: the simulator with the room's keep-out regions; three.js is loaded
+// only when shown).
 // ?light=<id> opens that light's row (from a light's "Set up this light ›"). What a light does is chosen on /lights and
 // the Room page, not here. Same light, warm skin as /room (its theme and pieces).
 // Under the lights, Appliances worked by remote (RemoteControls.tsx): added from a device type (glitterball, pinspot),
@@ -51,7 +52,7 @@ import { RemoteControls } from "./RemoteControls";
 import { RoomMap } from "./RoomMap";
 import { useLightTypes, useRig, useRoomFacts, useSpace } from "./useRig";
 
-const Room3D = lazy(() => import("./Room3D"));
+const RoomTab = lazy(() => import("./RoomTab"));
 
 type Tab = "lights" | "map" | "3d";
 const TAB_KEY = "lights.tab";
@@ -251,7 +252,7 @@ export default function LightsPage() {
                 </p>
               }
             >
-              <Room3D api={api} space={space} things={mapThings} lamps={lampColours} />
+              <RoomTab api={api} space={space} things={mapThings} lamps={lampColours} />
             </Suspense>
           ) : (
             <>
