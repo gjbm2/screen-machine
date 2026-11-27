@@ -95,6 +95,9 @@ class KaraokeFeed:
         sid = p.get("song_id") if isinstance(p, dict) else None
         child = bool((o.get("settings") or {}).get("child_mode"))
         key = f"{sid}:child" if child else sid           # child mode's lyrics are masked: read again on a switch
+        rev = s.get("lyrics_rev") if isinstance(s, dict) else None
+        if rev:                                          # its lyrics were re-timed (the careful pass, while it plays):
+            key = f"{key}:r{rev}"                        # read again, so the sections move with them
         if not sid or key == self._sections[0] or not isinstance(s, dict):
             return
         try:

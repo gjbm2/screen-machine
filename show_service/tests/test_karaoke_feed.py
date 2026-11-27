@@ -125,3 +125,25 @@ def test_karaoke_songs_back_to_back_arm_end_and_change_track_for_the_director():
     assert te[0]["at_ms"] / 1000.0 == pytest.approx(30.0, abs=0.2) and te[0].get("detail") is None
     assert {e["id"] for e in te} == {te[0]["id"]}                 # one end (a re-send, sound_back, keeps its id)
     assert len(tc) == 1 and tc[0]["via"] == "player" and tc[0]["seq"] > te[0]["seq"]
+
+
+def test_re_timed_lyrics_are_read_again_and_still_belong_to_the_song():
+    """A song's lyrics can be re-timed while it plays (the song's lyrics_rev goes up): the sections are read again."""
+    calls = []
+    lyr = {"kind": "synced", "lines": [{"start": 10.0, "end": 12.0, "text": "one"}, {"start": 30.0, "end": 32.0, "text": "two"}]}
+
+    def fetch(url):
+        if url.endswith("/lyrics"):
+            calls.append(url)
+            return lyr
+        return now
+
+    now = {"player": {"song_id": "k1", "state": "playing", "pos_s": 0.0, "at": 0.0, "qid": "q"},
+           "song": {"title": "T", "audio_s": 60.0, "lyrics_rev": 0}, "settings": {}}
+    f = K.KaraokeFeed("http://x", fetch=fetch, clock=lambda: 0.0, mono=lambda: 0.0)
+    f.poll_once()
+    f.poll_once()
+    assert len(calls) == 1
+    now["song"]["lyrics_rev"] = 2
+    f.poll_once()
+    assert len(calls) == 2 and f.now_playing()["sections"]                 # read again, and still this song's
