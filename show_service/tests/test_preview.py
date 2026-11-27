@@ -71,3 +71,30 @@ def test_a_mode_with_no_feel_holds_the_rig_and_one_with_a_feel_plays_its_pool():
     pv.t0 -= 60.0 * 32 / pv.bpm                                     # a phrase later
     pv.frame()
     assert pv.look["light_programs"] != first or len(scenes) == 1
+
+
+def test_a_planned_light_runs_in_the_preview_on_a_wire_of_its_own(monkeypatch):
+    import copy as _copy
+    import pytest
+    from show_service import space as sp
+    try:
+        real = sp.shared().view()
+        pv0 = preview.Preview("plain", None)
+    except ValueError:
+        pytest.skip("no DMX lights in this deployment")
+    typ = next((f.get("type") for f in (pv0.view.get("fixtures") or {}).values() if isinstance(f.get("address"), int)), None)
+    view = _copy.deepcopy(real)
+    view.setdefault("appliances", {})["planned-test-1"] = {"at": [1.0, 1.0, 2.0], "kind": typ, "label": "Planned test"}
+
+    class _Store:
+        def view(self):
+            return view
+    monkeypatch.setattr(sp, "shared", lambda: _Store())
+    pv = preview.Preview("plain", None)
+    assert "planned-test-1" in pv.planned                       # it joined this preview's rig
+    assert pv.view["fixtures"]["planned-test-1"]["output"] == pv.PLANNED_OUTPUT
+    pv.frame()
+    out = pv.planned_frame()
+    assert set(out) >= {"planned-test-1"} and len(out["planned-test-1"]) == pv.planned["planned-test-1"][1]
+    assert any(out["planned-test-1"])                           # plain light: it is lit, as a real one would be
+    assert len(pv.frame()) == 512                               # and the real wire is the same size as ever

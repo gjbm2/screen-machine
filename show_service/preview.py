@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import copy
 import json
 import logging
 import time
@@ -110,6 +111,11 @@ class Preview:
         except Exception:                                 # noqa: BLE001 - no room model: the engine does without
             space = None
         probs: list[str] = []
+        # the room's PLANNED lights (owner, 27 Nov: "treat the studio like a studio, test layouts"): placed in the room
+        # editor, not registered; they join the preview as lights of their own on a wire of their own ("planned"),
+        # so the scenes run them too and the 3D room draws them, and nothing is ever sent to a light
+        self.planned: dict[str, tuple[int, int]] = {}         # id -> (first slot on the planned wire, footprint)
+        self._add_planned(space)
         self.lights = ls.parse_lights(show.get("lights"), probs)
         self.groups = ls.group_members(self.lights["groups"], self.view, lamps=show.get("lamps"))
         self.t0 = self.now = time.monotonic()
@@ -273,6 +279,66 @@ class Preview:
                      "lamps": {}, "screens": {}, "light_programs": progs,
                      "flow": {"dir": "cw", "speed": 0.5, "spread": 0.5, "id": "preview", "at_ms": at, "screens": {}}}
 
+    PLANNED_OUTPUT = "planned"
+
+    def _add_planned(self, space: Optional[dict]) -> None:
+        """The planned lights into this preview's own copy of the rig: a space appliance whose kind is a light type and
+        no light has its id, and each part of a bar with no light yet (its layout part's type). Each takes the tags,
+        pins and settings of a real light of its type (so it joins the groups that one is in), else of any light, on
+        the "planned" wire, one after another."""
+        if not space:
+            return
+        fx, types = self.view.get("fixtures") or {}, self.view.get("types") or {}
+        want: dict[str, tuple[str, str]] = {}                 # id -> (type, label)
+        for aid, a in (space.get("appliances") or {}).items():
+            k = a.get("kind") if isinstance(a, dict) else None
+            if isinstance(k, str) and k in types and aid not in fx:
+                want[aid] = (k, str(a.get("label") or aid))
+        lays = space.get("layouts") or {}
+        for bid, b in (space.get("bars") or {}).items():
+            parts = (lays.get(b.get("layout")) or {}).get("parts") or {}
+            for pn, pt in (b.get("parts") or {}).items():
+                t = (parts.get(pn) or {}).get("type")
+                pid = pt.get("id") if isinstance(pt, dict) else None
+                if isinstance(t, str) and t in types and isinstance(pid, str) and pid not in fx:
+                    want[pid] = (t, f"{b.get('label') or bid} {pn}")
+        if not want:
+            return
+        anyone = next((f for f in fx.values() if isinstance(f.get("address"), int)), None)
+        if anyone is None:
+            return
+        view = copy.deepcopy(self.view)
+        outs = view.setdefault("outputs", {})
+        if self.PLANNED_OUTPUT not in outs and anyone.get("output") in outs:
+            outs[self.PLANNED_OUTPUT] = {**copy.deepcopy(outs[anyone["output"]]), "id": self.PLANNED_OUTPUT}
+        slot = 1
+        for pid, (tid, label) in sorted(want.items()):
+            fp = int((types.get(tid) or {}).get("footprint") or 1)
+            if slot + fp - 1 > 512:
+                break
+            like = next((f for f in fx.values() if f.get("type") == tid), None)
+            tags = [t for t in ((like or {}).get("tags") or []) if not str(t).startswith("bar-")] + ["planned"]
+            e = copy.deepcopy(like or anyone)
+            e.update({"id": pid, "label": label, "type": tid, "output": self.PLANNED_OUTPUT, "address": slot, "tags": tags,
+                      "kind": (types.get(tid) or {}).get("kind") or e.get("kind") or "lamp"})
+            if like is None:
+                e["pin"] = {}
+            view["fixtures"][pid] = e
+            self.planned[pid] = (slot - 1, fp)
+            slot += fp
+        self.view = view
+
+    def planned_frame(self) -> dict[str, bytes]:
+        """The planned lights' channels now, by id (after frame(), which moves the clock)."""
+        if not self.planned:
+            return {}
+        fr = self.engine.evaluate(self.PLANNED_OUTPUT, self.now, artnet_lan.CAPS)
+        out: dict[str, bytes] = {}
+        for fid, (_a, fp) in self.planned.items():
+            d = ((fr.get("fixtures") or {}).get(fid) or {}).get("dmx")
+            out[fid] = bytes(d[:fp]) if d else bytes(fp)
+        return out
+
     def frame(self) -> bytes:
         """The 512 slots now."""
         self.now = time.monotonic()
@@ -355,7 +421,11 @@ async def dmx(request: web.Request, _brain: Any = None) -> web.StreamResponse:
         await resp.prepare(request)
         while True:
             d = await loop.run_in_executor(None, pv.frame)
-            await resp.write(b"data: " + json.dumps({"d": base64.b64encode(d).decode()}).encode() + b"\n\n")
+            pl = await loop.run_in_executor(None, pv.planned_frame)
+            msg: dict = {"d": base64.b64encode(d).decode()}
+            if pl:                                        # the room's planned lights: drawn only (Room3D's plannedDmx)
+                msg["p"] = {k: base64.b64encode(v).decode() for k, v in pl.items()}
+            await resp.write(b"data: " + json.dumps(msg).encode() + b"\n\n")
             await asyncio.sleep(1.0 / FPS)
     finally:                                              # the viewer went away (or the engine couldn't be built)
         _live -= 1
