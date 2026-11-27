@@ -79,3 +79,19 @@ def test_a_scene_tagged_alone_is_drawn_only_while_its_group_plays_alone():
     assert "movers-twin-glide" not in cat.pool_for(movers, rest=False, alone=None)
     assert "movers-twin-glide" not in cat.pool_for(movers, rest=False, alone=False)
     assert "movers-twin-glide" in cat.pool_for(movers, rest=False, alone=True)
+
+
+def test_a_circle_sized_in_pools_is_as_big_as_the_pool_its_head_draws():
+    rig, view = _rig_and_room()
+    sc = scene({"id": "c", "kind": "position", "mode": "circle", "on": "floor", "centre": "centre",
+                "size_pools": 0.5, "phase": "bar", "period_bars": 2, "select": "id:a"})
+    box = {"look": look(light_scene="m")}
+    e = engine(rig, box, {"m": sc}, space=view, lights={"motion": {"accel_s": 0}})
+    assert e._program.scene_problems == (), e._program.scene_problems
+    from show_service.staging import geom
+    pv = view["appliances"]["a"]["pose"]
+    want = min(0.5 * geom.footprint(pv["at"], (3.0, 4.0, 0.0), (0.0, 0.0, 1.0), 20.0)[1], 3.0 - 0.3)
+    for _t, fr in run(e, box, 10.0, 13.0)[20:]:
+        a = at(fr, "a")
+        hit, _s = sp.ray_hit(view, pv["at"], sp.beam_dir(pv, a["pan"], a["tilt"]))
+        assert math.hypot(hit[0] - 3.0, hit[1] - 4.0) == pytest.approx(want, rel=0.05)

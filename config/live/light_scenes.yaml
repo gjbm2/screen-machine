@@ -311,7 +311,7 @@ scenes:
     label: Slow drift across the ceiling
     needs: [pan, tilt]
     layers:
-      - {id: drift, kind: position, mode: drift, on: ceiling, centre: centre, size: 1.5, size_deg: 20, phase: phrase,
+      - {id: drift, kind: position, mode: drift, on: ceiling, centre: centre, size_pools: 0.4, size_deg: 20, phase: phrase,
          needs: none, spread_mode: chase, spread: 0.5}
       - {id: beam, kind: beam, zoom: wide, frost: 0.2}
       - {id: gobo, kind: gobo, slot: Swirl}
@@ -323,7 +323,7 @@ scenes:
     label: Circles on the ceiling
     needs: [pan, tilt]
     layers:
-      - {id: circle, kind: position, mode: circle, on: ceiling, centre: [mirror-ball, centre], size: 1.0, size_deg: 18,
+      - {id: circle, kind: position, mode: circle, on: ceiling, centre: [mirror-ball, centre], size_pools: 0.5, size_deg: 18,
          rotate: flow, phase: bar, period_bars: [4, 1], needs: grid, spread_mode: chase, spread: 0.5, order: flow}
       - {id: beam, kind: beam, zoom: 15}
       - {id: pulse, fx: swell, phase: beat, subdivide: true, depth: swell, needs: beat, without_beat: energy,
@@ -391,7 +391,7 @@ scenes:
     label: Figure eights on the floor
     needs: [pan, tilt]
     layers:
-      - {id: eight, kind: position, mode: figure8, on: floor, centre: [dance-floor, centre], size: 1.2, size_deg: 18,
+      - {id: eight, kind: position, mode: figure8, on: floor, centre: [dance-floor, centre], size_pools: 0.5, size_deg: 18,
          phase: bar, period_bars: [2, 1], needs: grid, spread_mode: mirror}
       - {id: beam, kind: beam, zoom: 14}
     tags: {sections: [instrumental], energy: [0.4, 0.85], moods: [playful, retro, bright], genre_fit: {disco: 0.9, funk: 0.85, pop: 0.8,
@@ -530,9 +530,9 @@ scenes:
     label: Circles turning against each other
     needs: [pan, tilt]
     layers:
-      - {id: bar-a-path, kind: position, mode: circle, select: "tag:bar-a", on: ceiling, centre: centre, size: 1.2,
+      - {id: bar-a-path, kind: position, mode: circle, select: "tag:bar-a", on: ceiling, centre: centre, size_pools: 0.5,
          size_deg: 20, rotate: cw, phase: bar, period_bars: [4, 1], needs: grid, spread_mode: chase, spread: 0.5}
-      - {id: bar-b-path, kind: position, mode: circle, select: "tag:bar-b", on: ceiling, centre: centre, size: 1.2,
+      - {id: bar-b-path, kind: position, mode: circle, select: "tag:bar-b", on: ceiling, centre: centre, size_pools: 0.5,
          size_deg: 20, rotate: ccw, phase: bar, period_bars: [4, 1], needs: grid, spread_mode: chase, spread: 0.5}
       - {id: gobo, kind: gobo, slot: Ring of dots}
     tags: {sections: [instrumental], energy: [0.3, 0.8], moods: [hypnotic, cosmic, geometric, playful], genre_fit: {house: 0.8, techno: 0.8,
@@ -544,7 +544,7 @@ scenes:
     layers:
       - {id: hold, kind: position, mode: drift, select: "tag:spot-1", on: floor, centre: [singer, dance-floor, centre],
          size: 0.5, size_deg: 6, phase: phrase, needs: none, spread_mode: chase, spread: 0.5}
-      - {id: roam, kind: position, mode: circle, select: "tag:spot-2", on: ceiling, centre: centre, size: 1.5,
+      - {id: roam, kind: position, mode: circle, select: "tag:spot-2", on: ceiling, centre: centre, size_pools: 0.5,
          size_deg: 25, rotate: flow, phase: bar, period_bars: [4, 2], needs: grid, spread_mode: mirror}
       - {id: beam, kind: beam, zoom: 14}
       - {id: gobo-roam, kind: gobo, select: "tag:spot-2", slot: Pinwheel}
@@ -905,7 +905,7 @@ scenes:
     label: Quiet light drifting on the ceiling
     needs: [pan, tilt]
     layers:
-      - {id: drift, kind: position, mode: drift, on: ceiling, centre: centre, size: 1.5, size_deg: 20, phase: phrase,
+      - {id: drift, kind: position, mode: drift, on: ceiling, centre: centre, size_pools: 0.4, size_deg: 20, phase: phrase,
          needs: none, spread_mode: chase, spread: 0.5}
       - {id: beam, kind: beam, zoom: wide, frost: 0.5}
       - {id: gobo, kind: gobo, slot: Broken ring}

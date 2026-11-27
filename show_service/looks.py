@@ -254,6 +254,7 @@ DEFAULT_SIZE_DEG = 20.0         # starting point: ... without ``size_deg`` (an u
 DEFAULT_LIFT_M = 1.0            # starting point: a lift layer without ``lift`` (metres up or down)
 SPEED_FIT = 0.95                # §5.5: a pattern's peak speed is kept under this share of the light's
 FIT_SAMPLES = 64                # samples per cycle when a pattern's peak speed is measured
+POOL_EDGE_M = 0.3               # a size_pools pattern stays this far inside its surface's edge
 PLAN_BEAM_DEG = 20.0            # a planned light's beam angle when its type gives no lens degrees
 MAX_DOUBLINGS = 6               # a pattern or hop slows at most 2^6 times (then runs as fast as it can: never refused)
 #: One transition for every change of state on a DMX output (owner, 26 Nov: "why don't things fade between states?
@@ -345,7 +346,7 @@ _LAYER_KEYS = frozenset({"id", "enabled", "attr", "kind", "fx", "phase", "subdiv
 _KIND_KEYS: dict[str, frozenset] = {
     "intensity": frozenset(),
     "position": frozenset({"mode", "on", "centre", "size", "size_deg", "along", "rotate", "fan", "ease", "points",
-                           "hop", "lift", "dark_move", "plan", "with"}),
+                           "hop", "lift", "dark_move", "plan", "with", "size_pools"}),
     "beam": frozenset({"zoom", "focus", "iris", "frost"}),
     "gobo": frozenset({"wheel", "slot", "change_on", "change", "spin", "spin_scale", "shake", "scroll"}),
     "prism": frozenset({"in", "spin", "spin_scale"}),
@@ -1574,6 +1575,12 @@ class LookEngine:
                 if not (_isnum(v) and v >= 0):
                     bad.append(f"{k} {v!r} isn't a number >= 0")
                 p[k] = float(v) if _isnum(v) else dflt
+            # size_pools: the pattern's size as a share of the pool of light this head draws there (its long side),
+            # so a shape reads as itself in any room; kept inside the surface. Overrides size on a surface.
+            sp_ = raw.get("size_pools")
+            if sp_ is not None and not (_isnum(sp_) and sp_ > 0):
+                bad.append(f"size_pools {sp_!r} isn't a number above 0")
+            p["size_pools"] = float(sp_) if _isnum(sp_) and sp_ > 0 else None
             along = raw.get("along", "u")
             if along not in ("flow", "u", "v") + FLOW_DIRS:
                 bad.append(f"along {along!r} isn't flow, u, v or a flow direction")
@@ -4260,7 +4267,7 @@ class LookEngine:
         if fr[0] == "surf":
             surf, u0, v0 = fr[5], fr[6], fr[7]
             spt = cx.sm.surface_point
-            size = p["size"] * fan
+            size = (fr[8] if fr[8] is not None else p["size"]) * fan
 
             def at(w: float, cyc: float, share: float, cur: Optional[Sequence[float]] = None
                    ) -> Optional[tuple[tuple[float, float], tuple]]:
@@ -4335,7 +4342,7 @@ class LookEngine:
             if isinstance(uv, (list, tuple)) and len(uv) == 2 and all(_isnum(x) for x in uv) and \
                     callable(getattr(cx.sm, "surface_point", None)):
                 got = ("surf", flip, rsign, seed, self._along(p["along"], cx, gn, L, surf, centre_q), surf,
-                       float(uv[0]), float(uv[1]))
+                       float(uv[0]), float(uv[1]), self._pool_size(s, surf, centre_q, uv, p))
         if got is None:
             if tg is None:
                 c0 = s.home
@@ -4348,6 +4355,27 @@ class LookEngine:
             cx.st.frames.clear()
         cx.st.frames[key] = got
         return got
+
+    @staticmethod
+    def _pool_size(s: _Slot, surf: Mapping[str, Any], q: Sequence[float], uv: Sequence[float], p: Mapping[str, Any]
+                   ) -> Optional[float]:
+        """A ``size_pools`` pattern's size in metres for this light: that share of the long side of the pool its beam
+        draws at the pattern's centre, no further than 0.3 m inside the surface's nearest edge. None: ``size``."""
+        k = p.get("size_pools")
+        if k is None or s.pos is None:
+            return None
+        from .staging import geom
+        lens = (s.type.get("physical") or {}).get("lens_deg") if isinstance(s.type, Mapping) else None
+        beam = sum(lens) / 2.0 if isinstance(lens, (list, tuple)) and len(lens) == 2 else PLAN_BEAM_DEG
+        n = surf.get("normal")
+        if not (isinstance(n, (list, tuple)) and len(n) == 3):
+            return None
+        size = k * geom.footprint(s.pos, q, n, float(beam))[1]
+        wh = surf.get("size")
+        if isinstance(wh, (list, tuple)) and len(wh) == 2:
+            edge = min(uv[0], wh[0] - uv[0], uv[1], wh[1] - uv[1]) - POOL_EDGE_M
+            size = min(size, max(0.2, edge))
+        return size
 
     def _run_pattern(self, L: _Layer, m: tuple[int, int], s: _Slot, fs: _FixState, cx: _Ctx, gn: _Group, tp: float,
                      at: Callable, mode: str) -> Optional[tuple]:

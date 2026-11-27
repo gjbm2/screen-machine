@@ -1060,6 +1060,8 @@ settings are checked by `staging.parse` at compile (a bad one is a problem line,
 own colour, whatever the palette: a wheel head takes its nearest filter); a scene tagged `alone: true` is drawn only
 while its group plays alone in the line-up (director `_alone`; written for a dark room).
 
+**Pattern sizes in pools:** a position layer may give `size_pools: k` instead of `size`: the pattern is k times the long side of the pool of light that head draws at its centre (its lens angle and throw), kept 0.3 m inside the surface. A 1 m circle drawn with a 3.6 m pool only wobbles; in pools it reads as a circle in any room. The circles, the figure of eight and the ceiling drifts use it.
+
 **Tests:** show_service/tests/test_staging.py (the planners in a made-up room), test_looks_staging.py (the engine).
 
 ## 6. Catalogues (builder: catalogue)
