@@ -18,13 +18,14 @@ and scored in the clean copy of HEAD** that scripts/ad-nightly makes: `$AD_EVAL_
 
 ## First: is the score worth optimising?
 
-The scorecard's `controls` check the scorer itself on known answers:
-- the real show must beat deliberately wrong shows (looks on the wrong sections, a static look, the wrong song, late,
-  backwards);
-- a plain loudness-to-light box must lose.
-
-If `controls.pass` is false, or missing, **make no show changes tonight**. Write "the eval fails its controls" and the
-margins in the morning report, then stop. Optimising a score that prefers the box would make the show worse.
+The scorecard's `controls` check the scorer itself on known answers. The real show must beat deliberately wrong shows
+(looks on the wrong sections, a static look, the wrong song, late, backwards) by the margin, in more songs than
+chance (`controls.pass`).
+- If `controls.pass` is false, or missing, **make no show changes tonight**. Write "the eval fails its controls" and
+  the margins in the morning report, then stop.
+- `beats_box` is a different thing: a show built from the answer key itself. It is the **target**, not the gate. The
+  gap between the show and the box is the headroom, and closing it is the point.
+- Runs compare only within one `score_version`.
 
 ## Each attempt
 
