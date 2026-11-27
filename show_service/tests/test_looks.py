@@ -1217,22 +1217,42 @@ def test_a_lit_gobo_change_is_made_in_the_dark():
     assert LookEngine._gobo_dark(s, fs, back + 2, {"gobo": 8}, 1.0) == 1.0 and fs.g_shown == 8   # a live snap
 
 
-def test_a_lit_colour_wheel_turns_far_only_in_the_dark():
-    """One filter along snaps in the light; a longer turn holds the old colour while the light falls, turns dark and
-    comes back in the new colour (owner, 27 Nov: colour changes "artistically deliberate")."""
+def test_a_lit_colour_wheel_turns_only_on_purpose_and_in_the_dark():
+    """A lit head keeps its filter until the change is meant: a cut turns at once, a drift only once the new filter
+    has been wanted a while, and every turn is made dark, even one filter along (owner, 27 Nov: "deliberate about
+    changing colour film while spots are live ... unless it's intentional, it can just look a bit amateur")."""
     from types import SimpleNamespace
-    from show_service.looks import COLOUR_SLOT_S, GOBO_SETTLE_S, LookEngine, _FixState
-    slots = {(1.0, 1.0, 1.0): 0, (1.0, 0.0, 0.0): 1, (0.0, 0.0, 1.0): 5}
+    from show_service.looks import (COLOUR_SLOT_S, GOBO_SETTLE_S, WHEEL_HOLD_S, WHEEL_SETTLE_S, LookEngine,
+                                    _FixState)
+    slots = {(1.0, 1.0, 1.0): 0, (1.0, 0.0, 0.0): 1, (0.0, 0.0, 1.0): 5, (1.0, 0.9, 0.9): 0, (1.0, 0.8, 0.8): 1,
+             (1.0, 0.85, 0.85): 0}
     e = LookEngine.__new__(LookEngine)
     e._wheel_slot = lambda s, inten, colour, attrs: slots[tuple(colour)]
     s, fs = SimpleNamespace(fall_s=0.1, cw=(5, (3.0, 10.0, 38.0))), _FixState()
     white, red, blue = [1.0, 1.0, 1.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]
     assert e._wheel_dark(s, fs, 0.0, {}, 1.0, white) == (1.0, white)
-    assert e._wheel_dark(s, fs, 1.0, {}, 1.0, red) == (1.0, red)               # the next filter: a snap, lit
-    assert e._wheel_dark(s, fs, 2.0, {}, 1.0, blue) == (0.0, red)              # four along: dark, still red
-    t2 = 2.0 + 0.1 + GOBO_SETTLE_S
-    assert e._wheel_dark(s, fs, t2, {}, 1.0, blue) == (0.0, blue)              # turning, dark
-    back = t2 + COLOUR_SLOT_S * 4 + GOBO_SETTLE_S
-    assert e._wheel_dark(s, fs, back - 0.01, {}, 1.0, blue)[0] == 0.0
-    assert e._wheel_dark(s, fs, back, {}, 1.0, blue) == (1.0, blue)            # lit in the new colour
-    assert e._wheel_dark(s, fs, back + 1, {}, 0.0, white) == (0.0, white) and fs.c_slot == 0   # dark already: at once
+    assert e._wheel_dark(s, fs, 1.0, {}, 1.0, red) == (0.0, white)             # a cut, one filter along: dark, at once
+    t1 = 1.0 + 0.1 + GOBO_SETTLE_S
+    assert e._wheel_dark(s, fs, t1, {}, 1.0, red) == (0.0, red)                # turning, dark
+    back = t1 + COLOUR_SLOT_S * 1 + GOBO_SETTLE_S
+    assert e._wheel_dark(s, fs, back, {}, 1.0, red) == (1.0, red)              # lit in the new colour
+    assert e._wheel_dark(s, fs, back + 1, {}, 1.0, blue) == (0.0, red)         # a cut four along: dark, still red
+    t2 = back + 1 + 0.1 + GOBO_SETTLE_S
+    assert e._wheel_dark(s, fs, t2, {}, 1.0, blue) == (0.0, blue)
+    lit = t2 + COLOUR_SLOT_S * 4 + GOBO_SETTLE_S
+    assert e._wheel_dark(s, fs, lit - 0.01, {}, 1.0, blue)[0] == 0.0
+    assert e._wheel_dark(s, fs, lit, {}, 1.0, blue) == (1.0, blue)
+    assert e._wheel_dark(s, fs, lit + 1, {}, 0.0, white) == (0.0, white) and fs.c_slot == 0   # dark already: at once
+    # a drift over the line between two filters: the head keeps its filter, lit, until the new one has been wanted
+    # for WHEEL_SETTLE_S and the last turn is WHEEL_HOLD_S old; drifting back in the meantime changes nothing
+    t0 = lit + 1 + WHEEL_HOLD_S
+    pale, over, nearly = [1.0, 0.9, 0.9], [1.0, 0.8, 0.8], [1.0, 0.85, 0.85]
+    assert e._wheel_dark(s, fs, t0, {}, 1.0, pale) == (1.0, pale)              # the same filter: just the colour
+    assert e._wheel_dark(s, fs, t0 + 0.1, {}, 1.0, over) == (1.0, pale)        # over the line: not yet
+    assert e._wheel_dark(s, fs, t0 + 0.2, {}, 1.0, nearly) == (1.0, nearly)    # and back: nothing happened
+    assert e._wheel_dark(s, fs, t0 + 0.3, {}, 1.0, over) == (1.0, nearly)
+    assert e._wheel_dark(s, fs, t0 + 0.3 + WHEEL_SETTLE_S, {}, 1.0, over) == (0.0, nearly)    # it stayed: the turn
+    # a scene stepping the wheel itself is the intentional change in the light
+    fs2 = _FixState()
+    assert e._wheel_dark(s, fs2, 0.0, {"colour_slot": "white"}, 1.0, white) == (1.0, white)
+    assert e._wheel_dark(s, fs2, 0.5, {"colour_slot": "red"}, 1.0, red) == (1.0, red)

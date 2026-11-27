@@ -910,9 +910,13 @@ and v → tilt. Phase w = the member's oscillator cycle (`phase`, `period_*`, `n
   - one whose peak speed exceeds max_speed × 0.95 first shrinks, down to `min_size_share`, then doubles its period
     and re-fits.
   The commanded speed never exceeds the limit. Stats `slowed` lists each such layer with its size and period factor.
-- **Wheels turn in the dark.** A lit head's gobo change, or a colour-wheel change of two filters or more, holds the
-  old one while the light falls, turns unseen, and lights on the new one (`_gobo_dark`, `_wheel_dark`). A colour
-  change to the next filter along snaps lit. Lights that mix their colour fade (in OKLab).
+- **Wheels turn in the dark, and only on purpose.** A lit head's gobo change, or any change of its colour filter,
+  holds the old one while the light falls, turns dark and comes back (`_gobo_dark`, `_wheel_dark`). A colour wheel
+  turns at once on a cut (the colour asked for jumps: a new look, the roles dealt again); on a glide or a drift it
+  waits until one new filter has been wanted for 0.8 s and its last turn is 4 s old, so the filters a fade passes
+  over are never shown and a colour wandering about the line between two filters doesn't blink. A head that is dark
+  already takes the new filter unseen. The intentional change in the light is a scene's own: a gobo layer's
+  `change: live`, or a `colour_wheel` layer stepping or spinning the wheel. Lights that mix their colour fade (in OKLab).
 - **Dark moves.**
   - When the program's transition says dark moves, or a scene change asks a mover to jump more than
     `dark_move_min_deg`, intensity goes to 0 at least `rise/fall latency` before the move starts.

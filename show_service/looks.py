@@ -334,7 +334,11 @@ GOBO_SLOT_S = 0.125
 GOBO_SETTLE_S = 0.05
 GOBO_DARK_LEVEL = 0.02
 COLOUR_SLOT_S = 0.11            # a colour wheel's time per filter (about 9 a second, as the 3D room's MECH has it)
-WHEEL_DARK_SLOTS = 2            # a colour change this many filters along the wheel, or more, is made dark
+WHEEL_JUMP = 0.2                # the colour asked for moving this far (RGB) in one frame is a cut: the wheel turns now
+WHEEL_SETTLE_S = 0.8            # otherwise it waits until one new filter has been wanted this long (a glide passes
+                                # over the filters between and never turns to them)...
+WHEEL_HOLD_S = 4.0              # ...and this long since its last turn (a colour drifting about the line between two
+                                # filters doesn't blink back and forth)
 LERP_ATTRS = frozenset({"pan", "tilt", "zoom", "focus", "iris", "frost", "cct", "pt_speed", "gobo_spin", "gobo2_spin",
                         "gobo_shake", "gobo2_shake", "gobo_scroll", "prism_spin", "colour_spin", "pan_spin",
                         "tilt_spin"})
@@ -769,6 +773,7 @@ class _FixState:
                  "g_shown", "g_pend", "g_phase", "g_until", "g_live",
                  "sm",                           # its motion stage (motion.Smoother), once it has moved
                  "c_key", "c_slot", "c_col", "c_phase", "c_until", "c_to",   # its colour wheel (_wheel_dark)
+                 "c_prev", "c_want", "c_since", "c_last",
                  "plv", "plv_now")               # a planned track's level: this frame's, and its layer's sample
 
     def __init__(self) -> None:
@@ -788,6 +793,10 @@ class _FixState:
         self.g_live = False                      # the layer snaps its changes in the light (change: live)
         self.sm: Optional[motion.Smoother] = None
         self.c_key: Any = None                   # the colour last looked up on the wheel
+        self.c_prev: Any = None                  # the colour asked for last frame (a jump is a cut)
+        self.c_want: Optional[int] = None        # another filter wanted while lit, c_since when; c_last: its last turn
+        self.c_since = 0.0
+        self.c_last = -1e9
         self.c_slot: Optional[int] = None        # the wheel's place now (its index), once known
         self.c_col: list = [1.0, 1.0, 1.0]       # the colour it shows there
         self.c_phase = 0                         # 0 none, 1 going dark on the old colour, 2 the wheel turning dark
@@ -4613,23 +4622,39 @@ class LookEngine:
 
     def _wheel_dark(self, s: _Slot, fs: _FixState, t: float, attrs: Mapping[str, Any], inten: float, colour: list
                     ) -> tuple[float, list]:
-        """A lit head's colour change on a colour wheel (owner, 27 Nov: colour changes should be "artistically
-        deliberate"): a wheel can't fade between two colours, it turns through every filter between them. A change
-        to the next filter along snaps in the light (nothing passes between); a longer turn is made dark, as a
-        gobo's is: the old colour while the light falls, the turn, then the new colour. Lights that mix their colour
-        (pars, derbies) never come here: they fade. Returns (intensity, the colour to send)."""
+        """A lit head's colour change on a colour wheel (owner, 27 Nov: "we should be deliberate about changing
+        colour film while spots are live. it's not unacceptable, but unless it's intentional, it can just look a bit
+        amateur"): a wheel can't fade between two colours, it turns through every filter between them, and even one
+        filter along is a snap nobody asked for. So a lit head keeps its filter until the turn is meant, and then
+        makes it dark, as a gobo's is: the old colour while the light falls, the turn, then the new colour.
+          * a cut (the colour asked for jumps, WHEEL_JUMP: a new look, the roles dealt again) turns at once;
+          * a glide or a drift waits until one new filter has been wanted for WHEEL_SETTLE_S and the last turn is
+            WHEEL_HOLD_S old: the filters a fade passes over are never shown, and a colour wandering about the line
+            between two filters doesn't blink back and forth;
+          * a head that is dark already (a dark move, a fade through dark) takes the new filter there, unseen;
+          * a scene that steps or spins the wheel itself (a ``colour_wheel`` layer) is the intentional change in
+            the light, and is left to it.
+        Lights that mix their colour (pars, derbies) never come here: they fade. Returns (intensity, the colour to
+        send)."""
         key = (round(colour[0], 3), round(colour[1], 3), round(colour[2], 3))
         if fs.c_phase == 0:
+            prev, fs.c_prev = fs.c_prev, key
             if key == fs.c_key:
+                fs.c_want = None
                 return inten, colour
             slot = self._wheel_slot(s, inten, colour, attrs)
             if slot is None:
                 return inten, colour
-            if fs.c_slot is None or abs(slot - fs.c_slot) < WHEEL_DARK_SLOTS or inten <= GOBO_DARK_LEVEL \
+            if fs.c_slot is None or slot == fs.c_slot or inten <= GOBO_DARK_LEVEL \
                     or attrs.get("colour_slot") is not None or attrs.get("colour_spin"):
-                fs.c_key, fs.c_slot, fs.c_col = key, slot, list(colour)
+                fs.c_key, fs.c_slot, fs.c_col, fs.c_want = key, slot, list(colour), None
                 return inten, colour
-            fs.c_phase, fs.c_until, fs.c_to = 1, t + s.fall_s + GOBO_SETTLE_S, slot
+            if fs.c_want != slot:
+                fs.c_want, fs.c_since = slot, t
+            jump = prev is not None and math.dist(prev, key) >= WHEEL_JUMP
+            if not jump and (t - fs.c_since < WHEEL_SETTLE_S or t - fs.c_last < WHEEL_HOLD_S):
+                return inten, list(fs.c_col)                     # not yet: the filter it has
+            fs.c_phase, fs.c_until, fs.c_to, fs.c_want = 1, t + s.fall_s + GOBO_SETTLE_S, slot, None
         if fs.c_phase == 1:
             if t < fs.c_until:
                 return 0.0, fs.c_col
@@ -4637,7 +4662,7 @@ class LookEngine:
             fs.c_until = t + COLOUR_SLOT_S * abs(fs.c_to - (fs.c_slot or 0)) + GOBO_SETTLE_S
         if t < fs.c_until:
             return 0.0, colour
-        fs.c_phase = 0
+        fs.c_phase, fs.c_last, fs.c_prev = 0, t, key
         slot = self._wheel_slot(s, inten, colour, attrs)
         fs.c_key, fs.c_slot, fs.c_col = key, (slot if slot is not None else fs.c_to), list(colour)
         return inten, colour
