@@ -36,3 +36,13 @@ def test_flat_leaves_nothing_stored_and_bad_input_is_refused(store):
 def test_only_players_that_shape_the_sound_apply_it():
     assert EQ.describe("screen:vj")["applies"] is True
     assert EQ.describe("sonos:living")["applies"] is False
+
+
+def test_an_unmeasured_output_uses_the_browsers_reported_latency(store):
+    from smsound import latency as L
+    assert L.effective_ms("screen:vj") is None
+    L.set_browser("screen:vj", 180)
+    assert L.effective_ms("screen:vj") == 180
+    assert L.set_browser("screen:vj", 182) is None          # under 5 ms: not written
+    L.set_manual("screen:vj", 120)
+    assert L.effective_ms("screen:vj") == 120               # a measurement wins

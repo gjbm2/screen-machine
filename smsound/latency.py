@@ -119,6 +119,10 @@ def effective_ms(oid: str, dep: Optional[smconfig.Deployment] = None, doc: Optio
     if d is None:
         d = DEFAULTS.get(O.kind(oid) or "")
     if d is None:
+        # Never measured: the figure the browser that plays it reports (set_browser), so the page's lyrics and the
+        # lights and screens (karaoke_feed, lyric_feed) use one delay, not the page its own and the rest 0.
+        d = _num(s.get("browser_ms"))
+    if d is None:
         return trim if s.get("trim_ms") else None
     return d + trim
 
@@ -170,6 +174,19 @@ def record(oid: str, delay_ms: float, *, method: str = "chirp", extra: Optional[
     def fn(s: dict) -> dict:
         keep = {"trim_ms": s["trim_ms"]} if _num(s.get("trim_ms")) else {}
         return {"delay_ms": round(d, 1), **keep, "method": method, "measured_at": _now_iso(), **(extra or {})}
+    return _update(oid, fn, dep)
+
+
+def set_browser(oid: str, ms: float, dep: Optional[smconfig.Deployment] = None) -> Optional[dict]:
+    """The output latency the browser playing ``oid`` reports (a screen's page, a phone): its delay while nothing is
+    measured. Written only when it moves by 5 ms or more (None: unchanged)."""
+    ms = round(max(0.0, min(2000.0, float(ms))), 1)
+    old = _num(sound(oid, dep).get("browser_ms"))
+    if old is not None and abs(old - ms) < 5:
+        return None
+
+    def fn(s: dict) -> dict:
+        return {**s, "browser_ms": ms}
     return _update(oid, fn, dep)
 
 

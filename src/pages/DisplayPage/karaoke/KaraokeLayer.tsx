@@ -25,6 +25,7 @@ import {
   type KaraokeSong,
   type LyricLine,
 } from "@/shared/api/karaoke";
+import { sound } from "@/shared/api/sound";
 import { JoinCard, LOW_FROM_S, NEXT_UP_S, NextUp, namesText } from "./JoinOverlays";
 
 const POLL_MS = 1000;
@@ -341,6 +342,27 @@ export function KaraokeLayer({ screen, device }: { screen?: string; device?: str
   } | null>(null);
   const [, setTick] = useState(0);
   const engine = useRef(new Engine());
+  // This browser's output latency, told to the app's one store while its output is unmeasured (smsound.latency
+  // set_browser), so the lights and the screens' lyric feeds use the delay this page's lyrics use (a8's audit, 27 Nov:
+  // the page used its own figure, the feeds 0). Every 10 s, when it moves by 5 ms or more.
+  const nowRef = useRef<KaraokeNow | null>(null);
+  nowRef.current = now;
+  const posted = useRef<number | null>(null);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const n = nowRef.current;
+      const e = engine.current;
+      const out = n?.settings.output;
+      if (!n || !out || !e.running || !soundHere(n, screen, device)) return;
+      const ms = Math.round(e.outputLatency() * 1000);
+      if (posted.current != null && Math.abs(posted.current - ms) < 5) return;
+      posted.current = ms;
+      void sound.setBrowser(out, ms).catch(() => {
+        posted.current = null;
+      });
+    }, 10_000);
+    return () => window.clearInterval(id);
+  }, [screen, device]);
   const bgEngine = useRef(new Engine()); // the music while nothing plays
   const mutesRef = useRef<[number, number][]>([]);
   const skew = useRef(0); // server clock - this clock, seconds

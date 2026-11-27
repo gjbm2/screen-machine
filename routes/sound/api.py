@@ -12,6 +12,7 @@
   PUT  /sound/latency/screens/<screen>      {presented_to_photon_ms, evidence?}: a screen's picture delay -> {saved}
   PUT  /sound/latency/lights/<key>          {rise_ms, fall_ms?, also?, evidence?}: a light's measured response (the
                                             camera calibration, Settings › Sound & timing) -> {saved}
+  PUT  /sound/outputs/<id>/browser          {ms}: the output latency the browser playing it reports (used while unmeasured)
   GET  /sound/outputs/<id>/eq               its graphic EQ (smsound.eq.describe): {applies, preset, gains, bands,
                                             presets, range_db}
   PUT  /sound/outputs/<id>/eq               {preset} | {gains: [dB x 7]}: -> the same
@@ -169,6 +170,18 @@ def set_screen_latency(screen: str):
     except (KeyError, TypeError, ValueError) as err:
         return _err(400, f"presented_to_photon_ms in ms: {err}")
     return jsonify({"saved": e})
+
+
+@sound_api.put("/sound/outputs/<path:oid>/browser")
+def put_browser(oid: str):
+    """{ms}: the output latency the browser playing it reports (smsound.latency.set_browser)."""
+    if O.kind(oid) not in ("screen", "device"):
+        return _err(404, "Only a screen's page or a browser reports its own latency.")
+    try:
+        L.set_browser(oid, float((request.get_json(silent=True) or {}).get("ms")))
+    except (TypeError, ValueError):
+        return _err(400, "ms is a number.")
+    return jsonify({"id": oid, "latency": L.describe(oid)})
 
 
 @sound_api.get("/sound/outputs/<path:oid>/eq")

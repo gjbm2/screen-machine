@@ -109,6 +109,9 @@ export const sound = {
   latency: () => call<LatencyOverview>('/latency'),
   setLatency: (id: string, body: { trim_ms?: number; delay_ms?: number | null; forget?: boolean }) =>
     call<{ id: string; latency: OutputLatency }>(`/outputs/${encodeURIComponent(id)}/latency`, send('PUT', body)),
+  /** The output latency this browser reports for an output it plays (used while that output is unmeasured). */
+  setBrowser: (id: string, ms: number) =>
+    call<{ id: string; latency: OutputLatency }>(`/outputs/${encodeURIComponent(id)}/browser`, send('PUT', { ms })),
   eq: (id: string) => call<{ id: string; eq: OutputEq }>(`/outputs/${encodeURIComponent(id)}/eq`),
   setEq: (id: string, body: { preset: string } | { gains: number[] }) =>
     call<{ id: string; eq: OutputEq }>(`/outputs/${encodeURIComponent(id)}/eq`, send('PUT', body)),
