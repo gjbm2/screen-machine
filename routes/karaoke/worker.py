@@ -128,7 +128,8 @@ def hear(vocal: Path) -> list[dict]:
     return _venv_json(TRANSCRIBE, ["--vocal", str(vocal)], 900)["words"]
 
 
-def fit_lyrics(cands: list[dict], vocal: Path, duration: float | None, fallback: dict) -> dict:
+def fit_lyrics(cands: list[dict], vocal: Path, duration: float | None, fallback: dict, title: str = "",
+               artist: str = "") -> dict:
     """The lyrics document for a recording, timed to its own singing (docs/KARAOKE.md "Lyrics"):
     the LRCLIB upload whose words match the most of what Whisper hears, each line where it is sung; else the lines
     as heard; else (nothing heard) ``fallback``, the looked-up lyrics as they came. Then each word is timed."""
@@ -145,7 +146,7 @@ def fit_lyrics(cands: list[dict], vocal: Path, duration: float | None, fallback:
     doc = None
     sung = real_heard(sung, duration)                    # stock lines and stray words aren't singing
     if sung:
-        best, lines, stats = lyr.best_fit(cands, sung, duration)
+        best, lines, stats = lyr.best_fit(cands, sung, duration, title, artist)
         if best is not None:
             doc = {"kind": "synced", "source": "fitted", "lrclib_id": best.get("lrclib_id"), "fit": stats, "lines": lines}
         else:
@@ -399,7 +400,8 @@ class Worker:
         # 4. the lyrics timed to this recording's own singing
         self.step(sid, "lyrics", "listening to the words")
         try:
-            lyrics_doc = fit_lyrics(cands, d / "vocals.wav", audio_seconds(d / "instrumental.m4a"), lyrics_doc)
+            lyrics_doc = fit_lyrics(cands, d / "vocals.wav", audio_seconds(d / "instrumental.m4a"), lyrics_doc,
+                                    meta.get("title") or "", meta.get("artist") or "")
         except Exception as e:  # noqa: BLE001  (the looked-up lyrics as they came, lined up the old way)
             info(f"karaoke: {sid} hearing the words failed: {e}")
         if lyrics_doc.get("source") in ("fitted", "heard"):
@@ -439,24 +441,39 @@ class Worker:
             doc = json.loads((d / "lyrics.json").read_text())
         except (OSError, ValueError):
             doc = {"kind": "none", "lines": []}
-        texts = [str(ln.get("text") or "") for ln in doc.get("lines") or [] if str(ln.get("text") or "").strip()]
+        title, artist = song.get("title") or "", song.get("artist") or ""
+        given = lyr.careful_input(doc.get("lines") or [], title, artist)
+        upload = doc.get("lrclib_id")
+        if doc.get("source") in ("fitted", "careful"):   # the upload chosen again, by what best_fit weighs now
+            try:
+                lead = json.loads((d / "sung.json").read_text())
+                heard = real_heard(lead if isinstance(lead, list) else [], audio_seconds(d / "instrumental.m4a"))
+                best, lines, _ = lyr.best_fit(src.lrclib_candidates(artist, title), heard,
+                                              audio_seconds(d / "instrumental.m4a"), title, artist) if heard else (None, [], {})
+                if best is not None and best.get("lrclib_id") != upload:
+                    info(f"karaoke: {sid} careful pass: upload {best.get('lrclib_id')} fits better than {upload}")
+                    given, upload = lyr.careful_input(lines, title, artist), best.get("lrclib_id")
+            except Exception as e:  # noqa: BLE001  (offline, LRCLIB down: the lines it has)
+                info(f"karaoke: {sid} careful pass: uploads not looked at again ({e})")
+        texts = [x["text"] for x in given]
         if not texts or not (d / "vocals.m4a").is_file():
             mark(state="failed", detail="", error="There are no lyrics to time." if not texts else "The song's files are gone.")
             return
         mark(state="working", detail="taking every voice out, then timing each word", started_at=time.time(), error=None)
         info(f"karaoke: {sid} careful pass over its lyrics ({len(texts)} lines)")
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
-            json.dump([{"text": t} for t in texts], f)
+            json.dump(given, f)
             lines_file = f.name
+        dur = audio_seconds(d / "instrumental.m4a")
         try:
-            res = self._run_yielding(sid, [str(REFINE), "--dir", str(d), "--lines", lines_file], 2400)
+            res = self._run_yielding(sid, [str(REFINE), "--dir", str(d), "--lines", lines_file]
+                                     + (["--duration", str(dur)] if dur else []), 2400)
         finally:
             Path(lines_file).unlink(missing_ok=True)
         if res is None:                                   # a song came to be prepared: it goes first, this waits
             mark(state="waiting", detail="after the songs being prepared")
             info(f"karaoke: {sid} careful pass gave way to a song being prepared")
             return
-        dur = audio_seconds(d / "instrumental.m4a")
         tmp = d / "sung_voices.tmp.json"
         tmp.write_text(json.dumps(res.get("heard") or []))
         tmp.replace(d / "sung_voices.json")
@@ -476,7 +493,7 @@ class Worker:
         first = d / "lyrics.first.json"
         if not first.is_file():
             shutil.copy(d / "lyrics.json", first)
-        out = {"kind": "synced", "source": "careful", "lrclib_id": doc.get("lrclib_id"), "fit": doc.get("fit"),
+        out = {"kind": "synced", "source": "careful", "lrclib_id": upload, "fit": doc.get("fit"),
                "careful": ag, "first_source": doc.get("first_source") or doc.get("source"), "lines": new}
         tmp = d / "lyrics.tmp.json"
         tmp.write_text(json.dumps(out))

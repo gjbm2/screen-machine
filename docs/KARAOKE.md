@@ -91,10 +91,15 @@ for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`;
   shift of the heard lines round them (past the last heard line, the median shift of the last five), and a heard
   line far from its neighbours' shift (over 4 s) is a stray match and is placed the same way (27 Nov: Hey Jude's
   four-minute coda is the choir in the backing track, so the lead stem had nothing heard there and the even spread
-  squeezed it into half its length).
+  squeezed it into half its length). A line the upload's timing puts past the recording's end is left out, not
+  piled up at the end. Of the uploads matching at least 97% as many sung words as the best, the one with the
+  fewest words nobody sings wins (27 Nov: I Will Survive's album-version upload matched 403 sung words and had 232
+  more nobody sings; the single edit's matched 398 with 33). Credit lines ("Written by：...") and the song's own
+  name as a line are never lyrics.
 - **Lyrics off? The careful pass** (owner, 27 Nov: "a way to refer a song for 2ndary processing -- e.g. more
   carefully time lyrics"). The wand on a library row, or "Lyrics off? Time them carefully" under the playing song,
-  refers it (`POST /api/karaoke/songs/<id>/refine`). The worker runs it when no song is waiting to be prepared (a
+  refers it (`POST /api/karaoke/songs/<id>/refine`). It first chooses the upload again (LRCLIB's uploads against
+  what was heard, as above), so a song prepared before a better rule gets it. The worker runs it when no song is waiting to be prepared (a
   song added meanwhile ends it and it waits again); the song stays playable throughout. `tools/karaoke/refine.py`
   sums the two stems back into the song, takes EVERY voice out (the BS-Roformer all-voices model: choir, backing
   and lead), has Whisper hear that, and force-aligns the whole lyrics to it in one CTC path (MMS_FA, a star before

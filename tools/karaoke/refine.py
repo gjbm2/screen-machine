@@ -17,7 +17,7 @@ This pass:
    is placed in order against the others, so a repeat can't land on the wrong chorus, and a line no one was heard
    singing still finds its words.
 
-``lines.json`` is [{text}] in order. Prints (last line) {"heard": [{w, t0, t1}], "lines": [[{t0, t1, score} | null
+``lines.json`` is [{text, start}] in order (start: where the first pass had it). Prints (last line) {"heard": [{w, t0, t1}], "lines": [[{t0, t1, score} | null
 per space-separated token] | null per line], "seconds"}: score is the mean log-probability of the word's
 characters on the path (0 best; under about -3 the model didn't really hear it).
 """
@@ -157,10 +157,12 @@ def main() -> int:
     ap.add_argument("--lines", required=True)
     ap.add_argument("--model", default="turbo")
     ap.add_argument("--keep", help="keep the voices stem here (for looking into a song)")
+    ap.add_argument("--duration", type=float, default=None, help="the song's length (not used yet)")
     a = ap.parse_args()
     t0 = time.perf_counter()
     d = Path(a.dir)
-    texts = [str(x.get("text") or "") for x in json.load(open(a.lines))]
+    given = json.load(open(a.lines))
+    texts = [str(x.get("text") or "") for x in given]
     work = Path(tempfile.mkdtemp(prefix="tmp-refine-", dir=d))     # tmp*: the worker clears it if cut short
     try:
         voices = voices_stem(d, work)
@@ -170,7 +172,8 @@ def main() -> int:
         lines = align_song(load_mono_16k(voices), texts) if texts else []
     finally:
         shutil.rmtree(work, ignore_errors=True)
-    print(json.dumps({"heard": heard, "lines": lines, "seconds": round(time.perf_counter() - t0, 1)}))
+    print(json.dumps({"heard": heard, "lines": lines,
+                      "seconds": round(time.perf_counter() - t0, 1)}))
     return 0
 
 
