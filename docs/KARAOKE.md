@@ -2,7 +2,7 @@
 
 Ask for a song by name or link. The machine downloads it, removes the lead vocal, fetches the lyrics, and the screen's
 display page plays the backing track with the lyrics over whatever the screen shows (art or live). Built 25 Nov 2026
-for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`; on for `laptop`, off elsewhere.
+for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`; on for `laptop` and `finsbury` (PC22, 27 Nov: its Karaoke mode).
 
 ## Using it
 

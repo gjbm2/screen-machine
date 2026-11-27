@@ -605,6 +605,90 @@
           }
         }
       ]
+    },
+    "karaoke": {
+      "label": "Karaoke",
+      "icon": "music",
+      "_note": "The karaoke mode (owner, 26-27 Nov: karaoke is a switch on every mode, false on all but the one labelled Karaoke; docs/KARAOKE.md): entering it starts the karaoke player, leaving it stops it, and a song started from the karaoke panel takes the room into it. As the laptop's: the screens live with the art director picking (karaoke screen per Settings), the singalong feel (vivid palettes, haze light, strobes on a few big moments) with AI listening off. As Party for this room: blinds, TV input, lamps and DMX lights (the GigBARs) from the show, the director working the glitterball and pinspots (both start off). Sonos is left alone: the karaoke sound goes where Settings says.",
+      "state": {
+        "show.mic": {
+          "set": true,
+          "restore": true
+        },
+        "show.main": {
+          "set": {
+            "vibe": "singalong",
+            "listening": false
+          },
+          "restore": true,
+          "policy": "ignore"
+        },
+        "drawing-room:screens": {
+          "live": {
+            "auto": true,
+            "transitions": {
+              "in": "crossfade-3s",
+              "out": "crossfade-3s"
+            }
+          }
+        },
+        "screens": "art",
+        "page": false,
+        "sensor_mask": "suspended",
+        "drawing-room:blinds": {
+          "set": 100,
+          "restore": true,
+          "policy": "enforce",
+          "max_age_s": 43200
+        },
+        "drawing-room:tv": {
+          "set": "hdmi",
+          "restore": true
+        },
+        "mirror_ball": "stopped",
+        "mirror_ball_motor.speed": "medium",
+        "hue": {
+          "set": "dmx",
+          "restore": true
+        },
+        "light": {
+          "set": "dmx",
+          "restore": true
+        },
+        "director.glitterball": {
+          "set": true,
+          "restore": true
+        },
+        "director.pinspots": {
+          "set": true,
+          "restore": true
+        },
+        "pinspots.main": {
+          "set": "off",
+          "restore": true
+        },
+        "pinspots.flash": {
+          "set": "off",
+          "restore": true
+        }
+      },
+      "karaoke": true,
+      "on_enter": [
+        {
+          "signal": "log.info",
+          "args": {
+            "msg": "show starting"
+          }
+        }
+      ],
+      "on_exit": [
+        {
+          "signal": "log.info",
+          "args": {
+            "msg": "show over"
+          }
+        }
+      ]
     }
   },
   "transitions": [
