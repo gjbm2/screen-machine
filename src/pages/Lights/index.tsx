@@ -208,7 +208,7 @@ export default function LightsPage() {
   return (
     <div className={cn(THEME_CLASS, "min-h-screen bg-background text-base text-foreground antialiased")}>
       <RoomThemeStyle />
-      <div className="mx-auto w-full max-w-3xl px-4 pb-16 sm:px-6">
+      <div className={cn("mx-auto w-full px-4 pb-16 sm:px-6", tab === "3d" ? "max-w-[1500px]" : "max-w-3xl")}>
         <PageHeader
           title="Light setup"
           current="settings"

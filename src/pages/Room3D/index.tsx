@@ -9,8 +9,9 @@
 //   * The screens: each one's own live stream through room_service's viewer role, else its art (screens.ts).
 //   * Hue lamps: show_service's last colour for each (no wire to read).
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { resolveRoomUrl } from "@/pages/Room/api";
+import { RoomEditor, type Editable, type EditChange, type GizmoMode } from "./editor";
 import { loadRoom, type KeepRegion, type RoomModel } from "./model";
 import { hazeWords, LEVEL_VISIBILITY_M, mlOf, sigmaOf, sigmaOfSlider, sliderOf } from "./haze";
 import { RoomSim } from "./scene";
@@ -26,11 +27,22 @@ type NodeStatus = { node?: { udp?: string; universe?: number }; artnet?: { pps?:
 /** The room in 3D. On its own (/lights/room) it fills the window; ``embedded`` (the Lights setup's 3D tab) it fills
  *  its box and leaves the readout to the page around it. ``picked``: the keep-out region being edited there;
  *  ``regions``: the page's own (unsaved) copy of the regions, drawn in place of the room's saved ones. */
-export default function Room3DPage({ embedded = false, picked = null, regions, refresh = 0 }: {
+export default function Room3DPage({ embedded = false, picked = null, regions, refresh = 0, editables, selected = null,
+  mode, onSelect, onEdit, panel, frame = 0 }: {
   embedded?: boolean; picked?: string | null; regions?: KeepRegion[];
   /** Bump it to read the room again at once (the page around it has just saved a change). */
   refresh?: number;
+  /** The editor (editor.ts): the things that can be clicked and moved, which one is selected, the gizmo's mode, and
+   *  what the page does when one is picked or changed. ``panel``: the page's inspector, shown beside the view. */
+  editables?: Editable[]; selected?: string | null; mode?: GizmoMode;
+  onSelect?: (key: string | null) => void; onEdit?: (key: string, change: EditChange) => void; panel?: ReactNode;
+  /** Bump it to turn the camera to the selected thing ("frame selected": picked from the list, or F). */
+  frame?: number;
 } = {}) {
+  const edRef = useRef<RoomEditor | null>(null);
+  const cb = useRef({ onSelect, onEdit });
+  cb.current = { onSelect, onEdit };
+  const press = useRef<{ x: number; y: number } | null>(null);
   const room = useMemo(() => resolveRoomUrl(window.location.search), []);
   const node = useMemo(() => (new URLSearchParams(window.location.search).get("node") || NODE_DEFAULT).replace(/\/+$/, ""), []);
   // Taking pictures (tools/room/light_shots.py: the library's picture of each lighting scene): ?shot=1 draws the room
@@ -64,6 +76,9 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
     if (!canvas || !host) return;
     const sim = new RoomSim({ canvas, room });
     simRef.current = sim;
+    const ed = new RoomEditor(sim.overlayRoot, sim.overlayScene, sim.camera, canvas);
+    ed.onChange = (key, change) => cb.current.onEdit?.(key, change);
+    edRef.current = ed;
     const fit = () => sim.resize(host.clientWidth, host.clientHeight);
     const ro = new ResizeObserver(fit);
     ro.observe(host);
@@ -91,7 +106,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
     };
     raf = requestAnimationFrame(loop);
     const wt = window.setInterval(() => setWords(sim.words()), 300);
-    return () => { cancelAnimationFrame(raf); window.clearInterval(wt); ro.disconnect(); sim.dispose(); simRef.current = null; };
+    return () => { cancelAnimationFrame(raf); window.clearInterval(wt); ro.disconnect(); ed.dispose(); edRef.current = null; sim.dispose(); simRef.current = null; };
   }, [room]);
 
   // the room as configured
@@ -107,6 +122,24 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
     const t = window.setInterval(get, ROOM_POLL_MS);
     return () => { dead = true; window.clearInterval(t); };
   }, [room, refresh]);
+
+  // the editor: what can be picked, which is selected, the gizmo's mode
+  useEffect(() => {
+    const ed = edRef.current, sim = simRef.current;
+    if (!ed || !sim) return;
+    ed.setItems(editables ?? []);
+    sim.overlayOn = (editables ?? []).length > 0;
+  }, [editables, model]);
+  useEffect(() => {
+    const ed = edRef.current;
+    if (ed && ed.selected !== selected) ed.select(selected, mode);
+  }, [selected, editables, model, mode]);
+  useEffect(() => { if (mode) edRef.current?.setMode(mode); }, [mode, selected]);
+  useEffect(() => {
+    const it = (editables ?? []).find((x) => x.key === selected);
+    if (frame > 0 && it) simRef.current?.focus(it.at);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frame]);
 
   // the keep-out regions: red when a laser's burst crosses one
   useEffect(() => {
@@ -215,15 +248,31 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
       </header>
       <div className="relative flex min-h-0 flex-1">
         <div ref={hostRef} className="relative min-w-0 flex-1"
-          onPointerDown={(e) => { drag.current = { x: e.clientX, y: e.clientY }; (e.target as HTMLElement).setPointerCapture(e.pointerId); }}
-          onPointerMove={(e) => { if (!drag.current) return; simRef.current?.orbitBy(e.clientX - drag.current.x, e.clientY - drag.current.y); drag.current = { x: e.clientX, y: e.clientY }; }}
-          onPointerUp={() => { drag.current = null; }}
+          onPointerDown={(e) => {
+            press.current = { x: e.clientX, y: e.clientY };
+            if (edRef.current?.onHandle) return;                       // the gizmo's own press: not the camera's
+            drag.current = { x: e.clientX, y: e.clientY }; (e.target as HTMLElement).setPointerCapture(e.pointerId);
+          }}
+          onPointerMove={(e) => { if (!drag.current || edRef.current?.dragging) return; simRef.current?.orbitBy(e.clientX - drag.current.x, e.clientY - drag.current.y); drag.current = { x: e.clientX, y: e.clientY }; }}
+          onPointerUp={(e) => {
+            drag.current = null;
+            const ed = edRef.current, p = press.current;
+            press.current = null;
+            if (!ed || !ed.active || !p) return;
+            if (ed.justDragged) { ed.justDragged = false; return; }    // the end of a gizmo drag is not a click
+            if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > 4) return;   // the view was turned, nothing was clicked
+            const r = e.currentTarget.getBoundingClientRect();
+            cb.current.onSelect?.(ed.pick(((e.clientX - r.left) / r.width) * 2 - 1, -(((e.clientY - r.top) / r.height) * 2 - 1)));
+          }}
           onWheel={(e) => simRef.current?.zoomBy(e.deltaY)}>
           <canvas ref={canvasRef} className="absolute inset-0 block" />
           <div className={shot ? "hidden" : "pointer-events-none absolute bottom-1.5 left-2.5 text-xs text-[#8d93a5]"}>
             drag: orbit · wheel: zoom · the lights read the Art-Net wire, at their makers' brightness; the picture adapts as an eye does · {perf}
           </div>
         </div>
+        {embedded && panel ? (
+          <aside className="w-[300px] shrink-0 overflow-auto border-l border-[#252a38] bg-[#0b0d13] px-3 py-2 text-[13px]" data-testid="inspector">{panel}</aside>
+        ) : null}
         <aside className={embedded || shot ? "hidden" : "overflow-auto border-l border-[#252a38] bg-[#0b0d13] px-3 py-2"} style={{ width: SIDE_W }}>
           {words.map((g) => (
             <div key={g.unit} className="mb-2">

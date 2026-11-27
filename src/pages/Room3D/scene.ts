@@ -195,11 +195,17 @@ export class RoomSim {
   // light in the room, so they don't pass through the exposure and always show (through walls too).
   private keepScene = new THREE.Scene();
   private keepRoot = new THREE.Group();
+  private keepBoxes = new THREE.Group();
+  /** Something else draws over the picture too (the editor's outline and gizmo): draw the overlay every frame. */
+  overlayOn = false;
+  /** The overlay, for the editor (editor.ts): its root is in the room's frame (metres, z up). */
+  get overlayRoot(): THREE.Group { return this.keepRoot; }
+  get overlayScene(): THREE.Scene { return this.keepScene; }
 
   /** The keep-out boxes to draw: amber, red when a laser's burst crosses one, stronger when it is the one picked. */
   setKeepOut(boxes: { centre: Vec3; size: Vec3; crossed?: boolean; picked?: boolean }[]) {
-    for (const c of [...this.keepRoot.children]) {
-      this.keepRoot.remove(c);
+    for (const c of [...this.keepBoxes.children]) {
+      this.keepBoxes.remove(c);
       const m = c as THREE.Mesh;
       m.geometry?.dispose();
       (m.material as THREE.Material | undefined)?.dispose();
@@ -211,7 +217,7 @@ export class RoomSim {
       const edge = new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: b.picked ? 1 : 0.7, depthTest: false }));
       fill.position.set(b.centre[0], b.centre[1], b.centre[2]);
       edge.position.copy(fill.position);
-      this.keepRoot.add(fill, edge);
+      this.keepBoxes.add(fill, edge);
     }
   }
 
@@ -231,6 +237,7 @@ export class RoomSim {
     this.keepRoot.matrixAutoUpdate = false;          // the same room -> three frame
     this.keepRoot.matrix.copy(this.root.matrix);
     this.keepRoot.updateMatrixWorld(true);
+    this.keepRoot.add(this.keepBoxes);
     this.keepScene.add(this.keepRoot);
     this.scene.add(this.fill);                       // the light bouncing round the room (frame())
   }
@@ -822,7 +829,7 @@ export class RoomSim {
     this.light.end();
     this.fill.color.setRGB(this.light.fill.x, this.light.fill.y, this.light.fill.z);
     this.post.render(this.scene, this.camera, this.sigma, this.light.mean, dt);
-    if (this.keepRoot.children.length) {             // the setup aid, over the picture
+    if (this.keepBoxes.children.length || this.overlayOn) {   // the setup aids, over the picture
       const ac = this.renderer.autoClear;
       this.renderer.autoClear = false;
       this.renderer.setRenderTarget(null);
@@ -930,6 +937,19 @@ export class RoomSim {
   }
   orbitBy(dx: number, dy: number) { this.orbit.th -= dx * 0.006; this.orbit.ph -= dy * 0.006; this.place(); }
   zoomBy(dy: number) { this.orbit.r *= Math.exp(dy * 0.001); this.place(); }
+  /** Frame a place in the room (a 3D studio's "frame selected"): the camera turns about it from the room's middle
+   *  side, close enough to work on it. */
+  focus(at: Vec3) {
+    const m = this.model;
+    const p = v3(at), c = m ? v3(m.centre) : new THREE.Vector3();
+    this.target.copy(this.world(p));
+    const from = this.world(c.clone().sub(p).setZ(0));                  // look at it from the room's middle side
+    if (from.lengthSq() > 1e-6) this.orbit.th = Math.atan2(from.x, from.z);
+    this.orbit.ph = 1.2;
+    this.orbit.r = Math.min(this.orbit.r, 4.5);
+    this.place();
+  }
+
   private place() {
     const o = this.orbit;
     o.ph = Math.max(0.12, Math.min(1.62, o.ph));

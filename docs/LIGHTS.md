@@ -541,8 +541,8 @@ A keep-out region is a box of the room no beam should cross: a mirror ball, the 
   `space.yaml` (by hand) or `space.added.yaml` (written by the page). `groups` names show.yaml `lights.groups`
   groups; none means every light. `PUT` / `DELETE /api/v1/rig/space/keep_out/{name}`; `GET /api/v1/rig/space` carries
   `keep_out`, `light_groups` and `lasers` (the checks below).
-- **Where it is set:** the Light setup page's 3D tab (`/settings/lights?tab=3d`): the room simulator with the regions
-  drawn in it and an editor under it. A region shows live while it is edited.
+- **Where it is set:** the Light setup page's 3D tab (`/settings/lights?tab=3d`): the room simulator as an editor
+  (§3.6b): add a region from the outliner, then move and scale its box in the view or type its numbers.
 - **A moving light** steers round a region that is for its group: the look engine's aim (`looks._aim`) moves the
   target the least way that clears it (`space.clear_target`). The scene, the effect and the transition don't know.
 - **A bar's laser** can't be steered: its burst goes where the unit is tilted (its setup `lean_deg`, §2.6). Each
@@ -566,10 +566,16 @@ tilted and turned on its bracket. Those are settings, and the simulator and the 
   the bar's front until it is taught (§3.6). A part with its own `at` under `appliances` keeps that place.
 - **A light's own tilt and turn** are in its setup (`fixtures.setup.yaml` `lean_deg`, `turn_deg`; §2.6) and override
   the layout's. A laser with neither gets the 45-degree rule (`space.LEAN_RULE_DEG`).
-- **Where they are set:** the Light setup page's 3D tab, "The bars": sliders for each bar and each fixed light. A
-  change is saved when the slider is let go, and the simulator above reads the room again.
-- **Not there yet:** a control for the four strobe zones (they are in the bar's face and point where it does), and
-  dragging a bar in the 3D view itself.
+- **Where they are set:** the Light setup page's 3D tab, which is the room simulator used as an editor
+  (`src/pages/Room3D/editor.ts`, `src/pages/Lights/RoomTab.tsx`), as any 3D studio works:
+  - click a bar, a light on a bar or a keep-out box in the view to select it (it is outlined); click empty space or
+    press Esc to let go;
+  - a gizmo on it moves it (W), turns it (E) or scales it (R): a bar moves and turns about the vertical, a light
+    turns to where it points, a keep-out box moves and scales. Letting go saves, and the room is drawn again;
+  - the inspector beside the view has the selected thing's numbers for exact entry; with nothing selected it lists
+    everything (the outliner). Picking from the list, or F, turns the camera to it.
+- **Not there yet:** a control for the four strobe zones (they are in the bar's face and point where it does); the
+  moving heads' poses are still taught from the Lights tab ("Point it at…"), not turned in the view; no undo.
 
 ### 3.7 Tests (space): test_space.py (new)
 
