@@ -18,7 +18,7 @@
 // The chrome is the app's own light theme; the view is the room.
 // A planned light (a room device not yet a registered light) is still placed in the older view: "Place a planned light".
 
-import { lazy, Suspense, useCallback, useEffect, useMemo, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { Notice, Spinner } from "@/pages/Room/bits";
 import Room3DPage from "@/pages/Room3D";
@@ -427,7 +427,19 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   const thingAt = thing ? bits?.room.appliances[thing.id] : undefined;
   const place = kind === "place" ? bits?.room.points.find((p) => p.name === id) : undefined;
   const area = kind === "area" ? bits?.room.regions.find((a) => a.name === id) : undefined;
-  const [roomName, setRoomName] = useState("The room");     // room_service's room (one per deployment here)
+  const [roomName, setRoomName] = useState("The room");
+  // the list shows the selected row: scrolled to once when the selection changes (not on every redraw, which fought
+  // the owner's own scrolling: "scrolling hierarchy jumps up while I'm still scrolling"), and not when it was clicked
+  // in the list (it is in view already)
+  const fromList = useRef(false);
+  useEffect(() => {
+    if (fromList.current) { fromList.current = false; return; }
+    if (!selected) return;
+    const t = window.setTimeout(() => {
+      document.querySelector(`[data-testid="pick-${CSS.escape(selected)}"]`)?.scrollIntoView({ block: "nearest" });
+    }, 50);
+    return () => window.clearTimeout(t);
+  }, [selected]);     // room_service's room (one per deployment here)
   // arriving from "Show it on the map": select it once the room is read
   const [arrived, setArrived] = useState(false);
   useEffect(() => {
@@ -576,7 +588,6 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
   ) : (
     <button key={key} onClick={() => go(key)} data-testid={`pick-${key}`}
       aria-current={selected === key ? "true" : undefined}
-      ref={selected === key ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
       className={`block w-full rounded px-2 py-1 text-left ${selected === key
         ? "bg-teal-50 font-medium text-teal-900 ring-1 ring-teal-300" : "hover:bg-stone-100"}`}>
       {label}{sub ? <span className={selected === key ? "text-teal-700" : "text-stone-500"}> · {sub}</span> : null}
@@ -600,7 +611,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
     const b = bits.bars.find((x) => x.parts.some((p) => p.id === idOf(key)));
     return b && b.editable ? `bar:${b.id}` : null;
   };
-  const go = (key: string | null) => { select(key); setTreeOpen(false); if (key) setFrame((n) => n + 1); };
+  const go = (key: string | null) => { fromList.current = true; select(key); setTreeOpen(false); if (key) setFrame((n) => n + 1); };
   /** Arrow keys in the panel walk the hierarchy: up / down the next thing, left its parent (or let go), right a
    *  bar's first light. */
   const onPanelKey = (e: ReactKeyboardEvent) => {
@@ -951,13 +962,6 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
             className={`h-8 whitespace-nowrap px-3 ${i ? "border-l border-stone-300" : ""} ${show === v ? "bg-teal-600 text-white" : "bg-white hover:bg-stone-50"}`}>{label}</button>
         ))}
       </div>
-      {show !== "live" && modes.length > 0 && (
-        <select value={asMode} aria-label="The room as in" data-testid="as-mode" className={`${sel} w-[150px] min-w-[90px] shrink`}
-          title="The lights a mode sets itself (the house lights) show as this mode sets them"
-          onChange={(e) => { setAsMode(e.target.value); try { localStorage.setItem("room3d.previewMode", e.target.value); } catch { /* this visit */ } }}>
-          {modes.map((m) => <option key={m.id} value={m.id}>Room as in {m.label}</option>)}
-        </select>
-      )}
       {show === "colour" && (
         <input type="color" value={colour} onChange={(e) => setColour(e.target.value)} aria-label="Colour" className="h-8 w-10 rounded-lg border border-stone-300 bg-white" />
       )}
@@ -972,6 +976,14 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
           </span>
           <span className="[@container(min-width:1650px)]:hidden"><PreviewFeel energy={energy} bpm={bpm} setEnergy={setEnergy} setBpm={setBpm} /></span>
         </>
+      )}
+      {/* last: it comes and goes with Live, and moves nothing before it */}
+      {show !== "live" && modes.length > 0 && (
+        <select value={asMode} aria-label="The room as in" data-testid="as-mode" className={`${sel} w-[150px] min-w-[90px] shrink`}
+          title="The lights a mode sets itself (the house lights) show as this mode sets them"
+          onChange={(e) => { setAsMode(e.target.value); try { localStorage.setItem("room3d.previewMode", e.target.value); } catch { /* this visit */ } }}>
+          {modes.map((m) => <option key={m.id} value={m.id}>Room as in {m.label}</option>)}
+        </select>
       )}
     </>
   );

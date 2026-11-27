@@ -398,12 +398,12 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
             onClick={() => showView(v as "3d" | "plan" | "front" | "side")}>{words}</button>
         ))}
       </div>
-      {nav === "elev" && (
-        <button className={`h-8 rounded-lg border px-2.5 ${bd} ${dark ? "" : "hover:bg-stone-50"}`} data-testid="view-flip"
-          title={`Look from the other side: now at the ${elev} wall (9)`} onClick={() => flipElev()}>⇄ {elev}</button>
-      )}
-      {!flat && (
-        <>
+      {/* the elevations' ⇄, the 3D view's Walk / Orbit and places: each keeps its slot when it doesn't apply */}
+      <button className={`h-8 w-[78px] shrink-0 rounded-lg border px-2 ${bd} ${dark ? "" : "hover:bg-stone-50"} ${nav === "elev" ? "" : "invisible"}`} data-testid="view-flip"
+        tabIndex={nav === "elev" ? 0 : -1} aria-hidden={nav !== "elev"}
+        title={`Look from the other side: now at the ${elev} wall (9)`} onClick={() => flipElev()}>⇄ {elev}</button>
+      {(
+        <div className={`flex shrink-0 items-center gap-2 ${flat ? "invisible" : ""}`} aria-hidden={flat}>
           <div className={`inline-flex overflow-hidden rounded-lg border ${bd}`} role="group" aria-label="How to move">
             <button className={seg(nav === "walk")} aria-pressed={nav === "walk"} data-testid="nav-walk" onClick={() => chooseNav("walk")}
               title="Stand in the room: drag to look round, click the floor to walk there, wheel or W/S to walk, A/D to step aside, Q/E lower/higher">Walk</button>
@@ -431,7 +431,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
             )}
           </select>
           )}
-        </>
+        </div>
       )}
       <button className={`h-8 rounded-lg border px-2.5 ${bd} ${dark ? "" : "hover:bg-stone-50"}`} title="The whole room in this view (Home)" aria-label="The whole room"
         data-testid="home" onClick={() => simRef.current?.home()}>⌂</button>
@@ -440,10 +440,11 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
   return (
     <div className={T.root} style={{ fontSize: 13 }} data-testid="room-sim">
       {embedded ? (
-        // The editor's header: one row. Left, what the lights show (the page's); right, the views and a menu of the rest.
+        // The editor's header: one row, all from the left, every toggle in a place of its own whatever is chosen (owner,
+        // 27 Nov: "some controls right aligned is bad because 3D / Plan / Orbit etc. toggles change what comes after so
+        // control jumps away below the mouse"): the views and moving (their slots kept when hidden), ⌂ ⋯ ⧉, then what
+        // the lights show, whose own changing controls come last.
         <header className={shot ? "hidden" : "flex items-center gap-2 border-b border-stone-200 bg-white px-3 py-2 [container-type:inline-size]"} data-testid="sim-header">
-          {toolbar}
-          <span className="flex-1" />
           {navControls}
           <div className="relative">
             <button className="h-8 rounded-lg border border-stone-300 px-2.5 hover:bg-stone-50" aria-expanded={opts} aria-label="More" title="Haze, beam paths"
@@ -496,6 +497,8 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
           </div>
           <a href="/lights/room" target="_blank" rel="noreferrer" title="Open the live view in a new window" aria-label="Open the live view in a new window"
             className="hidden h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-stone-300 text-[15px] hover:bg-stone-50 [@container(min-width:900px)]:inline-flex" data-testid="pop-out">⧉</a>
+          <span className="mx-1 h-6 w-px shrink-0 bg-stone-200" aria-hidden />
+          {toolbar}
         </header>
       ) : (
       <header className={shot ? "hidden" : T.header}>
