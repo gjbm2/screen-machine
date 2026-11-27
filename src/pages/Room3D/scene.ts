@@ -17,6 +17,7 @@ import { beamShared, HazePost, SCREEN_ALPHA } from "./fog";
 import {
   barStrobe, COLOUR_SLOTS, colourName, DERBY_RGB, hash, HazeState, laserColours, LASER_NM, laserPattern, LASER_RGB, lerp, mixPar, motor, motorWords, MECH,
   pct, shutterGain, SpotMotion, spotShutter,
+  type PartKind,
 } from "./decode";
 import { coneOmega, FACE_CAP, laserLm, linear, parCd, perLumen, PHOTO, REFLECT, RoomLight } from "./light";
 const HOUSE_RGB = [255, 217, 176];                // the house lights' warm white
@@ -147,6 +148,17 @@ export type Elev = "front" | "back" | "left" | "right";
 const FLAT_FOV_DEG = 3;     // the plan's and elevations' long lens: as good as no perspective
 const EYE_M = 1.6;          // where you stand, walking: eye height (m)
 const WALL_GAP = 0.25;      // and how near a wall
+/** Editing a light: how bright the others are drawn (their level channels x this). */
+const SOLO_DIM = 0.12;
+/** A level channel of a light that is not being edited, drawn dimmed: a par's and a derby's colours, the strobe LEDs, a
+ *  head's dimmer, a house light; a laser's colour channel (not a level) goes off; anything else (where it points, its
+ *  wheels, its motor) as it is. */
+function dimmed(part: PartKind | null, i: number, v: number): number {
+  const level = part === "par" ? i <= 5 : part === "derby" ? i <= 3 : part === "flash" ? i <= 3 : part === "flashled" ? i === 0
+    : part === "spot" ? i === 7 : part === "dimmer" ? i === 0 : false;
+  if (part === "laser" || part === "laser50" || part === "laser51") return i === 0 ? 0 : v;
+  return level ? Math.round(v * SOLO_DIM) : v;
+}
 const SHADOW_EVERY = 3;
 
 function hitRoom(o: THREE.Vector3, d: THREE.Vector3, size: Vec3): THREE.Vector3 {
@@ -936,7 +948,7 @@ export class RoomSim {
     const hex = f.lastRgb && /^#[0-9a-f]{6}$/i.test(f.lastRgb) ? f.lastRgb : "#000000";
     // PHOTO.lamp_lm lumens at full white, less in a colour (an estimate), in every direction; the bulb itself glows
     const c = new THREE.Color(hex);
-    lm.lm.set(c.r, c.g, c.b).multiplyScalar(PHOTO.lamp_lm);
+    lm.lm.set(c.r, c.g, c.b).multiplyScalar(PHOTO.lamp_lm * (this.solo && !this.solo.has(f.id) ? SOLO_DIM : 1));
     lm.l.color.setRGB(lm.lm.x, lm.lm.y, lm.lm.z).multiplyScalar(1 / (4 * Math.PI)); lm.l.intensity = 1;
     lm.m.material.color.copy(lm.l.color).multiplyScalar(1 / (Math.PI * 0.09 ** 2));
   }
@@ -1044,15 +1056,10 @@ export class RoomSim {
     beamShared.on.value = air;
     beamShared.scatter.value = this.showPaths ? Math.max(sig, 0.3) : sig;
     beamShared.sigma.value = this.showPaths ? 0 : sig;
-    const hl = this.hl, vhl = this.vhl;
+    const hl = this.hl, vhl = this.vhl, solo = this.solo;
     const ch = (f: Fixture, i: number) => {
-      if (f.planned) {                                                                 // planned: nothing on the wire
-        const own = f.address == null ? undefined : vhl.get(f.address - 1 + i);
-        return own ?? this.plannedDmx?.get(f.id)?.[i] ?? 0;                             // the preview's, when it runs them
-      }
-      if (f.address == null || (this.universe != null && f.universe != null && f.universe !== this.universe)) return 0;
-      const a = f.address - 1 + i;
-      return a >= 0 && a < 512 ? hl.get(a) ?? this.dmx[a] : 0;
+      const v = this.chRaw(f, i, hl, vhl);
+      return solo && !solo.has(f.id) ? dimmed(f.part, i, v) : v;          // editing a light: the others stand back
     };
     // every part reports the lumens it sends into the room; their bounce is the fill and what lights the haze
     this.light.begin();
@@ -1284,13 +1291,33 @@ export class RoomSim {
   private vhl = new Map<number, number>();                    // the same for planned lights' virtual slots
   /** The preview's planned lights: each one's channels by its id (preview.py's frames' ``p``); null: none sent. */
   plannedDmx: Map<string, Uint8Array> | null = null;
+  /** A light's channel as the wire (or the preview, or the selection lighting it up) has it. */
+  private chRaw(f: Fixture, i: number, hl: Map<number, number>, vhl: Map<number, number>): number {
+    if (f.planned) {                                                                 // planned: nothing on the wire
+      const own = f.address == null ? undefined : vhl.get(f.address - 1 + i);
+      return own ?? this.plannedDmx?.get(f.id)?.[i] ?? 0;                             // the preview's, when it runs them
+    }
+    if (f.address == null || (this.universe != null && f.universe != null && f.universe !== this.universe)) return 0;
+    const a = f.address - 1 + i;
+    return a >= 0 && a < 512 ? hl.get(a) ?? this.dmx[a] : 0;
+  }
+
+  /** The lights being edited (owner, 27 Nov: "when I'm editing any specific light, others should dim and that one
+   *  should show so I can see what I'm doing"): every other light's level channels are drawn at SOLO_DIM of what the
+   *  wire or the preview says (a laser, whose colour channel can't be dimmed: off); null: nothing being edited. */
+  private solo: Set<string> | null = null;
   highlight(key: string | null) {
     this.hl = new Map();
     this.vhl = new Map();
     const m = this.model;
-    if (!key || !m) return;
+    const wasSolo = this.solo;
+    this.solo = null;
+    if (!key || !m) { if (wasSolo && m) this.refreshLamps(m); return; }
     const id = key.slice(key.indexOf(":") + 1), kind = key.slice(0, key.indexOf(":"));
     const fs = kind === "bar" ? m.fixtures.filter((f) => f.bar === id && f.part) : m.fixtures.filter((f) => f.id === id);
+    const lights = fs.filter((f) => f.part || f.kind === "lamp" || f.device === "hue-lamp");
+    this.solo = lights.length ? new Set(lights.map((f) => f.id)) : null;
+    if (wasSolo || this.solo) this.refreshLamps(m);
     for (const f of fs) {
       if (f.address == null) continue;
       const into = f.planned ? this.vhl : this.hl;
