@@ -1103,6 +1103,32 @@ a.d.'s job is then to execute that strategy properly".
 The eval measures both: `release` (do the lights lift where the music lifts) and `character` (do songs that sound
 different get shows that look different), in `tools/room/ad_eval/form.py`.
 
+### 5.12 A song's moments (owner, 27 Nov)
+
+"There are circumstances in a song where e.g. there's very strong rhythmic section, strong drumming, orchestral hit
+... we'd prob. expect to see a stronger situational lighting response". And: "endings that just stop suddenly rather
+than which fade out -- we'd expect a blackout ... smartly in config and logic, not in hard coded patches."
+
+- **Found** in a karaoke song's audio, each judged against that song's own norm (utils/song_moments.py, kept as
+  `moments.json` beside the stems):
+  - *stab*: a hit in the top 1% of the song's onsets, across the bands;
+  - *stop*: the backing cut out for ¾ to 4 beats from a held, loud passage, back on a hit;
+  - *drums*: bars where the percussion's share is far over the song's usual;
+  - *end*: cold, ring or fade, from the whole mix.
+- **Chosen** by show_service/moments.py from config/live/moments.yaml:
+  - a moment's salience must reach `min_salience`;
+  - the song's idiom caps how many of each kind it gets (a hushed song takes no stabs, and its stops only dim);
+  - two of a kind sit at least `gap_bars` apart;
+  - the ending is always chosen.
+- **Performed** lead_s ahead, so the lights land on the moment. Each kind's recipe gives:
+  - its envelope in `LookData.moments` (phrasing.py: *bump*, *stop*, *out*), multiplied with the section's arrival;
+  - a unison hit known ahead, if any;
+  - the running scene's drop flash, if any.
+
+  A cold ending is down 0.3 s after its last hit and stays there until the song changes.
+- **Measured** by the eval's `moments` goal (docs/AD_EVAL.md).
+- **Drum sections** are found but not yet answered.
+
 ## 6. Catalogues (builder: catalogue)
 
 ### 6.1 Shared rules

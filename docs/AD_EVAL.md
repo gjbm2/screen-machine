@@ -59,6 +59,7 @@ beats the seed spread and every owner verdict holds → morning report (~/.cache
 | peak | is the climax the biggest look? | share of other sections smaller |
 | release | does a lift land: size rising across the line where the music arrives? | key arrivals |
 | ending | do the lights go dark when the song ends? | error in seconds |
+| moments | do the lamps answer the song's stabs and stops? | share answered: a stab's rise within 0.3 s, a stop's drop through the gap |
 
 The gate keeps restraint, the house style: one palette per song, a small kit of scenes per light group, few flourishes,
 heads still for most of a quiet song (by its liveliness). It caps; it never rewards more restraint than the limit, or
@@ -96,7 +97,14 @@ palette, moods and a map of its sections, each with a size and how it arrives. T
 - the idiom limits what may be drawn (motion, pulse, groups, transitions);
 - the map sets each section's level, and its lifts get a wind-up and landing (show_service/phrasing.py);
 - each section kind has its own look (the look book), recalled when it returns, growing only in size;
-- the last chorus is the chorus at its biggest.
+- the last chorus is the chorus at its biggest;
+- the song's **moments** are hit. These are its stabs, stops and ending, found in the audio against the song's own norm
+  (utils/song_moments.py, `moments.json` beside the song), chosen by idiom and performed by recipe from
+  config/live/moments.yaml:
+  - a stab punches;
+  - a stop goes dark for the band's gap and lands on its return;
+  - a cold ending blacks out after the last hit;
+  - a fade or ring-out goes down with the music.
 
 With no brief (live music, a stream), the director falls back to what it hears: a lift is a predicted section during a
 heard build (`_arrive_heard`). docs/LIGHTS.md §5.11 has the detail.
@@ -146,6 +154,21 @@ struck through with its commit.
 5. **Look again at contour and sections** once the blind pairs have data: do they reward artistry, or only following
    loudness? A change bumps SCORE_VERSION.
 6. **Eval issues from the nightly.** Fix the keys and references the morning report flags.
+7. **A song's moments (27 Nov).** **Built:**
+   - the detector, which finds stabs, stops, drum sections and the ending (cold, ring or fade);
+   - the recipes and per-idiom budgets in config/live/moments.yaml, performed by director._moments_tick;
+   - the `moments` goal (SCORE_VERSION 3).
+
+   Uptown Funk checks out: the lamps go 0.83 → 0.02 for "Stop, wait a minute" and back on the hit, and go black 0.3 s
+   after the last hit.
+
+   Still to do:
+   - answer **drum sections** (a harder pulse for their bars wants its own look change);
+   - the **live** fallback: a standout hit against the last 60 s, and a sudden collapse dimming at once;
+   - measure **moments on against off** over 3 seeds;
+   - check the detector by ear on more songs (blind pairs at moments);
+   - run the detector in the karaoke worker at analysis time. Today the show measures it on first play, about
+     10 s in.
 
 ### f2: the overnight loop
 - Run nightly at 03:00: score HEAD (3 draws a song), no show changes while `controls.pass` is false, one fix per
