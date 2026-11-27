@@ -1046,6 +1046,8 @@ class LookEngine:
         self._grid_seen_t = -math.inf
         # identify and follow (any thread; each swapped by reference, read once per frame)
         self._ident: dict[str, tuple[float, list[float]]] = {}       # fixture -> (until, colour at full value)
+        # a timing probe (calibration: probe()): fixture -> (dark from, dark until, ((start, end), ...), colour)
+        self._probe: dict[str, tuple[float, float, tuple[tuple[float, float], ...], list[float]]] = {}
         self._follow: dict[str, tuple[float, list[float]]] = {}      # fixture -> (intensity, colour): not following
         self._follow_change: tuple[int, frozenset, float] = (0, frozenset(), TRANSITION_S)   # (rev, ids moved, s)
         self._show_over_s = TRANSITION_S                                # set_transition: the show starting/stopping
@@ -2282,6 +2284,39 @@ class LookEngine:
                         out.setdefault(m, str(pid))
         return out
 
+    def probe(self, fixture_id: str, pulses: Sequence[Sequence[float]], rgb: Sequence[float] = (255, 255, 255),
+              dark_s: float = 1.0) -> bool:
+        """A timing probe (docs/calibration: the lights' camera calibration): that fixture at full ``rgb`` for each
+        (start, seconds) of ``pulses`` (this engine's clock, monotonic s) and held dark from ``dark_s`` before the
+        first to ``dark_s`` after the last, whatever it was doing (as identify). The output's runner sends a frame at
+        each pulse edge (``next_probe_edge``), so the light changes in the frame sent at that moment: the boundary
+        the lights' latency is measured from and compensated at. Empty ``pulses`` ends it. True when the engine
+        evaluates that fixture now."""
+        try:
+            ps = tuple(sorted((float(a), float(a) + float(d)) for a, d in pulses if float(d) > 0.0))
+            r, g, b = (float(x) for x in rgb)
+        except (TypeError, ValueError):
+            return False
+        if not all(math.isfinite(x) for pr in ps for x in pr):
+            return False
+        new = {k: v for k, v in self._probe.items() if v[1] > self._mono() and k != fixture_id}
+        if ps:
+            m = max(r, g, b)
+            col = [_c01(r / m), _c01(g / m), _c01(b / m)] if m > 0 else [1.0, 1.0, 1.0]
+            new[str(fixture_id)] = (ps[0][0] - dark_s, ps[-1][1] + dark_s, ps, col)
+        self._probe = new
+        return any(s.id == fixture_id for op in self._program.outputs.values() for s in op.slots)
+
+    def next_probe_edge(self, after_s: float) -> Optional[float]:
+        """The next pulse edge (on or off) of any probe at or after ``after_s``, else None (the runners' plan)."""
+        best = None
+        for _a, _z, ps, _c in tuple(self._probe.values()):
+            for st_, en in ps:
+                for e in (st_, en):
+                    if e >= after_s and (best is None or e < best):
+                        best = e
+        return best
+
     def identify(self, fixture_id: str, seconds: float, rgb: Sequence[float] = (255, 255, 255)) -> bool:
         """That fixture at full ``rgb`` (0..255 each; white) for ``seconds`` from now, whatever it was doing: layers,
         hits, master, caps and its follow value are bypassed, inactive frames included. ``seconds`` <= 0 ends it.
@@ -2925,7 +2960,8 @@ class LookEngine:
         st.held, st.why = held, why
         fixtures: dict[str, dict] = frame["fixtures"]
         ident, follow = self._ident, self._follow                 # identify and follow, read once a frame
-        ov = bool(ident) or bool(follow)
+        probe = self._probe
+        ov = bool(ident) or bool(follow) or bool(probe)
         holds = self._holds                                       # the Lights page's holds, read once a frame
         mc = prog.motion
         busy = False
@@ -2942,7 +2978,7 @@ class LookEngine:
                 fs = st.fix.get(s.id) if s.enc else None
                 if fs is not None:
                     fs.held = False
-                o = self._override(s.id, ident, follow, t) if ov else None
+                o = self._override(s.id, ident, follow, t, probe) if ov else None
                 if o is not None:
                     fixtures[s.id] = self._fixed(s, o[0], o[1], te, fs, o[2])
                     continue
@@ -3049,7 +3085,7 @@ class LookEngine:
                 fs = st.fix[s.id] = _FixState()
             fs.held = False
             if ov:
-                o = self._override(s.id, ident, follow, t)
+                o = self._override(s.id, ident, follow, t, probe)
                 if o is not None:                                # identify, or not following: no look at all
                     inten, col, idn = o
                     if not idn and min_attack_s > 0.0 and fs.prev is not None and t >= fs.t_prev:
@@ -4790,9 +4826,14 @@ class LookEngine:
         return colour_mix.encode(s.info, s.type, inten, colour)
 
     @staticmethod
-    def _override(fid: str, ident: Mapping[str, tuple], follow: Mapping[str, tuple], t: float
-                  ) -> Optional[tuple[float, list, bool]]:
-        """(intensity, colour, identify?) for a fixture identifying at ``t`` or not following the music; else None."""
+    def _override(fid: str, ident: Mapping[str, tuple], follow: Mapping[str, tuple], t: float,
+                  probe: Optional[Mapping[str, tuple]] = None) -> Optional[tuple[float, list, bool]]:
+        """(intensity, colour, identify?) for a fixture probed or identifying at ``t``, or not following the music;
+        else None. A probe: full in a pulse, dark around them."""
+        pr = probe.get(fid) if probe else None
+        if pr is not None and pr[0] <= t < pr[1]:
+            on = any(a <= t < z for a, z in pr[2])
+            return (1.0 if on else 0.0), pr[3], True
         i = ident.get(fid)
         if i is not None and t < i[0]:
             return 1.0, i[1], True

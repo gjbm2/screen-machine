@@ -193,7 +193,7 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", "/api/v1/rig"), ("GET", "/api/v1/rig/frame"), ("GET", "/api/v1/rig/dmx"),
     ("POST", "/api/v1/rig/nodes/{id}/record-failsafe"), ("GET", "/api/v1/rig/nodes/find"),
     ("GET", "/api/v1/rig/types"), ("POST", "/api/v1/rig/fixtures"), ("PUT", "/api/v1/rig/fixtures/{id}"),
-    ("DELETE", "/api/v1/rig/fixtures/{id}"), ("POST", "/api/v1/rig/fixtures/{id}/identify"),
+    ("DELETE", "/api/v1/rig/fixtures/{id}"), ("POST", "/api/v1/rig/fixtures/{id}/identify"), ("POST", "/api/v1/rig/fixtures/{id}/probe"),
     ("GET", "/api/v1/rig/follow"), ("POST", "/api/v1/rig/follow"),
     ("GET", "/api/v1/brightness"), ("PUT", "/api/v1/brightness"),
     ("POST", "/api/v1/rig/fixtures/{id}/jog"), ("POST", "/api/v1/rig/fixtures/{id}/setup"),
@@ -1178,6 +1178,8 @@ class Api:
             ("PUT", "/api/v1/rig/fixtures/{id}", self._rig_update),
             ("DELETE", "/api/v1/rig/fixtures/{id}", self._rig_remove),
             ("POST", "/api/v1/rig/fixtures/{id}/identify", self._rig_identify),
+            ("POST", "/api/v1/rig/fixtures/{id}/probe", self._rig_probe),
+            ("GET", "/api/v1/clock", self._clock),
             ("GET", "/api/v1/rig/follow", self._rig_follow_get),
             ("POST", "/api/v1/rig/follow", self._rig_follow_post),
             ("GET", "/api/v1/brightness", self._brightness_get),
@@ -1897,6 +1899,22 @@ class Api:
             return _json(await self._call(brain, rig.identify, fid, seconds))
         except ValueError as e:
             return self._rig_refused(e)
+
+    async def _rig_probe(self, request: web.Request, brain: Any) -> web.Response:
+        body, bad = await self._body(request)
+        if bad is not None:
+            return bad
+        rig = _components(brain).get(RIG)
+        if rig is None or not callable(getattr(rig, "probe", None)):
+            return _json({"ok": False, "why": NO_RIG})
+        try:
+            return _json(await self._call(brain, rig.probe, request.match_info["id"], body))
+        except ValueError as e:
+            return self._rig_refused(e)
+
+    async def _clock(self, request: web.Request, brain: Any) -> web.Response:
+        """This process's monotonic clock (the look engine's and the probes'), for a page that times against it."""
+        return _json({"mono_s": time.monotonic()})
 
     async def _rig_follow_get(self, request: web.Request, brain: Any) -> web.Response:
         rig = _components(brain).get(RIG)
