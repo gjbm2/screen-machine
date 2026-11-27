@@ -26,6 +26,8 @@ import { resolveRoomUrl } from "@/pages/Room/api";
 import { modesOf, type Editable, type EditChange, type GizmoMode } from "@/pages/Room3D/editor";
 import { aimDirOf, keepOutOf, type KeepRegion } from "@/pages/Room3D/model";
 import { explainLightsError, type LightsApi } from "./api";
+import { nameWords, parseSpace, placeId, snapToWall, type Placeable, type PlacedThing, type RoomSpace } from "./lib";
+import { AddPlace, frontMiddle, MOUNTS, RoomForm } from "./RoomMap";
 import type PlannedView from "./Room3D";
 
 const Planned = lazy(() => import("./Room3D"));
@@ -36,10 +38,21 @@ const LIGHT_BOX: Vec3 = [0.2, 0.2, 0.2];
 type Vec3 = [number, number, number];
 type PartAim = { part: string; id: string; label: string; at: Vec3 | null; lean_deg: number; turn_deg: number; own: boolean };
 type BarBits = { id: string; label: string; at: Vec3; facing_deg: number; front: Vec3; editable: boolean; aims: PartAim[] };
-type SpaceBits = ReturnType<typeof keepOutOf> & { size: Vec3; bars: BarBits[] };
+type SpaceBits = ReturnType<typeof keepOutOf> & { size: Vec3; bars: BarBits[]; room: RoomSpace; partIds: Set<string>;
+  /** What the deployment's own space.yaml sets ("screen:<id>", "place:<name>", ...): the page can't move it. */
+  locked: Set<string> };
 /** The older view's own props (the page's space state, the map's things, the lamps' colours): passed straight on. */
 type PlannedProps = Parameters<typeof PlannedView>[0];
-type Kind = "bar" | "light" | "region";
+type Kind = "bar" | "light" | "region" | "screen" | "thing" | "place" | "area";
+const THING_BOX: Vec3 = [0.3, 0.3, 0.3];
+const r2 = (x: number) => Math.round(x * 100) / 100;
+/** What PUT /rig/space/appliances/<id> needs to put a thing back as it was. */
+function placedBody(a: PlacedThing): Record<string, unknown> {
+  return { at: a.at, ...(a.mount ? { mount: a.mount } : {}),
+    ...(a.plane?.normal ? { plane: { normal: a.plane.normal, up: a.plane.up ?? [0, 0, 1], ...(a.plane.size ? { size: a.plane.size } : {}) } } : {}) };
+}
+const WALL_WORDS: Record<string, string> = { "1,0": "west", "-1,0": "east", "0,1": "south", "0,-1": "north" };
+const wallOf = (n: Vec3 | null | undefined) => (n ? WALL_WORDS[`${Math.round(n[0])},${Math.round(n[1])}`] ?? null : null);
 
 const isV3 = (v: unknown): v is Vec3 => Array.isArray(v) && v.length === 3 && v.every((x) => typeof x === "number");
 const kindOf = (key: string) => key.slice(0, key.indexOf(":")) as Kind;
@@ -143,7 +156,13 @@ const btn = "rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-ston
 const H = ({ children }: { children: ReactNode }) => <h3 className="mb-1 mt-3 text-[11px] font-semibold uppercase tracking-wide text-stone-500">{children}</h3>;
 const MODE_NAMES: Record<GizmoMode, string> = { translate: "Move (W)", rotate: "Turn (E)", scale: "Scale (R)" };
 
-export default function RoomTab({ api, space, things, lamps }: PlannedProps & { api: LightsApi }) {
+export default function RoomTab({ api, space, things, lamps, selectId = null, plan = false }: PlannedProps & {
+  api: LightsApi;
+  /** A light or screen to select on arrival ("Show it on the map"). */
+  selectId?: string | null;
+  /** Open in the plan view (the old Room map's links). */
+  plan?: boolean;
+}) {
   const [bits, setBits] = useState<SpaceBits | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [mode, setMode] = useState<GizmoMode>("translate");
@@ -184,7 +203,12 @@ export default function RoomTab({ api, space, things, lamps }: PlannedProps & { 
   const read = useCallback(async () => {
     try {
       const s: any = await api.space();
-      setBits({ ...keepOutOf(s), size: isV3(s?.room?.size) ? s.room.size : [6, 6, 3], bars: barsFrom(s) });
+      const partIds = new Set<string>(Object.values(s?.bars ?? {}).flatMap((b: any) => Object.values(b?.parts ?? {}).map((p: any) => String(p?.id ?? ""))));
+      const locked = new Set<string>([
+        ...Object.entries(s?.appliances ?? {}).filter(([, a]: [string, any]) => a?.editable === false).flatMap(([id]) => [`screen:${id}`, `thing:${id}`]),
+        ...Object.entries(s?.points ?? {}).filter(([, p]: [string, any]) => p?.from === "hand").map(([n]) => `place:${n}`),
+        ...Object.entries(s?.regions ?? {}).filter(([, r]: [string, any]) => r?.editable === false || r?.from === "hand").map(([n]) => `area:${n}`)]);
+      setBits({ ...keepOutOf(s), size: isV3(s?.room?.size) ? s.room.size : [6, 6, 3], bars: barsFrom(s), room: parseSpace(s), partIds, locked });
     } catch (e) {
       setErr(explainLightsError(e));
     }
@@ -242,6 +266,19 @@ export default function RoomTab({ api, space, things, lamps }: PlannedProps & { 
     return () => window.removeEventListener("keydown", onKey);
   }, [undo, redo]);
 
+  // the room's other things (the old Room map's): every light and screen the rig knows that is not a part of a bar,
+  // and any planned thing placed in the room; which of them are in the room and which are not yet
+  const { placedThings, unplacedThings } = useMemo(() => {
+    if (!bits) return { placedThings: [] as Placeable[], unplacedThings: [] as Placeable[] };
+    const mine = things.filter((t) => !bits.partIds.has(t.id));
+    const known = new Set(mine.map((t) => t.id));
+    const extra: Placeable[] = Object.entries(bits.room.appliances)
+      .filter(([id, a]) => a.at && !known.has(id) && !bits.partIds.has(id) && !a.kind)
+      .map(([id, a]) => ({ id, label: a.label ?? nameWords(id), kind: a.plane ? "screen" : "lamp", zone: null, screen: null }));
+    const all = [...mine, ...extra];
+    return { placedThings: all.filter((t) => bits.room.appliances[t.id]?.at), unplacedThings: all.filter((t) => !bits.room.appliances[t.id]?.at) };
+  }, [bits, things]);
+
   // what can be clicked in the view
   const editables = useMemo<Editable[]>(() => {
     if (!bits) return [];
@@ -249,12 +286,26 @@ export default function RoomTab({ api, space, things, lamps }: PlannedProps & { 
     for (const b of bits.bars) {
       if (b.editable) out.push({ key: `bar:${b.id}`, kind: "bar", label: b.label, at: b.at, size: BAR_BOX, yaw: (b.facing_deg * Math.PI) / 180 });
       for (const p of b.aims) {
-        if (p.at) out.push({ key: `light:${p.id}`, kind: "light", label: p.label, at: p.at, size: LIGHT_BOX, dir: aimDirOf(b.front, p.lean_deg, p.turn_deg), front: b.front });
+        if (p.at) out.push({ key: `light:${p.id}`, kind: "light", label: p.label, at: p.at, size: LIGHT_BOX, dir: aimDirOf(b.front, p.lean_deg, p.turn_deg), front: b.front,
+          parent: b.editable ? `bar:${b.id}` : undefined });
       }
     }
     for (const r of bits.keepOut) if (r.editable) out.push({ key: `region:${r.name}`, kind: "region", label: r.label, at: r.centre, size: r.size });
-    return out;
-  }, [bits]);
+    // the rest of the room (what the Room map placed): screens on walls, lights not on a bar, named places, floor areas
+    for (const t of placedThings) {
+      const a = bits.room.appliances[t.id];
+      if (!a?.at) continue;
+      if (t.kind === "screen") {
+        const n = (a.plane?.normal ?? [0, -1, 0]) as Vec3, sz = a.plane?.size ?? [1, 0.6];
+        out.push({ key: `screen:${t.id}`, kind: "screen", label: t.label, at: a.at, size: [0.08, sz[0], sz[1]], yaw: Math.atan2(n[1], n[0]), normal: n });
+      } else out.push({ key: `thing:${t.id}`, kind: "thing", label: t.label, at: a.at, size: THING_BOX });
+    }
+    for (const p of bits.room.points) out.push({ key: `place:${p.name}`, kind: "place", label: p.label, at: p.at, size: [0.3, 0.3, 0.3] });
+    for (const a of bits.room.regions) {
+      if (a.surface === "floor") out.push({ key: `area:${a.name}`, kind: "area", label: a.label, at: [a.centre[0], a.centre[1], 0.02], size: [a.size[0], a.size[1], 0.04] });
+    }
+    return out.filter((e) => !bits.locked.has(e.key));                 // set in the room file: not moved here
+  }, [bits, placedThings]);
 
   const kind = selected ? kindOf(selected) : null, id = selected ? idOf(selected) : null;
   const bar = kind === "bar" ? bits?.bars.find((b) => b.id === id) : undefined;
@@ -262,6 +313,19 @@ export default function RoomTab({ api, space, things, lamps }: PlannedProps & { 
   const light = lightBar?.aims.find((p) => p.id === id);
   const region = kind === "region" ? bits?.keepOut.find((r) => r.name === id) : undefined;
   const check = light ? bits?.lasers[light.id] : undefined;
+  const thing = (kind === "screen" || kind === "thing") ? placedThings.find((t) => t.id === id) : undefined;
+  const thingAt = thing ? bits?.room.appliances[thing.id] : undefined;
+  const place = kind === "place" ? bits?.room.points.find((p) => p.name === id) : undefined;
+  const area = kind === "area" ? bits?.room.regions.find((a) => a.name === id) : undefined;
+  const [roomForm, setRoomForm] = useState(false);
+  // arriving from "Show it on the map": select it once the room is read
+  const [arrived, setArrived] = useState(false);
+  useEffect(() => {
+    if (arrived || !selectId || !bits) return;
+    const key = [`screen:${selectId}`, `thing:${selectId}`, `light:${selectId}`].find((k) => editables.some((e) => e.key === k));
+    setArrived(true);
+    if (key) { setSelected(key); setFrame((n) => n + 1); }
+  }, [arrived, selectId, bits, editables]);
 
   const select = useCallback((key: string | null) => {
     setSelected(key);
@@ -278,6 +342,36 @@ export default function RoomTab({ api, space, things, lamps }: PlannedProps & { 
       () => api.setup(p.id, p.own ? { lean_deg: p.lean_deg, turn_deg: p.turn_deg } : { lean_deg: null, turn_deg: null })), [act, api]);
   const changeRegion = useCallback((r: KeepRegion, over: Partial<KeepRegion>, label: string) =>
     act(label, () => putRegion(r, over), () => putRegion(r, {})), [act, putRegion]);
+  /** A screen or light not on a bar: placed anew, put back as it was on undo (or taken out, if it was not in). */
+  const moveThing = useCallback((id: string, body: Record<string, unknown>, was: PlacedThing | undefined, label: string) =>
+    act(label, () => api.place(id, body), () => (was?.at ? api.place(id, placedBody(was)) : api.unplace(id))), [act, api]);
+  type AreaT = RoomSpace["regions"][number];
+  const changeArea = useCallback((a: AreaT, over: Partial<AreaT>, label: string) => {
+    const n = { ...a, ...over };
+    return act(label, () => api.setArea(a.name, { surface: n.surface, centre: n.centre, size: n.size, label: n.label }),
+      () => api.setArea(a.name, { surface: a.surface, centre: a.centre, size: a.size, label: a.label }));
+  }, [act, api]);
+  /** Bring a thing into the room: the middle (a screen on the middle of the front wall), to be dragged where it is. */
+  const putInRoom = (t: Placeable) => {
+    if (!bits) return;
+    const [X, Y, Z] = bits.size;
+    let body: Record<string, unknown>;
+    if (t.kind === "screen") {
+      const w = snapToWall(bits.size, ...frontMiddle(bits.size, bits.room.front));
+      body = { at: [w.x, w.y, r2(Z / 2)], plane: { normal: w.normal, up: [0, 0, 1] } };
+    } else body = { at: [r2(X / 2), r2(Y / 2), t.kind === "mover" ? Z : r2(Z / 2)], ...(t.kind === "mover" ? { mount: "ceiling" } : {}) };
+    void act(`put ${t.label} in the room`, () => api.place(t.id, body), () => api.unplace(t.id))
+      .then(() => { setSelected(`${t.kind === "screen" ? "screen" : "thing"}:${t.id}`); setFrame((n) => n + 1); });
+  };
+  const addPlace = (label: string) => {
+    if (!bits) return;
+    const name = placeId(label);
+    if (!name) return;
+    if (bits.room.points.some((p) => p.name === name)) { setSelected(`place:${name}`); return; }
+    const [X, Y] = bits.size;
+    void act(`add ${label.trim()}`, () => api.setPlace(name, { at: [r2(X / 2), r2(Y / 2), 0], label: label.trim() }), () => api.removePlace(name))
+      .then(() => setSelected(`place:${name}`));
+  };
   const onEdit = useCallback((key: string, c: EditChange) => {
     const k = kindOf(key), i = idOf(key);
     if (k === "bar") {
@@ -287,11 +381,23 @@ export default function RoomTab({ api, space, things, lamps }: PlannedProps & { 
     } else if (k === "light") {
       const p = bits?.bars.flatMap((b) => b.aims).find((x) => x.id === i);
       if (p) void changeLight(p, { lean_deg: c.lean_deg, turn_deg: c.turn_deg }, `aim ${p.label}`);
+    } else if (k === "screen" || k === "thing") {
+      const a = bits?.room.appliances[i], t = placedThings.find((x) => x.id === i);
+      if (!a || !c.at) return;
+      const body: Record<string, unknown> = { at: c.at };
+      if (c.normal) body.plane = { normal: c.normal, up: [0, 0, 1], ...(a.plane?.size ? { size: a.plane.size } : {}) };
+      void moveThing(i, body, a, `move ${t?.label ?? i}`);
+    } else if (k === "place") {
+      const p = bits?.room.points.find((x) => x.name === i);
+      if (p && c.at) void act(`move ${p.label}`, () => api.setPlace(p.name, { at: c.at!, label: p.label }), () => api.setPlace(p.name, { at: p.at, label: p.label }));
+    } else if (k === "area") {
+      const a = bits?.room.regions.find((x) => x.name === i);
+      if (a && c.at) void changeArea(a, { centre: [c.at[0], c.at[1], a.centre[2]] }, `move ${a.label}`);
     } else {
       const r = bits?.keepOut.find((x) => x.name === i);
       if (r) void changeRegion(r, { centre: c.at ?? r.centre, size: c.size ?? r.size }, `change ${r.label}`);
     }
-  }, [bits, changeBar, changeLight, changeRegion]);
+  }, [bits, changeBar, changeLight, changeRegion, placedThings, act, api, moveThing, changeArea]);
 
   const addRegion = () => {
     if (!bits) return;
@@ -342,7 +448,9 @@ export default function RoomTab({ api, space, things, lamps }: PlannedProps & { 
       ))}
     </div>
   );
-  const row = (key: string, label: string, sub?: string) => (
+  const row = (key: string, label: string, sub?: string) => bits?.locked.has(key) ? (
+    <div key={key} className="px-2 py-1 text-stone-500" title="Set in the deployment's space.yaml: change it there">{label} · set in the room file</div>
+  ) : (
     <button key={key} onClick={() => go(key)} data-testid={`pick-${key}`}
       aria-current={selected === key ? "true" : undefined}
       ref={selected === key ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
@@ -357,9 +465,13 @@ export default function RoomTab({ api, space, things, lamps }: PlannedProps & { 
     return n.charAt(0).toUpperCase() + n.slice(1);
   };
   /** Everything in the outliner's order: each bar then its lights, then the keep-out regions. */
-  const order = useMemo(() => !bits ? [] : [
+  const order: string[] = !bits ? [] : [
     ...bits.bars.flatMap((b) => [...(b.editable ? [`bar:${b.id}`] : []), ...b.aims.map((p) => `light:${p.id}`)]),
-    ...bits.keepOut.filter((r) => r.editable).map((r) => `region:${r.name}`)], [bits]);
+    ...placedThings.filter((t) => t.kind === "screen").map((t) => `screen:${t.id}`),
+    ...placedThings.filter((t) => t.kind !== "screen").map((t) => `thing:${t.id}`),
+    ...bits.room.points.map((p) => `place:${p.name}`),
+    ...bits.room.regions.filter((a) => a.surface === "floor").map((a) => `area:${a.name}`),
+    ...bits.keepOut.filter((r) => r.editable).map((r) => `region:${r.name}`)];
   const parentOf = (key: string) => {
     if (kindOf(key) !== "light" || !bits) return null;
     const b = bits.bars.find((x) => x.aims.some((p) => p.id === idOf(key)));
@@ -395,16 +507,54 @@ export default function RoomTab({ api, space, things, lamps }: PlannedProps & { 
           <div className="ml-3 border-l border-stone-200 pl-1">{b.aims.map((p) => row(`light:${p.id}`, short(p, b)))}</div>
         </div>
       ))}
+      {placedThings.some((t) => t.kind === "screen") && <H>Screens</H>}
+      {placedThings.filter((t) => t.kind === "screen").map((t) => row(`screen:${t.id}`, t.label, wallOf(bits.room.appliances[t.id]?.plane?.normal) ? `${wallOf(bits.room.appliances[t.id]?.plane?.normal)} wall` : undefined))}
+      {placedThings.some((t) => t.kind !== "screen") && <H>Other lights</H>}
+      {placedThings.filter((t) => t.kind !== "screen").map((t) => row(`thing:${t.id}`, t.label, t.kind === "mover" ? "moving light" : undefined))}
+      <H>Places</H>
+      {bits.room.points.length === 0 && <div className="px-2 text-stone-500">None yet.</div>}
+      {bits.room.points.map((p) => row(`place:${p.name}`, p.label))}
+      {bits.room.regions.some((a) => a.surface === "floor") && <H>Floor areas</H>}
+      {bits.room.regions.filter((a) => a.surface === "floor").map((a) => row(`area:${a.name}`, a.label, `${a.size[0]} × ${a.size[1]} m`))}
       <H>Keep-out regions</H>
       {bits.keepOut.length === 0 && <div className="px-2 text-stone-500">None yet.</div>}
       {bits.keepOut.map((r) => (r.editable
         ? row(`region:${r.name}`, r.label, r.groups.length ? r.groups.map((g) => bits.lightGroups[g]?.label ?? g).join(", ") : "every light")
         : <div key={r.name} className="px-2 py-1">{r.label}<span className="text-stone-500"> · set in the room file</span></div>))}
       <button className={`${btn} mt-2`} disabled={busy} onClick={addRegion} data-testid="add-keep-out">+ Add a keep-out region</button>
+      {unplacedThings.length > 0 && (
+        <>
+          <H>Not in the room yet</H>
+          <div className="mb-1 text-stone-500">Click one: it goes in the middle (a screen on the front wall), then drag it where it is.</div>
+          <div className="flex flex-wrap gap-1.5" data-testid="unplaced">
+            {unplacedThings.map((t) => (
+              <button key={t.id} className={btn} disabled={busy} onClick={() => putInRoom(t)}>+ {t.label}</button>
+            ))}
+          </div>
+        </>
+      )}
+      <div className="mt-3 [&_h3]:text-[11px] [&_h3]:uppercase [&_h3]:tracking-wide [&_h3]:text-stone-500 [&_p]:text-[12px]" data-testid="add-place">
+        <AddPlace onAdd={addPlace} />
+      </div>
+      <H>The room</H>
+      <div className="flex items-center justify-between px-2">
+        <span>{bits.size[0]} × {bits.size[1]} m, {bits.size[2]} m high · people face {bits.room.front}</span>
+        <button className="text-teal-700 hover:underline" onClick={() => setRoomForm(true)} data-testid="change-room">Change</button>
+      </div>
     </div>
   );
 
-  const panel: ReactNode = !bits ? <p className="py-2 text-stone-500">Reading the room…</p> : (
+  const panel: ReactNode = !bits ? <p className="py-2 text-stone-500">Reading the room…</p> : roomForm ? (
+    <div className="space-y-2 [&_section]:border-0 [&_section]:p-0" data-testid="room-form-panel">
+      <button className="rounded-lg bg-teal-600 px-2.5 py-1.5 font-medium text-white hover:bg-teal-700" onClick={() => setRoomForm(false)}>← Room</button>
+      <RoomForm space={bits.room} onCancel={() => setRoomForm(false)}
+        onSave={async (body) => {
+          const was = { size: bits.room.size, front: bits.room.front };
+          await act("change the room", () => api.setRoom(body), () => api.setRoom(was));
+          setRoomForm(false);
+        }} />
+    </div>
+  ) : (
     <div className="flex h-full flex-col outline-none" data-testid="inspector-body" tabIndex={-1} onKeyDown={onPanelKey}>
       {!selected ? (
         <div className="min-h-0 flex-1 overflow-auto">{outliner}</div>
@@ -419,7 +569,10 @@ export default function RoomTab({ api, space, things, lamps }: PlannedProps & { 
             onClick={() => setTreeOpen((o) => !o)} aria-expanded={treeOpen} data-testid="breadcrumb">
             <span className="truncate">
               {light && lightBar ? <><span className="text-stone-500">{lightBar.label} › </span>{short(light, lightBar)}</>
-                : bar ? bar.label : region ? <><span className="text-stone-500">Keep out › </span>{region.label}</> : selected}
+                : bar ? bar.label : region ? <><span className="text-stone-500">Keep out › </span>{region.label}</>
+                : thing ? <><span className="text-stone-500">{thing.kind === "screen" ? "Screens" : "Lights"} › </span>{thing.label}</>
+                : place ? <><span className="text-stone-500">Places › </span>{place.label}</>
+                : area ? <><span className="text-stone-500">Floor areas › </span>{area.label}</> : selected}
             </span>
             <span className="text-stone-500">▾</span>
           </button>
@@ -525,7 +678,83 @@ export default function RoomTab({ api, space, things, lamps }: PlannedProps & { 
             onClick={() => { const r = region; setSelected(null); void act(`remove ${r.label}`, () => api.removeKeepOut(r.name), () => putRegion(r, {})); }}>Remove this region</button>
         </>
       )}
-      {!bar && !light && !region && (
+      {thing && thingAt?.at && (
+        <>
+          <div className="text-[15px] font-semibold">{thing.label}</div>
+          <div className="mb-2 text-stone-500">
+            {thing.kind === "screen" ? `A screen on the ${wallOf(thingAt.plane?.normal) ?? "front"} wall: drag it along the walls` : thing.kind === "mover" ? "A moving light" : "A light"}
+          </div>
+          <H>Where it is</H>
+          {(["East–west", "North–south", "Height"] as const).map((w, i) => (
+            <Num key={w} label={w} unit="m" value={thingAt.at![i]} disabled={busy}
+              onKeep={(v) => void moveThing(thing.id, { ...placedBody(thingAt), at: thingAt.at!.map((x, k) => (k === i ? v : x)) }, thingAt, `move ${thing.label}`)} />
+          ))}
+          {thing.kind === "screen" && (
+            <>
+              <H>Its picture</H>
+              {(["Width", "Height"] as const).map((w, i) => (
+                <Num key={w} label={w} unit="m" value={thingAt.plane?.size?.[i] ?? 0} disabled={busy}
+                  onKeep={(v) => {
+                    const sz: [number, number] = [...(thingAt.plane?.size ?? [1, 0.6])] as [number, number];
+                    sz[i] = Math.max(0.1, v);
+                    void moveThing(thing.id, { plane: { normal: thingAt.plane?.normal ?? [0, -1, 0], up: [0, 0, 1], size: sz } }, thingAt, `resize ${thing.label}`);
+                  }} />
+              ))}
+            </>
+          )}
+          {thing.kind === "mover" && (
+            <>
+              <H>How it hangs</H>
+              <select className="h-8 w-full rounded border border-stone-300 bg-white px-2" value={thingAt.mount ?? ""} disabled={busy}
+                onChange={(e) => void moveThing(thing.id, { mount: e.target.value }, thingAt, `hang ${thing.label}`)}>
+                {!thingAt.mount && <option value="">Not said</option>}
+                {MOUNTS.map(([m, w]) => <option key={m} value={m}>{w}</option>)}
+              </select>
+            </>
+          )}
+          <button className={`${btn} mt-3 text-rose-700`} disabled={busy}
+            onClick={() => { const t = thing, was = thingAt; setSelected(null); void act(`take ${t.label} out`, () => api.unplace(t.id), () => api.place(t.id, placedBody(was))); }}>
+            Take it out of the room</button>
+        </>
+      )}
+      {place && (
+        <>
+          <div className="text-[15px] font-semibold">{place.label}</div>
+          <div className="mb-2 text-stone-500">A named place: somewhere lights can be pointed at</div>
+          <H>Where it is</H>
+          {(["East–west", "North–south", "Height"] as const).map((w, i) => (
+            <Num key={w} label={w} unit="m" value={place.at[i]} disabled={busy}
+              onKeep={(v) => { const at = place.at.map((x, k) => (k === i ? v : x)) as Vec3; void act(`move ${place.label}`, () => api.setPlace(place.name, { at, label: place.label }), () => api.setPlace(place.name, { at: place.at, label: place.label })); }} />
+          ))}
+          <button className={`${btn} mt-3`} disabled={busy} data-testid="make-area"
+            onClick={() => { const p = place; void act(`make ${p.label} an area`, async () => { await api.setArea(p.name, { surface: "floor", centre: [p.at[0], p.at[1], 0], size: [1, 1], label: p.label }); await api.removePlace(p.name); },
+              async () => { await api.removeArea(p.name); await api.setPlace(p.name, { at: p.at, label: p.label }); }).then(() => setSelected(`area:${p.name}`)); }}>
+            Make it a floor area (a size on the floor)</button>
+          <button className={`${btn} mt-2 block text-rose-700`} disabled={busy}
+            onClick={() => { const p = place; setSelected(null); void act(`remove ${p.label}`, () => api.removePlace(p.name), () => api.setPlace(p.name, { at: p.at, label: p.label })); }}>
+            Remove this place</button>
+        </>
+      )}
+      {area && (
+        <>
+          <div className="text-[15px] font-semibold">{area.label}</div>
+          <div className="mb-2 text-stone-500">A floor area: drag it across the floor</div>
+          <H>Its middle</H>
+          {(["East–west", "North–south"] as const).map((w, i) => (
+            <Num key={w} label={w} unit="m" value={area.centre[i]} disabled={busy}
+              onKeep={(v) => void changeArea(area, { centre: area.centre.map((x, k) => (k === i ? v : x)) as Vec3 }, `move ${area.label}`)} />
+          ))}
+          <H>How big it is</H>
+          {(["Across (east–west)", "Deep (north–south)"] as const).map((w, i) => (
+            <Num key={w} label={w} unit="m" value={area.size[i]} disabled={busy}
+              onKeep={(v) => void changeArea(area, { size: area.size.map((x, k) => (k === i ? Math.max(0.1, v) : x)) as [number, number] }, `resize ${area.label}`)} />
+          ))}
+          <button className={`${btn} mt-3 text-rose-700`} disabled={busy}
+            onClick={() => { const a = area; setSelected(null); void act(`remove ${a.label}`, () => api.removeArea(a.name), () => api.setArea(a.name, { surface: a.surface, centre: a.centre, size: a.size, label: a.label })); }}>
+            Remove this area</button>
+        </>
+      )}
+      {!bar && !light && !region && !thing && !place && !area && (
         <>
           <div className="text-stone-600">Click a thing in the room or the list to edit it. Arrow keys step through.</div>
           {Object.values(bits.lasers).some((c) => c.crosses.length > 0) && (
@@ -575,14 +804,15 @@ export default function RoomTab({ api, space, things, lamps }: PlannedProps & { 
 
   return (
     <div className="space-y-3" data-testid="room-tab">
-      <Room3DPage embedded refresh={refresh} editables={editables} selected={selected} mode={mode} picked={region?.name ?? null}
+      <Room3DPage embedded refresh={refresh} editables={editables} selected={selected} mode={mode} picked={region?.name ?? null} startNav={plan ? "plan" : undefined}
         onSelect={(k) => { select(k); if (k) setFrame((n) => n + 1); }} onEdit={onEdit} panel={panel} frame={frame}
         feed={feed} toolbar={toolbar} />
       <p className="text-[15px] text-muted-foreground">
-        Click a light, a bar or a keep-out box to edit it. Then drag it to move it, drag the ring round a bar to turn it,
-        the arrow above it to raise it. A light has a blue ring that turns its direction and an amber arc that sets its
-        elevation; both are numbers in the panel too. ← Room (or Esc) goes back to the whole room; Ctrl+Z undoes. Moving
-        round: Walk (drag to look, click the floor to go there, wheel or W/S to walk) or Orbit (drag to turn round a point).
+        Everything in the room is edited here: bars and their lights, screens, other lights, named places, floor areas
+        and keep-out boxes. Click one to edit it, then drag it (a bar also has a ring to turn it, most things an arrow to
+        raise them); a light on a bar has a blue ring for its direction and an amber arc for its elevation. Plan shows
+        the room from above, as a map: drag things straight away. Walk puts you in the room; Orbit turns round a point.
+        ← Room (or Esc) goes back; Ctrl+Z undoes.
       </p>
       {err && <Notice tone="bad">{err}</Notice>}
       {hasPlanned && (

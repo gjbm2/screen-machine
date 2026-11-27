@@ -585,9 +585,24 @@ tilted and turned on its bracket. Those are settings, and the simulator and the 
     energy and tempo), or Live. All but Live are a preview from show_service's own engine that is never sent to a light
     (`show_service/preview.py`, `GET /api/v1/rig/preview/dmx?what=plain|colour|scene:<name>&energy&bpm`); Live reads
     the virtual node. ⧉ (top right) opens the live view in its own window. The frame rate shows in the view's corner.
-- **The Room map** is the room's layout only, not live (owner, 27 Nov: "I'm not sure room map should be a live view").
+- **One editor for the room** (owner, 27 Nov: "why is the map a completely separate interface for the same thing?").
+  The Room map tab is gone: its plan is this view's **Plan** (the same camera straight down through a 3° lens, the
+  front wall at the top, names on things, no haze), and everything it placed is edited here, with undo: screens slide
+  along the walls onto the nearest one; lights not on a bar (house lights, the hazer, movers: how one hangs) and named
+  places move and rise; floor areas move and are sized in the panel; "Not in the room yet" puts a thing in the middle;
+  "Add a place"; the room's size and front ("The room · Change"). In Plan a press on a thing picks it up at once. A
+  light on a bar is never placed on its own (it moves with its bar): selecting a light outlines its bar and a bar its
+  lights. What the deployment's space.yaml sets is shown locked ("set in the room file"). `?tab=map` opens Plan.
+- **Moving round** (owner, 27 Nov: "mouse just doesn't help me traverse this room"): **Walk** (the start): you stand
+  at eye height; drag to look round where you stand, click the floor to walk there (a ring shows where), the wheel or
+  W/S to walk, A/D to step aside, ←/→ to turn, Q/E lower/higher, Shift faster; "Go to…" lists places to stand.
+  **Orbit** turns round a point (and is used while a selected thing is edited from Walk). **Plan** as above.
+- **Aiming a light:** Direction (degrees right + / left − of the way its bar faces, looking out) and Elevation
+  (degrees above level) are separate: a blue ring round the light turns only its direction, an amber arc only its
+  elevation, and both are fields with sliders in the panel (owner, 27 Nov: "expose angle and elevation as separate
+  controls"). Stored as the setup's lean_deg / turn_deg (a light pointing over 90° to a side leans back instead).
 - **Not there yet:** a control for the four strobe zones (they are in the bar's face and point where it does); the
-  moving heads' poses are still taught from the Lights tab ("Point it at…"), not turned in the view; no undo.
+  moving heads' poses are still taught from the Lights tab ("Point it at…"), not turned in the view.
 
 ### 3.7 Tests (space): test_space.py (new)
 
@@ -1555,10 +1570,12 @@ class LiveView(TypedDict):
 ### 8.2 The page
 
 The setup page keeps its list and Add a light as the primary action. Since 28 Oct it is `/settings/lights`
-(src/pages/Lights/index.tsx); `/lights` itself is control only (src/pages/Lights/Control.tsx). A segmented control at the top, **Lights | Room map**,
-is remembered in localStorage (wrapped in try/catch).
+(src/pages/Lights/index.tsx); `/lights` itself is control only (src/pages/Lights/Control.tsx). A segmented control at the top, **Lights | Room**,
+is remembered in localStorage (wrapped in try/catch). Since 27 Nov **Room** is the 3D room editor (§3.6b); its Plan
+view replaced the Room map below, which is kept as the record of what the map did (RoomMap.tsx keeps only the flat
+drawing Move it's preview uses, the room's size form and Add a place).
 
-**Room map** (`RoomMap.tsx`, phone first):
+**Room map** (as it was, `RoomMap.tsx`, phone first):
 - **First use** asks two things: "How big is the room?" (width east-west, length north-south, height in metres:
   three steppers) and "Which wall do people face?" (N, E, S, W chips).
 - **The plan.** An SVG that fits the width, with compass letters, the front wall drawn thicker, and items:

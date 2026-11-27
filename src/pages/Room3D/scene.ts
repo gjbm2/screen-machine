@@ -136,6 +136,8 @@ function dotSprite(): THREE.Texture {
 }
 
 /** The moving heads' shadow maps (their gobos) are redrawn every this many frames. */
+export type Nav = "walk" | "orbit" | "plan";
+const PLAN_FOV_DEG = 3;     // the plan's long lens: as good as no perspective
 const EYE_M = 1.6;          // where you stand, walking: eye height (m)
 const WALL_GAP = 0.25;      // and how near a wall
 const SHADOW_EVERY = 3;
@@ -316,7 +318,9 @@ export class RoomSim {
     this.post.boxMax.set(X + eps, H + eps, eps);
     this.light.setRoom(m.size);
     if (first) {                                                 // walking: in at the back; orbiting: across the beams
-      if (this.nav === "walk") this.standAt("back", true); else this.view("side", true);
+      if (this.nav === "walk") this.standAt("back", true);
+      else if (this.nav === "plan") { this.lens(true); this.planFit(true); }
+      else this.view("side", true);
     }
   }
 
@@ -850,16 +854,18 @@ export class RoomSim {
     this.animStep(dt);
     this.pushStep();
     if (this.nav === "walk") this.walkStep(dt);
+    else if (this.nav === "plan") this.camera.lookAt(this.controls.target);
     else this.controls.update();
     this.keepCamera();
     if (++this.frameNo % SHADOW_EVERY === 0) this.renderer.shadowMap.needsUpdate = true;
     const m = this.model;
     if (!m) return;
     // "Show beam paths" (an aid): every beam is drawn as in a medium haze that takes nothing out of the light
-    const air = this.showPaths || this.sigma > 1e-4;
+    const sig = this.nav === "plan" ? 0 : this.sigma;           // the plan is a map: no air between it and you
+    const air = this.showPaths || sig > 1e-4;
     beamShared.on.value = air;
-    beamShared.scatter.value = this.showPaths ? Math.max(this.sigma, 0.3) : this.sigma;
-    beamShared.sigma.value = this.showPaths ? 0 : this.sigma;
+    beamShared.scatter.value = this.showPaths ? Math.max(sig, 0.3) : sig;
+    beamShared.sigma.value = this.showPaths ? 0 : sig;
     const ch = (f: Fixture, i: number) => {
       if (f.address == null || (this.universe != null && f.universe != null && f.universe !== this.universe)) return 0;
       const a = f.address - 1 + i;
@@ -873,7 +879,7 @@ export class RoomSim {
     for (const lm of this.lampMeshes.values()) this.light.add(lm.lm);
     this.light.end();
     this.fill.color.setRGB(this.light.fill.x, this.light.fill.y, this.light.fill.z);
-    this.post.render(this.scene, this.camera, this.sigma, this.light.mean, dt);
+    this.post.render(this.scene, this.camera, sig, this.light.mean, dt);
     if (this.keepBoxes.children.length || this.overlayOn || this.marker.visible) {   // the setup aids, over the picture
       const ac = this.renderer.autoClear;
       this.renderer.autoClear = false;
@@ -983,7 +989,8 @@ export class RoomSim {
       this.anim = null;
       this.controls.target.copy(target);
       this.camera.position.copy(pos);
-      this.controls.update();
+      if (this.nav === "orbit") this.controls.update();   // (it would pull the plan's far camera in to maxDistance)
+      else this.camera.lookAt(target);
       return;
     }
     this.anim = { t: 0, dur, t0: this.controls.target.clone(), t1: target.clone(), p0: this.camera.position.clone(), p1: pos.clone() };
@@ -1014,7 +1021,7 @@ export class RoomSim {
     this.glide(tgt, this.orbitPos(tgt, th, ph, r), now);
   }
   /** Back to the start (Home, or a double-click on nothing): walking, at the back of the room; orbiting, the side. */
-  home() { if (this.nav === "walk") this.standAt("back"); else this.view("side"); }
+  home() { if (this.nav === "walk") this.standAt("back"); else if (this.nav === "plan") this.planFit(); else this.view("side"); }
 
   /** Frame a place in the room (F, or picking a thing): the camera glides to look at it from the room's middle side,
    *  ``dist`` metres away, so what is being edited is in front of you. */
@@ -1024,6 +1031,12 @@ export class RoomSim {
     const tgt = this.world(p);
     const from = this.world(c.clone().sub(p).setZ(0));
     const th = from.lengthSq() > 1e-6 ? Math.atan2(from.x, from.z) : 0;
+    if (this.nav === "plan") {                                // the plan: slide it to the middle, at the same scale
+      const d = this.camera.position.y - this.controls.target.y;
+      const t = new THREE.Vector3(tgt.x, 0, tgt.z);
+      this.glide(t, t.clone().setY(d));
+      return;
+    }
     this.setNav("orbit", false);                              // one thing, looked at from all round it
     this.glide(tgt, this.orbitPos(tgt, th, 1.15, Math.max(0.3, dist)));
   }
@@ -1048,6 +1061,7 @@ export class RoomSim {
    *  it. Nothing under the cursor: by the distance to the pivot. Spread over a few frames (smooth). */
   wheelAt(delta: number, nx: number, ny: number) {
     this.anim = null;
+    if (this.nav === "plan") { this.planZoom(delta, nx, ny); return; }
     const ray = new THREE.Raycaster();
     ray.setFromCamera(new THREE.Vector2(nx, ny), this.camera);
     const hit = ray.intersectObjects(this.built.children, true).find((h) => (h.object as THREE.Mesh).isMesh && h.object.visible);
@@ -1086,7 +1100,7 @@ export class RoomSim {
   // lower and higher (Shift: faster); right-drag (or Ctrl / Shift + drag) slides you sideways and up or down. The
   // camera's pivot is kept a metre ahead of the eye, so the glides, Home and the editing views work unchanged.
   // Orbiting (round a pivot, three.js's OrbitControls) stays for looking at one thing from all round it.
-  nav: "walk" | "orbit" = "walk";
+  nav: Nav = "walk";
   /** An editor handle is being dragged: the camera holds still. */
   private held = false;
   hold(on: boolean) { this.held = on; this.controls.enabled = !on && this.nav === "orbit"; }
@@ -1095,14 +1109,21 @@ export class RoomSim {
   private lookDir(): THREE.Vector3 { return this.controls.target.clone().sub(this.camera.position).normalize(); }
 
   /** Walk or orbit. ``place``: walking from outside the room, go in to stand at its back first. */
-  onNav: (mode: "walk" | "orbit") => void = () => {};
-  setNav(mode: "walk" | "orbit", place = true) {
+  onNav: (mode: Nav) => void = () => {};
+  setNav(mode: Nav, place = true) {
     if (mode === this.nav) return;
+    const was = this.nav;
     this.nav = mode;
     this.onNav(mode);
     this.keys.clear();
     this.controls.enabled = mode === "orbit" && !this.held;
     this.marker.visible = false;
+    this.lens(mode === "plan");
+    if (mode === "plan") { if (place) this.planFit(); return; }
+    if (was === "plan" && place) {                            // up out of the plan: into the room, or over it
+      if (mode === "orbit") this.view("above"); else this.standAt("back");
+      return;
+    }
     if (mode === "orbit") {
       // the pivot goes on what is straight ahead, so orbiting turns round what you were looking at
       const ray = new THREE.Raycaster(this.camera.position.clone(), this.lookDir());
@@ -1247,7 +1268,7 @@ export class RoomSim {
   private walkPointer(el: HTMLCanvasElement) {
     let drag: { x: number; y: number; slide: boolean; id: number } | null = null;
     el.addEventListener("pointerdown", (e) => {
-      if (this.nav !== "walk" || this.held || (e.button !== 0 && e.button !== 2)) return;
+      if (this.nav === "orbit" || this.held || (e.button !== 0 && e.button !== 2 && e.button !== 1)) return;
       this.anim = null;
       drag = { x: e.clientX, y: e.clientY, slide: e.button === 2 || e.ctrlKey || e.metaKey || e.shiftKey, id: e.pointerId };
       try { el.setPointerCapture(e.pointerId); } catch { /* not ours to capture */ }
@@ -1257,6 +1278,15 @@ export class RoomSim {
       const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
       drag.x = e.clientX; drag.y = e.clientY;
       const perPx = THREE.MathUtils.degToRad(this.camera.fov) / Math.max(1, this.h);   // the room stays under the pointer
+      if (this.nav === "plan") {                             // the plan: any drag slides the map under the pointer
+        const m = (2 * (this.camera.position.y - this.controls.target.y) * Math.tan(THREE.MathUtils.degToRad(this.camera.fov) / 2)) / Math.max(1, this.h);
+        const ax = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 0);
+        const ay = new THREE.Vector3().setFromMatrixColumn(this.camera.matrixWorld, 1);
+        const v = ax.multiplyScalar(-dx * m).addScaledVector(ay, dy * m).setY(0);
+        this.camera.position.add(v);
+        this.controls.target.add(v);
+        return;
+      }
       if (drag.slide) {
         const fwd = this.lookDir().setY(0).normalize();
         const right = new THREE.Vector3(-fwd.z, 0, fwd.x);
@@ -1274,12 +1304,58 @@ export class RoomSim {
     el.addEventListener("pointercancel", end);
   }
 
+  // -- the plan (owner, 27 Nov: "wouldn't a 3D view from above with objects selectable and draggable make more sense
+  // (and then just make the perspective infinite) -- so map becomes a special case of 3D mode"). The same camera, far
+  // above the room with a long lens (PLAN_FOV_DEG: walls drawn all but edge-on, as a plan), the wall people face at
+  // the top. Any drag slides the plan; the wheel zooms to the cursor; the editor picks things up straight away.
+  private lens(plan: boolean) {
+    const c = this.camera;
+    if (plan) {
+      c.fov = PLAN_FOV_DEG; c.near = 2; c.far = 4000;
+      const m = this.model;
+      const f = m ? this.world(v3(m.frontVec).setZ(0)) : new THREE.Vector3(0, 0, -1);
+      c.up.copy(f.lengthSq() > 1e-6 ? f.normalize() : new THREE.Vector3(0, 0, -1));
+    } else {
+      c.fov = 70; c.near = 0.02; c.far = 80;
+      c.up.set(0, 1, 0);
+    }
+    c.updateProjectionMatrix();
+  }
+  /** How far up the plan's camera is to show ``span`` metres across the shorter side of the view. */
+  private planDist(span: number): number {
+    const t = Math.tan(THREE.MathUtils.degToRad(PLAN_FOV_DEG) / 2);
+    return span / (2 * t * Math.min(1, this.camera.aspect));
+  }
+  /** The whole room in the plan. */
+  planFit(now = false) {
+    const m = this.model;
+    if (!m) return;
+    const [X, Y] = m.size;
+    const t = new THREE.Vector3(X / 2, 0, -Y / 2);
+    this.glide(t, t.clone().setY(this.planDist(Math.max(X, Y) * 1.12)), now, 0.5);
+  }
+  private planZoom(delta: number, nx: number, ny: number) {
+    const m = this.model;
+    const p = this.camera.position, t = this.controls.target;
+    const d = p.y - t.y;
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(nx, ny), this.camera);
+    const at = new THREE.Vector3();
+    if (!ray.ray.intersectPlane(new THREE.Plane(new THREE.Vector3(0, 1, 0), 0), at)) return;
+    const notch = Math.max(-3, Math.min(3, -delta / 100));
+    const big = m ? Math.max(m.size[0], m.size[1]) * 3 : 30;
+    const d2 = Math.max(this.planDist(0.8), Math.min(this.planDist(big), d * Math.pow(0.82, notch)));
+    const k = d2 / d;                                        // the point under the cursor stays there
+    const nt = new THREE.Vector3(at.x + (t.x - at.x) * k, 0, at.z + (t.z - at.z) * k);
+    t.copy(nt); p.set(nt.x, d2, nt.z);
+  }
+
   /** Keep the camera out of the floor always (owner, 27 Nov: "not sure it should be possible for me to move my pov
    *  through the floor"), and inside the room's walls and ceiling when ``keepInside`` (a switch on the page). */
   keepInside = false;
   private keepCamera() {
     const m = this.model;
-    if (!m) return;
+    if (!m || this.nav === "plan") return;
     const [X, Y, H] = m.size, e = 0.12;                    // three's frame: x east, y up, z = -north
     const p = this.camera.position, t = this.controls.target;
     let moved = false;
@@ -1302,10 +1378,10 @@ export class RoomSim {
   }
 
   /** Where the camera is (to come back to after editing). */
-  pose(): { target: THREE.Vector3; pos: THREE.Vector3; nav: "walk" | "orbit" } {
+  pose(): { target: THREE.Vector3; pos: THREE.Vector3; nav: Nav } {
     return { target: this.controls.target.clone(), pos: this.camera.position.clone(), nav: this.nav };
   }
-  restore(p: { target: THREE.Vector3; pos: THREE.Vector3; nav?: "walk" | "orbit" }) {
+  restore(p: { target: THREE.Vector3; pos: THREE.Vector3; nav?: Nav }) {
     if (p.nav) this.setNav(p.nav, false);
     this.glide(p.target, p.pos);
   }

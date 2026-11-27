@@ -6,9 +6,9 @@
 // status and colour come from room_service (it drives them). Lights are grouped by room (rooms.json), each row with its
 // kind; names drop their room's name; where a light is comes from the Room map once it's placed there. Each row has
 // Identify. Add a light is the page's main action (LightForm.tsx; Move it inside it).
-// "Lights | Room map | 3D" at the top (?tab=map or ?tab=3d, else remembered on this device) switches to the Room map
-// (RoomMap.tsx) or the room in 3D (RoomTab.tsx: the simulator with the room's keep-out regions; three.js is loaded
-// only when shown).
+// "Lights | Room" at the top (?tab=3d, else remembered on this device) switches to the room editor (RoomTab.tsx: the
+// room in 3D, walked through, orbited or seen as a plan from above; three.js is loaded only when shown). The Room map
+// is its plan view now (?tab=map still opens it there).
 // ?light=<id> opens that light's row (from a light's "Set up this light ›"). What a light does is chosen on /lights and
 // the Room page, not here. Same light, warm skin as /room (its theme and pieces).
 // Under the lights, Appliances worked by remote (RemoteControls.tsx): added from a device type (glitterball, pinspot),
@@ -49,18 +49,17 @@ import {
   type Placeable,
 } from "./lib";
 import { RemoteControls } from "./RemoteControls";
-import { RoomMap } from "./RoomMap";
 import { useLightTypes, useRig, useRoomFacts, useSpace } from "./useRig";
 
 const RoomTab = lazy(() => import("./RoomTab"));
 
-type Tab = "lights" | "map" | "3d";
+type Tab = "lights" | "3d";
 const TAB_KEY = "lights.tab";
 
 /** The tab last shown on this device (Room's storage helpers: a blocked store reads as none). */
 function storedTab(): Tab {
   const t = storageGet(TAB_KEY);
-  return t === "map" || t === "3d" ? t : "lights";
+  return t === "map" || t === "3d" ? "3d" : "lights";
 }
 
 /** The tab title while on this page, put back on the way out. */
@@ -102,8 +101,9 @@ export default function LightsPage() {
   const focusId = params.get("light");
   const [tab, setTabState] = useState<Tab>(() => {
     const asked = params.get("tab");
-    return focusId ? "lights" : asked === "map" || asked === "3d" ? asked : storedTab();
+    return focusId ? "lights" : asked === "map" || asked === "3d" ? "3d" : storedTab();
   });
+  const [mapNav] = useState(() => params.get("tab") === "map");     // an old Room map link: the plan view
   const [mapSelect, setMapSelect] = useState<string | null>(null);
   const setTab = (t: Tab) => {
     setTabState(t);
@@ -117,7 +117,7 @@ export default function LightsPage() {
   // The map's words change when something is moved there: read the room again when coming back to the list.
   const reloadSpace = space.reload;
   useEffect(() => {
-    if (tab !== "map") reloadSpace();
+    if (tab !== "3d") reloadSpace();
   }, [tab, reloadSpace]);
 
   const rows = useMemo(() => rig.rows ?? [], [rig.rows]);
@@ -218,12 +218,11 @@ export default function LightsPage() {
         />
 
         <main className="space-y-5 pt-2">
-          <div role="tablist" aria-label="Show" className="grid grid-cols-3 rounded-full border border-stone-200 bg-card p-1 shadow-sm" data-testid="lights-tabs">
+          <div role="tablist" aria-label="Show" className="grid grid-cols-2 rounded-full border border-stone-200 bg-card p-1 shadow-sm" data-testid="lights-tabs">
             {(
               [
                 ["lights", "Lights"],
-                ["map", "Room map"],
-                ["3d", "3D"],
+                ["3d", "Room"],
               ] as [Tab, string][]
             ).map(([t, words]) => (
               <button
@@ -242,9 +241,7 @@ export default function LightsPage() {
             ))}
           </div>
 
-          {tab === "map" ? (
-            <RoomMap api={api} things={mapThings} selectedId={mapSelect} />
-          ) : tab === "3d" ? (
+          {tab === "3d" ? (
             <Suspense
               fallback={
                 <p className="flex items-center gap-2 py-3 text-base text-muted-foreground">
@@ -252,7 +249,7 @@ export default function LightsPage() {
                 </p>
               }
             >
-              <RoomTab api={api} space={space} things={mapThings} lamps={lampColours} />
+              <RoomTab api={api} space={space} things={mapThings} lamps={lampColours} selectId={mapSelect} plan={mapNav || !!mapSelect} />
             </Suspense>
           ) : (
             <>
@@ -347,7 +344,7 @@ export default function LightsPage() {
         onSaved={rig.refresh}
         onShowOnMap={(id) => {
           setMapSelect(id);
-          setTab("map");
+          setTab("3d");
         }}
       />
 

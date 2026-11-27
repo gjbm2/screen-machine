@@ -7,8 +7,12 @@
 //                 what direction I want it to point unless you expose angle and elevation as separate controls"): a
 //                 flat ring round it turns its direction (its elevation stays), an upright arc on the side it points
 //                 changes its elevation (its direction stays). Its beam is drawn to where it lands, as a guide only;
-//   - a keep-out box: drag it to slide it across the room; drag the arrow above it to raise or lower it (its size is
-//                 typed in the panel).
+//   - a keep-out box, a lamp, a named place: drag it to slide it across the room; drag the arrow above it to raise
+//                 or lower it (sizes are typed in the panel); a screen slides along the walls, onto the nearest one;
+//                 a floor area slides across the floor. Places and areas have no body in the room: they are drawn
+//                 as a pin and a patch of floor.
+//   - one unit: a light on a bar can only be aimed (it moves with its bar); selecting either outlines the other.
+// In the plan view (from above, as the old Room map was) a press on anything that moves picks it up at once.
 // Hovering anything that can be dragged outlines it. While a drag goes on the thing's outline follows; letting go
 // hands the change to the page (onChange), which saves it and draws the room again. Everything is drawn over the
 // finished picture, in the room's own frame (metres: x east, y north, z up).
@@ -16,7 +20,10 @@
 import * as THREE from "three";
 import type { Vec3 } from "./model";
 
-export type EditKind = "bar" | "light" | "region";
+export type EditKind = "bar" | "light" | "region" | "screen" | "thing" | "place" | "area";
+/** Kinds that slide across the room (a screen along the walls) and are raised by their arrow. */
+const MOVES: EditKind[] = ["bar", "region", "screen", "thing", "place", "area"];
+const LIFTS: EditKind[] = ["bar", "region", "screen", "thing", "place"];
 export interface Editable {
   key: string;
   kind: EditKind;
@@ -26,8 +33,10 @@ export interface Editable {
   yaw?: number;             // a bar: its facing, radians anticlockwise from east
   dir?: Vec3;               // a light: where it points (unit)
   front?: Vec3;             // a light: its bar's front (level unit): tilt and turn are read back against it
+  parent?: string;          // a light on a bar: the bar's key (they are one unit: outlined together)
+  normal?: Vec3;            // a screen: which way it faces out of its wall
 }
-export interface EditChange { at?: Vec3; facing_deg?: number; lean_deg?: number; turn_deg?: number; size?: Vec3 }
+export interface EditChange { at?: Vec3; facing_deg?: number; lean_deg?: number; turn_deg?: number; size?: Vec3; normal?: Vec3 }
 type Handle = "move" | "ring" | "lift" | "turn" | "tilt";
 
 const CYAN = 0x35e0ff, AMBER = 0xffb020;
@@ -63,6 +72,11 @@ export class RoomEditor {
   private ui = new THREE.Group();                 // the selected thing's outline and handles
   private handles: THREE.Object3D[] = [];         // what a press can grab (their userData.handle)
   private hoverBox: THREE.LineSegments;
+  private marks = new THREE.Group();              // places and areas, which have no body in the room: always drawn
+  /** Plan view: a press on any thing that moves picks it up at once (as on a map); elsewhere it is clicked first. */
+  grabAny = false;
+  /** A press picked up a thing that was not selected: the page selects it. */
+  onPick: (key: string) => void = () => {};
   private items: Editable[] = [];
   private ray = new THREE.Raycaster();
   private room: Vec3 = [6, 6, 3];
@@ -83,6 +97,7 @@ export class RoomEditor {
       new THREE.LineBasicMaterial({ color: 0xffffff, depthTest: false, transparent: true, opacity: 0.9 }));
     this.hoverBox.visible = false;
     this.group.add(this.hoverBox);
+    this.group.add(this.marks);
   }
 
   get active(): boolean { return this.items.length > 0; }
@@ -104,8 +119,33 @@ export class RoomEditor {
       this.group.add(m);
       this.picks.set(it.key, m);
     }
+    this.drawMarks();
     this.group.updateMatrixWorld(true);
     if (!this.dragging) this.select(items.some((x) => x.key === this.selected) ? this.selected : null);
+  }
+
+  /** A place: a pin from the floor up to it. An area: its patch of floor. */
+  private drawMarks() {
+    for (const c of [...this.marks.children]) { this.marks.remove(c); c.traverse((o) => (o as THREE.Mesh).geometry?.dispose()); }
+    for (const it of this.items) {
+      const at = this.drag && this.live && this.live.key === it.key ? this.live.at : it.at;
+      if (it.kind === "place") {
+        const pin = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(at[0], at[1], 0), new THREE.Vector3(...at)]),
+          new THREE.LineBasicMaterial({ color: 0xff5d8f, depthTest: false, transparent: true, opacity: 0.8 }));
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 12), mat(0xff5d8f, 0.9));
+        head.position.set(at[0], at[1], Math.max(0.09, at[2]));
+        const foot = new THREE.Mesh(new THREE.RingGeometry(0.12, 0.16, 32), mat(0xff5d8f, 0.8));
+        foot.position.set(at[0], at[1], 0.01);
+        this.marks.add(pin, head, foot);
+      } else if (it.kind === "area") {
+        const patch = new THREE.Mesh(new THREE.PlaneGeometry(it.size[0], it.size[1]), mat(0x7c5cff, 0.18));
+        patch.position.set(at[0], at[1], 0.01);
+        const edge = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(it.size[0], it.size[1])),
+          new THREE.LineBasicMaterial({ color: 0x7c5cff, depthTest: false, transparent: true }));
+        edge.position.copy(patch.position);
+        this.marks.add(patch, edge);
+      }
+    }
   }
 
   /** Select a thing (null: nothing): its outline and its handles go on it. */
@@ -131,7 +171,18 @@ export class RoomEditor {
     if (it.yaw !== undefined) outline.rotation.z = it.yaw;
     this.ui.add(outline);
     const handle = (o: THREE.Object3D, h: Handle) => { o.userData.handle = h; this.handles.push(o); this.ui.add(o); };
-    if (it.kind === "bar" || it.kind === "region") {
+    // one unit: a light's bar, a bar's lights, outlined fainter with it
+    const kin = this.items.filter((x) => x.key !== it.key && (x.key === it.parent || x.parent === it.key));
+    for (const k of kin) {
+      const at = it.kind === "bar" && this.drag ? [k.at[0] + it.at[0] - (this.drag.start.at[0]), k.at[1] + it.at[1] - this.drag.start.at[1], k.at[2] + it.at[2] - this.drag.start.at[2]] : k.at;
+      const o = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.BoxGeometry(k.size[0], k.size[1], k.size[2])),
+        new THREE.LineDashedMaterial({ color: CYAN, dashSize: 0.04, gapSize: 0.03, depthTest: false, transparent: true, opacity: 0.7 }));
+      o.computeLineDistances();
+      o.position.set(at[0], at[1], at[2]);
+      if (k.yaw !== undefined) o.rotation.z = k.yaw;
+      this.ui.add(o);
+    }
+    if (LIFTS.includes(it.kind)) {
       // one arrow above it: raise or lower it
       const top = it.at[2] + it.size[2] / 2;
       const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, LIFT_H, 8), mat(CYAN));
@@ -240,7 +291,7 @@ export class RoomEditor {
     const h = this.hits(x, y, this.handles)[0];
     if (h) return h.object.userData.handle as Handle;
     const it = this.live;
-    if (it && (it.kind === "bar" || it.kind === "region")) {
+    if (it && MOVES.includes(it.kind)) {
       const body = this.picks.get(it.key);
       if (body && this.hits(x, y, [body]).length) return "move";
     }
@@ -270,7 +321,12 @@ export class RoomEditor {
   /** A press: starts a drag when it is on the selected thing or one of its handles (true: the page keeps the camera
    *  out of it). */
   grab(x: number, y: number): boolean {
-    const h = this.grabbable(x, y);
+    let h = this.grabbable(x, y);
+    if (!h && this.grabAny) {                         // plan view: pick it up straight away
+      const key = this.pick(x, y);
+      const k = key ? this.items.find((i) => i.key === key) : undefined;
+      if (k && MOVES.includes(k.kind)) { this.select(k.key); this.onPick(k.key); h = "move"; }
+    }
     const it = this.live;
     if (!h || !it) return false;
     const r = this.roomRay(x, y);
@@ -338,10 +394,19 @@ export class RoomEditor {
       if (!p) return;
       it.at = [Math.max(0, Math.min(this.room[0], s.at[0] + p.x - d.p0.x)),
                Math.max(0, Math.min(this.room[1], s.at[1] + p.y - d.p0.y)), s.at[2]];
+      if (it.kind === "screen") {                     // a screen hangs on the nearest wall, facing into the room
+        const [X, Y] = this.room, [x0, y0] = it.at;
+        const walls: [number, Vec3, Vec3][] = [[x0, [0, y0, s.at[2]], [1, 0, 0]], [X - x0, [X, y0, s.at[2]], [-1, 0, 0]],
+          [y0, [x0, 0, s.at[2]], [0, 1, 0]], [Y - y0, [x0, Y, s.at[2]], [0, -1, 0]]];
+        const w = walls.reduce((a, b) => (b[0] < a[0] ? b : a));
+        it.at = w[1]; it.normal = w[2]; it.yaw = Math.atan2(w[2][1], w[2][0]);
+      }
+      if (it.kind === "area" || it.kind === "place") this.drawMarks();
     } else if (d.handle === "lift") {
       const p = this.liftPoint(r, s.at);
       if (!p || d.ref === undefined) return;
-      it.at = [s.at[0], s.at[1], Math.max(0.1, Math.min(this.room[2] - 0.05, s.at[2] + p.z - d.ref))];
+      it.at = [s.at[0], s.at[1], Math.max(it.kind === "place" ? 0 : 0.1, Math.min(this.room[2] - 0.05, s.at[2] + p.z - d.ref))];
+      if (it.kind === "place") this.drawMarks();
     } else if (d.handle === "ring") {
       const p = floorAt(s.at[2]);
       if (!p) return;
@@ -375,7 +440,8 @@ export class RoomEditor {
     const s = d.start;
     if (d.handle === "move" || d.handle === "lift") {
       if (it.at.every((v, i) => Math.abs(v - s.at[i]) < 1e-3)) return;
-      this.onChange(it.key, it.kind === "region" ? { at: it.at.map(r2) as Vec3, size: it.size } : { at: it.at.map(r2) as Vec3 });
+      this.onChange(it.key, it.kind === "region" ? { at: it.at.map(r2) as Vec3, size: it.size }
+        : it.kind === "screen" ? { at: it.at.map(r2) as Vec3, normal: it.normal } : { at: it.at.map(r2) as Vec3 });
     } else if (d.handle === "ring") {
       if (Math.abs((it.yaw ?? 0) - (s.yaw ?? 0)) < 1e-3) return;
       const deg = THREE.MathUtils.radToDeg(it.yaw ?? 0);

@@ -10,11 +10,12 @@
 //   * Hue lamps: show_service's last colour for each (no wire to read).
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import * as THREE from "three";
 import { resolveRoomUrl } from "@/pages/Room/api";
 import { RoomEditor, type Editable, type EditChange, type GizmoMode } from "./editor";
 import { loadRoom, type KeepRegion, type RoomModel } from "./model";
 import { hazeWords, LEVEL_VISIBILITY_M, mlOf, sigmaOf, sigmaOfSlider, sliderOf } from "./haze";
-import { RoomSim } from "./scene";
+import { RoomSim, type Nav } from "./scene";
 
 const ROOM_POLL_MS = 5000;
 const NODE_DEFAULT = "http://127.0.0.1:8705";
@@ -28,7 +29,7 @@ type NodeStatus = { node?: { udp?: string; universe?: number }; artnet?: { pps?:
  *  its box and leaves the readout to the page around it. ``picked``: the keep-out region being edited there;
  *  ``regions``: the page's own (unsaved) copy of the regions, drawn in place of the room's saved ones. */
 export default function Room3DPage({ embedded = false, picked = null, regions, refresh = 0, editables, selected = null,
-  mode, onSelect, onEdit, panel, frame = 0, feed, toolbar }: {
+  mode, onSelect, onEdit, panel, frame = 0, feed, toolbar, startNav }: {
   embedded?: boolean; picked?: string | null; regions?: KeepRegion[];
   /** Bump it to read the room again at once (the page around it has just saved a change). */
   refresh?: number;
@@ -43,9 +44,15 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
   feed?: { base: string; query?: string; live?: boolean };
   /** The page's own controls, put in the header (embedded). */
   toolbar?: ReactNode;
+  /** Open in this way of moving (the plan, for "Show it on the map"), not the one remembered. */
+  startNav?: Nav;
 } = {}) {
   const edRef = useRef<RoomEditor | null>(null);
+  const namesRef = useRef<HTMLDivElement | null>(null);          // the plan's names on things, placed each frame
+  const itemsRef = useRef<Editable[]>([]);
+  itemsRef.current = editables ?? [];
   const cb = useRef({ onSelect, onEdit });
+  const fromView = useRef(false);                                 // the last selection was made in the view
   cb.current = { onSelect, onEdit };
   const press = useRef<{ x: number; y: number } | null>(null);
   const room = useMemo(() => resolveRoomUrl(window.location.search), []);
@@ -74,9 +81,11 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
   const [fps, setFps] = useState(0);
   const [showPaths, setShowPaths] = useState(false);
   const [opts, setOpts] = useState(false);              // the editor header's "more" menu
-  const [nav, setNavState] = useState<"walk" | "orbit">(() => { try { return localStorage.getItem("room3d.nav") === "orbit" ? "orbit" : "walk"; } catch { return "walk"; } });
-  /** Walk or orbit, from the header (remembered); the view also switches by itself to orbit a thing being edited. */
-  const chooseNav = (m: "walk" | "orbit") => {
+  const storedNav = (): Nav => { try { const v = localStorage.getItem("room3d.nav"); return v === "orbit" || v === "plan" ? v : "walk"; } catch { return "walk"; } };
+  const [nav, setNavState] = useState<Nav>(() => startNav ?? storedNav());
+  /** Walk, orbit or the plan, from the header (remembered); the view also switches by itself to orbit a thing being
+   *  edited while walking. */
+  const chooseNav = (m: Nav) => {
     simRef.current?.setNav(m);
     try { localStorage.setItem("room3d.nav", m); } catch { /* this visit only */ }
   };
@@ -97,10 +106,13 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
     const sim = new RoomSim({ canvas, room });
     simRef.current = sim;
     try { sim.keepInside = localStorage.getItem("room3d.inside") === "1"; } catch { /* default: free */ }
-    try { if (localStorage.getItem("room3d.nav") === "orbit") sim.setNav("orbit"); } catch { /* walking */ }
-    sim.onNav = setNavState;
+    const n0 = startNav ?? storedNav();
+    if (n0 !== "walk") sim.setNav(n0);
+    sim.onNav = (m) => { setNavState(m); if (edRef.current) edRef.current.grabAny = m === "plan"; };
     const ed = new RoomEditor(sim.overlayRoot, sim.overlayScene, sim.camera, canvas);
     ed.onChange = (key, change) => cb.current.onEdit?.(key, change);
+    ed.onPick = (key) => { fromView.current = true; cb.current.onSelect?.(key); };
+    ed.grabAny = sim.nav === "plan";
     ed.onDragging = (on) => sim.hold(on);                         // a handle being dragged holds the camera still
     edRef.current = ed;
     const fit = () => sim.resize(host.clientWidth, host.clientHeight);
@@ -111,8 +123,34 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
     const gl = sim.renderer.getContext();
     const ext = gl.getExtension("WEBGL_debug_renderer_info");
     const gpu = String(ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+    const v = new THREE.Vector3();
+    const placeNames = () => {
+      const el = namesRef.current;
+      if (!el) return;
+      const on = sim.nav === "plan";
+      el.style.display = on ? "" : "none";
+      if (!on) return;
+      const items = itemsRef.current.filter((x) => x.label && x.kind !== "light");
+      const have = new Map(Array.from(el.children).map((c) => [(c as HTMLElement).dataset.key!, c as HTMLElement]));
+      for (const it of items) {
+        let n = have.get(it.key);
+        if (!n) {
+          n = document.createElement("span");
+          n.dataset.key = it.key;
+          n.className = "absolute -translate-x-1/2 whitespace-nowrap rounded bg-white/85 px-1 text-[11px] leading-4 text-stone-800 shadow-sm";
+          el.appendChild(n);
+        }
+        if (n.textContent !== it.label) n.textContent = it.label!;
+        v.set(it.at[0], it.at[2], -it.at[1]).project(sim.camera);   // room (x, y, z) -> three (x, z, -y)
+        n.style.left = `${((v.x + 1) / 2) * host.clientWidth}px`;
+        n.style.top = `${((1 - v.y) / 2) * host.clientHeight + 10}px`;
+        have.delete(it.key);
+      }
+      for (const n of have.values()) n.remove();
+    };
     const loop = (now: number) => {
       sim.frame(now);
+      placeNames();
       frames++;
       if (now - fpsAt >= 1000) {                               // adaptive resolution: hold ~50 fps
         const fps = (frames * 1000) / (now - fpsAt);
@@ -171,6 +209,9 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
   useEffect(() => { if (model) edRef.current?.setRoom(model.size); }, [model]);
   useEffect(() => {
     const it = (editables ?? []).find((x) => x.key === selected);
+    const here = fromView.current;
+    fromView.current = false;
+    if (here && simRef.current?.nav === "plan") return;          // picked on the plan: the plan stays put
     if (frame > 0 && it) simRef.current?.focus(it.at, Math.max(1.2, 2.2 * Math.max(...it.size)));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [frame]);
@@ -281,13 +322,16 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
           title="Stand in the room: drag to look round, click the floor to walk there, wheel or W/S to walk, A/D to step aside, Q/E lower/higher">Walk</button>
         <button className={`${seg(nav === "orbit")} border-l ${dark ? "border-[#2c3346]" : "border-stone-300"}`} aria-pressed={nav === "orbit"} data-testid="nav-orbit" onClick={() => chooseNav("orbit")}
           title="Turn round a point: drag to orbit, right-drag to pan, wheel to zoom to the cursor">Orbit</button>
+        <button className={`${seg(nav === "plan")} border-l ${dark ? "border-[#2c3346]" : "border-stone-300"}`} aria-pressed={nav === "plan"} data-testid="nav-plan" onClick={() => chooseNav("plan")}
+          title="The room from straight above, as a map: drag things to place them, drag the floor to slide the map, wheel to zoom">Plan</button>
       </div>
       <select value="" aria-label="Go to" data-testid="go-to"
         className={`h-8 rounded-lg border px-2 ${dark ? "border-[#2c3346] bg-[#1a1e2a] text-[#e3e6ee]" : "border-stone-300 bg-white text-stone-800"}`}
         onChange={(e) => {
           const v = e.target.value, sim = simRef.current;
           if (!sim || !v) return;
-          if (v.startsWith("orbit:")) sim.view(v.slice(6) as "front" | "side" | "above");
+          if (v === "plan") chooseNav("plan");
+          else if (v.startsWith("orbit:")) sim.view(v.slice(6) as "front" | "side" | "above");
           else sim.standAt(v);
         }}>
         <option value="">Go to…</option>
@@ -295,6 +339,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
           {(simRef.current?.standPlaces() ?? []).map((p) => <option key={p.id} value={p.id}>{p.label}</option>)}
         </optgroup>
         <optgroup label="Look at the whole room">
+          <option value="plan">The plan (from straight above)</option>
           <option value="orbit:front">From the front</option>
           <option value="orbit:side">From the side</option>
           <option value="orbit:above">From above (plan)</option>
@@ -471,11 +516,12 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
             if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > 4) return;   // the view was turned, nothing was clicked
             const [x, y] = ndc(e, e.currentTarget);
             const key = ed && ed.active ? ed.pick(x, y) : null;
-            if (key) { cb.current.onSelect?.(key); return; }           // a thing: edit it
+            if (key) { fromView.current = true; cb.current.onSelect?.(key); return; }   // a thing: edit it
             if (selected) { cb.current.onSelect?.(null); return; }     // nothing, while editing: back to the room
             if (sim?.nav === "walk") sim.walkTo(x, y);                 // nothing, walking: walk there
           }}>
           <canvas ref={canvasRef} className="absolute inset-0 block" style={{ cursor }} />
+          <div ref={namesRef} className="pointer-events-none absolute inset-0 overflow-hidden" data-testid="plan-names" />
           {embedded && !shot && (
             <div className="absolute left-2.5 top-2 z-10" data-testid="sim-back">
               {selected ? (
@@ -505,6 +551,8 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
             {embedded
               ? (selected
                 ? "Editing: drag to look round it · a bar: drag it, its ring to turn it, its arrow to raise it · a light: the blue ring turns it, the amber arc raises or lowers it · click empty space or Esc: back"
+                : nav === "plan"
+                  ? "Plan: drag a thing to place it (a screen goes onto the nearest wall) · drag the floor to slide the plan · wheel: zoom to the cursor · click a thing to edit it"
                 : nav === "walk"
                   ? "Walking: drag to look round · click the floor to go there · wheel or W/S: forward / back · A/D: step aside · Q/E: lower / higher · click a light or bar to edit it"
                   : "Orbiting: drag to turn round · right-drag: pan · wheel: zoom to the cursor · double-click: turn round that spot · click a light or bar to edit it")
