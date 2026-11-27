@@ -142,19 +142,25 @@ export class RoomEditor {
     for (const c of [...this.marks.children]) { this.marks.remove(c); c.traverse((o) => (o as THREE.Mesh).geometry?.dispose()); }
     for (const it of this.items) {
       const at = this.drag && this.live && this.live.key === it.key ? this.live.at : it.at;
+      // a locked one is drawn faint and behind what is in front of it (owner, 27 Nov: "if an object is locked it
+      // shouldn't glow so much (e.g. dancefloor) really distracting when trying to read the room")
+      const dim = it.locked ? 0.3 : 1, over = !it.locked;
+      const m = (color: number, opacity: number) => {
+        const x = mat(color, opacity * dim); x.depthTest = !over; return x;
+      };
       if (it.kind === "place") {
         const pin = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(at[0], at[1], 0), new THREE.Vector3(...at)]),
-          new THREE.LineBasicMaterial({ color: 0xff5d8f, depthTest: false, transparent: true, opacity: 0.8 }));
-        const head = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 12), mat(0xff5d8f, 0.9));
+          new THREE.LineBasicMaterial({ color: 0xff5d8f, depthTest: !over, transparent: true, opacity: 0.8 * dim }));
+        const head = new THREE.Mesh(new THREE.SphereGeometry(0.09, 16, 12), m(0xff5d8f, 0.9));
         head.position.set(at[0], at[1], Math.max(0.09, at[2]));
-        const foot = new THREE.Mesh(new THREE.RingGeometry(0.12, 0.16, 32), mat(0xff5d8f, 0.8));
+        const foot = new THREE.Mesh(new THREE.RingGeometry(0.12, 0.16, 32), m(0xff5d8f, 0.8));
         foot.position.set(at[0], at[1], 0.01);
         this.marks.add(pin, head, foot);
       } else if (it.kind === "area") {
-        const patch = new THREE.Mesh(new THREE.PlaneGeometry(it.size[0], it.size[1]), mat(0x7c5cff, 0.18));
+        const patch = new THREE.Mesh(new THREE.PlaneGeometry(it.size[0], it.size[1]), m(0x7c5cff, it.locked ? 0.1 : 0.18));
         patch.position.set(at[0], at[1], 0.01);
         const edge = new THREE.LineSegments(new THREE.EdgesGeometry(new THREE.PlaneGeometry(it.size[0], it.size[1])),
-          new THREE.LineBasicMaterial({ color: 0x7c5cff, depthTest: false, transparent: true }));
+          new THREE.LineBasicMaterial({ color: 0x7c5cff, depthTest: !over, transparent: true, opacity: dim }));
         edge.position.copy(patch.position);
         this.marks.add(patch, edge);
       }
