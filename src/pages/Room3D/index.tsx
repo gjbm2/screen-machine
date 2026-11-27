@@ -242,9 +242,17 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
           n.dataset.key = it.key;
           n.className = "pointer-events-auto absolute -translate-x-1/2 cursor-pointer whitespace-nowrap rounded bg-white/85 px-1 text-[11px] leading-4 text-stone-800 shadow-sm hover:bg-white hover:ring-1 hover:ring-teal-500";
           const key = it.key;
-          n.onclick = (ev) => { ev.stopPropagation(); fromView.current = true; cb.current.onSelect?.(key); };   // a name selects its thing
+          n.onclick = (ev) => {
+            ev.stopPropagation();
+            if (cb.current.pointing) {                       // pointing (or putting a thing down): that thing's place
+              const at = itemsRef.current.find((q) => q.key === key)?.at;
+              if (at) cb.current.onPointAt?.([at[0], at[1], at[2]]);
+              return;
+            }
+            fromView.current = true; cb.current.onSelect?.(key);                                     // a name selects its thing
+          };
           n.onpointerdown = (ev) => {                          // ... and a press-and-drag on it moves it, as on the thing
-            if (ev.button !== 0) return;
+            if (ev.button !== 0 || cb.current.pointing) return;
             const r = host.getBoundingClientRect(), ed = edRef.current;
             const x = ((ev.clientX - r.left) / r.width) * 2 - 1, y = -(((ev.clientY - r.top) / r.height) * 2 - 1);
             if (ed?.grabItem(key, x, y)) {
