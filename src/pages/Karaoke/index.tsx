@@ -828,6 +828,7 @@ function LibraryCard({
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [tag, setTag] = useState<string | null>(null);
+  const [find, setFind] = useState("");
   const [sort, setSortState] = useState<Sort>(() =>
     SORTS.some(([k]) => k === localStorage.getItem(SORT_KEY)) ? (localStorage.getItem(SORT_KEY) as Sort) : "popular",
   );
@@ -841,14 +842,12 @@ function LibraryCard({
     for (const s of songs) for (const g of s.tags ?? []) n.set(g, (n.get(g) ?? 0) + 1);
     return [...n.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }, [songs]);
-  const shown = useMemo(
-    () =>
-      sorted(
-        songs.filter((s) => inFilter(s, filter) && (!tag || (s.tags ?? []).includes(tag))),
-        sort,
-      ),
-    [songs, filter, sort, tag],
-  );
+  // A search at the top (owner, 27 Nov): fuzzy, best match first; without one, the chosen order.
+  const shown = useMemo(() => {
+    const q = find.trim();
+    const base = q ? fuzzyFilter(songs, q, (s) => `${s.title} ${s.artist}`) : sorted(songs, sort);
+    return base.filter((s) => inFilter(s, filter) && (!tag || (s.tags ?? []).includes(tag)));
+  }, [songs, filter, sort, tag, find]);
 
   return (
     <Card
@@ -860,7 +859,47 @@ function LibraryCard({
       }
     >
       <div className="space-y-2.5">
-        <div className="flex flex-wrap items-center gap-1.5">
+        {/* Held at the top of the tray: the search and order on one row, then readiness and tags as one row that
+            slides sideways (owner, 27 Nov: the tags took a third of the tray). */}
+        <div className="sticky top-0 z-10 -mx-1 space-y-2 bg-card px-1 pb-2 pt-1">
+          <div className="flex items-center gap-2">
+            <div className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                value={find}
+                onChange={(e) => setFind(e.target.value)}
+                onKeyDown={(e) => e.key === "Escape" && find && (e.stopPropagation(), setFind(""))}
+                placeholder="Search the library"
+                aria-label="Search the library"
+                className="h-10 rounded-xl pl-9 pr-9 text-base sm:text-sm"
+                enterKeyHint="search"
+              />
+              {find && (
+                <button
+                  type="button"
+                  aria-label="Clear"
+                  onClick={() => setFind("")}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:text-foreground"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
+            </div>
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as Sort)}
+              aria-label="Sort the library"
+              disabled={!!find.trim()}
+              className="h-10 shrink-0 rounded-xl border border-stone-200 bg-card px-2.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+            >
+              {SORTS.map(([k, label]) => (
+                <option key={k} value={k}>
+                  {label}
+                </option>
+              ))}
+            </select>
+          </div>
+        <div className="no-scrollbar -mx-1 flex items-center gap-1.5 overflow-x-auto px-1">
           {FILTERS.map(([f, label]) => {
             const n = songs.filter((s) => inFilter(s, f)).length;
             if (f !== "all" && n === 0 && filter !== f) return null;
@@ -870,7 +909,7 @@ function LibraryCard({
                 type="button"
                 onClick={() => setFilter(f)}
                 className={cn(
-                  "rounded-full border px-3 py-1 text-xs font-medium",
+                  "shrink-0 whitespace-nowrap rounded-full border px-3 py-1 text-xs font-medium",
                   filter === f
                     ? "border-primary bg-primary text-primary-foreground"
                     : "border-stone-200 text-muted-foreground hover:text-foreground",
@@ -880,36 +919,22 @@ function LibraryCard({
               </button>
             );
           })}
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value as Sort)}
-            aria-label="Sort the library"
-            className="ml-auto rounded-full border border-stone-200 bg-card px-2.5 py-1 text-xs text-muted-foreground hover:text-foreground"
-          >
-            {SORTS.map(([k, label]) => (
-              <option key={k} value={k}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </div>
-        {tags.length > 0 && (
-          <div className="flex flex-wrap gap-1.5">
+          {tags.length > 0 && <span className="h-4 w-px shrink-0 bg-stone-200" aria-hidden />}
             {tags.map(([g, n]) => (
               <button
                 key={g}
                 type="button"
                 onClick={() => setTag(tag === g ? null : g)}
                 className={cn(
-                  "rounded-full px-2.5 py-0.5 text-xs",
+                  "shrink-0 whitespace-nowrap rounded-full px-2.5 py-1 text-xs",
                   tag === g ? "bg-stone-800 text-white" : "bg-stone-100 text-stone-600 hover:bg-stone-200",
                 )}
               >
                 {g} <span className="opacity-60">{n}</span>
               </button>
             ))}
-          </div>
-        )}
+        </div>
+        </div>
         {songs.length === 0 && (
           <p className="py-4 text-center text-sm text-muted-foreground">Songs you add appear here.</p>
         )}
