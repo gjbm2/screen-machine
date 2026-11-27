@@ -99,7 +99,7 @@ import { fuzzyFilter } from "./fuzzy";
 import { LivePicture } from "./LivePicture";
 import { SongPictures } from "./SongPictures";
 import { LoopbackToggle, RoomMicCheck } from "./RoomMic";
-import { SingerAsk, SingerTag, askSingers } from "./Singer";
+import { Roster, SingerAsk, SingerTag, askSingers } from "./Singer";
 import { OutputTiming } from "@/components/sound/OutputTiming";
 import { OutputEq } from "@/components/sound/OutputEq";
 import { SoundOutputSelect } from "@/components/sound/SoundOutputSelect";
@@ -366,6 +366,29 @@ export default function KaraokePage() {
           >
             <div className="space-y-4">
               <div ref={queueBox} className="scroll-mt-20">{queueCard}</div>
+              {st && (
+                <Card
+                  title={`Singers${st.singers?.length ? ` · ${st.singers.length}` : ""}`}
+                  action={
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="h-9 rounded-lg px-2.5 text-muted-foreground"
+                      onClick={() =>
+                        window.confirm("New session? Tonight's names and the songs already sung are cleared.") &&
+                        act(() => karaoke.newSession(), "New session")
+                      }
+                    >
+                      <RotateCcw className="mr-1 h-4 w-4" /> New session
+                    </Button>
+                  }
+                >
+                  <Roster
+                    names={st.singers ?? []}
+                    onChange={(add, remove) => act(() => karaoke.roster({ add, remove }))}
+                  />
+                </Card>
+              )}
               {findCard}
             </div>
             <DragOverlay>{dragSong ? <RowFace song={dragSong} lifted /> : null}</DragOverlay>

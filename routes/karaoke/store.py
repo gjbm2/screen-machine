@@ -144,13 +144,27 @@ class Store:
         if d.get("last_song") in self.s["songs"]:
             self.s["last_song"] = d["last_song"]
         p = d.get("player") or {}
+        rev = int(p.get("rev") or 0) + 1
+        queued = any(e["qid"] == p.get("qid") for e in self.s["queue"])
+        song = self.s["songs"].get(p.get("song_id") or "") or {}
         # The clock is wall time, so a restart carries on where the song is now (a hi-fi doesn't stop when the
         # control app reconnects). A song that is gone: stopped.
-        if (p.get("song_id") in self.s["songs"] and p.get("state") in ("playing", "paused")
-                and any(e["qid"] == p.get("qid") for e in self.s["queue"])):
-            self.s["player"] = {**self._idle_player(0), **p, "rev": int(p.get("rev") or 0) + 1}
+        if song and p.get("state") in ("playing", "paused") and queued:
+            self.s["player"] = {**self._idle_player(0), **p, "rev": rev}
+            dur = song.get("audio_s")
+            pos = float(p.get("pos_s") or 0) + max(0.0, time.time() - float(p.get("at") or 0))
+            if p.get("state") == "playing" and dur and pos >= dur:
+                # It "ended" while the machine was off (owner, 27 Nov: a queued song showed, didn't play, and Play did
+                # nothing): stopped on it, unsung, and Play plays it.
+                self.s["player"] = {**self._idle_player(rev, p.get("song_id")), "qid": p.get("qid"), "stop": "boot"}
+        elif p.get("state") == "stopped" and queued:
+            # Stopped on an entry (Stop, the queue's end, a boot): still there, so Play carries on from it.
+            self.s["player"] = {**self._idle_player(rev, p.get("song_id")), "qid": p.get("qid"), "stop": p.get("stop")}
         else:
-            self.s["player"] = self._idle_player(int(p.get("rev") or 0) + 1)
+            self.s["player"] = self._idle_player(rev)
+        # A song added to an idle player that wasn't ready yet still starts when it is, across a restart.
+        a = d.get("autostart")
+        self._autostart = a if any(e["qid"] == a for e in self.s["queue"]) else None
         for song in self.s["songs"].values():          # work cut off by a restart starts again from the top
             if song.get("status") in WORKING:
                 song["status"], song["detail"] = "queued", "restarted"
@@ -160,7 +174,7 @@ class Store:
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
-        body = self.s
+        body = {**self.s, "autostart": self._autostart}
         tmp.write_text(json.dumps(body, indent=1))
         os.replace(tmp, self.path)
 
@@ -269,6 +283,33 @@ class Store:
         with self.lock:
             known = self.s.get("singers") or {}
             return [k for k, t in sorted(known.items(), key=lambda kv: -kv[1]) if t >= cut]
+
+    def roster(self, add: Any = None, remove: Any = None) -> list[str]:
+        """Tonight's names before anyone sings (owner, 27 Nov: "a way to add singers' names prior to their starting
+        to sing"): ``add`` names join them, ``remove`` names leave. -> singers()."""
+        with self.lock:
+            self._singers(add)
+            gone = {n.lower() for n in clean_singers(remove)}
+            known = self.s.setdefault("singers", {})
+            for k in [k for k in known if k.lower() in gone]:
+                del known[k]
+            self.commit()
+        return self.singers()
+
+    def new_session(self) -> None:
+        """A new session (owner, 27 Nov): tonight's names are forgotten and the songs already sung leave the queue;
+        the song playing (or paused) and the ones to come stay."""
+        with self.lock:
+            p = self.s["player"]
+            i = self._index(p.get("qid"))
+            if i is not None:
+                done = p["state"] == "stopped" and p.get("stop") == "end"     # it played out: sung too
+                self.s["queue"] = self.s["queue"][i + 1 if done else i:]
+                if done:
+                    self.s["player"] = self._idle_player(p["rev"] + 1)
+            self.s["singers"] = {}
+            self._autostart = self._autostart if any(e["qid"] == self._autostart for e in self.s["queue"]) else None
+            self.commit()
 
     def queue_singers(self, qid: str, singers: Any) -> dict:
         """Who sings a queue entry: a name or a list ([] or None: nobody said)."""
@@ -460,7 +501,11 @@ class Store:
                     return p                                 # already playing: nothing to do
                 if p["state"] == "paused" and self.current_entry():
                     return self.control("resume")
-                entry = self.next_ready(p.get("qid"))
+                cur = self.current_entry()
+                # Stopped on a song that never played out (a boot): that one, else the next.
+                entry = cur if cur and p.get("stop") == "boot" and self._ready(cur) else self.next_ready(p.get("qid"))
+                if entry is None and cur and self._ready(cur):
+                    entry = cur                              # nothing after it: Play plays the one stopped on again
                 if entry is None:
                     raise LookupError("Nothing in the queue is ready to play.")
             song = self.s["songs"][entry["song_id"]]

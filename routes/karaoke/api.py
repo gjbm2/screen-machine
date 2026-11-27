@@ -13,6 +13,8 @@
   DELETE /karaoke/songs/<id>               forget it (files too)
   GET    /karaoke/songs/<id>/lyrics        {kind, lines: [{start, end, text}], ...}
   GET    /karaoke/songs/<id>/<stem>.m4a    instrumental | vocals
+  POST   /karaoke/singers                  {add?: [names], remove?: [names]}: tonight's names before anyone sings
+  POST   /karaoke/session                  {op: new}: forget tonight's names and the songs already sung
   POST   /karaoke/queue                    {op: add, song_id, index?, singers?} | {op: remove, qid} | {op: move, qid, index}
                                            | {op: singers, qid, singers} | {op: clear}: entries; the same song can be
                                            queued more than once. singers: who sing it, [names] (optional; the names
@@ -310,6 +312,23 @@ def queue():
     except (TypeError, ValueError):
         return _err(400, "index is a number.")
     return jsonify({"queue": st.snapshot()["queue"]})
+
+
+@karaoke_api.post("/karaoke/singers")
+def singers():
+    """{add?: [names], remove?: [names]}: tonight's names, set before anyone sings -> {singers}."""
+    b = _body()
+    return jsonify({"singers": store().roster(add=b.get("add"), remove=b.get("remove"))})
+
+
+@karaoke_api.post("/karaoke/session")
+def session():
+    """{op: "new"}: a new session (store.new_session) -> {queue, singers}."""
+    if _body().get("op") != "new":
+        return _err(400, "op is new.")
+    st = store()
+    st.new_session()
+    return jsonify({"queue": st.snapshot()["queue"], "singers": st.singers()})
 
 
 @karaoke_api.post("/karaoke/player")

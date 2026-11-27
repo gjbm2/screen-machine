@@ -262,6 +262,10 @@ export const karaoke = {
   /** The app's sound outputs, marked for karaoke (GET /api/sound/outputs?for=karaoke). */
   outputs: () => call<{ outputs: SoundOutput[] }>('/outputs'),
   calibrate: () => call<{ calibration: KaraokeCalibration }>('/calibrate', post({})),
+  /** Tonight's names, set before anyone sings. */
+  roster: (body: { add?: string[]; remove?: string[] }) => call<{ singers: string[] }>('/singers', post(body)),
+  /** A new session: tonight's names and the songs already sung are cleared. */
+  newSession: () => call<{ singers: string[] }>('/session', post({ op: 'new' })),
   settings: (s: Partial<KaraokeSettings>) => call<{ settings: KaraokeSettings }>('/settings', post(s)),
   lyrics: (id: string) => call<KaraokeLyrics>(`/songs/${id}/lyrics`),
   audioUrl: (id: string, stem: 'instrumental' | 'vocals') => `/api/karaoke/songs/${id}/${stem}.m4a`,

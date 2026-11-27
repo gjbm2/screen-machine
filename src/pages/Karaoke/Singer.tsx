@@ -52,6 +52,7 @@ function NamePicker({
   alwaysSuggest = false,
   autoFocus = false,
   max = SUGGEST,
+  empty = "Name (optional)",
 }: {
   value: string[];
   onChange: (v: string[]) => void;
@@ -61,6 +62,8 @@ function NamePicker({
   autoFocus?: boolean;
   /** At most this many of tonight's names (all of them that match once typing). */
   max?: number;
+  /** The box's word while no name is in. */
+  empty?: string;
 }) {
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
@@ -112,7 +115,7 @@ function NamePicker({
           }}
           autoFocus={autoFocus}
           maxLength={MAX}
-          placeholder={value.length ? "+ another" : "Name (optional)"}
+          placeholder={value.length ? "+ another" : empty}
           autoComplete="off"
           autoCapitalize="words"
           enterKeyHint="done"
@@ -135,6 +138,32 @@ function NamePicker({
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/** Tonight's singers as chips, added before anyone sings (owner, 27 Nov); × takes one off. ``onChange`` gets the
+ *  names added and removed. */
+export function Roster({
+  names,
+  onChange,
+}: {
+  names: string[];
+  onChange: (add: string[], remove: string[]) => void;
+}) {
+  return (
+    <div className="rounded-xl px-3 py-2 ring-1 ring-stone-200/70">
+      <NamePicker
+        value={names}
+        names={[]}
+        empty="Add a name"
+        onChange={(next) =>
+          onChange(
+            next.filter((n) => !has(names, n)),
+            names.filter((n) => !has(next, n)),
+          )
+        }
+      />
     </div>
   );
 }

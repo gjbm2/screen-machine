@@ -931,3 +931,69 @@ def test_a_song_changed_mid_song_waits_for_the_fade_and_the_last_one_leads_the_b
     bg = st.now_playing()["background"]
     assert bg[0] == c and set(bg) == {a, b, c}           # the last sung first
     assert Store(tmp_path / "state.json").background()[0] == c
+
+
+def test_a_song_that_ran_out_while_the_machine_was_off_is_still_unsung_and_play_plays_it(tmp_path):
+    # Owner, 27 Nov: after a boot a queued song showed, didn't play, and Play did nothing.
+    st = Store(tmp_path / "state.json")
+    a, b = ready(st, "a", 30.0), ready(st, "b", 30.0)
+    st.queue_add(a)
+    eb = st.queue_add(b)
+    st.play(qid=eb["qid"])
+    st.s["player"]["at"] -= 3600; st._save()             # off for an hour, mid-song
+    st2 = Store(tmp_path / "state.json")
+    p = st2.s["player"]
+    assert p["state"] == "stopped" and p["qid"] == eb["qid"] and p["stop"] == "boot"
+    assert st2.play()["qid"] == eb["qid"]                # Play plays it, from the start
+
+
+def test_play_at_the_queues_end_plays_the_song_stopped_on(tmp_path):
+    st = Store(tmp_path / "state.json")
+    ea = st.queue_add(ready(st, "a", 30.0))
+    st.play()
+    st.tick(st.s["player"]["at"] + 31)                   # over, nothing after it: stopped on it
+    assert st.s["player"]["state"] == "stopped" and st.s["player"]["qid"] == ea["qid"]
+    st2 = Store(tmp_path / "state.json")                 # and a restart keeps where it stopped
+    assert st2.s["player"]["qid"] == ea["qid"]
+    assert st2.play()["qid"] == ea["qid"]
+
+
+def test_a_song_waiting_to_start_when_ready_still_starts_after_a_restart(tmp_path):
+    st = Store(tmp_path / "state.json")
+    slow = st.add_song({"kind": "text", "q": "slow"})["id"]
+    e = st.queue_add(slow)                               # idle player: it plays once it's ready
+    st2 = Store(tmp_path / "state.json")
+    st2.s["songs"][slow].update(status="ready", audio_s=30.0)
+    st2.tick()
+    assert st2.s["player"]["state"] == "playing" and st2.s["player"]["qid"] == e["qid"]
+
+
+def test_names_before_anyone_sings_and_a_new_session(tmp_path):
+    st = Store(tmp_path / "state.json")
+    assert st.roster(add=["Clare", "tom"]) == ["Clare", "tom"] or set(st.roster()) == {"Clare", "tom"}
+    assert "tom" not in [n.lower() for n in st.roster(remove=["TOM"])]
+    a, b = ready(st, "a", 30.0), ready(st, "b", 30.0)
+    ea, eb = st.queue_add(a, singers=["Ann"]), st.queue_add(b)
+    st.play(); st.tick(st.s["player"]["at"] + 31)       # a sung; b playing
+    assert st.s["player"]["qid"] == eb["qid"]
+    st.new_session()
+    assert [e["qid"] for e in st.s["queue"]] == [eb["qid"]] and st.singers() == []
+    assert st.s["player"]["qid"] == eb["qid"]           # the song playing carries on
+
+
+def test_of_uploads_matching_about_as_much_the_one_with_fewest_unsung_words_wins():
+    # 27 Nov, I Will Survive: the album version's upload matched a few more sung words than the single edit's, with
+    # a whole extra verse and chorus nobody sings in this recording.
+    song = ["at first i was afraid", "i was petrified", "go on now go", "walk out the door", "i will survive"]
+    sung = _heard([(w, 1.0 + i * 0.4) for i, w in enumerate(" ".join(song).split())])
+    single = {"kind": "plain", "text": "\n".join(song)}
+    album = {"kind": "plain", "text": "\n".join(song + ["it took all the strength i had", "not to fall apart",
+                                                        "kept trying hard to mend the pieces", "of my broken heart"]
+                                               + ["i will survive"])}
+    best, _, st = lyr.best_fit([album, single], sung)
+    assert best is single and st["precision"] == 1.0
+    sparse = {"kind": "plain", "text": "i will survive"}           # far fewer matched: never chosen for precision
+    assert lyr.best_fit([single, sparse], sung)[0] is single
+    assert lyr.credit_line("Written by：Brandon Flowers/Dave Keuning")
+    assert lyr.credit_line("Mr. Brightside - The Killers", "Mr. Brightside", "The Killers")
+    assert not lyr.credit_line("Hey Jude, don't make it bad", "Hey Jude", "The Beatles")
