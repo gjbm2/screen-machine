@@ -1,10 +1,10 @@
 """karaoke.api: /api/karaoke/* (docs/KARAOKE.md). Only while the deployment's ``karaoke`` capability is on.
 
   GET    /karaoke/state                    the library, the queue, the player and the player page's last report
-  GET    /karaoke/now                      what the display page needs (polled every second)
+  GET    /karaoke/now                      what the display page needs (polled every second), + join {url, room_karaoke}
   GET    /karaoke/search?q=                LRCLIB songs matching the text: [{artist, title, duration, synced}]
   POST   /karaoke/requests                 {q} | {url} | {artist, title, duration}: a song into the library
-                                           (+ queue: true also puts it at the end of the queue)
+                                           (+ queue: true also puts it at the end of the queue; + singer)
   POST   /karaoke/songs/<id>/retry         a failed song again
   POST   /karaoke/songs/<id>/refine          {note?}: lyrics off: the careful pass over them (in the background, after
                                            songs being prepared) | {undo: true}: the first pass's lyrics back
@@ -13,8 +13,10 @@
   DELETE /karaoke/songs/<id>               forget it (files too)
   GET    /karaoke/songs/<id>/lyrics        {kind, lines: [{start, end, text}], ...}
   GET    /karaoke/songs/<id>/<stem>.m4a    instrumental | vocals
-  POST   /karaoke/queue                    {op: add, song_id, index?} | {op: remove, qid} | {op: move, qid, index}
-                                           | {op: clear}: entries; the same song can be queued more than once
+  POST   /karaoke/queue                    {op: add, song_id, index?, singer?} | {op: remove, qid} | {op: move, qid, index}
+                                           | {op: singer, qid, singer} | {op: clear}: entries; the same song can be
+                                           queued more than once. singer: who sings it (optional; the names of the
+                                           last 12 h are /state's singers)
   POST   /karaoke/player                   {action: play [qid | song_id]|pause|resume|restart|stop|next|prev|seek [pos_s]}
                                            (play song_id: a new entry right after the current one, played now)
   POST   /karaoke/settings                 {guide 0..1, autoplay, audio_delay_ms, highlight words|dot|both, child_mode,
@@ -70,7 +72,10 @@ def state():
 
 @karaoke_api.get("/karaoke/now")
 def now():
-    return jsonify(store().now_playing())
+    from . import room_in_karaoke
+    from .join import join_url
+    # join: the panel's address for a phone and whether the room is in a karaoke mode (the screens' QR code at rest)
+    return jsonify({**store().now_playing(), "join": {"url": join_url(), "room_karaoke": room_in_karaoke()}})
 
 
 @karaoke_api.get("/karaoke/search")
@@ -167,7 +172,7 @@ def add_request():
         return _err(400, "Say which song: {q}, {url} or {artist, title, duration}.")
     song = dup or st.add_song(req)
     if b.get("queue"):                                   # true or "end": the end; "next": up next
-        st.queue_add(song["id"], next=b.get("queue") == "next")
+        st.queue_add(song["id"], next=b.get("queue") == "next", singer=b.get("singer"))
     return jsonify({"song_id": song["id"], "existing": bool(dup)})
 
 
@@ -276,7 +281,10 @@ def queue():
     idx = b.get("index")
     try:
         if op == "add":
-            st.queue_add(str(b.get("song_id")), None if idx is None else int(idx), next=bool(b.get("next")))
+            st.queue_add(str(b.get("song_id")), None if idx is None else int(idx), next=bool(b.get("next")),
+                         singer=b.get("singer"))
+        elif op == "singer":
+            st.queue_singer(str(b.get("qid")), b.get("singer"))
         elif op == "remove":
             st.queue_remove(str(b.get("qid")))
         elif op == "move":
@@ -284,7 +292,7 @@ def queue():
         elif op == "clear":
             st.queue_clear()
         else:
-            return _err(400, "op is add, remove, move or clear.")
+            return _err(400, "op is add, remove, move, singer or clear.")
     except KeyError:
         return _err(404, "No such song or queue entry.")
     except (TypeError, ValueError):

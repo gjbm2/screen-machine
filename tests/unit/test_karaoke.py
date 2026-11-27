@@ -859,3 +859,48 @@ def test_a_careful_pass_cut_short_by_a_restart_waits_again(tmp_path):
     st.update_song(s["id"], status="ready", refine={"state": "working"})
     st2 = Store(tmp_path / "state.json")
     assert st2.s["songs"][s["id"]]["refine"]["state"] == "waiting"
+
+
+def test_singers_are_remembered_spelt_once_and_shown_with_whats_next(tmp_path, monkeypatch):
+    st = Store(tmp_path / "state.json")
+    a, b = ready(st, "a", 100.0), ready(st, "b", 50.0)
+    ea = st.queue_add(a, singer="  Clare ")
+    eb = st.queue_add(b, singer="clare")                 # the spelling given first stays
+    assert ea["singer"] == "Clare" and eb["singer"] == "Clare"
+    st.queue_singer(eb["qid"], "Tom")
+    st.play()
+    n = st.now_playing()
+    assert n["singer"] == "Clare" and n["up_next"]["singer"] == "Tom" and n["queued_after"] == 1
+    assert st.singers() == ["Tom", "Clare"]              # most recent first
+    st.queue_singer(eb["qid"], "")                       # nobody said
+    assert "singer" not in st.s["queue"][1]
+    assert Store(tmp_path / "state.json").singers() == ["Tom", "Clare"]   # a restart keeps tonight's names
+    import sys
+    store_mod = sys.modules["routes.karaoke.store"]   # (the package's store() shadows the module name)
+    real = store_mod.time.time
+    monkeypatch.setattr(store_mod.time, "time", lambda: real() + store_mod.SESSION_S + 60)
+    assert st.singers() == []                            # yesterday's party's names aren't offered
+
+
+def test_join_url_picks_the_adapter_with_a_gateway():
+    from routes.karaoke.join import pick_ipconfig
+    out = """
+Unknown adapter Tailscale:
+
+   IPv4 Address. . . . . . . . . . . : 100.101.45.79
+   Default Gateway . . . . . . . . . :
+
+Wireless LAN adapter Wi-Fi:
+
+   IPv4 Address. . . . . . . . . . . : 192.168.0.228
+   Subnet Mask . . . . . . . . . . . : 255.255.255.0
+   Default Gateway . . . . . . . . . : fe80::1%12
+                                       192.168.0.1
+
+Ethernet adapter vEthernet (WSL (Hyper-V firewall)):
+
+   IPv4 Address. . . . . . . . . . . : 172.24.240.1
+   Default Gateway . . . . . . . . . :
+"""
+    assert pick_ipconfig(out) == "192.168.0.228"
+    assert pick_ipconfig(out.replace("192.168.0.1", "")) is None

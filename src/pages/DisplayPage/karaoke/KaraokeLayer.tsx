@@ -25,6 +25,7 @@ import {
   type KaraokeSong,
   type LyricLine,
 } from "@/shared/api/karaoke";
+import { JoinCard, LOW_FROM_S, NEXT_UP_S, NextUp } from "./JoinOverlays";
 
 const POLL_MS = 1000;
 const LYRICS_RETRY_MS = 4000;
@@ -471,7 +472,16 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
   }, [songKey]);
 
   if (!on || !now) return null;
-  if (screen && screen !== karaokeScreen(depRef.current, now.settings.screen)) return null; // not the karaoke screen
+  // At rest (the room in a karaoke mode, nothing playing) every screen shows the code that opens the panel on a phone
+  // (JoinOverlays.tsx); the other screens show nothing else.
+  const joinUrl = now.join?.url ?? null;
+  const resting = !active && !!now.join?.room_karaoke && !!joinUrl;
+  if (screen && screen !== karaokeScreen(depRef.current, now.settings.screen))
+    return resting && joinUrl ? (
+      <div data-sm-karaoke="" style={layerStyle}>
+        <JoinCard url={joinUrl} />
+      </div>
+    ) : null; // not the karaoke screen
 
   // The position: the sound's own while it plays here, else the server's clock; less the delay to the room: the
   // measured one (Settings → Calibrate: the whole delay from the player's clock to the room), else the browser's own
@@ -501,6 +511,11 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
   if (!held) heldSince.current = null;
   else if (heldSince.current === null) heldSince.current = Date.now();
   const soundHeld = held && heldSince.current !== null && Date.now() - heldSince.current > 1000;
+  // While a song plays: who is next, towards its end (NextUp); with nothing queued after it, the small join code.
+  const dur = song?.audio_s ?? song?.duration ?? null;
+  const left = active && dur ? dur - t : null;
+  const nextUp = now.up_next && left != null && left > 0 && left <= NEXT_UP_S ? ramp(NEXT_UP_S - left, 0, 1.2) : 0;
+  const low = active && joinUrl && now.queued_after === 0 ? ramp(t, LOW_FROM_S, LOW_FROM_S + 1.2) : 0;
   if (songKey && song) {
     if (lastFrame.current && lastFrame.current.key !== songKey) endedFrame.current = lastFrame.current; // a new song
     lastFrame.current = { key: songKey, t, dur: song.audio_s ?? song.duration ?? null };
@@ -511,7 +526,7 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
       {handover !== null && <Handover key={handover} onDone={() => setHandover(null)} />}
       {active && song && (
         <>
-          <Curtain t={t} song={song} doc={lyrics?.id === song.id ? lyrics.doc : null} />
+          <Curtain t={t} song={song} doc={lyrics?.id === song.id ? lyrics.doc : null} singer={now.singer} />
           <Lyrics
             t={t}
             doc={lyrics?.id === song.id ? lyrics.doc : null}
@@ -520,7 +535,14 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
           />
         </>
       )}
-      {!active && now.up_next && <UpNext title={now.up_next.title} artist={now.up_next.artist} />}
+      {!active && now.up_next && (
+        <UpNext title={now.up_next.title} artist={now.up_next.artist} singer={now.up_next.singer} />
+      )}
+      {resting && joinUrl && <JoinCard url={joinUrl} />}
+      {nextUp > 0.001 && now.up_next && (
+        <NextUp title={now.up_next.title} artist={now.up_next.artist} singer={now.up_next.singer} opacity={nextUp} />
+      )}
+      {low > 0.001 && joinUrl && <JoinCard url={joinUrl} small opacity={low} />}
       {soundHeld && <SoundPrompt />}
     </div>
   );
@@ -611,7 +633,17 @@ function Handover({ onDone }: { onDone: () => void }) {
   return <div ref={ref} style={{ position: "absolute", inset: 0, background: "#000", opacity: OUTRO_VEIL }} />;
 }
 
-function Curtain({ t, song, doc }: { t: number; song: KaraokeSong; doc: KaraokeLyrics | null }) {
+function Curtain({
+  t,
+  song,
+  doc,
+  singer,
+}: {
+  t: number;
+  song: KaraokeSong;
+  doc: KaraokeLyrics | null;
+  singer?: string | null;
+}) {
   const lines = doc?.kind === "synced" ? doc.lines : [];
   const first = lines.find((l) => l.start != null)?.start ?? null;
   const last = [...lines].reverse().find((l) => l.start != null) ?? null;
@@ -643,6 +675,11 @@ function Curtain({ t, song, doc }: { t: number; song: KaraokeSong; doc: KaraokeL
         <div style={{ ...introStyle, opacity: card, transform: `translate(-50%, -50%) scale(${0.96 + 0.04 * card})` }}>
           {art && <img src={art} alt="" style={introArtStyle} />}
           <div style={{ minWidth: 0, ...baseTextStyle }}>
+            {singer && (
+              <div style={{ fontSize: "min(2.6vw, 44px)", fontWeight: 700, color: "#ffd65a", marginBottom: "0.3em" }}>
+                {singer} sings
+              </div>
+            )}
             <div style={{ fontSize: "min(5.5vw, 92px)", fontWeight: 800, lineHeight: 1.05, ...BALANCE }}>
               {song.title}
             </div>
@@ -1264,7 +1301,7 @@ function CountIn({ seconds, total }: { seconds: number; total: number }) {
   );
 }
 
-function UpNext({ title, artist }: { title: string; artist: string }) {
+function UpNext({ title, artist, singer }: { title: string; artist: string; singer?: string | null }) {
   return (
     <div style={{ ...lyricsBoxStyle, bottom: "6vh" }}>
       <div
@@ -1275,7 +1312,8 @@ function UpNext({ title, artist }: { title: string; artist: string }) {
           opacity: 0.9,
         }}
       >
-        Up next: <b>{title}</b>
+        {singer ? `Up next, ${singer}: ` : "Up next: "}
+        <b>{title}</b>
         {artist ? ` — ${artist}` : ""}
       </div>
     </div>

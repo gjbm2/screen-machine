@@ -28,6 +28,14 @@ def sonos_driver():
 WRITERS_RETRY_S = 900
 
 
+_live = None
+
+
+def room_in_karaoke() -> bool:
+    """The room is in a karaoke mode (live_view.LiveView.in_karaoke_mode; False before it has looked)."""
+    return bool(_live and _live.in_karaoke_mode())
+
+
 def start() -> None:
     """Start the worker (app.py, outside tests). A no-op while the capability is off."""
     global _worker
@@ -44,7 +52,9 @@ def start() -> None:
     threading.Thread(target=_facts, args=(st,), name="karaoke-facts", daemon=True).start()
     pictures.start()                                # the artists' pictures for the photo scenes
     from .live_view import LiveView                 # the karaoke screen goes live with a song, back to art on Stop
-    LiveView(st).start()
+    global _live
+    _live = LiveView(st)
+    _live.start()
     if smconfig.enabled("sonos"):                       # karaoke on a Sonos room (sonos_out.py)
         global _sonos
         from .sonos_out import KaraokeSonos
