@@ -57,7 +57,11 @@ chance (`controls.pass`).
      across the room (director FX_PER_MOMENT and FX_ROOM_MAX): restraint is the owner's, not a metric to beat.
    - Run the touched module's tests (`~/.venvs/sm-show/bin/python -m pytest -q show_service/tests/test_<x>.py`).
 5. **Re-score** on the full set.
-   - **Keep the fix** if the overall score rises, no dimension falls by more than 0.02, every `good` verdict still
+   - Runs average 3 draws per song (`--seeds`, default 3). Never use fewer: one draw moves a song's overall by up
+     to 0.25. A full run takes about 30 min, so when time is tight, check the attempt on its own 2–3 songs first
+     (`--songs`) and cut songs, never seeds.
+   - **Keep the fix** if the overall score rises by more than the run's seed spread (`overall_spread`; a smaller gain
+     is noise), no dimension falls past its spread, every `good` verdict still
      holds, and no `bad` verdict that passed before now fails.
    - **Else undo your change in the copy:** restore the files from the real tree's HEAD, e.g.
      `git -C <repo> show HEAD:<path> > $AD_EVAL_TREE/<path>`.
