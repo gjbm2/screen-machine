@@ -7,13 +7,13 @@
 // kind; names drop their room's name; where a light is comes from the Room map once it's placed there. Each row has
 // Identify. Add a light is the page's main action (LightForm.tsx; Move it inside it).
 // "Lights | Room map | 3D" at the top (?tab=map or ?tab=3d, else remembered on this device) switches to the Room map
-// (RoomMap.tsx) or the room in 3D with its planned GigBARs (Room3D.tsx, loaded with three.js only when shown).
+// (RoomMap.tsx) or the room in 3D: the room simulation, /lights/room (src/pages/Room3D), shown in the page.
 // ?light=<id> opens that light's row (from a light's "Set up this light ›"). What a light does is chosen on /lights and
 // the Room page, not here. Same light, warm skin as /room (its theme and pieces).
 // Under the lights, Appliances worked by remote (RemoteControls.tsx): added from a device type (glitterball, pinspot),
 // each button learned and tested through the RM4 Pro, removed.
 
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { Plus } from "lucide-react";
 import { AppMenu } from "@/components/nav/AppMenu";
@@ -50,8 +50,6 @@ import {
 import { RemoteControls } from "./RemoteControls";
 import { RoomMap } from "./RoomMap";
 import { useLightTypes, useRig, useRoomFacts, useSpace } from "./useRig";
-
-const Room3D = lazy(() => import("./Room3D"));
 
 type Tab = "lights" | "map" | "3d";
 const TAB_KEY = "lights.tab";
@@ -127,7 +125,6 @@ export default function LightsPage() {
     return m;
   }, [fixtures.view]);
   const bridge = fixtures.view?.hue?.bridge ?? null;
-  const lampColours = useMemo(() => Object.fromEntries([...hueById].map(([id, f]) => [id, fixtureSwatch(f)])), [hueById]);
 
   const spots = useMemo(() => screenSpots(space.space, rig.all, facts.screenNames), [space.space, rig.all, facts.screenNames]);
   const describe = facts.describe;
@@ -244,15 +241,13 @@ export default function LightsPage() {
           {tab === "map" ? (
             <RoomMap api={api} things={mapThings} selectedId={mapSelect} />
           ) : tab === "3d" ? (
-            <Suspense
-              fallback={
-                <p className="flex items-center gap-2 py-3 text-base text-muted-foreground">
-                  <Spinner /> Drawing the room…
-                </p>
-              }
-            >
-              <Room3D api={api} space={space} things={mapThings} lamps={lampColours} />
-            </Suspense>
+            <iframe
+              src={`/lights/room${window.location.search.includes("room=") ? window.location.search : ""}`}
+              title="The room in 3D"
+              className="block w-full rounded-2xl border border-stone-200 shadow-sm"
+              style={{ height: "min(78vh, 760px)" }}
+              data-testid="lights-3d"
+            />
           ) : (
             <>
               <div className="space-y-2">

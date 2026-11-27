@@ -801,9 +801,6 @@ export interface Pose {
 
 export interface PlacedThing {
   at: Vec3 | null;
-  /** A room device's own kind and name (a planned GigBAR: "gigbar-2"); a registered light's come from the rig. */
-  kind?: string | null;
-  label?: string | null;
   mount: string | null;
   plane: { normal: Vec3 | null; up: Vec3 | null; size: [number, number] | null } | null;
   teach: Sample[];
@@ -887,8 +884,6 @@ export function parseSpace(v: unknown): RoomSpace {
       const pose = isObj(a.pose) && vec3(a.pose.at) ? { at: vec3(a.pose.at) as Vec3, rms_deg: num(a.pose.rms_deg) ?? 0, samples: int(a.pose.samples) ?? 0 } : null;
       appliances[id] = {
         at: vec3(a.at),
-        kind: str(a.kind),
-        label: str(a.label),
         mount: str(a.mount),
         plane: pl ? { normal: vec3(pl.normal), up: vec3(pl.up), size: size2(pl.size) } : null,
         teach: Array.isArray(a.teach)

@@ -76,6 +76,24 @@ class Mouse:
         page.mouse.up()
 
 
+# A point on the card that the card itself gets: at the screen's bottom edge the phone's floating bits (the bottom
+# bar, the running-jobs pill) cover part of it and take the touch (27 Nov: 8 generations running made the favourite
+# "not start").
+GRIP_JS = """(c) => {
+  const r = c.getBoundingClientRect();
+  for (const f of [0.5, 0.35, 0.2, 0.65]) {
+    const x = r.left + r.width / 2, y = r.top + r.height * f;
+    if (c.contains(document.elementFromPoint(x, y))) return [x, y];
+  }
+  return [r.left + r.width / 2, r.top + r.height / 2];
+}"""
+
+
+def grip(page, card):
+    x, y = card.evaluate(GRIP_JS)
+    return x, y
+
+
 def carry(page, hand, section, target):
     """Hold the first picture of `section`, carry it to `target`'s tab; returns (ok, words)."""
     card = page.locator(f"[data-section-variant={section}] .drag-grid > div").first
@@ -83,7 +101,7 @@ def carry(page, hand, section, target):
         return None, f"no picture in {section}"
     card.scroll_into_view_if_needed()
     page.wait_for_timeout(300)
-    sx, sy = centre(card.bounding_box())
+    sx, sy = grip(page, card)
     hand.start(page, sx, sy)
     page.wait_for_timeout(100)
     started = state(page) or {}

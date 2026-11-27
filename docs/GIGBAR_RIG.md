@@ -8,7 +8,7 @@ Dec, with the node wired straight to the laptop), and later on PC22 (the same no
 |---|---|---|
 | Fixture types (OFL JSON, hand-written from the manuals) | `config/room/fixture-types/ofl/chauvet-dj/gigbar-move-ils-*.json`, `.../antari/z-350.json` | yes, every deployment |
 | The laptop's node, universe, fixtures and groups | `deployments/laptop/lights/fixtures.yaml` | laptop only |
-| PC22's | `deployments/finsbury/lights/fixtures.yaml` (c8's file): copy the blocks from the laptop's (§6) | finsbury only |
+| PC22's | `deployments/finsbury/lights/fixtures.yaml`: the laptop's blocks, done 27 Nov (§6): on virtual nodes until the box arrives | finsbury only |
 
 Nothing here is on OFL (open-fixture-library.org has neither fixture), so the type files were written from the
 manuals below and checked with `tools/show/add_fixture.py --file <file>` (show_service's own loader, no problem lines).
@@ -217,6 +217,12 @@ The derby motors are pinned to a slow clockwise turn (`Rotation: 16`). 0 stops t
   safe.
 
 ## 6. Moving the rig to PC22
+
+**Done 27 Nov** (owner: "two gigbars added to this room's config"): the types, both bars, the hazer and the groups
+are in finsbury's fixtures.yaml (bar A SE, bar B NE; the Hue `around` order walks them too). `dmx-a` sends to the
+virtual node `previz` and to the Windows virtual node (§7, Spectre card `screen-machine-virtual-node`, `--port 6455`).
+The parts are placed in space.added.yaml from the laptop room's corners and head poses. Still to do when the box
+arrives: its `nodes` entry, `dmx-a.node` pointing at it, and the bars' real places on the Room map.
 
 The types are shared, so only the site file changes. Copy `types`, `fixtures` and `groups` from
 `deployments/laptop/lights/fixtures.yaml` into `deployments/finsbury/lights/fixtures.yaml` (tell c8, who owns that
