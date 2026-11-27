@@ -569,18 +569,22 @@ tilted and turned on its bracket. Those are settings, and the simulator and the 
 - **Where they are set:** the Light setup page's 3D tab, the room simulator used as an editor
   (`src/pages/Room3D/editor.ts`, `src/pages/Lights/RoomTab.tsx`), with the browser's standard 3D controls:
   - **Moving round** (three.js OrbitControls, as three.js, Sketchfab and PlayCanvas set them up): drag to orbit, right-
-    drag (or Shift/Ctrl-drag, middle-drag, two fingers) to pan, the wheel or a pinch to zoom towards the cursor,
-    damped. Double-click a wall or the floor to orbit round that spot; Home or ⌂ goes back to the start view.
-  - **Editing:** hovering a thing outlines and names it; a click selects it and the camera glides to it; a gizmo
-    moves (W), turns (E) or scales (R) it, Ctrl held to snap; F frames it; Esc, ✕ Done or a click on empty space
-    goes back to the room view the camera had before; Delete removes a keep-out box.
-  - **The panel:** with nothing selected, the list of everything; with something selected, one line (‹ the thing ›,
-    the whole list dropping down from it, arrow keys stepping through) and its settings under it. Every change saves
-    as it is made; Undo / Redo (Ctrl+Z, Ctrl+Shift+Z) are at the panel's foot.
-  - **What the lights show:** Plain (every light steady, for aiming), a Colour, a lighting Scene, or Live. All but
-    Live are a preview from show_service's own engine that is never sent to a light (`show_service/preview.py`,
-    `GET /api/v1/rig/preview/dmx?what=plain|colour|scene:<name>`); Live reads the virtual node. The live view opens
-    in its own window from the ⋯ menu.
+    drag (or Shift/Ctrl-drag, middle-drag, two fingers) to pan, damped. The wheel moves the camera towards what is under
+    the cursor, a share of the way each notch, never through it. The camera never goes under the floor; "Keep the view
+    inside the room" (⋯) keeps it inside the walls too. Double-click a wall or the floor to orbit round that spot;
+    ⌂ Whole room (or Home) for the start view.
+  - **Editing** (the handles room and lighting editors use; no XYZ gizmo): hovering a thing outlines and names it; a
+    click selects it and the camera glides to it. A bar: drag it across the floor, drag the ring round it to turn it,
+    the arrow above it to raise it. A light: drag the spot where its beam lands to aim it. A keep-out box: drag it,
+    the arrow to raise it, its size typed in the panel. ← Back to the room (the view's corner or the panel), Esc or a
+    click on empty space goes back to the room view the camera had before.
+  - **The panel:** with nothing selected, the list of everything; with something selected, one line (← Room, ‹ the
+    thing ›, the whole list dropping down from it, arrow keys stepping through) and its settings under it. Every change
+    saves as it is made; Undo / Redo (Ctrl+Z, Ctrl+Shift+Z) are at the panel's foot.
+  - **What the lights show:** Plain (every light steady, for aiming), a Colour, a lighting Scene (with the preview's
+    energy and tempo), or Live. All but Live are a preview from show_service's own engine that is never sent to a light
+    (`show_service/preview.py`, `GET /api/v1/rig/preview/dmx?what=plain|colour|scene:<name>&energy&bpm`); Live reads
+    the virtual node. ⧉ (top right) opens the live view in its own window. The frame rate shows in the view's corner.
 - **The Room map** is the room's layout only, not live (owner, 27 Nov: "I'm not sure room map should be a live view").
 - **Not there yet:** a control for the four strobe zones (they are in the bar's face and point where it does); the
   moving heads' poses are still taught from the Lights tab ("Point it at…"), not turned in the view; no undo.

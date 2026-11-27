@@ -88,6 +88,22 @@ function Num({ label, value, step = 0.05, unit, disabled, onKeep }: {
   );
 }
 
+/** A compact slider for the preview's music: it moves freely and the preview follows when it is let go. */
+function PreviewKnob({ label, value, min, max, step, show, onCommit }: {
+  label: string; value: number; min: number; max: number; step: number; show: (v: number) => string; onCommit: (v: number) => void;
+}) {
+  const [v, setV] = useState(value);
+  useEffect(() => setV(value), [value]);
+  return (
+    <label className="flex items-center gap-1.5 text-stone-600" title={`The preview's ${label.toLowerCase()}`}>
+      {label}
+      <input type="range" min={min} max={max} step={step} value={v} aria-label={label} className="w-24 accent-teal-600"
+        onChange={(e) => setV(Number(e.target.value))} onPointerUp={() => onCommit(v)} onKeyUp={() => onCommit(v)} />
+      <span className="w-14 tabular-nums text-stone-800">{show(v)}</span>
+    </label>
+  );
+}
+
 const btn = "rounded-lg border border-stone-300 bg-white px-2.5 py-1.5 text-stone-800 hover:bg-stone-50 disabled:opacity-50";
 const H = ({ children }: { children: ReactNode }) => <h3 className="mb-1 mt-3 text-[11px] font-semibold uppercase tracking-wide text-stone-500">{children}</h3>;
 const MODE_NAMES: Record<GizmoMode, string> = { translate: "Move (W)", rotate: "Turn (E)", scale: "Scale (R)" };
@@ -106,6 +122,8 @@ export default function RoomTab({ api, space, things, lamps }: PlannedProps & { 
   const [show, setShow] = useState<"plain" | "colour" | "scene" | "live">("plain");
   const [colour, setColour] = useState("#ff7a2e");
   const [scene, setScene] = useState("");
+  const [energy, setEnergy] = useState(0.6);                        // the preview's music: how hard it drives
+  const [bpm, setBpm] = useState(120);                               // ... and its tempo
   const [scenes, setScenes] = useState<{ name: string; label: string }[]>([]);
   const room = useMemo(() => resolveRoomUrl(window.location.search).replace(/\/+$/, ""), []);
   useEffect(() => {
@@ -119,9 +137,9 @@ export default function RoomTab({ api, space, things, lamps }: PlannedProps & { 
   const feed = useMemo(() => {
     if (show === "live") return { base: "", live: true };
     const q = show === "colour" ? `?what=colour&colour=${encodeURIComponent(colour)}`
-      : show === "scene" && scene ? `?what=scene:${encodeURIComponent(scene)}` : "?what=plain";
+      : show === "scene" && scene ? `?what=scene:${encodeURIComponent(scene)}&energy=${energy}&bpm=${bpm}` : "?what=plain";
     return { base: `${room}/show/api/v1/rig/preview`, query: q };
-  }, [show, colour, scene, room]);
+  }, [show, colour, scene, room, energy, bpm]);
   // undo and redo: every change is a step that knows how to put things back (owner, 27 Nov: "need undo etc. in case of
   // unintended fiddles")
   type Step = { label: string; undo: () => Promise<unknown>; redo: () => Promise<unknown> };
@@ -358,6 +376,8 @@ export default function RoomTab({ api, space, things, lamps }: PlannedProps & { 
       ) : (
         // the object picker: one line (where you are, and the previous / next thing); the whole tree drops down from it
         <div className="relative mb-2 flex items-center gap-1" data-testid="picker">
+          <button className="mr-1 rounded-lg bg-teal-600 px-2.5 py-1.5 font-medium text-white hover:bg-teal-700"
+            onClick={() => setSelected(null)} title="Back to the whole room (Esc)" data-testid="done">← Room</button>
           <button className={`${btn} px-2`} aria-label="The previous thing" title="The previous thing (↑)"
             onClick={() => { const i = order.indexOf(selected); if (i > 0) go(order[i - 1]); }}>‹</button>
           <button className="flex min-w-0 flex-1 items-center justify-between gap-1 rounded-lg border border-stone-300 bg-white px-2 py-1.5 text-left hover:bg-stone-50"
@@ -370,8 +390,7 @@ export default function RoomTab({ api, space, things, lamps }: PlannedProps & { 
           </button>
           <button className={`${btn} px-2`} aria-label="The next thing" title="The next thing (↓)"
             onClick={() => { const i = order.indexOf(selected); if (i < order.length - 1) go(order[i + 1]); }}>›</button>
-          <button className="ml-1 rounded-lg bg-teal-600 px-2.5 py-1.5 font-medium text-white hover:bg-teal-700"
-            onClick={() => setSelected(null)} title="Back to the room (Esc)" data-testid="done">✕ Done</button>
+
           {treeOpen && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setTreeOpen(false)} />
@@ -500,9 +519,13 @@ export default function RoomTab({ api, space, things, lamps }: PlannedProps & { 
         <input type="color" value={colour} onChange={(e) => setColour(e.target.value)} aria-label="Colour" className="h-8 w-10 rounded-lg border border-stone-300 bg-white" />
       )}
       {show === "scene" && (
-        <select value={scene} onChange={(e) => setScene(e.target.value)} className={`${sel} max-w-[240px]`} aria-label="Lighting scene">
-          {scenes.map((x) => <option key={x.name} value={x.name}>{x.label}</option>)}
-        </select>
+        <>
+          <select value={scene} onChange={(e) => setScene(e.target.value)} className={`${sel} max-w-[220px]`} aria-label="Lighting scene">
+            {scenes.map((x) => <option key={x.name} value={x.name}>{x.label}</option>)}
+          </select>
+          <PreviewKnob label="Energy" value={energy} min={0} max={1} step={0.05} show={(v) => `${Math.round(v * 100)}%`} onCommit={setEnergy} />
+          <PreviewKnob label="Tempo" value={bpm} min={60} max={180} step={2} show={(v) => `${Math.round(v)} bpm`} onCommit={setBpm} />
+        </>
       )}
     </>
   );
@@ -513,9 +536,9 @@ export default function RoomTab({ api, space, things, lamps }: PlannedProps & { 
         onSelect={(k) => { select(k); if (k) setFrame((n) => n + 1); }} onEdit={onEdit} panel={panel} frame={frame}
         feed={feed} toolbar={toolbar} />
       <p className="text-[15px] text-muted-foreground">
-        Click a thing to select it (it comes in front of you), drag its handles to change it (W move, E turn, R scale; hold
-        Ctrl to snap), Esc or Done to go back to the room, Ctrl+Z to undo. Moving round: drag to orbit, right-drag to pan,
-        the wheel to zoom, double-click a spot to focus there.
+        Click a light, a bar or a keep-out box to edit it. Then drag it to move it, drag the ring round a bar to turn it,
+        the arrow above it to raise it, or the spot where a light's beam lands to aim the light. ← Room (or Esc) goes back
+        to the whole room; Ctrl+Z undoes. Moving round: drag to orbit, right-drag to pan, the wheel to zoom.
       </p>
       {err && <Notice tone="bad">{err}</Notice>}
       {hasPlanned && (

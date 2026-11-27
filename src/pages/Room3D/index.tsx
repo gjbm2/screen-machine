@@ -71,8 +71,14 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
   const [dmxLive, setDmxLive] = useState(false);
   const [words, setWords] = useState<{ unit: string; rows: [string, string][] }[]>([]);
   const [perf, setPerf] = useState("");
+  const [fps, setFps] = useState(0);
   const [showPaths, setShowPaths] = useState(false);
   const [opts, setOpts] = useState(false);              // the editor header's "more" menu
+  const [inside, setInside] = useState(() => { try { return localStorage.getItem("room3d.inside") === "1"; } catch { return false; } });
+  useEffect(() => {
+    if (simRef.current) simRef.current.keepInside = inside;
+    try { localStorage.setItem("room3d.inside", inside ? "1" : "0"); } catch { /* a blocked store: this visit only */ }
+  }, [inside]);
   const [haze, setHaze] = useState<Haze | null>(null);
   const [hazeDrag, setHazeDrag] = useState<number | null>(null);   // the bar's position while it's dragged (0-1)
   const hazeDragRef = useRef<number | null>(null);
@@ -84,6 +90,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
     if (!canvas || !host) return;
     const sim = new RoomSim({ canvas, room });
     simRef.current = sim;
+    try { sim.keepInside = localStorage.getItem("room3d.inside") === "1"; } catch { /* default: free */ }
     const ed = new RoomEditor(sim.overlayRoot, sim.overlayScene, sim.camera, canvas);
     ed.onChange = (key, change) => cb.current.onEdit?.(key, change);
     ed.onDragging = (on) => { sim.controls.enabled = !on; };      // a handle being dragged holds the camera still
@@ -101,6 +108,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
       frames++;
       if (now - fpsAt >= 1000) {                               // adaptive resolution: hold ~50 fps
         const fps = (frames * 1000) / (now - fpsAt);
+        setFps(Math.round(fps));
         frames = 0; fpsAt = now;
         const was = sim.scale;
         if (shot) sim.scale = 1;                               // a picture: full size, however slowly it draws
@@ -150,9 +158,9 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
   }, [selected]);
   useEffect(() => {
     const ed = edRef.current;
-    if (ed && ed.selected !== selected) ed.select(selected, mode);
-  }, [selected, editables, model, mode]);
-  useEffect(() => { if (mode) edRef.current?.setMode(mode); }, [mode, selected]);
+    if (ed && ed.selected !== selected) ed.select(selected);
+  }, [selected, editables, model]);
+  useEffect(() => { if (model) edRef.current?.setRoom(model.size); }, [model]);
   useEffect(() => {
     const it = (editables ?? []).find((x) => x.key === selected);
     if (frame > 0 && it) simRef.current?.focus(it.at, Math.max(1.2, 2.2 * Math.max(...it.size)));
@@ -215,7 +223,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
   const drag = useRef(false);
   const hover = useRef(false);
   const [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null);   // the name by the cursor
-  const [cursor, setCursor] = useState("grab");
+  const [cursor, setCursor] = useState("default");
   const ndc = (e: { clientX: number; clientY: number }, el: Element) => {
     const r = el.getBoundingClientRect();
     return [((e.clientX - r.left) / r.width) * 2 - 1, -(((e.clientY - r.top) / r.height) * 2 - 1)] as const;
@@ -263,7 +271,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
             <button className="h-8 border-l border-stone-300 px-2.5 hover:bg-stone-50" title="Back to the start view (Home)" aria-label="Start view" onClick={() => simRef.current?.home()}>⌂</button>
           </div>
           <div className="relative">
-            <button className="h-8 rounded-lg border border-stone-300 px-2.5 hover:bg-stone-50" aria-expanded={opts} aria-label="More" title="Haze, beam paths, the live view"
+            <button className="h-8 rounded-lg border border-stone-300 px-2.5 hover:bg-stone-50" aria-expanded={opts} aria-label="More" title="Haze, beam paths"
               onClick={() => setOpts((o) => !o)} data-testid="sim-more">⋯</button>
             {opts && (
               <>
@@ -301,14 +309,18 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
           );
         })()}
                   </div>
+                  <label className="flex cursor-pointer items-center gap-2" title="The view never goes through a wall or the ceiling (it never goes under the floor either way).">
+                    <input type="checkbox" checked={inside} onChange={(e) => setInside(e.target.checked)} data-testid="keep-inside" /> Keep the view inside the room
+                  </label>
                   <label className="flex cursor-pointer items-center gap-2" title="An aid for aiming, not what the room looks like: draws every beam half-visible whatever the haze.">
                     <input type="checkbox" checked={showPaths} onChange={(e) => setShowPaths(e.target.checked)} /> Show every beam's path
                   </label>
-                  <a className="block text-teal-700 hover:underline" href="/lights/room" target="_blank" rel="noreferrer">Open the live view in a new window ↗</a>
                 </div>
               </>
             )}
           </div>
+          <a href="/lights/room" target="_blank" rel="noreferrer" title="Open the live view in a new window" aria-label="Open the live view in a new window"
+            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-stone-300 text-[15px] hover:bg-stone-50" data-testid="pop-out">⧉</a>
         </header>
       ) : (
       <header className={shot ? "hidden" : T.header}>
@@ -367,9 +379,17 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
           onPointerEnter={() => { hover.current = true; }}
           onPointerLeave={() => { hover.current = false; edRef.current?.clearHover(); setTip(null); }}
           onContextMenu={(e) => e.preventDefault()}
+          onPointerDownCapture={(e) => {
+            // before the camera's controls see it: a press on the selected thing or one of its handles is a drag of
+            // that thing (the camera holds still: onDragging), anything else is the camera's
+            const ed = edRef.current;
+            if (e.button !== 0 || !ed || !ed.active) return;
+            const [x, y] = ndc(e, e.currentTarget);
+            if (ed.grab(x, y)) { e.currentTarget.setPointerCapture(e.pointerId); setCursor("grabbing"); setTip(null); }
+          }}
           onPointerDown={(e) => {
             press.current = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
-            if (e.button === 0 && edRef.current?.onHandle) return;     // the gizmo's own press: not the camera's
+            if (edRef.current?.dragging) return;
             drag.current = true;
             setCursor(e.button === 0 && !(e.shiftKey || e.ctrlKey || e.metaKey) ? "grabbing" : "move");
             setTip(null);
@@ -377,12 +397,16 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
           }}
           onPointerMove={(e) => {
             const ed = edRef.current;
-            if (drag.current || !ed || !ed.active || ed.dragging) return;
-            const [x, y] = ndc(e, e.currentTarget);                      // over a thing: outline it, name it, a hand
-            const it = ed.onHandle ? null : ed.hover(x, y);
+            if (!ed || !ed.active) return;
+            const [x, y] = ndc(e, e.currentTarget);
+            if (ed.dragging) { ed.dragTo(x, y); return; }               // the thing being dragged follows
+            if (drag.current) return;
+            const it = ed.hover(x, y);                                   // over a thing: outline it, name it
             const r = e.currentTarget.getBoundingClientRect();
-            setTip(it && it.label ? { x: e.clientX - r.left, y: e.clientY - r.top, text: it.label } : null);
-            setCursor(ed.onHandle || it ? "pointer" : "grab");
+            const tipText = it && it.label ? it.label : null;
+            setTip((t) => (tipText ? { x: e.clientX - r.left, y: e.clientY - r.top, text: tipText } : t ? null : t));
+            const c = ed.cursorAt(x, y) ?? "default";
+            setCursor((was) => (was === c ? was : c));
           }}
           onDoubleClick={(e) => {
             const [x, y] = ndc(e, e.currentTarget), ed = edRef.current;
@@ -392,7 +416,8 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
           }}
           onPointerUp={(e) => {
             drag.current = false;
-            setCursor("grab");
+            setCursor("default");
+            if (edRef.current?.dragging) { edRef.current.release(); return; }
             const ed = edRef.current, p = press.current;
             press.current = null;
             if (!ed || !ed.active || !p) return;
@@ -403,10 +428,22 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
           }}>
           <canvas ref={canvasRef} className="absolute inset-0 block" style={{ cursor }} />
           {embedded && !shot && (
-            <div className="pointer-events-none absolute left-2.5 top-2 flex gap-1.5 text-[11px]" data-testid="sim-status">
+            <div className="absolute left-2.5 top-2 z-10" data-testid="sim-back">
+              {selected ? (
+                <button onClick={() => cb.current.onSelect?.(null)} title="Back to the whole room (Esc)" data-testid="back"
+                  className="rounded-lg bg-white/95 px-3 py-1.5 text-[13px] font-medium text-stone-800 shadow hover:bg-white">← Back to the room</button>
+              ) : (
+                <button onClick={() => simRef.current?.home()} title="The whole room (Home)"
+                  className="rounded-lg bg-white/90 px-3 py-1.5 text-[13px] text-stone-800 shadow hover:bg-white">⌂ Whole room</button>
+              )}
+            </div>
+          )}
+          {embedded && !shot && (
+            <div className="pointer-events-none absolute right-2.5 top-2 flex gap-1.5 text-[11px]" data-testid="sim-status">
               <span className="rounded bg-white/85 px-1.5 py-0.5 text-stone-700 shadow-sm">
                 {previewing ? (dmxLive ? "Preview · nothing is sent to the lights" : "Starting the preview…")
                   : !dmxLive ? "Live · no picture from the virtual node" : artLive ? "Live · what the room is doing now" : "Live · the room has gone quiet"}
+                {fps ? ` · ${fps} fps` : ""}
               </span>
               {(roomErr || model?.problems.length) ? <span className="rounded bg-rose-50/90 px-1.5 py-0.5 text-rose-700 shadow-sm">{roomErr ?? `${model?.problems.length} problems in the room set-up`}</span> : null}
             </div>
@@ -417,7 +454,7 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
           )}
           <div className={shot ? "hidden" : "pointer-events-none absolute bottom-1.5 left-2.5 right-2.5 text-xs text-[#aab0c0]"}>
             {embedded
-              ? "Drag: orbit · right-drag or Shift-drag: pan · wheel: zoom to the cursor · double-click: focus there (on empty space: back to the start) · F: frame the selection · Home: start view"
+              ? "Drag the room: orbit · right-drag: pan · wheel: zoom to the cursor · click a light or bar: edit it, then drag it, its ring, its arrow or its beam's spot · double-click: focus there"
               : `drag: orbit · right-drag: pan · wheel: zoom · double-click: focus there · the lights read the Art-Net wire, at their makers' brightness; the picture adapts as an eye does · ${perf}`}
           </div>
         </div>

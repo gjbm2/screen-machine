@@ -135,6 +135,9 @@ function dotSprite(): THREE.Texture {
   return _dot;
 }
 
+/** The moving heads' shadow maps (their gobos) are redrawn every this many frames. */
+const SHADOW_EVERY = 3;
+
 function hitRoom(o: THREE.Vector3, d: THREE.Vector3, size: Vec3): THREE.Vector3 {
   let t = Infinity;
   const lo = [0, 0, 0], hi = size;
@@ -227,6 +230,9 @@ export class RoomSim {
     this.renderer.setClearColor(0x000000, 0);         // outside the room: nothing (alpha 0: not part of the view's brightness)
     this.renderer.shadowMap.enabled = true;          // a spot's gobo is projected through its shadow camera
     this.renderer.shadowMap.type = THREE.BasicShadowMap;
+    // Each moving head's shadow map is a whole extra drawing of the room; three.js redraws every one every frame, lit
+    // or not. They are redrawn every SHADOW_EVERY frames instead (a gobo's pattern lags a head by a frame or two).
+    this.renderer.shadowMap.autoUpdate = false;
     this.post = new HazePost(this.renderer);
     this.root.matrixAutoUpdate = false;              // (x, y, z) room -> (x, z, -y) three
     this.root.matrix.set(1, 0, 0, 0, 0, 0, 1, 0, 0, -1, 0, 0, 0, 0, 0, 1);
@@ -242,7 +248,7 @@ export class RoomSim {
     const oc = new OrbitControls(this.camera, o.canvas);
     oc.enableDamping = true;
     oc.dampingFactor = 0.12;
-    oc.zoomToCursor = true;                          // the wheel zooms towards what is under the cursor
+    oc.enableZoom = false;                           // the wheel is ours (wheelAt): towards what is under the cursor
     oc.screenSpacePanning = true;
     oc.minDistance = 0.15;
     oc.maxDistance = 30;
@@ -250,8 +256,14 @@ export class RoomSim {
     oc.rotateSpeed = 0.7;
     oc.mouseButtons = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.PAN, RIGHT: THREE.MOUSE.PAN };
     oc.touches = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_PAN };
-    oc.addEventListener("start", () => { this.anim = null; });   // a hand on the controls stops a glide
+    oc.addEventListener("start", () => { this.anim = null; this.push.set(0, 0, 0); });   // a hand on the controls stops a glide
     this.controls = oc;
+    o.canvas.addEventListener("wheel", (e) => {      // not passive: the page mustn't scroll under the view
+      e.preventDefault();
+      const r = o.canvas.getBoundingClientRect();
+      const d = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
+      this.wheelAt(d, ((e.clientX - r.left) / r.width) * 2 - 1, -(((e.clientY - r.top) / r.height) * 2 - 1));
+    }, { passive: false });
   }
 
   /** The room in three.js world coordinates. */
@@ -354,7 +366,9 @@ export class RoomSim {
     const up = new THREE.Vector3(0, 0, 1);
     // body, tripod
     const body = new THREE.Mesh(new THREE.BoxGeometry(len, 0.17, 0.15), darker);
-    body.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(axis, front, up));
+    // a proper rotation: axis x front is down here, so the box's third axis is that (a mirrored basis, with up, turned
+    // the body askew whenever the bar wasn't square to the room)
+    body.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(axis, front, new THREE.Vector3().crossVectors(axis, front)));
     body.position.copy(mid);
     this.built.add(body);
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.025, barZ - 0.08, 12), dark);
@@ -821,7 +835,10 @@ export class RoomSim {
     const dt = Math.min(0.1, (now - this.last) / 1000);
     this.last = now;
     this.animStep(dt);
+    this.pushStep();
     this.controls.update();
+    this.keepCamera();
+    if (++this.frameNo % SHADOW_EVERY === 0) this.renderer.shadowMap.needsUpdate = true;
     const m = this.model;
     if (!m) return;
     // "Show beam paths" (an aid): every beam is drawn as in a medium haze that takes nothing out of the light
@@ -939,6 +956,7 @@ export class RoomSim {
   // cursor; one finger orbits and two pan and pinch on a touch screen; the motion is damped. Double-click focuses on
   // the place clicked (the background: back to the start), F frames the selection: those glide (animStep).
   readonly controls: OrbitControls;
+  private frameNo = 0;
   private anim: { t: number; dur: number; t0: THREE.Vector3; t1: THREE.Vector3; p0: THREE.Vector3; p1: THREE.Vector3 } | null = null;
 
   /** Put the camera on a sphere round ``target`` (three's frame): ``th`` round the vertical, ``ph`` down from it. */
@@ -1009,6 +1027,53 @@ export class RoomSim {
     const r = Math.min(this.camera.position.distanceTo(p), 3.0);   // no closer than it was, at most 3 m off
     this.glide(p, p.clone().addScaledVector(dir, r));
   }
+  /** The wheel (or a pinch): the camera moves along the line through the cursor towards (or away from) what is under
+   *  it, a share of the way there each notch, so it slows as it arrives and never goes through; the pivot moves with
+   *  it. Nothing under the cursor: by the distance to the pivot. Spread over a few frames (smooth). */
+  wheelAt(delta: number, nx: number, ny: number) {
+    this.anim = null;
+    const ray = new THREE.Raycaster();
+    ray.setFromCamera(new THREE.Vector2(nx, ny), this.camera);
+    const hit = ray.intersectObjects(this.built.children, true).find((h) => (h.object as THREE.Mesh).isMesh && h.object.visible);
+    const far = hit ? hit.distance : this.camera.position.distanceTo(this.controls.target);
+    const notch = Math.max(-3, Math.min(3, -delta / 100));               // + in, - out (a mouse notch is about 100)
+    let step = far * 0.22 * notch;
+    if (step > 0) step = Math.min(step, Math.max(0, far - 0.15));      // stop 15 cm short of the surface
+    else step = Math.max(step, -6);
+    this.push.addScaledVector(ray.ray.direction, step);
+  }
+  private push = new THREE.Vector3();
+  private pushStep() {
+    if (this.push.lengthSq() < 1e-8) return;
+    const v = this.push.clone().multiplyScalar(0.3);
+    this.push.sub(v);
+    this.camera.position.add(v);
+    this.controls.target.add(v);
+  }
+
+  /** Keep the camera out of the floor always (owner, 27 Nov: "not sure it should be possible for me to move my pov
+   *  through the floor"), and inside the room's walls and ceiling when ``keepInside`` (a switch on the page). */
+  keepInside = false;
+  private keepCamera() {
+    const m = this.model;
+    if (!m) return;
+    const [X, Y, H] = m.size, e = 0.12;                    // three's frame: x east, y up, z = -north
+    const p = this.camera.position, t = this.controls.target;
+    let moved = false;
+    const clamp = (v: THREE.Vector3, lo: [number, number, number], hi: [number, number, number]) => {
+      const was = v.clone();
+      v.set(Math.max(lo[0], Math.min(hi[0], v.x)), Math.max(lo[1], Math.min(hi[1], v.y)), Math.max(lo[2], Math.min(hi[2], v.z)));
+      if (!was.equals(v)) moved = true;
+    };
+    if (this.keepInside) {
+      clamp(p, [e, e, -Y + e], [X - e, H - e, -e]);
+      clamp(t, [0, 0, -Y], [X, H, 0]);
+    } else {
+      clamp(p, [-Infinity, e, -Infinity], [Infinity, Infinity, Infinity]);
+    }
+    if (moved) this.camera.lookAt(t);
+  }
+
   /** Where the camera is (to come back to after editing). */
   pose(): { target: THREE.Vector3; pos: THREE.Vector3 } {
     return { target: this.controls.target.clone(), pos: this.camera.position.clone() };

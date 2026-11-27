@@ -10,6 +10,9 @@ model, config/live/light_*.yaml), run on its own steady 120 bpm clock, one per v
   scene:<name>     a light scene from the catalogue on every light group that can play it, in the plain light
                    (``colour`` with it: in that colour); the other groups glow low
 
+and the music it plays to: ``energy`` (0..1: how hard it drives, which is how far and fast the heads move, how dense
+the accents are, how bright the look is) and ``bpm`` (its tempo; the beat is steady).
+
 Its frames are packed as the Art-Net output packs them and offered in the virtual GigBAR node's own shapes, so the
 3D room (src/pages/Room3D) reads a preview exactly as it reads the room:
 
@@ -38,6 +41,7 @@ log = logging.getLogger(__name__)
 FPS = 25.0
 MAX_LIVE = 3
 BPM = 120.0
+ENERGY = 0.6
 PLAIN = {"laser": (0.0, 1.0, 0.0), "derby": (1.0, 1.0, 1.0), "flash": (1.0, 1.0, 1.0), "other": (1.0, 0.92, 0.82)}
 STEADY = {"label": "steady", "needs": [], "layers": [], "hits": None, "caps": None, "tags": {}, "appliances": None}
 LOW = {**STEADY, "layers": [{"id": "low", "fx": "dim", "phase": "time", "period_s": 1, "depth": 0.85, "needs": "none"}]}
@@ -48,8 +52,8 @@ _live = 0
 class _Clock:
     """A steady beat from when the preview started: the look engine's clock (snapshot and next_beat)."""
 
-    def __init__(self, t0: float) -> None:
-        self.body = {"bpm": BPM, "anchor_ms": t0 * 1000.0, "beat_at_anchor": 0, "beats_per_bar": 4,
+    def __init__(self, t0: float, bpm: float = BPM) -> None:
+        self.body = {"bpm": bpm, "anchor_ms": t0 * 1000.0, "beat_at_anchor": 0, "beats_per_bar": 4,
                      "bar_anchor_beat": 0, "phrase_bars": 8, "conf": 0.9, "bar_conf": 0.9, "phrase_conf": 0.9,
                      "state": "locked", "gate": "beat", "epoch": 1, "stability": 0.5, "source": "preview",
                      "t_ms": t0 * 1000.0}
@@ -62,11 +66,11 @@ class _Clock:
         return None if r is None else r[1]
 
 
-def _features(t_s: float) -> dict:
+def _features(t_s: float, energy: float = ENERGY) -> dict:
     return {"t_ms": t_s * 1000.0, "stream": "preview",
             "bands": {n: {"level": 0.3, "hits": 0, "presence": 0.3} for n in contract.BAND_NAMES},
             "onset": 0.0, "lufs_m": -18.0, "lufs_s": -18.0, "peak_dbfs": -6.0, "rms_dbfs": -18.0,
-            "brightness": 0.5, "noisiness": 0.1, "gate": 1.0, "energy": 0.6, "punch": 0.5, "drive": 0.5,
+            "brightness": 0.5, "noisiness": 0.1, "gate": 1.0, "energy": energy, "punch": energy, "drive": energy,
             "spectrum32": [0.0] * 32}
 
 
@@ -83,7 +87,9 @@ def _hex(s: Optional[str]) -> Optional[tuple[float, float, float]]:
 class Preview:
     """One viewer's preview: the engine, what it shows, and the 512 slots it would send."""
 
-    def __init__(self, what: str, colour: Optional[tuple[float, float, float]]) -> None:
+    def __init__(self, what: str, colour: Optional[tuple[float, float, float]], energy: float = ENERGY,
+                 bpm: float = BPM) -> None:
+        self.energy, self.bpm = max(0.0, min(1.0, energy)), max(40.0, min(220.0, bpm))
         from .looks import LookEngine
         from . import space as sp
         self.view = fixtures.load(contract.FIXTURES_FILE)
@@ -101,8 +107,8 @@ class Preview:
         self.t0 = self.now = time.monotonic()
         self.pal: dict = {}
         self.look: dict = {}
-        self.engine = LookEngine(palette_fn=lambda t: self.pal, look_fn=lambda: self.look, clock=_Clock(self.t0),
-                                 features_fn=lambda: _features(self.now), mono=lambda: self.now, light_scenes=self.cat,
+        self.engine = LookEngine(palette_fn=lambda t: self.pal, look_fn=lambda: self.look, clock=_Clock(self.t0, self.bpm),
+                                 features_fn=lambda: _features(self.now, self.energy), mono=lambda: self.now, light_scenes=self.cat,
                                  space_mod=sp if space is not None else False)
         self.engine.configure(show["looks"], self.view, lamps=show.get("lamps"), lights=show.get("lights"),
                               space=space)
@@ -169,11 +175,12 @@ class Preview:
                           "since_ms": at, "why": "a preview",
                           "flow": {"dir": "cw", "speed": 0.5, "spread": 0.5, "id": "preview", "at_ms": at,
                                    "screens": {}}}
+        e = self.energy
         self.look = {"t_ms": at, "seq": 1, "look_id": "preview", "vibe": "preview", "mode": None, "palette": {},
-                     "level": 1.0, "floor": 0.0, "house": False, "low": False, "key_cct": 4000.0, "chroma_max": 1.0,
+                     "level": 0.55 + 0.45 * e if scene is not None else 1.0, "floor": 0.0, "house": False, "low": False, "key_cct": 4000.0, "chroma_max": 1.0,
                      "lamp_chroma_max": 1.0, "saturation": 1.0, "contrast": 0.5,
-                     "motion": {"speed": 0.5, "amount": 0.6, "idle": 0.4},
-                     "accents": {"style": "beat", "density": 0.5, "subdivision": 1, "strobe": False,
+                     "motion": {"speed": e, "amount": 0.25 + 0.65 * e, "idle": 0.4},
+                     "accents": {"style": "beat", "density": e, "subdivision": 2 if e > 0.85 else 1, "strobe": False,
                                  "beat_lock": True},
                      "spread": 0.0, "change_rate": 0.5, "transition": {"style": "cut", "beats": None, "seconds": None},
                      "lamps": {}, "screens": {}, "light_programs": progs,
@@ -206,10 +213,16 @@ async def status(_request: web.Request, _brain: Any = None) -> web.Response:
 
 
 async def dmx(request: web.Request, _brain: Any = None) -> web.StreamResponse:
-    """GET /api/v1/rig/preview/dmx?what=plain|colour|scene:<name>&colour=#rrggbb: the preview's frames, as SSE."""
+    """GET /api/v1/rig/preview/dmx?what=plain|colour|scene:<name>&colour=#rrggbb&energy=0..1&bpm=n: the preview's
+    frames, as SSE."""
     global _live
     what = request.query.get("what") or "plain"
     colour = _hex(request.query.get("colour"))
+    try:
+        energy = float(request.query.get("energy", ENERGY))
+        bpm = float(request.query.get("bpm", BPM))
+    except ValueError:
+        raise ValueError("energy is 0..1 and bpm a tempo.") from None
     if what == "colour" and colour is None:
         raise ValueError("A colour preview needs colour=#rrggbb.")
     if what not in ("plain", "colour") and not what.startswith("scene:"):
@@ -221,7 +234,7 @@ async def dmx(request: web.Request, _brain: Any = None) -> web.StreamResponse:
     loop = asyncio.get_running_loop()
     _live += 1
     try:
-        pv = await loop.run_in_executor(None, Preview, what, colour)
+        pv = await loop.run_in_executor(None, Preview, what, colour, energy, bpm)
         resp = web.StreamResponse(headers={"Content-Type": "text/event-stream"})
         _cors(resp)
         await resp.prepare(request)
