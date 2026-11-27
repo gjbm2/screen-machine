@@ -114,7 +114,11 @@ export default function Room3DPage({ embedded = false, picked = null, regions, r
    *  edited while walking. */
   const chooseNav = (m: Nav) => {
     if (m === "walk" || m === "orbit") { last3d.current = m; try { localStorage.setItem("room3d.move", m); } catch { /* this visit */ } }
-    simRef.current?.setNav(m);
+    const sim = simRef.current;
+    sim?.setNav(m, false);
+    // a click on Walk or Orbit starts afresh, even when it is already on (owner, 27 Nov: "clicking walk, orbit afresh
+    // should reset each view to sensible starting point"): walking at the back of the room, orbiting the whole room
+    if (m === "walk") sim?.standAt("back"); else if (m === "orbit") sim?.view("side");
     try { localStorage.setItem("room3d.nav", m); } catch { /* this visit only */ }
   };
   const [inside, setInside] = useState(() => { try { return localStorage.getItem("room3d.inside") === "1"; } catch { return false; } });
