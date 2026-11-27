@@ -72,6 +72,7 @@ import {
   Trash2,
   WandSparkles,
   X,
+  Globe,
 } from "lucide-react";
 import { AppMenu } from "@/components/nav/AppMenu";
 import { PageHeader } from "@/components/nav/PageHeader";
@@ -179,6 +180,7 @@ export default function KaraokePage() {
   }, []);
   const findRef = useRef<HTMLInputElement>(null);
   const [artist, setArtist] = useState<string | null>(null);
+  const [findSeed, setFindSeed] = useState({ text: "", n: 0 });
   const [dragging, setDragging] = useState<string | null>(null);
   const draggingRef = useRef(false);
 
@@ -315,6 +317,10 @@ export default function KaraokePage() {
         setArtist(a);
       }}
       onClose={() => setLibOpen(false)}
+      onWeb={(text) => {
+        setLibOpen(false);
+        setFindSeed((x) => ({ text, n: x.n + 1 }));
+      }}
     />
   );
   const findCard = st && (
@@ -327,6 +333,7 @@ export default function KaraokePage() {
       libOpen={libOpen}
       onLibrary={() => setLibOpen(!libOpen)}
       onAdded={backToQueue}
+      seed={findSeed}
     />
   );
 
@@ -817,6 +824,7 @@ function LibraryCard({
   addToQueue,
   onArtist,
   onClose,
+  onWeb,
 }: {
   songs: KaraokeSong[];
   queuedCount: Map<string, number>;
@@ -825,6 +833,8 @@ function LibraryCard({
   addToQueue: (s: KaraokeSong, at: QueueAt) => void;
   onArtist: (a: string) => void;
   onClose: () => void;
+  /** Search the web for this text instead (the main search, the tray closed). */
+  onWeb: (text: string) => void;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [tag, setTag] = useState<string | null>(null);
@@ -899,6 +909,17 @@ function LibraryCard({
               ))}
             </select>
           </div>
+          {find.trim() && (
+            <button
+              type="button"
+              onClick={() => onWeb(find.trim())}
+              data-testid="lib-web"
+              className="flex w-full items-center gap-2 rounded-xl bg-primary/10 px-3 py-2 text-left text-sm font-medium text-primary hover:bg-primary/15"
+            >
+              <Globe className="h-4 w-4 shrink-0" />
+              <span className="truncate">Search the web for “{find.trim()}”</span>
+            </button>
+          )}
         <div className="no-scrollbar -mx-1 flex items-center gap-1.5 overflow-x-auto px-1">
           {FILTERS.map(([f, label]) => {
             const n = songs.filter((s) => inFilter(s, f)).length;
@@ -938,7 +959,7 @@ function LibraryCard({
         {songs.length === 0 && (
           <p className="py-4 text-center text-sm text-muted-foreground">Songs you add appear here.</p>
         )}
-        {songs.length > 0 && shown.length === 0 && (
+        {songs.length > 0 && shown.length === 0 && !find.trim() && (
           <p className="py-4 text-center text-sm text-muted-foreground">None here.</p>
         )}
         <ul className="divide-y divide-stone-200/70">
@@ -1170,6 +1191,7 @@ function Find({
   libOpen,
   onLibrary,
   onAdded,
+  seed,
 }: {
   songs: KaraokeSong[];
   queuedCount: Map<string, number>;
@@ -1179,8 +1201,15 @@ function Find({
   libOpen: boolean;
   onLibrary: () => void;
   onAdded: () => void;
+  seed: { text: string; n: number };
 }) {
   const [q, setQ] = useState("");
+  // The library tray's "Search the web" hands its text over here.
+  useEffect(() => {
+    if (!seed.n) return;
+    setQ(seed.text);
+    requestAnimationFrame(() => inputRef.current?.focus());
+  }, [seed, inputRef]);
   const [hits, setHits] = useState<{ q: string; rows: SearchHit[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
