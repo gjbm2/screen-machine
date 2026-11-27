@@ -111,6 +111,8 @@ class Store:
         for song in self.s["songs"].values():          # work cut off by a restart starts again from the top
             if song.get("status") in WORKING:
                 song["status"], song["detail"] = "queued", "restarted"
+            if (song.get("refine") or {}).get("state") == "working":    # the careful pass too: it waits its turn
+                song["refine"] = {**song["refine"], "state": "waiting", "detail": "restarted"}
 
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -199,6 +201,15 @@ class Store:
             return dict(waiting[0])
 
     # ---- the queue
+    def next_refine(self) -> dict | None:
+        """The oldest ready song referred for the careful pass over its lyrics (refine.state "waiting")."""
+        with self.lock:
+            waiting = [s for s in self.s["songs"].values()
+                       if s.get("status") == "ready" and (s.get("refine") or {}).get("state") == "waiting"]
+            if not waiting:
+                return None
+            return dict(min(waiting, key=lambda s: (s.get("refine") or {}).get("asked_at") or 0))
+
     def queue_add(self, sid: str, index: int | None = None, next: bool = False) -> dict:
         """A new entry for song ``sid`` at ``index`` (default: the end); ``next``: up next, right after the entry the
         player is on (playing, paused or stopped there: Play carries on after it), else at the top."""
@@ -517,7 +528,8 @@ def song_tags(s: dict) -> list[str]:
 def public_song(s: dict) -> dict:
     lyr = s.get("lyrics") or {}
     return {k: s.get(k) for k in ("id", "status", "detail", "error", "title", "artist", "duration", "audio_s", "video_id",
-                                  "source_url", "offset_ms", "user_offset_ms", "created_at", "ready_at") + FACTS} | {
+                                  "source_url", "offset_ms", "user_offset_ms", "created_at", "ready_at", "refine") + FACTS} | {
+        "lyrics_rev": s.get("lyrics_rev") or 0,
         "lyrics": {"kind": lyr.get("kind"), "lines": len(lyr.get("lines") or [])} if lyr else None,
         "request_kind": (s.get("request") or {}).get("kind"), "tags": song_tags(s), "writers": s.get("writers"),
         "lead_in_s": song_lead_in(s)}

@@ -35,6 +35,7 @@ from .store import Store, song_dir, song_key
 SEPARATE = smconfig.REPO_ROOT / "tools" / "karaoke" / "separate.py"
 ALIGN = smconfig.REPO_ROOT / "tools" / "karaoke" / "align.py"
 TRANSCRIBE = smconfig.REPO_ROOT / "tools" / "karaoke" / "transcribe.py"
+REFINE = smconfig.REPO_ROOT / "tools" / "karaoke" / "refine.py"
 MIN_HEARD_WORDS = 12      # fewer heard than this: nothing to time lyrics by (an instrumental, or a failed hearing)
 MIN_HEARD_PER_MIN = 20    # and at least this many a minute of song: a real vocal, not a few stray words
 # Whisper's stock lines on silence or music without words ("Thank you." every 30 s: 26 Nov, The Sound of Silence's
@@ -227,7 +228,7 @@ class Worker:
         if d.is_dir():
             shutil.rmtree(d, ignore_errors=True)
         self.store.update_song(sid, status="queued", detail="", error=None, source_url=None, video_id=None,
-                               lyrics=None, audio_s=None, offset_ms=0, ready_at=None)
+                               lyrics=None, audio_s=None, offset_ms=0, ready_at=None, refine=None)
 
     def start(self) -> None:
         if self.thread and self.thread.is_alive():
@@ -244,12 +245,17 @@ class Worker:
         while True:
             with self.store.lock:
                 job = self.store.next_job()
-                if job is None:
+                careful = None if job is not None else self.store.next_refine()
+                if job is None and careful is None:
                     self.store.changed.wait(timeout=30)
                     continue
+            job = job or careful
             self.current = job["id"]
             try:
-                self.process(job)
+                if careful is not None:
+                    self.refine(job)
+                else:
+                    self.process(job)
                 if job["id"] in self._restart:
                     raise Restarted()
             except Restarted:
@@ -257,6 +263,10 @@ class Worker:
             except Exception as e:  # noqa: BLE001
                 if job["id"] in self._restart:          # its step was ended by a restart: not a failure, it goes again
                     info(f"karaoke: {job['id']} restarted")
+                elif careful is not None:               # the careful pass failed: the song is as it was, still ready
+                    self.store.update_song(job["id"], refine={**(job.get("refine") or {}), "state": "failed",
+                                                              "detail": "", "error": f"The careful pass failed: {e}"})
+                    error(f"karaoke: {job['id']} careful pass failed: {e}\n{traceback.format_exc()}")
                 elif isinstance(e, SourceError):
                     self.store.update_song(job["id"], status="failed", error=str(e), detail="")
                     info(f"karaoke: {job['id']} failed: {e}")
@@ -379,6 +389,113 @@ class Worker:
         self.store.update_song(sid, status="ready", detail="", lyrics={"kind": lyrics_doc["kind"],
                                "lines": lyrics_doc["lines"]}, ready_at=time.time())
         info(f"karaoke: {sid} ready ({lyrics_doc['kind']} lyrics, {lyrics_doc.get('source', 'as looked up')})")
+
+    # ------------------------------------------------------------ the careful pass (docs/KARAOKE.md)
+    def refine(self, song: dict) -> None:
+        """A ready song referred because its lyrics were off: tools/karaoke/refine.py takes every voice out (the
+        choir and backing vocals too), hears it, and times the whole lyrics against it at once; the result replaces
+        the lyrics if its lines start where their words were heard (lyrics.agreement), and the first pass's are kept
+        beside it (lyrics.first.json: Undo). Gives way to a song waiting to be prepared: it ends and waits again."""
+        sid, d = song["id"], song_dir(song["id"])
+        r = dict(song.get("refine") or {})
+        mark = lambda **kw: self.store.update_song(sid, refine={**r, **kw})       # noqa: E731
+        try:
+            doc = json.loads((d / "lyrics.json").read_text())
+        except (OSError, ValueError):
+            doc = {"kind": "none", "lines": []}
+        texts = [str(ln.get("text") or "") for ln in doc.get("lines") or [] if str(ln.get("text") or "").strip()]
+        if not texts or not (d / "vocals.m4a").is_file():
+            mark(state="failed", detail="", error="There are no lyrics to time." if not texts else "The song's files are gone.")
+            return
+        mark(state="working", detail="taking every voice out, then timing each word", started_at=time.time(), error=None)
+        info(f"karaoke: {sid} careful pass over its lyrics ({len(texts)} lines)")
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            json.dump([{"text": t} for t in texts], f)
+            lines_file = f.name
+        try:
+            res = self._run_yielding(sid, [str(REFINE), "--dir", str(d), "--lines", lines_file], 2400)
+        finally:
+            Path(lines_file).unlink(missing_ok=True)
+        if res is None:                                   # a song came to be prepared: it goes first, this waits
+            mark(state="waiting", detail="after the songs being prepared")
+            info(f"karaoke: {sid} careful pass gave way to a song being prepared")
+            return
+        dur = audio_seconds(d / "instrumental.m4a")
+        tmp = d / "sung_voices.tmp.json"
+        tmp.write_text(json.dumps(res.get("heard") or []))
+        tmp.replace(d / "sung_voices.json")
+        try:
+            lead = json.loads((d / "sung.json").read_text())
+        except (OSError, ValueError):
+            lead = []
+        heard = lyr.merge_heard(real_heard(lead if isinstance(lead, list) else [], dur),
+                                real_heard(res.get("heard") or [], dur))
+        new = lyr.careful_lines(texts, res.get("lines") or [], dur)
+        ag = lyr.agreement(new, texts, heard)
+        info(f"karaoke: {sid} careful pass: {len(new)}/{len(texts)} lines, agreement {ag}, {res.get('seconds')} s")
+        if len(new) < 0.8 * len(texts) or (ag["heard"] >= 5 and (ag["share"] or 0) < lyr.CAREFUL_MIN_AGREE):
+            mark(state="no_better", detail="", agreement=ag, done_at=time.time(),
+                 error="The careful pass didn't fit the singing better: the lyrics are as they were.")
+            return
+        first = d / "lyrics.first.json"
+        if not first.is_file():
+            shutil.copy(d / "lyrics.json", first)
+        out = {"kind": "synced", "source": "careful", "lrclib_id": doc.get("lrclib_id"), "fit": doc.get("fit"),
+               "careful": ag, "first_source": doc.get("first_source") or doc.get("source"), "lines": new}
+        tmp = d / "lyrics.tmp.json"
+        tmp.write_text(json.dumps(out))
+        tmp.replace(d / "lyrics.json")
+        with self.store.lock:
+            rev = int((self.store.s["songs"].get(sid) or {}).get("lyrics_rev") or 0) + 1
+        self.store.update_song(sid, lyrics={"kind": "synced", "lines": new}, lyrics_rev=rev, offset_ms=0,
+                               user_offset_ms=0, refine={**r, "state": "done", "detail": "", "error": None,
+                                                         "agreement": ag, "done_at": time.time(),
+                                                         "seconds": res.get("seconds")})
+
+    def undo_refine(self, sid: str) -> bool:
+        """The first pass's lyrics back (lyrics.first.json). False when there is nothing to undo."""
+        d = song_dir(sid)
+        first = d / "lyrics.first.json"
+        if not first.is_file() or self.current == sid:
+            return False
+        doc = json.loads(first.read_text())
+        tmp = d / "lyrics.tmp.json"
+        tmp.write_text(json.dumps(doc))
+        tmp.replace(d / "lyrics.json")
+        first.unlink()
+        with self.store.lock:
+            song = self.store.s["songs"].get(sid) or {}
+            rev = int(song.get("lyrics_rev") or 0) + 1
+            r = dict(song.get("refine") or {})
+        self.store.update_song(sid, lyrics={"kind": doc.get("kind"), "lines": doc.get("lines") or []}, lyrics_rev=rev,
+                               user_offset_ms=0, refine={**r, "state": "undone", "detail": "", "error": None})
+        return True
+
+    def _run_yielding(self, sid: str, args: list[str], timeout: float) -> dict | None:
+        """A karaoke tool in the karaoke venv, its last stdout line as JSON; None if it was ended because a song came
+        to be prepared (that goes first). A restart of the song ends it too (Restarted)."""
+        py = smconfig.deployment().host_path("karaoke_python")
+        p = subprocess.Popen([str(py), *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        out: dict[str, str] = {}
+        reader = threading.Thread(target=lambda: out.update(zip(("o", "e"), p.communicate())), daemon=True)
+        reader.start()
+        t_end = time.time() + timeout
+        while reader.is_alive():
+            reader.join(1.0)
+            if sid in self._restart:
+                p.terminate()
+                reader.join(10)
+                raise Restarted()
+            if self.store.next_job() is not None or time.time() > t_end:
+                p.terminate()
+                reader.join(10)
+                if time.time() > t_end:
+                    raise RuntimeError("the careful pass took too long")
+                return None
+        last = (out.get("o") or "").strip().splitlines()[-1:] or [""]
+        if p.returncode != 0 or not last[0].startswith("{"):
+            raise RuntimeError(((out.get("e") or "").strip().splitlines() or ["no output"])[-1][:300])
+        return json.loads(last[0])
 
     def resolve(self, req: dict) -> dict:
         kind = req.get("kind")

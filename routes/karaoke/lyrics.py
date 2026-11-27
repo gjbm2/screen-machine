@@ -150,9 +150,49 @@ def _lcs_pairs(a: list[str], b: list[str]) -> list[tuple[int, int]]:
     return pairs[::-1]
 
 
-def fit_to_sung(texts: list[str], sung: list[dict], duration: float | None = None) -> tuple[list[dict], dict]:
-    """``texts``: a candidate's lines (in order); ``sung``: [{w, t0, t1}] heard. Returns the display lines
-    [{start, end, text}] timed to the singing, and {matched, coverage, precision} (coverage: of the sung words)."""
+STRAY_ANCHOR_S = 4.0        # a heard line start this far from its neighbours' shift against the upload: a stray match
+STRAY_WINDOW = 5            # the neighbours: this many heard lines each side
+
+
+def drop_stray_anchors(starts: list[float | None], times: list[float | None]) -> None:
+    """A synced upload's lines keep their spacing in any copy of the record; only the shift between them drifts. A
+    heard start whose shift (heard - upload) is far from its neighbours' is a word matched in the wrong place (27
+    Nov, Hey Jude: one "Jude" pulled a coda line a minute early): it is forgotten, and placed like the unheard."""
+    idx = [i for i, s in enumerate(starts) if s is not None and times[i] is not None]
+    shift = {i: starts[i] - times[i] for i in idx}
+    for n, i in enumerate(idx):
+        near = [shift[k] for k in idx[max(0, n - STRAY_WINDOW): n + STRAY_WINDOW + 1] if k != i]
+        if len(near) >= 3 and abs(shift[i] - float(np.median(near))) > STRAY_ANCHOR_S:
+            starts[i] = None
+
+
+def place_by_upload(starts: list[float | None], times: list[float | None], duration: float | None) -> None:
+    """Lines nobody was heard singing, where the upload has a time for them: the upload's time, moved by the shift
+    of the heard lines either side (a straight line between the two), so a long stretch the vocal stem doesn't carry
+    (a choir in the backing track) keeps the upload's own rhythm instead of an even spread."""
+    known = [i for i, s in enumerate(starts) if s is not None and times[i] is not None]
+    if not known:
+        return
+    for i in range(len(starts)):
+        if starts[i] is not None or times[i] is None:
+            continue
+        lo = max((k for k in known if k < i), default=None)
+        hi = min((k for k in known if k > i), default=None)
+        if lo is not None and hi is not None and times[hi] > times[lo]:
+            f = (times[i] - times[lo]) / (times[hi] - times[lo])
+            t = starts[lo] + f * (starts[hi] - starts[lo])
+            t = min(max(t, starts[lo]), starts[hi])
+        else:                                    # past the last heard line (or before the first): the shift of the
+            side = [k for k in known if k < i][-STRAY_WINDOW:] if lo is not None else \
+                [k for k in known if k > i][:STRAY_WINDOW]           # nearest few, not one word's
+            t = times[i] + float(np.median([starts[k] - times[k] for k in side]))
+        if duration:
+            t = min(t, duration - 0.5)
+        starts[i] = max(0.0, t)
+
+
+def _heard_starts(texts: list[str], sung: list[dict]) -> tuple[list[float | None], dict[int, float], dict]:
+    """Where each line was heard to start (None: not heard), when its last heard word ends, and the match stats."""
     cand: list[str] = []
     owner: list[int] = []
     for li, t in enumerate(texts):
@@ -184,7 +224,21 @@ def fit_to_sung(texts: list[str], sung: list[dict], duration: float | None = Non
     starts: list[float | None] = [None] * len(texts)
     for li, (t0, k) in first.items():
         starts[li] = max(0.0, t0 - k * WORD_S)
-    # Lines nobody was heard singing: between their neighbours, evenly.
+    return starts, last, stats
+
+
+def fit_to_sung(texts: list[str], sung: list[dict], duration: float | None = None,
+                times: list[float | None] | None = None) -> tuple[list[dict], dict]:
+    """``texts``: a candidate's lines (in order); ``sung``: [{w, t0, t1}] heard; ``times``: the candidate's own line
+    times (a synced upload's), if it has them. Returns the display lines [{start, end, text}] timed to the singing,
+    and {matched, coverage, precision} (coverage: of the sung words)."""
+    starts, last, stats = _heard_starts(texts, sung)
+    if times is not None and len(times) == len(texts):
+        drop_stray_anchors(starts, times)
+        for li in [li for li in last if starts[li] is None]:   # a stray match's end goes with it
+            del last[li]
+        place_by_upload(starts, times, duration)
+    # Lines nobody was heard singing (and no upload time to go by): between their neighbours, evenly.
     known = [i for i, s in enumerate(starts) if s is not None]
     for i in range(len(texts)):
         if starts[i] is not None or not known:
@@ -240,6 +294,13 @@ def candidate_texts(c: dict) -> list[str]:
     return [ln.strip() for ln in (c.get("text") or "").splitlines() if ln.strip() and not re.fullmatch(r"\[.*\]", ln.strip())]
 
 
+def candidate_times(c: dict) -> list[float | None] | None:
+    """A synced candidate's own time for each line candidate_texts gives (None for a plain one)."""
+    if c.get("kind") != "synced":
+        return None
+    return [e["t"] for e in parse_lrc(c.get("lrc") or "") if e["text"]]
+
+
 def best_fit(cands: list[dict], sung: list[dict], duration: float | None = None) -> tuple[dict | None, list[dict], dict]:
     """The candidate whose words match the most of what is sung, its lines timed to the singing, and its stats;
     (None, [], best stats) when none reaches FIT_MIN_COVERAGE."""
@@ -248,9 +309,69 @@ def best_fit(cands: list[dict], sung: list[dict], duration: float | None = None)
         texts = candidate_texts(c)
         if not texts:
             continue
-        lines, st = fit_to_sung(texts, sung, duration)
+        lines, st = fit_to_sung(texts, sung, duration, candidate_times(c))
         if st["matched"] > best[2]["matched"]:
             best = (c, lines, st)
     if best[2].get("coverage", 0) < FIT_MIN_COVERAGE:
         return None, [], best[2]
     return best
+
+
+# ---------------------------------------------------------------- the careful pass (tools/karaoke/refine.py)
+CAREFUL_AGREE_S = 2.0        # a line the careful pass places this close to where it was heard agrees
+CAREFUL_MIN_AGREE = 0.6      # the share of heard lines that must agree, or the careful pass is not used
+# Words any line can have: a line made of these ("Na, na, na, na-na-na-naa", "yeah, yeah") is matched to whichever
+# repeat comes first, so where it was "heard" says nothing (27 Nov, Hey Jude's coda).
+FILLER = {"na", "naa", "nah", "la", "da", "doo", "ba", "sha", "yeah", "yea", "oh", "ooh", "oo", "ah", "aah", "hey",
+          "woah", "whoa", "wo", "mm", "mmm", "hmm", "uh", "huh", "ha", "eh", "baby", "yeh", "ay", "ayy"}
+
+
+def telling(text: str) -> bool:
+    """A line with at least three words that aren't FILLER: where it is heard is evidence."""
+    return sum(1 for w in words_of(text.replace("-", " ")) if w not in FILLER) >= 3
+
+
+def merge_heard(lead: list[dict], voices: list[dict]) -> list[dict]:
+    """What was heard on the lead stem, and what was heard on the every-voice stem where the lead heard nothing."""
+    taken = sorted((w["t0"], w["t1"]) for w in lead)
+    out = list(lead)
+    for w in voices:
+        if not any(a < w["t1"] and w["t0"] < b for a, b in taken):
+            out.append(w)
+    return sorted(out, key=lambda w: w["t0"])
+
+
+def careful_lines(texts: list[str], rows: list, duration: float | None = None) -> list[dict]:
+    """The display lines from the careful pass's whole-song alignment: each line starts at its first word, ends at
+    its last (or the next line), with every word's {t0, t1} (None for a token without letters)."""
+    lines: list[dict] = []
+    for text, row in zip(texts, rows):
+        got = [w for w in (row or []) if w]
+        if not got:
+            continue
+        words = [{"t0": w["t0"], "t1": w["t1"]} if w else None for w in row]
+        lines.append({"start": round(got[0]["t0"], 3), "end": round(got[-1]["t1"] + 0.5, 3), "text": text,
+                      "words": words})
+    for a, b in zip(lines, lines[1:]):
+        a["end"] = round(max(a["start"] + 0.3, min(a["end"], b["start"])), 3)
+    if lines and duration:
+        lines[-1]["end"] = round(min(lines[-1]["end"], duration), 3)
+    return lines
+
+
+def agreement(lines: list[dict], texts: list[str], heard: list[dict], times: list[float | None] | None = None) -> dict:
+    """How well ``lines`` (one per text, in order) start where their words were heard: {heard, agree, share,
+    median_s}. Only telling lines count, and not heard starts that are stray matches (drop_stray_anchors)."""
+    starts, _, _ = _heard_starts(texts, heard)
+    if times is not None and len(times) == len(texts):
+        drop_stray_anchors(starts, times)
+    by_text: dict[int, float] = {}
+    j = 0
+    for i, t in enumerate(texts):                   # the careful lines skip textless ones: pair them back by text
+        if j < len(lines) and lines[j]["text"] == t:
+            by_text[i] = lines[j]["start"]
+            j += 1
+    d = [abs(by_text[i] - s) for i, s in enumerate(starts) if s is not None and i in by_text and telling(texts[i])]
+    ok = sum(1 for x in d if x <= CAREFUL_AGREE_S)
+    return {"heard": len(d), "agree": ok, "share": round(ok / len(d), 3) if d else None,
+            "median_s": round(float(np.median(d)), 2) if d else None}

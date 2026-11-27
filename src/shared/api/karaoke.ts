@@ -5,6 +5,16 @@ import { sendRelative } from '@/shared/http/client';
 
 export type SongStatus = 'queued' | 'fetching' | 'lyrics' | 'separating' | 'ready' | 'failed';
 
+export interface KaraokeRefine {
+  state: 'waiting' | 'working' | 'done' | 'no_better' | 'failed' | 'undone' | 'cancelled';
+  detail?: string;
+  error?: string | null;
+  asked_at?: number;
+  done_at?: number;
+  /** Of the lines whose words were heard: how many the careful timing starts within 2 s of. */
+  agreement?: { heard: number; agree: number; share: number | null; median_s: number | null };
+}
+
 export interface KaraokeSong {
   id: string;
   status: SongStatus;
@@ -24,6 +34,10 @@ export interface KaraokeSong {
   created_at: number;
   ready_at: number | null;
   lyrics: { kind: 'synced' | 'plain' | 'none'; lines: number } | null;
+  /** Bumped each time the lyrics are timed again (the careful pass, its undo): the display pages fetch them again. */
+  lyrics_rev?: number;
+  /** The careful pass over the lyrics, once someone referred the song ("Lyrics off?"). */
+  refine?: KaraokeRefine | null;
   request_kind: string | null;
   /** Catalogue facts (routes/karaoke/sources.py song_facts), null until known. */
   genre?: string | null;
@@ -199,6 +213,9 @@ export const karaoke = {
   }) =>
     call<{ song_id: string; existing: boolean }>('/requests', post(body)),
   retry: (id: string) => call<KaraokeSong>(`/songs/${id}/retry`, post({})),
+  /** Lyrics off: the careful pass over them (in the background); or undo it, or stop waiting. */
+  refine: (id: string, body: { undo?: boolean; cancel?: boolean; note?: string } = {}) =>
+    call<{ ok: boolean }>(`/songs/${id}/refine`, post(body)),
   nudge: (id: string, user_offset_ms: number) =>
     call<{ id: string; user_offset_ms: number }>(`/songs/${id}`, { ...post({ user_offset_ms }), method: 'PATCH' }),
   remove: (id: string) => call<{ ok: boolean }>(`/songs/${id}`, { method: 'DELETE' }),

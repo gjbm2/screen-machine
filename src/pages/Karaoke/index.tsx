@@ -70,6 +70,7 @@ import {
   SkipForward,
   Square,
   Trash2,
+  WandSparkles,
   X,
 } from "lucide-react";
 import { AppMenu } from "@/components/nav/AppMenu";
@@ -507,6 +508,7 @@ function NowPlaying({
           </p>
         )}
       </div>
+      {showing && song.status === "ready" && <RefineLine song={song} act={act} />}
       {showing && (
         <div className="mt-2 flex items-center gap-2 text-xs tabular-nums text-muted-foreground">
           <span className="w-9 text-right">{mmss(pos)}</span>
@@ -926,6 +928,7 @@ function LibraryRow({
         ) : (
           <>
             {song.status !== "ready" && <RestartBtn song={song} act={act} />}
+            {song.status === "ready" && <RefineBtn song={song} act={act} />}
             <AtButtons onAt={(at) => addToQueue(song, at)} />
           </>
         )}
@@ -1060,6 +1063,7 @@ function RowFace({
               : `${STATUS_WORDS[song.status]}…`}
           {song.status === "ready" && song.year ? ` · ${song.year}` : ""}
           {song.status === "ready" && song.lyrics?.kind !== "synced" ? " · no timed lyrics" : ""}
+          {song.status === "ready" && song.refine ? REFINE_WORDS[song.refine.state] : ""}
           {hint ? ` · ${hint}` : ""}
         </div>
       </div>
@@ -1798,6 +1802,83 @@ function Card({ title, action, children }: { title: string; action?: ReactNode; 
       </div>
       {children}
     </section>
+  );
+}
+
+// ---------------------------------------------------------------- the careful pass over a song's lyrics
+
+/** What the careful pass is doing, in a song's line (RowFace). */
+const REFINE_WORDS: Record<NonNullable<KaraokeSong["refine"]>["state"], string> = {
+  waiting: " · lyrics: waiting for the careful pass",
+  working: " · lyrics: careful pass running…",
+  done: " · lyrics timed carefully",
+  no_better: "",
+  failed: "",
+  undone: "",
+  cancelled: "",
+};
+
+const refineAsk = (song: KaraokeSong, act: Act) =>
+  act(() => karaoke.refine(song.id), `“${song.title}”: the lyrics will be timed carefully (a few minutes)`);
+
+/** Lyrics off (owner, 27 Nov: "a way to refer a song for 2ndary processing -- e.g. more carefully time lyrics"): the
+ *  careful pass in the background (every voice taken out, heard, the whole lyrics timed at once); the song plays on
+ *  meanwhile and the new timing comes in by itself, even mid-song. */
+function RefineBtn({ song, act }: { song: KaraokeSong; act: Act }) {
+  const st = song.refine?.state;
+  if (!song.lyrics || song.lyrics.kind === "none") return null;
+  const busy = st === "waiting" || st === "working";
+  return (
+    <IconBtn
+      label={busy ? "The careful pass over its lyrics is on its way" : "Lyrics off? Time them carefully"}
+      quiet={!busy}
+      disabled={busy}
+      onClick={() => refineAsk(song, act)}
+    >
+      <WandSparkles className={cn("h-4 w-4", st === "working" && "animate-pulse text-primary")} />
+    </IconBtn>
+  );
+}
+
+/** The playing song's line under its title: refer it, how it is going, Undo. */
+function RefineLine({ song, act }: { song: KaraokeSong; act: Act }) {
+  if (!song.lyrics || song.lyrics.kind === "none") return null;
+  const r = song.refine;
+  const link = "underline-offset-2 hover:text-foreground hover:underline";
+  return (
+    <div className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-muted-foreground">
+      {r?.state === "waiting" ? (
+        <>
+          <span>Lyrics: waiting for the careful pass (after any song being prepared)</span>
+          <button type="button" className={link} onClick={() => act(() => karaoke.refine(song.id, { cancel: true }))}>
+            Cancel
+          </button>
+        </>
+      ) : r?.state === "working" ? (
+        <span className="flex items-center gap-1">
+          <WandSparkles className="h-3.5 w-3.5 animate-pulse text-primary" />
+          Timing the lyrics carefully… a few minutes; they change over by themselves
+        </span>
+      ) : (
+        <>
+          {r?.state === "done" && <span>Lyrics timed carefully.</span>}
+          {(r?.state === "no_better" || r?.state === "failed") && <span className="text-red-700">{r.error}</span>}
+          <button type="button" className={cn(link, "flex items-center gap-1")} onClick={() => refineAsk(song, act)}>
+            <WandSparkles className="h-3.5 w-3.5" />
+            {r?.state === "done" ? "Again" : "Lyrics off? Time them carefully"}
+          </button>
+          {r?.state === "done" && (
+            <button
+              type="button"
+              className={link}
+              onClick={() => act(() => karaoke.refine(song.id, { undo: true }), "The first lyrics timing is back")}
+            >
+              Undo
+            </button>
+          )}
+        </>
+      )}
+    </div>
   );
 }
 

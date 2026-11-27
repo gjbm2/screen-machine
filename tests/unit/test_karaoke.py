@@ -756,3 +756,106 @@ def test_the_karaoke_switch_on_a_mode_readies_it_and_leaving_stops_the_player(tm
     assert st.s["player"]["state"] == "stopped" and st.s["player"]["stop"] == "mode"
     lv.step()
     assert puts == []
+
+
+def _heard(words_at):
+    return [{"w": w, "t0": t, "t1": t + 0.3} for w, t in words_at]
+
+
+def test_unheard_lines_keep_the_uploads_rhythm_and_a_stray_match_is_dropped():
+    # 27 Nov, Hey Jude: the coda's choir is in the backing track, so the lead stem has nothing heard there; the even
+    # spread squeezed the coda into half its length. With the upload's times, unheard lines keep its rhythm, shifted
+    # like the heard lines round them; a "jude" heard far from where its neighbours say is a stray match.
+    texts = ["take a sad song", "and make it better", "remember to let her", "into your heart",
+             "na na na", "na na hey jude", "na na na", "na na hey jude", "hey jude you know you can make it"]
+    times = [10.0, 15.0, 20.0, 25.0, 30.0, 40.0, 50.0, 60.0, 70.0]
+    sung = _heard([(w, 11.0 + i * 0.3) for i, w in enumerate("take a sad song".split())]
+                  + [(w, 16.0 + i * 0.3) for i, w in enumerate("and make it better".split())]
+                  + [(w, 21.0 + i * 0.3) for i, w in enumerate("remember to let her".split())]
+                  + [(w, 26.0 + i * 0.3) for i, w in enumerate("into your heart".split())]
+                  + [(w, 71.0 + i * 0.3) for i, w in enumerate("hey jude you know you can make it".split())])
+    lines, _ = lyr.fit_to_sung(texts, sung, 100.0, times)
+    starts = [ln["start"] for ln in lines]
+    assert starts[4] == pytest.approx(31.0) and starts[7] == pytest.approx(61.0)   # the upload's, +1 s like the heard
+    assert starts[8] == pytest.approx(71.0)
+    # a stray: line 3's words heard 30 s late
+    starts = [11.0, 16.0, 21.0, 56.0, 31.0, 41.0, 51.0, 61.0, 71.0]
+    lyr.drop_stray_anchors(starts, times)
+    assert starts[3] is None and starts[2] == 21.0
+    lyr.place_by_upload(starts, times, 100.0)
+    assert starts[3] == pytest.approx(26.0)
+
+
+def test_past_the_last_heard_line_the_shift_is_the_last_few_lines_not_one_word():
+    starts = [11.0, 21.0, 31.0, 45.0, None, None]
+    times = [10.0, 20.0, 30.0, 40.0, 50.0, 60.0]
+    lyr.place_by_upload(starts, times, 100.0)
+    assert starts[4] == pytest.approx(51.0) and starts[5] == pytest.approx(61.0)   # median shift +1, not the +5
+
+
+def test_the_careful_lines_follow_the_alignment_and_agree_where_words_were_heard():
+    texts = ["Hey Jude, don't make it bad", "Na, na, na", "Take a sad song and make it better"]
+    rows = [[{"t0": 1.0 + i * 0.4, "t1": 1.3 + i * 0.4, "score": -0.5} for i in range(6)],
+            [{"t0": 6.0, "t1": 6.3, "score": -1}, {"t0": 6.4, "t1": 6.7, "score": -1}, {"t0": 6.8, "t1": 7.2, "score": -1}],
+            [{"t0": 10.0 + i * 0.4, "t1": 10.3 + i * 0.4, "score": -0.5} for i in range(7)]]
+    lines = lyr.careful_lines(texts, rows, 20.0)
+    assert [ln["start"] for ln in lines] == [1.0, 6.0, 10.0]
+    assert lines[0]["end"] <= 6.0 and len(lines[2]["words"]) == 7 and "score" not in lines[2]["words"][0]
+    heard = _heard([(w, 1.1 + i * 0.4) for i, w in enumerate("hey jude don't make it bad".split())]
+                   + [("na", 2.0)]                                      # filler heard anywhere: not counted
+                   + [(w, 10.2 + i * 0.4) for i, w in enumerate("take a sad song and make it better".split())])
+    ag = lyr.agreement(lines, texts, heard)
+    assert ag["heard"] == 2 and ag["share"] == 1.0
+    late = [dict(ln, start=ln["start"] + 5) for ln in lines]
+    assert lyr.agreement(late, texts, heard)["share"] == 0.0
+    # the every-voice stem only fills where the lead heard nothing
+    both = lyr.merge_heard(_heard([("a", 1.0)]), _heard([("b", 1.1), ("c", 5.0)]))
+    assert [w["w"] for w in both] == ["a", "c"]
+
+
+def test_a_song_referred_for_the_careful_pass_waits_after_new_songs_and_can_be_undone(tmp_path, monkeypatch):
+    import json as _json
+    from routes.karaoke import worker as W
+    st = Store(tmp_path / "state.json")
+    s = st.add_song({"kind": "lrclib", "artist": "The Beatles", "title": "Hey Jude"})
+    d = tmp_path / s["id"]
+    d.mkdir()
+    texts = ["Hey Jude, don't make it bad", "Take a sad song and make it better"]
+    first = {"kind": "synced", "source": "fitted", "lines": [{"start": 0.0, "end": 4.0, "text": texts[0]},
+                                                              {"start": 4.0, "end": 8.0, "text": texts[1]}]}
+    (d / "lyrics.json").write_text(_json.dumps(first))
+    for f in ("vocals.m4a", "instrumental.m4a"):
+        (d / f).write_bytes(b"x")
+    (d / "sung.json").write_text("[]")
+    st.update_song(s["id"], status="ready", lyrics={"kind": "synced", "lines": first["lines"]}, user_offset_ms=500)
+    monkeypatch.setattr(W, "song_dir", lambda sid: tmp_path / sid)
+    monkeypatch.setattr(W, "info", lambda *a, **k: None)
+    monkeypatch.setattr(W, "audio_seconds", lambda p: 30.0)
+    w = W.Worker(st)
+    rows = [[{"t0": 2.0 + i * 0.4, "t1": 2.3 + i * 0.4, "score": -1} for i in range(6)],
+            [{"t0": 9.0 + i * 0.4, "t1": 9.3 + i * 0.4, "score": -1} for i in range(7)]]
+    monkeypatch.setattr(w, "_run_yielding", lambda sid, args, timeout: {"heard": [], "lines": rows, "seconds": 1})
+
+    assert st.next_refine() is None
+    st.update_song(s["id"], refine={"state": "waiting", "asked_at": 1.0})
+    other = st.add_song({"kind": "lrclib", "artist": "A", "title": "B"})
+    assert st.next_job()["id"] == other["id"]                     # a song to prepare goes first (the worker loop)
+    job = st.next_refine()
+    assert job["id"] == s["id"]
+    w.refine(job)
+    song = st.s["songs"][s["id"]]
+    assert song["refine"]["state"] == "done" and song["lyrics_rev"] == 1 and song["user_offset_ms"] == 0
+    assert [ln["start"] for ln in song["lyrics"]["lines"]] == [2.0, 9.0]
+    assert _json.loads((d / "lyrics.json").read_text())["source"] == "careful" and (d / "lyrics.first.json").is_file()
+    assert w.undo_refine(s["id"])
+    song = st.s["songs"][s["id"]]
+    assert [ln["start"] for ln in song["lyrics"]["lines"]] == [0.0, 4.0] and song["lyrics_rev"] == 2
+    assert not w.undo_refine(s["id"])
+
+
+def test_a_careful_pass_cut_short_by_a_restart_waits_again(tmp_path):
+    st = Store(tmp_path / "state.json")
+    s = st.add_song({"kind": "lrclib", "artist": "A", "title": "B"})
+    st.update_song(s["id"], status="ready", refine={"state": "working"})
+    st2 = Store(tmp_path / "state.json")
+    assert st2.s["songs"][s["id"]]["refine"]["state"] == "waiting"

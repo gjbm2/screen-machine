@@ -15,7 +15,8 @@ for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`;
   away under a line at its top. **Clear** empties the queue (the song playing stays). With nothing playing
   and nothing waiting, a song added plays at once (or as soon as it's ready). The library sorts most popular first (or by title, artist, year, when added) and
   filters by tag (genre, decade). Now playing has Pause/Resume, Restart, Next, Stop, the singer's voice (the lead
-  vocal under the backing: Off, Quiet, Full) and a nudge for the lyrics' timing.
+  vocal under the backing: Off, Quiet, Full), a nudge for the lyrics' timing, and "Lyrics off? Time them
+  carefully" (the careful pass, below; also the wand on a library row).
 - **Where it plays** (Settings → Screen, Sound): the karaoke screen is any screen that can go live (unset: the first in
   the deployment's default room). Only its display page shows the lyrics; every other screen's page leaves karaoke
   alone. Sound: from that screen's own page (its browser: speakers, HDMI, Bluetooth to a speaker), none, or a Sonos
@@ -67,6 +68,7 @@ for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`;
 | Lyrics and alignment | `routes/karaoke/lyrics.py`: LRC → lines; `best_fit`: the upload that fits what is sung, timed to it |
 | Hearing the vocal | `tools/karaoke/transcribe.py` (Whisper turbo on the lead vocal: every sung word and when) |
 | Word timing | `tools/karaoke/align.py` (MMS forced alignment, each line's words within the line) |
+| The careful pass | `tools/karaoke/refine.py` (every voice out, heard, the whole lyrics aligned at once); `worker.refine` |
 | Sync eval | `tools/karaoke/evals/sync_eval.py`: a headless display page on a fake clock; sound vs lyrics, and (with a Gemini key) the model's verdict on 10 s clips |
 | Vocal removal | `tools/karaoke/separate.py`, run in the karaoke venv (never in Flask) |
 | Display layer | `src/pages/DisplayPage/karaoke/KaraokeLayer.tsx`: Web Audio (backing + vocal at the guide gain), lyrics |
@@ -85,7 +87,25 @@ for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`;
   common run of words, so each chorus goes to its own repeat), the one matching the most sung words wins (at least
   35% of them), and each line starts when it is sung; lines nobody was heard singing go between their neighbours.
   None fits: the lines are what Whisper heard. Then each word is timed and the line starts at its first word.
-  Retry redoes a song through all of it.
+  Retry redoes a song through all of it. Lines nobody was heard singing keep the upload's own timing, moved by the
+  shift of the heard lines round them (past the last heard line, the median shift of the last five), and a heard
+  line far from its neighbours' shift (over 4 s) is a stray match and is placed the same way (27 Nov: Hey Jude's
+  four-minute coda is the choir in the backing track, so the lead stem had nothing heard there and the even spread
+  squeezed it into half its length).
+- **Lyrics off? The careful pass** (owner, 27 Nov: "a way to refer a song for 2ndary processing -- e.g. more
+  carefully time lyrics"). The wand on a library row, or "Lyrics off? Time them carefully" under the playing song,
+  refers it (`POST /api/karaoke/songs/<id>/refine`). The worker runs it when no song is waiting to be prepared (a
+  song added meanwhile ends it and it waits again); the song stays playable throughout. `tools/karaoke/refine.py`
+  sums the two stems back into the song, takes EVERY voice out (the BS-Roformer all-voices model: choir, backing
+  and lead), has Whisper hear that, and force-aligns the whole lyrics to it in one CTC path (MMS_FA, a star before
+  each line for what isn't in the lyrics), so every line is placed in order against the others. It replaces the
+  lyrics only if, of the lines with real words in them (not "na na na", "yeah"), at least 60% start within 2 s of
+  where they were heard (`lyrics.agreement`); else the song says "didn't fit the singing better" and keeps its
+  lyrics. The display pages and the renderer's lyric feed take the new timing at once, mid-song too (the song's
+  `lyrics_rev`); the speaker-delay nudge for the song goes back to 0. Undo puts the first pass's back
+  (`lyrics.first.json`). About 7 min for a 7-minute song with the live render running. Hey Jude, 27 Nov: all 68
+  lines placed, 27 of 29 heard lines agree (median 1 s); the coda runs to 7:00, mostly 1-4 s from LRCLIB's upload
+  (which isn't exact either), where the first pass had it squeezed into 3:04-5:52.
 - **The player:** one clock on the server (`store.py`): a song, a state, and its position at a server time. Play,
   pause, next and the end of a song (checked twice a second against the song's exact length) all happen there. Each
   display page polls `/api/karaoke/now` and places the sound at the server's position whenever the player moves (a

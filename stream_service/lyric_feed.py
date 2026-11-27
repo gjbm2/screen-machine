@@ -326,6 +326,9 @@ class LyricFeed:
         switches, and the Song's key changes with it (the effects drop what they drew and start again on the masked
         words).  The raw words are never read from anywhere else."""
         key = f"{sid}:child" if child else sid
+        rev = s.get("lyrics_rev") or 0                   # timed again (the careful pass, or its undo): fetched again
+        if rev:
+            key = f"{key}~{rev}"
         if key in self._songs:
             return self._songs[key]
         try:

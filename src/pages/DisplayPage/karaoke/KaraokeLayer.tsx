@@ -415,9 +415,10 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
   const song = now?.song ?? null;
   const p = now?.player;
 
-  // The song's lyrics; again when child mode changes (the server then serves them with dashes and mute times).
+  // The song's lyrics; again when child mode changes (the server then serves them with dashes and mute times), and
+  // when the careful pass (or its undo) has timed them again (lyrics_rev).
   const child = !!now?.settings.child_mode;
-  const lyricsKey = song?.id ? `${song.id}:${child}` : null;
+  const lyricsKey = song?.id ? `${song.id}:${child}:${song.lyrics_rev ?? 0}` : null;
   useEffect(() => {
     if (!lyricsKey || !song?.id || lyrics?.key === lyricsKey) return;
     let dead = false;

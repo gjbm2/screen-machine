@@ -6,6 +6,9 @@
   POST   /karaoke/requests                 {q} | {url} | {artist, title, duration}: a song into the library
                                            (+ queue: true also puts it at the end of the queue)
   POST   /karaoke/songs/<id>/retry         a failed song again
+  POST   /karaoke/songs/<id>/refine          {note?}: lyrics off: the careful pass over them (in the background, after
+                                           songs being prepared) | {undo: true}: the first pass's lyrics back
+                                           | {cancel: true}: not waiting any more
   PATCH  /karaoke/songs/<id>               {user_offset_ms}: nudge this song's lyrics
   DELETE /karaoke/songs/<id>               forget it (files too)
   GET    /karaoke/songs/<id>/lyrics        {kind, lines: [{start, end, text}], ...}
@@ -182,6 +185,38 @@ def retry(sid: str):
         return jsonify({"ok": True}) if w.restart(sid) else _err(404, "No such song.")
     s = store().update_song(sid, status="queued", error=None, detail="")
     return jsonify(s) if s else _err(404, "No such song.")
+
+
+@karaoke_api.post("/karaoke/songs/<sid>/refine")
+def refine(sid: str):
+    """Refer a song whose lyrics were off for the careful pass (worker.refine, tools/karaoke/refine.py: every voice
+    out, heard, the whole lyrics timed at once): song.refine says how it is going. Or undo it, or cancel the wait."""
+    import time as _time
+    from . import song_worker
+    b, st = _body(), store()
+    with st.lock:
+        song = st.s["songs"].get(sid)
+        r = dict((song or {}).get("refine") or {})
+    if song is None:
+        return _err(404, "No such song.")
+    if b.get("undo"):
+        w = song_worker()
+        if w is None or not w.undo_refine(sid):
+            return _err(409, "There's nothing to undo.")
+        return jsonify({"ok": True})
+    if b.get("cancel"):
+        if r.get("state") != "waiting":
+            return _err(409, "It isn't waiting.")
+        st.update_song(sid, refine={**r, "state": "cancelled", "detail": ""})
+        return jsonify({"ok": True})
+    if song.get("status") != "ready":
+        return _err(409, "The song isn't ready yet.")
+    if r.get("state") in ("waiting", "working"):
+        return jsonify({"ok": True, "refine": r})
+    r = {"state": "waiting", "detail": "", "error": None, "asked_at": _time.time(),
+         "note": str(b.get("note") or "")[:300] or None, "times": int(r.get("times") or 0) + 1}
+    st.update_song(sid, refine=r)
+    return jsonify({"ok": True, "refine": r})
 
 
 @karaoke_api.patch("/karaoke/songs/<sid>")
