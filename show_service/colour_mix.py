@@ -138,10 +138,17 @@ def curve_out(v: float, curve: str) -> float:
 
 # -- a type's channel plan (cached by identity) -----------------------------------------------------------------------
 class _Plan:
-    __slots__ = ("type", "footprint", "intensity", "emitters", "wheel", "names", "method", "key", "A", "defaults")
+    __slots__ = ("type", "footprint", "intensity", "emitters", "wheel", "names", "method", "key", "A", "defaults",
+                 "streaks")
 
     def __init__(self, t: Mapping[str, Any]) -> None:
         self.type = t
+        # streaks (fixtures.yaml types.<t>.streaks, 0..1): a light whose emitters show as SEPARATE coloured beams (a
+        # derby's streaks: red + green there is red streaks beside green ones, never yellow). Only the emitters at
+        # least this share of the strongest light, so one colour of look is one or two colours of streak, not four.
+        st = t.get("streaks")
+        self.streaks = float(st) if isinstance(st, (int, float)) and not isinstance(st, bool) and 0.0 < st <= 1.0 \
+            else None
         fp = t.get("footprint")
         self.footprint = int(fp) if isinstance(fp, int) and not isinstance(fp, bool) and fp > 0 else 0
         self.intensity: list[tuple[int, Optional[int]]] = []
@@ -282,6 +289,10 @@ def _levels(p: _Plan, colour: Sequence[float], wb: Optional[Mapping[str, Any]]) 
             g = wb.get(e)
             if isinstance(g, (int, float)) and not isinstance(g, bool) and math.isfinite(g) and g >= 0.0:
                 lv[e] = v * g
+    if p.streaks is not None and lv:                             # separate beams: the look's main colour(s) only
+        top = max(lv.values())
+        if top > 0.0:
+            lv = {e: (v if v >= p.streaks * top else 0.0) for e, v in lv.items()}
     return {e: _c01(v) for e, v in lv.items()}, scale
 
 

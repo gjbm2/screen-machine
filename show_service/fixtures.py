@@ -97,7 +97,7 @@ OUTPUT_KEYS: tuple[str, ...] = ("driver", "enabled", "node", "also_nodes", "port
 #: resolves it to WSL's default gateway when it builds the node's destination; receiver.WINDOWS_HOST, the senders' word)
 HOST_ALIASES: tuple[str, ...] = ("windows",)
 NODE_KEYS: tuple[str, ...] = ("match", "last_ip", "port", "full_512", "failsafe", "virtual")
-TYPE_KEYS: tuple[str, ...] = ("source", "file", "mode", "emitters", "curve")
+TYPE_KEYS: tuple[str, ...] = ("source", "file", "mode", "emitters", "curve", "streaks")
 FIXTURE_KEYS: tuple[str, ...] = ("type", "label", "output", "address", "light", "screen", "zone", "placement", "role",
                                  "tags", "order", "wb", "curve", "pin", "house")
 GROUP_KEYS: tuple[str, ...] = ("select", "order")
@@ -916,6 +916,12 @@ class _Builder:
                 self.problems.append(f"{where}.source: {src!r} isn't builtin or ofl: left out")
                 continue
             info["emitters"] = self._emitters(where, t.get("emitters"), info)
+            if "streaks" in t:                             # its emitters show as separate beams (colour_mix._Plan)
+                st = t.get("streaks")
+                if isinstance(st, (int, float)) and not isinstance(st, bool) and 0.0 < st <= 1.0:
+                    info["streaks"] = float(st)
+                else:
+                    self.problems.append(f"{where}.streaks: {st!r} isn't a share over 0, up to 1: its colours mix")
             if "curve" in t:
                 c = parse_curve(t.get("curve"))
                 if c is None:

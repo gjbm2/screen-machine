@@ -43,7 +43,9 @@ types:
   # in its 52CH DMX mode (Version 2 units, manual Rev. 10). An older 50CH unit: the same parts, with the spots at
   # +32 and +41 instead of +34 and +43, and the laser one channel (gigbar-laser-50).
   gigbar-par:   {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-par.json, mode: part}     # RGBAW + UV, strobe
-  gigbar-derby: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-derby.json, mode: part}   # RGBW, strobe, motor
+  # streaks: a derby's LEDs show as separate coloured streaks, never a mixed colour (docs/GIGBAR_RIG.md §1.4), so
+  # only the LEDs at least this share of the strongest light: one look colour, one or two colours of streak
+  gigbar-derby: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-derby.json, mode: part, streaks: 0.6}
   gigbar-spot:  {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-spot.json, mode: part}    # moving head
   gigbar-flash: {source: ofl, file: ofl/chauvet-dj/gigbar-move-ils-flash.json, mode: part}   # 4 white strobes
   # The laser (red 650 nm, green 520 nm, blue 450 nm): its own surface since 27 Nov (owner: "ensure we have the
