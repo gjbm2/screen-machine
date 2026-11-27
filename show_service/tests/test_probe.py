@@ -56,3 +56,14 @@ def test_the_runner_sends_a_frame_at_a_probe_edge_before_its_planned_one():
     assert r._plan(10.0, 10.1, False) == 11.0                 # the planned frame comes first
     r.engine = _Eng(None)
     assert r._plan(10.0, 10.1, False) == 11.0
+
+
+def test_an_output_with_no_lead_of_its_own_leads_by_its_lights_measured_median():
+    from show_service.artnet_lan import output_lead
+    out = {"id": "dmx-a", "latency_key": "dmx-a"}
+    meas = lambda ms: {"latency": {"rise_ms": ms, "source": {"rise": "latency.json outputs.x.intensity"}}}   # noqa: E731
+    unset = {"latency": {"rise_ms": 0.0, "source": {"rise": "unset"}}}
+    assert output_lead(out, [meas(30.0), meas(50.0), meas(40.0), unset]) == (40.0, "latency.json: the median of 3 light(s)")
+    assert output_lead(out, [unset]) == (0.0, "unset")
+    keyed = {"latency": {"rise_ms": 25.0, "source": {"rise": "latency.json outputs.dmx-a.intensity"}}}
+    assert output_lead(out, [keyed, meas(80.0)])[0] == 25.0          # the output's own measurement first

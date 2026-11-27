@@ -257,3 +257,13 @@ def test_the_sound_in_run_moves_the_streams_offset_by_how_late_the_beat_clock_he
     assert c.state()["state"] == "done", c.state()
     src = L.read()["sources"]["laptop-mic"]
     assert abs(src["acoustic_offset_ms"] - (-30.0)) <= 3 and src["method"] == "chirp"
+
+
+def test_a_screens_camera_measurement_is_what_the_renderer_reads(lat):
+    from stream_service import inputs
+    L.record_screen("vj", 142.0, extra={"evidence": {"used": 8}})
+    ms, src = inputs.load_photon(L.path(), "vj", "screen.vj")
+    assert ms == 142.0 and src == "latency.json:vj"
+    assert any(r["key"] == "vj" and r["value_ms"] == 142.0 for r in L.overview()["screens"])
+    with pytest.raises(ValueError):
+        L.record_screen("vj", 0.0)

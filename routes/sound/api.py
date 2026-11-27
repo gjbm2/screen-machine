@@ -8,6 +8,8 @@
   GET  /sound/latency                       every latency the deployment knows (smsound.latency.overview): sound
                                             outputs, screens, lights, sound sources
   PUT  /sound/outputs/<id>/latency          {trim_ms} | {delay_ms} (typed in) | {forget: true}: -> the output's latency
+  PUT  /sound/flash                         {screen, at_mono, dur_s}: that screen's page flashes white then (the camera)
+  PUT  /sound/latency/screens/<screen>      {presented_to_photon_ms, evidence?}: a screen's picture delay -> {saved}
   PUT  /sound/latency/lights/<key>          {rise_ms, fall_ms?, also?, evidence?}: a light's measured response (the
                                             camera calibration, Settings › Sound & timing) -> {saved}
   GET  /sound/outputs/<id>/eq               its graphic EQ (smsound.eq.describe): {applies, preset, gains, bands,
@@ -131,6 +133,44 @@ def set_light_latency(key: str):
     return jsonify({"saved": saved})
 
 
+#: A screen flashing white for the camera calibration (Settings › Sound & timing): its display page, which polls GET
+#: /sound/calibrate, shows white at each time (show_service's clock, s) for dur_s. Kept until its last flash is over.
+_flash: dict = {}
+FLASH_MAX = 32
+
+
+@sound_api.put("/sound/flash")
+def set_flash():
+    """{screen, at_mono: [s...], dur_s}: that screen's display page flashes white at those show-clock times."""
+    global _flash
+    b: Any = request.get_json(silent=True) or {}
+    at = b.get("at_mono")
+    if not isinstance(b.get("screen"), str) or not isinstance(at, list) or not at or len(at) > FLASH_MAX \
+            or not all(isinstance(x, (int, float)) for x in at):
+        return _err(400, f"screen, at_mono (at most {FLASH_MAX} times) and dur_s")
+    dur = float(b.get("dur_s") or 0.3)
+    _flash = {"id": f"f{int(time.time() * 1000)}", "screen": b["screen"], "at_mono": [float(x) for x in at],
+              "dur_s": max(0.05, min(2.0, dur)), "until": time.monotonic() + (max(at) - time.monotonic()) + dur + 2.0}
+    return jsonify({k: v for k, v in _flash.items() if k != "until"})
+
+
+def flash_state() -> dict | None:
+    f = _flash
+    return {k: v for k, v in f.items() if k != "until"} if f and time.monotonic() < f["until"] else None
+
+
+@sound_api.put("/sound/latency/screens/<screen>")
+def set_screen_latency(screen: str):
+    """{presented_to_photon_ms, evidence?}: a screen's picture delay measured with the camera -> {saved}."""
+    b: Any = request.get_json(silent=True) or {}
+    try:
+        e = L.record_screen(screen, float(b["presented_to_photon_ms"]),
+                            extra={"evidence": b.get("evidence") if isinstance(b.get("evidence"), dict) else {}})
+    except (KeyError, TypeError, ValueError) as err:
+        return _err(400, f"presented_to_photon_ms in ms: {err}")
+    return jsonify({"saved": e})
+
+
 @sound_api.get("/sound/outputs/<path:oid>/eq")
 def get_eq(oid: str):
     if O.parse(oid) is None or O.kind(oid) == "none":
@@ -161,4 +201,5 @@ def calibrate():
 
 @sound_api.get("/sound/calibrate")
 def calibrate_state():
-    return jsonify({**calibrator().state(), "now": time.time()})   # now: the pages' clock skew (the chirps' times)
+    return jsonify({**calibrator().state(), "now": time.time(),   # now: the pages' clock skew (the chirps' times)
+                    "flash": flash_state()})                     # a screen flashing for the camera

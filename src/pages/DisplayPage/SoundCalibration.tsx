@@ -7,16 +7,20 @@
 // - The browser may hold the sound until the page is clicked (a TV kiosk started with autoplay allowed never does):
 //   then a "Click for sound" pill shows while a run for this screen waits, and any click lets it play.
 // - data-sm-karaoke keeps the pill visible while live video is up (index.tsx ART_GUARD_CSS).
+// - The camera calibration (Settings › Sound & timing, CameraCalibration): while run.flash names this screen, the page
+//   goes white at each of its times on show_service's clock, so the camera can time this screen's picture.
 
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { sound, type CalibrationRun } from "@/shared/api/sound";
 import { playChirps } from "@/shared/sound/chirps";
+import { showClockOffset } from "@/components/sound/showClock";
 
 const POLL_MS = 1000;
 const SKEW_N = 8;
 
 export function SoundCalibration({ screen }: { screen?: string }) {
   const [held, setHeld] = useState(false);
+  const [white, setWhite] = useState(false);       // the camera calibration's flash (run.flash for this screen)
   const ctxRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
@@ -24,6 +28,7 @@ export function SoundCalibration({ screen }: { screen?: string }) {
     const me = `screen:${screen}`;
     let dead = false;
     let played: string | null = null;
+    let flashed: string | null = null;
     const samples: { rtt: number; skew: number }[] = [];
     const ctx = () => (ctxRef.current ??= new AudioContext({ latencyHint: "playback" }));
     const unlock = () => {
@@ -45,6 +50,11 @@ export function SoundCalibration({ screen }: { screen?: string }) {
       if (typeof run.now === "number") {
         samples.push({ rtt: got - sent, skew: run.now - (sent + got) / 2000 });
         if (samples.length > SKEW_N) samples.shift();
+      }
+      const fl = run.flash;
+      if (fl && fl.screen === screen && fl.id !== flashed) {
+        flashed = fl.id;
+        void flashAt(fl.at_mono, fl.dur_s, setWhite).catch(() => setWhite(false));
       }
       const mine = run.state === "running" && run.output === me && !!run.clicks?.length && !!run.chirps?.length;
       if (!mine) {
@@ -70,6 +80,7 @@ export function SoundCalibration({ screen }: { screen?: string }) {
     };
   }, [screen]);
 
+  if (white) return <div data-sm-karaoke="" style={flashStyle} />;
   if (!held) return null;
   return (
     <div data-sm-karaoke="" style={wrap}>
@@ -77,6 +88,31 @@ export function SoundCalibration({ screen }: { screen?: string }) {
     </div>
   );
 }
+
+/** White at each show-clock time (s) for `dur` s, each change made in the frame due (the camera times it). */
+async function flashAt(atMono: number[], dur: number, set: (on: boolean) => void): Promise<void> {
+  const { offset } = await showClockOffset(10);
+  for (const s of atMono) {
+    const on = s * 1000 - offset;
+    if (on < performance.now()) continue;
+    await frameAt(on, () => set(true));
+    await frameAt(on + dur * 1000, () => set(false));
+  }
+}
+
+function frameAt(at: number, fn: () => void): Promise<void> {
+  return new Promise((res) => {
+    const tick = () => {
+      if (performance.now() >= at - 4) {
+        fn();
+        res();
+      } else requestAnimationFrame(tick);
+    };
+    window.setTimeout(() => requestAnimationFrame(tick), Math.max(0, at - performance.now() - 40));
+  });
+}
+
+const flashStyle: CSSProperties = { position: "fixed", inset: 0, zIndex: 2147483002, background: "#fff" };
 
 const wrap: CSSProperties = { position: "fixed", inset: 0, zIndex: 2147483001, pointerEvents: "none" };
 const pill: CSSProperties = {

@@ -82,7 +82,7 @@ export function CameraCalibration({ onSaved }: { onSaved?: () => void }) {
   useEffect(() => {
     showJson<{ fixtures?: RigLight[] }>("GET", "/api/v1/rig").then(
       (b) => {
-        const ls = (b.fixtures || []).filter((f) => f.kind !== "screen" && f.driver === "artnet");
+        const ls = (b.fixtures || []).filter((f) => f.kind === "screen" || f.driver === "artnet");
         setLights(ls);
         setPick((p) => p || ls[0]?.id || "");
       },
@@ -92,8 +92,11 @@ export function CameraCalibration({ onSaved }: { onSaved?: () => void }) {
   }, []);
 
   const light = lights?.find((l) => l.id === pick);
+  const isScreen = light?.kind === "screen";
+  const screenName = isScreen && light ? light.id.split(".").slice(-1)[0] : "";
+  const refreshRef = useRef(16.7);
   const twins = useMemo(
-    () => (lights || []).filter((l) => light && l.id !== light.id && l.type === light.type && l.output === light.output),
+    () => (lights || []).filter((l) => light && light.kind !== "screen" && l.id !== light.id && l.type === light.type && l.output === light.output),
     [lights, light],
   );
 
@@ -155,14 +158,19 @@ export function CameraCalibration({ onSaved }: { onSaved?: () => void }) {
       setMsg("Clock");
       const co = await showClockOffset(CLOCK_SAMPLES);
       const refresh = await refreshMs();
-      const t0 = performance.now() + LEAD_MS;
+      refreshRef.current = refresh;
+      const t0 = performance.now() + (isScreen ? LEAD_MS + 2000 : LEAD_MS);   // a display page polls once a second
       const lightOn = Array.from({ length: TRIALS }, (_, k) => t0 + k * PERIOD_MS);
       const screenOn = lightOn.map((x) => x + PERIOD_MS / 2);
-      const got = await showJson<{ ok: boolean; why?: string }>("POST", `/api/v1/rig/fixtures/${encodeURIComponent(light.id)}/probe`, {
-        pulses: lightOn.map((t) => [(t + co.offset) / 1000, PULSE_MS / 1000]),
-        dark_s: 1.5,
-      });
-      if (!got.ok) throw new Error(got.why || "the light can't be flashed");
+      if (isScreen) {
+        await sound.flash(screenName, lightOn.map((t) => (t + co.offset) / 1000), PULSE_MS / 1000);
+      } else {
+        const got = await showJson<{ ok: boolean; why?: string }>("POST", `/api/v1/rig/fixtures/${encodeURIComponent(light.id)}/probe`, {
+          pulses: lightOn.map((t) => [(t + co.offset) / 1000, PULSE_MS / 1000]),
+          dark_s: 1.5,
+        });
+        if (!got.ok) throw new Error(got.why || "the light can't be flashed");
+      }
       setMsg("Flashing");
       const screen: Trial[] = [];
       for (const at of screenOn) {
@@ -188,6 +196,16 @@ export function CameraCalibration({ onSaved }: { onSaved?: () => void }) {
   async function save() {
     if (!light || !est) return;
     try {
+      if (isScreen) {
+        // its page draws the white a refresh before it is presented: presented -> light is the rest
+        await sound.setScreenLatency(screenName, {
+          presented_to_photon_ms: Math.round(Math.max(1, est.riseMs - refreshRef.current) * 10) / 10,
+          evidence: { camera_ms: Math.round(est.cameraMs), spread_ms: Math.round(est.spreadMs), used: est.used, of: est.of, refresh_ms: Math.round(refreshRef.current * 10) / 10 },
+        });
+        setSaved(light.label);
+        onSaved?.();
+        return;
+      }
       await sound.setLightLatency(light.id, {
         rise_ms: Math.round(est.riseMs * 10) / 10,
         fall_ms: est.fallMs == null ? null : Math.round(Math.max(0, est.fallMs) * 10) / 10,
@@ -237,7 +255,10 @@ export function CameraCalibration({ onSaved }: { onSaved?: () => void }) {
       {est && (
         <div className="flex flex-wrap items-center justify-between gap-2 text-[15px]">
           <span className={acceptable(est) ? "" : "text-red-700"}>
-            On {Math.round(est.riseMs)} ms{est.fallMs != null ? ` · off ${Math.round(est.fallMs)} ms` : ""} · ±{Math.round(est.spreadMs)} ms ·{" "}
+            {isScreen
+              ? `Picture ${Math.round(Math.max(1, est.riseMs - refreshRef.current))} ms`
+              : `On ${Math.round(est.riseMs)} ms${est.fallMs != null ? ` · off ${Math.round(est.fallMs)} ms` : ""}`}{" "}
+            · ±{Math.round(est.spreadMs)} ms ·{" "}
             {est.used}/{est.of}
           </span>
           {acceptable(est) && !saved && (

@@ -408,7 +408,9 @@ def test_lead_from_latency_json_through_the_registry(tmp_path):
              out=out_cfg(latency={"intensity": {"rise_ms": 10}}))
     st = d.status()["extra"]
     assert st["lead_ms"] == 55.0 and st["lead_from"] == "latency.json outputs.dmx-a.intensity"
-    d = make(sim, FakeSock(sim), tmp_path, fixtures=[own])
+    d = make(sim, FakeSock(sim), tmp_path, fixtures=[own])        # only its lights' own: their median (the camera's)
+    assert d.status()["extra"]["lead_ms"] == 90.0 and d.status()["extra"]["lead_from"].startswith("latency.json: the median")
+    d = make(sim, FakeSock(sim), tmp_path, fixtures=[fixture("c", "par", 1)])
     assert d.status()["extra"]["lead_ms"] == 0.0 and d.status()["extra"]["lead_from"] == "unset"
 
 

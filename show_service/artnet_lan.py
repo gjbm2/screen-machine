@@ -844,7 +844,7 @@ def _num(v: Any) -> Optional[float]:
 def output_lead(out: Mapping[str, Any], fixtures: list[Mapping[str, Any]]) -> tuple[float, str]:
     """The output's intensity rise latency in ms and where it came from: latency.json under its ``latency_key`` (as
     fixtures.py resolved it for a fixture that has no measurement of its own), else the hand-set
-    ``latency.intensity.rise_ms``, else 0 ("unset")."""
+    ``latency.intensity.rise_ms``, else the median of its own lights' measurements, else 0 ("unset")."""
     key = out.get("latency_key") or out.get("id")
     prefix = f"latency.json outputs.{key}."
     for f in fixtures:
@@ -856,6 +856,16 @@ def output_lead(out: Mapping[str, Any], fixtures: list[Mapping[str, Any]]) -> tu
     hand = _num(((out.get("latency") or {}).get("intensity") or {}).get("rise_ms"))
     if hand is not None and hand >= 0:
         return hand, "fixtures.yaml"
+    # its lights' own measurements (the camera calibration: latency.json outputs.<fixture>): the beat frame leaves
+    # their median early (each light's content is still evaluated at its own rise, looks.py)
+    own = sorted(v for f in fixtures
+                 for lv in [f.get("latency") or {}]
+                 for v in [_num(lv.get("rise_ms"))]
+                 if v is not None and str((lv.get("source") or {}).get("rise") or "").startswith("latency.json"))
+    if own:
+        n = len(own)
+        med = own[n // 2] if n % 2 else (own[n // 2 - 1] + own[n // 2]) / 2.0
+        return max(0.0, med), f"latency.json: the median of {n} light(s)"
     return 0.0, "unset"
 
 

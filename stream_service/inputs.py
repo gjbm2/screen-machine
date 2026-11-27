@@ -184,6 +184,9 @@ def load_photon(path: Optional[pathlib.Path], screen: str, fixture: Optional[str
         key = next((k for k in (screen, fixture, short) if k and k in screens), None)
         name = key if key is not None else next(iter(screens), None)
         ms = float(screens[name]["effective"]["presented_to_photon_ms"])
+        trim = screens[name].get("trim_ms") if key is not None else None      # a nudge on its own measurement only
+        if isinstance(trim, (int, float)) and not isinstance(trim, bool) and math.isfinite(trim):
+            ms += float(trim)
         if not 0 < ms < 2000:
             raise ValueError(f"presented_to_photon_ms {ms} out of range")
         return ms, f"latency.json:{name}" + ("" if key is not None else f" (no {short} measurement)")

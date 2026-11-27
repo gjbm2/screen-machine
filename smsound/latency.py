@@ -191,6 +191,22 @@ def set_manual(oid: str, delay_ms: Optional[float], dep: Optional[smconfig.Deplo
     return record(oid, float(delay_ms), method="manual", dep=dep)
 
 
+def record_screen(screen: str, presented_to_photon_ms: float, *, method: str = "camera",
+                  extra: Optional[dict] = None, dep: Optional[smconfig.Deployment] = None) -> dict:
+    """A screen's picture delay: ``screens.<screen>.effective.presented_to_photon_ms`` (stream_service
+    inputs.load_photon: the live picture is made this much ahead)."""
+    v = _num(presented_to_photon_ms)
+    if not isinstance(screen, str) or not screen or v is None or not 0.0 < v < 2000.0:
+        raise ValueError(f"bad screen delay: {screen!r} {presented_to_photon_ms!r}")
+    with _lock:
+        doc = read(dep)
+        e = {"screen": screen, "measured_at": _now_iso(), "method": method,
+             "effective": {"presented_to_photon_ms": round(v, 1)}, **(extra or {})}
+        doc["screens"][screen] = e
+        _write(doc, dep)
+        return e
+
+
 SOURCE_RANGE = (-1000.0, 1000.0)
 
 
@@ -265,7 +281,8 @@ def overview(dep: Optional[smconfig.Deployment] = None, extra_outputs: Optional[
                         "value_ms": _num(eff.get("presented_to_photon_ms")), "measured_at": ent.get("measured_at"),
                         "method": ent.get("method"),
                         "measures": "a frame presented on the screen's page to its light leaving the TV",
-                        "how": "tools/room/latency_cal/calibrate.py (the light sensor on the screen)",
+                        "how": ("the camera (Calibrate, here)" if isinstance(ent, dict) and ent.get("method") == "camera"
+                                else "tools/room/latency_cal/calibrate.py (the light sensor on the screen)"),
                         "used_by": "stream_service: the live picture is made this much ahead of the beat"})
     lights, sources = [], []
     for key, ent in doc["outputs"].items():

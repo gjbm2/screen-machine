@@ -55,6 +55,8 @@ export interface CalibrationRun {
   at?: number;
   /** The server's clock when it answered (s). */
   now?: number;
+  /** A screen flashing white for the camera calibration: its display page shows white at each show-clock time. */
+  flash?: { id: string; screen: string; at_mono: number[]; dur_s: number } | null;
 }
 
 export interface LatencyRow {
@@ -112,6 +114,12 @@ export const sound = {
     call<{ id: string; eq: OutputEq }>(`/outputs/${encodeURIComponent(id)}/eq`, send('PUT', body)),
   calibrate: (output: string) => call<CalibrationRun>('/calibrate', send('POST', { output })),
   calibration: () => call<CalibrationRun>('/calibrate'),
+  /** A screen's display page flashes white at `at_mono` (show_service's clock, s) for the camera calibration. */
+  flash: (screen: string, at_mono: number[], dur_s: number) =>
+    call<{ id: string }>('/flash', send('PUT', { screen, at_mono, dur_s })),
+  /** A screen's picture delay measured with the camera (stream_service makes the picture this much ahead). */
+  setScreenLatency: (screen: string, body: { presented_to_photon_ms: number; evidence?: Record<string, number> }) =>
+    call<{ saved: unknown }>(`/latency/screens/${encodeURIComponent(screen)}`, send('PUT', body)),
   /** A light's response measured with the camera (CameraCalibration), for it and `also` (the same model). */
   setLightLatency: (
     id: string,
