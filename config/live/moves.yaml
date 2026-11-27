@@ -25,7 +25,7 @@ moves:
     size: medium
     lights:
       transition: fly-up-snap
-      accents: [{effect: strobe-hit, at_beats: -1}]
+      accents: [{effect: strobe-hit, at_beats: -1}, {effect: laser-cut-out, at_beats: -1}]
     screen: {via: ["family:warp", "family:3d", melt-2s]}
     land: 1.0
     tags: {energy: [0.3, 1.0], weight: 1.0}

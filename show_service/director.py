@@ -3083,7 +3083,7 @@ class Director:
         start = max(now_s, start_s)
         for gid in gids:
             grp = self._groups.get(gid)
-            if grp is None or grp.get("follows") or not self.light_scenes.fits(fx, grp):
+            if grp is None or grp.get("follows") or not self.light_scenes.plays_on(fx, grp):
                 continue
             runs = self._fx.setdefault(gid, [])
             old = next((r for r in runs if r["name"] == name and r["until_ms"] is not None

@@ -406,6 +406,22 @@ def _colour_part(f: Mapping[str, Any], t: Mapping[str, Any], p: _Plan, col: Rgb)
     return out
 
 
+WHEEL_GATE = 0.4                # a light with no dimmer and a closed wheel slot is dark under this intensity
+
+
+def wheel_gate(t: Mapping[str, Any], intensity: float) -> Optional[tuple[tuple[int, ...], int]]:
+    """(the wheel channels' offsets, their closed value) when a type with no dimmer and no emitters should be dark
+    at ``intensity`` (under WHEEL_GATE) and its wheel has a closed slot (``wheel_closed``: a laser); else None. So a
+    look's level, a beat layer, a fade through dark and the house state switch such a light as they dim any other."""
+    closed = t.get("wheel_closed")
+    if not isinstance(closed, int) or float(intensity) >= WHEEL_GATE:
+        return None
+    p = _plan(t)
+    if p.intensity or p.emitters or not p.wheel:
+        return None
+    return tuple(p.wheel), max(0, min(255, closed))
+
+
 def encode(f: Mapping[str, Any], t: Mapping[str, Any], intensity: float, colour: Sequence[float]) -> bytes:
     """One fixture's ``footprint`` bytes for ``intensity`` (0..1) and ``colour`` (sRGB at full value)."""
     p = _plan(t)
@@ -415,6 +431,12 @@ def encode(f: Mapping[str, Any], t: Mapping[str, Any], intensity: float, colour:
     col = (_c01(float(colour[0])), _c01(float(colour[1])), _c01(float(colour[2])))
     base, lv = _colour_part(f, t, p, col)
     if not p.intensity and not p.emitters:
+        g = wheel_gate(t, i)                                     # no dimmer: dark through the wheel's closed slot
+        if g is not None:
+            buf = bytearray(base)
+            for off in g[0]:
+                buf[off] = g[1]
+            return bytes(buf)
         return base
     buf = bytearray(base)
     for off, fine in p.intensity:

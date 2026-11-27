@@ -586,43 +586,74 @@ scenes:
     tags: {parts: [flash], moments: [waiting, lull, lead_in], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5,
            organic: 0.5, density: 0.1}
 
-  # laser: a bar's laser (owner, 27 Nov). Its three function channels are worked by macro layers: Laser (the colour:
-  # Blackout | Red | Green | Blue | Red + green | Red + blue | Green + blue | Red + green + blue), Laser strobe
-  # (0..255) and Laser rotation (0 stop, 1-127 clockwise slow to fast, 129-255 the other way). tags.shows_beat says
-  # whether the scene counts as showing the beat (the feel's accents and the song's groove then draw it or rest it).
+  # laser: a bar's laser (owner, 27 Nov: "lasers also have sensible scene expression ... requires deep reasoning").
+  # To the engine it is an ordinary light: its colour channel is a wheel of the seven diode combinations (the look's
+  # colour picks the nearest; a colour_wheel layer steps through them), its strobe a shutter (effects only, under the
+  # feel's strobe rule), and with no dimmer it is DARK whenever its brightness is under 0.4 (the wheel's closed slot).
+  # So brightness layers gate it: a beat layer flashes it on the beat, order: flow alternates the two bars, fx: dim
+  # rests it; a fade through dark, House lights and a mode change switch it off as they dim every other light. Its
+  # rotation is the one function channel a macro layer sets ("Laser rotation": 0 stop, 1-127 clockwise slow to fast,
+  # 129-255 the other way; {cw, ccw, still}: by the way the room's flow turns).
+  # What it is for: texture in the air above. Scarce, so it means something: resting in calm songs and verses' draws,
+  # still stars while the room waits, turning and pulsing when the song drives.
   laser-resting:
     label: The lasers rest
     layers:
-      - {id: off, kind: macro, set: {Laser: Blackout, "Laser strobe": 0, "Laser rotation": 0}}
-    tags: {parts: [laser], shows_beat: false, energy: [0.0, 1.0], moods: [calm, mellow, elegant, warm, dreamy],
-           genre_fit: {"*": 0.6}, valence: 0.5, organic: 0.7, density: 0.1}
-  laser-slow-turn:
-    label: One colour, turning slowly with the room
+      - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
+    tags: {parts: [laser], energy: [0.0, 1.0], moods: [calm, mellow, elegant, warm, dreamy],
+           genre_fit: {"*": 0.6}, valence: 0.5, organic: 0.7, density: 0.1, weight: 1.5}
+  laser-stars:
+    label: A still field of stars in the look's colour
     layers:
-      - {id: beams, kind: macro, set: {Laser: Green, "Laser strobe": 0,
-                                       "Laser rotation": {cw: 20, ccw: 150, still: 12}}}
-    tags: {parts: [laser], shows_beat: false, energy: [0.2, 0.8], moods: [dreamy, cosmic, hypnotic, liquid, dark],
-           genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.3, density: 0.4}
-  laser-two-colours:
-    label: Two colours, turning with the room
+      - {id: still, kind: macro, set: {"Laser rotation": 0}}
+    tags: {parts: [laser], shows_beat: false, energy: [0.0, 0.7], moods: [dreamy, cosmic, elegant, calm, dark],
+           genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.4, density: 0.2}
+  laser-drifting:
+    label: The stars drift slowly round with the room
     layers:
-      - {id: beams, kind: macro, set: {Laser: "Red + blue", "Laser strobe": 0,
-                                       "Laser rotation": {cw: 60, ccw: 190, still: 40}}}
-    tags: {parts: [laser], shows_beat: true, energy: [0.4, 0.9], moods: [playful, bright, hypnotic, cosmic, retro],
-           genre_fit: {"*": 0.6}, valence: 0.6, organic: 0.2, density: 0.6}
+      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 14, ccw: 142, still: 8}}}
+    tags: {parts: [laser], shows_beat: false, energy: [0.15, 0.8], moods: [dreamy, cosmic, hypnotic, liquid, warm],
+           genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.3, density: 0.35}
+  laser-on-the-beat:
+    label: The lasers flash on every beat, turning
+    layers:
+      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 60, ccw: 190, still: 40}}}
+      - {id: gate, fx: swell, phase: beat, depth: 1.0, needs: beat, without_beat: none, attack_ms: 20, decay_ms: 160}
+    tags: {parts: [laser], energy: [0.45, 1.0], moods: [playful, bright, euphoric, hypnotic, retro],
+           genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.2, density: 0.7}
+  laser-side-to-side:
+    label: The two bars' lasers take turns, beat by beat
+    layers:
+      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 45, ccw: 175, still: 30}}}
+      - {id: take-turns, fx: square, phase: beat, depth: 1.0, needs: beat, without_beat: none,
+         order: flow, spread: 1.0}
+    tags: {parts: [laser], energy: [0.4, 0.95], moods: [playful, bright, geometric, hypnotic],
+           genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.2, density: 0.6}
+  laser-colour-steps:
+    label: A new colour each bar, turning with the room
+    layers:
+      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 50, ccw: 180, still: 35}}}
+      - {id: colour-steps, kind: colour_wheel, mode: step, step_on: bar}
+    tags: {parts: [laser], shows_beat: true, energy: [0.4, 0.95], moods: [playful, bright, retro, cosmic, euphoric],
+           genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.2, density: 0.6}
   laser-full:
-    label: Every colour, turning fast
+    label: Every colour at once, turning fast
     layers:
-      - {id: beams, kind: macro, set: {Laser: "Red + green + blue", "Laser strobe": 0,
-                                       "Laser rotation": {cw: 110, ccw: 240, still: 90}}}
-    tags: {parts: [laser], shows_beat: true, energy: [0.6, 1.0], moods: [euphoric, aggressive, fiery, glitchy, bright],
-           genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.1, density: 0.85}
+      - {id: all, kind: macro, set: {Laser: 240, "Laser rotation": {cw: 110, ccw: 240, still: 90}}}
+    tags: {parts: [laser], shows_beat: true, energy: [0.65, 1.0], moods: [euphoric, aggressive, fiery, glitchy, bright],
+           genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.1, density: 0.9, weight: 0.7}
   laser-waits:
-    label: The lasers stay off while the room waits
+    label: Still stars while the room waits
     layers:
-      - {id: off, kind: macro, set: {Laser: Blackout, "Laser strobe": 0, "Laser rotation": 0}}
-    tags: {parts: [laser], shows_beat: false, moments: [waiting, lull, lead_in], energy: [0.0, 1.0],
-           genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5, density: 0.1}
+      - {id: still, kind: macro, set: {"Laser rotation": 0}}
+    tags: {parts: [laser], shows_beat: false, moments: [waiting, lead_in], energy: [0.0, 1.0], genre_fit: {"*": 0.5},
+           valence: 0.5, organic: 0.5, density: 0.1}
+  laser-sleeps:
+    label: The lasers are off through a long wait
+    layers:
+      - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
+    tags: {parts: [laser], moments: [lull], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5,
+           density: 0.1}
   # derby: the derbies' motors, the same way (their Rotation channel: 0 stop, 1-127 clockwise, 129-255 the other way).
   # These are whole scenes for the derbies group: colour from the look, the motor from the room's flow.
   derby-turning:

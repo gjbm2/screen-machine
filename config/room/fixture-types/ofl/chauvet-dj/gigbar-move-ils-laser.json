@@ -12,7 +12,7 @@
     "createDate": "2026-11-26",
     "lastModifyDate": "2026-11-26"
   },
-  "comment": "One part of the Chauvet DJ GigBAR MOVE + ILS, patched as its own fixture at the bar's start address plus the part's offset (docs/GIGBAR_RIG.md). The bar itself must be in its 52CH (Version 2) or 50CH DMX mode. CLASS 3R LASER: the manual requires 3 m between the floor and the lowest beam and 3 m from the audience. Not patched by default; never let the look engine drive it.",
+  "comment": "One part of the Chauvet DJ GigBAR MOVE + ILS, patched as its own fixture at the bar's start address plus the part's offset (docs/GIGBAR_RIG.md). The bar itself must be in its 52CH (Version 2) or 50CH DMX mode. CLASS 3R LASER: the manual requires 3 m between the floor and the lowest beam and 3 m from the audience. Not patched by default; never let the look engine drive it. 27 Nov 2026: the colour channel is described as a wheel (its seven diode combinations as colours a look can match, 0-5 as its closed slot) and the strobe as a shutter, so the lights' scenes, effects and transitions work the laser as any light; the rotation stays a function channel.",
   "links": {
     "manual": [
       "https://www.farnell.com/datasheets/4127597.pdf",
@@ -32,84 +32,103 @@
   },
   "availableChannels": {
     "Laser": {
+      "defaultValue": 0,
       "capabilities": [
         {
           "dmxRange": [
             0,
             5
           ],
-          "type": "Effect",
-          "effectName": "Blackout"
+          "type": "WheelSlot",
+          "wheel": "Laser colours",
+          "slotNumber": 1
         },
         {
           "dmxRange": [
             6,
             41
           ],
-          "type": "Effect",
-          "effectName": "Red"
+          "type": "WheelSlot",
+          "wheel": "Laser colours",
+          "slotNumber": 2
         },
         {
           "dmxRange": [
             42,
             77
           ],
-          "type": "Effect",
-          "effectName": "Green"
+          "type": "WheelSlot",
+          "wheel": "Laser colours",
+          "slotNumber": 3
         },
         {
           "dmxRange": [
             78,
             113
           ],
-          "type": "Effect",
-          "effectName": "Blue"
+          "type": "WheelSlot",
+          "wheel": "Laser colours",
+          "slotNumber": 4
         },
         {
           "dmxRange": [
             114,
             149
           ],
-          "type": "Effect",
-          "effectName": "Red + green"
+          "type": "WheelSlot",
+          "wheel": "Laser colours",
+          "slotNumber": 5
         },
         {
           "dmxRange": [
             150,
             185
           ],
-          "type": "Effect",
-          "effectName": "Red + blue"
+          "type": "WheelSlot",
+          "wheel": "Laser colours",
+          "slotNumber": 6
         },
         {
           "dmxRange": [
             186,
             221
           ],
-          "type": "Effect",
-          "effectName": "Green + blue"
+          "type": "WheelSlot",
+          "wheel": "Laser colours",
+          "slotNumber": 7
         },
         {
           "dmxRange": [
             222,
             255
           ],
-          "type": "Effect",
-          "effectName": "Red + green + blue"
+          "type": "WheelSlot",
+          "wheel": "Laser colours",
+          "slotNumber": 8
         }
       ]
     },
     "Laser strobe": {
+      "defaultValue": 0,
       "capabilities": [
         {
           "dmxRange": [
             0,
+            0
+          ],
+          "type": "ShutterStrobe",
+          "shutterEffect": "Open"
+        },
+        {
+          "dmxRange": [
+            1,
             255
           ],
-          "type": "Effect",
-          "effectName": "Laser strobe",
-          "speedStart": "slow",
-          "speedEnd": "fast"
+          "type": "ShutterStrobe",
+          "shutterEffect": "Strobe",
+          "speedStart": "1Hz",
+          "speedEnd": "20Hz",
+          "comment": "the manual gives no rates: an estimate"
         }
       ]
     },
@@ -274,5 +293,63 @@
         "Laser (old)"
       ]
     }
-  ]
+  ],
+  "wheels": {
+    "Laser colours": {
+      "slots": [
+        {
+          "type": "Closed"
+        },
+        {
+          "type": "Color",
+          "name": "Red",
+          "colors": [
+            "#ff0000"
+          ]
+        },
+        {
+          "type": "Color",
+          "name": "Green",
+          "colors": [
+            "#00ff00"
+          ]
+        },
+        {
+          "type": "Color",
+          "name": "Blue",
+          "colors": [
+            "#0000ff"
+          ]
+        },
+        {
+          "type": "Color",
+          "name": "Red + green",
+          "colors": [
+            "#ffff00"
+          ]
+        },
+        {
+          "type": "Color",
+          "name": "Red + blue",
+          "colors": [
+            "#ff00ff"
+          ]
+        },
+        {
+          "type": "Color",
+          "name": "Green + blue",
+          "colors": [
+            "#00ffff"
+          ]
+        },
+        {
+          "type": "Color",
+          "name": "Red + green + blue",
+          "colors": [
+            "#ffffff"
+          ]
+        }
+      ]
+    }
+  }
 }

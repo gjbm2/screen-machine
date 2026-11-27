@@ -835,6 +835,15 @@ class Catalogue:
             return mine
         return [n for n in names if not self.moments_of(n)] or names   # no moment given: the scenes for any
 
+    def plays_on(self, entry: Mapping[str, Any], group: Mapping[str, Any]) -> bool:
+        """An effect (or a transition's gesture) plays on a group it ``fits``; one written for a kind of light (its
+        ``tags.parts``: a laser's burst) only on a group that takes that part (its ``scenes_for``), and no other."""
+        parts = (entry.get("tags") or {}).get("parts") if isinstance(entry.get("tags"), Mapping) else None
+        parts = [parts] if isinstance(parts, str) else parts if isinstance(parts, (list, tuple)) else []
+        if parts and not (set(parts) & set(group.get("scenes_for") or ())):
+            return False
+        return self.fits(entry, group)
+
     def parts_of(self, name: str) -> tuple[str, ...]:
         """The kinds of light a scene is written for (its ``tags.parts`` words); () for any."""
         m = ((self.scenes.get(name) or {}).get("tags") or {}).get("parts")
@@ -883,7 +892,7 @@ class Catalogue:
         every_bars divides ``bar``. (name, why) or None."""
         names = []
         for n, fx in self.effects.items():
-            if trigger not in fx["on"] or n in running or not self.fits(fx, group):
+            if trigger not in fx["on"] or n in running or not self.plays_on(fx, group):
                 continue
             if trigger == "every_bars" and (bar is None or not fx.get("every_bars") or bar % fx["every_bars"]):
                 continue

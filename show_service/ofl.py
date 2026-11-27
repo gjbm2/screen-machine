@@ -505,6 +505,21 @@ class _Mode:
             out.append({"dmx": _split((lo + hi) // 2, res)[0], "hex": hexv, "name": str(name)})
         return sorted(out, key=lambda s: s["dmx"])
 
+    def wheel_closed(self, key: str, wheel_name: str) -> Optional[int]:
+        """The DMX value (coarse, the middle of its range) of this channel's Closed wheel slot, or None: a light with
+        no dimmer goes dark through it (colour_mix.encode: a laser's colour channel, 27 Nov)."""
+        ch = self.avail[key]
+        res = _resolution(ch)
+        slots = (self.wheels.get(wheel_name) or {}).get("slots") or []
+        for c in _caps(ch, res):
+            if c.get("type") != "WheelSlot" or (c.get("wheel") or key) != wheel_name:
+                continue
+            n = _slot_number(c)
+            if n is not None and n <= len(slots) and isinstance(slots[n - 1], dict) and slots[n - 1].get("type") == "Closed":
+                lo, hi = c["dmxRange"]
+                return _split((lo + hi) // 2, res)[0]
+        return None
+
     # -- ranges (docs/LIGHTS.md §2.2) ----------------------------------------------------------------------------------
     def wheels_in_mode(self) -> list[str]:
         """The wheels this mode's channels turn, in channel order (a wheel the file defines)."""
@@ -886,6 +901,9 @@ def parse(doc: Any, mode: str, *, type_id: str = "ofl", file: Optional[str] = No
                 slots = st.wheel_slots(key, extra["wheel_name"])
                 if slots:
                     info["wheel"] = slots
+                    closed = st.wheel_closed(key, extra["wheel_name"])
+                    if closed is not None:
+                        info["wheel_closed"] = closed
                     wheel_taken = True
                     colour_wheel = extra["wheel_name"]
                 else:

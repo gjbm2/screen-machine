@@ -540,6 +540,10 @@ def encode(f: Mapping[str, Any], t: Mapping[str, Any], intensity: float, colour:
                 _write(buf, c, colour_mix.wheel_slot(col, mine))
     if attrs.get("macro"):
         _macro(buf, p, attrs.get("macro"))
+    g = colour_mix.wheel_gate(t, intensity)                      # last: a light with no dimmer is dark whatever a
+    if g is not None:                                            # layer set on its wheel
+        for off in g[0]:
+            buf[off] = g[1]
     return bytes(buf)
 
 
