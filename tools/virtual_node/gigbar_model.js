@@ -4,6 +4,8 @@
 // what each channel means (the Chauvet and Antari manuals), and the parts' physical state: pan, tilt and the wheels
 // travel at estimated speeds (MECH: not in the manuals), the derby and laser motors turn, the hazer heats and hazes.
 // Both views read the same state, so they can't disagree.
+// The laser is one of two (docs/GIGBAR_RIG.md §1.4), told apart by the DMX chart: 52CH is a grating laser (a burst of
+// thin beams a colour, turned by its rotation channel); 51CH and 50CH throw a mirrored pair of small line figures.
 "use strict";
 
 // ---- set-up: as on each unit's own menu or DIP switch (kept in this browser) -----------------------------------------
@@ -21,9 +23,11 @@ function load() {
 }
 function save() { localStorage.setItem("vgb.cfg", JSON.stringify(CFG)); }
 
-// Part offsets in a bar's personality (manual Rev. 10: 52CH; Rev. 8: 50CH, a one-channel laser).
+// Part offsets in a bar's personality (manual Rev. 10: 52CH; Rev. 8: 50CH, a one-channel laser; US manual Rev. 12:
+// 51CH, a two-channel laser: colour, pattern. Only the 51CH laser block and spot offsets are known here: §3).
 const LAYOUT = {
   52: { par: [0, 7], derby: [14, 20], flash: 26, laser: 31, laserCh: 3, spot: [34, 43], size: 52 },
+  51: { par: [0, 7], derby: [14, 20], flash: 26, laser: 31, laserCh: 2, spot: [33, 42], size: 51 },
   50: { par: [0, 7], derby: [14, 20], flash: 26, laser: 31, laserCh: 1, spot: [32, 41], size: 50 },
 };
 // Mechanical speeds: NOT in the manuals. Estimates for a budget LED mover and its effects.
@@ -132,6 +136,83 @@ const LASER_V1 = [[0, null], [36, "image colour"], [71, "red"], [73, null], [107
 const pick = (table, v) => table.find(([hi]) => v <= hi)[1];
 const LASER_RGB = { red: [255, 30, 30], green: [30, 255, 60], blue: [60, 80, 255] };
 
+// ---- the laser (docs/GIGBAR_RIG.md §1.4; the same model as the app's 3D room, src/pages/Room3D/scene.ts) ------------
+// Two different lasers are sold under this bar's name, and the DMX chart tells them apart:
+//   - 52CH (the EU unit: colour, strobe, rotation): a GRATING laser. Each lit diode is split into a grid of thin beams
+//     (needles in haze, a field of dots where they land), and the rotation channel turns the whole burst about the
+//     laser's axis. A grating bends each colour by its own angle (sin = order x wavelength / pitch): the red grid is
+//     the widest, the blue the tightest, and only the centre beam of each coincides. Two or three diodes are that
+//     many colours of beams side by side, never one mixed colour.
+//   - 51CH (the US unit: colour, one of 32 patterns) and the older 50CH (colour only): a few fat beams from two
+//     apertures, each landing as a small, sharp line figure, the two apertures' figures mirror images. Each lit diode
+//     draws its own figure beside the others.
+// Known: the diodes' wavelengths and the 93 degree coverage (no beam more than 46.5 degrees off the axis). Estimates:
+// the orders (9 x 9 beams a colour), how fast they dim with order, how fast the grating turns (MECH.laserRps), the
+// figures' size, spacing and shapes (what each of the 32 patterns looks like isn't published).
+const LASER = { orders: 4, cover_deg: 93, falloff: 0.3, span_deg: 7, pair_deg: 4, diode_deg: 5, points: 48, rays: 8, drift: 0.9 };
+const LASER_DIODES = ["red", "green", "blue"];
+const LASER_NM = { red: 650, green: 520, blue: 450 };            // nm (the EU manual's laser data)
+const LASER_EDGE = Math.sin(LASER.cover_deg * Math.PI / 360);    // the coverage's edge, as a sine off the axis
+function laserColours(v, v1) {   // the diodes a colour-channel value lights (v1: the 51CH / 50CH table), or null
+  const w = pick(v1 ? LASER_V1 : LASER_V2, v);
+  return !w ? null : w === "image colour" ? [...LASER_DIODES] : w.split(" + ");
+}
+const laserPattern = (v) => Math.min(31, Math.floor(v / 8));     // 51CH: 32 patterns, 8 DMX values each
+// What a bar's laser is doing now. b: its first channel's address.
+function laserNow(b, L, S, t) {
+  const grating = L.laserCh === 3, cols = laserColours(ch(b), !grating);
+  const st = grating ? ch(b + 1) : 0, hz = st ? lerp(0.5, 4, st / 255) : 0;      // pulses: 4 a second at most
+  const pattern = L.laserCh === 2 ? laserPattern(ch(b + 1)) : null;
+  return { grating, cols, hz, on: !!cols && (!hz || (t * hz) % 1 < 0.5), pattern, rot: S.laserRot,
+           image: !grating && pick(LASER_V1, ch(b)) === "image colour",
+           rps: grating ? motor(ch(b + 2), MECH.laserRps) : 0,
+           shape: pattern === null ? S.laserMorph : pattern * 2.39996 + 0.25 * Math.sin(S.laserMorph * 0.5) };
+}
+// The grating's beams for each diode: every order (m, n) inside the coverage, as [sine across, sine up, brightness].
+// The grid's corners fall outside the coverage and aren't thrown, so the burst is round.
+const LASER_GRID = (() => {
+  const M = LASER.orders, reach = LASER_EDGE ** 2 * 1.001, grid = {};
+  for (const nm of LASER_DIODES) {
+    const step = (LASER_EDGE / M) * LASER_NM[nm] / LASER_NM.red;   // red's outermost order is at the coverage's edge
+    grid[nm] = [];
+    for (let n = -M; n <= M; n++) for (let m = -M; m <= M; m++) {
+      if ((m * m + n * n) * step * step <= reach) grid[nm].push([m * step, n * step, 1 / (1 + LASER.falloff * (m * m + n * n))]);
+    }
+  }
+  return grid;
+})();
+// The burst as it is now: fn(diode, x, y, gain) for each beam of each lit diode. x and y are the beam's direction as
+// sines across the laser's axis (the beam is axis * sqrt(1 - x^2 - y^2) + across * x + up * y), turned by the motor.
+function laserBurst(ls, fn) {
+  const c = Math.cos(ls.rot), s = Math.sin(ls.rot);
+  for (const nm of ls.cols) for (const [sx, sy, gain] of LASER_GRID[nm]) fn(nm, sx * c - sy * s, sx * s + sy * c, gain);
+}
+// The figures as they are now: fn(slot, diode, i, x, y) for point i (0..LASER.points, closing the outline) of each lit
+// figure. Slots 0-2 are one aperture's red, green and blue, 3-5 the other's, mirrored. x and y are tangents across
+// the laser's axis (the beam is axis + across * x + up * y). A 51CH pattern number picks the shape; 50CH has no
+// pattern channel, so its shape drifts.
+function laserFigures(ls, fn) {
+  const N = LASER.points, span = Math.tan(LASER.span_deg * Math.PI / 360) * 0.55, q = ls.shape;
+  const a2 = 0.55 * Math.sin(q * 0.61), a3 = 0.4 * Math.sin(q * 0.43 + 1.7), p2 = q * 0.37, p3 = q * 0.29 + 0.9;
+  for (let slot = 0; slot < 6; slot++) {
+    const ap = slot < 3 ? -1 : 1, d = slot % 3, nm = LASER_DIODES[d];
+    if (!ls.cols.includes(nm)) continue;
+    const off = Math.tan(ap * (LASER.pair_deg / 2 + (d - 1) * LASER.diode_deg) * Math.PI / 180);
+    for (let i = 0; i <= N; i++) {
+      const th = (i % N) / N * Math.PI * 2;
+      fn(slot, nm, i, off + (Math.cos(th) + a2 * Math.cos(2 * th + p2) + a3 * Math.cos(3 * th + p3)) * span * ap,
+         (Math.sin(th) + a2 * Math.sin(2 * th - p2 * 1.3) + a3 * Math.sin(3 * th + p3 * 0.7)) * span);
+    }
+  }
+}
+// In words: which diodes are lit, and what the chart's other channels are doing ([lit, doing]), or null when off.
+function laserWords(ls) {
+  if (!ls.cols) return null;
+  const lit = `${ls.image ? "image colour: " : ""}${ls.cols.join(" + ")} diode${ls.cols.length > 1 ? "s" : ""}`;
+  if (ls.grating) return [lit, `burst ${motorWords(ls.rps)} · ${ls.hz ? `pulsing ${ls.hz.toFixed(1)} a second` : "steady"}`];
+  return [lit, `${ls.pattern === null ? "" : `pattern ${ls.pattern + 1} of 32 · `}mirrored pair of figures`];
+}
+
 // colour of an RGBAW+UV par, and its name
 function mixPar(r, g, b, am, w, uv) {
   const c = [r + am + w + uv * 0.35, g + am * 0.62 + w * 0.95, b + w * 0.88 + uv * 0.95];
@@ -159,8 +240,8 @@ const css = (rgb, a = 1) => `rgba(${rgb[0] | 0},${rgb[1] | 0},${rgb[2] | 0},${a}
 const hexRgb = (h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
 
 // ---- the moving parts' physical state --------------------------------------------------------------------------------
-const SIM = CFG.bars.map(() => ({ spots: [0, 1].map(() => ({ pan: 0, tilt: 0, vp: 0, vt: 0, wheel: 0, gobo: 0 })),
-                                  derbyRot: [0, 0], laserRot: 0 }));
+const SIM = CFG.bars.map((b) => ({ spots: [0, 1].map(() => ({ pan: 0, tilt: 0, vp: 0, vt: 0, wheel: 0, gobo: 0 })),
+                                   derbyRot: [0, 0], laserRot: 0, laserMorph: hash(b.address) * 10 }));
 const HAZE = { firstDmx: null, density: 0, lastSeen: null, out: 0, fan: 0.2, ready: false };
 function wrapDelta(from, to, n) { let d = (to - from) % n; if (d > n / 2) d -= n; if (d < -n / 2) d += n; return d; }
 function slew(cur, vel, target, vmax, dt) {
@@ -196,7 +277,8 @@ function stepSim(dt, t) {
              s.gobo = (s.gobo + Math.max(-m, Math.min(m, d)) + 10) % 10; }
     });
     [0, 1].forEach((k) => { S.derbyRot[k] += motor(ch(a0 + L.derby[k] + 5), MECH.derbyRps) * dt * Math.PI * 2; });
-    if (L.laserCh === 3) S.laserRot += motor(ch(a0 + L.laser + 2), MECH.laserRps) * dt * Math.PI * 2;
+    if (L.laserCh === 3) S.laserRot += motor(ch(a0 + L.laser + 2), MECH.laserRps) * dt * Math.PI * 2;   // the grating turns
+    else if (laserColours(ch(a0 + L.laser), true)) S.laserMorph += dt * LASER.drift;                    // a lit figure breathes
   });
   const h = CFG.hazer, haveDmx = linkOk && performance.now() - dmxAt < 1500;
   if (haveDmx) { if (HAZE.firstDmx === null) HAZE.firstDmx = t; HAZE.lastSeen = t; }

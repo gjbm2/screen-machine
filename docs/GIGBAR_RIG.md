@@ -291,7 +291,8 @@ virtual node: Art-Net in -> DMX out at 40 Hz (holds the last frame when Art-Net 
     raw channels;
   - **3D** (`/3d`, three.js 0.187 vendored in `tools/virtual_node/vendor/three`, MIT, so it works offline): the bars on
     tripods at the far wall of a plain room. The heads pan on their yokes and tilt in them, and each one projects its
-    colour and gobo. The pars wash, the derbies throw turning beam fans, the strobes glow, and the laser draws lines.
+    colour and gobo. The pars wash, the derbies throw turning beam fans, the strobes glow, and the laser throws its burst of thin
+    beams (52CH) or its mirrored figures (51CH, 50CH), as §1.4 has it.
     A side panel says what each part is doing. Drag to orbit and use the wheel to zoom; there are Front, Side and
     Above views. Beams show plainly by default; tick "beams as the haze allows" to see them as the room would.
   - The head orientation is an assumption: tilt centre is straight up, + tilts towards the room, and + pan turns to
@@ -303,7 +304,7 @@ virtual node: Art-Net in -> DMX out at 40 Hz (holds the last frame when Art-Net 
   - Its DMX side refreshes at 40 Hz whatever rate Art-Net arrives at. After 4 s without Art-Net it holds
     (`--failsafe zero` to black out instead).
   - Flags: `--port 6455` (PC22), `--universe`, `--reply-to-6454` (answer polls on port 6454, as some nodes do).
-- **The view** reads only that DMX output. Set each bar there as you set the real one: start address, 52CH or 50CH,
+- **The view** reads only that DMX output. Set each bar there as you set the real one: start address, 52CH, 51CH or 50CH,
   pan/tilt range and reverse. Set the hazer's DIP address too. A patch mistake then shows as it would in the room.
   - It draws each part from what its channels mean in the manuals: pars and derbies, the strobe zones, the laser, the
     spots' pan/tilt, colour wheel, gobos and shutter, and haze building in the air (beams show in haze).
