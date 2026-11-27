@@ -108,7 +108,7 @@ _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 def _builtin(tid: str, kind: str, attrs: tuple[str, ...]) -> contract.TypeInfo:
     return {"id": tid, "source": "builtin", "kind": kind, "file": None, "mode": None, "footprint": 0,
             "attrs": list(attrs), "channels": [], "emitters": {}, "wheel": [], "curve": "srgb", "problems": [],
-            "wheels": {}, "physical": ofl.no_physical()}
+            "wheels": {}, "physical": ofl.no_physical(), "categories": []}
 
 
 #: A generic type's channel words -> (attr, emitter), as ofl.py would read them (README S5.23; docs/LIGHTS.md §2.5).
@@ -1775,7 +1775,11 @@ class Registrar:
 # -- the setup file (the Lights page's per-light settings; docs/LIGHTS.md §2.6) ----------------------------------------
 SETUP_NAME = "fixtures.setup.yaml"
 SETUP_KEYS: tuple[str, ...] = ("home", "limits", "max_speed", "range", "beam", "slots", "positions", "strobe_hz_max",
-                               "jog_flip")
+                               "jog_flip", "lean_deg")
+#: lean_deg (owner, 27 Nov: "laser angle should be a config setting in the light set up screen ... a de facto user
+#: param we'll physically control but will drive the simulation"): how a fixed light that throws a spread of beams (a
+#: bar's laser) is tilted by hand: degrees forward (towards the middle of the room) from straight up; negative: back.
+LEAN_DEG = (-90.0, 90.0)
 SETUP_AXES: tuple[str, ...] = ("pan", "tilt")
 SETUP_BEAM: tuple[str, ...] = ("zoom", "focus", "iris", "frost")
 SETUP_SLOT_WHEELS: tuple[str, ...] = ("gobo", "gobo2", "colour", "prism")   # slots.<wheel>.<n>: its name
@@ -1952,6 +1956,7 @@ _SETUP_CHECK: dict[str, Callable[[Any, str], Any]] = {
     "positions": _positions,
     "strobe_hz_max": lambda v, w: _finite(v, w, lo=0.0, above=True),
     "jog_flip": lambda v, w: _axes(v, w, _flip),
+    "lean_deg": lambda v, w: _finite(v, w, lo=LEAN_DEG[0], hi=LEAN_DEG[1]),
 }
 
 

@@ -1040,6 +1040,7 @@ lights:
     movers:
       label: Moving lights
       select: "cap:pan"
+      carries_beat: 1                       # may carry a look's beat (programs.carrier_others); pars and derbies more often
       dark_level: 0                         # fade_dark goes to this (0..1), or floor (the look's floor)
       # Owner, 26 Nov: calm scenes should have "some, gentle movement". On top of wherever a scene puts them (its own
       # moves, a still fan or aim, or their rest when it only breathes), the movers sway: a slow wander of about this
@@ -1061,6 +1062,11 @@ lights:
   # light_scenes.yaml tags.moments, and light_effects.yaml on: [lead_in | waiting | lull | song_end].
   moments:
     lull_after_s: 180                       # waiting this long is a lull
+    # The pre-state is general, for every mode and every layer (owner, 27 Nov): while nothing plays the director
+    # directs at most this much energy (it is in room.direction, with the moment), and the screens and each light
+    # group draw from their own catalogues against it: their low-energy scenes. A mode's own scenes for the moment
+    # come first (a light scene's tags.moments with tags.modes: one of the mode's director.light_scenes tags).
+    energy: {lead_in: 0.45, waiting: 0.2, lull: 0.1}
   # The haze (show_service/atmosphere.py; owner, 26 Nov): the feel says how thick (vibes.yaml haze: off | light |
   # medium | thick; PUT /api/v1/haze for a person's pick until the mode changes), and this holds it from a model of
   # the room's air: its volume (space.yaml room.size) and how fast it clears (space.yaml room.haze_half_life_s: time
@@ -1110,6 +1116,15 @@ lights:
       downbeat: {beat: [0.4, 2.5], other: [1.2, 0.6]}
       beat:     {beat: [0.15, 5.0], other: [2.0, 0.3]}
       full:     {beat: [0.15, 7.0], other: [2.0, 0.2]}
+    # A karaoke song is laid out before it plays (show_service/songplan.py: each lyric section with the song's
+    # measured level over it, and its climax marked; owner, 27 Nov). Starting points, chosen by reasoning.
+    recall_weight: 40                       # a section that comes round again (the chorus) draws the scene each group
+                                            # showed for it last time at this many times its weight
+    grow_step: 0.12                         # ... and a bigger line-up, once the song's level for it has risen this much
+    section_fit: 2.5                        # a scene whose tags.sections names the kind of section coming, x this
+    section_against: 0.35                   # ... one that names other kinds, x this (no tags.sections: for any)
+    carrier_others: 0.25                    # one group carries the beat in a look (groups.<g>.carries_beat: its weight
+                                            # in that draw); the other groups' beat scenes draw at this share
   flow:
     centre: null                            # a Room map name the flow turns round / bursts from; null: the room's centre
     # screen (owner, 26 Nov): the direction the picture on the screens travels (show_service/picture.py: a tunnel is

@@ -9,7 +9,8 @@ Every layer already changes scene on the art director's one cue (its look_change
 the lights' transition, the screens' transition and the accents are chosen together, not drawn apart:
 
   into, from   the kind of section the change goes into / comes from (SECTION_KINDS words, or any): a karaoke song's
-               lyric plan names them; without one only ``any`` moves fit
+               lyric plan names them; without one only ``any`` moves fit. ``climax``: the section that holds the
+               song's measured climax when that isn't its last chorus (songplan.py)
   reasons      the look changes it is for (the director's own words: section, repeat, dwell, track, next, drop, ...)
   size         small | medium | big: a big move spends one of the feel's big moments (peak_tokens_per_hour) and is
                left out when none is left
@@ -35,7 +36,7 @@ from . import contract
 log = logging.getLogger(__name__)
 
 MOVES_FILE = contract.REPO_ROOT / "config" / "live" / "moves.yaml"
-SECTION_KINDS: tuple[str, ...] = ("verse", "chorus", "final_chorus", "instrumental", "outro", "any")
+SECTION_KINDS: tuple[str, ...] = ("verse", "chorus", "final_chorus", "climax", "instrumental", "outro", "any")
 SIZES: tuple[str, ...] = ("small", "medium", "big")
 KEYS = frozenset({"label", "into", "from", "reasons", "size", "lights", "screen", "land", "tags"})
 DEFAULT_REASONS: tuple[str, ...] = ("section", "repeat")

@@ -1764,7 +1764,7 @@ class Structure:
 
     # -- a karaoke song's lyric plan (owner, 26 Nov: "verse / chorus etc. triggers ... to the a.d.") --------------------
     def _plan_read(self, now_s: float, np_: Any) -> None:
-        """ctx.now_playing's ``sections`` (karaoke_feed: [{pos_s, kind, letter}], pos_s the player position where the
+        """ctx.now_playing's ``sections`` (karaoke_feed: [{pos_s, kind, letter, level, peak}], pos_s the player position where the
         room hears it begin): the plan, its clock from the player's position (exact, as _player's song end).  Any
         other source, no sections, or the player stopped: no plan."""
         secs = np_.get("sections") if isinstance(np_, dict) else None
@@ -1827,7 +1827,8 @@ class Structure:
                           "from": self._cur_id(), "id": sid, "lyrics": x.get("kind")}
             self._emit("section_change", line, now_s, section_id=sid, letter=x["letter"],
                        repeat_of=self._pred["repeat_of"], predicted=True, boundary_ms=round(line * 1000.0, 1),
-                       detail="lyrics", section_kind=x.get("kind"), final=final)
+                       detail="lyrics", section_kind=x.get("kind"), final=final,
+                       level=x.get("level"), peak=x.get("peak"))   # songplan.py: how big it will be; the climax
             self._gobo_at(line, ("section", sid))
             return
 

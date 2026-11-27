@@ -41,8 +41,8 @@ moves:
     land: 1.0
     tags: {energy: [0.35, 1.0], weight: 1.0}
   last-chorus:
-    label: A beat of strobe, a hard cut, and everything at once for the last chorus
-    into: [final_chorus]
+    label: A beat of strobe, a hard cut, and everything at once for the song's biggest section
+    into: [final_chorus, climax]
     size: big
     lights:
       transition: strobe-snap

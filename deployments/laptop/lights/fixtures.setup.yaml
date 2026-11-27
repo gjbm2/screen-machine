@@ -6,6 +6,8 @@
 # or tilt range.
 version: 1
 fixtures:
+  gigbar-a.laser:
+    lean_deg: -1.5
   gigbar-a.spot1:
     home:
       pan: -17.7
@@ -14,6 +16,8 @@ fixtures:
     home:
       pan: -23.1
       tilt: 87.2
+  gigbar-b.laser:
+    lean_deg: -1.5
   gigbar-b.spot1:
     home:
       pan: 23.1

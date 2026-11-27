@@ -206,6 +206,10 @@ If the bars end up the other way round, swap their start addresses on the bars; 
    - If the list offers 50CH and not 52CH, it is an older unit: patch the spots at +32 and +41 (§1.2).
    - If it offers 51CH, it is the US unit (§1.4): its laser is two channels and the spots sit one channel lower
      (+33 and +42). Patch the laser as `mode: part-51ch`; the rest of that chart isn't verified here.
+   - **Tilt the laser** by hand so its window faces straight up and a touch back towards the wall (1.5 degrees):
+     its burst is 93 degrees wide, so no beam then leans more than 45 degrees into the room (owner, 27 Nov: clear
+     of a mirror ball in the middle). Set the same tilt on the Lights page (the laser's row, "How it is tilted"):
+     the 3D room draws from it.
    - The value shows yellow while DMX arrives and white without it.
 2. MENU → **SETUP**:
    - **Pan Range 540** and **Tilt Range 270**, to match the type file. The spec sheet says 540° x 180°, but the

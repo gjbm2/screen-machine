@@ -115,13 +115,14 @@ CHANNEL_CAPS = {"intensity": "intensity", "emitter": "colour", "wheel": "colour_
 #: an effect's why, by its trigger (contract.LIGHT_EFFECT_TRIGGERS)
 TRIGGER_WHY = {"drop": "the drop", "build": "the song builds", "breakdown": "a breakdown", "peak": "the peak",
                "section_change": "a new section", "track_change": "a new song", "outro": "the song ends",
-               "chorus": "the chorus", "final_chorus": "the last chorus", "lead_in": "the next song is cued",
+               "chorus": "the chorus", "final_chorus": "the last chorus",
+               "climax": "the song's climax", "lead_in": "the next song is cued",
                "waiting": "the room waits", "lull": "a long wait", "song_end": "the song has ended",
                "verse": "a verse", "instrumental": "an instrumental break", "transition": "the change of scene"}
 # -- groups (show.yaml lights; docs/LIGHTS.md §7.1, §12) ----------------------------------------------------------------
 OTHER_GROUP = "*"                                # the lamps no group takes
 OTHER_LABEL = "Other lights"
-GROUP_KEYS = frozenset({"label", "select", "follows", "dark_level", "appliances", "repeat_weight",
+GROUP_KEYS = frozenset({"label", "select", "follows", "dark_level", "appliances", "repeat_weight", "carries_beat",
                         "sway", "scenes_drive", "scenes_for"})   # sway: the look engine's (looks._group_sway)
 DARK_FLOOR = "floor"                             # dark_level: the look's floor
 #: show.yaml ``lights`` keys: the catalogue builder's, and the other builders' (read where they are used)
@@ -129,6 +130,15 @@ LIGHTS_KEYS = frozenset({"scene_group", "groups", "programs", "flow", "motion", 
                          "atmosphere", "moments", "lineups"})   # atmosphere, moments: the director's
 #: lights.programs' starting points (docs/LIGHTS.md §12; the file's values win)
 PROGRAMS_FALLBACK = {"effects_max": 2, "effect_gap_bars": 4.0}
+#: lights.programs keys that are only there when show.yaml gives them (the director's own starting points stand in):
+#:   recall_weight    a section that comes round again (a karaoke song's chorus) draws the scene each light group
+#:                    showed for it last time at this many times its weight: the chorus looks like the chorus
+#:   grow_step        ... and takes a bigger line-up than last time once the song's level for it has risen this much
+#:   section_fit, section_against   a scene's weight x these when its tags.sections names / doesn't name the kind of
+#:                    section the look goes into (a scene with no tags.sections is for any)
+#:   carrier_others   one light group carries the beat in a look (lights.groups.<g>.carries_beat: its weight in that
+#:                    draw); the other groups that could have draw their beat scenes at this share
+PROGRAMS_OPTIONAL = frozenset({"recall_weight", "grow_step", "section_fit", "section_against", "carrier_others"})
 #: lights.programs.accent_fit (optional): {accent style: {beat: x, other: y}}: a scene's weight x ``beat`` when it
 #: shows the beat (``on_beat``), x ``other`` when it doesn't, by the feel's accents style. Each is a number or [with no
 #: groove, at full groove]: the director reads between them by the music's groove (owner, 26 Nov: "I don't feel the
@@ -175,7 +185,7 @@ def drives(entry: Mapping[str, Any]) -> list[str]:
 #: group no line-up names is not governed: it always plays. ``into``: as a move's; ``drive``: the band of the music's
 #: drive (its energy and groove together, 0..1) the line-up is for.
 LINEUP_KEYS = frozenset({"label", "plays", "into", "drive", "weight"})
-LINEUP_INTO: tuple[str, ...] = ("verse", "chorus", "final_chorus", "instrumental", "outro", "any")
+LINEUP_INTO: tuple[str, ...] = ("verse", "chorus", "final_chorus", "climax", "instrumental", "outro", "any")
 LINEUP_OFF_DRIVE = 0.1                           # a line-up's weight outside its drive band
 
 
@@ -221,12 +231,16 @@ def parse_lineups(raw: Any, groups: set, probs: list[str]) -> dict[str, dict]:
 
 
 def pick_lineup(lineups: Mapping[str, Mapping[str, Any]], into: Optional[str], drive: float, rng: Any,
-                avoid: Optional[str] = None) -> Optional[str]:
+                avoid: Optional[str] = None, over: Optional[set] = None) -> Optional[str]:
     """A line-up for a section of kind ``into`` (None: unknown) at the music's ``drive``: a weighted draw over the
     ones whose ``into`` names that section (with none, or no known section, the ``any`` ones), x LINEUP_OFF_DRIVE
-    outside their drive band; never ``avoid`` (the one playing) while another fits. None with none."""
+    outside their drive band; never ``avoid`` (the one playing) while another fits. ``over``: only line-ups that
+    play every group in it and at least one more (a section that has grown since it last came round). None with
+    none."""
     named = [n for n, e in lineups.items() if into is not None and into in e["into"]]
     pool = named or [n for n, e in lineups.items() if "any" in e["into"]]    # the section's own, when it has any
+    if over is not None:
+        pool = [n for n in pool if set(lineups[n]["plays"]) > set(over)]
     ws: dict[str, float] = {}
     for name in pool:
         e = lineups[name]
@@ -891,9 +905,10 @@ class Catalogue:
                  rest: Optional[bool] = None) -> list[str]:
         """The scenes a group may show: those that fit it, and of those the ones tagged with any of ``tags`` (a mode's
         light scene tags), unless none of them is (then every one that fits: the mode didn't mean this group).
-        ``moment`` (contract.MOMENTS): then only the scenes whose ``tags.moments`` names it; when none does, or with no
-        moment given, the scenes that name no moment at all (they are for any; a scene made for a moment never stands
-        in for another). A group's ``scenes_drive`` narrows first (show.yaml lights.groups)."""
+        ``moment`` (contract.MOMENTS): the mode's own scenes for it (``tags.moments`` names it and ``tags.modes`` one of
+        the mode's tags), else the scenes made for it in any mode (no ``tags.modes``); when there are none, or with no
+        moment given, the scenes that name no moment at all (a scene made for a moment never stands in for another).
+        A group's ``scenes_drive`` narrows first (show.yaml lights.groups)."""
         names = [n for n, sc in self.scenes.items() if self.fits(sc, group)]
         # a scene's tags.parts says which kind of light it is written for (flash: strobe zones, ...); a group's
         # scenes_for (show.yaml lights.groups) takes those; a scene made for a part never goes to another group
@@ -909,14 +924,25 @@ class Catalogue:
             only = [n for n in names if want & set(self.scenes[n].get("drives") or ())]
             if only:
                 names = only
+        # The scenes for any moment, within the mode's tags; and, in a moment (owner, 27 Nov: the pre-state is "either
+        # some specific scene (for some modes) or a selection among low-energy scenes"): the mode's own scenes made
+        # for this moment (tagged with it and with the mode); else the ones made for it in any mode (a kind of light
+        # that must behave: the strobe zones dark, the laser slow); else the general pool, which the director draws
+        # from at the moment's low energy.
+        general = [n for n in names if not self.moments_of(n)]
         if tags:
-            only = [n for n in names if self.tagged(self.scenes[n], tags)]
+            only = [n for n in general if self.tagged(self.scenes[n], tags)]
             if only:
-                names = only
-        mine = [n for n in names if moment in self.moments_of(n)] if moment else []
-        if mine:
-            return mine
-        return [n for n in names if not self.moments_of(n)] or names   # no moment given: the scenes for any
+                general = only
+        if moment:
+            made = [n for n in names if moment in self.moments_of(n)]
+            own = [n for n in made if tags and self.tagged(self.scenes[n], tags)]
+            if own:
+                return own
+            anymode = [n for n in made if not (self.scenes[n].get("tags") or {}).get("modes")]
+            if anymode:
+                return anymode
+        return general or names
 
     def plays_on(self, entry: Mapping[str, Any], group: Mapping[str, Any]) -> bool:
         """An effect (or a transition's gesture) plays on a group it ``fits``; one written for a kind of light (its
@@ -932,6 +958,12 @@ class Catalogue:
         m = ((self.scenes.get(name) or {}).get("tags") or {}).get("parts")
         m = [m] if isinstance(m, str) else m if isinstance(m, (list, tuple)) else []
         return tuple(w for w in m if isinstance(w, str))
+
+    def sections_of(self, name: str) -> tuple[str, ...]:
+        """The kinds of section a scene is written for (its ``tags.sections``, LINEUP_INTO words); () for any."""
+        m = ((self.scenes.get(name) or {}).get("tags") or {}).get("sections")
+        m = [m] if isinstance(m, str) else m if isinstance(m, (list, tuple)) else []
+        return tuple(w for w in m if w in LINEUP_INTO)
 
     def moments_of(self, name: str) -> tuple[str, ...]:
         """The moments a scene is made for (its ``tags.moments``, contract.MOMENTS words); () for any."""
@@ -1131,6 +1163,12 @@ def parse_lights(raw: Any, probs: list[str]) -> dict:
                            "dark_level": float(dl) if dl != DARK_FLOOR else DARK_FLOOR,
                            "appliances": [x for x in ap if x in out["appliances"]], "repeat_weight": float(rw),
                            "scenes_drive": list(sd), "scenes_for": list(sf)}
+            cb = g.get("carries_beat")                   # its weight in the draw for the look's beat carrier
+            if cb is not None:
+                if _num(cb) is None or cb < 0:
+                    probs.append(f"{w}.carries_beat: {cb!r} isn't a number >= 0: it never carries the beat")
+                else:
+                    groups[gid]["carries_beat"] = float(cb)
     if raw.get("lineups") is not None:
         out["lineups"] = parse_lineups(raw.get("lineups"), set(groups), probs)
     for gid, g in groups.items():                    # follows: another group, and no loop
@@ -1183,7 +1221,7 @@ def parse_lights(raw: Any, probs: list[str]) -> dict:
             for k, v in pr.items():
                 if k in ("accent_fit", "accent_groove"):
                     continue
-                if k not in PROGRAMS_FALLBACK:
+                if k not in PROGRAMS_FALLBACK and k not in PROGRAMS_OPTIONAL:
                     probs.append(f"lights.programs.{k}: not a programs key: ignored")
                 elif _num(v) is None or v < 0:
                     probs.append(f"lights.programs.{k}: {v!r} isn't a number >= 0")

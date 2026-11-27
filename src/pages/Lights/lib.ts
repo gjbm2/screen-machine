@@ -33,6 +33,8 @@ export interface LightRow {
   caps: Caps | null;
   /** Its own settings (fixtures.setup.yaml): home, limits, named positions, slot names, its normal beam. */
   setup: Setup;
+  /** A laser's spread of beams, degrees across (its type's lens angle); null for any other light. */
+  spread_deg: number | null;
 }
 
 /** A kind of light the room can drive (GET /show/api/v1/rig/types). */
@@ -185,6 +187,7 @@ function toRow(o: Obj, rv: Obj | null): LightRow | null {
     dmx: !hue && (driver === "artnet" || address !== null || node_ip !== null),
     caps: parseCaps(o.caps),
     setup: parseSetup(o.setup),
+    spread_deg: typeof o.spread_deg === "number" && o.spread_deg > 0 ? o.spread_deg : null,
   };
 }
 
@@ -513,6 +516,16 @@ export interface Setup {
   positions: Record<string, PanTilt>;
   jog_flip: Record<Axis, boolean>;
   beam: Record<string, number>;
+  /** How a fixed light is tilted by hand: degrees forward (towards the middle of the room) from straight up. */
+  lean_deg: number | null;
+}
+
+/** The tilt a laser gets until someone sets one: the most forward beam of its spread is this far off vertical. */
+export const LEAN_RULE_DEG = 45;
+/** A laser's tilt (its setup, else the rule above) and the lean of its most forward and most backward beams. */
+export function laserLean(spread_deg: number, lean_deg: number | null): { lean: number; forward: number; back: number } {
+  const lean = lean_deg ?? LEAN_RULE_DEG - spread_deg / 2;
+  return { lean, forward: lean + spread_deg / 2, back: spread_deg / 2 - lean };
 }
 
 function num(v: unknown): number | null {
@@ -596,7 +609,7 @@ function pair(v: unknown): [number, number] | null {
 }
 
 export function emptySetup(): Setup {
-  return { home: null, limits: {}, positions: {}, jog_flip: { pan: false, tilt: false }, beam: {} };
+  return { home: null, limits: {}, positions: {}, jog_flip: { pan: false, tilt: false }, beam: {}, lean_deg: null };
 }
 
 /** A light's setup as POST .../setup answers it (or a rig row carries it), read tolerantly. */
@@ -618,6 +631,7 @@ export function parseSetup(v: unknown): Setup {
   }
   if (isObj(v.jog_flip)) out.jog_flip = { pan: v.jog_flip.pan === true, tilt: v.jog_flip.tilt === true };
   if (isObj(v.beam)) for (const [k, x] of Object.entries(v.beam)) if (num(x) !== null) out.beam[k] = x as number;
+  out.lean_deg = num(v.lean_deg);
   return out;
 }
 

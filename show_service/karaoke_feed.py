@@ -36,10 +36,21 @@ def _fetch_json(url: str) -> Any:
         return json.loads(r.read().decode("utf-8"))
 
 
+def library_shape(song_id: str) -> Optional[dict]:
+    """A karaoke library song's measured shape (utils/song_shape.py: from its backing and lead vocal), kept under
+    the show's state; None when its audio isn't there."""
+    import smconfig
+    from utils import song_shape
+    return song_shape.load_or_measure(smconfig.state("karaoke", "songs", song_id),
+                                      smconfig.state("show", "shapes", f"{song_id}.json"))
+
+
 class KaraokeFeed:
     def __init__(self, base_url: str, *, fetch: Callable[[str], Any] = _fetch_json,
-                 clock: Callable[[], float] = time.time, mono: Callable[[], float] = time.monotonic) -> None:
+                 clock: Callable[[], float] = time.time, mono: Callable[[], float] = time.monotonic,
+                 shape_fn: Optional[Callable[[str], Optional[dict]]] = None) -> None:
         self.url = base_url.rstrip("/") + "/api/karaoke/now"
+        self._shape_fn = shape_fn                        # a song id -> its measured shape (library_shape), or None
         self._fetch = fetch
         self._clock = clock
         self._mono = mono
@@ -97,11 +108,35 @@ class KaraokeFeed:
         except Exception as e:                           # noqa: BLE001 - next poll
             log.info("karaoke: %s's sections not read (%s)", sid, type(e).__name__)
             return
-        self._sections = (key, secs)
+        self._sections = (key, [])                        # held back until the song's shape has been tried
+        self._plan_song(key, str(sid), secs, float(dur) if dur else None, str(s.get("title") or sid))
         # the words too, for the song's character (song_character.py) and the treatment's AI (an excerpt)
         self._lyrics = (key, " ".join(lines), excerpt(lines))
-        log.info("karaoke: %s: %s", s.get("title") or sid,
-                 " ".join(f"{x['kind']}@{x['start_s']:.0f}" for x in secs) or "no sections (lyrics not synced)")
+
+    def _plan_song(self, key: str, sid: str, secs: list, dur: Optional[float], title: str) -> None:
+        """The song laid out (songplan.lay_out): its sections with the level its measured shape gives each and its
+        climax marked. The shape is read (measured the first time: a few seconds, then kept) off this thread, and the
+        sections are handed to structure only once it has been tried, so the plan never changes under it."""
+        from . import songplan
+
+        def work() -> None:
+            shape = None
+            if self._shape_fn is not None and secs:
+                try:
+                    shape = self._shape_fn(sid)
+                except Exception as e:                   # noqa: BLE001 - no shape: the sections alone
+                    log.info("karaoke: %s's shape not read (%s)", title, type(e).__name__)
+            plan = songplan.lay_out(secs, shape, dur)
+            if self._sections[0] == key:
+                self._sections = (key, plan)
+            log.info("karaoke: %s: %s", title, " ".join(
+                f"{x['kind']}@{x['start_s']:.0f}" + (f"={x['level']:.2f}" if x.get("level") is not None else "")
+                + ("*" if x.get("peak") else "") for x in plan) or "no sections (lyrics not synced)")
+
+        if self._shape_fn is None or not secs:
+            work()
+        else:
+            threading.Thread(target=work, name="karaoke-shape", daemon=True).start()
 
     def _fresh(self) -> Optional[dict]:
         o = self._last
@@ -149,8 +184,8 @@ class KaraokeFeed:
                 # plays (director._song_genre; owner, 26 Nov: song context "should be doing more work")
                 "artist": artist or None, "genre": s.get("genre") or None, "year": s.get("year") or None,
                 "lyrics_text": lyr[1], "lyrics_excerpt": lyr[2],
-                "sections": [{"pos_s": round(x["start_s"] + shift, 3), "kind": x["kind"], "letter": x["letter"]}
-                             for x in secs]}
+                "sections": [{"pos_s": round(x["start_s"] + shift, 3), "kind": x["kind"], "letter": x["letter"],
+                              "level": x.get("level"), "peak": x.get("peak")} for x in secs]}
 
     def playing(self) -> bool:
         """A song plays, or the speaker-delay calibration runs (routes/karaoke/calibrate.py: it times chirps with the

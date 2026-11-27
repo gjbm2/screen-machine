@@ -1248,6 +1248,17 @@ class Rig:
         """GET /api/v1/rig ``fixtures`` (any thread): contract.RigFixtureRow per fixture of the current view."""
         return self._rows(self._view, getattr(self.registry, "added_ids", None) or frozenset())
 
+    @staticmethod
+    def _spread_deg(t: Mapping[str, Any]) -> Optional[float]:
+        """The full angle a fixed laser's beams spread over (its type file: category Laser, lens degrees), else None."""
+        lens = (t.get("physical") or {}).get("lens_deg") if isinstance(t.get("physical"), Mapping) else None
+        if "Laser" not in (t.get("categories") or ()) or not lens:
+            return None
+        try:
+            return float(max(lens))
+        except (TypeError, ValueError):
+            return None
+
     def _rows(self, v: Any, editable: Any) -> list[dict]:
         if not isinstance(v, Mapping):
             return []
@@ -1279,7 +1290,10 @@ class Rig:
                          # docs/LIGHTS.md §2.3: what it can do (its setup applied) and its setup, for the page
                          "caps": fx.caps_of(t, f.get("setup")) if fx is not None and t and hasattr(fx, "caps_of")
                          else None,
-                         "setup": dict(f.get("setup") or {})})
+                         "setup": dict(f.get("setup") or {}),
+                         # a laser's spread of beams (its type file's lens angle): the Lights page offers its tilt
+                         # (setup lean_deg) and the 3D room draws from the two
+                         "spread_deg": self._spread_deg(t)})
         return rows
 
     def _last_hex(self, oid: Any, fid: str) -> Optional[str]:

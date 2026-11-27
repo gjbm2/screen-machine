@@ -27,7 +27,8 @@ reach a frame.
      at tc / max``.
   3. **Activity**, exactly artnet_out's P0 idle rule: with a vibe, always active (its relaxed look, House and Low go
      out in a quiet room: §8.5 "never black"), but while the features are stale or the room is quiet the frame is
-     *held*: no layer and no hit follows the sound (artnet_out sends hue_depth 0 then). With no vibe: inactive when
+     *held*: no layer and no hit follows the sound (artnet_out sends hue_depth 0 then); a ``needs: none`` layer, which
+     never did, runs on (a waiting scene's slow glow, a part resting dark). With no vibe: inactive when
      the features are older than IDLE_AFTER_S (``no_features``), or the room is quiet (gate under QUIET_GATE_OFF for
      QUIET_AFTER_S, until it is back over QUIET_GATE_ON: ``quiet``). On an output whose caps say
      ``idle_without_vibe`` (artnet: nothing room-side decides which DMX fixtures follow, §8.6) no vibe is inactive
@@ -3406,8 +3407,8 @@ class LookEngine:
                     mem.pop(rid, None)
                     continue
                 env = self._envelope(m, ef, cx.beat_s)
-                inows = [] if steady else self._nows(ef.layers, st, t, snap, gate, caps_hits, min_attack_s, look,
-                                                     vibe, energy, trans_s, prog.middle_depth, min_period_s)
+                inows = self._nows(self._steady_layers(ef.layers, steady, house_low), st, t, snap, gate, caps_hits,
+                                   min_attack_s, look, vibe, energy, trans_s, prog.middle_depth, min_period_s)
                 gn.effects.append((ef, env, inows))
                 if ef.flash_hz_max is not None and env(t) > 0.0:
                     flash_hz = ef.flash_hz_max if flash_hz is None else min(flash_hz, ef.flash_hz_max)
@@ -3455,12 +3456,23 @@ class LookEngine:
               vibe: bool, energy: float, trans_s: float, min_period_s: float, steady: bool, house_low: bool,
               pf: Optional[_ProgFade], new: bool, w0: float) -> _Part:
         layers = prog.layers if sc is None else sc.layers
-        inows = [] if steady else self._nows(layers, st, t, snap, gate, caps_hits, min_attack_s, look, vibe, energy,
-                                             trans_s, prog.middle_depth, min_period_s)
+        inows = self._nows(self._steady_layers(layers, steady, house_low), st, t, snap, gate, caps_hits,
+                           min_attack_s, look, vibe, energy, trans_s, prog.middle_depth, min_period_s)
         alayers = () if house_low else tuple(L for L in layers if L.kind != "intensity")
         am = (sc.amembers if sc is not None else frozenset(m for L in alayers for m in L.members)) if alayers \
             else frozenset()
         return _Part(sc, inows, alayers, am, pf, new, w0)
+
+    @staticmethod
+    def _steady_layers(layers: Sequence[_Layer], steady: bool, house_low: bool) -> Sequence[_Layer]:
+        """The layers a frame runs. A held frame (a quiet room, or stale features: nothing to follow) keeps the ones
+        that never followed the sound: ``needs: none`` (a slow breathe or glow on its own clock, a part resting dark).
+        Owner, 27 Nov: "when there is no music playing we should go back to pre-state with gentle movement": the
+        waiting scenes are exactly these, and a held frame used to drop them with the rest (the strobe zones and the
+        laser lit, nothing breathing). House lights and Lights low keep none: they are plain steady light."""
+        if not steady:
+            return layers
+        return () if house_low else tuple(L for L in layers if L.needs == "none")
 
     def _nows(self, layers: Sequence[_Layer], st: _OutState, t: float, snap: Optional[Mapping[str, Any]], gate: str,
               caps_hits: bool, min_attack_s: float, look: Any, vibe: bool, energy: float, trans_s: float,

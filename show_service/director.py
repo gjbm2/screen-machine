@@ -244,7 +244,7 @@ LIGHT_REASON_WORDS = {"feel": "a new feel", "first": "the first light scene", "s
 GROOVE_SONG_MIN_S = 20.0            # a song's own groove is kept once this much of it has sounded
 GROOVE_TAU_S = 15.0                 # the groove the lights' draw reads: the direction's, averaged over this long
 MOMENT_TRIGGERS = ("lead_in", "waiting", "lull", "song_end")   # the effect triggers a moment fires (never gapped)
-MOMENTS_FALLBACK = {"lull_after_s": 180.0}   # show.yaml lights.moments
+MOMENTS_FALLBACK = {"lull_after_s": 180.0, "energy": {}}   # show.yaml lights.moments (energy: {moment: 0..1})
 LIGHT_SCENE_SEED = 0                # the light-scene draw's seed (a fixed seed, as palette.from_image's k-means)
 LIGHT_FX_SEED = 1                   # the effects' and transitions' draws (their own, so effects never shift the scenes')
 ENSEMBLE_SEED = 2                   # the interplay forms' draw (docs/ENSEMBLE.md §4.2: its own, beside the lights')
@@ -300,7 +300,7 @@ CONTEXT_STALE_S = 3.0               # music.context comes at 1 Hz
 RHYTHM_STALE_S = 1.0                # README S4.6: a music.rhythm frame over 1 s old is stale
 E_HIST_N = 6000                     # energy samples kept for section energies (10 min at 10 Hz)
 SUBDIVISIONS = (0.5, 0.25, 0.125)   # §8.5: a build steps the accent subdivision 1/2 -> 1/4 -> 1/8
-GAP_FREE_TRIGGERS = ("drop", "final_chorus") + MOMENT_TRIGGERS   # big moments: never held back by lights.programs.effect_gap_bars
+GAP_FREE_TRIGGERS = ("drop", "final_chorus", "climax") + MOMENT_TRIGGERS   # big moments: never held back by lights.programs.effect_gap_bars
 STROBE_MOMENT_S = 4.0               # strobes within this of a spent token are the same big moment (one token)
 TOKEN_WINDOW_S = 3600.0             # peak_tokens_per_hour: at most that many spends in any 60 minutes
 STRUCTURE_REASONS = ("section", "repeat", "drop", "track")   # look changes structure's events caused
@@ -379,6 +379,13 @@ INT_SPAN = 0.34                # the band energy: base -INT_SPAN .. base +INT_SP
 INT_SPAN_UP = 0.45
 KARAOKE_DWELL_MAX_S = (30.0, 90.0)
 SECTION_ENERGY = {"verse": -0.08, "chorus": 0.15, "instrumental": 0.05, "outro": -0.15}
+# A karaoke song laid out ahead (songplan.py; owner, 27 Nov: "informed by song structure and shape metadata"). The
+# director's own starting points for lights.programs' optional keys (light_scenes.PROGRAMS_OPTIONAL has the words).
+RECALL_WEIGHT = 40.0
+GROW_STEP = 0.12
+SECTION_FIT, SECTION_AGAINST = 2.5, 0.35
+CARRIER_OTHERS = 0.25
+BIG_SECTIONS = ("final_chorus", "climax")      # the song's one biggest section: scenes written for a chorus fit it
 from .song_character import SONG_GENRES  # noqa: E402  (Deezer's genres -> the vocabulary; shared with the feed)
 from . import song_character as songc  # noqa: E402
 # Practice (PianoView.practice 0..1; owner, 1 Nov). The Room page says "Sounds like practice" from PRACTICE_ON until it
@@ -1037,6 +1044,11 @@ class Director:
         self._move_apply: Optional[dict] = None          # set while that change's programs are picked
         self._sec_kind: Optional[str] = None             # the section playing, by a lyric plan (moves.SECTION_KINDS)
         self._sec_kinds: tuple[Optional[str], Optional[str]] = (None, None)   # the last boundary: (from, into)
+        self._sec_level: Optional[float] = None          # the section coming: the song's level over it (songplan.py)
+        self._sec_letter: Optional[str] = None           # ... and its letter (a chorus is one letter all song)
+        self._light_mem: dict[str, dict] = {}            # letter -> {"lineup", "level", "scenes": {group: scene},
+                                                         # "carrier"}: the lights' look for it (this track)
+        self._carrier: Optional[str] = None              # the light group that carries the beat in this look
         self._last_boundary_s: Optional[float] = None
         self._e_hist: collections.deque = collections.deque(maxlen=E_HIST_N)   # (t_s, smoothed energy)
         self._x = (0.0, 0.0, 0.0, 0.0)                   # the section's expression: (from, to, t0, t1), in u units
@@ -1061,7 +1073,7 @@ class Director:
             pass
         self._moment = contract.MOMENTS[0]               # the room's moment (contract.MOMENTS): what the lights' scenes
         self._moment_since = 0.0                         # and effects are commissioned for, besides the music
-        self._moments_cfg = dict(MOMENTS_FALLBACK)
+        self._moments_cfg = {**MOMENTS_FALLBACK, "energy": {}}
         self._air = atmod.Air()                          # the room's haze (atmosphere.py)
         self.haze_pick: Optional[str] = None             # a person's haze level (set_haze), until the mode changes
         self._air_next = 0.0
@@ -1453,7 +1465,7 @@ class Director:
         self._air.configure(atmod.parse((s.get("lights") or {}).get("atmosphere")
                                         if isinstance(s.get("lights"), dict) else None, probs))   # the hazers
         mo = (s.get("lights") or {}).get("moments") if isinstance(s.get("lights"), dict) else None
-        self._moments_cfg = dict(MOMENTS_FALLBACK)
+        self._moments_cfg = {**MOMENTS_FALLBACK, "energy": {}}
         if isinstance(mo, dict):
             la = _num(mo.get("lull_after_s"))
             if la is not None and la > 0:
@@ -1461,6 +1473,12 @@ class Director:
             elif mo.get("lull_after_s") is not None:
                 probs.append(f"lights.moments.lull_after_s: {mo.get('lull_after_s')!r} isn't seconds: "
                              f"{MOMENTS_FALLBACK['lull_after_s']:g}")
+            en = mo.get("energy")                         # the most energy the director directs in each moment
+            if isinstance(en, dict):
+                self._moments_cfg["energy"] = {k: _c01(float(v)) for k, v in en.items()
+                                               if k in contract.MOMENTS and _num(v) is not None}
+            elif en is not None:
+                probs.append("lights.moments.energy: needs {lead_in | waiting | lull: 0..1}: none")
         if self.ensemble is not None:                     # docs/ENSEMBLE.md §10
             ens_probs: list[str] = []
             self.ensemble.configure(ensmod.parse_settings(s.get("ensemble"), ens_probs), ens_probs)
@@ -2102,6 +2120,8 @@ class Director:
         self._drop_inside_s = None
         self._sec_mem.clear()
         self._sec_kind, self._sec_kinds = None, (None, None)
+        self._sec_level, self._sec_letter = None, None
+        self._light_mem.clear()
         self._x = (0.0, 0.0, 0.0, 0.0)
         self._cut_mark = None
         self._song_dip = None
@@ -2651,6 +2671,8 @@ class Director:
         n = len(self._sec_mem)
         self._sec_mem.clear()
         self._sec_kind, self._sec_kinds = None, (None, None)
+        self._sec_level, self._sec_letter = None, None
+        self._light_mem.clear()
         self._song_change = (tr or {}).get("change") != "small"
         tp = self.treat.plan
         plan = tp if (tp is not None and tid is not None and tp.get("song") == f"track:{tid}") else \
@@ -2684,16 +2706,32 @@ class Director:
         self._announce(now_s, "track", "director", grid, at_s=at, bar=bar, section=info,
                        transition=self._look_transition_for(tr), palette=plan_pal)
 
+    @staticmethod
+    def _into_kind(ev: Mapping[str, Any]) -> Optional[str]:
+        """The kind of section a lyric-plan section_change goes into (verse | chorus | instrumental | outro), with the
+        song's one big section named: ``final_chorus`` for its last chorus, unless the song's measured shape puts its
+        climax elsewhere (``peak`` False: then it is a chorus like the others); ``climax`` for the section that holds
+        that climax when it isn't the last chorus (songplan.py). None: not a lyric plan's event."""
+        sk = ev.get("section_kind")
+        if not (isinstance(sk, str) and sk):
+            return None
+        peak = ev.get("peak")
+        if sk == "chorus" and ev.get("final") and peak is not False:
+            return "final_chorus"
+        return "climax" if peak is True else sk
+
     def _on_section(self, ev: dict, at_s: float, now_s: float, vs: dict, grid: Grid) -> None:
         """§8.5: a predicted section (a known repeat) lands on its line with that letter's look; a confirmed one lands
         at its at_ms unless that is more than max_late_bars into the section: then it shows inside the look."""
         info = self._section_info(ev)
-        sk = ev.get("section_kind")                       # a lyric plan's: verse | chorus | instrumental | outro
-        if isinstance(sk, str) and sk:
-            into = "final_chorus" if sk == "chorus" and ev.get("final") else sk
+        into = self._into_kind(ev)                        # a lyric plan's kind, with the song's big section named
+        if into is not None:
             self._sec_kinds, self._sec_kind = (self._sec_kind, into), into
+            self._sec_level = _num(ev.get("level"))
+            self._sec_letter = ev.get("letter") if isinstance(ev.get("letter"), str) and ev.get("letter") else None
         else:
             self._sec_kinds = (None, None)
+            self._sec_level, self._sec_letter = None, None
         predicted = bool(ev.get("predicted"))
         boundary_s = (_num(ev.get("boundary_ms"), at_s * 1000.0) or at_s * 1000.0) / 1000.0
         prev_b = self._last_boundary_s
@@ -2958,6 +2996,32 @@ class Director:
         cur = self._lp
         new: dict[str, dict] = {}
         picked: list[str] = []
+        sec = reason in ("section", "repeat")
+        into = self._sec_kinds[1] if sec else None
+        mem = self._light_mem.get(self._sec_letter) if sec and self._sec_letter else None
+        # One light group carries the beat in a look (owner, 27 Nov: "reason extensively about the way that the
+        # layers interact"): every part pulsing on the beat at once is mush. Drawn among the groups that play and may
+        # carry it (lights.groups.<g>.carries_beat), the same one when the section comes round again; the others'
+        # beat scenes draw at carrier_others.
+        cands = {gid: float(g["carries_beat"]) for gid, g in self._groups.items()
+                 if g.get("carries_beat") and not g.get("follows") and self._group_live(gid)
+                 and self._rests(gid) is not True}
+        carrier = None
+        if cands and reason not in ("first", "scenes", "room"):
+            carrier = mem.get("carrier") if mem is not None and mem.get("carrier") in cands else None
+            if carrier is None:
+                x = self._ls_rng.random() * sum(cands.values())
+                for carrier, wgt in cands.items():
+                    x -= wgt
+                    if x <= 0:
+                        break
+            self._carrier = carrier
+        elif cands and self._carrier in cands:
+            carrier = self._carrier
+        fit, against = self._prog("section_fit", SECTION_FIT), self._prog("section_against", SECTION_AGAINST)
+        # a change the music's structure causes (a new song, a section) lands IN the song, whatever the moment is
+        # while it is announced (trace, 27 Nov: a new song's lasers kept the lead-in's scene)
+        mom = "song" if reason in STRUCTURE_REASONS else self._moment
         for gid, g in self._groups.items():
             if g.get("follows") or not self._group_live(gid):
                 continue
@@ -2974,15 +3038,32 @@ class Director:
                 if want:
                     prefer[want] = prefer.get(want, 1.0) * float(self.treat.cfg["light_prefer"])
                     pwhy[want] = "the plan's pick"
-                got = self.light_scenes.pick_for(g, self.direction, self._flow, self._ls_rng,
-                                                 avoid=old.get("scene") if old else None, tags=self._light_tags,
+                if into is not None:                      # scenes written for this kind of section (tags.sections)
+                    kinds = {into, "chorus"} if into in BIG_SECTIONS else {into}
+                    for n in self.light_scenes.scenes:
+                        ss = self.light_scenes.sections_of(n)
+                        if ss:
+                            prefer[n] = prefer.get(n, 1.0) * (fit if kinds & set(ss) else against)
+                            if kinds & set(ss):
+                                pwhy.setdefault(n, f"made for {lscenes.TRIGGER_WHY.get(into, into)}")
+                back = (mem.get("scenes") or {}).get(gid) if mem is not None else None
+                if back is not None:                      # the section comes round again: its scene comes back
+                    prefer[back] = prefer.get(back, 1.0) * self._prog("recall_weight", RECALL_WEIGHT)
+                    pwhy[back] = "this section's scene, back again"
+                af = self._accent_fit()
+                if carrier is not None and gid in cands and gid != carrier:
+                    af = {**(af or {"other": 1.0}), "beat": (af or {}).get("beat", 1.0)
+                          * self._prog("carrier_others", CARRIER_OTHERS)}
+                got = self.light_scenes.pick_for(g, self._direction_now(mom), self._flow, self._ls_rng,
+                                                 avoid=None if back is not None else old.get("scene") if old else None,
+                                                 tags=self._light_tags,
                                                  hard_avoid=human, prefer=prefer or None, prefer_why=pwhy,
                                                  # a change the music's structure causes (a new song, a section)
                                                  # lands IN the song, whatever the moment is while it is announced
                                                  # (trace, 27 Nov: a new song's lasers kept the lead-in's scene)
-                                                 moment="song" if reason in STRUCTURE_REASONS else self._moment,
+                                                 moment=mom,
                                                  rest=self._rests(gid),
-                                                 accent_fit=self._accent_fit())
+                                                 accent_fit=af)
             except Exception:                             # a broken catalogue never fails the tick
                 log.exception("light scenes: pick failed")
                 got = None
@@ -2994,6 +3075,11 @@ class Director:
             picked.append(gid)
         if not picked:
             return None
+        if sec and self._sec_letter and only is None and not held:   # the lights' look for this section, for next time
+            name = self._lineup_apply if self._lineup_apply is not None else self._lineup
+            self._light_mem[self._sec_letter] = {
+                "lineup": name, "level": self._sec_level, "carrier": carrier,
+                "scenes": {gid: new[gid]["scene"] for gid in picked if new[gid].get("scene")}}
         if reason not in ("first", "scenes", "room"):     # a change of scene: the transition's own gesture across it
             self._transition_gesture(tr, picked, at, now_s)
             self._move_accents(picked, at, now_s)         # and the move's accents around the line
@@ -3120,10 +3206,20 @@ class Director:
     def _drive(self) -> float:
         """The music's drive for a line-up, 0..1: its directed energy and its groove (read between the accent_groove
         marks) in equal parts. A karaoke song's energy is its own range; the groove tells one song from another."""
+        return self._drive_at(None)
+
+    def _drive_at(self, level: Optional[float]) -> float:
+        """``_drive`` for a section whose level in the song is known ahead (songplan.py): that level stands in for the
+        energy being directed now, which describes the section that is ending."""
         d = self.direction or {}
-        e = _c01(_num(d.get("energy"), 0.5) or 0.5)
+        e = _c01(level if level is not None else (_num(d.get("energy"), 0.5) or 0.5))
         g0, g1 = self.lights_cfg["programs"].get("accent_groove") or (0.0, 1.0)
         return 0.5 * e + 0.5 * _c01((self._groove - g0) / (g1 - g0))
+
+    def _prog(self, key: str, default: float) -> float:
+        """One of lights.programs' optional numbers (light_scenes.PROGRAMS_OPTIONAL), else the director's own."""
+        v = _num(self.lights_cfg["programs"].get(key))
+        return float(v) if v is not None else default
 
     def _lineup_for(self, look_id: str, reason: str, by: str, now_s: float) -> Optional[str]:
         """The line-up a look change brings (light_scenes.pick_lineup), drawn once per change: by the section it goes
@@ -3137,16 +3233,34 @@ class Director:
             return self._lineup_next[1]
         if reason not in STRUCTURE_REASONS and reason not in ("dwell", "next", "feel"):
             return self._lineup
-        into = self._sec_kinds[1] if reason in ("section", "repeat") else None
+        sec = reason in ("section", "repeat")
+        into = self._sec_kinds[1] if sec else None
+        level = self._sec_level if sec else None
+        drive = self._drive_at(level)
+        # A section that comes round again (its letter: every chorus is one) brings its line-up back, so the chorus
+        # looks like the chorus; once the song's level for it has risen by grow_step it takes a bigger one that keeps
+        # every part it had. The song's big section draws its own (everything).
+        mem = self._light_mem.get(self._sec_letter) if sec and self._sec_letter else None
+        how, name = "drawn", None
         try:
-            name = lscenes.pick_lineup(lus, into, self._drive(), self._fx_rng, avoid=self._lineup)
+            if mem is not None and mem.get("lineup") in lus and into not in BIG_SECTIONS:
+                grown = level is not None and mem.get("level") is not None \
+                    and level - mem["level"] >= self._prog("grow_step", GROW_STEP)
+                if grown:
+                    name = lscenes.pick_lineup(lus, into, drive, self._fx_rng, over=set(lus[mem["lineup"]]["plays"]))
+                    how = "grown" if name is not None else how
+                if name is None:
+                    name, how = mem["lineup"], "recalled"
+            if name is None:
+                name = lscenes.pick_lineup(lus, into, drive, self._fx_rng, avoid=self._lineup)
         except Exception:                                 # a broken catalogue never fails the tick
             log.exception("line-ups: pick failed")
             name = None
         self._lineup_next = (key, name)
         if name is not None:
             self._log_event("lineup", {"lineup": name, "plays": list(lus[name]["plays"]), "into": into,
-                                       "drive": round(self._drive(), 3), "reason": reason})
+                                       "drive": round(drive, 3), "level": level, "letter": self._sec_letter if sec
+                                       else None, "how": how, "reason": reason})
         return name
 
     def _rests(self, gid: str) -> Optional[bool]:
@@ -3432,7 +3546,7 @@ class Director:
             self._flow_dec.event(kind, at_s, grid.bar_s if grid.has_grid else None)
         sk = ev.get("section_kind") if kind == "section_change" else None      # a karaoke song's lyric plan: first,
         if sk in ("chorus", "verse", "instrumental"):                          # so it wins the line
-            self._fx_trigger("final_chorus" if sk == "chorus" and ev.get("final") else sk, at_s, now_s, grid)
+            self._fx_trigger(self._into_kind(ev) or sk, at_s, now_s, grid)
         if kind in contract.LIGHT_EFFECT_TRIGGERS:
             self._fx_trigger(kind, at_s, now_s, grid, strength=_num(ev.get("strength")))
         if kind in contract.TRACK_EVENT_KINDS:
@@ -3514,6 +3628,23 @@ class Director:
                 else "waiting"
         return "song"
 
+    def _moment_energy(self, e: float, moment: Optional[str] = None) -> float:
+        """``e`` held to the moment's own energy (show.yaml lights.moments.energy) while nothing plays. The pre-state
+        is general (owner, 27 Nov: "it's not just for karaoke ... a selection among low-energy scenes [for screens
+        and lighting] that the a.d. is choosing from"): the director directs a low energy, and every layer draws
+        from its own catalogue against it; a mode's own scenes for the moment come first (Catalogue.pool_for)."""
+        cap = _num((self._moments_cfg.get("energy") or {}).get(moment or self._moment))
+        return min(e, cap) if cap is not None else e
+
+    def _direction_now(self, moment: Optional[str] = None) -> Optional[dict]:
+        """room.direction as the lights' draws read it: with the moment's energy already in (a moment's first pick
+        comes before the direction is next published)."""
+        d = self.direction
+        if not isinstance(d, dict):
+            return d
+        e = _num(d.get("energy"))
+        return d if e is None else {**d, "energy": self._moment_energy(e, moment)}
+
     def _moment_tick(self, now_s: float, grid: Grid) -> None:
         """A new moment: its effect trigger fires (``song_end`` too, as a song gives way to waiting), and every group
         whose scene isn't in the moment's pool gets one that is (light_scenes.Catalogue.pool_for)."""
@@ -3531,6 +3662,13 @@ class Director:
         if new in MOMENT_TRIGGERS:
             self._fx_trigger(new, at, now_s, grid)
         if not self.light_scenes.scenes:
+            return
+        if new in ("waiting", "lull") and old == "song" and self._vibe_name is not None and self.pending is None \
+                and self.keep_until is None:
+            # Nothing plays any more: one look change for every layer, at the moment's low energy, so the screens
+            # go to their pre-state with the lights (their reason: the room went quiet). A change already pending
+            # (the room relaxed on this tick) is that change.
+            self._announce(now_s, "relax", "director", grid, at_s=at)
             return
         stale = {gid for gid, g in self._groups.items() if not g.get("follows") and self._group_live(gid)
                  and (self._lp.get(gid) or {}).get("scene") not in self.light_scenes.pool_for(g, self._light_tags, new)}
@@ -4966,13 +5104,15 @@ class Director:
         lkind = msec.get("kind") if lplan is not None and isinstance(msec.get("kind"), str) else None
         if lkind is not None and feel_on and getattr(self, "_int_ema", None) is None:
             e_dir = _c01(e_dir + self._section_lift())   # the karaoke section's shape, until the music's own is known
+        e_dir = self._moment_energy(e_dir)               # nothing playing: the moment's own, low energy
         sc = self._song_char()
         if section_ref is not None and lkind is not None:
             section_ref["kind"] = lkind
         cr = vs["change_rate"] if feel_on or words.get("change_rate") is None else words["change_rate"]
         self.direction = {"t_ms": round(now_s * 1000.0, 1), "seq": self._dir_seq, "source": "show_service",
                           "note": f"show_service · {self._vibe_name}" if self._vibe_name else None,
-                          "vibe": self._vibe_name, "energy": round(e_dir, 3), "pace": round(_c01(m["pace"]), 3),
+                          "vibe": self._vibe_name, "moment": self._moment,
+                          "energy": round(e_dir, 3), "pace": round(_c01(m["pace"]), 3),
                           "intensity": 1.0, "change_rate": round(cr, 3), "moods": words["moods"],
                           "genre": words["genre"], "genres": words.get("genres") or {},
                           "transition_style": words["transition_style"],

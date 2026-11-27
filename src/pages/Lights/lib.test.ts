@@ -75,6 +75,7 @@ function row(over: Partial<LightRow>): LightRow {
     dmx: true,
     caps: null,
     setup: emptySetup(),
+    spread_deg: null,
     ...over,
   };
 }

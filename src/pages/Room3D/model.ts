@@ -33,7 +33,8 @@ export interface Fixture {
   at: Vec3 | null;
   pose: Pose | null;
   plane: { normal: Vec3; up: Vec3; size: [number, number] } | null;
-  aim: Vec3 | null;         // the place in the room a fixed light points at (space.yaml aim: a laser turned up)
+  aim: Vec3 | null;         // the place in the room a fixed light points at: a laser's from its tilt (the Lights
+                            // page's setup lean_deg, else the 45-degree rule), else space.yaml aim
   bar: string;              // the id before its last dot ("gigbar-a" for "gigbar-a.par1"): parts of one unit
 }
 
@@ -72,6 +73,17 @@ export async function loadRoom(room: string): Promise<RoomModel> {
   const cfg: Record<string, any> = view.fixtures ?? {};
   const rows: any[] = Array.isArray(rig?.fixtures) ? rig.fixtures : [];
   const apps: Record<string, any> = space?.appliances ?? {};
+  const rs = space?.room ?? {};
+  const rsize: Vec3 = isVec3(rs.size) ? rs.size : [6, 6, 3];
+  const mid: Vec3 = isVec3(rs.centre) ? rs.centre : [rsize[0] / 2, rsize[1] / 2, rsize[2] / 2];
+  /** Where a laser points, from how it is tilted (the Lights page's setup lean_deg: degrees forward, towards the
+   *  middle of the room, from straight up). Not set: the tilt that keeps its most forward beam 45 degrees off
+   *  vertical (owner, 27 Nov: clear of a mirror ball in the middle of the room). */
+  const leanAim = (at: Vec3, spread: number, lean: number | null): Vec3 => {
+    const deg = lean ?? 45 - spread / 2, a = (deg * Math.PI) / 180;
+    const dx = mid[0] - at[0], dy = mid[1] - at[1], h = Math.hypot(dx, dy) || 1;
+    return [at[0] + (dx / h) * Math.sin(a), at[1] + (dy / h) * Math.sin(a), at[2] + Math.cos(a)];
+  };
   const fixtures: Fixture[] = rows.map((row) => {
     const c = cfg[row.id] ?? {};
     const t = types[row.type] ?? {};
@@ -95,7 +107,13 @@ export async function loadRoom(room: string): Promise<RoomModel> {
       at: isVec3(a.at) ? a.at : pose ? pose.at : null,
       pose,
       plane: pl ? { normal: pl.normal, up: pl.up, size: [pl.size[0], pl.size[1]] } : null,
-      aim: isVec3(a.aim) ? a.aim : null,
+      aim: (() => {
+        const at = isVec3(a.at) ? (a.at as Vec3) : null;
+        const lean = typeof row.setup?.lean_deg === "number" ? row.setup.lean_deg : null;
+        const spread = typeof row.spread_deg === "number" ? row.spread_deg : null;
+        if (at && spread !== null && (lean !== null || !isVec3(a.aim))) return leanAim(at, spread, lean);
+        return isVec3(a.aim) ? a.aim : null;
+      })(),
       bar: row.id.includes(".") ? row.id.slice(0, row.id.lastIndexOf(".")) : row.id,
     };
   });

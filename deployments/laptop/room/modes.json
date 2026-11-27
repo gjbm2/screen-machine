@@ -1,5 +1,5 @@
 {
-  "_note": "Room modes (docs/av/ROOM_STATE_MODEL.md): art, the screen live, and Karaoke (owner, 26 Nov: \"karaoke mode is essentially a switch on every mode, but it's false on every mode apart from one that happens also to be labelled 'karaoke'\"): the mode with \"karaoke\": true starts the karaoke player when entered and stops it when left; a song started elsewhere takes the room into it.",
+  "_note": "Room modes (docs/av/ROOM_STATE_MODEL.md): art, the screen live, and Karaoke (owner, 26 Nov: \"karaoke mode is essentially a switch on every mode, but it's false on every mode apart from one that happens also to be labelled 'karaoke'\"): the mode with \"karaoke\": true starts the karaoke player when entered and stops it when left; a song started elsewhere takes the room into it. Its director.light_scenes tag (modes:singalong) picks out the light scenes written for Karaoke alone (light_scenes.yaml tags.modes: the singer's spot while the room waits).",
   "default": "gallery",
   "transition_s": 3,
   "modes": {
@@ -53,7 +53,15 @@
           "restore": true,
           "policy": "ignore"
         },
-        "light.house-*": "off"
+        "light.house-*": "off",
+        "director.light_scenes": {
+          "set": {
+            "scene_tags": [
+              "modes:singalong"
+            ]
+          },
+          "restore": true
+        }
       },
       "karaoke": true
     }

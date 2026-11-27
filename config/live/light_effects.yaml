@@ -11,6 +11,7 @@
 # strobe: true) and pays one of its big moments (peak_tokens_per_hour); strobes on the same line as a paid drop, or
 # on another group at the same moment, share that one token (owner, 26 Nov).
 # chorus / final_chorus: a karaoke song's choruses, from its lyrics (final_chorus: the last one in the song).
+# climax: the section that holds the song's measured climax, when that isn't its last chorus (songplan.py).
 # lead_in | waiting | lull: the room's moment begins (contract.MOMENTS: a song is cued; nothing plays; a long wait);
 # song_end: a song has just given way to waiting (the applause). length: while lasts as long as that moment.
 # Every number below is a STARTING POINT, chosen on paper: tune by watching the room.
@@ -130,7 +131,7 @@ effects:
     tags: {energy: [0.8, 1.0], moods: [euphoric, aggressive, fiery]}
   last-chorus-strobe:
     label: Strobe into the last chorus
-    on: [final_chorus]                      # the only effect on it, so the last chorus always lands (one moment)
+    on: [final_chorus, climax]              # the only effect on it, so the song's big section always lands
     length: {bars: 2}
     fade: {in_beats: 0, out_beats: 1}
     needs: [shutter]
@@ -184,7 +185,7 @@ effects:
   # (Laser: 240 is the 52-channel chart's red + green + blue; Laser control: 20 the 51-channel chart's image colour).
   laser-burst:
     label: Every colour of beam at once, spinning and strobing, for the big moment
-    on: [drop, final_chorus, transition]
+    on: [drop, final_chorus, climax, transition]
     length: {bars: 2}
     fade: {in_beats: 0, out_beats: 1}
     needs: [shutter]

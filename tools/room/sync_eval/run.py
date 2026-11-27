@@ -120,7 +120,8 @@ def read(t0: float, t1: float) -> dict:
         k = e.get("kind")
         if k == "lineup":
             lineups.append({"t": e["t"], "lineup": e["lineup"], "plays": e.get("plays"), "into": e.get("into"),
-                            "drive": e.get("drive")})
+                            "drive": e.get("drive"), "level": e.get("level"), "letter": e.get("letter"),
+                            "how": e.get("how")})
         elif k == "move":
             moves.append({"t": e["t"], "move": e["move"], "from": e.get("from"), "into": e.get("into"),
                           "size": e.get("size")})
@@ -132,6 +133,35 @@ def read(t0: float, t1: float) -> dict:
             parts.append({"t": e["t"], "group": e.get("group"), "name": e["run"]["name"]})
     return {"screen": [v for v in scr.values() if "started" in v], "moves": moves, "lines": lines, "parts": parts,
             "lineups": lineups}
+
+
+def looks(d: dict) -> dict:
+    """What the song's plan should show (songplan.py; owner, 27 Nov): each section's line-up with the song's level
+    over it; how much of a section's look comes back when it comes round again (the share of light groups on the
+    scene they showed for that letter last time); and how many groups show the beat at once in each look (one
+    carrier is the aim: the strobe zones and the laser aren't counted, they are accents)."""
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+    from show_service import light_scenes
+    cat = light_scenes.shared()
+    cat.poll(force=True)
+    seen: dict[str, dict] = {}
+    back, beat = [], []
+    for lu in d["lineups"]:
+        ln = min((x for x in d["lines"] if abs(x["t"] - lu["t"]) < 1.5), key=lambda x: abs(x["t"] - lu["t"]),
+                 default=None)
+        if ln is None:
+            continue
+        g = {k: v for k, v in ln["groups"].items() if k != "*" and v}
+        tags = lambda n: (cat.scenes.get(n) or {}).get("tags") or {}                # noqa: E731
+        beat.append(sum(1 for k, n in g.items() if (cat.scenes.get(n) or {}).get("on_beat")
+                        and not tags(n).get("rest") and not tags(n).get("parts")))
+        if lu.get("letter"):
+            was = seen.get(lu["letter"])
+            if was is not None:
+                both = [k for k in g if k in was]
+                back.append(round(sum(g[k] == was[k] for k in both) / max(1, len(both)), 2))
+            seen[lu["letter"]] = g
+    return {"scenes_back": back, "beat_groups": beat}
 
 
 def score(d: dict) -> dict:
@@ -176,8 +206,10 @@ def main() -> None:
     time.sleep(1.0)
     d = read(t0, t0 + a.dur)
     s = score(d)
+    lk = looks(d)
     if a.json:
-        print(json.dumps({"song": hit.get("title"), "from_s": a.pos, "for_s": a.dur, "score": s, "feel": feel, **d},
+        print(json.dumps({"song": hit.get("title"), "from_s": a.pos, "for_s": a.dur, "score": s, "feel": feel,
+                          "looks": lk, **d},
                          indent=1))
         return
     print(f"{hit.get('title')}: {a.pos:g} s .. {a.pos + a.dur:g} s")
@@ -187,8 +219,8 @@ def main() -> None:
         ps = sorted({p["name"] for p in d["parts"] if abs(p["t"] - m["t"]) < 0.5})
         lu = min((x for x in d["lineups"] if abs(x["t"] - m["t"]) < 1.0), key=lambda x: abs(x["t"] - m["t"]), default=None)
         print(f"  {m['t'] - t0:5.1f}s  {m['move']:14} {m.get('from')} -> {m.get('into')}"
-              + (f"   line-up: {lu['lineup']} ({len(lu['plays'])} parts: {', '.join(lu['plays'])}; drive {lu['drive']})"
-                 if lu else ""))
+              + (f"   line-up: {lu['lineup']} ({len(lu['plays'])} parts: {', '.join(lu['plays'])}; drive {lu['drive']}"
+                 f"; the song's level {lu.get('level')}; {lu.get('how')})" if lu else ""))
         if ln is not None:
             print(f"          lights: {ln['groups']}")
             print(f"          parts: {ps}; screen via {sc['transition'] if sc else None}, finished "
@@ -199,6 +231,9 @@ def main() -> None:
     print(f"  the song as the lights took it: groove {feel['groove']}, energy {feel['energy']}; time on a scene that "
           f"shows the beat: " + ", ".join(f"{g} {v:.0%}" for g, v in feel["beat_share"].items())
           + f"; pars' brightness swing {feel['swing']}; heads' travel {feel['travel_deg_s']} deg/s")
+    print(f"  a section that came round again brought back this share of its scenes: {lk['scenes_back']}; light "
+          f"groups showing the beat at once, per look: {lk['beat_groups']}; hue families lit at once: median "
+          f"{feel.get('hues')}, most {feel.get('hues_max')}")
     print(f"  landing: median {s['landing_median_s']} s, worst {s['landing_worst_s']} s ({s['landing_s']}); "
           f"moves made for the boundary: {s['moves_for_a_boundary']}/{s['moves']}")
 

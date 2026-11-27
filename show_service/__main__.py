@@ -696,7 +696,7 @@ class Show:
             if smconfig.enabled("karaoke") is not True or self.ctx is None:
                 return
             from . import karaoke_feed
-            self.karaoke = karaoke_feed.KaraokeFeed(smconfig.url("flask"))
+            self.karaoke = karaoke_feed.KaraokeFeed(smconfig.url("flask"), shape_fn=karaoke_feed.library_shape)
             self.ctx.now_playing = karaoke_feed.chain_now_playing(self.ctx.now_playing, self.karaoke.now_playing)
             self.modules["karaoke"] = "ok"
         except Exception as e:

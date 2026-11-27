@@ -587,7 +587,7 @@ FLOW_SOURCES: tuple[str, ...] = ("structure", "event", "pitch", "listener", "moo
 FLOW_SYMMETRY: tuple[str, ...] = ("none", "mirror")      # FlowData.symmetry (show.yaml lights.flow.symmetry)
 LIGHT_TRANSITION_KINDS: tuple[str, ...] = ("cut", "dark_move", "crossfade", "fade_dark", "sweep")
 LIGHT_EFFECT_TRIGGERS: tuple[str, ...] = ("drop", "build", "breakdown", "peak", "section_change", "track_change",
-                                          "outro", "every_bars", "chorus", "final_chorus",
+                                          "outro", "every_bars", "chorus", "final_chorus", "climax",
                                           "lead_in", "waiting", "lull", "song_end", "verse", "instrumental",
                                           "transition")
 #: verse / instrumental: as chorus, from a karaoke song's lyric plan. transition: never fired by the music: the
@@ -731,6 +731,9 @@ class DirectionData(TypedDict):
     source: str                    # "show_service"
     note: Optional[str]            # "show_service · <vibe>"
     vibe: Optional[str]
+    moment: str                    # MOMENTS: song | lead_in | waiting | lull. While nothing plays the energy below is
+                                   # the moment's own (show.yaml lights.moments.energy): every layer's pre-state is
+                                   # its own draw against that, a mode's own scenes for the moment first
     energy: float
     pace: float
     intensity: float
@@ -2098,6 +2101,7 @@ class TypeInfo(TypedDict):
     physical: dict[str, Any]       # {"lens_deg": [min, max] | None, "pan_deg": float | None, "tilt_deg": float | None,
                                    # "zoom_deg": [min, max] | None}: None = the file doesn't say (setup ``range`` and
                                    # the starting points stand in)
+    categories: list[str]          # the type file's own category words (an OFL file's: "Laser", "Moving Head", ...)
 
 
 class FixtureInfo(TypedDict):
@@ -2161,6 +2165,8 @@ class RigFixtureRow(TypedDict):
     caps: Optional["FixtureCaps"]  # what it can do, its setup applied (fixture_encode.caps): the page builds its
                                    # controls from this alone; None: no type, or fixture_encode can't be imported
     setup: "FixtureSetup"          # its fixtures.setup.yaml entry ({} = nothing set)
+    spread_deg: Optional[float]    # a laser's spread of beams, degrees across (its type's lens angle); None: any other
+                                   # light. With its setup's lean_deg (how it is tilted by hand) the 3D room draws it
 
 
 class RigTypeRow(TypedDict):
@@ -2226,6 +2232,7 @@ class FixtureSetup(TypedDict, total=False):
     positions: dict                # {"<name>": {"pan": deg, "tilt": deg, "label"?: str}}: named, in its own pan/tilt
     strobe_hz_max: float           # owner-set, per light; absent = none
     jog_flip: dict                 # {"pan": bool, "tilt": bool}: the page's drag direction (page convenience only)
+    lean_deg: float                # a fixed light's tilt, set by hand on the real unit: degrees forward from straight up
 
 
 # -- frames (looks.py -> drivers) -----------------------------------------------------------------------------------------
