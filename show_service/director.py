@@ -290,6 +290,9 @@ LOG_MEM = 500
 LOG_MAX_BYTES = 32 << 20
 KARAOKE_LAMP_AHEAD_S = 0.25        # a karaoke song's file energy is read this far ahead for the lamps (a tick + their latency)
 KARAOKE_FILE_W = 0.8               # ... and weighs this much against the mic's onsets (starting point)
+FX_PER_MOMENT = 2                  # light effects: groups one moment may light (lights.programs.effects_per_moment)
+FX_BIG_PER_MOMENT = 3              # ... for a big moment (a drop, the last chorus: GAP_FREE_TRIGGERS)
+FX_ROOM_MAX = 3                    # ... running in the whole room at once (lights.programs.effects_room_max)
 TRACK_LEVEL_AHEAD_S = 4.0         # a karaoke song's line-up at its start: its file energy this far in (starting point)
 # Starting points, overridable in show.yaml (director.transitions): how a look change crosses over for each vocab.yaml
 # transition_style word. A style with no entry, or no style, crossfades over TIME_FADE_S.
@@ -3668,7 +3671,19 @@ class Director:
         now_ms = now_s * 1000.0
         strobes = self._strobe_fx()
         no_strobe = sorted(strobes) if strobes and not self._strobe_ok(now_s, at_s) else []
-        for gid, g in self._groups.items():
+        # restraint across the room (27 Nov, at a peak: every group took "Fast chase" at once, on top of its scene:
+        # "feels the music ... not a school disco"): one moment lights at most a couple of groups, each a different
+        # effect, and only so many run in the room at once; the groups take turns being the one that gets it
+        big = trigger in GAP_FREE_TRIGGERS
+        per_moment = int(self._prog("effects_per_moment", FX_BIG_PER_MOMENT if big else FX_PER_MOMENT))
+        room_max = int(self._prog("effects_room_max", FX_ROOM_MAX))
+        room_now = sum(1 for rs in self._fx.values() for r in rs if r["until_ms"] is None or r["until_ms"] > now_ms)
+        fired: list[str] = []
+        order = list(self._groups.items())
+        self._fx_rng.shuffle(order)
+        for gid, g in order:
+            if len(fired) >= per_moment or room_now + len(fired) >= room_max:
+                break
             if g.get("follows") or not self._group_live(gid):
                 continue
             if self._rests(gid) and trigger not in GAP_FREE_TRIGGERS:   # a resting part wakes only for a big moment
@@ -3683,7 +3698,7 @@ class Director:
                 continue
             try:
                 got = self.light_scenes.pick_effect(g, trigger, self.direction, self._flow, self._fx_rng,
-                                                    running=[r["name"] for r in active] + no_strobe, bar=bar)
+                                                    running=[r["name"] for r in active] + no_strobe + fired, bar=bar)
             except Exception:                             # a broken catalogue never fails the tick
                 log.exception("light effects: pick failed")
                 got = None
@@ -3707,6 +3722,7 @@ class Director:
                                         "moment": self._moment if trigger in MOMENT_TRIGGERS else None,
                                         "out_s": float(fx["fade"]["out_beats"]) * beat}
             runs.append(run)
+            fired.append(name)
             self._fx_last[gid] = at_s
             self._fx_log.append({"group": gid, **run})
             self._lp_rev += 1

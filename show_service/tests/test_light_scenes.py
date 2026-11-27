@@ -849,12 +849,15 @@ def test_effects_fire_on_the_events_lines_within_the_max_and_the_gap(tmp_path):
     r.event("section_change", line + 2 * 4 * 0.5)                      # within effect_gap_bars: none
     r.run(0.1)
     assert all(len(p["effects"]) == 1 for p in last_look(r)["light_programs"].values())
-    r.event("drop", line + 4 * 0.5)                                    # a drop always may: a second one
+    r.event("drop", line + 4 * 0.5)                                    # a drop always may: a second one, but the
+    r.run(0.1)                                                          # room runs at most FX_ROOM_MAX at once
+    n2 = sum(len(p["effects"]) for p in last_look(r)["light_programs"].values())
+    assert n2 == 3
+    names = [p["effects"][-1]["name"] for p in last_look(r)["light_programs"].values() if len(p["effects"]) == 2]
+    assert len(names) == len(set(names))                                # one moment: a different effect per group
+    r.event("drop", line + 8 * 0.5)                                    # the room is full: no more while they run
     r.run(0.1)
-    assert all(len(p["effects"]) == 2 for p in last_look(r)["light_programs"].values())
-    r.event("drop", line + 8 * 0.5)                                    # effects_max 2: no third while two run
-    r.run(0.1)
-    assert all(len(p["effects"]) == 2 for p in last_look(r)["light_programs"].values())
+    assert sum(len(p["effects"]) for p in last_look(r)["light_programs"].values()) == n2
     r.run_to(line + 4.0)                                                # they end, and go
     assert all(not p["effects"] for p in last_look(r)["light_programs"].values())
     fired = r.d.snapshot()["lights"]["effects"]
@@ -882,10 +885,11 @@ def test_every_bars_counts_the_clocks_bars(tmp_path):
     r = prig(tmp_path, cat=full_cat(tmp_path, effects=only_tick))
     r.d.set_target("alpha")
     r.run(20.0)                                                        # 10 bars at 120 bpm
-    fired = [e for e in r.d.snapshot()["lights"]["effects"] if e["group"] == "lamps"]
-    assert 2 <= len(fired) <= 3
+    fired = r.d.snapshot()["lights"]["effects"]
     beats = [e["at_ms"] / 1000.0 / 0.5 for e in fired]
+    assert 2 <= len(set(beats)) <= 3
     assert all(b % 16 == pytest.approx(0.0) for b in beats)             # every 4th bar line
+    assert len(beats) == len(set(beats))                                # one effect in the catalogue: one group a line
 
 
 def test_no_effects_while_neutral_house_or_low(tmp_path):
