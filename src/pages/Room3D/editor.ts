@@ -8,7 +8,9 @@
 //                 flat ring round it turns its direction (its elevation stays), an upright arc on the side it points
 //                 changes its elevation (its direction stays). Its beam is drawn to where it lands, as a guide only;
 //   - a keep-out box, a lamp, a named place: drag it to slide it across the room; drag the arrow above it to raise
-//                 or lower it (sizes are typed in the panel); a screen slides along the walls, onto the nearest one;
+//                 or lower it; a keep-out box also has a square on each of its six faces: drag one to move that face
+//                 in or out, the face opposite staying put (owner, 28 Nov: "how do I scale it? surely it should have
+//                 arrows to scale it?"; as in SketchUp's push/pull); a screen slides along the walls, onto the nearest one;
 //                 a floor area slides across the floor. Places and areas have no body in the room: they are drawn
 //                 as a pin and a patch of floor.
 //   - one unit: a light on a bar can only be aimed (it moves with its bar); selecting either outlines the other.
@@ -40,7 +42,10 @@ export interface Editable {
                             // page's list it is outlined (amber), with no handles
 }
 export interface EditChange { at?: Vec3; facing_deg?: number; lean_deg?: number; turn_deg?: number; size?: Vec3; normal?: Vec3 }
-type Handle = "move" | "base" | "ring" | "lift" | "turn" | "tilt";
+type Handle = "move" | "base" | "ring" | "lift" | "turn" | "tilt" | "face";
+/** Kinds whose size is dragged by its faces. */
+const SIZES: EditKind[] = ["region"];
+const MIN_SIZE = 0.1;           // m: a face can be pushed in this close to the one opposite
 
 const CYAN = 0x35e0ff, AMBER = 0xffb020;
 const RING_R = 0.75, LIFT_H = 0.55;
@@ -86,8 +91,9 @@ export class RoomEditor {
   private items: Editable[] = [];
   private ray = new THREE.Raycaster();
   private room: Vec3 = [6, 6, 3];
-  private drag: { handle: Handle; p0: THREE.Vector3; start: Editable; ref?: number; dup?: boolean } | null = null;
+  private drag: { handle: Handle; p0: THREE.Vector3; start: Editable; ref?: number; dup?: boolean; axis?: number; side?: number } | null = null;
   private live: Editable | null = null;           // the selected thing as the drag has it now
+  private lastHandle: THREE.Object3D | null = null; // the handle the last grabbable() found (a face: its axis and side)
   selected: string | null = null;
   dragging = false;
   /** A drag has just ended: the click that ends it is not a pick. */
@@ -203,8 +209,8 @@ export class RoomEditor {
     }
     if (it.locked) return;                            // locked: seen, not handled
     if (LIFTS.includes(it.kind)) {
-      // one arrow above it: raise or lower it
-      const top = it.at[2] + it.size[2] / 2;
+      // one arrow above it: raise or lower it (clear of a top face's square)
+      const top = it.at[2] + it.size[2] / 2 + (SIZES.includes(it.kind) ? 0.14 : 0);
       const shaft = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, LIFT_H, 8), mat(CYAN));
       shaft.rotation.x = Math.PI / 2; shaft.position.set(it.at[0], it.at[1], top + LIFT_H / 2);
       const tip = new THREE.Mesh(new THREE.ConeGeometry(0.05, 0.12, 16), mat(CYAN));
@@ -213,6 +219,23 @@ export class RoomEditor {
       grab.rotation.x = Math.PI / 2; grab.position.set(it.at[0], it.at[1], top + (LIFT_H + 0.15) / 2);
       this.ui.add(shaft, tip);
       handle(grab, "lift");
+    }
+    if (SIZES.includes(it.kind)) {
+      // a square on each face: drag it to move that face in or out
+      for (let axis = 0; axis < 3; axis++) {
+        for (const side of [-1, 1]) {
+          const c = new THREE.Vector3(...it.at);
+          c.setComponent(axis, it.at[axis] + (side * it.size[axis]) / 2);
+          const sq = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.08), mat(CYAN));
+          sq.position.copy(c);
+          const grab = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 8), unseen());
+          grab.position.copy(c);
+          grab.userData.axis = axis;
+          grab.userData.side = side;
+          this.ui.add(sq);
+          handle(grab, "face");
+        }
+      }
     }
     if (it.kind === "bar") {
       // its base on the floor (owner, 27 Nov: "why isn't there a control to move a gigbar (e.g. at its base) X / Y?"):
@@ -377,7 +400,7 @@ export class RoomEditor {
   private grabbable(x: number, y: number): Handle | null {
     if (this.live?.locked) return null;
     const h = this.hits(x, y, this.handles)[0];
-    if (h) return h.object.userData.handle as Handle;
+    if (h) { this.lastHandle = h.object; return h.object.userData.handle as Handle; }
     const it = this.live;
     if (it && MOVES.includes(it.kind)) {
       const body = this.picks.get(it.key);
@@ -458,11 +481,31 @@ export class RoomEditor {
       const a = this.tiltAngle(r, it.at, this.tiltHeading(it));
       if (a !== null) ref = a;
     }
-    this.drag = { handle: h, p0, start: { ...it }, ref, dup: this.ctrl && h === "move" };
+    let axis: number | undefined, side: number | undefined;
+    if (h === "face") {
+      axis = this.lastHandle?.userData.axis as number;
+      side = this.lastHandle?.userData.side as number;
+      const f = new THREE.Vector3(...it.at);
+      f.setComponent(axis, it.at[axis] + (side * it.size[axis]) / 2);
+      const t = this.axisPoint(r, f, axis);
+      if (t === null) return false;
+      ref = t;
+    }
+    this.drag = { handle: h, p0, start: { ...it }, ref, dup: this.ctrl && h === "move", axis, side };
     this.dragging = true;
     this.hoverBox.visible = false;
     this.onDragging(true);
     return true;
+  }
+
+  /** Where along the room's ``axis`` (through ``through``) the cursor's ray passes closest: that coordinate, for
+   *  dragging a face along its own axis; null when the axis points straight at the camera. */
+  private axisPoint(r: THREE.Ray, through: THREE.Vector3, axis: number): number | null {
+    const a = new THREE.Vector3().setComponent(axis, 1);
+    const n = r.direction.clone().sub(a.clone().multiplyScalar(r.direction.dot(a)));   // the ray across the axis
+    if (n.lengthSq() < 1e-4) return null;
+    const p = new THREE.Vector3();
+    return r.intersectPlane(new THREE.Plane().setFromNormalAndCoplanarPoint(n.normalize(), through), p) ? p.getComponent(axis) : null;
   }
 
   /** A vertical plane through ``at`` facing the camera: where the cursor's ray meets it (for raising a thing). */
@@ -491,6 +534,7 @@ export class RoomEditor {
   /** While a light's handle is dragged: its direction and elevation in words, for the page to show by the cursor. */
   readout(): string | null {
     const d = this.drag, it = this.live;
+    if (d && it && d.handle === "face") return it.size.map((v) => `${v.toFixed(2)}`).join(" × ") + " m";
     if (!d || !it || !it.dir || (d.handle !== "turn" && d.handle !== "tilt")) return null;
     if (it.tiltOnly && it.front) {                       // a U-bracket: its tilt from straight up, as on the bracket
       const f = it.front, l = Math.round(D(Math.atan2(it.dir[0] * f[0] + it.dir[1] * f[1], it.dir[2])) * 2) / 2;
@@ -539,6 +583,24 @@ export class RoomEditor {
       if (!p || d.ref === undefined) return;
       it.at = [s.at[0], s.at[1], Math.max(it.kind === "place" ? 0 : 0.1, Math.min(this.room[2] - 0.05, s.at[2] + p.z - d.ref))];
       if (it.kind === "place") this.drawMarks();
+    } else if (d.handle === "face" && d.axis !== undefined && d.side !== undefined) {
+      // one face out or in along its axis; the one opposite stays where it was
+      const a = d.axis, sd = d.side;
+      const f0 = new THREE.Vector3(...s.at);
+      f0.setComponent(a, s.at[a] + (sd * s.size[a]) / 2);
+      const t = this.axisPoint(r, f0, a);
+      if (t === null || d.ref === undefined) return;
+      const lo = 0, hi = this.room[a];
+      const opp = s.at[a] - (sd * s.size[a]) / 2;
+      let face = Math.max(lo, Math.min(hi, s.at[a] + (sd * s.size[a]) / 2 + t - d.ref));
+      if (sd * (face - opp) < MIN_SIZE) face = opp + sd * MIN_SIZE;
+      const size = [...s.size] as Vec3, at = [...s.at] as Vec3;
+      size[a] = r2(Math.abs(face - opp));
+      at[a] = (face + opp) / 2;
+      it.size = size;
+      it.at = at;
+      const body = this.picks.get(it.key);
+      if (body) { body.geometry.dispose(); body.geometry = new THREE.BoxGeometry(size[0], size[1], size[2]); body.position.set(at[0], at[1], at[2]); }
     } else if (d.handle === "ring") {
       const p = floorAt(s.at[2]);
       if (!p) return;
@@ -583,7 +645,8 @@ export class RoomEditor {
     if (!d || !it) return;
     const s = d.start;
     // a press on the selected thing or a handle that changed nothing is a click (on a light of a selected bar: drill in)
-    const same = it.at.every((v, i) => Math.abs(v - s.at[i]) < 1e-3) && Math.abs((it.yaw ?? 0) - (s.yaw ?? 0)) < 1e-3
+    const same = it.at.every((v, i) => Math.abs(v - s.at[i]) < 1e-3) && it.size.every((v, i) => Math.abs(v - s.size[i]) < 1e-3)
+      && Math.abs((it.yaw ?? 0) - (s.yaw ?? 0)) < 1e-3
       && (!it.dir || !s.dir || it.dir.every((v, i) => Math.abs(v - s.dir![i]) < 1e-6));
     if (same) { if (!picked) this.justDragged = false; return; }
     if (d.dup) {                                      // a copy where it was let go; the original goes back
@@ -593,7 +656,7 @@ export class RoomEditor {
       this.onDuplicate(it.key, at);
       return;
     }
-    if (d.handle === "move" || d.handle === "lift" || d.handle === "base") {
+    if (d.handle === "move" || d.handle === "lift" || d.handle === "base" || d.handle === "face") {
       this.onChange(it.key, it.kind === "region" ? { at: it.at.map(r2) as Vec3, size: it.size }
         : it.kind === "screen" ? { at: it.at.map(r2) as Vec3, normal: it.normal } : { at: it.at.map(r2) as Vec3 });
     } else if (d.handle === "ring") {

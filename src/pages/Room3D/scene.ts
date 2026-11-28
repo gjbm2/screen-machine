@@ -243,7 +243,7 @@ export class RoomSim {
   get overlayRoot(): THREE.Group { return this.keepRoot; }
   get overlayScene(): THREE.Scene { return this.keepScene; }
 
-  /** The keep-out boxes to draw: amber, red when a laser's burst crosses one, stronger when it is the one picked. */
+  /** The keep-out boxes to draw: amber, red when a laser's burst crosses one; the one picked filled, the rest outlined. */
   setKeepOut(boxes: { centre: Vec3; size: Vec3; crossed?: boolean; picked?: boolean }[]) {
     for (const c of [...this.keepBoxes.children]) {
       this.keepBoxes.remove(c);
@@ -253,12 +253,18 @@ export class RoomSim {
     }
     for (const b of boxes) {
       const g = new THREE.BoxGeometry(b.size[0], b.size[1], b.size[2]);
+      // only the one picked glows; the rest are a faint outline (owner, 28 Nov: "keep out areas shouldn't glow when
+      // not selected"), red where a laser's burst crosses one
       const col = b.crossed ? 0xff4545 : 0xffb020;
-      const fill = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: b.picked ? 0.28 : 0.12, depthWrite: false, depthTest: false }));
-      const edge = new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({ color: col, transparent: true, opacity: b.picked ? 1 : 0.7, depthTest: false }));
-      fill.position.set(b.centre[0], b.centre[1], b.centre[2]);
-      edge.position.copy(fill.position);
-      this.keepBoxes.add(fill, edge);
+      const edge = new THREE.LineSegments(new THREE.EdgesGeometry(g), new THREE.LineBasicMaterial({
+        color: col, transparent: true, opacity: b.picked ? 1 : b.crossed ? 0.6 : 0.22, depthTest: false }));
+      edge.position.set(b.centre[0], b.centre[1], b.centre[2]);
+      this.keepBoxes.add(edge);
+      if (b.picked) {
+        const fill = new THREE.Mesh(g, new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.22, depthWrite: false, depthTest: false }));
+        fill.position.copy(edge.position);
+        this.keepBoxes.add(fill);
+      }
     }
   }
 
