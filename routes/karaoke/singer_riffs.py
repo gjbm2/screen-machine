@@ -25,21 +25,26 @@ PER_SINGER = 4
 # The scene first, then the likeness (28 Nov, on PC22's qwen21-edit: "keep this person exactly" first, with the photo
 # extended to 16:9, kept the photo untouched and only painted round it; this way it put her on the Wembley stage).
 LEAD = "Show the same person from this photo in a completely new scene: "
-LIKENESS = (" Same face, hair and age, recognisably them; a new pose to suit the scene. Photorealistic, joyful, "
+LIKENESS = (" Take only their face, hair and age from the photo, recognisably them; ignore the photo's pose, "
+            "setting and clothes. One person, a natural full-body pose, natural anatomy. Photorealistic, joyful, "
             "family friendly, no text.")
-RIFF_V = 2               # riffs made under an older recipe are made again
+RIFF_V = 3               # riffs made under an older recipe are made again
+# Each scene gives a pose (28 Nov: without one, the edit kept the photo's crouch and drew extra legs).
 SCENES = {
-    "wembley": "Singing into a microphone on the main stage at Wembley Stadium, a huge crowd with phone lights, big stage "
-               "lights and confetti.",
-    "ronnie": "Singing at Ronnie Scott's jazz club in London: an intimate room, warm low light, a jazz "
-              "trio behind them.",
-    "popstar": "Dressed as a dazzling pop star: sequins, a bold jacket, a glamorous studio portrait.",
-    "glasto": "Headlining the Pyramid Stage at Glastonbury at sunset, flags waving in the crowd.",
-    "rock": "As a rock star with an electric guitar, smoke and spotlights on a concert stage.",
-    "disco": "On a 1970s disco dance floor under a mirror ball, flares and sparkle.",
-    "westend": "Starring in a West End musical, a big theatre stage, bright costumes and the chorus "
-               "behind them.",
-    "unplugged": "Singing an acoustic session on a cosy stage with fairy lights and a guitarist.",
+    "wembley": "Singing into a microphone, standing on the main stage at Wembley Stadium, a huge crowd with phone "
+               "lights, big stage lights and confetti.",
+    "ronnie": "Standing at a vintage microphone, singing at Ronnie Scott's jazz club in London: an intimate room, warm "
+              "low light, a jazz trio behind them.",
+    "popstar": "Striking a confident pop-star pose in a sequinned stage outfit, a glamorous photo shoot with coloured "
+               "studio lights.",
+    "glasto": "Standing centre stage with a microphone, headlining the Pyramid Stage at Glastonbury at sunset, flags "
+              "waving in the crowd.",
+    "rock": "Standing and playing an electric guitar like a rock star, smoke and spotlights on a concert stage.",
+    "disco": "Standing and dancing with both arms up on a lit 1970s disco dance floor under a mirror ball, in a "
+             "sparkly disco outfit.",
+    "westend": "Standing centre stage with arms open wide, starring in a West End musical: a big theatre stage, "
+               "bright costumes, the chorus behind them.",
+    "unplugged": "Sitting on a stool with an acoustic guitar, singing on a cosy stage with fairy lights.",
 }
 
 LABELS = {"wembley": "Wembley", "ronnie": "Ronnie Scott's", "popstar": "Pop star", "glasto": "Glastonbury",

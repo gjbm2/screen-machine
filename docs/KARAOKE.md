@@ -18,6 +18,20 @@ for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`;
   filters by tag (genre, decade). Now playing has Pause/Resume, Restart, Next, Stop, the singer's voice (the lead
   vocal under the backing: Off, Quiet, Full), a nudge for the lyrics' timing, and "Lyrics off? Time them
   carefully" (the careful pass, below; also the wand on a library row).
+- **Singers** (the Singers card; owner, 27-28 Nov): tonight's names as chips. A chip's menu: **Their songs** (the
+  queue shows only theirs, a chip at its top clears it; a song added meanwhile is theirs without asking who sings),
+  **Add photo** (the phone's camera or gallery; shrunk on the phone, kept upright per name in
+  `~/.local/state/screen-machine/karaoke/singers/`), **Riffs** and **Remove photo**. The photos show by the names on
+  the screens' intro card, up-next banner and rest line, and the singer on now leads the photo scenes' pictures
+  (about every 6th, framed on the face the vetting AI finds). A photo goes with its name and with New session.
+- **Riffs** (owner, 28 Nov: "commission a few ai photo gen riffs of each singer ... spirit is fun"): each photo gets
+  4 of 8 scenes (Wembley, Ronnie Scott's, pop star, Glastonbury, rock star, disco, West End, unplugged), made one at
+  a time round the singers by a generation API (docs/API.md), and they join the singer's photo in the photo scenes as
+  they come (about 45 s each). Where: `deployments/<id>/generation_api.yaml` (the laptop: PC22's
+  `qwen21-edit`, in the photo's own shape, refiner none; finsbury: its own app, keyless); the key:
+  `~/.config/screen-machine/generation_api.key` (PC22: Settings > Apps & API keys, scope generate), picked up within
+  a minute. The prompt puts the scene first and the likeness after (`routes/karaoke/singer_riffs.py`): extending the
+  photo to 16:9 instead kept the photo untouched and only painted round it.
 - **Where it plays** (Settings → Screen, Sound): the karaoke screen is any screen that can go live (unset: the first in
   the deployment's default room). Only its display page shows the lyrics; every other screen's page leaves karaoke
   alone. Sound: from that screen's own page (its browser: speakers, HDMI, Bluetooth to a speaker), none, or a Sonos
