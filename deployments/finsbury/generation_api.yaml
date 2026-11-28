@@ -1,0 +1,5 @@
+# Where this deployment has AI pictures made for the karaoke singers' riffs (routes/karaoke/singer_riffs.py): its own
+# generation API (docs/API.md), called from this machine, which needs no key.
+base: local
+workflow: auto
+refiner: none

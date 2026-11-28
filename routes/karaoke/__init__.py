@@ -53,6 +53,8 @@ def start() -> None:
     threading.Thread(target=_clock, args=(st,), name="karaoke-clock", daemon=True).start()
     threading.Thread(target=_facts, args=(st,), name="karaoke-facts", daemon=True).start()
     pictures.start()                                # the artists' pictures for the photo scenes
+    from . import singer_riffs                      # the singers' riffs, made by the generation API
+    singer_riffs.configure()
     room_song.start(st)                             # a Sonos track is prepared as a karaoke song is
     from .live_view import LiveView                 # the karaoke screen goes live with a song, back to art on Stop
     global _live

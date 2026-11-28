@@ -1,0 +1,6 @@
+# Where this deployment has AI pictures made that it can't make itself (the karaoke singers' riffs:
+# routes/karaoke/singer_riffs.py): PC22's generation API (docs/API.md). Its key is this machine's secret,
+# ~/.config/screen-machine/generation_api.key (made on PC22: Settings > Apps & API keys, scope generate).
+base: https://screen.finsburybankforsavings.com/api/v1
+workflow: auto      # an id from GET {base}/workflows; auto: the router picks from the prompt and the photo
+refiner: none       # the riff prompts are sent as written (a refiner could lose "keep their likeness")

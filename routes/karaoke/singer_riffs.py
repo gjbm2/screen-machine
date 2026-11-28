@@ -107,6 +107,11 @@ def _run() -> None:
     while True:
         _wake.wait(60)
         _wake.clear()
+        if backend is None:
+            try:
+                configure()                             # the key may have been put there since
+            except Exception as e:                      # noqa: BLE001
+                error(f"karaoke singer riffs: {e}")
         while backend is not None:
             with sp._lock:
                 idx = sp._index()
@@ -149,3 +154,92 @@ def _save(sp, photo_file: str, scene: str, data: bytes) -> Optional[dict]:
     file = f"{photo_file[:-4]}-{scene}.jpg"
     im.save(sp.folder() / file, "JPEG", quality=88)
     return {"file": file, "w": im.width, "h": im.height}
+
+
+# ---- the generator: a deployment's generation API (docs/API.md), as deployments/<id>/generation_api.yaml says
+POLL_S = 60                # each long poll (the API's most)
+GIVE_UP_S = 20 * 60        # a riff not made by then is failed
+
+
+_said_waiting = False
+
+
+def configure() -> None:
+    """Set the backend from the deployment's generation_api.yaml (karaoke start, then each minute while there is
+    none): its API with this machine's key, or this machine's own app with none. No file, or no key for a remote one:
+    riffs stay queued until the key is there."""
+    global _said_waiting
+    import smconfig
+    import yaml
+    try:
+        cfg = yaml.safe_load(smconfig.path("generation_api.yaml").read_text()) or {}
+    except (OSError, ValueError):
+        return
+    base = str(cfg.get("base") or "")
+    if base == "local":
+        base, key = smconfig.url("flask") + "/api/v1", None
+    else:
+        try:
+            key = smconfig.secret("generation_api.key").read_text().strip() or None
+        except OSError:
+            key = None
+        if not base or not key:
+            if not _said_waiting:
+                info("karaoke singer riffs: no generation API key (~/.config/screen-machine/generation_api.key): "
+                     "waiting for one")
+                _said_waiting = True
+            start()
+            return
+    set_backend(api_backend(base.rstrip("/"), key, str(cfg.get("workflow") or "auto"),
+                            str(cfg.get("refiner") or "none")))
+    info(f"karaoke singer riffs: made by {base}")
+
+
+def api_backend(base: str, key: Optional[str], workflow: str, refiner: str) -> Backend:
+    import base64
+    import hashlib
+    import json
+    import urllib.error
+    import urllib.request
+
+    def call(method: str, url: str, body: Optional[dict] = None, extra: Optional[dict] = None, raw: bool = False):
+        h = {"Accept": "application/json", **(extra or {})}
+        if key:
+            h["Authorization"] = f"Bearer {key}"
+        data = None
+        if body is not None:
+            data = json.dumps(body).encode()
+            h["Content-Type"] = "application/json"
+        while True:
+            req = urllib.request.Request(url, data=data, headers=h, method=method)
+            try:
+                with urllib.request.urlopen(req, timeout=POLL_S + 30) as r:
+                    b = r.read()
+                    return b if raw else json.loads(b)
+            except urllib.error.HTTPError as e:
+                if e.code == 429:                       # too many at once / the day's limit: as long as it says
+                    time.sleep(min(600, float(e.headers.get("Retry-After") or 30)))
+                    continue
+                msg = e.read()[:300].decode("utf-8", "replace")
+                raise RuntimeError(f"{e.code} {msg}") from None
+
+    def make(photo: Path, prompt: str) -> bytes:
+        img = photo.read_bytes()
+        body = {"prompt": prompt, "workflow": workflow, "refiner": refiner, "n": 1, "wait": POLL_S,
+                "images": [{"data": "data:image/jpeg;base64," + base64.b64encode(img).decode("ascii")}]}
+        idem = hashlib.sha256(img + prompt.encode()).hexdigest()[:40]      # a retry is the same generation
+        g = call("POST", f"{base}/generations", body, {"Idempotency-Key": idem})
+        t0 = time.time()
+        while g.get("status") in ("queued", "running"):
+            if time.time() - t0 > GIVE_UP_S:
+                call("DELETE", f"{base}/generations/{g['id']}")
+                raise RuntimeError("took too long")
+            g = call("GET", f"{base}/generations/{g['id']}?wait={POLL_S}")
+        if g.get("status") != "succeeded" or not g.get("outputs"):
+            raise RuntimeError(f"{g.get('status')}: {(g.get('error') or {}).get('message', '')}")
+        out = g["outputs"][0]
+        return call("GET", out.get("download_url") or f"{base}/generations/{g['id']}/outputs/0", raw=True,
+                    extra={"Accept": "*/*"})
+
+    return make
+

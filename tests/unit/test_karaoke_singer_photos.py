@@ -114,3 +114,54 @@ def test_riffs_are_queued_made_one_at_a_time_round_the_singers_and_join_the_phot
         assert not any("clare" in f.name for f in (sp.folder()).iterdir())
     finally:
         sr.backend = None
+
+
+def test_the_api_backend_posts_the_photo_polls_and_fetches_the_picture(tmp_path):
+    """routes/karaoke/singer_riffs.api_backend against a stand-in of docs/API.md: 202 queued, a long poll, the file."""
+    import json as _json
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+    from routes.karaoke import singer_riffs as sr
+    seen = {}
+    pic = jpeg(64, 64)
+
+    class H(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def _send(self, code, body, ctype="application/json"):
+            b = body if isinstance(body, bytes) else _json.dumps(body).encode()
+            self.send_response(code)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(b)))
+            self.end_headers()
+            self.wfile.write(b)
+
+        def do_POST(self):
+            seen["auth"] = self.headers.get("Authorization")
+            seen["idem"] = self.headers.get("Idempotency-Key")
+            seen["body"] = _json.loads(self.rfile.read(int(self.headers["Content-Length"])))
+            self._send(202, {"id": "gen_1", "status": "queued"})
+
+        def do_GET(self):
+            if self.path.startswith("/v1/generations/gen_1?wait="):
+                base = f"http://127.0.0.1:{self.server.server_port}/v1"
+                self._send(200, {"id": "gen_1", "status": "succeeded",
+                                 "outputs": [{"download_url": f"{base}/generations/gen_1/outputs/0"}]})
+            elif self.path == "/v1/generations/gen_1/outputs/0":
+                self._send(200, pic, "image/jpeg")
+            else:
+                self._send(404, {"error": {"code": "not_found"}})
+
+    srv = ThreadingHTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    try:
+        photo = tmp_path / "p.jpg"
+        photo.write_bytes(jpeg())
+        make = sr.api_backend(f"http://127.0.0.1:{srv.server_port}/v1", "smk_x_y", "auto", "none")
+        assert make(photo, sr.prompt("wembley")) == pic
+        b = seen["body"]
+        assert seen["auth"] == "Bearer smk_x_y" and seen["idem"] and b["refiner"] == "none" and b["workflow"] == "auto"
+        assert b["images"][0]["data"].startswith("data:image/jpeg;base64,") and "Wembley" in b["prompt"]
+    finally:
+        srv.shutdown()
