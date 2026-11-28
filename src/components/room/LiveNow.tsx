@@ -237,20 +237,49 @@ export function WasNowNext({
     setNotes((xs) => [saved, ...xs]);
   };
 
-  const sceneTier = (when: When, info: SceneInfo | null, caption: string, onClick: () => void, fx: FxItem[]) => {
-    if (!info) return null;
-    const rate = info.key ? sceneRatingKey(lib, info.key) : null;
+  const playNext = () => {
+    const n = v.nextScene;
+    if (!n) return;
+    release();
+    void un.edit({ op: "play", id: n.id }).catch(() => undefined);
+  };
+
+  // One card per moment, its scene and its effects together: Was and Next quiet, Now the one that stands out.
+  const bucket = (when: When, info: SceneInfo | null, fx: FxItem[], caption: string, onClick: () => void) => {
+    const isNow = when === "now";
+    const isNext = when === "next";
+    const rate = info?.key ? sceneRatingKey(lib, info.key) : null;
+    const eta = isNext ? (sceneEta ?? fxEta) : null;
+    const sel = fxSel?.when === when ? fxSel : null;
+    const selKey = sel ? `effect/${sel.item.effect}` : null;
     return (
-      <div className="grid grid-cols-[2.75rem_1fr] items-start gap-x-2" data-testid={`${when}-scene-${screenId}`}>
-        <span className="pt-4 text-sm font-medium text-muted-foreground">{WHEN_WORDS[when]}</span>
-        <div className="min-w-0 space-y-0.5">
-          <SceneButton info={info} caption={caption} onClick={onClick} disabled={!lib || busy} testId={when === "now" ? `scene-${screenId}` : undefined} />
-          {when === "next" ? (
-            // what hasn't played can't be scored (owner, 27 Nov): only picked again
-            v.nextScene && <PickAgain onClick={() => again(v.nextScene!.id)} testId={`again-scene-${screenId}`} />
-          ) : (
+      <section
+        key={when}
+        data-testid={`${when}-${screenId}`}
+        className={cn(
+          "space-y-1.5 rounded-xl border p-2",
+          isNow ? "border-teal-500 bg-white shadow-sm ring-1 ring-teal-500/30" : "border-stone-200 bg-stone-50/70",
+        )}
+      >
+        <div className="flex min-h-6 items-center gap-2 px-0.5">
+          <span
+            className={cn(
+              "text-xs font-semibold uppercase tracking-wider",
+              isNow ? "text-teal-700" : "text-stone-500",
+            )}
+          >
+            {WHEN_WORDS[when]}
+          </span>
+          {eta ? <span className="text-xs tabular-nums text-stone-500">in {eta} s</span> : null}
+        </div>
+        {info && (
+          <div className={cn(!isNow && "opacity-90")}>
+            <SceneButton info={info} caption={caption} onClick={onClick} disabled={!lib || busy} testId={isNow ? `scene-${screenId}` : undefined} />
+          </div>
+        )}
+        {info && !isNext && (
           <div className="flex items-center gap-1">
-            <RatingRow bare api={api} ratingKey={rate} what="scene" className="min-w-0" testId={when === "now" ? `rate-${screenId}` : undefined} />
+            <RatingRow bare api={api} ratingKey={rate} what="scene" className="min-w-0" testId={isNow ? `rate-${screenId}` : undefined} />
             {session && info.key && (
               <GoodButton
                 key={`${info.key}|${fxSig(fx)}`}
@@ -262,52 +291,56 @@ export function WasNowNext({
             )}
             {rate && <CommentButton onKeep={(words) => keep({ kind: "scene", key: rate, label: info.label, when, words })} />}
           </div>
-          )}
-          {when !== "next" && <NoteLine note={lastNote(rate)} />}
-        </div>
-      </div>
+        )}
+        {info && !isNext && <NoteLine note={lastNote(rate)} />}
+        {isNext && v.nextScene && <PickAgain onClick={() => again(v.nextScene!.id)} testId={`again-scene-${screenId}`} />}
+        {fx.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5 px-0.5">
+            <span className="text-xs text-stone-500">Effects</span>
+            {fx.map((it) => {
+              if (isNext)
+                return (
+                  <span key={`${it.effect}:${it.label}`} className="inline-flex h-8 items-center whitespace-nowrap rounded-full border border-dashed border-stone-300 bg-white px-3 text-sm">
+                    {shortLabel(it.label)}
+                  </span>
+                );
+              const on = !!sel && sel.item.effect === it.effect && sel.item.label === it.label;
+              return (
+                <button
+                  key={`${it.effect}:${it.label}`}
+                  type="button"
+                  aria-pressed={on}
+                  onClick={() => setFxSel(on ? null : { when, item: it })}
+                  className={cn(
+                    "inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-sm",
+                    on ? "border-stone-800 bg-stone-800 text-white" : "border-stone-300 bg-white hover:bg-stone-50",
+                  )}
+                >
+                  {shortLabel(it.label)}
+                  <RatingBadge api={api} ratingKey={`effect/${it.effect}`} />
+                </button>
+              );
+            })}
+            {isNext && v.nextFxId && <PickAgain icon onClick={() => again(v.nextFxId!)} testId={`again-fx-${screenId}`} />}
+          </div>
+        )}
+        {sel && selKey && (
+          <div className="space-y-0.5 rounded-lg bg-stone-100/80 px-2 py-1">
+            <div className="flex items-center gap-1">
+              <span className="min-w-0 shrink truncate text-sm font-medium">{shortLabel(sel.item.label)}</span>
+              <RatingRow bare api={api} ratingKey={selKey} what="effect" className="min-w-0" />
+              <CommentButton onKeep={(words) => keep({ kind: "effect", key: selKey, label: sel.item.label, when, words })} />
+            </div>
+            <NoteLine note={lastNote(selKey)} />
+          </div>
+        )}
+      </section>
     );
   };
 
-  const fxTier = (when: When, items: FxItem[], extra?: string | null) => (
-    <div className="grid grid-cols-[2.75rem_1fr] items-center gap-x-2" key={when}>
-      <span className="text-sm font-medium text-muted-foreground">{WHEN_WORDS[when]}</span>
-      <div className="flex min-h-9 flex-wrap items-center gap-1.5">
-        {items.length === 0 && <span className="text-sm text-muted-foreground">–</span>}
-        {items.map((it) => {
-          if (when === "next")
-            return (
-              <span key={`${it.effect}:${it.label}`} className="inline-flex h-9 items-center whitespace-nowrap rounded-full border border-dashed border-stone-300 bg-white px-3 text-sm">
-                {shortLabel(it.label)}
-              </span>
-            );
-          const on = fxSel?.when === when && fxSel.item.effect === it.effect && fxSel.item.label === it.label;
-          return (
-            <button
-              key={`${it.effect}:${it.label}`}
-              type="button"
-              aria-pressed={on}
-              onClick={() => setFxSel(on ? null : { when, item: it })}
-              className={cn(
-                "inline-flex h-9 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 text-sm",
-                on ? "border-stone-800 bg-stone-800 text-white" : "border-stone-300 bg-white hover:bg-stone-50",
-              )}
-            >
-              {shortLabel(it.label)}
-              <RatingBadge api={api} ratingKey={`effect/${it.effect}`} />
-            </button>
-          );
-        })}
-        {extra && <span className="text-sm tabular-nums text-muted-foreground">{extra}</span>}
-        {when === "next" && v.nextFxId && <PickAgain onClick={() => again(v.nextFxId!)} testId={`again-fx-${screenId}`} />}
-      </div>
-    </div>
-  );
-  const selKey = fxSel ? `effect/${fxSel.item.effect}` : null;
-
   return (
     <div
-      className="relative space-y-3"
+      className="relative space-y-2"
       data-testid={`live-now-${screenId}`}
       onPointerEnter={() => {
         inside.current = true;
@@ -327,42 +360,15 @@ export function WasNowNext({
           onClick={release}
           title="Up to date"
           aria-label="Up to date"
-          className="absolute -top-1 right-0 z-10 grid h-8 w-8 place-items-center rounded-full border border-teal-300 bg-teal-50 text-teal-800 shadow-sm"
+          className="absolute right-2 top-1.5 z-10 grid h-7 w-7 place-items-center rounded-full border border-teal-300 bg-teal-50 text-teal-800 shadow-sm"
         >
-          <RotateCw className="h-4 w-4" aria-hidden />
+          <RotateCw className="h-3.5 w-3.5" aria-hidden />
         </button>
       )}
-      <div className="space-y-2">
-        {sceneTier("was", v.prevInfo, "Go back", () => v.prevInfo && (release(), onBack(v.prevInfo.key)), v.prevFx ?? [])}
-        {sceneTier("now", v.nowInfo, changing ? "Changing…" : "Change", onChange, v.nowFx)}
-        {sceneTier(
-          "next",
-          v.nextInfo,
-          sceneEta ? `in ${sceneEta} s · Play now` : "Play now",
-          () => {
-            const n = v.nextScene;
-            if (!n) return;
-            release();
-            void un.edit({ op: "play", id: n.id }).catch(() => undefined);
-          },
-          [],
-        )}
-      </div>
-      <div className="space-y-1 border-t border-stone-200/80 pt-2">
-        {v.prevFx && fxTier("was", v.prevFx)}
-        {fxTier("now", v.nowFx)}
-        {(v.nextFx.length > 0 || plan) && fxTier("next", v.nextFx, fxEta && v.nextFx.length ? `in ${fxEta} s` : null)}
-        {fxSel && selKey && (
-          <div className="ml-[3.25rem] space-y-0.5">
-            <div className="flex items-center gap-1">
-              <span className="shrink-0 text-sm font-medium">{shortLabel(fxSel.item.label)}</span>
-              <RatingRow bare api={api} ratingKey={selKey} what="effect" className="min-w-0" />
-              <CommentButton onKeep={(words) => keep({ kind: "effect", key: selKey, label: fxSel.item.label, when: fxSel.when, words })} />
-            </div>
-            <NoteLine note={lastNote(selKey)} />
-          </div>
-        )}
-      </div>
+      {(v.prevInfo || (v.prevFx?.length ?? 0) > 0) &&
+        bucket("was", v.prevInfo, v.prevFx ?? [], "Go back", () => v.prevInfo && (release(), onBack(v.prevInfo.key)))}
+      {bucket("now", v.nowInfo, v.nowFx, changing ? "Changing…" : "Change", onChange)}
+      {(v.nextInfo || v.nextFx.length > 0) && bucket("next", v.nextInfo, v.nextFx, "Play now", playNext)}
     </div>
   );
 }
@@ -409,15 +415,18 @@ function GoodButton({ api, session, scene, effects }: { api: RoomApi; session: s
   );
 }
 
-function PickAgain({ onClick, testId }: { onClick: () => void; testId?: string }) {
+function PickAgain({ onClick, testId, icon = false }: { onClick: () => void; testId?: string; icon?: boolean }) {
   return (
     <button
       type="button"
       onClick={onClick}
       data-testid={testId}
+      aria-label="Pick again"
+      title="Pick again"
       className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg px-2 text-sm text-stone-600 hover:bg-stone-100 hover:text-stone-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <Shuffle className="h-4 w-4" aria-hidden /> Pick again
+      <Shuffle className="h-4 w-4" aria-hidden />
+      {!icon && "Pick again"}
     </button>
   );
 }
