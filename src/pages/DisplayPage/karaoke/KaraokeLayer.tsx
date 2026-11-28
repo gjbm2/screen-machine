@@ -57,10 +57,11 @@ const LONG_GAP_S = 8;
 // it is gone first (routes/karaoke/store.py _start_at).
 const FADE_S = 1.6;
 // Music while nothing plays (owner, 27 Nov: "if there's no song selected yet, we should play some (quiet) background
-// music -- maybe replay last song with lyrics audible but quietly"): the server's /now background (the last song sung,
-// then the rest of the library), one after another, quietly, vocals in (instrumental only in child mode), on the
-// karaoke screen with the room in a karaoke mode. It fades in, and out when a song starts.
-const BG_LEVEL = 0.28;
+// music -- maybe replay last song with lyrics audible but quietly"; 28 Nov: "a bit too high"; "play (with lyrics) the
+// one just done, and then pick at random from recent songs"): the server's /now background (the song just sung first,
+// then the recent ones), the first and then one at random, quietly, vocals in (instrumental only in child mode), on
+// the karaoke screen with the room in a karaoke mode. It fades in, and out when a song starts.
+const BG_LEVEL = 0.18;
 const BG_FADE_IN_S = 4;
 /** The graphic EQ's bands (Hz): smsound/eq.py BANDS. */
 const EQ_HZ = [60, 150, 400, 1000, 2400, 6000, 15000];
@@ -420,8 +421,9 @@ export function KaraokeLayer({ screen, device }: { screen?: string; device?: str
       bgBusy = true;
       if (!bg.ctx) bg.ctx = eng.context(); // the songs' own context: one sound, unlocked by the same click
       try {
-        const i = bgSong ? (list.indexOf(bgSong) + 1) % list.length : 0; // the next one (gone from the list: the first)
-        const id = list[i];
+        // the one just sung first; then any of the others at random, never the same twice running
+        const pool = list.slice(1).filter((x) => x !== bgSong);
+        const id = !bgSong || !pool.length ? list[0] : pool[Math.floor(Math.random() * pool.length)];
         if (!(await bg.load(id).catch(() => false)) || dead || !bgWanted) return;
         bg.guide = child ? 0 : 1;
         bg.play(0, BG_FADE_IN_S);
@@ -479,6 +481,7 @@ export function KaraokeLayer({ screen, device }: { screen?: string; device?: str
         n.calibration?.state !== "running";
       if (bgWanted) void background(n.background ?? [], !!n.settings.child_mode);
       else if (bg.playing) bg.stop(FADE_S);
+      if (p.state !== "stopped") bgSong = null; // a song plays: the next background starts with it
       e.setGuide(n.settings.guide);
       e.setEq(n.settings.eq);
       bg.setEq(n.settings.eq);

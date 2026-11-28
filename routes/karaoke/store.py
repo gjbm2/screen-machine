@@ -427,14 +427,29 @@ class Store:
         return -lead
 
     def background(self) -> list[str]:
-        """Songs for the music while nothing plays: the last sung first, then the ready ones, shuffled by the day."""
+        """Songs for the music while nothing plays (owner, 28 Nov: "play (with lyrics) the one just done, and then pick
+        at random from recent songs list until next a song is chosen"): the one just sung first, then the songs sung
+        recently (this queue's, newest first). The display page plays the first, then picks among the rest at random.
+        With none sung yet: the ready library, shuffled by the day."""
         with self.lock:
-            ready = sorted(sid for sid, s in self.s["songs"].items() if s.get("status") == "ready")
+            songs = self.s["songs"]
+            ready = {sid for sid, s in songs.items() if s.get("status") == "ready"}
             last = self.s.get("last_song")
-        day = time.strftime("%Y-%m-%d")
-        ready.sort(key=lambda sid: hashlib.sha1(f"{day}|{sid}".encode()).hexdigest())
+            q = self.s["queue"]
+            p = self.s["player"]
+            i = self._index(p.get("qid"))
+            done = q[: i + 1] if i is not None else []
+            recent: list[str] = []
+            for e in reversed(done):
+                sid = e["song_id"]
+                if sid in ready and sid != last and sid not in recent:
+                    recent.append(sid)
+        if len(recent) < 2:                             # too few to pick among: the library joins in
+            day = time.strftime("%Y-%m-%d")
+            rest = sorted(ready - {last} - set(recent), key=lambda sid: hashlib.sha1(f"{day}|{sid}".encode()).hexdigest())
+            recent += rest
         first = [last] if last in ready else []
-        return (first + [s for s in ready if s != last])[:BACKGROUND_N]
+        return (first + recent)[:BACKGROUND_N]
 
     def lead_in(self, entry: dict | None) -> float:
         """Silence before the song's music, so that its title is up for at least LEAD_IN_S before its first line
@@ -732,8 +747,8 @@ LEAD_IN_S = 8.0
 #: out / transition old one before new one starts").
 CHANGE_GAP_S = 2.0
 #: Music while nothing plays (owner, 27 Nov: "if there's no song selected yet, we should play some (quiet) background
-#: music -- maybe replay last song"): /now's background, the last song sung first, then the ready songs in a shuffle
-#: that holds for the day. The display page plays it quietly, vocals in.
+#: music -- maybe replay last song"; 28 Nov: the one just done, then at random from the recent ones): /now's
+#: background (Store.background). The display page plays it quietly, vocals in.
 BACKGROUND_N = 30
 
 
