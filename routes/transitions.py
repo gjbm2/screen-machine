@@ -29,6 +29,7 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -38,7 +39,9 @@ WORKFLOW = "h3-fl2v.json"
 DRAW_S = 4.0                # drawn; H3 draws 17k + 5 frames, so 90 (3.75 s)
 PLAY_S, RAMP_S = 15.0, 3.5  # on screen: eased in from A and out onto B
 DEADLINE_S = 540            # the new picture waits no longer than this for its transition (a cold GPU included)
-AHEAD_S = 900               # a transition made ahead (commission) is given up after this
+AHEAD_S = 900               # a transition made ahead (commission) is given up after this, if it isn't drawn by then
+EASE_AHEAD_S = 2400         # its ease, once drawn: it waits its turn in the renderer's batch queue (one at a time,
+                            # 2-3.5 min each), and a night's clips and transitions queue together
 FOLDER = "transitions"
 WRITER = "refiner-transition.txt"
 SCHEMA_FILE = "refiner-transition.schema.json"   # the answer's fields, next to the brief: both read on every call
@@ -151,8 +154,9 @@ def draw(a: bytes, b: bytes, prompt: str, job_id: str, deadline: float, upscale:
             raise RuntimeError(f"the transition's job {state.get('status')}: {str(state.get('error'))[:200]}")
 
 
-def ease(source: str, dst: Path, deadline: float) -> None:
-    """The drawn transition slowed to PLAY_S, eased in and out, into dst (in its own process, as a clip's ease)."""
+def ease(source: str, dst: Path, deadline: float, timeout: float | None = None) -> None:
+    """The drawn transition slowed to PLAY_S, eased in and out, into dst (in its own process, as a clip's ease). Given
+    up at the deadline (300 s at least), or after `timeout` when given (a commission: nothing waits on it)."""
     from routes.result_source import read_bytes
     with tempfile.TemporaryDirectory() as tmp:
         src = os.path.join(tmp, "in.mp4")
@@ -162,7 +166,7 @@ def ease(source: str, dst: Path, deadline: float) -> None:
                         str(RAMP_S), "0"], check=True, capture_output=True, text=True,
                        # an ease under way gets its time (25 Nov: the deadline killed one at 04:01:00 that the GPU
                        # finished at 04:01:35); the deadline is for a drawing that never comes
-                       timeout=max(300, deadline - time.time()), cwd=Path(__file__).resolve().parent.parent)
+                       timeout=timeout or max(300, deadline - time.time()), cwd=Path(__file__).resolve().parent.parent)
         tag = {"clip": {"eased": True, "transition": True, "play_s": PLAY_S, "returns": False}}
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", part, "-c", "copy", "-metadata",
                         "comment=" + json.dumps(tag), "-movflags", "+faststart", str(dst)], check=True, timeout=120)
@@ -252,7 +256,9 @@ def commission(a: str | Path, b: str | Path) -> dict | None:
         folder = b.parent / FOLDER
         folder.mkdir(parents=True, exist_ok=True)
         name = time.strftime("%Y%m%d-%H%M%S") + f"-{job_id[-8:]}.mp4"
-        ease(drawn, folder / name, deadline)
+        # the deadline is for the drawing: once drawn (and paid for) the ease gets its time, queue and all (28 Nov: two
+        # of the night's nine were killed at 300 s while still waiting in the renderer's queue, and cross-faded)
+        ease(drawn, folder / name, deadline, timeout=EASE_AHEAD_S)
         entry = {"file": f"{FOLDER}/{name}", "url": f"/output/{b.parent.name}/{FOLDER}/{name}", "from": oa, "to": ob,
                  "connection": words.get("connection"), "device": words.get("device"), "idea": words.get("idea"),
                  "prompt": prompt, "writer": {k: words.get(k) for k in ("link_a", "link_b", "motion", "rest")},
@@ -267,6 +273,78 @@ def commission(a: str | Path, b: str | Path) -> dict | None:
         _failed(b.parent.name, {"at": round(time.time(), 1), "error": str(e)[:300], "made_s": round(time.time() - t0, 1),
                                 "from": oa, "to": ob})
         return None
+
+
+_AT_ONCE = threading.BoundedSemaphore(2)   # transitions drawn at once (the video endpoint has 3 workers)
+_PENDING_LOCK = threading.Lock()
+PENDING = "pending.json"                   # in B's transitions/: commissioned, not yet made
+TRIES = 3                                  # a commission cut short by restarts is made again up to this many times
+
+
+def _edit_pending(b: Path, change) -> None:
+    f = b.parent / FOLDER / PENDING
+    with _PENDING_LOCK:
+        try:
+            rows = json.loads(f.read_text("utf-8")) if f.exists() else []
+        except Exception:
+            rows = []
+        rows = change(rows)
+        try:
+            if rows:
+                f.parent.mkdir(parents=True, exist_ok=True)
+                f.write_text(json.dumps(rows, indent=2), "utf-8")
+            elif f.exists():
+                f.unlink()
+        except Exception as e:
+            warning(f"[transition] could not keep {f}: {e}")
+
+
+def commission_later(a: str | Path, b: str | Path, tries: int = 0) -> None:
+    """commission in the background, two at a time (made in line, each held the schedule's loop for minutes). It is
+    kept in B's transitions/pending.json until it has run, so one cut short by a Flask restart (its thread goes with
+    the process) is made again when Flask starts (resume_pending). 27 Nov: a restart at 07:57 dropped 7 of the day's 9
+    and the evening's replay cross-faded."""
+    a, b = str(a), str(b)
+    same = lambda r: (r.get("a"), r.get("b")) == (a, b)
+    _edit_pending(Path(b), lambda rows: [r for r in rows if not same(r)]
+                  + [{"a": a, "b": b, "at": round(time.time(), 1), "tries": tries + 1}])
+
+    def run():
+        try:
+            with _AT_ONCE:
+                made = commission(a, b)
+            info(f"[animate] transition {os.path.basename(a)} -> {os.path.basename(b)}: "
+                 + ((made.get("idea") or "made") if made else "not made (that change cross-fades)"))
+        finally:
+            _edit_pending(Path(b), lambda rows: [r for r in rows if not same(r)])
+    threading.Thread(target=run, name=f"transition-{Path(b).name[:16]}", daemon=True).start()
+
+
+def resume_pending() -> int:
+    """At Flask's start: each transition commissioned and not made when the last process stopped, made again (up to
+    TRIES times in all; one already made is found and kept). Returns how many were resumed."""
+    from routes.bucketer import BASE_OUTPUT
+    n = 0
+    for f in sorted(Path(BASE_OUTPUT).glob(f"*/{FOLDER}/{PENDING}")):
+        try:
+            rows = json.loads(f.read_text("utf-8"))
+        except Exception:
+            rows = []
+        f.unlink(missing_ok=True)
+        for r in rows:
+            a, b, tries = r.get("a"), r.get("b"), int(r.get("tries") or 0)
+            if not a or not b or not Path(a).exists() or not Path(b).exists():
+                continue
+            if tries >= TRIES:
+                warning(f"[transition] {origin(Path(a))} -> {origin(Path(b))}: given up after {tries} tries")
+                _failed(Path(b).parent.name, {"at": round(time.time(), 1), "error": f"cut short {tries} times",
+                                              "from": origin(Path(a)), "to": origin(Path(b))})
+                continue
+            commission_later(a, b, tries)
+            n += 1
+    if n:
+        info(f"[transition] {n} commissioned before the restart and not made: making them now")
+    return n
 
 
 def records(screen: str) -> dict:

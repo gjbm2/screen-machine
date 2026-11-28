@@ -128,6 +128,9 @@ if os.environ.get("PYTEST_VERSION"):
 else:
     with app.app_context():
         initialize_schedulers_from_disk()
+    # transitions commissioned before the restart and not made (their threads went with the old process)
+    from routes.transitions import resume_pending as resume_transitions
+    resume_transitions()
 
 # API Routes
 @app.route(f'{API_PREFIX}/health', methods=['GET'])

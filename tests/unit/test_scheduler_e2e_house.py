@@ -6,9 +6,14 @@ The room: north and south (taking turns through the day's set, the ring), the cl
 ring's settings to the room) and, in another room, the-beast. The set has 8 pictures; the ring changes every 30 min
 from 07:00, north on the hour, south on the half hour.
 
-What a replay must do, and the tests that hold it to it:
+What a replay must do, and the tests that hold it to it (owner, 27 Nov: "both n and s screen should show overlay, then
+QUICKLY start showing animated transitions; then it should briskly alternate"):
+  - opens on every screen taking part at once: the overlay (rendered: no {{ }}) and the screen's first picture under
+    it; the first transition as the overlay ends, then one change every TURN s     test_a_replay_opens_*
   - thrown to the room (Alexa): both screens, taking turns, one change at a time, every neighbour pair once, each
     ending on the picture it started on                                             test_room_replay_*
+  - every change after the opening plays its transition (the day's pairs, as the cloud commissions them)
+                                                                                     test_every_change_*
   - thrown at one screen (its display page): that screen alone, the whole set; the other keeps its ring
                                                                                      test_single_screen_replay_*
   - thrown again while replaying: ignored, and the end is still the original picture   test_a_second_replay_*
@@ -20,6 +25,7 @@ And what happens when something else happens part-way (pinned as it is today):
   user interaction, the screen going live, sleep, an Alexa script, night time, a still with its clip.
 """
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -27,10 +33,17 @@ import pytest
 
 from scheduler_sim import Sim
 
-SCHEDULES = Path(__file__).resolve().parents[2] / "routes" / "scheduler"
+# SM_SCHEDULES_DIR: a copy to try a schedule change on before it goes live
+SCHEDULES = Path(os.environ.get("SM_SCHEDULES_DIR") or Path(__file__).resolve().parents[2] / "routes" / "scheduler")
 SCREENS = ("north-screen", "south-screen")
 SET = [f"p{i}.jpg" for i in range(8)]
-TURN = 25
+TURN = 15       # the cloud's replay_turn_s: a transition plays 15 s, so one lands as the other screen's starts
+OV = 8          # the replay's overlay: the first transition comes as it ends
+
+
+def solo_times(n):
+    """When a replay alone on one screen changes it: the opening at once, then from the overlay's end every TURN."""
+    return [0] + [OV + TURN * k for k in range(n - 1)]
 
 
 def live(screen):
@@ -53,6 +66,8 @@ def house(monkeypatch, tmp_path, start, day_set=SET, day="2026-11-25"):
                        ("day_themes", {day: "Today's art theme is 'Intricate Webs.' Drawing on St. Catherine's Day. More words here."}),
                        ("ring_day_starts", "07:00"), ("ring_screens", 2), ("replay_turn_s", TURN)):
         sim.export("cloud", var, value, "drawing-room")
+    pics = [p for p in day_set if p]
+    sim.made = {(a, b) for a, b in zip(pics, pics[1:] + pics[:1])}                # the cloud's commissions: each to the next
     for s in SCREENS:
         sim.install(s, live(s), vars={"screen_layer": "art"})
     sim.install("the-beast", {"triggers": [{"type": "event", "value": "Replay_day", "trigger_actions": {
@@ -92,14 +107,38 @@ def test_room_replay_takes_turns_one_change_at_a_time_and_each_screen_ends_where
     north, south = changes(sim, "north-screen", t0), changes(sim, "south-screen", t0)
     assert [n for _, n in north] == ["p0.jpg", "p1.jpg", "p2.jpg", "p3.jpg", "p4.jpg", start["north-screen"]]
     assert [n for _, n in south] == ["p4.jpg", "p5.jpg", "p6.jpg", "p7.jpg", "p0.jpg", start["south-screen"]]
-    times = sorted([t for t, _ in north] + [t for t, _ in south])
-    assert all(b - a >= TURN - 2 for a, b in zip(times, times[1:])), f"one change at a time: {times}"
-    whose = [s for _, s in sorted([(t, "N") for t, _ in north] + [(t, "S") for t, _ in south])]
-    assert whose == ["N", "S"] * 6, "they alternate"
+    assert north[0][0] <= 2 and south[0][0] <= 2, "both open at once, under the overlay"
+    after = sorted([(t, "N") for t, _ in north[1:]] + [(t, "S") for t, _ in south[1:]])
+    assert [t for t, _ in after] == pytest.approx([OV + TURN * k for k in range(10)], abs=2), \
+        f"the first transition as the overlay ends, then one change every {TURN} s: {after}"
+    assert [w for _, w in after] == ["N", "S"] * 5, "they alternate"
     assert sim.shown("the-beast") == [], "another room is never touched"
     sim.run(minutes=10)                                                           # nothing more until the ring's slot
     assert changes(sim, "north-screen", t0)[-1][1] == start["north-screen"]
     assert changes(sim, "south-screen", t0)[-1][1] == start["south-screen"]
+
+
+def test_every_change_of_a_room_replay_after_the_opening_plays_its_transition(monkeypatch, tmp_path):
+    """27 Nov: "NO TRANSITIONS WERE SHOWN AT ALL". Each screen walks the day's neighbour pairs the cloud commissions,
+    so every change after its opening (and before the put-back) is one that was made."""
+    sim = house(monkeypatch, tmp_path, datetime(2026, 11, 25, 15, 5, 0))
+    t0 = settle(sim)
+    sim.throw("drawing-room", "Replay_day", payload={"day": "2026-11-25"})
+    sim.run(minutes=4)
+    for s in SCREENS:
+        walk = sim.played(s, since=t0)[1:-1]
+        assert len(walk) == 4 and all(tr for _, _, tr in walk), f"{s}: a change without its transition: {walk}"
+    pairs = [tr for s in SCREENS for _, _, tr in sim.played(s, since=t0)[1:-1]]
+    assert sorted(pairs) == sorted(sim.made), "every pair of the day once, across the two screens"
+
+
+def test_every_change_of_a_single_screen_replay_after_the_opening_plays_its_transition(monkeypatch, tmp_path):
+    sim = house(monkeypatch, tmp_path, datetime(2026, 11, 25, 15, 5, 0))
+    t0 = settle(sim)
+    sim.throw("north-screen", "Replay_day")
+    sim.run(minutes=4)
+    walk = sim.played("north-screen", since=t0)[1:-1]
+    assert len(walk) == 8 and all(tr for _, _, tr in walk), walk
 
 
 def test_room_replay_publishes_with_transitions_and_without_clips_then_the_start_with_its_clip(monkeypatch, tmp_path):
@@ -123,7 +162,7 @@ def test_single_screen_replay_plays_the_whole_set_there_and_the_other_keeps_its_
     sim.run(minutes=6)
     north = changes(sim, "north-screen", t0)
     assert [n for _, n in north] == [f"p{i}.jpg" for i in range(8)] + ["p0.jpg", start]
-    assert [t for t, _ in north][:9] == pytest.approx([TURN * k for k in range(9)], abs=2)
+    assert [t for t, _ in north][:10] == pytest.approx(solo_times(10), abs=2)
     assert [n for _, n in changes(sim, "south-screen", t0)] == ["p4.jpg"], "south changed at 15:30 as usual"
 
 
@@ -210,7 +249,7 @@ def test_a_replay_keeps_its_pace_through_other_events_and_holds_while_someone_is
     sim.run(minutes=7)
     north = changes(sim, "north-screen", t0)
     assert [n for _, n in north][:10] == [f"p{i}.jpg" for i in range(8)] + ["p0.jpg", start]
-    expected = [TURN * k + (pause if TURN * k > 60 else 0) for k in range(9)]
+    expected = [t + (pause if t > 60 else 0) for t in solo_times(9)]
     assert [t for t, _ in north][:9] == pytest.approx(expected, abs=3)
 
 
@@ -261,17 +300,31 @@ def test_the_beasts_daily_commission_starts_at_six_though_its_ring_ticks_that_mi
 
 
 def test_a_replay_opens_with_an_overlay_saying_what_we_are_about_to_see(monkeypatch, tmp_path):
+    """The text as the real overlay handler renders it and sends it to the screens (27 Nov: the screens showed the
+    template, {{ }} and all, because the handler's renderer had no now())."""
     sim = house(monkeypatch, tmp_path, datetime(2026, 11, 25, 15, 5, 0))
-    settle(sim)
+    t0 = settle(sim)
     sim.throw("drawing-room", "Replay_day", payload={"day": "2026-11-25"})
     sim.run(seconds=10)
-    shown = {d: ins["text"] for _, d, a, ins in sim.actions if a == "overlay"}
-    assert set(shown) == {"north-screen", "south-screen"}, "on each screen taking part"
-    text = shown["north-screen"]
+    sent = [(t - t0, d, ins) for t, d, a, ins in sim.actions if a == "overlay"]
+    assert {d for _, d, _ in sent} == {"north-screen", "south-screen"}, "on each screen taking part"
+    assert all(t <= 2 and ins["duration_ms"] == OV * 1000 for t, _, ins in sent), "at once, for the overlay's time"
+    for _, _, ins in sent:
+        assert not any(m in ins["text"] for m in ("{{", "}}", "{%", "%}")), f"template code on a screen: {ins['text']}"
+    text = sent[0][2]["text"]
     assert text.startswith("Today's art theme is 'Intricate Webs.' Drawing on St. Catherine's Day.")
-    assert "Playing 8 pictures across both screens, taking turns: about 5 minutes." in text
+    assert text.endswith("Playing 8 pictures across both screens, taking turns: about 2 minutes.")
     sim.run(minutes=6)                                        # the room's replay is over
     sim.throw("north-screen", "Replay_day")
     sim.run(seconds=10)
     solo = [ins["text"] for _, d, a, ins in sim.actions if a == "overlay" and d == "north-screen"][-1]
-    assert "Playing 8 pictures on this screen: about 4 minutes." in solo
+    assert solo.endswith("Playing 8 pictures on this screen: about 2 minutes.")
+
+
+def test_a_replay_of_another_day_says_the_days_theme(monkeypatch, tmp_path):
+    sim = house(monkeypatch, tmp_path, datetime(2026, 11, 26, 15, 5, 0))
+    settle(sim)
+    sim.throw("drawing-room", "Replay_day", payload={"day": "2026-11-25"})
+    sim.run(seconds=10)
+    text = [ins["text"] for _, d, a, ins in sim.actions if a == "overlay"][0]
+    assert text.startswith("The day's art theme is 'Intricate Webs.'"), text
