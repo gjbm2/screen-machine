@@ -934,12 +934,8 @@ function QueueCard({
           </button>
         )}
         {upcoming === 0 && (
-          <div className="py-6 text-center text-sm text-muted-foreground">
-            {queue.length ? "Nothing more in the queue." : "The queue is empty."}{" "}
-            <button type="button" className="text-primary underline-offset-2 hover:underline" onClick={onFind}>
-              Find a song
-            </button>
-            .
+          <div className="pb-2 pt-5 text-center text-sm text-muted-foreground">
+            {queue.length ? "Nothing more in the queue." : "The queue is empty."}
           </div>
         )}
         <SortableContext items={shown.map(({ e }) => e.qid)} strategy={verticalListSortingStrategy}>
@@ -966,16 +962,14 @@ function QueueCard({
         </SortableContext>
         {/* how a song gets in, for whoever hasn't found the bar at the foot (owner, 28 Nov: "a low key, slim '+' at
             the bottom of the queue which triggers the tray") */}
-        {upcoming > 0 && (
-          <button
-            type="button"
-            onClick={onFind}
-            data-testid="karaoke-queue-add"
-            className="flex h-6 w-full items-center justify-center gap-1 rounded-md text-xs text-muted-foreground/70 hover:bg-stone-100 hover:text-foreground"
-          >
-            <Plus className="h-3.5 w-3.5" /> Add song
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={onFind}
+          data-testid="karaoke-queue-add"
+          className="flex h-6 w-full items-center justify-center gap-1 rounded-md text-xs text-muted-foreground/70 hover:bg-stone-100 hover:text-foreground"
+        >
+          <Plus className="h-3.5 w-3.5" /> Add song
+        </button>
       </div>
     </Card>
   );
