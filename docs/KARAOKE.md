@@ -162,17 +162,16 @@ for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`;
     `~/.cache/screen-machine/karaoke-models/speaker/`) and a median pitch. Pitch alone fails: Gaga sings Shallow's
     second verse in Cooper's register; the embedding still tells them apart (~0.5 alike within a verse, ~0.15
     across).
-  - `decide`: the lines not sung together split into two sounds, starting from the AI's A and B and letting the
-    sound move the lines that sound like the other voice (from the two least alike lines instead, a split could
-    latch onto something that wasn't the singers: Breaking Free, You're The One That I Want). A is whoever sings
-    first; the names follow the pitch where the AI's man sings 5+ semitones above its woman (Endless Love).
-    It is a duet only when the two sound clearly apart, each voice is confirmed (the AI and the sound agree) on 3+
-    lines, and the AI's solo lines agree with the sound 60%+ of the time. A line is marked when the two agree, or
-    when the sound is clear on its own (margin 0.3+, and only on a line with real words: a wail doesn't sound like
-    its singer). Both and backing keep the AI's word. A wrong duet display is worse than none: anything unsure shows
-    as before. The sound can't tell one voice from two by itself: one singer's verses and choruses (or a choir
-    coda) split as far apart as two singers (28 Nov: Hey Jude 0.38, Ain't No Mountain 0.41), so whether a song IS
-    a duet is the AI's call (13 of 13 non-duets right on 28 Nov); the sound decides its lines.
+  - `decide` (measured against a two-annotator answer key of the 14 test duets, 587 lines:
+    `tools/karaoke/evals/duet_eval.py [--redecide] [-v]`, bb, 28 Nov). The lines the AI calls solo split into two
+    sounds (2-means on the embeddings, starting from the AI's A and B), and each line is the voice it sounds like:
+    the embedding alone is 95% right on solo lines, the AI's own calls 69%. A line nearly as near one voice as the
+    other is shown as both. The AI keeps: duet or not, the two names, and its both and backing lines (the lead stem
+    carries only the louder of two voices, so the sound can't tell a shared line from a solo one). The names: by
+    pitch where the AI says a man and a woman and the voices are 5+ semitones apart (the lower is the man), else
+    by the AI's opening solo line (its vote over all its lines named Ain't No Mountain the wrong way round: it had
+    82% of them swapped). A is whoever sings first. Shown: 70% right, 25% wrong, 6% plain (was 61 / 27 / 12; the
+    AI alone 67 / 33). Most of what is left is the AI's both / solo calls.
   - Two answers: `duet` (it is one: the AI's word, which tags it) and `shown` (its parts are sure enough for the
     screen). 28 Nov, Somethin' Stupid: sung together nearly throughout, so tagged and shown as one voice.
   - The sound of each line is kept (`voices.json`), so a better `decide` judges a song again without asking or

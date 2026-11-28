@@ -39,16 +39,12 @@ def test_the_ai_saying_no_is_no():
     assert v["duet"] is False
 
 
-def test_the_sound_overrules_the_ai_only_where_clear_and_worded():
+def test_each_line_is_the_voice_it_sounds_like_not_the_ai_s_call():
     heard = _voice(1, 6) + _voice(2, 6)
     ai = ["A"] * 6 + ["B"] * 6
     ai[2] = "B"                                  # the AI wrong on one line
-    texts = list(TEXTS)
-    v = duet.decide(12, _prior(ai), heard, texts=texts)
-    assert v["parts"][2] == "A"                  # the sound is clear on its own
-    texts[2] = "oh ha-ah-ah"                     # a wail: the sound doesn't overrule the AI there
-    v = duet.decide(12, _prior(ai), heard, texts=texts)
-    assert v["parts"][2] is None
+    v = duet.decide(12, _prior(ai), heard, texts=list(TEXTS))
+    assert v["parts"][2] == "A"                  # bb's eval, 28 Nov: the sound 95% right on solo lines, the AI 69%
 
 
 def test_both_and_backing_keep_the_ai_word_and_a_is_who_sings_first():

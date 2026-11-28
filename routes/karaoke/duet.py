@@ -41,9 +41,11 @@ AGREE_MARGIN = 0.03                 # a line sounds like a voice when it is this
 CLEAR_MARGIN = 0.30                 # ... and clearly so: marked even against the AI, or where it didn't say. 28 Nov:
                                     # Ain't No Mountain's lines the AI had the wrong way round were 0.3-0.57 clear;
                                     # Shallow's wordless wail, which the sound put with Cooper, 0.17-0.25
-NAMES_PITCH_S = 5.0                 # the AI's man sings this many semitones above its woman: it has the names the wrong
-                                    # way round (28 Nov, Endless Love: "Diana Ross" at MIDI 50, "Lionel Richie" at 63).
-                                    # Not less: Gaga sings Shallow's second verse 2 semitones under Cooper's
+NAMES_PITCH_S = 5.0                 # the two voices this many semitones apart (median), and the AI says a man and a
+                                    # woman: the lower is the man (28 Nov, Endless Love: Lionel at MIDI 50, Diana at 63).
+                                    # 3 to 7 scored the same on the eval
+BOTH_BELOW = 0.1                    # a solo line this little nearer one voice than the other: both singing (eval 28 Nov:
+                                    # +5 right lines; 0.2 the same, 0 fewer)
 WORDS_TO_HEAR = 2                   # the sound overrules the AI only on a line with this many real words: a wail
                                     # ("ha-ah-ah") doesn't sound like its singer's voice
 DUET_MIN_LINES = 3                  # each voice confirmed (the AI and the sound agree) on at least this many lines
@@ -222,14 +224,38 @@ def decide(n: int, prior: Optional[Mapping[str, Any]], heard: Sequence[Optional[
     emb = [_unit(np.asarray(h["emb"], dtype=np.float64)) if isinstance(h, Mapping) and h.get("emb") else None
            for h in heard]
     midi = [h.get("midi") if isinstance(h, Mapping) else None for h in heard]
-    pool = [i for i in range(n) if emb[i] is not None and ai[i] not in ("both", "backing")]
+    solo_lines = [i for i in range(n) if emb[i] is not None and ai[i] not in ("both", "backing")]
+    pool = [i for i in solo_lines if worded(texts[i])]       # the voices are learnt from lines with real words
     if len(pool) < 2 * DUET_MIN_LINES:
+        shared = [p if p in ("both", "backing") else None for p in ai]
+        if sum(1 for p in shared if p) >= 0.6 * n:      # sung together nearly throughout (Somethin' Stupid): shown so
+            return {"duet": True, "shown": True, "voices": voices, "parts": shared, "echoes": {}, "stats": {"solo": len(pool)},
+                    "why": "sung together nearly throughout"}
         return no("too few solo lines to hear", solo=len(pool))
     lab, cen = two_voices(np.stack([emb[i] for i in pool]),
                           [{"A": 0, "B": 1}.get(ai[i]) for i in pool])
-    # Which group is A: the way round that agrees with more of the AI's solo lines.
+    # Which group is A: the way round that agrees with more of the AI's solo lines (the AI's own naming of them).
     fit = [sum(1 for k, i in enumerate(pool) if ai[i] in SOLO and (ai[i] == "A") == (lab[k] == way)) for way in (0, 1)]
     a_grp = 0 if fit[0] >= fit[1] else 1
+    # Then whether the AI's names belong the other way round (bb's duet eval, 28 Nov: Ain't No Mountain and Endless
+    # Love lost every line to swapped names; the AI's line calls there were 18% and 13% right, so its vote named the
+    # groups wrong): by pitch where it says a man and a woman and the groups are clearly apart; else by its own
+    # opening solo line. (Eval 28 Nov, 587 lines: by its vote 358 right, by pitch then its opening line 382.)
+    gp = [[midi[i] for k, i in enumerate(pool) if lab[k] == g and midi[i] is not None] for g in (0, 1)]
+    gp = [float(np.median(x)) if len(x) >= DUET_MIN_LINES else None for x in gp]
+    sexes = [v.get("sex") for v in voices]
+    named, name_grp = "vote", a_grp
+    if None not in gp and sorted(sexes) == ["man", "woman"] \
+            and abs(gp[0] - gp[1]) >= NAMES_PITCH_S:
+        low = 0 if gp[0] < gp[1] else 1                    # the man's group is the lower
+        name_grp, named = (low if sexes[0] == "man" else 1 - low), "pitch"
+    else:
+        k0 = next((k for k, i in enumerate(pool) if ai[i] in SOLO), None)
+        if k0 is not None:
+            name_grp, named = (int(lab[k0]) if ai[pool[k0]] == "A" else 1 - int(lab[k0])), "first"
+    if name_grp != a_grp:
+        voices = voices[::-1]                              # the groups as the AI split them, its names swapped
+        named += ", swapped"
     told = sum(1 for i in pool if ai[i] in SOLO)
     group = {i: ("A" if lab[k] == a_grp else "B") for k, i in enumerate(pool)}
     ca, cb = (cen[0], cen[1]) if a_grp == 0 else (cen[1], cen[0])
@@ -239,21 +265,26 @@ def decide(n: int, prior: Optional[Mapping[str, Any]], heard: Sequence[Optional[
     confirmed = {k: sum(1 for i in pool if ai[i] == k and group[i] == k) for k in SOLO}
     share = max(fit) / told if told else 0.0
     stats = {"solo": len(pool), "told": told, "agree": round(share, 3), "apart": round(apart, 3),
-             "alike": round(float(ca @ cb), 3), "confirmed": confirmed}
+             "alike": round(float(ca @ cb), 3), "confirmed": confirmed, "named": named}
     if apart < DUET_MIN_APART:
         return no("the recording doesn't sound like two voices", **stats)
     if min(confirmed.values()) < DUET_MIN_LINES or share < DUET_MIN_AGREE:
         return no("the recording doesn't bear the AI out", **stats)
 
+    # Each line is its group's voice (bb's duet eval, 28 Nov: the embedding alone, nearest voice, 95% right on solo
+    # lines against the key; the AI's own line calls 69%, and taken where the two agreed, 68%). The AI keeps both
+    # and backing (the lead stem carries only the louder voice of two).
     parts: list[Optional[str]] = [None] * n
     for i in range(n):
         p = ai[i]
         if p in ("both", "backing"):
             parts[i] = p
-        elif m[i] is not None:
-            heard_as = "A" if m[i] > 0 else "B"
-            if (p == heard_as and abs(m[i]) >= AGREE_MARGIN) or (abs(m[i]) >= CLEAR_MARGIN and worded(texts[i])):
-                parts[i] = heard_as
+        elif m[i] is not None and (worded(texts[i]) or abs(m[i]) >= AGREE_MARGIN):
+            parts[i] = "A" if m[i] > 0 else "B"
+    # A line that sounds like neither voice more than the other: both singing (BOTH_BELOW).
+    for i in range(n):
+        if parts[i] in SOLO and m[i] is not None and abs(m[i]) < BOTH_BELOW:
+            parts[i] = "both"
     # A line too short to hear keeps the AI's part when the lines either side of it are that voice too.
     for i in range(n):
         if parts[i] is None and ai[i] in SOLO and m[i] is None:
@@ -261,16 +292,8 @@ def decide(n: int, prior: Optional[Mapping[str, Any]], heard: Sequence[Optional[
             after = next((parts[j] for j in range(i + 1, n) if parts[j]), None)
             if before == after == ai[i]:
                 parts[i] = ai[i]
-    # The names by the voices' pitch, where the AI says one is a man and the other a woman and the sound clearly
-    # says otherwise.
     tone = {k: [midi[i] for i in range(n) if parts[i] == k and midi[i] is not None] for k in SOLO}
     tone = {k: (float(np.median(v)) if len(v) >= DUET_MIN_LINES else None) for k, v in tone.items()}
-    sexes = [v.get("sex") for v in voices]
-    if None not in tone.values() and sorted(sexes) == ["man", "woman"]:
-        man, woman = ("A", "B") if sexes[0] == "man" else ("B", "A")
-        if tone[man] - tone[woman] >= NAMES_PITCH_S:
-            voices = voices[::-1]
-            stats["names"] = "swapped by pitch"
     stats["pitch"] = {k: (None if v is None else round(v, 1)) for k, v in tone.items()}
     echoes = {int(i): e for i, e in (prior.get("echoes") or {}).items()
               if str(i).isdigit() and int(i) < n and parts[int(i)] is not None}
