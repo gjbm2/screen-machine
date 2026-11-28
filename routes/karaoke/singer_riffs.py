@@ -38,6 +38,9 @@ SCENES = {
     "unplugged": "This person singing an acoustic session on a cosy stage with fairy lights and a guitarist.",
 }
 
+LABELS = {"wembley": "Wembley", "ronnie": "Ronnie Scott's", "popstar": "Pop star", "glasto": "Glastonbury",
+          "rock": "Rock star", "disco": "Disco", "westend": "West End", "unplugged": "Unplugged"}
+
 Backend = Callable[[Path, str], bytes]     # (the singer's photo, the prompt) -> the made picture (JPEG/PNG bytes)
 backend: Optional[Backend] = None
 _wake = threading.Event()

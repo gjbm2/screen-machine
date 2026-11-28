@@ -16,7 +16,7 @@
 // the rest of the panel.
 
 import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent } from "react";
-import { Camera, ListMusic, Loader2, MicVocal, Plus, X } from "lucide-react";
+import { Camera, Images, ListMusic, Loader2, MicVocal, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -25,7 +25,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { karaoke } from "@/shared/api/karaoke";
+import { karaoke, type SingerRiff } from "@/shared/api/karaoke";
 import { cn } from "@/lib/utils";
 import { THEME_CLASS } from "@/pages/Room/theme";
 
@@ -56,20 +56,25 @@ export function singersNow(): string[] {
 // exposed ... by e.g. clicking their lozenge"; the screens show them, and the photo scenes: routes/karaoke/singer_photos.py).
 // Every name's photo URL, from /state (setPhotos) or an upload's reply, shared by every chip on the page.
 let photoMap: Record<string, string> = {};
+let riffMap: Record<string, SingerRiff[]> = {};
 const photoSubs = new Set<() => void>();
-export function setPhotos(m: Record<string, string> | undefined) {
+/** The photos (and, from /state, the riffs on them: singer_riffs.py) every chip shows. */
+export function setPhotos(m: Record<string, string> | undefined, riffs?: Record<string, SingerRiff[]>) {
   const next = m ?? {};
-  if (JSON.stringify(next) === JSON.stringify(photoMap)) return;
+  const nextRiffs = riffs ?? riffMap;
+  if (JSON.stringify([next, nextRiffs]) === JSON.stringify([photoMap, riffMap])) return;
   photoMap = next;
+  riffMap = nextRiffs;
   photoSubs.forEach((f) => f());
 }
 const photoOf = (m: Record<string, string>, n: string) =>
   m[n] ?? Object.entries(m).find(([k]) => k.toLowerCase() === n.toLowerCase())?.[1];
+const subscribe = (f: () => void) => (photoSubs.add(f), () => photoSubs.delete(f));
 function usePhotos() {
-  return useSyncExternalStore(
-    (f) => (photoSubs.add(f), () => photoSubs.delete(f)),
-    () => photoMap,
-  );
+  return useSyncExternalStore(subscribe, () => photoMap);
+}
+function useRiffs() {
+  return useSyncExternalStore(subscribe, () => riffMap);
 }
 
 const PHOTO_PX = 1600; // as the server keeps it: a phone's 12 MP photo goes up as ~300 kB, not 5 MB
@@ -106,6 +111,11 @@ function NameChip({
   onShow?: (name: string) => void;
 }) {
   const photo = photoOf(usePhotos(), name);
+  const riffMapNow = useRiffs();
+  const riffs = riffMapNow[name] ?? Object.entries(riffMapNow).find(([k]) => k.toLowerCase() === name.toLowerCase())?.[1];
+  // the riffs once the generator has started on them (queued only: no generator yet, nothing to show)
+  const hasRiffs = !!riffs?.some((r) => r.state === "done" || r.state === "making");
+  const [gallery, setGallery] = useState(false);
   const file = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -166,6 +176,11 @@ function NameChip({
                 <ListMusic className="mr-2 h-4 w-4" /> Their songs
               </DropdownMenuItem>
             )}
+            {photo && hasRiffs && (
+              <DropdownMenuItem onSelect={() => setGallery(true)}>
+                <Images className="mr-2 h-4 w-4" /> Riffs · {riffs!.filter((r) => r.state === "done").length}
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onSelect={pick}>
               <Camera className="mr-2 h-4 w-4" /> {photo ? "New photo" : "Add photo"}
             </DropdownMenuItem>
@@ -183,6 +198,7 @@ function NameChip({
           {label}
         </button>
       )}
+      {photo && riffs && <RiffGallery open={gallery} onOpenChange={setGallery} name={name} photo={photo} riffs={riffs} />}
       <button
         type="button"
         aria-label={`Not ${name}`}
@@ -193,6 +209,65 @@ function NameChip({
         <X className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
       </button>
     </span>
+  );
+}
+
+/** A singer's photo and the AI's riffs on it, three across; one tapped fills the dialog (tapped again: back). */
+function RiffGallery({
+  open,
+  onOpenChange,
+  name,
+  photo,
+  riffs,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  name: string;
+  photo: string;
+  riffs: SingerRiff[];
+}) {
+  const [big, setBig] = useState<string | null>(null);
+  const tiles = [{ label: "The photo", url: photo, state: "done" }, ...riffs.filter((r) => r.state !== "failed")];
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        setBig(null);
+        onOpenChange(v);
+      }}
+    >
+      <DialogContent
+        className={cn(THEME_CLASS, "w-[calc(100vw-2rem)] max-w-lg gap-3 p-3 sm:p-4")}
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <DialogHeader>
+          <DialogTitle className="text-base">{name}</DialogTitle>
+          <DialogDescription className="sr-only">{name}'s photo and riffs</DialogDescription>
+        </DialogHeader>
+        {big ? (
+          <button type="button" onClick={() => setBig(null)} className="block outline-none">
+            <img src={big} alt="" className="max-h-[70vh] w-full rounded-xl object-contain" />
+          </button>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {tiles.map((r, i) => (
+              <div key={i} className="overflow-hidden rounded-xl bg-stone-100">
+                {r.url ? (
+                  <button type="button" onClick={() => setBig(r.url!)} className="block w-full outline-none">
+                    <img src={r.url} alt="" className="aspect-square w-full object-cover" />
+                  </button>
+                ) : (
+                  <div className="flex aspect-square w-full items-center justify-center text-muted-foreground">
+                    <Loader2 className={cn("h-5 w-5", r.state === "making" && "animate-spin")} />
+                  </div>
+                )}
+                <div className="truncate px-2 py-1 text-xs text-muted-foreground">{r.label}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 

@@ -70,6 +70,21 @@ def photos() -> dict[str, str]:
     return {r["name"]: url(r) for r in _index().values() if (folder() / r["file"]).is_file()}
 
 
+def riffs() -> dict[str, list[dict]]:
+    """Every name with riffs planned -> [{scene, label, state, url (made ones)}] (the chip's gallery)."""
+    out = {}
+    for r in _index().values():
+        rows = []
+        for x in r.get("riffs") or []:
+            made = x.get("state") == "done" and (folder() / x["file"]).is_file()
+            rows.append({"scene": x["scene"], "label": singer_riffs.LABELS.get(x["scene"], x["scene"]),
+                         "state": "done" if made else x.get("state"),
+                         **({"url": f"/api/karaoke/singers/photo/{x['file']}"} if made else {})})
+        if rows:
+            out[r["name"]] = rows
+    return out
+
+
 def photos_of(names: Iterable[Any]) -> dict[str, str]:
     """The photo URLs of these names (the screens' overlays): {name: url}, names without one left out."""
     idx = _index()

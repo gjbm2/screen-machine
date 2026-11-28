@@ -274,7 +274,7 @@ export default function KaraokePage() {
       const s = await karaoke.state();
       skewRef.current = s.now - (sent + Date.now()) / 2000;
       if (!draggingRef.current) setSt(s);
-      setPhotos(s.singer_photos);
+      setPhotos(s.singer_photos, s.singer_riffs ?? {});
       setErr(null);
     } catch (e) {
       setErr(String((e as Error).message || e));
