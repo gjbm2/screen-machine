@@ -321,6 +321,9 @@ class Duets:
                 if p.returncode != 0 or not last[0].startswith("{"):
                     raise RuntimeError(((p.stderr or "").strip().splitlines() or ["no output"])[-1][:300])
                 heard = json.loads(last[0]).get("lines") or []
+                tmp = d / "voices.tmp.json"              # kept: a better decide can judge it again without listening
+                tmp.write_text(json.dumps({"made_from": duet_mod.key(lines), "lines": heard}))
+                tmp.replace(d / "voices.json")
             finally:
                 Path(lines_file).unlink(missing_ok=True)
         _, now = self._lines(sid)
@@ -330,7 +333,8 @@ class Duets:
         texts = [str(x.get("text") or "") for x in lines]
         tags = [duet_mod.text_tag(t, prior["voices"]) for t in texts]
         v = duet_mod.decide(len(lines), prior, heard, tags, texts)
-        v["ai"] = {"duet": prior["duet"], "voices": prior["voices"], "parts": prior["parts"]}
+        v["ai"] = {"duet": prior["duet"], "voices": prior["voices"], "parts": prior["parts"],
+                   "echoes": {str(i): e for i, e in (prior.get("echoes") or {}).items()}}
         saved = duet_mod.save(d, v, lines, by=model or "ai")
         info(f"karaoke: {sid} duet: {'yes' if v['duet'] else 'no'}{'' if v['shown'] or not v['duet'] else ', parts not shown'}"
              f" ({v['why']})")

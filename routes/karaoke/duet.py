@@ -41,6 +41,9 @@ AGREE_MARGIN = 0.03                 # a line sounds like a voice when it is this
 CLEAR_MARGIN = 0.30                 # ... and clearly so: marked even against the AI, or where it didn't say. 28 Nov:
                                     # Ain't No Mountain's lines the AI had the wrong way round were 0.3-0.57 clear;
                                     # Shallow's wordless wail, which the sound put with Cooper, 0.17-0.25
+NAMES_PITCH_S = 5.0                 # the AI's man sings this many semitones above its woman: it has the names the wrong
+                                    # way round (28 Nov, Endless Love: "Diana Ross" at MIDI 50, "Lionel Richie" at 63).
+                                    # Not less: Gaga sings Shallow's second verse 2 semitones under Cooper's
 WORDS_TO_HEAR = 2                   # the sound overrules the AI only on a line with this many real words: a wail
                                     # ("ha-ah-ah") doesn't sound like its singer's voice
 DUET_MIN_LINES = 3                  # each voice confirmed (the AI and the sound agree) on at least this many lines
@@ -163,12 +166,20 @@ def _unit(v: np.ndarray) -> np.ndarray:
     return v / (np.linalg.norm(v) + 1e-9)
 
 
-def two_voices(X: np.ndarray, iters: int = 50) -> tuple[np.ndarray, np.ndarray]:
-    """Unit rows split into the two most different sounds (spherical 2-means from the least alike pair):
-    (each row's group 0 | 1, the two groups' centres)."""
-    S = X @ X.T
-    i, j = np.unravel_index(int(np.argmin(S)), S.shape)
-    c = np.stack([X[i], X[j]])
+def two_voices(X: np.ndarray, seed: Optional[Sequence[Optional[int]]] = None,
+               iters: int = 50) -> tuple[np.ndarray, np.ndarray]:
+    """Unit rows split into two sounds (spherical 2-means): (each row's group 0 | 1, the two groups' centres).
+    ``seed``: a starting group per row (None: no say), e.g. the AI's A and B; then the sound moves the lines that
+    sound like the other voice. Without one, from the least alike pair. 28 Nov: from the least alike pair, a split
+    could latch onto two odd lines (Breaking Free, You're The One That I Want: groups 0.6 alike that weren't the
+    singers); seeded by the AI the lines agreed 93% and 70%, and every other duet as well or better."""
+    sd = np.array([-1 if g is None else int(g) for g in seed]) if seed is not None else None
+    if sd is not None and (sd == 0).any() and (sd == 1).any():
+        c = np.stack([_unit(X[sd == k].mean(0)) for k in range(2)])
+    else:
+        S = X @ X.T
+        i, j = np.unravel_index(int(np.argmin(S)), S.shape)
+        c = np.stack([X[i], X[j]])
     lab = np.argmax(X @ c.T, axis=1)
     for _ in range(iters):
         new = np.stack([_unit(X[lab == k].mean(0)) if (lab == k).any() else c[k] for k in range(2)])
@@ -214,7 +225,8 @@ def decide(n: int, prior: Optional[Mapping[str, Any]], heard: Sequence[Optional[
     pool = [i for i in range(n) if emb[i] is not None and ai[i] not in ("both", "backing")]
     if len(pool) < 2 * DUET_MIN_LINES:
         return no("too few solo lines to hear", solo=len(pool))
-    lab, cen = two_voices(np.stack([emb[i] for i in pool]))
+    lab, cen = two_voices(np.stack([emb[i] for i in pool]),
+                          [{"A": 0, "B": 1}.get(ai[i]) for i in pool])
     # Which group is A: the way round that agrees with more of the AI's solo lines.
     fit = [sum(1 for k, i in enumerate(pool) if ai[i] in SOLO and (ai[i] == "A") == (lab[k] == way)) for way in (0, 1)]
     a_grp = 0 if fit[0] >= fit[1] else 1
@@ -226,10 +238,8 @@ def decide(n: int, prior: Optional[Mapping[str, Any]], heard: Sequence[Optional[
     apart = float(np.mean(own))
     confirmed = {k: sum(1 for i in pool if ai[i] == k and group[i] == k) for k in SOLO}
     share = max(fit) / told if told else 0.0
-    pitch = {k: [midi[i] for i in pool if group[i] == k and midi[i] is not None] for k in SOLO}
-    pitch = {k: (round(float(np.median(v)), 1) if v else None) for k, v in pitch.items()}
     stats = {"solo": len(pool), "told": told, "agree": round(share, 3), "apart": round(apart, 3),
-             "alike": round(float(ca @ cb), 3), "confirmed": confirmed, "pitch": pitch}
+             "alike": round(float(ca @ cb), 3), "confirmed": confirmed}
     if apart < DUET_MIN_APART:
         return no("the recording doesn't sound like two voices", **stats)
     if min(confirmed.values()) < DUET_MIN_LINES or share < DUET_MIN_AGREE:
@@ -251,19 +261,52 @@ def decide(n: int, prior: Optional[Mapping[str, Any]], heard: Sequence[Optional[
             after = next((parts[j] for j in range(i + 1, n) if parts[j]), None)
             if before == after == ai[i]:
                 parts[i] = ai[i]
+    # The names by the voices' pitch, where the AI says one is a man and the other a woman and the sound clearly
+    # says otherwise.
+    tone = {k: [midi[i] for i in range(n) if parts[i] == k and midi[i] is not None] for k in SOLO}
+    tone = {k: (float(np.median(v)) if len(v) >= DUET_MIN_LINES else None) for k, v in tone.items()}
+    sexes = [v.get("sex") for v in voices]
+    if None not in tone.values() and sorted(sexes) == ["man", "woman"]:
+        man, woman = ("A", "B") if sexes[0] == "man" else ("B", "A")
+        if tone[man] - tone[woman] >= NAMES_PITCH_S:
+            voices = voices[::-1]
+            stats["names"] = "swapped by pitch"
+    stats["pitch"] = {k: (None if v is None else round(v, 1)) for k, v in tone.items()}
     echoes = {int(i): e for i, e in (prior.get("echoes") or {}).items()
               if str(i).isdigit() and int(i) < n and parts[int(i)] is not None}
-    # A is whoever sings first.
-    first = next((p for p in parts if p in SOLO), "A")
+    # A is whoever sings first: by the first line either the sound or the AI gives to one voice (28 Nov, Don't Go
+    # Breaking My Heart: Elton's first line unmarked made Kiki "first", and the first singer named got her part).
+    first = next((parts[i] if parts[i] in SOLO else ai[i] for i in range(n) if parts[i] in SOLO or ai[i] in SOLO), "A")
     if first == "B":
         swap = {"A": "B", "B": "A"}
         parts = [swap.get(p, p) if p else p for p in parts]
         echoes = {i: swap.get(e, e) for i, e in echoes.items()}
         voices = voices[::-1]
+        stats["pitch"] = {"A": stats["pitch"]["B"], "B": stats["pitch"]["A"]}
     stats["marked"] = sum(1 for p in parts if p)
     return {"duet": True, "shown": True, "voices": voices, "parts": parts, "echoes": echoes,
             "why": f"{stats['marked']}/{n} lines marked; the AI's lines agree with the sound for {share:.0%}",
             "stats": stats}
+
+
+def redecide(song_dir: Path, lines: Sequence[Mapping[str, Any]]) -> Optional[dict]:
+    """The verdict made again from what was kept (the AI's answer in duet.json, the sound in voices.json), without
+    asking or listening again: for a better ``decide``. None if either is missing or for other lyrics."""
+    d = Path(song_dir)
+    old = load(d, lines)
+    try:
+        heard = json.loads((d / "voices.json").read_text())
+    except (OSError, ValueError):
+        heard = None
+    if not old or not isinstance(old.get("ai"), Mapping) or not heard or heard.get("made_from") != key(lines):
+        return None
+    a = old["ai"]
+    prior = {"duet": bool(a.get("duet")), "voices": a.get("voices") or [], "parts": a.get("parts") or [None] * len(lines),
+             "echoes": {int(i): e for i, e in (a.get("echoes") or {}).items() if str(i).isdigit()}}
+    texts = [str(x.get("text") or "") for x in lines]
+    v = decide(len(lines), prior, heard.get("lines") or [], [text_tag(t, prior["voices"]) for t in texts], texts)
+    v["ai"] = dict(a)
+    return save(d, v, lines, by=str(old.get("by") or "ai"))
 
 
 # -- kept beside the song ------------------------------------------------------------------------------------------

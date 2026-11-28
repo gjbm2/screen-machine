@@ -94,3 +94,20 @@ def test_the_duets_tag_follows_a_person_over_the_finding():
     assert "Duets" not in song_tags({"duet": {"found": True}, "duet_set": False})
     assert is_duet({"duet": {"found": False}, "duet_set": True})
     assert not is_duet({})
+
+
+def test_a_is_who_sings_first_even_when_that_line_is_not_marked():
+    heard = [None] + _voice(1, 6) + _voice(2, 6)
+    ai = ["B"] + ["B"] * 6 + ["A"] * 6
+    v = duet.decide(13, _prior(ai), heard, texts=["oh"] + ["the words of this line sung"] * 12)
+    assert v["parts"][0] is None and v["parts"][1] == "A" and [x["name"] for x in v["voices"]] == ["Her", "Him"]
+
+
+def test_the_names_follow_the_pitch_when_the_ai_has_them_clearly_swapped():
+    heard = _voice(1, 6) + _voice(2, 6)
+    for h in heard[:6]:
+        h["midi"] = 50.0                         # the first voice sings an octave under the second
+    prior = _prior(["A"] * 6 + ["B"] * 6)
+    prior["voices"] = [{"name": "Diana", "sex": "woman"}, {"name": "Lionel", "sex": "man"}]
+    v = duet.decide(12, prior, heard, texts=TEXTS)
+    assert [x["name"] for x in v["voices"]] == ["Lionel", "Diana"] and v["parts"][0] == "A"

@@ -162,7 +162,10 @@ for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`;
     `~/.cache/screen-machine/karaoke-models/speaker/`) and a median pitch. Pitch alone fails: Gaga sings Shallow's
     second verse in Cooper's register; the embedding still tells them apart (~0.5 alike within a verse, ~0.15
     across).
-  - `decide`: the lines not sung together split into the two most different sounds; the AI says which is which.
+  - `decide`: the lines not sung together split into two sounds, starting from the AI's A and B and letting the
+    sound move the lines that sound like the other voice (from the two least alike lines instead, a split could
+    latch onto something that wasn't the singers: Breaking Free, You're The One That I Want). A is whoever sings
+    first; the names follow the pitch where the AI's man sings 5+ semitones above its woman (Endless Love).
     It is a duet only when the two sound clearly apart, each voice is confirmed (the AI and the sound agree) on 3+
     lines, and the AI's solo lines agree with the sound 60%+ of the time. A line is marked when the two agree, or
     when the sound is clear on its own (margin 0.3+, and only on a line with real words: a wail doesn't sound like
@@ -171,8 +174,9 @@ for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`;
     coda) split as far apart as two singers (28 Nov: Hey Jude 0.38, Ain't No Mountain 0.41), so whether a song IS
     a duet is the AI's call (13 of 13 non-duets right on 28 Nov); the sound decides its lines.
   - Two answers: `duet` (it is one: the AI's word, which tags it) and `shown` (its parts are sure enough for the
-    screen). 28 Nov, Breaking Free: a duet, but the AI's lines agreed with the sound only half the time (it trades
-    lines fast), so it is tagged and shows as one voice.
+    screen). 28 Nov, Somethin' Stupid: sung together nearly throughout, so tagged and shown as one voice.
+  - The sound of each line is kept (`voices.json`), so a better `decide` judges a song again without asking or
+    listening (`duet.redecide`).
   - Kept as `duet.json` beside the song (for the lyrics it was made from); `GET .../lyrics` puts each line's `voice`
     on (and `voices` per word where its brackets are another part's) and `duet: {voices}`. The song's `duet` field
     is what was found; `duet_set` (`POST /api/karaoke/songs/<id>/duet {duet: true | false | null}`, the Karaoke
