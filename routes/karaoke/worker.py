@@ -264,6 +264,11 @@ class Duets:
         for sid in ids:
             if self._stale(sid):
                 self.want(sid)
+            else:                                        # the song's fields as its saved verdict says now
+                song, lines = self._lines(sid)
+                have = duet_mod.load(song_dir(sid), lines) if lines else None
+                if have is not None:
+                    self._note(sid, have, bump=False)
         self.thread = threading.Thread(target=self._loop, name="karaoke-duets", daemon=True)
         self.thread.start()
 
@@ -327,13 +332,15 @@ class Duets:
         v = duet_mod.decide(len(lines), prior, heard, tags, texts)
         v["ai"] = {"duet": prior["duet"], "voices": prior["voices"], "parts": prior["parts"]}
         saved = duet_mod.save(d, v, lines, by=model or "ai")
-        info(f"karaoke: {sid} duet: {'yes' if v['duet'] else 'no'} ({v['why']})")
-        self._note(sid, saved, bump=bool(v["duet"]))
+        info(f"karaoke: {sid} duet: {'yes' if v['duet'] else 'no'}{'' if v['shown'] or not v['duet'] else ', parts not shown'}"
+             f" ({v['why']})")
+        self._note(sid, saved, bump=bool(v["shown"]))
 
     def _note(self, sid: str, v: dict, bump: bool) -> None:
         """The verdict on the song (its tag, the Karaoke page), and new lyrics for the screens when it is a duet."""
         parts = v.get("parts") or []
-        found = {"found": bool(v.get("duet")), "voices": [x.get("name") for x in v.get("voices") or []],
+        found = {"found": bool(v.get("duet")), "shown": bool(v.get("shown")),
+                 "voices": [x.get("name") for x in v.get("voices") or []],
                  "lines": {k: parts.count(k) for k in ("A", "B", "both")}, "why": v.get("why")}
         with self.store.lock:
             song = self.store.s["songs"].get(sid) or {}

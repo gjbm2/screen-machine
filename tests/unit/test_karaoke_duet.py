@@ -23,14 +23,15 @@ TEXTS = ["the words of this line sung"] * 12
 def test_two_clear_voices_where_the_ai_agrees_is_a_duet():
     heard = _voice(1, 6) + _voice(2, 6)
     v = duet.decide(12, _prior(["A"] * 6 + ["B"] * 6), heard, texts=TEXTS)
-    assert v["duet"] is True
+    assert v["duet"] is True and v["shown"] is True
     assert v["parts"] == ["A"] * 6 + ["B"] * 6
 
 
 def test_one_voice_is_not_a_duet_whatever_the_ai_says():
     heard = _voice(1, 12)
     v = duet.decide(12, _prior(["A"] * 6 + ["B"] * 6), heard, texts=TEXTS)
-    assert v["duet"] is False and v["parts"] == [None] * 12
+    assert v["shown"] is False and v["parts"] == [None] * 12
+    assert v["duet"] is True                     # the AI's word still tags it
 
 
 def test_the_ai_saying_no_is_no():
@@ -78,7 +79,8 @@ def test_text_tags_name_a_voice():
 
 def test_apply_only_for_the_same_lines(tmp_path):
     lines = [{"text": "Ain't no mountain (no no baby)"}, {"text": "high enough"}]
-    v = {"duet": True, "voices": [{"name": "M"}, {"name": "T"}], "parts": ["A", "both"], "echoes": {0: "B"}}
+    v = {"duet": True, "shown": True, "voices": [{"name": "M"}, {"name": "T"}], "parts": ["A", "both"],
+         "echoes": {0: "B"}}
     duet.save(tmp_path, v, lines, by="test")
     doc = duet.apply({"kind": "synced", "lines": lines}, duet.load(tmp_path))
     assert doc["lines"][0]["voice"] == "A" and doc["lines"][0]["voices"] == ["A", "A", "A", "B", "B", "B"]

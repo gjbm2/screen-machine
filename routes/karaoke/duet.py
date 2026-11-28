@@ -188,7 +188,8 @@ def worded(text: str) -> bool:
 
 def decide(n: int, prior: Optional[Mapping[str, Any]], heard: Sequence[Optional[Mapping[str, Any]]],
            tags: Sequence[Optional[str]] = (), texts: Sequence[str] = ()) -> dict:
-    """The verdict: {duet, voices, parts: [part | None] x n, echoes, why, stats}. ``prior`` is ``parse``'s answer;
+    """The verdict: {duet, shown, voices, parts: [part | None] x n, echoes, why, stats}. ``duet``: it is one (the
+    AI's word: the library's Duets tag); ``shown``: its parts are sure enough for the screen. ``prior`` is ``parse``'s answer;
     ``heard`` voices.py's lines; ``tags`` each line's own tag (``text_tag``).
 
     The recording says who sounds like whom: the lines not sung together (by the AI's word) split into the two most
@@ -196,11 +197,13 @@ def decide(n: int, prior: Optional[Mapping[str, Any]], heard: Sequence[Optional[
     lines), and whether it is a duet at all. Its line-by-line word is taken where the sound agrees, and the sound's
     where it is clear on its own (28 Nov, Ain't No Mountain High Enough: two clean voices, ~0.6 alike within and
     ~0.2 across, where the AI had a third of Marvin's and Tammi's lines the wrong way round)."""
-    no = lambda why, **st: {"duet": False, "voices": [], "parts": [None] * n, "echoes": {}, "why": why,  # noqa: E731
-                            "stats": st}
     if not prior or not prior.get("duet"):
-        return no("the AI doesn't know it as a duet" if prior else "no AI answer")
+        return {"duet": False, "shown": False, "voices": [], "parts": [None] * n, "echoes": {}, "stats": {},
+                "why": "the AI doesn't know it as a duet" if prior else "no AI answer"}
     voices = [dict(v) for v in prior["voices"]]
+    # A duet the parts of which aren't sure enough to show: tagged a duet, shown as one voice.
+    no = lambda why, **st: {"duet": True, "shown": False, "voices": voices, "parts": [None] * n,  # noqa: E731
+                            "echoes": {}, "why": why, "stats": st}
     texts = list(texts) + [""] * n
     tags = list(tags) + [None] * n
     ai = [tags[i] or prior["parts"][i] for i in range(n)]
@@ -258,7 +261,7 @@ def decide(n: int, prior: Optional[Mapping[str, Any]], heard: Sequence[Optional[
         echoes = {i: swap.get(e, e) for i, e in echoes.items()}
         voices = voices[::-1]
     stats["marked"] = sum(1 for p in parts if p)
-    return {"duet": True, "voices": voices, "parts": parts, "echoes": echoes,
+    return {"duet": True, "shown": True, "voices": voices, "parts": parts, "echoes": echoes,
             "why": f"{stats['marked']}/{n} lines marked; the AI's lines agree with the sound for {share:.0%}",
             "stats": stats}
 
@@ -278,6 +281,9 @@ def load(song_dir: Path, lines: Optional[Sequence[Mapping[str, Any]]] = None) ->
         return None
     if not isinstance(d, dict) or d.get("version") != VERSION:
         return None
+    if "shown" not in d:            # saved before 28 Nov 01:00: "duet" was "shown", the AI's word is in "ai"
+        d["shown"] = bool(d.get("duet"))
+        d["duet"] = bool(d.get("duet") or (d.get("ai") or {}).get("duet"))
     if lines is not None and d.get("made_from") != key(lines):
         return None
     return d
@@ -308,7 +314,7 @@ def apply(doc: Mapping[str, Any], verdict: Optional[Mapping[str, Any]]) -> dict:
     """The lyrics document with each line's ``voice`` (and ``voices`` per word where its brackets are sung by
     another part), and ``duet`` {voices: [names, sexes]}: only for a duet made from these lines."""
     lines = list(doc.get("lines") or ())
-    if not verdict or not verdict.get("duet") or verdict.get("made_from") != key(lines) \
+    if not verdict or not verdict.get("shown") or verdict.get("made_from") != key(lines) \
             or len(verdict.get("parts") or ()) != len(lines):
         return dict(doc)
     echoes = verdict.get("echoes") or {}

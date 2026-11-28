@@ -170,6 +170,9 @@ for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`;
     as before. The sound can't tell one voice from two by itself: one singer's verses and choruses (or a choir
     coda) split as far apart as two singers (28 Nov: Hey Jude 0.38, Ain't No Mountain 0.41), so whether a song IS
     a duet is the AI's call (13 of 13 non-duets right on 28 Nov); the sound decides its lines.
+  - Two answers: `duet` (it is one: the AI's word, which tags it) and `shown` (its parts are sure enough for the
+    screen). 28 Nov, Breaking Free: a duet, but the AI's lines agreed with the sound only half the time (it trades
+    lines fast), so it is tagged and shows as one voice.
   - Kept as `duet.json` beside the song (for the lyrics it was made from); `GET .../lyrics` puts each line's `voice`
     on (and `voices` per word where its brackets are another part's) and `duet: {voices}`. The song's `duet` field
     is what was found; `duet_set` (`POST /api/karaoke/songs/<id>/duet {duet: true | false | null}`, the Karaoke
