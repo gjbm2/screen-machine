@@ -11,7 +11,7 @@ new features just have nothing to work with, so they do nothing or the wrong thi
 
 **How this was checked** (from the laptop, 28 Nov about 10:00): finsbury's files in git at `a8361670`, the laptop's
 files beside them, and PC22's own read-only answers at `https://screen.finsburybankforsavings.com`
-(`/rs/show/api/v1/rig`, `.../rig/space`, `.../lights/library`, `/api/sound/outputs`, `/api/karaoke/now`). The two
+(`/rs/show/api/v1/rig`, `.../rig/space`, `.../lights/library`, `/api/sound/outputs`, `/api/karaoke/now`). The
 config blocks in §1 and §2 were parsed with show_service's own parser against finsbury's fixtures: no problems.
 
 ## Before you start
@@ -46,32 +46,32 @@ line-ups. The effect:
 - a look group selects the hazer.
 
 **Fix.** Add the laptop's groups and line-ups to `lights:` in `deployments/finsbury/show.yaml`, beside
-`remote-lights`. Copy them from `deployments/laptop/show.yaml`, with one change for this room.
-
-**The one thing that is finsbury's own: the Hue lamps.** On the laptop `lamps` means the pars. Copied as it stands,
-finsbury's `lamps` would be the pars *and* the four Hue lamps, and a group rests whenever the line-up does not play
-it. Five of the thirteen line-ups do not play `lamps`. While the bars are only virtual, the Hue lamps are the
-room's real light, so the room would go dark or to a glow in those looks. A group that no line-up names always
-plays. So keep `lamps` for the Hue lamps alone and give the pars their own group:
+`remote-lights`. Copy them from `deployments/laptop/show.yaml` as they stand:
 
 ```yaml
 lights:
   groups:
-    lamps: {select: "kind:lamp !tag:gigbar !tag:haze"}      # the four Hue lamps: in no line-up, so they always play
-    pars: {label: Pars, select: "tag:par", dark_level: floor, carries_beat: 2}
+    lamps: {label: Washes, select: "kind:lamp !tag:derby !tag:strobe !tag:laser !tag:haze !tag:house", carries_beat: 2}
     lasers: {label: Lasers, select: "tag:laser", dark_level: 0, scenes_for: [laser], repeat_weight: 1.0,
              reads_under_lux: 3, lands_on: [ceiling]}
     derbies: {label: Derbies, select: "tag:derby", dark_level: floor, scenes_for: [derby], carries_beat: 3,
               reads_under_lux: 20}
     flashes: {label: Strobe zones, select: "tag:strobe", dark_level: 0, scenes_for: [flash], repeat_weight: 1.0}
   lineups:
-    # the laptop's thirteen, with `lamps` written as `pars` in every `plays`
+    # the laptop's thirteen, unchanged
 ```
 
-This is a recommendation, not the owner's word: it keeps the Hue lamps doing what they do today. The other choice
-is the laptop's block unchanged (Hue lamps rest and play with the pars); both parse. `remote-lights` (glitterball,
-pinspots) is in no line-up either way, so it carries on as now. The shared `scene_group: lamps` (the Room page's
-light scene) stays on the Hue lamps with the recommended form.
+**The Hue lamps are part of the washes** (owner, 28 Nov: "the four in the room are designed to be part of the
+washes"). With this block finsbury's `lamps` is the four pars and the four Hue lamps, one wash group of eight: they
+take the same scene, play together and rest together. That is the only difference from the laptop, where `lamps` is
+the pars alone (its label there is "Pars"; "Washes" fits this room). finsbury's `around` order in `fixtures.yaml`
+already walks the Hue lamps and the bars' pars as one ring. Do not give the Hue lamps a group of their own.
+
+What follows from it: a line-up that does not play the washes rests the Hue lamps with the pars, dark or at a low
+glow in the look's colour (`rest-dark`, `rest-glow`). Five of the thirteen do: the heads alone, derbies and heads,
+heads and the laser, derbies and the laser, heads and derbies with the laser. Until the real bars are in the room
+the Hue lamps are its only real wash, so in those looks the room is lit by the screens alone. The glitterball and
+pinspots (`remote-lights`) are in no line-up, so they carry on as now.
 
 **Then set this room's light.** `lights.room_light.other_lux` is 1.0 on PC22, the laptop room's projected picture.
 Two TVs leave more. Set finsbury's own in its `show.yaml` (`lights: {room_light: {other_lux: <lux>}}`, and
@@ -159,8 +159,8 @@ The results are written to `deployments/finsbury/calibration/latency.json`: comm
 
 ## Done when
 
-- `GET /rs/show/api/v1/lights/library` lists the groups `movers`, `lamps` (4), `pars`, `lasers`, `derbies`,
-  `flashes` (8) and thirteen line-ups;
+- `GET /rs/show/api/v1/lights/library` lists the groups `movers`, `lamps` (8: the four pars and the four Hue
+  lamps), `lasers`, `derbies`, `flashes` (8) and thirteen line-ups;
 - `GET /rs/show/api/v1/rig/space` has two `bars` and the `gigbar-move` layout, and no problems;
 - Light setup › Room, Lights › Mode "Room as in Karaoke": the singer's spot while nothing plays, and line-ups
   changing with the sections of a song;
