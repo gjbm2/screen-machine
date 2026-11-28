@@ -16,7 +16,7 @@
 // the rest of the panel.
 
 import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent } from "react";
-import { Camera, Loader2, MicVocal, Plus, X } from "lucide-react";
+import { Camera, Images, ListMusic, Loader2, MicVocal, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -25,7 +25,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { karaoke } from "@/shared/api/karaoke";
+import { karaoke, type SingerRiff } from "@/shared/api/karaoke";
 import { cn } from "@/lib/utils";
 import { THEME_CLASS } from "@/pages/Room/theme";
 
@@ -56,20 +56,25 @@ export function singersNow(): string[] {
 // exposed ... by e.g. clicking their lozenge"; the screens show them, and the photo scenes: routes/karaoke/singer_photos.py).
 // Every name's photo URL, from /state (setPhotos) or an upload's reply, shared by every chip on the page.
 let photoMap: Record<string, string> = {};
+let riffMap: Record<string, SingerRiff[]> = {};
 const photoSubs = new Set<() => void>();
-export function setPhotos(m: Record<string, string> | undefined) {
+/** The photos (and, from /state, the riffs on them: singer_riffs.py) every chip shows. */
+export function setPhotos(m: Record<string, string> | undefined, riffs?: Record<string, SingerRiff[]>) {
   const next = m ?? {};
-  if (JSON.stringify(next) === JSON.stringify(photoMap)) return;
+  const nextRiffs = riffs ?? riffMap;
+  if (JSON.stringify([next, nextRiffs]) === JSON.stringify([photoMap, riffMap])) return;
   photoMap = next;
+  riffMap = nextRiffs;
   photoSubs.forEach((f) => f());
 }
 const photoOf = (m: Record<string, string>, n: string) =>
   m[n] ?? Object.entries(m).find(([k]) => k.toLowerCase() === n.toLowerCase())?.[1];
+const subscribe = (f: () => void) => (photoSubs.add(f), () => photoSubs.delete(f));
 function usePhotos() {
-  return useSyncExternalStore(
-    (f) => (photoSubs.add(f), () => photoSubs.delete(f)),
-    () => photoMap,
-  );
+  return useSyncExternalStore(subscribe, () => photoMap);
+}
+function useRiffs() {
+  return useSyncExternalStore(subscribe, () => riffMap);
 }
 
 const PHOTO_PX = 1600; // as the server keeps it: a phone's 12 MP photo goes up as ~300 kB, not 5 MB
@@ -93,8 +98,24 @@ async function shrink(file: File): Promise<Blob> {
 
 /** One name as a chip: its photo (or a small camera) and the name; tapping it takes or picks a photo (the phone offers
  *  its camera or its gallery), or with one already, a new one or none. × takes the name off. */
-function NameChip({ name, onRemove, keep }: { name: string; onRemove: () => void; keep: (e: PointerEvent) => void }) {
+function NameChip({
+  name,
+  onRemove,
+  keep,
+  onShow,
+}: {
+  name: string;
+  onRemove: () => void;
+  keep: (e: PointerEvent) => void;
+  /** Their songs only in the queue (Singers' chips): then a tap always opens the chip's menu. */
+  onShow?: (name: string) => void;
+}) {
   const photo = photoOf(usePhotos(), name);
+  const riffMapNow = useRiffs();
+  const riffs = riffMapNow[name] ?? Object.entries(riffMapNow).find(([k]) => k.toLowerCase() === name.toLowerCase())?.[1];
+  // the riffs once the generator has started on them (queued only: no generator yet, nothing to show)
+  const hasRiffs = !!riffs?.some((r) => r.state === "done" || r.state === "making");
+  const [gallery, setGallery] = useState(false);
   const file = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
@@ -124,7 +145,7 @@ function NameChip({ name, onRemove, keep }: { name: string; onRemove: () => void
       <span className="truncate">{name}</span>
     </>
   );
-  const btn = "flex min-w-0 items-center gap-1 rounded-full";
+  const btn = "flex min-w-0 items-center gap-1 rounded-full outline-none";
   return (
     <span
       className={cn(
@@ -142,22 +163,34 @@ function NameChip({ name, onRemove, keep }: { name: string; onRemove: () => void
           e.target.value = "";
         }}
       />
-      {photo ? (
+      {photo || onShow ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button type="button" className={btn} aria-label={`${name}'s photo`}>
+            <button type="button" className={btn} aria-label={onShow ? name : `${name}'s photo`}>
               {label}
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className={THEME_CLASS}>
+          <DropdownMenuContent align="start" className={THEME_CLASS} onCloseAutoFocus={(e) => e.preventDefault()}>
+            {onShow && (
+              <DropdownMenuItem onSelect={() => onShow(name)}>
+                <ListMusic className="mr-2 h-4 w-4" /> Their songs
+              </DropdownMenuItem>
+            )}
+            {photo && hasRiffs && (
+              <DropdownMenuItem onSelect={() => setGallery(true)}>
+                <Images className="mr-2 h-4 w-4" /> Riffs · {riffs!.filter((r) => r.state === "done").length}
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onSelect={pick}>
-              <Camera className="mr-2 h-4 w-4" /> New photo
+              <Camera className="mr-2 h-4 w-4" /> {photo ? "New photo" : "Add photo"}
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={async () => setPhotos((await karaoke.dropSingerPhoto(name).catch(() => null))?.photos ?? photoMap)}
-            >
-              <X className="mr-2 h-4 w-4" /> Remove photo
-            </DropdownMenuItem>
+            {photo && (
+              <DropdownMenuItem
+                onSelect={async () => setPhotos((await karaoke.dropSingerPhoto(name).catch(() => null))?.photos ?? photoMap)}
+              >
+                <X className="mr-2 h-4 w-4" /> Remove photo
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       ) : (
@@ -165,6 +198,7 @@ function NameChip({ name, onRemove, keep }: { name: string; onRemove: () => void
           {label}
         </button>
       )}
+      {photo && riffs && <RiffGallery open={gallery} onOpenChange={setGallery} name={name} photo={photo} riffs={riffs} />}
       <button
         type="button"
         aria-label={`Not ${name}`}
@@ -178,6 +212,65 @@ function NameChip({ name, onRemove, keep }: { name: string; onRemove: () => void
   );
 }
 
+/** A singer's photo and the AI's riffs on it, three across; one tapped fills the dialog (tapped again: back). */
+function RiffGallery({
+  open,
+  onOpenChange,
+  name,
+  photo,
+  riffs,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  name: string;
+  photo: string;
+  riffs: SingerRiff[];
+}) {
+  const [big, setBig] = useState<string | null>(null);
+  const tiles = [{ label: "The photo", url: photo, state: "done" }, ...riffs.filter((r) => r.state !== "failed")];
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        setBig(null);
+        onOpenChange(v);
+      }}
+    >
+      <DialogContent
+        className={cn(THEME_CLASS, "w-[calc(100vw-2rem)] max-w-lg gap-3 p-3 sm:p-4")}
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
+        <DialogHeader>
+          <DialogTitle className="text-base">{name}</DialogTitle>
+          <DialogDescription className="sr-only">{name}'s photo and riffs</DialogDescription>
+        </DialogHeader>
+        {big ? (
+          <button type="button" onClick={() => setBig(null)} className="block outline-none">
+            <img src={big} alt="" className="max-h-[70vh] w-full rounded-xl object-contain" />
+          </button>
+        ) : (
+          <div className="grid grid-cols-3 gap-2">
+            {tiles.map((r, i) => (
+              <div key={i} className="overflow-hidden rounded-xl bg-stone-100">
+                {r.url ? (
+                  <button type="button" onClick={() => setBig(r.url!)} className="block w-full outline-none">
+                    <img src={r.url} alt="" className="aspect-square w-full object-cover" />
+                  </button>
+                ) : (
+                  <div className="flex aspect-square w-full items-center justify-center text-muted-foreground">
+                    <Loader2 className={cn("h-5 w-5", r.state === "making" && "animate-spin")} />
+                  </div>
+                )}
+                <div className="truncate px-2 py-1 text-xs text-muted-foreground">{r.label}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function NamePicker({
   value,
   onChange,
@@ -186,6 +279,7 @@ function NamePicker({
   autoFocus = false,
   max = SUGGEST,
   empty = "Name (optional)",
+  onShow,
 }: {
   value: string[];
   onChange: (v: string[]) => void;
@@ -197,6 +291,8 @@ function NamePicker({
   max?: number;
   /** The box's word while no name is in. */
   empty?: string;
+  /** A chip's "Their songs" (the Singers card only). */
+  onShow?: (name: string) => void;
 }) {
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
@@ -215,7 +311,7 @@ function NamePicker({
     <div className="min-w-0 flex-1">
       <div className="flex min-w-0 flex-wrap items-center gap-1">
         {value.map((n) => (
-          <NameChip key={n} name={n} keep={keep} onRemove={() => onChange(value.filter((x) => x !== n))} />
+          <NameChip key={n} name={n} keep={keep} onShow={onShow} onRemove={() => onChange(value.filter((x) => x !== n))} />
         ))}
         <input
           value={text}
@@ -270,9 +366,12 @@ function NamePicker({
 export function Roster({
   names,
   onChange,
+  onShow,
 }: {
   names: string[];
   onChange: (add: string[], remove: string[]) => void;
+  /** A name's songs only in the queue. */
+  onShow?: (name: string) => void;
 }) {
   return (
     <div className="rounded-xl px-3 py-2 ring-1 ring-stone-200/70">
@@ -280,6 +379,7 @@ export function Roster({
         value={names}
         names={[]}
         empty="Add a name"
+        onShow={onShow}
         onChange={(next) =>
           onChange(
             next.filter((n) => !has(names, n)),
@@ -295,7 +395,14 @@ let asker: ((title: string) => Promise<string[] | null>) | null = null;
 
 /** Ask who sings a song about to be queued: the names ([] for nobody), or null if the person closed it (don't add). */
 export const askSingers = (title: string): Promise<string[] | null> =>
-  asker ? asker(title) : Promise.resolve(singersNow());
+  singerFor ? Promise.resolve([singerFor]) : asker ? asker(title) : Promise.resolve(singersNow());
+
+// The queue shows one singer's songs (Their songs): a song added meanwhile is theirs, unasked (owner, 28 Nov: "if I
+// add a song while filtered for a person then they should be singer by default ... no need to show the ... modal").
+let singerFor: string | null = null;
+export const setSingerFor = (n: string | null) => {
+  singerFor = n;
+};
 
 const remember = (v: string[]) => {
   try {

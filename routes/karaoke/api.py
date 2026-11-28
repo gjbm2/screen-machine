@@ -75,7 +75,8 @@ def state():
     d = sonos_driver()
     from . import singer_photos
     return jsonify({**store().snapshot(), "calibration": calibration_view(),
-                    "sonos_error": d.error if d is not None else None, "singer_photos": singer_photos.photos()})
+                    "sonos_error": d.error if d is not None else None, "singer_photos": singer_photos.photos(),
+                    "singer_riffs": singer_photos.riffs()})
 
 
 @karaoke_api.get("/karaoke/now")

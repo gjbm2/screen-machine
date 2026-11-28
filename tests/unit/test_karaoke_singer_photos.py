@@ -79,3 +79,38 @@ def test_the_photo_goes_with_its_name_and_with_a_new_session(app):
     upload(c, "Ann", jpeg())
     c.post("/api/karaoke/session", json={"op": "new"})
     assert sp.photos() == {}
+
+
+def test_riffs_are_queued_made_one_at_a_time_round_the_singers_and_join_the_photo_scenes(app, monkeypatch):
+    import threading
+    from routes.karaoke import singer_riffs as sr
+    c = app.test_client()
+    upload(c, "Clare", jpeg())
+    upload(c, "Tom", jpeg())
+    idx = sp._index()
+    assert [len(r["riffs"]) for r in idx.values()] == [sr.PER_SINGER] * 2
+    assert all(x["state"] == "queued" for r in idx.values() for x in r["riffs"])   # no generator yet: they wait
+    order, done = [], threading.Event()
+
+    def gen(photo, prompt):
+        order.append(photo.name.split("-")[0])
+        assert "likeness" in prompt.lower() and photo.is_file()
+        if len(order) == 2 * sr.PER_SINGER:
+            done.set()
+        return jpeg(500, 500)
+    monkeypatch.setattr(sr, "_thread", None)
+    sr.set_backend(gen)
+    try:
+        assert done.wait(10)
+        for _ in range(50):
+            if all(x["state"] == "done" for r in sp._index().values() for x in r["riffs"]):
+                break
+            threading.Event().wait(0.05)
+        assert order[:2] in (["clare", "tom"], ["tom", "clare"])       # everyone's first before anyone's second
+        pics = sp.pictures_of(["Clare"])
+        assert len(pics) == 1 + sr.PER_SINGER and {p.get("riff") for p in pics[1:]} <= set(sr.SCENES)
+        assert c.get("/api/karaoke/singers/photo/" + pics[1]["path"].split("/")[-1]).status_code == 200
+        c.post("/api/karaoke/singers", json={"remove": ["Clare"]})   # the riffs go with the photo
+        assert not any("clare" in f.name for f in (sp.folder()).iterdir())
+    finally:
+        sr.backend = None

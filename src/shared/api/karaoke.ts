@@ -123,6 +123,15 @@ export interface KaraokeState {
   singers?: string[];
   /** Each name with its own photo -> the photo's URL (routes/karaoke/singer_photos.py). */
   singer_photos?: Record<string, string>;
+  /** Each name's AI riffs on its photo (routes/karaoke/singer_riffs.py), made or to come. */
+  singer_riffs?: Record<string, SingerRiff[]>;
+}
+
+export interface SingerRiff {
+  scene: string;
+  label: string;
+  state: 'queued' | 'making' | 'done' | 'failed';
+  url?: string;
 }
 
 /** The speaker-delay calibration (routes/karaoke/calibrate.py): while running, the chirps every output window plays

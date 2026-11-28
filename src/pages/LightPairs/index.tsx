@@ -1,6 +1,7 @@
 // The owner's review (docs/AD_EVAL.md §4): a batch of moments played in the 3D room with the song. A blind pair (the
 // same moment lit two ways, which run is on which side never sent here) takes left / right / same; a reel item (one
-// transition of the show, tools/room/ad_eval/reel.py) takes good / wrong / skip. Either takes words, and either can
+// transition of the show, tools/room/ad_eval/reel.py) takes good / wrong / skip: the owner judges only what the lights
+// do, never a check's opinion of it (owner, 28 Nov: "dangerously ambiguous"), so no check's flag is shown here. Either takes words, and either can
 // widen to its section or the whole song. show_service ad_pairs.py serves the batches and keeps the verdicts.
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, ChevronLeft, ChevronRight, Equal, Maximize2, RotateCcw, SkipForward, X } from "lucide-react";
@@ -12,7 +13,9 @@ type Item = {
   n: number; song: string; title?: string | null; artist?: string | null; t0_s: number; dur_s: number; hop_s: number;
   guide?: number; sides?: number; kind?: string; at_s?: number; label?: string | null; flag?: string | null;
   section?: [number, number]; song_s?: number;
+  said?: { left?: Said[]; right?: Said[] };
 };
+type Said = { t: number; text: string };
 type Batch = { batch: string; kind?: string; pairs: Item[]; picked: Record<string, string> };
 type Span = { t0: number; dur: number; hop: number; left: Uint8Array[]; right: Uint8Array[] };
 type Pick = "left" | "right" | "same" | "good" | "wrong" | "skip";
@@ -23,6 +26,25 @@ const decode = (b64: string) => {
   return u;
 };
 const clock = (t: number) => `${Math.floor(Math.max(0, t) / 60)}:${String(Math.floor(Math.max(0, t) % 60)).padStart(2, "0")}`;
+
+// what the art director decided in the clip and why, against the song's own change (the key), lit as the clip plays
+function Decisions({ said, at, label, now }: { said: Said[]; at?: number; label?: string | null; now: number }) {
+  const rows: (Said & { key?: boolean })[] = [...said];
+  if (at != null) rows.push({ t: at, text: `the song: ${label ?? "the change"}`, key: true });
+  rows.sort((a, b) => a.t - b.t);
+  const last = rows.reduce((k, r, i) => (r.t <= now ? i : k), -1);
+  if (!rows.length) return null;
+  return (
+    <div className="pointer-events-none absolute bottom-2 left-2 max-w-[70%] rounded bg-black/55 px-2 py-1.5 text-xs leading-5">
+      {rows.map((r, i) => (
+        <div key={i} className={`truncate ${r.key ? "text-[#d6a24b]" : i === last ? "text-white" : r.t <= now ? "text-[#a8aec0]" : "text-[#5d6375]"}`}>
+          <span className="inline-block w-12 tabular-nums">{at != null ? `${r.t - at >= 0 ? "+" : "−"}${Math.abs(r.t - at).toFixed(1)}` : ""}</span>
+          {r.text}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function LightPairsPage() {
   const room = useMemo(() => resolveRoomUrl(window.location.search).replace(/\/+$/, ""), []);
@@ -187,7 +209,6 @@ export default function LightPairsPage() {
             <>
               <span>{item.title ?? item.song}</span>
               {item.label && <span className="text-[#8a90a2]"> · {item.label}{item.at_s != null ? ` ${clock(item.at_s)}` : ""}</span>}
-              {item.flag && <span className="text-[#d6a24b]"> · {item.flag}</span>}
             </>
           ) : batch && n == null ? "All done" : err ?? ""}
         </div>
@@ -204,15 +225,15 @@ export default function LightPairsPage() {
                className="w-28 min-w-0 rounded-md border border-[#2c3244] bg-[#0e1119] px-2 py-1.5 text-sm outline-none focus:border-[#4b6bd6] md:w-56" />
         {two ? (
           <>
-            <button className={btn} onClick={() => void choose("left")} disabled={!item || busy} title="←"><ChevronLeft size={15} /><span className={lab}>Left</span></button>
+            <button className={btn} onClick={() => void choose("left")} disabled={!item || busy} title="←"><ChevronLeft size={15} /><span className={lab}>Left better</span></button>
             <button className={btn} onClick={() => void choose("same")} disabled={!item || busy} title="↓"><Equal size={15} /><span className={lab}>Same</span></button>
-            <button className={btn} onClick={() => void choose("right")} disabled={!item || busy} title="→"><span className={lab}>Right</span><ChevronRight size={15} /></button>
+            <button className={btn} onClick={() => void choose("right")} disabled={!item || busy} title="→"><span className={lab}>Right better</span><ChevronRight size={15} /></button>
           </>
         ) : (
           <>
-            <button className={btn} onClick={() => void choose("wrong")} disabled={!item || busy} title="← or w"><X size={15} /><span className={lab}>Wrong</span></button>
+            <button className={btn} onClick={() => void choose("wrong")} disabled={!item || busy} title="← or w"><X size={15} /><span className={lab}>Looks wrong</span></button>
             <button className={btn} onClick={() => void choose("skip")} disabled={!item || busy} title="↓ or s"><SkipForward size={15} /><span className={lab}>Skip</span></button>
-            <button className={`${btn} ${on}`} onClick={() => void choose("good")} disabled={!item || busy} title="→ or g"><Check size={15} /><span className={lab}>Good</span></button>
+            <button className={`${btn} ${on}`} onClick={() => void choose("good")} disabled={!item || busy} title="→ or g"><Check size={15} /><span className={lab}>Looks right</span></button>
           </>
         )}
       </header>
@@ -222,8 +243,16 @@ export default function LightPairsPage() {
       </div>
       {item && (
         <div className={`grid min-h-0 flex-1 gap-1 p-1 ${two ? "grid-cols-2" : "grid-cols-1"}`}>
-          <div className="relative min-h-0 overflow-hidden rounded" key={`l${n}`}><Room3DPage embedded shotView="front" frames={left} /></div>
-          {two && <div className="relative min-h-0 overflow-hidden rounded" key={`r${n}`}><Room3DPage embedded shotView="front" frames={right} /></div>}
+          <div className="relative min-h-0 overflow-hidden rounded" key={`l${n}`}>
+            <Room3DPage embedded shotView="front" frames={left} />
+            {wide === "clip" && <Decisions said={item.said?.left ?? []} at={item.at_s} label={item.label} now={pos} />}
+          </div>
+          {two && (
+            <div className="relative min-h-0 overflow-hidden rounded" key={`r${n}`}>
+              <Room3DPage embedded shotView="front" frames={right} />
+              {wide === "clip" && <Decisions said={item.said?.right ?? []} at={item.at_s} label={item.label} now={pos} />}
+            </div>
+          )}
         </div>
       )}
     </div>

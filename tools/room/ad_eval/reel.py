@@ -6,7 +6,8 @@ room with the song (/lights/pairs, which shows reels and blind pairs alike). The
   1. changed   what the night's fix changed: the same transition before and after, side by side and blind (needs
                --vs, the run before the fix). The owner's pick says whether the fix is better by eye.
   2. flagged   what a fault check (checks.py) failed, one per check and song, the checks with fewest of the
-               owner's verdicts first: the owner's "good" on one says the check is wrong, "wrong" that the show is.
+               owner's verdicts first. The page never says which items were flagged or why: the owner judges only
+               what the lights do, and a check is judged by those verdicts afterwards (owner, 28 Nov).
   3. pattern   a rotating sample of the set's other transitions (a different few songs each day), so over a week
                every song's pattern is seen.
 A single item takes good / wrong / skip (and words); a pair takes left / right / same. The owner can widen any item
@@ -14,6 +15,8 @@ to its section or the whole song. Verdicts on single items also go into the a.d.
 (show_service/ad_pairs.py), which the eval scores as cases and the overnight loop reads first.
 
     ~/.venvs/sm-show/bin/python tools/room/ad_eval/reel.py make <run dir> [--vs <run dir>] [--n 12] [--batch NAME]
+    ~/.venvs/sm-show/bin/python tools/room/ad_eval/reel.py said <batch>     add what the a.d. decided to a batch made
+                                                                            before it was shown (its picks kept)
 
 Needs runs made with run.py --dmx (the first draw's DMX beside its timeline). A batch is a pairs batch with
 "kind": "reel" (pairs.py has the layout); key.json keeps each item's sides and why it was chosen.
@@ -61,6 +64,58 @@ def _diff(a: np.ndarray, b: np.ndarray) -> float:
     if not used.any():
         return 0.0
     return float(np.mean(np.abs(a[:, used].astype(np.int16) - b[:, used].astype(np.int16)))) / 255.0
+
+
+def _words(name: Any) -> str:
+    return str(name or "").replace("-", " ")
+
+
+def said(tl: dict, a: float, b: float) -> list[dict]:
+    """What the art director decided in [a, b) s and why, in its own words, for the page to show beside the lights:
+    [{t, text}] at the time each lands (a look change at its landing, the rest when decided)."""
+    out: list[dict] = []
+    for d in tl.get("decisions") or []:
+        k, det, why = d.get("kind"), d.get("detail") or {}, d.get("why")
+        t = float(d["land_s"] if d.get("land_s") is not None else d["t_s"])
+        if not a <= t < b:
+            continue
+        text = None
+        if k == "section_look":
+            sec = det.get("section") or {}
+            land = d.get("land_s")
+            if land is not None and float(d["t_s"]) < float(land) - 0.3:
+                t = float(d["t_s"])
+                text = f"expects the {_words(sec.get('section_kind')) or 'next section'} in {float(land) - t:.1f} s" \
+                       + (" (predicted)" if sec.get("predicted") else "")
+        elif k == "look_change":
+            tr = det.get("transition") or {}
+            sec = det.get("section") or {}
+            how = f"{tr.get('style')}" + (f" over {tr['beats']:g} beat{'s' if tr['beats'] != 1 else ''}"
+                                         if isinstance(tr.get("beats"), (int, float)) and tr.get("style") != "cut" else "")
+            text = f"new look for the {_words(sec.get('section_kind')) or 'section'}" \
+                   + (" (recalled)" if det.get("recalled") else f" ({_words(det.get('reason'))})" if det.get("reason") else "") \
+                   + (f", {how}" if tr.get("style") else "")
+        elif k == "lineup":
+            text = f"line-up: {_words(det.get('lineup'))} into the {_words(det.get('into'))}" \
+                   + (f" ({det.get('how')})" if det.get("how") else "")
+        elif k == "light_scene":
+            text = f"lamps: {_words(det.get('scene'))}" + (f", {why}" if why else "")
+        elif k == "move":
+            text = str(why or det.get("move"))
+        elif k == "arrival":
+            text = f"arrival: {det.get('kind')} into the {_words(det.get('into'))}"
+        elif k == "token" and det.get("decision") == "spent":
+            text = f"spends a {_words(det.get('on'))} on the {_words(det.get('trigger'))}"
+        elif k == "song_moment":
+            text = f"plays a {det.get('kind')}" + (f": {why}" if why else "")
+        elif k == "flow":
+            text = f"movement {det.get('was')} → {det.get('dir')}" + (f", {why}" if why else "")
+        elif k == "song_end":
+            text = "the song's end: lights down"
+        if text and t >= a:
+            out.append({"t": round(t, 2), "text": text})
+    out.sort(key=lambda x: x["t"])
+    return out
 
 
 def _section_of(ref: dict, t: float) -> list[float]:
@@ -167,8 +222,10 @@ def make(a: argparse.Namespace) -> int:
         by_check[check] = by_check.get(check, 0) + 1
         taken.add((sid, int(r["t_s"])))
         tr = next((x for x in checks.transitions(refs[sid]) if abs(x["t_s"] - r["t_s"]) <= 1.0), None)
-        items.append({"kind": "flagged", "sid": sid, "tr": tr or {"t_s": float(r["t_s"]), "what": check,
-                                                                     "label": "a change mid-section"},
+        inside = next((x for x in refs[sid].get("sections") or ()
+                       if float(x["start_s"]) <= float(r["t_s"]) < float(x["end_s"])), {})
+        items.append({"kind": "flagged", "sid": sid, "tr": tr or {"t_s": float(r["t_s"]), "what": check,     # neutral:
+                                                                     "label": f"in the {inside.get('kind') or 'song'}"},  # no verdict
                       "t0": t0, "frames": [c], "sides": [("show", run, ours[sid])], "check": check, "why": r["why"]})
         room -= 1
     # 3. pattern: the day's songs, their transitions in order
@@ -221,8 +278,11 @@ def make(a: argparse.Namespace) -> int:
         public.append({"n": n, "song": sid, "title": meta.get("title"), "artist": meta.get("artist"),
                        "t0_s": round(it["t0"], 2), "dur_s": round(len(frames[0]) * hop, 2), "hop_s": hop, "guide": 1.0,
                        "sides": len(frames), "kind": it["kind"], "at_s": round(float(tr["t_s"]), 2),
-                       "label": tr.get("label"), "flag": it.get("why"), "section": _section_of(refs[sid], tr["t_s"]),
-                       "song_s": round(dur, 1)})
+                       "label": tr.get("label"), "section": _section_of(refs[sid], tr["t_s"]),
+                       "song_s": round(dur, 1),
+                       "said": {nm: said(json.loads(pathlib.Path(sd[2]).read_text()) if sd[2] != it["sides"][0][2]
+                                          or sid not in tls else tls[sid], it["t0"], it["t0"] + len(f) * hop)
+                                for nm, sd, f in zip(names, sides, frames)}})
         key.append({"n": n, "song": sid, "kind": it["kind"], "t0_s": round(it["t0"], 2), "at_s": round(tr["t_s"], 2),
                     "what": tr.get("what"), "check": it.get("check"), "why": it.get("why"), "diff": it.get("diff"),
                     **{nm: {"side": s[0], "run": s[1].name, "seed": 0, "timeline": str(s[2]),
@@ -237,9 +297,24 @@ def make(a: argparse.Namespace) -> int:
     return 0
 
 
+def add_said(a: argparse.Namespace) -> int:
+    d = pairs.PAIRS / a.batch
+    pub = json.loads((d / "pairs.json").read_text())
+    key = {int(k["n"]): k for k in json.loads((d / "key.json").read_text())["pairs"]}
+    for it in pub["pairs"]:
+        k = key.get(int(it["n"])) or {}
+        it["said"] = {nm: said(json.loads(pathlib.Path(k[nm]["timeline"]).read_text()), it["t0_s"],
+                               it["t0_s"] + it["dur_s"]) for nm in ("left", "right") if k.get(nm)}
+    common.write_json(d / "pairs.json", pub)
+    print(f"{a.batch}: what the a.d. decided added to {len(pub['pairs'])} items")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
+    w = sub.add_parser("said")
+    w.add_argument("batch")
     m = sub.add_parser("make")
     m.add_argument("run")
     m.add_argument("--vs")
@@ -247,7 +322,7 @@ def main() -> int:
     m.add_argument("--batch")
     m.add_argument("--seed", type=int, default=None, help="the day's draw (default: today)")
     a = ap.parse_args()
-    return make(a)
+    return add_said(a) if a.cmd == "said" else make(a)
 
 
 if __name__ == "__main__":
