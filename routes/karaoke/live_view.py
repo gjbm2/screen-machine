@@ -132,7 +132,8 @@ class LiveView:
         elif was in kmodes and cur not in kmodes and not ours:
             with self.store.lock:
                 state = self.store.s["player"]["state"]
-            if state != "stopped":
+                waiting = self.store.waiting()            # (a song it would start by itself when ready: not now)
+            if state != "stopped" or waiting:
                 self.store.control("stop", by="mode")
                 info(f"karaoke: off ({cur})")
 

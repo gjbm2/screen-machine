@@ -184,7 +184,12 @@ def add_request():
     else:
         return _err(400, "Say which song: {q}, {url} or {artist, title, duration}.")
     song = dup or st.add_song(req)
-    if b.get("queue"):                                   # true or "end": the end; "next": up next
+    if b.get("queue") == "now":                          # on now (as soon as it is ready: store.play)
+        try:
+            st.play(song["id"])
+        except LookupError as e:
+            return _err(409, str(e))
+    elif b.get("queue"):                                 # true or "end": the end; "next": up next
         st.queue_add(song["id"], next=b.get("queue") == "next", singers=_singers(b))
     return jsonify({"song_id": song["id"], "existing": bool(dup)})
 
@@ -334,7 +339,8 @@ def queue():
         return _err(404, "No such song or queue entry.")
     except (TypeError, ValueError):
         return _err(400, "index is a number.")
-    return jsonify({"queue": st.snapshot()["queue"]})
+    snap = st.snapshot()
+    return jsonify({"queue": snap["queue"], "sung": snap["sung"]})
 
 
 @karaoke_api.post("/karaoke/heard")

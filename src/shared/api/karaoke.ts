@@ -68,6 +68,8 @@ export interface KaraokePlayer {
   qid: string | null;
   pos_s: number;
   at: number;
+  /** Stopped: how ("you": Stop; "end": the song it is on played out; "boot": a restart cut it off). */
+  stop?: string | null;
 }
 
 export interface KaraokeSettings {
@@ -107,7 +109,11 @@ export interface KaraokeState {
   /** The Sonos driver's last problem (a Sonos room as the output), else null. */
   sonos_error?: string | null;
   songs: KaraokeSong[];
+  /** One list in three parts: the songs already sung (the first `sung`), the one that is on (while the player is
+   *  playing or paused), the songs to come. */
   queue: QueueEntry[];
+  /** How many of the queue, from its top, are sung (routes/karaoke/store.py). */
+  sung?: number;
   /** The player, with where the song is now by the server's clock. */
   player: KaraokePlayer & { position_s: number };
   settings: KaraokeSettings;
@@ -239,7 +245,7 @@ export const karaoke = {
     artist?: string;
     title?: string;
     duration?: number | null;
-    queue?: QueueAt;
+    queue?: QueueAt | 'now';
     singers?: string[];
     genre?: string | null;
     year?: number | null;

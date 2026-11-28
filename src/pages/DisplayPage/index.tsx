@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { reloadWhenQuiet } from "./karaoke/soundGate";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import useBaseFileName from "./hooks/useBaseFileName";
 import useFilePolling from "./hooks/useFilePolling";
@@ -362,8 +363,10 @@ function DisplayPage() {
           if (!served || served === mine) return;
           clearInterval(t);
           console.log(`[reload] new build ${served} (this page runs ${mine})`);
-          if (ctlRef.current) ctlRef.current.requestReload("new build");
-          else fadeToBlackAndReload();
+          // not in the middle of a song sounding from this page: at its end (karaoke/soundGate.ts)
+          reloadWhenQuiet(() =>
+            ctlRef.current ? ctlRef.current.requestReload("new build") : fadeToBlackAndReload(),
+          );
         },
         () => {}, // the server is restarting: next minute
       );

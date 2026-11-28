@@ -8,8 +8,9 @@ for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`;
 
 - **The panel:** `http://<laptop>:5000/karaoke` (over Tailscale, or the same Wi-Fi). Under the queue, one search
   finds songs in the library and on the web as you type (spelling forgiven: "hapy farell" finds Pharrell's Happy), or
-  takes a pasted YouTube or Spotify link. **Add** puts a song at the end of the queue (singers pick a song and wait
-  their turn); **Up next** jumps the queue; **Library only** gets it ready for later. An artist's name anywhere
+  takes a pasted YouTube or Spotify link. Every song row has the same three: **+** puts it at the end of the queue
+  (singers pick a song and wait their turn), **▶** plays it now (a song not yet prepared: as soon as it is ready),
+  and **…** holds the rest (**Play next** jumps the queue; **Library only** gets it ready for later). An artist's name anywhere
   opens their songs, most popular first. Each song shows its progress: Getting the song, Finding the lyrics,
   Removing the lead vocal, Ready (about a minute). The queue is the singing order; songs already sung are tucked
   away under a line at its top. **Clear** empties the queue (the song playing stays). With nothing playing
@@ -61,6 +62,7 @@ for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`;
 | Piece | Where |
 |---|---|
 | API, library, queue, player state | `routes/karaoke/` (`api.py`, `store.py`); state in `~/.local/state/screen-machine/karaoke/` |
+| The queue's rules | One list in three parts: the songs sung (`queue[:sung]`), the one that is on, the songs to come. Only `_start`, `_halt`, `_take_out` and the moves in `store.py` change a song's part; the page is told `sung` and never works it out (`src/pages/Karaoke/queueView.ts`). Playing one song moves that one song; songs being prepared keep their place; taking one out takes only it; nothing lands above the top of the songs to come. The rules, their edge cases and random sequences checked against a plain model: `tests/unit/test_karaoke_queue.py` (after a change to the queue: `KARAOKE_QUEUE_SEEDS=20000 pytest tests/unit/test_karaoke_queue.py -k random`) and `node --experimental-strip-types --test src/pages/Karaoke/queueView.test.ts`. |
 | Worker (one song at a time) | `routes/karaoke/worker.py`: fetching → lyrics → separating → ready |
 | Finding songs | `routes/karaoke/sources.py`: `catalog_search` (iTunes + Deezer at once, YouTube's guesses put the song meant first and correct spelling), `artist_top` (Deezer's top tracks), `song_facts` (genre, year, popularity, cover); LRCLIB lyrics; Spotify track page; yt-dlp |
 | The art director | `show_service/karaoke_feed.py`: the karaoke player is a music source like the Music page's (its song, position and length in `ctx.now_playing`): each song's end is armed and fires the director's transition, and a new song gets its own treatment |

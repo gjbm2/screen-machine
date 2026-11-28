@@ -117,9 +117,13 @@ class Store:
         self.path = path or (root() / "state.json")
         self.lock = threading.RLock()
         self.calibration: dict | None = None             # calibrate.py's run (memory only): /now and the panel show it
-        self._autostart: str | None = None               # a song added to an idle player: it plays when ready (qid)
+        # Two things wait for a song to be ready (kept across a restart):
+        self._auto = False                               # nothing is on: the first song to come that is ready plays
+        self._cut: str | None = None                     # Play now on one still being prepared (qid): it plays when
+                                                         # ready, whatever is on
         self.changed = threading.Condition(self.lock)
         self.s: dict[str, Any] = {"songs": {}, "queue": [], "player": self._idle_player(0), "settings": dict(DEFAULT_SETTINGS),
+                                 "sung": 0,                      # how many of the queue, from its top, are sung
                                  "singers": {}}                  # name -> when last given a song (SESSION_S)
         self._load()
 
@@ -132,7 +136,9 @@ class Store:
         self.s["songs"] = d.get("songs") or {}
         q = d.get("queue") or []
         self.s["queue"] = [e if isinstance(e, dict) else {"qid": new_qid(), "song_id": e} for e in q]   # old: bare ids
-        self.s["queue"] = [e for e in self.s["queue"] if e.get("song_id") in self.s["songs"]]
+        kept = [e.get("song_id") in self.s["songs"] for e in self.s["queue"]]      # a song that is gone: its entries too
+        full = self.s["queue"]
+        self.s["queue"] = [e for e, k in zip(full, kept) if k]
         for e in self.s["queue"]:                       # the first version: one name
             if "singer" in e:
                 one = e.pop("singer")
@@ -145,26 +151,39 @@ class Store:
             self.s["last_song"] = d["last_song"]
         p = d.get("player") or {}
         rev = int(p.get("rev") or 0) + 1
-        queued = any(e["qid"] == p.get("qid") for e in self.s["queue"])
-        song = self.s["songs"].get(p.get("song_id") or "") or {}
+        q = self.s["queue"]
+        on = p.get("state") in ("playing", "paused")
+        if "sung" in d:                                  # how many are sung, less the ones whose song is gone
+            n = max(0, min(len(full), int(d.get("sung") or 0)))
+            sung = sum(kept[:n])
+            cur = full[n] if on and n < len(full) and kept[n] else None
+        else:
+            # A file from before "sung" was kept: the player's entry said where it was. Everything above it is sung;
+            # so is it, once stopped (Stop, the queue's end), unless a restart cut it off ("boot": still to come).
+            i = next((k for k, e in enumerate(q) if e["qid"] == p.get("qid")), None)
+            sung = 0 if i is None else i if (on or p.get("stop") == "boot") else i + 1
+            cur = q[i] if on and i is not None else None
+        self.s["sung"] = sung
+        song = self.s["songs"].get(cur["song_id"]) if cur else None
         # The clock is wall time, so a restart carries on where the song is now (a hi-fi doesn't stop when the
-        # control app reconnects). A song that is gone: stopped.
-        if song and p.get("state") in ("playing", "paused") and queued:
-            self.s["player"] = {**self._idle_player(0), **p, "rev": rev}
+        # control app reconnects).
+        if cur and song:
+            self.s["player"] = {**self._idle_player(0), **p, "rev": rev, "qid": cur["qid"], "song_id": cur["song_id"]}
             dur = song.get("audio_s")
             pos = float(p.get("pos_s") or 0) + max(0.0, time.time() - float(p.get("at") or 0))
             if p.get("state") == "playing" and dur and pos >= dur:
                 # It "ended" while the machine was off (owner, 27 Nov: a queued song showed, didn't play, and Play did
-                # nothing): stopped on it, unsung, and Play plays it.
-                self.s["player"] = {**self._idle_player(rev, p.get("song_id")), "qid": p.get("qid"), "stop": "boot"}
-        elif p.get("state") == "stopped" and queued:
-            # Stopped on an entry (Stop, the queue's end, a boot): still there, so Play carries on from it.
-            self.s["player"] = {**self._idle_player(rev, p.get("song_id")), "qid": p.get("qid"), "stop": p.get("stop")}
+                # nothing): stopped, and it is still to come, at the top: Play plays it.
+                self.s["player"] = {**self._idle_player(rev, cur["song_id"]), "stop": "boot"}
         else:
-            self.s["player"] = self._idle_player(rev)
-        # A song added to an idle player that wasn't ready yet still starts when it is, across a restart.
-        a = d.get("autostart")
-        self._autostart = a if any(e["qid"] == a for e in self.s["queue"]) else None
+            self.s["player"] = {**self._idle_player(rev), **({"stop": p["stop"]} if p.get("stop") and not on else {})}
+        a_ = d.get("autostart")
+        self._cut = d.get("play_now") or (a_ if d.get("autostart_cut") and isinstance(a_, str) else None)
+        if not any(e["qid"] == self._cut for e in q):
+            self._cut = None
+        # (before "sung": the entry that was waiting to start, by its qid)
+        self._auto = a_ is True or (isinstance(a_, str) and not d.get("autostart_cut") and any(e["qid"] == a_ for e in q))
+        self._settle()
         for song in self.s["songs"].values():          # work cut off by a restart starts again from the top
             if song.get("status") in WORKING:
                 song["status"], song["detail"] = "queued", "restarted"
@@ -174,12 +193,13 @@ class Store:
     def _save(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         tmp = self.path.with_suffix(".tmp")
-        body = {**self.s, "autostart": self._autostart}
+        body = {**self.s, "autostart": self._auto, "play_now": self._cut}
         tmp.write_text(json.dumps(body, indent=1))
         os.replace(tmp, self.path)
 
     def commit(self) -> None:
         """Save and wake anyone waiting on a change (the worker). Call with the lock held."""
+        self._settle()
         self._save()
         self.changed.notify_all()
 
@@ -233,10 +253,11 @@ class Store:
         with self.lock:
             if sid not in self.s["songs"]:
                 return False
+            for qid in [e["qid"] for e in self.s["queue"] if e["song_id"] == sid]:
+                self._take_out(qid)                      # each as if taken out of the queue by hand
             del self.s["songs"][sid]
-            self.s["queue"] = [e for e in self.s["queue"] if e["song_id"] != sid]
-            if self.s["player"].get("song_id") == sid:
-                self._set_player("stopped", None)
+            if self.s.get("last_song") == sid:
+                self.s.pop("last_song", None)
             self.commit()
         d = song_dir(sid)
         if d.is_dir():
@@ -300,15 +321,9 @@ class Store:
         """A new session (owner, 27 Nov): tonight's names are forgotten and the songs already sung leave the queue;
         the song playing (or paused) and the ones to come stay."""
         with self.lock:
-            p = self.s["player"]
-            i = self._index(p.get("qid"))
-            if i is not None:
-                done = p["state"] == "stopped" and p.get("stop") == "end"     # it played out: sung too
-                self.s["queue"] = self.s["queue"][i + 1 if done else i:]
-                if done:
-                    self.s["player"] = self._idle_player(p["rev"] + 1)
+            self.s["queue"] = self.s["queue"][self.s["sung"]:]
+            self.s["sung"] = 0
             self.s["singers"] = {}
-            self._autostart = self._autostart if any(e["qid"] == self._autostart for e in self.s["queue"]) else None
             self.commit()
 
     def queue_singers(self, qid: str, singers: Any) -> dict:
@@ -325,10 +340,120 @@ class Store:
             self.commit()
             return dict(e)
 
+    # The queue is one list in three parts, in order (owner, 28 Nov: "the whole queue logic ... should be rethought
+    # properly"):
+    #
+    #     queue[:sung]      the songs already sung, oldest first
+    #     queue[sung]       the song that is on, while one plays or is paused (else there is none)
+    #     the rest          the songs to come, in the order they will play
+    #
+    # ``sung`` is the only thing that says where the player is, and only the few functions below change it or move an
+    # entry across a part's edge: _start (a song goes on), _halt (the one on is over), _take_out, and the moves. So a
+    # song to come is never among the sung until it has been on, and a sung one never comes back by accident. The
+    # player's ``qid`` is only its name for the pages: the song on; stopped, the last one sung (_settle).
+    def waiting(self) -> bool:
+        """The player will start a song by itself when one is ready (see _start_if_ready)."""
+        return self._auto or self._cut is not None
+
+    def _on(self) -> bool:
+        """A song is on (playing or paused)."""
+        return self.s["player"]["state"] in ("playing", "paused")
+
+    def _top(self) -> int:
+        """Where the songs to come start."""
+        return self.s["sung"] + (1 if self._on() else 0)
+
+    def to_come(self) -> list[dict]:
+        return self.s["queue"][self._top():]
+
+    def _first_ready(self) -> dict | None:
+        """The first song to come that is ready to play (one still being prepared, or failed, keeps its place)."""
+        return next((e for e in self.to_come() if self._ready(e)), None)
+
+    def _settle(self) -> None:
+        """What must always be true, put right before every save: ``sung`` within the queue, the song on is
+        queue[sung], and the player's qid names it (stopped: the last one sung, or after a restart cut a song off,
+        that song, still to come). Lock held."""
+        q, p = self.s["queue"], self.s["player"]
+        self.s["sung"] = n = max(0, min(len(q), int(self.s.get("sung") or 0)))
+        if self._on():
+            cur = q[n] if n < len(q) else None
+            if cur is None or cur["song_id"] not in self.s["songs"]:
+                self._set_player("stopped", None)        # the song on is gone: nothing is on
+                p = self.s["player"]
+            else:
+                p["qid"], p["song_id"] = cur["qid"], cur["song_id"]
+        if not self._on():
+            cut_off = p.get("stop") == "boot" and n < len(q)
+            p["qid"] = q[n]["qid"] if cut_off else q[n - 1]["qid"] if n else None
+        if self._cut and not any(e["qid"] == self._cut for e in q):
+            self._cut = None
+
+    def _start(self, entry: dict, gap: bool = True, pos_s: float | None = None) -> dict:
+        """``entry`` goes on, from its start: the one that was on joins the songs sung, and that one entry moves to
+        the top (owner, 28 Nov: "'play this' is ONLY meant to move THAT ONE SONG to top of queue not to change anything
+        else"). Lock held."""
+        q = self.s["queue"]
+        at = self._start_at(entry, gap) if pos_s is None else pos_s      # before anything changes: it reads the player
+        if self._on() and q[self.s["sung"]]["qid"] != entry["qid"]:
+            self.s["sung"] += 1
+        i = self._index(entry["qid"])
+        q.pop(i)
+        if i < self.s["sung"]:                           # one already sung, on again
+            self.s["sung"] -= 1
+        q.insert(self.s["sung"], entry)
+        return self._set_player("playing", entry, at)
+
+    def _halt(self, why: str | None) -> dict:
+        """Nothing is on: the song that was joins the songs sung. ``why``: "you" (Stop), "end" (it played out, or was
+        skipped with nothing ready after it), "mode" (the room left karaoke). Lock held."""
+        if self._on():
+            self.s["sung"] += 1
+        p = self._set_player("stopped", None)
+        if why:
+            p["stop"] = why
+        return p
+
+    def _to_top(self, entry: dict) -> None:
+        """``entry`` to the top of the songs to come; nothing else moves. Lock held."""
+        q = self.s["queue"]
+        i = self._index(entry["qid"])
+        q.pop(i)
+        if i < self.s["sung"]:
+            self.s["sung"] -= 1
+        q.insert(self._top(), entry)
+
+    def _take_out(self, qid: str) -> None:
+        """One entry leaves the queue; nothing else changes part. The one playing: on to the next ready one. Lock
+        held."""
+        q = self.s["queue"]
+        i = self._index(qid)
+        if i is None:
+            return
+        n = self.s["sung"]
+        if self._on() and i == n:
+            nxt = self._first_ready() if self.s["player"]["state"] == "playing" else None
+            if nxt:
+                self._start(nxt, pos_s=-self.lead_in(nxt))       # (the one taken out is now the last "sung": index n)
+                q.pop(n)
+                self.s["sung"] -= 1
+            else:
+                was = self.s["player"]["state"]
+                self._set_player("stopped", None)["stop"] = "gone"
+                q.pop(n)
+                # it was playing and nothing after it is ready: what is still being prepared plays when it is
+                self._auto = was == "playing" and bool(self.s["settings"].get("autoplay"))
+        else:
+            q.pop(i)
+            if i < n:
+                self.s["sung"] -= 1
+        if self._cut == qid:
+            self._cut = None
+
     def queue_add(self, sid: str, index: int | None = None, next: bool = False, singers: Any = None) -> dict:
-        """A new entry for song ``sid`` at ``index`` (default: the end); ``next``: up next, right after the entry the
-        player is on (playing, paused or stopped there: Play carries on after it), else at the top. ``singers``: who
-        sing it (a name or a list; optional)."""
+        """A new entry for song ``sid`` among the songs to come: at the end, or ``next`` (the top), or at ``index`` of
+        the whole queue (never above the top: up there are the songs sung). ``singers``: who sing it (a name or a
+        list; optional). Added while nothing is on and nothing is waiting, it plays (as soon as it is ready)."""
         with self.lock:
             if sid not in self.s["songs"]:
                 raise KeyError(sid)
@@ -337,70 +462,82 @@ class Store:
             if ns:
                 e["singers"] = ns
             q = self.s["queue"]
-            p = self.s["player"]
+            top = self._top()
             # Nothing playing and nothing waiting: the song added plays (as soon as it is ready). Owner, 25 Nov: "without
             # anything playing ... shouldn't it just have started playing as the only item in the queue?"
-            idle = p["state"] == "stopped" and not self._upcoming(p.get("qid"))
-            if next:
-                i = self._index(p.get("qid"))
-                index = 0 if i is None else i + 1
-            q.insert(len(q) if index is None else max(0, min(len(q), int(index))), e)
-            if idle:
-                self._autostart = e["qid"]
-                self._start_if_ready()
+            if not self._on() and not q[top:]:
+                self._auto = True
+            q.insert(top if next else len(q) if index is None else max(top, min(len(q), int(index))), e)
+            self._start_if_ready()
             self.commit()
             return e
 
-    def _upcoming(self, qid: str | None) -> list[dict]:
-        i = self._index(qid)
-        return self.s["queue"][0 if i is None else i + 1:]
-
     def _start_if_ready(self) -> None:
-        """The song added to an idle player (queue_add), once it is ready, unless anything else happened meanwhile
-        (lock held)."""
-        q = self._autostart
-        if not q:
-            return
-        entry = next((e for e in self.s["queue"] if e["qid"] == q), None)
-        song = self.s["songs"].get(entry["song_id"]) if entry else None
-        if entry is None or song is None or song.get("status") == "failed" or self.s["player"]["state"] != "stopped":
-            self._autostart = None
-        elif self._ready(entry):
-            self._autostart = None
-            self._set_player("playing", entry, -self.lead_in(entry))
-            self.commit()
+        """The two things that wait for a song to be ready (lock held): Play now on one still being prepared (it goes
+        on the moment it is ready, whatever is on); and, while nothing is on and the player is waiting (a song added
+        to an idle player; the queue ran out with songs still being prepared), the first song to come that is
+        ready."""
+        if self._cut:
+            entry = next((e for e in self.s["queue"] if e["qid"] == self._cut), None)
+            song = self.s["songs"].get(entry["song_id"]) if entry else None
+            if song is None or song.get("status") == "failed":
+                self._cut = None
+            elif song.get("status") == "ready":
+                self._cut = None
+                self._auto = False
+                self._start(entry)
+                self.commit()
+        if self._auto:
+            if self._on():
+                self._auto = False
+            else:
+                nxt = self._first_ready()
+                if nxt:
+                    self._auto = False
+                    self._start(nxt, pos_s=-self.lead_in(nxt))
+                    self.commit()
 
     def queue_remove(self, qid: str) -> None:
+        """Take one entry out. Only it goes: the songs sung stay sung, the songs to come keep their order. The one
+        playing: on to the next ready one, else nothing is on."""
         with self.lock:
-            if self.s["player"].get("qid") == qid:          # taking out the one playing: on to the next
-                nxt = self.next_ready(qid)
-                if self.s["player"]["state"] == "playing" and nxt:
-                    self._set_player("playing", nxt, -self.lead_in(nxt))
-                else:
-                    self._set_player("stopped", None)
-            self.s["queue"] = [e for e in self.s["queue"] if e["qid"] != qid]
+            self._take_out(qid)
             self.commit()
 
     def queue_move(self, qid: str, index: int) -> None:
+        """Move one entry to ``index`` of the whole queue. A song to come stays to come (above the top are the songs
+        sung: it goes to the top instead); a sung one dropped among the songs to come is to come again; the one that
+        is on doesn't move."""
         with self.lock:
             q = self.s["queue"]
-            i = next((k for k, e in enumerate(q) if e["qid"] == qid), None)
+            i = self._index(qid)
             if i is None:
                 raise KeyError(qid)
+            n = self.s["sung"]
+            if self._on() and i == n:
+                return
             e = q.pop(i)
-            q.insert(max(0, min(len(q), int(index))), e)
+            t = max(0, min(len(q), int(index)))
+            if i < n:
+                if t < n:                                # among the songs sung still
+                    q.insert(t, e)
+                    self.commit()
+                    return
+                self.s["sung"] -= 1                      # to come again
+            q.insert(max(t, self._top()), e)
+            self._start_if_ready()                       # (the player waiting, and this one ready: as an add)
             self.commit()
 
     def queue_clear(self) -> None:
-        """Clear the queue (owner, 25 Nov: "a 'clear all' on queue"): all of it, except the song playing (or paused)
-        now, so whoever is singing isn't cut off."""
+        """Clear the queue (owner, 25 Nov: "a 'clear all' on queue"): all of it, sung and to come, except the song
+        playing (or paused) now, so whoever is singing isn't cut off."""
         with self.lock:
-            p = self.s["player"]
-            keep = self.current_entry() if p["state"] in ("playing", "paused") else None
+            keep = self.current_entry()
             self.s["queue"] = [keep] if keep else []
+            self.s["sung"] = 0
             if not keep:
                 self._set_player("stopped", None)
-            self._autostart = None
+            self._auto = False
             self.commit()
 
     # ---- the player
@@ -435,10 +572,7 @@ class Store:
             songs = self.s["songs"]
             ready = {sid for sid, s in songs.items() if s.get("status") == "ready"}
             last = self.s.get("last_song")
-            q = self.s["queue"]
-            p = self.s["player"]
-            i = self._index(p.get("qid"))
-            done = q[: i + 1] if i is not None else []
+            done = self.s["queue"][: self._top()]         # the songs sung, and the one on
             recent: list[str] = []
             for e in reversed(done):
                 sid = e["song_id"]
@@ -471,31 +605,16 @@ class Store:
     def _ready(self, e: dict) -> bool:
         return (self.s["songs"].get(e["song_id"]) or {}).get("status") == "ready"
 
-    def next_ready(self, after_qid: str | None = None) -> dict | None:
-        """The first ready entry after ``after_qid`` (from the top when None)."""
-        i = self._index(after_qid)
-        start = 0 if i is None else i + 1
-        return next((e for e in self.s["queue"][start:] if self._ready(e)), None)
-
-    def prev_ready(self, before_qid: str | None) -> dict | None:
-        i = self._index(before_qid)
-        if i is None:
-            return None
-        return next((e for e in reversed(self.s["queue"][:i]) if self._ready(e)), None)
-
     def needed_in(self, sid: str, now: float | None = None) -> float | None:
         """Seconds until the song's next turn in the queue comes (what is left of the one playing, then each ready
         song before it); 0 when nothing plays and it is next; None when it has no turn to come."""
         with self.lock:
-            q = self.s["queue"]
-            p = self.s["player"]
-            i = self._index(p.get("qid"))
-            start = 0 if i is None else i + 1
             t = 0.0
-            if i is not None and p.get("state") in ("playing", "paused"):
-                dur = (self.s["songs"].get(q[i]["song_id"]) or {}).get("audio_s") or 0.0
+            cur = self.current_entry()
+            if cur:
+                dur = (self.s["songs"].get(cur["song_id"]) or {}).get("audio_s") or 0.0
                 t = max(0.0, dur - self.position(now))
-            for e in q[start:]:
+            for e in self.to_come():
                 if e["song_id"] == sid:
                     return t
                 if self._ready(e):
@@ -503,52 +622,67 @@ class Store:
             return None
 
     def current_entry(self) -> dict | None:
-        i = self._index(self.s["player"].get("qid"))
-        return self.s["queue"][i] if i is not None else None
+        """The entry that is on (playing or paused)."""
+        n = self.s["sung"]
+        return self.s["queue"][n] if self._on() and n < len(self.s["queue"]) else None
 
     def play(self, sid: str | None = None, qid: str | None = None) -> dict:
-        """Play a queue entry (``qid``: moved up to right after the current entry, which joins the songs already sung;
-        the rest keep their order); or a library song now (``sid``: a new entry right after the current one);
-        or, with neither, carry on: resume a pause, else the next ready entry. From the start."""
+        """Play a queue entry now (``qid``: that one entry moves to the top and goes on; the one that was on joins
+        the songs sung; nothing else moves); or a library song now (``sid``: a new entry, the same); or, with neither,
+        carry on: resume a pause, else the first song to come that is ready, else (nothing to come) the last one sung
+        again. From the start. A song still being prepared (owner, 28 Nov: the same options on every song) moves to
+        the top of the songs to come and goes on the moment it is ready, unless a person plays, stops or skips
+        meanwhile."""
         with self.lock:
-            self._autostart = None
             p = self.s["player"]
+            q = self.s["queue"]
             if qid:
-                entry = next((e for e in self.s["queue"] if e["qid"] == qid), None)
+                entry = next((e for e in q if e["qid"] == qid), None)
                 if entry is None:
                     raise KeyError(qid)
-                # Playing an entry further down (or one already sung) moves it up to right after the current one,
-                # which goes into the songs already sung; nothing else moves (owner, 25 Nov: "not zap others").
-                q = self.s["queue"]
-                if entry["qid"] != p.get("qid") and self.s["songs"].get(entry["song_id"], {}).get("status") == "ready":
-                    q.remove(entry)
-                    ci = self._index(p.get("qid"))
-                    q.insert(0 if ci is None else ci + 1, entry)
             elif sid:
                 if sid not in self.s["songs"]:
                     raise KeyError(sid)
-                i = self._index(p.get("qid"))
-                entry = {"qid": new_qid(), "song_id": sid}
-                self.s["queue"].insert(len(self.s["queue"]) if i is None else i + 1, entry)
+                entry = None
             else:
-                if p["state"] == "playing" and self.current_entry():
+                if p["state"] == "playing":
                     return p                                 # already playing: nothing to do
-                if p["state"] == "paused" and self.current_entry():
+                if p["state"] == "paused":
                     return self.control("resume")
-                cur = self.current_entry()
-                # Stopped on a song that never played out (a boot): that one, else the next.
-                entry = cur if cur and p.get("stop") == "boot" and self._ready(cur) else self.next_ready(p.get("qid"))
-                if entry is None and cur and self._ready(cur):
-                    entry = cur                              # nothing after it: Play plays the one stopped on again
+                entry = self._first_ready()
+                if entry is None:
+                    waiting = next((e for e in self.to_come() if self._status(e) not in ("ready", "failed")), None)
+                    if waiting:                              # it plays when it is ready
+                        self._auto = True
+                        self.commit()
+                        raise LookupError(self._not_ready(waiting))
+                    n = self.s["sung"]
+                    entry = q[n - 1] if n and self._ready(q[n - 1]) else None    # nothing to come: the last one, again
                 if entry is None:
                     raise LookupError("Nothing in the queue is ready to play.")
-            song = self.s["songs"][entry["song_id"]]
-            if song.get("status") != "ready":
+            status = self.s["songs"][sid]["status"] if entry is None else self._status(entry)
+            if status == "failed":
+                raise LookupError(self._not_ready(entry or {"song_id": sid}))
+            self._auto, self._cut = False, None              # the person took over
+            if entry is None:                                # a library song: a new entry at the top
+                entry = {"qid": new_qid(), "song_id": sid}
+                q.insert(self._top(), entry)
+            if status != "ready":
+                if entry is not self.current_entry():
+                    self._to_top(entry)
+                self._cut = entry["qid"]
                 self.commit()
-                raise LookupError(f"“{song.get('title')}” isn't ready yet: {STATUS_WORDS.get(song.get('status'), song.get('status'))}.")
-            p = self._set_player("playing", entry, self._start_at(entry))
+                return self.s["player"]
+            p = self._start(entry)
             self.commit()
             return p
+
+    def _status(self, e: dict) -> str | None:
+        return (self.s["songs"].get(e["song_id"]) or {}).get("status")
+
+    def _not_ready(self, e: dict) -> str:
+        song = self.s["songs"].get(e["song_id"]) or {}
+        return f"“{song.get('title')}” isn't ready yet: {STATUS_WORDS.get(song.get('status'), song.get('status'))}."
 
     def heard(self, rev: int, song_id: str, pos_s: float) -> bool:
         """Where the page playing the sound has it now (a8's audit, 27 Nov): the player's clock is re-anchored there,
@@ -565,32 +699,46 @@ class Store:
             return True
 
     def control(self, action: str, pos_s: float | None = None, by: str = "you") -> dict:
-        """``by``: who stops it: "you" (the panel) or "end" (the queue ran out: tick); live_view.py reads it."""
+        """``by``: who: "you" (the panel), "end" (the queue ran out: tick) or "mode" (the room left karaoke);
+        live_view.py reads a stop's."""
         with self.lock:
-            self._autostart = None                       # the person took over
             p, cur = self.s["player"], self.current_entry()
             if action == "pause" and p["state"] == "playing":
                 p = self._set_player("paused", cur, self.position())
             elif action == "resume" and p["state"] == "paused" and cur:
                 p = self._set_player("playing", cur, p["pos_s"])
-            elif action == "restart" and cur:
-                p = self._set_player("playing", cur, self._start_at(cur))
             elif action == "seek" and cur and pos_s is not None:
                 dur = (self.s["songs"].get(cur["song_id"]) or {}).get("audio_s") or float("inf")
-                p = self._set_player(p["state"] if p["state"] != "stopped" else "paused", cur, min(float(pos_s), dur))
+                p = self._set_player(p["state"], cur, min(float(pos_s), dur))
+            elif action == "restart" and cur:
+                self._auto, self._cut = False, None          # the person took over
+                p = self._start(cur)
             elif action == "stop":
-                p = self._set_player("stopped", None)
-                p["qid"] = cur["qid"] if cur else None       # Play carries on from here
-                p["stop"] = by
+                self._auto, self._cut = False, None
+                p = self._halt(by)
             elif action == "next":
-                nxt = self.next_ready(p.get("qid"))
-                p = self._set_player("playing", nxt, self._start_at(nxt, gap=by == "you")) if nxt else self._set_player("stopped", None)
+                # On to the first song to come that is ready; the one that was on joins the songs sung. Nothing
+                # ready: nothing is on, and what is still being prepared plays when it is.
+                self._cut = None
+                nxt = self._first_ready()
+                self._auto = nxt is None
+                if nxt:
+                    p = self._start(nxt, gap=by == "you")
+                elif cur:
+                    p = self._halt("end")
             elif action == "prev":
-                prv = self.prev_ready(p.get("qid"))
+                n = self.s["sung"]
+                prv = next((e for e in reversed(self.s["queue"][:n]) if self._ready(e)), None)
                 if cur and (self.position() > 3.0 or prv is None):
-                    p = self._set_player("playing", cur, self._start_at(cur))   # like any player: back to the start first
+                    self._auto, self._cut = False, None
+                    p = self._start(cur)                     # like any player: back to the start first
                 elif prv:
-                    p = self._set_player("playing", prv, self._start_at(prv))
+                    # The last one sung comes back and goes on; the one that was on is the first to come again.
+                    self._auto, self._cut = False, None
+                    at = self._start_at(prv)
+                    if cur:
+                        self._set_player("stopped", None)
+                    p = self._start(prv, pos_s=at)
                 else:
                     return p
             else:
@@ -599,8 +747,8 @@ class Store:
             return p
 
     def tick(self, now: float | None = None) -> None:
-        """The end of a song: the next ready entry (autoplay), else stop; and a song added to an idle player starts
-        once it is ready (queue_add). Called every half second."""
+        """The end of a song: the first song to come that is ready (autoplay), else nothing is on; and the songs that
+        wait to be ready start (_start_if_ready). Called every half second."""
         with self.lock:
             self._start_if_ready()
             p = self.s["player"]
@@ -608,10 +756,14 @@ class Store:
                 return
             dur = (self.s["songs"].get(p["song_id"] or "") or {}).get("audio_s")
             if dur and self.position(now) >= dur:
-                if self.s["settings"].get("autoplay") and self.next_ready(p.get("qid")):
-                    self.control("next", by="end")
+                auto = bool(self.s["settings"].get("autoplay"))
+                nxt = self._first_ready() if auto else None
+                if nxt:
+                    self._start(nxt, gap=False)
                 else:
-                    self.control("stop", by="end")
+                    self._halt("end")
+                    self._auto = auto                    # songs still being prepared play when they are ready
+                self.commit()
 
     def settings(self, **kw: Any) -> dict:
         with self.lock:
@@ -712,6 +864,7 @@ class Store:
         with self.lock:
             songs = sorted(self.s["songs"].values(), key=lambda s: -(s.get("created_at") or 0))
             return {"songs": [public_song(s) for s in songs], "queue": [dict(e) for e in self.s["queue"]],
+                    "sung": self.s["sung"],              # queue[:sung] are sung; then the one on (if any); then to come
                     "player": {**self.s["player"], "position_s": round(self.position(), 2)},
                     "settings": self.settings_view(), "calibration": self.calibration, "now": time.time(),
                     "singers": self.singers()}
@@ -721,9 +874,9 @@ class Store:
         with self.lock:
             p = dict(self.s["player"])
             song = self.s["songs"].get(p.get("song_id") or "")
-            nxt = self.next_ready(p.get("qid"))
+            nxt = self._first_ready()
             nsong = self.s["songs"].get(nxt["song_id"]) if nxt else None
-            cur = next((e for e in self.s["queue"] if e["qid"] == p.get("qid")), None) if p.get("qid") else None
+            cur = self.current_entry()
             child = bool(self.s["settings"].get("child_mode"))
             return {"player": p, "settings": self.settings_view(),
                     "song": (child_song(public_song(song)) if child else public_song(song)) if song else None,
@@ -731,7 +884,7 @@ class Store:
                                 "singers": nxt.get("singers") or []} if nsong else None,
                     "singers": (cur.get("singers") or []) if cur else [],
                     # entries after this one, ready or still being made: the screens ask for more when it is 0
-                    "queued_after": len(self._upcoming(p.get("qid"))),
+                    "queued_after": len(self.to_come()),
                     "calibration": self.calibration if (self.calibration or {}).get("state") == "running" else None,
                     # the music while nothing plays (song ids, in order): only then
                     "background": self.background() if p.get("state") == "stopped" else [],

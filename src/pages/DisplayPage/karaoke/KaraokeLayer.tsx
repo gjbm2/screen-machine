@@ -15,6 +15,8 @@
 //   live mic's beat clock.
 // - data-sm-karaoke keeps it visible while live video is up (index.tsx ART_GUARD_CSS hides everything else).
 
+import { roomApi } from "@/components/room/roomLink";
+import { leaving, setSounding } from "./soundGate";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { getDeploymentRelative, capabilityOn, type DeploymentInfo } from "@/shared/api/deployment";
 import {
@@ -65,6 +67,28 @@ const FADE_S = 1.6;
 // the karaoke screen with the room in a karaoke mode. It fades in, and out when a song starts.
 const BG_LEVEL = 0.18;
 const BG_FADE_IN_S = 4;
+// The room's mode alone saying "no" stops the background music only after this many polls: a Flask restart reads as
+// "not karaoke" for a moment (it hasn't looked at the room yet), and that cut the song off (owner, 28 Nov).
+const BG_OFF_POLLS = 5;
+// A song's lead-in with at least this much silence left is a moment a new build's reload can take (soundGate.ts).
+const QUIET_LEAD_S = 5;
+
+// A PROBE, to be taken out once the cause is known (owner, 28 Nov: "background playing songs ... keep stopping halfway
+// through"): each start, end and stop of the background music, with why, as one line in logs/room_service.log
+// (a path-only request: GET /zz-diag/kbg_<page>_<what>).
+const PAGE_TAG = Math.random().toString(36).slice(2, 6);
+function bgProbe(what: string): void {
+  try {
+    void fetch(`${roomApi().baseUrl}/zz-diag/kbg_${PAGE_TAG}_${document.visibilityState}_${what}`, {
+      mode: "no-cors",
+      keepalive: true,
+    }).catch(
+      () => undefined,
+    );
+  } catch {
+    /* no room to tell */
+  }
+}
 /** The graphic EQ's bands (Hz): smsound/eq.py BANDS. */
 const EQ_HZ = [60, 150, 400, 1000, 2400, 6000, 15000];
 const PREVIEW_S = 3.6; // after a long break, the next line is in place this long before it starts: then the count-in
@@ -431,6 +455,7 @@ export function KaraokeLayer({ screen, device }: { screen?: string; device?: str
     let bgSong: string | null = null;
     let bgWanted = false;
     let bgBusy = false;
+    let bgOff = 0; // polls in a row the room's mode alone has said no
     const background = async (list: string[], child: boolean) => {
       if (bgBusy || (bg.playing && !bg.ended)) return;
       bgBusy = true;
@@ -441,8 +466,10 @@ export function KaraokeLayer({ screen, device }: { screen?: string; device?: str
         const id = !bgSong || !pool.length ? list[0] : pool[Math.floor(Math.random() * pool.length)];
         if (!(await bg.load(id).catch(() => false)) || dead || !bgWanted) return;
         bg.guide = child ? 0 : 1;
+        if (bg.playing && bg.ended) bgProbe(`end_${bgSong}`);
         bg.play(0, BG_FADE_IN_S);
         bgSong = id;
+        bgProbe(`start_${id}_of${Math.round(bg.inst?.duration ?? 0)}s_ctx${bg.ctx?.state}`);
         if (bg.ctx?.state !== "running") void bg.ctx?.resume().catch(() => undefined);
       } finally {
         bgBusy = false;
@@ -484,18 +511,40 @@ export function KaraokeLayer({ screen, device }: { screen?: string; device?: str
       // it itself: routes/karaoke/sonos_out.py; a page without a screen plays any screen output).
       if (!soundHere(n, screen, device)) {
         e.stop();
+        if (bg.playing) bgProbe(`stop_elsewhere_at${Math.round(bg.position())}s`);
         bg.stop();
         bgWanted = false;
+        setSounding(false);
         return;
       }
+      // A new build's reload waits for the end of the song sounding here (soundGate.ts); once it is let through,
+      // nothing new starts.
+      setSounding(
+        (p.state === "playing" && serverPosition(n, skew.current) > -QUIET_LEAD_S) || (bg.playing && !bg.ended),
+      );
+      if (leaving()) return;
       // The background music: while nothing plays, the room in a karaoke mode, no calibration running.
       bgWanted =
         p.state === "stopped" &&
         !!n.join?.room_karaoke &&
         !!n.background?.length &&
         n.calibration?.state !== "running";
-      if (bgWanted) void background(n.background ?? [], !!n.settings.child_mode);
-      else if (bg.playing) bg.stop(FADE_S);
+      const modeOnly = p.state === "stopped" && !!n.background?.length && n.calibration?.state !== "running";
+      if (bgWanted) {
+        bgOff = 0;
+        void background(n.background ?? [], !!n.settings.child_mode);
+      } else if (bg.playing && (!modeOnly || ++bgOff >= BG_OFF_POLLS)) {
+        const why =
+          p.state !== "stopped"
+            ? `song_${p.state}`
+            : !n.join?.room_karaoke
+              ? "room_not_karaoke"
+              : !n.background?.length
+                ? "no_list"
+                : "calibration";
+        bgProbe(`stop_${why}_at${Math.round(bg.position())}s`);
+        bg.stop(FADE_S);
+      }
       if (p.state !== "stopped") bgSong = null; // a song plays: the next background starts with it
       e.setGuide(n.settings.guide);
       e.setEq(n.settings.eq);
@@ -532,11 +581,16 @@ export function KaraokeLayer({ screen, device }: { screen?: string; device?: str
     };
     void follow();
     const t = window.setInterval(follow, POLL_MS);
+    const leavingPage = () => bg.playing && bgProbe(`stop_pagehide_at${Math.round(bg.position())}s`);   // (the probe)
+    window.addEventListener("pagehide", leavingPage);
     return () => {
       dead = true;
       window.clearInterval(t);
+      window.removeEventListener("pagehide", leavingPage);
       eng.stop();
+      if (bg.playing) bgProbe(`stop_unmount_at${Math.round(bg.position())}s`);
       bg.stop();
+      setSounding(false);
     };
   }, [on, device]);
 

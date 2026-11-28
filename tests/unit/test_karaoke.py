@@ -93,8 +93,8 @@ def test_not_ready_entries_keep_their_place_and_are_skipped(tmp_path):
     st.play()
     st.control("next")
     assert st.s["player"]["qid"] == eb["qid"]            # skipped the one still being prepared
-    with pytest.raises(LookupError):
-        st.play(qid=es["qid"])
+    st.play(qid=es["qid"])                               # Play now on it: it waits (test_karaoke_play_now.py)
+    assert st.s["player"]["qid"] == eb["qid"]
 
 
 def test_pause_resume_seek_keep_the_position(tmp_path):
@@ -126,8 +126,9 @@ def test_queue_entries_repeat_move_and_remove(tmp_path, monkeypatch):
     assert st.s["player"]["qid"] == e0["qid"] and len(st.s["queue"]) == 3
     p = st.play(sid=b)                                   # a library song now: a new entry right after the current
     assert [e["song_id"] for e in st.s["queue"]][1] == b and p["qid"] == st.s["queue"][1]["qid"]
-    st.remove_song(b)                                    # deleting from the library takes its entries too
-    assert [e["song_id"] for e in st.s["queue"]] == [a] and st.s["player"]["state"] == "stopped"
+    st.remove_song(b)                                    # deleting from the library takes its entries too; the
+    assert [e["song_id"] for e in st.s["queue"]] == [a]  # one playing: on to the next, as taking it out by hand
+    assert st.s["player"]["state"] == "playing" and st.s["player"]["song_id"] == a
 
 
 def test_restart_requeues_unfinished_work(tmp_path):
@@ -384,8 +385,8 @@ def test_child_mode_serves_lyrics_with_dashes_and_the_times_to_mute(tmp_path):
     assert doc["lines"][0]["text"] == "You're so fucking special"      # the stored lyrics are untouched
     st = Store(tmp_path / "state.json")
     s = st.add_song({"kind": "lrclib", "artist": "CeeLo Green", "title": "Fuck You"})
-    st.queue_add(s["id"])
-    st.s["player"].update({"state": "paused", "song_id": s["id"]})
+    st.update_song(s["id"], status="ready", audio_s=10.0)
+    st.queue_add(s["id"])                                # the first song added to an idle player plays
     assert st.now_playing()["song"]["title"] == "Fuck You"
     st.settings(child_mode=True)
     assert st.now_playing()["song"]["title"] == "---- You"
