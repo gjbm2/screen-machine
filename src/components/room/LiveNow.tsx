@@ -6,7 +6,8 @@
 // renderer's up-next plan (useUpNext). Comments: routes/screen_notes.py.
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Check, MessageSquare, RotateCw, Shuffle, ThumbsUp, Undo2 } from "lucide-react";
+import { Check, MessageSquare, Shuffle, ThumbsUp, Undo2 } from "lucide-react";
+import { CatchUp, MomentCard, useHold, type When } from "./moments";
 import { cn } from "@/lib/utils";
 import { addScreenNote, screenNotes, type ScreenNote } from "@/shared/api/screenNotes";
 import { storageGet, storageSet, type RoomApi } from "@/pages/Room/api";
@@ -78,8 +79,6 @@ export function LiveNow({
   );
 }
 
-type When = "was" | "now" | "next";
-const WHEN_WORDS: Record<When, string> = { was: "Was", now: "Now", next: "Next" };
 /** The effects on before the ones on now: kept by this browser as it watches them change. */
 const PREV_FX_KEY = (id: string) => `sm_home_prev_fx:${id}`;
 interface FxItem {
@@ -89,8 +88,7 @@ interface FxItem {
   /** The effect preset ("This is good" credits it); none for a scene's own effects. */
   preset?: string | null;
 }
-/** After the last touch inside, what shows stays put this long (a finger has no hover). */
-const HOLD_MS = 6000;
+
 /** "Rainbow isobars (dense per-line colours over the scene)" -> "Rainbow isobars". */
 const shortLabel = (s: string) => s.replace(/\s*\(.*\)\s*$/, "") || s;
 const fxSig = (xs: FxItem[]) => xs.map((x) => `${x.effect}:${x.label}`).sort().join("|");
@@ -209,27 +207,16 @@ export function WasNowNext({
     sceneEta: eta(nextScene?.eta_s?.[0]),
     fxEta: eta(nextFxPlan?.eta_s),
   };
-  const [frozen, setFrozen] = useState<typeof liveView | null>(null);
-  const inside = useRef(false);
-  const touched = useRef(0);
-  const hold = () => setFrozen((f) => f ?? liveView);
-  const release = () => {
-    touched.current = 0;
-    setFrozen(null);
-  };
-  useEffect(() => {
-    if (frozen && !inside.current && Date.now() - touched.current > HOLD_MS) setFrozen(null);
-  }, [clock, frozen]);
-  const v = frozen ?? liveView;
-  const stale =
-    !!frozen &&
-    (frozen.nowInfo?.key !== liveView.nowInfo?.key || frozen.nextScene?.id !== liveView.nextScene?.id || fxSig(frozen.nowFx) !== fxSig(liveView.nowFx));
+  const { view: v, held, stale, release, handlers } = useHold(
+    liveView,
+    (x) => `${x.nowInfo?.key}|${x.nextScene?.id}|${fxSig(x.nowFx)}`,
+  );
   const again = (planId: string) => {
     release();
     void un.edit({ op: "reroll", id: planId }).catch(() => undefined);
   };
-  const sceneEta = frozen ? null : v.sceneEta;
-  const fxEta = frozen ? null : v.fxEta;
+  const sceneEta = held ? null : v.sceneEta;
+  const fxEta = held ? null : v.fxEta;
 
   const lastNote = (key: string | null) => (key ? notes.find((n) => n.key === key) : undefined);
   const keep = async (n: Omit<ScreenNote, "at" | "song" | "screen">) => {
@@ -253,25 +240,7 @@ export function WasNowNext({
     const sel = fxSel?.when === when ? fxSel : null;
     const selKey = sel ? `effect/${sel.item.effect}` : null;
     return (
-      <section
-        key={when}
-        data-testid={`${when}-${screenId}`}
-        className={cn(
-          "space-y-1.5 rounded-xl border p-2",
-          isNow ? "border-teal-500 bg-white shadow-sm ring-1 ring-teal-500/30" : "border-stone-200 bg-stone-50/70",
-        )}
-      >
-        <div className="flex min-h-6 items-center gap-2 px-0.5">
-          <span
-            className={cn(
-              "text-xs font-semibold uppercase tracking-wider",
-              isNow ? "text-teal-700" : "text-stone-500",
-            )}
-          >
-            {WHEN_WORDS[when]}
-          </span>
-          {eta ? <span className="text-xs tabular-nums text-stone-500">in {eta} s</span> : null}
-        </div>
+      <MomentCard key={when} when={when} extra={eta ? `in ${eta} s` : null} testId={`${when}-${screenId}`}>
         {info && (
           <div className={cn(!isNow && "opacity-90")}>
             <SceneButton info={info} caption={caption} onClick={onClick} disabled={!lib || busy} testId={isNow ? `scene-${screenId}` : undefined} />
@@ -334,7 +303,7 @@ export function WasNowNext({
             <NoteLine note={lastNote(selKey)} />
           </div>
         )}
-      </section>
+      </MomentCard>
     );
   };
 
@@ -342,29 +311,9 @@ export function WasNowNext({
     <div
       className="relative space-y-2"
       data-testid={`live-now-${screenId}`}
-      onPointerEnter={() => {
-        inside.current = true;
-        hold();
-      }}
-      onPointerLeave={() => {
-        inside.current = false;
-      }}
-      onPointerDown={() => {
-        touched.current = Date.now();
-        hold();
-      }}
+      {...handlers}
     >
-      {stale && (
-        <button
-          type="button"
-          onClick={release}
-          title="Up to date"
-          aria-label="Up to date"
-          className="absolute right-2 top-1.5 z-10 grid h-7 w-7 place-items-center rounded-full border border-teal-300 bg-teal-50 text-teal-800 shadow-sm"
-        >
-          <RotateCw className="h-3.5 w-3.5" aria-hidden />
-        </button>
-      )}
+      {stale && <CatchUp onClick={release} />}
       {(v.prevInfo || (v.prevFx?.length ?? 0) > 0) &&
         bucket("was", v.prevInfo, v.prevFx ?? [], "Go back", () => v.prevInfo && (release(), onBack(v.prevInfo.key)))}
       {bucket("now", v.nowInfo, v.nowFx, changing ? "Changing…" : "Change", onChange)}

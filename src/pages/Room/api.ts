@@ -346,6 +346,30 @@ export class RoomApi {
   }
 
   /** A thumbnail's URL (an <img> src). */
+  // ── The lights' scenes as the director plays them (show_service: GET /api/v1/lights/now, the lights library and its
+  //    stars, through room_service's /show pass-through) ──
+  lightsNow(signal?: AbortSignal) {
+    return this.json<LightsNow>("GET", "/show/api/v1/lights/now", undefined, signal);
+  }
+  lightsLibrary(signal?: AbortSignal) {
+    return this.json<{ items: { key: string; kind: string; name: string; label: string; thumb?: string | null }[] }>(
+      "GET",
+      "/show/api/v1/lights/library",
+      undefined,
+      signal,
+    );
+  }
+  lightRatings(signal?: AbortSignal) {
+    return this.json<{ ratings: Record<string, { stars?: number; reject?: boolean }> }>("GET", "/show/api/v1/lights/ratings", undefined, signal);
+  }
+  lightRate(key: string, patch: { stars?: number; reject?: boolean }) {
+    return this.json<{ key: string; entry: { stars?: number; reject?: boolean } }>("POST", "/show/api/v1/lights/rate", { key, ...patch });
+  }
+  /** A show_service path (a lights library thumb) as this page can load it. */
+  showUrl(path: string | null | undefined): string | null {
+    return path ? `${this.baseUrl}/show${path}` : null;
+  }
+
   thumbUrl(path: string | null | undefined): string | null {
     return path && path.startsWith("/api/v1/thumb/") ? `${this.baseUrl}${path}` : null;
   }
@@ -742,4 +766,11 @@ export class RoomApi {
       throw e;
     }
   }
+}
+
+/** GET /show/api/v1/lights/now: each light group's program and, while a change is drawn, the next scenes. */
+export interface LightsNow {
+  t_ms: number;
+  programs: Record<string, { label: string; scene: string; scene_label?: string | null; why?: string | null; at_ms?: number; effects: string[] }>;
+  next: { look_id: string; scenes: Record<string, string> } | null;
 }

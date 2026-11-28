@@ -216,7 +216,7 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", "/api/v1/piano/recordings"), ("POST", "/api/v1/piano/record"),
     ("GET", "/api/v1/piano/recordings/{id}.mid"), ("PATCH", "/api/v1/piano/recordings/{id}"),
     ("DELETE", "/api/v1/piano/recordings/{id}"), ("GET", PIANO_AUDIO_PATH), ("GET", PIANO_STREAM_PATH),
-    ("GET", "/api/v1/look"), ("GET", "/api/v1/log"),
+    ("GET", "/api/v1/look"), ("GET", "/api/v1/log"), ("GET", "/api/v1/lights/now"),
 )
 
 
@@ -1167,6 +1167,7 @@ class Api:
             ("PATCH", "/api/v1/piano/recordings/{id}", self._rec_rename),
             ("DELETE", "/api/v1/piano/recordings/{id}", self._rec_delete),
             ("GET", "/api/v1/look", self._look),
+            ("GET", "/api/v1/lights/now", self._lights_now),
             ("GET", "/api/v1/log", self._log),
             ("GET", "/api/v1/rig", self._rig),
             ("GET", "/api/v1/rig/frame", self._rig_frame),
@@ -3121,6 +3122,17 @@ class Api:
         direction, look = snap.get("direction"), snap.get("look")
         return _json({"direction": direction if isinstance(direction, dict) else None,
                       "look": look if isinstance(look, dict) else None})
+
+    async def _lights_now(self, request: web.Request, brain: Any) -> web.Response:
+        """GET /api/v1/lights/now: each light group's program now (scene, its label, why, effects, since when) and the
+        next ones when a change is drawn (owner, 28 Nov: the lighting layers' scenes and effects shown as the screens'
+        are, was / now / next). The director snapshot's ``lights`` cut down to that."""
+        lights = _d(_snap_of(_components(brain).get(DIRECTOR)).get("lights"))
+        groups = _d(lights.get("groups"))
+        programs = {g: {**_d(p), "label": _d(groups.get(g)).get("label") or g}
+                    for g, p in _d(lights.get("programs")).items()}
+        return _json({"t_ms": round(time.time() * 1000.0, 1), "programs": programs,
+                      "next": lights.get("next") if isinstance(lights.get("next"), dict) else None})
 
     async def _log(self, request: web.Request, brain: Any) -> web.Response:
         kind = request.query.get("kind", "director")

@@ -66,6 +66,7 @@ import type { LookScope } from "./liveLib";
 import type { LiveMember } from "./roomFx";
 import { RoomLives, type RoomLiveSpec } from "./RoomLive";
 import { ArtScreenCard, ScreenCard } from "./ScreenCard";
+import { LightsPanel } from "@/components/room/LightsNow";
 import { buildSections, liveAllowed, siteHasSonos } from "./sections";
 import { sceneChoices } from "./catalog";
 import { FOOT_LINK, openFold, Section, setFold } from "./Section";
@@ -632,6 +633,7 @@ export default function RoomPage() {
                             ) : (
                               <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-1">{screens.map(([id]) => screenCard(id))}</div>
                             )}
+                            <LightsPanel api={room.api} />
                           </Section>
 
                         <TodayFold
