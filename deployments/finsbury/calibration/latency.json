@@ -263,27 +263,19 @@
   },
   "sonos:drawing-room": {
    "sound": {
-    "delay_ms": 805.0,
+    "delay_ms": 859.5,
     "method": "chirp",
-    "measured_at": "2026-11-28T11:02:46+00:00",
-    "spread_ms": 13.8,
-    "agree": 7,
-    "used": 7,
-    "of": 10,
-    "readings_ms": [
-     323,
-     324,
-     970,
-     305,
-     319,
-     303,
-     288,
-     323,
-     305,
-     337
+    "measured_at": "2026-11-28T11:19:18+00:00",
+    "runs_ms": [
+     805,
+     859,
+     860,
+     999,
+     808,
+     1120
     ],
-    "peak_ratio": 309.8,
-    "mic": "room-mic"
+    "mic": "room-mic",
+    "note": "median of six plays at volume 25, 28 Nov 11:02-11:19: a Sonos start varies 805-1120 ms from play to play"
    }
   }
  },
