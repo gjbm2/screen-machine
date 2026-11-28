@@ -1,5 +1,15 @@
 # PC22: finsbury's config needs rebuilding for the current code (28 Nov 2026)
 
+**Status, 28 Nov 11:20 (d7 on PC22): done, first pass.** Everything in the gaps table below is in finsbury's files
+(commit ed2d1f776), except what needs the room itself:
+- `show.yaml lights.room_light.other_lux` is 5, an estimate for two 65" Frames playing live: measure it (blinds shut,
+  DMX and Hue off, both screens live, the living-room sensor's lux).
+- `space.yaml room.haze_half_life_s` is unset (the shared 150 s): time it once the hazer is here.
+- The GigBARs and the hazer are **planned** (owner): connect them on Light setup › Room when they arrive (bar A at
+  1, bar B at 101, the hazer at 201). Their parts' tilts and the heads' homes are set on the real bars; Connect
+  doesn't yet carry the laptop's pins (the derby motors' slow turn, the hazer's).
+- The Drawing Room Sonos is measured (860 ms, the median of six plays; a Sonos start varies by up to 300 ms).
+
 Written for a session on PC22. **The job is yours: go through `deployments/finsbury/` and rebuild it properly for
 the code as it now is.** This note only says that it is needed and where the gaps were seen. It does not design
 finsbury's config; that is for PC22 to work out for its own room.

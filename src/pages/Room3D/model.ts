@@ -153,6 +153,13 @@ export async function loadRoom(room: string): Promise<RoomModel> {
   const bars = barsOf(space);
   const onBar = new Map<string, { front: Vec3; lean: number | null; turn: number | null }>();
   for (const b of bars) for (const p of b.parts) onBar.set(p.id, { front: b.front, lean: p.lean_deg, turn: p.turn_deg });
+  /** How each bar part points as the room view says (its setup, else the layout's, a laser the rule): what a planned
+   *  part, which has no light row yet, is drawn by. */
+  const partAim = new Map<string, { lean_deg: number; turn_deg: number }>();
+  for (const b of Object.values(space?.bars ?? {}) as any[])
+    for (const p of Object.values(b?.parts ?? {}) as any[])
+      if (typeof p?.id === "string" && typeof p?.aim?.lean_deg === "number")
+        partAim.set(p.id, { lean_deg: p.aim.lean_deg, turn_deg: Number(p.aim.turn_deg) || 0 });
   /** A fixed light's direction from its bar: its own tilt and turn, else the layout's; a laser with neither, the
    *  45-degree rule. Null: not on a bar, or nothing says how it points (the view's own default then). */
   const dirOnBar = (row: any): Vec3 | null => {
@@ -212,7 +219,7 @@ export async function loadRoom(room: string): Promise<RoomModel> {
     const pose = a?.pose && isVec3(a.pose.at) && isVec3(a.pose.rot) ? (a.pose as Pose) : null;
     return { id, label, kind: "lamp", driver: null, part: partOf(t.file, t.mode, typeId), universe: null, address,
       panRange: t.physical?.pan_deg ?? 540, tiltRange: t.physical?.tilt_deg ?? 270, screen: null, lastRgb: null,
-      at: isVec3(a?.at) ? a.at : pose ? pose.at : null, pose, plane: null, aimDir: dirOnBar({ id, setup: {} }), aim: isVec3(a?.aim) ? a.aim : null,
+      at: isVec3(a?.at) ? a.at : pose ? pose.at : null, pose, plane: null, aimDir: dirOnBar({ id, setup: partAim.get(id) ?? {} }), aim: isVec3(a?.aim) ? a.aim : null,
       bar: barId, planned: true, device: null, connect: null };
   };
   const layouts: Record<string, any> = space?.layouts ?? {};

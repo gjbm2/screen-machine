@@ -345,7 +345,7 @@ def _index(doc: dict) -> tuple[dict[str, tuple[str, int]], dict[str, list[tuple[
 def _empty(type_id: str, file: Optional[str], mode: Optional[str]) -> contract.TypeInfo:
     return {"id": type_id, "source": "ofl", "kind": "lamp", "file": file, "mode": mode, "footprint": 0,
             "attrs": [], "channels": [], "emitters": {}, "wheel": [], "curve": "srgb", "problems": [],
-            "wheels": {}, "physical": no_physical(), "categories": []}
+            "wheels": {}, "physical": no_physical(), "categories": [], "streaks": None}
 
 
 def no_physical() -> dict[str, Any]:

@@ -108,7 +108,7 @@ _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 def _builtin(tid: str, kind: str, attrs: tuple[str, ...]) -> contract.TypeInfo:
     return {"id": tid, "source": "builtin", "kind": kind, "file": None, "mode": None, "footprint": 0,
             "attrs": list(attrs), "channels": [], "emitters": {}, "wheel": [], "curve": "srgb", "problems": [],
-            "wheels": {}, "physical": ofl.no_physical(), "categories": []}
+            "wheels": {}, "physical": ofl.no_physical(), "categories": [], "streaks": None}
 
 
 #: A generic type's channel words -> (attr, emitter), as ofl.py would read them (README S5.23; docs/LIGHTS.md §2.5).
@@ -916,6 +916,7 @@ class _Builder:
                 self.problems.append(f"{where}.source: {src!r} isn't builtin or ofl: left out")
                 continue
             info["emitters"] = self._emitters(where, t.get("emitters"), info)
+            info["streaks"] = None
             if "streaks" in t:                             # its emitters show as separate beams (colour_mix._Plan)
                 st = t.get("streaks")
                 if isinstance(st, (int, float)) and not isinstance(st, bool) and 0.0 < st <= 1.0:
@@ -1465,7 +1466,7 @@ NODE_ID_PREFIX = "node-"            # a node made for an address: node-<its IP, 
 OUTPUT_ID_PREFIX = "dmx-"           # an output made for a universe on a node: dmx-<the IP, dashed>-u<universe>
 LABEL_MAX = 80                      # characters in a light's name
 WORD_MAX = 64                       # characters in a placement, role or zone word
-SPEC_KEYS: tuple[str, ...] = ("label", "type", "node_ip", "universe", "address", "placement", "role", "zone")
+SPEC_KEYS: tuple[str, ...] = ("label", "type", "node_ip", "universe", "address", "placement", "role", "zone", "tags")
 OPTIONAL_KEYS: tuple[str, ...] = ("placement", "role", "zone")
 _SLUG = re.compile(r"[^a-z0-9]+")
 
@@ -1571,6 +1572,8 @@ class Registrar:
         entry: dict[str, Any] = {"label": spec["label"], "type": spec["type"], "output": oid,
                                  "address": spec["address"]}
         entry.update({k: spec[k] for k in OPTIONAL_KEYS if spec.get(k) is not None})
+        if spec.get("tags"):
+            entry["tags"] = spec["tags"]
         new["fixtures"][fid] = entry
         self._declare_type(hand, new, spec["type"])
         view, mine = self._check(hand, new, fid, oid)
@@ -1596,7 +1599,7 @@ class Registrar:
         for k in ("label", "type", "address"):
             if k in spec:
                 entry[k] = spec[k]
-        for k in OPTIONAL_KEYS:
+        for k in OPTIONAL_KEYS + ("tags",):
             if k in spec:
                 if spec[k] is None:
                     entry.pop(k, None)
@@ -1707,6 +1710,14 @@ class Registrar:
                     out[k] = v.strip()
                 else:
                     raise Refused("bad_request", f"{k}: {v!r} isn't a word (up to {WORD_MAX} characters)")
+        if "tags" in body:                   # a planned bar's part, connected, keeps its tags (space.py BAR_KEYS)
+            v = body.get("tags")
+            if v is None or v == []:
+                out["tags"] = None
+            elif isinstance(v, list) and all(_is_id(t) for t in v):
+                out["tags"] = list(dict.fromkeys(v))
+            else:
+                raise Refused("bad_request", f"tags: {v!r} isn't a list of tags ({ID_RE})")
         return out, probs
 
     @staticmethod

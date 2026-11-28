@@ -2108,6 +2108,8 @@ class TypeInfo(TypedDict):
                                    # "zoom_deg": [min, max] | None}: None = the file doesn't say (setup ``range`` and
                                    # the starting points stand in)
     categories: list[str]          # the type file's own category words (an OFL file's: "Laser", "Moving Head", ...)
+    streaks: Optional[float]       # fixtures.yaml types.<id>.streaks: its emitters show as separate beams, only those at
+                                   # least this share of the strongest (colour_mix._Plan; a derby's coloured streaks); None: they mix
 
 
 class FixtureInfo(TypedDict):

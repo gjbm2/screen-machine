@@ -85,7 +85,8 @@ APPLIANCE_KEYS: tuple[str, ...] = PLACE_KEYS + ("teach", "pose")
 #: light sensor, a remote-controlled device), and it is connected once that is set. A planned light is connected by
 #: registering it (the Lights page's Add a light), and the placement moves to the new light's id.
 ROOM_DEVICE_KINDS: dict[str, str] = {"screen": "Screen or TV", "hue-lamp": "Hue lamp", "mirror-ball": "Mirror ball",
-                                     "mic": "Microphone", "light-sensor": "Light sensor"}
+                                     "mic": "Microphone", "light-sensor": "Light sensor",
+                                     "piano": "Piano"}        # a piano's aim: where its player sits (the keyboard's side)
 POINT_KEYS: tuple[str, ...] = ("label", "at", "device", "from")
 REGION_KEYS: tuple[str, ...] = ("label", "surface", "centre", "size")
 #: keep_out.<name> (owner, 27 Nov: "we need configurable 'keep out' regions in the room"): a box of the room no light
@@ -97,7 +98,9 @@ KEEP_KEYS: tuple[str, ...] = ("label", "centre", "size", "groups")
 #: height is at[2]), which way it faces (facing_deg: the heading of its front, degrees anticlockwise from east), and
 #: its layout (layouts.<name>). Each part is the fixture "<bar id>.<part>" and sits where the layout says along the
 #: bar; a part placed by hand under appliances keeps its own place.
-BAR_KEYS: tuple[str, ...] = ("label", "at", "facing_deg", "layout")
+#: tags: the tags each of its parts gets when the bar is connected (owner, 28 Nov: planned bars "ready to go when they
+#: are attached"; the scenes select by them: tag:bar-a, and the groups: tag:derby), with its layout part's own.
+BAR_KEYS: tuple[str, ...] = ("label", "at", "facing_deg", "layout", "tags")
 #: layouts.<name>.parts.<part> (the hand file only: what the unit is, not where it stands): along (m from the bar's
 #: middle, + to the right as you face the bar), up (m above the bar's centre line; - below it), head (a moving head on
 #: the bar: it gets a pose facing the bar's front until it is taught), hang (that head hangs under the bar, upside
@@ -105,10 +108,12 @@ BAR_KEYS: tuple[str, ...] = ("label", "at", "facing_deg", "layout")
 #: only tilts, about the bar's length, and faces where the bar faces), and how the part points as it ships: lean_deg
 #: (degrees forward from straight up: 90 is level) and turn_deg (to the right of the bar's front). A light's own setup
 #: (fixtures.setup.yaml lean_deg, turn_deg: the Lights page) overrides those two.
-LAYOUT_PART_KEYS: tuple[str, ...] = ("along", "up", "head", "hang", "turns", "lean_deg", "turn_deg", "type", "offset")
+LAYOUT_PART_KEYS: tuple[str, ...] = ("along", "up", "head", "hang", "turns", "lean_deg", "turn_deg", "type", "offset",
+                                     "tags")
 #: type: the part's light type (a fixtures.yaml type id), so a bar placed before its lights are registered (a planned
 #: bar) can be drawn part by part; offset: its DMX channel offset from the bar's start address, so connecting a planned
-#: bar registers each part at its own address
+#: bar registers each part at its own address; tags: the part's own tags (derby, spot, spot-1), given to it with the
+#: bar's when it is connected
 SURFACE_KEYS: tuple[str, ...] = ("label", "origin", "normal", "up", "size")
 PLANE_KEYS: tuple[str, ...] = ("normal", "up", "size")
 POSE_KEYS: tuple[str, ...] = ("at", "rot", "tilt_offset_deg", "pan_sign", "tilt_sign", "rms_deg", "worst_deg",
@@ -488,6 +493,26 @@ def _bar(raw: Any, where: str, probs: list[str]) -> Optional[dict]:
     lab = _label(raw.get("label"))
     if lab is not None:
         out["label"] = lab
+    tags = _tags(raw.get("tags"), f"{where}.tags", probs)
+    if tags:
+        out["tags"] = tags
+    return out
+
+
+def _tags(raw: Any, where: str, probs: list[str]) -> list[str]:
+    """A list of tag words (fixtures.yaml's tags), each once; anything else is dropped with a problem line."""
+    if raw is None:
+        return []
+    if not isinstance(raw, list):
+        probs.append(f"{where}: isn't a list of tags: none")
+        return []
+    out: list[str] = []
+    for t in raw:
+        if isinstance(t, str) and _WORD.match(t):
+            if t not in out:
+                out.append(t)
+        else:
+            probs.append(f"{where}: {t!r} isn't a tag: dropped")
     return out
 
 
@@ -510,6 +535,9 @@ def _layout(raw: Any, where: str, probs: list[str]) -> Optional[dict]:
             e["type"] = sp["type"]
         if isinstance(sp.get("offset"), int) and not isinstance(sp.get("offset"), bool) and 0 <= sp["offset"] < 512:
             e["offset"] = sp["offset"]
+        tags = _tags(sp.get("tags"), f"{w}.tags", probs)
+        if tags:
+            e["tags"] = tags
         for k in ("lean_deg", "turn_deg"):
             if sp.get(k) is not None:
                 if _num(sp.get(k)) is None:
@@ -901,9 +929,10 @@ def build_view(hand: Any, added: Any = None, *, error: Optional[str] = None,
                              "solved_at": (f"from the bar ({'hanging under it' if hang else 'upright on it'}, facing its "
                                            f"front): not taught")}
             parts[pn] = {"id": fid, "own_place": own, "head": sp["head"], "hang": sp.get("hang", False),
-                         "turns": sp.get("turns", True), **{k: sp[k] for k in ("lean_deg", "turn_deg", "type") if k in sp}}
+                         "turns": sp.get("turns", True), **{k: sp[k] for k in ("lean_deg", "turn_deg", "type") if k in sp},
+                         "tags": list(dict.fromkeys(list(b.get("tags") or []) + list(sp.get("tags") or [])))}
         bars[bid] = {"label": b.get("label") or humanise(bid), "at": b["at"], "facing_deg": b["facing_deg"],
-                     "layout": b["layout"], "front": [round(x, 6) for x in front], "axis": [round(x, 6) for x in axis],
+                     "layout": b["layout"], "tags": list(b.get("tags") or []), "front": [round(x, 6) for x in front], "axis": [round(x, 6) for x in axis],
                      "parts": parts, "editable": b.get("_src") != "hand"}
     if size:
         extent: Optional[list[list[float]]] = [[0.0, 0.0, 0.0], [float(x) for x in size]]
@@ -1272,7 +1301,7 @@ class Store:
         self._remove("bars", _check_id(name, "bar"))
 
     def set_bar(self, name: str, at: Any = None, facing_deg: Any = None, layout: Optional[str] = None,
-                label: Optional[str] = None) -> dict:
+                label: Optional[str] = None, tags: Any = None) -> dict:
         """A light bar (BAR_KEYS): where its middle is, which way it faces, its layout. A key left out keeps what the
         bar has; a new bar needs at and layout."""
         name = _check_id(name, "bar")
@@ -1286,6 +1315,12 @@ class Store:
         lab = None
         if label is not None:
             lab = _one(lambda p: _label(label) or p.append("That isn't a name."), "label")
+        tg = cur.get("tags") or []
+        if tags is not None:
+            bad: list[str] = []
+            tg = _tags(tags, "tags", bad)
+            if bad:
+                raise Refused("bad_request", bad[0])
 
         def mutate(hand: dict, new: dict) -> None:
             if name in hand["bars"]:
@@ -1295,6 +1330,8 @@ class Store:
             old = dict(new["bars"].get(name) or {})
             new["bars"][name] = {"label": lab or old.get("label") or cur.get("label") or humanise(name),
                                  "at": [float(x) for x in a], "facing_deg": round((float(f) + 180.0) % 360.0 - 180.0, 2), "layout": lay}
+            if tg:
+                new["bars"][name]["tags"] = list(tg)
         self._write(mutate)
         return copy.deepcopy((self._view.get("bars") or {}).get(name)) or {}
 

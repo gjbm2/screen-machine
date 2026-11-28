@@ -69,6 +69,8 @@ export interface FixtureBody {
   address?: number;
   placement?: string | null;
   zone?: string | null;
+  /** Its tags (a planned bar's part, connected: the bar's and its layout part's). */
+  tags?: string[];
 }
 
 export interface StatusWords {
