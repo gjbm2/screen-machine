@@ -18,6 +18,10 @@ file the lights, the screens and the streams were already measured into. Sound o
 Only this module writes ``sound`` entries; it changes nothing else in the file (others write their own keys: the
 light and screen tools). Writes are atomic (a temporary file, then a rename) under a lock.
 
+**What a browser reports is not in the file.** A page's own output latency (``set_browser``: the delay used while
+nothing is measured) moves with the page load and the audio device (the laptop: 68 <-> 76 ms), so it is this machine's
+runtime state (``browser_path``), not the deployment: in ``latency.json`` it rewrote a tracked file every few hours.
+
 **The rule.** Every latency, in every category, is milliseconds, + = the physical event happens later than the clock
 it is scheduled on, and the consumer starts that much earlier (or shows that much later). ``effective_ms`` = measured
 + trim, else the kind's default (``DEFAULTS``: Sonos 500 ms, measured by hand 21 Oct), else None (the consumer's own
@@ -93,6 +97,33 @@ def _write(doc: dict, dep: Optional[smconfig.Deployment] = None) -> None:
     _cache.pop(str(p), None)
 
 
+def browser_path(dep: Optional[smconfig.Deployment] = None) -> Path:
+    """Where the browsers' reported latencies are kept: runtime state of this machine, one file per deployment."""
+    return smconfig.state("sound", f"browser_latency.{(dep or smconfig.deployment()).id}.json")
+
+
+def _browser_read(dep: Optional[smconfig.Deployment] = None) -> dict:
+    """{output id: ms} as the browsers last reported ({} when nothing is stored)."""
+    p = browser_path(dep)
+    try:
+        stt = p.stat()
+        mt = (stt.st_mtime_ns, stt.st_size)
+        hit = _cache.get(str(p))
+        if hit and hit[0] == mt:
+            return dict(hit[1])
+        doc = json.loads(p.read_text(encoding="utf-8"))
+        doc = doc if isinstance(doc, dict) else {}
+        _cache[str(p)] = (mt, doc)
+        return dict(doc)
+    except (OSError, ValueError):
+        return {}
+
+
+def browser_ms(oid: str, dep: Optional[smconfig.Deployment] = None) -> Optional[float]:
+    """The output latency the browser playing ``oid`` last reported (None: never)."""
+    return _num(_browser_read(dep).get(oid))
+
+
 def _num(v: Any) -> Optional[float]:
     if isinstance(v, bool) or not isinstance(v, (int, float)) or v != v:
         return None
@@ -121,7 +152,7 @@ def effective_ms(oid: str, dep: Optional[smconfig.Deployment] = None, doc: Optio
     if d is None:
         # Never measured: the figure the browser that plays it reports (set_browser), so the page's lyrics and the
         # lights and screens (karaoke_feed, lyric_feed) use one delay, not the page its own and the rest 0.
-        d = _num(s.get("browser_ms"))
+        d = browser_ms(oid, dep)
     if d is None:
         return trim if s.get("trim_ms") else None
     return d + trim
@@ -177,17 +208,26 @@ def record(oid: str, delay_ms: float, *, method: str = "chirp", extra: Optional[
     return _update(oid, fn, dep)
 
 
-def set_browser(oid: str, ms: float, dep: Optional[smconfig.Deployment] = None) -> Optional[dict]:
+def set_browser(oid: str, ms: float, dep: Optional[smconfig.Deployment] = None) -> Optional[float]:
     """The output latency the browser playing ``oid`` reports (a screen's page, a phone): its delay while nothing is
-    measured. Written only when it moves by 5 ms or more (None: unchanged)."""
+    measured. Kept in this machine's runtime state (``browser_path``), never in the deployment's file. Written only
+    when it moves by 5 ms or more (None: unchanged)."""
+    if O.parse(oid) is None:
+        raise ValueError(f"not a sound output: {oid!r}")
     ms = round(max(0.0, min(2000.0, float(ms))), 1)
-    old = _num(sound(oid, dep).get("browser_ms"))
-    if old is not None and abs(old - ms) < 5:
-        return None
-
-    def fn(s: dict) -> dict:
-        return {**s, "browser_ms": ms}
-    return _update(oid, fn, dep)
+    with _lock:
+        doc = _browser_read(dep)
+        old = _num(doc.get(oid))
+        if old is not None and abs(old - ms) < 5:
+            return None
+        doc[oid] = ms
+        p = browser_path(dep)
+        p.parent.mkdir(parents=True, exist_ok=True)
+        tmp = p.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(doc, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+        os.replace(tmp, p)
+        _cache.pop(str(p), None)
+        return ms
 
 
 def set_trim(oid: str, trim_ms: float, dep: Optional[smconfig.Deployment] = None) -> dict:

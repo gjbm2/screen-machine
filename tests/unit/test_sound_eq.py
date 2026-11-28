@@ -9,6 +9,7 @@ from smsound import eq as EQ
 @pytest.fixture()
 def store(tmp_path, monkeypatch):
     monkeypatch.setattr("smsound.latency.path", lambda dep=None: Path(tmp_path) / "latency.json")
+    monkeypatch.setattr("smsound.latency.browser_path", lambda dep=None: Path(tmp_path) / "state" / "browser.json")
 
 
 def test_unset_is_flat_and_a_preset_sets_its_gains(store):

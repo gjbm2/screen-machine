@@ -45,7 +45,10 @@ sit beside the lights and screens:
 
 **The effective delay** is `delay_ms + trim_ms`. If nothing is measured, the kind's default applies (Sonos: 500 ms,
 measured by hand on 21 Oct, or the zone's older `start_ms`). Failing that it is `null`, and the player uses its own
-figure: a browser's reported output latency.
+figure: a browser's reported output latency. The page tells the app that figure (`PUT /sound/outputs/<id>/browser`)
+so the lights and the lyric feeds use it too; it is kept in this machine's runtime state
+(`~/.local/state/screen-machine/sound/browser_latency.<deployment>.json`), never in `latency.json`, because it
+moves with every page load and audio device.
 
 **What each output's delay means:**
 - **A screen:** from the display page's schedule (the server's clock) until the room hears it.

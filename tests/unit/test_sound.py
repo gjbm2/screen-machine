@@ -16,6 +16,7 @@ def lat(tmp_path, monkeypatch):
     p.write_text(json.dumps({"version": 2, "screens": {}, "sources": {},
                              "outputs": {"hue": {"intensity": {"rise": {"t50": 129.8}, "trim_ms": 0.0}}}}))
     monkeypatch.setattr(L, "path", lambda dep=None: p)
+    monkeypatch.setattr(L, "browser_path", lambda dep=None: tmp_path / "state" / "browser.json")
     return p
 
 
@@ -267,3 +268,21 @@ def test_a_screens_camera_measurement_is_what_the_renderer_reads(lat):
     assert any(r["key"] == "vj" and r["value_ms"] == 142.0 for r in L.overview()["screens"])
     with pytest.raises(ValueError):
         L.record_screen("vj", 0.0)
+
+
+def test_a_browsers_reported_latency_never_touches_the_deployments_file(lat):
+    """It moves with every page load and audio device, and latency.json is tracked in git (28 Nov: the laptop's file
+    flipped 68 <-> 76 ms and was never clean)."""
+    before = lat.read_bytes()
+    assert L.set_browser("screen:vj", 68) == 68.0 and L.set_browser("screen:vj", 76) == 76.0
+    assert L.set_browser("screen:vj", 78) is None                      # under 5 ms: not written
+    assert lat.read_bytes() == before
+    assert L.browser_ms("screen:vj") == 76.0 and L.effective_ms("screen:vj") == 76.0
+    assert L.describe("screen:vj")["source"] == "browser"
+    L.set_trim("screen:vj", 10)
+    assert L.effective_ms("screen:vj") == 86.0                         # the trim rides on it
+    L.record("screen:vj", 82)
+    assert L.effective_ms("screen:vj") == 92.0                         # a measurement wins
+    assert "browser_ms" not in lat.read_text()
+    with pytest.raises(ValueError):
+        L.set_browser("nonsense", 50)
