@@ -2,6 +2,8 @@
 "the resting state of any screens in karaoke mode [should] include a QR code for the user that opens the control
 ui"). KaraokeLayer draws it from /api/karaoke/now's ``join``.
 
+* The phones' tunnel while it is up (routes/phone_door.py, the laptop: venue Wi-Fi often keeps phones from the
+  laptop), + /karaoke.
 * ``.env`` VITE_APP_LAN_URL when it names a real host (finsbury: the friendly HTTPS name), + /karaoke.
 * Else (the laptop: its .env says localhost, which a phone can't open) this machine's LAN address, looked up fresh
   every LOOKUP_S because the laptop moves between networks: under WSL, the Windows adapter with a default gateway
@@ -43,7 +45,18 @@ def join_url() -> Optional[str]:
     return url
 
 
+def forget() -> None:
+    """The tunnel came or went: look again on the next ask."""
+    global _cached
+    with _lock:
+        _cached = (0.0, None)
+
+
 def _lookup() -> Optional[str]:
+    from routes import phone_door
+    tunnel = phone_door.url()
+    if tunnel:
+        return tunnel + PAGE
     base = (os.getenv("VITE_APP_LAN_URL") or os.getenv("VITE_URL") or "").strip().rstrip("/")
     host = urlparse(base).hostname if base else None
     if host and host not in _LOOPBACK:

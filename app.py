@@ -93,6 +93,14 @@ app.register_blueprint(auth_api, url_prefix=API_PREFIX)  # Google sign-in (docs/
 app.register_blueprint(screensaver_api, url_prefix=API_PREFIX)  # the Windows screensaver download (tools/screensaver/)
 app.register_blueprint(perf_api, url_prefix=API_PREFIX)  # GET /api/perf/gpu: who uses the GPU (utils/gpu_watch.py)
 app.register_blueprint(screen_notes_api, url_prefix=API_PREFIX)  # comments on what a screen showed
+
+
+@app.before_request
+def _phone_door_guard():
+    """Through the phones' tunnel, the karaoke panel only (routes/phone_door.py)."""
+    from routes import phone_door
+    return phone_door.guard(request)
+
 app.register_blueprint(show_notes_api, url_prefix=API_PREFIX)  # the owner's verdict on a song's show (the eval reads it)
 app.register_blueprint(routes.karaoke.karaoke_api, url_prefix=API_PREFIX)  # karaoke: songs, queue, player (docs/KARAOKE.md)
 app.register_blueprint(routes.sound.sound_api, url_prefix=API_PREFIX)  # sound outputs, latency, calibration (docs/SOUND.md)
@@ -298,6 +306,14 @@ if __name__ == '__main__':
         gpu_watch.start(_song_name)
     except Exception as e:
         error(f"gpu watch could not be started: {e}")
+
+    # Phones on Wi-Fi that keeps them from this machine: a Cloudflare quick tunnel to the karaoke panel (the
+    # deployment's phone_tunnel capability; routes/phone_door.py). Never blocks or breaks start-up.
+    try:
+        from routes import phone_door
+        phone_door.start()
+    except Exception as e:
+        error(f"phone tunnel could not be started: {e}")
 
     # Room control: room_service runs in this process on its own thread, event loop and LAN port
     # (the deployment's ports.room, 8700); this app door has no room routes. Never blocks or breaks start-up:

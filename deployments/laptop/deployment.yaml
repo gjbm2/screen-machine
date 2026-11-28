@@ -23,6 +23,7 @@ capabilities:
   blinds: false
   sonos: false
   karaoke: true      # docs/KARAOKE.md (owner, 25 Nov: the birthday karaoke on 5 Dec)
+  phone_tunnel: true   # routes/phone_door.py (owner, 28 Nov: venue Wi-Fi that keeps phones from the laptop)
 ports: {flask: 5000, overlay_ws: 8765, room: 8700, show_bus: 8701, stream: 8702, show: 8703, dot: 8704}
 host:
   fonts_dir: /mnt/c/Windows/Fonts

@@ -13,6 +13,7 @@ import { DockedPlayer } from "@/components/player/DockedPlayer";
 import { KaraokeHere } from "@/components/player/KaraokeHere";
 import { AppNav } from "@/components/nav/AppNav";
 import { AdminOnly } from "@/components/auth/AdminOnly";
+import { VIA_TUNNEL } from "@/shared/viaTunnel";
 
 // Each page is its own chunk: the TVs' /display/<screen> no longer loads the generator, Room, Music and the rest.
 // A deploy replaces dist/, so a tab opened before it asks for chunks that are gone: reload once to pick up the new build.
@@ -60,6 +61,21 @@ const StartPage = page(() => import("./pages/Settings/Start"));
 const KaraokePage = page(() => import("./pages/Karaoke"));
 
 const queryClient = new QueryClient();
+
+// Through the phones' tunnel: the karaoke panel at every address, and nothing else (src/shared/viaTunnel.ts)
+const TunnelApp = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <Suspense fallback={null}>
+        <Routes>
+          <Route path="*" element={<KaraokePage />} />
+        </Routes>
+      </Suspense>
+    </TooltipProvider>
+  </QueryClientProvider>
+);
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -115,4 +131,4 @@ const App = () => (
   </QueryClientProvider>
 );
 
-export default App;
+export default VIA_TUNNEL ? TunnelApp : App;
