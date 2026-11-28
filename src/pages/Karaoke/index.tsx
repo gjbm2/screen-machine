@@ -77,7 +77,16 @@ import {
   X,
   Globe,
   MessageSquareText,
+  MoreHorizontal,
+  Check,
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { SongShowNote } from "@/components/show/SongShowNote";
 import { AppMenu } from "@/components/nav/AppMenu";
 import { PageHeader } from "@/components/nav/PageHeader";
@@ -1076,22 +1085,9 @@ function LibraryRow({
             <RotateCcw className="h-4 w-4" />
           </IconBtn>
         ) : (
-          <>
-            {song.status !== "ready" && <RestartBtn song={song} act={act} />}
-            {song.status === "ready" && <RefineBtn song={song} act={act} />}
-            {song.status === "ready" && <DuetBtn song={song} act={act} />}
-            <AtButtons onAt={(at) => addToQueue(song, at)} />
-          </>
+          <AddBtn onClick={() => addToQueue(song, "end")} />
         )}
-        <IconBtn
-          label="Delete from the library"
-          quiet
-          onClick={() =>
-            window.confirm(`Delete “${song.title}” from the library?`) && act(() => karaoke.remove(song.id))
-          }
-        >
-          <Trash2 className="h-4 w-4" />
-        </IconBtn>
+        <RowMenu song={song} act={act} onNext={failed ? undefined : () => addToQueue(song, "next")} />
       </RowFace>
     </li>
   );
@@ -1941,6 +1937,78 @@ function SectionWord({ children }: { children: ReactNode }) {
   );
 }
 
+/** A library row's one visible action (owner, 28 Nov: "60% of the width is your icon shit ... put the rest behind
+ *  ..."): Add to the queue. Everything else is in RowMenu. */
+function AddBtn({ onClick }: { onClick: () => void }) {
+  return (
+    <Button size="sm" className="h-9 shrink-0 rounded-lg px-2.5 sm:px-3" onClick={onClick} aria-label="Add to the queue">
+      <ListEnd className="h-4 w-4 sm:mr-1" />
+      <span className="hidden sm:inline">Add</span>
+    </Button>
+  );
+}
+
+/** The rest of a library row's actions, behind "…": Up next, the duet switch, the careful lyrics pass, prepare
+ *  again, delete. */
+function RowMenu({ song, act, onNext }: { song: KaraokeSong; act: Act; onNext?: () => void }) {
+  const ready = song.status === "ready";
+  const duet = !!song.duet;
+  const found = song.duet_found?.found ?? false;
+  const r = song.refine?.state;
+  const refining = r === "waiting" || r === "working";
+  const lyrics = !!song.lyrics && song.lyrics.kind !== "none";
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="h-10 w-9 shrink-0 rounded-lg" aria-label="More">
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {onNext && (
+          <DropdownMenuItem onSelect={onNext}>
+            <ListStart className="mr-2 h-4 w-4" /> Up next
+          </DropdownMenuItem>
+        )}
+        {ready && (
+          <DropdownMenuItem
+            onSelect={() =>
+              act(() => karaoke.setDuet(song.id, !duet === found ? null : !duet), duet ? "Not a duet" : "A duet")
+            }
+          >
+            <Users className="mr-2 h-4 w-4" /> Duet
+            {duet && <Check className="ml-auto h-4 w-4 text-primary" />}
+          </DropdownMenuItem>
+        )}
+        {ready && lyrics && (
+          <DropdownMenuItem disabled={refining} onSelect={() => refineAsk(song, act)}>
+            <WandSparkles className="mr-2 h-4 w-4" /> {refining ? "Timing lyrics…" : "Time lyrics carefully"}
+          </DropdownMenuItem>
+        )}
+        {!ready && song.status !== "failed" && (
+          <DropdownMenuItem
+            onSelect={() =>
+              window.confirm(`Prepare “${song.title}” again from the start?`) &&
+              act(() => karaoke.retry(song.id), `Preparing “${song.title}” again`)
+            }
+          >
+            <RotateCcw className="mr-2 h-4 w-4" /> Prepare again
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          className="text-red-700"
+          onSelect={() =>
+            window.confirm(`Delete “${song.title}” from the library?`) && act(() => karaoke.remove(song.id))
+          }
+        >
+          <Trash2 className="mr-2 h-4 w-4" /> Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
 /** Add (to the end of the queue: singers pick a song and wait their turn), with Up next (the exception: it jumps the
  *  queue) and, for a song not yet in the library, Library only (get it ready for later, not queued). */
 function AtButtons({ onAt, onLibrary }: { onAt: (at: QueueAt) => void; onLibrary?: () => void }) {
@@ -2175,42 +2243,6 @@ const refineAsk = (song: KaraokeSong, act: Act) =>
 /** Lyrics off (owner, 27 Nov: "a way to refer a song for 2ndary processing -- e.g. more carefully time lyrics"): the
  *  careful pass in the background (every voice taken out, heard, the whole lyrics timed at once); the song plays on
  *  meanwhile and the new timing comes in by itself, even mid-song. */
-/** Duet or not: lit for a duet (found, or set by a person); a click says otherwise, and saying what was found
- *  hands it back to the finding. */
-function DuetBtn({ song, act }: { song: KaraokeSong; act: Act }) {
-  const on = !!song.duet;
-  const found = song.duet_found?.found ?? false;
-  const v = song.duet_found?.voices ?? [];
-  const label = on
-    ? `Duet${v.length === 2 && found ? `: ${v[0]} & ${v[1]}` : ""} (click: not a duet)`
-    : "Not a duet (click: it is one)";
-  return (
-    <IconBtn
-      label={label}
-      quiet={!on}
-      onClick={() => act(() => karaoke.setDuet(song.id, !on === found ? null : !on), on ? "Not a duet" : "A duet")}
-    >
-      <Users className={cn("h-4 w-4", on && "text-primary")} />
-    </IconBtn>
-  );
-}
-
-function RefineBtn({ song, act }: { song: KaraokeSong; act: Act }) {
-  const st = song.refine?.state;
-  if (!song.lyrics || song.lyrics.kind === "none") return null;
-  const busy = st === "waiting" || st === "working";
-  return (
-    <IconBtn
-      label={busy ? "The careful pass over its lyrics is on its way" : "Lyrics off? Time them carefully"}
-      quiet={!busy}
-      disabled={busy}
-      onClick={() => refineAsk(song, act)}
-    >
-      <WandSparkles className={cn("h-4 w-4", st === "working" && "animate-pulse text-primary")} />
-    </IconBtn>
-  );
-}
-
 /** The playing song's line under its title: refer it, how it is going, Undo. */
 function RefineLine({ song, act }: { song: KaraokeSong; act: Act }) {
   if (!song.lyrics || song.lyrics.kind === "none") return null;
