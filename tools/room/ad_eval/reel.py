@@ -67,7 +67,7 @@ def _diff(a: np.ndarray, b: np.ndarray) -> float:
 
 
 def _words(name: Any) -> str:
-    return str(name or "").replace("-", " ")
+    return str(name or "").replace("-", " ").replace("_", " ")
 
 
 def said(tl: dict, a: float, b: float) -> list[dict]:
