@@ -14,8 +14,8 @@ The checks (each on the key's times; a beat is the key's median beat, the tolera
               its line-up plays at least as many groups as any before it
   dark        the lamps don't sit dark (under 0.03 for 1.5 s) while the song plays, outside its stops and its fade
   stop        a stop (the band drops out) takes the lamps down to half what they were
-  ending      a cold or ringing ending goes dark within 1.5 s of the last hit; a fade is not dark before it is
-              most of the way out, and dark by 2 s after it ends
+  ending      where the lamps go dark and stay dark: within 1.5 s of the last hit for a cold or ringing ending;
+              for a fade, in its second half and by 2 s after it ends (as score.py's ending, v4)
 
     ~/.venvs/sm-show/bin/python tools/room/ad_eval/checks.py <run dir> [song id ...]    failures, song by song
 """
@@ -201,10 +201,18 @@ def run(tl: dict, ref: dict) -> list[dict]:
         med = float(np.median(ls[int(t_lo / HOP):int(t_hi / HOP)])) if t_hi > t_lo + 5 else float(np.median(ls))
         thr = max(0.02, 0.3 * med)
         style = end_m.get("style") or "cold"
-        t_dark = next((i * HOP for i in range(int((last_hit - 5.0) / HOP), len(ls)) if ls[i] < thr), None)
+        # where the lamps go dark and stay dark (a dip on the last hit that comes back up is not the end: score v4)
+        lo = max(0, int((last_hit - 5.0) / HOP))
+        t_dark = None
+        for i in range(len(ls) - 1, lo - 1, -1):
+            if ls[i] >= thr:
+                t_dark = (i + 1) * HOP if i + 1 < len(ls) else None
+                break
+        else:
+            t_dark = lo * HOP
         if style == "fade":
             f0, f1 = float(end_m["t"]), float(end_m.get("end", end_m["t"]))
-            soon = f0 + 0.7 * (f1 - f0)
+            soon = f0 + 0.5 * (f1 - f0)                         # dark anywhere in the fade's second half
             ok = t_dark is not None and soon <= t_dark <= f1 + 2.0
             if t_dark is None:
                 why = f"the fade ends at {_clock(f1)} and the lamps never go dark"
