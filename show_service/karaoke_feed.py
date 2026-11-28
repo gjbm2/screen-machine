@@ -641,6 +641,12 @@ class KaraokeFeed:
         j = grid.nearest(grid.snap_downbeat(start))
         return j
 
+    def resting(self) -> bool:
+        """The room is in a karaoke mode with no song chosen (Flask's /api/songs/now ``rest``; owner, 28 Nov: "it
+        should just be in a gentle holding pattern"): the quiet background music between singers is not a song."""
+        o = self._fresh()
+        return bool(o and o.get("rest") is True and not self.now_playing())
+
     def playing(self) -> bool:
         """A song plays, or the speaker-delay calibration runs (routes/karaoke/calibrate.py: it times chirps with the
         mic): the mic's Karaoke want."""

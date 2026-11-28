@@ -732,6 +732,7 @@ class Show:
             if self.clock is not None and hasattr(self.clock, "set_override"):
                 self.clock.set_override(self.karaoke.clock_override)   # a song's own beats drive music.clock
             self.ctx.karaoke_energy = self.karaoke.energy_ahead          # its measured shape, ahead (director)
+            self.ctx.room_rest = self.karaoke.resting                    # no song chosen: a holding pattern
             self.modules["karaoke"] = "ok"
         except Exception as e:
             self.karaoke = None

@@ -295,6 +295,7 @@ LOG_MEM = 500
 LOG_MAX_BYTES = 32 << 20
 KARAOKE_LAMP_AHEAD_S = 0.25        # a karaoke song's file energy is read this far ahead for the lamps (a tick + their latency)
 KARAOKE_FILE_W = 0.8               # ... and weighs this much against the mic's onsets (starting point)
+REST_IGNORES = ("section_change", "build", "drop", "drop_armed", "breakdown")   # music events a resting room ignores
 FX_PER_MOMENT = 2                  # light effects: groups one moment may light (lights.programs.effects_per_moment)
 FX_BIG_PER_MOMENT = 3              # ... for a big moment (a drop, the last chorus: GAP_FREE_TRIGGERS)
 FX_ROOM_MAX = 3                    # ... running in the whole room at once (lights.programs.effects_room_max)
@@ -1899,7 +1900,9 @@ class Director:
         no_audio = not fresh and self.lv <= 0.0 and not playing
         # a known song plays (karaoke_on): never "quiet" (the file says it plays, whatever the mic hears); a Sonos
         # song talked over relaxes as the feel says; a karaoke song never does (the voices are singing)
-        if karaoke_on:
+        if self._resting():                               # no song chosen: what the mic hears is background music
+            relax_want = 1.0
+        elif karaoke_on:
             relax_want = 1.0 if (not self._singing() and vs["relax_on_talk"] and self._situation("talking")) else 0.0
         else:
             relax_want = 1.0 if (no_audio or (vs["relax_on_talk"] and (self._situation("quiet")
@@ -2311,6 +2314,9 @@ class Director:
         if at_ms is None:
             return
         self.sec_stats["events"][kind] = self.sec_stats["events"].get(kind, 0) + 1
+        if kind in REST_IGNORES and self._resting():
+            self.sec_stats["events"]["rest_ignored"] = self.sec_stats["events"].get("rest_ignored", 0) + 1
+            return                                        # the background music's sections, builds, drops: not a show
         self._light_event(kind, ev, at_ms / 1000.0, now_s, grid)   # docs/LIGHTS.md: the flow's events, light effects
         self._ensemble_event(kind, ev, at_ms / 1000.0, now_s, grid)   # docs/ENSEMBLE.md: hits, swells, breakdowns
         if kind == "track_end_armed":                     # the composer's fade cue (README S5.18); a call-off ends it
@@ -2675,6 +2681,15 @@ class Director:
         if is_song(np_) and np_.get("state") == "playing":
             return np_
         return None
+
+    def _resting(self) -> bool:
+        """No song chosen in a karaoke mode (ctx.room_rest; owner, 28 Nov: the pre-state "should just be in a gentle
+        holding pattern"): the quiet music between songs is background, not a song to perform."""
+        fn = getattr(self.ctx, "room_rest", None)
+        try:
+            return bool(fn()) if fn is not None else False
+        except Exception:                                 # noqa: BLE001
+            return False
 
     def _singing(self) -> bool:
         """A karaoke song plays: people sing, so the mic's voices aren't talk."""
@@ -4145,7 +4160,7 @@ class Director:
         if isinstance(np_, dict) and np_.get("state") == "playing":
             pos = _num(np_.get("pos_s"))
             return "lead_in" if pos is not None and pos < 0.0 else "song"
-        if isinstance(np_, dict) or self._relaxed:           # paused, or nothing sounding
+        if isinstance(np_, dict) or self._relaxed or self._resting():   # paused, nothing sounding, or no song chosen
             waited = now_s - self._moment_since if self._moment in ("waiting", "lull") else 0.0
             return "lull" if waited >= float(self._moments_cfg["lull_after_s"]) or self._moment == "lull" \
                 else "waiting"
@@ -4847,7 +4862,7 @@ class Director:
             nl = ens.next_look()                          # a look change that won't land: its decision goes too
             if nl is not None and nl != f"L{self.look_n}" and (self.pending is None or nl != f"L{self.look_n + 1}"):
                 ens.cancel_look(nl, now_s)
-            out = ens.tick(now_s, grid, active=self.pal_on and not self.house and not self.low,
+            out = ens.tick(now_s, grid, active=self.pal_on and not self.house and not self.low and not self._resting(),
                            accents=vs["accents"], beat_lock=bool(vs["beat_lock"]),
                            energy=float(self.music.get("energy") or 0.0), direction=self.direction, flow=self._flow,
                            lead_s=self._lead_s(), held=self.keep_until is not None)

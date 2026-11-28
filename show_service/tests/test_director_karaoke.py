@@ -205,3 +205,26 @@ def test_with_no_brief_a_lift_is_what_is_heard_coming(tmp_path):
         d._phase_eff, d._build_progress = (lambda now_s, p=phase: p), (lambda b=bp: b)
         d._arrive_heard(ev, r.t + 6.0, r.t, grid)
         assert d._arrival is None, (ev, bp, phase, armed)
+
+
+def test_no_song_chosen_is_a_holding_pattern_not_a_show_of_the_background_music(tmp_path):
+    """Owner, 28 Nov: "feels like we're playing entire music scenes etc. during pre-state (i.e. no actively selected
+    song) ... it should just be in a gentle holding pattern". Between singers the karaoke screen plays quiet music; the
+    mic hears it, but no song is chosen (Flask's rest): the room waits, relaxes, and ignores its sections and drops."""
+    r = Rig(tmp_path)
+    r.d.set_target("alpha")
+    r.ctx.now_playing = lambda: None
+    r.ctx.room_rest = lambda: True
+    r.run(3.0)
+    assert r.d._moment in ("waiting", "lull")
+    n = r.d.sec_stats["events"].get("section_change", 0)
+    r.event("section_change", r.t + 0.5)
+    r.event("drop", r.t + 1.0)
+    r.run(1.0)
+    assert r.d.sec_stats["events"]["rest_ignored"] >= 2
+    assert not [e for e in r.d._log if e.get("kind") in ("section_look", "token")]
+    r.run(40.0)
+    assert r.d._relaxed
+    r.ctx.room_rest = lambda: False                                # a song is chosen: the show again
+    r.run(3.0)
+    assert not r.d._resting()
