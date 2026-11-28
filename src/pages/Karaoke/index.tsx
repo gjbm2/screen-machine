@@ -118,7 +118,7 @@ import { LightsPanel } from "@/components/room/LightsNow";
 import { roomApi } from "@/components/room/roomLink";
 import { SongPictures } from "./SongPictures";
 import { LoopbackToggle, RoomMicCheck } from "./RoomMic";
-import { Roster, SingerAsk, SingerTag, askSingers, setPhotos } from "./Singer";
+import { Roster, SingerAsk, SingerTag, askSingers, setPhotos, setSingerFor } from "./Singer";
 import { OutputTiming } from "@/components/sound/OutputTiming";
 import { OutputEq } from "@/components/sound/OutputEq";
 import { SoundOutputSelect } from "@/components/sound/SoundOutputSelect";
@@ -171,6 +171,10 @@ export default function KaraokePage() {
   const [st, setSt] = useState<KaraokeState | null>(null);
   // One singer's songs only in the queue (owner, 28 Nov: from their chip in Singers), else null: everyone's.
   const [only, setOnly] = useState<string | null>(null);
+  useEffect(() => {
+    setSingerFor(only);
+    return () => setSingerFor(null);
+  }, [only]);
   const [err, setErr] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);

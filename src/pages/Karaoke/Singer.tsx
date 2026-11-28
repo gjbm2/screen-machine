@@ -320,7 +320,14 @@ let asker: ((title: string) => Promise<string[] | null>) | null = null;
 
 /** Ask who sings a song about to be queued: the names ([] for nobody), or null if the person closed it (don't add). */
 export const askSingers = (title: string): Promise<string[] | null> =>
-  asker ? asker(title) : Promise.resolve(singersNow());
+  singerFor ? Promise.resolve([singerFor]) : asker ? asker(title) : Promise.resolve(singersNow());
+
+// The queue shows one singer's songs (Their songs): a song added meanwhile is theirs, unasked (owner, 28 Nov: "if I
+// add a song while filtered for a person then they should be singer by default ... no need to show the ... modal").
+let singerFor: string | null = null;
+export const setSingerFor = (n: string | null) => {
+  singerFor = n;
+};
 
 const remember = (v: string[]) => {
   try {
