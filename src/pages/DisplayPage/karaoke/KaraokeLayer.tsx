@@ -27,6 +27,7 @@ import {
 } from "@/shared/api/karaoke";
 import { sound } from "@/shared/api/sound";
 import { JoinCard, LOW_FROM_S, NEXT_UP_S, NextUp, namesText } from "./JoinOverlays";
+import { Presence } from "./Presence";
 
 const POLL_MS = 1000;
 const LYRICS_RETRY_MS = 4000;
@@ -647,25 +648,35 @@ export function KaraokeLayer({ screen, device }: { screen?: string; device?: str
             doc={lyrics?.id === song.id ? lyrics.doc : null}
             highlight={(now.settings.highlight as Highlight) ?? "words"}
             leadIn={song.lead_in_s ?? 0}
+            singers={now.singers}
           />
         </>
       )}
-      {!active && now.up_next && (
-        <UpNext title={now.up_next.title} artist={now.up_next.artist} singer={namesText(now.up_next.singers)} />
-      )}
-      {resting && joinUrl && <JoinCard url={joinUrl} />}
-      {nextUp > 0.001 && now.up_next && (
-        <NextUp
-          title={now.up_next.title}
-          artist={now.up_next.artist}
-          singers={now.up_next.singers}
-          opacity={nextUp}
-          left={left != null ? Math.min(1, left / NEXT_UP_S) : null}
-          inS={left != null && left > NEXT_UP_S ? left : null}
-        />
-      )}
-      {low > 0.001 && joinUrl && <JoinCard url={joinUrl} small opacity={low} />}
-      {soundHeld && <SoundPrompt />}
+      {/* every overlay comes and goes through Presence: it rises or slides in out of a blur, and sinks back out */}
+      <Presence show={!active && !!now.up_next}>
+        {now.up_next && <UpNext title={now.up_next.title} artist={now.up_next.artist} singer={namesText(now.up_next.singers)} />}
+      </Presence>
+      <Presence show={!!(resting && joinUrl)} from="right">
+        {joinUrl && <JoinCard url={joinUrl} />}
+      </Presence>
+      <Presence show={nextUp > 0.001 && !!now.up_next} from="right">
+        {now.up_next && (
+          <NextUp
+            title={now.up_next.title}
+            artist={now.up_next.artist}
+            singers={now.up_next.singers}
+            opacity={1}
+            left={left != null ? Math.min(1, left / NEXT_UP_S) : null}
+            inS={left != null && left > NEXT_UP_S ? left : null}
+          />
+        )}
+      </Presence>
+      <Presence show={low > 0.001 && !!joinUrl} from="right">
+        {joinUrl && <JoinCard url={joinUrl} small />}
+      </Presence>
+      <Presence show={soundHeld} from="centre">
+        <SoundPrompt />
+      </Presence>
     </div>
   );
 }
