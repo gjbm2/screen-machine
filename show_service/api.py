@@ -643,6 +643,8 @@ JOG_UI: dict[str, Any] = {"send_hz": 20.0, "idle_s": 60.0, "nudge_deg": {"fine":
 #: POST .../setup's keys. PASS_KEYS go to fixtures.SetupStore.patch as sent (it validates them).
 SETUP_BODY_KEYS: tuple[str, ...] = ("home", "beam", "limit", "limits", "slots", "max_speed", "range", "jog_flip",
                                     "strobe_hz_max", "lean_deg", "turn_deg", "label")
+#: what a planned bar's part (not a light yet) can keep: how it points on the bar (owner, 28 Nov)
+PLANNED_SETUP_KEYS = frozenset({"lean_deg", "turn_deg"})
 PASS_KEYS: tuple[str, ...] = ("slots", "max_speed", "range", "jog_flip", "strobe_hz_max", "lean_deg", "turn_deg", "label")
 BEAM_ATTRS: tuple[str, ...] = ("zoom", "focus", "iris", "frost")     # setup ``beam: "here"`` keeps these
 AXES: tuple[str, ...] = ("pan", "tilt")
@@ -2006,6 +2008,16 @@ class Api:
             return None
         return _err(404, "unknown_fixture", f"No light {fid!r} in the rig.", choices=sorted(known))
 
+    @staticmethod
+    def _planned_part(brain: Any, fid: str) -> bool:
+        """``fid`` is a part of a bar in the room (space.py bars), whether or not it is a light yet."""
+        try:
+            from . import space as spacemod
+            bars = _d((spacemod.shared().view() or {}).get("bars"))
+        except Exception:                                # noqa: BLE001
+            return False
+        return any(pt.get("id") == fid for b in bars.values() for pt in _d(_d(b).get("parts")).values())
+
     def _rig_for(self, brain: Any, fid: str) -> tuple[Any, Optional[web.Response]]:
         """(the rig, None), or (None, the 503 / 404 answer)."""
         rig = _components(brain).get(RIG)
@@ -2171,7 +2183,8 @@ class Api:
             return _err(400, "bad_request", f"A light doesn't keep {', '.join(extra)}.", choices=list(SETUP_BODY_KEYS))
         fid = request.match_info["id"]
         rig, no = self._rig_for(brain, fid)
-        if no is not None:
+        if no is not None and not (rig is not None and self._planned_part(brain, fid)
+                                   and set(body) <= PLANNED_SETUP_KEYS):
             return no
         store = self._setup_of(rig)
         if store is None:
@@ -2438,14 +2451,25 @@ class Api:
             v["lean_rule_deg"] = spacemod.LEAN_RULE_DEG
             # each bar part as the page edits it: its name, and how it points now (its own tilt and turn from its
             # setup, else the layout's; a laser with neither, the rule's)
+            # A planned part (no light yet; owner, 28 Nov: "gigbar lasers aren't adjustable?") is set up the same
+            # way: its setup is kept under its id in the setup file (fixtures.SetupStore keeps a light it doesn't
+            # know), its laser spread is its layout type's.
+            from .outputs import Rig as _Rig
+            store = self._setup_of(rig) if rig is not None else None
+            try:
+                kept = _d(store.read()) if store is not None else {}
+            except Exception:                             # noqa: BLE001
+                kept = {}
+            types = _d(_d(self._view_of(rig)).get("types"))
             bars = copy.deepcopy(v.get("bars") or {})
             for b in bars.values():
                 for pt in b["parts"].values():
                     r = rows.get(pt["id"]) if isinstance(rows.get(pt["id"]), dict) else {}
-                    su = r.get("setup") or {}
+                    su = r.get("setup") or ({} if r else _d(kept.get(pt["id"])))
+                    spread = r.get("spread_deg") if r else _Rig._spread_deg(_d(types.get(pt.get("type"))))
                     lean = su.get("lean_deg", pt.get("lean_deg"))
-                    if lean is None and r.get("spread_deg"):
-                        lean = spacemod.LEAN_RULE_DEG - float(r["spread_deg"]) / 2.0
+                    if lean is None and spread:
+                        lean = spacemod.LEAN_RULE_DEG - float(spread) / 2.0
                     pt["label"] = r.get("label") or pt["id"]
                     pt["aim"] = None if lean is None or pt.get("head") else {
                         "lean_deg": float(lean), "turn_deg": float(su.get("turn_deg", pt.get("turn_deg") or 0.0)),
@@ -2599,17 +2623,18 @@ class Api:
                                                                          body.get("groups"), body.get("label")))
 
     async def _space_bar_put(self, request: web.Request, brain: Any) -> web.Response:
-        """PUT /api/v1/rig/space/bars/{name} ``{at?: [x, y, z], facing_deg?, layout?, label?}`` -> the bar: where a
+        """PUT /api/v1/rig/space/bars/{name} ``{at?: [x, y, z], facing_deg?, layout?, label?, tags?}`` -> the bar: where a
         light bar's middle is, its height (at[2]) and which way it faces; its parts follow. A key left out keeps."""
         body, bad = await self._body(request)
         if bad is not None:
             return bad
-        keys = ("at", "facing_deg", "layout", "label")
+        keys = ("at", "facing_deg", "layout", "label", "tags")
         if not isinstance(body, dict) or not body or any(k not in keys for k in body):
             return _err(400, "bad_request", 'A bar is {"at": [x, y, z], "facing_deg": 90}.', choices=list(keys))
         name = request.match_info["name"]
         return await self._space_write(brain, lambda st: st.set_bar(name, body.get("at"), body.get("facing_deg"),
-                                                                    body.get("layout"), body.get("label")))
+                                                                    body.get("layout"), body.get("label"),
+                                                                    body.get("tags")))
 
     async def _space_bar_delete(self, request: web.Request, brain: Any) -> web.Response:
         name = request.match_info["name"]

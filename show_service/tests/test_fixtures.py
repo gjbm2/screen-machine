@@ -1029,3 +1029,14 @@ def test_the_real_setup_file_reads():
     assert doc["version"] == 1 and isinstance(doc["fixtures"], dict)
     v = fx.load(lamps=LAMPS, looks=SHOW.get("looks"), added_path=contract.FIXTURES_ADDED_FILE, setup_path=p)
     assert v["error"] is None and not [x for x in v["problems"] if x.startswith(fx.SETUP_NAME)], v["problems"]
+
+
+def test_a_light_added_with_tags_keeps_them(hand):
+    """A planned bar's part, connected (Light setup › Room), is added with its tags."""
+    fid, probs, v = registrar(hand).add({"id": "bar-a.par1", "label": "Bar A par 1", "type": "generic-rgbw",
+                                         "node_ip": "192.0.2.10", "universe": 1, "address": 1,
+                                         "tags": ["bar-a", "par", "par"]})
+    assert fid == "bar-a.par1" and added(hand)["fixtures"][fid]["tags"] == ["bar-a", "par"]
+    with pytest.raises(fx.Refused):
+        registrar(hand).add({"label": "x", "type": "generic-rgbw", "node_ip": "192.0.2.10", "universe": 1,
+                             "address": 9, "tags": ["Not A Tag"]})

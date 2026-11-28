@@ -88,3 +88,18 @@ def test_which_way_a_fixed_light_points_from_its_tilt_and_turn():
     assert [round(x, 3) for x in sp.aim_dir(front, 0.0)] == [0.0, 0.0, 1.0]          # straight up
     assert [round(x, 3) for x in sp.aim_dir(front, 90.0)] == [0.0, 1.0, 0.0]         # level, ahead
     assert [round(x, 3) for x in sp.aim_dir(front, 90.0, 90.0)] == [-1.0, 0.0, 0.0]  # level, to the bar's right (west)
+
+
+def test_a_connected_bar_part_takes_the_bars_tags_and_its_layout_parts():
+    """owner, 28 Nov: a planned bar is "ready to go when attached": its parts carry the tags the groups and scenes
+    select by (tag:bar-a, tag:spot-1), the bar's then the layout part's, each once."""
+    lay = {"gigbar": {"parts": {"spot1": {"along": -0.3, "head": True, "tags": ["gigbar", "spot", "spot-1"]},
+                                "laser": {"along": 0.0, "tags": ["gigbar", "laser", "Bad Tag"]}}}}
+    hand = {"version": 1, "room": {"size": [5.0, 10.0, 4.0]}, "layouts": lay,
+            "bars": {"a": {"at": [4.6, 9.6, 2.5], "facing_deg": 0, "layout": "gigbar", "tags": ["bar-a", "gigbar"]}}}
+    v = sp.build_view(hand, None)
+    b = v["bars"]["a"]
+    assert b["tags"] == ["bar-a", "gigbar"]
+    assert b["parts"]["spot1"]["tags"] == ["bar-a", "gigbar", "spot", "spot-1"]
+    assert b["parts"]["laser"]["tags"] == ["bar-a", "gigbar", "laser"]
+    assert any("'Bad Tag' isn't a tag" in p for p in v["problems"])
