@@ -260,6 +260,31 @@
      "hue.sw"
     ]
    }
+  },
+  "sonos:drawing-room": {
+   "sound": {
+    "delay_ms": 805.0,
+    "method": "chirp",
+    "measured_at": "2026-11-28T11:02:46+00:00",
+    "spread_ms": 13.8,
+    "agree": 7,
+    "used": 7,
+    "of": 10,
+    "readings_ms": [
+     323,
+     324,
+     970,
+     305,
+     319,
+     303,
+     288,
+     323,
+     305,
+     337
+    ],
+    "peak_ratio": 309.8,
+    "mic": "room-mic"
+   }
   }
  },
  "sources": {}
