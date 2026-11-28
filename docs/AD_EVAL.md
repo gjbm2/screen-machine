@@ -171,6 +171,23 @@ struck through with its commit.
 5. **Look again at contour and sections** once the blind pairs have data: do they reward artistry, or only following
    loudness? A change bumps SCORE_VERSION.
 6. **Eval issues from the nightly.** Fix the keys and references the morning report flags.
+   **28 Nov, the first night's six:**
+   - (4) **Briefs off their lines.** The AI now names each section's first lyric line (its number and first words),
+     and that line's time is the start (brief VERSION 2; all 131 songs briefed again). Within 1 s of the key's
+     boundaries on the 21 songs: 124 → 138 of 190 (Hallelujah 3 → 7 of 9). What still differs is the AI reading the
+     structure differently, not timing.
+   - (2) **The first section never announced.** A plan read at the song's start counted a section at 0 as passed.
+     The section under way within PLAN_OPEN_S (6 s) of the start is now announced on the next bar line (structure.py).
+   - (3) **Valerie's beats octave-doubled.** The beat tracker's ceiling is now 185 bpm (Happy, at 160, is the set's
+     fastest real tempo). Valerie: 214 → 105 bpm.
+   - (1) **Dancing Queen live gated to 0.** A limit with nothing to measure now counts as met (SCORE_VERSION 4). The
+     show itself never changed look in that song live: item 4.
+   - (5) **Endings.** Dark is now where the lamps go down and stay down: Hallelujah's lamps dipped on its last hit
+     at 223 s while the song sang on to 269, which was the "37 s late" end, not the key. On a record's fade, dark
+     anywhere in the fade's second half is on time. Hey Jude's coda is one section (its splits were the fade, cut
+     in steps). Rescored, the first night: karaoke ending 0.52 → 0.97; the controls still lose on it (late 0.12,
+     backwards 0.05).
+   - (6) The keep rule: f2's.
 7. **A song's moments (27 Nov).** **Built:**
    - the detector, which finds stabs, stops, drum sections and the ending (cold, ring or fade);
    - the recipes and per-idiom budgets in config/live/moments.yaml, performed by director._moments_tick;
@@ -182,7 +199,7 @@ struck through with its commit.
    **Measured (28 Nov, 21 songs, 3 seeds):** moments on against off: overall 0.430 → 0.457, moments 0.21 → 0.79,
    ending 0.47 → 0.52 (cold and ring-out endings now land: Uptown Funk 0.45 → 0.95, Happy 0.63 → 0.96). The rest is
    within the noise. Fade-outs went dark about 4.5 s early on a straight fade; moments.yaml's `curve: 3` fixed that.
-   **Eval issue:** Hallelujah's key puts its end about 37 s late.
+   (Hallelujah's "late end" was the ending measure's, fixed in item 6.)
 
    Still to do:
    - answer **drum sections** (a harder pulse for their bars wants its own look change);

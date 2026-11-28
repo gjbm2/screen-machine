@@ -44,8 +44,11 @@ import design as design_mod  # noqa: E402
 import form as form_mod  # noqa: E402
 
 #: What ``overall`` means. 2 (27 Nov 2026): goals x gate; form, contrast, proportion, arc and peak in; snap, climax,
-#: coherence and design out of the mean; sections weighted by the size of each boundary.
-SCORE_VERSION = 3
+#: coherence and design out of the mean; sections weighted by the size of each boundary. 3: moments. 4 (28 Nov): a
+#: limit with nothing to measure counts as met (Dancing Queen live: no look change all song left the gate as the one
+#: moving scene's stillness, 0, and the song 0 whatever its goals; nightly eval issue 1). The ending: dark is where
+#: the lamps go down and stay down, and on a fade anywhere in its second half is on time (issue 5).
+SCORE_VERSION = 4
 LIGHT_KINDS = ("light_scene", "lineup", "light_program")
 DEFAULT_WEIGHTS = {
     "weights": {"beat": 1.0, "contour": 1.0, "sections": 1.0, "form": 1.0, "contrast": 1.0, "proportion": 1.0,
@@ -274,11 +277,22 @@ def score(tl: dict, ref: dict, W: Optional[dict] = None) -> dict:
     tail_t = np.arange(0.0, end + 6.0, hop)
     tail = _grid(out.get("lamp_level") or [], o_hop, o_t0, tail_t)
     tail = _smooth(tail, 1.0, hop)
-    dark = [t for t, v in zip(tail_t, tail) if t >= t_after and v < float(W["dark_share"]) * max(1e-6, med)]
+    # dark: from where the lamps go down and stay down (a dip on the last hit, with the song going on, is not the
+    # end: Hallelujah's lamps dipped at 223 s, its last strong hit, and the song sings on to 269 s)
+    lit = [t for t, v in zip(tail_t, tail) if t >= t_after and v >= float(W["dark_share"]) * max(1e-6, med)]
+    after = [t for t in tail_t if t >= t_after and (not lit or t > lit[-1])]
+    # on a record's fade the end is a stretch, not a moment: dark anywhere from half way down the fade to its end
+    # is on time (Dancing Queen's 14.5 s fade: dark 5 s before the last of it scored 0)
+    fade = next((x for x in ref.get("moments") or () if isinstance(x, dict) and x.get("kind") == "end"
+                 and x.get("style") == "fade" and isinstance(x.get("end"), (int, float))), None)
+    lo = hi = end
+    if fade is not None:
+        lo, hi = 0.5 * (float(fade["t"]) + float(fade["end"])), max(end, float(fade["end"]))
     if med > 0.02:
-        t_dark = dark[0] if dark else end + 6.0
-        m["dark_err_s"] = round(t_dark - end, 2)
-        m["ending"] = round(max(0.0, 1.0 - abs(t_dark - end) / float(W["ending_scale_s"])), 3)
+        t_dark = after[0] if after else end + 6.0
+        err = t_dark - lo if t_dark < lo else (t_dark - hi if t_dark > hi else 0.0)
+        m["dark_err_s"] = round(err, 2)
+        m["ending"] = round(max(0.0, 1.0 - abs(err) / float(W["ending_scale_s"])), 3)
     else:
         m["dark_err_s"] = m["ending"] = None
     # moments: do the lights answer the song's stabs and stops (utils/song_moments.py)?
@@ -303,8 +317,8 @@ def score(tl: dict, ref: dict, W: Optional[dict] = None) -> dict:
     ws = W["weights"]
     parts = [(float(ws[k]), m[k]) for k in ws if m.get(k) is not None and float(ws[k]) > 0.0]
     m["goals"] = round(sum(w * v for w, v in parts) / sum(w for w, _ in parts), 3) if parts else None
-    g = [min(1.0, float(m[k]) / float(bar)) for k, bar in (W.get("gates") or {}).items()
-         if m.get(k) is not None and float(bar) > 0.0]
+    g = [min(1.0, float(m[k]) / float(bar)) if m.get(k) is not None else 1.0
+         for k, bar in (W.get("gates") or {}).items() if float(bar) > 0.0]
     m["gate"] = round(float(np.mean(g)), 3) if g else 1.0
     m["overall"] = round(m["goals"] * m["gate"], 3) if m["goals"] is not None else None
     m["score_version"] = SCORE_VERSION
