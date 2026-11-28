@@ -8,6 +8,7 @@ if it is done by then), and GET /api/v1/generations/<id> (?wait= to long-poll) g
 outputs. An Idempotency-Key header makes a retried POST the same generation. It runs the generator page's own path
 (process_generate_image_request), so what a key makes lands in its maker's Generated tab, and its jobs show on the Jobs
 page as `api`. A key's limits (pictures in 24 h, generations at once) answer 429 with Retry-After."""
+import re
 import sqlite3
 import time
 from pathlib import Path
@@ -31,8 +32,13 @@ FIELDS = {"prompt", "workflow", "refiner", "n", "params", "images", "publish_to"
 
 
 def base_url():
-    """This server as the caller reached it (behind the https proxy, its https address)."""
-    proto = request.headers.get("X-Forwarded-Proto") or request.scheme
+    """This server as the caller reached it. Waitress drops the proxy's X-Forwarded-Proto (it trusts no proxy), so a
+    name (not an address, not localhost) is taken to be the https proxy's: names are only served over https."""
+    proto = request.headers.get("X-Forwarded-Proto")
+    if not proto:
+        host = request.host.rsplit(":", 1)[0].strip("[]")
+        named = host != "localhost" and not re.fullmatch(r"[\d.]+|[0-9a-fA-F:]+", host)
+        proto = "https" if named else request.scheme
     return f"{proto}://{request.host}"
 
 
@@ -96,10 +102,16 @@ def _params(w):
     return [p for p in w.get("params") or [] if not p.get("hidden")]
 
 
+def _options(p):
+    """A parameter's options as [{value, label}] (the catalogue gives them as objects or as bare values)."""
+    return [{"value": o.get("value"), "label": o.get("label")} if isinstance(o, dict) else {"value": o, "label": str(o)}
+            for o in p.get("options") or []]
+
+
 def _param_view(p):
     out = {"id": p["id"], "name": p.get("name"), "type": p.get("type")}
     if p.get("options"):
-        out["options"] = [{"value": o.get("value"), "label": o.get("label")} for o in p["options"]]
+        out["options"] = _options(p)
     for k in ("default", "min", "max"):
         if p.get(k) is not None:
             out[k] = p[k]
@@ -132,7 +144,7 @@ def _check_params(params, workflow):
                                  f"{public_id(workflow['id']) if workflow else 'any workflow'}")
         kind = p.get("type")
         if p.get("options"):
-            values = [str(o.get("value")) for o in p["options"]]
+            values = [str(o["value"]) for o in _options(p)]
             if str(value) not in values:
                 raise inputs.Refused("bad_params", f"{name} is one of {', '.join(values)}")
             value = str(value)

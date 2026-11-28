@@ -23,7 +23,8 @@ DESTS = [
 ]
 WORKFLOWS = [
     {"id": "krea2-turbo.json", "name": "Photographic", "input": ["text"], "default": True,
-     "params": [{"id": "width", "type": "number", "min": 256, "max": 4096}, {"id": "seed", "type": "number"}]},
+     "params": [{"id": "width", "type": "number", "min": 256, "max": 4096}, {"id": "seed", "type": "number"},
+                {"id": "height", "type": "select", "options": ["864", "1536"]}]},   # bare options, as the catalogue has
     {"id": "qwen21-edit.json", "name": "Adapt", "input": ["image", "text"],
      "params": [{"id": "shape", "type": "select", "options": [{"value": "auto"}, {"value": "square"}]},
                 {"id": "skip-upscaling", "type": "bool", "hidden": True}]},
@@ -231,7 +232,25 @@ def test_workflows_and_refiners(env, app):
     wf = caller(app, secret).get("/api/v1/workflows").get_json()["data"]
     assert [w["id"] for w in wf] == ["krea2-turbo", "qwen21-edit"]
     assert wf[1]["images"] == 1 and [p["id"] for p in wf[1]["params"]] == ["shape"]
+    assert wf[0]["params"][2]["options"] == [{"value": "864", "label": "864"}, {"value": "1536", "label": "1536"}]
+    ok = caller(app, secret).post("/api/v1/generations", json={"prompt": "x", "workflow": "krea2-turbo",
+                                                               "params": {"height": 864}, "wait": 5})
+    assert ok.get_json()["status"] == "succeeded", ok.get_json()
+    bad = caller(app, secret).post("/api/v1/generations", json={"prompt": "x", "workflow": "krea2-turbo",
+                                                                "params": {"height": 5}})
+    assert bad.get_json()["error"]["code"] == "bad_params"
     assert [r["id"] for r in caller(app, secret).get("/api/v1/refiners").get_json()["data"]] == ["none", "enrich"]
+
+
+def test_links_are_https_for_a_name(env, app):
+    """Waitress drops the proxy's X-Forwarded-Proto: a name is the https proxy's, an address is as asked."""
+    def server(host):
+        r = app.test_client().get("/api/v1/openapi.json", base_url=f"http://{host}")
+        return r.get_json()["servers"][0]["url"]
+    assert server("screen.example.com") == "https://screen.example.com/api/v1"
+    assert server("192.168.1.205:8080") == "http://192.168.1.205:8080/api/v1"
+    assert server("127.0.0.1:5000") == "http://127.0.0.1:5000/api/v1"
+    assert server("localhost:5000") == "http://localhost:5000/api/v1"
 
 
 def test_private_catalogue_follows_the_key(env, app):

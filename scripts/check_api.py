@@ -34,6 +34,16 @@ def code(r):
         return None
 
 
+def lan_url(base):
+    """The app by this machine's own network address rather than 127.0.0.1, so it is not a local caller."""
+    if "127.0.0.1" not in base:
+        return None
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_DGRAM) as sock:
+        sock.connect(("192.0.2.1", 9))   # nothing is sent: this only picks the outgoing interface
+        return base.replace("127.0.0.1", sock.getsockname()[0])
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--url", default="http://127.0.0.1:5000", help="the app (this machine passes the gates)")
@@ -58,8 +68,10 @@ def main():
         r = s.get(f"{v1}/me", headers=auth)
         step("the key works", r.status_code == 200 and r.json().get("id") == key["id"], r.text[:200])
         step("rate-limit headers", "RateLimit-Remaining" in r.headers and r.headers.get("Cache-Control") == "no-store")
-        r = requests.get(f"{v1}/me", headers={"X-Forwarded-For": "203.0.113.1"})
-        step("no key: 401 key_required", r.status_code == 401 and code(r) == "key_required", r.text[:200])
+        lan = lan_url(base)   # waitress drops X-Forwarded-For, so only a caller from another address is not local
+        if lan:
+            r = requests.get(f"{lan}/api/v1/me", timeout=10)
+            step("no key, from the LAN: 401 key_required", r.status_code == 401 and code(r) == "key_required", r.text[:200])
         r = requests.get(f"{v1}/me", headers={"Authorization": f"Bearer {secret[:-2]}xx"})
         step("a wrong key: 401 invalid_key", r.status_code == 401 and code(r) == "invalid_key", r.text[:200])
         r = s.get(f"{base}/api/jobs", headers=auth)
