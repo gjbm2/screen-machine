@@ -186,9 +186,14 @@ struck through with its commit.
     about 30 min.
   - 03:00–06:30 then holds the first score plus about 5 attempts.
   - When time is tight, an attempt is checked on its own 2–3 songs first.
-- **Not run for real yet.** The first night is 28 Nov. It is a headless Claude, `acceptEdits` + Bash, run from cron
-  (WSL here has no user systemd bus). The log is `~/.cache/sm-ad-eval/nightly.log`, and reports are in
-  `~/.cache/sm-ad-eval/reports/`.
+- **First night, 28 Nov:** a headless Claude, `acceptEdits` + Bash, run from cron (WSL here has no user systemd
+  bus). The log is `~/.cache/sm-ad-eval/nightly.log`, and reports are in `~/.cache/sm-ad-eval/reports/`. Three
+  attempts, none kept (overall 0.341 → 0.341 / 0.346 / 0.343, each inside the run's seed spread of ~0.035); their
+  patches are in `~/.cache/sm-ad-eval/patches/` (the first lift phrased, no ear-predicted drop line off the lyric
+  plan, the high point's fullest line-up). Draws are deterministic per seed, so a fix touching some songs moves
+  overall by ≤ 0.01: the keep rule needs a per-song or per-dimension test before any single fix can pass it. The
+  report lists six eval issues for bb (the replay never announces a song's first section; AI briefs seconds off the
+  lyric lines; Valerie's reference beats octave-doubled; Dancing Queen live scoring 0 on its gate).
 - **A kept fix** goes into the real tree as a patch. If another session has changed the file meanwhile, it is left
   out and reported, not forced.
 - **f2's own director items, not started** (docs/AD_MUSIC_FIT_REVIEW_2026-11.md §4):
