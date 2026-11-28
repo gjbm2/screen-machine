@@ -75,3 +75,36 @@ def test_the_scheduler_animate_to_commissions_through_it(monkeypatch, tmp_path):
     monkeypatch.setattr(tr, "commission_later", lambda a, b, tries=0: got.append((str(a), str(b))))
     sh._animate_ahead(str(root / "north-screen/a.jpg"), str(root / "north-screen/b.jpg"), "", None, "cloud", None, [])
     assert got == [(str(root / "north-screen/a.jpg"), str(root / "north-screen/b.jpg"))]
+
+
+def test_a_drawn_transition_gets_its_ease_however_long_the_renderers_queue_is(monkeypatch, tmp_path):
+    """28 Nov: two of the night's nine were drawn, then their ease was killed at 300 s while it still waited its turn in
+    the renderer's batch queue (one at a time, 2-3.5 min each, behind the night's clips), and those changes cross-faded.
+    The draw's deadline is for the drawing; the ease, once drawn, is given EASE_AHEAD_S, queue and all."""
+    import subprocess as _sp
+    import routes.result_source as rs
+    root = buckets(monkeypatch, tmp_path)
+    clock = [1000.0]
+    import time as _time
+    from types import SimpleNamespace
+    monkeypatch.setattr(tr, "time", SimpleNamespace(time=lambda: clock[0], strftime=_time.strftime))
+    monkeypatch.setattr(tr, "write", lambda *a: {"full_prompt": "fog rolls in", "idea": "fog"})
+
+    def draw(a, b, prompt, job_id, deadline):
+        clock[0] = deadline - 10                     # a slow draw: done with 10 s of the deadline left
+        return "drawn.mp4", 0.1
+    monkeypatch.setattr(tr, "draw", draw)
+    monkeypatch.setattr(rs, "read_bytes", lambda src: b"video")
+    timeouts = []
+
+    def run(cmd, **kw):
+        timeouts.append(kw.get("timeout"))
+        if cmd[0] == "nice":                         # the ease: writes its part file
+            open(cmd[-4], "wb").write(b"eased")
+        else:                                        # ffmpeg: the tagged copy
+            open(cmd[-1], "wb").write(b"tagged")
+        return _sp.CompletedProcess(cmd, 0, "", "")
+    monkeypatch.setattr(tr.subprocess, "run", run)
+    made = tr.commission(root / "north-screen/a.jpg", root / "north-screen/b.jpg")
+    assert made and made["idea"] == "fog"
+    assert timeouts[0] >= 30 * 60, f"the ease was given {timeouts[0]} s: a queue of clips ahead of it would kill it"

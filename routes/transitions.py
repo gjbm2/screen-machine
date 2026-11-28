@@ -39,7 +39,9 @@ WORKFLOW = "h3-fl2v.json"
 DRAW_S = 4.0                # drawn; H3 draws 17k + 5 frames, so 90 (3.75 s)
 PLAY_S, RAMP_S = 15.0, 3.5  # on screen: eased in from A and out onto B
 DEADLINE_S = 540            # the new picture waits no longer than this for its transition (a cold GPU included)
-AHEAD_S = 900               # a transition made ahead (commission) is given up after this
+AHEAD_S = 900               # a transition made ahead (commission) is given up after this, if it isn't drawn by then
+EASE_AHEAD_S = 2400         # its ease, once drawn: it waits its turn in the renderer's batch queue (one at a time,
+                            # 2-3.5 min each), and a night's clips and transitions queue together
 FOLDER = "transitions"
 WRITER = "refiner-transition.txt"
 SCHEMA_FILE = "refiner-transition.schema.json"   # the answer's fields, next to the brief: both read on every call
@@ -152,8 +154,9 @@ def draw(a: bytes, b: bytes, prompt: str, job_id: str, deadline: float, upscale:
             raise RuntimeError(f"the transition's job {state.get('status')}: {str(state.get('error'))[:200]}")
 
 
-def ease(source: str, dst: Path, deadline: float) -> None:
-    """The drawn transition slowed to PLAY_S, eased in and out, into dst (in its own process, as a clip's ease)."""
+def ease(source: str, dst: Path, deadline: float, timeout: float | None = None) -> None:
+    """The drawn transition slowed to PLAY_S, eased in and out, into dst (in its own process, as a clip's ease). Given
+    up at the deadline (300 s at least), or after `timeout` when given (a commission: nothing waits on it)."""
     from routes.result_source import read_bytes
     with tempfile.TemporaryDirectory() as tmp:
         src = os.path.join(tmp, "in.mp4")
@@ -163,7 +166,7 @@ def ease(source: str, dst: Path, deadline: float) -> None:
                         str(RAMP_S), "0"], check=True, capture_output=True, text=True,
                        # an ease under way gets its time (25 Nov: the deadline killed one at 04:01:00 that the GPU
                        # finished at 04:01:35); the deadline is for a drawing that never comes
-                       timeout=max(300, deadline - time.time()), cwd=Path(__file__).resolve().parent.parent)
+                       timeout=timeout or max(300, deadline - time.time()), cwd=Path(__file__).resolve().parent.parent)
         tag = {"clip": {"eased": True, "transition": True, "play_s": PLAY_S, "returns": False}}
         subprocess.run(["ffmpeg", "-v", "error", "-y", "-i", part, "-c", "copy", "-metadata",
                         "comment=" + json.dumps(tag), "-movflags", "+faststart", str(dst)], check=True, timeout=120)
@@ -253,7 +256,9 @@ def commission(a: str | Path, b: str | Path) -> dict | None:
         folder = b.parent / FOLDER
         folder.mkdir(parents=True, exist_ok=True)
         name = time.strftime("%Y%m%d-%H%M%S") + f"-{job_id[-8:]}.mp4"
-        ease(drawn, folder / name, deadline)
+        # the deadline is for the drawing: once drawn (and paid for) the ease gets its time, queue and all (28 Nov: two
+        # of the night's nine were killed at 300 s while still waiting in the renderer's queue, and cross-faded)
+        ease(drawn, folder / name, deadline, timeout=EASE_AHEAD_S)
         entry = {"file": f"{FOLDER}/{name}", "url": f"/output/{b.parent.name}/{FOLDER}/{name}", "from": oa, "to": ob,
                  "connection": words.get("connection"), "device": words.get("device"), "idea": words.get("idea"),
                  "prompt": prompt, "writer": {k: words.get(k) for k in ("link_a", "link_b", "motion", "rest")},
