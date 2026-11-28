@@ -27,6 +27,19 @@ const decode = (b64: string) => {
 };
 const clock = (t: number) => `${Math.floor(Math.max(0, t) / 60)}:${String(Math.floor(Math.max(0, t) % 60)).padStart(2, "0")}`;
 
+// which moment the clip is about, and how far off it is as the clip plays
+function Moment({ label, at, now, playing }: { label?: string | null; at?: number; now: number; playing: boolean }) {
+  if (!label || at == null) return null;
+  const d = now - at;
+  const when = !playing && Math.abs(d) > 30 ? clock(at) : Math.abs(d) < 0.5 ? "now" : d < 0 ? `in ${(-d).toFixed(0)} s` : `${d.toFixed(0)} s ago`;
+  return (
+    <div className="pointer-events-none absolute left-1/2 top-2 -translate-x-1/2 rounded bg-black/60 px-3 py-1 text-center">
+      <div className="text-base font-medium text-white first-letter:uppercase">{label}</div>
+      <div className={`text-xs tabular-nums ${when === "now" ? "text-[#d6a24b]" : "text-[#a8aec0]"}`}>{when}</div>
+    </div>
+  );
+}
+
 // what the art director decided in the clip and why, against the song's own change (the key), lit as the clip plays
 function Decisions({ said, at, label, now }: { said: Said[]; at?: number; label?: string | null; now: number }) {
   const rows: (Said & { key?: boolean })[] = [...said];
@@ -90,7 +103,7 @@ export default function LightPairsPage() {
     v.volume = Math.max(0, Math.min(1, item.guide ?? 1));
     a.currentTime = v.currentTime = item.t0_s;
     inst.current = a; voc.current = v;
-    setWords(""); setWide("clip");
+    setWords(""); setWide("clip"); setPos(item.t0_s);
     return () => { a.pause(); v.pause(); a.src = ""; v.src = ""; };
   }, [item]);
 
@@ -245,11 +258,13 @@ export default function LightPairsPage() {
         <div className={`grid min-h-0 flex-1 gap-1 p-1 ${two ? "grid-cols-2" : "grid-cols-1"}`}>
           <div className="relative min-h-0 overflow-hidden rounded" key={`l${n}`}>
             <Room3DPage embedded shotView="front" frames={left} />
+            <Moment label={item.label} at={item.at_s} now={pos || item.t0_s} playing={playing} />
             {wide === "clip" && <Decisions said={item.said?.left ?? []} at={item.at_s} label={item.label} now={pos} />}
           </div>
           {two && (
             <div className="relative min-h-0 overflow-hidden rounded" key={`r${n}`}>
               <Room3DPage embedded shotView="front" frames={right} />
+              <Moment label={item.label} at={item.at_s} now={pos || item.t0_s} playing={playing} />
               {wide === "clip" && <Decisions said={item.said?.right ?? []} at={item.at_s} label={item.label} now={pos} />}
             </div>
           )}

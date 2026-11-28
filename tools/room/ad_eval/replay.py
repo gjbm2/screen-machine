@@ -370,12 +370,43 @@ class Sim:
             outs = sorted({f.get("output") for f in fx.values() if isinstance(f.get("address"), int)} - {None})
             self.output = outs[0] if outs else None
             self.caps = artnet_lan.CAPS
+            self._mode_lights(eng, fx)
             if os.environ.get("SM_AD_EVAL_DMX") == "1" and self.output is not None:
                 self._dmx_layout(view)                       # the wire's frames too, for the blind pairs (pairs.py)
             self.engine = eng
             self.describer = form.Describer()                # what the lights show, frame by frame (form.py)
         except Exception as e:                               # noqa: BLE001
             print(f"  look engine not built: {type(e).__name__}: {e}", file=sys.stderr)
+
+    def _mode_lights(self, eng: Any, fixtures: dict) -> None:
+        """The room mode's own lights, as room_service sets them in the real room: a karaoke replay is in the mode
+        with ``karaoke: true`` (room/modes.json), whose ``"light.<id glob>": "off"`` or ``{"set": {"bri": 0..100}}``
+        holds those lights through the song (the house lights: off in Karaoke, owner 26 Nov). Without it the show's
+        room-wide effects drove them, and the replay lit the room with house lights the real room never has (owner,
+        28 Nov: "why are the house lights on during all these?"). A live replay has no mode's lights."""
+        if self.mode != "karaoke":
+            return
+        import fnmatch
+        try:
+            import smconfig
+            modes = json.loads(pathlib.Path(smconfig.path("room", "modes.json")).read_text()).get("modes") or {}
+        except Exception:                                    # noqa: BLE001
+            return
+        st = next((m.get("state") or {} for m in modes.values() if isinstance(m, dict) and m.get("karaoke")), {})
+        for key, val in st.items():
+            if not str(key).startswith("light."):
+                continue
+            if val == "off":
+                level = 0.0
+            elif isinstance(val, dict) and isinstance((val.get("set") or {}).get("bri"), (int, float)):
+                level = max(0.0, min(1.0, float(val["set"]["bri"]) / 100.0))
+            else:
+                continue
+            for fid in fnmatch.filter(list(fixtures), str(key)[len("light."):]):
+                try:
+                    eng.hold(fid, {"intensity": level}, idle_s=1e7, smooth_ms=0)
+                except Exception:                            # noqa: BLE001
+                    pass
 
     # -- the run ----------------------------------------------------------------------------------------------------
     def ml_lines(self) -> list[tuple[float, dict]]:

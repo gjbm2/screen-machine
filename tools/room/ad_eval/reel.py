@@ -225,7 +225,7 @@ def make(a: argparse.Namespace) -> int:
         inside = next((x for x in refs[sid].get("sections") or ()
                        if float(x["start_s"]) <= float(r["t_s"]) < float(x["end_s"])), {})
         items.append({"kind": "flagged", "sid": sid, "tr": tr or {"t_s": float(r["t_s"]), "what": check,     # neutral:
-                                                                     "label": f"in the {inside.get('kind') or 'song'}"},  # no verdict
+                                                                     "label": f"a look change in the {inside.get('kind') or 'song'}"},  # no verdict
                       "t0": t0, "frames": [c], "sides": [("show", run, ours[sid])], "check": check, "why": r["why"]})
         room -= 1
     # 3. pattern: the day's songs, their transitions in order
