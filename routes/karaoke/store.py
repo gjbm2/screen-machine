@@ -38,7 +38,7 @@ GUIDE_LEVELS = (0.0, 0.25, 1.0)          # the lead vocal under the backing trac
 STATUS_WORDS = {"queued": "waiting its turn", "fetching": "getting the song", "lyrics": "finding the lyrics",
                 "separating": "removing the lead vocal", "failed": "it didn't work"}
 
-DEFAULT_SETTINGS = {"guide": 0.0, "autoplay": True, "highlight": "words", "child_mode": False,
+DEFAULT_SETTINGS = {"guide": 0.0, "autoplay": True, "highlight": "words", "child_mode": False, "muted": False,
                     "screen": None, "output": None}
 #: Where the karaoke sound plays (owner, 26 Nov: "specify which screen we're outputting to ... and living room sonos
 #: audio"): one of the app's sound outputs (smsound.outputs; owner, 27 Nov: "generalise this ... in a consistent
@@ -639,6 +639,8 @@ class Store:
                 st["output"] = o
             if "child_mode" in kw:
                 st["child_mode"] = bool(kw["child_mode"])
+            if "muted" in kw:                            # the sound silent, the song and its clock running on
+                st["muted"] = bool(kw["muted"])
             if "highlight" in kw:
                 if kw["highlight"] not in HIGHLIGHTS:
                     raise ValueError("highlight")

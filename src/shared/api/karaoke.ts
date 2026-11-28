@@ -82,6 +82,8 @@ export interface KaraokeSettings {
   highlight?: 'words' | 'dot' | 'both';
   /** Child mode: swear words as dashes and muted (routes/karaoke/profanity.py). */
   child_mode?: boolean;
+  /** The sound silent (the song and its clock run on). */
+  muted?: boolean;
   /** The karaoke screen (its display page shows the lyrics; null: karaokeScreen's own choice). */
   screen?: string | null;
   /** Where the sound plays: one of the app's sound outputs (docs/SOUND.md) karaoke can play to: "screen:<id>" (that

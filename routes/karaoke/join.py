@@ -25,7 +25,7 @@ from urllib.parse import urlparse
 import smconfig
 
 LOOKUP_S = 30.0
-PAGE = "/karaoke"
+PAGE = "/karaoke?from=qr"   # from=qr: the app opens as the karaoke panel alone (src/shared/viaTunnel.ts)
 _LOOPBACK = {"localhost", "127.0.0.1", "::1", "0.0.0.0"}
 
 _lock = threading.Lock()

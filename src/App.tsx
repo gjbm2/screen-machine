@@ -13,7 +13,7 @@ import { DockedPlayer } from "@/components/player/DockedPlayer";
 import { KaraokeHere } from "@/components/player/KaraokeHere";
 import { AppNav } from "@/components/nav/AppNav";
 import { AdminOnly } from "@/components/auth/AdminOnly";
-import { VIA_TUNNEL } from "@/shared/viaTunnel";
+import { KARAOKE_ONLY } from "@/shared/viaTunnel";
 
 // Each page is its own chunk: the TVs' /display/<screen> no longer loads the generator, Room, Music and the rest.
 // A deploy replaces dist/, so a tab opened before it asks for chunks that are gone: reload once to pick up the new build.
@@ -131,4 +131,4 @@ const App = () => (
   </QueryClientProvider>
 );
 
-export default VIA_TUNNEL ? TunnelApp : App;
+export default KARAOKE_ONLY ? TunnelApp : App;

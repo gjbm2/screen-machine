@@ -21,7 +21,7 @@
 //
 // Links are AppLinks (no reload). The TV pages (/display) never use this.
 
-import { VIA_TUNNEL } from "@/shared/viaTunnel";
+import { KARAOKE_ONLY } from "@/shared/viaTunnel";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useLocation, useNavigate } from "react-router-dom";
@@ -110,7 +110,7 @@ function OwnToggles({ render }: { render: (t: TopToggles | null) => ReactNode })
 
 export function PageHeader(props: PageHeaderProps) {
   // through the phones' tunnel: the page's name only (no menu, places or switches: src/shared/viaTunnel.ts)
-  if (VIA_TUNNEL)
+  if (KARAOKE_ONLY)
     return (
       <header className="pb-3 pt-[max(0.75rem,env(safe-area-inset-top))]">
         <h1 className="text-2xl font-semibold tracking-tight">{props.title}</h1>

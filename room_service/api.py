@@ -86,10 +86,17 @@ def build_app(svc: "RoomService") -> web.Application:
             name = host[1:].split("]", 1)[0]
         else:
             name = host.rsplit(":", 1)[0] if host.count(":") == 1 else host
-        return name in cfg.allowed_hosts
+        return name in cfg.allowed_hosts or tunnel_host(name)
+
+    def tunnel_host(name: str) -> bool:
+        """The phones' tunnel (room.yaml tunnel_host_suffixes, e.g. ".trycloudflare.com")."""
+        return any(name.endswith(sfx) for sfx in getattr(cfg, "tunnel_host_suffixes", []) or [])
 
     def origin_ok(request: web.Request, origin: str) -> bool:
         if origin in cfg.web_origins:
+            return True
+        o = origin.lower()
+        if o.startswith("https://") and tunnel_host(o[len("https://"):].split("/", 1)[0].split(":", 1)[0]):
             return True
         # room_service's own origin (e.g. a panel served from this port later, AV_PROGRAMME §5).
         return origin.lower() == f"{request.scheme}://{request.host}".lower()

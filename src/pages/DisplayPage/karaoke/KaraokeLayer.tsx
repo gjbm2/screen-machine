@@ -249,7 +249,11 @@ class Engine {
       at = f;
       return f;
     });
-    at.connect(ctx.destination);
+    // the mute (settings.muted): last, so the song and its clock run on silent
+    const master = ctx.createGain();
+    master.gain.value = this.muted ? 0 : 1;
+    at.connect(master).connect(ctx.destination);
+    this.master = master;
     this.eqIn = pre;
     this.applyEq(true);
     return pre;
@@ -269,6 +273,15 @@ class Engine {
     const set = (p: AudioParam, v: number) => (now ? (p.value = v) : p.setTargetAtTime(v, t, 0.08));
     this.eqBands.forEach((f, i) => set(f.gain, this.eqGains[i]));
     set(this.eqIn.gain, Math.pow(10, -Math.max(0, ...this.eqGains) / 20));
+  }
+
+  private master: GainNode | null = null;
+  private muted = false;
+
+  setMuted(m: boolean): void {
+    if (m === this.muted) return;
+    this.muted = m;
+    if (this.master && this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 1, this.ctx.currentTime, 0.03);
   }
 
   setGuide(g: number): void {
@@ -487,6 +500,8 @@ export function KaraokeLayer({ screen, device }: { screen?: string; device?: str
       e.setGuide(n.settings.guide);
       e.setEq(n.settings.eq);
       bg.setEq(n.settings.eq);
+      e.setMuted(!!n.settings.muted);
+      bg.setMuted(!!n.settings.muted);
       e.setMutes(mutesRef.current);
       if (p.state === "stopped" || !p.song_id) {
         e.stop(FADE_S);

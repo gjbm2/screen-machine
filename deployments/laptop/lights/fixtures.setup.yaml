@@ -7,11 +7,14 @@
 version: 1
 fixtures:
   gigbar-a.laser:
-    lean_deg: 57.0
+    lean_deg: 31.0
+    turn_deg: 0.0
   gigbar-a.par1:
-    lean_deg: 150.0
+    lean_deg: 125.5
+    turn_deg: 0.0
   gigbar-a.par2:
-    lean_deg: 68.0
+    lean_deg: 71.0
+    turn_deg: 0.0
   gigbar-a.spot1:
     home:
       pan: -24.0
@@ -20,8 +23,16 @@ fixtures:
     home:
       pan: -14.2
       tilt: 59.2
+  gigbar-b.derby1:
+    lean_deg: 38.0
   gigbar-b.laser:
-    lean_deg: -1.5
+    lean_deg: 32.0
+    turn_deg: 0.0
+  gigbar-b.par1:
+    lean_deg: 57.5
+  gigbar-b.par2:
+    lean_deg: 121.0
+    turn_deg: 0.0
   gigbar-b.spot1:
     home:
       pan: -9.9
@@ -30,3 +41,5 @@ fixtures:
     home:
       pan: 2.2
       tilt: 61.3
+  hazer:
+    label: Hazer

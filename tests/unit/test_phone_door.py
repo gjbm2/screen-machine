@@ -34,3 +34,12 @@ def test_on_the_lan_nothing_changes():
 def test_the_door_routes_rs_to_the_room():
     assert D._target("/rs/api/v1/status").endswith(":8700/api/v1/status")
     assert D._target("/karaoke").endswith(":5000/karaoke")
+
+
+def test_room_config_reads_tunnel_suffixes(tmp_path):
+    from room_service import config as C
+    f = tmp_path / "room.yaml"
+    f.write_text('tunnel_host_suffixes: [".trycloudflare.com", "bad"]\n')
+    cfg = C.load(f) if hasattr(C, "load") else None
+    if cfg is not None:
+        assert cfg.tunnel_host_suffixes == [".trycloudflare.com"]

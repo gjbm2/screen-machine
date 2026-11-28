@@ -25,6 +25,7 @@
   POST   /karaoke/player                   {action: play [qid | song_id]|pause|resume|restart|stop|next|prev|seek [pos_s]}
                                            (play song_id: a new entry right after the current one, played now)
   POST   /karaoke/settings                 {guide 0..1, autoplay, audio_delay_ms, highlight words|dot|both, child_mode,
+                                            muted (the sound silent, the song runs on),
                                             screen (a screen's id, null: the deployment's own), output screen|none}
 """
 from __future__ import annotations
@@ -418,7 +419,7 @@ def settings():
         if not O.known(o):
             return _err(400, "That isn't one of this deployment's sound outputs.")
     try:
-        return jsonify({"settings": store().settings(**{k: b[k] for k in ("guide", "autoplay", "audio_delay_ms", "highlight", "child_mode", "screen", "output") if k in b})})
+        return jsonify({"settings": store().settings(**{k: b[k] for k in ("guide", "autoplay", "audio_delay_ms", "highlight", "child_mode", "muted", "screen", "output") if k in b})})
     except (TypeError, ValueError):
         return _err(400, "guide is 0..1, autoplay true/false, audio_delay_ms a number, highlight words | dot | both, "
                          "screen a screen's id (or null), output a sound output karaoke can play to (screen:<id> | device:<id> | sonos:<zone> | none, "

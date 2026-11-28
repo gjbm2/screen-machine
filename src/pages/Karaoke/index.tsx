@@ -71,6 +71,8 @@ import {
   Square,
   Trash2,
   Users,
+  Volume2,
+  VolumeX,
   WandSparkles,
   X,
   Globe,
@@ -102,7 +104,6 @@ import { fuzzyFilter } from "./fuzzy";
 import { LivePicture } from "./LivePicture";
 import { LightsPanel } from "@/components/room/LightsNow";
 import { roomApi } from "@/components/room/roomLink";
-import { VIA_TUNNEL } from "@/shared/viaTunnel";
 import { SongPictures } from "./SongPictures";
 import { LoopbackToggle, RoomMicCheck } from "./RoomMic";
 import { Roster, SingerAsk, SingerTag, askSingers } from "./Singer";
@@ -164,7 +165,6 @@ export default function KaraokePage() {
   // the page: nothing in the page changes size, so the scroll never jumps; 26 Nov the in-page version flickered).
   const playerRef = useRef<HTMLDivElement>(null);
   const [pinned, setPinned] = useState(false);
-  const [searching, setSearching] = useState(false);
   useEffect(() => {
     const el = playerRef.current;
     if (!el) return;
@@ -188,7 +188,7 @@ export default function KaraokePage() {
   }, []);
   const findRef = useRef<HTMLInputElement>(null);
   const [artist, setArtist] = useState<string | null>(null);
-  const [findSeed, setFindSeed] = useState({ text: "", n: 0 });
+  const [findSeed, setFindSeed] = useState<{ text: string | null; n: number }>({ text: "", n: 0 });
   const [dragging, setDragging] = useState<string | null>(null);
   const draggingRef = useRef(false);
 
@@ -268,7 +268,7 @@ export default function KaraokePage() {
           at === "next" ? `“${s.title}” is up next` : `“${s.title}” added to the queue`,
         ),
     );
-  const focusFind = () => findRef.current?.focus();
+  const focusFind = () => setFindSeed((x) => ({ text: null, n: x.n + 1 }));
 
   const onDragStart = (e: DragStartEvent) => {
     draggingRef.current = true;
@@ -339,7 +339,6 @@ export default function KaraokePage() {
       onLibrary={() => setLibOpen(!libOpen)}
       onAdded={backToQueue}
       seed={findSeed}
-      onSearching={setSearching}
     />
   );
 
@@ -354,8 +353,10 @@ export default function KaraokePage() {
           </Notice>
         )}
 
-        {/* Now playing first (sticky beside the lists on a wide screen), then the search (its results under it, in the
-            page) with the library under its icon, then the queue; the picture, the lights and the settings below. */}
+        {/* Now playing first (sticky beside the lists on a wide screen; on a phone a slim copy pins to the top once it
+            has scrolled away), then the queue, then the search bar (pinned to the foot while its place is further
+            down; it opens the search tray) with the library under its icon; the picture, the lights and the settings
+            below. */}
         <main className="space-y-4 lg:grid lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] lg:items-start lg:gap-6 lg:space-y-0">
           {/* Beside the lists on a wide screen (sticky); on a phone it scrolls away and its slim copy takes the top
               (owner, 26 Nov: "player component should probably pin to top on mobile"). */}
@@ -370,7 +371,6 @@ export default function KaraokePage() {
             onDragCancel={endDrag}
           >
             <div className="space-y-4">
-              {findCard}
               <div ref={queueBox} className="scroll-mt-20">{queueCard}</div>
               {st && (
                 <Card
@@ -395,6 +395,7 @@ export default function KaraokePage() {
                   />
                 </Card>
               )}
+              {findCard}
             </div>
             <DragOverlay>{dragSong ? <RowFace song={dragSong} lifted /> : null}</DragOverlay>
             {st && <SingerAsk names={st.singers ?? []} />}
@@ -402,16 +403,14 @@ export default function KaraokePage() {
         </main>
 
         <div className="mt-4 space-y-4 lg:mt-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
-          {/* the screen, then the room's lights: a card of their own, they belong to the room (owner, 28 Nov). Not
-              through the phones' tunnel yet: room_service takes only its own names (routes/phone_door.py) */}
-          {!VIA_TUNNEL && (
-            <div className="space-y-4">
-              <LivePicture screen={st ? karaokeScreen(dep, st.settings.screen) : null} />
-              <section className={cn(CARD_CLASS, "px-4 py-1 sm:px-5")}>
-                <LightsPanel api={roomApi()} />
-              </section>
-            </div>
-          )}
+          {/* the screen, then the room's lights: a card of their own, they belong to the room (owner, 28 Nov); through
+              the phones' tunnel too (room.yaml tunnel_host_suffixes) */}
+          <div className="space-y-4">
+            <LivePicture screen={st ? karaokeScreen(dep, st.settings.screen) : null} />
+            <section className={cn(CARD_CLASS, "px-4 py-1 sm:px-5")}>
+              <LightsPanel api={roomApi()} />
+            </section>
+          </div>
           {st && <Settings st={st} songs={songs} act={act} dep={dep} />}
           {st?.player.song_id && <SongPictures songId={st.player.song_id} />}
         </div>
@@ -426,9 +425,8 @@ export default function KaraokePage() {
           </div>
         </DrawerContent>
       </Drawer>
-      {/* only with a song on (nothing to control otherwise: owner, 28 Nov, "currently playing control snapping to the top") */}
-      {st && pinned && !searching && !!st.player.song_id && st.player.state !== "stopped" && (
-        <div className="fixed inset-x-0 top-[var(--app-nav-top,0px)] z-40 px-3 pt-[max(0.5rem,env(safe-area-inset-top))] motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-2 lg:hidden">
+      {st && pinned && (
+        <div className="fixed inset-x-0 top-[var(--app-nav-top,0px)] z-40 bg-background px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] shadow-sm motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-2 lg:hidden">
           <div className="mx-auto max-w-3xl">
             <NowPlaying st={st} skew={skewRef.current} songs={songs} act={act} compact />
           </div>
@@ -543,26 +541,41 @@ function NowPlaying({
       {/* The heading, with the singer's voice at its right (it stays put while songs change). */}
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Now playing</h2>
-        <div className="flex items-center gap-1.5" role="group" aria-label="Singer's voice">
-          <span className="text-xs text-muted-foreground" title="The lead vocal under the backing track">
-            Voice
-          </span>
-          <div className="flex rounded-full border border-stone-200 p-0.5">
-            {GUIDES.map((g) => (
-              <button
-                key={g.label}
-                type="button"
-                onClick={() => act(() => karaoke.settings({ guide: g.value }))}
-                className={cn(
-                  "rounded-full px-2.5 py-0.5 text-xs font-medium",
-                  Math.abs(st.settings.guide - g.value) < 0.01
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground",
-                )}
-              >
-                {g.label}
-              </button>
-            ))}
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => act(() => karaoke.settings({ muted: !st.settings.muted }))}
+            aria-label={st.settings.muted ? "Unmute" : "Mute"}
+            aria-pressed={!!st.settings.muted}
+            title={st.settings.muted ? "Unmute" : "Mute"}
+            className={cn(
+              "rounded-full p-1",
+              st.settings.muted ? "bg-red-100 text-red-700" : "text-muted-foreground hover:text-foreground",
+            )}
+          >
+            {st.settings.muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+          </button>
+          <div className="flex items-center gap-1.5" role="group" aria-label="Singer's voice">
+            <span className="text-xs text-muted-foreground" title="The lead vocal under the backing track">
+              Voice
+            </span>
+            <div className="flex rounded-full border border-stone-200 p-0.5">
+              {GUIDES.map((g) => (
+                <button
+                  key={g.label}
+                  type="button"
+                  onClick={() => act(() => karaoke.settings({ guide: g.value }))}
+                  className={cn(
+                    "rounded-full px-2.5 py-0.5 text-xs font-medium",
+                    Math.abs(st.settings.guide - g.value) < 0.01
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {g.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -1239,7 +1252,6 @@ function Find({
   onLibrary,
   onAdded,
   seed,
-  onSearching,
 }: {
   songs: KaraokeSong[];
   queuedCount: Map<string, number>;
@@ -1249,15 +1261,14 @@ function Find({
   libOpen: boolean;
   onLibrary: () => void;
   onAdded: () => void;
-  seed: { text: string; n: number };
-  /** The search box has the focus (true) or lost it: the page keeps its slim player bar away meanwhile. */
-  onSearching: (on: boolean) => void;
+  /** Start a search (``text``: with this in the box; null: as it was). */
+  seed: { text: string | null; n: number };
 }) {
   const [q, setQ] = useState("");
   // The library tray's "Search the web" hands its text over here.
   useEffect(() => {
     if (!seed.n) return;
-    setQ(seed.text);
+    if (seed.text !== null) setQ(seed.text);
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [seed, inputRef]);
   const [hits, setHits] = useState<{ q: string; rows: SearchHit[] } | null>(null);
@@ -1356,12 +1367,13 @@ function Find({
   // to queue, not leave the selector open"); into the library only: the search clears when it's done.
   const go = (at: QueueAt | null, run: () => Promise<unknown>) => {
     if (!at) return void run().then(clear);
+    inputRef.current?.blur();
     setQ("");
     onAdded();
     void run();
   };
   const queueSong = (s: KaraokeSong, at: QueueAt) =>
-    void askSingers(s.title).then(
+    void (inputRef.current?.blur(), askSingers(s.title)).then(
       (who) =>
         who &&
         go(at, () =>
@@ -1374,7 +1386,7 @@ function Find({
   const said = (at: QueueAt | null) =>
     at === "next" ? "is up next" : at === "end" ? "added to the queue" : "added to the library";
   const addWeb = (h: SearchHit, at: QueueAt | null) =>
-    void (at ? askSingers(h.title) : Promise.resolve([])).then(
+    void (at ? (inputRef.current?.blur(), askSingers(h.title)) : Promise.resolve([])).then(
       (who) =>
         who &&
         go(at, () =>
@@ -1385,7 +1397,7 @@ function Find({
         ),
     );
   const addText = (at: QueueAt | null) =>
-    void (at ? askSingers(link ? "This link" : text) : Promise.resolve([])).then(
+    void (at ? (inputRef.current?.blur(), askSingers(link ? "This link" : text)) : Promise.resolve([])).then(
       (who) =>
         who &&
         go(at, () =>
@@ -1415,7 +1427,6 @@ function Find({
   // it; the page scrolls as a page does. The library icon opens the library as a tray.
   const results = open && (
           <section
-            className={cn(CARD_CLASS, "mt-2 p-3 sm:p-4")}
             onPointerEnter={(e) => e.pointerType === "mouse" && setOver(true)}
             onPointerLeave={(e) => e.pointerType === "mouse" && setOver(false)}
             // a finger has no hover: on the results from a touch until a few seconds after the last
@@ -1556,53 +1567,126 @@ function Find({
             )}
           </section>
   );
-  return (
-    <div data-testid="karaoke-find" onFocusCapture={() => onSearching(true)} onBlurCapture={() => onSearching(false)}>
-        <section className={cn(CARD_CLASS, "p-2.5")}>
-          <div className="flex items-center gap-2">
-            <div className="relative min-w-0 flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                ref={inputRef}
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                onKeyDown={(e) => e.key === "Escape" && setQ("")}
-                placeholder="Find a song or paste a link"
-                className="h-11 rounded-xl pl-9 pr-10 text-base"
-                enterKeyHint="search"
-                aria-label="Find a song"
-              />
-              <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center">
-                {busy ? (
-                  <Spinner className="mr-1.5 text-muted-foreground" />
-                ) : q ? (
-                  <button
-                    type="button"
-                    aria-label="Clear"
-                    onClick={clear}
-                    className="rounded-md p-1.5 text-muted-foreground hover:text-foreground"
-                  >
-                    <X className="h-4 w-4" />
-                  </button>
-                ) : null}
-              </div>
-            </div>
-            <Button
-              type="button"
-              variant={libOpen ? "default" : "outline"}
-              className="h-11 w-11 shrink-0 rounded-xl p-0"
-              title={libOpen ? "Hide the library" : "Browse the library"}
-              aria-label={libOpen ? "Hide the library" : "Browse the library"}
-              aria-pressed={libOpen}
-              onClick={onLibrary}
-            >
-              <LibraryIcon className="h-5 w-5" />
-            </Button>
+  // The search is a composer, as a chat app's message box (owner, 28 Nov: "a pin at bottom component (which
+  // effectively opens a tray)"; "this is totally basic affordance"): you type in the bar where you tapped it. The bar
+  // sits under the queue, held to the foot of the screen while its place is further down (CSS sticky). In use (it has
+  // the focus, or a search in it) it is fixed to the foot of what is visible, above a phone's keyboard (useKeyboard:
+  // iOS doesn't lift bottom-pinned things for its keyboard, so the bar sits on the visual viewport's foot), and the
+  // results grow upwards from it as a tray, as tall as the room above it. The page behind stays where it was; a space
+  // the bar's height keeps its place in the page. ✕ ends the search.
+  const [focused, setFocused] = useState(false);
+  const active = focused || q.length > 0;
+  const kb = useKeyboard(active);
+  const barRef = useRef<HTMLDivElement>(null);
+  const [barH, setBarH] = useState(0);
+  useLayoutEffect(() => {
+    if (barRef.current) setBarH(barRef.current.offsetHeight);
+  }, [active]);
+  const end = () => {
+    setQ("");
+    inputRef.current?.blur();
+  };
+  const bar = (
+    <section ref={barRef} className={cn(CARD_CLASS, "p-2.5 shadow-lg")}>
+      <div className="flex items-center gap-2">
+        <div className="relative min-w-0 flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            ref={inputRef}
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => e.key === "Escape" && end()}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            placeholder="Find a song or paste a link"
+            className="h-11 rounded-xl pl-9 pr-10 text-base"
+            enterKeyHint="search"
+            aria-label="Find a song"
+          />
+          <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center">
+            {busy ? (
+              <Spinner className="mr-1.5 text-muted-foreground" />
+            ) : active ? (
+              <button
+                type="button"
+                aria-label="End the search"
+                // pressed before the box loses the focus, so the tap isn't lost to the keyboard closing
+                onPointerDown={(e) => e.preventDefault()}
+                onClick={end}
+                className="rounded-md p-1.5 text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            ) : null}
           </div>
-        </section>
-        {results}
-    </div>
+        </div>
+        <Button
+          type="button"
+          variant={libOpen ? "default" : "outline"}
+          className="h-11 w-11 shrink-0 rounded-xl p-0"
+          title={libOpen ? "Hide the library" : "Browse the library"}
+          aria-label={libOpen ? "Hide the library" : "Browse the library"}
+          aria-pressed={libOpen}
+          onClick={() => {
+            end();
+            onLibrary();
+          }}
+        >
+          <LibraryIcon className="h-5 w-5" />
+        </Button>
+      </div>
+    </section>
   );
+  // one element throughout (the box keeps its focus): only where it sits changes
+  return (
+    <>
+      {/* the bar's place in the page, kept while it rides the foot of the screen */}
+      <div aria-hidden style={{ height: active ? barH + 16 : 0 }} />
+      <div
+        data-testid="karaoke-find"
+        className={
+          active
+            ? "fixed inset-x-0 z-50 mx-auto max-w-3xl px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-6"
+            : "sticky bottom-[calc(var(--dock-h,0px)+var(--app-nav-bottom,0px))] z-40 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1"
+        }
+        style={active ? { bottom: kb.inset } : undefined}
+      >
+        {active && open && (
+          <div
+            className={cn(CARD_CLASS, "mb-2 overflow-y-auto overscroll-contain p-3 shadow-xl sm:p-4")}
+            style={{ maxHeight: Math.max(160, kb.height - barH - 96) }}
+            data-testid="karaoke-find-tray"
+          >
+            {results}
+          </div>
+        )}
+        {bar}
+      </div>
+    </>
+  );
+}
+
+/** The keyboard's height over the page's foot and the visible height (the visual viewport), while ``on``: where a
+ *  bar pinned to the foot sits so the keyboard doesn't cover it (iOS doesn't lift such a bar for its keyboard). */
+function useKeyboard(on: boolean): { inset: number; height: number } {
+  const [v, setV] = useState(() => ({ inset: 0, height: typeof window === "undefined" ? 800 : window.innerHeight }));
+  useEffect(() => {
+    if (!on) return;
+    const vv = window.visualViewport;
+    const upd = () =>
+      setV({
+        inset: vv ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0,
+        height: Math.round(vv?.height ?? window.innerHeight),
+      });
+    upd();
+    vv?.addEventListener("resize", upd);
+    vv?.addEventListener("scroll", upd);
+    return () => {
+      vv?.removeEventListener("resize", upd);
+      vv?.removeEventListener("scroll", upd);
+    };
+  }, [on]);
+  return v;
 }
 
 /** A web song's request: who and what, plus the catalogue facts the library sorts and tags by. */

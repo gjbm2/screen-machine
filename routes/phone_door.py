@@ -15,6 +15,11 @@ controls and light controls from my mobile over cloudflare?"); everything else i
 lets the karaoke panel only (``guard``): its page, the app's static files and the karaoke and sound APIs; any other
 page goes to /karaoke, anything else answers 404 (owner: "generator ends up exposed, which I don't think is
 appropriate"); the app itself shows the karaoke panel alone there (src/shared/viaTunnel.ts).
+
+The tunnel outlives Flask (owner, 28 Nov: "we need resilience in the case of a flask restart"): cloudflared runs in
+a session of its own, logging to logs/phone_tunnel.log, and a Flask that starts while one to the door is running
+adopts it (its address from that log) instead of starting another, so the address on the phones and the QR stays
+the same. While Flask is down the door is too, and a phone sees a few seconds of errors, then carries on.
 """
 from __future__ import annotations
 
@@ -31,6 +36,8 @@ from utils.logger import error, info
 TUNNEL_HOST = re.compile(r"\.trycloudflare\.com$", re.I)
 URL_RE = re.compile(r"https://[a-z0-9-]+\.trycloudflare\.com")
 RETRY_S = 20.0
+WATCH_S = 2.0
+LOG = smconfig.REPO_ROOT / "logs" / "phone_tunnel.log"
 
 #: What a phone may reach through the tunnel: the karaoke panel and what it loads (path prefixes, or exact paths).
 ALLOW_PREFIXES = ("/karaoke", "/assets/", "/api/karaoke/", "/api/songs/", "/api/sound/", "/fonts/", "/icons/")
@@ -38,14 +45,24 @@ ALLOW_EXACT = {"/favicon.ico", "/favicon.svg", "/manifest.webmanifest", "/manife
                "/api/deployment", "/api/auth/me", "/api/auth/config", "/apple-touch-icon.png"}
 
 _url: Optional[str] = None
-_proc: Optional[subprocess.Popen] = None
+_pid: Optional[int] = None
 _lock = threading.Lock()
+
+
+def _alive(pid: Optional[int]) -> bool:
+    if not pid:
+        return False
+    try:
+        st = open(f"/proc/{pid}/stat").read().rsplit(")", 1)[1].split()[0]
+    except (OSError, IndexError):
+        return False
+    return st != "Z"
 
 
 def url() -> Optional[str]:
     """The tunnel's https address while it is up, else None."""
     with _lock:
-        return _url if _proc is not None and _proc.poll() is None else None
+        return _url if _alive(_pid) else None
 
 
 def allowed(path: str) -> bool:
@@ -70,30 +87,76 @@ def guard(request):
     return jsonify({"error": "not here"}), 404
 
 
-def _run() -> None:
-    global _url, _proc
+def _origin() -> str:
+    """The tunnel's origin: the door."""
+    return f"http://127.0.0.1:{smconfig.port('phone_door')}"
+
+
+def _log_url() -> Optional[str]:
+    """The address in the tunnel's log (the log is new with each tunnel, so it is that tunnel's)."""
+    try:
+        m = URL_RE.findall(LOG.read_text(errors="replace"))
+    except OSError:
+        return None
+    return m[-1] if m else None
+
+
+def _launch() -> int:
+    """A new tunnel, in a session of its own (a Flask restart doesn't take it down), logging to LOG."""
     exe = shutil.which("cloudflared")
-    if not exe:
+    assert exe
+    LOG.parent.mkdir(parents=True, exist_ok=True)
+    with open(LOG, "w") as f:
+        p = subprocess.Popen([exe, "tunnel", "--no-autoupdate", "--url", _origin()],
+                             stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=f, start_new_session=True)
+    threading.Thread(target=p.wait, name="phone-tunnel-reap", daemon=True).start()   # no zombie while Flask lives
+    return p.pid
+
+
+def _adopt() -> None:
+    """A tunnel the last Flask left running: kept, when its log has its address; any other is ended."""
+    global _pid, _url
+    for pid in _running():
+        u = _log_url()
+        if _pid is None and u:
+            with _lock:
+                _pid, _url = pid, u
+            info(f"phone tunnel: kept the running one (pid {pid}): {u}")
+            _clear_join_cache()
+        elif pid != _pid:
+            _kill(pid)
+
+
+def _keep() -> None:
+    """One look: a tunnel running (else a new one) and its address known."""
+    global _pid, _url
+    if not _alive(_pid):
+        with _lock:
+            _pid, _url = _launch(), None
+    u = _log_url()
+    if u != _url:
+        with _lock:
+            _url = u
+        if u:
+            info(f"phone tunnel: {u} (the karaoke panel for phones on any Wi-Fi)")
+        _clear_join_cache()
+
+
+def _run() -> None:
+    global _url
+    if not shutil.which("cloudflared"):
         error("phone tunnel: cloudflared isn't installed (the screens' QR stays the laptop's own address)")
         return
+    _adopt()
     while True:
-        p = subprocess.Popen([exe, "tunnel", "--no-autoupdate", "--url", f"http://127.0.0.1:{smconfig.port('phone_door')}"],
-                             stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, bufsize=1)
-        with _lock:
-            _proc, _url = p, None
-        for line in p.stderr or []:
-            m = URL_RE.search(line)
-            if m:
-                with _lock:
-                    _url = m.group(0)
-                info(f"phone tunnel: {_url} (the karaoke panel for phones on any Wi-Fi)")
-                _clear_join_cache()
-        p.wait()
-        with _lock:
-            _url = None
-        _clear_join_cache()
-        info(f"phone tunnel ended ({p.returncode}); again in {RETRY_S:.0f} s")
-        time.sleep(RETRY_S)
+        if _pid is not None and not _alive(_pid):
+            with _lock:
+                _url = None
+            _clear_join_cache()
+            info(f"phone tunnel ended; again in {RETRY_S:.0f} s")
+            time.sleep(RETRY_S)
+        _keep()
+        time.sleep(WATCH_S)
 
 
 def _clear_join_cache() -> None:
@@ -104,45 +167,48 @@ def _clear_join_cache() -> None:
         pass
 
 
-def _orphans() -> list[int]:
-    """Tunnels a previous Flask left running (cloudflared quick tunnels to our port whose parent is gone)."""
+def _running() -> list[int]:
+    """Tunnels to our door already running (cloudflared quick tunnels to its port)."""
     import os
-    want = f"--url http://127.0.0.1:{smconfig.port('phone_door')}"
+    want = f"--url {_origin()}"
     out = []
     for d in os.listdir("/proc"):
         if not d.isdigit():
             continue
         try:
             cmd = open(f"/proc/{d}/cmdline", "rb").read().replace(b"\0", b" ").decode(errors="replace")
-            ppid = int(open(f"/proc/{d}/stat").read().rsplit(")", 1)[1].split()[1])
-        except (OSError, ValueError, IndexError):
+        except OSError:
             continue
-        if "cloudflared" in cmd and want in cmd and ppid == 1:
+        if "cloudflared" in cmd and want in cmd and _alive(int(d)):
             out.append(int(d))
     return out
 
 
+def _kill(pid: int) -> None:
+    import os
+    import signal
+    try:
+        os.kill(pid, signal.SIGTERM)
+        info(f"phone tunnel: ended a stray one (pid {pid})")
+    except OSError:
+        pass
+
+
 def start() -> None:
-    """Only with the deployment's phone_tunnel capability; once. A tunnel the last Flask left is ended first."""
+    """Only with the deployment's phone_tunnel capability; once."""
     if not smconfig.enabled("phone_tunnel") or getattr(start, "_on", False):
         return
     start._on = True  # type: ignore[attr-defined]
-    import os
-    import signal
-    for pid in _orphans():
-        try:
-            os.kill(pid, signal.SIGTERM)
-            info(f"phone tunnel: ended the one a previous Flask left (pid {pid})")
-        except OSError:
-            pass
     threading.Thread(target=_serve_forever, name="phone-door", daemon=True).start()
     threading.Thread(target=_run, name="phone-tunnel", daemon=True).start()
 
 
 def stop() -> None:
+    """Ends the tunnel (its address goes with it)."""
     with _lock:
-        if _proc is not None and _proc.poll() is None:
-            _proc.terminate()
+        pid = _pid
+    if _alive(pid):
+        _kill(pid)  # type: ignore[arg-type]
 
 
 # -- the door: /rs/* -> room_service, the rest -> Flask (both on loopback) ---------------------------------------

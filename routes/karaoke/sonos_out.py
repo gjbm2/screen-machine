@@ -144,8 +144,8 @@ class KaraokeSonos:
             self._halt()
             return
         zone = out[len(SONOS_PREFIX):]
-        if p.get("state") != "playing" or not song:
-            self._halt()
+        if p.get("state") != "playing" or not song or settings.get("muted"):
+            self._halt()                                 # muted: silent; unmuted, placed again where the song is
             return
         child = bool(settings.get("child_mode"))
         guide = float(settings.get("guide") or 0.0)
