@@ -27,6 +27,16 @@ chance (`controls.pass`).
   gap between the show and the box is the headroom, and closing it is the point.
 - Runs compare only within one `score_version`.
 
+## The owner's notes come first
+
+Read `ad_feedback.jsonl` before choosing what to work on. Two kinds of note:
+- **A moment** (`t_s` set, a `dimension`): scored as a case over that window.
+- **A whole song** (`scope: "song"`, `t_s: null`, `dimension: "overall"`; written from the karaoke queue's "How the show
+  played this song", routes/show_notes.py): the owner's verdict on the show's interpretation of that song. It is
+  scored by the song's overall (mean of its draws). Its **words** are the brief: when a `bad` one says what was wrong
+  ("far too busy for a ballad"), that is tonight's first candidate, ahead of the worst dimension. A `good` one is a
+  song whose interpretation must not get worse.
+
 ## Each attempt
 
 1. **Score.** `cd $AD_EVAL_TREE && nice -n 19 ~/.venvs/sm-show/bin/python tools/room/ad_eval/run.py` (the fixed song

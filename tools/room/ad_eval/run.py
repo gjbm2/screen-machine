@@ -240,7 +240,10 @@ def main() -> int:
                                   "rt": (tl.get("run") or {}).get("rt"), "errors": tl.get("errors") or {}}
         for n in nts:
             if n.get("song") == sid and (n.get("mode") in (None, mode)):
-                cases.append({"note": n, "mode": mode, "value": scoremod.case_value(tl, r, n, W)})
+                if n.get("scope") == "song":                 # the whole song's interpretation: its overall, filled
+                    cases.append({"note": n, "mode": mode, "value": None, "song_key": f"{sid}.{mode}"})   # in below
+                else:
+                    cases.append({"note": n, "mode": mode, "value": scoremod.case_value(tl, r, n, W)})
     for key, ms in draws.items():                             # a song's score: the mean of its draws
         if key not in songs or len(ms) < 2:
             continue
@@ -251,6 +254,10 @@ def main() -> int:
         ov = [float(mm["overall"]) for mm in ms if isinstance(mm.get("overall"), (int, float))]
         songs[key]["seeds"] = len(ms)
         songs[key]["overall_spread"] = round(max(ov) - min(ov), 3) if ov else None
+    for c in cases:                                           # a song-wide note: the song's overall, over its draws
+        k = c.pop("song_key", None)
+        if k is not None:
+            c["value"] = (songs.get(k) or {}).get("overall")
     agg: dict[str, dict] = {}
     for mode in a.modes:
         rows = [s for s in songs.values() if s["mode"] == mode]

@@ -53,6 +53,7 @@ from routes.auth.api import auth_api
 from routes.screensaver import screensaver_api
 from routes.perf_api import perf_api
 from routes.screen_notes import screen_notes_api
+from routes.show_notes import show_notes_api
 import routes.karaoke
 import routes.sound
 import routes.auth
@@ -92,6 +93,7 @@ app.register_blueprint(auth_api, url_prefix=API_PREFIX)  # Google sign-in (docs/
 app.register_blueprint(screensaver_api, url_prefix=API_PREFIX)  # the Windows screensaver download (tools/screensaver/)
 app.register_blueprint(perf_api, url_prefix=API_PREFIX)  # GET /api/perf/gpu: who uses the GPU (utils/gpu_watch.py)
 app.register_blueprint(screen_notes_api, url_prefix=API_PREFIX)  # comments on what a screen showed
+app.register_blueprint(show_notes_api, url_prefix=API_PREFIX)  # the owner's verdict on a song's show (the eval reads it)
 app.register_blueprint(routes.karaoke.karaoke_api, url_prefix=API_PREFIX)  # karaoke: songs, queue, player (docs/KARAOKE.md)
 app.register_blueprint(routes.sound.sound_api, url_prefix=API_PREFIX)  # sound outputs, latency, calibration (docs/SOUND.md)
 

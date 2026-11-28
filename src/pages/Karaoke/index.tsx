@@ -70,10 +70,13 @@ import {
   SkipForward,
   Square,
   Trash2,
+  Users,
   WandSparkles,
   X,
   Globe,
+  MessageSquareText,
 } from "lucide-react";
+import { SongShowNote } from "@/components/show/SongShowNote";
 import { AppMenu } from "@/components/nav/AppMenu";
 import { PageHeader } from "@/components/nav/PageHeader";
 import { Button } from "@/components/ui/button";
@@ -760,6 +763,7 @@ function QueueRow({
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
     id: entry.qid,
   });
+  const [noting, setNoting] = useState(false);       // the show's interpretation of this song: the owner's verdict
   return (
     <li
       ref={setNodeRef}
@@ -795,10 +799,16 @@ function QueueRow({
           </IconBtn>
         )}
         {song.status !== "ready" && song.status !== "failed" && <RestartBtn song={song} act={act} />}
+        {(where === "current" || where === "played") && (
+          <IconBtn label="How the show played this song" onClick={() => setNoting(!noting)}>
+            <MessageSquareText className={cn("h-4 w-4", noting && "text-primary")} />
+          </IconBtn>
+        )}
         <IconBtn label="Take out of the queue" onClick={() => act(() => karaoke.queueRemove(entry.qid))}>
           <X className="h-4 w-4" />
         </IconBtn>
       </RowFace>
+      {noting && <SongShowNote song={song.id} title={`${song.title} · ${song.artist}`} />}
     </li>
   );
 }
@@ -1044,6 +1054,7 @@ function LibraryRow({
           <>
             {song.status !== "ready" && <RestartBtn song={song} act={act} />}
             {song.status === "ready" && <RefineBtn song={song} act={act} />}
+            {song.status === "ready" && <DuetBtn song={song} act={act} />}
             <AtButtons onAt={(at) => addToQueue(song, at)} />
           </>
         )}
@@ -2081,6 +2092,26 @@ const refineAsk = (song: KaraokeSong, act: Act) =>
 /** Lyrics off (owner, 27 Nov: "a way to refer a song for 2ndary processing -- e.g. more carefully time lyrics"): the
  *  careful pass in the background (every voice taken out, heard, the whole lyrics timed at once); the song plays on
  *  meanwhile and the new timing comes in by itself, even mid-song. */
+/** Duet or not: lit for a duet (found, or set by a person); a click says otherwise, and saying what was found
+ *  hands it back to the finding. */
+function DuetBtn({ song, act }: { song: KaraokeSong; act: Act }) {
+  const on = !!song.duet;
+  const found = song.duet_found?.found ?? false;
+  const v = song.duet_found?.voices ?? [];
+  const label = on
+    ? `Duet${v.length === 2 && found ? `: ${v[0]} & ${v[1]}` : ""} (click: not a duet)`
+    : "Not a duet (click: it is one)";
+  return (
+    <IconBtn
+      label={label}
+      quiet={!on}
+      onClick={() => act(() => karaoke.setDuet(song.id, !on === found ? null : !on), on ? "Not a duet" : "A duet")}
+    >
+      <Users className={cn("h-4 w-4", on && "text-primary")} />
+    </IconBtn>
+  );
+}
+
 function RefineBtn({ song, act }: { song: KaraokeSong; act: Act }) {
   const st = song.refine?.state;
   if (!song.lyrics || song.lyrics.kind === "none") return null;
