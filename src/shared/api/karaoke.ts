@@ -39,6 +39,10 @@ export interface KaraokeSong {
   lyrics_rev?: number;
   /** The careful pass over the lyrics, once someone referred the song ("Lyrics off?"). */
   refine?: KaraokeRefine | null;
+  /** A duet (routes/karaoke/duet.py): as a person set it (duet_set), else as found (duet_found). */
+  duet?: boolean;
+  duet_found?: { found: boolean; voices: string[]; lines: { A: number; B: number; both: number }; why?: string } | null;
+  duet_set?: boolean | null;
   request_kind: string | null;
   /** Catalogue facts (routes/karaoke/sources.py song_facts), null until known. */
   genre?: string | null;
@@ -150,7 +154,14 @@ export interface LyricLine {
   text: string;
   /** When each space-separated token of `text` is sung (null: no letters, or not timed). Absent: sweep evenly. */
   words?: ({ t0: number; t1: number } | null)[];
+  /** A duet's part (routes/karaoke/duet.py): A sings first, B is the other, both together, backing; absent: not
+   *  known (or not a duet). */
+  voice?: DuetPart;
+  /** A line traded word by word: each token's part. */
+  voices?: DuetPart[];
 }
+
+export type DuetPart = 'A' | 'B' | 'both' | 'backing';
 
 export interface KaraokeLyrics {
   kind: 'synced' | 'plain' | 'none';
@@ -159,6 +170,8 @@ export interface KaraokeLyrics {
    *  and these are the song times [t0, t1] to mute the lead vocal over. */
   child?: boolean;
   mutes?: [number, number][];
+  /** Only for a confident duet: its two voices as the recording has them (A first). */
+  duet?: { voices: { name: string; sex: string }[] };
 }
 
 /** A song from the web search (iTunes + Deezer, steered by YouTube: routes/karaoke/sources.py catalog_search). */
@@ -237,6 +250,8 @@ export const karaoke = {
   /** Lyrics off: the careful pass over them (in the background); or undo it, or stop waiting. */
   refine: (id: string, body: { undo?: boolean; cancel?: boolean; note?: string } = {}) =>
     call<{ ok: boolean }>(`/songs/${id}/refine`, post(body)),
+  /** A person's word on whether a song is a duet (null: as found). */
+  setDuet: (id: string, duet: boolean | null) => call<{ song: KaraokeSong }>(`/songs/${id}/duet`, post({ duet })),
   nudge: (id: string, user_offset_ms: number) =>
     call<{ id: string; user_offset_ms: number }>(`/songs/${id}`, { ...post({ user_offset_ms }), method: 'PATCH' }),
   remove: (id: string) => call<{ ok: boolean }>(`/songs/${id}`, { method: 'DELETE' }),

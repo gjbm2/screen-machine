@@ -20,6 +20,7 @@ import { getDeploymentRelative, capabilityOn, type DeploymentInfo } from "@/shar
 import {
   karaoke,
   karaokeScreen,
+  type DuetPart,
   type KaraokeLyrics,
   type KaraokeNow,
   type KaraokeSong,
@@ -870,12 +871,16 @@ function Lyrics({
   doc,
   highlight,
   leadIn = 0,
+  singers,
 }: {
   t: number;
   doc: KaraokeLyrics | null;
   highlight: Highlight;
   /** The song's silent lead-in (s): the countdown to its first line runs from its start. */
   leadIn?: number;
+  /** Who sing it: with two or more, a duet's parts carry their names (the first named takes the voice that sings
+   *  first). */
+  singers?: string[];
 }) {
   // A line starts no later than its first timed word (the aligner can place it a little before the line's own
   // start): the change of lines then comes before that word, and the ball finds it on screen.
@@ -922,6 +927,11 @@ function Lyrics({
   const bigLine = bigIdx != null ? lines[bigIdx] : null;
   const smallIdx = bigIdx != null ? bigIdx + 1 : i + 1;
   const small = lines[smallIdx] ?? null;
+  // A duet (owner, 28 Nov): each voice on its own side in its own colour, shared lines centred in a third; the name
+  // of whoever is up as the part changes.
+  const duet = !!doc?.duet;
+  const voiceOf = (l: LyricLine | null) => (duet && l ? l.voice : undefined);
+  const tag = duet && bigLine && bigIdx != null ? partTag(lines, bigIdx, singers, t) : null;
 
   // The change of lines (owner, 25 Nov: smoother, more graceful, not distracting; "visual theatre"): the small line
   // travels from where it was into the big place, growing as it goes (measured: the eye never loses it); the finished
@@ -1103,7 +1113,14 @@ function Lyrics({
     <div style={lyricsBoxStyle}>
       <div aria-hidden style={{ ...bandStyle, opacity: bigLine || small ? 1 : 0 }} />
       <div
-        style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.8vh" }}
+        style={{
+          position: "relative",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: "0.8vh",
+          alignSelf: duet ? "stretch" : undefined,
+        }}
       >
         {out && (
           <div
@@ -1127,6 +1144,8 @@ function Lyrics({
               progress={1}
               big
               highlight={highlight}
+              voice={voiceOf(out)}
+              voices={duet ? out.voices : undefined}
             />
           </div>
         )}
@@ -1135,9 +1154,15 @@ function Lyrics({
           <div
             ref={bigRef}
             key={`big-${bigIdx}`}
-            style={{ position: "relative", transformOrigin: "50% 50%", willChange: "transform, opacity" }}
+            style={{
+              position: "relative",
+              transformOrigin: "50% 50%",
+              willChange: "transform, opacity",
+              ...sideStyle(voiceOf(bigLine)),
+            }}
           >
             {countIn && untilNext <= COUNT_IN_S && <CountDots seconds={untilNext} />}
+            {tag && <PartTag key={`tag-${bigIdx}`} {...tag} lift={countIn && untilNext <= COUNT_IN_S} />}
             <Line
               current={curOn}
               text={bigLine.text}
@@ -1147,6 +1172,8 @@ function Lyrics({
               big
               highlight={highlight}
               onWord={ball ? onBigWord : undefined}
+              voice={voiceOf(bigLine)}
+              voices={duet ? bigLine.voices : undefined}
             />
           </div>
         ) : next ? (
@@ -1155,8 +1182,19 @@ function Lyrics({
           <div style={{ height: "1.3em", fontSize: lineFont() }} />
         )}
         {small && (
-          <div ref={smallRef} key={`small-${smallIdx}`} style={{ willChange: "transform, opacity" }}>
-            <Line text={small.text} progress={0} big={false} onWord={ball ? onSmallWord : undefined} />
+          <div
+            ref={smallRef}
+            key={`small-${smallIdx}`}
+            style={{ willChange: "transform, opacity", ...sideStyle(voiceOf(small)) }}
+          >
+            <Line
+              text={small.text}
+              progress={0}
+              big={false}
+              onWord={ball ? onSmallWord : undefined}
+              voice={voiceOf(small)}
+              voices={duet ? small.voices : undefined}
+            />
           </div>
         )}
         {ball && <div ref={ballRef} aria-hidden style={{ ...dotStyle, position: "fixed", fontSize: lineFont() }} />}
@@ -1303,6 +1341,8 @@ function Line({
   highlight = "words",
   plain,
   onWord,
+  voice,
+  voices,
 }: {
   text: string;
   progress: number;
@@ -1315,8 +1355,13 @@ function Line({
   plain?: boolean;
   /** Each word's element, for the ball (Lyrics). */
   onWord?: (k: number, el: HTMLSpanElement | null) => void;
+  /** A duet's part: its side and colours. */
+  voice?: DuetPart;
+  /** A line traded word by word: each word's part (the line stays centred). */
+  voices?: DuetPart[];
 }) {
   const font = lineFont(big);
+  const sided = !voices && (voice === "A" || voice === "B");
   const box: CSSProperties = {
     position: "relative",
     fontSize: font,
@@ -1325,8 +1370,9 @@ function Line({
     fontWeight: 800,
     lineHeight: LINE_HEIGHT, // room above a wrapped row for the ball (owner, 25 Nov)
     opacity: big ? 1 : SMALL_OPACITY,
-    maxWidth: big ? "90vw" : `${((90 * SMALL_VW) / BIG_VW).toFixed(2)}vw`,
-    textAlign: "center",
+    maxWidth: `${(((sided ? SIDED_VW : 90) * (big ? BIG_VW : SMALL_VW)) / BIG_VW).toFixed(2)}vw`,
+    textAlign: sided ? (voice === "A" ? "left" : "right") : "center",
+    fontStyle: voice === "backing" && !voices ? "italic" : undefined,
     whiteSpace: "normal",
     overflowWrap: "anywhere",
     ...BALANCE, // a wrapped line's rows evenly filled: no word left alone (owner, 25 Nov: "avoid orphaned words")
@@ -1338,25 +1384,104 @@ function Line({
   const prog = !yellow ? null : timed ? tokenProgress(words!, t!) : sweepProgress(tokens, progress);
   return (
     <div style={box} data-sm-karaoke-line={current ? "current" : undefined}>
-      {tokens.map((tok, k) => (
-        <span key={k}>
-          <span
-            ref={onWord ? (el) => onWord(k, el) : undefined}
-            style={{ position: "relative", display: "inline-block" }}
-          >
-            <span style={baseTextStyle}>{tok}</span>
-            {prog && (
-              <span
-                aria-hidden
-                style={{ ...baseTextStyle, ...sungStyle, clipPath: `inset(-50% ${100 - prog[k] * 100}% -50% 0)` }}
-              >
-                {tok}
-              </span>
-            )}
+      {tokens.map((tok, k) => {
+        const hue = DUET_HUES[voices?.[k] ?? voice ?? ""];
+        return (
+          <span key={k}>
+            <span
+              ref={onWord ? (el) => onWord(k, el) : undefined}
+              style={{ position: "relative", display: "inline-block" }}
+            >
+              <span style={hue ? { ...baseTextStyle, color: hue.base } : baseTextStyle}>{tok}</span>
+              {prog && (
+                <span
+                  aria-hidden
+                  style={{
+                    ...baseTextStyle,
+                    ...sungStyle,
+                    ...(hue ? { color: hue.sung } : null),
+                    clipPath: `inset(-50% ${100 - prog[k] * 100}% -50% 0)`,
+                  }}
+                >
+                  {tok}
+                </span>
+              )}
+            </span>
+            {k < tokens.length - 1 ? " " : null}
           </span>
-          {k < tokens.length - 1 ? " " : null}
-        </span>
-      ))}
+        );
+      })}
+    </div>
+  );
+}
+
+/** A duet's colours: each voice its own hue, shared lines a third; sung is that hue at full brightness, still to sing
+ *  the same hue held back, so the highlight never fights the part's colour. */
+const DUET_HUES: Record<string, { base: string; sung: string }> = {
+  A: { base: "hsl(200 42% 68%)", sung: "hsl(194 100% 64%)" },
+  B: { base: "hsl(332 38% 72%)", sung: "hsl(332 100% 70%)" },
+  both: { base: "hsl(272 34% 74%)", sung: "hsl(272 100% 76%)" },
+  backing: { base: "rgba(255,255,255,0.6)", sung: "rgba(255,255,255,0.9)" },
+};
+const SIDED_VW = 66; // a voice's line, on its own side: at most this wide (of the 90 a centred line may take)
+const SIDE_MARGIN = "6vw";
+const TAG_S = 2.6; // a part's name shows this long after its line starts (from when the line is up)
+
+/** A duet line's place: A on the left, B on the right, the rest centred. */
+function sideStyle(v: DuetPart | undefined): CSSProperties {
+  return v === "A"
+    ? { alignSelf: "flex-start", marginLeft: SIDE_MARGIN }
+    : v === "B"
+      ? { alignSelf: "flex-end", marginRight: SIDE_MARGIN }
+      : {};
+}
+
+/** The name over a duet's line where the part changes (two or more singers named), else null. */
+function partTag(
+  lines: LyricLine[],
+  idx: number,
+  singers: string[] | undefined,
+  t: number,
+): { text: string; voice: DuetPart; opacity: number } | null {
+  const line = lines[idx];
+  const v = line?.voice;
+  if (!v || v === "backing" || !singers || singers.length < 2) return null;
+  let before: DuetPart | undefined;
+  for (let j = idx - 1; j >= 0 && !before; j--) before = lines[j].voice === "backing" ? undefined : lines[j].voice;
+  if (before === v) return null;
+  const left = (line.start ?? 0) + TAG_S - t;
+  if (left <= 0) return null;
+  const text = v === "A" ? singers[0] : v === "B" ? singers[1] : `${singers[0]} & ${singers[1]}`;
+  return { text, voice: v, opacity: Math.min(1, left / 0.6) };
+}
+
+function PartTag({ text, voice, opacity, lift }: { text: string; voice: DuetPart; opacity: number; lift?: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    ref.current?.animate([{ opacity: 0, transform: "translateY(30%)" }, { opacity: 1, transform: "none" }], {
+      duration: 320,
+      easing: EASE_OUT,
+    });
+  }, []);
+  const at = voice === "A" ? { left: 0 } : voice === "B" ? { right: 0 } : { left: 0, right: 0, textAlign: "center" as const };
+  return (
+    <div
+      ref={ref}
+      aria-hidden
+      style={{
+        position: "absolute",
+        ...at,
+        bottom: lift ? "calc(100% + 1.4em)" : "100%",
+        fontSize: lineFont(false),
+        fontWeight: 700,
+        letterSpacing: "0.04em",
+        whiteSpace: "nowrap",
+        opacity,
+        ...baseTextStyle,
+        color: DUET_HUES[voice].sung,
+      }}
+    >
+      {text}
     </div>
   );
 }

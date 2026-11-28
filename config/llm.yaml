@@ -71,6 +71,14 @@ tasks:
       - {provider: openai, model: gpt-6-luna, options: {reasoning_effort: low}}
     timeout_s: 60                           # then the local brief (the lyric sections, the idiom by the sound) stays
     max_output_tokens: 6000
+  duet:                                     # who sings which karaoke line (routes/karaoke/duet.py; owner, 28 Nov):
+    models:                                 # the lyrics -> a duet or not, its two voices, each line's part. Once a
+      - provider: gemini                    # song, before it plays, kept beside it; checked against the recording's
+        model: gemini-3.8-flash             # own pitch before anything is shown
+        options: {reasoning_effort: low, max_completion_tokens: 6000}
+      - {provider: openai, model: gpt-6-luna, options: {reasoning_effort: low}}
+    timeout_s: 60                           # then the song shows as one voice
+    max_output_tokens: 6000
   describe:                                 # Describe it (§7.4): the guest's words -> the card's own settings
     models:
       - {provider: openai, model: gpt-6-luna, options: {reasoning_effort: none}}   # was gpt-4.1-mini (shuts down
@@ -146,6 +154,8 @@ budgets:
                                             # estimate is about $3 on Gemini 3.8 Flash and about $10 on gpt-audio-1.5
                                             # (GET /api/v1/listening "estimate" shows the live figure)
   brief: 3.00                               # about 3,000 tokens in and 1,500 out a song, once per song
+  duet: 2.00                                # about 2,000 tokens in and 1,500 out a song (~$0.007), once per song: the
+                                            # library's first look (~150 songs) is about $1
   treatment: 1.00                           # README S5.33: ~$0.0007 a song (2,000 in, 300 out on Flash-Lite), so a
                                             # long evening is cents; reaching it, the director's own plans carry on
   tag: 3.00                                 # art tags: $0.00125 a picture (measured 27 Oct), so the ~2,000-picture

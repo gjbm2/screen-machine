@@ -9,6 +9,8 @@
   POST   /karaoke/songs/<id>/refine          {note?}: lyrics off: the careful pass over them (in the background, after
                                            songs being prepared) | {undo: true}: the first pass's lyrics back
                                            | {cancel: true}: not waiting any more
+  POST   /karaoke/songs/<id>/duet            {duet: true | false | null}: a person's word on whether it is a duet
+                                           (null: as karaoke/duet.py found it); the Duets tag follows it
   PATCH  /karaoke/songs/<id>               {user_offset_ms}: nudge this song's lyrics
   DELETE /karaoke/songs/<id>               forget it (files too)
   GET    /karaoke/songs/<id>/lyrics        {kind, lines: [{start, end, text}], ...}
@@ -37,7 +39,7 @@ import smconfig
 from utils.logger import error
 
 from . import sources as src
-from .store import FACTS, Store, song_dir, song_key
+from .store import FACTS, Store, public_song, song_dir, song_key
 
 karaoke_api = Blueprint("karaoke_api", __name__)
 _store: Store | None = None
@@ -258,6 +260,9 @@ def song_lyrics(sid: str):
     if song is None:
         return _err(404, "No such song.")
     doc = lyr or {"kind": "none", "lines": []}
+    if song.get("duet_set") is not False and (song.get("duet") or {}).get("found"):   # a duet's parts (duet.py)
+        from . import duet as duet_mod
+        doc = duet_mod.apply(doc, duet_mod.load(song_dir(sid)))
     if store().s["settings"].get("child_mode"):        # child mode: swear words as dashes, and when to mute them
         from .profanity import censor
         sung = None
@@ -272,6 +277,22 @@ def song_lyrics(sid: str):
             error(f"karaoke child mode ({sid}): {e}")
             doc = censor(doc, None)
     return jsonify(doc)
+
+
+@karaoke_api.post("/karaoke/songs/<sid>/duet")
+def song_duet(sid: str):
+    """{duet: true | false | null}: a person's word on whether the song is a duet (null: as found, karaoke/duet.py).
+    The library's Duets tag follows it; false also shows a found duet as one voice."""
+    b = request.get_json(silent=True) or {}
+    if "duet" not in b or b["duet"] not in (True, False, None):
+        return _err(400, "Send {duet: true, false or null}.")
+    if store().update_song(sid, duet_set=b["duet"]) is None:
+        return _err(404, "No such song.")
+    with store().lock:
+        song = dict(store().s["songs"][sid])
+        rev = int(song.get("lyrics_rev") or 0) + 1
+    store().update_song(sid, lyrics_rev=rev)            # the screens fetch its lyrics again (parts on or off)
+    return jsonify({"song": public_song({**song, "lyrics_rev": rev})})
 
 
 @karaoke_api.get("/karaoke/songs/<sid>/<stem>.m4a")

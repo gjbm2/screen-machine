@@ -767,13 +767,22 @@ def child_song(ps: dict) -> dict:
     return {**ps, **{k: profanity.mask_text(ps.get(k)) for k in ("title", "artist", "album") if ps.get(k)}}
 
 
+def is_duet(s: dict) -> bool:
+    """A duet: as a person set it (``duet_set`` true / false), else as karaoke/duet.py found it (``duet.found``)."""
+    if isinstance(s.get("duet_set"), bool):
+        return s["duet_set"]
+    return bool((s.get("duet") or {}).get("found"))
+
+
 def song_tags(s: dict) -> list[str]:
-    """The library's tags for a song: its genre and its decade ("Pop", "1980s")."""
+    """The library's tags for a song: its genre and its decade ("Pop", "1980s"), and "Duets"."""
     tags = []
     if s.get("genre"):
         tags.append(str(s["genre"]))
     if isinstance(s.get("year"), int) and s["year"] > 1900:
         tags.append(f"{s['year'] // 10 * 10}s")
+    if is_duet(s):
+        tags.append("Duets")
     return tags
 
 
@@ -784,4 +793,5 @@ def public_song(s: dict) -> dict:
         "lyrics_rev": s.get("lyrics_rev") or 0,
         "lyrics": {"kind": lyr.get("kind"), "lines": len(lyr.get("lines") or [])} if lyr else None,
         "request_kind": (s.get("request") or {}).get("kind"), "tags": song_tags(s), "writers": s.get("writers"),
-        "lead_in_s": song_lead_in(s)}
+        "lead_in_s": song_lead_in(s),
+        "duet": is_duet(s), "duet_found": s.get("duet"), "duet_set": s.get("duet_set")}

@@ -151,6 +151,33 @@ for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`;
   `song-video-*` looks (`stream_service/plugins/sources/song_video.py`: slowed, frames blended, drifting, with an
   effect on top) play only with the song's clips, and share the artist's share with the photo looks.
 
+- **Duets** (owner, 28 Nov: "detect who sings which line, and show it on the karaoke screen"; routes/karaoke/duet.py,
+  the worker's `karaoke-duets` thread). Every ready song once, and again when its lyrics' words change:
+  - The AI (`duet` in config/llm.yaml, about $0.007 a song) says whether the recording is a duet, its two voices
+    (names; man, woman or child) and each line's part: A (sings first), B, both, backing. A lyric line's own tag
+    ("[Elton:]", "Him:", "(Both)") wins over it. It knows the famous duets but gets lines wrong (28 Nov, Ain't No
+    Mountain High Enough: a third of them), so it is a prior, never the truth.
+  - Only a song it calls a duet is listened to: `tools/karaoke/voices.py` (karaoke venv, CPU, nice 19, ~20-40 s)
+    gives each line of the lead stem a speaker embedding (WeSpeaker ResNet34, 26 MB, fetched once into
+    `~/.cache/screen-machine/karaoke-models/speaker/`) and a median pitch. Pitch alone fails: Gaga sings Shallow's
+    second verse in Cooper's register; the embedding still tells them apart (~0.5 alike within a verse, ~0.15
+    across).
+  - `decide`: the lines not sung together split into the two most different sounds; the AI says which is which.
+    It is a duet only when the two sound clearly apart, each voice is confirmed (the AI and the sound agree) on 3+
+    lines, and the AI's solo lines agree with the sound 60%+ of the time. A line is marked when the two agree, or
+    when the sound is clear on its own (margin 0.3+, and only on a line with real words: a wail doesn't sound like
+    its singer). Both and backing keep the AI's word. A wrong duet display is worse than none: anything unsure shows
+    as before. The sound can't tell one voice from two by itself: one singer's verses and choruses (or a choir
+    coda) split as far apart as two singers (28 Nov: Hey Jude 0.38, Ain't No Mountain 0.41), so whether a song IS
+    a duet is the AI's call (13 of 13 non-duets right on 28 Nov); the sound decides its lines.
+  - Kept as `duet.json` beside the song (for the lyrics it was made from); `GET .../lyrics` puts each line's `voice`
+    on (and `voices` per word where its brackets are another part's) and `duet: {voices}`. The song's `duet` field
+    is what was found; `duet_set` (`POST /api/karaoke/songs/<id>/duet {duet: true | false | null}`, the Karaoke
+    page's people button) is a person's word, and wins. Either way the library tags it "Duets".
+  - The screen, for a duet only: A's lines on the left, B's on the right, both centred; each part its own colour
+    (blue, pink, violet for both), sung as that colour at full brightness. With two or more singers named on the
+    queue entry, the name of whoever is up shows over the line where the part changes (the first named takes A).
+
 ## The karaoke venv (per machine)
 
 ```
