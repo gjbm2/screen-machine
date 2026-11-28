@@ -1101,6 +1101,18 @@ function Lyrics({
       el.style.opacity = "0";
       return;
     }
+    // A duet's ball is the colour of the part it is with (owner, 28 Nov: "blue singing has a blue bouncing ball, and
+    // pink has a pink bouncing ball"): the word it rests on, or the one it is flying to.
+    const at = st.kind === "hop" ? (u > 0 ? st.to : st.from) : st.kind === "in" ? st.to : st.from;
+    const [li, wi] = at.split(":").map(Number);
+    const ln = duet ? lines[li] : undefined;
+    const hue = ln ? DUET_HUES[ln.voices?.[wi] ?? ln.voice ?? ""] : undefined;
+    const fill = hue ? hue.sung : (dotStyle.background as string);
+    if (el.dataset.fill !== fill) {
+      el.dataset.fill = fill;
+      el.style.background = fill;
+      el.style.boxShadow = hue ? `0 0 0.15em #000, 0 0 0.35em ${hue.sung}` : (dotStyle.boxShadow as string);
+    }
     const e = u * u * (3 - 2 * u); // across: eased in and out
     const x = a.x + (b.x - a.x) * e;
     // Longer hops go higher; on a row with a row above, no higher than the gap between them allows.
