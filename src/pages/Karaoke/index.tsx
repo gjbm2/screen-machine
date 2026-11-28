@@ -102,6 +102,7 @@ import { fuzzyFilter } from "./fuzzy";
 import { LivePicture } from "./LivePicture";
 import { LightsPanel } from "@/components/room/LightsNow";
 import { roomApi } from "@/components/room/roomLink";
+import { VIA_TUNNEL } from "@/shared/viaTunnel";
 import { SongPictures } from "./SongPictures";
 import { LoopbackToggle, RoomMicCheck } from "./RoomMic";
 import { Roster, SingerAsk, SingerTag, askSingers } from "./Singer";
@@ -163,6 +164,7 @@ export default function KaraokePage() {
   // the page: nothing in the page changes size, so the scroll never jumps; 26 Nov the in-page version flickered).
   const playerRef = useRef<HTMLDivElement>(null);
   const [pinned, setPinned] = useState(false);
+  const [searching, setSearching] = useState(false);
   useEffect(() => {
     const el = playerRef.current;
     if (!el) return;
@@ -266,10 +268,7 @@ export default function KaraokePage() {
           at === "next" ? `“${s.title}” is up next` : `“${s.title}” added to the queue`,
         ),
     );
-  const focusFind = () => {
-    findRef.current?.focus();
-    findRef.current?.scrollIntoView({ block: "center", behavior: "smooth" });
-  };
+  const focusFind = () => findRef.current?.focus();
 
   const onDragStart = (e: DragStartEvent) => {
     draggingRef.current = true;
@@ -340,6 +339,7 @@ export default function KaraokePage() {
       onLibrary={() => setLibOpen(!libOpen)}
       onAdded={backToQueue}
       seed={findSeed}
+      onSearching={setSearching}
     />
   );
 
@@ -354,8 +354,8 @@ export default function KaraokePage() {
           </Notice>
         )}
 
-        {/* Now playing first (sticky beside the lists on a wide screen), then the queue, then the search (Add puts a song
-            at the queue's end) with the library under its icon; the picture and the settings below. */}
+        {/* Now playing first (sticky beside the lists on a wide screen), then the search (its results under it, in the
+            page) with the library under its icon, then the queue; the picture, the lights and the settings below. */}
         <main className="space-y-4 lg:grid lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] lg:items-start lg:gap-6 lg:space-y-0">
           {/* Beside the lists on a wide screen (sticky); on a phone it scrolls away and its slim copy takes the top
               (owner, 26 Nov: "player component should probably pin to top on mobile"). */}
@@ -370,6 +370,7 @@ export default function KaraokePage() {
             onDragCancel={endDrag}
           >
             <div className="space-y-4">
+              {findCard}
               <div ref={queueBox} className="scroll-mt-20">{queueCard}</div>
               {st && (
                 <Card
@@ -394,7 +395,6 @@ export default function KaraokePage() {
                   />
                 </Card>
               )}
-              {findCard}
             </div>
             <DragOverlay>{dragSong ? <RowFace song={dragSong} lifted /> : null}</DragOverlay>
             {st && <SingerAsk names={st.singers ?? []} />}
@@ -402,13 +402,16 @@ export default function KaraokePage() {
         </main>
 
         <div className="mt-4 space-y-4 lg:mt-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
-          <div className="space-y-4">
-            <LivePicture screen={st ? karaokeScreen(dep, st.settings.screen) : null} />
-            {/* the room's lights, a card of their own: they belong to the room, not to the screen (owner, 28 Nov) */}
-            <section className={cn(CARD_CLASS, "px-4 py-1 sm:px-5")}>
-              <LightsPanel api={roomApi()} />
-            </section>
-          </div>
+          {/* the screen, then the room's lights: a card of their own, they belong to the room (owner, 28 Nov). Not
+              through the phones' tunnel yet: room_service takes only its own names (routes/phone_door.py) */}
+          {!VIA_TUNNEL && (
+            <div className="space-y-4">
+              <LivePicture screen={st ? karaokeScreen(dep, st.settings.screen) : null} />
+              <section className={cn(CARD_CLASS, "px-4 py-1 sm:px-5")}>
+                <LightsPanel api={roomApi()} />
+              </section>
+            </div>
+          )}
           {st && <Settings st={st} songs={songs} act={act} dep={dep} />}
           {st?.player.song_id && <SongPictures songId={st.player.song_id} />}
         </div>
@@ -423,7 +426,8 @@ export default function KaraokePage() {
           </div>
         </DrawerContent>
       </Drawer>
-      {st && pinned && (
+      {/* only with a song on (nothing to control otherwise: owner, 28 Nov, "currently playing control snapping to the top") */}
+      {st && pinned && !searching && !!st.player.song_id && st.player.state !== "stopped" && (
         <div className="fixed inset-x-0 top-[var(--app-nav-top,0px)] z-40 px-3 pt-[max(0.5rem,env(safe-area-inset-top))] motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-2 lg:hidden">
           <div className="mx-auto max-w-3xl">
             <NowPlaying st={st} skew={skewRef.current} songs={songs} act={act} compact />
@@ -1235,6 +1239,7 @@ function Find({
   onLibrary,
   onAdded,
   seed,
+  onSearching,
 }: {
   songs: KaraokeSong[];
   queuedCount: Map<string, number>;
@@ -1245,6 +1250,8 @@ function Find({
   onLibrary: () => void;
   onAdded: () => void;
   seed: { text: string; n: number };
+  /** The search box has the focus (true) or lost it: the page keeps its slim player bar away meanwhile. */
+  onSearching: (on: boolean) => void;
 }) {
   const [q, setQ] = useState("");
   // The library tray's "Search the web" hands its text over here.
@@ -1394,10 +1401,7 @@ function Find({
     );
 
   const open = link || text.length >= 1;
-  // The results open upwards, so their height is whatever room is left between the search box and the top of the
-  // screen (less any top nav), capped at 34rem: a fixed vh cap ran off the top in a short window (owner, 27 Nov).
-  const anchor = useRef<HTMLDivElement>(null);
-  const [roomAbove, setRoomAbove] = useState<number | null>(null);
+  const touchTimer = useRef<number | undefined>(undefined);
   useEffect(() => {
     const el = webFoot.current;
     if (!el) return;
@@ -1405,41 +1409,26 @@ function Find({
     io.observe(el);
     return () => io.disconnect();
   });
-  useLayoutEffect(() => {
-    if (!open) return;
-    const measure = () => {
-      const el = anchor.current;
-      if (!el) return;
-      const navTop = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--app-nav-top")) || 0;
-      const vvTop = window.visualViewport?.offsetTop ?? 0;
-      const h = Math.max(96, Math.floor(el.getBoundingClientRect().top - vvTop - navTop - 16));
-      setRoomAbove((was) => (was === h ? was : h));
-    };
-    // every frame while open: the page under it moves without any event (the queue loads, the bar sticks or unsticks)
-    let raf = 0;
-    const tick = () => {
-      measure();
-      raf = requestAnimationFrame(tick);
-    };
-    tick();
-    return () => cancelAnimationFrame(raf);
-  }, [open]);
-  // Under the queue, held to the foot of the screen while its place is further down (owner, 25-26 Nov: "the dominant
-  // pathway when you're in a hurry"; "if you scroll down past bottom of queue etc. then search can detach from
-  // bottom of viewport": CSS sticky does exactly that). The results open upwards over the page; the library icon
-  // opens the library as a tray.
-  return (
-    <div className="sticky bottom-[calc(var(--dock-h,0px)+var(--app-nav-bottom,0px))] z-40 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1">
-      <div ref={anchor} className="relative">
-        {open && (
+  // The search box in the page, the results under it in the page (owner, 28 Nov: "adopt best practice mobile web
+  // design"; "search really shouldn't go into a weird shitty modal mode"): nothing pinned, measured or laid over the
+  // page. On a phone the browser brings the box up above the keyboard as it does for any box, and the results follow
+  // it; the page scrolls as a page does. The library icon opens the library as a tray.
+  const results = open && (
           <section
-            className={cn(
-              CARD_CLASS,
-              "absolute inset-x-0 bottom-full mb-2 h-[min(60vh,34rem)] overflow-y-auto overscroll-contain p-3 shadow-xl sm:p-4",
-            )}
-            style={roomAbove != null ? { height: `min(${roomAbove}px, 34rem)`, maxHeight: "none" } : undefined}
+            className={cn(CARD_CLASS, "mt-2 p-3 sm:p-4")}
             onPointerEnter={(e) => e.pointerType === "mouse" && setOver(true)}
-            onPointerLeave={() => setOver(false)}
+            onPointerLeave={(e) => e.pointerType === "mouse" && setOver(false)}
+            // a finger has no hover: on the results from a touch until a few seconds after the last
+            onPointerDown={(e) => {
+              if (e.pointerType === "mouse") return;
+              window.clearTimeout(touchTimer.current);
+              setOver(true);
+            }}
+            onPointerUp={(e) => {
+              if (e.pointerType === "mouse") return;
+              window.clearTimeout(touchTimer.current);
+              touchTimer.current = window.setTimeout(() => setOver(false), 4000);
+            }}
           >
             {link && SPOTIFY_LIST.test(text) && <SpotifyListRow url={text} act={act} onDone={clear} />}
             {link && !SPOTIFY_LIST.test(text) && (
@@ -1566,8 +1555,10 @@ function Find({
               </div>
             )}
           </section>
-        )}
-        <section className={cn(CARD_CLASS, "p-2.5 shadow-lg")}>
+  );
+  return (
+    <div data-testid="karaoke-find" onFocusCapture={() => onSearching(true)} onBlurCapture={() => onSearching(false)}>
+        <section className={cn(CARD_CLASS, "p-2.5")}>
           <div className="flex items-center gap-2">
             <div className="relative min-w-0 flex-1">
               <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -1609,7 +1600,7 @@ function Find({
             </Button>
           </div>
         </section>
-      </div>
+        {results}
     </div>
   );
 }
