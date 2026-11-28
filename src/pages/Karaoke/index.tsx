@@ -100,6 +100,8 @@ import {
 } from "@/shared/api/karaoke";
 import { fuzzyFilter } from "./fuzzy";
 import { LivePicture } from "./LivePicture";
+import { LightsPanel } from "@/components/room/LightsNow";
+import { roomApi } from "@/components/room/roomLink";
 import { SongPictures } from "./SongPictures";
 import { LoopbackToggle, RoomMicCheck } from "./RoomMic";
 import { Roster, SingerAsk, SingerTag, askSingers } from "./Singer";
@@ -400,7 +402,13 @@ export default function KaraokePage() {
         </main>
 
         <div className="mt-4 space-y-4 lg:mt-6 lg:grid lg:grid-cols-2 lg:items-start lg:gap-6 lg:space-y-0">
-          <LivePicture screen={st ? karaokeScreen(dep, st.settings.screen) : null} />
+          <div className="space-y-4">
+            <LivePicture screen={st ? karaokeScreen(dep, st.settings.screen) : null} />
+            {/* the room's lights, a card of their own: they belong to the room, not to the screen (owner, 28 Nov) */}
+            <section className={cn(CARD_CLASS, "px-4 py-1 sm:px-5")}>
+              <LightsPanel api={roomApi()} />
+            </section>
+          </div>
           {st && <Settings st={st} songs={songs} act={act} dep={dep} />}
           {st?.player.song_id && <SongPictures songId={st.player.song_id} />}
         </div>

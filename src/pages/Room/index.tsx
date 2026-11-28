@@ -633,7 +633,6 @@ export default function RoomPage() {
                             ) : (
                               <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2 lg:grid-cols-1">{screens.map(([id]) => screenCard(id))}</div>
                             )}
-                            <LightsPanel api={room.api} />
                           </Section>
 
                         <TodayFold
@@ -680,6 +679,7 @@ export default function RoomPage() {
                             </Link>
                           }
                         >
+                          <LightsPanel api={room.api} title="Scenes · was, now, next" />
                           <LightsControls
                             api={room.api}
                             connected={connected}

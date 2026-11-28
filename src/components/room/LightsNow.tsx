@@ -26,9 +26,12 @@ type Lib = Map<string, { label: string; thumb: string | null }>;
 
 const pretty = (s: string) => s.replace(/[-_]+/g, " ").replace(/^./, (c) => c.toUpperCase());
 
-export function LightsPanel({ api }: { api: RoomApi }) {
+/** The lights belong to the room, not to a screen (owner, 28 Nov: "rooms may have 0...n screens, but that's separate
+ *  from lighting scenes"): this goes in the room's own place (the Room page's Lights section, a card of its own on the
+ *  Karaoke page), never inside a screen's. */
+export function LightsPanel({ api, title = "Lights" }: { api: RoomApi; title?: string }) {
   return (
-    <Unroll title="Lights" testId="lights-now">
+    <Unroll title={title} testId="lights-now">
       <LightsBody api={api} />
     </Unroll>
   );
