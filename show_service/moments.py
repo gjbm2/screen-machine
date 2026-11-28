@@ -122,7 +122,7 @@ def perform(chosen: list[dict], pos_s: float, now_s: float, beat_s: float, cfg: 
             down = t + float(r.get("hold_s") or 0.0)
             fade_s = max(0.0, end - down) if follow else float(r.get("fade_s") or 0.0)
             out["envelopes"].append({"at_ms": round(host(down + fade_s) * 1000.0, 1), "kind": "out",
-                                     "fade_ms": round(fade_s * 1000.0, 1),
+                                     "fade_ms": round(fade_s * 1000.0, 1), "curve": float(r.get("curve") or 1.0),
                                      "floor": float(lim.get("floor_end", r.get("floor", 0.0))), "key": key})
         hb = float(r.get("hit_beats") or 0.0) * beat
         if hb > 0 and r["envelope"] != "out":

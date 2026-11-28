@@ -14,6 +14,7 @@
 #   lift       how far over the steady level it lands (x the moment's salience; only where there is headroom)
 #   hit_beats  every lamp to the look's accent colour at full for this many beats (the unison hit); 0: none
 #   flash      the running light scene's drop flash (its hits block's drop), where the scene has one
+#   curve      an out's fade: x ** curve of the way down at x of it (1 straight; more holds up longer, then goes)
 # choose     which a song gets: a moment under min_salience is not one; the song's idiom names how many of each
 #            (by_idiom; an idiom not named, or a song with no brief, takes default); two of a kind at least gap_bars
 #            apart (the stronger kept); an ending is always taken
@@ -26,8 +27,10 @@ kinds:
   drums: {}                       # found, not answered yet: a harder pulse for its bars wants its own look change
   end:
     cold: {envelope: out, hold_s: 0.3, fade_s: 0.15, floor: 0.0}     # the band stops dead on a hit: black out after it
-    ring: {envelope: out, hold_s: 0.2, fade: follow, floor: 0.0}     # a last chord left to ring: fade with it
-    fade: {envelope: out, fade: follow, floor: 0.0}                  # the record fades: the lights go with it
+    ring: {envelope: out, hold_s: 0.2, fade: follow, curve: 2.0, floor: 0.0}   # a last chord left to ring: fade with it
+    fade: {envelope: out, fade: follow, curve: 3.0, floor: 0.0}      # the record fades: the lights go with it, held
+                                                                     # up as long as it is heard (eval 28 Nov: a straight
+                                                                     # fade looked out ~4.5 s before the sound was)
 choose:
   min_salience: 0.5
   gap_bars: 8

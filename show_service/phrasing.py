@@ -17,7 +17,8 @@ before its line), so it is phrased, the same way every time, sized by how big th
            swell: no pulling in (a slow song doesn't flinch): the landing only, soft and long.
            stop: the band cuts out and comes back on a hit (a song's moment, utils/song_moments.py): no wind, the
            lights down to ``floor`` for the gap (``dark_ms`` before the line), then the landing.
-           out: the song's last light (its ending): down to ``floor`` by the line, over ``fade_ms``, and staying there.
+           out: the song's last light (its ending): down to ``floor`` by the line, over ``fade_ms`` (on ``curve``:
+           x ** curve of the way down at x of the fade), and staying there.
            in: back from a song's end: from ``floor`` at the line to the look over ``fade_ms``.
   junction the song junction (director._junction_envs; README S5.17) is out and in: the lamps and the rig read the
            same envelopes, timed as the screens' fade-dark transition.
@@ -68,14 +69,15 @@ def envelope(t_s: float, arrival: Optional[Mapping[str, Any]]) -> tuple[float, f
             line = float(arrival["at_ms"]) / 1000.0
             fade_s = max(0.0, float(arrival.get("fade_ms") or 0.0) / 1000.0)
             floor = max(0.0, min(1.0, float(arrival.get("floor") or 0.0)))
+            curve = max(0.2, float(arrival.get("curve") or 1.0))
         except (KeyError, TypeError, ValueError):
             return 1.0, 1.0
         if t_s >= line:
             return floor, 1.0
         if fade_s <= 0.0 or t_s < line - fade_s:
             return 1.0, 1.0
-        x = (t_s - (line - fade_s)) / fade_s
-        return 1.0 - (1.0 - floor) * x, 1.0
+        x = (t_s - (line - fade_s)) / fade_s                     # curve > 1: held up longer, then down, as a
+        return 1.0 - (1.0 - floor) * x ** curve, 1.0             # record's fade is heard to the end
     try:
         line = float(arrival["at_ms"]) / 1000.0
         wind, lift = float(arrival.get("wind") or 0.0), float(arrival.get("lift") or 0.0)
