@@ -16,6 +16,7 @@ import argparse
 import json
 import sys
 import time
+from urllib.parse import urlsplit
 
 import requests
 from playwright.sync_api import sync_playwright
@@ -37,13 +38,26 @@ def run(p, url, phone):
     ctx = browser.new_context(**({"viewport": {"width": 390, "height": 844}, "is_mobile": True, "has_touch": True}
                                  if phone else {"viewport": {"width": 1280, "height": 900}}))
     page = ctx.new_page()
-    page.route("**/api/auth/me", lambda route: route.fulfill(status=200, content_type="application/json",
-                                                            body=json.dumps(ADMIN)))
+    # over http the page calls the API at the .env address (the public IP: src/shared/http/client.ts), where it would
+    # be an anonymous outsider; sent to this machine instead, its calls are this machine's
+    def local(route):
+        u = urlsplit(route.request.url)
+        if u.path == "/api/auth/me":
+            return route.fulfill(status=200, content_type="application/json", body=json.dumps(ADMIN))
+        if f"{u.scheme}://{u.netloc}" != url and u.path.startswith("/api/"):
+            return route.continue_(url=url + u.path + (f"?{u.query}" if u.query else ""))
+        return route.continue_()
+    page.route("**/api/**", local)
     made = None
     try:
         page.goto(f"{url}/settings#api")
         fold = page.get_by_test_id("settings-api")
-        if not check("the Apps & API keys fold is on Settings", fold.count() == 1):
+        try:
+            page.get_by_test_id("api-new-key").wait_for(timeout=20000)   # the page is lazy-loaded; #api opens the fold
+        except Exception:
+            pass
+        if not check("the Apps & API keys fold is on Settings, open from #api", fold.count() == 1
+                     and page.get_by_test_id("api-new-key").count() == 1):
             return failures
         page.get_by_test_id("api-new-key").click()
         name = f"ui-eval {'phone' if phone else 'desktop'} {time.strftime('%H:%M:%S')}"

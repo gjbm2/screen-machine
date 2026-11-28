@@ -117,3 +117,5 @@ Successful answers carry `Cache-Control: no-store` and `RateLimit-Limit`/`RateLi
 - The URL check resolves the host before fetching. A host that changes its address between the check and the fetch
   (DNS rebinding) isn't caught.
 - Only admins make keys; people can't yet make their own.
+- A key's "last used from" is the address the request reached Flask from. Waitress trusts no proxy and drops
+  `X-Forwarded-For`, so a call through the https proxy or the LAN port proxy shows the proxy's address, not the caller's.
