@@ -28,6 +28,7 @@ from typing import Any, Optional
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 import common  # noqa: E402
+import checks as checksmod  # noqa: E402
 import controls as controlsmod  # noqa: E402
 import form as formmod  # noqa: E402
 import score as scoremod  # noqa: E402
@@ -73,7 +74,8 @@ DMX = False                                                   # --dmx: the repla
 
 def one(sid: str, mode: str, out_dir: pathlib.Path, seed: int = 0) -> tuple[str, str, Optional[str]]:
     out = out_dir / tl_name(sid, mode, seed)
-    env = {**({"SM_AD_EVAL_SEED": str(seed)} if seed else {}), **({"SM_AD_EVAL_DMX": "1"} if DMX else {})}
+    env = {**({"SM_AD_EVAL_SEED": str(seed)} if seed else {}),
+           **({"SM_AD_EVAL_DMX": "1"} if DMX and seed == 0 else {})}      # the reel shows the first draw
     rc, log = _sub([str(common.SHOW_PY), str(common.HERE / "replay.py"), sid, "--mode", mode, "--out", str(out)],
                    timeout=3600, env=env or None)
     return sid, mode, None if rc == 0 and out.is_file() else f"replay exit {rc}: {log[-1500:]}"
@@ -127,6 +129,11 @@ def diff(card: dict, other: Optional[dict], label: str) -> list[str]:
             row.append(f"{k} {x:.3f} ({d:+.3f}){flag}")
         if row:
             lines.append(f"  {mode:8s} " + "  ".join(row))
+    new, fixed = checksmod.compare(other, card)
+    if new or fixed:
+        lines.append(f"  checks: {len(new)} new fault(s), {len(fixed)} fixed (same song, mode and draw)")
+    for key, check, t in new[:15]:
+        lines.append(f"  NEW FAULT {key} {check} @{t}s")
     regress = []
     for key, s in card["songs"].items():
         o = other["songs"].get(key)
@@ -217,6 +224,8 @@ def main() -> int:
     cases = []
     by_mode: dict[str, list[dict]] = {m: [] for m in a.modes}       # the timelines, for the controls
     draws: dict[str, list[dict]] = {}                               # each song's scores, one per seed
+    faults: dict[str, list] = {}                                    # each replay's failed checks (checks.py)
+    check_tot: dict[str, dict] = {}
     for sid, mode, seed in todo:
         p = out_dir / tl_name(sid, mode, seed)
         if not p.is_file():
@@ -230,6 +239,12 @@ def main() -> int:
             errors[f"{sid}:{mode}:score"] = f"{type(e).__name__}: {e}"
             continue
         tl["scores"] = m
+        tl["checks"] = checksmod.run(tl, r)
+        faults[f"{sid}.{mode}.s{seed}"] = sorted([list(x) for x in checksmod.failed(tl["checks"])])
+        for k, v in checksmod.summary(tl["checks"]).items():
+            t = check_tot.setdefault(mode, {}).setdefault(k, {"pass": 0, "fail": 0})
+            t["pass"] += v["pass"]
+            t["fail"] += v["fail"]
         common.write_json(p, tl)
         draws.setdefault(f"{sid}.{mode}", []).append(m)
         if seed != 0:
@@ -307,7 +322,8 @@ def main() -> int:
                         (1 + k for _s, _m, k in todo), default=1)},
             "score_version": scoremod.SCORE_VERSION, "controls": ctl,
             "overall": round(sum(ov) / len(ov), 3) if ov else None, "aggregate": agg, "songs": songs,
-            "cases": cases, "errors": errors}
+            "cases": cases, "errors": errors,
+            "checks": {"totals": check_tot, "faults": faults}}
     common.write_json(out_dir / "scorecard.json", card)
     full = hist
     best_dir = max(full, key=lambda h: h.get("overall") or -1)["dir"] if full else None
@@ -321,6 +337,9 @@ def main() -> int:
           f"({card['run']['wall_s']:.0f} s, {len(errors)} errors)")
     for mode in a.modes:
         print(f"  {mode:8s} " + "  ".join(f"{k} {fmt(agg[mode].get(k))}" for k in HEADLINE))
+    for mode in a.modes:
+        ct = check_tot.get(mode) or {}
+        print(f"  {mode:8s} checks " + "  ".join(f"{k} {v['pass']}/{v['pass'] + v['fail']}" for k, v in sorted(ct.items())))
     for mode in a.modes:
         for ln in controlsmod.show(ctl[mode], mode):
             print(ln)

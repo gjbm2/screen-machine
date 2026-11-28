@@ -32,6 +32,9 @@ karaoke library (~/.local/state/screen-machine/karaoke)
    │     gate:  design.py's restraint limits: palette, kit, flourish, stillness (meeting a limit earns 1, no more)
    │     set:   character, across the whole song set (do songs that sound different look different?)
    │
+   ├─ checks.py ───── fault checks, pass/fail per transition (every replay; the overnight loop's keep rule)
+   │     lands, stray, peak, dark, stop, ending; a draw of the same code answers ~90% of them the same way
+   │
    ├─ controls.py ─── does the score work at all? (every run)
    │     the real show must beat: the wrong song, 8 bars late, backwards, its looks dealt to the wrong sections,
    │     one static look; by ≥ 0.05 on average and in more songs than chance (sign test p ≤ 0.05) → controls.pass
@@ -41,9 +44,23 @@ karaoke library (~/.local/state/screen-machine/karaoke)
          scorecard.json, history.jsonl, the diff against the previous and the best run
          owner notes (ad_feedback.jsonl) → cases: a good one must not fall, a bad one should rise
 
-scripts/ad-nightly (cron 03:00) → scores a clean copy of HEAD → ad-improve: one fix per attempt, kept only if it
-beats the seed spread and every owner verdict holds → morning report (~/.cache/sm-ad-eval/reports/<date>.md)
+scripts/ad-nightly (cron 03:00) → scores a clean copy of HEAD (--dmx) → ad-improve: one fix per attempt, kept only
+if no check that passed fails, its target check's failures fall, its paired song gains rise and every owner verdict
+holds → morning report (~/.cache/sm-ad-eval/reports/<date>.md) → reel.py: the owner's morning reel (/lights/pairs)
 ```
+
+### The owner's review (28 Nov)
+
+The score is a guide, not the judge, until it agrees with the owner's eye: a loudness box outscores the real show on
+it, and one fix moves it less than the draws do. Two things judge instead:
+- **Fault checks** (checks.py): plain questions of one moment each, with known right answers (does the chorus land
+  with a change, within a beat? is the climax the biggest? do the lamps go down for the stop?).
+- **The owner's eye**, spent where it counts: a morning reel of about 12 ten-second moments (reel.py; owner: "it's
+  the transitions and pattern that I'm reviewing"). First the night's changes as blind before/after pairs, then
+  moments a check flagged (the owner's "good" there says the check is wrong), then a rotating sample of each
+  song's transitions. Any item widens to its section or the whole song. A verdict on a single moment is a moment
+  note in ad_feedback.jsonl (dimension `transition` or `ending`, with the check it answers), scored as a case.
+
 
 ### What the goals measure
 

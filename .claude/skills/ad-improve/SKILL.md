@@ -26,6 +26,10 @@ chance (`controls.pass`).
 - `beats_box` is a different thing: a show built from the answer key itself. It is the **target**, not the gate. The
   gap between the show and the box is the headroom, and closing it is the point.
 - Runs compare only within one `score_version`.
+- **The fault checks judge; the score guides** (owner, 28 Nov). `checks.py` asks plain pass/fail questions of each
+  transition (lands, stray, peak, dark, stop, ending), and a draw of the same code answers them nearly the same way.
+  The overall score has not yet been shown to agree with the owner's eye, and one fix moves it by less than the
+  draws do. Steer by the checks and the owner's verdicts; read the score for what else moved.
 
 ## The owner's notes come first
 
@@ -46,7 +50,12 @@ Read `ad_feedback.jsonl` before choosing what to work on. Two kinds of note:
 2. **Pick.** First read `docs/AD_EVAL.md` §4, the shared workplan. Don't take an item another session owns
    (bb: arc and proportion, character, live mode, the scorer). Pick the weakest dimension that isn't theirs, and
    write "left for bb: <item>" in the report. Strike your own items through with their commit when done.
-   - First, any owner verdict (`timeline.py notes`) that still fails.
+   - First, any owner verdict (`timeline.py notes`) that still fails. A reel verdict (`"from": "reel"`) of `bad`
+     on a flagged moment says the show is wrong there; a `good` one says the check is wrong there (an eval issue for
+     bb, not a fix).
+   - Else, the fault check failing in the most songs (the scorecard's `checks.totals`; `checks.py <run>` lists them
+     song by song) whose failures are real by the ad-review skill, not reference errors. Name it: that is the
+     attempt's **target check**.
    - Else, the lowest-scoring dimension that no other session owns.
    - Then the 2–3 songs worst on it.
 3. **Review.** Use the ad-review skill on those songs' replay timelines (`timeline.py sheet <run>/<song>.<mode>.json
@@ -74,7 +83,9 @@ Read `ad_feedback.jsonl` before choosing what to work on. Two kinds of note:
      (`--songs`) and cut songs, never seeds.
    - The draws are fixed per seed, so compare **paired**: each song × seed against the same song × seed in the
      baseline. A difference there is the fix, not noise; the spread across seeds says nothing about it.
-   - **Keep the fix** if: the overall score doesn't fall; the songs the fix was aimed at rise (their mean paired gain is
+   - **Keep the fix** only if the checks say so first: no fault that the baseline passed is failed now (run.py
+     prints each as `NEW FAULT <song.mode.seed> <check> @<t>s` against the previous run; `checks.compare` on two
+     scorecards), and the target check's failures in the songs aimed at are fewer. Then the score: the overall doesn't fall; the songs the fix was aimed at rise (their mean paired gain is
      above 0, and most of their song × seed pairs rise); no song's overall falls by more than 0.02 paired; the target
      dimension rises; controls still pass; every `good` verdict still holds; and no `bad` verdict that passed before
      now fails.
@@ -103,6 +114,10 @@ Write `~/.cache/sm-ad-eval/reports/<date>.md`, at most 15 lines:
 - the score card (yesterday's best → today's), per dimension;
 - each attempt in one line (kept or undone, why);
 - what the owner could check by eye in one song, if anything (one line, with the song and time);
-- eval issues: references that looked wrong (song, time, why).
+- eval issues: references that looked wrong (song, time, why);
+- the checks: each check's passes of all, 03:00 → now, and each kept fix's target check, failures before → after.
+
+The owner's reel for the morning is made after you stop (scripts/ad-nightly runs `reel.py make`): the night's kept
+fixes as blind before/after pairs, then flagged moments, then a sample of transitions, a few minutes in all.
 
 Plain words. No essays.

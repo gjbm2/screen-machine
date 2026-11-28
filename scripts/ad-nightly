@@ -27,8 +27,9 @@ rm -rf "$TREE" && mkdir -p "$TREE" && git archive HEAD | tar -x -C "$TREE" && cp
 export SM_AD_EVAL_SHA="$SHA" AD_EVAL_TREE="$TREE"
 {
   echo "=== $(date -Is) ad-nightly ${1:-} (HEAD $SHA, scored in $TREE)"
-  (cd "$TREE" && nice -n 19 "$HOME/.venvs/sm-show/bin/python" tools/room/ad_eval/run.py)
+  (cd "$TREE" && nice -n 19 "$HOME/.venvs/sm-show/bin/python" tools/room/ad_eval/run.py --dmx)
   rc=$?
+  BASE_RUN="$(tail -1 "$OUT/runs/history.jsonl" 2>/dev/null | "$HOME/.venvs/sm-show/bin/python" -c 'import json,sys; print(json.loads(sys.stdin.read() or "{}").get("dir") or "")')"
   echo "--- score exit $rc"
   if [[ "${1:-}" == "--score" || $rc -ne 0 ]]; then
     exit $rc
@@ -39,4 +40,19 @@ export SM_AD_EVAL_SHA="$SHA" AD_EVAL_TREE="$TREE"
     --allowedTools "Bash" "Read" "Edit" "Write" "Grep" "Glob" "Skill" \
     --output-format text
   echo "--- improve exit $?"
+  # the owner's morning reel (tools/room/ad_eval/reel.py): a few minutes of transitions. With a fix kept, HEAD is
+  # scored again (karaoke, the first draw, with DMX) and its changes are shown blind against the 03:00 run.
+  NOW="$(git rev-parse --short HEAD)"
+  if [[ -n "$BASE_RUN" && "$NOW" != "$SHA" ]]; then
+    rm -rf "$TREE" && mkdir -p "$TREE" && git archive HEAD | tar -x -C "$TREE" && cp -p .env "$TREE/.env" 2>/dev/null
+    (cd "$TREE" && SM_AD_EVAL_SHA="$NOW" nice -n 19 "$HOME/.venvs/sm-show/bin/python" tools/room/ad_eval/run.py \
+       --dmx --seeds 1 --modes karaoke --label "reel: HEAD after the night's fixes" | tail -4)
+    AFTER_RUN="$(tail -1 "$OUT/runs/history.jsonl" | "$HOME/.venvs/sm-show/bin/python" -c 'import json,sys; print(json.load(sys.stdin)["dir"])')"
+    (cd "$TREE" && "$HOME/.venvs/sm-show/bin/python" tools/room/ad_eval/reel.py make "$AFTER_RUN" --vs "$BASE_RUN" \
+       --batch "reel-$(date +%Y%m%d)")
+  elif [[ -n "$BASE_RUN" ]]; then
+    (cd "$TREE" && "$HOME/.venvs/sm-show/bin/python" tools/room/ad_eval/reel.py make "$BASE_RUN" \
+       --batch "reel-$(date +%Y%m%d)")
+  fi
+  echo "--- reel exit $?"
 } >> "$LOG" 2>&1
