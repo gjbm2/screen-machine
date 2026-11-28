@@ -162,10 +162,14 @@ struck through with its commit.
    Uptown Funk checks out: the lamps go 0.83 → 0.02 for "Stop, wait a minute" and back on the hit, and go black 0.3 s
    after the last hit.
 
+   **Measured (28 Nov, 21 songs, 3 seeds):** moments on against off: overall 0.430 → 0.457, moments 0.21 → 0.79,
+   ending 0.47 → 0.52 (cold and ring-out endings now land: Uptown Funk 0.45 → 0.95, Happy 0.63 → 0.96). The rest is
+   within the noise. Fade-outs went dark about 4.5 s early on a straight fade; moments.yaml's `curve: 3` fixed that.
+   **Eval issue:** Hallelujah's key puts its end about 37 s late.
+
    Still to do:
    - answer **drum sections** (a harder pulse for their bars wants its own look change);
    - the **live** fallback: a standout hit against the last 60 s, and a sudden collapse dimming at once;
-   - measure **moments on against off** over 3 seeds;
    - check the detector by ear on more songs (blind pairs at moments);
    - run the detector in the karaoke worker at analysis time. Today the show measures it on first play, about
      10 s in.
