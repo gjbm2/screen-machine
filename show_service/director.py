@@ -2397,7 +2397,7 @@ class Director:
         out: list[dict] = []
         sd = self._song_dip
         if sd is not None:
-            out.append({"kind": "out", "at_ms": round((sd["t0"] + sd["out_s"]) * 1000.0, 1),
+            out.append({"kind": phrasing.OUT, "at_ms": round((sd["t0"] + sd["out_s"]) * 1000.0, 1),
                         "fade_ms": round(sd["out_s"] * 1000.0, 1),
                         "floor": float(self.cfg["track_transitions"]["gap"]["lights_floor"]), "key": "junction"})
         h = self._mom_hold
@@ -3675,7 +3675,7 @@ class Director:
         if np_ is None and self._mom_song is not None:
             # the song has gone (ended, or the player stopped): an ending that has started stays down through the
             # gap with the screens, until the next look lands (_dip_back), never past dark_max_s
-            ended = [e for e in self._mom_env or () if e.get("kind") == "out"
+            ended = [e for e in self._mom_env or () if e.get("kind") == phrasing.OUT
                      and float(e["at_ms"]) / 1000.0 - float(e.get("fade_ms") or 0.0) / 1000.0 <= now_s]
             if ended and self._mom_hold is None:
                 dm = float(self.cfg["track_transitions"]["gap"]["dark_max_s"])

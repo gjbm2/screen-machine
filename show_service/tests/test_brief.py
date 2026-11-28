@@ -98,6 +98,42 @@ def test_an_answer_is_checked_against_its_options():
     assert brief.parse({**data, "sections": data["sections"][:1]}, opts, f) is None
 
 
+def test_a_sung_section_starts_on_the_line_it_names():
+    # nightly eval 28 Nov: Hallelujah's refrains came back seconds off their lines (42.8 for the line at 38.3)
+    opts = brief.options(idiom.load()["idioms"], {"gold": "Gold."}, ["gold"], [], [])
+    lines = [(12.0, "I heard there was"), (20.0, "a secret chord"), (38.3, "Hallelujah"), (60.0, "well your faith"),
+             (93.4, "Hallelujah")]
+    f = brief.facts({"title": "S", "artist": "A"}, lines, None, None, 200.0)
+    data = {"tone": "t", "idiom": "ballad", "moods": [], "palette": "gold", "ending": "fade", "why": "w",
+            "sections": [{"start_s": 0.0, "line": -1, "kind": "intro", "size": 0.2, "arrive": "none"},
+                         {"start_s": 14.0, "line": 0, "kind": "verse", "size": 0.3, "arrive": "none"},
+                         {"start_s": 42.8, "line": 2, "kind": "chorus", "size": 0.6, "arrive": "swell"},
+                         {"start_s": 63.0, "line": 3, "kind": "verse", "size": 0.3, "arrive": "none"},
+                         {"start_s": 70.0, "line": 1, "kind": "bridge", "size": 0.4, "arrive": "none"},   # goes back
+                         {"start_s": 97.7, "line": 4, "kind": "chorus", "size": 0.9, "arrive": "swell"},
+                         {"start_s": 150.0, "line": 9, "kind": "outro", "size": 0.2, "arrive": "none"}]}  # no such line
+    probs: list = []
+    secs = brief.parse(data, opts, f, None, probs)["sections"]
+    assert [(s["start_s"], s["kind"]) for s in secs] == [(0.0, "intro"), (12.0, "verse"), (38.3, "chorus"),
+                                                         (60.0, "verse"), (70.0, "bridge"), (93.4, "chorus"),
+                                                         (150.0, "outro")]
+    assert len(probs) == 2
+    # it counts loosely: one line early for the refrain, but its words say which it meant; a repeated line is the
+    # one nearest the number it gave, never one before the section ahead of it
+    lines = [(4.4, "Now I've heard"), (85.8, "And from your lips she drew the Hallelujah"),
+             (93.4, "Hallelujah, Hallelujah"), (99.3, "Hallelujah, Hallelujah"), (115.5, "You say I took the name")]
+    f = brief.facts({"title": "S", "artist": "A"}, lines, None, None, 200.0)
+    data["sections"] = [{"start_s": 0.0, "line": 0, "words": "Now I've heard", "kind": "verse", "size": 0.3,
+                         "arrive": "none"},
+                        {"start_s": 86.0, "line": 1, "words": "Hallelujah, Hallelujah", "kind": "chorus", "size": 0.6,
+                         "arrive": "swell"},
+                        {"start_s": 99.0, "line": 3, "words": "You say I took", "kind": "verse", "size": 0.3,
+                         "arrive": "none"}]
+    secs = brief.parse(data, opts, f)["sections"]
+    assert [s["start_s"] for s in secs] == [0.0, 93.4, 115.5]
+    assert '[1,85.8,"And from your lips' in brief.prompt(f, opts)          # numbered for it
+
+
 def test_a_brief_with_no_ai_and_its_plan_for_structure(tmp_path):
     idioms = idiom.load()["idioms"]
     f = brief.facts({"title": "S", "genre": "Singer/Songwriter"}, [(12.0, "a")], {"hop": 0.5, "v": [0.2] * 60 + [0.9] * 60,

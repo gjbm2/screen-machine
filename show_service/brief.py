@@ -40,7 +40,7 @@ from typing import Any, Callable, Mapping, Optional
 
 from . import idiom as idiom_mod
 
-VERSION = 1
+VERSION = 2                            # 2: a section names its first lyric line, whose time is its start (28 Nov)
 FILE = "brief.json"
 TASK = "brief"                         # config/llm.yaml's task
 KINDS = ("intro", "verse", "prechorus", "chorus", "bridge", "instrumental", "outro")
@@ -48,6 +48,10 @@ ARRIVE = idiom_mod.ARRIVE
 ENDINGS = ("fade", "hold", "snap")
 MIN_SECTION_S = 5.0                    # a shorter section joins the one before it
 SNAP_S = 1.5                           # a section's start may move this far to a downbeat
+#: A sung section starts on its first line: the AI names it (``line``, the lyrics' index) and that line's own time is
+#: the start. Its own start_s drifted seconds both ways (nightly eval 28 Nov: Hallelujah's refrains at 42.8 / 97.7 /
+#: 142.3 / 197.3 s against the lines at 38.3 / 93.4 / 148.2 / 202.7; |key - brief| medians 3.6-5.2 s in four more
+#: songs; 60 of 160 lyric-plan looks off a key boundary). Words are what it reads well; numbers it copies loosely.
 #: The art director's own section kinds (lyric_sections / moves.yaml), from the brief's.
 DIRECTOR_KIND = {"intro": "instrumental", "verse": "verse", "prechorus": "verse", "chorus": "chorus",
                  "bridge": "verse", "instrumental": "instrumental", "outro": "outro"}
@@ -73,7 +77,10 @@ SYSTEM = (
     "tempo. From what you know of the song and what you are given, say what kind of show it asks for and lay out its "
     "shape. Think as a designer would: a serious ballad and a disco hit must not look alike, the look should be held "
     "back until the song earns it, and the biggest look belongs to the song's one high point. Sections: use the "
-    "lyrics' own times for where each begins (the start of its first line); a section that only repeats the one "
+    "lyrics' own times for where each begins: line is the number of the section's first lyric line (each lyric is "
+    "[number, time, text]), words that line's first few words as written, and start_s that line's time; a section "
+    "nobody sings (intro, instrumental, a solo) has line -1, no words, and its own start_s. A section that only "
+    "repeats the one "
     "before is not a new section; a verse whose words come back later is still a verse. size is how big each "
     "section should feel within THIS song (its quietest about 0.2, its high point 1.0). arrive is how the music "
     "gets to that section: none, swell (a gradual rise), bump (a clear lift on the downbeat) or snap (a sudden hit, "
@@ -102,11 +109,15 @@ def tool(options: Mapping[str, Any]) -> dict:
                                 "description": "a second choice, different from palette"},
                 "sections": {"type": "array", "items": {
                     "type": "object",
-                    "properties": {"start_s": {"type": "number"}, "kind": {"type": "string", "enum": list(KINDS)},
+                    "properties": {"start_s": {"type": "number"},
+                                   "line": {"type": "integer", "description": "the number of the section's "
+                                            "first lyric line; -1 when nobody sings in it"},
+                                   "words": {"type": "string", "description": "that line's first few words"},
+                                   "kind": {"type": "string", "enum": list(KINDS)},
                                    "size": {"type": "number"}, "arrive": {"type": "string", "enum": list(ARRIVE)},
                                    "final": {"type": "boolean", "description": "the last full chorus"},
                                    "peak": {"type": "boolean", "description": "the song's one high point"}},
-                    "required": ["start_s", "kind", "size", "arrive"]}},
+                    "required": ["start_s", "line", "words", "kind", "size", "arrive"]}},
                 "ending": {"type": "string", "enum": list(ENDINGS)},
                 "why": {"type": "string", "description": "One plain sentence a guest could read."},
             },
@@ -156,7 +167,9 @@ def options(idioms: Mapping[str, Any], palettes: Mapping[str, str], feel_palette
 
 
 def prompt(f: Mapping[str, Any], opts: Mapping[str, Any]) -> str:
-    return json.dumps({"song": f, "options": opts}, separators=(",", ":"), default=str)
+    """The facts and options as the AI reads them: each lyric numbered ([n, time, text]), so a section names its line."""
+    song = {**f, "lyrics": [[i, *x] for i, x in enumerate(f.get("lyrics") or ())]}
+    return json.dumps({"song": song, "options": opts}, separators=(",", ":"), default=str)
 
 
 # -- checking an answer ------------------------------------------------------------------------------------------------
@@ -167,21 +180,65 @@ def _c01(x: Any, default: float) -> float:
         return default
 
 
+def _words(x: Any) -> str:
+    return " ".join("".join(c for c in str(x or "").lower() if c.isalnum() or c.isspace()).split())
+
+
+def line_of(n: Any, words: Any, texts: list[str], after: int = -1) -> Optional[int]:
+    """The lyric line a section means: of the lines (after ``after``) that begin with its ``words``, the one nearest
+    the number it gave (it counts loosely: one off, either way; eval 28 Nov); the number itself where its words
+    match none; None where it gives neither."""
+    w = _words(words)
+    n = int(n) if isinstance(n, (int, float)) and not isinstance(n, bool) and n >= 0 else None
+    if w:
+        hits = [i for i, t in enumerate(texts) if i > after and _words(t).startswith(w[:40])]
+        if hits:
+            return min(hits, key=lambda i: (abs(i - n), i) if n is not None else (i,))
+    return n
+
+
+def line_starts(raw: Any, lyrics: Optional[list], probs: Optional[list[str]] = None) -> list[Optional[float]]:
+    """Each answered section's start from the lyric line it names (``line``, an index into ``lyrics``, the facts'
+    [[t, text]], and ``words``, its first words: line_of); None where it names none, or a line out of range, or one
+    not after the line before it named."""
+    probs = probs if probs is not None else []
+    ok = [x for x in lyrics or () if isinstance(x, (list, tuple)) and isinstance(x[0], (int, float))]
+    times = [float(x[0]) for x in ok]
+    texts = [str(x[1]) if len(x) > 1 else "" for x in ok]
+    out: list[Optional[float]] = []
+    last = -1
+    for s in raw if isinstance(raw, (list, tuple)) else ():
+        n = line_of(s.get("line"), s.get("words"), texts, last) if isinstance(s, Mapping) else None
+        if n is None:
+            out.append(None)
+            continue
+        if n >= len(times) or n <= last:
+            probs.append(f"sections: line {n} is {'past the lyrics' if n >= len(times) else 'not after the last'}")
+            out.append(None)
+            continue
+        last = n
+        out.append(times[n])
+    return out
+
+
 def clean_sections(raw: Any, dur_s: Optional[float], downbeats: Optional[list] = None,
-                   probs: Optional[list[str]] = None) -> list[dict]:
-    """An answer's sections made safe: in time order from 0.0, kinds and arrivals from the lists, none shorter than
+                   probs: Optional[list[str]] = None, lyrics: Optional[list] = None) -> list[dict]:
+    """An answer's sections made safe: in time order from 0.0, kinds and arrivals from the lists, a sung section's
+    start its first line's time (``line_starts``; its own start_s where it names none), none shorter than
     MIN_SECTION_S (it joins the one before), each start moved to the nearest downbeat within SNAP_S, sizes 0..1,
     one ``final`` at most (the last chorus marked) and exactly one ``peak`` (the biggest, the later of equals)."""
     probs = probs if probs is not None else []
     rows = []
-    for s in raw if isinstance(raw, (list, tuple)) else ():
+    raw = list(raw) if isinstance(raw, (list, tuple)) else []
+    at_line = line_starts(raw, lyrics, probs)
+    for s, lt in zip(raw, at_line):
         if not isinstance(s, Mapping) or not isinstance(s.get("start_s"), (int, float)):
             continue
         kind = s.get("kind") if s.get("kind") in KINDS else None
         if kind is None:
             probs.append(f"sections: kind {s.get('kind')!r} is not one of {', '.join(KINDS)}")
             continue
-        t = max(0.0, float(s["start_s"]))
+        t = max(0.0, float(lt if lt is not None else s["start_s"]))
         if dur_s and t >= float(dur_s) - 1.0:
             continue
         rows.append({"start_s": t, "kind": kind, "size": _c01(s.get("size"), 0.5),
@@ -231,7 +288,7 @@ def parse(data: Any, opts: Mapping[str, Any], f: Mapping[str, Any], downbeats: O
     if idi not in (opts.get("idioms") or {}):
         probs.append(f"idiom {idi!r} is not one of the options")
         return None
-    secs = clean_sections(data.get("sections"), f.get("length_s"), downbeats, probs)
+    secs = clean_sections(data.get("sections"), f.get("length_s"), downbeats, probs, f.get("lyrics"))
     if len(secs) < 2:
         probs.append("fewer than two usable sections")
         return None

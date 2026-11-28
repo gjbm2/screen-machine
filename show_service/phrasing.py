@@ -39,6 +39,10 @@ SNAP_DARK = 0.04                # a snap's last beat: this level
 SWELL_SETTLE = 2.0              # a swell's landing settles over this many times settle_s
 
 
+#: The envelopes' kinds. OUT is the song's last light (an ending, or the junction to the next song).
+OUT = "out"
+KINDS = ("bump", "snap", "swell", "stop", OUT, "in")
+
 def _smooth(x: float) -> float:
     x = 0.0 if x < 0.0 else 1.0 if x > 1.0 else x
     return x * x * (3.0 - 2.0 * x)
@@ -50,7 +54,7 @@ def envelope(t_s: float, arrival: Optional[Mapping[str, Any]]) -> tuple[float, f
     if not isinstance(arrival, Mapping):
         return 1.0, 1.0
     kind = arrival.get("kind")
-    if kind not in ("bump", "snap", "swell", "stop", "out", "in"):
+    if kind not in KINDS:
         return 1.0, 1.0
     if kind == "in":                                             # back from a song's end: floor -> 1 over fade_ms
         try:
