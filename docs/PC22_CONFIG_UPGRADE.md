@@ -39,9 +39,6 @@ answers (`/rs/show/api/v1/rig`, `.../rig/space`, `.../lights/library`, `/api/sou
 | `room/modes.json` | The `karaoke` mode has no `director.light_scenes` (Party and Disco have theirs). No `transition_s`. | A mode's scene tags pick out the scenes written for it. |
 | `calibration/latency.json` | No sound output measured. Karaoke plays on `sonos:drawing-room` at the default 500 ms. | Each sound output's delay, measured in Settings › Sound & timing. |
 
-**The owner's word on one of these (28 Nov):** the four Hue lamps in the room "are designed to be part of the
-washes".
-
 Looked at and found current: `deployment.yaml`, `publish-destinations.json`, `rooms.json`, `room/room.yaml`,
 `services/*.env`.
 
