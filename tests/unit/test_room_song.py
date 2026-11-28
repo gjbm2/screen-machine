@@ -49,3 +49,9 @@ def test_karaoke_wins_and_nothing_known_is_none(tmp_path):
 def test_short_tracks_are_not_prepared(tmp_path):
     st = Store(tmp_path / "state.json")
     assert R.prepare_track(st, R.sonos_tracks(status(dur="0:00:30"))[0]) is None
+
+
+def test_a_karaoke_room_with_no_song_rests(tmp_path):
+    st = Store(tmp_path / "state.json")
+    assert R.song_now(st, [], karaoke_room=True)["rest"] is True
+    assert R.song_now(st, [], karaoke_room=False)["rest"] is False

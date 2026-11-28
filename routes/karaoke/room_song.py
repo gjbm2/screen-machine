@@ -10,7 +10,10 @@ lead vocal taken out, the lyrics timed to it, then its beats, shape and brief). 
     "karaoke"        the karaoke player has a song (playing or paused): its own body;
     "sonos:<zone>"   else a Sonos zone plays a track that is a ready library song: the player is that song at
                      Sonos's own position (read at ``at``), settings.audio_delay_ms the Sonos output's delay;
-    None             else the karaoke player's body (stopped).
+    None             else the karaoke player's body (stopped); ``rest`` true when the room is in a karaoke mode
+                     with no song chosen: the show holds a gentle pattern then, whatever the mic hears (the quiet
+                     background music between songs is not a song to perform; owner, 28 Nov: "feels like we're playing
+                     entire music scenes etc. during pre-state ... it should just be in a gentle holding pattern").
 * watch(): every WATCH_S, each Sonos zone's track (room_service's now_playing reading); one not in the library is
   added to it, ``request.origin`` "sonos", and the worker prepares it exactly as a requested song (it is not queued
   for singing). The worker paces it as it does every song (karaoke/pace.py).
@@ -75,13 +78,13 @@ def sonos_delay_ms(zone: str) -> float:
         return 0.0
 
 
-def song_now(store: Store, tracks: list[dict], now: Optional[float] = None) -> dict:
-    """GET /api/songs/now's body (module docstring)."""
+def song_now(store: Store, tracks: list[dict], now: Optional[float] = None, karaoke_room: bool = False) -> dict:
+    """GET /api/songs/now's body (module docstring). ``karaoke_room``: the room is in a karaoke mode."""
     now = time.time() if now is None else now
     body = store.now_playing()
     p = body.get("player") or {}
     if p.get("state") in ("playing", "paused") and p.get("song_id"):
-        return {**body, "source": "karaoke"}
+        return {**body, "source": "karaoke", "rest": False}
     for t in tracks:
         if t["state"] not in SONOS_STATES or t["position_s"] is None:
             continue
@@ -94,8 +97,8 @@ def song_now(store: Store, tracks: list[dict], now: Optional[float] = None) -> d
         return {**body, "source": f"sonos:{t['zone']}", "settings": settings, "song": public_song(song),
                 "player": {"rev": rev, "state": "playing", "song_id": song["id"], "qid": None,
                            "pos_s": float(t["position_s"]), "at": at},
-                "up_next": None, "singers": [], "queued_after": 0, "background": []}
-    return {**body, "source": None}
+                "up_next": None, "singers": [], "queued_after": 0, "background": [], "rest": False}
+    return {**body, "source": None, "rest": bool(karaoke_room)}
 
 
 def prepare_track(store: Store, t: dict) -> Optional[dict]:
@@ -167,4 +170,5 @@ from .api import karaoke_api, store as _store  # noqa: E402
 
 @karaoke_api.get("/songs/now")
 def songs_now():
-    return jsonify(song_now(_store(), tracks_now()))
+    from . import room_in_karaoke
+    return jsonify(song_now(_store(), tracks_now(), karaoke_room=room_in_karaoke()))
