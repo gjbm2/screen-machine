@@ -352,8 +352,8 @@ PC22 does the Windows side through Spectre's audio-agent card instead of the scr
 finsbury's own files: a mode `transition_s`, a Karaoke mode, the GigBARs, and PC22's own 3D room with the screens,
 the Hue lamps and the glitterball.
 
-`docs/PC22_CONFIG_UPGRADE.md` (28 Nov) is the list of what finsbury's files still lack against the code: light
-groups and line-ups, the strobes as four lights, the bars, the Karaoke mode's scene tag, sound calibration.
+`docs/PC22_CONFIG_UPGRADE.md` (28 Nov): finsbury's config is behind the code and PC22 has to rebuild it; the note
+lists the gaps seen.
 
 ## Migrating PC22 (finsbury) from the old layout
 

@@ -1,168 +1,63 @@
-# PC22 config upgrade: finsbury against the code (28 Nov 2026)
+# PC22: finsbury's config needs rebuilding for the current code (28 Nov 2026)
 
-Written for a session on PC22 bringing `deployments/finsbury/` up to what the code now expects. It replaces
-`docs/PICKUP_FROM_LAPTOP.md` as the list of what is still to do; that file still explains each feature.
+Written for a session on PC22. **The job is yours: go through `deployments/finsbury/` and rebuild it properly for
+the code as it now is.** This note only says that it is needed and where the gaps were seen. It does not design
+finsbury's config; that is for PC22 to work out for its own room.
 
-**Where PC22 stands.** Its code is current: PC22 merged the laptop's work on 28 Nov 09:18 (`e8f06c05`). Its config
-is not. finsbury's files were last brought up on 27 Nov 07:45 (`5ed4786c` the GigBARs, `1a1bcde1` Karaoke), and the
-laptop's rig gained line-ups, strobes as four lights, bars as one thing, the karaoke scene tag and sound calibration
-after that. Nothing fails: `python -m smconfig check` says `ok` for finsbury and the rig reports no problems. The
-new features just have nothing to work with, so they do nothing or the wrong thing.
+## Why
 
-**How this was checked** (from the laptop, 28 Nov about 10:00): finsbury's files in git at `a8361670`, the laptop's
-files beside them, and PC22's own read-only answers at `https://screen.finsburybankforsavings.com`
-(`/rs/show/api/v1/rig`, `.../rig/space`, `.../lights/library`, `/api/sound/outputs`, `/api/karaoke/now`). The
-config blocks in §1 and §2 were parsed with show_service's own parser against finsbury's fixtures: no problems.
+PC22's code is current: it merged the laptop's work on 28 Nov 09:18 (`e8f06c05`). Its config is not. finsbury's
+files were last brought up on 27 Nov 07:45 (`5ed4786c` the GigBARs, `1a1bcde1` Karaoke). About 180 commits have
+landed since, most of them made and tried on the laptop against `deployments/laptop/`, and several read config
+that finsbury does not have.
 
-## Before you start
+**Nothing warns you.** `python -m smconfig check` says `ok` for finsbury and the rig reports no problems. A
+feature with no config for it does nothing, or falls back to a default that was chosen for the laptop's room.
 
-- **Commit PC22's own app-written files first.** `git status deployments/finsbury`. The running room has things git
-  does not: a `dance-floor` region, a keep-out round the mirror ball, a planned screen `sm-screen-1`. They are in
-  PC22's `lights/space.added.yaml`, written by the Room editor. Commit them before editing anything, so no pull or
-  hand edit loses them.
-- Tell the owning session before editing its file (docs/AV_PROGRAMME.md §11; `fixtures.yaml` is c8's).
-- After each edit: `python -m smconfig check`. show_service re-reads `show.yaml`, `fixtures.yaml` and the space
-  files by itself; room_service re-reads `modes.json` on change. Nothing here needs a Flask restart.
-- Check each step at `GET /rs/show/api/v1/rig` (`problems` empty) and in Light setup › Room, with Lights › Mode
-  set to the mode you changed.
+## What to compare against
 
-## What is already right (leave it)
+- `deployments/laptop/`: the config the new code was built and run against. It is a working example for another
+  room, not a template to paste.
+- `config/room/show.yaml`: the shared settings; its comments say which keys a site sets in its own `show.yaml`.
+- The docs for each feature: `docs/LIGHTS.md`, `docs/GIGBAR_RIG.md`, `docs/KARAOKE.md`, `docs/SOUND.md`,
+  `docs/PICKUP_FROM_LAPTOP.md`.
+- `git log 5ed4786c..HEAD`: everything since finsbury was last brought up.
 
-`deployment.yaml` (every capability the code knows, `karaoke` on, `phone_tunnel` off, the karaoke venv and JS
-runtime), `publish-destinations.json` (all three live screens have `live.auto`; the `library` bucket is there),
-`rooms.json`, `room/room.yaml` (`tunnel_host_suffixes` is only for the phones' tunnel, which PC22 does not use),
-`services/*.env`, the Karaoke mode itself, the GigBAR patch on the two virtual nodes, the Spectre card for the
-virtual node.
+## Gaps seen (a starting list, not the whole of it)
 
-## 1. Light groups and line-ups: `show.yaml` (the big one)
+Seen from the laptop on 28 Nov about 10:00, in finsbury's files in git (`a8361670`) and in PC22's own read-only
+answers (`/rs/show/api/v1/rig`, `.../rig/space`, `.../lights/library`, `/api/sound/outputs`, `/api/karaoke/now`).
 
-**Now.** finsbury's `show.yaml` adds only `remote-lights`. So the shared `lamps` group (`kind:lamp`) holds 17
-lights: the four pars, four derbies, two lasers, two strobes, **the hazer** and the four Hue lamps. There are no
-line-ups. The effect:
-- the lasers, derbies and strobes play lamp scenes; the scenes written for them (`tags.parts`) are never drawn;
-- every part plays in every section, so a verse looks like a last chorus;
-- nothing is ever featured, so the room-light rule (LIGHTS.md §7.5) never brings the bright lights down for the
-  laser or the derbies;
-- a look group selects the hazer.
+| Where | finsbury now | What the code now reads |
+|---|---|---|
+| `show.yaml` `lights.groups` | Only `remote-lights` added. The shared `lamps` group holds 17 lights: pars, derbies, lasers, strobes, the hazer and the four Hue lamps. | Groups for the bars' parts (the laptop has `lamps`, `lasers`, `derbies`, `flashes`, with `scenes_for`, `carries_beat`, `reads_under_lux`, `lands_on`). The laser, derby and strobe scenes are drawn only by a group that takes them. |
+| `show.yaml` `lights.lineups` | None. | Which parts play in each kind of section of a song (the laptop has thirteen). |
+| `show.yaml` `lights.room_light` | Not set: PC22 runs on the shared `other_lux: 1.0`, the laptop room's figure. | The room's own figures. |
+| `lights/fixtures.yaml` | Each bar's strobes are one fixture (`gigbar-flash`). No `streaks` on the derby type. | Each strobe LED as a light of its own (`gigbar-strobe-led`, `gigbar-strobe-led-s`); `streaks` on `gigbar-derby`. |
+| `lights/space.yaml`, `space.added.yaml` | No `layouts`, no `bars`: every part placed on its own, with the laptop room's provisional places and poses. No `singer` place. `haze_half_life_s` unset. | A bar as one thing (`layouts`, `bars`); the places the scenes aim at; the room's own measurements. |
+| `lights/fixtures.setup.yaml` | Empty. | Each light's lean, each head's home (set on the Lights page, with the real bars). |
+| `room/modes.json` | The `karaoke` mode has no `director.light_scenes` (Party and Disco have theirs). No `transition_s`. | A mode's scene tags pick out the scenes written for it. |
+| `calibration/latency.json` | No sound output measured. Karaoke plays on `sonos:drawing-room` at the default 500 ms. | Each sound output's delay, measured in Settings › Sound & timing. |
 
-**Fix.** Add the laptop's groups and line-ups to `lights:` in `deployments/finsbury/show.yaml`, beside
-`remote-lights`. Copy them from `deployments/laptop/show.yaml` as they stand:
+**The owner's word on one of these (28 Nov):** the four Hue lamps in the room "are designed to be part of the
+washes".
 
-```yaml
-lights:
-  groups:
-    lamps: {label: Washes, select: "kind:lamp !tag:derby !tag:strobe !tag:laser !tag:haze !tag:house", carries_beat: 2}
-    lasers: {label: Lasers, select: "tag:laser", dark_level: 0, scenes_for: [laser], repeat_weight: 1.0,
-             reads_under_lux: 3, lands_on: [ceiling]}
-    derbies: {label: Derbies, select: "tag:derby", dark_level: floor, scenes_for: [derby], carries_beat: 3,
-              reads_under_lux: 20}
-    flashes: {label: Strobe zones, select: "tag:strobe", dark_level: 0, scenes_for: [flash], repeat_weight: 1.0}
-  lineups:
-    # the laptop's thirteen, unchanged
-```
+Looked at and found current: `deployment.yaml`, `publish-destinations.json`, `rooms.json`, `room/room.yaml`,
+`services/*.env`.
 
-**The Hue lamps are part of the washes** (owner, 28 Nov: "the four in the room are designed to be part of the
-washes"). With this block finsbury's `lamps` is the four pars and the four Hue lamps, one wash group of eight: they
-take the same scene, play together and rest together. That is the only difference from the laptop, where `lamps` is
-the pars alone (its label there is "Pars"; "Washes" fits this room). finsbury's `around` order in `fixtures.yaml`
-already walks the Hue lamps and the bars' pars as one ring. Do not give the Hue lamps a group of their own.
+## On the machine, not in git
 
-What follows from it: a line-up that does not play the washes rests the Hue lamps with the pars, dark or at a low
-glow in the look's colour (`rest-dark`, `rest-glow`). Five of the thirteen do: the heads alone, derbies and heads,
-heads and the laser, derbies and the laser, heads and derbies with the laser. Until the real bars are in the room
-the Hue lamps are its only real wash, so in those looks the room is lit by the screens alone. The glitterball and
-pinspots (`remote-lights`) are in no line-up, so they carry on as now.
-
-**Then set this room's light.** `lights.room_light.other_lux` is 1.0 on PC22, the laptop room's projected picture.
-Two TVs leave more. Set finsbury's own in its `show.yaml` (`lights: {room_light: {other_lux: <lux>}}`, and
-`reflect` for its walls: see the comment in `config/room/show.yaml`). The `reads_under_lux` figures are the
-laptop's starting points too.
-
-## 2. The strobes as four lights each: `lights/fixtures.yaml`
-
-**Now.** Each bar's strobes are one fixture (`gigbar-a.strobe`, type `gigbar-flash`). The scenes that run the
-strobe LEDs left to right, right to left and ping-pong need each LED as its own light (`76fdd08a`, 27 Nov).
-
-**Fix**, copying the laptop's lines (`deployments/laptop/lights/fixtures.yaml`):
-- under `types`, replace `gigbar-flash` with `gigbar-strobe-led` and `gigbar-strobe-led-s`;
-- give `gigbar-derby` `streaks: 0.6` (a derby shows one or two colours of streak, not a mix);
-- replace `gigbar-a.strobe` with `gigbar-a.strobe1`…`strobe4` at 27, 28, 29, 30, and `gigbar-b.strobe` with
-  `gigbar-b.strobe1`…`strobe4` at 127, 128, 129, 130 (LED 4 is the `-s` type).
-
-Nothing else in the address plan moves. The old `gigbar-a.strobe` and `gigbar-b.strobe` places in
-`space.added.yaml` then name nothing; §3 places the new ones.
-
-## 3. The bars as bars, and the room's own measurements: the space files
-
-**Now.** `bars` and `layouts` are empty on PC22. Every part has its own `at` in `space.added.yaml`, copied from the
-laptop's provisional room, with hand-set head poses.
-
-**Fix** (PICKUP_FROM_LAPTOP §4a has the steps; LIGHTS.md §3.6b the editor):
-- copy the `layouts: gigbar-move` block from `deployments/laptop/lights/space.yaml` into finsbury's `space.yaml`;
-- in Light setup › Room, add each bar as a bar and take the per-part places out (a part with its own `at` keeps it
-  and ignores the bar). Keep the ids `gigbar-a` and `gigbar-b`, so the parts are `gigbar-a.par1` and so on.
-
-**Check these are measured, not defaults:**
-- `room.size` is `[5.0, 10.0, 5.0]`, the laptop's provisional floor plan;
-- both screens' pictures are `size: [2.0, 1.0]` (a 65-inch Frame is about 1.43 × 0.80 m);
-- `room.haze_half_life_s` is unset, so the haze model runs on the shared 150 s. Time it once a hazer is in the room.
-
-**Places the karaoke scenes aim at.** `singer` is missing: add a place called `singer` where the singer stands
-(the scenes fall back to `dance-floor`, then the room's centre). `dance-floor` and `mirror-ball` are there.
-
-**Keep-outs.** The laptop keeps the moving heads off its screen (a keep-out with `groups: [movers]`). PC22 has one
-round the mirror ball and none over the two TVs.
-
-**When the real bars arrive** (not before): the node's `nodes` entry and `dmx-a.node` (GIGBAR_RIG §6), each
-light's lean and each head's home on the Lights page (`fixtures.setup.yaml` is empty on PC22), and "Point it at…"
-for the heads' real poses.
-
-## 4. The Karaoke mode: `room/modes.json`
-
-**Now.** finsbury's `karaoke` mode has no `director.light_scenes`. Party and Disco have theirs. Without it:
-- Karaoke's own scenes for waiting and for a song's lead-in (the singer's spot: `stage-waits`, `next-up`,
-  `next-up-rise`) are not chosen first;
-- the glitterball and pinspots draw from every appliance scene, Disco's `disco-colour` and `disco-wild` included,
-  not just the three tagged for Karaoke.
-
-**Fix.** Add to the `karaoke` mode's `state`, as the laptop's `singalong` has:
-
-```json
-"director.light_scenes": {"set": {"scene_tags": ["modes:singalong"]}, "restore": true}
-```
-
-**Still open from PICKUP §2:** no `transition_s`. With `"transition_s": 3` at the top of the file, every device
-eases over the same time on a mode change.
-
-## 5. Sound and timing: Settings › Sound & timing
-
-**Now.** No sound output on PC22 has been measured. Karaoke plays on `sonos:drawing-room`, which runs on the
-default 500 ms; the three screens have no figure and use each browser's own. `latency.json` has no `sound` entry
-and no `sources`.
-
-**Fix**, in the room, from Settings › Sound & timing (docs/SOUND.md; it needs the room mic and quiet):
-- Calibrate `sonos:drawing-room`, and each screen that will ever play karaoke sound;
-- "the sound coming in" (how late the beat clock puts a sound);
-- when the real bars are up, each light's timing by camera (docs/calibration/README.md).
-
-The results are written to `deployments/finsbury/calibration/latency.json`: commit it.
-
-## 6. On the machine, not in git
-
-- **Virtual node.** `tools/virtual_node/` changed on 27 Nov (the laser, the bar's layout). Restart Spectre's
-  `screen-machine-virtual-node` card: start and restart re-copy the files.
-- **Karaoke venv.** Duets (28 Nov) run `tools/karaoke/voices.py` in it. Check
-  `~/.venvs/sm-karaoke/bin/python -c "import librosa, onnxruntime, torchaudio"`. The speaker model (26 MB) is
-  fetched on first use.
-- **Frontend.** If the pull has not been deployed: `git status src/`, then `scripts/deploy-frontend`.
+- **PC22's working tree has config that git does not.** The running room has a `dance-floor` region, a keep-out
+  round the mirror ball and a planned screen `sm-screen-1`, written by the Room editor. Run
+  `git status deployments/finsbury` and commit PC22's own files before changing anything.
+- `tools/virtual_node/` changed on 27 Nov; Spectre's `screen-machine-virtual-node` card re-copies it on restart.
+- Karaoke duets (28 Nov) run `tools/karaoke/voices.py` in the karaoke venv (`librosa`, `onnxruntime`,
+  `torchaudio`).
 - `python -m smconfig.secrets check`.
 
-## Done when
+## Rules for the work
 
-- `GET /rs/show/api/v1/lights/library` lists the groups `movers`, `lamps` (8: the four pars and the four Hue
-  lamps), `lasers`, `derbies`, `flashes` (8) and thirteen line-ups;
-- `GET /rs/show/api/v1/rig/space` has two `bars` and the `gigbar-move` layout, and no problems;
-- Light setup › Room, Lights › Mode "Room as in Karaoke": the singer's spot while nothing plays, and line-ups
-  changing with the sections of a song;
-- `GET /api/sound/outputs` shows a measured delay for the karaoke output;
-- `python -m smconfig check` is `ok`, and `git status deployments/finsbury` is clean.
+- Tell the owning session before editing its file (docs/AV_PROGRAMME.md §11).
+- `python -m smconfig check` after each edit. show_service re-reads `show.yaml`, `fixtures.yaml` and the space
+  files by itself; room_service re-reads `modes.json`.
+- When it is done, update this note or delete it.

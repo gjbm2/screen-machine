@@ -1,7 +1,7 @@
 # Picking up the laptop's rig work on PC22
 
-**What is still to do on PC22 is in `docs/PC22_CONFIG_UPGRADE.md` (28 Nov): finsbury's files checked against the
-code and against the running machine.** This file explains the features; that one is the list.
+**See `docs/PC22_CONFIG_UPGRADE.md` (28 Nov): finsbury's config is behind the code and PC22 has to rebuild it.**
+This file explains the features.
 
 Written for whoever brings PC22 (`finsbury`) up to date with the laptop's work: the owner, or a session on PC22.
 The work is the karaoke party rig, built and tested on the laptop (`deployments/laptop/`, 26 Nov 2026). It covers:
