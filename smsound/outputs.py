@@ -118,6 +118,32 @@ def sonos_zones(dep: Optional[smconfig.Deployment] = None) -> dict[str, dict]:
     return out
 
 
+def room_of(oid: Any, dep: Optional[smconfig.Deployment] = None) -> Optional[str]:
+    """The rooms.json room that holds an output: a screen in its ``screens``, a Sonos zone in its ``sonos``."""
+    p = parse(oid)
+    if p is None or p[0] not in ("screen", "sonos"):
+        return None
+    key = "screens" if p[0] == "screen" else "sonos"
+    try:
+        rooms = smconfig.rooms(dep or smconfig.deployment())
+    except (OSError, ValueError):
+        return None
+    return next((rid for rid, r in rooms.items() if isinstance(r, dict) and p[1] in (r.get(key) or [])), None)
+
+
+def room_mic(room: Optional[str], dep: Optional[smconfig.Deployment] = None) -> Optional[str]:
+    """A room's own mic (rooms.json ``mics``: show_service's input streams, the room's first): what measures the
+    outputs in that room (owner, 28 Nov: calibrate "over sonos, using that room's mic")."""
+    if not room:
+        return None
+    try:
+        r = smconfig.rooms(dep or smconfig.deployment()).get(room)
+    except (OSError, ValueError):
+        return None
+    mics = [m for m in (r.get("mics") or []) if isinstance(m, str) and m] if isinstance(r, dict) else []
+    return mics[0] if mics else None
+
+
 def windows_sound(dep: Optional[smconfig.Deployment] = None) -> bool:
     """The deployment can play on the Windows host's speakers (deployment.yaml ``host.windows_python`` set)."""
     dep = dep or smconfig.deployment()

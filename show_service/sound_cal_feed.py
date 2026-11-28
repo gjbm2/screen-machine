@@ -4,6 +4,10 @@ Flask runs the calibration; this reads its GET /api/sound/calibrate once a secon
 (``show-soundcal``; the brain never waits on Flask) and offers ``running()``: the mic's "Calibrating" want
 (mic.Mic.add_want), so the mic is on while an output is measured, whatever the deployment has (karaoke's own want,
 karaoke_feed.py, is only for karaoke). Flask down or a bad reply: False until it answers again.
+
+The run names its mic (``mic``: a show input stream, the output's room's own unless one was chosen; owner, 28 Nov:
+choose the mic "as well as sound output"): while it runs, that stream is claimed too (``set_claim``: Mic.claim_stream),
+so it captures even when it isn't the room's active input.
 """
 from __future__ import annotations
 
@@ -34,6 +38,8 @@ class SoundCalFeed:
         self._fetch, self._clock = fetch, clock
         self._last: Optional[tuple[float, bool]] = None
         self._wakes: list[Callable[[], None]] = []
+        self._claim: Optional[Callable[[str, bool], Any]] = None
+        self._claimed: Optional[str] = None
         self._stop = threading.Event()
         self._thread: Optional[threading.Thread] = None
 
@@ -42,7 +48,17 @@ class SoundCalFeed:
             o = self._fetch(self.url)
             on = isinstance(o, dict) and o.get("state") == "running"
         except Exception:  # noqa: BLE001 - Flask restarting: not running
-            on = False
+            o, on = None, False
+        mic = o.get("mic") if on and isinstance(o.get("mic"), str) and o.get("mic") else None
+        if mic != self._claimed and self._claim is not None:
+            try:
+                if self._claimed:
+                    self._claim(self._claimed, False)
+                if mic:
+                    self._claim(mic, True)
+            except Exception:  # noqa: BLE001
+                log.debug("soundcal claim failed", exc_info=True)
+        self._claimed = mic
         was = self._last[1] if self._last else False
         self._last = (self._clock(), on)
         if on != was:
@@ -57,6 +73,10 @@ class SoundCalFeed:
         if self._last is None or self._clock() - self._last[0] > STALE_S:
             return False
         return self._last[1]
+
+    def set_claim(self, fn: Optional[Callable[[str, bool], Any]]) -> None:
+        """``fn(stream, on)``: hold or release the run's mic (Mic.claim_stream)."""
+        self._claim = fn
 
     def add_on_change(self, fn: Callable[[], None]) -> None:
         self._wakes.append(fn)

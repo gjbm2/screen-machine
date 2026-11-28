@@ -1,12 +1,14 @@
 // An output's delay, the same control wherever it's shown (docs/SOUND.md): how late the room hears it (measured +
 // trim, smsound.latency), Calibrate (chirps timed with the room mic: routes/sound/calibrate.py; screens and Sonos) with
-// the run's progress, and a trim nudge. Karaoke's Settings and Settings › Sound & timing both use it.
+// the run's progress, a trim nudge, and which mic times the chirps (owner, 28 Nov: choose the mic "as well as sound
+// output"; default: the output's room's own mic, rooms.json mics). Karaoke's Settings and Settings › Sound & timing
+// both use it.
 
 import { useCallback, useEffect, useState } from "react";
 import { Gauge, Loader2, Minus, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { latencyText, sound, type CalibrationRun, type OutputLatency, type SoundOutput } from "@/shared/api/sound";
+import { latencyText, sound, type CalibrationMic, type CalibrationRun, type OutputLatency, type SoundOutput } from "@/shared/api/sound";
 
 const TRIM_STEP_MS = 10;
 const RUN_POLL_MS = 1000;
@@ -28,6 +30,19 @@ export function OutputTiming({
   const [run, setRun] = useState<CalibrationRun | null>(null);
   const [err, setErr] = useState<string | null>(null);
   useEffect(() => setLat(output.latency), [output.latency]);
+
+  const [mics, setMics] = useState<CalibrationMic[]>([]);
+  const [mic, setMic] = useState<string | null>(null);
+  useEffect(() => {
+    if (output.calibrate !== "chirp") return;
+    let dead = false;
+    sound.mics(output.id).then((r) => {
+      if (dead) return;
+      setMics(r.mics);
+      setMic((m) => m ?? r.default ?? r.mics[0]?.stream ?? null);
+    }).catch(() => undefined);
+    return () => { dead = true; };
+  }, [output.id, output.calibrate]);
 
   const mine = run?.output === output.id;
   const running = mine && run?.state === "running";
@@ -59,7 +74,7 @@ export function OutputTiming({
       return;
     setErr(null);
     try {
-      setRun(await sound.calibrate(output.id));
+      setRun(await sound.calibrate(output.id, mic));
     } catch (e) {
       setErr(String((e as Error).message || e));
     }
@@ -105,6 +120,25 @@ export function OutputTiming({
           )}
         </div>
       </div>
+      {canMeasure && mics.length > 0 && (
+        <label className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+          Mic
+          <select
+            value={mic ?? ""}
+            disabled={running}
+            onChange={(e) => setMic(e.target.value || null)}
+            aria-label="The mic that times the chirps"
+            className="max-w-full rounded-lg border border-stone-200 bg-card px-2.5 py-1 text-sm text-foreground"
+          >
+            {mics.map((m) => (
+              <option key={m.stream} value={m.stream}>
+                {m.label}
+                {m.device ? ` · ${m.device}` : ""}
+              </option>
+            ))}
+          </select>
+        </label>
+      )}
       {mine && run?.message && run.state !== "idle" && (
         <p className={cn("text-sm", run.state === "failed" ? "text-red-700" : "text-muted-foreground")}>
           {running ? "Calibrating: " : ""}

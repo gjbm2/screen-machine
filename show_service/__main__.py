@@ -767,6 +767,9 @@ class Show:
             if sc is not None:
                 mic.add_want("calibration", "Measuring a speaker", sc.running)   # docs/SOUND.md
                 sc.add_on_change(mic.wake)
+                if callable(getattr(sc, "set_claim", None)):                       # the run's own mic captures too
+                    sc.set_claim(lambda stream, on: mic.claim_stream(stream, by="calibration",
+                                                                     label="Measuring a speaker", on=on))
             ctx = self.ctx
             mic.set_room(lambda: ctx.room() if ctx is not None and ctx.room is not None else None)
             mic.set_notify(getattr(self.api, "notify", None))

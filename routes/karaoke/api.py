@@ -412,11 +412,13 @@ def calibration_view() -> dict | None:
 
 @karaoke_api.post("/karaoke/calibrate")
 def calibrate():
-    """Measure the karaoke output's delay with the room mic: the app's calibration (POST /api/sound/calibrate) of
-    the output the karaoke plays on; its progress is in /state's calibration."""
+    """Measure the karaoke output's delay with a mic (``{mic?}``: a show input stream; unset: the output's room's own):
+    the app's calibration (POST /api/sound/calibrate) of the output the karaoke plays on; its progress is in /state's
+    calibration."""
     from routes.sound import calibrator
+    mic = _body().get("mic")
     try:
-        return jsonify({"calibration": calibrator().start(store().output())})
+        return jsonify({"calibration": calibrator().start(store().output(), mic=mic if isinstance(mic, str) and mic else None)})
     except ValueError as e:
         return _err(409, str(e))
 

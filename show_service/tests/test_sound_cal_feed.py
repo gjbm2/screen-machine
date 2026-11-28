@@ -16,3 +16,14 @@ def test_the_mic_is_wanted_while_a_speaker_is_measured():
     assert not f.running()
     f.poll_once()
     assert not f.running() and woke == [1, 1]
+
+
+def test_the_runs_own_mic_is_claimed_while_it_runs():
+    replies = [{"state": "running", "mic": "room-mic"}, {"state": "running", "mic": "room-mic"},
+               {"state": "running", "mic": "pc22-mic"}, {"state": "done", "mic": "pc22-mic"}]
+    f = SoundCalFeed("http://127.0.0.1:5000", fetch=lambda url: replies.pop(0), clock=lambda: 0.0)
+    claims = []
+    f.set_claim(lambda stream, on: claims.append((stream, on)))
+    for _ in range(4):
+        f.poll_once()
+    assert claims == [("room-mic", True), ("room-mic", False), ("pc22-mic", True), ("pc22-mic", False)]

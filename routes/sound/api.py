@@ -16,7 +16,11 @@
   GET  /sound/outputs/<id>/eq               its graphic EQ (smsound.eq.describe): {applies, preset, gains, bands,
                                             presets, range_db}
   PUT  /sound/outputs/<id>/eq               {preset} | {gains: [dB x 7]}: -> the same
+  GET  /sound/mics[?output=]                {mics: [{stream, label, state, device, room}], default}: the mics a
+                                            calibration can use (show_service's inputs); default: the output's room's
+                                            own mic (rooms.json mics)
   POST /sound/calibrate                     {output, mic?}: measure it (routes/sound/calibrate.py) -> the run's state;
+                                            mic: a show input stream, unset: the output's room's own mic;
                                             400 {error} when it can't be measured from here
   GET  /sound/calibrate                     the run's state: {id, state: idle|running|done|failed, output, label,
                                             phase, message, clicks, chirps, delay_ms...}; the display pages poll it
@@ -199,6 +203,31 @@ def put_eq(oid: str):
     except ValueError as e:
         return _err(400, str(e))
     return jsonify({"id": oid, "eq": d})
+
+
+@sound_api.get("/sound/mics")
+def mics():
+    """The mics a calibration can time chirps with: show_service's room inputs (GET /api/v1/inputs), each with the
+    rooms.json room it belongs to, and ``default``: for ?output=, that output's room's own mic (rooms.json mics)."""
+    rows: list[dict] = []
+    if smconfig.enabled("show"):
+        try:
+            with urllib.request.urlopen(smconfig.url("show").rstrip("/") + "/api/v1/inputs",   # noqa: S310
+                                        timeout=DEVICES_TIMEOUT_S) as r:
+                doc = json.loads(r.read() or b"{}")
+        except Exception:  # noqa: BLE001 - show_service down: no mics listed
+            doc = {}
+        try:
+            rooms = smconfig.rooms()
+        except (OSError, ValueError):
+            rooms = {}
+        room_of = {m: rid for rid, r in rooms.items() if isinstance(r, dict) for m in (r.get("mics") or [])}
+        for i in doc.get("inputs") or []:
+            if isinstance(i, dict) and isinstance(i.get("stream"), str):
+                rows.append({"stream": i["stream"], "label": i.get("label") or i["stream"], "state": i.get("state"),
+                             "device": i.get("device"), "room": room_of.get(i["stream"])})
+    out = request.args.get("output")
+    return jsonify({"mics": rows, "default": O.room_mic(O.room_of(out)) if out else None})
 
 
 @sound_api.post("/sound/calibrate")

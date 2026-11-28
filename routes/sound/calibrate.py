@@ -48,6 +48,7 @@ MIC_WAIT_S = 6.0
 MIC_PATH_S = 0.005      # capture -> show_service arrival (the agent, measured 16 Oct: 5 ms median)
 SONOS_BED_S = 2.0       # the file's noise bed before its first chirp
 SONOS_WINDOW_S = (-1.5, 3.0)   # how far from the zone's current delay the chirps are looked for
+SONOS_VOLUME = 25              # a zone at volume 0 plays the chirps this loud (0..100): heard across a room
 SR = 48000
 INPUT = "in"                   # the sound coming in (the beat clock's own lateness), not an output
 IN_WINDOW_S = (-0.3, 0.6)      # how far the beat clock may be off
@@ -66,6 +67,7 @@ class Calibrator:
         self._lock = threading.Lock()
         self._state: dict = {"state": "idle"}
         self.before: list[Callable[[str], None]] = []    # run before the chirps, with the output id
+        self._sonos_put_back: Optional[int] = None       # the volume a zone turned up for the chirps goes back to
 
     # ---- state
     def state(self) -> dict:
@@ -92,11 +94,13 @@ class Calibrator:
             raise ValueError(f"This deployment has no {output}.")
         if self.running():
             return self.state()
+        if not mic and output != INPUT:
+            mic = O.room_mic(O.room_of(output))         # the output's room's own mic (rooms.json mics)
         cid = f"c{int(time.time() * 1000)}"
         with self._lock:
             self._state = {"id": cid, "state": "running", "output": output,
                            "label": "The sound coming in" if output == INPUT else O.label_of(output),
-                           "phase": "mic", "message": "Turning the mic on…", "clicks": [], "chirps": [],
+                           "mic": mic, "phase": "mic", "message": "Turning the mic on…", "clicks": [], "chirps": [],
                            "started_at": time.time()}
         self._thread = threading.Thread(target=self._run, args=(cid, output, mic), name="sound-calibrate", daemon=True)
         self._thread.start()
@@ -192,6 +196,11 @@ class Calibrator:
                     out_obj.stop()
                 except Exception:  # noqa: BLE001
                     log.exception("calibration: stopping the Sonos")
+                if self._sonos_put_back is not None:
+                    try:
+                        out_obj.set_volume(self._sonos_put_back)
+                    except Exception:  # noqa: BLE001
+                        log.exception("calibration: putting the Sonos volume back")
         frames = [(t, w) for t, w in frames if t >= clicks[0] - 1.5]
         t0, sig = C.assemble(frames, SR)
         res = C.measure(t0, sig, SR, clicks, specs, min_delay_s=lo, max_delay_s=hi)
@@ -251,7 +260,20 @@ class Calibrator:
         else:
             from piano_render.sonos import SonosOutput
             out = SonosOutput(zone)
-        t_audio0 = out.start(path, lead_in_ms=0.0, url=files.audio_url(path.stem), title="Calibrating the speaker")
+        # Chirps at volume 0 are silent and the mic times noise (28 Nov: the Piano mode leaves the zone at 0): a zone
+        # that is off plays them at its put-back volume, else SONOS_VOLUME, and goes back to 0 afterwards.
+        self._sonos_put_back = None
+        vol = None
+        try:
+            st = out.room_state()
+            if not st.get("volume"):
+                vol = st["put_back"] if st.get("put_back") else SONOS_VOLUME
+                self._sonos_put_back = st.get("volume")
+        except Exception:  # noqa: BLE001 - the play says what's wrong
+            log.debug("calibration: the zone's state", exc_info=True)
+        self._set(volume=vol)
+        t_audio0 = out.start(path, lead_in_ms=0.0, url=files.audio_url(path.stem), title="Calibrating the speaker",
+                             volume=vol)
         return out, float(t_audio0)
 
     @staticmethod

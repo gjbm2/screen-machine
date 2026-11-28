@@ -1012,6 +1012,13 @@ class SonosOutput:
         except SonosError as e:
             log.warning("sonos %s: couldn't pause: %s", self.zone, e)
 
+    def set_volume(self, volume: int) -> None:
+        """The zone's volume (0..100), through room_service (SonosError when it refuses)."""
+        status, doc = self._http("PUT", "/api/v1/room/targets", {"values": {f"sonos.{self.zone}.volume": int(volume)},
+                                                                 "source": SOURCE})
+        if status not in (200, 202):
+            raise SonosError(f"room_service refused the volume ({status}: {doc.get('detail') or 'no detail'})")
+
     def stop(self, timeout: float = 1.0) -> None:
         """Our file off the Sonos, if it still plays it (module docstring); a stream ends too; safe any time."""
         with self._lock:

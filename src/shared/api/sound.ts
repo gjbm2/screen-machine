@@ -38,11 +38,25 @@ export interface SoundOutput {
   why?: string;
 }
 
+/** A mic a calibration can use: a show_service room input (GET /api/sound/mics). */
+export interface CalibrationMic {
+  stream: string;
+  label: string;
+  state?: string | null;
+  device?: string | null;
+  /** The rooms.json room it belongs to. */
+  room?: string | null;
+}
+
 export interface CalibrationRun {
   id?: string;
   state: 'idle' | 'running' | 'done' | 'failed';
   output?: string;
   label?: string;
+  /** The mic it times the chirps with (a show input stream). */
+  mic?: string | null;
+  /** The volume a Sonos at 0 played the chirps at (it goes back to 0 after). */
+  volume?: number | null;
   phase?: 'mic' | 'sonos' | 'listening' | null;
   message?: string;
   /** Server times (s) of the chirps; with `chirps`, what the screen being measured plays. */
@@ -115,7 +129,12 @@ export const sound = {
   eq: (id: string) => call<{ id: string; eq: OutputEq }>(`/outputs/${encodeURIComponent(id)}/eq`),
   setEq: (id: string, body: { preset: string } | { gains: number[] }) =>
     call<{ id: string; eq: OutputEq }>(`/outputs/${encodeURIComponent(id)}/eq`, send('PUT', body)),
-  calibrate: (output: string) => call<CalibrationRun>('/calibrate', send('POST', { output })),
+  /** The mics a calibration can time chirps with; `default`: the output's room's own mic (rooms.json mics). */
+  mics: (output?: string) =>
+    call<{ mics: CalibrationMic[]; default: string | null }>(`/mics${output ? `?output=${encodeURIComponent(output)}` : ''}`),
+  /** Measure an output; `mic` unset: its room's own mic. */
+  calibrate: (output: string, mic?: string | null) =>
+    call<CalibrationRun>('/calibrate', send('POST', mic ? { output, mic } : { output })),
   calibration: () => call<CalibrationRun>('/calibrate'),
   /** A screen's display page flashes white at `at_mono` (show_service's clock, s) for the camera calibration. */
   flash: (screen: string, at_mono: number[], dur_s: number) =>

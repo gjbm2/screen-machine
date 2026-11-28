@@ -153,9 +153,19 @@ def test_a_sonos_is_measured_from_its_play_request_and_its_delay_corrected(lat, 
     monkeypatch.setattr(cal, "MIC_WAIT_S", 2.0)
     sr = cal.SR
     true_start_s = 0.62
+    volume_now = 0                                               # the Piano mode leaves the zone at 0 (28 Nov)
 
     class FakeSonos:
-        def start(self, path, lead_in_ms, url, title):
+        volumes: list = []
+
+        def room_state(self):
+            return {"volume": volume_now, "put_back": None}
+
+        def set_volume(self, v):
+            self.volumes.append(("back", v))
+
+        def start(self, path, lead_in_ms, url, title, volume=None):
+            self.volumes.append(("play", volume))
             self.t_put = _t.monotonic()
             self.sig = C.render(sr, list(C.OFFSETS_S), C.chirp_specs(len(C.OFFSETS_S)), bed_s=cal.SONOS_BED_S,
                                 tail_s=cal.SONOS_WINDOW_S[1] + 0.5)
@@ -194,6 +204,8 @@ def test_a_sonos_is_measured_from_its_play_request_and_its_delay_corrected(lat, 
     st = c.state()
     assert st["state"] == "done", st
     assert abs(L.effective_ms("sonos:living") - 620) <= 5, (L.sound("sonos:living"), st)
+    # a zone at 0 plays the chirps loud enough to hear, then goes back to 0
+    assert sonos.volumes == [("play", cal.SONOS_VOLUME), ("back", 0)], sonos.volumes
 
 
 def test_a_lights_camera_measurement_is_stored_as_the_show_engine_reads_it(lat):
@@ -286,3 +298,21 @@ def test_a_browsers_reported_latency_never_touches_the_deployments_file(lat):
     assert "browser_ms" not in lat.read_text()
     with pytest.raises(ValueError):
         L.set_browser("nonsense", 50)
+
+
+def test_an_output_is_measured_with_its_rooms_own_mic(monkeypatch):
+    """rooms.json: a Sonos zone or a screen belongs to a room, and the room's first mic measures it."""
+    import smconfig
+    rooms = {"den": {"screens": ["tv"], "sonos": ["den"], "mics": ["den-mic", "other"]}, "lab": {"screens": ["dev"]}}
+    monkeypatch.setattr(smconfig, "rooms", lambda dep=None: rooms)
+    monkeypatch.setattr(smconfig, "deployment", lambda: None)
+    assert O.room_of("sonos:den") == "den" and O.room_of("screen:tv") == "den" and O.room_of("screen:dev") == "lab"
+    assert O.room_mic("den") == "den-mic" and O.room_mic("lab") is None and O.room_of("pc22") is None
+    from routes.sound import calibrate as cal
+    c = cal.Calibrator("http://127.0.0.1:8703")
+    monkeypatch.setattr(O, "known", lambda oid, dep=None, devices=(): True)
+    monkeypatch.setattr(O, "label_of", lambda oid, *a, **k: oid)
+    monkeypatch.setattr(c, "_run", lambda cid, output, mic: None)
+    assert c.start("sonos:den")["mic"] == "den-mic"
+    c._thread.join(1)
+    assert c.start("sonos:den", mic="other")["mic"] == "other"

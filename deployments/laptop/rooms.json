@@ -2,6 +2,7 @@
   "_comment": "The laptop rig: which room holds what (deployments/README.md). Screens are ids from publish-destinations.json.",
   "studio": {
     "name": "Studio",
-    "screens": ["vj"]
+    "screens": ["vj"],
+    "mics": ["room-mic"]
   }
 }
