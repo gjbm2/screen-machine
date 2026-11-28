@@ -1670,3 +1670,25 @@ def test_under_a_lyric_plan_a_drop_line_is_armed_only_where_the_plan_has_a_secti
     r.run(40.0)
     arm = r.kinds("drop_armed")
     assert arm and arm[0]["at_ms"] == pytest.approx(30000.0, abs=1.0) and arm[0]["eta_beats"] is not None
+
+
+def test_a_song_sung_from_its_first_second_still_announces_its_first_section():
+    """Nightly eval 28 Nov: a plan read at the song's start found its first section (at 0) already passed, so the
+    opening ran on the feel look with no line-up (Common People's first verse). On the opening it is announced on the
+    next line instead; mid-song (a seek) a passed section is still skipped."""
+    def plan(r: Rig, secs, off=0.0):
+        return lambda: {"key": "karaoke:k1:q1", "state": "playing", "pos_s": r.t + off, "dur_s": 200.0, "speed": 1.0,
+                        "title": "Song", "source": "karaoke", "sections": secs}
+    secs = [{"pos_s": 0.0, "kind": "verse", "letter": "A"}, {"pos_s": 40.0, "kind": "chorus", "letter": "B"}]
+    r = Rig(riser, clock=lambda t: clock_body(t, bpm=BPM))
+    r.ctx.now_playing = plan(r, secs)
+    r.run(10.0)
+    got = [e for e in r.kinds("section_change") if e.get("detail") == "lyrics"]
+    assert [e["letter"] for e in got] == ["A"] and got[0]["section_kind"] == "verse"
+    assert got[0]["at_ms"] <= 4000.0                                     # within the song's first seconds
+    # a plan first read 30 s in (a seek, a restart): the verse is passed, the chorus comes next
+    r = Rig(riser, clock=lambda t: clock_body(t, bpm=BPM))
+    r.ctx.now_playing = plan(r, secs, off=30.0)
+    r.run(5.0)
+    assert [e["letter"] for e in r.kinds("section_change") if e.get("detail") == "lyrics"] == ["B"]
+

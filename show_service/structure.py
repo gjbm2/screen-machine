@@ -185,6 +185,11 @@ PLAN_LEAD_S = 8.0               # a lyric-plan section is announced this far ahe
                                 # for a move's gesture before the line and a screen transition that lands on it
                                 # (sync_eval, 26 Nov: at 4 s a 3 s transition finished up to 2 s after the line)
 PLAN_SEEK_S = 1.5               # the player's clock moved this far from the plan's: a seek, a restart
+MIN_OPEN_LEFT_S = 2.0           # ... unless the next section is this close after that line
+PLAN_OPEN_S = 6.0               # a plan first read this far into a song still announces the section it is in (on the
+                                # next line): a song sung from its first second has its first section at 0, which was
+                                # "passed" by the time the plan was read, so its opening ran on the feel look with no
+                                # line-up (nightly eval 28 Nov: Common People's first verse, every replay's opening)
 PREDICT_SLACK_S = 2.0           # a predicted line counts as missed this long after the latest a boundary could confirm
 NOVELTY_KEEP_S = 120.0          # snapshot: the novelty curve's last 120 s
 STAT_N = 600
@@ -1809,7 +1814,8 @@ class Structure:
         pl = self._plan if self._plan is not None and self._plan["key"] == key else None
         start = now_s - pos / sp
         if pl is None:
-            pl = self._plan = {"key": key, "start": start, "secs": ok, "done": set(), "paused": False}
+            pl = self._plan = {"key": key, "start": start, "secs": ok, "done": set(), "paused": False,
+                               "opening": pos / sp <= PLAN_OPEN_S}
         elif abs(start - pl["start"]) > PLAN_SEEK_S:     # a seek or a restart: announce from here on
             pl.update(start=start, done=set())
             self._cancel_pred()
@@ -1846,17 +1852,23 @@ class Structure:
             return
         lead = self.cfg["events"]["min_lead_s"]
         reach = max(PLAN_LEAD_S, lead + 0.5, self.cfg["predict_lead_bars"] * grid.bar_s if grid.ok else 0.0)
-        for i, x in enumerate(pl["secs"]):
+        opening = pl.pop("opening", False)
+        secs = pl["secs"]
+        for i, x in enumerate(secs):
             if i in pl["done"]:
                 continue
             b = pl["start"] + float(x["pos_s"])
-            if b < now_s + lead:                         # passed, or too close to land on time (a seek): skipped
-                pl["done"].add(i)
+            nxt = pl["start"] + float(secs[i + 1]["pos_s"]) if i + 1 < len(secs) else None
+            late = b < now_s + lead
+            if late and not (opening and (nxt is None or nxt >= now_s + lead + MIN_OPEN_LEFT_S)):
+                pl["done"].add(i)                        # passed, or too close to land on time (a seek): skipped
                 continue
             if b - now_s > reach:
                 return
             line = b
-            if grid.ok and grid.bar_s:
+            if late:                                     # the song's opening section, already begun: on the next line
+                line = grid.line_after(now_s + lead) if grid.ok and grid.bar_s else now_s + lead
+            elif grid.ok and grid.bar_s:
                 nb = grid.nearest_bar(b)
                 if abs(nb - b) <= 0.5 * grid.bar_s and nb >= now_s + lead:
                     line = nb
