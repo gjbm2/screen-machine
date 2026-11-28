@@ -116,10 +116,14 @@ function NamePicker({
           autoFocus={autoFocus}
           maxLength={MAX}
           placeholder={value.length ? "+ another" : empty}
+          // type="search", not text: on Android, Chromium puts its autofill bar (passwords, cards, addresses) over the
+          // keyboard for a plain text box and never reads autoComplete for it; a search field doesn't get it
+          // (owner, 28 Nov: "a pointless list of options like key, credit card"). Its looks stay a plain box's.
+          type="search"
           autoComplete="off"
           autoCapitalize="words"
           enterKeyHint="done"
-          className="min-w-[5.5rem] flex-1 bg-transparent py-0.5 text-xs font-medium outline-none placeholder:font-normal placeholder:text-muted-foreground/70 sm:text-sm"
+          className="min-w-[5.5rem] flex-1 appearance-none bg-transparent py-0.5 text-xs font-medium outline-none placeholder:font-normal placeholder:text-muted-foreground/70 sm:text-sm [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
         />
       </div>
       {showSuggest && (

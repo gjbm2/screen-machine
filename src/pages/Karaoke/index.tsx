@@ -31,6 +31,7 @@
 // mouse after 8 px, touch after a 200 ms press), by a grip so a phone still scrolls; polling pauses during a drag.
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import {
   DndContext,
   DragOverlay,
@@ -47,7 +48,6 @@ import {
 } from "@dnd-kit/core";
 import {
   SortableContext,
-  arrayMove,
   sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
@@ -55,6 +55,7 @@ import {
 import { CSS } from "@dnd-kit/utilities";
 import {
   AudioLines,
+  ChevronDown,
   Music,
   Gauge,
   GripVertical,
@@ -64,6 +65,7 @@ import {
   ListStart,
   Pause,
   Play,
+  Plus,
   RotateCcw,
   Search,
   SkipBack,
@@ -75,7 +77,6 @@ import {
   VolumeX,
   WandSparkles,
   X,
-  Globe,
   MessageSquareText,
   MoreHorizontal,
   Check,
@@ -110,6 +111,7 @@ import {
   type SearchHit,
 } from "@/shared/api/karaoke";
 import { fuzzyFilter } from "./fuzzy";
+import { dropIndex, insertIndex, moved, parts, playNextIndex, queuedCounts, whereOf, type Where } from "./queueView";
 import { LivePicture } from "./LivePicture";
 import { LightsPanel } from "@/components/room/LightsNow";
 import { roomApi } from "@/components/room/roomLink";
@@ -168,36 +170,91 @@ export default function KaraokePage() {
   const [st, setSt] = useState<KaraokeState | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-  const [libOpen, setLibOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
-  // On a phone, once the player has scrolled out of sight, a slim copy of it rides the top of the screen (laid over
-  // the page: nothing in the page changes size, so the scroll never jumps; 26 Nov the in-page version flickered).
+  // The page is zones, as a music or a messaging app (owner, 28 Nov: "song nav which should pin stably and properly";
+  // "a search ux pattern which ... doesn't jump about, doesn't move to a different location on the screen"): a frame
+  // the size of what is visible, its middle the only thing that scrolls, the search bar its foot. Nothing is laid
+  // over a scrolling page or placed by where the scroll is, so nothing pops, slides or jumps.
+  //   - The player (a phone): one card, pinned to the top of the scrolling part once it gets there and squeezed by
+  //     the scroll down to its slim row (PinnedPlayer; "it just squeezes when it's pinned"; "one ... component which
+  //     squeezed, not two").
+  //   - The search bar: the frame's foot, at every width; a click or a tap never moves it. A phone's keyboard makes
+  //     the frame shorter (useKeyboardFit), so the bar sits on the keyboard; its results are a tray over the middle.
+  const wide = useWide();
+  const shellRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const songRowRef = useRef<HTMLDivElement>(null);
   const playerRef = useRef<HTMLDivElement>(null);
-  const [pinned, setPinned] = useState(false);
+  const [trayHost, setTrayHost] = useState<HTMLDivElement | null>(null);
+  const [trayTop, setTrayTop] = useState(0);
+  /** The pinned player's squeeze (PinnedPlayer): how far it goes (px of scroll) and its height once slim. */
+  const squeeze = useRef({ range: 0, pinned: 0 });
+  useKeyboardFit(shellRef);
+  useLayoutProbe();
   useEffect(() => {
-    const el = playerRef.current;
-    if (!el) return;
-    const wide = window.matchMedia("(min-width: 1024px)");
-    let gone = false;
-    const set = () => setPinned(gone && !wide.matches);
-    const io = new IntersectionObserver(([e]) => {
-      gone = !e.isIntersecting;
-      set();
-    });
-    io.observe(el);
-    wide.addEventListener("change", set);
+    // Android: the browser itself makes the page shorter for the keyboard (interactive-widget=resizes-content), so
+    // the frame's own CSS height puts its foot on the keyboard. It is also what makes Brave tell the truth: with its
+    // bottom toolbar on, the keyboard hides the toolbar but the visible height it reports still leaves the toolbar
+    // out, 46-48 px short (brave/brave-browser#60074; the owner's phone, 28 Nov: a band of the page's backing under
+    // the search bar). An iPhone ignores the setting and keeps useKeyboardFit's fit. On this page only: other pages
+    // keep their bottom bars under the keyboard.
+    const meta = document.querySelector<HTMLMetaElement>('meta[name="viewport"]');
+    if (!meta) return;
+    const was = meta.content;
+    if (!/interactive-widget/.test(was)) meta.content = `${was}, interactive-widget=resizes-content`;
     return () => {
-      io.disconnect();
-      wide.removeEventListener("change", set);
+      meta.content = was;
     };
-  }, [st != null]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
+  useEffect(() => {
+    // the frame is the page: the document behind it never scrolls, and is the page's colour (not the app's white),
+    // so anything a browser shows of it beyond the frame reads as the page
+    const root = document.documentElement, was = root.style.overflow;
+    const body = document.body, wasBg = body.style.backgroundColor;
+    root.style.overflow = "hidden";
+    const paper = shellRef.current ? getComputedStyle(shellRef.current).backgroundColor : "";
+    if (paper) body.style.backgroundColor = paper;
+    return () => {
+      root.style.overflow = was;
+      body.style.backgroundColor = wasBg;
+    };
+  }, []);
+  useLayoutEffect(() => {
+    // the scrolling part's scrollbar (a desktop's): the bar and the tray line up with the page beside it
+    const sc = scrollRef.current;
+    if (sc) shellRef.current?.style.setProperty("--sbw", `${sc.offsetWidth - sc.clientWidth}px`);
+  }, [wide]);
+  // The tray opened on a phone: it starts under the player squeezed to its slim row, so the page is rolled up until
+  // the player is that (the tray is one size every time). Closed without a song added, the page rolls back.
+  const savedTop = useRef<number | null>(null);
+  const onSearchOpen = useCallback(
+    (on: boolean) => {
+      const sc = scrollRef.current, place = playerRef.current;
+      if (wide || !sc) return;
+      if (!on) {
+        if (savedTop.current != null) sc.scrollTo({ top: savedTop.current, behavior: "smooth" });
+        savedTop.current = null;
+        return;
+      }
+      if (!place) return setTrayTop(0);
+      const { range, pinned } = squeeze.current;
+      setTrayTop(pinned);
+      const gone = sc.getBoundingClientRect().top - place.getBoundingClientRect().top;
+      if (gone < range) {
+        savedTop.current = sc.scrollTop;
+        sc.scrollTo({ top: sc.scrollTop + (range - gone), behavior: "smooth" });
+      }
+    },
+    [wide],
+  );
+  useLayoutEffect(() => onSearchOpen(searchOpen), [searchOpen, onSearchOpen]);
   const [dep, setDep] = useState<DeploymentInfo | null>(null);
   useEffect(() => {
     getDeploymentRelative().then(setDep, () => undefined);
   }, []);
   const findRef = useRef<HTMLInputElement>(null);
   const [artist, setArtist] = useState<string | null>(null);
-  const [findSeed, setFindSeed] = useState<{ text: string | null; n: number }>({ text: "", n: 0 });
   const [dragging, setDragging] = useState<string | null>(null);
   const draggingRef = useRef(false);
 
@@ -253,22 +310,22 @@ export default function KaraokePage() {
 
   const songs = useMemo(() => new Map((st?.songs ?? []).map((s) => [s.id, s])), [st?.songs]);
   const queue = st?.queue ?? [];
-  const curIdx = queue.findIndex((e) => e.qid === st?.player.qid);
-  const upcoming = curIdx < 0 ? queue.length : queue.length - curIdx;
-  // Only what is still to come counts as "in the queue": the songs before the one playing are history (owner, 27 Nov).
-  const queuedCount = new Map<string, number>();
-  const sungUpTo = Math.max(0, queue.findIndex((e) => e.qid === st?.player.qid));
-  for (const e of queue.slice(sungUpTo)) queuedCount.set(e.song_id, (queuedCount.get(e.song_id) ?? 0) + 1);
+  // Only what is still to come counts as "in the queue": the songs already sung are history (owner, 27 Nov).
+  const queuedCount = st ? queuedCounts(st) : new Map<string, number>();
+  const upcoming = st ? queue.length - parts(st).sung : 0;
 
   const queueBox = useRef<HTMLDivElement>(null);
   const backToQueue = () => {
+    savedTop.current = null;
     setArtist(null);
-    setLibOpen(false);
+    setSearchOpen(false);
     (document.activeElement as HTMLElement | null)?.blur?.();
     requestAnimationFrame(() => queueBox.current?.scrollIntoView({ block: "start", behavior: "smooth" }));
   };
-  const addToQueue = (s: KaraokeSong, at: QueueAt) =>
-    void askSingers(s.title).then(
+  const addToQueue = (s: KaraokeSong, at: At) =>
+    at === "now"
+      ? void (backToQueue(), act(() => playNow(s), said(`“${s.title}”`, "now", s.status !== "ready")))
+      : void askSingers(s.title).then(
       (who) =>
         who &&
         (backToQueue(), true) &&
@@ -277,7 +334,6 @@ export default function KaraokePage() {
           at === "next" ? `“${s.title}” is up next` : `“${s.title}” added to the queue`,
         ),
     );
-  const focusFind = () => setFindSeed((x) => ({ text: null, n: x.n + 1 }));
 
   const onDragStart = (e: DragStartEvent) => {
     draggingRef.current = true;
@@ -294,21 +350,25 @@ export default function KaraokePage() {
     const overId = String(over.id);
     const overIndex = overId === QUEUE_DROP ? queue.length : queue.findIndex((e) => e.qid === overId);
     if (overIndex < 0) return;
+    // Where it lands is queueView's to say (the server's own rules: nothing above the top of the songs to come, where
+    // it would vanish among the sung; the song that is on doesn't move).
+    const p = parts(st);
     if (id.startsWith(LIB)) {
       const songId = id.slice(LIB.length);
+      const at = insertIndex(p, queue.length, overIndex);
       void askSingers(songs.get(songId)?.title ?? "").then((who) => {
         if (!who) return;
         const q = [...queue];
-        q.splice(overIndex, 0, { qid: `pending-${Date.now()}`, song_id: songId, singers: who });
+        q.splice(at, 0, { qid: `pending-${Date.now()}`, song_id: songId, singers: who });
         setSt({ ...st, queue: q });
-        void act(() => karaoke.queueAdd(songId, overIndex, undefined, who));
+        void act(() => karaoke.queueAdd(songId, at, undefined, who));
       });
       return;
     }
     const from = queue.findIndex((e) => e.qid === id);
-    const to = overId === QUEUE_DROP ? queue.length - 1 : overIndex;
-    if (from < 0 || from === to) return;
-    setSt({ ...st, queue: arrayMove(queue, from, to) });
+    const to = dropIndex(p, queue.length, from, overIndex);
+    if (to === null) return;
+    setSt({ ...st, ...moved(queue, p, from, to) });
     void act(() => karaoke.queueMove(id, to));
   };
 
@@ -318,7 +378,7 @@ export default function KaraokePage() {
       )
     : undefined;
 
-  const queueCard = st && <QueueCard st={st} songs={songs} act={act} onFind={focusFind} onArtist={setArtist} />;
+  const queueCard = st && <QueueCard st={st} songs={songs} act={act} addToQueue={addToQueue} onFind={() => setSearchOpen(true)} onArtist={setArtist} />;
   const libraryCard = st && (
     <LibraryCard
       songs={st.songs}
@@ -326,35 +386,48 @@ export default function KaraokePage() {
       draggable={false}
       act={act}
       addToQueue={addToQueue}
-      onArtist={(a) => {
-        setLibOpen(false);
-        setArtist(a);
-      }}
-      onClose={() => setLibOpen(false)}
-      onWeb={(text) => {
-        setLibOpen(false);
-        setFindSeed((x) => ({ text, n: x.n + 1 }));
-      }}
+      onArtist={setArtist}
     />
   );
-  const findCard = st && (
+  const findCard = (
     <Find
-      songs={st.songs}
+      songs={st?.songs ?? NO_SONGS}
       queuedCount={queuedCount}
       act={act}
       inputRef={findRef}
       onArtist={setArtist}
-      libOpen={libOpen}
-      onLibrary={() => setLibOpen(!libOpen)}
       onAdded={backToQueue}
-      seed={findSeed}
+      wide={wide}
+      trayHost={trayHost}
+      trayTop={trayTop}
+      open={searchOpen}
+      setOpen={setSearchOpen}
+      library={libraryCard}
     />
   );
 
   return (
-    <div className={cn(THEME_CLASS, "min-h-screen bg-background text-base text-foreground antialiased")}>
+    <div className={cn(THEME_CLASS, "text-base text-foreground antialiased")}>
       <RoomThemeStyle />
-      <div className="mx-auto w-full max-w-3xl px-4 pb-16 sm:px-6 lg:max-w-7xl">
+      {/* the frame: under the app's top bar, over its bottom bar and the docked player; a keyboard's height shorter
+          while one is up (--kv-top / --kv-h: useKeyboardFit) */}
+      <div
+        ref={shellRef}
+        className="fixed inset-x-0 flex h-screen flex-col overflow-hidden bg-background"
+        style={{
+          top: "var(--kv-top, calc(var(--app-top, 0px) + var(--app-nav-top, 0px)))",
+          height:
+            "var(--kv-h, calc(100dvh - var(--app-top, 0px) - var(--app-nav-top, 0px) - var(--app-nav-bottom, 0px) - var(--dock-h, 0px)))",
+        }}
+        data-testid="karaoke-shell"
+      >
+      <div ref={setTrayHost} className="relative min-h-0 flex-1 overflow-hidden">
+      <div
+        ref={scrollRef}
+        className="h-full overflow-y-auto overscroll-contain [scrollbar-gutter:stable]"
+        data-testid="karaoke-scroll"
+      >
+      <div className="mx-auto w-full max-w-3xl px-4 pb-6 sm:px-6 lg:max-w-7xl">
         <PageHeader title="Karaoke" current="karaoke" onMenu={() => setMenuOpen(true)} />
         {err && (
           <Notice tone="bad" className="mb-3">
@@ -362,16 +435,37 @@ export default function KaraokePage() {
           </Notice>
         )}
 
-        {/* Now playing first (sticky beside the lists on a wide screen; on a phone a slim copy pins to the top once it
-            has scrolled away), then the queue, then the search bar (pinned to the foot while its place is further
-            down; it opens the search tray) with the library under its icon; the picture, the lights and the settings
-            below. */}
+        {/* Now playing first (a wide screen: sticky beside the lists; a phone: the one pinned card that squeezes),
+            then the queue and the singers; the picture, the lights and the settings below. The search bar is the
+            frame's foot, the library under its icon. */}
+        {!wide && st && (
+          <PinnedPlayer
+            scroller={scrollRef}
+            boxRef={songRowRef}
+            placeRef={playerRef}
+            onMeasure={(m) => {
+              squeeze.current = m;
+            }}
+            full={<NowPlaying st={st} skew={skewRef.current} songs={songs} act={act} bare />}
+            slim={
+              <NowPlaying
+                st={st}
+                skew={skewRef.current}
+                songs={songs}
+                act={act}
+                part="row"
+                bare
+                onTop={() => scrollRef.current?.scrollTo({ top: 0, behavior: "smooth" })}
+              />
+            }
+          />
+        )}
         <main className="space-y-4 lg:grid lg:grid-cols-[minmax(0,26rem)_minmax(0,1fr)] lg:items-start lg:gap-6 lg:space-y-0">
-          {/* Beside the lists on a wide screen (sticky); on a phone it scrolls away and its slim copy takes the top
-              (owner, 26 Nov: "player component should probably pin to top on mobile"). */}
-          <div ref={playerRef} className="lg:sticky lg:top-4">
-            {st && <NowPlaying st={st} skew={skewRef.current} songs={songs} act={act} />}
-          </div>
+          {wide && (
+            <div className="sticky top-4" data-testid="karaoke-player">
+              {st && <NowPlaying st={st} skew={skewRef.current} songs={songs} act={act} />}
+            </div>
+          )}
           <DndContext
             sensors={sensors}
             collisionDetection={closestCenter}
@@ -404,7 +498,6 @@ export default function KaraokePage() {
                   />
                 </Card>
               )}
-              {findCard}
             </div>
             <DragOverlay>{dragSong ? <RowFace song={dragSong} lifted /> : null}</DragOverlay>
             {st && <SingerAsk names={st.singers ?? []} />}
@@ -424,23 +517,11 @@ export default function KaraokePage() {
           {st?.player.song_id && <SongPictures songId={st.player.song_id} />}
         </div>
       </div>
-      {/* The library: a tray from the foot of the screen, opened from the search bar's icon. */}
-      <Drawer open={libOpen && !!st} onOpenChange={setLibOpen} shouldScaleBackground={false}>
-        <DrawerContent className={cn(THEME_CLASS, "mx-auto h-[85vh] max-w-3xl lg:max-w-5xl")}>
-          <DrawerTitle className="sr-only">Library</DrawerTitle>
-          <DrawerDescription className="sr-only">Every song added, to browse and add to the queue</DrawerDescription>
-          <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-[max(1rem,env(safe-area-inset-bottom))] sm:px-4">
-            {libraryCard}
-          </div>
-        </DrawerContent>
-      </Drawer>
-      {st && pinned && (
-        <div className="fixed inset-x-0 top-[var(--app-nav-top,0px)] z-40 bg-background px-3 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] shadow-sm motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-top-2 lg:hidden">
-          <div className="mx-auto max-w-3xl">
-            <NowPlaying st={st} skew={skewRef.current} songs={songs} act={act} compact />
-          </div>
-        </div>
-      )}
+      </div>
+      {/* the tray (the library, the search's results) is put here by Find, over the scrolling part */}
+      </div>
+      {findCard}
+      </div>
       <AppMenu open={menuOpen} onOpenChange={setMenuOpen} current="karaoke" />
       {st && artist && <ArtistSongs name={artist} songs={st.songs} act={act} onClose={() => setArtist(null)} onAdded={backToQueue} />}
       {toast && (
@@ -459,14 +540,20 @@ function NowPlaying({
   skew,
   songs,
   act,
-  compact = false,
+  part = "full",
+  onTop,
+  bare = false,
 }: {
   st: KaraokeState;
   skew: number;
   songs: Map<string, KaraokeSong>;
   act: Act;
-  /** Pinned while the page scrolls on a phone: the slim version. */
-  compact?: boolean;
+  /** The whole player, or its slim row, pinned on a phone (the song, play and next, a line for where it is). */
+  part?: "full" | "row";
+  /** The song row's song was tapped: back to the top of the page. */
+  onTop?: () => void;
+  /** Without the card's frame: inside the pinned card (PinnedPlayer), which is the frame. */
+  bare?: boolean;
 }) {
   const p = st.player;
   const song = p.song_id ? (songs.get(p.song_id) ?? null) : null;
@@ -498,18 +585,79 @@ function NowPlaying({
   const showing = !!song && p.state !== "stopped";
   const anyReady = st.queue.some((e) => songs.get(e.song_id)?.status === "ready");
 
-  // Pinned while the page scrolls on a phone (owner, 26 Nov: "the version of the player section that gets pinned may
-  // need to be vertically smaller"): one slim row, the song, play/pause and next, a thin line for where it is.
-  if (compact)
+  // The singer's voice (the lead vocal under the backing) and the mute, at the heading's right.
+  const voice = (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={() => act(() => karaoke.settings({ muted: !st.settings.muted }))}
+        aria-label={st.settings.muted ? "Unmute" : "Mute"}
+        aria-pressed={!!st.settings.muted}
+        title={st.settings.muted ? "Unmute" : "Mute"}
+        className={cn(
+          "rounded-full p-1",
+          st.settings.muted ? "bg-red-100 text-red-700" : "text-muted-foreground hover:text-foreground",
+        )}
+      >
+        {st.settings.muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
+      </button>
+      <div className="flex items-center gap-1.5" role="group" aria-label="Singer's voice">
+        <span className="text-xs text-muted-foreground" title="The lead vocal under the backing track">
+          Voice
+        </span>
+        <div className="flex rounded-full border border-stone-200 p-0.5">
+          {GUIDES.map((g) => (
+            <button
+              key={g.label}
+              type="button"
+              onClick={() => act(() => karaoke.settings({ guide: g.value }))}
+              className={cn(
+                "rounded-full px-2.5 py-0.5 text-xs font-medium",
+                Math.abs(st.settings.guide - g.value) < 0.01
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {g.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+  const scrubBar = showing && (
+    <div className="flex items-center gap-2 text-xs tabular-nums text-muted-foreground">
+      <span className="w-9 text-right">{mmss(pos)}</span>
+      <Slider
+        value={[pos]}
+        min={0}
+        max={Math.max(1, dur)}
+        step={0.1}
+        onValueChange={([v]) => setScrub(v)}
+        onValueCommit={([v]) => {
+          setScrub(null);
+          setHeld({ v, rev: p.rev });
+          void act(() => karaoke.player("seek", { pos_s: v }));
+        }}
+        aria-label="Position in the song"
+        className="flex-1"
+      />
+      <span className="w-9">-{mmss(Math.max(0, dur - pos))}</span>
+    </div>
+  );
+
+  // Pinned on a phone (owner, 26 Nov: "the version of the player section that gets pinned may need to be
+  // vertically smaller"): one slim row, the song, play/pause and next, a thin line for where it is.
+  if (part === "row")
     return (
-      <section className={cn(CARD_CLASS, "overflow-hidden p-2")}>
+      <section className={cn(!bare && CARD_CLASS, "overflow-hidden p-2")}>
         <div className="flex items-center gap-2.5">
-          {/* The song: back up to the full player (owner, 26 Nov: "clicking current song should scroll to top"). */}
+          {/* The song: back up to the top (owner, 26 Nov: "clicking current song should scroll to top"). */}
           <button
             type="button"
             className="flex min-w-0 flex-1 items-center gap-2.5 text-left"
-            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-            aria-label="Back to the player"
+            onClick={onTop}
+            aria-label="Back to the top"
           >
             <Cover src={showing ? song?.art : null} />
             <div className="min-w-0 flex-1">
@@ -546,47 +694,11 @@ function NowPlaying({
     );
 
   return (
-    <section className={cn(CARD_CLASS, "p-3 sm:p-4")}>
+    <section className={cn(!bare && CARD_CLASS, "p-3 sm:p-4")}>
       {/* The heading, with the singer's voice at its right (it stays put while songs change). */}
       <div className="flex items-center justify-between gap-2">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Now playing</h2>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => act(() => karaoke.settings({ muted: !st.settings.muted }))}
-            aria-label={st.settings.muted ? "Unmute" : "Mute"}
-            aria-pressed={!!st.settings.muted}
-            title={st.settings.muted ? "Unmute" : "Mute"}
-            className={cn(
-              "rounded-full p-1",
-              st.settings.muted ? "bg-red-100 text-red-700" : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            {st.settings.muted ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
-          </button>
-          <div className="flex items-center gap-1.5" role="group" aria-label="Singer's voice">
-            <span className="text-xs text-muted-foreground" title="The lead vocal under the backing track">
-              Voice
-            </span>
-            <div className="flex rounded-full border border-stone-200 p-0.5">
-              {GUIDES.map((g) => (
-                <button
-                  key={g.label}
-                  type="button"
-                  onClick={() => act(() => karaoke.settings({ guide: g.value }))}
-                  className={cn(
-                    "rounded-full px-2.5 py-0.5 text-xs font-medium",
-                    Math.abs(st.settings.guide - g.value) < 0.01
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {g.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        </div>
+        {voice}
       </div>
       <div className="mt-2 flex min-h-[2.75rem] items-center gap-3">
         {showing && <Cover src={song.art} big />}
@@ -602,26 +714,7 @@ function NowPlaying({
         )}
       </div>
       {showing && song.status === "ready" && <RefineLine song={song} act={act} />}
-      {showing && (
-        <div className="mt-2 flex items-center gap-2 text-xs tabular-nums text-muted-foreground">
-          <span className="w-9 text-right">{mmss(pos)}</span>
-          <Slider
-            value={[pos]}
-            min={0}
-            max={Math.max(1, dur)}
-            step={0.1}
-            onValueChange={([v]) => setScrub(v)}
-            onValueCommit={([v]) => {
-              setScrub(null);
-              setHeld({ v, rev: p.rev });
-              void act(() => karaoke.player("seek", { pos_s: v }));
-            }}
-            aria-label="Position in the song"
-            className="flex-1"
-          />
-          <span className="w-9">-{mmss(Math.max(0, dur - pos))}</span>
-        </div>
-      )}
+      {scrubBar && <div className="mt-2">{scrubBar}</div>}
       <div className="mt-2 flex items-center justify-center gap-2">
         <RoundBtn label="Previous" onClick={() => act(() => karaoke.player("prev"))} disabled={!showing}>
           <SkipBack className="h-4 w-4" />
@@ -642,6 +735,100 @@ function NowPlaying({
         </RoundBtn>
       </div>
     </section>
+  );
+}
+
+/** A phone's player (owner, 26 Nov: "player component should probably pin to top on mobile"; 28 Nov: "one ...
+ *  component which squeezed, not two"): one card, pinned to the top of the scrolling part from the moment it gets
+ *  there. From then the scroll squeezes it: its foot rises with the page under it until it is the slim row's height,
+ *  the whole player giving way to the slim row inside the one frame. Its place in the page is a space of the full
+ *  height that never changes, so nothing it does moves the page (26 Nov: an in-page version that changed size
+ *  flickered). */
+function PinnedPlayer({
+  scroller,
+  boxRef,
+  placeRef,
+  onMeasure,
+  full,
+  slim,
+}: {
+  scroller: React.RefObject<HTMLDivElement>;
+  /** The pinned box (the card and the plain backing round it). */
+  boxRef: React.RefObject<HTMLDivElement>;
+  /** The player's place in the page. */
+  placeRef: React.RefObject<HTMLDivElement>;
+  /** How far the squeeze goes (px of scroll) and the box's height once slim. */
+  onMeasure: (m: { range: number; pinned: number }) => void;
+  full: ReactNode;
+  slim: ReactNode;
+}) {
+  const fullRef = useRef<HTMLDivElement>(null);
+  const slimRef = useRef<HTMLDivElement>(null);
+  const [h, setH] = useState({ full: 204, slim: 58, top: 8 });
+  const onMeasureRef = useRef(onMeasure);
+  onMeasureRef.current = onMeasure;
+  useLayoutEffect(() => {
+    const f = fullRef.current, s = slimRef.current, box = boxRef.current;
+    if (!f || !s || !box) return;
+    const measure = () => {
+      const next = { full: f.offsetHeight, slim: s.offsetHeight, top: parseFloat(getComputedStyle(box).paddingTop) || 0 };
+      setH((was) => (was.full === next.full && was.slim === next.slim && was.top === next.top ? was : next));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(f);
+    ro.observe(s);
+    return () => ro.disconnect();
+  }, [boxRef]);
+  const range = Math.max(0, h.full - h.slim);
+  useLayoutEffect(() => {
+    const sc = scroller.current, place = placeRef.current, box = boxRef.current;
+    const f = fullRef.current, s = slimRef.current;
+    if (!sc || !place || !box || !f || !s) return;
+    onMeasureRef.current({ range, pinned: h.top + h.slim + 8 });
+    // how far the player's place has gone above the top: that much is squeezed out of the card (--sq px; --sqp 0..1)
+    const fit = () => {
+      const gone = Math.min(range, Math.max(0, sc.getBoundingClientRect().top - place.getBoundingClientRect().top));
+      const p = range ? gone / range : 0;
+      box.style.setProperty("--sq", `${gone}px`);
+      box.style.setProperty("--sqp", p.toFixed(3));
+      f.style.visibility = p >= 0.65 ? "hidden" : "";
+      f.style.pointerEvents = p > 0.5 ? "none" : "";
+      s.style.visibility = p <= 0.35 ? "hidden" : "";
+      s.style.pointerEvents = p > 0.5 ? "" : "none";
+    };
+    fit();
+    sc.addEventListener("scroll", fit, { passive: true });
+    window.addEventListener("resize", fit);
+    return () => {
+      sc.removeEventListener("scroll", fit);
+      window.removeEventListener("resize", fit);
+    };
+  }, [scroller, placeRef, boxRef, range, h.top, h.slim]);
+  return (
+    <>
+      <div className="sticky top-0 z-30 h-0">
+        <div
+          ref={boxRef}
+          className="absolute inset-x-0 top-0 -mx-4 bg-background px-4 pb-2 pt-[max(0.5rem,env(safe-area-inset-top))] sm:-mx-6 sm:px-6"
+          data-testid="karaoke-song-row"
+        >
+          <div
+            className={cn(CARD_CLASS, "relative overflow-hidden")}
+            style={{ height: `calc(${h.full}px - var(--sq, 0px))` }}
+            data-testid="karaoke-player-card"
+          >
+            <div ref={fullRef} className="absolute inset-x-0 top-0" style={{ opacity: "clamp(0, calc(1.55 - var(--sqp, 0) * 2.4), 1)" }}>
+              {full}
+            </div>
+            <div ref={slimRef} className="absolute inset-x-0 top-0" style={{ opacity: "clamp(0, calc(var(--sqp, 0) * 2.4 - 0.85), 1)" }}>
+              {slim}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div ref={placeRef} aria-hidden className="mb-4" style={{ height: h.top + h.full }} data-testid="karaoke-player" />
+    </>
   );
 }
 
@@ -678,7 +865,16 @@ function RoundBtn({
 
 // ---------------------------------------------------------------- queue
 
-type Where = "played" | "current" | "stopped" | "next";
+/** Where a library song goes: the end of the queue, up next, or on now. */
+type At = QueueAt | "now";
+const playNow = (s: KaraokeSong) => karaoke.player("play", { song_id: s.id });
+/** What to say once a song has gone where it was sent (``preparing``: it isn't ready yet). */
+const said = (what: string, at: At | null, preparing: boolean) =>
+  at === "now"
+    ? preparing
+      ? `${what} plays as soon as it's ready`
+      : undefined
+    : `${what} ${at === "next" ? "is up next" : at === "end" ? "added to the queue" : "added to the library"}${preparing ? ": getting it ready" : ""}`;
 
 /** The running order. Songs already sung are tucked away (owner, 25 Nov: "previously played songs aren't very
  *  interesting -- should probably disappear unless user wants to find them"): a line at the top shows them. */
@@ -686,20 +882,22 @@ function QueueCard({
   st,
   songs,
   act,
+  addToQueue,
   onFind,
   onArtist,
 }: {
   st: KaraokeState;
   songs: Map<string, KaraokeSong>;
   act: Act;
+  addToQueue: (s: KaraokeSong, at: At) => void;
   onFind: () => void;
   onArtist: (a: string) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: QUEUE_DROP });
   const [showPlayed, setShowPlayed] = useState(false);
   const queue = st.queue;
-  const cur = queue.findIndex((e) => e.qid === st.player.qid);
-  const played = Math.max(0, cur);
+  const p = parts(st);
+  const played = p.sung;
   const shown = queue.map((e, i) => ({ e, i })).filter(({ i }) => showPlayed || i >= played);
   const upcoming = queue.length - played;
   return (
@@ -749,23 +947,16 @@ function QueueCard({
             {shown.map(({ e, i }) => {
               const song = songs.get(e.song_id);
               if (!song) return null;
-              const where: Where =
-                cur < 0
-                  ? "next"
-                  : i < cur
-                    ? "played"
-                    : i === cur
-                      ? st.player.state === "stopped"
-                        ? "stopped"
-                        : "current"
-                      : "next";
+              const where = whereOf(i, p);
               return (
                 <QueueRow
                   key={e.qid}
                   entry={e}
                   song={song}
                   where={where}
+                  nextAt={playNextIndex(i, p)}
                   act={act}
+                  addToQueue={addToQueue}
                   onArtist={onArtist}
                   singers={st.singers ?? []}
                 />
@@ -773,6 +964,18 @@ function QueueCard({
             })}
           </ul>
         </SortableContext>
+        {/* how a song gets in, for whoever hasn't found the bar at the foot (owner, 28 Nov: "a low key, slim '+' at
+            the bottom of the queue which triggers the tray") */}
+        {upcoming > 0 && (
+          <button
+            type="button"
+            onClick={onFind}
+            data-testid="karaoke-queue-add"
+            className="flex h-6 w-full items-center justify-center gap-1 rounded-md text-xs text-muted-foreground/70 hover:bg-stone-100 hover:text-foreground"
+          >
+            <Plus className="h-3.5 w-3.5" /> Add song
+          </button>
+        )}
       </div>
     </Card>
   );
@@ -782,14 +985,19 @@ function QueueRow({
   entry,
   song,
   where,
+  nextAt,
   act,
+  addToQueue,
   onArtist,
   singers,
 }: {
   entry: QueueEntry;
   song: KaraokeSong;
   where: Where;
+  /** Where "Play next" puts this entry (straight after the song that is on); undefined when it is there already. */
+  nextAt?: number;
   act: Act;
+  addToQueue: (s: KaraokeSong, at: At) => void;
   onArtist: (a: string) => void;
   /** Tonight's names: the singer tag's suggestions. */
   singers: string[];
@@ -820,27 +1028,68 @@ function QueueRow({
         grip={<Grip setRef={setActivatorNodeRef} listeners={listeners} attributes={attributes} />}
         onArtist={onArtist}
       >
-        {where !== "played" && (
+        {/* three to see (owner, 28 Nov): who sings (a song already sung: Add), Play now, and "…" for the rest */}
+        {where !== "played" ? (
           <SingerTag
             singers={entry.singers ?? []}
             names={singers}
             onChange={(n) => act(() => karaoke.queueSingers(entry.qid, n))}
           />
+        ) : (
+          song.status !== "failed" && <AddBtn onClick={() => addToQueue(song, "end")} />
         )}
-        {song.status === "ready" && where !== "current" && (
-          <IconBtn label="Play this now" onClick={() => act(() => karaoke.player("play", { qid: entry.qid }))}>
-            <Play className="h-4 w-4" />
-          </IconBtn>
+        {song.status !== "failed" && where !== "current" && (
+          <PlayBtn
+            onClick={() =>
+              act(
+                () => karaoke.player("play", { qid: entry.qid }),
+                said(`“${song.title}”`, "now", song.status !== "ready"),
+              )
+            }
+          />
         )}
-        {song.status !== "ready" && song.status !== "failed" && <RestartBtn song={song} act={act} />}
-        {(where === "current" || where === "played") && (
-          <IconBtn label="How the show played this song" onClick={() => setNoting(!noting)}>
-            <MessageSquareText className={cn("h-4 w-4", noting && "text-primary")} />
-          </IconBtn>
-        )}
-        <IconBtn label="Take out of the queue" onClick={() => act(() => karaoke.queueRemove(entry.qid))}>
-          <X className="h-4 w-4" />
-        </IconBtn>
+        <More testid="karaoke-queue-more">
+            {where === "played" ? (
+              // a song already sung goes in again (its place in what was sung stays)
+              song.status !== "failed" && (
+                <DropdownMenuItem onSelect={() => addToQueue(song, "next")}>
+                  <ListStart className="mr-2 h-4 w-4" /> Play next
+                </DropdownMenuItem>
+              )
+            ) : (
+              where !== "current" && (
+                <DropdownMenuItem
+                  disabled={nextAt === undefined}
+                  onSelect={() =>
+                    nextAt !== undefined &&
+                    act(() => karaoke.queueMove(entry.qid, nextAt), `“${song.title}” is up next`)
+                  }
+                >
+                  <ListStart className="mr-2 h-4 w-4" /> Play next
+                </DropdownMenuItem>
+              )
+            )}
+            {(where === "current" || where === "played") && (
+              <DropdownMenuItem onSelect={() => setNoting(!noting)}>
+                <MessageSquareText className="mr-2 h-4 w-4" /> How the show played it
+                {noting && <Check className="ml-2 h-4 w-4 text-primary" />}
+              </DropdownMenuItem>
+            )}
+            {song.status !== "ready" && song.status !== "failed" && (
+              <DropdownMenuItem
+                onSelect={() =>
+                  window.confirm(`Prepare “${song.title}” again from the start?`) &&
+                  act(() => karaoke.retry(song.id), `Preparing “${song.title}” again`)
+                }
+              >
+                <RotateCcw className="mr-2 h-4 w-4" /> Prepare again
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onSelect={() => act(() => karaoke.queueRemove(entry.qid))}>
+              <X className="mr-2 h-4 w-4" /> Take out of the queue
+            </DropdownMenuItem>
+        </More>
       </RowFace>
       {noting && <SongShowNote song={song.id} title={`${song.title} · ${song.artist}`} />}
     </li>
@@ -891,22 +1140,16 @@ function LibraryCard({
   act,
   addToQueue,
   onArtist,
-  onClose,
-  onWeb,
 }: {
   songs: KaraokeSong[];
   queuedCount: Map<string, number>;
   draggable: boolean;
   act: Act;
-  addToQueue: (s: KaraokeSong, at: QueueAt) => void;
+  addToQueue: (s: KaraokeSong, at: At) => void;
   onArtist: (a: string) => void;
-  onClose: () => void;
-  /** Search the web for this text instead (the main search, the tray closed). */
-  onWeb: (text: string) => void;
 }) {
   const [filter, setFilter] = useState<Filter>("all");
   const [tag, setTag] = useState<string | null>(null);
-  const [find, setFind] = useState("");
   const [sort, setSortState] = useState<Sort>(() =>
     SORTS.some(([k]) => k === localStorage.getItem(SORT_KEY)) ? (localStorage.getItem(SORT_KEY) as Sort) : "popular",
   );
@@ -920,55 +1163,26 @@ function LibraryCard({
     for (const s of songs) for (const g of s.tags ?? []) n.set(g, (n.get(g) ?? 0) + 1);
     return [...n.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]));
   }, [songs]);
-  // A search at the top (owner, 27 Nov): fuzzy, best match first; without one, the chosen order.
-  const shown = useMemo(() => {
-    const q = find.trim();
-    const base = q ? fuzzyFilter(songs, q, (s) => `${s.title} ${s.artist}`) : sorted(songs, sort);
-    return base.filter((s) => inFilter(s, filter) && (!tag || (s.tags ?? []).includes(tag)));
-  }, [songs, filter, sort, tag, find]);
+  // In the chosen order. The search is the bar's (Find): typing there shows matches in this same tray.
+  const shown = useMemo(
+    () => sorted(songs, sort).filter((s) => inFilter(s, filter) && (!tag || (s.tags ?? []).includes(tag))),
+    [songs, filter, sort, tag],
+  );
 
   return (
-    <Card
-      title={`Library · ${songs.length}`}
-      action={
-        <IconBtn label="Hide the library" onClick={onClose}>
-          <X className="h-4 w-4" />
-        </IconBtn>
-      }
-    >
       <div className="space-y-2.5">
-        {/* Held at the top of the tray: the search and order on one row, then readiness and tags as one row that
+        {/* Held at the top of the tray: the count and the order on one row, then readiness and tags as one row that
             slides sideways (owner, 27 Nov: the tags took a third of the tray). */}
-        <div className="sticky top-0 z-10 -mx-1 space-y-2 bg-card px-1 pb-2 pt-1">
-          <div className="flex items-center gap-2">
-            <div className="relative min-w-0 flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                value={find}
-                onChange={(e) => setFind(e.target.value)}
-                onKeyDown={(e) => e.key === "Escape" && find && (e.stopPropagation(), setFind(""))}
-                placeholder="Search the library"
-                aria-label="Search the library"
-                className="h-10 rounded-xl pl-9 pr-9 text-base sm:text-sm"
-                enterKeyHint="search"
-              />
-              {find && (
-                <button
-                  type="button"
-                  aria-label="Clear"
-                  onClick={() => setFind("")}
-                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded-md p-1 text-muted-foreground hover:text-foreground"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              )}
-            </div>
+        <div className="sticky top-0 z-10 -mx-1 space-y-2 bg-card px-1 pb-2">
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+              Library · {songs.length}
+            </h2>
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as Sort)}
               aria-label="Sort the library"
-              disabled={!!find.trim()}
-              className="h-10 shrink-0 rounded-xl border border-stone-200 bg-card px-2.5 text-xs text-muted-foreground hover:text-foreground disabled:opacity-50"
+              className="h-9 shrink-0 rounded-xl border border-stone-200 bg-card px-2.5 text-xs text-muted-foreground hover:text-foreground"
             >
               {SORTS.map(([k, label]) => (
                 <option key={k} value={k}>
@@ -977,17 +1191,6 @@ function LibraryCard({
               ))}
             </select>
           </div>
-          {find.trim() && (
-            <button
-              type="button"
-              onClick={() => onWeb(find.trim())}
-              data-testid="lib-web"
-              className="flex w-full items-center gap-2 rounded-xl bg-primary/10 px-3 py-2 text-left text-sm font-medium text-primary hover:bg-primary/15"
-            >
-              <Globe className="h-4 w-4 shrink-0" />
-              <span className="truncate">Search the web for “{find.trim()}”</span>
-            </button>
-          )}
         <div className="no-scrollbar -mx-1 flex items-center gap-1.5 overflow-x-auto px-1">
           {FILTERS.map(([f, label]) => {
             const n = songs.filter((s) => inFilter(s, f)).length;
@@ -1027,7 +1230,7 @@ function LibraryCard({
         {songs.length === 0 && (
           <p className="py-4 text-center text-sm text-muted-foreground">Songs you add appear here.</p>
         )}
-        {songs.length > 0 && shown.length === 0 && !find.trim() && (
+        {songs.length > 0 && shown.length === 0 && (
           <p className="py-4 text-center text-sm text-muted-foreground">None here.</p>
         )}
         <ul className="divide-y divide-stone-200/70">
@@ -1044,7 +1247,6 @@ function LibraryCard({
           ))}
         </ul>
       </div>
-    </Card>
   );
 }
 
@@ -1060,8 +1262,8 @@ function LibraryRow({
   queued: number;
   draggable: boolean;
   act: Act;
-  addToQueue: (s: KaraokeSong, at: QueueAt) => void;
-  onArtist: (a: string) => void;
+  addToQueue: (s: KaraokeSong, at: At) => void;
+  onArtist?: (a: string) => void;
 }) {
   const failed = song.status === "failed";
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
@@ -1085,7 +1287,10 @@ function LibraryRow({
             <RotateCcw className="h-4 w-4" />
           </IconBtn>
         ) : (
-          <AddBtn onClick={() => addToQueue(song, "end")} />
+          <>
+            <AddBtn onClick={() => addToQueue(song, "end")} />
+            <PlayBtn onClick={() => addToQueue(song, "now")} />
+          </>
         )}
         <RowMenu song={song} act={act} onNext={failed ? undefined : () => addToQueue(song, "next")} />
       </RowFace>
@@ -1244,29 +1449,35 @@ function Find({
   act,
   inputRef,
   onArtist,
-  libOpen,
-  onLibrary,
   onAdded,
-  seed,
+  wide,
+  trayHost,
+  trayTop,
+  open,
+  setOpen,
+  library,
 }: {
   songs: KaraokeSong[];
   queuedCount: Map<string, number>;
   act: Act;
   inputRef: React.RefObject<HTMLInputElement>;
   onArtist: (a: string) => void;
-  libOpen: boolean;
-  onLibrary: () => void;
   onAdded: () => void;
-  /** Start a search (``text``: with this in the box; null: as it was). */
-  seed: { text: string | null; n: number };
+  /** A wide screen (the tray stands on the bar, in the lists' column) or a phone (it fills the page's middle). */
+  wide: boolean;
+  /** The page's middle, where the tray goes. */
+  trayHost: HTMLElement | null;
+  /** A phone: where the tray starts, under the song row (px from the top of ``trayHost``). */
+  trayTop: number;
+  /** The tray is open: from the box taking the focus or the library button until it is closed (its handle, the
+   *  bar's button, Esc, a song queued, a click beside it). Not "while the box has the focus": the keyboard going
+   *  away changes nothing. */
+  open: boolean;
+  setOpen: (open: boolean) => void;
+  /** The library: what the tray holds while nothing is typed. */
+  library: ReactNode;
 }) {
   const [q, setQ] = useState("");
-  // The library tray's "Search the web" hands its text over here.
-  useEffect(() => {
-    if (!seed.n) return;
-    if (seed.text !== null) setQ(seed.text);
-    requestAnimationFrame(() => inputRef.current?.focus());
-  }, [seed, inputRef]);
   const [hits, setHits] = useState<{ q: string; rows: SearchHit[] } | null>(null);
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -1336,6 +1547,7 @@ function Find({
     [songs, text, link],
   );
   const libIds = new Set(lib.map((s) => s.id));
+  const byId = useMemo(() => new Map(songs.map((s) => [s.id, s])), [songs]);
   // Nothing moves under the pointer (owner, 27 Nov: "you cannot move things out from under a mouse pointer"): web
   // results only ever add below the library rows, the panel keeps one height while open, and while the pointer is
   // over the results what they show is held until it leaves or the search text changes.
@@ -1361,15 +1573,18 @@ function Find({
 
   // Queued (a name picked): the search closes and the page goes back to the queue at once (owner, 27 Nov: "drop back
   // to queue, not leave the selector open"); into the library only: the search clears when it's done.
-  const go = (at: QueueAt | null, run: () => Promise<unknown>) => {
+  const go = (at: At | null, run: () => Promise<unknown>) => {
     if (!at) return void run().then(clear);
     inputRef.current?.blur();
     setQ("");
     onAdded();
+    setOpen(false);
     void run();
   };
-  const queueSong = (s: KaraokeSong, at: QueueAt) =>
-    void (inputRef.current?.blur(), askSingers(s.title)).then(
+  const queueSong = (s: KaraokeSong, at: At) =>
+    at === "now"
+      ? go("end", () => act(() => playNow(s), said(`“${s.title}”`, "now", s.status !== "ready")))
+      : void (inputRef.current?.blur(), askSingers(s.title)).then(
       (who) =>
         who &&
         go(at, () =>
@@ -1379,21 +1594,22 @@ function Find({
           ),
         ),
     );
-  const said = (at: QueueAt | null) =>
-    at === "next" ? "is up next" : at === "end" ? "added to the queue" : "added to the library";
-  const addWeb = (h: SearchHit, at: QueueAt | null) =>
-    void (at ? (inputRef.current?.blur(), askSingers(h.title)) : Promise.resolve([])).then(
+  const addWeb = (h: SearchHit, at: At | null) =>
+    void (at && at !== "now" ? (inputRef.current?.blur(), askSingers(h.title)) : Promise.resolve([])).then(
       (who) =>
         who &&
         go(at, () =>
           act(
             () => karaoke.request({ ...hitFacts(h), ...(at ? { queue: at, singers: who } : {}) }),
-            `“${h.title}” ${said(at)}: getting it ready`,
+            said(`“${h.title}”`, at, true),
           ),
         ),
     );
-  const addText = (at: QueueAt | null) =>
-    void (at ? (inputRef.current?.blur(), askSingers(link ? "This link" : text)) : Promise.resolve([])).then(
+  const addText = (at: At | null) =>
+    void (at && at !== "now"
+      ? (inputRef.current?.blur(), askSingers(link ? "This link" : text))
+      : Promise.resolve([])
+    ).then(
       (who) =>
         who &&
         go(at, () =>
@@ -1403,12 +1619,12 @@ function Find({
                 ...(link ? { url: text } : { q: text }),
                 ...(at ? { queue: at, singers: who } : {}),
               }),
-            `${link ? "The link" : `“${text}”`} ${said(at)}: getting it ready`,
+            said(link ? "The link" : `“${text}”`, at, true),
           ),
         ),
     );
 
-  const open = link || text.length >= 1;
+  const hasText = link || text.length >= 1;
   const touchTimer = useRef<number | undefined>(undefined);
   useEffect(() => {
     const el = webFoot.current;
@@ -1417,11 +1633,8 @@ function Find({
     io.observe(el);
     return () => io.disconnect();
   });
-  // The search box in the page, the results under it in the page (owner, 28 Nov: "adopt best practice mobile web
-  // design"; "search really shouldn't go into a weird shitty modal mode"): nothing pinned, measured or laid over the
-  // page. On a phone the browser brings the box up above the keyboard as it does for any box, and the results follow
-  // it; the page scrolls as a page does. The library icon opens the library as a tray.
-  const results = open && (
+  // What was found: the library first, the web under it (never above: rows are only ever added at the end).
+  const results = hasText && (
           <section
             onPointerEnter={(e) => e.pointerType === "mouse" && setOver(true)}
             onPointerLeave={(e) => e.pointerType === "mouse" && setOver(false)}
@@ -1456,29 +1669,18 @@ function Find({
                   <div>
                     <SectionWord>In the library</SectionWord>
                     <ul className="divide-y divide-stone-200/70">
-                      {libRows.slice(0, libMax).map((s) => {
-                        const n = queuedCount.get(s.id) ?? 0;
-                        return (
-                          <li key={s.id}>
-                            <RowFace
-                              song={s}
-                              hint={n ? (n > 1 ? `In the queue ×${n}` : "In the queue") : undefined}
-                              onArtist={onArtist}
-                            >
-                              {s.status === "failed" ? (
-                                <IconBtn
-                                  label="Try again"
-                                  onClick={() => act(() => karaoke.retry(s.id), `Trying “${s.title}” again`)}
-                                >
-                                  <RotateCcw className="h-4 w-4" />
-                                </IconBtn>
-                              ) : (
-                                <AtButtons onAt={(at) => queueSong(s, at)} />
-                              )}
-                            </RowFace>
-                          </li>
-                        );
-                      })}
+                      {/* the library's own rows: a song is the same row browsed or searched for */}
+                      {libRows.slice(0, libMax).map((s) => (
+                        <LibraryRow
+                          key={s.id}
+                          song={s}
+                          queued={queuedCount.get(s.id) ?? 0}
+                          draggable={false}
+                          act={act}
+                          addToQueue={queueSong}
+                          onArtist={onArtist}
+                        />
+                      ))}
                     </ul>
                     {libRows.length > libMax && (
                       <button
@@ -1499,21 +1701,26 @@ function Find({
                       <p className="px-1 py-2 text-sm text-muted-foreground">Nothing new found.</p>
                     )}
                     <ul className={cn("divide-y divide-stone-200/70 transition-opacity", shownBusy && shownHits && "opacity-60")}>
-                      {web.map((h) => (
-                        <li key={h.key} className="flex min-h-[3.25rem] items-center gap-2.5 py-1.5 pl-1 pr-1">
-                          {h.art ? (
-                            <img
-                              src={h.art}
-                              alt=""
-                              className="h-9 w-9 shrink-0 rounded-md object-cover"
-                              loading="lazy"
-                            />
-                          ) : (
-                            <div className="h-9 w-9 shrink-0 rounded-md bg-stone-100" />
-                          )}
+                      {web.map((h) => {
+                        // a song the library has is the library's row here too (owner, 28 Nov: parity)
+                        const mine = h.have ? byId.get(h.have) : undefined;
+                        return mine ? (
+                          <LibraryRow
+                            key={h.key}
+                            song={mine}
+                            queued={queuedCount.get(mine.id) ?? 0}
+                            draggable={false}
+                            act={act}
+                            addToQueue={queueSong}
+                            onArtist={onArtist}
+                          />
+                        ) : (
+                        <li key={h.key} className="flex min-h-[3.25rem] items-center gap-2 py-1.5 pl-1 pr-1">
+                          {/* laid out as RowFace is: the two kinds of row line up */}
+                          <Cover src={h.art} />
                           <div className="min-w-0 flex-1">
-                            <div className="truncate font-medium">{h.title}</div>
-                            <div className="truncate text-sm text-muted-foreground">
+                            <div className="truncate text-[15px] font-medium sm:text-base">{h.title}</div>
+                            <div className="truncate text-[13px] text-muted-foreground sm:text-sm">
                               <button
                                 type="button"
                                 className="underline-offset-2 hover:text-foreground hover:underline"
@@ -1531,7 +1738,8 @@ function Find({
                             onLibrary={h.have ? undefined : () => addWeb(h, null)}
                           />
                         </li>
-                      ))}
+                        );
+                      })}
                     </ul>
                     {shownHits && shownHits.q === text && !shownBusy && web.length > 0 && !webEnd && (
                       <div ref={webFoot} className="flex h-9 items-center px-1">
@@ -1563,126 +1771,401 @@ function Find({
             )}
           </section>
   );
-  // The search is a composer, as a chat app's message box (owner, 28 Nov: "a pin at bottom component (which
-  // effectively opens a tray)"; "this is totally basic affordance"): you type in the bar where you tapped it. The bar
-  // sits under the queue, held to the foot of the screen while its place is further down (CSS sticky). In use (it has
-  // the focus, or a search in it) it is fixed to the foot of what is visible, above a phone's keyboard (useKeyboard:
-  // iOS doesn't lift bottom-pinned things for its keyboard, so the bar sits on the visual viewport's foot), and the
-  // results grow upwards from it as a tray, as tall as the room above it. The page behind stays where it was; a space
-  // the bar's height keeps its place in the page. ✕ ends the search.
-  const [focused, setFocused] = useState(false);
-  const active = focused || q.length > 0;
-  const kb = useKeyboard(active);
-  const barRef = useRef<HTMLDivElement>(null);
-  const [barH, setBarH] = useState(0);
-  useLayoutEffect(() => {
-    if (barRef.current) setBarH(barRef.current.offsetHeight);
-  }, [active]);
-  const end = () => {
+  // The bar is the page's foot and stays there (owner, 28 Nov: "things cannot jump away from user when they're
+  // clicked"): the box you click or tap is the box you type in, where it was. On a phone the keyboard brings the
+  // page's foot up with it (useKeyboardFit), as a messaging app's message box.
+  // One tray for choosing a song (owner, 28 Nov: "two different patterns -- one when I focus search, the other when I
+  // click library"): it rises from the bar over the page's middle, whichever opened it. Nothing typed: the library,
+  // to browse; typing: what the library and the web have for it. On a phone it is all of the middle under the song
+  // row (one size, whatever is in it) and a drag on its list puts the keyboard away; on a wide screen it stands on
+  // the bar in the lists' column. Its handle (a tap or a pull down), the bar's button, Esc or a click beside it
+  // closes it.
+  const close = () => {
+    setOpen(false);
     setQ("");
     inputRef.current?.blur();
   };
-  const bar = (
-    <section ref={barRef} className={cn(CARD_CLASS, "p-2.5 shadow-lg")}>
-      <div className="flex items-center gap-2">
-        <div className="relative min-w-0 flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            ref={inputRef}
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            onKeyDown={(e) => e.key === "Escape" && end()}
-            onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
-            placeholder="Find a song or paste a link"
-            className="h-11 rounded-xl pl-9 pr-10 text-base"
-            enterKeyHint="search"
-            aria-label="Find a song"
-          />
-          <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center">
-            {busy ? (
-              <Spinner className="mr-1.5 text-muted-foreground" />
-            ) : active ? (
-              <button
-                type="button"
-                aria-label="End the search"
-                // pressed before the box loses the focus, so the tap isn't lost to the keyboard closing
-                onPointerDown={(e) => e.preventDefault()}
-                onClick={end}
-                className="rounded-md p-1.5 text-muted-foreground hover:text-foreground"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            ) : null}
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  useEffect(() => {
+    if (!open) return;
+    const key = (e: KeyboardEvent) => {
+      // a dialog or a menu over the tray takes its own Esc
+      if (e.key === "Escape" && !document.querySelector("[role=dialog],[role=alertdialog],[role=menu]"))
+        closeRef.current();
+    };
+    document.addEventListener("keydown", key);
+    return () => document.removeEventListener("keydown", key);
+  }, [open]);
+  const touchY = useRef(0);
+  // Pulled down, the tray comes with the finger and, let go far enough or flicked, rolls away (owner, 28 Nov: "if I
+  // ... 'pull down' the tray when I'm at the top of a list, it should pull the tray down ... that's just standard
+  // ux"): from its handle or heading, or from its list when the list is at its top (anywhere else in the list a pull
+  // scrolls the list). Let go short of that, it settles back.
+  const sheetRef = useRef<HTMLDivElement | null>(null);
+  const listRef = useRef<HTMLDivElement | null>(null);
+  // It rolls up from behind the bar and rolls back down (owner, 28 Nov: "the 'roll up' animation of the tray ...
+  // essential"): its whole height, the old drawer's curve, always (not only where motion isn't reduced). It stays
+  // in the page for the way down, showing what it held.
+  const present = usePresence(open, TRAY_OUT_MS);
+  const sheet = cn(
+    "flex flex-col overflow-hidden rounded-t-2xl border border-b-0 border-stone-200 bg-card shadow-[0_-10px_30px_-12px_rgba(0,0,0,0.3)] ease-[cubic-bezier(0.32,0.72,0,1)]",
+    open
+      ? "pointer-events-auto duration-500 animate-in slide-in-from-bottom"
+      : "pointer-events-none duration-300 animate-out slide-out-to-bottom fill-mode-forwards",
+  );
+  useEffect(() => {
+    const sheet = sheetRef.current;
+    if (!sheet || !present) return;
+    if (open) sheet.style.transform = sheet.style.transition = "";
+    let x0 = 0, y0 = 0, t0 = 0, free = false, from: number | null = null, pulled = 0;
+    const start = (e: TouchEvent) => {
+      const t = e.touches[0], list = listRef.current;
+      x0 = t.clientX;
+      y0 = t.clientY;
+      t0 = e.timeStamp;
+      from = null;
+      pulled = 0;
+      free = !list || !list.contains(e.target as Node) || list.scrollTop <= 0;
+    };
+    const move = (e: TouchEvent) => {
+      const t = e.touches[0], dy = t.clientY - y0;
+      if (from == null) {
+        if (!free || dy < 8 || Math.abs(t.clientX - x0) > dy) return;   // not at the top, not downwards, or sideways
+        from = t.clientY;
+        sheet.style.transition = "none";
+      }
+      pulled = Math.max(0, t.clientY - from);
+      sheet.style.transform = `translateY(${pulled}px)`;
+      if (e.cancelable) e.preventDefault();   // the tray moves, the list doesn't stretch
+    };
+    const end = (e: TouchEvent) => {
+      if (from == null) return;
+      from = null;
+      const flick = pulled > 16 && (pulled + 8) / Math.max(1, e.timeStamp - t0) > 0.4;   // px per ms, from the touch
+      if (flick || pulled > Math.min(140, sheet.offsetHeight * 0.3)) return closeRef.current();
+      sheet.style.transition = "transform 200ms cubic-bezier(0.32,0.72,0,1)";
+      sheet.style.transform = "";
+    };
+    sheet.addEventListener("touchstart", start, { passive: true });
+    sheet.addEventListener("touchmove", move, { passive: false });
+    sheet.addEventListener("touchend", end);
+    sheet.addEventListener("touchcancel", end);
+    return () => {
+      sheet.removeEventListener("touchstart", start);
+      sheet.removeEventListener("touchmove", move);
+      sheet.removeEventListener("touchend", end);
+      sheet.removeEventListener("touchcancel", end);
+    };
+  }, [present, open, wide]);
+  const holds = hasText ? results : library;
+  const held2 = useRef(holds);
+  if (open) held2.current = holds;
+  const inside = (
+    <>
+      <button
+        type="button"
+        aria-label="Close"
+        className="flex w-full shrink-0 touch-none justify-center pb-2 pt-2.5"
+        onClick={close}
+      >
+        <span className="h-1.5 w-10 rounded-full bg-stone-300" />
+      </button>
+      <div
+        ref={listRef}
+        className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3 sm:px-4"
+        onTouchStart={(e) => {
+          touchY.current = e.touches[0]?.clientY ?? 0;
+        }}
+        onTouchMove={(e) => {
+          const moved = Math.abs((e.touches[0]?.clientY ?? 0) - touchY.current);
+          if (moved > 12 && document.activeElement === inputRef.current) inputRef.current?.blur();
+        }}
+      >
+        {/* a hair taller than the tray, so it always scrolls and a drag never reaches the page behind */}
+        <div className="min-h-[calc(100%+1px)]">{open ? holds : held2.current}</div>
+      </div>
+    </>
+  );
+  const tray = present && (
+    <>
+      {/* the page behind, dimmed: a click on it puts the tray away (what was typed stays in the box) */}
+      <div
+        aria-hidden
+        className={cn(
+          "absolute inset-0 z-10 bg-black/20",
+          open ? "duration-500 animate-in fade-in" : "pointer-events-none duration-300 animate-out fade-out fill-mode-forwards",
+        )}
+        onPointerDown={() => setOpen(false)}
+      />
+      {wide ? (
+        <div className="pointer-events-none absolute inset-0 z-20" style={{ paddingRight: "var(--sbw, 0px)" }}>
+          <div className="mx-auto flex h-full w-full max-w-7xl items-end gap-6 px-6">
+            <div className="w-[26rem] shrink-0" />
+            <div
+              ref={sheetRef}
+              className={cn(sheet, "h-[min(100%_-_1rem,46rem)] min-w-0 flex-1")}
+              data-testid="karaoke-find-tray"
+            >
+              {inside}
+            </div>
           </div>
         </div>
-        <Button
-          type="button"
-          variant={libOpen ? "default" : "outline"}
-          className="h-11 w-11 shrink-0 rounded-xl p-0"
-          title={libOpen ? "Hide the library" : "Browse the library"}
-          aria-label={libOpen ? "Hide the library" : "Browse the library"}
-          aria-pressed={libOpen}
-          onClick={() => {
-            end();
-            onLibrary();
-          }}
+      ) : (
+        <div
+          ref={sheetRef}
+          className={cn(sheet, "absolute inset-x-0 bottom-0 z-20 mx-auto max-w-3xl")}
+          style={{ top: trayTop }}
+          data-testid="karaoke-find-tray"
         >
-          <LibraryIcon className="h-5 w-5" />
-        </Button>
-      </div>
-    </section>
+          {inside}
+        </div>
+      )}
+    </>
   );
-  // one element throughout (the box keeps its focus): only where it sits changes
   return (
     <>
-      {/* the bar's place in the page, kept while it rides the foot of the screen */}
-      <div aria-hidden style={{ height: active ? barH + 16 : 0 }} />
+      {tray && trayHost && createPortal(tray, trayHost)}
       <div
         data-testid="karaoke-find"
-        className={
-          active
-            ? "fixed inset-x-0 z-50 mx-auto max-w-3xl px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-6"
-            : "sticky bottom-[calc(var(--dock-h,0px)+var(--app-nav-bottom,0px))] z-40 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-1"
-        }
-        style={active ? { bottom: kb.inset } : undefined}
+        // a surface of its own, lifted off the page with room round the box (owner, 28 Nov: "getting slightly
+        // visually lost in the page ... allow it to breathe")
+        className="relative z-30 shrink-0 border-t border-stone-200 bg-card shadow-[0_-8px_24px_-10px_rgba(0,0,0,0.22)] [touch-action:none]"
+        style={{ paddingRight: "var(--sbw, 0px)" }}
       >
-        {active && open && (
-          <div
-            className={cn(CARD_CLASS, "mb-2 overflow-y-auto overscroll-contain p-3 shadow-xl sm:p-4")}
-            style={{ maxHeight: Math.max(160, kb.height - barH - 96) }}
-            data-testid="karaoke-find-tray"
-          >
-            {results}
+        <div
+          className="mx-auto flex w-full max-w-3xl gap-6 px-4 pt-3 sm:px-6 lg:max-w-7xl"
+          style={{ paddingBottom: FOOT_PAD }}
+        >
+          <div className="hidden w-[26rem] shrink-0 lg:block" />
+          <div className="flex min-w-0 flex-1 items-center gap-2">
+            <div className="relative min-w-0 flex-1">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                ref={inputRef}
+                value={q}
+                onChange={(e) => {
+                  setQ(e.target.value);
+                  setOpen(true);
+                }}
+                // a phone's Search key: the keyboard away, the tray the whole height
+                onKeyDown={(e) => e.key === "Enter" && !wide && inputRef.current?.blur()}
+                onFocus={() => setOpen(true)}
+                placeholder="Find a song or paste a link"
+                // type="search": Chromium on Android puts its autofill bar (64 px: passwords, cards, addresses)
+                // over the keyboard for any plain text box when the user has anything saved, and never reads
+                // autocomplete="off" for it; a search field doesn't get it (keyboard_accessory:
+                // ManualFillingControllerImpl::ShouldShowAccessoryForLastFocusedFieldType; measured on the owner's
+                // phone, 28 Nov: 442 px visible against 378). The keyboard is told nothing else special: a Done
+                // key, as the singers' name box. The browser's own clear button is hidden for ours.
+                type="search"
+                autoComplete="off"
+                autoCapitalize="none"
+                enterKeyHint="done"
+                className={cn(
+                  "h-11 rounded-xl pl-9 text-base [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden",
+                  q || busy ? "pr-10" : "pr-3",
+                )}
+                aria-label="Find a song"
+              />
+              <div className="absolute right-2 top-1/2 flex -translate-y-1/2 items-center">
+                {busy ? (
+                  <Spinner className="mr-1.5 text-muted-foreground" />
+                ) : q ? (
+                  <button
+                    type="button"
+                    aria-label="Clear"
+                    // pressed before the box loses the focus, so the keyboard stays
+                    onPointerDown={(e) => e.preventDefault()}
+                    onClick={clear}
+                    className="rounded-md p-1.5 text-muted-foreground hover:text-foreground"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+            {/* one slot, one size: the library (the tray, no keyboard), or with the tray open, its close */}
+            <Button
+              type="button"
+              variant="outline"
+              className="h-11 w-11 shrink-0 rounded-xl p-0"
+              title={open ? "Close" : "Browse the library"}
+              aria-label={open ? "Close" : "Browse the library"}
+              aria-expanded={open}
+              onPointerDown={(e) => e.preventDefault()}
+              onClick={() => (open ? close() : setOpen(true))}
+            >
+              {open ? <ChevronDown className="h-5 w-5" /> : <LibraryIcon className="h-5 w-5" />}
+            </Button>
           </div>
-        )}
-        {bar}
+        </div>
       </div>
     </>
   );
 }
 
-/** The keyboard's height over the page's foot and the visible height (the visual viewport), while ``on``: where a
- *  bar pinned to the foot sits so the keyboard doesn't cover it (iOS doesn't lift such a bar for its keyboard). */
-function useKeyboard(on: boolean): { inset: number; height: number } {
-  const [v, setV] = useState(() => ({ inset: 0, height: typeof window === "undefined" ? 800 : window.innerHeight }));
+const NO_SONGS: KaraokeSong[] = [];
+
+/** TEMPORARY (28 Nov, to find the band under the search bar on the owner's phone; take it out once found): through
+ *  the phones' tunnel, what the browser says its sizes are when the keyboard comes and goes, sent as a path that
+ *  room_service's access log records (GET /zz-diag/... 404). Nothing is stored and nothing else reads it. */
+function useLayoutProbe() {
   useEffect(() => {
-    if (!on) return;
     const vv = window.visualViewport;
-    const upd = () =>
-      setV({
-        inset: vv ? Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)) : 0,
-        height: Math.round(vv?.height ?? window.innerHeight),
-      });
-    upd();
-    vv?.addEventListener("resize", upd);
-    vv?.addEventListener("scroll", upd);
-    return () => {
-      vv?.removeEventListener("resize", upd);
-      vv?.removeEventListener("scroll", upd);
+    if (!vv || !/\.trycloudflare\.com$/i.test(window.location.hostname)) return;
+    let t = 0, n = 0;
+    const px = (css: string, pad?: "paddingBottom" | "paddingTop") => {
+      const d = document.createElement("div");
+      d.style.cssText = `position:fixed;visibility:hidden;pointer-events:none;top:0;left:0;width:0;${css}`;
+      document.body.appendChild(d);
+      const v = pad ? parseFloat(getComputedStyle(d)[pad]) : d.getBoundingClientRect().height;
+      d.remove();
+      return Math.round(v);
     };
-  }, [on]);
-  return v;
+    const send = (why: string) => {
+      const q = (id: string) => document.querySelector<HTMLElement>(`[data-testid="${id}"]`);
+      const r = (e: HTMLElement | null) => {
+        const b = e?.getBoundingClientRect();
+        return b ? `${Math.round(b.top)}to${Math.round(b.bottom)}` : "x";
+      };
+      const sh = q("karaoke-shell"), bar = q("karaoke-find");
+      const a = document.activeElement as HTMLElement | null;
+      const vk = (navigator as { virtualKeyboard?: { boundingRect: DOMRect } }).virtualKeyboard;
+      const inner = bar?.firstElementChild;
+      const parts = [
+        `n${++n}`, why, `iw${window.innerWidth}`, `ih${window.innerHeight}`,
+        `ch${document.documentElement.clientHeight}`, `vh${Math.round(vv.height)}`, `vo${Math.round(vv.offsetTop)}`,
+        `vp${Math.round(vv.pageTop)}`, `zoom${vv.scale.toFixed(2)}`, `scr${window.screen.height}`, `oh${window.outerHeight}`,
+        `dvh${px("height:100dvh")}`, `svh${px("height:100svh")}`, `lvh${px("height:100lvh")}`,
+        `sab${px("padding-bottom:env(safe-area-inset-bottom,0px)", "paddingBottom")}`,
+        `sat${px("padding-top:env(safe-area-inset-top,0px)", "paddingTop")}`,
+        `shell${r(sh)}`, `bar${r(bar)}`, `tray${r(q("karaoke-find-tray"))}`,
+        `pad${inner ? Math.round(parseFloat(getComputedStyle(inner).paddingBottom)) : "x"}`,
+        `kb${sh?.dataset.kb ?? 0}`, `kvh${(sh?.style.getPropertyValue("--kv-h") || "x").replace("px", "")}`,
+        `kvt${(sh?.style.getPropertyValue("--kv-top") || "x").replace("px", "")}`, `wy${Math.round(window.scrollY)}`,
+        `vk${vk ? Math.round(vk.boundingRect.height) : "x"}`, `ae${a?.tagName ?? "x"}${a?.getAttribute("type") ?? ""}`,
+        `dpr${window.devicePixelRatio}`,
+      ];
+      void fetch(`/rs/zz-diag/${parts.join("_")}`).catch(() => undefined);
+    };
+    const soon = (why: string) => {
+      window.clearTimeout(t);
+      t = window.setTimeout(() => send(why), 600);
+    };
+    const onVv = () => soon("vv"), onIn = () => soon("focus"), onOut = () => soon("blur");
+    send("load");
+    vv.addEventListener("resize", onVv);
+    document.addEventListener("focusin", onIn);
+    document.addEventListener("focusout", onOut);
+    return () => {
+      window.clearTimeout(t);
+      vv.removeEventListener("resize", onVv);
+      document.removeEventListener("focusin", onIn);
+      document.removeEventListener("focusout", onOut);
+    };
+  }, []);
+}
+/** The space under the search box. Only a Home Screen app has the page under the phone's home bar, so only there is
+ *  room kept for it (and not over the app's tab bar or a keyboard). In a browser's tab the browser keeps its own bars
+ *  under the page, and Android's browsers report the system buttons' height (48 px) as "unsafe" all the same, the
+ *  keyboard up or not: a band of nothing under the box (owner, 28 Nov: "that ... white space under the search bar"). */
+const FOOT_PAD =
+  typeof window !== "undefined" &&
+  (window.matchMedia("(display-mode: standalone)").matches || (navigator as { standalone?: boolean }).standalone === true)
+    ? "var(--kv-foot, max(0.75rem, calc(env(safe-area-inset-bottom, 0px) - var(--app-nav-bottom, 0px))))"
+    : "0.75rem";
+/** The tray's roll down (ms): it stays in the page this long after it is closed. */
+const TRAY_OUT_MS = 300;
+
+/** In the page while ``open`` and for ``ms`` after, for a way out that is seen. */
+function usePresence(open: boolean, ms: number): boolean {
+  const [here, setHere] = useState(open);
+  useEffect(() => {
+    if (open) return setHere(true);
+    const t = window.setTimeout(() => setHere(false), ms);
+    return () => window.clearTimeout(t);
+  }, [open, ms]);
+  return open || here;
+}
+
+/** A wide screen (from 1024 px: the player beside the lists) or a phone's one column. */
+function useWide(): boolean {
+  const [wide, setWide] = useState(() => window.matchMedia("(min-width: 1024px)").matches);
+  useEffect(() => {
+    const m = window.matchMedia("(min-width: 1024px)");
+    const set = () => setWide(m.matches);
+    set();
+    m.addEventListener("change", set);
+    return () => m.removeEventListener("change", set);
+  }, []);
+  return wide;
+}
+
+/** A phone's keyboard. Some browsers make the page shorter for it; others (an iPhone, Chrome by default) leave the
+ *  page its height, cover its foot, and may slide it up. Either way, while one is up (much less is visible than
+ *  there was at this width) the frame's foot gives up its home-bar space (--kv-foot: the keyboard is under it now),
+ *  and where the browser left the page its height the frame is given the top and height of what is still visible
+ *  (--kv-top, --kv-h), so its foot sits on the keyboard and its top stays in view. With no keyboard nothing is set:
+ *  the frame is plain CSS. */
+function useKeyboardFit(ref: React.RefObject<HTMLElement>) {
+  useEffect(() => {
+    const vv = window.visualViewport;
+    const el = ref.current;
+    if (!vv || !el) return;
+    let restTop = 0;
+    let rest = { w: window.innerWidth, h: vv.height }; // the most that has been visible at this width: no keyboard
+    const fit = () => {
+      if (window.innerWidth !== rest.w) rest = { w: window.innerWidth, h: vv.height };
+      else if (vv.height > rest.h) rest.h = vv.height;
+      const up = vv.scale < 1.02 && rest.h - vv.height > 120;
+      if (!up) {
+        if (!el.dataset.kb) return;
+        delete el.dataset.kb;
+        for (const k of ["--kv-top", "--kv-h", "--kv-foot"]) el.style.removeProperty(k);
+        window.scrollTo(0, 0); // an iPhone can leave the document shifted after its keyboard
+        return;
+      }
+      if (!el.dataset.kb) restTop = el.offsetTop;
+      el.dataset.kb = "1";
+      el.style.setProperty("--kv-foot", "0.75rem");
+      if (window.innerHeight - vv.height > 120) {
+        // the page kept its height: the frame takes what is visible
+        const top = Math.max(restTop, vv.offsetTop);
+        el.style.setProperty("--kv-top", `${top}px`);
+        el.style.setProperty("--kv-h", `${vv.offsetTop + vv.height - top}px`);
+      } else {
+        el.style.removeProperty("--kv-top");
+        el.style.removeProperty("--kv-h");
+      }
+    };
+    fit();
+    // A keyboard can go without the browser saying so (the app left with it up, the back button: the owner's phone,
+    // 28 Nov, left the frame keyboard-high over nothing). So the fit is also checked whenever the focus moves, the
+    // page comes back or the window changes, and every so often for as long as a keyboard is thought to be up.
+    const again = () => {
+      fit();
+      window.setTimeout(fit, 350);
+    };
+    const watch = window.setInterval(() => el.dataset.kb && fit(), 400);
+    vv.addEventListener("resize", fit);
+    vv.addEventListener("scroll", fit);
+    window.addEventListener("resize", fit);
+    window.addEventListener("pageshow", again);
+    document.addEventListener("visibilitychange", again);
+    document.addEventListener("focusin", again);
+    document.addEventListener("focusout", again);
+    return () => {
+      window.clearInterval(watch);
+      vv.removeEventListener("resize", fit);
+      vv.removeEventListener("scroll", fit);
+      window.removeEventListener("resize", fit);
+      window.removeEventListener("pageshow", again);
+      document.removeEventListener("visibilitychange", again);
+      document.removeEventListener("focusin", again);
+      document.removeEventListener("focusout", again);
+    };
+  }, [ref]);
 }
 
 /** A web song's request: who and what, plus the catalogue facts the library sorts and tags by. */
@@ -1734,20 +2217,20 @@ function ArtistSongs({
     };
   }, [name]);
   const byId = new Map(songs.map((s) => [s.id, s]));
-  const said = (at: QueueAt | null) =>
-    at === "next" ? "is up next" : at === "end" ? "added to the queue" : "added to the library";
-  const add = (h: SearchHit, at: QueueAt | null) => {
+  const add = (h: SearchHit, at: At | null) => {
     const mine = h.have ? byId.get(h.have) : undefined;
-    void (at ? askSingers(h.title) : Promise.resolve([])).then(
+    void (at && at !== "now" ? askSingers(h.title) : Promise.resolve([])).then(
       (who) =>
         who &&
         (at && onAdded(), true) &&
         act(
           () =>
-            mine && at
-              ? karaoke.queueAdd(mine.id, undefined, at === "next", who)
-              : karaoke.request({ ...hitFacts(h), ...(at ? { queue: at, singers: who } : {}) }),
-          `“${h.title}” ${said(at)}${mine ? "" : ": getting it ready"}`,
+            mine && at === "now"
+              ? playNow(mine)
+              : mine && at
+                ? karaoke.queueAdd(mine.id, undefined, at === "next", who)
+                : karaoke.request({ ...hitFacts(h), ...(at ? { queue: at, singers: who } : {}) }),
+          said(`“${h.title}”`, at, mine?.status !== "ready"),
         ).then(() => setAdded((x) => new Set(x).add(h.key))),
     );
   };
@@ -1773,15 +2256,24 @@ function ArtistSongs({
       )}
       {o && o.results.length === 0 && <p className="py-4 text-sm text-muted-foreground">No songs found for {name}.</p>}
       <ul className="divide-y divide-stone-200/70">
-        {o?.results.map((h, i) => (
-          <li key={h.key} className="flex min-h-[3.25rem] min-w-0 items-center gap-2 py-1.5">
-            <span className="hidden w-5 shrink-0 text-right text-xs tabular-nums text-muted-foreground sm:block">
-              {i + 1}
-            </span>
+        {o?.results.map((h) => {
+          // a song the library has is the library's row here too
+          const mine = h.have ? byId.get(h.have) : undefined;
+          return mine ? (
+            <LibraryRow
+              key={h.key}
+              song={mine}
+              queued={0}
+              draggable={false}
+              act={act}
+              addToQueue={(_s, at) => add(h, at)}
+            />
+          ) : (
+          <li key={h.key} className="flex min-h-[3.25rem] min-w-0 items-center gap-2 py-1.5 pl-1 pr-1">
             <Cover src={h.art} />
             <div className="min-w-0 flex-1">
-              <div className="truncate font-medium">{h.title}</div>
-              <div className="truncate text-sm text-muted-foreground">
+              <div className="truncate text-[15px] font-medium sm:text-base">{h.title}</div>
+              <div className="truncate text-[13px] text-muted-foreground sm:text-sm">
                 {h.album ? `${h.album} · ` : ""}
                 {mmss(h.duration)}
                 {h.have ? " · in the library" : added.has(h.key) ? " · added" : ""}
@@ -1792,7 +2284,8 @@ function ArtistSongs({
               onLibrary={h.have || added.has(h.key) ? undefined : () => add(h, null)}
             />
           </li>
-        ))}
+          );
+        })}
       </ul>
     </>
   );
@@ -1937,18 +2430,23 @@ function SectionWord({ children }: { children: ReactNode }) {
   );
 }
 
-/** A library row's one visible action (owner, 28 Nov: "60% of the width is your icon shit ... put the rest behind
- *  ..."): Add to the queue. Everything else is in RowMenu. */
+/** Add to the queue: a "+" wherever a song can be added (owner, 28 Nov: "add to list should be a '+' ... simpler
+ *  everywhere"). A row shows it, Play now where the song is ready, and "…" for the rest. */
 function AddBtn({ onClick }: { onClick: () => void }) {
   return (
-    <Button size="sm" className="h-9 shrink-0 rounded-lg px-2.5 sm:px-3" onClick={onClick} aria-label="Add to the queue">
-      <ListEnd className="h-4 w-4 sm:mr-1" />
-      <span className="hidden sm:inline">Add</span>
+    <Button
+      size="icon"
+      className="h-9 w-9 shrink-0 rounded-lg"
+      onClick={onClick}
+      aria-label="Add to the queue"
+      title="Add to the queue"
+    >
+      <Plus className="h-5 w-5" />
     </Button>
   );
 }
 
-/** The rest of a library row's actions, behind "…": Up next, the duet switch, the careful lyrics pass, prepare
+/** The rest of a library row's actions, behind "…": Play next, the duet switch, the careful lyrics pass, prepare
  *  again, delete. */
 function RowMenu({ song, act, onNext }: { song: KaraokeSong; act: Act; onNext?: () => void }) {
   const ready = song.status === "ready";
@@ -1958,16 +2456,10 @@ function RowMenu({ song, act, onNext }: { song: KaraokeSong; act: Act; onNext?: 
   const refining = r === "waiting" || r === "working";
   const lyrics = !!song.lyrics && song.lyrics.kind !== "none";
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-10 w-9 shrink-0 rounded-lg" aria-label="More">
-          <MoreHorizontal className="h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end">
+    <More>
         {onNext && (
           <DropdownMenuItem onSelect={onNext}>
-            <ListStart className="mr-2 h-4 w-4" /> Up next
+            <ListStart className="mr-2 h-4 w-4" /> Play next
           </DropdownMenuItem>
         )}
         {ready && (
@@ -2004,34 +2496,66 @@ function RowMenu({ song, act, onNext }: { song: KaraokeSong; act: Act; onNext?: 
         >
           <Trash2 className="mr-2 h-4 w-4" /> Delete
         </DropdownMenuItem>
-      </DropdownMenuContent>
+    </More>
+  );
+}
+
+/** A row's "…": everything but the two or three things a row shows. */
+function More({ children, testid }: { children: ReactNode; testid?: string }) {
+  const [open, setOpen] = useState(false);
+  const finger = useRef(false);
+  return (
+    <DropdownMenu open={open} onOpenChange={setOpen}>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-10 w-9 shrink-0 rounded-lg"
+          aria-label="More"
+          data-testid={testid}
+          // A finger opens it with a tap, not with the touch a scroll starts on (owner, 28 Nov: "... triggers
+          // instantly when I'm trying to scroll"): the menu's own open-on-press is kept for the mouse only.
+          onPointerDown={(e) => {
+            finger.current = e.pointerType !== "mouse";
+            if (finger.current) e.preventDefault();
+          }}
+          onClick={() => finger.current && setOpen(true)}
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">{children}</DropdownMenuContent>
     </DropdownMenu>
   );
 }
 
-/** Add (to the end of the queue: singers pick a song and wait their turn), with Up next (the exception: it jumps the
- *  queue) and, for a song not yet in the library, Library only (get it ready for later, not queued). */
-function AtButtons({ onAt, onLibrary }: { onAt: (at: QueueAt) => void; onLibrary?: () => void }) {
+/** Play it now (a library song: a new queue entry straight after the one that is on, and on it goes). */
+function PlayBtn({ onClick }: { onClick: () => void }) {
   return (
-    <div className="flex shrink-0 items-center gap-0.5">
-      <Button
-        size="sm"
-        className="h-9 rounded-lg px-2.5 sm:px-3"
-        onClick={() => onAt("end")}
-        title="Add to the end of the queue"
-        aria-label="Add to the queue"
-      >
-        <ListEnd className="h-4 w-4 sm:mr-1" />
-        <span className="hidden sm:inline">Add</span>
-      </Button>
-      <IconBtn label="Up next: play it after the one playing" onClick={() => onAt("next")}>
-        <ListStart className="h-4 w-4" />
-      </IconBtn>
-      {onLibrary && (
-        <IconBtn label="Library only: get it ready, don't queue it" onClick={onLibrary}>
-          <LibraryIcon className="h-4 w-4" />
-        </IconBtn>
-      )}
+    <IconBtn label="Play this now" onClick={onClick}>
+      <Play className="h-4 w-4" />
+    </IconBtn>
+  );
+}
+
+/** A song not in the library yet has the same three as one that is (owner, 28 Nov: "the same ... options in all
+ *  cases"): "+" (to the end of the queue), Play now (it is prepared, then on it goes), and behind "…" Play next and
+ *  Library only (get it ready for later, not queued). */
+function AtButtons({ onAt, onLibrary }: { onAt: (at: At) => void; onLibrary?: () => void }) {
+  return (
+    <div className="flex shrink-0 items-center">
+      <AddBtn onClick={() => onAt("end")} />
+      <PlayBtn onClick={() => onAt("now")} />
+      <More>
+        <DropdownMenuItem onSelect={() => onAt("next")}>
+          <ListStart className="mr-2 h-4 w-4" /> Play next
+        </DropdownMenuItem>
+        {onLibrary && (
+          <DropdownMenuItem onSelect={onLibrary}>
+            <LibraryIcon className="mr-2 h-4 w-4" /> Library only
+          </DropdownMenuItem>
+        )}
+      </More>
     </div>
   );
 }
@@ -2282,23 +2806,6 @@ function RefineLine({ song, act }: { song: KaraokeSong; act: Act }) {
         </>
       )}
     </div>
-  );
-}
-
-/** A song still being prepared, prepared again from the start (owner, 26 Nov: "no way to restart an extraction. it's
- *  just stuck"): its running step ends, its files go, it waits its turn afresh. */
-function RestartBtn({ song, act }: { song: KaraokeSong; act: Act }) {
-  return (
-    <IconBtn
-      label="Restart: prepare it again from the start"
-      quiet
-      onClick={() =>
-        window.confirm(`Prepare “${song.title}” again from the start?`) &&
-        act(() => karaoke.retry(song.id), `Preparing “${song.title}” again`)
-      }
-    >
-      <RotateCcw className="h-4 w-4" />
-    </IconBtn>
   );
 }
 
