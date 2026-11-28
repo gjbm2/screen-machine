@@ -151,7 +151,7 @@ def _note(d: pathlib.Path, n: int, choice: str, words: str) -> None:
             "t_s": p.get("at_s"), "verdict": "good" if choice == "good" else "bad",
             "dimension": "ending" if k.get("what") == "ending" else "transition",
             "words": words or (p.get("label") or ""), "by": "owner", "from": "reel", "check": k.get("check"),
-            "flag": p.get("flag"), "batch": d.name, "n": n, "run": (k.get("left") or {}).get("run")}
+            "flag": k.get("why"), "batch": d.name, "n": n, "run": (k.get("left") or {}).get("run")}
     FEEDBACK.parent.mkdir(parents=True, exist_ok=True)
     with FEEDBACK.open("a", encoding="utf-8") as f:
         f.write(json.dumps(line, ensure_ascii=False) + "\n")

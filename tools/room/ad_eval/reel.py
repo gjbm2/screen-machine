@@ -6,7 +6,8 @@ room with the song (/lights/pairs, which shows reels and blind pairs alike). The
   1. changed   what the night's fix changed: the same transition before and after, side by side and blind (needs
                --vs, the run before the fix). The owner's pick says whether the fix is better by eye.
   2. flagged   what a fault check (checks.py) failed, one per check and song, the checks with fewest of the
-               owner's verdicts first: the owner's "good" on one says the check is wrong, "wrong" that the show is.
+               owner's verdicts first. The page never says which items were flagged or why: the owner judges only
+               what the lights do, and a check is judged by those verdicts afterwards (owner, 28 Nov).
   3. pattern   a rotating sample of the set's other transitions (a different few songs each day), so over a week
                every song's pattern is seen.
 A single item takes good / wrong / skip (and words); a pair takes left / right / same. The owner can widen any item
@@ -221,8 +222,10 @@ def make(a: argparse.Namespace) -> int:
         by_check[check] = by_check.get(check, 0) + 1
         taken.add((sid, int(r["t_s"])))
         tr = next((x for x in checks.transitions(refs[sid]) if abs(x["t_s"] - r["t_s"]) <= 1.0), None)
-        items.append({"kind": "flagged", "sid": sid, "tr": tr or {"t_s": float(r["t_s"]), "what": check,
-                                                                     "label": "a change mid-section"},
+        inside = next((x for x in refs[sid].get("sections") or ()
+                       if float(x["start_s"]) <= float(r["t_s"]) < float(x["end_s"])), {})
+        items.append({"kind": "flagged", "sid": sid, "tr": tr or {"t_s": float(r["t_s"]), "what": check,     # neutral:
+                                                                     "label": f"in the {inside.get('kind') or 'song'}"},  # no verdict
                       "t0": t0, "frames": [c], "sides": [("show", run, ours[sid])], "check": check, "why": r["why"]})
         room -= 1
     # 3. pattern: the day's songs, their transitions in order
@@ -275,7 +278,7 @@ def make(a: argparse.Namespace) -> int:
         public.append({"n": n, "song": sid, "title": meta.get("title"), "artist": meta.get("artist"),
                        "t0_s": round(it["t0"], 2), "dur_s": round(len(frames[0]) * hop, 2), "hop_s": hop, "guide": 1.0,
                        "sides": len(frames), "kind": it["kind"], "at_s": round(float(tr["t_s"]), 2),
-                       "label": tr.get("label"), "flag": it.get("why"), "section": _section_of(refs[sid], tr["t_s"]),
+                       "label": tr.get("label"), "section": _section_of(refs[sid], tr["t_s"]),
                        "song_s": round(dur, 1),
                        "said": {nm: said(json.loads(pathlib.Path(sd[2]).read_text()) if sd[2] != it["sides"][0][2]
                                           or sid not in tls else tls[sid], it["t0"], it["t0"] + len(f) * hop)
