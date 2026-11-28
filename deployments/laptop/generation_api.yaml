@@ -2,5 +2,6 @@
 # routes/karaoke/singer_riffs.py): PC22's generation API (docs/API.md). Its key is this machine's secret,
 # ~/.config/screen-machine/generation_api.key (made on PC22: Settings > Apps & API keys, scope generate).
 base: https://screen.finsburybankforsavings.com/api/v1
-workflow: auto      # an id from GET {base}/workflows; auto: the router picks from the prompt and the photo
+workflow: qwen21-edit   # "Adapt an image" (GET {base}/workflows): the photo changed by the prompt
+params: {shape: landscape, fill: extend, skip-upscaling: true}   # screen-shaped, the scene drawn round them; kept at 1600 px anyway
 refiner: none       # the riff prompts are sent as written (a refiner could lose "keep their likeness")

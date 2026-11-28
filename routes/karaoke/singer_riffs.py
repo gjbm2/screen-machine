@@ -104,6 +104,13 @@ def next_job(idx: dict) -> Optional[tuple[str, int]]:
 
 def _run() -> None:
     from . import singer_photos as sp
+    with sp._lock:                                      # one being made when the app last stopped: again
+        idx = sp._index()
+        stuck = [x for r in idx.values() for x in r.get("riffs") or [] if x.get("state") == "making"]
+        for x in stuck:
+            x["state"] = "queued"
+        if stuck:
+            sp._write(idx)
     while True:
         _wake.wait(60)
         _wake.clear()
@@ -190,12 +197,13 @@ def configure() -> None:
                 _said_waiting = True
             start()
             return
+    params = cfg.get("params") if isinstance(cfg.get("params"), dict) else {}
     set_backend(api_backend(base.rstrip("/"), key, str(cfg.get("workflow") or "auto"),
-                            str(cfg.get("refiner") or "none")))
+                            str(cfg.get("refiner") or "none"), params))
     info(f"karaoke singer riffs: made by {base}")
 
 
-def api_backend(base: str, key: Optional[str], workflow: str, refiner: str) -> Backend:
+def api_backend(base: str, key: Optional[str], workflow: str, refiner: str, params: Optional[dict] = None) -> Backend:
     import base64
     import hashlib
     import json
@@ -226,8 +234,9 @@ def api_backend(base: str, key: Optional[str], workflow: str, refiner: str) -> B
     def make(photo: Path, prompt: str) -> bytes:
         img = photo.read_bytes()
         body = {"prompt": prompt, "workflow": workflow, "refiner": refiner, "n": 1, "wait": POLL_S,
+                **({"params": params} if params else {}),
                 "images": [{"data": "data:image/jpeg;base64," + base64.b64encode(img).decode("ascii")}]}
-        idem = hashlib.sha256(img + prompt.encode()).hexdigest()[:40]      # a retry is the same generation
+        idem = hashlib.sha256(json.dumps(body, sort_keys=True).encode()).hexdigest()[:40]   # a retry: the same one
         g = call("POST", f"{base}/generations", body, {"Idempotency-Key": idem})
         t0 = time.time()
         while g.get("status") in ("queued", "running"):
