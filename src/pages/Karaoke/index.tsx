@@ -76,6 +76,7 @@ import {
   Volume2,
   VolumeX,
   WandSparkles,
+  MicVocal,
   X,
   MessageSquareText,
   MoreHorizontal,
@@ -168,6 +169,8 @@ type Act = (fn: () => Promise<unknown>, ok?: string) => Promise<void>;
 
 export default function KaraokePage() {
   const [st, setSt] = useState<KaraokeState | null>(null);
+  // One singer's songs only in the queue (owner, 28 Nov: from their chip in Singers), else null: everyone's.
+  const [only, setOnly] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -379,7 +382,18 @@ export default function KaraokePage() {
       )
     : undefined;
 
-  const queueCard = st && <QueueCard st={st} songs={songs} act={act} addToQueue={addToQueue} onFind={() => setSearchOpen(true)} onArtist={setArtist} />;
+  const queueCard = st && (
+    <QueueCard
+      st={st}
+      songs={songs}
+      act={act}
+      addToQueue={addToQueue}
+      onFind={() => setSearchOpen(true)}
+      onArtist={setArtist}
+      only={only}
+      onOnly={setOnly}
+    />
+  );
   const libraryCard = st && (
     <LibraryCard
       songs={st.songs}
@@ -495,7 +509,14 @@ export default function KaraokePage() {
                 >
                   <Roster
                     names={st.singers ?? []}
-                    onChange={(add, remove) => act(() => karaoke.roster({ add, remove }))}
+                    onChange={(add, remove) => {
+                      if (only && remove.some((n) => n.toLowerCase() === only.toLowerCase())) setOnly(null);
+                      act(() => karaoke.roster({ add, remove }));
+                    }}
+                    onShow={(n) => {
+                      setOnly(n);
+                      queueBox.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                    }}
                   />
                 </Card>
               )}
@@ -886,6 +907,8 @@ function QueueCard({
   addToQueue,
   onFind,
   onArtist,
+  only,
+  onOnly,
 }: {
   st: KaraokeState;
   songs: Map<string, KaraokeSong>;
@@ -893,14 +916,18 @@ function QueueCard({
   addToQueue: (s: KaraokeSong, at: At) => void;
   onFind: () => void;
   onArtist: (a: string) => void;
+  /** Only this singer's songs (null: everyone's). */
+  only: string | null;
+  onOnly: (n: string | null) => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: QUEUE_DROP });
   const [showPlayed, setShowPlayed] = useState(false);
   const queue = st.queue;
   const p = parts(st);
-  const played = p.sung;
-  const shown = queue.map((e, i) => ({ e, i })).filter(({ i }) => showPlayed || i >= played);
-  const upcoming = queue.length - played;
+  const theirs = (e: QueueEntry) => !only || (e.singers ?? []).some((n) => n.toLowerCase() === only.toLowerCase());
+  const played = queue.slice(0, p.sung).filter(theirs).length;
+  const shown = queue.map((e, i) => ({ e, i })).filter(({ e, i }) => theirs(e) && (showPlayed || i >= p.sung));
+  const upcoming = queue.slice(p.sung).filter(theirs).length;
   return (
     <Card
       title={`Queue${upcoming ? ` · ${upcoming}` : ""}`}
@@ -924,6 +951,21 @@ function QueueCard({
       }
     >
       <div ref={setNodeRef} className={cn("min-h-[5rem] rounded-xl transition-colors", isOver && "bg-primary/5")}>
+        {only && (
+          <div className="mb-1 flex">
+            <button
+              type="button"
+              onClick={() => onOnly(null)}
+              aria-label="Everyone's songs"
+              data-testid="karaoke-queue-only"
+              className="flex max-w-full items-center gap-1 rounded-full bg-primary/10 py-0.5 pl-2.5 pr-1 text-sm font-medium"
+            >
+              <MicVocal className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+              <span className="truncate">{only}'s songs</span>
+              <X className="h-4 w-4 shrink-0 text-muted-foreground" />
+            </button>
+          </div>
+        )}
         {played > 0 && (
           <button
             type="button"
@@ -936,7 +978,11 @@ function QueueCard({
         )}
         {upcoming === 0 && (
           <div className="pb-2 pt-5 text-center text-sm text-muted-foreground">
-            {queue.length ? "Nothing more in the queue." : "The queue is empty."}
+            {only
+              ? `Nothing more for ${only}.`
+              : queue.length
+                ? "Nothing more in the queue."
+                : "The queue is empty."}
           </div>
         )}
         <SortableContext items={shown.map(({ e }) => e.qid)} strategy={verticalListSortingStrategy}>

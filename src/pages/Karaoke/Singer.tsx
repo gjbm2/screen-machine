@@ -16,7 +16,7 @@
 // the rest of the panel.
 
 import { useEffect, useRef, useState, useSyncExternalStore, type PointerEvent } from "react";
-import { Camera, Loader2, MicVocal, Plus, X } from "lucide-react";
+import { Camera, ListMusic, Loader2, MicVocal, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
@@ -93,7 +93,18 @@ async function shrink(file: File): Promise<Blob> {
 
 /** One name as a chip: its photo (or a small camera) and the name; tapping it takes or picks a photo (the phone offers
  *  its camera or its gallery), or with one already, a new one or none. × takes the name off. */
-function NameChip({ name, onRemove, keep }: { name: string; onRemove: () => void; keep: (e: PointerEvent) => void }) {
+function NameChip({
+  name,
+  onRemove,
+  keep,
+  onShow,
+}: {
+  name: string;
+  onRemove: () => void;
+  keep: (e: PointerEvent) => void;
+  /** Their songs only in the queue (Singers' chips): then a tap always opens the chip's menu. */
+  onShow?: (name: string) => void;
+}) {
   const photo = photoOf(usePhotos(), name);
   const file = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -124,7 +135,7 @@ function NameChip({ name, onRemove, keep }: { name: string; onRemove: () => void
       <span className="truncate">{name}</span>
     </>
   );
-  const btn = "flex min-w-0 items-center gap-1 rounded-full";
+  const btn = "flex min-w-0 items-center gap-1 rounded-full outline-none";
   return (
     <span
       className={cn(
@@ -142,22 +153,29 @@ function NameChip({ name, onRemove, keep }: { name: string; onRemove: () => void
           e.target.value = "";
         }}
       />
-      {photo ? (
+      {photo || onShow ? (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <button type="button" className={btn} aria-label={`${name}'s photo`}>
+            <button type="button" className={btn} aria-label={onShow ? name : `${name}'s photo`}>
               {label}
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className={THEME_CLASS}>
+          <DropdownMenuContent align="start" className={THEME_CLASS} onCloseAutoFocus={(e) => e.preventDefault()}>
+            {onShow && (
+              <DropdownMenuItem onSelect={() => onShow(name)}>
+                <ListMusic className="mr-2 h-4 w-4" /> Their songs
+              </DropdownMenuItem>
+            )}
             <DropdownMenuItem onSelect={pick}>
-              <Camera className="mr-2 h-4 w-4" /> New photo
+              <Camera className="mr-2 h-4 w-4" /> {photo ? "New photo" : "Add photo"}
             </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={async () => setPhotos((await karaoke.dropSingerPhoto(name).catch(() => null))?.photos ?? photoMap)}
-            >
-              <X className="mr-2 h-4 w-4" /> Remove photo
-            </DropdownMenuItem>
+            {photo && (
+              <DropdownMenuItem
+                onSelect={async () => setPhotos((await karaoke.dropSingerPhoto(name).catch(() => null))?.photos ?? photoMap)}
+              >
+                <X className="mr-2 h-4 w-4" /> Remove photo
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       ) : (
@@ -186,6 +204,7 @@ function NamePicker({
   autoFocus = false,
   max = SUGGEST,
   empty = "Name (optional)",
+  onShow,
 }: {
   value: string[];
   onChange: (v: string[]) => void;
@@ -197,6 +216,8 @@ function NamePicker({
   max?: number;
   /** The box's word while no name is in. */
   empty?: string;
+  /** A chip's "Their songs" (the Singers card only). */
+  onShow?: (name: string) => void;
 }) {
   const [text, setText] = useState("");
   const [focused, setFocused] = useState(false);
@@ -215,7 +236,7 @@ function NamePicker({
     <div className="min-w-0 flex-1">
       <div className="flex min-w-0 flex-wrap items-center gap-1">
         {value.map((n) => (
-          <NameChip key={n} name={n} keep={keep} onRemove={() => onChange(value.filter((x) => x !== n))} />
+          <NameChip key={n} name={n} keep={keep} onShow={onShow} onRemove={() => onChange(value.filter((x) => x !== n))} />
         ))}
         <input
           value={text}
@@ -270,9 +291,12 @@ function NamePicker({
 export function Roster({
   names,
   onChange,
+  onShow,
 }: {
   names: string[];
   onChange: (add: string[], remove: string[]) => void;
+  /** A name's songs only in the queue. */
+  onShow?: (name: string) => void;
 }) {
   return (
     <div className="rounded-xl px-3 py-2 ring-1 ring-stone-200/70">
@@ -280,6 +304,7 @@ export function Roster({
         value={names}
         names={[]}
         empty="Add a name"
+        onShow={onShow}
         onChange={(next) =>
           onChange(
             next.filter((n) => !has(names, n)),
