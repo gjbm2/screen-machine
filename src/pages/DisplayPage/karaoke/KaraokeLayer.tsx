@@ -15,16 +15,22 @@
 //   live mic's beat clock.
 // - data-sm-karaoke keeps it visible while live video is up (index.tsx ART_GUARD_CSS hides everything else).
 
+import { roomApi } from "@/components/room/roomLink";
+import { leaving, setSounding } from "./soundGate";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { getDeploymentRelative, capabilityOn, type DeploymentInfo } from "@/shared/api/deployment";
 import {
   karaoke,
   karaokeScreen,
+  type DuetPart,
   type KaraokeLyrics,
   type KaraokeNow,
   type KaraokeSong,
   type LyricLine,
 } from "@/shared/api/karaoke";
+import { sound } from "@/shared/api/sound";
+import { JoinCard, LOW_FROM_S, NEXT_UP_S, NextUp, namesText } from "./JoinOverlays";
+import { Presence } from "./Presence";
 
 const POLL_MS = 1000;
 const LYRICS_RETRY_MS = 4000;
@@ -50,6 +56,41 @@ const ANTICIPATE_S = 0.35; // the change starts this long before the next line (
 const EASE_OUT = "cubic-bezier(0.22, 1, 0.36, 1)"; // quick to start, a soft landing
 const EASE_IN_OUT = "cubic-bezier(0.4, 0, 0.6, 1)";
 const LONG_GAP_S = 8;
+// A song changed or stopped while it sounds fades out over FADE_S (owner, 27 Nov: "fade out / transition old one
+// before new one starts"); the server starts the next one at least CHANGE_GAP_S (2 s) into its silent lead-in, so
+// it is gone first (routes/karaoke/store.py _start_at).
+const FADE_S = 1.6;
+// Music while nothing plays (owner, 27 Nov: "if there's no song selected yet, we should play some (quiet) background
+// music -- maybe replay last song with lyrics audible but quietly"; 28 Nov: "a bit too high"; "play (with lyrics) the
+// one just done, and then pick at random from recent songs"): the server's /now background (the song just sung first,
+// then the recent ones), the first and then one at random, quietly, vocals in (instrumental only in child mode), on
+// the karaoke screen with the room in a karaoke mode. It fades in, and out when a song starts.
+const BG_LEVEL = 0.18;
+const BG_FADE_IN_S = 4;
+// The room's mode alone saying "no" stops the background music only after this many polls: a Flask restart reads as
+// "not karaoke" for a moment (it hasn't looked at the room yet), and that cut the song off (owner, 28 Nov).
+const BG_OFF_POLLS = 5;
+// A song's lead-in with at least this much silence left is a moment a new build's reload can take (soundGate.ts).
+const QUIET_LEAD_S = 5;
+
+// A PROBE, to be taken out once the cause is known (owner, 28 Nov: "background playing songs ... keep stopping halfway
+// through"): each start, end and stop of the background music, with why, as one line in logs/room_service.log
+// (a path-only request: GET /zz-diag/kbg_<page>_<what>).
+const PAGE_TAG = Math.random().toString(36).slice(2, 6);
+function bgProbe(what: string): void {
+  try {
+    void fetch(`${roomApi().baseUrl}/zz-diag/kbg_${PAGE_TAG}_${document.visibilityState}_${what}`, {
+      mode: "no-cors",
+      keepalive: true,
+    }).catch(
+      () => undefined,
+    );
+  } catch {
+    /* no room to tell */
+  }
+}
+/** The graphic EQ's bands (Hz): smsound/eq.py BANDS. */
+const EQ_HZ = [60, 150, 400, 1000, 2400, 6000, 15000];
 const PREVIEW_S = 3.6; // after a long break, the next line is in place this long before it starts: then the count-in
 
 /** Web Audio playback of one song: two buffers started together, the vocal through its own gain. */
@@ -61,6 +102,9 @@ class Engine {
   loading: string | null = null;
   private srcs: AudioBufferSourceNode[] = [];
   private vocGain: GainNode | null = null;
+  private out: GainNode | null = null; // this play's own level (fades)
+  /** The whole sound's level (the background music's is low). */
+  level = 1;
   private startedCtx = 0; // ctx time when position 0 would have been
   private pausedAt = 0;
   playing = false;
@@ -79,7 +123,7 @@ class Engine {
   async load(songId: string): Promise<boolean> {
     if (this.songId === songId && this.inst) return true;
     if (this.loading === songId) return false;
-    this.stop();
+    this.stop(FADE_S); // another song: the one sounding fades out while this one loads
     this.inst = this.voc = null;
     this.songId = null;
     this.loading = songId;
@@ -112,7 +156,12 @@ class Engine {
     return (c?.outputLatency ?? 0) + (c?.baseLatency ?? 0);
   }
 
-  play(at: number): void {
+  /** Over: it played to its end. */
+  get ended(): boolean {
+    return !!this.inst && this.playing && this.position() >= this.inst.duration - 0.05;
+  }
+
+  play(at: number, fadeIn = 0): void {
     if (!this.inst) return;
     const ctx = this.context();
     this.stopSources();
@@ -126,12 +175,19 @@ class Engine {
       return;
     }
     const when = ctx.currentTime + LEAD_S + Math.max(0, -at0);
+    const out = ctx.createGain();
+    out.connect(this.eqInput(ctx));
+    if (fadeIn > 0) {
+      out.gain.setValueAtTime(0, when);
+      out.gain.linearRampToValueAtTime(this.level, when + fadeIn);
+    } else out.gain.value = this.level;
+    this.out = out;
     const mk = (buf: AudioBuffer, gain: number) => {
       const s = ctx.createBufferSource();
       s.buffer = buf;
       const g = ctx.createGain();
       g.gain.value = gain;
-      s.connect(g).connect(ctx.destination);
+      s.connect(g).connect(out);
       s.start(when, pos);
       this.srcs.push(s);
       return g;
@@ -144,7 +200,7 @@ class Engine {
       const censor = ctx.createGain();
       const g = ctx.createGain();
       g.gain.value = this.guide;
-      s.connect(censor).connect(g).connect(ctx.destination);
+      s.connect(censor).connect(g).connect(out);
       s.start(when, pos);
       this.srcs.push(s);
       this.vocGain = g;
@@ -157,57 +213,15 @@ class Engine {
 
   pause(at: number): void {
     this.pausedAt = at;
-    this.stopSources();
+    this.stopSources(0.08); // a breath of a fade: no click
     this.playing = false;
   }
 
-  stop(): void {
-    this.stopSources();
+  /** Silent, and back to the start; ``fade``: over that many seconds. */
+  stop(fade = 0): void {
+    this.stopSources(fade);
     this.playing = false;
     this.pausedAt = 0;
-  }
-
-  /** The speaker-delay calibration's chirps (routes/karaoke/calibrate.py chirp: Hann-windowed linear sweeps, each
-   *  click its own), each
-   *  rendered at its server time (`clicks`, seconds; `skew`: server - this clock), as the song's sound is: the delay
-   *  measured is then the whole delay the lyrics wait. Under them, from now, a quiet noise bed keeps the speaker
-   *  awake (an idle Sonos buffers more as it wakes: 25 Nov, 987 ms after a pause against 410 ms while playing). */
-  chirps(clicks: number[], specs: { f0: number; f1: number; dur_s: number }[], skew: number): number {
-    const ctx = this.context();
-    if (ctx.state !== "running" || !specs.length) return 0;
-    const sr = ctx.sampleRate;
-    const sweep = (spec: { f0: number; f1: number; dur_s: number }) => {
-      const n = Math.max(8, Math.round(spec.dur_s * sr));
-      const buf = ctx.createBuffer(1, n, sr);
-      const d = buf.getChannelData(0);
-      for (let k = 0; k < n; k++) {
-        const t = k / sr;
-        const ph = 2 * Math.PI * (spec.f0 * t + ((spec.f1 - spec.f0) * t * t) / (2 * spec.dur_s));
-        d[k] = 0.9 * Math.sin(ph) * (0.5 - 0.5 * Math.cos((2 * Math.PI * k) / (n - 1)));
-      }
-      return buf;
-    };
-    const toCtx = (T: number) => ctx.currentTime + (T - (Date.now() / 1000 + skew));
-    const bedEnd = toCtx(clicks[clicks.length - 1]) + 1.6;
-    const bedLen = Math.max(0.5, bedEnd - ctx.currentTime);
-    const bed = ctx.createBuffer(1, Math.round(bedLen * sr), sr);
-    const b = bed.getChannelData(0);
-    for (let k = 0; k < b.length; k++) b[k] = (Math.random() * 2 - 1) * 0.01; // about -45 dBFS
-    const bs = ctx.createBufferSource();
-    bs.buffer = bed;
-    bs.connect(ctx.destination);
-    bs.start();
-    let made = 0;
-    for (let i = 0; i < clicks.length; i++) {
-      const when = toCtx(clicks[i]);
-      if (when <= ctx.currentTime + 0.02) continue;
-      const s = ctx.createBufferSource();
-      s.buffer = sweep(specs[i % specs.length]);
-      s.connect(ctx.destination);
-      s.start(when);
-      made++;
-    }
-    return made;
   }
 
   /** Child mode's mutes (song seconds), applied to the lead vocal from now on; the same list again changes nothing. */
@@ -240,6 +254,60 @@ class Engine {
     }
   }
 
+  // The output's graphic EQ (smsound/eq.py; settings.eq): one chain per context that every play goes through, a low
+  // shelf, five peaks and a high shelf at EQ_HZ, after a level lowered by the largest boost so a boost never clips.
+  private eqIn: GainNode | null = null;
+  private eqBands: BiquadFilterNode[] = [];
+  private eqGains: number[] = EQ_HZ.map(() => 0);
+
+  private eqInput(ctx: AudioContext): AudioNode {
+    if (this.eqIn) return this.eqIn;
+    const pre = ctx.createGain();
+    let at: AudioNode = pre;
+    this.eqBands = EQ_HZ.map((hz, i) => {
+      const f = ctx.createBiquadFilter();
+      f.type = i === 0 ? "lowshelf" : i === EQ_HZ.length - 1 ? "highshelf" : "peaking";
+      f.frequency.value = hz;
+      f.Q.value = 1.1;
+      at.connect(f);
+      at = f;
+      return f;
+    });
+    // the mute (settings.muted): last, so the song and its clock run on silent
+    const master = ctx.createGain();
+    master.gain.value = this.muted ? 0 : 1;
+    at.connect(master).connect(ctx.destination);
+    this.master = master;
+    this.eqIn = pre;
+    this.applyEq(true);
+    return pre;
+  }
+
+  setEq(g: number[] | null | undefined): void {
+    const next = EQ_HZ.map((_, i) => (g && Number.isFinite(g[i]) ? Math.max(-12, Math.min(12, g[i])) : 0));
+    if (next.every((v, i) => v === this.eqGains[i])) return;
+    this.eqGains = next;
+    this.applyEq(false);
+  }
+
+  private applyEq(now: boolean): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.eqIn) return;
+    const t = ctx.currentTime;
+    const set = (p: AudioParam, v: number) => (now ? (p.value = v) : p.setTargetAtTime(v, t, 0.08));
+    this.eqBands.forEach((f, i) => set(f.gain, this.eqGains[i]));
+    set(this.eqIn.gain, Math.pow(10, -Math.max(0, ...this.eqGains) / 20));
+  }
+
+  private master: GainNode | null = null;
+  private muted = false;
+
+  setMuted(m: boolean): void {
+    if (m === this.muted) return;
+    this.muted = m;
+    if (this.master && this.ctx) this.master.gain.setTargetAtTime(m ? 0 : 1, this.ctx.currentTime, 0.03);
+  }
+
   setGuide(g: number): void {
     this.guide = g;
     if (this.vocGain && this.ctx) this.vocGain.gain.setTargetAtTime(g, this.ctx.currentTime, 0.05);
@@ -249,19 +317,48 @@ class Engine {
   private mutes: [number, number][] = [];
   private mutesKey = "[]";
 
-  private stopSources(): void {
-    for (const s of this.srcs) {
-      try {
-        s.stop();
-      } catch {
-        /* already stopped */
+  private stopSources(fade = 0): void {
+    const ctx = this.ctx;
+    const out = this.out;
+    if (fade > 0 && ctx && out && this.srcs.length) {
+      // The sources fade out on their own (nothing else touches this play's gain again) and then stop.
+      const now = ctx.currentTime;
+      out.gain.cancelScheduledValues(now);
+      out.gain.setValueAtTime(out.gain.value, now);
+      out.gain.linearRampToValueAtTime(0, now + fade);
+      for (const s of this.srcs) {
+        s.onended = () => s.disconnect();
+        try {
+          s.stop(now + fade + 0.05);
+        } catch {
+          /* already stopped */
+        }
       }
-      s.disconnect();
+      window.setTimeout(() => out.disconnect(), (fade + 0.5) * 1000);
+    } else {
+      for (const s of this.srcs) {
+        try {
+          s.stop();
+        } catch {
+          /* already stopped */
+        }
+        s.disconnect();
+      }
+      out?.disconnect();
     }
     this.srcs = [];
+    this.out = null;
     this.vocGain = null;
     this.censor = null;
   }
+}
+
+/** The karaoke's sound plays on this page: its output is this screen's ("screen:<id>"), or any screen's on a page
+ *  without one; on a browser's own player (``device``: the app's KaraokeHere), only its own "device:<id>". */
+function soundHere(n: KaraokeNow, screen: string | undefined, device?: string): boolean {
+  const out = n.settings.output ?? "";
+  if (device) return out === device;
+  return out.startsWith("screen:") && (!screen || out === `screen:${screen}`);
 }
 
 /** The song's position by the server's clock, at this moment. */
@@ -270,7 +367,9 @@ function serverPosition(n: KaraokeNow, skew: number): number {
   return p.state === "playing" ? p.pos_s + Math.max(0, Date.now() / 1000 + skew - p.at) : p.pos_s;
 }
 
-export function KaraokeLayer({ screen }: { screen?: string } = {}) {
+/** The karaoke layer. ``device``: a browser's own player (This device, owner 27 Nov): it plays the sound when the
+ *  karaoke's output is that id, and shows nothing (the lyrics stay on the karaoke screen). */
+export function KaraokeLayer({ screen, device }: { screen?: string; device?: string } = {}) {
   const [on, setOn] = useState(false);
   // The deployment (its screens): which screen is the karaoke screen (karaokeScreen). Only that screen's page shows
   // the lyrics and, with output "screen", plays the sound; on any other screen this layer stays empty and silent.
@@ -283,6 +382,28 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
   } | null>(null);
   const [, setTick] = useState(0);
   const engine = useRef(new Engine());
+  // This browser's output latency, told to the app's one store while its output is unmeasured (smsound.latency
+  // set_browser), so the lights and the screens' lyric feeds use the delay this page's lyrics use (a8's audit, 27 Nov:
+  // the page used its own figure, the feeds 0). Every 10 s, when it moves by 5 ms or more.
+  const nowRef = useRef<KaraokeNow | null>(null);
+  nowRef.current = now;
+  const posted = useRef<number | null>(null);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      const n = nowRef.current;
+      const e = engine.current;
+      const out = n?.settings.output;
+      if (!n || !out || !e.running || !soundHere(n, screen, device)) return;
+      const ms = Math.round(e.outputLatency() * 1000);
+      if (posted.current != null && Math.abs(posted.current - ms) < 5) return;
+      posted.current = ms;
+      void sound.setBrowser(out, ms).catch(() => {
+        posted.current = null;
+      });
+    }, 10_000);
+    return () => window.clearInterval(id);
+  }, [screen, device]);
+  const bgEngine = useRef(new Engine()); // the music while nothing plays
   const mutesRef = useRef<[number, number][]>([]);
   const skew = useRef(0); // server clock - this clock, seconds
   const heldSince = useRef<number | null>(null); // when the browser began holding the sound back (SoundPrompt)
@@ -326,9 +447,34 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
     let dead = false;
     let busy = false;
     let placed: string | null = null; // the player's song + rev the sound was last placed for
-    let chirped: string | null = null; // the calibration run whose chirps are scheduled
     let placedAt = { wall: 0, pos: 0 }; // where, by this machine's clock
     const eng = engine.current;
+    // The background music: its own engine, quiet; the song it is on; whether it is wanted now (read after a load).
+    const bg = bgEngine.current;
+    bg.level = BG_LEVEL;
+    let bgSong: string | null = null;
+    let bgWanted = false;
+    let bgBusy = false;
+    let bgOff = 0; // polls in a row the room's mode alone has said no
+    const background = async (list: string[], child: boolean) => {
+      if (bgBusy || (bg.playing && !bg.ended)) return;
+      bgBusy = true;
+      if (!bg.ctx) bg.ctx = eng.context(); // the songs' own context: one sound, unlocked by the same click
+      try {
+        // the one just sung first; then any of the others at random, never the same twice running
+        const pool = list.slice(1).filter((x) => x !== bgSong);
+        const id = !bgSong || !pool.length ? list[0] : pool[Math.floor(Math.random() * pool.length)];
+        if (!(await bg.load(id).catch(() => false)) || dead || !bgWanted) return;
+        bg.guide = child ? 0 : 1;
+        if (bg.playing && bg.ended) bgProbe(`end_${bgSong}`);
+        bg.play(0, BG_FADE_IN_S);
+        bgSong = id;
+        bgProbe(`start_${id}_of${Math.round(bg.inst?.duration ?? 0)}s_ctx${bg.ctx?.state}`);
+        if (bg.ctx?.state !== "running") void bg.ctx?.resume().catch(() => undefined);
+      } finally {
+        bgBusy = false;
+      }
+    };
     // The server's clock minus this one, from the quickest of the last SKEW_N replies (its midpoint): a reply that
     // came back late would otherwise put the sound that much behind for as long as it was the latest.
     const samples: { rtt: number; skew: number }[] = [];
@@ -361,27 +507,53 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
       setNow(n);
       const e = engine.current;
       const p = n.player;
-      // Not the karaoke screen, or the sound isn't the screen's: no sound here.
-      const mine = !screen || screen === karaokeScreen(depRef.current, n.settings.screen);
-      // Sound here only with output "screen" (a Sonos room plays it itself: routes/karaoke/sonos_out.py).
-      if (!mine || (n.settings.output ?? "screen") !== "screen") {
+      // Sound here only when the karaoke's output is this screen's page (docs/SOUND.md: "screen:<id>"; a Sonos plays
+      // it itself: routes/karaoke/sonos_out.py; a page without a screen plays any screen output).
+      if (!soundHere(n, screen, device)) {
         e.stop();
+        if (bg.playing) bgProbe(`stop_elsewhere_at${Math.round(bg.position())}s`);
+        bg.stop();
+        bgWanted = false;
+        setSounding(false);
         return;
       }
-      e.setGuide(n.settings.guide);
-      e.setMutes(mutesRef.current);
-      // The speaker-delay calibration: its chirps, once per run (they're scheduled ahead, at the server's times).
-      const cal = n.calibration;
-      if (cal?.state === "running" && cal.clicks?.length && cal.chirps?.length && chirped !== cal.id) {
-        if (e.ctx?.state !== "running")
-          void e
-            .context()
-            .resume()
-            .catch(() => undefined);
-        if (e.chirps(cal.clicks, cal.chirps, skew.current) > 0) chirped = cal.id;
+      // A new build's reload waits for the end of the song sounding here (soundGate.ts); once it is let through,
+      // nothing new starts.
+      setSounding(
+        (p.state === "playing" && serverPosition(n, skew.current) > -QUIET_LEAD_S) || (bg.playing && !bg.ended),
+      );
+      if (leaving()) return;
+      // The background music: while nothing plays, the room in a karaoke mode, no calibration running.
+      bgWanted =
+        p.state === "stopped" &&
+        !!n.join?.room_karaoke &&
+        !!n.background?.length &&
+        n.calibration?.state !== "running";
+      const modeOnly = p.state === "stopped" && !!n.background?.length && n.calibration?.state !== "running";
+      if (bgWanted) {
+        bgOff = 0;
+        void background(n.background ?? [], !!n.settings.child_mode);
+      } else if (bg.playing && (!modeOnly || ++bgOff >= BG_OFF_POLLS)) {
+        const why =
+          p.state !== "stopped"
+            ? `song_${p.state}`
+            : !n.join?.room_karaoke
+              ? "room_not_karaoke"
+              : !n.background?.length
+                ? "no_list"
+                : "calibration";
+        bgProbe(`stop_${why}_at${Math.round(bg.position())}s`);
+        bg.stop(FADE_S);
       }
+      if (p.state !== "stopped") bgSong = null; // a song plays: the next background starts with it
+      e.setGuide(n.settings.guide);
+      e.setEq(n.settings.eq);
+      bg.setEq(n.settings.eq);
+      e.setMuted(!!n.settings.muted);
+      bg.setMuted(!!n.settings.muted);
+      e.setMutes(mutesRef.current);
       if (p.state === "stopped" || !p.song_id) {
-        e.stop();
+        e.stop(FADE_S);
         return;
       }
       if (!(await e.load(p.song_id).catch(() => false)) || dead) return;
@@ -398,6 +570,10 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
           e.play(at);
           placed = want;
           placedAt = { wall: Date.now(), pos: at };
+        } else if (soundHere(n, screen, device)) {
+          // In place and sounding: tell the server where the sound really is, so its clock (the lights' grid, the
+          // other screens) follows this one rather than drifting on its own (a8's audit, 27 Nov).
+          void karaoke.heard(p.rev, p.song_id, e.position()).catch(() => undefined);
         }
       } else if (e.playing || Math.abs(e.position() - target) > 0.05) {
         e.pause(target);
@@ -405,12 +581,18 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
     };
     void follow();
     const t = window.setInterval(follow, POLL_MS);
+    const leavingPage = () => bg.playing && bgProbe(`stop_pagehide_at${Math.round(bg.position())}s`);   // (the probe)
+    window.addEventListener("pagehide", leavingPage);
     return () => {
       dead = true;
       window.clearInterval(t);
+      window.removeEventListener("pagehide", leavingPage);
       eng.stop();
+      if (bg.playing) bgProbe(`stop_unmount_at${Math.round(bg.position())}s`);
+      bg.stop();
+      setSounding(false);
     };
-  }, [on]);
+  }, [on, device]);
 
   const song = now?.song ?? null;
   const p = now?.player;
@@ -444,7 +626,7 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
   // Redraw every frame while a song is up.
   const active = on && !!p && p.state !== "stopped" && !!song;
   useEffect(() => {
-    if (!active) return;
+    if (!active || device) return; // a browser's own player draws nothing
     let raf = 0;
     const loop = () => {
       setTick((x) => (x + 1) % 1_000_000);
@@ -452,7 +634,7 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
     };
     raf = requestAnimationFrame(loop);
     return () => cancelAnimationFrame(raf);
-  }, [active]);
+  }, [active, device]);
 
   // A song that ends in the dark (its outro, Curtain) keeps the screen dark a little past its end (Handover), while
   // the art director takes the scene down to black on its own (the song's end: a fade-dark), so the two fades read as
@@ -470,19 +652,29 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
     if (last?.dur && last.t >= last.dur - HANDOVER_NEAR_S) setHandover(Date.now());
   }, [songKey]);
 
-  if (!on || !now) return null;
-  if (screen && screen !== karaokeScreen(depRef.current, now.settings.screen)) return null; // not the karaoke screen
+  if (!on || !now || device) return null;
+  // At rest (the room in a karaoke mode, nothing playing) every screen shows the code that opens the panel on a phone
+  // (JoinOverlays.tsx); the other screens show nothing else.
+  const joinUrl = now.join?.url ?? null;
+  const resting = !active && !!now.join?.room_karaoke && !!joinUrl;
+  if (screen && screen !== karaokeScreen(depRef.current, now.settings.screen))
+    return resting && joinUrl ? (
+      <div data-sm-karaoke="" style={layerStyle}>
+        <JoinCard url={joinUrl} />
+      </div>
+    ) : null; // not the karaoke screen
 
   // The position: the sound's own while it plays here, else the server's clock; less the delay to the room: the
-  // measured one (Settings → Calibrate: the whole delay from the player's clock to the room), else the browser's own
-  // idea of its output latency.
+  // output's (settings.audio_delay_ms: its measured delay from the app's one store, smsound.latency; 0 on a Sonos,
+  // whose clock the server already anchors to what the room hears), else, when this page plays it and it was never
+  // measured, the browser's own idea of its output latency. The lyrics on another screen follow the same delay.
   const e = engine.current;
   const audioPos = e.playing && e.running && e.songId === song?.id ? e.position() : serverPosition(now, skew.current);
-  // On a Sonos room the server's clock is already what the room hears (sonos_out.py anchors it): no delay of our own.
-  const ownSound = (now.settings.output ?? "screen") === "screen";
-  const delay = ownSound ? (now.settings.audio_delay_ms ?? 0) / 1000 : 0;
+  const ownSound = soundHere(now, screen);
+  const measured = now.settings.audio_delay_ms;
+  const lag = measured != null ? measured / 1000 : ownSound ? e.outputLatency() : 0;
   const shift = ((song?.offset_ms ?? 0) + (song?.user_offset_ms ?? 0)) / 1000;
-  const t = audioPos - (delay > 0 ? delay : ownSound ? e.outputLatency() : 0) - shift;
+  const t = audioPos - lag - shift;
   // Read by the sync evals (tools/karaoke/evals/): the clocks this frame was drawn with. Nothing reads it in use.
   (window as unknown as { __smKaraoke?: object }).__smKaraoke = {
     t,
@@ -495,12 +687,21 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
   };
   // Should be sounding but the browser holds it (the context exists, the song is loaded, and it isn't running), for
   // over a second: the "Click for sound" prompt (no flash while a song loads or a resume is on its way).
-  const shouldSound =
-    (p?.state === "playing" && !!song && e.songId === song.id) || now.calibration?.state === "running";
+  const shouldSound = p?.state === "playing" && !!song && e.songId === song.id;
   const held = shouldSound && !!e.ctx && e.ctx.state !== "running";
   if (!held) heldSince.current = null;
   else if (heldSince.current === null) heldSince.current = Date.now();
   const soundHeld = held && heldSince.current !== null && Date.now() - heldSince.current > 1000;
+  // While a song plays: who is next, towards its end (NextUp); with nothing queued after it, the small join code.
+  const dur = song?.audio_s ?? song?.duration ?? null;
+  const left = active && dur ? dur - t : null;
+  const nearEnd = now.up_next && left != null && left > 0 && left <= NEXT_UP_S ? ramp(NEXT_UP_S - left, 0, 1.2) : 0;
+  // ...and for a few seconds as a song starts, with its singer's card, so the next person knows early (owner, 27 Nov).
+  const t0 = -(song?.lead_in_s ?? 0);
+  const atStart =
+    active && now.up_next ? ramp(t, t0 + 1, t0 + 2.2) * (1 - ramp(t, t0 + 1 + NEXT_AT_START_S, t0 + 2.2 + NEXT_AT_START_S)) : 0;
+  const nextUp = Math.max(nearEnd, atStart);
+  const low = active && joinUrl && now.queued_after === 0 ? ramp(t, LOW_FROM_S, LOW_FROM_S + 1.2) : 0;
   if (songKey && song) {
     if (lastFrame.current && lastFrame.current.key !== songKey) endedFrame.current = lastFrame.current; // a new song
     lastFrame.current = { key: songKey, t, dur: song.audio_s ?? song.duration ?? null };
@@ -511,17 +712,41 @@ export function KaraokeLayer({ screen }: { screen?: string } = {}) {
       {handover !== null && <Handover key={handover} onDone={() => setHandover(null)} />}
       {active && song && (
         <>
-          <Curtain t={t} song={song} doc={lyrics?.id === song.id ? lyrics.doc : null} />
+          <Curtain t={t} song={song} doc={lyrics?.id === song.id ? lyrics.doc : null} singer={namesText(now.singers)} />
           <Lyrics
             t={t}
             doc={lyrics?.id === song.id ? lyrics.doc : null}
             highlight={(now.settings.highlight as Highlight) ?? "words"}
             leadIn={song.lead_in_s ?? 0}
+            singers={now.singers}
           />
         </>
       )}
-      {!active && now.up_next && <UpNext title={now.up_next.title} artist={now.up_next.artist} />}
-      {soundHeld && <SoundPrompt />}
+      {/* every overlay comes and goes through Presence: it rises or slides in out of a blur, and sinks back out */}
+      <Presence show={!active && !!now.up_next}>
+        {now.up_next && <UpNext title={now.up_next.title} artist={now.up_next.artist} singer={namesText(now.up_next.singers)} />}
+      </Presence>
+      <Presence show={!!(resting && joinUrl)} from="right">
+        {joinUrl && <JoinCard url={joinUrl} />}
+      </Presence>
+      <Presence show={nextUp > 0.001 && !!now.up_next} from="right">
+        {now.up_next && (
+          <NextUp
+            title={now.up_next.title}
+            artist={now.up_next.artist}
+            singers={now.up_next.singers}
+            opacity={1}
+            left={left != null ? Math.min(1, left / NEXT_UP_S) : null}
+            inS={left != null && left > NEXT_UP_S ? left : null}
+          />
+        )}
+      </Presence>
+      <Presence show={low > 0.001 && !!joinUrl} from="right">
+        {joinUrl && <JoinCard url={joinUrl} small />}
+      </Presence>
+      <Presence show={soundHeld} from="centre">
+        <SoundPrompt />
+      </Presence>
     </div>
   );
 }
@@ -569,6 +794,7 @@ if (typeof document !== "undefined" && !document.getElementById("sm-karaoke-soun
 // ---------------------------------------------------------------- the curtain: each song's start and end
 // (owner, 25 Nov: "introduce each song properly and signal end / beginning theatre ... singers will be changing over
 // at this point"). On the lyrics clock (the room's), so it lines up with what is heard.
+const NEXT_AT_START_S = 7; // the next-up banner also shows this long as a song starts
 const INTRO_MIN_S = 3; // the intro card stays at least this long (a song that starts singing at once)...
 const INTRO_MAX_S = 12; // ...and at most this long, else until a second before the first line
 const FADE_UP_S = 2.5; // the scene fades up from dark at the start
@@ -611,7 +837,17 @@ function Handover({ onDone }: { onDone: () => void }) {
   return <div ref={ref} style={{ position: "absolute", inset: 0, background: "#000", opacity: OUTRO_VEIL }} />;
 }
 
-function Curtain({ t, song, doc }: { t: number; song: KaraokeSong; doc: KaraokeLyrics | null }) {
+function Curtain({
+  t,
+  song,
+  doc,
+  singer,
+}: {
+  t: number;
+  song: KaraokeSong;
+  doc: KaraokeLyrics | null;
+  singer?: string | null;
+}) {
   const lines = doc?.kind === "synced" ? doc.lines : [];
   const first = lines.find((l) => l.start != null)?.start ?? null;
   const last = [...lines].reverse().find((l) => l.start != null) ?? null;
@@ -643,6 +879,15 @@ function Curtain({ t, song, doc }: { t: number; song: KaraokeSong; doc: KaraokeL
         <div style={{ ...introStyle, opacity: card, transform: `translate(-50%, -50%) scale(${0.96 + 0.04 * card})` }}>
           {art && <img src={art} alt="" style={introArtStyle} />}
           <div style={{ minWidth: 0, ...baseTextStyle }}>
+            {/* The singer as big as the song (owner, 27 Nov: "show the name of the singer ... prominently"). */}
+            {singer && (
+              <div
+                style={{ fontSize: "min(5vw, 84px)", fontWeight: 800, lineHeight: 1.05, color: "#ffd65a", marginBottom: "0.25em", ...BALANCE }}
+              >
+                <span aria-hidden style={{ fontSize: "0.8em", marginRight: "0.25em" }}>🎤</span>
+                {singer}
+              </div>
+            )}
             <div style={{ fontSize: "min(5.5vw, 92px)", fontWeight: 800, lineHeight: 1.05, ...BALANCE }}>
               {song.title}
             </div>
@@ -695,12 +940,16 @@ function Lyrics({
   doc,
   highlight,
   leadIn = 0,
+  singers,
 }: {
   t: number;
   doc: KaraokeLyrics | null;
   highlight: Highlight;
   /** The song's silent lead-in (s): the countdown to its first line runs from its start. */
   leadIn?: number;
+  /** Who sing it: with two or more, a duet's parts carry their names (the first named takes the voice that sings
+   *  first). */
+  singers?: string[];
 }) {
   // A line starts no later than its first timed word (the aligner can place it a little before the line's own
   // start): the change of lines then comes before that word, and the ball finds it on screen.
@@ -747,6 +996,11 @@ function Lyrics({
   const bigLine = bigIdx != null ? lines[bigIdx] : null;
   const smallIdx = bigIdx != null ? bigIdx + 1 : i + 1;
   const small = lines[smallIdx] ?? null;
+  // A duet (owner, 28 Nov): each voice on its own side in its own colour, shared lines centred in a third; the name
+  // of whoever is up as the part changes.
+  const duet = !!doc?.duet;
+  const voiceOf = (l: LyricLine | null) => (duet && l ? l.voice : undefined);
+  const tag = duet && bigLine && bigIdx != null ? partTag(lines, bigIdx, singers, t) : null;
 
   // The change of lines (owner, 25 Nov: smoother, more graceful, not distracting; "visual theatre"): the small line
   // travels from where it was into the big place, growing as it goes (measured: the eye never loses it); the finished
@@ -901,6 +1155,18 @@ function Lyrics({
       el.style.opacity = "0";
       return;
     }
+    // A duet's ball is the colour of the part it is with (owner, 28 Nov: "blue singing has a blue bouncing ball, and
+    // pink has a pink bouncing ball"): the word it rests on, or the one it is flying to.
+    const at = st.kind === "hop" ? (u > 0 ? st.to : st.from) : st.kind === "in" ? st.to : st.from;
+    const [li, wi] = at.split(":").map(Number);
+    const ln = duet ? lines[li] : undefined;
+    const hue = ln ? DUET_HUES[ln.voices?.[wi] ?? ln.voice ?? ""] : undefined;
+    const fill = hue ? hue.sung : (dotStyle.background as string);
+    if (el.dataset.fill !== fill) {
+      el.dataset.fill = fill;
+      el.style.background = fill;
+      el.style.boxShadow = hue ? `0 0 0.15em #000, 0 0 0.35em ${hue.sung}` : (dotStyle.boxShadow as string);
+    }
     const e = u * u * (3 - 2 * u); // across: eased in and out
     const x = a.x + (b.x - a.x) * e;
     // Longer hops go higher; on a row with a row above, no higher than the gap between them allows.
@@ -928,7 +1194,14 @@ function Lyrics({
     <div style={lyricsBoxStyle}>
       <div aria-hidden style={{ ...bandStyle, opacity: bigLine || small ? 1 : 0 }} />
       <div
-        style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", gap: "0.8vh" }}
+        style={{
+          position: "relative",
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: "0.8vh",
+          alignSelf: duet ? "stretch" : undefined,
+        }}
       >
         {out && (
           <div
@@ -952,6 +1225,8 @@ function Lyrics({
               progress={1}
               big
               highlight={highlight}
+              voice={voiceOf(out)}
+              voices={duet ? out.voices : undefined}
             />
           </div>
         )}
@@ -960,9 +1235,15 @@ function Lyrics({
           <div
             ref={bigRef}
             key={`big-${bigIdx}`}
-            style={{ position: "relative", transformOrigin: "50% 50%", willChange: "transform, opacity" }}
+            style={{
+              position: "relative",
+              transformOrigin: "50% 50%",
+              willChange: "transform, opacity",
+              ...sideStyle(voiceOf(bigLine)),
+            }}
           >
             {countIn && untilNext <= COUNT_IN_S && <CountDots seconds={untilNext} />}
+            {tag && <PartTag key={`tag-${bigIdx}`} {...tag} lift={countIn && untilNext <= COUNT_IN_S} />}
             <Line
               current={curOn}
               text={bigLine.text}
@@ -972,6 +1253,8 @@ function Lyrics({
               big
               highlight={highlight}
               onWord={ball ? onBigWord : undefined}
+              voice={voiceOf(bigLine)}
+              voices={duet ? bigLine.voices : undefined}
             />
           </div>
         ) : next ? (
@@ -980,8 +1263,19 @@ function Lyrics({
           <div style={{ height: "1.3em", fontSize: lineFont() }} />
         )}
         {small && (
-          <div ref={smallRef} key={`small-${smallIdx}`} style={{ willChange: "transform, opacity" }}>
-            <Line text={small.text} progress={0} big={false} onWord={ball ? onSmallWord : undefined} />
+          <div
+            ref={smallRef}
+            key={`small-${smallIdx}`}
+            style={{ willChange: "transform, opacity", ...sideStyle(voiceOf(small)) }}
+          >
+            <Line
+              text={small.text}
+              progress={0}
+              big={false}
+              onWord={ball ? onSmallWord : undefined}
+              voice={voiceOf(small)}
+              voices={duet ? small.voices : undefined}
+            />
           </div>
         )}
         {ball && <div ref={ballRef} aria-hidden style={{ ...dotStyle, position: "fixed", fontSize: lineFont() }} />}
@@ -1128,6 +1422,8 @@ function Line({
   highlight = "words",
   plain,
   onWord,
+  voice,
+  voices,
 }: {
   text: string;
   progress: number;
@@ -1140,8 +1436,13 @@ function Line({
   plain?: boolean;
   /** Each word's element, for the ball (Lyrics). */
   onWord?: (k: number, el: HTMLSpanElement | null) => void;
+  /** A duet's part: its side and colours. */
+  voice?: DuetPart;
+  /** A line traded word by word: each word's part (the line stays centred). */
+  voices?: DuetPart[];
 }) {
   const font = lineFont(big);
+  const sided = !voices && (voice === "A" || voice === "B");
   const box: CSSProperties = {
     position: "relative",
     fontSize: font,
@@ -1150,8 +1451,9 @@ function Line({
     fontWeight: 800,
     lineHeight: LINE_HEIGHT, // room above a wrapped row for the ball (owner, 25 Nov)
     opacity: big ? 1 : SMALL_OPACITY,
-    maxWidth: big ? "90vw" : `${((90 * SMALL_VW) / BIG_VW).toFixed(2)}vw`,
-    textAlign: "center",
+    maxWidth: `${(((sided ? SIDED_VW : 90) * (big ? BIG_VW : SMALL_VW)) / BIG_VW).toFixed(2)}vw`,
+    textAlign: sided ? (voice === "A" ? "left" : "right") : "center",
+    fontStyle: voice === "backing" && !voices ? "italic" : undefined,
     whiteSpace: "normal",
     overflowWrap: "anywhere",
     ...BALANCE, // a wrapped line's rows evenly filled: no word left alone (owner, 25 Nov: "avoid orphaned words")
@@ -1163,25 +1465,104 @@ function Line({
   const prog = !yellow ? null : timed ? tokenProgress(words!, t!) : sweepProgress(tokens, progress);
   return (
     <div style={box} data-sm-karaoke-line={current ? "current" : undefined}>
-      {tokens.map((tok, k) => (
-        <span key={k}>
-          <span
-            ref={onWord ? (el) => onWord(k, el) : undefined}
-            style={{ position: "relative", display: "inline-block" }}
-          >
-            <span style={baseTextStyle}>{tok}</span>
-            {prog && (
-              <span
-                aria-hidden
-                style={{ ...baseTextStyle, ...sungStyle, clipPath: `inset(-50% ${100 - prog[k] * 100}% -50% 0)` }}
-              >
-                {tok}
-              </span>
-            )}
+      {tokens.map((tok, k) => {
+        const hue = DUET_HUES[voices?.[k] ?? voice ?? ""];
+        return (
+          <span key={k}>
+            <span
+              ref={onWord ? (el) => onWord(k, el) : undefined}
+              style={{ position: "relative", display: "inline-block" }}
+            >
+              <span style={hue ? { ...baseTextStyle, color: hue.base } : baseTextStyle}>{tok}</span>
+              {prog && (
+                <span
+                  aria-hidden
+                  style={{
+                    ...baseTextStyle,
+                    ...sungStyle,
+                    ...(hue ? { color: hue.sung } : null),
+                    clipPath: `inset(-50% ${100 - prog[k] * 100}% -50% 0)`,
+                  }}
+                >
+                  {tok}
+                </span>
+              )}
+            </span>
+            {k < tokens.length - 1 ? " " : null}
           </span>
-          {k < tokens.length - 1 ? " " : null}
-        </span>
-      ))}
+        );
+      })}
+    </div>
+  );
+}
+
+/** A duet's colours: each voice its own hue, shared lines a third; sung is that hue at full brightness, still to sing
+ *  the same hue held back, so the highlight never fights the part's colour. */
+const DUET_HUES: Record<string, { base: string; sung: string }> = {
+  A: { base: "hsl(200 42% 68%)", sung: "hsl(194 100% 64%)" },
+  B: { base: "hsl(332 38% 72%)", sung: "hsl(332 100% 70%)" },
+  both: { base: "hsl(272 34% 74%)", sung: "hsl(272 100% 76%)" },
+  backing: { base: "rgba(255,255,255,0.6)", sung: "rgba(255,255,255,0.9)" },
+};
+const SIDED_VW = 66; // a voice's line, on its own side: at most this wide (of the 90 a centred line may take)
+const SIDE_MARGIN = "6vw";
+const TAG_S = 2.6; // a part's name shows this long after its line starts (from when the line is up)
+
+/** A duet line's place: A on the left, B on the right, the rest centred. */
+function sideStyle(v: DuetPart | undefined): CSSProperties {
+  return v === "A"
+    ? { alignSelf: "flex-start", marginLeft: SIDE_MARGIN }
+    : v === "B"
+      ? { alignSelf: "flex-end", marginRight: SIDE_MARGIN }
+      : {};
+}
+
+/** The name over a duet's line where the part changes (two or more singers named), else null. */
+function partTag(
+  lines: LyricLine[],
+  idx: number,
+  singers: string[] | undefined,
+  t: number,
+): { text: string; voice: DuetPart; opacity: number } | null {
+  const line = lines[idx];
+  const v = line?.voice;
+  if (!v || v === "backing" || !singers || singers.length < 2) return null;
+  let before: DuetPart | undefined;
+  for (let j = idx - 1; j >= 0 && !before; j--) before = lines[j].voice === "backing" ? undefined : lines[j].voice;
+  if (before === v) return null;
+  const left = (line.start ?? 0) + TAG_S - t;
+  if (left <= 0) return null;
+  const text = v === "A" ? singers[0] : v === "B" ? singers[1] : `${singers[0]} & ${singers[1]}`;
+  return { text, voice: v, opacity: Math.min(1, left / 0.6) };
+}
+
+function PartTag({ text, voice, opacity, lift }: { text: string; voice: DuetPart; opacity: number; lift?: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    ref.current?.animate([{ opacity: 0, transform: "translateY(30%)" }, { opacity: 1, transform: "none" }], {
+      duration: 320,
+      easing: EASE_OUT,
+    });
+  }, []);
+  const at = voice === "A" ? { left: 0 } : voice === "B" ? { right: 0 } : { left: 0, right: 0, textAlign: "center" as const };
+  return (
+    <div
+      ref={ref}
+      aria-hidden
+      style={{
+        position: "absolute",
+        ...at,
+        bottom: lift ? "calc(100% + 1.4em)" : "100%",
+        fontSize: lineFont(false),
+        fontWeight: 700,
+        letterSpacing: "0.04em",
+        whiteSpace: "nowrap",
+        opacity,
+        ...baseTextStyle,
+        color: DUET_HUES[voice].sung,
+      }}
+    >
+      {text}
     </div>
   );
 }
@@ -1264,7 +1645,7 @@ function CountIn({ seconds, total }: { seconds: number; total: number }) {
   );
 }
 
-function UpNext({ title, artist }: { title: string; artist: string }) {
+function UpNext({ title, artist, singer }: { title: string; artist: string; singer?: string | null }) {
   return (
     <div style={{ ...lyricsBoxStyle, bottom: "6vh" }}>
       <div
@@ -1275,7 +1656,8 @@ function UpNext({ title, artist }: { title: string; artist: string }) {
           opacity: 0.9,
         }}
       >
-        Up next: <b>{title}</b>
+        {singer ? `Up next, ${singer}: ` : "Up next: "}
+        <b>{title}</b>
         {artist ? ` — ${artist}` : ""}
       </div>
     </div>

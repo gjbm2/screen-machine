@@ -7,10 +7,12 @@
 <!--
   The virtual GigBAR MOVE + ILS rig (docs/GIGBAR_RIG.md §7). Served by virtual_node.py, it reads that node's DMX output
   (GET /dmx: one event per DMX refresh, 512 slots) and nothing else: no rig file, no show_service. Each bar is set up
-  here as a real one is on its menu (start address, 52CH or 50CH, pan/tilt range and reverse), the hazer by its DIP
-  address. Every part has its own panel, in the bar's real left-to-right order: what you'd see looking at it, what it
-  is doing in words, and its raw channels. The mechanical speeds (pan, tilt, wheels, motors) aren't in the manuals:
+  here as a real one is on its menu (start address, 52CH, 51CH or 50CH, pan/tilt range and reverse), the hazer by its
+  DIP address. Every part has its own panel, in the bar's real left-to-right order: what you'd see looking at it, what
+  it is doing in words, and its raw channels. The mechanical speeds (pan, tilt, wheels, motors) aren't in the manuals:
   they are estimates (MECH), so a part's "moving" time is a guide.
+  The laser's panel is what it throws, seen along its axis (docs/GIGBAR_RIG.md §1.4; gigbar_model.js): on 52CH the
+  grating's burst, a turning grid of dots for each lit diode; on 51CH and 50CH a mirrored pair of small line figures.
 -->
 <style>
   :root { color-scheme: dark; --fg: #e3e6ee; --dim: #8d93a5; --line: #252a38; --panel: #12151d; --bad: #ff6b6b;
@@ -245,22 +247,39 @@ function drawGoboMask(x, cx, cy, r, slot) {
   x.restore();
   x.fillStyle = "#c9cede"; x.font = "10px system-ui"; x.textAlign = "center"; x.fillText(`gobo ${slot}`, cx, cy + r + 13);
 }
+// The laser, seen along its axis (gigbar_model.js: laserNow, laserBurst, laserFigures; docs/GIGBAR_RIG.md §1.4).
+// 52CH: the grating's burst, each beam a dot at its angle off the axis (the square is the 93 degrees it covers); each
+// lit diode has its own grid (red widest, blue tightest), and they share only the centre beam. 51CH and 50CH: the
+// mirrored pair of figures each lit diode draws, magnified (the square is 24 degrees).
 function drawLaser(p, b, x, t, S, L, words) {
-  const v = ch(b), col = L.laserCh === 3 ? pick(LASER_V2, v) : pick(LASER_V1, v);
-  const stv = L.laserCh === 3 ? ch(b + 1) : 0, g = stv > 0 ? (((t * lerp(1, 15, stv / 255)) % 1) < 0.5 ? 1 : 0) : 1;
+  const ls = laserNow(b, L, S, t);
   x.fillStyle = "#05060a"; x.fillRect(5, 5, 100, 100); x.strokeStyle = "#3a1c1c"; x.strokeRect(5, 5, 100, 100);
-  if (col && g) {
-    const cols = col === "image colour" ? ["red", "green", "blue"] : col.split(" + ");
-    for (let i = 0; i < 40; i++) {
-      const ang = S.laserRot + i * 0.71, rr = 8 + 38 * hash(i + 99);
-      x.fillStyle = css(LASER_RGB[cols[i % cols.length]]); x.fillRect(55 + Math.cos(ang) * rr - 1, 55 + Math.sin(ang) * rr - 1, 2.5, 2.5);
+  x.fillStyle = "#4b5165"; x.font = "9px system-ui"; x.textAlign = "left"; x.fillText(ls.grating ? "93° wide" : "24° wide", 8, 102);
+  if (ls.on) {
+    x.save(); x.beginPath(); x.rect(5, 5, 100, 100); x.clip();
+    x.globalCompositeOperation = "lighter";                  // light adds: where two colours' beams coincide, both show
+    if (ls.grating) {
+      const k = 46 / LASER_EDGE;
+      laserBurst(ls, (nm, sx, sy, gain) => {                 // the outer orders are dimmer (drawn at the square root, to show)
+        x.fillStyle = css(LASER_RGB[nm], Math.sqrt(gain)); x.beginPath(); x.arc(55 + sx * k, 55 + sy * k, 1.7, 0, Math.PI * 2); x.fill();
+      });
+    } else {
+      const k = 46 / Math.tan(12 * Math.PI / 180);
+      x.lineWidth = 1.3;
+      laserFigures(ls, (slot, nm, i, fx, fy) => {
+        if (i === 0) { x.strokeStyle = css(LASER_RGB[nm]); x.beginPath(); x.moveTo(55 + fx * k, 55 + fy * k); }
+        else x.lineTo(55 + fx * k, 55 + fy * k);
+        if (i === LASER.points) x.stroke();
+      });
     }
+    x.restore(); x.lineWidth = 1;
   }
   if (words) {
-    const rps = L.laserCh === 3 ? motor(ch(b + 2), MECH.laserRps) : 0;
-    p.say.innerHTML = !col ? `<span class="big dim">off</span><br><span class="dim">class 3R: keep the key out</span>`
-      : `<span class="big bad">LASER ${col}</span><br>${stv ? "strobing" : "steady"} · ${motorWords(rps)}`;
-    p.raw.innerHTML = L.laserCh === 3 ? raws(["colour ", " strobe ", " motor "], [ch(b), ch(b + 1), ch(b + 2)]) : raws(["laser "], [ch(b)]);
+    const w = laserWords(ls);
+    p.say.innerHTML = !w ? `<span class="big dim">off</span><br><span class="dim">class 3R: keep the key out</span>`
+      : `<span class="big bad">LASER ${w[0]}</span><br>${w[1].replace(" · ", "<br>")}`;
+    p.raw.innerHTML = L.laserCh === 3 ? raws(["colour ", " strobe ", " motor "], [ch(b), ch(b + 1), ch(b + 2)])
+      : L.laserCh === 2 ? raws(["colour ", " pattern "], [ch(b), ch(b + 1)]) : raws(["laser "], [ch(b)]);
   }
 }
 function drawHazer(t, words) {
@@ -297,7 +316,7 @@ function renderCfg() {
   el.innerHTML = CFG.bars.map((b, i) => `
     <h3>${b.name}</h3>
     <label>start address <input type="number" min="1" max="512" data-k="bars.${i}.address" value="${b.address}"></label>
-    <label>DMX mode <select data-k="bars.${i}.mode"><option ${b.mode == 52 ? "selected" : ""}>52</option><option ${b.mode == 50 ? "selected" : ""}>50</option></select>CH</label>
+    <label>DMX mode <select data-k="bars.${i}.mode">${[52, 51, 50].map((v) => `<option ${b.mode == v ? "selected" : ""}>${v}</option>`).join("")}</select>CH</label>
     <label>Pan Range <select data-k="bars.${i}.panRange">${[540, 360, 180].map((v) => `<option ${b.panRange == v ? "selected" : ""}>${v}</option>`).join("")}</select></label>
     <label>Tilt Range <select data-k="bars.${i}.tiltRange">${[270, 180, 90].map((v) => `<option ${b.tiltRange == v ? "selected" : ""}>${v}</option>`).join("")}</select></label><br>
     ${["Pan1", "Tilt1", "Pan2", "Tilt2"].map((n, j) => `<label><input type="checkbox" data-k="bars.${i}.rev.${j}" ${b.rev[j] ? "checked" : ""}>${n} Reverse</label>`).join("")}`).join("") + `

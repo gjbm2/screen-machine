@@ -27,7 +27,8 @@ reach a frame.
      at tc / max``.
   3. **Activity**, exactly artnet_out's P0 idle rule: with a vibe, always active (its relaxed look, House and Low go
      out in a quiet room: §8.5 "never black"), but while the features are stale or the room is quiet the frame is
-     *held*: no layer and no hit follows the sound (artnet_out sends hue_depth 0 then). With no vibe: inactive when
+     *held*: no layer and no hit follows the sound (artnet_out sends hue_depth 0 then); a ``needs: none`` layer, which
+     never did, runs on (a waiting scene's slow glow, a part resting dark). With no vibe: inactive when
      the features are older than IDLE_AFTER_S (``no_features``), or the room is quiet (gate under QUIET_GATE_OFF for
      QUIET_AFTER_S, until it is back over QUIET_GATE_ON: ``quiet``). On an output whose caps say
      ``idle_without_vibe`` (artnet: nothing room-side decides which DMX fixtures follow, §8.6) no vibe is inactive
@@ -111,9 +112,14 @@ the ``light_scene`` path above.
     ``colour_wheel``, ``cct`` and ``shutter`` (effects only). A layer reaches only the members that can show what it
     sets (capability-aware: the rest are skipped silently, counted in stats). ``select`` defaults to ``"*"``. Any
     continuous value may be an oscillator ``{fx, phase, period_bars | period_s, subdivide, between: [a, b], spread,
-    order}``. Spread follows ``order`` (group | flow | mirror) and ``spread_mode`` (unison | chase | mirror): with
-    ``order: flow`` a wave travels the room along the flow (space.flow_coord of each light's position, else its
-    place in the group), latency compensated because each light evaluates at its own time.
+    order}``. Spread follows ``order`` (group | flow | mirror) and ``spread_mode`` (unison | chase | mirror |
+    bounce): with ``order: flow`` a wave travels the room along the flow (space.flow_coord of each light's position,
+    else its place in the group), latency compensated because each light evaluates at its own time. With ``order:
+    group`` the walk is in the layer's order (its selection's), backwards for a ``flow_dir`` of left, down, ccw,
+    inward or away; with ``order: mirror`` in group order the two halves walk together, from the ends in (or from the
+    middle out for ``flow_dir: outward``). ``bounce`` is a ping-pong: the wave runs along the line and back each
+    cycle, so each light fires once going and once coming back (owner, 27 Nov: the bar's four strobes "L-R or R-L or
+    ping pong").
   * **Precedence per fixture**, each frame: held (the Lights page's Move it: ``hold``/``release``) > identify > not
     following > inactive, House or Low (house look; a mover glides home) > the group's program (its scene, crossfading
     per group, then its effects, hits, master and caps), then the motion stage, then encode.
@@ -181,7 +187,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field, replace
 from typing import Any, Callable, Optional, Sequence
 
-from . import colour_mix, contract
+from . import colour_mix, contract, motion, phrasing
 from .artnet_out import (DEFAULT_RGB, NEUTRAL_RGB, HUE_ATTACK_S, HUE_DECAY_S, HUE_DEPTH, IDLE_AFTER_S, QUIET_AFTER_S,
                          QUIET_GATE_OFF, QUIET_GATE_ON, TAU_ENERGY_S)
 from .clock import beat_at
@@ -231,6 +237,10 @@ _BASE_MIX: list = [(1.0, None)]  # no light scene: looks.layers and looks.hits a
 DEFAULT_MAX_SPEED_DEG_S = (180.0, 120.0)   # starting point (lights.motion.default_max_speed_deg_s): pan, tilt, until
                                            # each light's own is measured (setup max_speed wins)
 DEFAULT_ACCEL_S = 0.12          # starting point (lights.motion.accel_s): from rest to full speed
+DEFAULT_EASE = 0.5              # lights.motion.ease: the share of accel_s a move spends easing into its acceleration
+                                # and out of it (motion.py's jerk_s; the rest is its ramp_s). 0 = a plain trapezoid;
+                                # 0.5 = the gentlest way to full speed in accel_s
+KEPT_MIN = 0.9                  # §5.5: a pattern the easing would draw smaller than this share of itself runs slower
 DEFAULT_PT_SPEED = 1.0          # lights.motion.pt_speed: the light's own pan/tilt speed channel (1 = its fastest)
 DEFAULT_MAX_TRAVEL_SHARE = 0.8  # starting point: a beat-locked hop may spend at most this share of its period moving
 DEFAULT_DARK_MOVE_MIN_DEG = 30.0   # starting point: a jump bigger than this travels dark when the transition says so
@@ -244,6 +254,8 @@ DEFAULT_SIZE_DEG = 20.0         # starting point: ... without ``size_deg`` (an u
 DEFAULT_LIFT_M = 1.0            # starting point: a lift layer without ``lift`` (metres up or down)
 SPEED_FIT = 0.95                # §5.5: a pattern's peak speed is kept under this share of the light's
 FIT_SAMPLES = 64                # samples per cycle when a pattern's peak speed is measured
+POOL_EDGE_M = 0.3               # a size_pools pattern stays this far inside its surface's edge
+PLAN_BEAM_DEG = 20.0            # a planned light's beam angle when its type gives no lens degrees
 MAX_DOUBLINGS = 6               # a pattern or hop slows at most 2^6 times (then runs as fast as it can: never refused)
 #: One transition for every change of state on a DMX output (owner, 26 Nov: "why don't things fade between states?
 #: ... that's the whole point of mode changes"; "one transition machinery"): the room taking a light off the music or
@@ -253,6 +265,7 @@ MAX_DOUBLINGS = 6               # a pattern or hop slows at most 2^6 times (then
 #: mode's transition_s, room_service's opts.over_s), else this. A mover going dark dims where it points, then glides
 #: home. Hue lamps (no DMX channels) are room_service's HueOutput's to fade; the music coming back after a silence
 #: doesn't fade; identify and a hold never fade.
+LEVEL_GLIDE_S = 2.0              # a program's level (LightProgram.level, §7.5) moves over this long
 TRANSITION_S = 3.0
 ARRIVED_DEG = 0.5               # a move has arrived within this (dark moves, busy)
 DT_MAX_S = 0.25                 # the motion stage's longest step between two frames
@@ -262,10 +275,12 @@ LAYER_KINDS: tuple[str, ...] = ("intensity", "position", "beam", "gobo", "prism"
                                 "shutter", "macro")
 #: macro (owner, 27 Nov: the laser's "display layering & logic"; the derbies' motors): a layer that sets a light's named
 #: function channels (the type's macro channels: a laser's colour, strobe and rotation, a derby's motor). ``set``:
-#: {channel name: value}; a value is one of the channel's range words, a raw byte 0..255, or {cw, ccw, still}: one of
-#: those by the way the room's flow turns. A light without that channel skips it.
+#: {channel name: value}; a value is one of the channel's range words, a raw byte 0..255, {cw, ccw, still}: one of
+#: those by the way the room's flow turns, or {cycle: [values], on: beat | bar | phrase}: the next of them at each
+#: beat, bar or phrase (a grid that rocks back and forth, or turns a step and holds). A light without that channel
+#: skips it.
 POSITION_MODES: tuple[str, ...] = ("aim", "fan", "sweep", "circle", "figure8", "drift", "ballyhoo", "bounce", "lift",
-                                   "tilt_wave", "home")
+                                   "tilt_wave", "home", "planned")   # planned: a staging planner's tracks (§5.10)
 PATTERN_MODES = frozenset({"fan", "sweep", "circle", "figure8", "drift", "ballyhoo"})
 GRID_HOLD_S = 4.0   # a "needs: grid" layer keeps the grid this long after the clock's gate last read above "none"
 IDLE_BPM = (50.0, 50.0)   # with no live beat the bar patterns run on a free clock of 50 + 50 x the vibe's idle_motion bpm
@@ -298,7 +313,7 @@ def _sway(fid: str, t: float, size_deg: float, period_s: float) -> tuple[float, 
     w = [wt * math.sin(2.0 * math.pi * t / (period_s * r) + ph[k]) for k, (r, wt) in enumerate(SWAY_RATIOS)]
     return size_deg * (w[0] + w[1]), size_deg * 0.6 * (w[2] + w[3])
 ORDERS: tuple[str, ...] = ("group", "flow", "mirror")
-SPREAD_MODES: tuple[str, ...] = ("unison", "chase", "mirror")
+SPREAD_MODES: tuple[str, ...] = ("unison", "chase", "mirror", "bounce")
 EASES: tuple[str, ...] = ("linear", "sine", "smooth")
 CHANGE_ON: tuple[str, ...] = ("none", "bar", "phrase", "section", "look")
 HOP_ON: tuple[str, ...] = ("beat", "bar")
@@ -313,6 +328,17 @@ FLOW_BACK = frozenset({"left", "down", "ccw", "inward", "away"})   # the second 
 KIND_ATTRS: dict[str, tuple[str, ...]] = {"position": ("pan",), "beam": ("zoom", "focus", "iris", "frost"),
                                           "prism": ("prism",), "colour": ("colour",), "colour_wheel": ("colour_slot",),
                                           "cct": ("cct",), "shutter": ("shutter",), "macro": ("macro",)}
+# A gobo change in the dark (_gobo_dark): the wheel's time per slot (a cheap head's wheel: about 8 slots a second,
+# as the 3D room's MECH has it), the margin either side, and the level below which a head counts as dark already.
+GOBO_SLOT_S = 0.125
+GOBO_SETTLE_S = 0.05
+GOBO_DARK_LEVEL = 0.02
+COLOUR_SLOT_S = 0.11            # a colour wheel's time per filter (about 9 a second, as the 3D room's MECH has it)
+WHEEL_JUMP = 0.2                # the colour asked for moving this far (RGB) in one frame is a cut: the wheel turns now
+WHEEL_SETTLE_S = 0.8            # otherwise it waits until one new filter has been wanted this long (a glide passes
+                                # over the filters between and never turns to them)...
+WHEEL_HOLD_S = 4.0              # ...and this long since its last turn (a colour drifting about the line between two
+                                # filters doesn't blink back and forth)
 LERP_ATTRS = frozenset({"pan", "tilt", "zoom", "focus", "iris", "frost", "cct", "pt_speed", "gobo_spin", "gobo2_spin",
                         "gobo_shake", "gobo2_shake", "gobo_scroll", "prism_spin", "colour_spin", "pan_spin",
                         "tilt_spin"})
@@ -324,11 +350,11 @@ _LAYER_KEYS = frozenset({"id", "enabled", "attr", "kind", "fx", "phase", "subdiv
 _KIND_KEYS: dict[str, frozenset] = {
     "intensity": frozenset(),
     "position": frozenset({"mode", "on", "centre", "size", "size_deg", "along", "rotate", "fan", "ease", "points",
-                           "hop", "lift", "dark_move"}),
+                           "hop", "lift", "dark_move", "plan", "with", "size_pools"}),
     "beam": frozenset({"zoom", "focus", "iris", "frost"}),
-    "gobo": frozenset({"wheel", "slot", "change_on", "spin", "spin_scale", "shake"}),
+    "gobo": frozenset({"wheel", "slot", "change_on", "change", "spin", "spin_scale", "shake", "scroll"}),
     "prism": frozenset({"in", "spin", "spin_scale"}),
-    "colour": frozenset({"role"}),
+    "colour": frozenset({"role", "hex"}),
     "colour_wheel": frozenset({"mode", "step_on", "spin"}),
     "cct": frozenset({"k"}),
     "shutter": frozenset({"mode", "hz"}),
@@ -432,20 +458,6 @@ def shape(fx: str, cycles: float, period_s: float = 0.0, attack_s: float = HUE_A
     return up if up > down else down
 
 
-def travel_s(d: float, v: float, acc: float) -> float:
-    """How long the motion stage takes to move ``d`` degrees from rest to rest at top speed ``v`` (deg/s) and
-    acceleration ``acc`` (deg/s², inf: none): ``d/v + v/acc`` once it reaches ``v`` (with acc = v / accel_s that is
-    docs/LIGHTS.md §5.5's ``d/v + accel_s``), else a triangle ``2 sqrt(d/acc)``."""
-    d = abs(d)
-    if d <= 0.0 or v <= 0.0:
-        return 0.0
-    if not math.isfinite(acc):
-        return d / v
-    if d >= v * v / acc:
-        return d / v + v / acc
-    return 2.0 * math.sqrt(d / acc)
-
-
 def flow_wave(flow: Optional[Mapping[str, Any]], clock_body: Optional[Mapping[str, Any]], t_s: float,
               coord: float) -> float:
     """docs/LIGHTS.md §4.1's shared phase (0..1) at host time ``t_s`` for a place at ``coord`` (space.flow_coord):
@@ -465,35 +477,6 @@ def flow_wave(flow: Optional[Mapping[str, Any]], clock_body: Optional[Mapping[st
             return 0.0
         x = (t_s - (float(at) / 1000.0 if _isnum(at) else 0.0)) / float(ps) - sp * coord
     return x - math.floor(x)
-
-
-def _slew1(c: float, v: float, tgt: float, moving: bool, vmax: float, acc: float, dt: float
-           ) -> tuple[float, float]:
-    """One axis of the motion stage (§5.5) over one frame of ``dt`` s: (command, speed). Never faster than ``vmax``.
-    A moving target (a pattern) within this frame's reach is taken as is; otherwise the command runs the trapezoid
-    toward it (speeding up by ``acc`` per second, then slowing to stop on it), integrated at mid-frame speeds so it
-    takes exactly ``travel_s`` (the pre-roll's own number)."""
-    err = tgt - c
-    if dt <= 0.0:
-        return c, v
-    a = abs(err)
-    if a <= 1e-9:
-        return tgt, (err / dt if moving else 0.0)
-    v0 = abs(v) if (v > 0.0) == (err > 0.0) else 0.0
-    if not math.isfinite(acc):
-        if vmax * dt >= a:
-            return tgt, (err / dt if moving else 0.0)
-        return c + math.copysign(vmax * dt, err), math.copysign(vmax, err)
-    v1 = min(vmax, v0 + acc * dt)
-    if moving and a <= v1 * dt:
-        return tgt, err / dt
-    brake = math.sqrt(2.0 * acc * a) - 0.5 * acc * dt            # the mid-frame speed that still stops on it
-    mid = min(0.5 * (v0 + v1), brake)
-    step = mid * dt
-    if brake <= 0.0 or step >= a:
-        return tgt, (err / dt if moving else 0.0)
-    v_end = v1 if mid >= 0.5 * (v0 + v1) - 1e-12 else max(0.0, brake - 0.5 * acc * dt)
-    return c + math.copysign(step, err), math.copysign(v_end, err)
 
 
 # -- selectors (fixtures.py's: one copy of the grammar, README S5.2) -------------------------------------------------
@@ -593,6 +576,8 @@ class _Slot:
     house: tuple                                # (intensity, colour list, rgb list, dmx bytes | None): the idle look
     # docs/LIGHTS.md §5.1
     caps: Optional[Mapping[str, Any]] = None    # fixture_encode.caps (None: no encoder, intensity and colour only)
+    cw: Optional[tuple] = None                  # a real colour wheel behind a dimmer: (its channel's offset, the
+                                                # DMX value of each slot, in the wheel's order) (_wheel_dark)
     attrs: frozenset = frozenset(("intensity", "colour"))
     setup: Mapping[str, Any] = field(default_factory=dict)
     pos: Optional[tuple[float, float, float]] = None   # its room position (the space's, or its pose's)
@@ -642,7 +627,8 @@ class _Scene:
 class _Motion:
     """show.yaml ``lights.motion`` and ``lights.jog``, read (§12)."""
     max_speed: tuple[float, float] = DEFAULT_MAX_SPEED_DEG_S
-    accel_s: float = DEFAULT_ACCEL_S
+    accel_s: float = DEFAULT_ACCEL_S              # from rest to full speed, easing included
+    ease: float = DEFAULT_EASE
     pt_speed: float = DEFAULT_PT_SPEED
     max_travel_share: float = DEFAULT_MAX_TRAVEL_SHARE
     dark_move_min_deg: float = DEFAULT_DARK_MOVE_MIN_DEG
@@ -651,6 +637,14 @@ class _Motion:
     dark_max_s: float = DEFAULT_DARK_MAX_S
     jog_idle_s: float = DEFAULT_JOG_IDLE_S
     jog_smooth_s: float = DEFAULT_JOG_SMOOTH_MS / 1000.0
+
+    @property
+    def ramp_s(self) -> float:                    # motion.py's two averages: accel_s split by ease
+        return self.accel_s * (1.0 - self.ease)
+
+    @property
+    def jerk_s(self) -> float:
+        return self.accel_s * self.ease
 
 
 @dataclass(frozen=True)
@@ -774,7 +768,13 @@ class _FixState:
     __slots__ = ("prev", "t_prev", "low", "t_big",
                  # docs/LIGHTS.md §5.5: the motion stage and the last frame (a runner's own)
                  "cmd", "vel", "t_m", "tgt", "dark", "t_move", "t_light", "last_attrs", "last_inten", "last_colour",
-                 "slowed", "clamped", "unresolved", "unreachable", "held", "hold_now", "hold_seq")
+                 "slowed", "clamped", "unresolved", "unreachable", "held", "hold_now", "hold_seq",
+                 # a gobo change made in the dark (_gobo_dark)
+                 "g_shown", "g_pend", "g_phase", "g_until", "g_live",
+                 "sm",                           # its motion stage (motion.Smoother), once it has moved
+                 "c_key", "c_slot", "c_col", "c_phase", "c_until", "c_to",   # its colour wheel (_wheel_dark)
+                 "c_prev", "c_want", "c_since", "c_last",
+                 "plv", "plv_now")               # a planned track's level: this frame's, and its layer's sample
 
     def __init__(self) -> None:
         self.prev: Optional[float] = None
@@ -786,6 +786,22 @@ class _FixState:
         self.t_m: Optional[float] = None
         self.tgt: Optional[list[float]] = None   # the last target (a pattern moves it every frame)
         self.dark = 0                            # 0 none, 1 going dark, 2 moving dark, 3 settling
+        self.g_shown: Any = None                 # the gobo on the wheel now (a slot, None = open), once known
+        self.g_pend: Any = None
+        self.g_phase = 0                         # 0 none, 1 going dark on the old gobo, 2 the wheel turning dark
+        self.g_until = 0.0
+        self.g_live = False                      # the layer snaps its changes in the light (change: live)
+        self.sm: Optional[motion.Smoother] = None
+        self.c_key: Any = None                   # the colour last looked up on the wheel
+        self.c_prev: Any = None                  # the colour asked for last frame (a jump is a cut)
+        self.c_want: Optional[int] = None        # another filter wanted while lit, c_since when; c_last: its last turn
+        self.c_since = 0.0
+        self.c_last = -1e9
+        self.c_slot: Optional[int] = None        # the wheel's place now (its index), once known
+        self.c_col: list = [1.0, 1.0, 1.0]       # the colour it shows there
+        self.c_phase = 0                         # 0 none, 1 going dark on the old colour, 2 the wheel turning dark
+        self.c_until = 0.0
+        self.c_to = 0
         self.t_move = 0.0
         self.t_light = 0.0
         self.last_attrs: Optional[dict] = None
@@ -798,6 +814,8 @@ class _FixState:
         self.held = False
         self.hold_now: Optional[dict] = None
         self.hold_seq = 0
+        self.plv = 1.0
+        self.plv_now = 1.0
 
 
 class _OutState:
@@ -825,6 +843,8 @@ class _OutState:
         self.targets: dict[tuple, Optional[tuple[float, float]]] = {}   # bounce points resolved per light
         self.frames: dict[tuple, tuple] = {}     # where each light draws each pattern (_pattern_frame)
         self.slotc: dict[tuple, list[int]] = {}  # a gobo layer's slot candidates per light
+        self.plans: dict[tuple, Any] = {}        # a planned layer's staging.Plan per (layer, space, program)
+        self.plan_t0: dict[tuple, float] = {}    # when a once-only plan started, per (layer, program change)
         self.programs: dict[str, Optional[str]] = {}     # group -> the scene showing (stats)
         self.busy = False
         self.prog: Any = None                    # the program the caches above were filled from
@@ -839,7 +859,7 @@ class _OutState:
         """A new program (configure, a catalogue change): every per-light cache is filled again."""
         if prog is not self.prog:
             self.prog = prog
-            for c in (self.coords, self.fits, self.targets, self.frames, self.slotc):
+            for c in (self.coords, self.fits, self.targets, self.frames, self.slotc, self.plans, self.plan_t0):
                 c.clear()
 
     def glide(self, key: tuple[str, str], v: float, t: float, dur: float) -> float:
@@ -891,7 +911,7 @@ class _Part:
 
 class _Group:
     """One group of one output for one frame (§5.6): its scenes' parts, effects, hits, flow and transition."""
-    __slots__ = ("gid", "parts", "effects", "blocks", "flash_hz", "flow", "pf", "dark_abs", "dom", "amembers")
+    __slots__ = ("gid", "parts", "effects", "blocks", "flash_hz", "flow", "pf", "dark_abs", "dom", "amembers", "level")
 
     def __init__(self, gid: str) -> None:
         self.gid = gid
@@ -904,6 +924,7 @@ class _Group:
         self.dark_abs = 0.0
         self.dom: Optional[_Scene] = None
         self.amembers: frozenset = frozenset()  # every light a non-intensity layer of its scenes or effects reaches
+        self.level = 1.0                        # the program's level (§7.5): the group's whole brightness
 
 
 class _Hold:
@@ -920,7 +941,10 @@ class _Ctx:
                  "min_period_s", "energy", "vibe", "st", "prog", "op", "sm", "view", "cyc", "flow_key", "look_n",
                  # docs/ENSEMBLE.md §7.2 (None without an ensemble): per light its role's motion scale and canon's
                  # offset (s), filled as each light is evaluated; the palette roles at full value (a colour pop's)
-                 "ms", "co", "roles")
+                 "ms", "co", "roles",
+                 # a lift's wind-up and landing (phrasing.py, the look's ``arrival``): every level x ph_level, every
+                 # moving head's pattern size x ph_size; 1.0 with none
+                 "ph_level", "ph_size")
 
 
 class _GPart:
@@ -1007,6 +1031,7 @@ class LookEngine:
         self._last_grid: Optional[Mapping[str, Any]] = None          # the last clock body with a tempo
         self._outs: dict[str, _OutState] = {}
         self.errors: dict[str, int] = {}
+        self._plan_notes: dict[str, str] = {}      # each planned layer's plan, in words (stats)
         self._log_next: dict[str, float] = {}
         # light scenes (README S5.24): the catalogue, resolved at the first configure; the last configure's inputs,
         # so a catalogue change recompiles the scenes on show-brain
@@ -1021,6 +1046,8 @@ class LookEngine:
         self._grid_seen_t = -math.inf
         # identify and follow (any thread; each swapped by reference, read once per frame)
         self._ident: dict[str, tuple[float, list[float]]] = {}       # fixture -> (until, colour at full value)
+        # a timing probe (calibration: probe()): fixture -> (dark from, dark until, ((start, end), ...), colour)
+        self._probe: dict[str, tuple[float, float, tuple[tuple[float, float], ...], list[float]]] = {}
         self._follow: dict[str, tuple[float, list[float]]] = {}      # fixture -> (intensity, colour): not following
         self._follow_change: tuple[int, frozenset, float] = (0, frozenset(), TRANSITION_S)   # (rev, ids moved, s)
         self._show_over_s = TRANSITION_S                                # set_transition: the show starting/stopping
@@ -1229,6 +1256,7 @@ class LookEngine:
         return _Motion(
             max_speed=speed,
             accel_s=self._num(m, "accel_s", DEFAULT_ACCEL_S, 0.0, 5.0, w, probs),
+            ease=self._num(m, "ease", DEFAULT_EASE, 0.0, 1.0, w, probs),
             pt_speed=self._num(m, "pt_speed", DEFAULT_PT_SPEED, 0.0, 1.0, w, probs),
             max_travel_share=self._num(m, "max_travel_share", DEFAULT_MAX_TRAVEL_SHARE, 0.0, 1.0, w, probs,
                                        positive=True),
@@ -1561,6 +1589,12 @@ class LookEngine:
                 if not (_isnum(v) and v >= 0):
                     bad.append(f"{k} {v!r} isn't a number >= 0")
                 p[k] = float(v) if _isnum(v) else dflt
+            # size_pools: the pattern's size as a share of the pool of light this head draws there (its long side),
+            # so a shape reads as itself in any room; kept inside the surface. Overrides size on a surface.
+            sp_ = raw.get("size_pools")
+            if sp_ is not None and not (_isnum(sp_) and sp_ > 0):
+                bad.append(f"size_pools {sp_!r} isn't a number above 0")
+            p["size_pools"] = float(sp_) if _isnum(sp_) and sp_ > 0 else None
             along = raw.get("along", "u")
             if along not in ("flow", "u", "v") + FLOW_DIRS:
                 bad.append(f"along {along!r} isn't flow, u, v or a flow direction")
@@ -1592,6 +1626,17 @@ class LookEngine:
                 bad.append(f"dark_move {dm!r} isn't true or false")
             p["dark_move"] = dm is True
             p["fx"] = raw.get("fx", "sine") if raw.get("fx", "sine") in contract.FX_SHAPES else "sine"
+            if mode == "planned":                                # a staging planner (docs/LIGHTS.md §5.10)
+                try:
+                    from . import staging
+                    prm, pp = staging.parse(raw.get("plan"), raw.get("with"))
+                except Exception as e:                           # degrade: the layer is left out
+                    prm, pp = None, [f"staging can't be imported: {type(e).__name__}: {e}"]
+                if prm is None:
+                    bad.extend(pp)
+                else:
+                    probs.extend(f"{where}.{x}" for x in pp)
+                    p["plan"], p["with"] = raw.get("plan"), prm
         elif kind == "beam":
             for a, words, lo, hi in (("zoom", ("narrow", "wide", "mid", "default"), 0.0, 180.0),
                                      ("focus", ("default",), 0.0, 1.0), ("iris", ("default",), 0.0, 1.0),
@@ -1618,6 +1663,17 @@ class LookEngine:
                 bad.append(f"change_on {ch!r} isn't one of {', '.join(CHANGE_ON)}")
             p["change_on"] = ch
             self._spin_keys(raw, p, where, bad)
+            # scroll: the whole wheel turning, its gobos sliding through the beam (a wheel whose gobos can't turn in
+            # their holes, as the GigBAR's: owner, 27 Nov: "scenes should enjoy the gobos"); -1..1, flow or pace,
+            # times spin_scale. While it scrolls the wheel shows no one slot.
+            scr = raw.get("scroll")
+            if scr is not None and not ((_isnum(scr) and -1.0 <= scr <= 1.0) or scr in ("flow", "pace")):
+                bad.append(f"scroll {scr!r} isn't -1..1, flow or pace")
+            p["scroll"] = float(scr) if _isnum(scr) else scr
+            chg = raw.get("change", "dark")
+            if chg not in ("dark", "live"):
+                bad.append(f"change {chg!r} isn't dark or live")
+            p["change"] = chg
             if "shake" in raw:
                 ok, p["shake"] = self._value(raw["shake"], f"{where}.shake", probs, f"{lid}#shake", lo=0.0, hi=1.0)
                 if not ok:
@@ -1629,9 +1685,18 @@ class LookEngine:
             p["in"] = pin
             self._spin_keys(raw, p, where, bad)
         elif kind == "colour":
-            role = raw.get("role")
-            if role not in ROLE_WORDS:
-                bad.append(f"a colour layer needs a role ({', '.join(ROLE_WORDS)}), not {role!r}")
+            role, hx = raw.get("role"), raw.get("hex")
+            if hx is not None:                                   # the scene's own colour, whatever the palette
+                rgb = _hex_rgb(hx) if isinstance(hx, str) else None
+                if rgb is None or max(rgb) <= 0.0:
+                    bad.append(f"hex {hx!r} isn't a colour like \"#ff0000\"")
+                else:
+                    m = max(rgb)
+                    p["rgb"] = (rgb[0] / m, rgb[1] / m, rgb[2] / m)
+                if role is not None:
+                    bad.append("a colour layer has a role or a hex, not both")
+            elif role not in ROLE_WORDS:
+                bad.append(f"a colour layer needs a role ({', '.join(ROLE_WORDS)}) or a hex, not {role!r}")
             p["role"] = role
         elif kind == "colour_wheel":
             mode = raw.get("mode", "follow")
@@ -1665,11 +1730,19 @@ class LookEngine:
         elif kind == "macro":
             def ok(v: Any) -> bool:
                 return isinstance(v, str) or (isinstance(v, int) and not isinstance(v, bool) and 0 <= v <= 255)
+            def form(v: Any) -> bool:
+                if ok(v):
+                    return True
+                if not isinstance(v, Mapping) or not v:
+                    return False
+                if "cycle" in v:
+                    return set(v) <= {"cycle", "on"} and isinstance(v["cycle"], list) and len(v["cycle"]) > 0 \
+                        and all(ok(x) for x in v["cycle"]) and v.get("on", "bar") in ("beat", "bar", "phrase")
+                return set(v) <= {"cw", "ccw", "still"} and all(ok(x) for x in v.values())
             st = raw.get("set")
-            if not isinstance(st, Mapping) or not st or not all(
-                    isinstance(c, str) and (ok(v) or (isinstance(v, Mapping) and v and set(v) <= {"cw", "ccw", "still"}
-                                                      and all(ok(x) for x in v.values()))) for c, v in st.items()):
-                bad.append("a macro layer needs set: {<channel>: <range word> | 0..255 | {cw, ccw, still}}")
+            if not isinstance(st, Mapping) or not st or not all(isinstance(c, str) and form(v) for c, v in st.items()):
+                bad.append("a macro layer needs set: {<channel>: <range word> | 0..255 | {cw, ccw, still} | "
+                           "{cycle: [...], on: beat | bar | phrase}}")
             else:
                 p["set"] = {c: (dict(v) if isinstance(v, Mapping) else v) for c, v in st.items()}
         return p
@@ -1936,7 +2009,15 @@ class LookEngine:
             if enc:
                 got = self._call("fixture_encode.encode", enc_mod.encode, f, t, hi, hcol, dict(neutral))
                 hdmx = got if isinstance(got, (bytes, bytearray)) else hdmx
-        return _Slot(id=fid, info=f, type=t, rise_s=rise / 1000.0, colour_s=col / 1000.0, min_pulse_s=mp / 1000.0,
+        cw = None
+        wl = t.get("wheel")
+        if enc and chans and t.get("wheel_closed") is None and isinstance(wl, (list, tuple)) and len(wl) > 2:
+            off = next((c.get("offset") for c in t.get("channels") or () if isinstance(c, Mapping) and any(
+                isinstance(r, Mapping) and r.get("attr") == "colour_slot" for r in c.get("ranges") or ())), None)
+            dm = [w.get("dmx") for w in wl if isinstance(w, Mapping)]
+            if isinstance(off, int) and len(dm) == len(wl) and all(_isnum(x) for x in dm):
+                cw = (off, tuple(float(x) for x in dm))
+        return _Slot(id=fid, info=f, type=t, cw=cw, rise_s=rise / 1000.0, colour_s=col / 1000.0, min_pulse_s=mp / 1000.0,
                      role=role if isinstance(role, str) else None, screen=f.get("screen"), zone=f.get("zone"),
                      house_rgb=house_rgb, donors=tuple(d[-1] for d in donors), channels=chans,
                      house=(hi, hcol, list(hrgb), bytes(hdmx) if hdmx is not None else None), caps=caps, attrs=attrs,
@@ -2202,6 +2283,39 @@ class LookEngine:
                     if isinstance(m, str):
                         out.setdefault(m, str(pid))
         return out
+
+    def probe(self, fixture_id: str, pulses: Sequence[Sequence[float]], rgb: Sequence[float] = (255, 255, 255),
+              dark_s: float = 1.0) -> bool:
+        """A timing probe (docs/calibration: the lights' camera calibration): that fixture at full ``rgb`` for each
+        (start, seconds) of ``pulses`` (this engine's clock, monotonic s) and held dark from ``dark_s`` before the
+        first to ``dark_s`` after the last, whatever it was doing (as identify). The output's runner sends a frame at
+        each pulse edge (``next_probe_edge``), so the light changes in the frame sent at that moment: the boundary
+        the lights' latency is measured from and compensated at. Empty ``pulses`` ends it. True when the engine
+        evaluates that fixture now."""
+        try:
+            ps = tuple(sorted((float(a), float(a) + float(d)) for a, d in pulses if float(d) > 0.0))
+            r, g, b = (float(x) for x in rgb)
+        except (TypeError, ValueError):
+            return False
+        if not all(math.isfinite(x) for pr in ps for x in pr):
+            return False
+        new = {k: v for k, v in self._probe.items() if v[1] > self._mono() and k != fixture_id}
+        if ps:
+            m = max(r, g, b)
+            col = [_c01(r / m), _c01(g / m), _c01(b / m)] if m > 0 else [1.0, 1.0, 1.0]
+            new[str(fixture_id)] = (ps[0][0] - dark_s, ps[-1][1] + dark_s, ps, col)
+        self._probe = new
+        return any(s.id == fixture_id for op in self._program.outputs.values() for s in op.slots)
+
+    def next_probe_edge(self, after_s: float) -> Optional[float]:
+        """The next pulse edge (on or off) of any probe at or after ``after_s``, else None (the runners' plan)."""
+        best = None
+        for _a, _z, ps, _c in tuple(self._probe.values()):
+            for st_, en in ps:
+                for e in (st_, en):
+                    if e >= after_s and (best is None or e < best):
+                        best = e
+        return best
 
     def identify(self, fixture_id: str, seconds: float, rgb: Sequence[float] = (255, 255, 255)) -> bool:
         """That fixture at full ``rgb`` (0..255 each; white) for ``seconds`` from now, whatever it was doing: layers,
@@ -2526,6 +2640,7 @@ class LookEngine:
                 "per_output": per, "errors": dict(self.errors),
                 "identify": {k: round(v[0] - now, 1) for k, v in self._ident.items() if v[0] > now},
                 "follow": dict(self._follow_view), "drops": self.drops, "motion": motion,
+                "plans": dict(self._plan_notes),
                 "holds": sorted(k for k, h in self._holds.items() if h.until_s > now),
                 "gestures": {**self._gstats, "by_kind": dict(self._gstats["by_kind"]), "parts": len(self._gring)}}
 
@@ -2845,7 +2960,8 @@ class LookEngine:
         st.held, st.why = held, why
         fixtures: dict[str, dict] = frame["fixtures"]
         ident, follow = self._ident, self._follow                 # identify and follow, read once a frame
-        ov = bool(ident) or bool(follow)
+        probe = self._probe
+        ov = bool(ident) or bool(follow) or bool(probe)
         holds = self._holds                                       # the Lights page's holds, read once a frame
         mc = prog.motion
         busy = False
@@ -2862,7 +2978,7 @@ class LookEngine:
                 fs = st.fix.get(s.id) if s.enc else None
                 if fs is not None:
                     fs.held = False
-                o = self._override(s.id, ident, follow, t) if ov else None
+                o = self._override(s.id, ident, follow, t, probe) if ov else None
                 if o is not None:
                     fixtures[s.id] = self._fixed(s, o[0], o[1], te, fs, o[2])
                     continue
@@ -2922,6 +3038,7 @@ class LookEngine:
         # S5.14; the director's own swell depth and drop hit are already off under them); a mover rests at home
         house_low = look is not None and bool(look.get("house") or look.get("low"))
         steady = held is not None or house_low
+        feel = isinstance(look, Mapping) and bool(look.get("vibe"))   # a feel plays (not the no-feel look)
 
         cx = self._ctx(t, look, snap, trans_s, min_period_s, energy, vibe, st, prog, op)
         cx.dt = dt
@@ -2968,7 +3085,7 @@ class LookEngine:
                 fs = st.fix[s.id] = _FixState()
             fs.held = False
             if ov:
-                o = self._override(s.id, ident, follow, t)
+                o = self._override(s.id, ident, follow, t, probe)
                 if o is not None:                                # identify, or not following: no look at all
                     inten, col, idn = o
                     if not idn and min_attack_s > 0.0 and fs.prev is not None and t >= fs.t_prev:
@@ -3012,6 +3129,7 @@ class LookEngine:
             attrs = None
             pan_tilt = None
             dark_ok, light_at = False, None
+            fs.plv = 1.0
             if s.enc or s.id in gn.amembers:
                 attrs, pan_tilt, colour, dark_ok, light_at = self._attrs(s, fs, gn, cx, t, colour, cs, house_low,
                                                                          so)
@@ -3051,19 +3169,26 @@ class LookEngine:
                 if gl:
                     inten, colour, pan_tilt = self._gestures(gl, s, fs, cx, gw, t, level, inten, colour, attrs,
                                                              pan_tilt, caps_hits, min_attack_s)
+            # a planned track's level (§5.10): a light between its spots is dark, whatever flashed it above
+            if fs.plv < 1.0:
+                inten *= max(0.0, fs.plv)
             # a fade_dark transition: toward the group's dark level and back (§5.6)
             if gn.pf is not None and gn.pf.kind == "fade_dark":
                 x = gn.pf.darkness(ti, mc.dark_max_s)
                 if x > 0.0:
                     inten += (gn.dark_abs - inten) * x
-            # master and caps (lamps only; screens never reach here)
-            inten = _c01(inten * master)
+            # master and caps (lamps only; screens never reach here); the group's level takes its flashes down too
+            inten = _c01(inten * master * gn.level * cx.ph_level)
             # the motion stage (§5.5): commanded pan and tilt within the light's speed and limits; a dark move
             if pan_tilt is not None:
                 pan, tilt, dark = self._move(s, fs, t, pan_tilt, mc, dark_ok=dark_ok, light_at=light_at)
                 attrs["pan"], attrs["tilt"] = pan, tilt
                 if dark:
                     inten = 0.0
+            if attrs is not None and "gobo" in attrs:
+                inten = self._gobo_dark(s, fs, t, attrs, inten)
+            if s.cw is not None and attrs is not None:
+                inten, colour = self._wheel_dark(s, fs, t, attrs, inten, colour)
             flash_hz = gn.flash_hz
             if flash_hz is not None:
                 if fs.low is None:
@@ -3079,6 +3204,15 @@ class LookEngine:
                 lim = fs.prev + SLEW_PEAK * (t - fs.t_prev) / min_attack_s
                 if inten > lim:
                     inten = lim
+            if house_low or not feel:
+                # House lights, Lights low, or no feel playing (a mode on its way out): nothing strobes, and a light
+                # with no dimmer that is dark through its wheel (a laser) stays dark: it is no house light (trace,
+                # 27 Nov: House lights lit the lasers warm white, and a strobe ran on under them)
+                if attrs is not None and isinstance(attrs.get("shutter"), Mapping) \
+                        and attrs["shutter"].get("mode") not in (None, "open", "closed"):
+                    attrs = {**attrs, "shutter": {"mode": "open"}}
+                if s.type.get("wheel_closed") is not None:
+                    inten = 0.0
             fs.prev, fs.t_prev = inten, t
             ff = {"intensity": inten, "colour": colour,
                   "rgb": [colour[0] * inten, colour[1] * inten, colour[2] * inten], "t_eval_ms": ti * 1000.0}
@@ -3128,6 +3262,10 @@ class LookEngine:
         cx.look_n = int(digits) if digits else 0
         cx.flow_key = (prog.revision, (prog.space or {}).get("revision"))
         cx.ms = cx.co = cx.roles = None
+        cx.ph_level, cx.ph_size = 1.0, 1.0
+        if isinstance(look, Mapping) and (look.get("arrival") or look.get("moments")) \
+                and not (look.get("house") or look.get("low")):
+            cx.ph_level, cx.ph_size = phrasing.envelopes(t, look.get("arrival"), look.get("moments"))
         return cx
 
     # -- the ensemble per light (docs/ENSEMBLE.md §7.2) ---------------------------------------------------------------
@@ -3339,6 +3477,11 @@ class LookEngine:
             gn.dark_abs = self._look_value(look, "floor") if dl == "floor" else _c01(float(dl)) if _isnum(dl) else 0.0
             gn.pf = pf
             st.programs[gid] = pf.new
+            # the program's level (§7.5: the group makes room for a featured low-power light), reached over a
+            # couple of seconds; never under House lights or Lights low, which set their own level
+            lv = p.get("level")
+            gn.level = st.glide((gid, "program-level"), _c01(float(lv)) if _isnum(lv) and not house_low else 1.0, t,
+                                LEVEL_GLIDE_S)
         elif scenes or key in st.fades:
             sname = look.get("light_scene") if look is not None else None
             mix = st.fade(key, sname if sname in scenes else None, t, trans_s)
@@ -3386,8 +3529,8 @@ class LookEngine:
                     mem.pop(rid, None)
                     continue
                 env = self._envelope(m, ef, cx.beat_s)
-                inows = [] if steady else self._nows(ef.layers, st, t, snap, gate, caps_hits, min_attack_s, look,
-                                                     vibe, energy, trans_s, prog.middle_depth, min_period_s)
+                inows = self._nows(self._steady_layers(ef.layers, steady, house_low), st, t, snap, gate, caps_hits,
+                                   min_attack_s, look, vibe, energy, trans_s, prog.middle_depth, min_period_s)
                 gn.effects.append((ef, env, inows))
                 if ef.flash_hz_max is not None and env(t) > 0.0:
                     flash_hz = ef.flash_hz_max if flash_hz is None else min(flash_hz, ef.flash_hz_max)
@@ -3435,12 +3578,23 @@ class LookEngine:
               vibe: bool, energy: float, trans_s: float, min_period_s: float, steady: bool, house_low: bool,
               pf: Optional[_ProgFade], new: bool, w0: float) -> _Part:
         layers = prog.layers if sc is None else sc.layers
-        inows = [] if steady else self._nows(layers, st, t, snap, gate, caps_hits, min_attack_s, look, vibe, energy,
-                                             trans_s, prog.middle_depth, min_period_s)
+        inows = self._nows(self._steady_layers(layers, steady, house_low), st, t, snap, gate, caps_hits,
+                           min_attack_s, look, vibe, energy, trans_s, prog.middle_depth, min_period_s)
         alayers = () if house_low else tuple(L for L in layers if L.kind != "intensity")
         am = (sc.amembers if sc is not None else frozenset(m for L in alayers for m in L.members)) if alayers \
             else frozenset()
         return _Part(sc, inows, alayers, am, pf, new, w0)
+
+    @staticmethod
+    def _steady_layers(layers: Sequence[_Layer], steady: bool, house_low: bool) -> Sequence[_Layer]:
+        """The layers a frame runs. A held frame (a quiet room, or stale features: nothing to follow) keeps the ones
+        that never followed the sound: ``needs: none`` (a slow breathe or glow on its own clock, a part resting dark).
+        Owner, 27 Nov: "when there is no music playing we should go back to pre-state with gentle movement": the
+        waiting scenes are exactly these, and a held frame used to drop them with the rest (the strobe zones and the
+        laser lit, nothing breathing). House lights and Lights low keep none: they are plain steady light."""
+        if not steady:
+            return layers
+        return () if house_low else tuple(L for L in layers if L.needs == "none")
 
     def _nows(self, layers: Sequence[_Layer], st: _OutState, t: float, snap: Optional[Mapping[str, Any]], gate: str,
               caps_hits: bool, min_attack_s: float, look: Any, vibe: bool, energy: float, trans_s: float,
@@ -3489,17 +3643,25 @@ class LookEngine:
                 val = energy
             else:
                 L = ln.layer
-                if L.spread_mode == "chase" and L.order == "group":     # today's walk in the group's order
-                    lag = ln.spread * m[0] / m[1] if ln.spread and m[1] else 0.0
+                lag2: Optional[float] = None
+                if L.spread_mode == "bounce":                           # there and back: two passes a cycle
+                    c = self._place(L, s, m, cx, gn)
+                    lag, lag2 = ln.spread * c / 2.0, ln.spread * (1.0 - c / 2.0)
+                elif L.spread_mode == "chase" and L.order == "group":   # today's walk in the group's order
+                    i = m[1] - 1 - m[0] if L.flow_dir in FLOW_BACK else m[0]
+                    lag = ln.spread * i / m[1] if ln.spread and m[1] else 0.0
                 else:
                     lag = self._lag(L, ln.spread, s, m, cx, gn)
-                key = (id(ln), to, lag)
+                key = (id(ln), to, lag, lag2)
                 val = memo.get(key)
                 if val is None:
                     val = 0.0
                     for vw, src, off, div, per in ln.variants:
                         cyc = ((beat_at(src, to) - off) / div if src is not None else to / div) - lag
-                        val += vw * shape(ln.layer.fx, cyc, per, ln.attack_s, ln.layer.decay_s)
+                        v1 = shape(ln.layer.fx, cyc, per, ln.attack_s, ln.layer.decay_s)
+                        if lag2 is not None:                            # the pass coming back: the brighter of the two
+                            v1 = max(v1, shape(ln.layer.fx, cyc + lag - lag2, per, ln.attack_s, ln.layer.decay_s))
+                        val += vw * v1
                     memo[key] = val
             dd = ln.d * w
             if rs is not None:
@@ -3520,11 +3682,25 @@ class LookEngine:
             return spread * m[0] / m[1] if m[1] else 0.0
         if L.order == "group":                                   # mirror in group order: halves walk together
             i, n = m
-            return spread * (min(i, n - 1 - i) / n if n else 0.0)
+            k = min(i, n - 1 - i)
+            if L.flow_dir == "outward":                          # from the middle out, not the ends in
+                k = (n - 1) // 2 - k
+            return spread * (k / n if n else 0.0)
         flow = gn.flow if gn is not None else None
         if not mirror and flow is not None and flow.get("symmetry") == "mirror":
             mirror = True
         return spread * self._coord(cx, s, flow, L.flow_dir, mirror)
+
+    def _place(self, L: _Layer, s: _Slot, m: tuple[int, int], cx: _Ctx, gn: Optional[_Group]) -> float:
+        """A member's place 0..1 along a bounce's line: its place in the layer's order (first 0, last 1; reversed for
+        a backwards flow_dir), else along the flow."""
+        if L.order == "group":
+            i, n = m
+            if n <= 1:
+                return 0.0
+            return (n - 1 - i) / (n - 1) if L.flow_dir in FLOW_BACK else i / (n - 1)
+        flow = gn.flow if gn is not None else None
+        return self._coord(cx, s, flow, L.flow_dir, L.order == "mirror")
 
     def _coord(self, cx: _Ctx, s: _Slot, flow: Optional[Mapping[str, Any]], dir_: Optional[str], mirror: bool
                ) -> float:
@@ -3574,12 +3750,16 @@ class LookEngine:
         fs.slowed.clear()
         base_pos = list(s.home) if s.moves else None
         res = []
+        lvs = []                                                 # each part's planned level (§5.10)
         for part in gn.parts:
+            fs.plv = 1.0
             if part.alayers and s.id in part.amembers:
                 r = self._apply(part.alayers, s, fs, cx, gn, tp, tc, base_pos, None, dict(s.neutral), colour)
             else:
                 r = (base_pos, None, dict(s.neutral), colour, False)
             res.append((part, r))
+            lvs.append(fs.plv)
+        lv = lvs[0] if lvs else 1.0
         dark_ok, light_at = False, None
         if len(res) == 1:
             pos, q, attrs, col, dark_ok = res[0][1]
@@ -3589,6 +3769,7 @@ class LookEngine:
             xa = p_new.w(tp - so, cs)                            # the new scene's share at its position time
             xc = p_new.w(tc - so, cs)
             attrs = self._mix_attrs(r_old[2], r_new[2], xa)
+            lv = lvs[0] + (lvs[1] - lvs[0]) * xa
             col = r_new[3] if xc >= 1.0 else r_old[3] if xc <= 0.0 else list(palette_mix(r_old[3], r_new[3], xc))
             dark_ok = r_new[4]
             pos = r_new[0]
@@ -3597,15 +3778,13 @@ class LookEngine:
                 jump = max(abs(nw[0] - o[0]), abs(nw[1] - o[1]))
                 kind = pf.kind if pf is not None else "crossfade"
                 mc = cx.prog.motion
+                xe = _smoothstep(xa)                          # a lit glide eases away and in over its whole length
                 if pf is None:
-                    pos = [o[0] + (nw[0] - o[0]) * xa, o[1] + (nw[1] - o[1]) * xa]
+                    pos = [o[0] + (nw[0] - o[0]) * xe, o[1] + (nw[1] - o[1]) * xe]
                 elif kind in ("cut", "dark_move"):
                     # pre-rolled: the move starts its travel time (plus the dark lead and settle) before the line
                     cur = fs.cmd or o
-                    ac = (s.max_speed[0] / mc.accel_s if mc.accel_s > 0 else math.inf,
-                          s.max_speed[1] / mc.accel_s if mc.accel_s > 0 else math.inf)
-                    tr = max(travel_s(nw[0] - cur[0], s.max_speed[0], ac[0]),
-                             travel_s(nw[1] - cur[1], s.max_speed[1], ac[1]))
+                    tr = motion.travel_s(nw[0] - cur[0], nw[1] - cur[1], s.max_speed, mc.ramp_s, mc.jerk_s)
                     lead = 0.0
                     if kind == "dark_move" and jump > mc.dark_move_min_deg:
                         lead = max(0.0, s.fall_s - s.pos_s) + cx.dt + mc.settle_s
@@ -3618,7 +3797,7 @@ class LookEngine:
                         pos = nw if xa > 0.0 else o
                         dark_ok = True
                     else:
-                        pos = [o[0] + (nw[0] - o[0]) * xa, o[1] + (nw[1] - o[1]) * xa]
+                        pos = [o[0] + (nw[0] - o[0]) * xe, o[1] + (nw[1] - o[1]) * xe]
             q = r_new[1] if xa >= 0.5 else r_old[1]
         # effects: latest takes precedence over the scene, blended by each run's envelope
         for ef, env, _inows in gn.effects:
@@ -3627,19 +3806,25 @@ class LookEngine:
             e = env(tp)
             if e <= 0.0:
                 continue
+            fs.plv = 1.0
             r = self._apply(tuple(L for L in ef.layers if L.kind != "intensity"), s, fs, cx, gn, tp, tc,
                             list(pos) if pos is not None else None, q, dict(attrs), col)
+            lv *= 1.0 - e + e * fs.plv
             if pos is not None and r[0] is not None:
                 pos = [pos[0] + (r[0][0] - pos[0]) * e, pos[1] + (r[0][1] - pos[1]) * e]
             attrs = self._mix_attrs(attrs, r[2], e)
             if r[3] is not col:
                 col = list(palette_mix(col, r[3], e))
             dark_ok = dark_ok or r[4]
+        fs.plv = lv
         if not s.enc:
             return None, None, col, False, None
         if s.moves and pos is None:
             pos = list(s.home)
         sw = (cx.prog.groups.get(gn.gid) or {}).get("sway") if s.moves else None
+        if sw and any(L.kind == "position" and L.p.get("mode") == "planned" and s.id in L.members
+                      for part in gn.parts for L in part.alayers):
+            sw = None                                            # a planner's geometry is exact: no sway on it
         if sw and pos is not None and sw[0] > 0.0:              # a gentle sway on whatever the scene settled on
             dp, dt = _sway(s.id, tp, sw[0], sw[1])
             pos = [pos[0] + dp, pos[1] + dt]
@@ -3690,6 +3875,8 @@ class LookEngine:
                     pos = [pos[0] + (own[0] - pos[0]) * d, pos[1] + (own[1] - pos[1]) * d]
                     if d >= 0.5:
                         q = oq
+                    if p["mode"] == "planned":                   # the track's level, at the layer's depth
+                        fs.plv *= 1.0 - d + d * fs.plv_now
                 if p.get("dark_move"):
                     dark_ok = True
             elif k == "beam":
@@ -3709,14 +3896,32 @@ class LookEngine:
                     ck = (L.id, s.id)
                     cands = cx.st.slotc.get(ck)
                     if cands is None:
-                        cands = cx.st.slotc[ck] = self._slots(p["slot"], slots)
+                        # gobos named for one rig (the GigBAR's flower, pinwheel...) are a preference: a light with
+                        # none of them shows its own gobos instead (auto), never nothing
+                        cands = self._slots(p["slot"], slots) or (self._slots("auto", slots) if p["slot"] != "auto" and
+                                                                    not isinstance(p["slot"], int) else [])
+                        cx.st.slotc[ck] = cands
                     if not cands:
                         fs.unresolved.add(L.id)
                     else:
-                        attrs[wheel] = cands[self._counter(p["change_on"], cx, tp) % len(cands)]
+                        n = self._counter(p["change_on"], cx, tp)
+                        cur = cands[n % len(cands)]
+                        if p["change"] == "dark" and len(cands) > 1:
+                            # changed in the dark, ready for the line: the change starts as long before it as the
+                            # light's fall and the wheel's turn take, so the new gobo lights on the line itself
+                            nxt = cands[(n + 1) % len(cands)]
+                            lead = s.fall_s + GOBO_SLOT_S * abs(int(nxt) - int(cur)) + GOBO_SETTLE_S
+                            if self._counter(p["change_on"], cx, tp + lead) != n:
+                                cur = nxt
+                        attrs[wheel] = cur
+                    fs.g_live = p["change"] == "live"
                 sp = self._spin(p, cx, gn)
                 if sp is not None and f"{wheel}_spin" in s.attrs:
                     attrs[f"{wheel}_spin"] = sp
+                if p.get("scroll") is not None and wheel == "gobo" and "gobo_scroll" in s.attrs:
+                    sc = self._spin({"spin": p["scroll"], "spin_scale": p["spin_scale"]}, cx, gn)
+                    if sc is not None:
+                        attrs["gobo_scroll"] = sc
                 if p.get("shake") is not None and f"{wheel}_shake" in s.attrs:
                     attrs[f"{wheel}_shake"] = _c01(self._val(p["shake"], L, s, m, cx, gn, tp))
             elif k == "prism":
@@ -3731,7 +3936,8 @@ class LookEngine:
                     attrs["prism_spin"] = sp if pin else 0.0
             elif k == "colour":
                 roles = ((look or {}).get("palette") or {}).get("roles") if isinstance(look, Mapping) else None
-                rc = _hex_rgb((roles.get(p["role"]) or {}).get("hex")) if isinstance(roles, Mapping) and \
+                rc = p["rgb"] if p.get("rgb") is not None else \
+                    _hex_rgb((roles.get(p["role"]) or {}).get("hex")) if isinstance(roles, Mapping) and \
                     isinstance(roles.get(p["role"]), Mapping) else None
                 if rc is None:
                     fs.unresolved.add(L.id)
@@ -3775,7 +3981,10 @@ class LookEngine:
                 turn = None
                 out = dict(attrs.get("macro") or {})
                 for ch, v in (p.get("set") or {}).items():
-                    if isinstance(v, Mapping):               # by the way the room's flow turns
+                    if isinstance(v, Mapping) and "cycle" in v:      # the next of them each beat, bar or phrase
+                        cyc = v["cycle"]
+                        v = cyc[self._counter(v.get("on", "bar"), cx, tp) % len(cyc)]
+                    elif isinstance(v, Mapping):             # by the way the room's flow turns
                         if turn is None:
                             sp = self._spin({"spin": "flow", "spin_scale": 1.0}, cx, gn)
                             turn = "cw" if sp is not None and sp > 0 else "ccw" if sp is not None and sp < 0 \
@@ -3923,6 +4132,15 @@ class LookEngine:
         fn = getattr(cx.sm, "aim", None)
         if fn is None:
             return None
+        # keep-out regions (space.yaml keep_out; owner, 27 Nov): a beam that would cross one that holds for this
+        # light's group points beside it instead (space.clear_target: the nearest clear place, away from the region)
+        kb = getattr(cx.sm, "keep_boxes", None)
+        boxes = kb(cx.view, s.group) if kb is not None and s.pos is not None else ()
+        if boxes:
+            try:
+                q, _moved = cx.sm.clear_target(s.pos, q, boxes)
+            except Exception:                                    # degrade: counted, the aim as asked
+                self._fail("space.clear_target")
         cur = current if current is not None else (fs.cmd or s.home)
         try:
             got = fn(s.pose, q, current=(cur[0], cur[1]), **s.aimkw)
@@ -4058,8 +4276,10 @@ class LookEngine:
         if mode == "home":
             return (s.home[0], s.home[1]), None
         if mode == "tilt_wave":
-            sz = p["size_deg"] * self._fit(L, m, s, fs, cx, gn, tp, None)[0] * (cx.ms.get(s.id, 1.0) if cx.ms else 1.0)
-            w, _per = self._phase(L, s, m, cx, gn, tp)
+            sz = p["size_deg"] * self._fit(L, m, s, fs, cx, gn, tp, None)[0] \
+                * (cx.ms.get(s.id, 1.0) if cx.ms else 1.0) * cx.ph_size
+            mc = cx.prog.motion
+            w, _per = self._phase(L, s, m, cx, gn, tp + motion.lag_s(mc.ramp_s, mc.jerk_s))
             return (prev[0], prev[1] + sz * (2.0 * shape(p["fx"], w) - 1.0)), prev_q
         if mode == "lift":
             if not cal:
@@ -4090,6 +4310,8 @@ class LookEngine:
             return (pt, tg[1]) if pt is not None else None
         if mode == "bounce":
             return self._bounce(L, m, s, fs, cx, gn, tp)
+        if mode == "planned":
+            return self._planned(L, m, s, fs, cx, gn, tp)
         # the patterns: in a surface's (u, v) metres through the pose, else in the light's own degrees. Where it is
         # drawn (centre, surface, axes) is worked out once per light, layer, space and flow; each frame moves w only
         fr = self._pattern_frame(L, m, s, fs, cx, gn)
@@ -4098,7 +4320,7 @@ class LookEngine:
         if fr[0] == "surf":
             surf, u0, v0 = fr[5], fr[6], fr[7]
             spt = cx.sm.surface_point
-            size = p["size"] * fan
+            size = (fr[8] if fr[8] is not None else p["size"]) * fan
 
             def at(w: float, cyc: float, share: float, cur: Optional[Sequence[float]] = None
                    ) -> Optional[tuple[tuple[float, float], tuple]]:
@@ -4173,7 +4395,7 @@ class LookEngine:
             if isinstance(uv, (list, tuple)) and len(uv) == 2 and all(_isnum(x) for x in uv) and \
                     callable(getattr(cx.sm, "surface_point", None)):
                 got = ("surf", flip, rsign, seed, self._along(p["along"], cx, gn, L, surf, centre_q), surf,
-                       float(uv[0]), float(uv[1]))
+                       float(uv[0]), float(uv[1]), self._pool_size(s, surf, centre_q, uv, p))
         if got is None:
             if tg is None:
                 c0 = s.home
@@ -4187,20 +4409,45 @@ class LookEngine:
         cx.st.frames[key] = got
         return got
 
+    @staticmethod
+    def _pool_size(s: _Slot, surf: Mapping[str, Any], q: Sequence[float], uv: Sequence[float], p: Mapping[str, Any]
+                   ) -> Optional[float]:
+        """A ``size_pools`` pattern's size in metres for this light: that share of the long side of the pool its beam
+        draws at the pattern's centre, no further than 0.3 m inside the surface's nearest edge. None: ``size``."""
+        k = p.get("size_pools")
+        if k is None or s.pos is None:
+            return None
+        from .staging import geom
+        lens = (s.type.get("physical") or {}).get("lens_deg") if isinstance(s.type, Mapping) else None
+        beam = sum(lens) / 2.0 if isinstance(lens, (list, tuple)) and len(lens) == 2 else PLAN_BEAM_DEG
+        n = surf.get("normal")
+        if not (isinstance(n, (list, tuple)) and len(n) == 3):
+            return None
+        size = k * geom.footprint(s.pos, q, n, float(beam))[1]
+        wh = surf.get("size")
+        if isinstance(wh, (list, tuple)) and len(wh) == 2:
+            edge = min(uv[0], wh[0] - uv[0], uv[1], wh[1] - uv[1]) - POOL_EDGE_M
+            size = min(size, max(0.2, edge))
+        return size
+
     def _run_pattern(self, L: _Layer, m: tuple[int, int], s: _Slot, fs: _FixState, cx: _Ctx, gn: _Group, tp: float,
                      at: Callable, mode: str) -> Optional[tuple]:
-        ms = cx.ms.get(s.id, 1.0) if cx.ms else 1.0             # docs/ENSEMBLE.md §7.2: its role's motion x the size
+        ms = (cx.ms.get(s.id, 1.0) if cx.ms else 1.0) * cx.ph_size   # docs/ENSEMBLE.md §7.2: its role's motion x the
+                                                                 # size; and a lift's wind-up and landing (phrasing.py)
         if mode == "fan":
             return at(0.0, 0.0, ms)
         share, factor = self._fit(L, m, s, fs, cx, gn, tp, at)
-        cyc, _per = self._phase(L, s, m, cx, gn, tp, factor)
+        mc = cx.prog.motion                                     # drawn the easing's lag ahead: on the beat when sent
+        cyc, _per = self._phase(L, s, m, cx, gn, tp + motion.lag_s(mc.ramp_s, mc.jerk_s), factor)
         return at(cyc - math.floor(cyc), cyc, share * ms)
 
     def _fit(self, L: _Layer, m: tuple[int, int], s: _Slot, fs: _FixState, cx: _Ctx, gn: _Group, tp: float,
              at: Optional[Callable]) -> tuple[float, float]:
-        """Degrade, never trip (§5.5): (size share, period factor) so the pattern's peak speed fits under SPEED_FIT x
-        the light's: first shrink (to min_size_share), then double the period on the grid and fit again. Measured
-        over one cycle when the pattern's period or size changes (cached per output)."""
+        """Degrade, never trip (§5.5): (size share, period factor) so the pattern can be drawn truly. Its peak speed
+        fits under SPEED_FIT x the light's (first shrink, to min_size_share, then double the period on the grid and
+        fit again), and the motion stage's easing keeps at least KEPT_MIN of its size (motion.kept: a pattern that
+        turns back on itself too quickly to keep its shape runs slower; shrinking wouldn't help it). Measured over
+        one cycle when the pattern's period or size changes (cached per output)."""
         _w, per = self._phase(L, s, m, cx, gn, tp)
         if per <= 0.0 or not s.moves:
             return 1.0, 1.0
@@ -4212,7 +4459,8 @@ class LookEngine:
             mc = cx.prog.motion
             vp, vt = s.max_speed[0] * SPEED_FIT, s.max_speed[1] * SPEED_FIT
 
-            def ratio(share: float, factor: float) -> float:
+            def measure(share: float, factor: float) -> tuple[float, float]:
+                """(its peak speed over the light's, the share of its size the easing keeps)."""
                 pts = []
                 cur = None
                 for k in range(FIT_SAMPLES + 1):
@@ -4222,26 +4470,30 @@ class LookEngine:
                     else:
                         r = at(w, w, share, cur)
                     if r is None:
-                        return 0.0
+                        return 0.0, 1.0
                     cur = r[0]
                     pts.append(r[0])
                 step = per * factor / FIT_SAMPLES
                 worst = 0.0
                 for a, b in zip(pts, pts[1:]):
                     worst = max(worst, abs(b[0] - a[0]) / step / vp, abs(b[1] - a[1]) / step / vt)
-                return worst
+                return worst, motion.kept(pts, per * factor, mc.ramp_s, mc.jerk_s)
             share, factor = 1.0, 1.0
-            r = ratio(1.0, 1.0)
+            r, kp = measure(1.0, 1.0)
+            n = 0
+            while kp < KEPT_MIN and n < MAX_DOUBLINGS:           # too quick to keep its shape: slower
+                factor *= 2.0
+                n += 1
+                r, kp = measure(1.0, factor)
             if r > 1.0:
                 share = max(mc.min_size_share, 1.0 / r)
-                r = ratio(share, 1.0)
-                n = 0
+                r = measure(share, factor)[0]
                 while r > 1.0 + 1e-6 and n < MAX_DOUBLINGS:
                     factor *= 2.0
                     n += 1
-                    r1 = ratio(1.0, factor)
+                    r1 = measure(1.0, factor)[0]
                     share = 1.0 if r1 <= 1.0 else max(mc.min_size_share, 1.0 / r1)
-                    r = ratio(share, factor)
+                    r = measure(share, factor)[0]
             got = (share, factor)
             if len(cx.st.fits) > FIT_CACHE_MAX:
                 cx.st.fits.clear()
@@ -4280,11 +4532,8 @@ class LookEngine:
         n = len(pts)
         if n == 1:
             return pts[0]
-        acc = (s.max_speed[0] / mc.accel_s if mc.accel_s > 0 else math.inf,
-               s.max_speed[1] / mc.accel_s if mc.accel_s > 0 else math.inf)
-
         def trav(a: Sequence[float], b: Sequence[float]) -> float:
-            return max(travel_s(b[0] - a[0], s.max_speed[0], acc[0]), travel_s(b[1] - a[1], s.max_speed[1], acc[1]))
+            return motion.travel_s(b[0] - a[0], b[1] - a[1], s.max_speed, mc.ramp_s, mc.jerk_s)
         hop_beats = 1.0 if p["hop"] == "beat" else float(cx.bpb)
         anchor = 0.0 if p["hop"] == "beat" else cx.bar_anchor
         worst = max(trav(pts[k][0], pts[(k + 1) % n][0]) for k in range(n))
@@ -4308,34 +4557,203 @@ class LookEngine:
             return nxt
         return cur
 
+    # -- planned positions (staging; docs/LIGHTS.md §5.10) ---------------------------------------------------------------
+    def _plan_of(self, L: _Layer, cx: _Ctx) -> Any:
+        """The layer's staging.Plan for this room and these lights: planned once per layer, space and program (the
+        rig), from every calibrated light the layer selects. None: nothing to plan with (a problem line says why)."""
+        key = (L.id, cx.flow_key)
+        if key in cx.st.plans:
+            return cx.st.plans[key]
+        plan = None
+        try:
+            from . import staging
+            lights = []
+            apps = (cx.view or {}).get("appliances") or {}
+            for s in cx.op.slots:
+                if s.id not in L.members or not self._calibrated(s, cx) or not s.moves:
+                    continue
+
+                def aim(q: Sequence[float], cur: Sequence[float], _s: _Slot = s) -> Optional[tuple]:
+                    got = cx.sm.aim(_s.pose, q, current=(cur[0], cur[1]), **_s.aimkw)
+                    return float(got["pan"]), float(got["tilt"]), got.get("reachable") is not False
+                lens = (s.type.get("physical") or {}).get("lens_deg") if isinstance(s.type, Mapping) else None
+                beam = sum(lens) / 2.0 if isinstance(lens, (list, tuple)) and len(lens) == 2 else PLAN_BEAM_DEG
+                lights.append(staging.Light(s.id, tuple(s.pos), float(beam), aim, tuple(s.max_speed),
+                                            bar=(apps.get(s.id) or {}).get("bar"), home=tuple(s.home)))
+            mc = cx.prog.motion
+            plan = staging.make(L.p["plan"], L.p["with"], cx.view or {}, lights, ramp_s=mc.ramp_s, jerk_s=mc.jerk_s)
+            msg = f"{L.id}: {plan.note or 'no plan'}" + (f" ({'; '.join(plan.problems)})" if plan.problems else "")
+            self._plan_notes[L.id] = msg
+            log.info("staging %s", msg)
+        except Exception:                                        # degrade: counted, the layers below stand
+            self._fail("staging.make")
+            plan = None
+        if len(cx.st.plans) > FIT_CACHE_MAX:
+            cx.st.plans.clear()
+        cx.st.plans[key] = plan
+        return plan
+
+    def _planned(self, L: _Layer, m: tuple[int, int], s: _Slot, fs: _FixState, cx: _Ctx, gn: _Group, tp: float
+                 ) -> Optional[tuple[tuple[float, float], Optional[tuple]]]:
+        """A planner's track for this light: where it points (drawn the motion stage's lag ahead, so it lands on the
+        beat) and its level (``fs.plv_now``: a light between its spots is dark). The layer's period is doubled on the
+        grid until it is at least the plan's ``min_period_s`` (``slowed``). A plan with an end runs once from the
+        scene's start and holds its end."""
+        fs.plv_now = 1.0
+        if not self._calibrated(s, cx):
+            return None
+        plan = self._plan_of(L, cx)
+        tr = plan.tracks.get(s.id) if plan is not None else None
+        if tr is None:
+            return None
+        _w, per = self._phase(L, s, m, cx, gn, tp)
+        factor, n = 1.0, 0
+        while per > 0.0 and per * factor < plan.min_period_s and n < MAX_DOUBLINGS:
+            factor *= 2.0
+            n += 1
+        if factor > 1.0:
+            fs.slowed[L.id] = f"period x{factor:g} (its plan needs {plan.min_period_s:.1f} s)"
+        mc = cx.prog.motion
+        ahead = motion.lag_s(mc.ramp_s, mc.jerk_s)
+        if plan.once:
+            t0 = None
+            pf = gn.pf
+            scene = L.id.split("/", 1)[0]
+            if pf is not None and pf.new == scene:
+                # the scene's landing; a group's first program has none: when this layer first played for it
+                t0 = pf.at if math.isfinite(pf.at) else cx.st.plan_t0.setdefault((L.id, pf.key), tp)
+            span = per * factor
+            w_at = (lambda tt: (tt - t0) / span) if t0 is not None and span > 0.0 else (lambda tt: 1.0)
+            q, _lv = tr.sample(w_at(tp + ahead), loop=False)
+            fs.plv_now = tr.sample(w_at(tp), loop=False)[1]
+        else:
+            cyc, _p = self._phase(L, s, m, cx, gn, tp + ahead, factor)
+            q, _lv = tr.sample(cyc, loop=True)
+            fs.plv_now = tr.sample(self._phase(L, s, m, cx, gn, tp, factor)[0], loop=True)[1]
+        pt = self._aim(s, fs, cx, q, L.id)
+        return (pt, q) if pt is not None else None
+
+    # -- a gobo change in the dark ---------------------------------------------------------------------------------------
+    @staticmethod
+    def _gobo_dark(s: _Slot, fs: _FixState, t: float, attrs: dict, inten: float) -> float:
+        """A lit head's gobo change (owner, 27 Nov: "changing gobos while the light is on ... often just looks a bit
+        clumsy"): its wheel turns through every gobo between the two, so they flick past in the beam. The old gobo
+        holds while the light falls, the wheel turns in the dark, and the light comes back on the new one. A head
+        already dark, a scrolling wheel, or a layer with ``change: live`` (a snap between neighbours on the beat)
+        changes at once. Returns the intensity; ``attrs["gobo"]`` is set to what the wheel should show now."""
+        want = attrs.get("gobo")
+        if fs.g_phase == 0:
+            if fs.g_shown is None or want == fs.g_shown or fs.g_live or inten <= GOBO_DARK_LEVEL \
+                    or attrs.get("gobo_scroll"):
+                fs.g_shown = want
+                return inten
+            fs.g_phase, fs.g_until = 1, t + s.fall_s + GOBO_SETTLE_S
+        fs.g_pend = want
+        if fs.g_phase == 1:
+            if t < fs.g_until:
+                attrs["gobo"] = fs.g_shown
+                return 0.0
+            span = abs((fs.g_pend or 1) - (fs.g_shown or 1))
+            fs.g_phase, fs.g_until, fs.g_shown = 2, t + GOBO_SLOT_S * span + GOBO_SETTLE_S, fs.g_pend
+        if fs.g_phase == 2:
+            if fs.g_pend != fs.g_shown:                          # asked again while turning: turn on to that
+                fs.g_until += GOBO_SLOT_S * abs((fs.g_pend or 1) - (fs.g_shown or 1))
+                fs.g_shown = fs.g_pend
+            if t < fs.g_until:
+                attrs["gobo"] = fs.g_shown
+                return 0.0
+            fs.g_phase = 0
+        return inten
+
+    def _wheel_dark(self, s: _Slot, fs: _FixState, t: float, attrs: Mapping[str, Any], inten: float, colour: list
+                    ) -> tuple[float, list]:
+        """A lit head's colour change on a colour wheel (owner, 27 Nov: "we should be deliberate about changing
+        colour film while spots are live. it's not unacceptable, but unless it's intentional, it can just look a bit
+        amateur"): a wheel can't fade between two colours, it turns through every filter between them, and even one
+        filter along is a snap nobody asked for. So a lit head keeps its filter until the turn is meant, and then
+        makes it dark, as a gobo's is: the old colour while the light falls, the turn, then the new colour.
+          * a cut (the colour asked for jumps, WHEEL_JUMP: a new look, the roles dealt again) turns at once;
+          * a glide or a drift waits until one new filter has been wanted for WHEEL_SETTLE_S and the last turn is
+            WHEEL_HOLD_S old: the filters a fade passes over are never shown, and a colour wandering about the line
+            between two filters doesn't blink back and forth;
+          * a head that is dark already (a dark move, a fade through dark) takes the new filter there, unseen;
+          * a scene that steps or spins the wheel itself (a ``colour_wheel`` layer) is the intentional change in
+            the light, and is left to it.
+        Lights that mix their colour (pars, derbies) never come here: they fade. Returns (intensity, the colour to
+        send)."""
+        key = (round(colour[0], 3), round(colour[1], 3), round(colour[2], 3))
+        if fs.c_phase == 0:
+            prev, fs.c_prev = fs.c_prev, key
+            if key == fs.c_key:
+                fs.c_want = None
+                return inten, colour
+            slot = self._wheel_slot(s, inten, colour, attrs)
+            if slot is None:
+                return inten, colour
+            if fs.c_slot is None or slot == fs.c_slot or inten <= GOBO_DARK_LEVEL \
+                    or attrs.get("colour_slot") is not None or attrs.get("colour_spin"):
+                fs.c_key, fs.c_slot, fs.c_col, fs.c_want = key, slot, list(colour), None
+                return inten, colour
+            if fs.c_want != slot:
+                fs.c_want, fs.c_since = slot, t
+            jump = prev is not None and math.dist(prev, key) >= WHEEL_JUMP
+            if not jump and (t - fs.c_since < WHEEL_SETTLE_S or t - fs.c_last < WHEEL_HOLD_S):
+                return inten, list(fs.c_col)                     # not yet: the filter it has
+            fs.c_phase, fs.c_until, fs.c_to, fs.c_want = 1, t + s.fall_s + GOBO_SETTLE_S, slot, None
+        if fs.c_phase == 1:
+            if t < fs.c_until:
+                return 0.0, fs.c_col
+            fs.c_phase = 2
+            fs.c_until = t + COLOUR_SLOT_S * abs(fs.c_to - (fs.c_slot or 0)) + GOBO_SETTLE_S
+        if t < fs.c_until:
+            return 0.0, colour
+        fs.c_phase, fs.c_last, fs.c_prev = 0, t, key
+        slot = self._wheel_slot(s, inten, colour, attrs)
+        fs.c_key, fs.c_slot, fs.c_col = key, (slot if slot is not None else fs.c_to), list(colour)
+        return inten, colour
+
+    def _wheel_slot(self, s: _Slot, inten: float, colour: Sequence[float], attrs: Mapping[str, Any]) -> Optional[int]:
+        """Which filter of its colour wheel a light would show for ``colour`` (the encoder's own pick), as the
+        wheel's index."""
+        off, dm = s.cw
+        try:
+            v = self._encode(s, max(inten, 0.5), colour, attrs)[off]
+        except Exception:                                        # noqa: BLE001 - no wheel to speak of this frame
+            return None
+        return min(range(len(dm)), key=lambda k: abs(dm[k] - v))
+
     # -- the motion stage (§5.5) ---------------------------------------------------------------------------------------
     def _move(self, s: _Slot, fs: _FixState, t: float, target: Sequence[float], mc: _Motion, *,
               dark_ok: bool = False, light_at: Optional[float] = None) -> tuple[float, float, bool]:
-        """Commanded (pan, tilt) toward ``target`` within the light's speed, acceleration and soft limits, and
-        whether it must be dark now (a dark move: going dark, moving, or settling)."""
+        """Commanded (pan, tilt) toward ``target`` through the light's motion stage (motion.Smoother: both axes
+        together within its speed, eased over accel_s and jerk_s) and its soft limits, and whether it must be dark
+        now (a dark move: going dark, moving, or settling)."""
         tgt = [_clamp(target[0], s.limits[0], s.limits[1]), _clamp(target[1], s.limits[2], s.limits[3])]
         if abs(tgt[0] - target[0]) > 1e-9 or abs(tgt[1] - target[1]) > 1e-9:
             fs.clamped.add("limits")
+        sm = fs.sm
         if fs.cmd is None:
             fs.cmd, fs.vel, fs.t_m = [s.home[0], s.home[1]], [0.0, 0.0], t
+        if sm is None:
+            sm = fs.sm = motion.Smoother(fs.cmd)
+        elif fs.cmd[0] != sm.out[0] or fs.cmd[1] != sm.out[1]:   # something else placed it (a hold): on from there
+            sm.reset(fs.cmd)
         dt = 0.0 if fs.t_m is None else _clamp(t - fs.t_m, 0.0, DT_MAX_S)
         fs.t_m = t
-        acc = (s.max_speed[0] / mc.accel_s if mc.accel_s > 0 else math.inf,
-               s.max_speed[1] / mc.accel_s if mc.accel_s > 0 else math.inf)
-        cmd, vel = fs.cmd, fs.vel
+        cmd = fs.cmd
         jump = max(abs(tgt[0] - cmd[0]), abs(tgt[1] - cmd[1]))
         if fs.dark == 0 and dark_ok and jump > mc.dark_move_min_deg:
             fs.dark = 1                                          # dark first: the move waits out the fall
             fs.t_move = t + max(0.0, s.fall_s - s.pos_s) + dt
         if fs.dark == 1:
-            if t < fs.t_move:
-                fs.vel = [0.0, 0.0]
-                return cmd[0], cmd[1], True
+            if t < fs.t_move:                                    # standing where it has got to (easing to rest)
+                out = sm.step(dt, sm.raw, s.max_speed, mc.ramp_s, mc.jerk_s)
+                fs.cmd = [out[0], out[1]]
+                return out[0], out[1], True
             fs.dark = 2
-        prev = fs.tgt or tgt
         fs.tgt = tgt
-        cmd[0], vel[0] = _slew1(cmd[0], vel[0], tgt[0], abs(tgt[0] - prev[0]) > 1e-9, s.max_speed[0], acc[0], dt)
-        cmd[1], vel[1] = _slew1(cmd[1], vel[1], tgt[1], abs(tgt[1] - prev[1]) > 1e-9, s.max_speed[1], acc[1], dt)
+        out = sm.step(dt, tgt, s.max_speed, mc.ramp_s, mc.jerk_s)
+        cmd = fs.cmd = [out[0], out[1]]
         if fs.dark == 2:
             if max(abs(tgt[0] - cmd[0]), abs(tgt[1] - cmd[1])) <= ARRIVED_DEG:
                 fs.dark = 3                                      # arrived: light again after the settle
@@ -4409,9 +4827,14 @@ class LookEngine:
         return colour_mix.encode(s.info, s.type, inten, colour)
 
     @staticmethod
-    def _override(fid: str, ident: Mapping[str, tuple], follow: Mapping[str, tuple], t: float
-                  ) -> Optional[tuple[float, list, bool]]:
-        """(intensity, colour, identify?) for a fixture identifying at ``t`` or not following the music; else None."""
+    def _override(fid: str, ident: Mapping[str, tuple], follow: Mapping[str, tuple], t: float,
+                  probe: Optional[Mapping[str, tuple]] = None) -> Optional[tuple[float, list, bool]]:
+        """(intensity, colour, identify?) for a fixture probed or identifying at ``t``, or not following the music;
+        else None. A probe: full in a pulse, dark around them."""
+        pr = probe.get(fid) if probe else None
+        if pr is not None and pr[0] <= t < pr[1]:
+            on = any(a <= t < z for a, z in pr[2])
+            return (1.0 if on else 0.0), pr[3], True
         i = ident.get(fid)
         if i is not None and t < i[0]:
             return 1.0, i[1], True

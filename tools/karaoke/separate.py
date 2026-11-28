@@ -33,6 +33,8 @@ def main() -> int:
     a = ap.parse_args()
 
     from audio_separator.separator import Separator
+    import gpu_pace  # the worker slows it while something plays live (routes/karaoke/pace.py)
+    gpu_pace.install()
 
     t0 = time.perf_counter()
     with tempfile.TemporaryDirectory(dir=a.out_dir) as tmp:

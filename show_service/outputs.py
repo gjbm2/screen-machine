@@ -116,6 +116,9 @@ CAPABILITY_OFF_PREFIX = "this deployment has no "
 FIXTURES_FILE_WORDS = contract.FIXTURES_FILE_WORDS   # "deployments/<id>/lights/fixtures.yaml"
 IDENTIFY_S = 3.0                   # README S5.23: identify's full white, unless the call says how long
 IDENTIFY_MAX_S = 30.0              # starting point: a longer ask is cut to this (the answer's ``seconds`` says so)
+PROBE_MAX = 64                  # a timing probe's pulses (looks.probe; the lights' calibration)
+PROBE_PULSE_MAX_S = 2.0
+PROBE_SPAN_MAX_S = 120.0
 ONLINE_CHECK_S = 10.0              # README S5.23: each node address pinged this often (show-rig-online)
 PING_WAIT_S = 1                    # ping -W: one echo's wait, s
 FOLLOW_BRI_DEFAULT = 100           # a static colour sent with no ``bri``: as written (full)
@@ -322,8 +325,20 @@ class _Runner:
                     if self._on_hit is not None:
                         self._on_hit()
                     t = d.plan(t_last, now, True)
-                return self._sane(float(t), t_last, now)
-        return self._sane(float(d.plan(t_last, now, active)), t_last, now)
+                return self._probe_edge(self._sane(float(t), t_last, now), now)
+        return self._probe_edge(self._sane(float(d.plan(t_last, now, active)), t_last, now), now)
+
+    def _probe_edge(self, t: float, now: float) -> float:
+        """A timing probe's next edge (looks.probe) before the planned frame: the frame goes at the edge instead, so
+        the light changes in the frame sent at that moment (calibration measures from there)."""
+        fn = getattr(self.engine, "next_probe_edge", None)
+        if not callable(fn):
+            return t
+        try:
+            e = fn(now - 1e-3)
+        except Exception:                                  # noqa: BLE001  a probe never stops the frames
+            return t
+        return max(now, float(e)) if e is not None and e < t else t
 
     @staticmethod
     def _sane(t: float, t_last: float, now: float) -> float:
@@ -1138,6 +1153,40 @@ class Rig:
             return {"ok": False, "why": "The look engine doesn't drive this light yet; it flashes once it does."}
         return {"ok": True, "seconds": s}
 
+    def probe(self, fid: str, body: Any) -> dict:
+        """POST /api/v1/rig/fixtures/{id}/probe (show-brain): a timing probe for the lights' calibration (looks.probe):
+        ``{pulses: [[at_s, seconds], ...]}`` on this process's monotonic clock (GET /api/v1/clock), ``rgb``?, and
+        ``dark_s``? (held dark around them). ``{pulses: []}`` ends it. -> ``{ok, pulses, output}`` or ``{ok: false,
+        why}``. At most PROBE_MAX pulses, each at most PROBE_PULSE_MAX_S long, all within PROBE_SPAN_MAX_S."""
+        b = body if isinstance(body, dict) else {}
+        raw = b.get("pulses")
+        if not isinstance(raw, list) or len(raw) > PROBE_MAX:
+            raise ValueError(f"bad_request: pulses is a list of at most {PROBE_MAX} [at_s, seconds]")
+        pulses = []
+        for x in raw:
+            if not (isinstance(x, (list, tuple)) and len(x) == 2 and all(_num(v) is not None for v in x)
+                    and 0 < float(x[1]) <= PROBE_PULSE_MAX_S):
+                raise ValueError(f"bad_request: each pulse is [at_s, seconds] with seconds in (0, {PROBE_PULSE_MAX_S}]")
+            pulses.append((float(x[0]), float(x[1])))
+        now = time.monotonic()
+        if pulses and (min(a for a, _ in pulses) < now - 0.05 or max(a + d for a, d in pulses) > now + PROBE_SPAN_MAX_S):
+            raise ValueError(f"bad_request: the pulses must start from now and end within {PROBE_SPAN_MAX_S:g} s")
+        v = self._view
+        f = ((v or {}).get("fixtures") or {}).get(fid)
+        if f is None:
+            return {"ok": False, "why": f"There's no light {fid!r} in the rig."}
+        oid = f.get("output")
+        o = self._outs.get(oid) if oid else None
+        fn = getattr(self.engine, "probe", None)
+        if o is None or not callable(fn):
+            return {"ok": False, "why": "It isn't on an output that runs."}
+        rgb = b.get("rgb") if isinstance(b.get("rgb"), list) and len(b["rgb"]) == 3 else (255, 255, 255)
+        dark = _num(b.get("dark_s"))
+        fn(fid, pulses, rgb, 1.0 if dark is None else max(0.0, min(5.0, dark)))
+        if o.runner is not None:
+            o.runner.wake.set()                                          # re-plan: the first edge may be sooner
+        return {"ok": True, "pulses": [[a, d] for a, d in pulses], "output": oid}
+
     def follow_view(self) -> dict:
         """GET /api/v1/rig/follow (any thread): ``{fixtures: {id: value}}``."""
         return {"fixtures": dict(self._follow)}
@@ -1248,6 +1297,17 @@ class Rig:
         """GET /api/v1/rig ``fixtures`` (any thread): contract.RigFixtureRow per fixture of the current view."""
         return self._rows(self._view, getattr(self.registry, "added_ids", None) or frozenset())
 
+    @staticmethod
+    def _spread_deg(t: Mapping[str, Any]) -> Optional[float]:
+        """The full angle a fixed laser's beams spread over (its type file: category Laser, lens degrees), else None."""
+        lens = (t.get("physical") or {}).get("lens_deg") if isinstance(t.get("physical"), Mapping) else None
+        if "Laser" not in (t.get("categories") or ()) or not lens:
+            return None
+        try:
+            return float(max(lens))
+        except (TypeError, ValueError):
+            return None
+
     def _rows(self, v: Any, editable: Any) -> list[dict]:
         if not isinstance(v, Mapping):
             return []
@@ -1279,7 +1339,10 @@ class Rig:
                          # docs/LIGHTS.md §2.3: what it can do (its setup applied) and its setup, for the page
                          "caps": fx.caps_of(t, f.get("setup")) if fx is not None and t and hasattr(fx, "caps_of")
                          else None,
-                         "setup": dict(f.get("setup") or {})})
+                         "setup": dict(f.get("setup") or {}),
+                         # a laser's spread of beams (its type file's lens angle): the Lights page offers its tilt
+                         # (setup lean_deg) and the 3D room draws from the two
+                         "spread_deg": self._spread_deg(t)})
         return rows
 
     def _last_hex(self, oid: Any, fid: str) -> Optional[str]:

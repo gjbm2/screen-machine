@@ -1,23 +1,31 @@
 """karaoke.api: /api/karaoke/* (docs/KARAOKE.md). Only while the deployment's ``karaoke`` capability is on.
 
   GET    /karaoke/state                    the library, the queue, the player and the player page's last report
-  GET    /karaoke/now                      what the display page needs (polled every second)
-  GET    /karaoke/search?q=                LRCLIB songs matching the text: [{artist, title, duration, synced}]
+  GET    /karaoke/now                      what the display page needs (polled every second), + join {url, room_karaoke}
+  GET    /karaoke/search?q=&limit=              LRCLIB songs matching the text: [{artist, title, duration, synced}]
   POST   /karaoke/requests                 {q} | {url} | {artist, title, duration}: a song into the library
-                                           (+ queue: true also puts it at the end of the queue)
+                                           (+ queue: true also puts it at the end of the queue; + singers)
   POST   /karaoke/songs/<id>/retry         a failed song again
   POST   /karaoke/songs/<id>/refine          {note?}: lyrics off: the careful pass over them (in the background, after
                                            songs being prepared) | {undo: true}: the first pass's lyrics back
                                            | {cancel: true}: not waiting any more
+  POST   /karaoke/songs/<id>/duet            {duet: true | false | null}: a person's word on whether it is a duet
+                                           (null: as karaoke/duet.py found it); the Duets tag follows it
   PATCH  /karaoke/songs/<id>               {user_offset_ms}: nudge this song's lyrics
   DELETE /karaoke/songs/<id>               forget it (files too)
   GET    /karaoke/songs/<id>/lyrics        {kind, lines: [{start, end, text}], ...}
   GET    /karaoke/songs/<id>/<stem>.m4a    instrumental | vocals
-  POST   /karaoke/queue                    {op: add, song_id, index?} | {op: remove, qid} | {op: move, qid, index}
-                                           | {op: clear}: entries; the same song can be queued more than once
+  POST   /karaoke/heard                    {rev, song_id, pos_s}: the playing page's sound position (re-anchors the clock)
+  POST   /karaoke/singers                  {add?: [names], remove?: [names]}: tonight's names before anyone sings
+  POST   /karaoke/session                  {op: new}: forget tonight's names and the songs already sung
+  POST   /karaoke/queue                    {op: add, song_id, index?, singers?} | {op: remove, qid} | {op: move, qid, index}
+                                           | {op: singers, qid, singers} | {op: clear}: entries; the same song can be
+                                           queued more than once. singers: who sing it, [names] (optional; the names
+                                           of the last 12 h are /state's singers)
   POST   /karaoke/player                   {action: play [qid | song_id]|pause|resume|restart|stop|next|prev|seek [pos_s]}
                                            (play song_id: a new entry right after the current one, played now)
   POST   /karaoke/settings                 {guide 0..1, autoplay, audio_delay_ms, highlight words|dot|both, child_mode,
+                                            muted (the sound silent, the song runs on),
                                             screen (a screen's id, null: the deployment's own), output screen|none}
 """
 from __future__ import annotations
@@ -32,7 +40,7 @@ import smconfig
 from utils.logger import error
 
 from . import sources as src
-from .store import FACTS, Store, song_dir, song_key
+from .store import FACTS, Store, public_song, song_dir, song_key
 
 karaoke_api = Blueprint("karaoke_api", __name__)
 _store: Store | None = None
@@ -65,12 +73,18 @@ def _only_when_on():
 def state():
     from . import sonos_driver
     d = sonos_driver()
-    return jsonify({**store().snapshot(), "sonos_error": d.error if d is not None else None})
+    return jsonify({**store().snapshot(), "calibration": calibration_view(),
+                    "sonos_error": d.error if d is not None else None})
 
 
 @karaoke_api.get("/karaoke/now")
 def now():
-    return jsonify(store().now_playing())
+    from . import room_in_karaoke
+    from .join import join_url
+    # join: the panel's address for a phone and whether the room is in a karaoke mode (the screens' QR code at rest)
+    c = calibration_view()
+    return jsonify({**store().now_playing(), "calibration": c if (c or {}).get("state") == "running" else None,
+                    "join": {"url": join_url(), "room_karaoke": room_in_karaoke()}})
 
 
 @karaoke_api.get("/karaoke/search")
@@ -79,7 +93,11 @@ def search():
     if not q:
         return jsonify({"results": []})
     try:
-        rows = src.catalog_search(q)
+        limit = max(1, min(40, int(request.args.get("limit") or 8)))
+    except ValueError:
+        limit = 8
+    try:
+        rows = src.catalog_search(q, limit)
     except Exception as e:  # noqa: BLE001
         return _err(502, f"The song search didn't answer: {e}")
     for r in rows:
@@ -166,8 +184,13 @@ def add_request():
     else:
         return _err(400, "Say which song: {q}, {url} or {artist, title, duration}.")
     song = dup or st.add_song(req)
-    if b.get("queue"):                                   # true or "end": the end; "next": up next
-        st.queue_add(song["id"], next=b.get("queue") == "next")
+    if b.get("queue") == "now":                          # on now (as soon as it is ready: store.play)
+        try:
+            st.play(song["id"])
+        except LookupError as e:
+            return _err(409, str(e))
+    elif b.get("queue"):                                 # true or "end": the end; "next": up next
+        st.queue_add(song["id"], next=b.get("queue") == "next", singers=_singers(b))
     return jsonify({"song_id": song["id"], "existing": bool(dup)})
 
 
@@ -243,6 +266,9 @@ def song_lyrics(sid: str):
     if song is None:
         return _err(404, "No such song.")
     doc = lyr or {"kind": "none", "lines": []}
+    if song.get("duet_set") is not False and (song.get("duet") or {}).get("found"):   # a duet's parts (duet.py)
+        from . import duet as duet_mod
+        doc = duet_mod.apply(doc, duet_mod.load(song_dir(sid)))
     if store().s["settings"].get("child_mode"):        # child mode: swear words as dashes, and when to mute them
         from .profanity import censor
         sung = None
@@ -259,6 +285,22 @@ def song_lyrics(sid: str):
     return jsonify(doc)
 
 
+@karaoke_api.post("/karaoke/songs/<sid>/duet")
+def song_duet(sid: str):
+    """{duet: true | false | null}: a person's word on whether the song is a duet (null: as found, karaoke/duet.py).
+    The library's Duets tag follows it; false also shows a found duet as one voice."""
+    b = request.get_json(silent=True) or {}
+    if "duet" not in b or b["duet"] not in (True, False, None):
+        return _err(400, "Send {duet: true, false or null}.")
+    if store().update_song(sid, duet_set=b["duet"]) is None:
+        return _err(404, "No such song.")
+    with store().lock:
+        song = dict(store().s["songs"][sid])
+        rev = int(song.get("lyrics_rev") or 0) + 1
+    store().update_song(sid, lyrics_rev=rev)            # the screens fetch its lyrics again (parts on or off)
+    return jsonify({"song": public_song({**song, "lyrics_rev": rev})})
+
+
 @karaoke_api.get("/karaoke/songs/<sid>/<stem>.m4a")
 def song_audio(sid: str, stem: str):
     if stem not in ("instrumental", "vocals") or not re.fullmatch(r"k[0-9a-f]{10}", sid):
@@ -269,6 +311,11 @@ def song_audio(sid: str, stem: str):
     return send_file(f, mimetype="audio/mp4", conditional=True, max_age=3600)
 
 
+def _singers(b: dict) -> Any:
+    """The body's singers: [names], or the first version's one {singer}."""
+    return b.get("singers") if b.get("singers") is not None else b.get("singer")
+
+
 @karaoke_api.post("/karaoke/queue")
 def queue():
     b = _body()
@@ -276,7 +323,10 @@ def queue():
     idx = b.get("index")
     try:
         if op == "add":
-            st.queue_add(str(b.get("song_id")), None if idx is None else int(idx), next=bool(b.get("next")))
+            st.queue_add(str(b.get("song_id")), None if idx is None else int(idx), next=bool(b.get("next")),
+                         singers=_singers(b))
+        elif op in ("singers", "singer"):
+            st.queue_singers(str(b.get("qid")), _singers(b))
         elif op == "remove":
             st.queue_remove(str(b.get("qid")))
         elif op == "move":
@@ -284,12 +334,41 @@ def queue():
         elif op == "clear":
             st.queue_clear()
         else:
-            return _err(400, "op is add, remove, move or clear.")
+            return _err(400, "op is add, remove, move, singers or clear.")
     except KeyError:
         return _err(404, "No such song or queue entry.")
     except (TypeError, ValueError):
         return _err(400, "index is a number.")
-    return jsonify({"queue": st.snapshot()["queue"]})
+    snap = st.snapshot()
+    return jsonify({"queue": snap["queue"], "sung": snap["sung"]})
+
+
+@karaoke_api.post("/karaoke/heard")
+def heard():
+    """{rev, song_id, pos_s}: where the page playing the sound has it now (store.heard) -> {ok}."""
+    b = _body()
+    try:
+        ok = store().heard(int(b.get("rev")), str(b.get("song_id")), float(b.get("pos_s")))
+    except (TypeError, ValueError):
+        return _err(400, "rev, song_id and pos_s.")
+    return jsonify({"ok": ok})
+
+
+@karaoke_api.post("/karaoke/singers")
+def singers():
+    """{add?: [names], remove?: [names]}: tonight's names, set before anyone sings -> {singers}."""
+    b = _body()
+    return jsonify({"singers": store().roster(add=b.get("add"), remove=b.get("remove"))})
+
+
+@karaoke_api.post("/karaoke/session")
+def session():
+    """{op: "new"}: a new session (store.new_session) -> {queue, singers}."""
+    if _body().get("op") != "new":
+        return _err(400, "op is new.")
+    st = store()
+    st.new_session()
+    return jsonify({"queue": st.snapshot()["queue"], "singers": st.singers()})
 
 
 @karaoke_api.post("/karaoke/player")
@@ -310,42 +389,44 @@ def player():
     return jsonify({"player": p})
 
 
-_calibrator = None
+def calibration_view() -> dict | None:
+    """The app's speaker calibration (routes/sound/calibrate.py), as /now and /state carry it: the panel shows its
+    progress, show_service's karaoke feed keeps the mic on while it runs. None when there has been none."""
+    from routes.sound import calibrator
+    c = calibrator().state()
+    return None if c.get("state") in (None, "idle") else c
 
 
 @karaoke_api.post("/karaoke/calibrate")
 def calibrate():
-    """Measure the speaker delay with the room mic (calibrate.py): starts a run; its progress is in /state."""
-    global _calibrator
-    if str(store().s["settings"].get("output") or "").startswith("sonos:"):
-        return _err(409, "A Sonos room keeps its own timing (the Music page's: its start delay in latency.json and "
-                         "the Sonos's own position as it plays): there's nothing to calibrate here.")
-    if _calibrator is None:
-        from .calibrate import Calibrator
-        _calibrator = Calibrator(store(), smconfig.url("show"))
-    return jsonify({"calibration": _calibrator.start()})
+    """Measure the karaoke output's delay with the room mic: the app's calibration (POST /api/sound/calibrate) of
+    the output the karaoke plays on; its progress is in /state's calibration."""
+    from routes.sound import calibrator
+    try:
+        return jsonify({"calibration": calibrator().start(store().output())})
+    except ValueError as e:
+        return _err(409, str(e))
 
 
 @karaoke_api.get("/karaoke/outputs")
 def outputs():
-    """Where the karaoke sound can play: the karaoke screen's own page, nowhere, or a Sonos room of the deployment
-    (the Music page's Play on Sonos rooms: room/sonos.json, labelled as there)."""
-    from .sonos_out import sonos_zones
-    rows = [{"id": "screen", "label": "From the screen's own page"}, {"id": "none", "label": "No sound (screens only)"}]
-    rows += [{"id": f"sonos:{z}", "label": f"Sonos ({room})"} for z, room in sonos_zones().items()]
-    return jsonify({"outputs": rows})
+    """Where the karaoke sound can play: the app's sound outputs (GET /api/sound/outputs?for=karaoke), each with
+    its delay; the ones karaoke can't play to are marked."""
+    from routes.sound.api import output_rows
+    return jsonify({"outputs": output_rows("karaoke")})
 
 
 @karaoke_api.post("/karaoke/settings")
 def settings():
     b = _body()
     o = b.get("output")
-    if isinstance(o, str) and o.startswith("sonos:"):
-        from .sonos_out import sonos_zones
-        if o[len("sonos:"):] not in sonos_zones():
-            return _err(400, "There's no such Sonos room here.")
+    if isinstance(o, str) and o != "screen":
+        from smsound import outputs as O
+        if not O.known(o):
+            return _err(400, "That isn't one of this deployment's sound outputs.")
     try:
-        return jsonify({"settings": store().settings(**{k: b[k] for k in ("guide", "autoplay", "audio_delay_ms", "highlight", "child_mode", "screen", "output") if k in b})})
+        return jsonify({"settings": store().settings(**{k: b[k] for k in ("guide", "autoplay", "audio_delay_ms", "highlight", "child_mode", "muted", "screen", "output") if k in b})})
     except (TypeError, ValueError):
         return _err(400, "guide is 0..1, autoplay true/false, audio_delay_ms a number, highlight words | dot | both, "
-                         "screen a screen's id (or null), output screen | none | sonos:<zone>.")
+                         "screen a screen's id (or null), output a sound output karaoke can play to (screen:<id> | device:<id> | sonos:<zone> | none, "
+                         "null: the karaoke screen's page).")

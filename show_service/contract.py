@@ -558,6 +558,10 @@ class LookData(TypedDict):
     # Stage 5 review fixes (README S5.14): lamps and DMX only, never a screen
     dip: bool                      # the pre-drop dip is on (§8.5): no music.hit flashes over it
     hit: Optional["LookHit"]       # the drop's unison hit, applied per output from its caps (looks.py); None: none
+    arrival: Optional[dict]          # a lift's wind-up and landing (phrasing.py): {at_ms, kind, wind, lift, wind_ms,
+                                     # settle_ms, beat_ms}; None with none. Lamps and DMX only.
+    moments: Optional[list]          # the song's stabs and stops ahead (utils/song_moments.py), each an arrival-like
+                                     # envelope {at_ms, kind bump|stop, lift, settle_ms, dark_ms, floor} (phrasing.py)
     # README S5.18 (17 Oct): the composer's plan, for monitoring (dsp_monitor), never the Room page
     compose: "ComposeView"
     # README S5.24 (18 Oct): the lamps' light scene (config/live/light_scenes.yaml), lamps and DMX only
@@ -587,7 +591,7 @@ FLOW_SOURCES: tuple[str, ...] = ("structure", "event", "pitch", "listener", "moo
 FLOW_SYMMETRY: tuple[str, ...] = ("none", "mirror")      # FlowData.symmetry (show.yaml lights.flow.symmetry)
 LIGHT_TRANSITION_KINDS: tuple[str, ...] = ("cut", "dark_move", "crossfade", "fade_dark", "sweep")
 LIGHT_EFFECT_TRIGGERS: tuple[str, ...] = ("drop", "build", "breakdown", "peak", "section_change", "track_change",
-                                          "outro", "every_bars", "chorus", "final_chorus",
+                                          "outro", "every_bars", "chorus", "final_chorus", "climax",
                                           "lead_in", "waiting", "lull", "song_end", "verse", "instrumental",
                                           "transition")
 #: verse / instrumental: as chorus, from a karaoke song's lyric plan. transition: never fired by the music: the
@@ -674,6 +678,8 @@ class LightProgram(TypedDict):
     since_ms: float                # when the scene was picked
     at_ms: float                   # when it lands (the look change's at_ms: the screens' too)
     why: str
+    level: float                   # 0..1, absent = 1: the group's whole brightness, brought down while it plays with
+                                   # a featured low-power light (docs/LIGHTS.md §7.5; the engine glides to it)
 
 
 class GroupInfo(TypedDict):
@@ -731,6 +737,9 @@ class DirectionData(TypedDict):
     source: str                    # "show_service"
     note: Optional[str]            # "show_service · <vibe>"
     vibe: Optional[str]
+    moment: str                    # MOMENTS: song | lead_in | waiting | lull. While nothing plays the energy below is
+                                   # the moment's own (show.yaml lights.moments.energy): every layer's pre-state is
+                                   # its own draw against that, a mode's own scenes for the moment first
     energy: float
     pace: float
     intensity: float
@@ -2098,6 +2107,7 @@ class TypeInfo(TypedDict):
     physical: dict[str, Any]       # {"lens_deg": [min, max] | None, "pan_deg": float | None, "tilt_deg": float | None,
                                    # "zoom_deg": [min, max] | None}: None = the file doesn't say (setup ``range`` and
                                    # the starting points stand in)
+    categories: list[str]          # the type file's own category words (an OFL file's: "Laser", "Moving Head", ...)
 
 
 class FixtureInfo(TypedDict):
@@ -2161,6 +2171,8 @@ class RigFixtureRow(TypedDict):
     caps: Optional["FixtureCaps"]  # what it can do, its setup applied (fixture_encode.caps): the page builds its
                                    # controls from this alone; None: no type, or fixture_encode can't be imported
     setup: "FixtureSetup"          # its fixtures.setup.yaml entry ({} = nothing set)
+    spread_deg: Optional[float]    # a laser's spread of beams, degrees across (its type's lens angle); None: any other
+                                   # light. With its setup's lean_deg (how it is tilted by hand) the 3D room draws it
 
 
 class RigTypeRow(TypedDict):
@@ -2226,6 +2238,9 @@ class FixtureSetup(TypedDict, total=False):
     positions: dict                # {"<name>": {"pan": deg, "tilt": deg, "label"?: str}}: named, in its own pan/tilt
     strobe_hz_max: float           # owner-set, per light; absent = none
     jog_flip: dict                 # {"pan": bool, "tilt": bool}: the page's drag direction (page convenience only)
+    lean_deg: float                # a fixed light's tilt, set by hand on the real unit: degrees forward from straight up
+    turn_deg: float                # ... and its turn to the right of its bar's front (as you face the bar)
+    label: str                     # its name, set on the Lights page's room editor (replaces the file's label)
 
 
 # -- frames (looks.py -> drivers) -----------------------------------------------------------------------------------------
@@ -2514,6 +2529,16 @@ class SpaceView(TypedDict):
     surfaces: dict[str, Surface]
     points: dict[str, dict]        # name -> {"label", "at", "device"?, "from": "hand" | "page" | <fixture id>}
     regions: dict[str, dict]       # name -> {"label", "surface", "centre", "size"}
+    layouts: dict[str, dict]       # name -> {"parts": {<part>: {"along", "up", "head", "hang", "turns", "type"?, ...}}}:
+                                   # what each kind of bar is (space.yaml layouts), for a bar placed before its lights
+    bars: dict[str, dict]          # id -> {"label", "at": [x, y, z] (its middle), "facing_deg", "layout", "front",
+                                   # "axis" (level unit vectors), "parts": {<part>: {"id": "<bar>.<part>", "head",
+                                   # "hang", "turns", "own_place", "lean_deg"?, "turn_deg"?}}, "editable"}: a light
+                                   # bar as one thing; its parts' places (and its heads' poses: upright, or hanging)
+                                   # come from it; "turns" False: a one-axis bracket, it only tilts
+    keep_out: dict[str, dict]      # name -> {"label", "centre": [x, y, z], "size": [x, y, z], "groups": [light
+                                   # group, ...] (none: every light), "editable"}: boxes no beam should cross. A
+                                   # moving light's aim steps aside (looks._aim); a fixed laser's tilt is checked
     appliances: dict[str, dict]    # id -> {"at": [x, y, z] | None, "kind"?, "label"?, "mount"?, "plane"?: {normal,
                                    #        up, size}, "teach": [TeachSample], "pose": MoverPose | None,
                                    #        "editable": bool}  (editable: its place isn't set in the hand file)

@@ -1,7 +1,7 @@
 // /settings: everything set occasionally or once (owner, 24 Oct: "where are settings? isn't that a standard thing to
 // expose in sensible places?"; the plan is ia.txt §2). One page of folds, in a fixed order, each its own file:
 //   This device · People (once sign-in is set up) · Room & modes · Screens (one fold per screen) · Look · Lights ·
-//   Listening & AI · Music & piano · Schedules · Connection · Developer
+//   Listening & AI · Music & piano · Sound & timing · Schedules · Connection · Developer
 // Each fold can be linked to as /settings#<group> (#screen-<id> for one screen): the Room page's folds end with a
 // "… settings ›" link to theirs, and the menu has a Settings row. With no hash every fold starts closed.
 //
@@ -39,6 +39,7 @@ import { ModesGroup } from "./Modes";
 import { MusicGroup } from "./Music";
 import { PeopleGroup } from "./People";
 import { SchedulesGroup } from "./Schedules";
+import { SoundGroup } from "./Sound";
 import { ScreensGroup, type Destination } from "./Screens";
 
 function usePageTitle(title: string) {
@@ -172,6 +173,7 @@ export default function SettingsPage() {
           <LightsGroup api={room.api} status={status} />
           <ListeningGroup api={room.api} />
           <MusicGroup api={room.api} showTest={showTest} />
+          <SoundGroup />
           <SchedulesGroup dests={dests} />
           <ConnectionGroup
             baseUrl={baseUrl}

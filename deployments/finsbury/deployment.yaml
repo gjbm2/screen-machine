@@ -52,6 +52,7 @@ capabilities:
   sonos: true
   accounts: true
   karaoke: true      # docs/KARAOKE.md (owner, 27 Nov: the Karaoke mode on PC22 too)
+  phone_tunnel: false   # its own public HTTPS (Caddy)
 
 # Ports on this machine (these are the defaults; docs/PORTS.md is the register, Spectre mirrors it).
 ports: {flask: 5000, overlay_ws: 8765, room: 8700, show_bus: 8701, stream: 8702, show: 8703, dot: 8704}

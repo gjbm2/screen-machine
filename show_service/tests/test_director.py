@@ -1795,8 +1795,11 @@ def test_a_song_end_fades_the_lamps_through_the_floor_and_the_new_song_lands_its
     mid = max(x["level"] for x in r.d.look["lamps"].values())
     assert r.d.look["dip"] is True and mid < lv0
     r.run(got["transition"]["out_s"])                                     # out_s passed: at the floor, never off
-    floor = r.d.vs["floor"]
-    assert floor > 0 and all(x["level"] == pytest.approx(floor, abs=0.02) for x in r.d.look["lamps"].values())
+    # the junction is one envelope for lamps and rig alike (owner, 27 Nov: "screens fade but lights don't"): down
+    # to gap.lights_floor of the look's level, and the same envelope is in the look for the rig's engine
+    share = r.d.cfg["track_transitions"]["gap"]["lights_floor"]
+    assert share > 0 and all(0 < x["level"] <= share * lv0 + 0.02 for x in r.d.look["lamps"].values())
+    assert any(e.get("key") == "junction" and e["floor"] == share for e in r.d.look["moments"] or ())
     n0, g0 = len(r.looks()), r.gobos()
     ch = _track_ev("track_change", r.t, r.t, via="dsp", track_id=1, prev_track_id=0)
     got2 = r.d.track_transition(ch, facts(new={**OLD, "genre": "jazz", "bpm": 90.0, "key": "F#", "energy": 0.3}))
@@ -1813,6 +1816,8 @@ def test_a_song_end_fades_the_lamps_through_the_floor_and_the_new_song_lands_its
     r.run(3.0)
     assert len(r.looks()) == n0 + 1 and r.gobos() == g0 + 1 and r.d.palette_name != pal0   # big: moved on
     assert r.d.look["dip"] is False and r.d._song_dip is None
+    r.run(got2["transition"]["in_s"] + 0.2)                               # back in over in_s, lamps and rig alike
+    assert not any(str(e.get("key", "")).startswith("junction") for e in r.d.look["moments"] or ())
     snap = r.d.snapshot()["sections"]["song_end"]
     assert snap["stats"]["dips"] == 1 and snap["junction"] is None and snap["stats"]["chosen"]["fade-dark"] == 2
     json.dumps(r.d.snapshot())

@@ -42,6 +42,11 @@ rules:
   - {path: '^/api/(jobs/cancel-all|cancel_all_jobs)$', role: admin}
 
   # --- the rest of the setup
+  - {path: '^/api/sound/calibrate$', methods: [POST], role: admin}            # measuring a speaker (docs/SOUND.md)
+  - {path: '^/api/sound/outputs/.+/latency$', methods: [PUT], role: admin}   # an output's delay or trim
+  - {path: '^/api/sound/latency/lights/.+$', methods: [PUT], role: admin}  # a light's measured response
+  - {path: '^/api/sound/latency/screens/.+$', methods: [PUT], role: admin}  # a screen's picture delay
+  - {path: '^/api/sound/flash$', methods: [PUT], role: admin}                # a screen flashing for the camera
   - {path: '^/api/auth/people$', role: admin}   # Settings › People: who has which role
   - {path: '^/api/auth/unlock$', role: admin}   # the hidden buckets' PIN (routes/auth/lock.py)
   - {path: '^/api/bakeoff/', role: admin}

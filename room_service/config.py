@@ -180,6 +180,9 @@ class RoomConfig:
     screens: dict[str, ScreenConfig] = field(default_factory=dict)
     web_origins: list[str] = field(default_factory=lambda: list(DEFAULT_WEB_ORIGINS))
     allowed_hosts: list[str] = field(default_factory=lambda: list(DEFAULT_ALLOWED_HOSTS))
+    # Host names ending in one of these are allowed too, as Host and as an https Origin: the phones' tunnel, whose name
+    # is new each time it starts (routes/phone_door.py; owner, 28 Nov: yes, the screen and lights from the QR link).
+    tunnel_host_suffixes: list[str] = field(default_factory=list)
     # Browser origins allowed on the page control socket besides web_origins and art_page_base's
     # own (DCL v3 §7). The TVs load the page from their kiosk URL's origin, so that origin must
     # be listed here before `?ctl=` goes on a TV.
@@ -300,6 +303,7 @@ def config_from_dict(raw: dict[str, Any], *, base_dir: Path | None = None) -> Ro
     cfg.web_origins = list(raw.get("web_origins") or DEFAULT_WEB_ORIGINS)
     cfg.kiosk_origins = [str(o) for o in (raw.get("kiosk_origins") or [])]
     cfg.allowed_hosts = [str(h).lower().strip("[]") for h in (raw.get("allowed_hosts") or DEFAULT_ALLOWED_HOSTS)]
+    cfg.tunnel_host_suffixes = [str(h).lower() for h in (raw.get("tunnel_host_suffixes") or []) if str(h).startswith(".")]
     svc = raw.get("service") or {}
 
     def _path(v: Any, default: Path) -> Path:

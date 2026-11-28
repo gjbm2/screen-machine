@@ -1,15 +1,13 @@
 # deployments/laptop/lights/space.yaml: the laptop rig's room, in metres (docs/LIGHTS.md §3: x east, y north, z up; the
-# origin is the south-west floor corner). Hand-written; the Lights page's Room map writes space.added.yaml beside it
-# (merged under this file: this file wins, and what is set here shows as fixed on the map).
+# origin is the south-west floor corner). Hand-written; the Lights page's room editor writes space.added.yaml beside it
+# (merged under this file: this file wins, and what is set here shows as locked there).
 #
 # PROVISIONAL (owner, 26 Nov: "a sensible neutral configuration for now ... NE and SE, 10M apart ... ceiling height is
 # 4M"): a room 5 m east-west by 10 m north-south with a 4 m ceiling; the two GigBARs on their tripods in the east
 # corners, bar A NE and bar B SE (A on the left as the room faces them), their bars at 2.5 m, 0.4 m in from each wall,
-# each turned to face the room's centre. Each part sits where it is along its bar (par 1, spot 1, derby 1, the strobes,
-# derby 2, spot 2, par 2, left to right as you face the bar). The moving heads stand upright on the bar: their poses
-# are hand-set (pan axis straight up, tilt 0 = straight up, + tilt towards the room centre at pan 0), not taught.
-# Measure the real room and bars on the day: comment a line out here to move it on the map, and "Point it at…" three
-# places per head to teach its real pose (docs/LIGHTS.md §3.6).
+# each turned to face the room's centre (bars, in space.added.yaml: move them on the Lights page's 3D tab). The
+# moving heads stand upright on the bar, facing its front, until "Point it at…" teaches each its real pose from three
+# places (docs/LIGHTS.md §3.6). Measure the real room and bars on the day.
 version: 1
 room:
   size: [5.0, 10.0, 4.0]
@@ -17,58 +15,40 @@ room:
   haze_half_life_s: 150             # provisional: haze the room, stop the hazer, and time how long it takes to halve
                                     # (show_service/atmosphere.py holds the haze from this and the room's size)
 
-# bar A: the NE corner, bar centre [4.6, 9.6, 2.5], facing -114.5° from east (the room centre)
-# bar B: the SE corner, bar centre [4.6, 0.4, 2.5], facing 114.5° from east (the room centre)
-appliances:
-  gigbar-a.par1: {at: [4.145, 9.808, 2.5]}
-  gigbar-a.spot1:
-    at: [4.3, 9.737, 2.68]
-    mount: floor
-    pose: {at: [4.3, 9.737, 2.68], rot: [0.0, 0.0, -1.99906], tilt_offset_deg: 0.0, pan_sign: 1, tilt_sign: 1,
-           rms_deg: 0.0, worst_deg: 0.0, samples: 0, solved_at: "hand-set 2026-11-26 (provisional: upright on the bar, facing the room centre)"}
-  gigbar-a.derby1: {at: [4.454, 9.666, 2.5]}
-  gigbar-a.strobe: {at: [4.6, 9.6, 2.5]}
-  gigbar-a.laser: {at: [4.6, 9.6, 2.5], aim: [2.5, 7.0, 4.0]}   # provisional: turned up at the ceiling, its
-                                    # half of the room (aim: the place it points at; the 3D room draws from it)
-  gigbar-a.derby2: {at: [4.746, 9.534, 2.5]}
-  gigbar-a.spot2:
-    at: [4.9, 9.463, 2.68]
-    mount: floor
-    pose: {at: [4.9, 9.463, 2.68], rot: [0.0, 0.0, -1.99906], tilt_offset_deg: 0.0, pan_sign: 1, tilt_sign: 1,
-           rms_deg: 0.0, worst_deg: 0.0, samples: 0, solved_at: "hand-set 2026-11-26 (provisional: upright on the bar, facing the room centre)"}
-  gigbar-a.par2: {at: [5.055, 9.392, 2.5]}
-  gigbar-b.par1: {at: [5.055, 0.608, 2.5]}
-  gigbar-b.spot1:
-    at: [4.9, 0.537, 2.68]
-    mount: floor
-    pose: {at: [4.9, 0.537, 2.68], rot: [0.0, 0.0, 1.99906], tilt_offset_deg: 0.0, pan_sign: 1, tilt_sign: 1,
-           rms_deg: 0.0, worst_deg: 0.0, samples: 0, solved_at: "hand-set 2026-11-26 (provisional: upright on the bar, facing the room centre)"}
-  gigbar-b.derby1: {at: [4.746, 0.466, 2.5]}
-  gigbar-b.strobe: {at: [4.6, 0.4, 2.5]}
-  gigbar-b.laser: {at: [4.6, 0.4, 2.5], aim: [2.5, 3.0, 4.0]}
-  gigbar-b.derby2: {at: [4.454, 0.334, 2.5]}
-  gigbar-b.spot2:
-    at: [4.3, 0.263, 2.68]
-    mount: floor
-    pose: {at: [4.3, 0.263, 2.68], rot: [0.0, 0.0, 1.99906], tilt_offset_deg: 0.0, pan_sign: 1, tilt_sign: 1,
-           rms_deg: 0.0, worst_deg: 0.0, samples: 0, solved_at: "hand-set 2026-11-26 (provisional: upright on the bar, facing the room centre)"}
-  gigbar-b.par2: {at: [4.145, 0.192, 2.5]}
-  hazer: {at: [4.7, 1.2, 0.2]}         # on the floor by bar B
-  house-1: {at: [1.25, 2.5, 3.95]}     # the ceiling downlights: a 2 x 2 grid
-  house-2: {at: [3.75, 2.5, 3.95]}
-  house-3: {at: [1.25, 7.5, 3.95]}
-  house-4: {at: [3.75, 7.5, 3.95]}
-  screen.vj:                          # the projected picture: ~2 m wide on the east wall between the bars, facing west
-    at: [5.0, 5.0, 2.0]               # (16:9 and its centre 2 m up assumed)
-    plane: {normal: [-1.0, 0.0, 0.0], up: [0.0, 0.0, 1.0], size: [2.0, 1.125]}
-points:
-  dance-floor: {label: Dance floor, at: [2.5, 5.0, 0.0]}
-  screen: {label: Karaoke screen, at: [5.0, 5.0, 2.0]}   # projected on the east wall between the bars,
-                                    # ~2 m wide (owner, 26 Nov); 16:9, centre 2 m up assumed
-  singer: {label: Singer's spot, at: [3.8, 5.0, 1.2]}   # provisional: 1.2 m in front of the picture, chest height
-                                    # (the lights' "stage-waits" and "next-up" scenes aim here)
-  west-wall: {label: West wall above heads, at: [0.0, 5.0, 3.0]}   # the heads' rest: upright with a 180° tilt they
-                                    # reach only down to horizontal (2.68 m), never the floor
-regions:
-  dance-floor: {label: Dance floor, surface: floor, centre: [2.5, 5.0, 0.0], size: [3.0, 5.0]}
+# The two GigBARs are bars (below "appliances"): each is one thing with a place, a height and a facing, set on the
+# Lights page's 3D tab (space.added.yaml), and its parts sit where the layout says along it. So there is no line per
+# part here any more: a part given its own `at` under appliances keeps that place instead.
+# The hazer, the house lights, the screen, the named places and the dance floor area are set on the Lights page (Light
+# setup › Room: the room editor), in space.added.yaml (owner, 27 Nov: everything in the room editable there). Their
+# provisional places: the hazer on the floor by bar B; the ceiling downlights a 2 x 2 grid 3.95 m up; the projected
+# picture ~2 m wide (16:9, centre 2 m up assumed) on the east wall between the bars; the singer's spot 1.2 m in front
+# of it at chest height (the "stage-waits" and "next-up" scenes aim there); the west wall above heads at 3 m (the
+# heads' rest: upright with a 180-degree tilt they reach only down to level, never the floor).
+appliances: {}
+# What a GigBAR MOVE + ILS is, along its bar, measured off the maker's datasheet picture (Chauvet DJ "GigBAR Move +
+# ILS" datasheet: the unit 1100 x 144 x 449 mm, the bar 14 kg; 690 px of bar = 1100 mm, so about 1.6 mm a pixel;
+# docs/GIGBAR_RIG.md §1.1). Left to right as you face it: spot 1 hanging under the bar's left end, derby 1 on top, par
+# 1 hanging under, the laser on top in the middle (the four strobes, strobe1-4, are lenses in the bar's face at -0.49,
+# -0.16, 0.16 and 0.49 m), par 2 under, derby 2 on top, spot 2 under the right end. along: metres from the bar's middle (+ to
+# the right as you face it); up: metres from the bar's centre line to the part's pivot (- below); head: a moving head;
+# hang: it hangs upside down; turns: false: a U-bracket, so it only tilts, about the bar's length, and faces where the
+# bar faces. type: the part's light type (a planned bar is drawn from it); offset: its DMX channel offset from the
+# bar's start address in the 52CH mode (fixtures.yaml's address plan). lean_deg: how it points as it ships until set on the Lights page (degrees forward from straight up; 90 is
+# level): the datasheet picture has the pars and derbies level. The laser's tilt is the 45-degree rule until set.
+layouts:
+  gigbar-move:
+    parts:
+      spot1:  {along: -0.46, up: -0.13, head: true, hang: true, type: gigbar-spot, offset: 34}
+      derby1: {along: -0.35, up: 0.13,  turns: false, lean_deg: 90, type: gigbar-derby, offset: 14}
+      par1:   {along: -0.16, up: -0.15, turns: false, lean_deg: 90, type: gigbar-par, offset: 0}
+      strobe1: {along: -0.49, type: gigbar-strobe-led, offset: 26}              # the four strobe lenses, in the bar's face: they point where it does
+      strobe2: {along: -0.16, type: gigbar-strobe-led, offset: 27}
+      strobe3: {along: 0.16, type: gigbar-strobe-led, offset: 28}
+      strobe4: {along: 0.49, type: gigbar-strobe-led-s, offset: 29}
+      laser:  {along: 0.0,   up: 0.12,  turns: false, type: gigbar-laser, offset: 31}
+      par2:   {along: 0.16,  up: -0.15, turns: false, lean_deg: 90, type: gigbar-par, offset: 7}
+      derby2: {along: 0.35,  up: 0.13,  turns: false, lean_deg: 90, type: gigbar-derby, offset: 20}
+      spot2:  {along: 0.46,  up: -0.13, head: true, hang: true, type: gigbar-spot, offset: 43}
+points: {}
+regions: {}
 surfaces: {}

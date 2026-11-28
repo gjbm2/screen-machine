@@ -66,6 +66,7 @@ import type { LookScope } from "./liveLib";
 import type { LiveMember } from "./roomFx";
 import { RoomLives, type RoomLiveSpec } from "./RoomLive";
 import { ArtScreenCard, ScreenCard } from "./ScreenCard";
+import { LightsPanel } from "@/components/room/LightsNow";
 import { buildSections, liveAllowed, siteHasSonos } from "./sections";
 import { sceneChoices } from "./catalog";
 import { FOOT_LINK, openFold, Section, setFold } from "./Section";
@@ -678,6 +679,7 @@ export default function RoomPage() {
                             </Link>
                           }
                         >
+                          <LightsPanel api={room.api} title="Scenes · was, now, next" />
                           <LightsControls
                             api={room.api}
                             connected={connected}

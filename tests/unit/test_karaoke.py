@@ -76,8 +76,8 @@ def test_the_queue_plays_through_like_a_hifi(tmp_path):
     st.control("prev")                                   # at the start of c: back to b
     assert st.s["player"]["qid"] == eb["qid"]
     st.s["player"]["at"] -= 10                           # 10 s into b: prev restarts b first
-    st.control("prev")
-    assert st.s["player"]["qid"] == eb["qid"] and st.s["player"]["pos_s"] == 0
+    st.control("prev")                                   # (from the start, after the fade: CHANGE_GAP_S)
+    assert st.s["player"]["qid"] == eb["qid"] and st.s["player"]["pos_s"] == -2.0
     st.control("next"); st.tick(st.s["player"]["at"] + 61)   # c ends, nothing after it: stop
     assert st.s["player"]["state"] == "stopped"
     st2 = Store(tmp_path / "state.json")                 # a restart keeps the library and the queue
@@ -93,8 +93,8 @@ def test_not_ready_entries_keep_their_place_and_are_skipped(tmp_path):
     st.play()
     st.control("next")
     assert st.s["player"]["qid"] == eb["qid"]            # skipped the one still being prepared
-    with pytest.raises(LookupError):
-        st.play(qid=es["qid"])
+    st.play(qid=es["qid"])                               # Play now on it: it waits (test_karaoke_play_now.py)
+    assert st.s["player"]["qid"] == eb["qid"]
 
 
 def test_pause_resume_seek_keep_the_position(tmp_path):
@@ -126,8 +126,9 @@ def test_queue_entries_repeat_move_and_remove(tmp_path, monkeypatch):
     assert st.s["player"]["qid"] == e0["qid"] and len(st.s["queue"]) == 3
     p = st.play(sid=b)                                   # a library song now: a new entry right after the current
     assert [e["song_id"] for e in st.s["queue"]][1] == b and p["qid"] == st.s["queue"][1]["qid"]
-    st.remove_song(b)                                    # deleting from the library takes its entries too
-    assert [e["song_id"] for e in st.s["queue"]] == [a] and st.s["player"]["state"] == "stopped"
+    st.remove_song(b)                                    # deleting from the library takes its entries too; the
+    assert [e["song_id"] for e in st.s["queue"]] == [a]  # one playing: on to the next, as taking it out by hand
+    assert st.s["player"]["state"] == "playing" and st.s["player"]["song_id"] == a
 
 
 def test_restart_requeues_unfinished_work(tmp_path):
@@ -305,11 +306,6 @@ def test_an_artists_songs_are_the_best_known_artists_most_popular_first(monkeypa
     assert o["artist"] == "Taylor Swift" and [r["title"] for r in o["results"]] == ["Shake It Off", "Love Story"]   # one row a song
 
 
-def test_the_calibration_listens_on_show_services_websocket(tmp_path):
-    from routes.karaoke.calibrate import Calibrator
-    assert Calibrator(Store(tmp_path / "s.json"), "http://127.0.0.1:8703").levels_url == "ws://127.0.0.1:8703/v1/levels?wave=2048"
-
-
 def test_each_chirp_reads_the_delay_on_its_own_so_long_delays_and_lost_chirps_are_fine():
     from routes.karaoke import calibrate as cal
     clicks = [500.0 + o for o in cal.OFFSETS_S]
@@ -389,8 +385,8 @@ def test_child_mode_serves_lyrics_with_dashes_and_the_times_to_mute(tmp_path):
     assert doc["lines"][0]["text"] == "You're so fucking special"      # the stored lyrics are untouched
     st = Store(tmp_path / "state.json")
     s = st.add_song({"kind": "lrclib", "artist": "CeeLo Green", "title": "Fuck You"})
-    st.queue_add(s["id"])
-    st.s["player"].update({"state": "paused", "song_id": s["id"]})
+    st.update_song(s["id"], status="ready", audio_s=10.0)
+    st.queue_add(s["id"])                                # the first song added to an idle player plays
     assert st.now_playing()["song"]["title"] == "Fuck You"
     st.settings(child_mode=True)
     assert st.now_playing()["song"]["title"] == "---- You"
@@ -456,15 +452,17 @@ def test_adding_after_a_stop_mid_queue_does_not_start_and_clear_keeps_the_song_p
     assert st.s["queue"] == [] and st.s["player"]["state"] == "stopped"
 
 
-def test_the_karaoke_screen_and_sound_are_settings(tmp_path):
+def test_the_karaoke_screen_and_sound_are_settings(tmp_path, monkeypatch):
+    from routes.karaoke import live_view
+    monkeypatch.setattr(live_view, "karaoke_screen", lambda setting: setting or "vj")
     st = Store(tmp_path / "state.json")
-    assert st.s["settings"]["screen"] is None and st.s["settings"]["output"] == "screen"
+    assert st.s["settings"]["screen"] is None and st.s["settings"]["output"] is None and st.output() == "screen:vj"
     st.settings(screen="north", output="none")
-    assert (st.s["settings"]["screen"], st.s["settings"]["output"]) == ("north", "none")
+    assert (st.s["settings"]["screen"], st.output()) == ("north", "none")
     st.settings(screen=None)
     assert st.s["settings"]["screen"] is None
     st.settings(output="sonos:living")                       # a Sonos room (the api checks it is the deployment's)
-    assert st.s["settings"]["output"] == "sonos:living"
+    assert st.output() == "sonos:living"
     for bad in ({"screen": "../x"}, {"output": "sonos:"}, {"output": "loud"}):
         with pytest.raises(ValueError):
             st.settings(**bad)
@@ -859,3 +857,155 @@ def test_a_careful_pass_cut_short_by_a_restart_waits_again(tmp_path):
     st.update_song(s["id"], status="ready", refine={"state": "working"})
     st2 = Store(tmp_path / "state.json")
     assert st2.s["songs"][s["id"]]["refine"]["state"] == "waiting"
+
+
+def test_singers_are_remembered_spelt_once_and_shown_with_whats_next(tmp_path, monkeypatch):
+    st = Store(tmp_path / "state.json")
+    a, b = ready(st, "a", 100.0), ready(st, "b", 50.0)
+    ea = st.queue_add(a, singers="  Clare ")             # one name, as a string
+    eb = st.queue_add(b, singers=["clare", "Tom", "CLARE", ""])   # a duet: each once, the spelling given first stays
+    assert ea["singers"] == ["Clare"] and eb["singers"] == ["Clare", "Tom"]
+    st.queue_singers(eb["qid"], ["Ann", "Tom"])
+    st.play()
+    n = st.now_playing()
+    assert n["singers"] == ["Clare"] and n["up_next"]["singers"] == ["Ann", "Tom"] and n["queued_after"] == 1
+    assert st.singers()[-1] == "Clare" and set(st.singers()) == {"Ann", "Tom", "Clare"}   # most recent first
+    st.queue_singers(eb["qid"], [])                      # nobody said
+    assert "singers" not in st.s["queue"][1]
+    assert set(Store(tmp_path / "state.json").singers()) == {"Ann", "Tom", "Clare"}   # a restart keeps tonight's names
+    import sys
+    store_mod = sys.modules["routes.karaoke.store"]   # (the package's store() shadows the module name)
+    real = store_mod.time.time
+    monkeypatch.setattr(store_mod.time, "time", lambda: real() + store_mod.SESSION_S + 60)
+    assert st.singers() == []                            # yesterday's party's names aren't offered
+
+
+def test_a_first_version_single_singer_loads_as_a_list(tmp_path):
+    st = Store(tmp_path / "state.json")
+    e = st.queue_add(ready(st, "a", 10.0))
+    with st.lock:
+        st.s["queue"][0]["singer"] = "Clare"
+        st.commit()
+    assert Store(tmp_path / "state.json").s["queue"][0]["singers"] == ["Clare"]
+    assert e["qid"] == Store(tmp_path / "state.json").s["queue"][0]["qid"]
+
+
+def test_join_url_picks_the_adapter_with_a_gateway():
+    from routes.karaoke.join import pick_ipconfig
+    out = """
+Unknown adapter Tailscale:
+
+   IPv4 Address. . . . . . . . . . . : 100.101.45.79
+   Default Gateway . . . . . . . . . :
+
+Wireless LAN adapter Wi-Fi:
+
+   IPv4 Address. . . . . . . . . . . : 192.168.0.228
+   Subnet Mask . . . . . . . . . . . : 255.255.255.0
+   Default Gateway . . . . . . . . . : fe80::1%12
+                                       192.168.0.1
+
+Ethernet adapter vEthernet (WSL (Hyper-V firewall)):
+
+   IPv4 Address. . . . . . . . . . . : 172.24.240.1
+   Default Gateway . . . . . . . . . :
+"""
+    assert pick_ipconfig(out) == "192.168.0.228"
+    assert pick_ipconfig(out.replace("192.168.0.1", "")) is None
+
+
+def test_a_song_changed_mid_song_waits_for_the_fade_and_the_last_one_leads_the_background(tmp_path):
+    from routes.karaoke.store import CHANGE_GAP_S
+    st = Store(tmp_path / "state.json")
+    a, b, c = ready(st, "a", 100.0), ready(st, "b", 50.0), ready(st, "c", 60.0)
+    ea, eb, ec = st.queue_add(a), st.queue_add(b), st.queue_add(c)
+    p = st.play()                                        # from stopped: just its own lead-in
+    assert p["pos_s"] == -st.lead_in(ea)
+    st.s["player"]["at"] -= 30                           # 30 s in, then Next: the old one fades first
+    p = st.control("next")
+    assert p["qid"] == eb["qid"] and p["pos_s"] <= -CHANGE_GAP_S
+    st.s["player"]["at"] -= 30
+    p = st.play(qid=ec["qid"])                           # Play on another, mid-song: the same
+    assert p["pos_s"] <= -CHANGE_GAP_S
+    assert st.now_playing()["background"] == []         # only while nothing plays
+    st.control("stop")
+    bg = st.now_playing()["background"]
+    assert bg[0] == c and set(bg) == {a, b, c}           # the last sung first
+    assert Store(tmp_path / "state.json").background()[0] == c
+
+
+def test_a_song_that_ran_out_while_the_machine_was_off_is_still_unsung_and_play_plays_it(tmp_path):
+    # Owner, 27 Nov: after a boot a queued song showed, didn't play, and Play did nothing.
+    st = Store(tmp_path / "state.json")
+    a, b = ready(st, "a", 30.0), ready(st, "b", 30.0)
+    st.queue_add(a)
+    eb = st.queue_add(b)
+    st.play(qid=eb["qid"])
+    st.s["player"]["at"] -= 3600; st._save()             # off for an hour, mid-song
+    st2 = Store(tmp_path / "state.json")
+    p = st2.s["player"]
+    assert p["state"] == "stopped" and p["qid"] == eb["qid"] and p["stop"] == "boot"
+    assert st2.play()["qid"] == eb["qid"]                # Play plays it, from the start
+
+
+def test_play_at_the_queues_end_plays_the_song_stopped_on(tmp_path):
+    st = Store(tmp_path / "state.json")
+    ea = st.queue_add(ready(st, "a", 30.0))
+    st.play()
+    st.tick(st.s["player"]["at"] + 31)                   # over, nothing after it: stopped on it
+    assert st.s["player"]["state"] == "stopped" and st.s["player"]["qid"] == ea["qid"]
+    st2 = Store(tmp_path / "state.json")                 # and a restart keeps where it stopped
+    assert st2.s["player"]["qid"] == ea["qid"]
+    assert st2.play()["qid"] == ea["qid"]
+
+
+def test_a_song_waiting_to_start_when_ready_still_starts_after_a_restart(tmp_path):
+    st = Store(tmp_path / "state.json")
+    slow = st.add_song({"kind": "text", "q": "slow"})["id"]
+    e = st.queue_add(slow)                               # idle player: it plays once it's ready
+    st2 = Store(tmp_path / "state.json")
+    st2.s["songs"][slow].update(status="ready", audio_s=30.0)
+    st2.tick()
+    assert st2.s["player"]["state"] == "playing" and st2.s["player"]["qid"] == e["qid"]
+
+
+def test_names_before_anyone_sings_and_a_new_session(tmp_path):
+    st = Store(tmp_path / "state.json")
+    assert st.roster(add=["Clare", "tom"]) == ["Clare", "tom"] or set(st.roster()) == {"Clare", "tom"}
+    assert "tom" not in [n.lower() for n in st.roster(remove=["TOM"])]
+    a, b = ready(st, "a", 30.0), ready(st, "b", 30.0)
+    ea, eb = st.queue_add(a, singers=["Ann"]), st.queue_add(b)
+    st.play(); st.tick(st.s["player"]["at"] + 31)       # a sung; b playing
+    assert st.s["player"]["qid"] == eb["qid"]
+    st.new_session()
+    assert [e["qid"] for e in st.s["queue"]] == [eb["qid"]] and st.singers() == []
+    assert st.s["player"]["qid"] == eb["qid"]           # the song playing carries on
+
+
+def test_of_uploads_matching_about_as_much_the_one_with_fewest_unsung_words_wins():
+    # 27 Nov, I Will Survive: the album version's upload matched a few more sung words than the single edit's, with
+    # a whole extra verse and chorus nobody sings in this recording.
+    song = ["at first i was afraid", "i was petrified", "go on now go", "walk out the door", "i will survive"]
+    sung = _heard([(w, 1.0 + i * 0.4) for i, w in enumerate(" ".join(song).split())])
+    single = {"kind": "plain", "text": "\n".join(song)}
+    album = {"kind": "plain", "text": "\n".join(song + ["it took all the strength i had", "not to fall apart",
+                                                        "kept trying hard to mend the pieces", "of my broken heart"]
+                                               + ["i will survive"])}
+    best, _, st = lyr.best_fit([album, single], sung)
+    assert best is single and st["precision"] == 1.0
+    sparse = {"kind": "plain", "text": "i will survive"}           # far fewer matched: never chosen for precision
+    assert lyr.best_fit([single, sparse], sung)[0] is single
+    assert lyr.credit_line("Written by：Brandon Flowers/Dave Keuning")
+    assert lyr.credit_line("Mr. Brightside - The Killers", "Mr. Brightside", "The Killers")
+    assert not lyr.credit_line("Hey Jude, don't make it bad", "Hey Jude", "The Beatles")
+
+
+def test_the_page_playing_the_sound_re_anchors_the_players_clock(tmp_path):
+    st = Store(tmp_path / "state.json")
+    a = ready(st, "a", 200.0)
+    st.queue_add(a)
+    p = st.play()
+    assert st.heard(p["rev"], a, 42.0) is True
+    assert st.position() == pytest.approx(42.0, abs=0.2)
+    assert st.s["player"]["rev"] == p["rev"]                 # no new rev: the page doesn't re-place
+    assert st.heard(p["rev"] - 1, a, 10.0) is False          # an old rev is ignored

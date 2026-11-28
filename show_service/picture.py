@@ -21,9 +21,9 @@ words and the preset's name (WORDS below): a first pass, on paper. config/live/s
   * the flow: the scene showing votes its ``dir`` into the room's flow (show.yaml lights.flow.sources.screen), so the
     movers' flow-following scenes, the glitterball and every wave turn the way the picture travels;
   * the movers' pick (``prefer``): at a look change each light scene's weight is multiplied by how well it fits the
-    scene queued NEXT (the one this look will show): x ``DIR_FIT`` when its flow tags name the picture's dir, x
-    ``DIR_AGAINST`` for its opposite, x ``DIR_HONOURS`` when it only follows the room's flow, x ``DIR_OTHER`` else; closer to the picture's pace is better
-    (x 1 .. ``PACE_FAR``); and complexity contrasts: a busy picture wants simple movement, a sparse one lets the
+    scene queued NEXT (the one this look will show): x ``dir_fit`` when its flow tags name the picture's dir, x
+    ``dir_against`` for its opposite, x ``dir_honours`` when it only follows the room's flow, x ``dir_other`` else; closer to the picture's pace is better
+    (x 1 .. ``pace_far``; show.yaml lights.picture has the numbers: FIT); and complexity contrasts: a busy picture wants simple movement, a sparse one lets the
     lights carry more (``BUSY_*``).
 """
 
@@ -83,14 +83,38 @@ WORDS: tuple[tuple[str, float, str], ...] = (
 _WORDS = tuple((d, w, re.compile(p, re.I)) for d, w, p in WORDS)
 MIN_SCORE = 1.0                 # a direction needs this much to be read at all
 #: ``prefer``'s factors (starting points)
-DIR_FIT = 2.5                   # the light scene's flow tags name the picture's direction: its own shape
-DIR_AGAINST = 0.5               # they name its opposite
-DIR_HONOURS = 1.2               # they name neither, but its layers follow the room's flow (which the picture leads)
-DIR_OTHER = 0.8                 # they name other directions only
-PACE_FAR = 0.5                  # the scene's energy band is a whole scale away from the picture's pace
-BUSY_HIGH, BUSY_LOW = 0.7, 0.3  # a busy picture / a sparse one (busy_pct)
-BUSY_ON_BUSY = 0.6              # busy movement over a busy picture
-BUSY_ON_SPARSE = 1.3            # busy movement over a sparse picture: the lights carry it
+#: How much the picture on the screens steers the moving lights' draw: show.yaml lights.picture (owner, 26 Nov: "none
+#: of this stuff should be hardcoded"); these are the starting points a key left out takes.
+FIT: dict[str, float] = {
+    "dir_fit": 2.5,             # the light scene's flow tags name the picture's direction: its own shape
+    "dir_against": 0.5,         # they name its opposite
+    "dir_honours": 1.2,         # they name neither, but its layers follow the room's flow (which the picture leads)
+    "dir_other": 0.8,           # they name other directions only
+    "pace_far": 0.5,            # the scene's energy band is a whole scale away from the picture's pace
+    "busy_high": 0.7,           # a busy picture (busy_pct at or over this) ...
+    "busy_low": 0.3,            # ... a sparse one (at or under this)
+    "busy_on_busy": 0.6,        # busy movement over a busy picture
+    "busy_on_sparse": 1.3,      # busy movement over a sparse picture: the lights carry it
+}
+
+
+def parse_fit(raw: Any, probs: list[str]) -> dict[str, float]:
+    """show.yaml ``lights.picture`` -> FIT with its numbers put in (an unknown key or a bad number: a problem line,
+    the starting point stands)."""
+    out = dict(FIT)
+    if raw is None:
+        return out
+    if not isinstance(raw, Mapping):
+        probs.append("lights.picture: not a mapping: the starting points")
+        return out
+    for k, v in raw.items():
+        if k not in FIT:
+            probs.append(f"lights.picture.{k}: not one of {', '.join(FIT)}: ignored")
+        elif isinstance(v, bool) or not isinstance(v, (int, float)) or v < 0:
+            probs.append(f"lights.picture.{k}: {v!r} isn't a number >= 0: {FIT[k]:g}")
+        else:
+            out[k] = float(v)
+    return out
 #: how busy a position layer's movement is, by its mode (docs/LIGHTS.md §5.3 words; a mode not listed is 0.5)
 MODE_BUSY = {"aim": 0.0, "drift": 0.1, "fan": 0.2, "lift": 0.2, "sweep": 0.5, "circle": 0.5, "tilt_wave": 0.5,
              "figure8": 0.8, "bounce": 0.8, "ballyhoo": 1.0}
@@ -199,11 +223,14 @@ def movement_busy(scene: Mapping[str, Any]) -> Optional[float]:
     return best
 
 
-def prefer(scenes: Mapping[str, Mapping[str, Any]], pic: Optional[Mapping[str, Any]]) -> dict[str, float]:
+def prefer(scenes: Mapping[str, Mapping[str, Any]], pic: Optional[Mapping[str, Any]],
+           fit: Optional[Mapping[str, float]] = None) -> dict[str, float]:
     """{light scene: factor} for the picture ``pic`` (``Facts.of``): only the scenes that move (a position layer),
-    and only factors that aren't 1. {} with no picture."""
+    and only factors that aren't 1. ``fit``: show.yaml lights.picture (``parse_fit``; None: FIT). {} with no
+    picture."""
     if not isinstance(pic, Mapping):
         return {}
+    c = fit or FIT
     out: dict[str, float] = {}
     d, pace, busy = pic.get("dir"), pic.get("pace"), pic.get("busy")
     for name, sc in scenes.items():
@@ -216,19 +243,19 @@ def prefer(scenes: Mapping[str, Mapping[str, Any]], pic: Optional[Mapping[str, A
         dirs = set(fl.get("dirs") or ())
         if d:
             if d in dirs:
-                f *= DIR_FIT
+                f *= c["dir_fit"]
             elif OPPOSITE.get(d) in dirs:
-                f *= DIR_AGAINST
+                f *= c["dir_against"]
             elif fl.get("honours"):
-                f *= DIR_HONOURS
+                f *= c["dir_honours"]
             elif dirs:
-                f *= DIR_OTHER
+                f *= c["dir_other"]
         band = tags.get("energy")
         if pace is not None and isinstance(band, (list, tuple)) and len(band) == 2:
             mid = (float(band[0]) + float(band[1])) / 2.0
-            f *= 1.0 - (1.0 - PACE_FAR) * min(1.0, abs(mid - pace))
+            f *= 1.0 - (1.0 - c["pace_far"]) * min(1.0, abs(mid - pace))
         if busy is not None and mb >= 0.7:
-            f *= BUSY_ON_BUSY if busy >= BUSY_HIGH else BUSY_ON_SPARSE if busy <= BUSY_LOW else 1.0
+            f *= c["busy_on_busy"] if busy >= c["busy_high"] else c["busy_on_sparse"] if busy <= c["busy_low"] else 1.0
         if abs(f - 1.0) > 1e-6:
             out[str(name)] = round(f, 4)
     return out

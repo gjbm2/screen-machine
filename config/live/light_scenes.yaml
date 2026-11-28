@@ -19,7 +19,10 @@
 #            drop line the director hears (structure's drop, a cue's forecast drop), whatever the peak tokens say.
 #            No hits key: no flashes.
 #   caps     optional: this scene's own looks.caps (flash_hz_max). Unset: show.yaml's looks.caps.
-#   tags     the screens' preset scales (stream_service/tags.py): energy [lo, hi] 0..1; moods from
+#   tags     sections: [verse | chorus | instrumental | outro | ...]: the kinds of section the scene is written for
+#            (a karaoke song's lyrics name them): it draws more often there and less elsewhere (show.yaml
+#            lights.programs.section_fit); none: for any. The song's biggest section takes a chorus's scenes.
+#            Also the screens' preset scales (stream_service/tags.py): energy [lo, hi] 0..1; moods from
 #            config/live/vocab.yaml moods; genre_fit {vocab genre word: 0..1}, "*" = every genre word not listed;
 #            valence (sad 0 .. happy 1), organic (synthetic 0 .. acoustic 1), density (sparse 0 .. busy 1); weight.
 # Hue lamps keep their own caps whatever a scene says: attack >= 80 ms, nothing cycles faster than 160 ms, no hits.
@@ -35,6 +38,19 @@
 #   tags     flow: {dirs: [still|up|down|left|right|cw|ccw|outward|inward|towards|away], honours: true|false}: the
 #            flows it suits; honours: its layers follow the room's flow, so it suits any.
 # Targets (centre, points, on) are Room map names: a light with no such place keeps the layers below it.
+#
+# House style: restraint (owner, 27 Nov: "a system that feels the music and expresses it well", not one "that flashes
+# like a school disco"; "deploying these layers should be subject to sensible artistic restraint and coherent
+# execution"). Everything the lights can do is available to a scene; a scene uses little of it, for a reason:
+#   * One voice at a time. A head moves boldly, or shows a pattern, or pulses with the beat: one of them leads, at
+#     most one more supports it quietly. Loud sections get clean, open beams; pattern belongs to slow or still light.
+#   * The open beam is the default. A gobo is one scene's choice: one gobo, by name, the same on every head it is on,
+#     held for as long as the scene runs. Gobos change only between scenes (the engine does it in the dark).
+#   * Shake, scroll and a lit snap (the gobo layer's shake, scroll, change: live) are accents for a rare moment: no
+#     scene's standing look uses them. show_service/tests/test_light_scenes.py holds this file to these two rules.
+#   * Movement is paced by the music and drawn within what a head can do gracefully (show_service/motion.py).
+# docs/LIGHT_DESIGN_NOTES.md has what working lighting designers say about combining these (researched 27 Nov, with
+# sources): check a new or changed scene against its principles, its section table and its list of anti-patterns.
 
 version: 1
 
@@ -43,6 +59,7 @@ scenes:
     label: Still glow
     layers: []                                  # steady colour: no pulse, no movement
     tags:
+      sections: [verse, outro]
       energy: [0.0, 0.3]
       moods: [calm, warm, elegant, dreamy]
       genre_fit: {classical: 0.9, piano: 0.9, ambient: 0.85, jazz: 0.7, singer-songwriter: 0.7, folk: 0.65,
@@ -62,6 +79,7 @@ scenes:
         needs: none                             # on the bars when the clock has them, else free-running
         select: "kind:lamp"
     tags:
+      sections: [verse, outro]
       energy: [0.05, 0.45]
       moods: [calm, mellow, dreamy, liquid]
       genre_fit: {ambient: 0.9, downtempo: 0.85, classical: 0.7, piano: 0.7, jazz: 0.7, soundtrack: 0.75, soul: 0.6,
@@ -84,6 +102,7 @@ scenes:
         decay_ms: 900
         select: "kind:lamp"
     tags:
+      sections: [verse]
       energy: [0.25, 0.6]
       moods: [warm, mellow, elegant, organic]
       genre_fit: {soul: 0.85, rnb: 0.8, jazz: 0.75, gospel: 0.75, blues: 0.75, reggae: 0.7, funk: 0.65, pop: 0.6,
@@ -112,6 +131,7 @@ scenes:
       depth: 0.5
       decay_ms: 120
     tags:
+      sections: [chorus]
       energy: [0.4, 0.85]
       moods: [bright, playful, warm, hypnotic]
       genre_fit: {house: 0.9, disco: 0.9, funk: 0.85, pop: 0.8, afrobeat: 0.8, latin: 0.8, techno: 0.75,
@@ -134,6 +154,7 @@ scenes:
         decay_ms: 600
         select: "kind:lamp"
     tags:
+      sections: [verse, instrumental]
       energy: [0.35, 0.75]
       moods: [hypnotic, dark, tense, cosmic]
       genre_fit: {dubstep: 0.9, hip-hop: 0.8, downtempo: 0.75, drum-and-bass: 0.7, electronic: 0.7, trance: 0.6,
@@ -158,6 +179,7 @@ scenes:
         decay_ms: 350
         select: "group:around"
     tags:
+      sections: [chorus]
       energy: [0.5, 0.95]
       moods: [playful, euphoric, bright, retro, geometric]
       genre_fit: {disco: 0.9, house: 0.85, latin: 0.8, techno: 0.8, trance: 0.8, electronic: 0.8, funk: 0.75,
@@ -177,6 +199,7 @@ scenes:
         needs: none
         select: "group:around"
     tags:
+      sections: [verse, instrumental, outro]
       energy: [0.15, 0.55]
       moods: [dreamy, liquid, cosmic, hypnotic, calm]
       genre_fit: {ambient: 0.9, downtempo: 0.85, soundtrack: 0.8, trance: 0.7, electronic: 0.65, classical: 0.6,
@@ -203,6 +226,7 @@ scenes:
       depth: 0.35
       decay_ms: 90
     tags:
+      sections: [instrumental]
       energy: [0.35, 0.8]
       moods: [bright, playful, glitchy, icy, euphoric]
       genre_fit: {electronic: 0.8, disco: 0.8, pop: 0.7, house: 0.7, funk: 0.6, latin: 0.6, indie: 0.6, jazz: 0.5,
@@ -229,6 +253,7 @@ scenes:
       styles: []                                # no music.hit flashes...
       drop: {depth: 1.0, decay_ms: 700}         # ...one big flash at each drop line (DMX)
     tags:
+      sections: [chorus]
       energy: [0.55, 1.0]
       moods: [euphoric, tense, aggressive, fiery]
       genre_fit: {dubstep: 0.95, drum-and-bass: 0.9, trance: 0.9, techno: 0.85, electronic: 0.85, house: 0.8,
@@ -261,6 +286,7 @@ scenes:
                                                 # (over half) comes at most this often per light; one sooner rises
                                                 # only half way (degraded, never stopped)
     tags:
+      sections: [chorus]
       energy: [0.75, 1.0]
       moods: [euphoric, aggressive, fiery, glitchy]
       genre_fit: {techno: 0.9, drum-and-bass: 0.9, dubstep: 0.9, trance: 0.85, electronic: 0.85, house: 0.8,
@@ -278,18 +304,18 @@ scenes:
          phase: phrase, needs: none, spread_mode: chase, spread: 0.5}
       - {id: beam, kind: beam, zoom: wide, frost: 0.3, iris: 1.0}
       - {id: breathe, fx: sine, phase: bar, period_bars: [8, 4], depth: 0.25, needs: none}
-    tags: {energy: [0.0, 0.35], moods: [calm, warm, elegant, dreamy], genre_fit: {classical: 0.9, piano: 0.9, jazz: 0.8,
+    tags: {sections: [verse, outro], energy: [0.0, 0.35], moods: [calm, warm, elegant, dreamy], genre_fit: {classical: 0.9, piano: 0.9, jazz: 0.8,
            ambient: 0.8, "*": 0.3}, valence: 0.5, organic: 0.8, density: 0.1, flow: {dirs: [still, inward], honours: false}}
 
   movers-slow-drift:
     label: Slow drift across the ceiling
     needs: [pan, tilt]
     layers:
-      - {id: drift, kind: position, mode: drift, on: ceiling, centre: centre, size: 1.5, size_deg: 20, phase: phrase,
+      - {id: drift, kind: position, mode: drift, on: ceiling, centre: centre, size_pools: 0.4, size_deg: 20, phase: phrase,
          needs: none, spread_mode: chase, spread: 0.5}
       - {id: beam, kind: beam, zoom: wide, frost: 0.2}
-      - {id: gobo, kind: gobo, slot: auto, change_on: section, spin: flow, spin_scale: 0.15}
-    tags: {energy: [0.05, 0.45], moods: [dreamy, liquid, cosmic, calm], genre_fit: {ambient: 0.9, downtempo: 0.85,
+      - {id: gobo, kind: gobo, slot: Swirl}
+    tags: {sections: [instrumental], energy: [0.05, 0.45], moods: [dreamy, liquid, cosmic, calm], genre_fit: {ambient: 0.9, downtempo: 0.85,
            soundtrack: 0.8, classical: 0.6, "*": 0.3}, valence: 0.5, organic: 0.5, density: 0.2,
            flow: {dirs: [still, left, right, cw, ccw], honours: true}}
 
@@ -297,13 +323,13 @@ scenes:
     label: Circles on the ceiling
     needs: [pan, tilt]
     layers:
-      - {id: circle, kind: position, mode: circle, on: ceiling, centre: [mirror-ball, centre], size: 1.0, size_deg: 18,
+      - {id: circle, kind: position, mode: circle, on: ceiling, centre: [mirror-ball, centre], size_pools: 0.5, size_deg: 18,
          rotate: flow, phase: bar, period_bars: [4, 1], needs: grid, spread_mode: chase, spread: 0.5, order: flow}
-      - {id: gobo, kind: gobo, slot: auto, change_on: phrase, spin: flow, spin_scale: 0.4}
       - {id: beam, kind: beam, zoom: 15}
       - {id: pulse, fx: swell, phase: beat, subdivide: true, depth: swell, needs: beat, without_beat: energy,
          attack_ms: 60, decay_ms: 300}
-    tags: {energy: [0.35, 0.8], moods: [cosmic, hypnotic, dreamy, geometric], genre_fit: {trance: 0.9, techno: 0.85,
+      - {id: gobo, kind: gobo, slot: Starburst}
+    tags: {sections: [instrumental], energy: [0.35, 0.8], moods: [cosmic, hypnotic, dreamy, geometric], genre_fit: {trance: 0.9, techno: 0.85,
            electronic: 0.85, house: 0.8, ambient: 0.6, "*": 0.35}, valence: 0.55, organic: 0.25, density: 0.55,
            flow: {dirs: [cw, ccw], honours: true}}
 
@@ -316,7 +342,7 @@ scenes:
       - {id: pulse, fx: swell, phase: beat, depth: 0.6, needs: beat, without_beat: energy, attack_ms: 40,
          decay_ms: 200}
     hits: {styles: [beat, full], min_strength: 0.3, depth: 0.6, decay_ms: 100, drop: {depth: 1.0, decay_ms: 500}}
-    tags: {energy: [0.5, 1.0], moods: [euphoric, retro, bright, playful], genre_fit: {disco: 0.95, house: 0.85,
+    tags: {sections: [chorus], energy: [0.5, 1.0], moods: [euphoric, retro, bright, playful], genre_fit: {disco: 0.95, house: 0.85,
            funk: 0.8, pop: 0.75, "*": 0.35}, valence: 0.8, organic: 0.3, density: 0.7,
            flow: {dirs: [inward, towards], honours: false}}
 
@@ -330,7 +356,7 @@ scenes:
       - {id: beam, kind: beam, zoom: 12}
       - {id: chase, fx: swell, phase: beat, depth: 0.5, needs: beat, without_beat: energy, order: flow, spread: 1.0,
          attack_ms: 40, decay_ms: 250}
-    tags: {energy: [0.45, 0.9], moods: [playful, bright, geometric, hypnotic], genre_fit: {house: 0.85, techno: 0.8,
+    tags: {sections: [chorus], energy: [0.45, 0.9], moods: [playful, bright, geometric, hypnotic], genre_fit: {house: 0.85, techno: 0.8,
            pop: 0.75, funk: 0.75, latin: 0.75, "*": 0.35}, valence: 0.7, organic: 0.3, density: 0.65,
            flow: {dirs: [left, right], honours: true}}
 
@@ -342,7 +368,7 @@ scenes:
          fan: 1.0}
       - {id: beam, kind: beam, zoom: wide, frost: 0.6}
       - {id: wave, fx: sine, phase: bar, period_bars: [4, 1], depth: 0.5, needs: grid, order: flow, spread: 1.0}
-    tags: {energy: [0.2, 0.6], moods: [warm, elegant, mellow, liquid], genre_fit: {soul: 0.85, jazz: 0.8, rnb: 0.8,
+    tags: {sections: [verse], energy: [0.2, 0.6], moods: [warm, elegant, mellow, liquid], genre_fit: {soul: 0.85, jazz: 0.8, rnb: 0.8,
            downtempo: 0.75, gospel: 0.7, "*": 0.35}, valence: 0.6, organic: 0.6, density: 0.35,
            flow: {dirs: [left, right, cw, ccw], honours: true}}
 
@@ -357,7 +383,7 @@ scenes:
       - {id: beam, kind: beam, zoom: narrow}
       - {id: build, fx: swell, phase: beat, subdivide: true, depth: swell, needs: beat, without_beat: energy,
          attack_ms: 60, decay_ms: 200}
-    tags: {energy: [0.45, 0.95], moods: [tense, euphoric, bright], genre_fit: {trance: 0.9, house: 0.8, electronic: 0.8,
+    tags: {sections: [chorus], energy: [0.45, 0.95], moods: [tense, euphoric, bright], genre_fit: {trance: 0.9, house: 0.8, electronic: 0.8,
            pop: 0.7, gospel: 0.6, "*": 0.35}, valence: 0.65, organic: 0.3, density: 0.6,
            flow: {dirs: [up, outward], honours: true}}
 
@@ -365,11 +391,10 @@ scenes:
     label: Figure eights on the floor
     needs: [pan, tilt]
     layers:
-      - {id: eight, kind: position, mode: figure8, on: floor, centre: [dance-floor, centre], size: 1.2, size_deg: 18,
+      - {id: eight, kind: position, mode: figure8, on: floor, centre: [dance-floor, centre], size_pools: 0.5, size_deg: 18,
          phase: bar, period_bars: [2, 1], needs: grid, spread_mode: mirror}
       - {id: beam, kind: beam, zoom: 14}
-      - {id: colour, kind: colour_wheel, mode: step, step_on: bar}
-    tags: {energy: [0.4, 0.85], moods: [playful, retro, bright], genre_fit: {disco: 0.9, funk: 0.85, pop: 0.8,
+    tags: {sections: [instrumental], energy: [0.4, 0.85], moods: [playful, retro, bright], genre_fit: {disco: 0.9, funk: 0.85, pop: 0.8,
            latin: 0.8, afrobeat: 0.75, "*": 0.35}, valence: 0.8, organic: 0.35, density: 0.6,
            flow: {dirs: [still, left, right], honours: false}}
 
@@ -379,11 +404,10 @@ scenes:
     layers:
       - {id: bally, kind: position, mode: ballyhoo, on: floor, centre: centre, size: 2.5, size_deg: 45, phase: bar,
          period_bars: [2, 1], needs: grid, spread_mode: chase, spread: 0.25, order: flow}
-      - {id: gobo, kind: gobo, slot: auto, change_on: bar, spin: flow, spin_scale: 0.8}
       - {id: prism, kind: prism, in: accents, spin: flow, spin_scale: 0.6}
       - {id: stab, fx: square, phase: beat, depth: 0.5, needs: beat, without_beat: energy}
     hits: {styles: [beat, full], min_strength: 0.2, depth: 0.8, decay_ms: 80, drop: {depth: 1.0, decay_ms: 400}}
-    tags: {energy: [0.75, 1.0], moods: [euphoric, aggressive, fiery, glitchy], genre_fit: {techno: 0.9,
+    tags: {sections: [chorus], energy: [0.75, 1.0], moods: [euphoric, aggressive, fiery, glitchy], genre_fit: {techno: 0.9,
            drum-and-bass: 0.9, dubstep: 0.85, trance: 0.85, metal: 0.8, rock: 0.7, "*": 0.2}, valence: 0.6,
            organic: 0.15, density: 0.9, flow: {dirs: [cw, ccw, outward], honours: true}}
 
@@ -393,10 +417,10 @@ scenes:
     layers:
       - {id: walls, kind: position, mode: fan, centre: centre, on: wall-back, along: right, size: 2.0, size_deg: 35,
          fan: 0.8}
-      - {id: gobo, kind: gobo, slot: auto, change_on: section, spin: flow, spin_scale: 0.2}
       - {id: beam, kind: beam, zoom: mid, focus: default, frost: 0.0}
       - {id: breathe, fx: sine, phase: bar, period_bars: [8, 4], depth: 0.2, needs: none}
-    tags: {energy: [0.15, 0.55], moods: [mellow, elegant, dark, hypnotic], genre_fit: {jazz: 0.8, soul: 0.75,
+      - {id: gobo, kind: gobo, slot: Linked rings}
+    tags: {sections: [verse], energy: [0.15, 0.55], moods: [mellow, elegant, dark, hypnotic], genre_fit: {jazz: 0.8, soul: 0.75,
            downtempo: 0.8, blues: 0.75, ambient: 0.6, "*": 0.35}, valence: 0.45, organic: 0.5, density: 0.3,
            flow: {dirs: [cw, ccw, still], honours: true}}
 
@@ -409,7 +433,7 @@ scenes:
       - {id: beam, kind: beam, zoom: narrow}
       - {id: pulse, fx: swell, phase: beat, depth: 0.6, needs: beat, without_beat: energy, attack_ms: 30,
          decay_ms: 220}
-    tags: {energy: [0.55, 0.95], moods: [playful, bright, retro, euphoric], genre_fit: {funk: 0.9, disco: 0.85,
+    tags: {sections: [chorus], energy: [0.55, 0.95], moods: [playful, bright, retro, euphoric], genre_fit: {funk: 0.9, disco: 0.85,
            pop: 0.8, latin: 0.8, hip-hop: 0.7, "*": 0.3}, valence: 0.8, organic: 0.35, density: 0.75,
            flow: {dirs: [still], honours: false}}
 
@@ -421,7 +445,7 @@ scenes:
          needs: grid, order: flow, spread: 1.0}
       - {id: beam, kind: beam, zoom: 12}
       - {id: glow, fx: sine, phase: bar, period_bars: [2, 1], depth: 0.4, needs: grid, order: flow, spread: 1.0}
-    tags: {energy: [0.35, 0.8], moods: [playful, hypnotic, liquid, geometric], genre_fit: {house: 0.8, pop: 0.8,
+    tags: {sections: [instrumental], energy: [0.35, 0.8], moods: [playful, hypnotic, liquid, geometric], genre_fit: {house: 0.8, pop: 0.8,
            electronic: 0.75, latin: 0.7, "*": 0.35}, valence: 0.7, organic: 0.35, density: 0.55,
            flow: {dirs: [left, right, cw, ccw, outward, inward], honours: true}}
 
@@ -431,7 +455,7 @@ scenes:
     layers:
       - {id: wave, fx: swell, phase: bar, period_bars: [2, 1], depth: 0.6, needs: grid, without_beat: energy,
          order: flow, spread: flow.spread, attack_ms: 120, decay_ms: 700}
-    tags: {energy: [0.25, 0.8], moods: [liquid, hypnotic, dreamy, playful], genre_fit: {"*": 0.6}, valence: 0.6,
+    tags: {sections: [instrumental], energy: [0.25, 0.8], moods: [liquid, hypnotic, dreamy, playful], genre_fit: {"*": 0.6}, valence: 0.6,
            organic: 0.45, density: 0.45, flow: {dirs: [up, down, left, right, cw, ccw, outward, inward], honours: true}}
 
   rising-swell:
@@ -439,7 +463,7 @@ scenes:
     layers:
       - {id: rising, fx: saw, phase: bar, period_bars: [4, 1], depth: 0.5, needs: grid, without_beat: energy,
          order: flow, flow_dir: up, spread: 0.75}
-    tags: {energy: [0.4, 0.9], moods: [tense, euphoric, bright], genre_fit: {trance: 0.85, house: 0.8, pop: 0.75,
+    tags: {sections: [chorus, instrumental], energy: [0.4, 0.9], moods: [tense, euphoric, bright], genre_fit: {trance: 0.85, house: 0.8, pop: 0.75,
            gospel: 0.7, "*": 0.4}, valence: 0.65, organic: 0.35, density: 0.55, flow: {dirs: [up], honours: false}}
 
   # -- appliances: the room's remote-worked lights (show.yaml lights.appliances; show_service/appliances.py) ----------
@@ -453,20 +477,20 @@ scenes:
   appliances-resting:
     label: Glitterball and pinspots resting
     appliances: {pan_spin: 0, intensity: 0}
-    tags: {modes: [party], energy: [0.0, 1.0], genre_fit: {"*": 0.6}, valence: 0.5, organic: 0.5, density: 0.2,
+    tags: {modes: [party, singalong], energy: [0.0, 1.0], genre_fit: {"*": 0.6}, valence: 0.5, organic: 0.5, density: 0.2,
            weight: 3.0}                       # Party mostly rests them: the disco scenes come when the music asks
 
   glitter-slow:
     label: Slow glitter
     appliances: {pan_spin: {speed: 0.2, dir: flow}, intensity: 0.75, colour_slot: white, shutter: open}
-    tags: {modes: [disco, party], energy: [0.15, 0.6], moods: [dreamy, elegant, mellow, calm, cosmic, warm],
+    tags: {modes: [disco, party, singalong], energy: [0.15, 0.6], sections: [chorus, outro], moods: [dreamy, elegant, mellow, calm, cosmic, warm],
            genre_fit: {disco: 0.9, soul: 0.85, funk: 0.8, jazz: 0.7, pop: 0.7, rnb: 0.75, "*": 0.5}, valence: 0.6,
            organic: 0.5, density: 0.3, weight: 0.5}
 
   disco-classic:
     label: Classic disco
     appliances: {pan_spin: {speed: 0.5, dir: flow}, intensity: 1.0, colour_slot: white, shutter: open}
-    tags: {modes: [disco, party], energy: [0.4, 0.85], moods: [euphoric, playful, bright, warm, retro],
+    tags: {modes: [disco, party, singalong], energy: [0.4, 0.85], moods: [euphoric, playful, bright, warm, retro],
            genre_fit: {disco: 1.0, funk: 0.95, soul: 0.9, house: 0.9, pop: 0.85, rnb: 0.8, rock: 0.6, "*": 0.45},
            valence: 0.8, organic: 0.5, density: 0.55, weight: 0.5}
 
@@ -499,19 +523,19 @@ scenes:
       - {id: bar-b-path, kind: position, mode: sweep, select: "tag:bar-b", on: floor, centre: [dance-floor, centre], along: right,
          size: 2.5, size_deg: 35, ease: sine, phase: bar, period_bars: [4, 2], needs: grid}
       - {id: beam, kind: beam, zoom: 12}
-    tags: {energy: [0.4, 0.9], moods: [playful, bright, euphoric, geometric], genre_fit: {pop: 0.85, house: 0.8,
+    tags: {sections: [chorus], energy: [0.4, 0.9], moods: [playful, bright, euphoric, geometric], genre_fit: {pop: 0.85, house: 0.8,
            disco: 0.8, funk: 0.75, rock: 0.7, "*": 0.4}, valence: 0.7, organic: 0.3, density: 0.6,
            flow: {dirs: [left, right, inward, outward], honours: false}}
   movers-counter-circles:
     label: Circles turning against each other
     needs: [pan, tilt]
     layers:
-      - {id: bar-a-path, kind: position, mode: circle, select: "tag:bar-a", on: ceiling, centre: centre, size: 1.2,
+      - {id: bar-a-path, kind: position, mode: circle, select: "tag:bar-a", on: ceiling, centre: centre, size_pools: 0.5,
          size_deg: 20, rotate: cw, phase: bar, period_bars: [4, 1], needs: grid, spread_mode: chase, spread: 0.5}
-      - {id: bar-b-path, kind: position, mode: circle, select: "tag:bar-b", on: ceiling, centre: centre, size: 1.2,
+      - {id: bar-b-path, kind: position, mode: circle, select: "tag:bar-b", on: ceiling, centre: centre, size_pools: 0.5,
          size_deg: 20, rotate: ccw, phase: bar, period_bars: [4, 1], needs: grid, spread_mode: chase, spread: 0.5}
-      - {id: gobo, kind: gobo, slot: auto, change_on: phrase, spin: flow, spin_scale: 0.4}
-    tags: {energy: [0.3, 0.8], moods: [hypnotic, cosmic, geometric, playful], genre_fit: {house: 0.8, techno: 0.8,
+      - {id: gobo, kind: gobo, slot: Ring of dots}
+    tags: {sections: [instrumental], energy: [0.3, 0.8], moods: [hypnotic, cosmic, geometric, playful], genre_fit: {house: 0.8, techno: 0.8,
            disco: 0.8, pop: 0.7, electronic: 0.8, "*": 0.4}, valence: 0.6, organic: 0.3, density: 0.55,
            flow: {dirs: [cw, ccw], honours: false}}
   movers-two-hold-two-roam:
@@ -520,10 +544,11 @@ scenes:
     layers:
       - {id: hold, kind: position, mode: drift, select: "tag:spot-1", on: floor, centre: [singer, dance-floor, centre],
          size: 0.5, size_deg: 6, phase: phrase, needs: none, spread_mode: chase, spread: 0.5}
-      - {id: roam, kind: position, mode: circle, select: "tag:spot-2", on: ceiling, centre: centre, size: 1.5,
+      - {id: roam, kind: position, mode: circle, select: "tag:spot-2", on: ceiling, centre: centre, size_pools: 0.5,
          size_deg: 25, rotate: flow, phase: bar, period_bars: [4, 2], needs: grid, spread_mode: mirror}
       - {id: beam, kind: beam, zoom: 14}
-    tags: {energy: [0.25, 0.75], moods: [warm, playful, elegant, bright], genre_fit: {pop: 0.85, soul: 0.8, rnb: 0.8,
+      - {id: gobo-roam, kind: gobo, select: "tag:spot-2", slot: Pinwheel}
+    tags: {sections: [verse], energy: [0.25, 0.75], moods: [warm, playful, elegant, bright], genre_fit: {pop: 0.85, soul: 0.8, rnb: 0.8,
            rock: 0.7, folk: 0.7, singer-songwriter: 0.8, "*": 0.45}, valence: 0.6, organic: 0.5, density: 0.4,
            flow: {dirs: [still, cw, ccw, inward], honours: false}}
   movers-scissors:
@@ -536,7 +561,7 @@ scenes:
          along: right, size: 2.0, size_deg: 30, ease: sine, phase: bar, period_bars: [2, 1], needs: grid}
       - {id: beam, kind: beam, zoom: narrow}
       - {id: pulse, fx: swell, phase: beat, depth: 0.5, needs: beat, without_beat: energy, attack_ms: 40, decay_ms: 220}
-    tags: {energy: [0.55, 1.0], moods: [euphoric, playful, bright, aggressive], genre_fit: {pop: 0.8, house: 0.85,
+    tags: {sections: [chorus], energy: [0.55, 1.0], moods: [euphoric, playful, bright, aggressive], genre_fit: {pop: 0.8, house: 0.85,
            techno: 0.8, rock: 0.8, disco: 0.8, "*": 0.45}, valence: 0.7, organic: 0.25, density: 0.75,
            flow: {dirs: [left, right, outward, inward], honours: false}}
   movers-mirror-fans:
@@ -548,9 +573,80 @@ scenes:
       - {id: lift, kind: position, mode: tilt_wave, size_deg: 12, fx: sine, phase: bar, period_bars: [8, 4], needs: none,
          spread_mode: chase, spread: 0.5, depth: 0.5}
       - {id: beam, kind: beam, zoom: 16}
-    tags: {energy: [0.2, 0.7], moods: [elegant, warm, dreamy, liquid, mellow], genre_fit: {soul: 0.8, pop: 0.75,
+      - {id: gobo, kind: gobo, slot: Flower}
+    tags: {sections: [verse], energy: [0.2, 0.7], moods: [elegant, warm, dreamy, liquid, mellow], genre_fit: {soul: 0.8, pop: 0.75,
            jazz: 0.7, downtempo: 0.75, classical: 0.6, "*": 0.45}, valence: 0.6, organic: 0.5, density: 0.4,
            flow: {dirs: [outward, inward, left, right], honours: true}}
+
+  # -- Staged: a planner works out how THIS room and these heads can do it (show_service/staging; docs/LIGHTS.md
+  # §5.10; owner, 27 Nov: "algebraic logic as part of the scene ... in the relevant room geometry (which is contingent
+  # and shouldn't be hard coded)"). mode: planned, plan: <planner>, with: {its settings}; the layer's period is one
+  # cycle of the plan, slowed on the grid until the heads can draw it. Nothing here names a wall, a bar or a length.
+  movers-wall-chase:
+    label: Two spots chase each other round the walls
+    # wall-run: every wall but the front (the bars and the picture) as one strip above head height; each spot is
+    # carried by whichever head draws it roundest there and handed on where two draw it alike; a head not carrying
+    # one goes ahead in the dark. Open beam: the chase is the one voice.
+    needs: [pan, tilt]
+    layers:
+      - {id: wall-path, kind: position, mode: planned, plan: wall-run, with: {spots: 2}, phase: bar, period_bars: [8, 4],
+         needs: grid}
+      - {id: beam, kind: beam, zoom: narrow, frost: 0.0}
+    tags: {sections: [instrumental, chorus], energy: [0.4, 0.85], moods: [playful, hypnotic, euphoric, geometric],
+           genre_fit: {house: 0.85, disco: 0.85, electronic: 0.8, techno: 0.75, pop: 0.75, funk: 0.75, "*": 0.4},
+           valence: 0.65, organic: 0.3, density: 0.55, flow: {dirs: [cw, ccw, left, right], honours: false}}
+  movers-floor-chase:
+    label: Spots chasing round the dance floor
+    # ring: a circle on the dance floor as big as it holds, with as many spots as fit without their pools running
+    # into each other, carried as the wall chase's are.
+    needs: [pan, tilt]
+    layers:
+      - {id: ring, kind: position, mode: planned, plan: ring, with: {centre: [dance-floor, centre]}, phase: bar,
+         period_bars: [4, 2], needs: grid}
+      - {id: beam, kind: beam, zoom: narrow, frost: 0.0}
+    tags: {sections: [chorus, instrumental], energy: [0.45, 0.9], moods: [playful, bright, euphoric, retro],
+           genre_fit: {disco: 0.9, funk: 0.85, house: 0.8, pop: 0.8, latin: 0.8, "*": 0.4}, valence: 0.75,
+           organic: 0.35, density: 0.65, flow: {dirs: [cw, ccw, still], honours: false}}
+  movers-twin-glide:
+    label: Two white dots glide along the back wall, stop and go out
+    # glide: the two heads of the one bar that keep their spots round along the longest stretch of the back wall;
+    # level, a little more than a spot apart; out where they stop, back in the dark. Written for a black room:
+    # alone, it is drawn only when the heads play on their own.
+    needs: [pan, tilt]
+    layers:
+      - {id: glide, kind: position, mode: planned, plan: glide, phase: bar, period_bars: [8, 4], needs: none}
+      - {id: white, kind: colour, hex: "#ffffff"}
+      - {id: beam, kind: beam, zoom: narrow, frost: 0.0}
+    tags: {alone: true, sections: [verse, instrumental, outro], energy: [0.1, 0.55], moods: [tense, elegant, dark, cosmic],
+           genre_fit: {soundtrack: 0.95, jazz: 0.8, soul: 0.7, rnb: 0.7, downtempo: 0.75, "*": 0.35}, valence: 0.4,
+           organic: 0.5, density: 0.2, flow: {dirs: [left, right, still], honours: false}}
+  next-up-twin-glide:
+    label: Two white dots glide in, stop, and swing onto the singer (the next song's title is up)
+    # the same glide, once, from the moment the title goes up: then both dots swing onto the singer's spot and stay
+    needs: [pan, tilt]
+    layers:
+      - {id: glide, kind: position, mode: planned, plan: glide, with: {end: [singer, dance-floor]}, phase: time,
+         period_s: 6, needs: none}
+      - {id: white, kind: colour, hex: "#ffffff"}
+      - {id: beam, kind: beam, zoom: narrow, frost: 0.0}
+    tags: {modes: [singalong], moments: [lead_in], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5,
+           organic: 0.5, density: 0.2, flow: {dirs: [inward, towards], honours: false}}
+  movers-heavy-cross:
+    label: Slow, heavy sweeps across each other, a white stab every other downbeat
+    # red and black with white highlights (owner, 27 Nov): the Crimson palette makes the room red (its highlight is
+    # white); here the heads cross slowly and the look's highlight stabs once every two bars. Any palette: its
+    # lightest colour is the stab.
+    needs: [pan, tilt]
+    layers:
+      - {id: bar-a-path, kind: position, mode: sweep, select: "tag:bar-a", on: floor, centre: [dance-floor, centre],
+         along: left, size: 2.5, size_deg: 35, ease: sine, phase: bar, period_bars: [8, 4], needs: grid}
+      - {id: bar-b-path, kind: position, mode: sweep, select: "tag:bar-b", on: floor, centre: [dance-floor, centre],
+         along: right, size: 2.5, size_deg: 35, ease: sine, phase: bar, period_bars: [8, 4], needs: grid}
+      - {id: beam, kind: beam, zoom: narrow, frost: 0.0}
+      - {id: stab, kind: colour, role: highlight, depth: {fx: swell, phase: bar, period_bars: 2, between: [0.0, 1.0]}}
+    tags: {sections: [chorus, verse], energy: [0.5, 0.95], moods: [aggressive, fiery, dark, tense],
+           genre_fit: {rock: 0.9, metal: 0.9, punk: 0.85, blues: 0.6, indie: 0.65, "*": 0.3}, valence: 0.35,
+           organic: 0.45, density: 0.55, flow: {dirs: [left, right, inward, outward], honours: false}}
 
   # -- Scenes for one kind of light (tags.parts; a group's scenes_for in show.yaml takes them, no other group does).
   # flash: the strobe zones (owner, 26 Nov: they glowed at every look's level, "not really getting any use"). Each
@@ -560,7 +656,7 @@ scenes:
     layers:
       - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
     hits: {styles: [beat, full, downbeat], min_strength: 0.25, depth: 1.0, decay_ms: 90, drop: {depth: 1.0, decay_ms: 400}}
-    tags: {parts: [flash], energy: [0.6, 1.0], moods: [euphoric, aggressive, bright, playful],
+    tags: {sections: [chorus], parts: [flash], energy: [0.6, 1.0], moods: [euphoric, aggressive, bright, playful],
            genre_fit: {"*": 0.6}, valence: 0.6, organic: 0.3, density: 0.8}
   flash-on-the-bar:
     label: A white flash on the kick drum
@@ -568,8 +664,72 @@ scenes:
       - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
     hits: {styles: [beat, full, downbeat], bands: [sub, bass], min_strength: 0.5, depth: 0.8, decay_ms: 120,
            drop: {depth: 1.0, decay_ms: 400}}
-    tags: {parts: [flash], energy: [0.35, 0.8], moods: [playful, bright, warm, hypnotic], genre_fit: {"*": 0.6},
+    tags: {sections: [verse, chorus], parts: [flash], energy: [0.35, 0.8], moods: [playful, bright, warm, hypnotic], genre_fit: {"*": 0.6},
            valence: 0.6, organic: 0.4, density: 0.5}
+  flash-on-the-snare:
+    label: A white flash on the snare
+    # the backbeat's white highlight for red and black (owner, 27 Nov): the hits in the snare's bands only
+    layers:
+      - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
+    hits: {styles: [beat, full, downbeat], bands: [mid, high_mid], min_strength: 0.55, depth: 1.0, decay_ms: 90,
+           drop: {depth: 1.0, decay_ms: 400}}
+    tags: {sections: [chorus, verse], parts: [flash], energy: [0.45, 1.0], moods: [aggressive, fiery, dark, tense],
+           genre_fit: {rock: 0.9, metal: 0.9, punk: 0.9, indie: 0.7, "*": 0.4}, valence: 0.4, organic: 0.45,
+           density: 0.55}
+  flash-swell:
+    label: The strobe zones glow white, swelling slowly (a song with no beat to flash on)
+    layers:
+      - {id: low, fx: dim, phase: time, period_s: 1, depth: 0.45, needs: none}
+      - {id: swell, fx: sine, phase: bar, period_bars: [8, 4], depth: 0.6, needs: none, order: flow, spread: 0.5}
+    hits: {styles: [], drop: {depth: 1.0, decay_ms: 500}}
+    tags: {parts: [flash], shows_beat: false, sections: [chorus, verse, instrumental], energy: [0.2, 1.0],
+           moods: [warm, elegant, dreamy, euphoric], genre_fit: {"*": 0.6}, valence: 0.6, organic: 0.6, density: 0.3}
+  # Running the strobes in order (owner, 27 Nov: "L-R or R-L or ping pong or whatever"). Each bar's four strobe LEDs
+  # are lights of their own, in the group's order: bar A's 1-4 then bar B's 1-4, left to right as the room faces the
+  # bars. A swell with a short attack and decay is one quick flash per light per cycle; spread 1 spaces the eight
+  # flashes evenly over the cycle, so one LED at a time runs along the line. No dim layer: the run is the only light.
+  flash-run-right:
+    label: The strobes run left to right, one at a time
+    layers:
+      - {id: run, fx: swell, phase: bar, period_bars: [2, 1], depth: 1.0, spread: 1.0, order: group, spread_mode: chase,
+         attack_ms: 10, decay_ms: 110, needs: none}
+    hits: {styles: [], drop: {depth: 1.0, decay_ms: 400}}
+    tags: {sections: [chorus, instrumental], parts: [flash], energy: [0.55, 1.0], moods: [euphoric, playful, bright, aggressive],
+           genre_fit: {"*": 0.6}, valence: 0.65, organic: 0.3, density: 0.7, flow: {dirs: [right, still], honours: false}}
+  flash-run-left:
+    label: The strobes run right to left, one at a time
+    layers:
+      - {id: run, fx: swell, phase: bar, period_bars: [2, 1], depth: 1.0, spread: 1.0, order: group, spread_mode: chase,
+         flow_dir: left, attack_ms: 10, decay_ms: 110, needs: none}
+    hits: {styles: [], drop: {depth: 1.0, decay_ms: 400}}
+    tags: {sections: [chorus, instrumental], parts: [flash], energy: [0.55, 1.0], moods: [euphoric, playful, bright, aggressive],
+           genre_fit: {"*": 0.6}, valence: 0.65, organic: 0.3, density: 0.7, flow: {dirs: [left, still], honours: false}}
+  flash-ping-pong:
+    label: The strobes run there and back (ping-pong)
+    layers:
+      - {id: bounce, fx: swell, phase: bar, period_bars: [4, 2], depth: 1.0, spread: 1.0, order: group, spread_mode: bounce,
+         attack_ms: 10, decay_ms: 110, needs: none}
+    hits: {styles: [], drop: {depth: 1.0, decay_ms: 400}}
+    tags: {sections: [chorus, instrumental, final_chorus], parts: [flash], energy: [0.6, 1.0], moods: [euphoric, playful, aggressive, bright],
+           genre_fit: {"*": 0.6}, valence: 0.65, organic: 0.25, density: 0.8}
+  flash-burst-out:
+    label: The strobes burst out from the middle on every bar
+    layers:
+      - {id: out, fx: swell, phase: bar, period_bars: 1, depth: 1.0, spread: 1.0, order: group, flow_dir: outward,
+         spread_mode: mirror, attack_ms: 10, decay_ms: 140, needs: none}    # the line's middle (A4, B1) first
+    hits: {styles: [], drop: {depth: 1.0, decay_ms: 400}}
+    tags: {sections: [chorus, final_chorus, climax], parts: [flash], energy: [0.7, 1.0], moods: [euphoric, aggressive],
+           genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.2, density: 0.85, flow: {dirs: [outward, still], honours: false}}
+  flash-each-bar-runs:
+    label: Each bar's strobes run left to right together, on the beat
+    layers:
+      - {id: run-a, select: "tag:bar-a", fx: swell, phase: bar, period_bars: 1, depth: 1.0, spread: 1.0, order: group,
+         spread_mode: chase, attack_ms: 10, decay_ms: 150, needs: none}
+      - {id: run-b, select: "tag:bar-b", fx: swell, phase: bar, period_bars: 1, depth: 1.0, spread: 1.0, order: group,
+         spread_mode: chase, attack_ms: 10, decay_ms: 150, needs: none}
+    hits: {styles: [], drop: {depth: 1.0, decay_ms: 400}}
+    tags: {sections: [verse, chorus], parts: [flash], energy: [0.45, 0.9], moods: [playful, bright, hypnotic, euphoric],
+           genre_fit: {"*": 0.6}, valence: 0.65, organic: 0.35, density: 0.6}
   flash-resting:
     label: The strobe zones rest (a drop still flashes them)
     layers:
@@ -577,8 +737,8 @@ scenes:
     hits: {styles: [], drop: {depth: 1.0, decay_ms: 500}}
     # every energy: whether the zones rest or flash is the feel's accents and the song's groove (accent_fit), not how
     # loud the song is against itself
-    tags: {parts: [flash], energy: [0.0, 1.0], moods: [calm, mellow, dreamy, elegant, warm, dark],
-           genre_fit: {"*": 0.6}, valence: 0.5, organic: 0.6, density: 0.1}
+    tags: {parts: [flash], rest: true, energy: [0.0, 1.0], genre_fit: {"*": 0.6}, valence: 0.5, organic: 0.6,
+           density: 0.1}
   flash-waits:
     label: The strobe zones stay dark while the room waits
     layers:
@@ -586,70 +746,78 @@ scenes:
     tags: {parts: [flash], moments: [waiting, lull, lead_in], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5,
            organic: 0.5, density: 0.1}
 
-  # laser: a bar's laser (owner, 27 Nov: "lasers also have sensible scene expression ... requires deep reasoning").
-  # To the engine it is an ordinary light: its colour channel is a wheel of the seven diode combinations (the look's
-  # colour picks the nearest; a colour_wheel layer steps through them), its strobe a shutter (effects only, under the
-  # feel's strobe rule), and with no dimmer it is DARK whenever its brightness is under 0.4 (the wheel's closed slot).
-  # So brightness layers gate it: a beat layer flashes it on the beat, order: flow alternates the two bars, fx: dim
-  # rests it; a fade through dark, House lights and a mode change switch it off as they dim every other light. Its
-  # rotation is the one function channel a macro layer sets ("Laser rotation": 0 stop, 1-127 clockwise slow to fast,
-  # 129-255 the other way; {cw, ccw, still}: by the way the room's flow turns).
-  # What it is for: texture in the air above. Scarce, so it means something: resting in calm songs and verses' draws,
-  # still stars while the room waits, turning and pulsing when the song drives.
+  # laser: a bar's laser (owner, 27 Nov: "do you have any clue what the laser ACTUALLY shows in DMX mode"; the
+  # evidence and what is still unknown: docs/GIGBAR_RIG.md §1.4). The EU unit, on its 52-channel chart:
+  #   - A GRATING laser: each lit diode is split into a burst of thin beams over about 93 degrees: needles in haze,
+  #     a field of dots on the ceiling and walls. Not a drawn figure, and DMX has no pattern to choose.
+  #   - DMX gives it three things: which diodes are lit, a strobe, and the grating's rotation ("Laser rotation": 0
+  #     stop, 1-127 one way slow to fast, 129-255 the other; {cw, ccw, still} by the room's flow; {cycle, on} for
+  #     the next value each bar or phrase).
+  #   - Two diodes are two colours of beams side by side, never one mixed colour. So the look's colour lights the ONE
+  #     diode nearest it (red, green or blue), and more than one diode is an effect's deliberate moment.
+  #   - Its pulses must be longer than 0.25 s (the manual's laser data), so NOTHING gates it on the beat: it comes
+  #     and goes by the bar, the phrase or the section, and its strobe (effects only) is under 4 a second.
+  #   - With no dimmer it is dark under 0.4 brightness (its colour channel's closed slot): a fx: dim layer rests it,
+  #     and a fade through dark, House lights and a mode change switch it off as they dim every other light.
+  # What it is for: a sharp texture over the whole room in one colour, the only light here with hard points. It fills
+  # the room when it is on, so it rests most of the time (the line-ups, show.yaml) and is the feature when it plays.
+  # "Laser patterns" is the US unit's 51-channel chart (one of 32 figures, 8 values each): a unit without that
+  # channel skips it, as a US unit skips the rotation.
   laser-resting:
-    label: The lasers rest
+    label: The laser rests
     layers:
       - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
-    tags: {parts: [laser], energy: [0.0, 1.0], moods: [calm, mellow, elegant, warm, dreamy],
-           genre_fit: {"*": 0.6}, valence: 0.5, organic: 0.7, density: 0.1, weight: 1.5}
-  laser-stars:
-    label: A still field of stars in the look's colour
+    tags: {parts: [laser], rest: true, shows_beat: false, energy: [0.0, 1.0], genre_fit: {"*": 0.6}, valence: 0.5,
+           organic: 0.7, density: 0.1}
+  laser-still:
+    label: The burst hangs still, in the look's colour
     layers:
-      - {id: still, kind: macro, set: {"Laser rotation": 0}}
-    tags: {parts: [laser], shows_beat: false, energy: [0.0, 0.7], moods: [dreamy, cosmic, elegant, calm, dark],
+      - {id: still, kind: macro, set: {"Laser rotation": 0, "Laser patterns": 4}}
+    tags: {sections: [verse, outro], parts: [laser], shows_beat: false, energy: [0.0, 0.6], moods: [dreamy, cosmic, elegant, calm, dark],
            genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.4, density: 0.2}
-  laser-drifting:
-    label: The stars drift slowly round with the room
+  laser-turning:
+    label: The burst turns slowly with the room
     layers:
-      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 14, ccw: 142, still: 8}}}
-    tags: {parts: [laser], shows_beat: false, energy: [0.15, 0.8], moods: [dreamy, cosmic, hypnotic, liquid, warm],
+      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 14, ccw: 142, still: 8},
+                                          "Laser patterns": {cycle: [12, 44, 76], on: phrase}}}
+    tags: {sections: [instrumental], parts: [laser], shows_beat: false, energy: [0.15, 0.8], moods: [dreamy, cosmic, hypnotic, liquid, warm],
            genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.3, density: 0.35}
-  laser-on-the-beat:
-    label: The lasers flash on every beat, turning
+  laser-turning-brisk:
+    label: The burst turns briskly with the room
     layers:
-      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 60, ccw: 190, still: 40}}}
-      - {id: gate, fx: swell, phase: beat, depth: 1.0, needs: beat, without_beat: none, attack_ms: 20, decay_ms: 160}
-    tags: {parts: [laser], energy: [0.45, 1.0], moods: [playful, bright, euphoric, hypnotic, retro],
-           genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.2, density: 0.7}
-  laser-side-to-side:
-    label: The two bars' lasers take turns, beat by beat
-    layers:
-      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 45, ccw: 175, still: 30}}}
-      - {id: take-turns, fx: square, phase: beat, depth: 1.0, needs: beat, without_beat: none,
-         order: flow, spread: 1.0}
-    tags: {parts: [laser], energy: [0.4, 0.95], moods: [playful, bright, geometric, hypnotic],
+      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 45, ccw: 175, still: 30},
+                                          "Laser patterns": {cycle: [100, 132, 164], on: phrase}}}
+    tags: {sections: [chorus], parts: [laser], shows_beat: true, energy: [0.4, 1.0], moods: [euphoric, bright, playful, cosmic, hypnotic],
            genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.2, density: 0.6}
-  laser-colour-steps:
-    label: A new colour each bar, turning with the room
+  laser-rocking:
+    label: The burst rocks to and fro, a bar each way
     layers:
-      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 50, ccw: 180, still: 35}}}
-      - {id: colour-steps, kind: colour_wheel, mode: step, step_on: bar}
-    tags: {parts: [laser], shows_beat: true, energy: [0.4, 0.95], moods: [playful, bright, retro, cosmic, euphoric],
-           genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.2, density: 0.6}
-  laser-full:
-    label: Every colour at once, turning fast
+      - {id: rotation, kind: macro, set: {"Laser rotation": {cycle: [30, 158], on: bar},
+                                          "Laser patterns": {cycle: [20, 52], on: bar}}}
+    tags: {sections: [instrumental], parts: [laser], shows_beat: true, energy: [0.35, 0.95], moods: [playful, hypnotic, retro, bright, liquid],
+           genre_fit: {"*": 0.6}, valence: 0.6, organic: 0.3, density: 0.55}
+  laser-taking-turns:
+    label: The two bars' bursts take turns, two bars each
     layers:
-      - {id: all, kind: macro, set: {Laser: 240, "Laser rotation": {cw: 110, ccw: 240, still: 90}}}
-    tags: {parts: [laser], shows_beat: true, energy: [0.65, 1.0], moods: [euphoric, aggressive, fiery, glitchy, bright],
-           genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.1, density: 0.9, weight: 0.7}
+      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 40, ccw: 170, still: 25}, "Laser patterns": 84}}
+      - {id: take-turns, fx: square, phase: bar, period_bars: [4, 4], depth: 1.0, needs: grid, order: flow, spread: 1.0}
+    tags: {sections: [instrumental], parts: [laser], shows_beat: true, energy: [0.4, 0.95], moods: [playful, bright, geometric, hypnotic],
+           genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.2, density: 0.5}
+  laser-fast:
+    label: The burst spins fast
+    layers:
+      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 110, ccw: 240, still: 90},
+                                          "Laser patterns": {cycle: [196, 228, 244], on: bar}}}
+    tags: {sections: [chorus], parts: [laser], shows_beat: true, energy: [0.7, 1.0], moods: [euphoric, aggressive, fiery, glitchy, bright],
+           genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.1, density: 0.9, weight: 0.6}
   laser-waits:
-    label: Still stars while the room waits
+    label: The burst turns very slowly while the room waits
     layers:
-      - {id: still, kind: macro, set: {"Laser rotation": 0}}
+      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 5, ccw: 133, still: 5}, "Laser patterns": 4}}
     tags: {parts: [laser], shows_beat: false, moments: [waiting, lead_in], energy: [0.0, 1.0], genre_fit: {"*": 0.5},
            valence: 0.5, organic: 0.5, density: 0.1}
   laser-sleeps:
-    label: The lasers are off through a long wait
+    label: The laser is off through a long wait
     layers:
       - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
     tags: {parts: [laser], moments: [lull], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5,
@@ -661,7 +829,7 @@ scenes:
     layers:
       - {id: motor, kind: macro, set: {Rotation: {cw: 45, ccw: 175, still: 16}}}
       - {id: pulse, fx: swell, phase: beat, depth: 0.5, needs: beat, without_beat: energy, attack_ms: 40, decay_ms: 220}
-    tags: {parts: [derby], energy: [0.35, 0.9], moods: [playful, bright, hypnotic, euphoric, retro],
+    tags: {sections: [chorus, instrumental], parts: [derby], energy: [0.35, 0.9], moods: [playful, bright, hypnotic, euphoric, retro],
            genre_fit: {"*": 0.6}, valence: 0.6, organic: 0.3, density: 0.6}
   derby-spinning:
     label: The derbies spin fast and chase
@@ -669,27 +837,55 @@ scenes:
       - {id: motor, kind: macro, set: {Rotation: {cw: 110, ccw: 240, still: 90}}}
       - {id: chase, fx: square, phase: beat, subdivide: true, depth: 0.7, needs: beat, without_beat: energy,
          order: flow, spread: 1.0}
-    tags: {parts: [derby], energy: [0.6, 1.0], moods: [euphoric, aggressive, fiery, glitchy],
+    tags: {sections: [chorus], parts: [derby], energy: [0.6, 1.0], moods: [euphoric, aggressive, fiery, glitchy],
            genre_fit: {"*": 0.6}, valence: 0.7, organic: 0.2, density: 0.85}
   derby-drifting:
     label: The derbies drift slowly, breathing
     layers:
       - {id: motor, kind: macro, set: {Rotation: {cw: 8, ccw: 136, still: 6}}}
       - {id: breathe, fx: sine, phase: bar, period_bars: [8, 4], depth: 0.3, needs: none}
-    tags: {parts: [derby], energy: [0.0, 0.6], moods: [calm, mellow, dreamy, warm, elegant, liquid],
+    tags: {sections: [verse, outro], parts: [derby], energy: [0.0, 0.6], moods: [calm, mellow, dreamy, warm, elegant, liquid],
            genre_fit: {"*": 0.6}, valence: 0.5, organic: 0.6, density: 0.2}
   derby-waits:
-    label: The derbies hold still and glow while the room waits
+    label: The derbies drift very slowly and glow while the room waits
     layers:
-      - {id: motor, kind: macro, set: {Rotation: 0}}
+      - {id: motor, kind: macro, set: {Rotation: {cw: 5, ccw: 133, still: 5}}}
       - {id: glow, fx: sine, phase: bar, period_bars: [8, 4], depth: 0.35, needs: none}
     tags: {parts: [derby], moments: [waiting, lull, lead_in], energy: [0.0, 1.0], genre_fit: {"*": 0.5},
            valence: 0.5, organic: 0.5, density: 0.1}
 
+  # -- Resting (tags.rest: true). A line-up (show.yaml lights.lineups) names the light groups that PLAY; every other
+  # group it governs draws only from these. The footage of the unit lights two or three parts against a dark room,
+  # and its own shows are line-ups of its parts (docs/GIGBAR_RIG.md §1.4): a part that rests is what makes the others
+  # read, and gives the song somewhere to go.
+  rest-dark:
+    label: Resting, dark
+    layers:
+      - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
+    tags: {rest: true, energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5, density: 0.0}
+  rest-glow:
+    label: Resting, a low glow in the look's colour
+    layers:
+      - {id: low, fx: dim, phase: time, period_s: 1, depth: 0.82, needs: none}
+    tags: {rest: true, energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5, density: 0.0,
+           weight: 0.6}
+  derby-resting:
+    label: The derbies rest, dark and still
+    layers:
+      - {id: motor, kind: macro, set: {Rotation: 0}}
+      - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
+    tags: {parts: [derby], rest: true, energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5,
+           density: 0.0}
+
   # -- The room's moments (contract.MOMENTS; owner, 26 Nov: the silent state and the changeover are "all scenes, but
-  # expressed on the gigbar objects"). tags.moments: [song | lead_in | waiting | lull] says when a scene is for: in
-  # that moment only these are drawn; a scene with no moments is for any moment none of these claims (every scene
-  # above: the song). The director only names the moment; everything the lights do in it is written here.
+  # expressed on the gigbar objects"; 27 Nov: "it's not just for karaoke -- it's a general thing ... either some
+  # specific scene (for some modes) or a selection among low-energy scenes"). While nothing plays the director
+  # directs a low energy (show.yaml lights.moments.energy), and a group draws, in this order:
+  #   1. the mode's own scenes for the moment: tags.moments names it AND tags.modes names one of the mode's tags
+  #      (its director.light_scenes scene_tags). The three below are Karaoke's: the singer's spot.
+  #   2. the scenes made for the moment in any mode (tags.moments, no tags.modes): a kind of light that must behave
+  #      whatever the mode (the strobe zones dark, the laser and derbies slow: their own scenes above).
+  #   3. the general pool, at that low energy: the calm scenes of the whole catalogue.
   stage-waits:
     label: The stage waits (a soft pool on the singer's spot)
     needs: [pan, tilt]
@@ -698,21 +894,22 @@ scenes:
          phase: phrase, needs: none, spread_mode: chase, spread: 0.5}
       - {id: beam, kind: beam, zoom: wide, frost: 0.4, iris: 1.0}
       - {id: breathe, fx: sine, phase: bar, period_bars: [8, 4], depth: 0.2, needs: none}
-    tags: {moments: [waiting], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5, density: 0.3, flow: {dirs: [still], honours: false}}
+    tags: {modes: [singalong], moments: [waiting], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5, density: 0.3, flow: {dirs: [still], honours: false}}
   glow-waits:
-    label: A slow glow along the bars while the room waits
+    label: A slow glow along the bars
     layers:
       - {id: glow, fx: sine, phase: bar, period_bars: [8, 4], depth: 0.35, needs: none, order: flow, spread: 0.5}
-    tags: {moments: [waiting, lull], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5, density: 0.3}
+    tags: {sections: [verse, outro], energy: [0.0, 0.3], moods: [calm, warm, dreamy, mellow], genre_fit: {"*": 0.5}, valence: 0.5,
+           organic: 0.5, density: 0.15}
   lull-ceiling:
-    label: Quiet light drifting on the ceiling (a long wait)
+    label: Quiet light drifting on the ceiling
     needs: [pan, tilt]
     layers:
-      - {id: drift, kind: position, mode: drift, on: ceiling, centre: centre, size: 1.5, size_deg: 20, phase: phrase,
+      - {id: drift, kind: position, mode: drift, on: ceiling, centre: centre, size_pools: 0.4, size_deg: 20, phase: phrase,
          needs: none, spread_mode: chase, spread: 0.5}
       - {id: beam, kind: beam, zoom: wide, frost: 0.5}
-      - {id: gobo, kind: gobo, slot: auto, change_on: section, spin: flow, spin_scale: 0.1}
-    tags: {moments: [lull], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5, density: 0.3, flow: {dirs: [still, cw, ccw], honours: false}}
+      - {id: gobo, kind: gobo, slot: Broken ring}
+    tags: {energy: [0.0, 0.25], moods: [calm, dreamy, cosmic, dark], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5, density: 0.3, flow: {dirs: [still, cw, ccw], honours: false}}
   next-up:
     label: Every head on the singer's spot (the next song's title is up)
     needs: [pan, tilt]
@@ -720,9 +917,9 @@ scenes:
       - {id: gather, kind: position, mode: aim, centre: [singer, dance-floor, centre]}
       - {id: beam, kind: beam, zoom: narrow, frost: 0.0, iris: 0.8}
       - {id: lift, fx: sine, phase: bar, period_bars: [2, 1], depth: 0.3, needs: none}
-    tags: {moments: [lead_in], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5, density: 0.3, flow: {dirs: [inward, towards], honours: false}}
+    tags: {modes: [singalong], moments: [lead_in], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5, density: 0.3, flow: {dirs: [inward, towards], honours: false}}
   next-up-rise:
     label: The bars rise towards the first line
     layers:
       - {id: climb, fx: saw, phase: bar, period_bars: [1, 1], depth: 0.5, needs: none, order: flow, spread: 1.0}
-    tags: {moments: [lead_in], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5, density: 0.3}
+    tags: {modes: [singalong], moments: [lead_in], energy: [0.0, 1.0], genre_fit: {"*": 0.5}, valence: 0.5, organic: 0.5, density: 0.3}

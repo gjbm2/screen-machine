@@ -18,7 +18,7 @@ import { Notice, Pill, Spinner } from "@/pages/Room/bits";
 import { Modal } from "@/pages/Room/overlays";
 import { explainLightsError, LightsApiError, type LightsApi } from "./api";
 import { IdentifyButton, useIdentify, type Identify } from "./Identify";
-import { COLOUR_PRESETS, typeWords, type LightRow, type LightType, type StatusWords } from "./lib";
+import { COLOUR_PRESETS, laserLean, parseSetup, typeWords, type LightRow, type LightType, type StatusWords } from "./lib";
 
 const LINK = "inline-flex min-h-11 items-center text-[15px] font-medium text-teal-800 underline-offset-4 hover:underline";
 
@@ -211,6 +211,58 @@ function connectionWords(r: LightRow): string {
   return "Not checked yet";
 }
 
+/** A laser's tilt (owner, 27 Nov: "laser angle should be a config setting in the light set up screen ... a de facto
+ *  user param we'll physically control but will drive the simulation"). The real unit is tilted by hand; this says how,
+ *  and the 3D room draws its beams from it. Until it is set, the tilt that keeps every beam within 45° of vertical. */
+function LaserTilt({ row, api, onChanged }: { row: LightRow; api: LightsApi; onChanged: () => void }) {
+  const spread = row.spread_deg ?? 0;
+  const [saved, setSaved] = useState<number | null>(row.setup.lean_deg);
+  const [lean, setLean] = useState<number>(laserLean(spread, row.setup.lean_deg).lean);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const now = laserLean(spread, lean);
+  const keep = async (v: number | null) => {
+    setBusy(true);
+    setErr(null);
+    try {
+      const res = await api.setup(row.id, { lean_deg: v });
+      const s = parseSetup(res?.setup);
+      setSaved(s.lean_deg);
+      setLean(laserLean(spread, s.lean_deg).lean);
+      onChanged();
+    } catch (e) {
+      setErr(explainLightsError(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const side = (deg: number) => (Math.abs(deg) < 0.05 ? "straight up" : `${Math.abs(deg).toFixed(1)}° ${deg > 0 ? "forward" : "back"}`);
+  return (
+    <div className="space-y-2 rounded-xl border border-stone-200 bg-white p-3" data-testid="laser-tilt">
+      <div className="text-[15px] font-medium">How it is tilted</div>
+      <p className="text-[15px] text-muted-foreground">
+        Tilt the real laser by hand, then set the same here: the 3D room draws its beams from this. Forward is the way
+        its bar faces.
+      </p>
+      <div className="flex items-center gap-3">
+        <Slider min={-60} max={60} step={0.5} value={[lean]} disabled={busy} onValueChange={(v) => setLean(v[0])}
+          onValueCommit={(v) => void keep(v[0])} aria-label="Laser tilt" className="flex-1" />
+        <span className="w-28 text-right text-[15px] tabular-nums">{side(lean)}</span>
+      </div>
+      <p className="text-[15px]">
+        Its beams spread {spread.toFixed(0)}°: the most forward one leans {side(now.forward)} of straight up, the most
+        backward {side(-now.back)}.{saved === null ? " Not set yet: this is the tilt that keeps every beam within 45° of straight up." : ""}
+      </p>
+      {saved !== null && (
+        <Button variant="ghost" disabled={busy} onClick={() => void keep(null)} className="h-11 rounded-xl px-3 text-[15px]">
+          Back to the 45° rule
+        </Button>
+      )}
+      {err && <Notice tone="bad">{err}</Notice>}
+    </div>
+  );
+}
+
 export function LightItem({
   row,
   view,
@@ -299,6 +351,7 @@ export function LightItem({
             </AppLink>
           </dd>
         </dl>
+        {row.spread_deg !== null && <LaserTilt row={row} api={api} onChanged={onChanged} />}
         {row.dmx && (
           <div className="flex flex-wrap gap-2">
             <Button variant="outline" onClick={() => onEdit(row)} className="h-11 rounded-xl bg-white px-4 text-[15px]" data-testid="edit-light">

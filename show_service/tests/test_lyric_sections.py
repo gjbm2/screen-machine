@@ -103,3 +103,26 @@ def test_bad_sections_are_no_plan(bad):
                                  "speed": 1.0, "source": "karaoke", "sections": bad}
     r.run(10.0)
     assert not [e for e in r.events if e.get("detail") == "lyrics"]
+
+
+def test_a_pause_with_a_section_announced_starts_nothing_and_resume_announces_it_again():
+    r = Rig(lambda t: abab(t, length=25.0))
+    st = {"state": "playing", "pos": None, "t0": 0.0}
+
+    def np_():
+        pos = r.t - st["t0"] if st["state"] == "playing" else st["pos"]
+        return {"key": "karaoke:k1:q1", "state": st["state"], "pos_s": pos, "dur_s": 200.0, "speed": 1.0,
+                "title": "Song", "source": "karaoke", "sections": PLAN}
+    r.ctx.now_playing = np_
+    r.run(36.0)                                                # chorus B (song 40 s) is announced by now
+    assert [e["letter"] for e in r.events if e.get("detail") == "lyrics"][-1] == "B"
+    st.update(state="paused", pos=36.0)
+    r.run(60.0)                                                # paused for 24 s across where B would have started
+    started = [s for s in r.s.sections if s.get("lyrics")]
+    assert [s["letter"] for s in started] == ["A"]             # B never started during the pause
+    st.update(state="playing", t0=r.t - 36.0)                  # resume from song 36 s: B is 4 s ahead
+    r.run(70.0)
+    lyr = [e for e in r.events if e.get("detail") == "lyrics"]
+    assert [e["letter"] for e in lyr] == ["A", "B", "B"]       # announced again after the resume
+    assert round(lyr[-1]["at_ms"] / 1000.0) == 64              # at song 40 s as it now plays
+    assert [s["letter"] for s in r.s.sections if s.get("lyrics")] == ["A", "B"]

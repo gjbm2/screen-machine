@@ -7,10 +7,10 @@
 // each), so a room status frame re-renders the strip only when something it shows changes.
 
 import { useEffect, useState } from "react";
+import { LiveNow } from "./LiveNow";
 import { explainError, storageGet, storageSet } from "@/pages/Room/api";
-import { LookControls, SceneButton, ScenePicker } from "@/pages/Room/LivePanel";
-import { sceneInfo, sceneRatingKey, type SceneInfo } from "@/pages/Room/liveLib";
-import { RatingRow } from "@/pages/Room/Rating";
+import { ScenePicker } from "@/pages/Room/LivePanel";
+import { sceneInfo, type SceneInfo } from "@/pages/Room/liveLib";
 import { useLiveLook } from "@/pages/Room/useLiveLook";
 import {
   isLiveCapable,
@@ -116,21 +116,25 @@ export function useScreenLive(screenId: string) {
 
 export type ScreenLive = ReturnType<typeof useScreenLive>;
 
-/** While live: the scene on glass (tap to change it) and the Room page's look controls. */
+/** While live: what was, what is and what is coming, scenes and effects, each to rate and comment on (owner, 27 Nov),
+ *  then the Room page's look controls. */
 export function LiveLookPanel({ live }: { live: ScreenLive }) {
-  const { screenId, lv, lib, api, nowInfo } = live;
+  const { screenId, lv, lib, api } = live;
   return (
-    <div className="space-y-3">
-      <SceneButton
-        info={nowInfo}
-        caption="Tap to change scene"
-        onClick={() => live.setPicker("cue")}
-        disabled={!lib || !!lv.busy}
-        testId={`home-scene-${screenId}`}
-      />
-      <RatingRow api={api} ratingKey={sceneRatingKey(lib, lv.look?.current_scene)} what="scene" className="-mt-2" testId={`home-rate-${screenId}`} />
-      <LookControls screenId={screenId} lv={lv} lib={lib} api={api} />
-    </div>
+    <LiveNow
+      screenId={screenId}
+      lv={lv}
+      lib={lib}
+      api={api}
+      nowKey={live.nowInfo?.key ?? null}
+      cue={(key, how) =>
+        void lv.cue(`switch to ${sceneInfo(lib, api, key)?.label ?? key}`, {
+          to: sceneSpecOf(key),
+          ...(how.transition ? { transition: how.transition } : {}),
+          at: how.at ?? "now",
+        })
+      }
+    />
   );
 }
 

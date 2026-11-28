@@ -1,0 +1,35 @@
+# How much light each kind of fixture puts out, and how a room turns lumens into lux (show_service/roomlight.py;
+# owner, 27 Nov: "reflected light changes the visual dynamics of the room ... scenes which depend on e.g. laser and
+# derby effects also drop down the effective total light levels to allow those lower power lights to be seen").
+#
+# The art director reads this to know how much light the lights now playing put in the room, in the colour they are
+# showing, so the parts playing with a FEATURED low-power light (a line-up's features: show.yaml lights.lineups) can be
+# brought down to what that light needs to be seen (its group's reads_under_lux). The 3D room (/lights/room,
+# src/pages/Room3D/light.ts) draws the same figures: change one, change the other.
+#
+# types: by fixture-type file (config/room/fixture-types/...), or a built-in type's name. One of:
+#   emitters: {r, g, b}   lumens from each colour's LEDs at full: a colour's light is its share of each
+#   wheel: <lm>           a white source behind a colour wheel: lumens in open white; a colour passes its own share
+#                         (a deep blue an eighth of it, a cyan three quarters)
+#   white: <lm>           a white light with no colour: lumens at full
+#   fixed: <lm>           much the same whatever it shows (a laser)
+# From the makers' figures where they give them (docs/GIGBAR_RIG.md; chauvetdj.com GigBAR Move ILS: par 1,205 lux at
+# 2 m over a 33 degree field, moving head 5,140 lux at 2 m over 17 degrees, strobe 130 lux at 2 m over 62 degrees, laser
+# diodes 30 / 20 / 50 mW). ESTIMATES: the derby (the maker gives no output), a par's split between its colours (red,
+# green and blue together are taken as half of everything-on), a house light and a lamp.
+version: 1
+types:
+  ofl/chauvet-dj/gigbar-move-ils-par.json:   {emitters: {r: 66, g: 222, b: 22}}
+  ofl/chauvet-dj/gigbar-move-ils-spot.json:  {wheel: 1190}
+  ofl/chauvet-dj/gigbar-move-ils-derby.json: {emitters: {r: 30, g: 80, b: 15}}     # ESTIMATE
+  ofl/chauvet-dj/gigbar-move-ils-flash.json: {white: 233}
+  ofl/chauvet-dj/gigbar-move-ils-laser.json: {fixed: 15}
+  generic-dimmer: {white: 800}                                                     # ESTIMATE: a ceiling downlight
+# A light of a type not listed here (and with no "default") counts for nothing.
+
+# The room: how much of the light landing on each surface it reflects (the lighting designer's standard room:
+# ESTIMATES; a deployment's show.yaml lights.room_light.reflect says what its room really is). With the room's size
+# (space.yaml) they give the light in the room: lux = lumens / (surface area x (1 - mean reflectance)).
+room:
+  reflect: {ceiling: 0.7, wall: 0.5, floor: 0.2}
+  size: [6.0, 6.0, 3.0]                       # when the room model has none

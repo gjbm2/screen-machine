@@ -33,20 +33,6 @@ def _default_room(dep):
         return None
 
 
-def _screen_rooms(dep) -> dict:
-    """screen id -> the first rooms.json room naming it; {} when the site has no readable rooms.json."""
-    try:
-        rooms = smconfig.rooms(dep)
-    except (OSError, ValueError):
-        return {}
-    out: dict = {}
-    for rid, r in rooms.items():
-        for s in r.get("screens") or []:
-            if isinstance(s, str):
-                out.setdefault(s, rid)
-    return out
-
-
 def _kiosk(dep):
     """{"screens": [{id, name, cdp_port}]} of the manifest's kiosk, or None when the deployment has none."""
     k = dep.kiosk
@@ -68,15 +54,8 @@ def _wording(dep) -> dict:
 
 def deployment_info() -> dict:
     dep = smconfig.deployment()
-    in_room = _screen_rooms(dep)
-    screens = []
-    for d in smconfig.destinations(dep):
-        if d.get("headless"):
-            continue
-        live, mask = isinstance(d.get("live"), dict), isinstance(d.get("intensity_cfg"), dict)
-        if live or mask or d["id"] in in_room:
-            screens.append({"id": d["id"], "name": str(d.get("name") or d["id"]), "live": live, "mask": mask,
-                            "art_only": not live, "room": in_room.get(d["id"])})
+    from smsound.outputs import screens as site_screens   # the one rule (each screen is also a sound output)
+    screens = site_screens(dep)
     return {
         "id": dep.id,
         "name": dep.name,

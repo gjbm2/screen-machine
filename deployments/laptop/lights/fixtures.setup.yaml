@@ -6,19 +6,40 @@
 # or tilt range.
 version: 1
 fixtures:
+  gigbar-a.laser:
+    lean_deg: 31.0
+    turn_deg: 0.0
+  gigbar-a.par1:
+    lean_deg: 125.5
+    turn_deg: 0.0
+  gigbar-a.par2:
+    lean_deg: 71.0
+    turn_deg: 0.0
   gigbar-a.spot1:
     home:
-      pan: -17.7
-      tilt: 87.1
+      pan: -24.0
+      tilt: 60.7
   gigbar-a.spot2:
     home:
-      pan: -23.1
-      tilt: 87.2
+      pan: -14.2
+      tilt: 59.2
+  gigbar-b.derby1:
+    lean_deg: 38.0
+  gigbar-b.laser:
+    lean_deg: 32.0
+    turn_deg: 0.0
+  gigbar-b.par1:
+    lean_deg: 57.5
+  gigbar-b.par2:
+    lean_deg: 121.0
+    turn_deg: 0.0
   gigbar-b.spot1:
     home:
-      pan: 23.1
-      tilt: 87.2
+      pan: -9.9
+      tilt: 61.6
   gigbar-b.spot2:
     home:
-      pan: 17.7
-      tilt: 87.1
+      pan: 2.2
+      tilt: 61.3
+  hazer:
+    label: Hazer

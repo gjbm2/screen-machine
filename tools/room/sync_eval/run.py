@@ -25,6 +25,7 @@ It drives the live room (Karaoke mode comes on, the song plays, then stops): nev
 from __future__ import annotations
 
 import argparse
+import colorsys
 import datetime
 import json
 import os
@@ -36,6 +37,7 @@ import urllib.request
 FLASK = "http://localhost:5000"
 HOME = os.path.expanduser("~/.local/state/screen-machine")
 COINCIDE_S = 2.0
+LAND_PAIR_S = 3.0                 # a screen change this near a lights line is that line's own
 
 
 def api(path: str, body: dict | None = None) -> dict:
@@ -57,7 +59,7 @@ def watch(dur: float) -> dict:
     from show_service import light_scenes
     cat = light_scenes.shared()
     cat.poll(force=True)
-    groove, energy, par = [], [], []
+    groove, energy, par, hues = [], [], [], []
     on: dict[str, list[int]] = {}
     travel, last = 0.0, None
     t_end = time.time() + dur
@@ -66,6 +68,14 @@ def watch(dur: float) -> dict:
         try:
             with urllib.request.urlopen(SHOW + "/api/v1/rig/frame?output=dmx-a", timeout=2) as r:
                 fx = json.loads(r.read()).get("fixtures") or {}
+            fams = set()                                # hue families (60 degree buckets) among the lit colours
+            for v in fx.values():
+                rgb = v.get("rgb")
+                if isinstance(rgb, list) and len(rgb) == 3 and float(v.get("intensity") or 0.0) > 0.15:
+                    h, sat, val = colorsys.rgb_to_hsv(*[max(0.0, min(1.0, float(c))) for c in rgb])
+                    if sat >= 0.25 and val > 0.1:
+                        fams.add(int(((h * 360.0 + 30.0) % 360.0) // 60.0))
+            hues.append(len(fams))
             pars = sorted(k for k in fx if k.endswith(".par1"))
             if pars:
                 par.append(float(fx[pars[0]].get("intensity", 0.0)))
@@ -92,6 +102,7 @@ def watch(dur: float) -> dict:
             "energy": round(statistics.mean(energy), 2) if energy else None,
             "beat_share": {g: round(sum(v) / len(v), 2) for g, v in on.items()},
             "swing": round(q(par, 0.9) - q(par, 0.1), 2) if par else None,
+            "hues": statistics.median(hues) if hues else None, "hues_max": max(hues) if hues else None,
             "travel_deg_s": round(travel / dur, 1)}
 
 
@@ -108,7 +119,7 @@ def read(t0: float, t1: float) -> dict:
         if t0 <= ts <= t1 and e.get("phase") in ("started", "done"):
             scr.setdefault(e.get("cue_id"), {"transition": e.get("transition"), "scene": e.get("scene"),
                                              "reason": e.get("reason")})[e["phase"]] = ts
-    moves, lines, parts = [], [], []
+    moves, lines, parts, lineups = [], [], [], []
     logs = [p for p in (HOME + "/show/director.jsonl.1", HOME + "/show/director.jsonl") if os.path.exists(p)]
     for ln in (x for p in logs for x in open(p, errors="ignore")):   # (the log rotates: the last one too)
         try:
@@ -118,16 +129,49 @@ def read(t0: float, t1: float) -> dict:
         if not t0 <= e.get("t", 0) <= t1:
             continue
         k = e.get("kind")
-        if k == "move":
+        if k == "lineup":
+            lineups.append({"t": e["t"], "lineup": e["lineup"], "plays": e.get("plays"), "into": e.get("into"),
+                            "drive": e.get("drive"), "level": e.get("level"), "letter": e.get("letter"),
+                            "how": e.get("how")})
+        elif k == "move":
             moves.append({"t": e["t"], "move": e["move"], "from": e.get("from"), "into": e.get("into"),
                           "size": e.get("size")})
-        elif k == "light_program":
+        elif k == "light_program" and isinstance(e.get("groups"), dict):
             lines.append({"t": e["t"], "groups": {g: v.get("scene") for g, v in e["groups"].items()},
                           "via": {g: v.get("transition") for g, v in e["groups"].items()},
                           "why": next(iter(e["groups"].values())).get("why", "").split(":")[0]})
         elif k == "light_effect" and e.get("trigger") == "transition":
             parts.append({"t": e["t"], "group": e.get("group"), "name": e["run"]["name"]})
-    return {"screen": [v for v in scr.values() if "started" in v], "moves": moves, "lines": lines, "parts": parts}
+    return {"screen": [v for v in scr.values() if "started" in v], "moves": moves, "lines": lines, "parts": parts,
+            "lineups": lineups}
+
+
+def looks(d: dict) -> dict:
+    """What the song's plan should show (songplan.py; owner, 27 Nov): each section's line-up with the song's level
+    over it; how much of a section's look comes back when it comes round again (the share of light groups on the
+    scene they showed for that letter last time); and how many groups show the beat at once in each look (one
+    carrier is the aim: the strobe zones and the laser aren't counted, they are accents)."""
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
+    from show_service import light_scenes
+    cat = light_scenes.shared()
+    cat.poll(force=True)
+    seen: dict[str, dict] = {}
+    back, beat = [], []
+    for lu in d["lineups"]:
+        ln = min((x for x in d["lines"] if 0.0 <= x["t"] - lu["t"] < 15.0), key=lambda x: x["t"], default=None)
+        if ln is None:
+            continue
+        g = {k: v for k, v in ln["groups"].items() if k != "*" and v}
+        tags = lambda n: (cat.scenes.get(n) or {}).get("tags") or {}                # noqa: E731
+        beat.append(sum(1 for k, n in g.items() if light_scenes.carries_beat(cat.scenes.get(n) or {})
+                        and not tags(n).get("rest") and not tags(n).get("parts")))
+        if lu.get("letter"):
+            was = seen.get(lu["letter"])
+            if was is not None:
+                both = [k for k in g if k in was]
+                back.append(round(sum(g[k] == was[k] for k in both) / max(1, len(both)), 2))
+            seen[lu["letter"]] = g
+    return {"scenes_back": back, "beat_groups": beat}
 
 
 def score(d: dict) -> dict:
@@ -135,10 +179,11 @@ def score(d: dict) -> dict:
     near = lambda t, arr, key: any(abs(t - a[key]) <= COINCIDE_S for a in arr)      # noqa: E731
     ends = [s for s in scr if "done" in s]
     land = []
-    for ln in lines:
-        s = min(ends, key=lambda x: abs(x["done"] - ln["t"]), default=None)
-        if s is not None and abs(s["done"] - ln["t"]) <= 6.0:
-            land.append(round(s["done"] - ln["t"], 2))
+    for ln in lines:                                  # a lights line and the screen change that goes with it: the
+        s = min(ends, key=lambda x: abs(x["done"] - ln["t"]), default=None)   # nearest one, within LAND_PAIR_S (a
+        if s is not None and abs(s["done"] - ln["t"]) <= LAND_PAIR_S:         # line with none near it is counted
+            land.append(round(s["done"] - ln["t"], 2))                        # under "together", not paired with
+                                                                              # some other change, as it was)
     made = [m for m in d["moves"] if m.get("into") or m.get("from")]
     return {"screen_changes": len(scr), "lights_changes": len(lines),
             "screen_with_lights": sum(near(s.get("done", s["started"]), lines, "t") for s in scr),
@@ -172,8 +217,10 @@ def main() -> None:
     time.sleep(1.0)
     d = read(t0, t0 + a.dur)
     s = score(d)
+    lk = looks(d)
     if a.json:
-        print(json.dumps({"song": hit.get("title"), "from_s": a.pos, "for_s": a.dur, "score": s, "feel": feel, **d},
+        print(json.dumps({"song": hit.get("title"), "from_s": a.pos, "for_s": a.dur, "score": s, "feel": feel,
+                          "looks": lk, **d},
                          indent=1))
         return
     print(f"{hit.get('title')}: {a.pos:g} s .. {a.pos + a.dur:g} s")
@@ -181,7 +228,10 @@ def main() -> None:
         ln = min((x for x in d["lines"] if x["t"] >= m["t"]), key=lambda x: x["t"], default=None)
         sc = min((x for x in d["screen"] if "done" in x), key=lambda x: abs(x["done"] - (ln or m)["t"]), default=None)
         ps = sorted({p["name"] for p in d["parts"] if abs(p["t"] - m["t"]) < 0.5})
-        print(f"  {m['t'] - t0:5.1f}s  {m['move']:14} {m.get('from')} -> {m.get('into')}")
+        lu = min((x for x in d["lineups"] if abs(x["t"] - m["t"]) < 1.0), key=lambda x: abs(x["t"] - m["t"]), default=None)
+        print(f"  {m['t'] - t0:5.1f}s  {m['move']:14} {m.get('from')} -> {m.get('into')}"
+              + (f"   line-up: {lu['lineup']} ({len(lu['plays'])} parts: {', '.join(lu['plays'])}; drive {lu['drive']}"
+                 f"; the song's level {lu.get('level')}; {lu.get('how')})" if lu else ""))
         if ln is not None:
             print(f"          lights: {ln['groups']}")
             print(f"          parts: {ps}; screen via {sc['transition'] if sc else None}, finished "
@@ -192,6 +242,9 @@ def main() -> None:
     print(f"  the song as the lights took it: groove {feel['groove']}, energy {feel['energy']}; time on a scene that "
           f"shows the beat: " + ", ".join(f"{g} {v:.0%}" for g, v in feel["beat_share"].items())
           + f"; pars' brightness swing {feel['swing']}; heads' travel {feel['travel_deg_s']} deg/s")
+    print(f"  a section that came round again brought back this share of its scenes: {lk['scenes_back']}; light "
+          f"groups showing the beat at once, per look: {lk['beat_groups']}; hue families lit at once: median "
+          f"{feel.get('hues')}, most {feel.get('hues_max')}")
     print(f"  landing: median {s['landing_median_s']} s, worst {s['landing_worst_s']} s ({s['landing_s']}); "
           f"moves made for the boundary: {s['moves_for_a_boundary']}/{s['moves']}")
 

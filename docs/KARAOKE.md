@@ -8,8 +8,9 @@ for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`;
 
 - **The panel:** `http://<laptop>:5000/karaoke` (over Tailscale, or the same Wi-Fi). Under the queue, one search
   finds songs in the library and on the web as you type (spelling forgiven: "hapy farell" finds Pharrell's Happy), or
-  takes a pasted YouTube or Spotify link. **Add** puts a song at the end of the queue (singers pick a song and wait
-  their turn); **Up next** jumps the queue; **Library only** gets it ready for later. An artist's name anywhere
+  takes a pasted YouTube or Spotify link. Every song row has the same three: **+** puts it at the end of the queue
+  (singers pick a song and wait their turn), **▶** plays it now (a song not yet prepared: as soon as it is ready),
+  and **…** holds the rest (**Play next** jumps the queue; **Library only** gets it ready for later). An artist's name anywhere
   opens their songs, most popular first. Each song shows its progress: Getting the song, Finding the lyrics,
   Removing the lead vocal, Ready (about a minute). The queue is the singing order; songs already sung are tucked
   away under a line at its top. **Clear** empties the queue (the song playing stays). With nothing playing
@@ -61,6 +62,7 @@ for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`;
 | Piece | Where |
 |---|---|
 | API, library, queue, player state | `routes/karaoke/` (`api.py`, `store.py`); state in `~/.local/state/screen-machine/karaoke/` |
+| The queue's rules | One list in three parts: the songs sung (`queue[:sung]`), the one that is on, the songs to come. Only `_start`, `_halt`, `_take_out` and the moves in `store.py` change a song's part; the page is told `sung` and never works it out (`src/pages/Karaoke/queueView.ts`). Playing one song moves that one song; songs being prepared keep their place; taking one out takes only it; nothing lands above the top of the songs to come. The rules, their edge cases and random sequences checked against a plain model: `tests/unit/test_karaoke_queue.py` (after a change to the queue: `KARAOKE_QUEUE_SEEDS=20000 pytest tests/unit/test_karaoke_queue.py -k random`) and `node --experimental-strip-types --test src/pages/Karaoke/queueView.test.ts`. |
 | Worker (one song at a time) | `routes/karaoke/worker.py`: fetching → lyrics → separating → ready |
 | Finding songs | `routes/karaoke/sources.py`: `catalog_search` (iTunes + Deezer at once, YouTube's guesses put the song meant first and correct spelling), `artist_top` (Deezer's top tracks), `song_facts` (genre, year, popularity, cover); LRCLIB lyrics; Spotify track page; yt-dlp |
 | The art director | `show_service/karaoke_feed.py`: the karaoke player is a music source like the Music page's (its song, position and length in `ctx.now_playing`): each song's end is armed and fires the director's transition, and a new song gets its own treatment |
@@ -91,10 +93,15 @@ for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`;
   shift of the heard lines round them (past the last heard line, the median shift of the last five), and a heard
   line far from its neighbours' shift (over 4 s) is a stray match and is placed the same way (27 Nov: Hey Jude's
   four-minute coda is the choir in the backing track, so the lead stem had nothing heard there and the even spread
-  squeezed it into half its length).
+  squeezed it into half its length). A line the upload's timing puts past the recording's end is left out, not
+  piled up at the end. Of the uploads matching at least 97% as many sung words as the best, the one with the
+  fewest words nobody sings wins (27 Nov: I Will Survive's album-version upload matched 403 sung words and had 232
+  more nobody sings; the single edit's matched 398 with 33). Credit lines ("Written by：...") and the song's own
+  name as a line are never lyrics.
 - **Lyrics off? The careful pass** (owner, 27 Nov: "a way to refer a song for 2ndary processing -- e.g. more
   carefully time lyrics"). The wand on a library row, or "Lyrics off? Time them carefully" under the playing song,
-  refers it (`POST /api/karaoke/songs/<id>/refine`). The worker runs it when no song is waiting to be prepared (a
+  refers it (`POST /api/karaoke/songs/<id>/refine`). It first chooses the upload again (LRCLIB's uploads against
+  what was heard, as above), so a song prepared before a better rule gets it. The worker runs it when no song is waiting to be prepared (a
   song added meanwhile ends it and it waits again); the song stays playable throughout. `tools/karaoke/refine.py`
   sums the two stems back into the song, takes EVERY voice out (the BS-Roformer all-voices model: choir, backing
   and lead), has Whisper hear that, and force-aligns the whole lyrics to it in one CTC path (MMS_FA, a star before
@@ -145,6 +152,39 @@ for the laptop rig (owner: the birthday karaoke on 5 Dec). Capability `karaoke`;
   for children) and its baked-in black bars measured (ffmpeg cropdetect), kept in `<artist>/clips/`. The renderer's
   `song-video-*` looks (`stream_service/plugins/sources/song_video.py`: slowed, frames blended, drifting, with an
   effect on top) play only with the song's clips, and share the artist's share with the photo looks.
+
+- **Duets** (owner, 28 Nov: "detect who sings which line, and show it on the karaoke screen"; routes/karaoke/duet.py,
+  the worker's `karaoke-duets` thread). Every ready song once, and again when its lyrics' words change:
+  - The AI (`duet` in config/llm.yaml, about $0.007 a song) says whether the recording is a duet, its two voices
+    (names; man, woman or child) and each line's part: A (sings first), B, both, backing. A lyric line's own tag
+    ("[Elton:]", "Him:", "(Both)") wins over it. It knows the famous duets but gets lines wrong (28 Nov, Ain't No
+    Mountain High Enough: a third of them), so it is a prior, never the truth.
+  - Only a song it calls a duet is listened to: `tools/karaoke/voices.py` (karaoke venv, CPU, nice 19, ~20-40 s)
+    gives each line of the lead stem a speaker embedding (WeSpeaker ResNet34, 26 MB, fetched once into
+    `~/.cache/screen-machine/karaoke-models/speaker/`) and a median pitch. Pitch alone fails: Gaga sings Shallow's
+    second verse in Cooper's register; the embedding still tells them apart (~0.5 alike within a verse, ~0.15
+    across).
+  - `decide` (measured against a two-annotator answer key of the 14 test duets, 587 lines:
+    `tools/karaoke/evals/duet_eval.py [--redecide] [-v]`, bb, 28 Nov). The lines the AI calls solo split into two
+    sounds (2-means on the embeddings, starting from the AI's A and B), and each line is the voice it sounds like:
+    the embedding alone is 95% right on solo lines, the AI's own calls 69%. A line nearly as near one voice as the
+    other is shown as both. The AI keeps: duet or not, the two names, and its both and backing lines (the lead stem
+    carries only the louder of two voices, so the sound can't tell a shared line from a solo one). The names: by
+    pitch where the AI says a man and a woman and the voices are 5+ semitones apart (the lower is the man), else
+    by the AI's opening solo line (its vote over all its lines named Ain't No Mountain the wrong way round: it had
+    82% of them swapped). A is whoever sings first. Shown: 70% right, 25% wrong, 6% plain (was 61 / 27 / 12; the
+    AI alone 67 / 33). Most of what is left is the AI's both / solo calls.
+  - Two answers: `duet` (it is one: the AI's word, which tags it) and `shown` (its parts are sure enough for the
+    screen). 28 Nov, Somethin' Stupid: sung together nearly throughout, so tagged and shown as one voice.
+  - The sound of each line is kept (`voices.json`), so a better `decide` judges a song again without asking or
+    listening (`duet.redecide`).
+  - Kept as `duet.json` beside the song (for the lyrics it was made from); `GET .../lyrics` puts each line's `voice`
+    on (and `voices` per word where its brackets are another part's) and `duet: {voices}`. The song's `duet` field
+    is what was found; `duet_set` (`POST /api/karaoke/songs/<id>/duet {duet: true | false | null}`, the Karaoke
+    page's people button) is a person's word, and wins. Either way the library tags it "Duets".
+  - The screen, for a duet only: A's lines on the left, B's on the right, both centred; each part its own colour
+    (blue, pink, violet for both), sung as that colour at full brightness. With two or more singers named on the
+    queue entry, the name of whoever is up shows over the line where the part changes (the first named takes A).
 
 ## The karaoke venv (per machine)
 

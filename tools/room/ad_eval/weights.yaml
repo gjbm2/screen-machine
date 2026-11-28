@@ -1,0 +1,57 @@
+# tools/room/ad_eval: how the overall score is made, and the tolerances and scales in the formulas.
+# Every number is a starting point (27 Nov 2026), changed only on purpose. A change to what `overall` means bumps
+# score.py's SCORE_VERSION: runs are compared only within one version.
+# overall = goals x gate.
+# goals: the weighted mean of these.
+weights: {beat: 1.0, contour: 1.0, sections: 1.0, form: 1.0, contrast: 1.0, proportion: 1.0, arc: 1.0, peak: 0.5,
+          release: 1.0, ending: 0.5, moments: 0.5}
+# of the whole song set, in a run's overall: (1 - x) of the songs' mean overall + x of this
+set_weights: {character: 0.15}
+# gate: restraint is a limit, not a goal. Each of these at or over its bar counts 1 (more restraint earns nothing:
+# one static look kept every limit); under it, in proportion. The gate is their mean.
+gates: {palette: 0.5, kit: 0.75, flourish: 0.75, stillness: 0.75}
+tol_beat_s: 0.07            # a pulse within this of a reference beat is on the beat
+smooth_s: 2.0               # contour: both curves smoothed over this
+snap_smooth_s: 0.5          # snap (reported only): both curves smoothed over this before the cross-correlation
+max_lag_s: 5.0              # snap: lags searched, lights behind the sound
+snap_scale_s: 2.0           # snap score = 1 - lag / this
+snap_min_corr: 0.2          # snap counts only where the peak correlation reaches this
+stray_scale_per_min: 2.0    # sections score = hit share / (1 + strays a minute / this)
+ending_scale_s: 5.0         # ending score = 1 - |dark - end| / this
+dark_share: 0.3             # the lamps count as dark under this share of their in-song median
+case_window_s: 10.0         # an owner note is measured over its time ± this
+# design.py's bars (docs/LIGHT_DESIGN_NOTES.md; starting points from what lighting designers say, not measurements):
+design:
+  kit_size: 3               # kit: a group of lights showing this many different scenes in a song, or fewer, scores 1
+  flourish_budget: 3        # flourish: this many light changes with a gesture in a song, or fewer, scores 1
+  still_share: 0.6          # stillness: the heads holding still or drifting for this share of the song scores 1
+  # ... for a song keys.yaml has no word on. For one it has, by its liveliness 0..4 (a hushed song's heads hold still
+  # nearly always; a club track's hardly): the share of the song that scores 1
+  still_by_liveliness: [0.85, 0.65, 0.45, 0.25, 0.1]
+# form.py: what the lights showed in each section, against the song's shape.
+form:
+  settle: 0.4               # a section's look is read after this share of it has passed
+  min_section_s: 6.0        # a shorter section isn't judged
+  contrast_bar: 0.15        # contrast: unlike-sounding sections this much further apart than like-sounding ones, in
+                            # the second most telling of the five families of means (brightness, extent, movement,
+                            # colour, texture), scores 1: a show must tell its sections apart in more than one way
+  means_min: 0.08           # a family in which sections differ by this on average is one the show uses (reported)
+  energy_scale: 0.3         # a jump this big in a section's loudness (0..1) is a full-size change in the music
+  peak_eps: 0.02            # a look within this of the climax's size isn't smaller
+  lift_min: 0.08            # release: the music lifts across a boundary by at least this (loudness 0..1)
+  lift_bar: 0.1             # release: the lights' size rising by this across the line scores 1
+  # a difference this big in a descriptor is a full-size one (level 0..1, shares 0..1, deg/s, level/s, colour 0..1, deg)
+  scales: {level: 0.5, lit: 1.0, heads: 1.0, move: 60.0, flicker: 2.0, strobe: 1.0, r: 1.0, g: 1.0, b: 1.0,
+           variety: 0.5, tilt: 60.0, spread: 60.0, gobo: 1.0}
+  # what makes a look big, each as a share of this (level_env: how bright the lamps get, their highest level in 0.6 s)
+  size: {level_env: 1.0, lit: 1.0, move: 60.0, flicker: 2.0}
+# score.moments_measure: does the show answer the song's moments (utils/song_moments.py)?
+moments:
+  min_salience: 0.5         # a moment under this isn't one (as config/live/moments.yaml's choose.min_salience)
+  stabs: 2                  # the song's strongest stabs judged (the show plays a few, by its idiom; every stop is judged)
+  stab_rise: 0.06           # a stab answered: the lamps up this much within 0.3 s, against the 1.5 s before
+  stop_drop: 0.5            # a stop answered: the lamps down by this share of where they were, through the gap
+# controls.py: the score is trusted only while the real show beats every deliberately wrong show.
+controls:
+  margin: 0.05              # ... by this much in overall, on average over the songs
+  p: 0.05                   # ... and in more of the songs than chance gives (a sign test's p at most this)

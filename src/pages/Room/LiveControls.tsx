@@ -23,11 +23,11 @@ import {
 import { cn } from "@/lib/utils";
 import type { RoomApi } from "./api";
 import { Notice, Spinner, Unroll } from "./bits";
-import { bothWords, sceneInfo, sceneRatingKey, type LookScope } from "./liveLib";
-import { LookControls, LookSettings, SceneButton, ScenePicker } from "./LivePanel";
+import { bothWords, sceneInfo, type LookScope } from "./liveLib";
+import { LookSettings, SceneButton, ScenePicker } from "./LivePanel";
+import { LiveNow } from "@/components/room/LiveNow";
 import { profileLabel, transitionSpecKey, type TransitionChoice } from "./catalog";
 import { ParamForm } from "./ParamForm";
-import { RatingRow, ThisIsGood } from "./Rating";
 import { THEME_CLASS } from "./theme";
 import type { Library, TransitionSpec } from "./types";
 import type { LiveLook } from "./useLiveLook";
@@ -83,40 +83,21 @@ const FACE_BUTTON = "h-11 shrink-0 rounded-xl text-[15px]";
 
 // ── In "More", while live ─────────────────────────────────────────────────────
 
-/** The scene on glass, and changing it (with the library: its picture and the cue picker; without: the plain list). */
+/** The scene on glass, and changing it: with the library, the live screen panel (LiveNow: was, now and next, rating,
+ *  the cue picker and the look controls); without, the plain list. */
 function LiveScene({ screenId, sc, live }: { screenId: string; sc: ScreenControls; live?: LiveBits }) {
-  const [pickOpen, setPickOpen] = useState(false);
   if (live) {
     return (
-      <>
-        <SceneButton
-          info={sceneInfo(live.lib, live.api, live.lv.look?.current_scene ?? sc.liveSceneKey ?? sc.form.sceneKey)}
-          caption={sc.busy === "switch scene" ? "Changing scene…" : live.scope?.shared.length ? "Change scene · this screen" : "Change scene"}
-          busy={sc.busy === "switch scene"}
-          onClick={() => setPickOpen(true)}
-          disabled={sc.pickersDisabled || !!sc.busy}
-          testId={`scene-${screenId}`}
-        />
-        <RatingRow
-          api={live.api}
-          ratingKey={sceneRatingKey(live.lib, live.lv.look?.current_scene ?? sc.liveSceneKey)}
-          what="scene"
-          className="-mt-2"
-          testId={`rate-${screenId}`}
-        />
-        {/* in a room, its live card has it (the room's look) */}
-        {!live.scope?.hosted && <ThisIsGood api={live.api} session={live.lv.session} testId={`good-${screenId}`} />}
-        <ScenePicker
-          open={pickOpen}
-          onOpenChange={setPickOpen}
-          lib={live.lib}
-          api={live.api}
-          mode="cue"
-          currentKey={sceneInfo(live.lib, live.api, live.lv.look?.current_scene ?? sc.liveSceneKey)?.key ?? null}
-          onPick={(key, how) => sc.switchSceneTo(key, { cue: true, ...how })}
-          testId={`scenepicker-${screenId}`}
-        />
-      </>
+      <LiveNow
+        screenId={screenId}
+        lv={live.lv}
+        lib={live.lib}
+        api={live.api}
+        scope={live.scope}
+        nowKey={sc.liveSceneKey ?? sc.form.sceneKey}
+        changing={sc.busy === "switch scene"}
+        cue={(key, how) => sc.switchSceneTo(key, { cue: true, ...how })}
+      />
     );
   }
   return (
@@ -147,9 +128,6 @@ export function LiveSettingsPanel({ screenId, sc, live }: { screenId: string; sc
     <div className="space-y-3">
       <LiveScene screenId={screenId} sc={sc} live={live} />
       {sc.liveEdit.state === "error" && sc.editsGoLive && <Notice tone="bad">{sc.liveEdit.msg}</Notice>}
-      {live && live.lv.available !== false && (
-        <LookControls screenId={screenId} lv={live.lv} lib={live.lib} api={live.api} scope={live.scope} />
-      )}
       <Unroll title="Scene settings" hint={changed ? `${changed} changed` : undefined} testId={`settings-${screenId}`}>
         <div className="space-y-3 pb-1">
           <div className="flex items-center justify-between gap-3 text-sm">

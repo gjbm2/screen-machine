@@ -345,7 +345,7 @@ def _index(doc: dict) -> tuple[dict[str, tuple[str, int]], dict[str, list[tuple[
 def _empty(type_id: str, file: Optional[str], mode: Optional[str]) -> contract.TypeInfo:
     return {"id": type_id, "source": "ofl", "kind": "lamp", "file": file, "mode": mode, "footprint": 0,
             "attrs": [], "channels": [], "emitters": {}, "wheel": [], "curve": "srgb", "problems": [],
-            "wheels": {}, "physical": no_physical()}
+            "wheels": {}, "physical": no_physical(), "categories": []}
 
 
 def no_physical() -> dict[str, Any]:
@@ -931,6 +931,7 @@ def parse(doc: Any, mode: str, *, type_id: str = "ofl", file: Optional[str] = No
     info["channels"] = sorted(out, key=lambda c: c["offset"])
     info["footprint"] = len(chans)
     zooms = [v for c in out for r in c.get("ranges") or () if r["attr"] == "zoom" for v in (r["lo"], r["hi"])]
+    info["categories"] = [c for c in (doc.get("categories") or ()) if isinstance(c, str)]   # the file's own words
     info["physical"] = {"lens_deg": list(st.lens_deg) if st.lens_deg else None, "pan_deg": pan_tilt.get("pan"),
                         "tilt_deg": pan_tilt.get("tilt"),
                         "zoom_deg": [min(zooms), max(zooms)] if zooms and not st.zoom_guess else None}

@@ -1,0 +1,42 @@
+#!/usr/bin/env bash
+# The art director's overnight loop (.claude/skills/ad-improve): score the show on the fixed song set, then let a
+# headless Claude make fixes that score better, keep them (committed, own paths) and write a morning report.
+#   scripts/ad-nightly            run now (what the timer runs)
+#   scripts/ad-nightly --score    just score HEAD (no fixes)
+#   scripts/ad-nightly --install  install the nightly cron entry (03:00)
+# Logs: ~/.cache/sm-ad-eval/nightly.log. Reports: ~/.cache/sm-ad-eval/reports/<date>.md
+set -uo pipefail
+export PATH="$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
+REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+OUT="$HOME/.cache/sm-ad-eval"
+mkdir -p "$OUT/reports"
+LOG="$OUT/nightly.log"
+
+if [[ "${1:-}" == "--install" ]]; then          # cron (WSL here has no user systemd bus)
+  line="0 3 * * * $REPO/scripts/ad-nightly  # sm-ad-nightly"
+  { crontab -l 2>/dev/null | grep -v '# sm-ad-nightly'; echo "$line"; } | crontab - && crontab -l | grep sm-ad-nightly
+  exit $?
+fi
+
+cd "$REPO" || exit 1
+# The eval scores a clean copy of HEAD, never the working tree: other sessions edit in place, and a replay imports
+# whatever is on disk (27 Nov: a8's half-done looks.py and director.py would have been scored as HEAD).
+TREE="$OUT/tree"
+SHA="$(git rev-parse --short HEAD)"
+rm -rf "$TREE" && mkdir -p "$TREE" && git archive HEAD | tar -x -C "$TREE" && cp -p .env "$TREE/.env" 2>/dev/null
+export SM_AD_EVAL_SHA="$SHA" AD_EVAL_TREE="$TREE"
+{
+  echo "=== $(date -Is) ad-nightly ${1:-} (HEAD $SHA, scored in $TREE)"
+  (cd "$TREE" && nice -n 19 "$HOME/.venvs/sm-show/bin/python" tools/room/ad_eval/run.py)
+  rc=$?
+  echo "--- score exit $rc"
+  if [[ "${1:-}" == "--score" || $rc -ne 0 ]]; then
+    exit $rc
+  fi
+  AD_IMPROVE_UNTIL="${AD_IMPROVE_UNTIL:-06:30}" nice -n 19 "$HOME/.local/bin/claude" -p \
+    "Run the ad-improve skill now (the overnight loop). Today is $(date +%F); stop by ${AD_IMPROVE_UNTIL:-06:30}. The clean copy of HEAD ($SHA) is $TREE." \
+    --permission-mode acceptEdits \
+    --allowedTools "Bash" "Read" "Edit" "Write" "Grep" "Glob" "Skill" \
+    --output-format text
+  echo "--- improve exit $?"
+} >> "$LOG" 2>&1

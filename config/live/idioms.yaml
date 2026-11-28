@@ -1,0 +1,180 @@
+# Idioms: the kind of show a song asks for (show_service/idiom.py, brief.py; owner, 27 Nov 2026).
+#
+# "many tracks have a natural tonal timbral (e.g. solo, pace, hard beat, disco, ballad, etc. etc) and this should
+# more thoroughly steer general choice of scene selection ... a serious ballad should just feel different from an
+# ABBA track". A karaoke song's brief names one idiom, and the art director then draws only from what it allows:
+# these are limits, not weights. Hot-reloaded. Every entry is a STARTING POINT, written on paper: watch the room.
+#
+#   for          the songs it is for, in words (the AI reads this to choose; so does a person)
+#   motion_max   how far a moving head may travel in a scene: still < slow < moving < fast
+#                (idiom.traits reads it from the scene's own position layers: a drift or a fan is still, a sweep
+#                over four bars or more slow, over two moving, anything quicker, a bounce or a ballyhoo fast)
+#   motion_cap   0..1: the most movement the song may have: the heads' patterns run no faster than this point of
+#                their [slow, fast] range, and the screens are told no more motion than this
+#   screen_style the screens' transitions for the song: gentle | lively | wild
+#   pulse_max    how hard a scene's levels may show the beat: none < soft < bar < beat < hard
+#                (a slow sine is soft, a swell each bar is bar, a swell each beat is beat, a square on the beat hard)
+#   looks        what the song's looks are like, by the size of the section: [motion, pulse] for its verses, its
+#                choruses and its peak. A limit says what may never be drawn; this says what is wanted: a scene is
+#                drawn by how close its own motion and pulse are to these (one step away: a third as likely). So a
+#                song's verses, choruses and peak differ from one another on purpose, and an anthem's from a ballad's.
+#   groups       for each kind of light (a light group's name, or what its scenes are for: derby, flash,
+#                laser), the smallest section it plays in: verse (always), chorus (the choruses and the peak),
+#                peak (the song's biggest section only) or never. One not named plays always.
+#   transitions  the light_transitions.yaml names a change may use. A move whose lights use another one is not drawn.
+#   arrive       how a lift in the song lands when the brief doesn't say: swell (a slow rise), bump (in on the
+#                downbeat, above its steady level, settling over a bar) or snap (dark for a beat, then everything)
+#   wind         0..1: how far the lights pull in over the bars before a lift (dimmer, the heads' shapes smaller)
+#   lift         0..1: how far over its steady level a look lands on the line
+#   flourishes   the gestures (heads fly up, a strobe across a change) a song may have, big moments apart
+#   level        [the quietest section, the biggest]: the lamps' level across the song's sizes
+#   palettes     the palettes that suit it, best first (the brief names one; this is the fallback's order)
+#   sound        where it sits in the sound's own measures, for the fallback with no AI: bpm, punch (how hard the
+#                onsets hit, about 0.08 soft .. 0.13 hard), range_db (quiet to loud). The nearest idiom is taken.
+version: 1
+idioms:
+  hush:
+    label: Hushed
+    for: A quiet song that stays intimate even at its biggest. A voice and a guitar or piano, a hymn, a lullaby, a crooner's love song. Stillness is the point; nothing here should ever look like a party. (Songs like Fields of Gold, Fast Car, Yesterday, Make You Feel My Love.)
+    motion_max: still
+    motion_cap: 0.25
+    screen_style: gentle
+    pulse_max: soft
+    looks: {verse: [still, none], chorus: [still, soft], peak: [still, soft]}
+    groups: {derby: never, flash: never, laser: never}
+    transitions: [glide, fade-dark]
+    arrive: swell
+    wind: 0.15
+    lift: 0.15
+    flourishes: 0
+    level: [0.25, 0.7]
+    palettes: [ember, dusk, gold, ice, ocean]
+    sound: {bpm: 85, punch: 0.084, range_db: 12}
+  ballad:
+    label: Big ballad
+    for: A slow song that starts small and builds to a big, emotional ending with the full band or orchestra. Power ballads, show tunes, torch songs. (Songs like I Will Always Love You, Someone Like You, Purple Rain, Angels.)
+    motion_max: slow
+    motion_cap: 0.4
+    screen_style: gentle
+    pulse_max: bar
+    looks: {verse: [still, soft], chorus: [still, soft], peak: [slow, bar]}
+    groups: {derby: never, flash: peak, laser: never}
+    transitions: [glide, fade-dark, sweep]
+    arrive: swell
+    wind: 0.3
+    lift: 0.35
+    flourishes: 1
+    level: [0.25, 1.0]
+    palettes: [dusk, gold, ice, ember, ocean, aurora]
+    sound: {bpm: 80, punch: 0.086, range_db: 16}
+  story:
+    label: Story song
+    for: A song that tells a story at a steady walk and grows as it goes. Country, folk-rock, narrative pop and indie. (Songs like American Pie, Piano Man, Take Me Home Country Roads.)
+    motion_max: slow
+    motion_cap: 0.55
+    screen_style: gentle
+    pulse_max: bar
+    looks: {verse: [still, soft], chorus: [slow, bar], peak: [slow, bar]}
+    groups: {derby: peak, flash: peak, laser: never}
+    transitions: [glide, fade-dark, sweep, dark-cut]
+    arrive: bump
+    wind: 0.25
+    lift: 0.3
+    flourishes: 1
+    level: [0.3, 0.95]
+    palettes: [ember, dusk, gold, ocean, aurora]
+    sound: {bpm: 110, punch: 0.1, range_db: 9}
+  dark:
+    label: Dark and tense
+    for: A brooding, uneasy or angry song. Quiet menace that breaks out loud. Grunge, goth, a bitter break-up song. (Songs like Zombie, Smells Like Teen Spirit, Bad Guy, Seven Nation Army.)
+    motion_max: slow
+    motion_cap: 0.6
+    screen_style: lively
+    pulse_max: beat
+    looks: {verse: [still, none], chorus: [slow, beat], peak: [slow, beat]}
+    groups: {derby: never, flash: chorus, laser: peak}
+    transitions: [cut, dark-cut, fade-dark, glide, strobe-snap]
+    arrive: snap
+    wind: 0.45
+    lift: 0.5
+    flourishes: 2
+    level: [0.2, 1.0]
+    palettes: [crimson, dusk, ice, ocean]
+    sound: {bpm: 92, punch: 0.094, range_db: 13}
+  anthem:
+    label: Anthem
+    for: A rock or pop anthem a room shouts along to. Driving verses, huge choruses, fists in the air. (Songs like Sweet Caroline, Wonderwall, Summer of '69, Shake It Off.)
+    motion_max: moving
+    motion_cap: 0.85
+    screen_style: lively
+    pulse_max: beat
+    looks: {verse: [slow, bar], chorus: [moving, beat], peak: [moving, beat]}
+    groups: {derby: chorus, flash: chorus, laser: peak}
+    transitions: [cut, dark-cut, glide, sweep, sweep-through, fly-up, fly-up-snap, strobe-snap, pump-snap]
+    arrive: bump
+    wind: 0.35
+    lift: 0.45
+    flourishes: 3
+    level: [0.35, 1.0]
+    palettes: [crimson, gold, ice, ember, aurora, ocean]
+    sound: {bpm: 128, punch: 0.092, range_db: 6}
+  groove:
+    label: Groove
+    for: Funk, soul and feel-good pop with a pocket. It makes people dance without shouting. Tight, bright, playful. (Songs like Superstition, September, Get Lucky, Crazy in Love.)
+    motion_max: moving
+    motion_cap: 0.8
+    screen_style: lively
+    pulse_max: beat
+    looks: {verse: [slow, beat], chorus: [moving, beat], peak: [moving, beat]}
+    groups: {flash: chorus, laser: peak}
+    transitions: [cut, dark-cut, glide, sweep, sweep-through, pump-snap, pump-through]
+    arrive: bump
+    wind: 0.25
+    lift: 0.35
+    flourishes: 3
+    level: [0.4, 1.0]
+    palettes: [gold, ember, aurora, dusk, ocean]
+    sound: {bpm: 112, punch: 0.125, range_db: 6}
+  disco:
+    label: Disco
+    for: Disco and dance-pop from the mirror-ball years on. Four on the floor, strings, glitter and joy. (Songs like Stayin' Alive, Y.M.C.A., Don't Leave Me This Way, Murder on the Dancefloor.)
+    motion_max: moving
+    motion_cap: 0.85
+    screen_style: lively
+    pulse_max: beat
+    looks: {verse: [slow, bar], chorus: [moving, beat], peak: [moving, beat]}
+    groups: {flash: chorus, laser: chorus}
+    transitions: [cut, glide, sweep, sweep-through, pump-snap, pump-through, fly-up]
+    arrive: bump
+    wind: 0.2
+    lift: 0.35
+    flourishes: 3
+    level: [0.45, 1.0]
+    palettes: [gold, dusk, aurora, ember, ocean]
+    sound: {bpm: 108, punch: 0.105, range_db: 7}
+  dance:
+    label: Club
+    for: Electronic dance music. Builds, drops and a hard beat. Eurodance, house, EDM-pop. (Songs like Rhythm Is a Dancer, Titanium, Levels, Blue (Da Ba Dee).)
+    motion_max: fast
+    motion_cap: 1.0
+    screen_style: wild
+    pulse_max: hard
+    looks: {verse: [moving, beat], chorus: [fast, beat], peak: [fast, hard]}
+    groups: {}
+    transitions: [cut, dark-cut, sweep, sweep-through, strobe-snap, strobe-through, pump-snap, pump-through, fly-up-snap]
+    arrive: snap
+    wind: 0.5
+    lift: 0.6
+    flourishes: 4
+    level: [0.35, 1.0]
+    palettes: [aurora, ice, crimson, ocean, dusk]
+    sound: {bpm: 128, punch: 0.108, range_db: 9}
+# What each palette looks like, for the AI and the fallback (the colours are stream_service/palettes.py's).
+palettes:
+  ember: Firelight. Deep orange, amber and red-brown. Warm, close, intimate.
+  gold: Gold and warm white with amber. Rich, celebratory, glamorous.
+  dusk: Violet, rose and dusty orange. Romantic, wistful, evening.
+  ice: Pale blue and white. Clean, cold, crystalline.
+  ocean: Deep blue and teal. Calm, cool, night.
+  aurora: Green, teal and magenta. Electric, strange, modern.
+  crimson: Deep red and black with a white highlight. Dramatic, dark, rock.

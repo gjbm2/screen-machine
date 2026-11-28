@@ -43,48 +43,16 @@ log = logging.getLogger("karaoke.sonos")
 
 POLL_S = 0.2
 SR = 48000
-PIANO_RENDER_CACHE_ENV = "PIANO_RENDER_CACHE"
-PIANO_RENDER_CACHE = Path("~/.cache/screen-machine/piano/renders")
-AUDIO_PATH = "/show/api/v1/piano/audio/{key}.flac"
-ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 SONOS_PREFIX = "sonos:"
-
-
-def cache_dir() -> Path:
-    raw = os.environ.get(PIANO_RENDER_CACHE_ENV)
-    return Path(raw).expanduser() if raw else PIANO_RENDER_CACHE.expanduser()
-
-
-def lan_host() -> Optional[str]:
-    """SM_LAN_HOST from the repo's .env (as show_sender reads it), else the environment: what the Sonos fetches from."""
-    try:
-        for line in ENV_FILE.read_text(encoding="utf-8").splitlines():
-            if line.startswith("SM_LAN_HOST="):
-                v = line.split("=", 1)[1].strip().strip("\"'")
-                if v:
-                    return v
-    except OSError:
-        pass
-    return os.environ.get("SM_LAN_HOST") or None
-
-
-def audio_url(key: str) -> str:
-    host = lan_host()
-    if not host:
-        raise RuntimeError("no SM_LAN_HOST in .env (the address the Sonos fetches the sound from)")
-    return f"http://{host}:{smconfig.deployment().port('room')}{AUDIO_PATH.format(key=key)}"
+# The render cache, the Sonos's address for a file in it, and the Sonos zones: the app's (smsound), shared with the
+# piano and the speaker calibration.
+from smsound.files import audio_url, cache_dir, lan_host  # noqa: E402,F401
 
 
 def sonos_zones() -> dict[str, str]:
-    """{zone: its room's name} of the deployment's room/sonos.json; {} without Sonos."""
-    try:
-        if not smconfig.enabled("sonos"):
-            return {}
-        cfg = json.loads(smconfig.path("room", "sonos.json").read_text())
-    except (OSError, ValueError, KeyError):
-        return {}
-    zones = cfg.get("zones") if isinstance(cfg, dict) else None
-    return {z: str((v or {}).get("room") or z) for z, v in (zones or {}).items() if isinstance(v, dict) and v.get("ip")}
+    """{zone: its room's name} of the deployment's Sonos zones (smsound.outputs.sonos_zones); {} without Sonos."""
+    from smsound.outputs import sonos_zones as zones
+    return {z: v["room"] for z, v in zones().items()}
 
 
 def mix_key(sid: str, from_s: float, guide: float, mutes: list) -> str:
@@ -171,13 +139,13 @@ class KaraokeSonos:
             p = dict(st.s["player"])
             settings = dict(st.s["settings"])
             song = dict(st.s["songs"].get(p.get("song_id") or "") or {})
-        out = str(settings.get("output") or "")
+        out = st.output()
         if not out.startswith(SONOS_PREFIX):
             self._halt()
             return
         zone = out[len(SONOS_PREFIX):]
-        if p.get("state") != "playing" or not song:
-            self._halt()
+        if p.get("state") != "playing" or not song or settings.get("muted"):
+            self._halt()                                 # muted: silent; unmuted, placed again where the song is
             return
         child = bool(settings.get("child_mode"))
         guide = float(settings.get("guide") or 0.0)

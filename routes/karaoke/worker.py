@@ -27,15 +27,19 @@ from pathlib import Path
 import smconfig
 from utils.logger import error, info
 
+from . import duet as duet_mod
 from . import lyrics as lyr
+from . import pace
 from . import sources as src
 from .sources import SourceError
 from .store import Store, song_dir, song_key
 
 SEPARATE = smconfig.REPO_ROOT / "tools" / "karaoke" / "separate.py"
+BEATS = smconfig.REPO_ROOT / "tools" / "karaoke" / "beats.py"
 ALIGN = smconfig.REPO_ROOT / "tools" / "karaoke" / "align.py"
 TRANSCRIBE = smconfig.REPO_ROOT / "tools" / "karaoke" / "transcribe.py"
 REFINE = smconfig.REPO_ROOT / "tools" / "karaoke" / "refine.py"
+VOICES = smconfig.REPO_ROOT / "tools" / "karaoke" / "voices.py"
 MIN_HEARD_WORDS = 12      # fewer heard than this: nothing to time lyrics by (an instrumental, or a failed hearing)
 MIN_HEARD_PER_MIN = 20    # and at least this many a minute of song: a real vocal, not a few stray words
 # Whisper's stock lines on silence or music without words ("Thank you." every 30 s: 26 Nov, The Sound of Silence's
@@ -47,6 +51,40 @@ STOCK_HEARD = ("thank you", "thanks for watching", "thank you for watching", "su
 QUIET_VOCAL_GAP_DB = 35.0
 QUIET_VOCAL_DB = -60.0
 ALL_VOCALS_MODEL = "model_bs_roformer_ep_317_sdr_12.9755.ckpt"   # BS-Roformer Viperx 1297: every voice out
+
+
+def analyse_later(sid: str, d: Path) -> None:
+    """Once a song is ready (it plays meanwhile): its beat grid (tools/karaoke/beats.py, Beat This! on the backing
+    track, in the show's ML venv) and its shape (utils/song_shape.py, in the show venv), both on the CPU at nice 19,
+    one thread, on a thread of their own so the next song's preparation never waits. The show's clock plays the grid
+    along the player (show_service/karaoke_feed.py) and the director follows the shape. Lyrics don't enter either, so
+    the careful pass never redoes them. Then the song's brief (show_service/brief.py), which does read the lyrics: it
+    carries what it was made from, and the show makes it again itself when the lyrics have changed since
+    (karaoke_feed.brief_ahead). A failure only leaves the show on the room mic for that song."""
+    dep = smconfig.deployment()
+    ml_py = dep.host_path("show_ml_python", "~/.venvs/sm-show-ml/bin/python")
+    show_py = dep.host_path("show_python", "~/.venvs/sm-show/bin/python")
+    env = {**os.environ, "OMP_NUM_THREADS": "1", "OPENBLAS_NUM_THREADS": "1", "MKL_NUM_THREADS": "1"}
+
+    def run() -> None:
+        jobs = []
+        if ml_py and ml_py.exists() and not (d / "beats.json").is_file():
+            jobs.append(("beats", ["nice", "-n", "19", str(ml_py), "-I", str(BEATS), str(d)]))
+        if show_py and show_py.exists():
+            jobs.append(("shape", ["nice", "-n", "19", str(show_py), "-m", "utils.song_shape", sid]))
+            # its brief for the show (show_service/brief.py): the idiom, palette and section map the art director
+            # performs it by, from an AI given its lyrics and shape (the local one when none answers); after the
+            # shape, which it reads. A brief already there for these lyrics is kept.
+            jobs.append(("brief", ["nice", "-n", "19", str(show_py), "-m", "show_service.brief", sid]))
+        for name, cmd in jobs:
+            t0 = time.time()
+            try:
+                subprocess.run(cmd, check=True, capture_output=True, timeout=900, env=env, cwd=str(smconfig.REPO_ROOT))
+                info(f"karaoke: {sid} {name} measured in {time.time() - t0:.0f} s")
+            except Exception as e:  # noqa: BLE001  the show falls back to the room mic for this song
+                info(f"karaoke: {sid} {name} not measured: {e}")
+
+    threading.Thread(target=run, name=f"karaoke-analyse-{sid}", daemon=True).start()
 
 
 def real_heard(sung: list[dict], duration: float | None) -> list[dict]:
@@ -81,7 +119,7 @@ def mean_db(wav: Path) -> float:
 def _venv_json(script: Path, args: list[str], timeout: float) -> dict:
     """Run a karaoke tool in the karaoke venv; its last stdout line is its JSON answer."""
     py = smconfig.deployment().host_path("karaoke_python")
-    p = subprocess.run([str(py), str(script), *args], capture_output=True, text=True, timeout=timeout)
+    p = pace.run([str(py), str(script), *args], text=True, timeout=timeout)
     last = (p.stdout or "").strip().splitlines()[-1:] or [""]
     if p.returncode != 0 or not last[0].startswith("{"):
         raise RuntimeError(((p.stderr or "").strip().splitlines() or ["no output"])[-1][:300])
@@ -93,7 +131,8 @@ def hear(vocal: Path) -> list[dict]:
     return _venv_json(TRANSCRIBE, ["--vocal", str(vocal)], 900)["words"]
 
 
-def fit_lyrics(cands: list[dict], vocal: Path, duration: float | None, fallback: dict) -> dict:
+def fit_lyrics(cands: list[dict], vocal: Path, duration: float | None, fallback: dict, title: str = "",
+               artist: str = "") -> dict:
     """The lyrics document for a recording, timed to its own singing (docs/KARAOKE.md "Lyrics"):
     the LRCLIB upload whose words match the most of what Whisper hears, each line where it is sung; else the lines
     as heard; else (nothing heard) ``fallback``, the looked-up lyrics as they came. Then each word is timed."""
@@ -110,7 +149,7 @@ def fit_lyrics(cands: list[dict], vocal: Path, duration: float | None, fallback:
     doc = None
     sung = real_heard(sung, duration)                    # stock lines and stray words aren't singing
     if sung:
-        best, lines, stats = lyr.best_fit(cands, sung, duration)
+        best, lines, stats = lyr.best_fit(cands, sung, duration, title, artist)
         if best is not None:
             doc = {"kind": "synced", "source": "fitted", "lrclib_id": best.get("lrclib_id"), "fit": stats, "lines": lines}
         else:
@@ -150,8 +189,8 @@ def add_word_times(lines: list[dict], vocal: Path, shift: float) -> None:
         json.dump(lines, f)
         lines_file = f.name
     try:
-        p = subprocess.run([str(py), str(ALIGN), "--vocal", str(vocal), "--lines", lines_file, "--shift", str(shift)],
-                           capture_output=True, text=True, timeout=600)
+        p = pace.run([str(py), str(ALIGN), "--vocal", str(vocal), "--lines", lines_file, "--shift", str(shift)],
+                     text=True, timeout=600)
     finally:
         Path(lines_file).unlink(missing_ok=True)
     last = (p.stdout or "").strip().splitlines()[-1:] or [""]
@@ -199,12 +238,129 @@ def _end(pids: list[int]) -> None:
             pass
 
 
+class Duets:
+    """Who sings which line of a duet (karaoke/duet.py; docs/KARAOKE.md "Duets"), one song at a time on a thread of
+    its own: every ready song once (its verdict kept in duet.json for the lyrics it was made from), and again when
+    its lyrics change. The AI is asked first; only a song it knows as a duet is listened to (tools/karaoke/voices.py
+    on the CPU at nice 19, a minute or three a song). No AI answer: nothing saved, asked again at the next start."""
+
+    def __init__(self, store: Store):
+        self.store = store
+        self.want_ids: list[str] = []
+        self.cv = threading.Condition()
+        self.thread: threading.Thread | None = None
+
+    def want(self, sid: str) -> None:
+        with self.cv:
+            if sid not in self.want_ids:
+                self.want_ids.append(sid)
+            self.cv.notify()
+
+    def start(self) -> None:
+        if self.thread and self.thread.is_alive():
+            return
+        with self.store.lock:
+            ids = [k for k, s in self.store.s["songs"].items() if s.get("status") == "ready"]
+        for sid in ids:
+            if self._stale(sid):
+                self.want(sid)
+            else:                                        # the song's fields as its saved verdict says now
+                song, lines = self._lines(sid)
+                have = duet_mod.load(song_dir(sid), lines) if lines else None
+                if have is not None:
+                    self._note(sid, have, bump=False)
+        self.thread = threading.Thread(target=self._loop, name="karaoke-duets", daemon=True)
+        self.thread.start()
+
+    def _lines(self, sid: str) -> tuple[dict | None, list]:
+        with self.store.lock:
+            song = self.store.s["songs"].get(sid)
+            song = dict(song) if song else None
+        lyr_doc = (song or {}).get("lyrics") or {}
+        return song, (list(lyr_doc.get("lines") or []) if lyr_doc.get("kind") == "synced" else [])
+
+    def _stale(self, sid: str) -> bool:
+        song, lines = self._lines(sid)
+        return bool(song and len(lines) >= 8 and duet_mod.load(song_dir(sid), lines) is None)
+
+    def _loop(self) -> None:
+        while True:
+            with self.cv:
+                while not self.want_ids:
+                    self.cv.wait(timeout=60)
+                sid = self.want_ids.pop(0)
+            try:
+                self.one(sid)
+            except Exception as e:  # noqa: BLE001  the song shows as one voice
+                error(f"karaoke: {sid} duet not worked out: {e}\n{traceback.format_exc()}")
+
+    def one(self, sid: str) -> None:
+        song, lines = self._lines(sid)
+        if not song or song.get("status") != "ready" or len(lines) < 8:
+            return
+        d = song_dir(sid)
+        have = duet_mod.load(d, lines)
+        if have is not None:
+            self._note(sid, have, bump=False)
+            return
+        prior, model = duet_mod.ask(song, lines)
+        if prior is None:
+            info(f"karaoke: {sid} duet: no AI answer ({model})")
+            return
+        heard: list = []
+        if prior["duet"]:
+            with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+                json.dump([{k: x.get(k) for k in ("start", "end", "words")} for x in lines], f)
+                lines_file = f.name
+            try:
+                py = smconfig.deployment().host_path("karaoke_python")
+                p = subprocess.run(["nice", "-n", "19", str(py), str(VOICES), "--dir", str(d), "--lines", lines_file],
+                                   capture_output=True, text=True, timeout=1800,
+                                   env={**os.environ, "OMP_NUM_THREADS": "2"})
+                last = (p.stdout or "").strip().splitlines()[-1:] or [""]
+                if p.returncode != 0 or not last[0].startswith("{"):
+                    raise RuntimeError(((p.stderr or "").strip().splitlines() or ["no output"])[-1][:300])
+                heard = json.loads(last[0]).get("lines") or []
+                tmp = d / "voices.tmp.json"              # kept: a better decide can judge it again without listening
+                tmp.write_text(json.dumps({"made_from": duet_mod.key(lines), "lines": heard}))
+                tmp.replace(d / "voices.json")
+            finally:
+                Path(lines_file).unlink(missing_ok=True)
+        _, now = self._lines(sid)
+        if duet_mod.key(now) != duet_mod.key(lines):    # the lyrics changed meanwhile: again, for the new ones
+            self.want(sid)
+            return
+        texts = [str(x.get("text") or "") for x in lines]
+        tags = [duet_mod.text_tag(t, prior["voices"]) for t in texts]
+        v = duet_mod.decide(len(lines), prior, heard, tags, texts)
+        v["ai"] = {"duet": prior["duet"], "voices": prior["voices"], "parts": prior["parts"],
+                   "echoes": {str(i): e for i, e in (prior.get("echoes") or {}).items()}}
+        saved = duet_mod.save(d, v, lines, by=model or "ai")
+        info(f"karaoke: {sid} duet: {'yes' if v['duet'] else 'no'}{'' if v['shown'] or not v['duet'] else ', parts not shown'}"
+             f" ({v['why']})")
+        self._note(sid, saved, bump=bool(v["shown"]))
+
+    def _note(self, sid: str, v: dict, bump: bool) -> None:
+        """The verdict on the song (its tag, the Karaoke page), and new lyrics for the screens when it is a duet."""
+        parts = v.get("parts") or []
+        found = {"found": bool(v.get("duet")), "shown": bool(v.get("shown")),
+                 "voices": [x.get("name") for x in v.get("voices") or []],
+                 "lines": {k: parts.count(k) for k in ("A", "B", "both")}, "why": v.get("why")}
+        with self.store.lock:
+            song = self.store.s["songs"].get(sid) or {}
+            if song.get("duet") == found and not bump:
+                return
+            rev = int(song.get("lyrics_rev") or 0) + (1 if bump else 0)
+        self.store.update_song(sid, duet=found, lyrics_rev=rev)
+
+
 class Worker:
     def __init__(self, store: Store):
         self.store = store
         self.thread: threading.Thread | None = None
         self.current: str | None = None
         self._restart: set[str] = set()                  # songs whose run is being restarted (restart)
+        self.duets = Duets(store)
 
     def restart(self, sid: str) -> bool:
         """Prepare the song again from nothing (owner, 26 Nov: "I currently have no way to restart an extraction. it's
@@ -228,7 +384,8 @@ class Worker:
         if d.is_dir():
             shutil.rmtree(d, ignore_errors=True)
         self.store.update_song(sid, status="queued", detail="", error=None, source_url=None, video_id=None,
-                               lyrics=None, audio_s=None, offset_ms=0, ready_at=None, refine=None)
+                               lyrics=None, audio_s=None, offset_ms=0, ready_at=None, refine=None,
+                               duet=None)
 
     def start(self) -> None:
         if self.thread and self.thread.is_alive():
@@ -240,6 +397,7 @@ class Worker:
             _end(left)
         self.thread = threading.Thread(target=self._loop, name="karaoke-worker", daemon=True)
         self.thread.start()
+        self.duets.start()
 
     def _loop(self) -> None:
         while True:
@@ -251,6 +409,12 @@ class Worker:
                     continue
             job = job or careful
             self.current = job["id"]
+            # How much of the GPU its tools may take while something plays live (karaoke/pace.py)
+            sid = job["id"]
+            if careful is not None:
+                pace.current, pace.current_nice = self.careful_share, pace.CAREFUL_NICE
+            else:
+                pace.current, pace.current_nice = (lambda: self.prep_share(sid)), pace.NICE
             try:
                 if careful is not None:
                     self.refine(job)
@@ -278,6 +442,20 @@ class Worker:
                 if job["id"] in self._restart:          # restarted mid-run: from nothing, once this run has stopped
                     self._restart.discard(job["id"])
                     self._clear(job["id"])
+
+    # ------------------------------------------------------------ pace (karaoke/pace.py)
+    def live(self) -> bool:
+        """Something plays in real time: a stream session is live, or a song is playing."""
+        return self.store.s["player"].get("state") == "playing" or pace.screens_live()
+
+    def prep_share(self, sid: str) -> float:
+        if not self.live():
+            return 1.0
+        due = self.store.needed_in(sid)
+        return 1.0 if due is not None and due < pace.URGENT_S else pace.PREP_SHARE
+
+    def careful_share(self) -> float:
+        return pace.CAREFUL_SHARE if self.live() else 1.0
 
     # ------------------------------------------------------------ one song
     def step(self, sid: str, status: str, detail: str = "") -> None:
@@ -364,7 +542,8 @@ class Worker:
         # 4. the lyrics timed to this recording's own singing
         self.step(sid, "lyrics", "listening to the words")
         try:
-            lyrics_doc = fit_lyrics(cands, d / "vocals.wav", audio_seconds(d / "instrumental.m4a"), lyrics_doc)
+            lyrics_doc = fit_lyrics(cands, d / "vocals.wav", audio_seconds(d / "instrumental.m4a"), lyrics_doc,
+                                    meta.get("title") or "", meta.get("artist") or "")
         except Exception as e:  # noqa: BLE001  (the looked-up lyrics as they came, lined up the old way)
             info(f"karaoke: {sid} hearing the words failed: {e}")
         if lyrics_doc.get("source") in ("fitted", "heard"):
@@ -389,6 +568,8 @@ class Worker:
         self.store.update_song(sid, status="ready", detail="", lyrics={"kind": lyrics_doc["kind"],
                                "lines": lyrics_doc["lines"]}, ready_at=time.time())
         info(f"karaoke: {sid} ready ({lyrics_doc['kind']} lyrics, {lyrics_doc.get('source', 'as looked up')})")
+        analyse_later(sid, d)
+        self.duets.want(sid)
 
     # ------------------------------------------------------------ the careful pass (docs/KARAOKE.md)
     def refine(self, song: dict) -> None:
@@ -403,24 +584,39 @@ class Worker:
             doc = json.loads((d / "lyrics.json").read_text())
         except (OSError, ValueError):
             doc = {"kind": "none", "lines": []}
-        texts = [str(ln.get("text") or "") for ln in doc.get("lines") or [] if str(ln.get("text") or "").strip()]
+        title, artist = song.get("title") or "", song.get("artist") or ""
+        given = lyr.careful_input(doc.get("lines") or [], title, artist)
+        upload = doc.get("lrclib_id")
+        if doc.get("source") in ("fitted", "careful"):   # the upload chosen again, by what best_fit weighs now
+            try:
+                lead = json.loads((d / "sung.json").read_text())
+                heard = real_heard(lead if isinstance(lead, list) else [], audio_seconds(d / "instrumental.m4a"))
+                best, lines, _ = lyr.best_fit(src.lrclib_candidates(artist, title), heard,
+                                              audio_seconds(d / "instrumental.m4a"), title, artist) if heard else (None, [], {})
+                if best is not None and best.get("lrclib_id") != upload:
+                    info(f"karaoke: {sid} careful pass: upload {best.get('lrclib_id')} fits better than {upload}")
+                    given, upload = lyr.careful_input(lines, title, artist), best.get("lrclib_id")
+            except Exception as e:  # noqa: BLE001  (offline, LRCLIB down: the lines it has)
+                info(f"karaoke: {sid} careful pass: uploads not looked at again ({e})")
+        texts = [x["text"] for x in given]
         if not texts or not (d / "vocals.m4a").is_file():
             mark(state="failed", detail="", error="There are no lyrics to time." if not texts else "The song's files are gone.")
             return
         mark(state="working", detail="taking every voice out, then timing each word", started_at=time.time(), error=None)
         info(f"karaoke: {sid} careful pass over its lyrics ({len(texts)} lines)")
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
-            json.dump([{"text": t} for t in texts], f)
+            json.dump(given, f)
             lines_file = f.name
+        dur = audio_seconds(d / "instrumental.m4a")
         try:
-            res = self._run_yielding(sid, [str(REFINE), "--dir", str(d), "--lines", lines_file], 2400)
+            res = self._run_yielding(sid, [str(REFINE), "--dir", str(d), "--lines", lines_file]
+                                     + (["--duration", str(dur)] if dur else []), 2400)
         finally:
             Path(lines_file).unlink(missing_ok=True)
         if res is None:                                   # a song came to be prepared: it goes first, this waits
             mark(state="waiting", detail="after the songs being prepared")
             info(f"karaoke: {sid} careful pass gave way to a song being prepared")
             return
-        dur = audio_seconds(d / "instrumental.m4a")
         tmp = d / "sung_voices.tmp.json"
         tmp.write_text(json.dumps(res.get("heard") or []))
         tmp.replace(d / "sung_voices.json")
@@ -440,7 +636,7 @@ class Worker:
         first = d / "lyrics.first.json"
         if not first.is_file():
             shutil.copy(d / "lyrics.json", first)
-        out = {"kind": "synced", "source": "careful", "lrclib_id": doc.get("lrclib_id"), "fit": doc.get("fit"),
+        out = {"kind": "synced", "source": "careful", "lrclib_id": upload, "fit": doc.get("fit"),
                "careful": ag, "first_source": doc.get("first_source") or doc.get("source"), "lines": new}
         tmp = d / "lyrics.tmp.json"
         tmp.write_text(json.dumps(out))
@@ -451,6 +647,7 @@ class Worker:
                                user_offset_ms=0, refine={**r, "state": "done", "detail": "", "error": None,
                                                          "agreement": ag, "done_at": time.time(),
                                                          "seconds": res.get("seconds")})
+        self.duets.want(sid)
 
     def undo_refine(self, sid: str) -> bool:
         """The first pass's lyrics back (lyrics.first.json). False when there is nothing to undo."""
@@ -469,13 +666,14 @@ class Worker:
             r = dict(song.get("refine") or {})
         self.store.update_song(sid, lyrics={"kind": doc.get("kind"), "lines": doc.get("lines") or []}, lyrics_rev=rev,
                                user_offset_ms=0, refine={**r, "state": "undone", "detail": "", "error": None})
+        self.duets.want(sid)
         return True
 
     def _run_yielding(self, sid: str, args: list[str], timeout: float) -> dict | None:
         """A karaoke tool in the karaoke venv, its last stdout line as JSON; None if it was ended because a song came
         to be prepared (that goes first). A restart of the song ends it too (Restarted)."""
         py = smconfig.deployment().host_path("karaoke_python")
-        p = subprocess.Popen([str(py), *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        p = pace.popen([str(py), *args], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         out: dict[str, str] = {}
         reader = threading.Thread(target=lambda: out.update(zip(("o", "e"), p.communicate())), daemon=True)
         reader.start()
@@ -533,8 +731,8 @@ class Worker:
         py = smconfig.deployment().host_path("karaoke_python")
         if not py or not Path(py).exists():
             raise SourceError("The karaoke tools aren't installed on this machine (deployment host.karaoke_python).")
-        p = subprocess.run([str(py), str(SEPARATE), "--in", str(audio), "--out-dir", str(d)] + (["--model", model] if model else []),
-                           capture_output=True, text=True, timeout=900)
+        p = pace.run([str(py), str(SEPARATE), "--in", str(audio), "--out-dir", str(d)] + (["--model", model] if model else []),
+                     text=True, timeout=1800)
         last = (p.stdout or "").strip().splitlines()[-1:] or [""]
         try:
             res = json.loads(last[0])

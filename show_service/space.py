@@ -66,15 +66,49 @@ ID_RE = r"^[a-z0-9][a-z0-9_.-]{0,63}$"     # fixtures.py's: appliance ids, place
 _ID = re.compile(ID_RE)
 _WORD = re.compile(r"^[a-z0-9][a-z0-9_-]{0,31}$")    # an appliance's kind ("screen", "mover")
 _DEVICE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$")   # a room device a place belongs to ("mirror_ball")
-TOP_KEYS: tuple[str, ...] = ("version", "room", "appliances", "points", "regions", "surfaces")
-SECTIONS: tuple[str, ...] = ("room", "appliances", "points", "regions", "surfaces")   # the added file, in this order
+TOP_KEYS: tuple[str, ...] = ("version", "room", "appliances", "points", "regions", "surfaces", "keep_out", "bars",
+                              "layouts")
+SECTIONS: tuple[str, ...] = ("room", "appliances", "points", "regions", "surfaces", "keep_out", "bars")   # the added file, in this order
 ROOM_KEYS: tuple[str, ...] = ("size", "front", "haze_half_life_s")   # haze_half_life_s: atmosphere.py
-PLACE_KEYS: tuple[str, ...] = ("at", "kind", "label", "mount", "plane", "aim")   # an appliance's place (editable on
+PLACE_KEYS: tuple[str, ...] = ("at", "kind", "label", "mount", "plane", "aim", "connect", "modes")
+#: modes (a planned room device): what each room mode is to do with it, {mode id: "on" | "off" | "spinning" |
+#: "stopped", a colour light's colour and flash after it ("on/red/flash")}, until it is connected and the modes themselves say (owner, 27 Nov: "why are my pinspots on by default
+#: in normal? what is a good way to allow user to control things like that through the studio mode?")   # an appliance's place (editable on
 #: the map). aim: [x, y, z], the place in the room a fixed light points at (a bar's laser turned up at the ceiling;
 #: owner, 27 Nov): the 3D room draws its beams from ``at`` towards it
 APPLIANCE_KEYS: tuple[str, ...] = PLACE_KEYS + ("teach", "pose")
+#: The room editor as a studio (owner, 27 Nov: "I can create new objects easily from this view (of any class ...) ...
+#: not all of these objects are 'connected' (i.e. real). Only if they end up connected ... do they actually drive real
+#: output channels / states"). An appliance with a ``kind`` and no light of that id in the rig is PLANNED: drawn and
+#: placed, driving nothing. Its kind is a light type's id (types in fixtures.yaml: a planned light) or one of these room
+#: devices; ``connect`` names the real thing a planned device stands for (a screen, a Hue lamp, a microphone source, a
+#: light sensor, a remote-controlled device), and it is connected once that is set. A planned light is connected by
+#: registering it (the Lights page's Add a light), and the placement moves to the new light's id.
+ROOM_DEVICE_KINDS: dict[str, str] = {"screen": "Screen or TV", "hue-lamp": "Hue lamp", "mirror-ball": "Mirror ball",
+                                     "mic": "Microphone", "light-sensor": "Light sensor"}
 POINT_KEYS: tuple[str, ...] = ("label", "at", "device", "from")
 REGION_KEYS: tuple[str, ...] = ("label", "surface", "centre", "size")
+#: keep_out.<name> (owner, 27 Nov: "we need configurable 'keep out' regions in the room"): a box of the room no light
+#: of the named groups should throw a beam through (a mirror ball, the projected picture). centre [x, y, z] and size
+#: [x, y, z] in metres, along the room's axes; groups: light group names (show.yaml lights.groups), none: every light.
+KEEP_KEYS: tuple[str, ...] = ("label", "centre", "size", "groups")
+#: bars.<id> (owner, 27 Nov: "other aspects of the gigbars (not just the laser angle) can be configured by user ...
+#: expose all of those config elements"): a light bar on its stand as ONE thing: where its middle is (at, room m: its
+#: height is at[2]), which way it faces (facing_deg: the heading of its front, degrees anticlockwise from east), and
+#: its layout (layouts.<name>). Each part is the fixture "<bar id>.<part>" and sits where the layout says along the
+#: bar; a part placed by hand under appliances keeps its own place.
+BAR_KEYS: tuple[str, ...] = ("label", "at", "facing_deg", "layout")
+#: layouts.<name>.parts.<part> (the hand file only: what the unit is, not where it stands): along (m from the bar's
+#: middle, + to the right as you face the bar), up (m above the bar's centre line; - below it), head (a moving head on
+#: the bar: it gets a pose facing the bar's front until it is taught), hang (that head hangs under the bar, upside
+#: down, as a GigBAR MOVE's do: its pan axis points down), turns (false: a one-axis bracket, as a U-yoke is: the part
+#: only tilts, about the bar's length, and faces where the bar faces), and how the part points as it ships: lean_deg
+#: (degrees forward from straight up: 90 is level) and turn_deg (to the right of the bar's front). A light's own setup
+#: (fixtures.setup.yaml lean_deg, turn_deg: the Lights page) overrides those two.
+LAYOUT_PART_KEYS: tuple[str, ...] = ("along", "up", "head", "hang", "turns", "lean_deg", "turn_deg", "type", "offset")
+#: type: the part's light type (a fixtures.yaml type id), so a bar placed before its lights are registered (a planned
+#: bar) can be drawn part by part; offset: its DMX channel offset from the bar's start address, so connecting a planned
+#: bar registers each part at its own address
 SURFACE_KEYS: tuple[str, ...] = ("label", "origin", "normal", "up", "size")
 PLANE_KEYS: tuple[str, ...] = ("normal", "up", "size")
 POSE_KEYS: tuple[str, ...] = ("at", "rot", "tilt_offset_deg", "pan_sign", "tilt_sign", "rms_deg", "worst_deg",
@@ -324,6 +358,20 @@ def _place_value(k: str, v: Any, where: str, probs: list[str]) -> Any:
         if out is None:
             probs.append(f"{where}: three numbers in metres ([x, y, z], the place it points at): left unset")
         return out
+    if k == "modes":
+        # "on", "off", "spinning", "stopped", and for a colour light on a remote its colour and flash after it:
+        # "on/red", "on/fade/flash" (the pinspots' remote: seven colours, the colour cycle, flash)
+        ok = re.compile(r"^(on|off|spinning|stopped|show)(/[a-z]+){0,3}$")
+        if isinstance(v, dict) and all(isinstance(m, str) and _WORD.match(m) and isinstance(w, str) and ok.match(w)
+                                       for m, w in v.items()):
+            return dict(v)
+        probs.append(f"{where}: {{mode: on | off | spinning | stopped, a colour light's colour and flash after it: on/red/flash}}: left unset")
+        return None
+    if k == "connect":
+        if isinstance(v, str) and _DEVICE.match(v):
+            return v
+        probs.append(f"{where}: {v!r} isn't the id of a screen, lamp, source or device: left unset")
+        return None
     if k == "mount":
         if v in contract.MOUNTS:
             return v
@@ -405,6 +453,85 @@ def _region(raw: Any, where: str, probs: list[str]) -> Optional[dict]:
     return out
 
 
+def _keep_out(raw: Any, where: str, probs: list[str]) -> Optional[dict]:
+    if not isinstance(raw, dict):
+        probs.append(f"{where}: needs centre and size: left out")
+        return None
+    _unknown(raw, KEEP_KEYS, where, probs)
+    centre, size = _vec(raw.get("centre"), 3), _sizes(raw.get("size"), 3)
+    if centre is None or size is None:
+        probs.append(f"{where}: needs centre ([x, y, z] m) and size ([x, y, z] m): left out")
+        return None
+    out: dict[str, Any] = {"centre": centre, "size": size}
+    g = raw.get("groups")
+    if g is not None:
+        if isinstance(g, list) and all(isinstance(x, str) and x for x in g):
+            out["groups"] = list(dict.fromkeys(g))
+        else:
+            probs.append(f"{where}.groups: isn't a list of light groups: every light")
+    lab = _label(raw.get("label"))
+    if lab is not None:
+        out["label"] = lab
+    return out
+
+
+def _bar(raw: Any, where: str, probs: list[str]) -> Optional[dict]:
+    if not isinstance(raw, dict):
+        probs.append(f"{where}: needs at, facing_deg and layout: left out")
+        return None
+    _unknown(raw, BAR_KEYS, where, probs)
+    at, face, lay = _vec(raw.get("at"), 3), _num(raw.get("facing_deg", 0.0)), raw.get("layout")
+    if at is None or face is None or not isinstance(lay, str) or not lay:
+        probs.append(f"{where}: needs at ([x, y, z] m), facing_deg (a number) and layout (a name): left out")
+        return None
+    out: dict[str, Any] = {"at": at, "facing_deg": float(face), "layout": lay}
+    lab = _label(raw.get("label"))
+    if lab is not None:
+        out["label"] = lab
+    return out
+
+
+def _layout(raw: Any, where: str, probs: list[str]) -> Optional[dict]:
+    parts = raw.get("parts") if isinstance(raw, dict) else None
+    if not isinstance(parts, dict) or not parts:
+        probs.append(f"{where}: needs parts: {{<part>: {{along: m}}}}: left out")
+        return None
+    out: dict[str, dict] = {}
+    for pn, sp in parts.items():
+        w = f"{where}.parts.{pn}"
+        if not isinstance(sp, dict) or _num(sp.get("along")) is None:
+            probs.append(f"{w}: needs along (m from the bar's middle): left out")
+            continue
+        _unknown(sp, LAYOUT_PART_KEYS, w, probs)
+        e: dict[str, Any] = {"along": float(sp["along"]), "up": float(_num(sp.get("up")) or 0.0),
+                             "head": sp.get("head") is True, "hang": sp.get("hang") is True,
+                             "turns": sp.get("turns") is not False}
+        if isinstance(sp.get("type"), str) and _WORD.match(sp["type"]):
+            e["type"] = sp["type"]
+        if isinstance(sp.get("offset"), int) and not isinstance(sp.get("offset"), bool) and 0 <= sp["offset"] < 512:
+            e["offset"] = sp["offset"]
+        for k in ("lean_deg", "turn_deg"):
+            if sp.get(k) is not None:
+                if _num(sp.get(k)) is None:
+                    probs.append(f"{w}.{k}: isn't a number: left out")
+                else:
+                    e[k] = float(sp[k])
+        out[str(pn)] = e
+    return {"parts": out} if out else None
+
+
+def aim_dir(front: Sequence[float], lean_deg: float, turn_deg: float = 0.0) -> tuple[float, float, float]:
+    """Which way a fixed light points: ``lean_deg`` forward from straight up (90: level), towards the bar's ``front``
+    (a level unit vector) turned ``turn_deg`` to its right (as you face the bar). Pure."""
+    fx, fy = float(front[0]), float(front[1])
+    h = math.hypot(fx, fy) or 1.0
+    fx, fy = fx / h, fy / h
+    ax, ay = -fy, fx                                       # the bar's axis: left to right as you face it
+    t, a = math.radians(turn_deg), math.radians(lean_deg)
+    hx, hy = fx * math.cos(t) + ax * math.sin(t), fy * math.cos(t) + ay * math.sin(t)
+    return (hx * math.sin(a), hy * math.sin(a), math.cos(a))
+
+
 def _surface(name: str, raw: Any, where: str, probs: list[str]) -> Optional[dict]:
     if name in ROOM_SURFACES:
         probs.append(f"{where}: {name} comes from the room's size: left out (use another name)")
@@ -461,7 +588,8 @@ def _room(raw: Any, where: str, probs: list[str]) -> dict:
 def parse_doc(doc: Any, fname: str, probs: list[str]) -> dict[str, dict]:
     """A space file's mapping -> its sections, every value checked and normalised (bad ones dropped with a problem
     line). Pure."""
-    out: dict[str, dict] = {"room": {}, "appliances": {}, "points": {}, "regions": {}, "surfaces": {}}
+    out: dict[str, dict] = {"room": {}, "appliances": {}, "points": {}, "regions": {}, "surfaces": {},
+                            "keep_out": {}, "bars": {}, "layouts": {}}
     if doc is None:
         return out
     if not isinstance(doc, dict):
@@ -473,7 +601,10 @@ def parse_doc(doc: Any, fname: str, probs: list[str]) -> dict[str, dict]:
         ("appliances", lambda n, r, w: _appliance(r, w, probs) or None),
         ("points", lambda n, r, w: _point(r, w, probs)),
         ("regions", lambda n, r, w: _region(r, w, probs)),
-        ("surfaces", lambda n, r, w: _surface(n, r, w, probs)))
+        ("surfaces", lambda n, r, w: _surface(n, r, w, probs)),
+        ("keep_out", lambda n, r, w: _keep_out(r, w, probs)),
+        ("bars", lambda n, r, w: _bar(r, w, probs)),
+        ("layouts", lambda n, r, w: _layout(r, w, probs)))
     for sec, parse in parts:
         raw = doc.get(sec)
         if raw is None:
@@ -492,6 +623,145 @@ def parse_doc(doc: Any, fname: str, probs: list[str]) -> dict[str, dict]:
 
 
 # -- the view (merge and build; pure) --------------------------------------------------------------------------------
+def ray_crosses_box(o: Sequence[float], d: Sequence[float], centre: Sequence[float], size: Sequence[float],
+                    reach: float = 1e9) -> bool:
+    """A ray from ``o`` along ``d`` passes through the box (centre, size, along the room's axes) within ``reach``
+    metres (the slab test). Pure."""
+    t0, t1 = 0.0, reach
+    for i in range(3):
+        lo, hi = centre[i] - size[i] / 2.0, centre[i] + size[i] / 2.0
+        if abs(d[i]) < 1e-12:
+            if not lo <= o[i] <= hi:
+                return False
+            continue
+        a, b = (lo - o[i]) / d[i], (hi - o[i]) / d[i]
+        if a > b:
+            a, b = b, a
+        t0, t1 = max(t0, a), min(t1, b)
+        if t0 > t1:
+            return False
+    return True
+
+
+def cone_crosses_box(o: Sequence[float], axis: Sequence[float], half_deg: float, centre: Sequence[float],
+                     size: Sequence[float], rings: int = 8, around: int = 48) -> bool:
+    """Any beam of a solid cone (apex ``o``, unit ``axis``, half angle ``half_deg``: a grating laser's burst, which
+    its rotation sweeps through the whole cone) passes through the box. Sampled: ``rings`` x ``around`` rays and the
+    axis (a box a beam's width across could be missed between samples; a mirror ball can't). Pure."""
+    ax = _unit(axis)
+    ref = (1.0, 0.0, 0.0) if abs(ax[0]) < 0.9 else (0.0, 1.0, 0.0)
+    u = _unit(_cross(ax, ref))
+    v = _cross(ax, u)
+    if ray_crosses_box(o, ax, centre, size):
+        return True
+    for r in range(1, rings + 1):
+        a = math.radians(half_deg) * r / rings
+        ca, sa = math.cos(a), math.sin(a)
+        for k in range(around):
+            ph = 2.0 * math.pi * k / around
+            cp, sp = math.cos(ph), math.sin(ph)
+            d = tuple(ca * ax[i] + sa * (cp * u[i] + sp * v[i]) for i in range(3))
+            if ray_crosses_box(o, d, centre, size):
+                return True
+    return False
+
+
+def lean_axis(at: Sequence[float], towards: Sequence[float], lean_deg: float) -> tuple[float, float, float]:
+    """The direction a fixed light points when it leans ``lean_deg`` forward from straight up, forward being the
+    horizontal way from ``at`` to ``towards`` (the middle of the room). Pure."""
+    dx, dy = towards[0] - at[0], towards[1] - at[1]
+    h = math.hypot(dx, dy) or 1.0
+    a = math.radians(lean_deg)
+    return (dx / h * math.sin(a), dy / h * math.sin(a), math.cos(a))
+
+
+def keep_boxes(view: Any, group: Optional[str]) -> tuple[tuple[Any, Any], ...]:
+    """The keep-out boxes (centre, size) that hold for a light of ``group``: those naming it, and those naming no
+    group (every light)."""
+    ko = view.get("keep_out") if isinstance(view, Mapping) else None
+    if not ko:
+        return ()
+    return tuple((e["centre"], e["size"]) for e in ko.values()
+                 if not e.get("groups") or (group is not None and group in e["groups"]))
+
+
+def clear_target(o: Sequence[float], q: Sequence[float], boxes: Sequence[tuple[Any, Any]], *, step: float = 0.25,
+                 tries: int = 16, margin: float = 0.1) -> tuple[tuple[float, float, float], bool]:
+    """Where a light at ``o`` should point instead of ``q`` so its beam misses every keep-out box: ``q`` moved, in
+    ``step`` metre steps, straight away from the box the beam crosses (from the box's centre through the nearest
+    point of the beam; a beam through the very centre goes up). (the point, whether it had to move). A beam that
+    can't be cleared in ``tries`` steps keeps ``q``. Pure."""
+    q0 = (float(q[0]), float(q[1]), float(q[2]))
+    if not boxes:
+        return q0, False
+
+    def crossing(pt: Sequence[float]) -> Optional[tuple[Any, Any]]:
+        d = tuple(pt[i] - o[i] for i in range(3))
+        if math.sqrt(sum(x * x for x in d)) < 1e-9:
+            return None
+        for c, sz in boxes:
+            if ray_crosses_box(o, d, c, [x + 2.0 * margin for x in sz]):
+                return c, sz
+        return None
+
+    hit = crossing(q0)
+    if hit is None:
+        return q0, False
+    d = _unit(tuple(q0[i] - o[i] for i in range(3)))
+    c = hit[0]
+    t = sum((c[i] - o[i]) * d[i] for i in range(3))
+    n = tuple(o[i] + d[i] * t - c[i] for i in range(3))
+    if math.sqrt(sum(x * x for x in n)) < 1e-6:
+        n = (0.0, 0.0, 1.0)
+    n = _unit(n)
+    for k in range(1, tries + 1):
+        pt = tuple(q0[i] + n[i] * step * k for i in range(3))
+        if crossing(pt) is None:
+            return pt, True                               # type: ignore[return-value]
+    return q0, False
+
+
+#: A fixed laser's tilt when none is set: its most forward beam this far off vertical (owner, 27 Nov: "angle the gigbar
+#: lasers so that no beam leans forward more than 45 degrees").
+LEAN_RULE_DEG = 45.0
+
+
+def laser_checks(view: Any, lasers: Sequence[Mapping[str, Any]]) -> dict[str, dict]:
+    """For each fixed laser ({id, at, spread_deg, lean_deg | None, group}): the tilt it has (its own, else the rule's),
+    the keep-out regions its burst crosses at that tilt, and the most forward tilt at which it crosses none
+    (``clear_lean_deg``; None: no tilt down to straight back clears). Forward is towards the room's centre. Pure."""
+    out: dict[str, dict] = {}
+    ko = view.get("keep_out") if isinstance(view, Mapping) else None
+    room = view.get("room") if isinstance(view, Mapping) else None
+    mid = (room or {}).get("centre")
+    for L in lasers:
+        at, spread = L.get("at"), L.get("spread_deg")
+        if not at or not spread or not (mid or L.get("front")):
+            continue
+        front = L.get("front") or (mid[0] - at[0], mid[1] - at[1], 0.0)       # its bar's, else towards the middle
+        turn = float(L.get("turn_deg") or 0.0)
+        half = float(spread) / 2.0
+        lean = float(L["lean_deg"]) if L.get("lean_deg") is not None else LEAN_RULE_DEG - half
+        mine = {n: e for n, e in (ko or {}).items()
+                if not e.get("groups") or (L.get("group") is not None and L["group"] in e["groups"])}
+
+        def crosses(deg: float) -> list[str]:
+            ax = aim_dir(front, deg, turn)
+            return [n for n, e in mine.items() if cone_crosses_box(at, ax, half, e["centre"], e["size"])]
+
+        now = crosses(lean)
+        clear: Optional[float] = lean if not now else None
+        if now:
+            deg = math.floor(lean * 2.0) / 2.0
+            while deg >= -90.0:
+                if not crosses(deg):
+                    clear = deg
+                    break
+                deg -= 0.5
+        out[str(L["id"])] = {"lean_deg": round(lean, 2), "crosses": now, "clear_lean_deg": clear}
+    return out
+
+
 def _room_surfaces(size: Optional[list[float]]) -> dict[str, dict]:
     """floor (always: z = 0 is the frame's floor), then the ceiling and walls once the size is known (§3.1)."""
     def s(name: str, origin: Vec3, normal: Vec3, u: Vec3, v: Vec3, wh: Optional[list[float]]) -> dict:
@@ -512,14 +782,15 @@ def _room_surfaces(size: Optional[list[float]]) -> dict[str, dict]:
 def _merge(hand: dict, added: dict, probs: list[str]) -> tuple[dict, dict[str, set]]:
     """The two files' sections merged (the hand file wins: §3.2). Returns (sections, appliance id -> the place keys
     the hand file sets)."""
-    out: dict[str, dict] = {"room": dict(hand["room"]), "appliances": {}, "points": {}, "regions": {}, "surfaces": {}}
+    out: dict[str, dict] = {"room": dict(hand["room"]), "appliances": {}, "points": {}, "regions": {}, "surfaces": {},
+                            "keep_out": {}, "bars": {}, "layouts": dict(hand.get("layouts") or {})}
     for k, v in added["room"].items():
         if k in out["room"]:
             if out["room"][k] != v:
                 probs.append(f"{ADDED_NAME}: room.{k} is set in {HAND_NAME} too: {HAND_NAME}'s is used")
         else:
             out["room"][k] = v
-    for sec in ("points", "regions", "surfaces"):
+    for sec in ("points", "regions", "surfaces", "keep_out", "bars"):
         out[sec] = {n: {**e, "_src": "hand"} for n, e in hand[sec].items()}
         for n, e in added[sec].items():
             if n in out[sec]:
@@ -591,13 +862,49 @@ def build_view(hand: Any, added: Any = None, *, error: Optional[str] = None,
     appliances = {}
     for aid, e in m["appliances"].items():
         a: dict[str, Any] = {"at": e.get("at")}
-        for k in ("kind", "label", "mount", "plane", "aim"):
+        for k in ("kind", "label", "mount", "plane", "aim", "connect", "modes"):
             if k in e:
                 a[k] = e[k]
         a["teach"] = list(e.get("teach") or [])
         a["pose"] = e.get("pose")
         a["editable"] = not (hand_keys.get(aid, set()) & set(PLACE_KEYS))
         appliances[aid] = a
+    # the bars: each part (the fixture "<bar>.<part>") where the layout puts it along the bar, unless it has a place
+    # of its own; a head on the bar gets a pose facing the bar's front until it is taught: upright standing on it, or
+    # upside down hanging under it (a half turn about the bar's front: the pan axis points down)
+    bars: dict[str, dict] = {}
+    for bid, b in m["bars"].items():
+        lay = m["layouts"].get(b["layout"])
+        if lay is None:
+            probs.append(f"bars.{bid}: there's no layout {b['layout']!r} (layouts, in {HAND_NAME}): left out")
+            continue
+        yaw = math.radians(b["facing_deg"])
+        front = (math.cos(yaw), math.sin(yaw), 0.0)
+        axis = (-front[1], front[0], 0.0)
+        parts: dict[str, dict] = {}
+        for pn, sp in lay["parts"].items():
+            fid = f"{bid}.{pn}"
+            at = [round(b["at"][0] + axis[0] * sp["along"], 4), round(b["at"][1] + axis[1] * sp["along"], 4),
+                  round(b["at"][2] + sp["up"], 4)]
+            a = appliances.setdefault(fid, {"at": None, "teach": [], "pose": None, "editable": True})
+            own = a.get("at") is not None
+            if not own:
+                a["at"] = at
+                a["bar"] = bid
+            if sp["head"] and a.get("pose") is None:
+                hang = sp.get("hang", False)
+                a.setdefault("mount", "ceiling" if hang else "floor")
+                rot = ([round(math.pi * math.cos(yaw / 2), 6), round(math.pi * math.sin(yaw / 2), 6), 0.0] if hang
+                       else [0.0, 0.0, round(yaw, 6)])
+                a["pose"] = {"at": list(a["at"]), "rot": rot, "tilt_offset_deg": 0.0,
+                             "pan_sign": 1, "tilt_sign": 1, "rms_deg": 0.0, "worst_deg": 0.0, "samples": 0,
+                             "solved_at": (f"from the bar ({'hanging under it' if hang else 'upright on it'}, facing its "
+                                           f"front): not taught")}
+            parts[pn] = {"id": fid, "own_place": own, "head": sp["head"], "hang": sp.get("hang", False),
+                         "turns": sp.get("turns", True), **{k: sp[k] for k in ("lean_deg", "turn_deg", "type") if k in sp}}
+        bars[bid] = {"label": b.get("label") or humanise(bid), "at": b["at"], "facing_deg": b["facing_deg"],
+                     "layout": b["layout"], "front": [round(x, 6) for x in front], "axis": [round(x, 6) for x in axis],
+                     "parts": parts, "editable": b.get("_src") != "hand"}
     if size:
         extent: Optional[list[list[float]]] = [[0.0, 0.0, 0.0], [float(x) for x in size]]
     else:
@@ -605,8 +912,12 @@ def build_view(hand: Any, added: Any = None, *, error: Optional[str] = None,
         for a in appliances.values():
             placed += [x for x in (a["at"], (a["pose"] or {}).get("at")) if x]
         extent = _box(placed)
+    keep = {name: {"label": e.get("label") or humanise(name), "centre": e["centre"], "size": e["size"],
+                   "groups": list(e.get("groups") or []), "editable": e.get("_src") != "hand"}
+            for name, e in m["keep_out"].items()}
+    layouts = {n: {"parts": copy.deepcopy(lay["parts"])} for n, lay in m["layouts"].items() if isinstance(lay, dict)}
     body = {"room": room, "surfaces": surfaces, "points": points, "regions": regions, "appliances": appliances,
-            "extent": extent}
+            "keep_out": keep, "bars": bars, "layouts": layouts, "extent": extent}
     rev = hashlib.sha1(json.dumps(body, sort_keys=True).encode()).hexdigest()[:12]
     return {"revision": rev, "error": error, "problems": list(dict.fromkeys(probs)),   # type: ignore[typeddict-item]
             **body}
@@ -840,12 +1151,12 @@ class Store:
         return self._view
 
     def set_appliance(self, aid: str, *, at: Any = ..., mount: Any = ..., plane: Any = ..., kind: Any = ...,
-                      label: Any = ...) -> dict:
+                      label: Any = ..., connect: Any = ..., aim: Any = ..., modes: Any = ...) -> dict:
         """Place an appliance (a fixture id, or a room device): a key left out is unchanged, a key given as None
         clears it. Its taught places and pose stay. Returns its entry in the new view."""
         aid = _check_id(aid, "light or device")
-        given = {k: v for k, v in (("at", at), ("mount", mount), ("plane", plane), ("kind", kind), ("label", label))
-                 if v is not ...}
+        given = {k: v for k, v in (("at", at), ("mount", mount), ("plane", plane), ("kind", kind), ("label", label),
+                                   ("connect", connect), ("aim", aim), ("modes", modes)) if v is not ...}
         val = {k: (None if v is None else _one(lambda p, k=k, v=v: _place_value(k, v, f"{aid} {k}", p), k))
                for k, v in given.items()}
 
@@ -929,6 +1240,63 @@ class Store:
 
     def remove_region(self, name: str) -> None:
         self._remove("regions", _check_id(name, "area"))
+
+    def set_keep_out(self, name: str, centre: Any, size: Any, groups: Any = None, label: Optional[str] = None) -> dict:
+        """A keep-out box (KEEP_KEYS): its centre and size in room metres, and the light groups it is for (none:
+        every light)."""
+        name = _check_id(name, "keep-out region")
+        c = _one(lambda p: _vec(centre, 3) or p.append("Its centre is three numbers in metres."), "centre")
+        sz = _one(lambda p: _sizes(size, 3) or p.append("Its size is three lengths in metres."), "size")
+        if groups is not None and not (isinstance(groups, list) and all(isinstance(x, str) and x for x in groups)):
+            raise Refused("bad_request", "The lights it is for are a list of light group names (none: every light).")
+        lab = None
+        if label is not None:
+            lab = _one(lambda p: _label(label) or p.append("That isn't a name."), "label")
+
+        def mutate(hand: dict, new: dict) -> None:
+            if name in hand["keep_out"]:
+                raise Refused("in_hand_file", f"{name} is set in {HAND_NAME}: change it there")
+            old = dict(new["keep_out"].get(name) or {})
+            e: dict[str, Any] = {"label": lab or old.get("label") or humanise(name), "centre": c, "size": sz}
+            if groups:
+                e["groups"] = list(dict.fromkeys(groups))
+            new["keep_out"][name] = e
+        self._write(mutate)
+        return copy.deepcopy(self._view["keep_out"].get(name)) or {}
+
+    def remove_keep_out(self, name: str) -> None:
+        self._remove("keep_out", _check_id(name, "keep-out region"))
+
+    def remove_bar(self, name: str) -> None:
+        """Take a bar placed on the page out of the room (a planned bar, or one being moved to the hand file)."""
+        self._remove("bars", _check_id(name, "bar"))
+
+    def set_bar(self, name: str, at: Any = None, facing_deg: Any = None, layout: Optional[str] = None,
+                label: Optional[str] = None) -> dict:
+        """A light bar (BAR_KEYS): where its middle is, which way it faces, its layout. A key left out keeps what the
+        bar has; a new bar needs at and layout."""
+        name = _check_id(name, "bar")
+        cur = dict((self._view.get("bars") or {}).get(name) or {})
+        a = cur.get("at") if at is None else _one(
+            lambda p: _vec(at, 3) or p.append("A bar's place is three numbers in metres."), "at")
+        f = cur.get("facing_deg", 0.0) if facing_deg is None else _num(facing_deg)
+        lay = layout if layout is not None else cur.get("layout")
+        if a is None or f is None or not isinstance(lay, str) or not lay:
+            raise Refused("bad_request", "A bar needs at ([x, y, z] m), facing_deg and a layout.")
+        lab = None
+        if label is not None:
+            lab = _one(lambda p: _label(label) or p.append("That isn't a name."), "label")
+
+        def mutate(hand: dict, new: dict) -> None:
+            if name in hand["bars"]:
+                raise Refused("in_hand_file", f"{name} is set in {HAND_NAME}: change it there")
+            if lay not in (hand.get("layouts") or {}):
+                raise Refused("bad_request", f"There's no layout {lay!r}", choices=sorted(hand.get("layouts") or {}))
+            old = dict(new["bars"].get(name) or {})
+            new["bars"][name] = {"label": lab or old.get("label") or cur.get("label") or humanise(name),
+                                 "at": [float(x) for x in a], "facing_deg": round((float(f) + 180.0) % 360.0 - 180.0, 2), "layout": lay}
+        self._write(mutate)
+        return copy.deepcopy((self._view.get("bars") or {}).get(name)) or {}
 
     def _remove(self, sec: str, name: str) -> None:
         def mutate(hand: dict, new: dict) -> None:

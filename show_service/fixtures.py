@@ -97,7 +97,7 @@ OUTPUT_KEYS: tuple[str, ...] = ("driver", "enabled", "node", "also_nodes", "port
 #: resolves it to WSL's default gateway when it builds the node's destination; receiver.WINDOWS_HOST, the senders' word)
 HOST_ALIASES: tuple[str, ...] = ("windows",)
 NODE_KEYS: tuple[str, ...] = ("match", "last_ip", "port", "full_512", "failsafe", "virtual")
-TYPE_KEYS: tuple[str, ...] = ("source", "file", "mode", "emitters", "curve")
+TYPE_KEYS: tuple[str, ...] = ("source", "file", "mode", "emitters", "curve", "streaks")
 FIXTURE_KEYS: tuple[str, ...] = ("type", "label", "output", "address", "light", "screen", "zone", "placement", "role",
                                  "tags", "order", "wb", "curve", "pin", "house")
 GROUP_KEYS: tuple[str, ...] = ("select", "order")
@@ -108,7 +108,7 @@ _HEX = re.compile(r"^#[0-9a-fA-F]{6}$")
 def _builtin(tid: str, kind: str, attrs: tuple[str, ...]) -> contract.TypeInfo:
     return {"id": tid, "source": "builtin", "kind": kind, "file": None, "mode": None, "footprint": 0,
             "attrs": list(attrs), "channels": [], "emitters": {}, "wheel": [], "curve": "srgb", "problems": [],
-            "wheels": {}, "physical": ofl.no_physical()}
+            "wheels": {}, "physical": ofl.no_physical(), "categories": []}
 
 
 #: A generic type's channel words -> (attr, emitter), as ofl.py would read them (README S5.23; docs/LIGHTS.md §2.5).
@@ -916,6 +916,12 @@ class _Builder:
                 self.problems.append(f"{where}.source: {src!r} isn't builtin or ofl: left out")
                 continue
             info["emitters"] = self._emitters(where, t.get("emitters"), info)
+            if "streaks" in t:                             # its emitters show as separate beams (colour_mix._Plan)
+                st = t.get("streaks")
+                if isinstance(st, (int, float)) and not isinstance(st, bool) and 0.0 < st <= 1.0:
+                    info["streaks"] = float(st)
+                else:
+                    self.problems.append(f"{where}.streaks: {st!r} isn't a share over 0, up to 1: its colours mix")
             if "curve" in t:
                 c = parse_curve(t.get("curve"))
                 if c is None:
@@ -1546,10 +1552,21 @@ class Registrar:
     def add(self, body: Any) -> tuple[str, list[str], contract.RigView]:
         """POST /api/v1/rig/fixtures: (the new light's id, its problem lines, the view as the loader now builds it)."""
         hand, added = self._read()
+        # ``id`` (optional): the id it is to have, as a thing planned in the room has it (a bar's part is
+        # "<bar>.<part>"), so connecting it keeps its place, its setup and its bar
+        want = body.pop("id", None) if isinstance(body, dict) else None
+        body = dict(body) if isinstance(body, dict) else body
         spec, probs = self._spec(body, self._build(hand, added), partial=False)
         new = copy.deepcopy(added)
-        fid = self._free(ADDED_ID_PREFIX + (_SLUG.sub("-", spec["label"].lower()).strip("-")[:48] or "light"),
-                         dict(self._items(hand, new, "fixtures")))
+        taken = dict(self._items(hand, new, "fixtures"))
+        if want is not None:
+            if not isinstance(want, str) or not _ID.match(want):
+                raise Refused("bad_request", f"id: {want!r} isn't an id (lower case letters, digits, . _ -)")
+            if want in taken:
+                raise Refused("bad_request", f"There's already a light {want!r}.")
+            fid = want
+        else:
+            fid = self._free(ADDED_ID_PREFIX + (_SLUG.sub("-", spec["label"].lower()).strip("-")[:48] or "light"), taken)
         oid = self._place(hand, new, spec["node_ip"], spec["universe"], probs)
         entry: dict[str, Any] = {"label": spec["label"], "type": spec["type"], "output": oid,
                                  "address": spec["address"]}
@@ -1775,7 +1792,16 @@ class Registrar:
 # -- the setup file (the Lights page's per-light settings; docs/LIGHTS.md §2.6) ----------------------------------------
 SETUP_NAME = "fixtures.setup.yaml"
 SETUP_KEYS: tuple[str, ...] = ("home", "limits", "max_speed", "range", "beam", "slots", "positions", "strobe_hz_max",
-                               "jog_flip")
+                               "jog_flip", "lean_deg", "turn_deg", "label")
+#: label (owner, 27 Nov: "need to be able to rename objects"): the light's name as set on the Lights page's room
+#: editor, in place of its file's label wherever the light is named (a hand-written light can't be edited, its setup can).
+#: lean_deg (owner, 27 Nov: "laser angle should be a config setting in the light set up screen ... a de facto user
+#: param we'll physically control but will drive the simulation"): how a fixed light that throws a spread of beams (a
+#: bar's laser) is tilted by hand: degrees forward (towards the middle of the room) from straight up; negative: back.
+#: turn_deg: and turned this far to the right of its bar's front (as you face the bar), for a light on a bracket that
+#: turns. lean_deg runs past level for a light pointed down (90: level, 120: 30 degrees below level).
+LEAN_DEG = (-90.0, 180.0)
+TURN_DEG = (-180.0, 180.0)
 SETUP_AXES: tuple[str, ...] = ("pan", "tilt")
 SETUP_BEAM: tuple[str, ...] = ("zoom", "focus", "iris", "frost")
 SETUP_SLOT_WHEELS: tuple[str, ...] = ("gobo", "gobo2", "colour", "prism")   # slots.<wheel>.<n>: its name
@@ -1952,7 +1978,16 @@ _SETUP_CHECK: dict[str, Callable[[Any, str], Any]] = {
     "positions": _positions,
     "strobe_hz_max": lambda v, w: _finite(v, w, lo=0.0, above=True),
     "jog_flip": lambda v, w: _axes(v, w, _flip),
+    "lean_deg": lambda v, w: _finite(v, w, lo=LEAN_DEG[0], hi=LEAN_DEG[1]),
+    "turn_deg": lambda v, w: _finite(v, w, lo=TURN_DEG[0], hi=TURN_DEG[1]),
+    "label": lambda v, w: _label(v, w),
 }
+
+
+def _label(v: Any, where: str) -> str:
+    if not isinstance(v, str) or not v.strip() or len(v.strip()) > 60:
+        raise ValueError(f"{where}: a name of 1 to 60 characters")
+    return v.strip()
 
 
 def clean_setup(entry: Any) -> tuple[contract.FixtureSetup, list[str]]:
@@ -2015,6 +2050,8 @@ def attach_setup(view: contract.RigView, setups: dict[str, Any], problems: list[
         clean, probs = clean_setup(entry)
         problems.extend(f"{SETUP_NAME}: {fid}.{p}: ignored" for p in probs)
         fixtures[fid]["setup"] = clean
+        if clean.get("label"):                            # renamed on the page: that name wherever it is named
+            fixtures[fid]["label"] = clean["label"]
 
 
 def merge_setup(cur: Any, patch: dict) -> dict:

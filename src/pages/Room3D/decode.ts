@@ -5,14 +5,15 @@
 // Types are recognised by their fixture-type file (config/room/fixture-types/ofl/...), so a deployment can name its
 // types anything: chauvet-dj/gigbar-move-ils-{par,derby,flash,laser,spot}.json and antari/z-350.json.
 
-export type PartKind = "par" | "derby" | "flash" | "laser" | "laser50" | "spot" | "hazer" | "dimmer";
+export type PartKind = "par" | "derby" | "flash" | "flashled" | "laser" | "laser50" | "laser51" | "spot" | "hazer" | "dimmer";
 
 /** The part a fixture type is, from its file (and, for the laser, its mode), or null for a type this view can't draw. */
 export function partOf(file: string | null | undefined, mode?: string | null, type?: string | null): PartKind | null {
   if (type === "generic-dimmer") return "dimmer";             // a house light: one dimmer channel
   if (!file) return null;
+  if (/gigbar-move-ils-flash-cell\.json$/.test(file)) return "flashled";    // one of the four strobe LEDs, its own light
   const m = /gigbar-move-ils-(par|derby|flash|laser|spot)\.json$/.exec(file);
-  if (m) return m[1] === "laser" && mode === "part-50ch" ? "laser50" : (m[1] as PartKind);
+  if (m) return m[1] === "laser" && mode === "part-50ch" ? "laser50" : m[1] === "laser" && mode === "part-51ch" ? "laser51" : (m[1] as PartKind);
   if (/antari\/z-350\.json$/.test(file)) return "hazer";
   return null;
 }
@@ -107,6 +108,10 @@ export function laserColours(v: number, v1: boolean): string[] | null {
   return w === "image colour" ? ["red", "green", "blue"] : w.split(" + ");
 }
 export const LASER_RGB: Record<string, [number, number, number]> = { red: [255, 30, 30], green: [30, 255, 60], blue: [60, 80, 255] };
+/** The laser diodes' wavelengths (nm; the EU manual's laser data): a grating bends each colour by its own angle. */
+export const LASER_NM: Record<string, number> = { red: 650, green: 520, blue: 450 };
+/** The 51-channel chart's pattern channel: 32 patterns, 8 DMX values each (US manual Rev. 12, "Laser Patterns"). */
+export const laserPattern = (v: number): number => Math.min(31, Math.floor(v / 8));
 export const DERBY_RGB: [number, number, number][] = [[255, 40, 40], [40, 255, 70], [60, 90, 255], [255, 250, 240]];
 
 /** An RGBAW+UV par's colour (0..255 each) and level (0..1). */
@@ -133,6 +138,9 @@ export function colourName([r, g, b]: number[]): string {
   return names.find(([hi]) => h < hi)?.[1] ?? "red";
 }
 
+/** How far a shaking gobo rocks either way, in slots (a slot's pitch on the wheel is a little over the beam's width). */
+const SHAKE_SLOTS = 0.14;
+
 // ---- a moving head's physical state: pan and tilt travel, the wheels turn (estimates: MECH) ------------------------
 export class SpotMotion {
   pan = 0; tilt = 0; vp = 0; vt = 0; wheel = 0; gobo = 0; shake = 0;
@@ -158,8 +166,13 @@ export class SpotMotion {
   colour(): [number, number, number] {
     return COLOUR_SLOTS[Math.round(this.wheel) % 10][1];
   }
+  /** Where the gobo wheel stands in the beam (slots, fractional): between two slots while it scrolls or travels, and
+   *  rocking either side of its slot while it shakes (the gobo judders in the beam; ``shake`` is its rate, Hz). */
+  goboPos(t: number): number {
+    return (this.gobo + (this.shake ? Math.sin(t * this.shake * Math.PI * 2) * SHAKE_SLOTS : 0) + 10) % 10;
+  }
   goboSlot(t: number): number {
-    return Math.round(this.gobo + (this.shake ? Math.sin(t * this.shake * 6.28) * 0.3 : 0)) % 10;
+    return Math.round(this.goboPos(t)) % 10;
   }
 }
 function slew(cur: number, vel: number, target: number, vmax: number, dt: number): [number, number] {

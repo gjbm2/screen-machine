@@ -69,6 +69,7 @@ CAPABILITIES: dict[str, str] = {
     "blinds": "the Bloc iQ blinds hub (room/rf/blinds.json)",
     "sonos": "Sonos zones (room/sonos.json)",
     "karaoke": "karaoke: song requests, vocal removal (host.karaoke_python venv) and lyrics on the display page (docs/KARAOKE.md)",
+    "phone_tunnel": "a Cloudflare quick tunnel so phones reach the karaoke panel on any Wi-Fi (routes/phone_door.py)",
     "accounts": "sign-in, roles and per-person Generated spaces (client ID and people in private/accounts.yaml, "
                 "rules in config/auth/gates.yaml; docs/ACCOUNTS.md)",
 }
@@ -82,6 +83,7 @@ DEFAULT_PORTS: dict[str, int] = {
     "stream": 8702,      # stream_service (GPU renderer)
     "show": 8703,        # show_service bus + API (loopback)
     "dot": 8704,         # dot_service (loopback)
+    "phone_door": 8706,  # the phones' tunnel's door (inside Flask, loopback): /rs -> room, the rest -> Flask
 }
 
 

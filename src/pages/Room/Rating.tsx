@@ -23,8 +23,11 @@ export function RatingRow({
   what,
   className,
   testId,
+  bare = false,
 }: {
   api: RoomApi;
+  /** Stars and Never only, without the words beside them. */
+  bare?: boolean;
   /** "scene/<source>" or "effect/<effect>"; nothing shows without one. */
   ratingKey: string | null | undefined;
   /** "scene" or "effect", for the words. */
@@ -45,7 +48,7 @@ export function RatingRow({
   return (
     <div className={className} data-testid={testId}>
       <div className="flex min-h-11 items-center gap-2">
-        <span className="min-w-0 flex-1 text-[15px] leading-tight text-muted-foreground">{words(what, stars, reject)}</span>
+        {!bare && <span className="min-w-0 flex-1 text-[15px] leading-tight text-muted-foreground">{words(what, stars, reject)}</span>}
         <div role="group" aria-label={`Rate this ${what}`} className="flex shrink-0 items-center">
           {[1, 2, 3, 4, 5].map((n) => (
             <button

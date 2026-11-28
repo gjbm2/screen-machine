@@ -307,6 +307,8 @@ class SongPhotos(Source):
         self.t = 0.0
         self.last_line = -1
         self.last_pulse = 0.0
+        self.clock_beat: Optional[int] = None  # the beat clock's whole beat last frame (None: no sure clock)
+        self.on_bar = False                    # this frame's beat is a downbeat (only with a sure clock)
         self.drift = 0.0
         self.spawn_in = 0.0
         self.bg_pid: Optional[str] = None
@@ -396,8 +398,32 @@ class SongPhotos(Source):
         return a.shape[1], a.shape[0]
 
     # -- the beat
+    def _clock(self):
+        """show_service's sure beat clock at photon time (effects.beat_clock), else None."""
+        try:
+            from stream_service.effects import beat_clock
+            bc = beat_clock(getattr(getattr(self, "modulation", None), "runtime", None))
+            return bc if bc is not None and bc.source == "show" and bc.bpm > 0.0 else None
+        except Exception:
+            return None
+
     def _beat(self, pulse: float, dt: float) -> int:
-        """1 on a beat (the beat clock's pulse, else a time beat when it has none), counted into self.beats."""
+        """1 on a beat, counted into self.beats: the beat clock's own beats while it is sure (27 Nov: the pulse's
+        threshold missed most of the shallow ladder's beats, so photos changed on a time clock, off the music), with
+        ``on_bar`` on its downbeats; else the pulse; else a time beat."""
+        bc = self._clock()
+        self.on_bar = False
+        if bc is not None:
+            k = math.floor(bc.beats)
+            hit = 1 if self.clock_beat is not None and k != self.clock_beat else 0
+            self.clock_beat = k
+            if hit:
+                self.last_beat_t = self.t
+                self.on_bar = (k - round(bc.bar_beat)) % max(1, int(bc.beats_per_bar)) == 0
+            self.last_pulse = pulse
+            self.beats += hit
+            return hit
+        self.clock_beat = None
         hit = 0
         if pulse > 0.5 and self.last_pulse <= 0.5:
             hit, self.last_beat_t = 1, self.t
@@ -426,7 +452,9 @@ class SongPhotos(Source):
 
     def _drift(self, p: dict, e: float, beat: int, dt: float, line_start: bool) -> None:
         trans = max(float(p["transition_s"]), 1e-3)
-        due = not self.panels or (self.beats >= self._hold_beats(p, e) and (beat or line_start))
+        hold = self._hold_beats(p, e)
+        on = beat and (self.on_bar or self.clock_beat is None or self.beats >= hold + 4.0)   # a sure clock: the bar
+        due = not self.panels or (self.beats >= hold and (on or line_start))
         if due:
             got = self._next()
             if got is not None:

@@ -1,0 +1,32 @@
+{
+ "screens": {},
+ "outputs": {
+  "screen:vj": {
+   "sound": {
+    "delay_ms": 82.0,
+    "method": "chirp",
+    "measured_at": "2026-11-27T22:42:04+00:00",
+    "spread_ms": 2.7,
+    "agree": 6,
+    "used": 7,
+    "of": 10,
+    "readings_ms": [
+     82,
+     80,
+     83,
+     89,
+     82,
+     1392,
+     82,
+     79,
+     79,
+     79
+    ],
+    "peak_ratio": 3429.0,
+    "browser_ms": 68.0
+   }
+  }
+ },
+ "sources": {},
+ "version": 2
+}

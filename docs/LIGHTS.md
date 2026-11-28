@@ -533,6 +533,105 @@ surfaces) and returns the nearest hit along d > 0.
 (§8.1) casts `ray_hit` from its pose. When the ray lands on a surface, `set_point(name, hit, source=<fixture id>)`
 makes it a room point every calibrated mover can aim at.
 
+### 3.6a Keep-out regions (owner, 27 Nov)
+
+A keep-out region is a box of the room no beam should cross: a mirror ball, the projected picture.
+
+- **Where it lives:** `keep_out.<name>: {label, centre: [x, y, z], size: [x, y, z], groups: [<light group>, ...]}` in
+  `space.yaml` (by hand) or `space.added.yaml` (written by the page). `groups` names show.yaml `lights.groups`
+  groups; none means every light. `PUT` / `DELETE /api/v1/rig/space/keep_out/{name}`; `GET /api/v1/rig/space` carries
+  `keep_out`, `light_groups` and `lasers` (the checks below).
+- **Where it is set:** the Light setup page's 3D tab (`/settings/lights?tab=3d`): the room simulator as an editor
+  (§3.6b): add a region from the outliner, then move and scale its box in the view or type its numbers.
+- **A moving light** steers round a region that is for its group: the look engine's aim (`looks._aim`) moves the
+  target the least way that clears it (`space.clear_target`). The scene, the effect and the transition don't know.
+- **A bar's laser** can't be steered: its burst goes where the unit is tilted (its setup `lean_deg`, §2.6). Each
+  laser's burst is checked against the regions for its group (`space.laser_checks`); when it crosses one the page
+  says so, gives the tilt that clears it and can set that tilt. Nothing switches the laser off: the real unit must
+  be tilted to match.
+- **Not covered:** derbies and pars (their light isn't steered and isn't checked).
+
+### 3.6b Bars: a light bar as one thing (owner, 27 Nov)
+
+A bar on its stand is set up by hand: where it stands, how high, which way it faces, and how each light on it is
+tilted and turned on its bracket. Those are settings, and the simulator and the show's aim are drawn from them.
+
+- **`bars.<id>: {label, at: [x, y, z], facing_deg, layout}`** (`space.added.yaml` when set on the page; a bar in
+  `space.yaml` is fixed there). `at` is the bar's middle (its height is `at[2]`); `facing_deg` is the heading of its
+  front, anticlockwise from east. `PUT /api/v1/rig/space/bars/{id}`.
+- **`layouts.<name>.parts.<part>`** (`space.yaml` only: what the unit is): `along` (m from the middle, + to the right
+  as you face the bar), `up`, `head` (a moving head standing on the bar), and the part's tilt and turn as it ships
+  (`lean_deg`: degrees forward from straight up, 90 is level; `turn_deg`: to the right of the bar's front).
+- **Each part is the fixture `<bar id>.<part>`** and gets its place from the bar. A head gets an upright pose facing
+  the bar's front until it is taught (§3.6). A part with its own `at` under `appliances` keeps that place.
+- **A light's own tilt and turn** are in its setup (`fixtures.setup.yaml` `lean_deg`, `turn_deg`; §2.6) and override
+  the layout's. A laser with neither gets the 45-degree rule (`space.LEAN_RULE_DEG`).
+- **Where they are set:** the Light setup page's 3D tab, the room simulator used as an editor
+  (`src/pages/Room3D/editor.ts`, `src/pages/Lights/RoomTab.tsx`), with the browser's standard 3D controls:
+  - **Moving round** (three.js OrbitControls, as three.js, Sketchfab and PlayCanvas set them up): drag to orbit, right-
+    drag (or Shift/Ctrl-drag, middle-drag, two fingers) to pan, damped. The wheel moves the camera towards what is under
+    the cursor, a share of the way each notch, never through it. The camera never goes under the floor; "Keep the view
+    inside the room" (⋯) keeps it inside the walls too. Double-click a wall or the floor to orbit round that spot;
+    ⌂ Whole room (or Home) for the start view.
+  - **Editing** (the handles room and lighting editors use; no XYZ gizmo): hovering a thing outlines and names it; a
+    click selects it and the camera glides to it. A bar: drag it across the floor, drag the ring round it to turn it,
+    the arrow above it to raise it. A light: drag the spot where its beam lands to aim it. A keep-out box: drag it,
+    the arrow to raise it, its size typed in the panel. ← Back to the room (the view's corner or the panel), Esc or a
+    click on empty space goes back to the room view the camera had before.
+  - **The panel:** with nothing selected, the list of everything; with something selected, one line (← Room, ‹ the
+    thing ›, the whole list dropping down from it, arrow keys stepping through) and its settings under it. Every change
+    saves as it is made; Undo / Redo (Ctrl+Z, Ctrl+Shift+Z) are at the panel's foot.
+  - **What the lights show:** Plain (every light steady, for aiming), a Colour, a lighting Scene (with the preview's
+    energy and tempo), or Live. All but Live are a preview from show_service's own engine that is never sent to a light
+    (`show_service/preview.py`, `GET /api/v1/rig/preview/dmx?what=plain|colour|scene:<name>&energy&bpm`); Live reads
+    the virtual node. ⧉ (top right) opens the live view in its own window. The frame rate shows in the view's corner.
+- **One editor for the room** (owner, 27 Nov: "why is the map a completely separate interface for the same thing?").
+  The Room map tab is gone: its plan is this view's **Plan** (the same camera straight down through a 3° lens, the
+  front wall at the top, names on things, no haze), and everything it placed is edited here, with undo: screens slide
+  along the walls onto the nearest one; lights not on a bar (house lights, the hazer, movers: how one hangs) and named
+  places move and rise; floor areas move and are sized in the panel; "Not in the room yet" puts a thing in the middle;
+  "Add a place"; the room's size and front ("The room · Change"). In Plan a press on a thing picks it up at once. A
+  light on a bar is never placed on its own (it moves with its bar): selecting a light outlines its bar and a bar its
+  lights. What the deployment's space.yaml sets is shown locked ("set in the room file"). `?tab=map` opens Plan.
+- **Moving round** (owner, 27 Nov: "mouse just doesn't help me traverse this room"): **Walk** (the start): you stand
+  at eye height; drag to look round where you stand, click the floor to walk there (a ring shows where), the wheel or
+  W/S to walk, A/D to step aside, ←/→ to turn, Q/E lower/higher, Shift faster; "Go to…" lists places to stand.
+  **Orbit** turns round a point (and is used while a selected thing is edited from Walk). **Plan** as above.
+- **Aiming a light:** Direction (degrees right + / left − of the way its bar faces, looking out) and Elevation
+  (degrees above level) are separate: a blue ring round the light turns only its direction, an amber arc only its
+  elevation, and both are fields with sliders in the panel (owner, 27 Nov: "expose angle and elevation as separate
+  controls"). Stored as the setup's lean_deg / turn_deg (a light pointing over 90° to a side leans back instead).
+- **Views apart from moving** (owner, 27 Nov): 3D | Plan | Front | Side (⇄: the opposite wall; keys 5 7 1 3 9). The
+  flat ones are the same camera through a 3° lens and only slide and zoom; in an elevation a drag moves a thing across
+  the wall and up or down. Walk / Orbit and the places to stand or look from are 3D's, and a click on either starts
+  afresh. The header runs from the left with a slot for every control (nothing jumps under the mouse).
+- **Picking:** a bar and its parts are one unit: a click selects the bar, a second click (or a double-click) the part,
+  Esc or ↑ goes up a level. A selected bar names its parts in the view (click a name to select it). What is selected
+  lights up in the view (open white; drawn only, nothing sent).
+- **Every object:** renamed in place (a light's name lives in its setup, so hand-written lights too); Settings › opens
+  a light's full settings; the room is the top of the list (its size, front and settings).
+- **A U-bracket light** (pars, derbies, the laser: `turns: false` in the layout) has one Tilt, from back over the top
+  to straight down, said towards or away from the room.
+- **The room as a studio** (owner, 27 Nov: "treat the studio like a studio, test layouts, configs etc., and then
+  'actually connect' them to real channels / objects, etc. only when I'm ready"):
+  - **＋ Add to the room…** offers everything in `GET /api/v1/rig/library`: light bars (space.yaml layouts), every
+    light type, and the room devices (screen or TV, Hue lamp, mirror ball, microphone, light sensor:
+    `space.ROOM_DEVICE_KINDS`). A new thing is **planned**: a space.added appliance with a `kind` and no light of
+    that id (a new bar: a bar whose parts are no lights yet). It is drawn and placed and drives nothing. Ctrl+drag
+    any thing to copy it, planned, where it is let go.
+  - **Connect:** a planned light or bar is registered at a DMX address (a bar's parts at its start address plus each
+    layout part's `offset`), keeping its id (`POST /rig/fixtures` takes `id`); a planned screen or Hue lamp hands its
+    place to one of the rig's; a microphone, light sensor or mirror ball gets `connect`: the source, sensor or remote
+    it stands for. **Disconnect** puts a light registered on the page back to planned. Every step undoes.
+  - **＋ Add** is a search box over the view with one list, ranked as you type, with other words for things (ALSO in
+    RoomTab.tsx: glitterball / mirror ball / disco ball); room_service's remote-worked device types (rf-glitterball,
+    rf-pinspot) are in it too. Planned lights run in the preview like real ones, on a wire of their own
+    (preview.py's ``p``), joining the groups a real light of their type is in.
+  - **Stacked parts:** a selected bar's parts that overlap on screen get their names in a row beside it, with a line
+    to each; a click on the same spot again steps down the stack ("2 of 3 here").
+- **Not there yet:** the moving heads' poses are still taught from the Lights tab ("Point it at…"), not turned in the
+  view.
+
 ### 3.7 Tests (space): test_space.py (new)
 
 - **Synthetic room** 6 × 8 × 3 (front north). flow_coord for every dir at known points: right gives the east wall 1
@@ -718,7 +817,7 @@ between: [a, b], spread, order}`. The value is a + (b - a) × shape at the membe
 | `intensity` | today's, + `order` | intensity | multiply (as today), HTP for hits |
 | `position` | `mode`, `on`, `centre`, `size`, `size_deg`, `along`, `rotate`, `fan`, `ease`, `points`, `hop`, `lift`, `dark_move` | pan, tilt | LTP in file order: pos = lerp(previous, own, depth) in pan/tilt |
 | `beam` | `zoom` (deg, `narrow`/`wide`/`mid`, `default`, or an oscillator), `focus`, `iris`, `frost` | zoom, focus, iris, frost | LTP, glided over the transition |
-| `gobo` | `wheel` (`gobo`/`gobo2`), `slot`, `change_on`, `spin`, `spin_scale`, `shake` | gobo*, gobo*_spin, gobo*_shake | LTP |
+| `gobo` | `wheel` (`gobo`/`gobo2`), `slot` (a name, number, list or auto; names a light lacks fall back to its own gobos), `change_on`, `change` (`dark`, the default: a lit head's gobo change is made in the dark, the light falling before the line and back on the new gobo on it; `live`: it snaps in the light, for neighbours on the wheel on a beat), `spin`, `spin_scale`, `shake`, `scroll` (the whole wheel turning: -1..1, flow or pace, times spin_scale; for gobos that can't turn, as the GigBAR's) | gobo*, gobo*_spin, gobo*_shake, gobo_scroll | LTP |
 | `prism` | `in` (bool, or `accents`: in while the accents style is beat/full), `spin`, `spin_scale` | prism, prism_spin | LTP |
 | `colour` | `role` (base/accent/highlight from LookData.palette.roles), `depth` (number or oscillator) | colour | OKLab mix toward the role colour, LTP |
 | `colour_wheel` | `mode`: `follow` (default: nearest slot, today) \| `step` (`step_on` beat/bar) \| `spin` (`spin`) | colour_slot, colour_spin | LTP |
@@ -782,22 +881,42 @@ and v → tilt. Phase w = the member's oscillator cycle (`phase`, `period_*`, `n
 
 ### 5.5 Mechanical timing
 
-- **Slew.** Commanded pan and tilt move at most `max_speed` × dt per frame, with an acceleration allowance (a
-  smoothstep over `accel_s` from rest). The light is never asked to go faster than it can, so the latency model holds.
-  `pt_speed` is sent at `lights.motion.pt_speed` (the fixture's fastest; the engine does the smoothing).
+- **The motion stage** (`show_service/motion.py`, the maths; owner, 27 Nov: "all position delivery ... well constrained
+  by a good, well-engineered math logic layer about curvatures and pacing"). DMX gives a head a position, never a
+  speed: what is sent each frame is the movement. Every (pan, tilt) sent goes through two steps:
+  1. **a rate limiter, both axes together**: toward the target along the straight line in (pan, tilt), as fast as the
+     slower axis (for the distance it has to go) allows. Both axes leave and arrive together: one clean arc, no dog-leg.
+  2. **two moving averages**, `ramp_s` then `jerk_s` long (`lights.motion.accel_s` split by `lights.motion.ease`,
+     0.5 by default). A jump comes out as an S-curve: it eases away and eases in. A corner in a path (a sweep's turn,
+     a hop, a square wave) comes out as a blend that long. Nothing overshoots.
+
+  So whatever a scene asks: speed ≤ `max_speed`; acceleration ≤ max_speed / ramp_s from or to rest (twice that in a
+  full-speed turn-about); jerk bounded likewise by jerk_s. `accel_s: 0` is the plain speed limit.
+  - A pattern is drawn `(ramp_s + jerk_s) / 2` ahead (the averages' lag), so it is on the beat when sent.
+  - A lit glide between two scenes' positions (a crossfade, a sweep) eases over its whole length (smoothstep).
+  - `pt_speed` is sent at `lights.motion.pt_speed` (the fixture's fastest; the engine does the smoothing).
 - **Soft limits.** Every commanded value is clamped to `setup.limits` (when set) and the range. IK picks within them.
   A clamped layer is listed in stats as `clamped`; no light is refused.
 - **Pre-roll** for beat-locked moves (bounce, snaps, a cut that lands on a line):
-  - travel = max(|Δpan|/v_pan, |Δtilt|/v_tilt) + accel_s;
+  - travel = max(|Δpan|/v_pan, |Δtilt|/v_tilt) + accel_s (`motion.travel_s`: exact, for any distance);
   - the target switches at (the line - travel), evaluated at tp (the position latency is already in tp), so the beam
     **arrives** on the beat.
   - When travel > `max_travel_share` × the hop's period, the hop period doubles (on the grid) until it fits. The
     layer is listed under `slowed`.
-- **Degrade, never trip.** A pattern whose peak angular speed (sampled over one cycle at configure, and again when
-  its size or period changes) exceeds max_speed × 0.95:
-  - first shrinks, down to `min_size_share`;
-  - then doubles its period (on the grid) and re-fits.
+- **Degrade, never trip.** A pattern is sampled over one cycle (at configure, and again when its size or period
+  changes), in the light's own pan and tilt, so what the room's geometry does to it counts:
+  - one whose easing would draw it smaller than 0.9 of itself (`motion.kept`: it turns back on itself too quickly to
+    keep its shape) doubles its period (on the grid) until it keeps it;
+  - one whose peak speed exceeds max_speed × 0.95 first shrinks, down to `min_size_share`, then doubles its period
+    and re-fits.
   The commanded speed never exceeds the limit. Stats `slowed` lists each such layer with its size and period factor.
+- **Wheels turn in the dark, and only on purpose.** A lit head's gobo change, or any change of its colour filter,
+  holds the old one while the light falls, turns dark and comes back (`_gobo_dark`, `_wheel_dark`). A colour wheel
+  turns at once on a cut (the colour asked for jumps: a new look, the roles dealt again); on a glide or a drift it
+  waits until one new filter has been wanted for 0.8 s and its last turn is 4 s old, so the filters a fade passes
+  over are never shown and a colour wandering about the line between two filters doesn't blink. A head that is dark
+  already takes the new filter unseen. The intentional change in the light is a scene's own: a gobo layer's
+  `change: live`, or a `colour_wheel` layer stepping or spinning the wheel. Lights that mix their colour fade (in OKLab).
 - **Dark moves.**
   - When the program's transition says dark moves, or a scene change asks a mover to jump more than
     `dark_move_min_deg`, intensity goes to 0 at least `rise/fall latency` before the move starts.
@@ -898,6 +1017,117 @@ Rig.live_view() -> LiveView         # any thread (§8.1): from the runners' last
 - **Flow order.** Under "right", the west lamp leads the east one by spread × Δcoord cycles. `mirror` makes the two
   sides equal.
 - **Outputs.** jog through Rig on a fake runner: frames at the active rate while held; frame_view carries attrs.
+
+### 5.10 Staging: planners for the room's geometry (owner, 27 Nov)
+
+> "all of them require algebraic logic as part of the scene for implementation in the relevant room geometry (which is
+> contingent and shouldn't be hard coded) -- may be we need an additional architectural layer"
+
+The position modes above draw a shape round a centre. Some ideas need more than a shape: spots chasing round the
+walls must know which walls there are, which head draws each stretch roundest, and where one head hands to the next.
+That is a **planner**, `show_service/staging/`: pure Python, tested, no engine and no I/O. A scene names it:
+
+```yaml
+- {id: wall-path, kind: position, mode: planned, plan: wall-run, with: {spots: 2}, phase: bar, period_bars: [8, 4]}
+```
+
+- **In:** the room (space.build_view: size, which wall is the front, surfaces, regions, points, bars), the layer's
+  calibrated lights (where each is, its inverse kinematics within its range and soft limits, its lens angle from the
+  fixture type, its speed, its bar), and the motion stage's timing.
+- **Out:** a `Plan`: for each light a `Track` over one cycle (the room point it aims at and its level 0..1, as keys),
+  `min_period_s` (the shortest cycle every light can follow its track in: lit no faster than 0.95 of its speed; dark,
+  time to travel to where it lights next), a note in words, problems, and `once` (a track with an end).
+- **Played by** looks.py `mode: planned`: planned once per (layer, space revision, program), never per frame. Each
+  frame the track is sampled at the layer's phase, drawn the motion stage's lag ahead; the point goes through `_aim`
+  (keep-out regions included) and the motion stage like any pattern. The layer's period doubles on the grid until it
+  is at least `min_period_s` (`slowed`). The track's level multiplies the light's brightness after hits and gestures,
+  so a head between its spots stays dark. A `once` plan runs from the scene's landing and holds its end. The group's
+  sway is off on a planned light: its geometry is exact.
+- **Degrade:** a planner that can't fit the room plans nothing and says why; its lights keep the layers below
+  (`unresolved`). GET /show/api/v1/state → rig.engine `plans` has each planned layer's note.
+- **The shared tools** (`staging/__init__.py`, `geom.py`): `carry` (spots that travel, each carried by the light that
+  draws it best, kept until another draws it at under 0.8 of the score, handed on where they are alike, never
+  through a jump or an inverse-kinematics flip; a free light holds dark a moment, then goes ahead to where it lights
+  next, the one free longest taking the next spot); `spot_score` (a spot's long side x stretch^0.5; none nearer than
+  1.5 m or grazing); `strip` (walls opened out into one strip round the corners, the front left out); `footprint`.
+
+| planner | what it does | `with` |
+|---|---|---|
+| `wall-run` | spots chase each other round every wall but the front, above head height | spots 2, height 0.7 (of the ceiling), margin 0.4 m, direction cw/ccw |
+| `ring` | spots chase round a circle on the floor, as many as fit without their pools touching | centre [names], fill 0.8, spots 0 (auto), direction |
+| `glide` | two dots on one bar glide level along a wall a fixed gap apart, stop, go out, return dark; with `end`, once, then onto that place | wall back, height 0.6, gap 0 (auto), glide 0.6, hold 0.15, end [names], round 1.4, margin 0.3 |
+
+A new planner is a function in `staging/planners.py` registered with `@planner(name, label, defaults, words)`; its
+settings are checked by `staging.parse` at compile (a bad one is a problem line, its default used).
+
+**The scene keys that came with it:** a `colour` layer may take `hex: "#ffffff"` instead of a `role` (the scene's
+own colour, whatever the palette: a wheel head takes its nearest filter); a scene tagged `alone: true` is drawn only
+while its group plays alone in the line-up (director `_alone`; written for a dark room).
+
+**Pattern sizes in pools:** a position layer may give `size_pools: k` instead of `size`: the pattern is k times the long side of the pool of light that head draws at its centre (its lens angle and throw), kept 0.3 m inside the surface. A 1 m circle drawn with a 3.6 m pool only wobbles; in pools it reads as a circle in any room. The circles, the figure of eight and the ceiling drifts use it.
+
+**Tests:** show_service/tests/test_staging.py (the planners in a made-up room), test_looks_staging.py (the engine).
+
+### 5.11 The song brief, its idiom and its phrasing (owner, 27 Nov)
+
+Three things the owner asked for on 27 Nov, as one mechanism. "A serious ballad should just feel different from an
+ABBA track"; "in a build / release moment ... lights don't seem to follow the pacing / mood / tension build &
+release"; and "for karaoke songs, we could literally just throw the song to AI and ask it for tonal context ... the
+a.d.'s job is then to execute that strategy properly".
+
+- **The brief** (`show_service/brief.py`, `brief.json` beside each karaoke song). Made before the song plays: when it
+  becomes ready (the karaoke worker), when it is up next (`karaoke_feed.brief_ahead`), or by hand
+  (`python -m show_service.brief <id> | --all [--force] [--local]`). An AI (llm.yaml task `brief`) is given the title,
+  artist, timed lyrics, loudness through time and tempo, and answers from named options: the **idiom**, up to three
+  mood words, the **palette**, the song's own **sections** (intro, verse, prechorus, chorus, bridge, instrumental,
+  outro; each with a `size` 0..1 within this song and how the music `arrive`s there: none, swell, bump or snap), which
+  section is the last full chorus and which is the peak, and how the song ends. Every part is checked (`parse`). With
+  no answer, `local` makes one from the lyric sections, the catalogue genre and the recording's own measures. It
+  carries what it was made from, so a change of lyrics makes it again.
+- **The idiom** (`config/live/idioms.yaml`, `show_service/idiom.py`) is a vocabulary, held as limits and not weights:
+  how far heads may travel (`motion_max`), how hard levels may show the beat (`pulse_max`), which kinds of light play
+  and from which size of section (`groups`), which transitions a change may use, how many flourishes the song may
+  have, and how a lift lands. A scene's motion and pulse are read from its own layers (`idiom.traits`), so a new scene
+  needs no tag. A scene outside the idiom is not drawn while one inside it fits.
+- **What the director does with it** (`director._brief`): the brief's section map replaces the lyric one
+  (`brief.plan`; sections of the same kind share a letter, so the look comes back); every look of the song takes the
+  brief's palette; the mood words lead the scene draws; groups the idiom holds back rest (`_idiom_rests`); moves and
+  the lights' own transition stay within the idiom's list; the flourish budget is the idiom's.
+- **Phrasing** (`show_service/phrasing.py`). A section that is bigger than the one before (`director.brief.lift_min`)
+  is a lift, and every lift is phrased, sized by how big it is: over `wind_bars` before the line the running looks
+  pull in (levels down, the heads' shapes smaller), and on the line everything lands above its steady level with the
+  shapes opened wide, settling over `settle_bars`. A `snap` is dark for the last beat; a `swell` does not pull in. The
+  director publishes it as the look's `arrival`; the look engine multiplies it into every level and pattern size, so
+  it works under any scene and transition. A gesture (heads fly up, a strobe) is still a move's to add, rarely.
+
+The eval measures both: `release` (do the lights lift where the music lifts) and `character` (do songs that sound
+different get shows that look different), in `tools/room/ad_eval/form.py`.
+
+### 5.12 A song's moments (owner, 27 Nov)
+
+"There are circumstances in a song where e.g. there's very strong rhythmic section, strong drumming, orchestral hit
+... we'd prob. expect to see a stronger situational lighting response". And: "endings that just stop suddenly rather
+than which fade out -- we'd expect a blackout ... smartly in config and logic, not in hard coded patches."
+
+- **Found** in a karaoke song's audio, each judged against that song's own norm (utils/song_moments.py, kept as
+  `moments.json` beside the stems):
+  - *stab*: a hit in the top 1% of the song's onsets, across the bands;
+  - *stop*: the backing cut out for ¾ to 4 beats from a held, loud passage, back on a hit;
+  - *drums*: bars where the percussion's share is far over the song's usual;
+  - *end*: cold, ring or fade, from the whole mix.
+- **Chosen** by show_service/moments.py from config/live/moments.yaml:
+  - a moment's salience must reach `min_salience`;
+  - the song's idiom caps how many of each kind it gets (a hushed song takes no stabs, and its stops only dim);
+  - two of a kind sit at least `gap_bars` apart;
+  - the ending is always chosen.
+- **Performed** lead_s ahead, so the lights land on the moment. Each kind's recipe gives:
+  - its envelope in `LookData.moments` (phrasing.py: *bump*, *stop*, *out*), multiplied with the section's arrival;
+  - a unison hit known ahead, if any;
+  - the running scene's drop flash, if any.
+
+  A cold ending is down 0.3 s after its last hit and stays there until the song changes.
+- **Measured** by the eval's `moments` goal (docs/AD_EVAL.md).
+- **Drum sections** are found but not yet answered.
 
 ## 6. Catalogues (builder: catalogue)
 
@@ -1357,6 +1587,109 @@ look_change and the track events.
 - Lockstep: a program's at_ms equals the look_change event's at_ms.
 - room.direction.flow is published.
 
+### 7.5 The light in the room: making room for low-power lights (owner, 27 Nov)
+
+> "given how much reflected light changes the visual dynamics of the room, we need to reason through how we've built
+> the lighting scenes to ensure that scenes which depend on e.g. laser and derby effects also drop down the effective
+> total light levels to allow those lower power lights to be seen"
+
+**The sums** (the 3D room's model, src/pages/Room3D/light.ts; the laptop room, 5 x 10 x 4 m with pale surfaces: 1 lux
+of room light per 115 lumens sent into it, direct and bounced):
+
+| Group at full | Room light it makes |
+|---|---|
+| 4 moving heads | 5 lux in blue, 9 red, 12 magenta, 25 cyan, 28 green, 30 yellow, 39 open white |
+| 4 pars | 0.8 lux in blue, 2.3 red, 8 green, 11 red + green + blue, 21 with everything on |
+| 4 derbies | about 4 (an estimate: the maker gives no figure) |
+| 2 strobes, while lit | 4 |
+| 2 lasers | 0.3 |
+| the VJ screen | about 1 |
+
+| The effect | What it is worth | What it needs |
+|---|---|---|
+| A laser's **dots** | 700 to 4,500 lux each, on a spot 1.5 cm across | Nothing of the room: tens of lux don't touch them. Only a moving head's pool on the same surface (800 lux and up) covers them. |
+| A laser's **beams in the air** | 0.03 to 0.2 cd/m2 in a light haze, three times that in a medium one | The wall behind under about 1 lux (light haze) or 3 to 4 (medium). |
+| A derby's **blobs** | about 90 lux each at 5 m | The room under about 20 lux, and no wash pool on them (a par's pool in the same colour is about 70 lux). |
+
+So three things decide whether a low-power light is seen, and total level is only one of them: **who else is
+playing** (the heads are most of the room's light), **in what colour** (blue heads are an eighth of white ones), and
+**where they land** (a head's pool on the laser's ceiling). A fixed "dim the others" would be wrong most of the time.
+
+**How each layer plays its part** (lowest first, as the engine applies them):
+
+1. **The look** (its colours and level) is not changed. It is read: every tick the director sums what each group's
+   lights put out in the colours and level they now show (`roomlight.lumens`, from config/room/photometry.yaml), so a
+   palette gliding from blue to yellow moves the answer with it.
+2. **The line-up** (§7.1's groups; show.yaml `lights.lineups`) already decides who plays and who rests: a resting
+   group's scene is `fx: dim`, so it counts for nothing (`roomlight.scene_share`). New: a line-up names the groups it
+   **features** (`features: [lasers]`). That is the intent, in one place: "Heads and the laser" is FOR the laser;
+   "Everything" (the last chorus) is for nothing in particular, so nothing in it is brought down.
+3. **Each group's scene** is drawn as before, with one more weight: while a group is featured, the other groups'
+   scenes that land on the surface it lands on (`lights.groups.<g>.lands_on` against a scene's position layers'
+   `on:`) draw at `lights.room_light.clear_of_feature` (0.2). Under a featured laser the heads work the floor.
+4. **The group's level** (new: `LightProgram.level`). While a group is featured, every other lit group gets the one
+   level that keeps the room at what the featured group reads under (`lights.groups.<g>.reads_under_lux`):
+   `level = (target - other_lux - the featured lights' own) / the others' light at full`, never under
+   `lights.room_light.min_level` (0.12) and never over 1. The engine applies it to the group's whole brightness, after
+   its scene's layers, effects, hits, gestures and a fade through dark, and before the master and the caps, gliding
+   over 2 s (`looks.LEVEL_GLIDE_S`). It follows the line-up that has LANDED, not the one announced, so it moves with
+   the change, not ahead of it.
+5. **Effects** ride inside the level: a strobe or a chase on a group that has made room is brought down with it (it
+   would otherwise undo the room it made). Effects on the featured group are untouched. The big moments are not
+   starved: the last chorus's line-up features nothing.
+6. **Hits and gestures** (HTP flashes) are inside the level too, for the same reason.
+7. **Transitions**: a crossfade and the level's glide run side by side; a fade through dark goes to the group's dark
+   level and back, and the level multiplies after it. Coming out of a bright look the eye takes two or three seconds
+   to open up (the 3D room shows this), so a featured line-up reads fully a few seconds in: a fade through dark
+   into it helps and costs nothing.
+8. **House lights and Lights low** set their own level: nothing is featured under them.
+9. **Screens** are never dimmed (SHOW_ENGINE §8.3's screens rule). Their light is `lights.room_light.other_lux`
+   (1 lux here): the floor nothing can go under. It is why the laser's beams in the air only really show in a medium
+   haze in this room.
+10. **Haze** is the feel's (vibes.yaml `haze`), and slow (minutes): a line-up can't ask for more. Beams in the air
+    need it; dots and blobs don't.
+11. **Ensemble roles** (docs/ENSEMBLE.md: lead, accompany) set a lamp's level inside the look, before all of this.
+    They multiply; neither knows the other.
+
+**What it does on the laptop rig** (deployments/laptop/show.yaml): the lasers read under 3 lux and land on the
+ceiling; the derbies read under 20. "Heads and the laser": blue heads come down to about 0.6, magenta to 0.15, cyan
+or white to 0.12, and they favour floor scenes. "Derbies and heads", "Pars and derbies" and the chorus's "Heads and
+derbies with the laser" feature the derbies: only cyan, green, yellow or white heads at full are brought down, to
+between 0.4 (open white) and 0.75 (in that chorus the laser reads as dots, not beams: its heads stay up). "Everything": unchanged.
+
+**Seeing it**: `GET /show/api/v1/state` → director `room_light` (`lux`, `by_group`, `features`, `target_lux`,
+`level`, `levels`); a `room_light` line in director.jsonl each time a feature starts or its level moves by a tenth;
+the 3D room's footer shows the room's light in lux as drawn.
+
+**Reviewing the catalogue** (owner, 27 Nov: "the scene, effect & transition library should also allow review of the
+lighting scenes as well as render scenes (with a suitable screen shot ...)"). The Scene library (the renderer's
+console, `/renderer/dev`, "Scene library" on the Room page) has a **Lighting** tab beside the screens' own:
+- every light scene, effect and transition as a tile with a picture, in the same grid, rated with the same stars
+  (kept in config/live/light_ratings.json). **The stars steer the art director** (owner, 27 Nov: "why don't stars
+  steer? fix that"): every draw of a scene, an effect or a transition multiplies an item's weight by its stars, by
+  the screens' own table (config/live/rating_weights.json), taken against an unrated item: unrated as before, 3
+  stars about 4 times as often, 5 stars about 23 times, 1 star a seventh, and a reject never while anything else
+  fits (`light_scenes.LightRatings`; read again within a second of a rating, so the next draw has it). A pick the
+  stars favoured says so in its why ("your 4 stars; ...");
+- a tile opens what the item is: what it does in words (made from its layers), the light groups here that can show
+  it, how much light it leaves in the room, where it lands, what it is written for, and **what it comes down to
+  when the laser or the derbies are featured** (the same sum as above, for a plain look);
+- served by show_service/light_library.py (`GET /show/api/v1/lights/library`, `/thumb/{kind}/{name}.jpg`,
+  `/ratings`, `POST /rate`); the tab is stream_service/static/console/lights/lights.js.
+- **The pictures** are taken by `tools/room/light_shots.py`: the real look engine, built from this deployment's
+  files and run on a made-up 120 bpm clock, plays one item at a time on the group it is written for (every other
+  group dark) in a plain look; its frames are fed to the 3D room (`/lights/room?shot=1`: the room alone, a medium
+  haze, the audience's view) in a headless browser, and photographed. Nothing is sent to the room. Run it again
+  after changing the catalogue: `.venv/bin/python tools/room/light_shots.py` takes only the missing and the changed
+  (`--all` for every one). Pictures: `~/.cache/sm-lightshots/<deployment>/`.
+
+**Not built**: an effect that makes room by itself (the laser spinning up through a build with everything else
+pulled down: today that needs the line-up to feature it); the screens' own light measured from the picture rather
+than a fixed `other_lux`; a head's pool avoided by where it really lands rather than by its scene's `on:` word.
+
+**Tests**: show_service/tests/test_roomlight.py (the sums against the real photometry file, the parser's new keys,
+the engine's glide, the director's levels with a featured laser).
+
 ## 8. The page (builder: page; api.py, src/pages/Lights/*)
 
 ### 8.1 Routes (show_service api.py; through room's `/show/*` pass-through)
@@ -1396,10 +1729,12 @@ class LiveView(TypedDict):
 ### 8.2 The page
 
 The setup page keeps its list and Add a light as the primary action. Since 28 Oct it is `/settings/lights`
-(src/pages/Lights/index.tsx); `/lights` itself is control only (src/pages/Lights/Control.tsx). A segmented control at the top, **Lights | Room map**,
-is remembered in localStorage (wrapped in try/catch).
+(src/pages/Lights/index.tsx); `/lights` itself is control only (src/pages/Lights/Control.tsx). A segmented control at the top, **Lights | Room**,
+is remembered in localStorage (wrapped in try/catch). Since 27 Nov **Room** is the 3D room editor (§3.6b); its Plan
+view replaced the Room map below, which is kept as the record of what the map did (RoomMap.tsx keeps only the flat
+drawing Move it's preview uses, the room's size form and Add a place).
 
-**Room map** (`RoomMap.tsx`, phone first):
+**Room map** (as it was, `RoomMap.tsx`, phone first):
 - **First use** asks two things: "How big is the room?" (width east-west, length north-south, height in metres:
   three steppers) and "Which wall do people face?" (N, E, S, W chips).
 - **The plan.** An SVG that fits the width, with compass letters, the front wall drawn thicker, and items:

@@ -808,3 +808,27 @@ def test_a_quiet_room_drops_the_gate_and_skips_the_activation():
     assert not c._quiet and c.stats()["counts"]["quiet_ends"] == 1 if "counts" in c.stats() else not c._quiet
     c.set_level(None, 6.0)
     assert not c._quiet
+
+
+def test_an_override_publishes_in_place_of_the_tracker_and_none_or_an_error_gives_it_back():
+    pubs = []
+    clk = C.Clock(lambda m: pubs.append(m["data"]), activation="aubio")
+    body = {"bpm": 120.0, "anchor_ms": 1000.0, "beat_at_anchor": 5, "beats_per_bar": 4, "bar_anchor_beat": 4,
+            "phrase_bars": 8, "conf": 0.95, "bar_conf": 0.9, "phrase_conf": 0.6, "state": "locked", "gate": "beat",
+            "epoch": 3, "stability": 1.0, "source": "file:test", "t_ms": 0.0}
+    mode = {"v": "body"}
+
+    def ov(now_s, tracker):
+        assert tracker is not None and "bpm" in tracker          # it sees the tracker's own body
+        if mode["v"] == "error":
+            raise RuntimeError("boom")
+        return body if mode["v"] == "body" else None
+    clk.set_override(ov)
+    clk.tick(10.0)
+    assert clk.snapshot() is body and pubs[-1] is body and clk.next_beat_k(1.0, gate="beat") is not None
+    mode["v"] = "none"
+    clk.tick(10.2)
+    assert clk.snapshot()["source"] != "file:test"
+    mode["v"] = "error"
+    clk.tick(10.4)
+    assert clk.snapshot()["source"] != "file:test"

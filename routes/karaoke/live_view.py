@@ -79,6 +79,7 @@ class LiveView:
         self._before: Optional[str] = None            # the room mode a song took the room from (Stop puts it back)
         self._moving_to: Optional[str] = None         # a mode change of our own, not to be answered
         self._seen: Optional[tuple] = None            # (rev, state, stop) of the player last looked at
+        self._kmodes: list[str] = []                  # the karaoke modes, as last read
         self._stop = threading.Event()
 
     def start(self) -> None:
@@ -92,8 +93,12 @@ class LiveView:
                 error(f"karaoke live view: {e}")
             self._stop.wait(POLL_S)
 
+    def in_karaoke_mode(self) -> bool:
+        """The room is in a karaoke mode, as last looked at (the screens' join QR code: join.py)."""
+        return self._mode_seen is not None and self._mode_seen in self._kmodes
+
     def step(self) -> None:
-        kmodes = self._karaoke_modes()
+        kmodes = self._kmodes = self._karaoke_modes()
         if kmodes:
             self._follow_mode(kmodes)
         with self.store.lock:
@@ -127,7 +132,8 @@ class LiveView:
         elif was in kmodes and cur not in kmodes and not ours:
             with self.store.lock:
                 state = self.store.s["player"]["state"]
-            if state != "stopped":
+                waiting = self.store.waiting()            # (a song it would start by itself when ready: not now)
+            if state != "stopped" or waiting:
                 self.store.control("stop", by="mode")
                 info(f"karaoke: off ({cur})")
 

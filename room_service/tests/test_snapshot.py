@@ -219,3 +219,14 @@ async def test_ensure_ready_and_prefetch(art_server):
         print(f"\ncold page load {cold_ms:.0f} ms")
     finally:
         await snap.close()
+
+
+def test_a_screens_own_art_path_three_names_deep_is_allowed():
+    from room_service.snapshot import SnapshotError, safe_base_url
+    assert safe_base_url("/output/_screens/vj/000002.jpg?t=1", set()) == "/output/_screens/vj/000002.jpg?t=1"
+    for bad in ("/output/a/b/c/d.jpg", "/output/_screens/../x.jpg", "/etc/passwd"):
+        try:
+            safe_base_url(bad, set())
+        except SnapshotError:
+            continue
+        raise AssertionError(bad)

@@ -104,13 +104,18 @@ PICTURES_MIN = 4
 PICTURES_BOOST = 3.0
 PICTURES_SHARE = 0.5
 PICTURES_SHARE_AGAIN = 0.25
+# Recency (owner, 27 Nov: "why are we seeing the same scenes ... so frequently ... we have hundreds of them"; the last
+# 300 picks used 33 of 260 scenes): a scene shown k picks ago weighs (k / RECENT_PICKS) ** RECENT_POWER of itself,
+# back to whole after RECENT_PICKS picks, on top of avoid_repeat's hard block.
+RECENT_PICKS = 40
+RECENT_POWER = 2.0
 PICTURES_FULL = 10
 SECTION_FIT, SECTION_MISS = 2.0, 0.4
 # The fewest scenes an auto pick keeps in real rotation: the effective number ((sum w)^2 / sum w^2) of the weights,
 # at most MIN_ROTATION_SHARE of the scenes that fit at all.  With the music's words, genre and axes all multiplying
 # the fit before STYLE_POWER, a Disco pick had 2-6 (owner, 28 Oct: "frequently returns to a small number of
 # scenes"); below the floor the weights are flattened (w ** a, a < 1), which keeps their order.
-MIN_ROTATION = 16.0
+MIN_ROTATION = 40.0
 MIN_ROTATION_SHARE = 0.5
 # direction.music: how the music's words meet the mode's own (aa's Room page control "How the music changes it").
 # fill: only where the mode set none; blend (default): the mode's lead, the music's shade them (music_moods /
@@ -510,7 +515,7 @@ class Director:
             self.seed = secrets.randbits(31)
         self.rng_scene = random.Random(f"{self.seed}:scene")
         self.rng_transition = random.Random(f"{self.seed}:transition")
-        self.recent_scenes: collections.deque[str] = collections.deque(maxlen=16)
+        self.recent_scenes: collections.deque[str] = collections.deque(maxlen=RECENT_PICKS)
         self.recent_transitions: collections.deque[str] = collections.deque(maxlen=16)
         self.armed = False
         self.dwell_start: Optional[float] = None      # the previous scene transition's done (monotonic s)
@@ -766,6 +771,16 @@ class Director:
                 taste[src] = self.tasted(src)
             return taste[src]
 
+        seq = list(self.recent_scenes)
+        if current and (not seq or seq[-1] != current):
+            seq.append(current)
+        seq += list(ahead)
+        since = {n: len(seq) - i for i, n in enumerate(seq)}       # 1 = the last one shown (or queued)
+
+        def fresh(n: str) -> float:
+            k = since.get(n)
+            return 1.0 if k is None or k >= RECENT_PICKS else (k / RECENT_PICKS) ** RECENT_POWER
+
         favour, shun = self.treatment()
         notes: list[str] = []
         photo = lambda n: n in scenes and self._listens_pictures(scenes[n].get("source"))   # noqa: E731
@@ -787,7 +802,8 @@ class Director:
                             * self._rated("source", scenes[n].get("source")) * tasted(scenes[n].get("source"))
                             * tasted(scene_key(n))
                             * self._heard(scenes[n].get("source"))
-                            * self._section_fit(scenes[n].get("tags") or {}), self.rng_scene, avoid, MIN_ROTATION,
+                            * self._section_fit(scenes[n].get("tags") or {}) * fresh(n), self.rng_scene, avoid,
+                            MIN_ROTATION,
                             adjust if favour or shun or floor else None)
         if got is None:
             return None

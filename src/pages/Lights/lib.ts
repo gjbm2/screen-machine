@@ -33,6 +33,8 @@ export interface LightRow {
   caps: Caps | null;
   /** Its own settings (fixtures.setup.yaml): home, limits, named positions, slot names, its normal beam. */
   setup: Setup;
+  /** A laser's spread of beams, degrees across (its type's lens angle); null for any other light. */
+  spread_deg: number | null;
 }
 
 /** A kind of light the room can drive (GET /show/api/v1/rig/types). */
@@ -58,6 +60,8 @@ export interface Draft {
 
 /** POST /show/api/v1/rig/fixtures (PUT takes any part of it). */
 export interface FixtureBody {
+  /** The id it is to have (a planned thing keeps its own when connected); left out: dmx.<its name>. */
+  id?: string;
   label?: string;
   type?: string;
   node_ip?: string;
@@ -185,6 +189,7 @@ function toRow(o: Obj, rv: Obj | null): LightRow | null {
     dmx: !hue && (driver === "artnet" || address !== null || node_ip !== null),
     caps: parseCaps(o.caps),
     setup: parseSetup(o.setup),
+    spread_deg: typeof o.spread_deg === "number" && o.spread_deg > 0 ? o.spread_deg : null,
   };
 }
 
@@ -513,6 +518,16 @@ export interface Setup {
   positions: Record<string, PanTilt>;
   jog_flip: Record<Axis, boolean>;
   beam: Record<string, number>;
+  /** How a fixed light is tilted by hand: degrees forward (towards the middle of the room) from straight up. */
+  lean_deg: number | null;
+}
+
+/** The tilt a laser gets until someone sets one: the most forward beam of its spread is this far off vertical. */
+export const LEAN_RULE_DEG = 45;
+/** A laser's tilt (its setup, else the rule above) and the lean of its most forward and most backward beams. */
+export function laserLean(spread_deg: number, lean_deg: number | null): { lean: number; forward: number; back: number } {
+  const lean = lean_deg ?? LEAN_RULE_DEG - spread_deg / 2;
+  return { lean, forward: lean + spread_deg / 2, back: spread_deg / 2 - lean };
 }
 
 function num(v: unknown): number | null {
@@ -596,7 +611,7 @@ function pair(v: unknown): [number, number] | null {
 }
 
 export function emptySetup(): Setup {
-  return { home: null, limits: {}, positions: {}, jog_flip: { pan: false, tilt: false }, beam: {} };
+  return { home: null, limits: {}, positions: {}, jog_flip: { pan: false, tilt: false }, beam: {}, lean_deg: null };
 }
 
 /** A light's setup as POST .../setup answers it (or a rig row carries it), read tolerantly. */
@@ -618,6 +633,7 @@ export function parseSetup(v: unknown): Setup {
   }
   if (isObj(v.jog_flip)) out.jog_flip = { pan: v.jog_flip.pan === true, tilt: v.jog_flip.tilt === true };
   if (isObj(v.beam)) for (const [k, x] of Object.entries(v.beam)) if (num(x) !== null) out.beam[k] = x as number;
+  out.lean_deg = num(v.lean_deg);
   return out;
 }
 
@@ -801,6 +817,15 @@ export interface Pose {
 
 export interface PlacedThing {
   at: Vec3 | null;
+  /** A room device's own kind and name (a planned GigBAR: "gigbar-2"); a registered light's come from the rig. */
+  kind?: string | null;
+  label?: string | null;
+  /** A planned room device: the real thing it stands for, once connected (a screen, a lamp, a source, a sensor). */
+  connect?: string | null;
+  /** The place in the room it points at (a lone light, a pinspot: "Point at…"). */
+  aim?: Vec3 | null;
+  /** A planned room device: what each mode does with it ({mode: on | off | spinning | stopped}). */
+  modes?: Record<string, string> | null;
   mount: string | null;
   plane: { normal: Vec3 | null; up: Vec3 | null; size: [number, number] | null } | null;
   teach: Sample[];
@@ -884,6 +909,11 @@ export function parseSpace(v: unknown): RoomSpace {
       const pose = isObj(a.pose) && vec3(a.pose.at) ? { at: vec3(a.pose.at) as Vec3, rms_deg: num(a.pose.rms_deg) ?? 0, samples: int(a.pose.samples) ?? 0 } : null;
       appliances[id] = {
         at: vec3(a.at),
+        kind: str(a.kind),
+        label: str(a.label),
+        connect: str(a.connect),
+        aim: vec3(a.aim),
+        modes: isObj(a.modes) ? Object.fromEntries(Object.entries(a.modes).filter(([, w]) => typeof w === "string")) as Record<string, string> : null,
         mount: str(a.mount),
         plane: pl ? { normal: vec3(pl.normal), up: vec3(pl.up), size: size2(pl.size) } : null,
         teach: Array.isArray(a.teach)

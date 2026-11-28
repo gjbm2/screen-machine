@@ -166,13 +166,14 @@ def drop_stray_anchors(starts: list[float | None], times: list[float | None]) ->
             starts[i] = None
 
 
-def place_by_upload(starts: list[float | None], times: list[float | None], duration: float | None) -> None:
+def place_by_upload(starts: list[float | None], times: list[float | None], duration: float | None) -> set[int]:
     """Lines nobody was heard singing, where the upload has a time for them: the upload's time, moved by the shift
     of the heard lines either side (a straight line between the two), so a long stretch the vocal stem doesn't carry
     (a choir in the backing track) keeps the upload's own rhythm instead of an even spread."""
     known = [i for i, s in enumerate(starts) if s is not None and times[i] is not None]
+    past: set[int] = set()                       # lines that would only start after the recording ends
     if not known:
-        return
+        return past
     for i in range(len(starts)):
         if starts[i] is not None or times[i] is None:
             continue
@@ -186,9 +187,11 @@ def place_by_upload(starts: list[float | None], times: list[float | None], durat
             side = [k for k in known if k < i][-STRAY_WINDOW:] if lo is not None else \
                 [k for k in known if k > i][:STRAY_WINDOW]           # nearest few, not one word's
             t = times[i] + float(np.median([starts[k] - times[k] for k in side]))
-        if duration:
-            t = min(t, duration - 0.5)
+        if duration and t > duration - 1.0:      # a longer edit's lines (27 Nov: I Will Survive's album
+            past.add(i)                          # version, 24 lines piled at the end): this recording hasn't them
+            continue
         starts[i] = max(0.0, t)
+    return past
 
 
 def _heard_starts(texts: list[str], sung: list[dict]) -> tuple[list[float | None], dict[int, float], dict]:
@@ -233,15 +236,16 @@ def fit_to_sung(texts: list[str], sung: list[dict], duration: float | None = Non
     times (a synced upload's), if it has them. Returns the display lines [{start, end, text}] timed to the singing,
     and {matched, coverage, precision} (coverage: of the sung words)."""
     starts, last, stats = _heard_starts(texts, sung)
+    past: set[int] = set()
     if times is not None and len(times) == len(texts):
         drop_stray_anchors(starts, times)
         for li in [li for li in last if starts[li] is None]:   # a stray match's end goes with it
             del last[li]
-        place_by_upload(starts, times, duration)
+        past = place_by_upload(starts, times, duration)
     # Lines nobody was heard singing (and no upload time to go by): between their neighbours, evenly.
     known = [i for i, s in enumerate(starts) if s is not None]
     for i in range(len(texts)):
-        if starts[i] is not None or not known:
+        if starts[i] is not None or not known or i in past:
             continue
         lo = max((k for k in known if k < i), default=None)
         hi = min((k for k in known if k > i), default=None)
@@ -287,31 +291,66 @@ def lines_from_sung(sung: list[dict]) -> list[dict]:
     return lines
 
 
-def candidate_texts(c: dict) -> list[str]:
-    """A lyrics candidate's sung lines, in order (synced or plain alike: only the words are used)."""
+CREDIT = re.compile(r"^\s*(written|lyrics|words|music|composed|produced|arranged|composer|lyricist|songwriters?|"
+                    r"producers?)(\s+by)?\s*[:：]|\b(written|composed|produced|arranged) by\b|^\s*(作词|作曲|词|曲)\s*[:：]",
+                    re.I)
+
+
+def credit_line(text: str, title: str = "", artist: str = "") -> bool:
+    """A line nobody sings: a credit ("Written by：Brandon Flowers/Dave Keuning") or the song's own name ("Mr.
+    Brightside - The Killers"), which some uploads put first (27 Nov)."""
+    if CREDIT.search(text or ""):
+        return True
+    w = words_of(text)
+    tw, aw = words_of(title), words_of(artist)
+    return bool(tw and aw and w and set(w) <= set(tw) | set(aw) | {"by", "feat", "ft"} and set(aw) & set(w)
+                and set(tw) <= set(w))
+
+
+def candidate_lines(c: dict, title: str = "", artist: str = "") -> list[tuple[str, float | None]]:
+    """A lyrics candidate's sung lines in order, each with the upload's own time (None for a plain upload); credits
+    and the song's name left out."""
     if c.get("kind") == "synced":
-        return [e["text"] for e in parse_lrc(c.get("lrc") or "") if e["text"]]
-    return [ln.strip() for ln in (c.get("text") or "").splitlines() if ln.strip() and not re.fullmatch(r"\[.*\]", ln.strip())]
+        rows = [(e["text"], e["t"]) for e in parse_lrc(c.get("lrc") or "") if e["text"]]
+    else:
+        rows = [(ln.strip(), None) for ln in (c.get("text") or "").splitlines()
+                if ln.strip() and not re.fullmatch(r"\[.*\]", ln.strip())]
+    return [(t, at) for t, at in rows if not credit_line(t, title, artist)]
 
 
-def candidate_times(c: dict) -> list[float | None] | None:
+def candidate_texts(c: dict, title: str = "", artist: str = "") -> list[str]:
+    """A lyrics candidate's sung lines, in order (synced or plain alike: only the words are used)."""
+    return [t for t, _ in candidate_lines(c, title, artist)]
+
+
+def candidate_times(c: dict, title: str = "", artist: str = "") -> list[float | None] | None:
     """A synced candidate's own time for each line candidate_texts gives (None for a plain one)."""
     if c.get("kind") != "synced":
         return None
-    return [e["t"] for e in parse_lrc(c.get("lrc") or "") if e["text"]]
+    return [t for _, t in candidate_lines(c, title, artist)]
 
 
-def best_fit(cands: list[dict], sung: list[dict], duration: float | None = None) -> tuple[dict | None, list[dict], dict]:
+FIT_NEAR_BEST = 0.97         # uploads matching this share of the best match count are as good a match...
+
+
+def best_fit(cands: list[dict], sung: list[dict], duration: float | None = None, title: str = "",
+             artist: str = "") -> tuple[dict | None, list[dict], dict]:
     """The candidate whose words match the most of what is sung, its lines timed to the singing, and its stats;
-    (None, [], best stats) when none reaches FIT_MIN_COVERAGE."""
-    best: tuple[dict | None, list[dict], dict] = (None, [], {"matched": 0, "coverage": 0.0})
+    (None, [], best stats) when none reaches FIT_MIN_COVERAGE. ...and of those, the one with the fewest words nobody
+    sings wins (27 Nov: I Will Survive's album-version upload matched 403 sung words with 232 more never sung, the
+    single edit's matched 398 with 33)."""
+    fits = []
     for c in cands:
-        texts = candidate_texts(c)
+        texts = candidate_texts(c, title, artist)
         if not texts:
             continue
-        lines, st = fit_to_sung(texts, sung, duration, candidate_times(c))
-        if st["matched"] > best[2]["matched"]:
-            best = (c, lines, st)
+        lines, st = fit_to_sung(texts, sung, duration, candidate_times(c, title, artist))
+        fits.append((c, lines, st))
+    if not fits:
+        return None, [], {"matched": 0, "coverage": 0.0}
+    top = max(st["matched"] for _, _, st in fits)
+    near = [f for f in fits if f[2]["matched"] >= FIT_NEAR_BEST * top]
+    best = max(near, key=lambda f: (f[2]["precision"], f[2]["matched"]))
     if best[2].get("coverage", 0) < FIT_MIN_COVERAGE:
         return None, [], best[2]
     return best
@@ -339,6 +378,20 @@ def merge_heard(lead: list[dict], voices: list[dict]) -> list[dict]:
         if not any(a < w["t1"] and w["t0"] < b for a, b in taken):
             out.append(w)
     return sorted(out, key=lambda w: w["t0"])
+
+
+def careful_input(lines: list[dict], title: str = "", artist: str = "") -> list[dict]:
+    """[{text, start}] for tools/karaoke/refine.py: careful_texts' lines with where the first pass had them."""
+    return [{"text": str(ln["text"]), "start": ln.get("start")} for ln in lines
+            if str(ln.get("text") or "").strip() and not credit_line(ln["text"], title, artist)]
+
+
+def careful_texts(lines: list[dict], title: str = "", artist: str = "") -> list[str]:
+    """The lines the careful pass times: a song's current lines without credits and the song's name. Lines the first
+    pass squeezed into no time are kept: mostly they ARE sung, by voices the lead stem hasn't (27 Nov: Bohemian
+    Rhapsody's "Bismillah" choir)."""
+    return [str(ln["text"]) for ln in lines
+            if str(ln.get("text") or "").strip() and not credit_line(ln["text"], title, artist)]
 
 
 def careful_lines(texts: list[str], rows: list, duration: float | None = None) -> list[dict]:

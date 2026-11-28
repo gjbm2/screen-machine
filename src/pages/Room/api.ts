@@ -346,6 +346,30 @@ export class RoomApi {
   }
 
   /** A thumbnail's URL (an <img> src). */
+  // ── The lights' scenes as the director plays them (show_service: GET /api/v1/lights/now, the lights library and its
+  //    stars, through room_service's /show pass-through) ──
+  lightsNow(signal?: AbortSignal) {
+    return this.json<LightsNow>("GET", "/show/api/v1/lights/now", undefined, signal);
+  }
+  lightsLibrary(signal?: AbortSignal) {
+    return this.json<{ items: { key: string; kind: string; name: string; label: string; thumb?: string | null }[] }>(
+      "GET",
+      "/show/api/v1/lights/library",
+      undefined,
+      signal,
+    );
+  }
+  lightRatings(signal?: AbortSignal) {
+    return this.json<{ ratings: Record<string, { stars?: number; reject?: boolean }> }>("GET", "/show/api/v1/lights/ratings", undefined, signal);
+  }
+  lightRate(key: string, patch: { stars?: number; reject?: boolean }) {
+    return this.json<{ key: string; entry: { stars?: number; reject?: boolean } }>("POST", "/show/api/v1/lights/rate", { key, ...patch });
+  }
+  /** A show_service path (a lights library thumb) as this page can load it. */
+  showUrl(path: string | null | undefined): string | null {
+    return path ? `${this.baseUrl}/show${path}` : null;
+  }
+
   thumbUrl(path: string | null | undefined): string | null {
     return path && path.startsWith("/api/v1/thumb/") ? `${this.baseUrl}${path}` : null;
   }
@@ -381,8 +405,14 @@ export class RoomApi {
 
   /** "This is good" (owner, 29 Oct): the scene on screen, its effects and the two together come up more often
    *  (stream_service taste.py). Nothing changes on screen. */
-  good(session: string) {
-    return this.json<{ scene?: string; effects?: string[] }>("POST", `/renderer/api/sessions/${encodeURIComponent(session)}/good`, {});
+  good(session: string, what: { scene?: SceneSpec; effects?: string[]; undo?: boolean } = {}) {
+    // `what`: the scene and effects the person was looking at (credited even if the screen has moved on); undo takes
+    // a press back (owner, 27 Nov)
+    return this.json<{ scene?: string; effects?: string[]; undo?: boolean }>(
+      "POST",
+      `/renderer/api/sessions/${encodeURIComponent(session)}/good`,
+      what,
+    );
   }
 
   /** Take effects off every screen in the session's room (screen-machine-04, 17 Oct): all, or {effect: a preset or a
@@ -736,4 +766,11 @@ export class RoomApi {
       throw e;
     }
   }
+}
+
+/** GET /show/api/v1/lights/now: each light group's program and, while a change is drawn, the next scenes. */
+export interface LightsNow {
+  t_ms: number;
+  programs: Record<string, { label: string; scene: string; scene_label?: string | null; why?: string | null; at_ms?: number; effects: string[] }>;
+  next: { look_id: string; scenes: Record<string, string> } | null;
 }

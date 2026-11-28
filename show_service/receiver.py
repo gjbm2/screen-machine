@@ -1633,13 +1633,17 @@ class Receiver:
             pcm = pkt.pcm
             peak = max(float(pcm.max()), -float(pcm.min())) if pcm.size else 0.0
             t = None
+            n0 = st.base_n + _signed(vban.counter_delta(st.base_c, pkt.counter)) * st.frames
             if st.capture is not None and st.capture.ready:
-                t = st.capture.to_remote_ns(st.base_n + _signed(vban.counter_delta(st.base_c, pkt.counter)) * st.frames)
+                t = st.capture.to_remote_ns(n0)
+            k = None                                     # the beat clock's time for its last sample (levels "k")
+            if st.clock is not None and st.clock.ready:
+                k = st.clock.to_host(n0 + max(0, len(pcm) - 1))
             if active:
-                self._on_level(st.name, pkt.counter, peak, t, arrival, pcm=pcm, sr=st.sr)  # type: ignore[misc]
+                self._on_level(st.name, pkt.counter, peak, t, arrival, pcm=pcm, sr=st.sr, k_s=k)  # type: ignore[misc]
             else:                                        # a watched stream that isn't the active one
                 self._on_level(st.name, pkt.counter, peak, t, arrival, pcm=pcm, sr=st.sr,  # type: ignore[misc]
-                               active=False)
+                               active=False, k_s=k)
         except Exception:                                # noqa: BLE001
             self._error("audio")
 

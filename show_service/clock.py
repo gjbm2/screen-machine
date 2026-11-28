@@ -3170,8 +3170,25 @@ class Clock:
                 "state": self._state, "gate": self._gate, "epoch": self._epoch,
                 "stability": round(self._clar, 4), "source": self.act.name, "t_ms": now_s * 1000.0}
 
+    def set_override(self, fn: Optional[Callable[[float, Optional[ClockData]], Optional[ClockData]]]) -> None:
+        """A source that knows the beat better than the room mic (karaoke_feed.KaraokeFeed.clock_override: a karaoke
+        song's own beat grid from its file) publishes music.clock in place of the tracker while it returns a body.
+        ``fn(now_s, the tracker's body)`` is called on show-rx with every publish (10 Hz and each re-anchor); None,
+        or an error, is the tracker's own body. The tracker runs on underneath, untouched."""
+        self._override = fn
+
     def _emit(self, now_s: float) -> None:
         d = self._data(now_s)
+        fn = getattr(self, "_override", None)
+        if fn is not None:
+            try:
+                o = fn(now_s, d)
+            except Exception:                            # noqa: BLE001 - the tracker's own clock
+                o = None
+                self._counts["override_errors"] = self._counts.get("override_errors", 0) + 1
+            if o is not None:
+                d = o                                    # type: ignore[assignment]
+                self._counts["override_published"] = self._counts.get("override_published", 0) + 1
         self._snapshot = d
         self._last_pub_s = now_s
         self._counts["published"] += 1

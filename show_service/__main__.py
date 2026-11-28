@@ -244,6 +244,7 @@ class Show:
         self.rig: Any = None                         # Stage 5: outputs.Rig (the rig component), with the brain only
         self.recorder: Any = None                    # recorder.Recorder (the Room page's Record; on_midi's tap)
         self.karaoke: Any = None                     # karaoke_feed.KaraokeFeed (docs/KARAOKE.md): Flask's karaoke player
+        self.sound_cal: Any = None                   # sound_cal_feed.SoundCalFeed (docs/SOUND.md): the speaker calibration
         self._runtime_offsets: dict[str, float] = {}   # sources.py's (a rendered test-piano run), over latency.json's
         self._offsets_lock = threading.Lock()        # main thread (latency.json) vs show-brain (sources)
         self._out_cfg: dict = {}                     # artnet_out's config (the rig's neutral colour, patch.yaml)
@@ -304,9 +305,18 @@ class Show:
         except Exception:
             log.exception("piano_live.py not loaded: no piano stream for devices (the show carries on)")
 
+        # the lighting half of the Scene library (27 Nov): GET /api/v1/lights/library, its pictures and ratings
+        self.light_library: Any = None
+        try:
+            from . import light_library as ll_mod
+            self.light_library = ll_mod.LightLibrary(
+                lambda: (self.brain.components.get("director") if self.brain is not None else None))
+        except Exception:
+            log.exception("light_library.py not loaded: no lighting scenes in the Scene library (the show carries on)")
+
         def _routes(app: Any, api: Any = self.api, lv: Any = self.levels, inp: Any = self.inputs,
                     mc: Any = self.mic, lib: Any = self.library, plm: Any = pl_mod, sh: Any = self.sheets,
-                    pv: Any = self.piano_live) -> None:
+                    pv: Any = self.piano_live, ll: Any = self.light_library) -> None:
             lv.routes(app)
             inp.routes(app)
             if mc is not None:
@@ -317,6 +327,8 @@ class Show:
                 sh.routes(app)
             if pv is not None:
                 pv.routes(app)
+            if ll is not None:
+                ll.routes(app)
             if plm is not None:
                 plm.routes(app, lambda: self.brain)
             if api is not None:
@@ -460,6 +472,8 @@ class Show:
             self.mic.start()                             # show-mic: re-decides at 2 Hz and on a wake
         if getattr(self, "karaoke", None) is not None:
             self.karaoke.start()                         # show-karaoke: Flask's karaoke player, once a second
+        if getattr(self, "sound_cal", None) is not None:
+            self.sound_cal.start()                       # show-soundcal: Flask's speaker calibration, once a second
         if self.brain is not None:
             try:
                 self.brain.start()
@@ -663,6 +677,7 @@ class Show:
                 self.recorder = got                      # on_midi's tap (show-rx), after NoteTap
         self._wire_sources()
         self._wire_karaoke()
+        self._wire_sound_cal()
         stage3 = ("api", "ring", "situations", "brain") + BRAIN_MODULES
         self.brain.modules = {k: v for k, v in self.modules.items() if k in stage3}
 
@@ -687,6 +702,19 @@ class Show:
                 log.exception("sources: the mic claim seam wasn't wired: a test piano on Sonos is heard by its room's "
                               "mic only if something else turns it on")
 
+    def _wire_sound_cal(self) -> None:
+        """docs/SOUND.md (27 Nov): the app's speaker calibration (Flask, routes/sound/calibrate.py) wants the room mic
+        while it measures an output (_wire_mic), on every deployment."""
+        try:
+            import smconfig
+            from . import sound_cal_feed
+            self.sound_cal = sound_cal_feed.SoundCalFeed(smconfig.url("flask"))
+            self.modules["sound_cal"] = "ok"
+        except Exception as e:
+            self.sound_cal = None
+            self.modules["sound_cal"] = f"failed: {type(e).__name__}: {e}"
+            log.exception("sound calibration: not followed: the mic won't come on for it")
+
     def _wire_karaoke(self) -> None:
         """docs/KARAOKE.md (owner, 25 Nov): while the deployment has karaoke, Flask's karaoke player is a music source
         like the Music page's: karaoke_feed.KaraokeFeed's song goes in ctx.now_playing after the player's piece (its
@@ -696,8 +724,15 @@ class Show:
             if smconfig.enabled("karaoke") is not True or self.ctx is None:
                 return
             from . import karaoke_feed
-            self.karaoke = karaoke_feed.KaraokeFeed(smconfig.url("flask"))
+            self.karaoke = karaoke_feed.KaraokeFeed(smconfig.url("flask"), shape_fn=karaoke_feed.library_shape,
+                                                    grid_fn=karaoke_feed.library_grid,
+                                                    brief_fn=karaoke_feed.library_brief,
+                                                    moments_fn=karaoke_feed.library_moments)
             self.ctx.now_playing = karaoke_feed.chain_now_playing(self.ctx.now_playing, self.karaoke.now_playing)
+            if self.clock is not None and hasattr(self.clock, "set_override"):
+                self.clock.set_override(self.karaoke.clock_override)   # a song's own beats drive music.clock
+            self.ctx.karaoke_energy = self.karaoke.energy_ahead          # its measured shape, ahead (director)
+            self.ctx.room_rest = self.karaoke.resting                    # no song chosen: a holding pattern
             self.modules["karaoke"] = "ok"
         except Exception as e:
             self.karaoke = None
@@ -728,6 +763,10 @@ class Show:
             if kf is not None:
                 mic.add_want("karaoke", "Karaoke", kf.playing)   # owner, 25 Nov: the room is heard while one sings
                 kf.add_on_change(mic.wake)
+            sc = getattr(self, "sound_cal", None)
+            if sc is not None:
+                mic.add_want("calibration", "Measuring a speaker", sc.running)   # docs/SOUND.md
+                sc.add_on_change(mic.wake)
             ctx = self.ctx
             mic.set_room(lambda: ctx.room() if ctx is not None and ctx.room is not None else None)
             mic.set_notify(getattr(self.api, "notify", None))
@@ -819,6 +858,11 @@ class Show:
                 "mic_state": self.mic.state() if self.mic is not None else None}
 
     def stop(self) -> None:
+        if getattr(self, "sound_cal", None) is not None:
+            try:
+                self.sound_cal.stop()
+            except Exception:
+                log.exception("sound calibration feed stop failed")
         if getattr(self, "karaoke", None) is not None:
             try:
                 self.karaoke.stop()

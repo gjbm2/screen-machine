@@ -2,6 +2,7 @@
 // and from a phone on the tailnet alike, and the display page's lyrics layer from wherever it is served.
 
 import { sendRelative } from '@/shared/http/client';
+import type { SoundOutput } from '@/shared/api/sound';
 
 export type SongStatus = 'queued' | 'fetching' | 'lyrics' | 'separating' | 'ready' | 'failed';
 
@@ -38,6 +39,10 @@ export interface KaraokeSong {
   lyrics_rev?: number;
   /** The careful pass over the lyrics, once someone referred the song ("Lyrics off?"). */
   refine?: KaraokeRefine | null;
+  /** A duet (routes/karaoke/duet.py): as a person set it (duet_set), else as found (duet_found). */
+  duet?: boolean;
+  duet_found?: { found: boolean; voices: string[]; lines: { A: number; B: number; both: number }; why?: string } | null;
+  duet_set?: boolean | null;
   request_kind: string | null;
   /** Catalogue facts (routes/karaoke/sources.py song_facts), null until known. */
   genre?: string | null;
@@ -63,41 +68,59 @@ export interface KaraokePlayer {
   qid: string | null;
   pos_s: number;
   at: number;
+  /** Stopped: how ("you": Stop; "end": the song it is on played out; "boot": a restart cut it off). */
+  stop?: string | null;
 }
 
 export interface KaraokeSettings {
   /** The lead vocal under the backing track: 0 off, 0.25 quiet, 1 full. */
   guide: number;
   autoplay: boolean;
-  /** How late the speaker plays (Bluetooth): the lyrics are shown this much later. */
-  audio_delay_ms: number;
+  /** The delay from the player's clock to the room for the lyrics: the output's own (docs/SOUND.md: smsound.latency,
+   *  measured + trim; 0 on a Sonos or with no sound); null: a screen output never measured (the page that plays it uses
+   *  its browser's output latency). Read only: set it on the output (Settings › Sound & timing, or Calibrate). */
+  audio_delay_ms: number | null;
   /** How the words show as they're sung: yellow, a bouncing dot, or both. */
   highlight?: 'words' | 'dot' | 'both';
   /** Child mode: swear words as dashes and muted (routes/karaoke/profanity.py). */
   child_mode?: boolean;
+  /** The sound silent (the song and its clock run on). */
+  muted?: boolean;
   /** The karaoke screen (its display page shows the lyrics; null: karaokeScreen's own choice). */
   screen?: string | null;
-  /** Where the sound plays: the karaoke screen's own page, nowhere (the screens only), or a Sonos room ("sonos:<zone>":
-   *  it plays the song itself and the player's clock follows what the room hears). */
+  /** Where the sound plays: one of the app's sound outputs (docs/SOUND.md) karaoke can play to: "screen:<id>" (that
+   *  screen's own page), "sonos:<zone>" (it plays the song itself and the player's clock follows what the room hears)
+   *  or "none". Always resolved here; `output_set` false: it's the karaoke screen's page by default. */
   output?: string;
+  output_set?: boolean;
+  /** The output's graphic EQ (dB per band, smsound/eq.py), for a page or browser that plays it; null: not applied. */
+  eq?: number[] | null;
 }
 
 /** One place in the queue. The same song can be queued more than once. */
 export interface QueueEntry {
   qid: string;
   song_id: string;
+  /** Who sing it, if anyone said (one or more). */
+  singers?: string[];
 }
 
 export interface KaraokeState {
   /** The Sonos driver's last problem (a Sonos room as the output), else null. */
   sonos_error?: string | null;
   songs: KaraokeSong[];
+  /** One list in three parts: the songs already sung (the first `sung`), the one that is on (while the player is
+   *  playing or paused), the songs to come. */
   queue: QueueEntry[];
+  /** How many of the queue, from its top, are sung (routes/karaoke/store.py). */
+  sung?: number;
   /** The player, with where the song is now by the server's clock. */
   player: KaraokePlayer & { position_s: number };
   settings: KaraokeSettings;
   calibration?: KaraokeCalibration | null;
   now: number;
+  /** The names given songs in the last 12 hours, most recent first: the singer box's suggestions. */
+  singers?: string[];
 }
 
 /** The speaker-delay calibration (routes/karaoke/calibrate.py): while running, the chirps every output window plays
@@ -120,7 +143,15 @@ export interface KaraokeNow {
   player: KaraokePlayer;
   settings: KaraokeSettings;
   song: KaraokeSong | null;
-  up_next: { id: string; title: string; artist: string } | null;
+  up_next: { id: string; title: string; artist: string; singers?: string[] } | null;
+  /** Who sing the song on now, if anyone said. */
+  singers?: string[];
+  /** Entries after the one on now, ready or still being made (0: the screens ask for more). */
+  queued_after?: number;
+  /** The panel's address for a phone (null: unknown) and whether the room is in a karaoke mode: the screens' QR. */
+  join?: { url: string | null; room_karaoke: boolean };
+  /** While nothing plays: songs for the quiet background music, in order (the last sung first). */
+  background?: string[];
   calibration?: KaraokeCalibration | null;
   now: number;
 }
@@ -131,7 +162,14 @@ export interface LyricLine {
   text: string;
   /** When each space-separated token of `text` is sung (null: no letters, or not timed). Absent: sweep evenly. */
   words?: ({ t0: number; t1: number } | null)[];
+  /** A duet's part (routes/karaoke/duet.py): A sings first, B is the other, both together, backing; absent: not
+   *  known (or not a duet). */
+  voice?: DuetPart;
+  /** A line traded word by word: each token's part. */
+  voices?: DuetPart[];
 }
+
+export type DuetPart = 'A' | 'B' | 'both' | 'backing';
 
 export interface KaraokeLyrics {
   kind: 'synced' | 'plain' | 'none';
@@ -140,6 +178,8 @@ export interface KaraokeLyrics {
    *  and these are the song times [t0, t1] to mute the lead vocal over. */
   child?: boolean;
   mutes?: [number, number][];
+  /** Only for a confident duet: its two voices as the recording has them (A first). */
+  duet?: { voices: { name: string; sex: string }[] };
 }
 
 /** A song from the web search (iTunes + Deezer, steered by YouTube: routes/karaoke/sources.py catalog_search). */
@@ -195,7 +235,8 @@ export const karaoke = {
   hidePicture: (id: string, hidden = true) => call<{ ok: boolean }>(`/pictures/${id}/hide`, post({ hidden })),
   state: () => call<KaraokeState>('/state'),
   now: () => call<KaraokeNow>('/now'),
-  search: (q: string) => call<{ results: SearchHit[] }>(`/search?q=${encodeURIComponent(q)}`),
+  search: (q: string, limit = 8) =>
+    call<{ results: SearchHit[] }>(`/search?q=${encodeURIComponent(q)}&limit=${limit}`),
   artist: (name: string) =>
     call<{ artist: string; picture: string | null; fans: number | null; results: SearchHit[] }>(`/artist?name=${encodeURIComponent(name)}`),
   request: (body: {
@@ -204,7 +245,8 @@ export const karaoke = {
     artist?: string;
     title?: string;
     duration?: number | null;
-    queue?: QueueAt;
+    queue?: QueueAt | 'now';
+    singers?: string[];
     genre?: string | null;
     year?: number | null;
     rank?: number | null;
@@ -216,11 +258,16 @@ export const karaoke = {
   /** Lyrics off: the careful pass over them (in the background); or undo it, or stop waiting. */
   refine: (id: string, body: { undo?: boolean; cancel?: boolean; note?: string } = {}) =>
     call<{ ok: boolean }>(`/songs/${id}/refine`, post(body)),
+  /** A person's word on whether a song is a duet (null: as found). */
+  setDuet: (id: string, duet: boolean | null) => call<{ song: KaraokeSong }>(`/songs/${id}/duet`, post({ duet })),
   nudge: (id: string, user_offset_ms: number) =>
     call<{ id: string; user_offset_ms: number }>(`/songs/${id}`, { ...post({ user_offset_ms }), method: 'PATCH' }),
   remove: (id: string) => call<{ ok: boolean }>(`/songs/${id}`, { method: 'DELETE' }),
-  queueAdd: (song_id: string, index?: number, next?: boolean) =>
-    call<{ queue: QueueEntry[] }>('/queue', post({ op: 'add', song_id, index, next })),
+  queueAdd: (song_id: string, index?: number, next?: boolean, singers?: string[]) =>
+    call<{ queue: QueueEntry[] }>('/queue', post({ op: 'add', song_id, index, next, singers })),
+  /** Who sing a queue entry ([]: nobody said). */
+  queueSingers: (qid: string, singers: string[]) =>
+    call<{ queue: QueueEntry[] }>('/queue', post({ op: 'singers', qid, singers })),
   queueRemove: (qid: string) => call<{ queue: QueueEntry[] }>('/queue', post({ op: 'remove', qid })),
   /** Clears the queue, except the song playing (or paused) now. */
   queueClear: () => call<{ queue: QueueEntry[] }>('/queue', post({ op: 'clear' })),
@@ -235,8 +282,16 @@ export const karaoke = {
   /** Every song of a Spotify playlist or album into the library (and, with queue, into the queue). */
   importList: (url: string, queue = false) =>
     call<{ name: string; added: number; had: number; total: number }>('/import', post({ url, queue })),
-  outputs: () => call<{ outputs: { id: string; label: string }[] }>('/outputs'),
+  /** The app's sound outputs, marked for karaoke (GET /api/sound/outputs?for=karaoke). */
+  outputs: () => call<{ outputs: SoundOutput[] }>('/outputs'),
   calibrate: () => call<{ calibration: KaraokeCalibration }>('/calibrate', post({})),
+  /** Where this page's sound is now (the page that plays it): the server's player clock re-anchors there. */
+  heard: (rev: number, song_id: string, pos_s: number) =>
+    call<{ ok: boolean }>('/heard', post({ rev, song_id, pos_s })),
+  /** Tonight's names, set before anyone sings. */
+  roster: (body: { add?: string[]; remove?: string[] }) => call<{ singers: string[] }>('/singers', post(body)),
+  /** A new session: tonight's names and the songs already sung are cleared. */
+  newSession: () => call<{ singers: string[] }>('/session', post({ op: 'new' })),
   settings: (s: Partial<KaraokeSettings>) => call<{ settings: KaraokeSettings }>('/settings', post(s)),
   lyrics: (id: string) => call<KaraokeLyrics>(`/songs/${id}/lyrics`),
   audioUrl: (id: string, stem: 'instrumental' | 'vocals') => `/api/karaoke/songs/${id}/${stem}.m4a`,

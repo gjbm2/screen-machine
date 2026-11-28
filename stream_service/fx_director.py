@@ -71,6 +71,13 @@ WORDLESS_SECTIONS = ("instrumental", "outro")
 FX_THIN_S = 90.0               # a breakdown's thinning lasts at most this long
 FX_DROP_FADE_S = 0.5           # a drop's fade-in with no clock
 SECTION_WAIT_S = 4.0           # a section change: the scene director moves first; if it did, only re-check the bus
+# One layer at a time (docs/SCENE_FX_INTERPLAY.md §1.5; 27 Nov: the art director's look_change never reached this, so
+# a scheduled move could land a bar after its cut): a scene change announced for a line holds scheduled moves until
+# CUT_HOLD_BARS after it (CUT_HOLD_S with no clock).  A drop, a new track and the re-check of what the bus carries onto
+# the new scene still move.
+CUT_HOLD_BARS = 2
+CUT_HOLD_S = 4.0
+HOLD_EXEMPT = ("drop", "track_change", "scene_change")
 
 
 def favoured(w: list[float], tags: list[dict], favour: Optional[dict]) -> list[float]:
@@ -148,6 +155,7 @@ class FxDirector:
         self._event_scene: Optional[str] = None               # the scene when a section change came in
         self._fit_at_add: dict[str, float] = {}                # preset -> its fit when it came in
         self.last_fit: Optional[str] = None
+        self.hold_until: Optional[float] = None               # a scene cut is coming: scheduled moves wait until then
 
     # -- configuration -------------------------------------------------------------
     def configure(self, auto_fx: Optional[dict], direction: dict) -> None:
@@ -260,8 +268,22 @@ class FxDirector:
             return 0.0
         return SECTION_FIT if kind in want else SECTION_MISS
 
+    def hold_for_cut(self, at_s: Optional[float], now: float) -> float:
+        """The art director's look change lands at ``at_s`` (monotonic s; None: now): scheduled moves wait until
+        CUT_HOLD_BARS bars after it.  -> the hold's end."""
+        bar = self.grid[0] * self.grid[1] if self.grid is not None else None
+        end = max(now, at_s if at_s is not None else now) + (CUT_HOLD_BARS * bar if bar else CUT_HOLD_S)
+        self.hold_until = end if self.hold_until is None else max(self.hold_until, end)
+        return self.hold_until
+
+    def held(self, now: float) -> bool:
+        """A scheduled move waits: a scene cut is close (hold_for_cut), and it is not a drop, a new track or the
+        re-check onto the new scene."""
+        return self.hold_until is not None and now < self.hold_until and self.event not in HOLD_EXEMPT
+
     def due(self, now: float) -> bool:
-        return self.armed and self.enabled and self.next_at is not None and now >= self.next_at
+        return self.armed and self.enabled and self.next_at is not None and now >= self.next_at \
+            and not self.held(now)
 
     def done(self, now: float, move: Optional[FxMove]) -> None:
         if move is not None and move.add:
@@ -585,4 +607,4 @@ class FxDirector:
                 "next_in_s": None if self.next_at is None or not self.enabled else round(max(0.0, self.next_at - now), 1),
                 "on_the_bar": self.grid is not None, "event": self.event,
                 "thinned": self.thin_until is not None and now < self.thin_until, "last": self.last,
-                "scene": self._scene_seen, "last_fit": self.last_fit}
+                "scene": self._scene_seen, "last_fit": self.last_fit, "held_for_cut": self.held(now)}

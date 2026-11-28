@@ -45,10 +45,10 @@ function onKey(e) {
 
   // ---- global chords and keys
   if (k === "g") { gAt = Date.now(); done(); return; }
-  if (Date.now() - gAt < 1500 && ["b", "o", "u"].includes(k)) {
+  if (Date.now() - gAt < 1500 && ["b", "l", "o", "u"].includes(k)) {
     gAt = 0; done();
     if (review.isOpen()) review.close();
-    modeFn({ b: "browse", o: "onscreen", u: "hood" }[k]);
+    modeFn({ b: "browse", l: "lights", o: "onscreen", u: "hood" }[k]);
     return;
   }
   if (k === "?") { done(); shortcuts(); return; }

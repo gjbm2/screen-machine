@@ -33,7 +33,11 @@ echo "deploy-frontend: live ($(ls dist/assets | grep -m1 '^index-.*\.js$'))"
 py="${HOME}/.venvs/sm-room/bin/python"
 [ -x "$py" ] || py="$PWD/.venv/bin/python"
 [ -x "$py" ] || py=python3
-if ! nice -n 10 "$py" tools/ui_evals/dnd_pickup.py; then
+rc=0
+nice -n 10 "$py" tools/ui_evals/dnd_pickup.py || rc=$?
+if [ "$rc" -eq 2 ]; then          # no screen's bucket has favourites here (the laptop rig): nothing to drag
+  echo "deploy-frontend: drag and drop not checked (no favourites to drag on this machine)"
+elif [ "$rc" -ne 0 ]; then
   echo "deploy-frontend: DRAG AND DROP CHECK FAILED on the live build (tools/ui_evals/dnd_pickup.py)" >&2
   exit 1
 fi

@@ -1,0 +1,23 @@
+# The fixed song set for tools/room/ad_eval (karaoke library ids; titles for people). Keep it fixed: runs only compare
+# like with like. Chosen across tempo, metre, genre and shape (27 Nov 2026):
+songs:
+  - {id: k94db54a10b, title: My Way}                          # slow swell to a big climax
+  - {id: k39b61912c8, title: Hallelujah}                      # 6/8, gentle, no drums for long stretches
+  - {id: k3c5071eff2, title: The Sound of Silence}            # no chorus; builds
+  - {id: kd236a11f1c, title: Hey Jude}                        # long coda
+  - {id: ka6f578a9f3, title: Bohemian Rhapsody}               # sections, tempo and feel changes
+  - {id: k2ac0ba67bb, title: Dancing Queen}                   # disco pop
+  - {id: k1dea67b2c8, title: Happy}                           # steady groove, a cappella break
+  - {id: k9a08ce5c5a, title: Uptown Funk}                     # funk, stops and hits
+  - {id: k2391aca5e1, title: Freed from Desire}               # dance, builds and drops
+  - {id: k97353cd010, title: Mr. Brightside}                  # fast rock, little dynamic range
+  - {id: k87d4afc219, title: "Livin' On a Prayer"}            # key change, big last chorus
+  - {id: k85c2587838, title: Let It Go}                       # ballad to anthem
+  - {id: k304eb89f31, title: Shallow}                         # quiet start, huge climax
+  - {id: kee31811294, title: Creep}                           # loud/quiet chorus contrast
+  - {id: k3af014dbda, title: Jolene}                          # fast country picking, flat dynamics
+  - {id: k83b0027cdd, title: Valerie}                         # soul, horns
+  - {id: kb794839ade, title: "Can't Help Falling In Love"}    # slow 3/4 ballad
+  - {id: kbcdec40eab, title: I Will Survive}                  # rubato intro then four on the floor
+  - {id: k29ba2bc4a9, title: "Don't Stop Me Now"}             # piano intro, tempo lift
+  - {id: kca10aa5347, title: Golden}                          # modern K-pop production

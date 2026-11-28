@@ -75,7 +75,7 @@ import numpy as np
 
 import logging
 
-from . import binding, ensemble, music_feed, palettes, piano
+from . import binding, ensemble, lyric_feed, music_feed, palettes, piano
 from .inputs import BIND_SIGNALS, FEED_SIGNALS, MUSIC_SIGNALS, NA_SIGNALS, TRIGGERS, Sampler, idle_value, pivotable
 from .piano import PIANO_LEVELS
 from .plugins.base import ParamError, is_bindable
@@ -408,7 +408,10 @@ class SessionRuntime:
         self.follow, self.beat_source = follow, src
         wm = ex.get("music_w")
         wm = w if wm is None else wm
-        music_feed.music_signals(sig, ex, wm, fast, wf)   # the music features, eased to idle with their liveness
+        wfe = wf
+        if fast is not None:                    # a karaoke song playing: its measured energy at photon time (the file)
+            fast, wfe = lyric_feed.karaoke_energy(fast, wf, now + lead)
+        music_feed.music_signals(sig, ex, wm, fast, wfe)   # the music features, eased to idle with their liveness
         for k in piano.PIANO_LEVELS:            # the piano's: n/a when it is silent or not connected
             sig[k] = ex.get(k)
         sig.update(piano.envelopes(ex, now))    # note_on / chord_change, sharp at the frame rate

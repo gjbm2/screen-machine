@@ -223,7 +223,7 @@ def test_a_180_degree_jump_never_outruns_the_light():
         prev = (a["pan"], a["tilt"])
     assert prev == (90.0, 60.0)
     arrive = next(t for t, fr in frames if at(fr, "mv")["pan"] == 90.0)
-    assert arrive - 12.0 == pytest.approx(lk.travel_s(180.0, 180.0, 180.0 / lk.DEFAULT_ACCEL_S), abs=2 * FRAME)
+    assert arrive - 12.0 == pytest.approx(1.0 + lk.DEFAULT_ACCEL_S, abs=2 * FRAME)   # d / v + accel_s, both axes together
 
 
 def test_soft_limits_clamp_and_say_so():
@@ -355,8 +355,9 @@ def test_a_cut_is_pre_rolled_to_arrive_on_its_line():
     run(e, box, 10.0, 11.0)
     box["look"] = look(light_programs=program("b", "cut", 12_000.0))
     frames = run(e, box, 11.02, 13.0)
-    arrive = next(t for t, fr in frames if at(fr, "mv")["pan"] == 60.0)
+    arrive = next(t for t, fr in frames if abs(at(fr, "mv")["pan"] - 60.0) < 0.05)   # eased in: there to a hair
     assert arrive == pytest.approx(12.0, abs=FRAME)
+    assert frames[-1][1]["fixtures"]["mv"]["attrs"]["pan"] == 60.0
     assert all(fr["fixtures"]["mv"]["intensity"] > 0 for _t, fr in frames)   # a plain cut never goes dark
 
 

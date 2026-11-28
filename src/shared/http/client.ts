@@ -9,10 +9,23 @@
 // Exception (owner, 14 Oct): loaded over HTTPS (only the friendly LAN name https://screen.finsburybankforsavings.com,
 // Caddy -> Flask), the API is same-origin: an https page can't call the http public-IP origin (mixed content).
 // The TVs and the public address load over http and keep VITE_API_URL.
-export const API_URL: string =
-  typeof window !== 'undefined' && window.location.protocol === 'https:'
-    ? `${window.location.origin}/api`
-    : import.meta.env.VITE_API_URL || 'http://localhost:8000';
+// And (27 Nov) a page opened from another machine while VITE_API_URL names this one's loopback (the laptop's .env says
+// localhost): the API is same-origin too, since a phone's localhost is the phone (the karaoke screens' QR code opens
+// the panel at the laptop's LAN address).
+const LOOPBACK = /^(localhost|127\.\d+\.\d+\.\d+|\[::1\]|0\.0\.0\.0)$/;
+function resolveApiUrl(): string {
+  const env = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+  if (typeof window === 'undefined') return env;
+  if (window.location.protocol === 'https:') return `${window.location.origin}/api`;
+  try {
+    if (LOOPBACK.test(new URL(env).hostname) && !LOOPBACK.test(window.location.hostname))
+      return `${window.location.origin}/api`;
+  } catch {
+    /* not a URL: as given */
+  }
+  return env;
+}
+export const API_URL: string = resolveApiUrl();
 
 /** Same-origin API prefix. Only the admin page uses it (its token must not go via the public IP). */
 export const RELATIVE_API_URL = '/api';

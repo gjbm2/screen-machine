@@ -114,6 +114,12 @@ GC_GEN0_PILE = 10                       # gen0 regardless of slack once its coun
                                         # the degrade floor there is no slack, and garbage would pile up for the gen2)
 STARTUP_GRACE_S = 2.0  # at most this long after the first encoded frame, start-up catch-up is not counted late
 RECORD_KEEP = 4096
+# CuPy's pool keeps every block a retired scene, effect or transition gave back, by size, for the session's life: at
+# 2160p, after ~180 scene changes it held 7.4 GB of the laptop's 8 GB, and WDDM pages GPU memory to system RAM rather
+# than failing, so every frame on the GPU slowed (the vj render 36 -> 116 ms; the browser's 3D room starved; 27 Nov).
+# After a close, idle blocks beyond this go back to the driver (at most every POOL_TRIM_EVERY_S; a cudaFree syncs).
+POOL_IDLE_MAX_BYTES = 1 << 30
+POOL_TRIM_EVERY_S = 5.0
 MAX_REPEAT_RUN = 3    # repeats in a row before a slot that would repeat is rendered anyway (a probe frame)
 MSG_INIT = 0x01
 MSG_FRAME = 0x02
@@ -1121,6 +1127,37 @@ class Engine:
             close_with_effects(obj)
         except Exception:
             log.exception("[%s] close() failed for %r", self.name, obj)
+        self._trim_pool()
+
+    _trimmed_at = 0.0
+    pool_trims = 0
+
+    def _trim_pool(self) -> None:
+        """Give CuPy's idle blocks back to the driver once they pass POOL_IDLE_MAX_BYTES (POOL_IDLE_MAX_BYTES above)."""
+        ctx = self.ctx
+        now = time.monotonic()
+        if ctx is None or now - self._trimmed_at < POOL_TRIM_EVERY_S:
+            return
+        try:
+            pool = ctx.cp.get_default_memory_pool()
+            if pool.total_bytes() - pool.used_bytes() > POOL_IDLE_MAX_BYTES:
+                self._trimmed_at = now
+                with ctx.device:
+                    pool.free_all_blocks()
+                self.pool_trims += 1
+        except Exception:
+            log.exception("[%s] trimming the GPU memory pool failed", self.name)
+
+    def pool_stats(self) -> dict:
+        ctx = self.ctx
+        if ctx is None:
+            return {}
+        try:
+            pool = ctx.cp.get_default_memory_pool()
+            return {"pool_used_mb": round(pool.used_bytes() / 2**20), "pool_held_mb": round(pool.total_bytes() / 2**20),
+                    "pool_trims": self.pool_trims}
+        except Exception:
+            return {}
 
     def _closer_loop(self) -> None:
         ctx = self.ctx
@@ -1396,7 +1433,7 @@ class Engine:
         t = self.timer
         return {**(t.stats() if t is not None else {"samples": 0, "trips": 0, "backlog": 0}),
                 "enabled": t is not None, "slow_trips": self.slow_trips, "backlog_repeats": self.backlog_repeats,
-                "frozen_exits": self.frozen_exits}
+                "frozen_exits": self.frozen_exits, **self.pool_stats()}
 
     def _recent(self, seconds: float) -> list:
         """Records whose slot started in the last ``seconds``, newest first."""

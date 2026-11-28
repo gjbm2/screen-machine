@@ -18,27 +18,47 @@ manuals below and checked with `tools/show/add_fixture.py --file <file>` (show_s
   https://www.farnell.com/datasheets/4127597.pdf
 - The same manual, **Rev. 8** (older units): 50/28/3-channel modes. Only the laser block differs (§1.2).
   https://goknight.com/content/documentation/GigBAR_MOVE_ILS_US_UM_ML5_Rev8.pdf
-- A US **Rev. 13** (07/2024) lists 51/29/3 channels. I could not get that PDF, so a 51CH unit is **not covered**.
+- The **US version** manual, **Rev. 12** (04/2024): 51/29/3-channel modes. Its laser is a different laser (§1.4):
+  colour and one of 32 patterns, no strobe or rotation. Patched as `mode: part-51ch` of the laser type.
+  https://www.chauvetdj.com/wp-content/uploads/2022/05/GigBAR_MOVE_ILS_UM_US_Rev12.pdf
+- The **EU version** manual, **Rev. 11** (12/2023): the same charts as Rev. 10.
+  https://www.chauvetdj.com/wp-content/uploads/2022/05/GigBAR_MOVE_ILS_UM_EU_Rev11.pdf
 - Antari Z-350 Fazer User Manual: https://antari.com/wp-content/uploads/Z-350.pdf, and Antari's Z-350 flyer.
 
 ## 1. The lights
 
 ### 1.1 GigBAR MOVE + ILS: what is on the bar
 
-Left to right on the front: **Par 1, Spot 1, Derby 1, laser, Derby 2, Spot 2, Par 2**, plus four white strobe zones.
+As the maker's datasheet picture shows it (Chauvet DJ "GigBAR Move + ILS" datasheet: 1100 x 144 x 449 mm, the bar
+14 kg; corrected 27 Nov: the order here before came from pictures of another unit). Left to right as you face it:
+- **Spot 1** hangs under the bar's left end (about -0.46 m along, its pivot 0.13 m below the bar), upside down.
+- **Derby 1** stands on the bar in a U-yoke (-0.35 m, 0.13 m up): a ribbed drum.
+- **Par 1** hangs under the bar in a U-yoke (-0.16 m, 0.15 m down): a round can with three LEDs.
+- **The laser**: a box on the bar's middle in its own bracket (0.12 m up), two round apertures behind a glass panel.
+- **Par 2** (+0.16 m), **Derby 2** (+0.35 m) and **Spot 2** (+0.46 m), the same on the right.
+- **Four strobes**: round cool-white lenses in the bar's face at -0.49, -0.16, +0.16 and +0.49 m (DMX 27-30 their
+  four dimmers, 31 one strobe speed).
+- A tripod sleeve under the middle. The pars, derbies and laser are in one-axis brackets: they **only tilt**, about
+  the bar's length, and face where the bar faces (`turns: false` in space.yaml's layout).
+Measured off the picture (690 px of bar = 1100 mm); `deployments/laptop/lights/space.yaml` layouts.gigbar-move.
 
 | Part | Light | show_service sees |
 |---|---|---|
 | 2 pars | RGBAW + UV LEDs (3 x 6 W), 22° beam | a colour-mixing lamp: R, G, B, amber, white, UV, and a strobe |
 | 2 derbies | RGBW LEDs (2 x 6.5 W each colour), 131° coverage, motorised | colour mixing, strobe; the motor is pinned |
 | 2 spots (moving heads) | 32 W cool-white LED, 17° beam, pan 540°, tilt 270° (menu; spec sheet 180°), 16-bit | a mover: pan/tilt, speed, a 10-slot colour wheel, a 9-gobo wheel with shake and scroll, a dimmer, a shutter |
-| 4 strobe zones | cool-white LEDs, 5 W each | four intensity channels and a strobe (one fixture per bar) |
+| 4 strobe zones | cool-white LEDs, 5 W each | four lights per bar, one per LED (`<bar>.strobe1`-`4`); LED 4 also carries the shared strobe |
 | laser | class 3R: red 650 nm, green 520 nm, blue 450 nm | **not patched** (owner: tbc); the type makes every channel a page-only macro |
 
 show_service drives one colour and one pan/tilt per fixture, so each bar is **patched part by part**: seven fixtures
 per bar at the bar's start address plus each part's offset.
-- **The strobe zones are patched** (owner, 26 Nov). They have intensity channels and no colour, so they light white
-  at every look's level (191 of 255 in a typical look), not only on hits. Watch that on the virtual GigBAR (§7).
+- **The strobe zones are patched** (owner, 26 Nov), and since 27 Nov **each LED is its own light** (owner: "L-R or R-L
+  or ping pong"): `gigbar-strobe-led` (one dimmer) for LEDs 1-3 and `gigbar-strobe-led-s` (its dimmer and the four's
+  shared strobe) for LED 4, at the bar's +26..+29. In the group's order, bar A's 1-4 then bar B's, they run as a line:
+  light_scenes.yaml flash-run-right, flash-run-left, flash-ping-pong (looks.py `spread_mode: bounce`), flash-burst-out
+  (from the middle) and flash-each-bar-runs. LED 1 is taken to be the left as you face the bar: check on the real bar
+  and swap the four addresses if a "left to right" run goes the other way. The scenes for them hold them dark but for
+  their accents (light_scenes.yaml tags.parts: [flash]).
 - **The laser is left unpatched (owner: tbc).** The manual requires 3 m between the floor and the lowest beam, and 3 m
   between the beams and the audience. A room party can't meet that, so keep it off. Its channels stay at 0, which is
   blackout.
@@ -105,6 +125,41 @@ scroll CW 128-189, stop 190-193, scroll CCW 194-255.
   - Antari's rules: adults only, **never leave it running unattended**, keep 50 cm of space round it, never add
     flammable liquid, and drain the tank before transport.
 
+### 1.4 What the unit really does (researched 27 Nov)
+
+From the manuals and footage ("Chauvet DJ Gigbar Move + and ILS Command Review" by tarekith on YouTube, from 31:45;
+Guitar Center's overview video; both show US units). This is the reference for the lights' scenes, effects and
+transitions and for the 3D room. Read it before writing any.
+
+- **Two different lasers are sold under this bar's name, and the DMX chart tells them apart** (corrected 27 Nov;
+  the first write-up here described the US unit's figures and gave them the EU unit's controls).
+  - **EU unit: 52-channel chart (30CH, 3CH). Ours, as far as we know.** Colour, strobe, rotation. No patterns.
+    - It is a **grating laser**: each lit diode is split into a burst of thin beams. Needles in haze, a field of dots
+      on the ceiling and walls. The rotation channel turns the burst.
+    - Evidence: the EU chart has rotation and no pattern channel; a retailer's data sheet lists it as a grating laser
+      covering 93 degrees; its 80 mW diodes are Class 3R only because each beam is under 5 mW (the manual's laser
+      data); footage of the sibling GigBAR Move ILS shows exactly this burst.
+    - **Not confirmed:** nobody here has seen an EU unit's laser under DMX. How many beams, how fast it turns and
+      whether the burst is a square grid are estimates (the 3D room draws 9 x 9 beams a colour).
+  - **US unit: 51-channel chart (29CH, 3CH).** Colour (with an "image colour" setting) and one of 32 patterns, 8 DMX
+    values each. No strobe, no rotation.
+    - It throws a few fat beams from two apertures. Each lands as a small, sharp line figure, in mirrored pairs.
+    - Evidence: the review and overview videos below are all US units; a DMX tutorial for the unit shows the
+      "Laser Control" and "Laser Patterns" attributes ("Program The Chauvet Gigbar Move + ILS in SoundSwitch").
+  - **Both:** two or three diodes together are that many colours of beams side by side, not one mixed colour (a
+    grating bends each colour by its own angle). A look's colour lights the one diode nearest it.
+  - **Both:** every pulse is longer than 0.25 s (under 4 a second). Nothing gates the laser on the beat.
+  - **To tell which you have:** MENU → DMX. A list with 52CH and 30CH is the EU unit; 51CH and 29CH is the US one.
+- **A derby throws a fan** of about a dozen soft streaks. With two colours on, they show as separate coloured streaks.
+- **Colour is one family per look.** In every look in the footage the pars, derbies and spots are one hue, and the
+  laser is one colour too (it looks white in the footage only where the camera is overexposed). The unit's own menu limits
+  its auto shows to 3, 4 or 6 colours ("Pars Color: Tri, Quad, Hex").
+- **The unit's own shows are line-ups.** Its AUTO menu is every combination of the parts: pars, derby, laser, strobe
+  and spots (for example "L+SP": laser and moving heads; "PD": pars and derby). In the footage two or three parts are
+  usually lit, against a dark room. Not every part plays all the time.
+- **Transitions between its programmes are snap or fade** ("Mode: Snap/Fade").
+- **The spots mirror each other:** crossing, splayed apart, level and opposite, in the look's colour.
+
 ## 2. Wiring and the network
 
 ### 2.1 DMX chain
@@ -165,7 +220,12 @@ If the bars end up the other way round, swap their start addresses on the bars; 
 **GigBAR MOVE + ILS** (four buttons under the display):
 1. MENU → **DMX** → ENTER → ENTER → choose **52CH** → ENTER → **Address** → 001 (bar A) or 101 (bar B) → ENTER.
    - If the list offers 50CH and not 52CH, it is an older unit: patch the spots at +32 and +41 (§1.2).
-   - If it offers 51CH, stop: that chart isn't verified here.
+   - If it offers 51CH, it is the US unit (§1.4): its laser is two channels and the spots sit one channel lower
+     (+33 and +42). Patch the laser as `mode: part-51ch`; the rest of that chart isn't verified here.
+   - **Tilt the laser** by hand so its window faces straight up and a touch back towards the wall (1.5 degrees):
+     its burst is 93 degrees wide, so no beam then leans more than 45 degrees into the room (owner, 27 Nov: clear
+     of a mirror ball in the middle). Set the same tilt on the Lights page (the laser's row, "How it is tilted"):
+     the 3D room draws from it.
    - The value shows yellow while DMX arrives and white without it.
 2. MENU → **SETUP**:
    - **Pan Range 540** and **Tilt Range 270**, to match the type file. The spec sheet says 540° x 180°, but the
@@ -253,7 +313,8 @@ virtual node: Art-Net in -> DMX out at 40 Hz (holds the last frame when Art-Net 
     raw channels;
   - **3D** (`/3d`, three.js 0.187 vendored in `tools/virtual_node/vendor/three`, MIT, so it works offline): the bars on
     tripods at the far wall of a plain room. The heads pan on their yokes and tilt in them, and each one projects its
-    colour and gobo. The pars wash, the derbies throw turning beam fans, the strobes glow, and the laser draws lines.
+    colour and gobo. The pars wash, the derbies throw turning beam fans, the strobes glow, and the laser throws its burst of thin
+    beams (52CH) or its mirrored figures (51CH, 50CH), as §1.4 has it.
     A side panel says what each part is doing. Drag to orbit and use the wheel to zoom; there are Front, Side and
     Above views. Beams show plainly by default; tick "beams as the haze allows" to see them as the room would.
   - The head orientation is an assumption: tilt centre is straight up, + tilts towards the room, and + pan turns to
@@ -265,7 +326,7 @@ virtual node: Art-Net in -> DMX out at 40 Hz (holds the last frame when Art-Net 
   - Its DMX side refreshes at 40 Hz whatever rate Art-Net arrives at. After 4 s without Art-Net it holds
     (`--failsafe zero` to black out instead).
   - Flags: `--port 6455` (PC22), `--universe`, `--reply-to-6454` (answer polls on port 6454, as some nodes do).
-- **The view** reads only that DMX output. Set each bar there as you set the real one: start address, 52CH or 50CH,
+- **The view** reads only that DMX output. Set each bar there as you set the real one: start address, 52CH, 51CH or 50CH,
   pan/tilt range and reverse. Set the hazer's DIP address too. A patch mistake then shows as it would in the room.
   - It draws each part from what its channels mean in the manuals: pars and derbies, the strobe zones, the laser, the
     spots' pan/tilt, colour wheel, gobos and shutter, and haze building in the air (beams show in haze).
@@ -310,11 +371,13 @@ virtual node: Art-Net in -> DMX out at 40 Hz (holds the last frame when Art-Net 
 - **The bars:** on tripods in the east corners, A NE and B SE, 10 m apart. The bar bodies are at 2.5 m, 0.4 m in from
   the walls, each turned to the room's centre.
 - **The karaoke picture:** about 2 m wide, projected on the east wall between the bars (assumed 16:9, centre 2 m up).
-- **The heads:** hand-set poses, standing upright with pan 0 facing the room's centre (not taught).
-- **Their rest** (`fixtures.setup.yaml` `home`, set through the setup API): the middle of the west wall at 3 m,
-  opposite the picture and above people's heads.
+- **The heads:** poses from the bar until taught: **hanging** under it, upside down, pan 0 facing the bar's front
+  (corrected 27 Nov from the datasheet picture: they were drawn and aimed as standing upright).
+- **Their rest** (`fixtures.setup.yaml` `home`, set through the setup API): the middle of the dance floor. A hanging
+  head reaches the floor and nothing much above level, so the old rest (the west wall at 3 m) was out of reach.
 
-**Tilt finding:** with the spec sheet's 180° tilt, an upright head reaches only from straight up down to horizontal
+**Tilt finding** (written when the heads were thought to stand upright; hanging, as they do, they reach the floor
+with either range): with the spec sheet's 180° tilt, an upright head reaches only from straight up down to horizontal
 (2.68 m). It could never light the floor: the dance floor's centre is about 28° below horizontal. Most moving-head
 scenes work on the floor (pools, sweeps, figure-of-eight, ballyhoo), so they clamped the heads at horizontal and they
 sat still. **The spot type now assumes the menu's Tilt Range 270** (45° below horizontal; owner, 26 Nov). Set 270 on

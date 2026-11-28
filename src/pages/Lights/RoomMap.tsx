@@ -1,4 +1,8 @@
-// The Room map (docs/LIGHTS.md §8.2): where the screens, lights and named places are, so a direction ("upwards",
+// The room drawn flat from above (RoomDrawing), for Move it's preview (Preview.tsx), and the room's size form and "Add a
+// place" for the Light setup's room editor (RoomTab.tsx). The Room map that was here was folded into the 3D editor's
+// plan view (owner, 27 Nov: "why is the map a completely separate interface for the same thing? ... map becomes a
+// special case of 3D mode"). What it said:
+// (docs/LIGHTS.md §8.2): where the screens, lights and named places are, so a direction ("upwards",
 // "to the left") means the same thing for every light and screen, and a calibrated mover can be pointed at any place.
 //   - First use asks how big the room is and which wall people face (PUT /rig/space/room).
 //   - The plan is drawn from above with the front wall at the top (thicker), so left and right on the page are the
@@ -6,7 +10,8 @@
 //   - Tap a thing to select it, drag it to place it (screens snap to the nearest wall); the bar under the map sets its
 //     height, how a mover hangs, a screen's picture size, or takes it off the map.
 //   - Add a place: the piano, the mirror ball, the dance floor or anything named; it drops in the middle to be dragged.
-//   - Live: each light's beam to where it lands (GET /rig/live, 4 Hz while shown) and the flow, in words and an arrow.
+//   - Not live (owner, 27 Nov: "I'm not sure room map should be a live view. that's confusing"): the map is the room's
+//     layout only. What the lights are doing is the 3D tab's "Live now" and the live view (/lights/room).
 // RoomDrawing is the same picture for Move it's preview (Preview.tsx). Only the things themselves take the touch (the
 // page still scrolls over the rest of the map on a phone).
 
@@ -49,7 +54,7 @@ const GAP = 30; // px between the plan and the side strip
 /** Places offered to add with one tap (anything else is typed). */
 const PLACE_SUGGESTIONS = ["The piano", "Mirror ball", "Dance floor"];
 const HEIGHT_STEP_M = 0.1;
-const MOUNTS: [string, string][] = [
+export const MOUNTS: [string, string][] = [
   ["ceiling", "Hangs from the ceiling"],
   ["floor", "Stands on the floor"],
   ["wall", "On a wall"],
@@ -393,273 +398,15 @@ const metres = (s: string) => {
   return Number.isFinite(v) && v > 0 ? v : null;
 };
 
-export function RoomMap({
-  api,
-  things,
-  selectedId,
-}: {
-  api: LightsApi;
-  /** Every light and screen the rig knows (useRig().all). */
-  things: Placeable[];
-  /** A light to select on arrival ("Put it on the Room map"). */
-  selectedId?: string | null;
-}) {
-  const sp = useSpace(api);
-  const live = useLive(api, true);
-  const [box, width] = useWidth();
-  const [sel, setSel] = useState<string | null>(selectedId ? `t:${selectedId}` : null);
-  const [drag, setDrag] = useState<{ key: string; part: "plan" | "side"; at: Vec3; normal?: Vec3 } | null>(null);
-  const [editRoom, setEditRoom] = useState(false);
-  const [note, setNote] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const svg = useRef<SVGSVGElement>(null);
-
-  useEffect(() => {
-    if (selectedId) setSel(`t:${selectedId}`);
-  }, [selectedId]);
-
-  const space = sp.space;
-  const size = space?.size ?? null;
-  const fr = useMemo(() => (size && space ? planFrame(size, space.front, width) : null), [size, space, width]);
-  const { placed, unplaced } = useMemo(() => (space ? itemsFor(space, things) : { placed: [], unplaced: [] }), [space, things]);
-  const items = drag ? placed.map((it) => (it.key === drag.key ? { ...it, at: drag.at, normal: drag.normal ?? it.normal } : it)) : placed;
-  const selected = items.find((it) => it.key === sel) ?? null;
-  const selectedThing = sel?.startsWith("t:") ? things.find((t) => t.id === sel.slice(2)) ?? null : null;
-  const unplacedSel = selectedThing && !selected ? selectedThing : null;
-
-  const run = async (fn: () => Promise<unknown>, after: "reload" | ((ans: unknown) => void) = "reload") => {
-    setBusy(true);
-    setNote(null);
-    try {
-      const ans = await fn();
-      if (after === "reload") sp.reload();
-      else after(ans);
-    } catch (e) {
-      setNote(explainLightsError(e));
-      sp.reload();
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const commit = (it: DrawItem, at: Vec3, normal?: Vec3 | null) => {
-    const name = it.key.slice(2);
-    const r3 = at.map((v) => Math.round(v * 100) / 100) as Vec3;
-    if (it.kind === "place") return run(() => api.setPlace(name, { at: r3, label: it.label }));
-    if (it.kind === "area") {
-      const a = space?.regions.find((g) => g.name === name);
-      return run(() => api.setArea(name, { surface: a?.surface ?? "floor", centre: r3, size: a?.size ?? [1, 1], label: it.label }));
-    }
-    const body: Record<string, unknown> = { at: r3 };
-    if (it.kind === "screen" && normal) body.plane = { normal, up: [0, 0, 1], ...(it.size ? { size: it.size } : {}) };
-    return run(() => api.place(name, body));
-  };
-
-  const roomXY = (e: { clientX: number; clientY: number }): [number, number] | null => {
-    const el = svg.current;
-    if (!el || !fr) return null;
-    const rect = el.getBoundingClientRect();
-    const k = fr.w / rect.width;
-    return [(e.clientX - rect.left) * k, (e.clientY - rect.top) * k];
-  };
-
-  const onItemDown = (key: string, part: "plan" | "side", e: ReactPointerEvent<SVGElement>) => {
-    e.stopPropagation();
-    setSel(key);
-    const it = placed.find((p) => p.key === key);
-    if (!it) return;
-    svg.current?.setPointerCapture(e.pointerId);
-    setDrag({ key, part, at: it.at, normal: it.normal ?? undefined });
-  };
-
-  const onMove = (e: ReactPointerEvent<SVGSVGElement>) => {
-    if (!drag || !fr || !size) return;
-    const p = roomXY(e);
-    if (!p) return;
-    const it = placed.find((x) => x.key === drag.key);
-    if (!it) return;
-    if (drag.part === "side") {
-      const z = Math.min(size[2], Math.max(0, fromSide(fr, p[1] - (fr.h + GAP))));
-      setDrag({ ...drag, at: [drag.at[0], drag.at[1], Math.round(z * 100) / 100] });
-      return;
-    }
-    let [x, y] = clampToRoom(size, ...fromPlan(fr, p[0], p[1]));
-    let normal = drag.normal;
-    if (it.kind === "screen") {
-      const s = snapToWall(size, x, y);
-      x = s.x;
-      y = s.y;
-      normal = s.normal;
-    }
-    setDrag({ ...drag, at: [x, y, drag.at[2]], normal });
-  };
-
-  const onUp = () => {
-    if (!drag) return;
-    const it = placed.find((x) => x.key === drag.key);
-    const moved = it && (Math.abs(it.at[0] - drag.at[0]) > 0.005 || Math.abs(it.at[1] - drag.at[1]) > 0.005 || Math.abs(it.at[2] - drag.at[2]) > 0.005);
-    if (it && moved) void commit(it, drag.at, drag.normal).finally(() => setDrag(null));
-    else setDrag(null);
-  };
-
-  /** A thing not on the map yet goes in the middle (a screen on the front wall) to be dragged where it is. */
-  const putOnMap = (t: Placeable) => {
-    if (!size || !space) return;
-    setSel(`t:${t.id}`);
-    if (t.kind === "screen") {
-      const front = snapToWall(size, ...frontMiddle(size, space.front));
-      void run(() => api.place(t.id, { at: [front.x, front.y, size[2] / 2], plane: { normal: front.normal, up: [0, 0, 1] } }));
-      return;
-    }
-    const body: Record<string, unknown> = { at: [size[0] / 2, size[1] / 2, t.kind === "mover" ? size[2] : size[2] / 2] };
-    if (t.kind === "mover") body.mount = "ceiling";
-    void run(() => api.place(t.id, body));
-  };
-
-  const addPlace = (label: string) => {
-    if (!size || !space) return;
-    const name = placeId(label);
-    if (!name) return;
-    setSel(`p:${name}`);
-    if (space.points.some((p) => p.name === name) || space.regions.some((a) => a.name === name)) return;
-    void run(() => api.setPlace(name, { at: [size[0] / 2, size[1] / 2, 0], label: label.trim() }));
-  };
-
-  if (!space) {
-    return sp.error ? (
-      <Notice tone="warn" className="text-base">
-        {sp.error}
-      </Notice>
-    ) : (
-      <p className="flex items-center gap-2 py-3 text-base text-muted-foreground">
-        <Spinner /> Reading the room…
-      </p>
-    );
-  }
-
-  if (!size || editRoom) {
-    return (
-      <div className="space-y-3">
-        {space.error && !size && (
-          <Notice tone="warn" className="text-[15px]">
-            {space.error}
-          </Notice>
-        )}
-        <RoomForm
-          space={space}
-          onCancel={size ? () => setEditRoom(false) : undefined}
-          onSave={async (body) => {
-            await run(
-              () => api.setRoom(body),
-              (ans) => sp.set(parseSpace(ans)),
-            );
-            setEditRoom(false);
-          }}
-        />
-        {note && <Notice tone="bad" className="text-[15px]">{note}</Notice>}
-      </div>
-    );
-  }
-
-  const flow = live?.flow ?? null;
-  const atLabel = flow?.at ? space.targets.find((t) => t.name === flow.at)?.label ?? nameWords(flow.at) : null;
-  return (
-    <div className="space-y-3" data-testid="room-map">
-      <div className="flex flex-wrap items-center gap-x-2 text-[15px] text-muted-foreground">
-        <span>
-          {fmt(size[0])} × {fmt(size[1])} m, {fmt(size[2])} m high · people face {space.front}
-        </span>
-        <Button variant="ghost" className="h-9 rounded-xl px-2 text-[15px] text-teal-800" onClick={() => setEditRoom(true)}>
-          Change
-        </Button>
-        {busy && <Spinner />}
-      </div>
-
-      <div ref={box} className="rounded-2xl border border-stone-200 bg-stone-50/60 p-1">
-        {fr && <RoomDrawing fr={fr} items={items} live={live} selected={sel} svgRef={svg} onItemDown={onItemDown} onPointerMove={onMove} onPointerUp={onUp} />}
-      </div>
-      <p className="text-[15px] font-medium" data-testid="flow-words">
-        {flowWords(flow?.dir, atLabel)}
-      </p>
-
-      {note && <Notice tone="bad" className="text-[15px]">{note}</Notice>}
-
-      {selected && (
-        <SelectedBar
-          key={selected.key}
-          item={selected}
-          space={space}
-          mount={selected.key.startsWith("t:") ? space.appliances[selected.key.slice(2)]?.mount ?? null : null}
-          onClose={() => setSel(null)}
-          onHeight={(z) => void commit(selected, [selected.at[0], selected.at[1], z], selected.normal)}
-          onMount={(m) => void run(() => api.place(selected.key.slice(2), { mount: m }))}
-          onPicture={(wh) => void run(() => api.place(selected.key.slice(2), { plane: { normal: selected.normal ?? [0, -1, 0], up: [0, 0, 1], size: wh } }))}
-          onAreaSize={(wd) => {
-            const a = space.regions.find((g) => g.name === selected.key.slice(2));
-            if (a) void run(() => api.setArea(a.name, { surface: a.surface, centre: a.centre, size: wd, label: a.label }));
-          }}
-          onMakeArea={(wd) => {
-            const name = selected.key.slice(2);
-            void run(async () => {
-              await api.setArea(name, { surface: "floor", centre: [selected.at[0], selected.at[1], 0], size: wd, label: selected.label });
-              await api.removePlace(name);
-            });
-            setSel(`a:${name}`);
-          }}
-          onRemove={() => {
-            const name = selected.key.slice(2);
-            setSel(null);
-            if (selected.kind === "place") void run(() => api.removePlace(name));
-            else if (selected.kind === "area") void run(() => api.removeArea(name));
-            else void run(() => api.unplace(name));
-          }}
-        />
-      )}
-      {unplacedSel && (
-        <div className="rounded-2xl border border-stone-200 bg-white p-3 text-[15px]">
-          <p className="font-medium">{unplacedSel.label} isn't on the map yet.</p>
-          <Button className={cn(TAP_BUTTON_CLASS, "mt-2")} onClick={() => putOnMap(unplacedSel)}>
-            <MapPin aria-hidden /> Put it on the map
-          </Button>
-        </div>
-      )}
-
-      {unplaced.length > 0 && (
-        <section className="space-y-1.5">
-          <h3 className="text-[15px] font-semibold">Not on the map yet</h3>
-          <p className="text-sm text-muted-foreground">Tap one: it goes in the middle (a screen on the front wall), then drag it where it is.</p>
-          <div className="flex flex-wrap gap-2">
-            {unplaced.map((t) => (
-              <button key={t.id} type="button" className={cn(CHIP, CHIP_OFF)} onClick={() => putOnMap(t)}>
-                <Plus className="h-4 w-4" aria-hidden /> {t.label}
-              </button>
-            ))}
-          </div>
-        </section>
-      )}
-
-      <AddPlace onAdd={addPlace} />
-
-      {space.problems.length > 0 && (
-        <ul className="list-disc space-y-0.5 pl-5 text-sm text-muted-foreground">
-          {space.problems.map((p) => (
-            <li key={p}>{p}</li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
-}
-
 /** The middle of the wall people face (x, y). */
-function frontMiddle(size: Vec3, front: Front): [number, number] {
+export function frontMiddle(size: Vec3, front: Front): [number, number] {
   if (front === "north") return [size[0] / 2, size[1]];
   if (front === "south") return [size[0] / 2, 0];
   if (front === "east") return [size[0], size[1] / 2];
   return [0, size[1] / 2];
 }
 
-function AddPlace({ onAdd }: { onAdd: (label: string) => void }) {
+export function AddPlace({ onAdd }: { onAdd: (label: string) => void }) {
   const [typing, setTyping] = useState(false);
   const [text, setText] = useState("");
   return (
@@ -697,124 +444,7 @@ function AddPlace({ onAdd }: { onAdd: (label: string) => void }) {
   );
 }
 
-function Stepper({ label, value, onChange, step, min, max }: { label: string; value: number; onChange: (v: number) => void; step: number; min: number; max: number }) {
-  const set = (v: number) => onChange(Math.round(Math.min(max, Math.max(min, v)) * 100) / 100);
-  return (
-    <div className="flex items-center gap-2 text-[15px]">
-      <span className="min-w-0 flex-1">
-        {label} <span className="font-medium tabular-nums">{fmt(value)} m</span>
-      </span>
-      <Button variant="outline" size="icon" className="h-11 w-11 rounded-xl bg-white" aria-label={`${label} lower`} onClick={() => set(value - step)}>
-        <Minus aria-hidden />
-      </Button>
-      <Button variant="outline" size="icon" className="h-11 w-11 rounded-xl bg-white" aria-label={`${label} higher`} onClick={() => set(value + step)}>
-        <Plus aria-hidden />
-      </Button>
-    </div>
-  );
-}
-
-function TwoSizes({ labels, value, onSave, action }: { labels: [string, string]; value: [number, number] | null; onSave: (wh: [number, number]) => void; action: string }) {
-  const [a, setA] = useState(value ? fmt(value[0]) : "");
-  const [b, setB] = useState(value ? fmt(value[1]) : "");
-  const wa = metres(a);
-  const wb = metres(b);
-  return (
-    <div className="flex flex-wrap items-end gap-2">
-      {[
-        [labels[0], a, setA],
-        [labels[1], b, setB],
-      ].map(([l, v, set]) => (
-        <label key={l as string} className="flex flex-col text-sm text-muted-foreground">
-          {l as string}
-          <Input
-            value={v as string}
-            onChange={(e) => (set as (s: string) => void)(e.target.value)}
-            inputMode="decimal"
-            className="h-11 w-24 rounded-xl bg-white text-base"
-            aria-label={`${l as string} in metres`}
-          />
-        </label>
-      ))}
-      <Button variant="outline" className="h-11 rounded-xl bg-white" disabled={wa === null || wb === null} onClick={() => wa !== null && wb !== null && onSave([wa, wb])}>
-        {action}
-      </Button>
-    </div>
-  );
-}
-
-function SelectedBar({
-  item,
-  space,
-  mount,
-  onClose,
-  onHeight,
-  onMount,
-  onPicture,
-  onAreaSize,
-  onMakeArea,
-  onRemove,
-}: {
-  item: DrawItem;
-  space: RoomSpace;
-  mount: string | null;
-  onClose: () => void;
-  onHeight: (z: number) => void;
-  onMount: (m: string) => void;
-  onPicture: (wh: [number, number]) => void;
-  onAreaSize: (wd: [number, number]) => void;
-  onMakeArea: (wd: [number, number]) => void;
-  onRemove: () => void;
-}) {
-  const Z = space.size?.[2] ?? 3;
-  const kindWords = { screen: "Screen", mover: "Moving light", lamp: "Light", place: "Place", area: "Area" }[item.kind];
-  return (
-    <div className="sticky bottom-2 z-10 space-y-3 rounded-2xl border border-stone-200 bg-white p-3 shadow-lg" data-testid="map-selected">
-      <div className="flex items-start gap-2">
-        <div className="min-w-0 flex-1">
-          <p className="text-[17px] font-semibold leading-snug">{item.label}</p>
-          <p className="text-sm text-muted-foreground">{kindWords} · drag it on the map</p>
-        </div>
-        <Button variant="ghost" size="icon" className="h-10 w-10 rounded-full" aria-label="Done with this one" onClick={onClose}>
-          <X aria-hidden />
-        </Button>
-      </div>
-      {item.kind !== "area" && <Stepper label="Height" value={item.at[2]} onChange={onHeight} step={HEIGHT_STEP_M} min={0} max={Z} />}
-      {item.kind === "mover" && (
-        <div role="radiogroup" aria-label="How it hangs" className="flex flex-wrap gap-2">
-          {MOUNTS.map(([m, words]) => (
-            <button key={m} type="button" role="radio" aria-checked={mount === m} className={cn(CHIP, mount === m ? CHIP_ON : CHIP_OFF)} onClick={() => onMount(m)}>
-              {words}
-            </button>
-          ))}
-        </div>
-      )}
-      {item.kind === "screen" && (
-        <div className="space-y-1">
-          <p className="text-[15px]">Picture size (metres)</p>
-          <TwoSizes labels={["Width", "Height"]} value={item.size ?? null} onSave={onPicture} action="Keep" />
-        </div>
-      )}
-      {item.kind === "area" && (
-        <div className="space-y-1">
-          <p className="text-[15px]">Its size (metres)</p>
-          <TwoSizes labels={["Across", "Deep"]} value={item.size ?? null} onSave={onAreaSize} action="Keep" />
-        </div>
-      )}
-      {item.kind === "place" && (
-        <details className="text-[15px]">
-          <summary className="min-h-11 cursor-pointer py-2 text-teal-800">Make it an area (a size on the floor)</summary>
-          <TwoSizes labels={["Across", "Deep"]} value={null} onSave={onMakeArea} action="Make it an area" />
-        </details>
-      )}
-      <Button variant="ghost" className="h-11 rounded-xl px-3 text-[15px] text-rose-700 hover:bg-rose-50" onClick={onRemove}>
-        {item.kind === "place" ? "Remove this place" : item.kind === "area" ? "Remove this area" : "Take it off the map"}
-      </Button>
-    </div>
-  );
-}
-
-function RoomForm({
+export function RoomForm({
   space,
   onSave,
   onCancel,

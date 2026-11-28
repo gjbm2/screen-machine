@@ -85,6 +85,7 @@ import collections
 import datetime
 import inspect
 import json
+import copy
 import logging
 import math
 import os
@@ -96,6 +97,8 @@ from typing import Any, Awaitable, Callable, Mapping, Optional
 
 from aiohttp import WSMsgType, web
 
+from . import preview as previewmod
+from . import ad_pairs as pairsmod
 from . import contract
 from .contract import (CARD_HZ, CLOCK_ACTIONS, DIRECTOR_ACTIONS, EV_AUTO, EV_CARD, EV_DESCRIBE, EV_PONG, EV_WELCOME,
                        EVENTS_PATH, PALETTE_ART, PALETTE_AUTO, STEP_DIRS, TEST_SOURCES)
@@ -191,7 +194,7 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", "/api/v1/rig"), ("GET", "/api/v1/rig/frame"), ("GET", "/api/v1/rig/dmx"),
     ("POST", "/api/v1/rig/nodes/{id}/record-failsafe"), ("GET", "/api/v1/rig/nodes/find"),
     ("GET", "/api/v1/rig/types"), ("POST", "/api/v1/rig/fixtures"), ("PUT", "/api/v1/rig/fixtures/{id}"),
-    ("DELETE", "/api/v1/rig/fixtures/{id}"), ("POST", "/api/v1/rig/fixtures/{id}/identify"),
+    ("DELETE", "/api/v1/rig/fixtures/{id}"), ("POST", "/api/v1/rig/fixtures/{id}/identify"), ("POST", "/api/v1/rig/fixtures/{id}/probe"),
     ("GET", "/api/v1/rig/follow"), ("POST", "/api/v1/rig/follow"),
     ("GET", "/api/v1/brightness"), ("PUT", "/api/v1/brightness"),
     ("POST", "/api/v1/rig/fixtures/{id}/jog"), ("POST", "/api/v1/rig/fixtures/{id}/setup"),
@@ -202,6 +205,9 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("PUT", "/api/v1/rig/space/appliances/{id}"), ("DELETE", "/api/v1/rig/space/appliances/{id}"),
     ("PUT", "/api/v1/rig/space/points/{name}"), ("DELETE", "/api/v1/rig/space/points/{name}"),
     ("PUT", "/api/v1/rig/space/regions/{name}"), ("DELETE", "/api/v1/rig/space/regions/{name}"),
+    ("PUT", "/api/v1/rig/space/keep_out/{name}"), ("DELETE", "/api/v1/rig/space/keep_out/{name}"),
+    ("PUT", "/api/v1/rig/space/bars/{name}"), ("DELETE", "/api/v1/rig/space/bars/{name}"),
+    ("GET", "/api/v1/rig/preview/status"), ("GET", "/api/v1/rig/preview/dmx"),
     ("GET", "/api/v1/rig/live"),
     ("GET", "/api/v1/autopilot"), ("PUT", "/api/v1/autopilot"), ("POST", "/api/v1/autopilot/undo"),
     ("POST", "/api/v1/autopilot/resume"), ("GET", "/api/v1/autopilot/rules"), ("POST", "/api/v1/autopilot/check"),
@@ -210,7 +216,7 @@ ROUTES: tuple[tuple[str, str], ...] = (
     ("GET", "/api/v1/piano/recordings"), ("POST", "/api/v1/piano/record"),
     ("GET", "/api/v1/piano/recordings/{id}.mid"), ("PATCH", "/api/v1/piano/recordings/{id}"),
     ("DELETE", "/api/v1/piano/recordings/{id}"), ("GET", PIANO_AUDIO_PATH), ("GET", PIANO_STREAM_PATH),
-    ("GET", "/api/v1/look"), ("GET", "/api/v1/log"),
+    ("GET", "/api/v1/look"), ("GET", "/api/v1/log"), ("GET", "/api/v1/lights/now"),
 )
 
 
@@ -636,8 +642,8 @@ JOG_UI: dict[str, Any] = {"send_hz": 20.0, "idle_s": 60.0, "nudge_deg": {"fine":
                           "drag_deg_per_px": {"fine": 0.1, "coarse": 0.5}}
 #: POST .../setup's keys. PASS_KEYS go to fixtures.SetupStore.patch as sent (it validates them).
 SETUP_BODY_KEYS: tuple[str, ...] = ("home", "beam", "limit", "limits", "slots", "max_speed", "range", "jog_flip",
-                                    "strobe_hz_max")
-PASS_KEYS: tuple[str, ...] = ("slots", "max_speed", "range", "jog_flip", "strobe_hz_max")
+                                    "strobe_hz_max", "lean_deg", "turn_deg", "label")
+PASS_KEYS: tuple[str, ...] = ("slots", "max_speed", "range", "jog_flip", "strobe_hz_max", "lean_deg", "turn_deg", "label")
 BEAM_ATTRS: tuple[str, ...] = ("zoom", "focus", "iris", "frost")     # setup ``beam: "here"`` keeps these
 AXES: tuple[str, ...] = ("pan", "tilt")
 LIMIT_ENDS: tuple[str, ...] = ("here", "low", "high")   # here: the end nearer the held value (docs/LIGHTS.md §8.1)
@@ -647,7 +653,7 @@ AXIS_WORDS: dict[str, str] = {"pan": "turn", "tilt": "tilt"}
 UNKNOWN_RANGE_DEG: dict[str, float] = {"pan": 540.0, "tilt": 270.0}
 FRONTS: tuple[str, ...] = ("north", "east", "south", "west")
 ROOM_KEYS: tuple[str, ...] = ("size", "front")
-APPLIANCE_KEYS: tuple[str, ...] = ("at", "mount", "plane")
+APPLIANCE_KEYS: tuple[str, ...] = ("at", "mount", "plane", "kind", "label", "connect", "aim", "modes")
 POINT_KEYS: tuple[str, ...] = ("at", "label", "device")
 REGION_KEYS: tuple[str, ...] = ("surface", "centre", "size", "label")
 NO_SPACE = "The Room map isn't available yet (show_service needs updating)."
@@ -659,6 +665,19 @@ _PLACE_ID = re.compile(r"^[a-z0-9][a-z0-9_.-]{0,63}$")      # fixtures.ID_RE: fi
 _SLUG = re.compile(r"[^a-z0-9]+")
 _ARTICLE = re.compile(r"^(the|a|an)\s+")
 
+
+
+def _standard_outputs(rows: Any) -> Any:
+    """The piano's outputs in the app's standard shape and words, each with its latency (smsound.outputs.standard;
+    docs/SOUND.md): the same rows every sound picker shows. Anything wrong: as they were."""
+    if not isinstance(rows, list):
+        return rows
+    try:
+        from smsound import outputs as so
+        return so.standard(rows)
+    except Exception:  # noqa: BLE001
+        log.debug("standard outputs failed", exc_info=True)
+        return rows
 
 class Refusal(ValueError):
     """A moving-light route's own refusal, shaped like fixtures.Refused (``code``, ``detail``, ``extra``)."""
@@ -798,7 +817,8 @@ def neutral_space(why: Optional[str]) -> dict:
     """GET /api/v1/rig/space with no room space: contract.SpaceView's shape, empty (the frame's own default front)."""
     return {"revision": "", "error": why, "problems": [],
             "room": {"size": None, "front": "north", "centre": None, "right": [1.0, 0.0, 0.0]},
-            "surfaces": {}, "points": {}, "regions": {}, "appliances": {}, "extent": None, "targets": []}
+            "surfaces": {}, "points": {}, "regions": {}, "keep_out": {}, "bars": {}, "layouts": {}, "appliances": {}, "extent": None,
+            "targets": [], "light_groups": {}, "lasers": {}, "lean_rule_deg": None}
 
 
 def _surface_centre(s: Mapping[str, Any]) -> Optional[list[float]]:
@@ -1147,6 +1167,7 @@ class Api:
             ("PATCH", "/api/v1/piano/recordings/{id}", self._rec_rename),
             ("DELETE", "/api/v1/piano/recordings/{id}", self._rec_delete),
             ("GET", "/api/v1/look", self._look),
+            ("GET", "/api/v1/lights/now", self._lights_now),
             ("GET", "/api/v1/log", self._log),
             ("GET", "/api/v1/rig", self._rig),
             ("GET", "/api/v1/rig/frame", self._rig_frame),
@@ -1154,10 +1175,13 @@ class Api:
             ("POST", "/api/v1/rig/nodes/{id}/record-failsafe", self._record_failsafe),
             ("GET", "/api/v1/rig/nodes/find", self._rig_nodes_find),
             ("GET", "/api/v1/rig/types", self._rig_types),
+            ("GET", "/api/v1/rig/library", self._rig_library),
             ("POST", "/api/v1/rig/fixtures", self._rig_add),
             ("PUT", "/api/v1/rig/fixtures/{id}", self._rig_update),
             ("DELETE", "/api/v1/rig/fixtures/{id}", self._rig_remove),
             ("POST", "/api/v1/rig/fixtures/{id}/identify", self._rig_identify),
+            ("POST", "/api/v1/rig/fixtures/{id}/probe", self._rig_probe),
+            ("GET", "/api/v1/clock", self._mono_clock),
             ("GET", "/api/v1/rig/follow", self._rig_follow_get),
             ("POST", "/api/v1/rig/follow", self._rig_follow_post),
             ("GET", "/api/v1/brightness", self._brightness_get),
@@ -1177,9 +1201,17 @@ class Api:
             ("DELETE", "/api/v1/rig/space/points/{name}", self._space_point_delete),
             ("PUT", "/api/v1/rig/space/regions/{name}", self._space_region_put),
             ("DELETE", "/api/v1/rig/space/regions/{name}", self._space_region_delete),
+            ("PUT", "/api/v1/rig/space/keep_out/{name}", self._space_keep_put),
+            ("DELETE", "/api/v1/rig/space/keep_out/{name}", self._space_keep_delete),
+            ("PUT", "/api/v1/rig/space/bars/{name}", self._space_bar_put),
+            ("DELETE", "/api/v1/rig/space/bars/{name}", self._space_bar_delete),
+            # the Light setup's 3D view: the rig as it WOULD look (preview.py), never sent to a light
+            ("GET", "/api/v1/rig/preview/status", previewmod.status),
+            ("GET", "/api/v1/rig/preview/dmx", previewmod.dmx),
             ("GET", "/api/v1/rig/live", self._rig_live),
             ("POST", "/api/v1/hue/stream", self._hue_stream),
             ("GET", "/api/v1/hue/status", self._hue_status),
+            *pairsmod.ROUTES,                             # the a.d. eval's blind pairs (ad_pairs.py; /lights/pairs)
         ]
         for method, path, fn in table:
             r.add_route(method, path, self._guard(fn))
@@ -1813,6 +1845,37 @@ class Api:
             return bad
         return await self._rig_write(request, brain, "add_fixture", body)
 
+    async def _rig_library(self, request: web.Request, brain: Any) -> web.Response:
+        """GET /api/v1/rig/library: everything the room editor can put in the room (owner, 27 Nov: "create new objects
+        easily from this view (of any class ... anything in our library)"): {items: [{id, label, group, what}]}:
+        what "bar" (a whole light bar of a layout: id is the layout), "light" (a light type: id is the type) or
+        "device" (a room device: space.ROOM_DEVICE_KINDS)."""
+        from . import space as spacemod
+        rig = _components(brain).get(RIG)
+        fn = getattr(rig, "types_view", None) if rig is not None else None
+        try:
+            if callable(fn):
+                types = fn()
+            else:
+                from . import fixtures as fx
+                types = fx.type_rows(None)
+        except Exception:                                # noqa: BLE001 - the room devices still list
+            types = []
+        items: list[dict] = []
+        try:
+            lays = (spacemod.shared().view() or {}).get("layouts") or {}
+        except Exception:                                # noqa: BLE001
+            lays = {}
+        for lay in sorted(lays):
+            items.append({"id": lay, "label": spacemod.humanise(lay), "group": "Light bars", "what": "bar"})
+        for row in types if isinstance(types, list) else []:
+            if isinstance(row, dict) and isinstance(row.get("id"), str):
+                items.append({"id": row["id"], "label": row.get("label") or row["id"], "group": "Lights", "what": "light",
+                              "footprint": row.get("footprint")})
+        for kind, words in spacemod.ROOM_DEVICE_KINDS.items():
+            items.append({"id": kind, "label": words, "group": "Room", "what": "device"})
+        return _json({"items": items})
+
     async def _rig_update(self, request: web.Request, brain: Any) -> web.Response:
         body, bad = await self._body(request)
         if bad is not None:
@@ -1839,6 +1902,22 @@ class Api:
             return _json(await self._call(brain, rig.identify, fid, seconds))
         except ValueError as e:
             return self._rig_refused(e)
+
+    async def _rig_probe(self, request: web.Request, brain: Any) -> web.Response:
+        body, bad = await self._body(request)
+        if bad is not None:
+            return bad
+        rig = _components(brain).get(RIG)
+        if rig is None or not callable(getattr(rig, "probe", None)):
+            return _json({"ok": False, "why": NO_RIG})
+        try:
+            return _json(await self._call(brain, rig.probe, request.match_info["id"], body))
+        except ValueError as e:
+            return self._rig_refused(e)
+
+    async def _mono_clock(self, request: web.Request, brain: Any) -> web.Response:
+        """This process's monotonic clock (the look engine's and the probes'), for a page that times against it."""
+        return _json({"mono_s": time.monotonic()})
 
     async def _rig_follow_get(self, request: web.Request, brain: Any) -> web.Response:
         rig = _components(brain).get(RIG)
@@ -2079,7 +2158,8 @@ class Api:
 
     async def _rig_setup(self, request: web.Request, brain: Any) -> web.Response:
         """POST .../setup: any of ``home``/``beam`` ("here" | a value | null), ``limit: {axis, end}``, ``limits``
-        (null: none), ``slots``, ``max_speed``, ``range``, ``jog_flip``, ``strobe_hz_max`` -> ``{setup, problems}``.
+        (null: none), ``slots``, ``max_speed``, ``range``, ``jog_flip``, ``strobe_hz_max``, ``lean_deg`` (a laser's tilt) ->
+        ``{setup, problems}``.
         "here" and ``limit`` read the light's hold: 409 ``not_held`` ("Open Move it first.") without one."""
         body, bad = await self._body(request)
         if bad is not None:
@@ -2335,10 +2415,56 @@ class Api:
             rows = []
         return {r["id"]: r for r in rows if isinstance(r, dict) and isinstance(r.get("id"), str)}
 
-    def _space_out(self, view: Any, rig: Any) -> dict:
+    def _space_out(self, view: Any, rig: Any, brain: Any = None) -> dict:
         v = dict(_d(view))
-        v["targets"] = space_targets(v, self._rows_by_id(rig))
+        rows = self._rows_by_id(rig)
+        v["targets"] = space_targets(v, rows)
+        # for the page's keep-out editor: the light groups a region can name, and each fixed laser's tilt checked
+        # against the regions (space.laser_checks)
+        groups = self._light_groups(brain)
+        v["light_groups"] = {g: {"label": e.get("label") or g, "members": list(e.get("members") or ())}
+                             for g, e in groups.items()}
+        of = {m: g for g, e in groups.items() for m in e.get("members") or ()}
+        try:
+            from . import space as spacemod
+            apps = v.get("appliances") or {}
+            bar_of = {pt["id"]: b for b in (v.get("bars") or {}).values() for pt in b["parts"].values()}
+            lasers = [{"id": fid, "at": (apps.get(fid) or {}).get("at"), "spread_deg": r.get("spread_deg"),
+                       "lean_deg": (r.get("setup") or {}).get("lean_deg"),
+                       "turn_deg": (r.get("setup") or {}).get("turn_deg"), "group": of.get(fid),
+                       "front": (bar_of.get(fid) or {}).get("front")}       # its bar's front, when it is on one
+                      for fid, r in rows.items() if isinstance(r, dict) and r.get("spread_deg")]
+            v["lasers"] = spacemod.laser_checks(v, lasers)
+            v["lean_rule_deg"] = spacemod.LEAN_RULE_DEG
+            # each bar part as the page edits it: its name, and how it points now (its own tilt and turn from its
+            # setup, else the layout's; a laser with neither, the rule's)
+            bars = copy.deepcopy(v.get("bars") or {})
+            for b in bars.values():
+                for pt in b["parts"].values():
+                    r = rows.get(pt["id"]) if isinstance(rows.get(pt["id"]), dict) else {}
+                    su = r.get("setup") or {}
+                    lean = su.get("lean_deg", pt.get("lean_deg"))
+                    if lean is None and r.get("spread_deg"):
+                        lean = spacemod.LEAN_RULE_DEG - float(r["spread_deg"]) / 2.0
+                    pt["label"] = r.get("label") or pt["id"]
+                    pt["aim"] = None if lean is None or pt.get("head") else {
+                        "lean_deg": float(lean), "turn_deg": float(su.get("turn_deg", pt.get("turn_deg") or 0.0)),
+                        "own": su.get("lean_deg") is not None or su.get("turn_deg") is not None}
+            v["bars"] = bars
+        except Exception:                                 # the page degrades: no checks shown
+            log.debug("space: laser checks failed", exc_info=True)
+            v["lasers"], v["lean_rule_deg"] = {}, None
         return v
+
+    @staticmethod
+    def _light_groups(brain: Any) -> dict:
+        """show.yaml lights.groups with their members, as the director has them ({} without one)."""
+        try:
+            d = _components(brain).get("director") if brain is not None else None
+        except Exception:                                 # noqa: BLE001
+            d = None
+        g = getattr(d, "_groups", None) if d is not None else None
+        return dict(g) if isinstance(g, dict) else {}
 
     async def _space_write(self, brain: Any, fn: Callable[[Any], Any]) -> web.Response:
         """A Room map write on show-brain: ``fn(store)``'s answer (the store writes space.added.yaml and polls), then
@@ -2368,7 +2494,7 @@ class Api:
         poll = getattr(st, "poll", None)
         if callable(poll):
             await self._call(brain, poll)
-        return _json(self._space_out(st.view(), rig))
+        return _json(self._space_out(st.view(), rig, brain))
 
     async def _space_room(self, request: web.Request, brain: Any) -> web.Response:
         """PUT /api/v1/rig/space/room ``{size?: [x, y, z] | null, front?: n | e | s | w | north ...}`` -> SpaceView (+
@@ -2392,12 +2518,14 @@ class Api:
         def write(st: Any) -> dict:
             # space.Store.set_room: None leaves that as it is, a size of [] clears it
             st.set_room((list(size) if size else []) if "size" in body else None, front)
-            return self._space_out(st.view(), rig)
+            return self._space_out(st.view(), rig, brain)
 
         return await self._space_write(brain, write)
 
     async def _space_appliance_put(self, request: web.Request, brain: Any) -> web.Response:
-        """PUT /api/v1/rig/space/appliances/{id} ``{at?, mount?, plane?}`` (null clears one) -> the appliance."""
+        """PUT /api/v1/rig/space/appliances/{id} ``{at?, mount?, plane?, kind?, label?, connect?}`` (null clears one) ->
+        the appliance. With a ``kind`` (a light type or a room device, GET .../rig/library) and no light of that id it
+        is a PLANNED thing (space.ROOM_DEVICE_KINDS)."""
         body, bad = await self._body(request)
         if bad is not None:
             return bad
@@ -2455,6 +2583,51 @@ class Api:
         name = request.match_info["name"]
         return await self._space_write(brain, lambda st: st.set_region(name, body["surface"], body["centre"],
                                                                        body["size"], body.get("label")))
+
+    async def _space_keep_put(self, request: web.Request, brain: Any) -> web.Response:
+        """PUT /api/v1/rig/space/keep_out/{name} ``{centre: [x, y, z], size: [x, y, z], groups?: [light group, ...],
+        label?}`` -> the keep-out region (owner, 27 Nov: "configurable 'keep out' regions in the room")."""
+        body, bad = await self._body(request)
+        if bad is not None:
+            return bad
+        keys = ("centre", "size", "groups", "label")
+        if not isinstance(body, dict) or "centre" not in body or "size" not in body or any(k not in keys for k in body):
+            return _err(400, "bad_request", 'A keep-out region is {"centre": [x, y, z], "size": [x, y, z], '
+                        '"groups": ["lasers"]}.', choices=list(keys))
+        name = request.match_info["name"]
+        return await self._space_write(brain, lambda st: st.set_keep_out(name, body["centre"], body["size"],
+                                                                         body.get("groups"), body.get("label")))
+
+    async def _space_bar_put(self, request: web.Request, brain: Any) -> web.Response:
+        """PUT /api/v1/rig/space/bars/{name} ``{at?: [x, y, z], facing_deg?, layout?, label?}`` -> the bar: where a
+        light bar's middle is, its height (at[2]) and which way it faces; its parts follow. A key left out keeps."""
+        body, bad = await self._body(request)
+        if bad is not None:
+            return bad
+        keys = ("at", "facing_deg", "layout", "label")
+        if not isinstance(body, dict) or not body or any(k not in keys for k in body):
+            return _err(400, "bad_request", 'A bar is {"at": [x, y, z], "facing_deg": 90}.', choices=list(keys))
+        name = request.match_info["name"]
+        return await self._space_write(brain, lambda st: st.set_bar(name, body.get("at"), body.get("facing_deg"),
+                                                                    body.get("layout"), body.get("label")))
+
+    async def _space_bar_delete(self, request: web.Request, brain: Any) -> web.Response:
+        name = request.match_info["name"]
+
+        def write(store: Any) -> dict:
+            store.remove_bar(name)
+            return {"removed": name}
+
+        return await self._space_write(brain, write)
+
+    async def _space_keep_delete(self, request: web.Request, brain: Any) -> web.Response:
+        name = request.match_info["name"]
+
+        def write(store: Any) -> dict:
+            store.remove_keep_out(name)
+            return {"removed": name}
+
+        return await self._space_write(brain, write)
 
     async def _space_region_delete(self, request: web.Request, brain: Any) -> web.Response:
         name = request.match_info["name"]
@@ -2713,7 +2886,9 @@ class Api:
         if not callable(fn):
             return dict(NO_TEST_CHOICES)
         got = _d(await self._call(brain, fn))
-        return {k: got.get(k, v) for k, v in NO_TEST_CHOICES.items()}
+        out = {k: got.get(k, v) for k, v in NO_TEST_CHOICES.items()}
+        out["outputs"] = _standard_outputs(out.get("outputs"))
+        return out
 
     async def _test_post(self, request: web.Request, brain: Any) -> web.Response:
         body, bad = await self._body(request)
@@ -2947,6 +3122,17 @@ class Api:
         direction, look = snap.get("direction"), snap.get("look")
         return _json({"direction": direction if isinstance(direction, dict) else None,
                       "look": look if isinstance(look, dict) else None})
+
+    async def _lights_now(self, request: web.Request, brain: Any) -> web.Response:
+        """GET /api/v1/lights/now: each light group's program now (scene, its label, why, effects, since when) and the
+        next ones when a change is drawn (owner, 28 Nov: the lighting layers' scenes and effects shown as the screens'
+        are, was / now / next). The director snapshot's ``lights`` cut down to that."""
+        lights = _d(_snap_of(_components(brain).get(DIRECTOR)).get("lights"))
+        groups = _d(lights.get("groups"))
+        programs = {g: {**_d(p), "label": _d(groups.get(g)).get("label") or g}
+                    for g, p in _d(lights.get("programs")).items()}
+        return _json({"t_ms": round(time.time() * 1000.0, 1), "programs": programs,
+                      "next": lights.get("next") if isinstance(lights.get("next"), dict) else None})
 
     async def _log(self, request: web.Request, brain: Any) -> web.Response:
         kind = request.query.get("kind", "director")

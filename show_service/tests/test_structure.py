@@ -1460,6 +1460,33 @@ def test_the_music_players_piece_end_is_armed_ends_and_changes_track_with_no_gap
     json.dumps(r.s.snapshot(), allow_nan=False)
 
 
+def test_a_karaoke_skip_ends_the_song_with_a_fade_and_the_new_song_changes_after_its_lead_in():
+    """Owner, 27 Nov: "when I hit 'next' in karaoke, why don't we see the lighting transition?" A skip mid-song is a
+    short end (track_end "skip", at once) and the track change waits for the fade and the new song's lead-in."""
+    r = Rig(lambda t: {"vec": "A"})
+    songs = [(-60.0, 200.0, "karaoke:a:q1"), (23.0, 180.0, "karaoke:b:q2")]   # b starts 3 s after a skip at 20 s
+
+    def now_playing():
+        if r.t < 20.0:
+            start, dur, key = songs[0]
+        else:
+            start, dur, key = songs[1]
+        return {"key": key, "state": "playing", "pos_s": r.t - start, "dur_s": dur, "speed": 1.0}
+    r.ctx.now_playing = now_playing
+    r.run(19.0)
+    assert not r.kinds("track_end") and not r.kinds("track_change")
+    r.run(21.0)
+    te = r.kinds("track_end")
+    assert len(te) == 1 and te[0].get("detail") == "skip" and te[0]["via"] == "player"
+    assert not r.kinds("track_change")                                    # not yet: the fade, then the lead-in
+    r.run(22.5)
+    assert not r.kinds("track_change") and not [e for e in r.kinds("track_end") if e.get("detail") == "sound_back"]
+    r.run(24.0)
+    tc = r.kinds("track_change")
+    assert len(tc) == 1 and tc[0]["at_ms"] / 1000.0 == pytest.approx(23.0, abs=0.3)
+    json.dumps(r.s.snapshot(), allow_nan=False)
+
+
 # -- 29 Oct: silence relative to what plays; the song's own source holds identity and ends; the forecast hint --
 def _quiet_music(t: float) -> dict:
     """The room mic on 28 Oct: Sonos low, music at -62..-64 LUFS over the mic's -70 floor, the dsp gate ~0 (its bottom
@@ -1617,3 +1644,29 @@ def test_an_open_forecast_window_makes_the_ears_keener():
     assert keen.s.snapshot()["forecast_boost"] == 0.8 and len(b) == 1 and b[0]["boost"] == 0.8
     assert abs(b[0]["t_s"] - 30.0) <= 1.0 and b[0]["novelty"] < b[0]["threshold"]   # under the plain threshold
     assert not keen.kinds("track_change")
+
+
+def test_under_a_lyric_plan_a_drop_line_is_armed_only_where_the_plan_has_a_section():
+    """28 Nov (ad-improve): with a karaoke song's lyric plan on, the ear's predicted drop line is armed only where the
+    plan puts a section within a bar of it; elsewhere it is a guess (7 of 9 armed lines in the eval's karaoke replays
+    were mid-section, their tokens refunded, and one cut ahead of Hallelujah's first chorus). The drop itself, when the
+    sound really drops, is still heard."""
+    def plan(r: Rig, secs):
+        return lambda: {"key": "karaoke:k1:q1", "state": "playing", "pos_s": r.t, "dur_s": 200.0, "speed": 1.0,
+                        "title": "Song", "source": "karaoke", "sections": secs}
+    # the riser's line is the 16-bar line at 30 s; the plan's sections begin at 0 and 60: no line is armed
+    r = Rig(riser, clock=lambda t: clock_body(t, bpm=BPM))
+    r.ctx.now_playing = plan(r, [{"pos_s": 0.0, "kind": "verse", "letter": "A"},
+                                 {"pos_s": 60.0, "kind": "chorus", "letter": "B"}])
+    r.run(40.0)
+    assert r.kinds("build")                                                # the build is still heard
+    assert not r.kinds("drop_armed")
+    d = r.kinds("drop")
+    assert len(d) == 1 and d[0]["at_ms"] == pytest.approx(30000.0, abs=1.0)    # ... and so is the drop itself
+    # the plan puts a chorus on the line (within a bar): armed as before
+    r = Rig(riser, clock=lambda t: clock_body(t, bpm=BPM))
+    r.ctx.now_playing = plan(r, [{"pos_s": 0.0, "kind": "verse", "letter": "A"},
+                                 {"pos_s": 30.5, "kind": "chorus", "letter": "B"}])
+    r.run(40.0)
+    arm = r.kinds("drop_armed")
+    assert arm and arm[0]["at_ms"] == pytest.approx(30000.0, abs=1.0) and arm[0]["eta_beats"] is not None

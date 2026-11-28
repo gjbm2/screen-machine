@@ -180,6 +180,7 @@ ARM_MIN_BEATS = 2.0             # S4.7: drop_armed at least 2 beats ahead
 LINE_MOVED_BEATS = 0.25         # an armed line that moves more than this is re-armed
 NO_GRID_BAR_S = 2.0             # GOBO's "never twice within one bar" without a grid: a 4/4 bar at 120 bpm
 MIN_BACKGROUND = 5              # novelty values needed before the median + k x MAD threshold applies
+SKIP_FADE_S = 1.6               # a karaoke skip: the player fades the song out over this (routes/karaoke/store.py FADE_S)
 PLAN_LEAD_S = 8.0               # a lyric-plan section is announced this far ahead (at least; events.min_lead_s): room
                                 # for a move's gesture before the line and a screen transition that lands on it
                                 # (sync_eval, 26 Nov: at 4 s a 3 s transition finished up to 2 s after the line)
@@ -814,6 +815,7 @@ class Structure:
                                                          # {"id", "track_id", "via", "at_s", "back", "sound_s"}
         self._end_profile: Optional[dict] = None         # the song as it ended (contract.TrackProfile)
         self._np_wait: Optional[dict] = None             # a Sonos change waiting for the new song's first sound
+        self._skip_wait: Optional[tuple[float, dict]] = None   # a karaoke skip: (when, the change) after its fade
         self._last_quiet: Optional[tuple[float, float]] = None   # the last silence (from_s, to_s)
         self._heard = False                              # music since the last track_end or track change
         self._trk_e = [0.0, 0]                           # this song's energy while it sounded: (sum, n)
@@ -1219,7 +1221,11 @@ class Structure:
             self._sonos_key = key
         elif key != self._sonos_key:
             self._sonos_key, self._np = key, None
-            self._sonos_flip(now_s, None, None)
+            pos0 = _f(np_.get("pos_s"), None)
+            self._sonos_flip(now_s, None, None, lead_in_s=max(0.0, -pos0) if pos0 is not None else 0.0)
+        if self._skip_wait is not None and now_s >= self._skip_wait[0] - 1e-9:
+            w, self._skip_wait = self._skip_wait[1], None
+            self._sonos_change(now_s, w, now_s)
         self._plays = contract.TRACK_VIA_PLAYER          # its piece: song identity is the player's (29 Oct)
         sp = _f(np_.get("speed"), 1.0) or 1.0
         dur, pos = _f(np_.get("dur_s"), None), _f(np_.get("pos_s"), None)
@@ -1334,13 +1340,17 @@ class Structure:
             return
         self._end_disarm(now_s)
 
-    def _sonos_flip(self, now_s: float, old_artist: Optional[str], artist: Optional[str]) -> None:
+    def _sonos_flip(self, now_s: float, old_artist: Optional[str], artist: Optional[str],
+                    lead_in_s: float = 0.0) -> None:
         """Another Sonos track: the end, when the armed end is within end_slack_s (or its track_end went out), else a
         skip (the arm called off). The track change goes out at once while there is sound, else on the new song's
         first sound (at most first_sound_s)."""
         tr = self.cfg["track"]
         if self._np_wait is not None:                    # the last change still waited: it goes now
             w, self._np_wait = self._np_wait, None
+            self._sonos_change(now_s, w, now_s)
+        if self._skip_wait is not None:                  # a skip's change still waiting: it goes now
+            w, self._skip_wait = self._skip_wait[1], None
             self._sonos_change(now_s, w, now_s)
         a, e = self._end_arm, self._end
         natural = (e is not None and not e["back"]) or (a is not None and a["at_s"] - now_s <= tr["end_slack_s"] + 1e-9)
@@ -1353,7 +1363,18 @@ class Structure:
         e = self._end
         w = {"since_s": now_s, "junction_s": e["at_s"] if natural and e is not None else now_s, "natural": natural,
              "old_artist": old_artist, "artist": artist}
-        if self._silent_since is not None and tr["first_sound_s"] > 0:
+        # a karaoke skip (Next, or another song played mid-song; owner, 27 Nov: "when I hit 'next' in karaoke, why
+        # don't we see the lighting transition?"): a short end, as the player fades the song out (track_end "skip":
+        # the director fades through dark), and the new song's change once that fade is over and the new song starts
+        # (its lead-in), so its look comes in with it
+        if self._np_via == contract.TRACK_VIA_PLAYER and not natural and (e is None or e["back"]):
+            self._track_end(now_s, self._np_via, now_s, detail="skip")
+            self._skip_wait = (now_s + min(tr["dark_max_s"] if "dark_max_s" in tr else 8.0,
+                                           max(SKIP_FADE_S, lead_in_s)), w)
+            return
+        # the karaoke player knows its song starts now: no waiting for the room mic to hear it (27 Nov: a quiet intro
+        # held the new song's look 7 s, until it landed over the first section's and dragged the lights dark)
+        if self._silent_since is not None and tr["first_sound_s"] > 0 and self._np_via != contract.TRACK_VIA_PLAYER:
             self._np_wait = w
             self.ends["waited"] += 1
             return
@@ -1413,21 +1434,21 @@ class Structure:
             return
         self._track_end(now_s, "dsp", self._silent_since if self._silent_since is not None else now_s)
 
-    def _track_end(self, now_s: float, via: str, at_s: float) -> None:
+    def _track_end(self, now_s: float, via: str, at_s: float, detail: Optional[str] = None) -> None:
         self._end = {"id": f"track_end:{self.track_id}", "track_id": self.track_id, "via": via, "at_s": at_s,
-                     "back": False, "sound_s": None}
+                     "back": False, "sound_s": None, "skip": detail == "skip"}
         self._end_profile = self._profile_old()
         self._heard = False
         self.ends[via] += 1
         log.info("structure: track %d ends via %s", self.track_id, via)
         self._emit("track_end", at_s, now_s, facts=self._facts(), ev_id=self._end["id"], via=via,
-                   track_id=self.track_id)
+                   track_id=self.track_id, **({"detail": detail} if detail else {}))
 
     def _end_tick(self, now_s: float) -> None:
         """After a track_end: sound again with no track change (at once via dsp; via sonos after end_slack_s, the
         read's own lag, so a gapless next track's id can still arrive) -> track_end "sound_back"."""
         e = self._end
-        if e is None or e["back"]:
+        if e is None or e["back"] or e.get("skip"):       # a skip: the song fading out is not the sound coming back
             return
         if self._silent_since is not None:
             e["sound_s"] = None
@@ -1634,6 +1655,11 @@ class Structure:
         beats = ahead / grid.beat_s
         lead = self.cfg["events"]["min_lead_s"]
         if beats <= b["arm_beats"] and beats >= ARM_MIN_BEATS and ahead >= lead:
+            if self._plan_on() and not self._plan_has_line(line, grid):
+                return                                   # the lyrics say where sections are (as _predict): a line the
+                                                         # song's own map puts no section at is a guess, not a drop
+                                                         # to cut to ahead of the sound (28 Nov eval: 7 of 9 armed
+                                                         # lines in karaoke were mid-section, their tokens refunded)
             if self.armed is None or abs(self.armed["line"] - line) > LINE_MOVED_BEATS * grid.beat_s:
                 eid = self.armed.get("id") if self.armed is not None else None    # a moved line: the same arm
                 if self.armed is not None:
@@ -1764,7 +1790,7 @@ class Structure:
 
     # -- a karaoke song's lyric plan (owner, 26 Nov: "verse / chorus etc. triggers ... to the a.d.") --------------------
     def _plan_read(self, now_s: float, np_: Any) -> None:
-        """ctx.now_playing's ``sections`` (karaoke_feed: [{pos_s, kind, letter}], pos_s the player position where the
+        """ctx.now_playing's ``sections`` (karaoke_feed: [{pos_s, kind, letter, level, peak}], pos_s the player position where the
         room hears it begin): the plan, its clock from the player's position (exact, as _player's song end).  Any
         other source, no sections, or the player stopped: no plan."""
         secs = np_.get("sections") if isinstance(np_, dict) else None
@@ -1788,12 +1814,27 @@ class Structure:
             pl.update(start=start, done=set())
             self._cancel_pred()
         pl["secs"] = ok
-        pl["paused"] = np_.get("state") != "playing"
+        paused = np_.get("state") != "playing"
+        if paused and not pl["paused"] and self._pred is not None and self._pred.get("lyrics"):
+            # a pause with a lyric section announced: it mustn't start during the pause; it is announced again on
+            # resume (from the player's position then), and nothing that already started is announced twice
+            pl["done"].discard(self._pred.get("plan_i"))
+            self._cancel_pred()
+        pl["paused"] = paused
         if not pl["paused"]:
             pl["start"] = start
 
     def _plan_on(self) -> bool:
         return self._plan is not None and not self._plan["paused"]
+
+    def _plan_has_line(self, line_s: float, grid: _Grid) -> bool:
+        """Does the lyric plan put a section's start within a bar of ``line_s``? (The ear's drop line is a phrase
+        line; the plan's is the lyric's own time, snapped to the bar while the clock is sure.)"""
+        pl = self._plan
+        if pl is None:
+            return False
+        tol = max(1.0, float(grid.bar_s or 0.0))
+        return any(abs(pl["start"] + float(x["pos_s"]) - line_s) <= tol for x in pl["secs"])
 
     def _lyric_plan(self, now_s: float, grid: _Grid) -> None:
         """Announce the plan's next section as a predicted section_change (detail "lyrics", with its letter and
@@ -1821,13 +1862,19 @@ class Structure:
                     line = nb
             pl["done"].add(i)
             final = x.get("kind") == "chorus" and not any(y.get("kind") == "chorus" for y in pl["secs"][i + 1:])
+            if any("final" in y for y in pl["secs"]):          # the song's brief says which chorus is the last full
+                final = bool(x.get("final"))                   # one (brief.py); a tag of it after that is not
             prev = next((s for s in reversed(self.sections) if s.get("letter") == x["letter"]), None)
             sid = self._next_id
             self._pred = {"line": line, "letter": x["letter"], "repeat_of": prev["id"] if prev else None,
-                          "from": self._cur_id(), "id": sid, "lyrics": x.get("kind")}
+                          "from": self._cur_id(), "id": sid, "lyrics": x.get("kind"), "plan_i": i}
             self._emit("section_change", line, now_s, section_id=sid, letter=x["letter"],
                        repeat_of=self._pred["repeat_of"], predicted=True, boundary_ms=round(line * 1000.0, 1),
-                       detail="lyrics", section_kind=x.get("kind"), final=final)
+                       detail="lyrics", section_kind=x.get("kind"), final=final,
+                       level=x.get("level"), peak=x.get("peak"),   # songplan.py: how big it will be; the climax
+                       # brief.py, when the song has one: its size in the song, how the music arrives at it
+                       # (none | swell | bump | snap) and the brief's own kind (prechorus, bridge ...)
+                       size=x.get("size"), arrive=x.get("arrive"), brief_kind=x.get("brief_kind"))
             self._gobo_at(line, ("section", sid))
             return
 
@@ -1836,6 +1883,8 @@ class Structure:
         lead = self.cfg["events"]["min_lead_s"]
         p = self._pred
         if p is not None:
+            if p.get("lyrics") and self._plan is not None and self._plan["paused"]:
+                return                                   # paused: _plan_read cancels it (belt and braces)
             if now_s >= p["line"] - 1e-6:
                 self._pred = None
                 sec = self._start_section(p["line"], "predicted", now_s, emit=False)

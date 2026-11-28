@@ -124,6 +124,34 @@ re-reads the room every 5 s. Missing pieces show as "problems" in the page's hea
 - the glitterball's motor;
 - the pools of light dimming in haze.
 
+## 4a. The room editor and the studio: the glitterball and pinspots (for the weekend, 28–29 Nov)
+
+Light setup › **Room** is now the one editor for the room: 3D, Plan, Front and Side views; walk or orbit; every
+thing selectable, renamed, moved, with undo (docs/LIGHTS.md §3.6b). Its **studio** puts things in the room
+**planned** (drawn, driving nothing) and **connects** them to the real ones when ready. For PC22's glitterball and
+pinspots:
+1. **Room › ＋ Add to the room… › "Mirror ball"** (or "glitterball"); click where it hangs. The first one is named
+   `mirror-ball`, the name the scenes aim moving heads at. In its panel, **Connect it to… › Glitterball**: it then
+   stands for the remote's subsystem `mirror_ball`.
+2. **＋ Add › "Pinspot"** (or "glitter spot"), click where each hangs; **⌖ Point at…** and click the ball (a pinspot
+   points at the nearest ball until told). **Connect it to… › Pinspots** (subsystem `pinspots`). Ctrl+drag copies one.
+3. **Lights › Mode, "Room as in Disco"**: the preview shows them as the mode sets them (Disco: pinspots on, white,
+   level 8; the ball spinning). Normal: the ball still, pinspots off. A pinspot or head beam on the ball throws
+   glitter round the room (an estimate: 220 facets, 0.1 turns a second; docs/LIGHTS.md).
+4. **In each mode** (the device's panel) shows what each mode does with it; change it in Settings › Modes.
+Where the show runs them (Party, Disco: `director.glitterball`, `director.pinspots`), the preview shows them on and
+spinning; the scenes the director picks for them (light_scenes.yaml `appliances-resting`, `glitter-slow`,
+`disco-*`) are not yet drawn in the preview.
+
+Before it is useful on PC22:
+- **Nothing needs editing for the glitterball and pinspots**: they are room_service remotes already.
+- **finsbury's planned GigBARs** (`gigbar.se`, `gigbar.ne`, `kind: gigbar-2` in space.added.yaml, from the older
+  view) show in the Room list as planned things with nothing drawn. To place them as bars, copy the laptop's
+  `layouts: gigbar-move` block (deployments/laptop/lights/space.yaml) into finsbury's space.yaml, then ＋ Add ›
+  "Gigbar move" for each and take the old two out of the room. Their parts register at their address when connected.
+- Things finsbury's own space.yaml sets show locked ("set in the room file"); move them to the page file (as the
+  laptop's were, 27 Nov) to edit them in the editor.
+
 ## 5. Checks after the pull
 
 - `python -m smconfig check` is `ok` for finsbury. It was `ok` on the laptop with the shared code as committed.

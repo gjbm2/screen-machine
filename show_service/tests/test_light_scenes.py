@@ -849,12 +849,15 @@ def test_effects_fire_on_the_events_lines_within_the_max_and_the_gap(tmp_path):
     r.event("section_change", line + 2 * 4 * 0.5)                      # within effect_gap_bars: none
     r.run(0.1)
     assert all(len(p["effects"]) == 1 for p in last_look(r)["light_programs"].values())
-    r.event("drop", line + 4 * 0.5)                                    # a drop always may: a second one
+    r.event("drop", line + 4 * 0.5)                                    # a drop always may: a second one, but the
+    r.run(0.1)                                                          # room runs at most FX_ROOM_MAX at once
+    n2 = sum(len(p["effects"]) for p in last_look(r)["light_programs"].values())
+    assert n2 == 3
+    names = [p["effects"][-1]["name"] for p in last_look(r)["light_programs"].values() if len(p["effects"]) == 2]
+    assert len(names) == len(set(names))                                # one moment: a different effect per group
+    r.event("drop", line + 8 * 0.5)                                    # the room is full: no more while they run
     r.run(0.1)
-    assert all(len(p["effects"]) == 2 for p in last_look(r)["light_programs"].values())
-    r.event("drop", line + 8 * 0.5)                                    # effects_max 2: no third while two run
-    r.run(0.1)
-    assert all(len(p["effects"]) == 2 for p in last_look(r)["light_programs"].values())
+    assert sum(len(p["effects"]) for p in last_look(r)["light_programs"].values()) == n2
     r.run_to(line + 4.0)                                                # they end, and go
     assert all(not p["effects"] for p in last_look(r)["light_programs"].values())
     fired = r.d.snapshot()["lights"]["effects"]
@@ -882,10 +885,11 @@ def test_every_bars_counts_the_clocks_bars(tmp_path):
     r = prig(tmp_path, cat=full_cat(tmp_path, effects=only_tick))
     r.d.set_target("alpha")
     r.run(20.0)                                                        # 10 bars at 120 bpm
-    fired = [e for e in r.d.snapshot()["lights"]["effects"] if e["group"] == "lamps"]
-    assert 2 <= len(fired) <= 3
+    fired = r.d.snapshot()["lights"]["effects"]
     beats = [e["at_ms"] / 1000.0 / 0.5 for e in fired]
+    assert 2 <= len(set(beats)) <= 3
     assert all(b % 16 == pytest.approx(0.0) for b in beats)             # every 4th bar line
+    assert len(beats) == len(set(beats))                                # one effect in the catalogue: one group a line
 
 
 def test_no_effects_while_neutral_house_or_low(tmp_path):
@@ -924,3 +928,40 @@ def test_with_no_lights_block_every_lamp_is_one_group_as_before(tmp_path):
     r.run(1.0)
     progs = last_look(r)["light_programs"]
     assert list(progs) == ["*"] and progs["*"]["scene"] == r.d.light_scene and progs["*"]["label"] == "Other lights"
+
+
+def test_the_real_scenes_use_gobos_with_restraint():
+    """The house style (config/live/light_scenes.yaml's header; owner, 27 Nov: "sensible artistic restraint and coherent
+    execution"): a scene that uses a gobo holds one, by name, and no scene's standing look shakes, scrolls or snaps it;
+    most scenes that move the heads leave the beam open."""
+    import yaml
+    scenes = yaml.safe_load(ls.LIGHT_SCENES_FILE.read_text())["scenes"]
+    with_gobo, movers = [], 0
+    for name, sc in scenes.items():
+        layers = sc.get("layers") or []
+        movers += any(l.get("kind") == "position" for l in layers)
+        gobos = [l for l in layers if l.get("kind") == "gobo"]
+        if not gobos:
+            continue
+        with_gobo.append(name)
+        assert len(gobos) == 1, f"{name}: one gobo layer (the same gobo on every head it is on)"
+        g = gobos[0]
+        assert isinstance(g.get("slot"), str) and g["slot"] != "auto", f"{name}: one gobo, by name"
+        assert not ({"shake", "scroll", "spin", "change", "change_on"} & set(g)), \
+            f"{name}: a scene holds its gobo still for as long as it runs"
+    assert len(with_gobo) <= movers // 2, f"gobos in {len(with_gobo)} of {movers} mover scenes: the open beam is the default"
+
+
+def test_the_lights_own_transition_can_leave_gestures_to_the_moves(tmp_path):
+    """pick_transition(gestures=False): only the plain ways across are drawn (a gesture is a move's to give, and the
+    director paces moves); with nothing plain of those kinds, a gesture still goes."""
+    import random
+    c = ls.Catalogue(ls.LIGHT_SCENES_FILE)
+    c.poll()
+    plain = {n for n, t in c.transitions.items() if t["kind"] == "crossfade" and not t.get("gesture")}
+    fancy = {n for n, t in c.transitions.items() if t["kind"] == "crossfade" and t.get("gesture")}
+    assert plain and fancy
+    rng = random.Random(1)
+    got = {c.pick_transition(("crossfade",), "lively", {"energy": 0.8}, None, rng, gestures=False) for _ in range(200)}
+    assert got <= plain
+    assert {c.pick_transition(("crossfade",), "lively", {"energy": 0.8}, None, rng) for _ in range(300)} & fancy

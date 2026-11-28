@@ -103,3 +103,36 @@ def load_or_measure(song_dir: pathlib.Path, cache: pathlib.Path) -> Optional[dic
     tmp.write_text(json.dumps(d))
     os.replace(tmp, cache)
     return d
+
+
+def main(argv: Optional[list] = None) -> int:
+    """``python -m utils.song_shape <song_id>... | --all``: measure karaoke songs' shapes into the show's cache
+    (``~/.local/state/screen-machine/show/shapes/<id>.json``, where show_service's karaoke feed reads them), so a
+    song's first play never waits on it. In the show venv (pyebur128), nice 19."""
+    import argparse
+    import sys
+    state = pathlib.Path.home() / ".local" / "state" / "screen-machine"
+    songs, shapes = state / "karaoke" / "songs", state / "show" / "shapes"
+    ap = argparse.ArgumentParser(description="Measure karaoke songs' shapes")
+    ap.add_argument("ids", nargs="*")
+    ap.add_argument("--all", action="store_true")
+    a = ap.parse_args(argv)
+    try:
+        os.nice(19)
+    except OSError:
+        pass
+    ids = sorted(p.name for p in songs.iterdir() if p.is_dir()) if a.all else a.ids
+    bad = 0
+    for sid in ids:
+        try:
+            d = load_or_measure(songs / sid, shapes / f"{sid}.json")
+            if d is not None and a.ids:
+                print(f"{sid}: shape {len(d.get('v') or [])} hops", flush=True)
+        except Exception as e:  # noqa: BLE001
+            bad += 1
+            print(f"{sid}: failed: {type(e).__name__}: {e}", file=sys.stderr, flush=True)
+    return 1 if bad else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

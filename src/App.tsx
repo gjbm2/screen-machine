@@ -10,8 +10,10 @@ import { LoopeViewProvider } from "@/contexts/LoopeViewContext";
 import { DarkMode } from './darkMode';
 import { AppPlayerProvider } from "@/components/player/appPlayer";
 import { DockedPlayer } from "@/components/player/DockedPlayer";
+import { KaraokeHere } from "@/components/player/KaraokeHere";
 import { AppNav } from "@/components/nav/AppNav";
 import { AdminOnly } from "@/components/auth/AdminOnly";
+import { KARAOKE_ONLY } from "@/shared/viaTunnel";
 
 // Each page is its own chunk: the TVs' /display/<screen> no longer loads the generator, Room, Music and the rest.
 // A deploy replaces dist/, so a tab opened before it asks for chunks that are gone: reload once to pick up the new build.
@@ -52,12 +54,28 @@ const RoomPage = page(() => import("./pages/Room"));
 const LightsPage = page(() => import("./pages/Lights"));
 const LightsControlPage = page(() => import("./pages/Lights/Control"));
 const Room3DPage = page(() => import("./pages/Room3D"));
+const LightPairsPage = page(() => import("./pages/LightPairs"));
 const MusicPage = page(() => import("./pages/Music"));
 const SettingsPage = page(() => import("./pages/Settings"));
 const StartPage = page(() => import("./pages/Settings/Start"));
 const KaraokePage = page(() => import("./pages/Karaoke"));
 
 const queryClient = new QueryClient();
+
+// Through the phones' tunnel: the karaoke panel at every address, and nothing else (src/shared/viaTunnel.ts)
+const TunnelApp = () => (
+  <QueryClientProvider client={queryClient}>
+    <TooltipProvider>
+      <Toaster />
+      <Sonner />
+      <Suspense fallback={null}>
+        <Routes>
+          <Route path="*" element={<KaraokePage />} />
+        </Routes>
+      </Suspense>
+    </TooltipProvider>
+  </QueryClientProvider>
+);
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
@@ -90,6 +108,8 @@ const App = () => (
             <Route path="/settings/lights" element={<AdminOnly><LightsPage /></AdminOnly>} />
             {/* the room in 3D: as configured, the lights from the Art-Net wire, the screens' own streams */}
             <Route path="/lights/room" element={<Room3DPage />} />
+            {/* the a.d. eval's blind pairs: two takes of one moment, side by side (docs/AD_EVAL.md) */}
+            <Route path="/lights/pairs" element={<AdminOnly><LightPairsPage /></AdminOnly>} />
             <Route path="/music" element={<MusicPage />} />
             {/* karaoke: songs, queue and player from a phone (docs/KARAOKE.md) */}
             <Route path="/karaoke" element={<KaraokePage />} />
@@ -102,6 +122,8 @@ const App = () => (
           </Suspense>
           {/* the music player, docked at the foot of the pages people use while music plays */}
           <DockedPlayer />
+          {/* the karaoke's sound, on a browser that chose This device for it */}
+          <KaraokeHere />
           </AppPlayerProvider>
         </LoopeViewProvider>
       </ReferenceImagesProvider>
@@ -109,4 +131,4 @@ const App = () => (
   </QueryClientProvider>
 );
 
-export default App;
+export default KARAOKE_ONLY ? TunnelApp : App;

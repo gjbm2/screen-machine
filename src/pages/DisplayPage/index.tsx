@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { reloadWhenQuiet } from "./karaoke/soundGate";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
 import useBaseFileName from "./hooks/useBaseFileName";
 import useFilePolling from "./hooks/useFilePolling";
@@ -26,6 +27,7 @@ import { MaskLayers } from "./art/MaskLayers";
 import { isClip, mediaContainerStyle, mediaStyle } from "./art/styles";
 import { LiveLayer } from "./live/LiveLayer";
 import { KaraokeLayer } from "./karaoke/KaraokeLayer";
+import { SoundCalibration } from "./SoundCalibration";
 import {
   DisplayController,
   controlSocketUrl,
@@ -361,8 +363,10 @@ function DisplayPage() {
           if (!served || served === mine) return;
           clearInterval(t);
           console.log(`[reload] new build ${served} (this page runs ${mine})`);
-          if (ctlRef.current) ctlRef.current.requestReload("new build");
-          else fadeToBlackAndReload();
+          // not in the middle of a song sounding from this page: at its end (karaoke/soundGate.ts)
+          reloadWhenQuiet(() =>
+            ctlRef.current ? ctlRef.current.requestReload("new build") : fadeToBlackAndReload(),
+          );
         },
         () => {}, // the server is restarting: next minute
       );
@@ -878,10 +882,16 @@ function DisplayPage() {
 
   // Karaoke's lyrics (and, with output "screen", its sound) over everything, on the karaoke screen only (the panel's
   // Settings): karaoke/KaraokeLayer.tsx. Renders nothing unless the deployment's karaoke capability is on.
+  // And this screen's sound being measured (docs/SOUND.md): the calibration's chirps, played here. SoundCalibration.tsx.
   const karaokeLayer = (
-    <LayerBoundary name="karaoke" fallback={null}>
-      <KaraokeLayer screen={screenId} />
-    </LayerBoundary>
+    <>
+      <LayerBoundary name="karaoke" fallback={null}>
+        <KaraokeLayer screen={screenId} />
+      </LayerBoundary>
+      <LayerBoundary name="sound-calibration" fallback={null}>
+        <SoundCalibration screen={screenId} />
+      </LayerBoundary>
+    </>
   );
 
   // Default page: the art stack alone, exactly as before. Controlled page: the live layer under it.

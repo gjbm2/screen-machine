@@ -11,6 +11,7 @@
 # strobe: true) and pays one of its big moments (peak_tokens_per_hour); strobes on the same line as a paid drop, or
 # on another group at the same moment, share that one token (owner, 26 Nov).
 # chorus / final_chorus: a karaoke song's choruses, from its lyrics (final_chorus: the last one in the song).
+# climax: the section that holds the song's measured climax, when that isn't its last chorus (songplan.py).
 # lead_in | waiting | lull: the room's moment begins (contract.MOMENTS: a song is cued; nothing plays; a long wait);
 # song_end: a song has just given way to waiting (the applause). length: while lasts as long as that moment.
 # Every number below is a STARTING POINT, chosen on paper: tune by watching the room.
@@ -76,7 +77,6 @@ effects:
     length: {bars: 1}
     layers:
       - {id: bump, kind: colour, role: highlight, depth: {fx: swell, phase: beat, between: [0.0, 0.8]}}
-      - {id: wheel, kind: colour_wheel, mode: step, step_on: beat}
     tags: {energy: [0.45, 1.0], moods: [bright, playful, euphoric]}
   peak-chase:
     label: Fast chase
@@ -131,13 +131,49 @@ effects:
     tags: {energy: [0.8, 1.0], moods: [euphoric, aggressive, fiery]}
   last-chorus-strobe:
     label: Strobe into the last chorus
-    on: [final_chorus]                      # the only effect on it, so the last chorus always lands (one moment)
+    on: [final_chorus, climax]              # the only effect on it, so the song's big section always lands
     length: {bars: 2}
     fade: {in_beats: 0, out_beats: 1}
     needs: [shutter]
     layers: [{id: strobe, kind: shutter, mode: strobe, hz: [4, 8]}]
     hits: {styles: [], drop: {depth: 1.0, decay_ms: 600}}
     tags: {energy: [0.0, 1.0], weight: 1.0}
+  # -- the frenzy (owner, 27 Nov: "crazy strobing -- everything on an aggressive strobe effect (white / black) maybe
+  # varying pacing / rhythm"): a song's top moment only (a peak or a drop, and the strobe's big-moment token), two
+  # bars. Every part flashes white against black, and no two parts keep the same time: the heads strobe at random
+  # while they sweep wide in the dark between flashes (each flash freezes the beams somewhere new), the pars and
+  # derbies strobe on their own clocks faster as the music is louder, the strobe zones flash on the music's own
+  # hits. Each light's strobe limit (Lights page: strobe_hz_max) caps all of it.
+  frenzy-heads:
+    label: The heads strobe white at random, sweeping wide between flashes
+    on: [peak, drop]
+    length: {bars: 2}
+    fade: {in_beats: 0, out_beats: 0.5}
+    needs: [pan, tilt, shutter]
+    layers:
+      - {id: frenzy-sweep, kind: position, mode: ballyhoo, on: floor, centre: centre, size: 2.5, size_deg: 45, phase: bar,
+         period_bars: 1, needs: grid, spread_mode: chase, spread: 0.5}
+      - {id: white, kind: colour, hex: "#ffffff"}
+      - {id: strobe, kind: shutter, mode: random, hz: [6, 10]}
+    tags: {energy: [0.8, 1.0], moods: [euphoric, aggressive, glitchy, fiery], weight: 1.0}
+  frenzy-wash:
+    label: White strobe on every par and derby, each on its own clock
+    on: [peak, drop]
+    length: {bars: 2}
+    fade: {in_beats: 0, out_beats: 0.5}
+    needs: [shutter]
+    layers:
+      - {id: white, kind: colour, hex: "#ffffff"}
+      - {id: strobe, kind: shutter, mode: strobe, hz: [5, 12]}
+    tags: {energy: [0.8, 1.0], moods: [euphoric, aggressive, glitchy, fiery], weight: 1.0}
+  frenzy-flashes:
+    label: The strobe zones flash on every hit in the music
+    on: [peak, drop]
+    length: {bars: 2}
+    fade: {in_beats: 0, out_beats: 0.5}
+    layers: []
+    hits: {styles: [beat, full, downbeat], min_strength: 0.15, depth: 1.0, decay_ms: 50, drop: {depth: 1.0, decay_ms: 300}}
+    tags: {parts: [flash], energy: [0.8, 1.0], moods: [euphoric, aggressive, glitchy, fiery], weight: 1.0}
   # -- the room's moments (owner, 26 Nov: commissioned like any effect, written here, not in code) --
   song-end-open:
     label: The heads open out to the room as a song ends
@@ -179,40 +215,42 @@ effects:
          decay_ms: 200}
       - {id: bump, kind: colour, role: highlight, depth: {fx: swell, phase: beat, between: [0.0, 0.8]}}
     tags: {energy: [0.0, 1.0]}
-  # -- the lasers' own (tags.parts: [laser]: they play on a group that takes that part, and no other) --
+  # -- the laser's own (tags.parts: [laser]: they play on a group that takes that part, and no other). A grating
+  # burst (light_scenes.yaml has what it is): no gating faster than its 0.25 s pulse, its strobe under 4 a second.
+  # Only laser-burst lights more than one diode: every colour of beam at once, for the song's one big moment
+  # (Laser: 240 is the 52-channel chart's red + green + blue; Laser control: 20 the 51-channel chart's image colour).
   laser-burst:
-    label: Every laser colour, strobing and spinning, for the big moment
-    on: [drop, final_chorus, transition]
+    label: Every colour of beam at once, spinning and strobing, for the big moment
+    on: [drop, final_chorus, climax, transition]
     length: {bars: 2}
     fade: {in_beats: 0, out_beats: 1}
     needs: [shutter]
     layers:
-      - {id: all, kind: macro, set: {Laser: 240, "Laser rotation": {cw: 120, ccw: 250, still: 100}}}
-      - {id: strobe, kind: shutter, mode: strobe, hz: [5, 10]}
+      - {id: all-diodes, kind: macro, set: {Laser: 240, "Laser control": 20,
+                                            "Laser rotation": {cw: 120, ccw: 250, still: 100}, "Laser patterns": 250}}
+      - {id: strobe, kind: shutter, mode: strobe, hz: [2, 4]}
     tags: {parts: [laser], energy: [0.5, 1.0], moods: [euphoric, aggressive, fiery, glitchy, bright]}
   laser-sweep-in:
-    label: The lasers come on, turning, for the chorus
+    label: The burst comes on, turning, as the chorus opens
     on: [chorus, transition]
     length: {bars: 4}
     fade: {in_beats: 0, out_beats: 2}
     layers:
-      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 70, ccw: 200, still: 50}}}
-      - {id: colour-steps, kind: colour_wheel, mode: step, step_on: bar}
+      - {id: rotation, kind: macro, set: {"Laser rotation": {cw: 70, ccw: 200, still: 50}, "Laser patterns": 140}}
     tags: {parts: [laser], energy: [0.4, 1.0], moods: [euphoric, playful, bright, cosmic]}
   laser-cut-out:
-    label: The lasers cut out for a beat
+    label: The laser cuts out for two beats
     on: [transition]
-    length: {beats: 1}
+    length: {beats: 2}
     fade: {in_beats: 0, out_beats: 0}
     layers:
       - {id: dark, fx: dim, phase: time, period_s: 1, depth: 1.0, needs: none}
     tags: {parts: [laser], energy: [0.0, 1.0]}
   laser-spin-up:
-    label: The lasers spin up through a build
+    label: The burst spins up through a build
     on: [build]
     length: while
     fade: {in_beats: 1, out_beats: 1}
     layers:
       - {id: fast, kind: macro, set: {"Laser rotation": {cw: 127, ccw: 255, still: 127}}}
-      - {id: colour-steps, kind: colour_wheel, mode: step, step_on: beat}
     tags: {parts: [laser], energy: [0.5, 1.0], moods: [tense, euphoric, aggressive]}

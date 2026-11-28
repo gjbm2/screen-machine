@@ -10,6 +10,7 @@ from utils.logger import error
 
 from .api import karaoke_api, store
 from . import pictures  # noqa: F401 - its routes join karaoke_api; its thread starts in start()
+from . import room_song  # noqa: F401 - GET /api/songs/now joins karaoke_api; its Sonos watch starts in start()
 from .store import song_dir
 from .worker import Worker, audio_seconds
 
@@ -28,6 +29,14 @@ def sonos_driver():
 WRITERS_RETRY_S = 900
 
 
+_live = None
+
+
+def room_in_karaoke() -> bool:
+    """The room is in a karaoke mode (live_view.LiveView.in_karaoke_mode; False before it has looked)."""
+    return bool(_live and _live.in_karaoke_mode())
+
+
 def start() -> None:
     """Start the worker (app.py, outside tests). A no-op while the capability is off."""
     global _worker
@@ -43,8 +52,13 @@ def start() -> None:
     threading.Thread(target=_clock, args=(st,), name="karaoke-clock", daemon=True).start()
     threading.Thread(target=_facts, args=(st,), name="karaoke-facts", daemon=True).start()
     pictures.start()                                # the artists' pictures for the photo scenes
+    room_song.start(st)                             # a Sonos track is prepared as a karaoke song is
     from .live_view import LiveView                 # the karaoke screen goes live with a song, back to art on Stop
-    LiveView(st).start()
+    global _live
+    _live = LiveView(st)
+    _live.start()
+    from routes.sound import calibrator             # a speaker being measured: no song over the chirps
+    calibrator().before.append(lambda _output: st.pause_for_calibration())
     if smconfig.enabled("sonos"):                       # karaoke on a Sonos room (sonos_out.py)
         global _sonos
         from .sonos_out import KaraokeSonos

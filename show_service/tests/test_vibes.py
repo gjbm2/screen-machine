@@ -40,7 +40,7 @@ def bump(path, text: str) -> None:
 
 def test_the_real_vibes_file_loads_clean():
     v = vmod.Vibes(palette_names=lambda: ("ember", "gold", "dusk", "ice", "ocean", "aurora", "neon", "rainbow",
-                                          "acid", "mono"))
+                                          "acid", "mono", "crimson"))
     assert v.poll(force=True)
     assert v.error is None, v.error
     assert v.problems == [], v.problems

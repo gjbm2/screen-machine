@@ -1,0 +1,61 @@
+# deployments/<id>/lights/space.added.yaml: the room as set on the Lights page (the Room map, and Move it's "Point it
+# at…"). WRITTEN BY show_service's rig API (/show/api/v1/rig/space/..., .../teach; docs/LIGHTS.md §3, §8.1), whole, on
+# every change: don't edit it by hand. show_service merges it under deployments/<id>/lights/space.yaml (the hand file,
+# the same keys), which wins on a clash (a problem line), and re-reads both when they change. appliances.<id>.teach are
+# a mover's taught places and .pose its solved mounting (space.solve_pose).
+version: 1
+room: {}
+appliances:
+  hazer:
+    at: [4.7, 1.2, 0.2]
+  house-1:
+    at: [1.25, 2.5, 3.95]
+  house-2:
+    at: [3.75, 2.5, 3.95]
+  house-3:
+    at: [1.25, 7.5, 3.95]
+  house-4:
+    at: [3.75, 7.5, 3.95]
+  screen.vj:
+    at: [5.0, 5.0, 2.0]
+    plane:
+      normal: [-1.0, 0.0, 0.0]
+      up: [0.0, 0.0, 1.0]
+      size: [2.0, 1.125]
+points:
+  screen:
+    label: Karaoke screen
+    at: [5.0, 5.0, 2.0]
+    from: page
+  singer:
+    label: Singer's spot
+    at: [3.8, 5.0, 1.2]
+    from: page
+  west-wall:
+    label: West wall above heads
+    at: [0.0, 5.0, 3.0]
+    from: page
+regions:
+  dance-floor:
+    label: Dance floor
+    surface: floor
+    centre: [2.58, 5.0, 0.0]
+    size: [3.0, 5.0]
+surfaces: {}
+keep_out:
+  keep-out-1:
+    label: Keep out 1
+    centre: [5.0, 4.86, 1.97]
+    size: [0.1, 2.0, 1.0]
+    groups: [movers]
+bars:
+  gigbar-a:
+    label: Bar A
+    at: [4.59, 9.61, 3.07]
+    facing_deg: -118.6
+    layout: gigbar-move
+  gigbar-b:
+    label: Bar B
+    at: [4.15, 0.43, 2.5]
+    facing_deg: 122.2
+    layout: gigbar-move

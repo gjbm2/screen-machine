@@ -1,0 +1,46 @@
+# A song's moments: what the music itself does that the lights should hit (show_service/moments.py; owner, 27 Nov).
+#
+# "there are circumstances in a song where e.g. there's very strong rhythmic section, strong drumming, orchestral
+# hit, etc. ... we'd prob. expect to see a stronger situational lighting response"; "endings that just stop suddenly
+# rather than which fade out -- we'd expect a blackout". utils/song_moments.py finds them in a karaoke song's audio,
+# each judged against that song's own norm, with a salience 0..1. This file says which of them a song gets and what
+# each kind gets. Read again at each new song. Every number is a STARTING POINT, written on paper: watch the room.
+#
+# kinds (what the response is; the levels are the look engine's, multiplied into every lamp and DMX group, phrasing.py)
+#   envelope   bump: in on the moment above the steady level, settling over settle_beats (no wind-up: it is a hit)
+#              stop: down to ``floor`` for the gap the band leaves, then the bump on its return
+#              out:  down to ``floor`` and staying there (the song's last light): after hold_s, over fade_s, or
+#                    following the music's own fade or ring when fade: follow
+#   lift       how far over the steady level it lands (x the moment's salience; only where there is headroom)
+#   hit_beats  every lamp to the look's accent colour at full for this many beats (the unison hit); 0: none
+#   flash      the running light scene's drop flash (its hits block's drop), where the scene has one
+#   curve      an out's fade: x ** curve of the way down at x of it (1 straight; more holds up longer, then goes)
+# choose     which a song gets: a moment under min_salience is not one; the song's idiom names how many of each
+#            (by_idiom; an idiom not named, or a song with no brief, takes default); two of a kind at least gap_bars
+#            apart (the stronger kept); an ending is always taken
+# lead_s     a moment is handed to the look engine this far ahead (the lights land on it, not after it)
+version: 1
+lead_s: 3.0
+kinds:
+  stab: {envelope: bump, lift: 0.5, settle_beats: 1.0, hit_beats: 0.5, flash: true}
+  stop: {envelope: stop, floor: 0.03, lift: 0.4, settle_beats: 1.0, hit_beats: 0.0, flash: true}
+  drums: {}                       # found, not answered yet: a harder pulse for its bars wants its own look change
+  end:
+    cold: {envelope: out, hold_s: 0.3, fade_s: 0.15, floor: 0.0}     # the band stops dead on a hit: black out after it
+    ring: {envelope: out, hold_s: 0.2, fade: follow, curve: 2.0, floor: 0.0}   # a last chord left to ring: fade with it
+    fade: {envelope: out, fade: follow, curve: 3.0, floor: 0.0}      # the record fades: the lights go with it, held
+                                                                     # up as long as it is heard (eval 28 Nov: a straight
+                                                                     # fade looked out ~4.5 s before the sound was)
+choose:
+  min_salience: 0.5
+  gap_bars: 8
+  default: {stab: 3, stop: 2}
+  by_idiom:
+    hush: {stab: 0, stop: 1, floor: 0.3, lift_scale: 0.4}            # a hushed song dims for a stop, never blacks out
+    ballad: {stab: 1, stop: 2, lift_scale: 0.7}
+    story: {stab: 2, stop: 2}
+    dark: {stab: 3, stop: 3}
+    anthem: {stab: 3, stop: 3}
+    groove: {stab: 4, stop: 3}
+    disco: {stab: 4, stop: 3}
+    dance: {stab: 5, stop: 4}

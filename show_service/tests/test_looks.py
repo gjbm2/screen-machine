@@ -362,6 +362,46 @@ def test_phase_spread_walks_the_group_in_order():
     assert [round(inten(fr, f), 6) for f in order] == [0.5, 1.0, 0.5, 0.0]
 
 
+def _walk(order, **kw):
+    """The four lamps' intensities at each quarter bar of a sine walk with these layer keys (a bar = 2 s)."""
+    rig = {**lamps_rig(4), "groups": {"ring": order}}
+    e = LookEngine(palette_fn=lambda t: {f"lamp.{i}": (1, 1, 1) for i in range(4)}, clock=SnapClock(anchor=10.0, period=0.5),
+                   look_fn=lambda: look(spread=1.0))
+    e.configure({"layers": [layer(fx="sine", phase="bar", period_bars=1, needs="none", spread=1.0, select="group:ring",
+                                  **kw)]}, rig)
+    return [[round(inten(e.evaluate("hue", 12.0 + q * 0.5, DMX_CAPS), f), 6) for f in order] for q in range(4)]
+
+
+def test_a_group_walk_runs_backwards_for_a_backwards_flow_dir():
+    order = ["lamp.0", "lamp.1", "lamp.2", "lamp.3"]
+    fwd, back = _walk(order), _walk(order, flow_dir="left")
+    assert [r.index(1.0) for r in fwd] == [0, 1, 2, 3]          # the peak walks first to last
+    assert [r.index(1.0) for r in back] == [3, 2, 1, 0]         # and last to first
+
+
+def test_a_mirrored_group_walk_can_start_in_the_middle():
+    order = ["lamp.0", "lamp.1", "lamp.2", "lamp.3"]
+    ends_in = _walk(order, spread_mode="mirror")
+    middle_out = _walk(order, spread_mode="mirror", flow_dir="outward")
+    assert ends_in[0] == [1.0, 0.5, 0.5, 1.0]                   # the ends together, then the middle
+    assert middle_out[0] == [0.5, 1.0, 1.0, 0.5]                # the middle together, then the ends
+
+
+def test_bounce_runs_the_line_there_and_back():
+    order = ["lamp.0", "lamp.1", "lamp.2", "lamp.3"]
+    rig = {**lamps_rig(4), "groups": {"ring": order}}
+    e = LookEngine(palette_fn=lambda t: {f"lamp.{i}": (1, 1, 1) for i in range(4)}, clock=SnapClock(anchor=10.0, period=0.5),
+                   look_fn=lambda: look(spread=1.0))
+    e.configure({"layers": [layer(fx="saw", phase="bar", period_bars=1, needs="none", spread=1.0, select="group:ring",
+                                  spread_mode="bounce")]}, rig)
+    # a saw is 1 at its cycle's start: each lamp's starts are its passes, at c/2 and 1 - c/2 of the round trip
+    # (c = 0, 1/3, 2/3, 1): going 0, 1/6, 1/3, 1/2 and coming back 5/6, 2/3 (the ends pass once)
+    def lit(frac):
+        fr = e.evaluate("hue", 12.0 + frac * 2.0 + 1e-6, DMX_CAPS)
+        return [i for i, f in enumerate(order) if inten(fr, f) > 0.999]
+    assert [lit(x) for x in (0.0, 1 / 6, 1 / 3, 0.5, 2 / 3, 5 / 6)] == [[0], [1], [2], [3], [2], [1]]
+
+
 def test_parameter_changes_glide_over_the_transition_in_beats():
     clk = SnapClock(anchor=10.0, period=0.5)                     # 4 beats = 2 s
     box = {"look": look(motion={"speed": 0.0, "amount": 0.2},
@@ -692,7 +732,7 @@ def test_stats_shape():
         e.evaluate("hue", 10 + i * 0.02, DMX_CAPS)
     s = e.stats()
     po = s["per_output"]["hue"]
-    assert set(s) == {"program", "per_output", "errors", "identify", "follow", "drops", "motion", "holds",
+    assert set(s) == {"program", "per_output", "errors", "identify", "follow", "drops", "motion", "plans", "holds",
                       "gestures"}                                # docs/ENSEMBLE.md §7.2
     assert set(s["program"]) == {"revision", "layers", "problems", "scenes", "groups", "effects", "skipped",
                                  "modules"}
@@ -1154,3 +1194,65 @@ def test_a_follow_colour_still_rises_through_the_hue_rise_limit():
     assert inten(e.evaluate("hue", 10.02, HUE_CAPS), "lamp.0") == pytest.approx(lim)
     e.identify("lamp.0", 1.0)                                        # identify is never limited
     assert inten(e.evaluate("hue", 10.04, HUE_CAPS), "lamp.0") == 1.0
+
+
+def test_a_lit_gobo_change_is_made_in_the_dark():
+    """The old gobo holds while the light falls, the wheel turns dark (a slot's time per slot crossed), the light comes
+    back on the new one; a dark head, or change: live, changes at once (owner, 27 Nov: lit changes look clumsy)."""
+    from types import SimpleNamespace
+    from show_service.looks import GOBO_SETTLE_S, GOBO_SLOT_S, LookEngine, _FixState
+    s, fs = SimpleNamespace(fall_s=0.1), _FixState()
+    assert LookEngine._gobo_dark(s, fs, 0.0, {"gobo": 2}, 1.0) == 1.0         # the first: as it is
+    a = {"gobo": 5}
+    assert LookEngine._gobo_dark(s, fs, 1.0, a, 1.0) == 0.0 and a["gobo"] == 2   # falling, on the old gobo
+    a = {"gobo": 5}
+    t2 = 1.0 + 0.1 + GOBO_SETTLE_S
+    assert LookEngine._gobo_dark(s, fs, t2, a, 1.0) == 0.0 and a["gobo"] == 5    # turning, dark
+    back = t2 + GOBO_SLOT_S * 3 + GOBO_SETTLE_S
+    a = {"gobo": 5}
+    assert LookEngine._gobo_dark(s, fs, back - 0.01, a, 1.0) == 0.0
+    assert LookEngine._gobo_dark(s, fs, back, {"gobo": 5}, 1.0) == 1.0          # lit on the new gobo
+    assert LookEngine._gobo_dark(s, fs, back + 1, {"gobo": 7}, 0.0) == 0.0 and fs.g_shown == 7   # dark already
+    fs.g_live = True
+    assert LookEngine._gobo_dark(s, fs, back + 2, {"gobo": 8}, 1.0) == 1.0 and fs.g_shown == 8   # a live snap
+
+
+def test_a_lit_colour_wheel_turns_only_on_purpose_and_in_the_dark():
+    """A lit head keeps its filter until the change is meant: a cut turns at once, a drift only once the new filter
+    has been wanted a while, and every turn is made dark, even one filter along (owner, 27 Nov: "deliberate about
+    changing colour film while spots are live ... unless it's intentional, it can just look a bit amateur")."""
+    from types import SimpleNamespace
+    from show_service.looks import (COLOUR_SLOT_S, GOBO_SETTLE_S, WHEEL_HOLD_S, WHEEL_SETTLE_S, LookEngine,
+                                    _FixState)
+    slots = {(1.0, 1.0, 1.0): 0, (1.0, 0.0, 0.0): 1, (0.0, 0.0, 1.0): 5, (1.0, 0.9, 0.9): 0, (1.0, 0.8, 0.8): 1,
+             (1.0, 0.85, 0.85): 0}
+    e = LookEngine.__new__(LookEngine)
+    e._wheel_slot = lambda s, inten, colour, attrs: slots[tuple(colour)]
+    s, fs = SimpleNamespace(fall_s=0.1, cw=(5, (3.0, 10.0, 38.0))), _FixState()
+    white, red, blue = [1.0, 1.0, 1.0], [1.0, 0.0, 0.0], [0.0, 0.0, 1.0]
+    assert e._wheel_dark(s, fs, 0.0, {}, 1.0, white) == (1.0, white)
+    assert e._wheel_dark(s, fs, 1.0, {}, 1.0, red) == (0.0, white)             # a cut, one filter along: dark, at once
+    t1 = 1.0 + 0.1 + GOBO_SETTLE_S
+    assert e._wheel_dark(s, fs, t1, {}, 1.0, red) == (0.0, red)                # turning, dark
+    back = t1 + COLOUR_SLOT_S * 1 + GOBO_SETTLE_S
+    assert e._wheel_dark(s, fs, back, {}, 1.0, red) == (1.0, red)              # lit in the new colour
+    assert e._wheel_dark(s, fs, back + 1, {}, 1.0, blue) == (0.0, red)         # a cut four along: dark, still red
+    t2 = back + 1 + 0.1 + GOBO_SETTLE_S
+    assert e._wheel_dark(s, fs, t2, {}, 1.0, blue) == (0.0, blue)
+    lit = t2 + COLOUR_SLOT_S * 4 + GOBO_SETTLE_S
+    assert e._wheel_dark(s, fs, lit - 0.01, {}, 1.0, blue)[0] == 0.0
+    assert e._wheel_dark(s, fs, lit, {}, 1.0, blue) == (1.0, blue)
+    assert e._wheel_dark(s, fs, lit + 1, {}, 0.0, white) == (0.0, white) and fs.c_slot == 0   # dark already: at once
+    # a drift over the line between two filters: the head keeps its filter, lit, until the new one has been wanted
+    # for WHEEL_SETTLE_S and the last turn is WHEEL_HOLD_S old; drifting back in the meantime changes nothing
+    t0 = lit + 1 + WHEEL_HOLD_S
+    pale, over, nearly = [1.0, 0.9, 0.9], [1.0, 0.8, 0.8], [1.0, 0.85, 0.85]
+    assert e._wheel_dark(s, fs, t0, {}, 1.0, pale) == (1.0, pale)              # the same filter: just the colour
+    assert e._wheel_dark(s, fs, t0 + 0.1, {}, 1.0, over) == (1.0, pale)        # over the line: not yet
+    assert e._wheel_dark(s, fs, t0 + 0.2, {}, 1.0, nearly) == (1.0, nearly)    # and back: nothing happened
+    assert e._wheel_dark(s, fs, t0 + 0.3, {}, 1.0, over) == (1.0, nearly)
+    assert e._wheel_dark(s, fs, t0 + 0.3 + WHEEL_SETTLE_S, {}, 1.0, over) == (0.0, nearly)    # it stayed: the turn
+    # a scene stepping the wheel itself is the intentional change in the light
+    fs2 = _FixState()
+    assert e._wheel_dark(s, fs2, 0.0, {"colour_slot": "white"}, 1.0, white) == (1.0, white)
+    assert e._wheel_dark(s, fs2, 0.5, {"colour_slot": "red"}, 1.0, red) == (1.0, red)

@@ -24,11 +24,11 @@ import { placeToasts } from "./ui/toast.js";
 
 
 const VERSION = "console-2026.10.15";
-const MODES = [["browse", "Browse", "grid", "#browse", "Library"], ["onscreen", "On screen", "tv", "#on-screen", "On screen"], ["hood", "Under the hood", "wrench", "#hood", "Under the hood"]];
+const MODES = [["browse", "Browse", "grid", "#browse", "Library"], ["lights", "Lighting", "sparkles", "#lighting", "Lighting"], ["onscreen", "On screen", "tv", "#on-screen", "On screen"], ["hood", "Under the hood", "wrench", "#hood", "Under the hood"]];
 const q = new URLSearchParams(location.search);
 const $ = (id) => document.getElementById(id);
 const mounted = {};
-let hood = null, onscreen = null;
+let hood = null, onscreen = null, lights = null;
 
 // ---------------------------------------------------------------- window.smDev (the verifier's and old panels' hook)
 window.smDev = {
@@ -117,6 +117,8 @@ export async function setMode(m, { push = false, keepHash = false } = {}) {
     try { history[push ? "pushState" : "replaceState"](history.state, "", hash); } catch (_) {}
   }
   if (m === "onscreen" && !mounted.onscreen) { mounted.onscreen = true; onscreen = await import("./onscreen/onscreen.js"); onscreen.mount(sections.onscreen, { openPicker: pickerProxy }); }
+  if (m === "lights" && !mounted.lights) { mounted.lights = true; lights = await import("./lights/lights.js"); lights.mount(sections.lights); }
+  if (m === "lights") lights?.shown?.();
   if (m === "hood" && !mounted.hood) { mounted.hood = true; hood = await import("./hood/hood.js"); hood.mount(sections.hood); }
   if (m !== "browse") catalog.ready();
   if (m === "onscreen") onscreen?.shown?.();
@@ -137,6 +139,7 @@ function parseHash() {
   const [a, kind, ...rest] = hs.split("/");
   const name = rest.join("/");
   if (a === "on-screen") return { mode: "onscreen" };
+  if (a === "lighting") return { mode: "lights", key: kind && name ? `${kind}/${name}` : null };
   if (a === "hood") return { mode: "hood" };
   if (a === "review" && kind && name) return { mode: "browse", key: `${kind}/${name}`, review: true };
   if (a === "browse" && kind && name) return { mode: "browse", key: `${kind}/${name}` };

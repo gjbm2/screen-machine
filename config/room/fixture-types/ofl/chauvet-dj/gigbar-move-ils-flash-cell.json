@@ -1,0 +1,92 @@
+{
+ "$schema": "https://raw.githubusercontent.com/OpenLightingProject/open-fixture-library/master/schemas/fixture.json",
+ "name": "GigBAR MOVE + ILS strobe LED (part)",
+ "shortName": "GigBAR Move strobe LED",
+ "categories": [
+  "Strobe"
+ ],
+ "meta": {
+  "authors": [
+   "screen-machine (hand-written from the maker's manual; not from open-fixture-library.org)"
+  ],
+  "createDate": "2026-11-27",
+  "lastModifyDate": "2026-11-27"
+ },
+ "comment": "One of the four cool-white strobe LEDs in the face of a Chauvet DJ GigBAR MOVE + ILS, patched as its own light so scenes can run them in order (owner, 27 Nov: \"L-R or R-L or ping pong\"). The bar's chart gives each LED its own dimmer (52CH: +26..+29) and the four one shared strobe (+30): mode 'led' is one dimmer, 'led-strobe' a dimmer and the shared strobe (patch LED 4 with it). docs/GIGBAR_RIG.md \u00a71.1.",
+ "links": {
+  "manual": [
+   "https://www.farnell.com/datasheets/4127597.pdf",
+   "https://goknight.com/content/documentation/GigBAR_MOVE_ILS_US_UM_ML5_Rev8.pdf"
+  ]
+ },
+ "physical": {
+  "bulb": {
+   "type": "LED"
+  },
+  "lens": {
+   "degreesMinMax": [
+    30,
+    30
+   ]
+  }
+ },
+ "availableChannels": {
+  "White": {
+   "capability": {
+    "type": "Intensity",
+    "comment": "this white LED's dimmer"
+   }
+  },
+  "Strobe": {
+   "capabilities": [
+    {
+     "dmxRange": [
+      0,
+      5
+     ],
+     "type": "ShutterStrobe",
+     "shutterEffect": "Open",
+     "comment": "Flash: no strobe (assumed; the manual starts strobe at 000)"
+    },
+    {
+     "dmxRange": [
+      6,
+      250
+     ],
+     "type": "ShutterStrobe",
+     "shutterEffect": "Strobe",
+     "speedStart": "1Hz",
+     "speedEnd": "30Hz",
+     "comment": "spec sheet: strobe rate 0-30 Hz"
+    },
+    {
+     "dmxRange": [
+      251,
+      255
+     ],
+     "type": "ShutterStrobe",
+     "shutterEffect": "Strobe",
+     "soundControlled": true,
+     "comment": "Strobe to sound"
+    }
+   ]
+  }
+ },
+ "modes": [
+  {
+   "name": "led",
+   "shortName": "1ch",
+   "channels": [
+    "White"
+   ]
+  },
+  {
+   "name": "led-strobe",
+   "shortName": "2ch",
+   "channels": [
+    "White",
+    "Strobe"
+   ]
+  }
+ ]
+}

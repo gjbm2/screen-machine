@@ -192,8 +192,13 @@ from . import picture as picmod
 from . import moves as movesmod
 from . import flow as flowmod
 from . import light_scenes as lscenes
+from . import roomlight
+from .karaoke_feed import is_karaoke, is_song   # a known song (karaoke or Sonos) vs one being sung
 from . import palette as pal
 from . import treatment as treatmod
+from . import idiom as idiommod
+from . import moments as momentsmod
+from . import phrasing
 from .structure import STRUCTURE_FALLBACK, piano_rest, practice_of
 from .vibes import Vibes
 
@@ -244,7 +249,7 @@ LIGHT_REASON_WORDS = {"feel": "a new feel", "first": "the first light scene", "s
 GROOVE_SONG_MIN_S = 20.0            # a song's own groove is kept once this much of it has sounded
 GROOVE_TAU_S = 15.0                 # the groove the lights' draw reads: the direction's, averaged over this long
 MOMENT_TRIGGERS = ("lead_in", "waiting", "lull", "song_end")   # the effect triggers a moment fires (never gapped)
-MOMENTS_FALLBACK = {"lull_after_s": 180.0}   # show.yaml lights.moments
+MOMENTS_FALLBACK = {"lull_after_s": 180.0, "energy": {}}   # show.yaml lights.moments (energy: {moment: 0..1})
 LIGHT_SCENE_SEED = 0                # the light-scene draw's seed (a fixed seed, as palette.from_image's k-means)
 LIGHT_FX_SEED = 1                   # the effects' and transitions' draws (their own, so effects never shift the scenes')
 ENSEMBLE_SEED = 2                   # the interplay forms' draw (docs/ENSEMBLE.md §4.2: its own, beside the lights')
@@ -257,6 +262,7 @@ ROOM_LIGHT_SCENES = "light_scenes"
 #: a look's transition style -> the light transition kinds it may pick among (docs/LIGHTS.md §7.3); a song change's
 #: style (contract.TRANSITION_STYLES) maps the same way, fade-dark to fade_dark
 LIGHT_KINDS_FOR = {"cut": ("cut", "dark_move"), "crossfade": ("crossfade", "sweep"), "fade-dark": ("fade_dark",)}
+LIFT_KINDS = ("dark_move", "cut")   # into a lift: the heads placed in the dark and lit on the line, else a cut
 BAND_BASE_TERMS = ("genre", "rate", "clarity", "moods")   # director.bands.base.weights' keys (README S5.21)
 GENRE_MIN_CONF = 0.4                # the local ML's genre word counts at this confidence (director.genre_min_conf;
                                     # structure's style rule: a leader's share, 0.5-0.95 on clear tracks, ~0.3 mixed)
@@ -286,7 +292,14 @@ CATALOG_POLL_S = 300.0
 COLOUR_CACHE = 512                  # lamp colours by their quantised inputs (the tick's budget is 1 ms p95)
 QUANT = 0.005                       # saturation and drift depth are quantised to this for the cache
 LOG_MEM = 500
-LOG_MAX_BYTES = 1 << 20
+LOG_MAX_BYTES = 32 << 20
+KARAOKE_LAMP_AHEAD_S = 0.25        # a karaoke song's file energy is read this far ahead for the lamps (a tick + their latency)
+KARAOKE_FILE_W = 0.8               # ... and weighs this much against the mic's onsets (starting point)
+REST_IGNORES = ("section_change", "build", "drop", "drop_armed", "breakdown")   # music events a resting room ignores
+FX_PER_MOMENT = 2                  # light effects: groups one moment may light (lights.programs.effects_per_moment)
+FX_BIG_PER_MOMENT = 3              # ... for a big moment (a drop, the last chorus: GAP_FREE_TRIGGERS)
+FX_ROOM_MAX = 3                    # ... running in the whole room at once (lights.programs.effects_room_max)
+TRACK_LEVEL_AHEAD_S = 4.0         # a karaoke song's line-up at its start: its file energy this far in (starting point)
 # Starting points, overridable in show.yaml (director.transitions): how a look change crosses over for each vocab.yaml
 # transition_style word. A style with no entry, or no style, crossfades over TIME_FADE_S.
 TRANSITIONS = {"gentle": {"style": "crossfade", "beats": 4.0, "seconds": 4.0},
@@ -300,7 +313,7 @@ CONTEXT_STALE_S = 3.0               # music.context comes at 1 Hz
 RHYTHM_STALE_S = 1.0                # README S4.6: a music.rhythm frame over 1 s old is stale
 E_HIST_N = 6000                     # energy samples kept for section energies (10 min at 10 Hz)
 SUBDIVISIONS = (0.5, 0.25, 0.125)   # §8.5: a build steps the accent subdivision 1/2 -> 1/4 -> 1/8
-GAP_FREE_TRIGGERS = ("drop", "final_chorus") + MOMENT_TRIGGERS   # big moments: never held back by lights.programs.effect_gap_bars
+GAP_FREE_TRIGGERS = ("drop", "final_chorus", "climax") + MOMENT_TRIGGERS   # big moments: never held back by lights.programs.effect_gap_bars
 STROBE_MOMENT_S = 4.0               # strobes within this of a spent token are the same big moment (one token)
 TOKEN_WINDOW_S = 3600.0             # peak_tokens_per_hour: at most that many spends in any 60 minutes
 STRUCTURE_REASONS = ("section", "repeat", "drop", "track")   # look changes structure's events caused
@@ -319,7 +332,8 @@ NEUTRAL_ROLE = {"palette_role": "base", "follow_screen": False, "chroma_max": "c
 # "beat" (a cut on the first downbeat while the clock is at segue.cut_gate or better, else a crossfade), "always"
 # (a cut; on the downbeat when the clock allows, else now); ``scale`` multiplies every length.
 TRACK_TRANSITIONS = {
-    "gap": {"out_s": 2.5, "in_s": 2.0, "min_s": 1.5, "max_s": 4.0, "dark_max_s": 8.0},
+    "gap": {"out_s": 2.5, "in_s": 2.0, "min_s": 1.5, "max_s": 4.0, "dark_max_s": 8.0, "skip_out_s": 1.6,
+            "lights_floor": 0.15},
     "segue": {"cut_gate": "beat", "crossfade_s": 2.0},
     "styles": {"gentle": {"cut": "never", "scale": 1.5}, "lively": {"cut": "beat", "scale": 1.0},
                "wild": {"cut": "always", "scale": 0.6}, "default": {"cut": "beat", "scale": 1.0}},
@@ -379,6 +393,14 @@ INT_SPAN = 0.34                # the band energy: base -INT_SPAN .. base +INT_SP
 INT_SPAN_UP = 0.45
 KARAOKE_DWELL_MAX_S = (30.0, 90.0)
 SECTION_ENERGY = {"verse": -0.08, "chorus": 0.15, "instrumental": 0.05, "outro": -0.15}
+# A karaoke song laid out ahead (songplan.py; owner, 27 Nov: "informed by song structure and shape metadata"). The
+# director's own starting points for lights.programs' optional keys (light_scenes.PROGRAMS_OPTIONAL has the words).
+RECALL_WEIGHT = 1000.0
+GROW_STEP = 0.12
+SECTION_FIT, SECTION_AGAINST = 2.5, 0.35
+CARRIER_OTHERS = 0.25
+DRIVE_LEVEL = 0.75
+BIG_SECTIONS = ("final_chorus", "climax")      # the song's one biggest section: scenes written for a chorus fit it
 from .song_character import SONG_GENRES  # noqa: E402  (Deezer's genres -> the vocabulary; shared with the feed)
 from . import song_character as songc  # noqa: E402
 # Practice (PianoView.practice 0..1; owner, 1 Nov). The Room page says "Sounds like practice" from PRACTICE_ON until it
@@ -423,6 +445,19 @@ DIRECTOR_FALLBACK = {
     # vibe's list (art = the screens' own stills). [] keeps the old neutral (artnet_out's fixed colour). Only the
     # colours: every other behaviour stays neutral until a feel is set.
     "no_feel": {"palettes": []},
+    # design: restraint and coherence within a song (docs/LIGHT_DESIGN_NOTES.md; owner, 27 Nov: "a system that feels
+    # the music and expresses it well", not one that "flashes like a school disco"). song_palette: a karaoke song
+    # keeps the palette its first look landed with (its sections re-allocate the roles; a later plan's palette waits
+    # for the next song). A flourish is a move whose lights carry a gesture (every head flies up, a pump, a sweep
+    # through): after one, the next flourish_gap section changes go across plainly, and a karaoke song has at most
+    # flourish_per_song of them, the last kept for its big moment (a big move is never held back). Starting points.
+    "design": {"song_palette": True, "flourish_per_song": 3.0, "flourish_gap": 2.0},
+    # a karaoke song's brief (brief.py): on = the director is held to its idiom, palette and section map; wind_bars /
+    # settle_bars: how long before a lift the lights pull in, and how long a landing takes to settle (phrasing.py);
+    # lift_min: a section this much bigger than the one before is a lift
+    # heard_min: with no brief (music nobody laid out ahead), a section predicted while the music builds is a lift
+    # once structure's build_progress has reached this
+    "brief": {"enabled": True, "wind_bars": 2.0, "settle_bars": 1.0, "lift_min": 0.12, "heard_min": 0.3},
     # song ends (README S5.17)
     "track_transitions": TRACK_TRANSITIONS,
     # composition and balance (README S5.18; compose.py): observe | drive, the loudness, range, headroom and limits
@@ -435,7 +470,26 @@ STAGE4_KEYS: dict[str, dict[str, Any]] = {
               "dip_bars": (0.0, 16.0), "hit_beats": (0.0, 16.0), "hit_swell_ms": (300.0, 10000.0)},
     "breakdown": {"floor_add": (0.0, 1.0), "motion_scale": (0.0, 1.0), "saturation_scale": (0.0, 1.0)},
     "screens": {"send_palette": bool, "palette_transition_s": (0.0, 60.0), "hold_hand_picks": bool,
-                "own_echo_s": (0.0, 60.0)}}
+                "own_echo_s": (0.0, 60.0)},
+    "design": {"song_palette": bool, "flourish_per_song": (0.0, 50.0), "flourish_gap": (0.0, 16.0)},
+    "brief": {"enabled": bool, "wind_bars": (0.0, 16.0), "settle_bars": (0.0, 8.0), "lift_min": (0.0, 1.0),
+              "heard_min": (0.0, 1.0)}}
+
+
+#: The look changes whose moves the design's flourish pacing governs (a new song, a drop and a person's Next are
+#: their own occasions)
+#: A scene outside the song's idiom: its weight x this (never drawn while one inside it fits the group).
+IDIOM_OUT = 1e-9
+FLOURISH_REASONS = ("section", "repeat", "dwell")
+
+
+def flourish_held(reason: str, n: int, since: int, per_song: float, gap: float, in_song: bool) -> bool:
+    """Whether a change of ``reason`` goes across plainly (show.yaml director.design): within ``gap`` changes of the
+    last flourish, or once a karaoke song (``in_song``) has had all but the one kept for its big moment. ``n``:
+    flourishes this song; ``since``: changes since the last one."""
+    if reason not in FLOURISH_REASONS:
+        return False
+    return since < int(gap) or (in_song and n >= max(0, int(per_song) - 1))
 
 
 def _c01(x: float) -> float:
@@ -699,6 +753,10 @@ def choose_track_transition(cfg: dict, kind: str, ev: dict, facts: dict, style_w
     if kind == "track_end" and ev.get("detail") == "sound_back" and isinstance(last, dict):
         return dict(last)
     gap = cfg["gap"]
+    if kind == "track_end" and ev.get("detail") == "skip":     # a person skipped: down with the player's fade, up
+        return {"style": "fade-dark", "out_s": round(float(gap.get("skip_out_s", 1.6)), 3),   # with the new song
+                "in_s": round(max(float(gap["min_s"]), min(float(gap["max_s"]), float(gap["in_s"]) * scale)), 3),
+                "seconds": None, "on": "now", "change": change, "dark_max_s": round(float(gap["dark_max_s"]), 3)}
     if kind == "track_change":
         through_dark = dark and not facts.get("back")
     elif kind == "track_end" and ev.get("via") == "dsp":
@@ -731,7 +789,8 @@ def parse_track_transitions(raw: Any, probs: list[str]) -> dict:
         probs.append("director.track_transitions: not a mapping: the starting points used")
         return out
     p = "director.track_transitions"
-    for sec, keys in (("gap", ("out_s", "in_s", "min_s", "max_s", "dark_max_s")), ("segue", ("crossfade_s",))):
+    for sec, keys in (("gap", ("out_s", "in_s", "min_s", "max_s", "dark_max_s", "lights_floor")),
+                      ("segue", ("crossfade_s",))):
         got = raw.get(sec)
         if got is None:
             continue
@@ -842,6 +901,12 @@ class Director:
         self._apx = appmod.Executor()
         self._apx_st: dict[str, Any] = {"busy": False, "error": None, "sends": 0}
         self._lp: dict[str, dict] = {}                    # group -> its program (scene, why, transition, since, at)
+        # the light in the room (roomlight.py; docs/LIGHTS.md §7.5): each light type's output, the level each group
+        # is brought down to while it plays with a featured low-power light, and the sums behind it (the snapshot)
+        self._photo: dict = roomlight.load()
+        self._group_level: dict[str, float] = {}
+        self._room_light_view: dict = {}
+        self._room_light_logged: Optional[tuple] = None
         self._lp_next: Optional[dict] = None              # an announced look's programs, until it lands
         self._lp_rev = 0                                  # +1 per change a reader must see (room.look goes at once)
         self._lp_rev_pub = 0
@@ -932,6 +997,24 @@ class Director:
         self._relax_done = False
         self._silent_since: Optional[float] = None
         self._song_change = False
+        self._song_first_look = False                    # a new song's first look hasn't landed yet
+        self._song_pal_locked = False                    # design.song_palette: this song has its palette
+        self._fl_n, self._fl_since = 0, 99               # design: flourishes this song, changes since the last one
+        self._idioms: dict = idiommod.load()             # config/live/idioms.yaml (read again at each new song)
+        self._smom_cfg: dict = momentsmod.load()         # config/live/moments.yaml: the song's moments (each new song)
+        self._mom_song: Optional[str] = None             # the karaoke song (its key) whose moments are chosen ...
+        self._mom_chosen: list[dict] = []                # ... which they are (moments.choose)
+        self._mom_done: set[str] = set()                 # ... and which were handed on (logged, hit, flashed)
+        self._mom_env: list[dict] = []                   # the envelopes in the look now (LookData.moments)
+        self._junction_env: list[dict] = []              # the song junction's envelopes now (_junction_envs)
+        self._idiom_out: dict[str, frozenset] = {}       # idiom -> the scenes outside it
+        self._scene_traits: dict[str, dict] = {}         # scene -> idiom.traits (read again at each new song)
+        self._sec_brief: Optional[dict] = None           # the brief's word on the section being landed
+        self._sec_size: Optional[float] = None           # ... and the size of the one before it
+        self._arrival: Optional[dict] = None             # the lift being wound up to or settled from (phrasing.py)
+        self._brief_said: Optional[str] = None
+        self._bpal: tuple[Optional[str], Optional[str]] = (None, None)   # (song, the brief palette settled for it)
+        self._prev_song_pal: Optional[str] = None        # the palette the song before this one played in
         self._emphasis = 0
         self._band: Optional[int] = None
         self._split_hi = False
@@ -1029,10 +1112,20 @@ class Director:
         self._sec_mem: dict[str, dict] = {}              # letter -> {"palette", "variation", "look_id"} (this track)
         # moves (moves.py; owner, 26 Nov): a change of scene composed across the layers
         self.moves = movesmod.Moves()
+        # the line-up (light_scenes.pick_lineup; show.yaml lights.lineups): which light groups play, which rest
+        self._lineup: Optional[str] = None               # the one playing (its name)
+        self._lineup_next: Optional[tuple] = None        # ((look id, reason, by), name): drawn for a pending change
+        self._lineup_apply: Optional[str] = None         # set while that change's programs are picked
         self._move: Optional[dict] = None                # the pending look change's: {"key", "name", "why", "move"}
         self._move_apply: Optional[dict] = None          # set while that change's programs are picked
         self._sec_kind: Optional[str] = None             # the section playing, by a lyric plan (moves.SECTION_KINDS)
         self._sec_kinds: tuple[Optional[str], Optional[str]] = (None, None)   # the last boundary: (from, into)
+        self._sec_level: Optional[float] = None          # the section coming: the song's level over it (songplan.py)
+        self._sec_letter: Optional[str] = None           # ... and its letter (a chorus is one letter all song)
+        self._light_mem: dict[str, dict] = {}            # letter -> {"lineup", "level", "scenes": {group: scene},
+                                                         # "carrier"}: the lights' look for it (this track)
+        self._carrier: Optional[str] = None              # the light group that carries the beat in this look
+        self._lineup_how: Optional[str] = None           # how the last line-up was chosen: drawn | recalled | grown
         self._last_boundary_s: Optional[float] = None
         self._e_hist: collections.deque = collections.deque(maxlen=E_HIST_N)   # (t_s, smoothed energy)
         self._x = (0.0, 0.0, 0.0, 0.0)                   # the section's expression: (from, to, t0, t1), in u units
@@ -1057,7 +1150,8 @@ class Director:
             pass
         self._moment = contract.MOMENTS[0]               # the room's moment (contract.MOMENTS): what the lights' scenes
         self._moment_since = 0.0                         # and effects are commissioned for, besides the music
-        self._moments_cfg = dict(MOMENTS_FALLBACK)
+        self._moments_cfg = {**MOMENTS_FALLBACK, "energy": {}}
+        self._picture_fit: dict[str, float] = dict(picmod.FIT)   # show.yaml lights.picture
         self._air = atmod.Air()                          # the room's haze (atmosphere.py)
         self.haze_pick: Optional[str] = None             # a person's haze level (set_haze), until the mode changes
         self._air_next = 0.0
@@ -1090,6 +1184,8 @@ class Director:
         # song ends (README S5.17), all on show-brain
         self._junction: Optional[dict] = None            # the song now ending: {"track_id", "dark", "transition",
                                                          # "kind", "held"}, until its track_change
+        self._dip_in: Optional[dict] = None              # ... and its way back in: {"t0", "in_s", "floor"}
+        self._mom_hold: Optional[dict] = None            # a karaoke song's ending, held dark past the song: {"env", "until"}
         self._song_dip: Optional[dict] = None            # fade-dark's outgoing half on the lamps: {"t0", "out_s",
                                                          # "in_s", "until", "track_id"} (to the vibe's floor, never off)
         self.ends_stats: dict[str, Any] = {"chosen": {}, "held": 0, "dips": 0, "dip_released": 0}
@@ -1446,10 +1542,13 @@ class Director:
         self.lamps_cfg = {"placement_roles": {str(k): v for k, v in pr.items() if v in clean_roles},
                           "default_role": dr if dr in clean_roles else None, "roles": clean_roles}
         self.lights_cfg = lscenes.parse_lights(s.get("lights"), probs)     # docs/LIGHTS.md §12
+        self._photo = roomlight.load(problems=probs)                       # config/room/photometry.yaml
         self._air.configure(atmod.parse((s.get("lights") or {}).get("atmosphere")
                                         if isinstance(s.get("lights"), dict) else None, probs))   # the hazers
+        self._picture_fit = picmod.parse_fit((s.get("lights") or {}).get("picture")
+                                             if isinstance(s.get("lights"), dict) else None, probs)
         mo = (s.get("lights") or {}).get("moments") if isinstance(s.get("lights"), dict) else None
-        self._moments_cfg = dict(MOMENTS_FALLBACK)
+        self._moments_cfg = {**MOMENTS_FALLBACK, "energy": {}}
         if isinstance(mo, dict):
             la = _num(mo.get("lull_after_s"))
             if la is not None and la > 0:
@@ -1457,6 +1556,17 @@ class Director:
             elif mo.get("lull_after_s") is not None:
                 probs.append(f"lights.moments.lull_after_s: {mo.get('lull_after_s')!r} isn't seconds: "
                              f"{MOMENTS_FALLBACK['lull_after_s']:g}")
+            ss = _num(mo.get("screen_share"))             # the screens' scenes tagged for the moment: their share
+            if ss is not None and 0.0 <= ss <= 1.0:
+                self._moments_cfg["screen_share"] = ss
+            elif mo.get("screen_share") is not None:
+                probs.append("lights.moments.screen_share: needs 0..1: none")
+            en = mo.get("energy")                         # the most energy the director directs in each moment
+            if isinstance(en, dict):
+                self._moments_cfg["energy"] = {k: _c01(float(v)) for k, v in en.items()
+                                               if k in contract.MOMENTS and _num(v) is not None}
+            elif en is not None:
+                probs.append("lights.moments.energy: needs {lead_in | waiting | lull: 0..1}: none")
         if self.ensemble is not None:                     # docs/ENSEMBLE.md §10
             ens_probs: list[str] = []
             self.ensemble.configure(ensmod.parse_settings(s.get("ensemble"), ens_probs), ens_probs)
@@ -1777,11 +1887,26 @@ class Director:
             conf = sum(c for _, c in inputs.values()) / len(inputs)
         else:
             music, conf = 0.5, 0.0
+        # a karaoke song's own measured energy where the lamps will show it (the file is known ahead: no mic lag, no
+        # 2 s smoothing, and the room mic's chatter and singers don't move it). The mic's onsets keep a share, so a
+        # crowd going for it still lifts the room; harmony's dissonance doesn't brighten a song we have measured.
+        ke = self._karaoke_energy(KARAOKE_LAMP_AHEAD_S) if karaoke_on else None
+        if ke is not None:
+            other = [v for k, (v, _) in inputs.items() if k in ("onsets", "dynamics")]
+            music = KARAOKE_FILE_W * ke + (1.0 - KARAOKE_FILE_W) * (sum(other) / len(other) if other else ke)
+            conf = 1.0
         # relax (§8.5): quiet or talking, unless the vibe says otherwise; and no audio at all (liveness run down after
         # the hold and the fade, nobody playing): drift to the base look and stop changing, whatever the vibe says
         no_audio = not fresh and self.lv <= 0.0 and not playing
-        relax_want = 1.0 if not karaoke_on and (no_audio or (vs["relax_on_talk"] and (self._situation("quiet")
-                                                                                       or self._situation("talking")))) else 0.0
+        # a known song plays (karaoke_on): never "quiet" (the file says it plays, whatever the mic hears); a Sonos
+        # song talked over relaxes as the feel says; a karaoke song never does (the voices are singing)
+        if self._resting():                               # no song chosen: what the mic hears is background music
+            relax_want = 1.0
+        elif karaoke_on:
+            relax_want = 1.0 if (not self._singing() and vs["relax_on_talk"] and self._situation("talking")) else 0.0
+        else:
+            relax_want = 1.0 if (no_audio or (vs["relax_on_talk"] and (self._situation("quiet")
+                                                                       or self._situation("talking")))) else 0.0
         self._relax = _ema(self._relax, relax_want, dt, RELAX_TAU_S)
         was = self._relaxed
         self._relaxed = self._relax > 0.5
@@ -1892,6 +2017,13 @@ class Director:
             self._phrase_passed = True
         if grid.ok and self.look_bar is None:
             self.look_bar = grid.bar_at(now_s)
+        # a karaoke pause: a section's look announced before it was paused doesn't land in the pause (structure
+        # announces it again on resume)
+        if self.pending is not None and self.pending.get("structure") and self.pending["by"] == "director" and \
+                self.pending.get("reason") not in ("track",) and self._karaoke_paused():
+            self._log_event("look_skipped", {"why": "the song is paused", "reason": self.pending["reason"]})
+            self.pending = None
+            return
         # land a change that is due
         if self.pending is not None and now_s >= self.pending["at_s"] - 1e-6:
             pd = self.pending
@@ -2002,12 +2134,16 @@ class Director:
             if mv["move"]["land"] is not None and by != "human":
                 ev["land"] = mv["move"]["land"]
         self._move_apply = mv
+        self._lineup_apply = self._lineup_for(look_id, reason, by, now_s)
         if grid.has_grid:
             ev["beat"] = round(grid.beat_at(at_s), 3)
             ev["bar"] = grid.bar_at(at_s + 1e-6)
             ev["phrase"] = math.floor(ev["bar"] / grid.pb)
+        if self._lineup_apply is not None:
+            ev["lineup"] = self._lineup_apply
         self._announce_programs(ev, now_s, reason, by, at_s, transition, section)   # docs/LIGHTS.md §7.3
         self._move_apply = None
+        self._lineup_apply = None
         self._ensemble_announce(ev, now_s, reason, by, at_s, grid)                  # docs/ENSEMBLE.md §5.2
         self._publish(contract.ROOM_EVENT, ev)
         self.events += 1
@@ -2021,6 +2157,8 @@ class Director:
         self._log_event("variation", {"why": why, "variation": self.variation})
 
     def _land(self, pd: dict, now_s: float, vs: dict, grid: Grid) -> None:
+        if self._lineup_next is not None and self._lineup_next[0][0] == f"L{self.look_n + 1}":
+            self._lineup = self._lineup_next[1] or self._lineup     # the change's line-up plays from here
         self.pending = None
         self.next_pending = False
         self.look_n += 1
@@ -2029,6 +2167,10 @@ class Director:
         self.look_bar = grid.bar_at(now_s + 1e-6) if grid.ok else None
         self._var_mark_bar, self._var_mark_s = self.look_bar, now_s
         rec = pd.get("recall")
+        bf = self._brief()
+        bpal = self._brief_palette(bf, vs) if bf is not None else None
+        if bpal is not None and pd["by"] == "director" and self.palette_pick == contract.PALETTE_AUTO:
+            pd["palette"] = bpal                          # the song's one palette is its brief's
         if not pd.get("palette") and rec is None and self._treat_pal and pd["by"] == "director" \
                 and self.palette_pick == contract.PALETTE_AUTO and self._treat_pal in self._candidates(vs):
             pd["palette"] = self._treat_pal              # a later plan's palette (README S5.33)
@@ -2040,13 +2182,15 @@ class Director:
         elif pd["advance"] or self._song_change:
             self._advance_palette(vs)
         self._song_change = False
+        if self._song_first_look:                        # the song's first look: it keeps this palette (design)
+            self._song_first_look, self._song_pal_locked = False, True
         if rec is not None:
             self.variation = int(_num(rec.get("variation"), self.variation) or 0)
         elif not pd.get("palette") and not pd["advance"]:
             self.variation += 1                          # the director's own change: a new allocation of roles
         tr = pd.get("transition") or self._transition(vs)
         self._look_transition = tr
-        self._song_dip = None                            # a new look ends a song's outgoing half (S5.17)
+        self._dip_back(now_s, "the new look landed")     # a new look ends a song's outgoing half (S5.17): back in
         # GOBO +1, the screens' scene change: while a vibe plays the director owns it (structure steps it only while
         # we are neutral), so it comes with every look that actually lands, and with nothing the vibe holds back
         _call(self.ctx.section_change)
@@ -2092,9 +2236,11 @@ class Director:
         self._drop_inside_s = None
         self._sec_mem.clear()
         self._sec_kind, self._sec_kinds = None, (None, None)
+        self._sec_level, self._sec_letter = None, None
+        self._light_mem.clear()
         self._x = (0.0, 0.0, 0.0, 0.0)
         self._cut_mark = None
-        self._song_dip = None
+        self._song_dip = self._dip_in = self._mom_hold = None
         self._scr["sent"].clear()
         self._scr["retry"].clear()
 
@@ -2168,6 +2314,9 @@ class Director:
         if at_ms is None:
             return
         self.sec_stats["events"][kind] = self.sec_stats["events"].get(kind, 0) + 1
+        if kind in REST_IGNORES and self._resting():
+            self.sec_stats["events"]["rest_ignored"] = self.sec_stats["events"].get("rest_ignored", 0) + 1
+            return                                        # the background music's sections, builds, drops: not a show
         self._light_event(kind, ev, at_ms / 1000.0, now_s, grid)   # docs/LIGHTS.md: the flow's events, light effects
         self._ensemble_event(kind, ev, at_ms / 1000.0, now_s, grid)   # docs/ENSEMBLE.md: hits, swells, breakdowns
         if kind == "track_end_armed":                     # the composer's fade cue (README S5.18); a call-off ends it
@@ -2218,12 +2367,53 @@ class Director:
                                      "context": self._ctx_brief()})
 
     def _release_dip(self, now_s: float, why: str) -> None:
-        d, self._song_dip = self._song_dip, None
+        d = self._song_dip
         if d is None:
             return
-        self._fade_s = float(d["in_s"])                  # the lamps come back over in_s
+        self._dip_back(now_s, why)
+        self._fade_s = float(d["in_s"])                  # the lamps' colours come back over in_s too
         self.ends_stats["dip_released"] += 1
         self._log_event("song_end", {"released": why, "track_id": d["track_id"]})
+
+    def _dip_back(self, now_s: float, why: str) -> None:
+        """The junction's way back (owner, 27 Nov: "screens fade but lights don't typically. I thought we had
+        consolidated the logic across both?"): the lights come back in over the transition's in_s from wherever the
+        song's end took them, as the screens do. Ends the outgoing half and a karaoke ending's hold."""
+        d, h = self._song_dip, self._mom_hold
+        if d is None and h is None:
+            return
+        gap = self.cfg["track_transitions"]["gap"]
+        in_s = float(d["in_s"]) if d is not None else float(gap["in_s"])
+        floor = float(gap["lights_floor"]) if d is not None else float((h or {}).get("env", {}).get("floor") or 0.0)
+        self._song_dip, self._mom_hold = None, None
+        self._dip_in = {"t0": now_s, "in_s": max(0.05, in_s), "floor": floor}
+        self._log_event("song_end", {"back_in": why, "in_s": round(in_s, 3), "from": floor})
+
+    def _junction_envs(self, now_s: float) -> list[dict]:
+        """The song junction as envelopes (phrasing.py), the one rule every light output reads: lamps and the rig
+        alike, timed as the screens' transition is. Out to gap.lights_floor (a share of the look's level) over out_s;
+        a karaoke song's ending held dark through the gap; back in over in_s once the next look lands, the sound
+        comes back, or dark_max_s passes."""
+        out: list[dict] = []
+        sd = self._song_dip
+        if sd is not None:
+            out.append({"kind": "out", "at_ms": round((sd["t0"] + sd["out_s"]) * 1000.0, 1),
+                        "fade_ms": round(sd["out_s"] * 1000.0, 1),
+                        "floor": float(self.cfg["track_transitions"]["gap"]["lights_floor"]), "key": "junction"})
+        h = self._mom_hold
+        if h is not None:
+            if now_s >= h["until"]:
+                self._dip_back(now_s, "dark_max_s passed")
+            else:
+                out.append(h["env"])
+        di = self._dip_in
+        if di is not None:
+            if now_s >= di["t0"] + di["in_s"]:
+                self._dip_in = None
+            else:
+                out.append({"kind": "in", "at_ms": round(di["t0"] * 1000.0, 1),
+                            "fade_ms": round(di["in_s"] * 1000.0, 1), "floor": di["floor"], "key": "junction-in"})
+        return out
 
     # -- the song's treatment (treatment.py, README S5.33; owner, 29 Oct) -------------------------------------------
     def _song_words(self, room: Any) -> tuple[Optional[str], list[str]]:
@@ -2234,7 +2424,9 @@ class Director:
         np_ = _call(getattr(self.ctx, "now_playing", None))
         if isinstance(np_, dict) and np_.get("key") and np_.get("state") == "playing":
             song = str(np_.get("title") or np_["key"])[:80]
-            based.append(f"{'Karaoke' if np_.get('source') == 'karaoke' else 'the Music page'}: {song}")
+            src = str(np_.get("source") or "")
+            based.append(f"{'Karaoke' if is_karaoke(np_) else 'Sonos' if src.startswith('sonos') else 'the Music page'}"
+                         f": {song}")
         sp = self._situation("sonos_playing")
         if song is None and sp and isinstance(room, dict) and self._np_target:
             m = (room.get("members") or {}).get(self._np_target)
@@ -2347,6 +2539,8 @@ class Director:
             self.ensemble.prefer_k = float(self.treat.cfg["form_prefer"])
         if not landed or plan is None or not plan.get("palette") or self.palette_pick != contract.PALETTE_AUTO:
             return
+        if self._song_pal_locked and self.cfg["design"]["song_palette"] and self._karaoke_np() is not None:
+            return                                        # one palette a song: its sections re-allocate the roles
         pd = self.pending
         if pd is not None and pd["by"] == "director" and not pd.get("palette") and not pd.get("recall"):
             pd["palette"] = plan["palette"]               # the song's look hasn't landed yet: it takes the plan's
@@ -2480,24 +2674,110 @@ class Director:
         return [KARAOKE_DWELL_MIN_S, round(hi, 1)]
 
     def _karaoke_np(self) -> Optional[dict]:
+        """The known song playing (owner, 28 Nov: the karaoke machinery for any song, "it shouldn't be specific to
+        karaoke mode"): a karaoke song or a Sonos track that is a library song, with its brief, sections, grid and
+        shape. Being SUNG is _singing()."""
         np_ = _call(getattr(self.ctx, "now_playing", None))
-        if isinstance(np_, dict) and np_.get("source") == "karaoke" and np_.get("state") == "playing" and np_.get("key"):
+        if is_song(np_) and np_.get("state") == "playing":
             return np_
         return None
 
+    def _resting(self) -> bool:
+        """No song chosen in a karaoke mode (ctx.room_rest; owner, 28 Nov: the pre-state "should just be in a gentle
+        holding pattern"): the quiet music between songs is background, not a song to perform."""
+        fn = getattr(self.ctx, "room_rest", None)
+        try:
+            return bool(fn()) if fn is not None else False
+        except Exception:                                 # noqa: BLE001
+            return False
+
+    def _singing(self) -> bool:
+        """A karaoke song plays: people sing, so the mic's voices aren't talk."""
+        np_ = self._karaoke_np()
+        return np_ is not None and is_karaoke(np_)
+
+    def _brief(self) -> Optional[dict]:
+        """The playing karaoke song's brief (brief.py, with the feed's now_playing) and its idiom's ``entry``
+        (config/live/idioms.yaml); None with no song, no brief, an idiom the file doesn't have, or
+        director.brief.enabled off. The strategy the director performs (owner, 27 Nov: "the a.d.'s job is then to
+        execute that strategy properly")."""
+        if not self.cfg["brief"]["enabled"]:
+            return None
+        np_ = self._karaoke_np()
+        b = np_.get("brief") if np_ else None
+        if not isinstance(b, dict):
+            return None
+        e = (self._idioms.get("idioms") or {}).get(b.get("idiom"))
+        if e is None:
+            return None
+        key = f"{np_.get('key')}:{b.get('idiom')}"
+        if self._brief_said != key:
+            self._brief_said = key
+            self._log_event("brief", {"song": np_.get("title"), **b})
+            self._why(f"The brief ({b.get('by')}): {e.get('label')}, {b.get('palette') or 'no palette'}. "
+                      f"{b.get('tone') or b.get('why') or ''}")
+        return {**b, "entry": e}
+
+    def _brief_palette(self, bf: Mapping[str, Any], vs: dict) -> Optional[str]:
+        """The brief's palette for this song, settled once: its first choice, or its second when the song before
+        played in the first (two songs running in one palette look like one); None when the feel has neither."""
+        np_ = self._karaoke_np()
+        key = str((np_ or {}).get("key"))
+        if self._bpal[0] != key:
+            cands = self._candidates(vs)
+            first, alt = bf.get("palette"), bf.get("palette_alt")
+            pick = first if first in cands else alt if alt in cands else None
+            if pick is not None and pick == self._prev_song_pal and alt in cands and alt != pick:
+                pick = alt
+            self._bpal = (key, pick)
+        return self._bpal[1]
+
+    def _sec_class(self) -> Optional[str]:
+        """The section being landed, for idiom.plays: verse | chorus | peak; None when the brief says nothing."""
+        sb = self._sec_brief
+        if not sb:
+            return None
+        if sb.get("peak"):
+            return "peak"
+        return "chorus" if sb.get("brief_kind") == "chorus" or (sb.get("size") or 0.0) >= 0.7 else "verse"
+
+    def _idiom_rests(self, gid: str) -> bool:
+        """The song's idiom holds this group of lights back in the section being landed (a ballad's strobe zones
+        until its peak; a hushed song's derbies always)."""
+        b = self._brief()
+        if b is None:
+            return False
+        names = {gid, self._root(gid), *((self._groups.get(gid) or {}).get("scenes_for") or ())}
+        lv = self._sec_class()
+        return any(not idiommod.plays(b["entry"], n, lv) for n in names)
+
+    def _idiom_scenes_out(self, b: Mapping[str, Any]) -> frozenset:
+        """The light scenes outside the brief's idiom (too much movement, too hard a pulse)."""
+        name = str(b.get("idiom"))
+        out = self._idiom_out.get(name)
+        if out is None:
+            out = self._idiom_out[name] = frozenset(
+                n for n, sc in self.light_scenes.scenes.items() if not idiommod.allows(b["entry"], sc))
+        return out
+
     def _song_char(self) -> Optional[dict]:
         """The karaoke song's character (song_character.py: genre, era, the lyrics' words -> moods, valence,
-        arousal, organic), once per song (and again once its lyrics arrive); None with no karaoke song."""
+        arousal, organic), once per song (and again once its lyrics or its brief arrive); None with no karaoke
+        song. A brief's mood words replace the ones counted from the lyrics: it read the song itself."""
         np_ = self._karaoke_np()
         if np_ is None:
             return None
         text = str(np_.get("lyrics_text") or "")
-        key = (str(np_["key"]), bool(text))
+        b = np_.get("brief") if self.cfg["brief"]["enabled"] and isinstance(np_.get("brief"), dict) else None
+        words = tuple(b.get("moods") or ()) if b else ()
+        key = (str(np_["key"]), bool(text), words)
         if getattr(self, "_songc_key", None) == key:
             return self._songc
         try:
             mm, moods = songc.vocab_moods(self.vibes.vocab_path)
             c = songc.character(self._song_genre(), np_.get("year"), text, mm, moods)
+            if c is not None and words:
+                c = {**c, "moods": list(words)[:3], "why": f"the brief: {b.get('tone') or b.get('idiom')}"}
         except Exception:                                 # noqa: BLE001 - no character: the usual chain
             log.debug("song character failed", exc_info=True)
             c = None
@@ -2550,7 +2830,12 @@ class Director:
 
     def _intensity(self, now_s: float) -> Optional[float]:
         """Where the music is now within its track's own range so far, 0..1 (INT_* above); None until there is
-        sound, or while the features are stale."""
+        sound, or while the features are stale. A karaoke song with a measured shape: the file's own, where the
+        screens will show it (their lead ahead)."""
+        if self._karaoke_np() is not None:
+            ke = self._karaoke_energy(self._lead_s())
+            if ke is not None:
+                return ke
         key = self._track_key()
         if key != getattr(self, "_int_key", None) or not hasattr(self, "_int_hist"):
             self._int_key, self._int_hist, self._int_ema, self._int_t = key, collections.deque(), None, None
@@ -2591,11 +2876,30 @@ class Director:
         self._int_ema = x if self._int_ema is None else _ema(self._int_ema, x, dt, INT_TAU_S)
         return self._int_ema
 
+    def _karaoke_energy(self, ahead_s: float) -> Optional[float]:
+        """The playing karaoke song's measured intensity (0..1 in its own range) where the room will be in
+        ``ahead_s``; None with no song or no shape (karaoke_feed.energy_ahead via ctx.karaoke_energy)."""
+        fn = getattr(self.ctx, "karaoke_energy", None)
+        if fn is None:
+            return None
+        try:
+            v = fn(max(0.0, float(ahead_s)))
+        except Exception:                                 # noqa: BLE001 - the song's shape never stops the show
+            return None
+        return _c01(v) if isinstance(v, (int, float)) else None
+
+    def _karaoke_paused(self) -> bool:
+        np_ = _call(getattr(self.ctx, "now_playing", None))
+        return is_song(np_) and np_.get("state") == "paused"
+
     def _song_genre(self) -> Optional[str]:
         """The karaoke song's catalogue genre as a vocabulary word (SONG_GENRES), while it plays; else None."""
         np_ = _call(getattr(self.ctx, "now_playing", None))
-        if not isinstance(np_, dict) or np_.get("source") != "karaoke" or np_.get("state") != "playing":
+        if not is_song(np_) or np_.get("state") != "playing":
             return None
+        b = np_.get("brief") if self.cfg["brief"]["enabled"] else None
+        if isinstance(b, dict) and b.get("genre"):       # its brief read the song itself (brief.py)
+            return str(b["genre"])
         g = np_.get("genre")
         return SONG_GENRES.get(g.strip().lower()) if isinstance(g, str) else None
 
@@ -2641,7 +2945,15 @@ class Director:
         n = len(self._sec_mem)
         self._sec_mem.clear()
         self._sec_kind, self._sec_kinds = None, (None, None)
+        self._sec_level, self._sec_letter = None, None
+        self._light_mem.clear()
         self._song_change = (tr or {}).get("change") != "small"
+        self._song_first_look, self._song_pal_locked = True, False
+        self._fl_n, self._fl_since = 0, int(self.cfg["design"]["flourish_gap"]) - 1   # its first change: plainly
+        self._idioms, self._idiom_out, self._scene_traits = idiommod.load(), {}, {}
+        self._smom_cfg = momentsmod.load()                # config/live/moments.yaml, again at each new song
+        self._prev_song_pal = self.palette_name
+        self._sec_brief, self._sec_size, self._arrival = None, None, None
         tp = self.treat.plan
         plan = tp if (tp is not None and tid is not None and tp.get("song") == f"track:{tid}") else \
             self._plan_song(now_s, "a new song", change=(tr or {}).get("change"),
@@ -2674,16 +2986,39 @@ class Director:
         self._announce(now_s, "track", "director", grid, at_s=at, bar=bar, section=info,
                        transition=self._look_transition_for(tr), palette=plan_pal)
 
+    @staticmethod
+    def _into_kind(ev: Mapping[str, Any]) -> Optional[str]:
+        """The kind of section a lyric-plan section_change goes into (verse | chorus | instrumental | outro), with the
+        song's one big section named: ``final_chorus`` for its last chorus, unless the song's measured shape puts its
+        climax elsewhere (``peak`` False: then it is a chorus like the others); ``climax`` for the section that holds
+        that climax when it isn't the last chorus (songplan.py). None: not a lyric plan's event."""
+        sk = ev.get("section_kind")
+        if not (isinstance(sk, str) and sk):
+            return None
+        peak = ev.get("peak")
+        if sk == "chorus" and ev.get("final") and peak is not False:
+            return "final_chorus"
+        return "climax" if peak is True else sk
+
     def _on_section(self, ev: dict, at_s: float, now_s: float, vs: dict, grid: Grid) -> None:
         """§8.5: a predicted section (a known repeat) lands on its line with that letter's look; a confirmed one lands
         at its at_ms unless that is more than max_late_bars into the section: then it shows inside the look."""
         info = self._section_info(ev)
-        sk = ev.get("section_kind")                       # a lyric plan's: verse | chorus | instrumental | outro
-        if isinstance(sk, str) and sk:
-            into = "final_chorus" if sk == "chorus" and ev.get("final") else sk
+        into = self._into_kind(ev)                        # a lyric plan's kind, with the song's big section named
+        if into is not None:
             self._sec_kinds, self._sec_kind = (self._sec_kind, into), into
+            self._sec_level = _num(ev.get("level"))
+            was = (self._sec_brief or {}).get("size", self._sec_size)
+            self._sec_size = was
+            self._sec_brief = {"size": _num(ev.get("size")), "arrive": ev.get("arrive"), "peak": bool(ev.get("peak")),
+                               "brief_kind": ev.get("brief_kind")} if _num(ev.get("size")) is not None else None
+            self._arrive(at_s, grid)
+            self._sec_letter = ev.get("letter") if isinstance(ev.get("letter"), str) and ev.get("letter") else None
         else:
             self._sec_kinds = (None, None)
+            self._sec_level, self._sec_letter = None, None
+            self._sec_brief = None
+            self._arrive_heard(ev, at_s, now_s, grid)
         predicted = bool(ev.get("predicted"))
         boundary_s = (_num(ev.get("boundary_ms"), at_s * 1000.0) or at_s * 1000.0) / 1000.0
         prev_b = self._last_boundary_s
@@ -2948,6 +3283,39 @@ class Director:
         cur = self._lp
         new: dict[str, dict] = {}
         picked: list[str] = []
+        sec = reason in ("section", "repeat")
+        into = self._sec_kinds[1] if sec else None
+        mem = self._light_mem.get(self._mem_key(into)) if sec and self._sec_letter else None
+        if mem is None and sec and self._sec_letter and into in BIG_SECTIONS:
+            # the last chorus is the chorus, biggest: its scenes come back, and what it adds is drawn (eval 27 Nov:
+            # a last chorus of all-new scenes read as another song, not the chorus at its height)
+            mem = self._light_mem.get(f"{self._sec_letter}:chorus")
+        if mem is not None and self._sec_level is not None and mem.get("level") is not None \
+                and mem["level"] - self._sec_level >= self._prog("grow_step", GROW_STEP):
+            mem = None                                    # it has dropped back: its scenes are drawn afresh too
+        # One light group carries the beat in a look (owner, 27 Nov: "reason extensively about the way that the
+        # layers interact"): every part pulsing on the beat at once is mush. Drawn among the groups that play and may
+        # carry it (lights.groups.<g>.carries_beat), the same one when the section comes round again; the others'
+        # beat scenes draw at carrier_others.
+        cands = {gid: float(g["carries_beat"]) for gid, g in self._groups.items()
+                 if g.get("carries_beat") and not g.get("follows") and self._group_live(gid)
+                 and self._rests(gid) is not True}
+        carrier = None
+        if cands and reason not in ("first", "scenes", "room"):
+            carrier = mem.get("carrier") if mem is not None and mem.get("carrier") in cands else None
+            if carrier is None:
+                x = self._ls_rng.random() * sum(cands.values())
+                for carrier, wgt in cands.items():
+                    x -= wgt
+                    if x <= 0:
+                        break
+            self._carrier = carrier
+        elif cands and self._carrier in cands:
+            carrier = self._carrier
+        fit, against = self._prog("section_fit", SECTION_FIT), self._prog("section_against", SECTION_AGAINST)
+        # a change the music's structure causes (a new song, a section) lands IN the song, whatever the moment is
+        # while it is announced (trace, 27 Nov: a new song's lasers kept the lead-in's scene)
+        mom = "song" if reason in STRUCTURE_REASONS else self._moment
         for gid, g in self._groups.items():
             if g.get("follows") or not self._group_live(gid):
                 continue
@@ -2959,16 +3327,63 @@ class Director:
             try:
                 want = ((self.treat.plan or {}).get("lights") or {}).get(gid)   # README S5.33: the plan's
                 pic = self._picture("next")                # the picture this look shows (picture.py)
-                prefer = picmod.prefer(self.light_scenes.scenes, pic)
+                prefer = picmod.prefer(self.light_scenes.scenes, pic, self._picture_fit)
                 pwhy = {n: f"fits the picture ({pic['name']})" for n, f in prefer.items() if f > 1.0}
                 if want:
                     prefer[want] = prefer.get(want, 1.0) * float(self.treat.cfg["light_prefer"])
                     pwhy[want] = "the plan's pick"
-                got = self.light_scenes.pick_for(g, self.direction, self._flow, self._ls_rng,
-                                                 avoid=old.get("scene") if old else None, tags=self._light_tags,
+                bf = self._brief()
+                if bf is not None:                        # the song's idiom (idiom.py): outside it, not drawn;
+                    out, lv = self._idiom_scenes_out(bf), self._sec_class()   # inside it, by how close to the look
+                    for n, sc in self.light_scenes.scenes.items():            # it wants for this size of section
+                        if n in out:
+                            prefer[n] = prefer.get(n, 1.0) * IDIOM_OUT
+                        elif not ((sc.get("tags") or {}).get("rest") or (sc.get("tags") or {}).get("moments")):
+                            traits = self._scene_traits.get(n)
+                            if traits is None:
+                                traits = self._scene_traits[n] = idiommod.traits(sc)
+                            k = idiommod.closeness(bf["entry"], traits, lv)
+                            if k != 1.0:
+                                prefer[n] = prefer.get(n, 1.0) * k
+                if into is not None:                      # scenes written for this kind of section (tags.sections)
+                    kinds = {into, "chorus"} if into in BIG_SECTIONS else {into}
+                    for n in self.light_scenes.scenes:
+                        ss = self.light_scenes.sections_of(n)
+                        if ss:
+                            prefer[n] = prefer.get(n, 1.0) * (fit if kinds & set(ss) else against)
+                            if kinds & set(ss):
+                                pwhy.setdefault(n, f"made for {lscenes.TRIGGER_WHY.get(into, into)}")
+                back = (mem.get("scenes") or {}).get(gid) if mem is not None else None
+                if back is not None:                      # the section comes round again: its scene comes back
+                    prefer[back] = prefer.get(back, 1.0) * self._prog("recall_weight", RECALL_WEIGHT)
+                    pwhy[back] = "this section's scene, back again"
+                # a featured low-power light (the line-up's features; docs/LIGHTS.md §7.5): the other groups' scenes
+                # that land on the surface it lands on (a head's pool on the laser's ceiling) draw less often
+                feats = self._features(applying=True)
+                if feats and gid not in feats:
+                    on = {x for f in feats for x in (self.lights_cfg["groups"].get(f) or {}).get("lands_on", ())}
+                    clear = float((self.lights_cfg.get("room_light") or {}).get(
+                        "clear_of_feature", roomlight.ROOM_LIGHT_FALLBACK["clear_of_feature"]))
+                    for n, sc in self.light_scenes.scenes.items():
+                        if on & lscenes.lands_of(sc):
+                            prefer[n] = prefer.get(n, 1.0) * clear
+                af = self._accent_fit()
+                if carrier is not None and gid in cands and gid != carrier:
+                    oth = self._prog("carrier_others", CARRIER_OTHERS)
+                    for n, sc in self.light_scenes.scenes.items():    # another group has the beat: this one's
+                        if lscenes.carries_beat(sc):                  # pulsing scenes draw less often
+                            prefer[n] = prefer.get(n, 1.0) * oth
+                got = self.light_scenes.pick_for(g, self._direction_now(mom), self._flow, self._ls_rng,
+                                                 avoid=None if back is not None else old.get("scene") if old else None,
+                                                 tags=self._light_tags,
                                                  hard_avoid=human, prefer=prefer or None, prefer_why=pwhy,
-                                                 moment=self._moment,
-                                                 accent_fit=self._accent_fit())
+                                                 # a change the music's structure causes (a new song, a section)
+                                                 # lands IN the song, whatever the moment is while it is announced
+                                                 # (trace, 27 Nov: a new song's lasers kept the lead-in's scene)
+                                                 moment=mom,
+                                                 rest=self._rests(gid),
+                                                 alone=self._alone(gid),
+                                                 accent_fit=af)
             except Exception:                             # a broken catalogue never fails the tick
                 log.exception("light scenes: pick failed")
                 got = None
@@ -2980,6 +3395,16 @@ class Director:
             picked.append(gid)
         if not picked:
             return None
+        if sec and self._sec_letter and only is None and not held and into not in BIG_SECTIONS:
+            # the lights' look for this section, for next time (the song's big section is its own look: a verse that
+            # holds the climax doesn't make every verse after it the climax)
+            name = self._lineup_apply if self._lineup_apply is not None else self._lineup
+            was = self._light_mem.get(self._mem_key(into))
+            kept = was is not None and getattr(self, "_lineup_how", None) == "recalled" and was.get("lineup") == name
+            self._light_mem[self._mem_key(into)] = {
+                # the level the line-up was chosen at: a section that creeps up over several returns still grows
+                "lineup": name, "level": was.get("level") if kept else self._sec_level, "carrier": carrier,
+                "scenes": {gid: new[gid]["scene"] for gid in picked if new[gid].get("scene")}}
         if reason not in ("first", "scenes", "room"):     # a change of scene: the transition's own gesture across it
             self._transition_gesture(tr, picked, at, now_s)
             self._move_accents(picked, at, now_s)         # and the move's accents around the line
@@ -3102,6 +3527,238 @@ class Director:
             self._lp_rev += 1
             self._log_event("light_effect", {"group": gid, "run": dict(run), "trigger": "transition", "bar": None})
 
+    # -- line-ups: which parts play (owner, 27 Nov; docs/GIGBAR_RIG.md §1.4) ----------------------------------------
+    def _drive(self) -> float:
+        """The music's drive for a line-up, 0..1: its directed energy and its groove (read between the accent_groove
+        marks) in equal parts. A karaoke song's energy is its own range; the groove tells one song from another."""
+        return self._drive_at(None)
+
+    def _drive_at(self, level: Optional[float]) -> float:
+        """``_drive`` for a section whose level in the song is known ahead (songplan.py): that level stands in for the
+        energy being directed now, which describes the section that is ending."""
+        d = self.direction or {}
+        g0, g1 = self.lights_cfg["programs"].get("accent_groove") or (0.0, 1.0)
+        g = _c01((self._groove - g0) / (g1 - g0))
+        if level is None:
+            return 0.5 * _c01(_num(d.get("energy"), 0.5) or 0.5) + 0.5 * g
+        k = _c01(self._prog("drive_level", DRIVE_LEVEL))  # the song's own arc sizes its line-ups; the groove adds
+        return k * _c01(level) + (1.0 - k) * g
+
+    def _mem_key(self, into: Optional[str]) -> Optional[str]:
+        """The lights' memory of a section: by its letter and its kind (an instrumental break and the outro share a
+        letter and are not the same look)."""
+        return f"{self._sec_letter}:{into}" if self._sec_letter else None
+
+    def _prog(self, key: str, default: float) -> float:
+        """One of lights.programs' optional numbers (light_scenes.PROGRAMS_OPTIONAL), else the director's own."""
+        v = _num(self.lights_cfg["programs"].get(key))
+        return float(v) if v is not None else default
+
+    def _lineup_for(self, look_id: str, reason: str, by: str, now_s: float) -> Optional[str]:
+        """The line-up a look change brings (light_scenes.pick_lineup), drawn once per change: by the section it goes
+        into (a lyric plan's kind) and the music's drive, never the one playing while another fits. A change that
+        isn't the music's own or a person's Next (a moment, the room) keeps the one playing."""
+        lus = self.lights_cfg.get("lineups") or {}
+        if lus and self._brief() is not None:
+            # the song's idiom holds some kinds of light back (idioms.yaml groups): a line-up that plays only those
+            # would leave the section with nobody playing (a hushed chorus smaller than its verse), and one that
+            # plays any of them isn't this song's. Those that play only what the idiom lets play; else all of them
+            ok = {n: e for n, e in lus.items() if not any(self._idiom_rests(g) for g in e["plays"])}
+            lus = ok or lus
+        if not lus:
+            return None
+        key = (look_id, reason, by)
+        if self._lineup_next is not None and self._lineup_next[0] == key:
+            return self._lineup_next[1]
+        if reason not in STRUCTURE_REASONS and reason not in ("dwell", "next", "feel"):
+            return self._lineup
+        if reason == "dwell" and self._sec_kind is not None and self._lineup is not None:
+            return self._lineup                           # a song laid out ahead: its sections change the line-up,
+                                                          # a timed change inside one keeps it (the arc holds)
+        sec = reason in ("section", "repeat")
+        into = self._sec_kinds[1] if sec else None
+        draw_into = into
+        if into == "instrumental" and self._sec_class() in ("chorus", "peak"):
+            draw_into = "chorus"                          # a solo as big as a chorus plays like one (eval 27 Nov: a
+                                                          # guitar solo at 0.9 got the derbies and laser alone)
+        level = self._sec_level if sec else None
+        if reason == "track" and level is None and self._karaoke_np() is not None:
+            level = self._karaoke_energy(TRACK_LEVEL_AHEAD_S)   # the new song's own opening, not the energy left
+                                                                # over from the last one (27 Nov: 0.09 -> spots alone)
+        drive = self._drive_at(level)
+        # A section that comes round again (its letter: every chorus is one) brings its line-up back, so the chorus
+        # looks like the chorus; once the song's level for it has risen by grow_step it takes a bigger one that keeps
+        # every part it had. The song's big section draws its own (everything).
+        mem = self._light_mem.get(self._mem_key(into)) if sec and self._sec_letter else None
+        how, name = "drawn", None
+        try:
+            step = self._prog("grow_step", GROW_STEP)
+            fallen = mem is not None and level is not None and mem.get("level") is not None \
+                and mem["level"] - level >= step          # it has dropped back since: drawn afresh for what it is now
+            if mem is not None and mem.get("lineup") in lus and into not in BIG_SECTIONS and not fallen:
+                grown = level is not None and mem.get("level") is not None and level - mem["level"] >= step
+                if grown:
+                    name = lscenes.pick_lineup(lus, draw_into, drive, self._fx_rng,
+                                               over=set(lus[mem["lineup"]]["plays"]))
+                    how = "grown" if name is not None else how
+                if name is None:
+                    name, how = mem["lineup"], "recalled"
+            if name is None:
+                name = lscenes.pick_lineup(lus, draw_into, drive, self._fx_rng, avoid=self._lineup,
+                                           fullest=draw_into in BIG_SECTIONS)   # the high point: the full rig it may
+        except Exception:                                 # a broken catalogue never fails the tick
+            log.exception("line-ups: pick failed")
+            name = None
+        self._lineup_next = (key, name)
+        self._lineup_how = how                            # recalled: the section's memory keeps the level it was set at
+        if name is not None:
+            self._log_event("lineup", {"lineup": name, "plays": list(lus[name]["plays"]), "into": into,
+                                       "drive": round(drive, 3), "level": level, "letter": self._sec_letter if sec
+                                       else None, "how": how, "reason": reason})
+        return name
+
+    def _arrive(self, at_s: float, grid: Grid) -> None:
+        """A section that is a lift (the brief: bigger than the one before, and the music arrives at it) gets its
+        wind-up and landing (phrasing.py), published in the look as ``arrival`` for the look engine. Every real lift
+        gets one, sized by how much bigger the section is: it is the song's phrasing, not a flourish."""
+        sb, b = self._sec_brief, self._brief()
+        if not sb or b is None or sb.get("size") is None:
+            return
+        bc = self.cfg["brief"]
+        rise = float(sb["size"]) - float(self._sec_size if self._sec_size is not None else sb["size"])
+        kind = sb.get("arrive") if sb.get("arrive") in idiommod.ARRIVE else "none"
+        if rise <= 0.0:
+            return                                        # down, or level: a change, not a lift
+        if kind != "none":
+            amount = _c01(0.6 + rise)                     # the brief named it: a real arrival, bigger with the rise
+        elif rise >= float(bc["lift_min"]):
+            kind = b["entry"]["arrive"]                   # a lift the brief didn't name: the idiom's way,
+            amount = _c01(rise / 0.5)                     # by its size (half the song's range is a full one)
+        else:
+            return
+        self._arrival_set(at_s, kind, b["entry"], amount, grid, rise=round(rise, 3), into=sb.get("brief_kind"))
+
+    def _arrival_set(self, at_s: float, kind: str, entry: Mapping[str, Any], amount: float, grid: Grid,
+                     wind_s: Optional[float] = None, **said: Any) -> None:
+        bc = self.cfg["brief"]
+        bar = grid.bar_s or 2.0
+        self._arrival = {"at_s": at_s, "kind": kind, "wind": round(float(entry["wind"]) * amount, 3),
+                         "lift": round(float(entry["lift"]) * amount, 3),
+                         "wind_s": round(float(bc["wind_bars"]) * bar if wind_s is None else wind_s, 3),
+                         "settle_s": round(float(bc["settle_bars"]) * bar, 3), "beat_s": grid.beat_s or bar / 4.0}
+        self._log_event("arrival", {**self._arrival, **said})
+
+    def _arrive_heard(self, ev: Mapping[str, Any], at_s: float, now_s: float, grid: Grid) -> None:
+        """With no brief (music nobody laid out ahead: the room mic, a stream) a narrative can't be planned, so a
+        lift is only what is heard coming (owner, 27 Nov: "the a.d. needs to degrade gracefully to emergent audio
+        cues"): a section predicted while the music builds (structure's build phase) gets the same wind-up and
+        landing, sized by how far the build has got and as long as the warning allows. An armed drop keeps the
+        build grammar's own dip and hit."""
+        bc = self.cfg["brief"]
+        if not bc["enabled"] or self._armed is not None or not ev.get("predicted") or at_s - now_s < 1.0:
+            return
+        if self._phase_eff(now_s) != "build":
+            return
+        bp = self._build_progress()
+        if bp < float(bc["heard_min"]):
+            return
+        self._arrival_set(at_s, idiommod.OPEN["arrive"], idiommod.OPEN, _c01(0.4 + 0.6 * bp), grid,
+                          wind_s=min(float(bc["wind_bars"]) * (grid.bar_s or 2.0), at_s - now_s),
+                          heard=True, build_progress=round(bp, 3))
+
+    def _moments_tick(self, now_s: float, grid: Grid) -> None:
+        """The karaoke song's moments (moments.py; config/live/moments.yaml): chosen once a song by its idiom, then
+        each handed to the look engine lead_s ahead, as an envelope (LookData.moments), a unison hit known ahead and
+        the running scene's drop flash, as its kind's recipe says. Nothing under House lights or Lights low, or with
+        no karaoke song."""
+        np_ = self._karaoke_np()
+        if np_ is None and self._mom_song is not None:
+            # the song has gone (ended, or the player stopped): an ending that has started stays down through the
+            # gap with the screens, until the next look lands (_dip_back), never past dark_max_s
+            ended = [e for e in self._mom_env or () if e.get("kind") == "out"
+                     and float(e["at_ms"]) / 1000.0 - float(e.get("fade_ms") or 0.0) / 1000.0 <= now_s]
+            if ended and self._mom_hold is None:
+                dm = float(self.cfg["track_transitions"]["gap"]["dark_max_s"])
+                self._mom_hold = {"env": dict(ended[0], at_ms=round(now_s * 1000.0, 1), fade_ms=0.0, key="ending"),
+                                  "until": now_s + dm}
+                self._log_event("song_end", {"held": "the song's ending", "until_s": round(dm, 1)})
+        if np_ is None or self.house or self.low or not self.pal_on:
+            self._mom_env = []
+            if np_ is None:
+                self._mom_song = None
+            return
+        key = str(np_.get("key"))
+        bf = self._brief()
+        idiom = bf.get("idiom") if bf else None
+        beat = _num(np_.get("moments_beat_s")) or (grid.beat_s if grid.has_grid and grid.beat_s else 0.5)
+        if key != self._mom_song and self._mom_hold is not None:
+            self._dip_back(now_s, "the next song")
+        if key != self._mom_song:
+            ms = np_.get("moments")
+            if not ms:
+                self._mom_env = []
+                return                                    # not read yet: chosen once they are
+            self._mom_song, self._mom_done = key, set()
+            self._mom_chosen = momentsmod.choose(ms, idiom, beat, self._smom_cfg)
+            self._log_event("song_moments", {"song": np_.get("title"), "idiom": idiom, "found": len(ms),
+                                             "chosen": [{k: m.get(k) for k in ("t", "end", "kind", "style", "salience")}
+                                                        for m in self._mom_chosen]})
+        pos = _num(np_.get("pos_s"))
+        if pos is None or not self._mom_chosen:
+            self._mom_env = []
+            return
+        got = momentsmod.perform(self._mom_chosen, pos, now_s, beat, self._smom_cfg, idiom)
+        self._mom_env = got["envelopes"]
+        for e in got["envelopes"]:
+            k = str(e.get("key"))
+            if k in self._mom_done:
+                continue
+            self._mom_done.add(k)
+            m = next((x for x in self._mom_chosen if f"{x.get('kind')}:{x.get('n')}" == k), {})
+            self._log_event("song_moment", {"key": k, "kind": m.get("kind"), "style": m.get("style"),
+                                            "salience": m.get("salience"), "envelope": e.get("kind"),
+                                            "at_s": round(float(e["at_ms"]) / 1000.0, 3),
+                                            "ahead_s": round(float(e["at_ms"]) / 1000.0 - now_s, 3), "why": m.get("why")})
+            for t0, t1 in got["hits"]:
+                if self._hit is None and self._hit_want is None and abs(t0 - float(e["at_ms"]) / 1000.0) < 0.05:
+                    self._hit_want = (t0, t1, True)
+            for fk, at in got["flashes"]:
+                if fk == k:
+                    self._ls_n += 1
+                    self._ls_drop = {"id": f"moment:{self._ls_n}", "at_ms": round(at * 1000.0, 1), "strength": 1.0}
+
+    def _arrival_view(self, now_s: float) -> Optional[dict]:
+        a = self._arrival
+        if a is None:
+            return None
+        if now_s > a["at_s"] + a["settle_s"] + 0.5:
+            self._arrival = None
+            return None
+        return {"at_ms": round(a["at_s"] * 1000.0, 1), "kind": a["kind"], "wind": a["wind"], "lift": a["lift"],
+                "wind_ms": round(a["wind_s"] * 1000.0, 1), "settle_ms": round(a["settle_s"] * 1000.0, 1),
+                "beat_ms": round(a["beat_s"] * 1000.0, 1)}
+
+    def _rests(self, gid: str) -> Optional[bool]:
+        """Whether a light group rests under the line-up being applied (or playing): True / False for a group some
+        line-up names, None for one no line-up governs (it always plays)."""
+        if self._idiom_rests(gid):                        # the song's idiom holds it back (idioms.yaml groups)
+            return True
+        lus = self.lights_cfg.get("lineups") or {}
+        name = self._lineup_apply if self._lineup_apply is not None else self._lineup
+        if not lus or name not in lus or not any(gid in e["plays"] for e in lus.values()):
+            return None
+        return gid not in lus[name]["plays"]
+
+    def _alone(self, gid: str) -> Optional[bool]:
+        """Whether the line-up being applied (or playing) plays this light group and no other (a scene tagged
+        ``alone``, written for a dark room, is drawn only then); None when no line-up governs it."""
+        lus = self.lights_cfg.get("lineups") or {}
+        name = self._lineup_apply if self._lineup_apply is not None else self._lineup
+        if not lus or name not in lus:
+            return None
+        plays = {self._root(g) for g in lus[name]["plays"]}
+        return plays == {self._root(gid)}
+
     def _move_for(self, look_id: str, reason: str, by: str, now_s: float, at_s: float) -> Optional[dict]:
         """The move for a look change (moves.Moves.pick), drawn once per change (a re-announced one keeps it): by the
         look's reason, the section boundary it crosses (a lyric plan's kinds), and the music (the transitions' own
@@ -3116,11 +3773,28 @@ class Director:
         frm, into = self._sec_kinds if reason in ("section", "repeat") else (None, None)
         strobes = self._strobe_fx()
         strobe_ok = self._strobe_ok(now_s, at_s)
+        dz = self.cfg["design"]
+        paced = reason in FLOURISH_REASONS
+        # held back: a move with a gesture is left out of this draw (a big move goes through whatever the count)
+        bf = self._brief()
+        per_song = float(bf["entry"]["flourishes"]) + 1.0 if bf is not None else dz["flourish_per_song"]
+        tight = flourish_held(reason, self._fl_n, self._fl_since, per_song, dz["flourish_gap"],
+                              self._karaoke_np() is not None)
+
+        def flourish(m: dict) -> bool:
+            tr = (m.get("lights") or {}).get("transition")
+            return tr is not None and bool((self.light_scenes.transitions.get(tr) or {}).get("gesture"))
 
         def usable(m: dict) -> bool:
+            if tight and m["size"] != "big" and flourish(m):
+                return False
             li = m.get("lights") or {}
             names = [a["effect"] for a in li.get("accents") or ()]
             tr = li.get("transition")
+            if bf is not None and not idiommod.transition_ok(bf["entry"], tr):
+                return False                              # not this song's way across (idioms.yaml transitions)
+            if bf is not None and int(bf["entry"]["flourishes"]) == 0 and m["size"] != "big" and flourish(m):
+                return False
             if tr is not None:
                 if tr not in self.light_scenes.transitions:
                     return False
@@ -3139,9 +3813,16 @@ class Director:
             log.exception("moves: pick failed")
             got = None
         if got is None:
+            if paced:
+                self._fl_since += 1
             return None
         name, why = got
         m = self.moves.moves[name]
+        if paced:
+            if flourish(m):
+                self._fl_n, self._fl_since = self._fl_n + 1, 0
+            else:
+                self._fl_since += 1
         if m["size"] == "big" and not self._moment_paid(at_s):
             self._tokens.append(now_s)
             self._strobe_paid = at_s                      # its own strobes are part of this one moment
@@ -3234,11 +3915,26 @@ class Director:
             name = None
         if name is None:
             try:
+                # the lights' own way across is a plain one while there are moves: a gesture is a move's to give,
+                # and the design paces those (a "plain" move, or one held back, must not draw one here instead)
                 name = self.light_scenes.pick_transition(kinds, (self.direction or {}).get("transition_style"),
-                                                         self.direction, self._flow, self._fx_rng)
+                                                         self.direction, self._flow, self._fx_rng,
+                                                         gestures=not self.moves.moves)
             except Exception:                             # a broken catalogue never fails the tick
                 log.exception("light transitions: pick failed")
                 name = None
+        bf = self._brief() if track is None else None
+        if bf is not None and (name is None or not idiommod.transition_ok(bf["entry"], name)):
+            # the song's own ways across (idioms.yaml), the plain ones: into a lift a cut (the wind-up and the
+            # landing are phrasing.py's), else the first that is a kind this change can be
+            ok = [n for n in bf["entry"]["transitions"] or () if n in self.light_scenes.transitions
+                  and not self.light_scenes.transitions[n].get("gesture")]
+            lift = self._arrival is not None and abs(self._arrival["at_s"] - at_s) < 0.5 \
+                and self._arrival["kind"] in idiommod.LANDS
+            want = LIFT_KINDS if lift else kinds
+            first = sorted((n for n in ok if self.light_scenes.transitions[n]["kind"] in want),
+                           key=lambda n: want.index(self.light_scenes.transitions[n]["kind"]))
+            name = (first or ok or [name])[0]
         e = self.light_scenes.transitions.get(name) if name else None
         kind = e["kind"] if e else kinds[0]
         at_ms = round(at_s * 1000.0, 1)
@@ -3376,7 +4072,7 @@ class Director:
             self._flow_dec.event(kind, at_s, grid.bar_s if grid.has_grid else None)
         sk = ev.get("section_kind") if kind == "section_change" else None      # a karaoke song's lyric plan: first,
         if sk in ("chorus", "verse", "instrumental"):                          # so it wins the line
-            self._fx_trigger("final_chorus" if sk == "chorus" and ev.get("final") else sk, at_s, now_s, grid)
+            self._fx_trigger(self._into_kind(ev) or sk, at_s, now_s, grid)
         if kind in contract.LIGHT_EFFECT_TRIGGERS:
             self._fx_trigger(kind, at_s, now_s, grid, strength=_num(ev.get("strength")))
         if kind in contract.TRACK_EVENT_KINDS:
@@ -3400,8 +4096,22 @@ class Director:
         now_ms = now_s * 1000.0
         strobes = self._strobe_fx()
         no_strobe = sorted(strobes) if strobes and not self._strobe_ok(now_s, at_s) else []
-        for gid, g in self._groups.items():
+        # restraint across the room (27 Nov, at a peak: every group took "Fast chase" at once, on top of its scene:
+        # "feels the music ... not a school disco"): one moment lights at most a couple of groups, each a different
+        # effect, and only so many run in the room at once; the groups take turns being the one that gets it
+        big = trigger in GAP_FREE_TRIGGERS
+        per_moment = int(self._prog("effects_per_moment", FX_BIG_PER_MOMENT if big else FX_PER_MOMENT))
+        room_max = int(self._prog("effects_room_max", FX_ROOM_MAX))
+        room_now = sum(1 for rs in self._fx.values() for r in rs if r["until_ms"] is None or r["until_ms"] > now_ms)
+        fired: list[str] = []
+        order = list(self._groups.items())
+        self._fx_rng.shuffle(order)
+        for gid, g in order:
+            if len(fired) >= per_moment or room_now + len(fired) >= room_max:
+                break
             if g.get("follows") or not self._group_live(gid):
+                continue
+            if self._rests(gid) and trigger not in GAP_FREE_TRIGGERS:   # a resting part wakes only for a big moment
                 continue
             runs = self._fx.setdefault(gid, [])
             active = [r for r in runs if r["until_ms"] is None or r["until_ms"] > now_ms]
@@ -3413,7 +4123,7 @@ class Director:
                 continue
             try:
                 got = self.light_scenes.pick_effect(g, trigger, self.direction, self._flow, self._fx_rng,
-                                                    running=[r["name"] for r in active] + no_strobe, bar=bar)
+                                                    running=[r["name"] for r in active] + no_strobe + fired, bar=bar)
             except Exception:                             # a broken catalogue never fails the tick
                 log.exception("light effects: pick failed")
                 got = None
@@ -3437,6 +4147,7 @@ class Director:
                                         "moment": self._moment if trigger in MOMENT_TRIGGERS else None,
                                         "out_s": float(fx["fade"]["out_beats"]) * beat}
             runs.append(run)
+            fired.append(name)
             self._fx_last[gid] = at_s
             self._fx_log.append({"group": gid, **run})
             self._lp_rev += 1
@@ -3450,11 +4161,38 @@ class Director:
         if isinstance(np_, dict) and np_.get("state") == "playing":
             pos = _num(np_.get("pos_s"))
             return "lead_in" if pos is not None and pos < 0.0 else "song"
-        if isinstance(np_, dict) or self._relaxed:           # paused, or nothing sounding
+        if isinstance(np_, dict) or self._relaxed or self._resting():   # paused, nothing sounding, or no song chosen
             waited = now_s - self._moment_since if self._moment in ("waiting", "lull") else 0.0
             return "lull" if waited >= float(self._moments_cfg["lull_after_s"]) or self._moment == "lull" \
                 else "waiting"
         return "song"
+
+    def _moment_energy(self, e: float, moment: Optional[str] = None) -> float:
+        """``e`` held to the moment's own energy (show.yaml lights.moments.energy) while nothing plays. The pre-state
+        is general (owner, 27 Nov: "it's not just for karaoke ... a selection among low-energy scenes [for screens
+        and lighting] that the a.d. is choosing from"): the director directs a low energy, and every layer draws
+        from its own catalogue against it; a mode's own scenes for the moment come first (Catalogue.pool_for)."""
+        cap = _num((self._moments_cfg.get("energy") or {}).get(moment or self._moment))
+        return min(e, cap) if cap is not None else e
+
+    def _moment_favour(self) -> Optional[dict]:
+        """The screens' side of a mode's own pre-state: while nothing plays, the renderer's scenes tagged for the
+        moment (a scene's tags ``moments: [waiting]``, within the mode's own pool) take ``lights.moments.screen_share``
+        of its draw (room.direction scene_favour). None in a song, with no share set, or with no feel: with no scene
+        tagged so the renderer just draws at the moment's low energy."""
+        share = _num(self._moments_cfg.get("screen_share"))
+        if self._moment == "song" or not share or self._vibe_name is None:
+            return None
+        return {"tags": [f"moments:{self._moment}"], "share": _c01(share)}
+
+    def _direction_now(self, moment: Optional[str] = None) -> Optional[dict]:
+        """room.direction as the lights' draws read it: with the moment's energy already in (a moment's first pick
+        comes before the direction is next published)."""
+        d = self.direction
+        if not isinstance(d, dict):
+            return d
+        e = _num(d.get("energy"))
+        return d if e is None else {**d, "energy": self._moment_energy(e, moment)}
 
     def _moment_tick(self, now_s: float, grid: Grid) -> None:
         """A new moment: its effect trigger fires (``song_end`` too, as a song gives way to waiting), and every group
@@ -3473,6 +4211,13 @@ class Director:
         if new in MOMENT_TRIGGERS:
             self._fx_trigger(new, at, now_s, grid)
         if not self.light_scenes.scenes:
+            return
+        if new in ("waiting", "lull") and old == "song" and self._vibe_name is not None and self.pending is None \
+                and self.keep_until is None:
+            # Nothing plays any more: one look change for every layer, at the moment's low energy, so the screens
+            # go to their pre-state with the lights (their reason: the room went quiet). A change already pending
+            # (the room relaxed on this tick) is that change.
+            self._announce(now_s, "relax", "director", grid, at_s=at)
             return
         stale = {gid for gid, g in self._groups.items() if not g.get("follows") and self._group_live(gid)
                  and (self._lp.get(gid) or {}).get("scene") not in self.light_scenes.pool_for(g, self._light_tags, new)}
@@ -3814,8 +4559,73 @@ class Director:
                         "scene": p["scene"], "scene_label": self.light_scenes.label(p["scene"]),
                         "scene_why": p["scene_why"], "effects": [dict(r) for r in self._fx.get(self._root(gid), ())],
                         "transition": p["transition"], "flow": self._program_flow(p["scene"]),
-                        "since_ms": p["since_ms"], "at_ms": p["at_ms"], "why": p["why"]}
+                        "since_ms": p["since_ms"], "at_ms": p["at_ms"], "why": p["why"],
+                        "level": self._group_level.get(self._root(gid), 1.0)}
         return out
+
+    # -- the light in the room (roomlight.py; docs/LIGHTS.md §7.5; owner, 27 Nov) ---------------------------------------
+    def _features(self, applying: bool = False) -> list[str]:
+        """The low-power groups the line-up playing (``applying``: the one being drawn for) features: the groups it
+        names under ``features`` that say what room light they read under."""
+        lus = self.lights_cfg.get("lineups") or {}
+        name = self._lineup_apply if applying and self._lineup_apply is not None else self._lineup
+        gcfg = self.lights_cfg.get("groups") or {}
+        return [g for g in (lus.get(name) or {}).get("features", ())
+                if isinstance((gcfg.get(g) or {}).get("reads_under_lux"), float)]
+
+    def _room_light(self, lamps: Mapping[str, Any]) -> None:
+        """How much light each group now puts in the room (its lights' real output in the colours and level they
+        show, by its scene's average), and from that the level of each group playing WITH a featured low-power light:
+        down far enough that the room stays under what the featured light needs. Nothing is featured (most line-ups,
+        House lights, Lights low, no feel): every level is 1."""
+        cfg = {**roomlight.ROOM_LIGHT_FALLBACK, **{k: v for k, v in (self.lights_cfg.get("room_light") or {}).items()
+                                                   if isinstance(v, (int, float)) and not isinstance(v, bool)}}
+        photo = self._photo
+        rig = self._rig_seen if isinstance(self._rig_seen, dict) else {}
+        fixtures = rig.get("fixtures") if isinstance(rig.get("fixtures"), dict) else {}
+        types = rig.get("types") if isinstance(rig.get("types"), dict) else {}
+        _sp, view = self._space_now()
+        size = ((view or {}).get("room") or {}).get("size")
+        if not (isinstance(size, (list, tuple)) and len(size) == 3 and all(isinstance(x, (int, float)) and x > 0
+                                                                           for x in size)):
+            size = photo["size"]
+        reflect = roomlight.reflect_of((self.lights_cfg.get("room_light") or {}).get("reflect"), photo["reflect"])
+        per_lm = roomlight.lux_per_lumen(size, reflect)
+        by: dict[str, float] = {}
+        for gid, g in self._groups.items():
+            p = self._lp.get(self._root(gid)) or {}
+            sc = self.light_scenes.scenes.get(p.get("scene")) if p.get("scene") else None
+            share = roomlight.scene_share((sc or {}).get("layers")) if sc is not None else 1.0
+            lm = 0.0
+            for fid in g["members"]:
+                la = lamps.get(fid)
+                if not isinstance(la, Mapping) or not isinstance(la.get("rgb"), (list, tuple)):
+                    continue
+                t = types.get((fixtures.get(fid) or {}).get("type")) or {}
+                entry = photo["types"].get(t.get("file")) or photo["types"].get((fixtures.get(fid) or {}).get("type"))
+                lm += roomlight.lumens(entry, [255.0 * float(x) for x in la["rgb"][:3]])
+            by[gid] = lm * share * per_lm
+        feats = self._features() if (self._vibe_name is not None and not self.house and not self.low) else []
+        gcfg = self.lights_cfg.get("groups") or {}
+        levels: dict[str, float] = {}
+        target = level = None
+        if feats:
+            target = min(gcfg[g]["reads_under_lux"] for g in feats)
+            others = [g for g in by if g not in feats and by[g] > 1e-6]
+            level = roomlight.headroom(target, float(cfg["other_lux"]), sum(by.get(g, 0.0) for g in feats),
+                                       sum(by[g] for g in others), float(cfg["min_level"]))
+            if level < 0.999:
+                levels = {self._root(g): round(level, 3) for g in others}
+        self._group_level = levels
+        lux = float(cfg["other_lux"]) + sum(v * levels.get(self._root(g), 1.0) for g, v in by.items())
+        self._room_light_view = {"lux": round(lux, 1), "by_group": {g: round(v, 2) for g, v in by.items()},
+                                 "other_lux": float(cfg["other_lux"]), "features": feats,
+                                 "target_lux": target, "level": round(level, 3) if level is not None else None,
+                                 "levels": dict(levels), "lumens_per_lux": round(1.0 / per_lm, 1)}
+        key = (tuple(feats), round(level, 1) if level is not None else None)
+        if key != self._room_light_logged:               # a new feature, or its level moved by a tenth
+            self._room_light_logged = key
+            self._log_event("room_light", dict(self._room_light_view))
 
     # -- the room's space (space.py: the space builder's) ---------------------------------------------------------------
     def _space_mod(self) -> Any:
@@ -4053,7 +4863,7 @@ class Director:
             nl = ens.next_look()                          # a look change that won't land: its decision goes too
             if nl is not None and nl != f"L{self.look_n}" and (self.pending is None or nl != f"L{self.look_n + 1}"):
                 ens.cancel_look(nl, now_s)
-            out = ens.tick(now_s, grid, active=self.pal_on and not self.house and not self.low,
+            out = ens.tick(now_s, grid, active=self.pal_on and not self.house and not self.low and not self._resting(),
                            accents=vs["accents"], beat_lock=bool(vs["beat_lock"]),
                            energy=float(self.music.get("energy") or 0.0), direction=self.direction, flow=self._flow,
                            lead_s=self._lead_s(), held=self.keep_until is not None)
@@ -4620,8 +5430,11 @@ class Director:
         band = self._band_words(self.music.get("band_energy", self.music.get("energy", vs["energy_centre"]))) \
             if self.music else None
         tp = self.treat.plan or {}
+        bf = self._brief()
         if self.moods:
             moods, src = list(self.moods), "human"
+        elif bf is not None and bf.get("moods"):
+            moods, src = list(bf["moods"])[:3], "brief"    # the karaoke song's own brief (brief.py) leads
         elif tp.get("moods"):
             moods, src = list(tp["moods"]), "plan"         # the song's treatment (README S5.33)
         elif (self._song_char() or {}).get("moods"):
@@ -4637,6 +5450,8 @@ class Director:
         # feel's own change_rate always wins there)
         if vs["transition_style"]:
             style, style_from = vs["transition_style"], "feel"
+        elif bf is not None and bf["entry"].get("screen_style"):
+            style, style_from = bf["entry"]["screen_style"], "brief"   # the song's idiom (idioms.yaml)
         elif tp.get("transition_style"):
             style, style_from = tp["transition_style"], "plan"
         elif gd.get("transitions"):
@@ -4766,6 +5581,10 @@ class Director:
         gr = _c01((self._groove - g0) / (g1 - g0))
         speed = _lerp(vs["motion"], (1.0 - mg) * arousal + mg * gr)
         amount = _lerp(vs["motion"], (1.0 - mg) * u + mg * gr)
+        bf = self._brief()
+        if bf is not None:                                # the song's idiom caps its movement (idioms.yaml motion_cap):
+            cap = float(bf["entry"]["motion_cap"])        # a hushed song's patterns stay slow however loud it gets
+            speed, amount = min(speed, cap), min(amount, cap)
         density = ux
         spread = _c01(amount + xpr)
         beat_lock = bool(vs["beat_lock"]) and grid.gate == "beat"
@@ -4798,6 +5617,7 @@ class Director:
             sd = None
         if sd is not None and pal_on:
             song_dip = _c01((now_s - sd["t0"]) / sd["out_s"])
+        self._junction_env = self._junction_envs(now_s) if pal_on else []   # the one envelope lamps and rig read
         roles_key = (look_pal["name"], emphasis, tuple(r["hex"] for r in look_pal["roles"].values()),
                      tuple((sid, tuple(r["hex"] for r in sr.values())) for sid, sr in sorted(screen_roles.items())))
         roles_changed = self._roles_key is not None and roles_key != self._roles_key
@@ -4810,8 +5630,10 @@ class Director:
             lamp_level = max(floor, level)
             if dip is not None:
                 lamp_level = min(lamp_level, dip)        # pre-drop: the lamps dip (screens never do)
-            if song_dip is not None:                     # a song's outgoing half (S5.17): down to the floor, never off
-                lamp_level += (min(lamp_level, floor) - lamp_level) * song_dip
+            # the song's junction and its moments (S5.17; moments.py): the same envelopes the rig's look engine reads,
+            # so the lamps fade with the screens and the rig, and black out with them at a cold ending
+            jf, _sz = phrasing.envelopes(now_s, None, list(self._junction_env) + list(self._mom_env or ()))
+            lamp_level = _c01(lamp_level * jf)
             for i, (did, dev) in enumerate(sorted(self.lamps.items())):
                 rname, rc = self._lamp_role(dev)
                 if self.house:
@@ -4835,6 +5657,7 @@ class Director:
                 c = pal.full(pal.rgb_of(roles[emphasis]["hex"]))          # the screens rule: never scaled
                 colours[did] = c
                 screens[did] = {"hex": pal.hex_of(c), "rgb": [round(x, 4) for x in c]}
+            self._moments_tick(now_s, grid)               # the song's stabs, stops and ending (moments.py)
             # the unison hit: an armed line's (from the line: predicted), or an unarmed drop's (now: nobody predicted
             # it); lamps only, never under House lights or Lights low. It goes out in LookData.hit, never in
             # palette_fn: each output takes it from its driver's caps (§5.4: Hue swells for an unforeseen drop)
@@ -4846,13 +5669,19 @@ class Director:
                 if now_s >= a_s - max(1.0, float(self.cfg["build"]["dip_bars"]) * (grid.bar_s or 2.0)):
                     # coloured from the dip on (it starts exactly at the line)
                     self._hit = (a_s, a_s + hb, self._hit_colours(look_pal, vs, now_s), True) if hb > 0 else None
-            elif self._hit_want is not None:
-                self._hit = (self._hit_want[0], self._hit_want[1], self._hit_colours(look_pal, vs, now_s), False)
+            elif self._hit_want is not None:              # a moment's is known ahead (predicted: a step on its line)
+                self._hit = (self._hit_want[0], self._hit_want[1], self._hit_colours(look_pal, vs, now_s),
+                             bool(self._hit_want[2]) if len(self._hit_want) > 2 else False)
                 self._hit_want = None
         accents = {"style": vs["accents"], "density": round(_c01(density), 3), "subdivision": sub,
                    "strobe": bool(vs["strobe"]), "beat_lock": beat_lock}
         if not pal_on and self.light_scene is not None:   # neutral: hands off, the lamps run show.yaml's looks.layers
             self.light_scene, self.light_scene_why, self._ls_reason = None, None, "first"
+        try:
+            self._room_light(lamps)                      # the groups' levels, for _programs_view below (§7.5)
+        except Exception:                                # never fail the tick: nothing is brought down
+            log.exception("room light: failed")
+            self._group_level = {}
         tr = self._look_transition or self._transition(vs)
         self.look = {"t_ms": round(now_s * 1000.0, 1), "seq": self._look_seq, "look_id": f"L{self.look_n}",
                      "vibe": self._vibe_name, "mode": self.mode, "palette": look_pal, "level": round(level, 3),
@@ -4866,6 +5695,9 @@ class Director:
                      "dip": bool(pal_on and (dip is not None or song_dip is not None) and not self.house
                                  and not self.low),
                      "hit": self._hit_view(), "compose": self._cblock,
+                     "arrival": self._arrival_view(now_s),      # a lift's wind-up and landing (phrasing.py)
+                     # the song's stabs, stops and ending (moments.py), and the song junction (S5.17), as envelopes
+                     "moments": (list(self._mom_env or ()) + list(self._junction_env or ())) or None,
                      "light_scene": self.light_scene, "light_scene_why": self.light_scene_why,
                      "light_scene_drop": dict(self._ls_drop) if self._ls_drop else None,
                      "flow": self._flow, "light_programs": self._programs_view()}      # docs/LIGHTS.md §7.2
@@ -4908,13 +5740,15 @@ class Director:
         lkind = msec.get("kind") if lplan is not None and isinstance(msec.get("kind"), str) else None
         if lkind is not None and feel_on and getattr(self, "_int_ema", None) is None:
             e_dir = _c01(e_dir + self._section_lift())   # the karaoke section's shape, until the music's own is known
+        e_dir = self._moment_energy(e_dir)               # nothing playing: the moment's own, low energy
         sc = self._song_char()
         if section_ref is not None and lkind is not None:
             section_ref["kind"] = lkind
         cr = vs["change_rate"] if feel_on or words.get("change_rate") is None else words["change_rate"]
         self.direction = {"t_ms": round(now_s * 1000.0, 1), "seq": self._dir_seq, "source": "show_service",
                           "note": f"show_service · {self._vibe_name}" if self._vibe_name else None,
-                          "vibe": self._vibe_name, "energy": round(e_dir, 3), "pace": round(_c01(m["pace"]), 3),
+                          "vibe": self._vibe_name, "moment": self._moment,
+                          "energy": round(e_dir, 3), "pace": round(_c01(m["pace"]), 3),
                           "intensity": 1.0, "change_rate": round(cr, 3), "moods": words["moods"],
                           "genre": words["genre"], "genres": words.get("genres") or {},
                           "transition_style": words["transition_style"],
@@ -4934,7 +5768,8 @@ class Director:
                           "flow": self._flow,                    # docs/LIGHTS.md §4.1
                           # the song's treatment (README S5.33): the renderer's favoured and rested scene families,
                           # and, while a feel changes the looks, its dwell window (the show decides when)
-                          "scene_favour": (self.treat.plan or {}).get("favour"),
+                          # (while nothing plays: the screens' own scenes for the moment, when any is tagged so)
+                          "scene_favour": self._moment_favour() or (self.treat.plan or {}).get("favour"),
                           "scene_avoid": (self.treat.plan or {}).get("avoid"),
                           "dwell_s": (self._karaoke_dwell(lplan) if lplan is not None
                                       else self._screens_dwell(vs) if feel_on else None),
@@ -5854,6 +6689,9 @@ class Director:
                  "music": {k: (round(m[k], 3) if isinstance(m.get(k), float) else m.get(k))
                            for k in ("energy", "arousal", "gate", "liveness", "bpm", "clock_gate", "relax")} if m
                  else None}
+        song = self._log_song()
+        if song is not None:
+            entry["song"] = song
         self._log.append(entry)
         try:
             w = self._why_words(kind, detail)
@@ -5876,6 +6714,20 @@ class Director:
             self._log_error = None
         except Exception as e:                          # a full disk never stops the show
             self._log_error = f"{type(e).__name__}: {e}"
+
+    def _log_song(self) -> Optional[dict]:
+        """The karaoke song and where the room is in it, on every log line: tools/room/ad_review places each decision
+        in the song by this (song seconds as heard)."""
+        try:
+            np_ = _call(getattr(self.ctx, "now_playing", None))
+        except Exception:                                 # noqa: BLE001 - the log never stops the show
+            return None
+        if not is_song(np_):
+            return None
+        parts = str(np_["key"]).split(":")
+        pos = _num(np_.get("pos_s"))
+        return {"id": parts[1] if len(parts) > 1 else None, "pos_s": round(pos, 3) if pos is not None else None,
+                "state": np_.get("state"), "title": np_.get("title")}
 
     def _palette_view(self) -> dict:
         key = (id(self.vs), self.known, self._roles_key, self.palette_pick, len(self.palettes.names()),
@@ -5959,6 +6811,7 @@ class Director:
             "stats": {"tick_ms_p95": p95, "looks": self.looks, "events": self.events, "published": self.published,
                       "gobo_steps": self.gobo_steps, "log_error": self._log_error},
             "compose": self._compose_view(),
+            "room_light": dict(self._room_light_view),   # docs/LIGHTS.md §7.5: the light in the room, and who makes room
             "light_scene": {"name": self.light_scene, "label": self.light_scenes.label(self.light_scene),
                             "why": self.light_scene_why,
                             "age_s": int(max(0.0, now_s - self._ls_at)) if self._ls_at is not None else None,
@@ -5969,6 +6822,8 @@ class Director:
             "picture": self._picture_view(),                    # what the screens show, for the lights (picture.py)
             "moment": {"now": self._moment, "for_s": round(now_s - self._moment_since, 1)},   # contract.MOMENTS
             "groove": round(self._groove, 3),                   # what the lights' draw reads (accent_fit)
+            "lineup": {"now": self._lineup, "plays": list(((self.lights_cfg.get("lineups") or {}).get(self._lineup)
+                                                          or {}).get("plays") or [])},
             "move": {"last": {k: self._move[k] for k in ("name", "why")} if self._move else None,
                      "catalogue": self.moves.view()},           # moves.py: the changes, composed across the layers
             "ensemble": self.ensemble.view(now_s) if self.ensemble is not None else None,   # docs/ENSEMBLE.md §5.6

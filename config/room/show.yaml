@@ -169,6 +169,26 @@ director:
   novelty: 0.12                             # |fast - slow| energy that counts as a change point when changing by time
   variation_bars: 64                        # while Keep this look holds: a new allocation after this many bars
   entry_fade_s: 8.0                         # entering a vibe: the lamps fade in from the house light (§8.6)
+  # Restraint and coherence within a song (docs/LIGHT_DESIGN_NOTES.md; owner, 27 Nov: "a system that feels the music and
+  # expresses it well", not one that "flashes like a school disco"). The eval scores these (tools/room/ad_eval/design.py).
+  design:
+    song_palette: true                      # a karaoke song keeps the palette its first look landed with: its sections
+                                            # re-allocate the roles, and a later plan's palette waits for the next song
+    flourish_per_song: 3                    # moves whose lights carry a gesture (heads fly up, a pump, a sweep through)
+                                            # in one karaoke song, the last kept for its big moment
+    flourish_gap: 2                         # after a flourish, this many section changes go across plainly
+  # A karaoke song's brief (show_service/brief.py; owner, 27 Nov: "throw the song to AI and ask it for tonal context
+  # to pick the type of scene and pacing pattern ... the a.d.'s job is then to execute that strategy properly"). Made
+  # before the song plays and kept beside it: its idiom (config/live/idioms.yaml: the scenes, lights and transitions
+  # the song may use, as limits), its one palette, its own section map with each section's size, and how the music
+  # arrives at each. Off: the lyric sections and the feel's whole catalogue, as before.
+  brief:
+    enabled: true
+    wind_bars: 2                            # a lift's wind-up: the lights pull in over this many bars before its line
+    settle_bars: 1                          # ... and its landing settles over this many after (phrasing.py)
+    lift_min: 0.12                          # a section this much bigger than the one before (of the song's range) is a lift
+    heard_min: 0.3                          # music nobody laid out ahead (the mic, a stream) has no brief: a section
+                                            # predicted while the music builds is a lift once the build has got this far
   no_feel:                                  # owner, 17 Oct: the director always resolves a palette. With no feel set
     palettes: [art, ember, gold, dusk]      # it picks from these (the home feel's list; art = the screens' own art); [] = the old neutral
   emphasis_edges: [0.4, 0.75]               # arousal where the screens' emphasis moves base -> accent -> highlight (§8.3)
@@ -296,6 +316,10 @@ director:
       min_s: 1.5                            # each half stays within min_s..max_s (after the feel's scale)
       max_s: 4.0
       dark_max_s: 8                         # the screens (and the lamps' dip) never stay dark longer than this
+      lights_floor: 0.15                    # the lights (lamps and rig alike) go down to this share of their look over
+                                            # out_s and come back over in_s, with the screens (owner, 27 Nov: "screens
+                                            # fade but lights don't"); 0 = dark with them. A song's own ending
+                                            # (config/live/moments.yaml) goes to its own floor
     segue:                                  # no gap: the new song starts as the old one ends
       cut_gate: beat                        # the clock at this gate (dmx|beat) or better: a cut on the new song's
                                             # first downbeat...
@@ -1040,6 +1064,7 @@ lights:
     movers:
       label: Moving lights
       select: "cap:pan"
+      carries_beat: 1                       # may carry a look's beat (programs.carrier_others); pars and derbies more often
       dark_level: 0                         # fade_dark goes to this (0..1), or floor (the look's floor)
       # Owner, 26 Nov: calm scenes should have "some, gentle movement". On top of wherever a scene puts them (its own
       # moves, a still fan or aim, or their rest when it only breathes), the movers sway: a slow wander of about this
@@ -1059,8 +1084,30 @@ lights:
   # The room's moment (contract.MOMENTS; owner, 26 Nov): song | lead_in (a song is cued, its title up) | waiting
   # (nothing plays) | lull (a long wait). The director only names it; what the lights do in each is the catalogue's:
   # light_scenes.yaml tags.moments, and light_effects.yaml on: [lead_in | waiting | lull | song_end].
+  # How much the picture on the screens steers the moving lights' draw (show_service/picture.py; owner, 26 Nov:
+  # "none of this stuff should be hardcoded"). A scene that moves is weighted by how its movement sits with the
+  # picture queued next. Starting points.
+  picture:
+    dir_fit: 2.5                            # its flow tags name the picture's direction
+    dir_against: 0.5                        # ... name the opposite
+    dir_honours: 1.2                        # ... name neither, but its layers follow the room's flow
+    dir_other: 0.8                          # ... name other directions only
+    pace_far: 0.5                           # its energy band is a whole scale from the picture's pace (1: no effect)
+    busy_high: 0.7                          # a busy picture (its busy share at or over this) ...
+    busy_low: 0.3                           # ... a sparse one (at or under this)
+    busy_on_busy: 0.6                       # busy movement over a busy picture
+    busy_on_sparse: 1.3                     # busy movement over a sparse picture: the lights carry it
   moments:
     lull_after_s: 180                       # waiting this long is a lull
+    # The pre-state is general, for every mode and every layer (owner, 27 Nov): while nothing plays the director
+    # directs at most this much energy (it is in room.direction, with the moment), and the screens and each light
+    # group draw from their own catalogues against it: their low-energy scenes. A mode's own scenes for the moment
+    # come first (a light scene's tags.moments with tags.modes: one of the mode's director.light_scenes tags).
+    energy: {lead_in: 0.45, waiting: 0.2, lull: 0.1}
+    # The screens' side of a mode's own pre-state: a renderer scene tagged for the moment (its tags: moments:
+    # [waiting]) and in the mode's pool takes this share of the screens' draw while that moment lasts (sent as
+    # room.direction scene_favour). No scene is tagged so yet: until one is, the screens draw their calm scenes.
+    screen_share: 0.8
   # The haze (show_service/atmosphere.py; owner, 26 Nov): the feel says how thick (vibes.yaml haze: off | light |
   # medium | thick; PUT /api/v1/haze for a person's pick until the mode changes), and this holds it from a model of
   # the room's air: its volume (space.yaml room.size) and how fast it clears (space.yaml room.haze_half_life_s: time
@@ -1090,6 +1137,20 @@ lights:
     rest_s: 15                              # the hazer at a burst's level at most
     warmup_s: 270                           # a hazer just switched on (PUT /api/v1/haze/now {"warm": false}) puts
                                             # nothing out for this long: its output isn't counted until then
+  # The light in the room (show_service/roomlight.py; docs/LIGHTS.md §7.5; owner, 27 Nov: "scenes which depend on e.g.
+  # laser and derby effects also drop down the effective total light levels to allow those lower power lights to be
+  # seen"). A line-up may name the low-power groups it FEATURES (lineups.<name>.features); such a group says what
+  # room light it reads under (groups.<g>.reads_under_lux) and where it lands (lands_on). While it is featured, the
+  # other groups come down to the level that keeps the room under that, worked out from their lights' real output
+  # (config/room/photometry.yaml) in the colours they show: blue heads cost an eighth of white ones, so they come
+  # down far less. Their flashes come down with them. Never under House lights or Lights low.
+  room_light:
+    min_level: 0.12                         # ... but never under this share of their level (they still read)
+    other_lux: 1.0                          # what the screens and anything else leave in the room whatever the lights
+                                            # do (the laptop room's projected picture: about 1 lux). Starting point.
+    clear_of_feature: 0.2                   # a scene that lands on the featured light's surface draws at this share
+    # reflect: {ceiling: 0.7, wall: 0.5, floor: 0.2}   # this room's surfaces (deployments/<id>/show.yaml): dark walls
+    #                                                    bounce less, so less needs to come down
   # appliances: this site's remote-worked appliances and the room targets that work them (deployments/<id>/show.yaml;
   # show_service/appliances.py has the form). A group above names them in its "appliances" list.
   programs:
@@ -1110,6 +1171,18 @@ lights:
       downbeat: {beat: [0.4, 2.5], other: [1.2, 0.6]}
       beat:     {beat: [0.15, 5.0], other: [2.0, 0.3]}
       full:     {beat: [0.15, 7.0], other: [2.0, 0.2]}
+    # A karaoke song is laid out before it plays (show_service/songplan.py: each lyric section with the song's
+    # measured level over it, and its climax marked; owner, 27 Nov). Starting points, chosen by reasoning.
+    recall_weight: 1000                     # a section that comes round again (the chorus) draws the scene each group
+                                            # showed for it last time at this many times its weight (at 40 a third
+                                            # of returns drew another: eval 27 Nov; a look book, not a suggestion)
+    grow_step: 0.12                         # ... and a bigger line-up, once the song's level for it has risen this much
+    section_fit: 2.5                        # a scene whose tags.sections names the kind of section coming, x this
+    section_against: 0.35                   # ... one that names other kinds, x this (no tags.sections: for any)
+    drive_level: 0.75                       # a line-up's drive: this much the song's level over the section coming,
+                                            # the rest its groove (no laid-out song: energy and groove, half each)
+    carrier_others: 0.25                    # one group carries the beat in a look (groups.<g>.carries_beat: its weight
+                                            # in that draw); the other groups' pulsing scenes draw at this share
   flow:
     centre: null                            # a Room map name the flow turns round / bursts from; null: the room's centre
     # screen (owner, 26 Nov): the direction the picture on the screens travels (show_service/picture.py: a tunnel is
@@ -1146,7 +1219,9 @@ lights:
       # targets: {<room target>: {up: <value>, down: <value>}}   # from modes.json's blinds; set them first
   motion:
     default_max_speed_deg_s: {pan: 180, tilt: 120}   # until measured (each light's own max_speed wins)
-    accel_s: 0.12
+    accel_s: 0.12                           # from rest to full speed, easing included (show_service/motion.py)
+    ease: 0.5                               # the share of accel_s spent easing into the acceleration and out of it
+                                            # (0 = a plain trapezoid; 0.5 = the gentlest way to full speed)
     pt_speed: 1.0                           # the light's own pan/tilt speed channel (1 = fastest; the engine smooths)
     max_travel_share: 0.8                   # a beat-locked hop may spend at most this share of its period moving
     dark_move_min_deg: 30                   # a jump bigger than this travels dark when the transition says so
