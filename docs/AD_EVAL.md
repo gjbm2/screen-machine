@@ -55,7 +55,7 @@ The score is a guide, not the judge, until it agrees with the owner's eye: a lou
 it, and one fix moves it less than the draws do. Two things judge instead:
 - **Fault checks** (checks.py): plain questions of one moment each, with known right answers (does the chorus land
   with a change, within a beat? is the climax the biggest? do the lamps go down for the stop?).
-- **The owner's eye**, spent where it counts: a morning reel of about 12 ten-second moments (reel.py; owner: "it's
+- **The owner's eye**, spent where it counts: a morning reel of about 12 moments of 26 s (12 s before the transition, 14 s after) (reel.py; owner: "it's
   the transitions and pattern that I'm reviewing"). First the night's changes as blind before/after pairs, then
   moments a check flagged (the owner's "good" there says the check is wrong), then a rotating sample of each
   song's transitions. Any item widens to its section or the whole song. A verdict on a single moment is a moment

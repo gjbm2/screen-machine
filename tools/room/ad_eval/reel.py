@@ -1,7 +1,7 @@
 """The owner's morning reel: a few minutes of the show's transitions, not every second of every song (owner, 28 Nov:
 "my review can't take ages ... it's the transitions and pattern that I'm reviewing").
 
-Each item is about 10 s around one transition (a section boundary, the climax, a stop, the ending), played in the 3D
+Each item is about 26 s around one transition (a section boundary, the climax, a stop, the ending), played in the 3D
 room with the song (/lights/pairs, which shows reels and blind pairs alike). They come in this order, to a budget:
   1. changed   what the night's fix changed: the same transition before and after, side by side and blind (needs
                --vs, the run before the fix). The owner's pick says whether the fix is better by eye.
@@ -35,7 +35,7 @@ import checks  # noqa: E402
 import common  # noqa: E402
 import pairs  # noqa: E402
 
-BEFORE_S, AFTER_S = 4.0, 6.0          # an item: this long before the transition and after it
+BEFORE_S, AFTER_S = 12.0, 14.0        # an item: this long before the transition and after it (owner, 28 Nov: +8 s each)
 MAX_CHANGED, MAX_FLAGGED = 4, 5       # of the default 12: the rest is the pattern sample
 PATTERN_SONGS = 4                     # the sample's songs per day
 FEEDBACK = pathlib.Path.home() / ".local" / "state" / "screen-machine" / "show" / "ad_feedback.jsonl"
