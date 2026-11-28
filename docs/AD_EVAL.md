@@ -171,6 +171,10 @@ struck through with its commit.
 5. **Look again at contour and sections** once the blind pairs have data: do they reward artistry, or only following
    loudness? A change bumps SCORE_VERSION.
 6. **Eval issues from the nightly.** Fix the keys and references the morning report flags.
+   **Open (a8, 28 Nov):** until 3a78cb35, karaoke replays drove the house lights (house-1..4, in the "*" group) at
+   ~70%, since the replay never applied the karaoke mode's `"light.house-*": "off"`. They propped up
+   `outputs.lamp_level`: with them held off, the dark check went 20/21 → 12/28 and ending 20 → 16/21, and contour,
+   ending and moments move too. Runs before and after aren't comparable. Should lamp_level count house dimmers?
    **28 Nov, the first night's six:**
    - (4) **Briefs off their lines.** The AI now names each section's first lyric line (its number and first words),
      and that line's time is the start (brief VERSION 2; all 131 songs briefed again). Within 1 s of the key's
