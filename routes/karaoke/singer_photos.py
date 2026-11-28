@@ -28,7 +28,7 @@ from typing import Any, Iterable
 from flask import abort, jsonify, request, send_file
 from utils.logger import error, info
 
-from . import api
+from . import api, singer_riffs
 from .api import _err, karaoke_api
 from .store import clean_singer, root
 
@@ -91,7 +91,17 @@ def pictures_of(names: Iterable[Any]) -> list[dict]:
         if r and path.is_file():
             out.append({"id": f"singer/{r['file']}", "path": str(path), "w": r["w"], "h": r["h"], "kind": "singer",
                         "quality": 0.9, "appeal": 1.0, "faces": r.get("faces") or [], "name": r["name"]})
+            for x in r.get("riffs") or []:                  # the AI's riffs on it (singer_riffs), as they are made
+                if x.get("state") == "done" and (folder() / x["file"]).is_file():
+                    out.append({"id": f"singer/{x['file']}", "path": str(folder() / x["file"]), "w": x["w"],
+                                "h": x["h"], "kind": "singer", "quality": 0.9, "appeal": 0.95, "faces": [],
+                                "name": r["name"], "riff": x["scene"]})
     return out
+
+
+def _files(row: dict) -> list[str]:
+    """A row's photo and its made riffs."""
+    return [row["file"], *(x["file"] for x in row.get("riffs") or [] if x.get("file"))]
 
 
 def put(name: str, data: bytes) -> dict:
@@ -107,11 +117,13 @@ def put(name: str, data: bytes) -> dict:
     with _lock:
         idx = _index()
         old = idx.get(name.lower())
-        row = {"name": name, "file": file, "w": im.width, "h": im.height, "at": time.time(), "faces": []}
+        row = {"name": name, "file": file, "w": im.width, "h": im.height, "at": time.time(), "faces": [],
+               "riffs": singer_riffs.plan()}
         idx[name.lower()] = row
         _write(idx)
-    if old:
-        (f / old["file"]).unlink(missing_ok=True)
+    for x in _files(old) if old else []:
+        (f / x).unlink(missing_ok=True)
+    singer_riffs.poke()
     threading.Thread(target=_find_faces, args=(name.lower(), file), name="karaoke-singer-faces", daemon=True).start()
     return row
 
@@ -124,7 +136,7 @@ def drop(names: Iterable[Any]) -> None:
         for n in names or []:
             r = idx.pop(str(n).lower(), None)
             if r:
-                gone.append(r["file"])
+                gone += _files(r)
         if gone:
             _write(idx)
     for file in gone:
@@ -138,7 +150,8 @@ def clear() -> None:
         if idx:
             _write({})
     for r in idx.values():
-        (folder() / r["file"]).unlink(missing_ok=True)
+        for x in _files(r):
+            (folder() / x).unlink(missing_ok=True)
 
 
 def _find_faces(key: str, file: str) -> None:
@@ -187,6 +200,6 @@ def api_drop_photo():
 
 @karaoke_api.get("/karaoke/singers/photo/<file>")
 def api_photo(file: str):
-    if not re.fullmatch(r"[a-z0-9-]+-\d+\.jpg", file) or not (folder() / file).is_file():
+    if not re.fullmatch(r"[a-z0-9-]+-\d+(-[a-z]+)?\.jpg", file) or not (folder() / file).is_file():
         abort(404)
     return send_file(folder() / file, mimetype="image/jpeg", max_age=86400 * 30)
