@@ -39,7 +39,9 @@ type PartAim = { part: string; id: string; label: string; at: Vec3 | null; lean_
   /** false: a one-axis bracket (a U-yoke): it only tilts, and faces where its bar faces */
   turns: boolean };
 /** Every part of a bar, in order along it (left to right as you face it): the aimable ones are in ``aims`` too. */
-type BarPartBits = { part: string; id: string; label: string; at: Vec3 | null; along: number; head: boolean; hang: boolean; aimable: boolean };
+type BarPartBits = { part: string; id: string; label: string; at: Vec3 | null; along: number; head: boolean; hang: boolean; aimable: boolean;
+  /** The tags it gets when connected: the bar's and its layout part's (space.py BAR_KEYS; the scenes select by them). */
+  tags: string[] };
 /** A thing in the room: a light or screen of the rig, or a PLANNED one (owner, 27 Nov: "not all of these objects are
  *  'connected' (i.e. real) ... this allows me to treat the studio like a studio"): placed and drawn, driving nothing
  *  until it is connected. ``dev``: a room device's kind (screen, hue-lamp, mirror-ball, mic, light-sensor);
@@ -51,15 +53,16 @@ const ALSO: Record<string, string> = {
   "mirror-ball": "glitterball glitter ball disco ball mirrorball", "rf-glitterball": "mirror ball disco ball mirrorball glitter",
   "rf-pinspot": "pin spot pinspot glitter spot glitterspot spotlight colour light mirror ball light", screen: "tv television display projector monitor picture",
   "hue-lamp": "philips hue bulb lamp light", mic: "microphone mike audio sound", "light-sensor": "lux sensor light meter brightness",
+  piano: "grand piano steinway keyboard midi",
   "z-350": "hazer haze fog smoke machine", "gigbar-move": "gigbar bar light bar chauvet",
 };
 /** A library thing's own name: "gigbar-par (part, 7 channels)" -> "gigbar-par"; an id alone -> words. */
 const libName = (x: LibItem) => { const p = x.label.replace(/\s*\([^)]*\)\s*$/, "").trim(); return p && p !== x.id ? p : nameWords(x.id); };
 type RigRow = { id: string; label: string; type: string | null; node_ip: string | null; universe: number | null; address: number | null;
   footprint: number | null; editable: boolean };
-const DEVICES = new Set(["screen", "hue-lamp", "mirror-ball", "mic", "light-sensor"]);
+const DEVICES = new Set(["screen", "hue-lamp", "mirror-ball", "mic", "light-sensor", "piano"]);
 const DEVICE_WORDS: Record<string, string> = { screen: "A screen or TV", "hue-lamp": "A Hue lamp", "mirror-ball": "A mirror ball",
-  mic: "A microphone", "light-sensor": "A light sensor" };
+  mic: "A microphone", "light-sensor": "A light sensor", piano: "A piano" };
 /** The pinspots' remote's colours (config/room/rf/types/pinspot.json: seven and the colour cycle). */
 const PINSPOT_COLOURS: Record<string, string> = { white: "White", red: "Red", green: "Green", blue: "Blue", yellow: "Yellow",
   purple: "Purple", cyan: "Cyan", fade: "Colour cycle" };
@@ -115,7 +118,8 @@ function barsFrom(s: any): BarBits[] {
              const barName = typeof b.label === "string" ? b.label : id;
              return { part, id: String(p.id), label: own ?? `${barName} ${part.replace(/(\d+)$/, " $1")}`, at,
                       along: at ? (at[0] - b.at[0]) * ax[0] + (at[1] - b.at[1]) * ax[1] : 0,
-                      head: p.head === true, hang: p.hang === true, aimable: !!p.aim && typeof p.aim.lean_deg === "number" };
+                      head: p.head === true, hang: p.hang === true, aimable: !!p.aim && typeof p.aim.lean_deg === "number",
+                      tags: Array.isArray(p.tags) ? p.tags.filter((t: unknown): t is string => typeof t === "string") : [] };
            }).sort((u, v) => u.along - v.along) }]
       : []);
 }
@@ -281,6 +285,9 @@ function DeviceConnect({ kind, room, value, busy, onConnect }: {
           const st: any = await (await fetch(`${room}/show/api/v1/state`, { cache: "no-store" })).json();
           out = Object.entries(st?.senders ?? {}).flatMap(([sid, x]: [string, any]) =>
             (Array.isArray(x?.streams) ? x.streams : []).map((st2: string) => ({ id: String(st2), label: `${st2} (from ${sid})` })));
+        } else if (kind === "piano") {                         // its MIDI (show_service's pianos)
+          const st: any = await (await fetch(`${room}/show/api/v1/inputs`, { cache: "no-store" })).json();
+          out = (st?.pianos ?? []).map((x: any) => ({ id: String(x?.stream), label: `${x?.label ?? x?.stream} (${x?.stream})` }));
         } else if (kind === "light-sensor") {
           const st: any = await (await fetch(`${room}/api/v1/status`, { cache: "no-store" })).json();
           out = (st?.rooms ?? []).flatMap((r: any) => (Array.isArray(r?.sensors) ? r.sensors : []).map((x: any) =>
@@ -297,7 +304,8 @@ function DeviceConnect({ kind, room, value, busy, onConnect }: {
     })();
     return () => { dead = true; };
   }, [kind, room]);
-  const where = kind === "mic" ? "a microphone sending to the room (Settings › Listening)" : kind === "light-sensor"
+  const where = kind === "mic" ? "a microphone sending to the room (Settings › Listening)" : kind === "piano"
+    ? "a piano's MIDI coming in (Settings › Listening)" : kind === "light-sensor"
     ? "a light sensor in a room (Settings)" : "a remote-controlled device (Light setup › Appliances worked by remote)";
   if (opts === null) return <div className="text-stone-500">Looking for what it can be…</div>;
   return (
@@ -865,7 +873,7 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
     } else {
       const z = x.id === "mic" ? 1.5 : x.id === "light-sensor" ? Z - 0.02 : x.id === "mirror-ball" || /glitter|mirror/.test(x.id) ? Z - 0.6
         : x.id.startsWith("rf-") ? Z - 0.3
-        : x.id === "hue-lamp" ? Z - 0.1 : /hazer|z-350/.test(x.id) ? 0.2 : 2.2;
+        : x.id === "hue-lamp" ? Z - 0.1 : x.id === "piano" ? 0 : /hazer|z-350/.test(x.id) ? 0.2 : 2.2;
       // where it was clicked, at the height its kind sits at (a copy: the height it was dropped at)
       body = { at: at ? [r2(at[0]), r2(at[1]), keepZ ? r2(at[2]) : r2(z)] : [mid[0], mid[1], r2(z)] };
     }
@@ -919,7 +927,8 @@ export default function RoomTab({ api, space, things, lamps, selectId = null, pl
     const todo = b.parts.filter((p) => typeof parts[p.part]?.type === "string" && typeof parts[p.part]?.offset === "number" && !rigIds.has(p.id));
     if (!todo.length) { setErr("Its layout doesn't say each part's type and DMX offset (space.yaml layouts)."); return; }
     await act(`connect ${b.label}`, async () => {
-      for (const p of todo) await api.add({ id: p.id, label: `${b.label} ${p.part.replace(/(\d+)$/, " $1")}`, type: parts[p.part].type, node_ip: ip, universe, address: start + parts[p.part].offset });
+      for (const p of todo) await api.add({ id: p.id, label: `${b.label} ${p.part.replace(/(\d+)$/, " $1")}`, type: parts[p.part].type, node_ip: ip, universe, address: start + parts[p.part].offset,
+        ...(p.tags.length ? { tags: p.tags } : {}) });
     }, async () => { for (const p of todo) await api.remove(p.id); });
   };
   /** Disconnect a light registered on this page: it goes back to planned, in the same place (owner: connect "only when

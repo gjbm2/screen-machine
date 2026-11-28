@@ -11,6 +11,7 @@ import { probeCaps } from "@/pages/DisplayPage/control/caps";
 import type { LiveAttach } from "@/pages/DisplayPage/control/protocol";
 import { MseLivePlayer } from "@/pages/DisplayPage/live/MseLivePlayer";
 import { roomSocketBase } from "@/pages/DisplayPage/secureUrls";
+import { startTicker } from "@/pages/DisplayPage/control/ticker";
 
 const HB_MS = 2000;
 const RETRY_MS = 3000;
@@ -20,6 +21,10 @@ const ART_REFRESH_MS = 15000;
 // rejoins the stream (a fresh viewer socket: room_service hands the running session's attach again).
 const WATCH_MS = 1000;
 const STALL_MS = 4000;
+
+// The heartbeat and the watch run on a clock that keeps time in a hidden or covered window (ticker.ts): on the page's
+// own timers a 3D room left behind another window stopped sending its heartbeat after a few seconds (Chrome's
+// intensive throttling), room_service dropped each screen's viewer socket every 28 s and the screens rejoined (28 Nov).
 
 export type ScreenState = "connecting" | "art" | "live" | "down";
 
@@ -32,8 +37,10 @@ export class ScreenFeed {
   private player: MseLivePlayer | null = null;
   private art = new Image();
   private artOk = false;
+  private artTag: string | null = null;
   private holder: HTMLDivElement;
   private timers: number[] = [];
+  private stops: (() => void)[] = [];
   private closed = false;
   private lastT = -1;
   private movedAt = 0;
@@ -45,19 +52,36 @@ export class ScreenFeed {
     Object.assign(this.holder.style, { position: "fixed", left: "0", top: "0", width: "2px", height: "2px",
       overflow: "hidden", opacity: "0.01", pointerEvents: "none", zIndex: "-1" });
     document.body.appendChild(this.holder);
-    this.art.crossOrigin = "anonymous";
-    this.art.onload = () => {
-      this.artOk = true;
-      if (!this.player?.started) this.source = this.art;
-    };
     this.loadArt();
     this.timers.push(window.setInterval(() => !this.player && this.loadArt(), ART_REFRESH_MS));
-    this.timers.push(window.setInterval(() => this.watch(), WATCH_MS));
+    this.stops.push(startTicker(WATCH_MS, () => this.watch()));
     this.connect();
   }
 
+  /** The screen's current picture, into a fresh image that replaces the shown one once it has loaded: reloading the
+   *  shown image in place left it half-loaded while the scene read it (the room's light from it dropped) and never
+   *  updated its texture, so a new picture didn't show. */
   private loadArt() {
-    this.art.src = `/output/${encodeURIComponent(this.screen)}.jpg?t=${Date.now()}`;
+    const url = `/output/${encodeURIComponent(this.screen)}.jpg`;
+    // a 3 MB picture every 15 s for nothing: only when it changed (its ETag)
+    void fetch(url, { method: "HEAD", cache: "no-store" }).then((r) => {
+      const tag = r.headers.get("etag") ?? r.headers.get("last-modified");
+      if (tag && tag === this.artTag && this.artOk) return;
+      this.artTag = tag;
+      this.loadArtNow();
+    }).catch(() => this.loadArtNow());
+  }
+
+  private loadArtNow() {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => {
+      if (this.closed) return;
+      this.art = img;
+      this.artOk = true;
+      if (!this.player?.started) this.source = img;
+    };
+    img.src = `/output/${encodeURIComponent(this.screen)}.jpg?t=${Date.now()}`;
   }
 
   private connect() {
@@ -69,8 +93,9 @@ export class ScreenFeed {
     ws.onopen = () => {
       send("hello", { role: "viewer", screen: this.screen, page_load_id: `room3d-${Math.random().toString(36).slice(2, 10)}`,
         build: "room3d", caps: probeCaps(), flags: { nomask: true, nocolour: true, fit: "fit" } });
-      const hb = window.setInterval(() => send("hb"), HB_MS);
-      ws.addEventListener("close", () => window.clearInterval(hb));
+      const stop = startTicker(HB_MS, () => send("hb"));
+      this.stops.push(stop);
+      ws.addEventListener("close", stop);
     };
     ws.onmessage = (ev) => {
       let m: any;
@@ -146,6 +171,7 @@ export class ScreenFeed {
     this.closed = true;
     this.stopPlayer();
     this.timers.forEach((t) => { window.clearInterval(t); window.clearTimeout(t); });
+    this.stops.forEach((s) => s());
     try { this.ws?.close(); } catch { /* closed */ }
     this.holder.remove();
   }

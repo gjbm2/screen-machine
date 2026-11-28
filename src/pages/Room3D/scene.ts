@@ -105,6 +105,8 @@ const GOBO_TEX: THREE.Texture[] = (() => {
   return [open, ...GOBO_URLS.map((u) => { const t = loader.load(u); t.colorSpace = THREE.SRGBColorSpace; return t; })];
 })();
 const dark = new THREE.MeshStandardMaterial({ color: 0x1b1d23, roughness: 0.6, metalness: 0.3 });
+/** A grand piano's footprint, m (about a Steinway B): the room editor's piano until it says otherwise. */
+const PIANO = { w: 1.48, l: 2.11 };
 const darker = new THREE.MeshStandardMaterial({ color: 0x0e0f13, roughness: 0.7, metalness: 0.2 });
 /** A mesh or group whose local +z is turned onto ``dir`` (room frame). */
 function aimZ(o: THREE.Object3D, dir: THREE.Vector3) {
@@ -1088,6 +1090,7 @@ export class RoomSim {
         head.position.copy(at); this.built.add(head);
         break;
       }
+      case "piano": this.buildPiano(f, at); break;
       case "light-sensor": {
         const puck = new THREE.Mesh(new THREE.CylinderGeometry(0.04, 0.04, 0.02, 20), new THREE.MeshStandardMaterial({ color: 0xe5e7eb, roughness: 0.6 }));
         aimY(puck, up); puck.position.copy(at); this.built.add(puck);
@@ -1114,6 +1117,47 @@ export class RoomSim {
         }
         break;
     }
+  }
+
+  /** A grand piano (owner, 28 Nov: "piano should look a bit like an actual piano"): the case's outline (a straight
+   *  spine on the bass side, the treble side curving in to the tail), its lid propped open over the treble side, the
+   *  keyboard and three legs. ``at`` is the middle of its footprint; the keyboard faces its ``aim`` (where the player
+   *  sits), else west. A concert-ish size (PIANO: about a Steinway B, 1.48 x 2.11 m): drawn, not measured. */
+  private buildPiano(f: Fixture, at: THREE.Vector3) {
+    const { w: W, l: L } = PIANO, z = new THREE.Vector3(0, 0, 1);
+    const toPlayer = f.aim ? v3(f.aim).sub(at).setZ(0) : new THREE.Vector3(-1, 0, 0);
+    if (toPlayer.lengthSq() < 1e-6) toPlayer.set(-1, 0, 0);
+    const fwd = toPlayer.normalize().negate();                    // keyboard -> tail
+    const right = new THREE.Vector3().crossVectors(fwd, z);       // the treble side, as the player sits
+    const g = new THREE.Group();
+    g.matrixAutoUpdate = false;
+    g.matrix.makeBasis(right, fwd, z).setPosition(at.clone().addScaledVector(right, -W / 2).addScaledVector(fwd, -L / 2));
+    const outline = new THREE.Shape();
+    outline.moveTo(0, 0);
+    outline.lineTo(W, 0);
+    outline.lineTo(W, 0.3 * L);
+    outline.bezierCurveTo(W, 0.55 * L, 0.42 * W, 0.6 * L, 0.38 * W, 0.86 * L);
+    outline.bezierCurveTo(0.34 * W, 1.0 * L, 0.04 * W, 1.02 * L, 0, 0.96 * L);
+    outline.lineTo(0, 0);
+    const gloss = new THREE.MeshStandardMaterial({ color: 0x0b0b0d, roughness: 0.18, metalness: 0.1 });
+    const caseH = 0.3, caseZ = 0.66;
+    const body = new THREE.Mesh(new THREE.ExtrudeGeometry(outline, { depth: caseH, bevelEnabled: false, curveSegments: 24 }), gloss);
+    body.position.z = caseZ; g.add(body);
+    const lid = new THREE.Mesh(new THREE.ExtrudeGeometry(outline, { depth: 0.012, bevelEnabled: false, curveSegments: 24 }), gloss);
+    const hinge = new THREE.Group();                              // the lid hinges on the spine (x = 0), open 35 degrees
+    hinge.position.z = caseZ + caseH; hinge.rotation.y = -THREE.MathUtils.degToRad(35); hinge.add(lid); g.add(hinge);
+    const kb = new THREE.Mesh(new THREE.BoxGeometry(W * 0.94, 0.16, 0.03), new THREE.MeshStandardMaterial({ color: 0xf2efe6, roughness: 0.4 }));
+    kb.position.set(W / 2, -0.08, caseZ + 0.1); g.add(kb);
+    const cheeks = new THREE.Mesh(new THREE.BoxGeometry(W, 0.2, 0.12), gloss);
+    cheeks.position.set(W / 2, -0.1, caseZ + 0.04); g.add(cheeks);
+    const blacks = new THREE.Mesh(new THREE.BoxGeometry(W * 0.94, 0.05, 0.012), gloss);
+    blacks.position.set(W / 2, -0.03, caseZ + 0.12); g.add(blacks);
+    for (const [x, y] of [[0.08, 0.06], [W - 0.08, 0.06], [0.22 * W, 0.85 * L]] as [number, number][]) {
+      const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.045, 0.035, caseZ, 12), gloss);
+      leg.rotation.x = Math.PI / 2; leg.position.set(x, y, caseZ / 2); g.add(leg);
+    }
+    g.updateMatrixWorld(true);
+    this.built.add(g);
   }
 
   // A mirror ball (owner, 27 Nov: "your simulation needs to accommodate them if pointed at a glitterball (and other
