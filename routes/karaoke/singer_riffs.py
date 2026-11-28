@@ -22,20 +22,24 @@ from typing import Callable, Optional
 from utils.logger import error, info
 
 PER_SINGER = 4
-LIKENESS = ("Keep this person's face, hair and likeness exactly as in the photo, recognisably them. Photorealistic, "
-            "joyful, family friendly, no text or logos. ")
+# The scene first, then the likeness (28 Nov, on PC22's qwen21-edit: "keep this person exactly" first, with the photo
+# extended to 16:9, kept the photo untouched and only painted round it; this way it put her on the Wembley stage).
+LEAD = "Show the same person from this photo in a completely new scene: "
+LIKENESS = (" Same face, hair and age, recognisably them; a new pose to suit the scene. Photorealistic, joyful, "
+            "family friendly, no text.")
+RIFF_V = 2               # riffs made under an older recipe are made again
 SCENES = {
-    "wembley": "This person singing on the main stage at Wembley Stadium, a huge crowd with phone lights, big stage "
+    "wembley": "Singing into a microphone on the main stage at Wembley Stadium, a huge crowd with phone lights, big stage "
                "lights and confetti.",
-    "ronnie": "This person singing at Ronnie Scott's jazz club in London: an intimate room, warm low light, a jazz "
+    "ronnie": "Singing at Ronnie Scott's jazz club in London: an intimate room, warm low light, a jazz "
               "trio behind them.",
-    "popstar": "This person dressed as a dazzling pop star: sequins, a bold jacket, a glamorous studio portrait.",
-    "glasto": "This person headlining the Pyramid Stage at Glastonbury at sunset, flags waving in the crowd.",
-    "rock": "This person as a rock star with an electric guitar, smoke and spotlights on a concert stage.",
-    "disco": "This person on a 1970s disco dance floor under a mirror ball, flares and sparkle.",
-    "westend": "This person starring in a West End musical, a big theatre stage, bright costumes and the chorus "
+    "popstar": "Dressed as a dazzling pop star: sequins, a bold jacket, a glamorous studio portrait.",
+    "glasto": "Headlining the Pyramid Stage at Glastonbury at sunset, flags waving in the crowd.",
+    "rock": "As a rock star with an electric guitar, smoke and spotlights on a concert stage.",
+    "disco": "On a 1970s disco dance floor under a mirror ball, flares and sparkle.",
+    "westend": "Starring in a West End musical, a big theatre stage, bright costumes and the chorus "
                "behind them.",
-    "unplugged": "This person singing an acoustic session on a cosy stage with fairy lights and a guitarist.",
+    "unplugged": "Singing an acoustic session on a cosy stage with fairy lights and a guitarist.",
 }
 
 LABELS = {"wembley": "Wembley", "ronnie": "Ronnie Scott's", "popstar": "Pop star", "glasto": "Glastonbury",
@@ -66,11 +70,11 @@ def set_backend(fn: Optional[Backend]) -> None:
 
 def plan() -> list[dict]:
     """A new photo's riffs: PER_SINGER scenes, queued."""
-    return [{"scene": k, "state": "queued"} for k in random.sample(list(SCENES), PER_SINGER)]
+    return [{"scene": k, "state": "queued", "v": RIFF_V} for k in random.sample(list(SCENES), PER_SINGER)]
 
 
 def prompt(scene: str) -> str:
-    return LIKENESS + SCENES[scene]
+    return LEAD + SCENES[scene] + LIKENESS
 
 
 def start() -> None:
@@ -106,9 +110,14 @@ def _run() -> None:
     from . import singer_photos as sp
     with sp._lock:                                      # one being made when the app last stopped: again
         idx = sp._index()
-        stuck = [x for r in idx.values() for x in r.get("riffs") or [] if x.get("state") == "making"]
+        stuck = [x for r in idx.values() for x in r.get("riffs") or []
+                 if x.get("state") == "making" or x.get("v") != RIFF_V]
         for x in stuck:
-            x["state"] = "queued"
+            if x.get("file"):
+                (sp.folder() / x["file"]).unlink(missing_ok=True)
+            for k in ("file", "w", "h"):
+                x.pop(k, None)
+            x.update(state="queued", v=RIFF_V)
         if stuck:
             sp._write(idx)
     while True:
@@ -144,8 +153,8 @@ def _run() -> None:
                 idx = sp._index()
                 row = idx.get(key)
                 if row and row["file"] == photo_file and i < len(row.get("riffs") or []):
-                    row["riffs"][i] = ({"scene": r["scene"], "state": "done", **out} if ok
-                                       else {"scene": r["scene"], "state": "failed"})
+                    row["riffs"][i] = ({"scene": r["scene"], "state": "done", "v": RIFF_V, **out} if ok
+                                       else {"scene": r["scene"], "state": "failed", "v": RIFF_V})
                     sp._write(idx)
                 elif out:                               # the photo changed or went meanwhile: not wanted now
                     (sp.folder() / out["file"]).unlink(missing_ok=True)

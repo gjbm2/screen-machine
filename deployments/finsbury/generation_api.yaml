@@ -2,5 +2,5 @@
 # generation API (docs/API.md), called from this machine, which needs no key.
 base: local
 workflow: qwen21-edit
-params: {shape: landscape, fill: extend, skip-upscaling: true}
+params: {shape: photo, skip-upscaling: true}   # the photo's own shape (extending it to 16:9 kept the photo as it was)
 refiner: none

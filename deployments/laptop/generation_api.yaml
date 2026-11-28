@@ -3,5 +3,5 @@
 # ~/.config/screen-machine/generation_api.key (made on PC22: Settings > Apps & API keys, scope generate).
 base: https://screen.finsburybankforsavings.com/api/v1
 workflow: qwen21-edit   # "Adapt an image" (GET {base}/workflows): the photo changed by the prompt
-params: {shape: landscape, fill: extend, skip-upscaling: true}   # screen-shaped, the scene drawn round them; kept at 1600 px anyway
+params: {shape: photo, skip-upscaling: true}   # the photo's own shape (extending it to 16:9 kept the photo as it was)
 refiner: none       # the riff prompts are sent as written (a refiner could lose "keep their likeness")

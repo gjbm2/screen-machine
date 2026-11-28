@@ -94,7 +94,7 @@ def test_riffs_are_queued_made_one_at_a_time_round_the_singers_and_join_the_phot
 
     def gen(photo, prompt):
         order.append(photo.name.split("-")[0])
-        assert "likeness" in prompt.lower() and photo.is_file()
+        assert "recognisably them" in prompt and photo.is_file()
         if len(order) == 2 * sr.PER_SINGER:
             done.set()
         return jpeg(500, 500)
