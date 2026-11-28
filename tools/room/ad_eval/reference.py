@@ -58,6 +58,9 @@ MIN_SECTION_BARS = 4
 PEAK_Z = 0.35          # novelty peaks above mean + this x std
 CLUSTER_SIM = 0.85     # two sections share a letter above this cosine similarity of their mean features
 CLIMAX_S = 20.0
+MAX_BPM = 185.0        # the beat tracker's ceiling (madmom's own is 215): Valerie came back at 214 bpm, every eighth
+                       # note a beat (nightly 28 Nov), which halved the sections' tolerance; the set's fastest real
+                       # tempo is Happy's 160. A key cached over it is made again
 
 
 def ref_path(sid: str) -> pathlib.Path:
@@ -70,7 +73,7 @@ def beats_madmom(x: np.ndarray) -> tuple[list[float], list[float]]:
     from madmom.audio.signal import Signal
     from madmom.features.downbeats import DBNDownBeatTrackingProcessor, RNNDownBeatProcessor
     act = RNNDownBeatProcessor()(Signal(x, sample_rate=FS, num_channels=1))
-    res = DBNDownBeatTrackingProcessor(beats_per_bar=[3, 4], fps=100)(act)
+    res = DBNDownBeatTrackingProcessor(beats_per_bar=[3, 4], fps=100, max_bpm=MAX_BPM)(act)
     beats = [float(t) for t, _ in res]
     downs = [float(t) for t, p in res if int(p) == 1]
     return beats, downs
@@ -449,11 +452,17 @@ def load(sid: str, force: bool = False) -> dict:
     return {**_load(sid, force), "moments": moments(sid)}
 
 
+def too_fast(r: dict) -> bool:
+    """A key whose beats run over MAX_BPM (made before the ceiling): its beats are made again."""
+    b = r.get("beats") or []
+    return len(b) > 8 and 60.0 / max(1e-3, float(np.median(np.diff(b)))) > MAX_BPM + 1.0
+
+
 def _load(sid: str, force: bool = False) -> dict:
     p = ref_path(sid)
     if p.is_file() and not force:
         r = json.loads(p.read_text())
-        if r.get("version") == VERSION:
+        if r.get("version") == VERSION and not too_fast(r):
             if r.get("key_rev", "") != key_rev(annotated(sid)) or \
                     (r.get("character") or {}).get("liveliness") != liveliness(sid):   # keys.yaml changed: again
                 r = complete(r, sid)
@@ -463,7 +472,7 @@ def _load(sid: str, force: bool = False) -> dict:
                 common.CACHE / "ref" / f"{sid}.json"):
         if old.is_file() and not force:
             r = json.loads(old.read_text())
-            if r.get("version") in (1, 2, 3):
+            if r.get("version") in (1, 2, 3) and not too_fast(r):
                 r = complete(r, sid)
                 common.write_json(p, r)
                 return r
